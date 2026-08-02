@@ -7,6 +7,14 @@ updates:
     commit-message:
       prefix: "chore(deps)"
     open-pull-requests-limit: 5
+    # Bundle safe (minor/patch) Python updates into a single PR to avoid an
+    # avalanche. Major bumps stay as individual PRs for deliberate review.
+    groups:
+      python-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -15,3 +23,8 @@ updates:
     commit-message:
       prefix: "chore(ci)"
     open-pull-requests-limit: 5
+    # One PR for all GitHub Actions bumps.
+    groups:
+      github-actions:
+        patterns:
+          - "*"
