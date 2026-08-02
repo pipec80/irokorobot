@@ -23,7 +23,9 @@ jobs:
         run: uv python install 3.12
 
       - name: 📦 Install Dependencies
-        run: uv sync --all-groups
+        # --all-packages installs every workspace member's runtime deps (server +
+        # robot), required for mypy's pydantic plugin and full type resolution.
+        run: uv sync --all-packages --all-groups
 
       - name: 🔍 Lint (Ruff)
         run: uv run ruff check .
@@ -34,9 +36,10 @@ jobs:
       - name: 🧠 Type Check (MyPy)
         run: uv run mypy --config-file=pyproject.toml server/src robot/src
 
-      - name: 🔐 Security Audit (Bandit & pip-audit)
+      - name: 🔐 Security Audit (Ruff S & pip-audit)
+        # Mirrors `just audit`: Ruff's flake8-bandit (S) rules + dependency CVE scan.
         run: |
-          uv run bandit -c pyproject.toml
+          uv run ruff check --select S server/src robot/src
           uv run pip-audit --local
 
   tests:
@@ -45,9 +48,22 @@ jobs:
     needs: quality-gate
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+
+      - name: ⚡ Setup uv
+        uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+
+      - name: 🐍 Setup Python
+        run: uv python install 3.12
+
+      - name: 🔊 System libraries
+        # sounddevice needs PortAudio; OpenCV (cv2) needs libGL/glib at import time.
+        run: sudo apt-get update && sudo apt-get install -y libportaudio2 libgl1 libglib2.0-0
+
+      - name: 📦 Install Dependencies
+        run: uv sync --all-packages --all-groups
+
       - name: 🏃 Run Pytest
         # Integration tests need real hardware/API keys unavailable on CI runners.
         # The full suite (incl. the 80% coverage gate) runs locally at release time.
@@ -56,4 +72,4 @@ jobs:
       - name: 📊 Upload Coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
-          token: ${{ secrets.CODECOV_TOKEN }} # Opcional si el repo es público
+          token: ${{ secrets.CODECOV_TOKEN }} # Optional for public repos
