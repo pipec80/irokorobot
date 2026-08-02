@@ -1,0 +1,137 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  background: #101512;
+  color: #edf5ef;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 18rem;
+  margin: 0;
+  background:
+    radial-gradient(circle at top left, #214c38 0, transparent 32rem),
+    #101512;
+}
+
+button,
+textarea {
+  font: inherit;
+}
+
+button {
+  border: 1px solid #73d69f;
+  border-radius: 0.6rem;
+  padding: 0.65rem 1rem;
+  background: #183426;
+  color: #f5fff8;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.app-shell {
+  display: grid;
+  gap: 1rem;
+  width: min(52rem, calc(100% - 2rem));
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 2rem 0;
+}
+
+.app-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.app-header h1,
+.app-header p {
+  margin: 0 0 0.5rem;
+}
+
+.eyebrow {
+  color: #8de5b4;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.session-panel,
+.transcript,
+.composer {
+  border: 1px solid #355445;
+  border-radius: 0.8rem;
+  background: rgb(20 31 25 / 88%);
+}
+
+.session-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+}
+
+.transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 18rem;
+  padding: 1rem;
+}
+
+.message {
+  width: fit-content;
+  max-width: 86%;
+  border-radius: 0.75rem;
+  padding: 0.75rem 0.9rem;
+  background: #26382e;
+}
+
+.message--user {
+  align-self: end;
+  background: #1d5137;
+}
+
+.message p {
+  margin: 0.35rem 0;
+  white-space: pre-wrap;
+}
+
+.message small {
+  color: #b4cabd;
+}
+
+.composer {
+  display: grid;
+  gap: 0.65rem;
+  padding: 1rem;
+}
+
+.composer textarea {
+  resize: vertical;
+  border: 1px solid #527663;
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  background: #0e1712;
+  color: inherit;
+}
+
+[role="alert"] {
+  color: #ffb5ad;
+}
+
+@media (max-width: 40rem) {
+  .app-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

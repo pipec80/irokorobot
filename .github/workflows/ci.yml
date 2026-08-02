@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  quality-gate:
+    name: 🛡️ Quality & Security
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ⚡ Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          version: "latest"
+
+      - name: 🐍 Setup Python
+        run: uv python install 3.12
+
+      - name: 📦 Install Dependencies
+        run: uv sync --all-groups
+
+      - name: 🔍 Lint (Ruff)
+        run: uv run ruff check .
+
+      - name: 🎨 Format Check (Ruff)
+        run: uv run ruff format --check .
+
+      - name: 🧠 Type Check (MyPy)
+        run: uv run mypy --config-file=pyproject.toml server/src robot/src
+
+      - name: 🔐 Security Audit (Bandit & pip-audit)
+        run: |
+          uv run bandit -c pyproject.toml
+          uv run pip-audit --local
+
+  tests:
+    name: 🧪 Automated Tests
+    runs-on: ubuntu-latest
+    needs: quality-gate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: 🏃 Run Pytest
+        # Integration tests need real hardware/API keys unavailable on CI runners.
+        # The full suite (incl. the 80% coverage gate) runs locally at release time.
+        run: uv run pytest -m "not integration" --cov=server/src --cov=robot/src --cov-report=xml --cov-fail-under=0
+
+      - name: 📊 Upload Coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }} # Opcional si el repo es público

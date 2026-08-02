@@ -1,0 +1,279 @@
+version: 1
+cases:
+  - id: two_children_names
+    tags: [present, multi_fact, identity]
+    owner_name: Alex
+    question: ¿Cómo se llaman mis hijos?
+    context:
+      entities:
+        - id: 1
+          name: Alex
+          type: person
+          facts:
+            - predicate: hijos
+              object_value: Nora y Teo
+              confidence: 1.0
+        - id: 2
+          name: Nora
+          type: person
+          facts:
+            - predicate: progenitor
+              object_value: Alex
+              confidence: 1.0
+        - id: 3
+          name: Teo
+          type: person
+          facts:
+            - predicate: progenitor
+              object_value: Alex
+              confidence: 1.0
+      memories: []
+    history: []
+    perception:
+    expected:
+      required_any:
+        - [Nora]
+        - [Teo]
+      forbidden: []
+
+  - id: absent_pet
+    tags: [absent]
+    owner_name: Alex
+    question: ¿Cómo se llama mi mascota y qué especie es?
+    context:
+      entities:
+        - id: 1
+          name: Alex
+          type: person
+          facts:
+            - predicate: vive_en
+              object_value: Puerto Azul
+              confidence: 1.0
+      memories: []
+    history: []
+    perception:
+    expected:
+      required_any:
+        - ["no sé", "no lo sé", "no tengo ese dato", "no lo recuerdo"]
+      forbidden: [perro, gato, Milo]
+
+  - id: corrected_age_active_fact
+    tags: [present, correction]
+    owner_name: Alex
+    question: ¿Cuántos años tiene Sam?
+    context:
+      entities:
+        - id: 1
+          name: Sam
+          type: person
+          facts:
+            - predicate: edad
+              object_value: "11"
+              confidence: 1.0
+      memories: []
+    history: []
+    perception:
+    expected:
+      required_any:
+        - ["11", once]
+      forbidden: ["10"]
+
+  - id: corrected_species_active_fact
+    tags: [present, correction]
+    owner_name: Alex
+    question: ¿Qué especie es Kira?
+    context:
+      entities:
+        - id: 1
+          name: Kira
+          type: other
+          facts:
+            - predicate: especie
+              object_value: gata
+              confidence: 1.0
+      memories: []
+    history: []
+    perception:
+    expected:
+      required_any:
+        - [gata, felina]
+      forbidden: [perra, canina]
+
+  - id: owner_identity_second_person
+    tags: [present, identity]
+    owner_name: Alex
+    question: ¿Dónde vivo?
+    context:
+      entities:
+        - id: 1
+          name: Alex
+          type: person
+          facts:
+            - predicate: vive_en
+              object_value: Puerto Azul
+              confidence: 1.0
+      memories: []
+    history: []
+    perception:
+    expected:
+      required_any:
+        - [vives, "tu hogar está", "tu casa está"]
+        - [Puerto Azul]
+      forbidden: ["Alex vive", "la casa de Alex"]
+
+  - id: semantic_distractor_ignored
+    tags: [present, distractor]
+    owner_name: Alex
+    question: ¿De qué color es la bicicleta de Sam?
+    context:
+      entities:
+        - id: 1
+          name: Sam
+          type: person
+          facts:
+            - predicate: color_bicicleta
+              object_value: roja
+              confidence: 1.0
+      memories:
+        - id: 1
+          kind: episodic
+          content: Mara pintó una pared azul en el taller.
+          summary: Una pared azul en el taller de Mara.
+          importance: 0.7
+          distance: 0.08
+    history: []
+    perception:
+    expected:
+      required_any:
+        - [roja, rojo]
+      forbidden: [azul]
+
+  - id: old_history_vs_active_fact
+    tags: [present, correction, distractor]
+    owner_name: Alex
+    question: ¿Cuántos años tiene Sam ahora?
+    context:
+      entities:
+        - id: 1
+          name: Sam
+          type: person
+          facts:
+            - predicate: edad
+              object_value: "11"
+              confidence: 1.0
+      memories: []
+    history:
+      - role: user
+        content: Sam tiene 10 años.
+      - role: assistant
+        content: Entendido, Sam tiene 10 años.
+    perception:
+    expected:
+      required_any:
+        - ["11", once]
+      forbidden: ["10"]
+
+  - id: resolved_face_recognition
+    tags: [present, perception, identity]
+    owner_name:
+    question: ¿Me reconoces?
+    context:
+      entities:
+        - id: 1
+          name: Nora
+          type: person
+          facts: []
+      memories: []
+    history: []
+    perception: El reconocimiento facial ya identificó a Nora.
+    expected:
+      required_any:
+        - [Nora]
+        - ["te reconozco", "eres Nora", "sos Nora"]
+      forbidden: [Sam, "no te reconozco"]
+
+  - id: resolved_face_enrollment
+    tags: [present, perception, identity]
+    owner_name:
+    question: Aprende mi cara, soy Teo.
+    context:
+      entities:
+        - id: 1
+          name: Teo
+          type: person
+          facts: []
+      memories: []
+    history: []
+    perception: El sistema acaba de aprender el rostro de Teo.
+    expected:
+      required_any:
+        - [Teo]
+        - ["aprendí tu rostro", "he aprendido tu rostro", "aprendí la cara de Teo", "recordaré tu cara"]
+      forbidden: ["aprendiste mi rostro", "reconociste mi cara"]
+
+  - id: absent_address
+    tags: [absent]
+    owner_name: Alex
+    question: ¿Cuál es la dirección de Sam?
+    context:
+      entities:
+        - id: 1
+          name: Sam
+          type: person
+          facts:
+            - predicate: instrumento
+              object_value: piano
+              confidence: 1.0
+      memories: []
+    history: []
+    perception:
+    expected:
+      required_any:
+        - ["no sé", "no lo sé", "no tengo ese dato", "no tengo su dirección"]
+      forbidden: ["Calle Roble", "Avenida Sol"]
+
+  - id: multiple_active_facts
+    tags: [present, multi_fact]
+    owner_name: Alex
+    question: ¿Qué instrumento toca Sam y cuál es su color favorito?
+    context:
+      entities:
+        - id: 1
+          name: Sam
+          type: person
+          facts:
+            - predicate: instrumento
+              object_value: piano
+              confidence: 1.0
+            - predicate: color_favorito
+              object_value: verde
+              confidence: 1.0
+      memories: []
+    history: []
+    perception:
+    expected:
+      required_any:
+        - [piano]
+        - [verde]
+      forbidden: []
+
+  - id: persisted_context_after_restart
+    tags: [present, restart]
+    owner_name: Alex
+    question: Después del reinicio, ¿cuántos años tiene Sam?
+    context:
+      entities:
+        - id: 1
+          name: Sam
+          type: person
+          facts:
+            - predicate: edad
+              object_value: "11"
+              confidence: 1.0
+      memories: []
+    history: []
+    perception:
+    expected:
+      required_any:
+        - ["11", once]
+      forbidden: ["10"]

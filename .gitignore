@@ -1,0 +1,75 @@
+# Python
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Tooling caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.bandit-baseline
+
+# Test output
+docs/coverage_report/
+.coverage
+coverage.xml
+
+# Secrets and environment
+.env
+.env.local
+.secrets.baseline
+
+# Brain database (runtime data, never commit)
+data/
+
+# Logs (runtime data, may contain transcripts/PII, never commit)
+logs/
+
+# Models and audio (never commit binary weights or recordings)
+models/
+*.onnx
+*.onnx.json
+*.gguf
+*.wav
+*.mp3
+
+# IDE (anything user-local, not project-wide)
+.vscode/
+.idea/
+*.iml
+
+# AI assistants / dev tooling — not part of the project source
+.agent/
+.agents/
+.claude/
+.gemini/
+.kiro/
+.codex/
+CLAUDE.md
+GEMINI.md
+AGENTS.md
+skills-lock.json
+docs/superpowers/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Enrollment photos (family faces, never commit)
+server/src/server/images/*
+!server/src/server/images/README.md
+
+# Local-only docs — internal notes/audits/journals, never published
+docs/local/
+
+# Ad-hoc debug logs (e.g. Chrome crashpad) — never commit
+debug.log
+*.log

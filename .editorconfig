@@ -1,0 +1,53 @@
+# =============================================================================
+# OMNiBot 2000 - EditorConfig Definitivo
+# Referencias: PEP 8, PEP 3120
+# =============================================================================
+root = true
+
+# -----------------------------------------------------------------------------
+# Reglas Globales (Aplica a todo)
+# -----------------------------------------------------------------------------
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# -----------------------------------------------------------------------------
+# Python (Estándar PEP 8)
+# -----------------------------------------------------------------------------
+[*.py]
+indent_style = space
+indent_size = 4
+# Sincronizado con el line-length = 100 de tu tool.ruff en pyproject.toml
+max_line_length = 100
+
+# -----------------------------------------------------------------------------
+# Archivos de Configuración y Datos
+# -----------------------------------------------------------------------------
+[*.{json,yml,yaml,toml}]
+indent_style = space
+indent_size = 2
+
+# -----------------------------------------------------------------------------
+# Scripts de Shell (Vitales para la Raspberry Pi / Docker)
+# -----------------------------------------------------------------------------
+[*.{sh,bash}]
+end_of_line = lf
+indent_style = space
+indent_size = 2
+
+# -----------------------------------------------------------------------------
+# Makefiles (Requieren tabs estrictamente)
+# -----------------------------------------------------------------------------
+[Makefile]
+indent_style = tab
+
+# -----------------------------------------------------------------------------
+# Markdown / Documentación
+# -----------------------------------------------------------------------------
+[*.md]
+# Permite dejar dos espacios al final de la línea para hacer un <br>
+trim_trailing_whitespace = false
+# Apaga la línea vertical en el editor para que puedas escribir párrafos largos
+max_line_length = off

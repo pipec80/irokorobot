@@ -1,0 +1,111 @@
+# =============================================================================
+# CONFIGURACIÓN GLOBAL
+# =============================================================================
+default_install_hook_types: [pre-commit, commit-msg]
+default_stages: [pre-commit]
+
+repos:
+  # ===========================================================================
+  # 1. HIGIENE BASE DE GIT Y ARCHIVOS (Rapidez pura)
+  # ===========================================================================
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=1000"]
+      - id: no-commit-to-branch
+        args: ["--branch", "main"]
+
+  # ===========================================================================
+  # 2. HERRAMIENTAS CORE (Ejecutadas en milisegundos vía tu entorno UV local)
+  # ===========================================================================
+  - repo: local
+    hooks:
+      # --- A. Guardián de Dependencias ---
+      - id: uv-lock-check
+        name: Verify uv.lock sync
+        entry: uv lock --check
+        language: system
+        pass_filenames: false
+        files: ^(pyproject\.toml|uv\.lock)$
+
+      # --- B. Linting & Formatting (Ruff) ---
+      - id: ruff
+        name: Ruff Linter
+        entry: uv run ruff check --fix --exit-non-zero-on-fix --show-fixes
+        language: system
+        types_or: [python, pyi, jupyter]
+        require_serial: true
+
+      - id: ruff-format
+        name: Ruff Formatter
+        entry: uv run ruff format
+        language: system
+        types_or: [python, pyi, jupyter]
+        require_serial: true
+
+      # --- C. Type Checking (MyPy) ---
+      - id: mypy
+        name: MyPy Strict Type Checking
+        entry: uv run mypy --config-file=pyproject.toml server/src robot/src
+        language: system
+        types_or: [python, pyi]
+        pass_filenames: false
+        require_serial: true
+
+      # --- D. Auditoría de Dependencias (deptry) ---
+      # Deptry no entiende workspaces de uv nativamente: cada subpaquete tiene su
+      # propio pyproject.toml con las deps reales (la raíz es un proyecto virtual
+      # con dependencies=[]), así que se corre una vez por subpaquete.
+      - id: deptry-server
+        name: Deptry Dependency Check (server)
+        entry: uv run --directory server deptry .
+        language: system
+        pass_filenames: false
+        files: ^(server/pyproject\.toml|server/.*\.py)$
+
+      - id: deptry-robot
+        name: Deptry Dependency Check (robot)
+        entry: uv run --directory robot deptry .
+        language: system
+        pass_filenames: false
+        files: ^(robot/pyproject\.toml|robot/.*\.py)$
+
+      # --- E. Cazador de Código Muerto (Vulture) ---
+      # min-confidence 80: avoids false positives from framework-driven code
+      # (FastAPI decorators, Pydantic model_config, project.scripts entry points).
+      - id: vulture
+        name: Vulture Dead Code
+        entry: uv run vulture --min-confidence 80 server/src robot/src
+        language: system
+        types_or: [python]
+        pass_filenames: false
+
+      # --- F. Detección de Secretos (Evita loops de baseline) ---
+      - id: detect-secrets
+        name: Detect Secrets
+        entry: uv run detect-secrets-hook --baseline .secrets.baseline
+        language: system
+        exclude: |
+          (?x)^(
+              .*\.lock$|
+              .*\.md$|
+              tests/.*
+          )$
+
+  # ===========================================================================
+  # 3. VERSIONADO Y COMMITS (Commitizen)
+  # ===========================================================================
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.13.10
+    hooks:
+      - id: commitizen
+        stages: [commit-msg]

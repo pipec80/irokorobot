@@ -1,0 +1,19 @@
+{
+  "venvPath": ".",
+  "venv": ".venv",
+  "pythonVersion": "3.12",
+  "extraPaths": ["server/src", "robot/src"],
+  "exclude": [
+    "scripts",
+    "build",
+    "dist",
+    ".venv",
+    ".claude",
+    ".agents",
+    ".git",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".vscode"
+  ]
+}

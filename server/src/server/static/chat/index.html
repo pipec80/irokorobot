@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; connect-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:"
+    >
+    <title>Iroko · Diagnóstico local</title>
+    <link rel="stylesheet" href="chat.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="app-header">
+        <div>
+          <p class="eyebrow">OMNiBot 2000</p>
+          <h1>Diagnóstico local de Iroko</h1>
+          <p>Prueba el cerebro por texto, sin micrófono, cámara ni TTS.</p>
+        </div>
+        <button id="new-conversation" type="button">Nueva conversación</button>
+      </header>
+
+      <section class="session-panel" aria-label="Sesión actual">
+        <span>conversation_id</span>
+        <code id="conversation-id">Inicializando…</code>
+      </section>
+
+      <section
+        id="transcript"
+        class="transcript"
+        aria-label="Conversación"
+        aria-live="polite"
+      ></section>
+
+      <form id="chat-form" class="composer">
+        <label for="message">Mensaje</label>
+        <textarea
+          id="message"
+          name="message"
+          rows="3"
+          maxlength="4000"
+          placeholder="Escribe una prueba para Iroko…"
+          required
+        ></textarea>
+        <button id="send-message" type="submit">Enviar</button>
+      </form>
+
+      <p id="request-status" role="status" aria-live="polite"></p>
+      <p id="request-error" role="alert" hidden></p>
+    </main>
+    <script src="chat.js"></script>
+  </body>
+</html>
