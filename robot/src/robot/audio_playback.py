@@ -14,6 +14,7 @@ import logging
 import wave
 
 import numpy as np
+import numpy.typing as npt
 import sounddevice as sd
 
 from robot.exceptions import AudioPlaybackError
@@ -33,7 +34,7 @@ def _play_sync(wav_bytes: bytes) -> None:
         sample_rate = wf.getframerate()
         channels = wf.getnchannels()
         frames = wf.readframes(wf.getnframes())
-    audio = np.frombuffer(frames, dtype=np.int16)
+    audio: npt.NDArray[np.int16] = np.frombuffer(frames, dtype=np.int16)
     if channels > 1:
         audio = audio.reshape(-1, channels)
     logger.debug("Playing %d frames at %d Hz", len(audio), sample_rate)
