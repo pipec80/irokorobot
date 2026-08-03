@@ -13,8 +13,9 @@
 ## What is this
 
 OMNiBot 2000 is a personal robotics project that brings a vintage Omnibot toy back to life
-with modern AI capabilities. The robot listens, understands Spanish, and responds with a
-synthesized voice — entirely offline, running on local hardware at home.
+with modern AI capabilities; its assistant persona is named **Iroko**. The robot listens,
+understands Spanish, and responds with a synthesized voice — entirely offline, running on
+local hardware at home.
 
 This repository contains the voice AI pipeline: the server that processes audio and
 the client that runs on the robot.
@@ -50,7 +51,7 @@ They share only a single API contract.
 | API Framework | FastAPI + uvicorn | Async, production-grade |
 | Speech-to-Text | faster-whisper | Whisper model via CTranslate2 |
 | Language Model | Claude API (Haiku) | Local Ollama in phase 2 |
-| Text-to-Speech | Piper TTS | Voice: `es_MX-claude-high` |
+| Text-to-Speech | Piper TTS | Voice: `es_MX-ald-medium` |
 | Validation | Pydantic v2 | Settings + request/response models |
 
 ### Robot client — runs on Raspberry Pi 5
@@ -76,29 +77,31 @@ They share only a single API contract.
 ## Project Structure
 
 ```
-omnibot/
-├── CLAUDE.md                    ← Claude Code rules (persistent AI memory)
+irokorobot/
 ├── README.md                    ← This file
 ├── pyproject.toml               ← uv workspace + shared tool config
 ├── uv.lock                      ← Dependency lockfile
 ├── .env.example                 ← Environment variable reference
 ├── .pre-commit-config.yaml      ← Git hooks
 │
-├── server/                      ← Homelab server
+├── server/                      ← Homelab server (brain)
 │   ├── pyproject.toml
 │   └── src/server/
-│       ├── main.py              ← FastAPI app + /transcribe endpoint
-│       ├── stt.py               ← faster-whisper wrapper
-│       ├── llm.py               ← Claude API client
-│       ├── tts.py               ← Piper TTS wrapper
-│       ├── settings.py          ← Pydantic settings from env vars
-│       └── exceptions.py        ← Custom exceptions
+│       ├── main.py              ← FastAPI app (entry point: serve)
+│       ├── routers/             ← /transcribe, /chat, /vision, /system
+│       ├── stt.py / llm.py / tts.py   ← STT, LLM, TTS
+│       ├── memory/              ← brain memory v3 (entities, relations)
+│       ├── vision/              ← image + face recognition
+│       └── settings.py          ← Pydantic settings from env vars
 │
-└── robot/                       ← Raspberry Pi 5 client
+└── robot/                       ← Raspberry Pi 5 client (senses)
     ├── pyproject.toml
     └── src/robot/
-        ├── audio_capture.py     ← Microphone + VAD
-        └── server_client.py     ← HTTP client to server
+        ├── app.py               ← entry point (robot.app:main)
+        ├── audio_capture.py     ← microphone + Silero VAD
+        ├── audio_playback.py    ← speaker output
+        ├── vad.py               ← voice activity detection
+        └── server_client.py     ← async HTTP client to server
 ```
 
 ---
@@ -145,8 +148,8 @@ Everything else is internal to the server.
 git clone https://github.com/pipec80/irokorobot.git
 cd irokorobot
 
-# Install all dependencies
-uv sync --all-groups
+# Install all dependencies (all workspace members + dev tools)
+uv sync --all-packages --all-groups
 
 # Copy and configure environment variables
 cp .env.example .env
@@ -196,7 +199,7 @@ WHISPER_LANGUAGE=es
 WHISPER_COMPUTE_TYPE=int8
 
 # TTS
-PIPER_VOICE=es_MX-claude-high
+PIPER_VOICE=es_MX-ald-medium
 PIPER_MODELS_DIR=./models/piper
 
 # Server
@@ -211,22 +214,22 @@ SERVER_URL=http://localhost:8000   # change to homelab IP in production
 
 ## Development Roadmap
 
-### Phase 1 — Voice pipeline (current)
+### Phase 1 — Voice pipeline ✅
 - [x] Project structure and tooling
-- [ ] Server: STT + LLM + TTS pipeline
-- [ ] Robot: audio capture + HTTP client
-- [ ] End-to-end: speak → hear → respond
+- [x] Server: STT + LLM + TTS pipeline (+ sentence streaming)
+- [x] Robot: audio capture with Silero VAD + async HTTP client
+- [x] End-to-end: speak → hear → respond
 
-### Phase 2 — Intelligence
-- [ ] Wake word detection ("Hey OMNiBot") via OpenWakeWord
-- [ ] Migrate LLM to Ollama local (llama3.2 or mistral)
-- [ ] Migrate TTS to Chatterbox Turbo (requires GPU)
+### Phase 2 — Intelligence (in progress)
+- [x] LLM provider switch: Claude API **or** local Ollama
+- [x] Brain memory v3 (entities, relations, episodes)
+- [x] Text chat endpoint + local diagnostic chat UI
+- [ ] Wake word detection
 - [ ] Emotion-aware response modulation
 
-### Phase 3 — Autonomy
-- [ ] OAK-D Lite stereo camera integration
-- [ ] YOLO object detection
-- [ ] Person recognition (family members)
+### Phase 3 — Autonomy (in progress)
+- [x] Face recognition (consented family enrollment)
+- [ ] Stereo camera + object detection
 - [ ] ROS2 integration for motor control
 
 ### Phase 4 — Teleoperation

@@ -72,10 +72,7 @@ dev = [
     "types-pyyaml>=6.0.12.20260518,<7.0.0.0",
     "vulture>=2.16,<3.0",
 ]
-docs = [
-    "mkdocs-material>=9.6,<10.0",
-    "mkdocstrings[python]>=1.0.6,<2.0",
-]
+docs = []
 
 [tool.ruff]
 line-length = 100
