@@ -289,7 +289,7 @@ name = "cz_conventional_commits"
 # 🔢 Versioning (Conectado a la tabla [project])
 version_provider = "pep621"
 # Opcional: Si quieres que también actualice la versión dentro del código Python
-version_files = []
+version_files = ["server/pyproject.toml", "robot/pyproject.toml"]
 
 # 📜 Changelog automático
 update_changelog_on_bump = true
@@ -318,6 +318,7 @@ pre_bump_hooks = [
     "uv run ruff format --check .",
     "uv run mypy --config-file=pyproject.toml server/src robot/src",
     "uv run pytest -n auto --cov --cov-fail-under=80",
+    "uv build --all-packages",
 ]
 
 # -----------------------------------------------------------------------------
