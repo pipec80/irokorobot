@@ -6,7 +6,37 @@ on:
   pull_request:
     branches: [main, develop]
 
+# Least privilege: read-only token by default; grant more per-job if ever needed.
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same PR to save minutes. Never cancel push/main
+# runs (each commit on main should get a complete, recorded run).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  commit-lint:
+    name: 📝 PR Title (Conventional Commits)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: ⚡ Setup uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: ✅ Validate PR title
+        # Squash-merge uses the PR title as the commit message on main, so it
+        # must be a valid Conventional Commit for Commitizen versioning. The
+        # title is passed via env, never inlined, to avoid shell injection.
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: uv run cz check --message "$PR_TITLE"
+
   quality-gate:
     name: 🛡️ Quality & Security
     runs-on: ubuntu-latest
@@ -35,6 +65,16 @@ jobs:
 
       - name: 🧠 Type Check (MyPy)
         run: uv run mypy --config-file=pyproject.toml server/src robot/src
+
+      - name: 🧹 Dead Code (Vulture)
+        run: uv run vulture --min-confidence 80 server/src robot/src
+
+      - name: 📦 Dependency Hygiene (deptry)
+        # deptry has no workspace mode; run once per member (config lives in each
+        # member's pyproject.toml).
+        run: |
+          uv run --directory server deptry .
+          uv run --directory robot deptry .
 
       - name: 🔐 Security Audit (Ruff S & pip-audit)
         # Mirrors `just audit`: Ruff's flake8-bandit (S) rules + dependency CVE scan.
@@ -65,9 +105,10 @@ jobs:
         run: uv sync --all-packages --all-groups
 
       - name: 🏃 Run Pytest
-        # Integration tests need real hardware/API keys unavailable on CI runners.
-        # The full suite (incl. the 80% coverage gate) runs locally at release time.
-        run: uv run pytest -m "not integration" --cov=server/src --cov=robot/src --cov-report=xml --cov-fail-under=0
+        # Hermetic gate: exclude integration (hardware/API keys) and slow (model
+        # downloads / audio synthesis — flaky on CI). Those run locally and at
+        # release time (cz pre_bump_hooks run the full suite with the 80% gate).
+        run: uv run pytest -m "not integration and not slow" --cov=server/src --cov=robot/src --cov-report=xml --cov-fail-under=0
 
       - name: 📊 Upload Coverage to Codecov
         uses: codecov/codecov-action@v7
