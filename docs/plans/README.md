@@ -40,10 +40,13 @@ No plan may require chat history or a file under ignored `docs/local/`. If a
 historical insight is still required, first promote it into a tracked ADR or
 canonical architecture document.
 
-Current ready plan:
+Plan 0001 is complete. The only current ready plan is:
 
-- [`0001-cognitive-domain-models.md`](0001-cognitive-domain-models.md)
+- [`0002-active-person-context.md`](0002-active-person-context.md)
 
-Its companion [execution runbook](0001-cognitive-domain-models-execution.md)
-adds TDD and worker mechanics without changing the canonical plan's scope or
-authority.
+Its approved [design](0002-active-person-context-design.md) records the
+identity and privacy decisions. Its companion
+[execution runbook](0002-active-person-context-execution.md) adds TDD and
+temporary worker mechanics without changing the canonical plan's scope or
+authority. P0.3 and later plans remain Draft until Plan 0002 is completed and
+their assumptions are revalidated against the then-current tree.
