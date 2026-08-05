@@ -1,6 +1,9 @@
 # Roadmap del cerebro agnóstico antes de la electrónica
 
-> **Estado:** M3 completo; M1 manual pendiente en paralelo; M4 es el próximo hito
+> **Estado:** Registro histórico de ejecución al 2026-07-29, reconciliado
+> parcialmente con el árbol actual al 2026-08-04. Para nuevas
+> prioridades cognitivas fue reemplazado por
+> [`../roadmap/cognitive-roadmap.md`](../roadmap/cognitive-roadmap.md).
 > **Fecha:** 2026-07-29
 > **Alcance:** cerebro, memoria, canales de interacción, proveedores de modelos,
 > evaluación y simulación previa al BOM.
@@ -22,13 +25,14 @@ o proveedor sin reescribir el razonamiento.
 
 ## Artefactos de ejecución
 
-- Prompt de arranque, orden, skills, agentes y gates:
-  `docs/c-audit/PROMPT-MASTER-CEREBRO-AGNOSTICO.md`.
-- Planes TDD ejecutados para M2 y M3:
-  `docs/c-audit/plans/2026-07-29-m2-context-faithfulness.md` y
-  `docs/c-audit/plans/2026-07-29-m3-text-turn-chat.md`.
-- M1 sigue su guión vigente en `docs/c-audit/PROMPT-MASTER-M1.md` y se retoma
-  desde el paso 7 según `docs/bitacora/022_m1_walkthrough_sesion1.md`.
+- Política cognitiva local-first: `docs/adr/0004-local-first-cognitive-policy.md`.
+- Contratos independientes de hardware y proveedor:
+  `docs/architecture/cognitive-contracts.md`.
+- Planes pequeños y ejecutables: `docs/plans/README.md`; el primer plan es
+  `docs/plans/0001-cognitive-domain-models.md`.
+- La evidencia histórica y los guiones operativos permanecen en `docs/local/`;
+  son material local no versionado y no constituyen requisitos implícitos para
+  ejecutar un plan.
 
 ## Decisiones y propuestas
 
@@ -37,7 +41,7 @@ o proveedor sin reescribir el razonamiento.
 | CA-01 | El servidor es un cerebro agnóstico de canal y hardware. | Aceptada; reafirma la arquitectura vigente |
 | CA-02 | Robot, web y CLI comparten memoria persistente del hogar. | Implementada en M3; web sin consolidación automática |
 | CA-03 | Cada canal mantiene una conversación de trabajo separada mediante un `conversation_id`; no crea otro dueño ni otra memoria. | Implementada y probada en M3 |
-| CA-04 | El chat cloud puede ser primario durante la fase PC, con fallback local explícito. | Propuesta; requiere revisar la decisión D03 vigente |
+| CA-04 | El procesamiento es local por defecto; cloud es un escalamiento autorizado, mínimo y auditable. | Aceptada por ADR-0004 |
 | CA-05 | SaaS, multi-tenant, billing y acceso público no son requisito para un chatbot local. | Aceptada por alcance |
 | CA-06 | El simulador y el hardware futuro usan el mismo contrato de sensores. | Propuesta para F3A |
 
@@ -113,8 +117,8 @@ lo invocan directamente; un endpoint nunca debe llamarse a sí mismo por HTTP.
 
 ## Política local/cloud
 
-Cambiar a cloud puede liberar CPU/RAM y mejorar fidelidad al contexto, pero no
-debe mover la fuente de verdad:
+ADR-0004 gobierna esta política. Cloud puede liberar CPU/RAM o mejorar una tarea
+difícil, pero no es el cerebro primario ni mueve la fuente de verdad:
 
 - STT, memoria SQLite, retrieval, caras y políticas determinísticas permanecen
   locales inicialmente.
@@ -125,10 +129,11 @@ debe mover la fuente de verdad:
   de costo y registro del proveedor/modelo usado.
 - Una caída de Internet produce una respuesta local degradada o una
   explicación hablada; nunca silencio ni pérdida de memoria.
+- Un resultado `unknown`, `ambiguous`, `contradictory` o `unauthorized` no
+  escala automáticamente: primero debe pasar la política de autorización.
 
-Antes de convertir cloud en dependencia de producción se debe actualizar
-`vision-y-arquitectura-iroko.md`, porque hoy D03 define cloud como control
-plane y no como cerebro cotidiano.
+Una ampliación de los datos permitidos o el uso cotidiano de cloud requiere un
+nuevo ADR que sustituya explícitamente ADR-0004.
 
 ## Roadmap reordenado
 
@@ -137,7 +142,7 @@ plane y no como cerebro cotidiano.
 | 0 | M1 — checkpoint manual paralelo | Repetir pasos 7-8 cuando el dueño opere el hardware. Sigue abierto, pero no bloquea el eval aislado M2. |
 | 1 | M2 — Context Faithfulness | **Completo 2026-07-29.** `just eval-chat`, 12 casos sintéticos y tres repeticiones. Baseline Ollama `qwen2.5:3b`: pass rate 50,00%, required recall 60,78%, forbidden violations 8,33%, stability 41,67%, p50 8,79 s y p95 14,43 s; 0/36 errores de provider. Evidencia: bitácora 023. |
 | 2 | M3 — Núcleo text-to-text | **Completo 2026-07-29.** Servicio compartido para chat, voz y visión; streaming reutiliza preparación/registro; `/chat` aditivo y `/transcribe` compatible. Gate: 409 tests. Evidencia: bitácora 024. |
-| 3 | M4 — Chatbot de diagnóstico | Cliente web local mínimo que comparta memoria persistente y use una sesión de trabajo propia. Sin SaaS, autenticación pública ni dashboard comercial. |
+| 3 | M4 — Chatbot de diagnóstico | Cliente web local mínimo que comparta memoria persistente y use una sesión de trabajo propia. El árbol actual contiene la implementación, pero no evidencia histórica preservada de cierre. Sin SaaS, autenticación pública ni dashboard comercial. |
 | 4 | M5 — Comparación local/cloud | Ejecutar el mismo golden set con Ollama y Anthropic; medir fidelidad, latencia, RAM, tokens y costo antes de elegir política. |
 | 5 | M6 — Providers y fallback | Interfaz pequeña para chat local/cloud, capacidades de streaming y failover explícito. No construir un framework dinámico de plugins. |
 | 6 | M7 — Contexto fundamentado | Presupuesto por tokens, ventana corta, hechos con IDs internos, respuesta validable y fallback determinístico ante contradicciones. |
@@ -152,6 +157,21 @@ R7, R10, F5, SaaS y electrónica quedan detrás de estos gates: mejoran la
 experiencia o amplían el producto, pero no resuelven primero la fidelidad del
 cerebro.
 
+### Reconciliación posterior de M4
+
+El plan histórico de M4 en `docs/local/` registraba la implementación como no
+iniciada al 2026-07-29. El árbol actual contiene `server/chat_ui.py`, los
+assets estáticos bajo `server/static/chat/`, su montaje en `server.main` y
+`tests/integration/test_chat_ui.py`. El origen exacto disponible es el commit
+consolidado `7577217` (`chore: initial public release`), no la rama histórica
+`feat/m4-diagnostic-chat-ui`.
+
+No se preservó evidencia positiva de los criterios de cierre históricos:
+Playwright determinístico, inspección del wheel, smoke real con provider local,
+bitácora `025_m4_diagnostic_chat_ui.md` y `just gate`. Por tanto, M4 se describe
+solamente como **implementado con cierre histórico no demostrado**. No se debe
+retomar `feat/m4-diagnostic-chat-ui` sin compararla antes con `origin/main`.
+
 ### Evidencia de cierre M2
 
 M2 aisló `generate_response()` de STT, retrieval, SQLite, embeddings, visión y
@@ -165,7 +185,8 @@ El baseline local limpio ejecutó 12 casos por tres repeticiones con Ollama
 fidelidad insuficiente del generador, no una falla del evaluador. Anthropic no
 se ejecutó por falta de autorización explícita de consumo; la comparación
 formal local/cloud permanece en M5. Ver
-`docs/bitacora/023_m2_context_faithfulness.md`.
+`docs/local/bitacora/023_m2_context_faithfulness.md` (evidencia local no
+versionada).
 
 ### Evidencia de cierre M3
 
@@ -177,7 +198,8 @@ su contrato WAV/HTTP y streaming conserva NDJSON incremental.
 Los tests dirigidos terminaron 82/82 y `just gate` 409/409. Un smoke real con
 Ollama `qwen2.5:3b` alternó dos conversaciones sin compartir historial; cuatro
 llamadas respondieron HTTP 200. El caso M2 solicitado pasó 1/1 sin errores de
-provider. Ver `docs/bitacora/024_m3_text_turn_chat.md`.
+provider. Ver `docs/local/bitacora/024_m3_text_turn_chat.md` (evidencia local
+no versionada).
 
 ## Gates antes de comprar electrónica
 

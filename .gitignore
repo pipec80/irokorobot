@@ -53,6 +53,7 @@ models/
 .gemini/
 .kiro/
 .codex/
+.worktrees/
 CLAUDE.md
 GEMINI.md
 AGENTS.md

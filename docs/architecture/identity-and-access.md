@@ -1,0 +1,270 @@
+# Identity, household access, and consent
+
+> **Status:** Canonical target design
+>
+> **First safety rule:** Iroko must never assume that the current speaker is the
+> configured owner.
+
+## Why this is P0
+
+The current prompt can declare that whoever is speaking is `owner_name`, and
+voice interactions share `voice-primary`. That was useful for a single-user
+prototype but is unsafe in a household: a child, partner, guest, or distant
+speaker can inherit the owner's conversational context and receive owner data.
+
+Identity resolution and authorization therefore precede broader memory,
+onboarding, personality adaptation, and physical actions.
+
+## Separate concepts
+
+| Concept | Question | It does not prove |
+|---|---|---|
+| Face recognition | Who may be visible? | Who produced the audio or has permission. |
+| Speaker identification | Whose voice is most similar? | That the speaker is alone or authorized. |
+| Speaker verification | Does this voice match a claimed person? | Permission for every action. |
+| Diarization | How many speakers and which segment belongs to each? | Their names. |
+| Session identity | Who authenticated or selected this session? | Who is physically present. |
+| Active person | Who is most likely interacting now? | Authorization by itself. |
+| Role/policy | What may this actor do with this data? | That an observation or fact is correct. |
+
+These values can agree, disagree, or be absent. Conflict is represented as
+`ambiguous`; it is not resolved by choosing the highest score silently.
+
+## Identity evidence
+
+`IdentityEvidence` is immutable and contains at least:
+
+| Field | Meaning |
+|---|---|
+| `source` | `face`, `voice`, `session`, `manual`, or `context`. |
+| `candidate_person_id` | Existing SQLite entity ID, or null when no match exists. |
+| `confidence` | Evidence-specific calibrated/estimated confidence. |
+| `observed_at` | Timezone-aware UTC observation time. |
+| `reference` | Safe observation/profile reference, never raw biometric content. |
+| `expires_at` | Freshness boundary for transient evidence. |
+
+Evidence does not contain a face embedding, voiceprint, frame, or audio sample.
+Those remain in their local specialized stores and are referenced indirectly.
+
+## Active person context
+
+The first implementation should align with the current SQLite entity key:
+
+```text
+ActivePersonContext
+├── person_id: int | null
+├── display_name: str | null
+├── status: identified | probable | unknown | ambiguous
+├── confidence: Confidence
+├── role: owner | adult | child | guest | unknown
+├── evidence: immutable collection[IdentityEvidence]
+├── resolved_at: aware UTC datetime
+└── expires_at: aware UTC datetime
+```
+
+The current database uses integer entity IDs. Event and observation envelopes
+may use UUIDs, but Codex must not invent a person-ID migration merely because
+other domain IDs are UUIDs.
+
+### Invariants
+
+- Default construction produces `unknown`, no `person_id`, role `unknown`, and
+  no authorization.
+- `identified` requires policy-defined corroboration, not just a non-null name.
+- `ambiguous` retains competing evidence and does not expose either person's
+  private context.
+- Expired evidence does not participate in a new turn.
+- Display names are presentation only; IDs are used for relationships and
+  access decisions.
+- Manually confirmed identity is explicit evidence with its own expiration.
+
+## Initial fusion rules
+
+Rules are configurable and calibrated with the household. A conservative
+starting policy is:
+
+```text
+face >= face_identified_threshold
++ voice >= voice_identified_threshold
++ both point to the same entity
+=> identified
+
+one strong source, no conflict
+=> probable
+
+strong sources point to different entities
+=> ambiguous
+
+no usable evidence
+=> unknown
+```
+
+These are product rules, not permanent numeric truths. Thresholds belong in
+configuration and require real family evaluation, including false-accept and
+false-reject cases.
+
+When the operation is low-risk, Iroko may ask:
+
+> “Creo que eres Sofía, ¿es correcto?”
+
+For sensitive operations, conversational confirmation alone may be insufficient;
+the policy can require an authenticated session, local PIN, owner approval, or
+another factor.
+
+## Conversation isolation
+
+`conversation_id` separates working history and must never act as identity or
+authorization. The global voice ID is transitional.
+
+After active-person resolution exists, a voice working session should be scoped
+to an interaction/session and resolved person when known, for example:
+
+```text
+voice:<session-id>:person:<entity-id>
+voice:<session-id>:unknown
+```
+
+Do not merge an unknown speaker's history into a known person's history after a
+late guess without an explicit reconciliation rule.
+
+## Household roles
+
+The first local policy uses a small set of roles:
+
+| Role | Intended scope |
+|---|---|
+| `owner` | Configure the household, manage memory/biometrics/policies, and access authorized family data. |
+| `adult` | General household access; private data and modifications remain configurable. |
+| `child` | Own/general age-appropriate information; no adult-private data or direct memory administration. |
+| `guest` | Conversation and public household capabilities only; no family memory by default. |
+| `unknown` | Minimal safe conversation; no protected retrieval or mutation. |
+
+A future service identity for authenticated internal adapters is separate from a
+human role. Do not model a device as a family member.
+
+## Data visibility and sensitivity
+
+Role alone is insufficient. Stored knowledge needs both visibility and
+sensitivity metadata.
+
+Suggested visibility:
+
+- `household`: visible to authorized household members;
+- `adults`: restricted to owner/adults allowed by policy;
+- `personal`: visible to the subject and explicitly authorized roles;
+- `private`: owner/subject policy only;
+- `public`: safe for guests;
+- `temporary`: available only inside an active context and TTL.
+
+Suggested sensitivity:
+
+- `normal`;
+- `private`;
+- `biometric`;
+- `medical`;
+- `location`;
+- `child_data`;
+- `security`.
+
+These categories drive retrieval, logging, backup, cloud eligibility, and
+retention. They are not adjectives inserted into an LLM prompt after retrieval.
+
+## Authorization decision
+
+Authorization is evaluated before reading protected memory or invoking a tool:
+
+```text
+AuthorizationDecision
+├── decision: allowed | denied | requires_confirmation
+├── actor_person_id: int | null
+├── role
+├── action
+├── resource or data categories
+├── policy_id
+├── reason safe for logs and user explanation
+├── evaluated_at
+└── expires_at or turn scope
+```
+
+No decision means denied. `allowed` applies only to the named action and data
+categories for the current turn; it is not a reusable master permission.
+
+### Correct order
+
+```text
+request
+  -> resolve/confirm actor
+  -> authorize intended retrieval/tool/action
+  -> fetch minimum allowed data
+  -> build bounded context
+  -> generate response
+  -> validate no protected claims leaked
+```
+
+Filtering after the LLM has seen data is not access control.
+
+## Initial role matrix
+
+The matrix is a starting policy and must remain configurable:
+
+| Capability | Owner | Adult | Child | Guest/unknown |
+|---|---:|---:|---:|---:|
+| General conversation | Yes | Yes | Yes | Yes, bounded |
+| General household facts | Yes | Yes | Age-appropriate | No by default |
+| Own profile | Yes | Yes | Yes | No |
+| Another person's private memories | Policy | Policy | No | No |
+| Modify confirmed memory | Yes | Confirmation/limited | Propose only | No |
+| Enroll biometrics | Yes with subject consent | Configurable with consent | No direct administration | No |
+| Export/delete household memory | Yes | No | No | No |
+| Execute physical actions | Policy + local safety | Policy + local safety | Restricted | No by default |
+| Approve cloud use of sensitive data | Explicit policy | Usually no | No | No |
+
+## Biometric consent
+
+- “Me llamo X” does not authorize face or voice enrollment.
+- Enrollment requires an explicit action and consent appropriate to the subject.
+- Child enrollment follows the owner's configured policy and applicable legal
+  requirements; it is never silently inferred.
+- Guests are never enrolled automatically.
+- Raw frames and voice samples are not retained by default.
+- Embeddings are sensitive biometric data even if they are not photographs or
+  playable audio.
+- The owner/subject must be able to inspect, revoke, delete, and optionally
+  exclude biometric profiles from backup.
+
+## Unknown, ambiguity, and disclosure
+
+Safe behavior examples:
+
+- Unknown speaker asks a general question: answer without household memory.
+- Unknown speaker asks about the children: return `unauthorized`, not “I don't
+  know” if the data exists but cannot be disclosed.
+- Face says Felipe and voice says Sofía: return `ambiguous` and request a safer
+  confirmation; do not choose the higher score.
+- Probable child asks for their own birth date: policy may allow after a simple
+  confirmation.
+- Probable speaker asks to delete memory: require stronger identity and explicit
+  confirmation.
+
+The response must not reveal that a protected fact exists while refusing it
+unless the policy explicitly permits that disclosure.
+
+## Relationship to personality
+
+Role and relationship context may adapt vocabulary, pacing, and warmth, but they
+do not create separate personalities. Iroko remains one identity with different
+social policies. Personality never changes permissions.
+
+## Implementation sequence
+
+1. Add pure typed evidence, active-person, and authorization models.
+2. Replace owner-by-default with unknown-by-default at the cognitive boundary,
+   preserving current endpoints through a compatibility adapter.
+3. Add session/manual identity evidence before voice recognition.
+4. Enforce authorization before deterministic family tools and retrieval.
+5. Integrate existing face evidence.
+6. Evaluate and add local speaker recognition.
+7. Add diarization only when multi-speaker audio is a demonstrated requirement.
+
+No step may weaken the audio contract, enroll biometrics automatically, or use
+face recognition as an authentication substitute.
