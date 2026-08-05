@@ -50,3 +50,6 @@ identity and privacy decisions. Its companion
 temporary worker mechanics without changing the canonical plan's scope or
 authority. P0.3 and later plans remain Draft until Plan 0002 is completed and
 their assumptions are revalidated against the then-current tree.
+
+The [P0 cognitive portfolio design](p0-cognitive-plan-portfolio-design.md)
+links every current P0 plan and records their dependency order and status.
