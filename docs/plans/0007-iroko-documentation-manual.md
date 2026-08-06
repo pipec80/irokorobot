@@ -21,6 +21,12 @@ hardware. The entry documents explain and link to canonical architecture rather
 than reproducing or replacing it. The implementation changes Markdown only and
 preserves the server/robot, public audio, provider, and cognitive boundaries.
 
+**Provenance:** The technical portal makes the transition from the historical
+pre-electronics roadmap (M3/M4) to the canonical cognitive foundation explicit.
+It links the historical record and the audit protocol as context only; new work
+continues from canonical architecture, the cognitive roadmap, and the named
+current plan.
+
 **Tech Stack:** Markdown, relative repository links, Git, `uv`, `pre-commit`,
 and the root `justfile` verification commands.
 
@@ -44,6 +50,10 @@ and the root `justfile` verification commands.
 - [ ] Label behavior as **Implemented**, **Planned**, or **Historical**. An
   implemented claim must link to code, a test, or `current-state.md`; a planned
   claim must link to the roadmap or a plan.
+- [ ] Treat `roadmap-cerebro-agnostico-pre-electronica.md` as historical
+  provenance: M3 is complete and M4 is only **implemented with historical
+  closure not demonstrated**. Do not make it an operational plan or imply that
+  an old M4 branch should be resumed.
 - [ ] Document a PC development experience only. Raspberry Pi, homelab,
   OMNiBot 2000, electronics, physical actions, and deployment instructions are
   future vision, not supported operating procedures.
@@ -241,6 +251,7 @@ maintainers without requiring chat history.
   ## Choose your route
   ## What is implemented today
   ## Canonical authority
+  ## Documentation provenance
   ## Documentation status labels
   ## Current scope boundary
   ```
@@ -251,11 +262,17 @@ maintainers without requiring chat history.
   current state, roadmap, plans index, `AGENTS.md`, and `justfile`. It must say
   that the reproducible audio setup guide is delivered by Slice 2; do not link
   to nonexistent `docs/guides/` files. Define **Implemented**, **Planned**, and
-  **Historical** exactly as this plan's global constraints require.
+  **Historical** exactly as this plan's global constraints require. In
+  `Documentation provenance`, briefly link the historical pre-electronics
+  roadmap and the cognitive foundation audit. State that M3/M4 are historical
+  context, M4 has no demonstrated historical closure, and new work follows the
+  canonical architecture index, current state, cognitive roadmap, and named
+  current plan. Do not link to `docs/local/` or present either historical source
+  as an executable plan.
 
 - [ ] **Step 5: Create the Spanish technical portal.**
 
-  Create `docs/es/README.md` with the same six sections, five reader routes,
+  Create `docs/es/README.md` with the same seven sections, five reader routes,
   and status semantics. Link to `../README.md`, `../product/`,
   `../../README.es.md`, and the canonical English architecture files as
   appropriate. State that English is the canonical technical source and the
@@ -275,6 +292,8 @@ maintainers without requiring chat history.
     'docs/es/product/iroko-profile.md',
     'docs/architecture/README.md',
     'docs/architecture/current-state.md',
+    'docs/architecture/roadmap-cerebro-agnostico-pre-electronica.md',
+    'docs/architecture/cognitive-foundation-audit.md',
     'docs/roadmap/cognitive-roadmap.md',
     'docs/plans/README.md',
     'AGENTS.md',
@@ -284,7 +303,7 @@ maintainers without requiring chat history.
     if (-not (Test-Path $_)) { throw "Missing entry-document target: $_" }
   }
   rg -n '^## (Meet Iroko|What exists today|Principles that do not change|Start here|Current boundaries|Project status)$' README.md
-  rg -n '^## (Start here|Choose your route|What is implemented today|Canonical authority|Documentation status labels|Current scope boundary)$' docs/README.md
+  rg -n '^## (Start here|Choose your route|What is implemented today|Canonical authority|Documentation provenance|Documentation status labels|Current scope boundary)$' docs/README.md
   rg -n 'ANTHROPIC_API_KEY|Phase 4 — Teleoperation|Claude API' README.md
   git diff --check
   ```

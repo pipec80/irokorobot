@@ -16,6 +16,22 @@ Iroko is the product and cognitive brain. OMNiBot 2000 is a future experimental
 physical embodiment, not the product name, a required deployment target, or an
 operationally documented platform at this stage.
 
+## Documentation provenance
+
+This documentation program does not begin the project history anew.
+`docs/architecture/roadmap-cerebro-agnostico-pre-electronica.md` is the
+historical execution record that led through M3 and M4. It records M3 as
+complete and M4 only as **implemented with historical closure not demonstrated**;
+it is provenance, not an instruction to resume an old branch or plan.
+
+`docs/architecture/cognitive-foundation-audit.md` is the canonical read-only
+handoff that reconciles that record with the current tree and the cognitive
+foundation. The current authority for new work remains the architecture index,
+current state, cognitive roadmap, and the named current plan. The technical
+portal must make this transition discoverable so a new reader can understand
+why the P0 plans follow M3/M4 without treating historical documents as active
+scope.
+
 ## Product position
 
 Iroko is a local-first, typed, reusable household cognitive brain. It has a
@@ -127,7 +143,8 @@ must preserve technical meaning and status labels, not merely literal wording.
 
 Create or revise the public README, Spanish translation, Iroko public profile,
 and technical documentation portal. Establish reader routes and explicit links
-to current state, architecture, roadmap, plans, setup, and tooling.
+to current state, architecture, roadmap, plans, setup, tooling, and the brief
+historical-to-canonical transition described above.
 
 ### Slice 2: reproducible developer manual
 
@@ -135,6 +152,9 @@ Create the cross-platform development setup, first voice-conversation,
 provider-policy, testing/quality, troubleshooting, and contribution guides.
 Use common `uv` and `just` commands with short Windows, Linux, and macOS
 prerequisite sections rather than maintaining three duplicate manuals.
+Add a QA command matrix that distinguishes isolated diagnostics, end-to-end
+checks, and commands that mutate local state; preserve M3/M4 evidence as
+historical context rather than claiming it as a current gate result.
 
 ### Slice 3: reference, maintenance, and Spanish coverage
 
