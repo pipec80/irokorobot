@@ -11,6 +11,7 @@ from server.characters.base import CharacterProfile, PersonalityProfile
 from server.characters.iroko import IROKO
 from server.characters.nova import NOVA
 from server.characters.parser import load_character_from_file
+from server.cognition.identity import ActivePersonContext, ActivePersonStatus
 from server.onboarding import OnboardingSlot
 from server.schemas import MemoryContext
 from server.settings import settings
@@ -78,16 +79,13 @@ truth about the owner's life: names, family, pets, dates, preferences.
 remember it yet and ask them to tell you — NEVER invent or guess names, \
 ages, or facts. A wrong confident answer poisons your own memory."""
 
-# Observed live 2026-07-06: memory facts name the owner ("Felipe hijo_de...")
-# and the model answered in third person ("Felipe te mencionó que...") —
-# it never connected the name in memory with the person speaking.
-_OWNER_IDENTITY_TEMPLATE = """
-OWNER IDENTITY:
-- The person speaking to you right now IS {owner_name}, your owner.
-- Address them in second person — NEVER refer to {owner_name} in third \
-person, they are not someone else.
-- Every fact in memory about {owner_name} is about the person in front of \
-you: "los hijos de {owner_name}" are THEIR children ("tus hijos")."""
+_PRESENTATION_GUIDANCE_TEMPLATE = """
+PRESENTATION GUIDANCE:
+- The display name supplied for this turn is {display_name}.
+- You may use it as an optional form of address, or use second-person phrasing,
+  only when natural.
+- Do not state that the name identifies the speaker.
+- Do not infer relationships, personal facts, or authorization from it."""
 
 # D2/D3: the checklist decides WHAT to ask; the character decides HOW.
 # The echo provokes correction — if the robot repeats a garbled name, the
@@ -218,7 +216,7 @@ def build_system_prompt(
     onboarding: bool = False,
     onboarding_slot: OnboardingSlot | None = None,
     user_emotion: str | None = None,
-    owner_name: str | None = None,
+    active_person: ActivePersonContext | None = None,
     perception: str | None = None,
 ) -> str:
     """Assemble the full system prompt for a character.
@@ -231,9 +229,9 @@ def build_system_prompt(
             onboarding, the prompt names the ONE datum to ask for this turn.
         user_emotion: Most frequent non-neutral emotion detected in recent turns.
             When provided, appends a behavioral adaptation directive.
-        owner_name: Owner's name once learned. When provided, the prompt
-            states that the speaker IS this person, so memory facts about
-            them are answered in second person.
+        active_person: Internally resolved person context for this turn. An
+            identified context with a display name contributes optional neutral
+            presentation guidance; it never asserts identity or authorization.
         perception: What the camera sees this turn (VLM description). When
             provided, appended as a visual-perception block so the
             character reacts to it in its own voice.
@@ -247,8 +245,14 @@ def build_system_prompt(
         _MEMORY_DISCIPLINE,
         _TODAY_TEMPLATE.format(date_es=current_date_es()),
     ]
-    if owner_name:
-        parts.append(_OWNER_IDENTITY_TEMPLATE.format(owner_name=owner_name))
+    if (
+        active_person is not None
+        and active_person.status is ActivePersonStatus.IDENTIFIED
+        and active_person.display_name
+    ):
+        parts.append(
+            _PRESENTATION_GUIDANCE_TEMPLATE.format(display_name=active_person.display_name)
+        )
     if onboarding:
         parts.append(profile.onboarding_prompt)
         if onboarding_slot is not None:

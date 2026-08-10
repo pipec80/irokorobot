@@ -1,18 +1,59 @@
 """Integration tests for POST /transcribe/stream."""
 
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 import json
+import time
 from unittest.mock import AsyncMock, Mock
+from uuid import UUID
 
 from fastapi.testclient import TestClient
 import httpx
 import pytest
+from server.cognition.identity import (
+    ActivePersonContext,
+    ActivePersonStatus,
+    HouseholdRole,
+    IdentityEvidence,
+    IdentityEvidenceSource,
+)
+from server.cognition.models import Confidence, ConfidenceBasis
 from server.exceptions import LLMError
 from server.routers import transcribe as transcribe_module
+from server.schemas import ConversationTurn
 from server.settings import settings
 from server.text_turn import PreparedTextTurn
 
 from server import llm, llm_streaming, streaming, stt, tts
+
+
+def _manual_active_person() -> ActivePersonContext:
+    """Create explicit manual identity evidence for shared-stream tests."""
+    resolved_at = datetime(2026, 8, 10, tzinfo=UTC)
+    confidence = Confidence(
+        score=1.0,
+        basis=ConfidenceBasis.ASSERTED,
+        calibrated=True,
+        reason="Explicit local selection",
+    )
+    return ActivePersonContext(
+        person_id=7,
+        display_name="Sofía",
+        status=ActivePersonStatus.IDENTIFIED,
+        confidence=confidence,
+        role=HouseholdRole.UNKNOWN,
+        evidence=(
+            IdentityEvidence(
+                evidence_id=UUID("11111111-1111-1111-1111-111111111111"),
+                source=IdentityEvidenceSource.MANUAL,
+                candidate_person_id=7,
+                confidence=confidence,
+                observed_at=resolved_at,
+                reference="trusted-local-adapter",
+            ),
+        ),
+        resolved_at=resolved_at,
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -190,3 +231,66 @@ def test_stream_llm_failure_speaks_fallback_phrase(
     assert audio_events[-1]["text"] == settings.llm_fallback_phrase
     assert events[-1]["type"] == "done"
     record.assert_not_called()
+
+
+@pytest.mark.integration
+async def test_streaming_propagates_prepared_identity_history_and_recording_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Both provider paths must use the same prepared identity and scope."""
+    active_person = _manual_active_person()
+    history = [ConversationTurn(role="user", content="previous question")]
+    prepared = PreparedTextTurn(
+        "hola robot",
+        "public-id",
+        None,
+        history,
+        False,
+        None,
+        None,
+        None,
+        None,
+        active_person,
+        "session:11111111111111111111111111111111:person:7",
+    )
+    standard_generate = AsyncMock(return_value=("Hola.", "joy"))
+    monkeypatch.setattr(settings, "llm_provider", "anthropic")
+    monkeypatch.setattr(llm, "generate_response", standard_generate)
+
+    standard_deltas = [delta async for delta in streaming._text_deltas(prepared)]
+
+    assert standard_deltas == ["EMOTION:joy\nHola."]
+    assert standard_generate.await_args.kwargs["history"] == history
+    assert standard_generate.await_args.kwargs["active_person"] is active_person
+
+    streamed_kwargs: dict[str, object] = {}
+
+    async def generate_stream(*_args: object, **kwargs: object) -> AsyncIterator[str]:
+        streamed_kwargs.update(kwargs)
+        yield "EMOTION:joy\nHola."
+
+    monkeypatch.setattr(settings, "llm_provider", "ollama")
+    monkeypatch.setattr(llm_streaming, "generate_response_stream", generate_stream)
+
+    ollama_deltas = [delta async for delta in streaming._text_deltas(prepared)]
+
+    assert ollama_deltas == ["EMOTION:joy\nHola."]
+    assert streamed_kwargs["history"] == history
+    assert streamed_kwargs["active_person"] is active_person
+
+    record = Mock()
+    monkeypatch.setattr(settings, "llm_provider", "anthropic")
+    monkeypatch.setattr(streaming, "record_text_turn", record)
+
+    _ = [
+        line
+        async for line in streaming.stream_pipeline(
+            prepared=prepared,
+            stt_ms=0,
+            request_start=time.perf_counter(),
+            schedule_consolidation=lambda _message, _response: None,
+        )
+    ]
+
+    assert record.call_args.kwargs["active_person"] is active_person
+    assert record.call_args.kwargs["history_scope"] == prepared.history_scope

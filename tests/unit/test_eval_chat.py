@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, call
 import pytest
 from server.schemas import ConversationTurn, MemoryContext
 
-from scripts import eval_chat
+from scripts import eval_chat, eval_consolidation
 from scripts.eval_chat import (
     AssertionResult,
     CaseRunResult,
@@ -31,7 +31,10 @@ version: 1
 cases:
   - id: corrected_age
     tags: [correction, active_fact]
-    owner_name: Alex
+    active_person:
+      source: manual
+      person_id: 7
+      display_name: Alex
     question: ¿Cuántos años tiene Sam?
     context:
       entities:
@@ -72,7 +75,11 @@ def _case(
         {
             "id": case_id,
             "tags": tags or ["present"],
-            "owner_name": "Alex",
+            "active_person": {
+                "source": "manual",
+                "person_id": 7,
+                "display_name": "Alex",
+            },
             "question": "Pregunta",
             "context": {"entities": [], "memories": []},
             "history": [],
@@ -174,6 +181,27 @@ def test_load_suite_constructs_productive_schema_types(tmp_path: Path) -> None:
     assert isinstance(suite.cases[0].context, MemoryContext)
     assert isinstance(suite.cases[0].history[0], ConversationTurn)
     assert suite.cases[0].history[0].content == "Antes tenía 10."
+    assert suite.cases[0].active_person is not None
+    assert suite.cases[0].active_person.display_name == "Alex"
+
+
+@pytest.mark.unit
+def test_load_suite_rejects_legacy_owner_name_alias(tmp_path: Path) -> None:
+    """A legacy owner alias must not silently become active-person context."""
+    content = VALID_SUITE_YAML.replace(
+        "    question:",
+        "    owner_name: Alex\n    question:",
+    )
+
+    with pytest.raises(ValueError, match="owner_name"):
+        load_suite(_write_suite(tmp_path, content))
+
+
+@pytest.mark.unit
+def test_consolidation_adapter_rejects_legacy_owner_alias() -> None:
+    """A legacy extraction alias cannot silently supply active-person context."""
+    with pytest.raises(ValueError, match="owner"):
+        eval_consolidation._active_person_display_name({"owner": "Alex"})
 
 
 @pytest.mark.unit
@@ -187,7 +215,10 @@ def test_load_suite_constructs_productive_schema_types(tmp_path: Path) -> None:
                 """cases:
   - id: corrected_age
     tags: [present]
-    owner_name: Alex
+    active_person:
+      source: manual
+      person_id: 7
+      display_name: Alex
     question: Pregunta duplicada
     context: {entities: [], memories: []}
     history: []
@@ -240,11 +271,12 @@ async def test_run_evaluation_forwards_exact_case_inputs(
 
     evaluation = await run_evaluation([case], runs=1, provider="ollama")
 
+    assert case.active_person is not None
     mock_generate.assert_awaited_once_with(
         case.question,
         context=case.context,
         history=case.history,
-        owner_name=case.owner_name,
+        active_person=case.active_person.to_context(),
         perception=case.perception,
     )
     assert evaluation.provider == "ollama"
@@ -278,6 +310,8 @@ async def test_run_evaluation_runs_each_repetition_sequentially(
 
     evaluation = await run_evaluation([first, second], runs=2, provider="configured")
 
+    assert first.active_person is not None
+    assert second.active_person is not None
     assert max_active_calls == 1
     assert [result.case_id for result in evaluation.results] == [
         "first",
@@ -290,28 +324,28 @@ async def test_run_evaluation_runs_each_repetition_sequentially(
             first.question,
             context=first.context,
             history=first.history,
-            owner_name=first.owner_name,
+            active_person=first.active_person.to_context(),
             perception=first.perception,
         ),
         call(
             first.question,
             context=first.context,
             history=first.history,
-            owner_name=first.owner_name,
+            active_person=first.active_person.to_context(),
             perception=first.perception,
         ),
         call(
             second.question,
             context=second.context,
             history=second.history,
-            owner_name=second.owner_name,
+            active_person=second.active_person.to_context(),
             perception=second.perception,
         ),
         call(
             second.question,
             context=second.context,
             history=second.history,
-            owner_name=second.owner_name,
+            active_person=second.active_person.to_context(),
             perception=second.perception,
         ),
     ]

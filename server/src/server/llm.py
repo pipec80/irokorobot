@@ -9,6 +9,7 @@ import re
 from typing import Any
 
 from server.characters import build_system_prompt, get_character
+from server.cognition.identity import ActivePersonContext
 from server.exceptions import LLMError
 
 # Re-exported under the historical private name so call sites (and test
@@ -152,7 +153,7 @@ async def generate_response(
     onboarding: bool = False,
     onboarding_slot: OnboardingSlot | None = None,
     user_emotion: str | None = None,
-    owner_name: str | None = None,
+    active_person: ActivePersonContext | None = None,
     perception: str | None = None,
 ) -> tuple[str, str]:
     """Generate a robot response and detect the user's emotion.
@@ -173,9 +174,8 @@ async def generate_response(
         user_emotion: Dominant non-neutral emotion from recent turns. When
             provided, the system prompt includes a behavioral adaptation
             directive so the robot adjusts its tone accordingly.
-        owner_name: Owner's name once learned. Injected into the system
-            prompt so the robot addresses the speaker in second person
-            instead of talking about them in third person.
+        active_person: Internally resolved person context for this turn. Its
+            display name can guide neutral presentation when identified.
         perception: What the camera sees this turn (VLM description) —
             injected as a visual-perception block (V0.5).
 
@@ -197,7 +197,7 @@ async def generate_response(
         onboarding=onboarding,
         onboarding_slot=onboarding_slot,
         user_emotion=user_emotion,
-        owner_name=owner_name,
+        active_person=active_person,
         perception=perception,
     )
 

@@ -197,7 +197,7 @@ async def _generate(prepared: PreparedTextTurn) -> tuple[str, str, bool]:
             onboarding=prepared.onboarding,
             onboarding_slot=prepared.onboarding_slot,
             user_emotion=prepared.user_emotion,
-            owner_name=prepared.owner_name,
+            active_person=prepared.active_person,
             perception=prepared.perception,
         )
         logger.info("LLM response: %r (emotion=%s)", response, emotion)

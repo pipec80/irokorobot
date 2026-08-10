@@ -1,8 +1,18 @@
+from datetime import UTC, datetime
 from unittest.mock import ANY, AsyncMock, MagicMock
+from uuid import UUID
 
 import pytest
 from server.characters import _format_memory_block, build_system_prompt
 from server.characters.iroko import IROKO
+from server.cognition.identity import (
+    ActivePersonContext,
+    ActivePersonStatus,
+    HouseholdRole,
+    IdentityEvidence,
+    IdentityEvidenceSource,
+)
+from server.cognition.models import Confidence, ConfidenceBasis
 from server.exceptions import LLMError
 from server.onboarding import OnboardingSlot
 from server.schemas import (
@@ -14,6 +24,39 @@ from server.schemas import (
 )
 
 from server import llm
+
+
+def _manual_active_person() -> ActivePersonContext:
+    """Create explicit manual identity evidence for prompt-boundary tests."""
+    resolved_at = datetime(2026, 8, 10, tzinfo=UTC)
+    return ActivePersonContext(
+        person_id=7,
+        display_name="Sofía",
+        status=ActivePersonStatus.IDENTIFIED,
+        confidence=Confidence(
+            score=1.0,
+            basis=ConfidenceBasis.ASSERTED,
+            calibrated=True,
+            reason="Explicit local selection",
+        ),
+        role=HouseholdRole.UNKNOWN,
+        evidence=(
+            IdentityEvidence(
+                evidence_id=UUID("11111111-1111-1111-1111-111111111111"),
+                source=IdentityEvidenceSource.MANUAL,
+                candidate_person_id=7,
+                confidence=Confidence(
+                    score=1.0,
+                    basis=ConfidenceBasis.ASSERTED,
+                    calibrated=True,
+                    reason="Explicit local selection",
+                ),
+                observed_at=resolved_at,
+                reference="trusted-local-adapter",
+            ),
+        ),
+        resolved_at=resolved_at,
+    )
 
 
 @pytest.mark.unit
@@ -223,19 +266,25 @@ async def test_generate_response_with_context_and_history(
 
 
 @pytest.mark.unit
-async def test_generate_response_injects_owner_identity(
+async def test_generate_response_uses_manual_context_for_neutral_display_guidance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """owner_name must reach the system prompt as an identity statement."""
-    mock = AsyncMock(return_value=("hola Felipe", "joy"))
+    """Manual context may guide presentation but cannot assert identity or access."""
+    mock = AsyncMock(return_value=("hola Sofía", "joy"))
     monkeypatch.setattr(llm, "_generate_anthropic", mock)
     monkeypatch.setattr(llm.settings, "llm_provider", "anthropic")
 
-    await llm.generate_response("¿cómo se llaman mis hijos?", owner_name="Felipe")
+    await llm.generate_response(
+        "¿cómo se llaman mis hijos?",
+        active_person=_manual_active_person(),
+    )
 
     system_prompt = mock.call_args[0][0]
-    assert "OWNER IDENTITY" in system_prompt
-    assert "Felipe" in system_prompt
+    assert "PRESENTATION GUIDANCE" in system_prompt
+    assert "Sofía" in system_prompt
+    assert "OWNER IDENTITY" not in system_prompt
+    assert "your owner" not in system_prompt.lower()
+    assert "Do not infer relationships, personal facts, or authorization" in system_prompt
 
 
 # ---------------------------------------------------------------------------
@@ -252,19 +301,10 @@ def test_build_system_prompt_empty_context_excludes_memory_block() -> None:
 
 
 @pytest.mark.unit
-def test_build_system_prompt_with_owner_name_states_identity() -> None:
-    """Observed live: Iroko spoke about Felipe in third person ('Felipe te
-    mencionó...') because nothing linked the name in memory with the speaker."""
-    prompt = build_system_prompt(IROKO, None, owner_name="Felipe")
-    assert "OWNER IDENTITY" in prompt
-    assert "Felipe" in prompt
-
-
-@pytest.mark.unit
-def test_build_system_prompt_without_owner_name_has_no_identity_block() -> None:
-    """Before onboarding the owner is unknown — no identity block."""
+def test_build_system_prompt_without_active_person_has_no_display_guidance() -> None:
+    """No active person must leave the prompt without display guidance."""
     prompt = build_system_prompt(IROKO, None)
-    assert "OWNER IDENTITY" not in prompt
+    assert "PRESENTATION GUIDANCE" not in prompt
 
 
 @pytest.mark.unit

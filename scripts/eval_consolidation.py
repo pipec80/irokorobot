@@ -88,6 +88,26 @@ def _fact_matches(predicted: ExtractedFact, expected: dict[str, Any]) -> bool:
     )
 
 
+def _active_person_display_name(case: dict[str, Any]) -> str | None:
+    """Return explicit manual display guidance for one synthetic turn."""
+    if "owner" in case:
+        raise ValueError("owner is not an active-person context")
+    active_person = case.get("active_person")
+    if active_person is None:
+        return None
+    if not isinstance(active_person, dict):
+        raise ValueError("active_person must be a mapping")
+    if active_person.get("source") != "manual":
+        raise ValueError("active_person source must be manual")
+    person_id = active_person.get("person_id")
+    if not isinstance(person_id, int) or isinstance(person_id, bool):
+        raise ValueError("active_person person_id must be an integer")
+    display_name = active_person.get("display_name")
+    if not isinstance(display_name, str) or not display_name.strip():
+        raise ValueError("active_person display_name must not be blank")
+    return display_name
+
+
 # ---------------------------------------------------------------------------
 # Per-case evaluation
 # ---------------------------------------------------------------------------
@@ -123,7 +143,11 @@ async def _eval_case(case: dict[str, Any]) -> CaseResult:
             error=f"{type(exc).__name__}: {exc}",
         )
     elapsed = time.perf_counter() - t0
-    extraction = normalize_extraction(raw, owner_name=case.get("owner"), user_text=case["user"])
+    extraction = normalize_extraction(
+        raw,
+        active_person_name=_active_person_display_name(case),
+        user_text=case["user"],
+    )
 
     result = CaseResult(
         case_id=case["id"], elapsed_s=elapsed, entities_expected=len(expected_entities)
