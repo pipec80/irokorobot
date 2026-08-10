@@ -73,9 +73,10 @@ no-I/O tests pass offline with no new framework.
 
 ### P0.2 — Active-person context and conversation isolation
 
-Create a separate future plan after P0.1 completes. It should introduce typed
-identity evidence and `ActivePersonContext`, preserve the current integer entity
-IDs, and remove owner identity as an implicit fact of every voice turn.
+Implement [Plan 0002](../plans/0002-active-person-context.md) after P0.1.
+It introduces typed identity evidence and `ActivePersonContext`, preserves the
+current integer entity IDs, and removes owner identity as an implicit fact of
+every voice turn.
 
 **Minimum outcomes**
 
@@ -296,6 +297,7 @@ contradicts the plan, stop and report the exact conflict; do not redesign or
 expand scope. Run the listed verification. Do not commit unless asked.
 ```
 
-Only [Plan 0001](../plans/0001-cognitive-domain-models.md) is ready now.
-Later plans should be written just in time after the previous exit gate is
-verified; otherwise they will encode guesses about code that has already moved.
+[Plan 0001](../plans/0001-cognitive-domain-models.md) is complete. The only
+ready plan is [Plan 0002](../plans/0002-active-person-context.md). Later plans
+should be written just in time after the previous exit gate is verified;
+otherwise they will encode guesses about code that has already moved.
