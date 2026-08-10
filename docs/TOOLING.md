@@ -1,4 +1,10 @@
 # OMNiBot — Stack de Calidad de Código
+> **Status:** Historical bootstrap note. It is preserved as project history,
+> not as current installation, dependency, CI, or quality instruction.
+> Start with [the Iroko technical documentation portal](README.md).
+
+This note records earlier tool evaluation and cannot override the root `justfile`, `pyproject.toml`, CI workflow, or runtime instructions.
+
 > Investigado desde fuentes actuales (2025-2026). Todo lo que aparece aquí
 > tiene mantenimiento activo confirmado. Sin herramientas abandonadas.
 
