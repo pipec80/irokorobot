@@ -34,13 +34,12 @@ capability, or consciousness.
 
 ## Product boundary
 
-Iroko is local-first: local execution and storage are the default, while cloud
-processing is only an optional, authorized escalation with minimum necessary
-context and a local fallback. The character profile does not override the
-architecture or its safeguards. See the canonical
+This public profile does not define Iroko's technical or policy boundaries, and
+it does not override the architecture or its safeguards. See the canonical
 [personality and interaction architecture](../architecture/personality-and-interaction.md),
 [cognitive architecture](../architecture/cognitive-architecture.md), and
-[local-first cognitive policy](../adr/0004-local-first-cognitive-policy.md).
+[local-first cognitive policy](../adr/0004-local-first-cognitive-policy.md)
+for those non-operational technical references.
 
 ## Learn more
 

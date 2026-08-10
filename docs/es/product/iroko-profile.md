@@ -35,17 +35,16 @@ capacidad autónoma ni consciencia.
 
 ## Límite del producto
 
-Iroko es local-first: la ejecución y el almacenamiento locales son la opción
-predeterminada, mientras que el procesamiento en la nube es solo una
-escalada opcional y autorizada, con el contexto mínimo necesario y una
-alternativa local. El perfil de carácter no reemplaza la arquitectura ni sus
-salvaguardas. Consulte la arquitectura canónica de
+Este perfil público no define los límites técnicos ni de política de Iroko, y
+no reemplaza la arquitectura ni sus salvaguardas. Consulte la arquitectura
+canónica de
 [personalidad e interacción](../../architecture/personality-and-interaction.md),
 la [arquitectura cognitiva](../../architecture/cognitive-architecture.md) y
-la [política cognitiva local-first](../../adr/0004-local-first-cognitive-policy.md).
+la [política cognitiva local-first](../../adr/0004-local-first-cognitive-policy.md)
+como referencias técnicas no operativas.
 
 ## Más información
 
-Consulte la [documentación técnica en inglés](../../README.md) para la
-documentación vigente del proyecto, o el [perfil en inglés](../../product/iroko-profile.md)
+Consulte el [índice de arquitectura](../../architecture/README.md) para la
+documentación técnica vigente, o el [perfil en inglés](../../product/iroko-profile.md)
 como fuente canónica.
