@@ -1,4 +1,10 @@
 # OMNiBot — Setup del Workspace
+> **Status:** Historical bootstrap note. It is preserved as project history,
+> not as current installation, dependency, CI, or quality instruction.
+> Start with [the Iroko technical documentation portal](README.md).
+
+This note records the initial workspace construction and may name obsolete commands, dependencies, and hardware assumptions.
+
 > Basado en documentación oficial de uv. Windows PowerShell.
 
 ---

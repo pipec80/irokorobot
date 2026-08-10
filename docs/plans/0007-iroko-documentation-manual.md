@@ -5,7 +5,7 @@
 > `superpowers:executing-plans` to implement this plan task-by-task. Steps use
 > checkbox (`- [ ]`) syntax for tracking.
 
-- **Status:** Ready after PR #22 is merged into `main`.
+- **Status:** Complete.
 - **Roadmap phase:** Documentation foundation; not a cognitive implementation
   phase.
 - **Approved design:**
@@ -82,6 +82,36 @@ and the root `justfile` verification commands.
 | `docs/SETUP.md` | Modify | Prominent Historical status and safe redirect to the portal. |
 | `docs/TOOLING.md` | Modify | Prominent Historical status and safe redirect to the portal. |
 | `docs/plans/0007-iroko-documentation-manual.md` | Modify at completion | Mark the plan complete only after every gate below passes. |
+
+## Completion evidence
+
+- **Merge base:** `c4381b2` (`c4381b2463563bad02fb9f31eff36820c168722f`).
+- **Task commits:** `db1fcda`, `b030dfb`, `288ab26`, and `8d4f736`.
+- **Successful verification:**
+
+  ```powershell
+  $requiredFiles = @(
+    'README.md',
+    'README.es.md',
+    'docs/README.md',
+    'docs/es/README.md',
+    'docs/product/iroko-profile.md',
+    'docs/es/product/iroko-profile.md',
+    'docs/SETUP.md',
+    'docs/TOOLING.md',
+    'docs/plans/0007-iroko-documentation-manual.md'
+  )
+  $requiredFiles | ForEach-Object {
+    if (-not (Test-Path $_)) { throw "Missing documentation deliverable: $_" }
+  }
+  git diff --check main...HEAD
+  uv run pre-commit run --files README.md README.es.md docs/README.md docs/es/README.md docs/product/iroko-profile.md docs/es/product/iroko-profile.md docs/SETUP.md docs/TOOLING.md docs/plans/0007-iroko-documentation-manual.md
+  ```
+
+  All required files were present, `git diff --check main...HEAD` produced no
+  output, and each applicable pre-commit hook passed. This documentation-only
+  gate did not run external providers, download models, or claim clean-PC audio
+  acceptance; Slice 2 owns that acceptance.
 
 ## Task 1: Create the public Iroko profile
 
