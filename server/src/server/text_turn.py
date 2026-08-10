@@ -138,6 +138,9 @@ async def prepare_text_turn(
         raise ValueError("conversation_id must not be empty")
     resolved_person = _resolve_turn_person(active_person)
     history_scope = _history_scope(resolved_person)
+    manual_evidence = _manual_evidence(resolved_person)
+    if manual_evidence is None:
+        _clear_evidence_scopes(resolved_person)
     if not settings.memory_enabled:
         return PreparedTextTurn(
             message,
@@ -152,8 +155,7 @@ async def prepare_text_turn(
             resolved_person,
             history_scope,
         )
-    if _manual_evidence(resolved_person) is None:
-        _clear_evidence_scopes(resolved_person)
+    if manual_evidence is None:
         return PreparedTextTurn(
             message,
             conversation_id,

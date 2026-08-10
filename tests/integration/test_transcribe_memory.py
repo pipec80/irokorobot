@@ -27,7 +27,6 @@ def memory_on(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
     """Enable memory and reset the voice conversation around one test."""
     monkeypatch.setattr(settings, "memory_enabled", True)
     monkeypatch.setattr(transcribe_module, "consolidate_turn", AsyncMock())
-    monkeypatch.setattr(text_turn, "_onboarding_done", False)
     yield
     working.clear(settings.voice_conversation_id)
 

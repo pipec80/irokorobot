@@ -23,13 +23,38 @@ from server import text_turn
 _DEFAULT_SESSION_ID = UUID("11111111-1111-1111-1111-111111111111")
 
 
+def _manual_evidence(
+    *,
+    person_id: int = 7,
+    session_id: UUID = _DEFAULT_SESSION_ID,
+    observed_at: datetime | None = None,
+    expires_at: datetime | None = None,
+) -> IdentityEvidence:
+    """Create explicit manual evidence for a trusted internal test adapter."""
+    observed_at = observed_at or datetime(2026, 8, 10, tzinfo=UTC)
+    return IdentityEvidence(
+        evidence_id=session_id,
+        source=IdentityEvidenceSource.MANUAL,
+        candidate_person_id=person_id,
+        confidence=Confidence(
+            score=1.0,
+            basis=ConfidenceBasis.ASSERTED,
+            calibrated=True,
+            reason="Explicit local selection",
+        ),
+        observed_at=observed_at,
+        expires_at=expires_at,
+        reference="trusted-local-adapter",
+    )
+
+
 def _identified_person(
     *,
     person_id: int = 7,
     display_name: str = "Sofía",
     session_id: UUID = _DEFAULT_SESSION_ID,
 ) -> ActivePersonContext:
-    """Create explicit manual evidence for a trusted internal test adapter."""
+    """Create an identified manual context for a trusted internal test adapter."""
     observed_at = datetime(2026, 8, 10, tzinfo=UTC)
     return ActivePersonContext(
         person_id=person_id,
@@ -42,27 +67,15 @@ def _identified_person(
             reason="Explicit local selection",
         ),
         role=HouseholdRole.UNKNOWN,
-        evidence=(
-            IdentityEvidence(
-                evidence_id=session_id,
-                source=IdentityEvidenceSource.MANUAL,
-                candidate_person_id=person_id,
-                confidence=Confidence(
-                    score=1.0,
-                    basis=ConfidenceBasis.ASSERTED,
-                    calibrated=True,
-                    reason="Explicit local selection",
-                ),
-                observed_at=observed_at,
-                expires_at=None,
-                reference="trusted-local-adapter",
-            ),
-        ),
+        evidence=(_manual_evidence(person_id=person_id, session_id=session_id),),
         resolved_at=observed_at,
     )
 
 
-def _unidentified_person(status: ActivePersonStatus) -> ActivePersonContext:
+def _unidentified_person(
+    status: ActivePersonStatus,
+    evidence: tuple[IdentityEvidence, ...] = (),
+) -> ActivePersonContext:
     """Create an explicit non-identified active-person result for one turn."""
     resolved_at = datetime(2026, 8, 10, tzinfo=UTC)
     return ActivePersonContext(
@@ -76,17 +89,16 @@ def _unidentified_person(status: ActivePersonStatus) -> ActivePersonContext:
             reason="No verified person",
         ),
         role=HouseholdRole.UNKNOWN,
-        evidence=(),
+        evidence=evidence,
         resolved_at=resolved_at,
     )
 
 
 @pytest.fixture(autouse=True)
 def _reset_turn_state() -> Generator[None, None, None]:
-    """Reset process-local conversation and onboarding state."""
+    """Reset process-local conversation state."""
     working._buffers.clear()
     working._emotion_buffers.clear()
-    text_turn._onboarding_done = False
     yield
     working._buffers.clear()
     working._emotion_buffers.clear()
@@ -224,6 +236,89 @@ async def test_unknown_turn_leaves_no_reusable_working_memory(
 
     assert working._buffers == {}
     assert working._emotion_buffers == {}
+
+
+def _seed_identified_scope(active_person: ActivePersonContext) -> str:
+    """Seed reusable history and emotion state for one identified manual scope."""
+    scope = f"session:{active_person.evidence[0].evidence_id.hex}:person:{active_person.person_id}"
+    working.add_turn(scope, "user", "private history")
+    working.add_emotion(scope, "joy")
+    return scope
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_expired_evidence_clears_identified_scope_before_memory_check(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Expired manual evidence must clear reusable state even when memory is disabled."""
+    identified = _identified_person()
+    scope = _seed_identified_scope(identified)
+    expired = _manual_evidence(
+        observed_at=datetime(2026, 8, 9, tzinfo=UTC),
+        expires_at=identified.resolved_at,
+    )
+    monkeypatch.setattr(settings, "memory_enabled", False)
+
+    await text_turn.prepare_text_turn(
+        "Question",
+        "public-conversation",
+        active_person=_unidentified_person(ActivePersonStatus.UNKNOWN, (expired,)),
+    )
+
+    assert scope not in working._buffers
+    assert scope not in working._emotion_buffers
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_explicit_clear_evidence_removes_identified_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A cleared manual selection must discard its prior reusable scope."""
+    identified = _identified_person()
+    scope = _seed_identified_scope(identified)
+    monkeypatch.setattr(settings, "memory_enabled", False)
+
+    await text_turn.prepare_text_turn(
+        "Question",
+        "public-conversation",
+        active_person=_unidentified_person(ActivePersonStatus.UNKNOWN, identified.evidence),
+    )
+
+    assert scope not in working._buffers
+    assert scope not in working._emotion_buffers
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_ambiguous_evidence_clears_all_identified_scopes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ambiguity must remove every candidate's reusable history and emotion."""
+    first = _identified_person()
+    second = _identified_person(
+        person_id=8,
+        display_name="Mateo",
+        session_id=UUID("44444444-4444-4444-4444-444444444444"),
+    )
+    first_scope = _seed_identified_scope(first)
+    second_scope = _seed_identified_scope(second)
+    monkeypatch.setattr(settings, "memory_enabled", False)
+
+    await text_turn.prepare_text_turn(
+        "Question",
+        "public-conversation",
+        active_person=_unidentified_person(
+            ActivePersonStatus.AMBIGUOUS,
+            first.evidence + second.evidence,
+        ),
+    )
+
+    assert first_scope not in working._buffers
+    assert first_scope not in working._emotion_buffers
+    assert second_scope not in working._buffers
+    assert second_scope not in working._emotion_buffers
 
 
 @pytest.mark.unit
