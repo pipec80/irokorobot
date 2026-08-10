@@ -87,15 +87,30 @@ def test_identity_evidence_rejects_non_strict_person_ids(
 def test_identity_evidence_normalizes_aware_timestamps_and_requires_uuid() -> None:
     """Reject evidence that can lose its UTC ordering or opaque identifier."""
     utc_minus_four = timezone(timedelta(hours=-4))
-    evidence = _evidence(expires_at=datetime(2026, 8, 10, 15, 30, tzinfo=utc_minus_four))
+    evidence = _evidence(expires_at=datetime(2026, 8, 10, 16, 30, tzinfo=utc_minus_four))
     payload = evidence.model_dump()
     payload["observed_at"] = datetime(2026, 8, 10, 15, 30, tzinfo=utc_minus_four)
     normalized = IdentityEvidence.model_validate(payload)
 
-    assert evidence.expires_at == datetime(2026, 8, 10, 19, 30, tzinfo=UTC)
+    assert evidence.expires_at == datetime(2026, 8, 10, 20, 30, tzinfo=UTC)
     assert normalized.observed_at == datetime(2026, 8, 10, 19, 30, tzinfo=UTC)
     with pytest.raises(ValidationError):
         IdentityEvidence.model_validate({**payload, "evidence_id": "not-a-uuid"})
+
+
+@pytest.mark.parametrize(
+    "expires_at",
+    [
+        datetime(2026, 8, 10, 15, 29, tzinfo=UTC),
+        datetime(2026, 8, 10, 15, 30, tzinfo=UTC),
+    ],
+)
+def test_identity_evidence_rejects_expiry_not_after_observation(
+    expires_at: datetime,
+) -> None:
+    """Reject evidence whose expiry cannot be later than its observation."""
+    with pytest.raises(ValidationError, match="expires_at must be after observed_at"):
+        _evidence(expires_at=expires_at)
 
 
 def test_identity_evidence_rejects_naive_datetimes_and_extra_fields() -> None:

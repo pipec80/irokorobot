@@ -2,7 +2,7 @@
 
 from datetime import UTC as _UTC, datetime as _datetime
 from enum import Enum as _Enum
-from typing import Annotated as _Annotated
+from typing import Annotated as _Annotated, Self as _Self
 from uuid import UUID as _UUID
 
 from pydantic import (
@@ -10,6 +10,7 @@ from pydantic import (
     ConfigDict as _ConfigDict,
     Field as _Field,
     field_validator as _field_validator,
+    model_validator as _model_validator,
 )
 
 from server.cognition.models import Confidence
@@ -84,6 +85,12 @@ class IdentityEvidence(_BaseModel):
 
     _validate_observed_at = _field_validator("observed_at")(_require_aware_utc)
     _validate_expires_at = _field_validator("expires_at")(_normalize_optional_aware_utc)
+
+    @_model_validator(mode="after")
+    def _validate_expiry_after_observation(self) -> _Self:
+        if self.expires_at is not None and self.expires_at <= self.observed_at:
+            raise ValueError("expires_at must be after observed_at")
+        return self
 
 
 class ActivePersonContext(_BaseModel):
