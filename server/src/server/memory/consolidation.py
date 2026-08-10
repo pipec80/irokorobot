@@ -9,16 +9,19 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 
 import anthropic
 import httpx
 
+from server.cognition.identity import (
+    ActivePersonContext,
+    ActivePersonStatus,
+    IdentityEvidenceSource,
+)
 from server.exceptions import LLMError
 from server.llm_clients import get_anthropic_client
 from server.llm_transport import ollama_chat, strip_json_fences
 from server.memory.declarative import assert_fact, find_entities_by_name, upsert_entity
-from server.memory.meta import get_flag, set_flag
 from server.memory.normalize import normalize_extraction
 from server.memory.semantic import store_memory
 from server.schemas import EntityType, TurnExtraction
@@ -194,82 +197,30 @@ async def _extract(user_text: str, assistant_text: str) -> TurnExtraction:
         return await extractor(user_text, assistant_text)
 
 
-# Self-introduction patterns — the ONLY way to anchor the owner's name.
-# "Soy X" alone is risky ("soy de Santiago"), hence the non-name guard.
-_INTRO_PATTERN = re.compile(
-    r"\b(?:me llamo|mi nombre es|yo soy|soy)\s+"
-    r"([a-záéíóúüñ]+(?:\s+[a-záéíóúüñ]+)?)",
-    re.IGNORECASE,
-)
-_NON_NAME_WORDS = frozenset({"de", "del", "el", "la", "un", "una", "muy", "yo", "tu", "su"})
-
-
-def _self_intro_name(user_text: str, extraction: TurnExtraction) -> str | None:
-    """Extract the owner's name from an explicit self-introduction.
-
-    Deterministic anchor for owner identity: only the USER saying
-    "me llamo X" (or variants) can name the owner. The previous heuristic
-    ("first person learned IS the owner") broke live on 2026-07-13: the
-    owner mentioned his children before introducing himself and a child
-    got anchored as the owner.
-
-    Args:
-        user_text: The user's literal words for this turn.
-        extraction: Raw extraction — person entities refine the captured
-            name to its full form ("felipe" → "Felipe Castro").
-
-    Returns:
-        The owner's name title-cased, or ``None`` if no introduction found.
-    """
-    match = _INTRO_PATTERN.search(user_text)
-    if match is None:
+def _manual_active_person_name(active_person: ActivePersonContext | None) -> str | None:
+    """Return a validated turn-local subject reference, never authorization."""
+    if (
+        active_person is None
+        or active_person.status is not ActivePersonStatus.IDENTIFIED
+        or active_person.person_id is None
+        or active_person.display_name is None
+    ):
         return None
-    first_word = match.group(1).split()[0].casefold()
-    if first_word in _NON_NAME_WORDS:
-        return None
-    lowered = user_text.casefold()
-    for ent in extraction.entities:
-        name = ent.name.strip()
-        # Grounded person entity containing the captured word wins — it
-        # carries the full name when the user gave one.
-        if ent.type == "person" and first_word in name.casefold() and name.casefold() in lowered:
-            return name.title()
-    return first_word.title()
+    if any(
+        evidence.source is IdentityEvidenceSource.MANUAL
+        and evidence.candidate_person_id == active_person.person_id
+        for evidence in active_person.evidence
+    ):
+        return active_person.display_name
+    return None
 
 
-async def _maybe_anchor_owner(user_text: str, extraction: TurnExtraction) -> None:
-    """Persist ``owner_name`` when the user introduces themselves.
-
-    Idempotent: only writes while the flag is unset. Errors are logged and
-    swallowed (background-task context). Onboarding completion is decided
-    elsewhere — by the checklist in ``server.onboarding``, not here.
-
-    Args:
-        user_text: The user's literal words for this turn.
-        extraction: Raw extraction for this turn (pre-normalization).
-    """
-    try:
-        if await get_flag("owner_name") is not None:
-            return
-        name = _self_intro_name(user_text, extraction)
-        if name is None:
-            return
-        await set_flag("owner_name", name)
-        logger.info("Owner anchored: %s", name)
-    except Exception as exc:
-        logger.warning("Owner anchor failed: %s", exc)
-
-
-async def _owner_name() -> str | None:
-    """Return the persisted owner name, or ``None`` if unset or unavailable."""
-    try:
-        return await get_flag("owner_name")
-    except Exception as exc:
-        logger.warning("Owner lookup failed — normalizing without owner: %s", exc)
-        return None
-
-
-async def consolidate_turn(user_text: str, assistant_text: str) -> None:
+async def consolidate_turn(  # noqa: PLR0912
+    user_text: str,
+    assistant_text: str,
+    *,
+    active_person: ActivePersonContext | None = None,
+) -> None:
     """Extract and persist entities, facts, and memories from one turn.
 
     Designed to run as a ``BackgroundTask`` after the HTTP response has been
@@ -279,19 +230,23 @@ async def consolidate_turn(user_text: str, assistant_text: str) -> None:
     Args:
         user_text: The user's message.
         assistant_text: The robot's response.
+        active_person: Explicit manual identity evidence for this turn only.
     """
+    active_person_name = _manual_active_person_name(active_person)
+    if active_person_name is None:
+        logger.info("Skipping consolidation without identified manual evidence")
+        return
     try:
         extraction = await _extract(user_text, assistant_text)
     except (LLMError, httpx.HTTPError, anthropic.AnthropicError) as exc:
         logger.warning("Consolidation extraction failed: %s", exc)
         return
 
-    # Anchor BEFORE normalizing so this very turn's "usuario" facts already
-    # resolve to the freshly learned owner ("me llamo Felipe" → Felipe).
-    await _maybe_anchor_owner(user_text, extraction)
-
-    owner_name = await _owner_name()
-    extraction = normalize_extraction(extraction, owner_name=owner_name, user_text=user_text)
+    extraction = normalize_extraction(
+        extraction,
+        active_person_name=active_person_name,
+        user_text=user_text,
+    )
 
     if extraction.importance < _LOW_IMPORTANCE and not extraction.facts:
         logger.debug("Turn below importance threshold — skipping consolidation")
@@ -330,12 +285,10 @@ async def consolidate_turn(user_text: str, assistant_text: str) -> None:
             if matches:
                 entity_id = int(matches[0]["id"])
             else:
-                # The owner's implicit entity is a person, not an abstract
-                # concept ("Felipe [concept]" observed in the DB 2026-07-14
-                # when the intro turn carried no explicit entity).
+                # A validated active person is a person, not an abstract concept.
                 implicit_type: EntityType = (
                     "person"
-                    if owner_name and fact.subject.casefold() == owner_name.casefold()
+                    if fact.subject.casefold() == active_person_name.casefold()
                     else "concept"
                 )
                 try:

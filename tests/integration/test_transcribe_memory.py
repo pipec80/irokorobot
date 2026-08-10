@@ -65,12 +65,9 @@ def test_memory_failure_degrades_to_stateless(
     silence_wav_bytes: bytes,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A persistent memory failure should not break the audio pipeline."""
-    monkeypatch.setattr(
-        text_turn,
-        "build_context",
-        AsyncMock(side_effect=BrainMemoryError("embeddings down")),
-    )
+    """An unresolved voice turn must not attempt persistent retrieval."""
+    build_context = AsyncMock(side_effect=BrainMemoryError("embeddings down"))
+    monkeypatch.setattr(text_turn, "build_context", build_context)
 
     response = client.post(
         "/transcribe",
@@ -79,6 +76,7 @@ def test_memory_failure_degrades_to_stateless(
 
     assert response.status_code == 200
     assert response.json()["llm_response"] == "hola humano"
+    build_context.assert_not_awaited()
 
 
 @pytest.mark.integration
@@ -113,12 +111,12 @@ def test_entity_names_reach_stt_as_hotwords(
 
 @pytest.mark.integration
 @pytest.mark.usefixtures("memory_on")
-def test_owner_name_reaches_llm(
+def test_unidentified_voice_turn_does_not_read_owner_metadata(
     client: TestClient,
     silence_wav_bytes: bytes,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The persistent owner name should reach shared generation."""
+    """Legacy owner metadata must not identify the current voice speaker."""
     llm_mock = AsyncMock(return_value=("hola Felipe", "joy"))
     monkeypatch.setattr(llm, "generate_response", llm_mock)
     monkeypatch.setattr(pipeline, "list_entity_names", AsyncMock(return_value=[]))
@@ -134,7 +132,28 @@ def test_owner_name_reaches_llm(
     )
 
     assert response.status_code == 200
-    assert llm_mock.await_args_list[-1].kwargs["owner_name"] == "Felipe"
+    assert llm_mock.await_args_list[-1].kwargs["owner_name"] is None
+
+
+@pytest.mark.integration
+@pytest.mark.usefixtures("memory_on")
+def test_unidentified_voice_turn_does_not_schedule_consolidation(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A voice turn with no internal manual evidence must never persist facts."""
+    consolidate = AsyncMock()
+    monkeypatch.setattr(transcribe_module, "consolidate_turn", consolidate)
+    monkeypatch.setattr(pipeline, "list_entity_names", AsyncMock(return_value=[]))
+
+    response = client.post(
+        "/transcribe",
+        files={"audio": ("a.wav", silence_wav_bytes, "audio/wav")},
+    )
+
+    assert response.status_code == 200
+    consolidate.assert_not_awaited()
 
 
 @pytest.mark.integration
