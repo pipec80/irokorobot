@@ -12,6 +12,8 @@ from server.cognition.identity import (
     HouseholdRole,
     IdentityEvidence,
     IdentityEvidenceSource,
+    PersonRecord,
+    resolve_active_person,
 )
 
 
@@ -154,3 +156,136 @@ def test_active_person_context_is_immutable_utc_and_json_round_trips() -> None:
             evidence=(),
             resolved_at=datetime(2026, 8, 10, 12, 30),
         )
+
+
+_RESOLVED_AT = datetime(2026, 8, 10, 16, 0, tzinfo=UTC)
+
+
+def _person(person_id: int, *, entity_type: str = "person") -> PersonRecord:
+    return PersonRecord(
+        person_id=person_id,
+        display_name="Ada",
+        entity_type=entity_type,
+    )
+
+
+def _lookup(records: dict[int, PersonRecord]):
+    def lookup(person_id: int) -> PersonRecord | None:
+        return records.get(person_id)
+
+    return lookup
+
+
+def _resolve(
+    evidence: tuple[IdentityEvidence, ...], records: dict[int, PersonRecord]
+) -> ActivePersonContext:
+    return resolve_active_person(
+        evidence=evidence,
+        lookup_person=_lookup(records),
+        clock=lambda: _RESOLVED_AT,
+    )
+
+
+def test_resolver_identifies_one_verified_manual_person() -> None:
+    """Reject a resolver that weakens an explicit verified manual selection."""
+    manual = _evidence()
+
+    context = _resolve((manual,), {42: _person(42)})
+
+    assert context.person_id == 42
+    assert context.display_name == "Ada"
+    assert context.status is ActivePersonStatus.IDENTIFIED
+    assert context.confidence == manual.confidence
+    assert context.role is HouseholdRole.UNKNOWN
+
+
+def test_resolver_marks_one_verified_session_candidate_as_probable() -> None:
+    """Reject a resolver that treats a selected session as physical confirmation."""
+    session = IdentityEvidence(
+        evidence_id=uuid4(),
+        source=IdentityEvidenceSource.SESSION,
+        candidate_person_id=42,
+        confidence=_confidence(),
+        observed_at=_RESOLVED_AT,
+        reference="session-selection",
+    )
+
+    context = _resolve((session,), {42: _person(42)})
+
+    assert context.person_id == 42
+    assert context.status is ActivePersonStatus.PROBABLE
+    assert context.role is HouseholdRole.UNKNOWN
+
+
+@pytest.mark.parametrize(
+    "evidence, records",
+    [
+        ((), {}),
+        (
+            (
+                IdentityEvidence(
+                    evidence_id=uuid4(),
+                    source=IdentityEvidenceSource.MANUAL,
+                    candidate_person_id=42,
+                    confidence=_confidence(),
+                    observed_at=datetime(2026, 8, 10, 15, 0, tzinfo=UTC),
+                    expires_at=datetime(2026, 8, 10, 15, 30, tzinfo=UTC),
+                    reference="operator-selection:42",
+                ),
+            ),
+            {42: _person(42)},
+        ),
+        ((_evidence(),), {}),
+        ((_evidence(),), {42: _person(42, entity_type="pet")}),
+    ],
+)
+def test_resolver_returns_unknown_without_usable_verified_person(
+    evidence: tuple[IdentityEvidence, ...],
+    records: dict[int, PersonRecord],
+) -> None:
+    """Reject a resolver that identifies absent, expired, missing, or non-person evidence."""
+    context = _resolve(evidence, records)
+
+    assert context.person_id is None
+    assert context.display_name is None
+    assert context.status is ActivePersonStatus.UNKNOWN
+    assert context.role is HouseholdRole.UNKNOWN
+
+
+def test_resolver_marks_distinct_verified_candidates_as_ambiguous() -> None:
+    """Reject a resolver that silently chooses between different verified people."""
+    manual = _evidence()
+    session = IdentityEvidence(
+        evidence_id=uuid4(),
+        source=IdentityEvidenceSource.SESSION,
+        candidate_person_id=7,
+        confidence=_confidence(),
+        observed_at=_RESOLVED_AT,
+        reference="session-selection",
+    )
+
+    context = _resolve((manual, session), {42: _person(42), 7: _person(7)})
+
+    assert context.person_id is None
+    assert context.display_name is None
+    assert context.status is ActivePersonStatus.AMBIGUOUS
+    assert context.role is HouseholdRole.UNKNOWN
+
+
+def test_resolver_preserves_all_input_evidence_exactly() -> None:
+    """Reject a resolver that drops expired evidence needed to explain its decision."""
+    manual = _evidence()
+    expired = IdentityEvidence(
+        evidence_id=uuid4(),
+        source=IdentityEvidenceSource.SESSION,
+        candidate_person_id=7,
+        confidence=_confidence(),
+        observed_at=datetime(2026, 8, 10, 15, 0, tzinfo=UTC),
+        expires_at=datetime(2026, 8, 10, 15, 30, tzinfo=UTC),
+        reference="session-selection",
+    )
+    evidence = (manual, expired)
+
+    context = _resolve(evidence, {42: _person(42), 7: _person(7)})
+
+    assert context.evidence == evidence
