@@ -177,10 +177,10 @@ async def test_manual_history_scope_uses_opaque_session_and_person_id(
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_perception_and_scheduler_reach_expected_boundaries(
+async def test_manual_identified_turn_schedules_legacy_callback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Perception should reach the LLM and successful turns should be recorded."""
+    """Only manual identity may reach the legacy two-argument scheduler."""
     generate = AsyncMock(return_value=("Veo una taza", "neutral"))
     scheduler = Mock()
     monkeypatch.setattr(settings, "memory_enabled", True)
@@ -206,7 +206,7 @@ async def test_perception_and_scheduler_reach_expected_boundaries(
         "¿Qué ves?",
         "Veo una taza",
     ]
-    scheduler.assert_called_once_with("¿Qué ves?", "Veo una taza", person)
+    scheduler.assert_called_once_with("¿Qué ves?", "Veo una taza")
 
 
 @pytest.mark.unit

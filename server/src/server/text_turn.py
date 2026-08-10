@@ -3,10 +3,8 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-import inspect
 import logging
 import time
-from typing import cast
 from uuid import uuid4
 
 from server import llm
@@ -26,9 +24,7 @@ from server.settings import settings
 
 logger = logging.getLogger(__name__)
 
-type LegacyConsolidationScheduler = Callable[[str, str], None]
-type ContextualConsolidationScheduler = Callable[[str, str, ActivePersonContext], None]
-type ConsolidationScheduler = LegacyConsolidationScheduler | ContextualConsolidationScheduler
+ConsolidationScheduler = Callable[[str, str], None]
 
 
 @dataclass(frozen=True)
@@ -103,21 +99,6 @@ def _clear_evidence_scopes(active_person: ActivePersonContext) -> None:
             working.clear(
                 f"session:{evidence.evidence_id.hex}:person:{evidence.candidate_person_id}"
             )
-
-
-def _schedule_consolidation(
-    scheduler: ConsolidationScheduler,
-    message: str,
-    response: str,
-    active_person: ActivePersonContext,
-) -> None:
-    """Call a contextual scheduler while retaining the legacy adapter seam."""
-    try:
-        inspect.signature(scheduler).bind(message, response, active_person)
-    except (TypeError, ValueError):
-        cast("LegacyConsolidationScheduler", scheduler)(message, response)
-    else:
-        cast("ContextualConsolidationScheduler", scheduler)(message, response, active_person)
 
 
 async def _memory_prompt_state(
@@ -256,7 +237,8 @@ def record_text_turn(
         working.clear(scope)
         return
     if schedule_consolidation is not None:
-        _schedule_consolidation(schedule_consolidation, message, response, resolved_person)
+        # Identity gates this legacy callback; it is not an authorization decision.
+        schedule_consolidation(message, response)
 
 
 async def process_text_turn(
