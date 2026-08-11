@@ -77,6 +77,8 @@ server/src/server/memory/normalize.py
 server/src/server/routers/transcribe.py
 server/src/server/routers/vision.py
 server/src/server/settings.py
+server/src/server/vision/perception.py                 (final remediation,
+                                                         user-authorized)
 ```
 
 Permitted tests and canonical documentation:
@@ -282,3 +284,35 @@ process clears the registry. This plan provides no authentication, biometric
 identification, role grant, consent decision, or public identity endpoint.
 Face, voice, and context remain future vocabulary only. P0.3 remains **Draft**;
 its promotion requires a current-tree review and an updated executable scope.
+
+## Final remediation record — 2026-08-10
+
+Final review approved the remediation in `79258cc`
+(`fix(cognition): close active person safety gaps`). It addressed five findings:
+
+1. unresolved audio no longer retrieves persisted entity-name hotwords before
+   identity is resolved;
+2. unresolved visual dialogue uses scene-only perception rather than injecting
+   face-recognition names;
+3. verified manual `ActivePersonContext` reaches standard and streaming
+   consolidation scheduling without becoming authorization;
+4. trusted registry selection emits `manual`, resolves as `identified`, and
+   exposes the canonical `IdentitySessionRegistry`; and
+5. Python-mode identity timestamps are strict, while JSON round trips remain
+   supported; the unused prepared-turn `owner_name` field was also removed.
+
+The user authorized the narrow production-scope addition
+`server/src/server/vision/perception.py` for the scene-only visual boundary.
+No public endpoint or field, role grant, authentication, biometric identity
+integration, dependency, cloud path, database migration, audio, OpenAPI, or
+NDJSON contract changed.
+
+The final evidence is: combined Plan 0002 suite, 174 passed in 3.25s; `just
+lint` green; `just typecheck` green (Mypy: 65 source files, no issues; Pyright:
+0 errors, 0 warnings); and `just test`, 497 passed in 41.67s. `git diff --check`
+also passed. The reviewer approved this closure.
+
+Non-blocking follow-up: retire the compatibility alias for the earlier registry
+class name only through a separately scoped migration after all consumers have
+moved to `IdentitySessionRegistry`. It does not reopen P0.2. P0.3 remains
+**Draft**.

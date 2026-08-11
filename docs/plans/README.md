@@ -43,7 +43,9 @@ canonical architecture document.
 Plans 0001 and 0002 are complete. Plan 0002's approved
 [design](0002-active-person-context-design.md) records the identity and privacy
 decisions, and its [execution runbook](0002-active-person-context-execution.md)
-records the observed TDD and final-gate evidence.
+records the observed TDD, final-gate, and final-remediation evidence. The last
+remediation commit is `79258cc`; its combined P0.2 suite passed 174 tests and
+the full repository suite passed 497 tests.
 
 There is currently no executable plan. P0.3 and later plans remain Draft.
 Before any promotion, re-read the completed P0.2 implementation and revise the

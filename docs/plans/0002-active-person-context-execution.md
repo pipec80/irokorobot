@@ -318,3 +318,52 @@ Known limitation: the manual-session registry is intentionally process-local,
 expiring, and cleared by restart. No authentication, public identity endpoint,
 biometric identity, or authorization decision exists in P0.2. P0.3 remains
 **Draft** and is not promoted by this completion record.
+
+## Final remediation and reviewer approval — 2026-08-10
+
+Reviewer approval followed the final remediation commit `79258cc`
+(`fix(cognition): close active person safety gaps`). The remediation closed the
+following five review findings without widening a public contract:
+
+1. unresolved `/transcribe` and `/transcribe/stream` no longer call the
+   persisted entity-name hotword path before identity resolution;
+2. unresolved `/vision/respond` uses non-identity scene perception, so face
+   recognition does not inject persisted names into dialogue;
+3. verified manual active-person context is preserved through standard and
+   streaming consolidation scheduling, while its role remains `unknown` and it
+   does not grant authorization;
+4. trusted selection uses `manual` evidence, resolves `identified`, and exposes
+   the canonical `IdentitySessionRegistry` (the prior class name remains a
+   compatibility alias); and
+5. Python-mode identity timestamps reject coercible strings and numbers, while
+   JSON round trips remain valid. The unused `PreparedTextTurn.owner_name`
+   plumbing was removed in the same remediation.
+
+The user authorized `server/src/server/vision/perception.py` as the only final
+production-scope addition, to add the scene-only visual boundary. No endpoint,
+request/response field, role grant, authentication, biometric identity
+integration, dependency, cloud path, database migration, production multi-agent
+component, OpenAPI, WAV, multipart, JSON, or NDJSON contract was introduced.
+
+Observed final remediation evidence:
+
+```powershell
+uv run pytest -n0 tests/unit/test_active_person_identity.py tests/unit/test_identity_sessions.py tests/unit/test_text_turn.py tests/unit/test_llm_generate.py tests/unit/test_eval_chat.py tests/integration/test_chat_endpoint.py tests/integration/test_transcribe_memory.py tests/integration/test_transcribe_pipeline.py tests/integration/test_transcribe_stream.py tests/integration/test_vision_dialog.py tests/integration/test_vision_memoria.py tests/integration/test_memory_integration.py tests/integration/test_onboarding_checklist.py tests/integration/test_memory_relational.py -q
+# 174 passed in 3.25s
+
+just lint
+# green
+just typecheck
+# mypy: 65 source files, no issues; pyright: 0 errors, 0 warnings
+just test
+# 497 passed in 41.67s
+git diff --check
+# exit 0
+```
+
+Non-blocking suggestion: retire the earlier registry class-name compatibility
+alias only in a separately scoped migration after consumers use
+`IdentitySessionRegistry`. The process-local, manual-only limitation remains;
+there is still no authentication, public identity endpoint, biometric identity,
+or authorization decision. Plan 0002 remains **Complete** and P0.3 remains
+**Draft**.
