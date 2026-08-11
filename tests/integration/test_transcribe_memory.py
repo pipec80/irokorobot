@@ -86,7 +86,7 @@ def test_fallback_turn_is_not_recorded(
     monkeypatch.setattr(transcribe_module, "consolidate_turn", consolidate)
     monkeypatch.setattr(pipeline, "list_entity_names", AsyncMock(return_value=[]))
     monkeypatch.setattr(
-        text_turn, "_memory_prompt_state", AsyncMock(return_value=(None, False, None, None))
+        text_turn, "_memory_prompt_state", AsyncMock(return_value=(None, False, None))
     )
 
     response = client.post(
@@ -121,23 +121,20 @@ def test_memory_failure_degrades_to_stateless(
 
 @pytest.mark.integration
 @pytest.mark.usefixtures("memory_on")
-def test_entity_names_reach_stt_as_hotwords(
+def test_unresolved_voice_turn_does_not_load_entity_hotwords(
     client: TestClient,
     silence_wav_bytes: bytes,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Known persistent entity names should continue to bias STT."""
+    """An unresolved speaker must not read persistent names before STT."""
     stt_mock = AsyncMock(return_value="hola Dominga")
+    list_names = AsyncMock(return_value=["Dominga", "Luna"])
     monkeypatch.setattr(stt, "transcribe", stt_mock)
-    monkeypatch.setattr(
-        pipeline,
-        "list_entity_names",
-        AsyncMock(return_value=["Dominga", "Luna"]),
-    )
+    monkeypatch.setattr(pipeline, "list_entity_names", list_names)
     monkeypatch.setattr(
         text_turn,
         "_memory_prompt_state",
-        AsyncMock(return_value=(MemoryContext(), False, None, None)),
+        AsyncMock(return_value=(MemoryContext(), False, None)),
     )
 
     response = client.post(
@@ -146,7 +143,8 @@ def test_entity_names_reach_stt_as_hotwords(
     )
 
     assert response.status_code == 200
-    assert stt_mock.await_args_list[-1].kwargs["extra_hotwords"] == ["Dominga", "Luna"]
+    list_names.assert_not_awaited()
+    assert stt_mock.await_args_list[-1].kwargs["extra_hotwords"] == []
 
 
 @pytest.mark.integration

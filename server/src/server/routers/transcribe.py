@@ -12,11 +12,11 @@ from fastapi.responses import StreamingResponse
 
 from server import vision
 from server.audio_contract import validate_wav_contract
+from server.cognition.identity import ActivePersonContext
 from server.exceptions import AudioContractError
 from server.memory.consolidation import consolidate_turn
 from server.pipeline import (
     _elapsed_ms,
-    _entity_hotwords,
     _log_pipeline_timing,
     _run_stt,
     _run_tts,
@@ -41,8 +41,17 @@ def _consolidation_scheduler(
 ) -> ConsolidationScheduler:
     """Adapt FastAPI background tasks to the text service callback."""
 
-    def schedule(message: str, response: str) -> None:
-        background_tasks.add_task(consolidate_turn, message, response)
+    def schedule(
+        message: str,
+        response: str,
+        active_person: ActivePersonContext,
+    ) -> None:
+        background_tasks.add_task(
+            consolidate_turn,
+            message,
+            response,
+            active_person=active_person,
+        )
 
     return schedule
 
@@ -84,11 +93,7 @@ async def transcribe(
     request_start = time.perf_counter()
     audio_bytes = await _read_audio_upload(audio)
 
-    # STT runs before the memory context is built, so known names are
-    # fetched separately here to bias Whisper.
-    hotwords = await _entity_hotwords()
-
-    text_heard, stt_ms = await _run_stt(audio_bytes, hotwords)
+    text_heard, stt_ms = await _run_stt(audio_bytes, [])
 
     if not text_heard.strip():
         logger.warning("STT returned empty transcript — audio was silence or too short")
@@ -160,8 +165,7 @@ async def transcribe_stream(
     request_start = time.perf_counter()
     audio_bytes = await _read_audio_upload(audio)
 
-    hotwords = await _entity_hotwords()
-    text_heard, stt_ms = await _run_stt(audio_bytes, hotwords)
+    text_heard, stt_ms = await _run_stt(audio_bytes, [])
 
     if not text_heard.strip():
         logger.warning("STT returned empty transcript — audio was silence or too short")

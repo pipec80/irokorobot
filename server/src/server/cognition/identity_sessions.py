@@ -13,8 +13,10 @@ type Clock = _Callable[[], _datetime]
 _PERSON_ENTITY_TYPE = "person"
 _SELECTION_REFERENCE = "session-selection"
 
+__all__ = ["IdentitySessionRegistry", "SessionIdentityRegistry"]
 
-class SessionIdentityRegistry:
+
+class IdentitySessionRegistry:
     """Retain safe, expiring evidence from explicit local person selections."""
 
     def __init__(self, *, lookup_person: PersonLookup, clock: Clock, ttl: _timedelta) -> None:
@@ -59,7 +61,7 @@ class SessionIdentityRegistry:
         observed_at = self._clock()
         evidence = IdentityEvidence(
             evidence_id=_uuid4(),
-            source=IdentityEvidenceSource.SESSION,
+            source=IdentityEvidenceSource.MANUAL,
             candidate_person_id=person_id,
             confidence=Confidence(
                 score=1.0,
@@ -99,3 +101,7 @@ class SessionIdentityRegistry:
             token: Opaque session token returned by :meth:`select_person`.
         """
         self._evidence_by_token.pop(token, None)
+
+
+# Compatibility for the implementation name used before Plan 0002 review.
+SessionIdentityRegistry = IdentitySessionRegistry

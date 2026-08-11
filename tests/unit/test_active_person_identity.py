@@ -127,9 +127,49 @@ def test_identity_evidence_rejects_naive_datetimes_and_extra_fields() -> None:
         IdentityEvidence.model_validate({**_evidence().model_dump(), "raw_voice": "x"})
 
 
+@pytest.mark.parametrize("timestamp_field", ["observed_at", "expires_at"])
+@pytest.mark.parametrize(
+    "invalid_timestamp",
+    ["2026-08-10T16:30:00Z", 1_786_378_200, 1_786_378_200.0],
+)
+def test_identity_evidence_rejects_coerced_python_timestamps(
+    timestamp_field: str,
+    invalid_timestamp: object,
+) -> None:
+    """Python construction must not coerce strings or epochs into evidence time."""
+    payload = _evidence(expires_at=datetime(2026, 8, 10, 18, 30, tzinfo=UTC)).model_dump()
+    payload[timestamp_field] = invalid_timestamp
+
+    with pytest.raises(ValidationError):
+        IdentityEvidence.model_validate(payload)
+
+
+@pytest.mark.parametrize(
+    "invalid_timestamp",
+    ["2026-08-10T16:30:00Z", 1_786_378_200, 1_786_378_200.0],
+)
+def test_active_person_context_rejects_coerced_python_timestamp(
+    invalid_timestamp: object,
+) -> None:
+    """Python construction must require a real datetime for resolution time."""
+    payload = ActivePersonContext(
+        person_id=None,
+        display_name=None,
+        status=ActivePersonStatus.UNKNOWN,
+        confidence=_confidence(),
+        role=HouseholdRole.UNKNOWN,
+        evidence=(),
+        resolved_at=datetime(2026, 8, 10, 12, 30, tzinfo=UTC),
+    ).model_dump()
+    payload["resolved_at"] = invalid_timestamp
+
+    with pytest.raises(ValidationError):
+        ActivePersonContext.model_validate(payload)
+
+
 def test_active_person_context_is_immutable_utc_and_json_round_trips() -> None:
     """Reject a context that loses its typed identity evidence across JSON."""
-    evidence = _evidence()
+    evidence = _evidence(expires_at=datetime(2026, 8, 10, 18, 30, tzinfo=UTC))
     context = ActivePersonContext(
         person_id=42,
         display_name="Ada",
@@ -144,6 +184,7 @@ def test_active_person_context_is_immutable_utc_and_json_round_trips() -> None:
 
     assert restored == context
     assert isinstance(restored.evidence[0].evidence_id, UUID)
+    assert restored.evidence[0].expires_at == evidence.expires_at
     with pytest.raises(ValidationError):
         context.person_id = 7
     with pytest.raises(ValidationError, match="timezone-aware"):

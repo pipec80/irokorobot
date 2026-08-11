@@ -136,8 +136,7 @@ def test_transcribe_uses_distinct_internal_scopes_per_request(
     silence_wav_bytes: bytes,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Unresolved voice requests use isolated internal scopes and consolidation."""
-    consolidate = AsyncMock()
+    """Unresolved voice requests use isolated internal scopes."""
     tts_mock = AsyncMock(return_value=("AAAA", 42))
 
     async def process_turn(
@@ -146,12 +145,11 @@ def test_transcribe_uses_distinct_internal_scopes_per_request(
         *,
         schedule_consolidation: ConsolidationScheduler,
     ) -> TextTurnResult:
-        schedule_consolidation(message, "shared reply")
+        _ = schedule_consolidation
         return TextTurnResult("shared reply", "joy", 7, False)
 
     process = AsyncMock(side_effect=process_turn)
     monkeypatch.setattr(transcribe_module, "process_text_turn", process)
-    monkeypatch.setattr(transcribe_module, "consolidate_turn", consolidate)
     monkeypatch.setattr(tts, "synthesize", tts_mock)
 
     responses = [
@@ -169,5 +167,4 @@ def test_transcribe_uses_distinct_internal_scopes_per_request(
     assert scopes[0] != scopes[1]
     assert all(scope not in response.text for scope in scopes for response in responses)
     assert tts_mock.await_count == 2
-    assert consolidate.await_count == 2
     assert all(response.json()["llm_response"] == "shared reply" for response in responses)

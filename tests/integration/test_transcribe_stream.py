@@ -7,6 +7,7 @@ import time
 from unittest.mock import AsyncMock, Mock
 from uuid import UUID
 
+from fastapi import BackgroundTasks
 from fastapi.testclient import TestClient
 import httpx
 import pytest
@@ -24,7 +25,7 @@ from server.schemas import ConversationTurn
 from server.settings import settings
 from server.text_turn import PreparedTextTurn
 
-from server import llm, llm_streaming, streaming, stt, tts
+from server import llm, llm_streaming, pipeline, streaming, stt, tts
 
 
 def _manual_active_person() -> ActivePersonContext:
@@ -117,7 +118,6 @@ def test_stream_prepares_shared_voice_turn(
         None,
         None,
         None,
-        None,
     )
     prepare = AsyncMock(return_value=prepared)
     record = Mock()
@@ -140,6 +140,28 @@ def test_stream_prepares_shared_voice_turn(
         "joy",
     )
     assert callable(record.call_args.kwargs["schedule_consolidation"])
+
+
+@pytest.mark.integration
+def test_unresolved_stream_does_not_load_entity_hotwords(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unresolved stream must not query persistent names before STT."""
+    list_names = AsyncMock(return_value=["Sofía"])
+    stt_mock = AsyncMock(return_value="hola robot")
+    monkeypatch.setattr(pipeline, "list_entity_names", list_names)
+    monkeypatch.setattr(stt, "transcribe", stt_mock)
+    monkeypatch.setattr(settings, "memory_enabled", True)
+    monkeypatch.setattr(settings, "llm_provider", "anthropic")
+    monkeypatch.setattr(llm, "generate_response", AsyncMock(return_value=("Hola.", "joy")))
+
+    response = _post_stream(client, silence_wav_bytes)
+
+    assert response.status_code == 200
+    list_names.assert_not_awaited()
+    assert stt_mock.await_args_list[-1].kwargs["extra_hotwords"] == []
 
 
 @pytest.mark.integration
@@ -253,7 +275,6 @@ async def test_streaming_propagates_prepared_identity_history_and_recording_scop
         None,
         None,
         None,
-        None,
         active_person,
         "session:11111111111111111111111111111111:person:7",
     )
@@ -294,7 +315,7 @@ async def test_streaming_propagates_prepared_identity_history_and_recording_scop
             prepared=prepared,
             stt_ms=0,
             request_start=time.perf_counter(),
-            schedule_consolidation=lambda _message, _response: None,
+            schedule_consolidation=lambda _message, _response, _active_person: None,
         )
     ]
 
@@ -302,3 +323,63 @@ async def test_streaming_propagates_prepared_identity_history_and_recording_scop
     assert record_call is not None
     assert record_call.kwargs["active_person"] is active_person
     assert record_call.kwargs["history_scope"] == prepared.history_scope
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_streaming_schedules_manual_identity_for_consolidation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Streaming must preserve manual identity through its scheduler callback."""
+    active_person = _manual_active_person()
+    prepared = PreparedTextTurn(
+        "hola robot",
+        "public-id",
+        None,
+        [],
+        False,
+        None,
+        None,
+        None,
+        active_person,
+        "session:11111111111111111111111111111111:person:7",
+    )
+    scheduler = Mock()
+    monkeypatch.setattr(settings, "memory_enabled", True)
+    monkeypatch.setattr(settings, "llm_provider", "anthropic")
+    monkeypatch.setattr(llm, "generate_response", AsyncMock(return_value=("Hola.", "joy")))
+
+    _ = [
+        line
+        async for line in streaming.stream_pipeline(
+            prepared=prepared,
+            stt_ms=0,
+            request_start=time.perf_counter(),
+            schedule_consolidation=scheduler,
+        )
+    ]
+
+    scheduler.assert_called_once_with("hola robot", "Hola.", active_person)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_background_scheduler_forwards_manual_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The FastAPI background bridge must pass identity as data, not permission."""
+    active_person = _manual_active_person()
+    consolidate = AsyncMock()
+    background_tasks = BackgroundTasks()
+    monkeypatch.setattr(transcribe_module, "consolidate_turn", consolidate)
+
+    scheduler = transcribe_module._consolidation_scheduler(background_tasks)
+    scheduler("hola robot", "Hola.", active_person)
+    await background_tasks()
+
+    consolidate.assert_awaited_once_with(
+        "hola robot",
+        "Hola.",
+        active_person=active_person,
+    )
+    assert active_person.role is HouseholdRole.UNKNOWN

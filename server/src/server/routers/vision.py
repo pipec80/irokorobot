@@ -19,6 +19,7 @@ from server.pipeline import _run_tts
 from server.schemas import TranscribeResponse, VisionDescribeResponse, VisionEnrollResponse
 from server.settings import settings
 from server.text_turn import new_interaction_scope, process_text_turn
+from server.vision.perception import perceive_scene
 
 logger = logging.getLogger(__name__)
 
@@ -162,14 +163,13 @@ async def vision_respond(
 
     image_bytes = await _read_contract_image(image)
 
-    # V1 routing: an explicit enroll phrase learns the face; any other
-    # visual turn describes the scene AND recognizes who is in it.
+    # Explicit enrollment remains separate from unresolved scene dialogue.
     enroll_name = vision.wants_enroll(text)
     try:
         if enroll_name is not None:
             perception = await vision.enroll_from_frame(enroll_name, image_bytes)
         else:
-            perception = await vision.perceive(image_bytes)
+            perception = await perceive_scene(image_bytes)
     except VisionError as exc:
         # A blind turn still speaks: the character excuses itself (R13 spirit).
         logger.error("Vision perception failed — responding blind: %s", exc)

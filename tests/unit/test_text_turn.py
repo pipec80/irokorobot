@@ -131,7 +131,7 @@ async def test_conversations_isolate_history_and_emotion(
     generate = AsyncMock(side_effect=[("A1", "joy"), ("B1", "sadness"), ("A2", "neutral")])
     monkeypatch.setattr(settings, "memory_enabled", True)
     monkeypatch.setattr(
-        text_turn, "_memory_prompt_state", AsyncMock(return_value=(context, False, None, "Owner"))
+        text_turn, "_memory_prompt_state", AsyncMock(return_value=(context, False, None))
     )
     monkeypatch.setattr(text_turn.llm, "generate_response", generate)
 
@@ -165,7 +165,7 @@ async def test_manual_history_scope_uses_opaque_session_and_person_id(
     monkeypatch.setattr(
         text_turn,
         "_memory_prompt_state",
-        AsyncMock(return_value=(MemoryContext(), False, None, None)),
+        AsyncMock(return_value=(MemoryContext(), False, None)),
     )
     monkeypatch.setattr(text_turn.llm, "generate_response", generate)
     first = _identified_person(display_name="Sofía")
@@ -192,14 +192,14 @@ async def test_manual_history_scope_uses_opaque_session_and_person_id(
 async def test_manual_identified_turn_schedules_legacy_callback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Only manual identity may reach the legacy two-argument scheduler."""
+    """Only manual identity may reach consolidation and must remain attached."""
     generate = AsyncMock(return_value=("Veo una taza", "neutral"))
     scheduler = Mock()
     monkeypatch.setattr(settings, "memory_enabled", True)
     monkeypatch.setattr(
         text_turn,
         "_memory_prompt_state",
-        AsyncMock(return_value=(MemoryContext(), False, None, None)),
+        AsyncMock(return_value=(MemoryContext(), False, None)),
     )
     monkeypatch.setattr(text_turn.llm, "generate_response", generate)
 
@@ -218,7 +218,7 @@ async def test_manual_identified_turn_schedules_legacy_callback(
         "¿Qué ves?",
         "Veo una taza",
     ]
-    scheduler.assert_called_once_with("¿Qué ves?", "Veo una taza")
+    scheduler.assert_called_once_with("¿Qué ves?", "Veo una taza", person)
 
 
 @pytest.mark.unit
@@ -330,7 +330,7 @@ async def test_llm_fallback_does_not_contaminate_memory(
     scheduler = Mock()
     monkeypatch.setattr(settings, "memory_enabled", True)
     monkeypatch.setattr(
-        text_turn, "_memory_prompt_state", AsyncMock(return_value=(None, False, None, None))
+        text_turn, "_memory_prompt_state", AsyncMock(return_value=(None, False, None))
     )
     monkeypatch.setattr(text_turn.llm, "generate_response", AsyncMock(side_effect=LLMError("down")))
 

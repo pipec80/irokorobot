@@ -3,7 +3,13 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from server.cognition.identity import PersonRecord
+from server.cognition import identity_sessions
+from server.cognition.identity import (
+    ActivePersonStatus,
+    IdentityEvidenceSource,
+    PersonRecord,
+    resolve_active_person,
+)
 from server.cognition.identity_sessions import SessionIdentityRegistry
 
 _NOW = datetime(2026, 8, 10, 16, 0, tzinfo=UTC)
@@ -50,7 +56,7 @@ def test_registry_uses_an_opaque_token_and_retains_safe_evidence_only() -> None:
     evidence = registry.evidence_for(token)
     assert evidence is not None
     assert token != str(evidence.candidate_person_id)
-    assert evidence.source.value == "session"
+    assert evidence.source is IdentityEvidenceSource.MANUAL
     assert evidence.candidate_person_id == 42
     assert set(evidence.model_dump()) == {
         "evidence_id",
@@ -85,3 +91,30 @@ def test_registry_expires_and_clears_session_evidence() -> None:
     assert replacement is not None
     registry.clear(replacement)
     assert registry.evidence_for(replacement) is None
+
+
+def test_trusted_selection_resolves_as_identified_manual_evidence() -> None:
+    """A trusted explicit registry selection must not degrade to probable."""
+    registry = SessionIdentityRegistry(
+        lookup_person=_lookup({42: _person(42)}),
+        clock=lambda: _NOW,
+        ttl=timedelta(minutes=5),
+    )
+    token = registry.select_person(42)
+
+    assert token is not None
+    evidence = registry.evidence_for(token)
+    assert evidence is not None
+    context = resolve_active_person(
+        evidence=(evidence,),
+        lookup_person=_lookup({42: _person(42)}),
+        clock=lambda: _NOW,
+    )
+
+    assert context.status is ActivePersonStatus.IDENTIFIED
+    assert context.person_id == 42
+
+
+def test_legacy_registry_name_remains_a_compatibility_alias() -> None:
+    """Existing internal imports keep working after aligning the plan's class name."""
+    assert identity_sessions.IdentitySessionRegistry is SessionIdentityRegistry

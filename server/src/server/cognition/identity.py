@@ -19,6 +19,7 @@ from server.cognition.models import Confidence, ConfidenceBasis
 
 _StrictUUID = _Annotated[_UUID, _Field(strict=True)]
 _StrictInteger = _Annotated[int, _Field(strict=True)]
+_StrictDatetime = _Annotated[_datetime, _Field(strict=True)]
 
 __all__ = [
     "ActivePersonContext",
@@ -92,9 +93,9 @@ class IdentityEvidence(_BaseModel):
     source: IdentityEvidenceSource
     candidate_person_id: _StrictInteger | None
     confidence: Confidence
-    observed_at: _datetime
+    observed_at: _StrictDatetime
     reference: str
-    expires_at: _datetime | None = None
+    expires_at: _StrictDatetime | None = None
 
     _validate_observed_at = _field_validator("observed_at")(_require_aware_utc)
     _validate_expires_at = _field_validator("expires_at")(_normalize_optional_aware_utc)
@@ -117,7 +118,7 @@ class ActivePersonContext(_BaseModel):
     confidence: Confidence
     role: HouseholdRole
     evidence: tuple[IdentityEvidence, ...]
-    resolved_at: _datetime
+    resolved_at: _StrictDatetime
 
     _validate_resolved_at = _field_validator("resolved_at")(_require_aware_utc)
 

@@ -24,7 +24,7 @@ from server.settings import settings
 
 logger = logging.getLogger(__name__)
 
-ConsolidationScheduler = Callable[[str, str], None]
+ConsolidationScheduler = Callable[[str, str, ActivePersonContext], None]
 
 
 @dataclass(frozen=True)
@@ -38,7 +38,6 @@ class PreparedTextTurn:
     onboarding: bool
     onboarding_slot: OnboardingSlot | None
     user_emotion: str | None
-    owner_name: str | None
     perception: str | None
     active_person: ActivePersonContext | None = None
     history_scope: str | None = None
@@ -112,14 +111,14 @@ def _clear_evidence_scopes(active_person: ActivePersonContext) -> None:
 
 async def _memory_prompt_state(
     message: str,
-) -> tuple[MemoryContext | None, bool, OnboardingSlot | None, str | None]:
+) -> tuple[MemoryContext | None, bool, OnboardingSlot | None]:
     """Resolve legacy-compatible persistent context without global onboarding."""
     try:
         context = await build_context(message)
-        return context, False, None, None
+        return context, False, None
     except BrainMemoryError as exc:
         logger.warning("Memory unavailable — degrading to stateless turn: %s", exc)
-        return None, False, None, None
+        return None, False, None
 
 
 async def prepare_text_turn(
@@ -152,47 +151,44 @@ async def prepare_text_turn(
         _clear_evidence_scopes(resolved_person)
     if not settings.memory_enabled:
         return PreparedTextTurn(
-            message,
-            conversation_id,
-            None,
-            None,
-            False,
-            None,
-            None,
-            None,
-            perception,
-            resolved_person,
-            history_scope,
+            message=message,
+            conversation_id=conversation_id,
+            context=None,
+            history=None,
+            onboarding=False,
+            onboarding_slot=None,
+            user_emotion=None,
+            perception=perception,
+            active_person=resolved_person,
+            history_scope=history_scope,
         )
     if manual_evidence is None:
         return PreparedTextTurn(
-            message,
-            conversation_id,
-            None,
-            None,
-            False,
-            None,
-            None,
-            None,
-            perception,
-            resolved_person,
-            history_scope,
+            message=message,
+            conversation_id=conversation_id,
+            context=None,
+            history=None,
+            onboarding=False,
+            onboarding_slot=None,
+            user_emotion=None,
+            perception=perception,
+            active_person=resolved_person,
+            history_scope=history_scope,
         )
     history = working.get_history(history_scope)
     user_emotion = working.get_recent_emotion(history_scope)
-    context, onboarding, slot, owner_name = await _memory_prompt_state(message)
+    context, onboarding, slot = await _memory_prompt_state(message)
     return PreparedTextTurn(
-        message,
-        conversation_id,
-        context,
-        history,
-        onboarding,
-        slot,
-        user_emotion,
-        owner_name,
-        perception,
-        resolved_person,
-        history_scope,
+        message=message,
+        conversation_id=conversation_id,
+        context=context,
+        history=history,
+        onboarding=onboarding,
+        onboarding_slot=slot,
+        user_emotion=user_emotion,
+        perception=perception,
+        active_person=resolved_person,
+        history_scope=history_scope,
     )
 
 
@@ -249,7 +245,7 @@ def record_text_turn(
         return
     if schedule_consolidation is not None:
         # Identity gates this legacy callback; it is not an authorization decision.
-        schedule_consolidation(message, response)
+        schedule_consolidation(message, response, resolved_person)
 
 
 async def process_text_turn(
