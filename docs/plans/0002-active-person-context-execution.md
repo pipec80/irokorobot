@@ -265,3 +265,56 @@ Stop and request a new documented decision instead of improvising if:
 - a file outside canonical scope is required.
 
 These conditions belong to P0.4, P0.5, P1, or a new ADR/plan, not Plan 0002.
+
+## Recorded completion — 2026-08-10
+
+Tasks 1–5 completed with the following observed test-first evidence. Initial
+sandbox runs that could not read the local `uv` cache were repeated with the
+normal local cache; the listed RED and GREEN results are the runs that reached
+pytest.
+
+| Task | RED observed | GREEN observed | Commit(s) |
+| --- | --- | --- | --- |
+| 1 | `ModuleNotFoundError` for `server.cognition.identity` (1 collection error); expiry follow-up: 2 failed, 8 passed | 10 passed | `dc9e398`, `985cf90` |
+| 2 | missing `PersonRecord` import (2 collection errors) | 21 passed | `cdb9c30` |
+| 3 | 17 failed, 42 passed; scheduler correction: 1 failed, 58 passed; stale-scope follow-up: 3 failed, 14 passed | 62 passed in the required suite | `9f36219`, `08b4a34`, `005f50e` |
+| 4 | 5 failed, 48 passed | 55 passed; final scoped follow-up: 68 passed | `abcc3a1`, `fe75e9d`, `b564e8d`, `9be02fa` |
+| 5 | 3 failed, 31 passed | 34 passed | `d8b3394` |
+| final gate | 3 Pyright errors; then stale public-export expectation | `just typecheck` green; `just test`: 482 passed | `b309643`, `cbf64d4` |
+
+The final combined focused command was run before documentation status changes:
+
+```powershell
+uv run pytest -n0 tests/unit/test_active_person_identity.py tests/unit/test_identity_sessions.py tests/unit/test_text_turn.py tests/unit/test_llm_generate.py tests/unit/test_eval_chat.py tests/integration/test_chat_endpoint.py tests/integration/test_transcribe_memory.py tests/integration/test_transcribe_pipeline.py tests/integration/test_transcribe_stream.py tests/integration/test_vision_dialog.py tests/integration/test_vision_memoria.py tests/integration/test_memory_integration.py tests/integration/test_onboarding_checklist.py tests/integration/test_memory_relational.py -q
+# 159 passed in 3.99s
+
+just lint
+# passed; 171 files left unchanged
+just typecheck
+# mypy: 65 source files, no issues; pyright: 0 errors, 0 warnings
+just test
+# 482 passed in 42.52s
+```
+
+`git diff --check 9ec3afd..cbf64d4` passed. The name review matched the
+canonical permitted production/test scope plus the explicit user-authorized
+additions: `tests/integration/test_transcribe_onboarding.py` (Task 3);
+`server/src/server/text_turn.py`, `scripts/eval_chat.py`, and
+`scripts/eval_consolidation.py` (Task 4); `tests/integration/test_transcribe_memory.py`
+(Task 4 follow-up); and the final-gate test-only corrections
+`tests/unit/test_owner_anchor.py` and `tests/unit/test_cognitive_models.py`.
+The last two align obsolete coverage with the completed P0.2 behavior and its
+intentional public reexports.
+
+Contract review found no new public identity-selection endpoint or field, role
+grant, authentication, biometric identification behavior, dependency, cloud
+service, database migration, production multi-agent component, audio-contract
+change, OpenAPI change, or NDJSON change. Tests retain `/chat` identity-field
+rejection and exact response checks; voice/stream/vision regressions retain the
+published JSON, multipart WAV, and NDJSON schemas while using opaque internal
+scopes.
+
+Known limitation: the manual-session registry is intentionally process-local,
+expiring, and cleared by restart. No authentication, public identity endpoint,
+biometric identity, or authorization decision exists in P0.2. P0.3 remains
+**Draft** and is not promoted by this completion record.
