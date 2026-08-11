@@ -61,7 +61,6 @@ class Settings(BaseSettings):
     semantic_top_k: int = 6
 
     default_user_id: str = "pipec"
-    voice_conversation_id: str = "voice-primary"
     memory_enabled: bool = True
     robot_character: str = "iroko"
     # Re-read character markdown profiles from disk on every request when

@@ -158,7 +158,7 @@ async def stream_pipeline(
     streamed to the client cannot be un-spoken.
 
     Args:
-        prepared: Shared prompt inputs for the voice conversation.
+        prepared: Shared prompt inputs and internal scope for one voice request.
         stt_ms: STT elapsed time, measured by the caller.
         request_start: ``time.perf_counter()`` reading from request start.
         schedule_consolidation: Channel-owned background scheduling callback.

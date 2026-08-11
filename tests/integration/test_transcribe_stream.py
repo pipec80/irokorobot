@@ -106,10 +106,11 @@ def test_stream_prepares_shared_voice_turn(
     silence_wav_bytes: bytes,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Streaming should prepare prompt inputs through the shared service."""
+    """Streaming keeps one fresh internal scope for preparation and recording."""
+    scope = "interaction:stream-request"
     prepared = PreparedTextTurn(
         "hola robot",
-        settings.voice_conversation_id,
+        scope,
         None,
         None,
         False,
@@ -120,6 +121,8 @@ def test_stream_prepares_shared_voice_turn(
     )
     prepare = AsyncMock(return_value=prepared)
     record = Mock()
+    new_scope = Mock(return_value=scope)
+    monkeypatch.setattr(transcribe_module, "new_interaction_scope", new_scope, raising=False)
     monkeypatch.setattr(transcribe_module, "prepare_text_turn", prepare)
     monkeypatch.setattr(streaming, "record_text_turn", record)
     monkeypatch.setattr(settings, "llm_provider", "anthropic")
@@ -128,10 +131,11 @@ def test_stream_prepares_shared_voice_turn(
     response = _post_stream(client, silence_wav_bytes)
 
     assert response.status_code == 200
-    prepare.assert_awaited_once_with("hola robot", settings.voice_conversation_id)
+    new_scope.assert_called_once_with()
+    prepare.assert_awaited_once_with("hola robot", scope)
     assert record.call_args.args == (
         "hola robot",
-        settings.voice_conversation_id,
+        scope,
         "Hola.",
         "joy",
     )
@@ -260,8 +264,10 @@ async def test_streaming_propagates_prepared_identity_history_and_recording_scop
     standard_deltas = [delta async for delta in streaming._text_deltas(prepared)]
 
     assert standard_deltas == ["EMOTION:joy\nHola."]
-    assert standard_generate.await_args.kwargs["history"] == history
-    assert standard_generate.await_args.kwargs["active_person"] is active_person
+    standard_call = standard_generate.await_args
+    assert standard_call is not None
+    assert standard_call.kwargs["history"] == history
+    assert standard_call.kwargs["active_person"] is active_person
 
     streamed_kwargs: dict[str, object] = {}
 
@@ -292,5 +298,7 @@ async def test_streaming_propagates_prepared_identity_history_and_recording_scop
         )
     ]
 
-    assert record.call_args.kwargs["active_person"] is active_person
-    assert record.call_args.kwargs["history_scope"] == prepared.history_scope
+    record_call = record.call_args
+    assert record_call is not None
+    assert record_call.kwargs["active_person"] is active_person
+    assert record_call.kwargs["history_scope"] == prepared.history_scope

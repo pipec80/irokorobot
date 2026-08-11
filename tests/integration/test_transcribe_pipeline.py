@@ -131,12 +131,12 @@ def test_transcribe_stt_value_error_returns_500(
 
 
 @pytest.mark.integration
-def test_transcribe_delegates_text_turn_to_shared_service(
+def test_transcribe_uses_distinct_internal_scopes_per_request(
     client: TestClient,
     silence_wav_bytes: bytes,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Voice text should use the configured conversation and consolidation."""
+    """Unresolved voice requests use isolated internal scopes and consolidation."""
     consolidate = AsyncMock()
     tts_mock = AsyncMock(return_value=("AAAA", 42))
 
@@ -154,13 +154,20 @@ def test_transcribe_delegates_text_turn_to_shared_service(
     monkeypatch.setattr(transcribe_module, "consolidate_turn", consolidate)
     monkeypatch.setattr(tts, "synthesize", tts_mock)
 
-    response = client.post(
-        "/transcribe",
-        files={"audio": ("a.wav", silence_wav_bytes, "audio/wav")},
-    )
+    responses = [
+        client.post(
+            "/transcribe",
+            files={"audio": ("a.wav", silence_wav_bytes, "audio/wav")},
+        )
+        for _ in range(2)
+    ]
 
-    assert response.status_code == 200
-    assert process.await_args_list[-1].args == ("hola robot", settings.voice_conversation_id)
-    tts_mock.assert_awaited_once_with("shared reply")
-    consolidate.assert_awaited_once_with("hola robot", "shared reply")
-    assert response.json()["llm_response"] == "shared reply"
+    scopes = [call.args[1] for call in process.await_args_list]
+    assert [response.status_code for response in responses] == [200, 200]
+    assert len(scopes) == 2
+    assert all(scope.startswith("interaction:") for scope in scopes)
+    assert scopes[0] != scopes[1]
+    assert all(scope not in response.text for scope in scopes for response in responses)
+    assert tts_mock.await_count == 2
+    assert consolidate.await_count == 2
+    assert all(response.json()["llm_response"] == "shared reply" for response in responses)

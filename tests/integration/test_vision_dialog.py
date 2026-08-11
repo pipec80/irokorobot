@@ -9,7 +9,7 @@ the character prompt → spoken in-character answer.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import cv2
 import numpy as np
@@ -95,21 +95,24 @@ def test_vision_respond_answers_in_character(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Round 2 should pass the VLM perception to the shared text service."""
+    """Round 2 should use a fresh internal scope for each visual dialogue."""
+    scopes = ("interaction:vision-one", "interaction:vision-two")
     process = AsyncMock(return_value=TextTurnResult("¡Veo una bola roja!", "joy", 7, False))
+    new_scope = Mock(side_effect=scopes)
     monkeypatch.setattr(vision_module, "process_text_turn", process)
+    monkeypatch.setattr(vision_module, "new_interaction_scope", new_scope, raising=False)
 
-    resp = _post_respond(client, _FAKE_JPEG, "¿qué ves?")
+    responses = [_post_respond(client, _FAKE_JPEG, "¿qué ves?") for _ in scopes]
 
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["llm_response"] == "¡Veo una bola roja!"
-    assert body["vision_requested"] is False
-    process.assert_awaited_once_with(
-        "¿qué ves?",
-        settings.voice_conversation_id,
-        perception="Una bola roja sobre la mesa.",
+    assert [response.status_code for response in responses] == [200, 200]
+    assert all(response.json()["llm_response"] == "¡Veo una bola roja!" for response in responses)
+    assert all(response.json()["vision_requested"] is False for response in responses)
+    assert [call.args[1] for call in process.await_args_list] == list(scopes)
+    assert all(
+        call.kwargs == {"perception": "Una bola roja sobre la mesa."}
+        for call in process.await_args_list
     )
+    assert all(scope not in response.text for scope in scopes for response in responses)
 
 
 @pytest.mark.integration

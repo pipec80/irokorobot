@@ -84,12 +84,21 @@ def _manual_evidence(active_person: ActivePersonContext) -> IdentityEvidence | N
     )
 
 
+def new_interaction_scope() -> str:
+    """Create an opaque working-memory scope for one unresolved request.
+
+    Returns:
+        A process-local scope not derived from user input or exposed by a response.
+    """
+    return f"interaction:{uuid4().hex}"
+
+
 def _history_scope(active_person: ActivePersonContext) -> str:
     """Return an internal history key without trusting a public conversation ID."""
     evidence = _manual_evidence(active_person)
     if evidence is not None:
         return f"session:{evidence.evidence_id.hex}:person:{active_person.person_id}"
-    return f"turn:{uuid4().hex}"
+    return new_interaction_scope()
 
 
 def _clear_evidence_scopes(active_person: ActivePersonContext) -> None:

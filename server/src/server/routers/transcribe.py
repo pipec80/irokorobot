@@ -26,6 +26,7 @@ from server.settings import settings
 from server.streaming import stream_pipeline
 from server.text_turn import (
     ConsolidationScheduler,
+    new_interaction_scope,
     prepare_text_turn,
     process_text_turn,
 )
@@ -119,7 +120,7 @@ async def transcribe(
 
     turn = await process_text_turn(
         text_heard,
-        settings.voice_conversation_id,
+        new_interaction_scope(),
         schedule_consolidation=_consolidation_scheduler(background_tasks),
     )
     audio_base64, duration_ms, tts_ms = await _run_tts(turn.response)
@@ -168,7 +169,7 @@ async def transcribe_stream(
 
     prepared = await prepare_text_turn(
         text_heard,
-        settings.voice_conversation_id,
+        new_interaction_scope(),
     )
 
     return StreamingResponse(

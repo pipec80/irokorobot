@@ -1,6 +1,5 @@
 """Integration tests for memory behavior through POST /transcribe."""
 
-from collections.abc import Generator
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 from uuid import UUID
@@ -17,7 +16,6 @@ from server.cognition.identity import (
 )
 from server.cognition.models import Confidence, ConfidenceBasis
 from server.exceptions import BrainMemoryError, LLMError
-from server.memory import working
 from server.routers import transcribe as transcribe_module
 from server.schemas import MemoryContext, TurnExtraction
 from server.settings import settings
@@ -69,12 +67,10 @@ def _mock_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
-def memory_on(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
-    """Enable memory and reset the voice conversation around one test."""
+def memory_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Enable memory while unresolved requests clean up their own turn scope."""
     monkeypatch.setattr(settings, "memory_enabled", True)
     monkeypatch.setattr(transcribe_module, "consolidate_turn", AsyncMock())
-    yield
-    working.clear(settings.voice_conversation_id)
 
 
 @pytest.mark.integration
@@ -100,7 +96,6 @@ def test_fallback_turn_is_not_recorded(
 
     assert response.status_code == 200
     consolidate.assert_not_awaited()
-    assert working.get_history(settings.voice_conversation_id) == []
 
 
 @pytest.mark.integration

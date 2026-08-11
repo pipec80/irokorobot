@@ -18,7 +18,7 @@ from server.exceptions import (
 from server.pipeline import _run_tts
 from server.schemas import TranscribeResponse, VisionDescribeResponse, VisionEnrollResponse
 from server.settings import settings
-from server.text_turn import process_text_turn
+from server.text_turn import new_interaction_scope, process_text_turn
 
 logger = logging.getLogger(__name__)
 
@@ -177,7 +177,7 @@ async def vision_respond(
 
     turn = await process_text_turn(
         text,
-        settings.voice_conversation_id,
+        new_interaction_scope(),
         perception=perception,
     )
     audio_base64, duration_ms, _tts_ms = await _run_tts(turn.response)
