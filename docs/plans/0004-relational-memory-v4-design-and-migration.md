@@ -4,8 +4,8 @@
 
 Approved design for a future **Draft** implementation plan. This is the
 decision and migration-design half of P0.4. It authorizes no SQL migration,
-production code, data rewrite, or readiness change while Plan 0002 is the only
-`Ready` plan.
+production code, data rewrite, or readiness change. Plan 0002 is Complete, no
+plan is currently `Ready`, and P0.4 remains Draft.
 
 ## Purpose
 
