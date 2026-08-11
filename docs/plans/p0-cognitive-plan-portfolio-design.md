@@ -42,13 +42,15 @@ that its canonical plan does not explicitly permit.
 | Canonical plan | Roadmap phase | Current status | Purpose |
 |---|---|---|---|
 | [`0002-active-person-context.md`](0002-active-person-context.md) | P0.2 | Complete | Conservatively resolved the active-person boundary and isolated working context across identity boundaries. |
+| [`0002a-local-first-provider-quarantine.md`](0002a-local-first-provider-quarantine.md) | P0 foundation | Complete | Enforced Ollama-only runtime paths before adding new controller behavior. |
 | [`0003-typed-controller-and-deterministic-tools.md`](0003-typed-controller-and-deterministic-tools.md) | P0.3 | Draft | Introduce a small typed controller seam and deterministic date, age, count, and relationship-tool contracts. |
 | [`0004-relational-memory-v4-design-and-migration.md`](0004-relational-memory-v4-design-and-migration.md) | P0.4 design | Draft | Record the ADR decision, reversible migration design, predicate registry, and compatibility strategy before schema changes. |
 | [`0005-relational-memory-v4-implementation.md`](0005-relational-memory-v4-implementation.md) | P0.4 implementation | Draft | Implement the approved relational-memory migration and compatibility path. |
 | [`0006-household-authorization.md`](0006-household-authorization.md) | P0.5 | Draft | Enforce deterministic household authorization before protected retrieval, tools, and generation context. |
 
 Plan 0002 is complete: its canonical document, supporting design, acceptance
-tests, remediation, and final gates were reviewed against the current tree. No
+tests, remediation, and final gates were reviewed against the current tree.
+Plan 0002a is complete with recorded local-only tests and quality gates. No
 plan is currently `Ready`. P0.3 and later plans remain `Draft` and are
 revalidated just in time before becoming executable.
 
@@ -63,6 +65,12 @@ enrollment, or biometric storage. It removes owner-by-default behavior at the
 cognitive boundary, represents `identified`, `probable`, `unknown`, and
 `ambiguous`, expires stale evidence, and isolates working history for unknown
 or conflicting people.
+
+### Plan 0002a — Local-first provider quarantine
+
+This foundation plan removes direct cloud-provider runtime paths and makes the
+existing Ollama adapter the sole LLM and consolidation route. It does not add a
+cloud escape hatch: a privacy-filtered escalation gateway remains P2 work.
 
 ### Plan 0003 — Typed controller and deterministic tools
 

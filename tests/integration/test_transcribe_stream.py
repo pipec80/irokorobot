@@ -63,6 +63,11 @@ def _mock_stt_and_tts(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(stt, "transcribe", AsyncMock(return_value="hola robot"))
     monkeypatch.setattr(tts, "synthesize", AsyncMock(return_value=("QQ==", 10)))
 
+    async def local_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
+        yield "EMOTION:joy\nHola. ¿Cómo estás?"
+
+    monkeypatch.setattr(llm_streaming, "generate_response_stream", local_stream)
+
 
 def _post_stream(client: TestClient, audio: bytes) -> httpx.Response:
     """Post one WAV 16kHz, mono, int16 stream request."""
@@ -77,14 +82,10 @@ def _parse_ndjson(text: str) -> list[dict[str, object]]:
 
 
 @pytest.mark.integration
-def test_stream_happy_path_anthropic_wraps_as_single_delta(
-    client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
+def test_stream_happy_path_emits_sentence_audio(
+    client: TestClient, silence_wav_bytes: bytes
 ) -> None:
-    """Anthropic path has no real streaming — one LLM call, N sentences."""
-    monkeypatch.setattr(settings, "llm_provider", "anthropic")
-    monkeypatch.setattr(
-        llm, "generate_response", AsyncMock(return_value=("Hola. ¿Cómo estás?", "joy"))
-    )
+    """The local stream emits one audio event for each completed sentence."""
     response = _post_stream(client, silence_wav_bytes)
     assert response.status_code == 200
     events = _parse_ndjson(response.text)
@@ -125,8 +126,6 @@ def test_stream_prepares_shared_voice_turn(
     monkeypatch.setattr(transcribe_module, "new_interaction_scope", new_scope, raising=False)
     monkeypatch.setattr(transcribe_module, "prepare_text_turn", prepare)
     monkeypatch.setattr(streaming, "record_text_turn", record)
-    monkeypatch.setattr(settings, "llm_provider", "anthropic")
-    monkeypatch.setattr(llm, "generate_response", AsyncMock(return_value=("Hola.", "joy")))
 
     response = _post_stream(client, silence_wav_bytes)
 
@@ -136,7 +135,7 @@ def test_stream_prepares_shared_voice_turn(
     assert record.call_args.args == (
         "hola robot",
         scope,
-        "Hola.",
+        "Hola. ¿Cómo estás?",
         "joy",
     )
     assert callable(record.call_args.kwargs["schedule_consolidation"])
@@ -154,8 +153,6 @@ def test_unresolved_stream_does_not_load_entity_hotwords(
     monkeypatch.setattr(pipeline, "list_entity_names", list_names)
     monkeypatch.setattr(stt, "transcribe", stt_mock)
     monkeypatch.setattr(settings, "memory_enabled", True)
-    monkeypatch.setattr(settings, "llm_provider", "anthropic")
-    monkeypatch.setattr(llm, "generate_response", AsyncMock(return_value=("Hola.", "joy")))
 
     response = _post_stream(client, silence_wav_bytes)
 
@@ -168,8 +165,6 @@ def test_unresolved_stream_does_not_load_entity_hotwords(
 def test_stream_happy_path_ollama_streams_multiple_deltas(
     client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(settings, "llm_provider", "ollama")
-
     async def fake_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
         for delta in ("EMOTION:joy\n", "Hola. ", "¿Cómo estás?"):
             yield delta
@@ -187,11 +182,30 @@ def test_stream_happy_path_ollama_streams_multiple_deltas(
 
 
 @pytest.mark.integration
+@pytest.mark.asyncio
+async def test_stream_uses_local_deltas_after_invalid_runtime_provider_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Streaming must stay local even when a caller corrupts the provider field."""
+    prepared = PreparedTextTurn("hola", "public-turn", None, None, False, None, None, None)
+
+    async def local_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
+        yield "EMOTION:joy\nHola."
+
+    monkeypatch.setattr(settings, "llm_provider", "anthropic")
+    monkeypatch.setattr(llm_streaming, "generate_response_stream", local_stream)
+    monkeypatch.delattr(llm, "generate_response")
+
+    deltas = [delta async for delta in streaming._text_deltas(prepared)]
+
+    assert deltas == ["EMOTION:joy\nHola."]
+
+
+@pytest.mark.integration
 def test_stream_truncated_emotion_tag_is_discarded_not_spoken(
     client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Stream ends mid tag ("EMOTION:ale", no \\n) — discarded, never spoken."""
-    monkeypatch.setattr(settings, "llm_provider", "ollama")
     record = Mock()
 
     async def fake_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
@@ -220,7 +234,6 @@ def test_stream_unknown_emotion_prefix_falls_back_to_neutral(
     client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Tag line completes but names an emotion outside VALID_EMOTIONS."""
-    monkeypatch.setattr(settings, "llm_provider", "ollama")
 
     async def fake_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
         for delta in ("EMOTION:sarcasmo\n", "Hola."):
@@ -244,8 +257,12 @@ def test_stream_llm_failure_speaks_fallback_phrase(
     client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     record = Mock()
-    monkeypatch.setattr(settings, "llm_provider", "anthropic")
-    monkeypatch.setattr(llm, "generate_response", AsyncMock(side_effect=LLMError("ollama down")))
+
+    async def failing_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
+        raise LLMError("ollama down")
+        yield ""
+
+    monkeypatch.setattr(llm_streaming, "generate_response_stream", failing_stream)
     monkeypatch.setattr(streaming, "record_text_turn", record)
     response = _post_stream(client, silence_wav_bytes)
     assert response.status_code == 200
@@ -263,7 +280,7 @@ def test_stream_llm_failure_speaks_fallback_phrase(
 async def test_streaming_propagates_prepared_identity_history_and_recording_scope(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Both provider paths must use the same prepared identity and scope."""
+    """The local stream receives prepared identity and history before recording."""
     active_person = _manual_active_person()
     history = [ConversationTurn(role="user", content="previous question")]
     prepared = PreparedTextTurn(
@@ -278,35 +295,21 @@ async def test_streaming_propagates_prepared_identity_history_and_recording_scop
         active_person,
         "session:11111111111111111111111111111111:person:7",
     )
-    standard_generate = AsyncMock(return_value=("Hola.", "joy"))
-    monkeypatch.setattr(settings, "llm_provider", "anthropic")
-    monkeypatch.setattr(llm, "generate_response", standard_generate)
-
-    standard_deltas = [delta async for delta in streaming._text_deltas(prepared)]
-
-    assert standard_deltas == ["EMOTION:joy\nHola."]
-    standard_call = standard_generate.await_args
-    assert standard_call is not None
-    assert standard_call.kwargs["history"] == history
-    assert standard_call.kwargs["active_person"] is active_person
-
     streamed_kwargs: dict[str, object] = {}
 
     async def generate_stream(*_args: object, **kwargs: object) -> AsyncIterator[str]:
         streamed_kwargs.update(kwargs)
         yield "EMOTION:joy\nHola."
 
-    monkeypatch.setattr(settings, "llm_provider", "ollama")
     monkeypatch.setattr(llm_streaming, "generate_response_stream", generate_stream)
 
-    ollama_deltas = [delta async for delta in streaming._text_deltas(prepared)]
+    local_deltas = [delta async for delta in streaming._text_deltas(prepared)]
 
-    assert ollama_deltas == ["EMOTION:joy\nHola."]
+    assert local_deltas == ["EMOTION:joy\nHola."]
     assert streamed_kwargs["history"] == history
     assert streamed_kwargs["active_person"] is active_person
 
     record = Mock()
-    monkeypatch.setattr(settings, "llm_provider", "anthropic")
     monkeypatch.setattr(streaming, "record_text_turn", record)
 
     _ = [
@@ -346,8 +349,6 @@ async def test_streaming_schedules_manual_identity_for_consolidation(
     )
     scheduler = Mock()
     monkeypatch.setattr(settings, "memory_enabled", True)
-    monkeypatch.setattr(settings, "llm_provider", "anthropic")
-    monkeypatch.setattr(llm, "generate_response", AsyncMock(return_value=("Hola.", "joy")))
 
     _ = [
         line
@@ -359,7 +360,7 @@ async def test_streaming_schedules_manual_identity_for_consolidation(
         )
     ]
 
-    scheduler.assert_called_once_with("hola robot", "Hola.", active_person)
+    scheduler.assert_called_once_with("hola robot", "Hola. ¿Cómo estás?", active_person)
 
 
 @pytest.mark.integration

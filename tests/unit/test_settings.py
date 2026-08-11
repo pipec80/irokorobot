@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from pydantic import ValidationError
 import pytest
 from robot.settings import Settings as RobotSettings
 from server.settings import Settings as ServerSettings
@@ -25,7 +26,18 @@ def test_server_settings_defaults_match_audio_contract() -> None:
 @pytest.mark.unit
 def test_server_settings_llm_provider_default() -> None:
     settings = ServerSettings(_env_file=None)  # type: ignore[call-arg]
-    assert settings.llm_provider == "anthropic"
+    assert settings.llm_provider == "ollama"
+
+
+@pytest.mark.unit
+def test_server_settings_rejects_nonlocal_llm_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A cloud provider value must fail validation instead of selecting a fallback."""
+    monkeypatch.setenv("LLM_PROVIDER", "anthropic")
+
+    with pytest.raises(ValidationError, match="llm_provider"):
+        ServerSettings(_env_file=None)  # type: ignore[call-arg]
 
 
 @pytest.mark.unit

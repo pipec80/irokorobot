@@ -1,7 +1,4 @@
-"""LLM client — supports Anthropic Claude and Ollama backends.
-
-Switch via LLM_PROVIDER env var: "anthropic" (default) or "ollama".
-"""
+"""Local Ollama client for conversational response generation."""
 
 import json
 import logging
@@ -11,10 +8,6 @@ from typing import Any
 from server.characters import build_system_prompt, get_character
 from server.cognition.identity import ActivePersonContext
 from server.exceptions import LLMError
-
-# Re-exported under the historical private name so call sites (and test
-# monkeypatching) keep working after the singleton moved to llm_clients.
-from server.llm_clients import get_anthropic_client as _get_anthropic_client
 from server.llm_transport import ollama_chat, strip_json_fences
 from server.onboarding import OnboardingSlot
 from server.schemas import ConversationTurn, MemoryContext
@@ -79,36 +72,6 @@ def _parse_llm_output(raw: str) -> tuple[str, str]:
         return raw, FALLBACK_EMOTION
 
 
-async def _generate_anthropic(
-    system_prompt: str,
-    messages: list[dict[str, str]],
-) -> tuple[str, str]:
-    """Call Anthropic Claude API.
-
-    Args:
-        system_prompt: Full system prompt including any memory context.
-        messages: Conversation messages (history + current turn).
-
-    Returns:
-        Tuple of (response_text, emotion).
-
-    Raises:
-        LLMError: If the API call fails.
-    """
-    client = _get_anthropic_client()
-    message = await client.messages.create(
-        model=settings.anthropic_model,
-        max_tokens=150,
-        system=system_prompt,
-        messages=messages,  # type: ignore[arg-type]  # MessageParam compat
-    )
-    text_blocks = [block for block in message.content if block.type == "text"]
-    if not text_blocks:
-        raise LLMError("Anthropic response contained no text block")
-    raw = text_blocks[0].text
-    return _parse_llm_output(raw)
-
-
 async def _generate_ollama(
     system_prompt: str,
     messages: list[dict[str, str]],
@@ -158,8 +121,7 @@ async def generate_response(
 ) -> tuple[str, str]:
     """Generate a robot response and detect the user's emotion.
 
-    Routes to Anthropic Claude or Ollama based on LLM_PROVIDER setting.
-    Single model call — emotion detection and response generation in one pass.
+    Uses local Ollama in one model call for response and emotion detection.
 
     Args:
         text: Transcribed user speech.
@@ -184,7 +146,7 @@ async def generate_response(
         neutral, joy, anger, sadness, surprise.
 
     Raises:
-        LLMError: If the configured provider's API call fails.
+        LLMError: If the local Ollama API call fails.
         ValueError: If text is empty.
     """
     if not text:
@@ -204,18 +166,11 @@ async def generate_response(
     messages = _build_messages(text, history)
 
     try:
-        if settings.llm_provider == "ollama":
-            logger.info("LLM provider: ollama (%s)", settings.ollama_model)
-            response_text, emotion = await _generate_ollama(
-                system_prompt,
-                messages,
-            )
-        else:
-            logger.info("LLM provider: anthropic")
-            response_text, emotion = await _generate_anthropic(
-                system_prompt,
-                messages,
-            )
+        logger.info("LLM provider: ollama (%s)", settings.ollama_model)
+        response_text, emotion = await _generate_ollama(
+            system_prompt,
+            messages,
+        )
         logger.info(
             "LLM response (%d chars) emotion=%s",
             len(response_text),

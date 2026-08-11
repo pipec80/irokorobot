@@ -14,16 +14,19 @@ tag once the caller has buffered up to the first newline. Kept as a separate
 module (not added to llm.py) so llm.py stays under the file size limit and
 the non-streaming contract used by POST /transcribe is untouched.
 
-Anthropic is intentionally not supported here — R3's acceptance target is
-Ollama-local latency. Callers needing a provider-agnostic path should check
-settings.llm_provider and fall back to llm.generate_response for Anthropic.
+Streaming is local-only: it uses the configured Ollama model and yields its
+token deltas to the sentence-streaming pipeline.
 """
 
 from collections.abc import AsyncIterator
+import json
 import re
+
+import httpx
 
 from server.characters import build_system_prompt, get_character
 from server.cognition.identity import ActivePersonContext
+from server.exceptions import LLMError
 from server.llm import FALLBACK_EMOTION, VALID_EMOTIONS
 from server.llm_transport import ollama_chat_stream
 from server.onboarding import OnboardingSlot
@@ -101,6 +104,7 @@ async def generate_response_stream(
 
     Raises:
         ValueError: If text is empty.
+        LLMError: If local Ollama streaming fails or emits invalid NDJSON.
     """
     if not text:
         raise ValueError("Input text is empty")
@@ -118,8 +122,11 @@ async def generate_response_stream(
         + _STREAMING_SYSTEM_SUFFIX
     )
     messages = _build_messages(text, history)
-    async for delta in ollama_chat_stream(
-        [{"role": "system", "content": system_prompt}, *messages],
-        model=settings.ollama_model,
-    ):
-        yield delta
+    try:
+        async for delta in ollama_chat_stream(
+            [{"role": "system", "content": system_prompt}, *messages],
+            model=settings.ollama_model,
+        ):
+            yield delta
+    except (httpx.HTTPError, json.JSONDecodeError) as exc:
+        raise LLMError("Local Ollama streaming failed") from exc

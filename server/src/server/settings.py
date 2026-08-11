@@ -1,6 +1,7 @@
 """Application settings loaded from environment variables."""
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings
 
@@ -8,9 +9,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     """Application settings from environment variables."""
 
-    anthropic_api_key: str = ""
-    anthropic_model: str = "claude-haiku-4-5"
-    llm_provider: str = "anthropic"
+    llm_provider: Literal["ollama"] = "ollama"
     # Spoken when the LLM backend is unreachable — TTS is local, so the
     # robot can always apologize out loud instead of going silent.
     llm_fallback_phrase: str = (
@@ -54,7 +53,6 @@ class Settings(BaseSettings):
 
     embedding_model: str = "nomic-embed-text"
 
-    consolidation_provider: str = ""  # "" → uses llm_provider
     consolidation_model: str = "qwen2.5:3b"
 
     working_memory_size: int = 20

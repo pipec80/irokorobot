@@ -47,34 +47,19 @@ class _StreamState:
 async def _text_deltas(inputs: PreparedTextTurn) -> AsyncIterator[str]:
     """Yield "EMOTION:xxx\\n"-tagged text deltas, uniform across providers.
 
-    Ollama streams token-by-token via llm_streaming. Anthropic has no
-    streaming path here (R3's acceptance target is Ollama-local latency);
-    its single finished response is wrapped as one delta with the same tag
-    prefix so the sentence-splitting loop below stays provider-agnostic.
+    Local Ollama streams token-by-token through ``llm_streaming``. The shared
+    emotion-tag protocol keeps the sentence-splitting loop provider-agnostic.
     """
-    if settings.llm_provider == "ollama":
-        async for delta in llm_streaming.generate_response_stream(
-            inputs.message,
-            context=inputs.context,
-            history=inputs.history,
-            onboarding=inputs.onboarding,
-            onboarding_slot=inputs.onboarding_slot,
-            user_emotion=inputs.user_emotion,
-            active_person=inputs.active_person,
-        ):
-            yield delta
-    else:
-        response_text, emotion = await llm.generate_response(
-            inputs.message,
-            context=inputs.context,
-            history=inputs.history,
-            onboarding=inputs.onboarding,
-            onboarding_slot=inputs.onboarding_slot,
-            user_emotion=inputs.user_emotion,
-            active_person=inputs.active_person,
-            perception=inputs.perception,
-        )
-        yield f"EMOTION:{emotion}\n{response_text}"
+    async for delta in llm_streaming.generate_response_stream(
+        inputs.message,
+        context=inputs.context,
+        history=inputs.history,
+        onboarding=inputs.onboarding,
+        onboarding_slot=inputs.onboarding_slot,
+        user_emotion=inputs.user_emotion,
+        active_person=inputs.active_person,
+    ):
+        yield delta
 
 
 async def _synthesize_sentence(sentence: str, state: _StreamState) -> str:

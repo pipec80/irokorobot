@@ -1,7 +1,7 @@
 """Debug script: mic → STT → LLM → TTS → speaker — full pipeline validation.
 
 Imports the actual server modules so this exercises the real production code path.
-Requires .env in repo root with LLM_PROVIDER, OLLAMA_URL / ANTHROPIC_API_KEY, etc.
+Requires .env in repo root with local Ollama settings such as OLLAMA_URL.
 
 Audio contract: WAV · 16000 Hz · mono · int16.
 
@@ -134,7 +134,7 @@ async def run_pipeline(
             return
 
     # ── Step 2: LLM ──────────────────────────────────────────────────────
-    _header("2/3  LLM  (Ollama / Anthropic)")
+    _header("2/3  LLM  (Ollama)")
     t0 = time.perf_counter()
     llm_response, emotion = await llm.generate_response(text_heard)
     elapsed = time.perf_counter() - t0

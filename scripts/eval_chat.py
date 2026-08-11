@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 from collections import defaultdict
-from contextlib import contextmanager
 from datetime import UTC, datetime
 import logging
 import math
@@ -42,7 +41,7 @@ import yaml
 from server import llm
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -65,8 +64,8 @@ _MAX_RUNS = 10
 _PERCENT_SCALE = 100
 _EVALUATION_RESOLVED_AT = datetime(2026, 8, 10, tzinfo=UTC)
 
-type ProviderChoice = Literal["configured", "ollama", "anthropic"]
-type ProviderName = Literal["ollama", "anthropic"]
+type ProviderChoice = Literal["configured", "ollama"]
+type ProviderName = Literal["ollama"]
 
 
 class ExpectedAssertions(BaseModel):
@@ -370,7 +369,7 @@ async def run_evaluation(
     Args:
         cases: Validated synthetic cases in execution order.
         runs: Repetitions per case, from 1 through 10.
-        provider: Configured provider or a temporary explicit override.
+        provider: Configured local provider or its explicit local name.
 
     Returns:
         Full per-run results plus global and per-tag aggregate metrics.
@@ -383,22 +382,22 @@ async def run_evaluation(
     if not cases:
         raise ValueError("at least one golden case must be selected")
 
-    with _temporary_provider(provider) as effective_provider:
-        model = _effective_model(effective_provider)
-        results: list[CaseRunResult] = []
-        for case in cases:
-            for repetition in range(1, runs + 1):
-                results.append(await _run_case(case, repetition))
-        summary, by_tag = aggregate_results(results)
-        return EvaluationResult(
-            generated_at=datetime.now(UTC),
-            provider=effective_provider,
-            model=model,
-            runs=runs,
-            results=results,
-            summary=summary,
-            by_tag=by_tag,
-        )
+    effective_provider = _resolve_provider(provider)
+    model = _effective_model()
+    results: list[CaseRunResult] = []
+    for case in cases:
+        for repetition in range(1, runs + 1):
+            results.append(await _run_case(case, repetition))
+    summary, by_tag = aggregate_results(results)
+    return EvaluationResult(
+        generated_at=datetime.now(UTC),
+        provider=effective_provider,
+        model=model,
+        runs=runs,
+        results=results,
+        summary=summary,
+        by_tag=by_tag,
+    )
 
 
 def aggregate_results(
@@ -537,7 +536,7 @@ def parse_cli_args(argv: Sequence[str] | None = None) -> CliOptions:
     )
     parser.add_argument(
         "--provider",
-        choices=("configured", "ollama", "anthropic"),
+        choices=("configured", "ollama"),
         default="configured",
     )
     parser.add_argument("--runs", type=int, default=3)
@@ -640,33 +639,15 @@ async def _run_case(case: GoldenCase, repetition: int) -> CaseRunResult:
     )
 
 
-@contextmanager
-def _temporary_provider(provider: ProviderChoice) -> Iterator[ProviderName]:
-    """Temporarily select a provider and restore configuration unconditionally."""
-    original_provider = settings.llm_provider
-    effective_provider = _resolve_provider(provider)
-    try:
-        settings.llm_provider = effective_provider
-        yield effective_provider
-    finally:
-        settings.llm_provider = original_provider
-
-
 def _resolve_provider(provider: ProviderChoice) -> ProviderName:
-    """Resolve ``configured`` to one supported production provider."""
-    configured_provider = settings.llm_provider if provider == "configured" else provider
-    if configured_provider == "ollama":
-        return "ollama"
-    if configured_provider == "anthropic":
-        return "anthropic"
-    raise ValueError("configured LLM provider must be 'ollama' or 'anthropic'")
+    """Resolve supported local evaluation provider names."""
+    _ = provider
+    return "ollama"
 
 
-def _effective_model(provider: ProviderName) -> str:
-    """Return the configured model for an effective provider."""
-    if provider == "ollama":
-        return settings.ollama_model
-    return settings.anthropic_model
+def _effective_model() -> str:
+    """Return the configured local evaluation model."""
+    return settings.ollama_model
 
 
 def _summarize(results: list[CaseRunResult]) -> MetricSummary:

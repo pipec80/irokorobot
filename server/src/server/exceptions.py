@@ -10,7 +10,7 @@ class AudioContractError(Exception):
 
 
 class LLMError(Exception):
-    """Raised when the Anthropic API call fails."""
+    """Raised when a local LLM operation fails."""
 
 
 class TTSError(Exception):
