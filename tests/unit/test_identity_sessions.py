@@ -46,11 +46,10 @@ def test_registry_uses_an_opaque_token_and_retains_safe_evidence_only() -> None:
     )
 
     token = registry.select_person(42)
-    evidence = registry.evidence_for(token)
-
     assert token is not None
-    assert token != str(evidence.candidate_person_id)
+    evidence = registry.evidence_for(token)
     assert evidence is not None
+    assert token != str(evidence.candidate_person_id)
     assert evidence.source.value == "session"
     assert evidence.candidate_person_id == 42
     assert set(evidence.model_dump()) == {
