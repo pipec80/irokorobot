@@ -9,11 +9,16 @@ from pydantic import BaseModel, ValidationError
 import pytest
 from server.cognition import (
     ActiveContext,
+    ActivePersonContext,
+    ActivePersonStatus,
     AuthorizationDecision,
     AuthorizationStatus,
     CognitiveEvent,
     Confidence,
     ConfidenceBasis,
+    HouseholdRole,
+    IdentityEvidence,
+    IdentityEvidenceSource,
     KnowledgeStatus,
     Observation,
     ObservationModality,
@@ -375,11 +380,16 @@ def test_cognition_package_reexports_every_public_domain_type() -> None:
     """The package exposes every public type while hiding validation helpers."""
     expected_exports = {
         "ActiveContext": ActiveContext,
+        "ActivePersonContext": ActivePersonContext,
+        "ActivePersonStatus": ActivePersonStatus,
         "AuthorizationDecision": AuthorizationDecision,
         "AuthorizationStatus": AuthorizationStatus,
         "CognitiveEvent": CognitiveEvent,
         "Confidence": Confidence,
         "ConfidenceBasis": ConfidenceBasis,
+        "HouseholdRole": HouseholdRole,
+        "IdentityEvidence": IdentityEvidence,
+        "IdentityEvidenceSource": IdentityEvidenceSource,
         "KnowledgeStatus": KnowledgeStatus,
         "Observation": Observation,
         "ObservationModality": ObservationModality,
