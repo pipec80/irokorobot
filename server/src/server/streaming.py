@@ -60,7 +60,7 @@ async def _text_deltas(inputs: PreparedTextTurn) -> AsyncIterator[str]:
             onboarding=inputs.onboarding,
             onboarding_slot=inputs.onboarding_slot,
             user_emotion=inputs.user_emotion,
-            owner_name=inputs.owner_name,
+            active_person=inputs.active_person,
         ):
             yield delta
     else:
@@ -71,7 +71,7 @@ async def _text_deltas(inputs: PreparedTextTurn) -> AsyncIterator[str]:
             onboarding=inputs.onboarding,
             onboarding_slot=inputs.onboarding_slot,
             user_emotion=inputs.user_emotion,
-            owner_name=inputs.owner_name,
+            active_person=inputs.active_person,
             perception=inputs.perception,
         )
         yield f"EMOTION:{emotion}\n{response_text}"
@@ -158,7 +158,7 @@ async def stream_pipeline(
     streamed to the client cannot be un-spoken.
 
     Args:
-        prepared: Shared prompt inputs for the voice conversation.
+        prepared: Shared prompt inputs and internal scope for one voice request.
         stt_ms: STT elapsed time, measured by the caller.
         request_start: ``time.perf_counter()`` reading from request start.
         schedule_consolidation: Channel-owned background scheduling callback.
@@ -185,6 +185,8 @@ async def stream_pipeline(
             prepared.conversation_id,
             " ".join(state.response_parts),
             state.emotion or llm.FALLBACK_EMOTION,
+            active_person=prepared.active_person,
+            history_scope=prepared.history_scope,
             schedule_consolidation=schedule_consolidation,
         )
 

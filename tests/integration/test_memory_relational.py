@@ -8,13 +8,23 @@ even across a simulated restart (fresh working memory, DB only).
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
+from uuid import UUID
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 import pytest
+from server.cognition.identity import (
+    ActivePersonContext,
+    ActivePersonStatus,
+    HouseholdRole,
+    IdentityEvidence,
+    IdentityEvidenceSource,
+)
+from server.cognition.models import Confidence, ConfidenceBasis
 from server.memory.consolidation import consolidate_turn
 from server.memory.context import build_context
 from server.memory.declarative import assert_fact, list_entity_names, upsert_entity
@@ -28,6 +38,36 @@ from server.schemas import ExtractedEntity, ExtractedFact, TurnExtraction
 from server.settings import settings
 
 from server import db
+
+
+def _identified_person() -> ActivePersonContext:
+    """Create explicit manual evidence for the relational persistence path."""
+    observed_at = datetime(2026, 8, 10, tzinfo=UTC)
+    confidence = Confidence(
+        score=1.0,
+        basis=ConfidenceBasis.ASSERTED,
+        calibrated=True,
+        reason="Explicit local selection",
+    )
+    return ActivePersonContext(
+        person_id=1,
+        display_name="Felipe",
+        status=ActivePersonStatus.IDENTIFIED,
+        confidence=confidence,
+        role=HouseholdRole.UNKNOWN,
+        evidence=(
+            IdentityEvidence(
+                evidence_id=UUID("66666666-6666-6666-6666-666666666666"),
+                source=IdentityEvidenceSource.MANUAL,
+                candidate_person_id=1,
+                confidence=confidence,
+                observed_at=observed_at,
+                expires_at=None,
+                reference="trusted-local-adapter",
+            ),
+        ),
+        resolved_at=observed_at,
+    )
 
 
 @pytest.fixture
@@ -160,7 +200,9 @@ async def test_dirty_extraction_repaired_end_to_end(family_db: Path) -> None:
             return_value=1,
         ),
     ):
-        await consolidate_turn("tengo una hija dominga", "¡Qué lindo!")
+        await consolidate_turn(
+            "tengo una hija dominga", "¡Qué lindo!", active_person=_identified_person()
+        )
 
     children = {name for _id, name, _obj in await find_facts_by_predicate("hijo_de")}
     assert "Dominga" in children  # title-cased, direction repaired

@@ -88,6 +88,27 @@ def _fact_matches(predicted: ExtractedFact, expected: dict[str, Any]) -> bool:
     )
 
 
+def _active_person_display_name(case: dict[str, Any]) -> str | None:
+    """Return explicit manual display guidance for one synthetic turn."""
+    for legacy_key in ("owner", "owner_name"):
+        if legacy_key in case:
+            raise ValueError(f"{legacy_key} is not an active-person context")
+    active_person = case.get("active_person")
+    if active_person is None:
+        return None
+    if not isinstance(active_person, dict):
+        raise ValueError("active_person must be a mapping")
+    if active_person.get("source") != "manual":
+        raise ValueError("active_person source must be manual")
+    person_id = active_person.get("person_id")
+    if not isinstance(person_id, int) or isinstance(person_id, bool):
+        raise ValueError("active_person person_id must be an integer")
+    display_name = active_person.get("display_name")
+    if not isinstance(display_name, str) or not display_name.strip():
+        raise ValueError("active_person display_name must not be blank")
+    return display_name
+
+
 # ---------------------------------------------------------------------------
 # Per-case evaluation
 # ---------------------------------------------------------------------------
@@ -109,6 +130,7 @@ class CaseResult:
 
 async def _eval_case(case: dict[str, Any]) -> CaseResult:
     """Run the real extraction pipeline on one golden case and score it."""
+    active_person_name = _active_person_display_name(case)
     expected_facts = case.get("expected_facts") or []
     expected_entities = case.get("expected_entities") or []
     t0 = time.perf_counter()
@@ -123,7 +145,11 @@ async def _eval_case(case: dict[str, Any]) -> CaseResult:
             error=f"{type(exc).__name__}: {exc}",
         )
     elapsed = time.perf_counter() - t0
-    extraction = normalize_extraction(raw, owner_name=case.get("owner"), user_text=case["user"])
+    extraction = normalize_extraction(
+        raw,
+        active_person_name=active_person_name,
+        user_text=case["user"],
+    )
 
     result = CaseResult(
         case_id=case["id"], elapsed_s=elapsed, entities_expected=len(expected_entities)

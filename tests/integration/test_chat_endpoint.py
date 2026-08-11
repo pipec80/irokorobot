@@ -2,14 +2,13 @@
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, Mock, call
+from unittest.mock import AsyncMock, Mock
 
 from httpx import ASGITransport, AsyncClient
 import pytest
 from server.main import app
 from server.memory import working
 from server.routers import chat
-from server.schemas import MemoryContext
 from server.settings import settings
 from server.text_turn import TextTurnResult
 
@@ -147,18 +146,19 @@ async def test_chat_openapi_uses_request_and_response_schemas() -> None:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_chat_isolates_history_but_shares_persistent_context(
+async def test_chat_without_internal_evidence_is_one_turn_and_stateless(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Two conversation IDs should share context without history or consolidation."""
-    context = MemoryContext()
-    memory_state = AsyncMock(return_value=(context, False, None, "Owner"))
+    """Public conversation IDs must not unlock history or persistent memory."""
+    build_context = AsyncMock()
+    get_history = Mock()
+    get_emotion = Mock()
     generate = AsyncMock(side_effect=[("A1", "joy"), ("B1", "sadness"), ("A2", "neutral")])
-    record = Mock(wraps=text_turn.record_text_turn)
     monkeypatch.setattr(settings, "memory_enabled", True)
-    monkeypatch.setattr(text_turn, "_memory_prompt_state", memory_state)
+    monkeypatch.setattr(text_turn, "build_context", build_context)
+    monkeypatch.setattr(text_turn.working, "get_history", get_history)
+    monkeypatch.setattr(text_turn.working, "get_recent_emotion", get_emotion)
     monkeypatch.setattr(text_turn.llm, "generate_response", generate)
-    monkeypatch.setattr(text_turn, "record_text_turn", record)
 
     async with _client() as client:
         for message, conversation_id in (
@@ -172,19 +172,10 @@ async def test_chat_isolates_history_but_shares_persistent_context(
             )
             assert response.status_code == 200
 
-    assert memory_state.await_count == 3
-    assert [item.kwargs["context"] for item in generate.await_args_list] == [
-        context,
-        context,
-        context,
-    ]
-    assert [turn.content for turn in generate.await_args_list[2].kwargs["history"]] == [
-        "A",
-        "A1",
-    ]
-    assert [turn.content for turn in working.get_history("web-b")] == ["B", "B1"]
-    assert record.call_args_list == [
-        call("A", "web-a", "A1", "joy", schedule_consolidation=None),
-        call("B", "web-b", "B1", "sadness", schedule_consolidation=None),
-        call("A again", "web-a", "A2", "neutral", schedule_consolidation=None),
-    ]
+    build_context.assert_not_awaited()
+    get_history.assert_not_called()
+    get_emotion.assert_not_called()
+    assert [item.kwargs["context"] for item in generate.await_args_list] == [None, None, None]
+    assert [item.kwargs["history"] for item in generate.await_args_list] == [None, None, None]
+    assert working._buffers == {}
+    assert working._emotion_buffers == {}

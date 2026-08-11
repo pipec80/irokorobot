@@ -16,24 +16,62 @@ The same script measured against real Ollama lives in the R8 eval
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
+from uuid import UUID
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 import pytest
 from server.characters import build_system_prompt, get_character
+from server.cognition.identity import (
+    ActivePersonContext,
+    ActivePersonStatus,
+    HouseholdRole,
+    IdentityEvidence,
+    IdentityEvidenceSource,
+)
+from server.cognition.models import Confidence, ConfidenceBasis
 from server.memory import working
 from server.memory.consolidation import consolidate_turn
 from server.memory.context import build_context
 from server.memory.declarative import find_entities_by_name, get_active_facts
 from server.memory.meta import get_flag
-from server.onboarding import next_missing_slot
 from server.schemas import ExtractedEntity, ExtractedFact, TurnExtraction
 from server.settings import settings
 
 from server import db
+
+
+def _manual_active_person() -> ActivePersonContext:
+    """Create explicit manual identity evidence for memory acceptance tests."""
+    resolved_at = datetime(2026, 8, 10, tzinfo=UTC)
+    confidence = Confidence(
+        score=1.0,
+        basis=ConfidenceBasis.ASSERTED,
+        calibrated=True,
+        reason="Explicit local selection",
+    )
+    return ActivePersonContext(
+        person_id=7,
+        display_name="Pipec",
+        status=ActivePersonStatus.IDENTIFIED,
+        confidence=confidence,
+        role=HouseholdRole.UNKNOWN,
+        evidence=(
+            IdentityEvidence(
+                evidence_id=UUID("11111111-1111-1111-1111-111111111111"),
+                source=IdentityEvidenceSource.MANUAL,
+                candidate_person_id=7,
+                confidence=confidence,
+                observed_at=resolved_at,
+                reference="trusted-local-adapter",
+            ),
+        ),
+        resolved_at=resolved_at,
+    )
 
 
 @pytest.fixture
@@ -59,7 +97,12 @@ def _clean_working_memory() -> None:  # type: ignore[misc]
     working._buffers.clear()
 
 
-async def _consolidate(user_text: str, extraction: TurnExtraction) -> None:
+async def _consolidate(
+    user_text: str,
+    extraction: TurnExtraction,
+    *,
+    active_person: ActivePersonContext,
+) -> None:
     """Run consolidate_turn with the extractor mocked to *extraction*."""
     with (
         patch(
@@ -75,7 +118,11 @@ async def _consolidate(user_text: str, extraction: TurnExtraction) -> None:
             return_value=None,
         ),
     ):
-        await consolidate_turn(user_text, "¡Qué bien! Cuéntame más.")
+        await consolidate_turn(
+            user_text,
+            "¡Qué bien! Cuéntame más.",
+            active_person=active_person,
+        )
 
 
 # Realistic RAW extractor outputs for the vision's onboarding script —
@@ -135,8 +182,9 @@ _ONBOARDING_TURNS: list[tuple[str, TurnExtraction]] = [
 
 async def _seed_onboarding() -> None:
     """Consolidate the vision's four onboarding turns."""
+    active_person = _manual_active_person()
     for user_text, extraction in _ONBOARDING_TURNS:
-        await _consolidate(user_text, extraction)
+        await _consolidate(user_text, extraction, active_person=active_person)
 
 
 async def _active_predicates(name: str) -> dict[str, str]:
@@ -152,7 +200,7 @@ async def test_onboarding_persists_owner_family_and_pet(memory_db: Path) -> None
     """Scenario 1 — the interview leaves owner, children and pet in the DB."""
     await _seed_onboarding()
 
-    assert await get_flag("owner_name") == "Pipec"
+    assert await get_flag("owner_name") is None
     owner_facts = await _active_predicates("Pipec")
     assert owner_facts["nombre"] == "Pipec"
     assert owner_facts["fecha_nacimiento"] == "12 de marzo de 1980"
@@ -196,6 +244,7 @@ async def test_correction_supersedes_species(memory_db: Path) -> None:
             facts=[ExtractedFact(subject="Luna", predicate="especie", object="gata")],
             importance=0.7,
         ),
+        active_person=_manual_active_person(),
     )
 
     pet_facts = await _active_predicates("Luna")
@@ -212,28 +261,18 @@ async def test_correction_supersedes_species(memory_db: Path) -> None:
 
 
 @pytest.mark.integration
-async def test_completed_onboarding_does_not_repeat(memory_db: Path) -> None:
-    """Scenario 4 — all slots covered: no next slot, no PRIMER ENCUENTRO."""
+async def test_manual_context_does_not_enable_legacy_onboarding(memory_db: Path) -> None:
+    """Manual context must not revive the legacy onboarding owner assertion."""
     await _seed_onboarding()
-    remaining_slots = [
-        ("vivo en Santiago", "vive_en", "Santiago"),
-        ("trabajo en una empresa de logística", "trabaja_en", "una empresa de logística"),
-        ("me gusta la electrónica", "le_gusta", "la electrónica"),
-        ("no tengo pareja", "pareja_de", "ninguno"),
-    ]
-    for user_text, predicate, obj in remaining_slots:
-        await _consolidate(
-            user_text,
-            TurnExtraction(
-                facts=[ExtractedFact(subject="usuario", predicate=predicate, object=obj)],
-                importance=0.7,
-            ),
-        )
-
-    assert await next_missing_slot() is None
+    assert await get_flag("owner_name") is None
 
     profile = get_character("iroko")
-    prompt = build_system_prompt(profile, None, onboarding=False, owner_name="Pipec")
+    prompt = build_system_prompt(
+        profile,
+        None,
+        onboarding=False,
+        active_person=_manual_active_person(),
+    )
     assert "PRIMER ENCUENTRO" not in prompt
     # Sanity contrast: the sentinel really is what onboarding injects.
     assert "PRIMER ENCUENTRO" in build_system_prompt(profile, None, onboarding=True)

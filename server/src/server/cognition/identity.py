@@ -1,0 +1,214 @@
+"""Immutable identity contracts for active-person resolution."""
+
+from collections.abc import Callable as _Callable
+from dataclasses import dataclass as _dataclass
+from datetime import UTC as _UTC, datetime as _datetime
+from enum import Enum as _Enum
+from typing import Annotated as _Annotated, Self as _Self
+from uuid import UUID as _UUID
+
+from pydantic import (
+    BaseModel as _BaseModel,
+    ConfigDict as _ConfigDict,
+    Field as _Field,
+    field_validator as _field_validator,
+    model_validator as _model_validator,
+)
+
+from server.cognition.models import Confidence, ConfidenceBasis
+
+_StrictUUID = _Annotated[_UUID, _Field(strict=True)]
+_StrictInteger = _Annotated[int, _Field(strict=True)]
+_StrictDatetime = _Annotated[_datetime, _Field(strict=True)]
+
+__all__ = [
+    "ActivePersonContext",
+    "ActivePersonStatus",
+    "HouseholdRole",
+    "IdentityEvidence",
+    "IdentityEvidenceSource",
+    "PersonRecord",
+    "resolve_active_person",
+]
+
+
+class IdentityEvidenceSource(str, _Enum):  # noqa: UP042
+    """Documented origin of identity evidence."""
+
+    SESSION = "session"
+    MANUAL = "manual"
+    FACE = "face"
+    VOICE = "voice"
+    CONTEXT = "context"
+
+
+class ActivePersonStatus(str, _Enum):  # noqa: UP042
+    """Conservative outcome of active-person resolution."""
+
+    IDENTIFIED = "identified"
+    PROBABLE = "probable"
+    UNKNOWN = "unknown"
+    AMBIGUOUS = "ambiguous"
+
+
+class HouseholdRole(str, _Enum):  # noqa: UP042
+    """Household role vocabulary without authorization semantics."""
+
+    OWNER = "owner"
+    ADULT = "adult"
+    CHILD = "child"
+    GUEST = "guest"
+    UNKNOWN = "unknown"
+
+
+@_dataclass(frozen=True)
+class PersonRecord:
+    """Minimal person lookup result accepted by active-person resolution."""
+
+    person_id: int
+    display_name: str
+    entity_type: str
+
+
+def _require_aware_utc(value: _datetime) -> _datetime:
+    """Reject naive timestamps and normalize aware timestamps to UTC."""
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError("datetime must be timezone-aware")
+    return value.astimezone(_UTC)
+
+
+def _normalize_optional_aware_utc(value: _datetime | None) -> _datetime | None:
+    """Preserve absent timestamps and normalize supplied values to UTC."""
+    if value is None:
+        return None
+    return _require_aware_utc(value)
+
+
+class IdentityEvidence(_BaseModel):
+    """Immutable, safe evidence supporting an identity candidate."""
+
+    model_config = _ConfigDict(frozen=True, extra="forbid")
+
+    evidence_id: _StrictUUID
+    source: IdentityEvidenceSource
+    candidate_person_id: _StrictInteger | None
+    confidence: Confidence
+    observed_at: _StrictDatetime
+    reference: str
+    expires_at: _StrictDatetime | None = None
+
+    _validate_observed_at = _field_validator("observed_at")(_require_aware_utc)
+    _validate_expires_at = _field_validator("expires_at")(_normalize_optional_aware_utc)
+
+    @_model_validator(mode="after")
+    def _validate_expiry_after_observation(self) -> _Self:
+        if self.expires_at is not None and self.expires_at <= self.observed_at:
+            raise ValueError("expires_at must be after observed_at")
+        return self
+
+
+class ActivePersonContext(_BaseModel):
+    """Immutable active-person result for a single cognitive turn."""
+
+    model_config = _ConfigDict(frozen=True, extra="forbid")
+
+    person_id: _StrictInteger | None
+    display_name: str | None
+    status: ActivePersonStatus
+    confidence: Confidence
+    role: HouseholdRole
+    evidence: tuple[IdentityEvidence, ...]
+    resolved_at: _StrictDatetime
+
+    _validate_resolved_at = _field_validator("resolved_at")(_require_aware_utc)
+
+
+type PersonLookup = _Callable[[int], PersonRecord | None]
+type Clock = _Callable[[], _datetime]
+
+
+def _unknown_confidence() -> Confidence:
+    """Build confidence for a result that does not identify a person."""
+    return Confidence(
+        score=0.0,
+        basis=ConfidenceBasis.NOT_APPLICABLE,
+        calibrated=False,
+        reason="No verified person",
+    )
+
+
+def _resolved_candidates(
+    evidence: tuple[IdentityEvidence, ...],
+    lookup_person: PersonLookup,
+    resolved_at: _datetime,
+) -> tuple[tuple[IdentityEvidence, PersonRecord], ...]:
+    """Return unexpired manual or session evidence for verified people only."""
+    candidates: list[tuple[IdentityEvidence, PersonRecord]] = []
+    for item in evidence:
+        if item.source not in {IdentityEvidenceSource.MANUAL, IdentityEvidenceSource.SESSION}:
+            continue
+        if item.expires_at is not None and item.expires_at <= resolved_at:
+            continue
+        if item.candidate_person_id is None:
+            continue
+        person = lookup_person(item.candidate_person_id)
+        if person is None or person.person_id != item.candidate_person_id:
+            continue
+        if person.entity_type != "person":
+            continue
+        candidates.append((item, person))
+    return tuple(candidates)
+
+
+def resolve_active_person(
+    *,
+    evidence: tuple[IdentityEvidence, ...],
+    lookup_person: PersonLookup,
+    clock: Clock,
+) -> ActivePersonContext:
+    """Resolve manual or session evidence into a conservative person context.
+
+    Args:
+        evidence: Immutable identity evidence supplied for one turn.
+        lookup_person: Boundary that verifies a candidate person ID.
+        clock: Source of the resolution timestamp.
+
+    Returns:
+        A context that remains unknown or ambiguous unless safe evidence agrees.
+    """
+    resolved_at = clock()
+    candidates = _resolved_candidates(evidence, lookup_person, resolved_at)
+    person_ids = {person.person_id for _, person in candidates}
+    if len(person_ids) == 1:
+        selected_evidence, selected_person = next(
+            (
+                candidate
+                for candidate in candidates
+                if candidate[0].source is IdentityEvidenceSource.MANUAL
+            ),
+            candidates[0],
+        )
+        status = (
+            ActivePersonStatus.IDENTIFIED
+            if selected_evidence.source is IdentityEvidenceSource.MANUAL
+            else ActivePersonStatus.PROBABLE
+        )
+        return ActivePersonContext(
+            person_id=selected_person.person_id,
+            display_name=selected_person.display_name,
+            status=status,
+            confidence=selected_evidence.confidence,
+            role=HouseholdRole.UNKNOWN,
+            evidence=evidence,
+            resolved_at=resolved_at,
+        )
+    status = ActivePersonStatus.AMBIGUOUS if person_ids else ActivePersonStatus.UNKNOWN
+    return ActivePersonContext(
+        person_id=None,
+        display_name=None,
+        status=status,
+        confidence=_unknown_confidence(),
+        role=HouseholdRole.UNKNOWN,
+        evidence=evidence,
+        resolved_at=resolved_at,
+    )

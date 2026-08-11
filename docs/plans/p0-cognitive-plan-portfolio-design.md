@@ -41,16 +41,16 @@ that its canonical plan does not explicitly permit.
 
 | Canonical plan | Roadmap phase | Current status | Purpose |
 |---|---|---|---|
-| [`0002-active-person-context.md`](0002-active-person-context.md) | P0.2 | Ready | Resolve the active person conservatively and isolate working context across identity boundaries. |
+| [`0002-active-person-context.md`](0002-active-person-context.md) | P0.2 | Complete | Conservatively resolved the active-person boundary and isolated working context across identity boundaries. |
 | [`0003-typed-controller-and-deterministic-tools.md`](0003-typed-controller-and-deterministic-tools.md) | P0.3 | Draft | Introduce a small typed controller seam and deterministic date, age, count, and relationship-tool contracts. |
 | [`0004-relational-memory-v4-design-and-migration.md`](0004-relational-memory-v4-design-and-migration.md) | P0.4 design | Draft | Record the ADR decision, reversible migration design, predicate registry, and compatibility strategy before schema changes. |
 | [`0005-relational-memory-v4-implementation.md`](0005-relational-memory-v4-implementation.md) | P0.4 implementation | Draft | Implement the approved relational-memory migration and compatibility path. |
 | [`0006-household-authorization.md`](0006-household-authorization.md) | P0.5 | Draft | Enforce deterministic household authorization before protected retrieval, tools, and generation context. |
 
-Plan 0002 is the only `Ready` plan: its canonical document, supporting design,
-and acceptance tests were reviewed against the current tree. At most one plan
-is `Ready` at a time. Later plans remain `Draft` and are revalidated just in
-time before becoming executable.
+Plan 0002 is complete: its canonical document, supporting design, acceptance
+tests, remediation, and final gates were reviewed against the current tree. No
+plan is currently `Ready`. P0.3 and later plans remain `Draft` and are
+revalidated just in time before becoming executable.
 
 ## Plan boundaries
 
@@ -141,5 +141,6 @@ development techniques and do not change Iroko's production architecture.
 ## Review criteria
 
 The portfolio is ready for canonical plan drafting when the sequence has no
-dependency cycle, every phase has one clear outcome, relational schema work is
-separated from its decision, and only P0.2 is eligible to become `Ready` first.
+dependency cycle, every phase has one clear outcome, and relational schema work
+is separated from its decision. P0.2 is complete; any later candidate remains
+`Draft` until its dependencies and current tree are revalidated for promotion.

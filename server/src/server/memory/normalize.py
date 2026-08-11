@@ -119,10 +119,10 @@ def _clean_name(name: str) -> str:
     return name.strip().title()
 
 
-def _resolve_subject(subject: str, owner_name: str | None) -> str:
-    """Replace owner aliases ("usuario") with the owner's real name."""
-    if owner_name and subject.strip().casefold() in _OWNER_ALIASES:
-        return owner_name
+def _resolve_subject(subject: str, active_person_name: str | None) -> str:
+    """Replace turn-local person aliases ("usuario") with a validated name."""
+    if active_person_name and subject.strip().casefold() in _OWNER_ALIASES:
+        return active_person_name
     return subject.strip()
 
 
@@ -144,7 +144,7 @@ def _normalize_relation(
     subject: str,
     object_value: str,
     predicate: str,
-    owner_name: str | None,
+    active_person_name: str | None,
     user_text: str | None,
 ) -> ExtractedFact | None:
     """Normalize a relation fact (hijo_de/pareja_de/mascota_de), or drop it.
@@ -154,13 +154,13 @@ def _normalize_relation(
         subject: Alias-resolved subject.
         object_value: Raw object value.
         predicate: Canonical relation predicate.
-        owner_name: Canonical owner name, when already known.
+        active_person_name: Validated turn-local active-person reference.
         user_text: The user's message, used for grounding.
 
     Returns:
         Cleaned fact, or ``None`` when the relation must be dropped.
     """
-    object_value = _resolve_subject(object_value, owner_name)
+    object_value = _resolve_subject(object_value, active_person_name)
     if object_value.casefold() in _OWNER_ALIASES:
         # Same as subjects: an unresolvable "Usuario" object would persist
         # a relation the checklist can never match.
@@ -175,10 +175,10 @@ def _normalize_relation(
             object=NO_RELATION_VALUE,
             confidence=fact.confidence,
         )
-    if owner_name and subject.casefold() == owner_name.casefold():
+    if active_person_name and subject.casefold() == active_person_name.casefold():
         # Inverted by the model: the relation belongs on the child/partner
         # /pet entity, pointing back at the owner.
-        subject, object_value = object_value, owner_name
+        subject, object_value = object_value, active_person_name
     subject = _clean_name(subject)
     if not _is_grounded(subject, user_text):
         logger.warning(
@@ -194,13 +194,13 @@ def _normalize_relation(
 
 
 def _validate_fact_parts(
-    fact: ExtractedFact, owner_name: str | None
+    fact: ExtractedFact, active_person_name: str | None
 ) -> tuple[str, str, str] | None:
     """Resolve and structurally validate a fact's parts, or drop it.
 
     Args:
         fact: Raw fact from the LLM extraction.
-        owner_name: Canonical owner name, when already known.
+        active_person_name: Validated turn-local active-person reference.
 
     Returns:
         Tuple ``(predicate, subject, object_value)`` cleaned, or ``None``
@@ -214,7 +214,7 @@ def _validate_fact_parts(
     if not object_value:
         logger.warning("Dropping fact with empty object: %s", predicate)
         return None
-    subject = _resolve_subject(fact.subject, owner_name)
+    subject = _resolve_subject(fact.subject, active_person_name)
     if not subject:
         return None
     if subject.casefold() in _OWNER_ALIASES:
@@ -232,7 +232,7 @@ def _validate_fact_parts(
 
 def _normalize_fact(
     fact: ExtractedFact,
-    owner_name: str | None,
+    active_person_name: str | None,
     user_text: str | None,
     person_names: frozenset[str],
 ) -> ExtractedFact | None:
@@ -240,7 +240,7 @@ def _normalize_fact(
 
     Args:
         fact: Raw fact from the LLM extraction.
-        owner_name: Canonical owner name, when already known.
+        active_person_name: Validated turn-local active-person reference.
         user_text: The user's message, used for grounding.
         person_names: Folded names of every person the extractor saw this
             turn — preferences pointing at one of them are confusion.
@@ -248,7 +248,7 @@ def _normalize_fact(
     Returns:
         Cleaned fact, or ``None`` when the fact must be dropped.
     """
-    parts = _validate_fact_parts(fact, owner_name)
+    parts = _validate_fact_parts(fact, active_person_name)
     if parts is None:
         return None
     predicate, subject, object_value = parts
@@ -258,7 +258,14 @@ def _normalize_fact(
         )
         return None
     if predicate in _RELATION_PREDICATES:
-        return _normalize_relation(fact, subject, object_value, predicate, owner_name, user_text)
+        return _normalize_relation(
+            fact,
+            subject,
+            object_value,
+            predicate,
+            active_person_name,
+            user_text,
+        )
     return ExtractedFact(
         subject=subject,
         predicate=predicate,
@@ -270,34 +277,38 @@ def _normalize_fact(
 def normalize_extraction(
     extraction: TurnExtraction,
     *,
-    owner_name: str | None = None,
+    active_person_name: str | None = None,
     user_text: str | None = None,
+    owner_name: str | None = None,
 ) -> TurnExtraction:
     """Return a cleaned copy of *extraction* safe to persist.
 
     Applied rules (all deterministic):
     - Predicates mapped to the canonical vocabulary; unknown ones dropped.
     - Facts with an empty object value dropped.
-    - Owner aliases ("usuario") in subjects AND relation objects resolved
-      to *owner_name*; when the owner is still unknown, owner-alias facts
+    - Person aliases ("usuario") in subjects AND relation objects resolved
+      to a validated turn-local active-person reference; when it is absent, alias facts
       are dropped instead of persisting a literal "usuario" entity.
     - Declined relations ("no tengo hijos" → object "ninguno") kept on the
       resolved subject with the canonical object, skipping inversion and
       grounding — there is no related person to ground.
-    - Inverted relations repaired: ``owner hijo_de <child>`` becomes
-      ``<child> hijo_de owner`` (same for pareja_de/mascota_de).
+    - Inverted relations repaired using the turn-local person reference.
     - Person/entity names title-cased for stable upsert dedup.
     - Grounding: new person entities and relation facts are dropped unless
       the person's name appears in *user_text* (the user's literal words).
 
     Args:
         extraction: Raw extraction from the LLM.
-        owner_name: Canonical owner name, when already known.
+        active_person_name: Validated turn-local person reference, not authorization.
         user_text: The user's message for this turn, used for grounding.
+        owner_name: Legacy caller compatibility only; not current-speaker identity.
 
     Returns:
         New ``TurnExtraction`` with cleaned entities and facts.
     """
+    if active_person_name is not None and owner_name is not None:
+        raise ValueError("only one active-person reference may be supplied")
+    person_reference = active_person_name or owner_name
     entities: list[ExtractedEntity] = []
     for ent in extraction.entities:
         name = _clean_name(ent.name)
@@ -325,7 +336,7 @@ def normalize_extraction(
     facts = [
         clean
         for fact in extraction.facts
-        if (clean := _normalize_fact(fact, owner_name, user_text, person_names)) is not None
+        if (clean := _normalize_fact(fact, person_reference, user_text, person_names)) is not None
     ]
 
     # Retype pets: declined relations excluded — their subject is the OWNER

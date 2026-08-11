@@ -7,13 +7,23 @@ consolidation) with a real temporary SQLite database. External services
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
+from uuid import UUID
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 import pytest
+from server.cognition.identity import (
+    ActivePersonContext,
+    ActivePersonStatus,
+    HouseholdRole,
+    IdentityEvidence,
+    IdentityEvidenceSource,
+)
+from server.cognition.models import Confidence, ConfidenceBasis
 from server.memory import working
 from server.memory.consolidation import consolidate_turn
 from server.memory.context import build_context
@@ -28,6 +38,36 @@ from server.schemas import ExtractedEntity, ExtractedFact, MemoryContext, TurnEx
 from server.settings import settings
 
 from server import db
+
+
+def _identified_person() -> ActivePersonContext:
+    """Create manual evidence for the legacy-compatible test path."""
+    observed_at = datetime(2026, 8, 10, tzinfo=UTC)
+    confidence = Confidence(
+        score=1.0,
+        basis=ConfidenceBasis.ASSERTED,
+        calibrated=True,
+        reason="Explicit local selection",
+    )
+    return ActivePersonContext(
+        person_id=1,
+        display_name="Pipec",
+        status=ActivePersonStatus.IDENTIFIED,
+        confidence=confidence,
+        role=HouseholdRole.UNKNOWN,
+        evidence=(
+            IdentityEvidence(
+                evidence_id=UUID("44444444-4444-4444-4444-444444444444"),
+                source=IdentityEvidenceSource.MANUAL,
+                candidate_person_id=1,
+                confidence=confidence,
+                observed_at=observed_at,
+                expires_at=None,
+                reference="trusted-local-adapter",
+            ),
+        ),
+        resolved_at=observed_at,
+    )
 
 
 @pytest.fixture
@@ -186,9 +226,8 @@ async def test_run_migrations_is_idempotent(memory_db: Path) -> None:
 
 
 @pytest.mark.integration
-async def test_consolidating_self_intro_anchors_owner(memory_db: Path) -> None:
-    """'me llamo X' must anchor owner_name — and ONLY anchor it: onboarding
-    completion now belongs to the checklist (F4-D2), not to consolidation."""
+async def test_consolidating_self_intro_does_not_anchor_owner(memory_db: Path) -> None:
+    """A self-introduction must not mutate legacy household metadata."""
     fake_extraction = TurnExtraction(
         entities=[ExtractedEntity(name="Pipec", type="person")],
         facts=[],
@@ -207,17 +246,17 @@ async def test_consolidating_self_intro_anchors_owner(memory_db: Path) -> None:
             return_value=1,
         ),
     ):
-        await consolidate_turn("me llamo Pipec", "¡Un gusto, Pipec!")
+        await consolidate_turn(
+            "me llamo Pipec", "¡Un gusto, Pipec!", active_person=_identified_person()
+        )
 
-    assert await get_flag("owner_name") == "Pipec"
+    assert await get_flag("owner_name") is None
     assert await get_flag("onboarding_complete") is None
 
 
 @pytest.mark.integration
-async def test_implicit_owner_entity_is_person(memory_db: Path) -> None:
-    """A fact whose subject is the owner creates a PERSON entity, not a
-    concept ("Felipe [concept]" observed in the DB 2026-07-14)."""
-    await set_flag("owner_name", "Felipe")
+async def test_implicit_active_person_entity_is_person(memory_db: Path) -> None:
+    """A turn-local active-person fact creates a PERSON entity, not a concept."""
     fake_extraction = TurnExtraction(
         entities=[],
         facts=[
@@ -239,9 +278,11 @@ async def test_implicit_owner_entity_is_person(memory_db: Path) -> None:
             return_value=None,
         ),
     ):
-        await consolidate_turn("nací el 6 de octubre de 1981", "¡Qué fecha!")
+        await consolidate_turn(
+            "nací el 6 de octubre de 1981", "¡Qué fecha!", active_person=_identified_person()
+        )
 
-    matches = await find_entities_by_name("Felipe", limit=1)
+    matches = await find_entities_by_name("Pipec", limit=1)
     assert matches
     assert matches[0]["type"] == "person"
 
@@ -269,7 +310,9 @@ async def test_consolidate_turn_with_mocked_ollama(memory_db: Path) -> None:
             return_value=1,
         ),
     ):
-        await consolidate_turn("Mi gato Luna es muy juguetón", "Qué bonito")
+        await consolidate_turn(
+            "Mi gato Luna es muy juguetón", "Qué bonito", active_person=_identified_person()
+        )
 
     entities = await find_entities_by_name("Luna")
     assert len(entities) >= 1

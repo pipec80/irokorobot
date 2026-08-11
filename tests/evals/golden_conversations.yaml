@@ -6,8 +6,8 @@
 #
 # Case schema:
 #   id:                unique slug (use with --only ID to debug one case)
-#   owner:             simulated owner_name flag (normalization resolves
-#                      "usuario" to this name; without it owner facts drop)
+#   active_person:     explicit manual context whose display name resolves
+#                      turn-local aliases such as "usuario"
 #   user:              the user's literal words (grounding source)
 #   assistant:         the robot's reply (context — NEVER a source of facts)
 #   expected_entities: [{name, type}] — scored by recall only
@@ -19,9 +19,27 @@
 # multiple children in one phrase, pet with species, correction of a prior
 # datum, trivial turns (expected empty), birth date, allergies.
 
+manual_contexts:
+  pipec: &pipec
+    source: manual
+    person_id: 1
+    display_name: Pipec
+  maximo: &maximo
+    source: manual
+    person_id: 2
+    display_name: Máximo Fernández
+  carolina: &carolina
+    source: manual
+    person_id: 3
+    display_name: Carolina
+  felipe: &felipe
+    source: manual
+    person_id: 4
+    display_name: Felipe Castro
+
 cases:
   - id: presentacion_nombre
-    owner: Pipec
+    active_person: *pipec
     user: Hola, me llamo Pipec.
     assistant: ¡Hola Pipec! Qué gusto conocerte, yo soy Iroko.
     expected_entities:
@@ -30,7 +48,7 @@ cases:
       - { subject: Pipec, predicate: nombre, object: Pipec }
 
   - id: nombre_completo_con_acento
-    owner: Máximo Fernández
+    active_person: *maximo
     user: Mi nombre es Máximo Fernández.
     assistant: Un placer, Máximo.
     expected_entities:
@@ -41,7 +59,7 @@ cases:
         object: [Máximo Fernández, Máximo]
 
   - id: fecha_nacimiento
-    owner: Pipec
+    active_person: *pipec
     user: Nací el 12 de marzo de 1980.
     assistant: ¡Entonces tu cumpleaños es en marzo!
     expected_facts:
@@ -50,7 +68,7 @@ cases:
         object: [12 de marzo de 1980, 1980-03-12, 12/03/1980]
 
   - id: dos_hijos_en_una_frase
-    owner: Pipec
+    active_person: *pipec
     user: Tengo dos hijos, se llaman Valentina y Máximo.
     assistant: ¡Qué lindos nombres! Cuéntame de ellos.
     expected_entities:
@@ -61,7 +79,7 @@ cases:
       - { subject: Máximo, predicate: hijo_de, object: Pipec }
 
   - id: mascota_con_especie
-    owner: Pipec
+    active_person: *pipec
     user: Mi perra se llama Luna.
     assistant: ¡Luna! Me encantan los perros.
     expected_entities:
@@ -73,7 +91,7 @@ cases:
       - { subject: Luna, predicate: mascota_de, object: Pipec }
 
   - id: correccion_de_dato
-    owner: Pipec
+    active_person: *pipec
     user: Te equivocaste, Luna en realidad es gata, no perra.
     assistant: ¡Perdón! Lo recordaré, Luna es una gata.
     expected_facts:
@@ -82,35 +100,35 @@ cases:
         object: [gata, gato]
 
   - id: turno_trivial_saludo
-    owner: Pipec
+    active_person: *pipec
     user: Hola Iroko, ¿cómo estás hoy?
     assistant: ¡Muy bien! Con las baterías cargadas. ¿Y tú?
     expected_entities: []
     expected_facts: []
 
   - id: turno_trivial_despedida
-    owner: Pipec
+    active_person: *pipec
     user: Gracias por la charla, hasta mañana.
     assistant: ¡Hasta mañana! Que descanses.
     expected_entities: []
     expected_facts: []
 
   - id: trampa_texto_del_assistant
-    owner: Pipec
+    active_person: *pipec
     user: Ah, qué interesante.
     assistant: Mi creador Felipe me construyó en un taller de Santiago en 1985.
     expected_entities: []
     expected_facts: []
 
   - id: alergia
-    owner: Pipec
+    active_person: *pipec
     user: Soy alérgico al maní.
     assistant: Anotado, nada de maní cerca de ti.
     expected_facts:
       - { subject: Pipec, predicate: alergico_a, object: maní }
 
   - id: gusto_musical
-    owner: Pipec
+    active_person: *pipec
     user: Me gusta mucho el rock de los años ochenta.
     assistant: ¡Buen gusto! Yo también soy de los ochenta.
     expected_facts:
@@ -119,14 +137,14 @@ cases:
         object: [rock de los años ochenta, rock]
 
   - id: odio
-    owner: Pipec
+    active_person: *pipec
     user: Odio el tráfico de la mañana.
     assistant: Te entiendo, debe ser agotador.
     expected_facts:
       - { subject: Pipec, predicate: odia, object: tráfico }
 
   - id: preferencia
-    owner: Pipec
+    active_person: *pipec
     user: Prefiero el café sin azúcar.
     assistant: Café amargo, como los clásicos.
     expected_facts:
@@ -135,7 +153,7 @@ cases:
         object: [café sin azúcar, café]
 
   - id: ciudad_residencia
-    owner: Pipec
+    active_person: *pipec
     user: Vivo en Santiago de Chile.
     assistant: ¡Santiago! Me gustaría conocer la cordillera.
     expected_facts:
@@ -144,7 +162,7 @@ cases:
         object: [Santiago de Chile, Santiago]
 
   - id: trabajo
-    owner: Pipec
+    active_person: *pipec
     user: Trabajo en una empresa de logística.
     assistant: Suena a mucho movimiento, cuéntame más.
     expected_facts:
@@ -153,7 +171,7 @@ cases:
         object: [empresa de logística, logística]
 
   - id: pareja
-    owner: Pipec
+    active_person: *pipec
     user: Mi esposa se llama Carolina.
     assistant: ¡Carolina! Espero conocerla pronto.
     expected_entities:
@@ -162,21 +180,21 @@ cases:
       - { subject: Carolina, predicate: pareja_de, object: Pipec }
 
   - id: sin_hijos
-    owner: Pipec
+    active_person: *pipec
     user: No tengo hijos.
     assistant: Entendido, gracias por contarme.
     expected_facts:
       - { subject: Pipec, predicate: hijo_de, object: ninguno }
 
   - id: sin_mascotas
-    owner: Pipec
+    active_person: *pipec
     user: No, no tenemos mascotas en casa.
     assistant: Está bien, ¡yo puedo ser tu mascota robótica!
     expected_facts:
       - { subject: Pipec, predicate: mascota_de, object: ninguno }
 
   - id: edad
-    owner: Pipec
+    active_person: *pipec
     user: Tengo 45 años.
     assistant: ¡La mejor edad para construir robots!
     expected_facts:
@@ -185,7 +203,7 @@ cases:
         object: ["45", 45 años, cuarenta y cinco]
 
   - id: dos_hechos_en_un_turno
-    owner: Carolina
+    active_person: *carolina
     user: Me llamo Carolina y vivo en Valparaíso.
     assistant: ¡Hola Carolina! Valparaíso, la ciudad de los cerros.
     expected_entities:
@@ -199,7 +217,7 @@ cases:
   #  persona como objeto, fechas/edades convertidas en entidades)
 
   - id: hijo_con_edad_y_fecha_frase_larga
-    owner: Felipe Castro
+    active_person: *felipe
     user: Hoy te cuento otra cosa, tengo dos hijos, uno se llama Máximo, tiene 10 años, nació el 29 de diciembre de 2017.
     assistant: Genial, Felipe. Máximo es un nombre precioso. ¿Cuándo fue tu primer día como padre?
     expected_entities:
@@ -214,7 +232,7 @@ cases:
         object: [29 de diciembre de 2017]
 
   - id: segunda_hija_frase_narrativa
-    owner: Felipe Castro
+    active_person: *felipe
     user: Sí, recuerdo este momento muy especial y después nació Dominga y ella tiene ocho años, nació el 13 de noviembre del 2017.
     assistant: ¡Oh, eso es hermoso, Felipe! ¿Cómo fue tu primer día como padre?
     expected_entities:

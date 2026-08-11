@@ -4,9 +4,9 @@
 
 Approved design for a future **Draft** implementation plan. It does not
 authorize code, schema changes, a role bootstrap run, or public API changes.
-Plan 0002 remains the only `Ready` plan until it is complete; P0.5 cannot
-become executable before P0.2, P0.3, and P0.4 have completion evidence and the
-current tree is revalidated.
+Plan 0002 is Complete and no plan is currently `Ready`; P0.5 cannot become
+executable before P0.3 and P0.4 have completion evidence and the current tree
+is revalidated.
 
 ## Purpose
 

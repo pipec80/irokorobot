@@ -105,6 +105,23 @@ async def perceive(image: bytes) -> str:
     return "\n".join(lines)
 
 
+async def perceive_scene(image: bytes) -> str:
+    """Describe one frame without performing identity recognition.
+
+    Args:
+        image: Image bytes — contract: JPEG/PNG/WebP/GIF/BMP · max
+            1280x720 · one frame, processed in memory and discarded.
+
+    Returns:
+        A scene-only description containing no persisted identity lookup.
+
+    Raises:
+        VisionError: If the scene-description provider is unavailable.
+    """
+    description, _duration_ms = await describe_image(image)
+    return description
+
+
 async def enroll_from_frame(name: str, image: bytes) -> str:
     """Learn a face conversationally (verbal consent = the spoken phrase).
 

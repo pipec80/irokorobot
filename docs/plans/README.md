@@ -40,16 +40,16 @@ No plan may require chat history or a file under ignored `docs/local/`. If a
 historical insight is still required, first promote it into a tracked ADR or
 canonical architecture document.
 
-Plan 0001 is complete. The only current ready plan is:
+Plans 0001 and 0002 are complete. Plan 0002's approved
+[design](0002-active-person-context-design.md) records the identity and privacy
+decisions, and its [execution runbook](0002-active-person-context-execution.md)
+records the observed TDD, final-gate, and final-remediation evidence. The last
+remediation commit is `79258cc`; its combined P0.2 suite passed 174 tests and
+the full repository suite passed 497 tests.
 
-- [`0002-active-person-context.md`](0002-active-person-context.md)
-
-Its approved [design](0002-active-person-context-design.md) records the
-identity and privacy decisions. Its companion
-[execution runbook](0002-active-person-context-execution.md) adds TDD and
-temporary worker mechanics without changing the canonical plan's scope or
-authority. P0.3 and later plans remain Draft until Plan 0002 is completed and
-their assumptions are revalidated against the then-current tree.
+There is currently no executable plan. P0.3 and later plans remain Draft.
+Before any promotion, re-read the completed P0.2 implementation and revise the
+candidate plan with its exact current file scope and tests.
 
 The [P0 cognitive portfolio design](p0-cognitive-plan-portfolio-design.md)
 links every current P0 plan and records their dependency order and status.

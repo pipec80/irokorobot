@@ -5,14 +5,11 @@ from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
 import pytest
-from server.exceptions import BrainMemoryError
-from server.memory import working
-from server.onboarding import OnboardingSlot
+from server.memory import meta, working
 from server.routers import transcribe as transcribe_module
-from server.schemas import MemoryContext
 from server.settings import settings
 
-from server import llm, pipeline, stt, text_turn, tts
+from server import llm, onboarding, pipeline, stt, tts
 
 
 @pytest.fixture(autouse=True)
@@ -24,24 +21,22 @@ def _mock_memory_pipeline(monkeypatch: pytest.MonkeyPatch) -> Generator[None, No
     monkeypatch.setattr(tts, "synthesize", AsyncMock(return_value=("AAAA", 42)))
     monkeypatch.setattr(pipeline, "list_entity_names", AsyncMock(return_value=[]))
     monkeypatch.setattr(transcribe_module, "consolidate_turn", AsyncMock())
-    monkeypatch.setattr(text_turn, "_onboarding_done", False)
+    working._buffers.clear()
+    working._emotion_buffers.clear()
     yield
-    working.clear(settings.voice_conversation_id)
+    working._buffers.clear()
+    working._emotion_buffers.clear()
 
 
 @pytest.mark.integration
-def test_onboarding_check_failure_degrades_to_stateless(
+def test_unidentified_transcribe_suppresses_onboarding_lookup(
     client: TestClient,
     silence_wav_bytes: bytes,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An onboarding DB failure should not prevent a response."""
-    monkeypatch.setattr(text_turn, "build_context", AsyncMock(return_value=MemoryContext()))
-    monkeypatch.setattr(
-        text_turn,
-        "_needs_onboarding",
-        AsyncMock(side_effect=BrainMemoryError("DB not open")),
-    )
+    """P0.2 must not query legacy onboarding for an unresolved voice turn."""
+    lookup = AsyncMock()
+    monkeypatch.setattr(onboarding, "next_missing_slot", lookup)
 
     response = client.post(
         "/transcribe",
@@ -50,22 +45,18 @@ def test_onboarding_check_failure_degrades_to_stateless(
 
     assert response.status_code == 200
     assert response.json()["llm_response"] == "hola humano"
+    lookup.assert_not_awaited()
 
 
 @pytest.mark.integration
-def test_onboarding_slot_reaches_llm(
+def test_unidentified_transcribe_passes_no_onboarding_inputs(
     client: TestClient,
     silence_wav_bytes: bytes,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The next persistent checklist slot should reach shared generation."""
-    llm_mock = AsyncMock(return_value=("¿cómo te llamás?", "neutral"))
-    slot = OnboardingSlot(key="nombre", question_hint="su nombre")
+    """The unresolved public path must never start the legacy interview."""
+    llm_mock = AsyncMock(return_value=("hola humano", "neutral"))
     monkeypatch.setattr(llm, "generate_response", llm_mock)
-    monkeypatch.setattr(text_turn, "build_context", AsyncMock(return_value=MemoryContext()))
-    monkeypatch.setattr(text_turn, "_needs_onboarding", AsyncMock(return_value=True))
-    monkeypatch.setattr(text_turn, "next_missing_slot", AsyncMock(return_value=slot))
-    monkeypatch.setattr(text_turn.meta, "get_flag", AsyncMock(return_value=None))
 
     response = client.post(
         "/transcribe",
@@ -73,31 +64,24 @@ def test_onboarding_slot_reaches_llm(
     )
 
     assert response.status_code == 200
-    assert llm_mock.await_args_list[-1].kwargs["onboarding"] is True
-    assert llm_mock.await_args_list[-1].kwargs["onboarding_slot"] == slot
-
-
-@pytest.mark.integration
-def test_exhausted_checklist_completes_onboarding(
-    client: TestClient,
-    silence_wav_bytes: bytes,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """No missing slot should persist completion and end the interview."""
-    llm_mock = AsyncMock(return_value=("¡listo!", "joy"))
-    set_flag = AsyncMock()
-    monkeypatch.setattr(llm, "generate_response", llm_mock)
-    monkeypatch.setattr(text_turn, "build_context", AsyncMock(return_value=MemoryContext()))
-    monkeypatch.setattr(text_turn, "_needs_onboarding", AsyncMock(return_value=True))
-    monkeypatch.setattr(text_turn, "next_missing_slot", AsyncMock(return_value=None))
-    monkeypatch.setattr(text_turn.meta, "get_flag", AsyncMock(return_value="Felipe"))
-    monkeypatch.setattr(text_turn.meta, "set_flag", set_flag)
-
-    response = client.post(
-        "/transcribe",
-        files={"audio": ("a.wav", silence_wav_bytes, "audio/wav")},
-    )
-
-    assert response.status_code == 200
-    set_flag.assert_awaited_once_with("onboarding_complete", "true")
     assert llm_mock.await_args_list[-1].kwargs["onboarding"] is False
+    assert llm_mock.await_args_list[-1].kwargs["onboarding_slot"] is None
+
+
+@pytest.mark.integration
+def test_unidentified_transcribe_does_not_complete_legacy_onboarding(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """P0.2 must not mutate legacy onboarding completion from a voice turn."""
+    set_flag = AsyncMock()
+    monkeypatch.setattr(meta, "set_flag", set_flag)
+
+    response = client.post(
+        "/transcribe",
+        files={"audio": ("a.wav", silence_wav_bytes, "audio/wav")},
+    )
+
+    assert response.status_code == 200
+    set_flag.assert_not_awaited()

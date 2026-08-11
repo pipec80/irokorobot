@@ -1,18 +1,60 @@
 """Integration tests for POST /transcribe/stream."""
 
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 import json
+import time
 from unittest.mock import AsyncMock, Mock
+from uuid import UUID
 
+from fastapi import BackgroundTasks
 from fastapi.testclient import TestClient
 import httpx
 import pytest
+from server.cognition.identity import (
+    ActivePersonContext,
+    ActivePersonStatus,
+    HouseholdRole,
+    IdentityEvidence,
+    IdentityEvidenceSource,
+)
+from server.cognition.models import Confidence, ConfidenceBasis
 from server.exceptions import LLMError
 from server.routers import transcribe as transcribe_module
+from server.schemas import ConversationTurn
 from server.settings import settings
 from server.text_turn import PreparedTextTurn
 
-from server import llm, llm_streaming, streaming, stt, tts
+from server import llm, llm_streaming, pipeline, streaming, stt, tts
+
+
+def _manual_active_person() -> ActivePersonContext:
+    """Create explicit manual identity evidence for shared-stream tests."""
+    resolved_at = datetime(2026, 8, 10, tzinfo=UTC)
+    confidence = Confidence(
+        score=1.0,
+        basis=ConfidenceBasis.ASSERTED,
+        calibrated=True,
+        reason="Explicit local selection",
+    )
+    return ActivePersonContext(
+        person_id=7,
+        display_name="Sofía",
+        status=ActivePersonStatus.IDENTIFIED,
+        confidence=confidence,
+        role=HouseholdRole.UNKNOWN,
+        evidence=(
+            IdentityEvidence(
+                evidence_id=UUID("11111111-1111-1111-1111-111111111111"),
+                source=IdentityEvidenceSource.MANUAL,
+                candidate_person_id=7,
+                confidence=confidence,
+                observed_at=resolved_at,
+                reference="trusted-local-adapter",
+            ),
+        ),
+        resolved_at=resolved_at,
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -65,20 +107,22 @@ def test_stream_prepares_shared_voice_turn(
     silence_wav_bytes: bytes,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Streaming should prepare prompt inputs through the shared service."""
+    """Streaming keeps one fresh internal scope for preparation and recording."""
+    scope = "interaction:stream-request"
     prepared = PreparedTextTurn(
         "hola robot",
-        settings.voice_conversation_id,
+        scope,
         None,
         None,
         False,
         None,
         None,
         None,
-        None,
     )
     prepare = AsyncMock(return_value=prepared)
     record = Mock()
+    new_scope = Mock(return_value=scope)
+    monkeypatch.setattr(transcribe_module, "new_interaction_scope", new_scope, raising=False)
     monkeypatch.setattr(transcribe_module, "prepare_text_turn", prepare)
     monkeypatch.setattr(streaming, "record_text_turn", record)
     monkeypatch.setattr(settings, "llm_provider", "anthropic")
@@ -87,14 +131,37 @@ def test_stream_prepares_shared_voice_turn(
     response = _post_stream(client, silence_wav_bytes)
 
     assert response.status_code == 200
-    prepare.assert_awaited_once_with("hola robot", settings.voice_conversation_id)
+    new_scope.assert_called_once_with()
+    prepare.assert_awaited_once_with("hola robot", scope)
     assert record.call_args.args == (
         "hola robot",
-        settings.voice_conversation_id,
+        scope,
         "Hola.",
         "joy",
     )
     assert callable(record.call_args.kwargs["schedule_consolidation"])
+
+
+@pytest.mark.integration
+def test_unresolved_stream_does_not_load_entity_hotwords(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unresolved stream must not query persistent names before STT."""
+    list_names = AsyncMock(return_value=["Sofía"])
+    stt_mock = AsyncMock(return_value="hola robot")
+    monkeypatch.setattr(pipeline, "list_entity_names", list_names)
+    monkeypatch.setattr(stt, "transcribe", stt_mock)
+    monkeypatch.setattr(settings, "memory_enabled", True)
+    monkeypatch.setattr(settings, "llm_provider", "anthropic")
+    monkeypatch.setattr(llm, "generate_response", AsyncMock(return_value=("Hola.", "joy")))
+
+    response = _post_stream(client, silence_wav_bytes)
+
+    assert response.status_code == 200
+    list_names.assert_not_awaited()
+    assert stt_mock.await_args_list[-1].kwargs["extra_hotwords"] == []
 
 
 @pytest.mark.integration
@@ -190,3 +257,129 @@ def test_stream_llm_failure_speaks_fallback_phrase(
     assert audio_events[-1]["text"] == settings.llm_fallback_phrase
     assert events[-1]["type"] == "done"
     record.assert_not_called()
+
+
+@pytest.mark.integration
+async def test_streaming_propagates_prepared_identity_history_and_recording_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Both provider paths must use the same prepared identity and scope."""
+    active_person = _manual_active_person()
+    history = [ConversationTurn(role="user", content="previous question")]
+    prepared = PreparedTextTurn(
+        "hola robot",
+        "public-id",
+        None,
+        history,
+        False,
+        None,
+        None,
+        None,
+        active_person,
+        "session:11111111111111111111111111111111:person:7",
+    )
+    standard_generate = AsyncMock(return_value=("Hola.", "joy"))
+    monkeypatch.setattr(settings, "llm_provider", "anthropic")
+    monkeypatch.setattr(llm, "generate_response", standard_generate)
+
+    standard_deltas = [delta async for delta in streaming._text_deltas(prepared)]
+
+    assert standard_deltas == ["EMOTION:joy\nHola."]
+    standard_call = standard_generate.await_args
+    assert standard_call is not None
+    assert standard_call.kwargs["history"] == history
+    assert standard_call.kwargs["active_person"] is active_person
+
+    streamed_kwargs: dict[str, object] = {}
+
+    async def generate_stream(*_args: object, **kwargs: object) -> AsyncIterator[str]:
+        streamed_kwargs.update(kwargs)
+        yield "EMOTION:joy\nHola."
+
+    monkeypatch.setattr(settings, "llm_provider", "ollama")
+    monkeypatch.setattr(llm_streaming, "generate_response_stream", generate_stream)
+
+    ollama_deltas = [delta async for delta in streaming._text_deltas(prepared)]
+
+    assert ollama_deltas == ["EMOTION:joy\nHola."]
+    assert streamed_kwargs["history"] == history
+    assert streamed_kwargs["active_person"] is active_person
+
+    record = Mock()
+    monkeypatch.setattr(settings, "llm_provider", "anthropic")
+    monkeypatch.setattr(streaming, "record_text_turn", record)
+
+    _ = [
+        line
+        async for line in streaming.stream_pipeline(
+            prepared=prepared,
+            stt_ms=0,
+            request_start=time.perf_counter(),
+            schedule_consolidation=lambda _message, _response, _active_person: None,
+        )
+    ]
+
+    record_call = record.call_args
+    assert record_call is not None
+    assert record_call.kwargs["active_person"] is active_person
+    assert record_call.kwargs["history_scope"] == prepared.history_scope
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_streaming_schedules_manual_identity_for_consolidation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Streaming must preserve manual identity through its scheduler callback."""
+    active_person = _manual_active_person()
+    prepared = PreparedTextTurn(
+        "hola robot",
+        "public-id",
+        None,
+        [],
+        False,
+        None,
+        None,
+        None,
+        active_person,
+        "session:11111111111111111111111111111111:person:7",
+    )
+    scheduler = Mock()
+    monkeypatch.setattr(settings, "memory_enabled", True)
+    monkeypatch.setattr(settings, "llm_provider", "anthropic")
+    monkeypatch.setattr(llm, "generate_response", AsyncMock(return_value=("Hola.", "joy")))
+
+    _ = [
+        line
+        async for line in streaming.stream_pipeline(
+            prepared=prepared,
+            stt_ms=0,
+            request_start=time.perf_counter(),
+            schedule_consolidation=scheduler,
+        )
+    ]
+
+    scheduler.assert_called_once_with("hola robot", "Hola.", active_person)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_background_scheduler_forwards_manual_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The FastAPI background bridge must pass identity as data, not permission."""
+    active_person = _manual_active_person()
+    consolidate = AsyncMock()
+    background_tasks = BackgroundTasks()
+    monkeypatch.setattr(transcribe_module, "consolidate_turn", consolidate)
+
+    scheduler = transcribe_module._consolidation_scheduler(background_tasks)
+    scheduler("hola robot", "Hola.", active_person)
+    await background_tasks()
+
+    consolidate.assert_awaited_once_with(
+        "hola robot",
+        "Hola.",
+        active_person=active_person,
+    )
+    assert active_person.role is HouseholdRole.UNKNOWN

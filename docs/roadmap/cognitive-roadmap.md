@@ -297,7 +297,9 @@ contradicts the plan, stop and report the exact conflict; do not redesign or
 expand scope. Run the listed verification. Do not commit unless asked.
 ```
 
-[Plan 0001](../plans/0001-cognitive-domain-models.md) is complete. The only
-ready plan is [Plan 0002](../plans/0002-active-person-context.md). Later plans
-should be written just in time after the previous exit gate is verified;
-otherwise they will encode guesses about code that has already moved.
+[Plan 0001](../plans/0001-cognitive-domain-models.md) and
+[Plan 0002](../plans/0002-active-person-context.md) are complete. No plan is
+currently `Ready`; P0.3 and later plans remain `Draft` until their dependencies
+and current tree are revalidated. Later plans should be written just in time
+after the previous exit gate is verified; otherwise they will encode guesses
+about code that has already moved.

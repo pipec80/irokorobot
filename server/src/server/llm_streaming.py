@@ -23,6 +23,7 @@ from collections.abc import AsyncIterator
 import re
 
 from server.characters import build_system_prompt, get_character
+from server.cognition.identity import ActivePersonContext
 from server.llm import FALLBACK_EMOTION, VALID_EMOTIONS
 from server.llm_transport import ollama_chat_stream
 from server.onboarding import OnboardingSlot
@@ -80,7 +81,7 @@ async def generate_response_stream(
     onboarding: bool = False,
     onboarding_slot: OnboardingSlot | None = None,
     user_emotion: str | None = None,
-    owner_name: str | None = None,
+    active_person: ActivePersonContext | None = None,
 ) -> AsyncIterator[str]:
     """Stream a robot response token-by-token via Ollama.
 
@@ -91,7 +92,7 @@ async def generate_response_stream(
         onboarding: Whether onboarding is in progress.
         onboarding_slot: Next onboarding checklist slot, if any.
         user_emotion: Dominant recent user emotion, if any.
-        owner_name: Owner's name once learned, if any.
+        active_person: Internally resolved person context for this turn, if any.
 
     Yields:
         Raw text deltas as Ollama generates them. The first delta(s) carry
@@ -112,7 +113,7 @@ async def generate_response_stream(
             onboarding=onboarding,
             onboarding_slot=onboarding_slot,
             user_emotion=user_emotion,
-            owner_name=owner_name,
+            active_person=active_person,
         )
         + _STREAMING_SYSTEM_SUFFIX
     )

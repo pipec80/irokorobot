@@ -1,6 +1,6 @@
 # Plan 0002 — Active-person context and conversation isolation
 
-- **Status:** Ready
+- **Status:** Complete
 - **Roadmap phase:** P0.2
 - **Prerequisite:** Plan 0001 is Complete.
 - **Approved design:** [0002-active-person-context-design.md](0002-active-person-context-design.md)
@@ -77,6 +77,8 @@ server/src/server/memory/normalize.py
 server/src/server/routers/transcribe.py
 server/src/server/routers/vision.py
 server/src/server/settings.py
+server/src/server/vision/perception.py                 (final remediation,
+                                                         user-authorized)
 ```
 
 Permitted tests and canonical documentation:
@@ -247,3 +249,70 @@ just test
 Review the final diff against the permitted scope. Update this plan's status
 from `Ready` to `Complete` only after every acceptance criterion and the three
 commands pass. Do not modify any later plan's status.
+
+## Completion record — 2026-08-10
+
+Plan 0002 is complete. It introduced the strict, local-only active-person
+boundary; an expiring process-local manual-session registry; one-turn isolation
+for unresolved interactions; manual-only legacy compatibility for persistent
+context and consolidation; neutral, non-identifying generation guidance; and
+opaque per-request voice and vision interaction scopes. The published `/chat`,
+audio, and NDJSON contracts remain unchanged.
+
+Observed final verification before this status update:
+
+```text
+combined focused suite: 159 passed in 3.99s
+just lint: passed (171 files left unchanged)
+just typecheck: mypy 65 source files, no issues; pyright 0 errors, 0 warnings
+just test: 482 passed in 42.52s
+git diff --check 9ec3afd..cbf64d4: passed
+```
+
+The implementation commits are `dc9e398`, `985cf90`, `cdb9c30`, `9f36219`,
+`08b4a34`, `005f50e`, `abcc3a1`, `fe75e9d`, `b564e8d`, `9be02fa`, `d8b3394`,
+`b309643`, and `cbf64d4`. The baseline scope was widened only by the recorded
+user authorizations: `tests/integration/test_transcribe_onboarding.py` for the
+unidentified-onboarding regression; `server/src/server/text_turn.py`,
+`scripts/eval_chat.py`, and `scripts/eval_consolidation.py` to remove broken
+legacy generation/evaluation aliases; `tests/integration/test_transcribe_memory.py`
+for the matching regression; and the final-gate test-only corrections in
+`tests/unit/test_owner_anchor.py` and `tests/unit/test_cognitive_models.py`.
+
+Known limitation: manual selection is process-local and expires; restarting the
+process clears the registry. This plan provides no authentication, biometric
+identification, role grant, consent decision, or public identity endpoint.
+Face, voice, and context remain future vocabulary only. P0.3 remains **Draft**;
+its promotion requires a current-tree review and an updated executable scope.
+
+## Final remediation record — 2026-08-10
+
+Final review approved the remediation in `79258cc`
+(`fix(cognition): close active person safety gaps`). It addressed five findings:
+
+1. unresolved audio no longer retrieves persisted entity-name hotwords before
+   identity is resolved;
+2. unresolved visual dialogue uses scene-only perception rather than injecting
+   face-recognition names;
+3. verified manual `ActivePersonContext` reaches standard and streaming
+   consolidation scheduling without becoming authorization;
+4. trusted registry selection emits `manual`, resolves as `identified`, and
+   exposes the canonical `IdentitySessionRegistry`; and
+5. Python-mode identity timestamps are strict, while JSON round trips remain
+   supported; the unused prepared-turn `owner_name` field was also removed.
+
+The user authorized the narrow production-scope addition
+`server/src/server/vision/perception.py` for the scene-only visual boundary.
+No public endpoint or field, role grant, authentication, biometric identity
+integration, dependency, cloud path, database migration, audio, OpenAPI, or
+NDJSON contract changed.
+
+The final evidence is: combined Plan 0002 suite, 174 passed in 3.25s; `just
+lint` green; `just typecheck` green (Mypy: 65 source files, no issues; Pyright:
+0 errors, 0 warnings); and `just test`, 497 passed in 41.67s. `git diff --check`
+also passed. The reviewer approved this closure.
+
+Non-blocking follow-up: retire the compatibility alias for the earlier registry
+class name only through a separately scoped migration after all consumers have
+moved to `IdentitySessionRegistry`. It does not reopen P0.2. P0.3 remains
+**Draft**.

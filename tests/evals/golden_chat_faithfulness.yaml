@@ -2,7 +2,6 @@ version: 1
 cases:
   - id: two_children_names
     tags: [present, multi_fact, identity]
-    owner_name: Alex
     question: ¿Cómo se llaman mis hijos?
     context:
       entities:
@@ -38,7 +37,6 @@ cases:
 
   - id: absent_pet
     tags: [absent]
-    owner_name: Alex
     question: ¿Cómo se llama mi mascota y qué especie es?
     context:
       entities:
@@ -59,7 +57,6 @@ cases:
 
   - id: corrected_age_active_fact
     tags: [present, correction]
-    owner_name: Alex
     question: ¿Cuántos años tiene Sam?
     context:
       entities:
@@ -80,7 +77,6 @@ cases:
 
   - id: corrected_species_active_fact
     tags: [present, correction]
-    owner_name: Alex
     question: ¿Qué especie es Kira?
     context:
       entities:
@@ -99,9 +95,12 @@ cases:
         - [gata, felina]
       forbidden: [perra, canina]
 
-  - id: owner_identity_second_person
+  - id: identified_person_second_person
     tags: [present, identity]
-    owner_name: Alex
+    active_person:
+      source: manual
+      person_id: 1
+      display_name: Alex
     question: ¿Dónde vivo?
     context:
       entities:
@@ -123,7 +122,6 @@ cases:
 
   - id: semantic_distractor_ignored
     tags: [present, distractor]
-    owner_name: Alex
     question: ¿De qué color es la bicicleta de Sam?
     context:
       entities:
@@ -150,7 +148,6 @@ cases:
 
   - id: old_history_vs_active_fact
     tags: [present, correction, distractor]
-    owner_name: Alex
     question: ¿Cuántos años tiene Sam ahora?
     context:
       entities:
@@ -175,7 +172,6 @@ cases:
 
   - id: resolved_face_recognition
     tags: [present, perception, identity]
-    owner_name:
     question: ¿Me reconoces?
     context:
       entities:
@@ -194,7 +190,6 @@ cases:
 
   - id: resolved_face_enrollment
     tags: [present, perception, identity]
-    owner_name:
     question: Aprende mi cara, soy Teo.
     context:
       entities:
@@ -213,7 +208,6 @@ cases:
 
   - id: absent_address
     tags: [absent]
-    owner_name: Alex
     question: ¿Cuál es la dirección de Sam?
     context:
       entities:
@@ -234,7 +228,6 @@ cases:
 
   - id: multiple_active_facts
     tags: [present, multi_fact]
-    owner_name: Alex
     question: ¿Qué instrumento toca Sam y cuál es su color favorito?
     context:
       entities:
@@ -259,7 +252,6 @@ cases:
 
   - id: persisted_context_after_restart
     tags: [present, restart]
-    owner_name: Alex
     question: Después del reinicio, ¿cuántos años tiene Sam?
     context:
       entities:

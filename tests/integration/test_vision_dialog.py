@@ -9,7 +9,7 @@ the character prompt → spoken in-character answer.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import cv2
 import numpy as np
@@ -41,6 +41,12 @@ def _vision_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
         vision,
         "perceive",
         AsyncMock(return_value="Una bola roja sobre la mesa."),
+    )
+    monkeypatch.setattr(
+        vision_module,
+        "perceive_scene",
+        AsyncMock(return_value="Una bola roja sobre la mesa."),
+        raising=False,
     )
     monkeypatch.setattr(
         vision,
@@ -95,21 +101,38 @@ def test_vision_respond_answers_in_character(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Round 2 should pass the VLM perception to the shared text service."""
+    """Round 2 should use a fresh internal scope for each visual dialogue."""
+    scopes = ("interaction:vision-one", "interaction:vision-two")
     process = AsyncMock(return_value=TextTurnResult("¡Veo una bola roja!", "joy", 7, False))
+    new_scope = Mock(side_effect=scopes)
     monkeypatch.setattr(vision_module, "process_text_turn", process)
+    monkeypatch.setattr(vision_module, "new_interaction_scope", new_scope, raising=False)
 
+    responses = [_post_respond(client, _FAKE_JPEG, "¿qué ves?") for _ in scopes]
+
+    assert [response.status_code for response in responses] == [200, 200]
+    assert all(response.json()["llm_response"] == "¡Veo una bola roja!" for response in responses)
+    assert all(response.json()["vision_requested"] is False for response in responses)
+    assert [call.args[1] for call in process.await_args_list] == list(scopes)
+    assert all(
+        call.kwargs == {"perception": "Una bola roja sobre la mesa."}
+        for call in process.await_args_list
+    )
+    assert all(scope not in response.text for scope in scopes for response in responses)
+
+
+@pytest.mark.integration
+def test_vision_respond_uses_nonidentity_scene_perception(
+    client: TestClient,
+) -> None:
+    """An unresolved visual turn must not recognize or inject persisted names."""
     resp = _post_respond(client, _FAKE_JPEG, "¿qué ves?")
 
     assert resp.status_code == 200
-    body = resp.json()
-    assert body["llm_response"] == "¡Veo una bola roja!"
-    assert body["vision_requested"] is False
-    process.assert_awaited_once_with(
-        "¿qué ves?",
-        settings.voice_conversation_id,
-        perception="Una bola roja sobre la mesa.",
-    )
+    vision_module.perceive_scene.assert_awaited_once()  # type: ignore[attr-defined]  # AsyncMock
+    vision.perceive.assert_not_awaited()  # type: ignore[attr-defined]  # AsyncMock
+    kwargs = llm.generate_response.await_args.kwargs  # type: ignore[attr-defined]  # AsyncMock
+    assert kwargs["perception"] == "Una bola roja sobre la mesa."
 
 
 @pytest.mark.integration
@@ -117,7 +140,12 @@ def test_vision_respond_vlm_down_still_speaks(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A dead VLM must not mute the robot: it answers blind with an excuse."""
-    monkeypatch.setattr(vision, "perceive", AsyncMock(side_effect=VisionError("vlm down")))
+    monkeypatch.setattr(
+        vision_module,
+        "perceive_scene",
+        AsyncMock(side_effect=VisionError("vlm down")),
+        raising=False,
+    )
 
     resp = _post_respond(client, _FAKE_JPEG, "¿qué ves?")
 
@@ -151,7 +179,7 @@ def test_vision_respond_routes_enrollment(client: TestClient) -> None:
     vision.enroll_from_frame.assert_awaited_once()  # type: ignore[attr-defined]  # AsyncMock
     name, _image = vision.enroll_from_frame.await_args.args  # type: ignore[attr-defined]
     assert name == "Felipe"
-    vision.perceive.assert_not_awaited()  # type: ignore[attr-defined]  # AsyncMock
+    vision_module.perceive_scene.assert_not_awaited()  # type: ignore[attr-defined]  # AsyncMock
     kwargs = llm.generate_response.await_args.kwargs  # type: ignore[attr-defined]  # AsyncMock
     assert "Felipe" in kwargs["perception"]
 

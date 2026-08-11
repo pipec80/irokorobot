@@ -14,8 +14,24 @@ import re
 import time
 from typing import TYPE_CHECKING, Literal, NoReturn
 import unicodedata
+from uuid import NAMESPACE_URL, uuid5
 
-from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
+from server.cognition.identity import (
+    ActivePersonContext,
+    ActivePersonStatus,
+    HouseholdRole,
+    IdentityEvidence,
+    IdentityEvidenceSource,
+)
+from server.cognition.models import Confidence, ConfidenceBasis
 from server.schemas import (  # noqa: TC002 — Pydantic resolves these fields at runtime
     ConversationTurn,
     MemoryContext,
@@ -47,6 +63,7 @@ _REPORT_DIRECTORY = Path("docs") / "evals"
 _MIN_RUNS = 1
 _MAX_RUNS = 10
 _PERCENT_SCALE = 100
+_EVALUATION_RESOLVED_AT = datetime(2026, 8, 10, tzinfo=UTC)
 
 type ProviderChoice = Literal["configured", "ollama", "anthropic"]
 type ProviderName = Literal["ollama", "anthropic"]
@@ -84,12 +101,59 @@ class ExpectedAssertions(BaseModel):
         return self
 
 
+class EvaluationActivePerson(BaseModel):
+    """Explicit manual active-person fixture for one synthetic evaluation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: Literal["manual"]
+    person_id: int = Field(strict=True)
+    display_name: str
+
+    @field_validator("display_name")
+    @classmethod
+    def validate_display_name(cls, display_name: str) -> str:
+        """Reject blank display guidance in an explicit evaluation context."""
+        if not display_name.strip():
+            raise ValueError("active-person display_name must not be blank")
+        return display_name
+
+    def to_context(self) -> ActivePersonContext:
+        """Build the immutable context passed to the production LLM boundary."""
+        confidence = Confidence(
+            score=1.0,
+            basis=ConfidenceBasis.ASSERTED,
+            calibrated=True,
+            reason="Explicit evaluation selection",
+        )
+        return ActivePersonContext(
+            person_id=self.person_id,
+            display_name=self.display_name,
+            status=ActivePersonStatus.IDENTIFIED,
+            confidence=confidence,
+            role=HouseholdRole.UNKNOWN,
+            evidence=(
+                IdentityEvidence(
+                    evidence_id=uuid5(NAMESPACE_URL, f"eval-active-person:{self.person_id}"),
+                    source=IdentityEvidenceSource.MANUAL,
+                    candidate_person_id=self.person_id,
+                    confidence=confidence,
+                    observed_at=_EVALUATION_RESOLVED_AT,
+                    reference="evaluation-manual-context",
+                ),
+            ),
+            resolved_at=_EVALUATION_RESOLVED_AT,
+        )
+
+
 class GoldenCase(BaseModel):
     """One synthetic context-faithfulness evaluation case."""
 
+    model_config = ConfigDict(extra="forbid")
+
     id: str
     tags: list[str] = Field(min_length=1)
-    owner_name: str | None = None
+    active_person: EvaluationActivePerson | None = None
     question: str
     context: MemoryContext
     history: list[ConversationTurn] = Field(default_factory=list)
@@ -547,7 +611,7 @@ async def _run_case(case: GoldenCase, repetition: int) -> CaseRunResult:
             case.question,
             context=case.context,
             history=case.history,
-            owner_name=case.owner_name,
+            active_person=case.active_person.to_context() if case.active_person else None,
             perception=case.perception,
         )
         assertion = score_response(case, response)
