@@ -2,10 +2,10 @@
 
 ## Status
 
-Approved design for a future **Draft** implementation plan. Plan 0002 remains
-the only `Ready` plan. This document authorizes neither production code nor
-making Plan 0003 executable before P0.2 has completed and the source tree has
-been revalidated.
+Approved design for a future **Draft** implementation plan. Plan 0002 is
+Complete and no plan is currently `Ready`. This document authorizes neither
+production code nor making Plan 0003 executable before the current source tree
+has been revalidated.
 
 ## Purpose
 
