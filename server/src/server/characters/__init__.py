@@ -4,6 +4,7 @@ from datetime import date
 import logging
 from pathlib import Path
 import re
+import unicodedata
 
 import yaml
 
@@ -86,6 +87,8 @@ PRESENTATION GUIDANCE:
   only when natural.
 - Do not state that the name identifies the speaker.
 - Do not infer relationships, personal facts, or authorization from it."""
+
+_MAX_PRESENTATION_DISPLAY_NAME_LENGTH = 80
 
 # D2/D3: the checklist decides WHAT to ask; the character decides HOW.
 # The echo provokes correction — if the robot repeats a garbled name, the
@@ -209,6 +212,29 @@ def get_character(name: str) -> CharacterProfile:
     return IROKO
 
 
+def _safe_presentation_display_name(
+    active_person: ActivePersonContext | None,
+) -> str | None:
+    """Return bounded, single-line display guidance safe for prompt interpolation."""
+    if (
+        active_person is None
+        or active_person.status is not ActivePersonStatus.IDENTIFIED
+        or not active_person.display_name
+    ):
+        return None
+    display_name = active_person.display_name
+    has_unsafe_control = any(
+        unicodedata.category(character) in {"Cc", "Cf", "Zl", "Zp"} for character in display_name
+    )
+    if (
+        not display_name.strip()
+        or len(display_name) > _MAX_PRESENTATION_DISPLAY_NAME_LENGTH
+        or has_unsafe_control
+    ):
+        return None
+    return display_name
+
+
 def build_system_prompt(
     profile: CharacterProfile,
     context: MemoryContext | None,
@@ -245,14 +271,9 @@ def build_system_prompt(
         _MEMORY_DISCIPLINE,
         _TODAY_TEMPLATE.format(date_es=current_date_es()),
     ]
-    if (
-        active_person is not None
-        and active_person.status is ActivePersonStatus.IDENTIFIED
-        and active_person.display_name
-    ):
-        parts.append(
-            _PRESENTATION_GUIDANCE_TEMPLATE.format(display_name=active_person.display_name)
-        )
+    display_name = _safe_presentation_display_name(active_person)
+    if display_name is not None:
+        parts.append(_PRESENTATION_GUIDANCE_TEMPLATE.format(display_name=display_name))
     if onboarding:
         parts.append(profile.onboarding_prompt)
         if onboarding_slot is not None:

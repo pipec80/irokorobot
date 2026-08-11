@@ -90,8 +90,9 @@ def _fact_matches(predicted: ExtractedFact, expected: dict[str, Any]) -> bool:
 
 def _active_person_display_name(case: dict[str, Any]) -> str | None:
     """Return explicit manual display guidance for one synthetic turn."""
-    if "owner" in case:
-        raise ValueError("owner is not an active-person context")
+    for legacy_key in ("owner", "owner_name"):
+        if legacy_key in case:
+            raise ValueError(f"{legacy_key} is not an active-person context")
     active_person = case.get("active_person")
     if active_person is None:
         return None
@@ -129,6 +130,7 @@ class CaseResult:
 
 async def _eval_case(case: dict[str, Any]) -> CaseResult:
     """Run the real extraction pipeline on one golden case and score it."""
+    active_person_name = _active_person_display_name(case)
     expected_facts = case.get("expected_facts") or []
     expected_entities = case.get("expected_entities") or []
     t0 = time.perf_counter()
@@ -145,7 +147,7 @@ async def _eval_case(case: dict[str, Any]) -> CaseResult:
     elapsed = time.perf_counter() - t0
     extraction = normalize_extraction(
         raw,
-        active_person_name=_active_person_display_name(case),
+        active_person_name=active_person_name,
         user_text=case["user"],
     )
 
