@@ -269,7 +269,7 @@ async def test_generate_response_with_context_and_history(
 async def test_generate_response_uses_manual_context_for_neutral_display_guidance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Manual context may guide presentation but cannot assert identity or access."""
+    """Manual context adds static guidance without exposing identity or access."""
     mock = AsyncMock(return_value=("hola Sofía", "joy"))
     monkeypatch.setattr(llm, "_generate_anthropic", mock)
     monkeypatch.setattr(llm.settings, "llm_provider", "anthropic")
@@ -281,7 +281,8 @@ async def test_generate_response_uses_manual_context_for_neutral_display_guidanc
 
     system_prompt = mock.call_args[0][0]
     assert "PRESENTATION GUIDANCE" in system_prompt
-    assert "Sofía" in system_prompt
+    assert "An explicitly identified manual context is available for this turn." in system_prompt
+    assert "Sofía" not in system_prompt
     assert "OWNER IDENTITY" not in system_prompt
     assert "your owner" not in system_prompt.lower()
     assert "Do not infer relationships, personal facts, or authorization" in system_prompt
