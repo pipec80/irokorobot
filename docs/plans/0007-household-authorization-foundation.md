@@ -2,8 +2,8 @@
 
 ## Status
 
-**Complete — feature branch validation pending PR merge.** This P0.5-A slice
-was validated on 2026-08-12 on `feat/p05-household-authorization`. It follows
+**Complete — merged to `main` as `960f160` through PR #42 on 2026-08-12.**
+The feature branch validation commit was `3821be2`. This P0.5-A slice follows
 P0.2, P0.3, and the P0.4 relational-memory v4 foundation merged as `3b01b58`
 (PR #40).
 
@@ -241,9 +241,9 @@ or environment variables. No dependency is authorized.
   safe reason, correlation, and aware timestamps—never prompt, response,
   media, embedding, or fact values.
 - **Final local gates:** `just lint`, `just typecheck`, `just test`, `just
-  audit`, and `just check` passed. The full suite passed **546 tests**. The
-  final merge commit and GitHub CI result are recorded only after the PR is
-  merged.
+  audit`, and `just check` passed. The full suite passed **546 tests**.
+  GitHub CI passed (title, quality/security, automated tests, and CodeQL), and
+  PR #42 was squash-merged as `960f160`.
 - **Not exercised:** the owner-bootstrap command was verified only with
   `--help`; it was never run against a household database. No real model,
   camera, microphone, LAN server, biometric enrollment, cloud path, or

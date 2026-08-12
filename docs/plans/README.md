@@ -55,9 +55,9 @@ and boundary that keeps v4 out of the runtime until authorization exists.
 
 [Plan 0007](0007-household-authorization-foundation.md) and its
 [execution runbook](0007-household-authorization-foundation-execution.md) are
-the complete P0.5-A feature-branch implementation: deterministic fail-closed
-policy, local role bootstrap/audit, and controller enforcement. Its local
-gates passed on 2026-08-12; PR merge evidence is recorded after GitHub CI.
+the complete P0.5-A implementation: deterministic fail-closed policy, local
+role bootstrap/audit, and controller enforcement. Its local gates and GitHub
+CI passed; PR #42 merged to `main` as `960f160` on 2026-08-12.
 They do not authorize P0.5-B v4 runtime retrieval or family tools; that
 follow-up remains Draft until its exact seams are revalidated.
 

@@ -107,8 +107,8 @@ The P0-S audit is authoritative for immediate pre-controller work:
   unchanged. Plan 0007 P0.5-A passed its local 546-test gate on
   `feat/p05-household-authorization`: migration 5 adds local roles/audit, and
   protected `/chat` requests are denied and audited before legacy generation.
-  Merge/CI evidence is pending. Authorization still owns any v4 runtime
-  retrieval or writes.
+  GitHub CI passed and PR #42 merged as `960f160`. Authorization still owns
+  any v4 runtime retrieval or writes.
 
 See [P0-S hardening audit](p0-s-hardening-audit.md) for evidence and
 [plans](../plans/README.md) for execution status.
