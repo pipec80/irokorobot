@@ -1,7 +1,7 @@
 # Plan 0003 — Typed controller and deterministic tools: execution runbook
 
-**Status:** Ready — revalidated on 2026-08-12 at `5f1971c` (`main`, P0-S2
-merged).
+**Status:** Complete — implemented at `5954a90` on
+`feat/p03-typed-controller`, after the P0-S2 baseline `5f1971c` on `main`.
 
 **Prerequisites:** Plans 0002, 0002a, 0002b, and 0002c are Complete with
 recorded validation. This runbook and its canonical plan were re-read against
@@ -157,6 +157,15 @@ existing response envelope is unchanged.
 
 ## Completion record
 
-Record implementation commit, exact tests, static analysis, full-suite result,
-and scope amendments. The next Ready plan after this PR is P0.4 relational
-integrity/cardinality, not broad perception or speaker recognition work.
+Implementation commit: `5954a90`.
+
+The recorded RED/GREEN sequence is in the canonical Plan 0003 completion
+evidence. Final implementation gates passed: `just lint`, `just typecheck`
+(`mypy` 67 source files and `pyright` 0 errors), final `just test` (514 passed
+in 36.25s), `just audit`, and a clean `just check`. The controller remains a
+`/chat`-only adapter; no database, policy, audio, robot, vision, provider, or
+dependency scope amendment occurred.
+
+No real Ollama request or hardware acceptance was run. The next candidate is
+P0.4 relational integrity/cardinality; it remains Draft until separately
+revalidated and promoted.
