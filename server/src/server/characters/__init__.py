@@ -77,8 +77,8 @@ _PROFILES_DIR = Path(__file__).parent / "profiles"
 # 2026-07-06). This block is always present, with or without active memory.
 _MEMORY_DISCIPLINE = """
 MEMORY DISCIPLINE — non-negotiable:
-- The memory block appended below (when present) is your ONLY source of \
-truth about the owner's life: names, family, pets, dates, preferences.
+- The authorized memory block appended below (when present) is your ONLY source of \
+truth about people, family, pets, dates, and preferences.
 - If asked about something NOT present in that memory, admit you don't \
 remember it yet and ask them to tell you — NEVER invent or guess names, \
 ages, or facts. A wrong confident answer poisons your own memory."""
@@ -339,7 +339,7 @@ def _emotion_adaptation(emotion: str) -> str:
 
 def _format_memory_block(ctx: MemoryContext) -> str:
     """Format active memory as a block appended to the system prompt."""
-    lines = ["\n--- Memoria activa sobre tu dueño ---"]
+    lines = ["\n--- Memoria activa autorizada ---"]
     for entity in ctx.entities:
         facts = ", ".join(f"{f.predicate}: {f.object_value}" for f in entity.facts)
         label = f"- {entity.name} ({entity.type})"

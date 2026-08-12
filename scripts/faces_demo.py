@@ -1,27 +1,22 @@
-"""faces_demo.py — V1 demo: enroll and recognize faces without the microphone.
+"""faces_demo.py — scene-only visual dialogue demo without the microphone.
 
-Enrollment goes through POST /vision/enroll (the transparent service,
-~1 s, no LLM); recognition questions go through POST /vision/respond —
-the exact conversational path the robot uses. Frames and photos are
-processed in memory, never written by the server.
+This demo sends one frame and a scene question through `/vision/respond` —
+the same conversational path the robot uses. It does not enroll biometrics or
+claim to identify the person in the frame. Frames and photos are processed in
+memory, never written by the server.
 
 Requires the server running (just run-server) with VISION_ENABLED=true.
-First face inference downloads buffalo_l (~300 MB) if missing.
-
 Usage:
-    just faces-demo --enroll Felipe                  enrola desde la webcam
-    just faces-demo --enroll Maximo --image foto.jpg enrola desde una FOTO
-    just faces-demo --who                            pregunta quien soy
-    just faces-demo --see                            que ves (+ saludo si te reconoce)
-    just faces-demo --who --speak                    ademas lo dice por el parlante
+    just faces-demo --see
+    just faces-demo --see --image foto.jpg
+    just faces-demo --see --speak
 
 Photos live in the drop-folder (IMAGES_DIR, default
 server/src/server/images — gitignored): drop foto.jpg there and pass just
 the file name. A full path works too.
 
-Photo rules (business rules 2026-07-14): exactly ONE person in frame,
-portrait or half body (face big enough), sharp and well lit — the server
-rejects anything else with the reason.
+The public face-enrollment path is quarantined pending local administration,
+consent, and authorization policy (P0-S1/P0.5).
 """
 
 from __future__ import annotations
@@ -129,37 +124,8 @@ def _get_frame(image_path: str | None, device: int) -> bytes:
     return capture_frame(device)
 
 
-async def _enroll(url: str, name: str, jpeg: bytes, speak: bool) -> None:
-    """POST the frame to the enrollment service and report the outcome.
-
-    Args:
-        url: Server base URL.
-        name: Person name to enroll.
-        jpeg: Contract JPEG bytes (webcam frame or photo).
-        speak: Whether to confirm out loud with Piper.
-    """
-    t0 = time.perf_counter()
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        resp = await client.post(
-            f"{url}/vision/enroll",
-            files={"image": ("frame.jpg", jpeg, "image/jpeg")},
-            data={"name": name},
-        )
-    if resp.is_error:
-        logger.error("Server %s: %s", resp.status_code, resp.text[:300])
-        return
-    data = resp.json()
-    elapsed = time.perf_counter() - t0
-    print(  # noqa: T201
-        f"\n  ENROLADO: {data['name']} (entidad {data['entity_id']},"
-        f" perfil {data['profile_id']}) en {elapsed:.1f}s"
-    )
-    if speak:
-        _speak(f"Listo, ya conozco la cara de {data['name']}.")
-
-
 async def _ask(url: str, phrase: str, jpeg: bytes, speak: bool) -> None:
-    """Send a recognition question with the frame to /vision/respond.
+    """Send a scene question with the frame to /vision/respond.
 
     Args:
         url: Server base URL.
@@ -188,16 +154,8 @@ async def _ask(url: str, phrase: str, jpeg: bytes, speak: bool) -> None:
 
 def main() -> None:
     """Entry point."""
-    parser = argparse.ArgumentParser(description="V1 demo: enroll/recognize via /vision/respond")
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument(
-        "--enroll",
-        nargs="+",
-        metavar="NAME",
-        help="Enrola la cara frente a la camara con este nombre",
-    )
-    group.add_argument("--who", action="store_true", help="Pregunta: quien soy")
-    group.add_argument("--see", action="store_true", help="Pregunta: que ves")
+    parser = argparse.ArgumentParser(description="Scene-only visual demo via /vision/respond")
+    parser.add_argument("--see", action="store_true", required=True, help="Pregunta: que ves")
     parser.add_argument(
         "--image",
         nargs="+",
@@ -214,12 +172,7 @@ def main() -> None:
     url = f"http://{host}:{settings.server_port}"
     try:
         jpeg = _get_frame(image_path, args.device)
-        if args.enroll:
-            asyncio.run(_enroll(url, " ".join(args.enroll), jpeg, args.speak))
-        elif args.who:
-            asyncio.run(_ask(url, "¿Me reconoces? ¿Quién soy?", jpeg, args.speak))
-        else:
-            asyncio.run(_ask(url, "¿Qué ves?", jpeg, args.speak))
+        asyncio.run(_ask(url, "¿Qué ves?", jpeg, args.speak))
     except CameraError as exc:
         logger.error("Camera/photo failed: %s", exc)
 

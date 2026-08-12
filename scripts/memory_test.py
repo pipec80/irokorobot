@@ -1,13 +1,11 @@
-"""memory_test.py — verify that brain memory persists across sessions.
+"""memory_test.py — inspect the public voice channel and local memory DB.
 
-Two-day test protocol:
-  Day 1 — just memory-test --introduce
-           Sends scripted messages that introduce personal facts.
-           Waits for background consolidation, then dumps the DB.
-  Day 2 — just memory-test --recall
-           Sends recall messages and shows what the robot still remembers.
+Public voice turns have unknown public turns by default: they do not prove
+private persistent recall or durable consolidation. Use this script to inspect
+the channel response and, separately, the local SQLite state. Trusted household
+memory flows require the future authorization and onboarding paths.
 
-Other modes:
+Modes:
   --session        Live mic conversation loop. Grabs N seconds, plays response,
                    repeats until you type 'q'. Shows DB at the end.
   --show-db        Read current DB state without sending anything (no server needed).
@@ -21,11 +19,8 @@ Audio contract: WAV 16000 Hz mono int16.
 Usage:
     just memory-test --session
     just memory-test --session --seconds 8
-    just memory-test --introduce
-    just memory-test --recall
     just memory-test --show-db
     just memory-test --chat hola me llamo Juan y vivo en Santiago
-    just memory-test --introduce --delay 8
 """
 
 import argparse
@@ -53,22 +48,6 @@ _SAMPLE_RATE = 16_000
 _CHANNELS = 1
 _DTYPE = "int16"
 _RMS_THRESHOLD = 200
-
-# Facts to introduce on day 1 — recognizable personal info for qwen extraction
-_INTRODUCE_MESSAGES = [
-    "Hola, me llamo Pipec y vivo en Chile.",
-    "Mi hobby favorito es la electronica y construir robots.",
-    "Estoy construyendo un robot que se llama OMNiBot dos mil.",
-    "Me gusta mucho el rock de los años ochenta.",
-]
-
-# Questions to ask on day 2 to verify recall
-_RECALL_MESSAGES = [
-    "Hola robot. Recuerdas mi nombre?",
-    "Y recuerdas donde vivo y que hobbies tengo?",
-    "Que sabes del robot que estoy construyendo?",
-]
-
 
 # ---------------------------------------------------------------------------
 # Audio helpers
@@ -371,49 +350,12 @@ async def run_session(url: str, seconds: int, device: int | None, play: bool, pt
     _show_db(settings.brain_db_path)
 
 
-async def run_introduce(url: str, delay: int, play: bool) -> None:
-    """Send scripted introduction messages and dump DB after.
-
-    Args:
-        url: Server base URL.
-        delay: Seconds to wait after each message for background consolidation.
-        play: Whether to play TTS responses.
-    """
-    print(f"\n{_SEP}")  # noqa: T201
-    print("  MODE: introduce  (Day 1)")  # noqa: T201
-    print(f"  Delay between messages: {delay}s (consolidation time)")  # noqa: T201
-    print(_SEP)  # noqa: T201
-    for msg in _INTRODUCE_MESSAGES:
-        await _send_text(msg, url, play)
-        logger.info("Waiting %ds for background consolidation...", delay)
-        await asyncio.sleep(delay)
-    _show_db(settings.brain_db_path)
-
-
-async def run_recall(url: str, delay: int, play: bool) -> None:
-    """Send recall messages and dump DB to verify persistence.
-
-    Args:
-        url: Server base URL.
-        delay: Seconds to wait after each message for background consolidation.
-        play: Whether to play TTS responses.
-    """
-    print(f"\n{_SEP}")  # noqa: T201
-    print("  MODE: recall  (Day 2)")  # noqa: T201
-    print(_SEP)  # noqa: T201
-    _show_db(settings.brain_db_path)
-    for msg in _RECALL_MESSAGES:
-        await _send_text(msg, url, play)
-        await asyncio.sleep(delay)
-
-
-async def run_chat(texts: list[str], url: str, delay: int, play: bool) -> None:
-    """Send a custom message and dump DB after.
+async def run_chat(texts: list[str], url: str, play: bool) -> None:
+    """Send a custom public-channel message and dump the local DB after.
 
     Args:
         texts: Words forming the message (joined with spaces).
         url: Server base URL.
-        delay: Seconds to wait for consolidation.
         play: Whether to play TTS response.
     """
     msg = " ".join(texts)
@@ -421,8 +363,6 @@ async def run_chat(texts: list[str], url: str, delay: int, play: bool) -> None:
     print(f"  MODE: chat  ({msg!r})")  # noqa: T201
     print(_SEP)  # noqa: T201
     await _send_text(msg, url, play)
-    logger.info("Waiting %ds for background consolidation...", delay)
-    await asyncio.sleep(delay)
     _show_db(settings.brain_db_path)
 
 
@@ -434,23 +374,13 @@ async def run_chat(texts: list[str], url: str, delay: int, play: bool) -> None:
 def main() -> None:
     """Entry point."""
     parser = argparse.ArgumentParser(
-        description="Memory persistence test — Day 1: --introduce, Day 2: --recall, or live: --session"
+        description="Public voice-channel diagnostic and local memory DB inspector"
     )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
         "--session",
         action="store_true",
         help="Live mic conversation loop (shows DB when you quit with 'q')",
-    )
-    group.add_argument(
-        "--introduce",
-        action="store_true",
-        help="Day 1: send scripted messages that introduce personal facts",
-    )
-    group.add_argument(
-        "--recall",
-        action="store_true",
-        help="Day 2: send recall questions and verify the robot remembers",
     )
     group.add_argument(
         "--show-db",
@@ -492,12 +422,6 @@ def main() -> None:
         action="store_true",
         help="List available audio input devices and exit",
     )
-    parser.add_argument(
-        "--delay",
-        type=int,
-        default=6,
-        help="Seconds to wait after each message for background consolidation (default: 6)",
-    )
     parser.add_argument("--no-play", action="store_true", help="Skip audio playback")
     parser.add_argument(
         "--reset-db",
@@ -533,12 +457,8 @@ def main() -> None:
 
     if args.session:
         asyncio.run(run_session(url, args.seconds, args.device, play, args.ptt))
-    elif args.introduce:
-        asyncio.run(run_introduce(url, args.delay, play))
-    elif args.recall:
-        asyncio.run(run_recall(url, args.delay, play))
     elif args.chat:
-        asyncio.run(run_chat(args.chat, url, args.delay, play))
+        asyncio.run(run_chat(args.chat, url, play))
 
 
 if __name__ == "__main__":

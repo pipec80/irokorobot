@@ -104,9 +104,9 @@ P0-S is two small prerequisite slices, not a shortcut to P0.5.
   desktop exposure defaults and aligns configuration, scripts, and evidence
   after P0-S1 revalidation.
 
-**Exit gate:** no public request can persist a biometric profile; active
-documentation/configuration no longer claims removed identity scopes or a
-cloud-default runtime. P0.3 remains Draft until both slices are complete.
+**Exit gate: COMPLETE.** No public request can persist a biometric profile;
+active documentation/configuration no longer claims removed identity scopes or
+a cloud-default runtime. P0.3 remains Draft until its own revalidation.
 
 ### P0.3 — Small controller and deterministic tools
 
@@ -317,7 +317,7 @@ expand scope. Run the listed verification. Do not commit unless asked.
 [Plan 0001](../plans/0001-cognitive-domain-models.md),
 [Plan 0002](../plans/0002-active-person-context.md), and
 [Plan 0002a](../plans/0002a-local-first-provider-quarantine.md) are complete.
-Plan 0002b is the sole current `Ready` plan. P0.3 and later plans remain
-`Draft` until their prerequisites and current tree are revalidated. Later plans
+Plans 0002b and 0002c are complete. P0.3 and later plans remain `Draft` until
+their prerequisites and current tree are revalidated. Later plans
 are written just in time after the previous exit gate; otherwise they encode
 guesses about code that has already moved.

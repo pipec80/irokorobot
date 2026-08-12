@@ -2,12 +2,13 @@
 
 > **Observed:** 2026-08-12
 >
-> **Base commit:** `a936cf8` (`main`)
+> **Baseline before P0-S2:** `e944b4d` (`main`, P0-S1 merged)
 >
 > **Verification boundary:** code, configuration, tests, and GitHub CI were
-> inspected. A local Ollama generation and the `text -> LLM -> Piper` pipeline
-> were executed. Camera, microphone, LAN, biometric enrollment, and hardware
-> acceptance were not executed in this snapshot.
+> inspected. The P0-S2 branch passed `just lint`, `just typecheck`, `just test`
+> (500 passed), and `just audit`; `just services` detected each configured local
+> model. Camera, microphone, LAN, biometric enrollment, and hardware acceptance
+> were not executed in this snapshot.
 
 ## Accurate description
 
@@ -77,19 +78,26 @@ The P0-S audit is authoritative for immediate pre-controller work:
   enrollment returns a fixed 503 before any upload read or biometric write, and
   conversational enrollment phrases provide fixed guidance without enrollment.
   Existing biometric data is preserved; P0.5 owns the future policy.
-- Plan 0002c remains **Draft** until P0-S1 is merged and its configuration
-  assumptions are revalidated.
+- Plan 0002c **completed** desktop hardening and guidance alignment: Python and
+  sample configuration bind loopback by default, LAN exposure requires an
+  explicit untracked override, stale `VOICE_CONVERSATION_ID` guidance is gone,
+  and diagnostics no longer promise public memory recall, enrollment, or face
+  identity. The face threshold values remain intentionally unchanged pending a
+  reproducible calibration.
+- P0-S is complete. Plan 0003 remains **Draft** until its own current-tree
+  revalidation promotes it.
 
 See [P0-S hardening audit](p0-s-hardening-audit.md) for evidence and
 [plans](../plans/README.md) for execution status.
 
 ## Latest verification evidence
 
-- `just test`: 496 passed before PR #32 merge; the PR's remote CI and CodeQL
-  checks completed successfully.
-- `just lint`, `just typecheck`, and `just audit` passed before that merge.
-- Ollama exposed `qwen2.5:3b`; a direct generation succeeded and
-  `just test-pipeline --text ... --no-play` completed through Piper.
+- P0-S2 branch: `just lint`, `just typecheck`, `just test` (500 passed), and
+  `just audit` passed. `just services` reported the configured chat, embedding,
+  consolidation, and enabled VLM models available through the local Ollama
+  daemon.
+- Earlier P0-S evidence remains historical: `just test` passed 496 tests before
+  PR #32, and a local `text -> LLM -> Piper` pipeline completed through Piper.
 
 These checks do not prove camera, microphone, biometric, LAN, or physical
 hardware behavior.
