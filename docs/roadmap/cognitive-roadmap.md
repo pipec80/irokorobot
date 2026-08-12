@@ -26,6 +26,8 @@ home than a smaller system that knows when it does not know.
 | C0 | Canonical documentation | Lets later Codex tasks execute bounded plans without chat/local-only context. | Repository inspection |
 | P0.1 | Typed cognitive domain models | One stable vocabulary for evidence, context, confidence, authorization, and outcomes. | C0 |
 | P0.2 | Active-person context | Stops assuming the owner and isolates conversations by identity state. | P0.1 |
+| P0-S1 | Biometric enrollment quarantine | Prevents public biometric poisoning until household policy exists. | P0.2 |
+| P0-S2 | Desktop security and drift | Makes desktop defaults least-exposed and aligns operating guidance. | P0-S1 |
 | P0.3 | Deterministic tools and small controller | Separates evidence gathering, retrieval, policy, generation, and validation. | P0.1–P0.2 |
 | P0.4 | Relational memory v4 | Correct entity links, cardinality, time, provenance, dates, and counts. | P0.1–P0.3 |
 | P0.5 | Household authorization | Filters protected data before retrieval and generation. | P0.2, P0.4 |
@@ -90,6 +92,21 @@ every voice turn.
 
 **Exit gate:** tests prove conflicting identity evidence does not silently pick
 the owner and private history is not reused across identity boundaries.
+
+### P0-S — Hardening and consistency
+
+P0-S is two small prerequisite slices, not a shortcut to P0.5.
+
+- **P0-S1:** [Plan 0002b](../plans/0002b-biometric-enrollment-quarantine.md)
+  quarantines both HTTP and conversational public face enrollment. It preserves
+  existing biometric data and does not introduce authentication or roles.
+- **P0-S2:** [Plan 0002c](../plans/0002c-desktop-security-and-drift.md) changes
+  desktop exposure defaults and aligns configuration, scripts, and evidence
+  after P0-S1 revalidation.
+
+**Exit gate:** no public request can persist a biometric profile; active
+documentation/configuration no longer claims removed identity scopes or a
+cloud-default runtime. P0.3 remains Draft until both slices are complete.
 
 ### P0.3 — Small controller and deterministic tools
 
@@ -297,9 +314,10 @@ contradicts the plan, stop and report the exact conflict; do not redesign or
 expand scope. Run the listed verification. Do not commit unless asked.
 ```
 
-[Plan 0001](../plans/0001-cognitive-domain-models.md) and
-[Plan 0002](../plans/0002-active-person-context.md) are complete. No plan is
-currently `Ready`; P0.3 and later plans remain `Draft` until their dependencies
-and current tree are revalidated. Later plans should be written just in time
-after the previous exit gate is verified; otherwise they will encode guesses
-about code that has already moved.
+[Plan 0001](../plans/0001-cognitive-domain-models.md),
+[Plan 0002](../plans/0002-active-person-context.md), and
+[Plan 0002a](../plans/0002a-local-first-provider-quarantine.md) are complete.
+Plan 0002b is the sole current `Ready` plan. P0.3 and later plans remain
+`Draft` until their prerequisites and current tree are revalidated. Later plans
+are written just in time after the previous exit gate; otherwise they encode
+guesses about code that has already moved.

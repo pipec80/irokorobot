@@ -40,16 +40,19 @@ No plan may require chat history or a file under ignored `docs/local/`. If a
 historical insight is still required, first promote it into a tracked ADR or
 canonical architecture document.
 
-Plans 0001 and 0002 are complete. Plan 0002's approved
+Plans 0001, 0002, and 0002a are complete. Plan 0002's approved
 [design](0002-active-person-context-design.md) records the identity and privacy
 decisions, and its [execution runbook](0002-active-person-context-execution.md)
 records the observed TDD, final-gate, and final-remediation evidence. The last
 remediation commit is `79258cc`; its combined P0.2 suite passed 174 tests and
 the full repository suite passed 497 tests.
 
-There is currently no executable plan. P0.3 and later plans remain Draft.
-Before any promotion, re-read the completed P0.2 implementation and revise the
-candidate plan with its exact current file scope and tests.
+Plan 0002b, biometric enrollment quarantine, is currently the sole executable
+plan. P0.3 and later plans remain Draft. Before any promotion, re-read the
+completed prerequisite implementation and revise the candidate plan with its
+exact current file scope and tests.
 
 The [P0 cognitive portfolio design](p0-cognitive-plan-portfolio-design.md)
 links every current P0 plan and records their dependency order and status.
+The [P0-S hardening design](p0-s-hardening-design.md) explains why the current
+P0-S plans are split before P0.3.
