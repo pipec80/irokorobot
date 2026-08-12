@@ -2,13 +2,15 @@
 
 > **Observed:** 2026-08-12
 >
-> **Baseline before P0-S2:** `e944b4d` (`main`, P0-S1 merged)
+> **Implementation snapshot:** `5954a90` (`feat/p03-typed-controller`, before
+> PR review and merge)
 >
-> **Verification boundary:** code, configuration, tests, and GitHub CI were
-> inspected. The P0-S2 branch passed `just lint`, `just typecheck`, `just test`
-> (500 passed), and `just audit`; `just services` detected each configured local
-> model. Camera, microphone, LAN, biometric enrollment, and hardware acceptance
-> were not executed in this snapshot.
+> **Verification boundary:** P0.3 code, configuration, and local tests were
+> inspected. It passed `just lint`, `just typecheck`, `just test` (514 passed),
+> `just audit`, and `just check`; prior P0-S2 evidence includes GitHub CI and
+> `just services` detecting configured local models. Camera, microphone, LAN,
+> biometric enrollment, real Ollama chat, and hardware acceptance were not
+> executed in this snapshot.
 
 ## Accurate description
 
@@ -28,7 +30,10 @@ unknown ActivePersonContext by default
       unknown -> no persistent retrieval or consolidation
                 |
                 v
-personality + bounded prompt + local Ollama
+P0.3 `/chat` controller
+  |-- deterministic date/strict-ISO age
+  |-- protected household -> unauthorized
+  `-- generic text -> legacy local text turn
                 |
                 v
 response + local Piper + optional legacy consolidation
@@ -53,14 +58,16 @@ gap prevents owner-by-default memory disclosure.
 | Consolidation | Implemented/gated | LLM extraction plus deterministic normalization; requires manual identity. |
 | Typed cognitive vocabulary | Implemented | Immutable evidence/event/context/knowledge contracts. |
 | Active person context | Implemented/internal | Manual/session evidence only; identity is not authorization. |
+| P0.3 cognitive controller | Implemented/chat pilot | Fresh typed event; immutable response plan; no FastAPI, SQLite, or provider dependency in the core. |
+| Deterministic calendar tools | Implemented/bounded | Current date and strict ISO birth-date age only; age is derived, never persisted. |
 | Vision/VLM | Implemented/on demand | One ephemeral frame, free-text scene description. |
 | Face profiles | Implemented/sensitive | SQLite-linked embeddings; not an active-person adapter. |
 | Robot client | Implemented/body adapter | PC microphone/webcam/speaker workflow; not cognitive logic. |
 
 ## Deliberately absent or deferred
 
-- `CognitiveController`, `ToolRegistry`, deterministic family tools, and
-  `calculate_age()`;
+- `ToolRegistry` and deterministic family/profile/relationship tools; P0.3 has
+  two closed calendar helpers and deliberately does not justify a registry;
 - entity-ID relationships, predicate cardinality, and Memory v4;
 - household authorization and trusted owner bootstrap;
 - speaker recognition, diarization, and identity fusion;
@@ -84,22 +91,24 @@ The P0-S audit is authoritative for immediate pre-controller work:
   and diagnostics no longer promise public memory recall, enrollment, or face
   identity. The face threshold values remain intentionally unchanged pending a
   reproducible calibration.
-- P0-S is complete. Plan 0003 is **Ready** for its bounded `/chat` pilot:
-  immutable response planning plus deterministic current-date and strict
-  ISO-birth-date age tools. It does not yet implement the controller or alter
-  P0.4/P0.5 boundaries.
+- P0-S and Plan 0003 are **Complete**. P0.3 pilots a bounded `/chat`
+  controller with immutable response planning plus deterministic current-date
+  and strict ISO-birth-date age tools. It does not alter P0.4/P0.5 boundaries.
 
 See [P0-S hardening audit](p0-s-hardening-audit.md) for evidence and
 [plans](../plans/README.md) for execution status.
 
 ## Latest verification evidence
 
-- P0-S2 branch: `just lint`, `just typecheck`, `just test` (500 passed), and
-  `just audit` passed. `just services` reported the configured chat, embedding,
-  consolidation, and enabled VLM models available through the local Ollama
-  daemon.
+- P0.3 implementation: `just lint`, `just typecheck`, final `just test` (514
+  passed in 36.25s), `just audit`, and `just check` passed. Focused response-plan,
+  calendar, controller, and `/chat` tests were run as a RED/GREEN sequence.
+- P0-S2 historical evidence: `just lint`, `just typecheck`, `just test` (500
+  passed), and `just audit` passed. `just services` reported the configured
+  chat, embedding, consolidation, and enabled VLM models available through the
+  local Ollama daemon.
 - Earlier P0-S evidence remains historical: `just test` passed 496 tests before
   PR #32, and a local `text -> LLM -> Piper` pipeline completed through Piper.
 
-These checks do not prove camera, microphone, biometric, LAN, or physical
-hardware behavior.
+These checks do not prove a real Ollama `/chat` request, camera, microphone,
+biometric, LAN, or physical hardware behavior.

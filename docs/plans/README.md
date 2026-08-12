@@ -47,8 +47,10 @@ records the observed TDD, final-gate, and final-remediation evidence. The last
 remediation commit is `79258cc`; its combined P0.2 suite passed 174 tests and
 the full repository suite passed 497 tests.
 
-Plans 0002b and 0002c are complete. Plan 0003 is Ready; P0.4 and later plans
-remain Draft. Before any promotion, re-read the completed prerequisite
+Plans 0002b, 0002c, and 0003 are complete. P0.4 and later plans remain Draft.
+Plan 0003's completion evidence records its bounded `/chat` controller,
+deterministic calendar helpers, and final 514-test verification; it does not
+promote P0.4/P0.5. Before any promotion, re-read the completed prerequisite
 implementation and revise the candidate plan with its exact current file scope
 and tests.
 

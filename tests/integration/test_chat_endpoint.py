@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import date
 from unittest.mock import AsyncMock, Mock
 
 from httpx import ASGITransport, AsyncClient
@@ -179,3 +180,51 @@ async def test_chat_without_internal_evidence_is_one_turn_and_stateless(
     assert [item.kwargs["history"] for item in generate.await_args_list] == [None, None, None]
     assert working._buffers == {}
     assert working._emotion_buffers == {}
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_chat_answers_current_date_without_calling_legacy_text_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The chat adapter should expose the deterministic date result unchanged."""
+    process = AsyncMock(return_value=TextTurnResult("legacy", "joy", 42, False))
+    monkeypatch.setattr(chat, "process_text_turn", process)
+    monkeypatch.setattr(chat, "_today", lambda: date(2026, 8, 12))
+
+    async with _client() as client:
+        response = await client.post(
+            "/chat",
+            json={"message": "¿Qué fecha es hoy?", "conversation_id": "web-primary"},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "response": "Hoy es 2026-08-12.",
+        "emotion": "neutral",
+        "duration_ms": 0,
+        "conversation_id": "web-primary",
+    }
+    process.assert_not_awaited()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_chat_blocks_private_household_question_before_legacy_text_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Public chat must not expose a family query to legacy memory or generation."""
+    process = AsyncMock(return_value=TextTurnResult("legacy", "joy", 42, False))
+    monkeypatch.setattr(chat, "process_text_turn", process)
+
+    async with _client() as client:
+        response = await client.post(
+            "/chat",
+            json={"message": "¿Cómo se llaman mis hijos?", "conversation_id": "web-primary"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["response"] == (
+        "No puedo acceder a información familiar privada sin una autorización comprobada."
+    )
+    process.assert_not_awaited()

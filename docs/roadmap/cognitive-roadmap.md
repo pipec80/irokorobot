@@ -106,15 +106,23 @@ P0-S is two small prerequisite slices, not a shortcut to P0.5.
 
 **Exit gate: COMPLETE.** No public request can persist a biometric profile;
 active documentation/configuration no longer claims removed identity scopes or
-a cloud-default runtime. Plan 0003 is Ready for its bounded `/chat` pilot;
-later plans remain Draft.
+a cloud-default runtime. Plan 0003 is complete; later plans remain Draft.
 
 ### P0.3 — Small controller and deterministic tools
 
-Add the controller by integrating one existing text path at a time. Preserve
-the channel-agnostic `text_turn` responsibility and do not break the audio API.
+**Exit gate: COMPLETE.** [Plan 0003](../plans/0003-typed-controller-and-deterministic-tools.md)
+pilots one typed controller behind `/chat` without changing `text_turn` or the
+audio API. It creates a fresh `CognitiveEvent`, returns an immutable
+`ResponsePlan`, calculates current date and age from a strict ISO birth date,
+and returns `unknown` or `unauthorized` for out-of-scope requests before legacy
+delegation. Generic safe text preserves the existing local text-turn behavior.
 
-The intended turn sequence is:
+The complete P0.3 slice intentionally does **not** add a ToolRegistry: two
+closed static functions do not justify registration, dispatch, metadata, or a
+framework. Reconsider it only when an approved later plan has multiple real
+tools with a shared requirement.
+
+The long-term intended turn sequence is:
 
 ```text
 receive event
@@ -130,9 +138,7 @@ receive event
 -> optionally consider cloud escalation
 ```
 
-Initial typed tools should be ordinary Python functions with an explicit
-registry, input model, output model, timeout/error mapping, and authorization
-metadata:
+Future typed tools, once P0.4/P0.5 make them trustworthy, may include:
 
 - `identify_current_person`;
 - `get_person_details`;
@@ -143,9 +149,10 @@ metadata:
 - current perception/world state;
 - `remember_confirmed_fact` only after memory policy approves it.
 
-**Exit gate:** tests demonstrate deterministic family queries and age
-calculation, explicit unknown outcomes, bounded context, and unchanged public
-audio behavior. The LLM chooses language; it does not invent tool results.
+P0.3 verification recorded 514 passing repository tests, clean lint/type/audit
+gates, and no dependency, schema, memory, authorization-policy, provider/cloud,
+vision, robot, or audio-contract change. It did not implement deterministic
+family queries; those require P0.4 relational memory and P0.5 authorization.
 
 ### P0.4 — Relational memory v4
 
@@ -318,7 +325,7 @@ expand scope. Run the listed verification. Do not commit unless asked.
 [Plan 0001](../plans/0001-cognitive-domain-models.md),
 [Plan 0002](../plans/0002-active-person-context.md), and
 [Plan 0002a](../plans/0002a-local-first-provider-quarantine.md) are complete.
-Plans 0002b and 0002c are complete. Plan 0003 is `Ready`; P0.4 and later plans
-remain `Draft` until their prerequisites and current tree are revalidated. Later plans
+Plans 0002b, 0002c, and 0003 are complete. P0.4 and later plans remain `Draft`
+until their prerequisites and current tree are revalidated. Later plans
 are written just in time after the previous exit gate; otherwise they encode
 guesses about code that has already moved.
