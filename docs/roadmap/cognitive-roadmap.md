@@ -156,8 +156,8 @@ family queries; those require P0.4 relational memory and P0.5 authorization.
 
 ### P0.4 — Relational memory v4
 
-**Plan 0004 is complete and [Plan 0005](../plans/0005-relational-memory-v4-implementation.md)
-is implemented and locally verified; GitHub CI/merge is pending.** The bounded
+**Plan 0004 and [Plan 0005](../plans/0005-relational-memory-v4-implementation.md)
+are complete; P0.4 merged as `3b01b58` through PR #40.** The bounded
 slice adds only an additive SQLite v4 foundation:
 integer entity relationships, predicate cardinality, lifecycle metadata, and an
 explicit dry-run-first local migration with an audit ledger. It keeps literal
@@ -172,14 +172,23 @@ tools, and writes.
 
 ### P0.5 — Household authorization
 
-Implement role and data-category policy as a deterministic service. Start with
-the minimum roles `owner`, `adult`, `child`, `guest`, and `unknown`, while
-allowing per-person overrides later.
+Start with [Plan 0007](../plans/0007-household-authorization-foundation.md):
+role and data-category policy as a deterministic service, safe local role/audit
+records, an explicit local owner bootstrap, and controller enforcement before
+protected delegation. It uses the minimum roles `owner`, `adult`, `child`,
+`guest`, and `unknown`, while allowing per-person overrides later. It does not
+yet connect v4 data to runtime prompts or family tools; that P0.5-B cutover is
+written only after P0.5-A completion evidence.
 
-**Exit gate:** data is filtered before retrieval/model context; missing policy
-defaults to denial or confirmation; child, biometric, medical, private,
-location, and action categories have explicit rules; denials are auditable and
-do not leak protected facts.
+**P0.5-A exit gate:** decisions are deterministic and fail closed; local role
+bootstrap is explicit and auditable; protected controller branches evaluate
+policy before delegation; missing policy defaults to denial or confirmation;
+child, biometric, medical, private, location, and action categories have
+explicit rules; denials are auditable and do not leak protected facts.
+
+**P0.5 overall exit gate:** policy-gated v4 retrieval/model-context and family
+tools are added under a separately revalidated P0.5-B plan; protected values
+are filtered before retrieval and never enter a prompt when denied.
 
 ## P1 — Situated household awareness
 
@@ -329,8 +338,8 @@ expand scope. Run the listed verification. Do not commit unless asked.
 [Plan 0001](../plans/0001-cognitive-domain-models.md),
 [Plan 0002](../plans/0002-active-person-context.md), and
 [Plan 0002a](../plans/0002a-local-first-provider-quarantine.md) are complete.
-Plans 0002b, 0002c, 0003, the Plan 0004 design, and the local implementation of
-Plan 0005 are complete. Plan 0005 awaits PR/CI/merge; P0.5 and later plans
-remain `Draft` until their prerequisites and current tree are revalidated. Later plans
-are written just in time after the previous exit gate; otherwise they encode
-guesses about code that has already moved.
+Plans 0002b, 0002c, 0003, the Plan 0004 design, and Plan 0005 are complete;
+Plan 0005 merged as `3b01b58` through PR #40. Plan 0007 is Ready for P0.5-A.
+P0.5-B and later plans remain `Draft` until their prerequisites and current
+tree are revalidated. Later plans are written just in time after the previous
+exit gate; otherwise they encode guesses about code that has already moved.

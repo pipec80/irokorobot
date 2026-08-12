@@ -2,12 +2,13 @@
 
 > **Observed:** 2026-08-12
 >
-> **Implementation snapshot:** `5958ee6` (`feat/p04-relational-memory-v4`,
-> P0.4 locally verified; pending PR/CI/merge)
+> **Implementation snapshot:** `3b01b58` (`feat(memory): add relational memory
+> v4 foundation (#40)`, merged to `main`)
 >
 > **Verification boundary:** P0.3 code, configuration, and local tests were
-> inspected. P0.4 passed `just gate` (527 tests), adding an isolated v4
-> storage/migration foundation while retaining the v3 runtime reader/writer.
+> inspected. P0.4 passed `just gate` (527 tests) before PR #40 merged it,
+> adding an isolated v4 storage/migration foundation while retaining the v3
+> runtime reader/writer.
 > Prior P0.3/P0-S verification includes `just lint`, `just typecheck`, `just
 > test` (514 passed), `just audit`, and `just check`; P0-S2 evidence includes GitHub CI and
 > `just services` detecting configured local models. Camera, microphone, LAN,
@@ -72,7 +73,8 @@ gap prevents owner-by-default memory disclosure.
 - `ToolRegistry` and deterministic family/profile/relationship tools; P0.3 has
   two closed calendar helpers and deliberately does not justify a registry;
 - household authorization, trusted owner bootstrap, and the policy-gated v4
-  runtime reader/writer cutover;
+  runtime reader/writer cutover; Plan 0007 is Ready only for the P0.5-A
+  policy/role/audit/controller foundation;
 - speaker recognition, diarization, and identity fusion;
 - typed `SceneObservation`, `WorldState`, tracking, scene graph, and spatial
   memory;
@@ -97,11 +99,12 @@ The P0-S audit is authoritative for immediate pre-controller work:
 - P0-S and Plan 0003 are **Complete**. P0.3 pilots a bounded `/chat`
   controller with immutable response planning plus deterministic current-date
   and strict ISO-birth-date age tools. It does not alter P0.4/P0.5 boundaries.
-- Plan 0004's relational-memory decision is **Complete**. Plan 0005's P0.4
-  foundation is **implemented and locally verified**: migration 4 is additive,
-  v4 repositories and a dry-run-first local migration command exist, and the
-  legacy runtime reader/writer remains unchanged. GitHub CI and merge remain
-  pending; P0.5 authorization still owns any v4 runtime retrieval or writes.
+- Plan 0004's relational-memory decision and Plan 0005's P0.4 foundation are
+  **Complete**. PR #40 merged as `3b01b58` after the final 527-test quality
+  gate: migration 4 is additive, v4 repositories and a dry-run-first local
+  migration command exist, and the legacy runtime reader/writer remains
+  unchanged. Plan 0007 is Ready for P0.5-A; authorization still owns any v4
+  runtime retrieval or writes.
 
 See [P0-S hardening audit](p0-s-hardening-audit.md) for evidence and
 [plans](../plans/README.md) for execution status.
@@ -117,13 +120,14 @@ See [P0-S hardening audit](p0-s-hardening-audit.md) for evidence and
   local Ollama daemon.
 - Earlier P0-S evidence remains historical: `just test` passed 496 tests before
   PR #32, and a local `text -> LLM -> Piper` pipeline completed through Piper.
-- P0.4 local implementation: observed RED tests for the missing registry,
+- P0.4 implementation: observed RED tests for the missing registry,
   repository, and migration modules; then focused GREEN coverage for registry,
   schema, repository, migration, and legacy compatibility. Final `just gate`
   passed with 527 tests, Ruff, formatting, mypy, Pyright, security checks, and
   `pip-audit`. The local CLI help confirms dry-run is the default and `--apply`
-  is explicit. No real household database migration, hardware, camera,
-  microphone, or real Ollama chat request was performed in this slice.
+  is explicit. PR #40 merged after its GitHub CI checks. No real household
+  database migration, hardware, camera, microphone, or real Ollama chat request
+  was performed in this slice.
 
 These checks do not prove a real Ollama `/chat` request, camera, microphone,
 biometric, LAN, or physical hardware behavior.

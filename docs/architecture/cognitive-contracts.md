@@ -65,21 +65,40 @@ confidence threshold.
 A score is not an authorization signal. `score=1.0` cannot override a denied
 policy, and `score=0.0` does not by itself mean `unauthorized`.
 
-### `AuthorizationDecision`
+### `AuthorizationRequest` and `AuthorizationDecision`
 
-Authorization is an explicit value object:
+Authorization begins with an immutable request and ends with an explicit,
+bounded decision. The request contains the resolved active person, one closed
+action, target person ID when applicable, visibility/sensitivity categories,
+consent state, correlation ID, and aware UTC request time. It never contains a
+prompt, fact value, raw media, or biometric template.
+
+The first authorization action vocabulary is closed: general conversation,
+household-data read, household-tool execution, memory proposal/commit, role
+administration, biometric enrollment, export/delete, cloud consideration, and
+physical-action proposal. Visibility is `public`, `household`, `adults`,
+`personal`, `private`, or `temporary`; sensitivity is `normal`, `private`,
+`biometric`, `medical`, `location`, `child_data`, or `security`. Consent is
+`not_required`, `granted`, `missing`, or `revoked`.
+
+The decision is an explicit value object:
 
 | Field | Type | Rule |
 |---|---|---|
 | `decision` | `AuthorizationStatus` | `allowed`, `denied`, or `requires_confirmation`. |
-| `action` | string | Stable action name being evaluated. |
-| `data_categories` | immutable collection of strings | Categories the decision covers. |
+| `action` | closed action value | Stable action name being evaluated. |
+| `data_categories` | immutable collection | Visibility/sensitivity categories the decision covers. |
 | `policy_id` | string | Policy or rule that produced the decision. |
 | `reason` | string | Safe explanation suitable for audit logs. |
 | `evaluated_at` | aware datetime | UTC evaluation time. |
+| `correlation_scope` | UUID/string | Bound request/turn scope; never a reusable session permission. |
+| `expires_at` | aware datetime or null | Optional short expiry; absent is not an implicit long-lived grant. |
 
 No authorization object means no permission. Callers must not interpret a
-missing value as `allowed`.
+missing value as `allowed`. `requires_confirmation` also does not authorize a
+read, tool call, write, or prompt context; a later confirmation service must
+bind a fresh decision to the same actor, action, target, categories, and short
+scope.
 
 ## Core models
 
