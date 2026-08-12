@@ -40,6 +40,7 @@ class LiteralFactV4(BaseModel):
     predicate: str
     value_text: str
     confidence: float
+    source_memory_id: int | None
     asserted_at: str
     valid_from: str | None
     valid_to: str | None
@@ -60,6 +61,7 @@ class EntityRelationV4(BaseModel):
     predicate: str
     target_entity_id: int
     confidence: float
+    source_memory_id: int | None
     asserted_at: str
     valid_from: str | None
     valid_to: str | None
@@ -154,14 +156,15 @@ def _literal_from_row(row: SqlRow) -> LiteralFactV4:
         predicate=_required_text(row[2]),
         value_text=_required_text(row[3]),
         confidence=_required_float(row[4]),
-        asserted_at=_required_text(row[5]),
-        valid_from=_optional_text(row[6]),
-        valid_to=_optional_text(row[7]),
-        lifecycle=AssertionLifecycle(_required_text(row[8])),
-        visibility=_required_text(row[9]),
-        sensitivity=_required_text(row[10]),
-        superseded_at=_optional_text(row[11]),
-        superseded_by=_optional_int(row[12]),
+        source_memory_id=_optional_int(row[5]),
+        asserted_at=_required_text(row[6]),
+        valid_from=_optional_text(row[7]),
+        valid_to=_optional_text(row[8]),
+        lifecycle=AssertionLifecycle(_required_text(row[9])),
+        visibility=_required_text(row[10]),
+        sensitivity=_required_text(row[11]),
+        superseded_at=_optional_text(row[12]),
+        superseded_by=_optional_int(row[13]),
     )
 
 
@@ -173,23 +176,24 @@ def _relation_from_row(row: SqlRow) -> EntityRelationV4:
         predicate=_required_text(row[2]),
         target_entity_id=_required_int(row[3]),
         confidence=_required_float(row[4]),
-        asserted_at=_required_text(row[5]),
-        valid_from=_optional_text(row[6]),
-        valid_to=_optional_text(row[7]),
-        lifecycle=AssertionLifecycle(_required_text(row[8])),
-        visibility=_required_text(row[9]),
-        sensitivity=_required_text(row[10]),
-        superseded_at=_optional_text(row[11]),
-        superseded_by=_optional_int(row[12]),
+        source_memory_id=_optional_int(row[5]),
+        asserted_at=_required_text(row[6]),
+        valid_from=_optional_text(row[7]),
+        valid_to=_optional_text(row[8]),
+        lifecycle=AssertionLifecycle(_required_text(row[9])),
+        visibility=_required_text(row[10]),
+        sensitivity=_required_text(row[11]),
+        superseded_at=_optional_text(row[12]),
+        superseded_by=_optional_int(row[13]),
     )
 
 
 _LITERAL_COLUMNS = """
-    id, subject_entity_id, predicate, value_text, confidence, asserted_at,
+    id, subject_entity_id, predicate, value_text, confidence, source_memory_id, asserted_at,
     valid_from, valid_to, lifecycle, visibility, sensitivity, superseded_at, superseded_by
 """
 _RELATION_COLUMNS = """
-    id, source_entity_id, predicate, target_entity_id, confidence, asserted_at,
+    id, source_entity_id, predicate, target_entity_id, confidence, source_memory_id, asserted_at,
     valid_from, valid_to, lifecycle, visibility, sensitivity, superseded_at, superseded_by
 """
 
@@ -267,11 +271,16 @@ async def assert_literal_fact(
     definition: PredicateDefinition,
     value: str,
     confidence: float = 0.9,
+    source_memory_id: int | None = None,
+    asserted_at: str | None = None,
+    manage_transaction: bool = True,
 ) -> LiteralFactV4:
     """Persist a typed literal while applying its registry lifecycle rule.
 
     The function has no runtime authorization semantics. It is limited to v4
     foundation and receives a previously resolved closed-registry definition.
+    ``manage_transaction=False`` is reserved for the local legacy migration,
+    which owns one transaction for a record and its migration ledger entry.
     """
     await _validate_literal_subject(subject_entity_id, definition)
     normalized_value = normalize_literal(definition, value)
@@ -282,19 +291,25 @@ async def assert_literal_fact(
 
     conn = get_conn()
     try:
-        await conn.execute("BEGIN IMMEDIATE")
+        if manage_transaction:
+            await conn.execute("BEGIN IMMEDIATE")
         cursor = await conn.execute(
             "INSERT INTO literal_facts_v4 "
-            "(subject_entity_id, predicate, value_text, confidence, visibility, sensitivity, valid_from) "
-            "VALUES (?, ?, ?, ?, ?, ?, CASE WHEN ? THEN datetime('now') ELSE NULL END)",
+            "(subject_entity_id, predicate, value_text, confidence, source_memory_id, asserted_at, "
+            "visibility, sensitivity, valid_from) "
+            "VALUES (?, ?, ?, ?, ?, COALESCE(?, datetime('now')), ?, ?, "
+            "CASE WHEN ? THEN COALESCE(?, datetime('now')) ELSE NULL END)",
             (
                 subject_entity_id,
                 definition.canonical_id,
                 normalized_value,
                 confidence,
+                source_memory_id,
+                asserted_at,
                 definition.default_visibility,
                 definition.default_sensitivity,
                 definition.temporal,
+                asserted_at,
             ),
         )
         if cursor.lastrowid is None:
@@ -318,9 +333,11 @@ async def assert_literal_fact(
                     literal_fact_id,
                 ),
             )
-        await conn.commit()
+        if manage_transaction:
+            await conn.commit()
     except Exception:
-        await conn.rollback()
+        if manage_transaction:
+            await conn.rollback()
         raise
     result = await get_literal_fact(literal_fact_id)
     if result is None:
@@ -334,8 +351,15 @@ async def assert_entity_relation(
     target_entity_id: int,
     definition: PredicateDefinition,
     confidence: float = 0.9,
+    source_memory_id: int | None = None,
+    asserted_at: str | None = None,
+    manage_transaction: bool = True,
 ) -> EntityRelationV4:
-    """Persist a typed entity relation while applying cardinality semantics."""
+    """Persist a typed entity relation while applying cardinality semantics.
+
+    ``manage_transaction=False`` is reserved for the local legacy migration,
+    which owns one transaction for a record and its migration ledger entry.
+    """
     await _validate_relation_endpoints(source_entity_id, target_entity_id, definition)
     if not 0.0 <= confidence <= 1.0:
         raise ValueError("confidence must be between 0 and 1")
@@ -344,7 +368,8 @@ async def assert_entity_relation(
 
     conn = get_conn()
     try:
-        await conn.execute("BEGIN IMMEDIATE")
+        if manage_transaction:
+            await conn.execute("BEGIN IMMEDIATE")
         existing_cursor = await conn.execute(
             f"SELECT {_RELATION_COLUMNS} FROM entity_relations_v4 "  # noqa: S608
             "WHERE source_entity_id = ? AND predicate = ? AND target_entity_id = ? AND lifecycle = 'active'",
@@ -353,21 +378,27 @@ async def assert_entity_relation(
         existing_row = await existing_cursor.fetchone()
         await existing_cursor.close()
         if existing_row is not None:
-            await conn.commit()
+            if manage_transaction:
+                await conn.commit()
             return _relation_from_row(tuple(existing_row))
 
         cursor = await conn.execute(
             "INSERT INTO entity_relations_v4 "
-            "(source_entity_id, predicate, target_entity_id, confidence, visibility, sensitivity, valid_from) "
-            "VALUES (?, ?, ?, ?, ?, ?, CASE WHEN ? THEN datetime('now') ELSE NULL END)",
+            "(source_entity_id, predicate, target_entity_id, confidence, source_memory_id, asserted_at, "
+            "visibility, sensitivity, valid_from) "
+            "VALUES (?, ?, ?, ?, ?, COALESCE(?, datetime('now')), ?, ?, "
+            "CASE WHEN ? THEN COALESCE(?, datetime('now')) ELSE NULL END)",
             (
                 source_entity_id,
                 definition.canonical_id,
                 target_entity_id,
                 confidence,
+                source_memory_id,
+                asserted_at,
                 definition.default_visibility,
                 definition.default_sensitivity,
                 definition.temporal,
+                asserted_at,
             ),
         )
         if cursor.lastrowid is None:
@@ -382,9 +413,11 @@ async def assert_entity_relation(
                 "WHERE source_entity_id = ? AND predicate = ? AND lifecycle = 'active' AND id != ?",
                 (relation_id, source_entity_id, definition.canonical_id, relation_id),
             )
-        await conn.commit()
+        if manage_transaction:
+            await conn.commit()
     except Exception:
-        await conn.rollback()
+        if manage_transaction:
+            await conn.rollback()
         raise
     result = await get_entity_relation(relation_id)
     if result is None:
