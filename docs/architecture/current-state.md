@@ -93,6 +93,10 @@ The P0-S audit is authoritative for immediate pre-controller work:
 - P0-S and Plan 0003 are **Complete**. P0.3 pilots a bounded `/chat`
   controller with immutable response planning plus deterministic current-date
   and strict ISO-birth-date age tools. It does not alter P0.4/P0.5 boundaries.
+- Plan 0004's relational-memory decision is **Complete** and Plan 0005 is
+  **Ready** for an additive v4 storage/migration foundation only. It will not
+  alter the legacy runtime reader/writer or retrieve v4 data before P0.5
+  authorization; the explicit local migration command defaults to dry-run.
 
 See [P0-S hardening audit](p0-s-hardening-audit.md) for evidence and
 [plans](../plans/README.md) for execution status.

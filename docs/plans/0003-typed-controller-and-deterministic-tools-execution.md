@@ -167,5 +167,5 @@ in 36.25s), `just audit`, and a clean `just check`. The controller remains a
 dependency scope amendment occurred.
 
 No real Ollama request or hardware acceptance was run. The next candidate is
-P0.4 relational integrity/cardinality; it remains Draft until separately
-revalidated and promoted.
+P0.4 relational integrity/cardinality; Plan 0005 was subsequently revalidated
+and promoted for its bounded storage/migration foundation only.

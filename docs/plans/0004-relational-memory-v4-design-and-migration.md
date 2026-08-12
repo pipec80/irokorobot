@@ -2,10 +2,13 @@
 
 ## Status
 
-Approved design for a future **Draft** implementation plan. This is the
-decision and migration-design half of P0.4. It authorizes no SQL migration,
-production code, data rewrite, or readiness change. Plan 0002 is Complete, no
-plan is currently `Ready`, and P0.4 remains Draft.
+**Complete design decision — revalidated 2026-08-12 at `d136f5f` on `main`.**
+This is the decision and migration-design half of P0.4. It authorizes no SQL
+migration, production code, or data rewrite by itself. Its revalidation found
+that the legacy runtime still uses name-valued `facts.object_value`, universal
+fact supersession, and unfiltered relational retrieval. It therefore promotes
+only the bounded P0.4 storage/migration foundation in Plan 0005; runtime
+read/write cutover remains deferred until P0.5 authorization exists.
 
 ## Purpose
 
@@ -31,9 +34,9 @@ age, or converting an unresolved name into a false confirmed relationship.
 - [`cognitive-roadmap.md`](../roadmap/cognitive-roadmap.md) requires a reviewed
   design/migration before P0.4 implementation and places P0.5 authorization
   after the relational foundation.
-- [Plan 0002](0002-active-person-context.md) and its completion evidence are
-  prerequisites for an executable later plan. [Plan 0003's design](0003-typed-controller-and-deterministic-tools-design.md)
-  supplies the future controller/tool seam but remains Draft.
+- [Plan 0002](0002-active-person-context.md) and [Plan 0003](0003-typed-controller-and-deterministic-tools.md)
+  are Complete. Plan 0003 supplies the bounded controller/tool seam but does
+  not authorize relation/profile retrieval.
 
 ## Current baseline and gap
 
@@ -198,9 +201,9 @@ database readability.
 
 ## Readiness conditions for Plan 0005 implementation
 
-The future Plan 0005 may become `Ready` only after P0.2 and P0.3 are Complete
-and a current-tree review confirms this design. Its canonical scope must
-include the exact SQL migration version, registry API, compatibility reader,
-write cutover, fixture database cases, migration ledger assertions, rollback
-test, and P0.5-safe retrieval boundary. Any departure from this model needs an
+Plan 0005 is Ready only for the storage/migration foundation: its canonical
+scope names migration version 4, registry API, explicit local migration command,
+fixture databases, migration-ledger assertions, and rollback evidence. The
+current legacy runtime remains the reader/writer until a separately approved
+P0.5 policy-gated cutover plan exists. Any departure from this model needs an
 approved ADR or a documented replacement decision first.
