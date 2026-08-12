@@ -53,8 +53,13 @@ prompt, controller, consolidator, or legacy retrieval module reads v4 yet.
 
 ```python
 class PredicateKind(StrEnum): ...
+
+
 class PredicateCardinality(StrEnum): ...
+
+
 class PredicateDefinition(BaseModel): ...
+
 
 def resolve_predicate(alias: str) -> PredicateDefinition | None: ...
 def normalize_literal(definition: PredicateDefinition, value: str) -> str | None: ...
@@ -150,6 +155,7 @@ runtime context builder.
 ```python
 class MigrationCounts(BaseModel): ...
 
+
 async def migrate_active_legacy_facts(*, apply: bool) -> MigrationCounts: ...
 ```
 
@@ -171,7 +177,9 @@ with `--apply` only when explicitly requested, and logs aggregate counts.
   assert outcome_for("edad") == "rejected"
   assert outcome_for("ambiguous target") == "deferred"
   assert no_ledger_row_exists_for(superseded_fact_id)
-  assert await migrate_active_legacy_facts(apply=True) == await migrate_active_legacy_facts(apply=True)
+  assert await migrate_active_legacy_facts(apply=True) == await migrate_active_legacy_facts(
+      apply=True
+  )
   ```
 
 - [ ] Run the migration test RED. Do not create an entity, call a model, parse
