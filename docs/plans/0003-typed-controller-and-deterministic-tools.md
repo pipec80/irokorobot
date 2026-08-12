@@ -4,9 +4,10 @@
 
 **Draft — not executable.** This plan implements only the approved
 [P0.3 design](0003-typed-controller-and-deterministic-tools-design.md). It may
-be promoted to `Ready` only after Plans 0002 and 0002a are Complete, the P0.2
-code and local-provider boundary are re-read, and this document is revised with
-its exact current file scope and tests. The companion
+be promoted to `Ready` only after Plans 0002, 0002a, 0002b, and 0002c are
+Complete, the P0.2 code, local-provider boundary, and P0-S hardening outcomes
+are re-read, and this document is revised with its exact current file scope and
+tests. The companion
 [execution runbook](0003-typed-controller-and-deterministic-tools-execution.md)
 is also Draft and does not authorize implementation.
 
@@ -29,9 +30,11 @@ legacy shortcuts or LLM inference.
    recorded completion evidence.
 5. [Plan 0002a](0002a-local-first-provider-quarantine.md) and its recorded
    local-only validation evidence.
-6. [P0.3 design decisions](0003-typed-controller-and-deterministic-tools-design.md)
+6. [P0-S hardening design](p0-s-hardening-design.md), completed Plan 0002b,
+   and completed Plan 0002c.
+7. [P0.3 design decisions](0003-typed-controller-and-deterministic-tools-design.md)
    and its execution runbook.
-7. The then-current chat router/schema tests, text-turn service, cognition
+8. The then-current chat router/schema tests, text-turn service, cognition
    package, local LLM boundary, and Plan 0001 models.
 
 ## Locked outcomes

@@ -32,6 +32,7 @@ decision is not silently changed by implementation; replace it with a new ADR.
 | Any cognitive implementation | `implementation-guardrails.md`, this index, the named plan, every document that plan lists |
 | Domain models/controller | ADR-0004, ADR-0005, `cognitive-contracts.md`, `cognitive-architecture.md` |
 | Identity or permissions | `identity-and-access.md`, ADR-0004, `cognitive-contracts.md` |
+| P0-S hardening | `p0-s-hardening-audit.md`, `identity-and-access.md`, the named P0-S plan |
 | Memory or onboarding | `memory-and-world-state.md`, `identity-and-access.md` |
 | Personality or prompts | `personality-and-interaction.md`, `identity-and-access.md` |
 | Sensors, vision, or world state | `memory-and-world-state.md`, `cognitive-contracts.md`, media contracts in `implementation-guardrails.md` |
@@ -45,6 +46,8 @@ specific conflict instead of redesigning the project implicitly.
 
 - [`current-state.md`](current-state.md): verified implementation snapshot and
   known gaps.
+- [`p0-s-hardening-audit.md`](p0-s-hardening-audit.md): targeted disposition of
+  immediate security/configuration hardening before P0.3.
 - [`implementation-guardrails.md`](implementation-guardrails.md): tracked
   repository boundaries and instructions for bounded Codex execution.
 - [`cognitive-architecture.md`](cognitive-architecture.md): complete conceptual
