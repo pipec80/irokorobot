@@ -1,7 +1,7 @@
 # Plan 0003 — Typed controller and deterministic tools: execution runbook
 
-**Status:** Complete — implemented at `5954a90` on
-`feat/p03-typed-controller`, after the P0-S2 baseline `5f1971c` on `main`.
+**Status:** Complete — merged to `main` as `a80dd2d` through PR #37, after the
+P0-S2 baseline `5f1971c`.
 
 **Prerequisites:** Plans 0002, 0002a, 0002b, and 0002c are Complete with
 recorded validation. This runbook and its canonical plan were re-read against
@@ -157,7 +157,7 @@ existing response envelope is unchanged.
 
 ## Completion record
 
-Implementation commit: `5954a90`.
+Merge commit: `a80dd2d` (PR #37).
 
 The recorded RED/GREEN sequence is in the canonical Plan 0003 completion
 evidence. Final implementation gates passed: `just lint`, `just typecheck`

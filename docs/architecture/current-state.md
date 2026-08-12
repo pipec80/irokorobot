@@ -2,8 +2,7 @@
 
 > **Observed:** 2026-08-12
 >
-> **Implementation snapshot:** `5954a90` (`feat/p03-typed-controller`, before
-> PR review and merge)
+> **Implementation snapshot:** `a80dd2d` (`main`, P0.3 PR #37 merged)
 >
 > **Verification boundary:** P0.3 code, configuration, and local tests were
 > inspected. It passed `just lint`, `just typecheck`, `just test` (514 passed),
