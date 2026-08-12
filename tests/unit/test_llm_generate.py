@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from unittest.mock import ANY, AsyncMock, MagicMock
+from unittest.mock import ANY, AsyncMock
 from uuid import UUID
 
 import pytest
@@ -66,46 +66,40 @@ async def test_generate_response_empty_text_raises_value_error() -> None:
 
 
 @pytest.mark.unit
-async def test_generate_response_routes_to_anthropic_by_default(
+async def test_generate_response_uses_ollama_by_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Default provider is 'anthropic' — dispatcher must call _generate_anthropic."""
-    mock_anthropic = AsyncMock(return_value=("hola", "joy"))
-    mock_ollama = AsyncMock(return_value=("no debería llamarme", "neutral"))
-    monkeypatch.setattr(llm, "_generate_anthropic", mock_anthropic)
-    monkeypatch.setattr(llm, "_generate_ollama", mock_ollama)
-    monkeypatch.setattr(llm.settings, "llm_provider", "anthropic")
+    """The default generation backend must be the local Ollama adapter."""
+    local_backend = AsyncMock(return_value=("hola", "joy"))
+    monkeypatch.setattr(llm, "_generate_ollama", local_backend)
 
     response, emotion = await llm.generate_response("hello")
 
     assert response == "hola"
     assert emotion == "joy"
-    mock_anthropic.assert_awaited_once_with(
+    local_backend.assert_awaited_once_with(
         ANY,  # system prompt built dynamically by build_system_prompt
         [{"role": "user", "content": "hello"}],
     )
-    mock_ollama.assert_not_awaited()
 
 
 @pytest.mark.unit
-async def test_generate_response_routes_to_ollama_when_configured(
+async def test_generate_response_uses_local_backend_after_invalid_runtime_mutation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    mock_anthropic = AsyncMock(return_value=("no debería llamarme", "neutral"))
-    mock_ollama = AsyncMock(return_value=("ollama says hi", "surprise"))
-    monkeypatch.setattr(llm, "_generate_anthropic", mock_anthropic)
-    monkeypatch.setattr(llm, "_generate_ollama", mock_ollama)
-    monkeypatch.setattr(llm.settings, "llm_provider", "ollama")
+    """Generation must stay local even if a caller corrupts the provider field."""
+    local_backend = AsyncMock(return_value=("respuesta local", "joy"))
+    monkeypatch.setattr(llm, "_generate_ollama", local_backend)
+    monkeypatch.delattr(llm, "_generate_anthropic", raising=False)
+    monkeypatch.setattr(llm.settings, "llm_provider", "anthropic")
 
-    response, emotion = await llm.generate_response("hi")
+    response, emotion = await llm.generate_response("hola")
 
-    assert response == "ollama says hi"
-    assert emotion == "surprise"
-    mock_ollama.assert_awaited_once_with(
-        ANY,  # system prompt built dynamically by build_system_prompt
-        [{"role": "user", "content": "hi"}],
+    assert (response, emotion) == ("respuesta local", "joy")
+    local_backend.assert_awaited_once_with(
+        ANY,
+        [{"role": "user", "content": "hola"}],
     )
-    mock_anthropic.assert_not_awaited()
 
 
 @pytest.mark.unit
@@ -120,8 +114,7 @@ async def test_generate_response_wraps_unexpected_exceptions_as_llmerror(
     ) -> tuple[str, str]:
         raise RuntimeError("network down")
 
-    monkeypatch.setattr(llm, "_generate_anthropic", _broken)
-    monkeypatch.setattr(llm.settings, "llm_provider", "anthropic")
+    monkeypatch.setattr(llm, "_generate_ollama", _broken)
 
     with pytest.raises(LLMError):
         await llm.generate_response("hola")
@@ -139,61 +132,10 @@ async def test_generate_response_propagates_llmerror_directly(
     ) -> tuple[str, str]:
         raise LLMError("specific error")
 
-    monkeypatch.setattr(llm, "_generate_anthropic", _raises_llm_error)
-    monkeypatch.setattr(llm.settings, "llm_provider", "anthropic")
+    monkeypatch.setattr(llm, "_generate_ollama", _raises_llm_error)
 
     with pytest.raises(LLMError, match="specific error"):
         await llm.generate_response("hola")
-
-
-@pytest.mark.unit
-async def test_generate_anthropic_raises_when_no_text_block_in_response(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Defensive path added by audit: non-text content blocks must raise LLMError."""
-    fake_tool_block = MagicMock()
-    fake_tool_block.type = "tool_use"  # not "text"
-
-    fake_message = MagicMock()
-    fake_message.content = [fake_tool_block]
-
-    fake_client = MagicMock()
-    fake_client.messages.create = AsyncMock(return_value=fake_message)
-
-    monkeypatch.setattr(llm, "_get_anthropic_client", lambda: fake_client)
-
-    with pytest.raises(LLMError, match="no text block"):
-        await llm._generate_anthropic(
-            "test prompt",
-            [{"role": "user", "content": "hola"}],
-        )
-
-
-@pytest.mark.unit
-async def test_generate_anthropic_extracts_first_text_block(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """When both tool_use and text blocks exist, the text one must be selected."""
-    tool_block = MagicMock()
-    tool_block.type = "tool_use"
-    text_block = MagicMock()
-    text_block.type = "text"
-    text_block.text = '{"response": "hola mundo", "emotion": "joy"}'
-
-    fake_message = MagicMock()
-    fake_message.content = [tool_block, text_block]
-
-    fake_client = MagicMock()
-    fake_client.messages.create = AsyncMock(return_value=fake_message)
-
-    monkeypatch.setattr(llm, "_get_anthropic_client", lambda: fake_client)
-
-    response, emotion = await llm._generate_anthropic(
-        "test prompt",
-        [{"role": "user", "content": "hola"}],
-    )
-    assert response == "hola mundo"
-    assert emotion == "joy"
 
 
 # ---------------------------------------------------------------------------
@@ -207,8 +149,7 @@ async def test_generate_response_without_context_backward_compat(
 ) -> None:
     """Calling without context/history must still route correctly."""
     mock = AsyncMock(return_value=("ok", "neutral"))
-    monkeypatch.setattr(llm, "_generate_anthropic", mock)
-    monkeypatch.setattr(llm.settings, "llm_provider", "anthropic")
+    monkeypatch.setattr(llm, "_generate_ollama", mock)
 
     await llm.generate_response("test")
 
@@ -224,8 +165,7 @@ async def test_generate_response_with_context_and_history(
 ) -> None:
     """Context block appended to system prompt; history prepended to messages."""
     mock = AsyncMock(return_value=("remembered", "joy"))
-    monkeypatch.setattr(llm, "_generate_anthropic", mock)
-    monkeypatch.setattr(llm.settings, "llm_provider", "anthropic")
+    monkeypatch.setattr(llm, "_generate_ollama", mock)
 
     ctx = MemoryContext(
         entities=[
@@ -271,8 +211,7 @@ async def test_generate_response_uses_manual_context_for_neutral_display_guidanc
 ) -> None:
     """Manual context adds static guidance without exposing identity or access."""
     mock = AsyncMock(return_value=("hola Sofía", "joy"))
-    monkeypatch.setattr(llm, "_generate_anthropic", mock)
-    monkeypatch.setattr(llm.settings, "llm_provider", "anthropic")
+    monkeypatch.setattr(llm, "_generate_ollama", mock)
 
     await llm.generate_response(
         "¿cómo se llaman mis hijos?",
@@ -348,8 +287,7 @@ async def test_generate_response_forwards_onboarding_slot(
 ) -> None:
     """The slot's hint must reach the system prompt sent to the backend."""
     mock = AsyncMock(return_value=("¿cuándo naciste?", "neutral"))
-    monkeypatch.setattr(llm, "_generate_anthropic", mock)
-    monkeypatch.setattr(llm.settings, "llm_provider", "anthropic")
+    monkeypatch.setattr(llm, "_generate_ollama", mock)
     slot = OnboardingSlot(key="fecha_nacimiento", question_hint="cuándo nació")
 
     await llm.generate_response("me llamo Felipe", onboarding=True, onboarding_slot=slot)

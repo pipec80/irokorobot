@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import logging
 
-import anthropic
 import httpx
 
 from server.cognition.identity import (
@@ -19,7 +18,6 @@ from server.cognition.identity import (
     IdentityEvidenceSource,
 )
 from server.exceptions import LLMError
-from server.llm_clients import get_anthropic_client
 from server.llm_transport import ollama_chat, strip_json_fences
 from server.memory.declarative import assert_fact, find_entities_by_name, upsert_entity
 from server.memory.normalize import normalize_extraction
@@ -31,8 +29,6 @@ logger = logging.getLogger(__name__)
 
 _LOW_IMPORTANCE = 0.2
 _RETRY_DELAY_S = 5.0
-_EXTRACTION_TOOL_NAME = "record_extraction"
-
 _EXTRACTION_SYSTEM = """\
 Eres un extractor de información de conversaciones para la memoria de un \
 robot asistente personal.
@@ -114,61 +110,11 @@ async def _extract_via_ollama(user_text: str, assistant_text: str) -> TurnExtrac
         raise LLMError(f"Extraction returned invalid JSON: {exc}") from exc
 
 
-async def _extract_via_anthropic(user_text: str, assistant_text: str) -> TurnExtraction:
-    """Call Anthropic with a forced tool to extract structured data from a turn.
-
-    Uses tool-choice-forced tool use so the model must emit JSON matching
-    ``TurnExtraction.model_json_schema()`` — no free-text parsing involved.
-
-    Args:
-        user_text: The user's message in the current turn.
-        assistant_text: The robot's response in the current turn.
-
-    Returns:
-        Validated ``TurnExtraction`` Pydantic model.
-
-    Raises:
-        LLMError: If the response has no tool_use block or fails validation.
-        anthropic.AnthropicError: If the API call itself fails.
-    """
-    client = get_anthropic_client()
-    message = await client.messages.create(
-        model=settings.anthropic_model,
-        max_tokens=1024,
-        system=_EXTRACTION_SYSTEM,
-        messages=[
-            {
-                "role": "user",
-                "content": f"Conversación:\n[user] {user_text}\n[assistant] {assistant_text}",
-            }
-        ],
-        tools=[
-            {
-                "name": _EXTRACTION_TOOL_NAME,
-                "description": (
-                    "Registra entidades, hechos, resumen episódico e importancia "
-                    "extraídos del turno de conversación."
-                ),
-                "input_schema": TurnExtraction.model_json_schema(),
-            }
-        ],
-        tool_choice={"type": "tool", "name": _EXTRACTION_TOOL_NAME},
-    )
-    tool_blocks = [block for block in message.content if block.type == "tool_use"]
-    if not tool_blocks:
-        raise LLMError("Anthropic extraction returned no tool_use block")
-    try:
-        return TurnExtraction.model_validate(tool_blocks[0].input)
-    except Exception as exc:
-        raise LLMError(f"Extraction returned invalid schema: {exc}") from exc
-
-
 async def _extract(user_text: str, assistant_text: str) -> TurnExtraction:
-    """Route extraction to the configured provider, retrying once on failure.
+    """Extract locally with Ollama, retrying once on a transient failure.
 
-    Provider resolution: ``settings.consolidation_provider``, falling back to
-    ``settings.llm_provider`` when empty. Transient failures (model still
-    loading, brief network hiccups) get a single retry after a short delay.
+    Transient failures (model still loading or a brief local HTTP interruption)
+    get a single retry after a short delay.
 
     Args:
         user_text: The user's message.
@@ -180,21 +126,17 @@ async def _extract(user_text: str, assistant_text: str) -> TurnExtraction:
     Raises:
         LLMError: If both attempts fail with a malformed response.
         httpx.HTTPError: If both attempts fail reaching Ollama.
-        anthropic.AnthropicError: If both attempts fail reaching Anthropic.
     """
-    provider = settings.consolidation_provider or settings.llm_provider
-    extractor = _extract_via_anthropic if provider == "anthropic" else _extract_via_ollama
     try:
-        return await extractor(user_text, assistant_text)
-    except (LLMError, httpx.HTTPError, anthropic.AnthropicError) as exc:
+        return await _extract_via_ollama(user_text, assistant_text)
+    except (LLMError, httpx.HTTPError) as exc:
         logger.warning(
-            "Extraction failed (provider=%s) — retrying in %.0fs: %s",
-            provider,
+            "Local extraction failed — retrying in %.0fs: %s",
             _RETRY_DELAY_S,
             exc,
         )
         await asyncio.sleep(_RETRY_DELAY_S)
-        return await extractor(user_text, assistant_text)
+        return await _extract_via_ollama(user_text, assistant_text)
 
 
 def _manual_active_person_name(active_person: ActivePersonContext | None) -> str | None:
@@ -238,7 +180,7 @@ async def consolidate_turn(  # noqa: PLR0912
         return
     try:
         extraction = await _extract(user_text, assistant_text)
-    except (LLMError, httpx.HTTPError, anthropic.AnthropicError) as exc:
+    except (LLMError, httpx.HTTPError) as exc:
         logger.warning("Consolidation extraction failed: %s", exc)
         return
 

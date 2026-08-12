@@ -1,7 +1,7 @@
 """Audio contract enforcement for HTTP endpoints.
 
 Validates that uploaded audio matches the mandatory contract — WAV, 16 000 Hz,
-mono, int16 (see .claude/rules/audio-contract.md) — before it reaches STT.
+mono, int16 (see .Codex/rules/audio-contract.md) — before it reaches STT.
 """
 
 import io

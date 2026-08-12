@@ -8,7 +8,6 @@ from fastapi.testclient import TestClient
 import httpx
 import pytest
 from server.exceptions import TranscriptionError
-from server.settings import settings
 
 from server import llm_streaming, stt, tts
 
@@ -78,7 +77,6 @@ def test_stream_without_emotion_tag_still_speaks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Missing emotion metadata should fall back before emitting audio."""
-    monkeypatch.setattr(settings, "llm_provider", "ollama")
 
     async def fake_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
         for delta in ("Hola. ", "¿Cómo estás?"):
@@ -95,3 +93,27 @@ def test_stream_without_emotion_tag_still_speaks(
     assert emotion_events == [{"type": "emotion", "value": "neutral"}]
     assert [event["text"] for event in audio_events] == ["Hola. ¿Cómo estás?"]
     assert events.index(emotion_events[0]) < events.index(audio_events[0])
+
+
+@pytest.mark.integration
+def test_stream_local_connection_failure_emits_fallback_and_done(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A local Ollama connection failure must preserve the NDJSON fallback contract."""
+
+    async def unavailable_transport(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
+        raise httpx.ConnectError("Ollama unavailable")
+        yield ""
+
+    monkeypatch.setattr(llm_streaming, "ollama_chat_stream", unavailable_transport)
+
+    response = _post_stream(client, silence_wav_bytes)
+    events = _parse_ndjson(response.text)
+
+    assert response.status_code == 200
+    assert events[0] == {"type": "text_heard", "value": "hola robot"}
+    assert events[1] == {"type": "emotion", "value": "neutral"}
+    assert events[2]["type"] == "audio"
+    assert events[-1]["type"] == "done"

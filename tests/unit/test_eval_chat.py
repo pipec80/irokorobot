@@ -266,7 +266,6 @@ async def test_run_evaluation_forwards_exact_case_inputs(
     case = _case(required_any=[["11"]])
     mock_generate = AsyncMock(return_value=("La respuesta es 11.", "joy"))
     monkeypatch.setattr(eval_chat.llm, "generate_response", mock_generate)
-    monkeypatch.setattr(eval_chat.settings, "llm_provider", "anthropic")
     monkeypatch.setattr(eval_chat.time, "perf_counter", lambda: 1.0)
 
     evaluation = await run_evaluation([case], runs=1, provider="ollama")
@@ -374,7 +373,7 @@ async def test_run_evaluation_records_failure_and_continues(
 
 
 @pytest.mark.unit
-async def test_run_evaluation_restores_provider_after_failure(
+async def test_run_evaluation_reports_local_provider_after_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     case = _case(required_any=[["dato"]])
@@ -383,12 +382,10 @@ async def test_run_evaluation_restores_provider_after_failure(
         "generate_response",
         AsyncMock(side_effect=RuntimeError("offline")),
     )
-    monkeypatch.setattr(eval_chat.settings, "llm_provider", "anthropic")
-
     evaluation = await run_evaluation([case], runs=1, provider="ollama")
 
     assert evaluation.results[0].error is not None
-    assert eval_chat.settings.llm_provider == "anthropic"
+    assert evaluation.provider == "ollama"
 
 
 @pytest.mark.unit
@@ -520,6 +517,13 @@ def test_parse_cli_args_supports_all_public_options(tmp_path: Path) -> None:
     assert options.only == "corrected_age_active_fact"
     assert options.output == output.resolve()
     assert options.min_pass_rate == 0.8
+
+
+@pytest.mark.unit
+def test_parse_cli_args_rejects_nonlocal_provider() -> None:
+    """The evaluation CLI must not expose a cloud-provider override."""
+    with pytest.raises(SystemExit):
+        parse_cli_args(["--provider", "anthropic"])
 
 
 @pytest.mark.unit
