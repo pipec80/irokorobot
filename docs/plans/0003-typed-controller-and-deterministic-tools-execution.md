@@ -1,10 +1,12 @@
 # Plan 0003 — Typed controller and deterministic tools: execution runbook
 
-**Status:** Draft — not executable yet.
+**Status:** Ready — revalidated on 2026-08-12 at `5f1971c` (`main`, P0-S2
+merged).
 
-**Prerequisites:** Plan 0002 is complete and Plan 0002a (local-first provider
-quarantine) is Complete with recorded full validation. Re-read the current tree
-and this runbook before promoting it to Ready.
+**Prerequisites:** Plans 0002, 0002a, 0002b, and 0002c are Complete with
+recorded validation. This runbook and its canonical plan were re-read against
+the current chat router, `text_turn`, `CognitiveEvent`, P0.2 tests, P0-S
+outcomes, and Ollama-only provider boundary.
 
 ## Outcome
 
@@ -44,7 +46,9 @@ minimal compatibility fix. That needs a documented plan amendment.
 ## Contracts
 
 Keep types beside the existing `server.cognition.models` vocabulary. Do not add
-a tool framework or registry in this PR.
+a tool framework or registry in this PR. Two closed deterministic tools do not
+justify a registration abstraction; reconsider only when a later plan has
+multiple tools that need shared metadata or dispatch.
 
 ```python
 class TextTurnPayload(BaseModel):

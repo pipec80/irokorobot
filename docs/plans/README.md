@@ -47,9 +47,10 @@ records the observed TDD, final-gate, and final-remediation evidence. The last
 remediation commit is `79258cc`; its combined P0.2 suite passed 174 tests and
 the full repository suite passed 497 tests.
 
-Plans 0002b and 0002c are complete. P0.3 and later plans remain Draft. Before
-any promotion, re-read the completed prerequisite implementation and revise the
-candidate plan with its exact current file scope and tests.
+Plans 0002b and 0002c are complete. Plan 0003 is Ready; P0.4 and later plans
+remain Draft. Before any promotion, re-read the completed prerequisite
+implementation and revise the candidate plan with its exact current file scope
+and tests.
 
 The [P0 cognitive portfolio design](p0-cognitive-plan-portfolio-design.md)
 links every current P0 plan and records their dependency order and status.

@@ -84,8 +84,10 @@ The P0-S audit is authoritative for immediate pre-controller work:
   and diagnostics no longer promise public memory recall, enrollment, or face
   identity. The face threshold values remain intentionally unchanged pending a
   reproducible calibration.
-- P0-S is complete. Plan 0003 remains **Draft** until its own current-tree
-  revalidation promotes it.
+- P0-S is complete. Plan 0003 is **Ready** for its bounded `/chat` pilot:
+  immutable response planning plus deterministic current-date and strict
+  ISO-birth-date age tools. It does not yet implement the controller or alter
+  P0.4/P0.5 boundaries.
 
 See [P0-S hardening audit](p0-s-hardening-audit.md) for evidence and
 [plans](../plans/README.md) for execution status.

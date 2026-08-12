@@ -2,14 +2,12 @@
 
 ## Status
 
-**Draft — not executable.** This plan implements only the approved
-[P0.3 design](0003-typed-controller-and-deterministic-tools-design.md). It may
-be promoted to `Ready` only after Plans 0002, 0002a, 0002b, and 0002c are
-Complete, the P0.2 code, local-provider boundary, and P0-S hardening outcomes
-are re-read, and this document is revised with its exact current file scope and
-tests. The companion
+**Ready.** Revalidated on 2026-08-12 at `5f1971c` (`main`, P0-S2 merged).
+Plans 0002, 0002a, 0002b, and 0002c are Complete. The P0.2 identity boundary,
+Ollama-only provider boundary, P0-S hardening results, current chat adapter,
+`CognitiveEvent` contract, and chat/text-turn tests were re-read. The companion
 [execution runbook](0003-typed-controller-and-deterministic-tools-execution.md)
-is also Draft and does not authorize implementation.
+is Ready with this canonical plan and authorizes exactly the scope below.
 
 ## Objective
 
@@ -49,86 +47,103 @@ legacy shortcuts or LLM inference.
   active deterministic tools. Age is computed, never persisted.
 - Date/age routing is a documented narrow deterministic classifier, not broad
   NLU or model tool selection.
-- Relationship/profile/memory/perception requests use `unknown`; protected
-  operations use `unauthorized` before P0.4/P0.5. Identity is not permission.
-- The LLM receives a bounded response plan for wording only. It cannot select a
-  tool, calculate an age, turn an uncertain outcome into fact, grant access,
-  mutate memory, use cloud, or command hardware.
+- Relationship/profile/memory/perception requests use `unknown`; clearly private
+  household operations use `unauthorized` before P0.4/P0.5. Identity is not
+  permission.
+- The two deterministic branches produce fixed, evidence-backed Spanish text in
+  P0.3 and do not invoke the LLM. Generic conversation delegates to the current
+  local text turn. No branch lets an LLM select a tool, calculate an age, turn
+  uncertainty into fact, grant access, mutate memory, use cloud, or command
+  hardware.
+- P0.3 deliberately has no `ToolRegistry`: two closed static functions do not
+  justify a registry abstraction. A future plan may introduce one only when
+  more real tools need shared registration, metadata, or dispatch.
 
-## Provisional implementation slices
+## Revalidated implementation scope
 
-These are future TDD tasks. Exact filenames, public/internal contracts, and
-focused commands are frozen only in the Ready revision after a current-tree
-review.
+| Path | Change |
+|---|---|
+| `server/src/server/cognition/response_plan.py` | Create immutable P0.3 payload, need, tool-result, claim, and response-plan values. |
+| `server/src/server/cognition/calendar_tools.py` | Create pure strict-ISO date and age helpers. |
+| `server/src/server/cognition/controller.py` | Create one injected, sequential controller. |
+| `server/src/server/cognition/__init__.py` | Export the new cognition contracts only. |
+| `server/src/server/routers/chat.py` | Adapt its existing validated request into a fresh cognitive event and map the plan back to unchanged JSON. |
+| `tests/unit/test_response_plan.py` | Add immutable-contract and response-validation tests. |
+| `tests/unit/test_calendar_tools.py` | Add pure date and age boundary tests. |
+| `tests/unit/test_cognitive_controller.py` | Add branch ordering, no-delegate, and fallback-delegation tests with fakes. |
+| `tests/integration/test_chat_endpoint.py` | Preserve `/chat` schema and verify observable deterministic behavior. |
+| `docs/architecture/current-state.md`, `docs/roadmap/cognitive-roadmap.md`, `docs/plans/README.md`, `docs/plans/p0-cognitive-plan-portfolio-design.md`, this plan, and its runbook | Record readiness now and completion evidence only after the implementation gates pass. |
+
+`text_turn.py`, schemas, memory/SQLite, vision, robot, audio, prompts, and
+provider code are explicitly outside this plan. No dependency is authorized.
+
+## Ready TDD slices
 
 ### Slice 1 — Controller and response contracts
 
-- [ ] Write RED tests for strict immutable text-event, information-need,
-  tool-result, claim, and response-plan value objects, reusing Plan 0001
-  `KnowledgeStatus` and `Confidence` rather than duplicating enums.
-- [ ] Implement the minimal pure contracts and controller constructor with
-  injected clock/tool/generation seams; no HTTP, SQLite, model, or hardware I/O
-  in construction/validation.
-- [ ] Run focused GREEN and review all types/docstrings/serialization.
+- [ ] Write RED unit tests in `tests/unit/test_response_plan.py` for strict,
+  frozen `TextTurnPayload`, `InformationNeed`, `ToolResult`, `ResponseClaim`,
+  and `ResponsePlan` values. Reuse Plan 0001 `KnowledgeStatus` and
+  `Confidence`; reject a known claim without a known deterministic tool result.
+- [ ] Create `response_plan.py` with those values and no I/O. Its event payload
+  must satisfy the existing `CognitiveEvent[PayloadT: BaseModel]` bound.
+- [ ] Run `uv run pytest tests/unit/test_response_plan.py -v` GREEN and review
+  JSON serialization, immutability, and no duplicated status enum.
 
 ### Slice 2 — Pure deterministic calendar tools
 
-- [ ] Write RED tests for current-date injection, ISO date validation, completed
-  calendar years, birthday boundary, leap-day handling, future birth date, and
-  invalid/missing data -> explicit `unknown`.
-- [ ] Implement only `get_current_date` and `calculate_age` as ordinary Python
-  functions with typed inputs/results.
-- [ ] Run focused GREEN. Verify no model call, persistence, locale guess, or
-  mutable `age` record occurs.
+- [ ] Write RED unit tests in `tests/unit/test_calendar_tools.py` for injected
+  current date, strict ISO parsing, completed calendar years, birthday boundary,
+  leap-day handling, future dates, and invalid/missing input -> `unknown`.
+- [ ] Create `calendar_tools.py` with only `get_current_date()` and
+  `calculate_age()`, with explicit `date` injection in the core and no model,
+  persistence, locale guess, or mutable age record.
+- [ ] Run `uv run pytest tests/unit/test_calendar_tools.py -v` GREEN.
 
 ### Slice 3 — Bounded intent and response validation
 
-- [ ] Write RED tests for supported current-date and explicit-ISO-age forms,
-  generic conversation fallback, unsupported relationship/profile request ->
-  `unknown`, and protected request -> `unauthorized`.
-- [ ] Implement a closed deterministic classifier and response-plan validator.
-  The validator preserves `unknown`/`unauthorized` and rejects unbacked
-  factual claims from tool output.
-- [ ] Run focused GREEN; confirm no broad NLU, prompt-driven routing, or LLM
-  decision path appears.
+- [ ] Write RED tests in `tests/unit/test_cognitive_controller.py` for direct
+  current-date and explicit-ISO-age forms, generic delegate fallback, relation
+  and profile requests -> `unknown`, and clearly protected household requests ->
+  `unauthorized`. Fakes must prove deterministic/protected paths never call the
+  legacy delegate.
+- [ ] Create `controller.py` with an injected clock and legacy text-turn
+  delegate. Use a closed classifier and deterministic response-plan validation;
+  no broad NLU, prompt routing, memory read, or LLM decision path is allowed.
+- [ ] Run `uv run pytest tests/unit/test_cognitive_controller.py -v` GREEN.
 
 ### Slice 4 — `/chat` pilot adapter
 
-- [ ] Update endpoint tests first to prove exact request/response JSON, error
-  validation, duration field, and local fallback remain unchanged while the
-  validated message becomes one typed controller event.
-- [ ] Wire only the chat adapter to the controller and existing local wording
-  boundary. Do not migrate voice, streaming, vision, robot, or shared audio
-  paths.
-- [ ] Run focused GREEN, including no automatic persistent-memory/protected-data
-  retrieval beyond the completed P0.2/P0.5 boundaries.
+- [ ] Extend `tests/integration/test_chat_endpoint.py` RED to prove the exact
+  request/response JSON, validation errors, duration, and safe generic fallback
+  remain unchanged while the request becomes a fresh typed event.
+- [ ] Wire only `routers/chat.py` to construct a fresh event and adapt a
+  `ResponsePlan`. Do not migrate voice, streaming, vision, robot, shared audio,
+  schemas, or `text_turn.py`.
+- [ ] Run `uv run pytest tests/integration/test_chat_endpoint.py -v` GREEN,
+  including public-unknown isolation and no automatic persistent-memory or
+  protected-data retrieval.
 
 ### Slice 5 — Verification and handoff
 
-- [ ] Run focused controller/tool/chat tests, then `just lint`,
-  `just typecheck`, and `just test`.
+- [ ] Run the three new unit suites and chat integration suite, then `just lint`,
+  `just typecheck`, `just test`, and `just audit`.
 - [ ] Review `git diff --check` and exact permitted scope; confirm no dependency,
   cloud, DB schema, permission-policy, biometric, action, or audio-contract
   change.
 - [ ] Record observed RED/GREEN evidence and change this plan to `Complete`
   only after all gates pass. P0.4/P0.5 remain Draft unless separately promoted.
 
-## TDD execution protocol
+## Execution protocol
 
-When Ready, use `superpowers:subagent-driven-development` (preferred) or
-`superpowers:executing-plans` (sequential fallback). Each task records an
-observed RED failure, the smallest GREEN implementation, focused checks, and a
-scope/type/privacy review. Workers use local feature branches in the primary
-checkout, preserve unrelated work, and never commit directly to `main`.
-
-Development subagents are temporary workflow helpers only; Iroko remains one
-small sequential controller in production.
+Use the matching Ready runbook sequentially. Each task records observed RED,
+the smallest GREEN implementation, focused checks, and a scope/type/privacy
+review. Work on a fresh feature branch; never commit directly to `main`.
 
 ## Stop conditions and promotion gate
 
-Stop and create a new decision/plan if implementation needs general NLU,
-framework/runtime adoption, database/schema work, legacy relationship queries,
+Stop and create a new decision/plan if implementation needs general NLU, a tool
+registry/framework/runtime, database/schema work, legacy relationship queries,
 permission policy, cloud, biometrics, physical actions, or an audio/robot
-contract change. Promote only after Plan 0002 is complete, current code is
-re-read, exact scope/test commands are approved, and a matching detailed TDD
-runbook is committed.
+contract change. Change this plan to `Complete` only after all listed tests and
+final gates pass; P0.4 and P0.5 remain Draft.
