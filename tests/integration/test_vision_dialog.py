@@ -170,18 +170,15 @@ def test_transcribe_enroll_phrase_requests_frame(
 
 
 @pytest.mark.integration
-def test_vision_respond_routes_enrollment(client: TestClient) -> None:
-    """Round 2 (V1): the enroll phrase routes to enroll_from_frame with the
-    captured name — not to the scene-description path."""
+def test_vision_respond_quarantines_enrollment_phrase(client: TestClient) -> None:
+    """Enrollment phrases must not reach a public biometric write path."""
     resp = _post_respond(client, _FAKE_JPEG, "aprende mi cara, soy Felipe")
 
     assert resp.status_code == 200
-    vision.enroll_from_frame.assert_awaited_once()  # type: ignore[attr-defined]  # AsyncMock
-    name, _image = vision.enroll_from_frame.await_args.args  # type: ignore[attr-defined]
-    assert name == "Felipe"
+    vision.enroll_from_frame.assert_not_awaited()  # type: ignore[attr-defined]  # AsyncMock
     vision_module.perceive_scene.assert_not_awaited()  # type: ignore[attr-defined]  # AsyncMock
     kwargs = llm.generate_response.await_args.kwargs  # type: ignore[attr-defined]  # AsyncMock
-    assert "Felipe" in kwargs["perception"]
+    assert kwargs["perception"] == vision_module._BIOMETRIC_ENROLLMENT_UNAVAILABLE
 
 
 @pytest.mark.integration

@@ -9,12 +9,7 @@ from typing import Annotated
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from server import vision
-from server.exceptions import (
-    BrainMemoryError,
-    EnrollmentRejectedError,
-    ImageContractError,
-    VisionError,
-)
+from server.exceptions import ImageContractError, VisionError
 from server.pipeline import _run_tts
 from server.schemas import TranscribeResponse, VisionDescribeResponse, VisionEnrollResponse
 from server.settings import settings
@@ -24,6 +19,10 @@ from server.vision.perception import perceive_scene
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Vision"])
+
+_BIOMETRIC_ENROLLMENT_UNAVAILABLE = (
+    "Face enrollment is temporarily unavailable pending local administration and consent policy."
+)
 
 
 async def _read_contract_image(image: UploadFile) -> bytes:
@@ -100,38 +99,26 @@ async def vision_enroll(
     ],
     name: Annotated[str, Form(description="Person name to enroll")],
 ) -> VisionEnrollResponse:
-    """Enroll one person's face — the transparent enrollment service (V1.1).
+    """Reject public face enrollment until local policy exists.
 
     Args:
         image: Image frame per the image contract (webcam frame or photo).
         name: Person name — reuses the memory entity when already known.
 
     Returns:
-        VisionEnrollResponse with the stored name, entity and profile ids.
+        This endpoint does not create or attach a biometric profile.
 
     Raises:
-        HTTPException: 503 for backends, 413 for size, or 422 for rejection.
+        HTTPException: 503 while public enrollment is quarantined.
     """
     if not settings.vision_enabled:
         raise HTTPException(status_code=503, detail="Vision is disabled (VISION_ENABLED=false)")
-    if not name.strip():
-        raise HTTPException(status_code=422, detail="Name is empty")
 
-    image_bytes = await _read_contract_image(image)
-
-    try:
-        outcome = await vision.enroll_person(name, image_bytes)
-    except EnrollmentRejectedError as exc:
-        raise HTTPException(status_code=422, detail=f"{exc.code}: {exc}") from exc
-    except VisionError as exc:
-        logger.error("Enrollment failed — vision backend: %s", exc)
-        raise HTTPException(status_code=503, detail="Vision backend unavailable") from exc
-    except BrainMemoryError as exc:
-        logger.error("Enrollment failed — memory backend: %s", exc)
-        raise HTTPException(status_code=503, detail="Memory backend unavailable") from exc
-
-    return VisionEnrollResponse(
-        name=outcome.name, entity_id=outcome.entity_id, profile_id=outcome.profile_id
+    # Keep the public multipart contract stable without reading either value.
+    del image, name
+    raise HTTPException(
+        status_code=503,
+        detail=_BIOMETRIC_ENROLLMENT_UNAVAILABLE,
     )
 
 
@@ -163,11 +150,12 @@ async def vision_respond(
 
     image_bytes = await _read_contract_image(image)
 
-    # Explicit enrollment remains separate from unresolved scene dialogue.
-    enroll_name = vision.wants_enroll(text)
+    # Public enrollment is quarantined until P0.5 defines local administration,
+    # consent, and authorization. A phrase is not proof of either.
+    enrollment_requested = vision.wants_enroll(text) is not None
     try:
-        if enroll_name is not None:
-            perception = await vision.enroll_from_frame(enroll_name, image_bytes)
+        if enrollment_requested:
+            perception = _BIOMETRIC_ENROLLMENT_UNAVAILABLE
         else:
             perception = await perceive_scene(image_bytes)
     except VisionError as exc:

@@ -73,7 +73,10 @@ gap prevents owner-by-default memory disclosure.
 The P0-S audit is authoritative for immediate pre-controller work:
 
 - Plan 0002a completed the direct-cloud-provider quarantine.
-- Plan 0002b is **Ready** to quarantine both public biometric enrollment paths.
+- Plan 0002b **completed** public biometric-enrollment quarantine: direct
+  enrollment returns a fixed 503 before any upload read or biometric write, and
+  conversational enrollment phrases provide fixed guidance without enrollment.
+  Existing biometric data is preserved; P0.5 owns the future policy.
 - Plan 0002c remains **Draft** until P0-S1 is merged and its configuration
   assumptions are revalidated.
 

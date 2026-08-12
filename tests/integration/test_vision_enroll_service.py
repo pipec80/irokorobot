@@ -1,4 +1,4 @@
-"""Integration tests for the transparent face-enrollment endpoint."""
+"""Integration tests for the quarantined public face-enrollment endpoint."""
 
 from __future__ import annotations
 
@@ -8,9 +8,8 @@ from unittest.mock import AsyncMock
 import cv2
 import numpy as np
 import pytest
-from server.exceptions import EnrollmentRejectedError
+from server.routers import vision as vision_router
 from server.settings import settings
-from server.vision import EnrollOutcome
 
 from server import llm, vision
 
@@ -23,7 +22,7 @@ _FAKE_JPEG = cv2.imencode(".jpg", np.zeros((10, 10, 3), dtype=np.uint8))[1].toby
 
 @pytest.fixture(autouse=True)
 def _vision_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Enable vision and mock LLM to prove enrollment stays transparent."""
+    """Enable vision and mock LLM to prove public enrollment remains isolated."""
     monkeypatch.setattr(settings, "vision_enabled", True)
     monkeypatch.setattr(llm, "generate_response", AsyncMock())
 
@@ -38,40 +37,36 @@ def _post_enroll(client: TestClient, image: bytes, name: str) -> httpx.Response:
 
 
 @pytest.mark.integration
-def test_enroll_service_happy_path(
+def test_enroll_endpoint_is_quarantined_before_service(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A good frame should return identifiers without LLM or TTS."""
-    monkeypatch.setattr(
-        vision,
-        "enroll_person",
-        AsyncMock(return_value=EnrollOutcome(name="Felipe", entity_id=7, profile_id=3)),
-    )
+    """A valid public request cannot reach the biometric enrollment service."""
+    enroll = AsyncMock()
+    monkeypatch.setattr(vision, "enroll_person", enroll)
 
     response = _post_enroll(client, _FAKE_JPEG, "felipe")
 
-    assert response.status_code == 200
-    assert response.json() == {"name": "Felipe", "entity_id": 7, "profile_id": 3}
+    assert response.status_code == 503
+    assert response.json()["detail"] == vision_router._BIOMETRIC_ENROLLMENT_UNAVAILABLE
+    enroll.assert_not_awaited()
     llm.generate_response.assert_not_awaited()  # type: ignore[attr-defined]  # AsyncMock
 
 
 @pytest.mark.integration
-def test_enroll_service_rejection_maps_to_422(
+def test_enroll_endpoint_hides_service_rejection(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Business-rule rejections should retain their machine-readable code."""
-    monkeypatch.setattr(
-        vision,
-        "enroll_person",
-        AsyncMock(side_effect=EnrollmentRejectedError("multiple_faces", "Found 3 faces")),
-    )
+    """A public caller cannot observe internal enrollment rule outcomes."""
+    enroll = AsyncMock(side_effect=AssertionError("service must not run"))
+    monkeypatch.setattr(vision, "enroll_person", enroll)
 
     response = _post_enroll(client, _FAKE_JPEG, "Felipe")
 
-    assert response.status_code == 422
-    assert "multiple_faces" in response.json()["detail"]
+    assert response.status_code == 503
+    assert response.json()["detail"] == vision_router._BIOMETRIC_ENROLLMENT_UNAVAILABLE
+    enroll.assert_not_awaited()
 
 
 @pytest.mark.integration
@@ -86,6 +81,9 @@ def test_enroll_service_disabled_returns_503(
 
 
 @pytest.mark.integration
-def test_enroll_service_empty_name_returns_422(client: TestClient) -> None:
-    """Whitespace-only names should retain the 422 validation response."""
-    assert _post_enroll(client, _FAKE_JPEG, "   ").status_code == 422
+def test_enroll_endpoint_quarantines_empty_name_without_disclosure(client: TestClient) -> None:
+    """The public denial does not validate or expose an attacker-supplied name."""
+    response = _post_enroll(client, _FAKE_JPEG, "   ")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == vision_router._BIOMETRIC_ENROLLMENT_UNAVAILABLE
