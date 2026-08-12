@@ -172,7 +172,7 @@ tools, and writes.
 
 ### P0.5 — Household authorization
 
-**P0.5-A is complete on the feature branch, pending PR merge evidence.**
+**P0.5-A is complete — merged to `main` as `960f160` through PR #42.**
 [Plan 0007](../plans/0007-household-authorization-foundation.md) implements
 role and data-category policy as a deterministic service, safe local role/audit
 records, an explicit local owner bootstrap, and controller enforcement before
@@ -340,8 +340,8 @@ expand scope. Run the listed verification. Do not commit unless asked.
 [Plan 0002](../plans/0002-active-person-context.md), and
 [Plan 0002a](../plans/0002a-local-first-provider-quarantine.md) are complete.
 Plans 0002b, 0002c, 0003, the Plan 0004 design, and Plan 0005 are complete;
-Plan 0005 merged as `3b01b58` through PR #40. Plan 0007 has passed P0.5-A
-local gates on its feature branch and awaits PR merge evidence. P0.5-B and
-later plans remain `Draft` until their prerequisites and current tree are
-revalidated. Later plans are written just in time after the previous exit gate;
-otherwise they encode guesses about code that has already moved.
+Plan 0005 merged as `3b01b58` through PR #40. Plan 0007 P0.5-A merged as
+`960f160` through PR #42. P0.5-B and later plans remain `Draft` until their
+prerequisites and current tree are revalidated. Later plans are written just in
+time after the previous exit gate; otherwise they encode guesses about code
+that has already moved.

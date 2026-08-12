@@ -2,9 +2,10 @@
 
 ## Status
 
-**Complete — feature branch validation pending PR merge.** This runbook executed only
-[Plan 0007](0007-household-authorization-foundation.md). It is an operational
-TDD aid; the canonical plan and architecture documents remain authoritative.
+**Complete — merged to `main` as `960f160` through PR #42 on 2026-08-12.**
+This runbook executed only [Plan 0007](0007-household-authorization-foundation.md).
+It is an operational TDD aid; the canonical plan and architecture documents
+remain authoritative.
 
 ## Preconditions
 
@@ -89,6 +90,8 @@ normal PR/green-CI workflow.
 - **Quality gates:** `just lint`, `just typecheck`, `just test` (546 passed),
   `just audit`, and `just check` passed. `scripts/manage_household_roles.py
   --help` passed without opening or mutating a household database.
+- **GitHub CI and merge:** title, quality/security, automated tests, and CodeQL
+  passed. PR #42 was squash-merged as `960f160`.
 - **Temporary database:** migration 5 applied after migrations 1–4; foreign
   keys were clean and legacy v3 facts/v4 rows were preserved.
 - **Not verified:** real household bootstrap, real models, hardware, webcam,
