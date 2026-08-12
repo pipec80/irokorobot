@@ -62,9 +62,9 @@ class PredicateDefinition(BaseModel):
     default_sensitivity: str = "normal"
 
 
-_PERSON = frozenset({"person"})
-_PLACE = frozenset({"place"})
-_PET = frozenset({"other"})
+_PERSON: frozenset[EntityTypeName] = frozenset[EntityTypeName](("person",))
+_PLACE: frozenset[EntityTypeName] = frozenset[EntityTypeName](("place",))
+_PET: frozenset[EntityTypeName] = frozenset[EntityTypeName](("other",))
 
 _PREDICATES: tuple[PredicateDefinition, ...] = (
     PredicateDefinition(

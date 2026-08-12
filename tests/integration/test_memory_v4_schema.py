@@ -46,16 +46,20 @@ async def test_v4_schema_is_additive_and_preserves_legacy_facts(v4_db: None) -> 
     owner_id = await upsert_entity(name="Felipe", type="person")
     await assert_fact(entity_id=owner_id, predicate="alias", object_value="Pipe")
     before_cursor = await conn.execute("SELECT COUNT(*) FROM facts")
-    legacy_count_before = int((await before_cursor.fetchone())[0])
+    legacy_count_before_row = await before_cursor.fetchone()
     await before_cursor.close()
+    assert legacy_count_before_row is not None
+    legacy_count_before = int(legacy_count_before_row[0])
 
     likes = resolve_predicate("likes")
     assert likes is not None
     await assert_literal_fact(subject_entity_id=owner_id, definition=likes, value="robotica")
 
     after_cursor = await conn.execute("SELECT COUNT(*) FROM facts")
-    legacy_count_after = int((await after_cursor.fetchone())[0])
+    legacy_count_after_row = await after_cursor.fetchone()
     await after_cursor.close()
+    assert legacy_count_after_row is not None
+    legacy_count_after = int(legacy_count_after_row[0])
     assert legacy_count_after == legacy_count_before
 
     foreign_key_cursor = await conn.execute("PRAGMA foreign_key_check")

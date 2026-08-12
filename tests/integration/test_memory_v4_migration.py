@@ -138,8 +138,10 @@ async def test_legacy_migration_is_dry_run_first_and_idempotent(
     assert dry_run.ledger_rows_written == 0
     assert await _legacy_snapshot() == before
     cursor = await db.get_conn().execute("SELECT COUNT(*) FROM literal_facts_v4")
-    assert int((await cursor.fetchone())[0]) == 0
+    literal_count_row = await cursor.fetchone()
     await cursor.close()
+    assert literal_count_row is not None
+    assert int(literal_count_row[0]) == 0
 
     first_apply = await migrate_active_legacy_facts(apply=True)
     second_apply = await migrate_active_legacy_facts(apply=True)

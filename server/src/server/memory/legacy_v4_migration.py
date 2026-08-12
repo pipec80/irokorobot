@@ -173,7 +173,7 @@ async def _classify(fact: _LegacyFact) -> _Decision:
                 outcome=MigrationOutcome.MIGRATED,
                 reason="deterministic_entity_relation",
                 definition=definition,
-                target_entity_id=matches[0],
+                target_entity_id=next(iter(matches)),
             )
     return target_decision
 
