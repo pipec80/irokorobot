@@ -1,5 +1,6 @@
 """Public cognitive domain vocabulary."""
 
+from server.cognition.controller import CognitiveController
 from server.cognition.identity import (
     ActivePersonContext,
     ActivePersonStatus,
@@ -18,6 +19,14 @@ from server.cognition.models import (
     Observation,
     ObservationModality,
 )
+from server.cognition.response_plan import (
+    InformationNeed,
+    ResponseClaim,
+    ResponsePlan,
+    ResponseSource,
+    TextTurnPayload,
+    ToolResult,
+)
 
 __all__ = [
     "ActiveContext",
@@ -25,13 +34,20 @@ __all__ = [
     "ActivePersonStatus",
     "AuthorizationDecision",
     "AuthorizationStatus",
+    "CognitiveController",
     "CognitiveEvent",
     "Confidence",
     "ConfidenceBasis",
     "HouseholdRole",
     "IdentityEvidence",
     "IdentityEvidenceSource",
+    "InformationNeed",
     "KnowledgeStatus",
     "Observation",
     "ObservationModality",
+    "ResponseClaim",
+    "ResponsePlan",
+    "ResponseSource",
+    "TextTurnPayload",
+    "ToolResult",
 ]

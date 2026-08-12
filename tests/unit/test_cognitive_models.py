@@ -13,15 +13,22 @@ from server.cognition import (
     ActivePersonStatus,
     AuthorizationDecision,
     AuthorizationStatus,
+    CognitiveController,
     CognitiveEvent,
     Confidence,
     ConfidenceBasis,
     HouseholdRole,
     IdentityEvidence,
     IdentityEvidenceSource,
+    InformationNeed,
     KnowledgeStatus,
     Observation,
     ObservationModality,
+    ResponseClaim,
+    ResponsePlan,
+    ResponseSource,
+    TextTurnPayload,
+    ToolResult,
     models,
 )
 
@@ -384,6 +391,7 @@ def test_cognition_package_reexports_every_public_domain_type() -> None:
         "ActivePersonStatus": ActivePersonStatus,
         "AuthorizationDecision": AuthorizationDecision,
         "AuthorizationStatus": AuthorizationStatus,
+        "CognitiveController": CognitiveController,
         "CognitiveEvent": CognitiveEvent,
         "Confidence": Confidence,
         "ConfidenceBasis": ConfidenceBasis,
@@ -393,6 +401,12 @@ def test_cognition_package_reexports_every_public_domain_type() -> None:
         "KnowledgeStatus": KnowledgeStatus,
         "Observation": Observation,
         "ObservationModality": ObservationModality,
+        "InformationNeed": InformationNeed,
+        "ResponseClaim": ResponseClaim,
+        "ResponsePlan": ResponsePlan,
+        "ResponseSource": ResponseSource,
+        "TextTurnPayload": TextTurnPayload,
+        "ToolResult": ToolResult,
     }
 
     assert set(cognition.__all__) == set(expected_exports)
