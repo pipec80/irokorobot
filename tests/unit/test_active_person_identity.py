@@ -218,11 +218,15 @@ def _lookup(records: dict[int, PersonRecord]):
 
 
 def _resolve(
-    evidence: tuple[IdentityEvidence, ...], records: dict[int, PersonRecord]
+    evidence: tuple[IdentityEvidence, ...],
+    records: dict[int, PersonRecord],
+    *,
+    role_lookup=lambda _person_id: HouseholdRole.UNKNOWN,
 ) -> ActivePersonContext:
     return resolve_active_person(
         evidence=evidence,
         lookup_person=_lookup(records),
+        lookup_role=role_lookup,
         clock=lambda: _RESOLVED_AT,
     )
 
@@ -238,6 +242,20 @@ def test_resolver_identifies_one_verified_manual_person() -> None:
     assert context.status is ActivePersonStatus.IDENTIFIED
     assert context.confidence == manual.confidence
     assert context.role is HouseholdRole.UNKNOWN
+
+
+def test_resolver_carries_an_explicit_persisted_role_without_authorizing() -> None:
+    """Role lookup enriches identity context but does not evaluate a policy."""
+    context = _resolve(
+        (_evidence(),),
+        {42: _person(42)},
+        role_lookup=lambda person_id: (
+            HouseholdRole.OWNER if person_id == 42 else HouseholdRole.UNKNOWN
+        ),
+    )
+
+    assert context.status is ActivePersonStatus.IDENTIFIED
+    assert context.role is HouseholdRole.OWNER
 
 
 def test_resolver_marks_one_verified_session_candidate_as_probable() -> None:

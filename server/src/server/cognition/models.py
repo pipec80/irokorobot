@@ -17,6 +17,7 @@ _StrictInteger = _Annotated[int, _Field(strict=True)]
 
 __all__ = [
     "ActiveContext",
+    "AuthorizationAction",
     "AuthorizationDecision",
     "AuthorizationStatus",
     "CognitiveEvent",
@@ -53,6 +54,22 @@ class AuthorizationStatus(str, _Enum):  # noqa: UP042
     ALLOWED = "allowed"
     DENIED = "denied"
     REQUIRES_CONFIRMATION = "requires_confirmation"
+
+
+class AuthorizationAction(str, _Enum):  # noqa: UP042
+    """Closed actions evaluated by the deterministic household policy."""
+
+    GENERAL_CONVERSATION = "general_conversation"
+    READ_HOUSEHOLD_DATA = "read_household_data"
+    EXECUTE_HOUSEHOLD_TOOL = "execute_household_tool"
+    PROPOSE_MEMORY = "propose_memory"
+    COMMIT_MEMORY = "commit_memory"
+    MANAGE_HOUSEHOLD_ROLE = "manage_household_role"
+    ENROLL_BIOMETRIC = "enroll_biometric"
+    EXPORT_HOUSEHOLD_DATA = "export_household_data"
+    DELETE_HOUSEHOLD_DATA = "delete_household_data"
+    CONSIDER_CLOUD_ESCALATION = "consider_cloud_escalation"
+    PROPOSE_PHYSICAL_ACTION = "propose_physical_action"
 
 
 class ObservationModality(str, _Enum):  # noqa: UP042
@@ -96,13 +113,16 @@ class AuthorizationDecision(_BaseModel):
     model_config = _ConfigDict(frozen=True, extra="forbid")
 
     decision: AuthorizationStatus
-    action: str
+    action: AuthorizationAction
     data_categories: frozenset[str]
     policy_id: str
     reason: str
     evaluated_at: _datetime
+    correlation_id: _StrictUUID
+    expires_at: _datetime | None = None
 
     _validate_evaluated_at = _field_validator("evaluated_at")(_require_aware_utc)
+    _validate_expires_at = _field_validator("expires_at")(_normalize_optional_aware_utc)
 
 
 class Observation[PayloadT: _BaseModel](_BaseModel):

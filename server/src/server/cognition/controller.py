@@ -4,8 +4,24 @@ from collections.abc import Awaitable, Callable
 from datetime import date
 import re
 
+from server.cognition.authorization import (
+    AuthorizationRequest,
+    ConsentStatus,
+    DataSensitivity,
+    DataVisibility,
+    evaluate_authorization,
+)
 from server.cognition.calendar_tools import calculate_age, get_current_date
-from server.cognition.models import CognitiveEvent, KnowledgeStatus
+from server.cognition.identity import ActivePersonContext, ActivePersonStatus, HouseholdRole
+from server.cognition.models import (
+    AuthorizationAction,
+    AuthorizationDecision,
+    AuthorizationStatus,
+    CognitiveEvent,
+    Confidence,
+    ConfidenceBasis,
+    KnowledgeStatus,
+)
 from server.cognition.response_plan import (
     InformationNeed,
     ResponseClaim,
@@ -17,24 +33,66 @@ from server.cognition.response_plan import (
 from server.text_turn import TextTurnResult
 
 type LegacyTextTurn = Callable[[str, str], Awaitable[TextTurnResult]]
+type ActivePersonResolver = Callable[[CognitiveEvent[TextTurnPayload]], ActivePersonContext]
+type PolicyEvaluator = Callable[[AuthorizationRequest], AuthorizationDecision]
+type AuditWriter = Callable[[AuthorizationRequest, AuthorizationDecision], Awaitable[None]]
 
 _ISO_DATE_PATTERN = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 _PRIVATE_HOUSEHOLD_TERMS = ("hijo", "hija", "familia", "preferencia", "le gusta")
 _RELATIONSHIP_TERMS = ("padre", "madre", "hermano", "pareja", "relación")
 
 
+def _unknown_active_person(event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
+    """Build the safe public actor without deriving identity from HTTP input."""
+    return ActivePersonContext(
+        person_id=None,
+        display_name=None,
+        status=ActivePersonStatus.UNKNOWN,
+        confidence=Confidence(
+            score=0.0,
+            basis=ConfidenceBasis.NOT_APPLICABLE,
+            calibrated=False,
+            reason="No trusted active-person evidence",
+        ),
+        role=HouseholdRole.UNKNOWN,
+        evidence=(),
+        resolved_at=event.occurred_at,
+    )
+
+
+async def _discard_audit(
+    _request: AuthorizationRequest,
+    _decision: AuthorizationDecision,
+) -> None:
+    """Keep isolated controller tests free of persistence unless they inject it."""
+
+
 class CognitiveController:
     """Coordinate the closed deterministic branches before legacy generation."""
 
-    def __init__(self, *, today: Callable[[], date], legacy_turn: LegacyTextTurn) -> None:
+    def __init__(
+        self,
+        *,
+        today: Callable[[], date],
+        legacy_turn: LegacyTextTurn,
+        active_person_resolver: ActivePersonResolver = _unknown_active_person,
+        policy_evaluator: PolicyEvaluator = evaluate_authorization,
+        audit_writer: AuditWriter = _discard_audit,
+    ) -> None:
         """Create a controller with injected calendar and legacy-generation seams.
 
         Args:
             today: Local date boundary owned by the adapter composition root.
             legacy_turn: Existing generic text-turn service for safe fallback.
+            active_person_resolver: Trusted internal active-person boundary.
+            policy_evaluator: Pure deterministic authorization evaluator.
+            audit_writer: Local safe-audit boundary for protected decisions.
         """
         self._today = today
         self._legacy_turn = legacy_turn
+        self._active_person_resolver = active_person_resolver
+        self._policy_evaluator = policy_evaluator
+        self._audit_writer = audit_writer
 
     async def handle(self, event: CognitiveEvent[TextTurnPayload]) -> ResponsePlan:
         """Produce one bounded response plan for a typed text event.
@@ -48,7 +106,7 @@ class CognitiveController:
         need = _classify_information_need(event.payload.message)
         match need:
             case InformationNeed.PROTECTED_HOUSEHOLD:
-                return _unauthorized_plan(need)
+                return await self._protected_household_plan(event, need)
             case InformationNeed.RELATIONSHIP_OR_PROFILE:
                 return _unknown_plan(
                     need, "No tengo relaciones familiares estructuradas verificadas."
@@ -70,6 +128,30 @@ class CognitiveController:
             response=result.response,
             emotion=result.emotion,
             duration_ms=result.duration_ms,
+        )
+
+    async def _protected_household_plan(
+        self,
+        event: CognitiveEvent[TextTurnPayload],
+        need: InformationNeed,
+    ) -> ResponsePlan:
+        """Authorize and audit a protected branch before any legacy delegation."""
+        request = AuthorizationRequest(
+            actor=self._active_person_resolver(event),
+            action=AuthorizationAction.READ_HOUSEHOLD_DATA,
+            visibility=frozenset({DataVisibility.HOUSEHOLD}),
+            sensitivity=frozenset({DataSensitivity.PRIVATE}),
+            consent=ConsentStatus.NOT_REQUIRED,
+            correlation_id=event.correlation_id,
+            requested_at=event.recorded_at,
+        )
+        decision = self._policy_evaluator(request)
+        await self._audit_writer(request, decision)
+        if decision.decision is not AuthorizationStatus.ALLOWED:
+            return _unauthorized_plan(need)
+        return _unknown_plan(
+            need,
+            "La información familiar autorizada todavía no está conectada a consultas verificadas.",
         )
 
 

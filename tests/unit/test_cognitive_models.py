@@ -11,12 +11,17 @@ from server.cognition import (
     ActiveContext,
     ActivePersonContext,
     ActivePersonStatus,
+    AuthorizationAction,
     AuthorizationDecision,
+    AuthorizationRequest,
     AuthorizationStatus,
     CognitiveController,
     CognitiveEvent,
     Confidence,
     ConfidenceBasis,
+    ConsentStatus,
+    DataSensitivity,
+    DataVisibility,
     HouseholdRole,
     IdentityEvidence,
     IdentityEvidenceSource,
@@ -29,6 +34,7 @@ from server.cognition import (
     ResponseSource,
     TextTurnPayload,
     ToolResult,
+    evaluate_authorization,
     models,
 )
 
@@ -54,11 +60,12 @@ def _allowed_authorization() -> AuthorizationDecision:
     """Build an authorization decision for active-context test fixtures."""
     return AuthorizationDecision(
         decision=AuthorizationStatus.ALLOWED,
-        action="memory.read",
+        action=AuthorizationAction.READ_HOUSEHOLD_DATA,
         data_categories=frozenset({"household"}),
         policy_id="local-v1",
         reason="authorized household access",
         evaluated_at=datetime(2026, 8, 4, 12, tzinfo=UTC),
+        correlation_id=UUID("44444444-4444-4444-4444-444444444444"),
     )
 
 
@@ -116,11 +123,33 @@ def _event_values() -> dict[str, object]:
         ),
         (ConfidenceBasis, ["measured", "estimated", "asserted", "not_applicable"]),
         (AuthorizationStatus, ["allowed", "denied", "requires_confirmation"]),
+        (
+            AuthorizationAction,
+            [
+                "general_conversation",
+                "read_household_data",
+                "execute_household_tool",
+                "propose_memory",
+                "commit_memory",
+                "manage_household_role",
+                "enroll_biometric",
+                "export_household_data",
+                "delete_household_data",
+                "consider_cloud_escalation",
+                "propose_physical_action",
+            ],
+        ),
         (ObservationModality, ["text", "audio", "visual", "sensor", "system"]),
     ],
 )
 def test_enums_serialize_to_exact_lowercase_contract_values(
-    enum_type: type[KnowledgeStatus | ConfidenceBasis | AuthorizationStatus | ObservationModality],
+    enum_type: type[
+        KnowledgeStatus
+        | ConfidenceBasis
+        | AuthorizationStatus
+        | AuthorizationAction
+        | ObservationModality
+    ],
     expected_values: list[str],
 ) -> None:
     """Every cognitive enum preserves its wire-level contract values."""
@@ -169,18 +198,19 @@ def test_authorization_decision_requires_aware_utc_time_and_is_immutable() -> No
     """Authorization decisions retain immutable categories and reject naive times."""
     decision = AuthorizationDecision(
         decision=AuthorizationStatus.ALLOWED,
-        action="memory.read",
+        action=AuthorizationAction.READ_HOUSEHOLD_DATA,
         data_categories=frozenset({"household"}),
         policy_id="local-v1",
         reason="authorized household access",
         evaluated_at=datetime.now(UTC),
+        correlation_id=UUID("44444444-4444-4444-4444-444444444444"),
     )
 
     assert decision.data_categories == frozenset({"household"})
     assert isinstance(decision.data_categories, frozenset)
 
     with pytest.raises(ValidationError):
-        decision.action = "memory.write"
+        decision.action = AuthorizationAction.COMMIT_MEMORY
 
     with pytest.raises(ValidationError):
         AuthorizationDecision.model_validate(
@@ -195,11 +225,12 @@ def test_authorization_decision_normalizes_aware_offsets_to_utc() -> None:
     """Authorization decisions convert aware timestamps to UTC."""
     decision = AuthorizationDecision(
         decision=AuthorizationStatus.ALLOWED,
-        action="memory.read",
+        action=AuthorizationAction.READ_HOUSEHOLD_DATA,
         data_categories=frozenset({"household"}),
         policy_id="local-v1",
         reason="authorized household access",
         evaluated_at=datetime(2026, 8, 4, 3, tzinfo=timezone(timedelta(hours=-4))),
+        correlation_id=UUID("44444444-4444-4444-4444-444444444444"),
     )
 
     assert decision.evaluated_at == datetime(2026, 8, 4, 7, tzinfo=UTC)
@@ -293,11 +324,12 @@ def test_active_context_keeps_confidence_and_authorization_as_separate_evidence(
     values = _active_context_values()
     values["authorization"] = AuthorizationDecision(
         decision=AuthorizationStatus.DENIED,
-        action="memory.read",
+        action=AuthorizationAction.READ_HOUSEHOLD_DATA,
         data_categories=frozenset({"household"}),
         policy_id="local-v1",
         reason="consent absent",
         evaluated_at=datetime(2026, 8, 4, 12, tzinfo=UTC),
+        correlation_id=UUID("44444444-4444-4444-4444-444444444444"),
     )
 
     context = ActiveContext.model_validate(values)
@@ -313,6 +345,36 @@ def test_active_context_rejects_naive_created_at() -> None:
 
     with pytest.raises(ValidationError):
         ActiveContext.model_validate(values)
+
+
+def test_authorization_request_is_immutable_and_rejects_untyped_categories() -> None:
+    """Requests bind a closed action and scope without carrying protected content."""
+    actor = ActivePersonContext(
+        person_id=12,
+        display_name="Ada",
+        status=ActivePersonStatus.IDENTIFIED,
+        confidence=_confidence(),
+        role=HouseholdRole.OWNER,
+        evidence=(),
+        resolved_at=datetime(2026, 8, 4, 12, tzinfo=UTC),
+    )
+    request = AuthorizationRequest(
+        actor=actor,
+        action=AuthorizationAction.READ_HOUSEHOLD_DATA,
+        target_person_id=12,
+        visibility=frozenset({DataVisibility.PERSONAL}),
+        sensitivity=frozenset({DataSensitivity.NORMAL}),
+        consent=ConsentStatus.NOT_REQUIRED,
+        correlation_id=UUID("55555555-5555-5555-5555-555555555555"),
+        requested_at=datetime(2026, 8, 4, 12, tzinfo=UTC),
+    )
+
+    with pytest.raises(ValidationError):
+        request.action = AuthorizationAction.COMMIT_MEMORY
+    with pytest.raises(ValidationError):
+        AuthorizationRequest.model_validate(
+            {**request.model_dump(), "visibility": frozenset({"unclassified"})}
+        )
 
 
 @pytest.mark.parametrize(
@@ -389,12 +451,17 @@ def test_cognition_package_reexports_every_public_domain_type() -> None:
         "ActiveContext": ActiveContext,
         "ActivePersonContext": ActivePersonContext,
         "ActivePersonStatus": ActivePersonStatus,
+        "AuthorizationAction": AuthorizationAction,
         "AuthorizationDecision": AuthorizationDecision,
+        "AuthorizationRequest": AuthorizationRequest,
         "AuthorizationStatus": AuthorizationStatus,
+        "ConsentStatus": ConsentStatus,
         "CognitiveController": CognitiveController,
         "CognitiveEvent": CognitiveEvent,
         "Confidence": Confidence,
         "ConfidenceBasis": ConfidenceBasis,
+        "DataSensitivity": DataSensitivity,
+        "DataVisibility": DataVisibility,
         "HouseholdRole": HouseholdRole,
         "IdentityEvidence": IdentityEvidence,
         "IdentityEvidenceSource": IdentityEvidenceSource,
@@ -407,6 +474,7 @@ def test_cognition_package_reexports_every_public_domain_type() -> None:
         "ResponseSource": ResponseSource,
         "TextTurnPayload": TextTurnPayload,
         "ToolResult": ToolResult,
+        "evaluate_authorization": evaluate_authorization,
     }
 
     assert set(cognition.__all__) == set(expected_exports)

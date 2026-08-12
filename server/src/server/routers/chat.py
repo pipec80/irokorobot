@@ -5,9 +5,12 @@ from uuid import uuid4
 
 from fastapi import APIRouter
 
+from server.cognition.authorization import evaluate_authorization
 from server.cognition.controller import CognitiveController
-from server.cognition.models import CognitiveEvent
+from server.cognition.identity import ActivePersonContext, ActivePersonStatus, HouseholdRole
+from server.cognition.models import CognitiveEvent, Confidence, ConfidenceBasis
 from server.cognition.response_plan import TextTurnPayload
+from server.memory.household_authorization import record_authorization_decision
 from server.schemas_chat import ChatRequest, ChatResponse
 from server.text_turn import process_text_turn
 
@@ -39,6 +42,24 @@ def _event_from_request(request: ChatRequest) -> CognitiveEvent[TextTurnPayload]
     )
 
 
+def _public_unknown_actor(event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
+    """Return the public chat actor without accepting identity from HTTP input."""
+    return ActivePersonContext(
+        person_id=None,
+        display_name=None,
+        status=ActivePersonStatus.UNKNOWN,
+        confidence=Confidence(
+            score=0.0,
+            basis=ConfidenceBasis.NOT_APPLICABLE,
+            calibrated=False,
+            reason="Public chat provides no trusted identity evidence",
+        ),
+        role=HouseholdRole.UNKNOWN,
+        evidence=(),
+        resolved_at=event.occurred_at,
+    )
+
+
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest) -> ChatResponse:
     """Process one local text-only conversation turn.
@@ -49,7 +70,13 @@ async def chat(request: ChatRequest) -> ChatResponse:
     Returns:
         Generated response, emotion, latency, and conversation identifier.
     """
-    controller = CognitiveController(today=_today, legacy_turn=process_text_turn)
+    controller = CognitiveController(
+        today=_today,
+        legacy_turn=process_text_turn,
+        active_person_resolver=_public_unknown_actor,
+        policy_evaluator=evaluate_authorization,
+        audit_writer=record_authorization_decision,
+    )
     result = await controller.handle(_event_from_request(request))
     return ChatResponse(
         response=result.response,

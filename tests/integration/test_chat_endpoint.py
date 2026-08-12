@@ -215,7 +215,9 @@ async def test_chat_blocks_private_household_question_before_legacy_text_turn(
 ) -> None:
     """Public chat must not expose a family query to legacy memory or generation."""
     process = AsyncMock(return_value=TextTurnResult("legacy", "joy", 42, False))
+    audit = AsyncMock()
     monkeypatch.setattr(chat, "process_text_turn", process)
+    monkeypatch.setattr(chat, "record_authorization_decision", audit)
 
     async with _client() as client:
         response = await client.post(
@@ -228,3 +230,4 @@ async def test_chat_blocks_private_household_question_before_legacy_text_turn(
         "No puedo acceder a información familiar privada sin una autorización comprobada."
     )
     process.assert_not_awaited()
+    audit.assert_awaited_once()

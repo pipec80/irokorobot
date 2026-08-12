@@ -31,12 +31,12 @@ async def v4_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignor
 
 @pytest.mark.integration
 async def test_v4_schema_is_additive_and_preserves_legacy_facts(v4_db: None) -> None:
-    """Version 4 adds isolated tables without changing legacy fact behavior."""
+    """The current schema retains v4 tables and legacy fact behavior."""
     conn = db.get_conn()
     version_cursor = await conn.execute("PRAGMA user_version")
     version_row = await version_cursor.fetchone()
     await version_cursor.close()
-    assert version_row == (4,)
+    assert version_row == (5,)
 
     tables_cursor = await conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
     tables = {str(row[0]) for row in await tables_cursor.fetchall()}
