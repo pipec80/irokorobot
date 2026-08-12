@@ -22,6 +22,7 @@ _MIGRATIONS: tuple[tuple[int, str], ...] = (
     (1, "schema.sql"),
     (2, "migration_002_meta.sql"),
     (3, "migration_003_faces.sql"),
+    (4, "migration_004_relational_v4.sql"),
 )
 _conn: aiosqlite.Connection | None = None
 
