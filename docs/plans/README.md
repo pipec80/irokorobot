@@ -55,10 +55,11 @@ and boundary that keeps v4 out of the runtime until authorization exists.
 
 [Plan 0007](0007-household-authorization-foundation.md) and its
 [execution runbook](0007-household-authorization-foundation-execution.md) are
-the Ready P0.5-A implementation: deterministic fail-closed policy, local role
-bootstrap/audit, and controller enforcement. They do not authorize P0.5-B v4
-runtime retrieval or family tools; that follow-up remains Draft until Plan 0007
-has completion evidence and its exact seams are revalidated.
+the complete P0.5-A feature-branch implementation: deterministic fail-closed
+policy, local role bootstrap/audit, and controller enforcement. Its local
+gates passed on 2026-08-12; PR merge evidence is recorded after GitHub CI.
+They do not authorize P0.5-B v4 runtime retrieval or family tools; that
+follow-up remains Draft until its exact seams are revalidated.
 
 The [P0 cognitive portfolio design](p0-cognitive-plan-portfolio-design.md)
 links every current P0 plan and records their dependency order and status.

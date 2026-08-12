@@ -91,7 +91,7 @@ The decision is an explicit value object:
 | `policy_id` | string | Policy or rule that produced the decision. |
 | `reason` | string | Safe explanation suitable for audit logs. |
 | `evaluated_at` | aware datetime | UTC evaluation time. |
-| `correlation_scope` | UUID/string | Bound request/turn scope; never a reusable session permission. |
+| `correlation_id` | UUID | Bound request/turn scope; never a reusable session permission. |
 | `expires_at` | aware datetime or null | Optional short expiry; absent is not an implicit long-lived grant. |
 
 No authorization object means no permission. Callers must not interpret a

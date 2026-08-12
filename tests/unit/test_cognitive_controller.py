@@ -1,12 +1,27 @@
 """Unit tests for the bounded P0.3 cognitive controller."""
 
 from datetime import UTC, date, datetime
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 from uuid import UUID
 
 import pytest
+from server.cognition.authorization import (
+    AuthorizationRequest,
+    ConsentStatus,
+    DataSensitivity,
+    DataVisibility,
+)
 from server.cognition.controller import CognitiveController
-from server.cognition.models import CognitiveEvent, KnowledgeStatus
+from server.cognition.identity import ActivePersonContext, ActivePersonStatus, HouseholdRole
+from server.cognition.models import (
+    AuthorizationAction,
+    AuthorizationDecision,
+    AuthorizationStatus,
+    CognitiveEvent,
+    Confidence,
+    ConfidenceBasis,
+    KnowledgeStatus,
+)
 from server.cognition.response_plan import TextTurnPayload
 from server.text_turn import TextTurnResult
 
@@ -25,6 +40,40 @@ def _event(message: str) -> CognitiveEvent[TextTurnPayload]:
         causation_id=None,
         subject_id=None,
         payload=TextTurnPayload(message=message, conversation_id="web-primary"),
+    )
+
+
+def _actor(role: HouseholdRole, person_id: int | None) -> ActivePersonContext:
+    """Build one explicit internal actor without deriving identity from text."""
+    return ActivePersonContext(
+        person_id=person_id,
+        display_name="Ada" if person_id is not None else None,
+        status=ActivePersonStatus.IDENTIFIED
+        if person_id is not None
+        else ActivePersonStatus.UNKNOWN,
+        confidence=Confidence(
+            score=1.0 if person_id is not None else 0.0,
+            basis=ConfidenceBasis.ASSERTED
+            if person_id is not None
+            else ConfidenceBasis.NOT_APPLICABLE,
+            calibrated=False,
+        ),
+        role=role,
+        evidence=(),
+        resolved_at=datetime(2026, 8, 12, 12, tzinfo=UTC),
+    )
+
+
+def _decision(request: AuthorizationRequest, status: AuthorizationStatus) -> AuthorizationDecision:
+    """Build a request-scoped decision for controller policy fakes."""
+    return AuthorizationDecision(
+        decision=status,
+        action=request.action,
+        data_categories=frozenset({"household", "private"}),
+        policy_id="test-policy",
+        reason="test-safe-reason",
+        evaluated_at=request.requested_at,
+        correlation_id=request.correlation_id,
     )
 
 
@@ -65,6 +114,64 @@ async def test_controller_denies_private_household_request_before_legacy_delegat
 
     assert plan.status is KnowledgeStatus.UNAUTHORIZED
     assert "información familiar privada" in plan.response
+    legacy_turn.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_controller_audits_denial_before_protected_legacy_delegate() -> None:
+    """A denied household request is audited before any generation can see it."""
+    calls: list[str] = []
+    legacy_turn = AsyncMock()
+    actor = _actor(HouseholdRole.UNKNOWN, None)
+
+    def policy(request: AuthorizationRequest) -> AuthorizationDecision:
+        calls.append("policy")
+        assert request.action is AuthorizationAction.READ_HOUSEHOLD_DATA
+        assert request.visibility == frozenset({DataVisibility.HOUSEHOLD})
+        assert request.sensitivity == frozenset({DataSensitivity.PRIVATE})
+        assert request.consent is ConsentStatus.NOT_REQUIRED
+        return _decision(request, AuthorizationStatus.DENIED)
+
+    async def audit(request: AuthorizationRequest, decision: AuthorizationDecision) -> None:
+        calls.append("audit")
+        assert decision.decision is AuthorizationStatus.DENIED
+        assert request.actor is actor
+
+    controller = CognitiveController(
+        today=lambda: date(2026, 8, 12),
+        legacy_turn=legacy_turn,
+        active_person_resolver=lambda _event: actor,
+        policy_evaluator=policy,
+        audit_writer=audit,
+    )
+
+    plan = await controller.handle(_event("¿Cómo se llaman mis hijos?"))
+
+    assert plan.status is KnowledgeStatus.UNAUTHORIZED
+    assert calls == ["policy", "audit"]
+    legacy_turn.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_controller_keeps_allowed_household_request_unknown_until_v4_cutover() -> None:
+    """Policy permission alone must not fabricate an unconnected v4 result."""
+    legacy_turn = AsyncMock()
+    actor = _actor(HouseholdRole.OWNER, 7)
+    audit = AsyncMock()
+    policy = Mock(side_effect=lambda request: _decision(request, AuthorizationStatus.ALLOWED))
+    controller = CognitiveController(
+        today=lambda: date(2026, 8, 12),
+        legacy_turn=legacy_turn,
+        active_person_resolver=lambda _event: actor,
+        policy_evaluator=policy,
+        audit_writer=audit,
+    )
+
+    plan = await controller.handle(_event("¿Cómo se llaman mis hijos?"))
+
+    assert plan.status is KnowledgeStatus.UNKNOWN
+    assert "todavía" in plan.response
+    audit.assert_awaited_once()
     legacy_turn.assert_not_awaited()
 
 

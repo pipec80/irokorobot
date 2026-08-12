@@ -124,6 +124,7 @@ class ActivePersonContext(_BaseModel):
 
 
 type PersonLookup = _Callable[[int], PersonRecord | None]
+type RoleLookup = _Callable[[int], HouseholdRole]
 type Clock = _Callable[[], _datetime]
 
 
@@ -135,6 +136,11 @@ def _unknown_confidence() -> Confidence:
         calibrated=False,
         reason="No verified person",
     )
+
+
+def _unknown_role(_: int) -> HouseholdRole:
+    """Return the safe role used when no persisted role lookup is supplied."""
+    return HouseholdRole.UNKNOWN
 
 
 def _resolved_candidates(
@@ -164,6 +170,7 @@ def resolve_active_person(
     *,
     evidence: tuple[IdentityEvidence, ...],
     lookup_person: PersonLookup,
+    lookup_role: RoleLookup = _unknown_role,
     clock: Clock,
 ) -> ActivePersonContext:
     """Resolve manual or session evidence into a conservative person context.
@@ -198,7 +205,7 @@ def resolve_active_person(
             display_name=selected_person.display_name,
             status=status,
             confidence=selected_evidence.confidence,
-            role=HouseholdRole.UNKNOWN,
+            role=lookup_role(selected_person.person_id),
             evidence=evidence,
             resolved_at=resolved_at,
         )

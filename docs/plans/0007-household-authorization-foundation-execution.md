@@ -2,7 +2,7 @@
 
 ## Status
 
-**Ready.** This runbook executes only
+**Complete — feature branch validation pending PR merge.** This runbook executed only
 [Plan 0007](0007-household-authorization-foundation.md). It is an operational
 TDD aid; the canonical plan and architecture documents remain authoritative.
 
@@ -76,15 +76,24 @@ repository reaches runtime, and no environment/dependency/audio/robot change
 was introduced. Request review, push, and merge only under the repository's
 normal PR/green-CI workflow.
 
-## Completion record template
+## Completion record
 
-Record in the canonical plan only after success:
-
-- actual RED command and failure;
-- actual focused GREEN counts;
-- final gate commands/results;
-- migration version and temporary-database evidence;
-- PR and merge commit;
-- what was not run (real household bootstrap, real models, hardware, LAN);
-- remaining P0.5-B prerequisite: policy-gated v4 reads/family tools, written
-  only after a fresh review.
+- **RED:** the initial pure-policy suite exposed that `general_conversation`
+  was evaluated after identity resolution, so unknown/ambiguous public turns
+  were denied, and it later demonstrated that the generic action could carry
+  protected categories. The schema suite also failed at collection while
+  `assign_household_role` was absent.
+- **GREEN:** the final focused command covered 94 tests across cognition
+  contracts, active-person resolution, controller, policy, role/audit schema,
+  authorization runtime, and `/chat`. It passed on 2026-08-12.
+- **Quality gates:** `just lint`, `just typecheck`, `just test` (546 passed),
+  `just audit`, and `just check` passed. `scripts/manage_household_roles.py
+  --help` passed without opening or mutating a household database.
+- **Temporary database:** migration 5 applied after migrations 1–4; foreign
+  keys were clean and legacy v3 facts/v4 rows were preserved.
+- **Not verified:** real household bootstrap, real models, hardware, webcam,
+  microphone, LAN exposure, biometric enrollment, and cloud are intentionally
+  outside this runbook.
+- **Next prerequisite:** P0.5-B must be a separately reviewed plan for
+  policy-gated v4 reads and deterministic family tools. It cannot reuse a
+  decision or pass denied data into legacy context generation.

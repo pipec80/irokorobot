@@ -1,5 +1,12 @@
 """Public cognitive domain vocabulary."""
 
+from server.cognition.authorization import (
+    AuthorizationRequest,
+    ConsentStatus,
+    DataSensitivity,
+    DataVisibility,
+    evaluate_authorization,
+)
 from server.cognition.controller import CognitiveController
 from server.cognition.identity import (
     ActivePersonContext,
@@ -10,6 +17,7 @@ from server.cognition.identity import (
 )
 from server.cognition.models import (
     ActiveContext,
+    AuthorizationAction,
     AuthorizationDecision,
     AuthorizationStatus,
     CognitiveEvent,
@@ -32,12 +40,17 @@ __all__ = [
     "ActiveContext",
     "ActivePersonContext",
     "ActivePersonStatus",
+    "AuthorizationAction",
     "AuthorizationDecision",
+    "AuthorizationRequest",
     "AuthorizationStatus",
     "CognitiveController",
     "CognitiveEvent",
     "Confidence",
     "ConfidenceBasis",
+    "ConsentStatus",
+    "DataSensitivity",
+    "DataVisibility",
     "HouseholdRole",
     "IdentityEvidence",
     "IdentityEvidenceSource",
@@ -50,4 +63,5 @@ __all__ = [
     "ResponseSource",
     "TextTurnPayload",
     "ToolResult",
+    "evaluate_authorization",
 ]

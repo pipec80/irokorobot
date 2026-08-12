@@ -2,9 +2,10 @@
 
 ## Status
 
-**Ready.** This is P0.5-A: the smallest production authorization boundary
-that can be tested independently and operated locally. It follows P0.2, P0.3,
-and the P0.4 relational-memory v4 foundation merged as `3b01b58` (PR #40).
+**Complete — feature branch validation pending PR merge.** This P0.5-A slice
+was validated on 2026-08-12 on `feat/p05-household-authorization`. It follows
+P0.2, P0.3, and the P0.4 relational-memory v4 foundation merged as `3b01b58`
+(PR #40).
 
 The approved [Plan 0006 design](0006-household-authorization.md) remains the
 authority for the complete P0.5 policy. A later P0.5-B plan may connect this
@@ -152,6 +153,7 @@ the `/chat` or `/transcribe` public schemas.
 | `tests/unit/test_cognitive_controller.py` | Prove policy-before-delegate and no-leak behavior with fakes. |
 | `tests/integration/test_household_authorization_schema.py` | Cover migration 5, foreign keys, active-role lifecycle, audit minimum fields, and legacy/v4 preservation. |
 | `tests/integration/test_household_authorization_runtime.py` | Cover local bootstrap, audit persistence, public unknown denial, and unchanged `/chat` schema. |
+| `tests/integration/test_memory_v4_schema.py` | Update fresh-schema version expectation to 5 while retaining v4 compatibility coverage. |
 | Architecture/roadmap/plan documents named in this plan | Record completion evidence only after final gates. |
 
 No other file is permitted. In particular, do not modify `text_turn.py`, v3
@@ -220,6 +222,37 @@ or environment variables. No dependency is authorized.
   reveals no protected fact; public `/chat` remains schema-compatible.
 - v3/v4 runtime retrieval and writes, onboarding, biometrics, cloud, hardware,
   and audio behavior are unchanged.
+
+## Implementation evidence
+
+- **Observed RED:** importing the new role service failed before it existed;
+  the pure-policy tests then demonstrated that unknown/ambiguous general
+  conversation was incorrectly denied before the public-conversation rule was
+  ordered ahead of protected access checks, and a generic action could carry
+  protected categories. The additive schema suite also initially failed because
+  no internal non-owner role assignment service existed.
+- **Focused GREEN:** 94 P0.2–P0.5 tests passed, covering immutable contracts,
+  explicit role lookup without authorization, deterministic policy, additive
+  migration 5, owner bootstrap, role lifecycle, safe audit persistence,
+  controller-before-legacy ordering, and unchanged `/chat` responses.
+- **Migration evidence:** a fresh temporary SQLite database applied migrations
+  1–5; `PRAGMA foreign_key_check` was clean; legacy facts and v4 tables stayed
+  intact. Audit records hold only IDs, closed categories/actions, decision,
+  safe reason, correlation, and aware timestamps—never prompt, response,
+  media, embedding, or fact values.
+- **Final local gates:** `just lint`, `just typecheck`, `just test`, `just
+  audit`, and `just check` passed. The full suite passed **546 tests**. The
+  final merge commit and GitHub CI result are recorded only after the PR is
+  merged.
+- **Not exercised:** the owner-bootstrap command was verified only with
+  `--help`; it was never run against a household database. No real model,
+  camera, microphone, LAN server, biometric enrollment, cloud path, or
+  hardware was exercised.
+
+The next step remains a freshly revalidated P0.5-B plan for policy-gated v4
+retrieval and deterministic family tools. It must not make an `allowed`
+decision reusable across requests, and it must not expose protected data to
+legacy v3 prompt construction.
 
 ## Rollback
 

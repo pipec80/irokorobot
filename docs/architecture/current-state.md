@@ -61,9 +61,10 @@ gap prevents owner-by-default memory disclosure.
 | Relational memory v4 foundation | Implemented/isolated | Additive SQLite tables, typed predicate registry, entity-ID relations, cardinality/lifecycle repositories, and a dry-run-first local legacy migration ledger. No v4 data reaches runtime prompts before P0.5. |
 | Consolidation | Implemented/gated | LLM extraction plus deterministic normalization; requires manual identity. |
 | Typed cognitive vocabulary | Implemented | Immutable evidence/event/context/knowledge contracts. |
-| Active person context | Implemented/internal | Manual/session evidence only; identity is not authorization. |
+| Active person context | Implemented/internal | Manual/session evidence only; persisted role can be carried as context but identity is not authorization. |
 | P0.3 cognitive controller | Implemented/chat pilot | Fresh typed event; immutable response plan; no FastAPI, SQLite, or provider dependency in the core. |
 | Deterministic calendar tools | Implemented/bounded | Current date and strict ISO birth-date age only; age is derived, never persisted. |
+| Household authorization P0.5-A | Implemented/foundation | Pure fail-closed policy; additive role/audit SQLite records; explicit local owner bootstrap; `/chat` evaluates/audits protected branches as unknown before legacy delegation. |
 | Vision/VLM | Implemented/on demand | One ephemeral frame, free-text scene description. |
 | Face profiles | Implemented/sensitive | SQLite-linked embeddings; not an active-person adapter. |
 | Robot client | Implemented/body adapter | PC microphone/webcam/speaker workflow; not cognitive logic. |
@@ -72,9 +73,9 @@ gap prevents owner-by-default memory disclosure.
 
 - `ToolRegistry` and deterministic family/profile/relationship tools; P0.3 has
   two closed calendar helpers and deliberately does not justify a registry;
-- household authorization, trusted owner bootstrap, and the policy-gated v4
-  runtime reader/writer cutover; Plan 0007 is Ready only for the P0.5-A
-  policy/role/audit/controller foundation;
+- policy-gated v4 runtime reader/writer cutover and deterministic family tools;
+  P0.5-A policy/role/audit/controller foundation is implemented, but P0.5-B
+  must be revalidated before any protected retrieval is connected;
 - speaker recognition, diarization, and identity fusion;
 - typed `SceneObservation`, `WorldState`, tracking, scene graph, and spatial
   memory;
@@ -103,8 +104,11 @@ The P0-S audit is authoritative for immediate pre-controller work:
   **Complete**. PR #40 merged as `3b01b58` after the final 527-test quality
   gate: migration 4 is additive, v4 repositories and a dry-run-first local
   migration command exist, and the legacy runtime reader/writer remains
-  unchanged. Plan 0007 is Ready for P0.5-A; authorization still owns any v4
-  runtime retrieval or writes.
+  unchanged. Plan 0007 P0.5-A passed its local 546-test gate on
+  `feat/p05-household-authorization`: migration 5 adds local roles/audit, and
+  protected `/chat` requests are denied and audited before legacy generation.
+  Merge/CI evidence is pending. Authorization still owns any v4 runtime
+  retrieval or writes.
 
 See [P0-S hardening audit](p0-s-hardening-audit.md) for evidence and
 [plans](../plans/README.md) for execution status.
