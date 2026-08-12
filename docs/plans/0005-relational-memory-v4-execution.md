@@ -1,8 +1,8 @@
 # Plan 0005 — Relational memory v4 foundation: execution runbook
 
-**Status:** Ready — companion to canonical
-[Plan 0005](0005-relational-memory-v4-implementation.md), revalidated on
-2026-08-12 at `d136f5f` on `main`.
+**Status:** Implemented locally — companion to canonical
+[Plan 0005](0005-relational-memory-v4-implementation.md), validated on
+2026-08-12 at `5958ee6` on `feat/p04-relational-memory-v4`; pending PR/CI/merge.
 
 > **For implementation workers:** execute tasks sequentially, use the
 > checkbox steps as the source of truth, and record an observed RED before
@@ -210,10 +210,10 @@ with `--apply` only when explicitly requested, and logs aggregate counts.
 - Modify: `docs/plans/0005-relational-memory-v4-implementation.md`
 - Modify: this runbook
 
-- [ ] Review the diff and prove no runtime file from the exclusion list changed.
+- [x] Review the diff and prove no runtime file from the exclusion list changed.
   Confirm no v4 data can enter `build_context`, a prompt, `/chat`, or
   `/transcribe`.
-- [ ] Run the complete final sequence:
+- [x] Run the complete final sequence:
 
   ```powershell
   just lint
@@ -224,7 +224,7 @@ with `--apply` only when explicitly requested, and logs aggregate counts.
   git diff --check
   ```
 
-- [ ] Record exact RED/GREEN evidence, migration version, fixture outcomes, and
+- [x] Record exact RED/GREEN evidence, migration version, fixture outcomes, and
   verification limitations. Do not mark P0.5 Ready or Complete.
 - [ ] Commit documentation only with `docs(cognition): record P0.4 foundation`.
 

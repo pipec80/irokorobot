@@ -157,7 +157,8 @@ family queries; those require P0.4 relational memory and P0.5 authorization.
 ### P0.4 — Relational memory v4
 
 **Plan 0004 is complete and [Plan 0005](../plans/0005-relational-memory-v4-implementation.md)
-is Ready.** The executable slice adds only an additive SQLite v4 foundation:
+is implemented and locally verified; GitHub CI/merge is pending.** The bounded
+slice adds only an additive SQLite v4 foundation:
 integer entity relationships, predicate cardinality, lifecycle metadata, and an
 explicit dry-run-first local migration with an audit ledger. It keeps literal
 facts distinct from entity relationships and leaves the v3 runtime reader/writer
@@ -328,8 +329,8 @@ expand scope. Run the listed verification. Do not commit unless asked.
 [Plan 0001](../plans/0001-cognitive-domain-models.md),
 [Plan 0002](../plans/0002-active-person-context.md), and
 [Plan 0002a](../plans/0002a-local-first-provider-quarantine.md) are complete.
-Plans 0002b, 0002c, 0003, and the Plan 0004 design are complete. Plan 0005 is
-`Ready` for the narrow v4 storage/migration foundation; P0.5 and later plans
+Plans 0002b, 0002c, 0003, the Plan 0004 design, and the local implementation of
+Plan 0005 are complete. Plan 0005 awaits PR/CI/merge; P0.5 and later plans
 remain `Draft` until their prerequisites and current tree are revalidated. Later plans
 are written just in time after the previous exit gate; otherwise they encode
 guesses about code that has already moved.

@@ -2,8 +2,9 @@
 
 ## Status
 
-**Ready — revalidated on 2026-08-12 at `d136f5f` (`main`, P0.3 merged).** This
-plan is subordinate to the completed [P0.4 design and migration
+**Implemented locally — validated on 2026-08-12 at `5958ee6`
+(`feat/p04-relational-memory-v4`); pending PR/CI/merge.** This plan is
+subordinate to the completed [P0.4 design and migration
 decision](0004-relational-memory-v4-design-and-migration.md). The actual tree,
 legacy schema/migration registry, declarative and relational modules,
 consolidation path, controller boundary, and 24 focused memory integration
@@ -121,58 +122,58 @@ in this slice because the legacy outbox has no v4 aggregate/lifecycle contract.
 
 ### Slice 1 — Registry contracts
 
-- [ ] Write `tests/unit/test_predicate_registry.py` RED for exact aliases,
+- [x] Write `tests/unit/test_predicate_registry.py` RED for exact aliases,
   allowed entity types, `birth_date` strict `YYYY-MM-DD`, multi-value preference
   coexistence, inverse `child_of -> parent_of`, symmetric `partner_of`, and
   unsupported `edad`.
-- [ ] Run `uv run pytest tests/unit/test_predicate_registry.py -v`; record the
+- [x] Run `uv run pytest tests/unit/test_predicate_registry.py -v`; record the
   missing-module RED.
-- [ ] Implement `predicate_registry.py` with immutable definitions and no I/O.
-- [ ] Re-run the focused suite GREEN; run Ruff and type checks for the new module.
+- [x] Implement `predicate_registry.py` with immutable definitions and no I/O.
+- [x] Re-run the focused suite GREEN; run Ruff and type checks for the new module.
 
 ### Slice 2 — Additive schema and repositories
 
-- [ ] Write schema/repository RED tests using a temporary real SQLite database:
+- [x] Write schema/repository RED tests using a temporary real SQLite database:
   user version 4, new tables/indexes, `PRAGMA foreign_key_check`, untouched
   legacy facts, single-current supersession, multi-value coexistence, temporal
   validity, and symmetric-pair deduplication.
-- [ ] Add migration 4 and register it in `server.db._MIGRATIONS`; it must create
+- [x] Add migration 4 and register it in `server.db._MIGRATIONS`; it must create
   tables/indexes only and leave migration 1–3 unchanged.
-- [ ] Implement the v4 repositories with explicit transactions and rollback on
+- [x] Implement the v4 repositories with explicit transactions and rollback on
   failure; no model, provider, router, outbox, or legacy-runtime import.
-- [ ] Run schema/repository tests GREEN, then re-run the legacy memory tests to
+- [x] Run schema/repository tests GREEN, then re-run the legacy memory tests to
   prove migrations 1–3 and their callers remain readable.
 
 ### Slice 3 — Conservative legacy migration
 
-- [ ] Create fixture databases for unique target, missing target, duplicate
+- [x] Create fixture databases for unique target, missing target, duplicate
   allowed target, strict and prose birth dates, preferences, `edad`, `ninguno`,
   unsupported predicate, temporal relation, and a superseded fact.
-- [ ] Write RED migration tests: each active candidate has exactly one ledger
+- [x] Write RED migration tests: each active candidate has exactly one ledger
   row; superseded rows stay untouched and receive no candidate ledger row;
   source rows/IDs never change; running `--dry-run` writes nothing; a second
   apply is idempotent.
-- [ ] Implement folded canonical-name/alias matching that migrates a relation
+- [x] Implement folded canonical-name/alias matching that migrates a relation
   only when exactly one allowed target entity resolves. Do not create entities,
   choose first matches, call an LLM, or upload data.
-- [ ] Add the local command with dry-run default and explicit `--apply`; it must
+- [x] Add the local command with dry-run default and explicit `--apply`; it must
   log aggregate counts only and never print facts, prompts, biometrics, or raw
   household data.
-- [ ] Run migration tests GREEN and retain ledger reason assertions for every
+- [x] Run migration tests GREEN and retain ledger reason assertions for every
   deferred/rejected fixture.
 
 ### Slice 4 — Compatibility, rollback, and handoff
 
-- [ ] Verify existing legacy retrieval remains the only runtime path: no change
+- [x] Verify existing legacy retrieval remains the only runtime path: no change
   to `build_context`, `entities_for_relations`, consolidation, controller, or
   `/chat`; no v4 data reaches a prompt.
-- [ ] Prove logical rollback by not invoking the local migration command and by
+- [x] Prove logical rollback by not invoking the local migration command and by
   retaining all legacy rows after an applied fixture migration. Dropping v4
   tables, forced reverse migration, dual write, or runtime feature flags are
   out of scope.
-- [ ] Run focused v4 and legacy memory suites, then `just lint`, `just
+- [x] Run focused v4 and legacy memory suites, then `just lint`, `just
   typecheck`, `just test`, `just audit`, `just check`, and `git diff --check`.
-- [ ] Record exact RED/GREEN, schema version, migration test output, and limits.
+- [x] Record exact RED/GREEN, schema version, migration test output, and limits.
   Promote no P0.5 plan; prepare a separate policy-gated runtime-cutover plan
   only after household authorization is complete.
 
@@ -211,3 +212,18 @@ a changed audio/server-robot contract.
   behavior, and focused commands are frozen above.
 - [x] The companion execution runbook provides per-task ownership, RED/GREEN
   commands, and final gates.
+
+## Implementation evidence
+
+- RED was observed for each missing module: predicate registry, v4 repository,
+  and legacy migration service.
+- Migration 4 creates only the additive v4 tables and indexes. Focused tests
+  prove schema version 4, foreign-key integrity, cardinality, temporal history,
+  symmetric partner deduplication, rollback on duplicate literals, dry-run,
+  deterministic migration outcomes, ledger idempotence, and unchanged legacy
+  rows.
+- Focused v4 plus legacy suites passed 37 tests. Final `just gate` passed with
+  527 tests, Ruff, formatting, mypy, Pyright, security checks, and `pip-audit`.
+- No v4 reader/writer was connected to `build_context`, a prompt, `/chat`, or
+  `/transcribe`. The real local household database migration was not run; the
+  CLI default remains dry-run and requires explicit `--apply`.
