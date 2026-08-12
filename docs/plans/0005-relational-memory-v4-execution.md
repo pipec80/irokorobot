@@ -1,8 +1,9 @@
 # Plan 0005 — Relational memory v4 foundation: execution runbook
 
-**Status:** Implemented locally — companion to canonical
+**Status:** Complete — companion to canonical
 [Plan 0005](0005-relational-memory-v4-implementation.md), validated on
-2026-08-12 at `5958ee6` on `feat/p04-relational-memory-v4`; pending PR/CI/merge.
+2026-08-12 at `5958ee6` on `feat/p04-relational-memory-v4`, then merged to
+`main` as `3b01b58` through PR #40 after GitHub CI.
 
 > **For implementation workers:** execute tasks sequentially, use the
 > checkbox steps as the source of truth, and record an observed RED before

@@ -47,15 +47,18 @@ records the observed TDD, final-gate, and final-remediation evidence. The last
 remediation commit is `79258cc`; its combined P0.2 suite passed 174 tests and
 the full repository suite passed 497 tests.
 
-Plans 0002b, 0002c, 0003, the Plan 0004 design, and the local implementation of
-Plan 0005 are complete. Plan 0005 awaits PR/CI/merge; P0.5 and later plans
-remain Draft. Its companion
-[execution runbook](0005-relational-memory-v4-execution.md) freezes the exact
-file scope, migration version, dry-run-first local command, and boundary that
-keeps v4 out of the runtime until authorization exists. Before any promotion,
-re-read the completed prerequisite
-implementation and revise the candidate plan with its exact current file scope
-and tests.
+Plans 0002b, 0002c, 0003, the Plan 0004 design, and Plan 0005 are complete.
+Plan 0005 merged as `3b01b58` through PR #40 after its final 527-test gate.
+Its companion [execution runbook](0005-relational-memory-v4-execution.md)
+freezes the exact file scope, migration version, dry-run-first local command,
+and boundary that keeps v4 out of the runtime until authorization exists.
+
+[Plan 0007](0007-household-authorization-foundation.md) and its
+[execution runbook](0007-household-authorization-foundation-execution.md) are
+the Ready P0.5-A implementation: deterministic fail-closed policy, local role
+bootstrap/audit, and controller enforcement. They do not authorize P0.5-B v4
+runtime retrieval or family tools; that follow-up remains Draft until Plan 0007
+has completion evidence and its exact seams are revalidated.
 
 The [P0 cognitive portfolio design](p0-cognitive-plan-portfolio-design.md)
 links every current P0 plan and records their dependency order and status.

@@ -2,11 +2,15 @@
 
 ## Status
 
-Approved design for a future **Draft** implementation plan. It does not
-authorize code, schema changes, a role bootstrap run, or public API changes.
-Plans 0002 and 0003 are Complete, and Plan 0005 is Ready for a storage/migration
-foundation only. P0.5 cannot become executable before that foundation has
-completion evidence and the current tree is revalidated.
+Approved design for P0.5. It does not itself authorize code, schema changes, a
+role bootstrap run, or public API changes. The first executable implementation
+is [Plan 0007](0007-household-authorization-foundation.md): P0.5-A establishes
+the deterministic policy, local role/audit records, explicit local owner
+bootstrap, and controller enforcement without retrieving v4 household data.
+
+A later P0.5-B plan must be written just in time after Plan 0007 has completion
+evidence. It may own only a policy-gated v4 reader/tool cutover, not a redesign
+of this approved policy or a public administration API.
 
 ## Purpose
 
@@ -166,12 +170,13 @@ export, deletion, and lifecycle work may require later P2 policy.
 - Filter an already retrieved model prompt or claim that a denied/unknown fact
   exists unless explicit policy permits that disclosure.
 
-## Readiness conditions for a future executable Plan 0006
+## Implementation status
 
-The implementation plan can become `Ready` only after P0.2, P0.3, and P0.4
-are Complete and a fresh code review determines exact seams. It must define the
-precise schema migration, policy/request contracts, role-assignment operation,
-action registry, audit schema, confirmation adapter, all permitted files, and
-RED/GREEN tests for owner/adult/child/guest/unknown plus denial-without-leak
-scenarios. A change to the policy matrix, bootstrap trust boundary, or audit
-content requires a documented decision before implementation.
+Plans P0.2, P0.3, and P0.4 are complete and their current seams were
+revalidated at main commit `3b01b58`. Plan 0007 freezes the migration 5,
+request/decision contracts, role-assignment operation, policy/action registry,
+audit schema, exact file scope, and RED/GREEN coverage for P0.5-A.
+
+Any change to the policy matrix, bootstrap trust boundary, audit content, or
+the later v4 runtime cutover requires a documented decision before
+implementation.

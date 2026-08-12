@@ -2,8 +2,9 @@
 
 ## Status
 
-**Implemented locally — validated on 2026-08-12 at `5958ee6`
-(`feat/p04-relational-memory-v4`); pending PR/CI/merge.** This plan is
+**Complete — merged to `main` as `3b01b58` through PR #40 on 2026-08-12.**
+The feature branch implementation was validated at `5958ee6`
+(`feat/p04-relational-memory-v4`) before final GitHub CI and merge. This plan is
 subordinate to the completed [P0.4 design and migration
 decision](0004-relational-memory-v4-design-and-migration.md). The actual tree,
 legacy schema/migration registry, declarative and relational modules,

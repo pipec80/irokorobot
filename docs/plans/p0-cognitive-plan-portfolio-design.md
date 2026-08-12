@@ -47,13 +47,14 @@ that its canonical plan does not explicitly permit.
 | [`0002c-desktop-security-and-drift.md`](0002c-desktop-security-and-drift.md) | P0-S2 | Complete | Aligned desktop exposure defaults and active guidance after P0-S1. |
 | [`0003-typed-controller-and-deterministic-tools.md`](0003-typed-controller-and-deterministic-tools.md) | P0.3 | Complete | Added the bounded `/chat` controller seam and deterministic current-date and strict-ISO-age tools only. |
 | [`0004-relational-memory-v4-design-and-migration.md`](0004-relational-memory-v4-design-and-migration.md) | P0.4 design | Complete | Records the additive migration decision, registry semantics, and safe compatibility boundary. |
-| [`0005-relational-memory-v4-implementation.md`](0005-relational-memory-v4-implementation.md) | P0.4 foundation | Ready | Add v4 schema/repositories and an explicit dry-run-first local migration, without runtime cutover before P0.5. |
-| [`0006-household-authorization.md`](0006-household-authorization.md) | P0.5 | Draft | Enforce deterministic household authorization before protected retrieval, tools, and generation context. |
+| [`0005-relational-memory-v4-implementation.md`](0005-relational-memory-v4-implementation.md) | P0.4 foundation | Complete | Added v4 schema/repositories and an explicit dry-run-first local migration, without runtime cutover before P0.5. |
+| [`0006-household-authorization.md`](0006-household-authorization.md) | P0.5 design | Approved | Defines the complete deterministic authorization boundary and its trust decisions. |
+| [`0007-household-authorization-foundation.md`](0007-household-authorization-foundation.md) | P0.5-A | Ready | Add fail-closed policy, local roles/audit/bootstrap, and controller enforcement without v4 runtime retrieval. |
 
-Plans 0002, 0002a, 0002b, 0002c, 0003, and the Plan 0004 design are complete
-with recorded tests and quality gates. Plan 0005 is Ready; P0.5 and later plans
-remain Draft and are
-revalidated just in time before becoming executable.
+Plans 0002, 0002a, 0002b, 0002c, 0003, the Plan 0004 design, and Plan 0005 are
+complete with recorded tests and quality gates. Plan 0007 is Ready. P0.5-B and
+later plans remain Draft and are revalidated just in time before becoming
+executable.
 
 ## Plan boundaries
 
@@ -99,13 +100,16 @@ inverse relation, cardinality, temporal validity, provenance, and compatibility
 behavior. A later P0.5-gated plan, not Plan 0005, owns runtime reads/writes and
 family tools.
 
-### Plan 0006 — Household authorization
+### Plan 0006 / Plan 0007 — Household authorization
 
-This plan implements a local deterministic policy for `owner`, `adult`,
+Plan 0006 records the approved local deterministic policy for `owner`, `adult`,
 `child`, `guest`, and `unknown`. It evaluates actor, action, data category,
 visibility, sensitivity, consent, and turn scope before protected retrieval or
 tool execution. A missing decision denies or requests confirmation; no policy
-decision is delegated to an LLM.
+decision is delegated to an LLM. Plan 0007 implements P0.5-A only: typed
+fail-closed policy, local role/audit storage and owner bootstrap, then policy
+enforcement before protected controller delegation. A later P0.5-B plan owns
+any v4 retrieval or family-tool cutover.
 
 ## Common constraints
 
