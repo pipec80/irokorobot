@@ -2,8 +2,8 @@
 
 ## Status
 
-**Complete.** Implemented on `feat/p03-typed-controller` at `5954a90` after
-the P0-S2 baseline `5f1971c` on `main`.
+**Complete.** Merged to `main` as `a80dd2d` through PR #37 after the P0-S2
+baseline `5f1971c`.
 Plans 0002, 0002a, 0002b, and 0002c are Complete. The P0.2 identity boundary,
 Ollama-only provider boundary, P0-S hardening results, current chat adapter,
 `CognitiveEvent` contract, and chat/text-turn tests were re-read. The companion
@@ -151,11 +151,12 @@ final gates pass; P0.4 and P0.5 remain Draft.
 
 ## Completion evidence
 
-Implementation is `5954a90` (`feat(cognition): add deterministic chat
-controller`). It introduced only the permitted controller, immutable response
-contracts, pure calendar helpers, `/chat` adapter, and their tests; it added no
-dependency, database/migration, memory, authorization-policy, biometric,
-provider/cloud, audio, vision, robot, or public-schema change.
+Implementation was merged as `a80dd2d` (`feat(cognition): add deterministic
+chat controller (#37)`). It introduced only the permitted controller,
+immutable response contracts, pure calendar helpers, `/chat` adapter, and their
+tests; it added no dependency, database/migration, memory,
+authorization-policy, biometric, provider/cloud, audio, vision, robot, or
+public-schema change.
 
 Observed TDD evidence:
 
