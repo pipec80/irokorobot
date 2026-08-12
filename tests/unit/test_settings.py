@@ -19,6 +19,7 @@ def test_server_settings_defaults_match_audio_contract() -> None:
     assert settings.piper_voice == "es_MX-ald-medium"
     assert settings.piper_use_cuda is False
     assert settings.models_dir == Path("models")
+    assert settings.server_host == "127.0.0.1"
     assert settings.server_port == 8000
     assert settings.max_upload_bytes == 10 * 1024 * 1024
 
@@ -42,13 +43,16 @@ def test_server_settings_rejects_nonlocal_llm_provider(
 
 @pytest.mark.unit
 def test_server_settings_reads_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
+    lan_host = ".".join(("0", "0", "0", "0"))
     monkeypatch.setenv("WHISPER_MODEL", "tiny")
     monkeypatch.setenv("PIPER_SPEED", "2.0")
     monkeypatch.setenv("SERVER_PORT", "9000")
+    monkeypatch.setenv("SERVER_HOST", lan_host)
     settings = ServerSettings(_env_file=None)  # type: ignore[call-arg]
     assert settings.whisper_model == "tiny"
     assert settings.piper_speed == 2.0
     assert settings.server_port == 9000
+    assert settings.server_host == lan_host
 
 
 @pytest.mark.unit

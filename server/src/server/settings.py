@@ -35,7 +35,9 @@ class Settings(BaseSettings):
     piper_noise_w_scale: float = 0.8
     piper_use_cuda: bool = False
     models_dir: Path = Path("models")
-    server_host: str = "0.0.0.0"  # noqa: S104 — intentional: homelab server binds all interfaces
+    # Desktop development stays local by default. LAN deployments opt in via
+    # SERVER_HOST=0.0.0.0 after their network policy is configured.
+    server_host: str = "127.0.0.1"
     server_port: int = 8000
     log_level: str = "INFO"
     log_to_file: bool = True

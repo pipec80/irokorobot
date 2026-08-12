@@ -5,20 +5,55 @@
 
 param([switch]$Down)
 
-$OLLAMA_URL = "http://localhost:11434"
-$REQUIRED_MODELS = @(
-    @{ Name = "nomic-embed-text"; Desc = "embeddings (memory)" },
-    @{ Name = "qwen2.5:3b";       Desc = "consolidation (extract facts)" }
+$ProjectRoot = Split-Path -Parent $PSScriptRoot
+$ConfigPath = Join-Path $ProjectRoot ".env"
+if (-not (Test-Path -LiteralPath $ConfigPath)) {
+    $ConfigPath = Join-Path $ProjectRoot ".env.example"
+}
+
+$ConfiguredValues = @{}
+foreach ($rawLine in Get-Content -LiteralPath $ConfigPath) {
+    if ($rawLine -match '^\s*([A-Z][A-Z0-9_]*)\s*=\s*(.*?)\s*$') {
+        $value = $Matches[2].Trim()
+        if ($value.Length -ge 2 -and $value.StartsWith('"') -and $value.EndsWith('"')) {
+            $value = $value.Substring(1, $value.Length - 2)
+        }
+        $ConfiguredValues[$Matches[1]] = $value
+    }
+}
+
+function Get-ConfiguredValue {
+    param(
+        [string]$Name,
+        [string]$Default
+    )
+
+    if ($ConfiguredValues.ContainsKey($Name) -and $ConfiguredValues[$Name]) {
+        return $ConfiguredValues[$Name]
+    }
+    return $Default
+}
+
+$OLLAMA_URL = Get-ConfiguredValue "OLLAMA_URL" "http://localhost:11434"
+$RequiredModels = @(
+    @{ Name = (Get-ConfiguredValue "OLLAMA_MODEL" "qwen2.5:3b"); Desc = "chat" },
+    @{ Name = (Get-ConfiguredValue "EMBEDDING_MODEL" "nomic-embed-text"); Desc = "embeddings (memory)" },
+    @{ Name = (Get-ConfiguredValue "CONSOLIDATION_MODEL" "qwen2.5:3b"); Desc = "consolidation (extract facts)" }
 )
+if ((Get-ConfiguredValue "VISION_ENABLED" "false").ToLowerInvariant() -eq "true") {
+    $RequiredModels += @{
+        Name = (Get-ConfiguredValue "VLM_MODEL" "qwen3-vl:2b-instruct")
+        Desc = "vision"
+    }
+}
 
 function Test-Ollama {
     try {
-        $r = Invoke-WebRequest -Uri $OLLAMA_URL -TimeoutSec 2 -ErrorAction Stop
-        return $true
-    } catch [System.Net.WebException] {
-        # Got a response (non-2xx) — port is open, Ollama is up
-        if ($_.Exception.Response) { return $true }
-        return $false
+        # `ollama list` checks the same local daemon used below for model
+        # inspection and avoids Windows PowerShell `localhost` resolution
+        # timeouts that can produce a false unavailable result.
+        $null = & ollama list 2>$null
+        return $LASTEXITCODE -eq 0
     } catch {
         return $false
     }
@@ -39,6 +74,7 @@ if ($Down) {
 # ── start / check mode ───────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "=== OMNiBot services ==="
+Write-Host "  Config: $ConfigPath"
 Write-Host ""
 
 # Ollama
@@ -64,7 +100,7 @@ if (Test-Ollama) {
 Write-Host ""
 Write-Host "  Models:"
 $modelOutput = ollama list 2>&1 | Out-String
-foreach ($m in $REQUIRED_MODELS) {
+foreach ($m in $RequiredModels) {
     if ($modelOutput -match [regex]::Escape($m.Name)) {
         Write-Host ("    {0,-26} [OK]  ({1})" -f $m.Name, $m.Desc)
     } else {

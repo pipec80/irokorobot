@@ -101,7 +101,7 @@ test-pipeline *ARGS:
 test-client *ARGS:
     uv run --env-file .env python scripts/client_test.py {{ARGS}}
 
-# Verifica persistencia de memoria: --introduce (hoy) o --recall (manana) o --show-db
+# Diagnostica el canal público de voz; no prueba recuperación privada persistente.
 memory-test *ARGS:
     uv run --env-file .env python scripts/memory_test.py {{ARGS}}
 
@@ -121,7 +121,7 @@ chat-test *ARGS:
 vision-demo *ARGS:
     uv run --env-file .env python scripts/vision_demo.py {{ARGS}}
 
-# Demo V1: enrolar y reconocer caras via /vision/respond (requiere server)
+# Demo visual scene-only: webcam/foto -> /vision/respond (requiere server)
 faces-demo *ARGS:
     uv run --env-file .env python scripts/faces_demo.py {{ARGS}}
 
