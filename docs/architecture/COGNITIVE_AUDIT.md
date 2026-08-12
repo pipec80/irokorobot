@@ -10,8 +10,10 @@ an implementation audit, not evidence of production hardware health.
 > direct Anthropic dependency and runtime paths, made Ollama the only accepted
 > provider, and added local streaming-fallback coverage. Its full verification
 > record is in [`0002a-local-first-provider-quarantine.md`](../plans/0002a-local-first-provider-quarantine.md).
-> The findings below are the pre-implementation audit snapshot; only the cloud
-> default finding is superseded by that completed plan.
+> On 2026-08-12, a real local Ollama generation and the text-to-LLM-to-Piper
+> pipeline also completed successfully. The findings below are the
+> pre-implementation audit snapshot; only the cloud-default finding is
+> superseded by that completed plan.
 
 ## Executive summary
 
@@ -31,11 +33,12 @@ channels.
 
 The critical remaining risks are: no authorization policy, a LAN-bound API
 with unauthenticated face enrollment, string-valued relationships, universal
-fact supersession, non-deterministic ages, unconditional top-K vector
-retrieval, and an Anthropic default without a controlled cloud-escalation
-boundary. `CognitiveController`, deterministic family tools, entity-ID
-relationships, `WorldState`, speaker recognition, identity fusion, scene
-graphs, and spatial memory are absent from runtime code.
+fact supersession, non-deterministic ages, and unconditional top-K vector
+retrieval. There is no controlled cloud-escalation boundary, by deliberate
+policy: no direct cloud provider remains in the runtime.
+`CognitiveController`, deterministic family tools, entity-ID relationships,
+`WorldState`, speaker recognition, identity fusion, scene graphs, and spatial
+memory are absent from runtime code.
 
 **Audit verdict: READY WITH WARNINGS.** The current tree supports planning the
 next narrow, local-only controller slice, but `docs/plans/0003-typed-controller-and-deterministic-tools.md`

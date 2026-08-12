@@ -164,7 +164,17 @@ Completed on `feat/local-first-provider-quarantine` on 2026-08-11.
   and the equivalent `uv.lock` check produced no runtime/provider match.
 
 An independent review initially found the streaming fallback defect above; its
-follow-up review reported no blockers after the fix. The local Ollama preflight
-was attempted but `localhost:11434` refused the connection, so a live-model
-demo is **not verified** in this workspace. No model was downloaded or service
-configuration changed.
+follow-up review reported no blockers after the fix.
+
+### Runtime acceptance — 2026-08-12
+
+- `GET http://localhost:11434/api/tags` confirmed that Ollama was reachable and
+  that `qwen2.5:3b` was installed.
+- A direct, non-persistent generation against `qwen2.5:3b` completed
+  successfully in about 11.8 seconds.
+- `just test-pipeline --text ... --no-play` completed successfully: the local
+  Ollama client generated a response in 11.60 seconds and Piper synthesized
+  3.405 seconds of audio. STT and speaker playback were intentionally skipped
+  by those command options.
+
+No model was downloaded and no service configuration changed.
