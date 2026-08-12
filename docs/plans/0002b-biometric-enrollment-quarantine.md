@@ -3,7 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans`
 > task-by-task. Steps use checkbox syntax for tracking.
 
-**Status:** Ready
+**Status:** Complete
 
 **Goal:** Prevent every public HTTP or conversational visual request from
 creating or attaching a biometric face profile until P0.5 supplies explicit
@@ -40,6 +40,7 @@ face, phrase, or `VISION_ENABLED` must not authorize enrollment.
 |---|---|
 | `server/src/server/routers/vision.py` | Quarantine the two public enrollment paths only. |
 | `tests/integration/test_vision_endpoint.py` | Replace HTTP enrollment-success assumptions with quarantine coverage. |
+| `tests/integration/test_vision_enroll_service.py` | Align existing endpoint integration coverage with the quarantine boundary. |
 | `tests/integration/test_vision_dialog.py` | Replace conversational enrollment routing coverage with quarantine coverage. |
 | `docs/architecture/p0-s-hardening-audit.md` | Record P0-S1 disposition after verification. |
 | `docs/architecture/current-state.md` | Update only the enrollment status after merge. |
@@ -72,7 +73,7 @@ call `vision.enroll_from_frame` or `perceive_scene` for that request.
 **Files:** `tests/integration/test_vision_endpoint.py`,
 `server/src/server/routers/vision.py:96-135`.
 
-- [ ] **Step 1: Write the failing no-write test.**
+- [x] **Step 1: Write the failing no-write test.**
 
 ```python
 @pytest.mark.integration
@@ -87,7 +88,7 @@ def test_enroll_is_quarantined_without_calling_enrollment(
     enroll.assert_not_awaited()
 ```
 
-- [ ] **Step 2: Observe RED.**
+- [x] **Step 2: Observe RED.**
 
 ```powershell
 uv run pytest tests/integration/test_vision_endpoint.py::test_enroll_is_quarantined_without_calling_enrollment -v
@@ -95,12 +96,12 @@ uv run pytest tests/integration/test_vision_endpoint.py::test_enroll_is_quaranti
 
 Expected: FAIL because the endpoint currently invokes `vision.enroll_person()`.
 
-- [ ] **Step 3: Implement the minimal router guard.**
+- [x] **Step 3: Implement the minimal router guard.**
 
 After the existing `VISION_ENABLED=false` response, return HTTP 503 with the
 fixed detail before reading the image or calling the enrollment service.
 
-- [ ] **Step 4: Observe GREEN plus endpoint regression.**
+- [x] **Step 4: Observe GREEN plus endpoint regression.**
 
 ```powershell
 uv run pytest tests/integration/test_vision_endpoint.py -v
@@ -114,7 +115,7 @@ no biometric write.
 **Files:** `tests/integration/test_vision_dialog.py`,
 `server/src/server/routers/vision.py:158-182`.
 
-- [ ] **Step 1: Write the failing quarantine test.**
+- [x] **Step 1: Write the failing quarantine test.**
 
 ```python
 @pytest.mark.integration
@@ -129,7 +130,7 @@ def test_vision_respond_quarantines_enrollment_phrase(client: TestClient) -> Non
     )
 ```
 
-- [ ] **Step 2: Observe RED.**
+- [x] **Step 2: Observe RED.**
 
 ```powershell
 uv run pytest tests/integration/test_vision_dialog.py::test_vision_respond_quarantines_enrollment_phrase -v
@@ -137,7 +138,7 @@ uv run pytest tests/integration/test_vision_dialog.py::test_vision_respond_quara
 
 Expected: FAIL because the router currently awaits `vision.enroll_from_frame()`.
 
-- [ ] **Step 3: Replace only the enrollment branch.**
+- [x] **Step 3: Replace only the enrollment branch.**
 
 ```python
 if vision.wants_enroll(text) is not None:
@@ -149,7 +150,7 @@ else:
 Keep the existing exception degradation and `process_text_turn()` response path
 for non-enrollment scene questions.
 
-- [ ] **Step 4: Observe visual-dialog GREEN.**
+- [x] **Step 4: Observe visual-dialog GREEN.**
 
 ```powershell
 uv run pytest tests/integration/test_vision_dialog.py -v
@@ -163,12 +164,12 @@ phrase cannot create a profile.
 **Files:** `docs/architecture/p0-s-hardening-audit.md`,
 `docs/architecture/current-state.md`, this plan.
 
-- [ ] **Step 1: Record the verified disposition.**
+- [x] **Step 1: Record the verified disposition.**
 
 State that both public paths are quarantined, existing data was preserved, and
 P0.5 remains responsible for future enrollment policy.
 
-- [ ] **Step 2: Run final gates.**
+- [x] **Step 2: Run final gates.**
 
 ```powershell
 just lint
@@ -202,6 +203,21 @@ use the Conventional Commit message:
 Revert the quarantine commit only if it breaks the non-enrollment vision
 contract. Do not restore either public enrollment path as a workaround; open a
 follow-up decision instead.
+
+## Completion record
+
+- RED observed: the direct-path test received HTTP 200 and the conversational
+  test observed one `enroll_from_frame()` await before the router guard existed.
+- GREEN: the two new no-write tests passed; the vision endpoint/dialog/service
+  regression set passed `25/25`.
+- A first full suite run exposed three legacy success/rejection expectations in
+  `test_vision_enroll_service.py`; they were converted into additional
+  quarantine checks without changing face services or stored data.
+- Final verification: `just lint`, `just typecheck`, `just test`, and
+  `just audit` exited zero. The final `just test` reported `496 passed in
+  30.76s`.
+- Remaining boundary: this does not provide enrollment. P0.5 must define local
+  administration, consent, authorization, and audit before a new write path.
 
 ## Operational handoff prompt
 

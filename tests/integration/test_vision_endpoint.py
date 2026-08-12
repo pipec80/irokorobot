@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 import pytest
 from server.exceptions import VisionError
+from server.routers import vision as vision_router
 from server.settings import settings
 
 if TYPE_CHECKING:
@@ -62,6 +63,22 @@ def _post_enroll(client: TestClient, payload: bytes) -> httpx.Response:
     )
 
 
+@pytest.mark.integration
+def test_enroll_is_quarantined_without_calling_enrollment(
+    client: TestClient, vision_on: None
+) -> None:
+    """Public enrollment must fail safely before it touches biometric storage."""
+    with patch(
+        "server.routers.vision.vision.enroll_person",
+        new_callable=AsyncMock,
+    ) as enroll:
+        response = _post_enroll(client, _FAKE_JPEG)
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == vision_router._BIOMETRIC_ENROLLMENT_UNAVAILABLE
+    enroll.assert_not_awaited()
+
+
 def _post_respond(client: TestClient, payload: bytes) -> httpx.Response:
     """POST *payload* as an image upload to /vision/respond."""
     return client.post(
@@ -71,9 +88,10 @@ def _post_respond(client: TestClient, payload: bytes) -> httpx.Response:
     )
 
 
-# The three vision endpoints share the exact same image-contract validation
-# (_read_contract_image) — parametrize contract-violation tests across them.
-_ALL_VISION_POSTS = (_post_image, _post_enroll, _post_respond)
+# These endpoints read the upload before serving their normal response. Public
+# enrollment is deliberately excluded because it is quarantined before any
+# image read or biometric write.
+_IMAGE_VALIDATING_VISION_POSTS = (_post_image, _post_respond)
 
 
 @pytest.mark.integration
@@ -136,12 +154,11 @@ def test_describe_unknown_format_returns_422(client: TestClient, vision_on: None
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("post", _ALL_VISION_POSTS)
-def test_truncated_image_returns_422_on_all_endpoints(
+@pytest.mark.parametrize("post", _IMAGE_VALIDATING_VISION_POSTS)
+def test_truncated_image_returns_422_on_image_processing_endpoints(
     client: TestClient, vision_on: None, post: PostFn
 ) -> None:
-    """Valid magic bytes but undecodable content — same 422 on the three
-    vision endpoints, since they all funnel through _read_contract_image."""
+    """Valid magic bytes but undecodable content returns 422 before processing."""
     resp = post(client, _TRUNCATED_JPEG)
 
     assert resp.status_code == 422
