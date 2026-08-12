@@ -46,12 +46,13 @@ that its canonical plan does not explicitly permit.
 | [`0002b-biometric-enrollment-quarantine.md`](0002b-biometric-enrollment-quarantine.md) | P0-S1 | Complete | Quarantined HTTP and conversational public face enrollment until P0.5 policy exists. |
 | [`0002c-desktop-security-and-drift.md`](0002c-desktop-security-and-drift.md) | P0-S2 | Complete | Aligned desktop exposure defaults and active guidance after P0-S1. |
 | [`0003-typed-controller-and-deterministic-tools.md`](0003-typed-controller-and-deterministic-tools.md) | P0.3 | Complete | Added the bounded `/chat` controller seam and deterministic current-date and strict-ISO-age tools only. |
-| [`0004-relational-memory-v4-design-and-migration.md`](0004-relational-memory-v4-design-and-migration.md) | P0.4 design | Draft | Record the ADR decision, reversible migration design, predicate registry, and compatibility strategy before schema changes. |
-| [`0005-relational-memory-v4-implementation.md`](0005-relational-memory-v4-implementation.md) | P0.4 implementation | Draft | Implement the approved relational-memory migration and compatibility path. |
+| [`0004-relational-memory-v4-design-and-migration.md`](0004-relational-memory-v4-design-and-migration.md) | P0.4 design | Complete | Records the additive migration decision, registry semantics, and safe compatibility boundary. |
+| [`0005-relational-memory-v4-implementation.md`](0005-relational-memory-v4-implementation.md) | P0.4 foundation | Ready | Add v4 schema/repositories and an explicit dry-run-first local migration, without runtime cutover before P0.5. |
 | [`0006-household-authorization.md`](0006-household-authorization.md) | P0.5 | Draft | Enforce deterministic household authorization before protected retrieval, tools, and generation context. |
 
-Plans 0002, 0002a, 0002b, 0002c, and 0003 are complete with recorded tests and
-quality gates. P0.4 and later plans remain Draft and are
+Plans 0002, 0002a, 0002b, 0002c, 0003, and the Plan 0004 design are complete
+with recorded tests and quality gates. Plan 0005 is Ready; P0.5 and later plans
+remain Draft and are
 revalidated just in time before becoming executable.
 
 ## Plan boundaries
@@ -86,15 +87,17 @@ authorization have their own approved plans.
 This plan makes no schema migration. It records the data decision required by
 P0.4: entity-ID relationships, predicate cardinality, validity intervals,
 provenance, verification state, visibility, sensitivity, compatibility with
-current string-valued facts, rollback, and acceptance data cases. The ADR and
-migration plan are reviewed before implementation begins.
+current string-valued facts, rollback, and acceptance data cases. It is complete
+after revalidation; Plan 0005 now owns its bounded storage/migration execution.
 
 ### Plan 0005 — Relational-memory implementation
 
-This plan implements only the approved Plan 0004 design. It preserves existing
-integer IDs and data, makes age derived from ISO `birth_date`, and gives
-relationships entity-ID targets. It tests migration, inverse relation,
-cardinality, temporal validity, provenance, and compatibility behavior.
+This plan implements only the approved Plan 0004 storage/migration foundation.
+It preserves existing integer IDs and data, makes age derived from ISO
+`birth_date`, gives relationships entity-ID targets, and tests migration,
+inverse relation, cardinality, temporal validity, provenance, and compatibility
+behavior. A later P0.5-gated plan, not Plan 0005, owns runtime reads/writes and
+family tools.
 
 ### Plan 0006 — Household authorization
 

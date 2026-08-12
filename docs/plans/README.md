@@ -47,10 +47,13 @@ records the observed TDD, final-gate, and final-remediation evidence. The last
 remediation commit is `79258cc`; its combined P0.2 suite passed 174 tests and
 the full repository suite passed 497 tests.
 
-Plans 0002b, 0002c, and 0003 are complete. P0.4 and later plans remain Draft.
-Plan 0003's completion evidence records its bounded `/chat` controller,
-deterministic calendar helpers, and final 514-test verification; it does not
-promote P0.4/P0.5. Before any promotion, re-read the completed prerequisite
+Plans 0002b, 0002c, 0003, and the Plan 0004 design are complete. Plan 0005 is
+Ready for only the additive v4 storage/migration foundation; P0.5 and later
+plans remain Draft. Its companion
+[execution runbook](0005-relational-memory-v4-execution.md) freezes the exact
+file scope, migration version, dry-run-first local command, and boundary that
+keeps v4 out of the runtime until authorization exists. Before any promotion,
+re-read the completed prerequisite
 implementation and revise the candidate plan with its exact current file scope
 and tests.
 

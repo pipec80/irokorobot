@@ -2,10 +2,11 @@
 
 ## Status
 
-Approved design for a future **Draft** implementation plan. Plan 0002 is
-Complete and no plan is currently `Ready`. This document authorizes neither
-production code nor making Plan 0003 executable before the current source tree
-has been revalidated.
+Historical approved design. Plan 0003 was completed and merged in PR #37.
+Current execution status is maintained by [the plan index](README.md): Plan
+0005 is now Ready for the bounded P0.4 foundation, while P0.5 remains Draft.
+This document does not authorize production code beyond its completed P0.3
+scope.
 
 ## Purpose
 

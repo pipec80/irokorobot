@@ -33,7 +33,8 @@ P0-S2 completed its bounded configuration and documentation hardening without
 changing the numeric face-match threshold, data schema, public audio contract,
 or biometric lifecycle. The loopback default reduces desktop exposure; it is
 not a substitute for P0.5 authorization. P0.3 was subsequently merged at
-`a80dd2d` through PR #37; P0.4 and P0.5 remain Draft.
+`a80dd2d` through PR #37. Plan 0005 was later promoted for the bounded P0.4
+storage/migration foundation; P0.5 remains Draft.
 
 ## Verification limits
 

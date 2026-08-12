@@ -147,7 +147,7 @@ Stop and create a new decision/plan if implementation needs general NLU, a tool
 registry/framework/runtime, database/schema work, legacy relationship queries,
 permission policy, cloud, biometrics, physical actions, or an audio/robot
 contract change. Change this plan to `Complete` only after all listed tests and
-final gates pass; P0.4 and P0.5 remain Draft.
+final gates pass; later plans require separate promotion.
 
 ## Completion evidence
 
@@ -185,4 +185,5 @@ Final implementation verification recorded before PR creation:
 
 No real Ollama `/chat` request, camera, microphone, LAN, biometric, or hardware
 acceptance was performed. Those results are not inferred from unit/integration
-tests. P0.4 and P0.5 remain Draft and are not authorized by this completion.
+tests. Plan 0005 was later promoted separately for the bounded P0.4 foundation;
+P0.5 remains Draft and is not authorized by this completion.

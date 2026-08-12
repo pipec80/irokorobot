@@ -2,22 +2,28 @@
 
 ## Status
 
-**Draft — not executable.** This plan is subordinate to the approved
-[P0.4 design and migration decision](0004-relational-memory-v4-design-and-migration.md).
-It must remain Draft until Plan 0002 and the P0.3 controller plan are Complete,
-the actual codebase is re-read, and its exact file scope/migration version is
-reviewed. No agent may implement this document yet.
+**Ready — revalidated on 2026-08-12 at `d136f5f` (`main`, P0.3 merged).** This
+plan is subordinate to the completed [P0.4 design and migration
+decision](0004-relational-memory-v4-design-and-migration.md). The actual tree,
+legacy schema/migration registry, declarative and relational modules,
+consolidation path, controller boundary, and 24 focused memory integration
+tests were re-read. This authorization is limited to the storage/migration
+foundation below; it does not authorize P0.5 retrieval or runtime cutover. The
+companion [execution runbook](0005-relational-memory-v4-execution.md) contains
+the task-by-task RED/GREEN sequence.
 
 ## Objective
 
-Implement the approved relational-memory v4 model: separate literal facts from
-entity-ID relations, enforce predicate cardinality and lifecycle rules, migrate
-only unambiguous legacy records with an audit ledger, provide a non-destructive
-compatibility path, and make age a derived value from ISO `birth_date`.
+Implement the approved relational-memory v4 **foundation**: separate literal
+facts from entity-ID relations, enforce predicate cardinality and lifecycle
+rules within v4 repositories, migrate only unambiguous legacy records with an
+audit ledger, and make age a derived value from ISO `birth_date`.
 
 P0.5 authorization remains a prerequisite to retrieving protected v4 data in a
-production conversation. This plan does not substitute a migration, entity ID,
-or confidence score for permission.
+production conversation. The existing legacy `build_context`, `relations`,
+`consolidation`, and `/chat` paths remain the runtime reader/writer throughout
+this plan; no v4 value reaches a prompt. This plan does not substitute a
+migration, entity ID, or confidence score for permission.
 
 ## Required authority when becoming Ready
 
@@ -29,7 +35,7 @@ or confidence score for permission.
 5. [ADR-0004](../adr/0004-local-first-cognitive-policy.md) and
    [ADR-0005](../adr/0005-small-typed-cognitive-controller.md).
 6. [Plan 0004](0004-relational-memory-v4-design-and-migration.md), all its
-   decisions, and the then-current Plan 0006 authorization status.
+   decisions, and the current Draft status of Plan 0006 authorization.
 7. Current `schema.sql`, database migration registry, declarative/relations
    modules, normalizer/consolidator, controller seam, and directly related
    tests.
@@ -54,90 +60,128 @@ Historical `docs/local/` records are not operational authority.
   reject in a local ledger.
 - Keep migration local, idempotent, auditable, and logically reversible.
 - Do not return protected v4 data without the P0.5 authorization boundary.
+- Add migration version **4** only for additive v4 tables and indexes. Legacy
+  data backfill is an explicit local administrative command with dry-run as its
+  default, never a startup side effect or HTTP endpoint.
+- Leave legacy runtime reads and writes unchanged. A later P0.5-gated plan owns
+  the v4 reader/writer cutover and deterministic family tools.
 
-## Provisional implementation slices
+## Exact permitted file scope
 
-These slices define intent, not present implementation authority. Their exact
-file ownership, migration number, test names, and commands must be frozen only
-in the Ready revision after re-reading current `main`.
+| Path | Change |
+|---|---|
+| `server/src/server/db.py` | Register migration version 4; do not alter prior migration semantics. |
+| `server/src/server/memory/migration_004_relational_v4.sql` | Add only v4 tables and indexes. No legacy-row `UPDATE`, `DELETE`, or automatic data backfill. |
+| `server/src/server/memory/predicate_registry.py` | Define the closed, pure predicate registry and literal normalization. |
+| `server/src/server/memory/relational_v4.py` | Implement typed v4 literal/relation repositories and transactional lifecycle/cardinality writes. |
+| `server/src/server/memory/legacy_v4_migration.py` | Classify and migrate active legacy rows with an idempotent ledger. |
+| `scripts/migrate_memory_v4.py` | Provide a local-only migration command: dry-run default, explicit `--apply`, no HTTP or cloud use. |
+| `tests/unit/test_predicate_registry.py` | Cover pure registry semantics and strict ISO validation. |
+| `tests/integration/test_memory_v4_schema.py` | Cover version 4 schema, constraints, and unchanged legacy tables. |
+| `tests/integration/test_memory_v4_repository.py` | Cover literal/relation cardinality, lifecycle, inverse/symmetry, and foreign keys. |
+| `tests/integration/test_memory_v4_migration.py` | Cover fixture migration, ledger reasons, idempotence, dry-run, and legacy preservation. |
+| `docs/architecture/current-state.md`, `docs/roadmap/cognitive-roadmap.md`, `docs/plans/README.md`, this plan, and its execution runbook | Record completion evidence only after all gates pass. |
 
-### Slice 1 — Registry and immutable repository contracts
+Do not modify `schema.sql`, `declarative.py`, `relations.py`, `context.py`,
+`consolidation.py`, `normalize.py`, any router, `text_turn.py`, the controller,
+the robot client, or existing public schemas in this plan. No dependency,
+environment variable, HTTP endpoint, public admin API, automatic startup
+backfill, cloud call, or hardware capability is authorized.
 
-- [ ] Add tests first for the closed predicate registry: aliases, kinds,
-  cardinality, inverse/symmetry, allowed entity types, default classifications,
-  ISO literal validation, and explicit unsupported-predicate outcome.
-- [ ] Run and record observed RED using the future focused repository test.
-- [ ] Add the smallest typed registry/repository contracts. Do not introduce an
-  ORM, plugin framework, LLM classifier, or database I/O in pure models.
-- [ ] Run focused GREEN and review strict typing, immutability, docstrings, and
-  no `Any`/unbounded string predicate path.
+## Frozen v4 contracts and schema
 
-### Slice 2 — Additive schema and lifecycle repositories
+The registry is a closed Python mapping, not a database table or plugin API. It
+must expose `PredicateDefinition`, `PredicateKind`, `PredicateCardinality`,
+`resolve_predicate(alias: str) -> PredicateDefinition | None`, and
+`normalize_literal(definition: PredicateDefinition, value: str) -> str | None`.
+The initial canonical IDs are exactly `birth_date`, `likes`, `dislikes`,
+`prefers`, `allergic_to`, `child_of`, `partner_of`, `pet_of`, `lives_in`, and
+`works_at`. `age`/`edad` are unsupported and have no v4 target.
 
-- [ ] Write migration tests against a temporary real SQLite database before SQL:
-  new v4 tables, foreign keys, active uniqueness, symmetric-pair uniqueness,
-  lifecycle/validity fields, metadata classifications, and no legacy mutation.
-- [ ] Run and record RED.
-- [ ] Add exactly one numbered forward migration and database-registry entry;
-  use additive tables and indexes only.
-- [ ] Implement literal/relation repositories that enforce registry cardinality
-  and lifecycle semantics transactionally.
-- [ ] Run focused GREEN, migration idempotence, and `PRAGMA foreign_key_check`.
+Migration 4 creates these additive records:
 
-### Slice 3 — Conservative legacy migration ledger
+- `literal_facts_v4`: integer primary key; `subject_entity_id`; canonical
+  predicate; `value_text`; confidence; optional `source_memory_id` and
+  `confirmed_by_entity_id`; assertion/confirmation/validity timestamps;
+  lifecycle, visibility, and sensitivity classifications.
+- `entity_relations_v4`: the same metadata plus integer
+  `source_entity_id`/`target_entity_id`; canonical relation predicate; and a
+  check preventing self-relation. `partner_of` stores the lower entity ID first.
+- `legacy_fact_migration_v4`: unique `legacy_fact_id`; outcome
+  `migrated|deferred|rejected`; exactly one nullable target foreign key for a
+  migrated literal or relation; stable reason; and timestamp.
 
-- [ ] Build fixture databases covering: unique relation target; same-name
-  ambiguity; missing target; ISO and prose birth dates; multi-value preferences;
-  `edad`; negative `ninguno`; superseded fact; unsupported predicate; and
-  temporal value.
-- [ ] Write RED tests that require exactly one ledger outcome for every active
-  legacy source row.
-- [ ] Implement deterministic classification/migration with no entity creation,
-  LLM use, cloud call, or first-match name heuristic.
-- [ ] Verify `migrated`, `deferred`, and `rejected` reasons; run twice to prove
-  idempotence; preserve the original database rows and IDs.
+Partial unique indexes prevent duplicate active literal values and duplicate
+active relation triples. Repository transactions, using the registry rather
+than a universal SQL constraint, enforce single-current and temporal
+supersession. Multi-value literals coexist. No v4 write emits an outbox record
+in this slice because the legacy outbox has no v4 aggregate/lifecycle contract.
 
-### Slice 4 — Read/write compatibility cutover
+## Executable TDD slices
 
-- [ ] Write tests for a v4-preferred reader, legacy fallback only when no v4
-  outcome exists, and explicit legacy/unverified result labels.
-- [ ] Test that post-cutover writes target v4 only and that disabling the v4
-  feature restores legacy reads without deleting v4 tables or ledger rows.
-- [ ] Implement the smallest compatibility adapter at the current repository
-  seam. Do not dual-write divergent fact definitions.
-- [ ] Run focused GREEN and verify existing callers retain their documented
-  public contracts until their own migration plan changes them.
+### Slice 1 — Registry contracts
 
-### Slice 5 — Deterministic relation/date tools and safety integration
+- [ ] Write `tests/unit/test_predicate_registry.py` RED for exact aliases,
+  allowed entity types, `birth_date` strict `YYYY-MM-DD`, multi-value preference
+  coexistence, inverse `child_of -> parent_of`, symmetric `partner_of`, and
+  unsupported `edad`.
+- [ ] Run `uv run pytest tests/unit/test_predicate_registry.py -v`; record the
+  missing-module RED.
+- [ ] Implement `predicate_registry.py` with immutable definitions and no I/O.
+- [ ] Re-run the focused suite GREEN; run Ruff and type checks for the new module.
 
-- [ ] Add RED tests for `get_children`, relationship count, inverse lookup,
-  `birth_date` age calculation, missing/ambiguous/contradictory values, and
-  `unauthorized` before data is fetched.
-- [ ] Connect only to the then-approved P0.3 controller and P0.5 policy seams.
-  An LLM may phrase tool output but cannot calculate, count, decide a relation,
-  or mutate it.
-- [ ] Keep normalizer/consolidator changes bounded: LLM extraction proposes
-  candidates, while registry, grounding, confirmation, and policy decide
-  persistence.
-- [ ] Run focused GREEN and confirm no protected values reach model context on
-  denied/confirmation-required paths.
+### Slice 2 — Additive schema and repositories
 
-### Slice 6 — Final migration, rollback, and repository gates
+- [ ] Write schema/repository RED tests using a temporary real SQLite database:
+  user version 4, new tables/indexes, `PRAGMA foreign_key_check`, untouched
+  legacy facts, single-current supersession, multi-value coexistence, temporal
+  validity, and symmetric-pair deduplication.
+- [ ] Add migration 4 and register it in `server.db._MIGRATIONS`; it must create
+  tables/indexes only and leave migration 1–3 unchanged.
+- [ ] Implement the v4 repositories with explicit transactions and rollback on
+  failure; no model, provider, router, outbox, or legacy-runtime import.
+- [ ] Run schema/repository tests GREEN, then re-run the legacy memory tests to
+  prove migrations 1–3 and their callers remain readable.
 
-- [ ] Run complete migration fixtures on a copy of the legacy schema and retain
-  ledger/statistics evidence.
-- [ ] Test logical rollback by disabling the v4 reader/writer path; prove legacy
-  rows remain readable and no destructive DDL/data deletion occurs.
-- [ ] Run `just lint`, `just typecheck`, and `just test` after focused checks.
-- [ ] Audit `git diff --check` and file scope; review local-only behavior,
-  entity IDs, lifecycle, cardinality, privacy boundary, and no audio/server-
-  robot contract change.
+### Slice 3 — Conservative legacy migration
+
+- [ ] Create fixture databases for unique target, missing target, duplicate
+  allowed target, strict and prose birth dates, preferences, `edad`, `ninguno`,
+  unsupported predicate, temporal relation, and a superseded fact.
+- [ ] Write RED migration tests: each active candidate has exactly one ledger
+  row; superseded rows stay untouched and receive no candidate ledger row;
+  source rows/IDs never change; running `--dry-run` writes nothing; a second
+  apply is idempotent.
+- [ ] Implement folded canonical-name/alias matching that migrates a relation
+  only when exactly one allowed target entity resolves. Do not create entities,
+  choose first matches, call an LLM, or upload data.
+- [ ] Add the local command with dry-run default and explicit `--apply`; it must
+  log aggregate counts only and never print facts, prompts, biometrics, or raw
+  household data.
+- [ ] Run migration tests GREEN and retain ledger reason assertions for every
+  deferred/rejected fixture.
+
+### Slice 4 — Compatibility, rollback, and handoff
+
+- [ ] Verify existing legacy retrieval remains the only runtime path: no change
+  to `build_context`, `entities_for_relations`, consolidation, controller, or
+  `/chat`; no v4 data reaches a prompt.
+- [ ] Prove logical rollback by not invoking the local migration command and by
+  retaining all legacy rows after an applied fixture migration. Dropping v4
+  tables, forced reverse migration, dual write, or runtime feature flags are
+  out of scope.
+- [ ] Run focused v4 and legacy memory suites, then `just lint`, `just
+  typecheck`, `just test`, `just audit`, `just check`, and `git diff --check`.
+- [ ] Record exact RED/GREEN, schema version, migration test output, and limits.
+  Promote no P0.5 plan; prepare a separate policy-gated runtime-cutover plan
+  only after household authorization is complete.
 
 ## TDD execution protocol
 
-When this plan becomes Ready, every slice uses
-`superpowers:subagent-driven-development` (preferred) or
-`superpowers:executing-plans` (sequential fallback). Every task must:
+Every slice uses the approved execution runbook and records an observed RED
+before its smallest GREEN implementation. The implementation may run inline or
+with bounded development delegation, but this does not change Iroko's
+production architecture. Every task must:
 
 1. write the focused test first;
 2. record an observed RED failure;
@@ -146,8 +190,7 @@ When this plan becomes Ready, every slice uses
 5. perform a diff/type/privacy review; and
 6. preserve unrelated work and never commit directly to `main`.
 
-Subagents are a temporary development technique only; they do not imply a
-production multi-agent architecture.
+Development coordination is not a production multi-agent architecture.
 
 ## Stop conditions
 
@@ -157,14 +200,14 @@ automatic ambiguity resolution, automatic confirmation, a public data/role API,
 cloud processing, biometric processing, action control, world-state storage, or
 a changed audio/server-robot contract.
 
-## Conditions to promote this plan to Ready
+## Readiness evidence
 
-- [ ] Plan 0002 is Complete with all gates evidenced.
-- [ ] The P0.3 controller plan is Complete and its actual seam is inspected.
-- [ ] The P0.4 design is still accepted after current-tree review.
-- [ ] P0.5 policy integration order is confirmed, including no protected read
-  before decision.
-- [ ] Exact new schema version, files, fixtures, focused commands, rollback
-  switch, and compatibility behavior are reviewed and recorded.
-- [ ] A new execution runbook with concrete per-task file ownership, RED/GREEN
-  commands, and final checks is approved.
+- [x] Plan 0002 is Complete with recorded gates.
+- [x] Plan 0003 is Complete; its actual `/chat` seam was re-read.
+- [x] Plan 0004 remains accepted after current-tree review.
+- [x] P0.5 order is confirmed: no protected v4 read/write is connected before
+  deterministic authorization; therefore runtime cutover is excluded here.
+- [x] Migration version 4, files, fixture categories, explicit local rollback
+  behavior, and focused commands are frozen above.
+- [x] The companion execution runbook provides per-task ownership, RED/GREEN
+  commands, and final gates.
