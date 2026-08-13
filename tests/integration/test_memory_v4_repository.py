@@ -164,3 +164,33 @@ async def test_symmetric_partner_pair_has_one_canonical_active_record(household_
     assert (active[0].source_entity_id, active[0].target_entity_id) == tuple(
         sorted((felipe_id, ana_id))
     )
+
+
+@pytest.mark.integration
+async def test_relation_target_filter_returns_only_active_inverse_matches(
+    household_db: None,
+) -> None:
+    """Filter inverse child relationships by the requested parent ID."""
+    felipe_id = await upsert_entity(name="Felipe", type="person")
+    maximo_id = await upsert_entity(name="Maximo", type="person")
+    sofia_id = await upsert_entity(name="Sofia", type="person")
+    ana_id = await upsert_entity(name="Ana", type="person")
+    child_of = _predicate("hijo_de")
+    for child_id, parent_id in (
+        (maximo_id, felipe_id),
+        (sofia_id, felipe_id),
+        (ana_id, sofia_id),
+    ):
+        await assert_entity_relation(
+            source_entity_id=child_id,
+            target_entity_id=parent_id,
+            definition=child_of,
+        )
+
+    relations = await get_active_entity_relations(
+        definition=child_of,
+        target_entity_id=felipe_id,
+    )
+
+    assert {relation.source_entity_id for relation in relations} == {maximo_id, sofia_id}
+    assert {relation.target_entity_id for relation in relations} == {felipe_id}

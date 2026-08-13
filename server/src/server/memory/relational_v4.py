@@ -245,8 +245,21 @@ async def get_active_entity_relations(
     *,
     definition: PredicateDefinition,
     source_entity_id: int | None = None,
+    target_entity_id: int | None = None,
 ) -> list[EntityRelationV4]:
-    """Return active relations for repository tests and future policy-gated callers."""
+    """Return active relations for repository tests and future policy-gated callers.
+
+    This raw repository does not apply runtime authorization. Callers in the
+    cognitive path must authorize before requesting relation values.
+
+    Args:
+        definition: Closed relation predicate to retrieve.
+        source_entity_id: Optional source entity filter.
+        target_entity_id: Optional target entity filter.
+
+    Returns:
+        Active relation rows matching the supplied predicate and filters.
+    """
     if definition.kind is not PredicateKind.RELATION:
         raise ValueError(f"{definition.canonical_id} is not a relation predicate")
     conn = get_conn()
@@ -258,6 +271,9 @@ async def get_active_entity_relations(
     if source_entity_id is not None:
         sql += " AND source_entity_id = ?"
         params += (source_entity_id,)
+    if target_entity_id is not None:
+        sql += " AND target_entity_id = ?"
+        params += (target_entity_id,)
     sql += " ORDER BY id"
     cursor = await conn.execute(sql, params)
     rows = await cursor.fetchall()
