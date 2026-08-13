@@ -2,13 +2,14 @@
 
 > **Observed:** 2026-08-12
 >
-> **Implementation snapshot:** `3b01b58` (`feat(memory): add relational memory
-> v4 foundation (#40)`, merged to `main`)
+> **Implementation snapshot:** `e65834d` (`docs(cognition): record P0.5 merge
+> evidence (#43)`, on `main`)
 >
-> **Verification boundary:** P0.3 code, configuration, and local tests were
+> **Verification boundary:** P0.3/P0.4 code and P0.5-A policy seams were
 > inspected. P0.4 passed `just gate` (527 tests) before PR #40 merged it,
 > adding an isolated v4 storage/migration foundation while retaining the v3
-> runtime reader/writer.
+> runtime reader/writer. P0.5-A later passed its local 546-test gate and
+> GitHub CI before PR #42 merged its policy/role/audit foundation.
 > Prior P0.3/P0-S verification includes `just lint`, `just typecheck`, `just
 > test` (514 passed), `just audit`, and `just check`; P0-S2 evidence includes GitHub CI and
 > `just services` detecting configured local models. Camera, microphone, LAN,
@@ -74,8 +75,10 @@ gap prevents owner-by-default memory disclosure.
 - `ToolRegistry` and deterministic family/profile/relationship tools; P0.3 has
   two closed calendar helpers and deliberately does not justify a registry;
 - policy-gated v4 runtime reader/writer cutover and deterministic family tools;
-  P0.5-A policy/role/audit/controller foundation is implemented, but P0.5-B
-  must be revalidated before any protected retrieval is connected;
+  P0.5-A policy/role/audit/controller foundation is implemented, and the
+  P0.5-B design is tracked in
+  [Plan 0008](../plans/0008-policy-gated-v4-household-tools-design.md).
+  Its implementation has not begun; no protected v4 retrieval is connected;
 - speaker recognition, diarization, and identity fusion;
 - typed `SceneObservation`, `WorldState`, tracking, scene graph, and spatial
   memory;

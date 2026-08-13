@@ -50,12 +50,14 @@ that its canonical plan does not explicitly permit.
 | [`0005-relational-memory-v4-implementation.md`](0005-relational-memory-v4-implementation.md) | P0.4 foundation | Complete | Added v4 schema/repositories and an explicit dry-run-first local migration, without runtime cutover before P0.5. |
 | [`0006-household-authorization.md`](0006-household-authorization.md) | P0.5 design | Approved | Defines the complete deterministic authorization boundary and its trust decisions. |
 | [`0007-household-authorization-foundation.md`](0007-household-authorization-foundation.md) | P0.5-A | Complete | Added fail-closed policy, local roles/audit/bootstrap, and controller enforcement without v4 runtime retrieval; merged as `960f160` (PR #42). |
+| [`0008-policy-gated-v4-household-tools-design.md`](0008-policy-gated-v4-household-tools-design.md) | P0.5-B design | Draft | Revalidated the safe v4 read/tool cutover, including the consent-gated child-data boundary, before an executable plan is written. |
 
 Plans 0002, 0002a, 0002b, 0002c, 0003, the Plan 0004 design, and Plan 0005 are
 complete with recorded tests and quality gates. Plan 0007 passed its local
 P0.5-A gates and GitHub CI, then merged to `main` as `960f160` through PR #42
-on 2026-08-12. P0.5-B and later plans remain Draft and are revalidated just in
-time before becoming executable.
+on 2026-08-12. Plan 0008 records the P0.5-B read/tool design after current-tree
+revalidation; its implementation remains Draft until the design review is
+accepted. Later plans are revalidated just in time before becoming executable.
 
 ## Plan boundaries
 
@@ -111,6 +113,15 @@ decision is delegated to an LLM. Plan 0007 implements P0.5-A only: typed
 fail-closed policy, local role/audit storage and owner bootstrap, then policy
 enforcement before protected controller delegation. A later P0.5-B plan owns
 any v4 retrieval or family-tool cutover.
+
+### Plan 0008 — Policy-gated v4 reads and deterministic family tools
+
+Plan 0008 closes the design gap between the P0.5-A policy boundary and P0.4
+v4 storage. It keeps public chat unknown, authorizes and audits before every
+tool and raw v4 read, and makes the existing `child_data` classification for
+`child_of` and `birth_date` explicit. An implementation plan may supply a
+trusted internal test seam, but it cannot add a public identity or consent path;
+those remain P1 onboarding work.
 
 ## Common constraints
 

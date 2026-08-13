@@ -59,7 +59,10 @@ the complete P0.5-A implementation: deterministic fail-closed policy, local
 role bootstrap/audit, and controller enforcement. Its local gates and GitHub
 CI passed; PR #42 merged to `main` as `960f160` on 2026-08-12.
 They do not authorize P0.5-B v4 runtime retrieval or family tools; that
-follow-up remains Draft until its exact seams are revalidated.
+follow-up is designed in
+[Plan 0008](0008-policy-gated-v4-household-tools-design.md). Plan 0008 is
+Draft documentation only: an executable P0.5-B implementation plan is written
+only after the design review and a fresh revalidation of its exact seams.
 
 The [P0 cognitive portfolio design](p0-cognitive-plan-portfolio-design.md)
 links every current P0 plan and records their dependency order and status.
