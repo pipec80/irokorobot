@@ -189,7 +189,12 @@ explicit rules; denials are auditable and do not leak protected facts.
 
 **P0.5 overall exit gate:** policy-gated v4 retrieval/model-context and family
 tools are added under a separately revalidated P0.5-B plan; protected values
-are filtered before retrieval and never enter a prompt when denied.
+are filtered before retrieval and never enter a prompt when denied. The current
+[Plan 0008 design](../plans/0008-policy-gated-v4-household-tools-design.md)
+keeps child relationships and birth dates consent-gated and public chat
+unknown-by-default; it does not authorize a public identity or consent path.
+[Plan 0009](../plans/0009-policy-gated-v4-reader.md) is Ready for this first
+reader-only cut; its B2 family tools remain Draft.
 
 ## P1 — Situated household awareness
 
@@ -341,7 +346,6 @@ expand scope. Run the listed verification. Do not commit unless asked.
 [Plan 0002a](../plans/0002a-local-first-provider-quarantine.md) are complete.
 Plans 0002b, 0002c, 0003, the Plan 0004 design, and Plan 0005 are complete;
 Plan 0005 merged as `3b01b58` through PR #40. Plan 0007 P0.5-A merged as
-`960f160` through PR #42. P0.5-B and later plans remain `Draft` until their
-prerequisites and current tree are revalidated. Later plans are written just in
-time after the previous exit gate; otherwise they encode guesses about code
-that has already moved.
+`960f160` through PR #42. Plan 0008 is approved and Plan 0009 is Ready for
+P0.5-B1 only. Later plans are written just in time after the previous exit
+gate; otherwise they encode guesses about code that has already moved.
