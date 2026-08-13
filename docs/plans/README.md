@@ -61,9 +61,11 @@ CI passed; PR #42 merged to `main` as `960f160` on 2026-08-12.
 They do not authorize P0.5-B v4 runtime retrieval or family tools; that
 follow-up is designed in
 [Plan 0008](0008-policy-gated-v4-household-tools-design.md). Its P0.5-B1
-[Plan 0009](0009-policy-gated-v4-reader.md) is Ready: it is limited to the
-policy-gated v4 reader and target-ID query filter. P0.5-B2 family tools and
-the final P0 closure remain Draft until B1 has merge evidence.
+[Plan 0009](0009-policy-gated-v4-reader.md) is complete: PR #45 merged as
+`a7550d0` on 2026-08-13 after local gates (555 tests) and green GitHub CI. It
+adds only the policy-gated v4 reader and target-ID query filter. P0.5-B2
+family tools and the final P0 closure remain Draft and require a fresh
+revalidation.
 
 The [P0 cognitive portfolio design](p0-cognitive-plan-portfolio-design.md)
 links every current P0 plan and records their dependency order and status.

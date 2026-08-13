@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use
 > `superpowers:executing-plans` to implement this plan task-by-task. Steps use
-> checkbox (`- [ ]`) syntax for tracking.
+> checkbox (`- [x]`) syntax for execution history.
 
 **Goal:** Add an auditable, policy-gated reader for bounded active v4 literal
 facts and entity relations, without connecting any v4 value to controller,
@@ -140,7 +140,7 @@ them as `unknown` or `unauthorized`.
 **Produces:** Target-filtered active relation lookup with parameterized
 intersection semantics.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add this test beside existing relation tests:
 
@@ -170,13 +170,13 @@ async def test_relation_target_filter_returns_only_active_inverse_matches(
     assert {relation.target_entity_id for relation in relations} == {felipe_id}
 ```
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run: `uv run pytest tests/integration/test_memory_v4_repository.py::test_relation_target_filter_returns_only_active_inverse_matches -v`
 
 Expected: `FAIL` because the function has no `target_entity_id` parameter.
 
-- [ ] **Step 3: Implement the minimal filter**
+- [x] **Step 3: Implement the minimal filter**
 
 Extend only the existing query builder:
 
@@ -192,13 +192,13 @@ if target_entity_id is not None:
 Update the public docstring to name both filters and preserve the explicit
 statement that this raw repository has no runtime authorization behavior.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 Run: `uv run pytest tests/integration/test_memory_v4_repository.py -v`
 
 Expected: all repository tests pass, including the target filter.
 
-- [ ] **Step 5: Review and commit**
+- [x] **Step 5: Review and commit**
 
 Run `git diff --check`; inspect that only the filter/test changed.
 
@@ -216,7 +216,7 @@ raw v4 row models, and injected read collaborators.
 **Produces:** `PolicyGatedV4Reader`, `LiteralReadResult`, and
 `RelationReadResult` for later internal application code only.
 
-- [ ] **Step 1: Write the failing unit tests**
+- [x] **Step 1: Write the failing unit tests**
 
 Create these fixed helpers before the tests; imports are the matching existing
 P0.2/P0.4/P0.5 contracts plus `AsyncMock`, `pytest`, and `UUID`:
@@ -341,13 +341,13 @@ Also cover: wrong/unsupported kind invokes no collaborator; allowed empty read
 is `UNKNOWN`; confirmation-required `child_of` audits but skips raw storage;
 and both/neither relation endpoint filters raise before all collaborators.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run: `uv run pytest tests/unit/test_policy_gated_v4_reader.py -v`
 
 Expected: `FAIL` with `ModuleNotFoundError` for the new reader module.
 
-- [ ] **Step 3: Implement the smallest service**
+- [x] **Step 3: Implement the smallest service**
 
 The authorization helper must follow this exact ordering:
 
@@ -390,7 +390,7 @@ relations = await self._relation_reader(
 Keep safe result builders private. Do not catch raw-reader exceptions, create
 SQL, import `controller`, `router`, `text_turn`, or a provider.
 
-- [ ] **Step 4: Verify GREEN and static checks**
+- [x] **Step 4: Verify GREEN and static checks**
 
 Run:
 
@@ -404,7 +404,7 @@ uv run pyright server/src/server/memory/policy_gated_v4_reader.py
 
 Expected: all pass without warning or suppression.
 
-- [ ] **Step 5: Privacy review and commit**
+- [x] **Step 5: Privacy review and commit**
 
 Confirm result objects expose neither policy reasons nor audit values; no
 free-text reaches SQL; and no module imports a router, controller, provider,
@@ -423,7 +423,7 @@ and the new service.
 **Produces:** Local integration evidence for allowed and denied reads without a
 model, real household database, or public route.
 
-- [ ] **Step 1: Write failing integration tests**
+- [x] **Step 1: Write failing integration tests**
 
 Create this fixture/helper boundary, mirroring the existing P0.4/P0.5 temporary
 database setup. It must never use a household database:
@@ -552,19 +552,19 @@ async def test_child_relation_requires_consent_before_target_read(
 Query the two audit rows only for action/category/decision/correlation and
 assert none contains a child name or any fact value.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run: `uv run pytest tests/integration/test_policy_gated_v4_reader.py -v`
 
 Expected: `FAIL` until the service composes actual repository/policy/audit
 collaborators correctly.
 
-- [ ] **Step 3: Make only test-supported corrections**
+- [x] **Step 3: Make only test-supported corrections**
 
 Correct reader or fixture contracts only. Do not add schema columns, change
 policy rules, add routes, or test against a household database.
 
-- [ ] **Step 4: Verify GREEN and regressions**
+- [x] **Step 4: Verify GREEN and regressions**
 
 Run:
 
@@ -577,7 +577,7 @@ uv run pytest tests/unit/test_household_authorization_policy.py -v
 Expected: all listed suites pass with no model, camera, microphone, LAN, cloud,
 or real household database involved.
 
-- [ ] **Step 5: Commit integration evidence**
+- [x] **Step 5: Commit integration evidence**
 
 Commit: `test(memory): cover policy-gated v4 reader`
 
@@ -593,7 +593,7 @@ Commit: `test(memory): cover policy-gated v4 reader`
 
 **Produces:** Evidence-backed B1 completion without marking B2 or P0 complete.
 
-- [ ] **Step 1: Check the boundary**
+- [x] **Step 1: Check the boundary**
 
 Run:
 
@@ -605,7 +605,7 @@ rg -n "policy_gated_v4_reader|literal_facts_v4|entity_relations_v4" server/src/s
 Expected: only the new reader reaches raw v4 retrieval. If controller, `/chat`,
 or `text_turn.py` reaches a v4 value, stop rather than widening B1.
 
-- [ ] **Step 2: Run final quality gates**
+- [x] **Step 2: Run final quality gates**
 
 Run:
 
@@ -621,18 +621,53 @@ git diff --check
 Expected: every command passes. Record actual results/counts and unavailable
 hardware/model checks; do not copy historical evidence.
 
-- [ ] **Step 3: Update evidence only after verification**
+- [x] **Step 3: Update evidence only after verification**
 
 Mark B1 complete only after local gates, scope/privacy review, PR CI, and merge
 evidence. State that B2 tools/controller, public trusted identity, consent
 persistence, and P1 onboarding remain unimplemented. Do not mark P0 complete.
 
-- [ ] **Step 4: Commit docs and open one PR**
+- [x] **Step 4: Commit docs and open one PR**
 
 Commit: `docs(cognition): record policy-gated v4 reader evidence`
 
 Merge only after GitHub CI is green. Return to updated `main` and revalidate
 before writing the B2 plan.
+
+## Execution evidence
+
+Plan 0009 is **Complete**. The implementation was split into three
+Conventional Commits on `feat/p05b-policy-gated-v4-reader`:
+
+- `9f43302 feat(memory): filter active v4 relations by target`
+- `7a64514 feat(memory): add policy-gated v4 reader`
+- `7df3537 test(memory): cover policy-gated v4 reader`
+
+Observed RED evidence:
+
+- the target-filter test failed with `TypeError` because
+  `get_active_entity_relations()` did not yet accept `target_entity_id`;
+- the reader unit suite failed with `ModuleNotFoundError` before the new reader
+  module existed.
+
+Observed GREEN evidence included the targeted repository suite (7 passed), the
+reader unit suite (6 passed), the reader SQLite/audit suite (2 passed), and
+the combined relevant P0 suites (25 passed). The final local gates passed:
+`just lint`; `just typecheck` (mypy: 73 source files with no issues; pyright:
+0 errors); `just test` (555 passed in 54.17s); `just audit` (no known
+vulnerabilities); `just check`; and `git diff --check`.
+
+PR #45 passed GitHub conventional-title, quality/security, automated-test,
+Python-analysis, and CodeQL checks, then squash-merged to `main` as
+`a7550d0` on 2026-08-13. The reviewed boundary confirmed no references to the
+reader or v4 tables from `controller.py`, `routers/chat.py`, or `text_turn.py`.
+No camera, microphone, LAN, real Ollama inference, biometric enrollment, or
+hardware acceptance was executed; none is required or reachable in this
+reader-only slice.
+
+P0.5-B2 family tools/controller wiring, public trusted identity, consent
+persistence, and P1 onboarding remain unimplemented. This plan does not close
+P0.
 
 ## Rollback
 

@@ -1,15 +1,17 @@
 # Current cognitive implementation
 
-> **Observed:** 2026-08-12
+> **Observed:** 2026-08-13
 >
-> **Implementation snapshot:** `e65834d` (`docs(cognition): record P0.5 merge
-> evidence (#43)`, on `main`)
+> **Implementation snapshot:** `a7550d0` (`feat(memory): add policy-gated v4
+> reader (#45)`, on `main`)
 >
 > **Verification boundary:** P0.3/P0.4 code and P0.5-A policy seams were
 > inspected. P0.4 passed `just gate` (527 tests) before PR #40 merged it,
 > adding an isolated v4 storage/migration foundation while retaining the v3
 > runtime reader/writer. P0.5-A later passed its local 546-test gate and
-> GitHub CI before PR #42 merged its policy/role/audit foundation.
+> GitHub CI before PR #42 merged its policy/role/audit foundation. P0.5-B1
+> later passed its local 555-test gate and GitHub CI before PR #45 merged its
+> policy-gated, internal v4 reader.
 > Prior P0.3/P0-S verification includes `just lint`, `just typecheck`, `just
 > test` (514 passed), `just audit`, and `just check`; P0-S2 evidence includes GitHub CI and
 > `just services` detecting configured local models. Camera, microphone, LAN,
@@ -59,13 +61,14 @@ gap prevents owner-by-default memory disclosure.
 | Working memory | Implemented/restricted | Unknown public turns use no persistent history. |
 | Episodic/vector memory | Implemented/legacy | SQLite + sqlite-vec; top-k retrieval has no policy filter or threshold. |
 | Entities and facts v3 | Implemented/legacy | String relation targets and universal fact supersession remain. |
-| Relational memory v4 foundation | Implemented/isolated | Additive SQLite tables, typed predicate registry, entity-ID relations, cardinality/lifecycle repositories, and a dry-run-first local legacy migration ledger. No v4 data reaches runtime prompts before P0.5. |
+| Relational memory v4 foundation | Implemented/isolated | Additive SQLite tables, typed predicate registry, entity-ID relations, cardinality/lifecycle repositories, a dry-run-first local legacy migration ledger, and a bounded raw target-ID relation filter. |
 | Consolidation | Implemented/gated | LLM extraction plus deterministic normalization; requires manual identity. |
 | Typed cognitive vocabulary | Implemented | Immutable evidence/event/context/knowledge contracts. |
 | Active person context | Implemented/internal | Manual/session evidence only; persisted role can be carried as context but identity is not authorization. |
 | P0.3 cognitive controller | Implemented/chat pilot | Fresh typed event; immutable response plan; no FastAPI, SQLite, or provider dependency in the core. |
 | Deterministic calendar tools | Implemented/bounded | Current date and strict ISO birth-date age only; age is derived, never persisted. |
 | Household authorization P0.5-A | Implemented/foundation | Pure fail-closed policy; additive role/audit SQLite records; explicit local owner bootstrap; `/chat` evaluates/audits protected branches as unknown before legacy delegation. |
+| Household authorization P0.5-B1 reader | Implemented/internal | Closed-predicate v4 literal/relation reads evaluate and audit policy before storage; outputs are frozen `known`, `unknown`, or non-disclosing `unauthorized`. No controller, public HTTP, prompt, or LLM path invokes it. |
 | Vision/VLM | Implemented/on demand | One ephemeral frame, free-text scene description. |
 | Face profiles | Implemented/sensitive | SQLite-linked embeddings; not an active-person adapter. |
 | Robot client | Implemented/body adapter | PC microphone/webcam/speaker workflow; not cognitive logic. |
@@ -74,13 +77,12 @@ gap prevents owner-by-default memory disclosure.
 
 - `ToolRegistry` and deterministic family/profile/relationship tools; P0.3 has
   two closed calendar helpers and deliberately does not justify a registry;
-- policy-gated v4 runtime reader/writer cutover and deterministic family tools;
-  P0.5-A policy/role/audit/controller foundation is implemented, and the
-  P0.5-B design is tracked in
-  [Plan 0008](../plans/0008-policy-gated-v4-household-tools-design.md).
-  [Plan 0009](../plans/0009-policy-gated-v4-reader.md) is Ready to implement
-  the reader-only cut. Its implementation has not begun; no protected v4
-  retrieval is connected;
+- controller/tool use of policy-gated v4 reads and deterministic family tools;
+  P0.5-B1 supplies only the internal reader tracked in
+  [Plan 0009](../plans/0009-policy-gated-v4-reader.md). B2 remains an
+  unplanned/revalidated cutover: public chat remains unknown-by-default and no
+  protected v4 value is connected to a controller, prompt, LLM, or public
+  endpoint;
 - speaker recognition, diarization, and identity fusion;
 - typed `SceneObservation`, `WorldState`, tracking, scene graph, and spatial
   memory;
@@ -114,6 +116,13 @@ The P0-S audit is authoritative for immediate pre-controller work:
   protected `/chat` requests are denied and audited before legacy generation.
   GitHub CI passed and PR #42 merged as `960f160`. Authorization still owns
   any v4 runtime retrieval or writes.
+- Plan 0009 P0.5-B1 is **Complete**. PR #45 merged as `a7550d0` after local
+  `just lint`, `just typecheck`, `just test` (555 passed in 54.17s), `just
+  audit`, and `just check`, plus green GitHub title, quality/security, test,
+  Python analysis, and CodeQL checks. It adds an internal policy-gated v4
+  reader and inverse target-ID filter only. B2 tools/controller wiring,
+  public trusted identity, consent persistence, and P1 onboarding remain
+  deliberately unimplemented.
 
 See [P0-S hardening audit](p0-s-hardening-audit.md) for evidence and
 [plans](../plans/README.md) for execution status.
