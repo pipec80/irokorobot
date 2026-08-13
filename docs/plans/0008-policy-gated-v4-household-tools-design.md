@@ -2,12 +2,14 @@
 
 ## Status
 
-**Draft design — reviewed against `main` at `e65834d` on 2026-08-12.**
+**Approved design — reviewed against `main` at `e65834d` and approved on
+2026-08-12.**
 
 This document defines the remaining P0.5-B work required to close the P0
 trust foundation. It is not executable implementation authority. A separate,
 small implementation plan becomes `Ready` only after this design is reviewed
-and its exact current seams are revalidated.
+and its exact current seams are revalidated. [Plan 0009](0009-policy-gated-v4-reader.md)
+is the resulting Ready P0.5-B1 plan; it is limited to the reader boundary.
 
 P0.5-A is complete in [Plan 0007](0007-household-authorization-foundation.md):
 it supplies a pure fail-closed policy, persisted household roles, a safe audit

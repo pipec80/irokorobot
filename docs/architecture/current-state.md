@@ -78,7 +78,9 @@ gap prevents owner-by-default memory disclosure.
   P0.5-A policy/role/audit/controller foundation is implemented, and the
   P0.5-B design is tracked in
   [Plan 0008](../plans/0008-policy-gated-v4-household-tools-design.md).
-  Its implementation has not begun; no protected v4 retrieval is connected;
+  [Plan 0009](../plans/0009-policy-gated-v4-reader.md) is Ready to implement
+  the reader-only cut. Its implementation has not begun; no protected v4
+  retrieval is connected;
 - speaker recognition, diarization, and identity fusion;
 - typed `SceneObservation`, `WorldState`, tracking, scene graph, and spatial
   memory;
