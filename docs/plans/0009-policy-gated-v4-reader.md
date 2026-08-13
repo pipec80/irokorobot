@@ -230,10 +230,14 @@ def _actor(role: HouseholdRole, person_id: int | None) -> ActivePersonContext:
     return ActivePersonContext(
         person_id=person_id,
         display_name="Ada" if person_id is not None else None,
-        status=ActivePersonStatus.IDENTIFIED if person_id is not None else ActivePersonStatus.UNKNOWN,
+        status=ActivePersonStatus.IDENTIFIED
+        if person_id is not None
+        else ActivePersonStatus.UNKNOWN,
         confidence=Confidence(
             score=1.0 if person_id is not None else 0.0,
-            basis=ConfidenceBasis.ASSERTED if person_id is not None else ConfidenceBasis.NOT_APPLICABLE,
+            basis=ConfidenceBasis.ASSERTED
+            if person_id is not None
+            else ConfidenceBasis.NOT_APPLICABLE,
             calibrated=False,
         ),
         role=role,
@@ -244,19 +248,32 @@ def _actor(role: HouseholdRole, person_id: int | None) -> ActivePersonContext:
 
 def _literal_fact() -> LiteralFactV4:
     return LiteralFactV4(
-        id=1, subject_entity_id=7, predicate="likes", value_text="robotica",
-        confidence=1.0, source_memory_id=None, asserted_at="2026-08-12T12:00:00+00:00",
-        valid_from=None, valid_to=None, lifecycle=AssertionLifecycle.ACTIVE,
-        visibility="household", sensitivity="normal", superseded_at=None, superseded_by=None,
+        id=1,
+        subject_entity_id=7,
+        predicate="likes",
+        value_text="robotica",
+        confidence=1.0,
+        source_memory_id=None,
+        asserted_at="2026-08-12T12:00:00+00:00",
+        valid_from=None,
+        valid_to=None,
+        lifecycle=AssertionLifecycle.ACTIVE,
+        visibility="household",
+        sensitivity="normal",
+        superseded_at=None,
+        superseded_by=None,
     )
 
 
 def _allowed_decision(request: AuthorizationRequest, calls: list[str]) -> AuthorizationDecision:
     calls.append("policy")
     return AuthorizationDecision(
-        decision=AuthorizationStatus.ALLOWED, action=request.action,
-        data_categories=frozenset({"household", "normal"}), policy_id="test.allowed",
-        reason="safe test reason", evaluated_at=request.requested_at,
+        decision=AuthorizationStatus.ALLOWED,
+        action=request.action,
+        data_categories=frozenset({"household", "normal"}),
+        policy_id="test.allowed",
+        reason="safe test reason",
+        evaluated_at=request.requested_at,
         correlation_id=request.correlation_id,
     )
 
@@ -283,8 +300,11 @@ async def test_unknown_actor_is_audited_and_cannot_read_preferences() -> None:
         literal_reader=raw_reader,
         audit_writer=audit_writer,
     ).read_active_literals(
-        actor=_actor(HouseholdRole.UNKNOWN, None), subject_entity_id=7, predicate_alias="le_gusta",
-        consent=ConsentStatus.NOT_REQUIRED, correlation_id=_CORRELATION_ID,
+        actor=_actor(HouseholdRole.UNKNOWN, None),
+        subject_entity_id=7,
+        predicate_alias="le_gusta",
+        consent=ConsentStatus.NOT_REQUIRED,
+        correlation_id=_CORRELATION_ID,
         requested_at=_NOW,
     )
 
@@ -304,8 +324,11 @@ async def test_allowed_read_audits_before_raw_reader() -> None:
         literal_reader=lambda **_kwargs: _one_literal(calls),
     )
     result = await reader.read_active_literals(
-        actor=_actor(HouseholdRole.OWNER, 7), subject_entity_id=7, predicate_alias="le_gusta",
-        consent=ConsentStatus.NOT_REQUIRED, correlation_id=_CORRELATION_ID,
+        actor=_actor(HouseholdRole.OWNER, 7),
+        subject_entity_id=7,
+        predicate_alias="le_gusta",
+        consent=ConsentStatus.NOT_REQUIRED,
+        correlation_id=_CORRELATION_ID,
         requested_at=_NOW,
     )
 
@@ -456,9 +479,12 @@ async def test_owner_reads_normal_preference_and_audit_never_contains_value(
     )
 
     result = await PolicyGatedV4Reader().read_active_literals(
-        actor=_identified_owner(owner_id), subject_entity_id=owner_id,
-        predicate_alias="le_gusta", consent=ConsentStatus.NOT_REQUIRED,
-        correlation_id=_CORRELATION_ID, requested_at=_NOW,
+        actor=_identified_owner(owner_id),
+        subject_entity_id=owner_id,
+        predicate_alias="le_gusta",
+        consent=ConsentStatus.NOT_REQUIRED,
+        correlation_id=_CORRELATION_ID,
+        requested_at=_NOW,
     )
 
     assert result.status is KnowledgeStatus.KNOWN
@@ -469,7 +495,13 @@ async def test_owner_reads_normal_preference_and_audit_never_contains_value(
     rows = await cursor.fetchall()
     await cursor.close()
     assert rows == [
-        ("read_household_data", "household,normal", "allowed", "p0.5.owner-household", "Policy permits normal household data."),
+        (
+            "read_household_data",
+            "household,normal",
+            "allowed",
+            "p0.5.owner-household",
+            "Policy permits normal household data.",
+        ),
     ]
     assert all("robotica" not in str(column) for row in rows for column in row)
 ```
@@ -495,14 +527,20 @@ async def test_child_relation_requires_consent_before_target_read(
     reader = PolicyGatedV4Reader()
 
     denied = await reader.read_active_relations(
-        actor=_identified_owner(owner_id), predicate_alias="hijo_de",
-        target_entity_id=owner_id, consent=ConsentStatus.NOT_REQUIRED,
-        correlation_id=_CORRELATION_ID, requested_at=_NOW,
+        actor=_identified_owner(owner_id),
+        predicate_alias="hijo_de",
+        target_entity_id=owner_id,
+        consent=ConsentStatus.NOT_REQUIRED,
+        correlation_id=_CORRELATION_ID,
+        requested_at=_NOW,
     )
     allowed = await reader.read_active_relations(
-        actor=_identified_owner(owner_id), predicate_alias="hijo_de",
-        target_entity_id=owner_id, consent=ConsentStatus.GRANTED,
-        correlation_id=UUID("33333333-3333-3333-3333-333333333333"), requested_at=_NOW,
+        actor=_identified_owner(owner_id),
+        predicate_alias="hijo_de",
+        target_entity_id=owner_id,
+        consent=ConsentStatus.GRANTED,
+        correlation_id=UUID("33333333-3333-3333-3333-333333333333"),
+        requested_at=_NOW,
     )
 
     assert denied.status is KnowledgeStatus.UNAUTHORIZED
