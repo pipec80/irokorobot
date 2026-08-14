@@ -1,7 +1,7 @@
 """Integration tests for memory behavior through POST /transcribe."""
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -19,6 +19,7 @@ from server.exceptions import BrainMemoryError, LLMError
 from server.routers import transcribe as transcribe_module
 from server.schemas import MemoryContext, TurnExtraction
 from server.settings import settings
+from server.text_turn import TextTurnResult
 
 from scripts import eval_consolidation
 from server import llm, pipeline, stt, text_turn, tts
@@ -293,3 +294,42 @@ def test_hotword_failure_degrades_gracefully(
 
     assert response.status_code == 200
     assert response.json()["text_heard"] == "hola robot"
+
+
+@pytest.mark.integration
+def test_transcribe_private_family_question_is_audited_before_memory_or_legacy(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Public voice must deny family data before a reader or legacy model sees it."""
+    process = AsyncMock(return_value=TextTurnResult("legacy", "joy", 42, False))
+    audit = AsyncMock()
+    reader = Mock()
+    tools = Mock()
+    tools.get_children = AsyncMock()
+    tools.count_children = AsyncMock()
+    reader_factory = Mock(return_value=reader)
+    tools_factory = Mock(return_value=tools)
+    monkeypatch.setattr(stt, "transcribe", AsyncMock(return_value="¿Cómo se llaman mis hijos?"))
+    monkeypatch.setattr(transcribe_module, "process_text_turn", process)
+    monkeypatch.setattr(transcribe_module, "record_authorization_decision", audit, raising=False)
+    monkeypatch.setattr(transcribe_module, "PolicyGatedV4Reader", reader_factory, raising=False)
+    monkeypatch.setattr(transcribe_module, "HouseholdKnowledgeTools", tools_factory, raising=False)
+
+    response = client.post(
+        "/transcribe",
+        files={"audio": ("a.wav", silence_wav_bytes, "audio/wav")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["llm_response"] == (
+        "No puedo acceder a información familiar privada sin una autorización comprobada."
+    )
+    reader_factory.assert_called_once_with()
+    tools_factory.assert_called_once_with(reader=reader)
+    tools.get_children.assert_not_awaited()
+    tools.count_children.assert_not_awaited()
+    assert reader.mock_calls == []
+    process.assert_not_awaited()
+    audit.assert_awaited_once()

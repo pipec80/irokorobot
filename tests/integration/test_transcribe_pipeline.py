@@ -1,5 +1,6 @@
 """Integration tests for POST /transcribe orchestration and error mapping."""
 
+from datetime import date
 from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
@@ -43,6 +44,50 @@ def test_transcribe_happy_path_returns_all_fields(
         "vision_requested": False,
     }
     assert all(isinstance(value, int) and value >= 0 for value in timing_fields.values())
+
+
+@pytest.mark.integration
+def test_transcribe_voice_date_uses_controller_without_legacy_delegate(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A spoken current-date request must use the deterministic controller route."""
+    process = AsyncMock(return_value=TextTurnResult("legacy", "joy", 42, False))
+    tts_mock = AsyncMock(return_value=("AAAA", 42))
+    monkeypatch.setattr(stt, "transcribe", AsyncMock(return_value="¿Qué fecha es hoy?"))
+    monkeypatch.setattr(transcribe_module, "process_text_turn", process)
+    monkeypatch.setattr(transcribe_module, "_today", lambda: date(2026, 8, 12), raising=False)
+    monkeypatch.setattr(tts, "synthesize", tts_mock)
+
+    response = client.post(
+        "/transcribe",
+        files={"audio": ("a.wav", silence_wav_bytes, "audio/wav")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["llm_response"] == "Hoy es 2026-08-12."
+    assert response.json()["emotion"] == "neutral"
+    assert response.json()["llm_ms"] == 0
+    process.assert_not_awaited()
+    tts_mock.assert_awaited_once_with("Hoy es 2026-08-12.")
+
+
+@pytest.mark.integration
+def test_voice_event_from_transcript_is_fresh_and_opaque() -> None:
+    """A voice transcript must become a new typed event with no caller identity."""
+    first = transcribe_module._voice_event_from_transcript("hola")
+    second = transcribe_module._voice_event_from_transcript("hola")
+
+    assert first.event_type == "text.turn"
+    assert first.source == "audio.transcribe"
+    assert first.payload.message == "hola"
+    assert first.payload.conversation_id.startswith("interaction:")
+    assert first.occurred_at == first.recorded_at
+    assert first.occurred_at.tzinfo is not None
+    assert first.event_id != second.event_id
+    assert first.correlation_id != second.correlation_id
+    assert first.payload.conversation_id != second.payload.conversation_id
 
 
 @pytest.mark.integration

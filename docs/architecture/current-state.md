@@ -17,8 +17,11 @@
 > seam. The P0 closure revalidation on merged `main` repeated the focused
 > acceptance suite (20 passed), all five local gates, and `git diff --check`
 > before this evidence update. This verifies the P0 foundation, not operator
-> acceptance: the robot voice path still bypasses the controller/tools. The
-> runtime-acceptance closure is proposed in [Plan 0012](../plans/0012-p0-runtime-acceptance-design.md).
+> acceptance: [Plan 0013](../plans/0013-p0-voice-controller-bridge.md) now
+> routes the classic voice path through the controller with an unknown public
+> actor. Its automated evidence and human `just run-server` plus
+> `just run-robot` acceptance remain required before this document can claim
+> P0 operator acceptance. Trusted owner runtime access remains an R2 task.
 > Prior P0.3/P0-S verification includes `just lint`, `just typecheck`, `just
 > test` (514 passed), `just audit`, and `just check`; P0-S2 evidence includes GitHub CI and
 > `just services` detecting configured local models. Camera, microphone, LAN,
@@ -43,7 +46,7 @@ unknown ActivePersonContext by default
       unknown -> no persistent retrieval or consolidation
                 |
                 v
-P0.3 `/chat` controller
+P0 controller adapters (`/chat` and classic `/transcribe`)
   |-- deterministic date/strict-ISO age
   |-- public protected household -> unauthorized
   |-- trusted internal child list/count -> policy-gated v4 tools
@@ -73,13 +76,13 @@ gap prevents owner-by-default memory disclosure.
 | Consolidation | Implemented/gated | LLM extraction plus deterministic normalization; requires manual identity. |
 | Typed cognitive vocabulary | Implemented | Immutable evidence/event/context/knowledge contracts. |
 | Active person context | Implemented/internal | Manual/session evidence only; persisted role can be carried as context but identity is not authorization. |
-| P0.3 cognitive controller | Implemented/chat pilot | Fresh typed event; immutable response plan; no FastAPI, SQLite, or provider dependency in the core. |
+| P0.3 cognitive controller | Implemented/chat and classic-voice bridge | Fresh typed event; immutable response plan; no FastAPI, SQLite, or provider dependency in the core. Classic voice enters with a public unknown actor. |
 | Deterministic calendar tools | Implemented/bounded | Current date and strict ISO birth-date age only; age is derived, never persisted. |
 | Household authorization P0.5-A | Implemented/foundation | Pure fail-closed policy; additive role/audit SQLite records; explicit local owner bootstrap; `/chat` evaluates/audits protected branches as unknown before legacy delegation. |
 | Household authorization P0.5-B1 reader | Implemented/internal | Closed-predicate v4 literal/relation reads evaluate and audit policy before storage; outputs are frozen `known`, `unknown`, or non-disclosing `unauthorized`. B2 trusted internal tools invoke it; no public HTTP, prompt, or LLM path does. |
 | Household tools P0.5-B2 | Implemented/internal | Typed child list/count, preferences, birth date, and derived age tools authorize and audit before B1 reads; child relation/birth data require injected consent. |
 | B2 controller dispatch | Implemented/trusted-only | Two self-child question patterns produce deterministic response plans through injected actor/consent seams. Public `/chat` cannot provide either and never reaches the v4 reader. |
-| P0 runtime acceptance | Pending | `/transcribe` and classic robot turns still delegate directly to the legacy text path; they do not yet traverse the controller or family tools. |
+| P0 runtime acceptance | R1 automated; operator acceptance pending | Classic `/transcribe` creates a typed event and enters the controller. Public voice remains unknown, so date is deterministic and protected family data is denied before legacy/v4 access. R2 trusted-session acceptance remains unimplemented. |
 | Vision/VLM | Implemented/on demand | One ephemeral frame, free-text scene description. |
 | Face profiles | Implemented/sensitive | SQLite-linked embeddings; not an active-person adapter. |
 | Robot client | Implemented/body adapter | PC microphone/webcam/speaker workflow; not cognitive logic. |
@@ -169,8 +172,10 @@ See [P0-S hardening audit](p0-s-hardening-audit.md) for evidence and
   vulnerabilities; and `just check` passed every configured pre-commit hook.
 
 The P0 foundation evidence above does not prove an operator can exercise every
-P0 capability via `just run-server` and `just run-robot`. That runtime gate is
-open in [Plan 0012](../plans/0012-p0-runtime-acceptance-design.md); P1 remains
+P0 capability via `just run-server` and `just run-robot`. R1 runtime proof is
+defined in [Plan 0013](../plans/0013-p0-voice-controller-bridge.md); the
+trusted-session R2 acceptance gate remains open in
+[Plan 0012](../plans/0012-p0-runtime-acceptance-design.md). P1 remains
 unstarted.
 
 These checks do not prove a real Ollama `/chat` request, camera, microphone,

@@ -3,18 +3,27 @@
 Audio contract: WAV · 16000 Hz · mono · int16.
 """
 
+from datetime import UTC, date, datetime
 import logging
 import time
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
 from server import vision
 from server.audio_contract import validate_wav_contract
-from server.cognition.identity import ActivePersonContext
+from server.cognition.authorization import evaluate_authorization
+from server.cognition.controller import CognitiveController
+from server.cognition.household_tools import HouseholdKnowledgeTools
+from server.cognition.identity import ActivePersonContext, ActivePersonStatus, HouseholdRole
+from server.cognition.models import CognitiveEvent, Confidence, ConfidenceBasis
+from server.cognition.response_plan import TextTurnPayload
 from server.exceptions import AudioContractError
 from server.memory.consolidation import consolidate_turn
+from server.memory.household_authorization import record_authorization_decision
+from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
 from server.pipeline import (
     _elapsed_ms,
     _log_pipeline_timing,
@@ -26,6 +35,7 @@ from server.settings import settings
 from server.streaming import stream_pipeline
 from server.text_turn import (
     ConsolidationScheduler,
+    TextTurnResult,
     new_interaction_scope,
     prepare_text_turn,
     process_text_turn,
@@ -34,6 +44,72 @@ from server.text_turn import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Audio"])
+
+
+def _today() -> date:
+    """Return the adapter-owned local date for deterministic P0 tools."""
+    return date.today()
+
+
+def _voice_event_from_transcript(message: str) -> CognitiveEvent[TextTurnPayload]:
+    """Translate one STT transcript into a fresh typed cognitive event."""
+    now = datetime.now(UTC)
+    return CognitiveEvent(
+        event_id=uuid4(),
+        schema_version=1,
+        event_type="text.turn",
+        occurred_at=now,
+        recorded_at=now,
+        source="audio.transcribe",
+        correlation_id=uuid4(),
+        causation_id=None,
+        subject_id=None,
+        payload=TextTurnPayload(
+            message=message,
+            conversation_id=new_interaction_scope(),
+        ),
+    )
+
+
+def _public_unknown_voice_actor(
+    event: CognitiveEvent[TextTurnPayload],
+) -> ActivePersonContext:
+    """Return the safe public voice actor without deriving an identity."""
+    return ActivePersonContext(
+        person_id=None,
+        display_name=None,
+        status=ActivePersonStatus.UNKNOWN,
+        confidence=Confidence(
+            score=0.0,
+            basis=ConfidenceBasis.NOT_APPLICABLE,
+            calibrated=False,
+            reason="Public voice provides no trusted identity evidence",
+        ),
+        role=HouseholdRole.UNKNOWN,
+        evidence=(),
+        resolved_at=event.occurred_at,
+    )
+
+
+def _voice_controller(background_tasks: BackgroundTasks) -> CognitiveController:
+    """Compose the bounded controller used by a classic public voice turn."""
+
+    async def legacy_turn(message: str, conversation_id: str) -> TextTurnResult:
+        """Delegate generic public conversation through the existing text service."""
+        return await process_text_turn(
+            message,
+            conversation_id,
+            schedule_consolidation=_consolidation_scheduler(background_tasks),
+        )
+
+    return CognitiveController(
+        today=_today,
+        legacy_turn=legacy_turn,
+        active_person_resolver=_public_unknown_voice_actor,
+        policy_evaluator=evaluate_authorization,
+        audit_writer=record_authorization_decision,
+        household_tools=HouseholdKnowledgeTools(reader=PolicyGatedV4Reader()),
+    )
 
 
 def _consolidation_scheduler(
@@ -123,23 +199,21 @@ async def transcribe(
             total_ms=total_ms,
         )
 
-    turn = await process_text_turn(
-        text_heard,
-        new_interaction_scope(),
-        schedule_consolidation=_consolidation_scheduler(background_tasks),
+    plan = await _voice_controller(background_tasks).handle(
+        _voice_event_from_transcript(text_heard)
     )
-    audio_base64, duration_ms, tts_ms = await _run_tts(turn.response)
+    audio_base64, duration_ms, tts_ms = await _run_tts(plan.response)
 
     total_ms = _elapsed_ms(request_start)
-    _log_pipeline_timing(stt_ms, turn.duration_ms, tts_ms, total_ms)
+    _log_pipeline_timing(stt_ms, plan.duration_ms, tts_ms, total_ms)
     return TranscribeResponse(
         text_heard=text_heard,
-        llm_response=turn.response,
+        llm_response=plan.response,
         audio_base64=audio_base64,
         duration_ms=duration_ms,
-        emotion=turn.emotion,
+        emotion=plan.emotion,
         stt_ms=stt_ms,
-        llm_ms=turn.duration_ms,
+        llm_ms=plan.duration_ms,
         tts_ms=tts_ms,
         total_ms=total_ms,
     )

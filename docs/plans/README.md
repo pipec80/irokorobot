@@ -68,9 +68,11 @@ adds only the policy-gated v4 reader and target-ID query filter. P0.5-B2
 as `0d16969` on 2026-08-14 after its local 571-test gate and green GitHub CI.
 The evidence-only [Plan 0011](0011-p0-closure-and-acceptance.md) is also
 complete after its merged-main revalidation. It closes foundation evidence, not
-the operator runtime gate: [Plan 0012](0012-p0-runtime-acceptance-design.md)
-is Proposed to connect P0 to `just run-server` plus `just run-robot`. P1 has
-not started.
+the operator runtime gate. [Plan 0012](0012-p0-runtime-acceptance-design.md)
+defines that closure; [Plan 0013](0013-p0-voice-controller-bridge.md) is its
+R1 classic-voice bridge. R1 requires automated gates and the documented manual
+server/robot checkpoint before completion. R2 trusted local acceptance and P1
+have not started.
 
 The [P0 cognitive portfolio design](p0-cognitive-plan-portfolio-design.md)
 links every current P0 plan and records their dependency order and status.
