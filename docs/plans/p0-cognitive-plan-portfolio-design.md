@@ -52,14 +52,17 @@ that its canonical plan does not explicitly permit.
 | [`0007-household-authorization-foundation.md`](0007-household-authorization-foundation.md) | P0.5-A | Complete | Added fail-closed policy, local roles/audit/bootstrap, and controller enforcement without v4 runtime retrieval; merged as `960f160` (PR #42). |
 | [`0008-policy-gated-v4-household-tools-design.md`](0008-policy-gated-v4-household-tools-design.md) | P0.5-B design | Approved | Revalidated the safe v4 read/tool cutover, including the consent-gated child-data boundary. |
 | [`0009-policy-gated-v4-reader.md`](0009-policy-gated-v4-reader.md) | P0.5-B1 | Complete | Added only the policy-gated v4 reader and inverse target filter; no controller, public identity, or family-tool cutover. Merged as `a7550d0` (PR #45). |
+| [`0010-policy-gated-v4-family-tools.md`](0010-policy-gated-v4-family-tools.md) | P0.5-B2 | Ready | Bounded deterministic family tools and self-child controller patterns over the policy-gated v4 reader. |
+| [`0011-p0-closure-and-acceptance.md`](0011-p0-closure-and-acceptance.md) | P0 closure | Draft | Evidence-only closure after B2 merge; it adds no P1 behavior. |
 
 Plans 0002, 0002a, 0002b, 0002c, 0003, the Plan 0004 design, and Plan 0005 are
 complete with recorded tests and quality gates. Plan 0007 passed its local
 P0.5-A gates and GitHub CI, then merged to `main` as `960f160` through PR #42
 on 2026-08-12. Plan 0008 remains approved; Plan 0009 passed its local
 555-test gate and GitHub CI, then merged as `a7550d0` through PR #45 on
-2026-08-13. P0.5-B2 and later plans are revalidated just in time before
-becoming executable.
+2026-08-13. Plan 0010 is Ready for P0.5-B2 after revalidation on 2026-08-14;
+Plan 0011 remains Draft until B2 merge. Later plans are revalidated just in
+time before becoming executable.
 
 ## Plan boundaries
 

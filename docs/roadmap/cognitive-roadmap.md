@@ -197,6 +197,11 @@ unknown-by-default; it does not authorize a public identity or consent path.
 merged as `a7550d0` on 2026-08-13 after its local 555-test gate and green
 GitHub CI. It adds the reader-only cut; B2 family tools remain Draft.
 
+**P0.5-B2 is Ready in [Plan 0010](../plans/0010-policy-gated-v4-family-tools.md).**
+It is limited to a policy-gated internal family-tool seam and two
+self-referential child-query patterns. Public chat remains unknown-by-default;
+P0 closure remains a separate evidence-only plan and P1 has not started.
+
 ## P1 — Situated household awareness
 
 ### P1.1 — Unified onboarding
