@@ -1,8 +1,9 @@
 # P0 Runtime Acceptance Runbook
 
-> **Status:** Draft acceptance contract — this runbook becomes executable only
-> after the implementation plan derived from
-> [Plan 0012](../plans/0012-p0-runtime-acceptance-design.md) is merged.
+> **Status:** R1 manual checkpoint ready after its branch passes automated
+> gates; R2 family-data acceptance remains a draft. The governing design is
+> [Plan 0012](../plans/0012-p0-runtime-acceptance-design.md) and the R1
+> implementation scope is [Plan 0013](../plans/0013-p0-voice-controller-bridge.md).
 
 ## Purpose
 
@@ -20,8 +21,8 @@ P0 acceptance, even if automated checks pass.
 
 ## Existing commands
 
-These commands already exist. The future implementation adds the documented
-acceptance bootstrap/session commands before this runbook is marked Ready.
+These commands already exist. R2 will add bounded local-only interview and
+session commands; do not invent or use them during R1.
 
 ```powershell
 just reset-db
@@ -30,7 +31,34 @@ just run-server
 just run-robot
 ```
 
-## Acceptance procedure after implementation
+## R1 manual checkpoint: controller bridge without identity
+
+Do this only after the R1 branch or its merged commit has passed the automated
+gates. No reset database, owner data, enrollment, name, face, or session is
+needed for this checkpoint.
+
+1. Confirm `ROBOT_STREAMING=false`, then run `just services`.
+2. In one terminal run `just run-server`.
+3. In another terminal run `just run-robot`.
+4. Speak each phrase once and record the displayed STT transcript, the returned
+   response text, whether Piper audibly said the same result, and pass/fail:
+
+   | ID | Spoken phrase | Required result |
+   |---|---|---|
+   | R1-01 | “¿Qué día es hoy?” | `Hoy es YYYY-MM-DD.` for the local date; no age, child count, or family data. |
+   | R1-02 | “¿Cómo se llaman mis hijos?” | The non-disclosing authorization denial; no child name or other household value. |
+   | R1-03 | “Hola, Iroko.” | A normal generic response through STT, controller delegation, and Piper. |
+
+5. Stop both processes. If STT hears a materially different phrase, record the
+   actual transcript as a runtime acceptance failure; do not reinterpret it as
+   a pass. If any answer is routed to the wrong capability, R1 is not complete
+   even when pytest is green.
+
+R1 does **not** authorize reading any existing legacy or v4 household data.
+Those records remain protected until R2 creates a separate trusted local
+session and its acceptance cases pass.
+
+## R2 full-family acceptance procedure (not implemented)
 
 1. Stop all server instances, then run `just reset-db`. Record the backup path
    and confirm the next server startup applies migrations 1 through 5.
