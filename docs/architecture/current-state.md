@@ -1,9 +1,9 @@
 # Current cognitive implementation
 
-> **Observed:** 2026-08-13
+> **Observed:** 2026-08-14
 >
-> **Implementation snapshot:** `a7550d0` (`feat(memory): add policy-gated v4
-> reader (#45)`, on `main`)
+> **Implementation snapshot:** `0d16969` (`feat(cognition): add policy-gated
+> family tools (#48)`, on `main`)
 >
 > **Verification boundary:** P0.3/P0.4 code and P0.5-A policy seams were
 > inspected. P0.4 passed `just gate` (527 tests) before PR #40 merged it,
@@ -11,7 +11,12 @@
 > runtime reader/writer. P0.5-A later passed its local 546-test gate and
 > GitHub CI before PR #42 merged its policy/role/audit foundation. P0.5-B1
 > later passed its local 555-test gate and GitHub CI before PR #45 merged its
-> policy-gated, internal v4 reader.
+> policy-gated, internal v4 reader. P0.5-B2 then passed `just lint`, `just
+> typecheck`, `just test` (571 passed), `just audit`, `just check`, and five
+> green GitHub CI checks before PR #48 merged its bounded internal family-tool
+> seam. The P0 closure revalidation on merged `main` repeated the focused
+> acceptance suite (20 passed), all five local gates, and `git diff --check`
+> before this evidence update.
 > Prior P0.3/P0-S verification includes `just lint`, `just typecheck`, `just
 > test` (514 passed), `just audit`, and `just check`; P0-S2 evidence includes GitHub CI and
 > `just services` detecting configured local models. Camera, microphone, LAN,
@@ -38,7 +43,8 @@ unknown ActivePersonContext by default
                 v
 P0.3 `/chat` controller
   |-- deterministic date/strict-ISO age
-  |-- protected household -> unauthorized
+  |-- public protected household -> unauthorized
+  |-- trusted internal child list/count -> policy-gated v4 tools
   `-- generic text -> legacy local text turn
                 |
                 v
@@ -68,21 +74,20 @@ gap prevents owner-by-default memory disclosure.
 | P0.3 cognitive controller | Implemented/chat pilot | Fresh typed event; immutable response plan; no FastAPI, SQLite, or provider dependency in the core. |
 | Deterministic calendar tools | Implemented/bounded | Current date and strict ISO birth-date age only; age is derived, never persisted. |
 | Household authorization P0.5-A | Implemented/foundation | Pure fail-closed policy; additive role/audit SQLite records; explicit local owner bootstrap; `/chat` evaluates/audits protected branches as unknown before legacy delegation. |
-| Household authorization P0.5-B1 reader | Implemented/internal | Closed-predicate v4 literal/relation reads evaluate and audit policy before storage; outputs are frozen `known`, `unknown`, or non-disclosing `unauthorized`. No controller, public HTTP, prompt, or LLM path invokes it. |
+| Household authorization P0.5-B1 reader | Implemented/internal | Closed-predicate v4 literal/relation reads evaluate and audit policy before storage; outputs are frozen `known`, `unknown`, or non-disclosing `unauthorized`. B2 trusted internal tools invoke it; no public HTTP, prompt, or LLM path does. |
+| Household tools P0.5-B2 | Implemented/internal | Typed child list/count, preferences, birth date, and derived age tools authorize and audit before B1 reads; child relation/birth data require injected consent. |
+| B2 controller dispatch | Implemented/trusted-only | Two self-child question patterns produce deterministic response plans through injected actor/consent seams. Public `/chat` cannot provide either and never reaches the v4 reader. |
 | Vision/VLM | Implemented/on demand | One ephemeral frame, free-text scene description. |
 | Face profiles | Implemented/sensitive | SQLite-linked embeddings; not an active-person adapter. |
 | Robot client | Implemented/body adapter | PC microphone/webcam/speaker workflow; not cognitive logic. |
 
 ## Deliberately absent or deferred
 
-- `ToolRegistry` and deterministic family/profile/relationship tools; P0.3 has
-  two closed calendar helpers and deliberately does not justify a registry;
-- controller/tool use of policy-gated v4 reads and deterministic family tools;
-  P0.5-B1 supplies only the internal reader tracked in
-  [Plan 0009](../plans/0009-policy-gated-v4-reader.md). B2 remains an
-  unplanned/revalidated cutover: public chat remains unknown-by-default and no
-  protected v4 value is connected to a controller, prompt, LLM, or public
-  endpoint;
+- a generic `ToolRegistry`; P0 uses closed typed tools and does not justify a
+  registry or framework;
+- public trusted identity, public consent input, name grounding, or any public
+  route from `/chat` to protected v4 data. B2 is an internal test/application
+  seam only: no protected value reaches a prompt, LLM, or public endpoint;
 - speaker recognition, diarization, and identity fusion;
 - typed `SceneObservation`, `WorldState`, tracking, scene graph, and spatial
   memory;
@@ -123,6 +128,12 @@ The P0-S audit is authoritative for immediate pre-controller work:
   reader and inverse target-ID filter only. B2 tools/controller wiring,
   public trusted identity, consent persistence, and P1 onboarding remain
   deliberately unimplemented.
+- Plan 0010 P0.5-B2 is **Complete**. PR #48 merged as `0d16969` after local
+  `just lint`, `just typecheck`, `just test` (571 passed), `just audit`, and
+  `just check`, plus green GitHub title, quality/security, test, Python
+  analysis, and CodeQL checks. It adds a closed internal tool seam only;
+  public identity/consent, broader family queries, prompts/LLM retrieval, and
+  P1 remain deliberately unimplemented.
 
 See [P0-S hardening audit](p0-s-hardening-audit.md) for evidence and
 [plans](../plans/README.md) for execution status.
@@ -146,6 +157,13 @@ See [P0-S hardening audit](p0-s-hardening-audit.md) for evidence and
   is explicit. PR #40 merged after its GitHub CI checks. No real household
   database migration, hardware, camera, microphone, or real Ollama chat request
   was performed in this slice.
+
+- P0 closure revalidation on merged `main` (`0d16969`): the policy-gated
+  household acceptance, reader, authorization-runtime, and chat suites passed
+  20 tests in 0.91s. `just lint` passed with 211 files unchanged; `just
+  typecheck` reported no issues in 75 sources and Pyright reported zero errors;
+  `just test` passed 571 tests in 42.64s; `just audit` found no known
+  vulnerabilities; and `just check` passed every configured pre-commit hook.
 
 These checks do not prove a real Ollama `/chat` request, camera, microphone,
 biometric, LAN, or physical hardware behavior.

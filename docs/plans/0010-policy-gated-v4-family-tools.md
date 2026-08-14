@@ -1,5 +1,7 @@
 # P0.5-B2 Policy-Gated V4 Family Tools Implementation Plan
 
+> **Status:** Complete — merged as `0d16969` through PR #48 on 2026-08-14.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use
 > `superpowers:executing-plans` to implement this plan task-by-task. Steps use
 > checkbox (`- [ ]`) syntax for tracking.
@@ -263,3 +265,19 @@ Stop for an ADR/design if implementation requires public identity/consent,
 name grounding, policy changes, confirmation persistence, v3/vector access,
 migration, dependency, endpoint/schema change, cloud/model path, biometrics,
 world state, hardware action, or audio/server-robot change.
+
+## Execution evidence
+
+- Observed RED/GREEN cycles covered the absent exact-label reader, absent
+  household-tool service, and absent controller tool injection. The final
+  acceptance suite uses a disposable SQLite database and migrations 1--5.
+- Local final verification before PR #48 passed: `just lint`, `just
+  typecheck`, `just test` (**571 passed**), `just audit`, `just check`, and
+  `git diff --check`.
+- GitHub CI for PR #48 passed the Conventional Commit title, Quality & Security,
+  Automated Tests, Python analysis, and CodeQL checks. It merged to `main` as
+  `0d16969`.
+- The post-merge P0 closure revalidation passed the named acceptance paths (20
+  tests), then repeated all local gates on `main`. No real household data,
+  public identity/consent flow, Ollama request, camera, microphone, LAN, or
+  hardware acceptance was exercised by this plan.

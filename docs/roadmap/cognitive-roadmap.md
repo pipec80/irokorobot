@@ -195,12 +195,18 @@ keeps child relationships and birth dates consent-gated and public chat
 unknown-by-default; it does not authorize a public identity or consent path.
 [Plan 0009](../plans/0009-policy-gated-v4-reader.md) is complete: PR #45
 merged as `a7550d0` on 2026-08-13 after its local 555-test gate and green
-GitHub CI. It adds the reader-only cut; B2 family tools remain Draft.
+GitHub CI. It adds the reader-only cut.
 
-**P0.5-B2 is Ready in [Plan 0010](../plans/0010-policy-gated-v4-family-tools.md).**
-It is limited to a policy-gated internal family-tool seam and two
-self-referential child-query patterns. Public chat remains unknown-by-default;
-P0 closure remains a separate evidence-only plan and P1 has not started.
+**P0.5-B2 is Complete in [Plan 0010](../plans/0010-policy-gated-v4-family-tools.md).**
+PR #48 merged as `0d16969` on 2026-08-14 after local `just lint`, `just
+typecheck`, `just test` (571 passed), `just audit`, `just check`, and green
+GitHub CI. It adds only a policy-gated internal family-tool seam and two
+self-referential child-query patterns. Public chat remains unknown-by-default,
+and cannot provide identity or consent or invoke the v4 reader.
+
+**P0 is Complete.** [Plan 0011](../plans/0011-p0-closure-and-acceptance.md)
+records the subsequent merged-main acceptance (20 focused tests) and full gate
+revalidation. P1 has not started and requires a separate approved plan.
 
 ## P1 — Situated household awareness
 
@@ -353,6 +359,7 @@ expand scope. Run the listed verification. Do not commit unless asked.
 Plans 0002b, 0002c, 0003, the Plan 0004 design, and Plan 0005 are complete;
 Plan 0005 merged as `3b01b58` through PR #40. Plan 0007 P0.5-A merged as
 `960f160` through PR #42. Plan 0008 is approved and Plan 0009 P0.5-B1 is
-complete, merged as `a7550d0` through PR #45. Later plans are written just in
-time after the previous exit gate; otherwise they encode guesses about code
-that has already moved.
+complete, merged as `a7550d0` through PR #45. Plan 0010 P0.5-B2 then merged
+as `0d16969` through PR #48, and Plan 0011 records the completed P0 closure.
+P1 plans are written just in time after a fresh revalidation; otherwise they
+encode guesses about code that has already moved.
