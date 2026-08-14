@@ -3,6 +3,7 @@
 from collections.abc import Awaitable, Callable
 from datetime import date
 import re
+import unicodedata
 
 from server.cognition.authorization import (
     AuthorizationRequest,
@@ -12,6 +13,7 @@ from server.cognition.authorization import (
     evaluate_authorization,
 )
 from server.cognition.calendar_tools import calculate_age, get_current_date
+from server.cognition.household_tools import HouseholdKnowledgeTools, HouseholdToolResult
 from server.cognition.identity import ActivePersonContext, ActivePersonStatus, HouseholdRole
 from server.cognition.models import (
     AuthorizationAction,
@@ -36,10 +38,16 @@ type LegacyTextTurn = Callable[[str, str], Awaitable[TextTurnResult]]
 type ActivePersonResolver = Callable[[CognitiveEvent[TextTurnPayload]], ActivePersonContext]
 type PolicyEvaluator = Callable[[AuthorizationRequest], AuthorizationDecision]
 type AuditWriter = Callable[[AuthorizationRequest, AuthorizationDecision], Awaitable[None]]
+type ConsentResolver = Callable[
+    [CognitiveEvent[TextTurnPayload], ActivePersonContext], ConsentStatus
+]
 
 _ISO_DATE_PATTERN = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 _PRIVATE_HOUSEHOLD_TERMS = ("hijo", "hija", "familia", "preferencia", "le gusta")
 _RELATIONSHIP_TERMS = ("padre", "madre", "hermano", "pareja", "relación")
+_OWN_CHILDREN_LIST_PATTERNS = ("como se llaman mis hijos",)
+_OWN_CHILDREN_COUNT_PATTERNS = ("cuantos hijos tengo",)
+_TWO_ITEMS = 2
 
 
 def _unknown_active_person(event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
@@ -67,6 +75,14 @@ async def _discard_audit(
     """Keep isolated controller tests free of persistence unless they inject it."""
 
 
+def _not_required_consent(
+    _event: CognitiveEvent[TextTurnPayload],
+    _actor: ActivePersonContext,
+) -> ConsentStatus:
+    """Keep public adapters unable to manufacture trusted scoped consent."""
+    return ConsentStatus.NOT_REQUIRED
+
+
 class CognitiveController:
     """Coordinate the closed deterministic branches before legacy generation."""
 
@@ -78,6 +94,8 @@ class CognitiveController:
         active_person_resolver: ActivePersonResolver = _unknown_active_person,
         policy_evaluator: PolicyEvaluator = evaluate_authorization,
         audit_writer: AuditWriter = _discard_audit,
+        household_tools: HouseholdKnowledgeTools | None = None,
+        consent_resolver: ConsentResolver = _not_required_consent,
     ) -> None:
         """Create a controller with injected calendar and legacy-generation seams.
 
@@ -87,12 +105,16 @@ class CognitiveController:
             active_person_resolver: Trusted internal active-person boundary.
             policy_evaluator: Pure deterministic authorization evaluator.
             audit_writer: Local safe-audit boundary for protected decisions.
+            household_tools: Optional closed P0.5-B2 family-tool collaborator.
+            consent_resolver: Trusted internal scoped-consent boundary.
         """
         self._today = today
         self._legacy_turn = legacy_turn
         self._active_person_resolver = active_person_resolver
         self._policy_evaluator = policy_evaluator
         self._audit_writer = audit_writer
+        self._household_tools = household_tools
+        self._consent_resolver = consent_resolver
 
     async def handle(self, event: CognitiveEvent[TextTurnPayload]) -> ResponsePlan:
         """Produce one bounded response plan for a typed text event.
@@ -105,6 +127,8 @@ class CognitiveController:
         """
         need = _classify_information_need(event.payload.message)
         match need:
+            case InformationNeed.OWN_CHILDREN_LIST | InformationNeed.OWN_CHILDREN_COUNT:
+                return await self._own_children_plan(event, need)
             case InformationNeed.PROTECTED_HOUSEHOLD:
                 return await self._protected_household_plan(event, need)
             case InformationNeed.RELATIONSHIP_OR_PROFILE:
@@ -134,10 +158,11 @@ class CognitiveController:
         self,
         event: CognitiveEvent[TextTurnPayload],
         need: InformationNeed,
+        actor: ActivePersonContext | None = None,
     ) -> ResponsePlan:
         """Authorize and audit a protected branch before any legacy delegation."""
         request = AuthorizationRequest(
-            actor=self._active_person_resolver(event),
+            actor=self._active_person_resolver(event) if actor is None else actor,
             action=AuthorizationAction.READ_HOUSEHOLD_DATA,
             visibility=frozenset({DataVisibility.HOUSEHOLD}),
             sensitivity=frozenset({DataSensitivity.PRIVATE}),
@@ -154,10 +179,45 @@ class CognitiveController:
             "La información familiar autorizada todavía no está conectada a consultas verificadas.",
         )
 
+    async def _own_children_plan(
+        self,
+        event: CognitiveEvent[TextTurnPayload],
+        need: InformationNeed,
+    ) -> ResponsePlan:
+        """Dispatch only self-child patterns through the closed family-tool seam."""
+        actor = self._active_person_resolver(event)
+        if self._household_tools is None or actor.person_id is None:
+            return await self._protected_household_plan(event, need, actor)
+        consent = self._consent_resolver(event, actor)
+        result = (
+            await self._household_tools.get_children(
+                parent_entity_id=actor.person_id,
+                actor=actor,
+                consent=consent,
+                correlation_id=event.correlation_id,
+                requested_at=event.recorded_at,
+            )
+            if need is InformationNeed.OWN_CHILDREN_LIST
+            else await self._household_tools.count_children(
+                parent_entity_id=actor.person_id,
+                actor=actor,
+                consent=consent,
+                correlation_id=event.correlation_id,
+                requested_at=event.recorded_at,
+            )
+        )
+        return _household_tool_plan(need, result)
+
 
 def _classify_information_need(message: str) -> InformationNeed:
     """Classify only the documented P0.3 text patterns without model inference."""
-    normalized = message.casefold()
+    normalized = _normalize_message(message)
+    for patterns, need in (
+        (_OWN_CHILDREN_LIST_PATTERNS, InformationNeed.OWN_CHILDREN_LIST),
+        (_OWN_CHILDREN_COUNT_PATTERNS, InformationNeed.OWN_CHILDREN_COUNT),
+    ):
+        if any(pattern in normalized for pattern in patterns):
+            return need
     if any(term in normalized for term in _PRIVATE_HOUSEHOLD_TERMS):
         return InformationNeed.PROTECTED_HOUSEHOLD
     if _is_current_date_request(normalized):
@@ -169,9 +229,17 @@ def _classify_information_need(message: str) -> InformationNeed:
     return InformationNeed.GENERIC_CONVERSATION
 
 
+def _normalize_message(message: str) -> str:
+    """Case-fold text and remove accents for closed Spanish pattern matching."""
+    decomposed = unicodedata.normalize("NFD", message)
+    return "".join(
+        character for character in decomposed if not unicodedata.combining(character)
+    ).casefold()
+
+
 def _is_current_date_request(message: str) -> bool:
     """Recognize the narrow current-date forms supported by P0.3."""
-    return ("fecha" in message and "hoy" in message) or "qué día es hoy" in message
+    return ("fecha" in message and "hoy" in message) or "que dia es hoy" in message
 
 
 def _age_result(message: str, today: date) -> ToolResult:
@@ -251,3 +319,69 @@ def _unauthorized_plan(need: InformationNeed) -> ResponsePlan:
         source=ResponseSource.DETERMINISTIC,
         response="No puedo acceder a información familiar privada sin una autorización comprobada.",
     )
+
+
+def _household_tool_plan(
+    need: InformationNeed,
+    result: HouseholdToolResult,
+) -> ResponsePlan:
+    """Translate a closed tool result into deterministic Spanish without an LLM."""
+    tool_result = ToolResult(
+        tool_name=result.tool_name.value,
+        status=result.status,
+        value=_response_tool_value(result.value),
+        reason=result.reason,
+    )
+    if result.status is KnowledgeStatus.UNAUTHORIZED:
+        return _unauthorized_plan(need)
+    if result.status is KnowledgeStatus.CONTRADICTORY:
+        return ResponsePlan(
+            need=need,
+            status=KnowledgeStatus.CONTRADICTORY,
+            source=ResponseSource.DETERMINISTIC,
+            response="Tengo datos familiares en conflicto y necesito una confirmación autorizada.",
+            tool_results=(tool_result,),
+        )
+    if result.status is not KnowledgeStatus.KNOWN:
+        return _unknown_plan(
+            need,
+            "No tengo información familiar verificada para responder esa pregunta.",
+            tool_result,
+        )
+    if need is InformationNeed.OWN_CHILDREN_LIST and isinstance(result.value, tuple):
+        names = _spanish_join(result.value)
+        response = f"Tus hijos son {names}."
+    elif need is InformationNeed.OWN_CHILDREN_COUNT and isinstance(result.value, int):
+        response = f"Tienes {result.value} hijos."
+    else:
+        return _unknown_plan(
+            need,
+            "No tengo información familiar verificada para responder esa pregunta.",
+            tool_result,
+        )
+    return ResponsePlan(
+        need=need,
+        status=KnowledgeStatus.KNOWN,
+        source=ResponseSource.DETERMINISTIC,
+        response=response,
+        tool_results=(tool_result,),
+        claims=(
+            ResponseClaim(
+                text=response, status=KnowledgeStatus.KNOWN, tool_name=tool_result.tool_name
+            ),
+        ),
+    )
+
+
+def _response_tool_value(value: str | int | tuple[str, ...] | None) -> str | int | None:
+    """Adapt a closed family-tool value to the narrower P0.3 response contract."""
+    return ", ".join(value) if isinstance(value, tuple) else value
+
+
+def _spanish_join(values: tuple[str, ...]) -> str:
+    """Join already-authorized labels with deterministic Spanish punctuation."""
+    if len(values) == 1:
+        return values[0]
+    if len(values) == _TWO_ITEMS:
+        return f"{values[0]} y {values[1]}"
+    return f"{', '.join(values[:-1])} y {values[-1]}"

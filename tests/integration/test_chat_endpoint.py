@@ -99,6 +99,23 @@ async def test_chat_rejects_persistent_identity_fields() -> None:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+async def test_chat_rejects_http_consent_field() -> None:
+    """Public chat must not accept an untrusted consent assertion from HTTP."""
+    async with _client() as client:
+        response = await client.post(
+            "/chat",
+            json={
+                "message": "Hello",
+                "conversation_id": "web-primary",
+                "consent": "granted",
+            },
+        )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_chat_fallback_is_safe_and_does_not_touch_audio(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -229,5 +246,43 @@ async def test_chat_blocks_private_household_question_before_legacy_text_turn(
     assert response.json()["response"] == (
         "No puedo acceder a información familiar privada sin una autorización comprobada."
     )
+    process.assert_not_awaited()
+    audit.assert_awaited_once()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_chat_composes_tools_but_unknown_actor_never_reaches_v4_reader(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Public family text stays denied before a composed B2 tool can read values."""
+    process = AsyncMock(return_value=TextTurnResult("legacy", "joy", 42, False))
+    audit = AsyncMock()
+    reader = Mock()
+    tools = Mock()
+    tools.get_children = AsyncMock()
+    tools.count_children = AsyncMock()
+    reader_factory = Mock(return_value=reader)
+    tools_factory = Mock(return_value=tools)
+    monkeypatch.setattr(chat, "process_text_turn", process)
+    monkeypatch.setattr(chat, "record_authorization_decision", audit)
+    monkeypatch.setattr(chat, "PolicyGatedV4Reader", reader_factory)
+    monkeypatch.setattr(chat, "HouseholdKnowledgeTools", tools_factory)
+
+    async with _client() as client:
+        response = await client.post(
+            "/chat",
+            json={"message": "¿Cuántos hijos tengo?", "conversation_id": "web-primary"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["response"] == (
+        "No puedo acceder a información familiar privada sin una autorización comprobada."
+    )
+    reader_factory.assert_called_once_with()
+    tools_factory.assert_called_once_with(reader=reader)
+    tools.get_children.assert_not_awaited()
+    tools.count_children.assert_not_awaited()
+    assert reader.mock_calls == []
     process.assert_not_awaited()
     audit.assert_awaited_once()

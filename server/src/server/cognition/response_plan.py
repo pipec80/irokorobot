@@ -24,6 +24,8 @@ class InformationNeed(StrEnum):
     EXPLICIT_BIRTH_DATE_AGE = "explicit_birth_date_age"
     RELATIONSHIP_OR_PROFILE = "relationship_or_profile"
     PROTECTED_HOUSEHOLD = "protected_household"
+    OWN_CHILDREN_LIST = "own_children_list"
+    OWN_CHILDREN_COUNT = "own_children_count"
 
 
 class ResponseSource(StrEnum):

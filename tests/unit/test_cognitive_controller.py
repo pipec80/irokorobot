@@ -12,6 +12,7 @@ from server.cognition.authorization import (
     DataVisibility,
 )
 from server.cognition.controller import CognitiveController
+from server.cognition.household_tools import HouseholdToolName, HouseholdToolResult
 from server.cognition.identity import ActivePersonContext, ActivePersonStatus, HouseholdRole
 from server.cognition.models import (
     AuthorizationAction,
@@ -172,6 +173,66 @@ async def test_controller_keeps_allowed_household_request_unknown_until_v4_cutov
     assert plan.status is KnowledgeStatus.UNKNOWN
     assert "todavía" in plan.response
     audit.assert_awaited_once()
+    legacy_turn.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_controller_dispatches_trusted_child_names_without_legacy_delegate() -> None:
+    """Use only the injected family tool for the narrow self-child name pattern."""
+    legacy_turn = AsyncMock()
+    actor = _actor(HouseholdRole.OWNER, 7)
+    tools = Mock()
+    tools.get_children = AsyncMock(
+        return_value=HouseholdToolResult(
+            tool_name=HouseholdToolName.GET_CHILDREN,
+            status=KnowledgeStatus.KNOWN,
+            value=("Máximo", "Sofía"),
+        )
+    )
+    controller = CognitiveController(
+        today=lambda: date(2026, 8, 12),
+        legacy_turn=legacy_turn,
+        active_person_resolver=lambda _event: actor,
+        household_tools=tools,
+        consent_resolver=lambda _event, _actor: ConsentStatus.GRANTED,
+    )
+
+    plan = await controller.handle(_event("¿Cómo se llaman mis hijos?"))
+
+    assert plan.status is KnowledgeStatus.KNOWN
+    assert plan.response == "Tus hijos son Máximo y Sofía."
+    assert plan.tool_results[0].tool_name == "get_children"
+    tools.get_children.assert_awaited_once()
+    legacy_turn.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_controller_dispatches_trusted_child_count_without_legacy_delegate() -> None:
+    """Count children through the injected deterministic tool only."""
+    legacy_turn = AsyncMock()
+    actor = _actor(HouseholdRole.OWNER, 7)
+    tools = Mock()
+    tools.count_children = AsyncMock(
+        return_value=HouseholdToolResult(
+            tool_name=HouseholdToolName.COUNT_CHILDREN,
+            status=KnowledgeStatus.KNOWN,
+            value=2,
+        )
+    )
+    controller = CognitiveController(
+        today=lambda: date(2026, 8, 12),
+        legacy_turn=legacy_turn,
+        active_person_resolver=lambda _event: actor,
+        household_tools=tools,
+        consent_resolver=lambda _event, _actor: ConsentStatus.GRANTED,
+    )
+
+    plan = await controller.handle(_event("¿Cuántos hijos tengo?"))
+
+    assert plan.status is KnowledgeStatus.KNOWN
+    assert plan.response == "Tienes 2 hijos."
+    assert plan.tool_results[0].tool_name == "count_children"
+    tools.count_children.assert_awaited_once()
     legacy_turn.assert_not_awaited()
 
 

@@ -7,10 +7,12 @@ from fastapi import APIRouter
 
 from server.cognition.authorization import evaluate_authorization
 from server.cognition.controller import CognitiveController
+from server.cognition.household_tools import HouseholdKnowledgeTools
 from server.cognition.identity import ActivePersonContext, ActivePersonStatus, HouseholdRole
 from server.cognition.models import CognitiveEvent, Confidence, ConfidenceBasis
 from server.cognition.response_plan import TextTurnPayload
 from server.memory.household_authorization import record_authorization_decision
+from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
 from server.schemas_chat import ChatRequest, ChatResponse
 from server.text_turn import process_text_turn
 
@@ -76,6 +78,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
         active_person_resolver=_public_unknown_actor,
         policy_evaluator=evaluate_authorization,
         audit_writer=record_authorization_decision,
+        household_tools=HouseholdKnowledgeTools(reader=PolicyGatedV4Reader()),
     )
     result = await controller.handle(_event_from_request(request))
     return ChatResponse(
