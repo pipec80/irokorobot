@@ -204,9 +204,11 @@ GitHub CI. It adds only a policy-gated internal family-tool seam and two
 self-referential child-query patterns. Public chat remains unknown-by-default,
 and cannot provide identity or consent or invoke the v4 reader.
 
-**P0 is Complete.** [Plan 0011](../plans/0011-p0-closure-and-acceptance.md)
-records the subsequent merged-main acceptance (20 focused tests) and full gate
-revalidation. P1 has not started and requires a separate approved plan.
+**P0 foundation is complete; runtime acceptance is pending.**
+[Plan 0011](../plans/0011-p0-closure-and-acceptance.md) records the merged-main
+foundation evidence. [Plan 0012](../plans/0012-p0-runtime-acceptance-design.md)
+must still connect P0 to `just run-server` plus `just run-robot` and pass its
+operator runbook. P1 has not started and requires a separate approved plan.
 
 ## P1 — Situated household awareness
 

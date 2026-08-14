@@ -64,5 +64,8 @@ All promotion conditions were satisfied on `main`:
   vector retrieval, prompts, providers, cloud, or hardware paths for family
   truth.
 
-P0 is therefore complete as a bounded cognitive foundation. P1 remains
-unstarted and requires a newly revalidated, separately approved plan.
+This evidence completes the bounded P0 foundation only. It does not establish
+operator acceptance because the robot voice path does not yet traverse the
+controller/tools. [Plan 0012](0012-p0-runtime-acceptance-design.md) owns that
+runtime closure. P1 remains unstarted and requires a newly revalidated,
+separately approved plan.

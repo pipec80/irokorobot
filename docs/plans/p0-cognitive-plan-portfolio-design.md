@@ -53,7 +53,8 @@ that its canonical plan does not explicitly permit.
 | [`0008-policy-gated-v4-household-tools-design.md`](0008-policy-gated-v4-household-tools-design.md) | P0.5-B design | Approved | Revalidated the safe v4 read/tool cutover, including the consent-gated child-data boundary. |
 | [`0009-policy-gated-v4-reader.md`](0009-policy-gated-v4-reader.md) | P0.5-B1 | Complete | Added only the policy-gated v4 reader and inverse target filter; no controller, public identity, or family-tool cutover. Merged as `a7550d0` (PR #45). |
 | [`0010-policy-gated-v4-family-tools.md`](0010-policy-gated-v4-family-tools.md) | P0.5-B2 | Complete | Bounded deterministic family tools and self-child controller patterns over the policy-gated v4 reader; merged as `0d16969` (PR #48). |
-| [`0011-p0-closure-and-acceptance.md`](0011-p0-closure-and-acceptance.md) | P0 closure | Complete | Evidence-only merged-main revalidation; P0 is closed and P1 has not started. |
+| [`0011-p0-closure-and-acceptance.md`](0011-p0-closure-and-acceptance.md) | P0 foundation evidence | Complete | Evidence-only merged-main revalidation; it does not establish runtime acceptance. |
+| [`0012-p0-runtime-acceptance-design.md`](0012-p0-runtime-acceptance-design.md) | P0 runtime closure | Proposed | Connects the controller/tools to the existing server/robot flow and requires a repeatable operator run before P1. |
 
 Plans 0002, 0002a, 0002b, 0002c, 0003, the Plan 0004 design, and Plan 0005 are
 complete with recorded tests and quality gates. Plan 0007 passed its local
@@ -63,7 +64,9 @@ on 2026-08-12. Plan 0008 remains approved; Plan 0009 passed its local
 2026-08-13. Plan 0010 passed its local 571-test gate and green GitHub CI, then
 merged as `0d16969` through PR #48 on 2026-08-14. Plan 0011 repeated its
 focused acceptance and full merged-main gates, closing P0 without adding P1
-behavior. Later plans are revalidated just in time before becoming executable.
+behavior. That conclusion was limited to foundation evidence: Plan 0012 now
+owns the still-open runtime acceptance gate. Later plans are revalidated just
+in time before becoming executable.
 
 ## Plan boundaries
 
