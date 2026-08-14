@@ -64,8 +64,9 @@ follow-up is designed in
 [Plan 0009](0009-policy-gated-v4-reader.md) is complete: PR #45 merged as
 `a7550d0` on 2026-08-13 after local gates (555 tests) and green GitHub CI. It
 adds only the policy-gated v4 reader and target-ID query filter. P0.5-B2
-family tools and the final P0 closure remain Draft and require a fresh
-revalidation.
+family tools are now specified in [Plan 0010](0010-policy-gated-v4-family-tools.md)
+and are Ready after its 2026-08-14 revalidation. The evidence-only
+[Plan 0011](0011-p0-closure-and-acceptance.md) remains Draft until B2 merges.
 
 The [P0 cognitive portfolio design](p0-cognitive-plan-portfolio-design.md)
 links every current P0 plan and records their dependency order and status.
