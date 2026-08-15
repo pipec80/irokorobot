@@ -15,6 +15,64 @@ speaker can inherit the owner's conversational context and receive owner data.
 Identity resolution and authorization therefore precede broader memory,
 onboarding, personality adaptation, and physical actions.
 
+## Installation policy profiles
+
+Iroko uses one local cognitive architecture with two installation profiles;
+this is a product-policy choice, not a second identity system.
+
+| Profile | Primary interaction | Default privacy rule |
+|---|---|---|
+| `personal` | One primary owner and Iroko. | The owner has broad authority over their own permitted data and configuration. Other speakers remain public/unknown until an explicit later policy exists. |
+| `family` | Multiple household members and Iroko. | Members may use permitted household data and their own allowed data. A technical owner/admin is not automatically entitled to another adult's personal data. |
+
+Both profiles retain the same boundaries: identity is not authorization, unknown
+is valid, local administration is the biometric recovery path, and sensitive
+actions require explicit confirmation. The personal profile is the next product
+milestone. General family onboarding and UI are later work under
+[ADR 0006](../adr/0006-personal-and-family-companion-profiles.md).
+
+## Future profile and consent persistence
+
+The current SQLite installation represents one Iroko home. P3 should not add a
+multi-tenant or multi-household database merely to express the two profiles.
+Instead, the later migration should introduce a singleton installation-policy
+record similar to:
+
+```text
+installation_profile
+├── id = 1
+├── mode: personal | family
+├── configured_by_entity_id
+├── configured_at
+└── updated_at
+```
+
+The existing v4 facts/relations retain their `visibility` and `sensitivity`.
+P3 consent persistence should add explicit, revocable grants rather than an
+unstructured JSON flag on a person:
+
+```text
+consent_grants
+├── id
+├── subject_entity_id
+├── grantee_kind: person | role
+├── grantee_entity_id | grantee_role        (exactly one)
+├── action
+├── data_category
+├── status: granted | revoked
+├── valid_from / valid_until
+├── granted_by_entity_id
+├── granted_at / revoked_at
+└── reason
+```
+
+`authorization_audit_events` remains the decision trace and must not contain a
+protected value. The schema controls Iroko's runtime disclosure; it does not by
+itself encrypt a copied SQLite file or replace operating-system disk security.
+This is a target design only: no migration, UI, or public consent input is
+authorized until a later Ready plan specifies constraints, indexes, lifecycle,
+and rollback.
+
 ## Separate concepts
 
 | Concept | Question | It does not prove |
@@ -138,6 +196,10 @@ The first local policy uses a small set of roles:
 | `child` | Own/general age-appropriate information; no adult-private data or direct memory administration. |
 | `guest` | Conversation and public household capabilities only; no family memory by default. |
 | `unknown` | Minimal safe conversation; no protected retrieval or mutation. |
+
+`owner` is an authorization role, not a social claim over another adult's data.
+In the family profile, an adult's personal/private data remains unavailable to
+the owner unless a separate explicit policy permits that access.
 
 A future service identity for authenticated internal adapters is separate from a
 human role. Do not model a device as a family member.

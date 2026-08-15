@@ -1,10 +1,16 @@
-# Cognitive audit — Iroko
+# Cognitive audit — Iroko (historical snapshot)
 
 **Observed:** 2026-08-11
 **Revision:** `01876ec` (`main`, equal to `origin/main`)
 **Scope:** current tracked code, tests, configuration, plans, and CI/tooling. No
 runtime provider, hardware, model, or network call was made. This is therefore
 an implementation audit, not evidence of production hardware health.
+
+> **Historical status:** This report describes `01876ec` on 2026-08-11. It is
+> preserved as evidence, not as the current implementation source of truth.
+> Use [`current-state.md`](current-state.md) for the current snapshot and
+> [`p0-runtime-policy-audit.md`](p0-runtime-policy-audit.md) for the active
+> public-route disposition.
 
 > **Implementation update — 2026-08-11:** Plan 0002a subsequently removed the
 > direct Anthropic dependency and runtime paths, made Ollama the only accepted

@@ -31,14 +31,16 @@ home than a smaller system that knows when it does not know.
 | P0.3 | Deterministic tools and small controller | Separates evidence gathering, retrieval, policy, generation, and validation. | P0.1–P0.2 |
 | P0.4 | Relational memory v4 | Correct entity links, cardinality, time, provenance, dates, and counts. | P0.1–P0.3 |
 | P0.5 | Household authorization | Filters protected data before retrieval and generation. | P0.2, P0.4 |
-| P1.1 | Unified onboarding | Builds a confirmed household graph through voice, web, or import. | All P0 |
-| P1.2 | World state | Represents fresh people, objects, sensors, and location with TTL. | P0 controller/policy |
-| P1.3 | Structured perception | Converts vision/audio/sensors into typed observations independent of hardware. | P1.2 |
-| P1.4 | Multimodal identity | Combines session, face, speaker, and context evidence conservatively. | P0.2, P1.3 |
-| P2.1 | Memory lifecycle and retrieval quality | Adds confirmation, contradiction, relevance thresholds, consolidation, and forgetting. | P0.4–P0.5 |
-| P2.2 | Cloud escalation gateway | Uses a stronger model only for permitted, sanitized, uncertain cases. | P0 controller/policy, P2.1 |
-| P2.3 | Bounded adaptation and initiative | Makes Iroko more personal and proactive without prompt growth or surveillance. | P1 world/identity, P2.1 |
-| P3 | Physical actions and ROS2 evaluation | Connects safe action proposals to hardware after the brain contract is stable. | P0–P2 acceptance gates |
+| P0-C | Runtime policy hardening | Makes every enabled public route obey the P0 controller/policy boundary and proves it through the robot. | P0.3–P0.5 |
+| P1.1 | Personal local administration | Establishes Pipec's recoverable personal profile without a general UI. | P0-C acceptance |
+| P1.2 | Personal multimodal identity | Adds consented local face/voice evidence and conservative fusion for Pipec. | P1.1, P0.2 |
+| P1.3 | Personal companion acceptance | Demonstrates voice, visual scene, authorized memory, and recovery through the real PC path. | P1.1–P1.2 |
+| P2.1 | Situated perception and WorldState | Represents fresh observations independently of durable memory. | P1 controller/policy |
+| P2.2 | Memory lifecycle and retrieval quality | Adds confirmation, contradiction, relevance thresholds, consolidation, and forgetting. | P0.4–P0.5 |
+| P2.3 | Bounded adaptation and initiative | Makes Iroko more personal and proactive without prompt growth or surveillance. | P1 identity, P2.1–P2.2 |
+| P3.1 | Family onboarding UI and consent | Builds the family profile, selective privacy, and reviewable household truth. | P1 acceptance, P2.2 |
+| P3.2 | Family companion interaction | Extends social interaction to multiple members without blanket data access. | P3.1, P1.2, P2.1 |
+| P4 | Cloud escalation and physical body | Evaluates optional cloud and safe embodiment only after cognitive policy is stable. | P0–P3 acceptance gates |
 
 ## C0 — Documentation foundation
 
@@ -210,51 +212,62 @@ foundation evidence. [Plan 0012](../plans/0012-p0-runtime-acceptance-design.md)
 must still connect P0 to `just run-server` plus `just run-robot` and pass its
 operator runbook. P1 has not started and requires a separate approved plan.
 
-## P1 — Situated household awareness
+## P1 — Personal companion
 
-### P1.1 — Unified onboarding
+The next product target is Iroko with Pipec, using the `personal` profile from
+[ADR 0006](../adr/0006-personal-and-family-companion-profiles.md). This phase
+does not create a general UI or family onboarding. It proves that identity,
+authorization, local face/voice evidence, visual scene understanding, memory,
+and recovery work together through the actual PC robot path.
 
-Build one application service shared by voice, web, and controlled imports.
-Capture the household, people, relationships, birth dates, preferences,
-permissions, and optional biometric consent in reviewable stages.
+### P1.1 — Local personal administration
 
-**Exit gate:** re-running onboarding is idempotent, contradictions require
-resolution, source/provenance is retained, and no channel writes truth by raw
-SQL or independent rules.
+Create only the local administrative action needed to establish and review
+Pipec's personal profile, owner role, and consent decisions. It must be
+recoverable after a biometric failure and must not be a public admin API.
 
-### P1.2 — Current world state
+**Exit gate:** a local operator can create, review, revoke, and recover the
+personal profile without identity inference from spoken text, a face, or a
+voice.
 
-Introduce a typed, expiring `WorldState` assembled from observations. Keep it
-separate from durable memory and raw telemetry.
+### P1.2 — Personal multimodal identity
 
-**Exit gate:** stale data expires; contradictory sensors remain explicit;
-absence of an observation is not interpreted as a false value; current state
-can be queried through a deterministic tool.
+Add consented local face and speaker evidence adapters plus conservative fusion
+with temporary manual/session evidence. Specialized face and voice models emit
+typed evidence; they do not grant access directly. The VLM may describe a
+scene, but is not the authority that names Pipec.
 
-### P1.3 — Structured perception adapters
+**Exit gate:** calibrated local evaluation covers agreement, conflict, expiry,
+backend failure, false accept, and false reject. Conflicting evidence returns
+`ambiguous`; the administrative recovery path remains available.
 
-Convert on-demand vision first, then audio/sensors as needed, into typed
-observations. Preserve the existing generic media boundaries. Hardware brands
-and provider clients remain inside adapters.
+### P1.3 — Personal companion acceptance
 
-**Exit gate:** simulated and real adapters can produce the same contract;
-visual scene description is distinct from face identity; every observation has
-source, timestamps, confidence, and expiry; frames are not permanently retained
-by default.
+Demonstrate the full companion flow with `just run-server` and
+`just run-robot`: voice, face/voice evidence, authorized personal data,
+on-demand scene description, deterministic claims, and Piper output. A raw
+frame never enters the text LLM; the controller receives only typed,
+policy-approved evidence and scene results.
 
-### P1.4 — Multimodal identity
+**Exit gate:** Pipec can complete approved personal scenarios; an unknown
+speaker cannot read protected data; a model outage degrades safely; and every
+acceptance transcript records literal STT, route, response, audible output, and
+audit outcome.
 
-Add local speaker identification/verification and conservative evidence fusion
-with face, session, manual, and continuity signals. Diarization and recognition
-remain separate concepts.
+## P2 — Situated cognition and memory quality
 
-**Exit gate:** enrollment requires consent; biometric templates stay local by
-default; conflicts become `ambiguous`; spoof/quality limits are documented;
-identification still does not grant authorization.
+### P2.1 — Current world state and structured perception
 
-## P2 — Quality, escalation, and adaptation
+Introduce typed, expiring observations and `WorldState` for people, objects,
+sensor state, and location. Keep it separate from durable memory and raw
+telemetry. Convert on-demand vision first; provider clients stay inside
+adapters.
 
-### P2.1 — Memory lifecycle and retrieval
+**Exit gate:** stale data expires; contradictions remain explicit; visual scene
+description is distinct from face identity; every observation carries source,
+timestamps, confidence, and expiry; frames are not retained by default.
+
+### P2.2 — Memory lifecycle and retrieval
 
 Add candidate confirmation, deduplication, contradictions, supersession,
 retention/forgetting, authorized semantic retrieval, relevance thresholds, and
@@ -265,7 +278,49 @@ must propagate.
 enter model context; corrections and deletions affect summaries/embeddings;
 evaluation cases cover precision, privacy, temporal validity, and provenance.
 
-### P2.2 — Cloud escalation gateway
+### P2.3 — Personality adaptation and bounded initiative
+
+Move stable identity, relationship style, dynamic state, and situational
+expression into bounded structured composition. Add proactive behavior only
+from fresh authorized events with cooldowns, quiet hours, cancellation, and
+rate limits.
+
+**Exit gate:** one coherent personality survives across roles; no private
+cross-person prompt leakage occurs; transient interactions do not become
+permanent traits; proactive prompts are explainable, sparse, and disableable.
+
+## P3 — Family companion and UI
+
+The family profile is intentionally later than the validated personal
+companion. It reuses the same local entities, relationships, policy evaluator,
+and identity evidence; it must not create a separate family brain or relax
+sensitive-data policy.
+
+### P3.1 — Family onboarding UI and consent
+
+Build one reviewable local onboarding application service, exposed later through
+the UI and controlled import paths. It creates the household profile, adults,
+children, pets, relationships, visibility defaults, consent grants, and
+biometric consent. The initial owner/admin configures the household but does
+not automatically obtain another adult's personal data.
+
+**Exit gate:** onboarding is idempotent; consent is explicit and revocable;
+relationships and provenance remain structured; no UI or voice channel writes
+truth by raw SQL or independent rules.
+
+### P3.2 — Family companion interaction
+
+Extend Iroko's social interaction to consented, identified household members.
+It may greet members, use permitted household context, and adapt its style, but
+must return unknown, ambiguous, or unauthorized rather than disclose another
+person's private data.
+
+**Exit gate:** multi-member acceptance covers adults, children, guests, pets,
+identity conflicts, data isolation, and recovery after biometric failure.
+
+## P4 — Cloud escalation and physical body
+
+### P4.1 — Controlled cloud escalation
 
 Cloud is an optional escalator, not the primary brain. Create a separate ADR
 and plan for an explicit gateway only after local result validation exists.
@@ -290,18 +345,7 @@ including `unknown`; it never blocks basic operation.
 are replaceable; every attempt is auditable without logging protected payloads;
 budgets and timeouts are enforced; cloud output is validated as untrusted.
 
-### P2.3 — Personality adaptation and bounded initiative
-
-Move stable identity, relationship style, dynamic state, and situational
-expression into bounded structured composition. Add proactive behavior only
-from fresh authorized events with cooldowns, quiet hours, cancellation, and
-rate limits.
-
-**Exit gate:** one coherent personality survives across roles; no private
-cross-person prompt leakage occurs; transient interactions do not become
-permanent traits; proactive prompts are explainable, sparse, and disableable.
-
-## P3 — Physical body and ROS2 decision
+### P4.2 — Physical body and ROS2 decision
 
 Only after cognitive, identity, policy, and current-state contracts are stable
 should the project choose physical action architecture. ROS2 is appropriate if
@@ -363,5 +407,6 @@ Plan 0005 merged as `3b01b58` through PR #40. Plan 0007 P0.5-A merged as
 `960f160` through PR #42. Plan 0008 is approved and Plan 0009 P0.5-B1 is
 complete, merged as `a7550d0` through PR #45. Plan 0010 P0.5-B2 then merged
 as `0d16969` through PR #48, and Plan 0011 records the completed P0 closure.
-P1 plans are written just in time after a fresh revalidation; otherwise they
-encode guesses about code that has already moved.
+P1 implementation plans are written just in time after a fresh revalidation;
+the accepted personal-companion design is not permission to implement it before
+P0-C operator acceptance.

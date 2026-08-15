@@ -26,7 +26,7 @@ English is the canonical technical source. The [architecture index](architecture
 
 ## Documentation provenance
 
-The [pre-electronics roadmap](architecture/roadmap-cerebro-agnostico-pre-electronica.md) and [cognitive foundation audit](architecture/cognitive-foundation-audit.md) are historical context, not executable plans. M3/M4 are historical context; M4 is implemented with historical closure not demonstrated. New work follows the canonical architecture index, current state, cognitive roadmap, and the [named current plan](plans/0007-iroko-documentation-manual.md).
+The [pre-electronics roadmap](architecture/roadmap-cerebro-agnostico-pre-electronica.md) and [cognitive foundation audit](architecture/cognitive-foundation-audit.md) are historical context, not executable plans. M3/M4 are historical context; M4 is implemented with historical closure not demonstrated. New work follows the canonical architecture index, current state, cognitive roadmap, and the active [P0 runtime-policy hardening design](plans/0014-p0-runtime-policy-hardening-design.md). The personal-companion design is intentionally proposed until P0-C acceptance passes.
 
 ## Documentation status labels
 

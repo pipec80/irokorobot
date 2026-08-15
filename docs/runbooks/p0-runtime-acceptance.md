@@ -1,9 +1,9 @@
 # P0 Runtime Acceptance Runbook
 
-> **Status:** R1 manual checkpoint ready after its branch passes automated
-> gates; R2 family-data acceptance remains a draft. The governing design is
-> [Plan 0012](../plans/0012-p0-runtime-acceptance-design.md) and the R1
-> implementation scope is [Plan 0013](../plans/0013-p0-voice-controller-bridge.md).
+> **Status:** Classic R1 bridge is implemented, but P0 operator acceptance is
+> blocked by the public-route gaps in
+> [Plan 0014](../plans/0014-p0-runtime-policy-hardening-design.md). R2
+> personal-data acceptance remains a draft.
 
 ## Purpose
 
@@ -15,7 +15,9 @@ P0 acceptance, even if automated checks pass.
 
 - Use a disposable local acceptance database only. Do not run this against a
   household database with real data.
-- Keep the server loopback-bound and `ROBOT_STREAMING=false`.
+- Keep the server loopback-bound, `ROBOT_STREAMING=false`, and
+  `VISION_ENABLED=false` until Plan 0014 supplies controller/policy parity for
+  streaming and visual dialogue.
 - Do not use a voice phrase, name, face, or HTTP field as identity proof.
 - The manual acceptance session is temporary; clear it after testing.
 
@@ -37,7 +39,8 @@ Do this only after the R1 branch or its merged commit has passed the automated
 gates. No reset database, owner data, enrollment, name, face, or session is
 needed for this checkpoint.
 
-1. Confirm `ROBOT_STREAMING=false`, then run `just services`.
+1. Confirm `ROBOT_STREAMING=false` and `VISION_ENABLED=false`, then run
+   `just services`.
 2. In one terminal run `just run-server`.
 3. In another terminal run `just run-robot`.
 4. Speak each phrase once and record the displayed STT transcript, the returned
@@ -58,7 +61,7 @@ R1 does **not** authorize reading any existing legacy or v4 household data.
 Those records remain protected until R2 creates a separate trusted local
 session and its acceptance cases pass.
 
-## R2 full-family acceptance procedure (not implemented)
+## R2 personal acceptance procedure (not implemented)
 
 1. Stop all server instances, then run `just reset-db`. Record the backup path
    and confirm the next server startup applies migrations 1 through 5.
@@ -68,8 +71,8 @@ session and its acceptance cases pass.
    bootstrap command. It must refuse non-loopback binding and must identify the
    disposable database in its output.
 4. In another terminal run `just run-server`, then `just run-robot`.
-5. Complete Iroko's interview with known values. Use this fixed acceptance
-   household:
+5. Complete Iroko's interview with disposable known values. This is a personal
+   acceptance profile, not family onboarding:
 
    | Field | Value |
    |---|---|

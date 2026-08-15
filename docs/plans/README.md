@@ -70,9 +70,12 @@ The evidence-only [Plan 0011](0011-p0-closure-and-acceptance.md) is also
 complete after its merged-main revalidation. It closes foundation evidence, not
 the operator runtime gate. [Plan 0012](0012-p0-runtime-acceptance-design.md)
 defines that closure; [Plan 0013](0013-p0-voice-controller-bridge.md) is its
-R1 classic-voice bridge. R1 requires automated gates and the documented manual
-server/robot checkpoint before completion. R2 trusted local acceptance and P1
-have not started.
+R1 classic-voice bridge. The active
+[P0 runtime-policy hardening design](0014-p0-runtime-policy-hardening-design.md)
+records the remaining streaming, visual-dialogue, intent-coverage, and QA
+contract gaps before R1 can be operator-accepted. R2 trusted local acceptance
+and the [personal-companion design](0015-personal-companion-design.md) remain
+proposed. General UI/family onboarding is deliberately later work.
 
 The [P0 cognitive portfolio design](p0-cognitive-plan-portfolio-design.md)
 links every current P0 plan and records their dependency order and status.

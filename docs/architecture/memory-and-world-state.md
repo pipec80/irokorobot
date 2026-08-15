@@ -9,9 +9,9 @@
 
 Iroko already has useful foundations: working conversation history, entities,
 literal facts, episodic memories, embeddings, semantic search, events, sensor
-tables, inverse relationship queries, and a basic owner onboarding flow. SQLite
-and `sqlite-vec` are sufficient for the next stages; a new database or vector
-service is not justified.
+tables, inverse relationship queries, and legacy owner-onboarding code that is
+not a public trusted flow. SQLite and `sqlite-vec` are sufficient for the next
+stages; a new database or vector service is not justified.
 
 The current model also has limits that later plans must handle explicitly:
 
@@ -191,6 +191,12 @@ Examples:
 - none of these facts should automatically become part of a person's profile.
 
 ## One onboarding service, several channels
+
+The personal companion is built first with a bounded local administrative flow.
+The general service described below belongs to the later `family` profile; it
+must reuse the same entities, relationships, role policy, and provenance rather
+than create a second data model. A technical owner/admin initializes the family
+profile but does not automatically gain another adult's personal/private data.
 
 Voice, web forms, and controlled imports must call the same application
 service. They must not implement independent truth rules or write SQL directly.

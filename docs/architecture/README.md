@@ -48,6 +48,8 @@ specific conflict instead of redesigning the project implicitly.
   known gaps.
 - [`p0-s-hardening-audit.md`](p0-s-hardening-audit.md): targeted disposition of
   immediate security/configuration hardening before P0.3.
+- [`p0-runtime-policy-audit.md`](p0-runtime-policy-audit.md): current
+  disposition of remaining public-route and operator-acceptance gaps.
 - [`implementation-guardrails.md`](implementation-guardrails.md): tracked
   repository boundaries and instructions for bounded Codex execution.
 - [`cognitive-architecture.md`](cognitive-architecture.md): complete conceptual

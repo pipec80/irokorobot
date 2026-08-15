@@ -26,7 +26,7 @@ El inglés es la fuente técnica canónica; esta página en español es su equiv
 
 ## Procedencia de la documentación
 
-La [hoja de ruta preelectrónica](../architecture/roadmap-cerebro-agnostico-pre-electronica.md) y la [auditoría de fundamentos cognitivos](../architecture/cognitive-foundation-audit.md) son contexto histórico, no planes ejecutables. M3/M4 son contexto histórico; M4 está implementado con cierre histórico no demostrado. El trabajo nuevo sigue el índice de arquitectura canónico, el estado actual, la hoja de ruta cognitiva y el [plan actual nombrado](../plans/0007-iroko-documentation-manual.md).
+La [hoja de ruta preelectrónica](../architecture/roadmap-cerebro-agnostico-pre-electronica.md) y la [auditoría de fundamentos cognitivos](../architecture/cognitive-foundation-audit.md) son contexto histórico, no planes ejecutables. M3/M4 son contexto histórico; M4 está implementado con cierre histórico no demostrado. El trabajo nuevo sigue el índice de arquitectura canónico, el estado actual, la hoja de ruta cognitiva y el diseño activo de [hardening de política runtime P0](../plans/0014-p0-runtime-policy-hardening-design.md). El diseño de compañero personal permanece propuesto hasta superar la aceptación P0-C.
 
 ## Etiquetas de estado de la documentación
 

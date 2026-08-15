@@ -86,7 +86,8 @@ acceptance criterion, and missing or contradictory evidence:
 2. Permission, privacy, and authorization before protected retrieval.
 3. Entity-ID relationships rather than names-only persistence.
 4. Deterministic tools for dates, ages, counts, and relations.
-5. Complete family onboarding shared by voice, web, and import.
+5. Personal companion identity/recovery before complete family onboarding shared
+   by voice, web, and import.
 6. Current world state separate from permanent memory and telemetry.
 7. Structured, typed, temporal, expiring visual perception.
 8. Consolidation, correction, contradiction, revocation, and forgetting.
