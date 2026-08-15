@@ -2,8 +2,9 @@
 
 > **Observed:** 2026-08-14
 >
-> **Implementation snapshot:** `8e6d23f` (`feat(cognition): bridge voice
-> controller (#51)`, on `main`)
+> **Implementation snapshot:** `docs/personal-family-profiles` worktree after
+> P0-C1 through P0-C4. This snapshot is not merged and has not completed
+> operator acceptance.
 >
 > **Verification boundary:** P0.3/P0.4 code and P0.5-A policy seams were
 > inspected. P0.4 passed `just gate` (527 tests) before PR #40 merged it,
@@ -21,9 +22,11 @@
 > routes the classic voice path through the controller with an unknown public
 > actor. Its automated evidence and human `just run-server` plus
 > `just run-robot` acceptance remain required before this document can claim
-> P0 operator acceptance. The subsequent runtime-policy audit confirmed that
-> streaming and visual dialogue still bypass that controller; those gaps are
-> tracked in [Plan 0014](../plans/0014-p0-runtime-policy-hardening-design.md).
+> P0 operator acceptance. The subsequent runtime-policy audit confirmed the
+> streaming, visual-dialogue, QA-WAV, and protected-wording gaps. They are
+> implemented in the current feature worktree under
+> [Plan 0014](../plans/0014-p0-runtime-policy-hardening-design.md), but still
+> require a combined real operator run.
 > Trusted owner runtime access remains an R2 task.
 > Prior P0.3/P0-S verification includes `just lint`, `just typecheck`, `just
 > test` (514 passed), `just audit`, and `just check`; P0-S2 evidence includes GitHub CI and
@@ -49,7 +52,7 @@ unknown ActivePersonContext by default
       unknown -> no persistent retrieval or consolidation
                 |
                 v
-P0 controller adapters (`/chat` and classic `/transcribe`)
+P0 controller adapters (`/chat`, classic `/transcribe`, streaming audio, and visual dialogue)
   |-- deterministic date/strict-ISO age
   |-- public protected household -> unauthorized
   |-- trusted internal child list/count -> policy-gated v4 tools
@@ -59,10 +62,11 @@ P0 controller adapters (`/chat` and classic `/transcribe`)
 response + local Piper + optional legacy consolidation
 ```
 
-`/transcribe/stream` and `/vision/respond` are implemented public routes, but
-currently call the legacy text path directly. They are not evidence of P0
-policy parity and must not be enabled in the P0 operator runbook until Plan
-0014 supplies it.
+`/transcribe/stream` and `/vision/respond` now create a fresh typed event and
+ask the controller to decide before legacy generation. Safe plans never reach
+the LLM, legacy memory, or consolidation. A generic visual request preserves
+only its current ephemeral scene text in the legacy closure. This does not
+establish face identity, authorization, or durable visual memory.
 
 The shared text path is `server/src/server/text_turn.py`. Public channels use
 fresh interaction scopes. A trusted manual/session `ActivePersonContext` exists
@@ -76,7 +80,7 @@ gap prevents owner-by-default memory disclosure.
 | STT | Implemented | Faster Whisper, CPU/int8 path. |
 | TTS | Implemented | Piper local synthesis. |
 | LLM | Implemented/local only | Ollama is the only accepted runtime provider. |
-| Text, audio, and streaming paths | Implemented with policy gap | Classic audio enters the controller; streaming currently bypasses it. |
+| Text, audio, and streaming paths | Implemented/policy parity worktree | Classic and streaming audio enter the controller; generic stream output keeps its existing NDJSON/TTS path. |
 | Working memory | Implemented/restricted | Unknown public turns use no persistent history. |
 | Episodic/vector memory | Implemented/legacy | SQLite + sqlite-vec; top-k retrieval has no policy filter or threshold. |
 | Entities and facts v3 | Implemented/legacy | String relation targets and universal fact supersession remain. |
@@ -90,8 +94,8 @@ gap prevents owner-by-default memory disclosure.
 | Household authorization P0.5-B1 reader | Implemented/internal | Closed-predicate v4 literal/relation reads evaluate and audit policy before storage; outputs are frozen `known`, `unknown`, or non-disclosing `unauthorized`. B2 trusted internal tools invoke it; no public HTTP, prompt, or LLM path does. |
 | Household tools P0.5-B2 | Implemented/internal | Typed child list/count, preferences, birth date, and derived age tools authorize and audit before B1 reads; child relation/birth data require injected consent. |
 | B2 controller dispatch | Implemented/trusted-only | Two self-child question patterns produce deterministic response plans through injected actor/consent seams. Public `/chat` cannot provide either and never reaches the v4 reader. |
-| P0 runtime acceptance | Blocked by P0-C and operator acceptance | Classic `/transcribe` enters the controller, but streaming/visual dialogue parity and real runbook evidence remain open. R2 trusted-session acceptance remains unimplemented. |
-| Vision/VLM | Implemented/on demand with policy gap | One ephemeral frame, free-text scene description; `/vision/respond` currently bypasses the controller. |
+| P0 runtime acceptance | Automated P0-C complete; operator acceptance pending | All enabled public audio/stream/visual dialogue routes now enter the controller. The real runbook evidence remains open. R2 trusted-session acceptance remains unimplemented. |
+| Vision/VLM | Implemented/on demand with controller parity | One ephemeral frame, free-text scene description; `/vision/respond` enters the controller without face identity. |
 | Face profiles | Implemented/sensitive | SQLite-linked embeddings; not an active-person adapter. |
 | Robot client | Implemented/body adapter | PC microphone/webcam/speaker workflow; not cognitive logic. |
 

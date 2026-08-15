@@ -4,6 +4,10 @@
 >
 > **Code baseline:** `8e6d23f` on `main` at the start of review.
 >
+> **Disposition update:** On 2026-08-14, P0-C1 through P0-C4 were implemented
+> in `docs/personal-family-profiles` with automated gates green. They remain
+> unmerged and require the runbook's real operator acceptance.
+>
 > **Purpose:** distinguish current static evidence from reported runtime
 > observations. This document does not replace the historical
 > [`COGNITIVE_AUDIT.md`](COGNITIVE_AUDIT.md) snapshot.
@@ -11,10 +15,10 @@
 ## Executive verdict
 
 The P0 foundation is implemented, but P0 operator acceptance is not complete.
-Classic `/transcribe` now enters `CognitiveController`, while streaming and
-visual dialogue still bypass that boundary. The current public policy is safer
-than owner-by-default, but identical guarantees do not yet apply to every public
-route.
+At the audited `main` baseline, streaming and visual dialogue bypassed the
+controller. The current feature worktree routes all enabled public conversation
+paths through that boundary, normalizes the QA-script WAV, and expands bounded
+protected wording. Real PC acceptance is still the remaining P0 exit gate.
 
 No P1 implementation is authorized by this audit. The next executable work is
 bounded P0 runtime-policy hardening, then the approved personal-companion
@@ -24,10 +28,10 @@ milestone.
 
 | Finding | Classification | Current evidence | Required disposition |
 |---|---|---|---|
-| `/transcribe/stream` bypasses the controller. | Confirmed static defect | `routers/transcribe.py` calls `prepare_text_turn()` directly after STT. | Route through an equivalent policy/controller boundary or explicitly disable the endpoint until that happens. Add integration coverage. |
-| Narrow protected-intent classification misses ordinary family phrasings. | Confirmed static coverage gap | `controller.py` contains a small closed list; it does not contain terms such as `esposa` or `nació`. | Define bounded fail-closed Spanish patterns and ambiguity behaviour for text that plausibly requests protected data; add negative tests. Do not ask an LLM to make authorization decisions. |
-| `/vision/respond` bypasses the controller. | Confirmed static policy gap | `routers/vision.py` calls `process_text_turn()` directly after local scene perception. | Give visual dialogue an equivalent policy boundary before treating it as P0-accepted. Scene description remains a separate capability. |
-| `client_test.py --text` does not enforce the audio contract. | Confirmed static defect | `synthesize_locally()` writes Piper's native WAV without resampling or validating its header. | Normalize or reject non-16 kHz WAV output and test the resulting header. |
+| `/transcribe/stream` bypasses the controller. | Resolved in feature worktree | Baseline called `prepare_text_turn()` directly after STT. | C1 routes a typed event through `decide()` and renders safe plans without legacy generation; operator streaming evidence remains pending. |
+| Narrow protected-intent classification misses ordinary family phrasings. | Resolved in feature worktree | Baseline missed terms such as `esposa` or `nació`. | C4 documents bounded fail-closed forms and the `qué día soy` clarification; real STT evidence remains pending. |
+| `/vision/respond` bypasses the controller. | Resolved in feature worktree | Baseline called `process_text_turn()` directly after local scene perception. | C2 gives visual dialogue the controller boundary while preserving scene-only perception; operator camera evidence remains pending. |
+| `client_test.py --text` does not enforce the audio contract. | Resolved in feature worktree | Baseline wrote Piper-native WAV without resampling or validating its header. | C3 reuses the local converter and validator; a real disposable-server invocation remains pending. |
 | Public voice cannot become an owner. | Confirmed intended boundary | Public chat and classic voice adapters construct an `unknown` actor. | Preserve until the bounded local personal session exists. |
 | Persisted roles are not wired into public identity. | Confirmed planned gap | `get_active_role()` and `IdentitySessionRegistry` exist, while public adapters use unknown actors. | Implement only in the approved personal-companion milestone; do not infer identity from text, face, or voice. |
 | Prompt and deterministic paths both know the date. | Confirmed technical debt | `characters.current_date_es()` injects a date prompt while the controller has `get_current_date()`. | Remove the duplicate source when a focused compatibility plan proves no regression. |

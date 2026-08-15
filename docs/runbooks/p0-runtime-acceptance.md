@@ -1,9 +1,10 @@
 # P0 Runtime Acceptance Runbook
 
-> **Status:** Classic R1 bridge is implemented, but P0 operator acceptance is
-> blocked by the public-route gaps in
-> [Plan 0014](../plans/0014-p0-runtime-policy-hardening-design.md). R2
-> personal-data acceptance remains a draft.
+> **Status:** P0-C public-route hardening is implemented in the current feature
+> branch and automated gates are green. P0 operator acceptance is still
+> pending the runbook evidence below. Personal identity/session acceptance is P1 work under
+> [Plan 0015](../plans/0015-personal-companion-design.md), not an unfinished
+> P0 requirement.
 
 ## Purpose
 
@@ -15,9 +16,10 @@ P0 acceptance, even if automated checks pass.
 
 - Use a disposable local acceptance database only. Do not run this against a
   household database with real data.
-- Keep the server loopback-bound, `ROBOT_STREAMING=false`, and
-  `VISION_ENABLED=false` until Plan 0014 supplies controller/policy parity for
-  streaming and visual dialogue.
+- Keep the server loopback-bound. For the first audio checkpoint use
+  `ROBOT_STREAMING=false` and `VISION_ENABLED=false` to isolate the classic
+  route. Controller/policy parity now also exists for streaming and visual
+  dialogue; those settings are no longer a security workaround.
 - Do not use a voice phrase, name, face, or HTTP field as identity proof.
 - The manual acceptance session is temporary; clear it after testing.
 
@@ -58,10 +60,31 @@ needed for this checkpoint.
    even when pytest is green.
 
 R1 does **not** authorize reading any existing legacy or v4 household data.
-Those records remain protected until R2 creates a separate trusted local
-session and its acceptance cases pass.
+Those records remain protected until a future P1 personal-companion flow creates
+and validates a separate trusted local session.
 
-## R2 personal acceptance procedure (not implemented)
+## P0-C supplementary route checks
+
+After the R1 audio checkpoint, use the same disposable database and loopback
+server. These checks complete public-route and QA-tool evidence; they do not
+create a trusted identity or household data.
+
+| ID | Setup | Action | Required result |
+|---|---|---|---|
+| C1-S | `ROBOT_STREAMING=true`, `VISION_ENABLED=false` | Speak “¿Qué día es hoy?”, “¿Cómo se llaman mis hijos?”, then “Hola, Iroko.” through `just run-robot`. | Deterministic date, non-disclosing denial, then normal streamed generic audio; record literal STT and output. |
+| C2-V | `ROBOT_STREAMING=false`, `VISION_ENABLED=true` | Ask “Iroko, ¿qué ves?” through `just run-robot` with the PC webcam available. | Cue then an audible scene description of the current frame; it must not identify a person, disclose family data, or enroll a face. |
+| C3-Q | Server running, no microphone required | Run `just test-client --text "Hola Iroko" --no-play`. | Request reaches `/transcribe` and does not fail with `422 ... got 22050 Hz`; record actual STT and response. |
+| C4-A | Any public audio route | If STT shows “¿Qué día soy?”, record the literal text and response. | Fixed clarification; no fabricated date and no family information. |
+
+For every case record the command, effective non-secret settings, literal STT
+text, response, audible output, route, and pass/fail. Stop and file a defect
+on any mismatch; do not reinterpret a near miss as a pass.
+
+## Deferred P1 personal acceptance procedure (not implemented)
+
+This section is retained as a future acceptance outline only. It is not a P0
+closure step and must not be implemented before Plan 0015 receives a fresh
+post-P0-C revalidation and a Ready plan.
 
 1. Stop all server instances, then run `just reset-db`. Record the backup path
    and confirm the next server startup applies migrations 1 through 5.
@@ -91,7 +114,7 @@ session and its acceptance cases pass.
    Record the STT transcript, returned response text, audible result, and audit
    action sequence.
 
-## Required cases
+## Future P1 required cases
 
 | ID | Preconditions | Spoken phrase | Pass condition |
 |---|---|---|---|
@@ -124,5 +147,7 @@ For each run, record in a local, untracked operator note:
 - latency observations for STT, controller, LLM, TTS, and total turn;
 - deviations, failures, and the issue/PR that resolves them.
 
-Do not mark P0 runtime-accepted until every required case passes on a clean
-database and the matching automated/CI gates are green.
+Do not mark P0 runtime-accepted until the P0-C public-route slices and their
+R1/C1-S/C2-V/C3-Q operator cases pass on a clean database with matching
+automated/CI gates.
+The deferred P1 cases are a separate personal-companion acceptance gate.

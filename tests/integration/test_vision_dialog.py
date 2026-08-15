@@ -8,6 +8,7 @@ the character prompt → spoken in-character answer.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, Mock
 
@@ -68,6 +69,23 @@ def _post_respond(client: TestClient, image: bytes, text: str) -> httpx.Response
 
 
 @pytest.mark.integration
+def test_vision_event_from_question_is_fresh_and_opaque() -> None:
+    """Visual questions must receive request-local IDs and an opaque scope."""
+    first = vision_module._vision_event_from_question("¿qué ves?")
+    second = vision_module._vision_event_from_question("¿qué ves?")
+
+    assert first.event_type == "text.turn"
+    assert first.source == "vision.respond"
+    assert first.subject_id is None
+    assert first.occurred_at.tzinfo is not None
+    assert first.recorded_at.tzinfo is not None
+    assert first.event_id != second.event_id
+    assert first.correlation_id != second.correlation_id
+    assert first.payload.conversation_id.startswith("interaction:")
+    assert first.payload.conversation_id != second.payload.conversation_id
+
+
+@pytest.mark.integration
 def test_transcribe_visual_question_requests_frame(
     client: TestClient, silence_wav_bytes: bytes
 ) -> None:
@@ -119,6 +137,64 @@ def test_vision_respond_answers_in_character(
         for call in process.await_args_list
     )
     assert all(scope not in response.text for scope in scopes for response in responses)
+
+
+@pytest.mark.integration
+def test_vision_respond_routes_current_date_without_legacy_generation(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A deterministic visual question must not enter the generic text path."""
+    process = AsyncMock(return_value=TextTurnResult("legacy", "joy", 7, False))
+    monkeypatch.setattr(vision_module, "process_text_turn", process)
+    monkeypatch.setattr(vision_module, "_today", lambda: date(2026, 8, 14), raising=False)
+
+    response = _post_respond(client, _FAKE_JPEG, "¿Qué fecha es hoy?")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["llm_response"] == "Hoy es 2026-08-14."
+    assert body["emotion"] == "neutral"
+    process.assert_not_awaited()
+
+
+@pytest.mark.integration
+def test_vision_respond_denies_protected_data_before_legacy_generation(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unknown visual requester must not send family data to legacy generation."""
+    process = AsyncMock(return_value=TextTurnResult("legacy", "joy", 7, False))
+    audit = AsyncMock()
+    reader = Mock()
+    tools = Mock()
+    monkeypatch.setattr(vision_module, "process_text_turn", process)
+    monkeypatch.setattr(vision_module, "record_authorization_decision", audit, raising=False)
+    monkeypatch.setattr(vision_module, "PolicyGatedV4Reader", Mock(return_value=reader))
+    monkeypatch.setattr(vision_module, "HouseholdKnowledgeTools", Mock(return_value=tools))
+
+    response = _post_respond(client, _FAKE_JPEG, "¿Cómo se llaman mis hijos?")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["llm_response"] == (
+        "No puedo acceder a información familiar privada sin una autorización comprobada."
+    )
+    assert body["emotion"] == "neutral"
+    process.assert_not_awaited()
+    audit.assert_awaited_once()
+    audit_call = audit.await_args
+    assert audit_call is not None
+    request, decision = audit_call.args
+    assert request.actor.person_id is None
+    assert request.target_person_id is None
+    assert decision.decision.value == "denied"
+    assert "Máximo" not in repr(request)
+    assert "Sofía" not in repr(request)
+    reader.read_active_literals.assert_not_called()
+    reader.read_active_relations.assert_not_called()
+    tools.get_children.assert_not_called()
+    tools.count_children.assert_not_called()
 
 
 @pytest.mark.integration

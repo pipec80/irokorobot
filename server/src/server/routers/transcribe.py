@@ -32,7 +32,7 @@ from server.pipeline import (
 )
 from server.schemas import TranscribeResponse
 from server.settings import settings
-from server.streaming import stream_pipeline
+from server.streaming import stream_pipeline, stream_response_plan
 from server.text_turn import (
     ConsolidationScheduler,
     TextTurnResult,
@@ -245,9 +245,22 @@ async def transcribe_stream(
         logger.warning("STT returned empty transcript — audio was silence or too short")
         raise HTTPException(status_code=422, detail="No speech detected in audio")
 
+    event = _voice_event_from_transcript(text_heard)
+    plan = await _voice_controller(background_tasks).decide(event)
+    if plan is not None:
+        return StreamingResponse(
+            stream_response_plan(
+                text_heard=event.payload.message,
+                plan=plan,
+                stt_ms=stt_ms,
+                request_start=request_start,
+            ),
+            media_type="application/x-ndjson",
+        )
+
     prepared = await prepare_text_turn(
-        text_heard,
-        new_interaction_scope(),
+        event.payload.message,
+        event.payload.conversation_id,
     )
 
     return StreamingResponse(

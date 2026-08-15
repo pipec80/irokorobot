@@ -43,10 +43,34 @@ type ConsentResolver = Callable[
 ]
 
 _ISO_DATE_PATTERN = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
-_PRIVATE_HOUSEHOLD_TERMS = ("hijo", "hija", "familia", "preferencia", "le gusta")
-_RELATIONSHIP_TERMS = ("padre", "madre", "hermano", "pareja", "relación")
+_PRIVATE_HOUSEHOLD_TERMS = (
+    "hijo",
+    "hija",
+    "familia",
+    "preferencia",
+    "le gusta",
+    "padre",
+    "madre",
+    "papa",
+    "mama",
+    "hermano",
+    "pareja",
+    "esposa",
+    "esposo",
+    "marido",
+    "mujer",
+    "abuelo",
+    "abuela",
+    "tio",
+    "tia",
+    "primo",
+    "prima",
+)
+_BIRTH_INFORMATION_TERMS = ("nacio", "nacimiento")
+_RELATIONSHIP_TERMS = ("relación",)
 _OWN_CHILDREN_LIST_PATTERNS = ("como se llaman mis hijos",)
 _OWN_CHILDREN_COUNT_PATTERNS = ("cuantos hijos tengo",)
+_AMBIGUOUS_DATE_PATTERNS = ("que dia soy",)
 _TWO_ITEMS = 2
 
 
@@ -125,22 +149,41 @@ class CognitiveController:
         Returns:
             Deterministic, safe, or legacy response plan for the event.
         """
+        plan = await self.decide(event)
+        if plan is not None:
+            return plan
+        return await self._legacy_plan(event.payload)
+
+    async def decide(self, event: CognitiveEvent[TextTurnPayload]) -> ResponsePlan | None:
+        """Resolve closed policy and tool branches without generic generation.
+
+        Args:
+            event: Validated event from a text-capable channel adapter.
+
+        Returns:
+            A deterministic or policy response plan, or ``None`` when the
+            adapter may safely use its generic generation path.
+        """
         need = _classify_information_need(event.payload.message)
+        plan: ResponsePlan | None
         match need:
             case InformationNeed.OWN_CHILDREN_LIST | InformationNeed.OWN_CHILDREN_COUNT:
-                return await self._own_children_plan(event, need)
+                plan = await self._own_children_plan(event, need)
             case InformationNeed.PROTECTED_HOUSEHOLD:
-                return await self._protected_household_plan(event, need)
+                plan = await self._protected_household_plan(event, need)
+            case InformationNeed.AMBIGUOUS_DATE_QUERY:
+                plan = _ambiguous_date_plan()
             case InformationNeed.RELATIONSHIP_OR_PROFILE:
-                return _unknown_plan(
+                plan = _unknown_plan(
                     need, "No tengo relaciones familiares estructuradas verificadas."
                 )
             case InformationNeed.CURRENT_DATE:
-                return _date_plan(get_current_date(self._today()))
+                plan = _date_plan(get_current_date(self._today()))
             case InformationNeed.EXPLICIT_BIRTH_DATE_AGE:
-                return _age_plan(_age_result(event.payload.message, self._today()))
+                plan = _age_plan(_age_result(event.payload.message, self._today()))
             case InformationNeed.GENERIC_CONVERSATION:
-                return await self._legacy_plan(event.payload)
+                plan = None
+        return plan
 
     async def _legacy_plan(self, payload: TextTurnPayload) -> ResponsePlan:
         """Delegate only an unclassified safe request to the existing text path."""
@@ -212,21 +255,28 @@ class CognitiveController:
 def _classify_information_need(message: str) -> InformationNeed:
     """Classify only the documented P0.3 text patterns without model inference."""
     normalized = _normalize_message(message)
-    for patterns, need in (
+    need = InformationNeed.GENERIC_CONVERSATION
+    for patterns, candidate_need in (
         (_OWN_CHILDREN_LIST_PATTERNS, InformationNeed.OWN_CHILDREN_LIST),
         (_OWN_CHILDREN_COUNT_PATTERNS, InformationNeed.OWN_CHILDREN_COUNT),
     ):
         if any(pattern in normalized for pattern in patterns):
-            return need
-    if any(term in normalized for term in _PRIVATE_HOUSEHOLD_TERMS):
-        return InformationNeed.PROTECTED_HOUSEHOLD
-    if _is_current_date_request(normalized):
-        return InformationNeed.CURRENT_DATE
-    if "edad" in normalized or "años" in normalized:
-        return InformationNeed.EXPLICIT_BIRTH_DATE_AGE
-    if any(term in normalized for term in _RELATIONSHIP_TERMS):
-        return InformationNeed.RELATIONSHIP_OR_PROFILE
-    return InformationNeed.GENERIC_CONVERSATION
+            need = candidate_need
+            break
+    else:
+        if any(
+            term in normalized for term in (*_PRIVATE_HOUSEHOLD_TERMS, *_BIRTH_INFORMATION_TERMS)
+        ):
+            need = InformationNeed.PROTECTED_HOUSEHOLD
+        elif any(pattern in normalized for pattern in _AMBIGUOUS_DATE_PATTERNS):
+            need = InformationNeed.AMBIGUOUS_DATE_QUERY
+        elif _is_current_date_request(normalized):
+            need = InformationNeed.CURRENT_DATE
+        elif "edad" in normalized or "años" in normalized:
+            need = InformationNeed.EXPLICIT_BIRTH_DATE_AGE
+        elif any(term in normalized for term in _RELATIONSHIP_TERMS):
+            need = InformationNeed.RELATIONSHIP_OR_PROFILE
+    return need
 
 
 def _normalize_message(message: str) -> str:
@@ -269,6 +319,15 @@ def _date_plan(result: ToolResult) -> ResponsePlan:
                 tool_name=result.tool_name,
             ),
         ),
+    )
+
+
+def _ambiguous_date_plan() -> ResponsePlan:
+    """Ask for a safe clarification when a known STT date form is ambiguous."""
+    return _unknown_plan(
+        InformationNeed.AMBIGUOUS_DATE_QUERY,
+        "No entendí si preguntas por la fecha actual o por información personal. "
+        "¿Podrías reformularlo?",
     )
 
 

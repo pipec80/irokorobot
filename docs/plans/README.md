@@ -73,9 +73,16 @@ defines that closure; [Plan 0013](0013-p0-voice-controller-bridge.md) is its
 R1 classic-voice bridge. The active
 [P0 runtime-policy hardening design](0014-p0-runtime-policy-hardening-design.md)
 records the remaining streaming, visual-dialogue, intent-coverage, and QA
-contract gaps before R1 can be operator-accepted. R2 trusted local acceptance
-and the [personal-companion design](0015-personal-companion-design.md) remain
-proposed. General UI/family onboarding is deliberately later work.
+contract gaps before R1 can be operator-accepted. The current feature branch
+implements its bounded slices: [Plan 0016](0016-p0-streaming-controller-parity.md)
+(streaming), [Plan 0017](0017-p0-vision-controller-parity.md) (visual dialogue),
+[Plan 0018](0018-p0-client-test-audio-contract.md) (QA WAV), and
+[Plan 0019](0019-p0-protected-request-recognition.md) (bounded protected
+wording). Their automated gates are green; the combined real operator run
+remains mandatory. The earlier R2 trusted
+local acceptance concept has moved to the post-P0
+[personal-companion design](0015-personal-companion-design.md); it is not a P0
+exit criterion. General UI/family onboarding is deliberately later work.
 
 The [P0 cognitive portfolio design](p0-cognitive-plan-portfolio-design.md)
 links every current P0 plan and records their dependency order and status.

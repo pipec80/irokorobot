@@ -1,7 +1,7 @@
 """Integration tests for POST /transcribe/stream."""
 
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 import json
 import time
 from unittest.mock import AsyncMock, Mock
@@ -81,6 +81,11 @@ def _parse_ndjson(text: str) -> list[dict[str, object]]:
     return [json.loads(line) for line in text.strip().split("\n") if line.strip()]
 
 
+def _is_nonnegative_int(value: object) -> bool:
+    """Return whether one untyped NDJSON value is a valid timing value."""
+    return isinstance(value, int) and value >= 0
+
+
 @pytest.mark.integration
 def test_stream_happy_path_emits_sentence_audio(
     client: TestClient, silence_wav_bytes: bytes
@@ -139,6 +144,105 @@ def test_stream_prepares_shared_voice_turn(
         "joy",
     )
     assert callable(record.call_args.kwargs["schedule_consolidation"])
+
+
+@pytest.mark.integration
+def test_stream_answers_current_date_without_legacy_generation(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A deterministic stream response must bypass prompt preparation and LLM output."""
+    prepared = PreparedTextTurn(
+        "¿Qué fecha es hoy?", "interaction:date", None, None, False, None, None, None
+    )
+    prepare = AsyncMock(return_value=prepared)
+    record = Mock()
+
+    async def legacy_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
+        yield "EMOTION:joy\nRespuesta legacy."
+
+    llm_stream = Mock(side_effect=legacy_stream)
+    monkeypatch.setattr(stt, "transcribe", AsyncMock(return_value="¿Qué fecha es hoy?"))
+    synthesize = AsyncMock(return_value=("AAAA", 42))
+    monkeypatch.setattr(transcribe_module, "_today", lambda: date(2026, 8, 12))
+    monkeypatch.setattr(transcribe_module, "prepare_text_turn", prepare)
+    monkeypatch.setattr(llm_streaming, "generate_response_stream", llm_stream)
+    monkeypatch.setattr(streaming, "record_text_turn", record)
+    monkeypatch.setattr(tts, "synthesize", synthesize)
+
+    response = _post_stream(client, silence_wav_bytes)
+
+    assert response.status_code == 200
+    events = _parse_ndjson(response.text)
+    assert events[0] == {"type": "text_heard", "value": "¿Qué fecha es hoy?"}
+    assert events[1] == {"type": "emotion", "value": "neutral"}
+    assert events[2]["type"] == "audio"
+    assert events[2]["text"] == "Hoy es 2026-08-12."
+    assert [event["type"] for event in events] == ["text_heard", "emotion", "audio", "done"]
+    timings = events[-1]
+    assert all(
+        _is_nonnegative_int(timings[field]) for field in ("stt_ms", "llm_ms", "tts_ms", "total_ms")
+    )
+    assert events[-1]["type"] == "done"
+    synthesize.assert_awaited_once_with("Hoy es 2026-08-12.")
+    prepare.assert_not_awaited()
+    llm_stream.assert_not_called()
+    record.assert_not_called()
+
+
+@pytest.mark.integration
+def test_stream_denies_private_household_request_before_legacy_generation(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A public stream must audit and deny protected data before generation."""
+    prepared = PreparedTextTurn(
+        "¿Cómo se llaman mis hijos?", "interaction:private", None, None, False, None, None, None
+    )
+    prepare = AsyncMock(return_value=prepared)
+    record = Mock()
+
+    async def legacy_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
+        yield "EMOTION:joy\nRespuesta legacy."
+
+    llm_stream = Mock(side_effect=legacy_stream)
+    audit = AsyncMock()
+    synthesize = AsyncMock(return_value=("AAAA", 42))
+    monkeypatch.setattr(stt, "transcribe", AsyncMock(return_value="¿Cómo se llaman mis hijos?"))
+    monkeypatch.setattr(transcribe_module, "prepare_text_turn", prepare)
+    monkeypatch.setattr(transcribe_module, "record_authorization_decision", audit)
+    monkeypatch.setattr(llm_streaming, "generate_response_stream", llm_stream)
+    monkeypatch.setattr(streaming, "record_text_turn", record)
+    monkeypatch.setattr(tts, "synthesize", synthesize)
+
+    response = _post_stream(client, silence_wav_bytes)
+
+    assert response.status_code == 200
+    events = _parse_ndjson(response.text)
+    assert events[0] == {"type": "text_heard", "value": "¿Cómo se llaman mis hijos?"}
+    assert events[1] == {"type": "emotion", "value": "neutral"}
+    assert events[2]["type"] == "audio"
+    assert "información familiar privada" in str(events[2]["text"])
+    assert [event["type"] for event in events] == ["text_heard", "emotion", "audio", "done"]
+    timings = events[-1]
+    assert all(
+        _is_nonnegative_int(timings[field]) for field in ("stt_ms", "llm_ms", "tts_ms", "total_ms")
+    )
+    assert events[-1]["type"] == "done"
+    synthesize.assert_awaited_once_with(str(events[2]["text"]))
+    audit.assert_awaited_once()
+    audit_call = audit.await_args
+    assert audit_call is not None
+    request, decision = audit_call.args
+    assert request.actor.person_id is None
+    assert request.target_person_id is None
+    assert "Máximo" not in repr((request, decision))
+    assert "Sofía" not in repr((request, decision))
+    prepare.assert_not_awaited()
+    llm_stream.assert_not_called()
+    record.assert_not_called()
 
 
 @pytest.mark.integration

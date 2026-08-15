@@ -1,8 +1,10 @@
 # P0 Runtime Acceptance Design
 
-> **Status:** Partially implemented — Plan 0013 completed the classic voice
-> bridge. Plan 0014 must close public-route policy parity before R1 can be
-> operator-accepted; R2 remains a proposed personal acceptance flow.
+> **Status:** Partially implemented historical design — Plan 0013 completed
+> the classic voice bridge. Plan 0014 must close public-route policy parity
+> before R1 can be operator-accepted. The R2 personal identity/session design
+> below is superseded as an implementation target by ADR 0006 and Plan 0015;
+> it is not a P0 exit criterion.
 
 ## Goal
 
@@ -20,14 +22,26 @@ first proven through isolated tests and `/chat`. Plan 0013 brought classic
 streaming and visual dialogue gaps are recorded separately in Plan 0014.
 Existing offline tests prove contracts, not the end-to-end operator flow.
 
-This design closes that gap. It does **not** start the P1 roadmap: there is no
-speaker recognition, face evidence, generalized household onboarding, public
-admin API, WorldState, or new perception capability.
+The R1 portion of this design closes that gap. It does **not** start the P1
+roadmap: there is no speaker recognition, face evidence, generalized household
+onboarding, public admin API, WorldState, or new perception capability.
 
-## Acceptance definition
+> **R2 archival notice:** The following R2 text records an earlier acceptance
+> concept. It must not be implemented as P0 work. Local personal
+> administration, consented face/voice evidence, fusion, and personal
+> acceptance now belong to the post-P0 personal-companion design in
+> [Plan 0015](0015-personal-companion-design.md), under
+> [ADR 0006](../adr/0006-personal-and-family-companion-profiles.md).
 
-P0 is product-accepted only when all of these are true on a disposable local
-database:
+## Historical R1/R2 acceptance definition (superseded for P0)
+
+The following six-item definition is retained to preserve the original R2
+acceptance concept. P0 closure now requires the bounded public-route hardening
+plans and R1 operator evidence only. The former R2 criteria are P1 design input
+and require a future Ready plan under Plan 0015.
+
+The former proposal considered P0 product-accepted only when all of these were
+true on a disposable local database:
 
 1. `just run-server` and classic `just run-robot` use the same controller
    decision path for a voice turn.

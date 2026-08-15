@@ -1,7 +1,7 @@
 # P0 runtime policy hardening design
 
-> **Status:** Proposed — not executable until a fresh code revalidation turns
-> each bounded slice into a Ready implementation plan.
+> **Status:** Implemented in the current feature branch — automated gates
+> green; combined operator acceptance remains pending.
 
 ## Objective
 
@@ -36,12 +36,16 @@ outcomes must stream without legacy generation; generic allowed text must
 preserve NDJSON event order and TTS behaviour. Tests must prove date routing,
 protected denial, audit output, and no v4 reader call.
 
+The revalidated slice is [Plan 0016](0016-p0-streaming-controller-parity.md).
+
 ### P0-C2 — Visual dialogue policy parity
 
 Keep scene perception local and ephemeral, but place the subsequent visual
 question behind an equivalent controller/policy boundary. A scene description
 is not identity evidence, authorization, or durable memory. Until the boundary
 exists, the P0 runbook must require `VISION_ENABLED=false`.
+
+The revalidated slice is [Plan 0017](0017-p0-vision-controller-parity.md).
 
 ### P0-C3 — Audio QA contract
 
@@ -51,6 +55,8 @@ nonconforming Piper voice must produce a deterministic local error or a valid
 converted WAV; never a misleading server 422. Add focused script-level tests
 without changing the robot client contract.
 
+The revalidated slice is [Plan 0018](0018-p0-client-test-audio-contract.md).
+
 ### P0-C4 — Bounded protected-request recognition
 
 Document a limited Spanish protected-request vocabulary and explicit ambiguity
@@ -58,6 +64,8 @@ behaviour. Add realistic STT variants for relationship, birth-date, child, and
 spouse questions. When text plausibly requests protected data but cannot be
 classified safely, ask for clarification rather than silently use a date prompt
 or family retrieval. Ordinary unrelated conversation remains available.
+
+The revalidated slice is [Plan 0019](0019-p0-protected-request-recognition.md).
 
 ## Verification required for the final Ready plans
 

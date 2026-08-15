@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 import logging
 
 from server import llm, llm_streaming, tts
+from server.cognition.response_plan import ResponsePlan
 from server.exceptions import LLMError
 from server.pipeline import _elapsed_ms, _log_pipeline_timing
 from server.schemas_streaming import (
@@ -120,6 +121,43 @@ async def _emit_fallback(state: _StreamState) -> AsyncIterator[str]:
         state.emotion = "neutral"
         yield StreamEmotionEvent(value=state.emotion).model_dump_json() + "\n"
     yield await _synthesize_sentence(settings.llm_fallback_phrase, state)
+
+
+async def stream_response_plan(
+    *,
+    text_heard: str,
+    plan: ResponsePlan,
+    stt_ms: int,
+    request_start: float,
+) -> AsyncIterator[str]:
+    """Render an already-authorized plan without LLM or memory work.
+
+    Yields:
+        NDJSON text, emotion, one 16kHz mono int16 WAV audio response, and
+        final timing events.
+    """
+    yield StreamTextHeardEvent(value=text_heard).model_dump_json() + "\n"
+    yield StreamEmotionEvent(value=plan.emotion).model_dump_json() + "\n"
+    audio_base64, duration_ms = await tts.synthesize(plan.response)
+    yield (
+        StreamAudioEvent(
+            text=plan.response,
+            audio_base64=audio_base64,
+            duration_ms=duration_ms,
+        ).model_dump_json()
+        + "\n"
+    )
+    total_ms = _elapsed_ms(request_start)
+    _log_pipeline_timing(stt_ms, plan.duration_ms, duration_ms, total_ms)
+    yield (
+        StreamDoneEvent(
+            stt_ms=stt_ms,
+            llm_ms=plan.duration_ms,
+            tts_ms=duration_ms,
+            total_ms=total_ms,
+        ).model_dump_json()
+        + "\n"
+    )
 
 
 async def stream_pipeline(
