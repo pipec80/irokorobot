@@ -1,7 +1,9 @@
 # P0 runtime policy hardening design
 
-> **Status:** Implemented in the current feature branch — automated gates
-> green; combined operator acceptance remains pending.
+> **Status:** P0-C1 through P0-C4 are implemented in the current feature
+> branch and automated gates are green. The 2026-08-17 operator run found
+> three runtime blockers; remediation is designed in
+> [Plan 0020](0020-p0-operator-qa-remediation-design.md).
 
 ## Objective
 

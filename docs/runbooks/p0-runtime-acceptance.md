@@ -1,8 +1,11 @@
 # P0 Runtime Acceptance Runbook
 
 > **Status:** P0-C public-route hardening is implemented in the current feature
-> branch and automated gates are green. P0 operator acceptance is still
-> pending the runbook evidence below. Personal identity/session acceptance is P1 work under
+> branch and automated gates are green. The first operator run on 2026-08-17
+> confirmed policy denial and media paths but found intent, silent-streaming,
+> and visual-grounding blockers documented in
+> [Plan 0020](../plans/0020-p0-operator-qa-remediation-design.md). P0 acceptance
+> requires remediation and a clean rerun. Personal identity/session acceptance is P1 work under
 > [Plan 0015](../plans/0015-personal-companion-design.md), not an unfinished
 > P0 requirement.
 

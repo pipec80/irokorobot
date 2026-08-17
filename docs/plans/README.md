@@ -79,7 +79,10 @@ implements its bounded slices: [Plan 0016](0016-p0-streaming-controller-parity.m
 [Plan 0018](0018-p0-client-test-audio-contract.md) (QA WAV), and
 [Plan 0019](0019-p0-protected-request-recognition.md) (bounded protected
 wording). Their automated gates are green; the combined real operator run
-remains mandatory. The earlier R2 trusted
+on 2026-08-17 found intent-generalization, silent-streaming, and visual
+grounding blockers. The remediation direction is approved and specified in
+[Plan 0020](0020-p0-operator-qa-remediation-design.md); written-design review
+and three executable slice plans remain required before code changes. The earlier R2 trusted
 local acceptance concept has moved to the post-P0
 [personal-companion design](0015-personal-companion-design.md); it is not a P0
 exit criterion. General UI/family onboarding is deliberately later work.
