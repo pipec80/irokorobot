@@ -20,20 +20,25 @@ token deltas to the sentence-streaming pipeline.
 
 from collections.abc import AsyncIterator
 import json
-import re
 
 import httpx
 
 from server.characters import build_system_prompt, get_character
 from server.cognition.identity import ActivePersonContext
 from server.exceptions import LLMError
-from server.llm import FALLBACK_EMOTION, VALID_EMOTIONS
+from server.llm import VALID_EMOTIONS
 from server.llm_transport import ollama_chat_stream
 from server.onboarding import OnboardingSlot
 from server.schemas import ConversationTurn, MemoryContext
 from server.settings import settings
 
-_EMOTION_TAG_RE = re.compile(r"^EMOTION:\s*(\w+)\s*\n", re.IGNORECASE)
+# Re-exported temporarily so existing call sites/tests can keep resolving
+# the streaming protocol from this module. Task 3 moves the orchestration
+# call-sites in streaming.py to import from streaming_protocol directly.
+from server.streaming_protocol import (  # noqa: F401
+    parse_streaming_emotion,
+    validate_streaming_body_start,
+)
 
 # Sole owner of the streaming /transcribe/stream output contract.
 # build_system_prompt is format-neutral (identity/behavior only) — this is
@@ -71,26 +76,6 @@ def _build_messages(text: str, history: list[ConversationTurn] | None) -> list[d
         messages.extend({"role": turn.role, "content": turn.content} for turn in history)
     messages.append({"role": "user", "content": text})
     return messages
-
-
-def parse_streaming_emotion(buffer: str) -> tuple[str, str] | None:
-    """Extract the "EMOTION:xxx\\n" tag from the start of a streamed buffer.
-
-    Args:
-        buffer: Text accumulated so far from generate_response_stream.
-
-    Returns:
-        ``(emotion, remainder)`` once the tag line is fully buffered
-        (validated against ``VALID_EMOTIONS``, defaulting to neutral for an
-        unknown tag), or ``None`` if the first line hasn't arrived yet.
-    """
-    match = _EMOTION_TAG_RE.match(buffer)
-    if match is None:
-        return None
-    emotion = match.group(1).lower()
-    if emotion not in VALID_EMOTIONS:
-        emotion = FALLBACK_EMOTION
-    return emotion, buffer[match.end() :]
 
 
 def _build_streaming_base_prompt(
