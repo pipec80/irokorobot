@@ -3,6 +3,7 @@
 from collections.abc import AsyncIterator
 from datetime import UTC, date, datetime
 import json
+import logging
 import time
 from unittest.mock import AsyncMock, Mock
 from uuid import UUID
@@ -19,7 +20,7 @@ from server.cognition.identity import (
     IdentityEvidenceSource,
 )
 from server.cognition.models import Confidence, ConfidenceBasis
-from server.exceptions import LLMError
+from server.exceptions import LLMError, TTSError
 from server.routers import transcribe as transcribe_module
 from server.schemas import ConversationTurn
 from server.settings import settings
@@ -79,6 +80,24 @@ def _post_stream(client: TestClient, audio: bytes) -> httpx.Response:
 
 def _parse_ndjson(text: str) -> list[dict[str, object]]:
     return [json.loads(line) for line in text.strip().split("\n") if line.strip()]
+
+
+def _post_stream_with_deltas(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    audio: bytes,
+    deltas: list[str],
+) -> list[dict[str, object]]:
+    """Feed fixed LLM stream deltas through one live POST /transcribe/stream call."""
+
+    async def fake_generate(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
+        for delta in deltas:
+            yield delta
+
+    monkeypatch.setattr(llm_streaming, "generate_response_stream", fake_generate)
+    response = _post_stream(client, audio)
+    assert response.status_code == 200
+    return _parse_ndjson(response.text)
 
 
 def _is_nonnegative_int(value: object) -> bool:
@@ -305,32 +324,193 @@ async def test_stream_uses_local_deltas_after_invalid_runtime_provider_mutation(
     assert deltas == ["EMOTION:joy\nHola."]
 
 
+def _assert_audible_protocol_fallback(events: list[dict[str, object]]) -> None:
+    """Assert the mandatory P0-C6 fallback shape shared by every invalid-output test."""
+    assert [event["type"] for event in events] == ["text_heard", "emotion", "audio", "done"]
+    assert events[1]["value"] == "neutral"
+    assert events[2]["text"] == settings.llm_fallback_phrase
+    duration = events[2]["duration_ms"]
+    assert isinstance(duration, int)
+    assert duration > 0
+    done = events[-1]
+    tts_ms = done["tts_ms"]
+    assert isinstance(tts_ms, int)
+    assert tts_ms > 0
+
+
 @pytest.mark.integration
-def test_stream_truncated_emotion_tag_is_discarded_not_spoken(
+def test_stream_hybrid_json_uses_audible_protocol_fallback(
     client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Stream ends mid tag ("EMOTION:ale", no \\n) — discarded, never spoken."""
+    """The observed 2026-08-17 hybrid output must speak fallback, never silence."""
+    deltas = ['EMOTION: joy {"response": "¡Qué emocionante!", "emotion": "joy"}']
     record = Mock()
-
-    async def fake_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
-        yield "EMOTION:ale"
-
-    monkeypatch.setattr(llm_streaming, "generate_response_stream", fake_stream)
     monkeypatch.setattr(streaming, "record_text_turn", record)
-    response = _post_stream(client, silence_wav_bytes)
-    assert response.status_code == 200
-    events = _parse_ndjson(response.text)
-
-    assert events[0] == {"type": "text_heard", "value": "hola robot"}
-    emotion_events = [e for e in events if e["type"] == "emotion"]
-    assert emotion_events == [{"type": "emotion", "value": "neutral"}]
-    audio_events = [e for e in events if e["type"] == "audio"]
-    for event in audio_events:
-        text = event["text"]
-        assert isinstance(text, str)
-        assert "EMOTION" not in text
-    assert events[-1]["type"] == "done"
+    events = _post_stream_with_deltas(client, monkeypatch, silence_wav_bytes, deltas)
+    _assert_audible_protocol_fallback(events)
+    tts.synthesize.assert_awaited_once_with(settings.llm_fallback_phrase)
     record.assert_not_called()
+
+
+@pytest.mark.integration
+def test_stream_structured_body_uses_audible_protocol_fallback(
+    client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A valid emotion line followed by a JSON body is still invalid output."""
+    deltas = ['EMOTION:joy\n{"response": "hola"}']
+    record = Mock()
+    monkeypatch.setattr(streaming, "record_text_turn", record)
+    events = _post_stream_with_deltas(client, monkeypatch, silence_wav_bytes, deltas)
+    _assert_audible_protocol_fallback(events)
+    tts.synthesize.assert_awaited_once_with(settings.llm_fallback_phrase)
+    record.assert_not_called()
+
+
+@pytest.mark.integration
+def test_stream_truncated_emotion_uses_audible_protocol_fallback(
+    client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Stream ends mid tag ("EMOTION:ale", no \\n) — spoken as fallback, never silence."""
+    record = Mock()
+    monkeypatch.setattr(streaming, "record_text_turn", record)
+    events = _post_stream_with_deltas(client, monkeypatch, silence_wav_bytes, ["EMOTION:ale"])
+    _assert_audible_protocol_fallback(events)
+    tts.synthesize.assert_awaited_once_with(settings.llm_fallback_phrase)
+    record.assert_not_called()
+
+
+@pytest.mark.integration
+def test_stream_empty_model_output_uses_audible_protocol_fallback(
+    client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The model producing nothing at all must still end audibly, not silently."""
+    record = Mock()
+    monkeypatch.setattr(streaming, "record_text_turn", record)
+    events = _post_stream_with_deltas(client, monkeypatch, silence_wav_bytes, [])
+    _assert_audible_protocol_fallback(events)
+    tts.synthesize.assert_awaited_once_with(settings.llm_fallback_phrase)
+    record.assert_not_called()
+
+
+@pytest.mark.integration
+def test_stream_emotion_only_uses_audible_protocol_fallback(
+    client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A valid tag followed by an empty/whitespace-only body is invalid output."""
+    record = Mock()
+    monkeypatch.setattr(streaming, "record_text_turn", record)
+    events = _post_stream_with_deltas(client, monkeypatch, silence_wav_bytes, ["EMOTION:joy\n   "])
+    _assert_audible_protocol_fallback(events)
+    tts.synthesize.assert_awaited_once_with(settings.llm_fallback_phrase)
+    record.assert_not_called()
+
+
+@pytest.mark.integration
+def test_every_done_has_prior_contract_valid_audio(
+    client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No matter how the model misbehaves, `done` always follows at least one audio event."""
+    invalid_delta_cases = [
+        ['EMOTION: joy {"response": "hola", "emotion": "joy"}'],
+        ['EMOTION:joy\n{"response": "hola"}'],
+        ["EMOTION:ale"],
+        [],
+        ["EMOTION:joy\n   "],
+        ["Hola sin protocolo."],
+    ]
+    for deltas in invalid_delta_cases:
+        events = _post_stream_with_deltas(client, monkeypatch, silence_wav_bytes, deltas)
+        done_index = next(i for i, event in enumerate(events) if event["type"] == "done")
+        audio_before_done = [event for event in events[:done_index] if event["type"] == "audio"]
+        assert len(audio_before_done) >= 1, f"no audio before done for deltas={deltas!r}"
+
+
+@pytest.mark.integration
+def test_stream_invalid_output_is_not_logged_raw(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The raw invalid candidate text must never reach an INFO/WARN log line."""
+    raw_marker = "¡Qué emocionante!"
+    deltas = [f'EMOTION: joy {{"response": "{raw_marker}", "emotion": "joy"}}']
+    caplog.set_level(logging.INFO)
+    _post_stream_with_deltas(client, monkeypatch, silence_wav_bytes, deltas)
+    for record in caplog.records:
+        assert raw_marker not in record.getMessage()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_stream_partial_llm_failure_preserves_audio_then_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A provider failure after one spoken sentence must preserve it, not re-announce emotion."""
+    prepared = PreparedTextTurn(
+        "hola robot", "interaction:partial", None, None, False, None, None, None
+    )
+    record = Mock()
+    monkeypatch.setattr(streaming, "record_text_turn", record)
+
+    async def partial_then_fail(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
+        yield "EMOTION:joy\n"
+        yield "Hola. "
+        raise LLMError("provider died mid-stream")
+
+    monkeypatch.setattr(llm_streaming, "generate_response_stream", partial_then_fail)
+
+    events = [
+        json.loads(line)
+        async for line in streaming.stream_pipeline(
+            prepared=prepared,
+            stt_ms=0,
+            request_start=time.perf_counter(),
+            schedule_consolidation=lambda *_a, **_k: None,
+        )
+    ]
+
+    assert [event["type"] for event in events] == [
+        "text_heard",
+        "emotion",
+        "audio",
+        "audio",
+        "done",
+    ]
+    assert events[1]["value"] == "joy"
+    audio_events = [event for event in events if event["type"] == "audio"]
+    assert audio_events[0]["text"] == "Hola."
+    assert audio_events[1]["text"] == settings.llm_fallback_phrase
+    record.assert_not_called()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_stream_protocol_fallback_tts_failure_has_no_done(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A TTS failure while speaking the fallback must never yield a `done` line."""
+    prepared = PreparedTextTurn(
+        "hola robot", "interaction:tts-fail", None, None, False, None, None, None
+    )
+
+    async def plain_text(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
+        yield "Hola sin protocolo."
+
+    monkeypatch.setattr(llm_streaming, "generate_response_stream", plain_text)
+    monkeypatch.setattr(tts, "synthesize", AsyncMock(side_effect=TTSError("piper down")))
+
+    collected: list[str] = []
+    with pytest.raises(TTSError):  # noqa: PT012 — must collect partial NDJSON lines before it raises
+        async for line in streaming.stream_pipeline(
+            prepared=prepared,
+            stt_ms=0,
+            request_start=time.perf_counter(),
+            schedule_consolidation=lambda *_a, **_k: None,
+        ):
+            collected.append(line)
+
+    assert not any(json.loads(line)["type"] == "done" for line in collected)
 
 
 @pytest.mark.integration
