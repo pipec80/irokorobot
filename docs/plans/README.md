@@ -80,9 +80,18 @@ implements its bounded slices: [Plan 0016](0016-p0-streaming-controller-parity.m
 [Plan 0019](0019-p0-protected-request-recognition.md) (bounded protected
 wording). Their automated gates are green; the combined real operator run
 on 2026-08-17 found intent-generalization, silent-streaming, and visual
-grounding blockers. The remediation direction is approved and specified in
-[Plan 0020](0020-p0-operator-qa-remediation-design.md); written-design review
-and three executable slice plans remain required before code changes. The earlier R2 trusted
+grounding blockers. The approved remediation design is
+[Plan 0020](0020-p0-operator-qa-remediation-design.md), with executable TDD
+plans for [C5 typed intent resolution](0021-p0-typed-intent-resolution.md),
+[C6 reliable streaming output](0022-p0-reliable-streaming-output.md), and
+[C7 grounded visual dialogue](0023-p0-grounded-visual-dialogue.md). The owner
+revised their execution order on 2026-08-18: Plan 0022 runs first because the
+silent-stream defect blocks every audible acceptance check and its file scope is
+disjoint from Plan 0021's; then PC-1 of the
+[personal companion design](0015-personal-companion-design.md) supplies the
+local owner onboarding that P0.5 never exposed; then Plans 0021 and 0023. Each
+slice keeps independent evidence before the combined P0 acceptance.
+The earlier R2 trusted
 local acceptance concept has moved to the post-P0
 [personal-companion design](0015-personal-companion-design.md); it is not a P0
 exit criterion. General UI/family onboarding is deliberately later work.

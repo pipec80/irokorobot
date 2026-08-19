@@ -1,6 +1,9 @@
 # Personal companion design — Iroko and Pipec
 
-> **Status:** Proposed — starts only after P0-C and P0 runtime acceptance pass.
+> **Status:** PC-1 is promoted by owner decision on 2026-08-18 and runs
+> immediately after Plan 0022, ahead of the remaining P0-C slices. PC-2 through
+> PC-5 remain proposed and still start only after P0-C and P0 runtime acceptance
+> pass.
 
 ## Objective
 
@@ -88,5 +91,8 @@ structured storage.
 
 This is intentionally not a Ready implementation plan. It needs a fresh
 repository audit after P0-C, an accepted biometric/consent schema decision, and
-a measured local model evaluation. The later `family` profile owns UI,
+a measured local model evaluation. **PC-1 is the exception:** it needs none of
+those, because it only exposes the local owner bootstrap and session seam that
+P0.5 already implemented. Its executable plan is written just in time once Plan
+0022's gate is green. The later `family` profile owns UI,
 multi-person onboarding, household sharing defaults, and selective privacy.

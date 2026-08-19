@@ -32,7 +32,7 @@ home than a smaller system that knows when it does not know.
 | P0.4 | Relational memory v4 | Correct entity links, cardinality, time, provenance, dates, and counts. | P0.1–P0.3 |
 | P0.5 | Household authorization | Filters protected data before retrieval and generation. | P0.2, P0.4 |
 | P0-C | Runtime policy hardening | Makes every enabled public route obey the P0 controller/policy boundary and proves it through the robot. | P0.3–P0.5 |
-| P1.1 | Personal local administration | Establishes Pipec's recoverable personal profile without a general UI. | P0-C acceptance |
+| P1.1 | Personal local administration | Establishes Pipec's recoverable personal profile without a general UI. | P0-C6 audible streaming |
 | P1.2 | Personal multimodal identity | Adds consented local face/voice evidence and conservative fusion for Pipec. | P1.1, P0.2 |
 | P1.3 | Personal companion acceptance | Demonstrates voice, visual scene, authorized memory, and recovery through the real PC path. | P1.1–P1.2 |
 | P2.1 | Situated perception and WorldState | Represents fresh observations independently of durable memory. | P1 controller/policy |
@@ -229,6 +229,14 @@ recoverable after a biometric failure and must not be a public admin API.
 **Exit gate:** a local operator can create, review, revoke, and recover the
 personal profile without identity inference from spoken text, a face, or a
 voice.
+
+**Order revision (2026-08-18):** P1.1 runs immediately after P0-C6 instead of
+waiting for full P0-C acceptance. P0.5 built the owner role, policy, and audit,
+but no local path produces an identified owner, so every public route stays
+permanently unknown and no operator run can exercise an authorized path.
+Running P1.1 earlier supplies that missing key, so the remaining P0-C slices
+and the combined acceptance run can be exercised as the owner as well as as a
+stranger. P1.2 and P1.3 keep their original P0-C acceptance prerequisite.
 
 ### P1.2 — Personal multimodal identity
 

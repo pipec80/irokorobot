@@ -1,7 +1,7 @@
 # P0 operator-QA remediation design
 
-> **Status:** Design approved in conversation; written specification awaiting
-> user review before implementation planning.
+> **Status:** Written specification approved by the user on 2026-08-17;
+> executable Plans 0021, 0022, and 0023 are ready for implementation.
 > **Date:** 2026-08-17
 > **Baseline:** `docs/personal-family-profiles` at `a6b44bb`
 
@@ -126,8 +126,7 @@ class IntentResolution(BaseModel):
     rule_id: str | None
 
 
-def resolve_information_need(message: str) -> IntentResolution:
-    ...
+def resolve_information_need(message: str) -> IntentResolution: ...
 ```
 
 `rule_id` is stable operational metadata such as `date.current.explicit`; it
@@ -441,7 +440,33 @@ Stop for explicit approval or an ADR if implementation requires:
 
 ## Approval gate
 
-This specification authorizes implementation planning only after the user
-reviews the tracked file. It does not itself authorize code changes. After
-written approval, create three executable plans in C5, C6, C7 order and
-implement each with independent RED/GREEN evidence and review.
+The user approved this written specification on 2026-08-17. Execute the three
+tracked plans in order: C5 via Plan 0021, C6 via Plan 0022, and C7 via Plan
+0023. Each slice requires independent RED/GREEN evidence, review, repository
+gates, and its real operator rerun; the combined runbook remains the final P0
+acceptance gate.
+
+## Execution order revision — 2026-08-18
+
+The user revised the execution order one day after approving this
+specification. The remediation now runs:
+
+1. **C6 via Plan 0022** — the audible-streaming fix, first. It has no
+   technical dependency on C5: the permitted file scopes are disjoint and the
+   only link was a status line.
+2. **PC-1 of the [personal companion design](0015-personal-companion-design.md)**
+   — local owner onboarding, pulled ahead of the remaining P0-C slices.
+3. **C5 via Plan 0021** — typed intent resolution.
+4. **C7 via Plan 0023** — grounded visual dialogue, revised so a resolved
+   owner is greeted instead of receiving the fixed unknown-identity copy.
+
+Rationale: P0.5 delivered roles, policy, and audit but no local path that
+produces an identified owner, so every public route stays permanently unknown
+and no operator run can exercise an authorized path at all. Fixing silence
+first restores audible evidence for every later slice; onboarding second stops
+C5 and C7 from being specified and measured only against an anonymous speaker.
+
+This revision changes order and one C7 response branch — not the runtime
+evidence, the defect list, or any slice's invariants. Each slice keeps its
+independent RED/GREEN evidence, review, repository gates, and operator rerun,
+and the combined runbook remains the final P0 acceptance gate.
