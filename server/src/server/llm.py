@@ -15,20 +15,15 @@ from server.settings import settings
 
 logger = logging.getLogger(__name__)
 
-# Public: shared with llm_streaming.py, which needs the same emotion
-# vocabulary for its "EMOTION:xxx\n" streaming tag protocol.
+# Public: shared with llm_streaming.py for its "EMOTION:xxx\n" tag protocol.
 VALID_EMOTIONS = frozenset({"neutral", "joy", "anger", "sadness", "surprise"})
 FALLBACK_EMOTION = "neutral"
 
-# Salvage pattern for malformed JSON: extracts the "response" string value so
-# the TTS never reads braces and quotes aloud.
+# Salvage regex for malformed JSON — extracts response text so TTS never reads raw braces.
 _RESPONSE_RE = re.compile(r'"response"\s*:\s*"((?:[^"\\]|\\.)*)"')
 
-# JSON schema forced via Ollama structured outputs — small models drift into
-# free text otherwise (observed with qwen2.5:3b during QA). Mirrors the
-# approach already used by the consolidation extractor. Only used by the
-# non-streaming path: Ollama disables token streaming while this is set.
-# dict[str, Any]: JSON-schema literal, heterogeneous by nature.
+# JSON schema forced via Ollama structured outputs (mirrors the consolidation
+# extractor); non-streaming path only. dict[str, Any]: heterogeneous JSON-schema literal.
 _OLLAMA_RESPONSE_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -38,10 +33,7 @@ _OLLAMA_RESPONSE_SCHEMA: dict[str, Any] = {
     "required": ["response", "emotion"],
 }
 
-# Sole owner of the classic /transcribe output contract. build_system_prompt
-# is format-neutral (identity/behavior only) — this is the ONLY place the
-# classic JSON contract is appended, so the model never sees it mixed with
-# the streaming EMOTION-tag contract from llm_streaming.py.
+# Sole owner of the classic contract — kept separate from llm_streaming.py's tag contract.
 _CLASSIC_OUTPUT_CONTRACT = f"""
 
 FORMATO — respondé SIEMPRE con JSON válido, sin texto adicional:
@@ -63,9 +55,8 @@ def _classic_system_prompt(base_prompt: str) -> str:
 
 
 def _parse_llm_output(raw: str) -> tuple[str, str]:
-    """Extract response text and emotion from model JSON output.
-
-    Falls back to raw text + neutral emotion if JSON is malformed.
+    """Extract response text and emotion from model JSON output; falls back
+    to raw text + neutral emotion when the JSON is malformed.
 
     Args:
         raw: Raw string from the model, expected to be valid JSON.
@@ -95,10 +86,7 @@ def _parse_llm_output(raw: str) -> tuple[str, str]:
         return raw, FALLBACK_EMOTION
 
 
-async def _generate_ollama(
-    system_prompt: str,
-    messages: list[dict[str, str]],
-) -> tuple[str, str]:
+async def _generate_ollama(system_prompt: str, messages: list[dict[str, str]]) -> tuple[str, str]:
     """Call local Ollama API.
 
     Args:
@@ -119,10 +107,7 @@ async def _generate_ollama(
     return _parse_llm_output(raw)
 
 
-def _build_messages(
-    text: str,
-    history: list[ConversationTurn] | None,
-) -> list[dict[str, str]]:
+def _build_messages(text: str, history: list[ConversationTurn] | None) -> list[dict[str, str]]:
     """Build the messages array from conversation history and current turn."""
     messages: list[dict[str, str]] = []
     if history:
@@ -142,16 +127,8 @@ def _build_classic_base_prompt(
 ) -> str:
     """Build the format-neutral base prompt for the classic /transcribe path.
 
-    Only calls ``build_system_prompt`` — output-format ownership stays in
-    ``_classic_system_prompt``.
-
-    Args:
-        context: Optional declarative entities and semantic memories.
-        onboarding: If ``True``, appends first-run meeting instructions.
-        onboarding_slot: Next missing checklist slot during onboarding.
-        user_emotion: Dominant non-neutral emotion from recent turns.
-        active_person: Internally resolved person context for this turn.
-        perception: What the camera sees this turn (VLM description).
+    Resolves the character, then only calls ``build_system_prompt`` — output
+    format stays owned by ``_classic_system_prompt``. Args match ``generate_response``.
 
     Returns:
         Format-neutral system prompt string.
@@ -179,31 +156,20 @@ async def generate_response(
     active_person: ActivePersonContext | None = None,
     perception: str | None = None,
 ) -> tuple[str, str]:
-    """Generate a robot response and detect the user's emotion.
-
-    Uses local Ollama in one model call for response and emotion detection.
+    """Generate a robot response and detect the user's emotion in one local Ollama call.
 
     Args:
         text: Transcribed user speech.
-        context: Optional declarative entities and semantic memories to inject
-            as system context. When ``None``, behaves as before (no memory).
-        history: Optional recent conversation turns (oldest first) appended
-            to the messages array. Working-memory deque already trims to N.
-        onboarding: If ``True``, Iroko is meeting the owner for the first time
-            and will ask introductory questions.
-        onboarding_slot: Next missing checklist slot during onboarding. The
-            prompt names the ONE datum to ask for this turn.
-        user_emotion: Dominant non-neutral emotion from recent turns. When
-            provided, the system prompt includes a behavioral adaptation
-            directive so the robot adjusts its tone accordingly.
-        active_person: Internally resolved person context for this turn. Its
-            display name can guide neutral presentation when identified.
-        perception: What the camera sees this turn (VLM description) —
-            injected as a visual-perception block (V0.5).
+        context: Optional memory context for the system prompt (``None`` = no memory).
+        history: Optional recent conversation turns (oldest first, already trimmed).
+        onboarding: If ``True``, asks first-run introductory questions.
+        onboarding_slot: Next onboarding checklist slot; names the ONE datum to ask.
+        user_emotion: Dominant recent user emotion; adds a tone-adaptation directive.
+        active_person: Resolved person context; guides neutral presentation.
+        perception: Camera VLM description this turn, injected as a perception block (V0.5).
 
     Returns:
-        Tuple of (response_text, emotion). Emotion is one of:
-        neutral, joy, anger, sadness, surprise.
+        Tuple of (response_text, emotion) — see ``VALID_EMOTIONS`` for valid values.
 
     Raises:
         LLMError: If the local Ollama API call fails.
@@ -225,15 +191,8 @@ async def generate_response(
 
     try:
         logger.info("LLM provider: ollama (%s)", settings.ollama_model)
-        response_text, emotion = await _generate_ollama(
-            system_prompt,
-            messages,
-        )
-        logger.info(
-            "LLM response (%d chars) emotion=%s",
-            len(response_text),
-            emotion,
-        )
+        response_text, emotion = await _generate_ollama(system_prompt, messages)
+        logger.info("LLM response (%d chars) emotion=%s", len(response_text), emotion)
         return response_text, emotion
     except (LLMError, ValueError):
         raise
