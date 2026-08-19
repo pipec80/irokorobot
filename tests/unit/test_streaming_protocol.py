@@ -47,6 +47,7 @@ def test_parse_emotion_rejects_incomplete_final_line() -> None:
         "",  # empty final stream
         "EMOTION:jo",  # truncated emotion tag, no newline
         "EMOTION:joy",  # missing newline entirely
+        'EMOTION: joy {"response":"hola"}',  # hybrid tag+JSON, no newline
         "hola sin protocolo",  # never started the protocol
     ]
     for buffer in incomplete_cases:
