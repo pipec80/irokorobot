@@ -20,7 +20,6 @@ to start if streaming is on and the server reports vision enabled (F-08).
 import asyncio
 import base64
 import logging
-import logging.handlers
 
 from robot import app_streaming
 from robot.audio_capture import capture_utterance
@@ -34,6 +33,7 @@ from robot.exceptions import (
     ServerError,
 )
 from robot.fsm_types import LoopContext, RobotState
+from robot.logging_setup import build_file_handler
 from robot.server_client import check_vision_enabled, close_client, respond_vision, transcribe
 from robot.settings import settings
 
@@ -204,14 +204,10 @@ def main() -> None:
     log_datefmt = "%Y-%m-%d %H:%M:%S"
     handlers: list[logging.Handler] = [logging.StreamHandler()]
     if settings.log_to_file:
+        # JSON Lines on disk for analysis tools; the console stays human-readable.
         settings.log_dir.mkdir(parents=True, exist_ok=True)
         handlers.append(
-            logging.handlers.TimedRotatingFileHandler(
-                settings.log_dir / "robot.log",
-                when="midnight",
-                backupCount=settings.log_retention_days,
-                encoding="utf-8",
-            )
+            build_file_handler(settings.log_dir / "robot.log", settings.log_retention_days)
         )
     logging.basicConfig(
         level=settings.log_level.upper(),

@@ -4,7 +4,6 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 import logging
 import logging.config
-import logging.handlers
 from typing import Any
 
 from fastapi import FastAPI
@@ -14,6 +13,7 @@ import uvicorn
 from server import stt, tts
 from server.chat_ui import mount_chat_ui
 from server.db import close_db, open_db, run_migrations
+from server.logging_setup import build_file_handler
 from server.memory import retention
 from server.routers import chat, system, transcribe, vision
 from server.settings import settings
@@ -28,13 +28,11 @@ _ROOT_HANDLER_NAMES = ["console"]
 
 if settings.log_to_file:
     settings.log_dir.mkdir(parents=True, exist_ok=True)
+    # JSON Lines on disk for analysis tools; the console stays human-readable.
     _LOG_HANDLERS["file"] = {
-        "class": logging.handlers.TimedRotatingFileHandler,
-        "formatter": "default",
-        "filename": str(settings.log_dir / "server.log"),
-        "when": "midnight",
-        "backupCount": settings.log_retention_days,
-        "encoding": "utf-8",
+        "()": build_file_handler,
+        "path": settings.log_dir / "server.log",
+        "retention_days": settings.log_retention_days,
     }
     _ROOT_HANDLER_NAMES.append("file")
 
