@@ -237,6 +237,11 @@ permanently unknown and no operator run can exercise an authorized path.
 Running P1.1 earlier supplies that missing key, so the remaining P0-C slices
 and the combined acceptance run can be exercised as the owner as well as as a
 stranger. P1.2 and P1.3 keep their original P0-C acceptance prerequisite.
+[ADR 0007](../adr/0007-first-boot-and-default-posture.md) (accepted
+2026-08-19) grounds P1.1's design: an explicit first-boot state gates every
+household fact behind an owner bootstrap, and completing it lets the local
+trusted channel presume that owner — never a claim inside a message, and
+never a substitute for the disclosure boundary ADR 0006 already sets.
 
 ### P1.2 — Personal multimodal identity
 

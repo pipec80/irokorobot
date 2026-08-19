@@ -88,7 +88,8 @@ plans for [C5 typed intent resolution](0021-p0-typed-intent-resolution.md),
 revised their execution order on 2026-08-18: Plan 0022 runs first because the
 silent-stream defect blocks every audible acceptance check and its file scope is
 disjoint from Plan 0021's; then PC-1 of the
-[personal companion design](0015-personal-companion-design.md) supplies the
+[personal companion design](0015-personal-companion-design.md), grounded by
+[ADR 0007](../adr/0007-first-boot-and-default-posture.md), supplies the
 local owner onboarding that P0.5 never exposed; then Plans 0021 and 0023. Each
 slice keeps independent evidence before the combined P0 acceptance.
 The earlier R2 trusted
