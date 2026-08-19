@@ -38,6 +38,29 @@ _OLLAMA_RESPONSE_SCHEMA: dict[str, Any] = {
     "required": ["response", "emotion"],
 }
 
+# Sole owner of the classic /transcribe output contract. build_system_prompt
+# is format-neutral (identity/behavior only) — this is the ONLY place the
+# classic JSON contract is appended, so the model never sees it mixed with
+# the streaming EMOTION-tag contract from llm_streaming.py.
+_CLASSIC_OUTPUT_CONTRACT = f"""
+
+FORMATO — respondé SIEMPRE con JSON válido, sin texto adicional:
+{{"response": "<tu respuesta en español>", "emotion": "<emoción del usuario>"}}
+Emociones válidas: {", ".join(sorted(VALID_EMOTIONS))}.
+La emoción describe el estado del USUARIO, no el tuyo."""
+
+
+def _classic_system_prompt(base_prompt: str) -> str:
+    """Append the classic JSON output contract to a format-neutral prompt.
+
+    Args:
+        base_prompt: Format-neutral prompt built by ``build_system_prompt``.
+
+    Returns:
+        The prompt with exactly one classic JSON contract appended.
+    """
+    return base_prompt + _CLASSIC_OUTPUT_CONTRACT
+
 
 def _parse_llm_output(raw: str) -> tuple[str, str]:
     """Extract response text and emotion from model JSON output.
@@ -108,6 +131,43 @@ def _build_messages(
     return messages
 
 
+def _build_classic_base_prompt(
+    context: MemoryContext | None,
+    *,
+    onboarding: bool,
+    onboarding_slot: OnboardingSlot | None,
+    user_emotion: str | None,
+    active_person: ActivePersonContext | None,
+    perception: str | None,
+) -> str:
+    """Build the format-neutral base prompt for the classic /transcribe path.
+
+    Only calls ``build_system_prompt`` — output-format ownership stays in
+    ``_classic_system_prompt``.
+
+    Args:
+        context: Optional declarative entities and semantic memories.
+        onboarding: If ``True``, appends first-run meeting instructions.
+        onboarding_slot: Next missing checklist slot during onboarding.
+        user_emotion: Dominant non-neutral emotion from recent turns.
+        active_person: Internally resolved person context for this turn.
+        perception: What the camera sees this turn (VLM description).
+
+    Returns:
+        Format-neutral system prompt string.
+    """
+    character = get_character(settings.robot_character)
+    return build_system_prompt(
+        character,
+        context,
+        onboarding=onboarding,
+        onboarding_slot=onboarding_slot,
+        user_emotion=user_emotion,
+        active_person=active_person,
+        perception=perception,
+    )
+
+
 async def generate_response(
     text: str,
     *,
@@ -152,9 +212,7 @@ async def generate_response(
     if not text:
         raise ValueError("Input text is empty")
 
-    character = get_character(settings.robot_character)
-    system_prompt = build_system_prompt(
-        character,
+    base_prompt = _build_classic_base_prompt(
         context,
         onboarding=onboarding,
         onboarding_slot=onboarding_slot,
@@ -162,7 +220,7 @@ async def generate_response(
         active_person=active_person,
         perception=perception,
     )
-
+    system_prompt = _classic_system_prompt(base_prompt)
     messages = _build_messages(text, history)
 
     try:

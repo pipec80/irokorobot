@@ -297,6 +297,50 @@ async def test_generate_response_forwards_onboarding_slot(
     assert "cuándo nació" in system_prompt
 
 
+# ---------------------------------------------------------------------------
+# Classic output contract ownership (P0-C6 Task 1)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+async def test_generate_response_system_prompt_has_single_classic_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exactly one classic JSON contract must be appended, never the streaming tag."""
+    mock = AsyncMock(return_value=("ok", "neutral"))
+    monkeypatch.setattr(llm, "_generate_ollama", mock)
+
+    await llm.generate_response("hola")
+
+    system_prompt = mock.call_args[0][0]
+    assert system_prompt.count('"response"') == 1
+    assert system_prompt.count('"emotion"') == 1
+    assert "EMOTION:" not in system_prompt
+
+
+@pytest.mark.unit
+def test_classic_system_prompt_appends_exactly_once() -> None:
+    """_classic_system_prompt must append the contract exactly once."""
+    prompt = llm._classic_system_prompt("base prompt")
+
+    assert prompt.startswith("base prompt")
+    assert prompt.count('"response"') == 1
+    assert prompt.count('"emotion"') == 1
+
+
+@pytest.mark.unit
+async def test_generate_ollama_uses_unchanged_response_schema(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """_generate_ollama must still force the existing structured JSON schema."""
+    mock_chat = AsyncMock(return_value='{"response": "hola", "emotion": "neutral"}')
+    monkeypatch.setattr(llm, "ollama_chat", mock_chat)
+
+    await llm._generate_ollama("system prompt", [{"role": "user", "content": "hi"}])
+
+    assert mock_chat.call_args.kwargs["format_schema"] == llm._OLLAMA_RESPONSE_SCHEMA
+
+
 @pytest.mark.unit
 def test_format_memory_block_with_data_includes_entity_and_memory() -> None:
     """Non-empty context must include entity names and memory summaries."""

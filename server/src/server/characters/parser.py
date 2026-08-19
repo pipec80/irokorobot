@@ -12,10 +12,12 @@ Format (industry-standard frontmatter):
     # ONBOARDING PROMPT
     <first-run interview guidance>
 
-The parser is strict on purpose: a hand-edited profile that breaks the
-JSON response contract, drops the base prompt, or uses an out-of-range
+The parser is strict on purpose: a hand-edited profile that drops the base
+prompt, embeds a legacy output-format contract, or uses an out-of-range
 personality value must fail at load time (and fall back to the built-in
-character), never silently ship a broken robot.
+character), never silently ship a broken robot. Output format is not this
+parser's concern — ``CharacterProfile.__post_init__`` rejects a base prompt
+that embeds one; each LLM adapter owns appending its own contract.
 """
 
 from __future__ import annotations
@@ -37,12 +39,6 @@ logger = logging.getLogger(__name__)
 _FRONTMATTER = re.compile(r"^---\s*\n(.*?)\n---\s*\n(.*)", re.DOTALL)
 _BASE_HEADER = "# BASE PROMPT"
 _ONBOARDING_HEADER = "# ONBOARDING PROMPT"
-
-# The base prompt MUST keep the JSON response contract intact — the LLM
-# parser, the salvage regex, and emotion detection all depend on it. If an
-# edit drops these markers, reject the profile instead of shipping a robot
-# that stops emitting JSON.
-_CONTRACT_MARKERS = ('"response"', '"emotion"')
 
 # Only these keys feed the personality; anything else in the frontmatter is
 # ignored (no arbitrary attribute injection).
@@ -89,6 +85,32 @@ def _build_personality(meta: dict[str, Any]) -> PersonalityProfile:
     return PersonalityProfile(**kwargs)
 
 
+def _parse_frontmatter(content: str, name: str) -> tuple[dict[str, object], str]:
+    """Split raw markdown text into parsed YAML frontmatter and the raw body.
+
+    Args:
+        content: Full markdown text (frontmatter + body).
+        name: Character name, used only to phrase error messages.
+
+    Returns:
+        Tuple of (frontmatter mapping, raw body text after the closing
+        ``---``).
+
+    Raises:
+        ValueError: If the frontmatter delimiters are missing or the parsed
+            YAML is not a mapping.
+        yaml.YAMLError: If the frontmatter is not valid YAML.
+    """
+    match = _FRONTMATTER.match(content.strip() + "\n")
+    if match is None:
+        raise ValueError(f"No YAML frontmatter found in profile {name!r}")
+
+    meta = yaml.safe_load(match.group(1))
+    if not isinstance(meta, dict):
+        raise ValueError(f"Frontmatter in profile {name!r} is not a YAML mapping")
+    return meta, match.group(2)
+
+
 def parse_character(content: str, name: str) -> CharacterProfile:
     """Parse and validate a CharacterProfile from raw markdown text.
 
@@ -103,27 +125,13 @@ def parse_character(content: str, name: str) -> CharacterProfile:
 
     Raises:
         ValueError: If the frontmatter is missing, not a mapping, the base
-            prompt is empty, the JSON response contract is absent, or a
+            prompt is empty, the base prompt embeds a legacy output-format
+            contract (see ``CharacterProfile.__post_init__``), or a
             personality value is invalid.
         yaml.YAMLError: If the frontmatter is not valid YAML.
     """
-    match = _FRONTMATTER.match(content.strip() + "\n")
-    if match is None:
-        raise ValueError(f"No YAML frontmatter found in profile {name!r}")
-
-    meta = yaml.safe_load(match.group(1))
-    if not isinstance(meta, dict):
-        raise ValueError(f"Frontmatter in profile {name!r} is not a YAML mapping")
-
-    base_prompt, onboarding_prompt = _split_body(match.group(2))
-
-    missing = [marker for marker in _CONTRACT_MARKERS if marker not in base_prompt]
-    if missing:
-        raise ValueError(
-            f"Base prompt in profile {name!r} is missing the JSON response "
-            f"contract marker(s) {missing} — the LLM must return "
-            '{"response": ..., "emotion": ...}'
-        )
+    meta, body = _parse_frontmatter(content, name)
+    base_prompt, onboarding_prompt = _split_body(body)
 
     return CharacterProfile(
         name=name.lower(),

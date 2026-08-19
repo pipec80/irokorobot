@@ -34,12 +34,29 @@ from server.schemas import ConversationTurn, MemoryContext
 from server.settings import settings
 
 _EMOTION_TAG_RE = re.compile(r"^EMOTION:\s*(\w+)\s*\n", re.IGNORECASE)
-_STREAMING_SYSTEM_SUFFIX = (
+
+# Sole owner of the streaming /transcribe/stream output contract.
+# build_system_prompt is format-neutral (identity/behavior only) — this is
+# the ONLY place the streaming EMOTION-tag contract is appended, so the
+# model never sees it mixed with the classic JSON contract from llm.py.
+_STREAMING_OUTPUT_CONTRACT = (
     "\n\nResponde en texto plano (sin JSON). La primera línea debe ser "
     "exactamente 'EMOTION:<emocion>' donde <emocion> es una de: "
     f"{', '.join(sorted(VALID_EMOTIONS))}. Después de esa línea, escribí tu "
     "respuesta normal."
 )
+
+
+def _streaming_system_prompt(base_prompt: str) -> str:
+    """Append the streaming emotion-tag output contract to a format-neutral prompt.
+
+    Args:
+        base_prompt: Format-neutral prompt built by ``build_system_prompt``.
+
+    Returns:
+        The prompt with exactly one streaming protocol instruction appended.
+    """
+    return base_prompt + _STREAMING_OUTPUT_CONTRACT
 
 
 def _build_messages(text: str, history: list[ConversationTurn] | None) -> list[dict[str, str]]:
@@ -76,6 +93,62 @@ def parse_streaming_emotion(buffer: str) -> tuple[str, str] | None:
     return emotion, buffer[match.end() :]
 
 
+def _build_streaming_base_prompt(
+    context: MemoryContext | None,
+    *,
+    onboarding: bool,
+    onboarding_slot: OnboardingSlot | None,
+    user_emotion: str | None,
+    active_person: ActivePersonContext | None,
+) -> str:
+    """Build the format-neutral base prompt for the streaming path.
+
+    Only calls ``build_system_prompt`` — output-format ownership stays in
+    ``_streaming_system_prompt``.
+
+    Args:
+        context: Optional memory context, same as ``llm.generate_response``.
+        onboarding: Whether onboarding is in progress.
+        onboarding_slot: Next onboarding checklist slot, if any.
+        user_emotion: Dominant recent user emotion, if any.
+        active_person: Internally resolved person context for this turn, if any.
+
+    Returns:
+        Format-neutral system prompt string.
+    """
+    character = get_character(settings.robot_character)
+    return build_system_prompt(
+        character,
+        context,
+        onboarding=onboarding,
+        onboarding_slot=onboarding_slot,
+        user_emotion=user_emotion,
+        active_person=active_person,
+    )
+
+
+async def _stream_local_response(messages: list[dict[str, str]]) -> AsyncIterator[str]:
+    """Stream raw text deltas from the local Ollama model.
+
+    Owns only the Ollama streaming transport — prompt/contract assembly is
+    the caller's responsibility.
+
+    Args:
+        messages: Full messages array (system + history + current turn).
+
+    Yields:
+        Raw text deltas as Ollama generates them.
+
+    Raises:
+        LLMError: If local Ollama streaming fails or emits invalid NDJSON.
+    """
+    try:
+        async for delta in ollama_chat_stream(messages, model=settings.ollama_model):
+            yield delta
+    except (httpx.HTTPError, json.JSONDecodeError) as exc:
+        raise LLMError("Local Ollama streaming failed") from exc
+
+
 async def generate_response_stream(
     text: str,
     *,
@@ -109,24 +182,16 @@ async def generate_response_stream(
     if not text:
         raise ValueError("Input text is empty")
 
-    character = get_character(settings.robot_character)
-    system_prompt = (
-        build_system_prompt(
-            character,
-            context,
-            onboarding=onboarding,
-            onboarding_slot=onboarding_slot,
-            user_emotion=user_emotion,
-            active_person=active_person,
-        )
-        + _STREAMING_SYSTEM_SUFFIX
+    base_prompt = _build_streaming_base_prompt(
+        context,
+        onboarding=onboarding,
+        onboarding_slot=onboarding_slot,
+        user_emotion=user_emotion,
+        active_person=active_person,
     )
+    system_prompt = _streaming_system_prompt(base_prompt)
     messages = _build_messages(text, history)
-    try:
-        async for delta in ollama_chat_stream(
-            [{"role": "system", "content": system_prompt}, *messages],
-            model=settings.ollama_model,
-        ):
-            yield delta
-    except (httpx.HTTPError, json.JSONDecodeError) as exc:
-        raise LLMError("Local Ollama streaming failed") from exc
+    async for delta in _stream_local_response(
+        [{"role": "system", "content": system_prompt}, *messages]
+    ):
+        yield delta

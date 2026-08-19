@@ -1,12 +1,32 @@
 """Base types for robot character profiles."""
 
 from dataclasses import dataclass, field
+from typing import NamedTuple
 
 #: Accepted values for the ``social_energy`` axis.
 SOCIAL_ENERGY_VALUES = frozenset({"introvert", "moderate", "extrovert"})
 
 #: The numeric personality axes, validated to the [0, 1] range.
 _NUMERIC_AXES = ("curiosity", "verbosity", "empathy", "humor")
+
+
+class _ForbiddenMarkerPair(NamedTuple):
+    """A pair of legacy output-contract markers that must never co-occur.
+
+    ``build_system_prompt`` is format-neutral by design (see
+    ``server.characters.build_system_prompt``): each LLM adapter owns its
+    own output contract. A base prompt carrying both markers below is a
+    leftover of the old classic-JSON contract baked into character text —
+    the exact structural cause of the hybrid-output bug (mangled
+    ``EMOTION: joy {"response": ...}`` lines from Ollama).
+    """
+
+    first: str
+    second: str
+
+
+#: Legacy classic-JSON contract markers — rejected together in a base prompt.
+_LEGACY_JSON_MARKERS = _ForbiddenMarkerPair('"response"', '"emotion"')
 
 
 @dataclass(frozen=True)
@@ -68,3 +88,20 @@ class CharacterProfile:
     base_prompt: str
     onboarding_prompt: str
     personality: PersonalityProfile = field(default_factory=PersonalityProfile)
+
+    def __post_init__(self) -> None:
+        """Reject a base prompt that embeds an output-format contract.
+
+        Raises:
+            ValueError: If ``base_prompt`` contains both legacy JSON contract
+                markers — identity/behavior text must stay format-neutral;
+                only the LLM adapter (``llm.py`` or ``llm_streaming.py``)
+                may append an output contract.
+        """
+        first, second = _LEGACY_JSON_MARKERS
+        if first in self.base_prompt and second in self.base_prompt:
+            raise ValueError(
+                f"CharacterProfile {self.name!r} base_prompt embeds an output "
+                f"format contract ({first}, {second}) — output format belongs "
+                "solely to the LLM adapter, never to character text."
+            )
