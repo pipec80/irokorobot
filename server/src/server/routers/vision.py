@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
-from server import vision
+from server import turn_log, vision
 from server.cognition.authorization import evaluate_authorization
 from server.cognition.controller import CognitiveController
 from server.cognition.household_tools import HouseholdKnowledgeTools
@@ -64,7 +64,7 @@ def _public_unknown_vision_actor(
     event: CognitiveEvent[TextTurnPayload],
 ) -> ActivePersonContext:
     """Return the safe public visual actor without deriving an identity."""
-    return ActivePersonContext(
+    actor = ActivePersonContext(
         person_id=None,
         display_name=None,
         status=ActivePersonStatus.UNKNOWN,
@@ -78,6 +78,8 @@ def _public_unknown_vision_actor(
         evidence=(),
         resolved_at=event.occurred_at,
     )
+    turn_log.log_actor("vision", actor)
+    return actor
 
 
 def _vision_controller(perception: str) -> CognitiveController:
@@ -240,6 +242,7 @@ async def vision_respond(
         perception = vision.PERCEPTION_FAILED
 
     plan = await _vision_controller(perception).handle(_vision_event_from_question(text))
+    turn_log.log_decision("vision", plan)
     audio_base64, duration_ms, _tts_ms = await _run_tts(plan.response)
 
     return TranscribeResponse(

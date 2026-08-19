@@ -148,7 +148,9 @@ async def stream_response_plan(
         + "\n"
     )
     total_ms = _elapsed_ms(request_start)
-    _log_pipeline_timing(stt_ms, plan.duration_ms, duration_ms, total_ms)
+    _log_pipeline_timing(
+        f"stream.{plan.source.value}", stt_ms, plan.duration_ms, duration_ms, total_ms
+    )
     yield (
         StreamDoneEvent(
             stt_ms=stt_ms,
@@ -215,7 +217,7 @@ async def stream_pipeline(
 
     total_ms = _elapsed_ms(request_start)
     llm_ms = max(0, total_ms - stt_ms - state.tts_ms_total)
-    _log_pipeline_timing(stt_ms, llm_ms, state.tts_ms_total, total_ms)
+    _log_pipeline_timing("stream.legacy_text_turn", stt_ms, llm_ms, state.tts_ms_total, total_ms)
     yield (
         StreamDoneEvent(
             stt_ms=stt_ms, llm_ms=llm_ms, tts_ms=state.tts_ms_total, total_ms=total_ms

@@ -7,7 +7,7 @@ import logging
 import time
 from uuid import uuid4
 
-from server import llm
+from server import llm, turn_log
 from server.cognition.identity import (
     ActivePersonContext,
     ActivePersonStatus,
@@ -150,6 +150,7 @@ async def prepare_text_turn(
     if manual_evidence is None:
         _clear_evidence_scopes(resolved_person)
     if not settings.memory_enabled:
+        turn_log.log_memory("skipped", "MEMORY_ENABLED is off")
         return PreparedTextTurn(
             message=message,
             conversation_id=conversation_id,
@@ -163,6 +164,10 @@ async def prepare_text_turn(
             history_scope=history_scope,
         )
     if manual_evidence is None:
+        turn_log.log_memory(
+            "skipped",
+            "no verified identity — no history, no retrieval, no vector search",
+        )
         return PreparedTextTurn(
             message=message,
             conversation_id=conversation_id,
@@ -177,6 +182,7 @@ async def prepare_text_turn(
         )
     history = working.get_history(history_scope)
     user_emotion = working.get_recent_emotion(history_scope)
+    turn_log.log_memory("loaded", f"verified identity, history_turns={len(history)}")
     context, onboarding, slot = await _memory_prompt_state(message)
     return PreparedTextTurn(
         message=message,
@@ -242,10 +248,12 @@ def record_text_turn(
     working.add_turn(scope, "assistant", response)
     if _manual_evidence(resolved_person) is None:
         working.clear(scope)
+        turn_log.log_memory("discarded", "no verified identity — working memory cleared")
         return
     if schedule_consolidation is not None:
         # Identity gates this legacy callback; it is not an authorization decision.
         schedule_consolidation(message, response, resolved_person)
+        turn_log.log_memory("consolidation-scheduled", "verified identity")
 
 
 async def process_text_turn(

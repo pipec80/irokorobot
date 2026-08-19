@@ -40,9 +40,32 @@ def _elapsed_ms(start: float) -> int:
     return round((time.perf_counter() - start) * 1000)
 
 
-def _log_pipeline_timing(stt_ms: int, llm_ms: int, tts_ms: int, total_ms: int) -> None:
-    """Log one INFO line per pipeline request with per-stage latency."""
-    logger.info("Pipeline: stt=%dms llm=%dms tts=%dms total=%dms", stt_ms, llm_ms, tts_ms, total_ms)
+def _log_pipeline_timing(route: str, stt_ms: int, llm_ms: int, tts_ms: int, total_ms: int) -> None:
+    """Log one INFO line closing a request with its route and per-stage latency.
+
+    Args:
+        route: Path the turn actually took, e.g. ``"voice.plan"``.
+        stt_ms: Speech-to-text elapsed milliseconds.
+        llm_ms: Generation elapsed milliseconds, or 0 when no model ran.
+        tts_ms: Synthesis elapsed milliseconds, or 0 when nothing was spoken.
+        total_ms: Whole-request elapsed milliseconds.
+    """
+    logger.info(
+        "Pipeline: route=%s stt=%dms llm=%dms tts=%dms total=%dms",
+        route,
+        stt_ms,
+        llm_ms,
+        tts_ms,
+        total_ms,
+        extra={
+            "event": "pipeline.timing",
+            "route": route,
+            "stt_ms": stt_ms,
+            "llm_ms": llm_ms,
+            "tts_ms": tts_ms,
+            "total_ms": total_ms,
+        },
+    )
 
 
 async def _run_stt(audio_bytes: bytes, hotwords: list[str]) -> tuple[str, int]:
@@ -64,7 +87,7 @@ async def _run_stt(audio_bytes: bytes, hotwords: list[str]) -> tuple[str, int]:
     except (TranscriptionError, ValueError) as exc:
         logger.error("STT failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail="Transcription failed") from exc
-    logger.info("STT heard: %r", text)
+    logger.info("STT heard: %r (hotwords=%d)", text, len(hotwords))
     return text, _elapsed_ms(start)
 
 

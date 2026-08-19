@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter
 
+from server import turn_log
 from server.cognition.authorization import evaluate_authorization
 from server.cognition.controller import CognitiveController
 from server.cognition.household_tools import HouseholdKnowledgeTools
@@ -46,7 +47,7 @@ def _event_from_request(request: ChatRequest) -> CognitiveEvent[TextTurnPayload]
 
 def _public_unknown_actor(event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
     """Return the public chat actor without accepting identity from HTTP input."""
-    return ActivePersonContext(
+    actor = ActivePersonContext(
         person_id=None,
         display_name=None,
         status=ActivePersonStatus.UNKNOWN,
@@ -60,6 +61,8 @@ def _public_unknown_actor(event: CognitiveEvent[TextTurnPayload]) -> ActivePerso
         evidence=(),
         resolved_at=event.occurred_at,
     )
+    turn_log.log_actor("chat", actor)
+    return actor
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -81,6 +84,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
         household_tools=HouseholdKnowledgeTools(reader=PolicyGatedV4Reader()),
     )
     result = await controller.handle(_event_from_request(request))
+    turn_log.log_decision("chat", result)
     return ChatResponse(
         response=result.response,
         emotion=result.emotion,

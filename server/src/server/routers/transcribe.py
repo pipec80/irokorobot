@@ -12,7 +12,7 @@ from uuid import uuid4
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
-from server import vision
+from server import turn_log, vision
 from server.audio_contract import validate_wav_contract
 from server.cognition.authorization import evaluate_authorization
 from server.cognition.controller import CognitiveController
@@ -75,7 +75,7 @@ def _public_unknown_voice_actor(
     event: CognitiveEvent[TextTurnPayload],
 ) -> ActivePersonContext:
     """Return the safe public voice actor without deriving an identity."""
-    return ActivePersonContext(
+    actor = ActivePersonContext(
         person_id=None,
         display_name=None,
         status=ActivePersonStatus.UNKNOWN,
@@ -89,6 +89,8 @@ def _public_unknown_voice_actor(
         evidence=(),
         resolved_at=event.occurred_at,
     )
+    turn_log.log_actor("voice", actor)
+    return actor
 
 
 def _voice_controller(background_tasks: BackgroundTasks) -> CognitiveController:
@@ -186,7 +188,7 @@ async def transcribe(
         logger.info("Visual intent detected: %r — requesting a frame", text_heard[:60])
         audio_base64, duration_ms, tts_ms = await _run_tts(settings.vision_look_phrase)
         total_ms = _elapsed_ms(request_start)
-        _log_pipeline_timing(stt_ms, 0, tts_ms, total_ms)
+        _log_pipeline_timing("voice.vision-cue", stt_ms, 0, tts_ms, total_ms)
         return TranscribeResponse(
             text_heard=text_heard,
             llm_response=settings.vision_look_phrase,
@@ -202,10 +204,11 @@ async def transcribe(
     plan = await _voice_controller(background_tasks).handle(
         _voice_event_from_transcript(text_heard)
     )
+    turn_log.log_decision("voice", plan)
     audio_base64, duration_ms, tts_ms = await _run_tts(plan.response)
 
     total_ms = _elapsed_ms(request_start)
-    _log_pipeline_timing(stt_ms, plan.duration_ms, tts_ms, total_ms)
+    _log_pipeline_timing(f"voice.{plan.source.value}", stt_ms, plan.duration_ms, tts_ms, total_ms)
     return TranscribeResponse(
         text_heard=text_heard,
         llm_response=plan.response,
@@ -247,6 +250,7 @@ async def transcribe_stream(
 
     event = _voice_event_from_transcript(text_heard)
     plan = await _voice_controller(background_tasks).decide(event)
+    turn_log.log_decision("stream", plan)
     if plan is not None:
         return StreamingResponse(
             stream_response_plan(
