@@ -28,6 +28,7 @@ dependencies = [
 
 [project.scripts]
 serve = "server.main:main"
+personal-setup = "server.personal_setup:main"
 
 [build-system]
 requires = ["uv_build>=0.12.3,<0.13.0"]

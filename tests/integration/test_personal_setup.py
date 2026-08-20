@@ -10,7 +10,11 @@ from server.cognition.pin_credentials import verify_pin
 from server.memory.household_authorization import bootstrap_initial_owner, get_active_role
 from server.memory.meta import get_flag
 from server.memory.owner_credentials import get_active_owner_pin_credential
-from server.personal_setup import PersonalSetupInput, apply_personal_setup
+from server.personal_setup import (
+    PersonalSetupInput,
+    apply_personal_setup,
+    run_personal_setup_wizard,
+)
 from server.settings import settings
 
 from server import db
@@ -201,3 +205,134 @@ async def test_setup_never_marks_extended_onboarding_complete(setup_db: None) ->
     """The minimal setup never touches the legacy onboarding completion flag."""
     await apply_personal_setup(_valid_input())
     assert await get_flag("onboarding_complete") is None
+
+
+class _ScriptedIO:
+    """Fake read/write adapters that replay scripted answers in call order."""
+
+    def __init__(self, *, text_answers: list[str], secret_answers: list[str]) -> None:
+        self._text_answers = list(text_answers)
+        self._secret_answers = list(secret_answers)
+        self.outputs: list[str] = []
+
+    def read_text(self, prompt: str) -> str:
+        del prompt
+        return self._text_answers.pop(0)
+
+    def read_secret(self, prompt: str) -> str:
+        del prompt
+        return self._secret_answers.pop(0)
+
+    def write_text(self, line: str) -> None:
+        self.outputs.append(line)
+
+
+async def _child_relation_count() -> int:
+    """Return the number of active child_of relations across the household."""
+    cursor = await db.get_conn().execute(
+        "SELECT COUNT(*) FROM entity_relations_v4 WHERE predicate = 'child_of' AND lifecycle = 'active'"
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    assert row is not None
+    return int(row[0])
+
+
+@pytest.mark.integration
+async def test_wizard_cancels_on_blank_owner_name(setup_db: None) -> None:
+    """A blank first answer cancels before any write."""
+    io = _ScriptedIO(text_answers=[""], secret_answers=[])
+
+    result = await run_personal_setup_wizard(
+        read_text=io.read_text, read_secret=io.read_secret, write_text=io.write_text
+    )
+
+    assert result is None
+    assert await _entities_named(("Pipec",)) == 0
+
+
+@pytest.mark.integration
+async def test_wizard_cancels_on_blank_children(setup_db: None) -> None:
+    """A blank children answer cancels before any write."""
+    io = _ScriptedIO(text_answers=["Pipec", ""], secret_answers=[])
+
+    result = await run_personal_setup_wizard(
+        read_text=io.read_text, read_secret=io.read_secret, write_text=io.write_text
+    )
+
+    assert result is None
+    assert await _entities_named(("Pipec",)) == 0
+
+
+@pytest.mark.integration
+async def test_wizard_cancels_on_pin_mismatch(setup_db: None) -> None:
+    """A mismatched PIN confirmation cancels before any write."""
+    io = _ScriptedIO(
+        text_answers=["Pipec", "Máximo Dominga"],
+        secret_answers=["482173", "482174"],
+    )
+
+    result = await run_personal_setup_wizard(
+        read_text=io.read_text, read_secret=io.read_secret, write_text=io.write_text
+    )
+
+    assert result is None
+    assert await _entities_named(("Pipec", "Máximo", "Dominga")) == 0
+
+
+@pytest.mark.integration
+async def test_wizard_cancels_on_non_si_confirmation(setup_db: None) -> None:
+    """Any confirmation other than the literal SI cancels before any write."""
+    io = _ScriptedIO(
+        text_answers=["Pipec", "Máximo Dominga", "yes"],
+        secret_answers=["482173", "482173"],
+    )
+
+    result = await run_personal_setup_wizard(
+        read_text=io.read_text, read_secret=io.read_secret, write_text=io.write_text
+    )
+
+    assert result is None
+    assert await _entities_named(("Pipec", "Máximo", "Dominga")) == 0
+
+
+@pytest.mark.integration
+async def test_wizard_summary_redacts_pin_and_shows_only_names(setup_db: None) -> None:
+    """The pre-confirmation summary never prints the PIN digits."""
+    io = _ScriptedIO(
+        text_answers=["Pipec", "Máximo Dominga", "NO"],
+        secret_answers=["482173", "482173"],
+    )
+
+    await run_personal_setup_wizard(
+        read_text=io.read_text, read_secret=io.read_secret, write_text=io.write_text
+    )
+
+    joined = "\n".join(io.outputs)
+    assert "Pipec" in joined
+    assert "Máximo" in joined
+    assert "Dominga" in joined
+    assert "******" in joined
+    assert "482173" not in joined
+
+
+@pytest.mark.integration
+async def test_wizard_success_applies_setup_and_never_prints_secret(setup_db: None) -> None:
+    """A confirmed SI answer applies the setup and never echoes the PIN."""
+    io = _ScriptedIO(
+        text_answers=["Pipec", "Máximo Dominga", "SI"],
+        secret_answers=["482173", "482173"],
+    )
+
+    result = await run_personal_setup_wizard(
+        read_text=io.read_text, read_secret=io.read_secret, write_text=io.write_text
+    )
+
+    assert result is not None
+    assert result.personal_security_ready is True
+    assert await _entities_named(("Pipec", "Máximo", "Dominga")) == 3
+    assert await _child_relation_count() == 2
+
+    joined = "\n".join(io.outputs)
+    assert str(result.owner_entity_id) in joined
+    assert "482173" not in joined
