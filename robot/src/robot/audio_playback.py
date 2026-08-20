@@ -6,7 +6,7 @@ if the server ever emits a different rate.
 """
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from concurrent.futures import ThreadPoolExecutor
 import contextlib
 import io
@@ -66,7 +66,31 @@ async def play_wav(wav_bytes: bytes) -> None:
         raise AudioPlaybackError("Audio playback failed") from exc
 
 
-async def play_wav_stream(chunks: AsyncIterator[bytes]) -> None:
+async def _consume(
+    queue: asyncio.Queue[bytes | None],
+    on_chunk_start: Callable[[int], None] | None,
+) -> None:
+    """Play every queued chunk in order, reporting each playback start.
+
+    Args:
+        queue: Chunks produced by the background reader, terminated by a
+            ``None`` sentinel.
+        on_chunk_start: Called with the one-based chunk index immediately
+            before that chunk's ``play_wav`` call, if given.
+    """
+    index = 0
+    while (chunk := await queue.get()) is not None:
+        index += 1
+        if on_chunk_start is not None:
+            on_chunk_start(index)
+        await play_wav(chunk)
+
+
+async def play_wav_stream(
+    chunks: AsyncIterator[bytes],
+    *,
+    on_chunk_start: Callable[[int], None] | None = None,
+) -> None:
     """Play a stream of WAV chunks sequentially, draining before returning (R3).
 
     A background task pulls chunks from ``chunks`` into a queue while this
@@ -79,11 +103,14 @@ async def play_wav_stream(chunks: AsyncIterator[bytes]) -> None:
     Args:
         chunks: Async iterator of WAV audio chunks, each at 16kHz mono int16
             per the audio contract (e.g. one chunk per synthesized sentence).
+        on_chunk_start: Optional callback invoked with the one-based chunk
+            index immediately before that chunk starts playing.
 
     Raises:
         AudioPlaybackError: If decoding or the output device fails for any chunk.
         Exception: Whatever ``chunks`` itself raises (e.g. a server/network
-            error) — re-raised after every already-received chunk has played.
+            or stream-validation error) — re-raised after every already
+            -received chunk has played.
     """
     queue: asyncio.Queue[bytes | None] = asyncio.Queue()
 
@@ -96,8 +123,7 @@ async def play_wav_stream(chunks: AsyncIterator[bytes]) -> None:
 
     producer_task = asyncio.create_task(_producer())
     try:
-        while (chunk := await queue.get()) is not None:
-            await play_wav(chunk)
+        await _consume(queue, on_chunk_start)
     finally:
         producer_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):

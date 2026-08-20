@@ -32,3 +32,7 @@ class LoopContext:
     # R3 (robot_streaming=True): remaining stream events handed from THINKING
     # to SPEAKING once the text_heard event confirms the turn is live.
     stream_events: AsyncIterator[StreamEvent] | None = None
+    # R3: time.perf_counter() reading taken before requesting/consuming the
+    # first stream event — used to log receive/playback latency in
+    # app_streaming.py. IDLE resets it; THINKING sets it.
+    stream_request_start: float | None = None

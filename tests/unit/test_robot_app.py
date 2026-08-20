@@ -37,6 +37,16 @@ async def test_idle_resets_context_and_goes_to_listening() -> None:
 
 
 @pytest.mark.unit
+async def test_idle_resets_stream_request_start() -> None:
+    """IDLE must clear the streaming request timestamp for the next turn."""
+    ctx = LoopContext(stream_request_start=123.0)
+
+    await app.tick(RobotState.IDLE, ctx)
+
+    assert ctx.stream_request_start is None
+
+
+@pytest.mark.unit
 async def test_listening_with_speech_goes_to_thinking(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

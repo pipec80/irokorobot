@@ -47,6 +47,7 @@ async def _on_idle(ctx: LoopContext) -> RobotState:
     ctx.audio = b""
     ctx.result = None
     ctx.stream_events = None
+    ctx.stream_request_start = None
     return RobotState.LISTENING
 
 
