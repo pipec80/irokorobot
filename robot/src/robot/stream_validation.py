@@ -5,10 +5,10 @@ Enforced independently of the server (defense in depth): the server side
 never treat a truncated, malformed, or out-of-order stream as a successful
 turn just because the server is trusted.
 
-Valid order: an optional-once EmotionEvent, then one or more AudioEvent,
-then exactly one terminal DoneEvent. TextHeardEvent is not expected here —
-``on_thinking_stream`` already consumed it as the first stream event before
-handing the rest of the stream to this validator.
+Valid order: a required-once EmotionEvent that must precede any audio, then
+one or more AudioEvent, then exactly one terminal DoneEvent. TextHeardEvent
+is not expected here — ``on_thinking_stream`` already consumed it as the
+first stream event before handing the rest of the stream to this validator.
 """
 
 from dataclasses import dataclass
@@ -38,7 +38,7 @@ class StreamValidationState:
                 event received after done.
         """
         if self.done_seen:
-            raise ServerError(f"Stream event received after done: {event!r}")
+            raise ServerError(f"Stream event received after done: {type(event).__name__}")
         match event:
             case TextHeardEvent():
                 raise ServerError("Duplicate text_heard event in stream")
