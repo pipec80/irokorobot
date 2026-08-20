@@ -48,7 +48,7 @@ async def on_thinking_stream(ctx: LoopContext) -> RobotState:
         logger.error("Server stream request failed: %s", exc)
         return RobotState.ERROR
     if not isinstance(first, TextHeardEvent):
-        logger.error("Unexpected first stream event: %r", first)
+        logger.error("Unexpected first stream event: %s", type(first).__name__)
         return RobotState.ERROR
     logger.info("Heard: %s", first.value)
     ctx.stream_events = events
