@@ -4,15 +4,15 @@
 > branch and automated gates are green. The first operator run on 2026-08-17
 > confirmed policy denial and media paths but found intent, silent-streaming,
 > and visual-grounding blockers documented in
-> [Plan 0020](../plans/0020-p0-operator-qa-remediation-design.md). The
+> [Plan 0020](../plans/open/0020-p0-operator-qa-remediation-design.md). The
 > silent-streaming blocker is closed: [Plan
-> 0022](../plans/0022-p0-reliable-streaming-output.md) passed a 2026-08-20
+> 0022](../plans/completed/0022-p0-reliable-streaming-output.md) passed a 2026-08-20
 > real operator rerun (case C1-S below) with zero silent successes across 4
 > live turns, including a live reproduction of the original hybrid-output
 > failure ending in an audible fallback. Intent (C5, Plan 0021) and
 > visual-grounding (C7, Plan 0023) remain open; P0 acceptance still requires
 > their remediation and a combined clean rerun. Personal identity/session acceptance is P1 work under
-> [Plan 0015](../plans/0015-personal-companion-design.md), not an unfinished
+> [Plan 0015](../plans/open/0015-personal-companion-design.md), not an unfinished
 > P0 requirement.
 
 ## Purpose
@@ -93,16 +93,16 @@ on any mismatch; do not reinterpret a near miss as a pass.
 
 P1.1 is not a P0 closure step. Its old illustrative session procedure has been
 superseded by the owner-approved design in
-[Plan 0024](../plans/0024-owner-authenticated-memory-mvp-design.md) and the
+[Plan 0024](../plans/open/0024-owner-authenticated-memory-mvp-design.md) and the
 bounded executable sequence:
 
-1. [Plan 0025](../plans/0025-personal-owner-bootstrap-and-pin-setup.md) creates
+1. [Plan 0025](../plans/open/0025-personal-owner-bootstrap-and-pin-setup.md) creates
    Pipec, confirms Máximo and Dominga, and stores only a PIN verifier;
-2. [Plan 0026](../plans/0026-one-use-owner-authenticated-classic-turn.md) proves
+2. [Plan 0026](../plans/open/0026-one-use-owner-authenticated-classic-turn.md) proves
    the one-use classic `/chat` and `/transcribe` paths;
-3. [Plan 0027](../plans/0027-one-use-owner-streaming-parity.md) adds equivalent
+3. [Plan 0027](../plans/open/0027-one-use-owner-streaming-parity.md) adds equivalent
    streaming behavior;
-4. [Plan 0028](../plans/0028-owner-authenticated-memory-runtime-acceptance.md)
+4. [Plan 0028](../plans/open/0028-owner-authenticated-memory-runtime-acceptance.md)
    defines the recoverable database setup, commands, repeated spoken cases,
    audit checks, and evidence record.
 

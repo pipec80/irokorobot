@@ -2,12 +2,12 @@
 
 > **Observed:** 2026-08-20
 >
-> **Implementation snapshot:** `docs/personal-family-profiles` at `1927912`.
+> **Implementation snapshot:** `docs/personal-family-profiles` at `9b699de`.
 > Plan 0022 (P0-C6 reliable streaming output) is **complete and verified**:
 > all 4 tasks passed task-scoped review, a whole-plan review found no
 > Critical issues, and real `just run-server`/`just run-robot` operator
 > evidence on 2026-08-20 confirmed the headline invariant on live hardware —
-> see [Plan 0022](../plans/0022-p0-reliable-streaming-output.md#execution-evidence).
+> see [Plan 0022](../plans/completed/0022-p0-reliable-streaming-output.md#execution-evidence).
 > Plans 0021, 0023, and the owner-authenticated memory MVP (0024-0028) remain
 > unimplemented; combined P0 operator acceptance remains open.
 >
@@ -23,14 +23,14 @@
 > seam. The P0 closure revalidation on merged `main` repeated the focused
 > acceptance suite (20 passed), all five local gates, and `git diff --check`
 > before this evidence update. This verifies the P0 foundation, not operator
-> acceptance: [Plan 0013](../plans/0013-p0-voice-controller-bridge.md) now
+> acceptance: [Plan 0013](../plans/open/0013-p0-voice-controller-bridge.md) now
 > routes the classic voice path through the controller with an unknown public
 > actor. Its automated evidence and human `just run-server` plus
 > `just run-robot` acceptance remain required before this document can claim
 > P0 operator acceptance. The subsequent runtime-policy audit confirmed the
 > streaming, visual-dialogue, QA-WAV, and protected-wording gaps. They are
 > bounded by [Plan
-> 0014](../plans/0014-p0-runtime-policy-hardening-design.md). Plan 0022's code
+> 0014](../plans/open/0014-p0-runtime-policy-hardening-design.md). Plan 0022's code
 > has since landed on this branch, but this documentation task did not rerun its
 > automated gates. Typed intent resolution, grounded visual dialogue, explicit
 > owner authentication, and the combined real operator run remain open.
@@ -39,6 +39,16 @@
 > `just services` detecting configured local models. Camera, microphone, LAN,
 > biometric enrollment, real Ollama chat, and hardware acceptance were not
 > executed in this snapshot.
+>
+> **Latest repository test audit:** `just test` on 2026-08-20 completed with
+> 635 passed and 6 failed. All six failures were in
+> `tests/unit/test_robot_app.py`: the tracked tests assumed classic mode while
+> the local `.env` supplied `ROBOT_STREAMING=true`. Re-running that unit file
+> with `ROBOT_STREAMING=false` produced 20 passed. A subsequent full baseline
+> with that same explicit override produced **641 passed in 29.81s**. This
+> confirms the code baseline is green under the intended classic test posture
+> while leaving an open test-isolation/configuration-drift defect: an unrelated
+> local `.env` must not silently change unit-test mode.
 
 ## Accurate description
 
@@ -165,7 +175,7 @@ The P0-S audit is authoritative for immediate pre-controller work:
   public identity/consent, broader family queries, prompts/LLM retrieval, and
   P1 remain deliberately unimplemented.
 
-See [P0-S hardening audit](p0-s-hardening-audit.md) for evidence and
+See [P0-S hardening audit](../history/audits/p0-s-hardening-audit.md) for evidence and
 [plans](../plans/README.md) for execution status.
 
 ## Latest verification evidence
@@ -211,12 +221,12 @@ See [P0-S hardening audit](p0-s-hardening-audit.md) for evidence and
 
 The P0 foundation evidence above does not prove an operator can exercise every
 P0 capability via `just run-server` and `just run-robot`. R1 runtime proof is
-defined in [Plan 0013](../plans/0013-p0-voice-controller-bridge.md); the
+defined in [Plan 0013](../plans/open/0013-p0-voice-controller-bridge.md); the
 authenticated-owner acceptance gate remains open in
-[Plan 0024](../plans/0024-owner-authenticated-memory-mvp-design.md). Its
+[Plan 0024](../plans/open/0024-owner-authenticated-memory-mvp-design.md). Its
 documentation-only executable sequence is Plans
-[0025](../plans/0025-personal-owner-bootstrap-and-pin-setup.md) through
-[0028](../plans/0028-owner-authenticated-memory-runtime-acceptance.md). P1
+[0025](../plans/open/0025-personal-owner-bootstrap-and-pin-setup.md) through
+[0028](../plans/open/0028-owner-authenticated-memory-runtime-acceptance.md). P1
 design is approved, but its implementation and runtime acceptance have not
 started.
 

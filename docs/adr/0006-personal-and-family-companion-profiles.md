@@ -78,7 +78,7 @@ and the `family` profile are deliberately later work.
 
 ## Follow-up
 
-- [P0 runtime policy hardening design](../plans/0014-p0-runtime-policy-hardening-design.md)
-- [Personal companion design](../plans/0015-personal-companion-design.md)
+- [P0 runtime policy hardening design](../plans/open/0014-p0-runtime-policy-hardening-design.md)
+- [Personal companion design](../plans/open/0015-personal-companion-design.md)
 - [Identity, household access, and consent](../architecture/identity-and-access.md)
 - [Cognitive roadmap](../roadmap/cognitive-roadmap.md)

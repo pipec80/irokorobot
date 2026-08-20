@@ -6,7 +6,7 @@
 
 ## Context
 
-[Plan 0007](../plans/0007-household-authorization-foundation.md) (P0.5-A) and
+[Plan 0007](../plans/completed/0007-household-authorization-foundation.md) (P0.5-A) and
 its successors built roles, fail-closed policy, and audit — but no local path
 produces an identified owner. `server/cognition/identity_sessions.py`
 (`IdentitySessionRegistry`) is the only producer of identity evidence in the
@@ -80,7 +80,7 @@ nothing here widens what those tools may return.
 
 **Recognition stays evidence, never authorization, and stays optional.** Face
 and voice (PC-2/PC-3 in [Plan
-0015](../plans/0015-personal-companion-design.md)) remain later, faster paths
+0015](../plans/open/0015-personal-companion-design.md)) remain later, faster paths
 to the same identified state this ADR defines the entry to — never a
 replacement for it, never the only recovery route.
 
@@ -124,8 +124,8 @@ replacement for it, never the only recovery route.
   reaches loopback on that PC is presumed owner. Mitigated by the boundary
   already stated in the decision (TTL, explicit revoke, disclosure unchanged)
   and by the existing loopback-only default from [Plan
-  0002c](../plans/0002c-desktop-security-and-drift.md).
-- [Plan 0023](../plans/0023-p0-grounded-visual-dialogue.md)'s `ACTIVE_IDENTITY`
+  0002c](../plans/completed/0002c-desktop-security-and-drift.md).
+- [Plan 0023](../plans/open/0023-p0-grounded-visual-dialogue.md)'s `ACTIVE_IDENTITY`
   branch (`Todavía no puedo confirmar quién sos.`) must be revised once this
   lands, so a resolved owner is greeted instead of always receiving the fixed
   unknown-identity copy — already flagged in that plan's status line.
@@ -136,17 +136,17 @@ replacement for it, never the only recovery route.
 ## Review
 
 Revisit this decision if: the `family` profile's onboarding
-([Plan 0015](../plans/0015-personal-companion-design.md)'s later slices)
+([Plan 0015](../plans/open/0015-personal-companion-design.md)'s later slices)
 needs the local channel to resolve more than one person; `LAN_HOST` exposure
 (currently opt-in per [Plan
-0002c](../plans/0002c-desktop-security-and-drift.md)) becomes a supported
+0002c](../plans/completed/0002c-desktop-security-and-drift.md)) becomes a supported
 default, which would change what "local channel" is safe to presume; or the
 first real multi-week household run shows the TTL/revoke boundary is wrong in
 either direction.
 
 ## Follow-up
 
-- [Personal companion design — PC-1](../plans/0015-personal-companion-design.md)
-- [P0 operator-QA remediation design](../plans/0020-p0-operator-qa-remediation-design.md)
+- [Personal companion design — PC-1](../plans/open/0015-personal-companion-design.md)
+- [P0 operator-QA remediation design](../plans/open/0020-p0-operator-qa-remediation-design.md)
 - [Identity, household access, and consent](../architecture/identity-and-access.md)
 - [Cognitive roadmap](../roadmap/cognitive-roadmap.md)

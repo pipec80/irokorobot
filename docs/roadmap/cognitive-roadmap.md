@@ -4,6 +4,8 @@
 >
 > **Starting point:** [Current cognitive implementation](../architecture/current-state.md)
 >
+> **Personal-companion traceability:** [Delivery map](personal-companion-delivery-map.md)
+>
 > **Rule:** Finish and verify one bounded plan before preparing or implementing
 > the next. Priority does not authorize all work in a phase at once.
 
@@ -52,7 +54,7 @@ and narrow executable plans. It makes no production-code change.
 
 - all future requirements needed for the cognitive foundation exist in tracked
   documents;
-- `docs/local/` is explicitly historical/reference-only;
+- `project-history/local-docs/` is explicitly historical/reference-only;
 - contradictions between current behavior and target behavior are named;
 - a future Codex can start from one named plan without reconstructing the chat;
 - no code or commit is included in the documentation pass.
@@ -65,7 +67,7 @@ the system support?
 
 ### P0.1 — Typed cognitive domain models
 
-Implement [Plan 0001](../plans/0001-cognitive-domain-models.md) exactly within
+Implement [Plan 0001](../plans/completed/0001-cognitive-domain-models.md) exactly within
 its file scope. The models are pure values; they do not integrate with current
 routes or invoke providers.
 
@@ -77,7 +79,7 @@ no-I/O tests pass offline with no new framework.
 
 ### P0.2 — Active-person context and conversation isolation
 
-Implement [Plan 0002](../plans/0002-active-person-context.md) after P0.1.
+Implement [Plan 0002](../plans/completed/0002-active-person-context.md) after P0.1.
 It introduces typed identity evidence and `ActivePersonContext`, preserves the
 current integer entity IDs, and removes owner identity as an implicit fact of
 every voice turn.
@@ -99,10 +101,10 @@ the owner and private history is not reused across identity boundaries.
 
 P0-S is two small prerequisite slices, not a shortcut to P0.5.
 
-- **P0-S1:** [Plan 0002b](../plans/0002b-biometric-enrollment-quarantine.md)
+- **P0-S1:** [Plan 0002b](../plans/completed/0002b-biometric-enrollment-quarantine.md)
   quarantines both HTTP and conversational public face enrollment. It preserves
   existing biometric data and does not introduce authentication or roles.
-- **P0-S2:** [Plan 0002c](../plans/0002c-desktop-security-and-drift.md) changes
+- **P0-S2:** [Plan 0002c](../plans/completed/0002c-desktop-security-and-drift.md) changes
   desktop exposure defaults and aligns configuration, scripts, and evidence
   after P0-S1 revalidation.
 
@@ -112,7 +114,7 @@ a cloud-default runtime. Plan 0003 is complete; later plans remain Draft.
 
 ### P0.3 — Small controller and deterministic tools
 
-**Exit gate: COMPLETE.** [Plan 0003](../plans/0003-typed-controller-and-deterministic-tools.md)
+**Exit gate: COMPLETE.** [Plan 0003](../plans/completed/0003-typed-controller-and-deterministic-tools.md)
 pilots one typed controller behind `/chat` without changing `text_turn` or the
 audio API. It creates a fresh `CognitiveEvent`, returns an immutable
 `ResponsePlan`, calculates current date and age from a strict ISO birth date,
@@ -158,7 +160,7 @@ family queries; those require P0.4 relational memory and P0.5 authorization.
 
 ### P0.4 — Relational memory v4
 
-**Plan 0004 and [Plan 0005](../plans/0005-relational-memory-v4-implementation.md)
+**Plan 0004 and [Plan 0005](../plans/completed/0005-relational-memory-v4-implementation.md)
 are complete; P0.4 merged as `3b01b58` through PR #40.** The bounded
 slice adds only an additive SQLite v4 foundation:
 integer entity relationships, predicate cardinality, lifecycle metadata, and an
@@ -175,7 +177,7 @@ tools, and writes.
 ### P0.5 — Household authorization
 
 **P0.5-A is complete — merged to `main` as `960f160` through PR #42.**
-[Plan 0007](../plans/0007-household-authorization-foundation.md) implements
+[Plan 0007](../plans/completed/0007-household-authorization-foundation.md) implements
 role and data-category policy as a deterministic service, safe local role/audit
 records, an explicit local owner bootstrap, and controller enforcement before
 protected delegation. It uses the minimum roles `owner`, `adult`, `child`,
@@ -192,14 +194,14 @@ explicit rules; denials are auditable and do not leak protected facts.
 **P0.5 overall exit gate:** policy-gated v4 retrieval/model-context and family
 tools are added under a separately revalidated P0.5-B plan; protected values
 are filtered before retrieval and never enter a prompt when denied. The current
-[Plan 0008 design](../plans/0008-policy-gated-v4-household-tools-design.md)
+[Plan 0008 design](../plans/completed/0008-policy-gated-v4-household-tools-design.md)
 keeps child relationships and birth dates consent-gated and public chat
 unknown-by-default; it does not authorize a public identity or consent path.
-[Plan 0009](../plans/0009-policy-gated-v4-reader.md) is complete: PR #45
+[Plan 0009](../plans/completed/0009-policy-gated-v4-reader.md) is complete: PR #45
 merged as `a7550d0` on 2026-08-13 after its local 555-test gate and green
 GitHub CI. It adds the reader-only cut.
 
-**P0.5-B2 is Complete in [Plan 0010](../plans/0010-policy-gated-v4-family-tools.md).**
+**P0.5-B2 is Complete in [Plan 0010](../plans/completed/0010-policy-gated-v4-family-tools.md).**
 PR #48 merged as `0d16969` on 2026-08-14 after local `just lint`, `just
 typecheck`, `just test` (571 passed), `just audit`, `just check`, and green
 GitHub CI. It adds only a policy-gated internal family-tool seam and two
@@ -207,10 +209,11 @@ self-referential child-query patterns. Public chat remains unknown-by-default,
 and cannot provide identity or consent or invoke the v4 reader.
 
 **P0 foundation is complete; runtime acceptance is pending.**
-[Plan 0011](../plans/0011-p0-closure-and-acceptance.md) records the merged-main
-foundation evidence. [Plan 0012](../plans/0012-p0-runtime-acceptance-design.md)
+[Plan 0011](../plans/completed/0011-p0-closure-and-acceptance.md) records the merged-main
+foundation evidence. [Plan 0012](../plans/completed/0012-p0-runtime-acceptance-design.md)
 must still connect P0 to `just run-server` plus `just run-robot` and pass its
-operator runbook. P1 has not started and requires a separate approved plan.
+operator runbook. P1.1 product design and Plans 0025–0028 are prepared, but no
+P1 implementation or runtime acceptance has started.
 
 ## P1 — Personal companion
 
@@ -231,13 +234,18 @@ retrieval, and audible output. It must not be a public admin API.
 hijos?” and hears “Máximo y Dominga” through `just run-server` plus
 `just run-robot`; without fresh authentication the same request reveals no
 names, count, hint, or fact existence. Both scenarios are repeatable and
-audited. [Plan 0024](../plans/0024-owner-authenticated-memory-mvp-design.md)
+audited. [Plan 0024](../plans/open/0024-owner-authenticated-memory-mvp-design.md)
 defines the design. Its executable portfolio is [0025 owner setup and
-PIN](../plans/0025-personal-owner-bootstrap-and-pin-setup.md) → [0026 classic
-authenticated turn](../plans/0026-one-use-owner-authenticated-classic-turn.md)
-→ [0027 streaming parity](../plans/0027-one-use-owner-streaming-parity.md) →
-[0028 real runtime acceptance](../plans/0028-owner-authenticated-memory-runtime-acceptance.md).
+PIN](../plans/open/0025-personal-owner-bootstrap-and-pin-setup.md) → [0026 classic
+authenticated turn](../plans/open/0026-one-use-owner-authenticated-classic-turn.md)
+→ [0027 streaming parity](../plans/open/0027-one-use-owner-streaming-parity.md) →
+[0028 real runtime acceptance](../plans/open/0028-owner-authenticated-memory-runtime-acceptance.md).
 The plans are prepared but not implemented.
+
+The [personal-companion delivery map](personal-companion-delivery-map.md)
+is the canonical cross-plan traceability view. It identifies which foundations
+already exist in code/tests, which gaps are verified absent, and which one
+bounded plan owns each remaining outcome. It does not authorize execution.
 
 **Order revision (2026-08-20):** P1.1 runs immediately after P0-C6 instead of
 waiting for full P0-C acceptance. P0.5 built the owner role, policy, and audit,
@@ -409,7 +417,7 @@ tests exist. An LLM never commands a motor directly.
 - Identity and authorization precede private retrieval and generation.
 - New electronics are adapters after software contracts, not the starting point.
 - Every plan states exact files, tests, rollback/migration concerns, and non-goals.
-- No plan may require ignored `docs/local/` content or unstated chat history.
+- No plan may require ignored `project-history/local-docs/` content or unstated chat history.
 - No commit, push, PR, dependency install, or unrelated cleanup is implicit in
   an implementation request.
 
@@ -418,7 +426,7 @@ tests exist. An LLM never commands a motor directly.
 Use one instruction of this form:
 
 ```text
-Implement docs/plans/NNNN-name.md exactly as written.
+Implement docs/plans/open/NNNN-name.md exactly as written.
 Read docs/architecture/implementation-guardrails.md,
 docs/architecture/README.md, and only the required files named by the plan.
 Respect the permitted file list. If code or current behavior
@@ -426,9 +434,9 @@ contradicts the plan, stop and report the exact conflict; do not redesign or
 expand scope. Run the listed verification. Do not commit unless asked.
 ```
 
-[Plan 0001](../plans/0001-cognitive-domain-models.md),
-[Plan 0002](../plans/0002-active-person-context.md), and
-[Plan 0002a](../plans/0002a-local-first-provider-quarantine.md) are complete.
+[Plan 0001](../plans/completed/0001-cognitive-domain-models.md),
+[Plan 0002](../plans/completed/0002-active-person-context.md), and
+[Plan 0002a](../plans/completed/0002a-local-first-provider-quarantine.md) are complete.
 Plans 0002b, 0002c, 0003, the Plan 0004 design, and Plan 0005 are complete;
 Plan 0005 merged as `3b01b58` through PR #40. Plan 0007 P0.5-A merged as
 `960f160` through PR #42. Plan 0008 is approved and Plan 0009 P0.5-B1 is

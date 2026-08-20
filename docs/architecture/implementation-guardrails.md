@@ -3,7 +3,7 @@
 > **Status:** Canonical tracked handoff
 >
 > **Purpose:** Preserve the repository constraints a future Codex needs even
-> when local-only `AGENTS.md`, `.Codex/`, or `docs/local/` files are absent.
+> when local-only `AGENTS.md`, `.Codex/`, or `project-history/local-docs/` files are absent.
 
 Runtime agent instructions supplied by the environment still apply. This
 document records the project-specific rules that cognitive plans must not leave
@@ -80,6 +80,11 @@ is a breaking change and requires explicit user approval plus a migration plan.
 - The LLM is one tool inside a small typed controller, not the owner of truth,
   memory policy, authorization, arithmetic, or physical safety.
 - Identity and authorization are evaluated before private retrieval.
+- Missing authentication leaves protected capabilities locked, not the whole
+  companion: bounded public conversation remains available, while private
+  memory, persistent mutation, and protected actions remain unavailable.
+- Authentication grants only its named, expiring capability. It is never a
+  master session for unrelated memory, home, computer, or physical actions.
 - `unknown`, `ambiguous`, `contradictory`, and `unauthorized` are valid results.
 - Local operation is the default; cloud use requires the explicit escalation
   policy and never becomes a hidden provider fallback.

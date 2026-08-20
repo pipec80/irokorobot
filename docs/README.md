@@ -1,39 +1,50 @@
 # Iroko technical documentation
 
-> Status: Documentation portal. It is not an implementation plan.
+> **Status:** Canonical documentation portal. This page routes authority; it
+> does not authorize implementation.
 
-## Start here
+## Fast lookup
 
-Begin with the public [Iroko profile](product/iroko-profile.md), then use the [architecture index](architecture/README.md) and its [current state](architecture/current-state.md) to distinguish evidence from future intent. The reproducible audio setup guide is delivered by Slice 2.
+| Question | Authoritative source |
+|---|---|
+| What is Iroko? | [Product profile](product/iroko-profile.md) |
+| What exists in code now? | [Current state](architecture/current-state.md) |
+| How should the system work? | [Architecture index](architecture/README.md) |
+| Which decisions are accepted? | [ADR index](adr/README.md) |
+| What comes next? | [Cognitive roadmap](roadmap/cognitive-roadmap.md) |
+| How does the personal-companion goal map to code and plans? | [Personal-companion delivery map](roadmap/personal-companion-delivery-map.md) |
+| Which plan may be executed? | [Plans index](plans/README.md) |
+| How is real behavior accepted? | [Runtime runbook](runbooks/p0-runtime-acceptance.md) |
+| Where is superseded context? | [Historical index](history/README.md) |
 
-## Choose your route
+## Authority rule
 
-| Reader | Start with | Then use |
-| --- | --- | --- |
-| Visitor | [Iroko profile](product/iroko-profile.md) | [Root welcome](../README.md) |
-| New developer | [Root welcome](../README.md) | [Architecture index](architecture/README.md) and [current state](architecture/current-state.md) |
-| Contributor | [Current state](architecture/current-state.md) | [Cognitive roadmap](roadmap/cognitive-roadmap.md) and [plans index](plans/README.md) |
-| Codex/architect | [Architecture index](architecture/README.md) | [Current state](architecture/current-state.md), [roadmap](roadmap/cognitive-roadmap.md), and [plans](plans/README.md) |
-| Maintainer/releaser | [AGENTS.md](../AGENTS.md) | [justfile](../justfile), [current state](architecture/current-state.md), and [plans index](plans/README.md) |
+Use runtime instructions, accepted ADRs, current code/tests, the architecture
+index, current state, roadmap, and one explicitly authorized open plan—in
+that order. A completed or historical document is evidence only and cannot
+override current architecture or reopen work.
 
-## What is implemented today
+## Document states
 
-**Implemented:** the [current state](architecture/current-state.md) is the evidence-backed record of behavior available in the current repository. Do not infer additional runtime, provider, or hardware support from this portal.
+| State | Meaning |
+|---|---|
+| `Canonical` | Current source of truth for its subject. |
+| `Open` | Work not yet closed; it can be reference, blocked, deferred, executable, or awaiting acceptance. |
+| `Implemented` | Code exists; runtime acceptance may still remain open. |
+| `Completed` | Closed execution evidence; not a current instruction. |
+| `Historical` | Superseded context; never operational authority. |
+| `Generated/local` | Unversioned artifact; never technical authority. |
 
-## Canonical authority
+English architecture documents are canonical. The
+[Spanish portal](es/README.md) is a maintained navigation aid and must link to
+the same canonical sources rather than duplicate technical contracts.
 
-English is the canonical technical source. The [architecture index](architecture/README.md), [current state](architecture/current-state.md), [cognitive roadmap](roadmap/cognitive-roadmap.md), and [plans index](plans/README.md) govern current technical direction; the Spanish portal is its maintained equivalent.
+## Scope boundary
 
-## Documentation provenance
-
-The [pre-electronics roadmap](architecture/roadmap-cerebro-agnostico-pre-electronica.md) and [cognitive foundation audit](architecture/cognitive-foundation-audit.md) are historical context, not executable plans. M3/M4 are historical context; M4 is implemented with historical closure not demonstrated. New work follows the canonical architecture index, current state, cognitive roadmap, and the active [P0 runtime-policy hardening design](plans/0014-p0-runtime-policy-hardening-design.md). The personal-companion design is intentionally proposed until P0-C acceptance passes.
-
-## Documentation status labels
-
-- **Implemented** means behavior verified in code, a test, or the [current state](architecture/current-state.md).
-- **Planned** means future intent linked to the [roadmap](roadmap/cognitive-roadmap.md) or a [plan](plans/README.md).
-- **Historical** means preserved context, not current operational guidance.
-
-## Current scope boundary
-
-This portal documents a PC development experience. Raspberry Pi, homelab, OMNiBot 2000, electronics, physical action, and deployment procedures remain future vision rather than supported operating procedures. Autonomous action and operational cloud escalation are not implemented.
+The current supported body is the development PC microphone, webcam, and
+speakers. Raspberry Pi, homelab deployment, OMNiBot 2000 electronics, physical
+action, and cloud escalation remain future work unless current state and an
+active plan explicitly say otherwise. Generated coverage stays under
+`docs/coverage_report/` by project convention but is not documentation
+authority. Local research and journals are preserved outside this tree under
+the ignored `project-history/` directory.

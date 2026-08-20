@@ -112,6 +112,21 @@ voice or face is physically Pipec. Requests without fresh, unconsumed evidence
 remain unknown. Device ownership, loopback origin, a spoken name, prompt text,
 or `conversation_id` never authenticates a person.
 
+## Locked posture and capability scope
+
+Per [ADR 0009](../adr/0009-locked-posture-and-scoped-capabilities.md), an
+unknown actor does not disable Iroko's senses, STT, bounded general
+conversation, or TTS. It disables access to protected capabilities. Unknown
+working context remains isolated and must not be attributed or consolidated
+into Pipec's persistent memory.
+
+The initial PIN grant is exactly one `personal_protected_read` of confirmed
+`child_data`. It is not permission to modify memory, enroll biometrics, control
+lights, restart a computer, administer the home, or invoke actuators. Those
+capabilities require separately named policy decisions and, where appropriate,
+fresh confirmation and local safety checks. There is no global “fully
+unlocked” state.
+
 ## Identity evidence
 
 `IdentityEvidence` is immutable and contains at least:

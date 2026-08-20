@@ -16,5 +16,6 @@ supersedes it and update the old one's status.
 | [0006](0006-personal-and-family-companion-profiles.md) | Support personal and family companion profiles | Accepted |
 | [0007](0007-first-boot-and-default-posture.md) | First boot and local-channel default posture | Accepted; local-owner presumption superseded by 0008 |
 | [0008](0008-progressive-owner-authentication.md) | Progressive owner authentication | Accepted; partially supersedes 0007 |
+| [0009](0009-locked-posture-and-scoped-capabilities.md) | Locked posture and scoped capabilities | Accepted |
 
 New ADRs start from [`0000-adr-template.md`](0000-adr-template.md).
