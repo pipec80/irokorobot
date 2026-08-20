@@ -41,7 +41,10 @@ canónica de
 [personalidad e interacción](../../architecture/personality-and-interaction.md),
 la [arquitectura cognitiva](../../architecture/cognitive-architecture.md) y
 la [política cognitiva local-first](../../adr/0004-local-first-cognitive-policy.md)
-como referencias técnicas no operativas.
+como referencias técnicas no operativas. El próximo objetivo de producto es un
+acompañante personal para Pipec; la UI general y el perfil de compañero familiar
+son trabajo posterior definido por el
+[ADR 0006](../../adr/0006-personal-and-family-companion-profiles.md).
 
 ## Más información
 

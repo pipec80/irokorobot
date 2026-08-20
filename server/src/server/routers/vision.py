@@ -3,17 +3,27 @@
 Image contract: JPEG/PNG/WebP/GIF/BMP · max 1280x720 · ONE frame per request.
 """
 
+from datetime import UTC, date, datetime
 import logging
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
-from server import vision
+from server import turn_log, vision
+from server.cognition.authorization import evaluate_authorization
+from server.cognition.controller import CognitiveController
+from server.cognition.household_tools import HouseholdKnowledgeTools
+from server.cognition.identity import ActivePersonContext, ActivePersonStatus, HouseholdRole
+from server.cognition.models import CognitiveEvent, Confidence, ConfidenceBasis
+from server.cognition.response_plan import TextTurnPayload
 from server.exceptions import ImageContractError, VisionError
+from server.memory.household_authorization import record_authorization_decision
+from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
 from server.pipeline import _run_tts
 from server.schemas import TranscribeResponse, VisionDescribeResponse, VisionEnrollResponse
 from server.settings import settings
-from server.text_turn import new_interaction_scope, process_text_turn
+from server.text_turn import TextTurnResult, new_interaction_scope, process_text_turn
 from server.vision.perception import perceive_scene
 
 logger = logging.getLogger(__name__)
@@ -23,6 +33,74 @@ router = APIRouter(tags=["Vision"])
 _BIOMETRIC_ENROLLMENT_UNAVAILABLE = (
     "Face enrollment is temporarily unavailable pending local administration and consent policy."
 )
+
+
+def _today() -> date:
+    """Return the adapter-owned local date for deterministic visual tools."""
+    return date.today()
+
+
+def _vision_event_from_question(message: str) -> CognitiveEvent[TextTurnPayload]:
+    """Translate one visual question into a fresh typed cognitive event."""
+    now = datetime.now(UTC)
+    return CognitiveEvent(
+        event_id=uuid4(),
+        schema_version=1,
+        event_type="text.turn",
+        occurred_at=now,
+        recorded_at=now,
+        source="vision.respond",
+        correlation_id=uuid4(),
+        causation_id=None,
+        subject_id=None,
+        payload=TextTurnPayload(
+            message=message,
+            conversation_id=new_interaction_scope(),
+        ),
+    )
+
+
+def _public_unknown_vision_actor(
+    event: CognitiveEvent[TextTurnPayload],
+) -> ActivePersonContext:
+    """Return the safe public visual actor without deriving an identity."""
+    actor = ActivePersonContext(
+        person_id=None,
+        display_name=None,
+        status=ActivePersonStatus.UNKNOWN,
+        confidence=Confidence(
+            score=0.0,
+            basis=ConfidenceBasis.NOT_APPLICABLE,
+            calibrated=False,
+            reason="Public visual dialogue provides no trusted identity evidence",
+        ),
+        role=HouseholdRole.UNKNOWN,
+        evidence=(),
+        resolved_at=event.occurred_at,
+    )
+    turn_log.log_actor("vision", actor)
+    return actor
+
+
+def _vision_controller(perception: str) -> CognitiveController:
+    """Compose the bounded controller used by one public visual dialogue turn."""
+
+    async def legacy_turn(message: str, conversation_id: str) -> TextTurnResult:
+        """Delegate generic visual dialogue through the existing text service."""
+        return await process_text_turn(
+            message,
+            conversation_id,
+            perception=perception,
+        )
+
+    return CognitiveController(
+        today=_today,
+        legacy_turn=legacy_turn,
+        active_person_resolver=_public_unknown_vision_actor,
+        policy_evaluator=evaluate_authorization,
+        audit_writer=record_authorization_decision,
+        household_tools=HouseholdKnowledgeTools(reader=PolicyGatedV4Reader()),
+    )
 
 
 async def _read_contract_image(image: UploadFile) -> bytes:
@@ -163,17 +241,14 @@ async def vision_respond(
         logger.error("Vision perception failed — responding blind: %s", exc)
         perception = vision.PERCEPTION_FAILED
 
-    turn = await process_text_turn(
-        text,
-        new_interaction_scope(),
-        perception=perception,
-    )
-    audio_base64, duration_ms, _tts_ms = await _run_tts(turn.response)
+    plan = await _vision_controller(perception).handle(_vision_event_from_question(text))
+    turn_log.log_decision("vision", plan)
+    audio_base64, duration_ms, _tts_ms = await _run_tts(plan.response)
 
     return TranscribeResponse(
         text_heard=text,
-        llm_response=turn.response,
+        llm_response=plan.response,
         audio_base64=audio_base64,
         duration_ms=duration_ms,
-        emotion=turn.emotion,
+        emotion=plan.emotion,
     )

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from server.characters.base import PersonalityProfile
+from server.characters.base import CharacterProfile, PersonalityProfile
 from server.characters.parser import parse_character
 import yaml
 
@@ -17,9 +17,6 @@ social_energy: "moderate"
 ---
 # BASE PROMPT
 Sos un personaje de prueba.
-
-FORMATO — respondé SIEMPRE con JSON válido:
-{"response": "<texto>", "emotion": "<emoción>"}
 
 # ONBOARDING PROMPT
 Presentate brevemente.
@@ -101,12 +98,35 @@ def test_parse_frontmatter_not_a_mapping_raises() -> None:
 
 
 @pytest.mark.unit
-def test_parse_missing_json_contract_raises() -> None:
-    """Dropping the JSON contract must fail loudly, not ship a broken robot."""
-    text = "---\ncuriosity: 0.5\n---\n# BASE PROMPT\nSoy un personaje sin contrato."
+def test_parse_format_free_profile_parses() -> None:
+    """A format-neutral profile (no output-format instructions) parses cleanly.
 
-    with pytest.raises(ValueError, match="JSON response"):
-        parse_character(text, "x")
+    build_system_prompt owns identity/behavior only — each LLM adapter owns
+    appending its own output contract, so a character profile must not embed
+    one.
+    """
+    text = "---\ncuriosity: 0.5\n---\n# BASE PROMPT\nSoy un personaje sin contrato de formato."
+
+    profile = parse_character(text, "x")
+
+    assert '"response"' not in profile.base_prompt
+    assert '"emotion"' not in profile.base_prompt
+
+
+@pytest.mark.unit
+def test_character_profile_rejects_both_legacy_json_markers() -> None:
+    """A base prompt embedding both legacy classic-JSON markers is rejected.
+
+    This is the structural fix for the hybrid-output bug: a character must
+    never carry an output contract, so a hand-edited profile that still
+    embeds one fails loudly at load time.
+    """
+    with pytest.raises(ValueError, match="output format contract"):
+        CharacterProfile(
+            name="x",
+            base_prompt='Respondé con {"response": "...", "emotion": "..."}.',
+            onboarding_prompt="",
+        )
 
 
 @pytest.mark.unit

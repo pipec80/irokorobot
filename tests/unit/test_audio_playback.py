@@ -1,5 +1,6 @@
 """Unit tests for robot.audio_playback — sounddevice is mocked."""
 
+from collections.abc import AsyncIterator
 import io
 import wave
 
@@ -57,3 +58,48 @@ async def test_play_wav_wraps_device_errors(monkeypatch: pytest.MonkeyPatch) -> 
 
     with pytest.raises(AudioPlaybackError):
         await audio_playback.play_wav(_make_wav(sample_rate=16_000, n_frames=160))
+
+
+async def _chunks(*items: bytes) -> AsyncIterator[bytes]:
+    for item in items:
+        yield item
+
+
+@pytest.mark.unit
+async def test_play_wav_stream_reports_chunk_start_before_each_play(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """on_chunk_start must fire immediately before each play_wav, one-based."""
+    calls: list[str] = []
+
+    async def _fake_play_wav(_wav_bytes: bytes) -> None:
+        calls.append("play")
+
+    monkeypatch.setattr(audio_playback, "play_wav", _fake_play_wav)
+    seen: list[int] = []
+
+    def _on_chunk_start(index: int) -> None:
+        seen.append(index)
+        calls.append(f"start-{index}")
+
+    await audio_playback.play_wav_stream(_chunks(b"a", b"b"), on_chunk_start=_on_chunk_start)
+
+    assert seen == [1, 2]
+    assert calls == ["start-1", "play", "start-2", "play"]
+
+
+@pytest.mark.unit
+async def test_play_wav_stream_without_callback_still_plays_all(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """on_chunk_start is optional — omitting it must not break playback."""
+    play_mock_calls: list[bytes] = []
+
+    async def _fake_play_wav(wav_bytes: bytes) -> None:
+        play_mock_calls.append(wav_bytes)
+
+    monkeypatch.setattr(audio_playback, "play_wav", _fake_play_wav)
+
+    await audio_playback.play_wav_stream(_chunks(b"a", b"b"))
+
+    assert play_mock_calls == [b"a", b"b"]

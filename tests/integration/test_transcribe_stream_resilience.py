@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 import httpx
 import pytest
 from server.exceptions import TranscriptionError
+from server.settings import settings
 
 from server import llm_streaming, stt, tts
 
@@ -71,12 +72,12 @@ def test_stream_empty_audio_returns_422(client: TestClient) -> None:
 
 
 @pytest.mark.integration
-def test_stream_without_emotion_tag_still_speaks(
+def test_stream_plain_text_uses_audible_protocol_fallback(
     client: TestClient,
     silence_wav_bytes: bytes,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Missing emotion metadata should fall back before emitting audio."""
+    """Plain text with no EMOTION tag at all is invalid output — spoken as fallback."""
 
     async def fake_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
         for delta in ("Hola. ", "¿Cómo estás?"):
@@ -87,12 +88,11 @@ def test_stream_without_emotion_tag_still_speaks(
     events = _parse_ndjson(response.text)
 
     assert response.status_code == 200
+    assert [event["type"] for event in events] == ["text_heard", "emotion", "audio", "done"]
     assert events[0] == {"type": "text_heard", "value": "hola robot"}
-    emotion_events = [event for event in events if event["type"] == "emotion"]
-    audio_events = [event for event in events if event["type"] == "audio"]
-    assert emotion_events == [{"type": "emotion", "value": "neutral"}]
-    assert [event["text"] for event in audio_events] == ["Hola. ¿Cómo estás?"]
-    assert events.index(emotion_events[0]) < events.index(audio_events[0])
+    assert events[1] == {"type": "emotion", "value": "neutral"}
+    assert events[2]["text"] == settings.llm_fallback_phrase
+    assert events[-1]["type"] == "done"
 
 
 @pytest.mark.integration

@@ -39,7 +39,9 @@ it does not override the architecture or its safeguards. See the canonical
 [personality and interaction architecture](../architecture/personality-and-interaction.md),
 [cognitive architecture](../architecture/cognitive-architecture.md), and
 [local-first cognitive policy](../adr/0004-local-first-cognitive-policy.md)
-for those non-operational technical references.
+for those non-operational technical references. The next product target is a
+personal companion for Pipec; a general family UI and family-companion profile
+are later work under [ADR 0006](../adr/0006-personal-and-family-companion-profiles.md).
 
 ## Learn more
 

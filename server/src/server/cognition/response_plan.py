@@ -26,6 +26,7 @@ class InformationNeed(StrEnum):
     PROTECTED_HOUSEHOLD = "protected_household"
     OWN_CHILDREN_LIST = "own_children_list"
     OWN_CHILDREN_COUNT = "own_children_count"
+    AMBIGUOUS_DATE_QUERY = "ambiguous_date_query"
 
 
 class ResponseSource(StrEnum):

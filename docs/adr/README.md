@@ -13,5 +13,9 @@ supersedes it and update the old one's status.
 | [0003](0003-python-312-minimum.md) | Require Python 3.12+ | Accepted |
 | [0004](0004-local-first-cognitive-policy.md) | Adopt a local-first cognitive policy | Accepted |
 | [0005](0005-small-typed-cognitive-controller.md) | Evolve a small typed cognitive controller | Accepted |
+| [0006](0006-personal-and-family-companion-profiles.md) | Support personal and family companion profiles | Accepted |
+| [0007](0007-first-boot-and-default-posture.md) | First boot and local-channel default posture | Accepted; local-owner presumption superseded by 0008 |
+| [0008](0008-progressive-owner-authentication.md) | Progressive owner authentication | Accepted; partially supersedes 0007 |
+| [0009](0009-locked-posture-and-scoped-capabilities.md) | Locked posture and scoped capabilities | Accepted |
 
 New ADRs start from [`0000-adr-template.md`](0000-adr-template.md).

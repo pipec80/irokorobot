@@ -4,17 +4,26 @@ guard, the hot-reload dev gate, and fail-safe fallback (touches the FS)."""
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from pathlib import Path
+from pathlib import Path
 
 import pytest
 from server.characters import get_character
 from server.characters.iroko import IROKO
+from server.characters.nova import NOVA
+from server.characters.parser import load_character_from_file
 from server.settings import settings
 
 from server import characters
+
+_EJEMPLO_VENDEDOR_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "server"
+    / "src"
+    / "server"
+    / "characters"
+    / "profiles"
+    / "ejemplo_vendedor.md"
+)
 
 _PROFILE = """\
 ---
@@ -26,8 +35,6 @@ social_energy: "extrovert"
 ---
 # BASE PROMPT
 Sos {who}.
-
-FORMATO — JSON: {{"response": "<t>", "emotion": "<e>"}}
 
 # ONBOARDING PROMPT
 Saludá.
@@ -141,3 +148,26 @@ def _touch_newer(path: Path) -> None:
     """Bump the file mtime 10s forward — deterministic across filesystems."""
     future = os.path.getmtime(path) + 10
     os.utime(path, (future, future))
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "base_prompt",
+    [
+        pytest.param(IROKO.base_prompt, id="iroko"),
+        pytest.param(NOVA.base_prompt, id="nova"),
+        pytest.param(
+            load_character_from_file(_EJEMPLO_VENDEDOR_PATH).base_prompt, id="ejemplo_vendedor"
+        ),
+    ],
+)
+def test_shipped_profiles_carry_no_output_format_contract(base_prompt: str) -> None:
+    """Built-in and tracked example profiles must stay format-neutral.
+
+    Each LLM adapter (llm.py, llm_streaming.py) owns appending exactly one
+    output contract — a character base prompt must carry neither the
+    classic JSON markers nor the streaming EMOTION: tag.
+    """
+    assert '"response"' not in base_prompt
+    assert '"emotion"' not in base_prompt
+    assert "EMOTION:" not in base_prompt

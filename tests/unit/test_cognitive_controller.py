@@ -93,6 +93,32 @@ async def test_controller_answers_current_date_without_legacy_delegate() -> None
 
 
 @pytest.mark.asyncio
+async def test_controller_decide_returns_date_plan_without_legacy_delegate() -> None:
+    """Expose a deterministic plan without starting generic text generation."""
+    legacy_turn = AsyncMock()
+    controller = CognitiveController(today=lambda: date(2026, 8, 12), legacy_turn=legacy_turn)
+
+    plan = await controller.decide(_event("¿Qué fecha es hoy?"))
+
+    assert plan is not None
+    assert plan.status is KnowledgeStatus.KNOWN
+    assert plan.response == "Hoy es 2026-08-12."
+    legacy_turn.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_controller_decide_defers_generic_conversation_without_legacy_delegate() -> None:
+    """Allow streaming adapters to retain generic sentence generation."""
+    legacy_turn = AsyncMock()
+    controller = CognitiveController(today=lambda: date(2026, 8, 12), legacy_turn=legacy_turn)
+
+    plan = await controller.decide(_event("Hola, Iroko"))
+
+    assert plan is None
+    legacy_turn.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_controller_calculates_explicit_iso_age_without_legacy_delegate() -> None:
     """Reject an age route that asks the legacy text turn to calculate years."""
     legacy_turn = AsyncMock()
@@ -115,6 +141,58 @@ async def test_controller_denies_private_household_request_before_legacy_delegat
 
     assert plan.status is KnowledgeStatus.UNAUTHORIZED
     assert "información familiar privada" in plan.response
+    legacy_turn.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "message",
+    [
+        "¿Cómo se llama mi esposa?",
+        "¿Cuándo nació Máximo?",
+        "¿Quién es mi mamá?",
+        "¿Qué preferencias tiene mi hija?",
+    ],
+)
+async def test_controller_denies_extended_protected_requests_before_legacy_delegate(
+    message: str,
+) -> None:
+    """Expanded household wording must use the existing protected boundary."""
+    legacy_turn = AsyncMock(return_value=TextTurnResult("legacy", "joy", 42, False))
+    audit = AsyncMock()
+    controller = CognitiveController(
+        today=lambda: date(2026, 8, 12),
+        legacy_turn=legacy_turn,
+        audit_writer=audit,
+    )
+
+    plan = await controller.handle(_event(message))
+
+    assert plan.status is KnowledgeStatus.UNAUTHORIZED
+    assert "información familiar privada" in plan.response
+    audit.assert_awaited_once()
+    legacy_turn.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_controller_clarifies_ambiguous_stt_date_without_legacy_delegate() -> None:
+    """A known STT corruption must not become an incorrect date or LLM turn."""
+    legacy_turn = AsyncMock(return_value=TextTurnResult("legacy", "joy", 42, False))
+    audit = AsyncMock()
+    controller = CognitiveController(
+        today=lambda: date(2026, 8, 12),
+        legacy_turn=legacy_turn,
+        audit_writer=audit,
+    )
+
+    plan = await controller.handle(_event("¿Qué día soy?"))
+
+    assert plan.status is KnowledgeStatus.UNKNOWN
+    assert plan.response == (
+        "No entendí si preguntas por la fecha actual o por información personal. "
+        "¿Podrías reformularlo?"
+    )
+    audit.assert_not_awaited()
     legacy_turn.assert_not_awaited()
 
 
@@ -237,14 +315,14 @@ async def test_controller_dispatches_trusted_child_count_without_legacy_delegate
 
 
 @pytest.mark.asyncio
-async def test_controller_returns_unknown_for_unfounded_relationship_request() -> None:
-    """Reject a legacy relation shortcut before P0.4 establishes entity links."""
+async def test_controller_denies_personal_relationship_request_before_legacy_delegate() -> None:
+    """A personal relationship request must not enter legacy generation."""
     legacy_turn = AsyncMock()
     controller = CognitiveController(today=lambda: date(2026, 8, 12), legacy_turn=legacy_turn)
 
     plan = await controller.handle(_event("¿Quién es mi padre?"))
 
-    assert plan.status is KnowledgeStatus.UNKNOWN
+    assert plan.status is KnowledgeStatus.UNAUTHORIZED
     legacy_turn.assert_not_awaited()
 
 

@@ -1,9 +1,15 @@
 # Current cognitive implementation
 
-> **Observed:** 2026-08-14
+> **Observed:** 2026-08-20
 >
-> **Implementation snapshot:** `0d16969` (`feat(cognition): add policy-gated
-> family tools (#48)`, on `main`)
+> **Implementation snapshot:** `docs/personal-family-profiles` at `9b699de`.
+> Plan 0022 (P0-C6 reliable streaming output) is **complete and verified**:
+> all 4 tasks passed task-scoped review, a whole-plan review found no
+> Critical issues, and real `just run-server`/`just run-robot` operator
+> evidence on 2026-08-20 confirmed the headline invariant on live hardware —
+> see [Plan 0022](../plans/completed/0022-p0-reliable-streaming-output.md#execution-evidence).
+> Plans 0021, 0023, and the owner-authenticated memory MVP (0024-0028) remain
+> unimplemented; combined P0 operator acceptance remains open.
 >
 > **Verification boundary:** P0.3/P0.4 code and P0.5-A policy seams were
 > inspected. P0.4 passed `just gate` (527 tests) before PR #40 merged it,
@@ -17,16 +23,32 @@
 > seam. The P0 closure revalidation on merged `main` repeated the focused
 > acceptance suite (20 passed), all five local gates, and `git diff --check`
 > before this evidence update. This verifies the P0 foundation, not operator
-> acceptance: [Plan 0013](../plans/0013-p0-voice-controller-bridge.md) now
+> acceptance: [Plan 0013](../plans/open/0013-p0-voice-controller-bridge.md) now
 > routes the classic voice path through the controller with an unknown public
 > actor. Its automated evidence and human `just run-server` plus
 > `just run-robot` acceptance remain required before this document can claim
-> P0 operator acceptance. Trusted owner runtime access remains an R2 task.
+> P0 operator acceptance. The subsequent runtime-policy audit confirmed the
+> streaming, visual-dialogue, QA-WAV, and protected-wording gaps. They are
+> bounded by [Plan
+> 0014](../plans/open/0014-p0-runtime-policy-hardening-design.md). Plan 0022's code
+> has since landed on this branch, but this documentation task did not rerun its
+> automated gates. Typed intent resolution, grounded visual dialogue, explicit
+> owner authentication, and the combined real operator run remain open.
 > Prior P0.3/P0-S verification includes `just lint`, `just typecheck`, `just
 > test` (514 passed), `just audit`, and `just check`; P0-S2 evidence includes GitHub CI and
 > `just services` detecting configured local models. Camera, microphone, LAN,
 > biometric enrollment, real Ollama chat, and hardware acceptance were not
 > executed in this snapshot.
+>
+> **Latest repository test audit:** `just test` on 2026-08-20 completed with
+> 635 passed and 6 failed. All six failures were in
+> `tests/unit/test_robot_app.py`: the tracked tests assumed classic mode while
+> the local `.env` supplied `ROBOT_STREAMING=true`. Re-running that unit file
+> with `ROBOT_STREAMING=false` produced 20 passed. A subsequent full baseline
+> with that same explicit override produced **641 passed in 29.81s**. This
+> confirms the code baseline is green under the intended classic test posture
+> while leaving an open test-isolation/configuration-drift defect: an unrelated
+> local `.env` must not silently change unit-test mode.
 
 ## Accurate description
 
@@ -46,7 +68,7 @@ unknown ActivePersonContext by default
       unknown -> no persistent retrieval or consolidation
                 |
                 v
-P0 controller adapters (`/chat` and classic `/transcribe`)
+P0 controller adapters (`/chat`, classic `/transcribe`, streaming audio, and visual dialogue)
   |-- deterministic date/strict-ISO age
   |-- public protected household -> unauthorized
   |-- trusted internal child list/count -> policy-gated v4 tools
@@ -55,6 +77,12 @@ P0 controller adapters (`/chat` and classic `/transcribe`)
                 v
 response + local Piper + optional legacy consolidation
 ```
+
+`/transcribe/stream` and `/vision/respond` now create a fresh typed event and
+ask the controller to decide before legacy generation. Safe plans never reach
+the LLM, legacy memory, or consolidation. A generic visual request preserves
+only its current ephemeral scene text in the legacy closure. This does not
+establish face identity, authorization, or durable visual memory.
 
 The shared text path is `server/src/server/text_turn.py`. Public channels use
 fresh interaction scopes. A trusted manual/session `ActivePersonContext` exists
@@ -68,7 +96,7 @@ gap prevents owner-by-default memory disclosure.
 | STT | Implemented | Faster Whisper, CPU/int8 path. |
 | TTS | Implemented | Piper local synthesis. |
 | LLM | Implemented/local only | Ollama is the only accepted runtime provider. |
-| Text, audio, and streaming paths | Implemented | Existing public contracts are preserved. |
+| Text, audio, and streaming paths | Implemented/policy parity worktree | Classic and streaming audio enter the controller; generic stream output keeps its existing NDJSON/TTS path. P0-C6 (Plan 0022) closed the silent-success gap: `done` is architecturally guarded behind at least one prior audio chunk, confirmed by 641 tests and a 2026-08-20 real microphone run. |
 | Working memory | Implemented/restricted | Unknown public turns use no persistent history. |
 | Episodic/vector memory | Implemented/legacy | SQLite + sqlite-vec; top-k retrieval has no policy filter or threshold. |
 | Entities and facts v3 | Implemented/legacy | String relation targets and universal fact supersession remain. |
@@ -82,9 +110,11 @@ gap prevents owner-by-default memory disclosure.
 | Household authorization P0.5-B1 reader | Implemented/internal | Closed-predicate v4 literal/relation reads evaluate and audit policy before storage; outputs are frozen `known`, `unknown`, or non-disclosing `unauthorized`. B2 trusted internal tools invoke it; no public HTTP, prompt, or LLM path does. |
 | Household tools P0.5-B2 | Implemented/internal | Typed child list/count, preferences, birth date, and derived age tools authorize and audit before B1 reads; child relation/birth data require injected consent. |
 | B2 controller dispatch | Implemented/trusted-only | Two self-child question patterns produce deterministic response plans through injected actor/consent seams. Public `/chat` cannot provide either and never reaches the v4 reader. |
-| P0 runtime acceptance | R1 automated; operator acceptance pending | Classic `/transcribe` creates a typed event and enters the controller. Public voice remains unknown, so date is deterministic and protected family data is denied before legacy/v4 access. R2 trusted-session acceptance remains unimplemented. |
-| Vision/VLM | Implemented/on demand | One ephemeral frame, free-text scene description. |
-| Face profiles | Implemented/sensitive | SQLite-linked embeddings; not an active-person adapter. |
+| Progressive owner authentication | Not implemented; design accepted | ADR 0008 and Plan 0024 specify a local one-use unlock feeding existing evidence/resolver seams. No public route currently produces authenticated owner evidence. |
+| P0 runtime acceptance | Partial; combined operator acceptance pending | Enabled public routes enter the controller. Plan 0022 (streaming reliability) is complete and has real operator evidence (2026-08-20). Plans 0021/0023, the authenticated-owner proof, and the combined runbook evidence across all slices remain open. |
+| Vision/VLM | Implemented/on demand with controller parity | One ephemeral frame, free-text scene description; `/vision/respond` enters the controller without face identity. |
+| Face profiles | Implemented/sensitive/quarantined | SQLite-linked embeddings and recognition functions exist, but no consented runtime active-person adapter calls them. |
+| Speaker recognition | Absent | STT and VAD exist; no speaker enrollment, voiceprint, verification model, or calibrated identity adapter exists. |
 | Robot client | Implemented/body adapter | PC microphone/webcam/speaker workflow; not cognitive logic. |
 
 ## Deliberately absent or deferred
@@ -99,6 +129,10 @@ gap prevents owner-by-default memory disclosure.
   memory;
 - cognitive memory lifecycle, confirmation, reflection, and forgetting;
 - cloud escalation gateway, ROS2, motors, and physical actions.
+
+The next product target after P0-C is the personal Iroko-and-Pipec companion
+defined in [ADR 0006](../adr/0006-personal-and-family-companion-profiles.md).
+General UI and family onboarding are deliberately later work.
 
 ## Active hardening status
 
@@ -141,7 +175,7 @@ The P0-S audit is authoritative for immediate pre-controller work:
   public identity/consent, broader family queries, prompts/LLM retrieval, and
   P1 remain deliberately unimplemented.
 
-See [P0-S hardening audit](p0-s-hardening-audit.md) for evidence and
+See [P0-S hardening audit](../history/audits/p0-s-hardening-audit.md) for evidence and
 [plans](../plans/README.md) for execution status.
 
 ## Latest verification evidence
@@ -171,12 +205,30 @@ See [P0-S hardening audit](p0-s-hardening-audit.md) for evidence and
   `just test` passed 571 tests in 42.64s; `just audit` found no known
   vulnerabilities; and `just check` passed every configured pre-commit hook.
 
+- Plan 0022 (P0-C6) closure on `1927912`: `just lint`, `just typecheck` (mypy
+  81 files + pyright, 0 errors), `just test` (641 passed), `just audit`, and
+  `just check` (17 hooks) all passed. A whole-plan review over the full
+  8-commit range found no Critical issues and traced the "every `done` has
+  prior audio" invariant true across all 6 named invalid-output cases plus
+  mid-stream provider failure; 3 Important findings were fixed in one
+  combined fix wave with a scoped re-review, and one residual TTS-double-failure
+  edge case was explicitly parked (see the plan's Execution Evidence). Real
+  `just run-server`/`just run-robot` acceptance on 2026-08-20 with a
+  disposable local DB confirmed zero silent successes across 4 live turns,
+  including one live reproduction of the 2026-08-17 hybrid-output failure
+  mode ending in an audible fallback instead of silence, and one correct
+  non-disclosing family denial with `llm_ms=0`.
+
 The P0 foundation evidence above does not prove an operator can exercise every
 P0 capability via `just run-server` and `just run-robot`. R1 runtime proof is
-defined in [Plan 0013](../plans/0013-p0-voice-controller-bridge.md); the
-trusted-session R2 acceptance gate remains open in
-[Plan 0012](../plans/0012-p0-runtime-acceptance-design.md). P1 remains
-unstarted.
+defined in [Plan 0013](../plans/open/0013-p0-voice-controller-bridge.md); the
+authenticated-owner acceptance gate remains open in
+[Plan 0024](../plans/open/0024-owner-authenticated-memory-mvp-design.md). Its
+documentation-only executable sequence is Plans
+[0025](../plans/open/0025-personal-owner-bootstrap-and-pin-setup.md) through
+[0028](../plans/open/0028-owner-authenticated-memory-runtime-acceptance.md). P1
+design is approved, but its implementation and runtime acceptance have not
+started.
 
 These checks do not prove a real Ollama `/chat` request, camera, microphone,
 biometric, LAN, or physical hardware behavior.

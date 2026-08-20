@@ -34,6 +34,8 @@ import wave
 import httpx
 import numpy as np
 from piper import PiperVoice, SynthesisConfig
+from server.audio_contract import validate_wav_contract
+from server.tts import _resample_to_contract
 import sounddevice as sd
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
@@ -118,8 +120,10 @@ def synthesize_locally(text: str, voice_path: str) -> bytes:
     buf = io.BytesIO()
     with wave.open(buf, "wb") as wf:
         voice.synthesize_wav(text, wf, syn_config=config)
-    logger.info("Local synthesis done — %d bytes", buf.tell())
-    return buf.getvalue()
+    wav_bytes = _resample_to_contract(buf.getvalue())
+    validate_wav_contract(wav_bytes)
+    logger.info("Local synthesis done — %d contract-compliant bytes", len(wav_bytes))
+    return wav_bytes
 
 
 def play_wav(wav_bytes: bytes) -> None:

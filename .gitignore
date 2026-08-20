@@ -58,7 +58,6 @@ CLAUDE.md
 GEMINI.md
 AGENTS.md
 skills-lock.json
-docs/superpowers/
 
 # OS
 .DS_Store
@@ -68,8 +67,8 @@ Thumbs.db
 server/src/server/images/*
 !server/src/server/images/README.md
 
-# Local-only docs — internal notes/audits/journals, never published
-docs/local/
+# Preserved local project history — never authoritative or published
+project-history/
 
 # Ad-hoc debug logs (e.g. Chrome crashpad) — never commit
 debug.log

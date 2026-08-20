@@ -1,21 +1,25 @@
 """Sentence-streaming orchestration for POST /transcribe/stream (R3).
 
 Kept out of routers/transcribe.py and pipeline.py (200-line file limit);
-the classic /transcribe pipeline stays untouched. Emits NDJSON — one line
-per event, see schemas_streaming.py — so the robot can play the first
-sentence's audio while the LLM still generates the rest of the reply.
+the classic /transcribe pipeline stays untouched. Emits NDJSON so the robot
+can play the first sentence's audio while the LLM still generates the rest.
 
-Vision-intent turns (V0.5) are intentionally not handled here — that
-stub-turn branch stays exclusive to classic /transcribe; the robot only
-routes plain voice turns through streaming (see app.py's robot_streaming flag).
+P0-C6: state/render mechanics (StreamState, synthesis, fallback, protocol
+validation) live in streaming_render.py; this module owns the consume loop
+and re-raises a mid-stream TTS failure after logging the same metrics
+``done`` would have. ``done`` itself is only reached after at least one
+audio chunk already spoke — see ``streaming_render._done_event``.
+
+Vision-intent turns (V0.5) are not handled here — that stub-turn branch
+stays exclusive to classic /transcribe (see app.py's robot_streaming flag).
 """
 
 from collections.abc import AsyncIterator
-from dataclasses import dataclass, field
 import logging
 
 from server import llm, llm_streaming, tts
-from server.exceptions import LLMError
+from server.cognition.response_plan import ResponsePlan
+from server.exceptions import LLMError, TTSError
 from server.pipeline import _elapsed_ms, _log_pipeline_timing
 from server.schemas_streaming import (
     StreamAudioEvent,
@@ -23,8 +27,18 @@ from server.schemas_streaming import (
     StreamEmotionEvent,
     StreamTextHeardEvent,
 )
-from server.sentences import split_first_sentence
-from server.settings import settings
+from server.streaming_render import (
+    StreamFallbackReason,
+    StreamOutcome,
+    StreamState,
+    _consume_body,
+    _consume_preamble,
+    _done_event,
+    _finalize_model_output,
+    _log_stream_metrics,
+    emit_fallback,
+    synthesize_sentence,
+)
 from server.text_turn import (
     ConsolidationScheduler,
     PreparedTextTurn,
@@ -34,22 +48,8 @@ from server.text_turn import (
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class _StreamState:
-    """Mutable accumulator threaded through the streaming helpers below."""
-
-    emotion: str | None = None
-    response_parts: list[str] = field(default_factory=list)
-    tts_ms_total: int = 0
-    recordable: bool = True
-
-
 async def _text_deltas(inputs: PreparedTextTurn) -> AsyncIterator[str]:
-    """Yield "EMOTION:xxx\\n"-tagged text deltas, uniform across providers.
-
-    Local Ollama streams token-by-token through ``llm_streaming``. The shared
-    emotion-tag protocol keeps the sentence-splitting loop provider-agnostic.
-    """
+    """Yield "EMOTION:xxx\\n"-tagged text deltas from local Ollama, token by token."""
     async for delta in llm_streaming.generate_response_stream(
         inputs.message,
         context=inputs.context,
@@ -62,64 +62,85 @@ async def _text_deltas(inputs: PreparedTextTurn) -> AsyncIterator[str]:
         yield delta
 
 
-async def _synthesize_sentence(sentence: str, state: _StreamState) -> str:
-    """Synthesize one sentence, update state, and return its NDJSON line."""
-    audio_base64, duration_ms = await tts.synthesize(sentence)
-    state.response_parts.append(sentence)
-    state.tts_ms_total += duration_ms
-    event = StreamAudioEvent(text=sentence, audio_base64=audio_base64, duration_ms=duration_ms)
-    return event.model_dump_json() + "\n"
+async def _consume_llm_stream(inputs: PreparedTextTurn, state: StreamState) -> AsyncIterator[str]:
+    """Consume LLM deltas, emit emotion once its body validates, synthesize sentences.
 
-
-async def _consume_llm_stream(
-    inputs: PreparedTextTurn,
-    state: _StreamState,
-) -> AsyncIterator[str]:
-    """Consume LLM deltas, emit emotion once known, synthesize each sentence.
-
-    The ``EMOTION:xxx\\n`` tag is only recognized once the buffer contains a
-    full first line (see ``parse_streaming_emotion``). If the LLM stream ends
-    before that ``\\n`` ever arrives — the model ignored the tag instruction,
-    or the response was cut off mid-tag — ``state.emotion`` is still ``None``
-    once this async for loop exhausts. That case is handled below the loop:
-    the mandatory emotion event is emitted with the fallback value, and a
-    buffer that looks like a truncated tag attempt is discarded instead of
-    being spoken as if it were a normal sentence.
+    Emotion is buffered in ``state.pending_emotion`` and only promoted once
+    body content passes ``validate_streaming_body_start`` (see
+    ``streaming_render._consume_body``). A protocol violation mid-stream
+    converts into the same audible fallback as a provider failure.
     """
     buffer = ""
     async for delta in _text_deltas(inputs):
         buffer += delta
-        if state.emotion is None:
-            parsed = llm_streaming.parse_streaming_emotion(buffer)
-            if parsed is None:
+        if state.pending_emotion is None and state.emotion is None:
+            buffer, consumed = _consume_preamble(buffer, state)
+            if not consumed:
                 continue
-            state.emotion, buffer = parsed
-            yield StreamEmotionEvent(value=state.emotion).model_dump_json() + "\n"
-        while (split := split_first_sentence(buffer)) is not None:
-            sentence, buffer = split
-            yield await _synthesize_sentence(sentence, state)
-
-    tail = buffer.strip()
-    if state.emotion is None:
-        # Stream exhausted without ever completing the emotion tag line.
-        # Fall back to neutral and emit the event before any audio, to keep
-        # the documented text_heard -> emotion -> audio* -> done order.
-        state.emotion = llm.FALLBACK_EMOTION
-        yield StreamEmotionEvent(value=state.emotion).model_dump_json() + "\n"
-        if tail.upper().startswith("EMOTION"):
-            logger.warning("Streamed reply ended mid emotion tag — discarding: %r", tail)
-            state.recordable = False
+        emotion_before = state.emotion
+        try:
+            buffer, sentences = _consume_body(buffer, state)
+        except LLMError:
+            state.outcome = StreamOutcome.PROTOCOL_FALLBACK
+            async for line in emit_fallback(state, reason=StreamFallbackReason.INVALID_PROTOCOL):
+                yield line
             return
-    if tail:
-        yield await _synthesize_sentence(tail, state)
+        if state.emotion is not None and emotion_before is None:
+            yield StreamEmotionEvent(value=state.emotion).model_dump_json() + "\n"
+        for sentence in sentences:
+            yield await synthesize_sentence(sentence, state)
+
+    async for line in _finalize_model_output(buffer, state):
+        yield line
 
 
-async def _emit_fallback(state: _StreamState) -> AsyncIterator[str]:
-    """Speak the local fallback phrase — mirrors pipeline._run_llm's degrade path."""
-    if state.emotion is None:
-        state.emotion = "neutral"
-        yield StreamEmotionEvent(value=state.emotion).model_dump_json() + "\n"
-    yield await _synthesize_sentence(settings.llm_fallback_phrase, state)
+def _record_success(
+    prepared: PreparedTextTurn,
+    state: StreamState,
+    scheduler: ConsolidationScheduler,
+) -> None:
+    """Persist a turn — only ever called for a fully successful stream."""
+    if state.outcome is not StreamOutcome.OK or not state.recordable or not state.response_parts:
+        return
+    record_text_turn(
+        prepared.message,
+        prepared.conversation_id,
+        " ".join(state.response_parts),
+        state.emotion or llm.FALLBACK_EMOTION,
+        active_person=prepared.active_person,
+        history_scope=prepared.history_scope,
+        schedule_consolidation=scheduler,
+    )
+
+
+async def stream_response_plan(
+    *,
+    text_heard: str,
+    plan: ResponsePlan,
+    stt_ms: int,
+    request_start: float,
+) -> AsyncIterator[str]:
+    """Render an already-authorized plan without LLM or memory work.
+
+    Yields:
+        NDJSON text, emotion, one 16kHz mono int16 WAV audio response, and
+        final timing events.
+    """
+    yield StreamTextHeardEvent(value=text_heard).model_dump_json() + "\n"
+    yield StreamEmotionEvent(value=plan.emotion).model_dump_json() + "\n"
+    audio_base64, duration_ms = await tts.synthesize(plan.response)
+    audio_event = StreamAudioEvent(
+        text=plan.response, audio_base64=audio_base64, duration_ms=duration_ms
+    )
+    yield audio_event.model_dump_json() + "\n"
+    total_ms = _elapsed_ms(request_start)
+    _log_pipeline_timing(
+        f"stream.{plan.source.value}", stt_ms, plan.duration_ms, duration_ms, total_ms
+    )
+    done_event = StreamDoneEvent(
+        stt_ms=stt_ms, llm_ms=plan.duration_ms, tts_ms=duration_ms, total_ms=total_ms
+    )
+    yield done_event.model_dump_json() + "\n"
 
 
 async def stream_pipeline(
@@ -131,16 +152,15 @@ async def stream_pipeline(
 ) -> AsyncIterator[str]:
     """Stream STT->LLM->TTS as NDJSON, synthesizing speech sentence by sentence.
 
-    Transport: NDJSON — chosen over WebSocket/SSE because it is trivially
-    producible from a plain async generator via StreamingResponse, and
-    consumable on the robot with httpx's ``client.stream()`` + ``aiter_lines()``
-    (no extra dependency; a natural stepping stone to a future LiveKit
-    transport).
+    Transport is NDJSON, not WebSocket/SSE: trivially producible from a plain
+    async generator via StreamingResponse and consumable on the robot with
+    httpx's ``aiter_lines()`` — no extra dependency.
 
-    Event order: text_heard -> emotion -> audio (one per sentence, as each
-    closes) -> done. On an LLM failure mid-stream, the fallback phrase is
-    spoken as one more audio event rather than aborting — sentences already
-    streamed to the client cannot be un-spoken.
+    Event order: text_heard -> emotion -> audio (one per sentence) -> done.
+    An LLM failure or any invalid model output (hybrid JSON, a truncated
+    tag, an empty stream, ...) speaks the fallback phrase instead of
+    aborting — never a silent success (P0-C6). A TTS failure logs the same
+    metrics `done` would have and re-raises without emitting `done`.
 
     Args:
         prepared: Shared prompt inputs and internal scope for one voice request.
@@ -153,34 +173,25 @@ async def stream_pipeline(
     """
     yield StreamTextHeardEvent(value=prepared.message).model_dump_json() + "\n"
 
-    state = _StreamState()
-    llm_failed = False
+    state = StreamState(request_start=request_start)
     try:
         async for line in _consume_llm_stream(prepared, state):
             yield line
+    except TTSError:
+        state.outcome = StreamOutcome.TTS_ERROR
+        _log_stream_metrics(state, _elapsed_ms(request_start))
+        raise
     except (LLMError, ValueError) as exc:
         logger.error("Streaming LLM failed — speaking fallback phrase: %s", exc, exc_info=True)
-        async for line in _emit_fallback(state):
-            yield line
-        llm_failed = True
-
-    if not llm_failed and state.recordable and state.response_parts:
-        record_text_turn(
-            prepared.message,
-            prepared.conversation_id,
-            " ".join(state.response_parts),
-            state.emotion or llm.FALLBACK_EMOTION,
-            active_person=prepared.active_person,
-            history_scope=prepared.history_scope,
-            schedule_consolidation=schedule_consolidation,
+        state.outcome = (
+            StreamOutcome.PARTIAL_FALLBACK if state.audio_chunks else StreamOutcome.LLM_FALLBACK
         )
+        async for line in emit_fallback(state, reason=StreamFallbackReason.LLM_ERROR):
+            yield line
+
+    _record_success(prepared, state, schedule_consolidation)
 
     total_ms = _elapsed_ms(request_start)
     llm_ms = max(0, total_ms - stt_ms - state.tts_ms_total)
-    _log_pipeline_timing(stt_ms, llm_ms, state.tts_ms_total, total_ms)
-    yield (
-        StreamDoneEvent(
-            stt_ms=stt_ms, llm_ms=llm_ms, tts_ms=state.tts_ms_total, total_ms=total_ms
-        ).model_dump_json()
-        + "\n"
-    )
+    _log_pipeline_timing("stream.legacy_text_turn", stt_ms, llm_ms, state.tts_ms_total, total_ms)
+    yield _done_event(stt_ms, request_start, state)
