@@ -32,9 +32,9 @@ home than a smaller system that knows when it does not know.
 | P0.4 | Relational memory v4 | Correct entity links, cardinality, time, provenance, dates, and counts. | P0.1–P0.3 |
 | P0.5 | Household authorization | Filters protected data before retrieval and generation. | P0.2, P0.4 |
 | P0-C | Runtime policy hardening | Makes every enabled public route obey the P0 controller/policy boundary and proves it through the robot. | P0.3–P0.5 |
-| P1.1 | Personal local administration | Establishes Pipec's recoverable personal profile without a general UI. | P0-C6 audible streaming |
-| P1.2 | Personal multimodal identity | Adds consented local face/voice evidence and conservative fusion for Pipec. | P1.1, P0.2 |
-| P1.3 | Personal companion acceptance | Demonstrates voice, visual scene, authorized memory, and recovery through the real PC path. | P1.1–P1.2 |
+| P1.1 | Owner-authenticated memory MVP | Uses a one-use local unlock to prove the authorized “Máximo y Dominga” path and paired denial. | P0-C6 audible streaming |
+| P1.2 | Progressive biometric identity | Adds consented face, then speaker evidence through the same authentication contract. | P1.1, P0.2 |
+| P1.3 | Personal companion acceptance | Demonstrates authentication, authorized memory, visual scene, recovery, and denial through the real PC path. | P1.1–P1.2 |
 | P2.1 | Situated perception and WorldState | Represents fresh observations independently of durable memory. | P1 controller/policy |
 | P2.2 | Memory lifecycle and retrieval quality | Adds confirmation, contradiction, relevance thresholds, consolidation, and forgetting. | P0.4–P0.5 |
 | P2.3 | Bounded adaptation and initiative | Makes Iroko more personal and proactive without prompt growth or surveillance. | P1 identity, P2.1–P2.2 |
@@ -220,34 +220,45 @@ does not create a general UI or family onboarding. It proves that identity,
 authorization, local face/voice evidence, visual scene understanding, memory,
 and recovery work together through the actual PC robot path.
 
-### P1.1 — Local personal administration
+### P1.1 — Owner-authenticated memory MVP
 
-Create only the local administrative action needed to establish and review
-Pipec's personal profile, owner role, and consent decisions. It must be
-recoverable after a biometric failure and must not be a public admin API.
+Connect only the path needed for the first product proof: explicit first boot,
+Pipec as the confirmed owner, confirmed child relationships, a local
+short-lived one-use unlock, active-person resolution, policy-gated structured
+retrieval, and audible output. It must not be a public admin API.
 
-**Exit gate:** a local operator can create, review, revoke, and recover the
-personal profile without identity inference from spoken text, a face, or a
-voice.
+**Exit gate:** after one explicit local unlock, Pipec asks “¿quiénes son mis
+hijos?” and hears “Máximo y Dominga” through `just run-server` plus
+`just run-robot`; without fresh authentication the same request reveals no
+names, count, hint, or fact existence. Both scenarios are repeatable and
+audited. [Plan 0024](../plans/0024-owner-authenticated-memory-mvp-design.md)
+defines the design. Its executable portfolio is [0025 owner setup and
+PIN](../plans/0025-personal-owner-bootstrap-and-pin-setup.md) → [0026 classic
+authenticated turn](../plans/0026-one-use-owner-authenticated-classic-turn.md)
+→ [0027 streaming parity](../plans/0027-one-use-owner-streaming-parity.md) →
+[0028 real runtime acceptance](../plans/0028-owner-authenticated-memory-runtime-acceptance.md).
+The plans are prepared but not implemented.
 
-**Order revision (2026-08-18):** P1.1 runs immediately after P0-C6 instead of
+**Order revision (2026-08-20):** P1.1 runs immediately after P0-C6 instead of
 waiting for full P0-C acceptance. P0.5 built the owner role, policy, and audit,
 but no local path produces an identified owner, so every public route stays
 permanently unknown and no operator run can exercise an authorized path.
 Running P1.1 earlier supplies that missing key, so the remaining P0-C slices
 and the combined acceptance run can be exercised as the owner as well as as a
 stranger. P1.2 and P1.3 keep their original P0-C acceptance prerequisite.
-[ADR 0007](../adr/0007-first-boot-and-default-posture.md) (accepted
-2026-08-19) grounds P1.1's design: an explicit first-boot state gates every
-household fact behind an owner bootstrap, and completing it lets the local
-trusted channel presume that owner — never a claim inside a message, and
-never a substitute for the disclosure boundary ADR 0006 already sets.
+[ADR 0007](../adr/0007-first-boot-and-default-posture.md) keeps explicit first
+boot and owner-before-household ordering. [ADR
+0008](../adr/0008-progressive-owner-authentication.md) supersedes automatic
+owner-by-local-channel presumption: every protected request needs fresh,
+expiring authentication evidence. The first method is a one-use local unlock;
+face and voice follow without blocking this proof.
 
-### P1.2 — Personal multimodal identity
+### P1.2 — Progressive biometric identity
 
-Add consented local face and speaker evidence adapters plus conservative fusion
-with temporary manual/session evidence. Specialized face and voice models emit
-typed evidence; they do not grant access directly. The VLM may describe a
+First integrate consented local face evidence, then add a real speaker
+enrollment/verification adapter, then conservative fusion with temporary
+manual/session evidence. Specialized models emit typed evidence; they do not
+grant access directly. STT/VAD are not voice identity. The VLM may describe a
 scene, but is not the authority that names Pipec.
 
 **Exit gate:** calibrated local evaluation covers agreement, conflict, expiry,
@@ -284,8 +295,11 @@ timestamps, confidence, and expiry; frames are not retained by default.
 
 Add candidate confirmation, deduplication, contradictions, supersession,
 retention/forgetting, authorized semantic retrieval, relevance thresholds, and
-reviewable consolidation. Derived indexes must be rebuildable and deletions
-must propagate.
+reviewable consolidation. Then add documentary and hybrid retrieval in the
+staged order defined by [RAG, memory, and hybrid
+retrieval](../architecture/rag-and-memory-retrieval.md). Derived indexes must be
+rebuildable and deletions must propagate. This work does not block the P1.1
+structured “Máximo y Dominga” acceptance scenario.
 
 **Exit gate:** low-relevance queries return no memory; protected memories never
 enter model context; corrections and deletions affect summaries/embeddings;

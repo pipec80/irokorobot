@@ -466,6 +466,15 @@ and no operator run can exercise an authorized path at all. Fixing silence
 first restores audible evidence for every later slice; onboarding second stops
 C5 and C7 from being specified and measured only against an anonymous speaker.
 
+## Execution order revision — 2026-08-20
+
+Plan 0022's code is now present on the current feature branch. Before Plans
+0021 and 0023, review Plan 0024 and implement its owner-authenticated memory MVP
+through a separate bounded TDD plan. ADR 0008 supersedes the 2026-08-18
+assumption that completed local onboarding can identify the current speaker:
+PC-1 now requires an explicit short-lived, one-use local unlock. First boot and
+owner-before-household ordering remain unchanged.
+
 This revision changes order and one C7 response branch — not the runtime
 evidence, the defect list, or any slice's invariants. Each slice keeps its
 independent RED/GREEN evidence, review, repository gates, and operator rerun,

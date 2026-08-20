@@ -1,6 +1,7 @@
 # 0007 — First boot and local-channel default posture
 
-- **Status:** Accepted
+- **Status:** Accepted; local-owner presumption superseded by
+  [ADR 0008](0008-progressive-owner-authentication.md)
 - **Date:** 2026-08-19
 
 ## Context
@@ -37,6 +38,12 @@ It stops short of saying what "not yet configured" means for a fresh install,
 or what a completed local channel is allowed to presume.
 
 ## Decision
+
+> **Supersession note (2026-08-20):** ADR 0008 replaces only the automatic
+> local-owner presumption below with explicit progressive authentication. The
+> first-boot, owner-before-household, completion-state, recovery, and optional
+> biometric decisions remain accepted. The historical text is retained because
+> accepted ADRs are immutable decision records.
 
 Iroko's `personal` profile has an explicit first-boot state, and a completed
 first boot changes the default posture of one channel only: the local trusted

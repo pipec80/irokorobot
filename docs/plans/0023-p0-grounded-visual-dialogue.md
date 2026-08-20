@@ -5,10 +5,10 @@
 > `superpowers:executing-plans` to implement this plan task-by-task. Steps use
 > checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** Ready after Plan 0022, PC-1 local owner onboarding, and Plan 0021
-(execution order revised 2026-08-18); revalidate their final interfaces before
+**Status:** Ready after Plan 0022, PC-1 explicit owner authentication, and Plan
+0021 (execution order revised 2026-08-20); revalidate their final interfaces before
 implementation. Because PC-1 now lands first, the `ACTIVE_IDENTITY` branch must
-be revised: greet the owner when a trusted local session resolves one, and keep
+be revised: greet the owner when fresh authenticated evidence resolves one, and keep
 the fixed unknown copy only when it does not.
 
 **Goal:** Route visual, active-identity, and biometric-enrollment requests
@@ -36,8 +36,9 @@ biometric, WorldState, scene-graph, or API-breaking change.
 - Recognition is evidence, not authorization. P0 does not perform face/voice
   recognition, enrollment, fusion, persistence, or identity grant.
 - `ACTIVE_IDENTITY` says exactly `Todavía no puedo confirmar quién sos.` when no
-  trusted local owner session resolves. After PC-1 lands, a resolved owner is
-  greeted instead; specify that branch when this plan is picked up.
+  fresh authenticated evidence resolves. After PC-1 lands, an explicitly
+  authenticated owner is greeted instead; specify that branch when this plan
+  is picked up.
 - `BIOMETRIC_ENROLLMENT` says exactly
   `Todavía no puedo registrar rostros: hace falta administración local y consentimiento.`
   This spoken text is separate from the stable `/vision/enroll` HTTP detail.

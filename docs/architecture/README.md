@@ -31,9 +31,10 @@ decision is not silently changed by implementation; replace it with a new ADR.
 |---|---|
 | Any cognitive implementation | `implementation-guardrails.md`, this index, the named plan, every document that plan lists |
 | Domain models/controller | ADR-0004, ADR-0005, `cognitive-contracts.md`, `cognitive-architecture.md` |
-| Identity or permissions | `identity-and-access.md`, ADR-0004, `cognitive-contracts.md` |
+| Identity or permissions | `identity-and-access.md`, ADR-0004, ADR-0006, ADR-0008, `cognitive-contracts.md` |
 | P0-S hardening | `p0-s-hardening-audit.md`, `identity-and-access.md`, the named P0-S plan |
-| Memory or onboarding | `memory-and-world-state.md`, `identity-and-access.md` |
+| Memory or onboarding | `memory-and-world-state.md`, `rag-and-memory-retrieval.md`, `identity-and-access.md` |
+| RAG, embeddings, documents, or retrieval | `rag-and-memory-retrieval.md`, `memory-and-world-state.md`, `identity-and-access.md`, current-state baseline |
 | Personality or prompts | `personality-and-interaction.md`, `identity-and-access.md` |
 | Sensors, vision, or world state | `memory-and-world-state.md`, `cognitive-contracts.md`, media contracts in `implementation-guardrails.md` |
 | Prioritization | `current-state.md`, `../roadmap/cognitive-roadmap.md` |
@@ -58,8 +59,18 @@ specific conflict instead of redesigning the project implicitly.
   contracts.
 - [`identity-and-access.md`](identity-and-access.md): speaker/person resolution,
   roles, visibility, consent, and pre-retrieval authorization.
+- [`../plans/0024-owner-authenticated-memory-mvp-design.md`](../plans/0024-owner-authenticated-memory-mvp-design.md):
+  current product-spine design for the first authenticated personal-memory
+  proof. Its executable, still-unimplemented sequence is
+  [0025](../plans/0025-personal-owner-bootstrap-and-pin-setup.md) →
+  [0026](../plans/0026-one-use-owner-authenticated-classic-turn.md) →
+  [0027](../plans/0027-one-use-owner-streaming-parity.md) →
+  [0028](../plans/0028-owner-authenticated-memory-runtime-acceptance.md).
 - [`memory-and-world-state.md`](memory-and-world-state.md): relational knowledge,
   memory lifecycle, onboarding, retrieval, and present-time state.
+- [`rag-and-memory-retrieval.md`](rag-and-memory-retrieval.md): detailed target
+  architecture for documentary RAG, embeddings, hybrid retrieval, evidence,
+  evaluation, and its staged relationship to Iroko's memory system.
 - [`personality-and-interaction.md`](personality-and-interaction.md): stable
   identity, adaptive style, relationship context, and prompt boundaries.
 - [`cognitive-foundation-audit.md`](cognitive-foundation-audit.md): read-only

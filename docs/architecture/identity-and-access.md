@@ -77,6 +77,9 @@ and rollback.
 
 | Concept | Question | It does not prove |
 |---|---|---|
+| Identification | Which person does the evidence indicate? | That the evidence is fresh enough or that access is allowed. |
+| Authentication | Does fresh evidence satisfy the method policy for this interaction? | Permission for a particular datum or action. |
+| Authorization | May this actor perform this action on this data now? | That the underlying fact is true. |
 | Face recognition | Who may be visible? | Who produced the audio or has permission. |
 | Speaker identification | Whose voice is most similar? | That the speaker is alone or authorized. |
 | Speaker verification | Does this voice match a claimed person? | Permission for every action. |
@@ -87,6 +90,27 @@ and rollback.
 
 These values can agree, disagree, or be absent. Conflict is represented as
 `ambiguous`; it is not resolved by choosing the highest score silently.
+
+## Progressive authentication
+
+[ADR 0008](../adr/0008-progressive-owner-authentication.md) defines one
+authentication pipeline with replaceable evidence producers. The first useful
+producer is an explicit local one-use unlock. Consented face, speaker, and a
+future fingerprint reader can later produce the same typed, expiring evidence.
+They do not create parallel authorization paths.
+
+Persistent installation data includes the owner, roles, onboarding state,
+configured methods, consent, and audit. Authentication itself is transient:
+person ID, method, issue/expiry times, scope, opaque token reference, and
+consume/revoke state. The database must not contain a durable global
+`authenticated = true` switch. Such a boolean may be calculated for display or
+branching from fresh evidence, but it is not an authority.
+
+The initial unlock is intentionally one protected interaction with a short
+TTL. It proves possession of the local unlock secret, not that the current
+voice or face is physically Pipec. Requests without fresh, unconsumed evidence
+remain unknown. Device ownership, loopback origin, a spoken name, prompt text,
+or `conversation_id` never authenticates a person.
 
 ## Identity evidence
 
@@ -165,9 +189,9 @@ When the operation is low-risk, Iroko may ask:
 
 > “Creo que eres Sofía, ¿es correcto?”
 
-For sensitive operations, conversational confirmation alone may be insufficient;
-the policy can require an authenticated session, local PIN, owner approval, or
-another factor.
+For sensitive operations, conversational confirmation alone may be
+insufficient; policy can require a fresh one-use local unlock, calibrated
+biometric evidence, owner approval, or another factor.
 
 ## Conversation isolation
 
@@ -322,11 +346,17 @@ social policies. Personality never changes permissions.
 1. Add pure typed evidence, active-person, and authorization models.
 2. Replace owner-by-default with unknown-by-default at the cognitive boundary,
    preserving current endpoints through a compatibility adapter.
-3. Add session/manual identity evidence before voice recognition.
-4. Enforce authorization before deterministic family tools and retrieval.
-5. Integrate existing face evidence.
-6. Evaluate and add local speaker recognition.
-7. Add diarization only when multi-speaker audio is a demonstrated requirement.
+3. Connect first boot and the confirmed owner/relationship data path.
+4. Produce short-lived, consume-once session/manual evidence through an
+   explicit local unlock.
+5. Resolve that evidence at channel boundaries and enforce authorization before
+   deterministic family tools and retrieval.
+6. Prove “Máximo y Dominga” and the paired non-disclosure case through the real
+   audio path.
+7. Integrate and calibrate consented face evidence.
+8. Evaluate and add local speaker verification.
+9. Add conservative fusion, then diarization only when multi-speaker audio is a
+   demonstrated requirement.
 
 No step may weaken the audio contract, enroll biometrics automatically, or use
-face recognition as an authentication substitute.
+face/voice similarity as an authorization substitute.

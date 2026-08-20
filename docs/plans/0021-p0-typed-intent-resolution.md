@@ -5,8 +5,8 @@
 > `superpowers:executing-plans` to implement this plan task-by-task. Steps use
 > checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** Ready for implementation after Plan 0022 and after PC-1 local
-owner onboarding (execution order revised 2026-08-18). Specify and test the
+**Status:** Ready for implementation after Plan 0022 and after PC-1 explicit
+owner authentication (execution order revised 2026-08-20). Specify and test the
 resolver against both an identified owner and an unknown speaker, not only
 against a permanently anonymous one.
 

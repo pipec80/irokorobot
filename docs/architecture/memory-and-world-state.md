@@ -5,6 +5,12 @@
 > **Principle:** Storing data is not the same as remembering it, and observing
 > something is not sufficient reason to retain it permanently.
 
+The specialized [RAG, memory, and hybrid retrieval
+architecture](rag-and-memory-retrieval.md) defines document ingestion,
+chunking, embeddings, lexical/vector fusion, grounding, evaluation, and the
+incremental delivery path. This document remains the authority for memory
+semantics, truth lifecycle, relationships, onboarding, and WorldState.
+
 ## Current baseline
 
 Iroko already has useful foundations: working conversation history, entities,
@@ -154,6 +160,14 @@ The preferred order is:
 
 Filtering protected content after retrieval is too late: the model must never
 receive facts the active person was not permitted to access.
+
+For the first personal-companion proof, “¿quiénes son mis hijos?” is not a
+vector-search problem. After fresh owner authentication and authorization,
+Iroko resolves Pipec's entity ID and reads active structured child
+relationships through the existing deterministic tool. Semantic/vector
+retrieval remains appropriate for fuzzy recollection; lexical retrieval for
+exact identifiers; documentary RAG for future imported sources. None of those
+mechanisms may bypass the same pre-retrieval authorization boundary.
 
 ## World state is not long-term memory
 

@@ -1,158 +1,130 @@
 # Personal companion design — Iroko and Pipec
 
-> **Status:** PC-1 is promoted by owner decision on 2026-08-18 and runs
-> immediately after Plan 0022, ahead of the remaining P0-C slices. Its design
-> is grounded by [ADR 0007](../adr/0007-first-boot-and-default-posture.md),
-> accepted 2026-08-19. PC-2 through PC-5 remain proposed and still start only
-> after P0-C and P0 runtime acceptance pass.
+> **Status:** Product direction approved. The immediate spine is
+> [Plan 0024](0024-owner-authenticated-memory-mvp-design.md), decomposed into
+> executable Plans 0025–0028. The portfolio awaits Pipec's review; no production
+> implementation has started. Face, voice, fusion, and visual-companion slices
+> remain later work.
 
 ## Objective
 
-Make Iroko a secure local companion for Pipec before introducing a general UI
-or family onboarding. Normal interaction should use consented local face and
-voice evidence; recovery must remain a local explicit administrative operation.
-
-## Product boundary
+Make Iroko useful as Pipec's secure local companion as soon as possible,
+without discarding the existing cognitive, memory, policy, STT, TTS, or vision
+foundations. The first proof is deliberately visceral: authenticated Pipec asks
+who his children are and hears “Máximo y Dominga”; a request without valid
+authentication receives no protected names or hints.
 
 This is the `personal` profile from
-[ADR 0006](../adr/0006-personal-and-family-companion-profiles.md). Pipec is the
-primary owner with broad authority over their own permitted data and
-configuration. Other speakers may converse generally but do not receive Pipec's
-private context merely by claiming a name or resembling a biometric profile.
+[ADR 0006](../adr/0006-personal-and-family-companion-profiles.md). The same
+architecture later supports a family/multiple-person profile with stricter
+per-person privacy; this slice does not build that later product.
 
-## Required slices
+## Governing decisions
 
-### PC-1 — First boot
+- [ADR 0007](../adr/0007-first-boot-and-default-posture.md) keeps explicit
+  first boot, owner-before-household ordering, completion state, and local
+  recovery.
+- [ADR 0008](../adr/0008-progressive-owner-authentication.md) supersedes
+  automatic owner-by-local-channel presumption. Authentication is fresh,
+  expiring evidence, never a persistent global boolean.
+- Identity, authentication, and authorization remain separate. Protected
+  memory is authorized before it is retrieved.
 
-Per [ADR 0007](../adr/0007-first-boot-and-default-posture.md), a fresh install
-has an explicit first-boot state, and completing it is what lets the local
-trusted channel presume its owner. Two structures already exist with zero
-production callers and get their first caller here:
-`household_authorization.bootstrap_initial_owner()` and
-`cognition.identity_sessions.IdentitySessionRegistry`. Two more already exist
-and get wired up: `onboarding.next_missing_slot()` and
-`memory.meta.set_flag`/`get_flag` (migration 002 already backs
-`onboarding_complete`).
+## Delivery path
 
-A fresh install walks, in this order, before anything else runs:
+### PC-1 — Owner-authenticated memory MVP
 
-1. **Preflight.** No question asked. Reuses `just services`: models present,
-   DB migrated, audio path alive. A DB that already has a `person` entity is
-   already past this point (migration 002's existing backfill).
-2. **Owner.** The first and only question this step may ask is the owner's
-   name. Creates the `person` entity, then calls `bootstrap_initial_owner()`
-   with the confirmation it already requires. No household fact (partner,
-   child, pet, workplace) may be recorded before this step completes —
-   the direct fix for the 2026-07-13 mis-anchoring `onboarding.py`'s own
-   docstring records.
-3. **Local channel.** Explains, in plain terms, what "this device, this
-   network, this microphone" means once first boot completes: the local
-   trusted channel will presume this owner, with a visible TTL and an
-   explicit local revoke path. States that face and voice (PC-2/PC-3) are
-   optional, faster paths to the same identified state — later, not now, and
-   never the only recovery route.
-4. **Household basics.** Runs the eight existing `onboarding.py` slots
-   (`nombre`, `fecha_nacimiento`, `vive_en`, `pareja_de`, `hijo_de`,
-   `mascota_de`, `trabaja_en`, `le_gusta`) — now safe to run, because step 2
-   already anchored an owner.
-5. **Consent.** Records, per data category (protected household, biometric
-   once PC-2/PC-3 exist, retention), the local consent decisions ADR 0006
-   already requires before any of them may be used.
-6. **Complete.** Sets `meta.onboarding_complete = "true"`. Before this flag is
-   set, any protected or self-referential question answers "not configured
-   yet" — never a denial that reads as a permanent policy outcome.
+Execute the approved design in
+[Plan 0024](0024-owner-authenticated-memory-mvp-design.md) through its bounded
+portfolio: [setup](0025-personal-owner-bootstrap-and-pin-setup.md),
+[classic authenticated turn](0026-one-use-owner-authenticated-classic-turn.md),
+[streaming parity](0027-one-use-owner-streaming-parity.md), and
+[runtime acceptance](0028-owner-authenticated-memory-runtime-acceptance.md).
 
-Two entry points share this one state machine: the natural voice path, and a
-local CLI/recovery path (`just`-driven, same shape as `reset-db`) for when
-voice or biometrics are unavailable. Neither entry point is a general or
-public admin API — both are loopback/local-operator constrained, and every
-step is audited the same way `bootstrap_initial_owner()` already audits
-itself.
+The delivery order is fixed:
+
+1. connect first boot, owner bootstrap, and confirmed child relationships;
+2. add an explicit local, short-lived, one-use unlock;
+3. resolve that evidence into the existing `ActivePersonContext` seams;
+4. authorize and invoke the existing structured child-name tool;
+5. prove both allowed and denied paths through real microphone, STT,
+   controller, Piper, and speaker output.
+
+PC-1 does not require face or speaker recognition. Its limitation is explicit:
+the local secret proves the unlock action, not the physical speaker. One-use
+scope and short expiry make that acceptable for the first product proof.
 
 ### PC-2 — Consented local face evidence
 
-Enable face enrolment only through PC-1. Store biometric templates locally,
-separately from generic person facts. A local face adapter emits typed evidence
-with freshness and quality metadata; it never grants permission by itself.
+Integrate the existing local face engine through the same typed evidence
+contract. Enrollment is available only after explicit owner authentication and
+subject consent. Store templates separately from generic facts; evaluate
+unknown faces, false accepts/rejects, lighting, distance, expiry, deletion, and
+backend failure on Pipec's actual camera. Face evidence never grants permission
+directly.
 
 ### PC-3 — Consented local speaker evidence
 
-Add a local speaker enrolment/verification adapter through PC-1. Evaluate false
-accepts, false rejects, changed voice, distance, noise, and microphone variation
-on Pipec's actual hardware. Raw audio remains ephemeral unless an explicit later
-policy changes that rule.
+Add a real speaker-enrollment and verification adapter through the same
+contract. STT and VAD are not voice identity. Evaluate changed voice, noise,
+distance, microphone variation, replay risk, false accepts/rejects, expiry,
+deletion, and backend failure. Raw audio stays ephemeral by default.
 
-### PC-4 — Conservative fusion and personal response path
+### PC-4 — Conservative fusion
 
-Fuse session, face, and voice evidence. Agreement may identify Pipec under
-calibrated policy; conflict is `ambiguous`; absence or expiry is `unknown`.
-Only a resolved, authorized actor may use Pipec's permitted personal/family
-tools. The controller assembles a response plan; the LLM expresses only
-authorized typed results.
+Combine the one-use session, face, and voice evidence without creating a
+second authorization system. Agreement may raise assurance; conflict is
+`ambiguous`; absence or expiry is `unknown`. A local recovery method remains
+available even when biometrics fail.
 
 ### PC-5 — Local visual companion acceptance
 
-For “Iroko, ¿qué ves?”, run local specialized perception in parallel:
+For “Iroko, ¿qué ves?”, keep specialized responsibilities separate:
 
 ```text
 face adapter -> identity evidence
-VLM/object adapters -> current scene evidence
+scene adapter -> current visual evidence
 voice adapter -> speaker evidence
-controller -> identity + authorization + response plan
+controller -> authentication + authorization + response plan
 ```
 
-The VLM may describe a scene but is not the authority that names Pipec. The text
-LLM does not receive a raw frame or decide identity. Perception claims remain
-observations/inferences; relations and personal facts come from authorized
-structured storage.
+The VLM may describe current visual evidence, but does not name Pipec or grant
+access. The text LLM receives typed, policy-approved results, not a raw frame.
 
-## Acceptance examples
+### PC-6 — Family profile expansion
 
-- A fresh install with no `person` entity refuses every household fact until
-  an owner is bootstrapped, then walks the eight-slot checklist in order —
-  reproducing a corrected version of the 2026-07-13 case as a regression
-  check.
-- On the local trusted channel, after first boot, "¿quién soy?" greets the
-  bootstrapped owner by name instead of the fixed unknown-identity copy —
-  without any face or voice adapter existing yet.
-- Claiming a different name than the bootstrapped owner over voice or chat on
-  the same channel does not change who is presumed identified; local-channel
-  presumption resolves from the session, never from spoken claims.
-- Before `onboarding_complete` is set, a protected-household question answers
-  with a "not configured yet" message, distinguishable from the fail-closed
-  denial a configured install gives an unauthorized speaker.
-- Pipec is identified from calibrated, non-conflicting local evidence and can
-  ask an authorized deterministic family question.
-- An unknown person receives general conversation but cannot read Pipec's
-  protected data.
-- Face says Pipec while voice conflicts: Iroko asks for local confirmation and
-  releases no protected context.
-- Camera, face, or speaker backend unavailable: Iroko explains the limitation
-  and preserves the local administrative recovery route.
-- “¿Qué ves?” describes only current evidence with uncertainty; it neither
-  turns the frame into permanent memory nor treats a scene inference as fact.
+Only after the personal proof is stable, extend onboarding, visibility,
+consent, and recipient privacy for multiple household members. A technical
+owner/admin does not automatically receive another adult's private data.
 
-## Explicit non-goals
+## Product acceptance ladder
 
-- general web onboarding or family UI;
-- adult-to-adult policy delegation;
-- children, guests, or multi-speaker household interaction;
-- directed messages, generic semantic-memory retrieval, cloud escalation,
-  WorldState history, ROS2, and physical autonomy;
-- PC-1 specifically: no face, no voice, no UI, no family onboarding, and no
-  identity from a spoken name claim — a session on the local trusted channel
-  is the only thing PC-1 lets a request presume, never a claim inside the
-  message itself.
+| Stage | Pipec | Request without valid authentication |
+|---|---|---|
+| One-use unlock | Hears “Máximo y Dominga” through the real audio path. | Receives a non-disclosing denial. |
+| Face | Gets the same result from fresh consented face evidence. | Unknown/mismatch receives no names. |
+| Voice | Gets the same result from calibrated speaker evidence. | Unknown/mismatch/replay receives no names. |
+| Fusion | Non-conflicting evidence reduces friction. | Conflict becomes `ambiguous`, never best-score guessing. |
 
-## Prerequisite and later work
+Every row must pass automated security/regression tests and repeated
+`just run-server` plus `just run-robot` scenarios. Green `pytest` alone is not
+product acceptance.
 
-This is intentionally not a Ready implementation plan. It needs a fresh
-repository audit after P0-C, an accepted biometric/consent schema decision, and
-a measured local model evaluation. **PC-1 is the exception:** its decision is
-already accepted as [ADR 0007](../adr/0007-first-boot-and-default-posture.md),
-and it needs none of the PC-2..PC-5 prerequisites above, because it only wires
-together the local owner bootstrap, session registry, onboarding checklist,
-and completion flag that already exist in the codebase. Its executable plan
-(numbered next in [`docs/plans/`](README.md)) is written just in time once
-Plan 0022's gate is green. The later `family` profile owns UI, multi-person
-onboarding, household sharing defaults, and selective privacy.
+## Explicit non-goals for PC-1
+
+- general web administration or family onboarding;
+- a durable `authenticated = true` setting;
+- assuming the owner from the PC, loopback, microphone, name, message, or LLM;
+- face, voice, fingerprint, multi-factor fusion, or biometric enrollment;
+- broad RAG, PDF ingestion, knowledge-graph redesign, or a new vector store;
+- wake word, ROS2, physical autonomy, or TTS replacement.
+
+## Next decision gate
+
+Pipec reviews Plans [0025](0025-personal-owner-bootstrap-and-pin-setup.md),
+[0026](0026-one-use-owner-authenticated-classic-turn.md),
+[0027](0027-one-use-owner-streaming-parity.md), and
+[0028](0028-owner-authenticated-memory-runtime-acceptance.md). If approved,
+implementation starts with Plan 0025 only, on a feature branch, with its
+observed RED/GREEN evidence and review gate. Approval does not collapse the
+four plans into one change.
