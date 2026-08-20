@@ -44,7 +44,7 @@ async def test_migration_five_adds_role_and_safe_audit_tables(authorization_db: 
     """Authorization storage must be additive and keep legacy/v4 data intact."""
     conn = db.get_conn()
     version_cursor = await conn.execute("PRAGMA user_version")
-    assert await version_cursor.fetchone() == (5,)
+    assert await version_cursor.fetchone() == (6,)
     await version_cursor.close()
 
     tables_cursor = await conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
