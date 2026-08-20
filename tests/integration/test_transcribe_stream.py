@@ -524,6 +524,70 @@ async def test_stream_protocol_fallback_tts_failure_has_no_done(
 
 
 @pytest.mark.integration
+@pytest.mark.asyncio
+async def test_stream_tts_failure_logs_tts_error_outcome(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A TTS failure must log outcome=tts_error before the exception propagates."""
+    prepared = PreparedTextTurn(
+        "hola robot", "interaction:tts-fail-log", None, None, False, None, None, None
+    )
+
+    async def plain_text(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
+        yield "Hola sin protocolo."
+
+    monkeypatch.setattr(llm_streaming, "generate_response_stream", plain_text)
+    monkeypatch.setattr(tts, "synthesize", AsyncMock(side_effect=TTSError("piper down")))
+    caplog.set_level(logging.INFO, logger="server.streaming_render")
+
+    with pytest.raises(TTSError):
+        async for _line in streaming.stream_pipeline(
+            prepared=prepared,
+            stt_ms=0,
+            request_start=time.perf_counter(),
+            schedule_consolidation=lambda *_a, **_k: None,
+        ):
+            pass
+
+    assert any("Stream done: outcome=tts_error" in record.getMessage() for record in caplog.records)
+
+
+@pytest.mark.integration
+def test_stream_happy_path_logs_operational_metrics(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A normal successful stream must log the done metrics with outcome=ok."""
+    caplog.set_level(logging.INFO, logger="server.streaming_render")
+
+    response = _post_stream(client, silence_wav_bytes)
+
+    assert response.status_code == 200
+    assert any("Stream done: outcome=ok" in record.getMessage() for record in caplog.records)
+
+
+@pytest.mark.integration
+def test_stream_fallback_logs_operational_metrics(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """An invalid-output fallback stream must log the done metrics with outcome=protocol_fallback."""
+    caplog.set_level(logging.INFO, logger="server.streaming_render")
+
+    _post_stream_with_deltas(
+        client, monkeypatch, silence_wav_bytes, ['EMOTION:joy\n{"response": "hola"}']
+    )
+
+    assert any(
+        "Stream done: outcome=protocol_fallback" in record.getMessage() for record in caplog.records
+    )
+
+
+@pytest.mark.integration
 def test_stream_unknown_emotion_prefix_falls_back_to_neutral(
     client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
 ) -> None:
