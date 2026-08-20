@@ -84,13 +84,25 @@ grounding blockers. The approved remediation design is
 [Plan 0020](0020-p0-operator-qa-remediation-design.md), with executable TDD
 plans for [C5 typed intent resolution](0021-p0-typed-intent-resolution.md),
 [C6 reliable streaming output](0022-p0-reliable-streaming-output.md), and
-[C7 grounded visual dialogue](0023-p0-grounded-visual-dialogue.md). The owner
-revised their execution order on 2026-08-18: Plan 0022 runs first because the
-silent-stream defect blocks every audible acceptance check and its file scope is
-disjoint from Plan 0021's; then PC-1 of the
-[personal companion design](0015-personal-companion-design.md), grounded by
-[ADR 0007](../adr/0007-first-boot-and-default-posture.md), supplies the
-local owner onboarding that P0.5 never exposed; then Plans 0021 and 0023. Each
+[C7 grounded visual dialogue](0023-p0-grounded-visual-dialogue.md). Plan 0022
+(C6) is **complete**: all 4 tasks passed review, a whole-plan review found no
+Critical issues, and a 2026-08-20 real `just run-server`/`just run-robot` run
+confirmed zero silent successes across 4 live turns — see [its Execution
+Evidence](0022-p0-reliable-streaming-output.md#execution-evidence). The owner
+revised their execution order again on 2026-08-20 after Plan 0022 landed
+on the current branch. The
+[owner-authenticated personal-memory MVP design](0024-owner-authenticated-memory-mvp-design.md)
+now has a documentation-only executable portfolio: [Plan 0025 owner setup and
+PIN](0025-personal-owner-bootstrap-and-pin-setup.md), [Plan 0026 classic
+one-use turn](0026-one-use-owner-authenticated-classic-turn.md), [Plan 0027
+streaming parity](0027-one-use-owner-streaming-parity.md), and [Plan 0028 real
+runtime acceptance](0028-owner-authenticated-memory-runtime-acceptance.md).
+The canonical order is 0025 → 0026 → 0027 → 0028 → 0021 → 0023; each plan needs
+its own review and evidence, and none is implemented merely because the plan
+exists.
+[ADR 0008](../adr/0008-progressive-owner-authentication.md) replaces automatic
+owner-by-local-channel presumption with explicit one-use authentication, while
+preserving ADR 0007's first-boot and owner-before-household decisions. Each
 slice keeps independent evidence before the combined P0 acceptance.
 The earlier R2 trusted
 local acceptance concept has moved to the post-P0

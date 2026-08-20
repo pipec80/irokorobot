@@ -28,7 +28,7 @@ milestone.
 
 | Finding | Classification | Current evidence | Required disposition |
 |---|---|---|---|
-| `/transcribe/stream` bypasses the controller. | Resolved in feature worktree | Baseline called `prepare_text_turn()` directly after STT. | C1 routes a typed event through `decide()` and renders safe plans without legacy generation; operator streaming evidence remains pending. |
+| `/transcribe/stream` bypasses the controller. | Resolved in feature worktree; operator-confirmed 2026-08-20 | Baseline called `prepare_text_turn()` directly after STT. | C1 routes a typed event through `decide()` and renders safe plans without legacy generation. Plan 0022's real `just run-robot` run confirmed this live: a protected question returned `source=deterministic`, `llm_ms=0`, the non-disclosing denial, over `/transcribe/stream` — see [Plan 0022](../plans/0022-p0-reliable-streaming-output.md#execution-evidence). |
 | Narrow protected-intent classification misses ordinary family phrasings. | Resolved in feature worktree | Baseline missed terms such as `esposa` or `nació`. | C4 documents bounded fail-closed forms and the `qué día soy` clarification; real STT evidence remains pending. |
 | `/vision/respond` bypasses the controller. | Resolved in feature worktree | Baseline called `process_text_turn()` directly after local scene perception. | C2 gives visual dialogue the controller boundary while preserving scene-only perception; operator camera evidence remains pending. |
 | `client_test.py --text` does not enforce the audio contract. | Resolved in feature worktree | Baseline wrote Piper-native WAV without resampling or validating its header. | C3 reuses the local converter and validator; a real disposable-server invocation remains pending. |

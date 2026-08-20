@@ -5,9 +5,16 @@
 > `superpowers:executing-plans` to implement this plan task-by-task. Steps use
 > checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** Ready for implementation now — the first slice of the
-remediation after the 2026-08-18 execution-order revision. It has no
-technical dependency on Plan 0021: their permitted file scopes are disjoint.
+**Status:** Complete and verified. Implemented through commits `a238ab9`,
+`0b78529`, `0e2fefe`, `a368d85`, `3f09877`, `4127bdb`, `c2bd789`, `9580fc7`,
+`7c24583`, `47870b4`, `96f8721`, and `1927912`. All 4 tasks passed their own
+task-scoped review (2 needed one fix round each); the final whole-plan review
+found no Critical issues, 3 Important findings (all fixed) and adjudicated 2
+residual items — see Execution Evidence below. Real `just run-server` +
+`just run-robot` operator acceptance on 2026-08-20 confirmed the headline
+invariant on live hardware, including one live reproduction of the exact
+2026-08-17 hybrid-output failure mode, this time spoken audibly instead of
+silent. It has no technical dependency on Plan 0021.
 
 **Goal:** Make every successful streaming turn audibly speak at least one
 contract-valid WAV chunk, reject invalid or incomplete output explicitly, and
@@ -629,10 +636,64 @@ streaming thinking sets it before requesting/consuming the first event.
 
 ## Execution Evidence
 
-- Prompt/protocol RED commands: not run.
-- Server fallback RED/GREEN commands: not run.
-- Robot validation RED/GREEN commands: not run.
-- Repository gates: not run.
-- Independent review: pending implementation.
-- Repeated generic and safe-plan operator evidence: pending implementation.
-- Final commit and clean status: pending implementation.
+Implemented via `superpowers:subagent-driven-development` — one fresh
+implementer subagent per task, a task-scoped reviewer after each, and a final
+whole-plan reviewer at the end. Session hit its monthly API spend limit mid-review
+of Task 3's original commit; the controller personally re-ran every gate
+(`just typecheck`/`lint`/`test`/`audit`/`check`) in place of that one dispatched
+review, documented in commit `4127bdb`.
+
+- Prompt/protocol RED/GREEN: Task 1 (`a238ab9`) — 61 tests, format-free
+  profiles rejected pre-fix, accepted post-fix; classic/streaming contracts
+  confirmed mutually exclusive.
+- Streaming protocol parser RED/GREEN: Task 2 (`0e2fefe`, `a368d85`) — 14
+  tests covering fragmented tags, unknown emotion, the exact observed
+  2026-08-17 hybrid string, code fences, and repeated tags; no raw candidate
+  text ever appears in an exception message.
+- Server fallback RED/GREEN: Task 3 (`3f09877`, fix round `4127bdb`) — 32
+  tests; every named invalid case (hybrid JSON, structured body, truncated
+  tag, empty stream, tag-only body, plain text) produces exactly
+  `text_heard, emotion(neutral), audio(fallback), done`, never silence.
+- Robot validation RED/GREEN: Task 4 (`c2bd789`, fix round `9580fc7`) — 42
+  tests; `ServerError` on done-before-audio, EOF-without-done, duplicate
+  done, and event-after-done; the critical EOF regression (emotion + one
+  audio + no done) confirmed `ERROR` with the partial audio already played.
+- Repository gates (final, on `1927912`): `just lint` clean; `just typecheck`
+  — mypy 81 files, pyright 0 errors; `just test` 641 passed; `just audit`
+  clean; `just check` — 17/17 pre-commit hooks; `git diff --check` clean.
+- Independent review: 4 task-scoped reviews (2 clean on first pass, 2 needed
+  one fix round each) plus one whole-plan review (model: most capable
+  available) over the full 8-commit range. Verdict: "Ready to merge — with
+  fixes," no Critical findings, the headline invariant (every `done` has
+  prior audio, across all 6 named invalid cases plus mid-stream provider
+  failure) traced and confirmed true in the actual code. 3 Important findings
+  fixed in one combined fix wave (`7c24583`, `47870b4`, `96f8721`) plus one
+  scoped re-review (all addressed, no new breakage); one sibling issue the
+  re-review surfaced was fixed directly (`1927912`, zero structural cost).
+  One residual item was ruled and parked rather than fixed: a TTS failure
+  occurring *inside* the LLM-error fallback's own retry (Ollama and Piper
+  failing together) still propagates uncaught and unlogged — real but
+  narrow, and closing it needs a deliberate call (raise this file's 200-line
+  cap, or extract a shared guard) that is a project decision, not a
+  same-session patch. Also flagged, not this plan's defect to fix: the
+  Global Constraints name `characters/__init__.py` (350 lines) as needing
+  the same split `streaming.py` got, but no task in this plan is scoped to
+  touch it.
+- Repeated real operator evidence (2026-08-20, `just run-server` +
+  `just run-robot`, `ROBOT_STREAMING=true`/`VISION_ENABLED=false`, local
+  disposable DB): 4 live turns, every `done` preceded by `chunks>=1` and
+  `tts_ms>0` — zero silent successes. One turn reproduced the real
+  hybrid/invalid-protocol failure mode live against Ollama (`outcome=protocol_fallback`,
+  the fixed fallback phrase spoken audibly, `tts_ms=312`) — a direct field
+  confirmation of the fix, not only a synthetic test. One turn (`¿Cómo se
+  llaman mis hijos?`) confirmed `source=deterministic`, `llm_ms=0`, the exact
+  non-disclosing denial, audible. One turn (a date question) fell through to
+  the LLM instead of the deterministic tool — expected: C5 typed intent
+  resolution (Plan 0021) is not yet implemented on this branch, this is not a
+  C6 regression. The run covered 1 clean generic greeting plus the
+  fallback-triggering turn rather than 3 clean repeats of a plain greeting as
+  written above; the operator judged this sufficient given real hardware
+  constraints (non-dedicated laptop mic) and that the fallback case is the
+  higher-value proof.
+- Final commit and clean status: clean (`git status --short`, `git diff --check`
+  both pass on this branch after every commit above).

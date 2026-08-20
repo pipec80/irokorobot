@@ -4,8 +4,14 @@
 > branch and automated gates are green. The first operator run on 2026-08-17
 > confirmed policy denial and media paths but found intent, silent-streaming,
 > and visual-grounding blockers documented in
-> [Plan 0020](../plans/0020-p0-operator-qa-remediation-design.md). P0 acceptance
-> requires remediation and a clean rerun. Personal identity/session acceptance is P1 work under
+> [Plan 0020](../plans/0020-p0-operator-qa-remediation-design.md). The
+> silent-streaming blocker is closed: [Plan
+> 0022](../plans/0022-p0-reliable-streaming-output.md) passed a 2026-08-20
+> real operator rerun (case C1-S below) with zero silent successes across 4
+> live turns, including a live reproduction of the original hybrid-output
+> failure ending in an audible fallback. Intent (C5, Plan 0021) and
+> visual-grounding (C7, Plan 0023) remain open; P0 acceptance still requires
+> their remediation and a combined clean rerun. Personal identity/session acceptance is P1 work under
 > [Plan 0015](../plans/0015-personal-companion-design.md), not an unfinished
 > P0 requirement.
 
@@ -74,7 +80,7 @@ create a trusted identity or household data.
 
 | ID | Setup | Action | Required result |
 |---|---|---|---|
-| C1-S | `ROBOT_STREAMING=true`, `VISION_ENABLED=false` | Speak “¿Qué día es hoy?”, “¿Cómo se llaman mis hijos?”, then “Hola, Iroko.” through `just run-robot`. | Deterministic date, non-disclosing denial, then normal streamed generic audio; record literal STT and output. |
+| C1-S | `ROBOT_STREAMING=true`, `VISION_ENABLED=false` | Speak “¿Qué día es hoy?”, “¿Cómo se llaman mis hijos?”, then “Hola, Iroko.” through `just run-robot`. | Deterministic date, non-disclosing denial, then normal streamed generic audio; record literal STT and output. **PASS 2026-08-20** (commit `1927912`, 4 live turns): non-disclosing denial confirmed with `llm_ms=0`; a generic turn and a live hybrid-protocol failure both ended audibly (`outcome=ok` and `outcome=protocol_fallback` respectively, never silent); the date question fell through to the LLM instead of the deterministic tool — expected, C5 intent resolution (Plan 0021) is not yet implemented on this branch. Full transcripts kept in a local untracked operator note per this runbook's own instruction, not in this tracked file. |
 | C2-V | `ROBOT_STREAMING=false`, `VISION_ENABLED=true` | Ask “Iroko, ¿qué ves?” through `just run-robot` with the PC webcam available. | Cue then an audible scene description of the current frame; it must not identify a person, disclose family data, or enroll a face. |
 | C3-Q | Server running, no microphone required | Run `just test-client --text "Hola Iroko" --no-play`. | Request reaches `/transcribe` and does not fail with `422 ... got 22050 Hz`; record actual STT and response. |
 | C4-A | Any public audio route | If STT shows “¿Qué día soy?”, record the literal text and response. | Fixed clarification; no fabricated date and no family information. |
@@ -83,61 +89,39 @@ For every case record the command, effective non-secret settings, literal STT
 text, response, audible output, route, and pass/fail. Stop and file a defect
 on any mismatch; do not reinterpret a near miss as a pass.
 
-## Deferred P1 personal acceptance procedure (not implemented)
+## Separate P1.1 personal acceptance (not implemented)
 
-This section is retained as a future acceptance outline only. It is not a P0
-closure step and must not be implemented before Plan 0015 receives a fresh
-post-P0-C revalidation and a Ready plan.
+P1.1 is not a P0 closure step. Its old illustrative session procedure has been
+superseded by the owner-approved design in
+[Plan 0024](../plans/0024-owner-authenticated-memory-mvp-design.md) and the
+bounded executable sequence:
 
-1. Stop all server instances, then run `just reset-db`. Record the backup path
-   and confirm the next server startup applies migrations 1 through 5.
-2. Start local models with `just services`. Confirm required local models are
-   available.
-3. Start the acceptance interview mode using the final documented local-only
-   bootstrap command. It must refuse non-loopback binding and must identify the
-   disposable database in its output.
-4. In another terminal run `just run-server`, then `just run-robot`.
-5. Complete Iroko's interview with disposable known values. This is a personal
-   acceptance profile, not family onboarding:
+1. [Plan 0025](../plans/0025-personal-owner-bootstrap-and-pin-setup.md) creates
+   Pipec, confirms Máximo and Dominga, and stores only a PIN verifier;
+2. [Plan 0026](../plans/0026-one-use-owner-authenticated-classic-turn.md) proves
+   the one-use classic `/chat` and `/transcribe` paths;
+3. [Plan 0027](../plans/0027-one-use-owner-streaming-parity.md) adds equivalent
+   streaming behavior;
+4. [Plan 0028](../plans/0028-owner-authenticated-memory-runtime-acceptance.md)
+   defines the recoverable database setup, commands, repeated spoken cases,
+   audit checks, and evidence record.
 
-   | Field | Value |
-   |---|---|
-   | Owner | Felipe |
-   | Children | Máximo, Sofía |
-   | Máximo birth date | 2017-12-29 |
-   | Sofía birth date | 2019-06-15 |
-   | Owner preferences | café, robótica |
+Until those plans are implemented and Plan 0028 passes, no active owner
+session or personal runtime acceptance may be claimed. The fixed future
+product cases are:
 
-6. Listen to Iroko's summary. It must describe pending candidates rather than
-   claim durable confirmation.
-7. Perform the final local operator confirmation with the final documented
-   command. Record the generated session expiry time, but never copy the
-   opaque token into this runbook, source control, or logs.
-8. Start the robot with that temporary local session and speak each case below.
-   Record the STT transcript, returned response text, audible result, and audit
-   action sequence.
-
-## Future P1 required cases
-
-| ID | Preconditions | Spoken phrase | Pass condition |
+| ID | Preconditions | Spoken phrase | Required result |
 |---|---|---|---|
-| R1-01 | No session | “¿Qué día es hoy?” | A date response; no age/family claim. |
-| R1-02 | No session | “¿Cómo se llaman mis hijos?” | No protected value; no v4 read audit. |
-| R2-01 | Confirmed active session | “¿Cómo se llaman mis hijos?” | “Máximo” and “Sofía” only if both were confirmed. |
-| R2-02 | Confirmed active session | “¿Cuántos hijos tengo?” | `2`, derived from active v4 relations. |
-| R2-03 | Confirmed active session | “¿Qué día es hoy?” | Date response; never child count or age. |
-| R2-04 | Confirmed active session | “¿Qué hora es?” | Safe unavailable/unknown response until a time tool exists. |
-| R2-05 | Session cleared or expired | “¿Cuántos hijos tengo?” | No protected value; no v4 read audit. |
+| P1-PUBLIC | No fresh one-use grant | “¿Quiénes son mis hijos?” | Non-disclosing denial; no names, count, existence hint, or protected read. |
+| P1-ALLOW | Fresh Pipec grant | “¿Quiénes son mis hijos?” | Exactly “Tus hijos son Máximo y Dominga.” through Piper. |
+| P1-REPLAY | Already consumed grant | Same protected question | Non-disclosing denial; no protected read. |
+| P1-EXPIRED | Expired unused grant | Same protected question | Non-disclosing denial; no protected read. |
+| P1-GENERIC | Fresh grant, then generic question | “¿Qué día es hoy?” followed by the protected question | Generic turn does not consume the grant; the next protected turn consumes it once. |
 
-For permitted family reads, audit actions must appear in this order:
-
-```text
-execute_household_tool
-read_household_data
-```
-
+Permitted family reads must preserve the documented policy/tool audit order.
 Denied cases must not produce `read_household_data`, and audit metadata must
-not contain names, birth dates, preference values, or calculated ages.
+not contain names, PIN material, tokens, birth dates, preferences, or derived
+family values.
 
 ## Completion record
 

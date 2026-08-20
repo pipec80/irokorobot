@@ -3,7 +3,10 @@
 > **Status:** P0-C1 through P0-C4 are implemented in the current feature
 > branch and automated gates are green. The 2026-08-17 operator run found
 > three runtime blockers; remediation is designed in
-> [Plan 0020](0020-p0-operator-qa-remediation-design.md).
+> [Plan 0020](0020-p0-operator-qa-remediation-design.md). The silent-streaming
+> blocker (C6) is closed and operator-confirmed on 2026-08-20 — see [Plan
+> 0022](0022-p0-reliable-streaming-output.md#execution-evidence). Intent (C5)
+> and visual-grounding (C7) remain open.
 
 ## Objective
 
