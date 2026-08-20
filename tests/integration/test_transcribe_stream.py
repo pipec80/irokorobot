@@ -345,10 +345,12 @@ def test_stream_hybrid_json_uses_audible_protocol_fallback(
     """The observed 2026-08-17 hybrid output must speak fallback, never silence."""
     deltas = ['EMOTION: joy {"response": "¡Qué emocionante!", "emotion": "joy"}']
     record = Mock()
+    synthesize = AsyncMock(return_value=("QQ==", 10))
     monkeypatch.setattr(streaming, "record_text_turn", record)
+    monkeypatch.setattr(tts, "synthesize", synthesize)
     events = _post_stream_with_deltas(client, monkeypatch, silence_wav_bytes, deltas)
     _assert_audible_protocol_fallback(events)
-    tts.synthesize.assert_awaited_once_with(settings.llm_fallback_phrase)
+    synthesize.assert_awaited_once_with(settings.llm_fallback_phrase)
     record.assert_not_called()
 
 
@@ -359,10 +361,12 @@ def test_stream_structured_body_uses_audible_protocol_fallback(
     """A valid emotion line followed by a JSON body is still invalid output."""
     deltas = ['EMOTION:joy\n{"response": "hola"}']
     record = Mock()
+    synthesize = AsyncMock(return_value=("QQ==", 10))
     monkeypatch.setattr(streaming, "record_text_turn", record)
+    monkeypatch.setattr(tts, "synthesize", synthesize)
     events = _post_stream_with_deltas(client, monkeypatch, silence_wav_bytes, deltas)
     _assert_audible_protocol_fallback(events)
-    tts.synthesize.assert_awaited_once_with(settings.llm_fallback_phrase)
+    synthesize.assert_awaited_once_with(settings.llm_fallback_phrase)
     record.assert_not_called()
 
 
@@ -372,10 +376,12 @@ def test_stream_truncated_emotion_uses_audible_protocol_fallback(
 ) -> None:
     """Stream ends mid tag ("EMOTION:ale", no \\n) — spoken as fallback, never silence."""
     record = Mock()
+    synthesize = AsyncMock(return_value=("QQ==", 10))
     monkeypatch.setattr(streaming, "record_text_turn", record)
+    monkeypatch.setattr(tts, "synthesize", synthesize)
     events = _post_stream_with_deltas(client, monkeypatch, silence_wav_bytes, ["EMOTION:ale"])
     _assert_audible_protocol_fallback(events)
-    tts.synthesize.assert_awaited_once_with(settings.llm_fallback_phrase)
+    synthesize.assert_awaited_once_with(settings.llm_fallback_phrase)
     record.assert_not_called()
 
 
@@ -385,10 +391,12 @@ def test_stream_empty_model_output_uses_audible_protocol_fallback(
 ) -> None:
     """The model producing nothing at all must still end audibly, not silently."""
     record = Mock()
+    synthesize = AsyncMock(return_value=("QQ==", 10))
     monkeypatch.setattr(streaming, "record_text_turn", record)
+    monkeypatch.setattr(tts, "synthesize", synthesize)
     events = _post_stream_with_deltas(client, monkeypatch, silence_wav_bytes, [])
     _assert_audible_protocol_fallback(events)
-    tts.synthesize.assert_awaited_once_with(settings.llm_fallback_phrase)
+    synthesize.assert_awaited_once_with(settings.llm_fallback_phrase)
     record.assert_not_called()
 
 
@@ -398,10 +406,12 @@ def test_stream_emotion_only_uses_audible_protocol_fallback(
 ) -> None:
     """A valid tag followed by an empty/whitespace-only body is invalid output."""
     record = Mock()
+    synthesize = AsyncMock(return_value=("QQ==", 10))
     monkeypatch.setattr(streaming, "record_text_turn", record)
+    monkeypatch.setattr(tts, "synthesize", synthesize)
     events = _post_stream_with_deltas(client, monkeypatch, silence_wav_bytes, ["EMOTION:joy\n   "])
     _assert_audible_protocol_fallback(events)
-    tts.synthesize.assert_awaited_once_with(settings.llm_fallback_phrase)
+    synthesize.assert_awaited_once_with(settings.llm_fallback_phrase)
     record.assert_not_called()
 
 

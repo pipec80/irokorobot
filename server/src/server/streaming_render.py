@@ -133,17 +133,12 @@ def _consume_body(buffer: str, state: StreamState) -> tuple[str, list[str]]:
 
 
 async def _finalize_model_output(buffer: str, state: StreamState) -> AsyncIterator[str]:
-    """Validate stream EOF; emit the final sentence or a safe fallback.
-
-    EOF with no complete preamble, or a preamble whose body never passes
-    ``validate_streaming_body_start``, is invalid — discarded in favor of
-    a fallback.
-    """
-    tail = buffer.strip()
+    """Validate stream EOF; emit the final sentence or a safe fallback."""
     if state.pending_emotion is None and state.emotion is None:
         try:
-            parse_streaming_emotion(buffer, final=True)
+            parsed = parse_streaming_emotion(buffer, final=True)
         except LLMError:
+            tail = buffer.strip()
             reason = (
                 StreamFallbackReason.EMPTY_STREAM
                 if not tail
@@ -153,6 +148,10 @@ async def _finalize_model_output(buffer: str, state: StreamState) -> AsyncIterat
             async for line in emit_fallback(state, reason=reason):
                 yield line
             return
+        if parsed is None:
+            raise RuntimeError("Final parse returned no result instead of raising")
+        state.pending_emotion, buffer = parsed
+    tail = buffer.strip()
     if state.emotion is None:
         valid_body = bool(tail)
         if valid_body:
@@ -165,6 +164,8 @@ async def _finalize_model_output(buffer: str, state: StreamState) -> AsyncIterat
             async for line in emit_fallback(state, reason=StreamFallbackReason.INVALID_PROTOCOL):
                 yield line
             return
+        if state.pending_emotion is None:
+            raise RuntimeError("pending_emotion must be set before promoting to emotion")
         state.emotion = state.pending_emotion
         yield StreamEmotionEvent(value=state.emotion).model_dump_json() + "\n"
     if tail:
