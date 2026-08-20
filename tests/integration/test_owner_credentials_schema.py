@@ -1,9 +1,17 @@
 """Integration tests for additive owner PIN credential storage."""
 
+import logging
 from pathlib import Path
 
 import pytest
+from server.cognition.pin_credentials import hash_pin, verify_pin
 from server.memory.declarative import upsert_entity
+from server.memory.household_authorization import bootstrap_initial_owner
+from server.memory.owner_credentials import (
+    get_active_owner_pin_credential,
+    revoke_owner_pin_credential,
+    save_owner_pin_credential,
+)
 from server.settings import settings
 
 from server import db
@@ -97,3 +105,124 @@ async def test_only_one_active_credential_per_owner(credentials_db: None) -> Non
 
     with pytest.raises(Exception, match="UNIQUE constraint failed"):
         await _insert_credential(person_entity_id=person_id, salt=b"2" * 16, verifier=b"3" * 32)
+
+
+async def _credential_row_count() -> int:
+    """Return the total credential row count, active and revoked."""
+    cursor = await db.get_conn().execute("SELECT COUNT(*) FROM owner_pin_credentials")
+    row = await cursor.fetchone()
+    await cursor.close()
+    assert row is not None
+    return int(row[0])
+
+
+async def _bootstrap_owner(name: str) -> int:
+    """Create and bootstrap one owner entity for repository tests."""
+    person_id = await upsert_entity(name=name, type="person")
+    await bootstrap_initial_owner(person_entity_id=person_id, confirmed_person_entity_id=person_id)
+    return person_id
+
+
+@pytest.mark.integration
+async def test_save_requires_an_active_owner_role(credentials_db: None) -> None:
+    """Only a person with an active owner role may receive a PIN credential."""
+    non_owner_id = await upsert_entity(name="Guest", type="person")
+    with pytest.raises(ValueError, match="active owner role"):
+        await save_owner_pin_credential(
+            person_entity_id=non_owner_id, credential=hash_pin("482173")
+        )
+
+
+@pytest.mark.integration
+async def test_save_then_read_preserves_bytes_and_parameters(credentials_db: None) -> None:
+    """A saved credential round-trips its encoded fields exactly."""
+    owner_id = await _bootstrap_owner("Pipec")
+    encoded = hash_pin("482173")
+
+    saved = await save_owner_pin_credential(person_entity_id=owner_id, credential=encoded)
+    active = await get_active_owner_pin_credential()
+
+    assert active is not None
+    assert active.id == saved.id
+    assert active.person_entity_id == owner_id
+    assert active.encoded == encoded
+
+
+@pytest.mark.integration
+async def test_reusing_the_same_verified_pin_does_not_insert_a_row(credentials_db: None) -> None:
+    """A caller that verifies a matching PIN must not call save again."""
+    owner_id = await _bootstrap_owner("Pipec")
+    initial = await save_owner_pin_credential(
+        person_entity_id=owner_id, credential=hash_pin("482173")
+    )
+
+    active = await get_active_owner_pin_credential()
+    assert active is not None
+    assert verify_pin("482173", active.encoded) is True
+
+    unchanged = await get_active_owner_pin_credential()
+    assert unchanged is not None
+    assert unchanged.id == initial.id
+    assert await _credential_row_count() == 1
+
+
+@pytest.mark.integration
+async def test_rotating_to_a_different_pin_leaves_exactly_one_active_credential(
+    credentials_db: None,
+) -> None:
+    """A genuinely different PIN atomically rotates the active credential."""
+    owner_id = await _bootstrap_owner("Pipec")
+    first = await save_owner_pin_credential(
+        person_entity_id=owner_id, credential=hash_pin("482173")
+    )
+
+    second = await save_owner_pin_credential(
+        person_entity_id=owner_id, credential=hash_pin("999999")
+    )
+
+    active = await get_active_owner_pin_credential()
+    assert active is not None
+    assert active.id == second.id
+    assert active.id != first.id
+    assert verify_pin("999999", active.encoded) is True
+    assert await _credential_row_count() == 2
+
+    revoked_cursor = await db.get_conn().execute(
+        "SELECT revoked_at FROM owner_pin_credentials WHERE id = ?", (first.id,)
+    )
+    revoked_row = await revoked_cursor.fetchone()
+    await revoked_cursor.close()
+    assert revoked_row is not None
+    assert revoked_row[0] is not None
+
+
+@pytest.mark.integration
+async def test_revoke_leaves_no_active_credential(credentials_db: None) -> None:
+    """Revoking the active credential clears it without deleting history."""
+    owner_id = await _bootstrap_owner("Pipec")
+    await save_owner_pin_credential(person_entity_id=owner_id, credential=hash_pin("482173"))
+
+    await revoke_owner_pin_credential(person_entity_id=owner_id)
+
+    assert await get_active_owner_pin_credential() is None
+    with pytest.raises(ValueError, match="no active owner PIN credential"):
+        await revoke_owner_pin_credential(person_entity_id=owner_id)
+
+
+@pytest.mark.integration
+async def test_no_repository_log_contains_pin_salt_or_verifier(
+    credentials_db: None, caplog: pytest.LogCaptureFixture
+) -> None:
+    """No repository log record may contain the PIN, salt, or verifier bytes."""
+    owner_id = await _bootstrap_owner("Pipec")
+    encoded = hash_pin("482173")
+
+    with caplog.at_level(logging.DEBUG, logger="server.memory.owner_credentials"):
+        await save_owner_pin_credential(person_entity_id=owner_id, credential=encoded)
+        await get_active_owner_pin_credential()
+        await revoke_owner_pin_credential(person_entity_id=owner_id)
+
+    joined = "\n".join(record.getMessage() for record in caplog.records)
+    assert "482173" not in joined
+    assert str(encoded.salt) not in joined
+    assert str(encoded.verifier) not in joined
