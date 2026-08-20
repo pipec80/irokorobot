@@ -1,18 +1,17 @@
 """Sentence-streaming orchestration for POST /transcribe/stream (R3).
 
 Kept out of routers/transcribe.py and pipeline.py (200-line file limit);
-the classic /transcribe pipeline stays untouched. Emits NDJSON — one line
-per event, see schemas_streaming.py — so the robot can play the first
-sentence's audio while the LLM still generates the rest of the reply.
+the classic /transcribe pipeline stays untouched. Emits NDJSON so the robot
+can play the first sentence's audio while the LLM still generates the rest.
 
 P0-C6: state/render mechanics (StreamState, synthesis, fallback, protocol
-validation) live in streaming_render.py; this module owns only the loop
-deciding what to consume next. ``done`` can only be reached after at
-least one audio chunk already spoke — see ``streaming_render._done_event``.
+validation) live in streaming_render.py; this module owns the consume loop
+and re-raises a mid-stream TTS failure after logging the same metrics
+``done`` would have. ``done`` itself is only reached after at least one
+audio chunk already spoke — see ``streaming_render._done_event``.
 
-Vision-intent turns (V0.5) are intentionally not handled here — that
-stub-turn branch stays exclusive to classic /transcribe; the robot only
-routes plain voice turns through streaming (see app.py's robot_streaming flag).
+Vision-intent turns (V0.5) are not handled here — that stub-turn branch
+stays exclusive to classic /transcribe (see app.py's robot_streaming flag).
 """
 
 from collections.abc import AsyncIterator
@@ -20,7 +19,7 @@ import logging
 
 from server import llm, llm_streaming, tts
 from server.cognition.response_plan import ResponsePlan
-from server.exceptions import LLMError
+from server.exceptions import LLMError, TTSError
 from server.pipeline import _elapsed_ms, _log_pipeline_timing
 from server.schemas_streaming import (
     StreamAudioEvent,
@@ -36,6 +35,7 @@ from server.streaming_render import (
     _consume_preamble,
     _done_event,
     _finalize_model_output,
+    _log_stream_metrics,
     emit_fallback,
     synthesize_sentence,
 )
@@ -49,11 +49,7 @@ logger = logging.getLogger(__name__)
 
 
 async def _text_deltas(inputs: PreparedTextTurn) -> AsyncIterator[str]:
-    """Yield "EMOTION:xxx\\n"-tagged text deltas, uniform across providers.
-
-    Local Ollama streams token-by-token through ``llm_streaming``. The shared
-    emotion-tag protocol keeps the sentence-splitting loop provider-agnostic.
-    """
+    """Yield "EMOTION:xxx\\n"-tagged text deltas from local Ollama, token by token."""
     async for delta in llm_streaming.generate_response_stream(
         inputs.message,
         context=inputs.context,
@@ -156,17 +152,15 @@ async def stream_pipeline(
 ) -> AsyncIterator[str]:
     """Stream STT->LLM->TTS as NDJSON, synthesizing speech sentence by sentence.
 
-    Transport: NDJSON — chosen over WebSocket/SSE because it is trivially
-    producible from a plain async generator via StreamingResponse, and
-    consumable on the robot with httpx's ``client.stream()`` + ``aiter_lines()``
-    (no extra dependency; a natural stepping stone to a future LiveKit
-    transport).
+    Transport is NDJSON, not WebSocket/SSE: trivially producible from a plain
+    async generator via StreamingResponse and consumable on the robot with
+    httpx's ``aiter_lines()`` — no extra dependency.
 
-    Event order: text_heard -> emotion -> audio (one per sentence, as each
-    closes) -> done. On an LLM failure mid-stream, or any invalid model
-    output (hybrid JSON, a truncated tag, an empty stream, ...), the
-    fallback phrase is spoken as one more audio event instead of aborting
-    — never a silent success (P0-C6).
+    Event order: text_heard -> emotion -> audio (one per sentence) -> done.
+    An LLM failure or any invalid model output (hybrid JSON, a truncated
+    tag, an empty stream, ...) speaks the fallback phrase instead of
+    aborting — never a silent success (P0-C6). A TTS failure logs the same
+    metrics `done` would have and re-raises without emitting `done`.
 
     Args:
         prepared: Shared prompt inputs and internal scope for one voice request.
@@ -183,6 +177,10 @@ async def stream_pipeline(
     try:
         async for line in _consume_llm_stream(prepared, state):
             yield line
+    except TTSError:
+        state.outcome = StreamOutcome.TTS_ERROR
+        _log_stream_metrics(state, _elapsed_ms(request_start))
+        raise
     except (LLMError, ValueError) as exc:
         logger.error("Streaming LLM failed — speaking fallback phrase: %s", exc, exc_info=True)
         state.outcome = (

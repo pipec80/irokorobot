@@ -3,9 +3,8 @@
 ``streaming.py`` owns the orchestration loop; this module owns per-request
 state, sentence synthesis, and the fallback path that lets ``done`` only
 ever follow at least one contract-valid audio chunk. Output failing
-``streaming_protocol.py``'s wire-format checks — hybrid JSON, a truncated
-tag, an empty stream, a tag-only body, or plain text without a tag — is
-discarded and replaced with one spoken fallback sentence, never silence.
+``streaming_protocol.py``'s wire-format checks is discarded and replaced
+with one spoken fallback sentence, never silence.
 """
 
 from collections.abc import AsyncIterator
@@ -58,11 +57,7 @@ class StreamState:
 
 
 async def synthesize_sentence(sentence: str, state: StreamState) -> str:
-    """Synthesize one contract-valid sentence, updating chunk/timing state.
-
-    Returns:
-        One NDJSON ``audio`` line — WAV 16kHz mono int16 audio, base64.
-    """
+    """Synthesize one contract-valid sentence into one NDJSON WAV audio line."""
     audio_base64, duration_ms = await tts.synthesize(sentence)
     state.response_parts.append(sentence)
     state.tts_ms_total += duration_ms
@@ -82,10 +77,9 @@ async def synthesize_sentence(sentence: str, state: StreamState) -> str:
 async def emit_fallback(state: StreamState, *, reason: StreamFallbackReason) -> AsyncIterator[str]:
     """Speak a safe fallback — the sole path that closes a stream with no valid content.
 
-    Emits ``neutral`` only when no emotion has been spoken yet; after
-    partial audio it preserves the already-emitted emotion and adds only
-    the fallback audio event. ``reason`` is bounded and content-free —
-    never the raw candidate model output.
+    Emits ``neutral`` only when no emotion has been spoken yet; after partial
+    audio it preserves the emitted emotion and adds only fallback audio.
+    ``reason`` is bounded and content-free — never the raw candidate output.
     """
     state.recordable = False
     logger.warning("Stream fallback: reason=%s", reason.value)
@@ -114,8 +108,7 @@ def _consume_body(buffer: str, state: StreamState) -> tuple[str, list[str]]:
     """Split complete sentences off the body, promoting emotion once valid.
 
     Promotes ``pending_emotion`` to emitted ``emotion`` the first time
-    non-whitespace content passes ``validate_streaming_body_start``; hybrid
-    JSON or a repeated tag never promotes and raises instead.
+    non-whitespace content passes ``validate_streaming_body_start``.
 
     Raises:
         LLMError: If the body content is structurally invalid.
@@ -132,25 +125,24 @@ def _consume_body(buffer: str, state: StreamState) -> tuple[str, list[str]]:
     return buffer, sentences
 
 
+def _preamble_fallback_reason(buffer: str) -> StreamFallbackReason:
+    """Classify an EOF with no valid preamble as empty or invalid protocol."""
+    if buffer.strip():
+        return StreamFallbackReason.INVALID_PROTOCOL
+    return StreamFallbackReason.EMPTY_STREAM
+
+
 async def _finalize_model_output(buffer: str, state: StreamState) -> AsyncIterator[str]:
     """Validate stream EOF; emit the final sentence or a safe fallback."""
     if state.pending_emotion is None and state.emotion is None:
         try:
-            parsed = parse_streaming_emotion(buffer, final=True)
+            parse_streaming_emotion(buffer, final=True)
         except LLMError:
-            tail = buffer.strip()
-            reason = (
-                StreamFallbackReason.EMPTY_STREAM
-                if not tail
-                else StreamFallbackReason.INVALID_PROTOCOL
-            )
             state.outcome = StreamOutcome.PROTOCOL_FALLBACK
+            reason = _preamble_fallback_reason(buffer)
             async for line in emit_fallback(state, reason=reason):
                 yield line
             return
-        if parsed is None:
-            raise RuntimeError("Final parse returned no result instead of raising")
-        state.pending_emotion, buffer = parsed
     tail = buffer.strip()
     if state.emotion is None:
         valid_body = bool(tail)
@@ -172,6 +164,18 @@ async def _finalize_model_output(buffer: str, state: StreamState) -> AsyncIterat
         yield await synthesize_sentence(tail, state)
 
 
+def _log_stream_metrics(state: StreamState, total_ms: int) -> None:
+    """Log the bounded operational metrics line shared by every stream outcome."""
+    logger.info(
+        "Stream done: outcome=%s chunks=%d first_audio_ms=%s tts_ms=%dms total_ms=%dms",
+        state.outcome.value,
+        state.audio_chunks,
+        state.first_audio_ms,
+        state.tts_ms_total,
+        total_ms,
+    )
+
+
 def _done_event(stt_ms: int, request_start: float, state: StreamState) -> str:
     """Serialize the final timing event — requires at least one audio chunk.
 
@@ -186,14 +190,7 @@ def _done_event(stt_ms: int, request_start: float, state: StreamState) -> str:
         raise RuntimeError("Refusing to emit done before any audio chunk was spoken")
     total_ms = _elapsed_ms(request_start)
     llm_ms = max(0, total_ms - stt_ms - state.tts_ms_total)
-    logger.info(
-        "Stream done: outcome=%s chunks=%d first_audio_ms=%s tts_ms=%dms total_ms=%dms",
-        state.outcome.value,
-        state.audio_chunks,
-        state.first_audio_ms,
-        state.tts_ms_total,
-        total_ms,
-    )
+    _log_stream_metrics(state, total_ms)
     done = StreamDoneEvent(
         stt_ms=stt_ms, llm_ms=llm_ms, tts_ms=state.tts_ms_total, total_ms=total_ms
     )
