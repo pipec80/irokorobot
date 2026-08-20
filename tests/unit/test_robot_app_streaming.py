@@ -33,13 +33,16 @@ async def test_valid_stream_speaks_and_returns_idle(
     ctx = LoopContext(stream_request_start=100.0)
     ctx.stream_events = _events(EmotionEvent("joy"), _audio_event("Hola."), _DONE)
 
-    with caplog.at_level("INFO", logger="robot.app_streaming"):
+    with caplog.at_level("DEBUG", logger="robot.app_streaming"):
         state = await app_streaming.on_speaking_stream(ctx)
 
     assert state is RobotState.IDLE
     play_wav.assert_awaited_once()
-    assert any("Hola." in record.message for record in caplog.records)
-    assert any("chunk" in record.message.lower() for record in caplog.records)
+    messages = [record.message for record in caplog.records]
+    assert any("Hola." in message for message in messages)
+    assert any("First chunk received" in message for message in messages)
+    assert any("First playback start" in message for message in messages)
+    assert any("chunks=1" in message for message in messages)
 
 
 @pytest.mark.unit
