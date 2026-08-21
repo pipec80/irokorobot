@@ -3,7 +3,6 @@
 from collections.abc import Awaitable, Callable
 from datetime import date
 import re
-import unicodedata
 
 from server.cognition.authorization import (
     AuthorizationRequest,
@@ -15,6 +14,7 @@ from server.cognition.authorization import (
 from server.cognition.calendar_tools import calculate_age, get_current_date
 from server.cognition.household_tools import HouseholdKnowledgeTools, HouseholdToolResult
 from server.cognition.identity import ActivePersonContext, ActivePersonStatus, HouseholdRole
+from server.cognition.intent_resolution import IntentResolution, resolve_information_need
 from server.cognition.models import (
     AuthorizationAction,
     AuthorizationDecision,
@@ -43,36 +43,9 @@ type AuditWriter = Callable[[AuthorizationRequest, AuthorizationDecision], Await
 type ConsentResolver = Callable[
     [CognitiveEvent[TextTurnPayload], ActivePersonContext], Awaitable[ConsentStatus]
 ]
+type IntentResolver = Callable[[str], IntentResolution]
 
 _ISO_DATE_PATTERN = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
-_PRIVATE_HOUSEHOLD_TERMS = (
-    "hijo",
-    "hija",
-    "familia",
-    "preferencia",
-    "le gusta",
-    "padre",
-    "madre",
-    "papa",
-    "mama",
-    "hermano",
-    "pareja",
-    "esposa",
-    "esposo",
-    "marido",
-    "mujer",
-    "abuelo",
-    "abuela",
-    "tio",
-    "tia",
-    "primo",
-    "prima",
-)
-_BIRTH_INFORMATION_TERMS = ("nacio", "nacimiento")
-_RELATIONSHIP_TERMS = ("relación",)
-_OWN_CHILDREN_LIST_PATTERNS = ("como se llaman mis hijos", "quienes son mis hijos")
-_OWN_CHILDREN_COUNT_PATTERNS = ("cuantos hijos tengo",)
-_AMBIGUOUS_DATE_PATTERNS = ("que dia soy",)
 _TWO_ITEMS = 2
 
 
@@ -122,6 +95,7 @@ class CognitiveController:
         audit_writer: AuditWriter = _discard_audit,
         household_tools: HouseholdKnowledgeTools | None = None,
         consent_resolver: ConsentResolver = _not_required_consent,
+        intent_resolver: IntentResolver = resolve_information_need,
     ) -> None:
         """Create a controller with injected calendar and legacy-generation seams.
 
@@ -133,6 +107,7 @@ class CognitiveController:
             audit_writer: Local safe-audit boundary for protected decisions.
             household_tools: Optional closed P0.5-B2 family-tool collaborator.
             consent_resolver: Trusted internal scoped-consent boundary.
+            intent_resolver: Pure, typed P0-C5 Spanish intent resolver.
         """
         self._today = today
         self._legacy_turn = legacy_turn
@@ -141,6 +116,7 @@ class CognitiveController:
         self._audit_writer = audit_writer
         self._household_tools = household_tools
         self._consent_resolver = consent_resolver
+        self._intent_resolver = intent_resolver
 
     async def handle(self, event: CognitiveEvent[TextTurnPayload]) -> ResponsePlan:
         """Produce one bounded response plan for a typed text event.
@@ -166,7 +142,7 @@ class CognitiveController:
             A deterministic or policy response plan, or ``None`` when the
             adapter may safely use its generic generation path.
         """
-        need = _classify_information_need(event.payload.message)
+        need = self._intent_resolver(event.payload.message).need
         plan: ResponsePlan | None
         match need:
             case InformationNeed.OWN_CHILDREN_LIST | InformationNeed.OWN_CHILDREN_COUNT:
@@ -252,46 +228,6 @@ class CognitiveController:
             )
         )
         return _household_tool_plan(need, result)
-
-
-def _classify_information_need(message: str) -> InformationNeed:
-    """Classify only the documented P0.3 text patterns without model inference."""
-    normalized = _normalize_message(message)
-    need = InformationNeed.GENERIC_CONVERSATION
-    for patterns, candidate_need in (
-        (_OWN_CHILDREN_LIST_PATTERNS, InformationNeed.OWN_CHILDREN_LIST),
-        (_OWN_CHILDREN_COUNT_PATTERNS, InformationNeed.OWN_CHILDREN_COUNT),
-    ):
-        if any(pattern in normalized for pattern in patterns):
-            need = candidate_need
-            break
-    else:
-        if any(
-            term in normalized for term in (*_PRIVATE_HOUSEHOLD_TERMS, *_BIRTH_INFORMATION_TERMS)
-        ):
-            need = InformationNeed.PROTECTED_HOUSEHOLD
-        elif any(pattern in normalized for pattern in _AMBIGUOUS_DATE_PATTERNS):
-            need = InformationNeed.AMBIGUOUS_DATE_QUERY
-        elif _is_current_date_request(normalized):
-            need = InformationNeed.CURRENT_DATE
-        elif "edad" in normalized or "años" in normalized:
-            need = InformationNeed.EXPLICIT_BIRTH_DATE_AGE
-        elif any(term in normalized for term in _RELATIONSHIP_TERMS):
-            need = InformationNeed.RELATIONSHIP_OR_PROFILE
-    return need
-
-
-def _normalize_message(message: str) -> str:
-    """Case-fold text and remove accents for closed Spanish pattern matching."""
-    decomposed = unicodedata.normalize("NFD", message)
-    return "".join(
-        character for character in decomposed if not unicodedata.combining(character)
-    ).casefold()
-
-
-def _is_current_date_request(message: str) -> bool:
-    """Recognize the narrow current-date forms supported by P0.3."""
-    return ("fecha" in message and "hoy" in message) or "que dia es hoy" in message
 
 
 def _age_result(message: str, today: date) -> ToolResult:
