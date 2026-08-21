@@ -37,7 +37,7 @@ async def on_thinking_stream(ctx: LoopContext) -> RobotState:
     server would otherwise have raised NoSpeechError/ServerError. The rest
     of the stream is handed to SPEAKING via ``ctx.stream_events``.
     """
-    events = transcribe_stream(ctx.audio)
+    events = transcribe_stream(ctx.audio, identity_token=ctx.identity_token)
     ctx.stream_request_start = time.perf_counter()
     try:
         first = await anext(events)
@@ -58,7 +58,7 @@ async def on_thinking_stream(ctx: LoopContext) -> RobotState:
 async def _audio_chunks(
     events: AsyncIterator[StreamEvent],
     state: StreamValidationState,
-    request_start: float | None,
+    ctx: LoopContext,
 ) -> AsyncIterator[bytes]:
     """Validate and adapt remaining stream events into WAV chunks.
 
@@ -73,8 +73,12 @@ async def _audio_chunks(
             the audio contract, base64-decoded here.
         state: Ordering validator; ``finish()`` is called once ``events``
             is exhausted.
-        request_start: ``time.perf_counter()`` reading from THINKING, used
-            to log first-chunk receive latency.
+        ctx: Loop context providing THINKING's ``time.perf_counter()``
+            reading (for first-chunk latency) and holding the one-use owner
+            token — cleared here only when the terminal DoneEvent reports
+            ``authentication_consumed=True`` (Plan 0027). An EOF without
+            ``done`` leaves the token untouched; a replay is safely denied
+            server-side.
 
     Yields:
         Decoded WAV bytes, one per audio event (i.e. one per sentence).
@@ -91,7 +95,7 @@ async def _audio_chunks(
             logger.info("Robot emotion: %s", event.value)
         elif isinstance(event, AudioEvent):
             if not first_chunk_logged:
-                elapsed = _elapsed_ms(request_start)
+                elapsed = _elapsed_ms(ctx.stream_request_start)
                 if elapsed is not None:
                     logger.debug("First chunk received: %.1fms", elapsed)
                 first_chunk_logged = True
@@ -102,6 +106,8 @@ async def _audio_chunks(
             done = event
     state.finish()
     if done is not None:
+        if done.authentication_consumed:
+            ctx.identity_token = None
         logger.info(
             "Pipeline (stream): stt=%dms llm=%dms tts=%dms total=%dms chunks=%d",
             done.stt_ms,
@@ -133,9 +139,7 @@ async def on_speaking_stream(ctx: LoopContext) -> RobotState:
             logger.debug("First playback start: %.1fms", elapsed)
 
     try:
-        await play_wav_stream(
-            _audio_chunks(events, state, request_start), on_chunk_start=_on_chunk_start
-        )
+        await play_wav_stream(_audio_chunks(events, state, ctx), on_chunk_start=_on_chunk_start)
     except (AudioPlaybackError, ValueError) as exc:
         logger.error("Streaming playback failed: %s", exc)
         return RobotState.ERROR

@@ -43,3 +43,7 @@ class StreamDoneEvent(BaseModel):
     llm_ms: int = Field(default=0, ge=0, description="LLM response generation time in milliseconds")
     tts_ms: int = Field(default=0, ge=0, description="Total text-to-speech time in milliseconds")
     total_ms: int = Field(default=0, ge=0, description="Full request time in milliseconds")
+    authentication_consumed: bool = Field(
+        default=False,
+        description="Whether this turn consumed a fresh one-use owner unlock grant (Plan 0027).",
+    )

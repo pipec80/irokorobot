@@ -215,7 +215,9 @@ async def respond_vision(text: str, image: bytes) -> TranscribeResult:
     return _parse_result(response.json())
 
 
-async def transcribe_stream(audio: bytes) -> AsyncIterator[StreamEvent]:
+async def transcribe_stream(
+    audio: bytes, *, identity_token: str | None = None
+) -> AsyncIterator[StreamEvent]:
     """Send audio to POST /transcribe/stream and yield NDJSON events (R3).
 
     Behind ``settings.robot_streaming`` — the classic ``transcribe()`` above
@@ -225,10 +227,15 @@ async def transcribe_stream(audio: bytes) -> AsyncIterator[StreamEvent]:
 
     Args:
         audio: Raw WAV bytes at 16kHz mono int16.
+        identity_token: Optional one-use owner unlock token, sent as the
+            X-Iroko-Identity-Token header (Plan 0027). Never inspected or
+            logged here.
 
     Yields:
         Parsed StreamEvent variants in server order: text_heard, emotion,
-        audio (one per sentence), then done.
+        audio (one per sentence), then done. The terminal DoneEvent's
+        ``authentication_consumed`` reports whether this turn consumed the
+        supplied token.
 
     Raises:
         NoSpeechError: If the server found no speech in the audio (HTTP 422).
@@ -239,11 +246,13 @@ async def transcribe_stream(audio: bytes) -> AsyncIterator[StreamEvent]:
     if not audio:
         raise ValueError("Audio bytes are empty")
     client = _get_client()
+    headers = {"X-Iroko-Identity-Token": identity_token} if identity_token else None
     try:
         async with client.stream(
             "POST",
             f"{settings.server_url}/transcribe/stream",
             files={"audio": ("audio.wav", audio, "audio/wav")},
+            headers=headers,
         ) as response:
             response.raise_for_status()
             async for line in response.aiter_lines():

@@ -40,6 +40,10 @@ class DoneEvent:
     llm_ms: int
     tts_ms: int
     total_ms: int
+    # Plan 0027: whether this turn consumed a fresh one-use owner unlock
+    # grant. Additive — an older server's payload lacks the key and this
+    # defaults to False (see parse_stream_event below).
+    authentication_consumed: bool = False
 
 
 StreamEvent = TextHeardEvent | EmotionEvent | AudioEvent | DoneEvent
@@ -75,6 +79,7 @@ def parse_stream_event(data: dict[str, Any]) -> StreamEvent:  # Any: raw NDJSON,
                 llm_ms=data["llm_ms"],
                 tts_ms=data["tts_ms"],
                 total_ms=data["total_ms"],
+                authentication_consumed=bool(data.get("authentication_consumed", False)),
             )
         case event_type:
             raise ValueError(f"Unknown stream event type: {event_type!r}")

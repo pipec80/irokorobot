@@ -216,20 +216,9 @@ async def _prompt_owner_unlock(
 
     Returns:
         A fresh one-use token, or None to continue without one.
-
-    Raises:
-        SystemExit: If ROBOT_OWNER_UNLOCK_PROMPT and ROBOT_STREAMING are both
-            enabled — streaming parity is Plan 0027, not this one.
     """
     if not settings.robot_owner_unlock_prompt:
         return None
-    if settings.robot_streaming:
-        logger.error(
-            "ROBOT_OWNER_UNLOCK_PROMPT=true is not supported with "
-            "ROBOT_STREAMING=true yet (Plan 0027). Disable one of the two "
-            "before starting the robot."
-        )
-        raise SystemExit(1)
     pin = await read_secret("Owner PIN (leave blank to skip): ")
     if not pin:
         logger.info("No PIN entered — continuing without owner unlock")

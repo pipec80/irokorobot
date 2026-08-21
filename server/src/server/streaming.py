@@ -119,8 +119,14 @@ async def stream_response_plan(
     plan: ResponsePlan,
     stt_ms: int,
     request_start: float,
+    authentication_consumed: bool = False,
 ) -> AsyncIterator[str]:
     """Render an already-authorized plan without LLM or memory work.
+
+    Args:
+        authentication_consumed: Whether this request's owner grant resolver
+            consumed a fresh one-use token for this plan (Plan 0027).
+            Carried only on the terminal ``done`` event.
 
     Yields:
         NDJSON text, emotion, one 16kHz mono int16 WAV audio response, and
@@ -138,7 +144,11 @@ async def stream_response_plan(
         f"stream.{plan.source.value}", stt_ms, plan.duration_ms, duration_ms, total_ms
     )
     done_event = StreamDoneEvent(
-        stt_ms=stt_ms, llm_ms=plan.duration_ms, tts_ms=duration_ms, total_ms=total_ms
+        stt_ms=stt_ms,
+        llm_ms=plan.duration_ms,
+        tts_ms=duration_ms,
+        total_ms=total_ms,
+        authentication_consumed=authentication_consumed,
     )
     yield done_event.model_dump_json() + "\n"
 

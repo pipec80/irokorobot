@@ -396,18 +396,23 @@ async def test_unlock_prompt_server_rejection_continues_without_a_token(
 
 
 @pytest.mark.unit
-async def test_unlock_prompt_raises_when_streaming_is_also_enabled(
+async def test_unlock_prompt_works_when_streaming_is_also_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The opt-in prompt is classic-only until Plan 0027 adds streaming parity."""
+    """Plan 0027: the opt-in prompt is no longer classic-only — no SystemExit."""
     monkeypatch.setattr(app.settings, "robot_owner_unlock_prompt", True)
     monkeypatch.setattr(app.settings, "robot_streaming", True)
-    read_secret = AsyncMock()
+    read_secret = AsyncMock(return_value="482173")
+    unlock_result = server_client.OwnerUnlockResult(
+        token="opaque-token",  # noqa: S106 — fixture value
+        expires_at=datetime(2026, 8, 21, 10, 1, tzinfo=UTC),
+    )
+    unlock = AsyncMock(return_value=unlock_result)
 
-    with pytest.raises(SystemExit):
-        await app._prompt_owner_unlock(read_secret=read_secret)
+    token = await app._prompt_owner_unlock(read_secret=read_secret, unlock=unlock)
 
-    read_secret.assert_not_awaited()
+    assert token == "opaque-token"  # noqa: S105 — fixture value
+    read_secret.assert_awaited_once()
 
 
 @pytest.mark.unit

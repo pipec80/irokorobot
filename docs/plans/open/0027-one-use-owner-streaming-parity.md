@@ -5,8 +5,35 @@
 > `superpowers:executing-plans` to implement this plan task-by-task. Steps use
 > checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** Ready for owner review. Depends on merged Plans 0025 and 0026 and
-revalidation of Plan 0022's reliable-streaming contracts.
+**Status:** Implemented on `feat/one-use-owner-streaming-parity` on
+2026-08-21 — Tasks 1-5 done, one commit per task, authorized by Pipec.
+All focused and repository gates pass (752 tests, up from the 736 baseline
+after Plan 0026's close; `just lint`, `just typecheck`, `just audit`, `just
+check` all green). Streaming now carries the same one-use owner grant as
+classic: a valid token speaks the confirmed child answer once over NDJSON
+with `authentication_consumed=true` on the terminal `done` event;
+absent/expired/replayed/malformed tokens deny without disclosure and
+without reaching v4 storage; a generic turn with a valid token leaves it
+usable for a following protected question. Plan 0022's event
+order/fallback/EOF contracts remain green. Not yet proven: real
+microphone/speaker hardware acceptance for streaming (Plan 0028).
+
+**Deviation from the plan as written:** the file map for Task 4 did not
+list `robot/src/robot/app.py`, but that file's `_prompt_owner_unlock()`
+raised `SystemExit(1)` whenever `ROBOT_OWNER_UNLOCK_PROMPT` and
+`ROBOT_STREAMING` were both enabled — a guard Plan 0026 added pointing
+explicitly at this plan. That guard was removed as part of Task 4, since
+without it this plan's own completion criterion (streaming parity usable
+on the real robot) is unreachable. `tests/unit/test_robot_app.py`'s
+`test_unlock_prompt_raises_when_streaming_is_also_enabled` was replaced
+with `test_unlock_prompt_works_when_streaming_is_also_enabled`. No other
+file outside the plan's stated scope was touched for this fix. Separately,
+the RED-test file map named `tests/unit/test_streaming_protocol.py` for
+Task 1's wire-compat tests; that file covers an unrelated module
+(`llm_streaming`/`streaming_protocol` emotion-tag parsing), so the new
+compat tests instead landed in new `tests/unit/test_schemas_streaming.py`
+and `tests/unit/test_stream_events.py`, matching the codebase's existing
+one-file-per-concern split for those two wire modules.
 
 **Goal:** Carry the same one-use owner grant through
 `POST /transcribe/stream`, preserving exact NDJSON/audio success rules and
@@ -325,6 +352,31 @@ state. Streaming must additionally pass Plan 0022 event/audio/EOF guarantees.
 
 Record automated parity only. Real microphone, Piper playback, operator PIN,
 and repeated human scenarios remain open in Plan 0028.
+
+**Evidence (2026-08-21):** Every criterion below is met on
+`feat/one-use-owner-streaming-parity`. `tests/integration/test_owner_authenticated_stream.py`
+proves the full streaming flow against a real disposable DB (mocked
+STT/TTS): valid unlock → exact NDJSON answer once with
+`authentication_consumed=true`; replay, absence, expiry, and a malformed
+header all deny without disclosure and without
+`PolicyGatedV4Reader.read_active_relations` being awaited; a generic turn
+with a valid token leaves it usable for a following protected question.
+`tests/unit/test_schemas_streaming.py` and `tests/unit/test_stream_events.py`
+prove the additive `authentication_consumed` field round-trips and that an
+older payload without it defaults to `false`. `tests/unit/test_server_client.py`
+proves the robot sends the identity header only when a token is held, and
+`tests/unit/test_robot_app_streaming.py` proves the token is cleared only
+on a `done` reporting `authentication_consumed=true`, retained on a
+non-consuming `done`, and retained on an EOF before `done`. The classic vs
+streaming security matrix (valid, absent, expired, replayed, malformed,
+generic non-consumption, tool-not-invoked, audit redaction, client state)
+matches by construction: both routes share the same `CognitiveController`,
+`OwnerUnlockService`, and `HouseholdKnowledgeTools` audit writer — no
+route-specific authorization logic exists. Plan 0022's event
+order/fallback/EOF/audio-format guarantees remain green across the full
+`tests/integration/test_transcribe_stream*.py` suite. No secret (PIN,
+token) appears in any log or audit row across these tests. Real
+microphone/speaker acceptance for streaming remains for Plan 0028.
 
 ## Completion criteria
 
