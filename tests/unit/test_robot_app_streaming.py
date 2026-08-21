@@ -137,7 +137,10 @@ async def test_thinking_stream_sets_request_start_before_first_event(
 ) -> None:
     """THINKING must timestamp the request before consuming the first event."""
 
-    async def _fake_transcribe_stream(_audio: bytes) -> AsyncIterator[StreamEvent]:
+    async def _fake_transcribe_stream(
+        _audio: bytes, *, identity_token: str | None = None
+    ) -> AsyncIterator[StreamEvent]:
+        del identity_token
         yield TextHeardEvent(value="hola")
 
     monkeypatch.setattr(app_streaming, "transcribe_stream", _fake_transcribe_stream)
@@ -154,7 +157,10 @@ async def test_thinking_stream_sets_request_start_before_first_event(
 async def test_thinking_stream_server_error_goes_to_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def _broken_transcribe_stream(_audio: bytes) -> AsyncIterator[StreamEvent]:
+    async def _broken_transcribe_stream(
+        _audio: bytes, *, identity_token: str | None = None
+    ) -> AsyncIterator[StreamEvent]:
+        del identity_token
         raise ServerError("down")
         yield  # pragma: no cover - unreachable, keeps this an async generator
 
@@ -162,3 +168,75 @@ async def test_thinking_stream_server_error_goes_to_error(
     ctx = LoopContext(audio=b"x")
 
     assert await app_streaming.on_thinking_stream(ctx) is RobotState.ERROR
+
+
+@pytest.mark.unit
+async def test_thinking_stream_passes_the_held_identity_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Plan 0027: THINKING must forward ctx.identity_token to transcribe_stream."""
+    seen: dict[str, object] = {}
+
+    async def _fake_transcribe_stream(
+        audio: bytes, *, identity_token: str | None = None
+    ) -> AsyncIterator[StreamEvent]:
+        seen["audio"] = audio
+        seen["identity_token"] = identity_token
+        yield TextHeardEvent(value="hola")
+
+    monkeypatch.setattr(app_streaming, "transcribe_stream", _fake_transcribe_stream)
+    ctx = LoopContext(audio=b"x", identity_token="opaque-token")  # noqa: S106
+
+    state = await app_streaming.on_thinking_stream(ctx)
+
+    assert state is RobotState.SPEAKING
+    assert seen["identity_token"] == "opaque-token"  # noqa: S105 — fixture value
+
+
+@pytest.mark.unit
+async def test_speaking_stream_clears_token_when_done_reports_consumed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A consumed grant must be cleared so it is never sent on the next turn."""
+    monkeypatch.setattr(audio_playback, "play_wav", AsyncMock())
+    ctx = LoopContext(identity_token="opaque-token")  # noqa: S106
+    ctx.stream_events = _events(
+        EmotionEvent("joy"),
+        _audio_event("Hola."),
+        DoneEvent(stt_ms=1, llm_ms=1, tts_ms=1, total_ms=3, authentication_consumed=True),
+    )
+
+    state = await app_streaming.on_speaking_stream(ctx)
+
+    assert state is RobotState.IDLE
+    assert ctx.identity_token is None
+
+
+@pytest.mark.unit
+async def test_speaking_stream_retains_token_when_done_reports_not_consumed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A generic turn's done (authentication_consumed=false) must not drop the token."""
+    monkeypatch.setattr(audio_playback, "play_wav", AsyncMock())
+    ctx = LoopContext(identity_token="opaque-token")  # noqa: S106
+    ctx.stream_events = _events(EmotionEvent("joy"), _audio_event("Hola."), _DONE)
+
+    state = await app_streaming.on_speaking_stream(ctx)
+
+    assert state is RobotState.IDLE
+    assert ctx.identity_token == "opaque-token"  # noqa: S105 — fixture value
+
+
+@pytest.mark.unit
+async def test_speaking_stream_retains_token_when_eof_before_done(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """EOF before done must leave the token untouched — replay is denied server-side."""
+    monkeypatch.setattr(audio_playback, "play_wav", AsyncMock())
+    ctx = LoopContext(identity_token="opaque-token")  # noqa: S106
+    ctx.stream_events = _events(EmotionEvent("joy"), _audio_event("Hola."))
+
+    state = await app_streaming.on_speaking_stream(ctx)
+
+    assert state is RobotState.ERROR
+    assert ctx.identity_token == "opaque-token"  # noqa: S105 — fixture value

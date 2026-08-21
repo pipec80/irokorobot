@@ -7,6 +7,7 @@ import json
 import httpx
 import pytest
 from robot.exceptions import NoSpeechError, ServerError
+from robot.stream_events import DoneEvent
 
 from robot import server_client
 
@@ -336,6 +337,96 @@ async def test_transcribe_adds_identity_header_only_when_token_present(
 
     assert seen_headers[0]["X-Iroko-Identity-Token"] == "opaque-token"
     assert "X-Iroko-Identity-Token" not in seen_headers[1]
+
+
+def _done_line(*, authentication_consumed: bool | None = None) -> str:
+    """Build one raw NDJSON `done` line, optionally omitting the new field."""
+    payload: dict[str, object] = {
+        "type": "done",
+        "stt_ms": 1,
+        "llm_ms": 2,
+        "tts_ms": 3,
+        "total_ms": 6,
+    }
+    if authentication_consumed is not None:
+        payload["authentication_consumed"] = authentication_consumed
+    return json.dumps(payload)
+
+
+@pytest.mark.unit
+async def test_transcribe_stream_omits_header_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No token supplied must never send the identity header (Plan 0027)."""
+    seen_headers: list[httpx.Headers] = []
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        seen_headers.append(request.headers)
+        return httpx.Response(200, text=_done_line() + "\n")
+
+    _patch_transport(monkeypatch, _handler)
+
+    async for _event in server_client.transcribe_stream(b"wav"):
+        pass
+
+    assert "X-Iroko-Identity-Token" not in seen_headers[0]
+
+
+@pytest.mark.unit
+async def test_transcribe_stream_sends_identity_header_exactly_once_when_present(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A supplied token must be sent exactly once, on the streaming request itself."""
+    seen_headers: list[httpx.Headers] = []
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        seen_headers.append(request.headers)
+        return httpx.Response(200, text=_done_line() + "\n")
+
+    _patch_transport(monkeypatch, _handler)
+
+    async for _event in server_client.transcribe_stream(b"wav", identity_token="opaque-token"):  # noqa: S106
+        pass
+
+    assert len(seen_headers) == 1
+    assert seen_headers[0]["X-Iroko-Identity-Token"] == "opaque-token"
+
+
+@pytest.mark.unit
+async def test_transcribe_stream_done_tolerates_missing_consumed_field(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An older server's done payload (no such key) must still parse and default false."""
+
+    def _handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=_done_line() + "\n")
+
+    _patch_transport(monkeypatch, _handler)
+
+    events = [event async for event in server_client.transcribe_stream(b"wav")]
+
+    assert len(events) == 1
+    done = events[0]
+    assert isinstance(done, DoneEvent)
+    assert done.authentication_consumed is False
+
+
+@pytest.mark.unit
+async def test_transcribe_stream_done_parses_consumed_true(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A fresh owner grant consumed this turn must surface as True."""
+
+    def _handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=_done_line(authentication_consumed=True) + "\n")
+
+    _patch_transport(monkeypatch, _handler)
+
+    events = [event async for event in server_client.transcribe_stream(b"wav")]
+
+    done = events[0]
+    assert isinstance(done, DoneEvent)
+    assert done.authentication_consumed is True
 
 
 @pytest.mark.unit
