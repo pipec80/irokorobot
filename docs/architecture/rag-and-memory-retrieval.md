@@ -2,7 +2,7 @@
 
 > **Status:** Arquitectura canónica objetivo; no es un plan ejecutable.
 >
-> **Observed baseline:** 2026-08-20, rama `docs/personal-family-profiles`.
+> **Observed baseline:** 2026-08-21, `main` en `5ba9f4f`.
 >
 > **Principio rector:** Iroko tiene un sistema de memoria. RAG es uno de sus
 > mecanismos de recuperación, no el cerebro completo ni una autoridad sobre la
