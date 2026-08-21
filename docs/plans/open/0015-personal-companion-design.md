@@ -55,9 +55,9 @@ streaming channels, and real allowed/denied runtime acceptance.
 Execute the approved design in
 [Plan 0024](0024-owner-authenticated-memory-mvp-design.md) through its bounded
 portfolio: [setup](../completed/0025-personal-owner-bootstrap-and-pin-setup.md)
-(merged), [classic authenticated turn](0026-one-use-owner-authenticated-classic-turn.md)
-(merged), [streaming parity](0027-one-use-owner-streaming-parity.md) (merged), and
-[runtime acceptance](0028-owner-authenticated-memory-runtime-acceptance.md)
+(merged), [classic authenticated turn](../completed/0026-one-use-owner-authenticated-classic-turn.md)
+(merged), [streaming parity](../completed/0027-one-use-owner-streaming-parity.md) (merged), and
+[runtime acceptance](../completed/0028-owner-authenticated-memory-runtime-acceptance.md)
 (executed, PASS). PC-1 is complete.
 
 The delivery order is fixed:
@@ -142,9 +142,10 @@ product acceptance.
 ## Next decision gate
 
 Pipec reviewed and merged Plans
-[0025](../completed/0025-personal-owner-bootstrap-and-pin-setup.md) (PR #56) and
-[0026](0026-one-use-owner-authenticated-classic-turn.md) (PR #57), each on its
-own feature branch with observed RED/GREEN evidence and a review gate. The
-same discipline applies to [0027](0027-one-use-owner-streaming-parity.md) and
-[0028](0028-owner-authenticated-memory-runtime-acceptance.md): one plan per
-change, never collapsed.
+[0025](../completed/0025-personal-owner-bootstrap-and-pin-setup.md) (PR #56),
+[0026](../completed/0026-one-use-owner-authenticated-classic-turn.md) (PR #57),
+[0027](../completed/0027-one-use-owner-streaming-parity.md) (PR #64), and
+[0028](../completed/0028-owner-authenticated-memory-runtime-acceptance.md)
+(executed 2026-08-21), each on its own feature branch with observed
+RED/GREEN evidence and a review gate. The same discipline applies to every
+future plan: one plan per change, never collapsed.

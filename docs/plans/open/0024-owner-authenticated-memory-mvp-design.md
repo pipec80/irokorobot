@@ -101,11 +101,11 @@ executed in order; preparing these documents is not implementation evidence:
    (merged) — minimal security bootstrap: Pipec as owner, confirmed child
    relations, and local PIN setup without claiming extended onboarding
    completion;
-2. [Plan 0026](0026-one-use-owner-authenticated-classic-turn.md) — one-use
+2. [Plan 0026](../completed/0026-one-use-owner-authenticated-classic-turn.md) — one-use
    unlock and the authorized classic `/chat` and `/transcribe` paths;
-3. [Plan 0027](0027-one-use-owner-streaming-parity.md) — equivalent one-use
+3. [Plan 0027](../completed/0027-one-use-owner-streaming-parity.md) — equivalent one-use
    behavior for streaming without weakening Plan 0022;
-4. [Plan 0028](0028-owner-authenticated-memory-runtime-acceptance.md) — repeated
+4. [Plan 0028](../completed/0028-owner-authenticated-memory-runtime-acceptance.md) — repeated
    real microphone-to-speaker acceptance and safe evidence.
 
 ### Slice A — First boot and known personal data

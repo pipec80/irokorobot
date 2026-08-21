@@ -241,9 +241,9 @@ streaming mode, with real microphone/speaker hardware, and are audited.
 [Plan 0024](../plans/open/0024-owner-authenticated-memory-mvp-design.md)
 defines the design. Its executable portfolio is
 [0025 owner setup and PIN](../plans/completed/0025-personal-owner-bootstrap-and-pin-setup.md)
-(merged, PR #56) → [0026 classic authenticated turn](../plans/open/0026-one-use-owner-authenticated-classic-turn.md)
-(merged, PR #57) → [0027 streaming parity](../plans/open/0027-one-use-owner-streaming-parity.md)
-(merged) → [0028 real runtime acceptance](../plans/open/0028-owner-authenticated-memory-runtime-acceptance.md)
+(merged, PR #56) → [0026 classic authenticated turn](../plans/completed/0026-one-use-owner-authenticated-classic-turn.md)
+(merged, PR #57) → [0027 streaming parity](../plans/completed/0027-one-use-owner-streaming-parity.md)
+(merged) → [0028 real runtime acceptance](../plans/completed/0028-owner-authenticated-memory-runtime-acceptance.md)
 (executed, PASS). P1.1 is complete.
 
 The [personal-companion delivery map](personal-companion-delivery-map.md)

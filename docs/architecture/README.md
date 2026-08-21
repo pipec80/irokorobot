@@ -69,9 +69,10 @@ specific conflict instead of redesigning the project implicitly.
   current product-spine design for the first authenticated personal-memory
   proof. Its executable sequence is
   [0025](../plans/completed/0025-personal-owner-bootstrap-and-pin-setup.md) (merged) →
-  [0026](../plans/open/0026-one-use-owner-authenticated-classic-turn.md) (merged) →
-  [0027](../plans/open/0027-one-use-owner-streaming-parity.md) (next) →
-  [0028](../plans/open/0028-owner-authenticated-memory-runtime-acceptance.md).
+  [0026](../plans/completed/0026-one-use-owner-authenticated-classic-turn.md) (merged) →
+  [0027](../plans/completed/0027-one-use-owner-streaming-parity.md) (merged) →
+  [0028](../plans/completed/0028-owner-authenticated-memory-runtime-acceptance.md)
+  (executed, PASS). PC-1 is complete.
 - [`memory-and-world-state.md`](memory-and-world-state.md): relational knowledge,
   memory lifecycle, onboarding, retrieval, and present-time state.
 - [`rag-and-memory-retrieval.md`](rag-and-memory-retrieval.md): detailed target
