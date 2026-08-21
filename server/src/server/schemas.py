@@ -179,6 +179,12 @@ class TranscribeResponse(BaseModel):
     total_ms: int = Field(
         default=0, ge=0, description="Full /transcribe request time in milliseconds"
     )
+    # Additive field: whether this turn consumed a fresh one-use owner unlock
+    # grant (X-Iroko-Identity-Token). Absent/expired/replayed tokens leave
+    # this False without disclosing which case occurred.
+    authentication_consumed: bool = Field(
+        default=False, description="Whether this turn consumed a fresh owner unlock grant"
+    )
 
 
 class VisionDescribeResponse(BaseModel):

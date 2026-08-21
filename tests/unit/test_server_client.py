@@ -1,6 +1,8 @@
 """Unit tests for robot.server_client — httpx mocked via MockTransport."""
 
 from collections.abc import Generator
+from datetime import UTC, datetime
+import json
 
 import httpx
 import pytest
@@ -227,3 +229,161 @@ async def test_check_vision_enabled_network_error_raises_server_error(
 
     with pytest.raises(ServerError, match="Could not reach"):
         await server_client.check_vision_enabled()
+
+
+def _patch_transport(monkeypatch: pytest.MonkeyPatch, handler) -> None:
+    """Route the shared httpx client through a mocked transport."""
+    transport = httpx.MockTransport(handler)
+    original = httpx.AsyncClient
+
+    def _patched_client(*args: object, **kwargs: object) -> httpx.AsyncClient:
+        kwargs["transport"] = transport
+        return original(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(server_client.httpx, "AsyncClient", _patched_client)
+
+
+@pytest.mark.unit
+async def test_unlock_owner_sends_pin_only_to_the_local_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The PIN must go to POST /auth/owner/unlock and nowhere else."""
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/auth/owner/unlock"
+        assert request.method == "POST"
+        assert json.loads(request.content) == {"pin": "482173"}
+        return httpx.Response(
+            200, json={"token": "opaque-token", "expires_at": "2026-08-21T10:01:00+00:00"}
+        )
+
+    _patch_transport(monkeypatch, _handler)
+
+    result = await server_client.unlock_owner("482173")
+
+    assert result.token == "opaque-token"  # noqa: S105 — fixture value
+    assert result.expires_at == datetime(2026, 8, 21, 10, 1, tzinfo=UTC)
+
+
+@pytest.mark.unit
+async def test_unlock_owner_maps_401_to_server_error_without_echoing_pin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An invalid PIN must raise ServerError, never leaking the candidate PIN."""
+
+    def _handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, json={"detail": "Owner authentication failed"})
+
+    _patch_transport(monkeypatch, _handler)
+
+    with pytest.raises(ServerError) as exc_info:
+        await server_client.unlock_owner("000000")
+    assert "000000" not in str(exc_info.value)
+
+
+@pytest.mark.unit
+async def test_unlock_owner_maps_429_to_server_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An active local rate limit must surface as a safe ServerError."""
+
+    def _handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, json={"detail": "Too many attempts"})
+
+    _patch_transport(monkeypatch, _handler)
+
+    with pytest.raises(ServerError, match="429"):
+        await server_client.unlock_owner("482173")
+
+
+@pytest.mark.unit
+async def test_unlock_owner_network_error_raises_server_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A dead server must raise ServerError, not leak httpx internals."""
+
+    def _handler(_request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("unreachable")
+
+    _patch_transport(monkeypatch, _handler)
+
+    with pytest.raises(ServerError, match="Could not reach"):
+        await server_client.unlock_owner("482173")
+
+
+@pytest.mark.unit
+async def test_transcribe_adds_identity_header_only_when_token_present(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The identity header must be sent only when a token was supplied."""
+    seen_headers: list[httpx.Headers] = []
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        seen_headers.append(request.headers)
+        return httpx.Response(
+            200,
+            json={
+                "text_heard": "hola",
+                "llm_response": "qué tal",
+                "audio_base64": "AAAA",
+                "duration_ms": 123,
+                "emotion": "joy",
+            },
+        )
+
+    _patch_transport(monkeypatch, _handler)
+
+    await server_client.transcribe(b"wav", identity_token="opaque-token")  # noqa: S106
+    await server_client.transcribe(b"wav")
+
+    assert seen_headers[0]["X-Iroko-Identity-Token"] == "opaque-token"
+    assert "X-Iroko-Identity-Token" not in seen_headers[1]
+
+
+@pytest.mark.unit
+async def test_transcribe_parses_authentication_consumed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A consumed grant must surface as `authentication_consumed = True`."""
+
+    def _handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "text_heard": "hola",
+                "llm_response": "qué tal",
+                "audio_base64": "AAAA",
+                "duration_ms": 123,
+                "emotion": "joy",
+                "authentication_consumed": True,
+            },
+        )
+
+    _patch_transport(monkeypatch, _handler)
+
+    result = await server_client.transcribe(b"wav", identity_token="opaque-token")  # noqa: S106
+
+    assert result.authentication_consumed is True
+
+
+@pytest.mark.unit
+async def test_transcribe_defaults_authentication_consumed_false_on_older_server(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An older server without the field must not crash or claim consumption."""
+
+    def _handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "text_heard": "hola",
+                "llm_response": "qué tal",
+                "audio_base64": "AAAA",
+                "duration_ms": 123,
+                "emotion": "joy",
+            },
+        )
+
+    _patch_transport(monkeypatch, _handler)
+
+    result = await server_client.transcribe(b"wav")
+
+    assert result.authentication_consumed is False

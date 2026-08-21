@@ -31,9 +31,15 @@ class ChatResponse(BaseModel):
         emotion: Emotion detected during generation.
         duration_ms: Complete text-turn latency in milliseconds.
         conversation_id: Working-memory identifier from the request.
+        authentication_consumed: True only if this turn consumed a fresh
+            one-use owner unlock grant.
     """
 
     response: str
     emotion: str
     duration_ms: int = Field(ge=0)
     conversation_id: str
+    authentication_consumed: bool = Field(
+        default=False,
+        description="Whether this turn consumed a fresh one-use owner unlock grant",
+    )

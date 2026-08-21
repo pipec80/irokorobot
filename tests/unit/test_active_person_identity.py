@@ -46,6 +46,7 @@ def test_identity_contract_enums_expose_documented_values() -> None:
         "face",
         "voice",
         "context",
+        "local_unlock",
     }
     assert {status.value for status in ActivePersonStatus} == {
         "identified",
@@ -256,6 +257,23 @@ def test_resolver_carries_an_explicit_persisted_role_without_authorizing() -> No
 
     assert context.status is ActivePersonStatus.IDENTIFIED
     assert context.role is HouseholdRole.OWNER
+
+
+def test_resolver_identifies_one_verified_local_unlock_person() -> None:
+    """A trusted local-unlock grant must resolve as identified, not probable."""
+    unlock = IdentityEvidence(
+        evidence_id=uuid4(),
+        source=IdentityEvidenceSource.LOCAL_UNLOCK,
+        candidate_person_id=42,
+        confidence=_confidence(),
+        observed_at=_RESOLVED_AT - timedelta(minutes=1),
+        reference="local-unlock",
+    )
+
+    context = _resolve((unlock,), {42: _person(42)})
+
+    assert context.person_id == 42
+    assert context.status is ActivePersonStatus.IDENTIFIED
 
 
 def test_resolver_marks_one_verified_session_candidate_as_probable() -> None:

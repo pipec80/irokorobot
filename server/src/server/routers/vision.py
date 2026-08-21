@@ -60,7 +60,7 @@ def _vision_event_from_question(message: str) -> CognitiveEvent[TextTurnPayload]
     )
 
 
-def _public_unknown_vision_actor(
+async def _public_unknown_vision_actor(
     event: CognitiveEvent[TextTurnPayload],
 ) -> ActivePersonContext:
     """Return the safe public visual actor without deriving an identity."""

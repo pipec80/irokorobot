@@ -19,6 +19,8 @@ to start if streaming is on and the server reports vision enabled (F-08).
 
 import asyncio
 import base64
+from collections.abc import Awaitable, Callable
+import getpass
 import logging
 
 from robot import app_streaming
@@ -34,12 +36,22 @@ from robot.exceptions import (
 )
 from robot.fsm_types import LoopContext, RobotState
 from robot.logging_setup import build_file_handler
-from robot.server_client import check_vision_enabled, close_client, respond_vision, transcribe
+from robot.server_client import (
+    OwnerUnlockResult,
+    check_vision_enabled,
+    close_client,
+    respond_vision,
+    transcribe,
+    unlock_owner,
+)
 from robot.settings import settings
 
 logger = logging.getLogger(__name__)
 
 _ERROR_RECOVERY_S = 2.0
+
+type ReadSecret = Callable[[str], Awaitable[str]]
+type Unlock = Callable[[str], Awaitable[OwnerUnlockResult]]
 
 
 async def _on_idle(ctx: LoopContext) -> RobotState:
@@ -66,7 +78,7 @@ async def _on_thinking(ctx: LoopContext) -> RobotState:
     if settings.robot_streaming:
         return await app_streaming.on_thinking_stream(ctx)
     try:
-        ctx.result = await transcribe(ctx.audio)
+        ctx.result = await transcribe(ctx.audio, identity_token=ctx.identity_token)
     except NoSpeechError:
         # Ambient noise tripped the local VAD but Whisper heard nothing —
         # not an error, just resume listening.
@@ -75,6 +87,9 @@ async def _on_thinking(ctx: LoopContext) -> RobotState:
     except (ServerError, ValueError) as exc:
         logger.error("Server request failed: %s", exc)
         return RobotState.ERROR
+    if ctx.result.authentication_consumed:
+        # The one-use grant is spent — never carry it into another turn.
+        ctx.identity_token = None
     logger.info("Heard: %s", ctx.result.text_heard)
     logger.info("Robot: %s", ctx.result.llm_response)
     return RobotState.SPEAKING
@@ -180,6 +195,54 @@ async def _guard_streaming_vision_compat() -> None:
         raise SystemExit(1)
 
 
+async def _default_read_secret(prompt: str) -> str:
+    """Read one secret line via getpass, off the event loop."""
+    return await asyncio.to_thread(getpass.getpass, prompt)
+
+
+async def _prompt_owner_unlock(
+    *,
+    read_secret: ReadSecret = _default_read_secret,
+    unlock: Unlock = unlock_owner,
+) -> str | None:
+    """Optionally prompt once for the local owner PIN before the FSM starts.
+
+    Classic mode only. An empty answer or a rejected PIN degrades safely to
+    public conversation — this is never fatal to startup.
+
+    Args:
+        read_secret: Boundary that prompts for and returns one secret line.
+        unlock: Boundary that verifies the PIN against the server.
+
+    Returns:
+        A fresh one-use token, or None to continue without one.
+
+    Raises:
+        SystemExit: If ROBOT_OWNER_UNLOCK_PROMPT and ROBOT_STREAMING are both
+            enabled — streaming parity is Plan 0027, not this one.
+    """
+    if not settings.robot_owner_unlock_prompt:
+        return None
+    if settings.robot_streaming:
+        logger.error(
+            "ROBOT_OWNER_UNLOCK_PROMPT=true is not supported with "
+            "ROBOT_STREAMING=true yet (Plan 0027). Disable one of the two "
+            "before starting the robot."
+        )
+        raise SystemExit(1)
+    pin = await read_secret("Owner PIN (leave blank to skip): ")
+    if not pin:
+        logger.info("No PIN entered — continuing without owner unlock")
+        return None
+    try:
+        result = await unlock(pin)
+    except ServerError as exc:
+        logger.error("Owner unlock failed: %s", exc)
+        return None
+    logger.info("Owner unlock granted — valid for one protected question")
+    return result.token
+
+
 async def _run() -> None:
     """Run the FSM forever, surviving any unexpected exception."""
     logger.info("OMNiBot robot client starting — state machine online")
@@ -187,6 +250,7 @@ async def _run() -> None:
     ctx = LoopContext()
     try:
         await _guard_streaming_vision_compat()
+        ctx.identity_token = await _prompt_owner_unlock()
         while True:
             try:
                 state = await tick(state, ctx)

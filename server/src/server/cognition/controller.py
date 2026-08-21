@@ -35,11 +35,13 @@ from server.cognition.response_plan import (
 from server.text_turn import TextTurnResult
 
 type LegacyTextTurn = Callable[[str, str], Awaitable[TextTurnResult]]
-type ActivePersonResolver = Callable[[CognitiveEvent[TextTurnPayload]], ActivePersonContext]
+type ActivePersonResolver = Callable[
+    [CognitiveEvent[TextTurnPayload]], Awaitable[ActivePersonContext]
+]
 type PolicyEvaluator = Callable[[AuthorizationRequest], AuthorizationDecision]
 type AuditWriter = Callable[[AuthorizationRequest, AuthorizationDecision], Awaitable[None]]
 type ConsentResolver = Callable[
-    [CognitiveEvent[TextTurnPayload], ActivePersonContext], ConsentStatus
+    [CognitiveEvent[TextTurnPayload], ActivePersonContext], Awaitable[ConsentStatus]
 ]
 
 _ISO_DATE_PATTERN = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
@@ -68,13 +70,13 @@ _PRIVATE_HOUSEHOLD_TERMS = (
 )
 _BIRTH_INFORMATION_TERMS = ("nacio", "nacimiento")
 _RELATIONSHIP_TERMS = ("relación",)
-_OWN_CHILDREN_LIST_PATTERNS = ("como se llaman mis hijos",)
+_OWN_CHILDREN_LIST_PATTERNS = ("como se llaman mis hijos", "quienes son mis hijos")
 _OWN_CHILDREN_COUNT_PATTERNS = ("cuantos hijos tengo",)
 _AMBIGUOUS_DATE_PATTERNS = ("que dia soy",)
 _TWO_ITEMS = 2
 
 
-def _unknown_active_person(event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
+async def _unknown_active_person(event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
     """Build the safe public actor without deriving identity from HTTP input."""
     return ActivePersonContext(
         person_id=None,
@@ -99,7 +101,7 @@ async def _discard_audit(
     """Keep isolated controller tests free of persistence unless they inject it."""
 
 
-def _not_required_consent(
+async def _not_required_consent(
     _event: CognitiveEvent[TextTurnPayload],
     _actor: ActivePersonContext,
 ) -> ConsentStatus:
@@ -205,7 +207,7 @@ class CognitiveController:
     ) -> ResponsePlan:
         """Authorize and audit a protected branch before any legacy delegation."""
         request = AuthorizationRequest(
-            actor=self._active_person_resolver(event) if actor is None else actor,
+            actor=await self._active_person_resolver(event) if actor is None else actor,
             action=AuthorizationAction.READ_HOUSEHOLD_DATA,
             visibility=frozenset({DataVisibility.HOUSEHOLD}),
             sensitivity=frozenset({DataSensitivity.PRIVATE}),
@@ -228,10 +230,10 @@ class CognitiveController:
         need: InformationNeed,
     ) -> ResponsePlan:
         """Dispatch only self-child patterns through the closed family-tool seam."""
-        actor = self._active_person_resolver(event)
+        actor = await self._active_person_resolver(event)
         if self._household_tools is None or actor.person_id is None:
             return await self._protected_household_plan(event, need, actor)
-        consent = self._consent_resolver(event, actor)
+        consent = await self._consent_resolver(event, actor)
         result = (
             await self._household_tools.get_children(
                 parent_entity_id=actor.person_id,

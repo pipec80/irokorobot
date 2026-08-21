@@ -40,6 +40,7 @@ class IdentityEvidenceSource(str, _Enum):  # noqa: UP042
     FACE = "face"
     VOICE = "voice"
     CONTEXT = "context"
+    LOCAL_UNLOCK = "local_unlock"
 
 
 class ActivePersonStatus(str, _Enum):  # noqa: UP042
@@ -143,15 +144,21 @@ def _unknown_role(_: int) -> HouseholdRole:
     return HouseholdRole.UNKNOWN
 
 
+_TRUSTED_IDENTIFIED_SOURCES = frozenset(
+    {IdentityEvidenceSource.MANUAL, IdentityEvidenceSource.LOCAL_UNLOCK}
+)
+_RESOLVABLE_SOURCES = _TRUSTED_IDENTIFIED_SOURCES | {IdentityEvidenceSource.SESSION}
+
+
 def _resolved_candidates(
     evidence: tuple[IdentityEvidence, ...],
     lookup_person: PersonLookup,
     resolved_at: _datetime,
 ) -> tuple[tuple[IdentityEvidence, PersonRecord], ...]:
-    """Return unexpired manual or session evidence for verified people only."""
+    """Return unexpired manual, session, or local-unlock evidence for verified people."""
     candidates: list[tuple[IdentityEvidence, PersonRecord]] = []
     for item in evidence:
-        if item.source not in {IdentityEvidenceSource.MANUAL, IdentityEvidenceSource.SESSION}:
+        if item.source not in _RESOLVABLE_SOURCES:
             continue
         if item.expires_at is not None and item.expires_at <= resolved_at:
             continue
@@ -191,13 +198,13 @@ def resolve_active_person(
             (
                 candidate
                 for candidate in candidates
-                if candidate[0].source is IdentityEvidenceSource.MANUAL
+                if candidate[0].source in _TRUSTED_IDENTIFIED_SOURCES
             ),
             candidates[0],
         )
         status = (
             ActivePersonStatus.IDENTIFIED
-            if selected_evidence.source is IdentityEvidenceSource.MANUAL
+            if selected_evidence.source in _TRUSTED_IDENTIFIED_SOURCES
             else ActivePersonStatus.PROBABLE
         )
         return ActivePersonContext(

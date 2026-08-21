@@ -15,7 +15,7 @@ from server.chat_ui import mount_chat_ui
 from server.db import close_db, open_db, run_migrations
 from server.logging_setup import build_file_handler
 from server.memory import retention
-from server.routers import chat, system, transcribe, vision
+from server.routers import auth, chat, system, transcribe, vision
 from server.settings import settings
 
 _LOG_HANDLERS: dict[str, Any] = {
@@ -62,6 +62,11 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """Load ML models and optionally initialize the brain memory subsystem."""
+    if settings.uvicorn_workers != 1:
+        raise RuntimeError(
+            "Owner unlock grants are process-local: UVICORN_WORKERS must be 1, "
+            f"got {settings.uvicorn_workers}."
+        )
     logger.info("OMNiBot 2000 starting — loading models...")
     stt.preload()
     tts.preload()
@@ -104,6 +109,7 @@ app = FastAPI(
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 app.include_router(system.router)
+app.include_router(auth.router)
 app.include_router(chat.router)
 app.include_router(transcribe.router)
 app.include_router(vision.router)
