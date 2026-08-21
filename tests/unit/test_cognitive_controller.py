@@ -65,6 +65,26 @@ def _actor(role: HouseholdRole, person_id: int | None) -> ActivePersonContext:
     )
 
 
+def _resolver(actor: ActivePersonContext):
+    """Build an async active-person resolver returning a fixed actor."""
+
+    async def _resolve(_event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
+        return actor
+
+    return _resolve
+
+
+def _consent(status: ConsentStatus):
+    """Build an async consent resolver returning a fixed status."""
+
+    async def _resolve(
+        _event: CognitiveEvent[TextTurnPayload], _actor: ActivePersonContext
+    ) -> ConsentStatus:
+        return status
+
+    return _resolve
+
+
 def _decision(request: AuthorizationRequest, status: AuthorizationStatus) -> AuthorizationDecision:
     """Build a request-scoped decision for controller policy fakes."""
     return AuthorizationDecision(
@@ -219,7 +239,7 @@ async def test_controller_audits_denial_before_protected_legacy_delegate() -> No
     controller = CognitiveController(
         today=lambda: date(2026, 8, 12),
         legacy_turn=legacy_turn,
-        active_person_resolver=lambda _event: actor,
+        active_person_resolver=_resolver(actor),
         policy_evaluator=policy,
         audit_writer=audit,
     )
@@ -241,7 +261,7 @@ async def test_controller_keeps_allowed_household_request_unknown_until_v4_cutov
     controller = CognitiveController(
         today=lambda: date(2026, 8, 12),
         legacy_turn=legacy_turn,
-        active_person_resolver=lambda _event: actor,
+        active_person_resolver=_resolver(actor),
         policy_evaluator=policy,
         audit_writer=audit,
     )
@@ -270,9 +290,9 @@ async def test_controller_dispatches_trusted_child_names_without_legacy_delegate
     controller = CognitiveController(
         today=lambda: date(2026, 8, 12),
         legacy_turn=legacy_turn,
-        active_person_resolver=lambda _event: actor,
+        active_person_resolver=_resolver(actor),
         household_tools=tools,
-        consent_resolver=lambda _event, _actor: ConsentStatus.GRANTED,
+        consent_resolver=_consent(ConsentStatus.GRANTED),
     )
 
     plan = await controller.handle(_event("¿Cómo se llaman mis hijos?"))
@@ -300,9 +320,9 @@ async def test_controller_dispatches_trusted_child_count_without_legacy_delegate
     controller = CognitiveController(
         today=lambda: date(2026, 8, 12),
         legacy_turn=legacy_turn,
-        active_person_resolver=lambda _event: actor,
+        active_person_resolver=_resolver(actor),
         household_tools=tools,
-        consent_resolver=lambda _event, _actor: ConsentStatus.GRANTED,
+        consent_resolver=_consent(ConsentStatus.GRANTED),
     )
 
     plan = await controller.handle(_event("¿Cuántos hijos tengo?"))
@@ -338,3 +358,61 @@ async def test_controller_delegates_generic_conversation_with_original_inputs() 
     assert plan.emotion == "joy"
     assert plan.duration_ms == 42
     legacy_turn.assert_awaited_once_with("Hola, Iroko", "web-primary")
+
+
+@pytest.mark.asyncio
+async def test_identity_and_consent_resolve_only_for_protected_branches() -> None:
+    """Generic and date requests must never await actor or consent resolution."""
+    legacy_turn = AsyncMock(return_value=TextTurnResult("Hola", "joy", 42, False))
+    actor = _actor(HouseholdRole.OWNER, 7)
+    resolver = AsyncMock(return_value=actor)
+    consent = AsyncMock(return_value=ConsentStatus.GRANTED)
+    tools = Mock()
+    tools.get_children = AsyncMock(
+        return_value=HouseholdToolResult(
+            tool_name=HouseholdToolName.GET_CHILDREN,
+            status=KnowledgeStatus.KNOWN,
+            value=("Máximo", "Dominga"),
+        )
+    )
+    controller = CognitiveController(
+        today=lambda: date(2026, 8, 12),
+        legacy_turn=legacy_turn,
+        active_person_resolver=resolver,
+        household_tools=tools,
+        consent_resolver=consent,
+    )
+
+    await controller.handle(_event("Hola, Iroko"))
+    resolver.assert_not_awaited()
+    consent.assert_not_awaited()
+
+    await controller.handle(_event("¿Qué fecha es hoy?"))
+    resolver.assert_not_awaited()
+    consent.assert_not_awaited()
+
+    plan = await controller.handle(_event("¿Cómo se llaman mis hijos?"))
+    resolver.assert_awaited_once()
+    consent.assert_awaited_once()
+    assert plan.status is KnowledgeStatus.KNOWN
+
+
+@pytest.mark.asyncio
+async def test_unknown_actor_never_reaches_the_household_tool() -> None:
+    """An unresolved actor must fall back to the protected denial, not the tool."""
+    legacy_turn = AsyncMock()
+    unknown = _actor(HouseholdRole.UNKNOWN, None)
+    tools = Mock()
+    tools.get_children = AsyncMock()
+    controller = CognitiveController(
+        today=lambda: date(2026, 8, 12),
+        legacy_turn=legacy_turn,
+        active_person_resolver=_resolver(unknown),
+        household_tools=tools,
+    )
+
+    plan = await controller.handle(_event("¿Cómo se llaman mis hijos?"))
+
+    assert plan.status is KnowledgeStatus.UNAUTHORIZED
+    tools.get_children.assert_not_awaited()
+    legacy_turn.assert_not_awaited()

@@ -71,7 +71,7 @@ def _voice_event_from_transcript(message: str) -> CognitiveEvent[TextTurnPayload
     )
 
 
-def _public_unknown_voice_actor(
+async def _public_unknown_voice_actor(
     event: CognitiveEvent[TextTurnPayload],
 ) -> ActivePersonContext:
     """Return the safe public voice actor without deriving an identity."""

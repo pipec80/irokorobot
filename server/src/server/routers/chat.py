@@ -45,7 +45,7 @@ def _event_from_request(request: ChatRequest) -> CognitiveEvent[TextTurnPayload]
     )
 
 
-def _public_unknown_actor(event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
+async def _public_unknown_actor(event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
     """Return the public chat actor without accepting identity from HTTP input."""
     actor = ActivePersonContext(
         person_id=None,
