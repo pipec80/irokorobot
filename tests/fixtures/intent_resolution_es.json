@@ -1,0 +1,104 @@
+[
+  {
+    "text": "¿Cómo se llaman mis hijos?",
+    "need": "own_children_list",
+    "match": "exact",
+    "rule_id": "own_children.list.v1"
+  },
+  {
+    "text": "¿Cuántos hijos tengo?",
+    "need": "own_children_count",
+    "match": "exact",
+    "rule_id": "own_children.count.v1"
+  },
+  {
+    "text": "¿Quiénes son mis niños?",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "¿Cuándo nació Máximo?",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "birth.protected.v1"
+  },
+  {
+    "text": "fecha de nacimiento de mi hija",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "birth.protected.v1"
+  },
+  {
+    "text": "¿Qué edad tiene mi hija?",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "¿Qué fecha es hoy?",
+    "need": "current_date",
+    "match": "exact",
+    "rule_id": "date.current.v1"
+  },
+  {
+    "text": "¿Qué día es hoy?",
+    "need": "current_date",
+    "match": "exact",
+    "rule_id": "date.current.v1"
+  },
+  {
+    "text": "Dime la fecha actual.",
+    "need": "current_date",
+    "match": "exact",
+    "rule_id": "date.current.v1"
+  },
+  {
+    "text": "Me dice la fecha actual.",
+    "need": "current_date",
+    "match": "supervised_stt_alias",
+    "rule_id": "date.current.stt.v1"
+  },
+  {
+    "text": "¿En qué fecha estamos?",
+    "need": "current_date",
+    "match": "exact",
+    "rule_id": "date.current.v1"
+  },
+  {
+    "text": "¿Qué día soy?",
+    "need": "ambiguous_date_query",
+    "match": "supervised_stt_alias",
+    "rule_id": "date.ambiguous.stt.v1"
+  },
+  {
+    "text": "¿Qué vía es hoy?",
+    "need": "ambiguous_date_query",
+    "match": "supervised_stt_alias",
+    "rule_id": "date.ambiguous.stt.v1"
+  },
+  {
+    "text": "¿Qué edad tengo?",
+    "need": "explicit_birth_date_age",
+    "match": "exact",
+    "rule_id": "age.explicit.v1"
+  },
+  {
+    "text": "Calcula mi edad desde 1980-08-17",
+    "need": "explicit_birth_date_age",
+    "match": "exact",
+    "rule_id": "age.explicit.v1"
+  },
+  {
+    "text": "¿Qué relación existe?",
+    "need": "relationship_or_profile",
+    "match": "exact",
+    "rule_id": "relationship.profile.v1"
+  },
+  {
+    "text": "Hola, ¿cómo estás?",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  }
+]
