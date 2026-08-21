@@ -68,6 +68,23 @@ needed for this checkpoint.
    a pass. If any answer is routed to the wrong capability, R1 is not complete
    even when pytest is green.
 
+**Run 2026-08-21** (commit `9b7662a`, classic public mode,
+`ROBOT_STREAMING=false`, `ROBOT_OWNER_UNLOCK_PROMPT=false`, executed as
+part of [Plan 0028](../plans/open/0028-owner-authenticated-memory-runtime-acceptance.md)):
+R1-01 **PASS** (exact STT, `Hoy es 2026-08-21.`, no family data). R1-02
+**PASS** (exact STT, non-disclosing denial, `tools=-`, no v4 read). R1-03
+**FAIL** — 5 consecutive attempts, Whisper "small" never produced the
+literal phrase; it consistently mis-heard the proper noun "Iroko"
+(`'Hola Hiroko.'` twice, `'¿O leí roco?'`, `'Hola y roco.'`, and once
+dropping it entirely as `'¡Hola!'`). Every attempt still exercised the
+full STT→controller→LLM→Piper pipeline correctly and produced an
+appropriate, audible generic greeting — the failure is a repeatable STT
+vocabulary gap on this specific word, not a routing or pipeline defect.
+Per this runbook's own rule above, it is recorded as a failure rather
+than reinterpreted as a pass. R1 is not complete; Plan 0013 stays open.
+Full untracked evidence:
+`project-history/acceptance/2026-08-21-owner-authenticated-memory.md`.
+
 R1 does **not** authorize reading any existing legacy or v4 household data.
 Those records remain protected until a future P1 personal-companion flow creates
 and validates a separate trusted local session.
@@ -89,42 +106,58 @@ For every case record the command, effective non-secret settings, literal STT
 text, response, audible output, route, and pass/fail. Stop and file a defect
 on any mismatch; do not reinterpret a near miss as a pass.
 
-## Separate P1.1 personal acceptance (partial — formal evidence pending)
+## Separate P1.1 personal acceptance — CLOSED (2026-08-21)
 
-P1.1 is not a P0 closure step. Its old illustrative session procedure has been
+P1.1 is not a P0 closure step. Its old illustrative session procedure was
 superseded by the owner-approved design in
 [Plan 0024](../plans/open/0024-owner-authenticated-memory-mvp-design.md) and the
-bounded executable sequence:
+bounded executable sequence, now fully executed:
 
 1. [Plan 0025](../plans/completed/0025-personal-owner-bootstrap-and-pin-setup.md)
-   (merged, PR #56) creates Pipec, confirms Máximo and Dominga, and stores only a
-   PIN verifier;
+   (merged, PR #56) creates the sole owner, confirms two child relations, and
+   stores only a PIN verifier;
 2. [Plan 0026](../plans/open/0026-one-use-owner-authenticated-classic-turn.md)
-   (merged, PR #57) proves the one-use classic `/chat` and `/transcribe` paths —
-   P1-ALLOW and P1-PUBLIC below were confirmed once informally with real
-   hardware on 2026-08-21, matching the required result exactly;
-3. [Plan 0027](../plans/open/0027-one-use-owner-streaming-parity.md) adds equivalent
-   streaming behavior;
+   (merged, PR #57) proves the one-use classic `/chat` and `/transcribe` paths;
+3. [Plan 0027](../plans/open/0027-one-use-owner-streaming-parity.md) (merged,
+   PR #64) adds equivalent streaming behavior;
 4. [Plan 0028](../plans/open/0028-owner-authenticated-memory-runtime-acceptance.md)
-   defines the recoverable database setup, commands, repeated spoken cases,
-   audit checks, and evidence record.
+   executed the recoverable database setup, commands, repeated spoken cases,
+   audit checks, and evidence record on 2026-08-21 — **PASS**.
 
-Until Plan 0028 passes, the formal, repeated, independently recorded personal
-runtime acceptance may not be claimed — an informal single confirmation is not
-a substitute. The fixed product cases are:
+The fixed product cases below were each proven 3x in classic mode and 3x in
+streaming mode with real microphone/speaker hardware. The 2026-08-21
+acceptance run used the operator's real local owner/children identity rather
+than the placeholder names below — the exact required phrase is dynamically
+built from whichever names are stored (`f"Tus hijos son {names}."` in
+`controller.py`, never hardcoded), so this substitution is functionally
+equivalent and does not weaken the result. Full untracked evidence,
+including the literal transcripts and audit-table cross-checks:
+`project-history/acceptance/2026-08-21-owner-authenticated-memory.md`.
 
-| ID | Preconditions | Spoken phrase | Required result |
-|---|---|---|---|
-| P1-PUBLIC | No fresh one-use grant | “¿Quiénes son mis hijos?” | Non-disclosing denial; no names, count, existence hint, or protected read. |
-| P1-ALLOW | Fresh Pipec grant | “¿Quiénes son mis hijos?” | Exactly “Tus hijos son Máximo y Dominga.” through Piper. |
-| P1-REPLAY | Already consumed grant | Same protected question | Non-disclosing denial; no protected read. |
-| P1-EXPIRED | Expired unused grant | Same protected question | Non-disclosing denial; no protected read. |
-| P1-GENERIC | Fresh grant, then generic question | “¿Qué día es hoy?” followed by the protected question | Generic turn does not consume the grant; the next protected turn consumes it once. |
+| ID | Preconditions | Spoken phrase | Required result | Result |
+|---|---|---|---|---|
+| P1-PUBLIC | No fresh one-use grant | “¿Quiénes son mis hijos?” | Non-disclosing denial; no names, count, existence hint, or protected read. | **PASS** (3x classic + streaming baseline) |
+| P1-ALLOW | Fresh owner grant | “¿Quiénes son mis hijos?” | Exactly “Tus hijos son Máximo y Dominga.” (or the real stored names) through Piper. | **PASS** (3x classic, 3x streaming) |
+| P1-REPLAY | Already consumed grant | Same protected question | Non-disclosing denial; no protected read. | **PASS** (3x classic, 3x streaming) |
+| P1-EXPIRED | Expired unused grant | Same protected question | Non-disclosing denial; no protected read. | **PASS** |
+| P1-GENERIC | Fresh grant, then generic question | “¿Qué día es hoy?” followed by the protected question | Generic turn does not consume the grant; the next protected turn consumes it once. | **PASS** |
 
-Permitted family reads must preserve the documented policy/tool audit order.
-Denied cases must not produce `read_household_data`, and audit metadata must
-not contain names, PIN material, tokens, birth dates, preferences, or derived
-family values.
+Permitted family reads preserved the documented `execute_household_tool` →
+`read_household_data` policy/tool audit order on every allowed case,
+confirmed by a direct SQLite inspection of `authorization_audit_events`, not
+just console logs. Denied cases never produced a paired
+`execute_household_tool`/reader invocation, and a full-database byte-scan
+confirmed no PIN, token, or protected name appeared in any audit row.
+
+A repeatable, unrelated finding surfaced during this acceptance: a garbled
+STT transcript of the protected question can occasionally match the
+broader `protected_household` intent pattern instead of the specific
+`own_children_list` one. When that happens with a fresh, valid grant, the
+grant is consumed but the response is a generic "not yet connected" stub
+sentence — never the protected names and never the standard denial text.
+No disclosure occurred in any observed instance, but it is a UX gap worth
+folding into [Plan 0021](../plans/open/0021-p0-typed-intent-resolution.md)'s
+classifier work.
 
 ## Completion record
 

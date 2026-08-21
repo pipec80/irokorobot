@@ -17,9 +17,9 @@ deferred, umbrella, or product-design plan because it also lives under
 
 | Lane | Plans | Meaning |
 |---|---|---|
-| **NOW** | [0028](open/0028-owner-authenticated-memory-runtime-acceptance.md) | The real north-star physical acceptance — starts from merged `main` (Plans 0025, 0026, and 0027 closed) |
-| **AFTER PC-1** | [0021](open/0021-p0-typed-intent-resolution.md) → [0023](open/0023-p0-grounded-visual-dialogue.md) | Remaining P0-C intent and visual grounding |
-| **ACCEPTANCE DEBT** | [0013](open/0013-p0-voice-controller-bridge.md), [0026](open/0026-one-use-owner-authenticated-classic-turn.md), [0027](open/0027-one-use-owner-streaming-parity.md) | Code merged (PR #51, PR #57, and 0027's PR); Plan 0028 explicitly executes the repeated real microphone/speaker acceptance and records the independent verdict for all three. 0026's classic flow was informally confirmed once with real hardware on 2026-08-21 (see its Evidence section); 0027's streaming parity has automated evidence only, no real-microphone run yet — neither is a substitute for 0028's required 3x recorded runs. |
+| **NOW** | [0021](open/0021-p0-typed-intent-resolution.md) | Typed intent resolution — starts from merged `main` (Plans 0025-0028 closed, PC-1 accepted 2026-08-21) |
+| **THEN** | [0023](open/0023-p0-grounded-visual-dialogue.md) | Grounded visual dialogue, after 0021 |
+| **ACCEPTANCE DEBT** | [0013](open/0013-p0-voice-controller-bridge.md) | Code merged (PR #51). Plan 0028 executed R1-01/R1-02 (PASS) and R1-03 (FAIL — Whisper cannot reliably transcribe the proper noun "Iroko", 5/5 attempts). Plan 0013 stays open on this finding, tracked independently of the PC-1 verdict above, which is otherwise fully closed. |
 | **REFERENCE ONLY** | [0014](open/0014-p0-runtime-policy-hardening-design.md), [0015](open/0015-personal-companion-design.md), [0020](open/0020-p0-operator-qa-remediation-design.md), [0024](open/0024-owner-authenticated-memory-mvp-design.md) | Umbrella/design documents; never execute them as independent implementation batches |
 
 ## Queue rules
@@ -40,10 +40,10 @@ deferred, umbrella, or product-design plan because it also lives under
 | Order | Plan | State | Next gate |
 |---:|---|---|---|
 | 1 | [0025 — minimal owner/children/PIN setup](completed/0025-personal-owner-bootstrap-and-pin-setup.md) | Merged (PR #56) | Closed |
-| 2 | [0026 — one-use classic turn](open/0026-one-use-owner-authenticated-classic-turn.md) | Merged (PR #57); acceptance debt to Plan 0028 | Closed |
-| 3 | [0027 — streaming parity](open/0027-one-use-owner-streaming-parity.md) | Merged; acceptance debt to Plan 0028 | Closed |
-| 4 | [0028 — runtime acceptance](open/0028-owner-authenticated-memory-runtime-acceptance.md) | Executable now | Real microphone/speaker acceptance for 0013, 0026, 0027 |
-| 5 | [0021 — typed intent](open/0021-p0-typed-intent-resolution.md) | Deferred | PC-1 accepted |
+| 2 | [0026 — one-use classic turn](open/0026-one-use-owner-authenticated-classic-turn.md) | Merged (PR #57) | Closed |
+| 3 | [0027 — streaming parity](open/0027-one-use-owner-streaming-parity.md) | Merged (PR #64) | Closed |
+| 4 | [0028 — runtime acceptance](open/0028-owner-authenticated-memory-runtime-acceptance.md) | Executed 2026-08-21, PASS | Closed (0013's R1 debt tracked independently below) |
+| 5 | [0021 — typed intent](open/0021-p0-typed-intent-resolution.md) | Executable now | PC-1 accepted |
 | 6 | [0023 — grounded visual dialogue](open/0023-p0-grounded-visual-dialogue.md) | Deferred | 0021 complete |
 
 Supporting active designs and open acceptance work are listed in the

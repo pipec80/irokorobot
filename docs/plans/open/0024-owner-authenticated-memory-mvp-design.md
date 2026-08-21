@@ -1,8 +1,10 @@
 # Owner-authenticated personal-memory MVP design
 
-> **Status:** Approved product direction. Executable Plans 0025 (PR #56) and
-> 0026 (PR #57) are merged; 0027–0028 remain to close this design's runtime
-> acceptance.
+> **Status:** Approved product direction. Executable Plans 0025 (PR #56),
+> 0026 (PR #57), and 0027 (PR #64) are merged; Plan 0028 executed this
+> design's runtime acceptance on 2026-08-21 with a PASS verdict — real
+> hardware confirmed the exchange below, 3x in classic mode and 3x in
+> streaming mode. This design's own runtime acceptance is closed.
 
 ## Product result
 

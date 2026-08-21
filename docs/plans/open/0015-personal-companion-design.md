@@ -2,11 +2,12 @@
 
 > **Status:** Product direction approved. The immediate spine is
 > [Plan 0024](0024-owner-authenticated-memory-mvp-design.md), decomposed into
-> executable Plans 0025–0028. 0025 and 0026 are merged (PR #56, PR #57); the
-> classic authenticated-owner flow has been confirmed once informally with
-> real hardware. 0027–0028 remain. Existing foundations listed below are
-> production code and must be reused. Face, voice, fusion, and
-> visual-companion slices remain later work.
+> executable Plans 0025–0028. All four are merged/executed (PR #56, PR #57,
+> PR #64, and Plan 0028's 2026-08-21 real-hardware run). PC-1 is accepted:
+> classic and streaming authenticated-owner flows are each confirmed 3x with
+> real hardware. Existing foundations listed below are production code and
+> must be reused. Face, voice, fusion, and visual-companion slices remain
+> later work.
 
 ## Objective
 
@@ -55,8 +56,9 @@ Execute the approved design in
 [Plan 0024](0024-owner-authenticated-memory-mvp-design.md) through its bounded
 portfolio: [setup](../completed/0025-personal-owner-bootstrap-and-pin-setup.md)
 (merged), [classic authenticated turn](0026-one-use-owner-authenticated-classic-turn.md)
-(merged), [streaming parity](0027-one-use-owner-streaming-parity.md) (next), and
-[runtime acceptance](0028-owner-authenticated-memory-runtime-acceptance.md).
+(merged), [streaming parity](0027-one-use-owner-streaming-parity.md) (merged), and
+[runtime acceptance](0028-owner-authenticated-memory-runtime-acceptance.md)
+(executed, PASS). PC-1 is complete.
 
 The delivery order is fixed:
 

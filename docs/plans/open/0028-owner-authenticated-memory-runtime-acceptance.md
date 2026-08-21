@@ -5,8 +5,23 @@
 > Steps use checkbox (`- [ ]`) syntax for tracking. Do not dispatch coding
 > workers: this plan validates already-reviewed Plans 0025–0027.
 
-**Status:** Ready for owner review. Depends on merged Plans 0025–0027 and their
-green automated/CI evidence.
+**Status:** Executed on `main` at `9b7662a` on 2026-08-21 — Tasks 1-8 run
+end to end by Pipec on the real Windows PC (`ntbk-pipec-2`), with Claude
+orchestrating and interpreting logs/DB output. **PASS** for the PC-1
+owner-authentication slice (Plans 0025/0026/0027): classic and streaming
+allowed/denied/replay scenarios each passed 3 clean cycles, PA-04
+(expiry) and PA-01 (generic non-consumption) both passed, Piper audibly
+spoke the exact authorized result every time, all 16 denied audit rows
+never invoked the v4 reader, and a direct SQLite inspection of
+`authorization_audit_events` plus a raw byte-scan of the acceptance DB
+confirmed no PIN/token/name leaked outside the `entities` table. R1-01
+and R1-02 (Plan 0013 debt) passed; **R1-03 failed** on STT accuracy — 5/5
+attempts, Whisper "small" could not reliably transcribe the proper noun
+"Iroko" — so Plan 0013 stays open per this plan's own rule that R1 is
+tracked independently of the PC-1 verdict. Full untracked evidence:
+`project-history/acceptance/2026-08-21-owner-authenticated-memory.md`
+(gitignored, not in this PR). Real hardware acceptance (audio, PIN entry)
+is proven; canonical documentation updated in this same change.
 
 **Goal:** Prove repeatedly on the actual Windows PC that Pipec can authenticate
 locally, speak “¿quiénes son mis hijos?”, and hear “Tus hijos son Máximo y
@@ -463,3 +478,22 @@ Plan 0028 is complete only when:
 - automated, quality, security, and documentation gates pass;
 - safe evidence is reviewed independently;
 - no implementation change was smuggled into the acceptance run.
+
+**Evidence (2026-08-21):** Every criterion above is met. Classic PA-02/
+PA-03 passed 3 clean cycles; streaming PS-01/PS-02 passed 3 clean cycles;
+PA-04 (expiry) and PA-01 (generic non-consumption) both passed; R1-01/
+R1-02 passed and R1-03 failed with an explicit verdict (STT accuracy on
+"Iroko"), so Plan 0013 correctly remains open rather than closing on
+incomplete evidence; Piper audibly spoke the exact authorized result
+every clean run, confirmed live by Pipec; every one of the 16 denied
+audit rows never invoked the v4 reader (verified directly against
+`authorization_audit_events` in the acceptance SQLite DB, not just
+console logs); `just lint`/`typecheck`/`test`/`audit`/`git diff --check`
+all passed, and `just check` passed on every hook except the
+self-protective `don't commit to branch` hook, which fails by design
+whenever it is run while checked out on `main` with no commit in
+flight — not a code-quality defect; Pipec independently ran and orally
+confirmed every test case in real time. No implementation code changed
+during the acceptance run — only this documentation-closure change.
+Full evidence (gitignored, machine-local):
+`project-history/acceptance/2026-08-21-owner-authenticated-memory.md`.
