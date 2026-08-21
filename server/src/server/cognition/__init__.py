@@ -21,6 +21,11 @@ from server.cognition.identity import (
     IdentityEvidence,
     IdentityEvidenceSource,
 )
+from server.cognition.intent_resolution import (
+    IntentMatch,
+    IntentResolution,
+    resolve_information_need,
+)
 from server.cognition.models import (
     ActiveContext,
     AuthorizationAction,
@@ -64,6 +69,8 @@ __all__ = [
     "IdentityEvidence",
     "IdentityEvidenceSource",
     "InformationNeed",
+    "IntentMatch",
+    "IntentResolution",
     "KnowledgeStatus",
     "Observation",
     "ObservationModality",
@@ -74,4 +81,5 @@ __all__ = [
     "TextTurnPayload",
     "ToolResult",
     "evaluate_authorization",
+    "resolve_information_need",
 ]

@@ -29,6 +29,8 @@ from server.cognition import (
     IdentityEvidence,
     IdentityEvidenceSource,
     InformationNeed,
+    IntentMatch,
+    IntentResolution,
     KnowledgeStatus,
     Observation,
     ObservationModality,
@@ -40,6 +42,7 @@ from server.cognition import (
     ToolResult,
     evaluate_authorization,
     models,
+    resolve_information_need,
 )
 
 from server import cognition
@@ -477,12 +480,15 @@ def test_cognition_package_reexports_every_public_domain_type() -> None:
         "ObservationModality": ObservationModality,
         "PreferencePredicate": PreferencePredicate,
         "InformationNeed": InformationNeed,
+        "IntentMatch": IntentMatch,
+        "IntentResolution": IntentResolution,
         "ResponseClaim": ResponseClaim,
         "ResponsePlan": ResponsePlan,
         "ResponseSource": ResponseSource,
         "TextTurnPayload": TextTurnPayload,
         "ToolResult": ToolResult,
         "evaluate_authorization": evaluate_authorization,
+        "resolve_information_need": resolve_information_need,
     }
 
     assert set(cognition.__all__) == set(expected_exports)

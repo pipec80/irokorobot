@@ -211,6 +211,78 @@ def test_stream_answers_current_date_without_legacy_generation(
     record.assert_not_called()
 
 
+@pytest.mark.integration
+def test_stream_supervised_date_alias_avoids_llm(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Plan 0021: a reviewed STT corruption of the date request stays deterministic."""
+    prepare = AsyncMock()
+    record = Mock()
+
+    async def legacy_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
+        yield "EMOTION:joy\nRespuesta legacy."
+
+    llm_stream = Mock(side_effect=legacy_stream)
+    monkeypatch.setattr(stt, "transcribe", AsyncMock(return_value="Me dice la fecha actual."))
+    synthesize = AsyncMock(return_value=("AAAA", 42))
+    monkeypatch.setattr(transcribe_module, "_today", lambda: date(2026, 8, 17))
+    monkeypatch.setattr(transcribe_module, "prepare_text_turn", prepare)
+    monkeypatch.setattr(llm_streaming, "generate_response_stream", llm_stream)
+    monkeypatch.setattr(streaming, "record_text_turn", record)
+    monkeypatch.setattr(tts, "synthesize", synthesize)
+
+    response = _post_stream(client, silence_wav_bytes)
+
+    assert response.status_code == 200
+    events = _parse_ndjson(response.text)
+    assert [event["type"] for event in events] == ["text_heard", "emotion", "audio", "done"]
+    assert events[2]["text"] == "Hoy es 2026-08-17."
+    assert events[-1]["llm_ms"] == 0
+    synthesize.assert_awaited_once_with("Hoy es 2026-08-17.")
+    prepare.assert_not_awaited()
+    llm_stream.assert_not_called()
+    record.assert_not_called()
+
+
+@pytest.mark.integration
+def test_stream_ambiguous_date_alias_avoids_llm(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Plan 0021: a reviewed ambiguous STT corruption asks for clarification, not the LLM."""
+    prepare = AsyncMock()
+    record = Mock()
+
+    async def legacy_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
+        yield "EMOTION:joy\nRespuesta legacy."
+
+    llm_stream = Mock(side_effect=legacy_stream)
+    monkeypatch.setattr(stt, "transcribe", AsyncMock(return_value="¿Qué vía es hoy?"))
+    synthesize = AsyncMock(return_value=("AAAA", 42))
+    monkeypatch.setattr(transcribe_module, "_today", lambda: date(2026, 8, 17))
+    monkeypatch.setattr(transcribe_module, "prepare_text_turn", prepare)
+    monkeypatch.setattr(llm_streaming, "generate_response_stream", llm_stream)
+    monkeypatch.setattr(streaming, "record_text_turn", record)
+    monkeypatch.setattr(tts, "synthesize", synthesize)
+
+    response = _post_stream(client, silence_wav_bytes)
+
+    assert response.status_code == 200
+    events = _parse_ndjson(response.text)
+    assert [event["type"] for event in events] == ["text_heard", "emotion", "audio", "done"]
+    assert events[2]["text"] == (
+        "No entendí si preguntas por la fecha actual o por información personal. "
+        "¿Podrías reformularlo?"
+    )
+    assert events[-1]["llm_ms"] == 0
+    prepare.assert_not_awaited()
+    llm_stream.assert_not_called()
+    record.assert_not_called()
+
+
 def _deterministic_date_plan() -> ResponsePlan:
     """Build a minimal deterministic plan for direct stream_response_plan calls."""
     return ResponsePlan(

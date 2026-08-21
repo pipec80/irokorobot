@@ -297,10 +297,19 @@ def test_hotword_failure_degrades_gracefully(
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize(
+    "message",
+    [
+        "¿Cómo se llaman mis hijos?",
+        "fecha de nacimiento de mi hija",
+        "qué edad tiene mi hija",
+    ],
+)
 def test_transcribe_private_family_question_is_audited_before_memory_or_legacy(
     client: TestClient,
     silence_wav_bytes: bytes,
     monkeypatch: pytest.MonkeyPatch,
+    message: str,
 ) -> None:
     """Public voice must deny family data before a reader or legacy model sees it."""
     process = AsyncMock(return_value=TextTurnResult("legacy", "joy", 42, False))
@@ -311,7 +320,7 @@ def test_transcribe_private_family_question_is_audited_before_memory_or_legacy(
     tools.count_children = AsyncMock()
     reader_factory = Mock(return_value=reader)
     tools_factory = Mock(return_value=tools)
-    monkeypatch.setattr(stt, "transcribe", AsyncMock(return_value="¿Cómo se llaman mis hijos?"))
+    monkeypatch.setattr(stt, "transcribe", AsyncMock(return_value=message))
     monkeypatch.setattr(transcribe_module, "process_text_turn", process)
     monkeypatch.setattr(transcribe_module, "record_authorization_decision", audit, raising=False)
     monkeypatch.setattr(transcribe_module, "PolicyGatedV4Reader", reader_factory, raising=False)

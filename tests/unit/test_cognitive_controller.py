@@ -14,6 +14,7 @@ from server.cognition.authorization import (
 from server.cognition.controller import CognitiveController
 from server.cognition.household_tools import HouseholdToolName, HouseholdToolResult
 from server.cognition.identity import ActivePersonContext, ActivePersonStatus, HouseholdRole
+from server.cognition.intent_resolution import IntentMatch, IntentResolution
 from server.cognition.models import (
     AuthorizationAction,
     AuthorizationDecision,
@@ -23,7 +24,7 @@ from server.cognition.models import (
     ConfidenceBasis,
     KnowledgeStatus,
 )
-from server.cognition.response_plan import TextTurnPayload
+from server.cognition.response_plan import InformationNeed, TextTurnPayload
 from server.text_turn import TextTurnResult
 
 
@@ -443,4 +444,59 @@ async def test_unknown_actor_never_reaches_the_household_tool() -> None:
 
     assert plan.status is KnowledgeStatus.UNAUTHORIZED
     tools.get_children.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_controller_consumes_the_injected_resolver_instead_of_classifying() -> None:
+    """C5: the controller must use the injected resolver, not an inline classifier."""
+    legacy_turn = AsyncMock()
+    resolver = Mock(
+        return_value=IntentResolution(
+            need=InformationNeed.CURRENT_DATE, match=IntentMatch.EXACT, rule_id="test.date"
+        )
+    )
+    controller = CognitiveController(
+        today=lambda: date(2026, 8, 12), legacy_turn=legacy_turn, intent_resolver=resolver
+    )
+
+    plan = await controller.handle(_event("cualquier texto de prueba"))
+
+    resolver.assert_called_once_with("cualquier texto de prueba")
+    assert plan.status is KnowledgeStatus.KNOWN
+    assert plan.response == "Hoy es 2026-08-12."
+    legacy_turn.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_controller_defers_to_legacy_when_resolver_returns_generic() -> None:
+    """A resolver returning GENERIC_CONVERSATION must leave decide() returning None."""
+    legacy_turn = AsyncMock(return_value=TextTurnResult("Hola", "joy", 42, False))
+    resolver = Mock(
+        return_value=IntentResolution(
+            need=InformationNeed.GENERIC_CONVERSATION, match=IntentMatch.NONE, rule_id=None
+        )
+    )
+    controller = CognitiveController(
+        today=lambda: date(2026, 8, 12), legacy_turn=legacy_turn, intent_resolver=resolver
+    )
+
+    decided = await controller.decide(_event("cualquier texto"))
+    assert decided is None
+
+    plan = await controller.handle(_event("cualquier texto"))
+    assert plan.response == "Hola"
+    legacy_turn.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_controller_rejects_non_iso_age_without_legacy_delegate() -> None:
+    """A non-ISO age request stays a safe deterministic unknown, never generic LLM."""
+    legacy_turn = AsyncMock()
+    controller = CognitiveController(today=lambda: date(2026, 8, 12), legacy_turn=legacy_turn)
+
+    plan = await controller.handle(_event("¿Qué edad tengo?"))
+
+    assert plan.status is KnowledgeStatus.UNKNOWN
+    assert plan.response == "No puedo calcular la edad sin una fecha de nacimiento ISO válida."
+    legacy_turn.assert_not_awaited()
     legacy_turn.assert_not_awaited()
