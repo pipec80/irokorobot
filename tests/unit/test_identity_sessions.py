@@ -118,3 +118,54 @@ def test_trusted_selection_resolves_as_identified_manual_evidence() -> None:
 def test_legacy_registry_name_remains_a_compatibility_alias() -> None:
     """Existing internal imports keep working after aligning the plan's class name."""
     assert identity_sessions.IdentitySessionRegistry is SessionIdentityRegistry
+
+
+def test_issue_for_person_consumes_evidence_exactly_once() -> None:
+    """Consuming issued evidence must pop it — a replay must fail closed."""
+    registry = SessionIdentityRegistry(
+        lookup_person=_lookup({42: _person(42)}),
+        clock=lambda: _NOW,
+        ttl=timedelta(seconds=60),
+    )
+
+    token = registry.issue_for_person(_person(42), source=IdentityEvidenceSource.LOCAL_UNLOCK)
+
+    first = registry.consume_evidence(token)
+    assert first is not None
+    assert first.source is IdentityEvidenceSource.LOCAL_UNLOCK
+    assert first.candidate_person_id == 42
+
+    assert registry.consume_evidence(token) is None
+    assert registry.evidence_for(token) is None
+
+
+def test_consume_evidence_rejects_an_expired_grant() -> None:
+    """An expired but not-yet-consumed grant must not resolve identity."""
+    now = _NOW
+
+    def clock() -> datetime:
+        return now
+
+    registry = SessionIdentityRegistry(
+        lookup_person=_lookup({42: _person(42)}),
+        clock=clock,
+        ttl=timedelta(seconds=60),
+    )
+    token = registry.issue_for_person(_person(42), source=IdentityEvidenceSource.LOCAL_UNLOCK)
+
+    now = _NOW + timedelta(seconds=61)
+
+    assert registry.consume_evidence(token) is None
+
+
+def test_issue_for_person_rejects_a_non_person_record() -> None:
+    """The registry must never issue trusted evidence for a non-person entity."""
+    registry = SessionIdentityRegistry(
+        lookup_person=_lookup({}),
+        clock=lambda: _NOW,
+        ttl=timedelta(seconds=60),
+    )
+    pet = PersonRecord(person_id=7, display_name="Rex", entity_type="pet")
+
+    with pytest.raises(ValueError, match="person"):
+        registry.issue_for_person(pet, source=IdentityEvidenceSource.LOCAL_UNLOCK)
