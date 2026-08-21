@@ -43,8 +43,11 @@ from server.cognition.response_plan import (
     ResponseClaim,
     ResponsePlan,
     ResponseSource,
+    SceneDescriptionRequest,
     TextTurnPayload,
     ToolResult,
+    current_perception_plan,
+    scene_unavailable_plan,
 )
 
 __all__ = [
@@ -78,8 +81,11 @@ __all__ = [
     "ResponseClaim",
     "ResponsePlan",
     "ResponseSource",
+    "SceneDescriptionRequest",
     "TextTurnPayload",
     "ToolResult",
+    "current_perception_plan",
     "evaluate_authorization",
     "resolve_information_need",
+    "scene_unavailable_plan",
 ]

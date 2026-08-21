@@ -38,11 +38,14 @@ from server.cognition import (
     ResponseClaim,
     ResponsePlan,
     ResponseSource,
+    SceneDescriptionRequest,
     TextTurnPayload,
     ToolResult,
+    current_perception_plan,
     evaluate_authorization,
     models,
     resolve_information_need,
+    scene_unavailable_plan,
 )
 
 from server import cognition
@@ -485,10 +488,13 @@ def test_cognition_package_reexports_every_public_domain_type() -> None:
         "ResponseClaim": ResponseClaim,
         "ResponsePlan": ResponsePlan,
         "ResponseSource": ResponseSource,
+        "SceneDescriptionRequest": SceneDescriptionRequest,
         "TextTurnPayload": TextTurnPayload,
         "ToolResult": ToolResult,
+        "current_perception_plan": current_perception_plan,
         "evaluate_authorization": evaluate_authorization,
         "resolve_information_need": resolve_information_need,
+        "scene_unavailable_plan": scene_unavailable_plan,
     }
 
     assert set(cognition.__all__) == set(expected_exports)

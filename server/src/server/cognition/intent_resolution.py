@@ -74,6 +74,46 @@ _CURRENT_DATE_PATTERNS = (
 )
 _CURRENT_DATE_STT_ALIASES = frozenset({"me dice la fecha actual"})
 _AMBIGUOUS_DATE_ALIASES = frozenset({"que dia soy", "que via es hoy"})
+_BIOMETRIC_ENROLLMENT_PATTERNS = (
+    "aprende mi cara",
+    "aprende su cara",
+    "aprende la cara",
+    "recuerda mi cara",
+    "recuerda su cara",
+    "recuerda la cara",
+    "memoriza mi cara",
+    "memoriza su cara",
+    "memoriza la cara",
+    "mirame bien",
+    "mirala bien",
+    "miralo bien",
+    "te presento a",
+    "conoce a",
+)
+_ACTIVE_IDENTITY_PATTERNS = (
+    "quien soy",
+    "me reconoces",
+    "me conoces",
+    "sabes quien soy",
+    "quien esta aqui",
+    "quien esta frente",
+)
+_SCENE_DESCRIPTION_PATTERNS = (
+    "que ves",
+    "que estas viendo",
+    "que miras",
+    "que observas",
+    "mira esto",
+    "mira lo que",
+    "puedes ver",
+    "podes ver",
+    "ves esto",
+    "ves algo",
+    "que tengo en la mano",
+    "describe lo que ves",
+    "dime que ves",
+    "decime que ves",
+)
 
 
 def resolve_information_need(message: str) -> IntentResolution:
@@ -133,6 +173,45 @@ def _protected_rule_id(normalized: str) -> str:
     return "household.protected.v1"
 
 
+def _contains_word_phrase(normalized: str, pattern: str) -> bool:
+    """Match *pattern* only as whole space-delimited words, never mid-word.
+
+    Plain substring checks would let "que ves" false-hit inside "aunque
+    vestirse" (the "que ves" letters span the word boundary). Padding both
+    sides with a single space reproduces the old regex ``\\b...\\b``
+    guarantee cheaply, since `_normalize` already collapses every non-word
+    run to exactly one space.
+    """
+    return f" {pattern} " in f" {normalized} "
+
+
+def _biometric_enrollment_rule(normalized: str) -> IntentResolution | None:
+    """Recognize an unequivocal face-learning cue, with or without a name."""
+    if any(
+        _contains_word_phrase(normalized, pattern) for pattern in _BIOMETRIC_ENROLLMENT_PATTERNS
+    ):
+        return _resolution(
+            InformationNeed.BIOMETRIC_ENROLLMENT, IntentMatch.EXACT, "enrollment.biometric.v1"
+        )
+    return None
+
+
+def _active_identity_rule(normalized: str) -> IntentResolution | None:
+    """Recognize a request to confirm who the current speaker is."""
+    if any(_contains_word_phrase(normalized, pattern) for pattern in _ACTIVE_IDENTITY_PATTERNS):
+        return _resolution(InformationNeed.ACTIVE_IDENTITY, IntentMatch.EXACT, "identity.active.v1")
+    return None
+
+
+def _scene_description_rule(normalized: str) -> IntentResolution | None:
+    """Recognize a request to describe the current camera scene."""
+    if any(_contains_word_phrase(normalized, pattern) for pattern in _SCENE_DESCRIPTION_PATTERNS):
+        return _resolution(
+            InformationNeed.SCENE_DESCRIPTION, IntentMatch.EXACT, "scene.description.v1"
+        )
+    return None
+
+
 def _ambiguous_date_alias_rule(normalized: str) -> IntentResolution | None:
     """Recognize a supervised STT corruption of a date question."""
     if normalized in _AMBIGUOUS_DATE_ALIASES:
@@ -185,11 +264,14 @@ _RULES: tuple[Callable[[str], IntentResolution | None], ...] = (
     _own_children_list_rule,
     _own_children_count_rule,
     _protected_household_rule,
+    _biometric_enrollment_rule,
+    _active_identity_rule,
     _ambiguous_date_alias_rule,
     _current_date_stt_alias_rule,
     _current_date_rule,
     _explicit_age_rule,
     _relationship_rule,
+    _scene_description_rule,
 )
 
 

@@ -66,6 +66,23 @@ def test_rule_id_never_contains_the_utterance_or_a_name() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Aprende mi cara, soy PersonaDePrueba.",
+        "Aprende mi cara.",
+    ],
+)
+def test_enrollment_rule_id_never_contains_the_utterance_or_a_name(text: str) -> None:
+    """The resolver never extracts or retains a name — same rule_id either way."""
+    result = resolve_information_need(text)
+
+    assert result.need is InformationNeed.BIOMETRIC_ENROLLMENT
+    assert result.rule_id == "enrollment.biometric.v1"
+    assert "personadeprueba" not in result.rule_id.lower()
+
+
+@pytest.mark.unit
 def test_resolution_is_frozen_and_rejects_mutation() -> None:
     """IntentResolution must be immutable, matching every other cognitive contract."""
     result = resolve_information_need("Hola, ¿cómo estás?")

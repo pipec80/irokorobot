@@ -29,6 +29,7 @@ from server.cognition.response_plan import (
     ResponseClaim,
     ResponsePlan,
     ResponseSource,
+    SceneDescriptionRequest,
     TextTurnPayload,
     ToolResult,
 )
@@ -44,6 +45,12 @@ type ConsentResolver = Callable[
     [CognitiveEvent[TextTurnPayload], ActivePersonContext], Awaitable[ConsentStatus]
 ]
 type IntentResolver = Callable[[str], IntentResolution]
+type ControllerDecision = ResponsePlan | SceneDescriptionRequest | None
+
+_BIOMETRIC_ENROLLMENT_RESPONSE = (
+    "Todavía no puedo registrar rostros: hace falta administración local y consentimiento."
+)
+_ACTIVE_IDENTITY_UNKNOWN_RESPONSE = "Todavía no puedo confirmar quién sos."
 
 _ISO_DATE_PATTERN = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 _TWO_ITEMS = 2
@@ -126,42 +133,59 @@ class CognitiveController:
 
         Returns:
             Deterministic, safe, or legacy response plan for the event.
+
+        Raises:
+            RuntimeError: If `decide()` returns a `SceneDescriptionRequest` —
+                only a camera-capable adapter may fulfill that capability;
+                `handle()` must never leak it into legacy text generation.
         """
-        plan = await self.decide(event)
-        if plan is not None:
-            return plan
+        decision = await self.decide(event)
+        if isinstance(decision, SceneDescriptionRequest):
+            raise RuntimeError(
+                "SceneDescriptionRequest must be fulfilled by a camera-capable "
+                "adapter, not CognitiveController.handle()"
+            )
+        if decision is not None:
+            return decision
         return await self._legacy_plan(event.payload)
 
-    async def decide(self, event: CognitiveEvent[TextTurnPayload]) -> ResponsePlan | None:
+    async def decide(self, event: CognitiveEvent[TextTurnPayload]) -> ControllerDecision:
         """Resolve closed policy and tool branches without generic generation.
 
         Args:
             event: Validated event from a text-capable channel adapter.
 
         Returns:
-            A deterministic or policy response plan, or ``None`` when the
-            adapter may safely use its generic generation path.
+            A deterministic or policy response plan, a capability request
+            that only a camera-capable adapter may fulfill, or ``None`` when
+            the adapter may safely use its generic generation path.
         """
         need = self._intent_resolver(event.payload.message).need
-        plan: ResponsePlan | None
+        decision: ControllerDecision
         match need:
             case InformationNeed.OWN_CHILDREN_LIST | InformationNeed.OWN_CHILDREN_COUNT:
-                plan = await self._own_children_plan(event, need)
+                decision = await self._own_children_plan(event, need)
             case InformationNeed.PROTECTED_HOUSEHOLD:
-                plan = await self._protected_household_plan(event, need)
+                decision = await self._protected_household_plan(event, need)
             case InformationNeed.AMBIGUOUS_DATE_QUERY:
-                plan = _ambiguous_date_plan()
+                decision = _ambiguous_date_plan()
             case InformationNeed.RELATIONSHIP_OR_PROFILE:
-                plan = _unknown_plan(
+                decision = _unknown_plan(
                     need, "No tengo relaciones familiares estructuradas verificadas."
                 )
             case InformationNeed.CURRENT_DATE:
-                plan = _date_plan(get_current_date(self._today()))
+                decision = _date_plan(get_current_date(self._today()))
             case InformationNeed.EXPLICIT_BIRTH_DATE_AGE:
-                plan = _age_plan(_age_result(event.payload.message, self._today()))
+                decision = _age_plan(_age_result(event.payload.message, self._today()))
+            case InformationNeed.BIOMETRIC_ENROLLMENT:
+                decision = _biometric_enrollment_plan()
+            case InformationNeed.ACTIVE_IDENTITY:
+                decision = await self._active_identity_plan(event)
+            case InformationNeed.SCENE_DESCRIPTION:
+                decision = SceneDescriptionRequest()
             case InformationNeed.GENERIC_CONVERSATION:
-                plan = None
-        return plan
+                decision = None
+        return decision
 
     async def _legacy_plan(self, payload: TextTurnPayload) -> ResponsePlan:
         """Delegate only an unclassified safe request to the existing text path."""
@@ -199,6 +223,26 @@ class CognitiveController:
             need,
             "La información familiar autorizada todavía no está conectada a consultas verificadas.",
         )
+
+    async def _active_identity_plan(
+        self,
+        event: CognitiveEvent[TextTurnPayload],
+    ) -> ResponsePlan:
+        """Confirm the speaker only from this request's fresh owner evidence.
+
+        Reuses the same injected `active_person_resolver` the protected
+        household branches already use, so this consumes the same one-use
+        owner grant a household read would — no separate identity mechanism.
+        """
+        actor = await self._active_person_resolver(event)
+        if actor.status is ActivePersonStatus.IDENTIFIED and actor.display_name is not None:
+            return ResponsePlan(
+                need=InformationNeed.ACTIVE_IDENTITY,
+                status=KnowledgeStatus.KNOWN,
+                source=ResponseSource.DETERMINISTIC,
+                response=f"Sos {actor.display_name}.",
+            )
+        return _unknown_plan(InformationNeed.ACTIVE_IDENTITY, _ACTIVE_IDENTITY_UNKNOWN_RESPONSE)
 
     async def _own_children_plan(
         self,
@@ -305,6 +349,16 @@ def _unknown_plan(
         source=ResponseSource.DETERMINISTIC,
         response=response,
         tool_results=() if result is None else (result,),
+    )
+
+
+def _biometric_enrollment_plan() -> ResponsePlan:
+    """Reject face enrollment without ever touching a camera or a model."""
+    return ResponsePlan(
+        need=InformationNeed.BIOMETRIC_ENROLLMENT,
+        status=KnowledgeStatus.UNKNOWN,
+        source=ResponseSource.DETERMINISTIC,
+        response=_BIOMETRIC_ENROLLMENT_RESPONSE,
     )
 
 

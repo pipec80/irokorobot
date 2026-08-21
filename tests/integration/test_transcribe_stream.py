@@ -386,6 +386,71 @@ def test_stream_denies_private_household_request_before_legacy_generation(
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize("vision_enabled", [True, False])
+def test_stream_scene_request_always_gets_the_fixed_unavailable_plan(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+    vision_enabled: bool,
+) -> None:
+    """C7: streaming has no second-round frame upload — scene is always unavailable."""
+    prepare = AsyncMock()
+    monkeypatch.setattr(stt, "transcribe", AsyncMock(return_value="¿Qué ves?"))
+    monkeypatch.setattr(transcribe_module, "prepare_text_turn", prepare)
+    monkeypatch.setattr(settings, "vision_enabled", vision_enabled)
+
+    response = _post_stream(client, silence_wav_bytes)
+
+    assert response.status_code == 200
+    events = _parse_ndjson(response.text)
+    assert [event["type"] for event in events] == ["text_heard", "emotion", "audio", "done"]
+    assert str(events[2]["text"]) == "Ahora mismo no puedo mirar desde este canal."
+    prepare.assert_not_awaited()
+
+
+@pytest.mark.integration
+def test_stream_active_identity_denies_without_fresh_evidence(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The public stream actor is always unknown, so identity stays unconfirmed."""
+    prepare = AsyncMock()
+    monkeypatch.setattr(stt, "transcribe", AsyncMock(return_value="¿Quién soy?"))
+    monkeypatch.setattr(transcribe_module, "prepare_text_turn", prepare)
+
+    response = _post_stream(client, silence_wav_bytes)
+
+    assert response.status_code == 200
+    events = _parse_ndjson(response.text)
+    assert str(events[2]["text"]) == "Todavía no puedo confirmar quién sos."
+    prepare.assert_not_awaited()
+
+
+@pytest.mark.integration
+def test_stream_biometric_enrollment_rejected_without_camera_or_legacy(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unequivocal enrollment cue is rejected without camera, model, or legacy text."""
+    prepare = AsyncMock()
+    monkeypatch.setattr(
+        stt, "transcribe", AsyncMock(return_value="Aprende mi cara, soy PersonaDePrueba")
+    )
+    monkeypatch.setattr(transcribe_module, "prepare_text_turn", prepare)
+
+    response = _post_stream(client, silence_wav_bytes)
+
+    assert response.status_code == 200
+    events = _parse_ndjson(response.text)
+    assert str(events[2]["text"]) == (
+        "Todavía no puedo registrar rostros: hace falta administración local y consentimiento."
+    )
+    prepare.assert_not_awaited()
+
+
+@pytest.mark.integration
 def test_unresolved_stream_does_not_load_entity_hotwords(
     client: TestClient,
     silence_wav_bytes: bytes,
