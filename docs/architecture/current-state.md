@@ -2,16 +2,18 @@
 
 > **Observed:** 2026-08-21
 >
-> **Implementation snapshot:** `main` at `5ba9f4f`.
+> **Implementation snapshot:** `main` at `9b7662a`.
 > Plan 0022 (P0-C6 reliable streaming output) is **complete and verified**:
 > all 4 tasks passed task-scoped review, a whole-plan review found no
 > Critical issues, and real `just run-server`/`just run-robot` operator
 > evidence on 2026-08-20 confirmed the headline invariant on live hardware —
 > see [Plan 0022](../plans/completed/0022-p0-reliable-streaming-output.md#execution-evidence).
-> Plans 0025, 0026, and 0027 (owner-authenticated memory MVP, PC-1, plus
-> streaming parity) are merged; the classic flow was confirmed once informally
-> with real hardware on 2026-08-21. Plans 0021, 0023, and 0028 remain
-> unimplemented; combined P0 operator acceptance remains open.
+> Plans 0025, 0026, 0027, and 0028 (owner-authenticated memory MVP, PC-1) are
+> merged/executed; **PC-1 is accepted** — classic and streaming
+> allowed/denied/replay/expiry scenarios each passed 3x with real hardware on
+> 2026-08-21 (Plan 0028). Plans 0021 and 0023 remain unimplemented; combined
+> P0 operator acceptance and Plan 0013's own R1 debt (one failing case, STT
+> accuracy on "Iroko") remain open.
 >
 > **Verification boundary:** P0.3/P0.4 code and P0.5-A policy seams were
 > inspected. P0.4 passed `just gate` (527 tests) before PR #40 merged it,
@@ -113,9 +115,10 @@ gap prevents owner-by-default memory disclosure.
 | Household tools P0.5-B2 | Implemented/internal | Typed child list/count, preferences, birth date, and derived age tools authorize and audit before B1 reads; child relation/birth data require injected consent. |
 | B2 controller dispatch | Implemented/trusted-only | Two self-child question patterns produce deterministic response plans through injected actor/consent seams. Public `/chat` cannot provide either and never reaches the v4 reader. |
 | Personal owner/children/PIN setup (Plan 0025) | Implemented/local-only | `just setup-personal` bootstraps Pipec as sole owner, confirms Máximo/Dominga as active v4 `child_of` relations, and stores one scrypt-hashed PIN credential (`owner_pin_credentials`, migration 006). Idempotent rerun and PIN rotation are covered. |
-| One-use owner-authenticated classic turn (Plan 0026) | Implemented; classic flow confirmed once with real hardware | `POST /auth/owner/unlock` (loopback-only, rate-limited) issues a 60s one-use `LOCAL_UNLOCK` grant; `X-Iroko-Identity-Token` is accepted by classic `/chat` and `/transcribe`; the controller awaits actor/consent resolution only for protected branches; a valid grant authorizes exactly one `personal_protected_read` of `child_data` through the existing v4 tool. Absent/expired/replayed/malformed tokens deny without disclosure, without calling the v4 reader, and the safe audit trail never carries the PIN/token/names. The robot can opt into one startup PIN prompt (`ROBOT_OWNER_UNLOCK_PROMPT`) and clears the token only on `authentication_consumed=true`. Automated evidence uses the real DB with mocked STT/TTS; the full real-microphone/real-speaker classic loop was run once informally (2026-08-21) with the expected result — Plan 0028 owns the formal 3x recorded acceptance. |
-| One-use owner streaming parity (Plan 0027) | Implemented; automated evidence only | `POST /transcribe/stream` accepts the same optional `X-Iroko-Identity-Token` and composes one `OwnerRequestResolver` per request before `decide(event)`, reusing Plan 0026's `OwnerUnlockService` unchanged. The terminal NDJSON `done` event gains an additive `authentication_consumed` boolean (default `false`); older robots parsing it without the field default safely to `false`. Generic/legacy streaming never resolves an actor and always reports `false`. The robot's `transcribe_stream()` sends the header when a token is held and clears `ctx.identity_token` only on a `done` with `authentication_consumed=true`; an EOF before `done` leaves it untouched (replay denied server-side). `ROBOT_OWNER_UNLOCK_PROMPT` now works with `ROBOT_STREAMING` — the prior startup guard pointing at this plan was removed. Automated evidence (`tests/integration/test_owner_authenticated_stream.py` plus focused parity/regression runs) proves valid/absent/expired/replayed/malformed-token and generic-non-consumption behavior matches classic exactly, through the real NDJSON route with a disposable DB and mocked STT/TTS. No real microphone/speaker streaming run yet — Plan 0028 owns combined runtime acceptance. |
-| P0 runtime acceptance | Partial; combined operator acceptance pending | Enabled public routes enter the controller. Plan 0022 (streaming reliability) is complete and has real operator evidence (2026-08-20). Plans 0021/0023, the authenticated-owner proof, and the combined runbook evidence across all slices remain open. |
+| One-use owner-authenticated classic turn (Plan 0026) | Implemented; real-hardware acceptance closed | `POST /auth/owner/unlock` (loopback-only, rate-limited) issues a 60s one-use `LOCAL_UNLOCK` grant; `X-Iroko-Identity-Token` is accepted by classic `/chat` and `/transcribe`; the controller awaits actor/consent resolution only for protected branches; a valid grant authorizes exactly one `personal_protected_read` of `child_data` through the existing v4 tool. Absent/expired/replayed/malformed tokens deny without disclosure, without calling the v4 reader, and the safe audit trail never carries the PIN/token/names. The robot can opt into one startup PIN prompt (`ROBOT_OWNER_UNLOCK_PROMPT`) and clears the token only on `authentication_consumed=true`. Plan 0028 (2026-08-21) proved the classic flow 3x on real microphone/speaker hardware, including expiry and generic non-consumption, cross-checked against the `authorization_audit_events` table directly. |
+| One-use owner streaming parity (Plan 0027) | Implemented; real-hardware acceptance closed | `POST /transcribe/stream` accepts the same optional `X-Iroko-Identity-Token` and composes one `OwnerRequestResolver` per request before `decide(event)`, reusing Plan 0026's `OwnerUnlockService` unchanged. The terminal NDJSON `done` event gains an additive `authentication_consumed` boolean (default `false`); older robots parsing it without the field default safely to `false`. Generic/legacy streaming never resolves an actor and always reports `false`. The robot's `transcribe_stream()` sends the header when a token is held and clears `ctx.identity_token` only on a `done` with `authentication_consumed=true`; an EOF before `done` leaves it untouched (replay denied server-side). `ROBOT_OWNER_UNLOCK_PROMPT` now works with `ROBOT_STREAMING` — the prior startup guard pointing at this plan was removed. Plan 0028 (2026-08-21) proved the streaming flow 3x on real hardware; measured total latency was consistently lower than classic mode for the same answer (~1.9s vs ~2.0s) since audio starts on the first NDJSON chunk. |
+| Owner-authenticated memory runtime acceptance (Plan 0028) | Executed 2026-08-21 — **PASS** for the PC-1 slice | Ran the full classic and streaming allowed/denied/replay/expiry/generic-non-consumption matrix 3x each on real hardware (`ntbk-pipec-2`), plus a direct SQLite inspection of `authorization_audit_events` (36 rows) confirming exact `execute_household_tool → read_household_data` ordering on every disclosure and no PIN/token/name leakage anywhere outside the `entities` table. Also ran Plan 0013's R1-01/R1-02/R1-03 cases: R1-01 and R1-02 passed; R1-03 failed after 5 attempts — Whisper "small" could not reliably transcribe the proper noun "Iroko" — so Plan 0013 stays open on that independently tracked finding, per this plan's own rule that R1 does not gate the PC-1 verdict. Surfaced two other findings, neither blocking: a repeatable first-utterance-after-restart STT mis-transcription pattern, and a garbled `protected_household`-pattern match that can consume a fresh grant without disclosing or denying cleanly (no leak observed). Full untracked evidence: `project-history/acceptance/2026-08-21-owner-authenticated-memory.md`. |
+| P0 runtime acceptance | Partial; combined P0-C operator acceptance pending | Enabled public routes enter the controller. Plan 0022 (streaming reliability) is complete and has real operator evidence (2026-08-20). The authenticated-owner proof (PC-1) is now complete via Plan 0028. Plans 0021/0023 and the combined P0-C runbook evidence across those remaining slices stay open. |
 | Vision/VLM | Implemented/on demand with controller parity | One ephemeral frame, free-text scene description; `/vision/respond` enters the controller without face identity. |
 | Face profiles | Implemented/sensitive/quarantined | SQLite-linked embeddings and recognition functions exist, but no consented runtime active-person adapter calls them. |
 | Speaker recognition | Absent | STT and VAD exist; no speaker enrollment, voiceprint, verification model, or calibrated identity adapter exists. |
@@ -230,13 +233,14 @@ authenticated-owner acceptance gate is defined in
 [Plan 0024](../plans/open/0024-owner-authenticated-memory-mvp-design.md). Its
 executable sequence is
 [0025](../plans/completed/0025-personal-owner-bootstrap-and-pin-setup.md) (merged) →
-[0026](../plans/open/0026-one-use-owner-authenticated-classic-turn.md) (merged; classic
-flow confirmed once informally with real hardware on 2026-08-21) →
-[0027](../plans/open/0027-one-use-owner-streaming-parity.md) (merged; automated
-evidence only, no real-microphone streaming run yet) →
-[0028](../plans/open/0028-owner-authenticated-memory-runtime-acceptance.md), which
-still owns the formal repeated real-runtime acceptance for both R1 (Plan 0013)
-and 0026/0027's classic and streaming flows.
+[0026](../plans/open/0026-one-use-owner-authenticated-classic-turn.md) (merged) →
+[0027](../plans/open/0027-one-use-owner-streaming-parity.md) (merged) →
+[0028](../plans/open/0028-owner-authenticated-memory-runtime-acceptance.md)
+(executed 2026-08-21, **PASS**), which completed the formal repeated
+real-runtime acceptance for 0026/0027's classic and streaming flows. It also
+executed R1 (Plan 0013): R1-01/R1-02 passed, R1-03 failed on STT accuracy —
+Plan 0013 remains open on that one finding, independently of the now-closed
+PC-1 (0025-0028) verdict.
 
 These checks do not prove a real Ollama `/chat` request, camera, microphone,
 biometric, LAN, or physical hardware behavior.

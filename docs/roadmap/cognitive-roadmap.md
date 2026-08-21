@@ -212,8 +212,10 @@ and cannot provide identity or consent or invoke the v4 reader.
 [Plan 0011](../plans/completed/0011-p0-closure-and-acceptance.md) records the merged-main
 foundation evidence. [Plan 0012](../plans/completed/0012-p0-runtime-acceptance-design.md)
 must still connect P0 to `just run-server` plus `just run-robot` and pass its
-operator runbook. P1.1's first two executable slices (Plans 0025–0026) are
-merged; 0027–0028 remain to close P1.1's runtime acceptance.
+operator runbook. P1.1's executable slices (Plans 0025–0028) are merged and
+their runtime acceptance is closed as of Plan 0028's 2026-08-21 execution.
+Plan 0013's own R1 runtime acceptance remains open independently (R1-03
+failed on STT accuracy) — see Plan 0028's evidence.
 
 ## P1 — Personal companion
 
@@ -230,19 +232,19 @@ Pipec as the confirmed owner, confirmed child relationships, a local
 short-lived one-use unlock, active-person resolution, policy-gated structured
 retrieval, and audible output. It must not be a public admin API.
 
-**Exit gate:** after one explicit local unlock, Pipec asks “¿quiénes son mis
-hijos?” and hears “Tus hijos son Máximo y Dominga.” through `just run-server`
-plus `just run-robot`; without fresh authentication the same request reveals
-no names, count, hint, or fact existence. Both scenarios are repeatable and
-audited. [Plan 0024](../plans/open/0024-owner-authenticated-memory-mvp-design.md)
+**Exit gate — MET (2026-08-21):** after one explicit local unlock, Pipec asks
+“¿quiénes son mis hijos?” and hears the exact confirmed child names through
+`just run-server` plus `just run-robot`; without fresh authentication the
+same request reveals no names, count, hint, or fact existence. Both
+scenarios were repeated 3 times each in classic mode and 3 times each in
+streaming mode, with real microphone/speaker hardware, and are audited.
+[Plan 0024](../plans/open/0024-owner-authenticated-memory-mvp-design.md)
 defines the design. Its executable portfolio is
 [0025 owner setup and PIN](../plans/completed/0025-personal-owner-bootstrap-and-pin-setup.md)
 (merged, PR #56) → [0026 classic authenticated turn](../plans/open/0026-one-use-owner-authenticated-classic-turn.md)
-(merged, PR #57; classic-mode acceptance debt owed to 0028) →
-[0027 streaming parity](../plans/open/0027-one-use-owner-streaming-parity.md) (next) →
-[0028 real runtime acceptance](../plans/open/0028-owner-authenticated-memory-runtime-acceptance.md).
-The exit gate above has been confirmed once informally with real hardware in
-classic mode (2026-08-21); Plan 0028 still owns the formal repeated evidence.
+(merged, PR #57) → [0027 streaming parity](../plans/open/0027-one-use-owner-streaming-parity.md)
+(merged) → [0028 real runtime acceptance](../plans/open/0028-owner-authenticated-memory-runtime-acceptance.md)
+(executed, PASS). P1.1 is complete.
 
 The [personal-companion delivery map](personal-companion-delivery-map.md)
 is the canonical cross-plan traceability view. It identifies which foundations
