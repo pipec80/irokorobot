@@ -5,8 +5,25 @@
 > `superpowers:executing-plans` to implement this plan task-by-task. Steps use
 > checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** Ready for owner review. Depends on completed Plan 0025. Do not
-implement until Pipec explicitly authorizes execution.
+**Status:** Implemented on `feat/owner-authenticated-classic-turn` on
+2026-08-20/21 — Tasks 1-7 done, one commit per task, authorized by Pipec.
+All focused and repository gates pass (727 tests, up from the 677 baseline
+after Plan 0025's close; `just lint`, `just typecheck`, `just audit`, `just
+check` all green). The north-star scenario is proven end-to-end against a
+real disposable DB with mocked STT/TTS: a fresh unlock answers "¿Quiénes son
+mis hijos?" with exactly "Tus hijos son Máximo y Dominga." once, and
+absent/expired/replayed/malformed tokens deny without disclosure and without
+reaching v4 storage. Not yet proven: real microphone/speaker hardware
+acceptance (Plan 0028) and streaming parity (Plan 0027). Pending independent
+review and merge before Plan 0027 may start.
+
+**Deviation from the plan as written:** the north-star acceptance text uses
+"¿Quiénes son mis hijos?", but the controller's `OWN_CHILDREN_LIST` trigger
+list only recognized "como se llaman mis hijos" — verified empirically before
+implementation began. `controller.py`'s pattern list was extended with
+"quienes son mis hijos" (accent-folded) as part of Task 5, since without it
+the plan's own acceptance criterion could not pass. No other file outside the
+plan's stated scope was touched for this fix.
 
 **Goal:** Let Pipec enter the local PIN in the robot terminal, carry one opaque
 short-lived grant to the server, ask “¿quiénes son mis hijos?” through classic
@@ -630,3 +647,16 @@ Plan 0026 is complete only when:
 - full quality/security gates pass;
 - streaming, face, voice recognition, fingerprint, RAG, and real hardware
   acceptance remain untouched.
+
+**Evidence (2026-08-21):** Every criterion above is met on
+`feat/owner-authenticated-classic-turn`. `tests/integration/test_owner_authenticated_turn.py`
+proves the full chat and classic-audio flow against a real disposable DB
+(mocked STT/TTS): valid unlock → exact answer once; replay, absence, expiry,
+and a malformed header all deny without calling `PolicyGatedV4Reader`.
+`tests/unit/test_owner_authentication.py` and
+`tests/integration/test_owner_unlock_endpoint.py` cover the rate limit,
+scope, and loopback/403 boundary. `tests/unit/test_main_lifespan.py` proves
+the process refuses to start with `UVICORN_WORKERS != 1` before any model
+preload. No secret (PIN, token) appears in any log or audit row across these
+tests. Real microphone/speaker acceptance and streaming parity remain for
+Plans 0028 and 0027 respectively.
