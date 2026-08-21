@@ -9,16 +9,17 @@ import time
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, Header, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
 from server import turn_log, vision
 from server.audio_contract import validate_wav_contract
 from server.cognition.authorization import evaluate_authorization
-from server.cognition.controller import CognitiveController
+from server.cognition.controller import ActivePersonResolver, CognitiveController
 from server.cognition.household_tools import HouseholdKnowledgeTools
-from server.cognition.identity import ActivePersonContext, ActivePersonStatus, HouseholdRole
-from server.cognition.models import CognitiveEvent, Confidence, ConfidenceBasis
+from server.cognition.identity import ActivePersonContext
+from server.cognition.models import CognitiveEvent
+from server.cognition.owner_authentication import OwnerRequestResolver, owner_unlock_service
 from server.cognition.response_plan import TextTurnPayload
 from server.exceptions import AudioContractError
 from server.memory.consolidation import consolidate_turn
@@ -71,30 +72,32 @@ def _voice_event_from_transcript(message: str) -> CognitiveEvent[TextTurnPayload
     )
 
 
-async def _public_unknown_voice_actor(
-    event: CognitiveEvent[TextTurnPayload],
-) -> ActivePersonContext:
-    """Return the safe public voice actor without deriving an identity."""
-    actor = ActivePersonContext(
-        person_id=None,
-        display_name=None,
-        status=ActivePersonStatus.UNKNOWN,
-        confidence=Confidence(
-            score=0.0,
-            basis=ConfidenceBasis.NOT_APPLICABLE,
-            calibrated=False,
-            reason="Public voice provides no trusted identity evidence",
-        ),
-        role=HouseholdRole.UNKNOWN,
-        evidence=(),
-        resolved_at=event.occurred_at,
-    )
-    turn_log.log_actor("voice", actor)
-    return actor
+def _logged_voice_actor_resolver(
+    request_identity: OwnerRequestResolver,
+) -> ActivePersonResolver:
+    """Wrap a request-scoped resolver to preserve the existing actor log line."""
+
+    async def resolve_actor(event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
+        actor = await request_identity.resolve_actor(event)
+        turn_log.log_actor("voice", actor)
+        return actor
+
+    return resolve_actor
 
 
-def _voice_controller(background_tasks: BackgroundTasks) -> CognitiveController:
-    """Compose the bounded controller used by a classic public voice turn."""
+def _voice_controller(
+    background_tasks: BackgroundTasks,
+    *,
+    request_identity: OwnerRequestResolver | None = None,
+) -> CognitiveController:
+    """Compose the bounded controller used by a public voice turn.
+
+    Args:
+        background_tasks: Queue used to schedule post-turn consolidation.
+        request_identity: Optional request-scoped owner grant resolver. When
+            omitted (the streaming route, unchanged by this plan), the
+            controller falls back to its own public-unknown defaults.
+    """
 
     async def legacy_turn(message: str, conversation_id: str) -> TextTurnResult:
         """Delegate generic public conversation through the existing text service."""
@@ -104,13 +107,22 @@ def _voice_controller(background_tasks: BackgroundTasks) -> CognitiveController:
             schedule_consolidation=_consolidation_scheduler(background_tasks),
         )
 
+    if request_identity is None:
+        return CognitiveController(
+            today=_today,
+            legacy_turn=legacy_turn,
+            policy_evaluator=evaluate_authorization,
+            audit_writer=record_authorization_decision,
+            household_tools=HouseholdKnowledgeTools(reader=PolicyGatedV4Reader()),
+        )
     return CognitiveController(
         today=_today,
         legacy_turn=legacy_turn,
-        active_person_resolver=_public_unknown_voice_actor,
+        active_person_resolver=_logged_voice_actor_resolver(request_identity),
         policy_evaluator=evaluate_authorization,
         audit_writer=record_authorization_decision,
         household_tools=HouseholdKnowledgeTools(reader=PolicyGatedV4Reader()),
+        consent_resolver=request_identity.resolve_consent,
     )
 
 
@@ -155,20 +167,26 @@ async def _read_audio_upload(audio: UploadFile) -> bytes:
 async def transcribe(
     audio: Annotated[UploadFile, File(description="WAV 16kHz mono int16")],
     background_tasks: BackgroundTasks,
+    x_iroko_identity_token: Annotated[str | None, Header(alias="X-Iroko-Identity-Token")] = None,
 ) -> TranscribeResponse:
     """Transcribe audio, generate a robot response, and synthesize speech.
 
     Args:
         audio: WAV at 16kHz, mono, int16, within MAX_UPLOAD_BYTES.
         background_tasks: Queue for successful voice-turn consolidation.
+        x_iroko_identity_token: Optional one-use owner unlock token. Absent,
+            expired, replayed, or malformed tokens resolve to the public
+            unknown actor without disclosing which case occurred.
 
     Returns:
-        Existing audio response contract with text, WAV, emotion, and timings.
+        Existing audio response contract with text, WAV, emotion, timings,
+        and whether this turn consumed a fresh owner unlock grant.
 
     Raises:
         HTTPException: 413 for size, 422 for WAV/speech, or 500 for STT/TTS.
     """
     request_start = time.perf_counter()
+    request_identity = owner_unlock_service.for_request(x_iroko_identity_token)
     audio_bytes = await _read_audio_upload(audio)
 
     text_heard, stt_ms = await _run_stt(audio_bytes, [])
@@ -201,7 +219,7 @@ async def transcribe(
             total_ms=total_ms,
         )
 
-    plan = await _voice_controller(background_tasks).handle(
+    plan = await _voice_controller(background_tasks, request_identity=request_identity).handle(
         _voice_event_from_transcript(text_heard)
     )
     turn_log.log_decision("voice", plan)
@@ -219,6 +237,7 @@ async def transcribe(
         llm_ms=plan.duration_ms,
         tts_ms=tts_ms,
         total_ms=total_ms,
+        authentication_consumed=request_identity.consumed,
     )
 
 

@@ -52,6 +52,7 @@ async def test_chat_returns_exact_contract_and_calls_service_once(
         "emotion": "joy",
         "duration_ms": 42,
         "conversation_id": "web-primary",
+        "authentication_consumed": False,
     }
     process.assert_awaited_once_with("Hello", "web-primary")
 
@@ -142,6 +143,7 @@ async def test_chat_fallback_is_safe_and_does_not_touch_audio(
         "emotion",
         "duration_ms",
         "conversation_id",
+        "authentication_consumed",
     }
     stt_call.assert_not_awaited()
     tts_call.assert_not_awaited()
@@ -221,6 +223,7 @@ async def test_chat_answers_current_date_without_calling_legacy_text_turn(
         "emotion": "neutral",
         "duration_ms": 0,
         "conversation_id": "web-primary",
+        "authentication_consumed": False,
     }
     process.assert_not_awaited()
 

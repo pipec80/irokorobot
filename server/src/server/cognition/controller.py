@@ -70,7 +70,7 @@ _PRIVATE_HOUSEHOLD_TERMS = (
 )
 _BIRTH_INFORMATION_TERMS = ("nacio", "nacimiento")
 _RELATIONSHIP_TERMS = ("relación",)
-_OWN_CHILDREN_LIST_PATTERNS = ("como se llaman mis hijos",)
+_OWN_CHILDREN_LIST_PATTERNS = ("como se llaman mis hijos", "quienes son mis hijos")
 _OWN_CHILDREN_COUNT_PATTERNS = ("cuantos hijos tengo",)
 _AMBIGUOUS_DATE_PATTERNS = ("que dia soy",)
 _TWO_ITEMS = 2

@@ -1,16 +1,18 @@
 """Local text-only chat adapter."""
 
 from datetime import UTC, date, datetime
+from typing import Annotated
 from uuid import uuid4
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Header
 
 from server import turn_log
 from server.cognition.authorization import evaluate_authorization
 from server.cognition.controller import CognitiveController
 from server.cognition.household_tools import HouseholdKnowledgeTools
-from server.cognition.identity import ActivePersonContext, ActivePersonStatus, HouseholdRole
-from server.cognition.models import CognitiveEvent, Confidence, ConfidenceBasis
+from server.cognition.identity import ActivePersonContext
+from server.cognition.models import CognitiveEvent
+from server.cognition.owner_authentication import owner_unlock_service
 from server.cognition.response_plan import TextTurnPayload
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
@@ -45,43 +47,38 @@ def _event_from_request(request: ChatRequest) -> CognitiveEvent[TextTurnPayload]
     )
 
 
-async def _public_unknown_actor(event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
-    """Return the public chat actor without accepting identity from HTTP input."""
-    actor = ActivePersonContext(
-        person_id=None,
-        display_name=None,
-        status=ActivePersonStatus.UNKNOWN,
-        confidence=Confidence(
-            score=0.0,
-            basis=ConfidenceBasis.NOT_APPLICABLE,
-            calibrated=False,
-            reason="Public chat provides no trusted identity evidence",
-        ),
-        role=HouseholdRole.UNKNOWN,
-        evidence=(),
-        resolved_at=event.occurred_at,
-    )
-    turn_log.log_actor("chat", actor)
-    return actor
-
-
 @router.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest) -> ChatResponse:
+async def chat(
+    request: ChatRequest,
+    x_iroko_identity_token: Annotated[str | None, Header(alias="X-Iroko-Identity-Token")] = None,
+) -> ChatResponse:
     """Process one local text-only conversation turn.
 
     Args:
         request: Validated text and ephemeral conversation identifier.
+        x_iroko_identity_token: Optional one-use owner unlock token. Absent,
+            expired, replayed, or malformed tokens resolve to the public
+            unknown actor without disclosing which case occurred.
 
     Returns:
-        Generated response, emotion, latency, and conversation identifier.
+        Generated response, emotion, latency, conversation identifier, and
+        whether this turn consumed a fresh owner unlock grant.
     """
+    request_identity = owner_unlock_service.for_request(x_iroko_identity_token)
+
+    async def resolve_actor(event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
+        actor = await request_identity.resolve_actor(event)
+        turn_log.log_actor("chat", actor)
+        return actor
+
     controller = CognitiveController(
         today=_today,
         legacy_turn=process_text_turn,
-        active_person_resolver=_public_unknown_actor,
+        active_person_resolver=resolve_actor,
         policy_evaluator=evaluate_authorization,
         audit_writer=record_authorization_decision,
         household_tools=HouseholdKnowledgeTools(reader=PolicyGatedV4Reader()),
+        consent_resolver=request_identity.resolve_consent,
     )
     result = await controller.handle(_event_from_request(request))
     turn_log.log_decision("chat", result)
@@ -90,4 +87,5 @@ async def chat(request: ChatRequest) -> ChatResponse:
         emotion=result.emotion,
         duration_ms=result.duration_ms,
         conversation_id=request.conversation_id,
+        authentication_consumed=request_identity.consumed,
     )

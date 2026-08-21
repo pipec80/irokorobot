@@ -361,6 +361,34 @@ async def test_controller_delegates_generic_conversation_with_original_inputs() 
 
 
 @pytest.mark.asyncio
+async def test_controller_dispatches_the_north_star_children_phrasing() -> None:
+    """The exact Plan 0026 acceptance phrasing must reach the deterministic tool."""
+    legacy_turn = AsyncMock()
+    actor = _actor(HouseholdRole.OWNER, 7)
+    tools = Mock()
+    tools.get_children = AsyncMock(
+        return_value=HouseholdToolResult(
+            tool_name=HouseholdToolName.GET_CHILDREN,
+            status=KnowledgeStatus.KNOWN,
+            value=("Máximo", "Dominga"),
+        )
+    )
+    controller = CognitiveController(
+        today=lambda: date(2026, 8, 12),
+        legacy_turn=legacy_turn,
+        active_person_resolver=_resolver(actor),
+        household_tools=tools,
+        consent_resolver=_consent(ConsentStatus.GRANTED),
+    )
+
+    plan = await controller.handle(_event("¿Quiénes son mis hijos?"))
+
+    assert plan.status is KnowledgeStatus.KNOWN
+    assert plan.response == "Tus hijos son Máximo y Dominga."
+    legacy_turn.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_identity_and_consent_resolve_only_for_protected_branches() -> None:
     """Generic and date requests must never await actor or consent resolution."""
     legacy_turn = AsyncMock(return_value=TextTurnResult("Hola", "joy", 42, False))
