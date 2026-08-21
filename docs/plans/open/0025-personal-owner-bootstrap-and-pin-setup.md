@@ -5,9 +5,16 @@
 > `superpowers:executing-plans` to implement this plan task-by-task. Steps use
 > checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** Minimal north-star scope approved by Pipec on 2026-08-20. The
-code/test preflight is green; implementation starts only after the current
-documentation worktree is checkpointed on its feature branch.
+**Status:** Minimal north-star scope approved by Pipec on 2026-08-20.
+Implemented on `feat/personal-owner-bootstrap` on 2026-08-20 — Tasks 1-5 done,
+one commit per task. All focused and repository gates pass (677 tests, up
+from the 641 baseline; `just lint`, `just typecheck`, `just audit`, `just
+check` all green). Setup/credential persistence is complete and locally
+usable via `just setup-personal`. Not yet implemented by this plan: token
+issue, router identity propagation, robot propagation, the protected
+child-answer runtime, and microphone/TTS acceptance — those belong to Plans
+0026, 0027, and 0028 respectively. Pending independent review and merge
+before Plan 0026 may start.
 
 **Goal:** Provide one restart-safe, local CLI wizard that establishes Pipec as
 the sole owner, stores Máximo and Dominga as confirmed v4 child relationships,
@@ -676,6 +683,18 @@ Plan 0025 is complete only when:
 - all focused and repository gates pass;
 - no auth token, router, robot, face, voice, RAG, or runtime-answer code was
   introduced.
+
+**Evidence (2026-08-20):** Every criterion above is met on
+`feat/personal-owner-bootstrap`. `just setup-personal` and
+`just setup-personal status` run against a fresh DB; the wizard's blank-owner
+cancellation and its no-write behavior were verified manually with a
+synthetic (non-real) PIN. Idempotent rerun, PIN rotation, and second-owner
+rejection are covered by `tests/integration/test_personal_setup.py`. No file
+outside this plan's file map was modified except two pre-existing migration
+version assertions (`tests/integration/test_memory_v4_schema.py`,
+`tests/integration/test_household_authorization_schema.py`) that pin the
+schema to its latest applied migration and had to advance from 5 to 6 —
+consistent with how they were already bumped for migration 5.
 
 ## Security references
 

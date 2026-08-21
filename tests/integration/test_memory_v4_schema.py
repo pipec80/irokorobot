@@ -36,7 +36,7 @@ async def test_v4_schema_is_additive_and_preserves_legacy_facts(v4_db: None) -> 
     version_cursor = await conn.execute("PRAGMA user_version")
     version_row = await version_cursor.fetchone()
     await version_cursor.close()
-    assert version_row == (5,)
+    assert version_row == (6,)
 
     tables_cursor = await conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
     tables = {str(row[0]) for row in await tables_cursor.fetchall()}

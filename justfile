@@ -97,6 +97,10 @@ run-robot:
 test-pipeline *ARGS:
     uv run --env-file .env python scripts/pipeline_test.py {{ARGS}}
 
+# Configura owner/hijos/PIN local. Requiere run-server y run-robot detenidos
+setup-personal *ARGS:
+    uv run --env-file .env --package server personal-setup {{ARGS}}
+
 # Prueba el cliente HTTP contra el servidor en ejecucion
 test-client *ARGS:
     uv run --env-file .env python scripts/client_test.py {{ARGS}}
