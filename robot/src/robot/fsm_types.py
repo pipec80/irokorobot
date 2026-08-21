@@ -36,3 +36,8 @@ class LoopContext:
     # first stream event — used to log receive/playback latency in
     # app_streaming.py. IDLE resets it; THINKING sets it.
     stream_request_start: float | None = None
+    # Opt-in owner unlock token (classic mode only). Set once at startup by
+    # the optional PIN prompt; cleared only when the server reports
+    # authentication_consumed=true. IDLE must not reset it — it survives
+    # across turns until consumed or the process restarts.
+    identity_token: str | None = None

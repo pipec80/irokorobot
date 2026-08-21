@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from datetime import datetime
 import json
 import logging
 
@@ -50,6 +51,17 @@ class TranscribeResult:
     # Server wants ONE camera frame — capture and call respond_vision().
     # Generic protocol flag: the robot does not know WHY the server looks.
     vision_requested: bool = False
+    # Whether this turn consumed a fresh one-use owner unlock grant. The
+    # robot clears its held token only when this is True.
+    authentication_consumed: bool = False
+
+
+@dataclass(frozen=True)
+class OwnerUnlockResult:
+    """Parsed response from POST /auth/owner/unlock."""
+
+    token: str
+    expires_at: datetime
 
 
 def _parse_result(data: dict[str, object]) -> TranscribeResult:
@@ -65,14 +77,17 @@ def _parse_result(data: dict[str, object]) -> TranscribeResult:
         duration_ms=int(data["duration_ms"]),  # type: ignore[call-overload]  # contract: int
         emotion=str(data.get("emotion", "neutral")),
         vision_requested=bool(data.get("vision_requested", False)),
+        authentication_consumed=bool(data.get("authentication_consumed", False)),
     )
 
 
-async def transcribe(audio: bytes) -> TranscribeResult:
+async def transcribe(audio: bytes, *, identity_token: str | None = None) -> TranscribeResult:
     """Send audio to the server and return the transcription result.
 
     Args:
         audio: Raw WAV bytes at 16kHz mono int16.
+        identity_token: Optional one-use owner unlock token, sent as the
+            X-Iroko-Identity-Token header. Never inspected or logged here.
 
     Returns:
         TranscribeResult with all pipeline outputs.
@@ -85,10 +100,12 @@ async def transcribe(audio: bytes) -> TranscribeResult:
     if not audio:
         raise ValueError("Audio bytes are empty")
     client = _get_client()
+    headers = {"X-Iroko-Identity-Token": identity_token} if identity_token else None
     try:
         response = await client.post(
             f"{settings.server_url}/transcribe",
             files={"audio": ("audio.wav", audio, "audio/wav")},
+            headers=headers,
         )
         response.raise_for_status()
     except httpx.HTTPStatusError as exc:
@@ -100,6 +117,38 @@ async def transcribe(audio: bytes) -> TranscribeResult:
     data = response.json()
     logger.info("Server response: %s", data.get("text_heard", ""))
     return _parse_result(data)
+
+
+async def unlock_owner(pin: str) -> OwnerUnlockResult:
+    """Verify the local owner PIN and return one opaque one-use grant.
+
+    Args:
+        pin: Candidate PIN entered at the robot terminal — never logged.
+
+    Returns:
+        The opaque token and its expiry.
+
+    Raises:
+        ServerError: If the PIN is rejected, the local rate limit blocks new
+            attempts, the endpoint is unreachable, or the connection fails.
+            The candidate PIN is never echoed in the error message.
+    """
+    client = _get_client()
+    try:
+        response = await client.post(
+            f"{settings.server_url}/auth/owner/unlock",
+            json={"pin": pin},
+        )
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        raise ServerError(f"Owner unlock rejected ({exc.response.status_code})") from exc
+    except httpx.RequestError as exc:
+        raise ServerError("Could not reach server") from exc
+    data = response.json()
+    return OwnerUnlockResult(
+        token=str(data["token"]),
+        expires_at=datetime.fromisoformat(str(data["expires_at"])),
+    )
 
 
 async def check_vision_enabled() -> bool:

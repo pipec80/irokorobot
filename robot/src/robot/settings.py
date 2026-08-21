@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     # of the classic single-shot /transcribe. Default off — opt-in per robot
     # until validated on real hardware.
     robot_streaming: bool = False
+    # Plan 0026: prompt once at startup for the local owner PIN (classic mode
+    # only — not yet supported with robot_streaming). Default off.
+    robot_owner_unlock_prompt: bool = False
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 

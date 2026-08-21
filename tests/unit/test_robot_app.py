@@ -2,6 +2,8 @@
 
 import base64
 from dataclasses import replace
+from datetime import UTC, datetime
+import logging
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -9,7 +11,7 @@ from robot.app import LoopContext, RobotState
 from robot.exceptions import AudioCaptureError, CameraError, NoSpeechError, ServerError
 from robot.server_client import TranscribeResult
 
-from robot import app
+from robot import app, server_client
 
 _FAKE_RESULT = TranscribeResult(
     text_heard="hola robot",
@@ -276,3 +278,155 @@ async def test_full_happy_cycle(monkeypatch: pytest.MonkeyPatch) -> None:
         RobotState.SPEAKING,
         RobotState.IDLE,
     ]
+
+
+@pytest.mark.unit
+async def test_thinking_passes_the_held_token_to_transcribe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The classic THINKING state must forward ctx.identity_token unchanged."""
+    transcribe_mock = AsyncMock(return_value=_FAKE_RESULT)
+    monkeypatch.setattr(app, "transcribe", transcribe_mock)
+    ctx = LoopContext(audio=b"x", identity_token="opaque-token")  # noqa: S106 — fixture value
+
+    await app.tick(RobotState.THINKING, ctx)
+
+    transcribe_mock.assert_awaited_once_with(b"x", identity_token="opaque-token")  # noqa: S106
+
+
+@pytest.mark.unit
+async def test_thinking_clears_the_token_only_when_consumed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A consumed grant must be cleared so it is never replayed."""
+    consumed_result = replace(_FAKE_RESULT, authentication_consumed=True)
+    monkeypatch.setattr(app, "transcribe", AsyncMock(return_value=consumed_result))
+    ctx = LoopContext(audio=b"x", identity_token="opaque-token")  # noqa: S106 — fixture value
+
+    await app.tick(RobotState.THINKING, ctx)
+
+    assert ctx.identity_token is None
+
+
+@pytest.mark.unit
+async def test_thinking_retains_the_token_when_not_consumed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A generic reply that never resolved the actor must not drop the grant."""
+    monkeypatch.setattr(app, "transcribe", AsyncMock(return_value=_FAKE_RESULT))
+    ctx = LoopContext(audio=b"x", identity_token="opaque-token")  # noqa: S106 — fixture value
+
+    await app.tick(RobotState.THINKING, ctx)
+
+    assert ctx.identity_token == "opaque-token"  # noqa: S105 — fixture value
+
+
+@pytest.mark.unit
+async def test_idle_never_resets_the_identity_token() -> None:
+    """The token survives across turns — only consumption or restart clears it."""
+    ctx = LoopContext(audio=b"stale", identity_token="opaque-token")  # noqa: S106 — fixture value
+
+    await app.tick(RobotState.IDLE, ctx)
+
+    assert ctx.identity_token == "opaque-token"  # noqa: S105 — fixture value
+
+
+@pytest.mark.unit
+async def test_unlock_prompt_disabled_never_prompts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Setting false must never call the secret reader or the unlock client."""
+    monkeypatch.setattr(app.settings, "robot_owner_unlock_prompt", False)
+    read_secret = AsyncMock()
+
+    token = await app._prompt_owner_unlock(read_secret=read_secret)
+
+    assert token is None
+    read_secret.assert_not_awaited()
+
+
+@pytest.mark.unit
+async def test_unlock_prompt_enabled_prompts_once_at_startup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Setting true must prompt exactly once before the FSM starts."""
+    monkeypatch.setattr(app.settings, "robot_owner_unlock_prompt", True)
+    monkeypatch.setattr(app.settings, "robot_streaming", False)
+    read_secret = AsyncMock(return_value="482173")
+    unlock_result = server_client.OwnerUnlockResult(
+        token="opaque-token",  # noqa: S106 — fixture value
+        expires_at=datetime(2026, 8, 21, 10, 1, tzinfo=UTC),
+    )
+    unlock = AsyncMock(return_value=unlock_result)
+
+    token = await app._prompt_owner_unlock(read_secret=read_secret, unlock=unlock)
+
+    assert token == "opaque-token"  # noqa: S105 — fixture value
+    read_secret.assert_awaited_once()
+    unlock.assert_awaited_once_with("482173")
+
+
+@pytest.mark.unit
+async def test_unlock_prompt_empty_pin_continues_without_a_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An empty answer must skip the unlock call and return no token."""
+    monkeypatch.setattr(app.settings, "robot_owner_unlock_prompt", True)
+    monkeypatch.setattr(app.settings, "robot_streaming", False)
+    read_secret = AsyncMock(return_value="")
+    unlock = AsyncMock()
+
+    token = await app._prompt_owner_unlock(read_secret=read_secret, unlock=unlock)
+
+    assert token is None
+    unlock.assert_not_awaited()
+
+
+@pytest.mark.unit
+async def test_unlock_prompt_server_rejection_continues_without_a_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A rejected PIN must degrade to public conversation, not crash startup."""
+    monkeypatch.setattr(app.settings, "robot_owner_unlock_prompt", True)
+    monkeypatch.setattr(app.settings, "robot_streaming", False)
+    read_secret = AsyncMock(return_value="000000")
+    unlock = AsyncMock(side_effect=ServerError("Owner unlock rejected (401)"))
+
+    token = await app._prompt_owner_unlock(read_secret=read_secret, unlock=unlock)
+
+    assert token is None
+
+
+@pytest.mark.unit
+async def test_unlock_prompt_raises_when_streaming_is_also_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The opt-in prompt is classic-only until Plan 0027 adds streaming parity."""
+    monkeypatch.setattr(app.settings, "robot_owner_unlock_prompt", True)
+    monkeypatch.setattr(app.settings, "robot_streaming", True)
+    read_secret = AsyncMock()
+
+    with pytest.raises(SystemExit):
+        await app._prompt_owner_unlock(read_secret=read_secret)
+
+    read_secret.assert_not_awaited()
+
+
+@pytest.mark.unit
+async def test_unlock_prompt_never_logs_the_pin_or_token(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Neither the candidate PIN nor the issued token may reach any log record."""
+    monkeypatch.setattr(app.settings, "robot_owner_unlock_prompt", True)
+    monkeypatch.setattr(app.settings, "robot_streaming", False)
+    read_secret = AsyncMock(return_value="482173")
+    unlock_result = server_client.OwnerUnlockResult(
+        token="opaque-token",  # noqa: S106 — fixture value
+        expires_at=datetime(2026, 8, 21, 10, 1, tzinfo=UTC),
+    )
+    unlock = AsyncMock(return_value=unlock_result)
+
+    with caplog.at_level(logging.DEBUG):
+        await app._prompt_owner_unlock(read_secret=read_secret, unlock=unlock)
+
+    joined = "\n".join(record.getMessage() for record in caplog.records)
+    assert "482173" not in joined
+    assert "opaque-token" not in joined
