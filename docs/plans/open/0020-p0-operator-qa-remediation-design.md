@@ -1,8 +1,10 @@
 # P0 operator-QA remediation design
 
-> **Status:** Open umbrella, partially implemented. Plan 0022/C6 is complete;
-> Plans 0021/C5 and 0023/C7 have not been executed and are deferred until the
-> PC-1 authenticated-owner proof is accepted.
+> **Status:** Open umbrella, partially implemented. Plans 0021/C5 and 0022/C6
+> are complete and operator-confirmed (2026-08-21 and 2026-08-20 respectively
+> — see [Plan 0021](../completed/0021-p0-typed-intent-resolution.md#execution-evidence)
+> and [Plan 0022](../completed/0022-p0-reliable-streaming-output.md#execution-evidence));
+> Plan 0023/C7 remains open.
 > **Date:** 2026-08-17
 > **Baseline:** `docs/personal-family-profiles` at `a6b44bb`
 
@@ -35,7 +37,7 @@ self-learning, or a family policy profile.
 
 | Slice | Current evidence | Reuse boundary | Remaining work |
 |---|---|---|---|
-| C5 / 0021 | Plan-specific files and evidence absent | Keep the inline classifier, typed controller, policy, tools, and route parity until the planned extraction | Typed injected resolver, supervised corpus, tests, and operator rerun |
+| C5 / 0021 | Implemented, reviewed, and operator-confirmed | Keep the typed injected resolver (`cognition/intent_resolution.py`), supervised corpus, and controller injection | Regression revalidation only |
 | C6 / 0022 | Implemented, reviewed, and operator-confirmed | Keep `pending_emotion`, audible fallback, and audio-before-`done` rules | Regression revalidation only |
 | C7 / 0023 | Existing vision parity and scene transport, but no planned grounding | Keep image validation, current perception, VLM transport, Piper, and enrollment quarantine | Typed visual preflight, direct grounded speech, trigger migration, and physical acceptance |
 

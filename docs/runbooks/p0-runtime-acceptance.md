@@ -10,7 +10,7 @@
 > real operator rerun (case C1-S below) with zero silent successes across 4
 > live turns, including a live reproduction of the original hybrid-output
 > failure ending in an audible fallback. The intent blocker is closed: [Plan
-> 0021](../plans/open/0021-p0-typed-intent-resolution.md) passed a 2026-08-21
+> 0021](../plans/completed/0021-p0-typed-intent-resolution.md) passed a 2026-08-21
 > real operator rerun (R1 checkpoint below) — see its own execution evidence
 > for the full 6/6 classic and 5/5 streaming case-by-case result.
 > Visual-grounding (C7, Plan 0023) remains open; P0 acceptance still requires
@@ -159,7 +159,7 @@ broader `protected_household` intent pattern instead of the specific
 grant is consumed but the response is a generic "not yet connected" stub
 sentence — never the protected names and never the standard denial text.
 No disclosure occurred in any observed instance, but it is a UX gap worth
-folding into [Plan 0021](../plans/open/0021-p0-typed-intent-resolution.md)'s
+folding into [Plan 0021](../plans/completed/0021-p0-typed-intent-resolution.md)'s
 classifier work.
 
 ## Completion record

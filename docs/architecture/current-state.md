@@ -15,7 +15,7 @@
 > **complete and operator-confirmed**: 6/6 classic and 5/5 streaming
 > acceptance cases passed on real hardware on 2026-08-21, all deterministic
 > cases at `llm_ms=0` — see [Plan
-> 0021](../plans/open/0021-p0-typed-intent-resolution.md#execution-evidence).
+> 0021](../plans/completed/0021-p0-typed-intent-resolution.md#execution-evidence).
 > Plan 0023 (P0-C7) remains unimplemented; combined P0 operator acceptance
 > and Plan 0013's own R1 debt (one failing case, STT accuracy on "Iroko")
 > remain open.

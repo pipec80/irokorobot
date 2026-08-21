@@ -7,7 +7,7 @@
 > blocker (C6) is closed and operator-confirmed on 2026-08-20 — see [Plan
 > 0022](../completed/0022-p0-reliable-streaming-output.md#execution-evidence).
 > Intent (C5) is closed and operator-confirmed on 2026-08-21 — see [Plan
-> 0021](0021-p0-typed-intent-resolution.md#execution-evidence).
+> 0021](../completed/0021-p0-typed-intent-resolution.md#execution-evidence).
 > Visual-grounding (C7) remains open.
 
 ## Current slice disposition
