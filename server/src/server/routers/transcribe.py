@@ -95,8 +95,8 @@ def _voice_controller(
     Args:
         background_tasks: Queue used to schedule post-turn consolidation.
         request_identity: Optional request-scoped owner grant resolver. When
-            omitted (the streaming route, unchanged by this plan), the
-            controller falls back to its own public-unknown defaults.
+            omitted, the controller falls back to its own public-unknown
+            defaults.
     """
 
     async def legacy_turn(message: str, conversation_id: str) -> TextTurnResult:
@@ -245,20 +245,26 @@ async def transcribe(
 async def transcribe_stream(
     audio: Annotated[UploadFile, File(description="WAV 16kHz mono int16")],
     background_tasks: BackgroundTasks,
+    x_iroko_identity_token: Annotated[str | None, Header(alias="X-Iroko-Identity-Token")] = None,
 ) -> StreamingResponse:
     """Transcribe audio and stream the robot's reply sentence by sentence (R3).
 
     Args:
         audio: WAV at 16kHz, mono, int16, within MAX_UPLOAD_BYTES.
         background_tasks: Queue for successful voice-turn consolidation.
+        x_iroko_identity_token: Optional one-use owner unlock token — same
+            contract as classic /transcribe (Plan 0027).
 
     Returns:
         NDJSON events ordered as text, emotion, audio chunks, then timings.
+        The terminal `done` event additionally reports whether this turn
+        consumed a fresh owner unlock grant.
 
     Raises:
         HTTPException: 413 for size, 422 for WAV/speech, or 500 for STT.
     """
     request_start = time.perf_counter()
+    request_identity = owner_unlock_service.for_request(x_iroko_identity_token)
     audio_bytes = await _read_audio_upload(audio)
 
     text_heard, stt_ms = await _run_stt(audio_bytes, [])
@@ -268,7 +274,9 @@ async def transcribe_stream(
         raise HTTPException(status_code=422, detail="No speech detected in audio")
 
     event = _voice_event_from_transcript(text_heard)
-    plan = await _voice_controller(background_tasks).decide(event)
+    plan = await _voice_controller(background_tasks, request_identity=request_identity).decide(
+        event
+    )
     turn_log.log_decision("stream", plan)
     if plan is not None:
         return StreamingResponse(
@@ -277,6 +285,7 @@ async def transcribe_stream(
                 plan=plan,
                 stt_ms=stt_ms,
                 request_start=request_start,
+                authentication_consumed=request_identity.consumed,
             ),
             media_type="application/x-ndjson",
         )
