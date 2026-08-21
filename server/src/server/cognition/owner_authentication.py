@@ -10,7 +10,7 @@ signal for one child-data read.
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict
@@ -28,7 +28,9 @@ from server.cognition.identity_sessions import IdentitySessionRegistry
 from server.cognition.models import CognitiveEvent, Confidence, ConfidenceBasis
 from server.cognition.pin_credentials import verify_pin
 from server.cognition.response_plan import TextTurnPayload
-from server.memory.owner_credentials import OwnerPinCredential
+from server.memory.entity_labels import get_person_label
+from server.memory.household_authorization import get_active_role
+from server.memory.owner_credentials import OwnerPinCredential, get_active_owner_pin_credential
 
 __all__ = [
     "OwnerRequestResolver",
@@ -291,3 +293,43 @@ class OwnerUnlockService:
             read_person=self._read_person,
             clock=self._clock,
         )
+
+
+def _utc_now() -> datetime:
+    """Return the current aware UTC timestamp for production boundaries."""
+    return datetime.now(UTC)
+
+
+async def _read_person_record(person_entity_id: int) -> PersonRecord | None:
+    """Adapt the safe entity-label lookup to the identity `PersonRecord` shape."""
+    label = await get_person_label(entity_id=person_entity_id)
+    if label is None:
+        return None
+    return PersonRecord(
+        person_id=label.entity_id, display_name=label.display_name, entity_type="person"
+    )
+
+
+def build_default_owner_unlock_service() -> OwnerUnlockService:
+    """Compose the production owner unlock service over real repositories.
+
+    Returns:
+        A service backed by the Plan 0025 credential/role/label repositories,
+        a fresh process-local one-use evidence registry, and real scrypt
+        verification off-loaded via `asyncio.to_thread`.
+    """
+    registry = IdentitySessionRegistry(
+        lookup_person=lambda _person_id: None,
+        clock=_utc_now,
+        ttl=timedelta(seconds=60),
+    )
+    return OwnerUnlockService(
+        clock=_utc_now,
+        registry=registry,
+        read_credential=get_active_owner_pin_credential,
+        read_role=get_active_role,
+        read_person=_read_person_record,
+    )
+
+
+owner_unlock_service: OwnerUnlockService = build_default_owner_unlock_service()
