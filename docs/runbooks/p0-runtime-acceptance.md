@@ -9,9 +9,12 @@
 > 0022](../plans/completed/0022-p0-reliable-streaming-output.md) passed a 2026-08-20
 > real operator rerun (case C1-S below) with zero silent successes across 4
 > live turns, including a live reproduction of the original hybrid-output
-> failure ending in an audible fallback. Intent (C5, Plan 0021) and
-> visual-grounding (C7, Plan 0023) remain open; P0 acceptance still requires
-> their remediation and a combined clean rerun. Personal identity/session acceptance is P1 work under
+> failure ending in an audible fallback. The intent blocker is closed: [Plan
+> 0021](../plans/open/0021-p0-typed-intent-resolution.md) passed a 2026-08-21
+> real operator rerun (R1 checkpoint below) — see its own execution evidence
+> for the full 6/6 classic and 5/5 streaming case-by-case result.
+> Visual-grounding (C7, Plan 0023) remains open; P0 acceptance still requires
+> its remediation and a combined clean rerun. Personal identity/session acceptance is P1 work under
 > [Plan 0015](../plans/open/0015-personal-companion-design.md), not an unfinished
 > P0 requirement.
 

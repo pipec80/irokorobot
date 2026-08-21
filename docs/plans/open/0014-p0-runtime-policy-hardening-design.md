@@ -1,12 +1,14 @@
 # P0 runtime policy hardening design
 
-> **Status:** Open umbrella, partially implemented. P0-C1 through P0-C4 and
-> P0-C6 are implemented. The 2026-08-17 operator run found
-> three runtime blockers; remediation is designed in
+> **Status:** Open umbrella, partially implemented. P0-C1 through P0-C6 are
+> implemented. The 2026-08-17 operator run found three runtime blockers;
+> remediation is designed in
 > [Plan 0020](0020-p0-operator-qa-remediation-design.md). The silent-streaming
 > blocker (C6) is closed and operator-confirmed on 2026-08-20 — see [Plan
-> 0022](../completed/0022-p0-reliable-streaming-output.md#execution-evidence). Intent (C5)
-> and visual-grounding (C7) remain open.
+> 0022](../completed/0022-p0-reliable-streaming-output.md#execution-evidence).
+> Intent (C5) is closed and operator-confirmed on 2026-08-21 — see [Plan
+> 0021](0021-p0-typed-intent-resolution.md#execution-evidence).
+> Visual-grounding (C7) remains open.
 
 ## Current slice disposition
 
@@ -16,11 +18,11 @@
 | C2 | Implemented by Plan 0017 | Vision/controller parity | Preserve while grounding C7 |
 | C3 | Implemented by Plan 0018 | Client-test WAV normalization | Preserve audio contract |
 | C4 | Implemented by Plan 0019 | Bounded protected-request wording | Extend through C5; do not replace policy |
-| C5 | Not implemented as Plan 0021 | Inline classifier and typed controller seams already exist | Extract typed resolver and prove observed variants |
+| C5 | Complete in Plan 0021 | Typed resolver, reviewed corpus, controller injection | Revalidate only |
 | C6 | Complete in Plan 0022 | Audible fallback and terminal stream rules | Revalidate only |
 | C7 | Not implemented as Plan 0023 | Scene/VLM transport and vision parity already exist | Ground the response and remove duplicate trigger authority |
 
-The umbrella remains under `open/` because C5, C7, and the final combined
+The umbrella remains under `open/` because C7 and the final combined
 operator run are still required. Its completed slices are historical evidence,
 not work to repeat.
 

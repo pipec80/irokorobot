@@ -5,10 +5,20 @@
 > `superpowers:executing-plans` to implement this plan task-by-task. Steps use
 > checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** Ready for implementation after Plan 0022 and after PC-1 explicit
-owner authentication (execution order revised 2026-08-20). Specify and test the
-resolver against both an identified owner and an unknown speaker, not only
-against a permanently anonymous one.
+**Status:** Implemented on `feat/p0-c5-typed-intent-resolution` on
+2026-08-21 — Tasks 1-4 done, one commit per task, authorized by Pipec.
+All repository gates pass (785 tests, up from the 761 baseline; `just
+lint`, `just typecheck`, `just audit`, `just check` all green). Real
+classic and streaming acceptance both completed on the actual robot: 6/6
+cases pass in classic mode, 5/5 in streaming mode (the generic greeting
+is classic-only per this plan's own acceptance table), all with literal
+STT recorded, audible confirmation, and `llm_ms=0` on every deterministic
+case. Task 3's independent review was performed by Claude against the
+plan's five named criteria rather than by a separate reviewer — this
+session had no authorization to dispatch a review subagent; no findings
+required a new regression. C6 and C7 remain untouched (confirmed by
+`git diff --stat`); P0 stays open for C7 (Plan 0023) and the combined
+acceptance.
 
 ## Current code audit and reuse boundary
 
@@ -482,10 +492,39 @@ Conserve as regression suites without widening their responsibility:
 
 ## Execution Evidence
 
-- RED resolver and route commands: not run.
-- Focused GREEN commands and counts: not run.
-- Repository gates: not run.
-- Independent review: pending implementation.
-- Classic operator evidence: pending implementation.
-- Streaming deterministic/protected evidence: pending implementation.
-- Final commit and clean status: pending implementation.
+- RED resolver and route commands: run for every task before implementing
+  — resolver corpus/tests (Task 1), controller injection + route
+  regressions (Task 2). Each RED failed for the expected reason (missing
+  module, missing constructor kwarg, missing export) before the matching
+  implementation step.
+- Focused GREEN commands and counts: Task 1 — 24/24
+  (`tests/unit/test_intent_resolution.py`). Task 2 — 78/78 focused
+  (`test_intent_resolution.py` + `test_cognitive_controller.py` +
+  `test_cognitive_models.py`), then 108/108 on the full shared-route
+  regression including `test_transcribe_pipeline.py`,
+  `test_transcribe_memory.py`, `test_transcribe_stream.py`. Task 3 — 127/127
+  on the complete shared-controller regression (no `-k`, no skipped
+  protected-collision cases) plus 9/9 on the focused
+  `-k "date or ambiguous or private_family"` selection.
+- Repository gates: `just lint`/`typecheck`/`test` (785 passed)
+  /`audit`/`check` all green; `git diff --check` clean.
+- Independent review: performed by Claude (not a separate reviewer — see
+  Status) against precedence, privacy-safe `rule_id`, public-unknown
+  policy, route parity, and C6/C7 non-interference. All five PASS; no
+  findings.
+- Classic operator evidence (2026-08-21, `ntbk-pipec-2`, real microphone/
+  Piper, `ROBOT_STREAMING=false`): 6/6 — "Me dice la fecha actual."
+  (needed one re-take after Whisper heard "Me dices..."/"¿Me dice la
+  fecha actual?" resolved it), "¿Qué día es hoy?", "¿Qué día soy?", "¿Qué
+  vía es hoy?" (needed one re-take after Whisper heard "¡DBS hoy!"),
+  "¿Cómo se llaman mis hijos?", and "Hola, Iroko." (heard as "Hola
+  Yroko." — no exact-phrase requirement for the generic case). Every
+  deterministic case logged `llm_ms=0`; all audible, confirmed by Pipec.
+- Streaming deterministic/protected evidence (same session,
+  `ROBOT_STREAMING=true`): 5/5 — the same four deterministic/protected
+  phrases plus "¿Qué día soy?" (needed one re-take after Whisper heard
+  "¿Qué vía soy?"), all `llm_ms=0`, all audible. The generic greeting is
+  intentionally excluded — it is classic-only per this plan's own
+  acceptance table.
+- Final commit and clean status: recorded in this same documentation
+  commit; `just check` and `git diff --check` re-run clean afterward.
