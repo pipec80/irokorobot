@@ -42,7 +42,7 @@ deferred, umbrella, or product-design plan because it also lives under
 | 2 | [0026 — one-use classic turn](completed/0026-one-use-owner-authenticated-classic-turn.md) | Merged (PR #57) | Closed |
 | 3 | [0027 — streaming parity](completed/0027-one-use-owner-streaming-parity.md) | Merged (PR #64) | Closed |
 | 4 | [0028 — runtime acceptance](completed/0028-owner-authenticated-memory-runtime-acceptance.md) | Executed 2026-08-21, PASS | Closed (0013's R1 debt tracked independently below) |
-| 5 | [0021 — typed intent](open/0021-p0-typed-intent-resolution.md) | Implemented and operator-confirmed 2026-08-21 | Closed |
+| 5 | [0021 — typed intent](completed/0021-p0-typed-intent-resolution.md) | Implemented and operator-confirmed 2026-08-21 | Closed |
 | 6 | [0023 — grounded visual dialogue](open/0023-p0-grounded-visual-dialogue.md) | Executable now | 0021 complete |
 
 Supporting active designs and open acceptance work are listed in the
