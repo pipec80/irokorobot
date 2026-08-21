@@ -19,7 +19,8 @@ from server.cognition.identity import (
     IdentityEvidence,
     IdentityEvidenceSource,
 )
-from server.cognition.models import Confidence, ConfidenceBasis
+from server.cognition.models import Confidence, ConfidenceBasis, KnowledgeStatus
+from server.cognition.response_plan import InformationNeed, ResponsePlan, ResponseSource
 from server.exceptions import LLMError, TTSError
 from server.routers import transcribe as transcribe_module
 from server.schemas import ConversationTurn
@@ -208,6 +209,54 @@ def test_stream_answers_current_date_without_legacy_generation(
     prepare.assert_not_awaited()
     llm_stream.assert_not_called()
     record.assert_not_called()
+
+
+def _deterministic_date_plan() -> ResponsePlan:
+    """Build a minimal deterministic plan for direct stream_response_plan calls."""
+    return ResponsePlan(
+        need=InformationNeed.CURRENT_DATE,
+        status=KnowledgeStatus.KNOWN,
+        source=ResponseSource.DETERMINISTIC,
+        response="Hoy es 2026-08-21.",
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_stream_response_plan_marks_consumed_only_on_terminal_done() -> None:
+    """Plan 0027 Task 2: authentication_consumed reaches only the final done event."""
+    events = [
+        json.loads(line)
+        async for line in streaming.stream_response_plan(
+            text_heard="¿qué fecha es hoy?",
+            plan=_deterministic_date_plan(),
+            stt_ms=5,
+            request_start=time.perf_counter(),
+            authentication_consumed=True,
+        )
+    ]
+
+    assert [event["type"] for event in events] == ["text_heard", "emotion", "audio", "done"]
+    for event in events[:-1]:
+        assert "authentication_consumed" not in event
+    assert events[-1]["authentication_consumed"] is True
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_stream_response_plan_defaults_consumed_false() -> None:
+    """Every existing call site omits the keyword and must keep defaulting to false."""
+    events = [
+        json.loads(line)
+        async for line in streaming.stream_response_plan(
+            text_heard="¿qué fecha es hoy?",
+            plan=_deterministic_date_plan(),
+            stt_ms=5,
+            request_start=time.perf_counter(),
+        )
+    ]
+
+    assert events[-1]["authentication_consumed"] is False
 
 
 @pytest.mark.integration

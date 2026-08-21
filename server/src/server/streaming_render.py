@@ -176,12 +176,23 @@ def _log_stream_metrics(state: StreamState, total_ms: int) -> None:
     )
 
 
-def _done_event(stt_ms: int, request_start: float, state: StreamState) -> str:
+def _done_event(
+    stt_ms: int,
+    request_start: float,
+    state: StreamState,
+    *,
+    authentication_consumed: bool = False,
+) -> str:
     """Serialize the final timing event — requires at least one audio chunk.
 
     Correct orchestration never reaches ``audio_chunks == 0`` here (every
     fallback path speaks first); a violation is an orchestration bug, so
     this fails loudly instead of emitting a false ``done``.
+
+    Args:
+        authentication_consumed: Whether this request consumed a fresh
+            one-use owner grant (Plan 0027). Generic/legacy streaming never
+            resolves an actor, so it always defaults false.
 
     Raises:
         RuntimeError: If called before any audio chunk was emitted.
@@ -192,6 +203,10 @@ def _done_event(stt_ms: int, request_start: float, state: StreamState) -> str:
     llm_ms = max(0, total_ms - stt_ms - state.tts_ms_total)
     _log_stream_metrics(state, total_ms)
     done = StreamDoneEvent(
-        stt_ms=stt_ms, llm_ms=llm_ms, tts_ms=state.tts_ms_total, total_ms=total_ms
+        stt_ms=stt_ms,
+        llm_ms=llm_ms,
+        tts_ms=state.tts_ms_total,
+        total_ms=total_ms,
+        authentication_consumed=authentication_consumed,
     )
     return done.model_dump_json() + "\n"
