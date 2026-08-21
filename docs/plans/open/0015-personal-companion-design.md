@@ -2,10 +2,11 @@
 
 > **Status:** Product direction approved. The immediate spine is
 > [Plan 0024](0024-owner-authenticated-memory-mvp-design.md), decomposed into
-> executable Plans 0025–0028. The portfolio awaits Pipec's review; its
-> end-to-end authenticated-owner flow has not been implemented. Existing
-> foundations listed below are production code and must be reused. Face,
-> voice, fusion, and visual-companion slices remain later work.
+> executable Plans 0025–0028. 0025 and 0026 are merged (PR #56, PR #57); the
+> classic authenticated-owner flow has been confirmed once informally with
+> real hardware. 0027–0028 remain. Existing foundations listed below are
+> production code and must be reused. Face, voice, fusion, and
+> visual-companion slices remain later work.
 
 ## Objective
 
@@ -52,9 +53,9 @@ streaming channels, and real allowed/denied runtime acceptance.
 
 Execute the approved design in
 [Plan 0024](0024-owner-authenticated-memory-mvp-design.md) through its bounded
-portfolio: [setup](0025-personal-owner-bootstrap-and-pin-setup.md),
-[classic authenticated turn](0026-one-use-owner-authenticated-classic-turn.md),
-[streaming parity](0027-one-use-owner-streaming-parity.md), and
+portfolio: [setup](../completed/0025-personal-owner-bootstrap-and-pin-setup.md)
+(merged), [classic authenticated turn](0026-one-use-owner-authenticated-classic-turn.md)
+(merged), [streaming parity](0027-one-use-owner-streaming-parity.md) (next), and
 [runtime acceptance](0028-owner-authenticated-memory-runtime-acceptance.md).
 
 The delivery order is fixed:
@@ -138,10 +139,10 @@ product acceptance.
 
 ## Next decision gate
 
-Pipec reviews Plans [0025](0025-personal-owner-bootstrap-and-pin-setup.md),
-[0026](0026-one-use-owner-authenticated-classic-turn.md),
-[0027](0027-one-use-owner-streaming-parity.md), and
-[0028](0028-owner-authenticated-memory-runtime-acceptance.md). If approved,
-implementation starts with Plan 0025 only, on a feature branch, with its
-observed RED/GREEN evidence and review gate. Approval does not collapse the
-four plans into one change.
+Pipec reviewed and merged Plans
+[0025](../completed/0025-personal-owner-bootstrap-and-pin-setup.md) (PR #56) and
+[0026](0026-one-use-owner-authenticated-classic-turn.md) (PR #57), each on its
+own feature branch with observed RED/GREEN evidence and a review gate. The
+same discipline applies to [0027](0027-one-use-owner-streaming-parity.md) and
+[0028](0028-owner-authenticated-memory-runtime-acceptance.md): one plan per
+change, never collapsed.

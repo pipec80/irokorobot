@@ -1,8 +1,8 @@
 # Owner-authenticated personal-memory MVP design
 
-> **Status:** Approved product direction. The documentation-only executable
-> portfolio is prepared in Plans 0025–0028 and awaits Pipec's review before any
-> production code is changed.
+> **Status:** Approved product direction. Executable Plans 0025 (PR #56) and
+> 0026 (PR #57) are merged; 0027–0028 remain to close this design's runtime
+> acceptance.
 
 ## Product result
 
@@ -95,9 +95,10 @@ boolean is derived from fresh, unconsumed evidence for the current operation.
 This design is decomposed into four bounded plans. They must be reviewed and
 executed in order; preparing these documents is not implementation evidence:
 
-1. [Plan 0025](0025-personal-owner-bootstrap-and-pin-setup.md) — minimal
-   security bootstrap: Pipec as owner, confirmed child relations, and local PIN
-   setup without claiming extended onboarding completion;
+1. [Plan 0025](../completed/0025-personal-owner-bootstrap-and-pin-setup.md)
+   (merged) — minimal security bootstrap: Pipec as owner, confirmed child
+   relations, and local PIN setup without claiming extended onboarding
+   completion;
 2. [Plan 0026](0026-one-use-owner-authenticated-classic-turn.md) — one-use
    unlock and the authorized classic `/chat` and `/transcribe` paths;
 3. [Plan 0027](0027-one-use-owner-streaming-parity.md) — equivalent one-use
@@ -211,6 +212,7 @@ The documentation portfolio uses the product defaults agreed in the review:
 - absence, expiry, replay, conflict, or invalid evidence remains `unknown` and
   causes a non-disclosing denial.
 
-These choices are now specific enough to review Plans 0025–0028. Approval of
-the documents authorizes planning only; code execution begins only after Pipec
-explicitly asks to implement the first plan.
+These choices proved specific enough to review, implement, and merge Plans
+0025 and 0026 exactly as designed. Plans 0027–0028 follow the same rule: the
+approved design authorizes planning only; code execution begins only after
+Pipec explicitly asks to implement that specific plan.

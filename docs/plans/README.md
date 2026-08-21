@@ -17,11 +17,10 @@ deferred, umbrella, or product-design plan because it also lives under
 
 | Lane | Plans | Meaning |
 |---|---|---|
-| **NOW** | [0026](open/0026-one-use-owner-authenticated-classic-turn.md) | One-use owner-authenticated classic turn implemented on `feat/owner-authenticated-classic-turn`; all automated gates green (727 tests); awaiting independent review and merge before Plan 0027 starts |
-| **NEXT** | [0027](open/0027-one-use-owner-streaming-parity.md) | Starts only after 0026 is merged and revalidated |
+| **NOW** | [0027](open/0027-one-use-owner-streaming-parity.md) | Streaming parity for the one-use owner grant — starts from merged `main` (Plans 0025 and 0026 closed) |
 | **THEN** | [0028](open/0028-owner-authenticated-memory-runtime-acceptance.md) | The real north-star physical acceptance |
 | **AFTER PC-1** | [0021](open/0021-p0-typed-intent-resolution.md) → [0023](open/0023-p0-grounded-visual-dialogue.md) | Remaining P0-C intent and visual grounding |
-| **ACCEPTANCE DEBT** | [0013](open/0013-p0-voice-controller-bridge.md) | Code is merged; Plan 0028 explicitly executes R1-01–R1-03 and records their independent verdict |
+| **ACCEPTANCE DEBT** | [0013](open/0013-p0-voice-controller-bridge.md), [0026](open/0026-one-use-owner-authenticated-classic-turn.md) | Code merged (PR #51, PR #57); Plan 0028 explicitly executes the repeated real microphone/speaker acceptance and records the independent verdict for both. 0026's classic flow was informally confirmed once with real hardware on 2026-08-21 (see its Evidence section) — that is not a substitute for 0028's required 3x recorded runs. |
 | **REFERENCE ONLY** | [0014](open/0014-p0-runtime-policy-hardening-design.md), [0015](open/0015-personal-companion-design.md), [0020](open/0020-p0-operator-qa-remediation-design.md), [0024](open/0024-owner-authenticated-memory-mvp-design.md) | Umbrella/design documents; never execute them as independent implementation batches |
 
 ## Queue rules
@@ -41,10 +40,10 @@ deferred, umbrella, or product-design plan because it also lives under
 
 | Order | Plan | State | Next gate |
 |---:|---|---|---|
-| 1 | [0025 — minimal owner/children/PIN setup](open/0025-personal-owner-bootstrap-and-pin-setup.md) | Merged (PR #56) | Closed |
-| 2 | [0026 — one-use classic turn](open/0026-one-use-owner-authenticated-classic-turn.md) | Implemented; all gates green | Independent review, then merge — unblocks Plan 0027 |
-| 3 | [0027 — streaming parity](open/0027-one-use-owner-streaming-parity.md) | Blocked | 0026 merged and Plan 0022 revalidated |
-| 4 | [0028 — runtime acceptance](open/0028-owner-authenticated-memory-runtime-acceptance.md) | Blocked | 0025–0027 green and merged |
+| 1 | [0025 — minimal owner/children/PIN setup](completed/0025-personal-owner-bootstrap-and-pin-setup.md) | Merged (PR #56) | Closed |
+| 2 | [0026 — one-use classic turn](open/0026-one-use-owner-authenticated-classic-turn.md) | Merged (PR #57); acceptance debt to Plan 0028 | Executable now — start Plan 0027 |
+| 3 | [0027 — streaming parity](open/0027-one-use-owner-streaming-parity.md) | Ready to start | Plan 0022 revalidated, then implement |
+| 4 | [0028 — runtime acceptance](open/0028-owner-authenticated-memory-runtime-acceptance.md) | Blocked | 0027 merged |
 | 5 | [0021 — typed intent](open/0021-p0-typed-intent-resolution.md) | Deferred | PC-1 accepted |
 | 6 | [0023 — grounded visual dialogue](open/0023-p0-grounded-visual-dialogue.md) | Deferred | 0021 complete |
 

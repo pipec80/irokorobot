@@ -89,26 +89,29 @@ For every case record the command, effective non-secret settings, literal STT
 text, response, audible output, route, and pass/fail. Stop and file a defect
 on any mismatch; do not reinterpret a near miss as a pass.
 
-## Separate P1.1 personal acceptance (not implemented)
+## Separate P1.1 personal acceptance (partial — formal evidence pending)
 
 P1.1 is not a P0 closure step. Its old illustrative session procedure has been
 superseded by the owner-approved design in
 [Plan 0024](../plans/open/0024-owner-authenticated-memory-mvp-design.md) and the
 bounded executable sequence:
 
-1. [Plan 0025](../plans/open/0025-personal-owner-bootstrap-and-pin-setup.md) creates
-   Pipec, confirms Máximo and Dominga, and stores only a PIN verifier;
-2. [Plan 0026](../plans/open/0026-one-use-owner-authenticated-classic-turn.md) proves
-   the one-use classic `/chat` and `/transcribe` paths;
+1. [Plan 0025](../plans/completed/0025-personal-owner-bootstrap-and-pin-setup.md)
+   (merged, PR #56) creates Pipec, confirms Máximo and Dominga, and stores only a
+   PIN verifier;
+2. [Plan 0026](../plans/open/0026-one-use-owner-authenticated-classic-turn.md)
+   (merged, PR #57) proves the one-use classic `/chat` and `/transcribe` paths —
+   P1-ALLOW and P1-PUBLIC below were confirmed once informally with real
+   hardware on 2026-08-21, matching the required result exactly;
 3. [Plan 0027](../plans/open/0027-one-use-owner-streaming-parity.md) adds equivalent
    streaming behavior;
 4. [Plan 0028](../plans/open/0028-owner-authenticated-memory-runtime-acceptance.md)
    defines the recoverable database setup, commands, repeated spoken cases,
    audit checks, and evidence record.
 
-Until those plans are implemented and Plan 0028 passes, no active owner
-session or personal runtime acceptance may be claimed. The fixed future
-product cases are:
+Until Plan 0028 passes, the formal, repeated, independently recorded personal
+runtime acceptance may not be claimed — an informal single confirmation is not
+a substitute. The fixed product cases are:
 
 | ID | Preconditions | Spoken phrase | Required result |
 |---|---|---|---|
