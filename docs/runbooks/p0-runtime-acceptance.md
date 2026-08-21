@@ -70,7 +70,7 @@ needed for this checkpoint.
 
 **Run 2026-08-21** (commit `9b7662a`, classic public mode,
 `ROBOT_STREAMING=false`, `ROBOT_OWNER_UNLOCK_PROMPT=false`, executed as
-part of [Plan 0028](../plans/open/0028-owner-authenticated-memory-runtime-acceptance.md)):
+part of [Plan 0028](../plans/completed/0028-owner-authenticated-memory-runtime-acceptance.md)):
 R1-01 **PASS** (exact STT, `Hoy es 2026-08-21.`, no family data). R1-02
 **PASS** (exact STT, non-disclosing denial, `tools=-`, no v4 read). R1-03
 **FAIL** — 5 consecutive attempts, Whisper "small" never produced the
@@ -116,11 +116,11 @@ bounded executable sequence, now fully executed:
 1. [Plan 0025](../plans/completed/0025-personal-owner-bootstrap-and-pin-setup.md)
    (merged, PR #56) creates the sole owner, confirms two child relations, and
    stores only a PIN verifier;
-2. [Plan 0026](../plans/open/0026-one-use-owner-authenticated-classic-turn.md)
+2. [Plan 0026](../plans/completed/0026-one-use-owner-authenticated-classic-turn.md)
    (merged, PR #57) proves the one-use classic `/chat` and `/transcribe` paths;
-3. [Plan 0027](../plans/open/0027-one-use-owner-streaming-parity.md) (merged,
+3. [Plan 0027](../plans/completed/0027-one-use-owner-streaming-parity.md) (merged,
    PR #64) adds equivalent streaming behavior;
-4. [Plan 0028](../plans/open/0028-owner-authenticated-memory-runtime-acceptance.md)
+4. [Plan 0028](../plans/completed/0028-owner-authenticated-memory-runtime-acceptance.md)
    executed the recoverable database setup, commands, repeated spoken cases,
    audit checks, and evidence record on 2026-08-21 — **PASS**.
 

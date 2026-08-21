@@ -233,9 +233,9 @@ authenticated-owner acceptance gate is defined in
 [Plan 0024](../plans/open/0024-owner-authenticated-memory-mvp-design.md). Its
 executable sequence is
 [0025](../plans/completed/0025-personal-owner-bootstrap-and-pin-setup.md) (merged) →
-[0026](../plans/open/0026-one-use-owner-authenticated-classic-turn.md) (merged) →
-[0027](../plans/open/0027-one-use-owner-streaming-parity.md) (merged) →
-[0028](../plans/open/0028-owner-authenticated-memory-runtime-acceptance.md)
+[0026](../plans/completed/0026-one-use-owner-authenticated-classic-turn.md) (merged) →
+[0027](../plans/completed/0027-one-use-owner-streaming-parity.md) (merged) →
+[0028](../plans/completed/0028-owner-authenticated-memory-runtime-acceptance.md)
 (executed 2026-08-21, **PASS**), which completed the formal repeated
 real-runtime acceptance for 0026/0027's classic and streaming flows. It also
 executed R1 (Plan 0013): R1-01/R1-02 passed, R1-03 failed on STT accuracy —

@@ -7,32 +7,36 @@
 ## Audited disposition
 
 The following status was checked against the executable code, tests, current
-Git ancestry, and recorded runtime evidence on 2026-08-21. Existing components
-named under **Reuse** must not be rebuilt by a later plan.
+Git ancestry, and recorded runtime evidence on 2026-08-21 (updated after Plan
+0028's real-hardware acceptance run and PR #65's documentation closure).
+Existing components named under **Reuse** must not be rebuilt by a later plan.
 
 For daily work, do not choose a plan from this inventory. Follow the single-WIP
 [operational board](../README.md#operational-board), whose current `NOW` item
-is Plan 0027. Use the
+is Plan 0021. Use the
 [personal-companion delivery map](../../roadmap/personal-companion-delivery-map.md)
 to see the code, tests, verified gap, and accountable plan for each outcome.
 
 | Plan | Implementation reality | Reuse | Remaining closure |
 |---|---|---|---|
-| [0013](0013-p0-voice-controller-bridge.md) | Implemented and merged by PR #51 | Classic `/transcribe` controller bridge, unknown public actor, deterministic/protected routes | Repeat and record real microphone-to-Piper R1 acceptance |
+| [0013](0013-p0-voice-controller-bridge.md) | Implemented and merged by PR #51 | Classic `/transcribe` controller bridge, unknown public actor, deterministic/protected routes | Plan 0028 ran R1-01–R1-03: R1-01/R1-02 passed, R1-03 failed (Whisper cannot reliably transcribe the proper noun "Iroko", 5/5 attempts). Needs an STT fix (e.g. hotwords/`initial_prompt`) and a clean re-run before this plan can close. |
 | [0014](0014-p0-runtime-policy-hardening-design.md) | Partial umbrella: C1–C4 and C6 implemented | Plans 0016–0019 and 0022 | C5, C7, and combined P0 operator acceptance |
-| [0015](0015-personal-companion-design.md) | Approved product design; PC-1 code is merged (Plans 0025–0026), acceptance still owed to Plan 0028 | Controller, policy/audit, v4 child tools, identity-session seam, onboarding primitives, STT/TTS, face engine | Execute 0027–0028; biometrics remain later slices |
-| [0020](0020-p0-operator-qa-remediation-design.md) | Partial umbrella: C6 complete; C5/C7 not executed | Reliable streaming output from completed Plan 0022 | Execute 0021 after PC-1, then 0023, then combined acceptance |
-| [0021](0021-p0-typed-intent-resolution.md) | Plan-specific implementation not started | Existing inline classifier, normalization, typed needs, policy/tools, channel parity | Extract the typed injected resolver, corpus, precedence/privacy tests, and operator evidence |
+| [0015](0015-personal-companion-design.md) | Approved product design; PC-1 code and acceptance are both complete (Plans 0025–0028) | Controller, policy/audit, v4 child tools, identity-session seam, onboarding primitives, STT/TTS, face engine | Biometrics (face/voice fusion, PC-2/PC-3) remain later slices |
+| [0020](0020-p0-operator-qa-remediation-design.md) | Partial umbrella: C6 complete; C5/C7 not executed | Reliable streaming output from completed Plan 0022 | Execute 0021, then 0023, then combined P0-C acceptance |
+| [0021](0021-p0-typed-intent-resolution.md) | Plan-specific implementation not started; **executable now** — PC-1 accepted | Existing inline classifier, normalization, typed needs, policy/tools, channel parity | Extract the typed injected resolver, corpus, precedence/privacy tests, and operator evidence. Plan 0028 also surfaced that a garbled STT phrase can match the broader `protected_household` pattern and consume a fresh grant without disclosing or denying cleanly — worth folding into this plan's classifier work. |
 | [0023](0023-p0-grounded-visual-dialogue.md) | Plan-specific grounding not started | Existing vision controller parity, scene perception/VLM transport, image validation, Piper, enrollment quarantine | Add typed visual decisions, preflight before frame access, direct grounded VLM-to-TTS, migrate triggers, and accept physically |
-| [0024](0024-owner-authenticated-memory-mvp-design.md) | Approved design | Existing identity, authorization, child-memory, and channel seams | Deliver through 0027–0028 |
-| [0026](0026-one-use-owner-authenticated-classic-turn.md) | Implemented and merged by PR #57; classic flow informally confirmed once with real mic/speaker on 2026-08-21 | Owner unlock service, `LOCAL_UNLOCK` evidence, `/auth/owner/unlock`, async controller resolvers, robot opt-in prompt | Plan 0028's formal repeated acceptance and independent verdict |
-| [0027](0027-one-use-owner-streaming-parity.md) | Not implemented; ready to start | Existing stream controller parity, reliable rendering, and Plan 0026's owner-unlock service/token contract | Propagate the same one-use evidence through streaming |
-| [0028](0028-owner-authenticated-memory-runtime-acceptance.md) | Acceptance plan; blocked by 0027 | Real server/robot/STT/Piper path | Prove allowed, unauthenticated, reused-token, and expired-token scenarios in both classic and streaming modes |
+| [0024](0024-owner-authenticated-memory-mvp-design.md) | Approved design; fully delivered by Plans 0025–0028 | Existing identity, authorization, child-memory, and channel seams | None — design delivered |
 
-Plans 0025 (merged) closed with no acceptance debt — see
-[completed/0025](../completed/0025-personal-owner-bootstrap-and-pin-setup.md).
+Plans 0025, 0026, 0027, and 0028 (all merged/executed, PC-1 accepted
+2026-08-21) closed with no remaining acceptance debt of their own — see
+[completed/0025](../completed/0025-personal-owner-bootstrap-and-pin-setup.md),
+[completed/0026](../completed/0026-one-use-owner-authenticated-classic-turn.md),
+[completed/0027](../completed/0027-one-use-owner-streaming-parity.md), and
+[completed/0028](../completed/0028-owner-authenticated-memory-runtime-acceptance.md).
+Plan 0013's own R1 debt is tracked independently (see its row above) and is
+not a PC-1 blocker.
 
-Canonical execution order: **0027 → 0028 → 0021 → 0023**.
+Canonical execution order: **0021 → 0023**.
 
 ## Status rule
 

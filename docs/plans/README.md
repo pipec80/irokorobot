@@ -40,9 +40,9 @@ deferred, umbrella, or product-design plan because it also lives under
 | Order | Plan | State | Next gate |
 |---:|---|---|---|
 | 1 | [0025 — minimal owner/children/PIN setup](completed/0025-personal-owner-bootstrap-and-pin-setup.md) | Merged (PR #56) | Closed |
-| 2 | [0026 — one-use classic turn](open/0026-one-use-owner-authenticated-classic-turn.md) | Merged (PR #57) | Closed |
-| 3 | [0027 — streaming parity](open/0027-one-use-owner-streaming-parity.md) | Merged (PR #64) | Closed |
-| 4 | [0028 — runtime acceptance](open/0028-owner-authenticated-memory-runtime-acceptance.md) | Executed 2026-08-21, PASS | Closed (0013's R1 debt tracked independently below) |
+| 2 | [0026 — one-use classic turn](completed/0026-one-use-owner-authenticated-classic-turn.md) | Merged (PR #57) | Closed |
+| 3 | [0027 — streaming parity](completed/0027-one-use-owner-streaming-parity.md) | Merged (PR #64) | Closed |
+| 4 | [0028 — runtime acceptance](completed/0028-owner-authenticated-memory-runtime-acceptance.md) | Executed 2026-08-21, PASS | Closed (0013's R1 debt tracked independently below) |
 | 5 | [0021 — typed intent](open/0021-p0-typed-intent-resolution.md) | Executable now | PC-1 accepted |
 | 6 | [0023 — grounded visual dialogue](open/0023-p0-grounded-visual-dialogue.md) | Deferred | 0021 complete |
 

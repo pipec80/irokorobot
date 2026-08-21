@@ -37,7 +37,7 @@ Git.
 Ollama/services, Faster Whisper, Piper, classic and streaming robot modes.
 
 **Spec:** [Plan 0024 — owner-authenticated personal-memory MVP
-design](0024-owner-authenticated-memory-mvp-design.md)
+design](../open/0024-owner-authenticated-memory-mvp-design.md)
 
 ## Global Constraints
 
