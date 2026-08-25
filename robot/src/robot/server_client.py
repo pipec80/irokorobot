@@ -81,13 +81,20 @@ def _parse_result(data: dict[str, object]) -> TranscribeResult:
     )
 
 
-async def transcribe(audio: bytes, *, identity_token: str | None = None) -> TranscribeResult:
+async def transcribe(
+    audio: bytes, *, identity_token: str | None = None, frame: bytes | None = None
+) -> TranscribeResult:
     """Send audio to the server and return the transcription result.
 
     Args:
         audio: Raw WAV bytes at 16kHz mono int16.
         identity_token: Optional one-use owner unlock token, sent as the
             X-Iroko-Identity-Token header. Never inspected or logged here.
+        frame: Optional webcam frame (JPEG bytes) attached for in-request
+            face authentication (Plan 0029). The robot does not know
+            whether or how the server uses it — same generic-client
+            boundary as ``vision_requested``. Omitted from the request
+            entirely when None.
 
     Returns:
         TranscribeResult with all pipeline outputs.
@@ -101,10 +108,13 @@ async def transcribe(audio: bytes, *, identity_token: str | None = None) -> Tran
         raise ValueError("Audio bytes are empty")
     client = _get_client()
     headers = {"X-Iroko-Identity-Token": identity_token} if identity_token else None
+    files: dict[str, tuple[str, bytes, str]] = {"audio": ("audio.wav", audio, "audio/wav")}
+    if frame is not None:
+        files["frame"] = ("frame.jpg", frame, "image/jpeg")
     try:
         response = await client.post(
             f"{settings.server_url}/transcribe",
-            files={"audio": ("audio.wav", audio, "audio/wav")},
+            files=files,
             headers=headers,
         )
         response.raise_for_status()
@@ -216,7 +226,7 @@ async def respond_vision(text: str, image: bytes) -> TranscribeResult:
 
 
 async def transcribe_stream(
-    audio: bytes, *, identity_token: str | None = None
+    audio: bytes, *, identity_token: str | None = None, frame: bytes | None = None
 ) -> AsyncIterator[StreamEvent]:
     """Send audio to POST /transcribe/stream and yield NDJSON events (R3).
 
@@ -230,6 +240,9 @@ async def transcribe_stream(
         identity_token: Optional one-use owner unlock token, sent as the
             X-Iroko-Identity-Token header (Plan 0027). Never inspected or
             logged here.
+        frame: Optional webcam frame (JPEG bytes) attached for in-request
+            face authentication (Plan 0029). Same generic-client boundary as
+            ``transcribe()``'s ``frame`` — omitted entirely when None.
 
     Yields:
         Parsed StreamEvent variants in server order: text_heard, emotion,
@@ -247,11 +260,14 @@ async def transcribe_stream(
         raise ValueError("Audio bytes are empty")
     client = _get_client()
     headers = {"X-Iroko-Identity-Token": identity_token} if identity_token else None
+    files: dict[str, tuple[str, bytes, str]] = {"audio": ("audio.wav", audio, "audio/wav")}
+    if frame is not None:
+        files["frame"] = ("frame.jpg", frame, "image/jpeg")
     try:
         async with client.stream(
             "POST",
             f"{settings.server_url}/transcribe/stream",
-            files={"audio": ("audio.wav", audio, "audio/wav")},
+            files=files,
             headers=headers,
         ) as response:
             response.raise_for_status()

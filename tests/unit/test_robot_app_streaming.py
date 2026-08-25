@@ -1,10 +1,10 @@
 """Unit tests for robot.app_streaming — streaming FSM states, all I/O mocked."""
 
 from collections.abc import AsyncIterator
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from robot.exceptions import AudioPlaybackError, ServerError
+from robot.exceptions import AudioPlaybackError, CameraError, ServerError
 from robot.fsm_types import LoopContext, RobotState
 from robot.stream_events import AudioEvent, DoneEvent, EmotionEvent, StreamEvent, TextHeardEvent
 
@@ -138,9 +138,9 @@ async def test_thinking_stream_sets_request_start_before_first_event(
     """THINKING must timestamp the request before consuming the first event."""
 
     async def _fake_transcribe_stream(
-        _audio: bytes, *, identity_token: str | None = None
+        _audio: bytes, *, identity_token: str | None = None, frame: bytes | None = None
     ) -> AsyncIterator[StreamEvent]:
-        del identity_token
+        del identity_token, frame
         yield TextHeardEvent(value="hola")
 
     monkeypatch.setattr(app_streaming, "transcribe_stream", _fake_transcribe_stream)
@@ -158,9 +158,9 @@ async def test_thinking_stream_server_error_goes_to_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def _broken_transcribe_stream(
-        _audio: bytes, *, identity_token: str | None = None
+        _audio: bytes, *, identity_token: str | None = None, frame: bytes | None = None
     ) -> AsyncIterator[StreamEvent]:
-        del identity_token
+        del identity_token, frame
         raise ServerError("down")
         yield  # pragma: no cover - unreachable, keeps this an async generator
 
@@ -178,10 +178,11 @@ async def test_thinking_stream_passes_the_held_identity_token(
     seen: dict[str, object] = {}
 
     async def _fake_transcribe_stream(
-        audio: bytes, *, identity_token: str | None = None
+        audio: bytes, *, identity_token: str | None = None, frame: bytes | None = None
     ) -> AsyncIterator[StreamEvent]:
         seen["audio"] = audio
         seen["identity_token"] = identity_token
+        seen["frame"] = frame
         yield TextHeardEvent(value="hola")
 
     monkeypatch.setattr(app_streaming, "transcribe_stream", _fake_transcribe_stream)
@@ -240,3 +241,109 @@ async def test_speaking_stream_retains_token_when_eof_before_done(
 
     assert state is RobotState.ERROR
     assert ctx.identity_token == "opaque-token"  # noqa: S105 — fixture value
+
+
+@pytest.mark.unit
+async def test_thinking_stream_face_auth_disabled_never_captures_frame(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Default off: capture_frame must never run, and frame=None must reach transcribe_stream."""
+    monkeypatch.setattr(app_streaming.settings, "robot_face_auth_enabled", False)
+    capture_mock = MagicMock(return_value=b"jpeg-bytes")
+    monkeypatch.setattr(app_streaming, "capture_frame", capture_mock)
+    seen: dict[str, object] = {}
+
+    async def _fake_transcribe_stream(
+        _audio: bytes, *, identity_token: str | None = None, frame: bytes | None = None
+    ) -> AsyncIterator[StreamEvent]:
+        del identity_token
+        seen["frame"] = frame
+        yield TextHeardEvent(value="hola")
+
+    monkeypatch.setattr(app_streaming, "transcribe_stream", _fake_transcribe_stream)
+    ctx = LoopContext(audio=b"x")
+
+    state = await app_streaming.on_thinking_stream(ctx)
+
+    assert state is RobotState.SPEAKING
+    capture_mock.assert_not_called()
+    assert seen["frame"] is None
+
+
+@pytest.mark.unit
+async def test_thinking_stream_face_auth_enabled_captures_and_forwards_frame(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Enabled: capture_frame must run (via asyncio.to_thread) and its bytes forwarded."""
+    monkeypatch.setattr(app_streaming.settings, "robot_face_auth_enabled", True)
+    capture_mock = MagicMock(return_value=b"jpeg-bytes")
+    monkeypatch.setattr(app_streaming, "capture_frame", capture_mock)
+    seen: dict[str, object] = {}
+
+    async def _fake_transcribe_stream(
+        _audio: bytes, *, identity_token: str | None = None, frame: bytes | None = None
+    ) -> AsyncIterator[StreamEvent]:
+        del identity_token
+        seen["frame"] = frame
+        yield TextHeardEvent(value="hola")
+
+    monkeypatch.setattr(app_streaming, "transcribe_stream", _fake_transcribe_stream)
+    ctx = LoopContext(audio=b"x")
+
+    state = await app_streaming.on_thinking_stream(ctx)
+
+    assert state is RobotState.SPEAKING
+    capture_mock.assert_called_once()
+    assert seen["frame"] == b"jpeg-bytes"
+
+
+@pytest.mark.unit
+async def test_thinking_stream_face_auth_camera_error_degrades_to_no_frame(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A dead webcam must not raise or route to ERROR — the turn proceeds with frame=None."""
+    monkeypatch.setattr(app_streaming.settings, "robot_face_auth_enabled", True)
+    monkeypatch.setattr(
+        app_streaming, "capture_frame", MagicMock(side_effect=CameraError("no cam"))
+    )
+    seen: dict[str, object] = {}
+
+    async def _fake_transcribe_stream(
+        _audio: bytes, *, identity_token: str | None = None, frame: bytes | None = None
+    ) -> AsyncIterator[StreamEvent]:
+        del identity_token
+        seen["frame"] = frame
+        yield TextHeardEvent(value="hola")
+
+    monkeypatch.setattr(app_streaming, "transcribe_stream", _fake_transcribe_stream)
+    ctx = LoopContext(audio=b"x")
+
+    state = await app_streaming.on_thinking_stream(ctx)
+
+    assert state is RobotState.SPEAKING
+    assert seen["frame"] is None
+
+
+@pytest.mark.unit
+async def test_thinking_stream_never_logs_frame_bytes(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Captured frame bytes must never reach any log record."""
+    monkeypatch.setattr(app_streaming.settings, "robot_face_auth_enabled", True)
+    frame_marker = b"fake-jpeg-marker"
+    monkeypatch.setattr(app_streaming, "capture_frame", MagicMock(return_value=frame_marker))
+
+    async def _fake_transcribe_stream(
+        _audio: bytes, *, identity_token: str | None = None, frame: bytes | None = None
+    ) -> AsyncIterator[StreamEvent]:
+        del identity_token, frame
+        yield TextHeardEvent(value="hola")
+
+    monkeypatch.setattr(app_streaming, "transcribe_stream", _fake_transcribe_stream)
+    ctx = LoopContext(audio=b"x")
+
+    with caplog.at_level("DEBUG"):
+        await app_streaming.on_thinking_stream(ctx)
+
+    joined = "\n".join(record.getMessage() for record in caplog.records)
+    assert "fake-jpeg-marker" not in joined

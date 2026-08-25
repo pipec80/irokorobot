@@ -3,6 +3,7 @@
 from collections.abc import Generator
 from datetime import UTC, datetime
 import json
+import logging
 
 import httpx
 import pytest
@@ -478,3 +479,136 @@ async def test_transcribe_defaults_authentication_consumed_false_on_older_server
     result = await server_client.transcribe(b"wav")
 
     assert result.authentication_consumed is False
+
+
+def _transcribe_response() -> httpx.Response:
+    """Build a canned successful /transcribe JSON response."""
+    return httpx.Response(
+        200,
+        json={
+            "text_heard": "hola",
+            "llm_response": "qué tal",
+            "audio_base64": "AAAA",
+            "duration_ms": 123,
+            "emotion": "joy",
+        },
+    )
+
+
+@pytest.mark.unit
+async def test_transcribe_includes_frame_part_when_supplied(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A supplied frame must be attached as a second multipart part named 'frame' (Plan 0029)."""
+    seen_content: list[bytes] = []
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        seen_content.append(request.content)
+        return _transcribe_response()
+
+    _patch_transport(monkeypatch, _handler)
+
+    await server_client.transcribe(b"fake-wav-bytes", frame=b"fake-jpeg-bytes")
+
+    assert b'name="audio"' in seen_content[0]
+    assert b'name="frame"' in seen_content[0]
+    assert b"fake-jpeg-bytes" in seen_content[0]
+
+
+@pytest.mark.unit
+async def test_transcribe_omits_frame_part_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No frame supplied must send only the audio part — unchanged from before this task."""
+    seen_content: list[bytes] = []
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        seen_content.append(request.content)
+        return _transcribe_response()
+
+    _patch_transport(monkeypatch, _handler)
+
+    await server_client.transcribe(b"fake-wav-bytes")
+
+    assert b'name="audio"' in seen_content[0]
+    assert b'name="frame"' not in seen_content[0]
+
+
+@pytest.mark.unit
+async def test_transcribe_stream_includes_frame_part_when_supplied(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A supplied frame must be attached as a second multipart part on the stream request."""
+    seen_content: list[bytes] = []
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        seen_content.append(request.content)
+        return httpx.Response(200, text=_done_line() + "\n")
+
+    _patch_transport(monkeypatch, _handler)
+
+    async for _event in server_client.transcribe_stream(b"wav", frame=b"fake-jpeg-bytes"):
+        pass
+
+    assert b'name="audio"' in seen_content[0]
+    assert b'name="frame"' in seen_content[0]
+    assert b"fake-jpeg-bytes" in seen_content[0]
+
+
+@pytest.mark.unit
+async def test_transcribe_stream_omits_frame_part_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No frame supplied must send only the audio part — unchanged from before this task."""
+    seen_content: list[bytes] = []
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        seen_content.append(request.content)
+        return httpx.Response(200, text=_done_line() + "\n")
+
+    _patch_transport(monkeypatch, _handler)
+
+    async for _event in server_client.transcribe_stream(b"wav"):
+        pass
+
+    assert b'name="audio"' in seen_content[0]
+    assert b'name="frame"' not in seen_content[0]
+
+
+@pytest.mark.unit
+async def test_transcribe_never_logs_frame_bytes(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Frame bytes must never reach any log record in transcribe()."""
+    frame_marker = b"fake-jpeg-marker"
+
+    def _handler(_request: httpx.Request) -> httpx.Response:
+        return _transcribe_response()
+
+    _patch_transport(monkeypatch, _handler)
+
+    with caplog.at_level(logging.DEBUG):
+        await server_client.transcribe(b"fake-wav-bytes", frame=frame_marker)
+
+    joined = "\n".join(record.getMessage() for record in caplog.records)
+    assert "fake-jpeg-marker" not in joined
+
+
+@pytest.mark.unit
+async def test_transcribe_stream_never_logs_frame_bytes(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Frame bytes must never reach any log record in transcribe_stream()."""
+    frame_marker = b"fake-jpeg-marker"
+
+    def _handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=_done_line() + "\n")
+
+    _patch_transport(monkeypatch, _handler)
+
+    with caplog.at_level(logging.DEBUG):
+        async for _event in server_client.transcribe_stream(b"wav", frame=frame_marker):
+            pass
+
+    joined = "\n".join(record.getMessage() for record in caplog.records)
+    assert "fake-jpeg-marker" not in joined
