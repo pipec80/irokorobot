@@ -121,10 +121,71 @@ PC-1 accepted
        `-> 0013 R1 closed same day: root cause of R1-03's STT failure fixed
           (stale "Omnibot" name in the Whisper prompt/hotwords)
 P0 fully accepted
+  -> 0029 consented local face evidence (PC-2) — code/tests/review complete
+     on `feat/consented-local-face-evidence`, pending merge; real-camera
+     acceptance remains open (2026-08-25)
 ```
 
 Plans 0014, 0015, 0020, and 0024 remain open as reference; their governed
 outcomes are all closed. They do not create parallel work.
+
+## PC-2 artifacts delivered by Plan 0029
+
+Plan 0029 connects the existing local face-recognition engine
+(`vision/faces.py`) to the same typed evidence/authorization pipeline the PIN
+already uses (Plan 0026), with no change to `controller.py` or
+`authorization.py`:
+
+- Biometric consent schema: migration 007 (`face_consent_grants`),
+  `memory/biometric_consent.py` (`grant_face_consent`/`revoke_face_consent`/
+  `has_active_face_consent`); revocation performs a real purge of
+  `face_profiles` and `vec_faces` rows for that person, not a soft flag.
+- `IdentityEvidenceSource.FACE` added to `_TRUSTED_IDENTIFIED_SOURCES`
+  (`cognition/identity.py`); `VOICE` and `CONTEXT` remain unresolved
+  (PC-3/PC-4 territory).
+- In-request face resolution: `cognition/face_authentication.py` — a pure
+  6-row verdict function (0 faces -> unknown, 2+ faces -> ambiguous and
+  terminal — never falls through to the PIN, 1-face variations ->
+  unknown/identified by match+consent+role), a lazy single-inference-per-turn
+  `FaceRequestResolver`, and `compose_face_then_pin_resolver()`, which tries
+  face first and falls through to the existing PIN resolver only on a
+  non-ambiguous unresolved face result. A stricter, separate
+  `settings.face_authentication_match_threshold` (default `0.25`) applies on
+  top of the existing generic `settings.face_match_threshold` (`0.4`).
+- Authenticated enrollment: `POST /auth/owner/face/enroll` and `/revoke`
+  (`routers/auth.py`), loopback-only, requiring a fresh PIN-consumed token;
+  the enrolled subject is always the token's own owner, never a
+  request-supplied name. The pre-existing quarantined public
+  `POST /vision/enroll` is untouched and still returns 503.
+- Router wiring: an optional multipart `frame` field on classic and
+  streaming `/transcribe`, gated by `settings.face_authentication_enabled`
+  (default `false` — with it off, the frame is never even read). An
+  additive `identity_source: "face" | "local_unlock" | null` response field
+  reports which evidence source authenticated the turn, never a name or
+  protected value.
+- Robot-side capture: opt-in (`settings.robot_face_auth_enabled`, default
+  `false`) webcam frame capture attached to every turn when enabled; a
+  camera failure degrades silently to no frame — it never breaks the turn.
+
+**Known limitation, stated plainly:** this plan has no liveness or
+anti-spoofing defense. A photograph of the owner held up to the camera
+authenticates under this slice, exactly as every task reviewer reported. The
+real mitigation is PC-4 (voice fusion), not yet built. Real-camera
+calibration and acceptance (threshold tuning, false-accept/false-reject
+rates, lighting, distance, glasses) remain open under a future real-camera
+acceptance plan (Plan 0030).
+
+**Evidence (2026-08-25):** on `feat/consented-local-face-evidence`, all 7
+tasks are implemented, one commit per task plus one small test-maintenance
+follow-up commit (`65b8b71`, fixing two stale schema-version test literals
+and one unguarded `AsyncMock.await_args` unpack — both pre-existing test
+issues surfaced by this plan's own migration, unrelated to face-auth logic
+itself), each independently code-reviewed. The focused face-authentication
+scenario (161 tests) and the PC-1 PIN regression (45 tests, proving the PIN
+path is unmodified) both pass. Full repository gates pass: `just lint`,
+`just typecheck` (mypy 89 files clean, pyright 0 errors), `just test` (905
+passed), `just audit`, and `just check` (16 hooks) are all green. Pending
+Pipec's review and merge; real-camera acceptance is the next gate.
 
 ## Status transition protocol
 

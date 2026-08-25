@@ -5,7 +5,30 @@
 > `superpowers:executing-plans` to implement this plan task-by-task. Steps use
 > checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** Approved by Pipec on 2026-08-25 as Plan 0029. Not yet implemented.
+**Status:** Implemented on `feat/consented-local-face-evidence` on
+2026-08-25 — Tasks 1-7 done, one commit per task plus one small
+test-maintenance follow-up commit (`65b8b71`), each independently
+code-reviewed, authorized by Pipec. All focused and repository gates pass:
+the focused face-authentication scenario (161 tests) and the PC-1 PIN
+regression (45 tests, proving the PIN path from Plans 0026/0027 is
+unmodified) both pass with no failures; `just lint` (clean), `just
+typecheck` (mypy 89 files clean, pyright 0 errors), `just test` (905
+passed, 0 failed), `just audit` (clean), `just check` (16/16 hooks), and
+`git diff --check` (clean) are all green. The north-star scenario is
+proven end-to-end against a real disposable DB with synthetic face
+embeddings: an enrolled, consented owner's frame answers a protected
+question with the exact confirmed child names, with no PIN, no token, and
+no gesture; an unknown face, zero faces, two-or-more faces (terminal,
+never falling through to the PIN), revoked consent, and a non-owner role
+all deny without disclosure; a non-protected turn never decodes an
+attached frame; and with the flag off, behavior is identical to `main`.
+**This plan has no liveness or anti-spoofing defense: a photograph of the
+owner held up to the camera authenticates under this slice.** The real
+mitigation is PC-4 (voice fusion), not yet built. Not yet proven: real
+webcam/hardware calibration and acceptance (threshold tuning, false-accept/
+false-reject rates, lighting, distance, glasses), which remain open under a
+future real-camera acceptance plan (Plan 0030). Pending independent review
+and merge.
 
 **Goal:** Let a protected voice turn resolve the owner from a webcam frame
 attached to the same request, emitting typed `IdentityEvidenceSource.FACE`
@@ -190,7 +213,11 @@ git commit -m "feat(memory): add biometric consent grant/revoke with real purge"
 
 ```python
 _TRUSTED_IDENTIFIED_SOURCES = frozenset(
-    {IdentityEvidenceSource.MANUAL, IdentityEvidenceSource.LOCAL_UNLOCK, IdentityEvidenceSource.FACE}
+    {
+        IdentityEvidenceSource.MANUAL,
+        IdentityEvidenceSource.LOCAL_UNLOCK,
+        IdentityEvidenceSource.FACE,
+    }
 )
 ```
 
@@ -260,7 +287,9 @@ def evaluate_face_authentication(
 class FaceRequestResolver:
     consumed: bool
 
-    async def resolve_actor(self, event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext: ...
+    async def resolve_actor(
+        self, event: CognitiveEvent[TextTurnPayload]
+    ) -> ActivePersonContext: ...
     async def resolve_consent(self, event, actor) -> ConsentStatus: ...
 
 
@@ -611,3 +640,38 @@ Plan 0029 is complete only when:
   omitted;
 - voice recognition, fusion, and real-camera acceptance remain explicitly
   open under PC-3, PC-4, and Plan 0030 respectively.
+
+**Evidence (2026-08-25):** Every criterion above is met on
+`feat/consented-local-face-evidence` except real-camera acceptance, which
+remains explicitly open. `tests/integration/test_face_authenticated_turn.py`
+proves the full classic and streaming flow against a real disposable DB with
+synthetic embeddings: an enrolled, consented owner's frame + protected
+question returns the exact confirmed child names once, with no PIN, token,
+or gesture; a stranger's frame, zero faces, and two-or-more faces (terminal,
+never consulting the PIN resolver) all deny without calling
+`PolicyGatedV4Reader`; a generic question with an attached frame never
+invokes face detection; and with `FACE_AUTHENTICATION_ENABLED=false` the
+frame field is accepted but never inspected.
+`tests/integration/test_biometric_consent_schema.py::test_revoke_purges_face_profiles_and_vec_faces`
+proves revocation is a real purge, not a soft flag.
+`tests/integration/test_owner_face_enrollment.py` proves enrollment denies
+without touching the face model absent a fresh token, and denies
+non-loopback callers before identity resolution. No frame, embedding, PIN,
+or token appears in any log or audit row across these tests
+(`test_face_authentication.py::test_no_frame_embedding_or_token_appears_in_logs`,
+`test_robot_app_streaming.py::test_thinking_stream_never_logs_frame_bytes`).
+The PC-1 PIN regression suite (45 tests: `test_owner_authenticated_turn.py`,
+`test_owner_authenticated_stream.py`, `test_vision_enroll_service.py`,
+`test_cognitive_controller.py`) passes unmodified — no test in those suites
+changed. Full repository gates pass: `just lint`, `just typecheck` (mypy 89
+files clean, pyright 0 errors), `just test` (905 passed, 0 failed), `just
+audit`, `just check` (16 hooks), and `git diff --check` are all green.
+**This plan has no liveness/anti-spoofing defense** — a photograph of the
+owner held up to the camera authenticates under this slice; the accepted
+mitigation is PC-4 (voice fusion), not yet built. Real-camera calibration
+and acceptance (threshold tuning, false-accept/false-reject rates, lighting,
+distance, glasses) remain open under a future real-camera acceptance plan
+(Plan 0030). This plan stays under `docs/plans/open/` pending Pipec's review,
+merge, and that future real-camera acceptance, per this repository's own
+Queue rule 3 and the precedent set by Plans 0025-0027 staying open until
+Plan 0028 closed the PC-1 chain.
