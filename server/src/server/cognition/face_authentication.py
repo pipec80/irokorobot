@@ -209,22 +209,16 @@ class FaceRequestResolver:
         return context
 
     async def _resolve(self, event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
-        """Run the one-shot detect → match → decide → identify pipeline."""
+        """Run the one-shot detect → match → decide → identify pipeline.
+
+        Every path — including 0 faces, 2+ faces, and no-match — routes
+        through `evaluate_face_authentication` so the 6-row decision table
+        lives in exactly one place; this method only branches on its
+        returned verdict.
+        """
         faces = await self._detected_faces()
-        if not faces:
-            self.last_verdict = FaceAuthenticationVerdict.UNKNOWN
-            return _unknown_active_person(event)
-        if len(faces) >= _MIN_AMBIGUOUS_FACES:
-            self.last_verdict = FaceAuthenticationVerdict.AMBIGUOUS
-            return _ambiguous_active_person(event)
+        match, role, consent_active = await self._match_when_singular(faces)
 
-        match = await self._strict_match(faces[0])
-        if match is None:
-            self.last_verdict = FaceAuthenticationVerdict.UNKNOWN
-            return _unknown_active_person(event)
-
-        role = await self._read_role(match.entity_id)
-        consent_active = await self._read_consent(match.entity_id)
         verdict = evaluate_face_authentication(
             detected_face_count=len(faces),
             match=match,
@@ -232,10 +226,12 @@ class FaceRequestResolver:
             role=role,
         )
         self.last_verdict = verdict
-        if verdict is not FaceAuthenticationVerdict.IDENTIFIED:
-            return _unknown_active_person(event)
 
-        return await self._identify(event, match, role)
+        if verdict is FaceAuthenticationVerdict.IDENTIFIED and match is not None:
+            return await self._identify(event, match, role)
+        if verdict is FaceAuthenticationVerdict.AMBIGUOUS:
+            return _ambiguous_active_person(event)
+        return _unknown_active_person(event)
 
     async def _detected_faces(self) -> list[DetectedFace]:
         """Detect faces in the bound frame, degrading failures to an empty list.
@@ -251,6 +247,33 @@ class FaceRequestResolver:
         except VisionError as exc:
             logger.warning("Face detection failed, degrading to unknown: %s", exc)
             return []
+
+    async def _match_when_singular(
+        self, faces: list[DetectedFace]
+    ) -> tuple[FaceMatch | None, HouseholdRole, bool]:
+        """Attempt a match only when exactly one face was detected.
+
+        Matching is meaningless when zero or 2+ faces are present — the
+        verdict is already determined by face count alone in those cases —
+        so this skips the match/role/consent round-trips entirely rather
+        than spending them on an outcome that cannot change.
+
+        Args:
+            faces: Every face detected in the bound frame.
+
+        Returns:
+            The threshold-filtered match with its role and consent state,
+            or `(None, HouseholdRole.UNKNOWN, False)` when matching was
+            skipped or found nobody within the authentication threshold.
+        """
+        if len(faces) != 1:
+            return None, HouseholdRole.UNKNOWN, False
+        match = await self._strict_match(faces[0])
+        if match is None:
+            return None, HouseholdRole.UNKNOWN, False
+        role = await self._read_role(match.entity_id)
+        consent_active = await self._read_consent(match.entity_id)
+        return match, role, consent_active
 
     async def _strict_match(self, face: DetectedFace) -> FaceMatch | None:
         """Apply the stricter authentication-only threshold on top of `match_face`."""
