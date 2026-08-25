@@ -364,7 +364,9 @@ async def test_extra_name_field_is_ignored_and_owner_name_is_used(
 
     assert response.status_code == 200
     enroll.assert_awaited_once()
-    _, kwargs = enroll.await_args
+    enroll_call = enroll.await_args
+    assert enroll_call is not None
+    kwargs = enroll_call.kwargs
     assert kwargs["name"].casefold() == _OWNER_NAME.casefold()
     assert kwargs["name"] != "Intruder"
 
