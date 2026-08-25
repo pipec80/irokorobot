@@ -43,6 +43,7 @@ def test_transcribe_happy_path_returns_all_fields(
         "emotion": "joy",
         "vision_requested": False,
         "authentication_consumed": False,
+        "identity_source": None,
     }
     assert all(isinstance(value, int) and value >= 0 for value in timing_fields.values())
 

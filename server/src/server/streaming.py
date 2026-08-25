@@ -16,6 +16,7 @@ stays exclusive to classic /transcribe (see app.py's robot_streaming flag).
 
 from collections.abc import AsyncIterator
 import logging
+from typing import Literal
 
 from server import llm, llm_streaming, tts
 from server.cognition.response_plan import ResponsePlan
@@ -120,6 +121,7 @@ async def stream_response_plan(
     stt_ms: int,
     request_start: float,
     authentication_consumed: bool = False,
+    identity_source: Literal["face", "local_unlock"] | None = None,
 ) -> AsyncIterator[str]:
     """Render an already-authorized plan without LLM or memory work.
 
@@ -127,6 +129,10 @@ async def stream_response_plan(
         authentication_consumed: Whether this request's owner grant resolver
             consumed a fresh one-use token for this plan (Plan 0027).
             Carried only on the terminal ``done`` event.
+        identity_source: Which evidence source identified the actor for this
+            turn — ``"face"``, ``"local_unlock"``, or ``None`` (Plan 0029).
+            Never a name or other protected value. Carried only on the
+            terminal ``done`` event.
 
     Yields:
         NDJSON text, emotion, one 16kHz mono int16 WAV audio response, and
@@ -149,6 +155,7 @@ async def stream_response_plan(
         tts_ms=duration_ms,
         total_ms=total_ms,
         authentication_consumed=authentication_consumed,
+        identity_source=identity_source,
     )
     yield done_event.model_dump_json() + "\n"
 
