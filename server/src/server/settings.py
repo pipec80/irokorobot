@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     whisper_compute_type: str = "int8"
     whisper_device: str = "cpu"
     whisper_beam_size: int = 5
-    whisper_initial_prompt: str = "Conversación con un robot doméstico llamado Omnibot."
+    whisper_initial_prompt: str = "Conversación con un robot doméstico llamado Iroko."
     whisper_hotwords: str | None = None
     whisper_hallucination_silence_threshold: float = 2.0
     whisper_vad_min_silence_ms: int = 500
