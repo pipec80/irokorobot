@@ -9,7 +9,11 @@
 > Intent (C5) is closed and operator-confirmed on 2026-08-21 — see [Plan
 > 0021](../completed/0021-p0-typed-intent-resolution.md#execution-evidence).
 > Visual-grounding (C7) is closed and operator-confirmed on 2026-08-25 — see
-> [Plan 0023](0023-p0-grounded-visual-dialogue.md#execution-evidence).
+> [Plan 0023](../completed/0023-p0-grounded-visual-dialogue.md#execution-evidence).
+> The final combined P0-C operator run (C5+C6+C7 together) passed the same
+> day — see
+> [`p0-runtime-acceptance.md`](../../runbooks/p0-runtime-acceptance.md).
+> **P0 is fully closed.**
 
 ## Current slice disposition
 
@@ -23,9 +27,9 @@
 | C6 | Complete in Plan 0022 | Audible fallback and terminal stream rules | Revalidate only |
 | C7 | Complete in Plan 0023 | Typed `SceneDescriptionRequest` capability, direct grounded VLM-to-Piper path | Revalidate only |
 
-The umbrella remains under `open/` because the final combined P0-C operator
-run (C5+C6+C7 together) is still required. Its completed slices are
-historical evidence, not work to repeat.
+The umbrella remains under `open/` as reference material (it never had its
+own executable code or gates to close) — all governed work is complete. Its
+completed slices are historical evidence, not work to repeat.
 
 ## Objective
 

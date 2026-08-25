@@ -2,8 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> **Status:** Implemented and merged through PR #51 (`8e6d23f`). The mandatory
-> human R1 runtime checkpoint remains open, so this plan is not yet closed.
+> **Status:** Complete. Implemented and merged through PR #51 (`8e6d23f`). The
+> mandatory human R1 runtime checkpoint passed on 2026-08-25 as part of the
+> combined P0-C operator runbook — R1-01, R1-02, and R1-03 all PASS with real
+> microphone/speaker hardware, including a clean "Iroko" transcription after
+> the `WHISPER_INITIAL_PROMPT`/`WHISPER_HOTWORDS` fix — see Execution evidence
+> below and
+> [`p0-runtime-acceptance.md`](../../runbooks/p0-runtime-acceptance.md).
 
 **Goal:** Route the existing non-streaming `/transcribe` voice turn through the
 typed `CognitiveController` while preserving the published audio API contract.
@@ -267,20 +272,22 @@ services, pytest, Ruff, mypy, and the existing Faster Whisper/Piper runtime.
   Record exit status and test totals. Do not claim a green full suite from a
   focused test run.
 
-- [ ] **Step 3: Perform the mandatory human runtime acceptance.**
+- [x] **Step 3: Perform the mandatory human runtime acceptance.**
 
-  With `ROBOT_STREAMING=false`, run `just services`, then `just run-server`
-  and `just run-robot` in separate terminals. Speak R1-01 and R1-02 exactly.
-  The operator must confirm both the displayed transcript/response and audible
-  Piper output. If STT mishears either phrase, record the transcript as a
-  hardware/model acceptance failure rather than calling the behavior proved.
+  With `ROBOT_STREAMING=false`, ran `just services`, `just run-server`, and
+  `just run-robot`. R1-01 (`¿Qué día es hoy?`) and R1-02 (`¿Cómo se llaman mis
+  hijos?`) passed on 2026-08-21 (Plan 0028's session). R1-03 (`Hola, Iroko.`)
+  failed 5/5 on 2026-08-21 (Whisper never produced the literal phrase) but
+  passed on 2026-08-25 after fixing `WHISPER_INITIAL_PROMPT`/`WHISPER_HOTWORDS`
+  (they still referenced the pre-rename "Omnibot" name) — confirmed with exact
+  STT `'Hola Iroko.'` in both classic and streaming modes.
 
-- [ ] **Step 4: Review final scope and publish.**
+- [x] **Step 4: Review final scope and publish.**
 
-  Inspect `git diff --check`, `git diff --stat`, and `git status -sb`. Confirm
-  no stream, robot protocol, schema, configuration, session, onboarding, or
-  P1 file changed. Commit with a Conventional Commit message, push a PR, wait
-  for green CI/CodeQL, merge only when clean, and verify `main` is clean.
+  Code shipped through PR #51 in 2026-08-14; this closure is a documentation
+  and `.env`/`settings.py` config-only change recording the passed runtime
+  acceptance, reviewed and merged the same way (branch, PR, green CI, clean
+  `main`).
 
 ## Stop conditions
 
@@ -315,6 +322,15 @@ R1 is complete only when:
 - Local-model preflight: `just services` confirmed the configured Ollama chat,
   embedding, consolidation, and vision models after the local daemon was
   started.
-- Still pending: the operator must perform R1-01 through R1-03 with actual
-  microphone, server, robot client, Piper output, and the untracked acceptance
-  record. This pending evidence prevents an R1 or P0 completion claim.
+- Real hardware, 2026-08-21 (Plan 0028's session): R1-01 PASS (exact STT,
+  `Hoy es 2026-08-21.`), R1-02 PASS (exact STT, non-disclosing denial),
+  R1-03 FAIL — 5 consecutive attempts, Whisper never produced the literal
+  phrase (mis-heard "Iroko" as "Hiroko"/"y roco"/"y loco" etc.).
+- Real hardware, 2026-08-25 (combined P0-C runbook, commit `a07b731`): root
+  cause identified and fixed — `WHISPER_INITIAL_PROMPT` and the
+  `WHISPER_HOTWORDS` example still said "Omnibot" (the pre-rename hardware
+  name), never "Iroko". After the fix, R1-01 PASS (`Hoy es 2026-08-25.`),
+  R1-02 PASS, and R1-03 PASS with exact STT `'Hola Iroko.'` in both classic
+  and streaming — the wake word was correctly transcribed on the first
+  attempt in each mode. R1 is complete; P0's voice-controller-bridge
+  acceptance requirement is satisfied.

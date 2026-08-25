@@ -208,14 +208,22 @@ GitHub CI. It adds only a policy-gated internal family-tool seam and two
 self-referential child-query patterns. Public chat remains unknown-by-default,
 and cannot provide identity or consent or invoke the v4 reader.
 
-**P0 foundation is complete; runtime acceptance is pending.**
+**P0 foundation and runtime acceptance are both complete (2026-08-25).**
 [Plan 0011](../plans/completed/0011-p0-closure-and-acceptance.md) records the merged-main
 foundation evidence. [Plan 0012](../plans/completed/0012-p0-runtime-acceptance-design.md)
-must still connect P0 to `just run-server` plus `just run-robot` and pass its
-operator runbook. P1.1's executable slices (Plans 0025–0028) are merged and
+connected P0 to `just run-server` plus `just run-robot` and its operator
+runbook passed. P1.1's executable slices (Plans 0025–0028) are merged and
 their runtime acceptance is closed as of Plan 0028's 2026-08-21 execution.
-Plan 0013's own R1 runtime acceptance remains open independently (R1-03
-failed on STT accuracy) — see Plan 0028's evidence.
+[Plan 0013](../plans/completed/0013-p0-voice-controller-bridge.md)'s own R1
+runtime acceptance is also closed: R1-03 initially failed on STT accuracy
+(Plan 0028's evidence), root-caused to a stale "Omnibot" name in
+`WHISPER_INITIAL_PROMPT`/`WHISPER_HOTWORDS`, fixed, and reconfirmed PASS on
+2026-08-25 as part of the combined P0-C operator runbook (P0-C5 [Plan
+0021](../plans/completed/0021-p0-typed-intent-resolution.md), P0-C6 [Plan
+0022](../plans/completed/0022-p0-reliable-streaming-output.md), and P0-C7
+[Plan 0023](../plans/completed/0023-p0-grounded-visual-dialogue.md) together)
+— see
+[`p0-runtime-acceptance.md`](../runbooks/p0-runtime-acceptance.md).
 
 ## P1 — Personal companion
 
