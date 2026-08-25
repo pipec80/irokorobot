@@ -1,10 +1,14 @@
 # P0 operator-QA remediation design
 
-> **Status:** Open umbrella, partially implemented. Plans 0021/C5 and 0022/C6
-> are complete and operator-confirmed (2026-08-21 and 2026-08-20 respectively
-> — see [Plan 0021](../completed/0021-p0-typed-intent-resolution.md#execution-evidence)
-> and [Plan 0022](../completed/0022-p0-reliable-streaming-output.md#execution-evidence));
-> Plan 0023/C7 remains open.
+> **Status:** All three referenced slices are complete and operator-confirmed:
+> [Plan 0021/C5](../completed/0021-p0-typed-intent-resolution.md#execution-evidence)
+> (2026-08-21), [Plan 0022/C6](../completed/0022-p0-reliable-streaming-output.md#execution-evidence)
+> (2026-08-20), and [Plan 0023/C7](../completed/0023-p0-grounded-visual-dialogue.md#execution-evidence)
+> (2026-08-25). This design's own "Required real acceptance rerun" also
+> passed on 2026-08-25 as the combined P0-C runbook — see
+> [`p0-runtime-acceptance.md`](../../runbooks/p0-runtime-acceptance.md). This
+> umbrella remains under `open/` as reference material only; it never had its
+> own executable code or gates to close.
 > **Date:** 2026-08-17
 > **Baseline:** `docs/personal-family-profiles` at `a6b44bb`
 
@@ -39,7 +43,7 @@ self-learning, or a family policy profile.
 |---|---|---|---|
 | C5 / 0021 | Implemented, reviewed, and operator-confirmed | Keep the typed injected resolver (`cognition/intent_resolution.py`), supervised corpus, and controller injection | Regression revalidation only |
 | C6 / 0022 | Implemented, reviewed, and operator-confirmed | Keep `pending_emotion`, audible fallback, and audio-before-`done` rules | Regression revalidation only |
-| C7 / 0023 | Existing vision parity and scene transport, but no planned grounding | Keep image validation, current perception, VLM transport, Piper, and enrollment quarantine | Typed visual preflight, direct grounded speech, trigger migration, and physical acceptance |
+| C7 / 0023 | Implemented, reviewed, and operator-confirmed | Keep the `SceneDescriptionRequest` capability, direct grounded VLM-to-Piper path, and deleted `vision/triggers.py` boundary | Regression revalidation only |
 
 This table supersedes the original sentence that all three plans were merely
 ready. It does not alter the preserved 2026-08-17 defect evidence.
@@ -425,6 +429,12 @@ Use a disposable database and loopback server.
 
 P0 is operator-accepted only after the rerun passes on the final commit. Green
 automated gates alone remain insufficient.
+
+**This rerun passed on 2026-08-25** (commit `a07b731`): classic (R1-01/02/03),
+streaming (C1-S, same 3 phrases), vision (C2-V, grounded scene + VLM-down
+fallback), and the audio-contract check (C3-Q) all PASS — see
+[`p0-runtime-acceptance.md`](../../runbooks/p0-runtime-acceptance.md) for the
+literal transcripts. P0 is operator-accepted.
 
 ## Documentation impact
 

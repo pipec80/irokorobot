@@ -1,9 +1,9 @@
 # P0 Runtime Acceptance Runbook
 
-> **Status:** P0-C public-route hardening is implemented in the current feature
-> branch and automated gates are green. The first operator run on 2026-08-17
-> confirmed policy denial and media paths but found intent, silent-streaming,
-> and visual-grounding blockers documented in
+> **Status:** P0 is fully operator-accepted (2026-08-25). P0-C public-route
+> hardening is implemented and automated gates are green. The first operator
+> run on 2026-08-17 confirmed policy denial and media paths but found intent,
+> silent-streaming, and visual-grounding blockers documented in
 > [Plan 0020](../plans/open/0020-p0-operator-qa-remediation-design.md). The
 > silent-streaming blocker is closed: [Plan
 > 0022](../plans/completed/0022-p0-reliable-streaming-output.md) passed a 2026-08-20
@@ -14,14 +14,17 @@
 > real operator rerun (R1 checkpoint below) — see its own execution evidence
 > for the full 6/6 classic and 5/5 streaming case-by-case result.
 > Visual-grounding is closed: [Plan
-> 0023](../plans/open/0023-p0-grounded-visual-dialogue.md) passed a
+> 0023](../plans/completed/0023-p0-grounded-visual-dialogue.md) passed a
 > 2026-08-21/2026-08-25 real operator run (case C2-V below, revised) — all 5
 > required cases (identity denial, grounded scene description with no second
 > LLM, VLM-down exact fallback, enrollment rejection, household denial)
-> passed. P0 acceptance still requires one final combined clean rerun across
-> C5+C6+C7 together. Personal identity/session acceptance is P1 work under
-> [Plan 0015](../plans/open/0015-personal-companion-design.md), not an unfinished
-> P0 requirement.
+> passed. The combined P0-C operator runbook (R1+C1-S+C2-V+C3-Q together) ran
+> and passed on 2026-08-25, closing [Plan
+> 0013](../plans/completed/0013-p0-voice-controller-bridge.md)'s R1-03 STT
+> debt in the same session (see the R1 2026-08-25 run below). Personal
+> identity/session acceptance is P1 work under
+> [Plan 0015](../plans/open/0015-personal-companion-design.md), not a P0
+> requirement.
 
 ## Purpose
 
@@ -93,6 +96,22 @@ than reinterpreted as a pass. R1 is not complete; Plan 0013 stays open.
 Full untracked evidence:
 `project-history/acceptance/2026-08-21-owner-authenticated-memory.md`.
 
+**Run 2026-08-25** (commit `a07b731`, classic public mode,
+`ROBOT_STREAMING=false`, `VISION_ENABLED=false`, `ROBOT_OWNER_UNLOCK_PROMPT=false`,
+executed as part of the combined P0-C runbook): root cause of R1-03's failure
+identified and fixed — `WHISPER_INITIAL_PROMPT` and the commented
+`WHISPER_HOTWORDS` example still said "Omnibot" (the pre-rename hardware-guide
+name), never "Iroko", so Whisper never had it as an expected token. After the
+fix: R1-01 **PASS** (STT required two retries after "día" was twice misheard
+as "vía" — a d/v acoustic confusion, not a routing defect; the successful
+attempt gave exact STT `¿Qué día es hoy?` → `Hoy es 2026-08-25.`). R1-02
+**PASS** (exact STT, non-disclosing denial). R1-03 **PASS** — exact STT
+`'Hola Iroko.'` on the first attempt, reproduced again in streaming mode
+(case C1-S below) — the wake-word transcription gap is closed. R1 is
+complete; [Plan 0013](../plans/completed/0013-p0-voice-controller-bridge.md)
+is closed. Full untracked evidence:
+`project-history/acceptance/2026-08-25-combined-p0-runbook.md`.
+
 R1 does **not** authorize reading any existing legacy or v4 household data.
 Those records remain protected until a future P1 personal-companion flow creates
 and validates a separate trusted local session.
@@ -105,10 +124,10 @@ create a trusted identity or household data.
 
 | ID | Setup | Action | Required result |
 |---|---|---|---|
-| C1-S | `ROBOT_STREAMING=true`, `VISION_ENABLED=false` | Speak “¿Qué día es hoy?”, “¿Cómo se llaman mis hijos?”, then “Hola, Iroko.” through `just run-robot`. | Deterministic date, non-disclosing denial, then normal streamed generic audio; record literal STT and output. **PASS 2026-08-20** (commit `1927912`, 4 live turns): non-disclosing denial confirmed with `llm_ms=0`; a generic turn and a live hybrid-protocol failure both ended audibly (`outcome=ok` and `outcome=protocol_fallback` respectively, never silent); the date question fell through to the LLM instead of the deterministic tool — expected, C5 intent resolution (Plan 0021) is not yet implemented on this branch. Full transcripts kept in a local untracked operator note per this runbook's own instruction, not in this tracked file. |
-| C2-V | `ROBOT_STREAMING=false`, `VISION_ENABLED=true` | Ask “Iroko, ¿qué ves?” through `just run-robot` with the PC webcam available. | Cue then an audible scene description of the current frame; it must not identify a person, disclose family data, or enroll a face. **PASS 2026-08-25** (commit `0978388`): STT mangled the wake word (“Y loco que ves.”) but the core phrase still routed correctly; cue, then one VLM call, then “Una persona con gafas sostiene una bola roja en su mano derecha…” spoken directly with no second LLM pass. Full C7 evidence, including identity/enrollment/protected/VLM-down cases: [Plan 0023](../plans/open/0023-p0-grounded-visual-dialogue.md#execution-evidence). |
-| C3-Q | Server running, no microphone required | Run `just test-client --text "Hola Iroko" --no-play`. | Request reaches `/transcribe` and does not fail with `422 ... got 22050 Hz`; record actual STT and response. |
-| C4-A | Any public audio route | If STT shows “¿Qué día soy?”, record the literal text and response. | Fixed clarification; no fabricated date and no family information. |
+| C1-S | `ROBOT_STREAMING=true`, `VISION_ENABLED=false` | Speak “¿Qué día es hoy?”, “¿Cómo se llaman mis hijos?”, then “Hola, Iroko.” through `just run-robot`. | Deterministic date, non-disclosing denial, then normal streamed generic audio; record literal STT and output. **PASS 2026-08-20** (commit `1927912`, 4 live turns): non-disclosing denial confirmed with `llm_ms=0`; a generic turn and a live hybrid-protocol failure both ended audibly (`outcome=ok` and `outcome=protocol_fallback` respectively, never silent); the date question fell through to the LLM instead of the deterministic tool — expected then, C5 intent resolution (Plan 0021) was not yet implemented on that branch. **Reconfirmed PASS 2026-08-25** (commit `a07b731`, combined runbook): with C5 now present, all 3 phrases routed deterministically — exact STT for all 3, `Hoy es 2026-08-25.` (`need=current_date`, `llm_ms=0`), non-disclosing denial (`need=own_children_list`, `llm_ms=0`), and `'Hola Iroko.'` transcribed exactly, answered with 3 audible streamed sentences (`outcome=ok`, never silent). |
+| C2-V | `ROBOT_STREAMING=false`, `VISION_ENABLED=true` | Ask “Iroko, ¿qué ves?” through `just run-robot` with the PC webcam available. | Cue then an audible scene description of the current frame; it must not identify a person, disclose family data, or enroll a face. **PASS 2026-08-25** (commit `0978388`): STT mangled the wake word (“Y loco que ves.”) but the core phrase still routed correctly; cue, then one VLM call, then “Una persona con gafas sostiene una bola roja en su mano derecha…” spoken directly with no second LLM pass. Full C7 evidence, including identity/enrollment/protected/VLM-down cases: [Plan 0023](../plans/completed/0023-p0-grounded-visual-dialogue.md#execution-evidence). |
+| C3-Q | Server running, no microphone required | Run `just test-client --text Hola Iroko --no-play`. | Request reaches `/transcribe` and does not fail with `422 ... got 22050 Hz`; record actual STT and response. **PASS 2026-08-25** (commit `a07b731`): `200 OK` in 11.13s, no contract error. Piper's own synthetic voice reading "Hola Iroko" was itself heard by Whisper as `'¡Vale Iroko!'` — a separate TTS-voice-pronunciation curiosity, not a C3-Q failure (C3-Q only gates the audio-contract path, not STT accuracy against synthetic speech). |
+| C4-A | Any public audio route | If STT shows “¿Qué día soy?”, record the literal text and response. | Fixed clarification; no fabricated date and no family information. Not observed this session (opportunistic case). |
 
 For every case record the command, effective non-secret settings, literal STT
 text, response, audible output, route, and pass/fail. Stop and file a defect
@@ -178,7 +197,7 @@ For each run, record in a local, untracked operator note:
 - latency observations for STT, controller, LLM, TTS, and total turn;
 - deviations, failures, and the issue/PR that resolves them.
 
-Do not mark P0 runtime-accepted until the P0-C public-route slices and their
-R1/C1-S/C2-V/C3-Q operator cases pass on a clean database with matching
-automated/CI gates.
+**P0 is marked runtime-accepted as of 2026-08-25**: the P0-C public-route
+slices and their R1/C1-S/C2-V/C3-Q operator cases all passed with matching
+automated/CI gates green on commit `a07b731`.
 The deferred P1 cases are a separate personal-companion acceptance gate.

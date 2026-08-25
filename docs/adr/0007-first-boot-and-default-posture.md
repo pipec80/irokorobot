@@ -125,10 +125,12 @@ replacement for it, never the only recovery route.
   already stated in the decision (TTL, explicit revoke, disclosure unchanged)
   and by the existing loopback-only default from [Plan
   0002c](../plans/completed/0002c-desktop-security-and-drift.md).
-- [Plan 0023](../plans/open/0023-p0-grounded-visual-dialogue.md)'s `ACTIVE_IDENTITY`
-  branch (`Todavía no puedo confirmar quién sos.`) must be revised once this
-  lands, so a resolved owner is greeted instead of always receiving the fixed
-  unknown-identity copy — already flagged in that plan's status line.
+- [Plan 0023](../plans/completed/0023-p0-grounded-visual-dialogue.md)'s
+  `ACTIVE_IDENTITY` branch now greets a resolved owner by name, reusing the
+  same request-scoped grant a household read already consumes, and keeps the
+  fixed unknown copy (`Todavía no puedo confirmar quién sos.`) only when no
+  fresh authenticated evidence resolves — implemented and operator-confirmed
+  2026-08-25.
 - PC-1 needs a small state machine and a CLI/voice entry point that do not
   exist yet; this ADR authorizes and scopes that work, it does not implement
   it.

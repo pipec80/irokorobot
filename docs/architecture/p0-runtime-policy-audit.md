@@ -20,6 +20,14 @@ controller. The current feature worktree routes all enabled public conversation
 paths through that boundary, normalizes the QA-script WAV, and expands bounded
 protected wording. Real PC acceptance is still the remaining P0 exit gate.
 
+**Update (2026-08-25):** Every finding this audit tracked is now resolved
+with real-hardware evidence — see the Evidence classification table below.
+The combined P0-C operator runbook passed the same day; P0 is fully
+operator-accepted — see
+[`p0-runtime-acceptance.md`](../runbooks/p0-runtime-acceptance.md). The
+verdict above is preserved as the original 2026-08-14 finding, not current
+status.
+
 No P1 implementation is authorized by this audit. The next executable work is
 bounded P0 runtime-policy hardening, then the approved personal-companion
 milestone.
@@ -30,7 +38,7 @@ milestone.
 |---|---|---|---|
 | `/transcribe/stream` bypasses the controller. | Resolved in feature worktree; operator-confirmed 2026-08-20 | Baseline called `prepare_text_turn()` directly after STT. | C1 routes a typed event through `decide()` and renders safe plans without legacy generation. Plan 0022's real `just run-robot` run confirmed this live: a protected question returned `source=deterministic`, `llm_ms=0`, the non-disclosing denial, over `/transcribe/stream` — see [Plan 0022](../plans/completed/0022-p0-reliable-streaming-output.md#execution-evidence). |
 | Narrow protected-intent classification misses ordinary family phrasings. | Resolved; operator-confirmed 2026-08-21 | Baseline missed terms such as `esposa` or `nació`. | C4 documents bounded fail-closed forms; C5 (Plan 0021) extracted the classifier into a pure typed resolver with a reviewed corpus and real STT evidence — 6/6 classic and 5/5 streaming acceptance cases passed on real hardware, all deterministic cases at `llm_ms=0` — see [Plan 0021](../plans/completed/0021-p0-typed-intent-resolution.md#execution-evidence). |
-| `/vision/respond` bypasses the controller and injects perception into a second, in-character LLM. | Resolved; operator-confirmed 2026-08-21/2026-08-25 | Baseline called `process_text_turn()` directly after local scene perception, then re-narrated the VLM's description through the text LLM. | C7 (Plan 0023) routes every visual-dialogue need through C5's typed resolver before the frame is ever read; only a `SceneDescriptionRequest` capability reads a frame and calls the VLM, and its description goes directly to Piper — no second LLM. Real hardware confirmed identity, enrollment, protected, grounded scene, and VLM-down fallback — see [Plan 0023](../plans/open/0023-p0-grounded-visual-dialogue.md#execution-evidence). |
+| `/vision/respond` bypasses the controller and injects perception into a second, in-character LLM. | Resolved; operator-confirmed 2026-08-21/2026-08-25 | Baseline called `process_text_turn()` directly after local scene perception, then re-narrated the VLM's description through the text LLM. | C7 (Plan 0023) routes every visual-dialogue need through C5's typed resolver before the frame is ever read; only a `SceneDescriptionRequest` capability reads a frame and calls the VLM, and its description goes directly to Piper — no second LLM. Real hardware confirmed identity, enrollment, protected, grounded scene, and VLM-down fallback — see [Plan 0023](../plans/completed/0023-p0-grounded-visual-dialogue.md#execution-evidence). |
 | `client_test.py --text` does not enforce the audio contract. | Resolved in feature worktree | Baseline wrote Piper-native WAV without resampling or validating its header. | C3 reuses the local converter and validator; a real disposable-server invocation remains pending. |
 | Public voice cannot become an owner. | Confirmed intended boundary | Public chat and classic voice adapters construct an `unknown` actor. | Preserve until the bounded local personal session exists. |
 | Persisted roles are not wired into public identity. | Confirmed planned gap | `get_active_role()` and `IdentitySessionRegistry` exist, while public adapters use unknown actors. | Implement only in the approved personal-companion milestone; do not infer identity from text, face, or voice. |

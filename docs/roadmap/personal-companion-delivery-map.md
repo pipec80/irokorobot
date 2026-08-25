@@ -55,9 +55,9 @@ batches:
 
 | Reference | Role | Implemented content it preserves | Open outcome it governs |
 |---|---|---|---|
-| [0014](../plans/open/0014-p0-runtime-policy-hardening-design.md) | P0 runtime-policy umbrella | C1–C4 and C6 | C5, C7, and combined P0 acceptance |
+| [0014](../plans/open/0014-p0-runtime-policy-hardening-design.md) | P0 runtime-policy umbrella | C1–C7, all implemented and operator-confirmed | None — combined P0 acceptance passed 2026-08-25 |
 | [0015](../plans/open/0015-personal-companion-design.md) | Product direction | Reuse of the existing local cognitive/audio/memory foundations | Personal-companion stages PC-1 through PC-6 |
-| [0020](../plans/open/0020-p0-operator-qa-remediation-design.md) | Operator-QA defect umbrella | C6 via completed Plan 0022 | C5 via 0021 and C7 via 0023 |
+| [0020](../plans/open/0020-p0-operator-qa-remediation-design.md) | Operator-QA defect umbrella | C5 via completed Plan 0021, C6 via completed Plan 0022, C7 via completed Plan 0023 | None — its own required real acceptance rerun passed 2026-08-25 |
 | [0024](../plans/open/0024-owner-authenticated-memory-mvp-design.md) | PC-1 integration design | Existing identity, policy, child-memory, and channel seams; Plans 0025–0028 merged/executed | Delivery complete — PC-1 accepted |
 
 Do not execute these four documents from top to bottom. Their job is to retain
@@ -71,7 +71,7 @@ not mean the north-star path is connected or accepted.
 
 | Stage | Verified existing foundation | Existing tests | Verified gap | Accountable plan |
 |---|---|---|---|---|
-| Audio ingress and STT | [`routers/transcribe.py`](../../server/src/server/routers/transcribe.py) creates the classic typed event and preserves the WAV contract, and the streaming route now propagates identity too (Plan 0027) | [`test_transcribe_pipeline.py`](../../tests/integration/test_transcribe_pipeline.py), [`test_transcribe_validation.py`](../../tests/integration/test_transcribe_validation.py) | Real STT accuracy is confirmed with 3x recorded classic and 3x streaming hardware evidence (Plan 0028, 2026-08-21); a repeatable Whisper "small" mis-transcription of the proper noun "Iroko" and of the first utterance after each robot restart were found and are open follow-up items, not blockers | — |
+| Audio ingress and STT | [`routers/transcribe.py`](../../server/src/server/routers/transcribe.py) creates the classic typed event and preserves the WAV contract, and the streaming route now propagates identity too (Plan 0027) | [`test_transcribe_pipeline.py`](../../tests/integration/test_transcribe_pipeline.py), [`test_transcribe_validation.py`](../../tests/integration/test_transcribe_validation.py) | Real STT accuracy is confirmed with 3x recorded classic and 3x streaming hardware evidence (Plan 0028, 2026-08-21). The repeatable Whisper "small" mis-transcription of "Iroko" (Plan 0013's R1-03) is closed — root cause was a stale "Omnibot" name in `WHISPER_INITIAL_PROMPT`/`WHISPER_HOTWORDS`; fixed and reconfirmed PASS 2x (classic + streaming) on 2026-08-25. The first-utterance-after-restart quirk remains an open, non-blocking follow-up item | — |
 | Owner and household setup | **Closed by [0025](../plans/completed/0025-personal-owner-bootstrap-and-pin-setup.md).** `just setup-personal` bootstraps the sole owner, confirms `child_of` v4 relations, and stores a scrypt-hashed PIN (migration 006, [`personal_setup.py`](../../server/src/server/personal_setup.py)) | [`test_personal_setup.py`](../../tests/integration/test_personal_setup.py), [`test_owner_credentials_schema.py`](../../tests/integration/test_owner_credentials_schema.py), [`test_pin_credentials.py`](../../tests/unit/test_pin_credentials.py) | None remaining for this stage | — |
 | Typed identity evidence | **Closed by [0026](../plans/completed/0026-one-use-owner-authenticated-classic-turn.md) and [0027](../plans/completed/0027-one-use-owner-streaming-parity.md).** `IdentityEvidenceSource.LOCAL_UNLOCK` and `IdentitySessionRegistry.issue_for_person`/`consume_evidence` give request-bound, authenticated, consume-once evidence in both classic and streaming modes ([`identity.py`](../../server/src/server/cognition/identity.py), [`identity_sessions.py`](../../server/src/server/cognition/identity_sessions.py)) | [`test_active_person_identity.py`](../../tests/unit/test_active_person_identity.py), [`test_identity_sessions.py`](../../tests/unit/test_identity_sessions.py) | None remaining | — |
 | Channel actor resolution | **Closed for classic and streaming modes by [0026](../plans/completed/0026-one-use-owner-authenticated-classic-turn.md) and [0027](../plans/completed/0027-one-use-owner-streaming-parity.md).** `X-Iroko-Identity-Token` is accepted by `/chat`, classic `/transcribe`, and `/transcribe/stream`; `OwnerRequestResolver` resolves the actor only for protected branches in every channel | [`test_owner_authenticated_turn.py`](../../tests/integration/test_owner_authenticated_turn.py), [`test_owner_unlock_endpoint.py`](../../tests/integration/test_owner_unlock_endpoint.py), [`test_owner_authenticated_stream.py`](../../tests/integration/test_owner_authenticated_stream.py) | None remaining | — |
@@ -79,7 +79,7 @@ not mean the north-star path is connected or accepted.
 | Authorization and audit | **Closed by [0026](../plans/completed/0026-one-use-owner-authenticated-classic-turn.md).** Classic public turns can now supply fresh authenticated owner evidence before policy evaluation | [`test_household_authorization_policy.py`](../../tests/unit/test_household_authorization_policy.py), [`test_household_authorization_runtime.py`](../../tests/integration/test_household_authorization_runtime.py), [`test_owner_authenticated_turn.py`](../../tests/integration/test_owner_authenticated_turn.py) | None remaining for classic mode | — |
 | Structured child retrieval | **Closed by [0026](../plans/completed/0026-one-use-owner-authenticated-classic-turn.md) and [0028](../plans/completed/0028-owner-authenticated-memory-runtime-acceptance.md).** The `household_tools.py` seam is reachable from a fresh authenticated owner turn end to end in both classic and streaming modes, with 3x repeated real-hardware evidence and a direct SQLite audit-trail inspection confirming `execute_household_tool → read_household_data` ordering on every allowed disclosure | [`test_household_knowledge_tools.py`](../../tests/unit/test_household_knowledge_tools.py), [`test_p05b2_household_acceptance.py`](../../tests/integration/test_p05b2_household_acceptance.py), [`test_owner_authenticated_turn.py`](../../tests/integration/test_owner_authenticated_turn.py), [`test_owner_authenticated_stream.py`](../../tests/integration/test_owner_authenticated_stream.py) | None remaining | — |
 | Audible response and streaming | Piper TTS is integrated; [`streaming_render.py`](../../server/src/server/streaming_render.py) owns C6 audible fallback and audio-before-`done` behavior; Plan 0027 added the `authentication_consumed` terminal field | [`test_transcribe_stream.py`](../../tests/integration/test_transcribe_stream.py), [`test_transcribe_stream_resilience.py`](../../tests/integration/test_transcribe_stream_resilience.py) | None remaining — Plan 0028 measured streaming as consistently faster than classic for the same answer (~1.9s vs ~2.0s total) since audio starts on the first NDJSON chunk instead of waiting for the full response body | — |
-| Current visual dialogue | [`routers/vision.py`](../../server/src/server/routers/vision.py) has controller parity; [`vision/perception.py`](../../server/src/server/vision/perception.py) has scene and face adapters | [`test_vision_dialog.py`](../../tests/integration/test_vision_dialog.py), [`test_vision_endpoint.py`](../../tests/integration/test_vision_endpoint.py) | Typed visual preflight, direct grounded VLM-to-TTS, trigger migration, and physical acceptance remain open | [0023](../plans/open/0023-p0-grounded-visual-dialogue.md), after 0021 |
+| Grounded visual dialogue (Plan 0023 / P0-C7) | **Closed by [0023](../plans/completed/0023-p0-grounded-visual-dialogue.md).** `routers/vision.py` calls the typed resolver before any frame access; only a `SceneDescriptionRequest` capability reads a frame and calls the VLM; its description goes directly to Piper — no second LLM. Identity/enrollment speak exact fixed copy without ever touching the camera. `vision/triggers.py` deleted. | [`test_vision_dialog.py`](../../tests/integration/test_vision_dialog.py), [`test_vision_endpoint.py`](../../tests/integration/test_vision_endpoint.py), [`test_vision_describe.py`](../../tests/unit/test_vision_describe.py) | None remaining — real hardware confirmed identity, enrollment, protected, grounded scene, and VLM-down fallback (2026-08-21/2026-08-25) | — |
 
 ## PC-1 artifacts delivered by Plans 0025–0028
 
@@ -114,16 +114,17 @@ PC-1.
   -> 0026 one-use authenticated classic turn — merged (PR #57)
   -> 0027 authenticated streaming parity — merged (PR #64)
   -> 0028 physical allowed/denied/replay/expiry acceptance — executed, PASS (2026-08-21)
-       `-> 0013 R1 independently closed: R1-01/R1-02 PASS, R1-03 FAIL
-          (STT accuracy on "Iroko") — Plan 0013 stays open on this finding
 PC-1 accepted
-NOW
-  -> 0021 typed intent resolution
-  -> 0023 grounded visual dialogue
+  -> 0021 typed intent resolution — executed, PASS (2026-08-21)
+  -> 0023 grounded visual dialogue — executed, PASS (2026-08-21/2026-08-25)
+  -> combined P0-C runbook (R1+C1-S+C2-V+C3-Q) — executed, PASS (2026-08-25)
+       `-> 0013 R1 closed same day: root cause of R1-03's STT failure fixed
+          (stale "Omnibot" name in the Whisper prompt/hotwords)
+P0 fully accepted
 ```
 
-Plans 0014, 0015, 0020, and 0024 remain open as reference until their governed
-outcomes close. They do not create parallel work.
+Plans 0014, 0015, 0020, and 0024 remain open as reference; their governed
+outcomes are all closed. They do not create parallel work.
 
 ## Status transition protocol
 

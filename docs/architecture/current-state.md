@@ -20,9 +20,13 @@
 > operator-confirmed**: real hardware proved identity, enrollment,
 > protected-household, grounded scene description, and VLM-down fallback,
 > all 5 required cases PASS on 2026-08-21/2026-08-25 — see [Plan
-> 0023](../plans/open/0023-p0-grounded-visual-dialogue.md#execution-evidence).
-> The combined P0 operator acceptance (C5+C6+C7 together) and Plan 0013's own
-> R1 debt (one failing case, STT accuracy on "Iroko") remain open.
+> 0023](../plans/completed/0023-p0-grounded-visual-dialogue.md#execution-evidence).
+> **P0 is fully operator-accepted (2026-08-25)**: the combined P0 runbook
+> (R1+C1-S+C2-V+C3-Q, C5+C6+C7 together) passed, and Plan 0013's own R1
+> debt closed the same day after fixing `WHISPER_INITIAL_PROMPT`/
+> `WHISPER_HOTWORDS` (they still referenced the pre-rename "Omnibot" name,
+> never "Iroko") — see [Plan
+> 0013](../plans/completed/0013-p0-voice-controller-bridge.md#execution-evidence).
 >
 > **Verification boundary:** P0.3/P0.4 code and P0.5-A policy seams were
 > inspected. P0.4 passed `just gate` (527 tests) before PR #40 merged it,
@@ -36,17 +40,14 @@
 > seam. The P0 closure revalidation on merged `main` repeated the focused
 > acceptance suite (20 passed), all five local gates, and `git diff --check`
 > before this evidence update. This verifies the P0 foundation, not operator
-> acceptance: [Plan 0013](../plans/open/0013-p0-voice-controller-bridge.md) now
+> acceptance: [Plan 0013](../plans/completed/0013-p0-voice-controller-bridge.md)
 > routes the classic voice path through the controller with an unknown public
-> actor. Its automated evidence and human `just run-server` plus
-> `just run-robot` acceptance remain required before this document can claim
-> P0 operator acceptance. The subsequent runtime-policy audit confirmed the
-> streaming, visual-dialogue, QA-WAV, and protected-wording gaps. They are
-> bounded by [Plan
-> 0014](../plans/open/0014-p0-runtime-policy-hardening-design.md). Plan 0022's code
-> has since landed on this branch, but this documentation task did not rerun its
-> automated gates. Typed intent resolution, grounded visual dialogue, explicit
-> owner authentication, and the combined real operator run remain open.
+> actor; its automated evidence and human `just run-server` plus
+> `just run-robot` acceptance are now complete (2026-08-25), see above. The
+> subsequent runtime-policy audit confirmed the streaming, visual-dialogue,
+> QA-WAV, and protected-wording gaps. They were bounded by [Plan
+> 0014](../plans/open/0014-p0-runtime-policy-hardening-design.md), whose every
+> slice (C1–C7) and the combined real operator run are now complete.
 > Prior P0.3/P0-S verification includes `just lint`, `just typecheck`, `just
 > test` (514 passed), `just audit`, and `just check`; P0-S2 evidence includes GitHub CI and
 > `just services` detecting configured local models. Camera, microphone, LAN,
@@ -133,7 +134,7 @@ gap prevents owner-by-default memory disclosure.
 | One-use owner streaming parity (Plan 0027) | Implemented; real-hardware acceptance closed | `POST /transcribe/stream` accepts the same optional `X-Iroko-Identity-Token` and composes one `OwnerRequestResolver` per request before `decide(event)`, reusing Plan 0026's `OwnerUnlockService` unchanged. The terminal NDJSON `done` event gains an additive `authentication_consumed` boolean (default `false`); older robots parsing it without the field default safely to `false`. Generic/legacy streaming never resolves an actor and always reports `false`. The robot's `transcribe_stream()` sends the header when a token is held and clears `ctx.identity_token` only on a `done` with `authentication_consumed=true`; an EOF before `done` leaves it untouched (replay denied server-side). `ROBOT_OWNER_UNLOCK_PROMPT` now works with `ROBOT_STREAMING` — the prior startup guard pointing at this plan was removed. Plan 0028 (2026-08-21) proved the streaming flow 3x on real hardware; measured total latency was consistently lower than classic mode for the same answer (~1.9s vs ~2.0s) since audio starts on the first NDJSON chunk. |
 | Owner-authenticated memory runtime acceptance (Plan 0028) | Executed 2026-08-21 — **PASS** for the PC-1 slice | Ran the full classic and streaming allowed/denied/replay/expiry/generic-non-consumption matrix 3x each on real hardware (`ntbk-pipec-2`), plus a direct SQLite inspection of `authorization_audit_events` (36 rows) confirming exact `execute_household_tool → read_household_data` ordering on every disclosure and no PIN/token/name leakage anywhere outside the `entities` table. Also ran Plan 0013's R1-01/R1-02/R1-03 cases: R1-01 and R1-02 passed; R1-03 failed after 5 attempts — Whisper "small" could not reliably transcribe the proper noun "Iroko" — so Plan 0013 stays open on that independently tracked finding, per this plan's own rule that R1 does not gate the PC-1 verdict. Surfaced two other findings, neither blocking: a repeatable first-utterance-after-restart STT mis-transcription pattern, and a garbled `protected_household`-pattern match that can consume a fresh grant without disclosing or denying cleanly (no leak observed). Full untracked evidence: `project-history/acceptance/2026-08-21-owner-authenticated-memory.md`. |
 | Typed intent resolution (Plan 0021 / P0-C5) | Executed 2026-08-21 — operator-confirmed | New pure `cognition/intent_resolution.py`: a closed, deterministic Spanish rule set (no LLM/VLM/embedding/database) with an `IntentResolution(need, match, rule_id)` contract, injected into `CognitiveController` as `intent_resolver` (default `resolve_information_need`), replacing the former inline `_classify_information_need`. `rule_id` is privacy-safe static metadata, never the utterance or a name. Precedence: own-child list/count → protected household/birth → supervised ambiguous STT aliases → current-date STT alias → current date → explicit age → relationship/profile → generic. Real hardware proved 6/6 classic and 5/5 streaming acceptance cases (`ntbk-pipec-2`), all deterministic cases at `llm_ms=0`, audibly confirmed. C6/C7 untouched (confirmed by `git diff --stat`). |
-| P0 runtime acceptance | Partial; combined P0-C operator acceptance pending | Enabled public routes enter the controller. Plans 0022 (streaming reliability), 0021 (typed intent, C5), and 0023 (grounded visual dialogue, C7) are all complete with real operator evidence. The authenticated-owner proof (PC-1) is complete via Plan 0028. Only the combined P0-C runbook evidence across all slices together, plus Plan 0013's own R1 debt, stay open. |
+| P0 runtime acceptance | **Complete (2026-08-25)** | Enabled public routes enter the controller. Plans 0022 (streaming reliability), 0021 (typed intent, C5), 0023 (grounded visual dialogue, C7), and 0013 (voice-controller bridge, R1) are all complete with real operator evidence. The authenticated-owner proof (PC-1) is complete via Plan 0028. The combined P0-C runbook (R1+C1-S+C2-V+C3-Q) passed on commit `a07b731` — see [`p0-runtime-acceptance.md`](../runbooks/p0-runtime-acceptance.md). |
 | Vision/VLM (Plan 0023 / P0-C7) | Executed 2026-08-21/2026-08-25 — operator-confirmed | Extracted C5's resolver with `SCENE_DESCRIPTION`, `ACTIVE_IDENTITY`, and `BIOMETRIC_ENROLLMENT` needs and one `SceneDescriptionRequest` capability type. Only `/vision/respond`'s scene branch reads a frame or calls the VLM; the grounded description goes directly to Piper (`ResponseSource.CURRENT_PERCEPTION`), never through the text LLM. Identity/enrollment speak exact fixed copy without ever touching the camera, even with vision disabled. `vision/triggers.py`'s parallel intent authority was deleted. Real hardware confirmed all 5 required cases: identity denial, grounded scene description with no second LLM, VLM-down exact fallback, enrollment rejection, and household denial. |
 | Face profiles | Implemented/sensitive/quarantined | SQLite-linked embeddings and recognition functions exist, but no consented runtime active-person adapter calls them. |
 | Speaker recognition | Absent | STT and VAD exist; no speaker enrollment, voiceprint, verification model, or calibrated identity adapter exists. |
@@ -241,9 +242,8 @@ See [P0-S hardening audit](../history/audits/p0-s-hardening-audit.md) for eviden
   mode ending in an audible fallback instead of silence, and one correct
   non-disclosing family denial with `llm_ms=0`.
 
-The P0 foundation evidence above does not prove an operator can exercise every
-P0 capability via `just run-server` and `just run-robot`. R1 runtime proof is
-defined in [Plan 0013](../plans/open/0013-p0-voice-controller-bridge.md); the
+R1 runtime proof is complete — see
+[Plan 0013](../plans/completed/0013-p0-voice-controller-bridge.md); the
 authenticated-owner acceptance gate is defined in
 [Plan 0024](../plans/open/0024-owner-authenticated-memory-mvp-design.md). Its
 executable sequence is
