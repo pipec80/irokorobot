@@ -13,8 +13,13 @@
 > 0021](../plans/completed/0021-p0-typed-intent-resolution.md) passed a 2026-08-21
 > real operator rerun (R1 checkpoint below) — see its own execution evidence
 > for the full 6/6 classic and 5/5 streaming case-by-case result.
-> Visual-grounding (C7, Plan 0023) remains open; P0 acceptance still requires
-> its remediation and a combined clean rerun. Personal identity/session acceptance is P1 work under
+> Visual-grounding is closed: [Plan
+> 0023](../plans/open/0023-p0-grounded-visual-dialogue.md) passed a
+> 2026-08-21/2026-08-25 real operator run (case C2-V below, revised) — all 5
+> required cases (identity denial, grounded scene description with no second
+> LLM, VLM-down exact fallback, enrollment rejection, household denial)
+> passed. P0 acceptance still requires one final combined clean rerun across
+> C5+C6+C7 together. Personal identity/session acceptance is P1 work under
 > [Plan 0015](../plans/open/0015-personal-companion-design.md), not an unfinished
 > P0 requirement.
 
@@ -101,7 +106,7 @@ create a trusted identity or household data.
 | ID | Setup | Action | Required result |
 |---|---|---|---|
 | C1-S | `ROBOT_STREAMING=true`, `VISION_ENABLED=false` | Speak “¿Qué día es hoy?”, “¿Cómo se llaman mis hijos?”, then “Hola, Iroko.” through `just run-robot`. | Deterministic date, non-disclosing denial, then normal streamed generic audio; record literal STT and output. **PASS 2026-08-20** (commit `1927912`, 4 live turns): non-disclosing denial confirmed with `llm_ms=0`; a generic turn and a live hybrid-protocol failure both ended audibly (`outcome=ok` and `outcome=protocol_fallback` respectively, never silent); the date question fell through to the LLM instead of the deterministic tool — expected, C5 intent resolution (Plan 0021) is not yet implemented on this branch. Full transcripts kept in a local untracked operator note per this runbook's own instruction, not in this tracked file. |
-| C2-V | `ROBOT_STREAMING=false`, `VISION_ENABLED=true` | Ask “Iroko, ¿qué ves?” through `just run-robot` with the PC webcam available. | Cue then an audible scene description of the current frame; it must not identify a person, disclose family data, or enroll a face. |
+| C2-V | `ROBOT_STREAMING=false`, `VISION_ENABLED=true` | Ask “Iroko, ¿qué ves?” through `just run-robot` with the PC webcam available. | Cue then an audible scene description of the current frame; it must not identify a person, disclose family data, or enroll a face. **PASS 2026-08-25** (commit `0978388`): STT mangled the wake word (“Y loco que ves.”) but the core phrase still routed correctly; cue, then one VLM call, then “Una persona con gafas sostiene una bola roja en su mano derecha…” spoken directly with no second LLM pass. Full C7 evidence, including identity/enrollment/protected/VLM-down cases: [Plan 0023](../plans/open/0023-p0-grounded-visual-dialogue.md#execution-evidence). |
 | C3-Q | Server running, no microphone required | Run `just test-client --text "Hola Iroko" --no-play`. | Request reaches `/transcribe` and does not fail with `422 ... got 22050 Hz`; record actual STT and response. |
 | C4-A | Any public audio route | If STT shows “¿Qué día soy?”, record the literal text and response. | Fixed clarification; no fabricated date and no family information. |
 

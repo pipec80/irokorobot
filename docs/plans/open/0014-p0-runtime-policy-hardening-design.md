@@ -8,23 +8,24 @@
 > 0022](../completed/0022-p0-reliable-streaming-output.md#execution-evidence).
 > Intent (C5) is closed and operator-confirmed on 2026-08-21 — see [Plan
 > 0021](../completed/0021-p0-typed-intent-resolution.md#execution-evidence).
-> Visual-grounding (C7) remains open.
+> Visual-grounding (C7) is closed and operator-confirmed on 2026-08-25 — see
+> [Plan 0023](0023-p0-grounded-visual-dialogue.md#execution-evidence).
 
 ## Current slice disposition
 
 | Slice | State | Do not rebuild | Still required |
 |---|---|---|---|
 | C1 | Implemented by Plan 0016 | Streaming/controller parity | Preserve as regression coverage |
-| C2 | Implemented by Plan 0017 | Vision/controller parity | Preserve while grounding C7 |
+| C2 | Implemented by Plan 0017 | Vision/controller parity | Superseded — C7 (Plan 0023) grounds the response directly |
 | C3 | Implemented by Plan 0018 | Client-test WAV normalization | Preserve audio contract |
 | C4 | Implemented by Plan 0019 | Bounded protected-request wording | Extend through C5; do not replace policy |
 | C5 | Complete in Plan 0021 | Typed resolver, reviewed corpus, controller injection | Revalidate only |
 | C6 | Complete in Plan 0022 | Audible fallback and terminal stream rules | Revalidate only |
-| C7 | Not implemented as Plan 0023 | Scene/VLM transport and vision parity already exist | Ground the response and remove duplicate trigger authority |
+| C7 | Complete in Plan 0023 | Typed `SceneDescriptionRequest` capability, direct grounded VLM-to-Piper path | Revalidate only |
 
-The umbrella remains under `open/` because C7 and the final combined
-operator run are still required. Its completed slices are historical evidence,
-not work to repeat.
+The umbrella remains under `open/` because the final combined P0-C operator
+run (C5+C6+C7 together) is still required. Its completed slices are
+historical evidence, not work to repeat.
 
 ## Objective
 

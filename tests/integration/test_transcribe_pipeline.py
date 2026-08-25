@@ -133,6 +133,86 @@ def test_transcribe_ambiguous_date_alias_avoids_llm(
 
 
 @pytest.mark.integration
+def test_transcribe_scene_request_unavailable_when_vision_disabled(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """C7: with vision off, a scene request never asks for a frame."""
+    process = AsyncMock(return_value=TextTurnResult("legacy", "joy", 42, False))
+    monkeypatch.setattr(stt, "transcribe", AsyncMock(return_value="¿Qué ves?"))
+    monkeypatch.setattr(transcribe_module, "process_text_turn", process)
+    monkeypatch.setattr(settings, "vision_enabled", False)
+
+    response = client.post(
+        "/transcribe",
+        files={"audio": ("a.wav", silence_wav_bytes, "audio/wav")},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["llm_response"] == "Ahora mismo no puedo mirar desde este canal."
+    assert body["vision_requested"] is False
+    process.assert_not_awaited()
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("vision_enabled", [True, False])
+def test_transcribe_active_identity_denies_without_fresh_evidence(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+    vision_enabled: bool,
+) -> None:
+    """The public classic actor is always unknown, so identity stays unconfirmed."""
+    process = AsyncMock(return_value=TextTurnResult("legacy", "joy", 42, False))
+    monkeypatch.setattr(stt, "transcribe", AsyncMock(return_value="¿Quién soy?"))
+    monkeypatch.setattr(transcribe_module, "process_text_turn", process)
+    monkeypatch.setattr(settings, "vision_enabled", vision_enabled)
+
+    response = client.post(
+        "/transcribe",
+        files={"audio": ("a.wav", silence_wav_bytes, "audio/wav")},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["llm_response"] == "Todavía no puedo confirmar quién sos."
+    assert body["vision_requested"] is False
+    process.assert_not_awaited()
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("vision_enabled", [True, False])
+def test_transcribe_biometric_enrollment_rejected_without_camera_or_legacy(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+    vision_enabled: bool,
+) -> None:
+    """An unequivocal enrollment cue never requests a frame, even with vision on."""
+    process = AsyncMock(return_value=TextTurnResult("legacy", "joy", 42, False))
+    monkeypatch.setattr(
+        stt, "transcribe", AsyncMock(return_value="Aprende mi cara, soy PersonaDePrueba")
+    )
+    monkeypatch.setattr(transcribe_module, "process_text_turn", process)
+    monkeypatch.setattr(settings, "vision_enabled", vision_enabled)
+
+    response = client.post(
+        "/transcribe",
+        files={"audio": ("a.wav", silence_wav_bytes, "audio/wav")},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["llm_response"] == (
+        "Todavía no puedo registrar rostros: hace falta administración local y consentimiento."
+    )
+    assert body["vision_requested"] is False
+    process.assert_not_awaited()
+
+
+@pytest.mark.integration
 def test_voice_event_from_transcript_is_fresh_and_opaque() -> None:
     """A voice transcript must become a new typed event with no caller identity."""
     first = transcribe_module._voice_event_from_transcript("hola")

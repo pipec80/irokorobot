@@ -289,3 +289,70 @@ async def test_chat_composes_tools_but_unknown_actor_never_reaches_v4_reader(
     assert reader.mock_calls == []
     process.assert_not_awaited()
     audit.assert_awaited_once()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.parametrize("vision_enabled", [True, False])
+async def test_chat_scene_request_always_gets_the_fixed_unavailable_plan(
+    monkeypatch: pytest.MonkeyPatch, vision_enabled: bool
+) -> None:
+    """Chat has no camera round-trip — a scene request never reaches vision."""
+    process = AsyncMock(return_value=TextTurnResult("legacy", "joy", 42, False))
+    monkeypatch.setattr(chat, "process_text_turn", process)
+    monkeypatch.setattr(settings, "vision_enabled", vision_enabled)
+
+    async with _client() as client:
+        response = await client.post(
+            "/chat",
+            json={"message": "¿Qué ves?", "conversation_id": "web-primary"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["response"] == "Ahora mismo no puedo mirar desde este canal."
+    process.assert_not_awaited()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_chat_active_identity_denies_without_fresh_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Chat's public actor is always unknown, so identity stays unconfirmed."""
+    process = AsyncMock(return_value=TextTurnResult("legacy", "joy", 42, False))
+    monkeypatch.setattr(chat, "process_text_turn", process)
+
+    async with _client() as client:
+        response = await client.post(
+            "/chat",
+            json={"message": "¿Quién soy?", "conversation_id": "web-primary"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["response"] == "Todavía no puedo confirmar quién sos."
+    process.assert_not_awaited()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_chat_biometric_enrollment_is_rejected_without_camera_or_legacy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unequivocal enrollment cue is rejected without camera, model, or legacy text."""
+    process = AsyncMock(return_value=TextTurnResult("legacy", "joy", 42, False))
+    monkeypatch.setattr(chat, "process_text_turn", process)
+
+    async with _client() as client:
+        response = await client.post(
+            "/chat",
+            json={
+                "message": "Aprende mi cara, soy PersonaDePrueba",
+                "conversation_id": "web-primary",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["response"] == (
+        "Todavía no puedo registrar rostros: hace falta administración local y consentimiento."
+    )
+    process.assert_not_awaited()

@@ -12,7 +12,7 @@ from uuid import uuid4
 from fastapi import APIRouter, BackgroundTasks, File, Header, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
-from server import turn_log, vision
+from server import turn_log
 from server.audio_contract import validate_wav_contract
 from server.cognition.authorization import evaluate_authorization
 from server.cognition.controller import ActivePersonResolver, CognitiveController
@@ -20,7 +20,12 @@ from server.cognition.household_tools import HouseholdKnowledgeTools
 from server.cognition.identity import ActivePersonContext
 from server.cognition.models import CognitiveEvent
 from server.cognition.owner_authentication import OwnerRequestResolver, owner_unlock_service
-from server.cognition.response_plan import TextTurnPayload
+from server.cognition.response_plan import (
+    ResponsePlan,
+    SceneDescriptionRequest,
+    TextTurnPayload,
+    scene_unavailable_plan,
+)
 from server.exceptions import AudioContractError
 from server.memory.consolidation import consolidate_turn
 from server.memory.household_authorization import record_authorization_decision
@@ -195,33 +200,40 @@ async def transcribe(
         logger.warning("STT returned empty transcript — audio was silence or too short")
         raise HTTPException(status_code=422, detail="No speech detected in audio")
 
-    # V0.5/V1 — visual question OR explicit face-enroll phrase detected:
-    # answer NOW with a short spoken cue and ask the client for a frame
-    # (second round via /vision/respond). The cue phrase covers the VLM
-    # latency; this stub turn is not recorded in memory — the real
-    # exchange lands in round two.
-    if settings.vision_enabled and (
-        vision.wants_vision(text_heard) or vision.wants_enroll(text_heard) is not None
-    ):
-        logger.info("Visual intent detected: %r — requesting a frame", text_heard[:60])
-        audio_base64, duration_ms, tts_ms = await _run_tts(settings.vision_look_phrase)
-        total_ms = _elapsed_ms(request_start)
-        _log_pipeline_timing("voice.vision-cue", stt_ms, 0, tts_ms, total_ms)
-        return TranscribeResponse(
-            text_heard=text_heard,
-            llm_response=settings.vision_look_phrase,
-            audio_base64=audio_base64,
-            duration_ms=duration_ms,
-            emotion="neutral",
-            vision_requested=True,
-            stt_ms=stt_ms,
-            tts_ms=tts_ms,
-            total_ms=total_ms,
-        )
+    event = _voice_event_from_transcript(text_heard)
+    controller = _voice_controller(background_tasks, request_identity=request_identity)
+    decision = await controller.decide(event)
 
-    plan = await _voice_controller(background_tasks, request_identity=request_identity).handle(
-        _voice_event_from_transcript(text_heard)
-    )
+    plan: ResponsePlan
+    if isinstance(decision, SceneDescriptionRequest):
+        if settings.vision_enabled:
+            # V0.5/V1 — a visual question needs a camera frame the classic
+            # request did not carry: answer NOW with a short spoken cue and
+            # ask the client for one (second round via /vision/respond). The
+            # cue phrase covers the VLM latency; this stub turn is not
+            # recorded in memory — the real exchange lands in round two.
+            logger.info("Scene description requested: %r — requesting a frame", text_heard[:60])
+            audio_base64, duration_ms, tts_ms = await _run_tts(settings.vision_look_phrase)
+            total_ms = _elapsed_ms(request_start)
+            _log_pipeline_timing("voice.vision-cue", stt_ms, 0, tts_ms, total_ms)
+            return TranscribeResponse(
+                text_heard=text_heard,
+                llm_response=settings.vision_look_phrase,
+                audio_base64=audio_base64,
+                duration_ms=duration_ms,
+                emotion="neutral",
+                vision_requested=True,
+                stt_ms=stt_ms,
+                tts_ms=tts_ms,
+                total_ms=total_ms,
+                authentication_consumed=request_identity.consumed,
+            )
+        plan = scene_unavailable_plan()
+    elif decision is None:
+        plan = await controller.handle(event)
+    else:
+        plan = decision
+
     turn_log.log_decision("voice", plan)
     audio_base64, duration_ms, tts_ms = await _run_tts(plan.response)
 
@@ -274,8 +286,13 @@ async def transcribe_stream(
         raise HTTPException(status_code=422, detail="No speech detected in audio")
 
     event = _voice_event_from_transcript(text_heard)
-    plan = await _voice_controller(background_tasks, request_identity=request_identity).decide(
+    decision = await _voice_controller(background_tasks, request_identity=request_identity).decide(
         event
+    )
+    # Streaming has no second-round frame upload — a scene request always
+    # gets the fixed unavailable plan, regardless of VISION_ENABLED.
+    plan: ResponsePlan | None = (
+        scene_unavailable_plan() if isinstance(decision, SceneDescriptionRequest) else decision
     )
     turn_log.log_decision("stream", plan)
     if plan is not None:

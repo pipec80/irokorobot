@@ -23,4 +23,3 @@ from server.vision.faces import (
     recognize,
 )
 from server.vision.perception import enroll_from_frame, perceive
-from server.vision.triggers import wants_enroll, wants_vision

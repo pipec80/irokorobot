@@ -1,6 +1,7 @@
 """Immutable response-planning contracts for the P0.3 chat pilot."""
 
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -27,6 +28,9 @@ class InformationNeed(StrEnum):
     OWN_CHILDREN_LIST = "own_children_list"
     OWN_CHILDREN_COUNT = "own_children_count"
     AMBIGUOUS_DATE_QUERY = "ambiguous_date_query"
+    SCENE_DESCRIPTION = "scene_description"
+    ACTIVE_IDENTITY = "active_identity"
+    BIOMETRIC_ENROLLMENT = "biometric_enrollment"
 
 
 class ResponseSource(StrEnum):
@@ -34,6 +38,7 @@ class ResponseSource(StrEnum):
 
     DETERMINISTIC = "deterministic"
     LEGACY_TEXT_TURN = "legacy_text_turn"
+    CURRENT_PERCEPTION = "current_perception"
 
 
 class ToolResult(BaseModel):
@@ -83,3 +88,48 @@ class ResponsePlan(BaseModel):
             if claim.status is KnowledgeStatus.KNOWN and claim.tool_name not in known_tools:
                 raise ValueError("known claim requires a known tool result")
         return self
+
+
+class SceneDescriptionRequest(BaseModel):
+    """Capability request: only a camera-capable adapter may fulfill this.
+
+    Returned by the controller instead of a closed ``ResponsePlan`` so that
+    non-camera channels (chat, streaming) can safely translate it into a
+    fixed unavailable plan without ever reading a frame or calling the VLM.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    need: Literal[InformationNeed.SCENE_DESCRIPTION] = InformationNeed.SCENE_DESCRIPTION
+
+
+def current_perception_plan(description: str) -> ResponsePlan:
+    """Build the response plan for a grounded scene description.
+
+    The VLM's description goes directly to speech — never through the
+    textual LLM — so this carries `source=CURRENT_PERCEPTION` rather than
+    `DETERMINISTIC` or `LEGACY_TEXT_TURN`: current perception is not
+    household truth (`KnowledgeStatus.UNKNOWN`), it is what the camera saw
+    right now.
+    """
+    return ResponsePlan(
+        need=InformationNeed.SCENE_DESCRIPTION,
+        status=KnowledgeStatus.UNKNOWN,
+        source=ResponseSource.CURRENT_PERCEPTION,
+        response=description,
+    )
+
+
+def scene_unavailable_plan() -> ResponsePlan:
+    """Build the fixed response for a scene request this channel cannot fulfill.
+
+    Used by every channel that cannot complete the camera round-trip: vision
+    disabled, or a channel (streaming, chat) that has no second-round frame
+    upload at all. Never reads a frame or calls the VLM.
+    """
+    return ResponsePlan(
+        need=InformationNeed.SCENE_DESCRIPTION,
+        status=KnowledgeStatus.UNKNOWN,
+        source=ResponseSource.DETERMINISTIC,
+        response="Ahora mismo no puedo mirar desde este canal.",
+    )

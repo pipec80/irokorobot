@@ -26,7 +26,14 @@ logger = logging.getLogger(__name__)
 
 _DESCRIBE_PROMPT = (
     "Describe en español lo que ves en la imagen, en dos o tres frases "
-    "cortas y naturales. Sin listas, sin encabezados, sin inglés."
+    "cortas y naturales. Sin listas, sin encabezados, sin inglés. "
+    "Describe solo evidencia visible: objetos, colores, formas, posiciones "
+    "y acciones observables. Si algo no se distingue con claridad, decilo "
+    "explícitamente en vez de adivinar. No afirmes la identidad de ninguna "
+    "persona, ni su género, relación con otras personas, intención, "
+    "emoción o estado mental — nada de eso se puede ver. No afirmes qué "
+    "hay dentro de un contenedor cerrado ni de un objeto que no se pueda "
+    "ver directamente."
 )
 
 # Magic-byte signatures for every format the image contract accepts.

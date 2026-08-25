@@ -13,7 +13,11 @@ from server.cognition.household_tools import HouseholdKnowledgeTools
 from server.cognition.identity import ActivePersonContext
 from server.cognition.models import CognitiveEvent
 from server.cognition.owner_authentication import owner_unlock_service
-from server.cognition.response_plan import TextTurnPayload
+from server.cognition.response_plan import (
+    SceneDescriptionRequest,
+    TextTurnPayload,
+    scene_unavailable_plan,
+)
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
 from server.schemas_chat import ChatRequest, ChatResponse
@@ -80,7 +84,16 @@ async def chat(
         household_tools=HouseholdKnowledgeTools(reader=PolicyGatedV4Reader()),
         consent_resolver=request_identity.resolve_consent,
     )
-    result = await controller.handle(_event_from_request(request))
+    event = _event_from_request(request)
+    decision = await controller.decide(event)
+    # Chat has no camera round-trip at all — a scene request always gets the
+    # fixed unavailable plan.
+    if isinstance(decision, SceneDescriptionRequest):
+        result = scene_unavailable_plan()
+    elif decision is None:
+        result = await controller.handle(event)
+    else:
+        result = decision
     turn_log.log_decision("chat", result)
     return ChatResponse(
         response=result.response,

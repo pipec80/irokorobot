@@ -100,5 +100,221 @@
     "need": "generic_conversation",
     "match": "none",
     "rule_id": null
+  },
+  {
+    "text": "¿Qué ves?",
+    "need": "scene_description",
+    "match": "exact",
+    "rule_id": "scene.description.v1"
+  },
+  {
+    "text": "¿Qué estás viendo?",
+    "need": "scene_description",
+    "match": "exact",
+    "rule_id": "scene.description.v1"
+  },
+  {
+    "text": "¿Qué miras?",
+    "need": "scene_description",
+    "match": "exact",
+    "rule_id": "scene.description.v1"
+  },
+  {
+    "text": "¿Qué observas?",
+    "need": "scene_description",
+    "match": "exact",
+    "rule_id": "scene.description.v1"
+  },
+  {
+    "text": "Mira esto que te traje.",
+    "need": "scene_description",
+    "match": "exact",
+    "rule_id": "scene.description.v1"
+  },
+  {
+    "text": "Mira lo que tengo.",
+    "need": "scene_description",
+    "match": "exact",
+    "rule_id": "scene.description.v1"
+  },
+  {
+    "text": "¿Puedes ver lo que tengo?",
+    "need": "scene_description",
+    "match": "exact",
+    "rule_id": "scene.description.v1"
+  },
+  {
+    "text": "¿Podés ver esto?",
+    "need": "scene_description",
+    "match": "exact",
+    "rule_id": "scene.description.v1"
+  },
+  {
+    "text": "¿Ves esto?",
+    "need": "scene_description",
+    "match": "exact",
+    "rule_id": "scene.description.v1"
+  },
+  {
+    "text": "¿Ves algo raro?",
+    "need": "scene_description",
+    "match": "exact",
+    "rule_id": "scene.description.v1"
+  },
+  {
+    "text": "¿Qué tengo en la mano?",
+    "need": "scene_description",
+    "match": "exact",
+    "rule_id": "scene.description.v1"
+  },
+  {
+    "text": "Describe lo que ves.",
+    "need": "scene_description",
+    "match": "exact",
+    "rule_id": "scene.description.v1"
+  },
+  {
+    "text": "Dime qué ves ahora.",
+    "need": "scene_description",
+    "match": "exact",
+    "rule_id": "scene.description.v1"
+  },
+  {
+    "text": "Decime qué ves.",
+    "need": "scene_description",
+    "match": "exact",
+    "rule_id": "scene.description.v1"
+  },
+  {
+    "text": "¿Quién soy?",
+    "need": "active_identity",
+    "match": "exact",
+    "rule_id": "identity.active.v1"
+  },
+  {
+    "text": "¿Me reconoces?",
+    "need": "active_identity",
+    "match": "exact",
+    "rule_id": "identity.active.v1"
+  },
+  {
+    "text": "¿Me conoces?",
+    "need": "active_identity",
+    "match": "exact",
+    "rule_id": "identity.active.v1"
+  },
+  {
+    "text": "¿Sabes quién soy?",
+    "need": "active_identity",
+    "match": "exact",
+    "rule_id": "identity.active.v1"
+  },
+  {
+    "text": "¿Quién está aquí?",
+    "need": "active_identity",
+    "match": "exact",
+    "rule_id": "identity.active.v1"
+  },
+  {
+    "text": "¿Quién está frente a mí?",
+    "need": "active_identity",
+    "match": "exact",
+    "rule_id": "identity.active.v1"
+  },
+  {
+    "text": "Aprende mi cara.",
+    "need": "biometric_enrollment",
+    "match": "exact",
+    "rule_id": "enrollment.biometric.v1"
+  },
+  {
+    "text": "Aprende mi cara, soy Felipe.",
+    "need": "biometric_enrollment",
+    "match": "exact",
+    "rule_id": "enrollment.biometric.v1"
+  },
+  {
+    "text": "Recuerda su cara, ella es Valentina.",
+    "need": "biometric_enrollment",
+    "match": "exact",
+    "rule_id": "enrollment.biometric.v1"
+  },
+  {
+    "text": "MEMORIZA MI CARA, SOY FELIPE",
+    "need": "biometric_enrollment",
+    "match": "exact",
+    "rule_id": "enrollment.biometric.v1"
+  },
+  {
+    "text": "Mírame bien, yo soy Máximo.",
+    "need": "biometric_enrollment",
+    "match": "exact",
+    "rule_id": "enrollment.biometric.v1"
+  },
+  {
+    "text": "Te presento a Dominga.",
+    "need": "biometric_enrollment",
+    "match": "exact",
+    "rule_id": "enrollment.biometric.v1"
+  },
+  {
+    "text": "Conoce a esta persona.",
+    "need": "biometric_enrollment",
+    "match": "exact",
+    "rule_id": "enrollment.biometric.v1"
+  },
+  {
+    "text": "¿Me reconoces? Aprende mi cara, soy PersonaDePrueba.",
+    "need": "biometric_enrollment",
+    "match": "exact",
+    "rule_id": "enrollment.biometric.v1"
+  },
+  {
+    "text": "¿Qué ves y cómo se llaman mis hijos?",
+    "need": "own_children_list",
+    "match": "exact",
+    "rule_id": "own_children.list.v1"
+  },
+  {
+    "text": "¿Qué fecha ves hoy?",
+    "need": "current_date",
+    "match": "exact",
+    "rule_id": "date.current.v1"
+  },
+  {
+    "text": "nos vemos mañana",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "aunque vestirse rápido es difícil",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "me gusta la televisión",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "hoy revisé el motor",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "me llamo Felipe",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "yo soy Felipe",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
   }
 ]

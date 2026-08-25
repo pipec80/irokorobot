@@ -24,7 +24,12 @@ from server.cognition.models import (
     ConfidenceBasis,
     KnowledgeStatus,
 )
-from server.cognition.response_plan import InformationNeed, TextTurnPayload
+from server.cognition.response_plan import (
+    InformationNeed,
+    ResponsePlan,
+    SceneDescriptionRequest,
+    TextTurnPayload,
+)
 from server.text_turn import TextTurnResult
 
 
@@ -121,7 +126,7 @@ async def test_controller_decide_returns_date_plan_without_legacy_delegate() -> 
 
     plan = await controller.decide(_event("¿Qué fecha es hoy?"))
 
-    assert plan is not None
+    assert isinstance(plan, ResponsePlan)
     assert plan.status is KnowledgeStatus.KNOWN
     assert plan.response == "Hoy es 2026-08-12."
     legacy_turn.assert_not_awaited()
@@ -499,4 +504,86 @@ async def test_controller_rejects_non_iso_age_without_legacy_delegate() -> None:
     assert plan.status is KnowledgeStatus.UNKNOWN
     assert plan.response == "No puedo calcular la edad sin una fecha de nacimiento ISO válida."
     legacy_turn.assert_not_awaited()
+    legacy_turn.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_controller_decide_returns_scene_capability_without_legacy_or_policy() -> None:
+    """C7: a scene request is a capability, never a closed plan or legacy delegate."""
+    legacy_turn = AsyncMock()
+    policy_evaluator = Mock()
+    controller = CognitiveController(
+        today=lambda: date(2026, 8, 12),
+        legacy_turn=legacy_turn,
+        policy_evaluator=policy_evaluator,
+    )
+
+    decision = await controller.decide(_event("¿Qué ves?"))
+
+    assert decision == SceneDescriptionRequest()
+    legacy_turn.assert_not_awaited()
+    policy_evaluator.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_controller_handle_raises_for_scene_capability_instead_of_delegating() -> None:
+    """`handle()` must never leak a scene capability into legacy text generation."""
+    legacy_turn = AsyncMock()
+    controller = CognitiveController(today=lambda: date(2026, 8, 12), legacy_turn=legacy_turn)
+
+    with pytest.raises(RuntimeError):
+        await controller.handle(_event("¿Qué ves?"))
+
+    legacy_turn.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_controller_biometric_enrollment_returns_fixed_denial_without_camera_or_legacy() -> (
+    None
+):
+    """Any unequivocal enrollment cue is rejected without camera, model, or legacy text."""
+    legacy_turn = AsyncMock()
+    controller = CognitiveController(today=lambda: date(2026, 8, 12), legacy_turn=legacy_turn)
+
+    plan = await controller.handle(_event("Aprende mi cara, soy PersonaDePrueba"))
+
+    assert isinstance(plan, ResponsePlan)
+    assert plan.status is KnowledgeStatus.UNKNOWN
+    assert (
+        plan.response
+        == "Todavía no puedo registrar rostros: hace falta administración local y consentimiento."
+    )
+    legacy_turn.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_controller_active_identity_greets_the_authenticated_owner() -> None:
+    """ACTIVE_IDENTITY consumes the same request-scoped grant as a household read."""
+    legacy_turn = AsyncMock()
+    owner = _actor(HouseholdRole.OWNER, person_id=1)
+    controller = CognitiveController(
+        today=lambda: date(2026, 8, 12),
+        legacy_turn=legacy_turn,
+        active_person_resolver=_resolver(owner),
+    )
+
+    plan = await controller.handle(_event("¿Quién soy?"))
+
+    assert isinstance(plan, ResponsePlan)
+    assert plan.status is KnowledgeStatus.KNOWN
+    assert plan.response == "Sos Ada."
+    legacy_turn.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_controller_active_identity_denies_without_fresh_evidence() -> None:
+    """Without a fresh owner grant, ACTIVE_IDENTITY stays the fixed unknown copy."""
+    legacy_turn = AsyncMock()
+    controller = CognitiveController(today=lambda: date(2026, 8, 12), legacy_turn=legacy_turn)
+
+    plan = await controller.handle(_event("¿Quién soy?"))
+
+    assert isinstance(plan, ResponsePlan)
+    assert plan.status is KnowledgeStatus.UNKNOWN
+    assert plan.response == "Todavía no puedo confirmar quién sos."
     legacy_turn.assert_not_awaited()

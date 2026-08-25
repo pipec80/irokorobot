@@ -15,8 +15,15 @@ from server.cognition.authorization import evaluate_authorization
 from server.cognition.controller import CognitiveController
 from server.cognition.household_tools import HouseholdKnowledgeTools
 from server.cognition.identity import ActivePersonContext, ActivePersonStatus, HouseholdRole
-from server.cognition.models import CognitiveEvent, Confidence, ConfidenceBasis
-from server.cognition.response_plan import TextTurnPayload
+from server.cognition.models import CognitiveEvent, Confidence, ConfidenceBasis, KnowledgeStatus
+from server.cognition.response_plan import (
+    InformationNeed,
+    ResponsePlan,
+    ResponseSource,
+    SceneDescriptionRequest,
+    TextTurnPayload,
+    current_perception_plan,
+)
 from server.exceptions import ImageContractError, VisionError
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
@@ -82,16 +89,28 @@ async def _public_unknown_vision_actor(
     return actor
 
 
-def _vision_controller(perception: str) -> CognitiveController:
-    """Compose the bounded controller used by one public visual dialogue turn."""
+def _vlm_failure_plan() -> ResponsePlan:
+    """Build the fixed spoken excuse for a failed VLM call — no second LLM."""
+    return ResponsePlan(
+        need=InformationNeed.SCENE_DESCRIPTION,
+        status=KnowledgeStatus.UNKNOWN,
+        source=ResponseSource.CURRENT_PERCEPTION,
+        response="Perdón, ahora mismo no pude ver la escena.",
+    )
+
+
+def _vision_controller() -> CognitiveController:
+    """Compose the bounded controller used by one public visual dialogue turn.
+
+    Only `SCENE_DESCRIPTION` may read a frame or call the VLM; every other
+    need is a closed, camera-free plan. Generic non-scene conversation
+    delegates to legacy text generation with no perception at all — a scene
+    description is never injected into the textual LLM.
+    """
 
     async def legacy_turn(message: str, conversation_id: str) -> TextTurnResult:
-        """Delegate generic visual dialogue through the existing text service."""
-        return await process_text_turn(
-            message,
-            conversation_id,
-            perception=perception,
-        )
+        """Delegate generic non-scene visual dialogue without any perception."""
+        return await process_text_turn(message, conversation_id)
 
     return CognitiveController(
         today=_today,
@@ -207,41 +226,47 @@ async def vision_respond(
     ],
     text: Annotated[str, Form(description="The user's transcribed visual question")],
 ) -> TranscribeResponse:
-    """Answer a visual question in character: frame + question → spoken reply.
+    """Answer one typed visual-dialogue turn; only a scene request touches a frame.
 
     Args:
         image: JPEG/PNG/WebP/GIF/BMP frame, max 1280x720 and upload limit.
+            Read and decoded only when the typed resolver classifies this
+            turn as a scene description — every other need never touches it.
         text: The user's transcribed question ("¿qué ves?").
 
     Returns:
         Existing audio response contract with ``vision_requested=False``.
 
     Raises:
-        HTTPException 503: If vision is disabled.
-        HTTPException 413/422: Image or question contract violation.
+        HTTPException 503: Only for a scene request while vision is disabled.
+        HTTPException 422: Empty question, or an invalid frame for a scene
+            request.
         HTTPException 500: If TTS fails.
     """
-    if not settings.vision_enabled:
-        raise HTTPException(status_code=503, detail="Vision is disabled (VISION_ENABLED=false)")
     if not text.strip():
         raise HTTPException(status_code=422, detail="Question text is empty")
 
-    image_bytes = await _read_contract_image(image)
+    event = _vision_event_from_question(text)
+    controller = _vision_controller()
+    decision = await controller.decide(event)
 
-    # Public enrollment is quarantined until P0.5 defines local administration,
-    # consent, and authorization. A phrase is not proof of either.
-    enrollment_requested = vision.wants_enroll(text) is not None
-    try:
-        if enrollment_requested:
-            perception = _BIOMETRIC_ENROLLMENT_UNAVAILABLE
-        else:
-            perception = await perceive_scene(image_bytes)
-    except VisionError as exc:
-        # A blind turn still speaks: the character excuses itself (R13 spirit).
-        logger.error("Vision perception failed — responding blind: %s", exc)
-        perception = vision.PERCEPTION_FAILED
+    plan: ResponsePlan
+    if isinstance(decision, SceneDescriptionRequest):
+        if not settings.vision_enabled:
+            raise HTTPException(status_code=503, detail="Vision is disabled (VISION_ENABLED=false)")
+        image_bytes = await _read_contract_image(image)
+        try:
+            description = await perceive_scene(image_bytes)
+            plan = current_perception_plan(description)
+        except VisionError as exc:
+            # A blind turn still speaks: the character excuses itself (R13 spirit).
+            logger.error("Vision perception failed — responding blind: %s", exc)
+            plan = _vlm_failure_plan()
+    elif decision is None:
+        plan = await controller.handle(event)
+    else:
+        plan = decision
 
-    plan = await _vision_controller(perception).handle(_vision_event_from_question(text))
     turn_log.log_decision("vision", plan)
     audio_base64, duration_ms, _tts_ms = await _run_tts(plan.response)
 
