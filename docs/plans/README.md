@@ -17,7 +17,7 @@ deferred, umbrella, or product-design plan because it also lives under
 
 | Lane | Plans | Meaning |
 |---|---|---|
-| **NOW** | [0023](open/0023-p0-grounded-visual-dialogue.md) | Grounded visual dialogue — starts from merged `main` (Plan 0021/C5 closed, operator-confirmed 2026-08-21) |
+| **NOW** | none | Plan 0023 (C7, last remaining P0-C slice) closed 2026-08-25. No further plan is authorized yet — the combined P0-C operator runbook (C5+C6+C7 together) and Plan 0013's STT-accuracy debt are the remaining candidates, neither drafted as an executable plan. |
 | **ACCEPTANCE DEBT** | [0013](open/0013-p0-voice-controller-bridge.md) | Code merged (PR #51). Plan 0028 executed R1-01/R1-02 (PASS) and R1-03 (FAIL — Whisper cannot reliably transcribe the proper noun "Iroko", 5/5 attempts). Plan 0013 stays open on this finding, tracked independently of the PC-1 verdict above, which is otherwise fully closed. |
 | **REFERENCE ONLY** | [0014](open/0014-p0-runtime-policy-hardening-design.md), [0015](open/0015-personal-companion-design.md), [0020](open/0020-p0-operator-qa-remediation-design.md), [0024](open/0024-owner-authenticated-memory-mvp-design.md) | Umbrella/design documents; never execute them as independent implementation batches |
 
@@ -43,7 +43,7 @@ deferred, umbrella, or product-design plan because it also lives under
 | 3 | [0027 — streaming parity](completed/0027-one-use-owner-streaming-parity.md) | Merged (PR #64) | Closed |
 | 4 | [0028 — runtime acceptance](completed/0028-owner-authenticated-memory-runtime-acceptance.md) | Executed 2026-08-21, PASS | Closed (0013's R1 debt tracked independently below) |
 | 5 | [0021 — typed intent](completed/0021-p0-typed-intent-resolution.md) | Implemented and operator-confirmed 2026-08-21 | Closed |
-| 6 | [0023 — grounded visual dialogue](open/0023-p0-grounded-visual-dialogue.md) | Executable now | 0021 complete |
+| 6 | [0023 — grounded visual dialogue](open/0023-p0-grounded-visual-dialogue.md) | Implemented and operator-confirmed 2026-08-25 | Closed (combined P0-C runbook still pending) |
 
 Supporting active designs and open acceptance work are listed in the
 [open-plan index](open/README.md). Closed execution evidence is isolated in

@@ -5,11 +5,11 @@
 > `superpowers:executing-plans` to implement this plan task-by-task. Steps use
 > checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** Ready after Plan 0022, PC-1 explicit owner authentication, and Plan
-0021 (execution order revised 2026-08-20); revalidate their final interfaces before
-implementation. Because PC-1 now lands first, the `ACTIVE_IDENTITY` branch must
-be revised: greet the owner when fresh authenticated evidence resolves one, and keep
-the fixed unknown copy only when it does not.
+**Status:** Complete and operator-confirmed on real hardware (2026-08-25) — see
+[Execution Evidence](#execution-evidence) below. `ACTIVE_IDENTITY` consumes the
+same request-scoped owner grant a household read already uses: it greets the
+owner by name when fresh authenticated evidence resolves one, and speaks the
+fixed unknown copy otherwise.
 
 ## Current code audit and reuse boundary
 
@@ -500,10 +500,25 @@ never enters this prompt.
 
 ## Execution Evidence
 
-- Typed-cognition and channel-matrix RED commands: not run.
-- Atomic C7 core GREEN command: not run.
-- Grounded-prompt tests: not run.
-- Repository gates: not run.
-- Independent review: pending implementation.
-- Physical identity/scene/enrollment/failure evidence: pending implementation.
-- Combined P0 runbook and clean status: pending implementation.
+- Typed-cognition, channel-matrix, and grounded-prompt RED→GREEN: run task by
+  task (Tasks 1A–1C, 2); each checkpoint confirmed GREEN before the next task,
+  with the intentionally non-atomic 1A/1B intermediate states never committed
+  — see commits `b5528eb` (`fix(vision): ground typed visual dialogue`,
+  Tasks 1A–1C atomic) and `0978388` (`fix(vision): constrain local scene
+  descriptions`, Task 2).
+- Repository gates on `feat/p0-c7-grounded-visual-dialogue` at `0978388`:
+  `just lint`, `just typecheck` (mypy + pyright, 0 errors), `just test`
+  (835/835), `just audit`, `just check`, `git diff --check` — all green.
+- Independent review: performed directly (no subagent was requested for this
+  session) against the plan's completion criteria — channel matrix
+  exhaustiveness, no-frame/no-model assertions for identity/enrollment,
+  single-VLM-call/no-second-LLM for scene dialogue, and C5/C6 regression (all
+  covered by the 835/835 full-suite run). No findings.
+- Physical acceptance: executed 2026-08-21 (identity/enrollment/protected
+  cases) and 2026-08-25 (grounded scene description + VLM-down fallback) on
+  real hardware — **PASS**, all 5 required table cases confirmed with literal
+  transcripts. Full untracked evidence:
+  `project-history/acceptance/2026-08-25-grounded-visual-dialogue.md`.
+- Combined P0 runbook (C5+C6+C7 together, the separate P0-closing evidence):
+  not yet executed — tracked as the next required step before P0 as a whole
+  can be called closed.

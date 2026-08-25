@@ -16,9 +16,13 @@
 > acceptance cases passed on real hardware on 2026-08-21, all deterministic
 > cases at `llm_ms=0` — see [Plan
 > 0021](../plans/completed/0021-p0-typed-intent-resolution.md#execution-evidence).
-> Plan 0023 (P0-C7) remains unimplemented; combined P0 operator acceptance
-> and Plan 0013's own R1 debt (one failing case, STT accuracy on "Iroko")
-> remain open.
+> Plan 0023 (P0-C7 grounded visual dialogue) is **complete and
+> operator-confirmed**: real hardware proved identity, enrollment,
+> protected-household, grounded scene description, and VLM-down fallback,
+> all 5 required cases PASS on 2026-08-21/2026-08-25 — see [Plan
+> 0023](../plans/open/0023-p0-grounded-visual-dialogue.md#execution-evidence).
+> The combined P0 operator acceptance (C5+C6+C7 together) and Plan 0013's own
+> R1 debt (one failing case, STT accuracy on "Iroko") remain open.
 >
 > **Verification boundary:** P0.3/P0.4 code and P0.5-A policy seams were
 > inspected. P0.4 passed `just gate` (527 tests) before PR #40 merged it,
@@ -89,9 +93,14 @@ response + local Piper + optional legacy consolidation
 
 `/transcribe/stream` and `/vision/respond` now create a fresh typed event and
 ask the controller to decide before legacy generation. Safe plans never reach
-the LLM, legacy memory, or consolidation. A generic visual request preserves
-only its current ephemeral scene text in the legacy closure. This does not
-establish face identity, authorization, or durable visual memory.
+the LLM, legacy memory, or consolidation. Since Plan 0023 (P0-C7), the
+controller's `decide()` can also return a `SceneDescriptionRequest`
+capability instead of a closed plan; only `/vision/respond`'s scene branch
+may fulfill it by reading a frame and calling the VLM, and that description
+goes directly to Piper — never through the legacy text LLM. A generic
+non-scene visual request delegates to legacy generation with no perception
+at all. This does not establish face identity, authorization, or durable
+visual memory.
 
 The shared text path is `server/src/server/text_turn.py`. Public channels use
 fresh interaction scopes. A trusted manual/session `ActivePersonContext` exists
@@ -124,8 +133,8 @@ gap prevents owner-by-default memory disclosure.
 | One-use owner streaming parity (Plan 0027) | Implemented; real-hardware acceptance closed | `POST /transcribe/stream` accepts the same optional `X-Iroko-Identity-Token` and composes one `OwnerRequestResolver` per request before `decide(event)`, reusing Plan 0026's `OwnerUnlockService` unchanged. The terminal NDJSON `done` event gains an additive `authentication_consumed` boolean (default `false`); older robots parsing it without the field default safely to `false`. Generic/legacy streaming never resolves an actor and always reports `false`. The robot's `transcribe_stream()` sends the header when a token is held and clears `ctx.identity_token` only on a `done` with `authentication_consumed=true`; an EOF before `done` leaves it untouched (replay denied server-side). `ROBOT_OWNER_UNLOCK_PROMPT` now works with `ROBOT_STREAMING` — the prior startup guard pointing at this plan was removed. Plan 0028 (2026-08-21) proved the streaming flow 3x on real hardware; measured total latency was consistently lower than classic mode for the same answer (~1.9s vs ~2.0s) since audio starts on the first NDJSON chunk. |
 | Owner-authenticated memory runtime acceptance (Plan 0028) | Executed 2026-08-21 — **PASS** for the PC-1 slice | Ran the full classic and streaming allowed/denied/replay/expiry/generic-non-consumption matrix 3x each on real hardware (`ntbk-pipec-2`), plus a direct SQLite inspection of `authorization_audit_events` (36 rows) confirming exact `execute_household_tool → read_household_data` ordering on every disclosure and no PIN/token/name leakage anywhere outside the `entities` table. Also ran Plan 0013's R1-01/R1-02/R1-03 cases: R1-01 and R1-02 passed; R1-03 failed after 5 attempts — Whisper "small" could not reliably transcribe the proper noun "Iroko" — so Plan 0013 stays open on that independently tracked finding, per this plan's own rule that R1 does not gate the PC-1 verdict. Surfaced two other findings, neither blocking: a repeatable first-utterance-after-restart STT mis-transcription pattern, and a garbled `protected_household`-pattern match that can consume a fresh grant without disclosing or denying cleanly (no leak observed). Full untracked evidence: `project-history/acceptance/2026-08-21-owner-authenticated-memory.md`. |
 | Typed intent resolution (Plan 0021 / P0-C5) | Executed 2026-08-21 — operator-confirmed | New pure `cognition/intent_resolution.py`: a closed, deterministic Spanish rule set (no LLM/VLM/embedding/database) with an `IntentResolution(need, match, rule_id)` contract, injected into `CognitiveController` as `intent_resolver` (default `resolve_information_need`), replacing the former inline `_classify_information_need`. `rule_id` is privacy-safe static metadata, never the utterance or a name. Precedence: own-child list/count → protected household/birth → supervised ambiguous STT aliases → current-date STT alias → current date → explicit age → relationship/profile → generic. Real hardware proved 6/6 classic and 5/5 streaming acceptance cases (`ntbk-pipec-2`), all deterministic cases at `llm_ms=0`, audibly confirmed. C6/C7 untouched (confirmed by `git diff --stat`). |
-| P0 runtime acceptance | Partial; combined P0-C operator acceptance pending | Enabled public routes enter the controller. Plan 0022 (streaming reliability) and Plan 0021 (typed intent, C5) are both complete with real operator evidence. The authenticated-owner proof (PC-1) is complete via Plan 0028. Plan 0023 (C7, visual grounding) and the combined P0-C runbook evidence across all slices stay open. |
-| Vision/VLM | Implemented/on demand with controller parity | One ephemeral frame, free-text scene description; `/vision/respond` enters the controller without face identity. |
+| P0 runtime acceptance | Partial; combined P0-C operator acceptance pending | Enabled public routes enter the controller. Plans 0022 (streaming reliability), 0021 (typed intent, C5), and 0023 (grounded visual dialogue, C7) are all complete with real operator evidence. The authenticated-owner proof (PC-1) is complete via Plan 0028. Only the combined P0-C runbook evidence across all slices together, plus Plan 0013's own R1 debt, stay open. |
+| Vision/VLM (Plan 0023 / P0-C7) | Executed 2026-08-21/2026-08-25 — operator-confirmed | Extracted C5's resolver with `SCENE_DESCRIPTION`, `ACTIVE_IDENTITY`, and `BIOMETRIC_ENROLLMENT` needs and one `SceneDescriptionRequest` capability type. Only `/vision/respond`'s scene branch reads a frame or calls the VLM; the grounded description goes directly to Piper (`ResponseSource.CURRENT_PERCEPTION`), never through the text LLM. Identity/enrollment speak exact fixed copy without ever touching the camera, even with vision disabled. `vision/triggers.py`'s parallel intent authority was deleted. Real hardware confirmed all 5 required cases: identity denial, grounded scene description with no second LLM, VLM-down exact fallback, enrollment rejection, and household denial. |
 | Face profiles | Implemented/sensitive/quarantined | SQLite-linked embeddings and recognition functions exist, but no consented runtime active-person adapter calls them. |
 | Speaker recognition | Absent | STT and VAD exist; no speaker enrollment, voiceprint, verification model, or calibrated identity adapter exists. |
 | Robot client | Implemented/body adapter | PC microphone/webcam/speaker workflow; not cognitive logic. |
