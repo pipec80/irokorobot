@@ -366,3 +366,108 @@ def test_resolver_preserves_all_input_evidence_exactly() -> None:
     context = _resolve(evidence, {42: _person(42), 7: _person(7)})
 
     assert context.evidence == evidence
+
+
+def test_resolver_identifies_one_verified_face_person() -> None:
+    """A trusted local face match must resolve as identified, not probable."""
+    face = IdentityEvidence(
+        evidence_id=uuid4(),
+        source=IdentityEvidenceSource.FACE,
+        candidate_person_id=42,
+        confidence=_confidence(),
+        observed_at=_RESOLVED_AT - timedelta(minutes=1),
+        reference="face-match",
+    )
+
+    context = _resolve((face,), {42: _person(42)})
+
+    assert context.person_id == 42
+    assert context.display_name == "Ada"
+    assert context.status is ActivePersonStatus.IDENTIFIED
+    assert context.confidence == face.confidence
+    assert context.role is HouseholdRole.UNKNOWN
+
+
+def test_resolver_returns_unknown_for_expired_face_evidence() -> None:
+    """Reject a resolver that treats an expired face match as still identified."""
+    expired_face = IdentityEvidence(
+        evidence_id=uuid4(),
+        source=IdentityEvidenceSource.FACE,
+        candidate_person_id=42,
+        confidence=_confidence(),
+        observed_at=datetime(2026, 8, 10, 15, 0, tzinfo=UTC),
+        expires_at=datetime(2026, 8, 10, 15, 30, tzinfo=UTC),
+        reference="face-match",
+    )
+
+    context = _resolve((expired_face,), {42: _person(42)})
+
+    assert context.person_id is None
+    assert context.display_name is None
+    assert context.status is ActivePersonStatus.UNKNOWN
+    assert context.role is HouseholdRole.UNKNOWN
+
+
+def test_resolver_marks_face_and_local_unlock_distinct_candidates_as_ambiguous() -> None:
+    """Reject a resolver that silently chooses between a face match and a local unlock."""
+    face = IdentityEvidence(
+        evidence_id=uuid4(),
+        source=IdentityEvidenceSource.FACE,
+        candidate_person_id=42,
+        confidence=_confidence(),
+        observed_at=_RESOLVED_AT,
+        reference="face-match",
+    )
+    unlock = IdentityEvidence(
+        evidence_id=uuid4(),
+        source=IdentityEvidenceSource.LOCAL_UNLOCK,
+        candidate_person_id=7,
+        confidence=_confidence(),
+        observed_at=_RESOLVED_AT - timedelta(minutes=1),
+        reference="local-unlock",
+    )
+
+    context = _resolve((face, unlock), {42: _person(42), 7: _person(7)})
+
+    assert context.person_id is None
+    assert context.display_name is None
+    assert context.status is ActivePersonStatus.AMBIGUOUS
+    assert context.role is HouseholdRole.UNKNOWN
+
+
+def test_resolver_returns_unknown_for_voice_evidence() -> None:
+    """VOICE evidence for a verified person must stay untrusted and unresolved."""
+    voice = IdentityEvidence(
+        evidence_id=uuid4(),
+        source=IdentityEvidenceSource.VOICE,
+        candidate_person_id=42,
+        confidence=_confidence(),
+        observed_at=_RESOLVED_AT,
+        reference="voice-match",
+    )
+
+    context = _resolve((voice,), {42: _person(42)})
+
+    assert context.person_id is None
+    assert context.display_name is None
+    assert context.status is ActivePersonStatus.UNKNOWN
+    assert context.role is HouseholdRole.UNKNOWN
+
+
+def test_resolver_returns_unknown_for_context_evidence() -> None:
+    """CONTEXT evidence for a verified person must stay untrusted and unresolved."""
+    context_evidence = IdentityEvidence(
+        evidence_id=uuid4(),
+        source=IdentityEvidenceSource.CONTEXT,
+        candidate_person_id=42,
+        confidence=_confidence(),
+        observed_at=_RESOLVED_AT,
+        reference="context-signal",
+    )
+
+    context = _resolve((context_evidence,), {42: _person(42)})
+
+    assert context.person_id is None
+    assert context.display_name is None
+    assert context.status is ActivePersonStatus.UNKNOWN
+    assert context.role is HouseholdRole.UNKNOWN

@@ -145,7 +145,11 @@ def _unknown_role(_: int) -> HouseholdRole:
 
 
 _TRUSTED_IDENTIFIED_SOURCES = frozenset(
-    {IdentityEvidenceSource.MANUAL, IdentityEvidenceSource.LOCAL_UNLOCK}
+    {
+        IdentityEvidenceSource.MANUAL,
+        IdentityEvidenceSource.LOCAL_UNLOCK,
+        IdentityEvidenceSource.FACE,
+    }
 )
 _RESOLVABLE_SOURCES = _TRUSTED_IDENTIFIED_SOURCES | {IdentityEvidenceSource.SESSION}
 
