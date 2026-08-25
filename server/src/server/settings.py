@@ -84,6 +84,11 @@ class Settings(BaseSettings):
     # Default from doc 05 §3 — calibrate with the real family and record
     # the final value in the bitácora.
     face_match_threshold: float = 0.4
+    # Separate, STRICTER threshold for owner authentication (Plan 0029): a
+    # face allowed to unlock protected data must clear a tighter bound than
+    # the generic conversational recognition above — never repurpose
+    # face_match_threshold for authentication decisions.
+    face_authentication_match_threshold: float = 0.25
     # Enrollment quality gates: a blurry or tiny face makes a bad profile
     # that mismatches forever — reject it upfront with a clear reason.
     face_enroll_min_score: float = 0.5
