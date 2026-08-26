@@ -101,15 +101,25 @@ async def test_migration_seven_creates_face_consent_grants_table(memory_db: Path
 
 
 @pytest.mark.integration
-async def test_second_active_grant_for_same_person_violates_partial_unique_index(
+async def test_second_grant_for_same_person_is_idempotent(
     memory_db: Path,
 ) -> None:
-    """A second active grant for the same person violates the partial unique index."""
+    """Granting consent twice for the same person does not raise and reuses the row."""
     person_id = await upsert_entity(name="Pipec", type="person")
-    await grant_face_consent(person_id)
 
-    with pytest.raises(Exception, match="UNIQUE constraint failed"):
-        await grant_face_consent(person_id)
+    first_grant_id = await grant_face_consent(person_id)
+    second_grant_id = await grant_face_consent(person_id)
+
+    assert first_grant_id == second_grant_id
+
+    cursor = await db.get_conn().execute(
+        "SELECT COUNT(*) FROM face_consent_grants WHERE person_entity_id = ?",
+        (person_id,),
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    assert row is not None
+    assert row[0] == 1
 
 
 @pytest.mark.integration

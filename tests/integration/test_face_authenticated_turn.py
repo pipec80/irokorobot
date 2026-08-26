@@ -168,6 +168,14 @@ def _files(silence_wav_bytes: bytes, *, with_frame: bool) -> dict[str, tuple[str
     return files
 
 
+def _files_with_malformed_frame(silence_wav_bytes: bytes) -> dict[str, tuple[str, bytes, str]]:
+    """Build a multipart payload with valid audio and a corrupt, undecodable frame."""
+    return {
+        "audio": ("a.wav", silence_wav_bytes, "audio/wav"),
+        "frame": ("frame.jpg", b"not-a-real-image", "image/jpeg"),
+    }
+
+
 # ---------------------------------------------------------------------------
 # 1. Owner's frame answers a protected question — classic /transcribe
 # ---------------------------------------------------------------------------
@@ -191,7 +199,7 @@ async def test_owner_frame_answers_protected_question_classic(
     assert response.status_code == 200
     body = response.json()
     assert body["llm_response"] == _CHILD_ANSWER
-    assert body["authentication_consumed"] is True
+    assert body["authentication_consumed"] is False
     assert body["identity_source"] == "face"
 
 
@@ -369,7 +377,7 @@ async def test_owner_frame_answers_protected_question_stream(
     events = _parse_ndjson(response)
     audio_events = [event for event in events if event["type"] == "audio"]
     assert audio_events[0]["text"] == _CHILD_ANSWER
-    assert events[-1]["authentication_consumed"] is True
+    assert events[-1]["authentication_consumed"] is False
     assert events[-1]["identity_source"] == "face"
 
 
@@ -426,3 +434,57 @@ async def test_two_faces_denies_and_never_consults_pin_stream(
     reader_spy.assert_not_awaited()
     assert len(spy_service.resolvers) == 1
     spy_service.resolvers[0].resolve_actor.assert_not_awaited()  # type: ignore[attr-defined]
+
+
+# ---------------------------------------------------------------------------
+# 8. A malformed frame degrades to no-frame instead of failing the turn
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+async def test_malformed_frame_degrades_to_no_frame_classic(
+    face_db: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch, silence_wav_bytes: bytes
+) -> None:
+    """A corrupt frame upload does not fail the turn — it degrades to no frame."""
+    monkeypatch.setattr(settings, "face_authentication_enabled", True)
+    await _enroll_owner_face(face_db.owner_entity_id)
+    detect_mock = _mock_detect(monkeypatch, [_detected(_OWNER_EMBEDDING)])
+    _mock_stt_tts(monkeypatch, text=_CHILD_QUESTION)
+
+    async with _client() as client:
+        response = await client.post(
+            "/transcribe", files=_files_with_malformed_frame(silence_wav_bytes)
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["authentication_consumed"] is False
+    assert body["identity_source"] is None
+    assert "Máximo" not in body["llm_response"]
+    assert "Dominga" not in body["llm_response"]
+    detect_mock.assert_not_awaited()
+
+
+@pytest.mark.integration
+async def test_malformed_frame_degrades_to_no_frame_stream(
+    face_db: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch, silence_wav_bytes: bytes
+) -> None:
+    """Streaming parity: a corrupt frame upload does not fail the turn."""
+    monkeypatch.setattr(settings, "face_authentication_enabled", True)
+    await _enroll_owner_face(face_db.owner_entity_id)
+    detect_mock = _mock_detect(monkeypatch, [_detected(_OWNER_EMBEDDING)])
+    _mock_stt_tts(monkeypatch, text=_CHILD_QUESTION)
+
+    async with _client() as client:
+        response = await client.post(
+            "/transcribe/stream", files=_files_with_malformed_frame(silence_wav_bytes)
+        )
+
+    assert response.status_code == 200
+    events = _parse_ndjson(response)
+    assert events[-1]["authentication_consumed"] is False
+    assert events[-1]["identity_source"] is None
+    joined = repr(events)
+    assert "Máximo" not in joined
+    assert "Dominga" not in joined
+    detect_mock.assert_not_awaited()

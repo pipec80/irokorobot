@@ -281,7 +281,7 @@ See [P0-S hardening audit](../history/audits/p0-s-hardening-audit.md) for eviden
   passed), and `git diff --check` (clean) all passed on 2026-08-25. Every
   named threat case (unknown face, ambiguous/2+ faces terminal denial,
   revoked consent, non-owner role, expired evidence, no frame supplied,
-  flag-disabled parity with `main`, no camera decode on non-protected turns,
+  flag-disabled parity with `main`, no face detection on non-protected turns,
   enrollment without a fresh token, enrollment non-loopback, and no
   secret/embedding/frame in any log or audit row) has a real, specific
   covering test, sampled and confirmed passing. No real camera/hardware

@@ -342,6 +342,56 @@ async def test_successful_enroll_grants_consent_and_creates_one_profile(
 
 
 @pytest.mark.integration
+async def test_second_enrollment_for_same_owner_persists_profile_and_reuses_consent_grant(
+    face_db: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Re-enrolling the same owner twice persists both profiles but grants consent once."""
+    service = _real_service()
+    monkeypatch.setattr(auth_module, "owner_unlock_service", service)
+    monkeypatch.setattr(vision, "enroll_person", _fake_enroll_person)
+
+    first_unlock = await service.unlock(_PIN)
+    assert first_unlock is not None
+    async with _loopback_client() as client:
+        first = await client.post(
+            "/auth/owner/face/enroll",
+            headers={"X-Iroko-Identity-Token": first_unlock.token},
+            files=_enroll_files(),
+        )
+
+    second_unlock = await service.unlock(_PIN)
+    assert second_unlock is not None
+    async with _loopback_client() as client:
+        second = await client.post(
+            "/auth/owner/face/enroll",
+            headers={"X-Iroko-Identity-Token": second_unlock.token},
+            files=_enroll_files(),
+        )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+
+    cursor = await db.get_conn().execute(
+        "SELECT COUNT(*) FROM face_profiles WHERE entity_id = ?",
+        (face_db.owner_entity_id,),
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    assert row is not None
+    assert row[0] == 2
+
+    cursor = await db.get_conn().execute(
+        "SELECT COUNT(*) FROM face_consent_grants "
+        "WHERE person_entity_id = ? AND revoked_at IS NULL",
+        (face_db.owner_entity_id,),
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    assert row is not None
+    assert row[0] == 1
+
+
+@pytest.mark.integration
 async def test_extra_name_field_is_ignored_and_owner_name_is_used(
     face_db: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -373,6 +373,8 @@ def compose_face_then_pin_resolver(
     async def resolve_consent(
         event: CognitiveEvent[TextTurnPayload], actor: ActivePersonContext
     ) -> ConsentStatus:
+        if face.last_verdict is FaceAuthenticationVerdict.AMBIGUOUS:
+            return ConsentStatus.NOT_REQUIRED
         if face.consumed:
             return await face.resolve_consent(event, actor)
         return await pin.resolve_consent(event, actor)

@@ -435,6 +435,26 @@ async def test_face_ambiguous_short_circuits_pin_resolver_and_denies() -> None:
 
 
 @pytest.mark.unit
+async def test_face_ambiguous_short_circuits_pin_resolve_consent_too() -> None:
+    """An ambiguous face verdict must deny consent without ever consulting the PIN."""
+
+    async def detect_two(_frame: bytes) -> list[DetectedFace]:
+        return [_face(1), _face(2)]
+
+    face = _resolver(frame=_FRAME, detect_faces=detect_two)
+    pin = _pin_resolver()
+    pin.resolve_consent = AsyncMock(wraps=pin.resolve_consent)  # type: ignore[method-assign]
+    resolve_actor, resolve_consent = compose_face_then_pin_resolver(face, pin)
+    event = _event()
+
+    actor = await resolve_actor(event)
+    consent = await resolve_consent(event, actor)
+
+    assert consent is ConsentStatus.NOT_REQUIRED
+    pin.resolve_consent.assert_not_awaited()  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
 async def test_face_unknown_falls_through_to_pin_unchanged() -> None:
     """No frame supplied must preserve the exact existing PIN-only behavior."""
     face = _resolver(frame=None)

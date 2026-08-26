@@ -20,8 +20,9 @@ embeddings: an enrolled, consented owner's frame answers a protected
 question with the exact confirmed child names, with no PIN, no token, and
 no gesture; an unknown face, zero faces, two-or-more faces (terminal,
 never falling through to the PIN), revoked consent, and a non-owner role
-all deny without disclosure; a non-protected turn never decodes an
-attached frame; and with the flag off, behavior is identical to `main`.
+all deny without disclosure; a non-protected turn never runs face
+detection or derives an identity from an attached frame; and with the flag
+off, behavior is identical to `main`.
 **This plan has no liveness or anti-spoofing defense: a photograph of the
 owner held up to the camera authenticates under this slice.** The real
 mitigation is PC-4 (voice fusion), not yet built. Not yet proven: real
@@ -46,8 +47,12 @@ are explicitly out of scope.
 **Architecture:** `CognitiveController` already calls `active_person_resolver`
 only from protected branches (`controller.py` — `_protected_household_plan`,
 `_active_identity_plan`, `_own_children_plan`). Placing the face match inside a
-new resolver makes camera inference free on every non-protected turn: the
-frame is never decoded unless the intent is protected. The face resolver
+new resolver makes face detection/matching free on every non-protected turn:
+no face detection or identity derivation runs unless the intent is
+protected. (The frame's bytes may still be read and validated against the
+general image-upload contract — size and dimension limits — the same as any
+other upload; that is unrelated to and does not enable face recognition.)
+The face resolver
 produces evidence in-request — no token, no `IdentitySessionRegistry` entry —
 because the frame and the question arrive together; there is nothing to
 replay. Face resolution runs first (frictionless path); an unresolved face
@@ -74,9 +79,13 @@ pytest.
   completely before editing.
 - Face evidence is evidence, never permission. `evaluate_authorization`
   remains the sole authorizer and is not modified by this plan.
-- A non-protected turn never opens, decodes, or runs inference on an attached
-  frame. This must be proven with an explicit test asserting the face model
-  boundary is not invoked.
+- A non-protected turn never runs face detection or derives an identity from
+  an attached frame. (The frame's bytes may still be read and validated
+  against the general image-upload contract — size and dimension limits —
+  the same as any other upload; this is unrelated to and does not enable
+  face recognition or identity resolution, which only occurs when the
+  controller resolves an actor for a protected branch.) This must be proven
+  with an explicit test asserting the face model boundary is not invoked.
 - No frame is ever persisted — only embeddings, exactly as `vision/faces.py`
   already does. No frame, embedding, PIN, or token may appear in any log or
   audit row.
@@ -456,8 +465,8 @@ enrolled directly via the Task 1 repository + `vision.faces.enroll_face()`:
 owner's frame + protected question → exact `"Tus hijos son Máximo y
 Dominga."` with no token/header at all; stranger's frame → non-disclosing
 denial, `PolicyGatedV4Reader` never called; two faces in frame → denial;
-generic question + owner frame → frame is never decoded (assert the face
-detection boundary is not invoked); no frame at all → Plan 0026/0027 behavior
+generic question + owner frame → the face detection boundary is not
+invoked; no frame at all → Plan 0026/0027 behavior
 unchanged, byte-for-byte; `FACE_AUTHENTICATION_ENABLED=false` → frame field is
 accepted but never inspected. Cover both classic `/transcribe` and
 `/transcribe/stream`.
@@ -592,7 +601,7 @@ git diff --check
 
 Manually inspect tests/evidence for: unknown face, ambiguous (2+ faces)
 terminal denial, revoked consent, non-owner role, expired evidence, no
-frame supplied, flag-disabled parity with `main`, no camera decode on
+frame supplied, flag-disabled parity with `main`, no face detection on
 non-protected turns, enrollment without a fresh token, enrollment
 non-loopback, and no secret/embedding/frame in any log or audit row.
 
@@ -624,8 +633,8 @@ Plan 0029 is complete only when:
 - an unknown face, zero faces, two-or-more faces, revoked consent, or a
   non-owner role all deny without disclosure, and the v4 reader is never
   invoked;
-- a non-protected turn never decodes an attached frame or invokes face
-  detection, proven by an explicit test;
+- a non-protected turn never invokes face detection or derives an identity
+  from an attached frame, proven by an explicit test;
 - revoking face consent leaves `face_profiles` and `vec_faces` empty for that
   person, verified against the database;
 - the PIN path (Plans 0026/0027) passes unmodified — no test in those suites

@@ -26,18 +26,30 @@ _PURPOSE = "owner_authentication"
 async def grant_face_consent(person_entity_id: int) -> int:
     """Record an active biometric consent grant for owner authentication.
 
+    Idempotent: a person may enroll additional face profiles on separate
+    occasions (different lighting, glasses on/off) without re-granting
+    consent each time — calling this again while a grant is already active
+    returns the existing grant id unchanged.
+
     Args:
         person_entity_id: Existing person entity granting consent.
 
     Returns:
-        The new ``face_consent_grants`` row id.
+        The active ``face_consent_grants`` row id — newly created, or the
+        pre-existing one if consent was already active for this person.
 
     Raises:
         BrainMemoryError: If the DB is unavailable.
-        aiosqlite.IntegrityError: If an active grant already exists for
-            this person — the partial unique index rejects the insert.
     """
     conn = get_conn()
+    cursor = await conn.execute(
+        "SELECT id FROM face_consent_grants WHERE person_entity_id = ? AND revoked_at IS NULL",
+        (person_entity_id,),
+    )
+    existing = await cursor.fetchone()
+    await cursor.close()
+    if existing is not None:
+        return int(existing[0])
     cursor = await conn.execute(
         "INSERT INTO face_consent_grants (person_entity_id, purpose) VALUES (?, ?)",
         (person_entity_id, _PURPOSE),

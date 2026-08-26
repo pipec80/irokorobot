@@ -111,9 +111,14 @@ class _RequestIdentity:
 
     @property
     def consumed(self) -> bool:
-        """Whether this request consumed a fresh grant from either source."""
-        if self.face is not None and self.face.consumed:
-            return True
+        """Whether this request consumed a fresh one-use owner PIN unlock grant.
+
+        Reports only the PIN grant's consumption state, unchanged from Plan
+        0026/0027's meaning — a face-authenticated turn never touches the PIN
+        resolver, so the caller's held token remains valid and must not be
+        discarded. Use `identity_source` to learn whether THIS turn was
+        face-authenticated instead.
+        """
         return self.pin.consumed
 
     @property
@@ -318,7 +323,8 @@ async def transcribe(
         frame: Optional webcam frame attached for in-request face
             authentication (Plan 0029). Only read and decoded when
             `settings.face_authentication_enabled` is `True` — otherwise
-            accepted but completely inert.
+            accepted but completely inert. A malformed or oversized frame
+            degrades to no frame instead of failing the turn.
 
     Returns:
         Existing audio response contract with text, WAV, emotion, timings,
@@ -326,15 +332,17 @@ async def transcribe(
         evidence source (face/local_unlock/none) identified the actor.
 
     Raises:
-        HTTPException: 413 for size, 422 for WAV/speech/frame, or 500 for
-            STT/TTS.
+        HTTPException: 413 for size, 422 for WAV/speech, or 500 for STT/TTS.
     """
     request_start = time.perf_counter()
-    frame_bytes = (
-        await _read_optional_frame(frame)
-        if settings.face_authentication_enabled and frame is not None
-        else None
-    )
+    frame_bytes: bytes | None = None
+    if settings.face_authentication_enabled and frame is not None:
+        try:
+            frame_bytes = await _read_optional_frame(frame)
+        except HTTPException as exc:
+            logger.warning(
+                "Owner-authentication frame rejected — continuing without it: %s", exc.detail
+            )
     request_identity = _build_request_identity(x_iroko_identity_token, frame_bytes)
     audio_bytes = await _read_audio_upload(audio)
 
@@ -421,7 +429,8 @@ async def transcribe_stream(
         frame: Optional webcam frame attached for in-request face
             authentication (Plan 0029). Only read and decoded when
             `settings.face_authentication_enabled` is `True` — otherwise
-            accepted but completely inert.
+            accepted but completely inert. A malformed or oversized frame
+            degrades to no frame instead of failing the turn.
 
     Returns:
         NDJSON events ordered as text, emotion, audio chunks, then timings.
@@ -430,14 +439,17 @@ async def transcribe_stream(
         (face/local_unlock/none) identified the actor.
 
     Raises:
-        HTTPException: 413 for size, 422 for WAV/speech/frame, or 500 for STT.
+        HTTPException: 413 for size, 422 for WAV/speech, or 500 for STT.
     """
     request_start = time.perf_counter()
-    frame_bytes = (
-        await _read_optional_frame(frame)
-        if settings.face_authentication_enabled and frame is not None
-        else None
-    )
+    frame_bytes: bytes | None = None
+    if settings.face_authentication_enabled and frame is not None:
+        try:
+            frame_bytes = await _read_optional_frame(frame)
+        except HTTPException as exc:
+            logger.warning(
+                "Owner-authentication frame rejected — continuing without it: %s", exc.detail
+            )
     request_identity = _build_request_identity(x_iroko_identity_token, frame_bytes)
     audio_bytes = await _read_audio_upload(audio)
 
