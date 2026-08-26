@@ -281,9 +281,19 @@ manual/session evidence. Specialized models emit typed evidence; they do not
 grant access directly. STT/VAD are not voice identity. The VLM may describe a
 scene, but is not the authority that names Pipec.
 
-**Exit gate:** calibrated local evaluation covers agreement, conflict, expiry,
-backend failure, false accept, and false reject. Conflicting evidence returns
-`ambiguous`; the administrative recovery path remains available.
+**Progress (2026-08-25):** the face-evidence slice (PC-2) is merged —
+[Plan 0029](../plans/open/0029-consented-local-face-evidence.md), PR #73. A
+protected turn now resolves the owner from an in-request webcam frame through
+the same typed evidence and authorization contract the PIN (Plan 0026) uses,
+with the PIN kept as an independent recovery path. It has no liveness/
+anti-spoofing defense — a photograph authenticates under this slice — and no
+real-camera calibration exists yet. Speaker evidence (PC-3) and fusion (PC-4)
+are not started.
+
+**Exit gate (not yet met):** calibrated local evaluation covers agreement,
+conflict, expiry, backend failure, false accept, and false reject. Conflicting
+evidence returns `ambiguous`; the administrative recovery path remains
+available.
 
 ### P1.3 — Personal companion acceptance
 
