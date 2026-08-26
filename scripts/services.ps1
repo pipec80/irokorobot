@@ -3,7 +3,7 @@
 #   just services        check + start what is needed
 #   just services-down   stop what was started
 
-param([switch]$Down)
+param([switch]$Down, [switch]$Pull)
 
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $ConfigPath = Join-Path $ProjectRoot ".env"
@@ -100,12 +100,32 @@ if (Test-Ollama) {
 Write-Host ""
 Write-Host "  Models:"
 $modelOutput = ollama list 2>&1 | Out-String
+$missing = @()
 foreach ($m in $RequiredModels) {
     if ($modelOutput -match [regex]::Escape($m.Name)) {
         Write-Host ("    {0,-26} [OK]  ({1})" -f $m.Name, $m.Desc)
     } else {
         Write-Host ("    {0,-26} [MISSING]  run: ollama pull {1}" -f $m.Name, $m.Name)
+        $missing += $m.Name
     }
+}
+
+# -Pull is opt-in and separate from the default check-only behavior above:
+# these are multi-GB downloads, never triggered without an explicit flag.
+if ($Pull -and $missing.Count -gt 0) {
+    Write-Host ""
+    Write-Host "  Pulling $($missing.Count) missing model(s) — this can take a while and use several GB:"
+    foreach ($name in $missing) {
+        Write-Host ""
+        Write-Host "  --- ollama pull $name ---"
+        & ollama pull $name
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "  [FAILED] $name -- rerun 'just pull-models' to retry just the missing ones"
+        }
+    }
+} elseif ($missing.Count -gt 0) {
+    Write-Host ""
+    Write-Host "  $($missing.Count) model(s) missing. Run 'just pull-models' to download them (opt-in, multi-GB)."
 }
 
 Write-Host ""

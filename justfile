@@ -18,7 +18,8 @@ setup:
     uv sync --all-packages --all-groups
     uv run pre-commit install
     uv run detect-secrets scan > .secrets.baseline
-    @echo "Setup complete."
+    just fetch-vad-model
+    @echo "Setup complete. Still needed before just run-server: cp .env.example .env, just fetch-piper-voice, just services (then just pull-models)."
 
 # Actualiza uv, los hooks y las dependencias a la última versión permitida
 update:
@@ -129,9 +130,21 @@ vision-demo *ARGS:
 faces-demo *ARGS:
     uv run --env-file .env python scripts/faces_demo.py {{ARGS}}
 
+# Enrola/revoca la cara del owner para autenticacion (Plan 0029, requiere PIN local)
+face-auth-demo *ARGS:
+    uv run --env-file .env python scripts/face_auth_demo.py {{ARGS}}
+
 # Descarga una vez el modelo Silero VAD (R1) - dependencia efimera, no toca pyproject.toml
 fetch-vad-model *ARGS:
     uv run --with silero-vad python scripts/fetch_silero_vad_model.py {{ARGS}}
+
+# Descarga la voz Piper configurada en .env (o la pasada como argumento)
+fetch-piper-voice *ARGS:
+    uv run --env-file .env python scripts/fetch_piper_voice.py {{ARGS}}
+
+# Baja los modelos Ollama que falten (chat/embeddings/consolidacion/vision) - opt-in, varios GB
+pull-models:
+    powershell.exe -ExecutionPolicy Bypass -File scripts\services.ps1 -Pull
 
 # Resetea la DB del cerebro: exige server apagado, respalda y borra (seguro)
 reset-db:
