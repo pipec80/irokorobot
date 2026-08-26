@@ -50,6 +50,14 @@ class Settings(BaseSettings):
     uvicorn_limit_concurrency: int = 100
     uvicorn_max_requests: int = 1000
 
+    # One-use owner PIN unlock grant (Plan 0026): how long an issued token
+    # stays valid before its first (and only) protected use. Was a fixed
+    # 60s; raised to a configurable default so a real conversational pause
+    # between unlocking and asking the protected question doesn't silently
+    # expire the grant. Still exactly one-use — this only widens the window
+    # to spend it, never how many times it can be spent.
+    owner_unlock_ttl_seconds: int = 300
+
     # ---------------- Brain & Memory ----------------
     brain_db_path: Path = Path("data/omnibot.db")
 
