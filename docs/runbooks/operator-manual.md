@@ -8,9 +8,10 @@
 
 ## 0. Fresh clone — from zero to running
 
-Verified against the actual code and scripts (2026-08-26), not assumed. A
-fresh clone breaks at one specific, currently undocumented point — see the
-Piper step below.
+Verified against the actual code and scripts (2026-08-26), not assumed.
+`CONTRIBUTING.md`'s "Development setup" only covers `just setup` — treat
+this section as the current source of truth for actually running Iroko,
+not just contributing code to it.
 
 **Outside the repo, nothing here automates these** — install them yourself
 first: `git`, `uv` (≥0.6.0, `pyproject.toml`'s `[tool.uv] required-version`),
@@ -19,31 +20,29 @@ first: `git`, `uv` (≥0.6.0, `pyproject.toml`'s `[tool.uv] required-version`),
 fetches it.
 
 ```powershell
-just setup                    # uv sync + pre-commit hooks + secrets baseline
+just setup                    # deps + pre-commit hooks + secrets baseline + Silero VAD (2.3 MB, bundled — see below)
 Copy-Item .env.example .env   # NOT automated anywhere — do this manually
 ```
 
-Edit the new `.env` — at minimum decide `PIPER_VOICE` (see the gap below)
-before the server can speak.
+Edit the new `.env` — at minimum confirm `PIPER_VOICE` matches the voice
+you're about to fetch below.
+
+**Model downloads — verified one by one, each traced to its actual source
+in the installed packages, nothing guessed:**
+
+| Model | Auto? | How to get it |
+|---|---|---|
+| Whisper (STT) | Yes | Cached from HuggingFace on first call, offline after (`stt.py`) — nothing to run |
+| InsightFace (face) | Yes | ~300 MB, downloaded on first face detection/enrollment call (`vision/faces.py`) — nothing to run |
+| Silero VAD | Bundled into `just setup` (2.3 MB) | Was previously a separate step — `just fetch-vad-model` still works standalone if you skipped `setup` |
+| **Piper (TTS voice)** | **No — one command, run once per voice** | `just fetch-piper-voice` — wraps the official `piper.download_voices` module already bundled in the `piper-tts` dependency this project uses; source is `huggingface.co/rhasspy/piper-voices` (verified from the installed package's own code, not guessed). Defaults to `.env`'s `PIPER_VOICE`; pass `--voice <name>` for a different one, `--force` to re-fetch |
+| Ollama models (chat/embed/consolidation/vision) | No — opt-in, multi-GB | `just services` only checks and reports `[MISSING]`; run `just pull-models` when you're ready to commit the bandwidth/disk — it pulls exactly the missing ones and is safe to rerun after a partial failure |
 
 ```powershell
-just services                 # starts Ollama, reports missing models — does NOT pull them
+just fetch-piper-voice        # once per voice — safe to rerun, skips files that already exist
+just services                 # starts Ollama, reports which models are still missing
+just pull-models              # opt-in — actually downloads the missing ones (can be several GB)
 ```
-
-`scripts/services.ps1` only checks and reports `[MISSING]  run: ollama pull
-<model>` per model — it never pulls anything itself. On a fresh clone expect
-3–4 lines like that (chat, embeddings, consolidation, and vision if
-`VISION_ENABLED=true`) and run the printed `ollama pull` command for each.
-
-**Model downloads, verified one by one — most surprising row first:**
-
-| Model | Auto-downloads on first use? |
-|---|---|
-| Piper (TTS voice) | **No, and nothing in this repo automates it.** `tts.py::_get_voice()` just does `PiperVoice.load(models/piper/<PIPER_VOICE>.onnx)` — if that file is missing, TTS raises. `models/` is gitignored, so a fresh clone has none. **Open gap:** the `.onnx`/`.onnx.json` pair for the configured voice must be placed there by hand; where the five voices already on this dev machine came from is not recorded anywhere tracked — document the source the next time this is set up from scratch. |
-| Whisper (STT) | Yes — cached from HuggingFace on first call, offline after that (`stt.py`) |
-| InsightFace (face) | Yes — ~300 MB, downloaded on first face detection/enrollment call (`vision/faces.py`) |
-| Silero VAD | **No** — needs an explicit `just fetch-vad-model`. Skipping it does not crash anything; the robot silently falls back to the cruder RMS energy-threshold VAD instead |
-| Ollama models (chat/embed/consolidation/vision) | No — `ollama pull <name>` per the `just services` report above |
 
 Once the server can actually boot and speak, set up the owner:
 
@@ -56,10 +55,7 @@ The wizard's exact prompt sequence (`personal_setup.py::run_personal_setup_wizar
 `Owner name:` → `Child names (comma or space separated):` → `PIN (6-12
 digits):` (hidden) → `Confirm PIN:` (hidden) → a summary, then `Type CONFIRM
 to confirm:` before anything is written. Re-running with the same PIN is a
-no-op; a different PIN rotates the credential. This is the actual official
-onboarding — `CONTRIBUTING.md`'s "Development setup" only covers `just
-setup` and does not mention it, `.env` creation, or model downloads; treat
-this section as the current source of truth over that one.
+no-op; a different PIN rotates the credential.
 
 ## 1. Starting the system
 
