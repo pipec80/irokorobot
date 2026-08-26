@@ -77,8 +77,9 @@ async def _on_thinking(ctx: LoopContext) -> RobotState:
     """Send the utterance to the server and hold the result for playback."""
     if settings.robot_streaming:
         return await app_streaming.on_thinking_stream(ctx)
+    frame = await app_streaming.capture_face_frame_if_enabled()
     try:
-        ctx.result = await transcribe(ctx.audio, identity_token=ctx.identity_token)
+        ctx.result = await transcribe(ctx.audio, identity_token=ctx.identity_token, frame=frame)
     except NoSpeechError:
         # Ambient noise tripped the local VAD but Whisper heard nothing —
         # not an error, just resume listening.

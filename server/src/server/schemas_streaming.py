@@ -47,3 +47,9 @@ class StreamDoneEvent(BaseModel):
         default=False,
         description="Whether this turn consumed a fresh one-use owner unlock grant (Plan 0027).",
     )
+    # Additive field (Plan 0029): which evidence source produced the
+    # identified actor for this turn, if any. Never a name or other
+    # protected value — only "face", "local_unlock", or None.
+    identity_source: Literal["face", "local_unlock"] | None = Field(
+        default=None, description="Which evidence source identified the actor for this turn"
+    )

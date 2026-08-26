@@ -1,10 +1,10 @@
-"""Request/response contracts for the local owner unlock endpoint."""
+"""Request/response contracts for the local owner unlock and face endpoints."""
 
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, SecretStr
 
-__all__ = ["OwnerUnlockRequest", "OwnerUnlockResponse"]
+__all__ = ["FaceEnrollResponse", "OwnerUnlockRequest", "OwnerUnlockResponse"]
 
 
 class OwnerUnlockRequest(BaseModel):
@@ -22,3 +22,12 @@ class OwnerUnlockResponse(BaseModel):
 
     token: str
     expires_at: datetime
+
+
+class FaceEnrollResponse(BaseModel):
+    """Result of a successful authenticated owner face enrollment."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    profile_id: int
+    enrolled_at: datetime

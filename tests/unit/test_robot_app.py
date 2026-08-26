@@ -11,7 +11,7 @@ from robot.app import LoopContext, RobotState
 from robot.exceptions import AudioCaptureError, CameraError, NoSpeechError, ServerError
 from robot.server_client import TranscribeResult
 
-from robot import app, server_client
+from robot import app, app_streaming, server_client
 
 _FAKE_RESULT = TranscribeResult(
     text_heard="hola robot",
@@ -25,6 +25,20 @@ _FAKE_RESULT = TranscribeResult(
 _VISION_CUE_RESULT = replace(
     _FAKE_RESULT, text_heard="¿qué ves?", llm_response="A ver...", vision_requested=True
 )
+
+
+@pytest.fixture(autouse=True)
+def _classic_mode_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Isolate this file's classic-FSM tests from a developer's local .env.
+
+    ``Settings()`` reads a real, untracked ``.env`` at import time, so a
+    developer machine with ``ROBOT_STREAMING=true`` would otherwise leak
+    into every test here and silently route THINKING through the streaming
+    module instead of the classic path under test. Tests that specifically
+    exercise streaming (e.g. the F-08 guard) override this via their own
+    ``monkeypatch.setattr`` call.
+    """
+    monkeypatch.setattr(app.settings, "robot_streaming", False)
 
 
 @pytest.mark.unit
@@ -291,7 +305,11 @@ async def test_thinking_passes_the_held_token_to_transcribe(
 
     await app.tick(RobotState.THINKING, ctx)
 
-    transcribe_mock.assert_awaited_once_with(b"x", identity_token="opaque-token")  # noqa: S106
+    transcribe_mock.assert_awaited_once_with(
+        b"x",
+        identity_token="opaque-token",  # noqa: S106
+        frame=None,
+    )
 
 
 @pytest.mark.unit
@@ -435,3 +453,78 @@ async def test_unlock_prompt_never_logs_the_pin_or_token(
     joined = "\n".join(record.getMessage() for record in caplog.records)
     assert "482173" not in joined
     assert "opaque-token" not in joined
+
+
+@pytest.mark.unit
+async def test_thinking_face_auth_disabled_never_captures_frame(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Default off: capture_frame must never run, and frame=None must reach transcribe()."""
+    monkeypatch.setattr(app.settings, "robot_face_auth_enabled", False)
+    capture_mock = MagicMock(return_value=b"jpeg-bytes")
+    monkeypatch.setattr(app_streaming, "capture_frame", capture_mock)
+    transcribe_mock = AsyncMock(return_value=_FAKE_RESULT)
+    monkeypatch.setattr(app, "transcribe", transcribe_mock)
+    ctx = LoopContext(audio=b"x")
+
+    next_state = await app.tick(RobotState.THINKING, ctx)
+
+    assert next_state == RobotState.SPEAKING
+    capture_mock.assert_not_called()
+    transcribe_mock.assert_awaited_once_with(b"x", identity_token=None, frame=None)
+
+
+@pytest.mark.unit
+async def test_thinking_face_auth_enabled_captures_and_forwards_frame(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Enabled: capture_frame must run (via asyncio.to_thread) and its bytes forwarded."""
+    monkeypatch.setattr(app.settings, "robot_face_auth_enabled", True)
+    capture_mock = MagicMock(return_value=b"jpeg-bytes")
+    monkeypatch.setattr(app_streaming, "capture_frame", capture_mock)
+    transcribe_mock = AsyncMock(return_value=_FAKE_RESULT)
+    monkeypatch.setattr(app, "transcribe", transcribe_mock)
+    ctx = LoopContext(audio=b"x")
+
+    next_state = await app.tick(RobotState.THINKING, ctx)
+
+    assert next_state == RobotState.SPEAKING
+    capture_mock.assert_called_once()
+    transcribe_mock.assert_awaited_once_with(b"x", identity_token=None, frame=b"jpeg-bytes")
+
+
+@pytest.mark.unit
+async def test_thinking_face_auth_camera_error_degrades_to_no_frame(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A dead webcam must not raise or route to ERROR — the turn proceeds with frame=None."""
+    monkeypatch.setattr(app.settings, "robot_face_auth_enabled", True)
+    monkeypatch.setattr(
+        app_streaming, "capture_frame", MagicMock(side_effect=CameraError("no cam"))
+    )
+    transcribe_mock = AsyncMock(return_value=_FAKE_RESULT)
+    monkeypatch.setattr(app, "transcribe", transcribe_mock)
+    ctx = LoopContext(audio=b"x")
+
+    next_state = await app.tick(RobotState.THINKING, ctx)
+
+    assert next_state == RobotState.SPEAKING
+    transcribe_mock.assert_awaited_once_with(b"x", identity_token=None, frame=None)
+
+
+@pytest.mark.unit
+async def test_thinking_never_logs_frame_bytes(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Captured frame bytes must never reach any log record."""
+    monkeypatch.setattr(app.settings, "robot_face_auth_enabled", True)
+    frame_marker = b"fake-jpeg-marker"
+    monkeypatch.setattr(app_streaming, "capture_frame", MagicMock(return_value=frame_marker))
+    monkeypatch.setattr(app, "transcribe", AsyncMock(return_value=_FAKE_RESULT))
+    ctx = LoopContext(audio=b"x")
+
+    with caplog.at_level(logging.DEBUG):
+        await app.tick(RobotState.THINKING, ctx)
+
+    joined = "\n".join(record.getMessage() for record in caplog.records)
+    assert "fake-jpeg-marker" not in joined

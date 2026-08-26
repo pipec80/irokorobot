@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     # Plan 0026: prompt once at startup for the local owner PIN (classic mode
     # only — not yet supported with robot_streaming). Default off.
     robot_owner_unlock_prompt: bool = False
+    # Plan 0029: capture one webcam frame and attach it to every turn so the
+    # server can attempt face authentication. Default off — the robot cannot
+    # know in advance whether a turn will be protected, so with this on it
+    # opens the webcam on EVERY turn (low-hundreds of ms added latency).
+    robot_face_auth_enabled: bool = False
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 

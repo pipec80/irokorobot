@@ -9,15 +9,18 @@ event ordering, but this module still validates every event through
 ``StreamValidationState`` instead of trusting the server unconditionally.
 """
 
+import asyncio
 import base64
 from collections.abc import AsyncIterator
 import logging
 import time
 
 from robot.audio_playback import play_wav_stream
-from robot.exceptions import AudioPlaybackError, NoSpeechError, ServerError
+from robot.camera_capture import capture_frame
+from robot.exceptions import AudioPlaybackError, CameraError, NoSpeechError, ServerError
 from robot.fsm_types import LoopContext, RobotState
 from robot.server_client import transcribe_stream
+from robot.settings import settings
 from robot.stream_events import AudioEvent, DoneEvent, EmotionEvent, StreamEvent, TextHeardEvent
 from robot.stream_validation import StreamValidationState
 
@@ -29,6 +32,39 @@ def _elapsed_ms(start: float | None) -> float | None:
     return None if start is None else (time.perf_counter() - start) * 1000
 
 
+async def capture_face_frame_if_enabled() -> bytes | None:
+    """Capture one webcam frame for face authentication, if opted in.
+
+    Shared by classic THINKING (app.py) and streaming THINKING (this
+    module) — defined here rather than in app.py because app.py already
+    imports this module at load time, and the reverse import would be
+    circular.
+
+    Gated by ``settings.robot_face_auth_enabled`` (Plan 0029); off by
+    default, so the webcam is never opened. Because the robot cannot know
+    in advance whether an upcoming utterance will turn out to be a
+    protected question, enabling this opens the webcam on EVERY turn —
+    OpenCV capture costs low-hundreds of milliseconds. Measuring or
+    mitigating that latency (e.g. keeping the camera open across turns) is
+    out of scope for this plan; see Plan 0030 (real-camera acceptance).
+
+    A camera failure degrades to sending the turn without a frame — it
+    never raises and never blocks the turn, exactly as if the setting were
+    disabled.
+
+    Returns:
+        JPEG frame bytes, or None when disabled or the capture failed.
+    """
+    if not settings.robot_face_auth_enabled:
+        return None
+    try:
+        # cv2 capture is blocking I/O — keep it off the event loop.
+        return await asyncio.to_thread(capture_frame)
+    except CameraError as exc:
+        logger.warning("Face-auth frame capture failed — sending turn without a frame: %s", exc)
+        return None
+
+
 async def on_thinking_stream(ctx: LoopContext) -> RobotState:
     """Streaming variant of THINKING: start the stream, log the transcript.
 
@@ -37,7 +73,8 @@ async def on_thinking_stream(ctx: LoopContext) -> RobotState:
     server would otherwise have raised NoSpeechError/ServerError. The rest
     of the stream is handed to SPEAKING via ``ctx.stream_events``.
     """
-    events = transcribe_stream(ctx.audio, identity_token=ctx.identity_token)
+    frame = await capture_face_frame_if_enabled()
+    events = transcribe_stream(ctx.audio, identity_token=ctx.identity_token, frame=frame)
     ctx.stream_request_start = time.perf_counter()
     try:
         first = await anext(events)

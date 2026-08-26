@@ -3,19 +3,25 @@
 Audio contract: WAV · 16000 Hz · mono · int16.
 """
 
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 import logging
 import time
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, File, Header, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
-from server import turn_log
+from server import turn_log, vision
 from server.audio_contract import validate_wav_contract
 from server.cognition.authorization import evaluate_authorization
-from server.cognition.controller import ActivePersonResolver, CognitiveController
+from server.cognition.controller import ActivePersonResolver, CognitiveController, ConsentResolver
+from server.cognition.face_authentication import (
+    FaceRequestResolver,
+    build_default_face_request_resolver,
+    compose_face_then_pin_resolver,
+)
 from server.cognition.household_tools import HouseholdKnowledgeTools
 from server.cognition.identity import ActivePersonContext
 from server.cognition.models import CognitiveEvent
@@ -26,7 +32,7 @@ from server.cognition.response_plan import (
     TextTurnPayload,
     scene_unavailable_plan,
 )
-from server.exceptions import AudioContractError
+from server.exceptions import AudioContractError, ImageContractError
 from server.memory.consolidation import consolidate_turn
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
@@ -77,8 +83,89 @@ def _voice_event_from_transcript(message: str) -> CognitiveEvent[TextTurnPayload
     )
 
 
+@dataclass
+class _RequestIdentity:
+    """Uniform per-request actor/consent resolver, whichever evidence it used.
+
+    Wraps either the plain PIN resolver (Plan 0026/0027, when face
+    authentication is disabled or no frame was supplied) or the composed
+    face-then-PIN pair (Plan 0029) behind one shape, so both `/transcribe`
+    endpoints can read `.resolve_actor`, `.resolve_consent`, `.consumed`,
+    and `.identity_source` without branching on which evidence source
+    produced identity.
+
+    Attributes:
+        resolve_actor: The actor resolver to hand to the controller — the
+            bare PIN resolver, or the composed face-then-PIN pair.
+        resolve_consent: The matching consent resolver for `resolve_actor`.
+        pin: The underlying PIN resolver, always present, used to report
+            `.consumed`/`.identity_source` for the PIN path.
+        face: The underlying face resolver, present only when face
+            authentication was attempted for this request.
+    """
+
+    resolve_actor: ActivePersonResolver
+    resolve_consent: ConsentResolver
+    pin: OwnerRequestResolver
+    face: FaceRequestResolver | None
+
+    @property
+    def consumed(self) -> bool:
+        """Whether this request consumed a fresh one-use owner PIN unlock grant.
+
+        Reports only the PIN grant's consumption state, unchanged from Plan
+        0026/0027's meaning — a face-authenticated turn never touches the PIN
+        resolver, so the caller's held token remains valid and must not be
+        discarded. Use `identity_source` to learn whether THIS turn was
+        face-authenticated instead.
+        """
+        return self.pin.consumed
+
+    @property
+    def identity_source(self) -> Literal["face", "local_unlock"] | None:
+        """Which evidence source identified the actor, or `None` for neither."""
+        if self.face is not None and self.face.consumed:
+            return "face"
+        if self.pin.consumed:
+            return "local_unlock"
+        return None
+
+
+def _build_request_identity(token: str | None, frame: bytes | None) -> _RequestIdentity:
+    """Compose this request's actor/consent resolver from PIN and optional face evidence.
+
+    Args:
+        token: Optional one-use owner PIN unlock token from the request header.
+        frame: Optional webcam frame bytes already read and validated from
+            the multipart upload. `None` whenever no frame was supplied, or
+            `settings.face_authentication_enabled` is `False` — in either
+            case this resolves to exactly the existing PIN-only path
+            (Plan 0026/0027).
+
+    Returns:
+        A `_RequestIdentity` wrapping either the plain PIN resolver or the
+        face-first, PIN-fallback composed pair (Plan 0029).
+    """
+    pin = owner_unlock_service.for_request(token)
+    if not settings.face_authentication_enabled or frame is None:
+        return _RequestIdentity(
+            resolve_actor=pin.resolve_actor,
+            resolve_consent=pin.resolve_consent,
+            pin=pin,
+            face=None,
+        )
+    face = build_default_face_request_resolver(frame)
+    resolve_actor, resolve_consent = compose_face_then_pin_resolver(face, pin)
+    return _RequestIdentity(
+        resolve_actor=resolve_actor,
+        resolve_consent=resolve_consent,
+        pin=pin,
+        face=face,
+    )
+
+
 def _logged_voice_actor_resolver(
-    request_identity: OwnerRequestResolver,
+    request_identity: _RequestIdentity,
 ) -> ActivePersonResolver:
     """Wrap a request-scoped resolver to preserve the existing actor log line."""
 
@@ -93,15 +180,16 @@ def _logged_voice_actor_resolver(
 def _voice_controller(
     background_tasks: BackgroundTasks,
     *,
-    request_identity: OwnerRequestResolver | None = None,
+    request_identity: _RequestIdentity | None = None,
 ) -> CognitiveController:
     """Compose the bounded controller used by a public voice turn.
 
     Args:
         background_tasks: Queue used to schedule post-turn consolidation.
-        request_identity: Optional request-scoped owner grant resolver. When
-            omitted, the controller falls back to its own public-unknown
-            defaults.
+        request_identity: Optional request-scoped actor/consent resolver —
+            the plain PIN resolver, or the composed face-then-PIN pair
+            (Plan 0029). When omitted, the controller falls back to its own
+            public-unknown defaults.
     """
 
     async def legacy_turn(message: str, conversation_id: str) -> TextTurnResult:
@@ -168,11 +256,61 @@ async def _read_audio_upload(audio: UploadFile) -> bytes:
     return audio_bytes
 
 
+async def _read_optional_frame(frame: UploadFile) -> bytes:
+    """Read and validate one owner-authentication frame against the image contract.
+
+    Duplicated minimally from `routers/vision.py`'s `_read_contract_image` —
+    Plan 0029 keeps that router untouched, so this router cannot import from
+    it (same pattern Task 4 used in `routers/auth.py`'s `_read_face_image`).
+
+    The caller must only invoke this when `settings.face_authentication_enabled`
+    is `True` and a frame was actually supplied — this function always reads
+    and validates whatever it is given.
+
+    Image contract: JPEG/PNG/WebP/GIF/BMP · max 1280x720 · ONE frame.
+
+    Args:
+        frame: Multipart upload carrying the webcam frame.
+
+    Returns:
+        The raw, validated frame bytes.
+
+    Raises:
+        HTTPException 413: If the frame exceeds MAX_UPLOAD_BYTES.
+        HTTPException 422: If the frame is empty, an unrecognized format,
+            fails to decode, or exceeds the 1280x720 contract limit.
+    """
+    frame_bytes = await frame.read()
+    if len(frame_bytes) > settings.max_upload_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Frame too large — max {settings.max_upload_bytes // 1024 // 1024} MB",
+        )
+    if not frame_bytes:
+        raise HTTPException(status_code=422, detail="Frame file is empty")
+    if not vision.is_known_image_format(frame_bytes):
+        raise HTTPException(
+            status_code=422,
+            detail="Unsupported image format (contract: JPEG/PNG/WebP/GIF/BMP · max 1280x720)",
+        )
+    try:
+        vision.decode_and_validate_image(frame_bytes)
+    except ImageContractError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return frame_bytes
+
+
 @router.post("/transcribe")
 async def transcribe(
     audio: Annotated[UploadFile, File(description="WAV 16kHz mono int16")],
     background_tasks: BackgroundTasks,
     x_iroko_identity_token: Annotated[str | None, Header(alias="X-Iroko-Identity-Token")] = None,
+    frame: Annotated[
+        UploadFile | None,
+        File(
+            description="JPEG/PNG/WebP/GIF/BMP · max 1280x720 · optional owner-authentication frame"
+        ),
+    ] = None,
 ) -> TranscribeResponse:
     """Transcribe audio, generate a robot response, and synthesize speech.
 
@@ -182,16 +320,30 @@ async def transcribe(
         x_iroko_identity_token: Optional one-use owner unlock token. Absent,
             expired, replayed, or malformed tokens resolve to the public
             unknown actor without disclosing which case occurred.
+        frame: Optional webcam frame attached for in-request face
+            authentication (Plan 0029). Only read and decoded when
+            `settings.face_authentication_enabled` is `True` — otherwise
+            accepted but completely inert. A malformed or oversized frame
+            degrades to no frame instead of failing the turn.
 
     Returns:
         Existing audio response contract with text, WAV, emotion, timings,
-        and whether this turn consumed a fresh owner unlock grant.
+        whether this turn consumed a fresh owner unlock grant, and which
+        evidence source (face/local_unlock/none) identified the actor.
 
     Raises:
         HTTPException: 413 for size, 422 for WAV/speech, or 500 for STT/TTS.
     """
     request_start = time.perf_counter()
-    request_identity = owner_unlock_service.for_request(x_iroko_identity_token)
+    frame_bytes: bytes | None = None
+    if settings.face_authentication_enabled and frame is not None:
+        try:
+            frame_bytes = await _read_optional_frame(frame)
+        except HTTPException as exc:
+            logger.warning(
+                "Owner-authentication frame rejected — continuing without it: %s", exc.detail
+            )
+    request_identity = _build_request_identity(x_iroko_identity_token, frame_bytes)
     audio_bytes = await _read_audio_upload(audio)
 
     text_heard, stt_ms = await _run_stt(audio_bytes, [])
@@ -227,6 +379,7 @@ async def transcribe(
                 tts_ms=tts_ms,
                 total_ms=total_ms,
                 authentication_consumed=request_identity.consumed,
+                identity_source=request_identity.identity_source,
             )
         plan = scene_unavailable_plan()
     elif decision is None:
@@ -250,6 +403,7 @@ async def transcribe(
         tts_ms=tts_ms,
         total_ms=total_ms,
         authentication_consumed=request_identity.consumed,
+        identity_source=request_identity.identity_source,
     )
 
 
@@ -258,6 +412,12 @@ async def transcribe_stream(
     audio: Annotated[UploadFile, File(description="WAV 16kHz mono int16")],
     background_tasks: BackgroundTasks,
     x_iroko_identity_token: Annotated[str | None, Header(alias="X-Iroko-Identity-Token")] = None,
+    frame: Annotated[
+        UploadFile | None,
+        File(
+            description="JPEG/PNG/WebP/GIF/BMP · max 1280x720 · optional owner-authentication frame"
+        ),
+    ] = None,
 ) -> StreamingResponse:
     """Transcribe audio and stream the robot's reply sentence by sentence (R3).
 
@@ -266,17 +426,31 @@ async def transcribe_stream(
         background_tasks: Queue for successful voice-turn consolidation.
         x_iroko_identity_token: Optional one-use owner unlock token — same
             contract as classic /transcribe (Plan 0027).
+        frame: Optional webcam frame attached for in-request face
+            authentication (Plan 0029). Only read and decoded when
+            `settings.face_authentication_enabled` is `True` — otherwise
+            accepted but completely inert. A malformed or oversized frame
+            degrades to no frame instead of failing the turn.
 
     Returns:
         NDJSON events ordered as text, emotion, audio chunks, then timings.
         The terminal `done` event additionally reports whether this turn
-        consumed a fresh owner unlock grant.
+        consumed a fresh owner unlock grant and which evidence source
+        (face/local_unlock/none) identified the actor.
 
     Raises:
         HTTPException: 413 for size, 422 for WAV/speech, or 500 for STT.
     """
     request_start = time.perf_counter()
-    request_identity = owner_unlock_service.for_request(x_iroko_identity_token)
+    frame_bytes: bytes | None = None
+    if settings.face_authentication_enabled and frame is not None:
+        try:
+            frame_bytes = await _read_optional_frame(frame)
+        except HTTPException as exc:
+            logger.warning(
+                "Owner-authentication frame rejected — continuing without it: %s", exc.detail
+            )
+    request_identity = _build_request_identity(x_iroko_identity_token, frame_bytes)
     audio_bytes = await _read_audio_upload(audio)
 
     text_heard, stt_ms = await _run_stt(audio_bytes, [])
@@ -303,6 +477,7 @@ async def transcribe_stream(
                 stt_ms=stt_ms,
                 request_start=request_start,
                 authentication_consumed=request_identity.consumed,
+                identity_source=request_identity.identity_source,
             ),
             media_type="application/x-ndjson",
         )
