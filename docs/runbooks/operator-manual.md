@@ -206,3 +206,99 @@ combination above is safe to mix.
 - What's actually implemented right now, including open gaps:
   [`current-state.md`](../architecture/current-state.md).
 - What's authorized to build next: [`docs/plans/README.md`](../plans/README.md).
+
+## 6. What `just setup-personal` actually does, and a dead feature it should not be confused with
+
+Verified 2026-08-26 by reading `personal_setup.py` end to end, not assumed.
+This is the **only** thing that answers "Pipec is your owner" — nothing
+conversational does this, see below.
+
+### The exact write sequence
+
+```powershell
+just setup-personal          # requires run-server/run-robot stopped — single SQLite connection
+```
+
+Three writes, in order, all inside `apply_personal_setup()`:
+
+1. **`_confirm_owner_entity`** — `upsert_entity(name=owner_name, type="person")`, then
+   `bootstrap_initial_owner(person_entity_id, confirmed_person_entity_id)`. This is
+   the actual anchor: one row in `household_role_assignments` with `role='owner'`,
+   enforced singleton (`_active_owner_exists()` raises if one already exists).
+   Reruns with the same name reuse the same entity — it does not duplicate.
+2. **`_confirm_children`** — one entity + one `child_of` relation per name, in
+   `entity_relations_v4`, pointed at the owner entity from step 1.
+3. **`_confirm_credential`** — hashes the PIN with scrypt (`hash_pin`), stores it
+   via `save_owner_pin_credential`. Reusing the same PIN is a no-op; a different
+   one rotates the credential.
+
+Everything the rest of this manual's Tier 1/Tier 2 sections depend on — `get_active_role()`,
+the PIN unlock, the face resolver's owner check — reads back exactly these three writes.
+There is no fourth, hidden mechanism.
+
+### A dead feature that looks like an alternative onboarding — it is not one
+
+The character prompt (`characters/iroko.py`) has a real, well-built conversational
+onboarding block:
+
+```
+PRIMER ENCUENTRO — acabás de despertar y conocés a una persona del hogar por primera vez:
+- Presentate en máximo 2 oraciones...
+- Qué preguntar lo indica el PRÓXIMO OBJETIVO más abajo...
+- UNA sola pregunta por turno...
+```
+
+Backed by an 8-slot checklist (`onboarding.py`): `nombre → fecha_nacimiento → vive_en
+→ pareja_de → hijo_de → mascota_de → trabaja_en → le_gusta`. It looks like it should be
+the conversational path to "the robot learns who its owner is." **It is not, for two
+independent reasons, both verified against the current code:**
+
+1. **It could never create the owner even if it worked.** The gate at
+   `text_turn.py`'s `prepare_text_turn()` — `if manual_evidence is None: ...
+   onboarding=False` — means this interview only starts for an ALREADY-identified
+   actor. It was designed as a "get to know you better" layer on top of an
+   existing owner, never as the mechanism that establishes one. `just setup-personal`
+   has no conversational alternative today.
+2. **It is fully disconnected, right now.** The one function that could pass real
+   values into it always hardcodes them away:
+   ```python
+   async def _memory_prompt_state(message: str) -> tuple[MemoryContext | None, bool, OnboardingSlot | None]:
+       """Resolve legacy-compatible persistent context without global onboarding."""
+       context = await build_context(message)
+       return context, False, None
+   ```
+   `onboarding.py::next_missing_slot()` has zero live callers anywhere in the
+   repo — confirmed by grep, not inference. This matches what
+   [ADR-0007](../adr/0007-first-boot-and-default-posture.md) flagged as
+   "built, tested, zero production callers" back on 2026-08-19; it is still true
+   after everything Plan 0029 added.
+
+**Do not reconnect this as-is if it ever comes up.** Its checklist reads/writes the
+legacy v3 fact tables (`load_entity_with_facts`, `find_facts_by_predicate`), not the
+v4 tables (`entity_relations_v4`) `setup-personal` uses — reconnecting it verbatim
+would ask "¿tenés hijos?" again and store the answer somewhere `get_children()` never
+looks. Any future reconnection needs its own bounded plan: migrate the checklist to
+v4, then decide whether it should still gate on an existing owner or be scoped
+narrower (e.g. only the optional/non-security slots — birthday, work, likes).
+
+### The symptom this explains: "los hijos son Max..." instead of "tus hijos son Max..."
+
+Before the deterministic child-name tool existed (or when a question's phrasing
+doesn't match the intent resolver's known patterns and falls through to generic
+LLM generation), the ONLY path available was free LLM generation over memory
+context. That path carries an explicit rule (`_PRESENTATION_GUIDANCE` in
+`characters/__init__.py`):
+
+```
+- Do not infer relationships, personal facts, or authorization from it.
+```
+
+Even with a name available in context, the LLM is forbidden from concluding
+"so these are YOUR children" — it has no deterministic authorization to make that
+claim. That is structurally why it degrades to third person. The fix is not a
+prompt tweak: it's routing the question through the deterministic tool
+(`controller.py::_household_tool_plan`, `response = f"Tus hijos son {names}."`,
+never touching the LLM), which is what Plans 0021/0025–0028 already built and this
+plan's Tier 1/Tier 2 sections describe. If this symptom reappears, the fault is
+almost always an unrecognized phrasing in `cognition/intent_resolution.py`, not the
+character prompt.
