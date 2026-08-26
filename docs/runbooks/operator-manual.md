@@ -262,7 +262,9 @@ independent reasons, both verified against the current code:**
 2. **It is fully disconnected, right now.** The one function that could pass real
    values into it always hardcodes them away:
    ```python
-   async def _memory_prompt_state(message: str) -> tuple[MemoryContext | None, bool, OnboardingSlot | None]:
+   async def _memory_prompt_state(
+       message: str,
+   ) -> tuple[MemoryContext | None, bool, OnboardingSlot | None]:
        """Resolve legacy-compatible persistent context without global onboarding."""
        context = await build_context(message)
        return context, False, None
