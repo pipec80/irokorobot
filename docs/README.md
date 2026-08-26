@@ -15,6 +15,7 @@
 | How does the personal-companion goal map to code and plans? | [Personal-companion delivery map](roadmap/personal-companion-delivery-map.md) |
 | Which plan may be executed? | [Plans index](plans/README.md) |
 | How is real behavior accepted? | [Runtime runbook](runbooks/p0-runtime-acceptance.md) |
+| How do I run/test Iroko day to day, and what does each security tier unlock? | [Operator manual](runbooks/operator-manual.md) |
 | Where is superseded context? | [Historical index](history/README.md) |
 
 ## Authority rule

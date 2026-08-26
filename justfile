@@ -129,6 +129,10 @@ vision-demo *ARGS:
 faces-demo *ARGS:
     uv run --env-file .env python scripts/faces_demo.py {{ARGS}}
 
+# Enrola/revoca la cara del owner para autenticacion (Plan 0029, requiere PIN local)
+face-auth-demo *ARGS:
+    uv run --env-file .env python scripts/face_auth_demo.py {{ARGS}}
+
 # Descarga una vez el modelo Silero VAD (R1) - dependencia efimera, no toca pyproject.toml
 fetch-vad-model *ARGS:
     uv run --with silero-vad python scripts/fetch_silero_vad_model.py {{ARGS}}
