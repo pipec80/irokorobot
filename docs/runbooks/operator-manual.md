@@ -6,6 +6,61 @@
 > that. When this manual and the code disagree, the code wins; update this
 > file in the same change that changes behavior.
 
+## 0. Fresh clone — from zero to running
+
+Verified against the actual code and scripts (2026-08-26), not assumed. A
+fresh clone breaks at one specific, currently undocumented point — see the
+Piper step below.
+
+**Outside the repo, nothing here automates these** — install them yourself
+first: `git`, `uv` (≥0.6.0, `pyproject.toml`'s `[tool.uv] required-version`),
+`just`, and **Ollama itself** (the application, not just its models). Python
+3.12 does not need a separate install — `uv`'s `python-preference = "managed"`
+fetches it.
+
+```powershell
+just setup                    # uv sync + pre-commit hooks + secrets baseline
+Copy-Item .env.example .env   # NOT automated anywhere — do this manually
+```
+
+Edit the new `.env` — at minimum decide `PIPER_VOICE` (see the gap below)
+before the server can speak.
+
+```powershell
+just services                 # starts Ollama, reports missing models — does NOT pull them
+```
+
+`scripts/services.ps1` only checks and reports `[MISSING]  run: ollama pull
+<model>` per model — it never pulls anything itself. On a fresh clone expect
+3–4 lines like that (chat, embeddings, consolidation, and vision if
+`VISION_ENABLED=true`) and run the printed `ollama pull` command for each.
+
+**Model downloads, verified one by one — most surprising row first:**
+
+| Model | Auto-downloads on first use? |
+|---|---|
+| Piper (TTS voice) | **No, and nothing in this repo automates it.** `tts.py::_get_voice()` just does `PiperVoice.load(models/piper/<PIPER_VOICE>.onnx)` — if that file is missing, TTS raises. `models/` is gitignored, so a fresh clone has none. **Open gap:** the `.onnx`/`.onnx.json` pair for the configured voice must be placed there by hand; where the five voices already on this dev machine came from is not recorded anywhere tracked — document the source the next time this is set up from scratch. |
+| Whisper (STT) | Yes — cached from HuggingFace on first call, offline after that (`stt.py`) |
+| InsightFace (face) | Yes — ~300 MB, downloaded on first face detection/enrollment call (`vision/faces.py`) |
+| Silero VAD | **No** — needs an explicit `just fetch-vad-model`. Skipping it does not crash anything; the robot silently falls back to the cruder RMS energy-threshold VAD instead |
+| Ollama models (chat/embed/consolidation/vision) | No — `ollama pull <name>` per the `just services` report above |
+
+Once the server can actually boot and speak, set up the owner:
+
+```powershell
+just setup-personal status   # non-interactive: prints owner_count, credential_count, etc — safe to run anytime
+just setup-personal          # the interactive wizard (requires run-server/run-robot stopped)
+```
+
+The wizard's exact prompt sequence (`personal_setup.py::run_personal_setup_wizard`):
+`Owner name:` → `Child names (comma or space separated):` → `PIN (6-12
+digits):` (hidden) → `Confirm PIN:` (hidden) → a summary, then `Type CONFIRM
+to confirm:` before anything is written. Re-running with the same PIN is a
+no-op; a different PIN rotates the credential. This is the actual official
+onboarding — `CONTRIBUTING.md`'s "Development setup" only covers `just
+setup` and does not mention it, `.env` creation, or model downloads; treat
+this section as the current source of truth over that one.
+
 ## 1. Starting the system
 
 ```powershell
