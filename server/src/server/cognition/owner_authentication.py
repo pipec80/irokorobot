@@ -31,6 +31,7 @@ from server.cognition.response_plan import TextTurnPayload
 from server.memory.entity_labels import get_person_label
 from server.memory.household_authorization import get_active_role
 from server.memory.owner_credentials import OwnerPinCredential, get_active_owner_pin_credential
+from server.settings import settings
 
 __all__ = [
     "OwnerRequestResolver",
@@ -321,7 +322,7 @@ def build_default_owner_unlock_service() -> OwnerUnlockService:
     registry = IdentitySessionRegistry(
         lookup_person=lambda _person_id: None,
         clock=_utc_now,
-        ttl=timedelta(seconds=60),
+        ttl=timedelta(seconds=settings.owner_unlock_ttl_seconds),
     )
     return OwnerUnlockService(
         clock=_utc_now,
