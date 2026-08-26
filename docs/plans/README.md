@@ -17,7 +17,7 @@ deferred, umbrella, or product-design plan because it also lives under
 
 | Lane | Plans | Meaning |
 |---|---|---|
-| **NOW** | [0029 — consented local face evidence](open/0029-consented-local-face-evidence.md) | P0 is fully accepted (2026-08-25). Pipec authorized starting P1.2 (PC-2) the same day. 0029 connects the existing local face engine to owner authentication through the same typed evidence contract the PIN uses (Plan 0026), with no code change to `controller.py` or `authorization.py`. All 7 tasks are implemented on `feat/consented-local-face-evidence`, individually code-reviewed, and full repository gates pass (2026-08-25) — pending Pipec's review, merge, and a future real-camera acceptance plan. |
+| **NOW** | none | [0029 — consented local face evidence](open/0029-consented-local-face-evidence.md) merged 2026-08-25 (PR #73, squash, commit `4633685`). It connects the existing local face engine to owner authentication through the same typed evidence contract the PIN uses (Plan 0026), with no code change to `controller.py` or `authorization.py`. P1.2's exit gate is not yet met: no speaker evidence (PC-3), no fusion (PC-4), and no real-camera calibration exist yet. No further plan is authorized until a real-camera acceptance plan is written and approved. |
 | **REFERENCE ONLY** | [0014](open/0014-p0-runtime-policy-hardening-design.md), [0015](open/0015-personal-companion-design.md), [0020](open/0020-p0-operator-qa-remediation-design.md), [0024](open/0024-owner-authenticated-memory-mvp-design.md) | Umbrella/design documents; never execute them as independent implementation batches |
 
 ## Queue rules
@@ -44,7 +44,7 @@ deferred, umbrella, or product-design plan because it also lives under
 | 5 | [0021 — typed intent](completed/0021-p0-typed-intent-resolution.md) | Implemented and operator-confirmed 2026-08-21 | Closed |
 | 6 | [0023 — grounded visual dialogue](completed/0023-p0-grounded-visual-dialogue.md) | Implemented and operator-confirmed 2026-08-25 | Closed |
 | 7 | [0013 — voice controller bridge](completed/0013-p0-voice-controller-bridge.md) | R1-03 root cause fixed and confirmed 2026-08-25 | Closed |
-| 8 | [0029 — consented local face evidence](open/0029-consented-local-face-evidence.md) | Code/tests/review complete on `feat/consented-local-face-evidence` (2026-08-25) | Pending Pipec's review and merge, then a future real-camera acceptance plan |
+| 8 | [0029 — consented local face evidence](open/0029-consented-local-face-evidence.md) | Merged (PR #73, 2026-08-25) | Closed for its own code/tests/review scope. Stays in `open/` per Queue rule 3 — P1.2's exit gate (calibrated real-camera evaluation, speaker evidence, fusion) is not yet met; owned by a future real-camera acceptance plan |
 
 Supporting active designs and open acceptance work are listed in the
 [open-plan index](open/README.md). Closed execution evidence is isolated in

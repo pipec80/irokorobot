@@ -6,8 +6,14 @@
 > PR #64, and Plan 0028's 2026-08-21 real-hardware run). PC-1 is accepted:
 > classic and streaming authenticated-owner flows are each confirmed 3x with
 > real hardware. Existing foundations listed below are production code and
-> must be reused. Face, voice, fusion, and visual-companion slices remain
-> later work.
+> must be reused. PC-2's code/test slice is merged —
+> [Plan 0029](0029-consented-local-face-evidence.md), PR #73, 2026-08-25 — a
+> protected turn resolves the owner from an in-request webcam frame through
+> the same typed evidence and authorization contract the PIN uses, with the
+> PIN kept as an independent recovery path. It has no liveness/anti-spoofing
+> defense and no real-camera calibration yet; PC-2 itself is not accepted
+> until that follow-up plan closes it. Voice, fusion, and visual-companion
+> acceptance (PC-3 through PC-6) remain later work, not started.
 
 ## Objective
 
@@ -82,6 +88,16 @@ subject consent. Store templates separately from generic facts; evaluate
 unknown faces, false accepts/rejects, lighting, distance, expiry, deletion, and
 backend failure on Pipec's actual camera. Face evidence never grants permission
 directly.
+
+**Code/test slice merged 2026-08-25** —
+[Plan 0029](0029-consented-local-face-evidence.md), PR #73. Consent schema
+with real purge on revoke, `FACE` as a trusted evidence source, a lazy
+per-turn face resolver composed face-first/PIN-fallback, authenticated
+enrollment/revocation endpoints, and the router/robot wiring — all behind
+feature flags defaulting off. Not yet done: real-camera calibration (false
+accept/reject rates, lighting, distance, glasses) and any liveness defense
+— PC-2 is not accepted until a follow-up real-camera acceptance plan closes
+that gap.
 
 ### PC-3 — Consented local speaker evidence
 
