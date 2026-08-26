@@ -79,7 +79,12 @@ $env:ROBOT_OWNER_UNLOCK_PROMPT = "true"   # or set in .env
 just run-robot
 ```
 
-Prompts once at startup (classic mode only, via `getpass` — never echoed).
+Prompts once at startup, via `getpass` — never echoed. Works with both
+classic and streaming mode (Plan 0027 added streaming parity for the PIN
+token; there is no start-time guard between `ROBOT_OWNER_UNLOCK_PROMPT` and
+`ROBOT_STREAMING` — an older comment in `.env.example` claimed one existed,
+corrected 2026-08-26; the only real robot startup guard is
+`ROBOT_STREAMING` vs. the server's `VISION_ENABLED`, see §4).
 **Limitation, by design:** this proves possession of the local secret, not
 the physical identity of the speaker. One-use scope and the short TTL are
 the accepted mitigation.
@@ -126,14 +131,20 @@ best-score guess. The PIN remains available even if every biometric fails.
 
 | Variable | Default | Effect |
 |---|---|---|
-| `ROBOT_OWNER_UNLOCK_PROMPT` | `false` | Classic mode only — prompt once for the PIN at robot startup |
+| `ROBOT_OWNER_UNLOCK_PROMPT` | `false` | Prompt once for the PIN at robot startup (`getpass`) — works in both classic and streaming mode |
 | `ROBOT_STREAMING` | `false` | Use `/transcribe/stream` instead of classic `/transcribe` |
+| `VISION_ENABLED` | `false` | Server: enables `/vision/describe`, `/vision/respond` scene description (unrelated to face auth) |
 | `FACE_AUTHENTICATION_ENABLED` | `false` | Server: attempt face resolution when a frame is attached to a protected turn |
 | `FACE_AUTHENTICATION_MATCH_THRESHOLD` | `0.25` | Stricter, separate match bound for authentication (layered on top of `FACE_MATCH_THRESHOLD`) |
 | `ROBOT_FACE_AUTH_ENABLED` | `false` | Robot: capture and attach one webcam frame per turn |
 | `FACE_MATCH_THRESHOLD` | `0.4` | Generic conversational face-recognition threshold (unrelated to authentication) |
-| `VISION_ENABLED` | `false` | Enables `/vision/describe`, `/vision/respond` scene description |
 | `UVICORN_WORKERS` | `1` | Must stay `1` — owner/face grants are process-local; the server refuses to start otherwise |
+
+**The one real startup guard:** `ROBOT_STREAMING=true` on the robot plus
+`VISION_ENABLED=true` on the server makes the robot refuse to start
+(`SystemExit`, checked once at boot via `check_vision_enabled()`) — streaming
+has no code path for visual questions yet (F-08). Every other flag
+combination above is safe to mix.
 
 ## 5. Where the evidence lives
 
