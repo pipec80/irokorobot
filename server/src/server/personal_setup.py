@@ -37,6 +37,7 @@ __all__ = [
     "PersonalSetupResult",
     "PersonalSetupStatus",
     "apply_personal_setup",
+    "check_db_available",
     "main",
     "read_personal_setup_status",
     "run_personal_setup_wizard",
@@ -350,8 +351,11 @@ def _print_status(status: PersonalSetupStatus, write_text: WriteText) -> None:
     write_text(f"onboarding_complete={status.onboarding_complete}")
 
 
-async def _preflight_lock_check() -> None:
+async def check_db_available() -> None:
     """Fail fast and clearly if another process holds the database lock.
+
+    Shared by this module's wizard and by `scripts/onboard.py`, which runs
+    the identity/PIN phase through the same wizard before the server exists.
 
     Raises:
         BrainMemoryError: If the database cannot be locked immediately.
@@ -375,7 +379,7 @@ async def _run(command: str | None) -> None:
             status = await read_personal_setup_status()
             _print_status(status, print)
             return
-        await _preflight_lock_check()
+        await check_db_available()
         await run_personal_setup_wizard(
             read_text=input, read_secret=getpass.getpass, write_text=print
         )

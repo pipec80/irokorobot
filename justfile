@@ -102,6 +102,10 @@ test-pipeline *ARGS:
 setup-personal *ARGS:
     uv run --env-file .env --package server personal-setup {{ARGS}}
 
+# Onboarding unificado: identidad+hijos+PIN, despues la cara (Plan 0029). Re-ejecutable.
+onboard *ARGS:
+    uv run --env-file .env python scripts/onboard.py {{ARGS}}
+
 # Prueba el cliente HTTP contra el servidor en ejecucion
 test-client *ARGS:
     uv run --env-file .env python scripts/client_test.py {{ARGS}}
