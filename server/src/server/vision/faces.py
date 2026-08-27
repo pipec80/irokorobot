@@ -18,6 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 import logging
 from typing import Any
+import warnings
 
 import numpy as np
 
@@ -50,6 +51,14 @@ def _get_analyzer() -> Any:  # noqa: ANN401 — FaceAnalysis is imported lazily 
     try:
         # Lazy: importing insightface costs seconds and vision may be off.
         from insightface.app import FaceAnalysis  # noqa: PLC0415
+
+        # insightface's own face_align.py calls a scikit-image API deprecated
+        # since 0.26 (removal in 2.2) on every alignment — harmless upstream
+        # noise, not something we can fix here. Scoped to that exact module
+        # so a real FutureWarning from our own code still surfaces.
+        warnings.filterwarnings(
+            "ignore", category=FutureWarning, module=r"insightface\.utils\.face_align"
+        )
 
         logger.info("Loading face model %s (first call downloads it)...", settings.face_model)
         analyzer = FaceAnalysis(
