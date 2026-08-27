@@ -99,6 +99,9 @@ async def _unlock(client: httpx.AsyncClient, url: str) -> str:
 
 async def _enroll(url: str, image_path: str | None, device: int) -> None:
     """Unlock once, then enroll one face profile for the owner."""
+    if image_path is None:
+        print("Mira a la camara. Capturando en 3 segundos...")  # noqa: T201
+        await asyncio.sleep(3)
     jpeg = _get_frame(image_path, device)
     async with httpx.AsyncClient(timeout=30) as client:
         token = await _unlock(client, url)

@@ -75,6 +75,8 @@ async def _run_face_phase(url: str, device: int) -> None:
             raise SystemExit(1)
         token = str(unlock_resp.json()["token"])
 
+        print("Mira a la camara. Capturando en 3 segundos...")  # noqa: T201
+        await asyncio.sleep(3)
         try:
             frame = capture_frame(device)
         except CameraError as exc:
