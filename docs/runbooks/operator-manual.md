@@ -140,7 +140,8 @@ corrected 2026-08-26; the only real robot startup guard is
 the physical identity of the speaker. One-use scope and the short TTL are
 the accepted mitigation.
 
-### Tier 2 — Face evidence (Plan 0029, code/tests merged 2026-08-25)
+### Tier 2 — Face evidence (Plan 0029, code/tests merged 2026-08-25; first
+real-hardware proof of concept 2026-08-27)
 
 ```env
 FACE_AUTHENTICATION_ENABLED=true          # server
@@ -148,21 +149,27 @@ FACE_AUTHENTICATION_MATCH_THRESHOLD=0.25  # stricter than the generic 0.4
 ROBOT_FACE_AUTH_ENABLED=true              # robot
 ```
 
-Enroll once (needs a fresh PIN unlock internally, one time):
+Enroll with `just onboard` (§6 covers the full identity+PIN+face flow) — it
+prompts for the owner PIN, warns before capturing ("Mira a la camara..."),
+and calls the same endpoint `just face-auth-demo --enroll` uses directly if
+you need the standalone tool. Revoke with `just face-auth-demo --revoke`,
+which really deletes the stored face profiles, not a soft flag.
 
-```powershell
-just face-auth-demo --enroll
-```
+After enrollment, a protected question is answered from the webcam frame
+attached to that same turn — no PIN needed for it. Two-or-more detected
+faces is a hard denial that does **not** fall back to asking for the PIN (a
+stranger sharing the frame would still overhear the answer).
 
-After that, a protected question is answered from the webcam frame attached
-to that same turn — no PIN needed for it. Two-or-more detected faces is a
-hard denial that does **not** fall back to asking for the PIN (a stranger
-sharing the frame would still overhear the answer). Revoke with
-`just face-auth-demo --revoke`, which really deletes the stored face
-profiles, not a soft flag.
+Validated live 2026-08-27: `just onboard` enrolled Pipec's face, then
+`just run-robot` correctly identified him on a real streaming turn
+(`Turn actor: status=identified role=owner ... evidence=1`) and answered
+"Tus hijos son emma y dominga." with no PIN. **This is one successful run
+on one person's hardware, not a calibrated study** — no threshold tuning,
+no false-accept/false-reject measurement, no lighting/distance/glasses
+variation.
 
 **Known gap, not yet closed:** no liveness/anti-spoofing — a photo of the
-owner held to the camera authenticates. No real-camera calibration
+owner held to the camera authenticates. No calibrated real-camera study
 (false-accept/reject rates, lighting, distance, glasses) exists yet. See
 [`current-state.md`](../architecture/current-state.md) for the full
 disclosure. Real-camera acceptance is a future plan, not yet written.
