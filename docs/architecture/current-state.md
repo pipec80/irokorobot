@@ -28,22 +28,23 @@
 > never "Iroko") — see [Plan
 > 0013](../plans/completed/0013-p0-voice-controller-bridge.md#execution-evidence).
 >
-> **Plan 0029 (PC-2 — consented local face evidence)** is implemented on
-> `feat/consented-local-face-evidence` (not yet merged): all 7 tasks are
-> complete, one commit per task plus one small test-maintenance follow-up
-> commit, each independently code-reviewed. Full repository gates pass on
-> this branch as of 2026-08-25: `just lint`, `just typecheck` (mypy 89 files
-> clean, pyright 0 errors), `just test` (905 passed, 0 failed), `just audit`,
-> and `just check` (16 hooks) are all green; the focused face-authentication
-> scenario (161 tests) and the PC-1 PIN regression (45 tests, proving the PIN
-> path from Plans 0026/0027 is unmodified) both pass. **This plan has no
-> liveness or anti-spoofing defense: a photograph of the owner held up to the
-> camera authenticates under this slice.** The real mitigation is PC-4 (voice
-> fusion), which is not yet built. Real-camera calibration and acceptance
-> (threshold tuning, false-accept/false-reject rates, lighting, distance,
-> glasses) remain open under a future real-camera acceptance plan (Plan
-> 0030). This is code, tests, and review only — pending Pipec's review and
-> merge — see [Plan
+> **Plan 0029 (PC-2 — consented local face evidence)** merged 2026-08-25 (PR
+> #73, squash, commit `4633685`): all 7 tasks complete, one commit per task
+> plus one small test-maintenance follow-up commit, each independently
+> code-reviewed. Full repository gates passed at merge time: `just lint`,
+> `just typecheck` (mypy 89 files clean, pyright 0 errors), `just test` (905
+> passed, 0 failed), `just audit`, and `just check` (16 hooks); the focused
+> face-authentication scenario (161 tests) and the PC-1 PIN regression (45
+> tests, proving the PIN path from Plans 0026/0027 is unmodified) both
+> passed. **This plan has no liveness or anti-spoofing defense: a
+> photograph of the owner held up to the camera authenticates under this
+> slice.** The real mitigation is PC-4 (voice fusion), which is not yet
+> built. A first real-hardware proof of concept ran 2026-08-27 via the new
+> unified `just onboard` flow — one successful live enrollment and
+> face-authenticated turn on Pipec's own webcam, not a calibrated study.
+> Calibrated real-camera acceptance (threshold tuning, false-accept/
+> false-reject rates, lighting, distance, glasses) remains open under a
+> future real-camera acceptance plan (Plan 0030) — see [Plan
 > 0029](../plans/open/0029-consented-local-face-evidence.md).
 >
 > **Verification boundary:** P0.3/P0.4 code and P0.5-A policy seams were
@@ -266,8 +267,8 @@ See [P0-S hardening audit](../history/audits/p0-s-hardening-audit.md) for eviden
   mode ending in an audible fallback instead of silence, and one correct
   non-disclosing family denial with `llm_ms=0`.
 
-- Plan 0029 (PC-2) closure on `feat/consented-local-face-evidence` (not yet
-  merged): the focused face-authentication scenario (161 tests:
+- Plan 0029 (PC-2) closure, merged 2026-08-25 (PR #73, squash, commit
+  `4633685`): the focused face-authentication scenario (161 tests:
   `test_biometric_consent_schema.py`, `test_active_person_identity.py`,
   `test_face_authentication.py`, `test_owner_face_enrollment.py`,
   `test_face_authenticated_turn.py`, `test_server_client.py`,
@@ -284,11 +285,15 @@ See [P0-S hardening audit](../history/audits/p0-s-hardening-audit.md) for eviden
   flag-disabled parity with `main`, no face detection on non-protected turns,
   enrollment without a fresh token, enrollment non-loopback, and no
   secret/embedding/frame in any log or audit row) has a real, specific
-  covering test, sampled and confirmed passing. No real camera/hardware
-  acceptance was performed — that is a future real-camera acceptance plan's
-  (Plan 0030) job. **This plan has no liveness/anti-spoofing defense**: a
-  photograph of the owner authenticates under this slice; the accepted
-  mitigation is PC-4 (voice fusion), not yet built.
+  covering test, sampled and confirmed passing. **This plan has no
+  liveness/anti-spoofing defense**: a photograph of the owner authenticates
+  under this slice; the accepted mitigation is PC-4 (voice fusion), not yet
+  built. A first real-hardware proof of concept ran 2026-08-27 (`just
+  onboard` enrollment + a `just run-robot` face-authenticated turn,
+  correctly identified, no PIN) — one successful live run, not a calibrated
+  study. Calibrated real camera/hardware acceptance (threshold tuning,
+  false-accept/false-reject rates, lighting, distance, glasses) is that
+  future real-camera acceptance plan's (Plan 0030) job.
 
 R1 runtime proof is complete — see
 [Plan 0013](../plans/completed/0013-p0-voice-controller-bridge.md); the

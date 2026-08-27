@@ -286,9 +286,15 @@ scene, but is not the authority that names Pipec.
 protected turn now resolves the owner from an in-request webcam frame through
 the same typed evidence and authorization contract the PIN (Plan 0026) uses,
 with the PIN kept as an independent recovery path. It has no liveness/
-anti-spoofing defense — a photograph authenticates under this slice — and no
-real-camera calibration exists yet. Speaker evidence (PC-3) and fusion (PC-4)
-are not started.
+anti-spoofing defense — a photograph authenticates under this slice.
+
+**Progress (2026-08-27):** first real-hardware proof of concept, via the new
+unified `just onboard` flow — Pipec enrolled his own face and a live
+`just run-robot` conversation turn was correctly identified and answered
+("Tus hijos son emma y dominga.") with no PIN and no token. One successful
+run on one person's hardware; not a calibrated study — no threshold tuning,
+no false-accept/false-reject measurement, no lighting/distance/glasses
+variation. Speaker evidence (PC-3) and fusion (PC-4) are not started.
 
 **Exit gate (not yet met):** calibrated local evaluation covers agreement,
 conflict, expiry, backend failure, false accept, and false reject. Conflicting

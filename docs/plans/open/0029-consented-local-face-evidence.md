@@ -5,31 +5,43 @@
 > `superpowers:executing-plans` to implement this plan task-by-task. Steps use
 > checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** Implemented on `feat/consented-local-face-evidence` on
-2026-08-25 — Tasks 1-7 done, one commit per task plus one small
-test-maintenance follow-up commit (`65b8b71`), each independently
-code-reviewed, authorized by Pipec. All focused and repository gates pass:
-the focused face-authentication scenario (161 tests) and the PC-1 PIN
-regression (45 tests, proving the PIN path from Plans 0026/0027 is
-unmodified) both pass with no failures; `just lint` (clean), `just
-typecheck` (mypy 89 files clean, pyright 0 errors), `just test` (905
-passed, 0 failed), `just audit` (clean), `just check` (16/16 hooks), and
-`git diff --check` (clean) are all green. The north-star scenario is
-proven end-to-end against a real disposable DB with synthetic face
-embeddings: an enrolled, consented owner's frame answers a protected
+**Status:** Implemented on `feat/consented-local-face-evidence`, merged
+2026-08-25 (PR #73, squash, commit `4633685`). Tasks 1-7 done, one commit
+per task plus one small test-maintenance follow-up commit (`65b8b71`),
+each independently code-reviewed, authorized by Pipec. All focused and
+repository gates pass: the focused face-authentication scenario (161
+tests) and the PC-1 PIN regression (45 tests, proving the PIN path from
+Plans 0026/0027 is unmodified) both pass with no failures; `just lint`
+(clean), `just typecheck` (mypy 89 files clean, pyright 0 errors), `just
+test` (905 passed, 0 failed), `just audit` (clean), `just check` (16/16
+hooks), and `git diff --check` (clean) are all green. The north-star
+scenario is proven end-to-end against a real disposable DB with synthetic
+face embeddings: an enrolled, consented owner's frame answers a protected
 question with the exact confirmed child names, with no PIN, no token, and
 no gesture; an unknown face, zero faces, two-or-more faces (terminal,
 never falling through to the PIN), revoked consent, and a non-owner role
 all deny without disclosure; a non-protected turn never runs face
 detection or derives an identity from an attached frame; and with the flag
 off, behavior is identical to `main`.
+
+**Real-hardware proof of concept (2026-08-27):** the same scenario ran
+live, once, with Pipec's own webcam via the new `just onboard` flow (PR
+#78) and `just run-robot`. Enrollment and a face-authenticated streaming
+turn both succeeded on the first real attempt: `Turn actor:
+status=identified role=owner ... evidence=1`, and the deterministic
+`own_children_list` branch answered "Tus hijos son emma y dominga." with
+no PIN and no token. **This is a single successful live run, not the
+calibrated study below** — no threshold tuning, no false-accept/
+false-reject measurement, no variation across lighting, distance, angle,
+or glasses. It confirms the slice works outside synthetic tests; it does
+not close the exit gate.
+
 **This plan has no liveness or anti-spoofing defense: a photograph of the
 owner held up to the camera authenticates under this slice.** The real
-mitigation is PC-4 (voice fusion), not yet built. Not yet proven: real
-webcam/hardware calibration and acceptance (threshold tuning, false-accept/
-false-reject rates, lighting, distance, glasses), which remain open under a
-future real-camera acceptance plan (Plan 0030). Pending independent review
-and merge.
+mitigation is PC-4 (voice fusion), not yet built. Not yet proven: a
+calibrated real-webcam/hardware acceptance study (threshold tuning,
+false-accept/false-reject rates across lighting, distance, glasses), which
+remains open under a future real-camera acceptance plan (Plan 0030).
 
 **Goal:** Let a protected voice turn resolve the owner from a webcam frame
 attached to the same request, emitting typed `IdentityEvidenceSource.FACE`
