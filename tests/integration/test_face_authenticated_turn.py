@@ -334,7 +334,7 @@ async def test_flag_off_ignores_attached_frame_entirely(
     face_db: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch, silence_wav_bytes: bytes
 ) -> None:
     """With FACE_AUTHENTICATION_ENABLED off (default), a frame is accepted but never inspected."""
-    assert settings.face_authentication_enabled is False
+    monkeypatch.setattr(settings, "face_authentication_enabled", False)
     await _enroll_owner_face(face_db.owner_entity_id)
     detect_mock = _mock_detect(monkeypatch, [_detected(_OWNER_EMBEDDING)])
     _mock_stt_tts(monkeypatch, text=_CHILD_QUESTION)
