@@ -114,7 +114,7 @@ foreach ($m in $RequiredModels) {
 # these are multi-GB downloads, never triggered without an explicit flag.
 if ($Pull -and $missing.Count -gt 0) {
     Write-Host ""
-    Write-Host "  Pulling $($missing.Count) missing model(s) — this can take a while and use several GB:"
+    Write-Host "  Pulling $($missing.Count) missing model(s) - this can take a while and use several GB:"
     foreach ($name in $missing) {
         Write-Host ""
         Write-Host "  --- ollama pull $name ---"
