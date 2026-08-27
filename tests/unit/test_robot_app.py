@@ -299,6 +299,7 @@ async def test_thinking_passes_the_held_token_to_transcribe(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The classic THINKING state must forward ctx.identity_token unchanged."""
+    monkeypatch.setattr(app.settings, "robot_face_auth_enabled", False)
     transcribe_mock = AsyncMock(return_value=_FAKE_RESULT)
     monkeypatch.setattr(app, "transcribe", transcribe_mock)
     ctx = LoopContext(audio=b"x", identity_token="opaque-token")  # noqa: S106 — fixture value
