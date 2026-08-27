@@ -176,8 +176,8 @@ anti-spoofing defense. A photograph of the owner held up to the camera
 authenticates under this slice, exactly as every task reviewer reported. The
 real mitigation is PC-4 (voice fusion), not yet built. Real-camera
 calibration and acceptance (threshold tuning, false-accept/false-reject
-rates, lighting, distance, glasses) remain open under a future real-camera
-acceptance plan (Plan 0030).
+rates, lighting, distance, glasses) is written and not yet executed as
+[Plan 0030](../plans/open/0030-real-camera-face-acceptance.md).
 
 **Evidence (2026-08-25):** on `feat/consented-local-face-evidence`, all 7
 tasks are implemented, one commit per task plus one small test-maintenance

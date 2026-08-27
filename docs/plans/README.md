@@ -17,7 +17,7 @@ deferred, umbrella, or product-design plan because it also lives under
 
 | Lane | Plans | Meaning |
 |---|---|---|
-| **NOW** | none | [0029 — consented local face evidence](open/0029-consented-local-face-evidence.md) merged 2026-08-25 (PR #73, squash, commit `4633685`). It connects the existing local face engine to owner authentication through the same typed evidence contract the PIN uses (Plan 0026), with no code change to `controller.py` or `authorization.py`. A first real-hardware proof of concept ran 2026-08-27 via the new unified `just onboard` flow — one successful live enrollment and face-authenticated turn, not a calibrated study. P1.2's exit gate is not yet met: no speaker evidence (PC-3), no fusion (PC-4), and no calibrated real-camera evaluation (threshold tuning, false-accept/false-reject rates) exists yet. No further plan is authorized until a real-camera acceptance plan is written and approved. |
+| **NOW** | [0030 — real-camera face acceptance](open/0030-real-camera-face-acceptance.md) | Written 2026-08-27, satisfying this board's own prior condition ("no further plan is authorized until a real-camera acceptance plan is written and approved"). Measures Pipec's genuine face distance against impostor distances (household members and unrelated photos) with the real webcam, chooses `face_authentication_match_threshold` from that data instead of Plan 0029's unvalidated guess, and confirms it live through `just run-server` + `just run-robot`. Not yet executed. Closing it closes only PC-2's real-camera acceptance — P1.2 still needs speaker evidence (PC-3) and fusion (PC-4). |
 | **REFERENCE ONLY** | [0015](open/0015-personal-companion-design.md) | Umbrella/design document; never execute it as an independent implementation batch |
 
 ## Queue rules
@@ -44,7 +44,8 @@ deferred, umbrella, or product-design plan because it also lives under
 | 5 | [0021 — typed intent](completed/0021-p0-typed-intent-resolution.md) | Implemented and operator-confirmed 2026-08-21 | Closed |
 | 6 | [0023 — grounded visual dialogue](completed/0023-p0-grounded-visual-dialogue.md) | Implemented and operator-confirmed 2026-08-25 | Closed |
 | 7 | [0013 — voice controller bridge](completed/0013-p0-voice-controller-bridge.md) | R1-03 root cause fixed and confirmed 2026-08-25 | Closed |
-| 8 | [0029 — consented local face evidence](open/0029-consented-local-face-evidence.md) | Merged (PR #73, 2026-08-25) | Closed for its own code/tests/review scope. Stays in `open/` per Queue rule 3 — P1.2's exit gate (calibrated real-camera evaluation, speaker evidence, fusion) is not yet met; owned by a future real-camera acceptance plan |
+| 8 | [0029 — consented local face evidence](open/0029-consented-local-face-evidence.md) | Merged (PR #73, 2026-08-25) | Closed for its own code/tests/review scope. Stays in `open/` per Queue rule 3 — its own real-camera acceptance is owned by Plan 0030, below |
+| 9 | [0030 — real-camera face acceptance](open/0030-real-camera-face-acceptance.md) | Written 2026-08-27, not yet executed | The current `NOW` item. Closes PC-2's real-camera acceptance only — P1.2's exit gate still needs speaker evidence (PC-3) and fusion (PC-4) |
 
 Supporting active designs and open acceptance work are listed in the
 [open-plan index](open/README.md). Closed execution evidence is isolated in

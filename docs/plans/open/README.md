@@ -13,15 +13,16 @@ closed). Existing components named under **Reuse** must not be rebuilt by a
 later plan.
 
 For daily work, do not choose a plan from this inventory. Follow the
-single-WIP [operational board](../README.md#operational-board) — **P0 is
-fully accepted and no plan is currently authorized.** Use the
+single-WIP [operational board](../README.md#operational-board) — **Plan 0030
+is the current `NOW` item.** Use the
 [personal-companion delivery map](../../roadmap/personal-companion-delivery-map.md)
 to see the code, tests, verified gap, and accountable plan for each outcome.
 
 | Plan | Implementation reality | Reuse | Remaining closure |
 |---|---|---|---|
-| [0015](0015-personal-companion-design.md) | Approved product design; PC-1 code and acceptance are both complete (Plans 0025–0028); PC-2 code/tests/review complete (Plan 0029) | Controller, policy/audit, v4 child tools, identity-session seam, onboarding primitives, STT/TTS, face engine | PC-2's real-camera acceptance (Plan 0029/0030); speaker evidence (PC-3), fusion (PC-4), visual companion acceptance (PC-5), and family profile expansion (PC-6) remain later slices |
-| [0029](0029-consented-local-face-evidence.md) | Merged (PR #73); a first real-hardware proof of concept ran 2026-08-27 via `just onboard` | Face engine, biometric consent repository, in-turn face resolver | Calibrated real-camera acceptance (threshold tuning, false-accept/false-reject rates) — owned by Plan 0030 |
+| [0015](0015-personal-companion-design.md) | Approved product design; PC-1 code and acceptance are both complete (Plans 0025–0028); PC-2 code/tests/review complete (Plan 0029) | Controller, policy/audit, v4 child tools, identity-session seam, onboarding primitives, STT/TTS, face engine | PC-2's real-camera acceptance (Plan 0030); speaker evidence (PC-3), fusion (PC-4), visual companion acceptance (PC-5), and family profile expansion (PC-6) remain later slices |
+| [0029](0029-consented-local-face-evidence.md) | Merged (PR #73); a first real-hardware proof of concept ran 2026-08-27 via `just onboard` | Face engine, biometric consent repository, in-turn face resolver | Calibrated real-camera acceptance — owned by Plan 0030, below |
+| [0030](0030-real-camera-face-acceptance.md) | Written 2026-08-27, not yet executed | `face_auth_demo.py`'s enrollment flow, `detect_faces`, `capture_frame` | The current `NOW` item — see the [operational board](../README.md#operational-board) |
 
 Plans 0014 (P0 runtime-policy umbrella), 0020 (operator-QA remediation
 umbrella), and 0024 (owner-authenticated memory MVP design) closed with no
@@ -43,8 +44,8 @@ fixing the Whisper prompt's stale "Omnibot" name) closed the same way — see
 [completed/0023](../completed/0023-p0-grounded-visual-dialogue.md), and
 [completed/0013](../completed/0013-p0-voice-controller-bridge.md).
 
-Canonical execution order: **none — P0 is fully accepted. PC-2's real-camera
-acceptance (Plan 0030) is the next gate.**
+Canonical execution order: **Plan 0030 (real-camera face acceptance) — the
+only executable item in `NOW`.**
 
 ## Status rule
 
