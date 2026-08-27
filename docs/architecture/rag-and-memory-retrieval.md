@@ -899,5 +899,5 @@ implementan R1–R6 dentro del MVP R0.
 - [Contratos cognitivos](cognitive-contracts.md)
 - [Estado actual](current-state.md)
 - [Roadmap cognitivo](../roadmap/cognitive-roadmap.md)
-- [MVP de memoria personal autenticada](../plans/open/0024-owner-authenticated-memory-mvp-design.md)
+- [MVP de memoria personal autenticada](../plans/completed/0024-owner-authenticated-memory-mvp-design.md)
 - [ADR 0008 — autenticación progresiva](../adr/0008-progressive-owner-authentication.md)

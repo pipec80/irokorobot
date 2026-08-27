@@ -146,7 +146,7 @@ one-use local unlock into a reusable network session.
 
 ## Follow-up
 
-- [Owner-authenticated personal-memory MVP design](../plans/open/0024-owner-authenticated-memory-mvp-design.md)
+- [Owner-authenticated personal-memory MVP design](../plans/completed/0024-owner-authenticated-memory-mvp-design.md)
 - [Personal companion design](../plans/open/0015-personal-companion-design.md)
 - [Identity, household access, and consent](../architecture/identity-and-access.md)
 - [Memory, relationships, onboarding, and world state](../architecture/memory-and-world-state.md)

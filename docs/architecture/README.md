@@ -65,7 +65,7 @@ specific conflict instead of redesigning the project implicitly.
 - [ADR 0009](../adr/0009-locked-posture-and-scoped-capabilities.md): defines
   what remains usable for an unknown speaker and why authentication never
   becomes a master permission for memory, home, computer, or physical actions.
-- [`../plans/open/0024-owner-authenticated-memory-mvp-design.md`](../plans/open/0024-owner-authenticated-memory-mvp-design.md):
+- [`../plans/completed/0024-owner-authenticated-memory-mvp-design.md`](../plans/completed/0024-owner-authenticated-memory-mvp-design.md):
   current product-spine design for the first authenticated personal-memory
   proof. Its executable sequence is
   [0025](../plans/completed/0025-personal-owner-bootstrap-and-pin-setup.md) (merged) →

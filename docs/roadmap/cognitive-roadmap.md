@@ -246,7 +246,7 @@ retrieval, and audible output. It must not be a public admin API.
 same request reveals no names, count, hint, or fact existence. Both
 scenarios were repeated 3 times each in classic mode and 3 times each in
 streaming mode, with real microphone/speaker hardware, and are audited.
-[Plan 0024](../plans/open/0024-owner-authenticated-memory-mvp-design.md)
+[Plan 0024](../plans/completed/0024-owner-authenticated-memory-mvp-design.md)
 defines the design. Its executable portfolio is
 [0025 owner setup and PIN](../plans/completed/0025-personal-owner-bootstrap-and-pin-setup.md)
 (merged, PR #56) → [0026 classic authenticated turn](../plans/completed/0026-one-use-owner-authenticated-classic-turn.md)

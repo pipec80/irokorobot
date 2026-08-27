@@ -149,6 +149,6 @@ either direction.
 ## Follow-up
 
 - [Personal companion design — PC-1](../plans/open/0015-personal-companion-design.md)
-- [P0 operator-QA remediation design](../plans/open/0020-p0-operator-qa-remediation-design.md)
+- [P0 operator-QA remediation design](../plans/completed/0020-p0-operator-qa-remediation-design.md)
 - [Identity, household access, and consent](../architecture/identity-and-access.md)
 - [Cognitive roadmap](../roadmap/cognitive-roadmap.md)
