@@ -198,7 +198,9 @@ partially-applied threshold in place.
 ```python
 def cosine_distance(a: np.ndarray, b: np.ndarray) -> float: ...
 
+
 def closest_profile_distance(probe: np.ndarray, profiles: list[np.ndarray]) -> float: ...
+
 
 @dataclass(frozen=True)
 class ThresholdResult:
@@ -208,11 +210,13 @@ class ThresholdResult:
     total_genuine: int
     total_impostor: int
 
+
 def sweep_thresholds(
     genuine_distances: list[float],
     impostor_distances: list[float],
     candidates: list[float],
 ) -> list[ThresholdResult]: ...
+
 
 def zero_far_threshold(
     genuine_distances: list[float], impostor_distances: list[float]
