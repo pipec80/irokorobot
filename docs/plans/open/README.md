@@ -20,11 +20,16 @@ to see the code, tests, verified gap, and accountable plan for each outcome.
 
 | Plan | Implementation reality | Reuse | Remaining closure |
 |---|---|---|---|
-| [0014](0014-p0-runtime-policy-hardening-design.md) | Complete umbrella: C1–C7 implemented, reviewed, and operator-confirmed | Plans 0016–0023 | None — combined P0-C operator acceptance passed 2026-08-25 |
-| [0015](0015-personal-companion-design.md) | Approved product design; PC-1 code and acceptance are both complete (Plans 0025–0028) | Controller, policy/audit, v4 child tools, identity-session seam, onboarding primitives, STT/TTS, face engine | Biometrics (face/voice fusion, PC-2/PC-3) remain later slices |
-| [0020](0020-p0-operator-qa-remediation-design.md) | Complete umbrella: C5/C6/C7 all implemented, reviewed, and operator-confirmed | Typed intent resolution (0021), reliable streaming (0022), grounded visual dialogue (0023) | None — its own "required real acceptance rerun" passed 2026-08-25 |
-| [0024](0024-owner-authenticated-memory-mvp-design.md) | Approved design; fully delivered by Plans 0025–0028 | Existing identity, authorization, child-memory, and channel seams | None — design delivered |
+| [0015](0015-personal-companion-design.md) | Approved product design; PC-1 code and acceptance are both complete (Plans 0025–0028); PC-2 code/tests/review complete (Plan 0029) | Controller, policy/audit, v4 child tools, identity-session seam, onboarding primitives, STT/TTS, face engine | PC-2's real-camera acceptance (Plan 0029/0030); speaker evidence (PC-3), fusion (PC-4), visual companion acceptance (PC-5), and family profile expansion (PC-6) remain later slices |
+| [0029](0029-consented-local-face-evidence.md) | Merged (PR #73); a first real-hardware proof of concept ran 2026-08-27 via `just onboard` | Face engine, biometric consent repository, in-turn face resolver | Calibrated real-camera acceptance (threshold tuning, false-accept/false-reject rates) — owned by Plan 0030 |
 
+Plans 0014 (P0 runtime-policy umbrella), 0020 (operator-QA remediation
+umbrella), and 0024 (owner-authenticated memory MVP design) closed with no
+remaining code or gates of their own — each was reference material for
+already-completed slices — and moved to `completed/`; see
+[completed/0014](../completed/0014-p0-runtime-policy-hardening-design.md),
+[completed/0020](../completed/0020-p0-operator-qa-remediation-design.md), and
+[completed/0024](../completed/0024-owner-authenticated-memory-mvp-design.md).
 Plans 0025, 0026, 0027, and 0028 (all merged/executed, PC-1 accepted
 2026-08-21) closed with no remaining acceptance debt of their own — see
 [completed/0025](../completed/0025-personal-owner-bootstrap-and-pin-setup.md),
@@ -38,7 +43,8 @@ fixing the Whisper prompt's stale "Omnibot" name) closed the same way — see
 [completed/0023](../completed/0023-p0-grounded-visual-dialogue.md), and
 [completed/0013](../completed/0013-p0-voice-controller-bridge.md).
 
-Canonical execution order: **none — P0 is fully accepted.**
+Canonical execution order: **none — P0 is fully accepted. PC-2's real-camera
+acceptance (Plan 0030) is the next gate.**
 
 ## Status rule
 

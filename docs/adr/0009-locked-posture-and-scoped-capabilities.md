@@ -105,6 +105,6 @@ authority.
 ## Follow-up
 
 - [Identity, household access, and consent](../architecture/identity-and-access.md)
-- [Owner-authenticated personal-memory MVP](../plans/open/0024-owner-authenticated-memory-mvp-design.md)
+- [Owner-authenticated personal-memory MVP](../plans/completed/0024-owner-authenticated-memory-mvp-design.md)
 - [One-use classic owner turn](../plans/completed/0026-one-use-owner-authenticated-classic-turn.md)
 - [Personal companion delivery map](../roadmap/personal-companion-delivery-map.md)

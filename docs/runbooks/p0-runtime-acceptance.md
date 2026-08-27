@@ -4,7 +4,7 @@
 > hardening is implemented and automated gates are green. The first operator
 > run on 2026-08-17 confirmed policy denial and media paths but found intent,
 > silent-streaming, and visual-grounding blockers documented in
-> [Plan 0020](../plans/open/0020-p0-operator-qa-remediation-design.md). The
+> [Plan 0020](../plans/completed/0020-p0-operator-qa-remediation-design.md). The
 > silent-streaming blocker is closed: [Plan
 > 0022](../plans/completed/0022-p0-reliable-streaming-output.md) passed a 2026-08-20
 > real operator rerun (case C1-S below) with zero silent successes across 4
@@ -137,7 +137,7 @@ on any mismatch; do not reinterpret a near miss as a pass.
 
 P1.1 is not a P0 closure step. Its old illustrative session procedure was
 superseded by the owner-approved design in
-[Plan 0024](../plans/open/0024-owner-authenticated-memory-mvp-design.md) and the
+[Plan 0024](../plans/completed/0024-owner-authenticated-memory-mvp-design.md) and the
 bounded executable sequence, now fully executed:
 
 1. [Plan 0025](../plans/completed/0025-personal-owner-bootstrap-and-pin-setup.md)

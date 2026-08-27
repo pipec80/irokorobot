@@ -65,7 +65,7 @@
 > `just run-robot` acceptance are now complete (2026-08-25), see above. The
 > subsequent runtime-policy audit confirmed the streaming, visual-dialogue,
 > QA-WAV, and protected-wording gaps. They were bounded by [Plan
-> 0014](../plans/open/0014-p0-runtime-policy-hardening-design.md), whose every
+> 0014](../plans/completed/0014-p0-runtime-policy-hardening-design.md), whose every
 > slice (C1–C7) and the combined real operator run are now complete.
 > Prior P0.3/P0-S verification includes `just lint`, `just typecheck`, `just
 > test` (514 passed), `just audit`, and `just check`; P0-S2 evidence includes GitHub CI and
@@ -298,7 +298,7 @@ See [P0-S hardening audit](../history/audits/p0-s-hardening-audit.md) for eviden
 R1 runtime proof is complete — see
 [Plan 0013](../plans/completed/0013-p0-voice-controller-bridge.md); the
 authenticated-owner acceptance gate is defined in
-[Plan 0024](../plans/open/0024-owner-authenticated-memory-mvp-design.md). Its
+[Plan 0024](../plans/completed/0024-owner-authenticated-memory-mvp-design.md). Its
 executable sequence is
 [0025](../plans/completed/0025-personal-owner-bootstrap-and-pin-setup.md) (merged) →
 [0026](../plans/completed/0026-one-use-owner-authenticated-classic-turn.md) (merged) →
