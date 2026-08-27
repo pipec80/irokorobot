@@ -43,9 +43,9 @@
 > unified `just onboard` flow — one successful live enrollment and
 > face-authenticated turn on Pipec's own webcam, not a calibrated study.
 > Calibrated real-camera acceptance (threshold tuning, false-accept/
-> false-reject rates, lighting, distance, glasses) remains open under a
-> future real-camera acceptance plan (Plan 0030) — see [Plan
-> 0029](../plans/open/0029-consented-local-face-evidence.md).
+> false-reject rates, lighting, distance, glasses) is written and not yet
+> executed as [Plan 0030](../plans/open/0030-real-camera-face-acceptance.md)
+> — see also [Plan 0029](../plans/open/0029-consented-local-face-evidence.md).
 >
 > **Verification boundary:** P0.3/P0.4 code and P0.5-A policy seams were
 > inspected. P0.4 passed `just gate` (527 tests) before PR #40 merged it,
@@ -171,8 +171,8 @@ gap prevents owner-by-default memory disclosure.
 - liveness/anti-spoofing defense for face evidence (Plan 0029): a photograph
   of the owner currently authenticates under that slice; the accepted
   mitigation is PC-4 voice fusion, not yet built; real-camera
-  calibration/acceptance is separately open under a future real-camera
-  acceptance plan (Plan 0030);
+  calibration/acceptance is written and not yet executed as
+  [Plan 0030](../plans/open/0030-real-camera-face-acceptance.md);
 - typed `SceneObservation`, `WorldState`, tracking, scene graph, and spatial
   memory;
 - cognitive memory lifecycle, confirmation, reflection, and forgetting;
@@ -292,8 +292,9 @@ See [P0-S hardening audit](../history/audits/p0-s-hardening-audit.md) for eviden
   onboard` enrollment + a `just run-robot` face-authenticated turn,
   correctly identified, no PIN) — one successful live run, not a calibrated
   study. Calibrated real camera/hardware acceptance (threshold tuning,
-  false-accept/false-reject rates, lighting, distance, glasses) is that
-  future real-camera acceptance plan's (Plan 0030) job.
+  false-accept/false-reject rates, lighting, distance, glasses) is
+  [Plan 0030](../plans/open/0030-real-camera-face-acceptance.md)'s job —
+  written 2026-08-27, not yet executed.
 
 R1 runtime proof is complete — see
 [Plan 0013](../plans/completed/0013-p0-voice-controller-bridge.md); the

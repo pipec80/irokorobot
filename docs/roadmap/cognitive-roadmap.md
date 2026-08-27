@@ -294,7 +294,9 @@ unified `just onboard` flow — Pipec enrolled his own face and a live
 ("Tus hijos son emma y dominga.") with no PIN and no token. One successful
 run on one person's hardware; not a calibrated study — no threshold tuning,
 no false-accept/false-reject measurement, no lighting/distance/glasses
-variation. Speaker evidence (PC-3) and fusion (PC-4) are not started.
+variation. The face half of that calibration is written and not yet
+executed as [Plan 0030](../plans/open/0030-real-camera-face-acceptance.md).
+Speaker evidence (PC-3) and fusion (PC-4) are not started.
 
 **Exit gate (not yet met):** calibrated local evaluation covers agreement,
 conflict, expiry, backend failure, false accept, and false reject. Conflicting
