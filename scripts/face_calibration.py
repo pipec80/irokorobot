@@ -421,7 +421,17 @@ def analyze_corpus(records: list[CorpusRecord], *, profile_count: int) -> Analys
 
 
 async def _run_capture(args: argparse.Namespace) -> None:
-    """Capture one probe frame and append it to the corpus."""
+    """Capture one probe frame and append it to the corpus.
+
+    Warns before opening the webcam, mirroring `scripts/onboard.py` and
+    `scripts/face_auth_demo.py` (PR #80) — capturing instantly with no
+    countdown produces blinking/off-camera frames across a capture matrix
+    this size. Photo-file captures (`--image`) skip the warning; no camera
+    opens for those.
+    """
+    if args.image is None:
+        print("Mira a la camara. Capturando en 3 segundos...")  # noqa: T201
+        await asyncio.sleep(3)
     record = await capture_probe(
         subject=args.subject, condition=args.condition, image=args.image, device=args.device
     )
