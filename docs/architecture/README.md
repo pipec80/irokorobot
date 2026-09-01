@@ -33,6 +33,7 @@ decision is not silently changed by implementation; replace it with a new ADR.
 | Task | Read completely |
 |---|---|
 | Any cognitive implementation | `implementation-guardrails.md`, this index, the named plan, every document that plan lists |
+| Server/FastAPI hardening | `server-production-baseline.md`, `implementation-guardrails.md`, the named server-baseline child plan, and every ADR that child lists |
 | Domain models/controller | ADR-0004, ADR-0005, `cognitive-contracts.md`, `cognitive-architecture.md` |
 | Identity or permissions | `identity-and-access.md`, ADR-0004, ADR-0006, ADR-0008, ADR-0009, `cognitive-contracts.md` |
 | Memory or onboarding | `memory-and-world-state.md`, `rag-and-memory-retrieval.md`, `identity-and-access.md` |
@@ -49,6 +50,10 @@ specific conflict instead of redesigning the project implicitly.
 
 - [`current-state.md`](current-state.md): verified implementation snapshot and
   known gaps.
+- [`server-production-baseline.md`](server-production-baseline.md): audited
+  target rules and bounded execution portfolio for FastAPI, Starlette,
+  Uvicorn, uploads, privacy, SQLite, lifecycle, and HTTP contracts. Plan 0030
+  remains ahead of this queued work.
 - [`../roadmap/personal-companion-delivery-map.md`](../roadmap/personal-companion-delivery-map.md):
   canonical mapping from the personal-companion outcome to existing code,
   tests, verified gaps, and the one accountable executable plan.

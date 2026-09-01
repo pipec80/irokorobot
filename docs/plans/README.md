@@ -18,7 +18,9 @@ deferred, umbrella, or product-design plan because it also lives under
 | Lane | Plans | Meaning |
 |---|---|---|
 | **NOW** | [0030 — real-camera face acceptance](open/0030-real-camera-face-acceptance.md) | Written 2026-08-27, satisfying this board's own prior condition ("no further plan is authorized until a real-camera acceptance plan is written and approved"). Measures Pipec's genuine face distance against impostor distances (household members and unrelated photos) with the real webcam, chooses `face_authentication_match_threshold` from that data instead of Plan 0029's unvalidated guess, and confirms it live through `just run-server` + `just run-robot`. Not yet executed. Closing it closes only PC-2's real-camera acceptance — P1.2 still needs speaker evidence (PC-3) and fusion (PC-4). |
+| **QUEUED** | [0032 — server privacy and request observability](open/0032-server-privacy-and-request-observability.md) | First executable child of the audited server-production capsule. It is blocked while 0030 is `NOW`; after 0030 closes, revalidate 0032's named log sites and promote only 0032 with explicit authorization. Children 0033–0042 remain transitively queued in the order locked by 0031. |
 | **REFERENCE ONLY** | [0015](open/0015-personal-companion-design.md) | Umbrella/design document; never execute it as an independent implementation batch |
+| **REFERENCE ONLY** | [0031](open/0031-server-production-baseline-design.md) | Audited FastAPI/Starlette/Uvicorn hardening umbrella; preserves decisions and child order but is never executed as one batch. |
 
 ## Queue rules
 
@@ -32,6 +34,9 @@ deferred, umbrella, or product-design plan because it also lives under
    later dependent plan.
 6. Batch compatible physical acceptance cases into one operator session, but
    record each plan's evidence separately.
+7. `QUEUED` documents preserve a reviewed future handoff; they do not compete
+   with `NOW` and cannot be promoted until the current item closes or is
+   explicitly removed as blocked.
 
 ## Dependency order
 
@@ -46,6 +51,7 @@ deferred, umbrella, or product-design plan because it also lives under
 | 7 | [0013 — voice controller bridge](completed/0013-p0-voice-controller-bridge.md) | R1-03 root cause fixed and confirmed 2026-08-25 | Closed |
 | 8 | [0029 — consented local face evidence](open/0029-consented-local-face-evidence.md) | Merged (PR #73, 2026-08-25) | Closed for its own code/tests/review scope. Stays in `open/` per Queue rule 3 — its own real-camera acceptance is owned by Plan 0030, below |
 | 9 | [0030 — real-camera face acceptance](open/0030-real-camera-face-acceptance.md) | Written 2026-08-27, not yet executed | The current `NOW` item. Closes PC-2's real-camera acceptance only — P1.2's exit gate still needs speaker evidence (PC-3) and fusion (PC-4) |
+| 10 | [0031 — server production baseline design](open/0031-server-production-baseline-design.md) | Audited reference capsule, not executable | After 0030 closes, begin only with queued Plan 0032; then follow children 0033–0042 one at a time |
 
 Supporting active designs and open acceptance work are listed in the
 [open-plan index](open/README.md). Closed execution evidence is isolated in

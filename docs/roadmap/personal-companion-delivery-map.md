@@ -59,13 +59,15 @@ batches:
 | [0015](../plans/open/0015-personal-companion-design.md) | Product direction | Reuse of the existing local cognitive/audio/memory foundations | Personal-companion stages PC-1 through PC-6 |
 | [0020](../plans/completed/0020-p0-operator-qa-remediation-design.md) | Operator-QA defect umbrella | C5 via completed Plan 0021, C6 via completed Plan 0022, C7 via completed Plan 0023 | None — its own required real acceptance rerun passed 2026-08-25 |
 | [0024](../plans/completed/0024-owner-authenticated-memory-mvp-design.md) | PC-1 integration design | Existing identity, policy, child-memory, and channel seams; Plans 0025–0028 merged/executed | Delivery complete — PC-1 accepted |
+| [0031](../plans/open/0031-server-production-baseline-design.md) | Cross-cutting server reference capsule | Existing FastAPI/Starlette/Uvicorn and accepted server/robot contracts | Children 0032–0042, queued after Plan 0030 and before the next new identity capability |
 
-Do not execute these four documents from top to bottom. Their job is to retain
+Do not execute these reference documents from top to bottom. Their job is to retain
 decisions and acceptance boundaries while the smaller plans deliver the gaps.
 Three of them (0014, 0020, 0024) now live under `plans/completed/` — they
 never had their own executable code or gates, and moved there once every
 slice they governed closed elsewhere. 0015 remains under `plans/open/` because
-PC-3 through PC-6 are still real, unstarted work.
+PC-3 through PC-6 are still real, unstarted work. Plan 0031 remains open and
+reference-only until its queued child portfolio closes.
 
 ## Code-to-outcome traceability
 
