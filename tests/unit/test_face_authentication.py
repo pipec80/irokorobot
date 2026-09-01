@@ -25,6 +25,7 @@ from server.cognition.models import CognitiveEvent
 from server.cognition.owner_authentication import OwnerRequestResolver
 from server.cognition.response_plan import TextTurnPayload
 from server.exceptions import VisionError
+from server.settings import settings
 from server.vision.faces import DetectedFace, FaceMatch
 
 _NOW = datetime(2026, 8, 25, 10, 0, tzinfo=UTC)
@@ -206,8 +207,17 @@ async def test_two_detected_faces_resolves_ambiguous_without_matching() -> None:
 
 
 @pytest.mark.unit
-async def test_match_beyond_strict_threshold_resolves_unknown() -> None:
-    """A distance that would pass the generic 0.4 threshold must still fail here."""
+async def test_match_beyond_strict_threshold_resolves_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A distance beyond the strict auth threshold must fail even if some
+    looser, generic threshold would have accepted it.
+
+    Pins `face_authentication_match_threshold` explicitly rather than
+    relying on whatever the production default currently is — the point
+    under test is the boundary check itself, not any particular value.
+    """
+    monkeypatch.setattr(settings, "face_authentication_match_threshold", 0.25)
 
     async def detect_one(_frame: bytes) -> list[DetectedFace]:
         return [_face(1)]
