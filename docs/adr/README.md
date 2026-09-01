@@ -17,5 +17,9 @@ supersedes it and update the old one's status.
 | [0007](0007-first-boot-and-default-posture.md) | First boot and local-channel default posture | Accepted; local-owner presumption superseded by 0008 |
 | [0008](0008-progressive-owner-authentication.md) | Progressive owner authentication | Accepted; partially supersedes 0007 |
 | [0009](0009-locked-posture-and-scoped-capabilities.md) | Locked posture and scoped capabilities | Accepted |
+| [0010](0010-fastapi-asgi-runtime-baseline.md) | Standardize the FastAPI/ASGI runtime baseline | Proposed |
+| [0011](0011-sqlite-transaction-ownership.md) | Give each SQLite write transaction one coroutine owner | Proposed |
+| [0012](0012-line-delimited-stream-terminal-events.md) | Require a terminal event in the line-delimited stream | Proposed |
+| [0013](0013-local-http-network-posture.md) | Keep the HTTP server local-first by default | Proposed |
 
 New ADRs start from [`0000-adr-template.md`](0000-adr-template.md).

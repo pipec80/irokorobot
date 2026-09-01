@@ -23,6 +23,27 @@ to see the code, tests, verified gap, and accountable plan for each outcome.
 | [0015](0015-personal-companion-design.md) | Approved product design; PC-1 code and acceptance are both complete (Plans 0025–0028); PC-2 code/tests/review complete (Plan 0029) | Controller, policy/audit, v4 child tools, identity-session seam, onboarding primitives, STT/TTS, face engine | PC-2's real-camera acceptance (Plan 0030); speaker evidence (PC-3), fusion (PC-4), visual companion acceptance (PC-5), and family profile expansion (PC-6) remain later slices |
 | [0029](0029-consented-local-face-evidence.md) | Merged (PR #73); a first real-hardware proof of concept ran 2026-08-27 via `just onboard` | Face engine, biometric consent repository, in-turn face resolver | Calibrated real-camera acceptance — owned by Plan 0030, below |
 | [0030](0030-real-camera-face-acceptance.md) | Written 2026-08-27, not yet executed | `face_auth_demo.py`'s enrollment flow, `detect_faces`, `capture_frame` | The current `NOW` item — see the [operational board](../README.md#operational-board) |
+| [0031](0031-server-production-baseline-design.md) | Audited reference-only server capsule; no production implementation | Existing FastAPI/Starlette/Uvicorn, HTTP/audio contracts, tests and server/robot boundary | Children 0032–0042 below, one at a time after 0030 closes |
+
+## Queued server-production capsule
+
+These plans are executable specifications but are **not authorized** while
+Plan 0030 is `NOW`. Plan 0031 locks their order; only the first unfinished
+child may be promoted after a narrow assumption recheck.
+
+| Order | Plan | Outcome |
+|---:|---|---|
+| 1 | [0032](0032-server-privacy-and-request-observability.md) | Privacy-safe logs and request correlation |
+| 2 | [0033](0033-owner-unlock-http-hardening.md) | PIN validation and race-safe owner unlock |
+| 3 | [0034](0034-upload-and-multipart-security.md) | Raw, multipart, and decoded-media limits |
+| 4 | [0035](0035-sqlite-transaction-owner.md) | Tested transaction ownership primitive |
+| 5 | [0036](0036-sqlite-write-migration-and-outbox-removal.md) | Runtime-write migration and unused outbox removal |
+| 6 | [0037](0037-deterministic-ci-baseline.md) | Deterministic API/local integration gate at >=80% coverage |
+| 7 | [0038](0038-uvicorn-runtime-baseline.md) | Explicit one-worker runtime defaults |
+| 8 | [0039](0039-application-lifecycle-and-http-resources.md) | Failure-safe lifespan and shared HTTP transport |
+| 9 | [0040](0040-fastapi-contract-and-openapi-baseline.md) | Typed dependencies, OpenAPI, health/readiness |
+| 10 | [0041](0041-streaming-terminal-contract.md) | Coordinated terminal stream error |
+| 11 | [0042](0042-server-baseline-closure.md) | Full gates, runtime evidence, ADR review, and closure |
 
 Plans 0014 (P0 runtime-policy umbrella), 0020 (operator-QA remediation
 umbrella), and 0024 (owner-authenticated memory MVP design) closed with no
@@ -45,7 +66,8 @@ fixing the Whisper prompt's stale "Omnibot" name) closed the same way — see
 [completed/0013](../completed/0013-p0-voice-controller-bridge.md).
 
 Canonical execution order: **Plan 0030 (real-camera face acceptance) — the
-only executable item in `NOW`.**
+only executable item in `NOW`.** The server capsule is queued, beginning with
+0032 only after 0030 closes and Pipec authorizes promotion.
 
 ## Status rule
 

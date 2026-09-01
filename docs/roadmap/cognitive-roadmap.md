@@ -36,6 +36,7 @@ home than a smaller system that knows when it does not know.
 | P0-C | Runtime policy hardening | Makes every enabled public route obey the P0 controller/policy boundary and proves it through the robot. | P0.3–P0.5 |
 | P1.1 | Owner-authenticated memory MVP | Uses a one-use local unlock to prove the authorized “Máximo y Dominga” path and paired denial. | P0-C6 audible streaming |
 | P1.2 | Progressive biometric identity | Adds consented face, then speaker evidence through the same authentication contract. | P1.1, P0.2 |
+| X1 | Server production baseline | Freezes privacy, upload, SQLite, CI, Uvicorn, lifecycle, OpenAPI, and streaming rules before adding the next identity capability. | Plan 0030 real-camera closure |
 | P1.3 | Personal companion acceptance | Demonstrates authentication, authorized memory, visual scene, recovery, and denial through the real PC path. | P1.1–P1.2 |
 | P2.1 | Situated perception and WorldState | Represents fresh observations independently of durable memory. | P1 controller/policy |
 | P2.2 | Memory lifecycle and retrieval quality | Adds confirmation, contradiction, relevance thresholds, consolidation, and forgetting. | P0.4–P0.5 |
@@ -302,6 +303,28 @@ Speaker evidence (PC-3) and fusion (PC-4) are not started.
 conflict, expiry, backend failure, false accept, and false reject. Conflicting
 evidence returns `ambiguous`; the administrative recovery path remains
 available.
+
+### X1 — Server production baseline checkpoint
+
+After Plan 0030 closes the current real-camera acceptance, the next bounded
+priority is the queued server-production capsule documented in
+[Plan 0031](../plans/open/0031-server-production-baseline-design.md). It runs
+through children 0032–0042 one at a time before the roadmap promotes the next
+new identity capability.
+
+This checkpoint does not add a companion feature and does not close P1.2. It
+standardizes the HTTP/ASGI foundation that later face, speaker, fusion, and
+family work will reuse. Plan 0031 is reference-only; Plan 0032 is the first
+executable child after 0030.
+
+**Exit gate**
+
+- privacy, upload, PIN, SQLite, CI, Uvicorn, lifecycle, OpenAPI, and streaming
+  child plans meet their own tests/reviews;
+- full deterministic coverage remains at least 80%;
+- the real server/robot path passes the capsule closure scenarios;
+- proposed ADR 0010–0013 are accepted explicitly or the checkpoint remains
+  open.
 
 ### P1.3 — Personal companion acceptance
 
