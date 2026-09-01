@@ -38,10 +38,16 @@ not close the exit gate.
 
 **This plan has no liveness or anti-spoofing defense: a photograph of the
 owner held up to the camera authenticates under this slice.** The real
-mitigation is PC-4 (voice fusion), not yet built. Not yet proven: a
-calibrated real-webcam/hardware acceptance study (threshold tuning,
-false-accept/false-reject rates across lighting, distance, glasses), which
-remains open under a future real-camera acceptance plan (Plan 0030).
+mitigation is PC-4 (voice fusion), not yet built — this remains true after
+Plan 0030 below; closing 0030 did not touch this gap.
+
+**Closed (2026-09-01):** the calibrated real-webcam acceptance study this
+plan's own text named as missing is now done — see
+[Plan 0030](0030-real-camera-face-acceptance.md), executed
+provisional PASS. `face_authentication_match_threshold` moved from the
+`0.25` guess this plan shipped to a measured `0.5815`. This plan's only
+remaining debt was that study; with it closed, this plan moves to
+`completed/` alongside it.
 
 **Goal:** Let a protected voice turn resolve the owner from a webcam frame
 attached to the same request, emitting typed `IdentityEvidenceSource.FACE`
@@ -53,7 +59,7 @@ scaffolding, not the product. The target model is the one already familiar
 from a phone: face and voice resolve identity instantly; the PIN remains the
 recovery path when biometrics fail. This plan delivers the face half of that
 model — PC-2 of
-[Plan 0015](0015-personal-companion-design.md). Voice (PC-3) and fusion (PC-4)
+[Plan 0015](../open/0015-personal-companion-design.md). Voice (PC-3) and fusion (PC-4)
 are explicitly out of scope.
 
 **Architecture:** `CognitiveController` already calls `active_person_resolver`
@@ -78,7 +84,7 @@ answer would still overhear it.
 `cognition/identity.py` and `owner_authentication.py` seams, SQLite/aiosqlite,
 pytest.
 
-**Spec:** [Plan 0015 — Personal companion design](0015-personal-companion-design.md)
+**Spec:** [Plan 0015 — Personal companion design](../open/0015-personal-companion-design.md)
 (PC-2), [ADR 0008 — Progressive owner authentication](../../adr/0008-progressive-owner-authentication.md),
 [ADR 0009 — Locked posture and scoped capabilities](../../adr/0009-locked-posture-and-scoped-capabilities.md)
 
@@ -689,10 +695,15 @@ files clean, pyright 0 errors), `just test` (905 passed, 0 failed), `just
 audit`, `just check` (16 hooks), and `git diff --check` are all green.
 **This plan has no liveness/anti-spoofing defense** — a photograph of the
 owner held up to the camera authenticates under this slice; the accepted
-mitigation is PC-4 (voice fusion), not yet built. Real-camera calibration
-and acceptance (threshold tuning, false-accept/false-reject rates, lighting,
-distance, glasses) remain open under a future real-camera acceptance plan
-(Plan 0030). This plan stays under `docs/plans/open/` pending Pipec's review,
-merge, and that future real-camera acceptance, per this repository's own
-Queue rule 3 and the precedent set by Plans 0025-0027 staying open until
-Plan 0028 closed the PC-1 chain.
+mitigation is PC-4 (voice fusion), not yet built, and closing Plan 0030 did
+not touch this gap.
+
+**Closed (2026-09-01):** real-camera calibration and acceptance (threshold
+tuning, false-accept/false-reject rates, lighting, distance, glasses) ran as
+[Plan 0030](0030-real-camera-face-acceptance.md) — provisional
+PASS: 36 genuine + 18 impostor real samples (3 unrelated identities), zero
+false accepts and zero false rejects, `face_authentication_match_threshold`
+moved from `0.25` to a measured `0.5815`, confirmed live with 3 accepted + 3
+denied real turns. Per this repository's own Queue rule 3, this plan moves
+to `completed/` alongside Plan 0030, now that its only remaining debt (that
+real-camera acceptance) is recorded.

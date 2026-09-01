@@ -42,10 +42,16 @@
 > built. A first real-hardware proof of concept ran 2026-08-27 via the new
 > unified `just onboard` flow — one successful live enrollment and
 > face-authenticated turn on Pipec's own webcam, not a calibrated study.
-> Calibrated real-camera acceptance (threshold tuning, false-accept/
-> false-reject rates, lighting, distance, glasses) is written and not yet
-> executed as [Plan 0030](../plans/open/0030-real-camera-face-acceptance.md)
-> — see also [Plan 0029](../plans/open/0029-consented-local-face-evidence.md).
+> Calibrated real-camera acceptance closed 2026-09-01 as
+> [Plan 0030](../plans/completed/0030-real-camera-face-acceptance.md) —
+> see also [Plan 0029](../plans/completed/0029-consented-local-face-evidence.md).
+> `face_authentication_match_threshold` moved from an unvalidated `0.25` to
+> a measured `0.5815` (36 genuine samples, 18 impostor samples across 3
+> unrelated identities, zero false accepts and zero false rejects), and 3
+> accepted + 3 denied real turns confirmed it live through `just run-server`
+> + `just run-robot`. **This is a provisional calibration, not a mature
+> one** — the impostor set stays thin at 3 identities; a wider round remains
+> welcome later, not required to keep this closed.
 >
 > **Verification boundary:** P0.3/P0.4 code and P0.5-A policy seams were
 > inspected. P0.4 passed `just gate` (527 tests) before PR #40 merged it,
@@ -155,7 +161,7 @@ gap prevents owner-by-default memory disclosure.
 | Typed intent resolution (Plan 0021 / P0-C5) | Executed 2026-08-21 — operator-confirmed | New pure `cognition/intent_resolution.py`: a closed, deterministic Spanish rule set (no LLM/VLM/embedding/database) with an `IntentResolution(need, match, rule_id)` contract, injected into `CognitiveController` as `intent_resolver` (default `resolve_information_need`), replacing the former inline `_classify_information_need`. `rule_id` is privacy-safe static metadata, never the utterance or a name. Precedence: own-child list/count → protected household/birth → supervised ambiguous STT aliases → current-date STT alias → current date → explicit age → relationship/profile → generic. Real hardware proved 6/6 classic and 5/5 streaming acceptance cases (`ntbk-pipec-2`), all deterministic cases at `llm_ms=0`, audibly confirmed. C6/C7 untouched (confirmed by `git diff --stat`). |
 | P0 runtime acceptance | **Complete (2026-08-25)** | Enabled public routes enter the controller. Plans 0022 (streaming reliability), 0021 (typed intent, C5), 0023 (grounded visual dialogue, C7), and 0013 (voice-controller bridge, R1) are all complete with real operator evidence. The authenticated-owner proof (PC-1) is complete via Plan 0028. The combined P0-C runbook (R1+C1-S+C2-V+C3-Q) passed on commit `a07b731` — see [`p0-runtime-acceptance.md`](../runbooks/p0-runtime-acceptance.md). |
 | Vision/VLM (Plan 0023 / P0-C7) | Executed 2026-08-21/2026-08-25 — operator-confirmed | Extracted C5's resolver with `SCENE_DESCRIPTION`, `ACTIVE_IDENTITY`, and `BIOMETRIC_ENROLLMENT` needs and one `SceneDescriptionRequest` capability type. Only `/vision/respond`'s scene branch reads a frame or calls the VLM; the grounded description goes directly to Piper (`ResponseSource.CURRENT_PERCEPTION`), never through the text LLM. Identity/enrollment speak exact fixed copy without ever touching the camera, even with vision disabled. `vision/triggers.py`'s parallel intent authority was deleted. Real hardware confirmed all 5 required cases: identity denial, grounded scene description with no second LLM, VLM-down exact fallback, enrollment rejection, and household denial. |
-| Consented local face evidence (Plan 0029 / PC-2) | Implemented on branch `feat/consented-local-face-evidence`; pending review/merge and real-camera acceptance | Migration 007 (`face_consent_grants`) plus `memory/biometric_consent.py` grant/revoke/read consent, with revocation performing a real purge of `face_profiles` and `vec_faces` rows, not a soft flag. `IdentityEvidenceSource.FACE` is now trusted as identified (`cognition/identity.py`); `VOICE`/`CONTEXT` remain unresolved (PC-3/PC-4). `cognition/face_authentication.py` adds a pure verdict function (0 faces -> unknown, 2+ faces -> ambiguous and terminal — never falls through to the PIN, 1 face variations -> unknown/identified by match+consent+role), a lazy single-inference-per-turn `FaceRequestResolver`, and `compose_face_then_pin_resolver()`, which tries face first and falls through to the existing PIN resolver (Plan 0026) only on a non-ambiguous unresolved face result. A stricter, separate `settings.face_authentication_match_threshold` (default `0.25`) applies on top of the existing generic `settings.face_match_threshold` (`0.4`). `POST /auth/owner/face/enroll` and `/revoke` (loopback-only, requiring a fresh PIN-consumed token) always enroll the token's own owner, never a request-supplied name; the pre-existing quarantined public `POST /vision/enroll` is untouched and still returns 503. Classic and streaming `/transcribe` accept an optional multipart `frame` field gated by `settings.face_authentication_enabled` (default `False` — with it off, the frame is never even read) and report which evidence source authenticated the turn via an additive `identity_source: "face" \| "local_unlock" \| null` field, never a name or protected value. The robot opts in via `settings.robot_face_auth_enabled` (default `False`), attaching a captured frame to every turn when enabled (a camera failure degrades silently to no frame). **No liveness/anti-spoofing defense exists**: a photograph of the owner held up to the camera authenticates under this slice; the real mitigation is PC-4 (voice fusion), not yet built. Real-camera calibration and acceptance are open under a future real-camera acceptance plan (Plan 0030). |
+| Consented local face evidence (Plan 0029 / PC-2) | Merged (PR #73); real-camera calibration closed (Plan 0030, 2026-09-01, provisional) | Migration 007 (`face_consent_grants`) plus `memory/biometric_consent.py` grant/revoke/read consent, with revocation performing a real purge of `face_profiles` and `vec_faces` rows, not a soft flag. `IdentityEvidenceSource.FACE` is now trusted as identified (`cognition/identity.py`); `VOICE`/`CONTEXT` remain unresolved (PC-3/PC-4). `cognition/face_authentication.py` adds a pure verdict function (0 faces -> unknown, 2+ faces -> ambiguous and terminal — never falls through to the PIN, 1 face variations -> unknown/identified by match+consent+role), a lazy single-inference-per-turn `FaceRequestResolver`, and `compose_face_then_pin_resolver()`, which tries face first and falls through to the existing PIN resolver (Plan 0026) only on a non-ambiguous unresolved face result. A stricter, separate `settings.face_authentication_match_threshold` — measured by Plan 0030 at `0.5815` (was an unvalidated `0.25`) — applies on top of the existing generic `settings.face_match_threshold` (`0.4` in code, `0.65` sample override). `POST /auth/owner/face/enroll` and `/revoke` (loopback-only, requiring a fresh PIN-consumed token) always enroll the token's own owner, never a request-supplied name; the pre-existing quarantined public `POST /vision/enroll` is untouched and still returns 503. Classic and streaming `/transcribe` accept an optional multipart `frame` field gated by `settings.face_authentication_enabled` (default `False` — with it off, the frame is never even read) and report which evidence source authenticated the turn via an additive `identity_source: "face" \| "local_unlock" \| null` field, never a name or protected value. The robot opts in via `settings.robot_face_auth_enabled` (default `False`), attaching a captured frame to every turn when enabled (a camera failure degrades silently to no frame). **No liveness/anti-spoofing defense exists**: a photograph of the owner held up to the camera authenticates under this slice; the real mitigation is PC-4 (voice fusion), not yet built — closing Plan 0030 did not touch this gap. |
 | Face profiles | Implemented/sensitive/consent-gated | SQLite-linked embeddings and recognition functions exist; Plan 0029 adds a consented, in-request runtime adapter behind `FACE_AUTHENTICATION_ENABLED` (default off) — see the row above. |
 | Speaker recognition | Absent | STT and VAD exist; no speaker enrollment, voiceprint, verification model, or calibrated identity adapter exists. |
 | Robot client | Implemented/body adapter | PC microphone/webcam/speaker workflow; not cognitive logic. |
@@ -171,8 +177,9 @@ gap prevents owner-by-default memory disclosure.
 - liveness/anti-spoofing defense for face evidence (Plan 0029): a photograph
   of the owner currently authenticates under that slice; the accepted
   mitigation is PC-4 voice fusion, not yet built; real-camera
-  calibration/acceptance is written and not yet executed as
-  [Plan 0030](../plans/open/0030-real-camera-face-acceptance.md);
+  calibration/acceptance closed 2026-09-01 as
+  [Plan 0030](../plans/completed/0030-real-camera-face-acceptance.md), but
+  the anti-spoofing gap itself is unaffected — no plan closes it yet;
 - typed `SceneObservation`, `WorldState`, tracking, scene graph, and spatial
   memory;
 - cognitive memory lifecycle, confirmation, reflection, and forgetting;
@@ -288,13 +295,18 @@ See [P0-S hardening audit](../history/audits/p0-s-hardening-audit.md) for eviden
   covering test, sampled and confirmed passing. **This plan has no
   liveness/anti-spoofing defense**: a photograph of the owner authenticates
   under this slice; the accepted mitigation is PC-4 (voice fusion), not yet
-  built. A first real-hardware proof of concept ran 2026-08-27 (`just
-  onboard` enrollment + a `just run-robot` face-authenticated turn,
-  correctly identified, no PIN) — one successful live run, not a calibrated
-  study. Calibrated real camera/hardware acceptance (threshold tuning,
-  false-accept/false-reject rates, lighting, distance, glasses) is
-  [Plan 0030](../plans/open/0030-real-camera-face-acceptance.md)'s job —
-  written 2026-08-27, not yet executed.
+  built. Calibrated real camera/hardware acceptance (threshold tuning,
+  false-accept/false-reject rates, lighting, distance, glasses) closed
+  2026-09-01 as
+  [Plan 0030](../plans/completed/0030-real-camera-face-acceptance.md):
+  36 real genuine samples (Pipec, 3 lighting × 2 distance × 2 glasses) and
+  18 real impostor samples (3 unrelated household identities) held zero
+  false accepts and zero false rejects at a measured
+  `face_authentication_match_threshold = 0.5815` (up from the unvalidated
+  `0.25`), confirmed by 3 accepted + 3 denied real turns through
+  `just run-server` + `just run-robot`. Explicitly provisional — only 3
+  impostor identities were measured; a wider round is welcome but not
+  required to keep this closed.
 
 R1 runtime proof is complete — see
 [Plan 0013](../plans/completed/0013-p0-voice-controller-bridge.md); the
