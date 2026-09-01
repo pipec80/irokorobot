@@ -96,7 +96,17 @@ class Settings(BaseSettings):
     # face allowed to unlock protected data must clear a tighter bound than
     # the generic conversational recognition above — never repurpose
     # face_match_threshold for authentication decisions.
-    face_authentication_match_threshold: float = 0.25
+    # Value measured by Plan 0030's real-camera calibration (2026-08-27,
+    # provisional session): 36 genuine samples (3 lighting x 2 distance x
+    # 2 glasses) vs 18 impostor samples across 3 unrelated identities, using
+    # the 3-enrolled-profile matching policy. Zero false accepts and zero
+    # false rejects held at every round as the impostor set grew from 6 to
+    # 18 samples. Midpoint of [0.277, 0.886] — margin 0.610. Provisional:
+    # narrower than a mature study would want; see
+    # project-history/acceptance/2026-08-27-real-camera-face-acceptance-provisional.md
+    # (untracked) for the full sweep and the plan for widening the impostor
+    # set further.
+    face_authentication_match_threshold: float = 0.5815
     # Master on/off for in-request face authentication (Plan 0029, Task 5):
     # gates whether /transcribe and /transcribe/stream will ever attempt to
     # build a face resolver from an attached frame. Off by default — a

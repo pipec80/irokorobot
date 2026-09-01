@@ -283,7 +283,7 @@ grant access directly. STT/VAD are not voice identity. The VLM may describe a
 scene, but is not the authority that names Pipec.
 
 **Progress (2026-08-25):** the face-evidence slice (PC-2) is merged —
-[Plan 0029](../plans/open/0029-consented-local-face-evidence.md), PR #73. A
+[Plan 0029](../plans/completed/0029-consented-local-face-evidence.md), PR #73. A
 protected turn now resolves the owner from an in-request webcam frame through
 the same typed evidence and authorization contract the PIN (Plan 0026) uses,
 with the PIN kept as an independent recovery path. It has no liveness/
@@ -295,19 +295,27 @@ unified `just onboard` flow — Pipec enrolled his own face and a live
 ("Tus hijos son emma y dominga.") with no PIN and no token. One successful
 run on one person's hardware; not a calibrated study — no threshold tuning,
 no false-accept/false-reject measurement, no lighting/distance/glasses
-variation. The face half of that calibration is written and not yet
-executed as [Plan 0030](../plans/open/0030-real-camera-face-acceptance.md).
-Speaker evidence (PC-3) and fusion (PC-4) are not started.
+variation.
+
+**Progress (2026-09-01):** PC-2's real-camera calibration closed —
+[Plan 0030](../plans/completed/0030-real-camera-face-acceptance.md). 36 real
+genuine samples and 18 real impostor samples (3 unrelated household
+identities) held zero false accepts and zero false rejects; the measured
+threshold (`0.5815`, replacing the unvalidated `0.25`) was confirmed live
+with 3 accepted + 3 denied real turns. Explicitly provisional — only 3
+impostor identities were measured, and the anti-spoofing gap above is
+untouched. Speaker evidence (PC-3) and fusion (PC-4) are not started.
 
 **Exit gate (not yet met):** calibrated local evaluation covers agreement,
 conflict, expiry, backend failure, false accept, and false reject. Conflicting
 evidence returns `ambiguous`; the administrative recovery path remains
-available.
+available. PC-2's own real-camera calibration is closed; the exit gate still
+needs PC-3 (speaker evidence) and PC-4 (fusion), neither started.
 
 ### X1 — Server production baseline checkpoint
 
-After Plan 0030 closes the current real-camera acceptance, the next bounded
-priority is the queued server-production capsule documented in
+Plan 0030 closed the real-camera acceptance it owned (2026-09-01); the next
+bounded priority is the queued server-production capsule documented in
 [Plan 0031](../plans/open/0031-server-production-baseline-design.md). It runs
 through children 0032–0042 one at a time before the roadmap promotes the next
 new identity capability.

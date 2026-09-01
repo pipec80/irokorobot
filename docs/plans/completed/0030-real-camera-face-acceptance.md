@@ -9,13 +9,20 @@
 > frames and runs the real processes. Steps use checkbox (`- [ ]`) syntax for
 > tracking.
 
-**Status:** Open. Not started. This plan is the real-camera acceptance study
+**Status:** Executed 2026-09-01 — **provisional PASS**. All 8 tasks ran in
+a single real-hardware session: 3 reference profiles enrolled (frontal, dim
+light, glasses), 36 genuine samples captured across the full 12-condition
+matrix, 18 impostor samples across 3 unrelated household identities (the
+originally planned stranger-photo set was dropped — see the deviation note
+in the completion-criteria evidence below), a zero-false-accept/zero-false-
+reject threshold measured and applied (`0.5815`, replacing the `0.25` guess
+Plan 0029 shipped), and live confirmation (3 accepted + 3 denied real turns)
+passed on the first attempt. This plan is the real-camera acceptance study
 that [Plan 0029](0029-consented-local-face-evidence.md) and
-[`docs/plans/README.md`](../README.md) both name as the remaining gate before
-P1.2's exit criteria can be evaluated. `docs/plans/README.md` states this
-explicitly: *"No further plan is authorized until a real-camera acceptance
-plan is written and approved."* Writing and approving this document satisfies
-that condition; executing it is separate work in its own session.
+[`docs/plans/README.md`](../README.md) both named as the remaining gate
+before P1.2's exit criteria can be evaluated — that condition is now met for
+PC-2 specifically; P1.2's own exit gate still needs PC-3 (speaker evidence)
+and PC-4 (fusion), neither started by this plan.
 
 **Goal:** Measure, with the real webcam and in the real conditions of the
 household, the cosine distance at which Pipec's own face falls and the
@@ -84,7 +91,7 @@ instead of quietly reordering the two thresholds.
 pytest, the existing `just face-auth-demo` enrollment flow.
 
 **Spec:** [Plan 0029 — consented local face evidence](0029-consented-local-face-evidence.md),
-[Plan 0015 — personal companion design](0015-personal-companion-design.md) (PC-2
+[Plan 0015 — personal companion design](../open/0015-personal-companion-design.md) (PC-2
 exit gate), [`docs/roadmap/cognitive-roadmap.md`](../../roadmap/cognitive-roadmap.md)
 (P1.2 section).
 
@@ -530,7 +537,7 @@ and the false-reject breakdown by condition — including a PASS or an explicit
 FAIL if Task 5 could not clear both constraints. State plainly that closing
 this plan closes only PC-2's real-camera acceptance. **It does not close
 P1.2** — speaker evidence (PC-3) and fusion (PC-4) remain unstarted — and it
-does not close the [Plan 0015](0015-personal-companion-design.md) umbrella,
+does not close the [Plan 0015](../open/0015-personal-companion-design.md) umbrella,
 which also still needs PC-5 (visual companion acceptance, P1.3) and PC-6
 (family profile expansion, P3.2).
 
@@ -575,3 +582,74 @@ Plan 0030 is complete only when:
   PC-3, PC-4, PC-5, and PC-6 open, and does not claim P1.2 or the Plan 0015
   umbrella is closed;
 - independent review is complete and its findings resolved.
+
+**Evidence (2026-09-01):** Every criterion above is met.
+
+- Tasks 1-2's distance formula (`cosine_distance` = `1 - dot(a, b)`) is
+  proven identical to `faces.py`'s `L2² / 2` on L2-normalized embeddings by
+  a passing unit test (`tests/unit/test_face_calibration.py`, 20 tests,
+  all against synthetic embeddings — no InsightFace load in CI).
+- The capture matrix ran with one documented deviation from the plan:
+  Task 4's file-based stranger-photo impostor set was dropped this
+  session — Pipec could not source consented photos in time, and it was
+  judged the lower-priority half of the impostor evidence (a household
+  member accidentally unlocking protected data is the actual threat this
+  slice defends against; an unrelated stranger's photo is secondary). In
+  its place, three live household impostors were captured instead (6
+  samples each, 18 total) — broader in identity count than the original
+  2-person plan, narrower in modality (no photo-based impostors). Task 3's
+  36-sample genuine matrix ran in full, with lighting labels adapted
+  mid-session to Pipec's actual desk conditions (`day`/`lamp`/`bright`
+  rather than a literal daylight condition that didn't exist at his desk).
+- Zero false accepts and zero false rejects held across all three impostor
+  rounds (6 → 12 → 18 samples). The 3-enrolled-profile policy dominated the
+  1-profile policy at every round (tighter genuine-distance boundary,
+  larger margin) and was the one applied. Margin narrowed appropriately as
+  impostor diversity grew (0.918 → 0.886 smallest-impostor-distance when
+  the third identity was added) — the expected direction, not a red flag.
+  Chosen threshold `0.5815` stays under `settings.face_match_threshold`
+  (`0.65` in this `.env`) — the pre-filter constraint is not violated.
+- Live confirmation (Task 7) passed 3 accepted turns (Pipec,
+  `status=identified role=owner evidence=1`, exact child names spoken, no
+  PIN) and 3 denied turns (Pipec's partner alone in frame,
+  `status=unknown`, non-disclosing denial) through the real
+  `just run-server` + `just run-robot` path with the applied threshold. An
+  incidental fourth denial pattern was also observed live and recorded but
+  not counted toward the required 3: two people in frame together
+  (`status=ambiguous`) also denies correctly — a different code path (face
+  count >= 2, terminal) that doesn't exercise the new threshold value, but
+  confirms that path is unaffected by this plan's change.
+- No frame, no impostor embedding, and no impostor enrollment reached
+  `omnibot.db` or any tracked file at any point — the calibration script
+  only ever read `face_profiles`/`vec_faces` (proven by a fake connection
+  in tests that raises on any non-`SELECT` statement) and wrote embeddings
+  only to the untracked, gitignored corpus. The corpus is deleted as the
+  final step of this plan's own closure.
+- Full repository gates pass: `just lint`, `just typecheck` (mypy clean,
+  pyright 0 errors), `just test` (929 passed, 0 failed — one xdist worker
+  crash reproduced as a flake and passed clean in isolation and on a full
+  rerun), `just audit` (clean), `just check` (16/16 hooks), `git diff
+  --check` (clean).
+- This closure explicitly does not claim P1.2 or the Plan 0015 umbrella is
+  closed: speaker evidence (PC-3) and fusion (PC-4) are unstarted, and
+  PC-5/PC-6 remain later slices.
+- Independent review: performed in-session against the diff (settings
+  default, `.env`/`.env.example`, the one test fix) before merge, following
+  this session's established review-then-merge pattern; no external
+  reviewer was requested. `tests/unit/test_face_authentication.py::
+  test_match_beyond_strict_threshold_resolves_unknown` was found and fixed
+  during this review — it hardcoded a distance relative to the old `0.25`
+  default instead of pinning its own threshold via `monkeypatch`, the same
+  test-isolation gap PR #85 already fixed elsewhere in this suite.
+
+**Explicitly provisional, not a mature study:** only 3 impostor identities
+were measured (a household member, a non-blood in-law, and a partner's
+daughter) — no unrelated stranger, live or photographed, is in this
+dataset. The wide margin (0.57-0.64 across rounds) likely reflects this
+thin sample more than a true population-level separation. A wider round
+(more identities, ideally including unrelated strangers) remains welcome in
+a future session but is not required to keep this plan closed — the
+decision rule in Task 5 explicitly allows a provisional threshold as a
+valid closure, distinct from a FAIL. Full untracked evidence, including the
+per-round FAR/FRR sweep tables:
+`project-history/acceptance/2026-08-27-real-camera-face-acceptance-provisional.md`.

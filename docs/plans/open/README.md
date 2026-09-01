@@ -9,27 +9,27 @@
 The following status was checked against the executable code, tests, current
 Git ancestry, and recorded runtime evidence on 2026-08-25 (updated after the
 combined P0-C operator runbook passed and Plan 0013's STT-accuracy debt
-closed). Existing components named under **Reuse** must not be rebuilt by a
-later plan.
+closed), and re-audited 2026-09-01 after Plan 0030 closed. Existing
+components named under **Reuse** must not be rebuilt by a later plan.
 
 For daily work, do not choose a plan from this inventory. Follow the
-single-WIP [operational board](../README.md#operational-board) — **Plan 0030
-is the current `NOW` item.** Use the
+single-WIP [operational board](../README.md#operational-board) — **`NOW` is
+empty; nothing is currently authorized.** Use the
 [personal-companion delivery map](../../roadmap/personal-companion-delivery-map.md)
 to see the code, tests, verified gap, and accountable plan for each outcome.
 
 | Plan | Implementation reality | Reuse | Remaining closure |
 |---|---|---|---|
-| [0015](0015-personal-companion-design.md) | Approved product design; PC-1 code and acceptance are both complete (Plans 0025–0028); PC-2 code/tests/review complete (Plan 0029) | Controller, policy/audit, v4 child tools, identity-session seam, onboarding primitives, STT/TTS, face engine | PC-2's real-camera acceptance (Plan 0030); speaker evidence (PC-3), fusion (PC-4), visual companion acceptance (PC-5), and family profile expansion (PC-6) remain later slices |
-| [0029](0029-consented-local-face-evidence.md) | Merged (PR #73); a first real-hardware proof of concept ran 2026-08-27 via `just onboard` | Face engine, biometric consent repository, in-turn face resolver | Calibrated real-camera acceptance — owned by Plan 0030, below |
-| [0030](0030-real-camera-face-acceptance.md) | Written 2026-08-27, not yet executed | `face_auth_demo.py`'s enrollment flow, `detect_faces`, `capture_frame` | The current `NOW` item — see the [operational board](../README.md#operational-board) |
-| [0031](0031-server-production-baseline-design.md) | Audited reference-only server capsule; no production implementation | Existing FastAPI/Starlette/Uvicorn, HTTP/audio contracts, tests and server/robot boundary | Children 0032–0042 below, one at a time after 0030 closes |
+| [0015](0015-personal-companion-design.md) | Approved product design; PC-1 code and acceptance are both complete (Plans 0025–0028); PC-2 code, tests, and real-camera acceptance are complete (Plans 0029/0030) | Controller, policy/audit, v4 child tools, identity-session seam, onboarding primitives, STT/TTS, face engine, calibrated face-authentication threshold | Speaker evidence (PC-3), fusion (PC-4), visual companion acceptance (PC-5), and family profile expansion (PC-6) remain later slices |
+| [0031](0031-server-production-baseline-design.md) | Audited reference-only server capsule; no production implementation | Existing FastAPI/Starlette/Uvicorn, HTTP/audio contracts, tests and server/robot boundary | Children 0032–0042 below, one at a time, pending Pipec's explicit authorization to promote 0032 |
 
 ## Queued server-production capsule
 
-These plans are executable specifications but are **not authorized** while
-Plan 0030 is `NOW`. Plan 0031 locks their order; only the first unfinished
-child may be promoted after a narrow assumption recheck.
+Plan 0030 closed 2026-09-01, lifting the blocker Queue rule 7 named — but
+promotion is not automatic. These plans remain **not authorized** until
+Pipec explicitly promotes the first one. Plan 0031 locks their order; only
+the first unfinished child may be promoted after a narrow assumption
+recheck.
 
 | Order | Plan | Outcome |
 |---:|---|---|
@@ -65,9 +65,16 @@ fixing the Whisper prompt's stale "Omnibot" name) closed the same way — see
 [completed/0023](../completed/0023-p0-grounded-visual-dialogue.md), and
 [completed/0013](../completed/0013-p0-voice-controller-bridge.md).
 
-Canonical execution order: **Plan 0030 (real-camera face acceptance) — the
-only executable item in `NOW`.** The server capsule is queued, beginning with
-0032 only after 0030 closes and Pipec authorizes promotion.
+Plans 0029 (consented local face evidence, merged PR #73, 2026-08-25) and
+0030 (real-camera face acceptance, executed 2026-09-01 — **provisional
+PASS**: 36 genuine + 18 impostor real samples, zero false accepts/rejects,
+threshold `0.5815` confirmed by 3 accepted + 3 denied live turns) closed
+PC-2 completely — see
+[completed/0029](../completed/0029-consented-local-face-evidence.md) and
+[completed/0030](../completed/0030-real-camera-face-acceptance.md).
+
+Canonical execution order: **none — `NOW` is empty.** The server capsule is
+queued, beginning with 0032 only once Pipec authorizes promotion.
 
 ## Status rule
 

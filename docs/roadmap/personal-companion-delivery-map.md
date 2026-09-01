@@ -127,13 +127,15 @@ PC-1 accepted
        `-> 0013 R1 closed same day: root cause of R1-03's STT failure fixed
           (stale "Omnibot" name in the Whisper prompt/hotwords)
 P0 fully accepted
-  -> 0029 consented local face evidence (PC-2) — code/tests/review complete
-     on `feat/consented-local-face-evidence`, pending merge; real-camera
-     acceptance remains open (2026-08-25)
+  -> 0029 consented local face evidence (PC-2) — merged (PR #73, 2026-08-25)
+  -> 0030 real-camera face acceptance — executed, provisional PASS (2026-09-01)
+PC-2 accepted (provisional calibration)
 ```
 
-Plans 0014, 0015, 0020, and 0024 remain open as reference; their governed
-outcomes are all closed. They do not create parallel work.
+Plan 0015 remains open as reference; PC-3 through PC-6 are still real,
+unstarted work. Plans 0014, 0020, and 0024 moved to `completed/` — they
+never had their own executable code or gates, and closed once every slice
+they governed closed elsewhere.
 
 ## PC-2 artifacts delivered by Plan 0029
 
@@ -156,7 +158,8 @@ already uses (Plan 0026), with no change to `controller.py` or
   `FaceRequestResolver`, and `compose_face_then_pin_resolver()`, which tries
   face first and falls through to the existing PIN resolver only on a
   non-ambiguous unresolved face result. A stricter, separate
-  `settings.face_authentication_match_threshold` (default `0.25`) applies on
+  `settings.face_authentication_match_threshold` — measured by Plan 0030 at
+  `0.5815`, replacing the unvalidated `0.25` default — applies on
   top of the existing generic `settings.face_match_threshold` (`0.4`).
 - Authenticated enrollment: `POST /auth/owner/face/enroll` and `/revoke`
   (`routers/auth.py`), loopback-only, requiring a fresh PIN-consumed token;
@@ -176,10 +179,13 @@ already uses (Plan 0026), with no change to `controller.py` or
 **Known limitation, stated plainly:** this plan has no liveness or
 anti-spoofing defense. A photograph of the owner held up to the camera
 authenticates under this slice, exactly as every task reviewer reported. The
-real mitigation is PC-4 (voice fusion), not yet built. Real-camera
-calibration and acceptance (threshold tuning, false-accept/false-reject
-rates, lighting, distance, glasses) is written and not yet executed as
-[Plan 0030](../plans/open/0030-real-camera-face-acceptance.md).
+real mitigation is PC-4 (voice fusion), not yet built — closing Plan 0030
+did not touch this gap. Real-camera calibration and acceptance (threshold
+tuning, false-accept/false-reject rates, lighting, distance, glasses) closed
+2026-09-01 as
+[Plan 0030](../plans/completed/0030-real-camera-face-acceptance.md):
+`face_authentication_match_threshold` moved from the unvalidated `0.25` to a
+measured `0.5815`. Provisional — only 3 impostor identities were measured.
 
 **Evidence (2026-08-25):** on `feat/consented-local-face-evidence`, all 7
 tasks are implemented, one commit per task plus one small test-maintenance
@@ -190,8 +196,9 @@ itself), each independently code-reviewed. The focused face-authentication
 scenario (161 tests) and the PC-1 PIN regression (45 tests, proving the PIN
 path is unmodified) both pass. Full repository gates pass: `just lint`,
 `just typecheck` (mypy 89 files clean, pyright 0 errors), `just test` (905
-passed), `just audit`, and `just check` (16 hooks) are all green. Pending
-Pipec's review and merge; real-camera acceptance is the next gate.
+passed), `just audit`, and `just check` (16 hooks) are all green. Merged
+(PR #73); real-camera acceptance closed 2026-09-01 as
+[Plan 0030](../plans/completed/0030-real-camera-face-acceptance.md).
 
 ## Status transition protocol
 
