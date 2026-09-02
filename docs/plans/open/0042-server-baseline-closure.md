@@ -5,7 +5,7 @@
 > documentation work, not a container for deferred implementation.
 
 **Goal:** Prove the complete server baseline through automated and real runtime
-evidence, accept or reject proposed ADRs explicitly, and close the capsule
+evidence, confirm the accepted ADRs still match the merged code, and close the capsule
 without overstating product completion.
 
 **Architecture:** Re-audit invariants with focused searches and complete gates;
@@ -92,9 +92,9 @@ No production or test code change is allowed. A failing gate blocks closure.
 
 ## Task 4: Accept decisions and close documentation
 
-- [ ] Present ADR 0010-0013 to Pipec. Change each to `Accepted` only with
-  explicit approval; otherwise leave `Proposed` and keep the dependent baseline
-  open.
+- [x] ADR 0010-0013 were presented to Pipec and accepted on 2026-09-02, ahead
+  of this plan. Re-confirm here only that the merged implementation still
+  matches what those ADRs decided; reopen one with a new ADR if it does not.
 - [ ] Fill `server/README.md` with role, Mermaid flow, setup/run, configuration,
   docs URLs, health/readiness, streaming, testing, and deployment posture.
 - [ ] Update `SECURITY.md` with loopback/LAN/proxy/upload/logging rules.

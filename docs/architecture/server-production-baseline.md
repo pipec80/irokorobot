@@ -29,12 +29,13 @@ This target is subordinate to runtime `AGENTS.md`,
 ADRs, and immutable API/audio contracts. The executable decomposition lives
 under [`docs/plans/open/`](../plans/open/README.md).
 
-Plan 0030 remains the only `NOW` item. Plan 0031 is a reference umbrella and
-is never executed as a batch. Plan 0032 becomes `NOW` only after Plan 0030
-closes and Pipec explicitly authorizes it.
+Plan 0043 is the current `NOW` item: a transversal dependency refresh that runs
+before this capsule's children because it changes their design. Plan 0031 is a
+reference umbrella and is never executed as a batch. Plan 0032 becomes `NOW`
+only after Plan 0043 closes and Pipec explicitly authorizes it.
 
-The proposed ADRs 0010-0013 record decisions for review. They are not accepted
-authority until their status is explicitly changed after review.
+ADRs 0010-0013 were reviewed and accepted on 2026-09-02, so the child plans may
+cite them as authority.
 
 ## Verified baseline
 
@@ -44,7 +45,9 @@ At the audited commit:
 - The complete test suite passes with 929 tests.
 - The deterministic `not slow` selection passes with 920 tests and 88.39%
   combined server/robot coverage.
-- FastAPI is `0.141.1`, Starlette is `1.3.1`, and Uvicorn is `0.52.1`.
+- FastAPI is `0.141.1`, Starlette is `1.6.0`, Uvicorn is `0.52.4`, and
+  Pydantic is `2.13.5` (Plan 0043 refreshed the lock on 2026-09-02; FastAPI was
+  already at its latest release).
 - The server uses one Uvicorn worker and binds to loopback by default.
 - Server and robot share only HTTP/audio/stream contracts.
 
@@ -69,6 +72,29 @@ The audit also verified these gaps:
   zero, despite the deterministic suite already exceeding 80%.
 
 These findings are evidence at the audited commit, not eternal facts.
+
+Two framework capabilities were measured directly after the Plan 0043 refresh
+and constrain the child plans:
+
+- Starlette `1.6.0` provides `RequestBodyLimitMiddleware`, so the raw body
+  limit does not need a hand-written middleware. `FastAPI(...)` does not accept
+  `max_body_size`; it is registered with `add_middleware`. It rejects on
+  `Content-Length` and on accumulated bytes, and it is route-aware. It answers
+  `413` as `text/plain`, not as the JSON error shape the current handlers emit.
+- FastAPI, at its latest release, exposes no JSON Lines response. It offers SSE
+  (`EventSourceResponse`) and the Starlette responses. The line-delimited
+  transport therefore stays `StreamingResponse` with
+  `media_type="application/x-ndjson"`.
+
+Two gaps in the project's own safety net were added after the original audit:
+
+- `tests/conftest.py` builds its `TestClient` fixture at `scope="session"` and
+  mutates the `settings` singleton (`memory_enabled`) for the whole run, so
+  test isolation depends on ordering.
+- `filterwarnings = ["error"]` does not cover import-time warnings raised while
+  loading `conftest.py`. An active `StarletteDeprecationWarning` about
+  `starlette.testclient` with `httpx` passes through the suite unnoticed.
+
 
 ## Architectural invariants
 

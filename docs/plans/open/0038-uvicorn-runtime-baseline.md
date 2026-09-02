@@ -13,7 +13,7 @@ not an arbitrary scale-up.
 
 **Tech Stack:** Pydantic Settings, Uvicorn, pytest.
 
-**Spec:** Proposed ADRs
+**Spec:** Accepted ADRs
 [0010](../../adr/0010-fastapi-asgi-runtime-baseline.md) and
 [0013](../../adr/0013-local-http-network-posture.md).
 
@@ -70,6 +70,16 @@ default; document it as uncalibrated rather than silently changing 100 to 8.
 
 - [ ] Run focused settings/Uvicorn tests, `just lint`, `just typecheck`,
   `just test`, and `git diff --check`.
+
+## Standing bump risk
+
+- [ ] Record in the plan's execution notes that `pyproject.toml` sets
+  `filterwarnings = ["error"]`, so every dependency bump is a suite-wide event —
+  and that the net has a hole: warnings raised while importing `conftest.py`
+  fire before pytest installs its catcher and pass unnoticed. Plan 0043 found
+  one live instance (`starlette.testclient` with `httpx`, deprecated in favour
+  of `httpx2`). Migrating the test client is a dev-dependency decision that
+  belongs here, not in a privacy or upload plan.
 
 ## Rollback
 

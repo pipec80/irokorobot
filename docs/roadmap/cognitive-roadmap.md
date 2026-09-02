@@ -331,7 +331,7 @@ executable child after 0030.
   child plans meet their own tests/reviews;
 - full deterministic coverage remains at least 80%;
 - the real server/robot path passes the capsule closure scenarios;
-- proposed ADR 0010–0013 are accepted explicitly or the checkpoint remains
+- ADR 0010–0013 stay accepted and matched by the merged code, or the checkpoint remains
   open.
 
 ### P1.3 — Personal companion acceptance

@@ -1,7 +1,8 @@
 # 0011 — Give each SQLite write transaction one coroutine owner
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-08-31
+- **Accepted:** 2026-09-02
 
 ## Context
 

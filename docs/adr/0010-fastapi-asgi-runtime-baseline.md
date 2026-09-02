@@ -1,7 +1,8 @@
 # 0010 — Standardize the FastAPI/ASGI runtime baseline
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-08-31
+- **Accepted:** 2026-09-02
 
 ## Context
 
@@ -45,12 +46,16 @@ only for demonstrated requirements.
 
 ### Negative
 
-- Existing globals require incremental migration.
+- Existing globals require incremental migration. The largest is the
+  `settings` singleton, imported at module level by 24 modules: a
+  `create_app()` that accepts settings while those imports remain would
+  only appear injectable, so the factory and the migration land together
+  or neither lands.
 - One worker constrains horizontal process scaling.
 - Some improvements require coordinated server/robot contract tests.
 
 ## Review
 
 Review after a real need for independently deployed clients, multiple workers,
-a new transport, or a different process topology. Acceptance requires Pipec's
-explicit review; implementation plans do not accept this ADR implicitly.
+a new transport, or a different process topology. Accepted by Pipec on
+2026-09-02 after explicit review.

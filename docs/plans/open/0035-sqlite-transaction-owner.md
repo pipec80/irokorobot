@@ -13,7 +13,7 @@ unnecessary. Startup migrations remain explicitly separate.
 
 **Tech Stack:** Python 3.12, asyncio, aiosqlite, pytest.
 
-**Spec:** Proposed ADR
+**Spec:** Accepted ADR
 [0011](../../adr/0011-sqlite-transaction-ownership.md).
 
 ## Permitted files
