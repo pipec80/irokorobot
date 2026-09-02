@@ -75,6 +75,21 @@ combined coverage. The current CI selection excludes `integration` and sets
 - [ ] Review the YAML for Windows/PowerShell compatibility and no network/model
   download during pytest.
 
+## OpenAPI contract test
+
+- [ ] Add a cheap generated-contract test to the deterministic gate so `/docs`
+  can never silently break:
+
+  ```python
+  def test_openapi_schema_is_valid() -> None:
+      schema = app.openapi()
+      assert schema["openapi"].startswith("3.")
+      assert schema["paths"]
+  ```
+
+  It belongs in this plan rather than 0040 because it guards the gate itself;
+  0040 then extends it with per-endpoint contract assertions.
+
 ## Rollback
 
 Revert CI/marker changes together. Production runtime is unaffected.

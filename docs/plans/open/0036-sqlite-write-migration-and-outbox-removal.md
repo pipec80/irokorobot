@@ -13,7 +13,7 @@ acquisition is permitted.
 
 **Tech Stack:** asyncio, aiosqlite, pytest.
 
-**Spec:** Proposed ADR
+**Spec:** Accepted ADR
 [0011](../../adr/0011-sqlite-transaction-ownership.md).
 
 ## Permitted files

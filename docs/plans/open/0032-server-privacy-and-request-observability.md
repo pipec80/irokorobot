@@ -23,6 +23,11 @@ logging filter reads a `ContextVar`; application paths emit metadata only.
 - Request ID is context only; never identity or authorization.
 - Do not add a logging dependency or `BaseHTTPMiddleware`.
 - Remove raw content at DEBUG as well as INFO.
+- The sentinel tests run through the shared `client` fixture, which is
+  `scope="session"` and mutates the `settings` singleton (`memory_enabled`) for
+  the whole run. Narrow that fixture's scope and restore state per test before
+  asserting on captured logs — otherwise a sentinel can leak between tests and
+  the assertions prove nothing. Plan 0043 recorded this gap.
 
 ## Permitted files
 
@@ -37,6 +42,7 @@ logging filter reads a `ContextVar`; application paths emit metadata only.
 - `robot/src/robot/app.py`
 - `robot/src/robot/app_streaming.py`
 - `robot/src/robot/server_client.py`
+- `tests/conftest.py`
 - Focused tests under `tests/unit/` and `tests/integration/`
 
 No persistence, schema, authentication, upload, or response-body change is in

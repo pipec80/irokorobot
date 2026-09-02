@@ -9,7 +9,7 @@ infrastructure.
 
 **Source of truth:**
 [`server-production-baseline.md`](../../architecture/server-production-baseline.md)
-and proposed ADRs [0010](../../adr/0010-fastapi-asgi-runtime-baseline.md),
+and accepted ADRs [0010](../../adr/0010-fastapi-asgi-runtime-baseline.md),
 [0011](../../adr/0011-sqlite-transaction-ownership.md),
 [0012](../../adr/0012-line-delimited-stream-terminal-events.md), and
 [0013](../../adr/0013-local-http-network-posture.md).

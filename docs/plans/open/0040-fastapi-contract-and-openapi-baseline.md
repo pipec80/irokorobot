@@ -13,7 +13,7 @@ readiness have distinct cheap semantics.
 
 **Tech Stack:** FastAPI, Pydantic V2, OpenAPI, pytest.
 
-**Spec:** Proposed ADR
+**Spec:** Accepted ADR
 [0010](../../adr/0010-fastapi-asgi-runtime-baseline.md).
 
 ## Permitted files
@@ -29,6 +29,12 @@ readiness have distinct cheap semantics.
 
 No URL version prefix, universal replacement error envelope, CORS, OAuth2,
 domain import of FastAPI, or streaming transport migration is allowed.
+
+`create_app()` is explicitly out of scope unless the `settings` singleton
+migrates in the same slice. 24 modules import it at module level, so a factory
+that accepts a `Settings` argument while those imports remain would only appear
+injectable — and tests would then rely on configurability that does not exist.
+Either both land together or neither does; ADR 0010 records this.
 
 ## Interfaces
 

@@ -15,7 +15,7 @@ validation remains an HTTP error.
 **Tech Stack:** FastAPI/Starlette `StreamingResponse`, Pydantic discriminated
 events, robot async HTTP client, pytest.
 
-**Spec:** Proposed ADR
+**Spec:** Accepted ADR
 [0012](../../adr/0012-line-delimited-stream-terminal-events.md).
 
 ## Permitted files

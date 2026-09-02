@@ -14,7 +14,7 @@ through its proven lifecycle interface.
 
 **Tech Stack:** FastAPI lifespan, `AsyncExitStack`, HTTPX, pytest.
 
-**Spec:** Proposed ADR
+**Spec:** Accepted ADR
 [0010](../../adr/0010-fastapi-asgi-runtime-baseline.md).
 
 ## Permitted files
