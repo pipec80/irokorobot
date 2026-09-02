@@ -2,8 +2,9 @@
 
 > **Status:** Canonical tracked handoff
 >
-> **Purpose:** Preserve the repository constraints a future Codex needs even
-> when local-only `AGENTS.md`, `.Codex/`, or `project-history/local-docs/` files are absent.
+> **Purpose:** Preserve the repository constraints a future agent needs even
+> when local-only `AGENTS.md`, `CLAUDE.md`, `.claude/`, or
+> `project-history/local-docs/` files are absent.
 
 Runtime agent instructions supplied by the environment still apply. This
 document records the project-specific rules that cognitive plans must not leave
