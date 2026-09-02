@@ -14,7 +14,7 @@ components named under **Reuse** must not be rebuilt by a later plan.
 
 For daily work, do not choose a plan from this inventory. Follow the
 single-WIP [operational board](../README.md#operational-board) — **`NOW` is
-empty; nothing is currently authorized.** Use the
+Plan 0032.** Use the
 [personal-companion delivery map](../../roadmap/personal-companion-delivery-map.md)
 to see the code, tests, verified gap, and accountable plan for each outcome.
 

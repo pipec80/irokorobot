@@ -107,7 +107,12 @@ async def upsert_entity(
                 "aliases": aliases,
             },
         )
-        logger.info("Entity inserted: %s (%s) id=%d", name, type, entity_id)
+        logger.info(
+            "Entity inserted: type=%s id=%d",
+            type,
+            entity_id,
+            extra={"event": "entity.inserted", "entity_type": type, "entity_id": entity_id},
+        )
         return entity_id
 
     entity_id, existing_name, existing_attrs, existing_aliases = existing
@@ -131,7 +136,12 @@ async def upsert_entity(
             "aliases": merged_aliases,
         },
     )
-    logger.info("Entity merged: %s (%s) id=%d", name, type, entity_id)
+    logger.info(
+        "Entity merged: type=%s id=%d",
+        type,
+        entity_id,
+        extra={"event": "entity.merged", "entity_type": type, "entity_id": entity_id},
+    )
     return entity_id
 
 
@@ -192,7 +202,18 @@ async def assert_fact(
             "confidence": confidence,
         },
     )
-    logger.info("Fact asserted: entity=%d %s=%s", entity_id, predicate, object_value)
+    logger.info(
+        "Fact asserted: entity=%d predicate=%s (%d chars)",
+        entity_id,
+        predicate,
+        len(str(object_value)),
+        extra={
+            "event": "fact.asserted",
+            "entity_id": entity_id,
+            "predicate": predicate,
+            "chars": len(str(object_value)),
+        },
+    )
     return fact_id
 
 

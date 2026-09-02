@@ -12,12 +12,18 @@ from server.main import app
 from server.settings import settings
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def client() -> Generator[TestClient, None, None]:
     """Return a synchronous FastAPI test client.
 
     Does NOT enter the lifespan context — Whisper/Piper stay unloaded.
     Memory is disabled to avoid DB dependency in pipeline-only tests.
+
+    Function-scoped on purpose (Plan 0032): it mutates the `settings`
+    singleton, so a session-scoped fixture would leave `memory_enabled`
+    flipped for every later test and let one test's captured logs bleed into
+    another's assertions. Constructing `TestClient` is cheap because the
+    lifespan never runs.
     """
     original = settings.memory_enabled
     settings.memory_enabled = False  # type: ignore[misc]  # runtime override

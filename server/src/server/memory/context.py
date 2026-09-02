@@ -74,9 +74,15 @@ async def build_context(user_text: str) -> MemoryContext:
 
     memories = await search_memories(user_text)
     logger.info(
-        "Context built: entities=%d memories=%d for %r",
+        "Context built: entities=%d memories=%d (%d chars in)",
         len(entities),
         len(memories),
-        user_text[:40],
+        len(user_text),
+        extra={
+            "event": "memory.context_built",
+            "entities": len(entities),
+            "memories": len(memories),
+            "chars": len(user_text),
+        },
     )
     return MemoryContext(entities=entities, memories=memories)

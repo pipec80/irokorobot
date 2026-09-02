@@ -157,9 +157,13 @@ async def describe_image(image: bytes) -> tuple[str, int]:
         raise VisionError("VLM returned an empty description")
     duration_ms = int((time.perf_counter() - t0) * 1000)
     logger.info(
-        "Scene described in %d ms (%d chars): %s",
+        "Scene described in %d ms (%d chars)",
         duration_ms,
         len(description),
-        description[:160],
+        extra={
+            "event": "vision.described",
+            "duration_ms": duration_ms,
+            "chars": len(description),
+        },
     )
     return description, duration_ms

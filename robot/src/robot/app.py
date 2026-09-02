@@ -91,8 +91,11 @@ async def _on_thinking(ctx: LoopContext) -> RobotState:
     if ctx.result.authentication_consumed:
         # The one-use grant is spent — never carry it into another turn.
         ctx.identity_token = None
-    logger.info("Heard: %s", ctx.result.text_heard)
-    logger.info("Robot: %s", ctx.result.llm_response)
+    logger.info(
+        "Turn complete: heard %d chars, replied %d chars",
+        len(ctx.result.text_heard),
+        len(ctx.result.llm_response),
+    )
     return RobotState.SPEAKING
 
 
@@ -132,7 +135,7 @@ async def _on_looking(ctx: LoopContext) -> RobotState:
     except (CameraError, ServerError, ValueError) as exc:
         logger.error("Vision turn failed — returning to listen: %s", exc)
         return RobotState.IDLE
-    logger.info("Robot (vision): %s", ctx.result.llm_response)
+    logger.info("Vision turn complete: replied %d chars", len(ctx.result.llm_response))
     return RobotState.SPEAKING
 
 

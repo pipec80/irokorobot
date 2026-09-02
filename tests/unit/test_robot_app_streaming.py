@@ -27,7 +27,7 @@ async def _events(*items: StreamEvent) -> AsyncIterator[StreamEvent]:
 async def test_valid_stream_speaks_and_returns_idle(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """A well-ordered stream must play every chunk and log the pipeline summary."""
+    """A well-ordered stream plays every chunk and logs metrics, never speech."""
     play_wav = AsyncMock()
     monkeypatch.setattr(audio_playback, "play_wav", play_wav)
     ctx = LoopContext(stream_request_start=100.0)
@@ -39,7 +39,9 @@ async def test_valid_stream_speaks_and_returns_idle(
     assert state is RobotState.IDLE
     play_wav.assert_awaited_once()
     messages = [record.message for record in caplog.records]
-    assert any("Hola." in message for message in messages)
+    # Plan 0032: the sentence is spoken, never written to the log.
+    assert not any("Hola." in message for message in messages)
+    assert any("Speaking: 5 chars" in message for message in messages)
     assert any("First chunk received" in message for message in messages)
     assert any("First playback start" in message for message in messages)
     assert any("chunks=1" in message for message in messages)

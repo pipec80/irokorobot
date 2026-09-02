@@ -206,7 +206,12 @@ async def enroll_face(entity_id: int, embedding: np.ndarray, label: str) -> int:
         (profile_id, _pack(embedding)),
     )
     await conn.commit()
-    logger.info("Face enrolled: profile=%s entity=%s label=%s", profile_id, entity_id, label)
+    logger.info(
+        "Face enrolled: profile=%s entity=%s",
+        profile_id,
+        entity_id,
+        extra={"event": "face.enrolled", "profile_id": profile_id, "entity_id": entity_id},
+    )
     return int(profile_id) if profile_id is not None else 0
 
 

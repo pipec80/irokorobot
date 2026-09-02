@@ -15,6 +15,7 @@ from server.chat_ui import mount_chat_ui
 from server.db import close_db, open_db, run_migrations
 from server.logging_setup import build_file_handler
 from server.memory import retention
+from server.request_context import RequestContextMiddleware, RequestIdFilter
 from server.routers import auth, chat, system, transcribe, vision
 from server.settings import settings
 
@@ -22,6 +23,7 @@ _LOG_HANDLERS: dict[str, Any] = {
     "console": {
         "class": "logging.StreamHandler",
         "formatter": "default",
+        "filters": ["request_id"],
     },
 }
 _ROOT_HANDLER_NAMES = ["console"]
@@ -33,6 +35,7 @@ if settings.log_to_file:
         "()": build_file_handler,
         "path": settings.log_dir / "server.log",
         "retention_days": settings.log_retention_days,
+        "filters": ["request_id"],
     }
     _ROOT_HANDLER_NAMES.append("file")
 
@@ -40,9 +43,10 @@ if settings.log_to_file:
 _LOG_CONFIG: dict[str, Any] = {
     "version": 1,
     "disable_existing_loggers": False,
+    "filters": {"request_id": {"()": RequestIdFilter}},
     "formatters": {
         "default": {
-            "format": "%(asctime)s %(levelname)-8s %(name)s — %(message)s",
+            "format": "%(asctime)s %(levelname)-8s [%(request_id)s] %(name)s — %(message)s",
             "datefmt": "%Y-%m-%d %H:%M:%S",
         },
     },
@@ -107,6 +111,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+# Added last so it wraps GZip: the correlation id must be stamped on every
+# response, and the context must cover the whole request.
+app.add_middleware(RequestContextMiddleware)
 
 app.include_router(system.router)
 app.include_router(auth.router)

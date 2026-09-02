@@ -211,7 +211,12 @@ async def _generate(prepared: PreparedTextTurn) -> tuple[str, str, bool]:
             active_person=prepared.active_person,
             perception=prepared.perception,
         )
-        logger.info("LLM response: %r (emotion=%s)", response, emotion)
+        logger.info(
+            "LLM produced %d chars (emotion=%s)",
+            len(response),
+            emotion,
+            extra={"event": "llm.response", "chars": len(response), "emotion": emotion},
+        )
         return response, emotion, False
     except (LLMError, ValueError) as exc:
         logger.error("LLM failed — using fallback phrase: %s", exc, exc_info=True)

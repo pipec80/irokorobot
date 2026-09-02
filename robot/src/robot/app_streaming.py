@@ -87,7 +87,7 @@ async def on_thinking_stream(ctx: LoopContext) -> RobotState:
     if not isinstance(first, TextHeardEvent):
         logger.error("Unexpected first stream event: %s", type(first).__name__)
         return RobotState.ERROR
-    logger.info("Heard: %s", first.value)
+    logger.info("Heard: %d chars", len(first.value))
     ctx.stream_events = events
     return RobotState.SPEAKING
 
@@ -137,7 +137,7 @@ async def _audio_chunks(
                     logger.debug("First chunk received: %.1fms", elapsed)
                 first_chunk_logged = True
             if event.text:
-                logger.info("Speaking: %s", event.text)
+                logger.info("Speaking: %d chars", len(event.text))
             yield base64.b64decode(event.audio_base64)
         elif isinstance(event, DoneEvent):
             done = event

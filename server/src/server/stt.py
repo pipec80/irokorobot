@@ -107,13 +107,13 @@ def _transcribe_sync(audio: bytes, hotwords: str | None) -> str:
         parts: list[str] = []
         for seg in segments:
             logger.debug(
-                "Segment [%.1fs→%.1fs] logprob=%.2f no_speech=%.2f temp=%.1f: %s",
+                "Segment [%.1fs→%.1fs] logprob=%.2f no_speech=%.2f temp=%.1f (%d chars)",
                 seg.start,
                 seg.end,
                 seg.avg_logprob,
                 seg.no_speech_prob,
                 seg.temperature or 0.0,
-                seg.text.strip(),
+                len(seg.text.strip()),
             )
             parts.append(seg.text.strip())
         return " ".join(parts)

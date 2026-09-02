@@ -173,5 +173,11 @@ async def search_memories(
         )
         await conn.commit()
 
-    logger.info("Memory search: query=%r top_k=%d hits=%d", query[:40], k, len(hits))
+    logger.info(
+        "Memory search: %d chars top_k=%d hits=%d",
+        len(query),
+        k,
+        len(hits),
+        extra={"event": "memory.search", "chars": len(query), "top_k": k, "hits": len(hits)},
+    )
     return hits

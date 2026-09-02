@@ -164,7 +164,10 @@ def _normalize_relation(
     if object_value.casefold() in _OWNER_ALIASES:
         # Same as subjects: an unresolvable "Usuario" object would persist
         # a relation the checklist can never match.
-        logger.warning("Dropping relation with unresolved owner object: %s", predicate)
+        logger.warning(
+            "Dropping relation: unresolved owner object",
+            extra={"event": "normalize.relation_dropped", "reason": "unresolved_owner_object"},
+        )
         return None
     if object_value.casefold() in _NO_VALUES:
         # Declined slot ("no tengo hijos") — record on the subject, skip
@@ -182,7 +185,8 @@ def _normalize_relation(
     subject = _clean_name(subject)
     if not _is_grounded(subject, user_text):
         logger.warning(
-            "Dropping ungrounded relation fact: %s %s %s", subject, predicate, object_value
+            "Dropping relation fact: ungrounded",
+            extra={"event": "normalize.fact_dropped", "reason": "ungrounded_relation"},
         )
         return None
     return ExtractedFact(
@@ -208,11 +212,17 @@ def _validate_fact_parts(
     """
     predicate = _canonical_predicate(fact.predicate)
     if predicate is None:
-        logger.warning("Dropping fact with non-canonical predicate: %r", fact.predicate)
+        logger.warning(
+            "Dropping fact: non-canonical predicate",
+            extra={"event": "normalize.fact_dropped", "reason": "non_canonical_predicate"},
+        )
         return None
     object_value = fact.object.strip()
     if not object_value:
-        logger.warning("Dropping fact with empty object: %s", predicate)
+        logger.warning(
+            "Dropping fact: empty object",
+            extra={"event": "normalize.fact_dropped", "reason": "empty_object"},
+        )
         return None
     subject = _resolve_subject(fact.subject, active_person_name)
     if not subject:
@@ -220,12 +230,18 @@ def _validate_fact_parts(
     if subject.casefold() in _OWNER_ALIASES:
         # Owner still unknown — persisting a literal "usuario" entity is
         # junk the checklist can never match (observed 2026-07-13).
-        logger.warning("Dropping owner-alias fact — owner unknown yet: %s", predicate)
+        logger.warning(
+            "Dropping fact: owner alias with unknown owner",
+            extra={"event": "normalize.fact_dropped", "reason": "owner_alias_unknown"},
+        )
         return None
     if _is_temporal_junk(subject):
         # A date/age subject would resurrect the junk entity via the
         # implicit-entity path in consolidation.
-        logger.warning("Dropping fact with temporal-junk subject: %r", subject)
+        logger.warning(
+            "Dropping fact: temporal-junk subject",
+            extra={"event": "normalize.fact_dropped", "reason": "temporal_junk_subject"},
+        )
         return None
     return predicate, subject, object_value
 
@@ -254,7 +270,8 @@ def _normalize_fact(
     predicate, subject, object_value = parts
     if predicate in _PREFERENCE_PREDICATES and object_value.casefold() in person_names:
         logger.warning(
-            "Dropping preference pointing at a person: %s %s %s", subject, predicate, object_value
+            "Dropping fact: preference points at a person",
+            extra={"event": "normalize.fact_dropped", "reason": "preference_targets_person"},
         )
         return None
     if predicate in _RELATION_PREDICATES:
@@ -313,13 +330,22 @@ def normalize_extraction(
     for ent in extraction.entities:
         name = _clean_name(ent.name)
         if not name or name.casefold() in _OWNER_ALIASES:
-            logger.debug("Dropping owner-alias/empty entity: %r", ent.name)
+            logger.debug(
+                "Dropping entity: owner alias or empty",
+                extra={"event": "normalize.entity_dropped", "reason": "owner_alias_or_empty"},
+            )
             continue
         if _is_temporal_junk(name):
-            logger.warning("Dropping temporal-junk entity: %r", name)
+            logger.warning(
+                "Dropping entity: temporal junk",
+                extra={"event": "normalize.entity_dropped", "reason": "temporal_junk"},
+            )
             continue
         if ent.type == "person" and not _is_grounded(name, user_text):
-            logger.warning("Dropping ungrounded person entity: %r", name)
+            logger.warning(
+                "Dropping entity: ungrounded person",
+                extra={"event": "normalize.entity_dropped", "reason": "ungrounded_person"},
+            )
             continue
         entities.append(
             ExtractedEntity(
