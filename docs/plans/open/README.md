@@ -49,6 +49,7 @@ it found. Its acceptance run also corrected 0032's file list.
 | 8 | [0040](0040-fastapi-contract-and-openapi-baseline.md) | Typed dependencies, OpenAPI, health/readiness |
 | 9 | [0041](0041-streaming-terminal-contract.md) | Coordinated terminal stream error |
 | 10 | [0042](0042-server-baseline-closure.md) | Full gates, runtime evidence, ADR review, and closure |
+| 11 | [0044](0044-official-fastapi-conventions.md) | Alignment with the official FastAPI conventions the audit predated |
 
 Plans 0014 (P0 runtime-policy umbrella), 0020 (operator-QA remediation
 umbrella), and 0024 (owner-authenticated memory MVP design) closed with no

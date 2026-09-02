@@ -71,6 +71,28 @@ default; document it as uncalibrated rather than silently changing 100 to 8.
 - [ ] Run focused settings/Uvicorn tests, `just lint`, `just typecheck`,
   `just test`, and `git diff --check`.
 
+## Upstream runtime guidance
+
+The official FastAPI skill recommends running through the `fastapi` CLI —
+`fastapi run` for production, `fastapi dev` for local reload — with the
+entrypoint declared in `pyproject.toml`:
+
+```toml
+[tool.fastapi]
+entrypoint = "server.main:app"
+```
+
+Today `server.main:main()` calls `uvicorn.run()` directly with explicit flags
+(workers, proxy headers, concurrency, keep-alive, max requests). That is not
+wrong, and it is what makes those flags reviewable in code — which is this
+plan's whole point.
+
+- [ ] Decide explicitly, and record the reason: keep `uvicorn.run()` and its
+  visible flags, or move to `fastapi run` and express the same limits through
+  its options. Do not adopt the CLI merely because it is the upstream default;
+  the single-worker invariant and the concurrency limits must remain explicit
+  and testable either way.
+
 ## Standing bump risk
 
 - [ ] Record in the plan's execution notes that `pyproject.toml` sets

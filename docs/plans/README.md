@@ -57,6 +57,7 @@ deferred, umbrella, or product-design plan because it also lives under
 | 10 | [0031 — server production baseline design](open/0031-server-production-baseline-design.md) | Audited reference capsule, not executable | Now that 0030 closed, begin only with queued Plan 0032 once Pipec authorizes promotion; then follow children 0033–0042 one at a time |
 | 11 | [0043 — dependency refresh](completed/0043-dependency-refresh.md) | Merged 2026-09-02 (PR #92), acceptance recorded | Closed |
 | 12 | [0032 — server privacy and request observability](completed/0032-server-privacy-and-request-observability.md) | Merged 2026-09-02 (PR #94), two acceptances recorded | Closed. Plan 0033 is unblocked and awaits explicit promotion |
+| 13 | [0044 — official FastAPI conventions](open/0044-official-fastapi-conventions.md) | Written 2026-09-02 after consulting the upstream FastAPI skill | Queued behind the 0031 chain; independent of it, so it may be reordered |
 
 Supporting active designs and open acceptance work are listed in the
 [open-plan index](open/README.md). Closed execution evidence is isolated in

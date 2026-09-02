@@ -81,10 +81,13 @@ and constrain the child plans:
   `max_body_size`; it is registered with `add_middleware`. It rejects on
   `Content-Length` and on accumulated bytes, and it is route-aware. It answers
   `413` as `text/plain`, not as the JSON error shape the current handlers emit.
-- FastAPI, at its latest release, exposes no JSON Lines response. It offers SSE
-  (`EventSourceResponse`) and the Starlette responses. The line-delimited
-  transport therefore stays `StreamingResponse` with
-  `media_type="application/x-ndjson"`.
+- FastAPI supports JSON Lines natively: a path operation declaring
+  `-> AsyncIterable[Model]` and yielding models streams `application/jsonl`,
+  serialized by Pydantic and documented in OpenAPI. It is a return-type
+  convention, not a response class. The project's discriminated stream event
+  union works under it unchanged. Adopting it is a coordinated wire migration
+  because it changes the media type for the live robot client, not a local
+  refactor — see Plan 0041.
 
 Two gaps in the project's own safety net were added after the original audit:
 
@@ -235,8 +238,8 @@ raw request-body budget
   then EOF.
 - Failures detectable before headers remain ordinary non-200 HTTP responses.
 - Post-header failures are represented in-band without private details.
-- Native FastAPI JSON Lines is adopted only through an explicit coordinated
-  contract migration, not to maximize framework feature count.
+- Native FastAPI JSON Lines is available and is adopted only through an
+  explicit coordinated contract migration, never as an unreviewed refactor.
 
 ### Uvicorn and network posture
 
@@ -253,6 +256,29 @@ raw request-body budget
 - Maximum-request recycling is disabled without a verified supervisor.
 - Concurrency reflects measured STT/TTS/LLM/DB capacity, not HTTP's theoretical
   maximum.
+
+### Official FastAPI guidance
+
+The official FastAPI skill (`fastapi/.agents/skills/fastapi` upstream) is a
+source for HTTP-layer conventions. Where it and this baseline differ, record
+the reason rather than drifting silently:
+
+- Dependencies use `Annotated[..., Depends(...)]` behind a reusable type alias;
+  shared dependencies are declared on the `APIRouter`, along with its prefix
+  and tags.
+- A return type is preferred over `response_model`; `response_model` is for
+  when the public schema differs from what the function returns.
+- `async def` is for path operations whose body is genuinely non-blocking. A
+  blocking body belongs in `def`, which FastAPI runs in a threadpool, or in an
+  explicit executor. "Always async" is not the official recommendation.
+- `app.frontend()` serves built frontend assets instead of a manual
+  `StaticFiles` mount.
+- `ORJSONResponse`/`UJSONResponse` are deprecated; neither is used here.
+- SQLModel is the upstream database recommendation. It does not apply: this
+  project uses `sqlite-vec` through raw `aiosqlite`, and ADR 0011 keeps that.
+- Asyncer and `ty` are upstream tooling recommendations. Neither is adopted:
+  the project already standardises on asyncio, mypy and pyright, and adding
+  them would be change without a demonstrated need.
 
 ## Deliberate non-goals
 
