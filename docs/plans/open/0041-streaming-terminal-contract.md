@@ -10,7 +10,9 @@ one typed `done` or privacy-safe `error` event.
 
 **Architecture:** Preserve the existing media type and successful event order.
 Convert only post-header failures to an in-band terminal event. Pre-stream
-validation remains an HTTP error.
+validation remains an HTTP error. Adopting FastAPI's native JSON Lines support
+is evaluated in Task 0 and decided explicitly — it is available, contrary to an
+earlier revision of ADR 0012.
 
 **Tech Stack:** FastAPI/Starlette `StreamingResponse`, Pydantic discriminated
 events, robot async HTTP client, pytest.
@@ -30,8 +32,10 @@ events, robot async HTTP client, pytest.
 - `robot/src/robot/app_streaming.py`
 - Focused server/robot stream tests
 
-No change to `/transcribe`, media type, JSON framing, successful event fields,
-STT/controller semantics, or TTS audio contract is allowed.
+No change to `/transcribe`, successful event fields, STT/controller semantics,
+or the TTS audio contract is allowed. The stream's media type and framing may
+change only through Task 0's explicit decision, with the robot updated in the
+same slice.
 
 ## Interface
 
@@ -45,6 +49,49 @@ class StreamErrorEvent(BaseModel):
 
 The event union includes existing text/emotion/audio/done plus error. Detail is
 fixed client-safe text and never includes provider exception/model response.
+
+## Task 0: Decide on native JSON Lines, with evidence
+
+An earlier revision of ADR 0012 claimed FastAPI had no JSON Lines support and
+this plan inherited that error. Measured on the pinned `fastapi 0.141.1`:
+
+```python
+@router.post("/transcribe/stream")
+async def transcribe_stream(...) -> AsyncIterable[StreamEvent]:
+    yield StreamTextHeardEvent(value=...)
+```
+
+streams `application/jsonl`, serialized by Pydantic and documented in OpenAPI.
+The project's existing discriminated union
+(`text_heard | emotion | audio | done`) was verified working under it unchanged.
+
+What adoption would buy:
+
+- hand-built newline-joined `model_dump_json()` output disappears from
+  `streaming.py` and `streaming_render.py`;
+- the event union appears in OpenAPI, so `/docs` finally describes what the
+  stream emits — today it claims a plain JSON response;
+- one terminal-event rule to enforce, in typed code rather than string
+  assembly.
+
+What it costs:
+
+- the media type changes from `application/x-ndjson` to `application/jsonl`;
+  the robot parses with `aiter_lines()` and validates event order, so producer
+  and consumer must move together;
+- `StreamingResponse` is returned directly today, which the official guidance
+  advises against, but the current code also branches between two generators
+  before streaming — that branching must survive the rewrite;
+- errors detectable before the first byte must still produce a non-200
+  response, which is harder to guarantee once the endpoint is a generator.
+
+- [ ] Prototype the migration behind a test and measure whether the pre-stream
+  `413`/`422` paths still return real HTTP errors.
+- [ ] If they do, migrate in this plan and record the media-type change as a
+  coordinated contract move. If they do not, keep `application/x-ndjson`,
+  record the blocking reason here, and open the question in Plan 0042.
+- [ ] Either way the terminal-event work below proceeds; it does not depend on
+  the outcome.
 
 ## Task 1: Write producer/consumer RED tests
 
@@ -91,5 +138,8 @@ older truncation detection remains functional.
 ## Completion criteria
 
 - Exactly one terminal event exists for every started stream.
-- Existing success order/media type remains unchanged.
+- Existing success event order remains unchanged.
+- The media type either stays `application/x-ndjson` or moves to
+  `application/jsonl` with the robot updated in the same slice — never
+  drifts unrecorded.
 - Robot safely handles `error`, truncation, and illegal post-terminal events.
