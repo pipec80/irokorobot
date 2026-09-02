@@ -14,7 +14,7 @@ components named under **Reuse** must not be rebuilt by a later plan.
 
 For daily work, do not choose a plan from this inventory. Follow the
 single-WIP [operational board](../README.md#operational-board) — **`NOW` is
-Plan 0043.** Use the
+empty; nothing is currently authorized.** Use the
 [personal-companion delivery map](../../roadmap/personal-companion-delivery-map.md)
 to see the code, tests, verified gap, and accountable plan for each outcome.
 
@@ -22,7 +22,6 @@ to see the code, tests, verified gap, and accountable plan for each outcome.
 |---|---|---|---|
 | [0015](0015-personal-companion-design.md) | Approved product design; PC-1 code and acceptance are both complete (Plans 0025–0028); PC-2 code, tests, and real-camera acceptance are complete (Plans 0029/0030) | Controller, policy/audit, v4 child tools, identity-session seam, onboarding primitives, STT/TTS, face engine, calibrated face-authentication threshold | Speaker evidence (PC-3), fusion (PC-4), visual companion acceptance (PC-5), and family profile expansion (PC-6) remain later slices |
 | [0031](0031-server-production-baseline-design.md) | Audited reference-only server capsule; no production implementation | Existing FastAPI/Starlette/Uvicorn, HTTP/audio contracts, tests and server/robot boundary | Children 0032–0042 below, one at a time, pending Pipec's explicit authorization to promote 0032 |
-| [0043](0043-dependency-refresh.md) | Executable; lock refreshed to latest stable 2026-09-02, all gates green | Existing uv workspace, full test suite, `filterwarnings=error` net | Real-runtime voice-turn acceptance by Pipec, then closure |
 
 ## Queued server-production capsule
 
@@ -32,11 +31,11 @@ Pipec explicitly promotes the first one. Plan 0031 locks their order; only
 the first unfinished child may be promoted after a narrow assumption
 recheck.
 
-Plan 0043 runs before this whole chain. It is transversal rather than a child
-of 0031: two queued children change design depending on the refreshed lock —
-0034 no longer needs a hand-written raw body limit now that Starlette 1.6.0
-ships `RequestBodyLimitMiddleware`, and 0038 must record the real Uvicorn
-version.
+[Plan 0043](../completed/0043-dependency-refresh.md) ran before this chain and
+closed on 2026-09-02. It already reshaped two children: 0034 drops its
+hand-written raw body limit now that Starlette 1.6.0 ships
+`RequestBodyLimitMiddleware`, and 0038 inherits the `filterwarnings` blind spot
+it found. Its acceptance run also corrected 0032's file list.
 
 | Order | Plan | Outcome |
 |---:|---|---|

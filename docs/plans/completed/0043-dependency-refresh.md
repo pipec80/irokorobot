@@ -1,8 +1,7 @@
 # Dependency Refresh Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use
-> `superpowers:verification-before-completion`. Execute this plan only when it
-> is the explicitly authorized `NOW` item.
+> **Status:** Completed 2026-09-02. Historical evidence only — this document
+> is not an instruction and authorizes nothing.
 
 **Goal:** Bring the workspace lock to the latest stable resolution so the
 server-production capsule (Plans 0032-0042) is designed against the runtime it
@@ -100,9 +99,22 @@ Mandatory. No automated test covers it: `av`, `ctranslate2` and
 `huggingface-hub` form the Whisper chain, and model tests are marked `slow` and
 excluded from CI, so a speech-quality regression would pass green.
 
-- [ ] Pipec runs `just run-server` + `just run-robot` and confirms one complete
-  voice turn: speak -> transcribe -> LLM -> TTS -> audio plays.
-- [ ] Record the outcome here.
+- [x] Pipec ran `just run-server` + `just run-robot` on 2026-09-02 at 12:26
+  local time. **PASS — audio ok, vision ok.**
+
+Observed end to end:
+
+- Whisper detected Spanish at 100% confidence and transcribed
+  `Hola,como estas?` from 2.2 s of audio (1.8 s after VAD).
+- The controller returned no plan, so the legacy text turn generated the reply;
+  Ollama answered in Spanish and the robot spoke two sentences.
+- Stream terminated cleanly: `outcome=ok chunks=2`.
+- Timings: `stt=2644ms llm=17161ms tts=735ms total=20540ms`.
+
+The 17 s LLM leg matches this machine's established baseline for a
+non-dedicated laptop running Docker and dev workloads alongside Ollama. It is
+not a regression introduced by the `av` / `ctranslate2` / `huggingface-hub`
+moves; STT and TTS both stayed fast.
 
 ## Rollback
 
@@ -116,7 +128,7 @@ data rollback.
 - `just check`, `just typecheck`, `just audit` and the complete `just test`
   pass.
 - No new warning filter was added.
-- One real voice turn confirmed by Pipec and recorded above.
+- [x] One real voice turn confirmed by Pipec and recorded above.
 - The verified version block in `server-production-baseline.md` matches the
   merged lock.
 
@@ -203,3 +215,29 @@ _Pending: Pipec runs `just run-server` + `just run-robot` and confirms one
 complete voice turn. The Whisper chain (`av`, `ctranslate2`,
 `huggingface-hub`) moved, and model tests are `slow`/CI-excluded, so a speech
 regression would not appear above._
+
+### Finding 3: the acceptance run demonstrated Plan 0032's gap live
+
+The server log from the accepted turn contains, at INFO:
+
+```text
+server.pipeline — STT heard: 'Hola,como estas?'
+server.streaming_render — Stream sentence synthesized: 'Estoy bien, gracias por preguntar.'
+```
+
+Both are exactly the raw domestic content Plan 0032 must remove. Checking that
+plan's permitted files against a full runtime sweep found three log sites it
+could not legally touch:
+
+- `server/src/server/streaming_render.py:67` — the complete spoken sentence
+- `server/src/server/memory/semantic.py:176` — the user's search query
+- `server/src/server/memory/normalize.py` — entity names and fact subjects
+
+Plan 0032's Task 3 already orders a sweep of all runtime code, so its file list
+contradicted its own instruction. The list was corrected when this plan closed.
+
+## Closure
+
+Merged as PR #92 (`0f69f58`). Real-runtime acceptance recorded above. The
+capsule's first child, Plan 0032, is unblocked and awaits Pipec's explicit
+promotion.
