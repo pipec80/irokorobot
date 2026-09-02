@@ -13,9 +13,9 @@ Image contract: JPEG/PNG/WebP/GIF/BMP · max 1280x720 · ONE frame per request.
 
 from __future__ import annotations
 
-import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from functools import partial
 import logging
 from typing import Any
 import warnings
@@ -25,6 +25,7 @@ import numpy as np
 from server import db
 from server.exceptions import EnrollmentRejectedError, VisionError
 from server.memory.declarative import upsert_entity
+from server.request_context import run_in_executor_with_context
 from server.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -135,8 +136,7 @@ async def detect_faces(image: bytes) -> list[DetectedFace]:
     Raises:
         VisionError: If decoding or the face model fails.
     """
-    loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(_executor, _detect_sync, image)
+    return await run_in_executor_with_context(_executor, partial(_detect_sync, image))
 
 
 async def extract_faces(image: bytes) -> list[np.ndarray]:

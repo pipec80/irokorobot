@@ -3,9 +3,9 @@
 Audio contract: WAV · 16000 Hz · mono · int16.
 """
 
-import asyncio
 import base64
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 import io
 import logging
 import struct
@@ -17,6 +17,7 @@ from piper import PiperVoice, SynthesisConfig
 import soxr
 
 from server.exceptions import TTSError
+from server.request_context import run_in_executor_with_context
 from server.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -152,7 +153,8 @@ async def synthesize(text: str) -> tuple[str, int]:
         TTSError: If Piper synthesis fails.
         ValueError: If text is empty.
     """
-    loop = asyncio.get_running_loop()
-    wav_bytes, duration_ms = await loop.run_in_executor(_executor, _synthesize_sync, text)
+    wav_bytes, duration_ms = await run_in_executor_with_context(
+        _executor, partial(_synthesize_sync, text)
+    )
     audio_base64 = base64.b64encode(wav_bytes).decode("ascii")
     return audio_base64, duration_ms

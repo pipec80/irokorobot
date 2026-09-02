@@ -40,6 +40,7 @@ logging filter reads a `ContextVar`; application paths emit metadata only.
 - `server/src/server/streaming_render.py`
 - `server/src/server/vision/describe.py`
 - `server/src/server/stt.py`
+- `server/src/server/tts.py`
 - `server/src/server/memory/semantic.py`
 - `server/src/server/memory/normalize.py`
 - `server/src/server/memory/declarative.py`
@@ -235,11 +236,43 @@ One existing test (`test_robot_app_streaming.py`) asserted that the robot
 *logs* the spoken sentence, encoding the leak as expected behaviour. It now
 asserts the opposite.
 
+### Finding: executors dropped the context
+
+The first real-runtime run (2026-09-02, 13:29) passed on privacy but exposed a
+defect in this plan's own delivery. Whisper's lines were orphaned:
+
+```text
+13:29:20 INFO [-]         faster_whisper — Processing audio with duration 00:02.208
+13:29:20 INFO [-]         server.stt — Language detected: es (100%)
+13:29:21 INFO [590d3af6-] server.pipeline — STT transcribed 16 chars
+```
+
+`loop.run_in_executor` starts its callable with an empty context, so the
+request id never reached the worker thread. STT, TTS and face detection all
+dispatch that way, which meant the slowest part of every turn logged under `-`
+while the rest carried its id — correlation failing exactly where it is most
+useful.
+
+`asyncio.to_thread` copies the context but always uses the default executor,
+and these paths need their own bounded pools (STT 2 workers, TTS 1). So
+`run_in_executor_with_context` was added and the three call sites migrated to
+it, binding their arguments with `functools.partial`.
+
+`tts.py` was added to the permitted files for this one-line change: it corrects
+this plan's own delivery rather than widening the sweep.
+
 ### Verification
 
-- `just test` — **953 passed** (929 before, 24 added)
+- `just test` — **954 passed** (929 before, 25 added)
 - `just lint` — clean
 - `just typecheck` — mypy (90 files) and pyright, 0 errors
 - `just audit` — Ruff S and pip-audit, no known vulnerabilities
 - `just check` — all 17 hooks
-- Real voice-turn acceptance: **pending Pipec**.
+- Real voice-turn acceptance: **PASS**, 2026-09-02 13:29. One complete
+  streaming turn: `stt=1711ms llm=13543ms tts=561ms total=15815ms`,
+  `outcome=ok chunks=2`, audio played normally. No transcript, reply or spoken
+  sentence appeared anywhere in the server or robot logs — only counts. A
+  single id (`590d3af6-2247-48c1-a27d-72213f9f61ba`) correlated every line of
+  the turn, including `uvicorn.access` and `httpx`. Startup and retention
+  logged under `-`, as intended. The executor gap above was found in this run
+  and fixed; it needs one more confirmation run before closure.

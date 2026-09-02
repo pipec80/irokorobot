@@ -4,6 +4,7 @@ The middleware is pure ASGI on purpose: `BaseHTTPMiddleware` would buffer the
 NDJSON stream that `POST /transcribe/stream` depends on.
 """
 
+from concurrent.futures import ThreadPoolExecutor
 import logging
 from typing import Any
 from uuid import UUID
@@ -16,6 +17,7 @@ from server.request_context import (
     RequestContextMiddleware,
     RequestIdFilter,
     current_request_id,
+    run_in_executor_with_context,
 )
 
 _HEADER = "X-Request-ID"
@@ -159,3 +161,35 @@ def test_the_filter_marks_records_written_outside_any_request() -> None:
 
     assert kept is True, "the filter enriches records, it must never drop them"
     assert getattr(record, "request_id") == ABSENT_REQUEST_ID  # noqa: B009 — injected
+
+
+@pytest.mark.unit
+def test_context_reaches_work_dispatched_to_a_thread_executor() -> None:
+    """STT, TTS and face detection run in executors — the slowest part of a turn.
+
+    `loop.run_in_executor` does not copy the ambient context into the worker
+    thread, so without an explicit copy every log line emitted by Whisper or
+    Piper is orphaned from the request that caused it. Observed live on
+    2026-09-02: `faster_whisper` and `server.stt` logged under `-` while the
+    rest of the same turn carried its id.
+    """
+    app = FastAPI()
+    app.add_middleware(RequestContextMiddleware)
+    executor = ThreadPoolExecutor(max_workers=1)
+    seen: list[str | None] = []
+
+    def blocking_work() -> str | None:
+        return current_request_id()
+
+    @app.get("/offload")
+    async def offload() -> dict[str, str]:
+        seen.append(await run_in_executor_with_context(executor, blocking_work))
+        return {"ok": "yes"}
+
+    try:
+        with TestClient(app) as client:
+            response = client.get("/offload")
+    finally:
+        executor.shutdown(wait=True)
+
+    assert seen == [response.headers[_HEADER]]

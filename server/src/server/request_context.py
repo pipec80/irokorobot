@@ -1,27 +1,27 @@
 """Per-request correlation context shared by every log line of one turn.
 
-Plan 0032 removes raw household content from the logs. What replaces it is
-correlation: a single request id lets an operator follow one turn through
-identity, STT, cognition, memory and TTS without any line carrying what was
-said.
+Plan 0032 removes raw household content from the logs. Correlation replaces it:
+one request id lets an operator follow a turn through identity, STT, cognition,
+memory and TTS without any line carrying what was said.
 
 The middleware is deliberately pure ASGI rather than Starlette's
-``BaseHTTPMiddleware``: that base class buffers the response body, which would
-defeat the sentence-by-sentence NDJSON stream ``POST /transcribe/stream``
-depends on.
-
-The ASGI types are declared locally instead of imported from Starlette, so this
+``BaseHTTPMiddleware``, which buffers the response body and would defeat the
+sentence-by-sentence NDJSON stream ``POST /transcribe/stream`` depends on. The
+ASGI types are declared locally rather than imported from Starlette, so this
 module adds no new direct dependency (see ADR 0010).
 """
 
+import asyncio
 from collections.abc import Awaitable, Callable, MutableMapping
+from concurrent.futures import Executor
+import contextvars
 from contextvars import ContextVar
 import logging
 import time
 from typing import Any
 from uuid import UUID, uuid4
 
-# Minimal ASGI type aliases per the ASGI 3.0 specification.
+# Minimal ASGI 3.0 type aliases.
 # Any: an ASGI scope/message is an open, protocol-defined mapping.
 type Scope = MutableMapping[str, Any]
 type Message = MutableMapping[str, Any]
@@ -48,12 +48,34 @@ def current_request_id() -> str | None:
     return _request_id_var.get()
 
 
+async def run_in_executor_with_context[T](executor: Executor | None, fn: Callable[[], T]) -> T:
+    """Run blocking work in *executor* with the caller's context copied along.
+
+    ``loop.run_in_executor`` starts the callable with an empty context, so the
+    ambient request id is invisible to anything the worker thread logs — which
+    orphaned every Whisper and Piper line from its turn. ``asyncio.to_thread``
+    copies the context but always uses the default executor; the STT/TTS/face
+    paths need their own bounded pools.
+
+    Args:
+        executor: Target executor, or ``None`` for the loop's default.
+        fn: Zero-argument blocking callable; bind arguments with
+            ``functools.partial`` at the call site.
+
+    Returns:
+        Whatever *fn* returns.
+    """
+    context = contextvars.copy_context()
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(executor, lambda: context.run(fn))
+
+
 def _inbound_request_id(scope: Scope) -> str | None:
     """Extract a trustworthy correlation id from the request headers.
 
-    The header is client-controlled, so an arbitrary value is never echoed
-    back: only a syntactically valid UUID is preserved, which keeps the field
-    useless as an injection or unbounded-length vector.
+    The header is client-controlled, so only a syntactically valid UUID is
+    preserved — that keeps the field useless as an injection or
+    unbounded-length vector.
 
     Args:
         scope: ASGI connection scope for one HTTP request.
@@ -76,8 +98,8 @@ def _inbound_request_id(scope: Scope) -> str | None:
 class RequestIdFilter(logging.Filter):
     """Attach the ambient request id to every record that passes through.
 
-    Installed on the handlers rather than on one logger so that records from
-    the application, Uvicorn and third-party libraries are all correlatable.
+    Installed on the handlers, not on one logger, so application, Uvicorn and
+    third-party records are all correlatable.
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
@@ -145,8 +167,8 @@ class RequestContextMiddleware:
 def _log_completion(scope: Scope, status: int, started: float) -> None:
     """Emit one metadata-only line describing how the request ended.
 
-    Never records query strings, headers or body: those carry household
-    content, which is exactly what this plan removes from the logs.
+    Never records query strings, headers or body — those carry the household
+    content this plan removes from the logs.
 
     Args:
         scope: ASGI connection scope for the finished request.
