@@ -14,7 +14,7 @@ components named under **Reuse** must not be rebuilt by a later plan.
 
 For daily work, do not choose a plan from this inventory. Follow the
 single-WIP [operational board](../README.md#operational-board) — **`NOW` is
-Plan 0033.** Use the
+empty; nothing is currently authorized.** Use the
 [personal-companion delivery map](../../roadmap/personal-companion-delivery-map.md)
 to see the code, tests, verified gap, and accountable plan for each outcome.
 
@@ -39,17 +39,16 @@ it found. Its acceptance run also corrected 0032's file list.
 
 | Order | Plan | Outcome |
 |---:|---|---|
-| 1 | [0033](0033-owner-unlock-http-hardening.md) | PIN validation and race-safe owner unlock |
-| 2 | [0034](0034-upload-and-multipart-security.md) | Raw, multipart, and decoded-media limits |
-| 3 | [0035](0035-sqlite-transaction-owner.md) | Tested transaction ownership primitive |
-| 4 | [0036](0036-sqlite-write-migration-and-outbox-removal.md) | Runtime-write migration and unused outbox removal |
-| 5 | [0037](0037-deterministic-ci-baseline.md) | Deterministic API/local integration gate at >=80% coverage |
-| 6 | [0038](0038-uvicorn-runtime-baseline.md) | Explicit one-worker runtime defaults |
-| 7 | [0039](0039-application-lifecycle-and-http-resources.md) | Failure-safe lifespan and shared HTTP transport |
-| 8 | [0040](0040-fastapi-contract-and-openapi-baseline.md) | Typed dependencies, OpenAPI, health/readiness |
-| 9 | [0041](0041-streaming-terminal-contract.md) | Coordinated terminal stream error |
-| 10 | [0042](0042-server-baseline-closure.md) | Full gates, runtime evidence, ADR review, and closure |
-| 11 | [0044](0044-official-fastapi-conventions.md) | Alignment with the official FastAPI conventions the audit predated |
+| 1 | [0034](0034-upload-and-multipart-security.md) | Raw, multipart, and decoded-media limits |
+| 2 | [0035](0035-sqlite-transaction-owner.md) | Tested transaction ownership primitive |
+| 3 | [0036](0036-sqlite-write-migration-and-outbox-removal.md) | Runtime-write migration and unused outbox removal |
+| 4 | [0037](0037-deterministic-ci-baseline.md) | Deterministic API/local integration gate at >=80% coverage |
+| 5 | [0038](0038-uvicorn-runtime-baseline.md) | Explicit one-worker runtime defaults |
+| 6 | [0039](0039-application-lifecycle-and-http-resources.md) | Failure-safe lifespan and shared HTTP transport |
+| 7 | [0040](0040-fastapi-contract-and-openapi-baseline.md) | Typed dependencies, OpenAPI, health/readiness |
+| 8 | [0041](0041-streaming-terminal-contract.md) | Coordinated terminal stream error |
+| 9 | [0042](0042-server-baseline-closure.md) | Full gates, runtime evidence, ADR review, and closure |
+| 10 | [0044](0044-official-fastapi-conventions.md) | Alignment with the official FastAPI conventions the audit predated |
 
 Plans 0014 (P0 runtime-policy umbrella), 0020 (operator-QA remediation
 umbrella), and 0024 (owner-authenticated memory MVP design) closed with no
@@ -80,7 +79,7 @@ PC-2 completely — see
 [completed/0030](../completed/0030-real-camera-face-acceptance.md).
 
 Canonical execution order: **none — `NOW` is empty.** The server capsule is
-queued, beginning with 0033 only once Pipec authorizes promotion.
+queued, beginning with 0034 only once Pipec authorizes promotion.
 
 ## Status rule
 

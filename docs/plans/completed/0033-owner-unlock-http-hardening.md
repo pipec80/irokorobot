@@ -1,8 +1,7 @@
 # Owner Unlock HTTP Hardening Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use
-> `superpowers:test-driven-development` and
-> `superpowers:verification-before-completion`.
+> **Status:** Completed 2026-09-02. Historical evidence only — this document
+> is not an instruction and authorizes nothing.
 
 **Goal:** Make the local owner-PIN boundary deterministic, private, and safe
 under concurrent requests.
@@ -142,6 +141,30 @@ change that also updated one existing test.
 - `just lint` — clean
 - `just typecheck` — mypy (90 files) and pyright, 0 errors
 - `just audit` — Ruff S and pip-audit, no known vulnerabilities
-- Real acceptance: **pending Pipec** — `POST /auth/owner/unlock` is reachable
-  from `/docs`, and `just run-server` + `just run-robot` should still complete
-  an authenticated turn.
+- Real acceptance: **PASS**, 2026-09-02. Two parts.
+
+  Voice regression via `just run-server` + `just run-robot`: a face-
+  authenticated turn resolved `status=identified role=owner`, triggered the
+  deterministic `get_children` tool, and a second unauthenticated turn
+  completed normally — the identity and streaming paths this plan sits beside
+  are unaffected.
+
+  The three behaviors this plan actually changes were verified by direct HTTP
+  calls to the live server (`POST /auth/owner/unlock`), not exercised by the
+  voice path:
+
+  ```text
+  malformed PIN {"pin":"abc"}  -> 422, body has no trace of "abc"
+  5x wrong 6-digit PIN         -> 401, 401, 401, 401, 401
+  6th attempt                  -> 429, Retry-After: 59
+  7th attempt (still blocked)  -> 429, Retry-After: 51
+  ```
+
+  The countdown between the 6th and 7th call confirms `retry_after_seconds` is
+  computed from the real remaining block time, not a fixed value.
+
+## Closure
+
+Merged as PR #97 (`a944c7e`). Real HTTP acceptance and the voice regression
+both recorded above. The capsule's next child is Plan 0034. Closing this plan
+does not authorize it.
