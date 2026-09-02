@@ -13,5 +13,10 @@ elsewhere, not because they were themselves executed. Current work must use the
 [roadmap](../../roadmap/cognitive-roadmap.md), and
 [open-plan index](../open/README.md).
 
+[Plan 0043](0043-dependency-refresh.md) refreshed the workspace lock to the
+latest stable resolution on 2026-09-02 and recorded the framework capabilities
+measured against the installed packages. It is transversal rather than part of
+any milestone.
+
 Do not modify a completed plan to create a new decision. Record architecture
 changes in a new ADR and create a new open plan.

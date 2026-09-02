@@ -37,8 +37,11 @@ logging filter reads a `ContextVar`; application paths emit metadata only.
 - `server/src/server/pipeline.py`
 - `server/src/server/text_turn.py`
 - `server/src/server/routers/transcribe.py`
+- `server/src/server/streaming_render.py`
 - `server/src/server/vision/describe.py`
 - `server/src/server/stt.py`
+- `server/src/server/memory/semantic.py`
+- `server/src/server/memory/normalize.py`
 - `robot/src/robot/app.py`
 - `robot/src/robot/app_streaming.py`
 - `robot/src/robot/server_client.py`
@@ -99,6 +102,18 @@ new UUID4 is generated. The response always includes `X-Request-ID`.
 
 - [ ] Replace every verified raw server/robot content log with event name,
   byte/character count, duration, and outcome.
+- [ ] The confirmed sites at the time of writing, all at INFO:
+  - `pipeline.py:90` — `STT heard: %r`, the full transcript
+  - `text_turn.py:214` — `LLM response: %r`, the full model reply
+  - `streaming_render.py:67` — `Stream sentence synthesized: %r`, the spoken
+    sentence
+  - `memory/semantic.py:176` — `query=%r`, the user's search text
+  - `memory/normalize.py` — entity names and fact subjects at several lines
+  - `routers/transcribe.py:367` — the first 60 characters of the transcript
+  - `robot/app_streaming.py` — `Heard:` and `Speaking:` lines
+
+  The first three were observed live in Plan 0043's acceptance run. Treat this
+  list as a starting point, not a boundary — the sweep below is authoritative.
 - [ ] Scan all runtime code, not only the original sites:
 
   ```powershell
