@@ -1,8 +1,7 @@
 # Upload and Multipart Security Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use
-> `superpowers:test-driven-development`, `fastapi`, and
-> `superpowers:verification-before-completion`.
+> **Status:** Completed 2026-09-02. Historical evidence only — this document
+> is not an instruction and authorizes nothing.
 
 **Goal:** Reject oversized or structurally unsafe audio/image requests before
 unbounded application reads or model processing.
@@ -237,4 +236,18 @@ magic-byte precheck plus the real decode this plan leaves untouched.
 - `just typecheck` — mypy (91 files) and pyright, 0 errors
 - `just audit` — Ruff S and pip-audit, no known vulnerabilities
 - `just check` — all 17 hooks
-- Real acceptance: **pending Pipec**.
+- Real acceptance: **PASS**, 2026-09-02 19:35–19:36. Three consecutive voice
+  turns through `just run-server` + `just run-robot`, none rejected by any
+  new limit: two ordinary turns (`stt=1581ms/1913ms`, `llm=14151ms/3443ms`,
+  `outcome=ok`), and one face-authenticated turn exercising exactly the code
+  this plan touched in `auth.py`/`vision/faces.py` —
+  `status=identified role=owner`, the deterministic `get_children` tool
+  firing (`stt=1749ms llm=0ms tts=108ms total=4909ms`). Pipec independently
+  confirmed `/transcribe`, `/vision/*`, and the face-enroll endpoint all
+  still resolve from `/docs`.
+
+## Closure
+
+Merged as PR #98. Real HTTP-path acceptance and the OpenAPI inspection both
+recorded above. The capsule's next child is Plan 0035. Closing this plan does
+not authorize it.
