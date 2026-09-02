@@ -1,9 +1,7 @@
 # Server Privacy and Request Observability Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use
-> `superpowers:test-driven-development` and
-> `superpowers:verification-before-completion`. Execute this plan only when it
-> is the explicitly authorized `NOW` item.
+> **Status:** Completed 2026-09-02. Historical evidence only — this document
+> is not an instruction and authorizes nothing.
 
 **Goal:** Remove raw domestic content from server/robot logs and add an
 additive request correlation header without changing HTTP bodies.
@@ -268,11 +266,36 @@ this plan's own delivery rather than widening the sweep.
 - `just typecheck` — mypy (90 files) and pyright, 0 errors
 - `just audit` — Ruff S and pip-audit, no known vulnerabilities
 - `just check` — all 17 hooks
-- Real voice-turn acceptance: **PASS**, 2026-09-02 13:29. One complete
-  streaming turn: `stt=1711ms llm=13543ms tts=561ms total=15815ms`,
-  `outcome=ok chunks=2`, audio played normally. No transcript, reply or spoken
-  sentence appeared anywhere in the server or robot logs — only counts. A
-  single id (`590d3af6-2247-48c1-a27d-72213f9f61ba`) correlated every line of
-  the turn, including `uvicorn.access` and `httpx`. Startup and retention
-  logged under `-`, as intended. The executor gap above was found in this run
-  and fixed; it needs one more confirmation run before closure.
+- Real voice-turn acceptance: **PASS**, two runs on 2026-09-02.
+
+  **Run 1, 13:29** — privacy confirmed, executor gap found.
+  `stt=1711ms llm=13543ms tts=561ms total=15815ms`, `outcome=ok chunks=2`,
+  audio played normally. No transcript, reply or spoken sentence appeared
+  anywhere in the server or robot logs — only counts. One id
+  (`590d3af6-2247-48c1-a27d-72213f9f61ba`) correlated every line of the turn,
+  including `uvicorn.access` and `httpx`. But `faster_whisper` and
+  `server.stt` logged under `-`, which exposed the executor defect fixed
+  above.
+
+  **Run 2, 13:46** — full correlation confirmed after the fix.
+  `stt=1616ms llm=14421ms tts=623ms total=16660ms`, `outcome=ok chunks=2`,
+  audio and vision both fine. The Whisper lines now carry the turn's id:
+
+  ```text
+  13:46:16 INFO [884b3fb2-1df4-4036-8faf-8f6d1118a6bc] faster_whisper — Processing audio 00:02.144
+  13:46:16 INFO [884b3fb2-1df4-4036-8faf-8f6d1118a6bc] server.stt — Language detected: es (100%)
+  13:46:33 INFO [884b3fb2-1df4-4036-8faf-8f6d1118a6bc] server.request_context — Request: POST /transcribe/stream -> 200 (16668 ms)
+  ```
+
+  Every line of the turn shares one id, from the first Whisper line to the
+  request's close, and none of them says what was spoken. Startup and
+  retention still log under `-`, as intended.
+
+## Closure
+
+All completion criteria met and confirmed on real hardware. Both the executor
+defect and three of the leaked sites were found by real runs rather than by the
+suite — automated tests were green while the server printed the transcript
+verbatim, which is worth remembering for the remaining children.
+
+The capsule's next child is Plan 0033. Closing this plan does not authorize it.

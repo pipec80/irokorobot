@@ -18,5 +18,9 @@ latest stable resolution on 2026-09-02 and recorded the framework capabilities
 measured against the installed packages. It is transversal rather than part of
 any milestone.
 
+[Plan 0032](0032-server-privacy-and-request-observability.md) is the first
+executed child of the server-production capsule: it stopped fourteen log sites
+from writing household content and introduced request correlation.
+
 Do not modify a completed plan to create a new decision. Record architecture
 changes in a new ADR and create a new open plan.
