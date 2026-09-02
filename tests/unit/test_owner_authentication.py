@@ -1,5 +1,6 @@
 """Unit tests for the process-local owner unlock service and request resolver."""
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 import logging
 from uuid import UUID
@@ -10,6 +11,7 @@ from server.cognition.identity import ActivePersonStatus, HouseholdRole, PersonR
 from server.cognition.identity_sessions import IdentitySessionRegistry
 from server.cognition.models import CognitiveEvent
 from server.cognition.owner_authentication import (
+    _MAX_FAILURES,
     OwnerUnlockRateLimitedError,
     OwnerUnlockScope,
     OwnerUnlockService,
@@ -246,3 +248,66 @@ async def test_no_secret_appears_in_logs(caplog: pytest.LogCaptureFixture) -> No
     joined = "\n".join(record.getMessage() for record in caplog.records)
     assert _PIN not in joined
     assert unlock.token not in joined
+
+
+# --- Plan 0033: the limiter must hold under concurrency -------------------
+
+
+@pytest.mark.unit
+async def test_concurrent_wrong_attempts_cannot_outrun_the_limiter() -> None:
+    """Six simultaneous wrong PINs must not all get a verification.
+
+    `unlock` checks the limiter, then awaits the credential read, the role
+    read and the scrypt verification before recording the failure. Every
+    await is a scheduling point, so N coroutines can all pass a check that
+    none of them has yet invalidated — and scrypt is deliberately slow, which
+    widens the window rather than narrowing it.
+
+    The limiter blocks at five failures, so the sixth attempt must never
+    reach the verifier.
+    """
+    attempts = 6
+    verifications = 0
+    release = asyncio.Event()
+
+    async def gated_to_thread(fn):
+        """Hold every attempt at the verifier until all of them have arrived."""
+        nonlocal verifications
+        verifications += 1
+        await release.wait()
+        return False  # every candidate is wrong
+
+    service = _service(credential=_credential())
+    service._to_thread = gated_to_thread
+
+    tasks = [asyncio.create_task(service.unlock("999999")) for _ in range(attempts)]
+    await asyncio.sleep(0)  # let every task run up to its first await
+    release.set()
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    rate_limited = [r for r in results if isinstance(r, OwnerUnlockRateLimitedError)]
+    assert verifications <= _MAX_FAILURES, (
+        f"{verifications} attempts reached the verifier; the limiter blocks at "
+        f"{_MAX_FAILURES}, so a concurrent caller bypassed it"
+    )
+    assert rate_limited, "at least one attempt past the threshold must be rate limited"
+
+
+@pytest.mark.unit
+async def test_the_rate_limit_error_reports_when_to_retry() -> None:
+    """A 429 is only actionable if it says how long the block lasts."""
+    service = _service(credential=_credential())
+    service._to_thread = _always_wrong
+
+    for _ in range(_MAX_FAILURES):
+        await service.unlock("999999")
+
+    with pytest.raises(OwnerUnlockRateLimitedError) as caught:
+        await service.unlock("999999")
+
+    assert caught.value.retry_after_seconds > 0
+
+
+async def _always_wrong(fn):
+    """Stand in for the verifier, always rejecting the candidate."""
+    return False

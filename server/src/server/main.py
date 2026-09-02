@@ -6,8 +6,10 @@ import logging
 import logging.config
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import JSONResponse
 import uvicorn
 
 from server import stt, tts
@@ -101,6 +103,31 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     logger.info("OMNiBot 2000 shutting down.")
 
 
+async def _validation_error_without_input(
+    _request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """Return a 422 that names the broken rule but never echoes the value.
+
+    FastAPI's default validation body includes an ``input`` field carrying the
+    rejected value verbatim. For `POST /auth/owner/unlock` that value is a
+    candidate PIN, so the default response would hand a credential back to the
+    caller and into any proxy log. The rule and its location are enough for a
+    client to fix its request (Plan 0033).
+
+    Args:
+        _request: Unused; the handler never inspects the request.
+        exc: The validation error raised while parsing the request body.
+
+    Returns:
+        A 422 whose errors keep ``type``, ``loc`` and ``msg`` only.
+    """
+    redacted = [
+        {key: value for key, value in error.items() if key in {"type", "loc", "msg"}}
+        for error in exc.errors()
+    ]
+    return JSONResponse(status_code=422, content={"detail": redacted})
+
+
 app = FastAPI(
     title="OMNiBot 2000 Core API",
     description=(
@@ -114,6 +141,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 # Added last so it wraps GZip: the correlation id must be stamped on every
 # response, and the context must cover the whole request.
 app.add_middleware(RequestContextMiddleware)
+app.add_exception_handler(RequestValidationError, _validation_error_without_input)  # type: ignore[arg-type]  # FastAPI narrows the handler's exception type
 
 app.include_router(system.router)
 app.include_router(auth.router)
