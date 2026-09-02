@@ -14,11 +14,21 @@ separate from — and never modifies — the quarantined public
 """
 
 from datetime import UTC, datetime
+from ipaddress import ip_address
 import logging
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import APIRouter, File, Header, HTTPException, Request, UploadFile, status
+from fastapi import (
+    APIRouter,
+    File,
+    Header,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 
 from server import vision
 from server.cognition.authorization import (
@@ -54,18 +64,39 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Auth"])
 
-_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1"})
 _UNAUTHORIZED_DETAIL = "Owner authentication failed"
 
 
 def _is_loopback(request: Request) -> bool:
-    """Return whether the raw ASGI connection originates from loopback."""
+    """Return whether the raw ASGI connection originates from loopback.
+
+    Decided with IP-address semantics rather than string equality: the whole
+    `127.0.0.0/8` range is loopback, and an IPv4-mapped IPv6 client arrives as
+    `::ffff:127.0.0.1`. A comparison against two literals would refuse both.
+
+    Args:
+        request: Raw ASGI request; only its direct client address is read,
+            never a forwarded header.
+
+    Returns:
+        `True` only when the direct peer address parses and is loopback. An
+        absent or unparseable address is not local.
+    """
     client = request.client
-    return client is not None and client.host in _LOOPBACK_HOSTS
+    if client is None:
+        return False
+    try:
+        address = ip_address(client.host)
+    except ValueError:
+        return False
+    mapped = getattr(address, "ipv4_mapped", None)
+    return bool((mapped or address).is_loopback)
 
 
-@router.post("/auth/owner/unlock", response_model=OwnerUnlockResponse)
-async def unlock_owner(request: OwnerUnlockRequest, http_request: Request) -> OwnerUnlockResponse:
+@router.post("/auth/owner/unlock")
+async def unlock_owner(
+    request: OwnerUnlockRequest, http_request: Request, response: Response
+) -> OwnerUnlockResponse:
     """Verify the local owner PIN and issue one opaque one-use grant.
 
     Args:
@@ -86,10 +117,14 @@ async def unlock_owner(request: OwnerUnlockRequest, http_request: Request) -> Ow
         result = await owner_unlock_service.unlock(request.pin.get_secret_value())
     except OwnerUnlockRateLimitedError as exc:
         raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many attempts"
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many attempts",
+            headers={"Retry-After": str(exc.retry_after_seconds)},
         ) from exc
     if result is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_UNAUTHORIZED_DETAIL)
+    # The body carries a usable grant; no cache may retain it.
+    response.headers["Cache-Control"] = "no-store"
     return OwnerUnlockResponse(token=result.token, expires_at=result.expires_at)
 
 

@@ -12,6 +12,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
+from math import ceil
 
 from pydantic import BaseModel, ConfigDict
 
@@ -54,7 +55,21 @@ type ToThread = Callable[[Callable[[], bool]], Awaitable[bool]]
 
 
 class OwnerUnlockRateLimitedError(Exception):
-    """Raised when the process-local PIN attempt limit is currently active."""
+    """Raised when the process-local PIN attempt limit is currently active.
+
+    Attributes:
+        retry_after_seconds: Whole seconds until the block expires, rounded up
+            so a caller retrying exactly then is never still blocked.
+    """
+
+    def __init__(self, retry_after_seconds: int) -> None:
+        """Record how long the caller must wait.
+
+        Args:
+            retry_after_seconds: Whole seconds remaining on the active block.
+        """
+        super().__init__("Owner unlock attempts are rate limited")
+        self.retry_after_seconds = retry_after_seconds
 
 
 class OwnerUnlockScope(StrEnum):
@@ -213,6 +228,12 @@ class OwnerUnlockService:
         self._read_role = read_role
         self._read_person = read_person
         self._to_thread = to_thread
+        # One complete attempt — limiter check, credential and role reads,
+        # scrypt verification, and the failure/success mutation — runs under
+        # this lock. Without it every await between the check and the update
+        # is a scheduling point where a concurrent caller can pass a limiter
+        # that nobody has invalidated yet (Plan 0033).
+        self._attempt_lock = asyncio.Lock()
         self._failures: list[datetime] = []
         self._blocked_until: datetime | None = None
 
@@ -224,9 +245,9 @@ class OwnerUnlockService:
         """
         if self._blocked_until is not None:
             if now < self._blocked_until:
-                raise OwnerUnlockRateLimitedError("too many failed local PIN attempts")
+                remaining = (self._blocked_until - now).total_seconds()
+                raise OwnerUnlockRateLimitedError(retry_after_seconds=ceil(remaining))
             self._blocked_until = None
-            self._failures.clear()
         cutoff = now - _FAILURE_WINDOW
         self._failures = [attempt for attempt in self._failures if attempt > cutoff]
 
@@ -252,31 +273,34 @@ class OwnerUnlockService:
             OwnerUnlockRateLimitedError: If five recent failures still block
                 new attempts within the last 60 seconds.
         """
-        now = self._clock()
-        self._prune_and_check_block(now)
+        async with self._attempt_lock:
+            now = self._clock()
+            self._prune_and_check_block(now)
 
-        credential = await self._read_credential()
-        if credential is None:
-            self._record_failure(now)
-            return None
-        role = await self._read_role(credential.person_entity_id)
-        if role is not HouseholdRole.OWNER:
-            self._record_failure(now)
-            return None
-        matched = await self._to_thread(lambda: verify_pin(pin, credential.encoded))
-        if not matched:
-            self._record_failure(now)
-            return None
+            credential = await self._read_credential()
+            if credential is None:
+                self._record_failure(now)
+                return None
+            role = await self._read_role(credential.person_entity_id)
+            if role is not HouseholdRole.OWNER:
+                self._record_failure(now)
+                return None
+            matched = await self._to_thread(lambda: verify_pin(pin, credential.encoded))
+            if not matched:
+                self._record_failure(now)
+                return None
 
-        self._failures.clear()
-        person = await self._read_person(credential.person_entity_id)
-        if person is None:
-            return None
-        token = self._registry.issue_for_person(person, source=IdentityEvidenceSource.LOCAL_UNLOCK)
-        evidence = self._registry.evidence_for(token)
-        if evidence is None or evidence.expires_at is None:
-            return None
-        return OwnerUnlockResult(token=token, expires_at=evidence.expires_at)
+            self._failures.clear()
+            person = await self._read_person(credential.person_entity_id)
+            if person is None:
+                return None
+            token = self._registry.issue_for_person(
+                person, source=IdentityEvidenceSource.LOCAL_UNLOCK
+            )
+            evidence = self._registry.evidence_for(token)
+            if evidence is None or evidence.expires_at is None:
+                return None
+            return OwnerUnlockResult(token=token, expires_at=evidence.expires_at)
 
     def for_request(self, token: str | None) -> OwnerRequestResolver:
         """Build a fresh resolver scoped to exactly one HTTP request.
