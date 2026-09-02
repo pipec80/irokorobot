@@ -87,7 +87,12 @@ async def _run_stt(audio_bytes: bytes, hotwords: list[str]) -> tuple[str, int]:
     except (TranscriptionError, ValueError) as exc:
         logger.error("STT failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail="Transcription failed") from exc
-    logger.info("STT heard: %r (hotwords=%d)", text, len(hotwords))
+    logger.info(
+        "STT transcribed %d chars (hotwords=%d)",
+        len(text),
+        len(hotwords),
+        extra={"event": "stt.transcribed", "chars": len(text), "hotwords": len(hotwords)},
+    )
     return text, _elapsed_ms(start)
 
 

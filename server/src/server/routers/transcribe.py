@@ -364,7 +364,11 @@ async def transcribe(
             # ask the client for one (second round via /vision/respond). The
             # cue phrase covers the VLM latency; this stub turn is not
             # recorded in memory — the real exchange lands in round two.
-            logger.info("Scene description requested: %r — requesting a frame", text_heard[:60])
+            logger.info(
+                "Scene description requested (%d chars) — requesting a frame",
+                len(text_heard),
+                extra={"event": "vision.frame_requested", "chars": len(text_heard)},
+            )
             audio_base64, duration_ms, tts_ms = await _run_tts(settings.vision_look_phrase)
             total_ms = _elapsed_ms(request_start)
             _log_pipeline_timing("voice.vision-cue", stt_ms, 0, tts_ms, total_ms)

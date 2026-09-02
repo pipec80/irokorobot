@@ -65,10 +65,16 @@ async def synthesize_sentence(sentence: str, state: StreamState) -> str:
     if state.first_audio_ms is None:
         state.first_audio_ms = _elapsed_ms(state.request_start)
     logger.info(
-        "Stream sentence synthesized: %r (duration_ms=%d chunk=%d)",
-        sentence,
+        "Stream sentence synthesized: %d chars (duration_ms=%d chunk=%d)",
+        len(sentence),
         duration_ms,
         state.audio_chunks,
+        extra={
+            "event": "stream.sentence",
+            "chars": len(sentence),
+            "duration_ms": duration_ms,
+            "chunk": state.audio_chunks,
+        },
     )
     event = StreamAudioEvent(text=sentence, audio_base64=audio_base64, duration_ms=duration_ms)
     return event.model_dump_json() + "\n"

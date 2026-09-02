@@ -3,8 +3,8 @@
 Audio contract: WAV · 16000 Hz · mono · int16.
 """
 
-import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 import io
 import logging
 
@@ -12,6 +12,7 @@ from faster_whisper import WhisperModel
 from faster_whisper.transcribe import VadOptions
 
 from server.exceptions import TranscriptionError
+from server.request_context import run_in_executor_with_context
 from server.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -107,13 +108,13 @@ def _transcribe_sync(audio: bytes, hotwords: str | None) -> str:
         parts: list[str] = []
         for seg in segments:
             logger.debug(
-                "Segment [%.1fs→%.1fs] logprob=%.2f no_speech=%.2f temp=%.1f: %s",
+                "Segment [%.1fs→%.1fs] logprob=%.2f no_speech=%.2f temp=%.1f (%d chars)",
                 seg.start,
                 seg.end,
                 seg.avg_logprob,
                 seg.no_speech_prob,
                 seg.temperature or 0.0,
-                seg.text.strip(),
+                len(seg.text.strip()),
             )
             parts.append(seg.text.strip())
         return " ".join(parts)
@@ -146,5 +147,4 @@ async def transcribe(audio: bytes, *, extra_hotwords: list[str] | None = None) -
         ValueError: If audio is empty.
     """
     hotwords = _merge_hotwords(settings.whisper_hotwords, extra_hotwords)
-    loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(_executor, _transcribe_sync, audio, hotwords)
+    return await run_in_executor_with_context(_executor, partial(_transcribe_sync, audio, hotwords))

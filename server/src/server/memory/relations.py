@@ -99,9 +99,15 @@ async def entities_for_relations(text: str) -> list[EntityWithFacts]:
                 entities.append(ent)
 
     logger.info(
-        "Relational lookup: predicates=%s entities=%d for %r",
+        "Relational lookup: predicates=%s entities=%d (%d chars in)",
         sorted(predicates),
         len(entities),
-        text[:40],
+        len(text),
+        extra={
+            "event": "memory.relational_lookup",
+            "predicates": sorted(predicates),
+            "entities": len(entities),
+            "chars": len(text),
+        },
     )
     return entities

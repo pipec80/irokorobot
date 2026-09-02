@@ -205,7 +205,12 @@ async def consolidate_turn(  # noqa: PLR0912
             )
             entity_ids[ent.name] = eid
         except Exception as exc:
-            logger.warning("Entity upsert failed (%s): %s", ent.name, exc)
+            logger.warning(
+                "Entity upsert failed: type=%s (%s)",
+                ent.type,
+                type(exc).__name__,
+                extra={"event": "entity.upsert_failed", "error_type": type(exc).__name__},
+            )
 
     memory_id: int | None = None
     if extraction.episodic_summary:
@@ -236,7 +241,14 @@ async def consolidate_turn(  # noqa: PLR0912
                 try:
                     entity_id = await upsert_entity(name=fact.subject, type=implicit_type)
                 except Exception as exc:
-                    logger.warning("Implicit entity creation failed (%s): %s", fact.subject, exc)
+                    logger.warning(
+                        "Implicit entity creation failed (%s)",
+                        type(exc).__name__,
+                        extra={
+                            "event": "entity.implicit_failed",
+                            "error_type": type(exc).__name__,
+                        },
+                    )
                     continue
         try:
             await assert_fact(

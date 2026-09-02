@@ -125,7 +125,7 @@ async def transcribe(
     except httpx.RequestError as exc:
         raise ServerError("Could not reach server") from exc
     data = response.json()
-    logger.info("Server response: %s", data.get("text_heard", ""))
+    logger.info("Server response: %d chars heard", len(str(data.get("text_heard", ""))))
     return _parse_result(data)
 
 
