@@ -80,7 +80,7 @@ def test_synthesize_locally_raises_before_http_when_final_validation_fails(
     """The script must report a local contract failure before any server call."""
     monkeypatch.setattr(client_test.PiperVoice, "load", lambda _path: _FakeVoice(16_000))
 
-    def reject(_wav_bytes: bytes) -> None:
+    def reject(_wav_bytes: bytes, *, max_duration_s: float) -> None:
         """Simulate a final local contract rejection."""
         raise AudioContractError("test rejection")
 

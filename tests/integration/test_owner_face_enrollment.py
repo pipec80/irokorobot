@@ -307,6 +307,30 @@ async def test_other_rejection_codes_map_to_422_without_persisting_consent(
 
 
 @pytest.mark.integration
+async def test_oversized_enrollment_image_returns_413_without_touching_the_face_model(
+    face_db: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An authenticated caller still cannot bypass the per-file byte budget."""
+    service = _real_service()
+    monkeypatch.setattr(auth_module, "owner_unlock_service", service)
+    unlock = await service.unlock(_PIN)
+    assert unlock is not None
+    enroll = AsyncMock(wraps=vision.enroll_person)
+    monkeypatch.setattr(vision, "enroll_person", enroll)
+    oversized = b"\xff\xd8\xff\xe0" + b"\x00" * settings.max_image_upload_bytes
+
+    async with _loopback_client() as client:
+        response = await client.post(
+            "/auth/owner/face/enroll",
+            headers={"X-Iroko-Identity-Token": unlock.token},
+            files={"image": ("big.jpg", oversized, "image/jpeg")},
+        )
+
+    assert response.status_code == 413
+    enroll.assert_not_awaited()
+
+
+@pytest.mark.integration
 async def test_successful_enroll_grants_consent_and_creates_one_profile(
     face_db: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
 ) -> None:

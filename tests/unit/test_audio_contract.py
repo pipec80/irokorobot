@@ -13,6 +13,8 @@ import numpy as np
 import pytest
 from robot.audio_capture import AudioConfig, _encode_wav
 from robot.vad import _compute_rms
+from server.audio_contract import validate_wav_contract
+from server.exceptions import AudioContractError
 from server.tts import _append_silence, _resample_to_contract
 
 
@@ -132,6 +134,39 @@ def test_resample_to_contract_passthrough_at_16000() -> None:
     wav_16k = _make_wav(sample_rate=16_000, seconds=0.25)
 
     assert _resample_to_contract(wav_16k) == wav_16k
+
+
+def _silent_wav(nframes: int, *, framerate: int = 16_000) -> bytes:
+    """Build a minimal contract-valid silent WAV with exactly `nframes` frames."""
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(framerate)
+        wf.writeframes(np.zeros(nframes, dtype=np.int16).tobytes())
+    return buf.getvalue()
+
+
+@pytest.mark.unit
+def test_validate_wav_contract_accepts_audio_within_the_duration_limit() -> None:
+    """Format-valid audio at or under the caller's duration budget must pass."""
+    wav_bytes = _silent_wav(16_000)  # exactly 1.0s
+
+    validate_wav_contract(wav_bytes, max_duration_s=1.0)
+
+
+@pytest.mark.unit
+def test_validate_wav_contract_rejects_audio_over_the_duration_limit() -> None:
+    """Format was never the only thing that could go wrong — duration matters too.
+
+    A format-perfect WAV that is far too long previously passed every check:
+    the function validated channels, sample width, frame rate, and frame
+    count, but never how long the recording actually was.
+    """
+    wav_bytes = _silent_wav(16_000 * 2)  # 2.0s
+
+    with pytest.raises(AudioContractError):
+        validate_wav_contract(wav_bytes, max_duration_s=1.0)
 
 
 @pytest.mark.unit

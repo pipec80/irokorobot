@@ -24,13 +24,14 @@ from server.cognition.response_plan import (
     TextTurnPayload,
     current_perception_plan,
 )
-from server.exceptions import ImageContractError, VisionError
+from server.exceptions import ImageContractError, UploadTooLargeError, VisionError
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
 from server.pipeline import _run_tts
 from server.schemas import TranscribeResponse, VisionDescribeResponse, VisionEnrollResponse
 from server.settings import settings
 from server.text_turn import TextTurnResult, new_interaction_scope, process_text_turn
+from server.uploads import read_limited_upload
 from server.vision.perception import perceive_scene
 
 logger = logging.getLogger(__name__)
@@ -138,12 +139,13 @@ async def _read_contract_image(image: UploadFile) -> bytes:
         HTTPException 422: If the image is empty, an unrecognized format,
             fails to decode, or exceeds the 1280x720 contract limit.
     """
-    image_bytes = await image.read()
-    if len(image_bytes) > settings.max_upload_bytes:
+    try:
+        image_bytes = await read_limited_upload(image, limit=settings.max_image_upload_bytes)
+    except UploadTooLargeError as exc:
         raise HTTPException(
             status_code=413,
-            detail=f"Image too large — max {settings.max_upload_bytes // 1024 // 1024} MB",
-        )
+            detail=f"Image too large — max {exc.limit // 1024 // 1024} MB",
+        ) from exc
     if not image_bytes:
         raise HTTPException(status_code=422, detail="Image file is empty")
     if not vision.is_known_image_format(image_bytes):

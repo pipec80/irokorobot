@@ -49,7 +49,12 @@ from server.cognition.owner_authentication import (
     owner_unlock_service,
 )
 from server.cognition.response_plan import TextTurnPayload
-from server.exceptions import EnrollmentRejectedError, ImageContractError, VisionError
+from server.exceptions import (
+    EnrollmentRejectedError,
+    ImageContractError,
+    UploadTooLargeError,
+    VisionError,
+)
 from server.memory.biometric_consent import grant_face_consent, revoke_face_consent
 from server.memory.household_authorization import record_authorization_decision
 from server.schemas_auth import (
@@ -59,6 +64,7 @@ from server.schemas_auth import (
 )
 from server.settings import settings
 from server.text_turn import new_interaction_scope
+from server.uploads import read_limited_upload
 
 logger = logging.getLogger(__name__)
 
@@ -214,12 +220,13 @@ async def _read_face_image(image: UploadFile) -> bytes:
         HTTPException 422: If the image is empty, an unrecognized format,
             fails to decode, or exceeds the 1280x720 contract limit.
     """
-    image_bytes = await image.read()
-    if len(image_bytes) > settings.max_upload_bytes:
+    try:
+        image_bytes = await read_limited_upload(image, limit=settings.max_image_upload_bytes)
+    except UploadTooLargeError as exc:
         raise HTTPException(
             status_code=413,
-            detail=f"Image too large — max {settings.max_upload_bytes // 1024 // 1024} MB",
-        )
+            detail=f"Image too large — max {exc.limit // 1024 // 1024} MB",
+        ) from exc
     if not image_bytes:
         raise HTTPException(status_code=422, detail="Image file is empty")
     if not vision.is_known_image_format(image_bytes):

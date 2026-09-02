@@ -32,7 +32,7 @@ from server.cognition.response_plan import (
     TextTurnPayload,
     scene_unavailable_plan,
 )
-from server.exceptions import AudioContractError, ImageContractError
+from server.exceptions import AudioContractError, ImageContractError, UploadTooLargeError
 from server.memory.consolidation import consolidate_turn
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
@@ -52,6 +52,7 @@ from server.text_turn import (
     prepare_text_turn,
     process_text_turn,
 )
+from server.uploads import read_limited_upload
 
 logger = logging.getLogger(__name__)
 
@@ -241,16 +242,17 @@ def _consolidation_scheduler(
 
 async def _read_audio_upload(audio: UploadFile) -> bytes:
     """Read and validate WAV 16kHz, mono, int16 upload bytes."""
-    audio_bytes = await audio.read()
-    if len(audio_bytes) > settings.max_upload_bytes:
+    try:
+        audio_bytes = await read_limited_upload(audio, limit=settings.max_audio_upload_bytes)
+    except UploadTooLargeError as exc:
         raise HTTPException(
             status_code=413,
-            detail=f"Audio too large — max {settings.max_upload_bytes // 1024 // 1024} MB",
-        )
+            detail=f"Audio too large — max {exc.limit // 1024 // 1024} MB",
+        ) from exc
     if not audio_bytes:
         raise HTTPException(status_code=422, detail="Audio file is empty")
     try:
-        validate_wav_contract(audio_bytes)
+        validate_wav_contract(audio_bytes, max_duration_s=settings.max_audio_duration_s)
     except AudioContractError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return audio_bytes
@@ -280,12 +282,13 @@ async def _read_optional_frame(frame: UploadFile) -> bytes:
         HTTPException 422: If the frame is empty, an unrecognized format,
             fails to decode, or exceeds the 1280x720 contract limit.
     """
-    frame_bytes = await frame.read()
-    if len(frame_bytes) > settings.max_upload_bytes:
+    try:
+        frame_bytes = await read_limited_upload(frame, limit=settings.max_image_upload_bytes)
+    except UploadTooLargeError as exc:
         raise HTTPException(
             status_code=413,
-            detail=f"Frame too large — max {settings.max_upload_bytes // 1024 // 1024} MB",
-        )
+            detail=f"Frame too large — max {exc.limit // 1024 // 1024} MB",
+        ) from exc
     if not frame_bytes:
         raise HTTPException(status_code=422, detail="Frame file is empty")
     if not vision.is_known_image_format(frame_bytes):

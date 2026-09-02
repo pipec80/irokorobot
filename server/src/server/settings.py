@@ -43,7 +43,20 @@ class Settings(BaseSettings):
     log_to_file: bool = True
     log_dir: Path = Path("logs")
     log_retention_days: int = 14
-    max_upload_bytes: int = 10 * 1024 * 1024  # 10 MB — well above any realistic utterance
+
+    # ---------------- Uploads (Plan 0034) ----------------
+    # Per-file semantic budgets, checked after the raw ASGI body limit.
+    # Separate settings because /transcribe can carry both audio and an
+    # optional face frame in the same multipart body — one shared ceiling
+    # would either reject a valid combined request or let either file alone
+    # grow past what its own contract needs.
+    max_audio_upload_bytes: int = 10 * 1024 * 1024  # 10 MB — well above any realistic utterance
+    max_image_upload_bytes: int = 5 * 1024 * 1024  # 5 MB — well above a 1280x720 frame
+    max_image_pixels: int = 1280 * 720
+    max_audio_duration_s: float = 30.0  # well above any realistic utterance
+    # Raw ASGI body ceiling for the combined audio+frame route: the two
+    # per-file budgets above, plus multipart framing overhead.
+    max_request_body_bytes: int = max_audio_upload_bytes + max_image_upload_bytes + 64 * 1024
 
     uvicorn_workers: int = 1
     uvicorn_proxy_headers: bool = False

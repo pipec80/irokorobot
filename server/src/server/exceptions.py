@@ -29,6 +29,19 @@ class VisionError(Exception):
     """Raised when the VLM backend fails to describe an image."""
 
 
+class UploadTooLargeError(Exception):
+    """Raised when an upload exceeds its configured per-file byte limit."""
+
+    def __init__(self, limit: int) -> None:
+        """Record the limit that was exceeded — never the oversized payload.
+
+        Args:
+            limit: The byte budget the upload exceeded.
+        """
+        super().__init__(f"Upload exceeds the {limit}-byte limit")
+        self.limit = limit
+
+
 class ImageContractError(Exception):
     """Raised when an uploaded image violates the vision image contract.
 

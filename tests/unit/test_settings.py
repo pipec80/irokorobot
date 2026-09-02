@@ -21,7 +21,9 @@ def test_server_settings_defaults_match_audio_contract() -> None:
     assert settings.models_dir == Path("models")
     assert settings.server_host == "127.0.0.1"
     assert settings.server_port == 8000
-    assert settings.max_upload_bytes == 10 * 1024 * 1024
+    assert settings.max_audio_upload_bytes == 10 * 1024 * 1024
+    assert settings.max_image_upload_bytes == 5 * 1024 * 1024
+    assert settings.max_audio_duration_s == 30.0
 
 
 @pytest.mark.unit
