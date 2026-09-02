@@ -32,23 +32,28 @@ the first unfinished child may be promoted after a narrow assumption
 recheck.
 
 [Plan 0043](../completed/0043-dependency-refresh.md) ran before this chain and
-closed on 2026-09-02. It already reshaped two children: 0034 drops its
-hand-written raw body limit now that Starlette 1.6.0 ships
+closed on 2026-09-02. It already reshaped two children: 0034 dropped its
+hand-written raw body limit in favor of Starlette 1.6.0's native
 `RequestBodyLimitMiddleware`, and 0038 inherits the `filterwarnings` blind spot
 it found. Its acceptance run also corrected 0032's file list.
 
+[Plan 0034](../completed/0034-upload-and-multipart-security.md) closed
+2026-09-02 (PR #98): a raw ASGI body-limit middleware plus per-file bounded
+reads, with a real gap found by its own RED test — an oversized `frame` field
+was invisible to every per-file check whenever face auth was off, the
+default.
+
 | Order | Plan | Outcome |
 |---:|---|---|
-| 1 | [0034](0034-upload-and-multipart-security.md) | Raw, multipart, and decoded-media limits |
-| 2 | [0035](0035-sqlite-transaction-owner.md) | Tested transaction ownership primitive |
-| 3 | [0036](0036-sqlite-write-migration-and-outbox-removal.md) | Runtime-write migration and unused outbox removal |
-| 4 | [0037](0037-deterministic-ci-baseline.md) | Deterministic API/local integration gate at >=80% coverage |
-| 5 | [0038](0038-uvicorn-runtime-baseline.md) | Explicit one-worker runtime defaults |
-| 6 | [0039](0039-application-lifecycle-and-http-resources.md) | Failure-safe lifespan and shared HTTP transport |
-| 7 | [0040](0040-fastapi-contract-and-openapi-baseline.md) | Typed dependencies, OpenAPI, health/readiness |
-| 8 | [0041](0041-streaming-terminal-contract.md) | Coordinated terminal stream error |
-| 9 | [0042](0042-server-baseline-closure.md) | Full gates, runtime evidence, ADR review, and closure |
-| 10 | [0044](0044-official-fastapi-conventions.md) | Alignment with the official FastAPI conventions the audit predated |
+| 1 | [0035](0035-sqlite-transaction-owner.md) | Tested transaction ownership primitive |
+| 2 | [0036](0036-sqlite-write-migration-and-outbox-removal.md) | Runtime-write migration and unused outbox removal |
+| 3 | [0037](0037-deterministic-ci-baseline.md) | Deterministic API/local integration gate at >=80% coverage |
+| 4 | [0038](0038-uvicorn-runtime-baseline.md) | Explicit one-worker runtime defaults |
+| 5 | [0039](0039-application-lifecycle-and-http-resources.md) | Failure-safe lifespan and shared HTTP transport |
+| 6 | [0040](0040-fastapi-contract-and-openapi-baseline.md) | Typed dependencies, OpenAPI, health/readiness |
+| 7 | [0041](0041-streaming-terminal-contract.md) | Coordinated terminal stream error |
+| 8 | [0042](0042-server-baseline-closure.md) | Full gates, runtime evidence, ADR review, and closure |
+| 9 | [0044](0044-official-fastapi-conventions.md) | Alignment with the official FastAPI conventions the audit predated |
 
 Plans 0014 (P0 runtime-policy umbrella), 0020 (operator-QA remediation
 umbrella), and 0024 (owner-authenticated memory MVP design) closed with no
@@ -79,7 +84,7 @@ PC-2 completely — see
 [completed/0030](../completed/0030-real-camera-face-acceptance.md).
 
 Canonical execution order: **none — `NOW` is empty.** The server capsule is
-queued, beginning with 0034 only once Pipec authorizes promotion.
+queued, beginning with 0035 only once Pipec authorizes promotion.
 
 ## Status rule
 

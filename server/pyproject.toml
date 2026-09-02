@@ -17,13 +17,13 @@ dependencies = [
     "python-multipart>=0.0.20,<1.0.0",
     "aiosqlite>=0.20",
     "sqlite-vec>=0.1.6",
-    "sse-starlette>=2.1",
     "soxr>=1.1.0,<2.0.0",
     "insightface>=1.0.1,<2.0.0",
     "pyyaml>=6.0.3,<7.0.0",
     "numpy>=2.4.4,<3.0.0",
     "opencv-python>=5.0.0.93,<6.0.0.0",
     "pydantic>=2.13.3,<3.0.0",
+    "starlette>=1.6.0,<2.0.0",
 ]
 
 [project.scripts]
@@ -45,5 +45,4 @@ known_first_party = ["server"]
 [tool.deptry.per_rule_ignores]
 DEP002 = [
     "python-multipart",  # required by FastAPI/Starlette for multipart form parsing, never imported by name
-    "sse-starlette",     # pre-installed for F3A (sensors SSE endpoint), not consumed yet
 ]

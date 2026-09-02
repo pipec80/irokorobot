@@ -64,6 +64,29 @@ def _post_enroll(client: TestClient, payload: bytes) -> httpx.Response:
 
 
 @pytest.mark.integration
+def test_describe_oversized_image_returns_413(client: TestClient, vision_on: None) -> None:
+    """An image larger than max_image_upload_bytes must be rejected with 413."""
+    oversized = b"\xff\xd8\xff\xe0" + b"\x00" * settings.max_image_upload_bytes
+
+    response = _post_image(client, oversized)
+
+    assert response.status_code == 413
+
+
+@pytest.mark.integration
+def test_describe_oversized_image_never_reaches_the_vlm(
+    client: TestClient, vision_on: None
+) -> None:
+    """The rejection must happen before the expensive VLM boundary is called."""
+    with patch("server.routers.vision.vision.describe_image", new_callable=AsyncMock) as describe:
+        oversized = b"\xff\xd8\xff\xe0" + b"\x00" * settings.max_image_upload_bytes
+
+        _post_image(client, oversized)
+
+        describe.assert_not_called()
+
+
+@pytest.mark.integration
 def test_enroll_is_quarantined_without_calling_enrollment(
     client: TestClient, vision_on: None
 ) -> None:

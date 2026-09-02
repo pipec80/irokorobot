@@ -10,6 +10,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.body_limit import RequestBodyLimitMiddleware
 import uvicorn
 
 from server import stt, tts
@@ -138,8 +139,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.add_middleware(GZipMiddleware, minimum_size=1000)
-# Added last so it wraps GZip: the correlation id must be stamped on every
-# response, and the context must cover the whole request.
+# `FastAPI(...)` does not accept `max_body_size` — only `Starlette.__init__`
+# does (Plan 0034) — so the raw ceiling is a middleware, not a constructor
+# argument. It rejects a body over budget before any router or multipart
+# parsing runs, which matters because a field the app never reads (an
+# optional frame with face auth disabled) would otherwise never be sized at
+# all: `_read_optional_frame` simply never executes for it.
+app.add_middleware(RequestBodyLimitMiddleware, max_body_size=settings.max_request_body_bytes)
+# Added last so it wraps everything above, including the body-limit
+# middleware: the correlation id must be stamped even on a 413, and the
+# context must cover the whole request.
 app.add_middleware(RequestContextMiddleware)
 app.add_exception_handler(RequestValidationError, _validation_error_without_input)  # type: ignore[arg-type]  # FastAPI narrows the handler's exception type
 

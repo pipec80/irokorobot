@@ -1,7 +1,7 @@
 """Audio contract enforcement for HTTP endpoints.
 
 Validates that uploaded audio matches the mandatory contract — WAV, 16 000 Hz,
-mono, int16 (see .Codex/rules/audio-contract.md) — before it reaches STT.
+mono, int16 (see .claude/rules/audio-contract.md) — before it reaches STT.
 """
 
 import io
@@ -14,15 +14,19 @@ _EXPECTED_CHANNELS = 1
 _EXPECTED_SAMPWIDTH = 2
 
 
-def validate_wav_contract(audio_bytes: bytes) -> None:
+def validate_wav_contract(audio_bytes: bytes, *, max_duration_s: float) -> None:
     """Validate that audio bytes are a WAV file matching the mandatory contract.
 
     Args:
         audio_bytes: Raw uploaded bytes, expected to be WAV 16kHz mono int16.
+        max_duration_s: Longest recording this caller accepts, in seconds. A
+            format-perfect WAV that runs longer is still rejected — format
+            alone never bounded how much STT compute one upload could demand.
 
     Raises:
-        AudioContractError: If the bytes are not a valid WAV container, or the
-            container is not 16kHz/mono/int16, or it has no frames.
+        AudioContractError: If the bytes are not a valid WAV container, the
+            container is not 16kHz/mono/int16, it has no frames, or its
+            duration exceeds `max_duration_s`.
     """
     try:
         with wave.open(io.BytesIO(audio_bytes), "rb") as wf:
@@ -41,3 +45,6 @@ def validate_wav_contract(audio_bytes: bytes) -> None:
         raise AudioContractError(f"Audio must be {_EXPECTED_FRAMERATE} Hz — got {framerate} Hz")
     if nframes <= 0:
         raise AudioContractError("Audio contains no frames")
+    duration_s = nframes / framerate
+    if duration_s > max_duration_s:
+        raise AudioContractError(f"Audio is {duration_s:.1f}s — max {max_duration_s:.1f}s")
