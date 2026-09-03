@@ -171,6 +171,42 @@ same hook alone, and then the full `just check` again, both passed clean.
 Recorded as noise, not a defect — no code or config explains a real failure
 here, and it did not reproduce.
 
+### CI itself caught a real pre-existing bug the local run could never see
+
+The first PR push (#103) turned the deterministic gate red for real: CI has
+no Ollama server and no downloaded Piper voice, so
+`test_transcribe_exactly_at_the_audio_limit_is_accepted` and
+`test_transcribe_accepts_audio_at_the_duration_limit` both hit a genuine
+`httpx.ConnectError` (Ollama) and `FileNotFoundError` (the Piper `.onnx.json`
+config) and failed with 500 instead of the expected 200. Both tests only
+mocked `stt.transcribe` — `llm.generate_response` and `tts.synthesize` were
+left real, silently relying on Pipec's dev machine having both running
+locally. The file's own module docstring already said "Does not require
+models to be loaded"; these two tests just never lived up to it, and nothing
+before this plan ever ran them anywhere that lacked a real Ollama and Piper
+to fall back on.
+
+Fixed by mocking all three boundaries (`stt`, `llm`, `tts`), matching the
+pattern every other file touching `/transcribe` already uses. Audited the
+other 12 files calling `/transcribe`/`/transcribe/stream` for the same gap:
+all either carry an `autouse=True` fixture mocking all three boundaries
+(`test_transcribe_pipeline.py`, `test_transcribe_memory.py`,
+`test_transcribe_onboarding.py`, `test_vision_dialog.py`,
+`test_transcribe_stream.py`, `test_transcribe_stream_resilience.py`), or
+deliberately use question text ("¿Quiénes son mis hijos?", "¿qué día es
+hoy?") that routes to a deterministic controller plan that never reaches the
+LLM at all (`test_face_authenticated_turn.py`,
+`test_owner_authenticated_stream.py`). `test_chat_ui.py` only matched the
+grep because it asserts the browser bundle *excludes* `/transcribe` as a
+literal string — no real call. This was the only gap; the exact two failures
+CI reported were the exact two files-turned-tests fixed, nothing else broke
+on the second push.
+
+This is precisely the class of gap Task 2's own instruction anticipated
+("Any drift below 80 blocks the CI edit until missing behavior tests—not
+omissions—close the gap") — except the gap wasn't in coverage percentage, it
+was a false-positive local pass masking a real non-hermetic test.
+
 ### Verification
 
 - `uv lock --check`, `uv sync --locked --all-packages --all-groups` — clean
@@ -180,11 +216,11 @@ here, and it did not reproduce.
   — clean
 - `uv build --all-packages` — both packages build from the committed lock
 - `pytest -m "not slow and not hardware and not eval" --cov-fail-under=80` —
-  **998 passed** (997 + the new OpenAPI contract test), 9 deselected,
-  **90.15% coverage**
+  **998 passed**, 9 deselected, **89.75%–90.19% coverage** across runs (small
+  branch-coverage variance run to run, always well above the 80% floor)
 - `just check` — clean (after the one transient large-files false alarm)
 - `git diff --check` — clean
 - Real acceptance: not applicable — no `server/src` or `robot/src` file
-  changed; this plan touches only CI configuration, pytest markers, and one
-  new test. No voice-path or runtime behavior changes, matching Plan 0035's
+  changed; this plan touches only CI configuration, pytest markers, and
+  tests. No voice-path or runtime behavior changes, matching Plan 0035's
   precedent for a config-only plan.
