@@ -66,6 +66,41 @@ def test_server_settings_ignores_unknown_env_vars(monkeypatch: pytest.MonkeyPatc
 
 
 @pytest.mark.unit
+def test_server_settings_rejects_multiple_workers() -> None:
+    """Owner-unlock grants are process-local (Plan 0038) — reject at construction."""
+    with pytest.raises(ValidationError, match="uvicorn_workers"):
+        ServerSettings(_env_file=None, uvicorn_workers=2)  # type: ignore[call-arg]
+
+
+@pytest.mark.unit
+def test_server_settings_max_requests_defaults_to_unset() -> None:
+    """The server must not self-terminate after a fixed request count by default."""
+    settings = ServerSettings(_env_file=None)  # type: ignore[call-arg]
+    assert settings.uvicorn_max_requests is None
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("port", [0, -1, 65536])
+def test_server_settings_rejects_out_of_range_port(port: int) -> None:
+    with pytest.raises(ValidationError, match="server_port"):
+        ServerSettings(_env_file=None, server_port=port)  # type: ignore[call-arg]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("value", [0, -1])
+def test_server_settings_rejects_nonpositive_keep_alive_timeout(value: int) -> None:
+    with pytest.raises(ValidationError, match="uvicorn_timeout_keep_alive"):
+        ServerSettings(_env_file=None, uvicorn_timeout_keep_alive=value)  # type: ignore[call-arg]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("value", [0, -1])
+def test_server_settings_rejects_nonpositive_graceful_shutdown_timeout(value: int) -> None:
+    with pytest.raises(ValidationError, match="uvicorn_timeout_graceful_shutdown"):
+        ServerSettings(_env_file=None, uvicorn_timeout_graceful_shutdown=value)  # type: ignore[call-arg]
+
+
+@pytest.mark.unit
 def test_robot_settings_defaults() -> None:
     settings = RobotSettings(_env_file=None)  # type: ignore[call-arg]
     assert settings.server_url == "http://localhost:8000"

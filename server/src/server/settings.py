@@ -1,9 +1,21 @@
 """Application settings loaded from environment variables."""
 
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
+from pydantic import Field, PositiveInt, field_validator
 from pydantic_settings import BaseSettings
+
+
+def _coerce_to_int(value: object) -> object:
+    """Parse a raw env-var string before the `Literal[1]` check runs.
+
+    `pydantic-settings` coerces a plain `int` field from its env string
+    automatically, but not a `Literal[int]` field — env parsing decides by
+    outer type, and `Literal` isn't `int`. Left uncoerced, `UVICORN_WORKERS=1`
+    in `.env` fails validation against the literal `1` because `"1" != 1`.
+    """
+    return int(value) if isinstance(value, str) else value
 
 
 class Settings(BaseSettings):
@@ -38,7 +50,7 @@ class Settings(BaseSettings):
     # Desktop development stays local by default. LAN deployments opt in via
     # SERVER_HOST=0.0.0.0 after their network policy is configured.
     server_host: str = "127.0.0.1"
-    server_port: int = 8000
+    server_port: Annotated[int, Field(gt=0, le=65535)] = 8000
     log_level: str = "INFO"
     log_to_file: bool = True
     log_dir: Path = Path("logs")
@@ -58,10 +70,25 @@ class Settings(BaseSettings):
     # per-file budgets above, plus multipart framing overhead.
     max_request_body_bytes: int = max_audio_upload_bytes + max_image_upload_bytes + 64 * 1024
 
-    uvicorn_workers: int = 1
+    # Owner-unlock grants, SQLite state, and background jobs are process-local
+    # (ADR-0010): a second worker would silently split them across processes.
+    # Literal[1] fails at construction, before the app ever imports — a
+    # stronger guarantee than a runtime check inside lifespan (which stays,
+    # as defense-in-depth, for the unlikely case Settings is constructed via
+    # model_construct() and skips validation).
+    uvicorn_workers: Literal[1] = 1
     uvicorn_proxy_headers: bool = False
+    # Uncalibrated (Plan 0038): preserves the pre-existing value rather than
+    # guessing a new one. Measure on real target hardware before changing it —
+    # see server/README.md's capacity policy.
     uvicorn_limit_concurrency: int = 100
-    uvicorn_max_requests: int = 1000
+    # Unset by default: recycling the process on a fixed request count only
+    # helps with a supervisor that restarts it — none exists yet, so the old
+    # default of 1000 made the server self-terminate with nothing to bring it
+    # back (Plan 0038).
+    uvicorn_max_requests: PositiveInt | None = None
+    uvicorn_timeout_keep_alive: PositiveInt = 5
+    uvicorn_timeout_graceful_shutdown: PositiveInt = 30
 
     # One-use owner PIN unlock grant (Plan 0026): how long an issued token
     # stays valid before its first (and only) protected use. Was a fixed
@@ -143,6 +170,8 @@ class Settings(BaseSettings):
     dashboard_enabled: bool = True
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+
+    _coerce_uvicorn_workers = field_validator("uvicorn_workers", mode="before")(_coerce_to_int)
 
 
 settings = Settings()  # pyright: ignore[reportCallIssue] — required fields are read from env vars by pydantic-settings
