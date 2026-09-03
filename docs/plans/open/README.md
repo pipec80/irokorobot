@@ -21,7 +21,7 @@ to see the code, tests, verified gap, and accountable plan for each outcome.
 | Plan | Implementation reality | Reuse | Remaining closure |
 |---|---|---|---|
 | [0015](0015-personal-companion-design.md) | Approved product design; PC-1 code and acceptance are both complete (Plans 0025–0028); PC-2 code, tests, and real-camera acceptance are complete (Plans 0029/0030) | Controller, policy/audit, v4 child tools, identity-session seam, onboarding primitives, STT/TTS, face engine, calibrated face-authentication threshold | Speaker evidence (PC-3), fusion (PC-4), visual companion acceptance (PC-5), and family profile expansion (PC-6) remain later slices |
-| [0031](0031-server-production-baseline-design.md) | Audited reference-only server capsule; no production implementation | Existing FastAPI/Starlette/Uvicorn, HTTP/audio contracts, tests and server/robot boundary | Children 0032–0040 closed; 0041–0042 remain, one at a time, pending Pipec's explicit authorization to promote 0041 |
+| [0031](0031-server-production-baseline-design.md) | Audited reference-only server capsule; no production implementation | Existing FastAPI/Starlette/Uvicorn, HTTP/audio contracts, tests and server/robot boundary | Children 0032–0041 closed; 0042 remains, pending Pipec's explicit authorization to promote 0042 |
 
 ## Queued server-production capsule
 
@@ -98,11 +98,27 @@ attribute, migrated to `app.dependency_overrides`. 1039 tests, all five CI
 checks green. No live voice-turn acceptance needed — no hot-path body
 changed.
 
+[Plan 0041](../completed/0041-streaming-terminal-contract.md) closed
+2026-09-03 (PR #111): every started `/transcribe/stream` now ends in exactly
+one `done` or privacy-safe `error` event, never a truncated connection (ADR
+0012) — `streaming.guarantee_terminal_event()` wraps both stream producers at
+their single `StreamingResponse()` call site, classifying a post-header
+`TTSError` as retryable and anything else as a generic internal error. Task
+0 measured native FastAPI JSON Lines with a throwaway prototype and found a
+real blocker: a pre-first-yield `HTTPException` in a generator-endpoint no
+longer returns a clean HTTP error once FastAPI owns the streaming response —
+kept `application/x-ndjson`, left the question open for Plan 0042. Robot
+gained `ErrorEvent` (forward-compatible free-form code) reusing the existing
+`RobotState.ERROR` path, no new state machine. 1059 tests, all five CI
+checks green. Verified live: two full voice turns through the new code
+path, both `outcome=ok`; the synthetic-TTS-failure branch was deferred by
+Pipec's own choice, already covered in depth by 6 automated tests at the
+unit and HTTP level.
+
 | Order | Plan | Outcome |
 |---:|---|---|
-| 1 | [0041](0041-streaming-terminal-contract.md) | Coordinated terminal stream error |
-| 2 | [0042](0042-server-baseline-closure.md) | Full gates, runtime evidence, ADR review, and closure |
-| 3 | [0044](0044-official-fastapi-conventions.md) | Alignment with the official FastAPI conventions the audit predated, plus the httpx2 migration Plan 0038 found and the Ollama-down logging gap Plan 0039 found |
+| 1 | [0042](0042-server-baseline-closure.md) | Full gates, runtime evidence, ADR review, and closure |
+| 2 | [0044](0044-official-fastapi-conventions.md) | Alignment with the official FastAPI conventions the audit predated, plus the httpx2 migration Plan 0038 found and the Ollama-down logging gap Plan 0039 found |
 
 Plans 0014 (P0 runtime-policy umbrella), 0020 (operator-QA remediation
 umbrella), and 0024 (owner-authenticated memory MVP design) closed with no
@@ -133,7 +149,7 @@ PC-2 completely — see
 [completed/0030](../completed/0030-real-camera-face-acceptance.md).
 
 Canonical execution order: **none — `NOW` is empty.** The server capsule is
-queued, beginning with 0041 only once Pipec authorizes promotion.
+queued, beginning with 0042 only once Pipec authorizes promotion.
 
 ## Status rule
 

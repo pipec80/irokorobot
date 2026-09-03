@@ -1,7 +1,7 @@
 # Iroko server production baseline
 
-- **Status:** Target architecture; children 0032–0040 closed, 0041–0042 and
-  0044 remain
+- **Status:** Target architecture; children 0032–0041 closed, 0042 and 0044
+  remain
 - **Audited commit:** `7d68641` (original audit); see "Verified baseline" for
   the current state after the closed children
 - **Audit date:** 2026-08-31; last status refresh 2026-09-03
@@ -37,7 +37,8 @@ Plan 0031 is a reference umbrella and is never executed as a batch. Plan 0043
 (upload/multipart security), 0035 (SQLite transaction owner), 0036 (SQLite
 write migration and outbox removal), 0037 (deterministic CI baseline), 0038
 (Uvicorn runtime baseline), 0039 (application lifecycle and HTTP resources),
-0040 (FastAPI contract and OpenAPI baseline). Plan 0041 is next; see the
+0040 (FastAPI contract and OpenAPI baseline), 0041 (streaming terminal
+contract). Plan 0042 is next; see the
 [operational board](../plans/README.md#operational-board) for the current
 `NOW`/`QUEUED` state — this document does not duplicate it.
 
@@ -114,9 +115,14 @@ and constrain the child plans:
   `-> AsyncIterable[Model]` and yielding models streams `application/jsonl`,
   serialized by Pydantic and documented in OpenAPI. It is a return-type
   convention, not a response class. The project's discriminated stream event
-  union works under it unchanged. Adopting it is a coordinated wire migration
-  because it changes the media type for the live robot client, not a local
-  refactor — see Plan 0041.
+  union works under it unchanged. **Measured by Plan 0041's own Task 0
+  prototype and not adopted**: once FastAPI owns the streaming response,
+  a pre-first-yield `HTTPException` in a generator-endpoint no longer
+  returns a clean HTTP error (`RuntimeError: Caught handled exception, but
+  response already started.`) — a real blocker for `/transcribe/stream`'s
+  "validate synchronously, then decide to stream" shape. `application/
+  x-ndjson` stays the wire format; the migration question is left open for
+  Plan 0042.
 
 Two gaps in the project's own safety net were found after the original
 audit; one is closed:
