@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 
+from server import db
 from server.cognition.identity import HouseholdRole
 from server.cognition.pin_credentials import EncodedPinCredential
 from server.db import get_conn
@@ -72,9 +73,7 @@ async def save_owner_pin_credential(
     if await get_active_role(person_entity_id) is not HouseholdRole.OWNER:
         raise ValueError("owner PIN credential requires an active owner role")
 
-    conn = get_conn()
-    await conn.execute("BEGIN IMMEDIATE")
-    try:
+    async with db.transaction() as conn:
         await conn.execute(
             "UPDATE owner_pin_credentials SET revoked_at = datetime('now') "
             "WHERE person_entity_id = ? AND revoked_at IS NULL",
@@ -96,10 +95,6 @@ async def save_owner_pin_credential(
             raise RuntimeError("INSERT into owner_pin_credentials returned no lastrowid")
         credential_id = int(cursor.lastrowid)
         await cursor.close()
-        await conn.commit()
-    except Exception:
-        await conn.rollback()
-        raise
 
     return OwnerPinCredential(
         id=credential_id, person_entity_id=person_entity_id, encoded=credential
@@ -115,15 +110,13 @@ async def revoke_owner_pin_credential(*, person_entity_id: int) -> None:
     Raises:
         ValueError: If no active credential exists for this person.
     """
-    conn = get_conn()
-    cursor = await conn.execute(
-        "UPDATE owner_pin_credentials SET revoked_at = datetime('now') "
-        "WHERE person_entity_id = ? AND revoked_at IS NULL",
-        (person_entity_id,),
-    )
-    updated = cursor.rowcount
-    await cursor.close()
-    if updated != 1:
-        await conn.rollback()
-        raise ValueError("no active owner PIN credential exists for this person")
-    await conn.commit()
+    async with db.transaction() as conn:
+        cursor = await conn.execute(
+            "UPDATE owner_pin_credentials SET revoked_at = datetime('now') "
+            "WHERE person_entity_id = ? AND revoked_at IS NULL",
+            (person_entity_id,),
+        )
+        updated = cursor.rowcount
+        await cursor.close()
+        if updated != 1:
+            raise ValueError("no active owner PIN credential exists for this person")

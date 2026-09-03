@@ -13,9 +13,9 @@ import logging
 import struct
 from typing import Any
 
+from server import db
 from server.db import get_conn
 from server.memory.embeddings import embed
-from server.memory.outbox import write_outbox
 from server.schemas import MemoryHit
 from server.settings import settings
 
@@ -63,42 +63,32 @@ async def store_memory(
     Raises:
         BrainMemoryError: If embedding fails or the DB write fails.
     """
-    conn = get_conn()
     vec = await embed(summary or content)
 
-    cur = await conn.execute(
-        "INSERT INTO memories "
-        "(kind, content, summary, metadata, importance, related_entities) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
-        (
-            kind,
-            content,
-            summary,
-            json.dumps(metadata or {}),
-            importance,
-            json.dumps(related_entities or []),
-        ),
-    )
-    if cur.lastrowid is None:
-        raise RuntimeError("INSERT into memories returned no lastrowid")
-    memory_id: int = cur.lastrowid
-    await cur.close()
+    async with db.transaction() as conn:
+        cur = await conn.execute(
+            "INSERT INTO memories "
+            "(kind, content, summary, metadata, importance, related_entities) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                kind,
+                content,
+                summary,
+                json.dumps(metadata or {}),
+                importance,
+                json.dumps(related_entities or []),
+            ),
+        )
+        if cur.lastrowid is None:
+            raise RuntimeError("INSERT into memories returned no lastrowid")
+        memory_id: int = cur.lastrowid
+        await cur.close()
 
-    await conn.execute(
-        "INSERT INTO vec_memories (rowid, embedding) VALUES (?, ?)",
-        (memory_id, _pack(vec)),
-    )
-    await conn.commit()
-    await write_outbox(
-        "memory",
-        memory_id,
-        "insert",
-        {
-            "kind": kind,
-            "summary": summary,
-            "importance": importance,
-        },
-    )
+        await conn.execute(
+            "INSERT INTO vec_memories (rowid, embedding) VALUES (?, ?)",
+            (memory_id, _pack(vec)),
+        )
+
     logger.debug("Memory stored: kind=%s id=%d importance=%.2f", kind, memory_id, importance)
     return memory_id
 
@@ -165,13 +155,13 @@ async def search_memories(
 
     if hits:
         placeholders = ",".join("?" * len(hits))
-        await conn.execute(
-            "UPDATE memories "  # nosec B608  # noqa: S608 — ? placeholders only
-            "SET last_accessed_at = datetime('now'), access_count = access_count + 1 "
-            f"WHERE id IN ({placeholders})",
-            tuple(h.id for h in hits),
-        )
-        await conn.commit()
+        async with db.transaction() as write_conn:
+            await write_conn.execute(
+                "UPDATE memories "  # nosec B608  # noqa: S608 — ? placeholders only
+                "SET last_accessed_at = datetime('now'), access_count = access_count + 1 "
+                f"WHERE id IN ({placeholders})",
+                tuple(h.id for h in hits),
+            )
 
     logger.info(
         "Memory search: %d chars top_k=%d hits=%d",

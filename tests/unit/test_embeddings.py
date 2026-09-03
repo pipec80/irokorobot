@@ -8,9 +8,18 @@ struct.unpack error further down the line.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 from server.exceptions import BrainMemoryError
 from server.memory import embeddings
+from server.settings import settings
+
+from server import db
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+    from pathlib import Path
 
 
 class _FakeCursor:
@@ -77,10 +86,28 @@ async def test_embed_rejects_wrong_dimension_vector(monkeypatch: pytest.MonkeyPa
         await embeddings.embed("hola")
 
 
-@pytest.mark.unit
+@pytest.fixture
+async def _real_memory_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[None]:
+    """Open a real temporary DB — `embed()`'s cache write now uses `db.transaction()`."""
+    db_path = tmp_path / "embeddings-test.db"
+    monkeypatch.setattr(settings, "brain_db_path", db_path)
+    db._conn = None
+    await db.open_db()
+    await db.run_migrations()
+    yield
+    await db.close_db()
+    db._conn = None
+
+
+@pytest.mark.integration
+@pytest.mark.usefixtures("_real_memory_db")
 async def test_embed_accepts_correct_dimension_vector(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A 768-d vector (the frozen EMBEDDING_DIM) must pass through untouched."""
-    monkeypatch.setattr(embeddings, "get_conn", _FakeConn)
+    """A 768-d vector (the frozen EMBEDDING_DIM) must pass through untouched.
+
+    Reclassified from `unit` to `integration` (Plan 0036): `embed()`'s cache
+    write now goes through `db.transaction()`, which needs a real open
+    connection — a bare `get_conn()` mock no longer reaches far enough.
+    """
     _FakeAsyncClient.vec = [0.1] * 768
     monkeypatch.setattr(embeddings.httpx, "AsyncClient", _FakeAsyncClient)
 

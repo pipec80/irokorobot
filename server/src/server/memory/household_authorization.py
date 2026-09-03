@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from server import db
 from server.cognition.authorization import AuthorizationRequest
 from server.cognition.identity import HouseholdRole
 from server.cognition.models import AuthorizationAction, AuthorizationDecision, AuthorizationStatus
@@ -123,19 +124,19 @@ async def record_authorization_decision(
     decision: AuthorizationDecision,
 ) -> None:
     """Persist one evaluated policy outcome as a safe append-only audit event."""
-    await _record_event(
-        actor_entity_id=request.actor.person_id,
-        target_entity_id=request.target_person_id,
-        action=decision.action,
-        data_categories=decision.data_categories,
-        decision=decision.decision,
-        policy_id=decision.policy_id,
-        reason=decision.reason,
-        correlation_id=str(decision.correlation_id),
-        evaluated_at=decision.evaluated_at.isoformat(),
-        expires_at=decision.expires_at.isoformat() if decision.expires_at is not None else None,
-    )
-    await get_conn().commit()
+    async with db.transaction():
+        await _record_event(
+            actor_entity_id=request.actor.person_id,
+            target_entity_id=request.target_person_id,
+            action=decision.action,
+            data_categories=decision.data_categories,
+            decision=decision.decision,
+            policy_id=decision.policy_id,
+            reason=decision.reason,
+            correlation_id=str(decision.correlation_id),
+            evaluated_at=decision.evaluated_at.isoformat(),
+            expires_at=decision.expires_at.isoformat() if decision.expires_at is not None else None,
+        )
 
 
 async def bootstrap_initial_owner(
@@ -162,9 +163,7 @@ async def bootstrap_initial_owner(
     if await _active_owner_exists():
         raise ValueError("an active owner already exists")
 
-    conn = get_conn()
-    await conn.execute("BEGIN IMMEDIATE")
-    try:
+    async with db.transaction() as conn:
         cursor = await conn.execute(
             "INSERT INTO household_role_assignments "
             "(person_entity_id, role, grantor_entity_id, reason) VALUES (?, 'owner', NULL, ?)",
@@ -186,10 +185,6 @@ async def bootstrap_initial_owner(
             evaluated_at=datetime.now(UTC).isoformat(),
             expires_at=None,
         )
-        await conn.commit()
-    except Exception:
-        await conn.rollback()
-        raise
 
     return await _get_assignment(assignment_id)
 
@@ -225,9 +220,7 @@ async def assign_household_role(
     if await get_active_role(person_entity_id) is not HouseholdRole.UNKNOWN:
         raise ValueError("person already has an active household role")
 
-    conn = get_conn()
-    await conn.execute("BEGIN IMMEDIATE")
-    try:
+    async with db.transaction() as conn:
         cursor = await conn.execute(
             "INSERT INTO household_role_assignments "
             "(person_entity_id, role, grantor_entity_id, reason) VALUES (?, ?, ?, ?)",
@@ -254,37 +247,31 @@ async def assign_household_role(
             evaluated_at=datetime.now(UTC).isoformat(),
             expires_at=None,
         )
-        await conn.commit()
-    except Exception:
-        await conn.rollback()
-        raise
 
     return await _get_assignment(assignment_id)
 
 
 async def revoke_active_role(*, person_entity_id: int) -> None:
     """Logically revoke one active role while retaining its assignment history."""
-    conn = get_conn()
-    cursor = await conn.execute(
-        "UPDATE household_role_assignments SET revoked_at = datetime('now') "
-        "WHERE person_entity_id = ? AND revoked_at IS NULL",
-        (person_entity_id,),
-    )
-    updated = cursor.rowcount
-    await cursor.close()
-    if updated != 1:
-        await conn.rollback()
-        raise ValueError("no active household role exists for this person")
-    await _record_event(
-        actor_entity_id=None,
-        target_entity_id=person_entity_id,
-        action=AuthorizationAction.MANAGE_HOUSEHOLD_ROLE,
-        data_categories=frozenset({"household", "normal"}),
-        decision=AuthorizationStatus.ALLOWED,
-        policy_id="p0.5.local-role-revocation",
-        reason="Local role assignment was revoked.",
-        correlation_id=str(uuid4()),
-        evaluated_at=datetime.now(UTC).isoformat(),
-        expires_at=None,
-    )
-    await conn.commit()
+    async with db.transaction() as conn:
+        cursor = await conn.execute(
+            "UPDATE household_role_assignments SET revoked_at = datetime('now') "
+            "WHERE person_entity_id = ? AND revoked_at IS NULL",
+            (person_entity_id,),
+        )
+        updated = cursor.rowcount
+        await cursor.close()
+        if updated != 1:
+            raise ValueError("no active household role exists for this person")
+        await _record_event(
+            actor_entity_id=None,
+            target_entity_id=person_entity_id,
+            action=AuthorizationAction.MANAGE_HOUSEHOLD_ROLE,
+            data_categories=frozenset({"household", "normal"}),
+            decision=AuthorizationStatus.ALLOWED,
+            policy_id="p0.5.local-role-revocation",
+            reason="Local role assignment was revoked.",
+            correlation_id=str(uuid4()),
+            evaluated_at=datetime.now(UTC).isoformat(),
+            expires_at=None,
+        )

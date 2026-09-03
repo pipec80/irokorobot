@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 
+from server import db
 from server.db import get_conn
 
 logger = logging.getLogger(__name__)
@@ -41,22 +42,21 @@ async def grant_face_consent(person_entity_id: int) -> int:
     Raises:
         BrainMemoryError: If the DB is unavailable.
     """
-    conn = get_conn()
-    cursor = await conn.execute(
-        "SELECT id FROM face_consent_grants WHERE person_entity_id = ? AND revoked_at IS NULL",
-        (person_entity_id,),
-    )
-    existing = await cursor.fetchone()
-    await cursor.close()
-    if existing is not None:
-        return int(existing[0])
-    cursor = await conn.execute(
-        "INSERT INTO face_consent_grants (person_entity_id, purpose) VALUES (?, ?)",
-        (person_entity_id, _PURPOSE),
-    )
-    grant_id = cursor.lastrowid
-    await cursor.close()
-    await conn.commit()
+    async with db.transaction() as conn:
+        cursor = await conn.execute(
+            "SELECT id FROM face_consent_grants WHERE person_entity_id = ? AND revoked_at IS NULL",
+            (person_entity_id,),
+        )
+        existing = await cursor.fetchone()
+        await cursor.close()
+        if existing is not None:
+            return int(existing[0])
+        cursor = await conn.execute(
+            "INSERT INTO face_consent_grants (person_entity_id, purpose) VALUES (?, ?)",
+            (person_entity_id, _PURPOSE),
+        )
+        grant_id = cursor.lastrowid
+        await cursor.close()
     logger.info("Face consent granted: person=%s", person_entity_id)
     return int(grant_id) if grant_id is not None else 0
 
@@ -76,9 +76,7 @@ async def revoke_face_consent(person_entity_id: int) -> None:
     Raises:
         BrainMemoryError: If the DB is unavailable.
     """
-    conn = get_conn()
-    await conn.execute("BEGIN IMMEDIATE")
-    try:
+    async with db.transaction() as conn:
         await conn.execute(
             "DELETE FROM vec_faces WHERE rowid IN "
             "(SELECT id FROM face_profiles WHERE entity_id = ?)",
@@ -90,10 +88,6 @@ async def revoke_face_consent(person_entity_id: int) -> None:
             "WHERE person_entity_id = ? AND revoked_at IS NULL",
             (person_entity_id,),
         )
-        await conn.commit()
-    except Exception:
-        await conn.rollback()
-        raise
     logger.info("Face consent revoked and face data purged: person=%s", person_entity_id)
 
 
