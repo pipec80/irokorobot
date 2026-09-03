@@ -1,107 +1,91 @@
 """FastAPI application entrypoint — assembles routers and starts the server."""
 
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 import logging
-import logging.config
-from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
+import httpx
 from starlette.middleware.body_limit import RequestBodyLimitMiddleware
 import uvicorn
 
 from server import stt, tts
 from server.chat_ui import mount_chat_ui
+from server.cognition.owner_authentication import owner_unlock_service
 from server.db import close_db, open_db, run_migrations
-from server.logging_setup import build_file_handler
+from server.logging_setup import configure_logging
 from server.memory import retention
-from server.request_context import RequestContextMiddleware, RequestIdFilter
+from server.request_context import RequestContextMiddleware
+from server.resources import AppResources
 from server.routers import auth, chat, system, transcribe, vision
 from server.settings import Settings, settings
 
-_LOG_HANDLERS: dict[str, Any] = {
-    "console": {
-        "class": "logging.StreamHandler",
-        "formatter": "default",
-        "filters": ["request_id"],
-    },
-}
-_ROOT_HANDLER_NAMES = ["console"]
-
-if settings.log_to_file:
-    settings.log_dir.mkdir(parents=True, exist_ok=True)
-    # JSON Lines on disk for analysis tools; the console stays human-readable.
-    _LOG_HANDLERS["file"] = {
-        "()": build_file_handler,
-        "path": settings.log_dir / "server.log",
-        "retention_days": settings.log_retention_days,
-        "filters": ["request_id"],
-    }
-    _ROOT_HANDLER_NAMES.append("file")
-
-# logging.config.dictConfig requires dict[str, Any] — no precise type exists for this schema
-_LOG_CONFIG: dict[str, Any] = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "filters": {"request_id": {"()": RequestIdFilter}},
-    "formatters": {
-        "default": {
-            "format": "%(asctime)s %(levelname)-8s [%(request_id)s] %(name)s — %(message)s",
-            "datefmt": "%Y-%m-%d %H:%M:%S",
-        },
-    },
-    "handlers": _LOG_HANDLERS,
-    "root": {"handlers": _ROOT_HANDLER_NAMES, "level": settings.log_level.upper()},
-    "loggers": {
-        "uvicorn": {"propagate": True},
-        "uvicorn.access": {"propagate": True},
-        "uvicorn.error": {"propagate": True},
-    },
-}
-
-logging.config.dictConfig(_LOG_CONFIG)
 logger = logging.getLogger(__name__)
+
+# General-purpose bound for the lifecycle-owned client — Ollama calls that
+# need longer than this override the read timeout per request (see
+# llm_transport.py); nothing else this client is used for should ever take
+# this long.
+_HTTP_CLIENT_TIMEOUT = httpx.Timeout(connect=5.0, read=10.0, write=10.0, pool=5.0)
+_HTTP_CLIENT_LIMITS = httpx.Limits(max_connections=10, max_keepalive_connections=5)
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    """Load ML models and optionally initialize the brain memory subsystem."""
+    """Own every long-lived resource for exactly one request-serving period.
+
+    Resources are entered in acquisition order through one `AsyncExitStack`,
+    so a failure partway through startup (e.g. TTS preload after the HTTP
+    client already opened) still unwinds everything already acquired, in
+    reverse order — nothing leaks on a partial failure. `_app.state.ready`
+    is `True` only between a fully successful startup and the start of
+    shutdown; `_app.state.resources` exists as soon as the HTTP client does,
+    even if a later startup step then fails.
+    """
     if settings.uvicorn_workers != 1:
         raise RuntimeError(
             "Owner unlock grants are process-local: UVICORN_WORKERS must be 1, "
             f"got {settings.uvicorn_workers}."
         )
     logger.info("OMNiBot 2000 starting — loading models...")
-    stt.preload()
-    tts.preload()
 
-    if settings.memory_enabled:
-        await open_db()
-        await run_migrations()
-        retention.start_background_job()
-        logger.info("Brain memory enabled: %s", settings.brain_db_path)
-    else:
-        logger.info("Memory disabled via MEMORY_ENABLED")
+    async with AsyncExitStack() as stack:
+        http_client = await stack.enter_async_context(
+            httpx.AsyncClient(timeout=_HTTP_CLIENT_TIMEOUT, limits=_HTTP_CLIENT_LIMITS)
+        )
+        _app.state.resources = AppResources(
+            http_client=http_client,
+            owner_unlock_service=owner_unlock_service,
+        )
 
-    logger.info(
-        "OMNiBot server ONLINE ✅ — listening on http://%s:%d "
-        "| health: GET /health | memory: %s | LLM: %s",
-        settings.server_host,
-        settings.server_port,
-        "on" if settings.memory_enabled else "off",
-        settings.llm_provider,
-    )
-    yield
+        stt.preload()
+        tts.preload()
 
-    if settings.memory_enabled:
-        await retention.stop_background_job()
-        await close_db()
-        logger.info("Brain memory closed.")
+        if settings.memory_enabled:
+            await open_db()
+            stack.push_async_callback(close_db)
+            await run_migrations()
+            retention.start_background_job()
+            stack.push_async_callback(retention.stop_background_job)
+            logger.info("Brain memory enabled: %s", settings.brain_db_path)
+        else:
+            logger.info("Memory disabled via MEMORY_ENABLED")
 
-    logger.info("OMNiBot 2000 shutting down.")
+        _app.state.ready = True
+        logger.info(
+            "OMNiBot server ONLINE ✅ — listening on http://%s:%d "
+            "| health: GET /health | memory: %s | LLM: %s",
+            settings.server_host,
+            settings.server_port,
+            "on" if settings.memory_enabled else "off",
+            settings.llm_provider,
+        )
+        yield
+        _app.state.ready = False
+        logger.info("OMNiBot 2000 shutting down.")
 
 
 async def _validation_error_without_input(
@@ -129,35 +113,56 @@ async def _validation_error_without_input(
     return JSONResponse(status_code=422, content={"detail": redacted})
 
 
-app = FastAPI(
-    title="OMNiBot 2000 Core API",
-    description=(
-        "Core API of the robotic brain. Handles perception (Audio/Vision), "
-        "semantic memory, and LLM inference."
-    ),
-    version="0.2.0",
-    lifespan=lifespan,
-)
-app.add_middleware(GZipMiddleware, minimum_size=1000)
-# `FastAPI(...)` does not accept `max_body_size` — only `Starlette.__init__`
-# does (Plan 0034) — so the raw ceiling is a middleware, not a constructor
-# argument. It rejects a body over budget before any router or multipart
-# parsing runs, which matters because a field the app never reads (an
-# optional frame with face auth disabled) would otherwise never be sized at
-# all: `_read_optional_frame` simply never executes for it.
-app.add_middleware(RequestBodyLimitMiddleware, max_body_size=settings.max_request_body_bytes)
-# Added last so it wraps everything above, including the body-limit
-# middleware: the correlation id must be stamped even on a 413, and the
-# context must cover the whole request.
-app.add_middleware(RequestContextMiddleware)
-app.add_exception_handler(RequestValidationError, _validation_error_without_input)  # type: ignore[arg-type]  # FastAPI narrows the handler's exception type
+def create_app() -> FastAPI:
+    """Compose the FastAPI application: logging, middleware, routers, lifespan.
 
-app.include_router(system.router)
-app.include_router(auth.router)
-app.include_router(chat.router)
-app.include_router(transcribe.router)
-app.include_router(vision.router)
-mount_chat_ui(app)
+    Configuring logging is the first thing this does, and only this does —
+    importing `server.main` alone must not create a log directory or any
+    other side effect (Plan 0039); only calling `create_app()` does.
+
+    Returns:
+        A fully assembled, not-yet-started `FastAPI` instance. Resource
+        construction (the HTTP client, DB, background jobs) is the
+        lifespan's job, not this factory's — building the app object never
+        opens a resource.
+    """
+    configure_logging(settings)
+
+    new_app = FastAPI(
+        title="OMNiBot 2000 Core API",
+        description=(
+            "Core API of the robotic brain. Handles perception (Audio/Vision), "
+            "semantic memory, and LLM inference."
+        ),
+        version="0.2.0",
+        lifespan=lifespan,
+    )
+    new_app.add_middleware(GZipMiddleware, minimum_size=1000)
+    # `FastAPI(...)` does not accept `max_body_size` — only `Starlette.__init__`
+    # does (Plan 0034) — so the raw ceiling is a middleware, not a constructor
+    # argument. It rejects a body over budget before any router or multipart
+    # parsing runs, which matters because a field the app never reads (an
+    # optional frame with face auth disabled) would otherwise never be sized at
+    # all: `_read_optional_frame` simply never executes for it.
+    new_app.add_middleware(
+        RequestBodyLimitMiddleware, max_body_size=settings.max_request_body_bytes
+    )
+    # Added last so it wraps everything above, including the body-limit
+    # middleware: the correlation id must be stamped even on a 413, and the
+    # context must cover the whole request.
+    new_app.add_middleware(RequestContextMiddleware)
+    new_app.add_exception_handler(RequestValidationError, _validation_error_without_input)  # type: ignore[arg-type]  # FastAPI narrows the handler's exception type
+
+    new_app.include_router(system.router)
+    new_app.include_router(auth.router)
+    new_app.include_router(chat.router)
+    new_app.include_router(transcribe.router)
+    new_app.include_router(vision.router)
+    mount_chat_ui(new_app)
+    return new_app
+
+
+app = create_app()
 
 
 def build_uvicorn_kwargs(runtime_settings: Settings) -> dict[str, object]:
