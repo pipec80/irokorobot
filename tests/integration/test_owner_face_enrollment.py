@@ -21,7 +21,7 @@ from pydantic import SecretStr
 import pytest
 from server.cognition.identity import PersonRecord
 from server.cognition.identity_sessions import IdentitySessionRegistry
-from server.cognition.owner_authentication import OwnerUnlockService
+from server.cognition.owner_authentication import OwnerUnlockService, owner_unlock_service
 from server.dependencies import get_owner_unlock_service
 from server.exceptions import EnrollmentRejectedError
 from server.main import app
@@ -30,6 +30,7 @@ from server.memory.entity_labels import get_person_label
 from server.memory.household_authorization import get_active_role
 from server.memory.owner_credentials import get_active_owner_pin_credential
 from server.personal_setup import PersonalSetupInput, PersonalSetupResult, apply_personal_setup
+from server.resources import AppResources
 from server.routers import auth as auth_module
 from server.settings import settings
 
@@ -98,18 +99,36 @@ class _ExplodingService:
 
 @asynccontextmanager
 async def _loopback_client() -> AsyncIterator[AsyncClient]:
-    """Yield a client whose ASGI scope reports a loopback origin."""
-    transport = ASGITransport(app=app, client=("127.0.0.1", 12345))
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        yield client
+    """Yield a client whose ASGI scope reports a loopback origin.
+
+    Plan 0039: routers depend on `request.app.state.resources`
+    (`ResourcesDep`), which the real lifespan sets — assign a lightweight
+    `AppResources` here since that lifespan never runs in this helper.
+    """
+    async with AsyncClient() as http_client:
+        app.state.resources = AppResources(
+            http_client=http_client, owner_unlock_service=owner_unlock_service
+        )
+        transport = ASGITransport(app=app, client=("127.0.0.1", 12345))
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            yield client
 
 
 @asynccontextmanager
 async def _remote_client() -> AsyncIterator[AsyncClient]:
-    """Yield a client whose ASGI scope reports a non-loopback origin."""
-    transport = ASGITransport(app=app, client=("203.0.113.5", 12345))
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        yield client
+    """Yield a client whose ASGI scope reports a non-loopback origin.
+
+    Plan 0039: routers depend on `request.app.state.resources`
+    (`ResourcesDep`), which the real lifespan sets — assign a lightweight
+    `AppResources` here since that lifespan never runs in this helper.
+    """
+    async with AsyncClient() as http_client:
+        app.state.resources = AppResources(
+            http_client=http_client, owner_unlock_service=owner_unlock_service
+        )
+        transport = ASGITransport(app=app, client=("203.0.113.5", 12345))
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            yield client
 
 
 def _enroll_files() -> dict[str, tuple[str, bytes, str]]:

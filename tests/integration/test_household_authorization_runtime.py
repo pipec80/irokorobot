@@ -7,7 +7,9 @@ from unittest.mock import AsyncMock
 
 from httpx import ASGITransport, AsyncClient
 import pytest
+from server.cognition.owner_authentication import owner_unlock_service
 from server.main import app
+from server.resources import AppResources
 from server.routers import chat
 from server.settings import settings
 from server.text_turn import TextTurnResult
@@ -17,10 +19,19 @@ from server import db
 
 @asynccontextmanager
 async def _client() -> AsyncIterator[AsyncClient]:
-    """Yield an application client without starting model lifespans."""
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        yield client
+    """Yield an application client without starting model lifespans.
+
+    Plan 0039: routers depend on `request.app.state.resources`
+    (`ResourcesDep`), which the real lifespan sets — assign a lightweight
+    `AppResources` here since that lifespan never runs in this helper.
+    """
+    async with AsyncClient() as http_client:
+        app.state.resources = AppResources(
+            http_client=http_client, owner_unlock_service=owner_unlock_service
+        )
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            yield client
 
 
 @pytest.fixture
