@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from server.db import get_conn
+from server import db
 from server.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -40,14 +40,13 @@ async def _run_once() -> None:
     Errors are caught and logged without re-raising so the background loop
     continues running on the next tick.
     """
-    conn = get_conn()
     sensor_threshold = f"-{settings.sensor_retention_hours} hours"
     try:
-        await conn.execute(_SQL_SENSOR_READINGS, (sensor_threshold,))
-        await conn.execute(_SQL_SENSOR_AGGREGATES)
-        await conn.execute(_SQL_EMBEDDINGS_CACHE)
-        await conn.execute(_SQL_OUTBOX)
-        await conn.commit()
+        async with db.transaction() as conn:
+            await conn.execute(_SQL_SENSOR_READINGS, (sensor_threshold,))
+            await conn.execute(_SQL_SENSOR_AGGREGATES)
+            await conn.execute(_SQL_EMBEDDINGS_CACHE)
+            await conn.execute(_SQL_OUTBOX)
         logger.info("Retention purge complete (sensor_threshold=%s)", sensor_threshold)
     except Exception as exc:
         logger.warning("Retention purge failed: %s", exc)

@@ -1,5 +1,6 @@
 """Integration acceptance tests for the minimal personal owner setup service."""
 
+import asyncio
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -7,17 +8,21 @@ from pydantic import SecretStr
 import pytest
 from server.cognition.identity import HouseholdRole
 from server.cognition.pin_credentials import verify_pin
+from server.exceptions import BrainMemoryError
 from server.memory.household_authorization import bootstrap_initial_owner, get_active_role
 from server.memory.meta import get_flag
 from server.memory.owner_credentials import get_active_owner_pin_credential
 from server.personal_setup import (
     PersonalSetupInput,
     apply_personal_setup,
+    check_db_available,
     run_personal_setup_wizard,
 )
 from server.settings import settings
 
 from server import db
+
+_GUARD_TIMEOUT_S = 5.0
 
 
 @pytest.fixture
@@ -336,3 +341,40 @@ async def test_wizard_success_applies_setup_and_never_prints_secret(setup_db: No
     joined = "\n".join(io.outputs)
     assert str(result.owner_entity_id) in joined
     assert "482173" not in joined
+
+
+@pytest.mark.integration
+async def test_check_db_available_passes_when_nothing_holds_the_lock(setup_db: None) -> None:
+    """The happy path: no other transaction is open, so the probe is silent."""
+    await check_db_available()  # must not raise
+
+
+@pytest.mark.integration
+async def test_check_db_available_raises_when_a_transaction_is_already_open(
+    setup_db: None,
+) -> None:
+    """`check_db_available` is a deliberate exception to Plan 0036's ownership rule.
+
+    It issues its own `BEGIN IMMEDIATE` + `ROLLBACK` directly, bypassing
+    `db.transaction()`'s asyncio lock on purpose — it exists to fail fast on
+    an *external* OS-level lock (another `just run-server` process), which a
+    coroutine-level lock cannot detect. This test proves it still works
+    correctly even against a transaction held by this same process.
+    """
+    holds_lock = asyncio.Event()
+    may_release = asyncio.Event()
+
+    async def hold_transaction() -> None:
+        async with db.transaction() as conn:
+            await conn.execute("INSERT INTO meta (key, value) VALUES ('probe', 'x')")
+            holds_lock.set()
+            await asyncio.wait_for(may_release.wait(), timeout=_GUARD_TIMEOUT_S)
+
+    holder = asyncio.create_task(hold_transaction())
+    await asyncio.wait_for(holds_lock.wait(), timeout=_GUARD_TIMEOUT_S)
+
+    with pytest.raises(BrainMemoryError, match="locked"):
+        await check_db_available()
+
+    may_release.set()
+    await asyncio.wait_for(holder, timeout=_GUARD_TIMEOUT_S)
