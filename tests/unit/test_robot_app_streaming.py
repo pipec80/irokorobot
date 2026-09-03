@@ -6,7 +6,14 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from robot.exceptions import AudioPlaybackError, CameraError, ServerError
 from robot.fsm_types import LoopContext, RobotState
-from robot.stream_events import AudioEvent, DoneEvent, EmotionEvent, StreamEvent, TextHeardEvent
+from robot.stream_events import (
+    AudioEvent,
+    DoneEvent,
+    EmotionEvent,
+    ErrorEvent,
+    StreamEvent,
+    TextHeardEvent,
+)
 
 from robot import app_streaming, audio_playback
 
@@ -324,6 +331,68 @@ async def test_thinking_stream_face_auth_camera_error_degrades_to_no_frame(
 
     assert state is RobotState.SPEAKING
     assert seen["frame"] is None
+
+
+# --- Plan 0041: the terminal `error` event -----------------------------
+
+
+@pytest.mark.unit
+async def test_error_after_partial_audio_maps_to_error_state_without_speaking_detail(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A TTS failure mid-stream must still play what already arrived, then ERROR."""
+    play_wav = AsyncMock()
+    monkeypatch.setattr(audio_playback, "play_wav", play_wav)
+    ctx = LoopContext()
+    ctx.stream_events = _events(
+        EmotionEvent("joy"),
+        _audio_event("Hola."),
+        ErrorEvent(code="tts_failed", detail="Speech synthesis failed", retryable=True),
+    )
+
+    with caplog.at_level("DEBUG", logger="robot.app_streaming"):
+        state = await app_streaming.on_speaking_stream(ctx)
+
+    assert state is RobotState.ERROR
+    # The fixed, safe `detail` string is fine to log — but never spoken (no
+    # extra TTS call happens here at all, only whatever audio already arrived).
+    play_wav.assert_awaited_once()
+
+
+@pytest.mark.unit
+async def test_error_with_no_prior_audio_maps_to_error_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A TTS failure on the very first sentence (no audio played yet) still ERRORs cleanly."""
+    play_wav = AsyncMock()
+    monkeypatch.setattr(audio_playback, "play_wav", play_wav)
+    ctx = LoopContext()
+    ctx.stream_events = _events(
+        EmotionEvent("joy"),
+        ErrorEvent(code="tts_failed", detail="Speech synthesis failed", retryable=True),
+    )
+
+    state = await app_streaming.on_speaking_stream(ctx)
+
+    assert state is RobotState.ERROR
+    play_wav.assert_not_awaited()
+
+
+@pytest.mark.unit
+async def test_error_with_unknown_code_still_maps_to_error_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A code this robot build has never seen must not crash — just ERROR."""
+    monkeypatch.setattr(audio_playback, "play_wav", AsyncMock())
+    ctx = LoopContext()
+    ctx.stream_events = _events(
+        EmotionEvent("joy"),
+        ErrorEvent(code="brand_new_code_from_the_future", detail="..."),
+    )
+
+    state = await app_streaming.on_speaking_stream(ctx)
+
+    assert state is RobotState.ERROR
 
 
 @pytest.mark.unit

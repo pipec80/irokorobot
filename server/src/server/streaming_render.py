@@ -15,7 +15,12 @@ import logging
 from server import llm, tts
 from server.exceptions import LLMError
 from server.pipeline import _elapsed_ms
-from server.schemas_streaming import StreamAudioEvent, StreamDoneEvent, StreamEmotionEvent
+from server.schemas_streaming import (
+    StreamAudioEvent,
+    StreamDoneEvent,
+    StreamEmotionEvent,
+    StreamErrorEvent,
+)
 from server.sentences import split_first_sentence
 from server.settings import settings
 from server.streaming_protocol import parse_streaming_emotion, validate_streaming_body_start
@@ -31,6 +36,40 @@ class StreamOutcome(StrEnum):
     LLM_FALLBACK = "llm_fallback"
     PARTIAL_FALLBACK = "partial_fallback"
     TTS_ERROR = "tts_error"
+
+
+class StreamErrorCode(StrEnum):
+    """Stable, bounded terminal-error codes (Plan 0041, ADR 0012).
+
+    Values are wire-visible (the robot's ``ErrorEvent.code`` is a plain
+    string, forward-compatible with codes it has never seen) — treat this
+    enum as append-only.
+    """
+
+    TTS_FAILED = "tts_failed"
+    INTERNAL_ERROR = "internal_error"
+
+
+_ERROR_DETAIL: dict[StreamErrorCode, str] = {
+    StreamErrorCode.TTS_FAILED: "Speech synthesis failed",
+    StreamErrorCode.INTERNAL_ERROR: "Internal error",
+}
+
+
+def error_event(code: StreamErrorCode, *, retryable: bool = False) -> str:
+    """Serialize the terminal `error` NDJSON line for one bounded failure code.
+
+    Args:
+        code: A stable ``StreamErrorCode`` — its mapped detail text is
+            always fixed and client-safe, never a provider exception or
+            raw model output.
+        retryable: Whether retrying the turn may succeed.
+
+    Returns:
+        One NDJSON line (including the trailing newline).
+    """
+    event = StreamErrorEvent(code=code.value, detail=_ERROR_DETAIL[code], retryable=retryable)
+    return event.model_dump_json() + "\n"
 
 
 class StreamFallbackReason(StrEnum):

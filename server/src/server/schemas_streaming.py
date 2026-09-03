@@ -53,3 +53,27 @@ class StreamDoneEvent(BaseModel):
     identity_source: Literal["face", "local_unlock"] | None = Field(
         default=None, description="Which evidence source identified the actor for this turn"
     )
+
+
+class StreamErrorEvent(BaseModel):
+    """Terminal NDJSON event for a post-header stream failure (Plan 0041, ADR 0012).
+
+    Every started stream ends in exactly one `done` or `error`, then EOF —
+    never a truncated connection. `detail` is fixed, client-safe text
+    chosen by the server; it never includes a provider exception message
+    or raw model output.
+    """
+
+    type: Literal["error"] = "error"
+    code: str = Field(description="Stable, bounded failure code (e.g. 'tts_failed')")
+    detail: str = Field(description="Fixed, client-safe error description")
+    retryable: bool = Field(default=False, description="Whether retrying the turn may succeed")
+
+
+StreamEvent = (
+    StreamTextHeardEvent
+    | StreamEmotionEvent
+    | StreamAudioEvent
+    | StreamDoneEvent
+    | StreamErrorEvent
+)

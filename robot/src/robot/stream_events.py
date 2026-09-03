@@ -46,7 +46,22 @@ class DoneEvent:
     authentication_consumed: bool = False
 
 
-StreamEvent = TextHeardEvent | EmotionEvent | AudioEvent | DoneEvent
+@dataclass(frozen=True)
+class ErrorEvent:
+    """Terminal event for a post-header stream failure (Plan 0041, ADR 0012).
+
+    ``code`` is a plain, forward-compatible string — a code this robot
+    build has never seen must still parse safely, never raise. ``detail``
+    is fixed, client-safe text chosen by the server, never a raw provider
+    exception; safe to log, never meant to be spoken aloud.
+    """
+
+    code: str
+    detail: str
+    retryable: bool = False
+
+
+StreamEvent = TextHeardEvent | EmotionEvent | AudioEvent | DoneEvent | ErrorEvent
 
 
 def parse_stream_event(data: dict[str, Any]) -> StreamEvent:  # Any: raw NDJSON, heterogeneous
@@ -80,6 +95,12 @@ def parse_stream_event(data: dict[str, Any]) -> StreamEvent:  # Any: raw NDJSON,
                 tts_ms=data["tts_ms"],
                 total_ms=data["total_ms"],
                 authentication_consumed=bool(data.get("authentication_consumed", False)),
+            )
+        case "error":
+            return ErrorEvent(
+                code=str(data["code"]),
+                detail=str(data["detail"]),
+                retryable=bool(data.get("retryable", False)),
             )
         case event_type:
             raise ValueError(f"Unknown stream event type: {event_type!r}")

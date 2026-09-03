@@ -2,12 +2,13 @@
 
 import pytest
 from robot.exceptions import ServerError
-from robot.stream_events import AudioEvent, DoneEvent, EmotionEvent, TextHeardEvent
+from robot.stream_events import AudioEvent, DoneEvent, EmotionEvent, ErrorEvent, TextHeardEvent
 from robot.stream_validation import StreamValidationState
 
 _EMOTION = EmotionEvent("joy")
 _AUDIO = AudioEvent(text="Hola.", audio_base64="ZmFrZQ==", duration_ms=10)
 _DONE = DoneEvent(stt_ms=1, llm_ms=1, tts_ms=1, total_ms=3)
+_ERROR = ErrorEvent(code="tts_failed", detail="Speech synthesis failed", retryable=True)
 
 
 @pytest.mark.unit
@@ -100,3 +101,61 @@ def test_event_after_done_is_rejected() -> None:
 
     with pytest.raises(ServerError):
         state.accept(AudioEvent(text="mas", audio_base64="ZmFrZQ==", duration_ms=5))
+
+
+# --- Plan 0041: the terminal `error` event -----------------------------
+
+
+@pytest.mark.unit
+def test_error_after_emotion_and_partial_audio_finishes_cleanly() -> None:
+    """A TTS failure mid-stream ends in error — finish() must not demand a done."""
+    state = StreamValidationState()
+    state.accept(_EMOTION)
+    state.accept(_AUDIO)
+
+    state.accept(_ERROR)
+    state.finish()  # must not raise
+
+    assert state.error_seen is True
+    assert state.done_seen is False
+
+
+@pytest.mark.unit
+def test_error_with_zero_audio_still_finishes_cleanly() -> None:
+    """A TTS failure right after emotion (no audio played yet) is still a valid terminal."""
+    state = StreamValidationState()
+    state.accept(_EMOTION)
+
+    state.accept(_ERROR)
+    state.finish()  # must not raise
+
+
+@pytest.mark.unit
+def test_event_after_error_is_rejected() -> None:
+    state = StreamValidationState()
+    state.accept(_EMOTION)
+    state.accept(_ERROR)
+
+    with pytest.raises(ServerError):
+        state.accept(_AUDIO)
+
+
+@pytest.mark.unit
+def test_duplicate_error_is_rejected() -> None:
+    state = StreamValidationState()
+    state.accept(_EMOTION)
+    state.accept(_ERROR)
+
+    with pytest.raises(ServerError):
+        state.accept(_ERROR)
+
+
+@pytest.mark.unit
+def test_done_after_error_is_rejected() -> None:
+    state = StreamValidationState()
+    state.accept(_EMOTION)
+    state.accept(_AUDIO)
+    state.accept(_ERROR)
+
+    with pytest.raises(ServerError):
+        state.accept(_DONE)
