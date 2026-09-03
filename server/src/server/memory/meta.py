@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 
+from server import db
 from server.db import get_conn
 
 logger = logging.getLogger(__name__)
@@ -42,12 +43,11 @@ async def set_flag(key: str, value: str) -> None:
     Raises:
         BrainMemoryError: If the DB is not open.
     """
-    conn = get_conn()
-    await conn.execute(
-        "INSERT INTO meta (key, value, updated_at) VALUES (?, ?, datetime('now')) "
-        "ON CONFLICT (key) DO UPDATE SET value = excluded.value, "
-        "updated_at = excluded.updated_at",
-        (key, value),
-    )
-    await conn.commit()
+    async with db.transaction() as conn:
+        await conn.execute(
+            "INSERT INTO meta (key, value, updated_at) VALUES (?, ?, datetime('now')) "
+            "ON CONFLICT (key) DO UPDATE SET value = excluded.value, "
+            "updated_at = excluded.updated_at",
+            (key, value),
+        )
     logger.debug("Meta flag set: %s=%s", key, value)

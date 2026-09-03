@@ -11,6 +11,7 @@ this file in scope.
 
 from collections.abc import AsyncIterator
 import logging
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
@@ -19,9 +20,10 @@ import pytest
 from server.memory import context as memory_context, declarative, relations
 from server.memory.normalize import normalize_extraction
 from server.schemas import ExtractedEntity, TurnExtraction
+from server.settings import settings
 from server.vision import describe, faces
 
-from server import llm, llm_streaming, stt, tts
+from server import db, llm, llm_streaming, stt, tts
 
 # Distinctive enough that a substring match cannot be a coincidence.
 _TRANSCRIPT = "SENTINELTRANSCRIPTZQX"
@@ -172,37 +174,34 @@ def test_redaction_does_not_remove_content_from_the_response(
     assert body["llm_response"] == _REPLY
 
 
+@pytest.fixture
+async def _real_memory_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[None]:
+    """Open a real temporary DB — `upsert_entity` now writes through `db.transaction()`."""
+    db_path = tmp_path / "sensitive-logging.db"
+    monkeypatch.setattr(settings, "brain_db_path", db_path)
+    db._conn = None
+    await db.open_db()
+    await db.run_migrations()
+    yield
+    await db.close_db()
+    db._conn = None
+
+
 @pytest.mark.integration
+@pytest.mark.usefixtures("_real_memory_db")
 async def test_storing_an_entity_never_logs_its_name(
     caplog: pytest.LogCaptureFixture,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`declarative.py` logs the name of every entity it stores — a person's name."""
+    """`declarative.py` logs the name of every entity it stores — a person's name.
 
-    class _FakeCursor:
-        lastrowid = 7
-
-        @staticmethod
-        async def close() -> None:
-            return None
-
-    class _FakeConn:
-        @staticmethod
-        async def execute(*_args: object, **_kwargs: object) -> _FakeCursor:
-            return _FakeCursor()
-
-        @staticmethod
-        async def commit() -> None:
-            return None
-
-    monkeypatch.setattr(declarative, "get_conn", _FakeConn)
-    monkeypatch.setattr(declarative, "_find_entity_folded", AsyncMock(return_value=None))
-    monkeypatch.setattr(declarative, "write_outbox", AsyncMock(return_value=None))
-
-    with caplog.at_level(logging.DEBUG):
+    Scoped to `declarative`'s own logger: at DEBUG, `aiosqlite` echoes every
+    bound SQL parameter (including the name) on its own logger — a separate,
+    pre-existing surface this test does not claim to cover.
+    """
+    with caplog.at_level(logging.DEBUG, logger="server.memory.declarative"):
         entity_id = await declarative.upsert_entity(name=_PERSON, type="person")
 
-    assert entity_id == 7, "the entity must still be stored and its id returned"
+    assert entity_id > 0, "the entity must still be stored and its id returned"
     assert _PERSON not in caplog.text
 
 
@@ -239,37 +238,24 @@ async def test_relational_lookup_never_logs_the_users_words(
 
 
 @pytest.mark.integration
+@pytest.mark.usefixtures("_real_memory_db")
 async def test_enrolling_a_face_never_logs_the_persons_name(
     caplog: pytest.LogCaptureFixture,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """`faces.py` logs the enrolled label — a person's name beside biometric data.
 
     This is the most sensitive pairing in the repository: a household member's
-    name written next to the row that stores their face embedding.
+    name written next to the row that stores their face embedding. Scoped to
+    `faces`'s own logger — see `test_storing_an_entity_never_logs_its_name`
+    for why the `aiosqlite` parameter tracer is out of scope for this test.
     """
-
-    class _FakeCursor:
-        lastrowid = 3
-
-        @staticmethod
-        async def close() -> None:
-            return None
-
-    class _FakeConn:
-        @staticmethod
-        async def execute(*_args: object, **_kwargs: object) -> _FakeCursor:
-            return _FakeCursor()
-
-        @staticmethod
-        async def commit() -> None:
-            return None
-
-    monkeypatch.setattr(faces.db, "get_conn", _FakeConn)
+    entity_id = await declarative.upsert_entity(name=_PERSON, type="person")
     embedding = np.zeros(512, dtype=np.float32)
 
-    with caplog.at_level(logging.DEBUG):
-        profile_id = await faces.enroll_face(entity_id=1, embedding=embedding, label=_PERSON)
+    with caplog.at_level(logging.DEBUG, logger="server.vision.faces"):
+        profile_id = await faces.enroll_face(
+            entity_id=entity_id, embedding=embedding, label=_PERSON
+        )
 
-    assert profile_id == 3, "the profile must still be stored and its id returned"
+    assert profile_id > 0, "the profile must still be stored and its id returned"
     assert _PERSON not in caplog.text

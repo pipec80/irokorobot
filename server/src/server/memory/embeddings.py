@@ -13,6 +13,7 @@ from typing import Final
 
 import httpx
 
+from server import db
 from server.db import get_conn
 from server.exceptions import BrainMemoryError
 from server.settings import settings
@@ -121,10 +122,16 @@ async def embed(text: str) -> list[float]:
     except Exception as exc:
         raise BrainMemoryError("Ollama embeddings call failed") from exc
 
-    await conn.execute(
-        "INSERT OR REPLACE INTO embeddings_cache (text_hash, model, vector) VALUES (?, ?, ?)",
-        (h, settings.embedding_model, _pack(vec)),
-    )
-    await conn.commit()
+    # The write lock is acquired only around the INSERT itself, not the
+    # Ollama round-trip above: holding it across a network call would
+    # serialize every other write in the app behind one embedding request.
+    # A concurrent cache miss for the same text can still race here — the
+    # `OR REPLACE` makes that race harmless (idempotent), just occasionally
+    # redundant.
+    async with db.transaction() as write_conn:
+        await write_conn.execute(
+            "INSERT OR REPLACE INTO embeddings_cache (text_hash, model, vector) VALUES (?, ?, ?)",
+            (h, settings.embedding_model, _pack(vec)),
+        )
     logger.debug("Embedded and cached text (hash=%s, dim=%d)", h, len(vec))
     return vec

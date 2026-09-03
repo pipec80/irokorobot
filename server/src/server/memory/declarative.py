@@ -13,8 +13,8 @@ import logging
 from typing import Any
 import unicodedata
 
+from server import db
 from server.db import get_conn
-from server.memory.outbox import write_outbox
 from server.schemas import EntityType, EntityWithFacts, FactRecord
 
 logger = logging.getLogger(__name__)
@@ -80,68 +80,57 @@ async def upsert_entity(
     Returns:
         Database row id of the inserted or existing entity.
     """
-    conn = get_conn()
     attrs_json = json.dumps(attributes or {})
     aliases_json = json.dumps(aliases or [])
 
-    existing = await _find_entity_folded(name, type)
+    # The lookup runs inside the same transaction as the write that follows
+    # it: two concurrent upserts for the same folded name must not both see
+    # "not found" and both insert a duplicate entity.
+    async with db.transaction() as conn:
+        existing = await _find_entity_folded(name, type)
 
-    if existing is None:
-        cur = await conn.execute(
-            "INSERT INTO entities (name, type, attributes, aliases) VALUES (?, ?, ?, ?)",
-            (name, type, attrs_json, aliases_json),
-        )
-        if cur.lastrowid is None:
-            raise RuntimeError(f"INSERT into entities returned no lastrowid for {name!r}")
-        entity_id: int = cur.lastrowid
-        await cur.close()
-        await conn.commit()
-        await write_outbox(
-            "entity",
-            entity_id,
-            "insert",
-            {
-                "name": name,
-                "type": type,
-                "attributes": attributes,
-                "aliases": aliases,
-            },
-        )
+        if existing is None:
+            cur = await conn.execute(
+                "INSERT INTO entities (name, type, attributes, aliases) VALUES (?, ?, ?, ?)",
+                (name, type, attrs_json, aliases_json),
+            )
+            if cur.lastrowid is None:
+                raise RuntimeError(f"INSERT into entities returned no lastrowid for {name!r}")
+            entity_id: int = cur.lastrowid
+            await cur.close()
+            merged_attrs = attributes or {}
+            merged_aliases = aliases or []
+            inserted = True
+        else:
+            entity_id, existing_name, existing_attrs, existing_aliases = existing
+            merged_attrs = {**json.loads(existing_attrs), **(attributes or {})}
+            # A differently-accented incoming name ("Maximo" vs "Máximo")
+            # becomes an alias so literal lookups on either spelling keep working.
+            name_variants = {name} if name != existing_name else set()
+            merged_aliases = sorted(
+                set(json.loads(existing_aliases)) | set(aliases or []) | name_variants
+            )
+            await conn.execute(
+                "UPDATE entities SET attributes = ?, aliases = ?, updated_at = datetime('now') "
+                "WHERE id = ?",
+                (json.dumps(merged_attrs), json.dumps(merged_aliases), entity_id),
+            )
+            inserted = False
+
+    if inserted:
         logger.info(
             "Entity inserted: type=%s id=%d",
             type,
             entity_id,
             extra={"event": "entity.inserted", "entity_type": type, "entity_id": entity_id},
         )
-        return entity_id
-
-    entity_id, existing_name, existing_attrs, existing_aliases = existing
-    merged_attrs = {**json.loads(existing_attrs), **(attributes or {})}
-    # A differently-accented incoming name ("Maximo" vs "Máximo") becomes an
-    # alias so literal lookups on either spelling keep working.
-    name_variants = {name} if name != existing_name else set()
-    merged_aliases = sorted(set(json.loads(existing_aliases)) | set(aliases or []) | name_variants)
-    await conn.execute(
-        "UPDATE entities SET attributes = ?, aliases = ?, updated_at = datetime('now') "
-        "WHERE id = ?",
-        (json.dumps(merged_attrs), json.dumps(merged_aliases), entity_id),
-    )
-    await conn.commit()
-    await write_outbox(
-        "entity",
-        entity_id,
-        "update",
-        {
-            "attributes": merged_attrs,
-            "aliases": merged_aliases,
-        },
-    )
-    logger.info(
-        "Entity merged: type=%s id=%d",
-        type,
-        entity_id,
-        extra={"event": "entity.merged", "entity_type": type, "entity_id": entity_id},
-    )
+    else:
+        logger.info(
+            "Entity merged: type=%s id=%d",
+            type,
+            entity_id,
+            extra={"event": "entity.merged", "entity_type": type, "entity_id": entity_id},
+        )
     return entity_id
 
 
@@ -171,37 +160,25 @@ async def assert_fact(
     Returns:
         Row id of the newly inserted fact.
     """
-    conn = get_conn()
-    cur = await conn.execute(
-        "INSERT INTO facts "
-        "(entity_id, predicate, object_value, confidence, source_memory_id) "
-        "VALUES (?, ?, ?, ?, ?)",
-        (entity_id, predicate, object_value, confidence, source_memory_id),
-    )
-    if cur.lastrowid is None:
-        raise RuntimeError("INSERT into facts returned no lastrowid")
-    fact_id: int = cur.lastrowid
-    await cur.close()
-    if supersede_existing:
-        # The new fact is inserted first so superseded rows can record WHO
-        # replaced them (superseded_by) — full versioning, not just a tombstone.
-        await conn.execute(
-            "UPDATE facts SET superseded_at = datetime('now'), superseded_by = ? "
-            "WHERE entity_id = ? AND predicate = ? AND superseded_at IS NULL AND id != ?",
-            (fact_id, entity_id, predicate, fact_id),
+    async with db.transaction() as conn:
+        cur = await conn.execute(
+            "INSERT INTO facts "
+            "(entity_id, predicate, object_value, confidence, source_memory_id) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (entity_id, predicate, object_value, confidence, source_memory_id),
         )
-    await conn.commit()
-    await write_outbox(
-        "fact",
-        fact_id,
-        "insert",
-        {
-            "entity_id": entity_id,
-            "predicate": predicate,
-            "object_value": object_value,
-            "confidence": confidence,
-        },
-    )
+        if cur.lastrowid is None:
+            raise RuntimeError("INSERT into facts returned no lastrowid")
+        fact_id: int = cur.lastrowid
+        await cur.close()
+        if supersede_existing:
+            # The new fact is inserted first so superseded rows can record WHO
+            # replaced them (superseded_by) — full versioning, not just a tombstone.
+            await conn.execute(
+                "UPDATE facts SET superseded_at = datetime('now'), superseded_by = ? "
+                "WHERE entity_id = ? AND predicate = ? AND superseded_at IS NULL AND id != ?",
+                (fact_id, entity_id, predicate, fact_id),
+            )
     logger.info(
         "Fact asserted: entity=%d predicate=%s (%d chars)",
         entity_id,

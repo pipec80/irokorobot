@@ -8,9 +8,11 @@ plan owns any production reader or writer cutover.
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict
 
+from server import db
 from server.db import get_conn
 from server.memory.predicate_registry import (
     PredicateCardinality,
@@ -18,6 +20,9 @@ from server.memory.predicate_registry import (
     PredicateKind,
     normalize_literal,
 )
+
+if TYPE_CHECKING:
+    import aiosqlite
 
 
 class AssertionLifecycle(StrEnum):
@@ -305,60 +310,88 @@ async def assert_literal_fact(
     if not 0.0 <= confidence <= 1.0:
         raise ValueError("confidence must be between 0 and 1")
 
-    conn = get_conn()
-    try:
-        if manage_transaction:
-            await conn.execute("BEGIN IMMEDIATE")
-        cursor = await conn.execute(
-            "INSERT INTO literal_facts_v4 "
-            "(subject_entity_id, predicate, value_text, confidence, source_memory_id, asserted_at, "
-            "visibility, sensitivity, valid_from) "
-            "VALUES (?, ?, ?, ?, ?, COALESCE(?, datetime('now')), ?, ?, "
-            "CASE WHEN ? THEN COALESCE(?, datetime('now')) ELSE NULL END)",
-            (
-                subject_entity_id,
-                definition.canonical_id,
-                normalized_value,
-                confidence,
-                source_memory_id,
-                asserted_at,
-                definition.default_visibility,
-                definition.default_sensitivity,
-                definition.temporal,
-                asserted_at,
-            ),
-        )
-        if cursor.lastrowid is None:
-            raise RuntimeError("INSERT into literal_facts_v4 returned no lastrowid")
-        literal_fact_id = int(cursor.lastrowid)
-        await cursor.close()
-        if definition.cardinality in {
-            PredicateCardinality.SINGLE_CURRENT,
-            PredicateCardinality.TEMPORAL,
-        }:
-            await conn.execute(
-                "UPDATE literal_facts_v4 "
-                "SET lifecycle = 'superseded', superseded_at = datetime('now'), "
-                "superseded_by = ?, valid_to = CASE WHEN ? THEN datetime('now') ELSE valid_to END "
-                "WHERE subject_entity_id = ? AND predicate = ? AND lifecycle = 'active' AND id != ?",
-                (
-                    literal_fact_id,
-                    definition.temporal,
-                    subject_entity_id,
-                    definition.canonical_id,
-                    literal_fact_id,
-                ),
+    if manage_transaction:
+        async with db.transaction() as conn:
+            literal_fact_id = await _insert_literal_fact(
+                conn,
+                subject_entity_id=subject_entity_id,
+                definition=definition,
+                normalized_value=normalized_value,
+                confidence=confidence,
+                source_memory_id=source_memory_id,
+                asserted_at=asserted_at,
             )
-        if manage_transaction:
-            await conn.commit()
-    except Exception:
-        if manage_transaction:
-            await conn.rollback()
-        raise
+    else:
+        # Reserved for the local legacy migration, which owns one transaction
+        # for a record and its migration ledger entry — this call must not
+        # open (or commit/roll back) a transaction of its own.
+        literal_fact_id = await _insert_literal_fact(
+            get_conn(),
+            subject_entity_id=subject_entity_id,
+            definition=definition,
+            normalized_value=normalized_value,
+            confidence=confidence,
+            source_memory_id=source_memory_id,
+            asserted_at=asserted_at,
+        )
     result = await get_literal_fact(literal_fact_id)
     if result is None:
         raise RuntimeError("new literal fact was not readable after commit")
     return result
+
+
+async def _insert_literal_fact(
+    conn: aiosqlite.Connection,
+    *,
+    subject_entity_id: int,
+    definition: PredicateDefinition,
+    normalized_value: str,
+    confidence: float,
+    source_memory_id: int | None,
+    asserted_at: str | None,
+) -> int:
+    """Issue the INSERT (and same-predicate supersede) on an active connection."""
+    cursor = await conn.execute(
+        "INSERT INTO literal_facts_v4 "
+        "(subject_entity_id, predicate, value_text, confidence, source_memory_id, asserted_at, "
+        "visibility, sensitivity, valid_from) "
+        "VALUES (?, ?, ?, ?, ?, COALESCE(?, datetime('now')), ?, ?, "
+        "CASE WHEN ? THEN COALESCE(?, datetime('now')) ELSE NULL END)",
+        (
+            subject_entity_id,
+            definition.canonical_id,
+            normalized_value,
+            confidence,
+            source_memory_id,
+            asserted_at,
+            definition.default_visibility,
+            definition.default_sensitivity,
+            definition.temporal,
+            asserted_at,
+        ),
+    )
+    if cursor.lastrowid is None:
+        raise RuntimeError("INSERT into literal_facts_v4 returned no lastrowid")
+    literal_fact_id = int(cursor.lastrowid)
+    await cursor.close()
+    if definition.cardinality in {
+        PredicateCardinality.SINGLE_CURRENT,
+        PredicateCardinality.TEMPORAL,
+    }:
+        await conn.execute(
+            "UPDATE literal_facts_v4 "
+            "SET lifecycle = 'superseded', superseded_at = datetime('now'), "
+            "superseded_by = ?, valid_to = CASE WHEN ? THEN datetime('now') ELSE valid_to END "
+            "WHERE subject_entity_id = ? AND predicate = ? AND lifecycle = 'active' AND id != ?",
+            (
+                literal_fact_id,
+                definition.temporal,
+                subject_entity_id,
+                definition.canonical_id,
+                literal_fact_id,
+            ),
+        )
+    return literal_fact_id
 
 
 async def assert_entity_relation(
@@ -382,60 +415,88 @@ async def assert_entity_relation(
     if definition.symmetric:
         source_entity_id, target_entity_id = sorted((source_entity_id, target_entity_id))
 
-    conn = get_conn()
-    try:
-        if manage_transaction:
-            await conn.execute("BEGIN IMMEDIATE")
-        existing_cursor = await conn.execute(
-            f"SELECT {_RELATION_COLUMNS} FROM entity_relations_v4 "  # noqa: S608
-            "WHERE source_entity_id = ? AND predicate = ? AND target_entity_id = ? AND lifecycle = 'active'",
-            (source_entity_id, definition.canonical_id, target_entity_id),
-        )
-        existing_row = await existing_cursor.fetchone()
-        await existing_cursor.close()
-        if existing_row is not None:
-            if manage_transaction:
-                await conn.commit()
-            return _relation_from_row(tuple(existing_row))
-
-        cursor = await conn.execute(
-            "INSERT INTO entity_relations_v4 "
-            "(source_entity_id, predicate, target_entity_id, confidence, source_memory_id, asserted_at, "
-            "visibility, sensitivity, valid_from) "
-            "VALUES (?, ?, ?, ?, ?, COALESCE(?, datetime('now')), ?, ?, "
-            "CASE WHEN ? THEN COALESCE(?, datetime('now')) ELSE NULL END)",
-            (
-                source_entity_id,
-                definition.canonical_id,
-                target_entity_id,
-                confidence,
-                source_memory_id,
-                asserted_at,
-                definition.default_visibility,
-                definition.default_sensitivity,
-                definition.temporal,
-                asserted_at,
-            ),
-        )
-        if cursor.lastrowid is None:
-            raise RuntimeError("INSERT into entity_relations_v4 returned no lastrowid")
-        relation_id = int(cursor.lastrowid)
-        await cursor.close()
-        if definition.cardinality is PredicateCardinality.TEMPORAL:
-            await conn.execute(
-                "UPDATE entity_relations_v4 "
-                "SET lifecycle = 'superseded', superseded_at = datetime('now'), "
-                "superseded_by = ?, valid_to = datetime('now') "
-                "WHERE source_entity_id = ? AND predicate = ? AND lifecycle = 'active' AND id != ?",
-                (relation_id, source_entity_id, definition.canonical_id, relation_id),
+    if manage_transaction:
+        async with db.transaction() as conn:
+            outcome = await _upsert_entity_relation(
+                conn,
+                source_entity_id=source_entity_id,
+                target_entity_id=target_entity_id,
+                definition=definition,
+                confidence=confidence,
+                source_memory_id=source_memory_id,
+                asserted_at=asserted_at,
             )
-        if manage_transaction:
-            await conn.commit()
-    except Exception:
-        if manage_transaction:
-            await conn.rollback()
-        raise
-    result = await get_entity_relation(relation_id)
+    else:
+        # Reserved for the local legacy migration, which owns one transaction
+        # for a record and its migration ledger entry — this call must not
+        # open (or commit/roll back) a transaction of its own.
+        outcome = await _upsert_entity_relation(
+            get_conn(),
+            source_entity_id=source_entity_id,
+            target_entity_id=target_entity_id,
+            definition=definition,
+            confidence=confidence,
+            source_memory_id=source_memory_id,
+            asserted_at=asserted_at,
+        )
+    if isinstance(outcome, EntityRelationV4):
+        return outcome
+    result = await get_entity_relation(outcome)
     if result is None:
         raise RuntimeError("new entity relation was not readable after commit")
     return result
+
+
+async def _upsert_entity_relation(
+    conn: aiosqlite.Connection,
+    *,
+    source_entity_id: int,
+    target_entity_id: int,
+    definition: PredicateDefinition,
+    confidence: float,
+    source_memory_id: int | None,
+    asserted_at: str | None,
+) -> EntityRelationV4 | int:
+    """Return the existing active relation, or insert one and return its id."""
+    existing_cursor = await conn.execute(
+        f"SELECT {_RELATION_COLUMNS} FROM entity_relations_v4 "  # noqa: S608
+        "WHERE source_entity_id = ? AND predicate = ? AND target_entity_id = ? AND lifecycle = 'active'",
+        (source_entity_id, definition.canonical_id, target_entity_id),
+    )
+    existing_row = await existing_cursor.fetchone()
+    await existing_cursor.close()
+    if existing_row is not None:
+        return _relation_from_row(tuple(existing_row))
+
+    cursor = await conn.execute(
+        "INSERT INTO entity_relations_v4 "
+        "(source_entity_id, predicate, target_entity_id, confidence, source_memory_id, asserted_at, "
+        "visibility, sensitivity, valid_from) "
+        "VALUES (?, ?, ?, ?, ?, COALESCE(?, datetime('now')), ?, ?, "
+        "CASE WHEN ? THEN COALESCE(?, datetime('now')) ELSE NULL END)",
+        (
+            source_entity_id,
+            definition.canonical_id,
+            target_entity_id,
+            confidence,
+            source_memory_id,
+            asserted_at,
+            definition.default_visibility,
+            definition.default_sensitivity,
+            definition.temporal,
+            asserted_at,
+        ),
+    )
+    if cursor.lastrowid is None:
+        raise RuntimeError("INSERT into entity_relations_v4 returned no lastrowid")
+    relation_id = int(cursor.lastrowid)
+    await cursor.close()
+    if definition.cardinality is PredicateCardinality.TEMPORAL:
+        await conn.execute(
+            "UPDATE entity_relations_v4 "
+            "SET lifecycle = 'superseded', superseded_at = datetime('now'), "
+            "superseded_by = ?, valid_to = datetime('now') "
+            "WHERE source_entity_id = ? AND predicate = ? AND lifecycle = 'active' AND id != ?",
+            (relation_id, source_entity_id, definition.canonical_id, relation_id),
+        )
+    return relation_id
