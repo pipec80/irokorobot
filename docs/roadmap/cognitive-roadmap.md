@@ -314,16 +314,18 @@ needs PC-3 (speaker evidence) and PC-4 (fusion), neither started.
 
 ### X1 — Server production baseline checkpoint
 
-Plan 0030 closed the real-camera acceptance it owned (2026-09-01); the next
-bounded priority is the queued server-production capsule documented in
+Plan 0030 closed the real-camera acceptance it owned (2026-09-01); the
+bounded priority since then is the server-production capsule documented in
 [Plan 0031](../plans/open/0031-server-production-baseline-design.md). It runs
 through children 0032–0042 one at a time before the roadmap promotes the next
-new identity capability.
+new identity capability. Children 0032–0038 are closed (2026-09-02/03);
+0039–0042 remain, one at a time, each needing Pipec's explicit authorization
+— see the [operational board](../plans/README.md#operational-board) for the
+current `NOW`/`QUEUED` state.
 
 This checkpoint does not add a companion feature and does not close P1.2. It
 standardizes the HTTP/ASGI foundation that later face, speaker, fusion, and
-family work will reuse. Plan 0031 is reference-only; Plan 0032 is the first
-executable child after 0030.
+family work will reuse. Plan 0031 is reference-only.
 
 **Exit gate**
 
