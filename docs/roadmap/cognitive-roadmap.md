@@ -318,8 +318,8 @@ Plan 0030 closed the real-camera acceptance it owned (2026-09-01); the
 bounded priority since then is the server-production capsule documented in
 [Plan 0031](../plans/open/0031-server-production-baseline-design.md). It runs
 through children 0032–0042 one at a time before the roadmap promotes the next
-new identity capability. Children 0032–0039 are closed (2026-09-02/03);
-0040–0042 remain, one at a time, each needing Pipec's explicit authorization
+new identity capability. Children 0032–0040 are closed (2026-09-02/03);
+0041–0042 remain, one at a time, each needing Pipec's explicit authorization
 — see the [operational board](../plans/README.md#operational-board) for the
 current `NOW`/`QUEUED` state.
 
