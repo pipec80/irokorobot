@@ -21,7 +21,7 @@ to see the code, tests, verified gap, and accountable plan for each outcome.
 | Plan | Implementation reality | Reuse | Remaining closure |
 |---|---|---|---|
 | [0015](0015-personal-companion-design.md) | Approved product design; PC-1 code and acceptance are both complete (Plans 0025–0028); PC-2 code, tests, and real-camera acceptance are complete (Plans 0029/0030) | Controller, policy/audit, v4 child tools, identity-session seam, onboarding primitives, STT/TTS, face engine, calibrated face-authentication threshold | Speaker evidence (PC-3), fusion (PC-4), visual companion acceptance (PC-5), and family profile expansion (PC-6) remain later slices |
-| [0031](0031-server-production-baseline-design.md) | Audited reference-only server capsule; no production implementation | Existing FastAPI/Starlette/Uvicorn, HTTP/audio contracts, tests and server/robot boundary | Children 0032–0036 closed; 0037–0042 remain, one at a time, pending Pipec's explicit authorization to promote 0037 |
+| [0031](0031-server-production-baseline-design.md) | Audited reference-only server capsule; no production implementation | Existing FastAPI/Starlette/Uvicorn, HTTP/audio contracts, tests and server/robot boundary | Children 0032–0037 closed; 0038–0042 remain, one at a time, pending Pipec's explicit authorization to promote 0038 |
 
 ## Queued server-production capsule
 
@@ -57,15 +57,22 @@ transaction, so a caller's rollback on failure had nothing left to roll back.
 Verified live: seven voice turns, zero errors, the migrated audit write
 firing correctly under the real server.
 
+[Plan 0037](../completed/0037-deterministic-ci-baseline.md) closed
+2026-09-03 (PR #103): CI was silently excluding a third of the suite
+(`integration`, 353 of 997 tests) with no coverage floor — the marker's own
+"needs real hardware/APIs" description never matched any test using it. Its
+first CI push then caught a real bug the local run couldn't see: two tests
+only mocked STT, silently relying on a local Ollama and Piper CI doesn't
+have. All five CI checks green after the fix; 998 tests, 90% coverage.
+
 | Order | Plan | Outcome |
 |---:|---|---|
-| 1 | [0037](0037-deterministic-ci-baseline.md) | Deterministic API/local integration gate at >=80% coverage |
-| 2 | [0038](0038-uvicorn-runtime-baseline.md) | Explicit one-worker runtime defaults |
-| 3 | [0039](0039-application-lifecycle-and-http-resources.md) | Failure-safe lifespan and shared HTTP transport |
-| 4 | [0040](0040-fastapi-contract-and-openapi-baseline.md) | Typed dependencies, OpenAPI, health/readiness |
-| 5 | [0041](0041-streaming-terminal-contract.md) | Coordinated terminal stream error |
-| 6 | [0042](0042-server-baseline-closure.md) | Full gates, runtime evidence, ADR review, and closure |
-| 7 | [0044](0044-official-fastapi-conventions.md) | Alignment with the official FastAPI conventions the audit predated |
+| 1 | [0038](0038-uvicorn-runtime-baseline.md) | Explicit one-worker runtime defaults |
+| 2 | [0039](0039-application-lifecycle-and-http-resources.md) | Failure-safe lifespan and shared HTTP transport |
+| 3 | [0040](0040-fastapi-contract-and-openapi-baseline.md) | Typed dependencies, OpenAPI, health/readiness |
+| 4 | [0041](0041-streaming-terminal-contract.md) | Coordinated terminal stream error |
+| 5 | [0042](0042-server-baseline-closure.md) | Full gates, runtime evidence, ADR review, and closure |
+| 6 | [0044](0044-official-fastapi-conventions.md) | Alignment with the official FastAPI conventions the audit predated |
 
 Plans 0014 (P0 runtime-policy umbrella), 0020 (operator-QA remediation
 umbrella), and 0024 (owner-authenticated memory MVP design) closed with no
@@ -96,7 +103,7 @@ PC-2 completely — see
 [completed/0030](../completed/0030-real-camera-face-acceptance.md).
 
 Canonical execution order: **none — `NOW` is empty.** The server capsule is
-queued, beginning with 0037 only once Pipec authorizes promotion.
+queued, beginning with 0038 only once Pipec authorizes promotion.
 
 ## Status rule
 
