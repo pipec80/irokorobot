@@ -15,6 +15,7 @@ stays exclusive to classic /transcribe (see app.py's robot_streaming flag).
 """
 
 from collections.abc import AsyncIterator
+import json
 import logging
 from typing import Literal
 
@@ -31,6 +32,7 @@ from server.schemas_streaming import (
     StreamTextHeardEvent,
 )
 from server.streaming_render import (
+    StreamErrorCode,
     StreamFallbackReason,
     StreamOutcome,
     StreamState,
@@ -40,6 +42,7 @@ from server.streaming_render import (
     _finalize_model_output,
     _log_stream_metrics,
     emit_fallback,
+    error_event,
     synthesize_sentence,
 )
 from server.text_turn import (
@@ -219,3 +222,43 @@ async def stream_pipeline(
     llm_ms = max(0, total_ms - stt_ms - state.tts_ms_total)
     _log_pipeline_timing("stream.legacy_text_turn", stt_ms, llm_ms, state.tts_ms_total, total_ms)
     yield _done_event(stt_ms, request_start, state)
+
+
+_TERMINAL_TYPES = frozenset({"done", "error"})
+
+
+async def guarantee_terminal_event(events: AsyncIterator[str]) -> AsyncIterator[str]:
+    """Guarantee every wrapped stream ends in exactly one `done`/`error`, then EOF.
+
+    The single boundary Task 2 (Plan 0041, ADR 0012) applies at the router,
+    wrapping every stream producer (``stream_pipeline``, ``stream_response_plan``)
+    so a post-header failure — known (``TTSError``) or genuinely unexpected —
+    never truncates the ASGI connection. A client disconnect
+    (``asyncio.CancelledError``) is never caught here: it is not an
+    ``Exception`` subclass, so it always propagates untouched and nothing is
+    emitted into a transport that is already gone.
+
+    Args:
+        events: The wrapped generator's own NDJSON lines.
+
+    Yields:
+        Every line ``events`` yields, unchanged, followed by exactly one
+        terminal `error` line if ``events`` raises or ends without ever
+        having yielded a `done`/`error` line itself.
+    """
+    saw_terminal = False
+    try:
+        async for line in events:
+            saw_terminal = json.loads(line).get("type") in _TERMINAL_TYPES
+            yield line
+    except TTSError as exc:
+        logger.error("Streaming TTS failed after headers: %s", exc, exc_info=True)
+        yield error_event(StreamErrorCode.TTS_FAILED, retryable=True)
+        return
+    except Exception as exc:
+        logger.error("Unhandled streaming failure after headers: %s", exc, exc_info=True)
+        yield error_event(StreamErrorCode.INTERNAL_ERROR)
+        return
+    if not saw_terminal:
+        logger.error("Stream ended without a terminal event — orchestration bug")
+        yield error_event(StreamErrorCode.INTERNAL_ERROR)

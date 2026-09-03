@@ -6,7 +6,7 @@ untouched by this plan.
 """
 
 import pytest
-from server.schemas_streaming import StreamDoneEvent
+from server.schemas_streaming import StreamDoneEvent, StreamErrorEvent
 
 
 @pytest.mark.unit
@@ -25,3 +25,31 @@ def test_explicit_true_round_trips() -> None:
 
     assert event.authentication_consumed is True
     assert '"authentication_consumed":true' in event.model_dump_json()
+
+
+# --- Plan 0041: the terminal `error` event -----------------------------
+
+
+@pytest.mark.unit
+def test_error_event_has_the_documented_type_discriminator() -> None:
+    event = StreamErrorEvent(code="tts_failed", detail="Speech synthesis failed")
+
+    assert event.type == "error"
+    assert '"type":"error"' in event.model_dump_json()
+
+
+@pytest.mark.unit
+def test_error_event_retryable_defaults_false() -> None:
+    event = StreamErrorEvent(code="internal_error", detail="Internal error")
+
+    assert event.retryable is False
+    assert '"retryable":false' in event.model_dump_json()
+
+
+@pytest.mark.unit
+def test_error_event_carries_an_unknown_forward_compatible_code() -> None:
+    """The `code` field is a plain string — a new code an old robot has never
+    seen must still construct and serialize, never raise."""
+    event = StreamErrorEvent(code="something_new_from_a_future_server", detail="...")
+
+    assert event.code == "something_new_from_a_future_server"

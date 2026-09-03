@@ -128,6 +128,33 @@ def test_stream_happy_path_emits_sentence_audio(
 
 
 @pytest.mark.integration
+def test_stream_http_tts_failure_ends_in_one_error_event_not_done(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Plan 0041: a post-header TTS failure must never truncate the connection.
+
+    The old contract let `TTSError` propagate out of the ASGI response,
+    ending the stream by truncation. Now it must always end in exactly one
+    `error` terminal event, then EOF — the HTTP status itself stays 200
+    because headers were already sent.
+    """
+    monkeypatch.setattr(tts, "synthesize", AsyncMock(side_effect=TTSError("piper down")))
+
+    response = _post_stream(client, silence_wav_bytes)
+
+    assert response.status_code == 200
+    events = _parse_ndjson(response.text)
+    assert events[0] == {"type": "text_heard", "value": "hola robot"}
+    assert events[1] == {"type": "emotion", "value": "joy"}
+    assert events[-1]["type"] == "error"
+    assert not any(e["type"] == "done" for e in events)
+    assert events[-1]["code"] == "tts_failed"
+    assert "piper" not in str(events[-1]["detail"])
+
+
+@pytest.mark.integration
 def test_stream_prepares_shared_voice_turn(
     client: TestClient,
     silence_wav_bytes: bytes,

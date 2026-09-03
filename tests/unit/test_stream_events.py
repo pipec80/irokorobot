@@ -12,6 +12,7 @@ from robot.stream_events import (
     AudioEvent,
     DoneEvent,
     EmotionEvent,
+    ErrorEvent,
     TextHeardEvent,
     parse_stream_event,
 )
@@ -82,3 +83,41 @@ def test_unknown_event_type_still_rejected() -> None:
     """Unknown discriminators must keep raising — the additive change is scoped to done."""
     with pytest.raises(ValueError, match="Unknown stream event type"):
         parse_stream_event({"type": "bogus"})
+
+
+# --- Plan 0041: the terminal `error` event -----------------------------
+
+
+@pytest.mark.unit
+def test_error_event_parses_code_detail_and_retryable() -> None:
+    event = parse_stream_event(
+        {
+            "type": "error",
+            "code": "tts_failed",
+            "detail": "Speech synthesis failed",
+            "retryable": True,
+        }
+    )
+
+    assert event == ErrorEvent(code="tts_failed", detail="Speech synthesis failed", retryable=True)
+
+
+@pytest.mark.unit
+def test_error_event_retryable_defaults_false() -> None:
+    event = parse_stream_event(
+        {"type": "error", "code": "internal_error", "detail": "Internal error"}
+    )
+
+    assert isinstance(event, ErrorEvent)
+    assert event.retryable is False
+
+
+@pytest.mark.unit
+def test_error_event_with_an_unknown_code_still_parses_safely() -> None:
+    """Forward compatibility: a code this robot has never seen must not raise."""
+    event = parse_stream_event(
+        {"type": "error", "code": "brand_new_code_from_the_future", "detail": "..."}
+    )
+
+    assert isinstance(event, ErrorEvent)
+    assert event.code == "brand_new_code_from_the_future"

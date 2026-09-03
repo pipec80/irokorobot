@@ -46,7 +46,7 @@ from server.pipeline import (
 )
 from server.schemas import TranscribeResponse, error_responses
 from server.settings import settings
-from server.streaming import stream_pipeline, stream_response_plan
+from server.streaming import guarantee_terminal_event, stream_pipeline, stream_response_plan
 from server.text_turn import (
     ConsolidationScheduler,
     TextTurnResult,
@@ -512,13 +512,15 @@ async def transcribe_stream(
     turn_log.log_decision("stream", plan)
     if plan is not None:
         return StreamingResponse(
-            stream_response_plan(
-                text_heard=event.payload.message,
-                plan=plan,
-                stt_ms=stt_ms,
-                request_start=request_start,
-                authentication_consumed=request_identity.consumed,
-                identity_source=request_identity.identity_source,
+            guarantee_terminal_event(
+                stream_response_plan(
+                    text_heard=event.payload.message,
+                    plan=plan,
+                    stt_ms=stt_ms,
+                    request_start=request_start,
+                    authentication_consumed=request_identity.consumed,
+                    identity_source=request_identity.identity_source,
+                )
             ),
             media_type="application/x-ndjson",
         )
@@ -530,14 +532,16 @@ async def transcribe_stream(
     )
 
     return StreamingResponse(
-        stream_pipeline(
-            client=resources.http_client,
-            prepared=prepared,
-            stt_ms=stt_ms,
-            request_start=request_start,
-            schedule_consolidation=_consolidation_scheduler(
-                resources.http_client, background_tasks
-            ),
+        guarantee_terminal_event(
+            stream_pipeline(
+                client=resources.http_client,
+                prepared=prepared,
+                stt_ms=stt_ms,
+                request_start=request_start,
+                schedule_consolidation=_consolidation_scheduler(
+                    resources.http_client, background_tasks
+                ),
+            )
         ),
         media_type="application/x-ndjson",
     )

@@ -21,7 +21,14 @@ from robot.exceptions import AudioPlaybackError, CameraError, NoSpeechError, Ser
 from robot.fsm_types import LoopContext, RobotState
 from robot.server_client import transcribe_stream
 from robot.settings import settings
-from robot.stream_events import AudioEvent, DoneEvent, EmotionEvent, StreamEvent, TextHeardEvent
+from robot.stream_events import (
+    AudioEvent,
+    DoneEvent,
+    EmotionEvent,
+    ErrorEvent,
+    StreamEvent,
+    TextHeardEvent,
+)
 from robot.stream_validation import StreamValidationState
 
 logger = logging.getLogger(__name__)
@@ -121,10 +128,13 @@ async def _audio_chunks(
         Decoded WAV bytes, one per audio event (i.e. one per sentence).
 
     Raises:
-        ServerError: If any event violates the expected ordering, or the
-            stream ends without a valid audio+done sequence.
+        ServerError: If any event violates the expected ordering, the
+            stream ends without a valid audio+done sequence, or the server
+            emitted a terminal `error` event (Plan 0041, ADR 0012) — mapped
+            to the same failure path as any other server/transport error.
     """
     done: DoneEvent | None = None
+    error: ErrorEvent | None = None
     first_chunk_logged = False
     async for event in events:
         state.accept(event)
@@ -141,7 +151,14 @@ async def _audio_chunks(
             yield base64.b64decode(event.audio_base64)
         elif isinstance(event, DoneEvent):
             done = event
+        elif isinstance(event, ErrorEvent):
+            error = event
     state.finish()
+    if error is not None:
+        # `error.detail` is fixed, client-safe text chosen by the server —
+        # safe to log, never spoken aloud (no TTS call happens here).
+        logger.error("Stream ended in error: code=%s retryable=%s", error.code, error.retryable)
+        raise ServerError(f"Stream error: {error.code}")
     if done is not None:
         if done.authentication_consumed:
             ctx.identity_token = None
