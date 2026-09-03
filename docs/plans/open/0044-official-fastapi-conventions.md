@@ -23,7 +23,8 @@ section "Official FastAPI guidance", plus the upstream skill at
 
 The capsule (Plans 0032-0042) was audited before the official FastAPI skill was
 consulted. Comparing the two afterwards found four gaps that no child plan
-owns. None is urgent; all are small and verifiable, and leaving them undocumented
+owns, plus a fifth found later during Plan 0038's own execution (Task 5).
+None is urgent; all are small and verifiable, and leaving them undocumented
 means the next endpoint repeats them.
 
 This plan is **not** a licence to apply every upstream recommendation. Items
@@ -36,6 +37,11 @@ deliberately excluded are listed under non-goals.
 - `server/src/server/main.py`
 - `.claude/rules/fastapi.md` (untracked; fix lands locally)
 - Focused API tests
+- `pyproject.toml` (root) — dev-group dependency only, for Task 5
+- `tests/integration/test_transcribe_stream.py`,
+  `test_transcribe_stream_resilience.py`, `test_vision_dialog.py`,
+  `test_vision_endpoint.py`, `test_vision_enroll_service.py` — Task 5 only,
+  return-type annotations only
 
 No change to any URL, response body, status code, audio contract, or streaming
 event is in scope. Every route must answer at exactly the same path afterwards.
@@ -92,6 +98,37 @@ itself is what misleads.
   `run_in_executor_with_context`, never inline in an `async def`.
 - [ ] Add the same correction to `CLAUDE.md`/`AGENTS.md` if they restate it.
 
+## Task 5: Migrate the test client from `httpx` to `httpx2`
+
+Found and diagnosed during Plan 0038 (2026-09-03), not fixed there because
+it touches five files outside that plan's permitted scope. Recorded here so
+it isn't lost.
+
+`starlette.testclient.TestClient` already tries `import httpx2 as httpx`
+first and only falls back to `httpx` with
+`StarletteDeprecationWarning: Using httpx with starlette.testclient is
+deprecated; install httpx2 instead.` — a warning `pyproject.toml`'s
+`filterwarnings = ["error"]` never catches, because it fires while
+`tests/conftest.py` imports the real app, before pytest installs its own
+warning-to-error catcher (a hole Plan 0038's own "Standing bump risk" section
+already named).
+
+- [ ] `uv add --group dev httpx2` (already confirmed: silences the warning
+  with zero code changes, and neither workspace member's `deptry` run
+  objects — root dev-group deps aren't in either member's own dependency
+  graph).
+- [ ] Fix the resulting `pyright` break: once `httpx2` is installed,
+  `TestClient.post()`/`.get()` return `httpx2.Response` instead of
+  `httpx.Response` — a different, structurally similar but nominally
+  distinct class. Six call sites across the five files listed under
+  "Permitted files" have their own helper functions typed
+  `-> httpx.Response`; update those six annotations to match (import
+  `httpx2` there, or use a `Response` alias — whichever reads clearer in
+  context).
+- [ ] Confirm `just typecheck` and `just test` are clean afterward, and that
+  the `StarletteDeprecationWarning` no longer appears anywhere in a full
+  `just test` run.
+
 ## Non-goals
 
 Upstream recommendations deliberately not adopted, with the reason:
@@ -118,3 +155,5 @@ Revert the PR as one unit. No schema, dependency or wire change.
 - The chat UI is served through `app.frontend()`.
 - No redundant `response_model` remains.
 - The async rule matches upstream guidance and names the executor requirement.
+- `httpx2` is installed and the six affected annotations are corrected; the
+  `StarletteDeprecationWarning` no longer appears in any test run.
