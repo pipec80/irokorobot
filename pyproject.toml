@@ -368,11 +368,18 @@ addopts = [
     "--asyncio-mode=auto",
 ]
 
-# Organización de tests
+# Organización de tests — cada marker describe el RECURSO real que usa el
+# test (Plan 0037), no la carpeta donde vive. La selección determinista de CI
+# es "not slow and not hardware and not eval": todo lo demás corre contra
+# recursos locales y deterministas (DB SQLite temporal, ASGI TestClient,
+# dobles de prueba), sin red externa ni modelos reales.
 markers = [
-    "integration: requiere hardware real o APIs externas (Claude/Whisper)",
-    "slow: tests que demoran por procesamiento de audio o modelos",
-    "unit: lógica pura sin dependencias de red o disco",
+    "unit: lógica pura, sin red, disco ni proceso externo",
+    "api: capa ASGI/FastAPI (TestClient o app.openapi()), sin red externa real",
+    "integration: varios componentes juntos contra recursos locales y deterministas (DB SQLite temporal) — nunca hardware real ni red externa",
+    "slow: carga o inferencia de un modelo real local (Whisper, Piper); se salta si el modelo no está descargado",
+    "hardware: requiere hardware físico real (cámara, micrófono) no disponible en CI",
+    "eval: evaluación de calidad de modelo (no de corrección) contra casos dorados; reservado, aún sin tests",
 ]
 
 # Warnings tratados como errores (catch deprecations early)

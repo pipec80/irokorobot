@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 import pytest
 from server.settings import settings
 
-from server import stt
+from server import llm, stt, tts
 
 
 @pytest.mark.integration
@@ -72,8 +72,17 @@ def test_transcribe_oversized_audio_never_reaches_stt(
 def test_transcribe_exactly_at_the_audio_limit_is_accepted(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The boundary itself must not be rejected — only strictly over it."""
+    """The boundary itself must not be rejected — only strictly over it.
+
+    Mocks the full STT/LLM/TTS chain, not just STT: this file's own
+    docstring says it "does not require models to be loaded," but LLM/TTS
+    were left unmocked here — silently relying on a real local Ollama and
+    Piper voice, present on a dev machine but not in CI (Plan 0037 found
+    this the moment CI actually started running `integration` tests).
+    """
     monkeypatch.setattr(stt, "transcribe", AsyncMock(return_value="hola"))
+    monkeypatch.setattr(llm, "generate_response", AsyncMock(return_value=("hola", "joy")))
+    monkeypatch.setattr(tts, "synthesize", AsyncMock(return_value=("QQ==", 42)))
     wav_bytes = _make_wav(nframes=1600)
     assert len(wav_bytes) <= settings.max_audio_upload_bytes
 
@@ -108,8 +117,14 @@ def test_transcribe_rejects_audio_over_the_duration_limit(client: TestClient) ->
 def test_transcribe_accepts_audio_at_the_duration_limit(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The duration boundary itself must not be rejected."""
+    """The duration boundary itself must not be rejected.
+
+    Mocks the full STT/LLM/TTS chain — see
+    `test_transcribe_exactly_at_the_audio_limit_is_accepted` for why.
+    """
     monkeypatch.setattr(stt, "transcribe", AsyncMock(return_value="hola"))
+    monkeypatch.setattr(llm, "generate_response", AsyncMock(return_value=("hola", "joy")))
+    monkeypatch.setattr(tts, "synthesize", AsyncMock(return_value=("QQ==", 42)))
     at_limit_frames = int(settings.max_audio_duration_s * 16_000)
     wav_bytes = _make_wav(nframes=at_limit_frames)
 
