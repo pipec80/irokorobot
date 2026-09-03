@@ -15,6 +15,8 @@ from uuid import UUID
 if TYPE_CHECKING:
     from pathlib import Path
 
+    import httpx
+
 import pytest
 from server.cognition.identity import (
     ActivePersonContext,
@@ -130,14 +132,14 @@ async def test_assert_fact_records_superseded_by(memory_db: Path) -> None:
 
 
 @pytest.mark.integration
-async def test_build_context_empty_db(memory_db: Path) -> None:
+async def test_build_context_empty_db(memory_db: Path, http_client: httpx.AsyncClient) -> None:
     """build_context on an empty DB must return empty MemoryContext."""
     with patch(
         "server.memory.context.search_memories",
         new_callable=AsyncMock,
         return_value=[],
     ):
-        ctx = await build_context("hola mundo")
+        ctx = await build_context(http_client, "hola mundo")
 
     assert isinstance(ctx, MemoryContext)
     assert ctx.entities == []
@@ -145,7 +147,9 @@ async def test_build_context_empty_db(memory_db: Path) -> None:
 
 
 @pytest.mark.integration
-async def test_build_context_finds_known_entity(memory_db: Path) -> None:
+async def test_build_context_finds_known_entity(
+    memory_db: Path, http_client: httpx.AsyncClient
+) -> None:
     """build_context must find entities already in the DB."""
     await upsert_entity(name="María", type="person")
     await assert_fact(
@@ -159,7 +163,7 @@ async def test_build_context_finds_known_entity(memory_db: Path) -> None:
         new_callable=AsyncMock,
         return_value=[],
     ):
-        ctx = await build_context("Qué sabes de María")
+        ctx = await build_context(http_client, "Qué sabes de María")
 
     assert len(ctx.entities) == 1
     assert ctx.entities[0].name == "María"
@@ -226,7 +230,9 @@ async def test_run_migrations_is_idempotent(memory_db: Path) -> None:
 
 
 @pytest.mark.integration
-async def test_consolidating_self_intro_does_not_anchor_owner(memory_db: Path) -> None:
+async def test_consolidating_self_intro_does_not_anchor_owner(
+    memory_db: Path, http_client: httpx.AsyncClient
+) -> None:
     """A self-introduction must not mutate legacy household metadata."""
     fake_extraction = TurnExtraction(
         entities=[ExtractedEntity(name="Pipec", type="person")],
@@ -247,7 +253,10 @@ async def test_consolidating_self_intro_does_not_anchor_owner(memory_db: Path) -
         ),
     ):
         await consolidate_turn(
-            "me llamo Pipec", "¡Un gusto, Pipec!", active_person=_identified_person()
+            http_client,
+            "me llamo Pipec",
+            "¡Un gusto, Pipec!",
+            active_person=_identified_person(),
         )
 
     assert await get_flag("owner_name") is None
@@ -255,7 +264,9 @@ async def test_consolidating_self_intro_does_not_anchor_owner(memory_db: Path) -
 
 
 @pytest.mark.integration
-async def test_implicit_active_person_entity_is_person(memory_db: Path) -> None:
+async def test_implicit_active_person_entity_is_person(
+    memory_db: Path, http_client: httpx.AsyncClient
+) -> None:
     """A turn-local active-person fact creates a PERSON entity, not a concept."""
     fake_extraction = TurnExtraction(
         entities=[],
@@ -279,7 +290,10 @@ async def test_implicit_active_person_entity_is_person(memory_db: Path) -> None:
         ),
     ):
         await consolidate_turn(
-            "nací el 6 de octubre de 1981", "¡Qué fecha!", active_person=_identified_person()
+            http_client,
+            "nací el 6 de octubre de 1981",
+            "¡Qué fecha!",
+            active_person=_identified_person(),
         )
 
     matches = await find_entities_by_name("Pipec", limit=1)
@@ -288,7 +302,9 @@ async def test_implicit_active_person_entity_is_person(memory_db: Path) -> None:
 
 
 @pytest.mark.integration
-async def test_consolidate_turn_with_mocked_ollama(memory_db: Path) -> None:
+async def test_consolidate_turn_with_mocked_ollama(
+    memory_db: Path, http_client: httpx.AsyncClient
+) -> None:
     """consolidate_turn must extract and persist entities when Ollama is mocked."""
 
     fake_extraction = TurnExtraction(
@@ -311,7 +327,10 @@ async def test_consolidate_turn_with_mocked_ollama(memory_db: Path) -> None:
         ),
     ):
         await consolidate_turn(
-            "Mi gato Luna es muy juguetón", "Qué bonito", active_person=_identified_person()
+            http_client,
+            "Mi gato Luna es muy juguetón",
+            "Qué bonito",
+            active_person=_identified_person(),
         )
 
     entities = await find_entities_by_name("Luna")

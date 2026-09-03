@@ -9,14 +9,15 @@ from __future__ import annotations
 import hashlib
 import logging
 import struct
-from typing import Final
-
-import httpx
+from typing import TYPE_CHECKING, Final
 
 from server import db
 from server.db import get_conn
 from server.exceptions import BrainMemoryError
 from server.settings import settings
+
+if TYPE_CHECKING:
+    import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -65,13 +66,15 @@ def _unpack(blob: bytes, dim: int) -> list[float]:
     return list(struct.unpack(f"{dim}f", blob))
 
 
-async def embed(text: str) -> list[float]:
+async def embed(client: httpx.AsyncClient, text: str) -> list[float]:
     """Return an embedding vector for *text*, hitting SQLite cache first.
 
     Caches new embeddings to the ``embeddings_cache`` table to avoid
     redundant Ollama round-trips across restarts.
 
     Args:
+        client: Shared, lifecycle-owned HTTP client (Plan 0039) — never
+            constructed here.
         text: Non-empty string to embed.
 
     Returns:
@@ -104,10 +107,11 @@ async def embed(text: str) -> list[float]:
     url = f"{settings.ollama_url}/api/embed"
     payload = {"model": settings.embedding_model, "input": text}
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(url, json=payload)
-            resp.raise_for_status()
-            data = resp.json()
+        # Was a hardcoded 30.0, inconsistent with every other Ollama call
+        # site's settings.ollama_timeout_s (Plan 0039).
+        resp = await client.post(url, json=payload, timeout=settings.ollama_timeout_s)
+        resp.raise_for_status()
+        data = resp.json()
         embeddings = data.get("embeddings")
         vec: list[float] | None = (
             embeddings[0] if isinstance(embeddings, list) and embeddings else None

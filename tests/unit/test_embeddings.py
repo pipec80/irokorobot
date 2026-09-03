@@ -9,7 +9,9 @@ struct.unpack error further down the line.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 from server.exceptions import BrainMemoryError
 from server.memory import embeddings
@@ -55,35 +57,18 @@ class _FakeResponse:
         return {"embeddings": [self._vec]}
 
 
-class _FakeAsyncClient:
-    """Minimal stand-in for httpx.AsyncClient — returns a canned response."""
-
-    vec: list[float] = []
-
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        pass
-
-    async def __aenter__(self) -> _FakeAsyncClient:
-        return self
-
-    async def __aexit__(self, *exc: object) -> bool:
-        return False
-
-    # `json` must keep this exact name — embed() calls .post(url, json=payload)
-    # as a keyword arg, and the payload itself is irrelevant to this fake.
-    async def post(self, _url: str, json: dict[str, object]) -> _FakeResponse:  # noqa: ARG002
-        return _FakeResponse(_FakeAsyncClient.vec)
-
-
 @pytest.mark.unit
-async def test_embed_rejects_wrong_dimension_vector(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_embed_rejects_wrong_dimension_vector(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A 512-d vector from Ollama (instead of the frozen 768) must fail clearly."""
     monkeypatch.setattr(embeddings, "get_conn", _FakeConn)
-    _FakeAsyncClient.vec = [0.1] * 512
-    monkeypatch.setattr(embeddings.httpx, "AsyncClient", _FakeAsyncClient)
+    monkeypatch.setattr(
+        httpx.AsyncClient, "post", AsyncMock(return_value=_FakeResponse([0.1] * 512))
+    )
 
     with pytest.raises(BrainMemoryError, match=r"expected 768, got 512"):
-        await embeddings.embed("hola")
+        await embeddings.embed(http_client, "hola")
 
 
 @pytest.fixture
@@ -101,16 +86,19 @@ async def _real_memory_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> As
 
 @pytest.mark.integration
 @pytest.mark.usefixtures("_real_memory_db")
-async def test_embed_accepts_correct_dimension_vector(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_embed_accepts_correct_dimension_vector(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A 768-d vector (the frozen EMBEDDING_DIM) must pass through untouched.
 
     Reclassified from `unit` to `integration` (Plan 0036): `embed()`'s cache
     write now goes through `db.transaction()`, which needs a real open
     connection — a bare `get_conn()` mock no longer reaches far enough.
     """
-    _FakeAsyncClient.vec = [0.1] * 768
-    monkeypatch.setattr(embeddings.httpx, "AsyncClient", _FakeAsyncClient)
+    monkeypatch.setattr(
+        httpx.AsyncClient, "post", AsyncMock(return_value=_FakeResponse([0.1] * 768))
+    )
 
-    result = await embeddings.embed("hola")
+    result = await embeddings.embed(http_client, "hola")
 
     assert len(result) == 768

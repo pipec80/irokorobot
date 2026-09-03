@@ -18,12 +18,18 @@ from server import llm_streaming
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
+    import httpx
+
 
 def _capturing_stream_factory(captured: dict[str, object]) -> object:
     """Return a fake ollama_chat_stream that records the messages it receives."""
 
     async def _fake(
-        messages: list[dict[str, str]], *, model: str, **_kwargs: object
+        _client: httpx.AsyncClient,
+        messages: list[dict[str, str]],
+        *,
+        model: str,
+        **_kwargs: object,
     ) -> AsyncIterator[str]:
         captured["messages"] = messages
         captured["model"] = model
@@ -34,21 +40,24 @@ def _capturing_stream_factory(captured: dict[str, object]) -> object:
 
 
 @pytest.mark.unit
-async def test_generate_response_stream_empty_text_raises_value_error() -> None:
+async def test_generate_response_stream_empty_text_raises_value_error(
+    http_client: httpx.AsyncClient,
+) -> None:
     with pytest.raises(ValueError, match="empty"):
-        async for _ in llm_streaming.generate_response_stream(""):
+        async for _ in llm_streaming.generate_response_stream(http_client, ""):
             pass
 
 
 @pytest.mark.unit
 async def test_generate_response_stream_uses_single_streaming_contract(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The system prompt must carry exactly one streaming contract, no JSON markers."""
     captured: dict[str, object] = {}
     monkeypatch.setattr(llm_streaming, "ollama_chat_stream", _capturing_stream_factory(captured))
 
-    deltas = [d async for d in llm_streaming.generate_response_stream("hola")]
+    deltas = [d async for d in llm_streaming.generate_response_stream(http_client, "hola")]
 
     messages = captured["messages"]
     assert isinstance(messages, list)
@@ -61,6 +70,7 @@ async def test_generate_response_stream_uses_single_streaming_contract(
 
 @pytest.mark.unit
 async def test_generate_response_stream_dynamic_profile_has_single_contract(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A dynamic (markdown-loaded) profile must also get exactly one contract."""
@@ -74,7 +84,7 @@ async def test_generate_response_stream_dynamic_profile_has_single_contract(
     captured: dict[str, object] = {}
     monkeypatch.setattr(llm_streaming, "ollama_chat_stream", _capturing_stream_factory(captured))
 
-    async for _ in llm_streaming.generate_response_stream("hola"):
+    async for _ in llm_streaming.generate_response_stream(http_client, "hola"):
         pass
 
     messages = captured["messages"]
@@ -88,18 +98,21 @@ async def test_generate_response_stream_dynamic_profile_has_single_contract(
 
 @pytest.mark.unit
 async def test_generate_response_stream_no_structured_format_argument(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Streaming must never pass a structured `format` schema — it disables streaming."""
     received_kwargs: dict[str, object] = {}
 
-    async def _fake(messages: list[dict[str, str]], **kwargs: object) -> AsyncIterator[str]:
+    async def _fake(
+        _client: httpx.AsyncClient, messages: list[dict[str, str]], **kwargs: object
+    ) -> AsyncIterator[str]:
         received_kwargs.update(kwargs)
         yield "EMOTION:neutral\n"
 
     monkeypatch.setattr(llm_streaming, "ollama_chat_stream", _fake)
 
-    async for _ in llm_streaming.generate_response_stream("hola"):
+    async for _ in llm_streaming.generate_response_stream(http_client, "hola"):
         pass
 
     assert "format_schema" not in received_kwargs

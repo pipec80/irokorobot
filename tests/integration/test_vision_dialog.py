@@ -141,7 +141,7 @@ def test_vision_respond_uses_two_fresh_internal_scopes_for_two_generic_turns(
     assert [response.status_code for response in responses] == [200, 200]
     assert all(response.json()["llm_response"] == "Hola." for response in responses)
     assert all(response.json()["vision_requested"] is False for response in responses)
-    assert [call.args[1] for call in process.await_args_list] == list(scopes)
+    assert [call.args[2] for call in process.await_args_list] == list(scopes)
     assert all(call.kwargs == {} for call in process.await_args_list)
     assert all(scope not in response.text for scope in scopes for response in responses)
     vision_module.perceive_scene.assert_not_awaited()  # type: ignore[attr-defined]  # AsyncMock

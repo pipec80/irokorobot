@@ -24,6 +24,8 @@ from uuid import UUID
 if TYPE_CHECKING:
     from pathlib import Path
 
+    import httpx
+
 import pytest
 from server.characters import build_system_prompt, get_character
 from server.cognition.identity import (
@@ -98,6 +100,7 @@ def _clean_working_memory() -> None:  # type: ignore[misc]
 
 
 async def _consolidate(
+    client: httpx.AsyncClient,
     user_text: str,
     extraction: TurnExtraction,
     *,
@@ -119,6 +122,7 @@ async def _consolidate(
         ),
     ):
         await consolidate_turn(
+            client,
             user_text,
             "¡Qué bien! Cuéntame más.",
             active_person=active_person,
@@ -180,11 +184,11 @@ _ONBOARDING_TURNS: list[tuple[str, TurnExtraction]] = [
 ]
 
 
-async def _seed_onboarding() -> None:
+async def _seed_onboarding(client: httpx.AsyncClient) -> None:
     """Consolidate the vision's four onboarding turns."""
     active_person = _manual_active_person()
     for user_text, extraction in _ONBOARDING_TURNS:
-        await _consolidate(user_text, extraction, active_person=active_person)
+        await _consolidate(client, user_text, extraction, active_person=active_person)
 
 
 async def _active_predicates(name: str) -> dict[str, str]:
@@ -196,9 +200,11 @@ async def _active_predicates(name: str) -> dict[str, str]:
 
 
 @pytest.mark.integration
-async def test_onboarding_persists_owner_family_and_pet(memory_db: Path) -> None:
+async def test_onboarding_persists_owner_family_and_pet(
+    memory_db: Path, http_client: httpx.AsyncClient
+) -> None:
     """Scenario 1 — the interview leaves owner, children and pet in the DB."""
-    await _seed_onboarding()
+    await _seed_onboarding(http_client)
 
     assert await get_flag("owner_name") is None
     owner_facts = await _active_predicates("Pipec")
@@ -215,18 +221,20 @@ async def test_onboarding_persists_owner_family_and_pet(memory_db: Path) -> None
 
 
 @pytest.mark.integration
-async def test_recall_after_restart_children_and_pet(memory_db: Path) -> None:
+async def test_recall_after_restart_children_and_pet(
+    memory_db: Path, http_client: httpx.AsyncClient
+) -> None:
     """Scenario 2 — after a 'restart' (empty working memory) the relational
     retrieval answers "mis hijos" and "mi mascota" from the DB alone."""
-    await _seed_onboarding()
+    await _seed_onboarding(http_client)
 
     with patch(
         "server.memory.context.search_memories",
         new_callable=AsyncMock,
         return_value=[],
     ):
-        children_ctx = await build_context("¿cómo se llaman mis hijos?")
-        pet_ctx = await build_context("¿cómo se llama mi mascota?")
+        children_ctx = await build_context(http_client, "¿cómo se llaman mis hijos?")
+        pet_ctx = await build_context(http_client, "¿cómo se llama mi mascota?")
 
     children = {e.name for e in children_ctx.entities}
     assert {"Valentina", "Máximo"} <= children
@@ -234,11 +242,14 @@ async def test_recall_after_restart_children_and_pet(memory_db: Path) -> None:
 
 
 @pytest.mark.integration
-async def test_correction_supersedes_species(memory_db: Path) -> None:
+async def test_correction_supersedes_species(
+    memory_db: Path, http_client: httpx.AsyncClient
+) -> None:
     """Scenario 3 — 'Luna en realidad es gata' supersedes especie=perro."""
-    await _seed_onboarding()
+    await _seed_onboarding(http_client)
 
     await _consolidate(
+        http_client,
         "Luna en realidad es gata",
         TurnExtraction(
             facts=[ExtractedFact(subject="Luna", predicate="especie", object="gata")],
@@ -261,9 +272,11 @@ async def test_correction_supersedes_species(memory_db: Path) -> None:
 
 
 @pytest.mark.integration
-async def test_manual_context_does_not_enable_legacy_onboarding(memory_db: Path) -> None:
+async def test_manual_context_does_not_enable_legacy_onboarding(
+    memory_db: Path, http_client: httpx.AsyncClient
+) -> None:
     """Manual context must not revive the legacy onboarding owner assertion."""
-    await _seed_onboarding()
+    await _seed_onboarding(http_client)
     assert await get_flag("owner_name") is None
 
     profile = get_character("iroko")

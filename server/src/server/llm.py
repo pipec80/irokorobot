@@ -5,6 +5,8 @@ import logging
 import re
 from typing import Any
 
+import httpx
+
 from server.characters import build_system_prompt, get_character
 from server.cognition.identity import ActivePersonContext
 from server.exceptions import LLMError
@@ -86,10 +88,13 @@ def _parse_llm_output(raw: str) -> tuple[str, str]:
         return raw, FALLBACK_EMOTION
 
 
-async def _generate_ollama(system_prompt: str, messages: list[dict[str, str]]) -> tuple[str, str]:
+async def _generate_ollama(
+    client: httpx.AsyncClient, system_prompt: str, messages: list[dict[str, str]]
+) -> tuple[str, str]:
     """Call local Ollama API.
 
     Args:
+        client: Shared, lifecycle-owned HTTP client (Plan 0039).
         system_prompt: Full system prompt including any memory context.
         messages: Conversation messages (history + current turn).
 
@@ -100,9 +105,11 @@ async def _generate_ollama(system_prompt: str, messages: list[dict[str, str]]) -
         LLMError: If the Ollama server is unreachable or returns an error.
     """
     raw = await ollama_chat(
+        client,
         [{"role": "system", "content": system_prompt}, *messages],
         model=settings.ollama_model,
         format_schema=_OLLAMA_RESPONSE_SCHEMA,
+        timeout=settings.ollama_timeout_s,
     )
     return _parse_llm_output(raw)
 
@@ -146,6 +153,7 @@ def _build_classic_base_prompt(
 
 
 async def generate_response(
+    client: httpx.AsyncClient,
     text: str,
     *,
     context: MemoryContext | None = None,
@@ -159,6 +167,7 @@ async def generate_response(
     """Generate a robot response and detect the user's emotion in one local Ollama call.
 
     Args:
+        client: Shared, lifecycle-owned HTTP client (Plan 0039).
         text: Transcribed user speech.
         context: Optional memory context for the system prompt (``None`` = no memory).
         history: Optional recent conversation turns (oldest first, already trimmed).
@@ -191,7 +200,7 @@ async def generate_response(
 
     try:
         logger.info("LLM provider: ollama (%s)", settings.ollama_model)
-        response_text, emotion = await _generate_ollama(system_prompt, messages)
+        response_text, emotion = await _generate_ollama(client, system_prompt, messages)
         logger.info("LLM response (%d chars) emotion=%s", len(response_text), emotion)
         return response_text, emotion
     except (LLMError, ValueError):

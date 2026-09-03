@@ -29,6 +29,7 @@ from server.cognition.owner_authentication import (
     OwnerRequestResolver,
     OwnerUnlockResult,
     OwnerUnlockService,
+    owner_unlock_service,
 )
 from server.main import app
 from server.memory.biometric_consent import grant_face_consent
@@ -37,6 +38,7 @@ from server.memory.household_authorization import get_active_role
 from server.memory.owner_credentials import get_active_owner_pin_credential
 from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
 from server.personal_setup import PersonalSetupInput, PersonalSetupResult, apply_personal_setup
+from server.resources import AppResources
 from server.routers import transcribe as transcribe_module
 from server.settings import settings
 from server.text_turn import TextTurnResult
@@ -146,10 +148,19 @@ class _SpyingUnlockService:
 
 @asynccontextmanager
 async def _client() -> AsyncIterator[AsyncClient]:
-    """Yield an async client without running application lifespan."""
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        yield client
+    """Yield an async client without running application lifespan.
+
+    Plan 0039: routers depend on `request.app.state.resources`
+    (`ResourcesDep`), which the real lifespan sets — assign a lightweight
+    `AppResources` here since that lifespan never runs in this helper.
+    """
+    async with AsyncClient() as http_client:
+        app.state.resources = AppResources(
+            http_client=http_client, owner_unlock_service=owner_unlock_service
+        )
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            yield client
 
 
 def _parse_ndjson(response: Response) -> list[dict[str, object]]:

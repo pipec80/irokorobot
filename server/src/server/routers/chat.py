@@ -20,8 +20,9 @@ from server.cognition.response_plan import (
 )
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
+from server.resources import ResourcesDep
 from server.schemas_chat import ChatRequest, ChatResponse
-from server.text_turn import process_text_turn
+from server.text_turn import TextTurnResult, process_text_turn
 
 router = APIRouter(tags=["Chat"])
 
@@ -53,12 +54,14 @@ def _event_from_request(request: ChatRequest) -> CognitiveEvent[TextTurnPayload]
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(
+    resources: ResourcesDep,
     request: ChatRequest,
     x_iroko_identity_token: Annotated[str | None, Header(alias="X-Iroko-Identity-Token")] = None,
 ) -> ChatResponse:
     """Process one local text-only conversation turn.
 
     Args:
+        resources: Shared, lifecycle-owned resources (Plan 0039).
         request: Validated text and ephemeral conversation identifier.
         x_iroko_identity_token: Optional one-use owner unlock token. Absent,
             expired, replayed, or malformed tokens resolve to the public
@@ -75,9 +78,13 @@ async def chat(
         turn_log.log_actor("chat", actor)
         return actor
 
+    async def legacy_turn(message: str, conversation_id: str) -> TextTurnResult:
+        """Delegate to text-turn orchestration with the shared HTTP client."""
+        return await process_text_turn(resources.http_client, message, conversation_id)
+
     controller = CognitiveController(
         today=_today,
-        legacy_turn=process_text_turn,
+        legacy_turn=legacy_turn,
         active_person_resolver=resolve_actor,
         policy_evaluator=evaluate_authorization,
         audit_writer=record_authorization_decision,

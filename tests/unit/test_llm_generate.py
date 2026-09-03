@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from unittest.mock import ANY, AsyncMock
 from uuid import UUID
 
+import httpx
 import pytest
 from server.characters import _format_memory_block, build_system_prompt
 from server.characters.iroko import IROKO
@@ -60,24 +61,28 @@ def _manual_active_person() -> ActivePersonContext:
 
 
 @pytest.mark.unit
-async def test_generate_response_empty_text_raises_value_error() -> None:
+async def test_generate_response_empty_text_raises_value_error(
+    http_client: httpx.AsyncClient,
+) -> None:
     with pytest.raises(ValueError, match="empty"):
-        await llm.generate_response("")
+        await llm.generate_response(http_client, "")
 
 
 @pytest.mark.unit
 async def test_generate_response_uses_ollama_by_default(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The default generation backend must be the local Ollama adapter."""
     local_backend = AsyncMock(return_value=("hola", "joy"))
     monkeypatch.setattr(llm, "_generate_ollama", local_backend)
 
-    response, emotion = await llm.generate_response("hello")
+    response, emotion = await llm.generate_response(http_client, "hello")
 
     assert response == "hola"
     assert emotion == "joy"
     local_backend.assert_awaited_once_with(
+        http_client,
         ANY,  # system prompt built dynamically by build_system_prompt
         [{"role": "user", "content": "hello"}],
     )
@@ -85,6 +90,7 @@ async def test_generate_response_uses_ollama_by_default(
 
 @pytest.mark.unit
 async def test_generate_response_uses_local_backend_after_invalid_runtime_mutation(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Generation must stay local even if a caller corrupts the provider field."""
@@ -93,10 +99,11 @@ async def test_generate_response_uses_local_backend_after_invalid_runtime_mutati
     monkeypatch.delattr(llm, "_generate_anthropic", raising=False)
     monkeypatch.setattr(llm.settings, "llm_provider", "anthropic")
 
-    response, emotion = await llm.generate_response("hola")
+    response, emotion = await llm.generate_response(http_client, "hola")
 
     assert (response, emotion) == ("respuesta local", "joy")
     local_backend.assert_awaited_once_with(
+        http_client,
         ANY,
         [{"role": "user", "content": "hola"}],
     )
@@ -104,11 +111,13 @@ async def test_generate_response_uses_local_backend_after_invalid_runtime_mutati
 
 @pytest.mark.unit
 async def test_generate_response_wraps_unexpected_exceptions_as_llmerror(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Anything not LLMError/ValueError must be wrapped as LLMError."""
 
     async def _broken(
+        _client: httpx.AsyncClient,
         _prompt: str,
         _msgs: list[dict[str, str]],
     ) -> tuple[str, str]:
@@ -117,16 +126,18 @@ async def test_generate_response_wraps_unexpected_exceptions_as_llmerror(
     monkeypatch.setattr(llm, "_generate_ollama", _broken)
 
     with pytest.raises(LLMError):
-        await llm.generate_response("hola")
+        await llm.generate_response(http_client, "hola")
 
 
 @pytest.mark.unit
 async def test_generate_response_propagates_llmerror_directly(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """LLMError raised by a backend must bubble up unchanged (no double-wrapping)."""
 
     async def _raises_llm_error(
+        _client: httpx.AsyncClient,
         _prompt: str,
         _msgs: list[dict[str, str]],
     ) -> tuple[str, str]:
@@ -135,7 +146,7 @@ async def test_generate_response_propagates_llmerror_directly(
     monkeypatch.setattr(llm, "_generate_ollama", _raises_llm_error)
 
     with pytest.raises(LLMError, match="specific error"):
-        await llm.generate_response("hola")
+        await llm.generate_response(http_client, "hola")
 
 
 # ---------------------------------------------------------------------------
@@ -145,15 +156,17 @@ async def test_generate_response_propagates_llmerror_directly(
 
 @pytest.mark.unit
 async def test_generate_response_without_context_backward_compat(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Calling without context/history must still route correctly."""
     mock = AsyncMock(return_value=("ok", "neutral"))
     monkeypatch.setattr(llm, "_generate_ollama", mock)
 
-    await llm.generate_response("test")
+    await llm.generate_response(http_client, "test")
 
     mock.assert_awaited_once_with(
+        http_client,
         ANY,
         [{"role": "user", "content": "test"}],
     )
@@ -161,6 +174,7 @@ async def test_generate_response_without_context_backward_compat(
 
 @pytest.mark.unit
 async def test_generate_response_with_context_and_history(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Context block appended to system prompt; history prepended to messages."""
@@ -192,11 +206,11 @@ async def test_generate_response_with_context_and_history(
         ConversationTurn(role="assistant", content="hola, soy OMNiBot"),
     ]
 
-    await llm.generate_response("qué sabes de María", context=ctx, history=history)
+    await llm.generate_response(http_client, "qué sabes de María", context=ctx, history=history)
 
     call_args = mock.call_args
-    system_prompt = call_args[0][0]
-    messages = call_args[0][1]
+    system_prompt = call_args[0][1]
+    messages = call_args[0][2]
 
     assert "Memoria activa" in system_prompt
     assert "María" in system_prompt
@@ -207,6 +221,7 @@ async def test_generate_response_with_context_and_history(
 
 @pytest.mark.unit
 async def test_generate_response_uses_manual_context_for_neutral_display_guidance(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Manual context adds static guidance without exposing identity or access."""
@@ -214,11 +229,12 @@ async def test_generate_response_uses_manual_context_for_neutral_display_guidanc
     monkeypatch.setattr(llm, "_generate_ollama", mock)
 
     await llm.generate_response(
+        http_client,
         "¿cómo se llaman mis hijos?",
         active_person=_manual_active_person(),
     )
 
-    system_prompt = mock.call_args[0][0]
+    system_prompt = mock.call_args[0][1]
     assert "PRESENTATION GUIDANCE" in system_prompt
     assert "An explicitly identified manual context is available for this turn." in system_prompt
     assert "Sofía" not in system_prompt
@@ -283,6 +299,7 @@ def test_build_system_prompt_slot_ignored_outside_onboarding() -> None:
 
 @pytest.mark.unit
 async def test_generate_response_forwards_onboarding_slot(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The slot's hint must reach the system prompt sent to the backend."""
@@ -290,9 +307,11 @@ async def test_generate_response_forwards_onboarding_slot(
     monkeypatch.setattr(llm, "_generate_ollama", mock)
     slot = OnboardingSlot(key="fecha_nacimiento", question_hint="cuándo nació")
 
-    await llm.generate_response("me llamo Felipe", onboarding=True, onboarding_slot=slot)
+    await llm.generate_response(
+        http_client, "me llamo Felipe", onboarding=True, onboarding_slot=slot
+    )
 
-    system_prompt = mock.call_args[0][0]
+    system_prompt = mock.call_args[0][1]
     assert "PRÓXIMO OBJETIVO de la entrevista" in system_prompt
     assert "cuándo nació" in system_prompt
 
@@ -304,15 +323,16 @@ async def test_generate_response_forwards_onboarding_slot(
 
 @pytest.mark.unit
 async def test_generate_response_system_prompt_has_single_classic_contract(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Exactly one classic JSON contract must be appended, never the streaming tag."""
     mock = AsyncMock(return_value=("ok", "neutral"))
     monkeypatch.setattr(llm, "_generate_ollama", mock)
 
-    await llm.generate_response("hola")
+    await llm.generate_response(http_client, "hola")
 
-    system_prompt = mock.call_args[0][0]
+    system_prompt = mock.call_args[0][1]
     assert system_prompt.count('"response"') == 1
     assert system_prompt.count('"emotion"') == 1
     assert "EMOTION:" not in system_prompt
@@ -330,13 +350,14 @@ def test_classic_system_prompt_appends_exactly_once() -> None:
 
 @pytest.mark.unit
 async def test_generate_ollama_uses_unchanged_response_schema(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """_generate_ollama must still force the existing structured JSON schema."""
     mock_chat = AsyncMock(return_value='{"response": "hola", "emotion": "neutral"}')
     monkeypatch.setattr(llm, "ollama_chat", mock_chat)
 
-    await llm._generate_ollama("system prompt", [{"role": "user", "content": "hi"}])
+    await llm._generate_ollama(http_client, "system prompt", [{"role": "user", "content": "hi"}])
 
     assert mock_chat.call_args.kwargs["format_schema"] == llm._OLLAMA_RESPONSE_SCHEMA
 

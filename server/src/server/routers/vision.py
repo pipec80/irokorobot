@@ -9,6 +9,7 @@ from typing import Annotated
 from uuid import uuid4
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+import httpx
 
 from server import turn_log, vision
 from server.cognition.authorization import evaluate_authorization
@@ -28,6 +29,7 @@ from server.exceptions import ImageContractError, UploadTooLargeError, VisionErr
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
 from server.pipeline import _run_tts
+from server.resources import ResourcesDep
 from server.schemas import TranscribeResponse, VisionDescribeResponse, VisionEnrollResponse
 from server.settings import settings
 from server.text_turn import TextTurnResult, new_interaction_scope, process_text_turn
@@ -100,18 +102,22 @@ def _vlm_failure_plan() -> ResponsePlan:
     )
 
 
-def _vision_controller() -> CognitiveController:
+def _vision_controller(client: httpx.AsyncClient) -> CognitiveController:
     """Compose the bounded controller used by one public visual dialogue turn.
 
     Only `SCENE_DESCRIPTION` may read a frame or call the VLM; every other
     need is a closed, camera-free plan. Generic non-scene conversation
     delegates to legacy text generation with no perception at all — a scene
     description is never injected into the textual LLM.
+
+    Args:
+        client: Shared, lifecycle-owned HTTP client (Plan 0039), closed over
+            by the legacy-turn delegate below.
     """
 
     async def legacy_turn(message: str, conversation_id: str) -> TextTurnResult:
         """Delegate generic non-scene visual dialogue without any perception."""
-        return await process_text_turn(message, conversation_id)
+        return await process_text_turn(client, message, conversation_id)
 
     return CognitiveController(
         today=_today,
@@ -162,6 +168,7 @@ async def _read_contract_image(image: UploadFile) -> bytes:
 
 @router.post("/vision/describe")
 async def vision_describe(
+    resources: ResourcesDep,
     image: Annotated[
         UploadFile, File(description="JPEG/PNG/WebP/GIF/BMP · max 1280x720 · one frame")
     ],
@@ -183,7 +190,7 @@ async def vision_describe(
     image_bytes = await _read_contract_image(image)
 
     try:
-        description, duration_ms = await vision.describe_image(image_bytes)
+        description, duration_ms = await vision.describe_image(resources.http_client, image_bytes)
     except VisionError as exc:
         logger.error("Vision describe failed: %s", exc)
         raise HTTPException(status_code=503, detail="Vision backend unavailable") from exc
@@ -223,6 +230,7 @@ async def vision_enroll(
 
 @router.post("/vision/respond")
 async def vision_respond(
+    resources: ResourcesDep,
     image: Annotated[
         UploadFile, File(description="JPEG/PNG/WebP/GIF/BMP · max 1280x720 · one frame")
     ],
@@ -249,7 +257,7 @@ async def vision_respond(
         raise HTTPException(status_code=422, detail="Question text is empty")
 
     event = _vision_event_from_question(text)
-    controller = _vision_controller()
+    controller = _vision_controller(resources.http_client)
     decision = await controller.decide(event)
 
     plan: ResponsePlan
@@ -258,7 +266,7 @@ async def vision_respond(
             raise HTTPException(status_code=503, detail="Vision is disabled (VISION_ENABLED=false)")
         image_bytes = await _read_contract_image(image)
         try:
-            description = await perceive_scene(image_bytes)
+            description = await perceive_scene(resources.http_client, image_bytes)
             plan = current_perception_plan(description)
         except VisionError as exc:
             # A blind turn still speaks: the character excuses itself (R13 spirit).
