@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -9,6 +10,9 @@ from server.exceptions import VisionError
 from server.vision.describe import PERCEPTION_FAILED
 from server.vision.faces import FaceMatch
 from server.vision.perception import perceive
+
+if TYPE_CHECKING:
+    import httpx
 
 _FELIPE = FaceMatch(entity_id=1, name="Felipe", distance=0.1)
 _FRAME = b"\xff\xd8fake"
@@ -22,7 +26,7 @@ def _recognize(result: object) -> AsyncMock:
 
 
 @pytest.mark.unit
-async def test_recognized_face_enters_perception() -> None:
+async def test_recognized_face_enters_perception(http_client: httpx.AsyncClient) -> None:
     """A matched face adds the greeting line before the description."""
     with (
         patch("server.vision.perception.recognize", _recognize(([_FELIPE], 0))),
@@ -31,14 +35,14 @@ async def test_recognized_face_enters_perception() -> None:
             AsyncMock(return_value=("Una sala con un sofá.", 900)),
         ),
     ):
-        perception = await perceive(_FRAME)
+        perception = await perceive(http_client, _FRAME)
 
     assert "Felipe" in perception
     assert "Una sala con un sofá." in perception
 
 
 @pytest.mark.unit
-async def test_unknown_face_adds_gentle_line() -> None:
+async def test_unknown_face_adds_gentle_line(http_client: httpx.AsyncClient) -> None:
     """An unmatched face adds the no-alarm unknown line."""
     with (
         patch("server.vision.perception.recognize", _recognize(([], 1))),
@@ -48,13 +52,13 @@ async def test_unknown_face_adds_gentle_line() -> None:
         ),
         patch("server.vision.perception._record_unknown_face", AsyncMock()),
     ):
-        perception = await perceive(_FRAME)
+        perception = await perceive(http_client, _FRAME)
 
     assert "NO reconocés" in perception
 
 
 @pytest.mark.unit
-async def test_face_failure_never_blinds_description() -> None:
+async def test_face_failure_never_blinds_description(http_client: httpx.AsyncClient) -> None:
     """Face model down → the scene description still comes through."""
     with (
         patch("server.vision.perception.recognize", _recognize(VisionError("model missing"))),
@@ -63,13 +67,13 @@ async def test_face_failure_never_blinds_description() -> None:
             AsyncMock(return_value=("Una sala.", 900)),
         ),
     ):
-        perception = await perceive(_FRAME)
+        perception = await perceive(http_client, _FRAME)
 
     assert perception == "Una sala."
 
 
 @pytest.mark.unit
-async def test_description_failure_keeps_face_lines() -> None:
+async def test_description_failure_keeps_face_lines(http_client: httpx.AsyncClient) -> None:
     """VLM down but a face matched → the robot still greets by name."""
     with (
         patch("server.vision.perception.recognize", _recognize(([_FELIPE], 0))),
@@ -78,13 +82,13 @@ async def test_description_failure_keeps_face_lines() -> None:
             AsyncMock(side_effect=VisionError("vlm down")),
         ),
     ):
-        perception = await perceive(_FRAME)
+        perception = await perceive(http_client, _FRAME)
 
     assert "Felipe" in perception
 
 
 @pytest.mark.unit
-async def test_both_pipelines_down_falls_back() -> None:
+async def test_both_pipelines_down_falls_back(http_client: httpx.AsyncClient) -> None:
     """Nothing seen at all → the canned excuse, never an exception."""
     with (
         patch("server.vision.perception.recognize", _recognize(VisionError("down"))),
@@ -93,6 +97,6 @@ async def test_both_pipelines_down_falls_back() -> None:
             AsyncMock(side_effect=VisionError("down")),
         ),
     ):
-        perception = await perceive(_FRAME)
+        perception = await perceive(http_client, _FRAME)
 
     assert perception == PERCEPTION_FAILED

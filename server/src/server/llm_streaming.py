@@ -112,13 +112,16 @@ def _build_streaming_base_prompt(
     )
 
 
-async def _stream_local_response(messages: list[dict[str, str]]) -> AsyncIterator[str]:
+async def _stream_local_response(
+    client: httpx.AsyncClient, messages: list[dict[str, str]]
+) -> AsyncIterator[str]:
     """Stream raw text deltas from the local Ollama model.
 
     Owns only the Ollama streaming transport — prompt/contract assembly is
     the caller's responsibility.
 
     Args:
+        client: Shared, lifecycle-owned HTTP client (Plan 0039).
         messages: Full messages array (system + history + current turn).
 
     Yields:
@@ -128,13 +131,16 @@ async def _stream_local_response(messages: list[dict[str, str]]) -> AsyncIterato
         LLMError: If local Ollama streaming fails or emits invalid NDJSON.
     """
     try:
-        async for delta in ollama_chat_stream(messages, model=settings.ollama_model):
+        async for delta in ollama_chat_stream(
+            client, messages, model=settings.ollama_model, timeout=settings.ollama_timeout_s
+        ):
             yield delta
     except (httpx.HTTPError, json.JSONDecodeError) as exc:
         raise LLMError("Local Ollama streaming failed") from exc
 
 
 async def generate_response_stream(
+    client: httpx.AsyncClient,
     text: str,
     *,
     context: MemoryContext | None = None,
@@ -147,6 +153,7 @@ async def generate_response_stream(
     """Stream a robot response token-by-token via Ollama.
 
     Args:
+        client: Shared, lifecycle-owned HTTP client (Plan 0039).
         text: Transcribed user speech.
         context: Optional memory context, same as ``llm.generate_response``.
         history: Optional recent conversation turns.
@@ -177,6 +184,6 @@ async def generate_response_stream(
     system_prompt = _streaming_system_prompt(base_prompt)
     messages = _build_messages(text, history)
     async for delta in _stream_local_response(
-        [{"role": "system", "content": system_prompt}, *messages]
+        client, [{"role": "system", "content": system_prompt}, *messages]
     ):
         yield delta

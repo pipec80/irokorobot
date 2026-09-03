@@ -7,6 +7,8 @@ import logging
 import time
 from uuid import uuid4
 
+import httpx
+
 from server import llm, turn_log
 from server.cognition.identity import (
     ActivePersonContext,
@@ -110,11 +112,12 @@ def _clear_evidence_scopes(active_person: ActivePersonContext) -> None:
 
 
 async def _memory_prompt_state(
+    client: httpx.AsyncClient,
     message: str,
 ) -> tuple[MemoryContext | None, bool, OnboardingSlot | None]:
     """Resolve legacy-compatible persistent context without global onboarding."""
     try:
-        context = await build_context(message)
+        context = await build_context(client, message)
         return context, False, None
     except BrainMemoryError as exc:
         logger.warning("Memory unavailable — degrading to stateless turn: %s", exc)
@@ -122,6 +125,7 @@ async def _memory_prompt_state(
 
 
 async def prepare_text_turn(
+    client: httpx.AsyncClient,
     message: str,
     conversation_id: str,
     *,
@@ -131,6 +135,8 @@ async def prepare_text_turn(
     """Resolve shared prompt inputs for one conversation.
 
     Args:
+        client: Shared, lifecycle-owned HTTP client (Plan 0039), forwarded
+            to memory retrieval when a verified identity has history.
         message: Current user message.
         conversation_id: Ephemeral working-memory identifier.
         perception: Optional textual visual perception for this turn.
@@ -183,7 +189,7 @@ async def prepare_text_turn(
     history = working.get_history(history_scope)
     user_emotion = working.get_recent_emotion(history_scope)
     turn_log.log_memory("loaded", f"verified identity, history_turns={len(history)}")
-    context, onboarding, slot = await _memory_prompt_state(message)
+    context, onboarding, slot = await _memory_prompt_state(client, message)
     return PreparedTextTurn(
         message=message,
         conversation_id=conversation_id,
@@ -198,10 +204,11 @@ async def prepare_text_turn(
     )
 
 
-async def _generate(prepared: PreparedTextTurn) -> tuple[str, str, bool]:
+async def _generate(client: httpx.AsyncClient, prepared: PreparedTextTurn) -> tuple[str, str, bool]:
     """Generate a response, degrading to the configured local phrase."""
     try:
         response, emotion = await llm.generate_response(
+            client,
             prepared.message,
             context=prepared.context,
             history=prepared.history,
@@ -262,6 +269,7 @@ def record_text_turn(
 
 
 async def process_text_turn(
+    client: httpx.AsyncClient,
     message: str,
     conversation_id: str,
     *,
@@ -272,6 +280,7 @@ async def process_text_turn(
     """Generate and record one channel-agnostic text turn.
 
     Args:
+        client: Shared, lifecycle-owned HTTP client (Plan 0039).
         message: Current user message.
         conversation_id: Ephemeral working-memory identifier.
         perception: Optional textual visual perception for this turn.
@@ -283,12 +292,13 @@ async def process_text_turn(
     """
     started = time.perf_counter()
     prepared = await prepare_text_turn(
+        client,
         message,
         conversation_id,
         perception=perception,
         active_person=active_person,
     )
-    response, emotion, llm_failed = await _generate(prepared)
+    response, emotion, llm_failed = await _generate(client, prepared)
     if not llm_failed:
         record_text_turn(
             message,

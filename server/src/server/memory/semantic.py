@@ -11,13 +11,16 @@ from __future__ import annotations
 import json
 import logging
 import struct
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from server import db
 from server.db import get_conn
 from server.memory.embeddings import embed
 from server.schemas import MemoryHit
 from server.settings import settings
+
+if TYPE_CHECKING:
+    import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +38,7 @@ def _pack(vec: list[float]) -> bytes:
 
 
 async def store_memory(
+    client: httpx.AsyncClient,
     *,
     kind: str,
     content: str,
@@ -50,6 +54,8 @@ async def store_memory(
     atomically before the commit.
 
     Args:
+        client: Shared, lifecycle-owned HTTP client (Plan 0039), forwarded
+            to ``embed()``.
         kind: Memory kind — ``"episodic"``, ``"semantic"``, or ``"reflection"``.
         content: Full content of the memory (stored verbatim).
         summary: Short summary used for embedding (optional).
@@ -63,7 +69,7 @@ async def store_memory(
     Raises:
         BrainMemoryError: If embedding fails or the DB write fails.
     """
-    vec = await embed(summary or content)
+    vec = await embed(client, summary or content)
 
     async with db.transaction() as conn:
         cur = await conn.execute(
@@ -94,6 +100,7 @@ async def store_memory(
 
 
 async def search_memories(
+    client: httpx.AsyncClient,
     query: str,
     *,
     top_k: int | None = None,
@@ -106,6 +113,8 @@ async def search_memories(
     memories updates ``last_accessed_at`` and ``access_count``.
 
     Args:
+        client: Shared, lifecycle-owned HTTP client (Plan 0039), forwarded
+            to ``embed()``.
         query: Free-text query to embed and search against.
         top_k: Number of results to return. Defaults to
             ``settings.semantic_top_k``.
@@ -119,7 +128,7 @@ async def search_memories(
         BrainMemoryError: If embedding fails.
     """
     k = top_k or settings.semantic_top_k
-    qvec = await embed(query)
+    qvec = await embed(client, query)
     conn = get_conn()
 
     sql = (

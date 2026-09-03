@@ -18,6 +18,8 @@ from collections.abc import AsyncIterator
 import logging
 from typing import Literal
 
+import httpx
+
 from server import llm, llm_streaming, tts
 from server.cognition.response_plan import ResponsePlan
 from server.exceptions import LLMError, TTSError
@@ -49,9 +51,10 @@ from server.text_turn import (
 logger = logging.getLogger(__name__)
 
 
-async def _text_deltas(inputs: PreparedTextTurn) -> AsyncIterator[str]:
+async def _text_deltas(client: httpx.AsyncClient, inputs: PreparedTextTurn) -> AsyncIterator[str]:
     """Yield "EMOTION:xxx\\n"-tagged text deltas from local Ollama, token by token."""
     async for delta in llm_streaming.generate_response_stream(
+        client,
         inputs.message,
         context=inputs.context,
         history=inputs.history,
@@ -63,7 +66,9 @@ async def _text_deltas(inputs: PreparedTextTurn) -> AsyncIterator[str]:
         yield delta
 
 
-async def _consume_llm_stream(inputs: PreparedTextTurn, state: StreamState) -> AsyncIterator[str]:
+async def _consume_llm_stream(
+    client: httpx.AsyncClient, inputs: PreparedTextTurn, state: StreamState
+) -> AsyncIterator[str]:
     """Consume LLM deltas, emit emotion once its body validates, synthesize sentences.
 
     Emotion is buffered in ``state.pending_emotion`` and only promoted once
@@ -72,7 +77,7 @@ async def _consume_llm_stream(inputs: PreparedTextTurn, state: StreamState) -> A
     converts into the same audible fallback as a provider failure.
     """
     buffer = ""
-    async for delta in _text_deltas(inputs):
+    async for delta in _text_deltas(client, inputs):
         buffer += delta
         if state.pending_emotion is None and state.emotion is None:
             buffer, consumed = _consume_preamble(buffer, state)
@@ -162,6 +167,7 @@ async def stream_response_plan(
 
 async def stream_pipeline(
     *,
+    client: httpx.AsyncClient,
     prepared: PreparedTextTurn,
     stt_ms: int,
     request_start: float,
@@ -180,6 +186,7 @@ async def stream_pipeline(
     metrics `done` would have and re-raises without emitting `done`.
 
     Args:
+        client: Shared, lifecycle-owned HTTP client (Plan 0039).
         prepared: Shared prompt inputs and internal scope for one voice request.
         stt_ms: STT elapsed time, measured by the caller.
         request_start: ``time.perf_counter()`` reading from request start.
@@ -192,7 +199,7 @@ async def stream_pipeline(
 
     state = StreamState(request_start=request_start)
     try:
-        async for line in _consume_llm_stream(prepared, state):
+        async for line in _consume_llm_stream(client, prepared, state):
             yield line
     except TTSError:
         state.outcome = StreamOutcome.TTS_ERROR

@@ -4,6 +4,7 @@ import inspect
 from unittest.mock import AsyncMock, Mock
 from uuid import UUID
 
+import httpx
 import pytest
 from server.cognition.identity import (
     ActivePersonContext,
@@ -106,13 +107,15 @@ def _reset_turn_state() -> Generator[None, None, None]:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_stateless_turn_calls_llm_once(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_stateless_turn_calls_llm_once(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Disabled memory should still produce one typed text result."""
     generate = AsyncMock(return_value=("Hola", "joy"))
     monkeypatch.setattr(settings, "memory_enabled", False)
     monkeypatch.setattr(text_turn.llm, "generate_response", generate)
 
-    result = await text_turn.process_text_turn("Hola", "web-a")
+    result = await text_turn.process_text_turn(http_client, "Hola", "web-a")
 
     assert result.response == "Hola"
     assert result.emotion == "joy"
@@ -124,6 +127,7 @@ async def test_stateless_turn_calls_llm_once(monkeypatch: pytest.MonkeyPatch) ->
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_conversations_isolate_history_and_emotion(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Alternating conversation IDs must never share working memory."""
@@ -141,9 +145,15 @@ async def test_conversations_isolate_history_and_emotion(
         display_name="Mateo",
         session_id=UUID("22222222-2222-2222-2222-222222222222"),
     )
-    await text_turn.process_text_turn("question-a", "web-a", active_person=first_person)
-    await text_turn.process_text_turn("question-b", "web-b", active_person=second_person)
-    await text_turn.process_text_turn("follow-up-a", "web-a", active_person=first_person)
+    await text_turn.process_text_turn(
+        http_client, "question-a", "web-a", active_person=first_person
+    )
+    await text_turn.process_text_turn(
+        http_client, "question-b", "web-b", active_person=second_person
+    )
+    await text_turn.process_text_turn(
+        http_client, "follow-up-a", "web-a", active_person=first_person
+    )
 
     third_call = generate.await_args_list[2]
     assert [turn.content for turn in third_call.kwargs["history"]] == ["question-a", "A1"]
@@ -155,6 +165,7 @@ async def test_conversations_isolate_history_and_emotion(
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_manual_history_scope_uses_opaque_session_and_person_id(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Display names and public conversation IDs must not scope manual history."""
@@ -172,9 +183,11 @@ async def test_manual_history_scope_uses_opaque_session_and_person_id(
     renamed = _identified_person(display_name="Sofía Ramírez")
     other_session = _identified_person(session_id=UUID("33333333-3333-3333-3333-333333333333"))
 
-    await text_turn.process_text_turn("primera", "public-a", active_person=first)
-    await text_turn.process_text_turn("segunda", "public-b", active_person=renamed)
-    await text_turn.process_text_turn("tercera", "public-a", active_person=other_session)
+    await text_turn.process_text_turn(http_client, "primera", "public-a", active_person=first)
+    await text_turn.process_text_turn(http_client, "segunda", "public-b", active_person=renamed)
+    await text_turn.process_text_turn(
+        http_client, "tercera", "public-a", active_person=other_session
+    )
 
     assert [turn.content for turn in generate.await_args_list[1].kwargs["history"]] == [
         "primera",
@@ -190,6 +203,7 @@ async def test_manual_history_scope_uses_opaque_session_and_person_id(
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_manual_identified_turn_schedules_legacy_callback(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Only manual identity may reach consolidation and must remain attached."""
@@ -205,6 +219,7 @@ async def test_manual_identified_turn_schedules_legacy_callback(
 
     person = _identified_person()
     await text_turn.process_text_turn(
+        http_client,
         "¿Qué ves?",
         "vision-a",
         perception="A blue mug",
@@ -224,6 +239,7 @@ async def test_manual_identified_turn_schedules_legacy_callback(
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_unknown_turn_leaves_no_reusable_working_memory(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A public chat turn is unknown and clears its one-turn working scope."""
@@ -232,7 +248,7 @@ async def test_unknown_turn_leaves_no_reusable_working_memory(
         text_turn.llm, "generate_response", AsyncMock(return_value=("Reply", "neutral"))
     )
 
-    await text_turn.process_text_turn("Question", "web-a")
+    await text_turn.process_text_turn(http_client, "Question", "web-a")
 
     assert working._buffers == {}
     assert working._emotion_buffers == {}
@@ -249,6 +265,7 @@ def _seed_identified_scope(active_person: ActivePersonContext) -> str:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_expired_evidence_clears_identified_scope_before_memory_check(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Expired manual evidence must clear reusable state even when memory is disabled."""
@@ -261,6 +278,7 @@ async def test_expired_evidence_clears_identified_scope_before_memory_check(
     monkeypatch.setattr(settings, "memory_enabled", False)
 
     await text_turn.prepare_text_turn(
+        http_client,
         "Question",
         "public-conversation",
         active_person=_unidentified_person(ActivePersonStatus.UNKNOWN, (expired,)),
@@ -273,6 +291,7 @@ async def test_expired_evidence_clears_identified_scope_before_memory_check(
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_explicit_clear_evidence_removes_identified_scope(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A cleared manual selection must discard its prior reusable scope."""
@@ -281,6 +300,7 @@ async def test_explicit_clear_evidence_removes_identified_scope(
     monkeypatch.setattr(settings, "memory_enabled", False)
 
     await text_turn.prepare_text_turn(
+        http_client,
         "Question",
         "public-conversation",
         active_person=_unidentified_person(ActivePersonStatus.UNKNOWN, identified.evidence),
@@ -293,6 +313,7 @@ async def test_explicit_clear_evidence_removes_identified_scope(
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_ambiguous_evidence_clears_all_identified_scopes(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Ambiguity must remove every candidate's reusable history and emotion."""
@@ -307,6 +328,7 @@ async def test_ambiguous_evidence_clears_all_identified_scopes(
     monkeypatch.setattr(settings, "memory_enabled", False)
 
     await text_turn.prepare_text_turn(
+        http_client,
         "Question",
         "public-conversation",
         active_person=_unidentified_person(
@@ -324,6 +346,7 @@ async def test_ambiguous_evidence_clears_all_identified_scopes(
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_llm_fallback_does_not_contaminate_memory(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Expected provider failures should return a local fallback without recording."""
@@ -335,6 +358,7 @@ async def test_llm_fallback_does_not_contaminate_memory(
     monkeypatch.setattr(text_turn.llm, "generate_response", AsyncMock(side_effect=LLMError("down")))
 
     result = await text_turn.process_text_turn(
+        http_client,
         "Question",
         "web-a",
         schedule_consolidation=scheduler,
@@ -350,6 +374,7 @@ async def test_llm_fallback_does_not_contaminate_memory(
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_memory_failure_degrades_to_generation_without_context(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Persistent memory failure should not prevent a text response."""
@@ -361,7 +386,7 @@ async def test_memory_failure_degrades_to_generation_without_context(
     monkeypatch.setattr(text_turn.llm, "generate_response", generate)
 
     result = await text_turn.process_text_turn(
-        "Question", "web-a", active_person=_identified_person()
+        http_client, "Question", "web-a", active_person=_identified_person()
     )
 
     assert result.response == "Reply"
@@ -380,6 +405,7 @@ async def test_memory_failure_degrades_to_generation_without_context(
     ],
 )
 async def test_nonidentified_turn_skips_persistent_and_working_memory(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
     status: ActivePersonStatus,
 ) -> None:
@@ -399,6 +425,7 @@ async def test_nonidentified_turn_skips_persistent_and_working_memory(
     )
 
     await text_turn.process_text_turn(
+        http_client,
         "Question",
         "public-conversation",
         active_person=_unidentified_person(status),

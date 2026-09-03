@@ -3,12 +3,14 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import date
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import ANY, AsyncMock, Mock
 
 from httpx import ASGITransport, AsyncClient
 import pytest
+from server.cognition.owner_authentication import owner_unlock_service
 from server.main import app
 from server.memory import working
+from server.resources import AppResources
 from server.routers import chat
 from server.settings import settings
 from server.text_turn import TextTurnResult
@@ -18,10 +20,19 @@ from server import text_turn
 
 @asynccontextmanager
 async def _client() -> AsyncIterator[AsyncClient]:
-    """Yield an async client without running application lifespan."""
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        yield client
+    """Yield an async client without running application lifespan.
+
+    Plan 0039: routers depend on `request.app.state.resources`
+    (`ResourcesDep`), which the real lifespan sets — assign a lightweight
+    `AppResources` here since that lifespan never runs in this helper.
+    """
+    async with AsyncClient() as http_client:
+        app.state.resources = AppResources(
+            http_client=http_client, owner_unlock_service=owner_unlock_service
+        )
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            yield client
 
 
 @pytest.fixture(autouse=True)
@@ -54,7 +65,7 @@ async def test_chat_returns_exact_contract_and_calls_service_once(
         "conversation_id": "web-primary",
         "authentication_consumed": False,
     }
-    process.assert_awaited_once_with("Hello", "web-primary")
+    process.assert_awaited_once_with(ANY, "Hello", "web-primary")
 
 
 @pytest.mark.integration

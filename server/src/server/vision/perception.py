@@ -10,11 +10,15 @@ out of this module except ``VisionError`` when nothing at all was seen.
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from server import db
 from server.exceptions import BrainMemoryError, EnrollmentRejectedError, VisionError
 from server.vision.describe import PERCEPTION_FAILED, describe_image
 from server.vision.faces import enroll_person, recognize
+
+if TYPE_CHECKING:
+    import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -81,10 +85,12 @@ async def _record_unknown_face(count: int) -> None:
         logger.warning("Could not record unknown_person event: %s", exc)
 
 
-async def perceive(image: bytes) -> str:
+async def perceive(client: httpx.AsyncClient, image: bytes) -> str:
     """Describe one frame and recognize the faces in it.
 
     Args:
+        client: Shared, lifecycle-owned HTTP client (Plan 0039), forwarded
+            to ``describe_image()``.
         image: Image bytes — contract: JPEG/PNG/WebP/GIF/BMP · max
             1280x720 · one frame, processed in memory and discarded.
 
@@ -95,7 +101,7 @@ async def perceive(image: bytes) -> str:
     """
     lines = await _face_lines(image)
     try:
-        description, _duration_ms = await describe_image(image)
+        description, _duration_ms = await describe_image(client, image)
         lines.append(description)
     except VisionError as exc:
         logger.error("Scene description failed: %s", exc)
@@ -104,10 +110,12 @@ async def perceive(image: bytes) -> str:
     return "\n".join(lines)
 
 
-async def perceive_scene(image: bytes) -> str:
+async def perceive_scene(client: httpx.AsyncClient, image: bytes) -> str:
     """Describe one frame without performing identity recognition.
 
     Args:
+        client: Shared, lifecycle-owned HTTP client (Plan 0039), forwarded
+            to ``describe_image()``.
         image: Image bytes — contract: JPEG/PNG/WebP/GIF/BMP · max
             1280x720 · one frame, processed in memory and discarded.
 
@@ -117,7 +125,7 @@ async def perceive_scene(image: bytes) -> str:
     Raises:
         VisionError: If the scene-description provider is unavailable.
     """
-    description, _duration_ms = await describe_image(image)
+    description, _duration_ms = await describe_image(client, image)
     return description
 
 

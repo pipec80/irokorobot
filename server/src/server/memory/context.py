@@ -11,12 +11,16 @@ from __future__ import annotations
 
 import logging
 import re
+from typing import TYPE_CHECKING
 
 from server.memory.declarative import load_entity_with_facts
 from server.memory.lexicon import STOPWORDS_ES
 from server.memory.relations import entities_for_relations
 from server.memory.semantic import search_memories
 from server.schemas import EntityWithFacts, MemoryContext
+
+if TYPE_CHECKING:
+    import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +48,7 @@ def _candidates(text: str) -> list[str]:
     return list(dict.fromkeys(capitalised + rest))[:_MAX_CANDIDATES]
 
 
-async def build_context(user_text: str) -> MemoryContext:
+async def build_context(client: httpx.AsyncClient, user_text: str) -> MemoryContext:
     """Build a ``MemoryContext`` for *user_text*.
 
     1. Resolves relation words ("mis hijos") via reverse fact lookup.
@@ -53,6 +57,8 @@ async def build_context(user_text: str) -> MemoryContext:
     3. Runs a semantic search for related memories.
 
     Args:
+        client: Shared, lifecycle-owned HTTP client (Plan 0039), forwarded
+            to ``search_memories()``.
         user_text: Raw text from the current user turn.
 
     Returns:
@@ -72,7 +78,7 @@ async def build_context(user_text: str) -> MemoryContext:
             entities.append(found)
             seen_ids.add(found.id)
 
-    memories = await search_memories(user_text)
+    memories = await search_memories(client, user_text)
     logger.info(
         "Context built: entities=%d memories=%d (%d chars in)",
         len(entities),

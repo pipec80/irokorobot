@@ -12,6 +12,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, File, Header, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
+import httpx
 
 from server import turn_log, vision
 from server.audio_contract import validate_wav_contract
@@ -42,6 +43,7 @@ from server.pipeline import (
     _run_stt,
     _run_tts,
 )
+from server.resources import ResourcesDep
 from server.schemas import TranscribeResponse
 from server.settings import settings
 from server.streaming import stream_pipeline, stream_response_plan
@@ -179,6 +181,7 @@ def _logged_voice_actor_resolver(
 
 
 def _voice_controller(
+    client: httpx.AsyncClient,
     background_tasks: BackgroundTasks,
     *,
     request_identity: _RequestIdentity | None = None,
@@ -186,6 +189,8 @@ def _voice_controller(
     """Compose the bounded controller used by a public voice turn.
 
     Args:
+        client: Shared, lifecycle-owned HTTP client (Plan 0039), closed over
+            by the legacy-turn delegate and the consolidation scheduler.
         background_tasks: Queue used to schedule post-turn consolidation.
         request_identity: Optional request-scoped actor/consent resolver —
             the plain PIN resolver, or the composed face-then-PIN pair
@@ -196,9 +201,10 @@ def _voice_controller(
     async def legacy_turn(message: str, conversation_id: str) -> TextTurnResult:
         """Delegate generic public conversation through the existing text service."""
         return await process_text_turn(
+            client,
             message,
             conversation_id,
-            schedule_consolidation=_consolidation_scheduler(background_tasks),
+            schedule_consolidation=_consolidation_scheduler(client, background_tasks),
         )
 
     if request_identity is None:
@@ -221,9 +227,17 @@ def _voice_controller(
 
 
 def _consolidation_scheduler(
+    client: httpx.AsyncClient,
     background_tasks: BackgroundTasks,
 ) -> ConsolidationScheduler:
-    """Adapt FastAPI background tasks to the text service callback."""
+    """Adapt FastAPI background tasks to the text service callback.
+
+    Args:
+        client: Shared, lifecycle-owned HTTP client (Plan 0039) — safe to
+            close over here, since the app's lifespan outlives any single
+            request's background tasks.
+        background_tasks: Queue used to schedule post-turn consolidation.
+    """
 
     def schedule(
         message: str,
@@ -232,6 +246,7 @@ def _consolidation_scheduler(
     ) -> None:
         background_tasks.add_task(
             consolidate_turn,
+            client,
             message,
             response,
             active_person=active_person,
@@ -305,6 +320,7 @@ async def _read_optional_frame(frame: UploadFile) -> bytes:
 
 @router.post("/transcribe")
 async def transcribe(
+    resources: ResourcesDep,
     audio: Annotated[UploadFile, File(description="WAV 16kHz mono int16")],
     background_tasks: BackgroundTasks,
     x_iroko_identity_token: Annotated[str | None, Header(alias="X-Iroko-Identity-Token")] = None,
@@ -356,7 +372,9 @@ async def transcribe(
         raise HTTPException(status_code=422, detail="No speech detected in audio")
 
     event = _voice_event_from_transcript(text_heard)
-    controller = _voice_controller(background_tasks, request_identity=request_identity)
+    controller = _voice_controller(
+        resources.http_client, background_tasks, request_identity=request_identity
+    )
     decision = await controller.decide(event)
 
     plan: ResponsePlan
@@ -416,6 +434,7 @@ async def transcribe(
 
 @router.post("/transcribe/stream")
 async def transcribe_stream(
+    resources: ResourcesDep,
     audio: Annotated[UploadFile, File(description="WAV 16kHz mono int16")],
     background_tasks: BackgroundTasks,
     x_iroko_identity_token: Annotated[str | None, Header(alias="X-Iroko-Identity-Token")] = None,
@@ -467,9 +486,9 @@ async def transcribe_stream(
         raise HTTPException(status_code=422, detail="No speech detected in audio")
 
     event = _voice_event_from_transcript(text_heard)
-    decision = await _voice_controller(background_tasks, request_identity=request_identity).decide(
-        event
-    )
+    decision = await _voice_controller(
+        resources.http_client, background_tasks, request_identity=request_identity
+    ).decide(event)
     # Streaming has no second-round frame upload — a scene request always
     # gets the fixed unavailable plan, regardless of VISION_ENABLED.
     plan: ResponsePlan | None = (
@@ -490,16 +509,20 @@ async def transcribe_stream(
         )
 
     prepared = await prepare_text_turn(
+        resources.http_client,
         event.payload.message,
         event.payload.conversation_id,
     )
 
     return StreamingResponse(
         stream_pipeline(
+            client=resources.http_client,
             prepared=prepared,
             stt_ms=stt_ms,
             request_start=request_start,
-            schedule_consolidation=_consolidation_scheduler(background_tasks),
+            schedule_consolidation=_consolidation_scheduler(
+                resources.http_client, background_tasks
+            ),
         ),
         media_type="application/x-ndjson",
     )

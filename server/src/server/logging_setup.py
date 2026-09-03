@@ -13,9 +13,15 @@ working.
 from datetime import datetime
 import json
 import logging
+import logging.config
 import logging.handlers
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+from server.request_context import RequestIdFilter
+
+if TYPE_CHECKING:
+    from server.settings import Settings
 
 # Attributes every LogRecord already carries; anything else is a caller extra.
 _RESERVED_RECORD_KEYS = frozenset(
@@ -94,6 +100,61 @@ def rotated_log_name(default_name: str) -> str:
     rotated = Path(default_name)
     base = Path(rotated.stem)
     return str(rotated.with_name(f"{base.stem}.{rotated.suffix.lstrip('.')}{base.suffix}"))
+
+
+def configure_logging(settings: "Settings") -> None:
+    """Apply the process's full logging configuration (Plan 0039).
+
+    Explicit, not an import-time side effect: creating the log directory and
+    calling `dictConfig` used to run as bare module-level statements in
+    `main.py`, so merely importing `server.main` created `logs/` on disk even
+    if the app never started. Callers (normally `create_app()`) invoke this
+    once, deliberately.
+
+    Args:
+        settings: Application settings — reads `log_to_file`, `log_dir`,
+            `log_retention_days`, and `log_level`.
+    """
+    handlers: dict[str, Any] = {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "default",
+            "filters": ["request_id"],
+        },
+    }
+    root_handler_names = ["console"]
+
+    if settings.log_to_file:
+        settings.log_dir.mkdir(parents=True, exist_ok=True)
+        # JSON Lines on disk for analysis tools; the console stays human-readable.
+        handlers["file"] = {
+            "()": build_file_handler,
+            "path": settings.log_dir / "server.log",
+            "retention_days": settings.log_retention_days,
+            "filters": ["request_id"],
+        }
+        root_handler_names.append("file")
+
+    # logging.config.dictConfig requires dict[str, Any] — no precise type exists for this schema
+    config: dict[str, Any] = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "filters": {"request_id": {"()": RequestIdFilter}},
+        "formatters": {
+            "default": {
+                "format": "%(asctime)s %(levelname)-8s [%(request_id)s] %(name)s — %(message)s",
+                "datefmt": "%Y-%m-%d %H:%M:%S",
+            },
+        },
+        "handlers": handlers,
+        "root": {"handlers": root_handler_names, "level": settings.log_level.upper()},
+        "loggers": {
+            "uvicorn": {"propagate": True},
+            "uvicorn.access": {"propagate": True},
+            "uvicorn.error": {"propagate": True},
+        },
+    }
+    logging.config.dictConfig(config)
 
 
 def build_file_handler(path: Path, retention_days: int) -> logging.Handler:

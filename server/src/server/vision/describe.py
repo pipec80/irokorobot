@@ -115,10 +115,12 @@ def decode_and_validate_image(image: bytes) -> None:
         )
 
 
-async def describe_image(image: bytes) -> tuple[str, int]:
+async def describe_image(client: httpx.AsyncClient, image: bytes) -> tuple[str, int]:
     """Describe ONE camera frame using the VLM served by Ollama.
 
     Args:
+        client: Shared, lifecycle-owned HTTP client (Plan 0039) — never
+            constructed here.
         image: Image bytes — contract: JPEG/PNG/WebP/GIF/BMP, max
             1280x720, one frame. Processed in memory and discarded, never
             persisted.
@@ -145,10 +147,11 @@ async def describe_image(image: bytes) -> tuple[str, int]:
     }
     t0 = time.perf_counter()
     try:
-        async with httpx.AsyncClient(timeout=settings.ollama_timeout_s) as client:
-            resp = await client.post(f"{settings.ollama_url}/api/chat", json=payload)
-            resp.raise_for_status()
-            description = str(resp.json()["message"]["content"]).strip()
+        resp = await client.post(
+            f"{settings.ollama_url}/api/chat", json=payload, timeout=settings.ollama_timeout_s
+        )
+        resp.raise_for_status()
+        description = str(resp.json()["message"]["content"]).strip()
     except httpx.HTTPError as exc:
         raise VisionError(f"VLM backend unavailable ({settings.vlm_model}): {exc}") from exc
     except (KeyError, ValueError) as exc:

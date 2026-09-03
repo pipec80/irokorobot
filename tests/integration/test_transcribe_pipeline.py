@@ -4,6 +4,7 @@ from datetime import date
 from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
+import httpx
 import pytest
 from server.exceptions import LLMError, TranscriptionError, TTSError
 from server.routers import transcribe as transcribe_module
@@ -325,12 +326,13 @@ def test_transcribe_uses_distinct_internal_scopes_per_request(
     tts_mock = AsyncMock(return_value=("AAAA", 42))
 
     async def process_turn(
+        client: httpx.AsyncClient,
         message: str,
         conversation_id: str,
         *,
         schedule_consolidation: ConsolidationScheduler,
     ) -> TextTurnResult:
-        _ = schedule_consolidation
+        _ = client, schedule_consolidation
         return TextTurnResult("shared reply", "joy", 7, False)
 
     process = AsyncMock(side_effect=process_turn)
@@ -345,7 +347,7 @@ def test_transcribe_uses_distinct_internal_scopes_per_request(
         for _ in range(2)
     ]
 
-    scopes = [call.args[1] for call in process.await_args_list]
+    scopes = [call.args[2] for call in process.await_args_list]
     assert [response.status_code for response in responses] == [200, 200]
     assert len(scopes) == 2
     assert all(scope.startswith("interaction:") for scope in scopes)

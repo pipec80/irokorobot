@@ -15,6 +15,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
+import httpx
 import numpy as np
 import pytest
 from server.memory import context as memory_context, declarative, relations
@@ -106,6 +107,7 @@ def test_dropping_an_ungrounded_person_never_logs_their_name(
 
 @pytest.mark.integration
 async def test_scene_description_is_never_logged(
+    http_client: httpx.AsyncClient,
     caplog: pytest.LogCaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -122,22 +124,13 @@ async def test_scene_description_is_never_logged(
         def json() -> dict[str, dict[str, str]]:
             return {"message": {"content": _VISUAL}}
 
-    class _FakeClient:
-        """Minimal async client honouring the context-manager protocol."""
+    async def _fake_post(*_args: object, **_kwargs: object) -> _FakeResponse:
+        return _FakeResponse()
 
-        async def __aenter__(self) -> "_FakeClient":
-            return self
-
-        async def __aexit__(self, *_exc: object) -> None:
-            return None
-
-        async def post(self, *_args: object, **_kwargs: object) -> _FakeResponse:
-            return _FakeResponse()
-
-    monkeypatch.setattr(describe.httpx, "AsyncClient", lambda **_kw: _FakeClient())
+    monkeypatch.setattr(httpx.AsyncClient, "post", _fake_post)
 
     with caplog.at_level(logging.DEBUG):
-        description, _ = await describe.describe_image(b"fake-jpeg-bytes")
+        description, _ = await describe.describe_image(http_client, b"fake-jpeg-bytes")
 
     assert description == _VISUAL, "the description must still be returned to the caller"
     assert _VISUAL not in caplog.text
@@ -207,6 +200,7 @@ async def test_storing_an_entity_never_logs_its_name(
 
 @pytest.mark.integration
 async def test_building_context_never_logs_the_users_words(
+    http_client: httpx.AsyncClient,
     caplog: pytest.LogCaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -216,7 +210,7 @@ async def test_building_context_never_logs_the_users_words(
     monkeypatch.setattr(memory_context, "search_memories", AsyncMock(return_value=[]))
 
     with caplog.at_level(logging.DEBUG):
-        await memory_context.build_context(_TRANSCRIPT)
+        await memory_context.build_context(http_client, _TRANSCRIPT)
 
     assert _TRANSCRIPT not in caplog.text
 

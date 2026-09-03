@@ -41,19 +41,26 @@ def strip_json_fences(raw: str) -> str:
 
 
 async def ollama_chat(
+    client: httpx.AsyncClient,
     messages: list[dict[str, str]],
     *,
     model: str,
     format_schema: dict[str, Any] | None = None,  # Any: JSON-schema literal, heterogeneous
     options: dict[str, float] | None = None,
+    timeout: float | None = None,
 ) -> str:
     """Call Ollama's ``/api/chat`` non-streaming and return the raw message content.
 
     Args:
+        client: Shared, lifecycle-owned HTTP client (Plan 0039) — never
+            constructed here.
         messages: Full messages array (system + history + current turn).
         model: Ollama model name to call.
         format_schema: Optional JSON schema forcing structured output.
         options: Optional Ollama generation options (e.g. ``{"temperature": 0.1}``).
+        timeout: Optional per-request timeout override, in seconds, applied
+            to every phase of this one call — inference regularly runs
+            longer than the client's own general-purpose default.
 
     Returns:
         Raw ``message.content`` string from the response — not yet fence-stripped
@@ -72,18 +79,19 @@ async def ollama_chat(
         payload["format"] = format_schema
     if options is not None:
         payload["options"] = options
-    async with httpx.AsyncClient(timeout=settings.ollama_timeout_s) as client:
-        resp = await client.post(url, json=payload)
-        resp.raise_for_status()
-        content: str = resp.json()["message"]["content"]
+    resp = await client.post(url, json=payload, timeout=timeout)
+    resp.raise_for_status()
+    content: str = resp.json()["message"]["content"]
     return content
 
 
 async def ollama_chat_stream(
+    client: httpx.AsyncClient,
     messages: list[dict[str, str]],
     *,
     model: str,
     options: dict[str, float] | None = None,
+    timeout: float | None = None,
 ) -> AsyncIterator[str]:
     """Call Ollama's ``/api/chat`` with ``stream=true`` and yield content deltas.
 
@@ -94,9 +102,13 @@ async def ollama_chat_stream(
     before the full response is generated.
 
     Args:
+        client: Shared, lifecycle-owned HTTP client (Plan 0039) — never
+            constructed here.
         messages: Full messages array (system + history + current turn).
         model: Ollama model name to call.
         options: Optional Ollama generation options.
+        timeout: Optional per-request timeout override, in seconds — see
+            ``ollama_chat``.
 
     Yields:
         Successive ``message.content`` deltas as they arrive.
@@ -112,10 +124,7 @@ async def ollama_chat_stream(
     }
     if options is not None:
         payload["options"] = options
-    async with (
-        httpx.AsyncClient(timeout=settings.ollama_timeout_s) as client,
-        client.stream("POST", url, json=payload) as resp,
-    ):
+    async with client.stream("POST", url, json=payload, timeout=timeout) as resp:
         resp.raise_for_status()
         async for line in resp.aiter_lines():
             if not line.strip():

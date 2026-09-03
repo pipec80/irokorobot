@@ -1,14 +1,17 @@
 """Shared pytest fixtures for the omnibotpipec test suite."""
 
-from collections.abc import Generator
+from collections.abc import AsyncGenerator, Generator
 import io
 from pathlib import Path
 import wave
 
 from fastapi.testclient import TestClient
+import httpx
 import numpy as np
 import pytest
+from server.cognition.owner_authentication import owner_unlock_service
 from server.main import app
+from server.resources import AppResources
 from server.settings import settings
 
 
@@ -19,6 +22,12 @@ def client() -> Generator[TestClient, None, None]:
     Does NOT enter the lifespan context — Whisper/Piper stay unloaded.
     Memory is disabled to avoid DB dependency in pipeline-only tests.
 
+    Plan 0039: routers now depend on `request.app.state.resources`
+    (`ResourcesDep`), which the real lifespan sets — since that lifespan
+    never runs here, this fixture assigns a lightweight `AppResources`
+    itself (a real, unconnected `httpx.AsyncClient`) so endpoint tests keep
+    working without paying for full startup.
+
     Function-scoped on purpose (Plan 0032): it mutates the `settings`
     singleton, so a session-scoped fixture would leave `memory_enabled`
     flipped for every later test and let one test's captured logs bleed into
@@ -27,8 +36,25 @@ def client() -> Generator[TestClient, None, None]:
     """
     original = settings.memory_enabled
     settings.memory_enabled = False  # type: ignore[misc]  # runtime override
+    app.state.resources = AppResources(
+        http_client=httpx.AsyncClient(), owner_unlock_service=owner_unlock_service
+    )
     yield TestClient(app)  # type: ignore[misc]
     settings.memory_enabled = original  # type: ignore[misc]  # restore
+
+
+@pytest.fixture
+async def http_client() -> AsyncGenerator[httpx.AsyncClient, None]:
+    """Return a real, unconnected httpx.AsyncClient for injected-client tests.
+
+    Plan 0039: production code no longer constructs its own
+    `httpx.AsyncClient` — call sites take one as a parameter. Tests that
+    exercise a mocked backend (`monkeypatch` on the function actually making
+    the network call) need a real client instance to pass through, never one
+    that itself talks to the network.
+    """
+    async with httpx.AsyncClient() as client:
+        yield client
 
 
 @pytest.fixture(scope="session")

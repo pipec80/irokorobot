@@ -16,6 +16,8 @@ from uuid import UUID
 if TYPE_CHECKING:
     from pathlib import Path
 
+    import httpx
+
 import pytest
 from server.cognition.identity import (
     ActivePersonContext,
@@ -142,28 +144,32 @@ async def test_entities_for_relations_no_trigger_no_query(family_db: Path) -> No
 
 
 @pytest.mark.integration
-async def test_vision_como_se_llaman_mis_hijos(family_db: Path) -> None:
+async def test_vision_como_se_llaman_mis_hijos(
+    family_db: Path, http_client: httpx.AsyncClient
+) -> None:
     """THE core vision question: no child is named, yet both must appear."""
     with patch(
         "server.memory.context.search_memories",
         new_callable=AsyncMock,
         return_value=[],
     ):
-        ctx = await build_context("¿cómo se llaman mis hijos?")
+        ctx = await build_context(http_client, "¿cómo se llaman mis hijos?")
 
     names = {e.name for e in ctx.entities}
     assert {"Valentina", "Máximo"} <= names
 
 
 @pytest.mark.integration
-async def test_vision_como_se_llama_mi_mascota(family_db: Path) -> None:
+async def test_vision_como_se_llama_mi_mascota(
+    family_db: Path, http_client: httpx.AsyncClient
+) -> None:
     """The pet question must surface Luna WITH her facts (species included)."""
     with patch(
         "server.memory.context.search_memories",
         new_callable=AsyncMock,
         return_value=[],
     ):
-        ctx = await build_context("¿cómo se llama mi mascota?")
+        ctx = await build_context(http_client, "¿cómo se llama mi mascota?")
 
     luna = next((e for e in ctx.entities if e.name == "Luna"), None)
     assert luna is not None
@@ -172,7 +178,9 @@ async def test_vision_como_se_llama_mi_mascota(family_db: Path) -> None:
 
 
 @pytest.mark.integration
-async def test_dirty_extraction_repaired_end_to_end(family_db: Path) -> None:
+async def test_dirty_extraction_repaired_end_to_end(
+    family_db: Path, http_client: httpx.AsyncClient
+) -> None:
     """The exact 2026-07-06 failure, repaired: dirty qwen output → clean facts.
 
     consolidate_turn receives the inverted/invented extraction observed live
@@ -201,7 +209,10 @@ async def test_dirty_extraction_repaired_end_to_end(family_db: Path) -> None:
         ),
     ):
         await consolidate_turn(
-            "tengo una hija dominga", "¡Qué lindo!", active_person=_identified_person()
+            http_client,
+            "tengo una hija dominga",
+            "¡Qué lindo!",
+            active_person=_identified_person(),
         )
 
     children = {name for _id, name, _obj in await find_facts_by_predicate("hijo_de")}
@@ -211,14 +222,16 @@ async def test_dirty_extraction_repaired_end_to_end(family_db: Path) -> None:
 
 
 @pytest.mark.integration
-async def test_relational_and_forward_lookup_dedupe(family_db: Path) -> None:
+async def test_relational_and_forward_lookup_dedupe(
+    family_db: Path, http_client: httpx.AsyncClient
+) -> None:
     """Naming a child AND the relation must not duplicate the entity."""
     with patch(
         "server.memory.context.search_memories",
         new_callable=AsyncMock,
         return_value=[],
     ):
-        ctx = await build_context("¿Valentina es mi hija?")
+        ctx = await build_context(http_client, "¿Valentina es mi hija?")
 
     ids = [e.id for e in ctx.entities]
     assert len(ids) == len(set(ids))

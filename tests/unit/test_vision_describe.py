@@ -43,18 +43,19 @@ def test_describe_image_signature_has_no_question_parameter() -> None:
     """The caller's raw question must never be able to reach the VLM prompt."""
     parameters = inspect.signature(describe_image).parameters
 
-    assert list(parameters) == ["image"]
+    assert list(parameters) == ["client", "image"]
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_describe_image_sends_the_fixed_prompt_one_image_and_current_options(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The wire payload carries the fixed prompt, one image, and preserved options."""
     mock = _mock_post(monkeypatch, _FakeResponse({"message": {"content": "Una escena."}}))
 
-    await describe_image(b"fake-image-bytes")
+    await describe_image(http_client, b"fake-image-bytes")
 
     call = mock.await_args
     assert call is not None
@@ -100,30 +101,33 @@ def test_fixed_prompt_requires_spanish_and_forbids_lists_and_english() -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_describe_image_rejects_an_empty_description(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """An empty VLM response must never be treated as a valid description."""
     _mock_post(monkeypatch, _FakeResponse({"message": {"content": "   "}}))
 
     with pytest.raises(VisionError):
-        await describe_image(b"fake-image-bytes")
+        await describe_image(http_client, b"fake-image-bytes")
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_describe_image_rejects_an_unexpected_backend_shape(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A backend response missing the expected keys must raise, not crash raw."""
     _mock_post(monkeypatch, _FakeResponse({"unexpected": "shape"}))
 
     with pytest.raises(VisionError):
-        await describe_image(b"fake-image-bytes")
+        await describe_image(http_client, b"fake-image-bytes")
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_describe_image_wraps_a_transport_failure(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """An unreachable Ollama backend must surface as a VisionError, not raw httpx."""
@@ -131,4 +135,4 @@ async def test_describe_image_wraps_a_transport_failure(
     monkeypatch.setattr(httpx.AsyncClient, "post", mock)
 
     with pytest.raises(VisionError):
-        await describe_image(b"fake-image-bytes")
+        await describe_image(http_client, b"fake-image-bytes")

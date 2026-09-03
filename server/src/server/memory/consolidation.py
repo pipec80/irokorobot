@@ -76,10 +76,13 @@ Responde SOLO con JSON válido conforme al schema. Sin comentarios.\
 """
 
 
-async def _extract_via_ollama(user_text: str, assistant_text: str) -> TurnExtraction:
+async def _extract_via_ollama(
+    client: httpx.AsyncClient, user_text: str, assistant_text: str
+) -> TurnExtraction:
     """Call Ollama with ``format=json`` to extract structured data from a turn.
 
     Args:
+        client: Shared, lifecycle-owned HTTP client (Plan 0039).
         user_text: The user's message in the current turn.
         assistant_text: The robot's response in the current turn.
 
@@ -92,6 +95,7 @@ async def _extract_via_ollama(user_text: str, assistant_text: str) -> TurnExtrac
     """
     model = settings.consolidation_model or settings.ollama_model
     raw = await ollama_chat(
+        client,
         [
             {"role": "system", "content": _EXTRACTION_SYSTEM},
             {
@@ -102,6 +106,7 @@ async def _extract_via_ollama(user_text: str, assistant_text: str) -> TurnExtrac
         model=model,
         format_schema=TurnExtraction.model_json_schema(),
         options={"temperature": 0.1},
+        timeout=settings.ollama_timeout_s,
     )
     text = strip_json_fences(raw)
     try:
@@ -110,13 +115,16 @@ async def _extract_via_ollama(user_text: str, assistant_text: str) -> TurnExtrac
         raise LLMError(f"Extraction returned invalid JSON: {exc}") from exc
 
 
-async def _extract(user_text: str, assistant_text: str) -> TurnExtraction:
+async def _extract(
+    client: httpx.AsyncClient, user_text: str, assistant_text: str
+) -> TurnExtraction:
     """Extract locally with Ollama, retrying once on a transient failure.
 
     Transient failures (model still loading or a brief local HTTP interruption)
     get a single retry after a short delay.
 
     Args:
+        client: Shared, lifecycle-owned HTTP client (Plan 0039).
         user_text: The user's message.
         assistant_text: The robot's response.
 
@@ -128,7 +136,7 @@ async def _extract(user_text: str, assistant_text: str) -> TurnExtraction:
         httpx.HTTPError: If both attempts fail reaching Ollama.
     """
     try:
-        return await _extract_via_ollama(user_text, assistant_text)
+        return await _extract_via_ollama(client, user_text, assistant_text)
     except (LLMError, httpx.HTTPError) as exc:
         logger.warning(
             "Local extraction failed — retrying in %.0fs: %s",
@@ -136,7 +144,7 @@ async def _extract(user_text: str, assistant_text: str) -> TurnExtraction:
             exc,
         )
         await asyncio.sleep(_RETRY_DELAY_S)
-        return await _extract_via_ollama(user_text, assistant_text)
+        return await _extract_via_ollama(client, user_text, assistant_text)
 
 
 def _manual_active_person_name(active_person: ActivePersonContext | None) -> str | None:
@@ -158,6 +166,7 @@ def _manual_active_person_name(active_person: ActivePersonContext | None) -> str
 
 
 async def consolidate_turn(  # noqa: PLR0912
+    client: httpx.AsyncClient,
     user_text: str,
     assistant_text: str,
     *,
@@ -170,6 +179,9 @@ async def consolidate_turn(  # noqa: PLR0912
     propagate to the user.
 
     Args:
+        client: Shared, lifecycle-owned HTTP client (Plan 0039). The app's
+            lifespan outlives any single request's background tasks, so
+            this stays valid for the whole call.
         user_text: The user's message.
         assistant_text: The robot's response.
         active_person: Explicit manual identity evidence for this turn only.
@@ -179,7 +191,7 @@ async def consolidate_turn(  # noqa: PLR0912
         logger.info("Skipping consolidation without identified manual evidence")
         return
     try:
-        extraction = await _extract(user_text, assistant_text)
+        extraction = await _extract(client, user_text, assistant_text)
     except (LLMError, httpx.HTTPError) as exc:
         logger.warning("Consolidation extraction failed: %s", exc)
         return
@@ -216,6 +228,7 @@ async def consolidate_turn(  # noqa: PLR0912
     if extraction.episodic_summary:
         try:
             memory_id = await store_memory(
+                client,
                 kind="episodic",
                 content=f"[user] {user_text}\n[assistant] {assistant_text}",
                 summary=extraction.episodic_summary,

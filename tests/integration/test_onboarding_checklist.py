@@ -16,6 +16,8 @@ from uuid import UUID
 if TYPE_CHECKING:
     from pathlib import Path
 
+    import httpx
+
 import pytest
 from server.cognition.identity import (
     ActivePersonContext,
@@ -185,6 +187,7 @@ def _turn(entities: list[ExtractedEntity], facts: list[ExtractedFact]) -> TurnEx
 @pytest.mark.integration
 async def test_self_introduction_does_not_anchor_legacy_owner(
     onboarding_db: Path,
+    http_client: httpx.AsyncClient,
 ) -> None:
     """No incoming turn may infer or replace the legacy household owner."""
     kids_turn = _turn(
@@ -210,11 +213,16 @@ async def test_self_introduction_does_not_anchor_legacy_owner(
         ),
     ):
         extract.return_value = kids_turn
-        await consolidate_turn("sí, tengo dos hijos, Máximo y mi hija Dominga", "¡Qué maravilla!")
+        await consolidate_turn(
+            http_client,
+            "sí, tengo dos hijos, Máximo y mi hija Dominga",
+            "¡Qué maravilla!",
+        )
         assert await get_flag("owner_name") is None
 
         extract.return_value = intro_turn
         await consolidate_turn(
+            http_client,
             "te quería contar de mí, me llamo Felipe Castro",
             "¡Un gusto!",
             active_person=_identified_person(),

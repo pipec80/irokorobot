@@ -156,7 +156,8 @@ def test_stream_prepares_shared_voice_turn(
 
     assert response.status_code == 200
     new_scope.assert_called_once_with()
-    prepare.assert_awaited_once_with("hola robot", scope)
+    assert prepare.await_args is not None
+    assert prepare.await_args.args[1:] == ("hola robot", scope)
     assert record.call_args.args == (
         "hola robot",
         scope,
@@ -493,6 +494,7 @@ def test_stream_happy_path_ollama_streams_multiple_deltas(
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_stream_uses_local_deltas_after_invalid_runtime_provider_mutation(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Streaming must stay local even when a caller corrupts the provider field."""
@@ -505,7 +507,7 @@ async def test_stream_uses_local_deltas_after_invalid_runtime_provider_mutation(
     monkeypatch.setattr(llm_streaming, "generate_response_stream", local_stream)
     monkeypatch.delattr(llm, "generate_response")
 
-    deltas = [delta async for delta in streaming._text_deltas(prepared)]
+    deltas = [delta async for delta in streaming._text_deltas(http_client, prepared)]
 
     assert deltas == ["EMOTION:joy\nHola."]
 
@@ -640,6 +642,7 @@ def test_stream_invalid_output_is_not_logged_raw(
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_stream_partial_llm_failure_preserves_audio_then_fallback(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A provider failure after one spoken sentence must preserve it, not re-announce emotion."""
@@ -659,6 +662,7 @@ async def test_stream_partial_llm_failure_preserves_audio_then_fallback(
     events = [
         json.loads(line)
         async for line in streaming.stream_pipeline(
+            client=http_client,
             prepared=prepared,
             stt_ms=0,
             request_start=time.perf_counter(),
@@ -683,6 +687,7 @@ async def test_stream_partial_llm_failure_preserves_audio_then_fallback(
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_stream_protocol_fallback_tts_failure_has_no_done(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A TTS failure while speaking the fallback must never yield a `done` line."""
@@ -699,6 +704,7 @@ async def test_stream_protocol_fallback_tts_failure_has_no_done(
     collected: list[str] = []
     with pytest.raises(TTSError):  # noqa: PT012 — must collect partial NDJSON lines before it raises
         async for line in streaming.stream_pipeline(
+            client=http_client,
             prepared=prepared,
             stt_ms=0,
             request_start=time.perf_counter(),
@@ -712,6 +718,7 @@ async def test_stream_protocol_fallback_tts_failure_has_no_done(
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_stream_tts_failure_logs_tts_error_outcome(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -729,6 +736,7 @@ async def test_stream_tts_failure_logs_tts_error_outcome(
 
     with pytest.raises(TTSError):
         async for _line in streaming.stream_pipeline(
+            client=http_client,
             prepared=prepared,
             stt_ms=0,
             request_start=time.perf_counter(),
@@ -822,6 +830,7 @@ def test_stream_llm_failure_speaks_fallback_phrase(
 
 @pytest.mark.integration
 async def test_streaming_propagates_prepared_identity_history_and_recording_scope(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The local stream receives prepared identity and history before recording."""
@@ -847,7 +856,7 @@ async def test_streaming_propagates_prepared_identity_history_and_recording_scop
 
     monkeypatch.setattr(llm_streaming, "generate_response_stream", generate_stream)
 
-    local_deltas = [delta async for delta in streaming._text_deltas(prepared)]
+    local_deltas = [delta async for delta in streaming._text_deltas(http_client, prepared)]
 
     assert local_deltas == ["EMOTION:joy\nHola."]
     assert streamed_kwargs["history"] == history
@@ -859,6 +868,7 @@ async def test_streaming_propagates_prepared_identity_history_and_recording_scop
     _ = [
         line
         async for line in streaming.stream_pipeline(
+            client=http_client,
             prepared=prepared,
             stt_ms=0,
             request_start=time.perf_counter(),
@@ -875,6 +885,7 @@ async def test_streaming_propagates_prepared_identity_history_and_recording_scop
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_streaming_schedules_manual_identity_for_consolidation(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Streaming must preserve manual identity through its scheduler callback."""
@@ -897,6 +908,7 @@ async def test_streaming_schedules_manual_identity_for_consolidation(
     _ = [
         line
         async for line in streaming.stream_pipeline(
+            client=http_client,
             prepared=prepared,
             stt_ms=0,
             request_start=time.perf_counter(),
@@ -910,6 +922,7 @@ async def test_streaming_schedules_manual_identity_for_consolidation(
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_background_scheduler_forwards_manual_identity(
+    http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The FastAPI background bridge must pass identity as data, not permission."""
@@ -918,11 +931,12 @@ async def test_background_scheduler_forwards_manual_identity(
     background_tasks = BackgroundTasks()
     monkeypatch.setattr(transcribe_module, "consolidate_turn", consolidate)
 
-    scheduler = transcribe_module._consolidation_scheduler(background_tasks)
+    scheduler = transcribe_module._consolidation_scheduler(http_client, background_tasks)
     scheduler("hola robot", "Hola.", active_person)
     await background_tasks()
 
     consolidate.assert_awaited_once_with(
+        http_client,
         "hola robot",
         "Hola.",
         active_person=active_person,
