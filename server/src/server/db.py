@@ -1,18 +1,24 @@
-"""SQLite connection and migrations.
+"""SQLite connection, migrations, and the runtime write-transaction owner.
 
 Single async connection (aiosqlite). WAL mode. sqlite-vec loaded once.
 """
 
 from __future__ import annotations
 
+import asyncio
+from contextlib import asynccontextmanager
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import aiosqlite
 import sqlite_vec
 
 from server.exceptions import BrainMemoryError
 from server.settings import settings
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +35,18 @@ _MIGRATIONS: tuple[tuple[int, str], ...] = (
 )
 _conn: aiosqlite.Connection | None = None
 
+# Owns every runtime write transaction (Plan 0035, ADR 0011). Startup
+# migrations run before any request can arrive and never touch this lock —
+# `run_migrations` keeps its own commit-per-script discipline, unchanged.
+#
+# Created in `open_db()`, not eagerly at import time: `asyncio.Lock` binds to
+# whichever event loop is running the first time it is actually awaited, and
+# a lock built at import time can outlive that loop — e.g. two `open_db()`
+# cycles in the same test session, each pytest-asyncio test function running
+# its own loop. Owning the lock's lifecycle exactly like `_conn`'s keeps a
+# `transaction()` call correct for whatever loop is running now.
+_write_lock: asyncio.Lock | None = None
+
 
 async def open_db() -> None:
     """Open the global SQLite connection.
@@ -38,7 +56,7 @@ async def open_db() -> None:
     Raises:
         BrainMemoryError: If the DB file cannot be opened.
     """
-    global _conn  # noqa: PLW0603
+    global _conn, _write_lock  # noqa: PLW0603
     if _conn is not None:
         return
 
@@ -56,18 +74,28 @@ async def open_db() -> None:
         await _conn.execute("PRAGMA journal_mode = WAL")
         await _conn.execute("PRAGMA synchronous = NORMAL")
         await _conn.execute("PRAGMA foreign_keys = ON")
+        # Defends against contention from a process outside our own lock
+        # (an offline script, an operator's sqlite3 shell) — it does not
+        # replace `transaction()`'s coroutine-level ownership, which is what
+        # actually serializes writes from within this process. Python's
+        # sqlite3 already defaults `connect(timeout=5.0)` to the same 5000ms,
+        # so this line changes no observed behavior; it exists so the value
+        # is a decision made here, not an implicit stdlib default.
+        await _conn.execute("PRAGMA busy_timeout = 5000")
         await _conn.commit()
     except Exception as exc:
         raise BrainMemoryError("Failed to open SQLite") from exc
+    _write_lock = asyncio.Lock()
 
 
 async def close_db() -> None:
     """Close the global connection. Idempotent."""
-    global _conn  # noqa: PLW0603
+    global _conn, _write_lock  # noqa: PLW0603
     if _conn is None:
         return
     await _conn.close()
     _conn = None
+    _write_lock = None
 
 
 def get_conn() -> aiosqlite.Connection:
@@ -113,3 +141,43 @@ async def run_migrations() -> None:
             raise BrainMemoryError(f"Migration {version} ({filename}) failed") from exc
 
     logger.info("Schema up-to-date (version %d)", _MIGRATIONS[-1][0])
+
+
+@asynccontextmanager
+async def transaction() -> AsyncIterator[aiosqlite.Connection]:
+    """Own one complete runtime write transaction under the module lock.
+
+    Serializes writes at the coroutine level so a multi-`await` transaction
+    can no longer interleave with another one — the gap the process-global
+    connection left open (ADR 0011). Begins with ``BEGIN IMMEDIATE``, commits
+    only on normal exit, and rolls back on any ``BaseException`` — including
+    ``asyncio.CancelledError``, which only ``except BaseException`` catches —
+    before re-raising it unchanged.
+
+    Not reentrant: the lock has no notion of "the same caller", so calling
+    ``transaction()`` again from inside an already-open one on the same task
+    hangs forever waiting for itself. A composite write accepts the yielded
+    connection and issues further statements directly — the pattern
+    ``relational_v4.py``'s ``manage_transaction`` flag already uses, one
+    layer up.
+
+    Yields:
+        The single open connection, mid-transaction. Callers issue further
+        statements on it directly; no nested transaction is needed or safe.
+
+    Raises:
+        BaseException: Whatever the caller's body raised, after rollback —
+            this primitive never swallows a failure.
+    """
+    conn = get_conn()
+    if _write_lock is None:
+        raise BrainMemoryError("DB not open — call open_db() first")
+    async with _write_lock:
+        await conn.execute("BEGIN IMMEDIATE")
+        try:
+            yield conn
+        except BaseException:
+            await conn.rollback()
+            raise
+        else:
+            await conn.commit()
