@@ -21,7 +21,7 @@ to see the code, tests, verified gap, and accountable plan for each outcome.
 | Plan | Implementation reality | Reuse | Remaining closure |
 |---|---|---|---|
 | [0015](0015-personal-companion-design.md) | Approved product design; PC-1 code and acceptance are both complete (Plans 0025–0028); PC-2 code, tests, and real-camera acceptance are complete (Plans 0029/0030) | Controller, policy/audit, v4 child tools, identity-session seam, onboarding primitives, STT/TTS, face engine, calibrated face-authentication threshold | Speaker evidence (PC-3), fusion (PC-4), visual companion acceptance (PC-5), and family profile expansion (PC-6) remain later slices |
-| [0031](0031-server-production-baseline-design.md) | Audited reference-only server capsule; no production implementation | Existing FastAPI/Starlette/Uvicorn, HTTP/audio contracts, tests and server/robot boundary | Children 0032–0038 closed; 0039–0042 remain, one at a time, pending Pipec's explicit authorization to promote 0039 |
+| [0031](0031-server-production-baseline-design.md) | Audited reference-only server capsule; no production implementation | Existing FastAPI/Starlette/Uvicorn, HTTP/audio contracts, tests and server/robot boundary | Children 0032–0039 closed; 0040–0042 remain, one at a time, pending Pipec's explicit authorization to promote 0040 |
 
 ## Queued server-production capsule
 
@@ -74,13 +74,23 @@ unit-tested value. Investigated and reverted a fix for the standing
 outside this plan's scope — recorded as Plan 0044's new Task 5 instead of
 losing it. 1015 tests, ~90% coverage, all five CI checks green.
 
+[Plan 0039](../completed/0039-application-lifecycle-and-http-resources.md)
+closed 2026-09-03 (PR #107): `create_app()` + a failure-safe `lifespan()`
+owning a shared `httpx.AsyncClient` via `AsyncExitStack`; every Ollama/VLM/
+embedding call site now takes that client as a required parameter instead of
+constructing its own. A real bug only the full test suite could catch — the
+`client` TestClient fixture never ran the lifespan, so `app.state.resources`
+never existed — is fixed in the shared fixtures. 1019 tests, all five CI
+checks green. Verified live: a full voice turn completed end-to-end; the
+verbose traceback logged for an expected "Ollama down" fallback was recorded
+as Plan 0044's new Task 6, not fixed here.
+
 | Order | Plan | Outcome |
 |---:|---|---|
-| 1 | [0039](0039-application-lifecycle-and-http-resources.md) | Failure-safe lifespan and shared HTTP transport |
-| 2 | [0040](0040-fastapi-contract-and-openapi-baseline.md) | Typed dependencies, OpenAPI, health/readiness |
-| 3 | [0041](0041-streaming-terminal-contract.md) | Coordinated terminal stream error |
-| 4 | [0042](0042-server-baseline-closure.md) | Full gates, runtime evidence, ADR review, and closure |
-| 5 | [0044](0044-official-fastapi-conventions.md) | Alignment with the official FastAPI conventions the audit predated, plus the httpx2 migration Plan 0038 found |
+| 1 | [0040](0040-fastapi-contract-and-openapi-baseline.md) | Typed dependencies, OpenAPI, health/readiness |
+| 2 | [0041](0041-streaming-terminal-contract.md) | Coordinated terminal stream error |
+| 3 | [0042](0042-server-baseline-closure.md) | Full gates, runtime evidence, ADR review, and closure |
+| 4 | [0044](0044-official-fastapi-conventions.md) | Alignment with the official FastAPI conventions the audit predated, plus the httpx2 migration Plan 0038 found and the Ollama-down logging gap Plan 0039 found |
 
 Plans 0014 (P0 runtime-policy umbrella), 0020 (operator-QA remediation
 umbrella), and 0024 (owner-authenticated memory MVP design) closed with no
@@ -111,7 +121,7 @@ PC-2 completely — see
 [completed/0030](../completed/0030-real-camera-face-acceptance.md).
 
 Canonical execution order: **none — `NOW` is empty.** The server capsule is
-queued, beginning with 0039 only once Pipec authorizes promotion.
+queued, beginning with 0040 only once Pipec authorizes promotion.
 
 ## Status rule
 
