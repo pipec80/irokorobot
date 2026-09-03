@@ -72,12 +72,11 @@ async def _face_lines(image: bytes) -> list[str]:
 async def _record_unknown_face(count: int) -> None:
     """Log an ``unknown_person`` event — informational, never an alarm."""
     try:
-        conn = db.get_conn()
-        await conn.execute(
-            "INSERT INTO events (event_type, severity, payload) VALUES (?, ?, ?)",
-            ("unknown_person", "info", f'{{"count": {count}}}'),
-        )
-        await conn.commit()
+        async with db.transaction() as conn:
+            await conn.execute(
+                "INSERT INTO events (event_type, severity, payload) VALUES (?, ?, ?)",
+                ("unknown_person", "info", f'{{"count": {count}}}'),
+            )
     except Exception as exc:
         logger.warning("Could not record unknown_person event: %s", exc)
 

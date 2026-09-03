@@ -194,18 +194,17 @@ async def enroll_face(entity_id: int, embedding: np.ndarray, label: str) -> int:
     """
     if embedding.shape != (_EMBEDDING_DIM,):
         raise VisionError(f"Expected {_EMBEDDING_DIM}-d embedding, got {embedding.shape}")
-    conn = db.get_conn()
-    cur = await conn.execute(
-        "INSERT INTO face_profiles (entity_id, label) VALUES (?, ?)",
-        (entity_id, label),
-    )
-    profile_id = cur.lastrowid
-    await cur.close()
-    await conn.execute(
-        "INSERT INTO vec_faces (rowid, embedding) VALUES (?, ?)",
-        (profile_id, _pack(embedding)),
-    )
-    await conn.commit()
+    async with db.transaction() as conn:
+        cur = await conn.execute(
+            "INSERT INTO face_profiles (entity_id, label) VALUES (?, ?)",
+            (entity_id, label),
+        )
+        profile_id = cur.lastrowid
+        await cur.close()
+        await conn.execute(
+            "INSERT INTO vec_faces (rowid, embedding) VALUES (?, ?)",
+            (profile_id, _pack(embedding)),
+        )
     logger.info(
         "Face enrolled: profile=%s entity=%s",
         profile_id,
