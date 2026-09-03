@@ -158,11 +158,11 @@ pre-first-yield `HTTPException` no longer produces a clean HTTP error once
 the endpoint itself is the generator.** Reproduced directly:
 
 ```python
-@app.post('/stream')
+@app.post("/stream")
 async def stream(fail: bool = False) -> AsyncIterator[EventA]:
     if fail:
-        raise HTTPException(status_code=422, detail='bad input before streaming')
-    yield EventA(value='hello')
+        raise HTTPException(status_code=422, detail="bad input before streaming")
+    yield EventA(value="hello")
 ```
 
 Posting with `fail=true` does not return a 422 — it raises
