@@ -22,7 +22,6 @@ from uuid import uuid4
 from fastapi import (
     APIRouter,
     File,
-    Header,
     HTTPException,
     Request,
     Response,
@@ -46,9 +45,10 @@ from server.cognition.models import (
 )
 from server.cognition.owner_authentication import (
     OwnerUnlockRateLimitedError,
-    owner_unlock_service,
+    OwnerUnlockService,
 )
 from server.cognition.response_plan import TextTurnPayload
+from server.dependencies import IdentityTokenDep, OwnerUnlockServiceDep
 from server.exceptions import (
     EnrollmentRejectedError,
     ImageContractError,
@@ -57,6 +57,7 @@ from server.exceptions import (
 )
 from server.memory.biometric_consent import grant_face_consent, revoke_face_consent
 from server.memory.household_authorization import record_authorization_decision
+from server.schemas import error_responses
 from server.schemas_auth import (
     FaceEnrollResponse,
     OwnerUnlockRequest,
@@ -99,15 +100,26 @@ def _is_loopback(request: Request) -> bool:
     return bool((mapped or address).is_loopback)
 
 
-@router.post("/auth/owner/unlock")
+@router.post(
+    "/auth/owner/unlock",
+    responses=error_responses(
+        (401, "Wrong PIN or missing/non-owner profile"),
+        (403, "Caller is not on loopback"),
+        (429, "Local rate limit is blocking new attempts"),
+    ),
+)
 async def unlock_owner(
-    request: OwnerUnlockRequest, http_request: Request, response: Response
+    request: OwnerUnlockRequest,
+    http_request: Request,
+    response: Response,
+    owner_unlock_service: OwnerUnlockServiceDep,
 ) -> OwnerUnlockResponse:
     """Verify the local owner PIN and issue one opaque one-use grant.
 
     Args:
         request: The candidate PIN — never logged or echoed.
         http_request: Raw ASGI request used only to check loopback origin.
+        owner_unlock_service: Lifespan-owned unlock service (Plan 0040).
 
     Returns:
         The opaque token and its expiry on a successful local unlock.
@@ -163,7 +175,7 @@ def _face_event(event_type: str) -> CognitiveEvent[TextTurnPayload]:
 
 
 async def _authorize_face_action(
-    token: str | None, *, event_type: str
+    owner_unlock_service: OwnerUnlockService, token: str | None, *, event_type: str
 ) -> tuple[ActivePersonContext, AuthorizationRequest, AuthorizationDecision]:
     """Resolve the request-scoped actor and evaluate the biometric-admin policy.
 
@@ -174,6 +186,7 @@ async def _authorize_face_action(
     sensitive biometric action.
 
     Args:
+        owner_unlock_service: Lifespan-owned unlock service (Plan 0040).
         token: Optional one-use owner unlock token from the request header.
         event_type: Synthetic event type — `"face.enroll"` or `"face.revoke"`.
 
@@ -241,13 +254,23 @@ async def _read_face_image(image: UploadFile) -> bytes:
     return image_bytes
 
 
-@router.post("/auth/owner/face/enroll", response_model=FaceEnrollResponse)
+@router.post(
+    "/auth/owner/face/enroll",
+    response_model=FaceEnrollResponse,
+    responses=error_responses(
+        (401, "Absent, expired, consumed, or otherwise unauthorized token"),
+        (403, "Caller is not on loopback"),
+        (413, "Image exceeds the upload size limit"),
+        (503, "Face model unavailable"),
+    ),
+)
 async def enroll_owner_face(
     http_request: Request,
+    owner_unlock_service: OwnerUnlockServiceDep,
     image: Annotated[
         UploadFile, File(description="JPEG/PNG/WebP/GIF/BMP · max 1280x720 · one frame")
     ],
-    x_iroko_identity_token: Annotated[str | None, Header(alias="X-Iroko-Identity-Token")] = None,
+    x_iroko_identity_token: IdentityTokenDep = None,
 ) -> FaceEnrollResponse:
     """Enroll the token's own owner's face as local authentication evidence.
 
@@ -258,6 +281,7 @@ async def enroll_owner_face(
 
     Args:
         http_request: Raw ASGI request used only to check loopback origin.
+        owner_unlock_service: Lifespan-owned unlock service (Plan 0040).
         image: JPEG/PNG/WebP/GIF/BMP frame, max 1280x720 and upload limit.
         x_iroko_identity_token: One-use owner unlock token issued by
             `POST /auth/owner/unlock`.
@@ -276,7 +300,7 @@ async def enroll_owner_face(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Local access only")
 
     actor, request, decision = await _authorize_face_action(
-        x_iroko_identity_token, event_type="face.enroll"
+        owner_unlock_service, x_iroko_identity_token, event_type="face.enroll"
     )
     await record_authorization_decision(request, decision)
     if (
@@ -299,15 +323,24 @@ async def enroll_owner_face(
     return FaceEnrollResponse(profile_id=outcome.profile_id, enrolled_at=datetime.now(UTC))
 
 
-@router.post("/auth/owner/face/revoke", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/auth/owner/face/revoke",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=error_responses(
+        (401, "Absent, expired, consumed, or otherwise unauthorized token"),
+        (403, "Caller is not on loopback"),
+    ),
+)
 async def revoke_owner_face(
     http_request: Request,
-    x_iroko_identity_token: Annotated[str | None, Header(alias="X-Iroko-Identity-Token")] = None,
+    owner_unlock_service: OwnerUnlockServiceDep,
+    x_iroko_identity_token: IdentityTokenDep = None,
 ) -> None:
     """Revoke the token's own owner's face consent and purge stored profiles.
 
     Args:
         http_request: Raw ASGI request used only to check loopback origin.
+        owner_unlock_service: Lifespan-owned unlock service (Plan 0040).
         x_iroko_identity_token: One-use owner unlock token issued by
             `POST /auth/owner/unlock`.
 
@@ -319,7 +352,7 @@ async def revoke_owner_face(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Local access only")
 
     actor, request, decision = await _authorize_face_action(
-        x_iroko_identity_token, event_type="face.revoke"
+        owner_unlock_service, x_iroko_identity_token, event_type="face.revoke"
     )
     await record_authorization_decision(request, decision)
     if decision.decision is not AuthorizationStatus.ALLOWED or actor.person_id is None:

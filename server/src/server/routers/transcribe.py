@@ -10,7 +10,7 @@ import time
 from typing import Annotated, Literal
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, File, Header, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 import httpx
 
@@ -26,13 +26,14 @@ from server.cognition.face_authentication import (
 from server.cognition.household_tools import HouseholdKnowledgeTools
 from server.cognition.identity import ActivePersonContext
 from server.cognition.models import CognitiveEvent
-from server.cognition.owner_authentication import OwnerRequestResolver, owner_unlock_service
+from server.cognition.owner_authentication import OwnerRequestResolver, OwnerUnlockService
 from server.cognition.response_plan import (
     ResponsePlan,
     SceneDescriptionRequest,
     TextTurnPayload,
     scene_unavailable_plan,
 )
+from server.dependencies import IdentityTokenDep, OwnerUnlockServiceDep, ResourcesDep
 from server.exceptions import AudioContractError, ImageContractError, UploadTooLargeError
 from server.memory.consolidation import consolidate_turn
 from server.memory.household_authorization import record_authorization_decision
@@ -43,8 +44,7 @@ from server.pipeline import (
     _run_stt,
     _run_tts,
 )
-from server.resources import ResourcesDep
-from server.schemas import TranscribeResponse
+from server.schemas import TranscribeResponse, error_responses
 from server.settings import settings
 from server.streaming import stream_pipeline, stream_response_plan
 from server.text_turn import (
@@ -134,10 +134,13 @@ class _RequestIdentity:
         return None
 
 
-def _build_request_identity(token: str | None, frame: bytes | None) -> _RequestIdentity:
+def _build_request_identity(
+    owner_unlock_service: OwnerUnlockService, token: str | None, frame: bytes | None
+) -> _RequestIdentity:
     """Compose this request's actor/consent resolver from PIN and optional face evidence.
 
     Args:
+        owner_unlock_service: Lifespan-owned unlock service (Plan 0040).
         token: Optional one-use owner PIN unlock token from the request header.
         frame: Optional webcam frame bytes already read and validated from
             the multipart upload. `None` whenever no frame was supplied, or
@@ -318,12 +321,16 @@ async def _read_optional_frame(frame: UploadFile) -> bytes:
     return frame_bytes
 
 
-@router.post("/transcribe")
+@router.post(
+    "/transcribe",
+    responses=error_responses((413, "Audio or attached frame exceeds the upload size limit")),
+)
 async def transcribe(
     resources: ResourcesDep,
+    owner_unlock_service: OwnerUnlockServiceDep,
     audio: Annotated[UploadFile, File(description="WAV 16kHz mono int16")],
     background_tasks: BackgroundTasks,
-    x_iroko_identity_token: Annotated[str | None, Header(alias="X-Iroko-Identity-Token")] = None,
+    x_iroko_identity_token: IdentityTokenDep = None,
     frame: Annotated[
         UploadFile | None,
         File(
@@ -362,7 +369,9 @@ async def transcribe(
             logger.warning(
                 "Owner-authentication frame rejected — continuing without it: %s", exc.detail
             )
-    request_identity = _build_request_identity(x_iroko_identity_token, frame_bytes)
+    request_identity = _build_request_identity(
+        owner_unlock_service, x_iroko_identity_token, frame_bytes
+    )
     audio_bytes = await _read_audio_upload(audio)
 
     text_heard, stt_ms = await _run_stt(audio_bytes, [])
@@ -432,12 +441,16 @@ async def transcribe(
     )
 
 
-@router.post("/transcribe/stream")
+@router.post(
+    "/transcribe/stream",
+    responses=error_responses((413, "Audio or attached frame exceeds the upload size limit")),
+)
 async def transcribe_stream(
     resources: ResourcesDep,
+    owner_unlock_service: OwnerUnlockServiceDep,
     audio: Annotated[UploadFile, File(description="WAV 16kHz mono int16")],
     background_tasks: BackgroundTasks,
-    x_iroko_identity_token: Annotated[str | None, Header(alias="X-Iroko-Identity-Token")] = None,
+    x_iroko_identity_token: IdentityTokenDep = None,
     frame: Annotated[
         UploadFile | None,
         File(
@@ -476,7 +489,9 @@ async def transcribe_stream(
             logger.warning(
                 "Owner-authentication frame rejected — continuing without it: %s", exc.detail
             )
-    request_identity = _build_request_identity(x_iroko_identity_token, frame_bytes)
+    request_identity = _build_request_identity(
+        owner_unlock_service, x_iroko_identity_token, frame_bytes
+    )
     audio_bytes = await _read_audio_upload(audio)
 
     text_heard, stt_ms = await _run_stt(audio_bytes, [])

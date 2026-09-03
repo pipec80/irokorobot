@@ -18,13 +18,13 @@ import pytest
 from server.cognition.identity import PersonRecord
 from server.cognition.identity_sessions import IdentitySessionRegistry
 from server.cognition.owner_authentication import OwnerUnlockService
+from server.dependencies import get_owner_unlock_service
 from server.main import app
 from server.memory.entity_labels import get_person_label
 from server.memory.household_authorization import get_active_role
 from server.memory.owner_credentials import get_active_owner_pin_credential
 from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
 from server.personal_setup import PersonalSetupInput, apply_personal_setup
-from server.routers import chat as chat_module, transcribe as transcribe_module
 from server.settings import settings
 
 from server import db, stt, tts
@@ -92,7 +92,7 @@ async def test_chat_with_valid_token_answers_and_consumes_the_grant(
 ) -> None:
     """A fresh unlock, used once, returns exactly the confirmed child names."""
     service = _service()
-    monkeypatch.setattr(chat_module, "owner_unlock_service", service)
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
     unlock = await service.unlock(_PIN)
     assert unlock is not None
 
@@ -114,7 +114,7 @@ async def test_chat_replayed_token_denies_without_disclosure(
 ) -> None:
     """A second use of an already-consumed token must not reveal any name."""
     service = _service()
-    monkeypatch.setattr(chat_module, "owner_unlock_service", service)
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
     unlock = await service.unlock(_PIN)
     assert unlock is not None
 
@@ -143,7 +143,7 @@ async def test_allowed_read_audit_trace_contains_no_names_pin_or_token(
 ) -> None:
     """The safe audit trail never carries the disclosed names, PIN, or token."""
     service = _service()
-    monkeypatch.setattr(chat_module, "owner_unlock_service", service)
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
     unlock = await service.unlock(_PIN)
     assert unlock is not None
 
@@ -174,7 +174,7 @@ async def test_transcribe_with_valid_token_speaks_the_exact_child_answer(
 ) -> None:
     """Classic voice with a fresh token speaks exactly the confirmed answer."""
     service = _service()
-    monkeypatch.setattr(transcribe_module, "owner_unlock_service", service)
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
     unlock = await service.unlock(_PIN)
     assert unlock is not None
     monkeypatch.setattr(stt, "transcribe", AsyncMock(return_value=_CHILD_QUESTION))
@@ -211,7 +211,7 @@ async def test_transcribe_absent_or_malformed_token_denies_without_reading_v4(
 ) -> None:
     """No usable token must never reach v4 storage or disclose the names."""
     service = _service()
-    monkeypatch.setattr(transcribe_module, "owner_unlock_service", service)
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
     monkeypatch.setattr(stt, "transcribe", AsyncMock(return_value=_CHILD_QUESTION))
     tts_mock = AsyncMock(return_value=("AAAA", 42))
     monkeypatch.setattr(tts, "synthesize", tts_mock)
@@ -243,7 +243,7 @@ async def test_transcribe_expired_token_denies_without_reading_v4(
         return now
 
     service = _service(clock=clock)
-    monkeypatch.setattr(transcribe_module, "owner_unlock_service", service)
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
     unlock = await service.unlock(_PIN)
     assert unlock is not None
     now = now + timedelta(seconds=61)
@@ -271,7 +271,7 @@ async def test_transcribe_replayed_token_denies_without_reading_v4(
 ) -> None:
     """Reusing an already-consumed token must deny exactly like an absent one."""
     service = _service()
-    monkeypatch.setattr(transcribe_module, "owner_unlock_service", service)
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
     unlock = await service.unlock(_PIN)
     assert unlock is not None
     monkeypatch.setattr(stt, "transcribe", AsyncMock(return_value=_CHILD_QUESTION))

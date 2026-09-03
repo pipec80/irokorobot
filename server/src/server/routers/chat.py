@@ -1,10 +1,9 @@
 """Local text-only chat adapter."""
 
 from datetime import UTC, date, datetime
-from typing import Annotated
 from uuid import uuid4
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter
 
 from server import turn_log
 from server.cognition.authorization import evaluate_authorization
@@ -12,15 +11,14 @@ from server.cognition.controller import CognitiveController
 from server.cognition.household_tools import HouseholdKnowledgeTools
 from server.cognition.identity import ActivePersonContext
 from server.cognition.models import CognitiveEvent
-from server.cognition.owner_authentication import owner_unlock_service
 from server.cognition.response_plan import (
     SceneDescriptionRequest,
     TextTurnPayload,
     scene_unavailable_plan,
 )
+from server.dependencies import IdentityTokenDep, OwnerUnlockServiceDep, ResourcesDep
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
-from server.resources import ResourcesDep
 from server.schemas_chat import ChatRequest, ChatResponse
 from server.text_turn import TextTurnResult, process_text_turn
 
@@ -55,13 +53,15 @@ def _event_from_request(request: ChatRequest) -> CognitiveEvent[TextTurnPayload]
 @router.post("/chat", response_model=ChatResponse)
 async def chat(
     resources: ResourcesDep,
+    owner_unlock_service: OwnerUnlockServiceDep,
     request: ChatRequest,
-    x_iroko_identity_token: Annotated[str | None, Header(alias="X-Iroko-Identity-Token")] = None,
+    x_iroko_identity_token: IdentityTokenDep = None,
 ) -> ChatResponse:
     """Process one local text-only conversation turn.
 
     Args:
         resources: Shared, lifecycle-owned resources (Plan 0039).
+        owner_unlock_service: Lifespan-owned unlock service (Plan 0040).
         request: Validated text and ephemeral conversation identifier.
         x_iroko_identity_token: Optional one-use owner unlock token. Absent,
             expired, replayed, or malformed tokens resolve to the public

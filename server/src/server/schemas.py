@@ -156,6 +156,41 @@ class HealthResponse(BaseModel):
     )
 
 
+class ReadyResponse(BaseModel):
+    """Response from GET /ready — only returned on a 200 (Plan 0040)."""
+
+    status: str = Field(default="ready")
+
+
+class ErrorResponse(BaseModel):
+    """Generic `detail`-based body every non-validation 4xx/5xx here returns (Plan 0040).
+
+    Documents the existing wire shape — never changes it. `detail` is a
+    plain human-readable string, safe to show verbatim: never a stack
+    trace, a PIN, or a token.
+    """
+
+    detail: str = Field(description="Human-readable error description")
+
+
+def error_responses(*codes: tuple[int, str]) -> dict[int | str, dict[str, Any]]:
+    """Build an OpenAPI `responses=` dict from (status_code, description) pairs.
+
+    Purely additive documentation — never changes what a route actually
+    returns. `Any`: FastAPI's own `responses=` parameter type.
+
+    Args:
+        *codes: One `(status_code, description)` pair per non-2xx/422
+            response the route can actually raise.
+
+    Returns:
+        A dict ready to pass as a route decorator's `responses=` kwarg.
+    """
+    return {
+        code: {"model": ErrorResponse, "description": description} for code, description in codes
+    }
+
+
 class TranscribeResponse(BaseModel):
     """Response from POST /transcribe."""
 

@@ -31,6 +31,7 @@ from server.cognition.owner_authentication import (
     OwnerUnlockService,
     owner_unlock_service,
 )
+from server.dependencies import get_owner_unlock_service
 from server.main import app
 from server.memory.biometric_consent import grant_face_consent
 from server.memory.entity_labels import get_person_label
@@ -260,7 +261,7 @@ async def test_two_faces_denies_and_never_consults_pin_classic(
     _mock_detect(monkeypatch, [_detected(_OWNER_EMBEDDING), _detected(_STRANGER_EMBEDDING)])
     _mock_stt_tts(monkeypatch, text=_CHILD_QUESTION)
     spy_service = _SpyingUnlockService(_service())
-    monkeypatch.setattr(transcribe_module, "owner_unlock_service", spy_service)
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: spy_service)
     reader_spy = AsyncMock(wraps=PolicyGatedV4Reader.read_active_relations)
     monkeypatch.setattr(PolicyGatedV4Reader, "read_active_relations", reader_spy)
 
@@ -316,7 +317,7 @@ async def test_no_frame_preserves_existing_pin_flow(
     """With face auth ON but no frame supplied, a valid PIN token still answers exactly."""
     monkeypatch.setattr(settings, "face_authentication_enabled", True)
     service = _service()
-    monkeypatch.setattr(transcribe_module, "owner_unlock_service", service)
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
     unlock = await service.unlock(_PIN)
     assert unlock is not None
     _mock_stt_tts(monkeypatch, text=_CHILD_QUESTION)
@@ -429,7 +430,7 @@ async def test_two_faces_denies_and_never_consults_pin_stream(
     _mock_detect(monkeypatch, [_detected(_OWNER_EMBEDDING), _detected(_STRANGER_EMBEDDING)])
     _mock_stt_tts(monkeypatch, text=_CHILD_QUESTION)
     spy_service = _SpyingUnlockService(_service())
-    monkeypatch.setattr(transcribe_module, "owner_unlock_service", spy_service)
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: spy_service)
     reader_spy = AsyncMock(wraps=PolicyGatedV4Reader.read_active_relations)
     monkeypatch.setattr(PolicyGatedV4Reader, "read_active_relations", reader_spy)
 
