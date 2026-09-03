@@ -1,5 +1,8 @@
 # Uvicorn Runtime Baseline Implementation Plan
 
+> **Status:** Completed 2026-09-03. Historical evidence only — this document
+> is not an instruction and authorizes nothing.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use
 > `superpowers:test-driven-development` and
 > `superpowers:verification-before-completion`.
@@ -210,6 +213,11 @@ still sets `UVICORN_MAX_REQUESTS=1000`, which will keep overriding the new
   deselected, **89.77% coverage**
 - `just check` — clean
 - `git diff --check` — clean
+- CI on PR #105 — all five checks green (Analyze (Python), CodeQL, PR Title,
+  Quality & Security, Automated Tests). Merged as PR #105.
+- The `httpx2` finding was recorded as Plan 0044's new Task 5 (separate
+  commit on the same PR) so it stays visible instead of buried inside this
+  plan's own execution notes.
 - Real acceptance: not directly exercised as a live voice/auth turn — the
   change is process-startup and runtime-flag configuration, not a request
   code path. `just run-server` starting successfully and staying up (not

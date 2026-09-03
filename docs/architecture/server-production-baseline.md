@@ -1,8 +1,10 @@
 # Iroko server production baseline
 
-- **Status:** Target architecture; implementation queued behind Plan 0030
-- **Audited commit:** `7d68641`
-- **Audit date:** 2026-08-31
+- **Status:** Target architecture; children 0032–0038 closed, 0039–0042 and
+  0044 remain
+- **Audited commit:** `7d68641` (original audit); see "Verified baseline" for
+  the current state after the closed children
+- **Audit date:** 2026-08-31; last status refresh 2026-09-03
 - **Scope:** `server/` and only the minimum `robot/` changes required by a
   shared HTTP or streaming contract
 
@@ -29,17 +31,21 @@ This target is subordinate to runtime `AGENTS.md`,
 ADRs, and immutable API/audio contracts. The executable decomposition lives
 under [`docs/plans/open/`](../plans/open/README.md).
 
-Plan 0043 is the current `NOW` item: a transversal dependency refresh that runs
-before this capsule's children because it changes their design. Plan 0031 is a
-reference umbrella and is never executed as a batch. Plan 0032 becomes `NOW`
-only after Plan 0043 closes and Pipec explicitly authorizes it.
+Plan 0031 is a reference umbrella and is never executed as a batch. Plan 0043
+(dependency refresh) ran first, as designed, then 0032–0038 closed in order:
+0032 (privacy/observability), 0033 (owner-unlock hardening), 0034
+(upload/multipart security), 0035 (SQLite transaction owner), 0036 (SQLite
+write migration and outbox removal), 0037 (deterministic CI baseline), 0038
+(Uvicorn runtime baseline). Plan 0039 is next; see the
+[operational board](../plans/README.md#operational-board) for the current
+`NOW`/`QUEUED` state — this document does not duplicate it.
 
 ADRs 0010-0013 were reviewed and accepted on 2026-09-02, so the child plans may
 cite them as authority.
 
 ## Verified baseline
 
-At the audited commit:
+At the original audited commit (`7d68641`, 2026-08-31):
 
 - `just lint`, `just typecheck`, `just test`, and `just audit` pass.
 - The complete test suite passes with 929 tests.
@@ -51,27 +57,48 @@ At the audited commit:
 - The server uses one Uvicorn worker and binds to loopback by default.
 - Server and robot share only HTTP/audio/stream contracts.
 
-The audit also verified these gaps:
+After Plan 0037 closed (2026-09-03): the deterministic gate itself changed —
+CI runs `not slow and not hardware and not eval` (not `not integration`) with
+`--cov-fail-under=80`, and the local target is **1015 tests, 89.77%
+coverage** (997 after 0032–0037, plus 18 from Plan 0038). Re-run
+`pytest -m "not slow and not hardware and not eval" --cov=server/src
+--cov=robot/src --cov-fail-under=80` for the current number at any later
+commit — this document does not update opportunistically.
 
-- Audio, image, and face-frame uploads are fully read before the semantic
-  size check.
-- No raw ASGI request-body limit is installed.
-- One process-global `aiosqlite.Connection` is shared by multi-await write
-  transactions without coroutine transaction ownership.
-- The unused outbox has no consumer and commits separately from domain
-  mutation.
-- Normal server and robot logs contain transcript, model-response, spoken
-  sentence, or visual-description content in several paths.
-- PIN shape validation occurs below the HTTP schema and may escape as an
-  internal error; concurrent unlock attempts can race the limiter.
-- Ollama, VLM, and embedding paths construct outbound HTTP clients per call.
-- `/health` is liveness-like but its documentation overstates readiness.
-- Uvicorn stops after the configured maximum request count even though no
-  verified supervisor is part of the current runtime contract.
-- CI excludes useful local integration/API tests and overrides coverage to
-  zero, despite the deterministic suite already exceeding 80%.
+The original audit verified these gaps. Each is now marked with the child
+plan that closed it, or left open:
 
-These findings are evidence at the audited commit, not eternal facts.
+- ~~Audio, image, and face-frame uploads are fully read before the semantic
+  size check.~~ **Closed by Plan 0034** — a raw ASGI body-limit middleware
+  plus per-file bounded reads.
+- ~~No raw ASGI request-body limit is installed.~~ **Closed by Plan 0034** —
+  `RequestBodyLimitMiddleware`.
+- ~~One process-global `aiosqlite.Connection` is shared by multi-await write
+  transactions without coroutine transaction ownership.~~ **Closed by Plans
+  0035/0036** — `db.transaction()`, and every runtime repository write
+  migrated onto it.
+- ~~The unused outbox has no consumer and commits separately from domain
+  mutation.~~ **Closed by Plan 0036** — the outbox writer is removed.
+- ~~Normal server and robot logs contain transcript, model-response, spoken
+  sentence, or visual-description content in several paths.~~ **Closed by
+  Plan 0032** — fourteen log sites stopped writing household content.
+- ~~PIN shape validation occurs below the HTTP schema and may escape as an
+  internal error; concurrent unlock attempts can race the limiter.~~
+  **Closed by Plan 0033.**
+- **Open.** Ollama, VLM, and embedding paths construct outbound HTTP clients
+  per call — no child plan has closed this yet (candidate: Plan 0039,
+  "shared HTTP transport").
+- **Open.** `/health` is liveness-like but its documentation overstates
+  readiness — candidate: Plan 0040.
+- ~~Uvicorn stops after the configured maximum request count even though no
+  verified supervisor is part of the current runtime contract.~~ **Closed by
+  Plan 0038** — `uvicorn_max_requests` defaults to unset.
+- ~~CI excludes useful local integration/API tests and overrides coverage to
+  zero, despite the deterministic suite already exceeding 80%.~~ **Closed by
+  Plan 0037.**
+
+These findings were evidence at the audited commit, not eternal facts — the
+strikethrough entries above are now closed, not still-true findings.
 
 Two framework capabilities were measured directly after the Plan 0043 refresh
 and constrain the child plans:
@@ -89,14 +116,21 @@ and constrain the child plans:
   because it changes the media type for the live robot client, not a local
   refactor — see Plan 0041.
 
-Two gaps in the project's own safety net were added after the original audit:
+Two gaps in the project's own safety net were found after the original
+audit; one is closed:
 
-- `tests/conftest.py` builds its `TestClient` fixture at `scope="session"` and
-  mutates the `settings` singleton (`memory_enabled`) for the whole run, so
-  test isolation depends on ordering.
-- `filterwarnings = ["error"]` does not cover import-time warnings raised while
-  loading `conftest.py`. An active `StarletteDeprecationWarning` about
-  `starlette.testclient` with `httpx` passes through the suite unnoticed.
+- ~~`tests/conftest.py` builds its `TestClient` fixture at `scope="session"`
+  and mutates the `settings` singleton (`memory_enabled`) for the whole run,
+  so test isolation depends on ordering.~~ **Closed by Plan 0032** — the
+  `client` fixture is function-scoped, with the rationale recorded directly
+  in its docstring.
+- **Open**, diagnosed and scoped: `filterwarnings = ["error"]` does not cover
+  import-time warnings raised while loading `conftest.py`. An active
+  `StarletteDeprecationWarning` about `starlette.testclient` with `httpx`
+  passes through the suite unnoticed. Plan 0038 confirmed the fix
+  (`uv add --group dev httpx2`) works but also breaks six
+  `-> httpx.Response` annotations across five integration test files outside
+  that plan's scope — tracked as Plan 0044's Task 5.
 
 
 ## Architectural invariants
