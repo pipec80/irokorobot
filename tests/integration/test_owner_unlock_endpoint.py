@@ -11,8 +11,8 @@ from server.cognition.owner_authentication import (
     OwnerUnlockRateLimitedError,
     OwnerUnlockResult,
 )
+from server.dependencies import get_owner_unlock_service
 from server.main import app
-from server.routers import auth
 
 
 class _FakeService:
@@ -61,7 +61,7 @@ async def test_loopback_with_valid_pin_returns_only_token_and_expiry(
 ) -> None:
     """A loopback caller with a correct PIN receives exactly token and expiry."""
     fake = _FakeService(result=_result())
-    monkeypatch.setattr(auth, "owner_unlock_service", fake)
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: fake)
 
     async with _loopback_client() as client:
         response = await client.post("/auth/owner/unlock", json={"pin": "482173"})
@@ -78,7 +78,7 @@ async def test_loopback_with_invalid_pin_returns_401_without_details(
 ) -> None:
     """An invalid PIN and a missing profile both return the same 401 body."""
     fake = _FakeService(result=None)
-    monkeypatch.setattr(auth, "owner_unlock_service", fake)
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: fake)
 
     async with _loopback_client() as client:
         response = await client.post("/auth/owner/unlock", json={"pin": "000000"})
@@ -93,7 +93,7 @@ async def test_rate_limit_returns_429_without_attempt_details(
 ) -> None:
     """An active local rate limit maps to 429 with a generic body."""
     fake = _FakeService(raises=OwnerUnlockRateLimitedError(retry_after_seconds=60))
-    monkeypatch.setattr(auth, "owner_unlock_service", fake)
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: fake)
 
     async with _loopback_client() as client:
         response = await client.post("/auth/owner/unlock", json={"pin": "482173"})
@@ -108,7 +108,7 @@ async def test_non_loopback_client_is_rejected_before_pin_verification(
 ) -> None:
     """A non-loopback caller is rejected with 403 without reaching the service."""
     fake = _FakeService(result=_result())
-    monkeypatch.setattr(auth, "owner_unlock_service", fake)
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: fake)
 
     async with _remote_client() as client:
         response = await client.post("/auth/owner/unlock", json={"pin": "482173"})
@@ -122,7 +122,7 @@ async def test_non_loopback_client_is_rejected_before_pin_verification(
 async def test_request_forbids_extra_fields(monkeypatch: pytest.MonkeyPatch) -> None:
     """An unexpected field in the unlock request is rejected, not ignored."""
     fake = _FakeService(result=_result())
-    monkeypatch.setattr(auth, "owner_unlock_service", fake)
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: fake)
 
     async with _loopback_client() as client:
         response = await client.post("/auth/owner/unlock", json={"pin": "482173", "person_id": 1})
@@ -151,7 +151,7 @@ async def test_logs_contain_route_and_status_but_not_pin_or_token(
 ) -> None:
     """Access logging must never include the request PIN or the issued token."""
     fake = _FakeService(result=_result())
-    monkeypatch.setattr(auth, "owner_unlock_service", fake)
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: fake)
 
     with caplog.at_level(logging.DEBUG):
         async with _loopback_client() as client:
@@ -187,7 +187,7 @@ async def test_malformed_pin_is_rejected_as_422_before_any_verification(
     expensive scrypt path is entered for input that could never be valid.
     """
     fake = _FakeService(result=_result())
-    monkeypatch.setattr(auth, "owner_unlock_service", fake)
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: fake)
 
     async with _loopback_client() as client:
         response = await client.post("/auth/owner/unlock", json={"pin": pin})
@@ -201,7 +201,9 @@ async def test_a_rejected_pin_never_appears_in_the_response(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A validation error must not echo the candidate secret back."""
-    monkeypatch.setattr(auth, "owner_unlock_service", _FakeService(result=_result()))
+    monkeypatch.setitem(
+        app.dependency_overrides, get_owner_unlock_service, lambda: _FakeService(result=_result())
+    )
 
     async with _loopback_client() as client:
         response = await client.post("/auth/owner/unlock", json={"pin": _MALFORMED_PIN})
@@ -214,7 +216,9 @@ async def test_a_rejected_pin_never_appears_in_the_logs(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Plan 0032's privacy rule covers credentials too."""
-    monkeypatch.setattr(auth, "owner_unlock_service", _FakeService(result=_result()))
+    monkeypatch.setitem(
+        app.dependency_overrides, get_owner_unlock_service, lambda: _FakeService(result=_result())
+    )
 
     with caplog.at_level(logging.DEBUG):
         async with _loopback_client() as client:
@@ -228,7 +232,9 @@ async def test_a_successful_unlock_is_never_cached(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The response body carries a usable grant; no cache may retain it."""
-    monkeypatch.setattr(auth, "owner_unlock_service", _FakeService(result=_result()))
+    monkeypatch.setitem(
+        app.dependency_overrides, get_owner_unlock_service, lambda: _FakeService(result=_result())
+    )
 
     async with _loopback_client() as client:
         response = await client.post("/auth/owner/unlock", json={"pin": "482173"})
@@ -243,7 +249,9 @@ async def test_rate_limited_response_tells_the_caller_when_to_retry(
 ) -> None:
     """A 429 without Retry-After leaves a client guessing or hammering."""
     blocked = OwnerUnlockRateLimitedError(retry_after_seconds=60)
-    monkeypatch.setattr(auth, "owner_unlock_service", _FakeService(raises=blocked))
+    monkeypatch.setitem(
+        app.dependency_overrides, get_owner_unlock_service, lambda: _FakeService(raises=blocked)
+    )
 
     async with _loopback_client() as client:
         response = await client.post("/auth/owner/unlock", json={"pin": "482173"})
@@ -262,7 +270,9 @@ async def test_loopback_is_decided_by_ip_semantics_not_string_equality(
     host: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`127.0.0.2` is loopback; a string set of two literals says otherwise."""
-    monkeypatch.setattr(auth, "owner_unlock_service", _FakeService(result=_result()))
+    monkeypatch.setitem(
+        app.dependency_overrides, get_owner_unlock_service, lambda: _FakeService(result=_result())
+    )
     transport = ASGITransport(app=app, client=(host, 12345))
 
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -276,7 +286,9 @@ async def test_an_unparseable_client_address_is_forbidden(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """If the origin cannot be established, it is not local."""
-    monkeypatch.setattr(auth, "owner_unlock_service", _FakeService(result=_result()))
+    monkeypatch.setitem(
+        app.dependency_overrides, get_owner_unlock_service, lambda: _FakeService(result=_result())
+    )
     transport = ASGITransport(app=app, client=("not-an-ip", 12345))
 
     async with AsyncClient(transport=transport, base_url="http://test") as client:

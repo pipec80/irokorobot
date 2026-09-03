@@ -140,6 +140,15 @@ def preload() -> None:
     _get_voice()
 
 
+def is_loaded() -> bool:
+    """Return whether the Piper voice is currently loaded (Plan 0040).
+
+    Side-effect-free — never triggers a load. Used by `GET /ready` to
+    report readiness without paying for a real model load in that probe.
+    """
+    return _voice is not None
+
+
 async def synthesize(text: str) -> tuple[str, int]:
     """Synthesize text to base64-encoded WAV audio.
 

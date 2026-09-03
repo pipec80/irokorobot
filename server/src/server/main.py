@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncIterator
 from contextlib import AsyncExitStack, asynccontextmanager
+import importlib.metadata
 import logging
 
 from fastapi import FastAPI, Request
@@ -31,6 +32,31 @@ logger = logging.getLogger(__name__)
 # this long.
 _HTTP_CLIENT_TIMEOUT = httpx.Timeout(connect=5.0, read=10.0, write=10.0, pool=5.0)
 _HTTP_CLIENT_LIMITS = httpx.Limits(max_connections=10, max_keepalive_connections=5)
+
+# Tag descriptions for the generated OpenAPI docs (Plan 0040) — without
+# this, Swagger UI groups routes under a bare, undocumented heading.
+_OPENAPI_TAGS = [
+    {"name": "System", "description": "Liveness (`/health`) and readiness (`/ready`) checks."},
+    {
+        "name": "Auth",
+        "description": (
+            "Loopback-only local owner PIN unlock and face enrollment/revocation. "
+            "Never trusts a proxy-forwarded header."
+        ),
+    },
+    {"name": "Chat", "description": "Local text-only conversation turns."},
+    {
+        "name": "Audio",
+        "description": (
+            "Voice turns: transcribe speech, generate a response, synthesize it — "
+            "classic and sentence-streaming variants."
+        ),
+    },
+    {
+        "name": "Vision",
+        "description": "Scene description, face enrollment, and visual dialogue.",
+    },
+]
 
 
 @asynccontextmanager
@@ -134,7 +160,10 @@ def create_app() -> FastAPI:
             "Core API of the robotic brain. Handles perception (Audio/Vision), "
             "semantic memory, and LLM inference."
         ),
-        version="0.2.0",
+        # The real installed package version, not a hand-maintained literal
+        # that drifts from pyproject.toml (Plan 0040).
+        version=importlib.metadata.version("server"),
+        openapi_tags=_OPENAPI_TAGS,
         lifespan=lifespan,
     )
     new_app.add_middleware(GZipMiddleware, minimum_size=1000)

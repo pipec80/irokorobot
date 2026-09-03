@@ -109,6 +109,15 @@ def get_conn() -> aiosqlite.Connection:
     return _conn
 
 
+def is_open() -> bool:
+    """Return whether the database connection is currently open (Plan 0040).
+
+    Side-effect-free — never opens a connection. Used by `GET /ready` to
+    report readiness without raising the way `get_conn()` does.
+    """
+    return _conn is not None
+
+
 async def run_migrations() -> None:
     """Apply every pending migration script, in version order.
 

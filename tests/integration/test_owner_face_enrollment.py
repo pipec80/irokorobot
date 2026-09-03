@@ -22,6 +22,7 @@ import pytest
 from server.cognition.identity import PersonRecord
 from server.cognition.identity_sessions import IdentitySessionRegistry
 from server.cognition.owner_authentication import OwnerUnlockService
+from server.dependencies import get_owner_unlock_service
 from server.exceptions import EnrollmentRejectedError
 from server.main import app
 from server.memory.declarative import upsert_entity
@@ -153,7 +154,7 @@ async def test_expired_token_denies_without_touching_face_model(
         return now
 
     service = _real_service(clock=clock)
-    monkeypatch.setattr(auth_module, "owner_unlock_service", service)
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
     unlock = await service.unlock(_PIN)
     assert unlock is not None
     now = now + timedelta(seconds=61)
@@ -178,7 +179,7 @@ async def test_consumed_token_denies_second_use_without_touching_face_model(
 ) -> None:
     """Reusing an already-consumed token must deny without a second enrollment."""
     service = _real_service()
-    monkeypatch.setattr(auth_module, "owner_unlock_service", service)
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
     unlock = await service.unlock(_PIN)
     assert unlock is not None
     monkeypatch.setattr(
@@ -211,7 +212,7 @@ async def test_non_loopback_client_is_rejected_before_identity_resolution(
     face_db: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A non-loopback caller is rejected with 403 without reaching the resolver."""
-    monkeypatch.setattr(auth_module, "owner_unlock_service", _ExplodingService())
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, _ExplodingService)
     enroll = AsyncMock()
     monkeypatch.setattr(vision, "enroll_person", enroll)
 
@@ -232,7 +233,7 @@ async def test_non_loopback_revoke_is_rejected_before_identity_resolution(
     face_db: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A non-loopback caller cannot reach revoke identity resolution either."""
-    monkeypatch.setattr(auth_module, "owner_unlock_service", _ExplodingService())
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, _ExplodingService)
 
     async with _remote_client() as client:
         response = await client.post(
@@ -250,7 +251,7 @@ async def test_multiple_faces_rejection_maps_to_422_without_persisting_consent(
 ) -> None:
     """A multi-face frame is rejected with its code and grants no consent."""
     service = _real_service()
-    monkeypatch.setattr(auth_module, "owner_unlock_service", service)
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
     unlock = await service.unlock(_PIN)
     assert unlock is not None
     monkeypatch.setattr(
@@ -283,7 +284,7 @@ async def test_other_rejection_codes_map_to_422_without_persisting_consent(
 ) -> None:
     """Every other rejection code also maps to 422 and grants no consent."""
     service = _real_service()
-    monkeypatch.setattr(auth_module, "owner_unlock_service", service)
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
     unlock = await service.unlock(_PIN)
     assert unlock is not None
     monkeypatch.setattr(
@@ -312,7 +313,7 @@ async def test_oversized_enrollment_image_returns_413_without_touching_the_face_
 ) -> None:
     """An authenticated caller still cannot bypass the per-file byte budget."""
     service = _real_service()
-    monkeypatch.setattr(auth_module, "owner_unlock_service", service)
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
     unlock = await service.unlock(_PIN)
     assert unlock is not None
     enroll = AsyncMock(wraps=vision.enroll_person)
@@ -336,7 +337,7 @@ async def test_successful_enroll_grants_consent_and_creates_one_profile(
 ) -> None:
     """A successful enrollment returns 200, grants consent, and persists one profile."""
     service = _real_service()
-    monkeypatch.setattr(auth_module, "owner_unlock_service", service)
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
     unlock = await service.unlock(_PIN)
     assert unlock is not None
     monkeypatch.setattr(vision, "enroll_person", _fake_enroll_person)
@@ -371,7 +372,7 @@ async def test_second_enrollment_for_same_owner_persists_profile_and_reuses_cons
 ) -> None:
     """Re-enrolling the same owner twice persists both profiles but grants consent once."""
     service = _real_service()
-    monkeypatch.setattr(auth_module, "owner_unlock_service", service)
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
     monkeypatch.setattr(vision, "enroll_person", _fake_enroll_person)
 
     first_unlock = await service.unlock(_PIN)
@@ -421,7 +422,7 @@ async def test_extra_name_field_is_ignored_and_owner_name_is_used(
 ) -> None:
     """An injected `name` form field never overrides the token owner's name."""
     service = _real_service()
-    monkeypatch.setattr(auth_module, "owner_unlock_service", service)
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
     unlock = await service.unlock(_PIN)
     assert unlock is not None
     enroll = AsyncMock(side_effect=_fake_enroll_person)
@@ -451,7 +452,7 @@ async def test_revoke_with_valid_token_purges_consent_and_returns_204(
 ) -> None:
     """A valid token revokes exactly the token owner's consent."""
     service = _real_service()
-    monkeypatch.setattr(auth_module, "owner_unlock_service", service)
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
     unlock = await service.unlock(_PIN)
     assert unlock is not None
     revoke = AsyncMock(wraps=auth_module.revoke_face_consent)
@@ -488,7 +489,7 @@ async def test_revoke_with_invalid_token_denies_without_purging(
 ) -> None:
     """A malformed/unknown token must deny revoke without ever purging consent."""
     service = _real_service()
-    monkeypatch.setattr(auth_module, "owner_unlock_service", service)
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
     revoke = AsyncMock()
     monkeypatch.setattr(auth_module, "revoke_face_consent", revoke)
 

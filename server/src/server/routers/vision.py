@@ -30,7 +30,12 @@ from server.memory.household_authorization import record_authorization_decision
 from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
 from server.pipeline import _run_tts
 from server.resources import ResourcesDep
-from server.schemas import TranscribeResponse, VisionDescribeResponse, VisionEnrollResponse
+from server.schemas import (
+    TranscribeResponse,
+    VisionDescribeResponse,
+    VisionEnrollResponse,
+    error_responses,
+)
 from server.settings import settings
 from server.text_turn import TextTurnResult, new_interaction_scope, process_text_turn
 from server.uploads import read_limited_upload
@@ -166,7 +171,13 @@ async def _read_contract_image(image: UploadFile) -> bytes:
     return image_bytes
 
 
-@router.post("/vision/describe")
+@router.post(
+    "/vision/describe",
+    responses=error_responses(
+        (413, "Image exceeds the upload size limit"),
+        (503, "Vision disabled, or the VLM backend is unavailable"),
+    ),
+)
 async def vision_describe(
     resources: ResourcesDep,
     image: Annotated[
@@ -198,7 +209,10 @@ async def vision_describe(
     return VisionDescribeResponse(description=description, duration_ms=duration_ms)
 
 
-@router.post("/vision/enroll")
+@router.post(
+    "/vision/enroll",
+    responses=error_responses((503, "Vision disabled, or biometric enrollment unavailable")),
+)
 async def vision_enroll(
     image: Annotated[
         UploadFile, File(description="JPEG/PNG/WebP/GIF/BMP · max 1280x720 · one frame")
@@ -228,7 +242,10 @@ async def vision_enroll(
     )
 
 
-@router.post("/vision/respond")
+@router.post(
+    "/vision/respond",
+    responses=error_responses((503, "Vision is disabled for a scene-description question")),
+)
 async def vision_respond(
     resources: ResourcesDep,
     image: Annotated[

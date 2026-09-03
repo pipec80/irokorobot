@@ -130,6 +130,15 @@ def preload() -> None:
     _get_model()
 
 
+def is_loaded() -> bool:
+    """Return whether the Whisper model is currently loaded (Plan 0040).
+
+    Side-effect-free — never triggers a load. Used by `GET /ready` to
+    report readiness without paying for a real model load in that probe.
+    """
+    return _model is not None
+
+
 async def transcribe(audio: bytes, *, extra_hotwords: list[str] | None = None) -> str:
     """Transcribe audio bytes to text.
 
