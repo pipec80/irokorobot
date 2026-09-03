@@ -1,6 +1,6 @@
 # Iroko server production baseline
 
-- **Status:** Target architecture; children 0032–0038 closed, 0039–0042 and
+- **Status:** Target architecture; children 0032–0039 closed, 0040–0042 and
   0044 remain
 - **Audited commit:** `7d68641` (original audit); see "Verified baseline" for
   the current state after the closed children
@@ -32,11 +32,12 @@ ADRs, and immutable API/audio contracts. The executable decomposition lives
 under [`docs/plans/open/`](../plans/open/README.md).
 
 Plan 0031 is a reference umbrella and is never executed as a batch. Plan 0043
-(dependency refresh) ran first, as designed, then 0032–0038 closed in order:
+(dependency refresh) ran first, as designed, then 0032–0039 closed in order:
 0032 (privacy/observability), 0033 (owner-unlock hardening), 0034
 (upload/multipart security), 0035 (SQLite transaction owner), 0036 (SQLite
 write migration and outbox removal), 0037 (deterministic CI baseline), 0038
-(Uvicorn runtime baseline). Plan 0039 is next; see the
+(Uvicorn runtime baseline), 0039 (application lifecycle and HTTP resources).
+Plan 0040 is next; see the
 [operational board](../plans/README.md#operational-board) for the current
 `NOW`/`QUEUED` state — this document does not duplicate it.
 
@@ -85,9 +86,9 @@ plan that closed it, or left open:
 - ~~PIN shape validation occurs below the HTTP schema and may escape as an
   internal error; concurrent unlock attempts can race the limiter.~~
   **Closed by Plan 0033.**
-- **Open.** Ollama, VLM, and embedding paths construct outbound HTTP clients
-  per call — no child plan has closed this yet (candidate: Plan 0039,
-  "shared HTTP transport").
+- ~~Ollama, VLM, and embedding paths construct outbound HTTP clients per
+  call.~~ **Closed by Plan 0039** — a single lifespan-owned `httpx.AsyncClient`
+  is threaded through every call site instead.
 - **Open.** `/health` is liveness-like but its documentation overstates
   readiness — candidate: Plan 0040.
 - ~~Uvicorn stops after the configured maximum request count even though no

@@ -23,7 +23,8 @@ section "Official FastAPI guidance", plus the upstream skill at
 
 The capsule (Plans 0032-0042) was audited before the official FastAPI skill was
 consulted. Comparing the two afterwards found four gaps that no child plan
-owns, plus a fifth found later during Plan 0038's own execution (Task 5).
+owns, plus a fifth found later during Plan 0038's own execution (Task 5) and a
+sixth found during Plan 0039's real-runtime acceptance (Task 6).
 None is urgent; all are small and verifiable, and leaving them undocumented
 means the next endpoint repeats them.
 
@@ -42,6 +43,8 @@ deliberately excluded are listed under non-goals.
   `test_transcribe_stream_resilience.py`, `test_vision_dialog.py`,
   `test_vision_endpoint.py`, `test_vision_enroll_service.py` — Task 5 only,
   return-type annotations only
+- `server/src/server/streaming.py`, `server/src/server/text_turn.py` —
+  Task 6 only, error-logging call sites
 
 No change to any URL, response body, status code, audio contract, or streaming
 event is in scope. Every route must answer at exactly the same path afterwards.
@@ -129,6 +132,28 @@ already named).
   the `StarletteDeprecationWarning` no longer appears anywhere in a full
   `just test` run.
 
+## Task 6: Quieter logging when Ollama is unreachable
+
+Found during Plan 0039's real-runtime acceptance (2026-09-03): with Ollama
+down, a voice turn correctly speaks the fallback phrase (P0-C6 — never
+silent) but `logger.error(..., exc_info=True)` also prints a full multi-frame
+httpx/httpcore traceback (`server/src/server/streaming.py:209`,
+`server/src/server/text_turn.py:229`) for what is an expected, already-handled
+operational condition (the local model server isn't up), not a code defect.
+Pre-existing behavior, not introduced by Plan 0039 — recorded here so it
+isn't lost, per the standing "fix everything found" policy.
+
+- [ ] Write a RED test asserting a connection-refused Ollama failure logs at
+  `WARNING` (or `ERROR` without `exc_info`) with a short, actionable message —
+  never a full traceback — while still correctly speaking the fallback
+  phrase and returning the same response contract.
+- [ ] Distinguish "Ollama unreachable" (`httpx.ConnectError`/
+  `httpx.ConnectTimeout`) from a genuinely unexpected failure (malformed
+  response, unknown exception) — only the latter still deserves
+  `exc_info=True`.
+- [ ] Apply the same fix to both call sites (`streaming.py`'s streaming path
+  and `text_turn.py`'s classic path) so the two paths stay consistent.
+
 ## Non-goals
 
 Upstream recommendations deliberately not adopted, with the reason:
@@ -157,3 +182,5 @@ Revert the PR as one unit. No schema, dependency or wire change.
 - The async rule matches upstream guidance and names the executor requirement.
 - `httpx2` is installed and the six affected annotations are corrected; the
   `StarletteDeprecationWarning` no longer appears in any test run.
+- An unreachable Ollama logs a short, actionable message — not a full
+  traceback — while a genuinely unexpected LLM failure still gets one.
