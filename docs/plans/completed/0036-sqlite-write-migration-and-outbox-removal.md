@@ -1,5 +1,8 @@
 # SQLite Write Migration and Outbox Removal Implementation Plan
 
+> **Status:** Completed 2026-09-02. Historical evidence only — this document
+> is not an instruction and authorizes nothing.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use
 > `superpowers:test-driven-development` and
 > `superpowers:verification-before-completion`.
@@ -190,9 +193,25 @@ why.
 - `just lint` — clean
 - `just typecheck` — mypy (90 files — one fewer than Plan 0035's 91, since
   `outbox.py` is now deleted) and pyright, 0 errors
-- `just test` — full suite (`not slow`), all passing after the two fixes above
+- `just test` — full suite (`not slow`), 997 passed, 9 deselected (slow), all
+  passing after the two fixes above
 - `just audit` — Ruff `S` and pip-audit, no known vulnerabilities
-- Real acceptance: pending — this plan touches every runtime write path used
-  by the live voice/auth flow (owner PIN, face consent, entity/fact storage,
-  memory), so a `just run-server` + `just run-robot` turn from Pipec is
-  required before this plan closes.
+- `just check` — full pre-commit suite, clean
+- CI on PR #101 — all five checks green (Analyze (Python), CodeQL, PR Title,
+  Quality & Security, Automated Tests)
+- Real acceptance: confirmed live. Pipec ran `just run-server` +
+  `just run-robot` through seven voice turns, three with a verified owner
+  identity (voice + face evidence, `role=owner person_id=1 evidence=1`) —
+  every request returned 200, zero exceptions, zero transaction errors in
+  the server log. The face-authenticated turns each fired
+  `household_authorization.record_authorization_decision` (a Group B
+  function this plan migrated onto `db.transaction()`), confirming it works
+  correctly under the live server, not just in tests. One unrelated finding
+  surfaced: asking "cuáles son mis hijos" (instead of the two exact patterns
+  `intent_resolution.py` matches — "quienes son mis hijos" /
+  "como se llaman mis hijos") fell through to the generic
+  `protected_household` branch, which authorizes and audits but has no data
+  action wired for it. Confirmed pre-existing and out of this plan's scope —
+  a Plan 0021 (typed intent resolution) exact-phrase gap, unrelated to
+  SQLite writes; no error, no exception, correctly audited. Pipec confirmed
+  closing without re-testing the exact phrase.
