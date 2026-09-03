@@ -1,5 +1,8 @@
 # Deterministic CI Baseline Implementation Plan
 
+> **Status:** Completed 2026-09-03. Historical evidence only — this document
+> is not an instruction and authorizes nothing.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use
 > `superpowers:test-driven-development` and
 > `superpowers:verification-before-completion`.
@@ -224,3 +227,10 @@ was a false-positive local pass masking a real non-hermetic test.
   changed; this plan touches only CI configuration, pytest markers, and
   tests. No voice-path or runtime behavior changes, matching Plan 0035's
   precedent for a config-only plan.
+- CI on PR #103 — first push turned "Automated Tests" genuinely red (the
+  Ollama/Piper gap above); the fix commit turned all five checks green
+  (Analyze (Python), CodeQL, PR Title, Quality & Security, Automated Tests),
+  confirming the new gate — Pyright, `uv lock --check`, the 80% coverage
+  floor, and the reclassified `integration` selection — actually runs and
+  passes end-to-end in the real CI environment, not just locally. Merged as
+  PR #103.
