@@ -20,7 +20,7 @@ from server.logging_setup import build_file_handler
 from server.memory import retention
 from server.request_context import RequestContextMiddleware, RequestIdFilter
 from server.routers import auth, chat, system, transcribe, vision
-from server.settings import settings
+from server.settings import Settings, settings
 
 _LOG_HANDLERS: dict[str, Any] = {
     "console": {
@@ -160,18 +160,43 @@ app.include_router(vision.router)
 mount_chat_ui(app)
 
 
+def build_uvicorn_kwargs(runtime_settings: Settings) -> dict[str, object]:
+    """Build the exact Uvicorn runtime flags from typed settings (Plan 0038).
+
+    A pure function, not inline kwargs on `uvicorn.run()`, so the runtime's
+    actual flags are a value that tests can construct and inspect directly —
+    reload, proxy trust, and the request-recycling ceiling are safety
+    invariants, not incidental config.
+
+    Args:
+        runtime_settings: The settings instance to read runtime flags from.
+
+    Returns:
+        Keyword arguments for `uvicorn.run()` — everything except the ASGI
+        app import string, which is the caller's own concern.
+    """
+    return {
+        "host": runtime_settings.server_host,
+        "port": runtime_settings.server_port,
+        "log_config": None,  # logging already configured via dictConfig above
+        "workers": runtime_settings.uvicorn_workers,
+        "reload": False,
+        "proxy_headers": runtime_settings.uvicorn_proxy_headers,
+        "server_header": False,
+        # RequestContextMiddleware (Plan 0032) already logs every request
+        # with timing and a correlation id — Uvicorn's own access log would
+        # just duplicate it.
+        "access_log": False,
+        "limit_concurrency": runtime_settings.uvicorn_limit_concurrency,
+        "limit_max_requests": runtime_settings.uvicorn_max_requests,
+        "timeout_keep_alive": runtime_settings.uvicorn_timeout_keep_alive,
+        "timeout_graceful_shutdown": runtime_settings.uvicorn_timeout_graceful_shutdown,
+    }
+
+
 def main() -> None:
     """Entry point for the serve script."""
     uvicorn.run(
         "server.main:app",
-        host=settings.server_host,
-        port=settings.server_port,
-        log_config=None,  # logging already configured via dictConfig above
-        workers=settings.uvicorn_workers,
-        reload=False,
-        proxy_headers=settings.uvicorn_proxy_headers,
-        server_header=False,
-        limit_concurrency=settings.uvicorn_limit_concurrency,
-        limit_max_requests=settings.uvicorn_max_requests,
-        timeout_keep_alive=5,
+        **build_uvicorn_kwargs(settings),  # type: ignore[arg-type]  # dict[str, object] can't statically match uvicorn.run's heterogeneous **kwargs; build_uvicorn_kwargs itself is unit-tested directly
     )
