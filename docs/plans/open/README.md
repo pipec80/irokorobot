@@ -43,17 +43,21 @@ reads, with a real gap found by its own RED test — an oversized `frame` field
 was invisible to every per-file check whenever face auth was off, the
 default.
 
+[Plan 0035](../completed/0035-sqlite-transaction-owner.md) closed 2026-09-02
+(PR #99): the `db.transaction()` primitive, unused by any repository yet.
+Its own RED test found the lock's design was wrong — bound to whichever event
+loop first awaited it — fixed by giving it the connection's own lifecycle.
+
 | Order | Plan | Outcome |
 |---:|---|---|
-| 1 | [0035](0035-sqlite-transaction-owner.md) | Tested transaction ownership primitive |
-| 2 | [0036](0036-sqlite-write-migration-and-outbox-removal.md) | Runtime-write migration and unused outbox removal |
-| 3 | [0037](0037-deterministic-ci-baseline.md) | Deterministic API/local integration gate at >=80% coverage |
-| 4 | [0038](0038-uvicorn-runtime-baseline.md) | Explicit one-worker runtime defaults |
-| 5 | [0039](0039-application-lifecycle-and-http-resources.md) | Failure-safe lifespan and shared HTTP transport |
-| 6 | [0040](0040-fastapi-contract-and-openapi-baseline.md) | Typed dependencies, OpenAPI, health/readiness |
-| 7 | [0041](0041-streaming-terminal-contract.md) | Coordinated terminal stream error |
-| 8 | [0042](0042-server-baseline-closure.md) | Full gates, runtime evidence, ADR review, and closure |
-| 9 | [0044](0044-official-fastapi-conventions.md) | Alignment with the official FastAPI conventions the audit predated |
+| 1 | [0036](0036-sqlite-write-migration-and-outbox-removal.md) | Runtime-write migration and unused outbox removal |
+| 2 | [0037](0037-deterministic-ci-baseline.md) | Deterministic API/local integration gate at >=80% coverage |
+| 3 | [0038](0038-uvicorn-runtime-baseline.md) | Explicit one-worker runtime defaults |
+| 4 | [0039](0039-application-lifecycle-and-http-resources.md) | Failure-safe lifespan and shared HTTP transport |
+| 5 | [0040](0040-fastapi-contract-and-openapi-baseline.md) | Typed dependencies, OpenAPI, health/readiness |
+| 6 | [0041](0041-streaming-terminal-contract.md) | Coordinated terminal stream error |
+| 7 | [0042](0042-server-baseline-closure.md) | Full gates, runtime evidence, ADR review, and closure |
+| 8 | [0044](0044-official-fastapi-conventions.md) | Alignment with the official FastAPI conventions the audit predated |
 
 Plans 0014 (P0 runtime-policy umbrella), 0020 (operator-QA remediation
 umbrella), and 0024 (owner-authenticated memory MVP design) closed with no
@@ -84,7 +88,7 @@ PC-2 completely — see
 [completed/0030](../completed/0030-real-camera-face-acceptance.md).
 
 Canonical execution order: **none — `NOW` is empty.** The server capsule is
-queued, beginning with 0035 only once Pipec authorizes promotion.
+queued, beginning with 0036 only once Pipec authorizes promotion.
 
 ## Status rule
 

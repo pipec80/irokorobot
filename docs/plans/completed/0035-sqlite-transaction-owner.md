@@ -1,8 +1,7 @@
 # SQLite Transaction Owner Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use
-> `superpowers:test-driven-development` and
-> `superpowers:verification-before-completion`.
+> **Status:** Completed 2026-09-02. Historical evidence only — this document
+> is not an instruction and authorizes nothing.
 
 **Goal:** Introduce one safe runtime transaction primitive without yet
 migrating every repository write.
@@ -217,4 +216,11 @@ untested gap, not chasing a regression.
 - Real acceptance: not applicable — the primitive is unused by any production
   repository at this boundary (Plan 0036 migrates callers). No voice-path
   behavior changes, so no `just run-server` / `just run-robot` turn is
-  required to close this plan.
+  required to close this plan. Pipec confirmed this explicitly, rather than
+  the step being silently skipped.
+
+## Closure
+
+Merged as PR #99 (`8c1a975`). No real-runtime acceptance applies, by design —
+confirmed above. The capsule's next child is Plan 0036, which migrates
+repositories onto this primitive. Closing this plan does not authorize it.
