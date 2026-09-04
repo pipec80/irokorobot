@@ -35,7 +35,7 @@ deferred, umbrella, or product-design plan because it also lives under
 | **CLOSED** | [0030 — real-camera face acceptance](completed/0030-real-camera-face-acceptance.md) | Executed 2026-09-01 — **provisional PASS**. 36 real genuine samples (Pipec, 3 lighting × 2 distance × 2 glasses) and 18 real impostor samples (3 unrelated household identities) held zero false accepts and zero false rejects; `face_authentication_match_threshold` moved from Plan 0029's unvalidated `0.25` to a measured `0.5815`, confirmed live with 3 accepted + 3 denied real turns through `just run-server` + `just run-robot`. Explicitly provisional — only 3 impostor identities were measured; a wider round is welcome later, not required to keep this closed. Closes only PC-2's real-camera acceptance — P1.2 still needs speaker evidence (PC-3) and fusion (PC-4); PC-4's anti-spoofing gap is untouched. |
 | **QUEUED** | none | The 0031 capsule (0032–0045) is fully closed. No child plan remains queued. |
 | **REFERENCE ONLY** | [0015](open/0015-personal-companion-design.md) | Umbrella/design document; never execute it as an independent implementation batch |
-| **REFERENCE ONLY** | [0031](open/0031-server-production-baseline-design.md) | Audited FastAPI/Starlette/Uvicorn hardening umbrella; preserves decisions and child order but is never executed as one batch. |
+| **REFERENCE ONLY** | [0031](open/0031-server-production-baseline-design.md) | Audited FastAPI/Starlette/Uvicorn hardening umbrella; preserves decisions and child order but is never executed as one batch. **Fully closed 2026-09-03** — every child (0032–0045) is done. |
 
 ## Queue rules
 
@@ -66,22 +66,21 @@ deferred, umbrella, or product-design plan because it also lives under
 | 7 | [0013 — voice controller bridge](completed/0013-p0-voice-controller-bridge.md) | R1-03 root cause fixed and confirmed 2026-08-25 | Closed |
 | 8 | [0029 — consented local face evidence](completed/0029-consented-local-face-evidence.md) | Merged (PR #73, 2026-08-25) | Closed — its own real-camera acceptance (Plan 0030) closed 2026-09-01 |
 | 9 | [0030 — real-camera face acceptance](completed/0030-real-camera-face-acceptance.md) | Executed 2026-09-01, provisional PASS | Closed. PC-2's real-camera acceptance only — P1.2's exit gate still needs speaker evidence (PC-3) and fusion (PC-4) |
-| 10 | [0031 — server production baseline design](open/0031-server-production-baseline-design.md) | Audited reference capsule, not executable | Now that 0030 closed, begin only with queued Plan 0032 once Pipec authorizes promotion; then follow children 0033–0042 one at a time |
+| 10 | [0031 — server production baseline design](open/0031-server-production-baseline-design.md) | Audited reference capsule, not executable | Closed — every child (0032–0045) executed in the locked order; capsule complete |
 | 11 | [0043 — dependency refresh](completed/0043-dependency-refresh.md) | Merged 2026-09-02 (PR #92), acceptance recorded | Closed |
 | 12 | [0032 — server privacy and request observability](completed/0032-server-privacy-and-request-observability.md) | Merged 2026-09-02 (PR #94), two acceptances recorded | Closed |
-| 13 | [0044 — official FastAPI conventions](open/0044-official-fastapi-conventions.md) | Written 2026-09-02 after consulting the upstream FastAPI skill | Queued behind the 0031 chain; independent of it, so it may be reordered |
-| 14 | [0033 — owner unlock HTTP hardening](completed/0033-owner-unlock-http-hardening.md) | Merged 2026-09-02 (PR #97), real HTTP acceptance recorded | Closed |
-| 15 | [0034 — upload and multipart security](completed/0034-upload-and-multipart-security.md) | Merged 2026-09-02 (PR #98), real HTTP-path acceptance recorded | Closed |
-| 16 | [0035 — SQLite transaction owner](completed/0035-sqlite-transaction-owner.md) | Merged 2026-09-02 (PR #99); no live acceptance turn applies, confirmed explicitly | Closed |
-| 17 | [0036 — SQLite write migration and outbox removal](completed/0036-sqlite-write-migration-and-outbox-removal.md) | Merged 2026-09-02 (PR #101), real live acceptance recorded | Closed |
-| 18 | [0037 — deterministic CI baseline](completed/0037-deterministic-ci-baseline.md) | Merged 2026-09-03 (PR #103); no live acceptance turn applies, config/tests only | Closed |
-| 19 | [0038 — Uvicorn runtime baseline](completed/0038-uvicorn-runtime-baseline.md) | Merged 2026-09-03 (PR #105); no live acceptance turn applies, config/tests only | Closed |
-| 20 | [0039 — application lifecycle and HTTP resources](completed/0039-application-lifecycle-and-http-resources.md) | Merged 2026-09-03 (PR #107), real live acceptance recorded | Closed |
-| 21 | [0040 — FastAPI contract and OpenAPI baseline](completed/0040-fastapi-contract-and-openapi-baseline.md) | Merged 2026-09-03 (PR #109); no live acceptance turn applies, no hot-path body changed | Closed |
-| 22 | [0041 — streaming terminal contract](completed/0041-streaming-terminal-contract.md) | Merged 2026-09-03 (PR #111), real live acceptance recorded (TTS-failure branch deferred by Pipec, covered in depth by automated tests) | Closed |
-| 23 | [0045 — async test client resources parity](completed/0045-async-test-client-resources-parity.md) | Merged 2026-09-03 (PR #113), discovered mid-execution of Plan 0042's own Task 2 gate; test-only fix, no live acceptance turn applies | Closed |
-| 24 | [0042 — server baseline closure](completed/0042-server-baseline-closure.md) | Closed 2026-09-03; documentation/verification only, real runtime acceptance recorded (Pipec) | Closed |
-| 25 | [0044 — official FastAPI conventions](completed/0044-official-fastapi-conventions.md) | Closed 2026-09-03; 6 tasks, no wire/schema change, no live acceptance turn applies (confirmed explicitly) | Closed. The 0031 capsule is fully complete |
+| 13 | [0033 — owner unlock HTTP hardening](completed/0033-owner-unlock-http-hardening.md) | Merged 2026-09-02 (PR #97), real HTTP acceptance recorded | Closed |
+| 14 | [0034 — upload and multipart security](completed/0034-upload-and-multipart-security.md) | Merged 2026-09-02 (PR #98), real HTTP-path acceptance recorded | Closed |
+| 15 | [0035 — SQLite transaction owner](completed/0035-sqlite-transaction-owner.md) | Merged 2026-09-02 (PR #99); no live acceptance turn applies, confirmed explicitly | Closed |
+| 16 | [0036 — SQLite write migration and outbox removal](completed/0036-sqlite-write-migration-and-outbox-removal.md) | Merged 2026-09-02 (PR #101), real live acceptance recorded | Closed |
+| 17 | [0037 — deterministic CI baseline](completed/0037-deterministic-ci-baseline.md) | Merged 2026-09-03 (PR #103); no live acceptance turn applies, config/tests only | Closed |
+| 18 | [0038 — Uvicorn runtime baseline](completed/0038-uvicorn-runtime-baseline.md) | Merged 2026-09-03 (PR #105); no live acceptance turn applies, config/tests only | Closed |
+| 19 | [0039 — application lifecycle and HTTP resources](completed/0039-application-lifecycle-and-http-resources.md) | Merged 2026-09-03 (PR #107), real live acceptance recorded | Closed |
+| 20 | [0040 — FastAPI contract and OpenAPI baseline](completed/0040-fastapi-contract-and-openapi-baseline.md) | Merged 2026-09-03 (PR #109); no live acceptance turn applies, no hot-path body changed | Closed |
+| 21 | [0041 — streaming terminal contract](completed/0041-streaming-terminal-contract.md) | Merged 2026-09-03 (PR #111), real live acceptance recorded (TTS-failure branch deferred by Pipec, covered in depth by automated tests) | Closed |
+| 22 | [0045 — async test client resources parity](completed/0045-async-test-client-resources-parity.md) | Merged 2026-09-03 (PR #113), discovered mid-execution of Plan 0042's own Task 2 gate; test-only fix, no live acceptance turn applies | Closed |
+| 23 | [0042 — server baseline closure](completed/0042-server-baseline-closure.md) | Closed 2026-09-03; documentation/verification only, real runtime acceptance recorded (Pipec) | Closed |
+| 24 | [0044 — official FastAPI conventions](completed/0044-official-fastapi-conventions.md) | Closed 2026-09-03; 6 tasks, no wire/schema change, no live acceptance turn applies (confirmed explicitly) | Closed. The 0031 capsule is fully complete |
 
 Supporting active designs and open acceptance work are listed in the
 [open-plan index](open/README.md). Closed execution evidence is isolated in
