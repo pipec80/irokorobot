@@ -1,10 +1,12 @@
 # Iroko server production baseline
 
-- **Status:** Target architecture; children 0032–0041 closed, 0042 and 0044
-  remain
+- **Status:** **Closed 2026-09-03** (Plan 0042). Children 0032–0041 and 0045
+  executed, merged, and verified against this baseline's own gates; Plan
+  0044 (a separate, not-yet-authorized alignment follow-on) remains outside
+  this closure's scope.
 - **Audited commit:** `7d68641` (original audit); see "Verified baseline" for
   the current state after the closed children
-- **Audit date:** 2026-08-31; last status refresh 2026-09-03
+- **Audit date:** 2026-08-31; closed 2026-09-03
 - **Scope:** `server/` and only the minimum `robot/` changes required by a
   shared HTTP or streaming contract
 
@@ -31,16 +33,20 @@ This target is subordinate to runtime `AGENTS.md`,
 ADRs, and immutable API/audio contracts. The executable decomposition lives
 under [`docs/plans/open/`](../plans/open/README.md).
 
-Plan 0031 is a reference umbrella and is never executed as a batch. Plan 0043
-(dependency refresh) ran first, as designed, then 0032–0040 closed in order:
-0032 (privacy/observability), 0033 (owner-unlock hardening), 0034
+Plan 0031 is a reference umbrella and was never executed as a batch. Plan
+0043 (dependency refresh) ran first, as designed, then 0032–0041 closed in
+order: 0032 (privacy/observability), 0033 (owner-unlock hardening), 0034
 (upload/multipart security), 0035 (SQLite transaction owner), 0036 (SQLite
 write migration and outbox removal), 0037 (deterministic CI baseline), 0038
 (Uvicorn runtime baseline), 0039 (application lifecycle and HTTP resources),
 0040 (FastAPI contract and OpenAPI baseline), 0041 (streaming terminal
-contract). Plan 0042 is next; see the
-[operational board](../plans/README.md#operational-board) for the current
-`NOW`/`QUEUED` state — this document does not duplicate it.
+contract). Plan 0045 (async test client resources parity) was discovered
+and closed mid-execution of Plan 0042's own gate. Plan 0042 itself closed
+this document — see "Verified baseline" and its own execution notes
+(`docs/plans/completed/0042-server-baseline-closure.md`) for the full,
+measured evidence. Plan 0044 remains queued separately; see the
+[operational board](../plans/README.md#operational-board) for its current
+state — this document does not duplicate it.
 
 ADRs 0010-0013 were reviewed and accepted on 2026-09-02, so the child plans may
 cite them as authority.
@@ -61,8 +67,10 @@ At the original audited commit (`7d68641`, 2026-08-31):
 
 After Plan 0037 closed (2026-09-03): the deterministic gate itself changed —
 CI runs `not slow and not hardware and not eval` (not `not integration`) with
-`--cov-fail-under=80`, and the local target is **1015 tests, 89.77%
-coverage** (997 after 0032–0037, plus 18 from Plan 0038). Re-run
+`--cov-fail-under=80`. Plan 0042 re-ran this exact command at closure
+(2026-09-03): **1059 passed, 9 deselected, 90.03% coverage**. The full local
+`just test` (`-n auto`, no marker exclusion) passed **1068 tests**, run
+twice back to back. Re-run
 `pytest -m "not slow and not hardware and not eval" --cov=server/src
 --cov=robot/src --cov-fail-under=80` for the current number at any later
 commit — this document does not update opportunistically.
@@ -139,6 +147,16 @@ audit; one is closed:
   (`uv add --group dev httpx2`) works but also breaks six
   `-> httpx.Response` annotations across five integration test files outside
   that plan's scope — tracked as Plan 0044's Task 5.
+
+A third gap was found and closed during Plan 0042's own Task 2 gate:
+
+- ~~Four hand-rolled `ASGITransport` async test clients never set
+  `request.app.state.resources`, so `ResourcesDep`-dependent routes 500 in
+  isolation and pass only when an earlier test in the same `pytest-xdist`
+  worker happened to set it first — CI's single-process run masked this by
+  collection-order accident.~~ **Closed by Plan 0045** — matched all four to
+  the two already-correct sibling files' pattern. `just test` (`-n auto`):
+  1068 passed, twice back to back.
 
 
 ## Architectural invariants
