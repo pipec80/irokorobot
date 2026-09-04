@@ -21,15 +21,13 @@ to see the code, tests, verified gap, and accountable plan for each outcome.
 | Plan | Implementation reality | Reuse | Remaining closure |
 |---|---|---|---|
 | [0015](0015-personal-companion-design.md) | Approved product design; PC-1 code and acceptance are both complete (Plans 0025–0028); PC-2 code, tests, and real-camera acceptance are complete (Plans 0029/0030) | Controller, policy/audit, v4 child tools, identity-session seam, onboarding primitives, STT/TTS, face engine, calibrated face-authentication threshold | Speaker evidence (PC-3), fusion (PC-4), visual companion acceptance (PC-5), and family profile expansion (PC-6) remain later slices |
-| [0031](0031-server-production-baseline-design.md) | Audited reference-only server capsule; no production implementation | Existing FastAPI/Starlette/Uvicorn, HTTP/audio contracts, tests and server/robot boundary | Children 0032–0042 and 0045 closed — the capsule's own closure (Plan 0042) is done. Only Plan 0044 remains, pending Pipec's explicit authorization |
+| [0031](0031-server-production-baseline-design.md) | Audited reference-only server capsule; no production implementation | Existing FastAPI/Starlette/Uvicorn, HTTP/audio contracts, tests and server/robot boundary | **Fully closed 2026-09-03** — every child (0032–0045) is closed; no work remains under this umbrella |
 
-## Queued server-production capsule
+## Server-production capsule — CLOSED 2026-09-03
 
-Plan 0030 closed 2026-09-01, lifting the blocker Queue rule 7 named — but
-promotion is not automatic. These plans remain **not authorized** until
-Pipec explicitly promotes the first one. Plan 0031 locks their order; only
-the first unfinished child may be promoted after a narrow assumption
-recheck.
+Plan 0030 closed 2026-09-01, lifting the blocker Queue rule 7 named. Plan
+0031 locked the execution order of its children below; all of them (0032–
+0045) are now closed, described here as historical record.
 
 [Plan 0043](../completed/0043-dependency-refresh.md) ran before this chain and
 closed on 2026-09-02. It already reshaped two children: 0034 dropped its
@@ -140,9 +138,25 @@ still match the merged code, filled in `server/README.md` and `SECURITY.md`,
 and refreshed `current-state.md`/`architecture/README.md`/
 `server-production-baseline.md` from measured evidence.
 
-| Order | Plan | Outcome |
-|---:|---|---|
-| 1 | [0044](0044-official-fastapi-conventions.md) | Alignment with the official FastAPI conventions the audit predated, plus the httpx2 migration Plan 0038 found and the Ollama-down logging gap Plan 0039 found |
+[Plan 0044](../completed/0044-official-fastapi-conventions.md) closed
+2026-09-03, the 0031 capsule's last child: 6 tasks, each RED-tested first.
+`chat_ui.py` now uses `app.frontend()` instead of a manual `StaticFiles`
+mount — a throwaway prototype proved the manual mount can be shadowed by a
+later-registered API route sharing its path, locked in by a permanent
+regression test. All four multi-route routers moved to `APIRouter(prefix=
+...)` + relative paths, proven identical by the existing route-pinning
+test. Removed 2 genuinely redundant `response_model=` declarations
+(OpenAPI byte-identical before/after). Found the plan's named stale-rule
+file already correct and fixed the real one instead
+(`python-style.md`, not `fastapi.md`). Installed `httpx2`, fixed 7 affected
+type annotations — the `StarletteDeprecationWarning` is gone from every
+test run. Added `llm.is_connectivity_failure()` so an unreachable Ollama
+logs `WARNING` with no traceback while a genuinely unexpected LLM failure
+still gets `ERROR` with `exc_info=True`, applied identically to both the
+streaming and classic paths. 1073 tests, all green. No live voice-turn
+acceptance — no wire change, confirmed explicitly by Pipec.
+
+**The 0031 capsule is now fully closed — no child plan remains queued.**
 
 Plans 0014 (P0 runtime-policy umbrella), 0020 (operator-QA remediation
 umbrella), and 0024 (owner-authenticated memory MVP design) closed with no
@@ -172,9 +186,9 @@ PC-2 completely — see
 [completed/0029](../completed/0029-consented-local-face-evidence.md) and
 [completed/0030](../completed/0030-real-camera-face-acceptance.md).
 
-Canonical execution order: **none — `NOW` is empty.** The server capsule is
-closed except its last child, Plan 0044, queued pending Pipec's explicit
-authorization to promote it.
+Canonical execution order: **none — `NOW` is empty.** The server capsule
+(Plan 0031, children 0032–0045) is fully closed; no child plan remains
+queued.
 
 ## Status rule
 

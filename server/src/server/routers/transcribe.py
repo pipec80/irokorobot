@@ -58,7 +58,7 @@ from server.uploads import read_limited_upload
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["Audio"])
+router = APIRouter(prefix="/transcribe", tags=["Audio"])
 
 
 def _today() -> date:
@@ -322,7 +322,7 @@ async def _read_optional_frame(frame: UploadFile) -> bytes:
 
 
 @router.post(
-    "/transcribe",
+    "",
     responses=error_responses((413, "Audio or attached frame exceeds the upload size limit")),
 )
 async def transcribe(
@@ -442,7 +442,7 @@ async def transcribe(
 
 
 @router.post(
-    "/transcribe/stream",
+    "/stream",
     responses=error_responses((413, "Audio or attached frame exceeds the upload size limit")),
 )
 async def transcribe_stream(

@@ -1,9 +1,8 @@
 # Iroko server production baseline
 
-- **Status:** **Closed 2026-09-03** (Plan 0042). Children 0032–0041 and 0045
-  executed, merged, and verified against this baseline's own gates; Plan
-  0044 (a separate, not-yet-authorized alignment follow-on) remains outside
-  this closure's scope.
+- **Status:** **Fully closed 2026-09-03**. Every child (0032–0045, including
+  0044) executed, merged, and verified against this baseline's own gates.
+  No child plan remains.
 - **Audited commit:** `7d68641` (original audit); see "Verified baseline" for
   the current state after the closed children
 - **Audit date:** 2026-08-31; closed 2026-09-03
@@ -41,12 +40,14 @@ write migration and outbox removal), 0037 (deterministic CI baseline), 0038
 (Uvicorn runtime baseline), 0039 (application lifecycle and HTTP resources),
 0040 (FastAPI contract and OpenAPI baseline), 0041 (streaming terminal
 contract). Plan 0045 (async test client resources parity) was discovered
-and closed mid-execution of Plan 0042's own gate. Plan 0042 itself closed
-this document — see "Verified baseline" and its own execution notes
-(`docs/plans/completed/0042-server-baseline-closure.md`) for the full,
-measured evidence. Plan 0044 remains queued separately; see the
-[operational board](../plans/README.md#operational-board) for its current
-state — this document does not duplicate it.
+and closed mid-execution of Plan 0042's own gate. Plan 0042 verified the
+complete baseline and closed this document — see "Verified baseline" and
+its own execution notes
+(`docs/plans/completed/0042-server-baseline-closure.md`). Plan 0044
+(official FastAPI conventions) closed last — see
+`docs/plans/completed/0044-official-fastapi-conventions.md` — completing
+the entire 0031 capsule. No further child plan is queued under this
+umbrella.
 
 ADRs 0010-0013 were reviewed and accepted on 2026-09-02, so the child plans may
 cite them as authority.
@@ -140,13 +141,14 @@ audit; one is closed:
   so test isolation depends on ordering.~~ **Closed by Plan 0032** — the
   `client` fixture is function-scoped, with the rationale recorded directly
   in its docstring.
-- **Open**, diagnosed and scoped: `filterwarnings = ["error"]` does not cover
-  import-time warnings raised while loading `conftest.py`. An active
-  `StarletteDeprecationWarning` about `starlette.testclient` with `httpx`
-  passes through the suite unnoticed. Plan 0038 confirmed the fix
-  (`uv add --group dev httpx2`) works but also breaks six
-  `-> httpx.Response` annotations across five integration test files outside
-  that plan's scope — tracked as Plan 0044's Task 5.
+- ~~`filterwarnings = ["error"]` does not cover import-time warnings raised
+  while loading `conftest.py`. An active `StarletteDeprecationWarning` about
+  `starlette.testclient` with `httpx` passes through the suite unnoticed.~~
+  **Closed by Plan 0044 Task 5** — `httpx2` installed as a dev dependency;
+  the 7 (not 6 — the original count was stale) affected
+  `-> httpx.Response` annotations across five integration test files
+  updated to `-> httpx2.Response`. The warning no longer appears anywhere
+  in a full `just test` run.
 
 A third gap was found and closed during Plan 0042's own Task 2 gate:
 
@@ -157,7 +159,6 @@ A third gap was found and closed during Plan 0042's own Task 2 gate:
   collection-order accident.~~ **Closed by Plan 0045** — matched all four to
   the two already-correct sibling files' pattern. `just test` (`-n auto`):
   1068 passed, twice back to back.
-
 
 ## Architectural invariants
 

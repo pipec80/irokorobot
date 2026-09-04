@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
 import httpx
+import httpx2
 import pytest
 from server.exceptions import TranscriptionError
 from server.settings import settings
@@ -20,7 +21,7 @@ def _mock_media(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(tts, "synthesize", AsyncMock(return_value=("QQ==", 10)))
 
 
-def _post_stream(client: TestClient, audio: bytes) -> httpx.Response:
+def _post_stream(client: TestClient, audio: bytes) -> httpx2.Response:
     """Post one WAV 16kHz, mono, int16 stream request."""
     return client.post(
         "/transcribe/stream",

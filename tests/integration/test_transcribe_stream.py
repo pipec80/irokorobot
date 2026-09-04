@@ -11,6 +11,7 @@ from uuid import UUID
 from fastapi import BackgroundTasks
 from fastapi.testclient import TestClient
 import httpx
+import httpx2
 import pytest
 from server.cognition.identity import (
     ActivePersonContext,
@@ -71,7 +72,7 @@ def _mock_stt_and_tts(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(llm_streaming, "generate_response_stream", local_stream)
 
 
-def _post_stream(client: TestClient, audio: bytes) -> httpx.Response:
+def _post_stream(client: TestClient, audio: bytes) -> httpx2.Response:
     """Post one WAV 16kHz, mono, int16 stream request."""
     return client.post(
         "/transcribe/stream",
@@ -853,6 +854,60 @@ def test_stream_llm_failure_speaks_fallback_phrase(
     assert audio_events[-1]["text"] == settings.llm_fallback_phrase
     assert events[-1]["type"] == "done"
     record.assert_not_called()
+
+
+@pytest.mark.integration
+def test_stream_llm_connection_refused_logs_without_a_traceback(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """An unreachable Ollama is an expected, already-handled condition
+    (P0-C6 speaks the fallback phrase) — it must log a short, actionable
+    message, never a full httpx/httpcore traceback (Plan 0044 Task 6)."""
+
+    async def failing_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
+        raise LLMError("LLM API call failed") from httpx.ConnectError("Connection refused")
+        yield ""
+
+    monkeypatch.setattr(llm_streaming, "generate_response_stream", failing_stream)
+
+    with caplog.at_level(logging.WARNING, logger="server.streaming"):
+        response = _post_stream(client, silence_wav_bytes)
+
+    assert response.status_code == 200
+    audio_events = [e for e in _parse_ndjson(response.text) if e["type"] == "audio"]
+    assert audio_events[-1]["text"] == settings.llm_fallback_phrase
+
+    records = [r for r in caplog.records if r.name == "server.streaming"]
+    assert records, "expected a log record for the LLM failure"
+    assert all(r.exc_info is None for r in records), "must not log a traceback"
+
+
+@pytest.mark.integration
+def test_stream_llm_unexpected_failure_still_logs_a_traceback(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A genuinely unexpected LLM failure (not a connectivity issue) must
+    keep its full traceback — only the connectivity case gets quieter."""
+
+    async def failing_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
+        raise LLMError("malformed provider output")
+        yield ""
+
+    monkeypatch.setattr(llm_streaming, "generate_response_stream", failing_stream)
+
+    with caplog.at_level(logging.WARNING, logger="server.streaming"):
+        response = _post_stream(client, silence_wav_bytes)
+
+    assert response.status_code == 200
+    records = [r for r in caplog.records if r.name == "server.streaming"]
+    assert records, "expected a log record for the LLM failure"
+    assert any(r.exc_info is not None for r in records), "must keep the traceback"
 
 
 @pytest.mark.integration

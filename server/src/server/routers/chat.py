@@ -22,7 +22,7 @@ from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
 from server.schemas_chat import ChatRequest, ChatResponse
 from server.text_turn import TextTurnResult, process_text_turn
 
-router = APIRouter(tags=["Chat"])
+router = APIRouter(prefix="/chat", tags=["Chat"])
 
 
 def _today() -> date:
@@ -50,7 +50,7 @@ def _event_from_request(request: ChatRequest) -> CognitiveEvent[TextTurnPayload]
     )
 
 
-@router.post("/chat", response_model=ChatResponse)
+@router.post("")
 async def chat(
     resources: ResourcesDep,
     owner_unlock_service: OwnerUnlockServiceDep,

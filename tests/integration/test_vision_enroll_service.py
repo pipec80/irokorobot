@@ -15,7 +15,7 @@ from server import llm, vision
 
 if TYPE_CHECKING:
     from fastapi.testclient import TestClient
-    import httpx
+    import httpx2
 
 _FAKE_JPEG = cv2.imencode(".jpg", np.zeros((10, 10, 3), dtype=np.uint8))[1].tobytes()
 
@@ -27,7 +27,7 @@ def _vision_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(llm, "generate_response", AsyncMock())
 
 
-def _post_enroll(client: TestClient, image: bytes, name: str) -> httpx.Response:
+def _post_enroll(client: TestClient, image: bytes, name: str) -> httpx2.Response:
     """POST one image-contract frame and person name."""
     return client.post(
         "/vision/enroll",

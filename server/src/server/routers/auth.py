@@ -69,7 +69,7 @@ from server.uploads import read_limited_upload
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["Auth"])
+router = APIRouter(prefix="/auth/owner", tags=["Auth"])
 
 _UNAUTHORIZED_DETAIL = "Owner authentication failed"
 
@@ -101,7 +101,7 @@ def _is_loopback(request: Request) -> bool:
 
 
 @router.post(
-    "/auth/owner/unlock",
+    "/unlock",
     responses=error_responses(
         (401, "Wrong PIN or missing/non-owner profile"),
         (403, "Caller is not on loopback"),
@@ -255,8 +255,7 @@ async def _read_face_image(image: UploadFile) -> bytes:
 
 
 @router.post(
-    "/auth/owner/face/enroll",
-    response_model=FaceEnrollResponse,
+    "/face/enroll",
     responses=error_responses(
         (401, "Absent, expired, consumed, or otherwise unauthorized token"),
         (403, "Caller is not on loopback"),
@@ -324,7 +323,7 @@ async def enroll_owner_face(
 
 
 @router.post(
-    "/auth/owner/face/revoke",
+    "/face/revoke",
     status_code=status.HTTP_204_NO_CONTENT,
     responses=error_responses(
         (401, "Absent, expired, consumed, or otherwise unauthorized token"),

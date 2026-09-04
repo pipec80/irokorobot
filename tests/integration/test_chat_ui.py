@@ -1,7 +1,9 @@
 """Integration tests for the local diagnostic chat user interface."""
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 import pytest
+from server.chat_ui import mount_chat_ui
 from server.main import app
 
 _CLIENT = TestClient(app)
@@ -50,6 +52,27 @@ def test_chat_ui_mount_does_not_change_openapi_contract() -> None:
 
     assert "/chat" in paths
     assert all(not path.startswith("/chat-ui") for path in paths)
+
+
+@pytest.mark.integration
+def test_frontend_serving_lets_an_api_route_win_over_a_static_asset() -> None:
+    """An API path operation must win over a same-path frontend asset,
+    regardless of registration order (Plan 0044 Task 1) — a manual
+    `app.mount(StaticFiles(...))` does not guarantee this; `app.frontend()`
+    does. `/chat-ui/chat.css` is a real static asset; this proves a path
+    operation declared after the frontend mount still wins that exact path.
+    """
+    test_app = FastAPI()
+    mount_chat_ui(test_app)
+
+    @test_app.get("/chat-ui/chat.css")
+    def _api_route_sharing_the_static_path() -> dict[str, str]:
+        return {"api": "wins"}
+
+    response = TestClient(test_app).get("/chat-ui/chat.css")
+
+    assert response.headers["content-type"].startswith("application/json")
+    assert response.json() == {"api": "wins"}
 
 
 @pytest.mark.integration
