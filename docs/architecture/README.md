@@ -51,9 +51,10 @@ specific conflict instead of redesigning the project implicitly.
 - [`current-state.md`](current-state.md): verified implementation snapshot and
   known gaps.
 - [`server-production-baseline.md`](server-production-baseline.md): audited
-  target rules and bounded execution portfolio for FastAPI, Starlette,
-  Uvicorn, uploads, privacy, SQLite, lifecycle, and HTTP contracts. Plan 0030
-  remains ahead of this queued work.
+  target rules and execution portfolio for FastAPI, Starlette, Uvicorn,
+  uploads, privacy, SQLite, lifecycle, and HTTP contracts. Children
+  0032–0041 and 0045 are closed; 0042 (this baseline's own closure) and
+  0044 remain.
 - [`../roadmap/personal-companion-delivery-map.md`](../roadmap/personal-companion-delivery-map.md):
   canonical mapping from the personal-companion outcome to existing code,
   tests, verified gaps, and the one accountable executable plan.

@@ -312,29 +312,31 @@ evidence returns `ambiguous`; the administrative recovery path remains
 available. PC-2's own real-camera calibration is closed; the exit gate still
 needs PC-3 (speaker evidence) and PC-4 (fusion), neither started.
 
-### X1 — Server production baseline checkpoint
+### X1 — Server production baseline checkpoint — **CLOSED 2026-09-03**
 
 Plan 0030 closed the real-camera acceptance it owned (2026-09-01); the
-bounded priority since then is the server-production capsule documented in
-[Plan 0031](../plans/open/0031-server-production-baseline-design.md). It runs
-through children 0032–0042 one at a time before the roadmap promotes the next
-new identity capability. Children 0032–0041 are closed (2026-09-02/03); 0042
-remains, needing Pipec's explicit authorization — see the
-[operational board](../plans/README.md#operational-board) for the current
-`NOW`/`QUEUED` state.
+bounded priority since then was the server-production capsule documented in
+[Plan 0031](../plans/open/0031-server-production-baseline-design.md), run
+through children 0032–0042 (plus 0045, a gap Plan 0042's own gate found) one
+at a time. All are closed as of 2026-09-03 — [Plan
+0042](../plans/completed/0042-server-baseline-closure.md) verified the
+complete baseline through automated and real runtime evidence and closed
+the capsule; only Plan 0044 (a separate, not-yet-authorized alignment
+follow-on) remains.
 
-This checkpoint does not add a companion feature and does not close P1.2. It
-standardizes the HTTP/ASGI foundation that later face, speaker, fusion, and
-family work will reuse. Plan 0031 is reference-only.
+This checkpoint did not add a companion feature and does not close P1.2. It
+standardized the HTTP/ASGI foundation that later face, speaker, fusion, and
+family work will reuse. Plan 0031 stays reference-only.
 
-**Exit gate**
+**Exit gate — met**
 
 - privacy, upload, PIN, SQLite, CI, Uvicorn, lifecycle, OpenAPI, and streaming
-  child plans meet their own tests/reviews;
-- full deterministic coverage remains at least 80%;
-- the real server/robot path passes the capsule closure scenarios;
-- ADR 0010–0013 stay accepted and matched by the merged code, or the checkpoint remains
-  open.
+  child plans met their own tests/reviews;
+- full deterministic coverage: 90.03% (required 80%);
+- the real server/robot path passed all 7 capsule closure scenarios
+  (Pipec, 2026-09-03);
+- ADR 0010–0013 remain accepted and were re-confirmed matched by the merged
+  code at closure.
 
 ### P1.3 — Personal companion acceptance
 

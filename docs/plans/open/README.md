@@ -21,7 +21,7 @@ to see the code, tests, verified gap, and accountable plan for each outcome.
 | Plan | Implementation reality | Reuse | Remaining closure |
 |---|---|---|---|
 | [0015](0015-personal-companion-design.md) | Approved product design; PC-1 code and acceptance are both complete (Plans 0025–0028); PC-2 code, tests, and real-camera acceptance are complete (Plans 0029/0030) | Controller, policy/audit, v4 child tools, identity-session seam, onboarding primitives, STT/TTS, face engine, calibrated face-authentication threshold | Speaker evidence (PC-3), fusion (PC-4), visual companion acceptance (PC-5), and family profile expansion (PC-6) remain later slices |
-| [0031](0031-server-production-baseline-design.md) | Audited reference-only server capsule; no production implementation | Existing FastAPI/Starlette/Uvicorn, HTTP/audio contracts, tests and server/robot boundary | Children 0032–0041 closed; 0042 remains, pending Pipec's explicit authorization to promote 0042 |
+| [0031](0031-server-production-baseline-design.md) | Audited reference-only server capsule; no production implementation | Existing FastAPI/Starlette/Uvicorn, HTTP/audio contracts, tests and server/robot boundary | Children 0032–0042 and 0045 closed — the capsule's own closure (Plan 0042) is done. Only Plan 0044 remains, pending Pipec's explicit authorization |
 
 ## Queued server-production capsule
 
@@ -115,10 +115,34 @@ path, both `outcome=ok`; the synthetic-TTS-failure branch was deferred by
 Pipec's own choice, already covered in depth by 6 automated tests at the
 unit and HTTP level.
 
+[Plan 0045](../completed/0045-async-test-client-resources-parity.md) closed
+2026-09-03 (PR #113): discovered mid-execution of Plan 0042's own Task 2
+gate — 4 integration test files' hand-rolled `ASGITransport` clients never
+set `app.state.resources`, so any `ResourcesDep`-dependent route 500s
+unless an earlier test in the same `pytest-xdist` worker happened to set it
+first as a side effect; CI stayed green only by collection-order accident.
+Fixed by matching the 2 already-correct sibling files' pattern in all 4
+affected files. Test-only change, no production code touched. `just test`
+— 1068 passed, run twice back to back, 0 failures.
+
+[Plan 0042](../completed/0042-server-baseline-closure.md) closed 2026-09-03:
+full gates and real runtime evidence, closing the whole 0031 capsule. Task 1's
+static audit (sensitive logs, transaction ownership, HTTP resources, upload
+reads) passed clean. Task 2 re-ran every gate — `just test` 1068 passed, the
+exact deterministic CI coverage command 1059 passed at 90.03% coverage,
+OpenAPI contract tests 10 passed — finding and routing the Plan 0045 gap
+through its own bounded plan rather than fixing it opportunistically here.
+Task 3's real runtime acceptance (Pipec) covered all 7 required cases:
+health, readiness, two full stream turns, malformed PIN (422), wrong PIN
+(401), oversized audio (413 in 4ms), classic `/transcribe` upload→STT→VAD
+plumbing, and a clean graceful shutdown. Task 4 re-confirmed ADRs 0010–0013
+still match the merged code, filled in `server/README.md` and `SECURITY.md`,
+and refreshed `current-state.md`/`architecture/README.md`/
+`server-production-baseline.md` from measured evidence.
+
 | Order | Plan | Outcome |
 |---:|---|---|
-| 1 | [0042](0042-server-baseline-closure.md) | Full gates, runtime evidence, ADR review, and closure |
-| 2 | [0044](0044-official-fastapi-conventions.md) | Alignment with the official FastAPI conventions the audit predated, plus the httpx2 migration Plan 0038 found and the Ollama-down logging gap Plan 0039 found |
+| 1 | [0044](0044-official-fastapi-conventions.md) | Alignment with the official FastAPI conventions the audit predated, plus the httpx2 migration Plan 0038 found and the Ollama-down logging gap Plan 0039 found |
 
 Plans 0014 (P0 runtime-policy umbrella), 0020 (operator-QA remediation
 umbrella), and 0024 (owner-authenticated memory MVP design) closed with no
@@ -149,7 +173,8 @@ PC-2 completely — see
 [completed/0030](../completed/0030-real-camera-face-acceptance.md).
 
 Canonical execution order: **none — `NOW` is empty.** The server capsule is
-queued, beginning with 0042 only once Pipec authorizes promotion.
+closed except its last child, Plan 0044, queued pending Pipec's explicit
+authorization to promote it.
 
 ## Status rule
 
