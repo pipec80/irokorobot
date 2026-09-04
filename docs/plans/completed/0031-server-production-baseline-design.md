@@ -1,7 +1,15 @@
 # Iroko Server Production Baseline Design
 
-> **Status:** Reference-only umbrella. Never execute this document as one
-> implementation batch.
+> **Status:** Reference-only umbrella — **fully closed 2026-09-03**. Never
+> execute this document as one implementation batch. Every child (0032–0045)
+> is closed; see the
+> [dependency-order table](../README.md#dependency-order) for the full
+> execution record — each plan's own evidence lives alongside this file.
+> Moved here because everything this umbrella governed already closed
+> elsewhere, not because it was itself executed — same pattern as
+> [0014](0014-p0-runtime-policy-hardening-design.md),
+> [0020](0020-p0-operator-qa-remediation-design.md), and
+> [0024](0024-owner-authenticated-memory-mvp-design.md).
 
 **Goal:** Establish a durable, secure, idiomatic FastAPI/Starlette/Uvicorn
 baseline after Plan 0030 closes, without changing framework or adding unused

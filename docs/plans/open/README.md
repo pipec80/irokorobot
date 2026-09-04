@@ -21,11 +21,11 @@ to see the code, tests, verified gap, and accountable plan for each outcome.
 | Plan | Implementation reality | Reuse | Remaining closure |
 |---|---|---|---|
 | [0015](0015-personal-companion-design.md) | Approved product design; PC-1 code and acceptance are both complete (Plans 0025–0028); PC-2 code, tests, and real-camera acceptance are complete (Plans 0029/0030) | Controller, policy/audit, v4 child tools, identity-session seam, onboarding primitives, STT/TTS, face engine, calibrated face-authentication threshold | Speaker evidence (PC-3), fusion (PC-4), visual companion acceptance (PC-5), and family profile expansion (PC-6) remain later slices |
-| [0031](0031-server-production-baseline-design.md) | Audited reference-only server capsule; no production implementation | Existing FastAPI/Starlette/Uvicorn, HTTP/audio contracts, tests and server/robot boundary | **Fully closed 2026-09-03** — every child (0032–0045) is closed; no work remains under this umbrella |
 
 ## Server-production capsule — CLOSED 2026-09-03
 
-Plan 0031 locked the execution order of its children; all of them (0032–0045,
+[Plan 0031](../completed/0031-server-production-baseline-design.md) locked
+the execution order of its children; all of them (0032–0045,
 including Plan 0043's dependency refresh which ran first, and Plan 0045, a
 test-isolation gap Plan 0042's own gate found) are closed. Full per-plan
 evidence lives in each plan's own file under [`completed/`](../completed/)
