@@ -209,7 +209,10 @@ async def stream_pipeline(
         _log_stream_metrics(state, _elapsed_ms(request_start))
         raise
     except (LLMError, ValueError) as exc:
-        logger.error("Streaming LLM failed — speaking fallback phrase: %s", exc, exc_info=True)
+        if llm.is_connectivity_failure(exc):
+            logger.warning("Streaming LLM unreachable — speaking fallback phrase: %s", exc)
+        else:
+            logger.error("Streaming LLM failed — speaking fallback phrase: %s", exc, exc_info=True)
         state.outcome = (
             StreamOutcome.PARTIAL_FALLBACK if state.audio_chunks else StreamOutcome.LLM_FALLBACK
         )

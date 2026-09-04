@@ -3,19 +3,19 @@
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
 
 _CHAT_UI_DIRECTORY = Path(__file__).parent / "static" / "chat"
 
 
 def mount_chat_ui(app: FastAPI) -> None:
-    """Mount the package-local diagnostic chat assets.
+    """Serve the package-local diagnostic chat assets as low-priority routes.
+
+    Uses `app.frontend()` (Plan 0044) rather than a manual
+    `StaticFiles` mount: FastAPI path operations are always checked first,
+    and these frontend files only if no normal route matched — a guarantee
+    a manual mount does not give regardless of registration order.
 
     Args:
         app: FastAPI application that owns the local chat endpoint.
     """
-    app.mount(
-        "/chat-ui",
-        StaticFiles(directory=_CHAT_UI_DIRECTORY, html=True),
-        name="chat-ui",
-    )
+    app.frontend("/chat-ui", directory=_CHAT_UI_DIRECTORY)

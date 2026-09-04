@@ -1,6 +1,7 @@
 from collections.abc import Generator
 from datetime import UTC, datetime
 import inspect
+import logging
 from unittest.mock import AsyncMock, Mock
 from uuid import UUID
 
@@ -369,6 +370,51 @@ async def test_llm_fallback_does_not_contaminate_memory(
     assert result.llm_failed is True
     assert working.get_history("web-a") == []
     scheduler.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_llm_connection_refused_logs_without_a_traceback(
+    http_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """An unreachable Ollama is expected and already handled (fallback phrase)
+    — it must log a short, actionable message, never a full httpx/httpcore
+    traceback (Plan 0044 Task 6)."""
+    error = LLMError("LLM API call failed")
+    error.__cause__ = httpx.ConnectError("refused")
+    monkeypatch.setattr(text_turn.llm, "generate_response", AsyncMock(side_effect=error))
+
+    with caplog.at_level(logging.WARNING, logger="server.text_turn"):
+        result = await text_turn.process_text_turn(http_client, "Question", "web-b")
+
+    assert result.response == settings.llm_fallback_phrase
+    records = [r for r in caplog.records if r.name == "server.text_turn"]
+    assert records, "expected a log record for the LLM failure"
+    assert all(r.exc_info is None for r in records), "must not log a traceback"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_llm_unexpected_failure_still_logs_a_traceback(
+    http_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A genuinely unexpected LLM failure (not a connectivity issue) must
+    keep its full traceback — only the connectivity case gets quieter."""
+    monkeypatch.setattr(
+        text_turn.llm, "generate_response", AsyncMock(side_effect=LLMError("malformed output"))
+    )
+
+    with caplog.at_level(logging.WARNING, logger="server.text_turn"):
+        result = await text_turn.process_text_turn(http_client, "Question", "web-c")
+
+    assert result.response == settings.llm_fallback_phrase
+    records = [r for r in caplog.records if r.name == "server.text_turn"]
+    assert records, "expected a log record for the LLM failure"
+    assert any(r.exc_info is not None for r in records), "must keep the traceback"
 
 
 @pytest.mark.unit

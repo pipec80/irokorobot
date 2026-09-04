@@ -317,12 +317,13 @@ needs PC-3 (speaker evidence) and PC-4 (fusion), neither started.
 Plan 0030 closed the real-camera acceptance it owned (2026-09-01); the
 bounded priority since then was the server-production capsule documented in
 [Plan 0031](../plans/open/0031-server-production-baseline-design.md), run
-through children 0032–0042 (plus 0045, a gap Plan 0042's own gate found) one
-at a time. All are closed as of 2026-09-03 — [Plan
+through children 0032–0045 (0045 was a gap Plan 0042's own gate found) one
+at a time. **All are closed as of 2026-09-03** — [Plan
 0042](../plans/completed/0042-server-baseline-closure.md) verified the
 complete baseline through automated and real runtime evidence and closed
-the capsule; only Plan 0044 (a separate, not-yet-authorized alignment
-follow-on) remains.
+the capsule; [Plan 0044](../plans/completed/0044-official-fastapi-conventions.md)
+closed last, aligning the HTTP layer with official FastAPI conventions.
+No child plan remains under Plan 0031.
 
 This checkpoint did not add a companion feature and does not close P1.2. It
 standardized the HTTP/ASGI foundation that later face, speaker, fusion, and

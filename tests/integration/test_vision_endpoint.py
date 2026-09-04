@@ -16,9 +16,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from fastapi.testclient import TestClient
-    import httpx
+    import httpx2
 
-    PostFn = Callable[[TestClient, bytes], httpx.Response]
+    PostFn = Callable[[TestClient, bytes], httpx2.Response]
 
 
 def _encode(frame: np.ndarray, ext: str = ".jpg") -> bytes:
@@ -46,7 +46,7 @@ def vision_on(monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[misc]
     monkeypatch.setattr(settings, "vision_enabled", True)
 
 
-def _post_image(client: TestClient, payload: bytes) -> httpx.Response:
+def _post_image(client: TestClient, payload: bytes) -> httpx2.Response:
     """POST *payload* as an image upload to /vision/describe."""
     return client.post(
         "/vision/describe",
@@ -54,7 +54,7 @@ def _post_image(client: TestClient, payload: bytes) -> httpx.Response:
     )
 
 
-def _post_enroll(client: TestClient, payload: bytes) -> httpx.Response:
+def _post_enroll(client: TestClient, payload: bytes) -> httpx2.Response:
     """POST *payload* as an image upload to /vision/enroll."""
     return client.post(
         "/vision/enroll",
@@ -102,7 +102,7 @@ def test_enroll_is_quarantined_without_calling_enrollment(
     enroll.assert_not_awaited()
 
 
-def _post_respond(client: TestClient, payload: bytes) -> httpx.Response:
+def _post_respond(client: TestClient, payload: bytes) -> httpx2.Response:
     """POST *payload* as an image upload to /vision/respond."""
     return client.post(
         "/vision/respond",

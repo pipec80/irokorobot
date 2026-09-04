@@ -26,7 +26,7 @@ from server import llm, stt, tts
 
 if TYPE_CHECKING:
     from fastapi.testclient import TestClient
-    import httpx
+    import httpx2
 
 # A tiny but genuinely decodable JPEG — validation now decodes the frame
 # (PROMPT B3), so magic bytes alone are no longer enough for these tests.
@@ -52,7 +52,7 @@ def _vision_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-def _post_respond(client: TestClient, image: bytes, text: str) -> httpx.Response:
+def _post_respond(client: TestClient, image: bytes, text: str) -> httpx2.Response:
     """POST a frame plus the question to /vision/respond."""
     return client.post(
         "/vision/respond",

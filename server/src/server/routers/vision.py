@@ -43,7 +43,7 @@ from server.vision.perception import perceive_scene
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["Vision"])
+router = APIRouter(prefix="/vision", tags=["Vision"])
 
 _BIOMETRIC_ENROLLMENT_UNAVAILABLE = (
     "Face enrollment is temporarily unavailable pending local administration and consent policy."
@@ -172,7 +172,7 @@ async def _read_contract_image(image: UploadFile) -> bytes:
 
 
 @router.post(
-    "/vision/describe",
+    "/describe",
     responses=error_responses(
         (413, "Image exceeds the upload size limit"),
         (503, "Vision disabled, or the VLM backend is unavailable"),
@@ -210,7 +210,7 @@ async def vision_describe(
 
 
 @router.post(
-    "/vision/enroll",
+    "/enroll",
     responses=error_responses((503, "Vision disabled, or biometric enrollment unavailable")),
 )
 async def vision_enroll(
@@ -243,7 +243,7 @@ async def vision_enroll(
 
 
 @router.post(
-    "/vision/respond",
+    "/respond",
     responses=error_responses((503, "Vision is disabled for a scene-description question")),
 )
 async def vision_respond(

@@ -17,6 +17,27 @@ from server.settings import settings
 
 logger = logging.getLogger(__name__)
 
+
+def is_connectivity_failure(exc: BaseException) -> bool:
+    """Return whether *exc*'s root cause is Ollama being unreachable.
+
+    Distinguishes an expected, already-handled operational condition (the
+    local model server isn't up — P0-C6 still speaks the fallback phrase)
+    from a genuinely unexpected failure (Plan 0044 Task 6). `generate_response`
+    always wraps the real cause via ``raise LLMError(...) from exc``, so the
+    original ``httpx`` exception, if any, is `exc.__cause__`.
+
+    Args:
+        exc: The exception a caller caught — typically an `LLMError`.
+
+    Returns:
+        True for a connection-refused or connect-timeout root cause; False
+        for anything else (malformed output, HTTP error status, etc.),
+        which still deserves a full traceback.
+    """
+    return isinstance(exc.__cause__, (httpx.ConnectError, httpx.ConnectTimeout))
+
+
 # Public: shared with llm_streaming.py for its "EMOTION:xxx\n" tag protocol.
 VALID_EMOTIONS = frozenset({"neutral", "joy", "anger", "sadness", "surprise"})
 FALLBACK_EMOTION = "neutral"

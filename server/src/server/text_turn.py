@@ -226,7 +226,10 @@ async def _generate(client: httpx.AsyncClient, prepared: PreparedTextTurn) -> tu
         )
         return response, emotion, False
     except (LLMError, ValueError) as exc:
-        logger.error("LLM failed — using fallback phrase: %s", exc, exc_info=True)
+        if llm.is_connectivity_failure(exc):
+            logger.warning("LLM unreachable — using fallback phrase: %s", exc)
+        else:
+            logger.error("LLM failed — using fallback phrase: %s", exc, exc_info=True)
         return settings.llm_fallback_phrase, "neutral", True
 
 
