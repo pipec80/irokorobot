@@ -21,5 +21,6 @@ supersedes it and update the old one's status.
 | [0011](0011-sqlite-transaction-ownership.md) | Give each SQLite write transaction one coroutine owner | Accepted |
 | [0012](0012-line-delimited-stream-terminal-events.md) | Require a terminal event in the line-delimited stream | Accepted |
 | [0013](0013-local-http-network-posture.md) | Keep the HTTP server local-first by default | Accepted |
+| [0014](0014-orthogonal-social-and-responsibility-profiles.md) | Keep social and responsibility profiles orthogonal | Accepted |
 
 New ADRs start from [`0000-adr-template.md`](0000-adr-template.md).

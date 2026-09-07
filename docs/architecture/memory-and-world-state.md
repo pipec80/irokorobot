@@ -19,10 +19,12 @@ tables, inverse relationship queries, and legacy owner-onboarding code that is
 not a public trusted flow. SQLite and `sqlite-vec` are sufficient for the next
 stages; a new database or vector service is not justified.
 
-The current model also has limits that later plans must handle explicitly:
+The current runtime still has limits that later plans must handle explicitly:
 
-- a relation target is stored as text rather than as an entity identifier;
-- fact replacement effectively assumes one active value per predicate;
+- the legacy writer stores relation targets as text and replaces facts as if
+  every predicate had one active value; the isolated V4 foundation already
+  supports entity-ID relationships, cardinality and lifecycle, but is not the
+  canonical conversational writer;
 - semantic retrieval returns the nearest items without a relevance threshold;
 - retrieval is not yet filtered by the active person's authorization;
 - provenance, validity periods, verification state, and sensitivity are not
@@ -143,6 +145,45 @@ The LLM may propose a candidate; it does not directly establish household
 truth. Normalization, deduplication, contradiction handling, cardinality, and
 authorization are deterministic services around the model.
 
+## Longitudinal conversational memory contract
+
+A durable autobiographical item must carry enough semantics to answer:
+
+- whose memory or data it is;
+- who asserted it and through which source;
+- when the underlying event occurred and when the assertion was made;
+- whether it is a fact, relationship, episode, preference, observation or
+  inference;
+- whether it is proposed, confirmed, disputed, superseded, revoked or expired;
+- its visibility, sensitivity, consent basis and retention policy;
+- which earlier item it corrects or supersedes;
+- which embeddings, summaries, caches or other projections derive from it.
+
+This is a conceptual contract, not an instruction to add all fields to one
+table. Facts, relationships, episodes and audit records keep their distinct
+representations while sharing stable references and policy semantics.
+
+Automatic extraction creates a **candidate**, never household truth. Promotion
+may be automatic only when an explicit predicate policy permits it; otherwise
+the authorized subject or delegate confirms or rejects it. Inference remains
+labelled as inference even when its confidence is high.
+
+Conversational memory requires capabilities narrower than a generic personal
+read grant:
+
+- `read_personal_conversation_memory`;
+- `propose_personal_memory`;
+- `confirm_personal_memory`;
+- `correct_personal_memory`;
+- `forget_personal_memory`.
+
+Identity evidence can help resolve the actor, but only policy grants one of
+these actions and its data scope. An owner or administrator does not acquire
+another adult's private memory by role alone.
+
+The executable quality contract is defined in
+[longitudinal-conversational-memory-evaluation.md](longitudinal-conversational-memory-evaluation.md).
+
 ## Retrieval order
 
 Retrieval happens only after active-person resolution and access evaluation.
@@ -168,6 +209,20 @@ relationships through the existing deterministic tool. Semantic/vector
 retrieval remains appropriate for fuzzy recollection; lexical retrieval for
 exact identifiers; documentary RAG for future imported sources. None of those
 mechanisms may bypass the same pre-retrieval authorization boundary.
+
+## Directed household messages are not generic memory
+
+A recado is sensitive temporal data addressed to a recipient, not a fuzzy fact
+for household-wide RAG. Its minimum semantics include sender, recipient,
+content, creation/expiry times, `recipient_only` visibility, delivery state and
+audit references. Retrieval requires the confirmed authorized recipient; an
+unknown speaker, guest, administrator or other family member receives neither
+the content nor a hint that the recado exists unless an explicit policy says
+otherwise.
+
+Episodes may reference that a delivery occurred, subject to retention policy,
+but copying the message into an unrestricted conversation summary or embedding
+would violate its visibility.
 
 ## World state is not long-term memory
 
@@ -203,6 +258,18 @@ Examples:
 - `the kitchen was 30 C for two hours` may become a household event if a policy
   explicitly needs it;
 - none of these facts should automatically become part of a person's profile.
+
+## Memory, events, outcomes, and feedback are separate
+
+An event records what happened; memory preserves authorized knowledge about the
+past; an outcome records the observed result of a decision or action; feedback
+records an authorized evaluation of that result. These domains may link by
+stable identifiers but do not collapse into one prompt or table.
+
+Outcomes and feedback are not implemented as a general subsystem. They become
+necessary before Iroko can claim it learns from real-world results, especially
+for future `care` or `education` responsibilities. More conversation storage is
+not a substitute for that evidence loop.
 
 ## One onboarding service, several channels
 

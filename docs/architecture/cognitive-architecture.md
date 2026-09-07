@@ -14,6 +14,13 @@ personality, and eventually a physical body. The same brain is exercised first
 through the PC microphone, camera, speakers, and local web interface. Hardware
 later replaces adapters; it does not redefine cognition.
 
+The same brain is configured along two independent product axes defined by
+[ADR 0014](../adr/0014-orthogonal-social-and-responsibility-profiles.md): social
+profile (`personal` or `family`) and responsibility (`companion`, future
+`care`, or future `education`). The current target is `personal + companion`;
+the other combinations change policy and bounded capabilities, not the core
+architecture.
+
 The target experience is:
 
 > “Iroko, ¿cuántos hijos tengo, qué edades tienen y qué ves?”

@@ -6,6 +6,8 @@
 >
 > **Personal-companion traceability:** [Delivery map](personal-companion-delivery-map.md)
 >
+> **Longitudinal-memory traceability:** [Delivery map](conversational-memory-delivery-map.md)
+>
 > **Rule:** Finish and verify one bounded plan before preparing or implementing
 > the next. Priority does not authorize all work in a phase at once.
 
@@ -20,6 +22,13 @@ and explicit uncertainty.
 The ordering optimizes for false-positive avoidance and privacy, not feature
 count. A capable model without identity and authorization is less useful in a
 home than a smaller system that knows when it does not know.
+
+Iroko uses two independent product axes per
+[ADR 0014](../adr/0014-orthogonal-social-and-responsibility-profiles.md): the
+social profile (`personal` or `family`) and the responsibility
+(`companion`, `care`, or `education`). The current target is
+`personal + companion`; `care` and `education` remain unimplemented future
+responsibilities with no product claim.
 
 ## Priority summary
 
@@ -37,13 +46,91 @@ home than a smaller system that knows when it does not know.
 | P1.1 | Owner-authenticated memory MVP | Uses a one-use local unlock to prove the authorized “Máximo y Dominga” path and paired denial. | P0-C6 audible streaming |
 | P1.2 | Progressive biometric identity | Adds consented face, then speaker evidence through the same authentication contract. | P1.1, P0.2 |
 | X1 | Server production baseline | Freezes privacy, upload, SQLite, CI, Uvicorn, lifecycle, OpenAPI, and streaming rules before adding the next identity capability. | Plan 0030 real-camera closure |
-| P1.3 | Personal companion acceptance | Demonstrates authentication, authorized memory, visual scene, recovery, and denial through the real PC path. | P1.1–P1.2 |
+| P1.3 | Personal companion acceptance | Demonstrates authentication, authorized longitudinal memory, visual scene, recovery, correction, forgetting, and denial through the real PC path. | P1.1–P1.2, P2.2 longitudinal gate |
 | P2.1 | Situated perception and WorldState | Represents fresh observations independently of durable memory. | P1 controller/policy |
-| P2.2 | Memory lifecycle and retrieval quality | Adds confirmation, contradiction, relevance thresholds, consolidation, and forgetting. | P0.4–P0.5 |
+| P2.2 | Memory lifecycle and retrieval quality | Adds a reproducible benchmark, candidates, scoped authorization, V4 canonical writes, protected episodes, relevance thresholds, correction and complete forgetting. | P0.4–P0.5, P1 identity |
 | P2.3 | Bounded adaptation and initiative | Makes Iroko more personal and proactive without prompt growth or surveillance. | P1 identity, P2.1–P2.2 |
+| P2.4 | Outcomes and feedback contracts | Separates observed results and authorized feedback from events and memory before any responsibility claims learning from reality. | P2.1–P2.2 |
 | P3.1 | Family onboarding UI and consent | Builds the family profile, selective privacy, and reviewable household truth. | P1 acceptance, P2.2 |
 | P3.2 | Family companion interaction | Extends social interaction to multiple members without blanket data access. | P3.1, P1.2, P2.1 |
+| Future care | Bounded care capabilities | Adds only individually validated, non-clinical or clinically governed capabilities; no blanket caregiver authority. | Accepted companion core, P2.4, separate ADR and plans |
+| Future education | Bounded education capabilities | Adds individually validated learning-support capabilities without creating a second brain. | Accepted companion core, P2.4, separate ADR and plans |
 | P4 | Cloud escalation and physical body | Evaluates optional cloud and safe embodiment only after cognitive policy is stable. | P0–P3 acceptance gates |
+
+## Canonical pre-electronics delivery portfolio
+
+This is the single canonical linearization of the remaining product work before
+P4.2 may begin. The specialized delivery maps explain individual tracks, but
+they do not define competing queues. If another document presents a shorter
+chain, this table governs the cross-track order.
+
+The portfolio contains 19 required delivery slices. A slice is a stable product
+outcome, not a reserved plan number and not implementation authorization. Only
+the one item shown as `NOW` in [`docs/plans/README.md`](../plans/README.md) may
+be executed, and only after the user explicitly authorizes its `Ready` plan.
+The `Order` column is the product delivery cursor; `Depends on` lists actual
+hard gates and does not invent a technical dependency merely because two rows
+are adjacent.
+
+| Order | Track | Delivery slice | Verifiable outcome / exit evidence | Depends on | Commitment | Current state | Detail and executable ownership |
+|---:|---|---|---|---|---|---|---|
+| 1 | Evaluation | CM-0 — reproducible longitudinal baseline | A versioned synthetic benchmark runs reproducibly; the harness finishes GREEN while the measured product remains honestly RED or passes without relaxed thresholds. | Closed P0/PC-1/PC-2 foundations | Required | `Ready`, not started | [Memory map](conversational-memory-delivery-map.md#secuencia-de-entrega); [Plan 0046](../plans/open/0046-reproducible-longitudinal-memory-baseline.md) |
+| 2 | Biometrics | PC-3A — speaker calibration study | A frozen local backend and versioned genuine/impostor corpus measure FAR/FRR, replay, quality, failure posture and CPU feasibility without granting identity or authorization. | CM-0 closed; Plan 0047 readiness amendment approved | Required | `Queued`, not executable | [Plan 0015](../plans/open/0015-personal-companion-design.md#pc-3--speaker-evidence--unstarted-pc-3a-plan-queued); [Plan 0047](../plans/open/0047-speaker-evidence-calibration-study.md) |
+| 3 | Biometrics | PC-3B — consented speaker runtime evidence | Local enrollment, consent, revocation and verification produce typed `VOICE` evidence; missing, weak or failed evidence remains `unknown` and grants no capability directly. | PC-3A measured and accepted | Required | Unplanned | [Plan 0015](../plans/open/0015-personal-companion-design.md#pc-3--speaker-evidence--unstarted-pc-3a-plan-queued); future bounded plan |
+| 4 | Identity | PC-4 — conservative multimodal fusion | PIN/session, face and voice evidence are fused deterministically; conflict is `ambiguous`; expiry, absence, replay/spoof risk, provider failure and local recovery have explicit outcomes. | PC-3B; existing PC-2 face evidence | Required | Unplanned | [Plan 0015](../plans/open/0015-personal-companion-design.md#pc-4--conservative-identity-fusion--unstarted); future bounded plan |
+| 5 | Memory policy | CM-1 — explicit personal-memory capabilities | Policy distinguishes `read`, `propose`, `confirm`, `correct` and `forget` scopes without turning identity into authorization. | PC-4; current identity and policy foundations | Required | Unplanned | [Memory map](conversational-memory-delivery-map.md); future bounded plan |
+| 6 | Memory identity | CM-2 — authorized actor propagation | The resolved authorized actor reaches generic conversation without prompt name interpolation or implicit expansion of the current grant. | CM-1 | Required | Unplanned | [Memory map](conversational-memory-delivery-map.md#secuencia-de-entrega); future bounded plan |
+| 7 | Memory writes | CM-3 — candidates and canonical V4 promotion | Automatic extraction creates candidates; deterministic confirmation/promotion writes canonical V4 facts and relations with provenance and contradiction handling. | CM-0, CM-1, CM-2 | Required | Unplanned | [Memory map](conversational-memory-delivery-map.md#lifecycle); future bounded plan |
+| 8 | Memory privacy | CM-4 — protected episodes | Episodes declare owner, subjects, visibility, sensitivity, consent, validity and retention instead of relying on unstructured metadata. | CM-3 | Required | Unplanned | [Memory map](conversational-memory-delivery-map.md#secuencia-de-entrega); future bounded plan |
+| 9 | Memory retrieval | CM-5 — authorized relevant retrieval | Authorization, lifecycle and validity filter candidates before the prompt; relevance policy permits zero results and preserves provenance. | CM-4 | Required | Unplanned | [Memory map](conversational-memory-delivery-map.md#recuperacion); future bounded plan |
+| 10 | Memory lifecycle | CM-6 — complete correction and forgetting | Correction and deletion propagate through facts, relations, episodes, embeddings, summaries and caches without protected content surviving in retrieval. | CM-3 through CM-5 | Required | Unplanned | [Memory map](conversational-memory-delivery-map.md#olvido); future bounded plan |
+| 11 | Memory acceptance | CM-7 — real longitudinal scenario | The real server/robot path proves `learn -> restart -> recall -> correct -> restart -> recall current truth -> forget -> do not disclose`. | CM-0 through CM-6, PC-3, PC-4 | Required | Unplanned | [Memory map](conversational-memory-delivery-map.md#secuencia-de-entrega); future bounded plan |
+| 12 | Personal product | PC-5 / P1.3 — integrated personal acceptance | Pipec completes approved voice, biometric, protected-memory, visual, correction, forgetting, denial, degradation and audible-output scenarios with literal transcripts and audit outcomes. | PC-4 and CM-7 longitudinal gate | Required | Unplanned | [Plan 0015](../plans/open/0015-personal-companion-design.md#pc-5--integrated-personal-companion-acceptance--unstarted); future bounded plan |
+| 13 | Perception | P2.1 — structured perception and `WorldState` | Typed observations for people, objects, sensor state and location carry source, time, confidence and expiry; stale state expires and simulated sensors can later be replaced by firmware. | P1 controller and policy | Required | Unplanned | [Memory and world state](../architecture/memory-and-world-state.md#world-state-is-not-long-term-memory); future bounded plan |
+| 14 | Documentary retrieval | R2 — minimum authorized source | One local Markdown or text source type is versioned, classified, chunked and retrieved with owner, visibility, provenance and deletion semantics. | CM lifecycle and authorization stable | Required | Unplanned | [RAG evolution](../architecture/rag-and-memory-retrieval.md); future ADR/plan as required |
+| 15 | Hybrid retrieval | R3 — lexical and hybrid baseline | Local lexical and vector retrieval operate over authorized candidates; RRF, deduplication, zero-result behavior and measured quality cover semantic and exact-term queries. | R2; CM-5 retrieval boundary | Required | Unplanned | [RAG evolution](../architecture/rag-and-memory-retrieval.md); future ADR/plan as required |
+| 16 | Interaction | P2.3 — bounded adaptation and initiative | Personality remains coherent and private; transient interactions do not become permanent traits; initiative is explainable, sparse, rate-limited, cancelable and disableable. | P2.1, P2.2 and accepted personal identity | Required | Unplanned | [P2.3](#p23--personality-adaptation-and-bounded-initiative); future bounded plan |
+| 17 | Learning evidence | P2.4 — outcomes and feedback | Decisions/actions link to observed outcomes and authorized feedback without collapsing events, telemetry or autobiographical memory or claiming unobserved learning. | P2.1 and P2.2 | Required | Unplanned | [P2.4](#p24--outcomes-and-feedback-contracts); future bounded plan |
+| 18 | Family | P3.1 / PC-6A — onboarding and consent | One idempotent service creates household members, roles, relationships, visibility and revocable consent; owner/admin does not inherit another adult's private data. | PC-5, P2.2 | Required | Unplanned | [P3.1](#p31--family-onboarding-ui-and-consent); [Plan 0015](../plans/open/0015-personal-companion-design.md#pc-6--family-profile--unstarted); future bounded plan |
+| 19 | Family | P3.2 / PC-6B — family interaction acceptance | Multi-member acceptance covers adults, children, guests, pets, identity conflict, personal/shared/`recipient_only` isolation and biometric-failure recovery. | P3.1, P1.2, P2.1 | Required | Unplanned | [P3.2](#p32--family-companion-interaction); future bounded plan |
+
+After all 19 required slices close with their own evidence, P4.2 may open its
+first physical-architecture plan. That plan must decide the Raspberry Pi versus
+microcontroller responsibility boundary, typed action proposals, capability
+checks, electrical and motion safety, simulation, emergency stop and human
+acceptance before motion. P4.1 cloud escalation is optional and does not block
+P4.2.
+
+### Cross-cutting gates and conditional work
+
+These items do not increase the 19-slice count. Required cross-cutting evidence
+belongs in the plans that create the load or behavior; conditional work opens
+only after a measured need.
+
+| Item | Classification | Required disposition | Owned by |
+|---|---|---|---|
+| CPU, RAM, token and latency budget | Cross-cutting required evidence | Measure bounded contention among STT, LLM, VLM, embeddings and consolidation; do not create an unbounded parallel workload or a separate scheduler by default. | CM/R2/R3 implementation gates and PC-5 acceptance |
+| Diarization / simultaneous speakers | Required decision, conditional implementation | Before P3.2 becomes `Ready`, choose and test either an explicit turn-taking product constraint or local diarization. Speaker verification alone is not diarization. | P3.2 readiness design; a separate plan only if diarization is selected |
+| R4 PDF, OCR, advanced chunking and reranking | Conditional | Open only when real documentary cases or R3 metrics prove Markdown/text plus base hybrid retrieval insufficient. | [RAG evolution](../architecture/rag-and-memory-retrieval.md) |
+| Alternative TTS | Conditional, non-blocking | Piper and the WAV contract remain the accepted baseline; compare another adapter only for a measured product need. | Future plan outside the pre-electronics critical path |
+| Care and education | Future responsibilities, non-blocking | Require separate ADRs, policies, risks, outcomes/feedback and acceptance after the companion core. | Future responsibility profiles |
+
+### How Chat and Codex advance the portfolio
+
+1. Read this table to identify the first row whose dependencies are closed.
+2. Confirm the operational cursor in [`docs/plans/README.md`](../plans/README.md#operational-board).
+3. Execute only the single explicitly authorized `Ready` plan in `NOW`.
+4. Close it with observed RED/GREEN evidence, review, required gates and real
+   acceptance where applicable.
+5. Update this row, the specialized delivery map, current state and the plan
+   router in the same closure documentation change.
+6. Re-audit the next row before assigning a plan number or writing its detailed
+   plan. New evidence may split or combine implementation plans, but it must not
+   silently remove the row's product outcome.
+
+The current cursor is CM-0: Plan 0046 is the sole `Ready`/`NOW` plan. Plan 0047
+preserves the next reviewed handoff in `Queued`; rows 3–19 are not executable
+and their plan numbers are intentionally unreserved.
 
 ## C0 — Documentation foundation
 
@@ -343,14 +430,17 @@ family work will reuse. Plan 0031 stays reference-only.
 
 Demonstrate the full companion flow with `just run-server` and
 `just run-robot`: voice, face/voice evidence, authorized personal data,
-on-demand scene description, deterministic claims, and Piper output. A raw
+longitudinal memory, on-demand scene description, deterministic claims, and
+Piper output. A raw
 frame never enters the text LLM; the controller receives only typed,
 policy-approved evidence and scene results.
 
-**Exit gate:** Pipec can complete approved personal scenarios; an unknown
-speaker cannot read protected data; a model outage degrades safely; and every
+**Exit gate:** Pipec can complete approved personal scenarios, including
+`aprendo -> reinicio -> recuerdo -> corrijo -> olvido`; an unknown speaker
+cannot read protected data; a model outage degrades safely; and every
 acceptance transcript records literal STT, route, response, audible output, and
-audit outcome.
+audit outcome. P1.3 executes only after P2.2's longitudinal gate, even though
+the roadmap groups it under P1.
 
 ## P2 — Situated cognition and memory quality
 
@@ -367,17 +457,25 @@ timestamps, confidence, and expiry; frames are not retained by default.
 
 ### P2.2 — Memory lifecycle and retrieval
 
-Add candidate confirmation, deduplication, contradictions, supersession,
-retention/forgetting, authorized semantic retrieval, relevance thresholds, and
-reviewable consolidation. Then add documentary and hybrid retrieval in the
-staged order defined by [RAG, memory, and hybrid
+Bring the longitudinal runtime slice forward after PC-4 and before P1.3. CM-0
+is intentionally earlier: Plan 0046 measures the current RED baseline without
+changing runtime. Follow CM-1 through CM-7 after PC-4 in the
+[conversational-memory delivery map](conversational-memory-delivery-map.md):
+start with a reproducible RED benchmark; add candidate confirmation,
+deduplication, contradictions, supersession, scoped authorization, V4 canonical
+writes, protected episodes, relevance thresholds, authorized semantic
+retrieval and complete forgetting. Then add documentary and hybrid retrieval
+in the staged order defined by [RAG, memory, and hybrid
 retrieval](../architecture/rag-and-memory-retrieval.md). Derived indexes must be
-rebuildable and deletions must propagate. This work does not block the P1.1
-structured “Máximo y Dominga” acceptance scenario.
+rebuildable and deletions must propagate. This does not reopen the completed
+P1.1 structured “Máximo y Dominga” proof.
 
-**Exit gate:** low-relevance queries return no memory; protected memories never
-enter model context; corrections and deletions affect summaries/embeddings;
-evaluation cases cover precision, privacy, temporal validity, and provenance.
+**Exit gate:** the versioned evaluation defined in
+[longitudinal-conversational-memory-evaluation.md](../architecture/longitudinal-conversational-memory-evaluation.md)
+passes; low-relevance queries return no memory; protected memories never enter
+model context; corrections expose only the current truth; forgetting reaches
+facts, episodes, summaries, embeddings and caches; and the real server/robot
+path proves persistence, correction, abstention and cross-person privacy.
 
 ### P2.3 — Personality adaptation and bounded initiative
 
@@ -389,6 +487,20 @@ rate limits.
 **Exit gate:** one coherent personality survives across roles; no private
 cross-person prompt leakage occurs; transient interactions do not become
 permanent traits; proactive prompts are explainable, sparse, and disableable.
+
+### P2.4 — Outcomes and feedback contracts
+
+After the longitudinal memory core is accepted, define typed outcomes for
+observable results and typed feedback for authorized evaluation of those
+results. Keep both distinct from events, telemetry and autobiographical memory;
+link them through stable provenance instead of copying them into a generic
+prompt. This phase does not authorize online model training or autonomous
+policy changes.
+
+**Exit gate:** a decision or action can be linked to an observed outcome and
+authorized feedback; missing outcomes remain unknown; private feedback is
+access-controlled; corrections and deletion propagate according to policy; and
+no system claims to have learned from a result that was never observed.
 
 ## P3 — Family companion and UI
 
@@ -418,6 +530,24 @@ person's private data.
 
 **Exit gate:** multi-member acceptance covers adults, children, guests, pets,
 identity conflicts, data isolation, and recovery after biometric failure.
+
+## Future responsibility profiles — not scheduled
+
+`care` and `education` are orthogonal to the `personal`/`family` social axis;
+they are not later maturity labels for the same permissions. They reuse the
+accepted companion core only after outcomes and feedback have explicit
+contracts.
+
+A future `care` capability must distinguish beneficiary, family member,
+caregiver, health professional, technical administrator and emergency contact.
+A future `education` capability must distinguish student, tutor and educator.
+No role inherits another person's private data or unrestricted action authority.
+
+Before either responsibility is scheduled it needs a separate accepted ADR,
+bounded capability policy, risk classification, deterministic failure posture,
+outcome/feedback contract and real acceptance criteria. Until then, Iroko is a
+companion; the roadmap makes no nurse, clinical-monitoring or autonomous-teacher
+claim.
 
 ## P4 — Cloud escalation and physical body
 

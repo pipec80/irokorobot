@@ -2,9 +2,9 @@
 
 > **Status:** Canonical cross-plan traceability map.
 >
-> **Observed:** 2026-08-21 on `main` after PR #56 (Plan 0025), PR #57
-> (Plan 0026), and PR #64 (Plan 0027) merged, and Plan 0028's real-hardware
-> runtime acceptance executed with a PASS verdict for the PC-1 slice.
+> **Observed:** implementation evidence through 2026-09-03; product ordering
+> aligned 2026-09-07. PC-1 is accepted, PC-2 has provisional calibrated
+> acceptance, and the server baseline capsule is closed.
 >
 > **Execution authority:** None. This map explains what exists, what is
 > missing, and which bounded plan owns each gap. Only the single `NOW` item in
@@ -56,7 +56,9 @@ batches:
 | Reference | Role | Implemented content it preserves | Open outcome it governs |
 |---|---|---|---|
 | [0014](../plans/completed/0014-p0-runtime-policy-hardening-design.md) | P0 runtime-policy umbrella | C1–C7, all implemented and operator-confirmed | None — combined P0 acceptance passed 2026-08-25 |
-| [0015](../plans/open/0015-personal-companion-design.md) | Product direction | Reuse of the existing local cognitive/audio/memory foundations | Personal-companion stages PC-1 through PC-6 |
+| [0015](../plans/open/0015-personal-companion-design.md) | Product direction | Reuse of the existing local cognitive/audio/memory foundations | PC-3, PC-4, longitudinal memory, PC-5 and PC-6 |
+| [0046](../plans/open/0046-reproducible-longitudinal-memory-baseline.md) | `Ready`, not started | Existing evaluators, Ollama, temporary SQLite and deterministic scoring patterns | Execute CM-0 only; benchmark GREEN and product baseline RED |
+| [0047](../plans/open/0047-speaker-evidence-calibration-study.md) | `Queued`, not executable | Audio contract, capture and face-calibration study pattern | Freeze/approve backend after 0046, measure PC-3A; leave PC-3B/PC-4 open |
 | [0020](../plans/completed/0020-p0-operator-qa-remediation-design.md) | Operator-QA defect umbrella | C5 via completed Plan 0021, C6 via completed Plan 0022, C7 via completed Plan 0023 | None — its own required real acceptance rerun passed 2026-08-25 |
 | [0024](../plans/completed/0024-owner-authenticated-memory-mvp-design.md) | PC-1 integration design | Existing identity, policy, child-memory, and channel seams; Plans 0025–0028 merged/executed | Delivery complete — PC-1 accepted |
 | [0031](../plans/completed/0031-server-production-baseline-design.md) | Cross-cutting server reference capsule | Existing FastAPI/Starlette/Uvicorn and accepted server/robot contracts | None — every child (0032–0045) closed 2026-09-03 |
@@ -67,7 +69,8 @@ Four of them (0014, 0020, 0024, 0031) now live under `plans/completed/` — they
 never had their own executable code or gates, and moved there once every
 slice they governed closed elsewhere (0031 closed 2026-09-03, once its
 children 0032–0045 all closed). 0015 remains under `plans/open/` because
-PC-3 through PC-6 are still real, unstarted work.
+PC-3 through PC-6 are still real work. CM-0 is planned but not started, and
+PC-3A has a queued design; neither status is implementation evidence.
 
 ## Code-to-outcome traceability
 
@@ -108,12 +111,17 @@ every one of those gaps, and Plan 0028 proved them on real hardware:
   confirmed and cross-checked against the `authorization_audit_events`
   table directly.
 
-Face recognition functions exist, but no consented runtime adapter converts a
-face match into fresh authenticated request evidence. Speaker recognition is
-absent; STT and VAD do not identify a speaker. Neither biometric path blocks
-PC-1.
+Consented face evidence and its provisional real-camera calibration are now
+implemented by Plans 0029/0030. Speaker recognition remains absent; STT and VAD
+do not identify a speaker. Neither biometric path reopens the completed PC-1
+proof.
 
 ## One delivery chain
+
+This section preserves the completed personal-companion evidence and its open
+spine. The single cross-track order through P4.2 is the
+[canonical pre-electronics delivery portfolio](cognitive-roadmap.md#canonical-pre-electronics-delivery-portfolio);
+this map does not define a second queue.
 
 ```text
 0025 minimal owner/children/PIN security bootstrap — merged (PR #56)
@@ -130,10 +138,23 @@ P0 fully accepted
   -> 0029 consented local face evidence (PC-2) — merged (PR #73, 2026-08-25)
   -> 0030 real-camera face acceptance — executed, provisional PASS (2026-09-01)
 PC-2 accepted (provisional calibration)
+  -> CM-0 reproducible longitudinal baseline — Plan 0046 Ready, not started
+  -> PC-3A speaker calibration — Plan 0047 queued, not executable
+  -> PC-3B consented speaker runtime evidence — unplanned
+  -> PC-4 conservative identity fusion — unstarted
+  -> CM-1..CM-7 longitudinal memory — unstarted
+  -> PC-5 integrated personal acceptance — unstarted
+  -> continue at portfolio row 13; the cross-track tail is not duplicated here
 ```
 
-Plan 0015 remains open as reference; PC-3 through PC-6 are still real,
-unstarted work. Plans 0014, 0020, and 0024 moved to `completed/` — they
+Plan 0015 remains open as reference; PC-3 through PC-6 are still real work.
+Only CM-0 has a Ready plan; PC-3A has a queued, non-executable plan, and PC-5
+includes the longitudinal-memory gate defined in
+the [memory delivery map](conversational-memory-delivery-map.md). The complete
+19-slice pre-electronics order, including P2 and P3 work beyond the personal
+spine, lives only in the [canonical portfolio](cognitive-roadmap.md#canonical-pre-electronics-delivery-portfolio).
+Plans 0014,
+0020, and 0024 moved to `completed/` — they
 never had their own executable code or gates, and closed once every slice
 they governed closed elsewhere.
 
