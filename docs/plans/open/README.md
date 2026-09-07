@@ -61,9 +61,14 @@ PC-2 completely — see
 [completed/0029](../completed/0029-consented-local-face-evidence.md) and
 [completed/0030](../completed/0030-real-camera-face-acceptance.md).
 
-Canonical execution order: **none — `NOW` is empty.** The server capsule
-(Plan 0031, children 0032–0045) is fully closed; no child plan remains
-queued.
+Canonical execution order: **[0048 — FastAPI baseline final hardening](0048-fastapi-baseline-final-hardening.md)**,
+authorized 2026-09-07 as a bounded follow-up to a second independent audit
+of the server. Not a 0031 child — the capsule stays closed; 0048 closes
+four small edges the second audit found (semantic `max_length`, the
+streaming one-terminal-event guarantee, the NDJSON 200 OpenAPI contract,
+`/health` wording + injectable `create_app`) and then the server baseline
+is done. Uvicorn concurrency calibration is deferred to its own `perf(...)`
+plan.
 
 ## Status rule
 
