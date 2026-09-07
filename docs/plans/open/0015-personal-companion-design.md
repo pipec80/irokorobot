@@ -1,167 +1,242 @@
-# Personal companion design — Iroko and Pipec
+# Plan 0015: Personal companion design
 
-> **Status:** Product direction approved. The immediate spine is
-> [Plan 0024](0024-owner-authenticated-memory-mvp-design.md), decomposed into
-> executable Plans 0025–0028. All four are merged/executed (PR #56, PR #57,
-> PR #64, and Plan 0028's 2026-08-21 real-hardware run). PC-1 is accepted:
-> classic and streaming authenticated-owner flows are each confirmed 3x with
-> real hardware. Existing foundations listed below are production code and
-> must be reused. PC-2's code/test slice is merged —
-> [Plan 0029](0029-consented-local-face-evidence.md), PR #73, 2026-08-25 — a
-> protected turn resolves the owner from an in-request webcam frame through
-> the same typed evidence and authorization contract the PIN uses, with the
-> PIN kept as an independent recovery path. It has no liveness/anti-spoofing
-> defense and no real-camera calibration yet; PC-2 itself is not accepted
-> until that follow-up plan closes it. Voice, fusion, and visual-companion
-> acceptance (PC-3 through PC-6) remain later work, not started.
+- **Status:** Reference only — approved product design, not directly executable
+- **Opened:** 2026-08-20
+- **Last design revision:** 2026-09-07
+- **Execution authority:** none; work requires one numbered `Ready` plan at a
+  time
 
-## Objective
+## Purpose
 
-Make Iroko useful as Pipec's secure local companion as soon as possible,
-without discarding the existing cognitive, memory, policy, STT, TTS, or vision
-foundations. The first proof is deliberately visceral: authenticated Pipec asks
-who his children are and hears “Máximo y Dominga”; a request without valid
-authentication receives no protected names or hints.
+Define the path from the accepted cognitive foundation to a trustworthy
+personal companion, then to a privacy-preserving family companion. This plan
+stays open because PC-3 through PC-6 and CM-0 through CM-7 contain real work;
+only CM-0 now has a `Ready` executable plan and PC-3A has a queued design.
 
-This is the `personal` profile from
-[ADR 0006](../../adr/0006-personal-and-family-companion-profiles.md). The same
-architecture later supports a family/multiple-person profile with stricter
-per-person privacy; this slice does not build that later product.
+It is an umbrella and product-acceptance reference. Do not implement it as one
+batch and do not infer a future plan number from it.
 
-## Governing decisions
+## Product model
 
-- [ADR 0007](../../adr/0007-first-boot-and-default-posture.md) keeps explicit
-  first boot, owner-before-household ordering, completion state, and local
-  recovery.
-- [ADR 0008](../../adr/0008-progressive-owner-authentication.md) supersedes
-  automatic owner-by-local-channel presumption. Authentication is fresh,
-  expiring evidence, never a persistent global boolean.
-- Identity, authentication, and authorization remain separate. Protected
-  memory is authorized before it is retrieved.
-
-## Existing foundation and reuse boundary
-
-PC-1 is an integration slice, not a new brain. Current production code already
-provides the typed controller, public-unknown channel adapters, authorization
-and audit policy, v4 child relationships and child-name/count tools, a
-process-local identity-session seam, onboarding slot/flag primitives, and the
-real STT/Piper audio path. Local face perception also exists but is not wired
-as authenticated request evidence.
-
-Plans 0025–0028 must connect and harden those pieces. They must not introduce a
-second controller, a second memory store, a second authorization system, or a
-new RAG path for the structured question “¿quiénes son mis hijos?”. What is
-missing is owner/PIN setup, one-use evidence propagation through classic and
-streaming channels, and real allowed/denied runtime acceptance.
-
-## Delivery path
-
-### PC-1 — Owner-authenticated memory MVP
-
-Execute the approved design in
-[Plan 0024](0024-owner-authenticated-memory-mvp-design.md) through its bounded
-portfolio: [setup](../completed/0025-personal-owner-bootstrap-and-pin-setup.md)
-(merged), [classic authenticated turn](../completed/0026-one-use-owner-authenticated-classic-turn.md)
-(merged), [streaming parity](../completed/0027-one-use-owner-streaming-parity.md) (merged), and
-[runtime acceptance](../completed/0028-owner-authenticated-memory-runtime-acceptance.md)
-(executed, PASS). PC-1 is complete.
-
-The delivery order is fixed:
-
-1. connect the minimal security bootstrap: owner, confirmed child
-   relationships, and PIN, without claiming extended onboarding completion;
-2. add an explicit local, short-lived, one-use unlock;
-3. resolve that evidence into the existing `ActivePersonContext` seams;
-4. authorize and invoke the existing structured child-name tool;
-5. prove both allowed and denied paths through real microphone, STT,
-   controller, Piper, and speaker output.
-
-PC-1 does not require face or speaker recognition. Its limitation is explicit:
-the local secret proves the unlock action, not the physical speaker. One-use
-scope and short expiry make that acceptable for the first product proof.
-
-### PC-2 — Consented local face evidence
-
-Integrate the existing local face engine through the same typed evidence
-contract. Enrollment is available only after explicit owner authentication and
-subject consent. Store templates separately from generic facts; evaluate
-unknown faces, false accepts/rejects, lighting, distance, expiry, deletion, and
-backend failure on Pipec's actual camera. Face evidence never grants permission
-directly.
-
-**Code/test slice merged 2026-08-25** —
-[Plan 0029](0029-consented-local-face-evidence.md), PR #73. Consent schema
-with real purge on revoke, `FACE` as a trusted evidence source, a lazy
-per-turn face resolver composed face-first/PIN-fallback, authenticated
-enrollment/revocation endpoints, and the router/robot wiring — all behind
-feature flags defaulting off. Not yet done: real-camera calibration (false
-accept/reject rates, lighting, distance, glasses) and any liveness defense
-— PC-2 is not accepted until a follow-up real-camera acceptance plan closes
-that gap.
-
-### PC-3 — Consented local speaker evidence
-
-Add a real speaker-enrollment and verification adapter through the same
-contract. STT and VAD are not voice identity. Evaluate changed voice, noise,
-distance, microphone variation, replay risk, false accepts/rejects, expiry,
-deletion, and backend failure. Raw audio stays ephemeral by default.
-
-### PC-4 — Conservative fusion
-
-Combine the one-use session, face, and voice evidence without creating a
-second authorization system. Agreement may raise assurance; conflict is
-`ambiguous`; absence or expiry is `unknown`. A local recovery method remains
-available even when biometrics fail.
-
-### PC-5 — Local visual companion acceptance
-
-For “Iroko, ¿qué ves?”, keep specialized responsibilities separate:
+Iroko has one cognitive architecture configured along two independent axes, as
+accepted in [ADR 0014](../../adr/0014-orthogonal-social-and-responsibility-profiles.md):
 
 ```text
-face adapter -> identity evidence
-scene adapter -> current visual evidence
-voice adapter -> speaker evidence
-controller -> authentication + authorization + response plan
+Profile social:       personal | family
+Responsibility:       companion | care | education
 ```
 
-The VLM may describe current visual evidence, but does not name Pipec or grant
-access. The text LLM receives typed, policy-approved results, not a raw frame.
+The active delivery target is `personal + companion`. `family` follows only
+after personal acceptance. `care` and `education` are future responsibilities,
+not current modes or promises, and will require their own ADRs, capabilities,
+policies, outcomes/feedback contracts and acceptance evidence.
 
-### PC-6 — Family profile expansion
+The axes do not create separate brains. They reuse the same typed controller,
+identity, authorization, memory and local-provider boundaries. Identity never
+grants permission, and an owner/admin never inherits another adult's private
+data.
 
-Only after the personal proof is stable, extend onboarding, visibility,
-consent, and recipient privacy for multiple household members. A technical
-owner/admin does not automatically receive another adult's private data.
+## Current evidence
 
-## Product acceptance ladder
+### Closed foundations
 
-| Stage | Pipec | Request without valid authentication |
-|---|---|---|
-| One-use unlock | Hears “Máximo y Dominga” through the real audio path. | Receives a non-disclosing denial. |
-| Face | Gets the same result from fresh consented face evidence. | Unknown/mismatch receives no names. |
-| Voice | Gets the same result from calibrated speaker evidence. | Unknown/mismatch/replay receives no names. |
-| Fusion | Non-conflicting evidence reduces friction. | Conflict becomes `ambiguous`, never best-score guessing. |
+- P0 cognitive foundation and combined runtime acceptance are complete.
+- PC-1 owner-authenticated structured memory is complete through Plans
+  [0025](../completed/0025-personal-owner-bootstrap-and-pin-setup.md)–[0028](../completed/0028-owner-authenticated-memory-runtime-acceptance.md).
+- PC-2 consented face evidence is implemented by
+  [Plan 0029](../completed/0029-consented-local-face-evidence.md), and its
+  real-camera calibration closed provisionally through
+  [Plan 0030](../completed/0030-real-camera-face-acceptance.md).
+- The server-production baseline in Plans 0031–0045 is closed.
 
-Every row must pass automated security/regression tests and repeated
-`just run-server` plus `just run-robot` scenarios. Green `pytest` alone is not
-product acceptance.
+The PC-2 calibration remains explicitly provisional because it measured only
+three unrelated impostor identities. It does not solve liveness: a photograph
+can still authenticate. PC-4 owns multimodal conflict and anti-spoofing policy.
 
-## Explicit non-goals for PC-1
+### Work that remains open
 
-- general web administration or family onboarding;
-- a durable `authenticated = true` setting;
-- assuming the owner from the PC, loopback, microphone, name, message, or LLM;
-- face, voice, fingerprint, multi-factor fusion, or biometric enrollment;
-- broad RAG, PDF ingestion, knowledge-graph redesign, or a new vector store;
-- wake word, ROS2, physical autonomy, or TTS replacement.
+- **PC-3:** consented speaker enrollment and calibrated speaker evidence;
+- **PC-4:** conservative multimodal identity fusion and recovery;
+- **P2.2 / CM-0…CM-7:** authorized, corrigible and forgettable longitudinal
+  conversational memory;
+- **PC-5:** integrated personal-companion acceptance through the real PC path;
+- **PC-6:** family profile, onboarding, selective privacy and recipient-only
+  household data.
 
-## Next decision gate
+[Plan 0046](0046-reproducible-longitudinal-memory-baseline.md) is the sole
+`Ready`/`NOW` plan for CM-0; its creation does not authorize implementation.
+[Plan 0047](0047-speaker-evidence-calibration-study.md) preserves the reviewed
+PC-3A calibration design in `Queued` and is not executable until 0046 closes
+and its backend/dependency readiness gate is resolved and approved. There is no
+physical `docs/plans/NOW.md`; the operational board is
+[`docs/plans/README.md`](../README.md#operational-board).
 
-Pipec reviewed and merged Plans
-[0025](../completed/0025-personal-owner-bootstrap-and-pin-setup.md) (PR #56),
-[0026](../completed/0026-one-use-owner-authenticated-classic-turn.md) (PR #57),
-[0027](../completed/0027-one-use-owner-streaming-parity.md) (PR #64), and
-[0028](../completed/0028-owner-authenticated-memory-runtime-acceptance.md)
-(executed 2026-08-21), each on its own feature branch with observed
-RED/GREEN evidence and a review gate. The same discipline applies to every
-future plan: one plan per change, never collapsed.
+## The verified memory gap
+
+Iroko does not currently have one coherent longitudinal conversation path:
+
+```text
+protected household query
+  -> identity -> authorization -> V4 memory -> deterministic response
+
+generic conversation
+  -> legacy text_turn -> legacy/semantic memory -> LLM
+```
+
+The current controller passes only message and conversation ID into the legacy
+turn. The legacy turn enables durable memory only for `MANUAL` evidence; face
+and local unlock do not enable its history, fact retrieval, vector search or
+consolidation. Consolidation writes through legacy APIs, while semantic search
+does not yet filter person, visibility, sensitivity, validity or authorization
+and has no relevance threshold.
+
+The manual-evidence barrier prevents some accidental disclosure, but it is not
+a complete authorization model. Passing `active_person` directly into the LLM
+would widen risk rather than close the gap.
+
+The required delivery sequence and exact code seams are canonical in
+[conversational-memory-delivery-map.md](../../roadmap/conversational-memory-delivery-map.md).
+
+## Target memory behavior
+
+Longitudinal memory is part of PC-5, not optional post-acceptance polish. The
+canonical lifecycle is:
+
+```text
+conversation/perception
+  -> candidate
+  -> subject and source attribution
+  -> sensitivity and retention classification
+  -> accept | confirm | reject
+  -> canonical V4-backed memory
+  -> authorized retrieval
+  -> evidenced response
+  -> correction, history or complete forgetting
+```
+
+Automatic extraction proposes; it does not establish personal truth. The LLM
+may verbalize authorized evidence but does not decide which conflicting memory
+is true or visible.
+
+Every durable item must support subject, assertor, source, temporal validity,
+truth status, visibility, sensitivity, consent, retention, correction lineage
+and deletion of derived embeddings/summaries. See
+[memory-and-world-state.md](../../architecture/memory-and-world-state.md).
+
+## Delivery stages
+
+### PC-1 — Owner-authenticated memory MVP — complete
+
+One fresh local unlock permits exactly one authorized structured child query;
+the unauthenticated pair discloses nothing. Classic and streaming runtime
+acceptance passed on real microphone/speaker hardware.
+
+### PC-2 — Consented local face evidence — complete, provisional calibration
+
+Face evidence uses explicit consent, the typed identity contract and the same
+authorization boundary as PIN. Enrollment cannot choose an arbitrary subject,
+revocation purges biometric rows, and PIN remains an independent recovery path.
+
+### PC-3 — Speaker evidence — unstarted; PC-3A plan queued
+
+Add a local speaker-verification adapter with explicit enrollment, consent,
+revocation and a calibrated threshold. STT and VAD do not identify speakers.
+Voice evidence must fail unknown on missing, low-quality or unavailable input;
+it must never grant capabilities directly.
+
+**Gate:** a versioned genuine/impostor dataset and real turns establish false
+accept/reject behavior, backend-failure posture and revocation. No household
+member's real voice may enter the repository.
+
+Plan 0047 deliberately covers only the calibration study. Even a provisional
+PASS leaves production enrollment, revocation and trusted evidence for a
+future PC-3B plan.
+
+### PC-4 — Conservative identity fusion — unstarted
+
+Combine face, speaker and temporary administrative/session evidence through
+typed deterministic policy. Agreement may strengthen a result; conflict must
+produce `ambiguous`, never silently select the owner. Multiple visible people,
+replay/spoof concerns, expiry and provider failure require explicit outcomes.
+
+**Gate:** agreement, disagreement, one-signal absence, ambiguity, expiry,
+replay/spoof cases and recovery are measured without weakening protected-data
+authorization.
+
+### P2.2 / CM-0…CM-7 — Longitudinal memory — CM-0 planned
+
+Execute the staged portfolio from benchmark RED through authorized actor
+propagation, candidate promotion to V4, protected episodes, pre-prompt
+retrieval, correction/forgetting and real longitudinal acceptance.
+
+Plan 0046 owns CM-0 only: benchmark software must finish GREEN while the
+measured product baseline remains honestly RED. It does not implement CM-1 or
+change runtime memory.
+
+**Gate:** the canonical evaluation proves `aprendo -> reinicio -> recuerdo ->
+corrijo -> reinicio -> recuerdo la verdad vigente -> olvido -> no revelo`.
+See
+[longitudinal-conversational-memory-evaluation.md](../../architecture/longitudinal-conversational-memory-evaluation.md).
+
+### PC-5 — Integrated personal companion acceptance — unstarted
+
+Prove the complete `personal + companion` experience with `just run-server`
+and `just run-robot`: voice, face/speaker evidence, authorized structured and
+longitudinal memory, on-demand scene understanding, deterministic claims,
+local LLM degradation and audible Piper output.
+
+**Gate:** Pipec completes approved scenarios; an unknown or unauthorized actor
+cannot read protected data; memory survives restarts, respects corrections and
+can be forgotten; every transcript records literal STT, route, identity
+evidence class, policy decision, response, audible output and audit result.
+
+### PC-6 — Family profile — unstarted
+
+Extend the accepted core to multiple household members with reviewable
+onboarding, role/capability policy, consent and data separation. Shared,
+personal and `recipient_only` data remain distinct. A recado is sensitive
+temporal data delivered only to its confirmed authorized recipient, not generic
+memory or household RAG.
+
+Unknown visitors may converse generally. Unknown is not synonymous with
+threat, and recognition is not authorization.
+
+**Gate:** two adults and at least one restricted/unknown actor demonstrate
+isolated personal memory, permitted shared data, recipient-only delivery,
+correction, revocation and non-disclosure through the real path.
+
+## Ordering
+
+```text
+PC-1 complete
+  -> PC-2 complete (provisional calibration)
+  -> CM-0 reproducible RED baseline (Plan 0046 NOW)
+  -> PC-3A speaker calibration (Plan 0047 queued)
+  -> PC-3B speaker runtime evidence
+  -> PC-4 identity fusion
+  -> P2.2 / CM-1..CM-7 longitudinal memory
+  -> PC-5 personal companion acceptance
+  -> PC-6 family profile
+```
+
+CM-0, the reproducible benchmark, is the next product slice and is specified
+by Plan 0046. It creates the RED evidence needed to prevent implementation by
+intuition. Plan 0047 is already numbered only to preserve the next reviewed
+handoff; its `Queued` status and readiness gate prevent premature execution.
+
+## Non-goals
+
+- implement PC-3 through PC-6 in this document;
+- add a cloud runtime, agent framework, microservice or new database;
+- train model weights or add JAX;
+- treat face, voice, names in text or local network origin as authorization;
+- store every conversation or observation permanently;
+- claim nursing, clinical monitoring or autonomous education;
+- change the server/robot HTTP boundary or audio contract.
+
+## Exit condition for this umbrella
+
+Plan 0015 closes only when PC-3, PC-4, CM-0…CM-7, PC-5 and PC-6 have each been
+delivered by bounded plans with their own tests and real acceptance evidence,
+or when a later accepted ADR explicitly removes one of those outcomes from the
+product target.

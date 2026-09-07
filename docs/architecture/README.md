@@ -22,7 +22,9 @@ When sources disagree, use this order:
    dependencies, and completion outcomes.
 8. [`../roadmap/personal-companion-delivery-map.md`](../roadmap/personal-companion-delivery-map.md)
    for cross-plan code/test/gap traceability.
-9. The one task plan explicitly named by the user under
+9. [`../roadmap/conversational-memory-delivery-map.md`](../roadmap/conversational-memory-delivery-map.md)
+   for the longitudinal-memory sequence and verified code seams.
+10. The one task plan explicitly named by the user under
    `docs/plans/open/`.
 
 Code and tests outrank a stale statement about current behavior. An accepted
@@ -36,11 +38,11 @@ decision is not silently changed by implementation; replace it with a new ADR.
 | Server/FastAPI hardening | `server-production-baseline.md`, `implementation-guardrails.md`, the named server-baseline child plan, and every ADR that child lists |
 | Domain models/controller | ADR-0004, ADR-0005, `cognitive-contracts.md`, `cognitive-architecture.md` |
 | Identity or permissions | `identity-and-access.md`, ADR-0004, ADR-0006, ADR-0008, ADR-0009, `cognitive-contracts.md` |
-| Memory or onboarding | `memory-and-world-state.md`, `rag-and-memory-retrieval.md`, `identity-and-access.md` |
+| Memory or onboarding | `memory-and-world-state.md`, `longitudinal-conversational-memory-evaluation.md`, `rag-and-memory-retrieval.md`, `identity-and-access.md`, `../roadmap/conversational-memory-delivery-map.md` |
 | RAG, embeddings, documents, or retrieval | `rag-and-memory-retrieval.md`, `memory-and-world-state.md`, `identity-and-access.md`, current-state baseline |
 | Personality or prompts | `personality-and-interaction.md`, `identity-and-access.md` |
 | Sensors, vision, or world state | `memory-and-world-state.md`, `cognitive-contracts.md`, media contracts in `implementation-guardrails.md` |
-| Prioritization | `current-state.md`, `../roadmap/cognitive-roadmap.md`, `../roadmap/personal-companion-delivery-map.md` |
+| Prioritization | `current-state.md`, `../roadmap/cognitive-roadmap.md`, `../roadmap/personal-companion-delivery-map.md`, `../roadmap/conversational-memory-delivery-map.md` |
 
 Do not scan the whole repository when a ready plan supplies narrower required
 reading and permitted paths. If evidence contradicts a plan, stop and report the
@@ -58,6 +60,9 @@ specific conflict instead of redesigning the project implicitly.
 - [`../roadmap/personal-companion-delivery-map.md`](../roadmap/personal-companion-delivery-map.md):
   canonical mapping from the personal-companion outcome to existing code,
   tests, verified gaps, and the one accountable executable plan.
+- [`../roadmap/conversational-memory-delivery-map.md`](../roadmap/conversational-memory-delivery-map.md):
+  staged bridge from the current split memory paths to authorized,
+  corrigible, forgettable longitudinal memory.
 - [`p0-runtime-policy-audit.md`](p0-runtime-policy-audit.md): current
   disposition of remaining public-route and operator-acceptance gaps.
 - [`implementation-guardrails.md`](implementation-guardrails.md): tracked
@@ -81,6 +86,9 @@ specific conflict instead of redesigning the project implicitly.
   (executed, PASS). PC-1 is complete.
 - [`memory-and-world-state.md`](memory-and-world-state.md): relational knowledge,
   memory lifecycle, onboarding, retrieval, and present-time state.
+- [`longitudinal-conversational-memory-evaluation.md`](longitudinal-conversational-memory-evaluation.md):
+  canonical benchmark dimensions, evidence layers, historical audit baseline,
+  and the longitudinal acceptance gate for PC-5.
 - [`rag-and-memory-retrieval.md`](rag-and-memory-retrieval.md): detailed target
   architecture for documentary RAG, embeddings, hybrid retrieval, evidence,
   evaluation, and its staged relationship to Iroko's memory system.

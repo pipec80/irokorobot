@@ -15,37 +15,51 @@ speaker can inherit the owner's conversational context and receive owner data.
 Identity resolution and authorization therefore precede broader memory,
 onboarding, personality adaptation, and physical actions.
 
-## Installation policy profiles
+## Orthogonal policy profiles
 
-Iroko uses one local cognitive architecture with two installation profiles;
-this is a product-policy choice, not a second identity system.
+Iroko uses one local cognitive architecture with two independent axes; this is
+a product-policy choice, not a second identity system. See
+[ADR 0014](../adr/0014-orthogonal-social-and-responsibility-profiles.md).
+
+The **social profile** describes who participates:
 
 | Profile | Primary interaction | Default privacy rule |
 |---|---|---|
 | `personal` | One primary owner and Iroko. | The owner has broad authority over their own permitted data and configuration. Other speakers remain public/unknown until an explicit later policy exists. |
 | `family` | Multiple household members and Iroko. | Members may use permitted household data and their own allowed data. A technical owner/admin is not automatically entitled to another adult's personal data. |
 
-Both profiles retain the same boundaries: identity is not authorization, unknown
-is valid, local administration is the biometric recovery path, and sensitive
-actions require explicit confirmation. The personal profile is the next product
-milestone. General family onboarding and UI are later work under
+The **responsibility profile** describes which bounded capabilities Iroko may
+exercise: `companion`, future `care`, or future `education`. Only `companion`
+is an active delivery target. Responsibility never grants identity or blanket
+access; a caregiver, health professional, tutor, educator or technical
+administrator requires explicit capabilities and data scope.
+
+All combinations retain the same boundaries: identity is not authorization,
+unknown is valid, local administration is the biometric recovery path, and
+sensitive actions require explicit confirmation. The personal companion is the
+next product milestone. General family onboarding and UI are later work under
 [ADR 0006](../adr/0006-personal-and-family-companion-profiles.md).
 
 ## Future profile and consent persistence
 
 The current SQLite installation represents one Iroko home. P3 should not add a
-multi-tenant or multi-household database merely to express the two profiles.
+multi-tenant or multi-household database merely to express the social profiles.
 Instead, the later migration should introduce a singleton installation-policy
 record similar to:
 
 ```text
 installation_profile
 ├── id = 1
-├── mode: personal | family
+├── social_mode: personal | family
+├── responsibility_mode: companion
 ├── configured_by_entity_id
 ├── configured_at
 └── updated_at
 ```
+
+`responsibility_mode` is illustrative only. Activating `care` or `education`
+would require a new ADR and may need capability records rather than a single
+enum; this document does not prescribe that later schema.
 
 The existing v4 facts/relations retain their `visibility` and `sensitivity`.
 P3 consent persistence should add explicit, revocable grants rather than an
@@ -332,6 +346,29 @@ The matrix is a starting policy and must remain configurable:
   playable audio.
 - The owner/subject must be able to inspect, revoke, delete, and optionally
   exclude biometric profiles from backup.
+
+### Calibration-study boundary
+
+Before a biometric similarity score becomes runtime evidence, a bounded local
+study must separate reusable engineering from private acceptance material:
+
+- pure threshold/FAR/FRR math and corpus-schema tests use synthetic vectors;
+- the backend package, model revision, license, preprocessing and score
+  direction are frozen before capture;
+- reference and probe sessions are separate, and live impostors participate
+  only with explicit consent;
+- raw frames/audio, embeddings, paths and per-sample scores remain in a
+  gitignored local corpus and are deleted after an aggregate result is accepted;
+- tracked evidence contains aggregate counts/rates, conditions, latency,
+  limitations and the model identity, never raw biometrics or participant
+  names;
+- any measured false accept disqualifies that threshold; absence of a safe
+  separating threshold is a valid FAIL, not permission to weaken the gate;
+- replay/spoof results are reported separately from live-impostor FAR and feed
+  fusion/liveness policy rather than being hidden in an average.
+
+A calibration PASS is provisional evidence for a later runtime plan. It does
+not itself create enrollment, trust an evidence source or grant authorization.
 
 ## Unknown, ambiguity, and disclosure
 

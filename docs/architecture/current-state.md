@@ -1,8 +1,11 @@
 # Current cognitive implementation
 
-> **Observed:** 2026-08-21
+> **Observed:** implementation refreshed through 2026-09-04; plan status
+> aligned 2026-09-07
 >
-> **Implementation snapshot:** `main` at `9b7662a`.
+> **Implementation baseline:** `main` at `67d4be9`. The paragraphs below retain
+> the dated evidence of each accepted slice instead of presenting old test
+> counts as a new full-suite run.
 > Plan 0022 (P0-C6 reliable streaming output) is **complete and verified**:
 > all 4 tasks passed task-scoped review, a whole-plan review found no
 > Critical issues, and real `just run-server`/`just run-robot` operator
@@ -77,7 +80,8 @@
 > test` (514 passed), `just audit`, and `just check`; P0-S2 evidence includes GitHub CI and
 > `just services` detecting configured local models. Camera, microphone, LAN,
 > biometric enrollment, real Ollama chat, and hardware acceptance were not
-> executed in this snapshot.
+> executed in that earlier P0 foundation snapshot; the dated PC-1, PC-2 and
+> server-baseline evidence above records the later real runs.
 >
 > **Latest repository test audit:** `just test` on 2026-08-20 completed with
 > 635 passed and 6 failed. All six failures were in
@@ -144,6 +148,7 @@ gap prevents owner-by-default memory disclosure.
 | Server HTTP/ASGI hardening (Plan 0031 capsule + Plan 0048) | Closed 2026-09-03; final hardening 2026-09-07 | `create_app()` + a failure-safe `lifespan()` own every shared resource (httpx client, STT/TTS models, DB); `GET /ready` is a side-effect-free readiness probe distinct from `/health`; every route's real error codes are documented via OpenAPI; uploads are bounded twice (raw body + per-file); every SQLite write goes through one owned transaction primitive. Plan 0048 closed the second audit's four edges: free-text fields have a semantic `max_length` (chat/voice/vision, 4000 chars); `guarantee_terminal_event()` now provably emits exactly one terminal event (post-terminal producer lines dropped, latch checked in both failure paths); `/transcribe/stream`'s OpenAPI `200` is `application/x-ndjson` with the `StreamEvent` line shapes; `create_app(Settings(...))` drives lifespan behaviour with no global mutation. Uvicorn concurrency (`UVICORN_LIMIT_CONCURRENCY=100`) is still uncalibrated — a separate `perf(...)` plan owns real-hardware measurement. Full narrative, measured evidence, and ADR cross-references: [`server-production-baseline.md`](server-production-baseline.md). |
 | Working memory | Implemented/restricted | Unknown public turns use no persistent history. |
 | Episodic/vector memory | Implemented/legacy | SQLite + sqlite-vec; top-k retrieval has no policy filter or threshold. |
+| Longitudinal conversational memory | Not demonstrated; split paths | Protected household reads use identity, authorization and V4 tools, while generic conversation uses the legacy turn. The controller does not propagate the resolved actor into that turn; durable legacy memory requires `MANUAL` evidence; consolidation writes legacy facts/episodes; semantic retrieval lacks person/visibility/sensitivity/authorization filters. See the [delivery map](../roadmap/conversational-memory-delivery-map.md). |
 | Entities and facts v3 | Implemented/legacy | String relation targets and universal fact supersession remain. |
 | Relational memory v4 foundation | Implemented/isolated | Additive SQLite tables, typed predicate registry, entity-ID relations, cardinality/lifecycle repositories, a dry-run-first local legacy migration ledger, and a bounded raw target-ID relation filter. |
 | Consolidation | Implemented/gated | LLM extraction plus deterministic normalization; requires manual identity. |
@@ -165,6 +170,7 @@ gap prevents owner-by-default memory disclosure.
 | Consented local face evidence (Plan 0029 / PC-2) | Merged (PR #73); real-camera calibration closed (Plan 0030, 2026-09-01, provisional) | Migration 007 (`face_consent_grants`) plus `memory/biometric_consent.py` grant/revoke/read consent, with revocation performing a real purge of `face_profiles` and `vec_faces` rows, not a soft flag. `IdentityEvidenceSource.FACE` is now trusted as identified (`cognition/identity.py`); `VOICE`/`CONTEXT` remain unresolved (PC-3/PC-4). `cognition/face_authentication.py` adds a pure verdict function (0 faces -> unknown, 2+ faces -> ambiguous and terminal — never falls through to the PIN, 1 face variations -> unknown/identified by match+consent+role), a lazy single-inference-per-turn `FaceRequestResolver`, and `compose_face_then_pin_resolver()`, which tries face first and falls through to the existing PIN resolver (Plan 0026) only on a non-ambiguous unresolved face result. A stricter, separate `settings.face_authentication_match_threshold` — measured by Plan 0030 at `0.5815` (was an unvalidated `0.25`) — applies on top of the existing generic `settings.face_match_threshold` (`0.4` in code, `0.65` sample override). `POST /auth/owner/face/enroll` and `/revoke` (loopback-only, requiring a fresh PIN-consumed token) always enroll the token's own owner, never a request-supplied name; the pre-existing quarantined public `POST /vision/enroll` is untouched and still returns 503. Classic and streaming `/transcribe` accept an optional multipart `frame` field gated by `settings.face_authentication_enabled` (default `False` — with it off, the frame is never even read) and report which evidence source authenticated the turn via an additive `identity_source: "face" \| "local_unlock" \| null` field, never a name or protected value. The robot opts in via `settings.robot_face_auth_enabled` (default `False`), attaching a captured frame to every turn when enabled (a camera failure degrades silently to no frame). **No liveness/anti-spoofing defense exists**: a photograph of the owner held up to the camera authenticates under this slice; the real mitigation is PC-4 (voice fusion), not yet built — closing Plan 0030 did not touch this gap. |
 | Face profiles | Implemented/sensitive/consent-gated | SQLite-linked embeddings and recognition functions exist; Plan 0029 adds a consented, in-request runtime adapter behind `FACE_AUTHENTICATION_ENABLED` (default off) — see the row above. |
 | Speaker recognition | Absent | STT and VAD exist; no speaker enrollment, voiceprint, verification model, or calibrated identity adapter exists. |
+| Longitudinal-memory benchmark (CM-0) | Planned, not implemented | Plan 0046 is `Ready` and the sole `NOW`; it will repair stale evaluator entrypoints, add a synthetic versioned suite and record a reproducible RED baseline. Its presence is not runtime or acceptance evidence. |
 | Robot client | Implemented/body adapter | PC microphone/webcam/speaker workflow; not cognitive logic. |
 
 ## Deliberately absent or deferred
@@ -320,9 +326,9 @@ executable sequence is
 [0028](../plans/completed/0028-owner-authenticated-memory-runtime-acceptance.md)
 (executed 2026-08-21, **PASS**), which completed the formal repeated
 real-runtime acceptance for 0026/0027's classic and streaming flows. It also
-executed R1 (Plan 0013): R1-01/R1-02 passed, R1-03 failed on STT accuracy —
-Plan 0013 remains open on that one finding, independently of the now-closed
-PC-1 (0025-0028) verdict.
+executed R1 (Plan 0013): R1-01/R1-02 passed and R1-03 initially failed on STT
+accuracy. That independent finding was later traced to the stale "Omnibot"
+Whisper prompt/hotwords and reconfirmed PASS on 2026-08-25, closing Plan 0013.
 
 These checks do not prove a real Ollama `/chat` request, camera, microphone,
 biometric, LAN, or physical hardware behavior.
