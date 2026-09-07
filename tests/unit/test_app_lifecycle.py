@@ -9,7 +9,7 @@ existing convention in `test_main_lifespan.py`.
 
 import pytest
 from server.main import app, create_app, lifespan
-from server.settings import settings
+from server.settings import Settings, settings
 
 from server import main
 
@@ -51,6 +51,31 @@ async def test_lifespan_creates_and_closes_the_http_client_exactly_once(
 
     assert resources.http_client.is_closed is True
     assert app.state.ready is False
+
+
+@pytest.mark.unit
+async def test_create_app_accepts_an_injected_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`create_app(Settings(...))` drives lifespan behaviour without a global.
+
+    The audit's named isolation case: build an app with memory disabled and
+    confirm its lifespan never opens a database, while the module global
+    `settings` (which has memory enabled by default) is untouched.
+    """
+
+    def _fail_open_db() -> None:
+        pytest.fail("open_db must not run when the injected Settings disables memory")
+
+    monkeypatch.setattr(main, "open_db", _fail_open_db)
+    monkeypatch.setattr(main.stt, "preload", lambda: None)
+    monkeypatch.setattr(main.tts, "preload", lambda: None)
+
+    fresh_app = create_app(Settings(memory_enabled=False))
+    assert fresh_app.state.settings.memory_enabled is False
+
+    async with lifespan(fresh_app):
+        assert fresh_app.state.ready is True
 
 
 @pytest.mark.unit
