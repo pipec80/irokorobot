@@ -7,13 +7,23 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from server.cognition.models import KnowledgeStatus
 
+# Semantic upper bound for one conversational turn's text — chat message,
+# transcribed voice turn, or visual question. Roughly 4x the longest
+# plausible spoken turn and ~700 words typed: comfortably a single turn,
+# far below what would waste tokenization and LLM time. The raw ASGI body
+# limit in `main.py` is the outer, byte-level bound; this is the semantic
+# one. A plain constant, not a `Settings` field: it follows the same
+# in-layer convention as `conversation_id`'s `max_length=64`, and Pydantic
+# `Field` constraints must be literals.
+MAX_TURN_MESSAGE_CHARS = 4000
+
 
 class TextTurnPayload(BaseModel):
     """Validated text payload carried by one cognitive event."""
 
     model_config = ConfigDict(frozen=True, extra="forbid", str_strip_whitespace=True)
 
-    message: str = Field(min_length=1)
+    message: str = Field(min_length=1, max_length=MAX_TURN_MESSAGE_CHARS)
     conversation_id: str = Field(min_length=1, max_length=64)
 
 

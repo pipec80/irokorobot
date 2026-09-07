@@ -8,6 +8,7 @@ from unittest.mock import ANY, AsyncMock, Mock
 from httpx import ASGITransport, AsyncClient
 import pytest
 from server.cognition.owner_authentication import owner_unlock_service
+from server.cognition.response_plan import MAX_TURN_MESSAGE_CHARS
 from server.main import app
 from server.memory import working
 from server.resources import AppResources
@@ -74,6 +75,7 @@ async def test_chat_returns_exact_contract_and_calls_service_once(
     "message,conversation_id",
     [
         ("   ", "web-primary"),
+        ("x" * (MAX_TURN_MESSAGE_CHARS + 1), "web-primary"),
         ("Hello", ""),
         ("Hello", "a" * 65),
         ("Hello", "-leading"),
@@ -82,7 +84,7 @@ async def test_chat_returns_exact_contract_and_calls_service_once(
     ],
 )
 async def test_chat_rejects_invalid_payloads(message: str, conversation_id: str) -> None:
-    """Whitespace messages and unsafe conversation IDs should return 422."""
+    """Whitespace/over-length messages and unsafe conversation IDs should return 422."""
     async with _client() as client:
         response = await client.post(
             "/chat",

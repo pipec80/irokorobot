@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, Mock
 import cv2
 import numpy as np
 import pytest
+from server.cognition.response_plan import MAX_TURN_MESSAGE_CHARS
 from server.exceptions import VisionError
 from server.routers import vision as vision_module
 from server.settings import settings
@@ -322,5 +323,13 @@ def test_vision_respond_disabled_still_answers_a_closed_plan(
 @pytest.mark.integration
 def test_vision_respond_empty_text_returns_422(client: TestClient) -> None:
     resp = _post_respond(client, _FAKE_JPEG, "   ")
+
+    assert resp.status_code == 422
+
+
+@pytest.mark.integration
+def test_vision_respond_overlong_text_returns_422(client: TestClient) -> None:
+    """A visual question over the semantic length bound is rejected at the boundary."""
+    resp = _post_respond(client, _FAKE_JPEG, "x" * (MAX_TURN_MESSAGE_CHARS + 1))
 
     assert resp.status_code == 422

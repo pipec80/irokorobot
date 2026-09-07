@@ -23,3 +23,20 @@ def test_openapi_schema_is_valid() -> None:
 
     assert schema["openapi"].startswith("3.")
     assert schema["paths"]
+
+
+@pytest.mark.api
+def test_transcribe_stream_200_is_documented_as_ndjson() -> None:
+    """The streaming route's success body is `application/x-ndjson`, never JSON.
+
+    FastAPI infers `application/json` with an empty schema from a bare
+    `-> StreamingResponse` return; the real runtime contract (Plan 0041) is
+    one JSON object per line. Plan 0048 makes the generated schema say so.
+    """
+    op = app.openapi()["paths"]["/transcribe/stream"]["post"]
+    content = op["responses"]["200"]["content"]
+
+    assert "application/x-ndjson" in content
+    assert "application/json" not in content
+    # The documented body references the streaming event line shapes.
+    assert "schema" in content["application/x-ndjson"]

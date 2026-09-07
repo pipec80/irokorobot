@@ -45,6 +45,7 @@ from server.pipeline import (
     _run_tts,
 )
 from server.schemas import TranscribeResponse, error_responses
+from server.schemas_streaming import StreamEvent
 from server.settings import settings
 from server.streaming import guarantee_terminal_event, stream_pipeline, stream_response_plan
 from server.text_turn import (
@@ -59,6 +60,43 @@ from server.uploads import read_limited_upload
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/transcribe", tags=["Audio"])
+
+
+class NDJSONStreamingResponse(StreamingResponse):
+    """A streaming response whose media type is `application/x-ndjson`.
+
+    Used as the `response_class` for `POST /transcribe/stream` so the
+    generated OpenAPI documents the real wire contract — one JSON object
+    per line — instead of the `application/json` FastAPI infers from a bare
+    `StreamingResponse` return. The handler still returns its own response
+    instance directly (Plan 0041: a pre-stream `HTTPException` must surface
+    as a real 413/422/500, which returning through the generator would
+    prevent).
+    """
+
+    media_type = "application/x-ndjson"
+
+
+# Prose contract for the streaming 200, shown in `/docs` alongside the
+# per-line event schemas (`StreamEvent`).
+_STREAM_200_DESCRIPTION = (
+    "NDJSON stream — one JSON object per line, in order: an optional "
+    "`text_heard` event, one `emotion` event, zero or more `audio` events "
+    "(one per synthesized sentence), then exactly one terminal `done` "
+    "(per-stage timing) or `error` (stable `code`, fixed client-safe "
+    "`detail`, `retryable`). Every started stream ends in exactly one "
+    "terminal event followed by EOF (ADR-0012)."
+)
+
+# `response_class=NDJSONStreamingResponse` also drives the media type of
+# this route's *error* responses, so the pre-stream 413 (a plain JSON
+# `{"detail": ...}` body, not NDJSON) is re-pinned to `application/json`
+# explicitly. The `$ref` is the component name FastAPI itself assigns to
+# `ErrorResponse` — stable, and asserted by `test_api_contract.py`.
+_STREAM_413_RESPONSE = {
+    "description": "Audio or attached frame exceeds the upload size limit",
+    "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}},
+}
 
 
 def _today() -> date:
@@ -443,7 +481,11 @@ async def transcribe(
 
 @router.post(
     "/stream",
-    responses=error_responses((413, "Audio or attached frame exceeds the upload size limit")),
+    response_class=NDJSONStreamingResponse,
+    responses={
+        200: {"model": StreamEvent, "description": _STREAM_200_DESCRIPTION},
+        413: _STREAM_413_RESPONSE,
+    },
 )
 async def transcribe_stream(
     resources: ResourcesDep,
@@ -457,7 +499,7 @@ async def transcribe_stream(
             description="JPEG/PNG/WebP/GIF/BMP · max 1280x720 · optional owner-authentication frame"
         ),
     ] = None,
-) -> StreamingResponse:
+) -> NDJSONStreamingResponse:
     """Transcribe audio and stream the robot's reply sentence by sentence (R3).
 
     Args:
@@ -511,7 +553,7 @@ async def transcribe_stream(
     )
     turn_log.log_decision("stream", plan)
     if plan is not None:
-        return StreamingResponse(
+        return NDJSONStreamingResponse(
             guarantee_terminal_event(
                 stream_response_plan(
                     text_heard=event.payload.message,
@@ -521,8 +563,7 @@ async def transcribe_stream(
                     authentication_consumed=request_identity.consumed,
                     identity_source=request_identity.identity_source,
                 )
-            ),
-            media_type="application/x-ndjson",
+            )
         )
 
     prepared = await prepare_text_turn(
@@ -531,7 +572,7 @@ async def transcribe_stream(
         event.payload.conversation_id,
     )
 
-    return StreamingResponse(
+    return NDJSONStreamingResponse(
         guarantee_terminal_event(
             stream_pipeline(
                 client=resources.http_client,
@@ -542,6 +583,5 @@ async def transcribe_stream(
                     resources.http_client, background_tasks
                 ),
             )
-        ),
-        media_type="application/x-ndjson",
+        )
     )

@@ -61,9 +61,16 @@ PC-2 completely — see
 [completed/0029](../completed/0029-consented-local-face-evidence.md) and
 [completed/0030](../completed/0030-real-camera-face-acceptance.md).
 
-Canonical execution order: **none — `NOW` is empty.** The server capsule
-(Plan 0031, children 0032–0045) is fully closed; no child plan remains
-queued.
+Canonical execution order: **none — `NOW` is empty.**
+[Plan 0048](../completed/0048-fastapi-baseline-final-hardening.md) closed
+2026-09-07: a bounded follow-up to a second independent audit of the server
+(semantic `max_length` on free-text fields, a real one-terminal-event
+guarantee in `guarantee_terminal_event`, the `/transcribe/stream` 200
+documented as `application/x-ndjson`, `/health` wording + a
+settings-injectable `create_app`). 1073 tests, 90.10% coverage, all gates
+green. The "how should FastAPI do this?" phase is over; the server baseline
+is done. Only Uvicorn concurrency calibration remains, deferred to its own
+`perf(...)` plan pending measurement on real homelab hardware.
 
 ## Status rule
 

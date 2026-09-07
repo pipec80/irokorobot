@@ -70,11 +70,16 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     is `True` only between a fully successful startup and the start of
     shutdown; `_app.state.resources` exists as soon as the HTTP client does,
     even if a later startup step then fails.
+
+    Reads its runtime configuration from `_app.state.settings` (set by
+    `create_app`), so `create_app(Settings(memory_enabled=False))` and
+    friends drive lifespan behaviour without mutating the module global.
     """
-    if settings.uvicorn_workers != 1:
+    cfg = _app.state.settings
+    if cfg.uvicorn_workers != 1:
         raise RuntimeError(
             "Owner unlock grants are process-local: UVICORN_WORKERS must be 1, "
-            f"got {settings.uvicorn_workers}."
+            f"got {cfg.uvicorn_workers}."
         )
     logger.info("OMNiBot 2000 starting — loading models...")
 
@@ -90,13 +95,13 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         stt.preload()
         tts.preload()
 
-        if settings.memory_enabled:
+        if cfg.memory_enabled:
             await open_db()
             stack.push_async_callback(close_db)
             await run_migrations()
             retention.start_background_job()
             stack.push_async_callback(retention.stop_background_job)
-            logger.info("Brain memory enabled: %s", settings.brain_db_path)
+            logger.info("Brain memory enabled: %s", cfg.brain_db_path)
         else:
             logger.info("Memory disabled via MEMORY_ENABLED")
 
@@ -104,10 +109,10 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         logger.info(
             "OMNiBot server ONLINE ✅ — listening on http://%s:%d "
             "| health: GET /health | memory: %s | LLM: %s",
-            settings.server_host,
-            settings.server_port,
-            "on" if settings.memory_enabled else "off",
-            settings.llm_provider,
+            cfg.server_host,
+            cfg.server_port,
+            "on" if cfg.memory_enabled else "off",
+            cfg.llm_provider,
         )
         yield
         _app.state.ready = False
@@ -139,12 +144,22 @@ async def _validation_error_without_input(
     return JSONResponse(status_code=422, content={"detail": redacted})
 
 
-def create_app() -> FastAPI:
+def create_app(app_settings: Settings | None = None) -> FastAPI:
     """Compose the FastAPI application: logging, middleware, routers, lifespan.
 
     Configuring logging is the first thing this does, and only this does —
     importing `server.main` alone must not create a log directory or any
     other side effect (Plan 0039); only calling `create_app()` does.
+
+    Args:
+        app_settings: Configuration for this app instance. Defaults to the
+            module-global `settings` singleton (the production path). Pass a
+            distinct `Settings` for test isolation — the value is stored on
+            `app.state.settings` and read by `lifespan`, so a
+            `create_app(Settings(memory_enabled=False))` genuinely skips the
+            database with no global mutation (Plan 0048). Modules other than
+            `main`/`lifespan` still read the global `settings`; a full
+            settings-injection refactor is deliberately out of scope.
 
     Returns:
         A fully assembled, not-yet-started `FastAPI` instance. Resource
@@ -152,7 +167,8 @@ def create_app() -> FastAPI:
         lifespan's job, not this factory's — building the app object never
         opens a resource.
     """
-    configure_logging(settings)
+    cfg = app_settings or settings
+    configure_logging(cfg)
 
     new_app = FastAPI(
         title="OMNiBot 2000 Core API",
@@ -166,6 +182,8 @@ def create_app() -> FastAPI:
         openapi_tags=_OPENAPI_TAGS,
         lifespan=lifespan,
     )
+    # Read by `lifespan` — the only settings seam this factory owns.
+    new_app.state.settings = cfg
     new_app.add_middleware(GZipMiddleware, minimum_size=1000)
     # `FastAPI(...)` does not accept `max_body_size` — only `Starlette.__init__`
     # does (Plan 0034) — so the raw ceiling is a middleware, not a constructor

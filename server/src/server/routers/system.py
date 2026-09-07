@@ -11,7 +11,13 @@ router = APIRouter(tags=["System"])
 
 @router.get("/health")
 async def health() -> HealthResponse:
-    """Liveness check — returns ok when the server is up and models are loaded."""
+    """Liveness check — `200` whenever the HTTP process is accepting requests.
+
+    It checks nothing else: not the STT/TTS models, not the database, not
+    the lifespan. Use `GET /ready` for that. The `vision_enabled` flag is
+    static config the robot reads across the client/server boundary, not a
+    health signal.
+    """
     return HealthResponse(vision_enabled=settings.vision_enabled)
 
 

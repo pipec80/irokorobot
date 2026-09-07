@@ -2,6 +2,8 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from server.cognition.response_plan import MAX_TURN_MESSAGE_CHARS
+
 _CONVERSATION_ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._:-]*$"
 
 
@@ -15,7 +17,7 @@ class ChatRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    message: str = Field(min_length=1)
+    message: str = Field(min_length=1, max_length=MAX_TURN_MESSAGE_CHARS)
     conversation_id: str = Field(
         min_length=1,
         max_length=64,

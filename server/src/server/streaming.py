@@ -241,24 +241,49 @@ async def guarantee_terminal_event(events: AsyncIterator[str]) -> AsyncIterator[
     ``Exception`` subclass, so it always propagates untouched and nothing is
     emitted into a transport that is already gone.
 
+    Once a terminal event has passed through, the guarantee is spent: any
+    further producer line is a producer-contract violation and is dropped
+    (the generator is still drained so its own cleanup runs), and a
+    producer that then raises is logged but never gets a second terminal
+    event on the wire.
+
     Args:
         events: The wrapped generator's own NDJSON lines.
 
     Yields:
-        Every line ``events`` yields, unchanged, followed by exactly one
-        terminal `error` line if ``events`` raises or ends without ever
-        having yielded a `done`/`error` line itself.
+        Every line ``events`` yields up to and including its first
+        `done`/`error`, then nothing more. If ``events`` raises or ends
+        before ever yielding a terminal line, exactly one terminal `error`
+        line is appended.
     """
     saw_terminal = False
     try:
         async for line in events:
-            saw_terminal = json.loads(line).get("type") in _TERMINAL_TYPES
+            if saw_terminal:
+                logger.error(
+                    "Stream produced a line after its terminal event — dropping it (producer bug)"
+                )
+                continue
             yield line
+            try:
+                event_type = json.loads(line).get("type")
+            except (ValueError, TypeError):
+                event_type = None
+            if event_type in _TERMINAL_TYPES:
+                saw_terminal = True
     except TTSError as exc:
+        if saw_terminal:
+            logger.error("Streaming TTS failed after the terminal event: %s", exc, exc_info=True)
+            return
         logger.error("Streaming TTS failed after headers: %s", exc, exc_info=True)
         yield error_event(StreamErrorCode.TTS_FAILED, retryable=True)
         return
     except Exception as exc:
+        if saw_terminal:
+            logger.error(
+                "Unhandled streaming failure after the terminal event: %s", exc, exc_info=True
+            )
+            return
         logger.error("Unhandled streaming failure after headers: %s", exc, exc_info=True)
         yield error_event(StreamErrorCode.INTERNAL_ERROR)
         return
