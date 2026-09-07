@@ -90,6 +90,78 @@ async def test_cancellation_propagates_untouched_and_emits_nothing() -> None:
 
 
 @pytest.mark.unit
+async def test_done_then_producer_exception_emits_only_done() -> None:
+    """A producer that raises AFTER its terminal event must not get a second one."""
+
+    async def _done_then_raises() -> AsyncIterator[str]:
+        yield '{"type":"emotion"}\n'
+        yield '{"type":"done","stt_ms":1,"llm_ms":1,"tts_ms":1,"total_ms":3}\n'
+        raise RuntimeError("producer bug after done")
+
+    lines = [line async for line in guarantee_terminal_event(_done_then_raises())]
+    events = _events("".join(lines))
+
+    assert [e["type"] for e in events] == ["emotion", "done"]
+
+
+@pytest.mark.unit
+async def test_tts_error_after_done_appends_no_second_terminal() -> None:
+    """A post-terminal TTSError is logged and swallowed, never a second `error`."""
+
+    async def _done_then_tts_error() -> AsyncIterator[str]:
+        yield '{"type":"done","stt_ms":1,"llm_ms":1,"tts_ms":1,"total_ms":3}\n'
+        raise TTSError("piper died on cleanup")
+
+    lines = [line async for line in guarantee_terminal_event(_done_then_tts_error())]
+    events = _events("".join(lines))
+
+    assert [e["type"] for e in events] == ["done"]
+
+
+@pytest.mark.unit
+async def test_a_line_after_done_is_dropped_not_forwarded() -> None:
+    """Once the terminal event passed, further producer lines are dropped."""
+
+    async def _done_then_extra_line() -> AsyncIterator[str]:
+        yield '{"type":"done","stt_ms":1,"llm_ms":1,"tts_ms":1,"total_ms":3}\n'
+        yield '{"type":"audio","text":"x","audio_base64":"","duration_ms":0}\n'
+
+    lines = [line async for line in guarantee_terminal_event(_done_then_extra_line())]
+    events = _events("".join(lines))
+
+    assert [e["type"] for e in events] == ["done"]
+
+
+@pytest.mark.unit
+async def test_error_then_producer_exception_emits_only_error() -> None:
+    """A producer that emits its own `error` then raises keeps exactly that one."""
+
+    async def _error_then_raises() -> AsyncIterator[str]:
+        yield '{"type":"error","code":"tts_failed","detail":"x","retryable":true}\n'
+        raise RuntimeError("producer bug after error")
+
+    lines = [line async for line in guarantee_terminal_event(_error_then_raises())]
+    events = _events("".join(lines))
+
+    assert [e["type"] for e in events] == ["error"]
+    assert events[0]["code"] == "tts_failed"
+
+
+@pytest.mark.unit
+async def test_a_non_json_line_is_forwarded_without_crashing() -> None:
+    """A malformed producer line is passed through, not treated as terminal."""
+
+    async def _malformed_then_done() -> AsyncIterator[str]:
+        yield "not json at all\n"
+        yield '{"type":"done","stt_ms":0,"llm_ms":0,"tts_ms":0,"total_ms":0}\n'
+
+    lines = [line async for line in guarantee_terminal_event(_malformed_then_done())]
+
+    assert lines[0] == "not json at all\n"
+    assert _events(lines[1])[-1]["type"] == "done"
+
+
+@pytest.mark.unit
 async def test_a_generator_that_ends_without_any_terminal_still_gets_one() -> None:
     """Defensive check: an orchestration bug that forgets to emit done/error
     must not truncate the stream either."""
