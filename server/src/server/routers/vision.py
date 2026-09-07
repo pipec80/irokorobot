@@ -18,6 +18,7 @@ from server.cognition.household_tools import HouseholdKnowledgeTools
 from server.cognition.identity import ActivePersonContext, ActivePersonStatus, HouseholdRole
 from server.cognition.models import CognitiveEvent, Confidence, ConfidenceBasis, KnowledgeStatus
 from server.cognition.response_plan import (
+    MAX_TURN_MESSAGE_CHARS,
     InformationNeed,
     ResponsePlan,
     ResponseSource,
@@ -44,6 +45,10 @@ from server.vision.perception import perceive_scene
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/vision", tags=["Vision"])
+
+# A person name for enrollment — bounded so the multipart contract stays
+# honest even though the endpoint currently 503s and discards the value.
+_MAX_ENROLL_NAME_CHARS = 200
 
 _BIOMETRIC_ENROLLMENT_UNAVAILABLE = (
     "Face enrollment is temporarily unavailable pending local administration and consent policy."
@@ -217,7 +222,9 @@ async def vision_enroll(
     image: Annotated[
         UploadFile, File(description="JPEG/PNG/WebP/GIF/BMP · max 1280x720 · one frame")
     ],
-    name: Annotated[str, Form(description="Person name to enroll")],
+    name: Annotated[
+        str, Form(max_length=_MAX_ENROLL_NAME_CHARS, description="Person name to enroll")
+    ],
 ) -> VisionEnrollResponse:
     """Reject public face enrollment until local policy exists.
 
@@ -251,7 +258,13 @@ async def vision_respond(
     image: Annotated[
         UploadFile, File(description="JPEG/PNG/WebP/GIF/BMP · max 1280x720 · one frame")
     ],
-    text: Annotated[str, Form(description="The user's transcribed visual question")],
+    text: Annotated[
+        str,
+        Form(
+            max_length=MAX_TURN_MESSAGE_CHARS,
+            description="The user's transcribed visual question",
+        ),
+    ],
 ) -> TranscribeResponse:
     """Answer one typed visual-dialogue turn; only a scene request touches a frame.
 
