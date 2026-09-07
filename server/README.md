@@ -80,7 +80,12 @@ exactly one terminal event — `done` (with per-stage timing) or `error` (a
 stable `code`, a fixed client-safe `detail`, and whether retrying may help).
 Every started stream is guaranteed to end in exactly one terminal event
 followed by EOF, never a silent truncation (ADR-0012,
-`streaming.guarantee_terminal_event()`). Native FastAPI JSON Lines
+`streaming.guarantee_terminal_event()` — the wrapper drops any producer
+line after the terminal one and never emits a second terminal event). The
+generated OpenAPI `200` documents this contract as `application/x-ndjson`
+with the `StreamEvent` line shapes (Plan 0048), not the `application/json`
+FastAPI infers from a bare `StreamingResponse` return. Native FastAPI JSON
+Lines
 (`-> AsyncIterable[Model]`, `application/jsonl`) was measured and is
 available on the pinned FastAPI version, but is not adopted here — see
 `docs/architecture/server-production-baseline.md`'s "Verified baseline" for
