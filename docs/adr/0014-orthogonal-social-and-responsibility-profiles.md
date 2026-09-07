@@ -1,121 +1,122 @@
-# ADR 0014: Perfiles sociales y de responsabilidad ortogonales
+# 0014 — Keep social and responsibility profiles orthogonal
 
-- Estado: Aceptado
-- Fecha: 2026-09-04
-- Decisores: Pipec
-- Amplía: [ADR 0006](0006-personal-and-family-companion-profiles.md)
+- **Status:** Accepted
+- **Date:** 2026-09-04
+- **Builds on:** [ADR 0006](0006-personal-and-family-companion-profiles.md)
 
-## Contexto
+## Context
 
-Iroko ya distingue dos perfiles sociales, `personal` y `family`. Esa decisión
-define quién convive con el sistema y cómo se protege la información entre
-personas, pero no expresa qué responsabilidad está autorizado a asumir Iroko.
+Iroko already distinguishes two social profiles, `personal` and `family`. That
+decision defines who lives with the system and how information is protected
+between people, but it does not express what responsibility Iroko is authorized
+to take on.
 
-La visión de producto también contempla acompañamiento, cuidado y educación.
-Modelar esas responsabilidades como nuevos productos o cerebros independientes
-duplicaría identidad, memoria, autorización y conversación. Modelarlas como una
-sola escala de privilegios permitiría, en cambio, que un propietario técnico
-heredara autoridad clínica, educativa o sobre los datos privados de otro adulto.
+The product vision also contemplates companionship, care, and education.
+Modelling those responsibilities as separate products or independent brains
+would duplicate identity, memory, authorization, and conversation. Modelling
+them as a single privilege scale would instead let a technical owner inherit
+clinical or educational authority, or authority over another adult's private
+data.
 
-El código vigente solo demuestra capacidades de acompañamiento. No existe aún
-un pipeline funcional y validado de sensores, decisiones clínicas, acciones,
-resultados y feedback que justifique presentar a Iroko como enfermero 24/7 o
-como educador autónomo.
+The current code only demonstrates companionship capabilities. There is not yet
+a working, validated pipeline of sensors, clinical decisions, actions, outcomes,
+and feedback that would justify presenting Iroko as a 24/7 nurse or as an
+autonomous educator.
 
-## Decisión
+## Decision
 
-Iroko conserva una sola arquitectura cognitiva y expresa su configuración con
-dos ejes independientes:
+Iroko keeps a single cognitive architecture and expresses its configuration
+through two independent axes:
 
 ```text
-Perfil social
+Social profile
 ├── personal
 └── family
 
-Responsabilidad
+Responsibility
 ├── companion
 ├── care
 └── education
 ```
 
-El perfil social responde quiénes participan y qué límites existen entre sus
-datos:
+The social profile answers who participates and what boundaries exist between
+their data:
 
-- `personal`: una persona principal administra sus propios datos y la
-  configuración permitida;
-- `family`: varias personas identificadas comparten capacidades domésticas,
-  sin que el administrador obtenga automáticamente los datos privados de otros
-  adultos.
+- `personal`: one primary person administers their own data and permitted
+  configuration;
+- `family`: several identified people share household capabilities, without the
+  administrator automatically obtaining other adults' private data.
 
-El perfil de responsabilidad responde qué clase de capacidades puede ejercer
-Iroko:
+The responsibility profile answers what class of capabilities Iroko may
+exercise:
 
-- `companion`: conversación, compañía y asistencia doméstica no clínica;
-- `care`: capacidades futuras de cuidado, cada una limitada por políticas,
-  evidencia y criterios de aceptación propios;
-- `education`: capacidades futuras de apoyo educativo, también limitadas por
-  políticas, evidencia y criterios de aceptación propios.
+- `companion`: conversation, company, and non-clinical household assistance;
+- `care`: future care capabilities, each bounded by its own policies, evidence,
+  and acceptance criteria;
+- `education`: future educational-support capabilities, also bounded by their
+  own policies, evidence, and acceptance criteria.
 
-Solo `companion` está activo como objetivo de entrega. `care` y `education` son
-direcciones futuras, no modos implementados ni promesas de producto.
+Only `companion` is active as a delivery target. `care` and `education` are
+future directions, not implemented modes and not product promises.
 
-Ambos ejes comparten el mismo controlador, identidad, memoria y evaluador de
-políticas. Las diferencias se expresarán mediante capacidades explícitas y no
-mediante bifurcaciones completas de la arquitectura.
+Both axes share the same controller, identity, memory, and policy evaluator.
+The differences will be expressed through explicit capabilities, not through
+full forks of the architecture.
 
-En escenarios de cuidado pueden existir, entre otros, beneficiario, familiar,
-cuidador, profesional de salud, administrador técnico y contacto de emergencia.
-En educación pueden existir estudiante, tutor y educador. Ningún rol hereda por
-su nombre autoridad general sobre otro actor o sus datos.
+Care scenarios may involve, among others, a beneficiary, a family member, a
+caregiver, a health professional, a technical administrator, and an emergency
+contact. Education may involve a student, a guardian, and an educator. No role
+inherits general authority over another actor or their data by virtue of its
+name.
 
-Una identidad resuelta sigue sin constituir autorización. Una persona
-desconocida puede mantener conversación general, pero no leer memoria protegida
-ni activar capacidades sensibles. Cara y voz siguen siendo evidencia de
-identidad, nunca una concesión automática de permisos.
+A resolved identity still does not constitute authorization. An unknown person
+may hold general conversation but may not read protected memory or activate
+sensitive capabilities. Face and voice remain identity evidence, never an
+automatic grant of permissions.
 
-Esta decisión es conceptual. No autoriza todavía nuevos enums, tablas, rutas,
-configuración ni comportamiento de runtime. Cada incremento ejecutable deberá
-tener un plan `Ready`, política tipada y aceptación observable.
+This decision is conceptual. It does not yet authorize new enums, tables,
+routes, configuration, or runtime behaviour. Each executable increment must have
+a `Ready` plan, typed policy, and observable acceptance.
 
-## Consecuencias
+## Alternatives considered
 
-### Positivas
+### One product or brain per combination
 
-- Permite combinar, por ejemplo, `personal + companion` o `family + care` sin
-  crear cerebros paralelos.
-- Mantiene una frontera clara entre convivencia social y responsabilidad.
-- Evita que `owner`, administrador o familiar se conviertan en permisos
-  universales.
-- Permite cerrar primero el compañero personal y añadir responsabilidades solo
-  cuando estén demostradas.
+Rejected because it would duplicate the cognitive core and encourage divergence
+of identity, memory, and privacy.
 
-### Costes
+### A single mode with cumulative permissions
 
-- La matriz de políticas y pruebas crecerá al añadir responsabilidades.
-- Cada capacidad sensible deberá definir actor, propósito, procedencia,
-  consentimiento, retención y auditoría.
-- La comunicación de producto deberá distinguir una dirección futura de una
-  capacidad aceptada.
+Rejected because it mixes social relationship with authority and makes implicit
+privilege escalation easy.
 
-## Alternativas descartadas
+### Implement `care` and `education` now
 
-### Un producto o cerebro por combinación
+Rejected because there is no runtime, security, or acceptance evidence that
+would sustain those responsibilities.
 
-Descartado porque duplicaría el núcleo cognitivo y favorecería divergencias de
-identidad, memoria y privacidad.
+## Consequences
 
-### Un único modo con permisos acumulativos
+### Positive
 
-Descartado porque mezcla relación social y autoridad, y facilita escaladas de
-privilegios implícitas.
+- Allows combining, for example, `personal + companion` or `family + care`
+  without creating parallel brains.
+- Keeps a clear boundary between social cohabitation and responsibility.
+- Prevents `owner`, administrator, or family member from becoming universal
+  permissions.
+- Allows closing the personal companion first and adding responsibilities only
+  once they are demonstrated.
 
-### Implementar ahora `care` y `education`
+### Negative
 
-Descartado porque no existe evidencia de runtime, seguridad ni aceptación que
-sostenga esas responsabilidades.
+- The policy and test matrix will grow as responsibilities are added.
+- Each sensitive capability must define actor, purpose, provenance, consent,
+  retention, and audit.
+- Product communication must distinguish a future direction from an accepted
+  capability.
 
-## Revisión
+## Review
 
-Revisar esta decisión antes de activar la primera capacidad `care` o
-`education`, o si una combinación demuestra necesitar una frontera de runtime
-distinta. Cualquier reemplazo requiere un ADR nuevo.
+Review this decision before activating the first `care` or `education`
+capability, or if a combination proves to need a different runtime boundary.
+Any replacement requires a new ADR.
