@@ -1,147 +1,147 @@
-# Evaluación de memoria conversacional longitudinal
+# Longitudinal conversational-memory evaluation
 
-**Estado:** especificación canónica; suite definida por Plan 0046 `Ready`
-**Última revisión:** 2026-09-07
+**Status:** canonical specification; suite defined by Plan 0046 `Ready`
+**Last reviewed:** 2026-09-07
 
-## Propósito
+## Purpose
 
-Definir cómo demostrar que Iroko aprende, conserva, actualiza, protege y elimina
-recuerdos autobiográficos a través de múltiples sesiones. Esta especificación
-evalúa una experiencia completa; no convierte una prueba de extracción ni un
-`pytest` verde en aceptación del producto.
+Define how to demonstrate that Iroko learns, keeps, updates, protects, and
+removes autobiographical memories across multiple sessions. This specification
+evaluates a complete experience; it does not turn an extraction test or a green
+`pytest` into product acceptance.
 
-La memoria longitudinal forma parte de la aceptación de PC-5. El mapa de
-entrega correspondiente está en
+Longitudinal memory is part of PC-5 acceptance. The corresponding delivery map
+is in
 [conversational-memory-delivery-map.md](../roadmap/conversational-memory-delivery-map.md).
-La primera implementación acotada es
+The first bounded implementation is
 [Plan 0046](../plans/open/0046-reproducible-longitudinal-memory-baseline.md):
-construye el instrumento y registra RED, sin corregir todavía el runtime.
+it builds the instrument and records RED, without yet fixing the runtime.
 
-## Unidad evaluada
+## Unit under evaluation
 
-Una ejecución longitudinal debe poder recorrer, con el mismo sujeto autorizado:
+A longitudinal run must be able to traverse, with the same authorized subject:
 
 ```text
-aprender
-  -> reiniciar el proceso
-  -> recordar
-  -> corregir
-  -> reiniciar nuevamente
-  -> recordar la verdad vigente
-  -> olvidar
-  -> comprobar ausencia y no divulgación
+learn
+  -> restart the process
+  -> recall
+  -> correct
+  -> restart again
+  -> recall the current truth
+  -> forget
+  -> check absence and non-disclosure
 ```
 
-Cada caso debe registrar la persona que es sujeto del recuerdo, quién lo afirmó,
-la fuente, los tiempos relevantes, el estado de verdad, la visibilidad, la
-sensibilidad, la decisión de política y las derivaciones eliminadas.
+Each case must record the person who is the subject of the memory, who asserted
+it, the source, the relevant times, the truth state, the visibility, the
+sensitivity, the policy decision, and the derivatives removed.
 
-## Capacidades obligatorias
+## Mandatory capabilities
 
-| Categoría | Pregunta que debe responder la evaluación |
+| Category | Question the evaluation must answer |
 |---|---|
-| Extracción | ¿Se propuso el recuerdo correcto sin convertir una inferencia en hecho? |
-| Multisesión | ¿Puede recuperarse después de cerrar y recrear la sesión o el proceso? |
-| Temporalidad | ¿Distingue cuándo ocurrió, cuándo se afirmó y si sigue vigente? |
-| Actualización | ¿Una corrección sustituye la verdad activa sin borrar su procedencia? |
-| Abstención | ¿Admite no saber cuando no existe evidencia suficiente y vigente? |
-| Procedencia | ¿La respuesta puede vincularse con sujeto, afirmante y fuente correctos? |
-| Privacidad entre personas | ¿Una identidad no autorizada queda excluida antes de construir el prompt? |
-| Eliminación completa | ¿Olvidar elimina o invalida hechos, episodios, embeddings, resúmenes y cachés derivados? |
-| Resistencia a falsos recuerdos | ¿Rechaza negaciones espurias, atribuciones erróneas y contradicciones sin confirmar? |
+| Extraction | Was the correct memory proposed without turning an inference into a fact? |
+| Multi-session | Can it be retrieved after closing and recreating the session or the process? |
+| Temporality | Does it distinguish when it happened, when it was asserted, and whether it still holds? |
+| Update | Does a correction replace the active truth without erasing its provenance? |
+| Abstention | Does it admit not knowing when there is no sufficient and current evidence? |
+| Provenance | Can the response be linked to the correct subject, assertor, and source? |
+| Cross-person privacy | Is an unauthorized identity excluded before the prompt is built? |
+| Complete deletion | Does forgetting remove or invalidate derived facts, episodes, embeddings, summaries, and caches? |
+| False-memory resistance | Does it reject spurious negations, misattributions, and unconfirmed contradictions? |
 
-## Capas de evidencia
+## Evidence layers
 
-La aceptación requiere tres capas, cada una con una responsabilidad diferente:
+Acceptance requires three layers, each with a different responsibility:
 
-1. **Pruebas deterministas:** contratos, lifecycle, cardinalidad, autorización,
-   filtrado y eliminación.
-2. **Evaluaciones con Ollama local:** extracción y verbalización sobre conjuntos
-   versionados, con modelo y parámetros registrados.
-3. **Escenario real:** `just run-server` y `just run-robot`, usando el contrato
-   de audio y la identidad disponible, con reinicios reales entre sesiones.
+1. **Deterministic tests:** contracts, lifecycle, cardinality, authorization,
+   filtering, and deletion.
+2. **Local Ollama evaluations:** extraction and verbalization over versioned
+   sets, with model and parameters recorded.
+3. **Real scenario:** `just run-server` and `just run-robot`, using the audio
+   contract and the available identity, with real restarts between sessions.
 
-Las pruebas unitarias o de integración no sustituyen la tercera capa. Una prueba
-manual no sustituye los invariantes deterministas de privacidad y borrado.
+Unit or integration tests do not replace the third layer. A manual test does
+not replace the deterministic privacy and deletion invariants.
 
-## Conjuntos mínimos
+## Minimum sets
 
-La suite futura debe incluir al menos:
+The future suite must include at least:
 
-- preferencias simples y corregibles;
-- edades, domicilios y relaciones con vigencia temporal;
-- relaciones familiares y de mascotas, incluidas negaciones engañosas;
-- datos privados de dos adultos distintos;
-- recados `recipient_only` con destinatario autorizado y no autorizado;
-- información desconocida para comprobar abstención;
-- episodios sensibles cuya eliminación tenga derivados vectoriales;
-- evidencia perceptiva que no deba convertirse por sí sola en verdad durable.
+- simple, correctable preferences;
+- ages, domiciles, and relations with temporal validity;
+- family and pet relations, including deceptive negations;
+- private data for two distinct adults;
+- `recipient_only` messages with an authorized and an unauthorized recipient;
+- unknown information to check abstention;
+- sensitive episodes whose deletion has vector derivatives;
+- perceptual evidence that must not on its own become durable truth.
 
-Los nombres y datos reales de la familia no deben formar parte del conjunto
-versionado. Deben utilizarse identidades y contenidos sintéticos.
+Real family names and data must not be part of the versioned set. Synthetic
+identities and content must be used.
 
-## Métricas y resultados
+## Metrics and results
 
-Cada corrida debe producir, como mínimo:
+Each run must produce, at a minimum:
 
-- precisión y recall de candidatos por tipo;
-- precisión y recall de sujeto, objeto y relación;
-- exactitud de verdad vigente tras correcciones;
-- tasa de abstención correcta;
-- tasa de divulgación prohibida, cuyo umbral aceptable es cero;
-- tasa de eliminación completa de derivados, cuyo umbral aceptable es 100 %;
-- latencias p50 y p95;
-- proveedor, modelo exacto, cuantización, parámetros, SHA, diff y estado de los
-  servicios.
+- candidate precision and recall by type;
+- subject, object, and relation precision and recall;
+- current-truth accuracy after corrections;
+- correct-abstention rate;
+- forbidden-disclosure rate, whose acceptable threshold is zero;
+- complete-derivative-deletion rate, whose acceptable threshold is 100%;
+- p50 and p95 latencies;
+- provider, exact model, quantization, parameters, SHA, diff, and service
+  status.
 
-Los umbrales de calidad no deben codificarse solo en este documento: el futuro
-plan ejecutable deberá fijarlos junto con el dataset versionado y observar RED
-antes de implementar cambios.
+Quality thresholds must not be encoded only in this document: the future
+executable plan must fix them together with the versioned dataset and observe
+RED before implementing changes.
 
-## Línea base histórica recuperada
+## Recovered historical baseline
 
-La auditoría del 2026-09-02 produjo evidencia útil, pero **no es una línea base
-actual ni aceptación reproducible**: se ejecutó sobre un árbol con cambios
-locales y el reporte conversacional quedó en una ruta temporal.
+The 2026-09-02 audit produced useful evidence, but **it is not a current
+baseline or a reproducible acceptance**: it ran on a tree with local changes
+and the conversational report was left at a temporary path.
 
-- extracción, 22 conversaciones, modelo
-  `qwen3:4b-instruct-2507-q4_K_M`: recall global 0,69; precisión 0,75; recall de
-  entidades 0,89; latencia media 27,5 s; máxima 55,2 s; resultado bajo el umbral
-  histórico de 0,80;
-- fidelidad conversacional, 12 casos, modelo `qwen2.5:3b`: pass rate 58,33 %;
-  recall requerido 70,59 %; violaciones prohibidas 8,33 %.
+- extraction, 22 conversations, model
+  `qwen3:4b-instruct-2507-q4_K_M`: global recall 0.69; precision 0.75; entity
+  recall 0.89; mean latency 27.5 s; maximum 55.2 s; result below the historical
+  threshold of 0.80;
+- conversational faithfulness, 12 cases, model `qwen2.5:3b`: pass rate 58.33%;
+  required recall 70.59%; forbidden violations 8.33%.
 
-Se observaron pérdidas de relaciones `hijo_de`, `mascota_de` y `pareja_de`,
-negaciones falsas, preferencia por información antigua y respuestas que no se
-abstuvieron. Estos resultados justifican el benchmark, pero deberán repetirse
-sobre un SHA congelado antes de usarlos como comparación.
+Losses of `hijo_de`, `mascota_de`, and `pareja_de` relations were observed,
+along with false negations, a preference for stale information, and responses
+that failed to abstain. These results justify the benchmark, but they must be
+repeated on a frozen SHA before being used as a comparison.
 
-## Gate longitudinal de PC-5
+## PC-5 longitudinal gate
 
-PC-5 no puede aceptarse hasta que una corrida reproducible demuestre:
+PC-5 cannot be accepted until a reproducible run demonstrates:
 
-1. aprendizaje como candidato y promoción autorizada;
-2. recuerdo tras reinicio con procedencia;
-3. corrección y recuperación exclusiva de la verdad vigente;
-4. olvido con eliminación o invalidación verificable de todos los derivados;
-5. no divulgación a otra persona o a un interlocutor desconocido;
-6. conversación completa por el camino real servidor/robot.
+1. learning as a candidate and authorized promotion;
+2. recall after restart with provenance;
+3. correction and exclusive retrieval of the current truth;
+4. forgetting with verifiable deletion or invalidation of all derivatives;
+5. non-disclosure to another person or to an unknown interlocutor;
+6. a complete conversation over the real server/robot path.
 
-La respuesta del LLM es presentación de evidencia. La decisión sobre qué
-recuerdo está vigente, autorizado o eliminado debe permanecer determinista.
+The LLM response is presentation of evidence. The decision about which memory is
+current, authorized, or deleted must remain deterministic.
 
-## Evidencia de corrida
+## Run evidence
 
-Cada reporte futuro debe ser un artefacto versionable o enlazado desde el plan,
-e incluir:
+Each future report must be a versionable artifact, or linked from the plan, and
+must include:
 
-- fecha, rama, SHA y `git status`;
-- comandos exactos y resultados;
-- modelos efectivos y disponibilidad de Ollama;
-- dataset y versión;
-- tabla por caso, no solo promedios;
-- falsos positivos, divulgaciones y residuos después del olvido;
-- limitaciones y cualquier intervención manual.
+- date, branch, SHA, and `git status`;
+- exact commands and results;
+- effective models and Ollama availability;
+- dataset and version;
+- a per-case table, not just averages;
+- false positives, disclosures, and residue after forgetting;
+- limitations and any manual intervention.
 
-Un reporte temporal, un resultado sin SHA reproducible o una corrida sobre un
-árbol mutable se conserva como investigación, no como gate cerrado.
+A temporary report, a result without a reproducible SHA, or a run over a
+mutable tree is kept as research, not as a closed gate.

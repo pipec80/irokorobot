@@ -13,6 +13,8 @@
 | ¿Qué decisiones gobiernan? | [Índice de ADR](../adr/README.md) |
 | ¿Qué va primero? | [Roadmap cognitivo](../roadmap/cognitive-roadmap.md) |
 | ¿Cómo se conecta la meta del compañero personal con código y planes? | [Mapa de entrega del compañero personal](../roadmap/personal-companion-delivery-map.md) |
+| ¿Cómo se entrega la memoria conversacional longitudinal? | [Mapa de entrega de memoria conversacional](../roadmap/conversational-memory-delivery-map.md) |
+| ¿Cómo se evalúa la memoria longitudinal? | [Evaluación de memoria conversacional longitudinal](../architecture/longitudinal-conversational-memory-evaluation.md) |
 | ¿Qué se puede ejecutar? | [Índice de planes](../plans/README.md) |
 | ¿Cómo se acepta el runtime? | [Runbook](../runbooks/p0-runtime-acceptance.md) |
 | ¿Dónde está la historia? | [Índice histórico](../history/README.md) |
