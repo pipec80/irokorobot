@@ -2,7 +2,11 @@
 
 - **Status:** **Fully closed 2026-09-03**. Every child (0032–0045, including
   0044) executed, merged, and verified against this baseline's own gates.
-  No child plan remains.
+  No child plan remains. A second independent audit on 2026-09-07 confirmed
+  the baseline and closed four bounded follow-up edges via
+  [Plan 0048](../plans/completed/0048-fastapi-baseline-final-hardening.md)
+  — see "Second audit and Plan 0048" below. Only Uvicorn concurrency
+  calibration is still open, as its own `perf(...)` plan.
 - **Audited commit:** `7d68641` (original audit); see "Verified baseline" for
   the current state after the closed children
 - **Audit date:** 2026-08-31; closed 2026-09-03
@@ -100,8 +104,10 @@ plan that closed it, or left open:
   call.~~ **Closed by Plan 0039** — a single lifespan-owned `httpx.AsyncClient`
   is threaded through every call site instead.
 - ~~`/health` is liveness-like but its documentation overstates readiness.~~
-  **Closed by Plan 0040** — `/health` stays a cheap liveness check; a new
-  `GET /ready` reports the real, side-effect-free readiness state.
+  **Closed by Plans 0040 and 0048** — Plan 0040 added `GET /ready` for the
+  real, side-effect-free readiness state; Plan 0048 then fixed the `health()`
+  docstring itself, which had still claimed it returns ok "when models are
+  loaded".
 - ~~Uvicorn stops after the configured maximum request count even though no
   verified supervisor is part of the current runtime contract.~~ **Closed by
   Plan 0038** — `uvicorn_max_requests` defaults to unset.
@@ -159,6 +165,41 @@ A third gap was found and closed during Plan 0042's own Task 2 gate:
   collection-order accident.~~ **Closed by Plan 0045** — matched all four to
   the two already-correct sibling files' pattern. `just test` (`-n auto`):
   1068 passed, twice back to back.
+
+## Second audit and Plan 0048 (2026-09-07)
+
+An independent second audit of `server/src/server` after the capsule
+closed found the baseline professional and every original P0 shut, with
+four bounded edges left. [Plan 0048](../plans/completed/0048-fastapi-baseline-final-hardening.md)
+closed them:
+
+- Free-text request fields (`chat` message, transcribed voice/visual turn,
+  `vision/enroll` name) had `min_length` but no `max_length`; the raw body
+  limit caps total bytes but ~15 MB of valid text still reached tokenization
+  and Ollama. `MAX_TURN_MESSAGE_CHARS = 4000` now bounds them at the HTTP
+  boundary (a clean `422`, previously a `500` from the cognitive model).
+- `streaming.guarantee_terminal_event()` promised "exactly one terminal
+  event, then EOF" but did not hold it — `saw_terminal` was reassigned per
+  line, so `done` followed by any line appended a spurious `error`. Now
+  latched, post-terminal lines dropped, both failure paths check it.
+- `/transcribe/stream`'s generated OpenAPI `200` said `application/json`
+  with an empty schema. Now `application/x-ndjson` with the `StreamEvent`
+  line shapes, via an `NDJSONStreamingResponse` `response_class` (the
+  manual `StreamingResponse` return is kept — a pre-stream `HTTPException`
+  must still surface as a real 413/422/500).
+- `create_app()` read the module-global `settings`, so lifespan behaviour
+  could not be driven by an injected `Settings`. Now
+  `create_app(app_settings=None)` stores it on `app.state.settings` and
+  `lifespan` reads it — contained to `main.py`; a full settings-injection
+  refactor stays out of scope.
+
+Uvicorn concurrency (`UVICORN_LIMIT_CONCURRENCY=100`) remains uncalibrated
+by deliberate choice — it needs p50/p95/RAM/queueing measurement on the
+real homelab hardware and is deferred to its own `perf(...)` plan. With
+that one exception, the server baseline is closed: the standing convention
+for any new endpoint is Pydantic contract → thin router → typed `Depends`
+→ domain/service → typed response → known errors → OpenAPI → API tests →
+CI.
 
 ## Architectural invariants
 

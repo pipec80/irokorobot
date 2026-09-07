@@ -1,8 +1,9 @@
 # FastAPI Production Baseline — Final Hardening Plan
 
-> **Status:** Ready. Authorized by Pipec on 2026-09-07 as the single `NOW`
-> item, following a second independent audit of `server/src/server` after
-> the 0031 capsule (0032–0045) closed.
+> **Status:** Completed 2026-09-07. Historical evidence only — this document
+> is not an instruction and authorizes nothing. Authorized by Pipec on
+> 2026-09-07 as the single `NOW` item, following a second independent audit
+> of `server/src/server` after the 0031 capsule (0032–0045) closed.
 
 > **For agentic workers:** REQUIRED SUB-SKILLS: `superpowers:test-driven-development`,
 > `fastapi`, `superpowers:verification-before-completion`. Execute this plan
@@ -297,3 +298,65 @@ On merge: move this file to `completed/`, update the board and
 is closed — the standing convention for any new endpoint becomes: Pydantic
 contract → thin router → typed `Depends` → domain/service → typed response
 → known errors → OpenAPI → API tests → CI.
+
+## Execution notes
+
+Executed 2026-09-07 on branch `feat/0048-fastapi-baseline-final-hardening`,
+test-first throughout — every RED watched failing for the right reason
+before its fix. Four implementation commits, one per task.
+
+### Task 1 — `max_length`
+
+`MAX_TURN_MESSAGE_CHARS = 4000` in `response_plan.py`, applied to
+`TextTurnPayload.message`, `ChatRequest.message`, and `vision/respond`'s
+`text` `Form`; `vision/enroll`'s `name` got `max_length=200`. RED: an
+over-length chat message returned `500` (not `422`) before the bound — the
+`TextTurnPayload` construction inside the controller raised
+`ValidationError` past the HTTP boundary; now it is a clean `422` at the
+boundary. No `.env.example` change — the value is a constant, matching the
+existing `conversation_id` `max_length=64` convention.
+
+### Task 2 — terminal-event guarantee
+
+The audit was right and the bug was slightly worse than described:
+`saw_terminal` was reassigned per line, so `done` followed by any line
+reset it to `False` and the wrapper then appended a spurious `error`. Fix:
+latch `saw_terminal`, drop (but still drain) any producer line after the
+terminal one, and check the latch in both `except` branches before
+emitting. Also guarded `json.loads` so a non-JSON producer line is
+forwarded instead of crashing into the generic `error` path. 5 new unit
+tests; the 5 original tests unchanged and green.
+
+### Task 3 — NDJSON 200 in OpenAPI
+
+A throwaway probe confirmed `response_class=NDJSONStreamingResponse` alone
+removes the inferred `application/json` 200 (a bare `responses={200: …}`
+override does not — it leaves both media types). The catch: `response_class`
+also drives the route's **error** response media types, so the pre-stream
+`413` (a plain JSON `{"detail": …}` body) had to be re-pinned to
+`application/json` explicitly — caught by
+`test_api_contract.py::test_every_raised_error_code_is_documented_with_the_detail_shape`
+going RED mid-task. Final: `200` → `application/x-ndjson` with the
+`StreamEvent` union and a prose ordering description; `413`/`422` →
+`application/json`. Runtime behaviour byte-identical.
+
+### Task 4 — `/health` wording + `create_app(Settings)`
+
+`create_app(app_settings=None)` stores `cfg` on `app.state.settings`;
+`lifespan` reads it for the worker check, the `memory_enabled` branch, and
+the startup log line — nothing else. `main.py` is the only production file
+changed. The existing lifespan tests patch attributes on the shared global
+`settings` and `main.app.state.settings is settings`, so they were
+unaffected. `/health`'s docstring no longer claims it checks models.
+
+### Verification
+
+- `just lint`, `just typecheck` (mypy 92 files + pyright), `just audit`,
+  `uv build --all-packages`, `git diff --check` — all clean.
+- Deterministic CI command
+  (`pytest -m "not slow and not hardware and not eval" --cov … --cov-fail-under=80`):
+  **1073 passed, 9 deselected, 90.10% coverage**.
+- Real runtime acceptance: not applicable — no hot-path request/response
+  body or streaming event changed; the HTTP-level suite (route pinning,
+  OpenAPI contract, new 422 cases, terminal-invariant unit tests) proves
+  the behaviour. To be confirmed with Pipec at merge.
