@@ -1656,7 +1656,9 @@ def test_cli_full_red_run_writes_a_report_and_returns_one(
     _install_fake_db(monkeypatch)
 
     assert asyncio.run(run_cli(_options(tmp_path, runs=3))) == 1
-    report = (tmp_path / "report.md").read_text(encoding="utf-8")
+    raw = (tmp_path / "report.md").read_bytes()
+    assert b"\r\n" not in raw  # LF only, so the committed report passes the line-ending gate
+    report = raw.decode("utf-8")
     assert report.startswith("# Longitudinal-memory evaluation report")
     assert "gating baseline" in report
     assert settings.brain_db_path == original

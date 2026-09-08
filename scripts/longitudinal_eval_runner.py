@@ -287,8 +287,12 @@ def _verify_run(
 
 
 def _write_report(output_path: Path, content: str) -> None:
-    """Write the report, refusing to overwrite an existing file."""
+    """Write the report, refusing to overwrite an existing file.
+
+    Uses ``newline="\n"`` so a report generated on Windows commits with LF
+    endings and passes the repository's ``mixed-line-ending`` gate unmodified.
+    """
     if output_path.exists():
         raise HarnessError(f"refusing to overwrite an existing report: {output_path}")
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(content, encoding="utf-8")
+    output_path.write_text(content, encoding="utf-8", newline="\n")
