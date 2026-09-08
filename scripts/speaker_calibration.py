@@ -38,6 +38,7 @@ from datetime import UTC, datetime
 import importlib
 import logging
 import math
+import time
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -61,6 +62,7 @@ from scripts.speaker_calibration_models import (
     MANIFEST_NAME,
     OWNER_SUBJECT_ID,
     PHRASE_IDS,
+    PHRASE_TEXT,
     REPORT_NAME,
     SAMPLE_CLASSES,
     SpeakerCliOptions,
@@ -401,6 +403,8 @@ def _run_capture(options: SpeakerCliOptions, capture_audio: Callable[[], bytes] 
         options.condition,
     ):
         raise ValueError("capture requires full sample metadata")  # parse_cli_args enforces this
+    if capture_audio is None:  # a real human is at the microphone
+        _announce_capture(str(options.phrase_id))
     wav_bytes = (capture_audio or _default_recorder)()
     validate_wav_bytes(wav_bytes)
     options.corpus_root.mkdir(parents=True, exist_ok=True)
@@ -421,6 +425,34 @@ def _run_capture(options: SpeakerCliOptions, capture_audio: Callable[[], bytes] 
     append_sample_atomic(options.manifest_path, options.corpus_root, sample)
     logger.info("captured %s under %s", sample.sample_id, options.corpus_root)
     return 0
+
+
+def _announce_capture(phrase_id: str) -> None:
+    """Show the phrase to read aloud, then count down with an audible start cue.
+
+    Console ergonomics for the person at the microphone — the caller runs this
+    only for a real capture (no injected recorder), so tests stay fast.
+
+    Args:
+        phrase_id: One of the frozen phrase ids.
+    """
+    logger.info("---- %s ----------------------------------------", phrase_id)
+    logger.info("READ ALOUD:  %s", PHRASE_TEXT[phrase_id])
+    for count in (3, 2, 1):
+        logger.info("   %d ...", count)
+        time.sleep(1.0)
+    _play_start_cue()
+    logger.info("   >>> SPEAK NOW <<<")
+
+
+def _play_start_cue() -> None:
+    """Sound a short start beep; stay silent if the platform cannot."""
+    try:
+        import winsound  # noqa: PLC0415 -- Windows-only, real-capture path only
+
+        winsound.Beep(1000, 250)
+    except (ImportError, RuntimeError) as exc:  # no PC speaker / not Windows
+        logger.debug("start cue beep unavailable: %s", exc)
 
 
 def _default_recorder() -> bytes:

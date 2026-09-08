@@ -26,6 +26,13 @@ SAMPLE_CLASSES: Final[tuple[SampleClass, ...]] = get_args(SampleClass)
 SCHEMA_VERSION: Final = 1
 CONDITIONS: Final = ("quiet-near", "quiet-far", "background-near", "background-far")
 PHRASE_IDS: Final = ("phrase-01", "phrase-02", "phrase-03")
+# The three frozen neutral Spanish phrases (Plan 0047 block 4). Single source of
+# truth: the capture CLI shows these so the operator needs no second terminal.
+PHRASE_TEXT: Final[dict[str, str]] = {
+    "phrase-01": "La lluvia cae despacio sobre el tejado de la casa",
+    "phrase-02": "Guardé cinco libros nuevos en el estante de madera",
+    "phrase-03": "Prefiero caminar por el parque cuando termina la tarde",
+}
 OWNER_SUBJECT_ID: Final = "owner"
 IMPOSTOR_ID_PATTERN: Final = re.compile(r"^impostor_[a-z]+$")
 EMBEDDING_DIM: Final = 192

@@ -50,6 +50,7 @@ from scripts.speaker_calibration_corpus import (
 from scripts.speaker_calibration_models import (
     CONDITIONS,
     PHRASE_IDS,
+    PHRASE_TEXT,
     AggregateSpeakerReport,
     ConditionSummary,
     SpeakerCliOptions,
@@ -907,6 +908,22 @@ def test_run_cli_capture_failure_adds_no_manifest_row(tmp_path: Path) -> None:
 
     assert exit_code != 0
     assert not (tmp_path / "manifest.json").exists()
+
+
+def test_phrase_text_holds_the_three_frozen_phrases() -> None:
+    assert set(PHRASE_TEXT) == set(PHRASE_IDS)
+    assert PHRASE_TEXT["phrase-01"] == "La lluvia cae despacio sobre el tejado de la casa"
+
+
+def test_run_cli_capture_with_injected_recorder_skips_the_human_announce(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _boom(_phrase_id: str) -> None:
+        raise AssertionError("announce/countdown must not run when a recorder is injected")
+
+    monkeypatch.setattr("scripts.speaker_calibration._announce_capture", _boom)
+
+    assert run_cli(_capture_opts(tmp_path), capture_audio=_wav_bytes) == 0
 
 
 def test_run_cli_analyze_never_invokes_the_capture_boundary(tmp_path: Path) -> None:
