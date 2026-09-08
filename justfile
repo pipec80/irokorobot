@@ -122,6 +122,10 @@ eval-memory *ARGS:
 eval-chat *ARGS:
     uv run --env-file .env python scripts/eval_chat.py {{ARGS}}
 
+# Baseline reproducible de memoria longitudinal contra Ollama real + DB temporal (Plan 0046)
+eval-longitudinal *ARGS:
+    uv run --env-file .env python scripts/eval_longitudinal_memory.py {{ARGS}}
+
 # Mini-QA de M3: contrato /chat, continuidad, aislamiento y modo interactivo
 chat-test *ARGS:
     uv run --env-file .env python scripts/chat_test.py {{ARGS}}

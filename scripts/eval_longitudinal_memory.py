@@ -10,6 +10,20 @@ the network or a real database. The strict typed models live in
 
 from __future__ import annotations
 
+from pathlib import Path
+import sys
+
+# Direct execution (``python scripts/eval_longitudinal_memory.py``) puts
+# ``scripts/`` on ``sys.path[0]``, not the repo root, so ``from scripts.…``
+# imports fail. Under pytest the repo root is already on the path
+# (pyproject ``pythonpath``), so this only matters for the frozen justfile
+# entrypoint. Must run before any ``from scripts.…`` import below.
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import argparse  # after the sys.path bootstrap, by design
+import asyncio
+import logging
 import re
 from typing import TYPE_CHECKING
 
@@ -17,16 +31,22 @@ from pydantic import ValidationError
 import yaml
 
 from scripts.longitudinal_eval_models import (
+    CliOptions,
     ExpectedObservation,
     LongitudinalCategory,
     LongitudinalSuite,
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Collection
-    from pathlib import Path
+    from collections.abc import Collection, Sequence
 
     from scripts.longitudinal_eval_models import LongitudinalStep
+
+logger = logging.getLogger(__name__)
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_DEFAULT_DATASET = _REPO_ROOT / "tests" / "evals" / "golden_longitudinal_memory.yaml"
+_DEFAULT_OUTPUT = _REPO_ROOT / "docs" / "evals" / "longitudinal-memory-cm0.md"
 
 _ALL_CATEGORIES: frozenset[LongitudinalCategory] = frozenset(LongitudinalCategory)
 
@@ -197,3 +217,55 @@ def _has_phone_like_number(line: str) -> bool:
         len(_NON_DIGIT_RE.sub("", match.group())) >= _MIN_PHONE_DIGITS
         for match in _PHONE_CANDIDATE_RE.finditer(line)
     )
+
+
+# ---------------------------------------------------------------------------
+# CLI (Task 4) — the frozen ``just eval-longitudinal`` entrypoint
+# ---------------------------------------------------------------------------
+
+
+def parse_cli_args(argv: Sequence[str]) -> CliOptions:
+    """Parse ``argv`` into validated :class:`CliOptions`.
+
+    Args:
+        argv: Argument list without the program name (``sys.argv[1:]``).
+
+    Returns:
+        The parsed options. A provider other than ``ollama`` or ``--runs < 1``
+        exits the process with code 2 (argparse convention).
+    """
+    parser = argparse.ArgumentParser(
+        description="Reproducible longitudinal-memory capability baseline (Plan 0046, CM-0)."
+    )
+    parser.add_argument("--dataset", type=Path, default=_DEFAULT_DATASET)
+    parser.add_argument("--output", type=Path, default=_DEFAULT_OUTPUT)
+    parser.add_argument("--runs", type=int, default=1)
+    parser.add_argument("--only", nargs="+", default=None, metavar="SCENARIO_ID")
+    parser.add_argument("--reserved-term", action="append", default=None, metavar="TERM")
+    parser.add_argument("--provider", default="ollama", choices=("ollama",))
+    args = parser.parse_args(list(argv))
+    if args.runs < 1:
+        parser.error("--runs must be >= 1")
+    return CliOptions(
+        dataset_path=args.dataset,
+        output_path=args.output,
+        runs=args.runs,
+        only=tuple(args.only or ()),
+        reserved_terms=tuple(args.reserved_term or ()),
+        provider=args.provider,
+    )
+
+
+def main() -> None:
+    """CLI entry point for ``just eval-longitudinal``."""
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
+    options = parse_cli_args(sys.argv[1:])
+    # Local import: the runner imports load_suite/validate_dataset_privacy from
+    # this module, so importing run_cli at module scope would be circular.
+    from scripts.longitudinal_eval_runner import run_cli  # noqa: PLC0415
+
+    raise SystemExit(asyncio.run(run_cli(options)))
+
+
+if __name__ == "__main__":
+    main()

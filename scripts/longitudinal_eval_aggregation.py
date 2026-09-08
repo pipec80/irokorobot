@@ -29,7 +29,7 @@ from scripts.longitudinal_eval_scoring import _VALID_OBSERVATION, _normalize_tex
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from scripts.longitudinal_eval_models import ScoredStep
+    from scripts.longitudinal_eval_models import LongitudinalEvaluationResult, ScoredStep
 
 _SUBJECT, _PREDICATE, _OBJECT = 1, 2, 3  # ``fact|s|p|o`` segment offsets
 
@@ -218,14 +218,22 @@ def aggregate_results(scored: Sequence[ScoredStep]) -> BenchmarkSummary:
     )
 
 
-def determine_exit_code(summary: BenchmarkSummary, *, gating: bool) -> int:
+def determine_exit_code(result: LongitudinalEvaluationResult) -> int:
     """Return 0 for product PASS, 1 for valid cognitive RED, or 2 for harness error.
 
-    Task 4: replace with ``determine_exit_code(result: LongitudinalEvaluationResult)``
-    once ``RunMetadata`` / ``LongitudinalEvaluationResult`` exist; pre-run and
-    incomplete-run exit-``2`` paths stay in ``run_cli``. A ``None`` gate metric
-    (empty denominator) fails its gate, so unsupported cases keep exit ``1``.
+    ``2`` when a harness/provider error reached the summary (``errors > 0``).
+    ``1`` for a valid run with at least one failed or unsupported cognitive
+    case, or (on a gating run) a strict gate whose denominator is empty
+    (``None``) and therefore fails. ``0`` only when the run is clean and, for a
+    gating run, every frozen gate passes with a non-empty denominator. A
+    non-gating ``--only`` smoke run is never ``0`` on the strength of the gates:
+    it is ``0`` only when its own subset of steps fully passes.
+
+    Pre-run and incomplete-run exit-``2`` conditions (invalid dataset/config,
+    unsafe path, unavailable provider, incomplete run) are enforced in
+    ``run_cli`` before a result is ever built.
     """
+    summary = result.summary
     if summary.errors > 0:
         return 2
     strict_gates_pass = (
@@ -235,6 +243,6 @@ def determine_exit_code(summary: BenchmarkSummary, *, gating: bool) -> int:
         and summary.provenance_accuracy == 1.0
     )
     clean = summary.failed == 0 and summary.unsupported == 0
-    if clean and (not gating or strict_gates_pass):
+    if clean and (not result.gating or strict_gates_pass):
         return 0
     return 1

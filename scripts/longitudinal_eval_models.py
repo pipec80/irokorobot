@@ -12,8 +12,11 @@ so ``ConfigDict(extra="forbid")`` rejects unknown or misspelled fields.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import datetime  # noqa: TC003  # pydantic resolves this annotation at runtime
 import enum
-from typing import Literal
+from pathlib import Path  # noqa: TC003  # pydantic/dataclass resolve this annotation at runtime
+from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict
 
@@ -226,3 +229,63 @@ class BenchmarkSummary(BaseModel):
     truth_current_accuracy: float | None
     correct_abstention_rate: float | None
     by_category: dict[LongitudinalCategory, CategorySummary]
+
+
+class RunMetadata(BaseModel):
+    """Reproducibility facts for one run; every secret/credential is redacted."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    generated_at: datetime
+    branch: str
+    source_commit: str
+    worktree_dirty: bool
+    worktree_status: list[str]
+    dataset_path: str
+    dataset_version: Literal[1]
+    dataset_sha256: str
+    python_version: str
+    provider: Literal["ollama"]
+    ollama_url: str
+    chat_model: str
+    consolidation_model: str
+    model_settings: dict[str, str | int | float | bool]
+    sanitized_command: list[str]
+    reserved_term_count: int
+    temporary_database_name: str
+    service_preflight: Literal["pass", "fail"]
+
+
+class LongitudinalEvaluationResult(BaseModel):
+    """A complete run: metadata, per-step results, whole-run summary, gating flag."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    metadata: RunMetadata
+    results: list[StepResult]
+    summary: BenchmarkSummary
+    gating: bool
+
+
+@dataclass(frozen=True)
+class CliOptions:
+    """Parsed, validated command-line options for one evaluation run."""
+
+    dataset_path: Path
+    output_path: Path
+    runs: int
+    only: tuple[str, ...]
+    reserved_terms: tuple[str, ...]
+    provider: Literal["ollama"]
+
+
+class LongitudinalDriver(Protocol):
+    """One step executed against a real, audited runtime seam (no simulation)."""
+
+    async def execute_step(
+        self,
+        scenario: LongitudinalScenario,
+        step: LongitudinalStep,
+    ) -> ProbeObservation:
+        """Execute one step against a real supported seam."""
+        ...

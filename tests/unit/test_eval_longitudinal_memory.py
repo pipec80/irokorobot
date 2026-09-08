@@ -10,22 +10,59 @@ in ``scripts.longitudinal_eval_scoring`` /
 
 from __future__ import annotations
 
+import asyncio
+from datetime import UTC, datetime
+import hashlib
+import importlib
+import inspect
 from pathlib import Path
+import runpy
+import sys
+from typing import TYPE_CHECKING, Literal, cast
+from unittest.mock import Mock
 
+import httpx
 import pytest
+from server.exceptions import BrainMemoryError
+from server.settings import settings
 import yaml
 
-from scripts.eval_longitudinal_memory import load_suite, validate_dataset_privacy
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+from scripts import (
+    longitudinal_eval_driver as driver_mod,
+    longitudinal_eval_metadata as metadata_mod,
+    longitudinal_eval_runner as runner,
+)
+from scripts.eval_longitudinal_memory import load_suite, parse_cli_args, validate_dataset_privacy
 from scripts.longitudinal_eval_aggregation import aggregate_results, determine_exit_code
+from scripts.longitudinal_eval_driver import CurrentRuntimeDriver, unsupported_observation
+from scripts.longitudinal_eval_metadata import (
+    collect_run_metadata,
+    sanitize_command,
+    sanitize_url,
+)
 from scripts.longitudinal_eval_models import (
     BenchmarkSummary,
     CapabilityStatus,
+    CliOptions,
     ExpectedObservation,
     LongitudinalCategory,
+    LongitudinalEvaluationResult,
     LongitudinalOperation,
+    LongitudinalScenario,
     LongitudinalStep,
+    LongitudinalSuite,
     ProbeObservation,
+    RunMetadata,
     ScoredStep,
+)
+from scripts.longitudinal_eval_report import render_report
+from scripts.longitudinal_eval_runner import (
+    HarnessError,
+    isolated_evaluation_database,
+    run_cli,
 )
 from scripts.longitudinal_eval_scoring import score_step
 
@@ -889,24 +926,60 @@ def test_aggregate_results_unsupported_privacy_step_yields_none_rate_not_zero() 
     assert summary.forbidden_disclosure_rate is None
 
 
+_ZEROES_SHA = "0" * 64
+
+
+def _metadata(**over: object) -> RunMetadata:
+    """Return a schema-valid, secret-free ``RunMetadata`` with keyword overrides."""
+    base: dict[str, object] = {
+        "generated_at": datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC),
+        "branch": "feat/0046-longitudinal-memory-baseline",
+        "source_commit": "0" * 40,
+        "worktree_dirty": False,
+        "worktree_status": [],
+        "dataset_path": "tests/evals/golden_longitudinal_memory.yaml",
+        "dataset_version": 1,
+        "dataset_sha256": _ZEROES_SHA,
+        "python_version": "3.12.0",
+        "provider": "ollama",
+        "ollama_url": "http://localhost:11434",
+        "chat_model": "qwen2.5:3b",
+        "consolidation_model": "qwen2.5:3b",
+        "model_settings": {},
+        "sanitized_command": [],
+        "reserved_term_count": 0,
+        "temporary_database_name": "brain.db",
+        "service_preflight": "pass",
+    }
+    base.update(over)
+    return RunMetadata.model_validate(base)
+
+
+def _result(summary: BenchmarkSummary, *, gating: bool) -> LongitudinalEvaluationResult:
+    """Wrap a ``BenchmarkSummary`` into a minimal ``LongitudinalEvaluationResult``."""
+    return LongitudinalEvaluationResult(
+        metadata=_metadata(), results=[], summary=summary, gating=gating
+    )
+
+
 @pytest.mark.unit
 def test_determine_exit_code_zero_when_gating_and_all_strict_gates_pass() -> None:
-    assert determine_exit_code(_summary(), gating=True) == 0
+    assert determine_exit_code(_result(_summary(), gating=True)) == 0
 
 
 @pytest.mark.unit
 def test_determine_exit_code_one_when_a_cognitive_case_is_unsupported() -> None:
-    assert determine_exit_code(_summary(passed=0, unsupported=1), gating=True) == 1
+    assert determine_exit_code(_result(_summary(passed=0, unsupported=1), gating=True)) == 1
 
 
 @pytest.mark.unit
 def test_determine_exit_code_one_when_gating_gate_denominator_missing() -> None:
-    assert determine_exit_code(_summary(complete_deletion_rate=None), gating=True) == 1
+    assert determine_exit_code(_result(_summary(complete_deletion_rate=None), gating=True)) == 1
 
 
 @pytest.mark.unit
 def test_determine_exit_code_two_when_a_harness_error_is_present() -> None:
-    assert determine_exit_code(_summary(passed=0, errors=1), gating=True) == 2
+    assert determine_exit_code(_result(_summary(passed=0, errors=1), gating=True)) == 2
 
 
 @pytest.mark.unit
@@ -917,4 +990,756 @@ def test_determine_exit_code_zero_for_non_gating_smoke_without_failures() -> Non
         truth_current_accuracy=None,
         provenance_accuracy=None,
     )
-    assert determine_exit_code(smoke, gating=False) == 0
+    assert determine_exit_code(_result(smoke, gating=False)) == 0
+
+
+# ---------------------------------------------------------------------------
+# Task 4 — driver, DB sandbox, metadata, report, CLI
+# ---------------------------------------------------------------------------
+
+_OPERATIONS_WITHOUT_A_SEAM = (
+    LongitudinalOperation.PROPOSE,
+    LongitudinalOperation.RESTART,
+    LongitudinalOperation.RECALL,
+    LongitudinalOperation.CORRECT,
+    LongitudinalOperation.FORGET,
+    LongitudinalOperation.INSPECT_DERIVATIVES,
+)
+
+
+def _fake_client() -> httpx.AsyncClient:
+    """Return an identity-stable stand-in for the run-owned HTTP client."""
+    return cast("httpx.AsyncClient", Mock(spec=httpx.AsyncClient))
+
+
+def _lscenario(steps: list[LongitudinalStep], **over: object) -> LongitudinalScenario:
+    """Return a schema-valid ``LongitudinalScenario`` with keyword overrides."""
+    base: dict[str, object] = {
+        "scenario_id": "sc1",
+        "tags": ["category:extraction"],
+        "actors": {"aria": {"actor_id": "aria", "role": "subject"}},
+        "steps": steps,
+    }
+    base.update(over)
+    return LongitudinalScenario.model_validate(base)
+
+
+class _ScriptedDriver:
+    """Typed fake ``LongitudinalDriver``: real observations, never synthesized ones."""
+
+    def __init__(self, *, extract_status: str = "pass", echo_expected: bool = False) -> None:
+        self.calls: list[tuple[str, str]] = []
+        self._status = extract_status
+        self._echo = echo_expected
+
+    async def execute_step(
+        self, scenario: LongitudinalScenario, step: LongitudinalStep
+    ) -> ProbeObservation:
+        self.calls.append((scenario.scenario_id, step.step_id))
+        if step.operation is not LongitudinalOperation.EXTRACT:
+            return unsupported_observation(step.operation)
+        if self._status == "error":
+            return ProbeObservation(
+                status=CapabilityStatus.ERROR,
+                response="",
+                observed_items=(),
+                observed_provenance={},
+                latency_ms=1.0,
+                reason="provider died mid-run; no content",
+                inspected_derivatives={},
+            )
+        response = " ".join(group[0] for group in step.expected.required_any)
+        items = tuple(step.expected.expected_items) if self._echo else ()
+        return ProbeObservation(
+            status=CapabilityStatus.PASS,
+            response=response,
+            observed_items=items,
+            observed_provenance={},
+            latency_ms=1.0,
+            reason=None,
+            inspected_derivatives={},
+        )
+
+
+def _install_fake_db(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    is_open: bool = False,
+    on_open: Callable[[], None] | None = None,
+    on_migrate: Callable[[], None] | None = None,
+    on_close: Callable[[], None] | None = None,
+    make_files: bool = False,
+) -> list[object]:
+    """Replace ``server.db``'s public surface with deterministic in-memory fakes."""
+    calls: list[object] = []
+
+    def _is_open() -> bool:
+        return is_open
+
+    async def _open() -> None:
+        calls.append(("open", Path(settings.brain_db_path).name))
+        if make_files:
+            base = Path(settings.brain_db_path)
+            for suffix in ("", "-wal", "-shm"):
+                base.with_name(base.name + suffix).write_bytes(b"x")
+        if on_open is not None:
+            on_open()
+
+    async def _migrate() -> None:
+        calls.append("migrate")
+        if on_migrate is not None:
+            on_migrate()
+
+    async def _close() -> None:
+        calls.append("close")
+        if on_close is not None:
+            on_close()
+
+    monkeypatch.setattr(runner.db, "is_open", _is_open)
+    monkeypatch.setattr(runner.db, "open_db", _open)
+    monkeypatch.setattr(runner.db, "run_migrations", _migrate)
+    monkeypatch.setattr(runner.db, "close_db", _close)
+    return calls
+
+
+def _options(
+    tmp_path: Path,
+    *,
+    dataset_path: Path | None = None,
+    output_path: Path | None = None,
+    runs: int = 1,
+    only: tuple[str, ...] = (),
+    reserved_terms: tuple[str, ...] = (),
+    provider: str = "ollama",
+) -> CliOptions:
+    """Return ``CliOptions`` whose output path is safe once ``_OUTPUT_DIR`` is patched."""
+    return CliOptions(
+        dataset_path=dataset_path or _GOLDEN,
+        output_path=output_path or (tmp_path / "report.md"),
+        runs=runs,
+        only=only,
+        reserved_terms=reserved_terms,
+        provider=cast('Literal["ollama"]', provider),
+    )
+
+
+def _fake_git(*args: str) -> str:
+    if args[:2] == ("rev-parse", "--abbrev-ref"):
+        return "feat/0046-longitudinal-memory-baseline"
+    if args[:2] == ("rev-parse", "HEAD"):
+        return "d" * 40
+    if args and args[0] == "status":
+        return " M docs/evals/README.md\n?? scratch.md\n"
+    return ""
+
+
+async def _yes() -> bool:
+    return True
+
+
+async def _no() -> bool:
+    return False
+
+
+# ----------------------------- driver -----------------------------
+
+
+@pytest.mark.unit
+async def test_driver_extract_delegates_to_the_real_consolidation_seam(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_extract(client: object, user_text: str, assistant_text: str) -> tuple[str, ...]:
+        assert assistant_text  # a neutral, non-empty acknowledgement is supplied
+        return ("entity|kip|animal", "fact|kip|especie|perro")
+
+    monkeypatch.setattr(driver_mod, "extract_case_items", fake_extract)
+    driver = CurrentRuntimeDriver(_fake_client())
+    step = _lstep(operation="extract", category="extraction")
+    observation = await driver.execute_step(_lscenario([step]), step)
+    assert observation.status is CapabilityStatus.PASS
+    assert observation.observed_items == ("entity|kip|animal", "fact|kip|especie|perro")
+    assert observation.reason is None
+    assert observation.observed_provenance == {}
+    assert observation.inspected_derivatives == {}
+    assert observation.latency_ms >= 0.0
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("operation", _OPERATIONS_WITHOUT_A_SEAM)
+async def test_driver_unsupported_operations_are_recorded_not_synthesized(
+    operation: LongitudinalOperation,
+) -> None:
+    driver = CurrentRuntimeDriver(_fake_client())
+    step = _lstep(operation=operation.value, category="multi_session")
+    observation = await driver.execute_step(_lscenario([step]), step)
+    assert observation.status is CapabilityStatus.UNSUPPORTED
+    assert observation.response == ""
+    assert observation.observed_items == ()
+    assert observation.observed_provenance == {}
+    assert observation.inspected_derivatives == {}
+    assert observation.reason is not None
+    assert "seam" in observation.reason
+
+
+def _unsupported_reason(operation: LongitudinalOperation) -> str:
+    reason = unsupported_observation(operation).reason
+    assert reason is not None
+    return reason
+
+
+@pytest.mark.unit
+def test_driver_unsupported_reasons_name_the_exact_missing_capability() -> None:
+    assert "assert_fact()" in _unsupported_reason(LongitudinalOperation.PROPOSE)
+    assert "not a restart" in _unsupported_reason(LongitudinalOperation.RESTART)
+    assert "resolved actor" in _unsupported_reason(LongitudinalOperation.RECALL)
+    assert "episode/embedding/summary/cache" in _unsupported_reason(LongitudinalOperation.FORGET)
+
+
+@pytest.mark.unit
+async def test_driver_extract_provider_failure_is_a_harness_error_not_a_cognitive_fail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def boom(client: object, user_text: str, assistant_text: str) -> tuple[str, ...]:
+        raise httpx.ConnectError("connection refused")
+
+    monkeypatch.setattr(driver_mod, "extract_case_items", boom)
+    driver = CurrentRuntimeDriver(_fake_client())
+    step = _lstep(operation="extract", category="extraction", message="secreto del hogar")
+    observation = await driver.execute_step(_lscenario([step]), step)
+    assert observation.status is CapabilityStatus.ERROR
+    assert observation.reason is not None
+    assert "provider failure" in observation.reason
+    assert "ConnectError" in observation.reason
+    assert "secreto del hogar" not in observation.reason
+
+
+@pytest.mark.unit
+def test_driver_source_has_no_private_runtime_access() -> None:
+    source = inspect.getsource(driver_mod)
+    assert "_conn" not in source
+    assert "_buffers" not in source
+    assert "MemoryContext" not in source
+
+
+@pytest.mark.unit
+async def test_fake_driver_runs_supported_and_records_unsupported_through_run_scenarios() -> None:
+    extract = _lstep(step_id="e", operation="extract", category="extraction")
+    recall = _lstep(step_id="r", operation="recall", category="multi_session")
+    driver = _ScriptedDriver()
+    scored = await runner._run_scenarios(driver, [_lscenario([extract, recall])], 1)
+    statuses = [step.result.status for step in scored]
+    assert statuses == [CapabilityStatus.PASS, CapabilityStatus.UNSUPPORTED]
+    assert driver.calls == [("sc1", "e"), ("sc1", "r")]
+    assert scored[1].result.reason is not None
+
+
+# ----------------------------- metadata -----------------------------
+
+
+@pytest.mark.unit
+def test_metadata_is_complete_and_the_dataset_hash_is_deterministic(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(metadata_mod, "_git", _fake_git)
+    monkeypatch.setattr(settings, "brain_db_path", tmp_path / "brain.db")
+    first = collect_run_metadata(_GOLDEN, [], [])
+    second = collect_run_metadata(_GOLDEN, [], [])
+    assert first.dataset_sha256 == second.dataset_sha256
+    assert first.dataset_sha256 == hashlib.sha256(_GOLDEN.read_bytes()).hexdigest()
+    assert first.dataset_version == 1
+    assert first.provider == "ollama"
+    assert first.branch == "feat/0046-longitudinal-memory-baseline"
+    assert first.temporary_database_name == "brain.db"
+    assert first.service_preflight == "pass"
+
+
+@pytest.mark.unit
+def test_metadata_records_the_pre_run_dirty_worktree_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(metadata_mod, "_git", _fake_git)
+    meta = collect_run_metadata(_GOLDEN, [], [])
+    assert meta.worktree_dirty is True
+    assert meta.worktree_status == [" M docs/evals/README.md", "?? scratch.md"]
+
+
+@pytest.mark.unit
+def test_metadata_dataset_path_is_repo_relative_without_drive_letter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(metadata_mod, "_git", _fake_git)
+    meta = collect_run_metadata(_GOLDEN, [], [])
+    assert ":" not in meta.dataset_path
+    assert "\\" not in meta.dataset_path
+    assert not Path(meta.dataset_path).is_absolute()
+    assert meta.dataset_path == "tests/evals/golden_longitudinal_memory.yaml"
+
+
+@pytest.mark.unit
+def test_metadata_ollama_url_is_stripped_of_userinfo_and_query_secrets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(metadata_mod, "_git", _fake_git)
+    monkeypatch.setattr(
+        settings, "ollama_url", "http://admin:hunter2@ollama.lan:11434/v1?token=abc123"
+    )
+    meta = collect_run_metadata(_GOLDEN, [], [])
+    for secret in ("admin", "hunter2", "token", "abc123"):
+        assert secret not in meta.ollama_url
+    assert "ollama.lan:11434" in meta.ollama_url
+
+
+@pytest.mark.unit
+def test_metadata_sanitized_command_has_no_literal_reserved_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(metadata_mod, "_git", _fake_git)
+    argv = ["--only", "sc1", "--reserved-term", "zeph", "--reserved-term=quorvax"]
+    meta = collect_run_metadata(_GOLDEN, argv, ["zeph", "quorvax"])
+    joined = " ".join(meta.sanitized_command)
+    assert "zeph" not in joined
+    assert "quorvax" not in joined
+    assert meta.sanitized_command == [
+        "--only",
+        "sc1",
+        "--reserved-term",
+        "<redacted>",
+        "--reserved-term=<redacted>",
+    ]
+    assert meta.reserved_term_count == 2
+
+
+@pytest.mark.unit
+def test_metadata_url_and_command_sanitizers_are_pure() -> None:
+    assert sanitize_url("http://u:p@h:1234/x?q=1") == "http://h:1234/x"
+    assert sanitize_command(["--dataset", "x.yaml"], []) == ["--dataset", "x.yaml"]
+    assert sanitize_command(["--reserved-term", "kapp"], ["kapp"]) == [
+        "--reserved-term",
+        "<redacted>",
+    ]
+    assert sanitize_command(["kapp-was-here"], ["kapp"]) == ["<redacted>"]
+
+
+# ----------------------------- report -----------------------------
+
+
+def _render_default_result(**summary_over: object) -> str:
+    return render_report(_result(_summary(**summary_over), gating=True))
+
+
+@pytest.mark.unit
+def test_report_renders_all_nine_categories_even_when_none_executed() -> None:
+    text = _render_default_result(by_category={})
+    for category in LongitudinalCategory:
+        assert category.value in text
+    assert "not executed" in text
+
+
+@pytest.mark.unit
+def test_report_renders_every_metric_field_never_the_category_pass_rate() -> None:
+    text = _render_default_result()
+    for field in (
+        "forbidden_disclosure_rate",
+        "complete_deletion_rate",
+        "truth_current_accuracy",
+        "provenance_accuracy",
+        "correct_abstention_rate",
+        "candidate:entity",
+        "candidate:literal_fact",
+        "candidate:relation_fact",
+        "fact.subject",
+        "fact.object",
+        "fact.relation",
+        "deletion_expected_count",
+        "deletion_inspected_count",
+        "deletion_absent_count",
+    ):
+        assert field in text
+
+
+@pytest.mark.unit
+def test_report_surfaces_scenario_coverage_and_unsupported_reasons() -> None:
+    extract = _lstep(step_id="e", operation="extract", category="extraction")
+    recall = _lstep(step_id="r", operation="recall", category="cross_person_privacy")
+    scored = [
+        score_step("sc_a", extract, _obs(status="pass", observed_items=())),
+        score_step("sc_b", recall, _obs(status="unsupported", reason="no authorized-recall seam")),
+    ]
+    result = LongitudinalEvaluationResult(
+        metadata=_metadata(),
+        results=[step.result for step in scored],
+        summary=aggregate_results(scored),
+        gating=False,
+    )
+    text = render_report(result)
+    assert "## Scenario coverage" in text
+    assert "sc_a" in text
+    assert "sc_b" in text
+    assert "cross_person_privacy" in text
+    assert "no authorized-recall seam" in text
+    assert "non-gating" in text
+
+
+@pytest.mark.unit
+def test_report_is_deterministic_for_the_same_result() -> None:
+    result = _result(_summary(), gating=True)
+    assert render_report(result) == render_report(result)
+
+
+@pytest.mark.unit
+def test_report_renders_model_settings_as_sorted_key_value_pairs() -> None:
+    populated = LongitudinalEvaluationResult(
+        metadata=_metadata(
+            model_settings={
+                "ollama_timeout_s": 60,
+                "embedding_model": "nomic-embed-text",
+                "extraction_temperature": 0.1,
+            }
+        ),
+        results=[],
+        summary=_summary(),
+        gating=True,
+    )
+    text = render_report(populated)
+    assert (
+        "| model_settings | embedding_model=nomic-embed-text; "
+        "extraction_temperature=0.1; ollama_timeout_s=60 |"
+    ) in text
+
+
+@pytest.mark.unit
+def test_report_renders_empty_model_settings_as_a_dash() -> None:
+    text = render_report(_result(_summary(), gating=True))
+    assert "| model_settings | - |" in text
+
+
+# ----------------------------- database sandbox -----------------------------
+
+
+@pytest.mark.unit
+async def test_sandbox_restores_settings_and_removes_temp_files_on_success(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(settings, "brain_db_path", tmp_path / "prod_omnibot.db")
+    original = (tmp_path / "prod_omnibot.db").resolve()
+    calls = _install_fake_db(monkeypatch, make_files=True)
+
+    async with isolated_evaluation_database() as temp_path:
+        assert settings.brain_db_path == temp_path
+        assert temp_path.name == "brain.db"
+        assert temp_path != original
+        assert temp_path.parent.exists()
+        temp_dir = temp_path.parent
+
+    assert settings.brain_db_path == original
+    assert not temp_dir.exists()
+    assert calls == [("open", "brain.db"), "migrate", "close"]
+
+
+@pytest.mark.unit
+async def test_sandbox_opens_only_the_temporary_database(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(settings, "brain_db_path", tmp_path / "prod_omnibot.db")
+    seen: list[Path] = []
+
+    def _record_open() -> None:
+        seen.append(Path(settings.brain_db_path))
+
+    _install_fake_db(monkeypatch, on_open=_record_open)
+
+    async with isolated_evaluation_database() as temp_path:
+        assert seen == [temp_path]
+    assert not (tmp_path / "prod_omnibot.db").exists()
+
+
+@pytest.mark.unit
+async def test_sandbox_rejects_a_pre_open_global_connection(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(settings, "brain_db_path", tmp_path / "prod_omnibot.db")
+    original = (tmp_path / "prod_omnibot.db").resolve()
+    _install_fake_db(monkeypatch, is_open=True)
+    with pytest.raises(HarnessError, match="already open"):
+        async with isolated_evaluation_database():
+            pass
+    assert settings.brain_db_path == original
+
+
+@pytest.mark.unit
+async def test_sandbox_migration_failure_is_a_harness_error_and_restores_settings(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(settings, "brain_db_path", tmp_path / "prod_omnibot.db")
+    original = (tmp_path / "prod_omnibot.db").resolve()
+
+    def _fail() -> None:
+        raise BrainMemoryError("migration 7 failed")
+
+    calls = _install_fake_db(monkeypatch, on_migrate=_fail)
+    with pytest.raises(HarnessError, match="temporary database setup failed"):
+        async with isolated_evaluation_database():
+            pass
+    assert settings.brain_db_path == original
+    assert "close" in calls
+
+
+@pytest.mark.unit
+async def test_sandbox_close_failure_is_a_harness_error_and_still_restores_settings(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(settings, "brain_db_path", tmp_path / "prod_omnibot.db")
+    original = (tmp_path / "prod_omnibot.db").resolve()
+
+    def _fail() -> None:
+        raise BrainMemoryError("cannot close")
+
+    _install_fake_db(monkeypatch, on_close=_fail)
+    with pytest.raises(HarnessError, match="cleanup failed"):
+        async with isolated_evaluation_database():
+            pass
+    assert settings.brain_db_path == original
+
+
+class _DriverBoomError(RuntimeError):
+    """A stand-in for an unexpected mid-run driver failure."""
+
+
+@pytest.mark.unit
+async def test_sandbox_body_failure_still_restores_settings_and_removes_temp_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(settings, "brain_db_path", tmp_path / "prod_omnibot.db")
+    original = (tmp_path / "prod_omnibot.db").resolve()
+    _install_fake_db(monkeypatch)
+    captured: list[Path] = []
+
+    async def _body() -> None:
+        async with isolated_evaluation_database() as temp_path:
+            captured.append(temp_path.parent)
+            raise _DriverBoomError
+
+    with pytest.raises(_DriverBoomError):
+        await _body()
+    assert settings.brain_db_path == original
+    assert not captured[0].exists()
+
+
+@pytest.mark.unit
+def test_sandbox_path_proof_rejects_the_production_and_data_paths(tmp_path: Path) -> None:
+    original = (tmp_path / "prod.db").resolve()
+    with pytest.raises(HarnessError, match="equals the configured production path"):
+        runner._prove_isolated(original, original)
+    inside_data = (runner._REPO_ROOT / "data" / "nested" / "brain.db").resolve()
+    with pytest.raises(HarnessError, match="inside the repository data/ directory"):
+        runner._prove_isolated(inside_data, original)
+
+
+# ----------------------------- CLI -----------------------------
+
+
+@pytest.mark.unit
+def test_cli_parse_defaults_and_provider_choice() -> None:
+    options = parse_cli_args([])
+    assert options.dataset_path.name == "golden_longitudinal_memory.yaml"
+    assert options.runs == 1
+    assert options.only == ()
+    assert options.provider == "ollama"
+    with pytest.raises(SystemExit) as excinfo:
+        parse_cli_args(["--provider", "openai"])
+    assert excinfo.value.code == 2
+
+
+@pytest.mark.unit
+def test_cli_rejects_an_output_path_outside_docs_evals(tmp_path: Path) -> None:
+    options = _options(tmp_path, output_path=tmp_path / "escape.md")
+    assert asyncio.run(run_cli(options)) == 2
+
+
+@pytest.mark.unit
+def test_cli_rejects_an_existing_output_file() -> None:
+    taken = _REPO_ROOT / "docs" / "evals" / "README.md"
+    options = CliOptions(
+        dataset_path=_GOLDEN,
+        output_path=taken,
+        runs=1,
+        only=(),
+        reserved_terms=(),
+        provider="ollama",
+    )
+    assert asyncio.run(run_cli(options)) == 2
+
+
+@pytest.mark.unit
+def test_cli_rejects_invalid_only_ids(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(runner, "_OUTPUT_DIR", tmp_path)
+    options = _options(tmp_path, only=("nope",))
+    assert asyncio.run(run_cli(options)) == 2
+    assert not (tmp_path / "report.md").exists()
+
+
+@pytest.mark.unit
+def test_cli_rejects_a_dataset_carrying_a_reserved_term(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(runner, "_OUTPUT_DIR", tmp_path)
+    dataset = tmp_path / "suite.yaml"
+    dataset.write_text("version: 1\nnote: la vecina Quorvax\n", encoding="utf-8")
+    options = _options(tmp_path, dataset_path=dataset, reserved_terms=("quorvax",))
+    assert asyncio.run(run_cli(options)) == 2
+
+
+@pytest.mark.unit
+def test_cli_preflight_failure_returns_two_and_writes_no_report(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(runner, "_OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(runner, "_preflight_ok", _no)
+    calls = _install_fake_db(monkeypatch)
+    assert asyncio.run(run_cli(_options(tmp_path))) == 2
+    assert not (tmp_path / "report.md").exists()
+    assert calls == []  # the database sandbox is never entered
+
+
+class _StubResponse:
+    def __init__(self, status_code: int) -> None:
+        self.status_code = status_code
+
+
+class _StubClient:
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        pass
+
+    async def __aenter__(self) -> _StubClient:
+        return self
+
+    async def __aexit__(self, *exc: object) -> bool:
+        return False
+
+    async def get(self, _url: str) -> _StubResponse:
+        return _StubResponse(200)
+
+
+@pytest.mark.unit
+async def test_cli_preflight_ok_true_when_ollama_answers_200(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(runner.httpx, "AsyncClient", _StubClient)
+    assert await runner._preflight_ok() is True
+
+
+@pytest.mark.unit
+async def test_cli_preflight_ok_false_on_connection_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _BrokenClient(_StubClient):
+        async def get(self, _url: str) -> _StubResponse:
+            raise httpx.ConnectError("refused")
+
+    monkeypatch.setattr(runner.httpx, "AsyncClient", _BrokenClient)
+    assert await runner._preflight_ok() is False
+
+
+@pytest.mark.unit
+def test_cli_full_red_run_writes_a_report_and_returns_one(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(runner, "_OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(settings, "brain_db_path", tmp_path / "prod_omnibot.db")
+    monkeypatch.setattr(metadata_mod, "_git", _fake_git)
+    monkeypatch.setattr(sys, "argv", ["eval_longitudinal_memory.py", "--runs", "3"])
+    original = (tmp_path / "prod_omnibot.db").resolve()
+    monkeypatch.setattr(runner, "_preflight_ok", _yes)
+    monkeypatch.setattr(
+        runner, "_build_driver", lambda _client: _ScriptedDriver(echo_expected=True)
+    )
+    _install_fake_db(monkeypatch)
+
+    assert asyncio.run(run_cli(_options(tmp_path, runs=3))) == 1
+    report = (tmp_path / "report.md").read_text(encoding="utf-8")
+    assert report.startswith("# Longitudinal-memory evaluation report")
+    assert "gating baseline" in report
+    assert settings.brain_db_path == original
+
+
+@pytest.mark.unit
+def test_cli_smoke_only_run_that_fully_passes_returns_zero(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(runner, "_OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(settings, "brain_db_path", tmp_path / "prod_omnibot.db")
+    monkeypatch.setattr(metadata_mod, "_git", _fake_git)
+    monkeypatch.setattr(runner, "_preflight_ok", _yes)
+    monkeypatch.setattr(
+        runner, "_build_driver", lambda _client: _ScriptedDriver(echo_expected=True)
+    )
+    _install_fake_db(monkeypatch)
+
+    options = _options(tmp_path, only=("extraction_family_and_pet",))
+    assert asyncio.run(run_cli(options)) == 0
+    assert "non-gating" in (tmp_path / "report.md").read_text(encoding="utf-8")
+
+
+@pytest.mark.unit
+def test_cli_mid_run_provider_failure_returns_two_and_writes_no_report(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(runner, "_OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(settings, "brain_db_path", tmp_path / "prod_omnibot.db")
+    monkeypatch.setattr(metadata_mod, "_git", _fake_git)
+    original = (tmp_path / "prod_omnibot.db").resolve()
+    monkeypatch.setattr(runner, "_preflight_ok", _yes)
+    monkeypatch.setattr(
+        runner, "_build_driver", lambda _client: _ScriptedDriver(extract_status="error")
+    )
+    calls = _install_fake_db(monkeypatch)
+
+    options = _options(tmp_path, only=("extraction_family_and_pet",))
+    assert asyncio.run(run_cli(options)) == 2
+    assert not (tmp_path / "report.md").exists()
+    assert settings.brain_db_path == original
+    assert "close" in calls  # resources were released
+
+
+@pytest.mark.unit
+def test_cli_incomplete_full_run_missing_a_category_returns_two(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(runner, "_OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(settings, "brain_db_path", tmp_path / "prod_omnibot.db")
+    monkeypatch.setattr(metadata_mod, "_git", _fake_git)
+    monkeypatch.setattr(runner, "_preflight_ok", _yes)
+    monkeypatch.setattr(
+        runner, "_build_driver", lambda _client: _ScriptedDriver(echo_expected=True)
+    )
+    _install_fake_db(monkeypatch)
+
+    def _one_scenario(
+        suite: LongitudinalSuite, only: tuple[str, ...]
+    ) -> tuple[LongitudinalScenario, ...]:
+        return (suite.scenarios[1],)  # the extraction-only scenario
+
+    monkeypatch.setattr(runner, "_select_scenarios", _one_scenario)
+    assert asyncio.run(run_cli(_options(tmp_path, runs=3))) == 2
+    assert not (tmp_path / "report.md").exists()
+
+
+# ----------------------------- sys.path bootstrap -----------------------------
+
+
+@pytest.mark.unit
+def test_eval_longitudinal_memory_is_importable() -> None:
+    module = importlib.import_module("scripts.eval_longitudinal_memory")
+    assert hasattr(module, "main")
+    assert hasattr(module, "parse_cli_args")
+
+
+@pytest.mark.unit
+def test_eval_longitudinal_memory_help_exits_zero_under_direct_execution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    script = _REPO_ROOT / "scripts" / "eval_longitudinal_memory.py"
+    monkeypatch.setattr(sys, "argv", [str(script), "--help"])
+    with pytest.raises(SystemExit) as excinfo:
+        runpy.run_path(str(script), run_name="__main__")
+    assert excinfo.value.code == 0
