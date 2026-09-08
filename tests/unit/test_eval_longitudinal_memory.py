@@ -746,6 +746,28 @@ def test_aggregate_results_truth_current_accuracy_none_without_correction() -> N
 
 
 @pytest.mark.unit
+def test_aggregate_results_truth_current_accuracy_resets_between_runs() -> None:
+    exp = _expected(required_any=[["normalidad"]])
+    pre = _lstep(step_id="pre", category="temporality", operation="recall", expected=exp)
+    fix = _lstep(
+        step_id="fix",
+        category="update",
+        operation="correct",
+        expected=_expected(required_any=[["ok"]]),
+    )
+    post = _lstep(step_id="post", category="temporality", operation="recall", expected=exp)
+    one_run = [
+        score_step("sc", pre, _obs(response="stale")),
+        score_step("sc", fix, _obs(response="ok")),
+        score_step("sc", post, _obs(response="con normalidad")),
+    ]
+    scored = [*one_run, *one_run]  # run-major: the second run replays every step id
+    # Only the two post-correction recalls count; run 2's "pre" must not leak in
+    # against run 1's CORRECT (that would make the denominator 3 and the rate 2/3).
+    assert aggregate_results(scored).truth_current_accuracy == pytest.approx(1.0)
+
+
+@pytest.mark.unit
 def test_aggregate_results_correct_abstention_rate_counts_every_abstention_step() -> None:
     good = score_step(
         "sc",

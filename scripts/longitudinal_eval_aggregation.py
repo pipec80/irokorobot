@@ -134,10 +134,23 @@ def _disclosure_stats(scored: Sequence[ScoredStep]) -> tuple[int, int]:
 
 
 def _truth_current_accuracy(scored: Sequence[ScoredStep]) -> float | None:
+    """Post-correction recall accuracy, reset per run.
+
+    ``scored`` is run-major (see ``_run_scenarios``): each run replays every
+    scenario step in the same order, so a repeated ``(scenario_id, step_id)``
+    marks a new run boundary. Resetting there stops a later run's
+    pre-correction recall from being scored against an earlier run's CORRECT.
+    """
     corrected: set[str] = set()
+    seen: set[tuple[str, str]] = set()
     passed = total = 0
     for step in scored:
         result = step.result
+        key = (result.scenario_id, result.step_id)
+        if key in seen:
+            corrected.clear()
+            seen.clear()
+        seen.add(key)
         if result.operation is LongitudinalOperation.RECALL and result.scenario_id in corrected:
             total += 1
             passed += int(step.passed)
