@@ -472,9 +472,7 @@ class AggregateSpeakerReport:
 
 @dataclass(frozen=True)
 class SpeakerCliOptions:
-    action: Literal[
-        "model-contract", "capture", "validate", "embed", "analyze", "cleanup"
-    ]
+    action: Literal["model-contract", "capture", "validate", "embed", "analyze", "cleanup"]
     corpus_root: Path
     manifest_path: Path
     output_path: Path | None
