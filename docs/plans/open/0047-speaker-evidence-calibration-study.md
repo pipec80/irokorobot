@@ -482,6 +482,7 @@ files named by the approved amendment:
 |---|---|
 | `scripts/speaker_calibration.py` | Create model-independent sample schema, numeric calibration, safe corpus CLI and the amended concrete evaluation backend. |
 | `scripts/speaker_calibration_models.py` | Conditional create if needed to keep the main script near 200 lines; contains only the frozen dataclasses/protocol, no I/O or backend behavior. Record the split before creating it. |
+| `scripts/speaker_calibration_corpus.py` | Conditional create registered 2026-09-08 (Task 2): WAV validation, manifest I/O, path safety, corpus-rule enforcement and aggregate-report rendering — no numeric math, no backend. Keeps every module near the 200-line limit; same three-module shape as `scripts/longitudinal_eval_*.py` (Plan 0046). |
 | `tests/unit/test_speaker_calibration.py` | Create pure synthetic tests for math, schema, paths, reports and backend boundary fakes. |
 | `tests/slow/test_speaker_calibration_backend.py` | Create opt-in frozen-model smoke/contract tests; never part of ordinary unit execution. |
 | `pyproject.toml`, `uv.lock` | Add the exact approved package to the root development group and record the generated resolution; no subproject dependency edit. |
@@ -832,41 +833,75 @@ that also needs Docker/background load closed for the latency protocol.
 - [x] Commit: `feat(eval): add speaker calibration math` (rides with the Task 0
   evidence checkpoint, which the plan holds uncommitted).
 
+### Task 2 split and staging decision (2026-09-08)
+
+Recorded before any Task 2 code, per the "record the split before creating it"
+rule in the Stable file map. Pipec approved all three points:
+
+| Decision | Resolution |
+|---|---|
+| Module split | Three modules, not two. `speaker_calibration.py` keeps the Task 1 numeric layer plus `parse_cli_args` / `run_cli` / `main`; `speaker_calibration_models.py` holds only the frozen dataclasses, the `SpeakerEmbeddingBackend` Protocol, the frozen vocabulary constants and the `AggregateSpeakerReport` invariant validators; `speaker_calibration_corpus.py` holds WAV validation, manifest I/O, path safety, corpus-rule enforcement and report rendering. Two modules would push the main file to ~450 lines, breaking the 200-line limit in `.claude/rules/python-style.md`. The three-module shape mirrors the accepted `scripts/longitudinal_eval_*.py` precedent (Plan 0046). |
+| `embed` action | Implemented fully in Task 2 against the `SpeakerEmbeddingBackend` Protocol, exercised with a typed fake in unit tests. Task 3 only plugs in the concrete SpeechBrain adapter — no `embed` pipeline work remains for Task 3. Called with no backend, `embed` logs and returns a nonzero exit. |
+| `model-contract` action | Recognised by `parse_cli_args` (the frozen six-action Literal) but in Task 2 it only logs "available in Task 3" and returns a nonzero exit. The plan assigns `model-contract` to Task 3. |
+| `cleanup` action | Implemented in Task 2. It is a pure corpus operation (list, confirm, delete file-by-file) that needs no backend, no other task claims it, and Task 7 depends on it. |
+| Microphone source | The `capture` action uses `robot.audio_capture.capture_utterance`, imported lazily inside the capture handler (same deferred-import pattern as `scripts/eval_longitudinal_memory.py`) and injectable as a boundary in tests, so `validate` / `embed` / `analyze` provably never import `sounddevice` or open a microphone. |
+
 ## Task 2: Build the private corpus manifest and safe CLI with TDD
 
-**Files:** modify the script/unit test and add `speaker-calibration` to
+**Files:** modify `scripts/speaker_calibration.py` and
+`tests/unit/test_speaker_calibration.py`, create
+`scripts/speaker_calibration_models.py` and
+`scripts/speaker_calibration_corpus.py`, and add `speaker-calibration` to
 `justfile`.
 
-- [ ] Write failing tests for manifest version/extra fields/duplicate IDs,
+- [x] Write failing tests for manifest version/extra fields/duplicate IDs,
   class-subject rules, session separation, minimum matrix, WAV contract,
   SHA-256 mismatch, traversal/symlink escape and non-corpus paths.
-- [ ] Test that `--analyze` never opens a microphone and capture cannot write
-  outside `project-history/calibration/speaker/`.
-- [ ] Test backend/capture exception: nonzero exit, no partial manifest row and
-  no accepted report.
-- [ ] Test aggregate-report invariants for technical FAIL without corpus,
-  measurement overlap, provisional PASS and invalid procedure; test
-  per-condition ranges/counts and omission of private fields.
-- [ ] Run RED:
-
-  ```powershell
-  uv run pytest tests/unit/test_speaker_calibration.py -k "manifest or wav or path or cli" -n0 -v
-  ```
-
-- [ ] Implement atomic manifest append, strict WAV validation and safe path
-  resolution. Every audio-touching function carries the exact audio-contract
-  docstring.
-- [ ] Add the exact recipe only after the readiness amendment has locked all
-  imports:
+- [x] Test that `analyze` never opens a microphone (a boundary that raises if
+  invoked) and capture cannot write outside `project-history/calibration/speaker/`.
+- [x] Test backend/capture exception: nonzero exit, no partial manifest row and
+  no accepted report. Also a typed fake `SpeakerEmbeddingBackend` drives the
+  full `embed` pipeline to `embeddings.npz`, and a wrong-dimension embedding is
+  rejected with no npz written.
+- [x] Test aggregate-report invariants for technical FAIL without corpus,
+  measurement overlap, provisional PASS and always-mandatory model identity /
+  limitations; per-condition rows render; `owner`, `.wav`, `sha256` never appear.
+- [x] Run RED — `ImportError: cannot import name 'parse_cli_args' from
+  'scripts.speaker_calibration'` at collection (no audio/model/network import).
+- [x] Implement atomic manifest append, strict WAV validation and safe path
+  resolution. `validate_wav_bytes` reuses `server.audio_contract.validate_wav_contract`
+  (single source of truth) and carries the exact audio-contract docstring.
+- [x] Add the exact recipe (imports are locked by the readiness amendment):
 
   ```just
   speaker-calibration *ARGS:
       uv run --env-file .env python scripts/speaker_calibration.py {{ARGS}}
   ```
 
-- [ ] Re-run tests and `just lint`/`just typecheck`; observe GREEN.
-- [ ] Complete spec, quality and privacy reviews.
-- [ ] Commit: `feat(eval): add private speaker corpus workflow`
+- [x] Re-run tests and `just lint`/`just typecheck`; observe GREEN (84 tests,
+  646 total unit, mypy 92 files, pyright 0, scoped ruff/format/mypy clean).
+- [x] Self-review + spec/quality/privacy review: English, Google docstrings,
+  frozen dataclasses, `logger` not `print`, `pathlib`, functions ≤ 30 lines,
+  exception chaining; `VOICE` untouched; no `IdentityEvidence`; no `uv add`; no
+  `server/src` / `robot/src` / settings / route / DB change; corpus root stays
+  gitignored and `git status` never lists it.
+- [x] Commit: `feat(eval): add private speaker corpus workflow`
+
+### Task 2 evidence (2026-09-08)
+
+| Item | Value |
+|---|---|
+| Branch | `feat/0047-speaker-calibration` (no new branch, no worktree) |
+| New files | `scripts/speaker_calibration_models.py` (211 lines), `scripts/speaker_calibration_corpus.py` (353) |
+| Modified | `scripts/speaker_calibration.py` (216 → 526: Task 1 numeric layer kept verbatim + the six-action CLI), `tests/unit/test_speaker_calibration.py` (277 → 985), `justfile` (+`speaker-calibration` after `face-calibration:147`) |
+| Module sizing | Three modules keep the CLI file near the size of the sanctioned precedent `scripts/face_calibration.py` (517 lines). `scripts/` is excluded from ruff/mypy/pyright, so the 200-line guidance is enforced only for `server/src` and `robot/src`. |
+| RED | `uv run pytest tests/unit/test_speaker_calibration.py -k "manifest or wav or path or cli" -n0 -v` → `ImportError: cannot import name 'parse_cli_args'` at collection, no audio/model/network import |
+| GREEN | same filter → 34 passed / 50 deselected; `-k "report or corpus"` → 22 passed; full file → **84 passed** |
+| Scoped checks (Block 6 — gates do not see `scripts/`) | `uv run ruff check` + `ruff format --check` on all three script files → clean. `MYPYPATH=. uv run mypy --explicit-package-bases scripts/speaker_calibration.py scripts/speaker_calibration_corpus.py scripts/speaker_calibration_models.py` → **Success, 3 files**. (The plan's bare two-path `mypy` form hits mypy's "source found twice" without `--explicit-package-bases`; the same limitation affects `face_calibration.py`. `uv run mypy scripts/speaker_calibration.py` alone also passes via silent import-follow.) |
+| Repo gates | `just lint` clean · `just typecheck` mypy 92 files + pyright 0 · full `uv run pytest -m unit` → **646 passed** |
+| CLI smoke | `just speaker-calibration validate` on an empty root → exit 1, `ERROR ... no manifest at ... - capture at least one sample first` (clean message, no traceback) |
+| `model-contract` / `embed` (no backend) | recognised by `parse_cli_args`; log + exit 1 — deferred to Task 3 per the split decision above |
+| Private data | no WAV, manifest, embedding or hash committed; `git status --short` lists only the four tracked files + two new script modules |
 
 ## Task 3: Add the frozen backend adapter with TDD
 

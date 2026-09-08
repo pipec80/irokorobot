@@ -1,14 +1,22 @@
 """Tests for the Plan 0047 speaker-calibration harness.
 
-Task 1 scope: the pure numeric layer only — L2 normalization, reference
-centroid, cosine distance, deterministic threshold sweep, zero-observed-FAR
-selection and nearest-rank latency percentiles. Every test uses synthetic
-vectors and never loads a model or touches audio, the network or disk.
+Task 1 scope: the pure numeric layer — L2 normalization, reference centroid,
+cosine distance, deterministic threshold sweep, zero-observed-FAR selection and
+nearest-rank latency percentiles.
+
+Task 2 scope: the private-corpus layer — WAV-contract validation, strict
+manifest I/O, corpus-rule enforcement, safe path resolution, aggregate-report
+invariants and the safe CLI. Every test uses synthetic vectors or generated
+silent WAV bytes and never loads a model or touches the network or a microphone.
 """
 
 from __future__ import annotations
 
+import io
+import json
 import math
+from typing import TYPE_CHECKING
+import wave
 
 import numpy as np
 import pytest
@@ -17,11 +25,34 @@ from scripts.speaker_calibration import (
     SpeakerThresholdResult,
     cosine_distance,
     l2_normalize,
+    parse_cli_args,
     percentile,
     reference_centroid,
+    run_cli,
     sweep_speaker_thresholds,
     zero_far_speaker_threshold,
 )
+from scripts.speaker_calibration_corpus import (
+    append_sample_atomic,
+    load_manifest,
+    render_aggregate_report,
+    resolve_corpus_path,
+    sha256_of_file,
+    validate_corpus,
+    validate_wav_bytes,
+)
+from scripts.speaker_calibration_models import (
+    CONDITIONS,
+    PHRASE_IDS,
+    AggregateSpeakerReport,
+    ConditionSummary,
+    SpeakerCliOptions,
+    SpeakerManifest,
+    SpeakerSample,
+)
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 _DIM = 192
 
@@ -274,3 +305,681 @@ def test_percentile_is_order_independent() -> None:
 def test_percentile_rejects_an_empty_sequence() -> None:
     with pytest.raises(ValueError, match="empty"):
         percentile([], 0.5)
+
+
+# =====================================================================
+# Task 2 — WAV contract, manifest, corpus rules, paths, report, CLI
+# =====================================================================
+
+
+def _wav_bytes(
+    *, rate: int = 16_000, channels: int = 1, sampwidth: int = 2, frames: int = 16_000
+) -> bytes:
+    """Return WAV bytes with the given format — silent PCM payload."""
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as handle:
+        handle.setnchannels(channels)
+        handle.setsampwidth(sampwidth)
+        handle.setframerate(rate)
+        handle.writeframes(b"\x00" * (frames * channels * sampwidth))
+    return buf.getvalue()
+
+
+def _write_sample_wav(corpus_root: Path, name: str) -> Path:
+    """Write a contract-valid silent WAV under *corpus_root* and return its path."""
+    path = corpus_root / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(_wav_bytes())
+    return path
+
+
+def _sample_row(corpus_root: Path, **overrides: str) -> dict[str, str]:
+    """Build one manifest row backed by a real WAV, with a correct SHA-256."""
+    row = {
+        "sample_id": "s1",
+        "subject_id": "owner",
+        "sample_class": "genuine",
+        "session_id": "probe-01",
+        "phrase_id": "phrase-01",
+        "condition": "quiet-near",
+    }
+    row.update(overrides)
+    wav_name = overrides.get("wav_path", f"{row['sample_id']}.wav")
+    wav_path = _write_sample_wav(corpus_root, wav_name)
+    row["wav_path"] = wav_name
+    row["sha256"] = sha256_of_file(wav_path)
+    return row
+
+
+def _write_manifest(
+    corpus_root: Path, rows: list[dict[str, str]], *, schema_version: int = 1
+) -> Path:
+    """Serialize *rows* to ``manifest.json`` under *corpus_root*."""
+    path = corpus_root / "manifest.json"
+    path.write_text(
+        json.dumps({"schema_version": schema_version, "samples": rows}), encoding="utf-8"
+    )
+    return path
+
+
+def _minimum_corpus_rows(corpus_root: Path) -> list[dict[str, str]]:
+    """Build the smallest matrix that passes: 6 reference, 24 genuine, 18 impostor, 6 replay."""
+    rows: list[dict[str, str]] = []
+    for phrase in PHRASE_IDS:
+        for rep in (1, 2):
+            rows.append(
+                _sample_row(
+                    corpus_root,
+                    sample_id=f"ref-{phrase}-{rep}",
+                    sample_class="reference",
+                    session_id="reference-01",
+                    phrase_id=phrase,
+                    condition="quiet-near",
+                )
+            )
+    for session in ("probe-01", "probe-02"):
+        for phrase in PHRASE_IDS:
+            for condition in CONDITIONS:
+                rows.append(
+                    _sample_row(
+                        corpus_root,
+                        sample_id=f"gen-{session}-{phrase}-{condition}",
+                        sample_class="genuine",
+                        session_id=session,
+                        phrase_id=phrase,
+                        condition=condition,
+                    )
+                )
+    for who in ("impostor_a", "impostor_b", "impostor_c"):
+        for phrase in PHRASE_IDS:
+            for rep in (1, 2):
+                rows.append(
+                    _sample_row(
+                        corpus_root,
+                        sample_id=f"imp-{who}-{phrase}-{rep}",
+                        subject_id=who,
+                        sample_class="impostor",
+                        session_id=f"{who}-01",
+                        phrase_id=phrase,
+                        condition="quiet-near",
+                    )
+                )
+    for condition in ("quiet-near", "quiet-far"):
+        for phrase in PHRASE_IDS:
+            rows.append(
+                _sample_row(
+                    corpus_root,
+                    sample_id=f"rep-{condition}-{phrase}",
+                    sample_class="replay",
+                    session_id="replay-01",
+                    phrase_id=phrase,
+                    condition=condition,
+                )
+            )
+    return rows
+
+
+def _load_minimum_manifest(corpus_root: Path) -> SpeakerManifest:
+    return load_manifest(
+        _write_manifest(corpus_root, _minimum_corpus_rows(corpus_root)), corpus_root
+    )
+
+
+# --- validate_wav_bytes ------------------------------------------------
+
+
+def test_wav_accepts_the_contract_format() -> None:
+    """16 kHz, mono, int16 passes without raising."""
+    validate_wav_bytes(_wav_bytes())
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"rate": 44_100},
+        {"channels": 2},
+        {"sampwidth": 1},
+        {"sampwidth": 3},
+        {"frames": 0},
+    ],
+)
+def test_wav_rejects_off_contract_audio(kwargs: dict[str, int]) -> None:
+    """Wrong rate, channel count, bit depth or an empty payload is rejected."""
+    with pytest.raises(ValueError, match="contract"):
+        validate_wav_bytes(_wav_bytes(**kwargs))
+
+
+def test_wav_rejects_non_wav_bytes() -> None:
+    with pytest.raises(ValueError, match="contract"):
+        validate_wav_bytes(b"not a wav file at all")
+
+
+# --- load_manifest ---------------------------------------------------
+
+
+def test_manifest_round_trips_a_valid_file(tmp_path: Path) -> None:
+    rows = [_sample_row(tmp_path, sample_id="s1"), _sample_row(tmp_path, sample_id="s2")]
+    manifest = load_manifest(_write_manifest(tmp_path, rows), tmp_path)
+
+    assert manifest.schema_version == 1
+    assert [s.sample_id for s in manifest.samples] == ["s1", "s2"]
+
+
+def test_manifest_rejects_an_unknown_schema_version(tmp_path: Path) -> None:
+    rows = [_sample_row(tmp_path)]
+    with pytest.raises(ValueError, match="schema"):
+        load_manifest(_write_manifest(tmp_path, rows, schema_version=2), tmp_path)
+
+
+def test_manifest_rejects_extra_top_level_fields(tmp_path: Path) -> None:
+    path = tmp_path / "manifest.json"
+    path.write_text(
+        json.dumps({"schema_version": 1, "samples": [], "notes": "extra"}), encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match=r"unknown|extra"):
+        load_manifest(path, tmp_path)
+
+
+def test_manifest_rejects_extra_sample_fields(tmp_path: Path) -> None:
+    row = _sample_row(tmp_path)
+    row["captured_by"] = "someone"
+    with pytest.raises(ValueError, match=r"unknown|extra"):
+        load_manifest(_write_manifest(tmp_path, [row]), tmp_path)
+
+
+def test_manifest_rejects_duplicate_sample_ids(tmp_path: Path) -> None:
+    rows = [_sample_row(tmp_path, sample_id="dup"), _sample_row(tmp_path, sample_id="dup")]
+    with pytest.raises(ValueError, match="duplicate"):
+        load_manifest(_write_manifest(tmp_path, rows), tmp_path)
+
+
+def test_manifest_rejects_a_sha256_mismatch(tmp_path: Path) -> None:
+    row = _sample_row(tmp_path, sample_id="s1")
+    (tmp_path / row["wav_path"]).write_bytes(_wav_bytes(frames=8_000))  # file changed after hashing
+    with pytest.raises(ValueError, match=r"sha256|hash"):
+        load_manifest(_write_manifest(tmp_path, [row]), tmp_path)
+
+
+# --- resolve_corpus_path / path safety ------------------------------
+
+
+def test_path_accepts_a_file_inside_the_corpus_root(tmp_path: Path) -> None:
+    _write_sample_wav(tmp_path, "sub/s1.wav")
+    resolved = resolve_corpus_path(tmp_path, "sub/s1.wav")
+
+    assert resolved.is_relative_to(tmp_path.resolve())
+
+
+def test_path_rejects_a_parent_traversal(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match=r"escape|corpus|outside"):
+        resolve_corpus_path(tmp_path / "root", "../secret.wav")
+
+
+def test_path_rejects_an_absolute_path_outside_the_root(tmp_path: Path) -> None:
+    outside = tmp_path / "elsewhere" / "s1.wav"
+    with pytest.raises(ValueError, match=r"escape|corpus|outside"):
+        resolve_corpus_path(tmp_path / "root", str(outside))
+
+
+def test_path_rejects_a_symlink_escaping_the_root(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    target = tmp_path / "outside.wav"
+    target.write_bytes(_wav_bytes())
+    link = root / "link.wav"
+    try:
+        link.symlink_to(target)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlink creation not permitted on this platform")
+    with pytest.raises(ValueError, match=r"symlink|escape|corpus|outside"):
+        resolve_corpus_path(root, "link.wav")
+
+
+# --- append_sample_atomic ------------------------------------------
+
+
+def test_append_adds_a_row_and_round_trips(tmp_path: Path) -> None:
+    manifest_path = _write_manifest(tmp_path, [_sample_row(tmp_path, sample_id="s1")])
+    extra_wav = _write_sample_wav(tmp_path, "s2.wav")
+
+    append_sample_atomic(
+        manifest_path,
+        tmp_path,
+        SpeakerSample(
+            sample_id="s2",
+            subject_id="owner",
+            sample_class="genuine",
+            session_id="probe-01",
+            phrase_id="phrase-01",
+            condition="quiet-near",
+            wav_path=extra_wav,
+            sha256=sha256_of_file(extra_wav),
+        ),
+    )
+
+    manifest = load_manifest(manifest_path, tmp_path)
+    assert [s.sample_id for s in manifest.samples] == ["s1", "s2"]
+
+
+def test_append_leaves_the_manifest_intact_when_the_swap_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed atomic replace must not expose a partial manifest."""
+    manifest_path = _write_manifest(tmp_path, [_sample_row(tmp_path, sample_id="s1")])
+    extra_wav = _write_sample_wav(tmp_path, "s2.wav")
+
+    def _boom(self: object, target: object) -> None:
+        raise OSError("simulated crash mid-swap")
+
+    monkeypatch.setattr("pathlib.Path.replace", _boom)
+
+    with pytest.raises(OSError, match="simulated"):
+        append_sample_atomic(
+            manifest_path,
+            tmp_path,
+            SpeakerSample(
+                sample_id="s2",
+                subject_id="owner",
+                sample_class="genuine",
+                session_id="probe-01",
+                phrase_id="phrase-01",
+                condition="quiet-near",
+                wav_path=extra_wav,
+                sha256=sha256_of_file(extra_wav),
+            ),
+        )
+
+    monkeypatch.undo()
+    assert [s.sample_id for s in load_manifest(manifest_path, tmp_path).samples] == ["s1"]
+
+
+# --- validate_corpus ------------------------------------------------
+
+
+def test_corpus_accepts_the_minimum_matrix(tmp_path: Path) -> None:
+    validate_corpus(_load_minimum_manifest(tmp_path))
+
+
+def test_corpus_rejects_an_unknown_condition_label(tmp_path: Path) -> None:
+    rows = _minimum_corpus_rows(tmp_path)
+    rows[0]["condition"] = "quiet-medium"
+    with pytest.raises(ValueError, match="condition"):
+        validate_corpus(load_manifest(_write_manifest(tmp_path, rows), tmp_path))
+
+
+def test_corpus_rejects_an_unknown_phrase_id(tmp_path: Path) -> None:
+    rows = _minimum_corpus_rows(tmp_path)
+    rows[0]["phrase_id"] = "phrase-99"
+    with pytest.raises(ValueError, match="phrase"):
+        validate_corpus(load_manifest(_write_manifest(tmp_path, rows), tmp_path))
+
+
+def test_corpus_requires_owner_subject_for_genuine(tmp_path: Path) -> None:
+    rows = _minimum_corpus_rows(tmp_path)
+    genuine = next(r for r in rows if r["sample_class"] == "genuine")
+    genuine["subject_id"] = "impostor_a"
+    with pytest.raises(ValueError, match=r"owner|subject"):
+        validate_corpus(load_manifest(_write_manifest(tmp_path, rows), tmp_path))
+
+
+def test_corpus_requires_an_impostor_pseudonym_for_impostors(tmp_path: Path) -> None:
+    rows = _minimum_corpus_rows(tmp_path)
+    impostor = next(r for r in rows if r["sample_class"] == "impostor")
+    impostor["subject_id"] = "owner"
+    with pytest.raises(ValueError, match=r"impostor|subject"):
+        validate_corpus(load_manifest(_write_manifest(tmp_path, rows), tmp_path))
+
+
+def test_corpus_requires_reference_samples_to_be_quiet_near(tmp_path: Path) -> None:
+    rows = _minimum_corpus_rows(tmp_path)
+    reference = next(r for r in rows if r["sample_class"] == "reference")
+    reference["condition"] = "quiet-far"
+    with pytest.raises(ValueError, match="reference"):
+        validate_corpus(load_manifest(_write_manifest(tmp_path, rows), tmp_path))
+
+
+def test_corpus_requires_one_dedicated_reference_session(tmp_path: Path) -> None:
+    rows = _minimum_corpus_rows(tmp_path)
+    references = [r for r in rows if r["sample_class"] == "reference"]
+    references[0]["session_id"] = "reference-02"
+    with pytest.raises(ValueError, match=r"reference|session"):
+        validate_corpus(load_manifest(_write_manifest(tmp_path, rows), tmp_path))
+
+
+def test_corpus_rejects_reference_and_probe_session_leakage(tmp_path: Path) -> None:
+    rows = _minimum_corpus_rows(tmp_path)
+    for row in rows:
+        if row["sample_class"] == "reference":
+            row["session_id"] = "probe-01"
+    with pytest.raises(ValueError, match="session"):
+        validate_corpus(load_manifest(_write_manifest(tmp_path, rows), tmp_path))
+
+
+def test_corpus_rejects_a_class_below_its_minimum(tmp_path: Path) -> None:
+    rows = [r for r in _minimum_corpus_rows(tmp_path) if r["sample_class"] != "replay"]
+    rows.append(
+        _sample_row(tmp_path, sample_id="rep-1", sample_class="replay", session_id="replay-01")
+    )
+    with pytest.raises(ValueError, match=r"replay|minimum|at least"):
+        validate_corpus(load_manifest(_write_manifest(tmp_path, rows), tmp_path))
+
+
+def test_corpus_rejects_a_reused_wav_path(tmp_path: Path) -> None:
+    rows = _minimum_corpus_rows(tmp_path)
+    rows[1]["wav_path"] = rows[0]["wav_path"]
+    rows[1]["sha256"] = rows[0]["sha256"]
+    with pytest.raises(ValueError, match=r"wav|reuse|distinct|duplicate"):
+        validate_corpus(load_manifest(_write_manifest(tmp_path, rows), tmp_path))
+
+
+def test_corpus_requires_genuine_to_span_all_four_conditions(tmp_path: Path) -> None:
+    rows = _minimum_corpus_rows(tmp_path)
+    for row in rows:
+        if row["sample_class"] == "genuine" and row["condition"] == "background-far":
+            row["condition"] = "quiet-near"
+    with pytest.raises(ValueError, match=r"condition|genuine"):
+        validate_corpus(load_manifest(_write_manifest(tmp_path, rows), tmp_path))
+
+
+def test_corpus_requires_at_least_three_impostor_subjects(tmp_path: Path) -> None:
+    rows = _minimum_corpus_rows(tmp_path)
+    for row in rows:
+        if row["sample_class"] == "impostor" and row["subject_id"] == "impostor_c":
+            row["subject_id"] = "impostor_a"
+    with pytest.raises(ValueError, match=r"impostor|adult|three"):
+        validate_corpus(load_manifest(_write_manifest(tmp_path, rows), tmp_path))
+
+
+# --- AggregateSpeakerReport invariants -----------------------------
+
+
+def _condition_summary() -> ConditionSummary:
+    return ConditionSummary(
+        sample_class="genuine",
+        condition="quiet-near",
+        total=6,
+        accepted=6,
+        rejected=0,
+        distance_min=0.05,
+        distance_max=0.20,
+        distance_mean=0.12,
+    )
+
+
+def _full_counts() -> dict[str, int]:
+    return {"reference": 6, "genuine": 24, "impostor": 18, "replay": 6}
+
+
+def test_report_backend_latency_permits_no_corpus_or_rates() -> None:
+    report = AggregateSpeakerReport(
+        model_id="ecapa@0f99f2d0",
+        package_version="speechbrain==1.1.1",
+        sample_counts={},
+        selected_threshold=None,
+        live_false_accepts=None,
+        live_far=None,
+        genuine_false_rejects=None,
+        genuine_frr=None,
+        replay_accepts=None,
+        replay_accept_rate=None,
+        latency_p50_ms=410.0,
+        latency_p95_ms=620.0,
+        by_condition={},
+        outcome="fail_backend_latency",
+        limitations=("measured p95 620 ms exceeds the 500 ms budget",),
+    )
+    assert "fail_backend_latency" in render_aggregate_report(report)
+
+
+def test_report_backend_latency_rejects_a_populated_rate() -> None:
+    with pytest.raises(ValueError, match="fail_backend_latency"):
+        AggregateSpeakerReport(
+            model_id="m",
+            package_version="v",
+            sample_counts={},
+            selected_threshold=None,
+            live_false_accepts=0,
+            live_far=0.0,
+            genuine_false_rejects=None,
+            genuine_frr=None,
+            replay_accepts=None,
+            replay_accept_rate=None,
+            latency_p50_ms=None,
+            latency_p95_ms=None,
+            by_condition={},
+            outcome="fail_backend_latency",
+            limitations=("x",),
+        )
+
+
+def _measurement_kwargs(**overrides: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "model_id": "ecapa@0f99f2d0",
+        "package_version": "speechbrain==1.1.1",
+        "sample_counts": _full_counts(),
+        "selected_threshold": 0.32,
+        "live_false_accepts": 0,
+        "live_far": 0.0,
+        "genuine_false_rejects": 1,
+        "genuine_frr": 0.04,
+        "replay_accepts": 2,
+        "replay_accept_rate": 0.33,
+        "latency_p50_ms": 300.0,
+        "latency_p95_ms": 420.0,
+        "by_condition": {"genuine/quiet-near": _condition_summary()},
+        "outcome": "provisional_pass",
+        "limitations": ("zero-FAR on 18 impostor samples is provisional, not population proof",),
+    }
+    base.update(overrides)
+    return base
+
+
+def test_report_provisional_pass_is_valid_with_zero_false_accepts_and_a_threshold() -> None:
+    rendered = render_aggregate_report(AggregateSpeakerReport(**_measurement_kwargs()))  # type: ignore[arg-type]
+
+    assert "provisional_pass" in rendered
+    assert "quiet-near" in rendered
+    assert "owner" not in rendered
+    assert ".wav" not in rendered
+    assert "sha256" not in rendered
+
+
+def test_report_provisional_pass_requires_a_selected_threshold() -> None:
+    with pytest.raises(ValueError, match="threshold"):
+        AggregateSpeakerReport(**_measurement_kwargs(selected_threshold=None))  # type: ignore[arg-type]
+
+
+def test_report_provisional_pass_requires_zero_live_false_accepts() -> None:
+    with pytest.raises(ValueError, match="false accept"):
+        AggregateSpeakerReport(**_measurement_kwargs(live_false_accepts=1, live_far=0.05))  # type: ignore[arg-type]
+
+
+def test_report_distance_overlap_forbids_a_selected_threshold() -> None:
+    with pytest.raises(ValueError, match="threshold"):
+        AggregateSpeakerReport(
+            **_measurement_kwargs(outcome="fail_distance_overlap", selected_threshold=0.3)  # type: ignore[arg-type]
+        )
+
+
+def test_report_always_requires_model_identity_and_limitations() -> None:
+    with pytest.raises(ValueError, match="limitation"):
+        AggregateSpeakerReport(**_measurement_kwargs(limitations=()))  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match=r"model_id|package_version|mandatory"):
+        AggregateSpeakerReport(**_measurement_kwargs(model_id=""))  # type: ignore[arg-type]
+
+
+# --- parse_cli_args ------------------------------------------------
+
+
+def test_cli_capture_requires_every_metadata_flag() -> None:
+    with pytest.raises(SystemExit):
+        parse_cli_args(["capture", "--class", "reference", "--subject", "owner"])
+
+
+def test_cli_capture_parses_a_complete_invocation() -> None:
+    options = parse_cli_args(
+        [
+            "capture",
+            "--class",
+            "reference",
+            "--subject",
+            "owner",
+            "--session",
+            "reference-01",
+            "--phrase",
+            "phrase-01",
+            "--condition",
+            "quiet-near",
+        ]
+    )
+
+    assert options.action == "capture"
+    assert options.sample_class == "reference"
+    assert options.phrase_id == "phrase-01"
+
+
+def test_cli_non_capture_actions_reject_capture_flags() -> None:
+    with pytest.raises(SystemExit):
+        parse_cli_args(["validate", "--class", "genuine"])
+
+
+def test_cli_validate_needs_no_flags() -> None:
+    assert parse_cli_args(["validate"]).action == "validate"
+
+
+# --- run_cli ------------------------------------------------------
+
+
+def _capture_opts(tmp_path: Path) -> SpeakerCliOptions:
+    return parse_cli_args(
+        [
+            "capture",
+            "--corpus-root",
+            str(tmp_path),
+            "--class",
+            "genuine",
+            "--subject",
+            "owner",
+            "--session",
+            "probe-09",
+            "--phrase",
+            "phrase-01",
+            "--condition",
+            "quiet-near",
+        ]
+    )
+
+
+def test_run_cli_validate_fails_cleanly_on_a_missing_manifest(tmp_path: Path) -> None:
+    exit_code = run_cli(parse_cli_args(["validate", "--corpus-root", str(tmp_path)]))
+
+    assert exit_code != 0
+
+
+def test_run_cli_validate_passes_on_a_minimum_corpus(tmp_path: Path) -> None:
+    _write_manifest(tmp_path, _minimum_corpus_rows(tmp_path))
+
+    assert run_cli(parse_cli_args(["validate", "--corpus-root", str(tmp_path)])) == 0
+
+
+def test_run_cli_capture_writes_only_under_the_corpus_root(tmp_path: Path) -> None:
+    exit_code = run_cli(_capture_opts(tmp_path), capture_audio=_wav_bytes)
+
+    assert exit_code == 0
+    written = list(tmp_path.rglob("*.wav"))
+    assert written
+    assert all(p.resolve().is_relative_to(tmp_path.resolve()) for p in written)
+    assert (tmp_path / "manifest.json").exists()
+
+
+def test_run_cli_capture_failure_adds_no_manifest_row(tmp_path: Path) -> None:
+    def _explode() -> bytes:
+        raise RuntimeError("microphone unavailable")
+
+    exit_code = run_cli(_capture_opts(tmp_path), capture_audio=_explode)
+
+    assert exit_code != 0
+    assert not (tmp_path / "manifest.json").exists()
+
+
+def test_run_cli_analyze_never_invokes_the_capture_boundary(tmp_path: Path) -> None:
+    def _forbidden() -> bytes:
+        raise AssertionError("analyze must never open the microphone")
+
+    run_cli(parse_cli_args(["analyze", "--corpus-root", str(tmp_path)]), capture_audio=_forbidden)
+
+
+def test_run_cli_embed_without_a_backend_fails(tmp_path: Path) -> None:
+    _write_manifest(tmp_path, _minimum_corpus_rows(tmp_path))
+
+    assert run_cli(parse_cli_args(["embed", "--corpus-root", str(tmp_path)]), backend=None) != 0
+
+
+class _FakeBackend:
+    """Typed test double for ``SpeakerEmbeddingBackend`` — no model, no audio."""
+
+    model_id = "fake-ecapa@test"
+
+    def embed_wav(self, wav_bytes: bytes) -> np.ndarray:
+        seed = len(wav_bytes) % 7 + 1
+        return np.full(192, float(seed), dtype=np.float32)
+
+
+def test_run_cli_embed_writes_one_vector_per_sample_via_the_protocol(tmp_path: Path) -> None:
+    rows = _minimum_corpus_rows(tmp_path)
+    _write_manifest(tmp_path, rows)
+
+    exit_code = run_cli(
+        parse_cli_args(["embed", "--corpus-root", str(tmp_path)]), backend=_FakeBackend()
+    )
+
+    assert exit_code == 0
+    with np.load(tmp_path / "embeddings.npz") as stored:
+        assert sorted(stored.files) == sorted(r["sample_id"] for r in rows)
+        assert all(stored[name].shape == (192,) for name in stored.files)
+
+
+def test_run_cli_embed_rejects_a_wrong_dimension_embedding(tmp_path: Path) -> None:
+    _write_manifest(tmp_path, _minimum_corpus_rows(tmp_path))
+
+    class _BadBackend:
+        model_id = "bad@test"
+
+        def embed_wav(self, wav_bytes: bytes) -> np.ndarray:  # noqa: ARG002
+            return np.ones(64, dtype=np.float32)
+
+    exit_code = run_cli(
+        parse_cli_args(["embed", "--corpus-root", str(tmp_path)]), backend=_BadBackend()
+    )
+
+    assert exit_code != 0
+    assert not (tmp_path / "embeddings.npz").exists()
+
+
+def test_run_cli_model_contract_is_deferred_to_task_3(tmp_path: Path) -> None:
+    assert run_cli(parse_cli_args(["model-contract", "--corpus-root", str(tmp_path)])) != 0
+
+
+def test_run_cli_analyze_refuses_to_overwrite_its_output(tmp_path: Path) -> None:
+    output = tmp_path / "aggregate-report.md"
+    output.write_text("previous run", encoding="utf-8")
+    _write_manifest(tmp_path, _minimum_corpus_rows(tmp_path))
+
+    exit_code = run_cli(
+        parse_cli_args(["analyze", "--corpus-root", str(tmp_path), "--output", str(output)])
+    )
+
+    assert exit_code != 0
+    assert output.read_text(encoding="utf-8") == "previous run"
+
+
+def test_run_cli_cleanup_requires_confirmation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_manifest(tmp_path, [_sample_row(tmp_path, sample_id="s1")])
+    monkeypatch.setattr("builtins.input", lambda *_: "no")
+
+    exit_code = run_cli(parse_cli_args(["cleanup", "--corpus-root", str(tmp_path)]))
+
+    assert exit_code != 0
+    assert (tmp_path / "manifest.json").exists()

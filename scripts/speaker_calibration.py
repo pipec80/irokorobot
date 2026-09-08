@@ -2,27 +2,75 @@
 
 Three isolated layers, built one task at a time:
 
-1. **Pure numeric harness** (this task): L2 normalization, reference centroid,
+1. **Pure numeric harness** (Task 1): L2 normalization, reference centroid,
    cosine distance, deterministic threshold sweep, zero-observed-FAR selection
    and nearest-rank latency percentiles. No audio, model, network or disk.
-2. Replaceable evaluation backend and private-corpus CLI - added by Tasks 2-3.
+2. **Private-corpus manifest and safe CLI** (Task 2, this task): strict sample
+   schema (``scripts.speaker_calibration_models``), atomic manifest, WAV-contract
+   validation, corpus-rule enforcement and aggregate-report rendering
+   (``scripts.speaker_calibration_corpus``), and the six-action CLI below.
+3. **Frozen SpeechBrain embedding backend** - added by Task 3.
 
 This study measures whether a local CPU speaker embedding can separate the
-owner's live voice from consenting live impostors. It never enrolls a
-production voiceprint and never makes ``VOICE`` trusted identity evidence.
+owner's live voice from consenting live impostors. It never enrols a production
+voiceprint and never makes ``VOICE`` trusted identity evidence.
+
+Audio contract for every WAV this module touches: WAV, 16 000 Hz, mono, int16.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
+import sys
+
+# Direct execution (``python scripts/speaker_calibration.py``) puts ``scripts/``
+# on ``sys.path[0]``, not the repo root, so ``from scripts.…`` imports fail.
+# Under pytest the repo root is already on the path (pyproject ``pythonpath``),
+# so this only matters for the frozen justfile entrypoint. Must run before any
+# ``from scripts.…`` import below.
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import argparse  # after the sys.path bootstrap, by design
+import asyncio
 from dataclasses import dataclass
+from datetime import UTC, datetime
+import importlib
 import logging
 import math
 from typing import TYPE_CHECKING
 
 import numpy as np
 
+from scripts.speaker_calibration_corpus import (
+    append_sample_atomic,
+    load_manifest,
+    resolve_corpus_path,
+    sha256_of_file,
+    validate_corpus,
+    validate_wav_bytes,
+)
+from scripts.speaker_calibration_models import (
+    CAPTURE_FLAGS,
+    CLI_ACTIONS,
+    CONDITIONS,
+    DEFAULT_CORPUS_ROOT,
+    EMBEDDING_DIM,
+    EMBEDDINGS_NAME,
+    IMPOSTOR_ID_PATTERN,
+    MANIFEST_NAME,
+    OWNER_SUBJECT_ID,
+    PHRASE_IDS,
+    REPORT_NAME,
+    SAMPLE_CLASSES,
+    SpeakerCliOptions,
+    SpeakerSample,
+)
+
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
+
+    from scripts.speaker_calibration_models import SpeakerEmbeddingBackend
 
 logger = logging.getLogger(__name__)
 
@@ -214,3 +262,265 @@ def percentile(values: Sequence[float], quantile: float) -> float:
     ordered = sorted(values)
     rank = max(1, math.ceil(quantile * len(ordered)))
     return float(ordered[rank - 1])
+
+
+# --- Task 2: private-corpus CLI --------------------------------------------
+
+
+def parse_cli_args(argv: Sequence[str] | None = None) -> SpeakerCliOptions:
+    """Parse one explicit speaker-calibration action.
+
+    Every value is a fixed-vocabulary token (an action name, a frozen phrase or
+    condition id, a pseudonym or a path), never a free-text sentence, so no
+    ``nargs='+'`` is needed for the justfile/PowerShell entrypoint.
+
+    Args:
+        argv: Argument list without the program name; defaults to ``sys.argv``.
+
+    Returns:
+        The cross-checked options. ``capture`` requires every metadata flag;
+        other actions reject them. Argparse exits with code 2 on a bad combo.
+    """
+    parser = argparse.ArgumentParser(
+        description="Plan 0047 (PC-3A) speaker-evidence calibration corpus workflow."
+    )
+    parser.add_argument("action", choices=CLI_ACTIONS)
+    parser.add_argument("--corpus-root", type=Path, default=DEFAULT_CORPUS_ROOT)
+    parser.add_argument("--manifest", type=Path, default=None)
+    parser.add_argument("--output", type=Path, default=None)
+    parser.add_argument("--class", dest="sample_class", choices=SAMPLE_CLASSES, default=None)
+    parser.add_argument("--subject", dest="subject_id", default=None)
+    parser.add_argument("--session", dest="session_id", default=None)
+    parser.add_argument("--phrase", dest="phrase_id", choices=PHRASE_IDS, default=None)
+    parser.add_argument("--condition", choices=CONDITIONS, default=None)
+    args = parser.parse_args(None if argv is None else list(argv))
+    _cross_check_flags(parser, args)
+    return SpeakerCliOptions(
+        action=args.action,
+        corpus_root=args.corpus_root,
+        manifest_path=args.manifest or (args.corpus_root / MANIFEST_NAME),
+        output_path=args.output,
+        sample_class=args.sample_class,
+        subject_id=args.subject_id,
+        session_id=args.session_id,
+        phrase_id=args.phrase_id,
+        condition=args.condition,
+    )
+
+
+def _cross_check_flags(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    supplied = {name for name in CAPTURE_FLAGS if getattr(args, name) is not None}
+    if args.action == "capture":
+        missing = sorted(set(CAPTURE_FLAGS) - supplied)
+        if missing:
+            parser.error(f"capture requires every metadata flag; missing {missing}")
+        _check_capture_subject(parser, args)
+    elif supplied:
+        parser.error(f"{args.action} does not accept capture flags: {sorted(supplied)}")
+    if args.output is not None and args.action != "analyze":
+        parser.error("--output is only valid for analyze")
+
+
+def _check_capture_subject(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    if args.sample_class == "impostor":
+        if not IMPOSTOR_ID_PATTERN.match(args.subject_id):
+            parser.error("impostor --subject must match impostor_[a-z]+")
+    elif args.subject_id != OWNER_SUBJECT_ID:
+        parser.error(f"--subject must be {OWNER_SUBJECT_ID!r} for {args.sample_class}")
+
+
+def run_cli(
+    options: SpeakerCliOptions,
+    *,
+    backend: SpeakerEmbeddingBackend | None = None,
+    capture_audio: Callable[[], bytes] | None = None,
+) -> int:
+    """Execute one safe action and return zero only for complete success.
+
+    Args:
+        options: The parsed action and its metadata.
+        backend: Embedding backend for ``embed`` (the concrete one arrives in
+            Task 3); ``None`` makes ``embed`` fail cleanly.
+        capture_audio: Microphone boundary for ``capture``; ``None`` uses the
+            real robot recorder. ``validate``/``embed``/``analyze``/``cleanup``
+            never touch it.
+
+    Returns:
+        ``0`` on complete success, a nonzero code otherwise. Any exception is
+        logged and converted to ``1`` with no partial manifest or report.
+    """
+    try:
+        return _dispatch(options, backend, capture_audio)
+    except (ValueError, OSError) as exc:  # expected: bad corpus, missing file, capture fault
+        logger.error("speaker-calibration %s failed: %s", options.action, exc)
+        return 1
+    except Exception:  # top-level CLI boundary: never leave a partial manifest or report
+        logger.exception("speaker-calibration %s hit an unexpected error", options.action)
+        return 1
+
+
+def _dispatch(
+    options: SpeakerCliOptions,
+    backend: SpeakerEmbeddingBackend | None,
+    capture_audio: Callable[[], bytes] | None,
+) -> int:
+    match options.action:
+        case "capture":
+            return _run_capture(options, capture_audio)
+        case "validate":
+            return _run_validate(options)
+        case "embed":
+            return _run_embed(options, backend)
+        case "analyze":
+            return _run_analyze(options)
+        case "cleanup":
+            return _run_cleanup(options)
+        case "model-contract":
+            logger.error("model-contract is added in Plan 0047 Task 3; not available yet")
+            return 1
+
+
+def _run_capture(options: SpeakerCliOptions, capture_audio: Callable[[], bytes] | None) -> int:
+    if None in (
+        options.sample_class,
+        options.subject_id,
+        options.session_id,
+        options.phrase_id,
+        options.condition,
+    ):
+        raise ValueError("capture requires full sample metadata")  # parse_cli_args enforces this
+    wav_bytes = (capture_audio or _default_recorder)()
+    validate_wav_bytes(wav_bytes)
+    options.corpus_root.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%f")
+    wav_name = f"{options.sample_class}-{options.session_id}-{options.phrase_id}-{stamp}.wav"
+    wav_path = resolve_corpus_path(options.corpus_root, wav_name)
+    wav_path.write_bytes(wav_bytes)
+    sample = SpeakerSample(
+        sample_id=wav_path.stem,
+        subject_id=str(options.subject_id),
+        sample_class=options.sample_class,  # type: ignore[arg-type]  # narrowed by the guard above
+        session_id=str(options.session_id),
+        phrase_id=str(options.phrase_id),
+        condition=str(options.condition),
+        wav_path=wav_path,
+        sha256=sha256_of_file(wav_path),
+    )
+    append_sample_atomic(options.manifest_path, options.corpus_root, sample)
+    logger.info("captured %s under %s", sample.sample_id, options.corpus_root)
+    return 0
+
+
+def _default_recorder() -> bytes:
+    """Capture one spoken utterance from the real microphone.
+
+    Returns:
+        WAV bytes - 16 000 Hz, mono, signed int16.
+
+    Raises:
+        ValueError: If no speech was captured before the timeout.
+    """
+    # Lazy, name-resolved import: keeps ``sounddevice`` and the robot adapter out
+    # of import time, so validate/embed/analyze provably never open a microphone.
+    recorder = importlib.import_module("robot.audio_capture")
+    wav: bytes = asyncio.run(recorder.capture_utterance())
+    if not wav:
+        raise ValueError("no speech captured before the microphone timeout")
+    return wav
+
+
+def _run_validate(options: SpeakerCliOptions) -> int:
+    manifest = load_manifest(options.manifest_path, options.corpus_root)
+    validate_corpus(manifest)
+    logger.info("corpus OK: %d samples under %s", len(manifest.samples), options.corpus_root)
+    return 0
+
+
+def _run_embed(options: SpeakerCliOptions, backend: SpeakerEmbeddingBackend | None) -> int:
+    if backend is None:
+        logger.error("embed needs a speaker embedding backend (the frozen one arrives in Task 3)")
+        return 1
+    manifest = load_manifest(options.manifest_path, options.corpus_root)
+    embeddings: dict[str, np.ndarray] = {}
+    for sample in manifest.samples:
+        wav_bytes = sample.wav_path.read_bytes()
+        validate_wav_bytes(wav_bytes)
+        vector = _checked_embedding(backend.embed_wav(wav_bytes))
+        embeddings[sample.sample_id] = vector
+    _write_npz_atomic(options.corpus_root / EMBEDDINGS_NAME, embeddings)
+    logger.info("wrote %d embeddings for model %s", len(embeddings), backend.model_id)
+    return 0
+
+
+def _checked_embedding(vector: np.ndarray) -> np.ndarray:
+    flat = np.asarray(vector, dtype=np.float64).ravel()
+    if flat.shape != (EMBEDDING_DIM,):
+        raise ValueError(f"embedding must hold exactly {EMBEDDING_DIM} values, got {flat.shape}")
+    if not np.all(np.isfinite(flat)):
+        raise ValueError("embedding contains non-finite values")
+    if not np.any(flat):
+        raise ValueError("embedding is the all-zero vector")
+    return flat
+
+
+def _write_npz_atomic(target: Path, arrays: dict[str, np.ndarray]) -> None:
+    tmp = target.with_name(target.name + ".tmp")
+    with tmp.open("wb") as handle:
+        # numpy's savez stub misbinds a ``**dict[str, ndarray]`` splat to its
+        # ``allow_pickle`` bool parameter; the runtime call is correct.
+        np.savez(handle, **arrays)  # type: ignore[arg-type]
+    try:
+        tmp.replace(target)
+    except OSError:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def _run_analyze(options: SpeakerCliOptions) -> int:
+    output = options.output_path or (options.corpus_root / REPORT_NAME)
+    if output.exists():
+        logger.error("refusing to overwrite an existing report: %s", output)
+        return 1
+    manifest = load_manifest(options.manifest_path, options.corpus_root)
+    validate_corpus(manifest)
+    embeddings_path = options.corpus_root / EMBEDDINGS_NAME
+    if not embeddings_path.exists():
+        logger.error(
+            "no embeddings at %s - run `embed` first (backend arrives in Task 3)", embeddings_path
+        )
+        return 1
+    # Task 6 wires the Task 1 numeric layer (reference_centroid, cosine_distance,
+    # sweep_speaker_thresholds, zero_far_speaker_threshold) over these embeddings
+    # into an AggregateSpeakerReport rendered to `output`. No microphone, no network.
+    logger.error("analyze aggregation is implemented in Plan 0047 Task 6")
+    return 1
+
+
+def _run_cleanup(options: SpeakerCliOptions) -> int:
+    root = options.corpus_root.resolve()
+    if not root.exists():
+        logger.info("nothing to clean under %s", root)
+        return 0
+    targets = sorted(path for path in root.rglob("*") if path.is_file())
+    for path in targets:
+        if not path.resolve().is_relative_to(root):
+            logger.error("refusing to delete a path outside the corpus root: %s", path)
+            return 1
+    logger.warning("about to delete %d file(s) under %s", len(targets), root)
+    if input("Type 'delete' to confirm: ").strip().lower() != "delete":
+        logger.info("cleanup cancelled - nothing deleted")
+        return 1
+    for path in targets:
+        path.unlink()
+    logger.info("deleted %d file(s) under %s", len(targets), root)
+    return 0
+
+
+def main() -> None:
+    """CLI entry point for ``just speaker-calibration``."""
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
+    raise SystemExit(run_cli(parse_cli_args()))
+
+
+if __name__ == "__main__":
+    main()
