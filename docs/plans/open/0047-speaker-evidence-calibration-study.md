@@ -9,10 +9,11 @@
 > `superpowers:requesting-code-review` for independent review. Pipec—not an
 > agent—owns every real microphone, impostor and replay capture checkpoint.
 
-**Status:** Queued — reviewed 2026-09-07, not executable. Plan 0046 must close
-first. The readiness blockers below must be resolved in a reviewed amendment,
-and Pipec must explicitly approve promotion to `Ready`, before any code,
-dependency download or real-voice capture begins.
+**Status:** Queued — reviewed 2026-09-07, not executable. Plan 0046 (CM-0)
+closed 2026-09-08, clearing the sequencing blocker; the readiness blockers
+below must still be resolved in a reviewed amendment, and Pipec must explicitly
+approve promotion to `Ready`, before any code, dependency download or
+real-voice capture begins.
 
 **Goal:** Evaluate whether a local CPU speaker-embedding backend can separate
 Pipec's live voice from consenting live impostors under household conditions;
@@ -75,7 +76,8 @@ No task in this file may execute while it is `Queued`. Promotion work is
 documentation-only and must complete all items below without installing a
 package, downloading a model or capturing audio:
 
-- [ ] Plan 0046 is closed and merged; live branch/SHA/status are refreshed.
+- [x] Plan 0046 is closed (2026-09-08). Refresh live branch/SHA/status once its
+  PR (#122) merges to `main` before promotion.
 - [ ] A read-only researcher refreshes the three pinned primary sources above
   and records any version/license/API/security drift. A material change keeps
   the plan queued for redesign.

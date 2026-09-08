@@ -68,7 +68,10 @@ specific conflict instead of redesigning the project implicitly.
   tests, verified gaps, and the one accountable executable plan.
 - [`../roadmap/conversational-memory-delivery-map.md`](../roadmap/conversational-memory-delivery-map.md):
   staged bridge from the current split memory paths to authorized,
-  corrigible, forgettable longitudinal memory.
+  corrigible, forgettable longitudinal memory. **CM-0 closed 2026-09-08**
+  ([Plan 0046](../plans/completed/0046-reproducible-longitudinal-memory-baseline.md)):
+  the benchmark harness is GREEN and the measured baseline is a reproducible
+  cognitive RED. CM-1…CM-7 remain unplanned; the next slice is PC-3A.
 - [`p0-runtime-policy-audit.md`](p0-runtime-policy-audit.md): current
   disposition of remaining public-route and operator-acceptance gaps.
 - [`implementation-guardrails.md`](implementation-guardrails.md): tracked
@@ -93,8 +96,12 @@ specific conflict instead of redesigning the project implicitly.
 - [`memory-and-world-state.md`](memory-and-world-state.md): relational knowledge,
   memory lifecycle, onboarding, retrieval, and present-time state.
 - [`longitudinal-conversational-memory-evaluation.md`](longitudinal-conversational-memory-evaluation.md):
-  canonical benchmark dimensions, evidence layers, historical audit baseline,
-  and the longitudinal acceptance gate for PC-5.
+  canonical benchmark dimensions, evidence layers, the CM-0 measured baseline
+  (`ac43c58`, 2026-09-08), and the longitudinal acceptance gate for PC-5.
+- [`../evals/README.md`](../evals/README.md): rules for the offline evaluation
+  reports (`scripts/eval_*.py`), and
+  [`../evals/0046-longitudinal-memory-baseline.md`](../evals/0046-longitudinal-memory-baseline.md),
+  the recorded CM-0 RED baseline.
 - [`rag-and-memory-retrieval.md`](rag-and-memory-retrieval.md): detailed target
   architecture for documentary RAG, embeddings, hybrid retrieval, evidence,
   evaluation, and its staged relationship to Iroko's memory system.

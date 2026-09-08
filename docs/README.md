@@ -13,6 +13,8 @@
 | Which decisions are accepted? | [ADR index](adr/README.md) |
 | What comes next? | [Cognitive roadmap](roadmap/cognitive-roadmap.md) |
 | How does the personal-companion goal map to code and plans? | [Personal-companion delivery map](roadmap/personal-companion-delivery-map.md) |
+| How is longitudinal conversational memory delivered? | [Conversational-memory delivery map](roadmap/conversational-memory-delivery-map.md) |
+| How is longitudinal memory evaluated? | [Evaluation spec](architecture/longitudinal-conversational-memory-evaluation.md) · [eval reports](evals/README.md) |
 | Which plan may be executed? | [Plans index](plans/README.md) |
 | How is real behavior accepted? | [Runtime runbook](runbooks/p0-runtime-acceptance.md) |
 | How do I run/test Iroko day to day, and what does each security tier unlock? | [Operator manual](runbooks/operator-manual.md) |
