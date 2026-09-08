@@ -1,14 +1,13 @@
 """Frozen typed models for the longitudinal-memory evaluation suite (Plan 0046).
 
-This module holds only the strict Pydantic schema for the versioned synthetic
-suite: enums, actors, steps, expectations and their containers. It carries no
-behavior -- loading, semantic validation, privacy checks, scoring, the runtime
-driver and the report renderer live in ``scripts.eval_longitudinal_memory`` and
-later tasks of Plan 0046.
+Types only, no behavior. Task 2 defined the strict suite schema (enums, actors,
+steps, expectations); Task 3 adds the probe/result/summary models plus
+``ScoredStep`` (``score_step`` output). Semantic validation lives in
+``scripts.eval_longitudinal_memory``; the pure scoring functions live in
+``scripts.longitudinal_eval_scoring``.
 
-The models are deliberately strict. The suite is external YAML parsed by the
-loader, i.e. a boundary / untrusted input, so ``ConfigDict(extra="forbid")``
-is the load-time mechanism that rejects unknown or misspelled fields.
+The models are deliberately strict: the suite is external YAML (a boundary),
+so ``ConfigDict(extra="forbid")`` rejects unknown or misspelled fields.
 """
 
 from __future__ import annotations
@@ -66,16 +65,11 @@ class EvaluationActor(BaseModel):
 class ExpectedObservation(BaseModel):
     """Deterministic expectations scored against one probe observation.
 
-    Attributes:
-        required_any: Each inner list is an OR-group; every group must be
-            satisfied by the response for the step to pass.
-        forbidden: Substrings that must not appear in the response.
-        expected_items: Canonical extraction keys expected to be observed.
-        forbidden_items: Canonical extraction keys that must never appear.
-        expected_provenance: Expected ``subject``/``assertor``/``source``
-            attribution, independent of any extracted fact subject/object.
-        required_absent_derivatives: Derivative layers that must be inspected
-            and reported absent after a deletion.
+    ``required_any`` inner lists are OR-groups (every group must be satisfied);
+    ``forbidden`` substrings must be absent; ``expected_items`` /
+    ``forbidden_items`` are canonical extraction keys; ``expected_provenance``
+    is attribution independent of any extracted fact subject/object;
+    ``required_absent_derivatives`` must be inspected and reported absent.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -120,3 +114,115 @@ class LongitudinalSuite(BaseModel):
 
     version: Literal[1]
     scenarios: list[LongitudinalScenario]
+
+
+class ProbeObservation(BaseModel):
+    """Driver output for one step (Task 4 produces it; Task 3 scores it)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    status: CapabilityStatus
+    response: str
+    observed_items: tuple[str, ...]
+    observed_provenance: dict[Literal["subject", "assertor", "source"], str]
+    latency_ms: float
+    reason: str | None
+    inspected_derivatives: dict[str, bool]
+
+
+class StepResult(BaseModel):
+    """Deterministic score for one step; unsupported/error stay visible."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    scenario_id: str
+    step_id: str
+    category: LongitudinalCategory
+    operation: LongitudinalOperation
+    status: CapabilityStatus
+    response: str
+    latency_ms: float
+    missing_required: list[list[str]]
+    forbidden_found: list[str]
+    expected_item_count: int
+    matched_item_count: int
+    unexpected_item_count: int
+    forbidden_items_found: list[str]
+    provenance_expected_count: int
+    provenance_matched_count: int
+    provenance_mismatches: dict[str, tuple[str, str | None]]
+    derivative_presence: dict[str, bool]
+    reason: str | None
+
+
+class ScoredStep(BaseModel):
+    """``score_step`` output: the verbatim ``StepResult`` plus the raw keys and
+    flags ``aggregate_results`` needs (``StepResult`` stays serialization-pure).
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    result: StepResult
+    expected_item_keys: tuple[str, ...]
+    observed_item_keys: tuple[str, ...]
+    required_derivative_names: tuple[str, ...]
+    inspected_derivative_names: tuple[str, ...]
+    passed: bool
+
+
+class CategorySummary(BaseModel):
+    """Per-category totals with complete denominators and latency percentiles."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    total: int
+    passed: int
+    failed: int
+    unsupported: int
+    errors: int
+    pass_rate: float
+    latency_p50_ms: float | None
+    latency_p95_ms: float | None
+
+
+class PrecisionRecallMetric(BaseModel):
+    """Precision/recall with explicit counts; empty denominator -> ``None``."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    precision: float | None
+    recall: float | None
+    expected_count: int
+    observed_count: int
+    matched_count: int
+
+
+class BenchmarkSummary(BaseModel):
+    """Whole-run aggregate: complete denominators, no shrunk populations."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    total: int
+    passed: int
+    failed: int
+    unsupported: int
+    errors: int
+    forbidden_disclosure_count: int
+    forbidden_disclosure_eligible_count: int
+    forbidden_disclosure_rate: float | None
+    deletion_expected_count: int
+    deletion_inspected_count: int
+    deletion_absent_count: int
+    complete_deletion_rate: float | None
+    extraction_precision: float | None
+    extraction_recall: float | None
+    candidate_by_type: dict[str, PrecisionRecallMetric]
+    subject_metric: PrecisionRecallMetric
+    object_metric: PrecisionRecallMetric
+    relation_metric: PrecisionRecallMetric
+    provenance_expected_count: int
+    provenance_matched_count: int
+    provenance_accuracy: float | None
+    truth_current_accuracy: float | None
+    correct_abstention_rate: float | None
+    by_category: dict[LongitudinalCategory, CategorySummary]
