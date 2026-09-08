@@ -926,25 +926,56 @@ exactly — `EncoderClassifier` (not `SpeakerRecognition`), model revision
 `0f99f2d0…`, `LocalStrategy.COPY`, `FetchConfig(revision=…, allow_network=False)`,
 `(1, n_samples)` float32 input, `(1, 1, 192)` output.
 
-**Status: COMPLETE — technical PASS, ready for independent review.** Committed on
-`feat/0047-speaker-calibration` as `1b13302`
-(`feat(eval): add frozen speaker embedding backend`) and pushed; no PR. Every
-gate green, p95 231 ms < the precommitted 500 ms. One divergence recorded for
-Pipec (the `pytorch-cpu` index — see the `uv add` checkbox and the Task 3
-evidence / CI-impact note). No household voices collected; Tasks 4–6 stay
+**Status: COMPLETE — technical PASS, ready for independent review.** Landed on
+`feat/0047-speaker-calibration` in three commits: `1b13302`
+(`feat(eval): add frozen speaker embedding backend`), `734e9ac`
+(`docs(plan): mark 0047 Task 3 complete and ready for review`) and the
+pytorch-cpu index amendment below; all pushed, no PR. Every gate green, p95
+231 ms < the precommitted 500 ms. No household voices collected; Tasks 4–6 stay
 blocked; Task 7 is the next executable step if Pipec closes the study, otherwise
 Task 4 once three consenting adults are confirmed.
+
+### Amendment: pytorch-cpu index (2026-09-08, Pipec-approved)
+
+The frozen contract (block 2 note 3) expected `[tool.uv.sources]` to route
+`torch` / `torchaudio` through the `pytorch-cpu` index. `uv add --group dev
+"speechbrain==1.1.1"` alone did not achieve that: `[tool.uv.sources]` is only
+honoured for a **direct** dependency, and both were transitive-only via
+`speechbrain`, so the lock resolved them from `pypi.org/simple`. On Windows that
+wheel is already CPU-only, so Task 3's measurements are unaffected — but a Linux
+CI `uv sync --all-groups` would have pulled PyPI's CUDA `torch` plus ~19
+`nvidia-*` / `cuda-*` / `triton` packages (~2.5–3 GB) for a dependency the CI
+gate never runs.
+
+**Fix (approved by Pipec after Task 3 committed):** add `torch>=2.14.0,<3.0.0`
+and `torchaudio>=2.11.0,<3.0.0` to the root `[dependency-groups] dev` so the
+existing source applies, then `uv lock`. No version pin changed and nothing new
+entered the tree — the packages were already resolved transitively.
+
+Result in `uv.lock`: `torch` and `torchaudio` `source = { registry =
+"https://download.pytorch.org/whl/cpu" }`, installed as `2.14.0+cpu` /
+`2.11.0+cpu`; **removed:** `cuda-bindings`, `cuda-pathfinder`, `cuda-toolkit`,
+`nvidia-cublas`, `nvidia-cuda-cupti`, `nvidia-cuda-nvrtc`,
+`nvidia-cuda-runtime`, `nvidia-cudnn-cu13`, `nvidia-cufft`, `nvidia-cufile`,
+`nvidia-curand`, `nvidia-cusolver`, `nvidia-cusparse`, `nvidia-cusparselt-cu13`,
+`nvidia-nccl-cu13`, `nvidia-nvjitlink`, `nvidia-nvshmem-cu13`, `nvidia-nvtx`,
+`triton` (19 nodes). Re-verified after the amendment: `torch.cuda.is_available()
+== False`, `uv lock --check` exit 0, `pip-audit --local` clean,
+`just speaker-calibration model-contract` exit 0, 4/4 slow + 14/14 backend unit,
+`just lint` / `just typecheck` green, full CI-equivalent suite green.
 
 - [x] From workspace root run the approved command
   `uv add --group dev "speechbrain==1.1.1"`; never `uv pip install`, never edit
   a subproject dependency file and never hand-edit the lockfile. Inspect the
   `uv.lock` diff and confirm `torch`/`torchaudio` resolved to CPU-only wheels
-  via the already-declared `pytorch-cpu` index. **Done with one divergence — see
-  Task 3 evidence: the wheels are CPU-only (`torch==2.14.0+cpu`,
-  `torchaudio==2.11.0+cpu`, `torch.cuda.is_available() == False`, zero
-  `nvidia-*` packages installed) but resolved from `pypi.org/simple`, not the
-  `pytorch-cpu` explicit index, because `[tool.uv.sources]` is not applied to a
-  transitive-only dependency. Not adapted in-flight; recorded for Pipec.**
+  via the already-declared `pytorch-cpu` index. **Done. First pass resolved the
+  CPU wheels from `pypi.org/simple` (not the explicit index) because
+  `[tool.uv.sources]` is not applied to a transitive-only dependency; the wheels
+  were CPU-only in effect but the Linux CI lock carried the full CUDA graph.
+  Pipec approved the amendment below on 2026-09-08 — `torch` / `torchaudio` are
+  now direct `dev` constraints so the source applies, both resolve from
+  `https://download.pytorch.org/whl/cpu` as `+cpu`, and 19 `nvidia-*` / `cuda-*`
+  / `triton` nodes are gone from the lock. See "Amendment: pytorch-cpu index".**
 - [x] Add the `model-contract` action and run `just speaker-calibration
   model-contract` once to warm the pinned-revision cache; assert the resolved
   revision equals the frozen SHA. **Done — exit 0, resolved revision
@@ -994,9 +1025,9 @@ Task 4 once three consenting adults are confirmed.
 |---|---|
 | Branch | `feat/0047-speaker-calibration` (no new branch, no worktree) |
 | New files | `scripts/speaker_calibration_backend.py` (~215 lines), `tests/slow/test_speaker_calibration_backend.py` (60 lines) |
-| Modified | `scripts/speaker_calibration.py` (`model-contract` now dispatches to the backend via deferred import), `tests/unit/test_speaker_calibration.py` (+14 backend tests, −1 stale "deferred to Task 3" test), `pyproject.toml` (`speechbrain==1.1.1` in `dev`; `speechbrain.*` added to `[[tool.mypy.overrides]] ignore_missing_imports`), `uv.lock` (+32 packages) |
-| `uv add` resolution | `speechbrain==1.1.1`, `torch==2.14.0`, `torchaudio==2.11.0`, `sympy`, `mpmath`, `hyperpyyaml`, `ruamel-yaml*`, `cloudpickle`, `joblib`, `sentencepiece`, `soundfile`, `setuptools`. `numpy` **unchanged at 2.5.2**, `huggingface-hub` **unchanged at 1.29.0** — no upper-bound conflict, no downgrade. |
-| CPU-only confirmation | Runtime: `torch 2.14.0+cpu`, `torchaudio 2.11.0+cpu`, `torch.cuda.is_available() == False`, `torch.version.cuda is None`; `uv add` install list has **no `nvidia-*` package**; the lock's `nvidia-*` nodes all carry `sys_platform == 'linux'` markers. **Divergence:** `torch`/`torchaudio` `source = { registry = "https://pypi.org/simple" }`, not the declared `pytorch-cpu` index — `[tool.uv.sources]` is only honoured for a direct dependency, and here both are transitive via `speechbrain`. On Windows the PyPI wheel *is* the CPU wheel, so the functional requirement holds; forcing the index would mean adding `torch`/`torchaudio` as direct deps, which is an in-flight dependency change the plan forbids without an amendment. Left as-is; Pipec's call whether to amend. **CI impact (material, why the amendment is worth considering):** both `ci.yml` jobs run `ubuntu-latest` + `uv sync --locked --all-packages --all-groups`, so Linux CI now resolves PyPI's **CUDA** `torch` wheel plus `nvidia-cublas` / `nvidia-cudnn-cu13` / `nvidia-cusparselt-cu13` / `nvidia-nccl-cu13` / `nvidia-nvshmem-cu13` / `triton` — roughly 2.5–3 GB per cache miss, for a dependency CI never executes (all `speechbrain` tests are `slow`, excluded from the CI gate). Fixing it is a ~4-line amendment: add `torch` / `torchaudio` to a dependency group with `>=` bounds matching the lock so the **existing** `[tool.uv.sources]` applies, then `uv lock`. It is not a semantic graph change (the packages are already in the tree) but it is a dependency-file edit the plan reserves for an explicit amendment. |
+| Modified | `scripts/speaker_calibration.py` (`model-contract` now dispatches to the backend via deferred import), `tests/unit/test_speaker_calibration.py` (+14 backend tests, −1 stale "deferred to Task 3" test), `pyproject.toml` (`speechbrain==1.1.1`, then `torch>=2.14.0,<3.0.0` + `torchaudio>=2.11.0,<3.0.0` in `dev` per the amendment; `speechbrain.*` added to `[[tool.mypy.overrides]] ignore_missing_imports`), `uv.lock` (net +13 packages after the amendment removed the 19 CUDA nodes) |
+| `uv add` resolution | `speechbrain==1.1.1`, `torch==2.14.0+cpu`, `torchaudio==2.11.0+cpu`, `sympy`, `mpmath`, `hyperpyyaml`, `ruamel-yaml*`, `cloudpickle`, `joblib`, `sentencepiece`, `soundfile`, `setuptools` (torch/torchaudio pinned to the CPU index by the amendment above). `numpy` **unchanged at 2.5.2**, `huggingface-hub` **unchanged at 1.29.0** — no upper-bound conflict, no downgrade. |
+| CPU-only confirmation | Runtime after the pytorch-cpu index amendment: `torch 2.14.0+cpu`, `torchaudio 2.11.0+cpu`, `torch.cuda.is_available() == False`, `torch.version.cuda is None`. `uv.lock`: `torch` / `torchaudio` `source = { registry = "https://download.pytorch.org/whl/cpu" }`; the 19 `nvidia-*` / `cuda-*` / `triton` nodes that the first (PyPI) resolution carried for Linux are **removed**. See "Amendment: pytorch-cpu index" above for the full before/after. |
 | API vs frozen contract | Verified against the installed package: `FetchConfig(overwrite, allow_updates, allow_network, token, revision=None, huggingface_cache_dir=None)` ✓; `LocalStrategy.COPY == 2` ✓; `EncoderClassifier.from_hparams(source, hparams_file='hyperparams.yaml', **kwargs)` ✓; `encode_batch(self, wavs, wav_lens=None, normalize=False)` ✓. No API drift. |
 | Commit `0f99f2d0` diff | Touches only `hyperparams.yaml`; reverts a PR that had added a `pretrained_path` pointer + a `paths:` section, returning the config to plain relative local paths — favourable for a pinned offline load, no behaviour risk. |
 | `pip-audit --local` | **No known vulnerabilities** across the new torch/torchaudio/speechbrain graph. |
@@ -1044,9 +1075,11 @@ Task 4 once three consenting adults are confirmed.
   generated sine tone, never a voice. No WAV/manifest/embedding/hash written or
   staged. The tracked diff carries only code, the frozen public model SHA (with
   an allowlist pragma), sanitized latency numbers and this plan text.
-- **Open divergence for Pipec:** the `pytorch-cpu` index was not exercised (see
-  the CPU-only row above). Functionally CPU-only and verified; not adapted
-  in-flight.
+- **`pytorch-cpu` index:** the first resolution missed the declared index (a
+  transitive-dep limitation of `[tool.uv.sources]`). Flagged, not adapted
+  in-flight; resolved afterwards by the Pipec-approved amendment above, which
+  makes `torch` / `torchaudio` direct `dev` constraints and drops 19 CUDA nodes
+  from the Linux lock.
 
 If package resolution, model load, frozen revision, CPU execution,
 offline-after-cache behavior, finite fixed-dimension output or the precommitted
