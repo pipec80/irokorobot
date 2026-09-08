@@ -112,8 +112,10 @@ CM-0 RED benchmark (can run first; does not change runtime)
   -> continue in P2.1 per the canonical pre-electronics portfolio
 ```
 
-Plan 0046 realized CM-0 (closed 2026-09-08). The next queued handoff is **PC-3A /
-[Plan 0047](../plans/open/0047-speaker-evidence-calibration-study.md)**, not CM-1:
+Plan 0046 realized CM-0 (closed 2026-09-08). The active slice is **PC-3A /
+[Plan 0047](../plans/open/0047-speaker-evidence-calibration-study.md)**
+(`Ready`/`NOW`, promoted 2026-09-08, staged: Tasks 0–3 running, Tasks 4–6 held
+for consented-adult confirmation), not CM-1:
 CM-1 stays unplanned until PC-3 and PC-4 close per the product order above. The
 numbering of CM-1 through CM-7 is not reserved:
 each stage will be written only after its predecessor is closed and re-audited.

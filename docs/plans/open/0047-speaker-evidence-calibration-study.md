@@ -10,15 +10,22 @@
 > `superpowers:requesting-code-review` for independent review. Pipec—not an
 > agent—owns every real microphone, impostor and replay capture checkpoint.
 
-**Status:** Queued — **all 9 readiness blockers cleared 2026-09-08.** The
-readiness amendment froze the backend, model revision, dependency command,
-tensor contract, latency protocol, phrases, conditions and p95 budget (see
-"Frozen readiness contract" below); an independent plan review (2026-09-08)
-returned **APPROVE WITH MINOR FIXES**, and all 2 MEDIUM + 6 LOW findings were
-applied (see "Independent review" below). Plan 0046 (CM-0) closed 2026-09-08.
-**The only thing left is Pipec's explicit decision** to change `Status` to
-`Ready`, put 0047 in `NOW`, and authorize execution. No code, dependency
-download or real-voice capture begins until that decision.
+**Status:** Ready / NOW — **promoted 2026-09-08 on Pipec's explicit decision.**
+All 9 readiness blockers were cleared 2026-09-08: the readiness amendment froze
+the backend, model revision, dependency command, tensor contract, latency
+protocol, phrases, conditions and p95 budget (see "Frozen readiness contract"
+below); an independent plan review (2026-09-08) returned **APPROVE WITH MINOR
+FIXES**, and all 2 MEDIUM + 6 LOW findings were applied (see "Independent review"
+below). Plan 0046 (CM-0) closed 2026-09-08.
+
+**Execution is deliberately staged.** Pipec authorized Tasks 0–3 (the pure
+numeric layer, the private-corpus CLI and the frozen backend + CPU-feasibility
+gate) to run now, on branch `feat/0047-speaker-calibration`. Tasks 4–6 (real
+household capture) stay **open, no date** until three consenting adults are
+confirmed for the 18-sample live-impostor minimum — the plan forbids lowering
+the matrix or substituting voices, so it stops there by design. If Task 3
+returns a technical FAIL, Task 7 runs instead and the study closes as an
+evidence-complete FAIL with no capture.
 
 **Goal:** Evaluate whether a local CPU speaker-embedding backend can separate
 Pipec's live voice from consenting live impostors under household conditions;
@@ -52,7 +59,7 @@ Ruff, mypy and `just`. No cloud inference is allowed.
 [current state](../../architecture/current-state.md),
 [ADR 0006](../../adr/0006-personal-and-family-companion-profiles.md).
 
-## Why this plan is queued
+## Why this plan was queued (promoted 2026-09-08)
 
 The repository currently has no speaker-recognition code, voiceprint schema,
 speaker enrollment, diarization or selected dependency. `IdentityEvidenceSource.VOICE`
@@ -111,9 +118,10 @@ package, downloading a model or capturing audio:
   household capture.
 - [x] Independent plan review run 2026-09-08 — **APPROVE WITH MINOR FIXES**. All
   2 MEDIUM + 6 LOW findings applied (see "Independent review" below). Nothing in
-  the findings required redesign or re-freezing the backend. The only remaining
-  step is Pipec's explicit decision to change `Status` to `Ready`, put 0047 in
-  `NOW`, and authorize implementation.
+  the findings required redesign or re-freezing the backend.
+- [x] Pipec's explicit promotion decision (2026-09-08): `Status` → `Ready`, 0047
+  is the sole `NOW`, Tasks 0–3 authorized to execute now; Tasks 4–6 held for
+  consented-adult confirmation. See the staged-execution note under **Status**.
 
 If Pipec declines the candidate, the plan remains queued or is cancelled by an
 explicit roadmap decision; that is not measured FAIL. After promotion, a real
