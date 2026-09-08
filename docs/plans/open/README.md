@@ -14,16 +14,18 @@ closed), re-audited 2026-09-01 after Plan 0030 closed, aligned on
 plans, updated 2026-09-08 after Plan 0046 closed CM-0, and again 2026-09-08
 after Plan 0047 (PC-3A) was promoted to `Ready`/`NOW` on Pipec's explicit
 decision (readiness amendment + independent review APPROVE WITH MINOR FIXES
-both complete), with Tasks 0–3 authorized to execute and Tasks 4–6 held.
+both complete); Tasks 0–3 are now complete (Task 3 a technical PASS) and
+Tasks 4–6 are held.
 Existing components named under **Reuse** must not be rebuilt by a later plan.
 
 For daily work, do not choose a plan from this inventory. Follow the
 single-WIP [operational board](../README.md#operational-board) — **CM-0
 (Plan 0046) closed 2026-09-08; Plan 0047 (PC-3A) was promoted to `Ready`/`NOW`
 on Pipec's explicit decision 2026-09-08.** Execution is staged: Tasks 0–3
-(numeric layer, corpus CLI, frozen backend + p95 gate) run now on
-`feat/0047-speaker-calibration`; Tasks 4–6 (household capture) are held with no
-date until three consenting adults are confirmed. Use the
+(numeric layer, corpus CLI, frozen backend + p95 gate) are complete on
+`feat/0047-speaker-calibration` — Task 3 (2026-09-08) is a technical PASS,
+measured p95 231 ms < the precommitted 500 ms budget. Tasks 4–6 (household
+capture) are held with no date until three consenting adults are confirmed. Use the
 [personal-companion delivery map](../../roadmap/personal-companion-delivery-map.md)
 and [conversational-memory delivery map](../../roadmap/conversational-memory-delivery-map.md)
 to see the code, tests, verified gaps, and future delivery sequence.
@@ -31,7 +33,7 @@ to see the code, tests, verified gaps, and future delivery sequence.
 | Plan | Implementation reality | Reuse | Remaining closure |
 |---|---|---|---|
 | [0015](0015-personal-companion-design.md) | Approved product design; PC-1 is complete and PC-2 has a provisional calibrated acceptance | Controller, policy/audit, V4 household tools, identity/session seam, working memory, legacy extraction/vector storage, STT/TTS, face engine | PC-3 speaker, PC-4 fusion, CM-1…CM-7 longitudinal memory, PC-5 integrated personal acceptance, and PC-6 family remain open (CM-0 closed) |
-| [0047](0047-speaker-evidence-calibration-study.md) | **Ready / NOW** (promoted 2026-09-08). Tasks 0–3 executing on `feat/0047-speaker-calibration`; Tasks 4–6 held for consented-adult confirmation | WAV/audio contract, microphone capture, face-calibration numeric/corpus pattern | Finish Tasks 0–3 (frozen backend + p95 gate), then capture + measure PC-3A once adults confirmed; PC-3B and PC-4 remain separate |
+| [0047](0047-speaker-evidence-calibration-study.md) | **Ready / NOW** (promoted 2026-09-08). Tasks 0–3 complete on `feat/0047-speaker-calibration` (no PR) — Task 3 frozen backend a technical PASS, p95 231 ms < 500 ms budget; Tasks 4–6 held for consented-adult confirmation | WAV/audio contract, microphone capture, face-calibration numeric/corpus pattern | Capture + measure PC-3A (Tasks 4–6) once three adults confirmed, or close via Task 7; PC-3B and PC-4 remain separate |
 
 ## Server-production capsule — CLOSED 2026-09-03
 
@@ -78,10 +80,10 @@ cognitive RED (`ac43c58`, exit 1); it changed no runtime memory. See
 [completed/0046](../completed/0046-reproducible-longitudinal-memory-baseline.md).
 
 Canonical execution order: **Plan 0047 (PC-3A) is `Ready`/`NOW`**, promoted
-2026-09-08 on Pipec's explicit decision; Tasks 0–3 execute now on
-`feat/0047-speaker-calibration`, Tasks 4–6 wait for consented-adult
-confirmation. The server capsule (Plan 0031, children 0032–0045) is fully
-closed.
+2026-09-08 on Pipec's explicit decision; Tasks 0–3 are complete on
+`feat/0047-speaker-calibration` (Task 3 a technical PASS, p95 231 ms), Tasks
+4–6 wait for consented-adult confirmation. The server capsule (Plan 0031,
+children 0032–0045) is fully closed.
 
 [Plan 0048](../completed/0048-fastapi-baseline-final-hardening.md) closed
 2026-09-07: a bounded follow-up to a second independent audit of the server

@@ -75,7 +75,7 @@ are adjacent.
 | Order | Track | Delivery slice | Verifiable outcome / exit evidence | Depends on | Commitment | Current state | Detail and executable ownership |
 |---:|---|---|---|---|---|---|---|
 | 1 | Evaluation | CM-0 — reproducible longitudinal baseline | A versioned synthetic benchmark runs reproducibly; the harness finishes GREEN while the measured product remains honestly RED or passes without relaxed thresholds. | Closed P0/PC-1/PC-2 foundations | Required | **Complete 2026-09-08** — benchmark GREEN, baseline RED (`ac43c58`, exit 1) | [Memory map](conversational-memory-delivery-map.md#delivery-sequence); [Plan 0046](../plans/completed/0046-reproducible-longitudinal-memory-baseline.md) |
-| 2 | Biometrics | PC-3A — speaker calibration study | A frozen local backend and versioned genuine/impostor corpus measure FAR/FRR, replay, quality, failure posture and CPU feasibility without granting identity or authorization. | CM-0 closed; Plan 0047 readiness amendment approved | Required | `Ready`/`NOW` — promoted 2026-09-08 on Pipec's explicit decision. Staged: Tasks 0–3 (numeric layer, corpus CLI, frozen backend + p95 ≤ 500 ms gate) executing on `feat/0047-speaker-calibration`; Tasks 4–6 (household capture) held until three consenting adults confirmed | [Plan 0015](../plans/open/0015-personal-companion-design.md#pc-3--speaker-evidence--unstarted-pc-3a-plan-queued); [Plan 0047](../plans/open/0047-speaker-evidence-calibration-study.md) |
+| 2 | Biometrics | PC-3A — speaker calibration study | A frozen local backend and versioned genuine/impostor corpus measure FAR/FRR, replay, quality, failure posture and CPU feasibility without granting identity or authorization. | CM-0 closed; Plan 0047 readiness amendment approved | Required | `Ready`/`NOW` — promoted 2026-09-08. **Tasks 0–3 complete** on `feat/0047-speaker-calibration` (no PR): numeric layer, corpus CLI, and (Task 3, 2026-09-08) the frozen backend — a **technical PASS**, measured p95 231 ms < the precommitted 500 ms budget. CPU feasibility is settled; FAR/FRR/replay/quality are not — Tasks 4–6 (household capture) stay held until three consenting adults confirm the 18-sample impostor minimum, then Task 6 measures and Task 7 closes | [Plan 0015](../plans/open/0015-personal-companion-design.md#pc-3--speaker-evidence--unstarted-pc-3a-plan-queued); [Plan 0047](../plans/open/0047-speaker-evidence-calibration-study.md) |
 | 3 | Biometrics | PC-3B — consented speaker runtime evidence | Local enrollment, consent, revocation and verification produce typed `VOICE` evidence; missing, weak or failed evidence remains `unknown` and grants no capability directly. | PC-3A measured and accepted | Required | Unplanned | [Plan 0015](../plans/open/0015-personal-companion-design.md#pc-3--speaker-evidence--unstarted-pc-3a-plan-queued); future bounded plan |
 | 4 | Identity | PC-4 — conservative multimodal fusion | PIN/session, face and voice evidence are fused deterministically; conflict is `ambiguous`; expiry, absence, replay/spoof risk, provider failure and local recovery have explicit outcomes. | PC-3B; existing PC-2 face evidence | Required | Unplanned | [Plan 0015](../plans/open/0015-personal-companion-design.md#pc-4--conservative-identity-fusion--unstarted); future bounded plan |
 | 5 | Memory policy | CM-1 — explicit personal-memory capabilities | Policy distinguishes `read`, `propose`, `confirm`, `correct` and `forget` scopes without turning identity into authorization. | PC-4; current identity and policy foundations | Required | Unplanned | [Memory map](conversational-memory-delivery-map.md); future bounded plan |
@@ -136,10 +136,15 @@ Apache-2.0, the frozen preprocessing/tensor contract, the exact `uv add`
 command, the latency protocol, three Spanish phrases, four `condition` labels
 and a p95 ≤ 500 ms budget), and its independent plan review (2026-09-08)
 returned APPROVE WITH MINOR FIXES with all findings applied. Execution is
-staged: Tasks 0–3 (numeric layer, corpus CLI, frozen backend + p95 gate) run
-now on `feat/0047-speaker-calibration`; Tasks 4–6 (household capture) are held
-with no date until three consenting adults are confirmed for the 18-sample
-live-impostor minimum. Rows 3–19 are not executable and their plan numbers are
+staged: Tasks 0–3 (numeric layer, corpus CLI, frozen backend + p95 gate) are
+**complete** on `feat/0047-speaker-calibration` (no PR) — Task 3 (2026-09-08) is
+a technical PASS with a measured p95 of 231 ms against the precommitted 500 ms
+budget, and `torch`/`torchaudio` were pinned to the `pytorch-cpu` index by a
+same-day amendment. CPU feasibility is answered; the FAR/FRR/replay/quality
+outcome is not. Tasks 4–6 (household capture) are held with no date until three
+consenting adults are confirmed for the 18-sample live-impostor minimum; if
+Pipec instead closes the study, Task 7 records an honest technical result with
+no capture. Rows 3–19 are not executable and their plan numbers are
 intentionally unreserved.
 
 ## C0 — Documentation foundation
