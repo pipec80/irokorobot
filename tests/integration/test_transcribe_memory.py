@@ -1,10 +1,12 @@
 """Integration tests for memory behavior through POST /transcribe."""
 
 from datetime import UTC, datetime
+from typing import cast
 from unittest.mock import AsyncMock, Mock
 from uuid import UUID
 
 from fastapi.testclient import TestClient
+import httpx
 import pytest
 from server.characters import build_system_prompt, get_character
 from server.cognition.identity import (
@@ -234,6 +236,7 @@ async def test_consolidation_eval_rejects_legacy_alias_before_provider(
     extractor = AsyncMock(return_value=TurnExtraction())
     monkeypatch.setattr(eval_consolidation, "_extract_via_ollama", extractor)
 
+    client = cast("httpx.AsyncClient", Mock(spec=httpx.AsyncClient))
     with pytest.raises(ValueError, match=legacy_key):
         await eval_consolidation._eval_case(
             {
@@ -241,7 +244,8 @@ async def test_consolidation_eval_rejects_legacy_alias_before_provider(
                 legacy_key: "Felipe",
                 "user": "hola",
                 "assistant": "hola",
-            }
+            },
+            client,
         )
 
     extractor.assert_not_awaited()

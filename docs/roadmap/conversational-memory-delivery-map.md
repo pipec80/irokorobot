@@ -1,7 +1,7 @@
 # Conversational-memory delivery map
 
-**Status:** canonical design; CM-0 has Plan 0046 `Ready`
-**Last reviewed:** 2026-09-07
+**Status:** canonical design; CM-0 closed (Plan 0046, 2026-09-08); CM-1 unplanned
+**Last reviewed:** 2026-09-08
 
 ## Objective
 
@@ -92,7 +92,7 @@ once in the
 
 | Stage | Verifiable outcome | Dependencies | Executable plan |
 |---|---|---|---|
-| CM-0 | Versioned longitudinal benchmark and one reproducible RED run | evaluation specification | [Plan 0046](../plans/open/0046-reproducible-longitudinal-memory-baseline.md) — `Ready`, not started |
+| CM-0 | Versioned longitudinal benchmark and one reproducible RED run | evaluation specification | [Plan 0046](../plans/completed/0046-reproducible-longitudinal-memory-baseline.md) — **closed 2026-09-08**: benchmark GREEN, measured baseline RED (`ac43c58`, exit 1) |
 | CM-1 | Explicit `read`, `propose`, `confirm`, `correct`, and `forget` capabilities for personal memory | current policy and identity; PC-4 per the product order below | not written |
 | CM-2 | The authorized actor reaches the conversational flow without interpolating names or expanding permissions implicitly | CM-1 | not written |
 | CM-3 | Extraction creates candidates; confirmation/promotion writes canonical V4 facts and relations | CM-0, CM-1, CM-2 | not written |
@@ -112,7 +112,10 @@ CM-0 RED benchmark (can run first; does not change runtime)
   -> continue in P2.1 per the canonical pre-electronics portfolio
 ```
 
-Plan 0046 realizes CM-0. The numbering of CM-1 through CM-7 is not reserved:
+Plan 0046 realized CM-0 (closed 2026-09-08). The next queued handoff is **PC-3A /
+[Plan 0047](../plans/open/0047-speaker-evidence-calibration-study.md)**, not CM-1:
+CM-1 stays unplanned until PC-3 and PC-4 close per the product order above. The
+numbering of CM-1 through CM-7 is not reserved:
 each stage will be written only after its predecessor is closed and re-audited.
 The R2/R3 documentation stages and the P3.1/P3.2 family work are not part of
 this memory subsequence; they appear in the master portfolio and must not be
@@ -162,7 +165,7 @@ will keep only the minimum permitted evidence and not the forgotten content.
 
 ## Criteria for opening plans
 
-The first plan is Plan 0046 for CM-0 and must observe a reproducible failure
-before changing the runtime. Every later plan must have small scope, RED/GREEN
-tests, verification commands, non-goals, and independent review. PC-5 stays open
-until CM-7 and its complete physical acceptance are passed.
+Plan 0046 for CM-0 is closed: it observed a reproducible failure (`ac43c58`,
+exit 1) without changing the runtime. Every later plan must have small scope,
+RED/GREEN tests, verification commands, non-goals, and independent review. PC-5
+stays open until CM-7 and its complete physical acceptance are passed.

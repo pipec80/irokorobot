@@ -30,5 +30,20 @@ one-terminal-event guarantee, the NDJSON 200 OpenAPI contract, `/health`
 wording + injectable `create_app`) and left only Uvicorn concurrency
 calibration open, as its own `perf(...)` plan.
 
+[Plan 0046](0046-reproducible-longitudinal-memory-baseline.md) closed CM-0 on
+2026-09-08: it delivered a longitudinal-memory **benchmark and a measured RED
+baseline**, not longitudinal memory. It repaired the two stale eval entrypoints,
+added an 8-module out-of-runtime observation instrument
+(`scripts/eval_longitudinal_memory.py` + `longitudinal_eval_*`), the synthetic
+9-scenario suite `tests/evals/golden_longitudinal_memory.yaml`, and
+`just eval-longitudinal`. `just gate` is GREEN; `just eval-longitudinal --runs 3`
+recorded [`docs/evals/0046-longitudinal-memory-baseline.md`](../../evals/0046-longitudinal-memory-baseline.md)
+at `ac43c58` with exit `1` — extraction (the only live seam) scored p/r `0.25`
+(`FAIL`, no CM-0 gate), every other operation is honestly `unsupported`, all four
+frozen gates `FAIL`, and the production DB hash was unchanged. The plan's file
+map, smoke scenario id, and one scoring-denominator leak were adjusted during
+execution (rulings recorded in the plan's closure banner). No runtime memory,
+authorization, prompt, model, or API change.
+
 Do not modify a completed plan to create a new decision. Record architecture
 changes in a new ADR and create a new open plan.

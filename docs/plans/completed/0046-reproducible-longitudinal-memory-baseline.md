@@ -11,9 +11,60 @@
 > skill for the dataset, scoring and report. Checkboxes are the persistent
 > execution ledger and must be updated as work proceeds.
 
-**Status:** Ready — `NOW`, reviewed 2026-09-07. The user approved this plan's
-design and creation, not its implementation. Start only after a separate,
-explicit instruction to execute Plan 0046.
+**Status:** COMPLETE — closed 2026-09-08 at `ac43c58` (final branch tip after
+closure `158de27` + this doc commit). CM-0 delivered: the benchmark harness is
+GREEN (`just gate`: 1194 tests) and the measured baseline is a reproducible
+cognitive RED. Merged via a squash PR from `feat/0046-longitudinal-memory-baseline`.
+
+> **Closure record.** Seven task commits: T1 `a7cdad7`, T2 `b358866`,
+> T3 `fc4dc9c`, T4 `38fa89c` (with the reviewer's G1–G4 fixes folded in),
+> T5 `ac43c58` (the real 3-run Ollama baseline), plus two closure fixes
+> `537d58b` (report writes LF endings) and `158de27` (truth-current accuracy
+> reset per run — a cross-run denominator leak an independent reviewer found).
+> The baseline report is [`docs/evals/0046-longitudinal-memory-baseline.md`](../../evals/0046-longitudinal-memory-baseline.md):
+> exit `1`, extraction the only live seam at precision/recall `0.25` (`FAIL`,
+> no CM-0 extraction gate), every other operation honestly `unsupported` across
+> all nine categories, all four frozen gates `FAIL`. The production database
+> `data/omnibot.db` hash was identical before and after every run.
+>
+> **Deviations from this plan, all recorded during execution:**
+> - **File map (2 modules → 8).** The frozen interface contract cannot fit two
+>   modules under the ≤200-line rule. Split into `longitudinal_eval_{models,
+>   scoring,aggregation,driver,metadata,report,runner}.py` plus
+>   `eval_longitudinal_memory.py` (loader + CLI), each single-responsibility,
+>   import graph acyclic. `aggregate_results` is 39 lines (irreducible flat
+>   constructor); `models.py`/`aggregation.py`/`report.py`/`runner.py` land
+>   ~230–300 lines by cohesion.
+> - **Task 5 smoke scenario.** This plan's Task 5 named `--only
+>   corrected_preference`; that is a *step* id, not a *scenario* id, and an
+>   unknown `--only` id exits `2` (stops the task). The smoke ran with
+>   `--only extraction_family_and_pet` — the only scenario with a live
+>   `extract` seam, so the only smoke that actually exercises the provider.
+> - **`_write_report` line endings.** `Path.write_text` emits CRLF on Windows;
+>   pinned `newline="\n"` so the operator commits the runner's output unmodified
+>   (`537d58b`).
+> - **`truth_current_accuracy` denominator.** The metric accumulated corrected
+>   scenario ids across the whole run-major list, so runs 2..n counted a
+>   scenario's pre-correction recall against run 1's `CORRECT`. Fixed to reset
+>   per run boundary (`158de27`). Outcome-safe — the committed baseline value
+>   (`0.0000`) is unchanged.
+> - **`tests/integration/test_transcribe_memory.py`** (+6/−1, outside Task 1's
+>   file map): a necessary consequence of the plan-authorized `_eval_case(client,
+>   …)` signature, without which the suite is red.
+> - **Task 2 spec review** was run by the orchestrator after the review
+>   subagent hit a provider rate limit; the whole-branch reviewer independently
+>   re-verified the suite and validator at closure.
+>
+> **Known limitations deferred to a later CM plan (not defects here):**
+> `_truth_current_accuracy` is implicitly coupled to run-major execution order;
+> `--only a a` is not de-duplicated. The `domain:*`/`seam:*` scenario tags are
+> not rendered literally (the frozen result model has no tag field); the report
+> reconstructs coverage from category + operation and every category keeps its
+> denominator.
+
+Original status line: *Ready — `NOW`, reviewed 2026-09-07. The user approved
+this plan's design and creation, not its implementation.* Implementation was
+authorized separately.
 
 **Goal:** Deliver CM-0: a versioned, synthetic longitudinal-memory benchmark
 whose harness is fully tested and reproducible, then record an honest baseline
@@ -758,8 +809,11 @@ coding agent may substitute generated results.
   that temporary artifact after review:
 
   ```powershell
-  just eval-longitudinal --only corrected_preference --runs 1 --output docs/evals/0046-smoke.md
+  just eval-longitudinal --only extraction_family_and_pet --runs 1 --output docs/evals/0046-smoke.md
   ```
+
+  (`corrected_preference` in the original draft is a step id, not a scenario id;
+  `extraction_family_and_pet` is the only scenario with a live `extract` seam.)
 
   Expected: exit `1` for a valid cognitive RED or `0` only if that isolated
   case truly passes; exit `2` stops the task for debugging. Confirm the report

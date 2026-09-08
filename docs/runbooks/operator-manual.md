@@ -93,11 +93,46 @@ problem can be localized without running the whole loop.
 | `manage_household_roles.py` | `uv run python scripts/manage_household_roles.py bootstrap-owner` | Local role bootstrap, direct DB, no HTTP | No | No |
 | `migrate_memory_v4.py` | `uv run python scripts/migrate_memory_v4.py --apply` | Legacy-fact migration into v4, dry-run first | No | No |
 | `eval_chat.py` / `eval_consolidation.py` | `just eval-chat` / `just eval-memory` | Response/extraction quality against real Ollama — not `pytest` | Needs `just services` | Yes |
+| `eval_longitudinal_memory.py` | `just eval-longitudinal` | Longitudinal-memory capability probe (multi-session recall, correction, cross-person privacy, deletion, provenance) against real Ollama + a temp DB — not `pytest` | Needs `just services` | Yes |
 
 Rule of thumb: audio sounds wrong → `mic_test.py`/`piper_test.py` first (they
 need nothing else running). The answer is wrong but audio is fine →
 `pipeline_test.py` (bypasses HTTP, exercises the real LLM path directly).
 Something only breaks through the real server → `client_test.py`/`chat_test.py`.
+
+### Longitudinal-memory baseline — `just eval-longitudinal` (Plan 0046, CM-0)
+
+An offline capability probe, not a `pytest` test. It runs the synthetic suite in
+`tests/evals/golden_longitudinal_memory.yaml` against real Ollama and a
+throwaway database, and never touches the configured production database. Full
+rules: [`docs/evals/README.md`](../evals/README.md).
+
+The recorded CM-0 baseline (2026-09-08, `ac43c58`, exit `1`) is
+[`docs/evals/0046-longitudinal-memory-baseline.md`](../evals/0046-longitudinal-memory-baseline.md):
+extraction is the only live seam (p/r `0.25`, `FAIL` — no CM-0 gate), every
+other operation is `unsupported`, all four frozen gates `FAIL`.
+
+```powershell
+just services            # Ollama up, consolidation model pulled
+just eval-longitudinal   # full gating baseline = no --only, --runs 3
+# report -> docs/evals/longitudinal-memory-cm0.md  (never overwritten)
+```
+
+1. **Preflight.** The runner pings `GET {OLLAMA_URL}/api/version`. No answer →
+   it writes no report, closes resources, exits `2`.
+2. **Isolated run.** A `TemporaryDirectory` (`iroko-cm0-…`) holds a freshly
+   migrated `brain.db`; `settings.brain_db_path` is repointed for the process
+   only and always restored; the `.db`/`-wal`/`-shm` files are removed on exit.
+3. **Report.** Markdown under `docs/evals/`. Refuses to overwrite an existing
+   file — rename (add a date) instead of deleting.
+
+Exit codes: `0` full suite with every frozen gate passing; `1` valid full suite
+with at least one failed or unsupported case (**the expected CM-0 RED outcome** —
+the runtime supports only single-turn extraction, so `propose` / `restart` /
+`recall` / `correct` / `forget` / `inspect_derivatives` are honestly reported
+`unsupported`); `2` bad dataset/config, unsafe path, unavailable provider,
+incomplete run or internal harness error. A `--only` run is non-gating and can
+never be `0` on the strength of the gates.
 
 ## 3. Security ladder — what Iroko can do at each tier
 

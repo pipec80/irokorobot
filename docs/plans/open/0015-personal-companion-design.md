@@ -2,7 +2,7 @@
 
 - **Status:** Reference only — approved product design, not directly executable
 - **Opened:** 2026-08-20
-- **Last design revision:** 2026-09-07
+- **Last design revision:** 2026-09-08 (CM-0 / Plan 0046 closed; status sync only)
 - **Execution authority:** none; work requires one numbered `Ready` plan at a
   time
 
@@ -10,8 +10,9 @@
 
 Define the path from the accepted cognitive foundation to a trustworthy
 personal companion, then to a privacy-preserving family companion. This plan
-stays open because PC-3 through PC-6 and CM-0 through CM-7 contain real work;
-only CM-0 now has a `Ready` executable plan and PC-3A has a queued design.
+stays open because PC-3 through PC-6 and CM-1 through CM-7 contain real work.
+CM-0 closed 2026-09-08 (Plan 0046 — a benchmark and a measured RED baseline,
+not longitudinal memory); PC-3A has a queued design and no executable plan.
 
 It is an umbrella and product-acceptance reference. Do not implement it as one
 batch and do not infer a future plan number from it.
@@ -60,17 +61,17 @@ can still authenticate. PC-4 owns multimodal conflict and anti-spoofing policy.
 
 - **PC-3:** consented speaker enrollment and calibrated speaker evidence;
 - **PC-4:** conservative multimodal identity fusion and recovery;
-- **P2.2 / CM-0…CM-7:** authorized, corrigible and forgettable longitudinal
-  conversational memory;
+- **P2.2 / CM-1…CM-7:** authorized, corrigible and forgettable longitudinal
+  conversational memory (CM-0, the benchmark and RED baseline, is closed);
 - **PC-5:** integrated personal-companion acceptance through the real PC path;
 - **PC-6:** family profile, onboarding, selective privacy and recipient-only
   household data.
 
-[Plan 0046](0046-reproducible-longitudinal-memory-baseline.md) is the sole
-`Ready`/`NOW` plan for CM-0; its creation does not authorize implementation.
+[Plan 0046](../completed/0046-reproducible-longitudinal-memory-baseline.md)
+closed CM-0 on 2026-09-08 (benchmark GREEN, measured baseline RED at `ac43c58`).
 [Plan 0047](0047-speaker-evidence-calibration-study.md) preserves the reviewed
-PC-3A calibration design in `Queued` and is not executable until 0046 closes
-and its backend/dependency readiness gate is resolved and approved. There is no
+PC-3A calibration design in `Queued` and is not executable until its
+backend/dependency readiness gate is resolved and approved. There is no
 physical `docs/plans/NOW.md`; the operational board is
 [`docs/plans/README.md`](../README.md#operational-board).
 
@@ -166,15 +167,18 @@ replay/spoof concerns, expiry and provider failure require explicit outcomes.
 replay/spoof cases and recovery are measured without weakening protected-data
 authorization.
 
-### P2.2 / CM-0…CM-7 — Longitudinal memory — CM-0 planned
+### P2.2 / CM-0…CM-7 — Longitudinal memory — CM-0 closed
 
 Execute the staged portfolio from benchmark RED through authorized actor
 propagation, candidate promotion to V4, protected episodes, pre-prompt
 retrieval, correction/forgetting and real longitudinal acceptance.
 
-Plan 0046 owns CM-0 only: benchmark software must finish GREEN while the
-measured product baseline remains honestly RED. It does not implement CM-1 or
-change runtime memory.
+Plan 0046 delivered CM-0 (closed 2026-09-08): the benchmark software finished
+GREEN and recorded a measured product baseline that is honestly RED
+(`ac43c58`, exit 1 — single-turn extraction is the only live seam and scores
+below par, every other operation is `unsupported`). It implemented no CM-1
+capability and changed no runtime memory. CM-1…CM-7 remain unplanned and wait
+for PC-3 and PC-4.
 
 **Gate:** the canonical evaluation proves `aprendo -> reinicio -> recuerdo ->
 corrijo -> reinicio -> recuerdo la verdad vigente -> olvido -> no revelo`.
@@ -213,8 +217,8 @@ correction, revocation and non-disclosure through the real path.
 ```text
 PC-1 complete
   -> PC-2 complete (provisional calibration)
-  -> CM-0 reproducible RED baseline (Plan 0046 NOW)
-  -> PC-3A speaker calibration (Plan 0047 queued)
+  -> CM-0 reproducible RED baseline (Plan 0046 closed 2026-09-08)
+  -> PC-3A speaker calibration (Plan 0047 queued) <- current cursor
   -> PC-3B speaker runtime evidence
   -> PC-4 identity fusion
   -> P2.2 / CM-1..CM-7 longitudinal memory
@@ -222,9 +226,9 @@ PC-1 complete
   -> PC-6 family profile
 ```
 
-CM-0, the reproducible benchmark, is the next product slice and is specified
-by Plan 0046. It creates the RED evidence needed to prevent implementation by
-intuition. Plan 0047 is already numbered only to preserve the next reviewed
+CM-0, the reproducible benchmark, is closed (Plan 0046, 2026-09-08): it created
+the RED evidence needed to prevent implementation by intuition. The next product
+slice is PC-3A. Plan 0047 is numbered only to preserve the next reviewed
 handoff; its `Queued` status and readiness gate prevent premature execution.
 
 ## Non-goals
