@@ -47,7 +47,10 @@ data.
   [Plan 0029](../completed/0029-consented-local-face-evidence.md), and its
   real-camera calibration closed provisionally through
   [Plan 0030](../completed/0030-real-camera-face-acceptance.md).
-- The server-production baseline in Plans 0031–0045 is closed.
+- The server-production baseline in Plans 0031–0045 is closed, with the
+  second-audit follow-up
+  [Plan 0048](../completed/0048-fastapi-baseline-final-hardening.md) closed
+  2026-09-07.
 
 The PC-2 calibration remains explicitly provisional because it measured only
 three unrelated impostor identities. It does not solve liveness: a photograph

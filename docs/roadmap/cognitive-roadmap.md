@@ -409,8 +409,13 @@ at a time. **All are closed as of 2026-09-03** — [Plan
 0042](../plans/completed/0042-server-baseline-closure.md) verified the
 complete baseline through automated and real runtime evidence and closed
 the capsule; [Plan 0044](../plans/completed/0044-official-fastapi-conventions.md)
-closed last, aligning the HTTP layer with official FastAPI conventions.
-No child plan remains under Plan 0031.
+closed last among the capsule children, aligning the HTTP layer with official
+FastAPI conventions. No child plan remains under Plan 0031. A later
+second-audit follow-up,
+[Plan 0048](../plans/completed/0048-fastapi-baseline-final-hardening.md),
+closed 2026-09-07 with four bounded edges and no wire change; the server
+baseline is done and only Uvicorn concurrency calibration remains, deferred to
+its own `perf(...)` plan.
 
 This checkpoint did not add a companion feature and does not close P1.2. It
 standardized the HTTP/ASGI foundation that later face, speaker, fusion, and

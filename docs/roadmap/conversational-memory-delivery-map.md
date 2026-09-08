@@ -93,7 +93,7 @@ once in the
 | Stage | Verifiable outcome | Dependencies | Executable plan |
 |---|---|---|---|
 | CM-0 | Versioned longitudinal benchmark and one reproducible RED run | evaluation specification | [Plan 0046](../plans/open/0046-reproducible-longitudinal-memory-baseline.md) — `Ready`, not started |
-| CM-1 | Explicit `read`, `propose`, `confirm`, `correct`, and `forget` capabilities for personal memory | current policy and identity | not written |
+| CM-1 | Explicit `read`, `propose`, `confirm`, `correct`, and `forget` capabilities for personal memory | current policy and identity; PC-4 per the product order below | not written |
 | CM-2 | The authorized actor reaches the conversational flow without interpolating names or expanding permissions implicitly | CM-1 | not written |
 | CM-3 | Extraction creates candidates; confirmation/promotion writes canonical V4 facts and relations | CM-0, CM-1, CM-2 | not written |
 | CM-4 | Episodes declare owner, visibility, sensitivity, consent, and retention | CM-3 | not written |
