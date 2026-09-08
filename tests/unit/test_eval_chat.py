@@ -1,7 +1,10 @@
+import contextlib
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import AsyncMock, call
+from typing import cast
+from unittest.mock import AsyncMock, Mock, call, create_autospec
 
+import httpx
 import pytest
 from server.schemas import ConversationTurn, MemoryContext
 
@@ -125,6 +128,54 @@ def _run_result(
         latency_ms=latency_ms,
         assertion=assertion or _assertion(),
         error=error,
+    )
+
+
+def _fake_client() -> httpx.AsyncClient:
+    """Return an identity-stable stand-in for the run-owned HTTP client."""
+    return cast("httpx.AsyncClient", Mock(spec=httpx.AsyncClient))
+
+
+class _RecordingClientCM(contextlib.AbstractAsyncContextManager[httpx.AsyncClient]):
+    """Minimal async context manager that yields a spec'd fake client.
+
+    Records enter/exit counts so tests can prove ``run_cli`` owns exactly
+    one client per run and always closes it (Plan 0039 shared-client seam).
+    """
+
+    def __init__(self) -> None:
+        self.client = _fake_client()
+        self.entered = 0
+        self.exited = 0
+
+    async def __aenter__(self) -> httpx.AsyncClient:
+        self.entered += 1
+        return self.client
+
+    async def __aexit__(self, *_exc: object) -> bool:
+        self.exited += 1
+        return False
+
+
+def _evaluation_stub() -> EvaluationResult:
+    summary = MetricSummary(
+        total_runs=1,
+        error_runs=0,
+        case_pass_rate=1.0,
+        required_group_recall=1.0,
+        forbidden_violation_rate=0.0,
+        stability=1.0,
+        latency_p50_ms=1.0,
+        latency_p95_ms=1.0,
+    )
+    return EvaluationResult(
+        generated_at=datetime(2026, 7, 29, tzinfo=UTC),
+        provider="ollama",
+        model="synthetic-model",
+        runs=1,
+        results=[_run_result(case_id="stub", tags=["present"], repetition=1, latency_ms=1.0)],
+        summary=summary,
+        by_tag={"present": summary},
     )
 
 
@@ -264,14 +315,17 @@ async def test_run_evaluation_forwards_exact_case_inputs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     case = _case(required_any=[["11"]])
-    mock_generate = AsyncMock(return_value=("La respuesta es 11.", "joy"))
+    client = _fake_client()
+    mock_generate = create_autospec(eval_chat.llm.generate_response)
+    mock_generate.return_value = ("La respuesta es 11.", "joy")
     monkeypatch.setattr(eval_chat.llm, "generate_response", mock_generate)
     monkeypatch.setattr(eval_chat.time, "perf_counter", lambda: 1.0)
 
-    evaluation = await run_evaluation([case], runs=1, provider="ollama")
+    evaluation = await run_evaluation([case], client=client, runs=1, provider="ollama")
 
     assert case.active_person is not None
     mock_generate.assert_awaited_once_with(
+        client,
         case.question,
         context=case.context,
         history=case.history,
@@ -285,29 +339,53 @@ async def test_run_evaluation_forwards_exact_case_inputs(
 
 
 @pytest.mark.unit
+async def test_run_evaluation_passes_the_run_owned_client_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every provider call must receive the exact client owned by the run."""
+    case = _case(required_any=[["11"]])
+    client = _fake_client()
+    mock_generate = create_autospec(eval_chat.llm.generate_response)
+    mock_generate.return_value = ("Tiene 11.", "neutral")
+    monkeypatch.setattr(eval_chat.llm, "generate_response", mock_generate)
+
+    await run_evaluation([case], client=client, runs=2, provider="ollama")
+
+    assert mock_generate.await_count == 2
+    for await_call in mock_generate.await_args_list:
+        assert await_call.args[0] is client
+        assert await_call.args[1] == case.question
+
+
+@pytest.mark.unit
 async def test_run_evaluation_runs_each_repetition_sequentially(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     first = _case(required_any=[["dato"]], case_id="first")
     second = _case(required_any=[["dato"]], case_id="second")
+    client = _fake_client()
     active_calls = 0
     max_active_calls = 0
 
     async def generate_sequentially(
+        client_arg: object,
         question: str,
         **_kwargs: object,
     ) -> tuple[str, str]:
         nonlocal active_calls, max_active_calls
+        assert client_arg is client
         active_calls += 1
         max_active_calls = max(max_active_calls, active_calls)
         await eval_chat.asyncio.sleep(0)
         active_calls -= 1
         return f"dato para {question}", "neutral"
 
-    mock_generate = AsyncMock(side_effect=generate_sequentially)
+    mock_generate = create_autospec(
+        eval_chat.llm.generate_response, side_effect=generate_sequentially
+    )
     monkeypatch.setattr(eval_chat.llm, "generate_response", mock_generate)
 
-    evaluation = await run_evaluation([first, second], runs=2, provider="configured")
+    evaluation = await run_evaluation([first, second], client=client, runs=2, provider="configured")
 
     assert first.active_person is not None
     assert second.active_person is not None
@@ -320,6 +398,7 @@ async def test_run_evaluation_runs_each_repetition_sequentially(
     ]
     assert mock_generate.await_args_list == [
         call(
+            client,
             first.question,
             context=first.context,
             history=first.history,
@@ -327,6 +406,7 @@ async def test_run_evaluation_runs_each_repetition_sequentially(
             perception=first.perception,
         ),
         call(
+            client,
             first.question,
             context=first.context,
             history=first.history,
@@ -334,6 +414,7 @@ async def test_run_evaluation_runs_each_repetition_sequentially(
             perception=first.perception,
         ),
         call(
+            client,
             second.question,
             context=second.context,
             history=second.history,
@@ -341,6 +422,7 @@ async def test_run_evaluation_runs_each_repetition_sequentially(
             perception=second.perception,
         ),
         call(
+            client,
             second.question,
             context=second.context,
             history=second.history,
@@ -355,15 +437,16 @@ async def test_run_evaluation_records_failure_and_continues(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     case = _case(required_any=[["dato"]])
-    mock_generate = AsyncMock(
+    mock_generate = create_autospec(
+        eval_chat.llm.generate_response,
         side_effect=[
             RuntimeError("secret-token-must-not-leak"),
             ("dato correcto", "neutral"),
-        ]
+        ],
     )
     monkeypatch.setattr(eval_chat.llm, "generate_response", mock_generate)
 
-    evaluation = await run_evaluation([case], runs=2, provider="configured")
+    evaluation = await run_evaluation([case], client=_fake_client(), runs=2, provider="configured")
 
     assert len(evaluation.results) == 2
     assert evaluation.results[0].error == "RuntimeError: provider call failed"
@@ -380,9 +463,9 @@ async def test_run_evaluation_reports_local_provider_after_failure(
     monkeypatch.setattr(
         eval_chat.llm,
         "generate_response",
-        AsyncMock(side_effect=RuntimeError("offline")),
+        create_autospec(eval_chat.llm.generate_response, side_effect=RuntimeError("offline")),
     )
-    evaluation = await run_evaluation([case], runs=1, provider="ollama")
+    evaluation = await run_evaluation([case], client=_fake_client(), runs=1, provider="ollama")
 
     assert evaluation.results[0].error is not None
     assert evaluation.provider == "ollama"
@@ -527,7 +610,7 @@ def test_parse_cli_args_rejects_nonlocal_provider() -> None:
 
 
 @pytest.mark.unit
-async def test_run_cli_rejects_unknown_only_before_provider_call(
+async def test_run_cli_rejects_unknown_only_before_client_or_provider(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -535,11 +618,79 @@ async def test_run_cli_rejects_unknown_only_before_provider_call(
     provider_runner = AsyncMock()
     monkeypatch.setattr(eval_chat, "_GOLDEN_PATH", suite_path)
     monkeypatch.setattr(eval_chat, "run_evaluation", provider_runner)
+    factory_calls = 0
+
+    def _factory() -> _RecordingClientCM:
+        nonlocal factory_calls
+        factory_calls += 1
+        return _RecordingClientCM()
 
     with pytest.raises(ValueError, match="unknown_case"):
-        await run_cli(eval_chat.CliOptions(only="unknown_case"))
+        await run_cli(eval_chat.CliOptions(only="unknown_case"), client_factory=_factory)
 
     provider_runner.assert_not_awaited()
+    assert factory_calls == 0
+
+
+@pytest.mark.unit
+async def test_run_cli_owns_one_client_for_the_whole_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(eval_chat, "_GOLDEN_PATH", _write_suite(tmp_path))
+    context_manager = _RecordingClientCM()
+    seen_clients: list[object] = []
+
+    async def fake_run_evaluation(
+        cases: list[GoldenCase],
+        *,
+        client: httpx.AsyncClient,
+        runs: int,
+        provider: str,
+    ) -> EvaluationResult:
+        seen_clients.append(client)
+        return _evaluation_stub()
+
+    monkeypatch.setattr(eval_chat, "run_evaluation", fake_run_evaluation)
+
+    exit_code = await run_cli(
+        eval_chat.CliOptions(output=tmp_path / "report.md"),
+        client_factory=lambda: context_manager,
+    )
+
+    assert exit_code == 0
+    assert context_manager.entered == 1
+    assert context_manager.exited == 1
+    assert seen_clients == [context_manager.client]
+
+
+@pytest.mark.unit
+async def test_run_cli_closes_the_client_when_the_provider_raises(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(eval_chat, "_GOLDEN_PATH", _write_suite(tmp_path))
+    context_manager = _RecordingClientCM()
+
+    async def exploding_run_evaluation(
+        cases: list[GoldenCase],
+        *,
+        client: httpx.AsyncClient,
+        runs: int,
+        provider: str,
+    ) -> EvaluationResult:
+        raise RuntimeError("provider exploded")
+
+    monkeypatch.setattr(eval_chat, "run_evaluation", exploding_run_evaluation)
+
+    with pytest.raises(RuntimeError, match="provider exploded"):
+        await run_cli(
+            eval_chat.CliOptions(output=tmp_path / "report.md"),
+            client_factory=lambda: context_manager,
+        )
+
+    assert context_manager.entered == 1
+    assert context_manager.exited == 1
 
 
 @pytest.mark.unit

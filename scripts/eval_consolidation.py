@@ -128,14 +128,55 @@ class CaseResult:
     error: str | None = None
 
 
-async def _eval_case(case: dict[str, Any]) -> CaseResult:
+async def extract_case_items(
+    client: httpx.AsyncClient,
+    user_text: str,
+    assistant_text: str,
+) -> tuple[str, ...]:
+    """Return normalized entity/fact keys from the real extraction seam.
+
+    Runs the production extraction path (``_extract_via_ollama`` then
+    ``normalize_extraction``) and folds the result into stable synthetic
+    keys, so a longitudinal runner can compare turns without duplicating
+    any extraction or normalization logic.
+
+    This deliberately re-walks the same ``_extract_via_ollama`` +
+    ``normalize_extraction`` path that ``_eval_case`` uses rather than being
+    called by it: ``_eval_case`` needs the ``TurnExtraction`` objects for its
+    precision/recall scoring, this seam returns folded string keys for a
+    different consumer (the Task 4 longitudinal driver), and routing one
+    through the other would either duplicate the Ollama call per case or
+    change scoring semantics.
+
+    Args:
+        client: Shared, run-owned HTTP client (Plan 0039).
+        user_text: The user's literal words for the turn (grounding source).
+        assistant_text: The assistant's reply (context only, never a fact source).
+
+    Returns:
+        Entity keys ``entity|<folded name>|<type>`` followed by fact keys
+        ``fact|<folded subject>|<predicate>|<folded object>``, in extraction order.
+    """
+    raw = await _extract_via_ollama(client, user_text, assistant_text)
+    extraction = normalize_extraction(raw, user_text=user_text)
+    entity_keys = [
+        f"entity|{_fold_name(entity.name)}|{entity.type}" for entity in extraction.entities
+    ]
+    fact_keys = [
+        f"fact|{_fold_name(fact.subject)}|{fact.predicate}|{_fold_name(fact.object)}"
+        for fact in extraction.facts
+    ]
+    return (*entity_keys, *fact_keys)
+
+
+async def _eval_case(case: dict[str, Any], client: httpx.AsyncClient) -> CaseResult:
     """Run the real extraction pipeline on one golden case and score it."""
     active_person_name = _active_person_display_name(case)
     expected_facts = case.get("expected_facts") or []
     expected_entities = case.get("expected_entities") or []
     t0 = time.perf_counter()
     try:
-        raw = await _extract_via_ollama(case["user"], case["assistant"])
+        raw = await _extract_via_ollama(client, case["user"], case["assistant"])
     except (LLMError, httpx.TimeoutException, httpx.HTTPStatusError) as exc:
         return CaseResult(
             case_id=case["id"],
@@ -281,10 +322,11 @@ async def _run(only: str | None) -> int:
         f" · modelo {settings.consolidation_model} · {settings.ollama_url}\n"
     )
     results: list[CaseResult] = []
-    for index, case in enumerate(cases, start=1):
-        result = await _eval_case(case)
-        results.append(result)
-        _print_case(result, index, len(cases))
+    async with httpx.AsyncClient(timeout=settings.ollama_timeout_s) as client:
+        for index, case in enumerate(cases, start=1):
+            result = await _eval_case(case, client)
+            results.append(result)
+            _print_case(result, index, len(cases))
     total = _print_report(results)
     if total.recall < _RECALL_THRESHOLD:
         print(  # noqa: T201

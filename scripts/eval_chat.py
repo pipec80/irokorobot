@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Literal, NoReturn
 import unicodedata
 from uuid import NAMESPACE_URL, uuid5
 
+import httpx
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -41,7 +42,10 @@ import yaml
 from server import llm
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
+    from contextlib import AbstractAsyncContextManager
+
+    type ClientFactory = Callable[[], AbstractAsyncContextManager[httpx.AsyncClient]]
 
 logger = logging.getLogger(__name__)
 
@@ -361,6 +365,7 @@ def select_cases(suite: GoldenSuite, only: str | None) -> list[GoldenCase]:
 async def run_evaluation(
     cases: list[GoldenCase],
     *,
+    client: httpx.AsyncClient,
     runs: int,
     provider: ProviderChoice,
 ) -> EvaluationResult:
@@ -368,6 +373,7 @@ async def run_evaluation(
 
     Args:
         cases: Validated synthetic cases in execution order.
+        client: Run-owned HTTP client passed first to every provider call (Plan 0039).
         runs: Repetitions per case, from 1 through 10.
         provider: Configured local provider or its explicit local name.
 
@@ -387,7 +393,7 @@ async def run_evaluation(
     results: list[CaseRunResult] = []
     for case in cases:
         for repetition in range(1, runs + 1):
-            results.append(await _run_case(case, repetition))
+            results.append(await _run_case(case, repetition, client))
     summary, by_tag = aggregate_results(results)
     return EvaluationResult(
         generated_at=datetime.now(UTC),
@@ -554,18 +560,34 @@ def parse_cli_args(argv: Sequence[str] | None = None) -> CliOptions:
     )
 
 
-async def run_cli(options: CliOptions) -> int:
+def _default_client_factory() -> AbstractAsyncContextManager[httpx.AsyncClient]:
+    """Build the single Ollama HTTP client owned by one CLI invocation."""
+    return httpx.AsyncClient(timeout=settings.ollama_timeout_s)
+
+
+async def run_cli(
+    options: CliOptions,
+    *,
+    client_factory: ClientFactory | None = None,
+) -> int:
     """Run the real-provider CLI workflow and write its Markdown report.
 
     Args:
         options: Validated command-line options.
+        client_factory: Optional async context-manager factory for the
+            run-owned HTTP client; defaults to a real ``httpx.AsyncClient``.
+            Constructed only after case selection succeeds.
 
     Returns:
         Process exit code.
     """
     suite = load_suite(_GOLDEN_PATH)
     cases = select_cases(suite, options.only)
-    evaluation = await run_evaluation(cases, runs=options.runs, provider=options.provider)
+    factory = client_factory or _default_client_factory
+    async with factory() as client:
+        evaluation = await run_evaluation(
+            cases, client=client, runs=options.runs, provider=options.provider
+        )
     output = options.output or _default_report_path(evaluation)
     write_report(output, render_report(evaluation))
     logger.info(
@@ -602,11 +624,12 @@ def _expression_matches(normalized_response: str, expression: str) -> bool:
     return re.search(pattern, normalized_response) is not None
 
 
-async def _run_case(case: GoldenCase, repetition: int) -> CaseRunResult:
+async def _run_case(case: GoldenCase, repetition: int, client: httpx.AsyncClient) -> CaseRunResult:
     """Execute and score one golden-case repetition."""
     started_at = time.perf_counter()
     try:
         response, emotion = await llm.generate_response(
+            client,
             case.question,
             context=case.context,
             history=case.history,
