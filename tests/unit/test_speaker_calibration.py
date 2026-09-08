@@ -32,6 +32,12 @@ from scripts.speaker_calibration import (
     sweep_speaker_thresholds,
     zero_far_speaker_threshold,
 )
+from scripts.speaker_calibration_backend import (
+    _MODEL_REVISION,
+    _MODEL_SOURCE,
+    SpeechBrainEcapaBackend,
+    _pcm16_wav_to_float32,
+)
 from scripts.speaker_calibration_corpus import (
     append_sample_atomic,
     load_manifest,
@@ -47,6 +53,7 @@ from scripts.speaker_calibration_models import (
     AggregateSpeakerReport,
     ConditionSummary,
     SpeakerCliOptions,
+    SpeakerEmbeddingBackend,
     SpeakerManifest,
     SpeakerSample,
 )
@@ -956,10 +963,6 @@ def test_run_cli_embed_rejects_a_wrong_dimension_embedding(tmp_path: Path) -> No
     assert not (tmp_path / "embeddings.npz").exists()
 
 
-def test_run_cli_model_contract_is_deferred_to_task_3(tmp_path: Path) -> None:
-    assert run_cli(parse_cli_args(["model-contract", "--corpus-root", str(tmp_path)])) != 0
-
-
 def test_run_cli_analyze_refuses_to_overwrite_its_output(tmp_path: Path) -> None:
     output = tmp_path / "aggregate-report.md"
     output.write_text("previous run", encoding="utf-8")
@@ -983,3 +986,138 @@ def test_run_cli_cleanup_requires_confirmation(
 
     assert exit_code != 0
     assert (tmp_path / "manifest.json").exists()
+
+
+# =====================================================================
+# Task 3 — frozen SpeechBrain ECAPA backend (fake-encoder driven)
+# =====================================================================
+
+
+def _tone_wav_bytes(*, rate: int = 16_000, seconds: float = 1.0, amplitude: int = 12_000) -> bytes:
+    """Return a non-biometric sine-tone WAV — 16 kHz, mono, int16."""
+    step = np.arange(int(rate * seconds), dtype=np.float32) / rate
+    samples = (np.sin(2.0 * np.pi * 220.0 * step) * amplitude).astype(np.int16)
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(rate)
+        handle.writeframes(samples.tobytes())
+    return buf.getvalue()
+
+
+class _FakeEncoder:
+    """Stand-in for ``EncoderClassifier`` — returns a fixed ``(1, 1, 192)`` tensor."""
+
+    def __init__(self, vector: np.ndarray | None = None) -> None:
+        self._vector = vector if vector is not None else np.arange(1, 193, dtype=np.float32)
+
+    def encode_batch(
+        self,
+        wavs: object,  # noqa: ARG002 -- fake ignores the tensor
+        wav_lens: object = None,  # noqa: ARG002
+        normalize: bool = False,  # noqa: ARG002
+    ) -> object:
+        import torch  # noqa: PLC0415 -- lazy: keeps torch out of unrelated unit-test collection
+
+        return torch.from_numpy(self._vector).reshape(1, 1, -1)
+
+
+def test_backend_model_id_pins_frozen_source_and_revision() -> None:
+    backend = SpeechBrainEcapaBackend(_FakeEncoder())
+
+    assert _MODEL_SOURCE in backend.model_id
+    assert _MODEL_REVISION in backend.model_id
+    assert len(_MODEL_REVISION) == 40
+
+
+def test_backend_pcm16_to_float32_scales_by_full_scale() -> None:
+    wav = _tone_wav_bytes(seconds=0.5)
+
+    wave_f32 = _pcm16_wav_to_float32(wav)
+
+    assert wave_f32.dtype == np.float32
+    assert wave_f32.max() <= 1.0
+    assert wave_f32.min() >= -1.0
+    assert wave_f32.shape == (8_000,)
+
+
+def test_backend_embed_wav_returns_finite_192d_vector() -> None:
+    backend = SpeechBrainEcapaBackend(_FakeEncoder())
+
+    vector = backend.embed_wav(_tone_wav_bytes(seconds=1.0))
+
+    assert vector.shape == (192,)
+    assert np.all(np.isfinite(vector))
+
+
+def test_backend_embed_wav_rejects_non_contract_wav() -> None:
+    off_contract = _wav_bytes(rate=8_000)
+
+    with pytest.raises(ValueError, match="audio contract"):
+        SpeechBrainEcapaBackend(_FakeEncoder()).embed_wav(off_contract)
+
+
+def test_backend_embed_wav_rejects_wrong_dimension() -> None:
+    backend = SpeechBrainEcapaBackend(_FakeEncoder(np.ones(64, dtype=np.float32)))
+
+    with pytest.raises(ValueError, match="192"):
+        backend.embed_wav(_tone_wav_bytes())
+
+
+def test_backend_embed_wav_rejects_all_zero_vector() -> None:
+    backend = SpeechBrainEcapaBackend(_FakeEncoder(np.zeros(192, dtype=np.float32)))
+
+    with pytest.raises(ValueError, match="zero"):
+        backend.embed_wav(_tone_wav_bytes())
+
+
+def test_backend_embed_wav_rejects_non_finite_vector() -> None:
+    bad = np.arange(1, 193, dtype=np.float32)
+    bad[7] = np.nan
+    backend = SpeechBrainEcapaBackend(_FakeEncoder(bad))
+
+    with pytest.raises(ValueError, match="finite"):
+        backend.embed_wav(_tone_wav_bytes())
+
+
+def test_backend_satisfies_the_frozen_protocol() -> None:
+    backend: SpeakerEmbeddingBackend = SpeechBrainEcapaBackend(_FakeEncoder())
+
+    assert isinstance(backend.model_id, str)
+
+
+def test_run_cli_embed_accepts_the_concrete_backend(tmp_path: Path) -> None:
+    rows = _minimum_corpus_rows(tmp_path)
+    _write_manifest(tmp_path, rows)
+
+    exit_code = run_cli(
+        parse_cli_args(["embed", "--corpus-root", str(tmp_path)]),
+        backend=SpeechBrainEcapaBackend(_FakeEncoder()),
+    )
+
+    assert exit_code == 0
+    with np.load(tmp_path / "embeddings.npz") as stored:
+        assert all(stored[name].shape == (192,) for name in stored.files)
+
+
+def test_run_cli_model_contract_dispatches_to_the_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(
+        "scripts.speaker_calibration_backend.run_model_contract",
+        lambda: calls.append("ran") or 0,
+    )
+
+    exit_code = run_cli(parse_cli_args(["model-contract"]))
+
+    assert exit_code == 0
+    assert calls == ["ran"]
+
+
+def test_run_cli_model_contract_propagates_backend_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "scripts.speaker_calibration_backend.run_model_contract",
+        lambda: 1,
+    )
+
+    assert run_cli(parse_cli_args(["model-contract"])) != 0

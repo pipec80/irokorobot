@@ -376,8 +376,20 @@ def _dispatch(
         case "cleanup":
             return _run_cleanup(options)
         case "model-contract":
-            logger.error("model-contract is added in Plan 0047 Task 3; not available yet")
-            return 1
+            return _run_model_contract()
+
+
+def _run_model_contract() -> int:
+    """Warm the frozen model cache and assert the pinned revision (Task 3).
+
+    Delegates to the frozen backend via a deferred import so ``validate`` /
+    ``analyze`` / ``cleanup`` never import ``torch``.
+    """
+    from scripts.speaker_calibration_backend import (  # noqa: PLC0415 -- deferred: keeps torch out of validate/analyze/cleanup
+        run_model_contract,
+    )
+
+    return run_model_contract()
 
 
 def _run_capture(options: SpeakerCliOptions, capture_audio: Callable[[], bytes] | None) -> int:

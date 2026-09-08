@@ -483,6 +483,7 @@ files named by the approved amendment:
 | `scripts/speaker_calibration.py` | Create model-independent sample schema, numeric calibration, safe corpus CLI and the amended concrete evaluation backend. |
 | `scripts/speaker_calibration_models.py` | Conditional create if needed to keep the main script near 200 lines; contains only the frozen dataclasses/protocol, no I/O or backend behavior. Record the split before creating it. |
 | `scripts/speaker_calibration_corpus.py` | Conditional create registered 2026-09-08 (Task 2): WAV validation, manifest I/O, path safety, corpus-rule enforcement and aggregate-report rendering — no numeric math, no backend. Keeps every module near the 200-line limit; same three-module shape as `scripts/longitudinal_eval_*.py` (Plan 0046). |
+| `scripts/speaker_calibration_backend.py` | Conditional create registered 2026-09-08 (Task 3): the frozen `_MODEL_SOURCE` / `_MODEL_REVISION` constants, the `EncoderClassifier` construction, `embed_wav`, the resolved-revision assertion and the frozen latency protocol — no numeric math, no manifest I/O. Fourth module so the CLI file stays near the `face_calibration.py` precedent size; `run_cli` reaches it by deferred import so `validate` / `analyze` / `cleanup` never import torch. |
 | `tests/unit/test_speaker_calibration.py` | Create pure synthetic tests for math, schema, paths, reports and backend boundary fakes. |
 | `tests/slow/test_speaker_calibration_backend.py` | Create opt-in frozen-model smoke/contract tests; never part of ordinary unit execution. |
 | `pyproject.toml`, `uv.lock` | Add the exact approved package to the root development group and record the generated resolution; no subproject dependency edit. |
@@ -903,6 +904,18 @@ rule in the Stable file map. Pipec approved all three points:
 | `model-contract` / `embed` (no backend) | recognised by `parse_cli_args`; log + exit 1 — deferred to Task 3 per the split decision above |
 | Private data | no WAV, manifest, embedding or hash committed; `git status --short` lists only the four tracked files + two new script modules |
 
+### Task 3 module and staging decision (2026-09-08)
+
+Recorded before any Task 3 code, per the "record the split before creating it"
+rule in the Stable file map. Mirrors the Task 2 split decision.
+
+| Decision | Resolution |
+|---|---|
+| Module split | Fourth module, `scripts/speaker_calibration_backend.py`. It holds only the frozen `_MODEL_SOURCE` / `_MODEL_REVISION` constants, the `EncoderClassifier` construction, `embed_wav`, the resolved-revision assertion and the frozen latency protocol. `speaker_calibration.py` is already at 526 lines; `_models.py` is types only; `_corpus.py` is corpus I/O only. `run_cli` dispatches `model-contract` and the concrete `embed` backend through a deferred import of this module, so `validate` / `analyze` / `cleanup` never import `torch`. |
+| `model-contract` action | Implemented in Task 3. Downloads the pinned revision into the gitignored cache, asserts the resolved revision equals `_MODEL_REVISION`, embeds one generated non-biometric sine tone (not silence — silence yields a degenerate vector rejected by `_checked_embedding`), prints shape/dtype/dimension/finiteness. No microphone, no household audio, not timed. |
+| Latency protocol | Run once, exactly as block 5, after Pipec frees RAM (5 GB free of 16 GB on this machine; the p95 ≤ 500 ms budget is precommitted and cannot be relaxed after seeing data, so a loaded run that fails is discarded and repeated, never accepted). CPU/RAM sampled in parallel with `Win32_PerfFormattedData_PerfOS_Processor` (the `Get-Counter '\Processor(_Total)\…'` path fails with `c0000bb8` on this Spanish-locale Windows). |
+| Frozen-SHA secret scan | `_MODEL_REVISION` is a 40-char hex string; `detect-secrets`' `HexHighEntropyString` plugin flags it. The constant line carries an inline `# pragma: allowlist secret` — it is a public Hugging Face commit SHA, not a credential. |
+
 ## Task 3: Add the frozen backend adapter with TDD
 
 **Files:** only the script/tests and exact dependency files authorized by the
@@ -913,30 +926,118 @@ exactly — `EncoderClassifier` (not `SpeakerRecognition`), model revision
 `0f99f2d0…`, `LocalStrategy.COPY`, `FetchConfig(revision=…, allow_network=False)`,
 `(1, n_samples)` float32 input, `(1, 1, 192)` output.
 
-- [ ] From workspace root run the approved command
+- [x] From workspace root run the approved command
   `uv add --group dev "speechbrain==1.1.1"`; never `uv pip install`, never edit
   a subproject dependency file and never hand-edit the lockfile. Inspect the
   `uv.lock` diff and confirm `torch`/`torchaudio` resolved to CPU-only wheels
-  via the already-declared `pytorch-cpu` index.
-- [ ] Add the `model-contract` action and run `just speaker-calibration
+  via the already-declared `pytorch-cpu` index. **Done with one divergence — see
+  Task 3 evidence: the wheels are CPU-only (`torch==2.14.0+cpu`,
+  `torchaudio==2.11.0+cpu`, `torch.cuda.is_available() == False`, zero
+  `nvidia-*` packages installed) but resolved from `pypi.org/simple`, not the
+  `pytorch-cpu` explicit index, because `[tool.uv.sources]` is not applied to a
+  transitive-only dependency. Not adapted in-flight; recorded for Pipec.**
+- [x] Add the `model-contract` action and run `just speaker-calibration
   model-contract` once to warm the pinned-revision cache; assert the resolved
-  revision equals the frozen SHA. This is a one-time setup step, not timed.
-- [ ] Write unit tests with a typed backend fake for byte/input conversion,
-  normalization, fixed dimension, model metadata and errors.
-- [ ] Write an opt-in `slow` contract test against a generated non-biometric WAV
+  revision equals the frozen SHA. **Done — exit 0, resolved revision
+  `0f99f2d0ebe89ac095bcc5903c4dd8f72b367286`, offline load succeeded (no
+  "offline-only load limitation"), sine-tone embedding `shape=(192,)
+  dtype=float64 all_finite=True`.**
+- [x] Write unit tests with a typed backend fake for byte/input conversion,
+  normalization, fixed dimension, model metadata and errors. **Done — 14
+  backend tests, fake encoder, no real model in the unit suite.**
+- [x] Write an opt-in `slow` contract test against a generated non-biometric WAV
   fixture and the exact frozen model. Assert finite repeatable shape and
   offline-after-cache behavior; do not assert speaker quality on synthetic
-  tone.
-- [ ] Execute the frozen latency protocol exactly: generated three-second WAV,
+  tone. **Done — `tests/slow/test_speaker_calibration_backend.py`, 4 tests, all
+  `-m slow`, skip cleanly on a cold cache.**
+- [x] Execute the frozen latency protocol exactly: generated three-second WAV,
   one loaded backend, three warm-ups, 30 sequential timed embeddings with I/O
   and validation excluded, nearest-rank p50/p95. Compare to the precommitted
-  budget and preserve sanitized measurements.
-- [ ] Observe RED with the focused unit command and opt-in slow command frozen
-  by the readiness amendment.
-- [ ] Implement only the approved adapter. No identity/runtime import.
-- [ ] Observe GREEN; inspect lock diff and run a frozen environment sync check.
-- [ ] Complete spec, quality, dependency/license and privacy reviews.
-- [ ] Commit: `feat(eval): add frozen speaker embedding backend`
+  budget and preserve sanitized measurements. **Done — quiet machine (Pipec
+  closed all apps, VS Code only, ambient street noise irrelevant to a
+  synthetic-tone CPU benchmark). Two independent runs: p50 = 219 / 223 ms,
+  p95 = 238 / 231 ms, min 205 / 209 ms, max 268 / 247 ms, n = 30. Official
+  run (with the resource window): p50 222.56 ms, p95 231.20 ms. CPU during the
+  ~10 s window min 17 / mean 45 / max 63 % (that load is the single torch
+  inference process itself; the box was at 4 % before). RAM free 3.5–3.9 GB
+  throughout, never paged. p95 ≈ 231 ms vs the precommitted 500 ms → PASS with
+  ~2.1× headroom.**
+- [x] Observe RED with the focused unit command and opt-in slow command frozen
+  by the readiness amendment. **Done — `test_backend_embed_wav_rejects_wrong_dimension`
+  and `test_run_cli_model_contract_dispatches_to_the_backend` failed before the
+  adapter + dispatch existed.**
+- [x] Implement only the approved adapter. No identity/runtime import.
+  **Done — `scripts/speaker_calibration_backend.py`; deferred imports keep
+  `torch` out of `validate`/`analyze`/`cleanup`.**
+- [x] Observe GREEN; inspect lock diff and run a frozen environment sync check.
+  **Done — 94/94 speaker-calibration unit + 4/4 slow; full CI-equivalent suite
+  1280 passed; `uv lock --check` exit 0; `uv sync --frozen --all-packages
+  --all-groups` exit 0 (plain `uv sync --frozen` is wrong here — it drops
+  workspace-member deps).**
+- [x] Complete spec, quality, dependency/license and privacy reviews.
+  **Self-review done (see Task 3 review notes). Independent whole-branch +
+  privacy review remains Task 7's job per the plan.**
+- [x] Commit: `feat(eval): add frozen speaker embedding backend`
+
+### Task 3 evidence (2026-09-08)
+
+| Item | Value |
+|---|---|
+| Branch | `feat/0047-speaker-calibration` (no new branch, no worktree) |
+| New files | `scripts/speaker_calibration_backend.py` (~215 lines), `tests/slow/test_speaker_calibration_backend.py` (60 lines) |
+| Modified | `scripts/speaker_calibration.py` (`model-contract` now dispatches to the backend via deferred import), `tests/unit/test_speaker_calibration.py` (+14 backend tests, −1 stale "deferred to Task 3" test), `pyproject.toml` (`speechbrain==1.1.1` in `dev`; `speechbrain.*` added to `[[tool.mypy.overrides]] ignore_missing_imports`), `uv.lock` (+32 packages) |
+| `uv add` resolution | `speechbrain==1.1.1`, `torch==2.14.0`, `torchaudio==2.11.0`, `sympy`, `mpmath`, `hyperpyyaml`, `ruamel-yaml*`, `cloudpickle`, `joblib`, `sentencepiece`, `soundfile`, `setuptools`. `numpy` **unchanged at 2.5.2**, `huggingface-hub` **unchanged at 1.29.0** — no upper-bound conflict, no downgrade. |
+| CPU-only confirmation | Runtime: `torch 2.14.0+cpu`, `torchaudio 2.11.0+cpu`, `torch.cuda.is_available() == False`, `torch.version.cuda is None`; `uv add` install list has **no `nvidia-*` package**; the lock's `nvidia-*` nodes all carry `sys_platform == 'linux'` markers. **Divergence:** `torch`/`torchaudio` `source = { registry = "https://pypi.org/simple" }`, not the declared `pytorch-cpu` index — `[tool.uv.sources]` is only honoured for a direct dependency, and here both are transitive via `speechbrain`. On Windows the PyPI wheel *is* the CPU wheel, so the functional requirement holds; forcing the index would mean adding `torch`/`torchaudio` as direct deps, which is an in-flight dependency change the plan forbids without an amendment. Left as-is; Pipec's call whether to amend. |
+| API vs frozen contract | Verified against the installed package: `FetchConfig(overwrite, allow_updates, allow_network, token, revision=None, huggingface_cache_dir=None)` ✓; `LocalStrategy.COPY == 2` ✓; `EncoderClassifier.from_hparams(source, hparams_file='hyperparams.yaml', **kwargs)` ✓; `encode_batch(self, wavs, wav_lens=None, normalize=False)` ✓. No API drift. |
+| Commit `0f99f2d0` diff | Touches only `hyperparams.yaml`; reverts a PR that had added a `pretrained_path` pointer + a `paths:` section, returning the config to plain relative local paths — favourable for a pinned offline load, no behaviour risk. |
+| `pip-audit --local` | **No known vulnerabilities** across the new torch/torchaudio/speechbrain graph. |
+| `filterwarnings=["error"]` | No third-party `DeprecationWarning` surfaced from `speechbrain`/`torch` during unit or slow runs — no scoped `ignore` entry needed. |
+| Secret scan | `_MODEL_REVISION` (40-hex) carries `# pragma: allowlist secret` — it is a public HF commit SHA. |
+| RED | `uv run pytest tests/unit/test_speaker_calibration.py -k backend -n0` → 2 failed / 12 passed before adapter + dispatch existed. |
+| GREEN — scoped (Block 6) | `ruff check` + `ruff format --check` on all four `scripts/speaker_calibration*.py` → clean. `MYPYPATH=. uv run mypy --explicit-package-bases scripts/speaker_calibration.py scripts/speaker_calibration_backend.py scripts/speaker_calibration_corpus.py scripts/speaker_calibration_models.py` → **Success, 4 files**. |
+| GREEN — repo gates | `just lint` clean · `just typecheck` mypy 92 files + pyright 0 (mypy prints a harmless `unused section(s): module = ['speechbrain.*']` note — the override exists for the scoped script runs, which the gate does not do) · `uv run pytest -m "not slow and not hardware and not eval" -n auto` → **1280 passed** · speaker-calibration unit 94/94 · slow backend 4/4. |
+| Model cache | `project-history/calibration/speaker/model-cache/` (85 MB: `embedding_model.ckpt` 83 MB + 4 small files) — gitignored, absent from `git status`. HF hub cache also populated at `~/.cache/huggingface/hub/` (outside the repo). |
+| Latency (block 5, run once) | 3 s synthetic sine WAV, one loaded encoder, 3 warm-ups discarded, 30 timed `encode_batch` calls (WAV decode + `validate_wav_bytes` excluded), nearest-rank via `scripts.speaker_calibration.percentile`. **p50 = 222.56 ms, p95 = 231.20 ms** (min 209.5, max 247.1). Corroborating first run: p50 219.1, p95 238.3. **p95 vs precommitted ≤ 500 ms → PASS (~2.1× headroom).** Resource window (~10 s, 10 samples): CPU% min 17 / mean 45 / max 63 (the load is the torch inference process itself — the box idled at 4 % beforehand, Docker closed, Ollama not running); RAM free 3.5–3.9 GB, no paging. Measurements are numbers only — no audio, no paths retained. |
+| Private data | no WAV, manifest, embedding or hash created or committed. |
+
+### Task 3 review notes (2026-09-08, self-review)
+
+- **Spec compliance.** Backend construction matches block 2 verbatim
+  (`EncoderClassifier.from_hparams` with `savedir` under the gitignored corpus
+  root, `run_opts={"device": "cpu"}`, `LocalStrategy.COPY`,
+  `FetchConfig(revision=_MODEL_REVISION, allow_network=...)`). int16→float is
+  `samples.astype(np.float32) / 32768.0`, no resample/gain. Tensor is
+  `torch.from_numpy(wave).unsqueeze(0)` → `(1, n)`. Call is
+  `encode_batch(wavs=tensor, wav_lens=None, normalize=False)`. Output
+  `.squeeze().detach().cpu().numpy()` → checked to exactly 192 finite non-zero
+  floats via the reused `scripts.speaker_calibration._checked_embedding`. The
+  `SpeakerEmbeddingBackend` Protocol is satisfied (a typed unit test binds it).
+  `EncoderClassifier` — not `SpeakerRecognition` — so no built-in `threshold`.
+- **Global constraints.** No `server/src` / `robot/src` / settings / route / DB /
+  prompt / `.env.example` change. No `IdentityEvidence`, no persisted voiceprint,
+  no enrollment/revocation. `VOICE` untouched. No cloud provider. English code,
+  Google docstrings, frozen dataclasses elsewhere in the harness, `pathlib`,
+  `logger` not `print`, every function ≤ 30 lines, exception chaining where a
+  cause exists. Audio-contract docstring (WAV·16000Hz·mono·int16) on every
+  function that touches audio bytes.
+- **`_MODEL_SOURCE` / `_MODEL_REVISION`** are named module-level `Final`
+  constants — the one sanctioned "no hardcoded model" exception (block 1),
+  never routed through `server.settings`.
+- **Deferred imports.** `torch`, `speechbrain`, `huggingface_hub` are imported
+  inside functions, and `run_cli` reaches the backend via a deferred import, so
+  `validate` / `analyze` / `cleanup` never import `torch` (unchanged Task 2
+  behaviour preserved).
+- **Dependency / license.** `speechbrain` 1.1.1 Apache-2.0; ECAPA model
+  Apache-2.0 at the pinned revision; `pip-audit --local` clean. Rollback path
+  (`uv remove --group dev speechbrain` + `uv sync --all-packages --all-groups`)
+  not needed — this is a PASS.
+- **Privacy.** No microphone opened. `model-contract` and both tests use a
+  generated sine tone, never a voice. No WAV/manifest/embedding/hash written or
+  staged. The tracked diff carries only code, the frozen public model SHA (with
+  an allowlist pragma), sanitized latency numbers and this plan text.
+- **Open divergence for Pipec:** the `pytorch-cpu` index was not exercised (see
+  the CPU-only row above). Functionally CPU-only and verified; not adapted
+  in-flight.
 
 If package resolution, model load, frozen revision, CPU execution,
 offline-after-cache behavior, finite fixed-dimension output or the precommitted
