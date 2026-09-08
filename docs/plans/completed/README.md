@@ -23,5 +23,12 @@ any milestone.
 executed child of the server-production capsule: it stopped fourteen log sites
 from writing household content and introduced request correlation.
 
+[Plan 0048](0048-fastapi-baseline-final-hardening.md) is a bounded follow-up
+to a second independent audit of the server (2026-09-07), not a 0031 child:
+it closed four small edges (semantic `max_length`, the streaming
+one-terminal-event guarantee, the NDJSON 200 OpenAPI contract, `/health`
+wording + injectable `create_app`) and left only Uvicorn concurrency
+calibration open, as its own `perf(...)` plan.
+
 Do not modify a completed plan to create a new decision. Record architecture
 changes in a new ADR and create a new open plan.

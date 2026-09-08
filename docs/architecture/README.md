@@ -55,8 +55,14 @@ specific conflict instead of redesigning the project implicitly.
 - [`server-production-baseline.md`](server-production-baseline.md): audited
   target rules and execution portfolio for FastAPI, Starlette, Uvicorn,
   uploads, privacy, SQLite, lifecycle, and HTTP contracts. **Fully closed
-  2026-09-03** — every child (0032–0045) is closed; no work remains under
-  this umbrella.
+  2026-09-03** — every 0031 child (0032–0045) is closed. A second
+  independent audit on 2026-09-07 confirmed the baseline and closed four
+  bounded follow-up edges via
+  [Plan 0048](../plans/completed/0048-fastapi-baseline-final-hardening.md)
+  (semantic `max_length`, the streaming one-terminal-event guarantee, the
+  NDJSON 200 OpenAPI contract, `/health` wording + injectable `create_app`).
+  Only Uvicorn concurrency calibration remains, deferred to its own
+  `perf(...)` plan.
 - [`../roadmap/personal-companion-delivery-map.md`](../roadmap/personal-companion-delivery-map.md):
   canonical mapping from the personal-companion outcome to existing code,
   tests, verified gaps, and the one accountable executable plan.
