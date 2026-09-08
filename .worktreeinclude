@@ -1,0 +1,18 @@
+# Gitignored files to copy into every new worktree (--worktree, EnterWorktree,
+# subagent-driven-development). Syntax is .gitignore-style: only files that
+# are BOTH listed here AND gitignored get copied — tracked files never do.
+#
+# Kept intentionally minimal. A worktree should be a disposable checkout:
+# copy only what's needed to make `just check` / `just audit` / `just test` /
+# `just run-server` behave the same as in the main checkout. Everything else
+# (venv, caches, models, the brain DB, logs, enrollment photos) is either
+# regenerable per-worktree or must NOT be duplicated across parallel agents.
+
+# Runtime config — without this the app can't start (settings.py reads .env)
+.env
+.env.local
+
+# Baselines compared against by pre-commit / just audit — without these,
+# every worktree treats all existing findings as "new"
+.secrets.baseline
+.bandit-baseline
