@@ -2,9 +2,10 @@
 
 > **Status:** Canonical cross-plan traceability map.
 >
-> **Observed:** implementation evidence through 2026-09-03; product ordering
+> **Observed:** implementation evidence through 2026-09-07; product ordering
 > aligned 2026-09-07. PC-1 is accepted, PC-2 has provisional calibrated
-> acceptance, and the server baseline capsule is closed.
+> acceptance, and the server baseline capsule (Plans 0031–0045 plus the
+> 2026-09-07 second-audit follow-up Plan 0048) is closed.
 >
 > **Execution authority:** None. This map explains what exists, what is
 > missing, and which bounded plan owns each gap. Only the single `NOW` item in

@@ -25,7 +25,7 @@ When sources disagree, use this order:
 9. [`../roadmap/conversational-memory-delivery-map.md`](../roadmap/conversational-memory-delivery-map.md)
    for the longitudinal-memory sequence and verified code seams.
 10. The one task plan explicitly named by the user under
-   `docs/plans/open/`.
+    `docs/plans/open/`.
 
 Code and tests outrank a stale statement about current behavior. An accepted
 decision is not silently changed by implementation; replace it with a new ADR.

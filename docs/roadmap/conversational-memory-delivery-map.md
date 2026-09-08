@@ -1,134 +1,134 @@
-# Mapa de entrega de memoria conversacional
+# Conversational-memory delivery map
 
-**Estado:** diseño canónico; CM-0 tiene Plan 0046 `Ready`
-**Última revisión:** 2026-09-07
+**Status:** canonical design; CM-0 has Plan 0046 `Ready`
+**Last reviewed:** 2026-09-07
 
-## Objetivo
+## Objective
 
-Conectar la visión de memoria autobiográfica longitudinal con el código, las
-pruebas y los vacíos observados, sin abrir un segundo sistema de memoria ni
-confundir documentación con implementación.
+Connect the vision of longitudinal autobiographical memory with the code, the
+tests, and the observed gaps, without opening a second memory system or
+confusing documentation with implementation.
 
-Este mapa profundiza P2.2 del
-[roadmap cognitivo](cognitive-roadmap.md) y constituye una dependencia de PC-5
-en el [Plan 0015](../plans/open/0015-personal-companion-design.md). No es un plan
-ejecutable: cada incremento requiere su propio plan `Ready` y se ejecuta uno a
-la vez.
+This map expands P2.2 of the
+[cognitive roadmap](cognitive-roadmap.md) and is a dependency of PC-5 in
+[Plan 0015](../plans/open/0015-personal-companion-design.md). It is not an
+executable plan: each increment needs its own `Ready` plan and runs one at a
+time.
 
-## Resultado deseado
+## Desired outcome
 
 ```text
-conversación o percepción
+conversation or perception
           ↓
-candidato de memoria
+memory candidate
           ↓
-atribución, clasificación y política
+attribution, classification, and policy
      ┌────┼─────────┐
-  aceptar confirmar rechazar
+  accept  confirm  reject
      ↓
-memoria canónica V4
+canonical V4 memory
      ↓
-recuperación autorizada
+authorized retrieval
      ↓
-respuesta con evidencia
+response with evidence
      ↓
-corrección, historial u olvido completo
+correction, history, or complete forgetting
 ```
 
-Recordar más texto no es el objetivo. Cada recuerdo durable debe poder explicar
-de quién es, quién lo afirmó, cuál fue su fuente, cuándo fue válido, cuál es su
-estado de verdad, quién puede verlo, si es sensible, qué corrige y qué debe
-eliminarse al olvidarlo.
+Remembering more text is not the goal. Every durable memory must be able to
+explain whose it is, who asserted it, what its source was, when it was valid,
+what its truth state is, who may see it, whether it is sensitive, what it
+corrects, and what must be removed when it is forgotten.
 
-## Fractura vigente
+## Current fracture
 
-El repositorio contiene piezas valiosas, pero las consultas familiares
-protegidas y la conversación genérica recorren rutas distintas:
+The repository contains valuable pieces, but protected household queries and
+generic conversation travel different paths:
 
 ```text
-consulta familiar protegida
-  -> identidad -> autorización -> memoria V4 -> respuesta determinista
+protected household query
+  -> identity -> authorization -> V4 memory -> deterministic response
 
-conversación genérica
-  -> text_turn legacy -> memoria legacy/semántica -> LLM
+generic conversation
+  -> legacy text_turn -> legacy/semantic memory -> LLM
 ```
 
-Evidencia vigente al redactar este mapa:
+Evidence current at the time this map was written:
 
-- `cognition/controller.py` invoca el turno legacy con mensaje y conversación,
-  sin transportar el actor resuelto;
-- `text_turn.py` habilita memoria persistente legacy solo con evidencia
-  `MANUAL`; cara y desbloqueo local no habilitan por sí mismos ese acceso;
-- `memory/consolidation.py` escribe episodios y hechos por las APIs legacy, no
-  mediante hechos literales o relaciones V4;
-- `memory/semantic.py` recupera por archivo, tipo opcional y distancia, sin
-  filtros previos por persona, visibilidad, sensibilidad o autorización, ni un
-  umbral mínimo de relevancia.
+- `cognition/controller.py` invokes the legacy turn with the message and the
+  conversation, without carrying the resolved actor;
+- `text_turn.py` enables persistent legacy memory only with `MANUAL` evidence;
+  face and local unlock do not by themselves enable that access;
+- `memory/consolidation.py` writes episodes and facts through the legacy APIs,
+  not through literal facts or V4 relations;
+- `memory/semantic.py` retrieves by file, optional type, and distance, with no
+  prior filters by person, visibility, sensitivity, or authorization, and no
+  minimum relevance threshold.
 
-La barrera manual actual contiene accidentalmente parte del riesgo, pero no es
-una política suficiente para una memoria personal conversacional.
+The current manual barrier accidentally contains part of the risk, but it is
+not a sufficient policy for a conversational personal memory.
 
-## Capacidades reutilizables
+## Reusable capabilities
 
-No debe rehacerse lo que ya existe:
+What already exists must not be rebuilt:
 
-- identidad separada de autorización;
-- desconocido como estado válido;
-- evaluador de políticas y auditoría;
-- hechos y relaciones V4 con estado y vigencia;
-- lectura familiar autorizada;
-- memoria de trabajo acotada por identidad y sesión;
-- extracción local mediante Ollama;
-- almacenamiento episódico y búsqueda vectorial SQLite/sqlite-vec;
-- pruebas de aislamiento que impiden memoria legacy cuando falta la evidencia
-  actualmente exigida.
+- identity separated from authorization;
+- unknown as a valid state;
+- policy and audit evaluator;
+- V4 facts and relations with state and validity;
+- authorized household reads;
+- working memory bounded by identity and session;
+- local extraction through Ollama;
+- episodic storage and SQLite/sqlite-vec vector search;
+- isolation tests that prevent legacy memory when the currently required
+  evidence is missing.
 
-## Secuencia de entrega
+## Delivery sequence
 
-Esta tabla gobierna solamente el subprograma CM-0…CM-7. Su posición entre
-biometría, aceptación personal, percepción, RAG, familia y P4.2 está definida
-una sola vez en el
-[portfolio canónico pre-electrónica](cognitive-roadmap.md#canonical-pre-electronics-delivery-portfolio).
+This table governs only the CM-0…CM-7 subprogram. Its position among
+biometrics, personal acceptance, perception, RAG, family, and P4.2 is defined
+once in the
+[canonical pre-electronics delivery portfolio](cognitive-roadmap.md#canonical-pre-electronics-delivery-portfolio).
 
-| Etapa | Resultado verificable | Dependencias | Plan ejecutable |
+| Stage | Verifiable outcome | Dependencies | Executable plan |
 |---|---|---|---|
-| CM-0 | Benchmark longitudinal versionado y una corrida RED reproducible | especificación de evaluación | [Plan 0046](../plans/open/0046-reproducible-longitudinal-memory-baseline.md) — `Ready`, no iniciado |
-| CM-1 | Capacidades explícitas `read`, `propose`, `confirm`, `correct` y `forget` para memoria personal | política e identidad actuales | no escrito |
-| CM-2 | El actor autorizado llega al flujo conversacional sin interpolar nombres ni ampliar permisos implícitos | CM-1 | no escrito |
-| CM-3 | La extracción crea candidatos; confirmación/promoción escribe hechos y relaciones canónicos V4 | CM-0, CM-1, CM-2 | no escrito |
-| CM-4 | Episodios declaran propietario, visibilidad, sensibilidad, consentimiento y retención | CM-3 | no escrito |
-| CM-5 | Recuperación filtra autorización y vigencia antes del prompt y aplica umbral de relevancia | CM-4 | no escrito |
-| CM-6 | Corrección y olvido alcanzan hechos, relaciones, episodios, embeddings, resúmenes y cachés derivados | CM-3 a CM-5 | no escrito |
-| CM-7 | Escenario real aprende, reinicia, recuerda, corrige, olvida y no divulga | CM-0 a CM-6, PC-3, PC-4 | no escrito |
+| CM-0 | Versioned longitudinal benchmark and one reproducible RED run | evaluation specification | [Plan 0046](../plans/open/0046-reproducible-longitudinal-memory-baseline.md) — `Ready`, not started |
+| CM-1 | Explicit `read`, `propose`, `confirm`, `correct`, and `forget` capabilities for personal memory | current policy and identity; PC-4 per the product order below | not written |
+| CM-2 | The authorized actor reaches the conversational flow without interpolating names or expanding permissions implicitly | CM-1 | not written |
+| CM-3 | Extraction creates candidates; confirmation/promotion writes canonical V4 facts and relations | CM-0, CM-1, CM-2 | not written |
+| CM-4 | Episodes declare owner, visibility, sensitivity, consent, and retention | CM-3 | not written |
+| CM-5 | Retrieval filters authorization and validity before the prompt and applies a relevance threshold | CM-4 | not written |
+| CM-6 | Correction and forgetting reach facts, relations, episodes, embeddings, summaries, and derived caches | CM-3 through CM-5 | not written |
+| CM-7 | A real scenario learns, restarts, recalls, corrects, forgets, and does not disclose | CM-0 through CM-6, PC-3, PC-4 | not written |
 
-El orden de producto queda así:
+The product order is therefore:
 
 ```text
-CM-0 benchmark RED (puede ejecutarse primero; no cambia runtime)
-  -> PC-3 hablante
-  -> PC-4 fusión multimodal
+CM-0 RED benchmark (can run first; does not change runtime)
+  -> PC-3 speaker
+  -> PC-4 multimodal fusion
   -> CM-1..CM-7 / P2.2 longitudinal
-  -> PC-5 aceptación personal integrada
-  -> continuar en P2.1 según el portfolio canónico pre-electrónica
+  -> PC-5 integrated personal acceptance
+  -> continue in P2.1 per the canonical pre-electronics portfolio
 ```
 
-Plan 0046 materializa CM-0. La numeración de CM-1 a CM-7 no se reserva: cada
-etapa se redactará solamente después de cerrar y reauditar su predecesora.
-Las etapas documentales R2/R3 y la familia P3.1/P3.2 no forman parte de esta
-subsecuencia de memoria; aparecen en el portfolio maestro y no deben insertarse
-como planes CM implícitos.
+Plan 0046 realizes CM-0. The numbering of CM-1 through CM-7 is not reserved:
+each stage will be written only after its predecessor is closed and re-audited.
+The R2/R3 documentation stages and the P3.1/P3.2 family work are not part of
+this memory subsequence; they appear in the master portfolio and must not be
+inserted as implicit CM plans.
 
-## Contratos que deberán quedar explícitos
+## Contracts that must become explicit
 
 ### Lifecycle
 
-`proposed -> confirmed|rejected -> corrected|revoked|expired`, con historial y
-procedencia. La extracción automática nunca equivale por sí sola a verdad
-personal confirmada.
+`proposed -> confirmed|rejected -> corrected|revoked|expired`, with history and
+provenance. Automatic extraction never on its own equals confirmed personal
+truth.
 
-### Autorización
+### Authorization
 
-Las capacidades mínimas son:
+The minimum capabilities are:
 
 - `read_personal_conversation_memory`;
 - `propose_personal_memory`;
@@ -136,35 +136,33 @@ Las capacidades mínimas son:
 - `correct_personal_memory`;
 - `forget_personal_memory`.
 
-La resolución facial, vocal, por PIN o manual aporta evidencia; la política
-decide cada capacidad y alcance.
+Face, voice, PIN, or manual resolution provides evidence; policy decides each
+capability and its scope.
 
-### Recuperación
+### Retrieval
 
-Persona, visibilidad, sensibilidad, consentimiento, estado y vigencia se filtran
-antes de aportar evidencia al LLM. La similitud semántica solo ordena candidatos
-ya autorizados y suficientemente relevantes.
+Person, visibility, sensitivity, consent, state, and validity are filtered
+before any evidence reaches the LLM. Semantic similarity only ranks candidates
+that are already authorized and sufficiently relevant.
 
-### Olvido
+### Forgetting
 
-Olvidar debe alcanzar el registro canónico y todas sus proyecciones: embeddings,
-resúmenes, cachés y material de recuperación. Los logs de seguridad que deban
-retenerse conservarán solo la evidencia mínima permitida y no el contenido
-olvidado.
+Forgetting must reach the canonical record and all its projections: embeddings,
+summaries, caches, and retrieval material. Security logs that must be retained
+will keep only the minimum permitted evidence and not the forgotten content.
 
-## Fuera de alcance
+## Out of scope
 
-- entrenamiento neuronal propio, JAX o aprendizaje online de pesos;
-- DuckDB, microservicios o frameworks de agentes;
-- ampliar automáticamente los tokens o permisos vigentes;
-- copiar conversaciones completas como verdad durable;
-- implementar `care` o `education`;
-- usar nube en el camino de runtime.
+- own neural training, JAX, or online weight learning;
+- DuckDB, microservices, or agent frameworks;
+- automatically expanding current tokens or permissions;
+- copying whole conversations as durable truth;
+- implementing `care` or `education`;
+- using the cloud in the runtime path.
 
-## Criterio para abrir planes
+## Criteria for opening plans
 
-El primer plan es Plan 0046 para CM-0 y debe observar un fallo reproducible
-antes de cambiar el runtime. Cada plan posterior debe tener alcance pequeño,
-pruebas RED/GREEN,
-comandos de verificación, no-objetivos y revisión independiente. PC-5 permanece
-abierto hasta superar CM-7 y su aceptación física completa.
+The first plan is Plan 0046 for CM-0 and must observe a reproducible failure
+before changing the runtime. Every later plan must have small scope, RED/GREEN
+tests, verification commands, non-goals, and independent review. PC-5 stays open
+until CM-7 and its complete physical acceptance are passed.
