@@ -410,12 +410,10 @@ def _run_capture(options: SpeakerCliOptions, capture_audio: Callable[[], bytes] 
         options.condition,
     ):
         raise ValueError("capture requires full sample metadata")  # parse_cli_args enforces this
-    is_live = capture_audio is None  # a real human is at the microphone
-    if is_live:
-        _announce_capture(str(options.phrase_id))
-    wav_bytes = (capture_audio or _default_recorder)()
+    live = capture_audio is None  # a real human is at the microphone
+    wav_bytes = _capture_live(str(options.phrase_id)) if capture_audio is None else capture_audio()
     validate_wav_bytes(wav_bytes)
-    if is_live:
+    if live:
         _reject_if_too_short(wav_bytes)
     options.corpus_root.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%f")
@@ -485,8 +483,15 @@ def _play_start_cue() -> None:
         logger.debug("start cue beep unavailable: %s", exc)
 
 
-def _default_recorder() -> bytes:
-    """Capture one spoken utterance from the real microphone.
+def _capture_live(phrase_id: str) -> bytes:
+    """Warm the recorder, announce the phrase, then capture one utterance.
+
+    The VAD is warmed *before* the countdown so the microphone is already
+    listening when the start cue fires — otherwise the phrase onset is lost
+    while ``onnxruntime`` and the Silero model load.
+
+    Args:
+        phrase_id: One of the frozen phrase ids.
 
     Returns:
         WAV bytes - 16 000 Hz, mono, signed int16.
@@ -497,10 +502,23 @@ def _default_recorder() -> bytes:
     # Lazy, name-resolved import: keeps ``sounddevice`` and the robot adapter out
     # of import time, so validate/embed/analyze provably never open a microphone.
     recorder = importlib.import_module("robot.audio_capture")
+    logger.info("Preparing microphone (first capture loads the VAD model)...")
+    _warm_recorder()
+    _announce_capture(phrase_id)
     wav: bytes = asyncio.run(recorder.capture_utterance())
     if not wav:
         raise ValueError("no speech captured before the microphone timeout")
     return wav
+
+
+def _warm_recorder() -> None:
+    """Preload ``onnxruntime`` and the Silero model so capture starts instantly."""
+    try:
+        vad = importlib.import_module("robot.vad")
+        robot_settings = importlib.import_module("robot.settings")
+        vad.create_vad(robot_settings.settings.vad_engine)
+    except Exception as exc:  # best-effort — a cold capture still works
+        logger.debug("recorder warm-up skipped: %s", exc)
 
 
 def _run_validate(options: SpeakerCliOptions) -> int:
