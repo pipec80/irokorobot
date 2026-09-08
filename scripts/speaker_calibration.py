@@ -36,10 +36,12 @@ import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import importlib
+import io
 import logging
 import math
 import time
 from typing import TYPE_CHECKING
+import wave
 
 import numpy as np
 
@@ -75,6 +77,11 @@ if TYPE_CHECKING:
     from scripts.speaker_calibration_models import SpeakerEmbeddingBackend
 
 logger = logging.getLogger(__name__)
+
+# A full read of any frozen phrase lasts ~4-5 s; a brisk-but-complete one still
+# clears ~2.8 s. Below this the VAD almost certainly closed on a mid-phrase
+# pause or clipped the start, so the capture is rejected rather than stored.
+_MIN_UTTERANCE_SECONDS = 2.5
 
 
 @dataclass(frozen=True)
@@ -403,10 +410,13 @@ def _run_capture(options: SpeakerCliOptions, capture_audio: Callable[[], bytes] 
         options.condition,
     ):
         raise ValueError("capture requires full sample metadata")  # parse_cli_args enforces this
-    if capture_audio is None:  # a real human is at the microphone
+    is_live = capture_audio is None  # a real human is at the microphone
+    if is_live:
         _announce_capture(str(options.phrase_id))
     wav_bytes = (capture_audio or _default_recorder)()
     validate_wav_bytes(wav_bytes)
+    if is_live:
+        _reject_if_too_short(wav_bytes)
     options.corpus_root.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%f")
     wav_name = f"{options.sample_class}-{options.session_id}-{options.phrase_id}-{stamp}.wav"
@@ -443,6 +453,26 @@ def _announce_capture(phrase_id: str) -> None:
         time.sleep(1.0)
     _play_start_cue()
     logger.info("   >>> SPEAK NOW <<<")
+
+
+def _reject_if_too_short(wav_bytes: bytes) -> None:
+    """Reject a live capture too short to be a full phrase read.
+
+    Args:
+        wav_bytes: The just-captured WAV — 16 000 Hz, mono, signed int16.
+
+    Raises:
+        ValueError: If the utterance is under ``_MIN_UTTERANCE_SECONDS`` — the
+            VAD almost certainly closed on a mid-phrase pause or clipped start,
+            so nothing is written and the operator re-reads the phrase.
+    """
+    with wave.open(io.BytesIO(wav_bytes), "rb") as handle:
+        seconds = handle.getnframes() / handle.getframerate()
+    if seconds < _MIN_UTTERANCE_SECONDS:
+        raise ValueError(
+            f"capture is only {seconds:.1f}s (need >= {_MIN_UTTERANCE_SECONDS}s) - "
+            "read the whole phrase at a steady pace, no long pauses between words"
+        )
 
 
 def _play_start_cue() -> None:

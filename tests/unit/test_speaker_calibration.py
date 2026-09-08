@@ -23,6 +23,7 @@ import pytest
 
 from scripts.speaker_calibration import (
     SpeakerThresholdResult,
+    _reject_if_too_short,
     cosine_distance,
     l2_normalize,
     parse_cli_args,
@@ -913,6 +914,15 @@ def test_run_cli_capture_failure_adds_no_manifest_row(tmp_path: Path) -> None:
 def test_phrase_text_holds_the_three_frozen_phrases() -> None:
     assert set(PHRASE_TEXT) == set(PHRASE_IDS)
     assert PHRASE_TEXT["phrase-01"] == "La lluvia cae despacio sobre el tejado de la casa"
+
+
+def test_reject_if_too_short_blocks_a_clipped_capture() -> None:
+    with pytest.raises(ValueError, match="steady pace"):
+        _reject_if_too_short(_wav_bytes(frames=16_000))  # 1.0 s
+
+
+def test_reject_if_too_short_allows_a_full_phrase_length() -> None:
+    _reject_if_too_short(_wav_bytes(frames=16_000 * 4))  # 4.0 s — no raise
 
 
 def test_run_cli_capture_with_injected_recorder_skips_the_human_announce(
