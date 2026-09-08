@@ -74,7 +74,7 @@ are adjacent.
 
 | Order | Track | Delivery slice | Verifiable outcome / exit evidence | Depends on | Commitment | Current state | Detail and executable ownership |
 |---:|---|---|---|---|---|---|---|
-| 1 | Evaluation | CM-0 — reproducible longitudinal baseline | A versioned synthetic benchmark runs reproducibly; the harness finishes GREEN while the measured product remains honestly RED or passes without relaxed thresholds. | Closed P0/PC-1/PC-2 foundations | Required | `Ready`, not started | [Memory map](conversational-memory-delivery-map.md#delivery-sequence); [Plan 0046](../plans/open/0046-reproducible-longitudinal-memory-baseline.md) |
+| 1 | Evaluation | CM-0 — reproducible longitudinal baseline | A versioned synthetic benchmark runs reproducibly; the harness finishes GREEN while the measured product remains honestly RED or passes without relaxed thresholds. | Closed P0/PC-1/PC-2 foundations | Required | **Complete 2026-09-08** — benchmark GREEN, baseline RED (`ac43c58`, exit 1) | [Memory map](conversational-memory-delivery-map.md#delivery-sequence); [Plan 0046](../plans/completed/0046-reproducible-longitudinal-memory-baseline.md) |
 | 2 | Biometrics | PC-3A — speaker calibration study | A frozen local backend and versioned genuine/impostor corpus measure FAR/FRR, replay, quality, failure posture and CPU feasibility without granting identity or authorization. | CM-0 closed; Plan 0047 readiness amendment approved | Required | `Queued`, not executable | [Plan 0015](../plans/open/0015-personal-companion-design.md#pc-3--speaker-evidence--unstarted-pc-3a-plan-queued); [Plan 0047](../plans/open/0047-speaker-evidence-calibration-study.md) |
 | 3 | Biometrics | PC-3B — consented speaker runtime evidence | Local enrollment, consent, revocation and verification produce typed `VOICE` evidence; missing, weak or failed evidence remains `unknown` and grants no capability directly. | PC-3A measured and accepted | Required | Unplanned | [Plan 0015](../plans/open/0015-personal-companion-design.md#pc-3--speaker-evidence--unstarted-pc-3a-plan-queued); future bounded plan |
 | 4 | Identity | PC-4 — conservative multimodal fusion | PIN/session, face and voice evidence are fused deterministically; conflict is `ambiguous`; expiry, absence, replay/spoof risk, provider failure and local recovery have explicit outcomes. | PC-3B; existing PC-2 face evidence | Required | Unplanned | [Plan 0015](../plans/open/0015-personal-companion-design.md#pc-4--conservative-identity-fusion--unstarted); future bounded plan |
@@ -128,9 +128,10 @@ only after a measured need.
    plan. New evidence may split or combine implementation plans, but it must not
    silently remove the row's product outcome.
 
-The current cursor is CM-0: Plan 0046 is the sole `Ready`/`NOW` plan. Plan 0047
-preserves the next reviewed handoff in `Queued`; rows 3–19 are not executable
-and their plan numbers are intentionally unreserved.
+CM-0 is closed (Plan 0046, 2026-09-08). The current cursor is PC-3A: Plan 0047
+holds the next reviewed handoff in `Queued` and cannot be promoted until its own
+backend/dependency readiness gate is approved and Pipec authorizes execution.
+Rows 3–19 are not executable and their plan numbers are intentionally unreserved.
 
 ## C0 — Documentation foundation
 
@@ -463,8 +464,9 @@ timestamps, confidence, and expiry; frames are not retained by default.
 ### P2.2 — Memory lifecycle and retrieval
 
 Bring the longitudinal runtime slice forward after PC-4 and before P1.3. CM-0
-is intentionally earlier: Plan 0046 measures the current RED baseline without
-changing runtime. Follow CM-1 through CM-7 after PC-4 in the
+ran intentionally earlier: Plan 0046 measured the current RED baseline
+(`ac43c58`, 2026-09-08) without changing runtime. Follow CM-1 through CM-7 after
+PC-4 in the
 [conversational-memory delivery map](conversational-memory-delivery-map.md):
 start with a reproducible RED benchmark; add candidate confirmation,
 deduplication, contradictions, supersession, scoped authorization, V4 canonical

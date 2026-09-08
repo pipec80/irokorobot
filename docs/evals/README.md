@@ -41,14 +41,31 @@ A `--only` run is smoke/debug: it is marked **non-gating**, so it can never
 report `0` on the strength of the gates. A full gating baseline requires every
 version-1 scenario and `--runs 3`.
 
-### Expected RED baseline (CM-0)
+An `unsupported` step counts in the denominator of every rate it belongs to, so
+a run with no live seam reports those rates as `0.0000` — not `n/a`. Only a
+genuinely empty population (for example `forbidden_disclosure_rate` when every
+cross-person recall is `unsupported`) renders `n/a (empty denominator)`, and a
+gate over an empty denominator is a `FAIL`.
+
+### Measured RED baseline (CM-0)
 
 The current runtime supports only single-turn extraction. Every other
 longitudinal operation (`propose`, `restart`, `recall`, `correct`, `forget`,
 `inspect_derivatives`) has no safe public seam yet, so the runner records it as
 `unsupported` with the exact missing capability — it is never simulated with an
-injected context or a database reconnect. The expected result today is exit
-`1`: extraction PASSes, everything else is honestly `unsupported`.
+injected context or a database reconnect.
+
+The first reproducible baseline was recorded on 2026-09-08 at commit `ac43c58`
+(`--runs 3`, exit `1`): see
+[`0046-longitudinal-memory-baseline.md`](0046-longitudinal-memory-baseline.md).
+Extraction is the only exercised seam and it is **measured, not passing** —
+`qwen2.5:3b` chat with `qwen3:4b-instruct-2507-q4_K_M` consolidation scored
+precision/recall `0.25` on the Spanish suite, so the extraction step is `FAIL`,
+not `PASS`. There is no extraction release gate in CM-0, so the exit code is
+still `1` and the RED baseline is still valid; the number is a starting point to
+improve against, not an acceptance. Every non-extraction operation is honestly
+`unsupported` across all nine categories, and all four frozen cognitive gates
+`FAIL`.
 
 ### Safe output paths and non-overwrite
 

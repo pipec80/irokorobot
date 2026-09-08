@@ -107,6 +107,11 @@ An offline capability probe, not a `pytest` test. It runs the synthetic suite in
 throwaway database, and never touches the configured production database. Full
 rules: [`docs/evals/README.md`](../evals/README.md).
 
+The recorded CM-0 baseline (2026-09-08, `ac43c58`, exit `1`) is
+[`docs/evals/0046-longitudinal-memory-baseline.md`](../evals/0046-longitudinal-memory-baseline.md):
+extraction is the only live seam (p/r `0.25`, `FAIL` — no CM-0 gate), every
+other operation is `unsupported`, all four frozen gates `FAIL`.
+
 ```powershell
 just services            # Ollama up, consolidation model pulled
 just eval-longitudinal   # full gating baseline = no --only, --runs 3
