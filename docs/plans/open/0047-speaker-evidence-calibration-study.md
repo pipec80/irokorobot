@@ -753,41 +753,84 @@ resume without relying on chat memory.
 
 **Owner:** orchestrator; no coding or capture agent.
 
-- [ ] Confirm every readiness blocker is checked, the reviewed plan status is
+- [x] Confirm every readiness blocker is checked, the reviewed plan status is
   `Ready`, it is the sole `NOW`, and Pipec explicitly authorized execution.
-- [ ] Record branch, SHA, `git status`, frozen backend/package/model revision,
+- [x] Record branch, SHA, `git status`, frozen backend/package/model revision,
   approved download scope, literal phrase IDs/text and precommitted p95 budget.
-- [ ] Create one simple feature branch from the approved merged SHA on `main`
+- [x] Create one simple feature branch from the approved merged SHA on `main`
   (e.g. `feat/0047-speaker-calibration`). **No git worktree** — the project
   uses one plain branch per plan. Preserve any uncommitted user changes.
-- [ ] Re-read all required sources on that branch. Any material API, license,
+- [x] Re-read all required sources on that branch. Any material API, license,
   package or lock drift stops for a documentation amendment; do not adapt while
   coding.
 
-**Hard stop:** no code, dependency/model download or voice capture occurs
-unless all four checks pass. No commit.
+### Task 0 evidence (2026-09-08)
+
+| Item | Value |
+|---|---|
+| Branch | `feat/0047-speaker-calibration`, cut from `main` @ `4b61624` |
+| Promotion commit on branch | `35d1de7` — `docs(plan): promote 0047 to Ready/NOW with staged execution` (promotion + implementation land in one PR, per the project's one-branch-per-plan rule) |
+| `git status` | clean before Task 1 |
+| Environment | Windows 11, Python 3.12.11, uv 0.10.11 |
+| Frozen package | `speechbrain==1.1.1` (Apache-2.0), root `dev` group only |
+| Frozen class | `EncoderClassifier` (not `SpeakerRecognition`) |
+| Frozen model | `speechbrain/spkrec-ecapa-voxceleb` (Apache-2.0) |
+| Frozen model revision | `0f99f2d0ebe89ac095bcc5903c4dd8f72b367286` (immutable) |
+| Embedding dim | 192 |
+| Approved download scope | `speechbrain==1.1.1` + transitive graph (torch/torchaudio via `pytorch-cpu` index); ECAPA model ~200–300 MB at pinned revision. No cloud inference. |
+| `phrase-01` | La lluvia cae despacio sobre el tejado de la casa |
+| `phrase-02` | Guardé cinco libros nuevos en el estante de madera |
+| `phrase-03` | Prefiero caminar por el parque cuando termina la tarde |
+| `condition` labels | `quiet-near`, `quiet-far`, `background-near`, `background-far` (validator rejects any other) |
+| Precommitted p95 budget | ≤ 500 ms for one embedding of a 3-second WAV (chosen by Pipec before any measurement) |
+
+Required sources re-read on the branch (no material API/license/lock drift
+found): `CLAUDE.md`, `AGENTS.md`, `.claude/rules/*`, `docs/plans/README.md`,
+this plan, `docs/architecture/identity-and-access.md`,
+`docs/architecture/current-state.md`,
+`server/src/server/audio_contract.py`, `robot/src/robot/audio_capture.py`,
+`scripts/mic_test.py`, `server/src/server/cognition/identity.py`,
+`tests/unit/test_active_person_identity.py`, `scripts/face_calibration.py`,
+`tests/unit/test_face_calibration.py`, `justfile`, root/`server`/`robot`
+`pyproject.toml`. `[tool.uv.sources]` for `torch`/`torchaudio` against the
+`pytorch-cpu` index is declared (`pyproject.toml`) but never yet exercised —
+`uv.lock` has no torch node, so Task 3 must confirm CPU-only resolution.
+
+**Hard stop passed:** all four checks are green. Tasks 1–2 (pure code, no
+download) proceed. Task 3's `uv add` + model download is a separate checkpoint
+that also needs Docker/background load closed for the latency protocol.
 
 ## Task 1: Build the pure numeric calibration layer with TDD
 
 **Files:** create `scripts/speaker_calibration.py` and
 `tests/unit/test_speaker_calibration.py`.
 
-- [ ] Write tests for unit/orthogonal/opposite vectors, normalization,
+- [x] Write tests for unit/orthogonal/opposite vectors, normalization,
   centroid order independence, equal dimensions and invalid zero/NaN/infinite
   values.
-- [ ] Write tests for inclusive threshold comparison, FAR/FRR counts, tie
+- [x] Write tests for inclusive threshold comparison, FAR/FRR counts, tie
   breaking, no-zero-FAR overlap returning `None`, replay exclusion and p50/p95.
-- [ ] Run RED:
-
-  ```powershell
-  uv run pytest tests/unit/test_speaker_calibration.py -k "normalize or centroid or distance or threshold or latency" -n0 -v
-  ```
-
-  Expected: missing symbols/behavior only; no audio/model import.
-- [ ] Implement the minimum pure functions from the stable interface.
-- [ ] Re-run focused and full unit file; observe GREEN.
-- [ ] Complete spec and quality reviews.
-- [ ] Commit: `feat(eval): add speaker calibration math`
+- [x] Run RED — `ModuleNotFoundError: No module named 'scripts.speaker_calibration'`
+  at collection (no audio/model import). Two threshold tests were then rewritten
+  during RED: the tie-break case is "low end of the safe gap" (a threshold range
+  reaching FRR 0 resolves to its smallest value), and overlap → `None` is keyed
+  on "closest sample of all is an impostor" (`min(impostor) <= min(genuine)`),
+  matching the global constraint's live-impostor safety gate.
+- [x] Implement the minimum pure functions from the stable interface —
+  `l2_normalize`, `reference_centroid`, `cosine_distance`,
+  `SpeakerThresholdResult`, `sweep_speaker_thresholds`,
+  `zero_far_speaker_threshold`, `percentile` (nearest-rank, `ceil(q*n)`).
+  `cosine_distance` normalizes both inputs internally so the matching pipeline
+  is robust to un-normalized probes. Replay exclusion is structural — the
+  selector's signature takes only genuine + impostor distances.
+- [x] Re-run focused and full unit file; observe GREEN — **31 passed** in 0.24s.
+- [x] Complete spec and quality reviews — scoped `ruff check` / `ruff format
+  --check` / `mypy` on `scripts/speaker_calibration.py` all clean;
+  `just typecheck` (mypy 92 files + pyright) clean; test file lint clean.
+  93-line file, every function ≤ 30 lines, frozen dataclass, `logger` not
+  `print`, English, Google docstrings.
+- [x] Commit: `feat(eval): add speaker calibration math` (rides with the Task 0
+  evidence checkpoint, which the plan holds uncommitted).
 
 ## Task 2: Build the private corpus manifest and safe CLI with TDD
 
