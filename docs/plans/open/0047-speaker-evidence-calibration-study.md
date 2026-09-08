@@ -10,13 +10,15 @@
 > `superpowers:requesting-code-review` for independent review. Pipec—not an
 > agent—owns every real microphone, impostor and replay capture checkpoint.
 
-**Status:** Queued — readiness amendment complete 2026-09-08 (backend, model
-revision, dependency command, tensor contract, latency protocol, frozen phrases
-and p95 budget are all locked in the "Frozen readiness contract" section
-below). Plan 0046 (CM-0) closed 2026-09-08, clearing the sequencing blocker.
-Two blockers remain before promotion: an independent plan review, and Pipec's
-explicit authorization to change `Status` to `Ready` and put 0047 in `NOW`. No
-code, dependency download or real-voice capture begins until both clear.
+**Status:** Queued — **all 9 readiness blockers cleared 2026-09-08.** The
+readiness amendment froze the backend, model revision, dependency command,
+tensor contract, latency protocol, phrases, conditions and p95 budget (see
+"Frozen readiness contract" below); an independent plan review (2026-09-08)
+returned **APPROVE WITH MINOR FIXES**, and all 2 MEDIUM + 6 LOW findings were
+applied (see "Independent review" below). Plan 0046 (CM-0) closed 2026-09-08.
+**The only thing left is Pipec's explicit decision** to change `Status` to
+`Ready`, put 0047 in `NOW`, and authorize execution. No code, dependency
+download or real-voice capture begins until that decision.
 
 **Goal:** Evaluate whether a local CPU speaker-embedding backend can separate
 Pipec's live voice from consenting live impostors under household conditions;
@@ -107,9 +109,11 @@ package, downloading a model or capturing audio:
   the pinned model, including package/model downloads and the ~200–300 MB
   CPU-only torch cost, accepting the possibility of a technical FAIL before any
   household capture.
-- [ ] Run an independent plan review. **Open — this is the last blocker.** Only
-  then may Pipec change `Status` to `Ready`, put 0047 in `NOW`, and give
-  explicit implementation authorization.
+- [x] Independent plan review run 2026-09-08 — **APPROVE WITH MINOR FIXES**. All
+  2 MEDIUM + 6 LOW findings applied (see "Independent review" below). Nothing in
+  the findings required redesign or re-freezing the backend. The only remaining
+  step is Pipec's explicit decision to change `Status` to `Ready`, put 0047 in
+  `NOW`, and authorize implementation.
 
 If Pipec declines the candidate, the plan remains queued or is cancelled by an
 explicit roadmap decision; that is not measured FAIL. After promotion, a real
@@ -160,10 +164,16 @@ Three details recorded during the refresh and folded into the blocks below:
 | Item | Frozen value |
 |---|---|
 | Package | `speechbrain==1.1.1` (Apache-2.0) |
-| Class | `speechbrain.inference.speaker.EncoderClassifier` — **not** `SpeakerRecognition`. The study needs the raw embedding; `SpeakerRecognition.verify_batch`'s built-in `threshold=0.25` is a generic VoxCeleb score cut, explicitly not a household authorization threshold. |
+| Class | `EncoderClassifier` — **not** `SpeakerRecognition`. The study needs the raw embedding; `SpeakerRecognition.verify_batch`'s built-in `threshold=0.25` is a generic VoxCeleb score cut, explicitly not a household authorization threshold. `EncoderClassifier` is *defined* in `speechbrain.inference.classifiers` and re-exported from `speechbrain.inference.speaker`; the frozen import (block 2) uses the `speaker` path because the Hugging Face model card uses exactly that path and the package version is pinned. |
 | Model | `speechbrain/spkrec-ecapa-voxceleb` (Apache-2.0) |
 | Model revision | `0f99f2d0ebe89ac095bcc5903c4dd8f72b367286` (immutable, pinned) |
 | Embedding dimension | 192 (ECAPA-TDNN attentive statistical pooling) |
+
+`_MODEL_SOURCE` and `_MODEL_REVISION` (block 2) are **deliberately immutable,
+named module-level constants** in the calibration harness. They are the one
+sanctioned exception to the "no hardcoded model" rule in Global constraints:
+the entire point of this study is a frozen, reproducible backend, so they must
+**not** be routed through `server.settings` or made configurable.
 
 ### Block 2 — Frozen call and tensor contract
 
@@ -178,22 +188,35 @@ _MODEL_REVISION = "0f99f2d0ebe89ac095bcc5903c4dd8f72b367286"
 
 encoder = EncoderClassifier.from_hparams(
     source=_MODEL_SOURCE,
-    savedir=<gitignored local cache dir under the corpus root>,
+    savedir="project-history/calibration/speaker/model-cache/",
     run_opts={"device": "cpu"},
     local_strategy=LocalStrategy.COPY,
     fetch_config=FetchConfig(revision=_MODEL_REVISION, allow_network=False),
 )
 ```
 
+- `savedir` is `project-history/calibration/speaker/model-cache/` — under the
+  gitignored corpus root, alongside the frozen `manifest.json` / `embeddings.npz`
+  / `aggregate-report.md` names. It holds only the downloaded model files (no
+  captured audio), so Task 7 may leave it in place at Pipec's choice.
 - `allow_network=False` is the offline-after-cache assertion: a first run with a
   warm HF cache (populated by the model-contract command) must succeed with no
   network. A cold cache is a Task 3 setup step, run once and recorded, not part
-  of any timed or gating measurement.
-- **Verification note (block 2, Task 3):** the source refresh shows
-  `fetch_config` reaching `fetch()` via `pretrainer.collect_files`, but the
-  implementer must still assert against the installed package that
-  `_MODEL_REVISION` is the revision actually resolved (e.g. by inspecting the
-  populated `savedir` / HF cache ref). A mismatch is a documentation stop.
+  of any timed or gating measurement. If **only** the `allow_network=False` path
+  fails while the same pinned revision loads fine with `allow_network=True`,
+  record an "offline-only load limitation" and continue — it is not by itself a
+  study-ending technical FAIL, because the revision is still fully pinned and
+  reproducible.
+- **Verification note (block 2, Task 3):** `fetch()` at v1.1.1 passes
+  `fetch_config.revision` straight into `hf_hub_download`, and
+  `pretrained_from_hparams` forwards `fetch_config` to both the hparams `fetch()`
+  and `pretrainer.collect_files()`. The one hop not audited from source is
+  whether `Pretrainer.collect_files` threads `fetch_config` into every
+  per-checkpoint `fetch()` (in `speechbrain/utils/parameter_transfer.py`). The
+  implementer must therefore assert against the installed package that
+  `_MODEL_REVISION` is the revision actually resolved (inspect the populated
+  `savedir` / HF cache ref), and additionally `git`-diff what commit `0f99f2d0`
+  reverted before relying on it. A revision mismatch is a documentation stop.
 
 Embedding call and shapes:
 
@@ -220,6 +243,10 @@ Embedding call and shapes:
   `pytorch-cpu` index — confirm CPU-only wheels in the lock diff). No
   `server/pyproject.toml` or `robot/pyproject.toml` edit. Never `uv pip
   install`; never hand-edit `uv.lock`.
+- Lock-diff check also confirms **no `numpy` upper-bound conflict**: the
+  workspace floors `numpy` at `>=2.4.4` (server) / `>=2.5.1` (robot); if `uv
+  add` reports an unsatisfiable resolution because `speechbrain` or a transitive
+  dep caps `numpy<2`, that is a technical FAIL recorded before any capture.
 - If mypy/pyright flags missing stubs, add `speechbrain.*` (and `torch.*` /
   `torchaudio.*` only if needed) to `[[tool.mypy.overrides]]
   ignore_missing_imports` in the root `pyproject.toml` — same pattern as the
@@ -228,10 +255,14 @@ Embedding call and shapes:
   third-party `DeprecationWarning` from `torch`/`speechbrain`, add a narrowly
   scoped `ignore::DeprecationWarning:speechbrain.*` (or `torch.*`) entry, mirroring
   the existing `piper.*` / `faster_whisper.*` filters — never a blanket ignore.
-- Rollback: `uv remove --group dev speechbrain` then
-  `uv sync --all-packages --all-groups`.
+- Rollback / lifecycle: on a **technical FAIL** in Task 3, run
+  `uv remove --group dev speechbrain` then `uv sync --all-packages --all-groups`
+  so a broken dependency is not left in `pyproject.toml` (it is in
+  `default-groups`, installed for every dev and CI run). On a **measurement
+  FAIL** or **provisional PASS**, the dev dependency may stay for a future
+  re-study or PC-3B — Pipec's choice, recorded in the closure section.
 
-### Block 4 — Frozen phrases and feasibility budget
+### Block 4 — Frozen phrases, conditions and feasibility budget
 
 Three neutral Spanish phrases (no names, personal facts, secrets or wake
 words), fixed so repeats across sessions are comparable:
@@ -241,6 +272,19 @@ words), fixed so repeats across sessions are comparable:
 | `phrase-01` | La lluvia cae despacio sobre el tejado de la casa |
 | `phrase-02` | Guardé cinco libros nuevos en el estante de madera |
 | `phrase-03` | Prefiero caminar por el parque cuando termina la tarde |
+
+Four literal `condition` labels — the corpus validator rejects any other
+string, so `by_condition` aggregates never split on a spelling drift:
+
+| Label | Meaning |
+|---|---|
+| `quiet-near` | quiet room, ~0.5 m from the mic |
+| `quiet-far` | quiet room, ~2–3 m from the mic |
+| `background-near` | ordinary household background noise, ~0.5 m |
+| `background-far` | ordinary household background noise, ~2–3 m |
+
+Reference samples are always `quiet-near`. Genuine samples span all four.
+Impostor and replay `condition` labels follow the same vocabulary.
 
 CPU feasibility budget: **p95 ≤ 500 ms** for one embedding of a 3-second WAV,
 chosen by Pipec on 2026-09-08 **before any measurement**. The measured p95 is
@@ -290,9 +334,61 @@ RED/GREEN commands per task:
 
 | Task | RED (expect failures / missing symbols only) | GREEN |
 |---|---|---|
-| 1 | `uv run pytest tests/unit/test_speaker_calibration.py -k "normalize or centroid or distance or threshold or latency" -n0 -v` | same, plus full file |
-| 2 | `uv run pytest tests/unit/test_speaker_calibration.py -k "manifest or wav or path or cli" -n0 -v` | same, plus `just lint` / `just typecheck` |
-| 3 | `uv run pytest tests/unit/test_speaker_calibration.py -k "backend" -n0 -v` and `uv run pytest tests/slow/test_speaker_calibration_backend.py -m slow -n0 -v` | same, plus lock-diff inspection and `uv sync --frozen` check |
+| 1 | `uv run pytest tests/unit/test_speaker_calibration.py -k "normalize or centroid or distance or threshold or latency" -n0 -v` | same, plus full file, plus the scoped script checks below |
+| 2 | `uv run pytest tests/unit/test_speaker_calibration.py -k "manifest or wav or path or cli" -n0 -v` | same, plus the scoped script checks below |
+| 3 | `uv run pytest tests/unit/test_speaker_calibration.py -k "backend" -n0 -v` and `uv run pytest tests/slow/test_speaker_calibration_backend.py -m slow -n0 -v` | same, plus scoped script checks, lock-diff inspection and `uv sync --frozen` check |
+
+**Scoped script checks (mandatory — `just lint` / `just typecheck` / `just gate`
+do NOT cover this deliverable).** `scripts/` is excluded from Ruff
+(`pyproject.toml`), mypy (`exclude`) and Pyright (`pyrightconfig.json`), so the
+repo gates report GREEN without ever inspecting the new files. Every task that
+touches `scripts/speaker_calibration.py` (or `scripts/speaker_calibration_models.py`)
+must additionally run, and pass:
+
+```powershell
+uv run ruff check scripts/speaker_calibration.py scripts/speaker_calibration_models.py
+uv run ruff format --check scripts/speaker_calibration.py scripts/speaker_calibration_models.py
+uv run mypy scripts/speaker_calibration.py scripts/speaker_calibration_models.py
+```
+
+mypy's config `exclude` is ignored for files passed explicitly, so this works.
+Task 7 must run these three commands over the final files before the whole-branch
+review, in addition to `just gate` / `just check`.
+
+## Independent review (blocker 9, 2026-09-08)
+
+A cold independent reviewer read the plan, `CLAUDE.md`, every `.claude/rules/`
+file, the identity/architecture docs, `pyproject.toml` / subproject manifests,
+`face_calibration.py` and the `justfile`, and re-verified every checkable claim
+in the frozen contract against the pinned primary sources (PyPI JSON API,
+SpeechBrain v1.1.1 `classifiers.py` / `speaker.py` / `utils/fetching.py` /
+`inference/interfaces.py`, the HF model card + commit history + `hyperparams.yaml`
+at revision `0f99f2d0`).
+
+**Verdict: APPROVE WITH MINOR FIXES.** Every hard fact an implementer keys on —
+package version, license, Python floor, `encode_batch` signature, `FetchConfig`
+shape, `LocalStrategy` values, model revision, 192-d embedding, the
+`fetch_config`→`hf_hub_download` forwarding chain, the `SpeakerRecognition`
+`threshold=0.25` — matches source. No scope creep; safety/privacy design
+coherent. (Note: the human-readable PyPI *page* misreports the release order;
+the PyPI *JSON API* confirms `1.1.1` is the latest and matches the plan.)
+
+Findings, all applied in this file 2026-09-08:
+
+| # | Severity | Issue | Fix applied |
+|---|---|---|---|
+| 1 | MEDIUM | "no hardcoded model" (Global constraints) contradicted Block 2's frozen `_MODEL_SOURCE` / `_MODEL_REVISION` constants | Block 1 now states the frozen study identifiers are the one sanctioned exception and must not be made configurable |
+| 2 | MEDIUM | `scripts/` is excluded from Ruff, mypy **and** Pyright, so `just lint` / `just typecheck` / `just gate` give a false GREEN for the plan's main deliverable | Block 6 adds mandatory scoped `ruff check` / `ruff format --check` / `mypy` commands on the script files; wired into the RED/GREEN table and Task 7 |
+| 3 | LOW | `from speechbrain.inference.speaker import EncoderClassifier` is a re-export site, not the definition module | Block 1 notes the class is defined in `…inference.classifiers` and the `speaker` path is used because the HF model card uses it and the version is pinned |
+| 4 | LOW | Pinned revision `0f99f2d0` is itself a "Revert changes from PR" commit; offline-load treated as unconditionally safe | Block 2 tells the implementer to diff what `0f99f2d0` reverted, and softens the rule: an offline-only load failure with the same pinned revision loading fine online is an "offline-only load limitation", not a study-ending FAIL |
+| 5 | LOW | Dependency lifecycle after the study closes was unspecified | Block 4 rollback bullet: technical FAIL → `uv remove`; measurement FAIL / provisional PASS → dev dep may stay at Pipec's choice, recorded in closure |
+| 6 | LOW | `numpy` 2.x resolution conflict risk not called out (workspace floors `numpy>=2.4.4`/`>=2.5.1`) | Block 3 lock-diff check now includes "no `numpy` upper-bound conflict" |
+| 7 | LOW | `condition` label vocabulary was free-text, could split `by_condition` aggregates on a spelling drift | Block 4 freezes four literal labels (`quiet-near`, `quiet-far`, `background-near`, `background-far`); the corpus validator rejects anything else |
+| 8 | LOW | `savedir` path described, not named | Block 2 names it `project-history/calibration/speaker/model-cache/` |
+
+None of the findings required redesign or re-freezing the backend. After these
+edits, blocker 9 is satisfied; the only remaining step is Pipec's explicit
+promotion decision.
 
 ## Required reading after promotion
 
@@ -614,10 +710,14 @@ The minimum accepted corpus is:
 
 | Class | Minimum | Separation and conditions |
 |---|---:|---|
-| Reference | 6 | Owner, one dedicated enrollment session, three neutral fixed phrases × two repetitions, quiet/near. |
-| Genuine | 24 | Owner, at least two later sessions, three phrases, near/far and quiet/ordinary-background conditions; no reference file reused. |
+| Reference | 6 | Owner, one dedicated enrollment session, three neutral fixed phrases × two repetitions, `quiet-near` only. |
+| Genuine | 24 | Owner, at least two later sessions, three phrases, spanning all four frozen `condition` labels; no reference file reused. |
 | Live impostor | 18 | At least three consenting adults, each three phrases × two repetitions, captured live rather than played from a device. |
-| Replay | 6 | Pipec replays at least three owner probe recordings through a household speaker at two distances; source IDs recorded locally. |
+| Replay | 6 | Pipec replays at least three owner probe recordings through a household speaker at `quiet-near` and `quiet-far`; source IDs recorded locally. |
+
+`condition` on every row uses the four literal labels frozen in Block 4
+(`quiet-near`, `quiet-far`, `background-near`, `background-far`); the corpus
+validator rejects any other string.
 
 Phrases contain no personal facts, secrets, wake words or names. The readiness
 amendment freezes the literal Spanish phrases so repeats are comparable. A
@@ -830,10 +930,14 @@ matrix silently or substitute internet/synthetic voices.
 - [ ] Confirm WAVs, embeddings, manifests, per-sample scores and temporary
   caches containing samples are gone. Model package/cache may remain only if it
   contains no captured audio and Pipec chooses to retain it.
-- [ ] Run the current canonical gate, then documentation hook/diff checks:
+- [ ] Run the current canonical gate, the scoped script checks (Block 6 — the
+  gate does not see `scripts/`), then documentation hook/diff checks:
 
   ```powershell
   just gate
+  uv run ruff check scripts/speaker_calibration.py scripts/speaker_calibration_models.py
+  uv run ruff format --check scripts/speaker_calibration.py scripts/speaker_calibration_models.py
+  uv run mypy scripts/speaker_calibration.py scripts/speaker_calibration_models.py
   just check
   git diff --check
   ```

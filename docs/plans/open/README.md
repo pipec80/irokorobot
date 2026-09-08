@@ -12,15 +12,16 @@ combined P0-C operator runbook passed and Plan 0013's STT-accuracy debt
 closed), re-audited 2026-09-01 after Plan 0030 closed, aligned on
 2026-09-07 with the longitudinal-memory design and its first two bounded
 plans, updated 2026-09-08 after Plan 0046 closed CM-0, and again 2026-09-08
-after Plan 0047's readiness amendment froze its backend/dependency gate.
+after Plan 0047's readiness amendment froze its backend/dependency gate and
+its independent review (APPROVE WITH MINOR FIXES) cleared the last blocker.
 Existing components named under **Reuse** must not be rebuilt by a later plan.
 
 For daily work, do not choose a plan from this inventory. Follow the
 single-WIP [operational board](../README.md#operational-board) — **CM-0
 (Plan 0046) closed 2026-09-08; the `NOW` lane is empty.** Plan 0047 (PC-3A)
-is the next slice; its readiness amendment is complete (2026-09-08) but it
-stays `Queued` until an independent plan review and Pipec's explicit
-promotion/authorization. Use the
+is the next slice; its readiness amendment and independent review are both
+complete (2026-09-08, all 9 blockers cleared) but it stays `Queued` until
+Pipec's explicit promotion/authorization. Use the
 [personal-companion delivery map](../../roadmap/personal-companion-delivery-map.md)
 and [conversational-memory delivery map](../../roadmap/conversational-memory-delivery-map.md)
 to see the code, tests, verified gaps, and future delivery sequence.
@@ -28,7 +29,7 @@ to see the code, tests, verified gaps, and future delivery sequence.
 | Plan | Implementation reality | Reuse | Remaining closure |
 |---|---|---|---|
 | [0015](0015-personal-companion-design.md) | Approved product design; PC-1 is complete and PC-2 has a provisional calibrated acceptance | Controller, policy/audit, V4 household tools, identity/session seam, working memory, legacy extraction/vector storage, STT/TTS, face engine | PC-3 speaker, PC-4 fusion, CM-1…CM-7 longitudinal memory, PC-5 integrated personal acceptance, and PC-6 family remain open (CM-0 closed) |
-| [0047](0047-speaker-evidence-calibration-study.md) | `Queued`, reviewed design, readiness amendment complete 2026-09-08, not executable | WAV/audio contract, microphone capture, face-calibration numeric/corpus pattern | Independent plan review, then Pipec promotes and authorizes; then measure PC-3A; PC-3B and PC-4 remain separate |
+| [0047](0047-speaker-evidence-calibration-study.md) | `Queued`, readiness amendment + independent review complete 2026-09-08 (all 9 blockers cleared), not executable | WAV/audio contract, microphone capture, face-calibration numeric/corpus pattern | Pipec promotes to `Ready`/`NOW` and authorizes; then measure PC-3A; PC-3B and PC-4 remain separate |
 
 ## Server-production capsule — CLOSED 2026-09-03
 
@@ -75,9 +76,9 @@ cognitive RED (`ac43c58`, exit 1); it changed no runtime memory. See
 [completed/0046](../completed/0046-reproducible-longitudinal-memory-baseline.md).
 
 Canonical execution order: **nothing executable.** Plan 0047's readiness gate is
-frozen (2026-09-08 amendment) but it remains queued and cannot be promoted until
-an independent plan review and Pipec's explicit approval. The server capsule
-(Plan 0031, children 0032–0045) is fully closed.
+frozen and its independent review is done (2026-09-08, all 9 blockers cleared);
+it remains queued and cannot be promoted until Pipec's explicit approval. The
+server capsule (Plan 0031, children 0032–0045) is fully closed.
 
 [Plan 0048](../completed/0048-fastapi-baseline-final-hardening.md) closed
 2026-09-07: a bounded follow-up to a second independent audit of the server

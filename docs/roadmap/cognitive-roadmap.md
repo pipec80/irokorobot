@@ -75,7 +75,7 @@ are adjacent.
 | Order | Track | Delivery slice | Verifiable outcome / exit evidence | Depends on | Commitment | Current state | Detail and executable ownership |
 |---:|---|---|---|---|---|---|---|
 | 1 | Evaluation | CM-0 — reproducible longitudinal baseline | A versioned synthetic benchmark runs reproducibly; the harness finishes GREEN while the measured product remains honestly RED or passes without relaxed thresholds. | Closed P0/PC-1/PC-2 foundations | Required | **Complete 2026-09-08** — benchmark GREEN, baseline RED (`ac43c58`, exit 1) | [Memory map](conversational-memory-delivery-map.md#delivery-sequence); [Plan 0046](../plans/completed/0046-reproducible-longitudinal-memory-baseline.md) |
-| 2 | Biometrics | PC-3A — speaker calibration study | A frozen local backend and versioned genuine/impostor corpus measure FAR/FRR, replay, quality, failure posture and CPU feasibility without granting identity or authorization. | CM-0 closed; Plan 0047 readiness amendment approved | Required | `Queued` — readiness amendment complete 2026-09-08 (backend, model revision, dependency, tensor contract, latency protocol, phrases, p95 budget frozen); pending independent review + Pipec authorization | [Plan 0015](../plans/open/0015-personal-companion-design.md#pc-3--speaker-evidence--unstarted-pc-3a-plan-queued); [Plan 0047](../plans/open/0047-speaker-evidence-calibration-study.md) |
+| 2 | Biometrics | PC-3A — speaker calibration study | A frozen local backend and versioned genuine/impostor corpus measure FAR/FRR, replay, quality, failure posture and CPU feasibility without granting identity or authorization. | CM-0 closed; Plan 0047 readiness amendment approved | Required | `Queued` — readiness amendment + independent review both complete 2026-09-08 (all 9 blockers cleared; review = APPROVE WITH MINOR FIXES, all findings applied); pending only Pipec's explicit promotion/authorization | [Plan 0015](../plans/open/0015-personal-companion-design.md#pc-3--speaker-evidence--unstarted-pc-3a-plan-queued); [Plan 0047](../plans/open/0047-speaker-evidence-calibration-study.md) |
 | 3 | Biometrics | PC-3B — consented speaker runtime evidence | Local enrollment, consent, revocation and verification produce typed `VOICE` evidence; missing, weak or failed evidence remains `unknown` and grants no capability directly. | PC-3A measured and accepted | Required | Unplanned | [Plan 0015](../plans/open/0015-personal-companion-design.md#pc-3--speaker-evidence--unstarted-pc-3a-plan-queued); future bounded plan |
 | 4 | Identity | PC-4 — conservative multimodal fusion | PIN/session, face and voice evidence are fused deterministically; conflict is `ambiguous`; expiry, absence, replay/spoof risk, provider failure and local recovery have explicit outcomes. | PC-3B; existing PC-2 face evidence | Required | Unplanned | [Plan 0015](../plans/open/0015-personal-companion-design.md#pc-4--conservative-identity-fusion--unstarted); future bounded plan |
 | 5 | Memory policy | CM-1 — explicit personal-memory capabilities | Policy distinguishes `read`, `propose`, `confirm`, `correct` and `forget` scopes without turning identity into authorization. | PC-4; current identity and policy foundations | Required | Unplanned | [Memory map](conversational-memory-delivery-map.md); future bounded plan |
@@ -132,10 +132,12 @@ CM-0 is closed (Plan 0046, 2026-09-08). The current cursor is PC-3A: Plan 0047
 holds the next reviewed handoff in `Queued`. Its backend/dependency readiness
 gate was frozen by the 2026-09-08 amendment (SpeechBrain `1.1.1` `EncoderClassifier`,
 ECAPA revision `0f99f2d0…`, Apache-2.0, the frozen preprocessing/tensor contract,
-the exact `uv add` command, the latency protocol, three Spanish phrases and a
-p95 ≤ 500 ms budget). It still cannot be promoted until an independent plan
-review and Pipec's explicit execution authorization. Rows 3–19 are not
-executable and their plan numbers are intentionally unreserved.
+the exact `uv add` command, the latency protocol, three Spanish phrases, four
+`condition` labels and a p95 ≤ 500 ms budget), and its independent plan review
+(2026-09-08) returned APPROVE WITH MINOR FIXES with all findings applied — so
+**all 9 readiness blockers are cleared**. It still cannot be promoted until
+Pipec's explicit execution authorization. Rows 3–19 are not executable and their
+plan numbers are intentionally unreserved.
 
 ## C0 — Documentation foundation
 
