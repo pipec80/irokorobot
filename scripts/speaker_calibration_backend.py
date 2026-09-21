@@ -18,6 +18,7 @@ voiceprint and never makes ``VOICE`` trusted identity evidence.
 
 from __future__ import annotations
 
+from importlib.metadata import version
 import io
 import logging
 from pathlib import Path
@@ -165,6 +166,23 @@ def _assert_resolved_revision() -> str:
     if marker not in Path(resolved).as_posix():
         raise ValueError(f"resolved revision path {resolved!r} is not under {marker!r}")
     return resolved
+
+
+def frozen_model_identity() -> tuple[str, str]:
+    """Return the frozen model id and package version, proving the cache offline.
+
+    Used by ``analyze`` so a report always names the exact pinned revision that
+    produced the embeddings. It never touches the network or the microphone.
+
+    Returns:
+        ``(model_id, package_version)`` — ``source@revision`` and
+        ``speechbrain <version>``.
+
+    Raises:
+        ValueError: If the pinned revision is not the one cached locally.
+    """
+    _assert_resolved_revision()
+    return f"{_MODEL_SOURCE}@{_MODEL_REVISION}", f"speechbrain {version('speechbrain')}"
 
 
 def _sine_wav_bytes(*, seconds: int, freq_hz: float = 220.0) -> bytes:

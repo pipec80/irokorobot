@@ -48,6 +48,7 @@ import numpy as np
 from scripts.speaker_calibration_corpus import (
     append_sample_atomic,
     load_manifest,
+    render_aggregate_report,
     resolve_corpus_path,
     sha256_of_file,
     validate_corpus,
@@ -61,6 +62,7 @@ from scripts.speaker_calibration_models import (
     EMBEDDING_DIM,
     EMBEDDINGS_NAME,
     IMPOSTOR_ID_PATTERN,
+    LATENCY_KEY_PREFIX,
     MANIFEST_NAME,
     OWNER_SUBJECT_ID,
     PHRASE_IDS,
@@ -74,7 +76,7 @@ from scripts.speaker_calibration_models import (
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
-    from scripts.speaker_calibration_models import SpeakerEmbeddingBackend
+    from scripts.speaker_calibration_models import SpeakerEmbeddingBackend, SpeakerManifest
 
 logger = logging.getLogger(__name__)
 
@@ -348,8 +350,8 @@ def run_cli(
 
     Args:
         options: The parsed action and its metadata.
-        backend: Embedding backend for ``embed`` (the concrete one arrives in
-            Task 3); ``None`` makes ``embed`` fail cleanly.
+        backend: Embedding backend for ``embed`` (``main`` supplies the frozen
+            SpeechBrain one); ``None`` makes ``embed`` fail cleanly.
         capture_audio: Microphone boundary for ``capture``; ``None`` uses the
             real robot recorder. ``validate``/``embed``/``analyze``/``cleanup``
             never touch it.
@@ -530,18 +532,31 @@ def _run_validate(options: SpeakerCliOptions) -> int:
 
 def _run_embed(options: SpeakerCliOptions, backend: SpeakerEmbeddingBackend | None) -> int:
     if backend is None:
-        logger.error("embed needs a speaker embedding backend (the frozen one arrives in Task 3)")
+        logger.error("embed needs the frozen speaker backend, which is not loaded")
         return 1
     manifest = load_manifest(options.manifest_path, options.corpus_root)
-    embeddings: dict[str, np.ndarray] = {}
+    if manifest.samples:  # one discarded embedding so the first timing is not a cold start
+        backend.embed_wav(manifest.samples[0].wav_path.read_bytes())
+    arrays: dict[str, np.ndarray] = {}
     for sample in manifest.samples:
-        wav_bytes = sample.wav_path.read_bytes()
-        validate_wav_bytes(wav_bytes)
-        vector = _checked_embedding(backend.embed_wav(wav_bytes))
-        embeddings[sample.sample_id] = vector
-    _write_npz_atomic(options.corpus_root / EMBEDDINGS_NAME, embeddings)
-    logger.info("wrote %d embeddings for model %s", len(embeddings), backend.model_id)
+        vector, latency_ms = _embed_sample(backend, sample)
+        arrays[sample.sample_id] = vector
+        arrays[LATENCY_KEY_PREFIX + sample.sample_id] = np.array(latency_ms)
+    _write_npz_atomic(options.corpus_root / EMBEDDINGS_NAME, arrays)
+    logger.info("wrote %d embeddings for model %s", len(manifest.samples), backend.model_id)
     return 0
+
+
+def _embed_sample(
+    backend: SpeakerEmbeddingBackend, sample: SpeakerSample
+) -> tuple[np.ndarray, float]:
+    """Embed one corpus WAV (16 000 Hz, mono, signed int16) and time the embedding."""
+    wav_bytes = sample.wav_path.read_bytes()
+    validate_wav_bytes(wav_bytes)
+    start = time.perf_counter()
+    vector = backend.embed_wav(wav_bytes)
+    latency_ms = (time.perf_counter() - start) * 1000.0
+    return _checked_embedding(vector), latency_ms
 
 
 def _checked_embedding(vector: np.ndarray) -> np.ndarray:
@@ -561,6 +576,16 @@ def _write_npz_atomic(target: Path, arrays: dict[str, np.ndarray]) -> None:
         # numpy's savez stub misbinds a ``**dict[str, ndarray]`` splat to its
         # ``allow_pickle`` bool parameter; the runtime call is correct.
         np.savez(handle, **arrays)  # type: ignore[arg-type]
+    _swap_into_place(tmp, target)
+
+
+def _write_text_atomic(target: Path, text: str) -> None:
+    tmp = target.with_name(target.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    _swap_into_place(tmp, target)
+
+
+def _swap_into_place(tmp: Path, target: Path) -> None:
     try:
         tmp.replace(target)
     except OSError:
@@ -569,23 +594,52 @@ def _write_npz_atomic(target: Path, arrays: dict[str, np.ndarray]) -> None:
 
 
 def _run_analyze(options: SpeakerCliOptions) -> int:
+    """Score the corpus and write the aggregate report (Task 6).
+
+    Never opens the microphone or the network. Returns ``0`` whenever the report
+    was produced — a measured ``fail_distance_overlap`` is a result, not an error.
+    """
     output = options.output_path or (options.corpus_root / REPORT_NAME)
     if output.exists():
         logger.error("refusing to overwrite an existing report: %s", output)
         return 1
     manifest = load_manifest(options.manifest_path, options.corpus_root)
     validate_corpus(manifest)
-    embeddings_path = options.corpus_root / EMBEDDINGS_NAME
-    if not embeddings_path.exists():
-        logger.error(
-            "no embeddings at %s - run `embed` first (backend arrives in Task 3)", embeddings_path
-        )
-        return 1
-    # Task 6 wires the Task 1 numeric layer (reference_centroid, cosine_distance,
-    # sweep_speaker_thresholds, zero_far_speaker_threshold) over these embeddings
-    # into an AggregateSpeakerReport rendered to `output`. No microphone, no network.
-    logger.error("analyze aggregation is implemented in Plan 0047 Task 6")
-    return 1
+    embeddings, latencies = _load_embeddings(options.corpus_root / EMBEDDINGS_NAME, manifest)
+    # Deferred: both modules import this one at load time.
+    from scripts.speaker_calibration_analysis import build_report  # noqa: PLC0415
+    from scripts.speaker_calibration_backend import frozen_model_identity  # noqa: PLC0415
+
+    model_id, package_version = frozen_model_identity()
+    report = build_report(
+        manifest, embeddings, latencies, model_id=model_id, package_version=package_version
+    )
+    _write_text_atomic(output, render_aggregate_report(report))
+    logger.info("analysis outcome: %s (aggregate report written)", report.outcome)
+    return 0
+
+
+def _load_embeddings(
+    path: Path, manifest: SpeakerManifest
+) -> tuple[dict[str, np.ndarray], list[float]]:
+    """Load one checked vector and one latency per manifest sample.
+
+    Raises:
+        ValueError: If the file is absent or any manifest sample lacks a vector
+            or a latency (only counts are reported, never sample ids).
+    """
+    if not path.exists():
+        raise ValueError(f"no embeddings at {path} - run `embed` first")
+    ids = [sample.sample_id for sample in manifest.samples]
+    with np.load(path) as stored:
+        present = set(stored.files)
+        vectors = {i: _checked_embedding(stored[i]) for i in ids if i in present}
+        latencies = [
+            float(stored[LATENCY_KEY_PREFIX + i]) for i in ids if LATENCY_KEY_PREFIX + i in present
+        ]
+    if len(vectors) != len(ids) or len(latencies) != len(ids):
+        raise ValueError(f"embeddings incomplete for {len(ids)} sample(s) - re-run embed")
+    return vectors, latencies
 
 
 def _run_cleanup(options: SpeakerCliOptions) -> int:
@@ -608,10 +662,26 @@ def _run_cleanup(options: SpeakerCliOptions) -> int:
     return 0
 
 
+def _load_frozen_backend() -> SpeakerEmbeddingBackend | None:
+    """Build the frozen offline backend, or ``None`` (logged) if it cannot load."""
+    from scripts.speaker_calibration_backend import (  # noqa: PLC0415 -- keeps torch deferred
+        SpeechBrainEcapaBackend,
+        load_frozen_encoder,
+    )
+
+    try:
+        return SpeechBrainEcapaBackend(load_frozen_encoder(allow_network=False))
+    except Exception:  # any model/cache fault: embed then fails cleanly without a backend
+        logger.exception("could not load the frozen speaker backend; run model-contract first")
+        return None
+
+
 def main() -> None:
     """CLI entry point for ``just speaker-calibration``."""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
-    raise SystemExit(run_cli(parse_cli_args()))
+    options = parse_cli_args()
+    backend = _load_frozen_backend() if options.action == "embed" else None
+    raise SystemExit(run_cli(options, backend=backend))
 
 
 if __name__ == "__main__":

@@ -50,6 +50,9 @@ DEFAULT_CORPUS_ROOT: Final = Path("project-history/calibration/speaker")
 MANIFEST_NAME: Final = "manifest.json"
 EMBEDDINGS_NAME: Final = "embeddings.npz"
 REPORT_NAME: Final = "aggregate-report.md"
+# ``embeddings.npz`` holds one vector per sample_id plus that sample's embedding
+# latency in ms under ``LATENCY_KEY_PREFIX + sample_id`` (a reserved namespace).
+LATENCY_KEY_PREFIX: Final = "__lat__"
 
 CliAction = Literal["model-contract", "capture", "validate", "embed", "analyze", "cleanup"]
 CLI_ACTIONS: Final[tuple[CliAction, ...]] = get_args(CliAction)

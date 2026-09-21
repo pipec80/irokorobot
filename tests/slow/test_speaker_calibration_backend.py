@@ -17,6 +17,7 @@ from scripts.speaker_calibration_backend import (
     _MODEL_REVISION,
     SpeechBrainEcapaBackend as _Backend,
     _sine_wav_bytes,
+    frozen_model_identity,
     load_frozen_encoder,
 )
 
@@ -58,3 +59,10 @@ def test_model_id_pins_the_frozen_revision(frozen_backend: _Backend) -> None:
 def test_offline_load_after_cache_needs_no_network() -> None:
     """`allow_network=False` must succeed once the cache is warm."""
     load_frozen_encoder(allow_network=False)
+
+
+def test_frozen_model_identity_names_the_pinned_revision_offline(frozen_backend: _Backend) -> None:
+    model_id, package_version = frozen_model_identity()
+
+    assert model_id.endswith(_MODEL_REVISION)
+    assert package_version.startswith("speechbrain ")

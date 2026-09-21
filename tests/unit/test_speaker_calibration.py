@@ -15,6 +15,7 @@ from __future__ import annotations
 import io
 import json
 import math
+import sys
 from typing import TYPE_CHECKING
 import wave
 
@@ -23,6 +24,7 @@ import pytest
 
 from scripts.speaker_calibration import (
     SpeakerThresholdResult,
+    _load_frozen_backend,
     _reject_if_too_short,
     cosine_distance,
     l2_normalize,
@@ -50,6 +52,7 @@ from scripts.speaker_calibration_corpus import (
 )
 from scripts.speaker_calibration_models import (
     CONDITIONS,
+    LATENCY_KEY_PREFIX,
     PHRASE_IDS,
     PHRASE_TEXT,
     AggregateSpeakerReport,
@@ -969,8 +972,9 @@ def test_run_cli_embed_writes_one_vector_per_sample_via_the_protocol(tmp_path: P
 
     assert exit_code == 0
     with np.load(tmp_path / "embeddings.npz") as stored:
-        assert sorted(stored.files) == sorted(r["sample_id"] for r in rows)
-        assert all(stored[name].shape == (192,) for name in stored.files)
+        vectors = [n for n in stored.files if not n.startswith(LATENCY_KEY_PREFIX)]
+        assert sorted(vectors) == sorted(r["sample_id"] for r in rows)
+        assert all(stored[name].shape == (192,) for name in vectors)
 
 
 def test_run_cli_embed_rejects_a_wrong_dimension_embedding(tmp_path: Path) -> None:
@@ -1125,7 +1129,8 @@ def test_run_cli_embed_accepts_the_concrete_backend(tmp_path: Path) -> None:
 
     assert exit_code == 0
     with np.load(tmp_path / "embeddings.npz") as stored:
-        assert all(stored[name].shape == (192,) for name in stored.files)
+        vectors = [n for n in stored.files if not n.startswith(LATENCY_KEY_PREFIX)]
+        assert all(stored[name].shape == (192,) for name in vectors)
 
 
 def test_run_cli_model_contract_dispatches_to_the_backend(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1148,3 +1153,186 @@ def test_run_cli_model_contract_propagates_backend_failure(monkeypatch: pytest.M
     )
 
     assert run_cli(parse_cli_args(["model-contract"])) != 0
+
+
+# =====================================================================
+# Task 6 groundwork — per-sample latency, real analyze, backend wiring
+# =====================================================================
+
+
+class _CountingBackend:
+    """Fake backend that counts every ``embed_wav`` call."""
+
+    model_id = "counting@test"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def embed_wav(self, wav_bytes: bytes) -> np.ndarray:  # noqa: ARG002
+        self.calls += 1
+        return np.full(192, 1.0, dtype=np.float32)
+
+
+def test_run_cli_embed_records_one_latency_per_sample(tmp_path: Path) -> None:
+    rows = _minimum_corpus_rows(tmp_path)
+    _write_manifest(tmp_path, rows)
+
+    run_cli(parse_cli_args(["embed", "--corpus-root", str(tmp_path)]), backend=_FakeBackend())
+
+    with np.load(tmp_path / "embeddings.npz") as stored:
+        keys = sorted(n for n in stored.files if n.startswith(LATENCY_KEY_PREFIX))
+        assert keys == sorted(LATENCY_KEY_PREFIX + r["sample_id"] for r in rows)
+        assert all(float(stored[k]) >= 0.0 for k in keys)
+
+
+def test_run_cli_embed_discards_one_warm_up_embedding_before_timing(tmp_path: Path) -> None:
+    rows = _minimum_corpus_rows(tmp_path)
+    _write_manifest(tmp_path, rows)
+    backend = _CountingBackend()
+
+    run_cli(parse_cli_args(["embed", "--corpus-root", str(tmp_path)]), backend=backend)
+
+    assert backend.calls == len(rows) + 1
+
+
+_DISTANCE_BY_CLASS = {"reference": 0.0, "genuine": 0.2, "impostor": 0.6, "replay": 0.4}
+
+
+def _unit_at_distance(distance: float) -> np.ndarray:
+    theta = float(np.arccos(1.0 - distance))
+    vec = np.zeros(192)
+    vec[0], vec[1] = np.cos(theta), np.sin(theta)
+    return vec
+
+
+def _write_embeddings(
+    corpus_root: Path, rows: list[dict[str, str]], *, distances: dict[str, float] | None = None
+) -> None:
+    table = distances or _DISTANCE_BY_CLASS
+    arrays: dict[str, np.ndarray] = {}
+    for row in rows:
+        arrays[row["sample_id"]] = _unit_at_distance(table[row["sample_class"]])
+        arrays[LATENCY_KEY_PREFIX + row["sample_id"]] = np.array(210.0)
+    # numpy's savez stub misbinds a ``**dict`` splat to ``allow_pickle``; runtime is correct.
+    np.savez(corpus_root / "embeddings.npz", **arrays)  # type: ignore[arg-type]
+
+
+@pytest.fixture
+def _frozen_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "scripts.speaker_calibration_backend.frozen_model_identity",
+        lambda: ("speechbrain/test@rev", "speechbrain 0.0"),
+    )
+
+
+def _analyze_opts(tmp_path: Path, output: Path) -> SpeakerCliOptions:
+    return parse_cli_args(["analyze", "--corpus-root", str(tmp_path), "--output", str(output)])
+
+
+@pytest.mark.usefixtures("_frozen_identity")
+def test_run_cli_analyze_writes_an_aggregate_report(tmp_path: Path) -> None:
+    rows = _minimum_corpus_rows(tmp_path)
+    _write_manifest(tmp_path, rows)
+    _write_embeddings(tmp_path, rows)
+    output = tmp_path / "report.md"
+
+    exit_code = run_cli(_analyze_opts(tmp_path, output))
+
+    text = output.read_text(encoding="utf-8")
+    assert exit_code == 0
+    assert "provisional_pass" in text
+    assert "gen-probe-01" not in text
+    assert "impostor_a" not in text
+    assert ".wav" not in text
+
+
+@pytest.mark.usefixtures("_frozen_identity")
+def test_run_cli_analyze_reports_an_overlap_as_a_fail_outcome(tmp_path: Path) -> None:
+    rows = _minimum_corpus_rows(tmp_path)
+    _write_manifest(tmp_path, rows)
+    overlap = {**_DISTANCE_BY_CLASS, "impostor": 0.05}
+    _write_embeddings(tmp_path, rows, distances=overlap)
+    output = tmp_path / "report.md"
+
+    exit_code = run_cli(_analyze_opts(tmp_path, output))
+
+    assert exit_code == 0  # the report was produced; the verdict is in it
+    assert "fail_distance_overlap" in output.read_text(encoding="utf-8")
+
+
+@pytest.mark.usefixtures("_frozen_identity")
+def test_run_cli_analyze_without_embeddings_fails_and_writes_nothing(tmp_path: Path) -> None:
+    _write_manifest(tmp_path, _minimum_corpus_rows(tmp_path))
+    output = tmp_path / "report.md"
+
+    assert run_cli(_analyze_opts(tmp_path, output)) != 0
+    assert not output.exists()
+
+
+@pytest.mark.usefixtures("_frozen_identity")
+def test_run_cli_analyze_rejects_incomplete_embeddings_and_writes_nothing(tmp_path: Path) -> None:
+    rows = _minimum_corpus_rows(tmp_path)
+    _write_manifest(tmp_path, rows)
+    _write_embeddings(tmp_path, rows[:-1])  # the last sample has no embedding
+    output = tmp_path / "report.md"
+
+    assert run_cli(_analyze_opts(tmp_path, output)) != 0
+    assert not output.exists()
+
+
+@pytest.mark.usefixtures("_frozen_identity")
+def test_run_cli_analyze_refuses_an_incomplete_corpus(tmp_path: Path) -> None:
+    rows = [r for r in _minimum_corpus_rows(tmp_path) if r["sample_class"] != "impostor"]
+    _write_manifest(tmp_path, rows)
+    _write_embeddings(tmp_path, rows)
+    output = tmp_path / "report.md"
+
+    assert run_cli(_analyze_opts(tmp_path, output)) != 0
+    assert not output.exists()
+
+
+def test_load_frozen_backend_builds_the_concrete_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "scripts.speaker_calibration_backend.load_frozen_encoder", lambda **_: _FakeEncoder()
+    )
+
+    backend = _load_frozen_backend()
+
+    assert isinstance(backend, SpeechBrainEcapaBackend)
+
+
+def test_load_frozen_backend_returns_none_when_the_model_cannot_load(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _broken(**_: object) -> object:
+        raise RuntimeError("model cache missing")
+
+    monkeypatch.setattr("scripts.speaker_calibration_backend.load_frozen_encoder", _broken)
+
+    assert _load_frozen_backend() is None
+
+
+def test_main_loads_the_frozen_backend_only_for_embed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from scripts import speaker_calibration as module  # noqa: PLC0415 -- patches this module
+
+    monkeypatch.setattr(module, "_load_frozen_backend", _FakeBackend)
+    _write_manifest(tmp_path, _minimum_corpus_rows(tmp_path))
+    monkeypatch.setattr(sys, "argv", ["x", "embed", "--corpus-root", str(tmp_path)])
+
+    with pytest.raises(SystemExit) as embed_exit:
+        module.main()
+
+    assert embed_exit.value.code == 0
+
+    def _forbidden() -> None:
+        raise AssertionError("only embed may load the model")
+
+    monkeypatch.setattr(module, "_load_frozen_backend", _forbidden)
+    monkeypatch.setattr(sys, "argv", ["x", "validate", "--corpus-root", str(tmp_path)])
+
+    with pytest.raises(SystemExit) as validate_exit:
+        module.main()
+
+    assert validate_exit.value.code == 0
