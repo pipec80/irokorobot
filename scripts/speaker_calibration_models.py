@@ -54,7 +54,9 @@ REPORT_NAME: Final = "aggregate-report.md"
 # latency in ms under ``LATENCY_KEY_PREFIX + sample_id`` (a reserved namespace).
 LATENCY_KEY_PREFIX: Final = "__lat__"
 
-CliAction = Literal["model-contract", "capture", "validate", "embed", "analyze", "cleanup"]
+CliAction = Literal[
+    "model-contract", "capture", "validate", "embed", "analyze", "cleanup", "discard"
+]
 CLI_ACTIONS: Final[tuple[CliAction, ...]] = get_args(CliAction)
 CAPTURE_FLAGS: Final = ("sample_class", "subject_id", "session_id", "phrase_id", "condition")
 
@@ -134,6 +136,7 @@ class SpeakerCliOptions:
     session_id: str | None
     phrase_id: str | None
     condition: str | None
+    sample_id: str | None = None  # only for ``discard --sample``
 
 
 @dataclass(frozen=True)

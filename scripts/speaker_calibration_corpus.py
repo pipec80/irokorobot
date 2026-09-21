@@ -39,7 +39,7 @@ from scripts.speaker_calibration_models import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Collection, Iterable, Sequence
     from pathlib import Path
 
 # Generous ceiling: a fixed neutral phrase read and the 3-second latency WAV are
@@ -175,6 +175,20 @@ def append_sample_atomic(manifest_path: Path, corpus_root: Path, sample: Speaker
     """
     rows: list[dict[str, str]] = list(_existing_rows(manifest_path))
     rows.append(_row_from_sample(sample, corpus_root))
+    _write_manifest_atomic(manifest_path, rows)
+
+
+def remove_samples_atomic(manifest_path: Path, sample_ids: Collection[str]) -> None:
+    """Drop the rows named in *sample_ids*, never exposing a partial manifest.
+
+    Other rows are kept exactly as stored. Ids that are not present are ignored,
+    so an interrupted removal can simply be run again.
+    """
+    rows = [row for row in _existing_rows(manifest_path) if row.get("sample_id") not in sample_ids]
+    _write_manifest_atomic(manifest_path, rows)
+
+
+def _write_manifest_atomic(manifest_path: Path, rows: list[dict[str, str]]) -> None:
     payload = {"schema_version": SCHEMA_VERSION, "samples": rows}
     tmp = manifest_path.with_name(manifest_path.name + ".tmp")
     tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -183,6 +197,21 @@ def append_sample_atomic(manifest_path: Path, corpus_root: Path, sample: Speaker
     except OSError:
         tmp.unlink(missing_ok=True)
         raise
+
+
+def select_samples(
+    manifest: SpeakerManifest, *, subject_id: str | None = None, sample_id: str | None = None
+) -> tuple[SpeakerSample, ...]:
+    """Return one participant's samples, or the one sample with an exact id.
+
+    Raises:
+        ValueError: Unless exactly one of *subject_id* and *sample_id* is given.
+    """
+    if (subject_id is None) == (sample_id is None):
+        raise ValueError("select by exactly one of subject_id or sample_id")
+    if subject_id is not None:
+        return tuple(s for s in manifest.samples if s.subject_id == subject_id)
+    return tuple(s for s in manifest.samples if s.sample_id == sample_id)
 
 
 def _existing_rows(manifest_path: Path) -> Iterable[dict[str, str]]:

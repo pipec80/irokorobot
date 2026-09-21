@@ -8,7 +8,7 @@ Three isolated layers, built one task at a time:
 2. **Private-corpus manifest and safe CLI** (Task 2, this task): strict sample
    schema (``scripts.speaker_calibration_models``), atomic manifest, WAV-contract
    validation, corpus-rule enforcement and aggregate-report rendering
-   (``scripts.speaker_calibration_corpus``), and the six-action CLI below.
+   (``scripts.speaker_calibration_corpus``), and the seven-action CLI below.
 3. **Frozen SpeechBrain embedding backend** - added by Task 3.
 
 This study measures whether a local CPU speaker embedding can separate the
@@ -48,8 +48,10 @@ import numpy as np
 from scripts.speaker_calibration_corpus import (
     append_sample_atomic,
     load_manifest,
+    remove_samples_atomic,
     render_aggregate_report,
     resolve_corpus_path,
+    select_samples,
     sha256_of_file,
     validate_corpus,
     validate_wav_bytes,
@@ -304,6 +306,7 @@ def parse_cli_args(argv: Sequence[str] | None = None) -> SpeakerCliOptions:
     parser.add_argument("--session", dest="session_id", default=None)
     parser.add_argument("--phrase", dest="phrase_id", choices=PHRASE_IDS, default=None)
     parser.add_argument("--condition", choices=CONDITIONS, default=None)
+    parser.add_argument("--sample", dest="sample_id", default=None)
     args = parser.parse_args(None if argv is None else list(argv))
     _cross_check_flags(parser, args)
     return SpeakerCliOptions(
@@ -316,6 +319,7 @@ def parse_cli_args(argv: Sequence[str] | None = None) -> SpeakerCliOptions:
         session_id=args.session_id,
         phrase_id=args.phrase_id,
         condition=args.condition,
+        sample_id=args.sample_id,
     )
 
 
@@ -326,10 +330,31 @@ def _cross_check_flags(parser: argparse.ArgumentParser, args: argparse.Namespace
         if missing:
             parser.error(f"capture requires every metadata flag; missing {missing}")
         _check_capture_subject(parser, args)
+    elif args.action == "discard":
+        _check_discard_selector(parser, args, supplied)
     elif supplied:
         parser.error(f"{args.action} does not accept capture flags: {sorted(supplied)}")
+    if args.sample_id is not None and args.action != "discard":
+        parser.error("--sample is only valid for discard")
     if args.output is not None and args.action != "analyze":
         parser.error("--output is only valid for analyze")
+
+
+def _check_discard_selector(
+    parser: argparse.ArgumentParser, args: argparse.Namespace, supplied: set[str]
+) -> None:
+    extra = sorted(supplied - {"subject_id"})
+    if extra:
+        parser.error(f"discard selects by --subject or --sample only, not {extra}")
+    if (args.subject_id is None) == (args.sample_id is None):
+        parser.error("discard needs exactly one of --subject or --sample")
+    subject = args.subject_id
+    if (
+        subject is not None
+        and subject != OWNER_SUBJECT_ID
+        and not IMPOSTOR_ID_PATTERN.match(subject)
+    ):
+        parser.error(f"--subject must be {OWNER_SUBJECT_ID!r} or match impostor_[a-z]+")
 
 
 def _check_capture_subject(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
@@ -377,17 +402,20 @@ def _dispatch(
 ) -> int:
     match options.action:
         case "capture":
-            return _run_capture(options, capture_audio)
+            code = _run_capture(options, capture_audio)
         case "validate":
-            return _run_validate(options)
+            code = _run_validate(options)
         case "embed":
-            return _run_embed(options, backend)
+            code = _run_embed(options, backend)
         case "analyze":
-            return _run_analyze(options)
+            code = _run_analyze(options)
         case "cleanup":
-            return _run_cleanup(options)
+            code = _run_cleanup(options)
+        case "discard":
+            code = _run_discard(options)
         case "model-contract":
-            return _run_model_contract()
+            code = _run_model_contract()
+    return code
 
 
 def _run_model_contract() -> int:
@@ -640,6 +668,49 @@ def _load_embeddings(
     if len(vectors) != len(ids) or len(latencies) != len(ids):
         raise ValueError(f"embeddings incomplete for {len(ids)} sample(s) - re-run embed")
     return vectors, latencies
+
+
+def _run_discard(options: SpeakerCliOptions) -> int:
+    """Permanently delete one participant's (or one sample's) private data.
+
+    Covers a participant's withdrawal and a technical exclusion: the WAV files,
+    their embeddings, their manifest rows and any now-stale aggregate report.
+    Idempotent — an interrupted run can be repeated. Nothing is deleted when the
+    selector matches nothing or the confirmation is not typed.
+    """
+    manifest = load_manifest(options.manifest_path, options.corpus_root)
+    targets = select_samples(manifest, subject_id=options.subject_id, sample_id=options.sample_id)
+    if not targets:
+        logger.error("nothing matches that selector; nothing was deleted")
+        return 1
+    counts = {c: sum(s.sample_class == c for s in targets) for c in SAMPLE_CLASSES}
+    described = ", ".join(f"{n} {c}" for c, n in counts.items() if n)
+    logger.warning("about to permanently delete %d sample(s) (%s)", len(targets), described)
+    logger.warning("their WAV files, embeddings and manifest rows, plus any stale report")
+    if input("Type 'delete' to confirm: ").strip().lower() != "delete":
+        logger.info("discard cancelled - nothing deleted")
+        return 1
+    ids = {s.sample_id for s in targets}
+    for sample in targets:
+        sample.wav_path.unlink(missing_ok=True)
+    _purge_embeddings(options.corpus_root / EMBEDDINGS_NAME, ids)
+    remove_samples_atomic(options.manifest_path, ids)
+    (options.corpus_root / REPORT_NAME).unlink(missing_ok=True)
+    logger.info("discarded %d sample(s); re-run embed and analyze to refresh results", len(ids))
+    return 0
+
+
+def _purge_embeddings(path: Path, sample_ids: set[str]) -> None:
+    """Drop the vectors and latencies of *sample_ids* from ``embeddings.npz``."""
+    if not path.exists():
+        return
+    drop = sample_ids | {LATENCY_KEY_PREFIX + sample_id for sample_id in sample_ids}
+    with np.load(path) as stored:
+        kept = {key: np.asarray(stored[key]) for key in stored.files if key not in drop}
+    if kept:
+        _write_npz_atomic(path, kept)
+    else:
+        path.unlink()
 
 
 def _run_cleanup(options: SpeakerCliOptions) -> int:

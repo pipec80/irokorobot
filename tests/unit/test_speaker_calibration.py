@@ -44,8 +44,10 @@ from scripts.speaker_calibration_backend import (
 from scripts.speaker_calibration_corpus import (
     append_sample_atomic,
     load_manifest,
+    remove_samples_atomic,
     render_aggregate_report,
     resolve_corpus_path,
+    select_samples,
     sha256_of_file,
     validate_corpus,
     validate_wav_bytes,
@@ -1336,3 +1338,196 @@ def test_main_loads_the_frozen_backend_only_for_embed(
         module.main()
 
     assert validate_exit.value.code == 0
+
+
+# =====================================================================
+# discard - participant withdrawal and technical exclusions
+# =====================================================================
+
+
+def _discard_opts(tmp_path: Path, *flags: str) -> SpeakerCliOptions:
+    return parse_cli_args(["discard", "--corpus-root", str(tmp_path), *flags])
+
+
+def _confirm(monkeypatch: pytest.MonkeyPatch, answer: str = "delete") -> None:
+    monkeypatch.setattr("builtins.input", lambda *_: answer)
+
+
+def _corpus_with_embeddings(tmp_path: Path) -> list[dict[str, str]]:
+    rows = _minimum_corpus_rows(tmp_path)
+    _write_manifest(tmp_path, rows)
+    _write_embeddings(tmp_path, rows)
+    return rows
+
+
+def _manifest_ids(tmp_path: Path) -> set[str]:
+    raw = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
+    return {row["sample_id"] for row in raw["samples"]}
+
+
+def test_select_samples_by_subject_and_by_sample_id(tmp_path: Path) -> None:
+    manifest = _load_minimum_manifest(tmp_path)
+
+    by_subject = select_samples(manifest, subject_id="impostor_a")
+    one = select_samples(manifest, sample_id=manifest.samples[0].sample_id)
+
+    assert len(by_subject) == 6
+    assert {s.subject_id for s in by_subject} == {"impostor_a"}
+    assert one == (manifest.samples[0],)
+
+
+def test_select_samples_needs_exactly_one_selector(tmp_path: Path) -> None:
+    manifest = _load_minimum_manifest(tmp_path)
+
+    with pytest.raises(ValueError, match="exactly one"):
+        select_samples(manifest)
+    with pytest.raises(ValueError, match="exactly one"):
+        select_samples(manifest, subject_id="impostor_a", sample_id="x")
+
+
+def test_remove_samples_atomic_drops_only_the_named_rows(tmp_path: Path) -> None:
+    rows = [_sample_row(tmp_path, sample_id="a"), _sample_row(tmp_path, sample_id="b")]
+    path = _write_manifest(tmp_path, rows)
+
+    remove_samples_atomic(path, {"a"})
+
+    assert _manifest_ids(tmp_path) == {"b"}
+    assert not path.with_name(path.name + ".tmp").exists()
+
+
+def test_cli_discard_needs_exactly_one_selector() -> None:
+    with pytest.raises(SystemExit):
+        parse_cli_args(["discard"])
+    with pytest.raises(SystemExit):
+        parse_cli_args(["discard", "--subject", "impostor_a", "--sample", "x"])
+
+
+def test_cli_discard_rejects_the_capture_metadata_flags() -> None:
+    with pytest.raises(SystemExit):
+        parse_cli_args(["discard", "--subject", "impostor_a", "--session", "s1"])
+
+
+def test_cli_sample_flag_is_only_valid_for_discard() -> None:
+    with pytest.raises(SystemExit):
+        parse_cli_args(["validate", "--sample", "x"])
+
+
+def test_cli_discard_rejects_a_subject_that_is_not_a_pseudonym() -> None:
+    with pytest.raises(SystemExit):
+        parse_cli_args(["discard", "--subject", "Some Real Name"])
+
+
+def test_run_cli_discard_subject_removes_wavs_rows_embeddings_and_stale_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rows = _corpus_with_embeddings(tmp_path)
+    (tmp_path / "aggregate-report.md").write_text("stale", encoding="utf-8")
+    gone = [r for r in rows if r["subject_id"] == "impostor_a"]
+    kept = [r for r in rows if r["subject_id"] != "impostor_a"]
+    _confirm(monkeypatch)
+
+    exit_code = run_cli(_discard_opts(tmp_path, "--subject", "impostor_a"))
+
+    assert exit_code == 0
+    assert all(not (tmp_path / r["wav_path"]).exists() for r in gone)
+    assert all((tmp_path / r["wav_path"]).exists() for r in kept)
+    assert _manifest_ids(tmp_path) == {r["sample_id"] for r in kept}
+    with np.load(tmp_path / "embeddings.npz") as stored:
+        for row in gone:
+            assert row["sample_id"] not in stored.files
+            assert LATENCY_KEY_PREFIX + row["sample_id"] not in stored.files
+        assert all(r["sample_id"] in stored.files for r in kept)
+    assert not (tmp_path / "aggregate-report.md").exists()
+
+
+def test_run_cli_discard_sample_removes_exactly_one_sample(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rows = _corpus_with_embeddings(tmp_path)
+    target = rows[10]["sample_id"]
+    _confirm(monkeypatch)
+
+    exit_code = run_cli(_discard_opts(tmp_path, "--sample", target))
+
+    assert exit_code == 0
+    assert _manifest_ids(tmp_path) == {r["sample_id"] for r in rows} - {target}
+
+
+def test_run_cli_discard_needs_the_typed_confirmation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rows = _corpus_with_embeddings(tmp_path)
+    before = (tmp_path / "manifest.json").read_bytes()
+    _confirm(monkeypatch, "no")
+
+    exit_code = run_cli(_discard_opts(tmp_path, "--subject", "impostor_a"))
+
+    assert exit_code != 0
+    assert (tmp_path / "manifest.json").read_bytes() == before
+    assert all((tmp_path / r["wav_path"]).exists() for r in rows)
+    with np.load(tmp_path / "embeddings.npz") as stored:
+        assert all(r["sample_id"] in stored.files for r in rows)
+
+
+def test_run_cli_discard_with_no_match_changes_nothing_and_never_prompts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _corpus_with_embeddings(tmp_path)
+    before = (tmp_path / "manifest.json").read_bytes()
+
+    def _forbidden(*_: object) -> str:
+        raise AssertionError("nothing matched, so there is nothing to confirm")
+
+    monkeypatch.setattr("builtins.input", _forbidden)
+
+    assert run_cli(_discard_opts(tmp_path, "--subject", "impostor_z")) != 0
+    assert (tmp_path / "manifest.json").read_bytes() == before
+
+
+def test_run_cli_discard_finishes_an_interrupted_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rows = _corpus_with_embeddings(tmp_path)
+    gone = [r for r in rows if r["subject_id"] == "impostor_a"]
+    (tmp_path / gone[0]["wav_path"]).unlink()  # a previous run died after this WAV
+    _confirm(monkeypatch)
+
+    assert run_cli(_discard_opts(tmp_path, "--subject", "impostor_a")) == 0
+    assert not (_manifest_ids(tmp_path) & {r["sample_id"] for r in gone})
+
+
+def test_run_cli_discard_works_before_any_embedding_exists(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_manifest(tmp_path, _minimum_corpus_rows(tmp_path))
+    _confirm(monkeypatch)
+
+    assert run_cli(_discard_opts(tmp_path, "--subject", "impostor_b")) == 0
+    assert not (tmp_path / "embeddings.npz").exists()
+
+
+def test_run_cli_discard_removes_the_embeddings_file_when_nothing_is_left(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rows = [r for r in _minimum_corpus_rows(tmp_path) if r["subject_id"] == "impostor_a"]
+    _write_manifest(tmp_path, rows)
+    _write_embeddings(tmp_path, rows)
+    _confirm(monkeypatch)
+
+    assert run_cli(_discard_opts(tmp_path, "--subject", "impostor_a")) == 0
+    assert not (tmp_path / "embeddings.npz").exists()
+    assert _manifest_ids(tmp_path) == set()
+
+
+def test_run_cli_discard_never_touches_the_model_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache = tmp_path / "model-cache" / "embedding_model.ckpt"
+    cache.parent.mkdir()
+    cache.write_bytes(b"weights")
+    _corpus_with_embeddings(tmp_path)
+    _confirm(monkeypatch)
+
+    run_cli(_discard_opts(tmp_path, "--subject", "impostor_a"))
+
+    assert cache.read_bytes() == b"weights"
