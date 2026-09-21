@@ -587,7 +587,9 @@ class AggregateSpeakerReport:
 
 @dataclass(frozen=True)
 class SpeakerCliOptions:
-    action: Literal["model-contract", "capture", "validate", "embed", "analyze", "cleanup"]
+    action: Literal[
+        "model-contract", "capture", "validate", "embed", "analyze", "cleanup", "discard"
+    ]  # "discard" added 2026-09-21 (amendment, see the CLI notes below)
     corpus_root: Path
     manifest_path: Path
     output_path: Path | None
@@ -596,6 +598,7 @@ class SpeakerCliOptions:
     session_id: str | None
     phrase_id: str | None
     condition: str | None
+    sample_id: str | None = None  # added 2026-09-21, only for `discard --sample`
 
 
 class SpeakerEmbeddingBackend(Protocol):
@@ -722,6 +725,15 @@ model assets and complete embeddings, and refuses to overwrite its output.
 `cleanup` first lists/resolves each exact artifact, refuses paths outside the
 corpus, requires Pipec confirmation, and deletes individual files rather than
 a recursive directory target.
+`discard` (added 2026-09-21, amending the frozen six-action list) serves a
+participant's withdrawal and technical exclusions: exactly one of
+`--subject <owner|impostor_x>` or `--sample <id>`, no other capture flag. It
+deletes the matching WAV files, their embeddings (vector and latency), their
+manifest rows and any now-stale aggregate report — the corpus rule that a
+withdrawal deletes WAVs, embeddings and manifest rows — and never touches the
+model cache. It refuses to run when nothing matches, requires a typed
+confirmation, shows counts only, and is idempotent so an interrupted run is
+finished by repeating it. `embed` and `analyze` must be re-run afterwards.
 
 ## Corpus and condition matrix
 
@@ -1158,11 +1170,10 @@ Operating notes for Task 5 and any recapture (no data in them):
 - The corpus is local-only by design: moving source WAVs to a cloud drive to play
   them from a phone was declined, because Task 7 verifies deletion only for the
   corpus root.
-- The CLI has **no per-sample discard action**. Excluding a bad capture, and the
-  "targeted deletion/manifest repair" a participant's withdrawal requires in
-  Task 5, are done by removing that subject's WAV files and manifest rows by
-  hand. A `discard` action would let the operator do this safely alone; not
-  built (out of Task 4 scope) — decide before the first third-party session.
+- Task 4 exclusions were first done by editing the private manifest by hand,
+  because the CLI had no way to discard a capture. That gap is closed: the
+  `discard` action (commit `68a23c5`, see the CLI notes above) now does it
+  safely, so the operator can honour a withdrawal alone.
 - In the tracked docs and in chat, report **counts and ranges only**: sample
   ids, filenames and timestamps are manifest data and stay out of them.
 
@@ -1176,7 +1187,9 @@ Operating notes for Task 5 and any recapture (no data in them):
 - [ ] Capture at least 18 live impostor probes. They must be spoken live during
   capture and distributed across the frozen phrases.
 - [ ] Allow immediate withdrawal and execute targeted deletion/manifest repair
-  before proceeding if requested.
+  before proceeding if requested. **Procedure ready:** `just speaker-calibration
+  discard --subject impostor_x` (typed confirmation), then re-run `embed` and
+  `analyze`. Not triggered — no participant has been recorded yet.
 - [x] Pipec creates at least six replay probes using the frozen procedure. Keep
   replay labels separate from live impostors. **Done 2026-09-14 — 8/6, one
   session, all 3 phrases at both `quiet-near` and `quiet-far`.**
