@@ -27,6 +27,14 @@ the matrix or substituting voices, so it stops there by design. If Task 3
 returns a technical FAIL, Task 7 runs instead and the study closes as an
 evidence-complete FAIL with no capture.
 
+**Progress (updated 2026-09-21).** Tasks 0–3 are complete (Task 3 a technical
+PASS). Task 4 is complete (2026-09-14): reference 6/6, genuine 24/24. Pipec ran
+the owner-only work and the third-party recruitment as two parallel tracks
+rather than a strict sequence, so the replay half of Task 5 is also done (8/6).
+`validate` now reports a single unmet minimum — the 18 live-impostor samples —
+which waits on three consenting adults Pipec contacted on 2026-09-14. Nothing
+has been measured yet: no embeddings, no FAR/FRR, no study verdict.
+
 **Goal:** Evaluate whether a local CPU speaker-embedding backend can separate
 Pipec's live voice from consenting live impostors under household conditions;
 measure false accepts, false rejects, replay behavior and latency; and either
@@ -484,6 +492,7 @@ files named by the approved amendment:
 | `scripts/speaker_calibration_models.py` | Conditional create if needed to keep the main script near 200 lines; contains only the frozen dataclasses/protocol, no I/O or backend behavior. Record the split before creating it. |
 | `scripts/speaker_calibration_corpus.py` | Conditional create registered 2026-09-08 (Task 2): WAV validation, manifest I/O, path safety, corpus-rule enforcement and aggregate-report rendering — no numeric math, no backend. Keeps every module near the 200-line limit; same three-module shape as `scripts/longitudinal_eval_*.py` (Plan 0046). |
 | `scripts/speaker_calibration_backend.py` | Conditional create registered 2026-09-08 (Task 3): the frozen `_MODEL_SOURCE` / `_MODEL_REVISION` constants, the `EncoderClassifier` construction, `embed_wav`, the resolved-revision assertion and the frozen latency protocol — no numeric math, no manifest I/O. Fourth module so the CLI file stays near the `face_calibration.py` precedent size; `run_cli` reaches it by deferred import so `validate` / `analyze` / `cleanup` never import torch. |
+| `scripts/speaker_calibration_analysis.py` | Conditional create registered 2026-09-21 (Task 6 groundwork): the pure aggregate analysis — reference centroid, per-sample distance scoring, zero-observed-FAR threshold selection, replay scored at the operating point, per-condition summaries, limitations and the `AggregateSpeakerReport`. No file, model, microphone or network access; `analyze` in `speaker_calibration.py` does the I/O and reaches it by deferred import (it imports the Task 1 numeric layer, so a top-level import would be circular). |
 | `tests/unit/test_speaker_calibration.py` | Create pure synthetic tests for math, schema, paths, reports and backend boundary fakes. |
 | `tests/slow/test_speaker_calibration_backend.py` | Create opt-in frozen-model smoke/contract tests; never part of ordinary unit execution. |
 | `pyproject.toml`, `uv.lock` | Add the exact approved package to the root development group and record the generated resolution; no subproject dependency edit. |
@@ -1092,36 +1101,89 @@ and proceed directly to Task 7. Do not collect household voices or swap models.
 **Owner:** Pipec. Agents may display the next command and validate metadata
 afterward; they may not activate the microphone themselves.
 
-- [ ] Confirm corpus root resolves under
+- [x] Confirm corpus root resolves under
   `project-history/calibration/speaker/`, is ignored by Git, and contains no
   prior participant data unless Pipec explicitly elects to reuse it.
-- [ ] Show the consent notice and confirm Pipec agrees to temporary local WAV
+- [x] Show the consent notice and confirm Pipec agrees to temporary local WAV
   and embedding storage plus deletion after analysis.
-- [ ] Capture six references in the dedicated reference session using the
-  frozen phrases.
-- [ ] On at least two later sessions, capture at least 24 genuine probes across
-  the frozen near/far and quiet/ordinary-background matrix.
-- [ ] After each batch, run manifest validation and inspect counts/conditions;
-  recapture only invalid technical samples and record exclusions.
-- [ ] Confirm `git status --short` never lists WAV, manifest or embedding data.
+- [x] Capture six references in the dedicated reference session using the
+  frozen phrases. **Done 2026-09-08 — 6/6.**
+- [x] On at least two later sessions, capture at least 24 genuine probes across
+  the frozen near/far and quiet/ordinary-background matrix. **Done 2026-09-14 —
+  24/24 across 2 sessions, all 3 phrases and all 4 conditions represented.**
+- [x] After each batch, run manifest validation and inspect counts/conditions;
+  recapture only invalid technical samples and record exclusions. **Done — a
+  handful of technically invalid captures (clipped onset, VAD-confused by
+  background music) were excluded and recaptured; none entered the accepted
+  corpus.**
+- [x] Confirm `git status --short` never lists WAV, manifest or embedding data.
+  **Confirmed clean throughout.**
 
-**Checkpoint:** report aggregate counts only and wait for Pipec before inviting
-other participants. No Git commit.
+**Checkpoint (2026-09-14): Task 4 complete.** Aggregate only (no filenames/ids,
+per this section's own rule) — reference 6/6, genuine 24/24 (2 sessions, 3
+phrases, 4 conditions), corpus root private and untracked throughout. Pipec has
+independently begun inviting the three consenting adults for Task 5 in
+parallel, per his own explicit decision to run owner-only and third-party work
+concurrently rather than sequentially. **No Git commit of capture data** — the
+corpus, manifest, embeddings and any per-sample figure never enter Git. This
+aggregate-only status update was committed on 2026-09-21 at Pipec's explicit
+request; the "no commit" rule exists to keep private biometric data out of
+history, and nothing private is in it.
+
+### Task 4 tooling changes and operating notes (recorded 2026-09-21)
+
+Real capture exposed three operator-facing defects in the Task 2 CLI. They were
+fixed as small code commits on this branch (code history only — no private data)
+and Task 5 uses the same `capture` action, so the whole-branch review in Task 7
+must cover them:
+
+| Commit | Change | Why it was needed |
+|---|---|---|
+| `859750e` | `capture` prints the frozen phrase (`PHRASE_TEXT`, a named constant beside `PHRASE_IDS`), counts down 3-2-1 and sounds a start beep before a live recording | The operator otherwise needs a second terminal to know what to read, and has no cue for when to start. Only runs with the real microphone (no injected recorder), so unit tests stay fast |
+| `f6c5c95` | `_reject_if_too_short` rejects a live capture under 2.5 s: nonzero exit, no WAV, no manifest row | A capture where the VAD closed on a mid-phrase pause entered the corpus silently as a partial phrase |
+| `188e9bf` | `_warm_recorder` preloads `onnxruntime` and the Silero model before the countdown | A cold VAD load measured ~4.5 s *inside* `capture_utterance`, so the start beep fired well before the microphone was listening and the phrase onset was lost |
+
+Operating notes for Task 5 and any recapture (no data in them):
+
+- `capture` needs neither the server nor Ollama — only the microphone and the
+  local Silero model.
+- Accepted-corpus exclusions during Task 4 were all technical: clipped or
+  premature captures, and two genuine `background-*` probes recorded over *vocal*
+  music (the VAD treated the singer as speech and the utterance ran ~2× normal
+  length). Background conditions must use non-vocal noise (rain, fan, room tone).
+- Replay probes at `quiet-far` were not detected when the source recording was
+  already quiet; playing the source at higher **software** gain in the player
+  fixed it. The recording itself is never edited — the plan reserves any
+  transformation of a person's voice to the operator.
+- The corpus is local-only by design: moving source WAVs to a cloud drive to play
+  them from a phone was declined, because Task 7 verifies deletion only for the
+  corpus root.
+- The CLI has **no per-sample discard action**. Excluding a bad capture, and the
+  "targeted deletion/manifest repair" a participant's withdrawal requires in
+  Task 5, are done by removing that subject's WAV files and manifest rows by
+  hand. A `discard` action would let the operator do this safely alone; not
+  built (out of Task 4 scope) — decide before the first third-party session.
+- In the tracked docs and in chat, report **counts and ranges only**: sample
+  ids, filenames and timestamps are manifest data and stay out of them.
 
 ## Task 5: Capture consenting live-impostor and replay samples
 
 **Owner:** Pipec and consenting adults.
 
 - [ ] Obtain explicit consent independently from at least three adults and
-  assign only local pseudonyms.
+  assign only local pseudonyms. **In progress — Pipec independently contacted
+  three candidate adults 2026-09-14; awaiting their availability.**
 - [ ] Capture at least 18 live impostor probes. They must be spoken live during
   capture and distributed across the frozen phrases.
 - [ ] Allow immediate withdrawal and execute targeted deletion/manifest repair
   before proceeding if requested.
-- [ ] Pipec creates at least six replay probes using the frozen procedure. Keep
-  replay labels separate from live impostors.
+- [x] Pipec creates at least six replay probes using the frozen procedure. Keep
+  replay labels separate from live impostors. **Done 2026-09-14 — 8/6, one
+  session, all 3 phrases at both `quiet-near` and `quiet-far`.**
 - [ ] Validate corpus counts, class labels, distinct files, session/phrase
-  separation and hashes. Do not inspect or publish transcripts.
+  separation and hashes. Do not inspect or publish transcripts. **Partially
+  done: `validate` confirms every class except impostor already meets its
+  minimum (single remaining error: impostor count).**
 - [ ] Confirm again that private artifacts are ignored and absent from staged
   changes.
 
@@ -1131,6 +1193,36 @@ matrix silently or substitute internet/synthetic voices.
 ## Task 6: Analyze, choose or reject the candidate
 
 **Owner:** orchestrator executes only after Pipec confirms capture complete.
+
+**Groundwork done ahead of capture (2026-09-21, Pipec-authorized).** The
+impostor recruitment is the only step that needs third parties, so everything
+that does not depend on it was built and rehearsed early. This does **not** check
+any Task 6 box: the study has no verdict until the 18 live-impostor samples exist.
+
+- `analyze` is implemented (`scripts/speaker_calibration_analysis.py`, pure, 12
+  synthetic-vector tests) and wired end to end in the CLI (6 more CLI tests):
+  it loads the manifest, refuses an incomplete corpus, requires one vector and
+  one latency per sample, proves the pinned revision is cached (offline), writes
+  the aggregate report atomically and refuses to overwrite it. Exit `0` means
+  the report was produced — a measured `fail_distance_overlap` is a result, not
+  an error. Without a zero-observed-FAR threshold the report still carries every
+  figure, computed at the lowest-FAR operating point and labelled a diagnostic;
+  no threshold is selected.
+- `embed` was never reachable from `just`: `main()` did not hand the frozen
+  backend to it. It now does (only for `embed`; `validate`/`analyze`/`cleanup`
+  still never import torch), discards one warm-up embedding and records a
+  per-sample latency next to each vector in `embeddings.npz`.
+- `embed` ran once over the 38 private samples collected so far (exit 0,
+  nothing tracked). It does not validate the full matrix — `analyze` does — so it
+  must simply be **re-run after the impostors are captured** to cover them.
+- Per-sample latency is informational: the gating result stays the frozen
+  Task 3 protocol (3 s clip, quiet machine, p95 231 ms). Over real 4–5 s clips
+  on a busier machine the per-sample p95 was higher; `analyze` records that as a
+  limitation rather than changing the gate.
+
+Task 7 note: `cleanup` deletes **every** file under the corpus root, including
+`model-cache/` (~85 MB, no captured audio), although block 2 lets that cache
+stay at Pipec's choice. Decide then whether `cleanup` should skip it.
 
 - [ ] Run the frozen analyze command from the readiness amendment. Analysis
   must not access microphone/network and must use the already cached exact
