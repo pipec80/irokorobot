@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 # `server` is a workspace package with no py.typed marker; the real
@@ -40,7 +41,6 @@ from scripts.speaker_calibration_models import (
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Iterable, Sequence
-    from pathlib import Path
 
 # Generous ceiling: a fixed neutral phrase read and the 3-second latency WAV are
 # both far below this. It bounds only accidental oversized captures, not format.
@@ -98,10 +98,8 @@ def resolve_corpus_path(corpus_root: Path, wav_path: Path | str) -> Path:
     Raises:
         ValueError: If the resolved path escapes the root or is a symlink.
     """
-    from pathlib import Path as _Path  # noqa: PLC0415 -- keep Path out of the annotation import
-
-    root = _Path(corpus_root).resolve()
-    candidate = _Path(wav_path)
+    root = Path(corpus_root).resolve()
+    candidate = Path(wav_path)
     raw = candidate if candidate.is_absolute() else root / candidate
     resolved = raw.resolve()
     if not resolved.is_relative_to(root):
@@ -190,10 +188,32 @@ def remove_samples_atomic(manifest_path: Path, sample_ids: Collection[str]) -> N
 
 def _write_manifest_atomic(manifest_path: Path, rows: list[dict[str, str]]) -> None:
     payload = {"schema_version": SCHEMA_VERSION, "samples": rows}
-    tmp = manifest_path.with_name(manifest_path.name + ".tmp")
-    tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    write_text_atomic(manifest_path, json.dumps(payload, indent=2))
+
+
+def write_text_atomic(target: Path, text: str) -> None:
+    """Write UTF-8 text so a reader never sees a half-written file.
+
+    Args:
+        target: Final path; a sibling ``<name>.tmp`` holds the bytes first.
+        text: Full file contents.
+
+    Raises:
+        OSError: If the final replace fails; the temporary file is removed.
+    """
+    tmp = target.with_name(target.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    swap_into_place(tmp, target)
+
+
+def swap_into_place(tmp: Path, target: Path) -> None:
+    """Atomically replace ``target`` with the already-written ``tmp``.
+
+    Raises:
+        OSError: If the replace fails; ``tmp`` is removed before re-raising.
+    """
     try:
-        tmp.replace(manifest_path)
+        tmp.replace(target)
     except OSError:
         tmp.unlink(missing_ok=True)
         raise
@@ -224,11 +244,9 @@ def _existing_rows(manifest_path: Path) -> Iterable[dict[str, str]]:
 
 
 def _row_from_sample(sample: SpeakerSample, corpus_root: Path) -> dict[str, str]:
-    from pathlib import Path as _Path  # noqa: PLC0415 -- keep Path out of the annotation import
-
-    root = _Path(corpus_root).resolve()
-    wav = _Path(sample.wav_path).resolve()
-    rel = wav.relative_to(root) if wav.is_relative_to(root) else _Path(sample.wav_path)
+    root = Path(corpus_root).resolve()
+    wav = Path(sample.wav_path).resolve()
+    rel = wav.relative_to(root) if wav.is_relative_to(root) else Path(sample.wav_path)
     return {
         "sample_id": sample.sample_id,
         "subject_id": sample.subject_id,
@@ -270,14 +288,31 @@ def _check_vocabulary(sample: SpeakerSample) -> None:
         raise ValueError(f"{sample.sample_id}: unknown phrase_id {sample.phrase_id!r}")
 
 
+def subject_id_problem(sample_class: str, subject_id: str) -> str | None:
+    """Explain why *subject_id* is invalid for *sample_class*, or ``None`` if valid.
+
+    The one home of the pseudonym rule, shared by manifest validation and the
+    capture CLI so a change is made once.
+
+    Args:
+        sample_class: One of the frozen sample classes.
+        subject_id: The owner id or an ``impostor_<letters>`` pseudonym.
+
+    Returns:
+        A short reason without a sample id, or ``None`` when the id is allowed.
+    """
+    if sample_class == "impostor":
+        if not IMPOSTOR_ID_PATTERN.match(subject_id):
+            return "impostor subject_id must match impostor_[a-z]+"
+    elif subject_id != OWNER_SUBJECT_ID:
+        return f"{sample_class} subject_id must be {OWNER_SUBJECT_ID!r}"
+    return None
+
+
 def _check_subject(sample: SpeakerSample) -> None:
-    if sample.sample_class == "impostor":
-        if not IMPOSTOR_ID_PATTERN.match(sample.subject_id):
-            raise ValueError(f"{sample.sample_id}: impostor subject_id must match impostor_[a-z]+")
-    elif sample.subject_id != OWNER_SUBJECT_ID:
-        raise ValueError(
-            f"{sample.sample_id}: {sample.sample_class} subject_id must be {OWNER_SUBJECT_ID!r}"
-        )
+    problem = subject_id_problem(sample.sample_class, sample.subject_id)
+    if problem is not None:
+        raise ValueError(f"{sample.sample_id}: {problem}")
 
 
 def _check_distinct_wav_paths(samples: Sequence[SpeakerSample]) -> None:

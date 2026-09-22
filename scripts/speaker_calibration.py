@@ -53,8 +53,11 @@ from scripts.speaker_calibration_corpus import (
     resolve_corpus_path,
     select_samples,
     sha256_of_file,
+    subject_id_problem,
+    swap_into_place,
     validate_corpus,
     validate_wav_bytes,
+    write_text_atomic,
 )
 from scripts.speaker_calibration_models import (
     CAPTURE_FLAGS,
@@ -358,11 +361,9 @@ def _check_discard_selector(
 
 
 def _check_capture_subject(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
-    if args.sample_class == "impostor":
-        if not IMPOSTOR_ID_PATTERN.match(args.subject_id):
-            parser.error("impostor --subject must match impostor_[a-z]+")
-    elif args.subject_id != OWNER_SUBJECT_ID:
-        parser.error(f"--subject must be {OWNER_SUBJECT_ID!r} for {args.sample_class}")
+    problem = subject_id_problem(args.sample_class, args.subject_id)
+    if problem is not None:
+        parser.error(f"--subject: {problem}")
 
 
 def run_cli(
@@ -432,16 +433,16 @@ def _run_model_contract() -> int:
 
 
 def _run_capture(options: SpeakerCliOptions, capture_audio: Callable[[], bytes] | None) -> int:
-    if None in (
-        options.sample_class,
-        options.subject_id,
-        options.session_id,
-        options.phrase_id,
-        options.condition,
+    if (
+        options.sample_class is None
+        or options.subject_id is None
+        or options.session_id is None
+        or options.phrase_id is None
+        or options.condition is None
     ):
         raise ValueError("capture requires full sample metadata")  # parse_cli_args enforces this
     live = capture_audio is None  # a real human is at the microphone
-    wav_bytes = _capture_live(str(options.phrase_id)) if capture_audio is None else capture_audio()
+    wav_bytes = _capture_live(options.phrase_id) if capture_audio is None else capture_audio()
     validate_wav_bytes(wav_bytes)
     if live:
         _reject_if_too_short(wav_bytes)
@@ -452,11 +453,11 @@ def _run_capture(options: SpeakerCliOptions, capture_audio: Callable[[], bytes] 
     wav_path.write_bytes(wav_bytes)
     sample = SpeakerSample(
         sample_id=wav_path.stem,
-        subject_id=str(options.subject_id),
-        sample_class=options.sample_class,  # type: ignore[arg-type]  # narrowed by the guard above
-        session_id=str(options.session_id),
-        phrase_id=str(options.phrase_id),
-        condition=str(options.condition),
+        subject_id=options.subject_id,
+        sample_class=options.sample_class,
+        session_id=options.session_id,
+        phrase_id=options.phrase_id,
+        condition=options.condition,
         wav_path=wav_path,
         sha256=sha256_of_file(wav_path),
     )
@@ -604,21 +605,7 @@ def _write_npz_atomic(target: Path, arrays: dict[str, np.ndarray]) -> None:
         # numpy's savez stub misbinds a ``**dict[str, ndarray]`` splat to its
         # ``allow_pickle`` bool parameter; the runtime call is correct.
         np.savez(handle, **arrays)  # type: ignore[arg-type]
-    _swap_into_place(tmp, target)
-
-
-def _write_text_atomic(target: Path, text: str) -> None:
-    tmp = target.with_name(target.name + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    _swap_into_place(tmp, target)
-
-
-def _swap_into_place(tmp: Path, target: Path) -> None:
-    try:
-        tmp.replace(target)
-    except OSError:
-        tmp.unlink(missing_ok=True)
-        raise
+    swap_into_place(tmp, target)
 
 
 def _run_analyze(options: SpeakerCliOptions) -> int:
@@ -642,7 +629,7 @@ def _run_analyze(options: SpeakerCliOptions) -> int:
     report = build_report(
         manifest, embeddings, latencies, model_id=model_id, package_version=package_version
     )
-    _write_text_atomic(output, render_aggregate_report(report))
+    write_text_atomic(output, render_aggregate_report(report))
     logger.info("analysis outcome: %s (aggregate report written)", report.outcome)
     return 0
 

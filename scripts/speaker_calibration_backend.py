@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 # never via server.settings. The revision is a public Hugging Face commit SHA.
 _MODEL_SOURCE: Final = "speechbrain/spkrec-ecapa-voxceleb"
 _MODEL_REVISION: Final = "0f99f2d0ebe89ac095bcc5903c4dd8f72b367286"  # pragma: allowlist secret
+_MODEL_ID: Final = f"{_MODEL_SOURCE}@{_MODEL_REVISION}"
 _MODEL_CACHE_DIR: Final = Path("project-history/calibration/speaker/model-cache")
 
 _SAMPLE_RATE: Final = 16_000
@@ -61,7 +62,7 @@ class SpeechBrainEcapaBackend:
     @property
     def model_id(self) -> str:
         """Return the frozen model identifier and its pinned revision."""
-        return f"{_MODEL_SOURCE}@{_MODEL_REVISION}"
+        return _MODEL_ID
 
     def embed_wav(self, wav_bytes: bytes) -> np.ndarray:
         """Embed WAV audio (16 000 Hz, mono, signed int16) into a 192-d vector.
@@ -182,7 +183,7 @@ def frozen_model_identity() -> tuple[str, str]:
         ValueError: If the pinned revision is not the one cached locally.
     """
     _assert_resolved_revision()
-    return f"{_MODEL_SOURCE}@{_MODEL_REVISION}", f"speechbrain {version('speechbrain')}"
+    return _MODEL_ID, f"speechbrain {version('speechbrain')}"
 
 
 def _sine_wav_bytes(*, seconds: int, freq_hz: float = 220.0) -> bytes:
