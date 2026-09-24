@@ -16,9 +16,9 @@ Pipec authenticates locally once
   -> STT produces the literal question
   -> Iroko resolves authenticated Pipec
   -> policy authorizes Pipec's protected family relationship
-  -> the existing structured child tool returns Máximo and Dominga
+  -> the existing structured child tool returns Joaquín and Martina
   -> the response plan says only those authorized facts
-  -> Piper speaks: “Tus hijos son Máximo y Dominga.”
+  -> Piper speaks: “Tus hijos son Joaquín y Martina.”
 ```
 
 The paired denial is equally important:
@@ -57,7 +57,7 @@ The slice connects existing components instead of creating another brain:
 | Need | Existing foundation | Missing connection |
 |---|---|---|
 | Owner record and role | owner bootstrap and household authorization | bounded first-boot caller |
-| Máximo and Dominga as children | v4 entities/relations and child tools | confirmed local data entry/seed path |
+| Joaquín and Martina as children | v4 entities/relations and child tools | confirmed local data entry/seed path |
 | Temporary identity | `IdentitySessionRegistry` and typed evidence | production unlock entry point |
 | Current actor | `ActivePersonContext` and resolver injection seams | resolver that consumes valid evidence |
 | Disclosure decision | fail-closed policy and audit | authenticated actor supplied to it |
@@ -111,8 +111,8 @@ executed in order; preparing these documents is not implementation evidence:
 ### Slice A — First boot and known personal data
 
 Connect the existing owner bootstrap and local recovery entry point. Establish
-Pipec before accepting any household relationship. Confirm and store Máximo and
-Dominga as entity relationships, not as a prompt sentence or vector-only
+Pipec before accepting any household relationship. Confirm and store Joaquín and
+Martina as entity relationships, not as a prompt sentence or vector-only
 memory. Do not block the north-star proof on birthday, home, workplace,
 partner, pet, or preference collection, and do not mark the existing extended
 onboarding checklist complete.
@@ -160,7 +160,7 @@ actor resolution, policy decision, selected deterministic tool, response text,
 audible Piper result, and safe audit outcome.
 
 **Gate:** repeat both north-star scenarios at least three times: Pipec unlocks
-and hears “Máximo y Dominga”; without a fresh unlock the same question reveals
+and hears “Joaquín y Martina”; without a fresh unlock the same question reveals
 nothing. Automated tests alone do not close this gate.
 
 ## Progressive methods after the MVP
@@ -208,7 +208,7 @@ The documentation portfolio uses the product defaults agreed in the review:
   the conversational prompt;
 - authentication authorizes exactly the next protected interaction and expires
   after a short TTL if unused;
-- Pipec, Máximo, and Dominga are confirmed through the bounded personal setup
+- Pipec, Joaquín, and Martina are confirmed through the bounded personal setup
   flow before any relationship becomes durable;
 - a generic turn does not consume the protected one-use grant;
 - absence, expiry, replay, conflict, or invalid evidence remains `unknown` and

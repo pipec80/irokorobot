@@ -145,7 +145,7 @@ before generic household terms. `CognitiveController` receives optional
 the default is `NOT_REQUIRED`. The public router composes real tools but still
 provides only `_public_unknown_actor` and no consent from HTTP.
 
-Known responses are deterministic: `Tus hijos son Máximo y Sofía.` and
+Known responses are deterministic: `Tus hijos son Joaquín y Paula.` and
 `Tienes 2 hijos.` Unknown/contradictory cases explain the limitation;
 unauthorized uses the existing safe response. None reaches legacy text,
 prompting, or an LLM.
@@ -223,7 +223,7 @@ and chat-endpoint tests.
 
 - [ ] Write failing tests with a temporary database, migrations 1–5, explicit
   owner bootstrap, and synthetic v4 entities only. Prove a consented owner can
-  list/count Máximo and Sofía; unconsented child queries produce only the tool
+  list/count Joaquín and Paula; unconsented child queries produce only the tool
   audit (no data-read audit); preferences retain `café` and `robótica`; and age
   is 8 from `birth_date`, not stored age.
 - [ ] Also assert success audit action order is `execute_household_tool`, then

@@ -67,7 +67,7 @@ retrieve or audit household data.
 Add parametrized controller tests for:
 
 - `¿Cómo se llama mi esposa?`
-- `¿Cuándo nació Máximo?`
+- `¿Cuándo nació Joaquín?`
 - `¿Quién es mi mamá?`
 - `¿Qué preferencias tiene mi hija?`
 

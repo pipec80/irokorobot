@@ -35,6 +35,7 @@ from scripts import (
     longitudinal_eval_metadata as metadata_mod,
     longitudinal_eval_runner as runner,
 )
+from scripts.check_reserved_terms import load_reserved_terms
 from scripts.eval_longitudinal_memory import load_suite, parse_cli_args, validate_dataset_privacy
 from scripts.longitudinal_eval_aggregation import aggregate_results, determine_exit_code
 from scripts.longitudinal_eval_driver import CurrentRuntimeDriver, unsupported_observation
@@ -386,9 +387,10 @@ def test_golden_suite_tests_recipient_only_with_authorized_and_unauthorized() ->
 
 @pytest.mark.unit
 def test_golden_dataset_excludes_reserved_household_names() -> None:
+    """Real household terms come only from the gitignored local list."""
     validate_dataset_privacy(
         _GOLDEN,
-        ["pipec", "felipe", "maximo", "dominga", "iroko", "omnibot"],
+        ["pipec", "felipe", "iroko", "omnibot", *load_reserved_terms()],
     )
 
 

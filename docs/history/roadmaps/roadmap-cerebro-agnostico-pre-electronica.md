@@ -100,7 +100,7 @@ POST /chat
 ```json
 200
 {
-  "response": "Tus hijos se llaman Máximo y Dominga.",
+  "response": "Tus hijos se llaman Joaquín y Martina.",
   "emotion": "neutral",
   "duration_ms": 840,
   "conversation_id": "web-principal"

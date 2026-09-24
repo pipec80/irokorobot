@@ -75,18 +75,18 @@ async def test_failed_duplicate_literal_rolls_back_transaction(household_db: Non
 @pytest.mark.integration
 async def test_single_current_birth_date_supersedes_prior_value(household_db: None) -> None:
     """Birth date keeps history while exposing one active canonical value."""
-    maximo_id = await upsert_entity(name="Maximo", type="person")
+    maximo_id = await upsert_entity(name="Joaquin", type="person")
     birth_date = _predicate("fecha_nacimiento")
 
     previous = await assert_literal_fact(
         subject_entity_id=maximo_id,
         definition=birth_date,
-        value="2017-12-29",
+        value="2016-10-14",
     )
     current = await assert_literal_fact(
         subject_entity_id=maximo_id,
         definition=birth_date,
-        value="2018-12-29",
+        value="2017-10-14",
     )
 
     active = await get_active_literal_facts(subject_entity_id=maximo_id, definition=birth_date)
@@ -172,8 +172,8 @@ async def test_relation_target_filter_returns_only_active_inverse_matches(
 ) -> None:
     """Filter inverse child relationships by the requested parent ID."""
     felipe_id = await upsert_entity(name="Felipe", type="person")
-    maximo_id = await upsert_entity(name="Maximo", type="person")
-    sofia_id = await upsert_entity(name="Sofia", type="person")
+    maximo_id = await upsert_entity(name="Joaquin", type="person")
+    sofia_id = await upsert_entity(name="Paula", type="person")
     ana_id = await upsert_entity(name="Ana", type="person")
     child_of = _predicate("hijo_de")
     for child_id, parent_id in (

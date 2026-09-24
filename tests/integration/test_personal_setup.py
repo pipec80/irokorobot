@@ -42,7 +42,7 @@ def _valid_input(*, pin: str = "482173") -> PersonalSetupInput:
     """Build the north-star confirmed setup input."""
     return PersonalSetupInput(
         owner_name="Pipec",
-        child_names=("Máximo", "Dominga"),
+        child_names=("Joaquín", "Martina"),
         pin=SecretStr(pin),
     )
 
@@ -92,11 +92,11 @@ async def test_setup_rejects_duplicate_child_names_after_accent_folding(setup_db
         await apply_personal_setup(
             PersonalSetupInput(
                 owner_name="Pipec",
-                child_names=("Máximo", "MAXIMO"),
+                child_names=("Joaquín", "JOAQUIN"),
                 pin=SecretStr("482173"),
             )
         )
-    assert await _entities_named(("Pipec", "Máximo", "MAXIMO")) == 0
+    assert await _entities_named(("Pipec", "Joaquín", "JOAQUIN")) == 0
 
 
 @pytest.mark.integration
@@ -116,7 +116,7 @@ async def test_setup_rejects_children_before_owner_confirmation(setup_db: None) 
     with pytest.raises(ValueError, match="active owner"):
         await apply_personal_setup(_valid_input())
 
-    assert await _entities_named(("Máximo", "Dominga")) == 0
+    assert await _entities_named(("Joaquín", "Martina")) == 0
 
 
 @pytest.mark.integration
@@ -128,7 +128,7 @@ async def test_setup_rejects_a_second_active_owner(setup_db: None) -> None:
         await apply_personal_setup(
             PersonalSetupInput(
                 owner_name="Someone Else",
-                child_names=("Máximo", "Dominga"),
+                child_names=("Joaquín", "Martina"),
                 pin=SecretStr("482173"),
             )
         )
@@ -185,17 +185,17 @@ async def test_partial_failure_is_safely_resumable(setup_db: None) -> None:
         await apply_personal_setup(
             PersonalSetupInput(
                 owner_name="Pipec",
-                child_names=("Máximo", "Dominga"),
+                child_names=("Joaquín", "Martina"),
                 pin=SecretStr("bad"),
             )
         )
 
-    assert await _entities_named(("Pipec", "Máximo", "Dominga")) == 3
+    assert await _entities_named(("Pipec", "Joaquín", "Martina")) == 3
     assert await get_active_owner_pin_credential() is None
 
     result = await apply_personal_setup(_valid_input())
 
-    assert await _entities_named(("Pipec", "Máximo", "Dominga")) == 3
+    assert await _entities_named(("Pipec", "Joaquín", "Martina")) == 3
     assert result.personal_security_ready is True
 
     role_cursor = await db.get_conn().execute("SELECT COUNT(*) FROM household_role_assignments")
@@ -273,7 +273,7 @@ async def test_wizard_cancels_on_blank_children(setup_db: None) -> None:
 async def test_wizard_cancels_on_pin_mismatch(setup_db: None) -> None:
     """A mismatched PIN confirmation cancels before any write."""
     io = _ScriptedIO(
-        text_answers=["Pipec", "Máximo Dominga"],
+        text_answers=["Pipec", "Joaquín Martina"],
         secret_answers=["482173", "482174"],
     )
 
@@ -282,14 +282,14 @@ async def test_wizard_cancels_on_pin_mismatch(setup_db: None) -> None:
     )
 
     assert result is None
-    assert await _entities_named(("Pipec", "Máximo", "Dominga")) == 0
+    assert await _entities_named(("Pipec", "Joaquín", "Martina")) == 0
 
 
 @pytest.mark.integration
 async def test_wizard_cancels_on_non_si_confirmation(setup_db: None) -> None:
     """Any confirmation other than the literal SI cancels before any write."""
     io = _ScriptedIO(
-        text_answers=["Pipec", "Máximo Dominga", "yes"],
+        text_answers=["Pipec", "Joaquín Martina", "yes"],
         secret_answers=["482173", "482173"],
     )
 
@@ -298,14 +298,14 @@ async def test_wizard_cancels_on_non_si_confirmation(setup_db: None) -> None:
     )
 
     assert result is None
-    assert await _entities_named(("Pipec", "Máximo", "Dominga")) == 0
+    assert await _entities_named(("Pipec", "Joaquín", "Martina")) == 0
 
 
 @pytest.mark.integration
 async def test_wizard_summary_redacts_pin_and_shows_only_names(setup_db: None) -> None:
     """The pre-confirmation summary never prints the PIN digits."""
     io = _ScriptedIO(
-        text_answers=["Pipec", "Máximo Dominga", "NO"],
+        text_answers=["Pipec", "Joaquín Martina", "NO"],
         secret_answers=["482173", "482173"],
     )
 
@@ -315,8 +315,8 @@ async def test_wizard_summary_redacts_pin_and_shows_only_names(setup_db: None) -
 
     joined = "\n".join(io.outputs)
     assert "Pipec" in joined
-    assert "Máximo" in joined
-    assert "Dominga" in joined
+    assert "Joaquín" in joined
+    assert "Martina" in joined
     assert "******" in joined
     assert "482173" not in joined
 
@@ -325,7 +325,7 @@ async def test_wizard_summary_redacts_pin_and_shows_only_names(setup_db: None) -
 async def test_wizard_success_applies_setup_and_never_prints_secret(setup_db: None) -> None:
     """A confirmed SI answer applies the setup and never echoes the PIN."""
     io = _ScriptedIO(
-        text_answers=["Pipec", "Máximo Dominga", "SI"],
+        text_answers=["Pipec", "Joaquín Martina", "SI"],
         secret_answers=["482173", "482173"],
     )
 
@@ -335,7 +335,7 @@ async def test_wizard_success_applies_setup_and_never_prints_secret(setup_db: No
 
     assert result is not None
     assert result.personal_security_ready is True
-    assert await _entities_named(("Pipec", "Máximo", "Dominga")) == 3
+    assert await _entities_named(("Pipec", "Joaquín", "Martina")) == 3
     assert await _child_relation_count() == 2
 
     joined = "\n".join(io.outputs)

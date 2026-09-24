@@ -47,7 +47,7 @@ from server.vision.faces import DetectedFace, enroll_face
 
 from server import db, stt, tts
 
-_CHILD_ANSWER = "Tus hijos son Máximo y Dominga."
+_CHILD_ANSWER = "Tus hijos son Joaquín y Martina."
 _CHILD_QUESTION = "¿Quiénes son mis hijos?"
 _GENERIC_QUESTION = "¿qué día es hoy?"
 _PIN = "482173"
@@ -84,7 +84,7 @@ async def face_db(
     result = await apply_personal_setup(
         PersonalSetupInput(
             owner_name=_OWNER_NAME,
-            child_names=("Máximo", "Dominga"),
+            child_names=("Joaquín", "Martina"),
             pin=SecretStr(_PIN),
         )
     )
@@ -241,8 +241,8 @@ async def test_stranger_frame_denies_without_reading_v4_classic(
     body = response.json()
     assert body["authentication_consumed"] is False
     assert body["identity_source"] is None
-    assert "Máximo" not in body["llm_response"]
-    assert "Dominga" not in body["llm_response"]
+    assert "Joaquín" not in body["llm_response"]
+    assert "Martina" not in body["llm_response"]
     reader_spy.assert_not_awaited()
 
 
@@ -360,8 +360,8 @@ async def test_flag_off_ignores_attached_frame_entirely(
     body = response.json()
     assert body["authentication_consumed"] is False
     assert body["identity_source"] is None
-    assert "Máximo" not in body["llm_response"]
-    assert "Dominga" not in body["llm_response"]
+    assert "Joaquín" not in body["llm_response"]
+    assert "Martina" not in body["llm_response"]
     detect_mock.assert_not_awaited()
 
 
@@ -415,8 +415,8 @@ async def test_stranger_frame_denies_without_reading_v4_stream(
     assert events[-1]["authentication_consumed"] is False
     assert events[-1]["identity_source"] is None
     joined = repr(events)
-    assert "Máximo" not in joined
-    assert "Dominga" not in joined
+    assert "Joaquín" not in joined
+    assert "Martina" not in joined
     reader_spy.assert_not_awaited()
 
 
@@ -472,8 +472,8 @@ async def test_malformed_frame_degrades_to_no_frame_classic(
     body = response.json()
     assert body["authentication_consumed"] is False
     assert body["identity_source"] is None
-    assert "Máximo" not in body["llm_response"]
-    assert "Dominga" not in body["llm_response"]
+    assert "Joaquín" not in body["llm_response"]
+    assert "Martina" not in body["llm_response"]
     detect_mock.assert_not_awaited()
 
 
@@ -497,6 +497,6 @@ async def test_malformed_frame_degrades_to_no_frame_stream(
     assert events[-1]["authentication_consumed"] is False
     assert events[-1]["identity_source"] is None
     joined = repr(events)
-    assert "Máximo" not in joined
-    assert "Dominga" not in joined
+    assert "Joaquín" not in joined
+    assert "Martina" not in joined
     detect_mock.assert_not_awaited()

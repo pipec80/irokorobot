@@ -55,6 +55,10 @@ class Settings(BaseSettings):
     log_to_file: bool = True
     log_dir: Path = Path("logs")
     log_retention_days: int = 14
+    # Debug aid, off by default (Plan 0052): prints what was heard and spoken on
+    # the console only, never to the log file. Household content is otherwise
+    # never logged (Plans 0031/0032).
+    log_conversation_text: bool = False
 
     # ---------------- Uploads (Plan 0034) ----------------
     # Per-file semantic budgets, checked after the raw ASGI body limit.

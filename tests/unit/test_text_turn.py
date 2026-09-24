@@ -53,7 +53,7 @@ def _manual_evidence(
 def _identified_person(
     *,
     person_id: int = 7,
-    display_name: str = "Sofía",
+    display_name: str = "Paula",
     session_id: UUID = _DEFAULT_SESSION_ID,
 ) -> ActivePersonContext:
     """Create an identified manual context for a trusted internal test adapter."""
@@ -180,8 +180,8 @@ async def test_manual_history_scope_uses_opaque_session_and_person_id(
         AsyncMock(return_value=(MemoryContext(), False, None)),
     )
     monkeypatch.setattr(text_turn.llm, "generate_response", generate)
-    first = _identified_person(display_name="Sofía")
-    renamed = _identified_person(display_name="Sofía Ramírez")
+    first = _identified_person(display_name="Paula")
+    renamed = _identified_person(display_name="Paula Ramírez")
     other_session = _identified_person(session_id=UUID("33333333-3333-3333-3333-333333333333"))
 
     await text_turn.process_text_turn(http_client, "primera", "public-a", active_person=first)
@@ -196,7 +196,7 @@ async def test_manual_history_scope_uses_opaque_session_and_person_id(
     ]
     assert generate.await_args_list[2].kwargs["history"] == []
     history_keys = set(working._buffers)
-    assert all("public" not in key and "Sofía" not in key for key in history_keys)
+    assert all("public" not in key and "Paula" not in key for key in history_keys)
     assert "session:11111111111111111111111111111111:person:7" in history_keys
     assert "session:33333333333333333333333333333333:person:7" in history_keys
 

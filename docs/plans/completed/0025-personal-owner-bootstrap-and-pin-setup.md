@@ -17,7 +17,7 @@ child-answer runtime, and microphone/TTS acceptance — those belong to Plans
 before Plan 0026 may start.
 
 **Goal:** Provide one restart-safe, local CLI wizard that establishes Pipec as
-the sole owner, stores Máximo and Dominga as confirmed v4 child relationships,
+the sole owner, stores Joaquín and Martina as confirmed v4 child relationships,
 and persists a securely hashed PIN credential.
 
 **Architecture:** A local application service composes the existing v4 entity,
@@ -438,7 +438,7 @@ Use the real disposable SQLite migration path and call:
 result = await apply_personal_setup(
     PersonalSetupInput(
         owner_name="Pipec",
-        child_names=("Máximo", "Dominga"),
+        child_names=("Joaquín", "Martina"),
         pin=SecretStr("482173"),
     )
 )
@@ -448,7 +448,7 @@ Assert:
 
 - exactly one Pipec owner role exists;
 - exactly two active `child_of` relations point to Pipec;
-- labels are exactly `Máximo` and `Dominga`;
+- labels are exactly `Joaquín` and `Martina`;
 - active PIN credential exists but plaintext does not appear anywhere in the
   DB file's logical rows;
 - `personal_security_ready is True` is derived only after rereading owner,
@@ -674,7 +674,7 @@ is frozen.
 Plan 0025 is complete only when:
 
 - a fresh DB can be configured through `just setup-personal`;
-- Pipec is the sole owner and Máximo/Dominga are exact v4 child relations;
+- Pipec is the sole owner and Joaquín/Martina are exact v4 child relations;
 - readiness is derived from one owner, the exact active child relations, and
   one active credential; no shortcut flag is persisted;
 - `meta.onboarding_complete` is not changed by this minimal setup;

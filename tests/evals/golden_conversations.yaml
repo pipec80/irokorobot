@@ -24,10 +24,10 @@ manual_contexts:
     source: manual
     person_id: 1
     display_name: Pipec
-  maximo: &maximo
+  joaquin: &joaquin
     source: manual
     person_id: 2
-    display_name: Máximo Fernández
+    display_name: Joaquín Fernández
   carolina: &carolina
     source: manual
     person_id: 3
@@ -48,15 +48,15 @@ cases:
       - { subject: Pipec, predicate: nombre, object: Pipec }
 
   - id: nombre_completo_con_acento
-    active_person: *maximo
-    user: Mi nombre es Máximo Fernández.
-    assistant: Un placer, Máximo.
+    active_person: *joaquin
+    user: Mi nombre es Joaquín Fernández.
+    assistant: Un placer, Joaquín.
     expected_entities:
-      - { name: Máximo Fernández, type: person }
+      - { name: Joaquín Fernández, type: person }
     expected_facts:
-      - subject: Máximo Fernández
+      - subject: Joaquín Fernández
         predicate: nombre
-        object: [Máximo Fernández, Máximo]
+        object: [Joaquín Fernández, Joaquín]
 
   - id: fecha_nacimiento
     active_person: *pipec
@@ -69,14 +69,14 @@ cases:
 
   - id: dos_hijos_en_una_frase
     active_person: *pipec
-    user: Tengo dos hijos, se llaman Valentina y Máximo.
+    user: Tengo dos hijos, se llaman Valentina y Joaquín.
     assistant: ¡Qué lindos nombres! Cuéntame de ellos.
     expected_entities:
       - { name: Valentina, type: person }
-      - { name: Máximo, type: person }
+      - { name: Joaquín, type: person }
     expected_facts:
       - { subject: Valentina, predicate: hijo_de, object: Pipec }
-      - { subject: Máximo, predicate: hijo_de, object: Pipec }
+      - { subject: Joaquín, predicate: hijo_de, object: Pipec }
 
   - id: mascota_con_especie
     active_person: *pipec
@@ -212,36 +212,37 @@ cases:
       - { subject: Carolina, predicate: nombre, object: Carolina }
       - { subject: Carolina, predicate: vive_en, object: Valparaíso }
 
-  # --- Casos tomados VERBATIM de la entrevista real del 2026-07-14 ---
-  # (fallos observados en vivo: sujeto del hijo_de perdido, le_gusta con
-  #  persona como objeto, fechas/edades convertidas en entidades)
+  # --- Casos con la forma de la entrevista real del 2026-07-14 ---
+  # Nombres, fechas y edades son inventados: solo se conserva la forma de las
+  # frases que fallaron en vivo (sujeto del hijo_de perdido, le_gusta con
+  # persona como objeto, fechas/edades convertidas en entidades).
 
   - id: hijo_con_edad_y_fecha_frase_larga
     active_person: *felipe
-    user: Hoy te cuento otra cosa, tengo dos hijos, uno se llama Máximo, tiene 10 años, nació el 29 de diciembre de 2017.
-    assistant: Genial, Felipe. Máximo es un nombre precioso. ¿Cuándo fue tu primer día como padre?
+    user: Hoy te cuento otra cosa, tengo dos hijos, uno se llama Joaquín, tiene 9 años, nació el 14 de octubre de 2016.
+    assistant: Genial, Felipe. Joaquín es un nombre precioso. ¿Cuándo fue tu primer día como padre?
     expected_entities:
-      - { name: Máximo, type: person }
+      - { name: Joaquín, type: person }
     expected_facts:
-      - { subject: Máximo, predicate: hijo_de, object: Felipe Castro }
-      - subject: Máximo
+      - { subject: Joaquín, predicate: hijo_de, object: Felipe Castro }
+      - subject: Joaquín
         predicate: edad
-        object: ["10", 10 años]
-      - subject: Máximo
+        object: ["9", 9 años]
+      - subject: Joaquín
         predicate: fecha_nacimiento
-        object: [29 de diciembre de 2017]
+        object: [14 de octubre de 2016]
 
   - id: segunda_hija_frase_narrativa
     active_person: *felipe
-    user: Sí, recuerdo este momento muy especial y después nació Dominga y ella tiene ocho años, nació el 13 de noviembre del 2017.
+    user: Sí, recuerdo este momento muy especial y después nació Martina y ella tiene siete años, nació el 5 de marzo del 2019.
     assistant: ¡Oh, eso es hermoso, Felipe! ¿Cómo fue tu primer día como padre?
     expected_entities:
-      - { name: Dominga, type: person }
+      - { name: Martina, type: person }
     expected_facts:
-      - { subject: Dominga, predicate: hijo_de, object: Felipe Castro }
-      - subject: Dominga
+      - { subject: Martina, predicate: hijo_de, object: Felipe Castro }
+      - subject: Martina
         predicate: edad
-        object: ["8", ocho años, ocho]
-      - subject: Dominga
+        object: ["7", siete años, siete]
+      - subject: Martina
         predicate: fecha_nacimiento
-        object: [13 de noviembre del 2017, 13 de noviembre de 2017]
+        object: [5 de marzo del 2019, 5 de marzo de 2019]

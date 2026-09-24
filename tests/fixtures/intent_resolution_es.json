@@ -18,7 +18,7 @@
     "rule_id": "household.protected.v1"
   },
   {
-    "text": "¿Cuándo nació Máximo?",
+    "text": "¿Cuándo nació Joaquín?",
     "need": "protected_household",
     "match": "exact",
     "rule_id": "birth.protected.v1"
@@ -246,13 +246,13 @@
     "rule_id": "enrollment.biometric.v1"
   },
   {
-    "text": "Mírame bien, yo soy Máximo.",
+    "text": "Mírame bien, yo soy Joaquín.",
     "need": "biometric_enrollment",
     "match": "exact",
     "rule_id": "enrollment.biometric.v1"
   },
   {
-    "text": "Te presento a Dominga.",
+    "text": "Te presento a Martina.",
     "need": "biometric_enrollment",
     "match": "exact",
     "rule_id": "enrollment.biometric.v1"

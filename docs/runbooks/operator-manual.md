@@ -73,6 +73,16 @@ First time only: `just setup` (dependencies + hooks), then
 `just setup-personal` (owner, confirmed children, PIN — requires
 `run-server`/`run-robot` stopped).
 
+**Seeing what Iroko heard and says (debug, off by default).** The logs carry
+only counts and timings — household content is never logged (Plans 0031/0032).
+To read the actual texts on your own machine set `LOG_CONVERSATION_TEXT=true` in
+`.env` and restart `just run-server` and `just run-robot`: both consoles then
+print `Heard:` (the transcript) and `Spoken:` (each sentence sent to the voice,
+including deterministic answers such as your own children). It prints to the console only,
+never to `logs/server.log`, and startup logs a warning while it is on. Turn it
+off when you finish, and do not say a PIN aloud while it is on
+([Plan 0052](../plans/open/0052-opt-in-conversation-text-log.md)).
+
 ## 2. QA tools, by what they isolate
 
 Iroko's turn is `mic → STT → LLM → TTS → speaker`, plus an HTTP boundary
@@ -198,7 +208,7 @@ stranger sharing the frame would still overhear the answer).
 Validated live 2026-08-27: `just onboard` enrolled Pipec's face, then
 `just run-robot` correctly identified him on a real streaming turn
 (`Turn actor: status=identified role=owner ... evidence=1`) and answered
-"Tus hijos son emma y dominga." with no PIN. **This is one successful run
+"Tus hijos son nala y martina." with no PIN. **This is one successful run
 on one person's hardware, not a calibrated study** — no threshold tuning,
 no false-accept/false-reject measurement, no lighting/distance/glasses
 variation.
@@ -325,7 +335,7 @@ looks. Any future reconnection needs its own bounded plan: migrate the checklist
 v4, then decide whether it should still gate on an existing owner or be scoped
 narrower (e.g. only the optional/non-security slots — birthday, work, likes).
 
-### The symptom this explains: "los hijos son Max..." instead of "tus hijos son Max..."
+### The symptom this explains: "los hijos son Joaco..." instead of "tus hijos son Joaco..."
 
 Before the deterministic child-name tool existed (or when a question's phrasing
 doesn't match the intent resolver's known patterns and falls through to generic

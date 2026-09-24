@@ -25,7 +25,7 @@ async def legacy_v4_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type
     await db.run_migrations()
 
     felipe_id = await upsert_entity(name="Felipe", type="person")
-    maximo_id = await upsert_entity(name="Maximo", type="person")
+    maximo_id = await upsert_entity(name="Joaquin", type="person")
     nina_id = await upsert_entity(name="Nina", type="person")
     await upsert_entity(name="Alex", type="person")
     await db.get_conn().execute(
@@ -41,11 +41,11 @@ async def legacy_v4_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type
         object_value="Felipe",
         supersede_existing=False,
     )
-    await assert_fact(entity_id=felipe_id, predicate="fecha_nacimiento", object_value="2017-12-29")
+    await assert_fact(entity_id=felipe_id, predicate="fecha_nacimiento", object_value="2016-10-14")
     prose_birth_date_id = await assert_fact(
         entity_id=felipe_id,
         predicate="fecha_nacimiento",
-        object_value="29 de diciembre de 2017",
+        object_value="14 de octubre de 2016",
         supersede_existing=False,
     )
     await assert_fact(
@@ -87,7 +87,7 @@ async def legacy_v4_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type
         predicate="hijo_de",
         object_value="Felipe",
     )
-    await assert_fact(entity_id=olivia_id, predicate="hijo_de", object_value="Maximo")
+    await assert_fact(entity_id=olivia_id, predicate="hijo_de", object_value="Joaquin")
 
     yield {
         "felipe_id": felipe_id,
@@ -178,7 +178,7 @@ async def test_legacy_migration_is_dry_run_first_and_idempotent(
     await literals_cursor.close()
     assert ("likes", "cafe") in literals
     assert ("likes", "robotica") in literals
-    assert ("birth_date", "2017-12-29") in literals
+    assert ("birth_date", "2016-10-14") in literals
 
     relation_cursor = await db.get_conn().execute(
         "SELECT source_entity_id, predicate, target_entity_id FROM entity_relations_v4 "

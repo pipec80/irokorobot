@@ -109,7 +109,7 @@ def _literal(value: str, *, fact_id: int = 1) -> LiteralFactV4:
 async def test_unknown_actor_is_audited_then_denied_before_child_reader() -> None:
     """Prevent unresolved actors from triggering either policy-gated reader or labels."""
     relation_reader = AsyncMock(return_value=[_child_relation(8)])
-    label_reader = AsyncMock(return_value=EntityLabel(entity_id=8, display_name="Máximo"))
+    label_reader = AsyncMock(return_value=EntityLabel(entity_id=8, display_name="Joaquín"))
     tool_audit = AsyncMock()
     reader = PolicyGatedV4Reader(relation_reader=relation_reader)
     tools = HouseholdKnowledgeTools(
@@ -158,7 +158,7 @@ async def test_consented_owner_authorizes_and_audits_before_child_labels() -> No
         calls.append(f"label:{entity_id}")
         return EntityLabel(
             entity_id=entity_id,
-            display_name="Máximo" if entity_id == 8 else "Sofía",
+            display_name="Joaquín" if entity_id == 8 else "Paula",
         )
 
     reader = PolicyGatedV4Reader(
@@ -182,7 +182,7 @@ async def test_consented_owner_authorizes_and_audits_before_child_labels() -> No
     )
 
     assert result.status is KnowledgeStatus.KNOWN
-    assert result.value == ("Máximo", "Sofía")
+    assert result.value == ("Joaquín", "Paula")
     assert calls == [
         "policy:execute_household_tool",
         "audit:execute_household_tool",
@@ -203,7 +203,7 @@ async def test_missing_child_label_returns_unknown_without_partial_names() -> No
 
     async def label_reader(*, entity_id: int) -> EntityLabel | None:
         if entity_id == 8:
-            return EntityLabel(entity_id=8, display_name="Máximo")
+            return EntityLabel(entity_id=8, display_name="Joaquín")
         return None
 
     reader = PolicyGatedV4Reader(
@@ -297,7 +297,7 @@ async def test_preferences_preserve_multiple_active_values() -> None:
 @pytest.mark.asyncio
 async def test_get_person_birth_date_returns_one_strict_active_value() -> None:
     """Expose a birth date only through the consent-gated v4 tool boundary."""
-    birth = _literal("2017-12-29").model_copy(
+    birth = _literal("2016-10-14").model_copy(
         update={"predicate": "birth_date", "subject_entity_id": 8}
     )
     literal_reader = AsyncMock(return_value=[birth])
@@ -323,13 +323,13 @@ async def test_get_person_birth_date_returns_one_strict_active_value() -> None:
 
     assert result.tool_name is HouseholdToolName.GET_PERSON_BIRTH_DATE
     assert result.status is KnowledgeStatus.KNOWN
-    assert result.value == "2017-12-29"
+    assert result.value == "2016-10-14"
 
 
 @pytest.mark.asyncio
 async def test_birth_date_requires_consent_before_reader() -> None:
     """Block child data before either raw v4 read or deterministic age calculation."""
-    literal_reader = AsyncMock(return_value=[_literal("2017-12-29")])
+    literal_reader = AsyncMock(return_value=[_literal("2016-10-14")])
     tool_audit = AsyncMock()
     reader = PolicyGatedV4Reader(literal_reader=literal_reader)
     tools = HouseholdKnowledgeTools(
@@ -357,9 +357,9 @@ async def test_birth_date_requires_consent_before_reader() -> None:
 @pytest.mark.asyncio
 async def test_age_uses_one_birth_date_and_rejects_inconsistent_active_rows() -> None:
     """Calculate from one v4 birth date and never choose between competing values."""
-    birth = _literal("2017-12-29")
+    birth = _literal("2016-10-14")
     birth = birth.model_copy(update={"predicate": "birth_date", "subject_entity_id": 8})
-    conflicting = birth.model_copy(update={"id": 2, "value_text": "2018-12-29"})
+    conflicting = birth.model_copy(update={"id": 2, "value_text": "2017-10-14"})
     literal_reader = AsyncMock(return_value=[birth])
     reader = PolicyGatedV4Reader(
         policy_evaluator=lambda request: _decision(request, AuthorizationStatus.ALLOWED),
@@ -392,6 +392,6 @@ async def test_age_uses_one_birth_date_and_rejects_inconsistent_active_rows() ->
     )
 
     assert known.status is KnowledgeStatus.KNOWN
-    assert known.value == 8
+    assert known.value == 9
     assert contradictory.status is KnowledgeStatus.CONTRADICTORY
     assert contradictory.value is None

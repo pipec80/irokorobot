@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     log_to_file: bool = True
     log_dir: Path = Path("logs")
     log_retention_days: int = 14
+    # Debug aid, off by default (Plan 0052): prints what was heard and spoken on
+    # the console only, never to the log file.
+    log_conversation_text: bool = False
     # R3: use POST /transcribe/stream + sentence-by-sentence playback instead
     # of the classic single-shot /transcribe. Default off — opt-in per robot
     # until validated on real hardware.

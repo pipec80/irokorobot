@@ -221,7 +221,7 @@ Parse NDJSON and assert:
 
 ```python
 assert event_types == ["text_heard", "emotion", "audio", "done"]
-assert audio_events[0]["text"] == "Tus hijos son Máximo y Dominga."
+assert audio_events[0]["text"] == "Tus hijos son Joaquín y Martina."
 assert done["authentication_consumed"] is True
 ```
 

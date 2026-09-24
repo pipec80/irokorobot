@@ -130,8 +130,8 @@ def test_unresolved_voice_turn_does_not_load_entity_hotwords(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """An unresolved speaker must not read persistent names before STT."""
-    stt_mock = AsyncMock(return_value="hola Dominga")
-    list_names = AsyncMock(return_value=["Dominga", "Luna"])
+    stt_mock = AsyncMock(return_value="hola Martina")
+    list_names = AsyncMock(return_value=["Martina", "Luna"])
     monkeypatch.setattr(stt, "transcribe", stt_mock)
     monkeypatch.setattr(pipeline, "list_entity_names", list_names)
     monkeypatch.setattr(
@@ -207,11 +207,11 @@ def test_presentation_guidance_is_static_for_manual_context() -> None:
     prompt = build_system_prompt(
         get_character("iroko"),
         None,
-        active_person=_identified_person("Sofía del Mar"),
+        active_person=_identified_person("Paula del Mar"),
     )
 
     assert "An explicitly identified manual context is available for this turn." in prompt
-    assert "Sofía del Mar" not in prompt
+    assert "Paula del Mar" not in prompt
 
 
 @pytest.mark.integration
@@ -220,7 +220,7 @@ def test_presentation_guidance_requires_manual_evidence() -> None:
     prompt = build_system_prompt(
         get_character("iroko"),
         None,
-        active_person=_identified_person("Sofía", source=IdentityEvidenceSource.SESSION),
+        active_person=_identified_person("Paula", source=IdentityEvidenceSource.SESSION),
     )
 
     assert "PRESENTATION GUIDANCE:" not in prompt

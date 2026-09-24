@@ -721,8 +721,8 @@ def test_real_golden_suite_contains_no_reserved_names() -> None:
     reserved_names = {
         "pipec",
         "felipe",
-        "maximo",
-        "dominga",
+        "joaquin",
+        "martina",
         "iroko",
         "omnibot",
     }

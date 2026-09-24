@@ -13,6 +13,7 @@ from enum import StrEnum
 import logging
 
 from server import llm, tts
+from server.conversation_log import log_spoken
 from server.exceptions import LLMError
 from server.pipeline import _elapsed_ms
 from server.schemas_streaming import (
@@ -115,6 +116,7 @@ async def synthesize_sentence(sentence: str, state: StreamState) -> str:
             "chunk": state.audio_chunks,
         },
     )
+    log_spoken(sentence)
     event = StreamAudioEvent(text=sentence, audio_base64=audio_base64, duration_ms=duration_ms)
     return event.model_dump_json() + "\n"
 

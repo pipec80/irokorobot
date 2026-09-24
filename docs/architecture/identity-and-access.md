@@ -216,7 +216,7 @@ false-reject cases.
 
 When the operation is low-risk, Iroko may ask:
 
-> “Creo que eres Sofía, ¿es correcto?”
+> “Creo que eres Paula, ¿es correcto?”
 
 For sensitive operations, conversational confirmation alone may be
 insufficient; policy can require a fresh one-use local unlock, calibrated
@@ -377,7 +377,7 @@ Safe behavior examples:
 - Unknown speaker asks a general question: answer without household memory.
 - Unknown speaker asks about the children: return `unauthorized`, not “I don't
   know” if the data exists but cannot be disclosed.
-- Face says Felipe and voice says Sofía: return `ambiguous` and request a safer
+- Face says Felipe and voice says Paula: return `ambiguous` and request a safer
   confirmation; do not choose the higher score.
 - Probable child asks for their own birth date: policy may allow after a simple
   confirmation.
@@ -403,7 +403,7 @@ social policies. Personality never changes permissions.
    explicit local unlock.
 5. Resolve that evidence at channel boundaries and enforce authorization before
    deterministic family tools and retrieval.
-6. Prove “Máximo y Dominga” and the paired non-disclosure case through the real
+6. Prove “Joaquín y Martina” and the paired non-disclosure case through the real
    audio path.
 7. Integrate and calibrate consented face evidence.
 8. Evaluate and add local speaker verification.

@@ -172,16 +172,16 @@ async def test_build_context_finds_known_entity(
 
 @pytest.mark.integration
 async def test_upsert_entity_dedupes_accent_variants(memory_db: Path) -> None:
-    """Whisper drops accents ("Máximo"→"Maximo") — variants must merge into
+    """Whisper drops accents ("Joaquín"→"Joaquin") — variants must merge into
     ONE entity, keeping the incoming spelling as an alias."""
-    original_id = await upsert_entity(name="Máximo", type="person")
+    original_id = await upsert_entity(name="Joaquín", type="person")
 
-    variant_id = await upsert_entity(name="Maximo", type="person")
+    variant_id = await upsert_entity(name="Joaquin", type="person")
 
     assert variant_id == original_id
-    matches = await find_entities_by_name("Máximo", limit=5)
+    matches = await find_entities_by_name("Joaquín", limit=5)
     assert len(matches) == 1
-    assert "Maximo" in matches[0]["aliases"]
+    assert "Joaquin" in matches[0]["aliases"]
 
 
 @pytest.mark.integration
@@ -272,7 +272,7 @@ async def test_implicit_active_person_entity_is_person(
         entities=[],
         facts=[
             ExtractedFact(
-                subject="usuario", predicate="fecha_nacimiento", object="6 de octubre de 1981"
+                subject="usuario", predicate="fecha_nacimiento", object="17 de agosto de 1979"
             )
         ],
         importance=0.8,
@@ -291,7 +291,7 @@ async def test_implicit_active_person_entity_is_person(
     ):
         await consolidate_turn(
             http_client,
-            "nací el 6 de octubre de 1981",
+            "nací el 17 de agosto de 1979",
             "¡Qué fecha!",
             active_person=_identified_person(),
         )
