@@ -23,7 +23,7 @@ can demonstrate both sides of the same privacy boundary:
 fresh authenticated Pipec
   -> “¿Quiénes son mis hijos?”
   -> authorized structured retrieval
-  -> “Tus hijos son Máximo y Dominga.”
+  -> “Tus hijos son Joaquín y Martina.”
   -> audible Piper output
 
 no fresh authentication

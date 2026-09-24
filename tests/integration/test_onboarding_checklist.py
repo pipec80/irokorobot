@@ -135,7 +135,7 @@ async def test_relation_covered_by_entity_pointing_at_owner(onboarding_db: Path)
         ("le_gusta", "andar en bicicleta"),
     ]:
         await assert_fact(entity_id=owner_id, predicate=predicate, object_value=value)
-    child_id = await upsert_entity(name="Dominga", type="person")
+    child_id = await upsert_entity(name="Martina", type="person")
     await assert_fact(entity_id=child_id, predicate="hijo_de", object_value=_OWNER)
 
     slot = await next_missing_slot()
@@ -192,12 +192,12 @@ async def test_self_introduction_does_not_anchor_legacy_owner(
     """No incoming turn may infer or replace the legacy household owner."""
     kids_turn = _turn(
         entities=[
-            ExtractedEntity(name="Máximo", type="person"),
-            ExtractedEntity(name="Dominga", type="person"),
+            ExtractedEntity(name="Joaquín", type="person"),
+            ExtractedEntity(name="Martina", type="person"),
         ],
         facts=[
-            ExtractedFact(subject="Máximo", predicate="hijo_de", object="Usuario"),
-            ExtractedFact(subject="Dominga", predicate="hijo_de", object="Usuario"),
+            ExtractedFact(subject="Joaquín", predicate="hijo_de", object="Usuario"),
+            ExtractedFact(subject="Martina", predicate="hijo_de", object="Usuario"),
         ],
     )
     intro_turn = _turn(
@@ -215,7 +215,7 @@ async def test_self_introduction_does_not_anchor_legacy_owner(
         extract.return_value = kids_turn
         await consolidate_turn(
             http_client,
-            "sí, tengo dos hijos, Máximo y mi hija Dominga",
+            "sí, tengo dos hijos, Joaquín y mi hija Martina",
             "¡Qué maravilla!",
         )
         assert await get_flag("owner_name") is None

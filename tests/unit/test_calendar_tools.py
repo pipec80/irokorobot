@@ -16,11 +16,11 @@ def test_get_current_date_returns_the_injected_iso_date() -> None:
 
 def test_calculate_age_counts_completed_years_at_birthday_boundary() -> None:
     """Reject an age calculation that rounds calendar years incorrectly."""
-    before_birthday = calculate_age("2017-12-29", date(2026, 12, 28))
-    on_birthday = calculate_age("2017-12-29", date(2026, 12, 29))
+    before_birthday = calculate_age("2016-10-14", date(2026, 10, 13))
+    on_birthday = calculate_age("2016-10-14", date(2026, 10, 14))
 
-    assert before_birthday.value == 8
-    assert on_birthday.value == 9
+    assert before_birthday.value == 9
+    assert on_birthday.value == 10
     assert before_birthday.status is KnowledgeStatus.KNOWN
     assert on_birthday.status is KnowledgeStatus.KNOWN
 

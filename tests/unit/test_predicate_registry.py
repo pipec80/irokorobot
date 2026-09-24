@@ -19,8 +19,8 @@ def test_birth_date_alias_resolves_to_strict_single_literal() -> None:
     assert definition.kind is PredicateKind.LITERAL
     assert definition.cardinality is PredicateCardinality.SINGLE_CURRENT
     assert definition.subject_types == frozenset({"person"})
-    assert normalize_literal(definition, "2017-12-29") == "2017-12-29"
-    assert normalize_literal(definition, "29 de diciembre de 2017") is None
+    assert normalize_literal(definition, "2016-10-14") == "2016-10-14"
+    assert normalize_literal(definition, "14 de octubre de 2016") is None
 
 
 def test_multi_value_preference_alias_keeps_cardinality() -> None:

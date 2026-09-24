@@ -381,7 +381,7 @@ jobs:
 
 No todo de golpe. En orden lógico:
 
-1. **Ruff** — primero. Máximo beneficio, mínimo setup.
+1. **Ruff** — primero. Joaquín beneficio, mínimo setup.
 2. **pre-commit** — inmediatamente después. Automatiza que ruff corra.
 3. **mypy** — antes de escribir código de producción. Cuesta más setup
    inicial pero vale la pena.

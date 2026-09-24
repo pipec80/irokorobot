@@ -199,8 +199,8 @@ def test_vision_respond_denies_protected_data_before_legacy_generation(
     assert request.actor.person_id is None
     assert request.target_person_id is None
     assert decision.decision.value == "denied"
-    assert "Máximo" not in repr(request)
-    assert "Sofía" not in repr(request)
+    assert "Joaquín" not in repr(request)
+    assert "Paula" not in repr(request)
     reader.read_active_literals.assert_not_called()
     reader.read_active_relations.assert_not_called()
     tools.get_children.assert_not_called()

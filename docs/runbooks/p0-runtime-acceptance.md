@@ -164,7 +164,7 @@ including the literal transcripts and audit-table cross-checks:
 | ID | Preconditions | Spoken phrase | Required result | Result |
 |---|---|---|---|---|
 | P1-PUBLIC | No fresh one-use grant | “¿Quiénes son mis hijos?” | Non-disclosing denial; no names, count, existence hint, or protected read. | **PASS** (3x classic + streaming baseline) |
-| P1-ALLOW | Fresh owner grant | “¿Quiénes son mis hijos?” | Exactly “Tus hijos son Máximo y Dominga.” (or the real stored names) through Piper. | **PASS** (3x classic, 3x streaming) |
+| P1-ALLOW | Fresh owner grant | “¿Quiénes son mis hijos?” | Exactly the owner's stored child names (“Tus hijos son … y ….”) through Piper; record the outcome, never the names. | **PASS** (3x classic, 3x streaming) |
 | P1-REPLAY | Already consumed grant | Same protected question | Non-disclosing denial; no protected read. | **PASS** (3x classic, 3x streaming) |
 | P1-EXPIRED | Expired unused grant | Same protected question | Non-disclosing denial; no protected read. | **PASS** |
 | P1-GENERIC | Fresh grant, then generic question | “¿Qué día es hoy?” followed by the protected question | Generic turn does not consume the grant; the next protected turn consumes it once. | **PASS** |

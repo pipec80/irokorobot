@@ -1,6 +1,6 @@
 """Unit tests for dynamic hotword merging in the STT layer.
 
-Whisper garbles proper nouns it has never seen ("Dominga" → "Dominguez",
+Whisper garbles proper nouns it has never seen ("Martina" → "Martinez",
 observed live 2026-07-07). Names already learned by the memory layer are
 merged with the static WHISPER_HOTWORDS setting to bias decoding.
 """
@@ -22,18 +22,18 @@ def test_merge_only_base_returns_base() -> None:
 
 @pytest.mark.unit
 def test_merge_only_extras_joins_names() -> None:
-    assert _merge_hotwords(None, ["Dominga", "Máximo"]) == "Dominga Máximo"
+    assert _merge_hotwords(None, ["Martina", "Joaquín"]) == "Martina Joaquín"
 
 
 @pytest.mark.unit
 def test_merge_appends_extras_after_base() -> None:
-    assert _merge_hotwords("Iroko", ["Dominga"]) == "Iroko Dominga"
+    assert _merge_hotwords("Iroko", ["Martina"]) == "Iroko Martina"
 
 
 @pytest.mark.unit
 def test_merge_dedupes_case_insensitively() -> None:
     """A name already in the static hotwords must not repeat."""
-    assert _merge_hotwords("Iroko dominga", ["Dominga", "Luna"]) == "Iroko dominga Luna"
+    assert _merge_hotwords("Iroko martina", ["Martina", "Luna"]) == "Iroko martina Luna"
 
 
 @pytest.mark.unit

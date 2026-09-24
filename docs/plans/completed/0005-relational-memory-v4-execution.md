@@ -73,8 +73,8 @@ unsupported names return `None`; no fallback or dynamic registration exists.
 
   ```python
   assert resolve_predicate("fecha_nacimiento").canonical_id == "birth_date"
-  assert normalize_literal(birth_date, "2017-12-29") == "2017-12-29"
-  assert normalize_literal(birth_date, "29 de diciembre de 2017") is None
+  assert normalize_literal(birth_date, "2016-10-14") == "2016-10-14"
+  assert normalize_literal(birth_date, "14 de octubre de 2016") is None
   assert resolve_predicate("edad") is None
   assert resolve_predicate("le_gusta").cardinality is PredicateCardinality.MULTI_VALUE
   assert resolve_predicate("hijo_de").inverse_query_id == "parent_of"

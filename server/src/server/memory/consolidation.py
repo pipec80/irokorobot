@@ -63,14 +63,14 @@ Reglas:
 - le_gusta/odia/prefiere JAMÁS llevan una persona como object.
 - Si el turno es trivial (saludos sin información nueva), retorna listas vacías.
 
-Ejemplo — [user] "tengo dos hijos, uno se llama Máximo, tiene 10 años, nació
-el 29 de diciembre de 2017" produce EXACTAMENTE:
-  entities: [{"name": "Máximo", "type": "person"}]
+Ejemplo — [user] "tengo dos hijos, uno se llama Joaquín, tiene 9 años, nació
+el 14 de octubre de 2016" produce EXACTAMENTE:
+  entities: [{"name": "Joaquín", "type": "person"}]
   facts: [
-    {"subject": "Máximo", "predicate": "hijo_de", "object": "usuario"},
-    {"subject": "Máximo", "predicate": "edad", "object": "10"},
-    {"subject": "Máximo", "predicate": "fecha_nacimiento", "object": "29 de diciembre de 2017"}]
-Sin entidades para "10 años" ni para la fecha.
+    {"subject": "Joaquín", "predicate": "hijo_de", "object": "usuario"},
+    {"subject": "Joaquín", "predicate": "edad", "object": "9"},
+    {"subject": "Joaquín", "predicate": "fecha_nacimiento", "object": "14 de octubre de 2016"}]
+Sin entidades para "9 años" ni para la fecha.
 
 Responde SOLO con JSON válido conforme al schema. Sin comentarios.\
 """

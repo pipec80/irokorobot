@@ -8,7 +8,7 @@
 ## Context
 
 The immediate product promise is concrete: after Pipec authenticates and asks
-“¿quiénes son mis hijos?”, Iroko answers “Máximo y Dominga”. If another person
+“¿quiénes son mis hijos?”, Iroko answers “Joaquín y Martina”. If another person
 asks the same question without valid authentication, Iroko does not reveal the
 names or confirm that protected data exists.
 

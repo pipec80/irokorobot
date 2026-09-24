@@ -42,7 +42,7 @@ def _manual_active_person() -> ActivePersonContext:
     )
     return ActivePersonContext(
         person_id=7,
-        display_name="Sofía",
+        display_name="Paula",
         status=ActivePersonStatus.IDENTIFIED,
         confidence=confidence,
         role=HouseholdRole.UNKNOWN,
@@ -407,8 +407,8 @@ def test_stream_denies_private_household_request_before_legacy_generation(
     request, decision = audit_call.args
     assert request.actor.person_id is None
     assert request.target_person_id is None
-    assert "Máximo" not in repr((request, decision))
-    assert "Sofía" not in repr((request, decision))
+    assert "Joaquín" not in repr((request, decision))
+    assert "Paula" not in repr((request, decision))
     prepare.assert_not_awaited()
     llm_stream.assert_not_called()
     record.assert_not_called()
@@ -486,7 +486,7 @@ def test_unresolved_stream_does_not_load_entity_hotwords(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """An unresolved stream must not query persistent names before STT."""
-    list_names = AsyncMock(return_value=["Sofía"])
+    list_names = AsyncMock(return_value=["Paula"])
     stt_mock = AsyncMock(return_value="hola robot")
     monkeypatch.setattr(pipeline, "list_entity_names", list_names)
     monkeypatch.setattr(stt, "transcribe", stt_mock)

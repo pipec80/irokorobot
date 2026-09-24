@@ -24,8 +24,8 @@ tracked independently of the PC-1 verdict. Full untracked evidence:
 is proven; canonical documentation updated in this same change.
 
 **Goal:** Prove repeatedly on the actual Windows PC that Pipec can authenticate
-locally, speak “¿quiénes son mis hijos?”, and hear “Tus hijos son Máximo y
-Dominga”, while absent, expired, and replayed grants disclose nothing.
+locally, speak “¿quiénes son mis hijos?”, and hear “Tus hijos son Joaquín y
+Martina”, while absent, expired, and replayed grants disclose nothing.
 
 **Architecture:** Use the real `just run-server` plus `just run-robot` path,
 the local setup wizard, microphone, Faster Whisper, controller, authorization,
@@ -52,7 +52,7 @@ design](0024-owner-authenticated-memory-mvp-design.md)
 - Record literal STT text. A materially wrong transcription is a failure even
   if the intended phrase would have passed.
 - Required spoken result is exact in substance and names: `Tus hijos son
-  Máximo y Dominga.` No LLM paraphrase may introduce another name or fact.
+  Joaquín y Martina.` No LLM paraphrase may introduce another name or fact.
 - A denial must not contain either name, the count, or confirmation that a
   protected relationship exists.
 - Automated tests are prerequisite evidence, not product acceptance.
@@ -164,8 +164,8 @@ Enter the confirmed minimal security bootstrap locally. Required acceptance
 relationships:
 
 ```text
-Pipec <- child_of - Máximo
-Pipec <- child_of - Dominga
+Pipec <- child_of - Joaquín
+Pipec <- child_of - Martina
 ```
 
 Enter the PIN only in the masked prompt. Review the redacted summary and type
@@ -235,7 +235,7 @@ Each run must:
 
 - show materially correct literal STT;
 - speak the non-disclosing denial;
-- not speak Máximo, Dominga, `dos`, or another family value;
+- not speak Joaquín, Martina, `dos`, or another family value;
 - report `authentication_consumed=false`;
 - produce a denied authorization audit and no protected v4 read.
 
@@ -273,7 +273,7 @@ Speak `¿Qué fecha es hoy?`. Required:
 Within the grant lifetime, speak `¿Quiénes son mis hijos?`. Required:
 
 - literal STT materially matches;
-- text equals `Tus hijos son Máximo y Dominga.`;
+- text equals `Tus hijos son Joaquín y Martina.`;
 - Piper audibly says the same names and no extra protected fact;
 - `authentication_consumed=true`;
 - audit actions appear in order:
@@ -323,7 +323,7 @@ Restart server/robot as required and enter PIN locally.
 Speak the protected question. Required:
 
 - event order `text_heard -> emotion -> audio+ -> done`;
-- audio text `Tus hijos son Máximo y Dominga.`;
+- audio text `Tus hijos son Joaquín y Martina.`;
 - valid audible WAV chunks;
 - terminal `authentication_consumed=true`;
 - no duplicate/late audio or `done` without audio.

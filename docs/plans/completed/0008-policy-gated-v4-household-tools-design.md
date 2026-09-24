@@ -140,7 +140,7 @@ The controller recognizes only narrow Spanish family patterns that do not need
 name grounding, initially "cuántos hijos tengo" and "cómo se llaman mis hijos".
 It uses the resolved actor's integer ID as the query subject. Direct person-ID
 tool calls are test/internal application seams; free-text names such as
-"qué edad tiene Máximo" stay `unknown` until P1 provides explicit onboarding
+"qué edad tiene Joaquín" stay `unknown` until P1 provides explicit onboarding
 and reference-resolution rules. This avoids choosing an entity from an
 ambiguous name match.
 

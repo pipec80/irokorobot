@@ -19,10 +19,10 @@ def test_candidates_keeps_proper_nouns() -> None:
 
 @pytest.mark.unit
 def test_candidates_prioritises_capitalised_tokens() -> None:
-    result = _candidates("el cumpleaños de Valentina y de Máximo")
-    assert result[0] in {"Valentina", "Máximo"}
+    result = _candidates("el cumpleaños de Valentina y de Joaquín")
+    assert result[0] in {"Valentina", "Joaquín"}
     assert "Valentina" in result
-    assert "Máximo" in result
+    assert "Joaquín" in result
 
 
 @pytest.mark.unit

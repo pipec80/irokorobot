@@ -30,7 +30,7 @@ from server.settings import settings
 
 from server import db, stt, tts
 
-_CHILD_ANSWER = "Tus hijos son Máximo y Dominga."
+_CHILD_ANSWER = "Tus hijos son Joaquín y Martina."
 _CHILD_QUESTION = "¿Quiénes son mis hijos?"
 _PIN = "482173"
 
@@ -46,7 +46,7 @@ async def acceptance_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Asyn
     await apply_personal_setup(
         PersonalSetupInput(
             owner_name="Pipec",
-            child_names=("Máximo", "Dominga"),
+            child_names=("Joaquín", "Martina"),
             pin=SecretStr(_PIN),
         )
     )
@@ -143,8 +143,8 @@ async def test_chat_replayed_token_denies_without_disclosure(
     assert first.json()["response"] == _CHILD_ANSWER
     assert second.status_code == 200
     assert second.json()["authentication_consumed"] is False
-    assert "Máximo" not in second.json()["response"]
-    assert "Dominga" not in second.json()["response"]
+    assert "Joaquín" not in second.json()["response"]
+    assert "Martina" not in second.json()["response"]
 
 
 @pytest.mark.integration
@@ -174,8 +174,8 @@ async def test_allowed_read_audit_trace_contains_no_names_pin_or_token(
     joined = repr(rows)
     assert _PIN not in joined
     assert unlock.token not in joined
-    assert "Máximo" not in joined
-    assert "Dominga" not in joined
+    assert "Joaquín" not in joined
+    assert "Martina" not in joined
 
 
 @pytest.mark.integration
@@ -237,8 +237,8 @@ async def test_transcribe_absent_or_malformed_token_denies_without_reading_v4(
 
     assert response.status_code == 200
     assert response.json()["authentication_consumed"] is False
-    assert "Máximo" not in response.json()["llm_response"]
-    assert "Dominga" not in response.json()["llm_response"]
+    assert "Joaquín" not in response.json()["llm_response"]
+    assert "Martina" not in response.json()["llm_response"]
     reader_spy.assert_not_awaited()
 
 

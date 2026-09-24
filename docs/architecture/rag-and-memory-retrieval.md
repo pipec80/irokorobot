@@ -40,7 +40,7 @@ Pipec autenticado: “¿Quiénes son mis hijos?”
   -> identidad/autenticación vigente
   -> autorización para relaciones familiares propias
   -> consulta estructurada de relaciones
-  -> Máximo y Dominga
+  -> Joaquín y Martina
   -> respuesta audible
 ```
 
@@ -162,7 +162,7 @@ permitidos. Ninguna de esas responsabilidades debe absorber a las demás.
 |---|---|---|---|
 | Contexto de trabajo | Transitoria | pregunta y aclaración actuales | ID de interacción y recencia |
 | Hecho declarativo | Literal/confirmado | fecha de nacimiento | SQL exacto |
-| Relación | Entidad a entidad | Pipec `parent_of` Máximo | SQL/relaciones |
+| Relación | Entidad a entidad | Pipec `parent_of` Joaquín | SQL/relaciones |
 | Episodio | Evento con tiempo | cambiamos DHT11 por SHT31 | temporal + vector |
 | Memoria semántica | Resumen derivado | Pipec usa SHT31 | vector + metadata |
 | Hipótesis/reflexión | Inferencia revisable | podría preferir respuestas breves | vector, baja autoridad |
@@ -793,7 +793,7 @@ Esta arquitectura no cambia la prioridad inmediata del compañero personal.
 
 ### R0 — MVP personal autenticado
 
-Completar Plan 0024: Pipec autenticado obtiene “Máximo y Dominga”; sin
+Completar Plan 0024: Pipec autenticado obtiene “Joaquín y Martina”; sin
 autenticación no hay recuperación protegida. Usa relaciones estructuradas, no
 RAG documental.
 
@@ -854,7 +854,7 @@ implementan R1–R6 dentro del MVP R0.
 - usar el LLM como autoridad de identidad, permiso o verdad;
 - llenar siempre el contexto hasta `top_k`;
 - implementar ingestión, FTS, RRF o reranking desde este documento;
-- bloquear el MVP “Máximo y Dominga” esperando el RAG completo.
+- bloquear el MVP “Joaquín y Martina” esperando el RAG completo.
 
 ## 28. Reglas invariantes
 

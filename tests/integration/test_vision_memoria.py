@@ -156,16 +156,16 @@ _ONBOARDING_TURNS: list[tuple[str, TurnExtraction]] = [
         ),
     ),
     (
-        "tengo dos hijos, Valentina y Máximo",
+        "tengo dos hijos, Valentina y Joaquín",
         TurnExtraction(
             entities=[
                 ExtractedEntity(name="Valentina", type="person"),
-                ExtractedEntity(name="Máximo", type="person"),
+                ExtractedEntity(name="Joaquín", type="person"),
             ],
             facts=[
                 # Inverted on purpose — normalize must flip them.
                 ExtractedFact(subject="usuario", predicate="hijo_de", object="Valentina"),
-                ExtractedFact(subject="usuario", predicate="hijo_de", object="Máximo"),
+                ExtractedFact(subject="usuario", predicate="hijo_de", object="Joaquín"),
             ],
             importance=0.9,
         ),
@@ -211,7 +211,7 @@ async def test_onboarding_persists_owner_family_and_pet(
     assert owner_facts["nombre"] == "Pipec"
     assert owner_facts["fecha_nacimiento"] == "12 de marzo de 1980"
 
-    for child in ("Valentina", "Máximo"):
+    for child in ("Valentina", "Joaquín"):
         child_facts = await _active_predicates(child)
         assert child_facts["hijo_de"] == "Pipec"
 
@@ -237,7 +237,7 @@ async def test_recall_after_restart_children_and_pet(
         pet_ctx = await build_context(http_client, "¿cómo se llama mi mascota?")
 
     children = {e.name for e in children_ctx.entities}
-    assert {"Valentina", "Máximo"} <= children
+    assert {"Valentina", "Joaquín"} <= children
     assert "Luna" in {e.name for e in pet_ctx.entities}
 
 

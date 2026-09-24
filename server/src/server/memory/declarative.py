@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 def _fold_name(name: str) -> str:
     """Return an accent- and case-insensitive form of *name* for dedup.
 
-    Whisper drops accents unpredictably ("Máximo" → "Maximo"); without
+    Whisper drops accents unpredictably ("Joaquín" → "Joaquin"); without
     folding, each variant becomes a separate entity and the dynamic
     hotwords then reinforce the misspelled one.
     """
@@ -104,7 +104,7 @@ async def upsert_entity(
         else:
             entity_id, existing_name, existing_attrs, existing_aliases = existing
             merged_attrs = {**json.loads(existing_attrs), **(attributes or {})}
-            # A differently-accented incoming name ("Maximo" vs "Máximo")
+            # A differently-accented incoming name ("Joaquin" vs "Joaquín")
             # becomes an alias so literal lookups on either spelling keep working.
             name_variants = {name} if name != existing_name else set()
             merged_aliases = sorted(
@@ -233,7 +233,7 @@ async def list_entity_names(*, limit: int = 30) -> list[str]:
     """Return names of the most recently updated entities.
 
     Feeds Whisper's dynamic hotwords: proper nouns are exactly what the STT
-    garbles ("Dominga" → "Dominguez"), and the names the robot already knows
+    garbles ("Martina" → "Martinez"), and the names the robot already knows
     are the ones most likely to be spoken again.
 
     Args:

@@ -150,10 +150,10 @@ async def test_controller_calculates_explicit_iso_age_without_legacy_delegate() 
     legacy_turn = AsyncMock()
     controller = CognitiveController(today=lambda: date(2026, 8, 12), legacy_turn=legacy_turn)
 
-    plan = await controller.handle(_event("¿Qué edad tiene alguien nacido el 2017-12-29?"))
+    plan = await controller.handle(_event("¿Qué edad tiene alguien nacido el 2016-10-14?"))
 
     assert plan.status is KnowledgeStatus.KNOWN
-    assert plan.tool_results[0].value == 8
+    assert plan.tool_results[0].value == 9
     legacy_turn.assert_not_awaited()
 
 
@@ -175,7 +175,7 @@ async def test_controller_denies_private_household_request_before_legacy_delegat
     "message",
     [
         "¿Cómo se llama mi esposa?",
-        "¿Cuándo nació Máximo?",
+        "¿Cuándo nació Joaquín?",
         "¿Quién es mi mamá?",
         "¿Qué preferencias tiene mi hija?",
     ],
@@ -290,7 +290,7 @@ async def test_controller_dispatches_trusted_child_names_without_legacy_delegate
         return_value=HouseholdToolResult(
             tool_name=HouseholdToolName.GET_CHILDREN,
             status=KnowledgeStatus.KNOWN,
-            value=("Máximo", "Sofía"),
+            value=("Joaquín", "Paula"),
         )
     )
     controller = CognitiveController(
@@ -304,7 +304,7 @@ async def test_controller_dispatches_trusted_child_names_without_legacy_delegate
     plan = await controller.handle(_event("¿Cómo se llaman mis hijos?"))
 
     assert plan.status is KnowledgeStatus.KNOWN
-    assert plan.response == "Tus hijos son Máximo y Sofía."
+    assert plan.response == "Tus hijos son Joaquín y Paula."
     assert plan.tool_results[0].tool_name == "get_children"
     tools.get_children.assert_awaited_once()
     legacy_turn.assert_not_awaited()
@@ -376,7 +376,7 @@ async def test_controller_dispatches_the_north_star_children_phrasing() -> None:
         return_value=HouseholdToolResult(
             tool_name=HouseholdToolName.GET_CHILDREN,
             status=KnowledgeStatus.KNOWN,
-            value=("Máximo", "Dominga"),
+            value=("Joaquín", "Martina"),
         )
     )
     controller = CognitiveController(
@@ -390,7 +390,7 @@ async def test_controller_dispatches_the_north_star_children_phrasing() -> None:
     plan = await controller.handle(_event("¿Quiénes son mis hijos?"))
 
     assert plan.status is KnowledgeStatus.KNOWN
-    assert plan.response == "Tus hijos son Máximo y Dominga."
+    assert plan.response == "Tus hijos son Joaquín y Martina."
     legacy_turn.assert_not_awaited()
 
 
@@ -406,7 +406,7 @@ async def test_identity_and_consent_resolve_only_for_protected_branches() -> Non
         return_value=HouseholdToolResult(
             tool_name=HouseholdToolName.GET_CHILDREN,
             status=KnowledgeStatus.KNOWN,
-            value=("Máximo", "Dominga"),
+            value=("Joaquín", "Martina"),
         )
     )
     controller = CognitiveController(

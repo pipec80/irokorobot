@@ -11,7 +11,7 @@ All focused and repository gates pass (727 tests, up from the 677 baseline
 after Plan 0025's close; `just lint`, `just typecheck`, `just audit`, `just
 check` all green). The north-star scenario is proven end-to-end against a
 real disposable DB with mocked STT/TTS: a fresh unlock answers "¿Quiénes son
-mis hijos?" with exactly "Tus hijos son Máximo y Dominga." once, and
+mis hijos?" with exactly "Tus hijos son Joaquín y Martina." once, and
 absent/expired/replayed/malformed tokens deny without disclosure and without
 reaching v4 storage. Not yet proven: real microphone/speaker hardware
 acceptance (Plan 0028) and streaming parity (Plan 0027). Pending independent
@@ -27,7 +27,7 @@ plan's stated scope was touched for this fix.
 
 **Goal:** Let Pipec enter the local PIN in the robot terminal, carry one opaque
 short-lived grant to the server, ask “¿quiénes son mis hijos?” through classic
-`POST /transcribe`, and receive the existing deterministic “Máximo y Dominga”
+`POST /transcribe`, and receive the existing deterministic “Joaquín y Martina”
 answer exactly once.
 
 **Architecture:** A process-local `OwnerUnlockService` verifies the persistent
@@ -440,7 +440,7 @@ response = await client.post(
         "conversation_id": "acceptance-owner",
     },
 )
-assert response.json()["response"] == "Tus hijos son Máximo y Dominga."
+assert response.json()["response"] == "Tus hijos son Joaquín y Martina."
 assert response.json()["authentication_consumed"] is True
 ```
 
@@ -450,7 +450,7 @@ the first allowed audit trace contains no names/PIN/token.
 - [ ] **Step 2: Write classic audio RED scenarios**
 
 Mock only STT and TTS boundaries. STT returns the literal Spanish question;
-TTS must receive exactly `Tus hijos son Máximo y Dominga.` and return a valid
+TTS must receive exactly `Tus hijos son Joaquín y Martina.` and return a valid
 WAV contract fixture. Cover valid, absent, expired, replayed, and malformed
 headers. In denied cases assert the v4 reader/label lookup is never called.
 
@@ -636,8 +636,8 @@ server↔robot boundary. Resolve findings and rerun affected gates before merge.
 Plan 0026 is complete only when:
 
 - the local endpoint issues a 60-second one-use token after valid PIN;
-- classic chat/audio with that token returns exactly “Tus hijos son Máximo y
-  Dominga.” from the existing v4 tool;
+- classic chat/audio with that token returns exactly “Tus hijos son Joaquín y
+  Martina.” from the existing v4 tool;
 - absent/expired/replayed/malformed tokens deny without storage access or
   disclosure;
 - the token can authorize only the named child-data read and cannot be reused

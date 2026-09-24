@@ -83,7 +83,7 @@ async def family_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: i
 
     await upsert_entity(name="Pipec", type="person")
     vale = await upsert_entity(name="Valentina", type="person")
-    maxi = await upsert_entity(name="Máximo", type="person")
+    maxi = await upsert_entity(name="Joaquín", type="person")
     luna = await upsert_entity(name="Luna", type="other")
     await assert_fact(entity_id=vale, predicate="hijo_de", object_value="Pipec")
     await assert_fact(entity_id=maxi, predicate="hijo_de", object_value="Pipec")
@@ -100,7 +100,7 @@ async def test_find_facts_by_predicate_returns_all_children(family_db: Path) -> 
     rows = await find_facts_by_predicate("hijo_de")
 
     names = {name for _id, name, _obj in rows}
-    assert names == {"Valentina", "Máximo"}
+    assert names == {"Valentina", "Joaquín"}
 
 
 @pytest.mark.integration
@@ -114,7 +114,7 @@ async def test_list_entity_names_returns_known_names(family_db: Path) -> None:
     """Dynamic hotwords source: every learned name must be available."""
     names = await list_entity_names()
 
-    assert set(names) == {"Pipec", "Valentina", "Máximo", "Luna"}
+    assert set(names) == {"Pipec", "Valentina", "Joaquín", "Luna"}
 
 
 @pytest.mark.integration
@@ -156,7 +156,7 @@ async def test_vision_como_se_llaman_mis_hijos(
         ctx = await build_context(http_client, "¿cómo se llaman mis hijos?")
 
     names = {e.name for e in ctx.entities}
-    assert {"Valentina", "Máximo"} <= names
+    assert {"Valentina", "Joaquín"} <= names
 
 
 @pytest.mark.integration
@@ -188,9 +188,9 @@ async def test_dirty_extraction_repaired_end_to_end(
     """
     await set_flag("owner_name", "Felipe")
     dirty = TurnExtraction(
-        entities=[ExtractedEntity(name="dominga", type="person")],
+        entities=[ExtractedEntity(name="martina", type="person")],
         facts=[
-            ExtractedFact(subject="usuario", predicate="tiene_hijo_de", object="dominga"),
+            ExtractedFact(subject="usuario", predicate="tiene_hijo_de", object="martina"),
             ExtractedFact(subject="Felipe", predicate="trabaja_en", object=""),
         ],
         episodic_summary=None,
@@ -210,13 +210,13 @@ async def test_dirty_extraction_repaired_end_to_end(
     ):
         await consolidate_turn(
             http_client,
-            "tengo una hija dominga",
+            "tengo una hija martina",
             "¡Qué lindo!",
             active_person=_identified_person(),
         )
 
     children = {name for _id, name, _obj in await find_facts_by_predicate("hijo_de")}
-    assert "Dominga" in children  # title-cased, direction repaired
+    assert "Martina" in children  # title-cased, direction repaired
     # The empty-object fact must not exist
     assert await find_facts_by_predicate("trabaja_en") == []
 

@@ -93,8 +93,8 @@ async def test_consented_owner_uses_v4_tools_for_children_preferences_and_age(
 ) -> None:
     """Prove the positive P0 seam uses v4 relationships and literal facts only."""
     owner_id = await upsert_entity(name="Felipe", type="person")
-    maximo_id = await upsert_entity(name="Máximo", type="person")
-    sofia_id = await upsert_entity(name="Sofía", type="person")
+    maximo_id = await upsert_entity(name="Joaquín", type="person")
+    sofia_id = await upsert_entity(name="Paula", type="person")
     await bootstrap_initial_owner(
         person_entity_id=owner_id,
         confirmed_person_entity_id=owner_id,
@@ -122,7 +122,7 @@ async def test_consented_owner_uses_v4_tools_for_children_preferences_and_age(
     await assert_literal_fact(
         subject_entity_id=maximo_id,
         definition=_predicate("fecha_nacimiento"),
-        value="2017-12-29",
+        value="2016-10-14",
     )
     tools = HouseholdKnowledgeTools(reader=PolicyGatedV4Reader())
     owner = _owner_actor(owner_id)
@@ -160,7 +160,7 @@ async def test_consented_owner_uses_v4_tools_for_children_preferences_and_age(
 
     assert children.tool_name is HouseholdToolName.GET_CHILDREN
     assert children.status is KnowledgeStatus.KNOWN
-    assert children.value == ("Máximo", "Sofía")
+    assert children.value == ("Joaquín", "Paula")
     assert count.tool_name is HouseholdToolName.COUNT_CHILDREN
     assert count.status is KnowledgeStatus.KNOWN
     assert count.value == 2
@@ -168,7 +168,7 @@ async def test_consented_owner_uses_v4_tools_for_children_preferences_and_age(
     assert preferences.value == ("café", "robótica")
     assert age.tool_name is HouseholdToolName.CALCULATE_PERSON_AGE
     assert age.status is KnowledgeStatus.KNOWN
-    assert age.value == 8
+    assert age.value == 9
 
     for correlation_id in (
         _CHILDREN_CORRELATION_ID,
@@ -183,7 +183,7 @@ async def test_consented_owner_uses_v4_tools_for_children_preferences_and_age(
         ]
         _assert_audit_has_no_values(
             rows,
-            ("Máximo", "Sofía", "2017-12-29", "café", "robótica", "8"),
+            ("Joaquín", "Paula", "2016-10-14", "café", "robótica", "9"),
         )
 
 
@@ -193,7 +193,7 @@ async def test_missing_consent_audits_tool_without_reading_child_relation(
 ) -> None:
     """Prove denied child data creates no second reader audit event or data result."""
     owner_id = await upsert_entity(name="Felipe", type="person")
-    child_id = await upsert_entity(name="Máximo", type="person")
+    child_id = await upsert_entity(name="Joaquín", type="person")
     await bootstrap_initial_owner(
         person_entity_id=owner_id,
         confirmed_person_entity_id=owner_id,
@@ -218,4 +218,4 @@ async def test_missing_consent_audits_tool_without_reading_child_relation(
     rows = await _audit_rows(_DENIED_CORRELATION_ID)
     assert [row[0] for row in rows] == ["execute_household_tool"]
     assert rows[0][2] == "denied"
-    _assert_audit_has_no_values(rows, ("Felipe", "Máximo"))
+    _assert_audit_has_no_values(rows, ("Felipe", "Joaquín"))
