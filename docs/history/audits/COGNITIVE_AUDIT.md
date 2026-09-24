@@ -196,7 +196,7 @@ so public visual dialogue currently uses scene text only, not recognized faces.
 5. **Fact cardinality is not modeled.**
    - Evidence: `assert_fact()` supersedes every active `(entity_id, predicate)`
      pair; only this writer is used by consolidation.
-   - Impact: adding “Sofía likes robotics” can erase “Sofía likes coffee”.
+   - Impact: adding “Paula likes robotics” can erase “Paula likes coffee”.
 
 6. **Ages, counts, permissions, and retrieval selection still lack
    deterministic boundaries.**

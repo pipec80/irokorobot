@@ -112,6 +112,18 @@ No plan implicitly authorizes a commit, push, pull request, deployment,
 dependency update, database mutation outside tests, cloud request, or hardware
 action. These require the user's request or an explicit plan scope.
 
+## Real household data never enters the repository
+
+No tracked file, test fixture, prompt example, document or commit message may
+contain real household data: family members' or pets' names, birth dates, ages,
+or any other personal detail of the people who use Iroko. Tests prove the
+*mechanism* (an authenticated owner receives a protected value; a stranger,
+an ambiguous frame or a spent grant does not) with invented canary values. The
+real proof (the owner, with their own face or PIN, against their own database)
+runs locally, and its evidence records outcomes only, never the values.
+`scripts/check_reserved_terms.py` enforces this in pre-commit from a
+gitignored local list; a clean check does not replace this rule.
+
 ## Verification and completion
 
 A plan defines its exact checks. At minimum, production changes normally need:

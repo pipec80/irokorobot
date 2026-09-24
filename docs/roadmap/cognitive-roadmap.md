@@ -43,7 +43,7 @@ responsibilities with no product claim.
 | P0.4 | Relational memory v4 | Correct entity links, cardinality, time, provenance, dates, and counts. | P0.1–P0.3 |
 | P0.5 | Household authorization | Filters protected data before retrieval and generation. | P0.2, P0.4 |
 | P0-C | Runtime policy hardening | Makes every enabled public route obey the P0 controller/policy boundary and proves it through the robot. | P0.3–P0.5 |
-| P1.1 | Owner-authenticated memory MVP | Uses a one-use local unlock to prove the authorized “Máximo y Dominga” path and paired denial. | P0-C6 audible streaming |
+| P1.1 | Owner-authenticated memory MVP | Uses a one-use local unlock to prove the authorized “Joaquín y Martina” path and paired denial. | P0-C6 audible streaming |
 | P1.2 | Progressive biometric identity | Adds consented face, then speaker evidence through the same authentication contract. | P1.1, P0.2 |
 | X1 | Server production baseline | Freezes privacy, upload, SQLite, CI, Uvicorn, lifecycle, OpenAPI, and streaming rules before adding the next identity capability. | Plan 0030 real-camera closure |
 | P1.3 | Personal companion acceptance | Demonstrates authentication, authorized longitudinal memory, visual scene, recovery, correction, forgetting, and denial through the real PC path. | P1.1–P1.2, P2.2 longitudinal gate |
@@ -386,7 +386,7 @@ anti-spoofing defense — a photograph authenticates under this slice.
 **Progress (2026-08-27):** first real-hardware proof of concept, via the new
 unified `just onboard` flow — Pipec enrolled his own face and a live
 `just run-robot` conversation turn was correctly identified and answered
-("Tus hijos son emma y dominga.") with no PIN and no token. One successful
+("Tus hijos son nala y martina.") with no PIN and no token. One successful
 run on one person's hardware; not a calibrated study — no threshold tuning,
 no false-accept/false-reject measurement, no lighting/distance/glasses
 variation.
@@ -481,7 +481,7 @@ retrieval and complete forgetting. Then add documentary and hybrid retrieval
 in the staged order defined by [RAG, memory, and hybrid
 retrieval](../architecture/rag-and-memory-retrieval.md). Derived indexes must be
 rebuildable and deletions must propagate. This does not reopen the completed
-P1.1 structured “Máximo y Dominga” proof.
+P1.1 structured “Joaquín y Martina” proof.
 
 **Exit gate:** the versioned evaluation defined in
 [longitudinal-conversational-memory-evaluation.md](../architecture/longitudinal-conversational-memory-evaluation.md)

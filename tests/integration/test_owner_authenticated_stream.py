@@ -34,7 +34,7 @@ from server.settings import settings
 
 from server import db, stt, tts
 
-_CHILD_ANSWER = "Tus hijos son Máximo y Dominga."
+_CHILD_ANSWER = "Tus hijos son Joaquín y Martina."
 _CHILD_QUESTION = "¿Quiénes son mis hijos?"
 _PIN = "482173"
 
@@ -50,7 +50,7 @@ async def acceptance_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Asyn
     await apply_personal_setup(
         PersonalSetupInput(
             owner_name="Pipec",
-            child_names=("Máximo", "Dominga"),
+            child_names=("Joaquín", "Martina"),
             pin=SecretStr(_PIN),
         )
     )
@@ -166,8 +166,8 @@ async def test_stream_replayed_token_denies_without_disclosure(
     assert first_events[-1]["authentication_consumed"] is True
     assert second_events[-1]["authentication_consumed"] is False
     joined = repr(second_events)
-    assert "Máximo" not in joined
-    assert "Dominga" not in joined
+    assert "Joaquín" not in joined
+    assert "Martina" not in joined
     reader_spy.assert_not_awaited()
 
 
@@ -197,8 +197,8 @@ async def test_stream_absent_or_malformed_token_denies_without_reading_v4(
     events = _parse_ndjson(response)
     assert events[-1]["authentication_consumed"] is False
     joined = repr(events)
-    assert "Máximo" not in joined
-    assert "Dominga" not in joined
+    assert "Joaquín" not in joined
+    assert "Martina" not in joined
     reader_spy.assert_not_awaited()
 
 

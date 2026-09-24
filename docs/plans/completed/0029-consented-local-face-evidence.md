@@ -29,7 +29,7 @@ live, once, with Pipec's own webcam via the new `just onboard` flow (PR
 #78) and `just run-robot`. Enrollment and a face-authenticated streaming
 turn both succeeded on the first real attempt: `Turn actor:
 status=identified role=owner ... evidence=1`, and the deterministic
-`own_children_list` branch answered "Tus hijos son emma y dominga." with
+`own_children_list` branch answered "Tus hijos son nala y martina." with
 no PIN and no token. **This is a single successful live run, not the
 calibrated study below** — no threshold tuning, no false-accept/
 false-reject measurement, no variation across lighting, distance, angle,
@@ -480,8 +480,8 @@ Additive response field: identity_source: "face" | "local_unlock" | null
 
 Using a disposable DB with `apply_personal_setup()` and synthetic embeddings
 enrolled directly via the Task 1 repository + `vision.faces.enroll_face()`:
-owner's frame + protected question → exact `"Tus hijos son Máximo y
-Dominga."` with no token/header at all; stranger's frame → non-disclosing
+owner's frame + protected question → exact `"Tus hijos son Joaquín y
+Martina."` with no token/header at all; stranger's frame → non-disclosing
 denial, `PolicyGatedV4Reader` never called; two faces in frame → denial;
 generic question + owner frame → the face detection boundary is not
 invoked; no frame at all → Plan 0026/0027 behavior

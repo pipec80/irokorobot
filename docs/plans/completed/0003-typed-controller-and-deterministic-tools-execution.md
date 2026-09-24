@@ -108,7 +108,7 @@ accept ambiguous date formats. Malformed, future, or insufficient dates return
 
 | Case | Expected result |
 |---|---|
-| `today=2026-08-11`, birth date `2017-12-29` | Exact deterministic age. |
+| `today=2026-08-11`, birth date `2016-10-14` | Exact deterministic age. |
 | Birthday today / day before birthday | Correct boundary age. |
 | Leap-day birth date | Defined and tested leap-year behavior. |
 | Future, malformed, or ambiguous date | `unknown`, never a guessed age. |

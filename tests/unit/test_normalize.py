@@ -18,7 +18,7 @@ def _extraction(facts: list[ExtractedFact]) -> TurnExtraction:
 def test_invented_predicate_variant_is_mapped_to_canonical() -> None:
     """qwen emitted 'tiene_hijo_de' — must become 'hijo_de'."""
     dirty = _extraction(
-        [ExtractedFact(subject="máximo", predicate="tiene_hijo_de", object="Felipe")]
+        [ExtractedFact(subject="joaquín", predicate="tiene_hijo_de", object="Felipe")]
     )
 
     clean = normalize_extraction(dirty)
@@ -55,19 +55,19 @@ def test_owner_alias_subject_resolved_to_owner_name() -> None:
 
 @pytest.mark.unit
 def test_inverted_child_relation_is_swapped_to_child() -> None:
-    """Observed: ('usuario', 'tiene_hijo_de', 'máximo') with owner Felipe.
+    """Observed: ('usuario', 'tiene_hijo_de', 'joaquín') with owner Felipe.
 
-    Must become ('Máximo', 'hijo_de', 'Felipe') so the reverse relational
+    Must become ('Joaquín', 'hijo_de', 'Felipe') so the reverse relational
     lookup ("¿cómo se llaman mis hijos?") finds the child.
     """
     dirty = _extraction(
-        [ExtractedFact(subject="usuario", predicate="tiene_hijo_de", object="máximo")]
+        [ExtractedFact(subject="usuario", predicate="tiene_hijo_de", object="joaquín")]
     )
 
     clean = normalize_extraction(dirty, owner_name="Felipe")
 
     fact = clean.facts[0]
-    assert fact.subject == "Máximo"
+    assert fact.subject == "Joaquín"
     assert fact.predicate == "hijo_de"
     assert fact.object == "Felipe"
 
@@ -94,15 +94,15 @@ def test_correct_direction_is_left_untouched() -> None:
 
 @pytest.mark.unit
 def test_entity_names_are_title_cased() -> None:
-    """Whisper lowercases proper nouns ('dominga') — dedup needs stable casing."""
+    """Whisper lowercases proper nouns ('martina') — dedup needs stable casing."""
     dirty = TurnExtraction(
-        entities=[ExtractedEntity(name="dominga", type="person")],
+        entities=[ExtractedEntity(name="martina", type="person")],
         facts=[],
         episodic_summary=None,
         importance=0.5,
     )
 
-    assert normalize_extraction(dirty).entities[0].name == "Dominga"
+    assert normalize_extraction(dirty).entities[0].name == "Martina"
 
 
 @pytest.mark.unit
@@ -186,9 +186,9 @@ def test_without_owner_name_alias_fact_is_dropped() -> None:
 def test_relation_object_alias_resolved_to_owner() -> None:
     """Observed live 2026-07-13: facts persisted as hijo_de='Usuario' — the
     alias in the OBJECT position was never resolved to the real owner."""
-    dirty = _extraction([ExtractedFact(subject="Máximo", predicate="hijo_de", object="Usuario")])
+    dirty = _extraction([ExtractedFact(subject="Joaquín", predicate="hijo_de", object="Usuario")])
 
-    clean = normalize_extraction(dirty, owner_name="Felipe", user_text="mi hijo Máximo")
+    clean = normalize_extraction(dirty, owner_name="Felipe", user_text="mi hijo Joaquín")
 
     assert clean.facts[0].object == "Felipe"
 
@@ -222,11 +222,11 @@ def test_declined_relation_variants_are_canonicalized() -> None:
 @pytest.mark.parametrize(
     "junk_name",
     [
-        "Ocho Años",
-        "10 Años",
-        "13 De Noviembre Del 2017",
-        "29 De Diciembre De 017",
-        "6 De Octubre De 1981",
+        "Siete Años",
+        "9 Años",
+        "5 De Marzo Del 2019",
+        "14 De Octubre De 016",
+        "17 De Agosto De 1979",
         "2017",
     ],
 )
@@ -245,22 +245,22 @@ def test_real_entities_survive_temporal_filter() -> None:
     """People and places must NOT be mistaken for temporal junk."""
     dirty = TurnExtraction(
         entities=[
-            ExtractedEntity(name="Máximo", type="person"),
+            ExtractedEntity(name="Joaquín", type="person"),
             ExtractedEntity(name="Santiago de Chile", type="place"),
         ],
         facts=[],
     )
 
-    clean = normalize_extraction(dirty, user_text="Máximo vive en Santiago de Chile")
+    clean = normalize_extraction(dirty, user_text="Joaquín vive en Santiago de Chile")
 
-    assert [e.name for e in clean.entities] == ["Máximo", "Santiago De Chile"]
+    assert [e.name for e in clean.entities] == ["Joaquín", "Santiago De Chile"]
 
 
 @pytest.mark.unit
 def test_fact_with_temporal_junk_subject_is_dropped() -> None:
     """A date subject would resurrect the junk entity via implicit creation."""
     dirty = _extraction(
-        [ExtractedFact(subject="13 de noviembre del 2017", predicate="edad", object="8")]
+        [ExtractedFact(subject="5 de marzo del 2019", predicate="edad", object="7")]
     )
 
     assert normalize_extraction(dirty).facts == []
@@ -268,15 +268,15 @@ def test_fact_with_temporal_junk_subject_is_dropped() -> None:
 
 @pytest.mark.unit
 def test_preference_pointing_at_person_is_dropped() -> None:
-    """Observed live 2026-07-14: 'Máximo es un nombre precioso' became
-    ('Felipe Castro', 'le_gusta', 'Máximo')."""
+    """Observed live 2026-07-14: 'Joaquín es un nombre precioso' became
+    ('Felipe Castro', 'le_gusta', 'Joaquín')."""
     dirty = TurnExtraction(
-        entities=[ExtractedEntity(name="Máximo", type="person")],
-        facts=[ExtractedFact(subject="usuario", predicate="le_gusta", object="Máximo")],
+        entities=[ExtractedEntity(name="Joaquín", type="person")],
+        facts=[ExtractedFact(subject="usuario", predicate="le_gusta", object="Joaquín")],
     )
 
     clean = normalize_extraction(
-        dirty, owner_name="Felipe Castro", user_text="mi hijo se llama Máximo"
+        dirty, owner_name="Felipe Castro", user_text="mi hijo se llama Joaquín"
     )
 
     assert clean.facts == []
@@ -286,41 +286,41 @@ def test_preference_pointing_at_person_is_dropped() -> None:
 def test_normal_preference_still_survives() -> None:
     """'me gusta el rock' has no person object — must pass untouched."""
     dirty = TurnExtraction(
-        entities=[ExtractedEntity(name="Máximo", type="person")],
+        entities=[ExtractedEntity(name="Joaquín", type="person")],
         facts=[ExtractedFact(subject="usuario", predicate="le_gusta", object="el rock")],
     )
 
-    clean = normalize_extraction(dirty, owner_name="Felipe", user_text="a Máximo le gusta el rock")
+    clean = normalize_extraction(dirty, owner_name="Felipe", user_text="a Joaquín le gusta el rock")
 
     assert clean.facts[0].object == "el rock"
 
 
 @pytest.mark.unit
 def test_preference_mentioning_person_in_phrase_survives() -> None:
-    """Exact match only: 'jugar con Máximo' is an activity, not a person."""
+    """Exact match only: 'jugar con Joaquín' is an activity, not a person."""
     dirty = TurnExtraction(
-        entities=[ExtractedEntity(name="Máximo", type="person")],
-        facts=[ExtractedFact(subject="usuario", predicate="le_gusta", object="jugar con Máximo")],
+        entities=[ExtractedEntity(name="Joaquín", type="person")],
+        facts=[ExtractedFact(subject="usuario", predicate="le_gusta", object="jugar con Joaquín")],
     )
 
-    clean = normalize_extraction(dirty, owner_name="Felipe", user_text="me gusta jugar con Máximo")
+    clean = normalize_extraction(dirty, owner_name="Felipe", user_text="me gusta jugar con Joaquín")
 
-    assert clean.facts[0].object == "jugar con Máximo"
+    assert clean.facts[0].object == "jugar con Joaquín"
 
 
 @pytest.mark.unit
 def test_pet_typed_as_person_is_retyped_to_other() -> None:
-    """Observed 2026-07-14: Emma and Trufa landed as [person] — an entity
+    """Observed 2026-07-14: Nala and Canela landed as [person] — an entity
     holding especie/mascota_de facts this turn is a pet."""
     dirty = TurnExtraction(
-        entities=[ExtractedEntity(name="Emma", type="person")],
+        entities=[ExtractedEntity(name="Nala", type="person")],
         facts=[
-            ExtractedFact(subject="Emma", predicate="especie", object="perro"),
-            ExtractedFact(subject="Emma", predicate="mascota_de", object="usuario"),
+            ExtractedFact(subject="Nala", predicate="especie", object="perro"),
+            ExtractedFact(subject="Nala", predicate="mascota_de", object="usuario"),
         ],
     )
 
-    clean = normalize_extraction(dirty, owner_name="Felipe", user_text="mi perrita Emma")
+    clean = normalize_extraction(dirty, owner_name="Felipe", user_text="mi perrita Nala")
 
     assert clean.entities[0].type == "other"
 

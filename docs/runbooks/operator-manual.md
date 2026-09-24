@@ -208,7 +208,7 @@ stranger sharing the frame would still overhear the answer).
 Validated live 2026-08-27: `just onboard` enrolled Pipec's face, then
 `just run-robot` correctly identified him on a real streaming turn
 (`Turn actor: status=identified role=owner ... evidence=1`) and answered
-"Tus hijos son emma y dominga." with no PIN. **This is one successful run
+"Tus hijos son nala y martina." with no PIN. **This is one successful run
 on one person's hardware, not a calibrated study** — no threshold tuning,
 no false-accept/false-reject measurement, no lighting/distance/glasses
 variation.
@@ -335,7 +335,7 @@ looks. Any future reconnection needs its own bounded plan: migrate the checklist
 v4, then decide whether it should still gate on an existing owner or be scoped
 narrower (e.g. only the optional/non-security slots — birthday, work, likes).
 
-### The symptom this explains: "los hijos son Max..." instead of "tus hijos son Max..."
+### The symptom this explains: "los hijos son Joaco..." instead of "tus hijos son Joaco..."
 
 Before the deterministic child-name tool existed (or when a question's phrasing
 doesn't match the intent resolver's known patterns and falls through to generic

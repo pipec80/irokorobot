@@ -151,7 +151,7 @@ Conserve as regression suites without widening their responsibility:
   | `¿Cómo se llaman mis hijos?` | `own_children_list` | `exact` | `own_children.list.v1` |
   | `¿Cuántos hijos tengo?` | `own_children_count` | `exact` | `own_children.count.v1` |
   | `¿Quiénes son mis niños?` | `protected_household` | `exact` | `household.protected.v1` |
-  | `¿Cuándo nació Máximo?` | `protected_household` | `exact` | `birth.protected.v1` |
+  | `¿Cuándo nació Joaquín?` | `protected_household` | `exact` | `birth.protected.v1` |
   | `fecha de nacimiento de mi hija` | `protected_household` | `exact` | `birth.protected.v1` |
   | `¿Qué edad tiene mi hija?` | `protected_household` | `exact` | `household.protected.v1` |
   | `¿Qué fecha es hoy?` | `current_date` | `exact` | `date.current.v1` |
@@ -172,7 +172,7 @@ Conserve as regression suites without widening their responsibility:
   "intent_resolution_es.json"`, construct the expected enums, and assert the
   complete `IntentResolution`. Add explicit tests that accent/case/punctuation
   normalization is stable, `rule_id` never contains normalized input tokens
-  such as `maximo`, and the frozen model rejects mutation.
+  such as `joaquin`, and the frozen model rejects mutation.
 
 - [ ] **Step 3: Run RED.**
 

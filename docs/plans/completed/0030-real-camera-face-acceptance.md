@@ -282,7 +282,7 @@ git commit -m "feat(scripts): add pure FAR/FRR calibration math"
 
 ```text
 just face-calibration --capture --subject owner --condition light=day,distance=near,glasses=off
-just face-calibration --capture --subject impostor:emma --condition light=warm --live
+just face-calibration --capture --subject impostor:nala --condition light=warm --live
 just face-calibration --capture --subject impostor:stranger1 --image foto.jpg
 just face-calibration --load-reference-profiles
 just face-calibration --analyze --profiles 1

@@ -87,12 +87,12 @@ _TEMPORAL_JUNK_PATTERNS = (
     re.compile(r"^[\d\s./-]+$"),
 )
 
-# Preferences whose object is a person are extractor confusion ("Máximo es
-# un nombre precioso" → le_gusta: Máximo, observed live 2026-07-14).
+# Preferences whose object is a person are extractor confusion ("Joaquín es
+# un nombre precioso" → le_gusta: Joaquín, observed live 2026-07-14).
 _PREFERENCE_PREDICATES = frozenset({"le_gusta", "odia", "prefiere"})
 
 # A subject holding one of these facts this turn IS a pet — the extractor
-# typed Emma and Trufa as "person" (observed 2026-07-14) and the entities
+# typed Nala and Canela as "person" (observed 2026-07-14) and the entities
 # table separates dedup by type.
 _PET_PREDICATES = frozenset({"especie", "mascota_de"})
 
@@ -113,7 +113,7 @@ def _canonical_predicate(raw: str) -> str | None:
 def _clean_name(name: str) -> str:
     """Normalise an entity/person name: trimmed and title-cased.
 
-    Whisper lowercases proper nouns ("dominga") — title-casing keeps the
+    Whisper lowercases proper nouns ("martina") — title-casing keeps the
     entities table consistent for upsert dedup by (name, type).
     """
     return name.strip().title()

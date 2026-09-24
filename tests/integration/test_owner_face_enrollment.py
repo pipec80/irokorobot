@@ -54,7 +54,7 @@ async def face_db(
     result = await apply_personal_setup(
         PersonalSetupInput(
             owner_name=_OWNER_NAME,
-            child_names=("Maximo",),
+            child_names=("Joaquin",),
             pin=SecretStr(_PIN),
         )
     )

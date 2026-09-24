@@ -12,14 +12,14 @@ async def test_get_person_label_reads_only_one_exact_person(
 ) -> None:
     """Return an immutable label from the exact person-ID query only."""
     cursor = AsyncMock()
-    cursor.fetchone.return_value = (7, "Máximo")
+    cursor.fetchone.return_value = (7, "Joaquín")
     connection = Mock()
     connection.execute = AsyncMock(return_value=cursor)
     monkeypatch.setattr("server.memory.entity_labels.get_conn", lambda: connection)
 
     result = await get_person_label(entity_id=7)
 
-    assert result == EntityLabel(entity_id=7, display_name="Máximo")
+    assert result == EntityLabel(entity_id=7, display_name="Joaquín")
     connection.execute.assert_awaited_once_with(
         "SELECT id, name FROM entities WHERE id = ? AND type = ?",
         (7, "person"),

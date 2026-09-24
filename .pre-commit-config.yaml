@@ -101,6 +101,17 @@ repos:
               tests/.*
           )$
 
+      # --- G. Datos reales del hogar (nombres, fechas, mascotas) ---
+      # La lista vive solo en project-history/reserved-terms.txt (gitignored);
+      # sin ese archivo (CI, clon nuevo) el hook pasa. También revisa el
+      # mensaje de commit.
+      - id: reserved-private-terms
+        name: Reserved private terms (local list)
+        entry: uv run python scripts/check_reserved_terms.py
+        language: system
+        types: [text]
+        stages: [pre-commit, commit-msg]
+
   # ===========================================================================
   # 3. VERSIONADO Y COMMITS (Commitizen)
   # ===========================================================================
