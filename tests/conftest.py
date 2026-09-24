@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncGenerator, Generator
 import io
+import logging
 from pathlib import Path
 import wave
 
@@ -9,10 +10,26 @@ from fastapi.testclient import TestClient
 import httpx
 import numpy as np
 import pytest
+from robot.conversation_log import CONVERSATION_LOGGER_NAME as ROBOT_CONVERSATION_LOGGER
 from server.cognition.owner_authentication import owner_unlock_service
+from server.conversation_log import CONVERSATION_LOGGER_NAME as SERVER_CONVERSATION_LOGGER
 from server.main import app
 from server.resources import AppResources
 from server.settings import settings
+
+
+@pytest.fixture(autouse=True)
+def _conversation_text_logs_off() -> None:
+    """Start every test with both opt-in conversation loggers disabled (Plan 0052).
+
+    `logging.config.dictConfig` — run by every `create_app()` — sets
+    `disabled = False` on each existing logger it does not configure. That would
+    silently enable the robot's logger in the same process and put household text
+    into the privacy sentinels' captured logs. Production never mixes the two
+    packages in one process; the test suite does.
+    """
+    for name in (SERVER_CONVERSATION_LOGGER, ROBOT_CONVERSATION_LOGGER):
+        logging.getLogger(name).disabled = True
 
 
 @pytest.fixture

@@ -30,12 +30,18 @@ exception.
   and vision routes), `streaming_render.synthesize_sentence` (spoken, streamed
   sentences) and `streaming.stream_response_plan` (spoken, deterministic answers
   such as the owner's own children).
+- The robot has the same pair: `robot/conversation_log.py` (a deliberate small
+  copy — the two packages share only the API contract), the same setting in
+  `robot.settings`, enabled from `robot.app.main` with its own console handler
+  and warning. Call sites: `app_streaming.on_thinking_stream` (heard),
+  `app_streaming._audio_chunks` (each spoken sentence), and the classic
+  `app._on_thinking` / `_on_looking` (heard and replied). Added after the first
+  real run showed the robot console still printing only counts.
 
 ## Not logged, on purpose
 
 PINs and tokens (they never pass through STT or TTS text), biometrics, memory
-layer values, raw model output before validation, and the robot's own console
-(the server already shows both sides of every turn).
+layer values, and raw model output before validation.
 
 ## Verification
 
@@ -44,11 +50,18 @@ layer values, raw model output before validation, and the robot's own console
   and never to `server.log`; each of the four call sites emits; nothing
   propagates to the root logger. One site was mutation-checked (removing the
   deterministic-plan call fails its test).
+- `tests/unit/test_robot_conversation_log.py`: the same contract for the robot
+  (off and disabled by default; console only, never the root handlers; heard
+  and spoken wired in streaming and classic turns).
+- `tests/__init__.py` pins `LOG_CONVERSATION_TEXT=false` for the suite. Found
+  the hard way: with the flag on in the developer's own `.env`, the module-level
+  `settings` singletons read it and five tests failed, the privacy sentinels
+  among them. The suite must not depend on a local `.env`.
 - `tests/integration/test_sensitive_logging.py` still passes unchanged: with the
   setting off nothing reaches any handler.
 
 ## Operator use
 
-Set `LOG_CONVERSATION_TEXT=true` in `.env`, restart `just run-server`, and read
-`Heard:` / `Spoken:` lines on that console. Turn it off again afterwards. Do not
+Set `LOG_CONVERSATION_TEXT=true` in `.env`, restart `just run-server` and
+`just run-robot`, and read `Heard:` / `Spoken:` lines on either console. Turn it off again afterwards. Do not
 say a PIN aloud while it is on: speech is transcribed before anything else.
