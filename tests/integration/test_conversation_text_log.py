@@ -24,7 +24,7 @@ from server.conversation_log import (
     set_enabled,
 )
 from server.logging_setup import configure_logging
-from server.settings import Settings
+from server.settings import Settings, settings
 
 from server import llm, llm_streaming, streaming, stt, tts
 
@@ -46,27 +46,17 @@ class _Collector(logging.Handler):
 
 @pytest.fixture
 def _restore_logging() -> Generator[None, None, None]:
-    """Put the process-wide logging configuration back after `configure_logging`."""
-    root = logging.getLogger()
-    conversation = logging.getLogger(CONVERSATION_LOGGER_NAME)
-    saved = (
-        root.handlers[:],
-        root.level,
-        conversation.handlers[:],
-        conversation.level,
-        conversation.propagate,
-        conversation.disabled,
-    )
+    """Re-apply the process's normal logging configuration after `configure_logging`.
+
+    `dictConfig` shuts down every existing handler and forgets it. Putting the old
+    handler objects back would resurrect a closed file handler that logging no
+    longer tracks: its file is reopened on the next record and never closed, which
+    surfaces as an unraisable `ResourceWarning` in whichever unrelated test runs
+    when it is garbage collected. Configuring again from the same settings the app
+    uses registers fresh handlers properly.
+    """
     yield
-    for handler in root.handlers[:]:
-        if handler not in saved[0]:
-            handler.close()
-    root.handlers[:] = saved[0]
-    root.setLevel(saved[1])
-    conversation.handlers[:] = saved[2]
-    conversation.setLevel(saved[3])
-    conversation.propagate = saved[4]
-    conversation.disabled = saved[5]
+    configure_logging(settings)
 
 
 @pytest.fixture
