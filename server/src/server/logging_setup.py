@@ -18,10 +18,16 @@ import logging.handlers
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from server.conversation_log import (
+    CONVERSATION_LOGGER_NAME,
+    set_enabled as set_conversation_log_enabled,
+)
 from server.request_context import RequestIdFilter
 
 if TYPE_CHECKING:
     from server.settings import Settings
+
+logger = logging.getLogger(__name__)
 
 # Attributes every LogRecord already carries; anything else is a caller extra.
 _RESERVED_RECORD_KEYS = frozenset(
@@ -113,7 +119,7 @@ def configure_logging(settings: "Settings") -> None:
 
     Args:
         settings: Application settings — reads `log_to_file`, `log_dir`,
-            `log_retention_days`, and `log_level`.
+            `log_retention_days`, `log_level`, and `log_conversation_text`.
     """
     handlers: dict[str, Any] = {
         "console": {
@@ -152,9 +158,22 @@ def configure_logging(settings: "Settings") -> None:
             "uvicorn": {"propagate": True},
             "uvicorn.access": {"propagate": True},
             "uvicorn.error": {"propagate": True},
+            # Console only and never the file: the opt-in transcript log (Plan 0052).
+            # Without the opt-in it has no handler, so a record goes nowhere.
+            CONVERSATION_LOGGER_NAME: {
+                "handlers": ["console"] if settings.log_conversation_text else [],
+                "level": "INFO",
+                "propagate": False,
+            },
         },
     }
     logging.config.dictConfig(config)
+    set_conversation_log_enabled(settings.log_conversation_text)
+    if settings.log_conversation_text:
+        logger.warning(
+            "LOG_CONVERSATION_TEXT is on: transcripts and spoken text are printed to the "
+            "console (never to the log file). Debug use only; do not say a PIN aloud."
+        )
 
 
 def build_file_handler(path: Path, retention_days: int) -> logging.Handler:

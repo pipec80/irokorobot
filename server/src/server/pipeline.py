@@ -9,6 +9,7 @@ import time
 from fastapi import HTTPException
 
 from server import stt, tts
+from server.conversation_log import log_heard, log_spoken
 from server.exceptions import BrainMemoryError, TranscriptionError, TTSError
 from server.memory.declarative import list_entity_names
 from server.settings import settings
@@ -93,6 +94,7 @@ async def _run_stt(audio_bytes: bytes, hotwords: list[str]) -> tuple[str, int]:
         len(hotwords),
         extra={"event": "stt.transcribed", "chars": len(text), "hotwords": len(hotwords)},
     )
+    log_heard(text)
     return text, _elapsed_ms(start)
 
 
@@ -115,4 +117,5 @@ async def _run_tts(text: str) -> tuple[str, int, int]:
         logger.error("TTS failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail="Speech synthesis failed") from exc
     logger.info("TTS synthesized: %d ms audio, %d chars in", duration_ms, len(text))
+    log_spoken(text)
     return audio_base64, duration_ms, _elapsed_ms(start)
