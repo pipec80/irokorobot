@@ -73,6 +73,16 @@ First time only: `just setup` (dependencies + hooks), then
 `just setup-personal` (owner, confirmed children, PIN — requires
 `run-server`/`run-robot` stopped).
 
+**Seeing what Iroko heard and says (debug, off by default).** The logs carry
+only counts and timings — household content is never logged (Plans 0031/0032).
+To read the actual texts on your own machine set `LOG_CONVERSATION_TEXT=true` in
+`.env` and restart `just run-server` and `just run-robot`: both consoles then
+print `Heard:` (the transcript) and `Spoken:` (each sentence sent to the voice,
+including deterministic answers such as your own children). It prints to the console only,
+never to `logs/server.log`, and startup logs a warning while it is on. Turn it
+off when you finish, and do not say a PIN aloud while it is on
+([Plan 0052](../plans/open/0052-opt-in-conversation-text-log.md)).
+
 ## 2. QA tools, by what they isolate
 
 Iroko's turn is `mic → STT → LLM → TTS → speaker`, plus an HTTP boundary

@@ -17,6 +17,7 @@ import time
 
 from robot.audio_playback import play_wav_stream
 from robot.camera_capture import capture_frame
+from robot.conversation_log import log_heard, log_spoken
 from robot.exceptions import AudioPlaybackError, CameraError, NoSpeechError, ServerError
 from robot.fsm_types import LoopContext, RobotState
 from robot.server_client import transcribe_stream
@@ -95,6 +96,7 @@ async def on_thinking_stream(ctx: LoopContext) -> RobotState:
         logger.error("Unexpected first stream event: %s", type(first).__name__)
         return RobotState.ERROR
     logger.info("Heard: %d chars", len(first.value))
+    log_heard(first.value)
     ctx.stream_events = events
     return RobotState.SPEAKING
 
@@ -148,6 +150,7 @@ async def _audio_chunks(
                 first_chunk_logged = True
             if event.text:
                 logger.info("Speaking: %d chars", len(event.text))
+                log_spoken(event.text)
             yield base64.b64decode(event.audio_base64)
         elif isinstance(event, DoneEvent):
             done = event

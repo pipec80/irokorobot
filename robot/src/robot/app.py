@@ -27,6 +27,7 @@ from robot import app_streaming
 from robot.audio_capture import capture_utterance
 from robot.audio_playback import play_wav
 from robot.camera_capture import capture_frame
+from robot.conversation_log import enable_console, log_heard, log_spoken
 from robot.exceptions import (
     AudioCaptureError,
     AudioPlaybackError,
@@ -96,6 +97,8 @@ async def _on_thinking(ctx: LoopContext) -> RobotState:
         len(ctx.result.text_heard),
         len(ctx.result.llm_response),
     )
+    log_heard(ctx.result.text_heard)
+    log_spoken(ctx.result.llm_response)
     return RobotState.SPEAKING
 
 
@@ -136,6 +139,7 @@ async def _on_looking(ctx: LoopContext) -> RobotState:
         logger.error("Vision turn failed — returning to listen: %s", exc)
         return RobotState.IDLE
     logger.info("Vision turn complete: replied %d chars", len(ctx.result.llm_response))
+    log_spoken(ctx.result.llm_response)
     return RobotState.SPEAKING
 
 
@@ -273,4 +277,10 @@ def main() -> None:
         datefmt=log_datefmt,
         handlers=handlers,
     )
+    if settings.log_conversation_text:
+        enable_console(logging.Formatter(log_format, log_datefmt))
+        logger.warning(
+            "LOG_CONVERSATION_TEXT is on: transcripts and spoken text are printed to the "
+            "console (never to the log file). Debug use only; do not say a PIN aloud."
+        )
     asyncio.run(_run())
