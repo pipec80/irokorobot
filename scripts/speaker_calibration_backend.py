@@ -40,7 +40,9 @@ _MODEL_SOURCE: Final = "speechbrain/spkrec-ecapa-voxceleb"
 _MODEL_REVISION: Final = "0f99f2d0ebe89ac095bcc5903c4dd8f72b367286"  # pragma: allowlist secret
 _MODEL_ID: Final = f"{_MODEL_SOURCE}@{_MODEL_REVISION}"
 # Anchored to the repository, not the working directory, so a run from another
-# folder cannot silently start a second cache and re-download the model.
+# folder cannot silently start a second cache and re-download the model. It does
+# not follow a non-default ``--corpus-root``, so ``cleanup --purge-model-cache``
+# only removes a cache that lives under the root it is given.
 _MODEL_CACHE_DIR: Final = (
     Path(__file__).resolve().parents[1] / DEFAULT_CORPUS_ROOT / MODEL_CACHE_DIRNAME
 )

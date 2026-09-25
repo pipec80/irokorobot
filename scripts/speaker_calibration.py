@@ -103,10 +103,11 @@ logger = logging.getLogger(__name__)
 _MIN_UTTERANCE_SECONDS = 2.5
 # A live take far beyond a phrase read is music, a conversation or a stuck VAD.
 _MAX_LIVE_UTTERANCE_SECONDS = 15.0
-# 20 ms frames; speech sits well above -40 dBFS (0.01 of full scale) while empty
-# room noise that merely tripped the VAD does not.
+# 20 ms frames. The floor sits just under the quietest legitimate take of the real
+# corpus (a far-field replay, p95 frame RMS ~0.0065 = -44 dBFS) and above empty
+# room noise that merely tripped the VAD (~0.002).
 _FRAME_SAMPLES = 320
-_MIN_SPEECH_FRAME_RMS = 0.01
+_MIN_SPEECH_FRAME_RMS = 0.004
 _INT16_FULL_SCALE = 32768.0
 # More than this share of samples pinned at the rails is a clipped, unusable take.
 _MAX_CLIPPED_FRACTION = 0.005
@@ -357,7 +358,7 @@ def parse_cli_args(argv: Sequence[str] | None = None) -> SpeakerCliOptions:
 
 def _session_id(value: str) -> str:
     """Argparse type: a session id that is safe inside a WAV file name."""
-    if not SESSION_ID_PATTERN.match(value):
+    if not SESSION_ID_PATTERN.fullmatch(value):
         raise argparse.ArgumentTypeError("session id must be 1-40 characters of a-z, 0-9 or '-'")
     return value
 
@@ -403,7 +404,7 @@ def _check_discard_selector(
     if (
         subject is not None
         and subject != OWNER_SUBJECT_ID
-        and not IMPOSTOR_ID_PATTERN.match(subject)
+        and not IMPOSTOR_ID_PATTERN.fullmatch(subject)
     ):
         parser.error(f"--subject must be {OWNER_SUBJECT_ID!r} or match impostor_[a-z]+")
 
@@ -886,12 +887,14 @@ def _run_cleanup(options: SpeakerCliOptions) -> int:
         if not path.resolve().is_relative_to(root):
             logger.error("refusing to delete a path outside the corpus root: %s", path)
             return 1
-    unknown = sum(1 for kind in kinds.values() if kind is None)
-    if unknown:
+    strays = [path for path, kind in kinds.items() if kind is None]
+    if strays:
         logger.error(
-            "refusing to clean %s: %d file(s) are not corpus artifacts; nothing was deleted",
+            "refusing to clean %s: %d file(s) are not corpus artifacts (extensions: %s); "
+            "nothing was deleted",
             root,
-            unknown,
+            len(strays),
+            sorted({path.suffix.lower() or "(none)" for path in strays}),
         )
         return 1
     wanted = {"corpus", "model-cache"} if options.purge_model_cache else {"corpus"}

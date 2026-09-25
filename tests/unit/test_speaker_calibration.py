@@ -1823,7 +1823,7 @@ def test_npz_writer_removes_the_temp_file_when_the_write_fails(
 # --- argument safety ---------------------------------------------------
 
 
-@pytest.mark.parametrize("session", ["a/b", "a\\b", "x:y", "", "UPPER", "a b", "../x"])
+@pytest.mark.parametrize("session", ["a/b", "a\\b", "x:y", "", "UPPER", "a b", "../x", "abc\n"])
 def test_cli_rejects_a_session_id_that_is_unsafe_in_a_file_name(session: str) -> None:
     with pytest.raises(SystemExit):
         parse_cli_args(
@@ -1867,6 +1867,17 @@ def test_cli_purge_model_cache_is_only_valid_for_cleanup() -> None:
 
 def test_signal_guard_accepts_a_speech_level_phrase() -> None:
     _reject_unusable_signal(_tone_wav_bytes(seconds=4.0))  # no raise
+
+
+def test_signal_guard_accepts_the_quietest_legitimate_far_field_level() -> None:
+    quiet_but_valid = _tone_wav_bytes(seconds=4.0, amplitude=300)  # frame RMS ~0.0065, -44 dBFS
+
+    _reject_unusable_signal(quiet_but_valid)  # no raise
+
+
+def test_cli_rejects_a_pseudonym_with_a_trailing_newline() -> None:
+    with pytest.raises(SystemExit):
+        parse_cli_args(["discard", "--subject", "impostor_a\n"])
 
 
 def test_signal_guard_rejects_digital_silence() -> None:

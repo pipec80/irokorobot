@@ -381,7 +381,7 @@ def subject_id_problem(sample_class: str, subject_id: str) -> str | None:
         A short reason without a sample id, or ``None`` when the id is allowed.
     """
     if sample_class == "impostor":
-        if not IMPOSTOR_ID_PATTERN.match(subject_id):
+        if not IMPOSTOR_ID_PATTERN.fullmatch(subject_id):
             return "impostor subject_id must match impostor_[a-z]+"
     elif subject_id != OWNER_SUBJECT_ID:
         return f"{sample_class} subject_id must be {OWNER_SUBJECT_ID!r}"
