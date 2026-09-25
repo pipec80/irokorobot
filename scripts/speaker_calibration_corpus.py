@@ -425,6 +425,10 @@ def _check_session_separation(samples: Sequence[SpeakerSample]) -> None:
     leaked = reference_sessions & probe_sessions
     if leaked:
         raise ValueError(f"reference and probe sessions must be distinct; shared: {sorted(leaked)}")
+    genuine_sessions = {s.session_id for s in samples if s.sample_class == "genuine"}
+    impostor_sessions = {s.session_id for s in samples if s.sample_class == "impostor"}
+    if genuine_sessions & impostor_sessions:
+        raise ValueError("owner genuine sessions and impostor sessions must be distinct")
 
 
 def _check_minimum_matrix(samples: Sequence[SpeakerSample]) -> None:

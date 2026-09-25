@@ -2261,3 +2261,36 @@ def test_model_cache_is_anchored_to_the_repository_not_the_working_directory() -
 
     assert _MODEL_CACHE_DIR.is_absolute()
     assert _MODEL_CACHE_DIR.as_posix().endswith("project-history/calibration/speaker/model-cache")
+
+
+def test_corpus_rejects_an_impostor_session_shared_with_the_owner(tmp_path: Path) -> None:
+    rows = _minimum_corpus_rows(tmp_path)
+    next(r for r in rows if r["sample_class"] == "impostor")["session_id"] = "probe-01"
+
+    with pytest.raises(ValueError, match="impostor sessions must be distinct"):
+        validate_corpus(_rewrite_rows(tmp_path, rows))
+
+
+@pytest.mark.parametrize(
+    "sample_class, subject, condition",
+    [("reference", "owner", "quiet-far"), ("replay", "owner", "background-near")],
+)
+def test_cli_rejects_a_capture_condition_the_corpus_would_reject_later(
+    sample_class: str, subject: str, condition: str
+) -> None:
+    with pytest.raises(SystemExit):
+        parse_cli_args(
+            [
+                "capture",
+                "--class",
+                sample_class,
+                "--subject",
+                subject,
+                "--session",
+                "s-01",
+                "--phrase",
+                "phrase-01",
+                "--condition",
+                condition,
+            ]
+        )

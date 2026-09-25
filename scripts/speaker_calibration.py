@@ -77,6 +77,7 @@ from scripts.speaker_calibration_models import (
     OWNER_SUBJECT_ID,
     PHRASE_IDS,
     PHRASE_TEXT,
+    REPLAY_CONDITIONS,
     REPORT_NAME,
     SAMPLE_CLASSES,
     SESSION_ID_PATTERN,
@@ -411,6 +412,11 @@ def _check_capture_subject(parser: argparse.ArgumentParser, args: argparse.Names
     problem = subject_id_problem(args.sample_class, args.subject_id)
     if problem is not None:
         parser.error(f"--subject: {problem}")
+    # Catch a rule the corpus validator would only flag after the recording.
+    if args.sample_class == "reference" and args.condition != "quiet-near":
+        parser.error("--condition: reference samples are captured at quiet-near only")
+    if args.sample_class == "replay" and args.condition not in REPLAY_CONDITIONS:
+        parser.error(f"--condition: replay samples use one of {REPLAY_CONDITIONS}")
 
 
 def run_cli(
