@@ -39,6 +39,7 @@ import importlib
 import io
 import logging
 import math
+import os
 import time
 from typing import TYPE_CHECKING
 import wave
@@ -81,7 +82,11 @@ from scripts.speaker_calibration_models import (
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
-    from scripts.speaker_calibration_models import SpeakerEmbeddingBackend, SpeakerManifest
+    from scripts.speaker_calibration_models import (
+        CliAction,
+        SpeakerEmbeddingBackend,
+        SpeakerManifest,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -734,10 +739,24 @@ def _load_frozen_backend() -> SpeakerEmbeddingBackend | None:
         return None
 
 
+def _keep_huggingface_offline(action: CliAction) -> None:
+    """Forbid Hugging Face network access for every action but the cache warm-up.
+
+    ``huggingface_hub`` makes an unrelated once-a-day GET (an agent-harness
+    registry) even for cache-only work. Plan 0047 promises that ``embed`` and
+    ``analyze`` never open the network, so only ``model-contract`` - the one-time
+    download of the pinned revision - may. Must run before ``huggingface_hub``
+    is imported, which the deferred imports guarantee.
+    """
+    if action != "model-contract":
+        os.environ["HF_HUB_OFFLINE"] = "1"
+
+
 def main() -> None:
     """CLI entry point for ``just speaker-calibration``."""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
     options = parse_cli_args()
+    _keep_huggingface_offline(options.action)
     backend = _load_frozen_backend() if options.action == "embed" else None
     raise SystemExit(run_cli(options, backend=backend))
 

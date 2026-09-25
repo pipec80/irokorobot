@@ -15,6 +15,7 @@ from __future__ import annotations
 import io
 import json
 import math
+import os
 import sys
 from typing import TYPE_CHECKING
 import wave
@@ -1531,3 +1532,31 @@ def test_run_cli_discard_never_touches_the_model_cache(
     run_cli(_discard_opts(tmp_path, "--subject", "impostor_a"))
 
     assert cache.read_bytes() == b"weights"
+
+
+def test_main_keeps_huggingface_offline_for_every_action_but_model_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Plan 0047: only ``model-contract`` may touch the network (the cache warm-up).
+
+    ``huggingface_hub`` otherwise makes an unrelated once-a-day GET (an agent-harness
+    registry) even for cache-only work, so every other action forces offline mode.
+    """
+    from scripts import speaker_calibration as module  # noqa: PLC0415 -- patches this module
+
+    monkeypatch.setattr("scripts.speaker_calibration_backend.run_model_contract", lambda: 0)
+    for action in ("validate", "analyze", "cleanup", "discard"):
+        monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+        extra = ["--subject", "owner"] if action == "discard" else []
+        monkeypatch.setattr(sys, "argv", ["x", action, "--corpus-root", str(tmp_path), *extra])
+        with pytest.raises(SystemExit):
+            module.main()
+        assert os.environ["HF_HUB_OFFLINE"] == "1", action
+
+    monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+    monkeypatch.setattr(sys, "argv", ["x", "model-contract"])
+    with pytest.raises(SystemExit) as warm_up:
+        module.main()
+
+    assert warm_up.value.code == 0
+    assert "HF_HUB_OFFLINE" not in os.environ
