@@ -48,6 +48,7 @@ import numpy as np
 
 from scripts.speaker_calibration_corpus import (
     append_sample_atomic,
+    find_orphan_wavs,
     load_manifest,
     remove_samples_atomic,
     render_aggregate_report,
@@ -58,6 +59,7 @@ from scripts.speaker_calibration_corpus import (
     swap_into_place,
     validate_corpus,
     validate_wav_bytes,
+    write_new_file_atomic,
     write_text_atomic,
 )
 from scripts.speaker_calibration_models import (
@@ -70,11 +72,15 @@ from scripts.speaker_calibration_models import (
     IMPOSTOR_ID_PATTERN,
     LATENCY_KEY_PREFIX,
     MANIFEST_NAME,
+    MODEL_CACHE_DIRNAME,
+    MODEL_KEY,
     OWNER_SUBJECT_ID,
     PHRASE_IDS,
     PHRASE_TEXT,
     REPORT_NAME,
     SAMPLE_CLASSES,
+    SESSION_ID_PATTERN,
+    SHA_KEY_PREFIX,
     SpeakerCliOptions,
     SpeakerSample,
 )
@@ -94,6 +100,21 @@ logger = logging.getLogger(__name__)
 # clears ~2.8 s. Below this the VAD almost certainly closed on a mid-phrase
 # pause or clipped the start, so the capture is rejected rather than stored.
 _MIN_UTTERANCE_SECONDS = 2.5
+# A live take far beyond a phrase read is music, a conversation or a stuck VAD.
+_MAX_LIVE_UTTERANCE_SECONDS = 15.0
+# 20 ms frames; speech sits well above -40 dBFS (0.01 of full scale) while empty
+# room noise that merely tripped the VAD does not.
+_FRAME_SAMPLES = 320
+_MIN_SPEECH_FRAME_RMS = 0.01
+_INT16_FULL_SCALE = 32768.0
+# More than this share of samples pinned at the rails is a clipped, unusable take.
+_MAX_CLIPPED_FRACTION = 0.005
+_CLIP_LEVEL = 32767
+_CONFIRM_WORD = "delete"
+# Files ``cleanup`` may remove: the corpus artifacts by exact name or suffix. A
+# directory holding anything else is not a calibration corpus and is refused.
+_CLEANABLE_NAMES = frozenset({MANIFEST_NAME, EMBEDDINGS_NAME, REPORT_NAME})
+_CLEANABLE_SUFFIXES = frozenset({".wav", ".tmp"})
 
 
 @dataclass(frozen=True)
@@ -311,10 +332,11 @@ def parse_cli_args(argv: Sequence[str] | None = None) -> SpeakerCliOptions:
     parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--class", dest="sample_class", choices=SAMPLE_CLASSES, default=None)
     parser.add_argument("--subject", dest="subject_id", default=None)
-    parser.add_argument("--session", dest="session_id", default=None)
+    parser.add_argument("--session", dest="session_id", type=_session_id, default=None)
     parser.add_argument("--phrase", dest="phrase_id", choices=PHRASE_IDS, default=None)
     parser.add_argument("--condition", choices=CONDITIONS, default=None)
     parser.add_argument("--sample", dest="sample_id", default=None)
+    parser.add_argument("--purge-model-cache", action="store_true")
     args = parser.parse_args(None if argv is None else list(argv))
     _cross_check_flags(parser, args)
     return SpeakerCliOptions(
@@ -328,10 +350,30 @@ def parse_cli_args(argv: Sequence[str] | None = None) -> SpeakerCliOptions:
         phrase_id=args.phrase_id,
         condition=args.condition,
         sample_id=args.sample_id,
+        purge_model_cache=args.purge_model_cache,
     )
 
 
+def _session_id(value: str) -> str:
+    """Argparse type: a session id that is safe inside a WAV file name."""
+    if not SESSION_ID_PATTERN.match(value):
+        raise argparse.ArgumentTypeError("session id must be 1-40 characters of a-z, 0-9 or '-'")
+    return value
+
+
+def _require_inside_root(
+    parser: argparse.ArgumentParser, root: Path, path: Path | None, flag: str
+) -> None:
+    """Keep every path the tool writes inside the corpus root so ``cleanup`` covers it."""
+    if path is not None and not path.resolve().is_relative_to(root.resolve()):
+        parser.error(f"{flag} must stay inside --corpus-root")
+
+
 def _cross_check_flags(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    _require_inside_root(parser, args.corpus_root, args.manifest, "--manifest")
+    _require_inside_root(parser, args.corpus_root, args.output, "--output")
+    if args.purge_model_cache and args.action != "cleanup":
+        parser.error("--purge-model-cache is only valid for cleanup")
     supplied = {name for name in CAPTURE_FLAGS if getattr(args, name) is not None}
     if args.action == "capture":
         missing = sorted(set(CAPTURE_FLAGS) - supplied)
@@ -451,23 +493,34 @@ def _run_capture(options: SpeakerCliOptions, capture_audio: Callable[[], bytes] 
     validate_wav_bytes(wav_bytes)
     if live:
         _reject_if_too_short(wav_bytes)
+        _reject_unusable_signal(wav_bytes)
     options.corpus_root.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%f")
     wav_name = f"{options.sample_class}-{options.session_id}-{options.phrase_id}-{stamp}.wav"
     wav_path = resolve_corpus_path(options.corpus_root, wav_name)
-    wav_path.write_bytes(wav_bytes)
-    sample = SpeakerSample(
-        sample_id=wav_path.stem,
-        subject_id=options.subject_id,
-        sample_class=options.sample_class,
-        session_id=options.session_id,
-        phrase_id=options.phrase_id,
-        condition=options.condition,
-        wav_path=wav_path,
-        sha256=sha256_of_file(wav_path),
+    write_new_file_atomic(wav_path, wav_bytes)
+    try:
+        sample = SpeakerSample(
+            sample_id=wav_path.stem,
+            subject_id=options.subject_id,
+            sample_class=options.sample_class,
+            session_id=options.session_id,
+            phrase_id=options.phrase_id,
+            condition=options.condition,
+            wav_path=wav_path,
+            sha256=sha256_of_file(wav_path),
+        )
+        append_sample_atomic(options.manifest_path, options.corpus_root, sample)
+    except Exception:
+        wav_path.unlink(missing_ok=True)  # never leave a private WAV the manifest does not know
+        raise
+    # No sample id, file name or timestamp: this log line gets pasted into chats.
+    logger.info(
+        "captured one %s sample (%s, %s)",
+        options.sample_class,
+        options.phrase_id,
+        options.condition,
     )
-    append_sample_atomic(options.manifest_path, options.corpus_root, sample)
-    logger.info("captured %s under %s", sample.sample_id, options.corpus_root)
     return 0
 
 
@@ -507,6 +560,40 @@ def _reject_if_too_short(wav_bytes: bytes) -> None:
             f"capture is only {seconds:.1f}s (need >= {_MIN_UTTERANCE_SECONDS}s) - "
             "read the whole phrase at a steady pace, no long pauses between words"
         )
+
+
+def _reject_unusable_signal(wav_bytes: bytes) -> None:
+    """Reject a live capture that is overlong, clipped or has no speech-level audio.
+
+    Args:
+        wav_bytes: The just-captured WAV - 16 000 Hz, mono, signed int16.
+
+    Raises:
+        ValueError: If the take is longer than ``_MAX_LIVE_UTTERANCE_SECONDS``,
+            has more than ``_MAX_CLIPPED_FRACTION`` of its samples at the rails,
+            or its 95th-percentile 20 ms frame level is below speech level. Such
+            a take would still yield a finite embedding and silently pollute
+            FAR/FRR, so nothing is written and the phrase is read again.
+    """
+    with wave.open(io.BytesIO(wav_bytes), "rb") as handle:
+        frames = handle.readframes(handle.getnframes())
+        seconds = handle.getnframes() / handle.getframerate()
+    if seconds > _MAX_LIVE_UTTERANCE_SECONDS:
+        raise ValueError(
+            f"capture is {seconds:.1f}s (max {_MAX_LIVE_UTTERANCE_SECONDS}s) - "
+            "music, talking or a stuck microphone; read only the phrase"
+        )
+    samples = np.frombuffer(frames, dtype=np.int16)
+    clipped = float(np.mean(np.abs(samples.astype(np.int32)) >= _CLIP_LEVEL))
+    if clipped > _MAX_CLIPPED_FRACTION:
+        raise ValueError("capture is clipped - lower the input gain or speak further away")
+    usable = len(samples) - len(samples) % _FRAME_SAMPLES
+    if usable == 0:
+        raise ValueError("capture is too short to measure its level")
+    framed = samples[:usable].astype(np.float64) / _INT16_FULL_SCALE
+    rms = np.sqrt(np.mean(framed.reshape(-1, _FRAME_SAMPLES) ** 2, axis=1))
+    if percentile(rms.tolist(), 0.95) < _MIN_SPEECH_FRAME_RMS:
+        raise ValueError("capture has no speech-level audio - speak closer or louder")
 
 
 def _play_start_cue() -> None:
@@ -554,14 +641,24 @@ def _warm_recorder() -> None:
         robot_settings = importlib.import_module("robot.settings")
         vad.create_vad(robot_settings.settings.vad_engine)
     except Exception as exc:  # best-effort — a cold capture still works
-        logger.debug("recorder warm-up skipped: %s", exc)
+        logger.warning("recorder warm-up skipped (the first take may lose its start): %s", exc)
 
 
 def _run_validate(options: SpeakerCliOptions) -> int:
     manifest = load_manifest(options.manifest_path, options.corpus_root)
     validate_corpus(manifest)
+    _require_no_orphan_wavs(manifest, options.corpus_root)
     logger.info("corpus OK: %d samples under %s", len(manifest.samples), options.corpus_root)
     return 0
+
+
+def _require_no_orphan_wavs(manifest: SpeakerManifest, corpus_root: Path) -> None:
+    orphans = find_orphan_wavs(manifest, corpus_root)
+    if orphans:
+        raise ValueError(
+            f"{len(orphans)} WAV file(s) under the corpus root are not in the manifest - "
+            "delete them by hand or re-add them; none was touched"
+        )
 
 
 def _run_embed(options: SpeakerCliOptions, backend: SpeakerEmbeddingBackend | None) -> int:
@@ -571,11 +668,12 @@ def _run_embed(options: SpeakerCliOptions, backend: SpeakerEmbeddingBackend | No
     manifest = load_manifest(options.manifest_path, options.corpus_root)
     if manifest.samples:  # one discarded embedding so the first timing is not a cold start
         backend.embed_wav(manifest.samples[0].wav_path.read_bytes())
-    arrays: dict[str, np.ndarray] = {}
+    arrays: dict[str, np.ndarray] = {MODEL_KEY: np.array(backend.model_id)}
     for sample in manifest.samples:
         vector, latency_ms = _embed_sample(backend, sample)
         arrays[sample.sample_id] = vector
         arrays[LATENCY_KEY_PREFIX + sample.sample_id] = np.array(latency_ms)
+        arrays[SHA_KEY_PREFIX + sample.sample_id] = np.array(sample.sha256)
     _write_npz_atomic(options.corpus_root / EMBEDDINGS_NAME, arrays)
     logger.info("wrote %d embeddings for model %s", len(manifest.samples), backend.model_id)
     return 0
@@ -590,10 +688,10 @@ def _embed_sample(
     start = time.perf_counter()
     vector = backend.embed_wav(wav_bytes)
     latency_ms = (time.perf_counter() - start) * 1000.0
-    return _checked_embedding(vector), latency_ms
+    return checked_embedding(vector), latency_ms
 
 
-def _checked_embedding(vector: np.ndarray) -> np.ndarray:
+def checked_embedding(vector: np.ndarray) -> np.ndarray:
     flat = np.asarray(vector, dtype=np.float64).ravel()
     if flat.shape != (EMBEDDING_DIM,):
         raise ValueError(f"embedding must hold exactly {EMBEDDING_DIM} values, got {flat.shape}")
@@ -606,10 +704,16 @@ def _checked_embedding(vector: np.ndarray) -> np.ndarray:
 
 def _write_npz_atomic(target: Path, arrays: dict[str, np.ndarray]) -> None:
     tmp = target.with_name(target.name + ".tmp")
-    with tmp.open("wb") as handle:
-        # numpy's savez stub misbinds a ``**dict[str, ndarray]`` splat to its
-        # ``allow_pickle`` bool parameter; the runtime call is correct.
-        np.savez(handle, **arrays)  # type: ignore[arg-type]
+    try:
+        with tmp.open("wb") as handle:
+            # numpy's savez stub misbinds a ``**dict[str, ndarray]`` splat to its
+            # ``allow_pickle`` bool parameter; the runtime call is correct.
+            np.savez(handle, **arrays)  # type: ignore[arg-type]
+            handle.flush()
+            os.fsync(handle.fileno())
+    except Exception:
+        tmp.unlink(missing_ok=True)  # a failed write must not leave a stale temp file
+        raise
     swap_into_place(tmp, target)
 
 
@@ -625,12 +729,15 @@ def _run_analyze(options: SpeakerCliOptions) -> int:
         return 1
     manifest = load_manifest(options.manifest_path, options.corpus_root)
     validate_corpus(manifest)
-    embeddings, latencies = _load_embeddings(options.corpus_root / EMBEDDINGS_NAME, manifest)
+    _require_no_orphan_wavs(manifest, options.corpus_root)
     # Deferred: both modules import this one at load time.
     from scripts.speaker_calibration_analysis import build_report  # noqa: PLC0415
     from scripts.speaker_calibration_backend import frozen_model_identity  # noqa: PLC0415
 
     model_id, package_version = frozen_model_identity()
+    embeddings, latencies = _load_embeddings(
+        options.corpus_root / EMBEDDINGS_NAME, manifest, model_id
+    )
     report = build_report(
         manifest, embeddings, latencies, model_id=model_id, package_version=package_version
     )
@@ -640,26 +747,51 @@ def _run_analyze(options: SpeakerCliOptions) -> int:
 
 
 def _load_embeddings(
-    path: Path, manifest: SpeakerManifest
+    path: Path, manifest: SpeakerManifest, model_id: str
 ) -> tuple[dict[str, np.ndarray], list[float]]:
     """Load one checked vector and one latency per manifest sample.
 
+    Args:
+        path: The ``embeddings.npz`` written by ``embed``.
+        manifest: The validated manifest the vectors must cover.
+        model_id: The frozen model id the vectors must have been computed with.
+
     Raises:
-        ValueError: If the file is absent or any manifest sample lacks a vector
-            or a latency (only counts are reported, never sample ids).
+        ValueError: If the file is absent, was produced by another model or from
+            different audio than the manifest records, or any manifest sample
+            lacks a vector or a valid latency (counts only, never sample ids).
     """
     if not path.exists():
         raise ValueError(f"no embeddings at {path} - run `embed` first")
     ids = [sample.sample_id for sample in manifest.samples]
     with np.load(path) as stored:
         present = set(stored.files)
-        vectors = {i: _checked_embedding(stored[i]) for i in ids if i in present}
+        if MODEL_KEY not in present or str(stored[MODEL_KEY]) != model_id:
+            raise ValueError("embeddings were not produced by the frozen model - re-run embed")
+        stale = sum(
+            1
+            for sample in manifest.samples
+            if SHA_KEY_PREFIX + sample.sample_id not in present
+            or str(stored[SHA_KEY_PREFIX + sample.sample_id]) != sample.sha256
+        )
+        if stale:
+            raise ValueError(f"embeddings are stale for {stale} sample(s) - re-run embed")
+        vectors = {i: checked_embedding(stored[i]) for i in ids if i in present}
         latencies = [
-            float(stored[LATENCY_KEY_PREFIX + i]) for i in ids if LATENCY_KEY_PREFIX + i in present
+            _checked_latency(stored[LATENCY_KEY_PREFIX + i])
+            for i in ids
+            if LATENCY_KEY_PREFIX + i in present
         ]
     if len(vectors) != len(ids) or len(latencies) != len(ids):
         raise ValueError(f"embeddings incomplete for {len(ids)} sample(s) - re-run embed")
     return vectors, latencies
+
+
+def _checked_latency(value: np.ndarray) -> float:
+    latency = float(value)
+    if not math.isfinite(latency) or latency < 0.0:
+        raise ValueError("a stored embedding latency is not a finite non-negative number")
+    return latency
 
 
 def _run_discard(options: SpeakerCliOptions) -> int:
@@ -670,7 +802,8 @@ def _run_discard(options: SpeakerCliOptions) -> int:
     Idempotent — an interrupted run can be repeated. Nothing is deleted when the
     selector matches nothing or the confirmation is not typed.
     """
-    manifest = load_manifest(options.manifest_path, options.corpus_root)
+    # Lenient load: a withdrawal must succeed even if a file is already gone or damaged.
+    manifest = load_manifest(options.manifest_path, options.corpus_root, verify_files=False)
     targets = select_samples(manifest, subject_id=options.subject_id, sample_id=options.sample_id)
     if not targets:
         logger.error("nothing matches that selector; nothing was deleted")
@@ -679,7 +812,7 @@ def _run_discard(options: SpeakerCliOptions) -> int:
     described = ", ".join(f"{n} {c}" for c, n in counts.items() if n)
     logger.warning("about to permanently delete %d sample(s) (%s)", len(targets), described)
     logger.warning("their WAV files, embeddings and manifest rows, plus any stale report")
-    if input("Type 'delete' to confirm: ").strip().lower() != "delete":
+    if not _confirmed("discard"):
         logger.info("discard cancelled - nothing deleted")
         return 1
     ids = {s.sample_id for s in targets}
@@ -696,31 +829,84 @@ def _purge_embeddings(path: Path, sample_ids: set[str]) -> None:
     """Drop the vectors and latencies of *sample_ids* from ``embeddings.npz``."""
     if not path.exists():
         return
-    drop = sample_ids | {LATENCY_KEY_PREFIX + sample_id for sample_id in sample_ids}
+    drop = sample_ids | {
+        prefix + sample_id
+        for sample_id in sample_ids
+        for prefix in (LATENCY_KEY_PREFIX, SHA_KEY_PREFIX)
+    }
     with np.load(path) as stored:
         kept = {key: np.asarray(stored[key]) for key in stored.files if key not in drop}
-    if kept:
+    if any(key != MODEL_KEY for key in kept):
         _write_npz_atomic(path, kept)
     else:
         path.unlink()
 
 
+def _confirmed(action: str) -> bool:
+    """Ask for the typed confirmation word; a missing terminal counts as "no"."""
+    try:
+        answer = input(f"Type '{_CONFIRM_WORD}' to confirm: ")
+    except EOFError:
+        logger.error("%s needs an interactive terminal to confirm; nothing was deleted", action)
+        return False
+    return answer.strip().lower() == _CONFIRM_WORD
+
+
+def _cleanup_kind(root: Path, path: Path) -> str | None:
+    """Classify a file under the corpus root: ``corpus``, ``model-cache`` or ``None`` (unknown)."""
+    parts = path.relative_to(root).parts
+    if parts[0] == MODEL_CACHE_DIRNAME and len(parts) > 1:
+        return "model-cache"
+    if len(parts) == 1 and (path.name in _CLEANABLE_NAMES or path.suffix in _CLEANABLE_SUFFIXES):
+        return "corpus"
+    return None
+
+
 def _run_cleanup(options: SpeakerCliOptions) -> int:
+    """Delete the private corpus artifacts, keeping the reusable model cache by default.
+
+    Refuses any directory that holds files other than the known corpus artifacts
+    (so a wrong ``--corpus-root`` can never wipe unrelated work) and any file that
+    resolves outside the root. ``--purge-model-cache`` also removes the ~85 MB
+    downloaded model. Reports counts only, never file names.
+    """
     root = options.corpus_root.resolve()
     if not root.exists():
         logger.info("nothing to clean under %s", root)
         return 0
-    targets = sorted(path for path in root.rglob("*") if path.is_file())
-    for path in targets:
+    files = sorted(path for path in root.rglob("*") if path.is_file())
+    kinds: dict[Path, str | None] = {path: _cleanup_kind(root, path) for path in files}
+    for path in files:
         if not path.resolve().is_relative_to(root):
             logger.error("refusing to delete a path outside the corpus root: %s", path)
             return 1
-    logger.warning("about to delete %d file(s) under %s", len(targets), root)
-    if input("Type 'delete' to confirm: ").strip().lower() != "delete":
+    unknown = sum(1 for kind in kinds.values() if kind is None)
+    if unknown:
+        logger.error(
+            "refusing to clean %s: %d file(s) are not corpus artifacts; nothing was deleted",
+            root,
+            unknown,
+        )
+        return 1
+    wanted = {"corpus", "model-cache"} if options.purge_model_cache else {"corpus"}
+    targets = [path for path in files if kinds[path] in wanted]
+    kept_cache = sum(1 for kind in kinds.values() if kind == "model-cache") - sum(
+        1 for path in targets if kinds[path] == "model-cache"
+    )
+    logger.warning(
+        "about to delete %d file(s) under %s (%d model-cache file(s) kept)",
+        len(targets),
+        root,
+        kept_cache,
+    )
+    if not _confirmed("cleanup"):
         logger.info("cleanup cancelled - nothing deleted")
         return 1
     for path in targets:
         path.unlink()
+    for directory in sorted((d for d in root.rglob("*") if d.is_dir()), reverse=True):
+        if not any(directory.iterdir()):
+            directory.rmdir()
     logger.info("deleted %d file(s) under %s", len(targets), root)
     return 0
 
@@ -746,8 +932,10 @@ def _keep_huggingface_offline(action: CliAction) -> None:
     registry) even for cache-only work. Plan 0047 promises that ``embed`` and
     ``analyze`` never open the network, so only ``model-contract`` - the one-time
     download of the pinned revision - may. Must run before ``huggingface_hub``
-    is imported, which the deferred imports guarantee.
+    is imported, which the deferred imports guarantee. Hub telemetry is off for
+    every action, the warm-up included.
     """
+    os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
     if action != "model-contract":
         os.environ["HF_HUB_OFFLINE"] = "1"
 

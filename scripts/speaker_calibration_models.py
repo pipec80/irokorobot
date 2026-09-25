@@ -35,6 +35,9 @@ PHRASE_TEXT: Final[dict[str, str]] = {
 }
 OWNER_SUBJECT_ID: Final = "owner"
 IMPOSTOR_ID_PATTERN: Final = re.compile(r"^impostor_[a-z]+$")
+# Session ids become part of a WAV file name: lowercase words only, so no path
+# separator, drive colon (an NTFS alternate data stream) or empty value gets in.
+SESSION_ID_PATTERN: Final = re.compile(r"^[a-z0-9-]{1,40}$")
 EMBEDDING_DIM: Final = 192
 
 MINIMUM_SAMPLES: Final[dict[SampleClass, int]] = {
@@ -44,15 +47,25 @@ MINIMUM_SAMPLES: Final[dict[SampleClass, int]] = {
     "replay": 6,
 }
 MIN_GENUINE_SESSIONS: Final = 2
+# Plan 0047 matrix: the reference and every live impostor read each frozen
+# phrase at least this many times.
+MIN_PHRASE_REPETITIONS: Final = 2
+REPLAY_CONDITIONS: Final = ("quiet-near", "quiet-far")
 MIN_IMPOSTOR_SUBJECTS: Final = 3
 
 DEFAULT_CORPUS_ROOT: Final = Path("project-history/calibration/speaker")
 MANIFEST_NAME: Final = "manifest.json"
 EMBEDDINGS_NAME: Final = "embeddings.npz"
 REPORT_NAME: Final = "aggregate-report.md"
-# ``embeddings.npz`` holds one vector per sample_id plus that sample's embedding
-# latency in ms under ``LATENCY_KEY_PREFIX + sample_id`` (a reserved namespace).
+MODEL_CACHE_DIRNAME: Final = "model-cache"
+# ``embeddings.npz`` holds one vector per sample_id plus, in reserved namespaces,
+# that sample's embedding latency in ms (``LATENCY_KEY_PREFIX + sample_id``), the
+# WAV sha256 it was computed from (``SHA_KEY_PREFIX + sample_id``) and the model
+# id that produced every vector (``MODEL_KEY``), so ``analyze`` can refuse stale
+# or foreign vectors.
 LATENCY_KEY_PREFIX: Final = "__lat__"
+SHA_KEY_PREFIX: Final = "__sha__"
+MODEL_KEY: Final = "__model__"
 
 CliAction = Literal[
     "model-contract", "capture", "validate", "embed", "analyze", "cleanup", "discard"
@@ -93,15 +106,6 @@ class SpeakerSample:
 
 
 @dataclass(frozen=True)
-class EmbeddedSample:
-    """A sample paired with its finite 192-d embedding and embed latency."""
-
-    sample: SpeakerSample
-    embedding: np.ndarray
-    latency_ms: float
-
-
-@dataclass(frozen=True)
 class SpeakerManifest:
     """The full validated set of samples for one calibration corpus."""
 
@@ -137,6 +141,7 @@ class SpeakerCliOptions:
     phrase_id: str | None
     condition: str | None
     sample_id: str | None = None  # only for ``discard --sample``
+    purge_model_cache: bool = False  # only for ``cleanup --purge-model-cache``
 
 
 @dataclass(frozen=True)

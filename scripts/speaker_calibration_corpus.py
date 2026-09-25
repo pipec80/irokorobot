@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -28,9 +29,11 @@ from scripts.speaker_calibration_models import (
     IMPOSTOR_ID_PATTERN,
     MIN_GENUINE_SESSIONS,
     MIN_IMPOSTOR_SUBJECTS,
+    MIN_PHRASE_REPETITIONS,
     MINIMUM_SAMPLES,
     OWNER_SUBJECT_ID,
     PHRASE_IDS,
+    REPLAY_CONDITIONS,
     SAMPLE_CLASSES,
     SCHEMA_VERSION,
     AggregateSpeakerReport,
@@ -45,6 +48,9 @@ if TYPE_CHECKING:
 # Generous ceiling: a fixed neutral phrase read and the 3-second latency WAV are
 # both far below this. It bounds only accidental oversized captures, not format.
 _MAX_WAV_SECONDS = 30.0
+# A cell smaller than this reports no distance range: the range would expose a
+# single sample's raw score (Plan 0047 privacy rule - counts and ranges only).
+_MIN_CELL_FOR_RANGE = 3
 
 _SAMPLE_FIELDS = frozenset(
     {
@@ -109,12 +115,21 @@ def resolve_corpus_path(corpus_root: Path, wav_path: Path | str) -> Path:
     return resolved
 
 
-def load_manifest(path: Path, corpus_root: Path) -> SpeakerManifest:
+def load_manifest(path: Path, corpus_root: Path, *, verify_files: bool = True) -> SpeakerManifest:
     """Load a strict manifest and prove every WAV stays under *corpus_root*.
+
+    Args:
+        path: The manifest file.
+        corpus_root: The calibration corpus root directory.
+        verify_files: ``True`` (default) also requires every WAV to exist and to
+            match its recorded SHA-256. ``discard`` passes ``False`` so a
+            participant's withdrawal is honoured even when a file is already gone
+            or damaged.
 
     Raises:
         ValueError: On a bad schema version, unknown fields, duplicate sample
-            ids, a path escape or a SHA-256 mismatch against an existing file.
+            ids, a path escape, a non-``.wav`` path and - when *verify_files* -
+            a missing WAV or a SHA-256 mismatch.
     """
     if not path.exists():
         raise ValueError(f"no manifest at {path} - capture at least one sample first")
@@ -131,7 +146,10 @@ def load_manifest(path: Path, corpus_root: Path) -> SpeakerManifest:
     rows = raw.get("samples")
     if not isinstance(rows, list):
         raise ValueError("manifest 'samples' must be a list")
-    samples = tuple(_parse_row(row, corpus_root) for row in rows)
+    samples = tuple(
+        _parse_row(row, corpus_root, index, verify_files=verify_files)
+        for index, row in enumerate(rows, start=1)
+    )
     ids = [s.sample_id for s in samples]
     duplicates = sorted({i for i in ids if ids.count(i) > 1})
     if duplicates:
@@ -139,15 +157,18 @@ def load_manifest(path: Path, corpus_root: Path) -> SpeakerManifest:
     return SpeakerManifest(schema_version=SCHEMA_VERSION, samples=samples)
 
 
-def _parse_row(row: object, corpus_root: Path) -> SpeakerSample:
+def _parse_row(row: object, corpus_root: Path, index: int, *, verify_files: bool) -> SpeakerSample:
     if not isinstance(row, dict):
-        raise ValueError("each manifest sample must be a JSON object")
+        raise ValueError(f"manifest row {index} must be a JSON object")
     if set(row) != _SAMPLE_FIELDS:
         unknown = sorted(set(row) - _SAMPLE_FIELDS)
         missing = sorted(_SAMPLE_FIELDS - set(row))
-        raise ValueError(f"manifest sample off contract: unknown={unknown} missing={missing}")
+        raise ValueError(f"manifest row {index} off contract: unknown={unknown} missing={missing}")
     resolved = resolve_corpus_path(corpus_root, str(row["wav_path"]))
-    _verify_sha256(resolved, str(row["sha256"]))
+    if resolved.suffix != ".wav":
+        raise ValueError(f"manifest row {index} does not name a .wav file")
+    if verify_files:
+        _verify_sha256(resolved, str(row["sha256"]), index)
     return SpeakerSample(
         sample_id=str(row["sample_id"]),
         subject_id=str(row["subject_id"]),
@@ -160,9 +181,11 @@ def _parse_row(row: object, corpus_root: Path) -> SpeakerSample:
     )
 
 
-def _verify_sha256(path: Path, expected: str) -> None:
-    if path.exists() and sha256_of_file(path) != expected:
-        raise ValueError(f"sha256 mismatch for {path.name}: manifest says {expected}")
+def _verify_sha256(path: Path, expected: str, index: int) -> None:
+    if not path.is_file():
+        raise ValueError(f"manifest row {index} names a WAV that is missing from the corpus")
+    if sha256_of_file(path) != expected:
+        raise ValueError(f"manifest row {index}: the WAV does not match its recorded sha256")
 
 
 def append_sample_atomic(manifest_path: Path, corpus_root: Path, sample: SpeakerSample) -> None:
@@ -182,7 +205,7 @@ def remove_samples_atomic(manifest_path: Path, sample_ids: Collection[str]) -> N
     Other rows are kept exactly as stored. Ids that are not present are ignored,
     so an interrupted removal can simply be run again.
     """
-    rows = [row for row in _existing_rows(manifest_path) if row.get("sample_id") not in sample_ids]
+    rows = [row for row in _existing_rows(manifest_path) if row["sample_id"] not in sample_ids]
     _write_manifest_atomic(manifest_path, rows)
 
 
@@ -199,10 +222,43 @@ def write_text_atomic(target: Path, text: str) -> None:
         text: Full file contents.
 
     Raises:
-        OSError: If the final replace fails; the temporary file is removed.
+        OSError: If the write or the final replace fails; the temporary file is
+            removed.
     """
     tmp = target.with_name(target.name + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
+    try:
+        with tmp.open("w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except OSError:
+        tmp.unlink(missing_ok=True)
+        raise
+    swap_into_place(tmp, target)
+
+
+def write_new_file_atomic(target: Path, data: bytes) -> None:
+    """Create *target* with *data*, never exposing a partial file or overwriting.
+
+    Args:
+        target: Final path; it must not exist yet.
+        data: Full file contents (a WAV - 16 000 Hz, mono, signed int16).
+
+    Raises:
+        FileExistsError: If *target* already exists.
+        OSError: If the write fails; the temporary file is removed.
+    """
+    if target.exists():
+        raise FileExistsError(f"refusing to overwrite an existing corpus file: {target.name}")
+    tmp = target.with_name(target.name + ".tmp")
+    try:
+        with tmp.open("wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except OSError:
+        tmp.unlink(missing_ok=True)
+        raise
     swap_into_place(tmp, target)
 
 
@@ -240,6 +296,8 @@ def _existing_rows(manifest_path: Path) -> Iterable[dict[str, str]]:
     raw = json.loads(manifest_path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict) or not isinstance(raw.get("samples"), list):
         raise ValueError("existing manifest is malformed")
+    if not all(isinstance(row, dict) and "sample_id" in row for row in raw["samples"]):
+        raise ValueError("existing manifest has a row that is not a sample object")
     return list(raw["samples"])
 
 
@@ -272,11 +330,32 @@ def validate_corpus(manifest: SpeakerManifest) -> None:
         _check_vocabulary(sample)
         _check_subject(sample)
     _check_distinct_wav_paths(samples)
+    _check_distinct_audio(samples)
     _check_reference_session(samples)
     _check_session_separation(samples)
     _check_minimum_matrix(samples)
     _check_genuine_coverage(samples)
     _check_impostor_diversity(samples)
+    _check_phrase_repetitions(samples)
+    _check_replay_conditions(samples)
+
+
+def find_orphan_wavs(manifest: SpeakerManifest, corpus_root: Path) -> list[Path]:
+    """List ``*.wav`` files under *corpus_root* that no manifest row references.
+
+    A crash between writing a WAV and appending its row, or a withdrawn
+    participant's leftover file, would otherwise sit in the private corpus unseen.
+
+    Args:
+        manifest: The loaded manifest.
+        corpus_root: The calibration corpus root directory.
+
+    Returns:
+        The unreferenced WAV paths, sorted; callers report a count, never names.
+    """
+    root = Path(corpus_root).resolve()
+    known = {Path(s.wav_path).resolve() for s in manifest.samples}
+    return sorted(p for p in root.rglob("*.wav") if p.resolve() not in known)
 
 
 def _check_vocabulary(sample: SpeakerSample) -> None:
@@ -319,6 +398,12 @@ def _check_distinct_wav_paths(samples: Sequence[SpeakerSample]) -> None:
     paths = [str(s.wav_path) for s in samples]
     if len(paths) != len(set(paths)):
         raise ValueError("every sample must reference a distinct WAV file")
+
+
+def _check_distinct_audio(samples: Sequence[SpeakerSample]) -> None:
+    digests = [s.sha256 for s in samples]
+    if len(digests) != len(set(digests)):
+        raise ValueError("two samples carry byte-identical audio; a copy is not a new sample")
 
 
 def _check_reference_session(samples: Sequence[SpeakerSample]) -> None:
@@ -365,6 +450,31 @@ def _check_impostor_diversity(samples: Sequence[SpeakerSample]) -> None:
         )
 
 
+def _check_phrase_repetitions(samples: Sequence[SpeakerSample]) -> None:
+    """Require each frozen phrase twice from the reference and from every impostor."""
+    groups: dict[tuple[str, str], list[str]] = {}
+    for s in samples:
+        if s.sample_class == "reference":
+            groups.setdefault(("reference", ""), []).append(s.phrase_id)
+        elif s.sample_class == "impostor":
+            groups.setdefault(("impostor", s.subject_id), []).append(s.phrase_id)
+    for (sample_class, _), phrases in sorted(groups.items()):
+        for phrase in PHRASE_IDS:
+            if phrases.count(phrase) < MIN_PHRASE_REPETITIONS:
+                raise ValueError(
+                    f"every {sample_class} participant needs each frozen phrase at least "
+                    f"{MIN_PHRASE_REPETITIONS} times; {phrase} is short"
+                )
+    if {s.phrase_id for s in samples if s.sample_class == "genuine"} != set(PHRASE_IDS):
+        raise ValueError("genuine samples must cover all three frozen phrases")
+
+
+def _check_replay_conditions(samples: Sequence[SpeakerSample]) -> None:
+    bad = {s.condition for s in samples if s.sample_class == "replay"} - set(REPLAY_CONDITIONS)
+    if bad:
+        raise ValueError(f"replay conditions must be one of {REPLAY_CONDITIONS}, got {sorted(bad)}")
+
+
 def render_aggregate_report(report: AggregateSpeakerReport) -> str:
     """Render a local aggregate report with no biometric, id or path data."""
     lines = [
@@ -401,9 +511,15 @@ def render_aggregate_report(report: AggregateSpeakerReport) -> str:
 
 
 def _condition_row(summary: ConditionSummary) -> str:
-    return (
+    head = (
         f"| {summary.sample_class} | {summary.condition} | {summary.total} | {summary.accepted} "
-        f"| {summary.rejected} | {summary.distance_min:.4f} | {summary.distance_max:.4f} "
+        f"| {summary.rejected} |"
+    )
+    if summary.total < _MIN_CELL_FOR_RANGE:
+        # With one or two samples a min/max/mean IS a raw per-sample distance.
+        return f"{head} n/a | n/a | n/a |"
+    return (
+        f"{head} {summary.distance_min:.4f} | {summary.distance_max:.4f} "
         f"| {summary.distance_mean:.4f} |"
     )
 

@@ -28,8 +28,9 @@ import wave
 
 import numpy as np
 
-from scripts.speaker_calibration import _checked_embedding, percentile
-from scripts.speaker_calibration_corpus import validate_wav_bytes
+from scripts.speaker_calibration import checked_embedding, percentile
+from scripts.speaker_calibration_corpus import sha256_of_file, validate_wav_bytes
+from scripts.speaker_calibration_models import DEFAULT_CORPUS_ROOT, MODEL_CACHE_DIRNAME
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,18 @@ logger = logging.getLogger(__name__)
 _MODEL_SOURCE: Final = "speechbrain/spkrec-ecapa-voxceleb"
 _MODEL_REVISION: Final = "0f99f2d0ebe89ac095bcc5903c4dd8f72b367286"  # pragma: allowlist secret
 _MODEL_ID: Final = f"{_MODEL_SOURCE}@{_MODEL_REVISION}"
-_MODEL_CACHE_DIR: Final = Path("project-history/calibration/speaker/model-cache")
+# Anchored to the repository, not the working directory, so a run from another
+# folder cannot silently start a second cache and re-download the model.
+_MODEL_CACHE_DIR: Final = (
+    Path(__file__).resolve().parents[1] / DEFAULT_CORPUS_ROOT / MODEL_CACHE_DIRNAME
+)
+# Every file the encoder loads from the snapshot; the cache copy must match each.
+_CACHED_MODEL_FILES: Final = (
+    "hyperparams.yaml",
+    "embedding_model.ckpt",
+    "mean_var_norm_emb.ckpt",
+    "classifier.ckpt",
+)
 
 _SAMPLE_RATE: Final = 16_000
 _INT16_FULL_SCALE: Final = 32768.0
@@ -117,7 +129,7 @@ def _encode_one(encoder: Any, wave_f32: np.ndarray) -> np.ndarray:  # noqa: ANN4
     tensor = torch.from_numpy(wave_f32).unsqueeze(0)  # (1, n_samples) float32 CPU
     out = encoder.encode_batch(wavs=tensor, wav_lens=None, normalize=False)
     vector = out.squeeze().detach().cpu().numpy()  # (1, 1, 192) -> (192,)
-    return _checked_embedding(vector)
+    return checked_embedding(vector)
 
 
 def load_frozen_encoder(*, allow_network: bool) -> Any:  # noqa: ANN401 -- speechbrain has no stubs
@@ -148,24 +160,44 @@ def load_frozen_encoder(*, allow_network: bool) -> Any:  # noqa: ANN401 -- speec
     )
 
 
-def _assert_resolved_revision() -> str:
-    """Prove the pinned revision is the one actually cached, offline.
+def _assert_resolved_revision(cache_dir: Path | None = None) -> str:
+    """Prove the encoder's model files are the pinned revision's, offline.
+
+    SpeechBrain loads from *cache_dir* (a copy) and reuses files already there
+    without re-checking the revision, so the snapshot path alone proves nothing:
+    each loaded file is also compared, byte for byte, with the pinned snapshot.
+
+    Args:
+        cache_dir: The encoder ``savedir``; defaults to the frozen model cache.
 
     Returns:
         The resolved snapshot path (contains ``/snapshots/<revision>/``).
 
     Raises:
-        ValueError: If the cached ``hyperparams.yaml`` did not resolve under the
-            pinned revision's snapshot directory.
+        ValueError: If ``hyperparams.yaml`` did not resolve under the pinned
+            revision's snapshot directory, or a cached model file is missing or
+            differs from that snapshot.
     """
     from huggingface_hub import hf_hub_download  # noqa: PLC0415 -- deferred heavy import
 
+    cache = _MODEL_CACHE_DIR if cache_dir is None else cache_dir
     resolved = hf_hub_download(
         _MODEL_SOURCE, "hyperparams.yaml", revision=_MODEL_REVISION, local_files_only=True
     )
     marker = f"/snapshots/{_MODEL_REVISION}/"
     if marker not in Path(resolved).as_posix():
         raise ValueError(f"resolved revision path {resolved!r} is not under {marker!r}")
+    for name in _CACHED_MODEL_FILES:
+        snapshot_file = Path(
+            hf_hub_download(_MODEL_SOURCE, name, revision=_MODEL_REVISION, local_files_only=True)
+        )
+        cached_file = cache / name
+        if not cached_file.is_file() or sha256_of_file(cached_file) != sha256_of_file(
+            snapshot_file
+        ):
+            raise ValueError(
+                f"the cached model file {name} is missing or differs from the pinned revision"
+            )
     return resolved
 
 
@@ -213,16 +245,21 @@ def run_model_contract() -> int:
     Downloads the pinned revision into the gitignored cache, asserts the
     resolved revision equals :data:`_MODEL_REVISION`, then embeds one generated
     non-biometric sine tone and logs its shape, dtype, dimension and finiteness.
-    No microphone, no household audio, not timed.
+    The offline (``allow_network=False``) load must also succeed, because that is
+    the only load ``embed`` performs. No microphone, no household audio, not timed.
 
     Returns:
-        ``0`` on complete success, ``1`` otherwise.
+        ``0`` on complete success, ``1`` if the offline load fails.
     """
     logger.info("warming frozen model cache: %s @ %s", _MODEL_SOURCE, _MODEL_REVISION)
     load_frozen_encoder(allow_network=True)
     resolved = _assert_resolved_revision()
     logger.info("resolved revision OK under %s", resolved)
-    encoder = _load_offline_or_note_limitation()
+    try:
+        encoder = load_frozen_encoder(allow_network=False)
+    except Exception:  # the offline load is exactly what this contract must prove
+        logger.exception("the pinned revision does not load with allow_network=False")
+        return 1
     vector = SpeechBrainEcapaBackend(encoder).embed_wav(
         _sine_wav_bytes(seconds=_LATENCY_WAV_SECONDS)
     )
@@ -236,28 +273,15 @@ def run_model_contract() -> int:
     return 0
 
 
-def _load_offline_or_note_limitation() -> Any:  # noqa: ANN401 -- speechbrain has no stubs
-    """Load the encoder offline; fall back to online with a recorded limitation.
-
-    Returns:
-        A constructed ``EncoderClassifier``.
-    """
-    try:
-        return load_frozen_encoder(allow_network=False)
-    except Exception:  # any offline-load fault is a recorded, non-fatal limitation (block 2)
-        logger.warning(
-            "offline-only load limitation: the pinned revision loads online but not with "
-            "allow_network=False; the revision is still fully pinned (Plan 0047 block 2)"
-        )
-        return load_frozen_encoder(allow_network=True)
-
-
 def run_latency_protocol() -> dict[str, float]:
     """Execute the frozen latency protocol once (Plan 0047 block 5).
 
     One already-loaded encoder; one in-process 3 s synthetic WAV decoded and
     validated outside the timed region; 3 discarded warm-ups; 30 sequential
     timed embeddings; p50/p95 by nearest-rank. No concurrent load, no download.
+
+    Kept as a library entry point (no CLI action): Task 3 ran it once by hand
+    and the slow tests exercise it.
 
     Returns:
         Sanitized timings in milliseconds: ``p50_ms``, ``p95_ms``, ``min_ms``,

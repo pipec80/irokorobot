@@ -60,6 +60,7 @@ class _Measurement:
     n_genuine: int
     n_impostor: int
     n_replay: int
+    separation: float  # closest impostor distance minus farthest genuine distance
 
 
 def build_report(
@@ -139,6 +140,7 @@ def _measure(scored: Mapping[str, list[Scored]]) -> _Measurement:
         n_genuine=len(genuine),
         n_impostor=len(impostor),
         n_replay=len(replay),
+        separation=min(impostor) - max(genuine),
     )
 
 
@@ -225,6 +227,13 @@ def _limitations(m: _Measurement, p95: float) -> tuple[str, ...]:
         items.append(
             f"0 false accepts in {m.n_impostor} live-impostor samples bounds the true "
             f"FAR only to about {bound:.1f} % (95 % rule of three)."
+        )
+        items.append(
+            "FRR and FAR are in-sample: the threshold is picked from these same "
+            "samples (the largest genuine distance below the closest impostor), so "
+            "FRR is zero by construction and there is no held-out check. The "
+            f"informative figure is the separation between the farthest genuine and "
+            f"the closest impostor distance: {m.separation:.4f}."
         )
     else:
         items.append(

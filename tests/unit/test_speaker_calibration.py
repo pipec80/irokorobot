@@ -19,6 +19,7 @@ import os
 import sys
 from typing import TYPE_CHECKING
 import wave
+import zlib
 
 import numpy as np
 import pytest
@@ -27,6 +28,7 @@ from scripts.speaker_calibration import (
     SpeakerThresholdResult,
     _load_frozen_backend,
     _reject_if_too_short,
+    _reject_unusable_signal,
     cosine_distance,
     l2_normalize,
     parse_cli_args,
@@ -43,7 +45,9 @@ from scripts.speaker_calibration_backend import (
     _pcm16_wav_to_float32,
 )
 from scripts.speaker_calibration_corpus import (
+    _condition_row,
     append_sample_atomic,
+    find_orphan_wavs,
     load_manifest,
     remove_samples_atomic,
     render_aggregate_report,
@@ -52,12 +56,16 @@ from scripts.speaker_calibration_corpus import (
     sha256_of_file,
     validate_corpus,
     validate_wav_bytes,
+    write_new_file_atomic,
+    write_text_atomic,
 )
 from scripts.speaker_calibration_models import (
     CONDITIONS,
     LATENCY_KEY_PREFIX,
+    MODEL_KEY,
     PHRASE_IDS,
     PHRASE_TEXT,
+    SHA_KEY_PREFIX,
     AggregateSpeakerReport,
     ConditionSummary,
     SpeakerCliOptions,
@@ -328,15 +336,22 @@ def test_percentile_rejects_an_empty_sequence() -> None:
 
 
 def _wav_bytes(
-    *, rate: int = 16_000, channels: int = 1, sampwidth: int = 2, frames: int = 16_000
+    *, rate: int = 16_000, channels: int = 1, sampwidth: int = 2, frames: int = 16_000, tag: int = 0
 ) -> bytes:
-    """Return WAV bytes with the given format — silent PCM payload."""
+    """Return WAV bytes with the given format — silent PCM payload.
+
+    A non-zero *tag* (int16 range) is written as the first sample so two fixtures
+    differ by sha256 without becoming audible.
+    """
+    payload = bytearray(b"\x00" * (frames * channels * sampwidth))
+    if tag:
+        payload[0:2] = tag.to_bytes(2, "little", signed=True)
     buf = io.BytesIO()
     with wave.open(buf, "wb") as handle:
         handle.setnchannels(channels)
         handle.setsampwidth(sampwidth)
         handle.setframerate(rate)
-        handle.writeframes(b"\x00" * (frames * channels * sampwidth))
+        handle.writeframes(bytes(payload))
     return buf.getvalue()
 
 
@@ -344,7 +359,7 @@ def _write_sample_wav(corpus_root: Path, name: str) -> Path:
     """Write a contract-valid silent WAV under *corpus_root* and return its path."""
     path = corpus_root / name
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(_wav_bytes())
+    path.write_bytes(_wav_bytes(tag=1 + zlib.crc32(name.encode()) % 30_000))
     return path
 
 
@@ -965,6 +980,12 @@ class _FakeBackend:
         return np.full(192, float(seed), dtype=np.float32)
 
 
+def _vector_names(names: list[str]) -> list[str]:
+    """Drop the reserved provenance/latency keys, keeping one name per sample vector."""
+    reserved = (LATENCY_KEY_PREFIX, SHA_KEY_PREFIX, MODEL_KEY)
+    return [n for n in names if not n.startswith(reserved)]
+
+
 def test_run_cli_embed_writes_one_vector_per_sample_via_the_protocol(tmp_path: Path) -> None:
     rows = _minimum_corpus_rows(tmp_path)
     _write_manifest(tmp_path, rows)
@@ -975,9 +996,11 @@ def test_run_cli_embed_writes_one_vector_per_sample_via_the_protocol(tmp_path: P
 
     assert exit_code == 0
     with np.load(tmp_path / "embeddings.npz") as stored:
-        vectors = [n for n in stored.files if not n.startswith(LATENCY_KEY_PREFIX)]
+        vectors = _vector_names(stored.files)
         assert sorted(vectors) == sorted(r["sample_id"] for r in rows)
         assert all(stored[name].shape == (192,) for name in vectors)
+        assert str(stored[MODEL_KEY]) == "fake-ecapa@test"
+        assert all(str(stored[SHA_KEY_PREFIX + r["sample_id"]]) == r["sha256"] for r in rows)
 
 
 def test_run_cli_embed_rejects_a_wrong_dimension_embedding(tmp_path: Path) -> None:
@@ -1132,7 +1155,7 @@ def test_run_cli_embed_accepts_the_concrete_backend(tmp_path: Path) -> None:
 
     assert exit_code == 0
     with np.load(tmp_path / "embeddings.npz") as stored:
-        vectors = [n for n in stored.files if not n.startswith(LATENCY_KEY_PREFIX)]
+        vectors = _vector_names(stored.files)
         assert all(stored[name].shape == (192,) for name in vectors)
 
 
@@ -1208,14 +1231,23 @@ def _unit_at_distance(distance: float) -> np.ndarray:
     return vec
 
 
+_TEST_MODEL_ID = "speechbrain/test@rev"
+
+
 def _write_embeddings(
-    corpus_root: Path, rows: list[dict[str, str]], *, distances: dict[str, float] | None = None
+    corpus_root: Path,
+    rows: list[dict[str, str]],
+    *,
+    distances: dict[str, float] | None = None,
+    model_id: str = _TEST_MODEL_ID,
 ) -> None:
     table = distances or _DISTANCE_BY_CLASS
     arrays: dict[str, np.ndarray] = {}
     for row in rows:
         arrays[row["sample_id"]] = _unit_at_distance(table[row["sample_class"]])
         arrays[LATENCY_KEY_PREFIX + row["sample_id"]] = np.array(210.0)
+        arrays[SHA_KEY_PREFIX + row["sample_id"]] = np.array(row["sha256"])
+    arrays[MODEL_KEY] = np.array(model_id)
     # numpy's savez stub misbinds a ``**dict`` splat to ``allow_pickle``; runtime is correct.
     np.savez(corpus_root / "embeddings.npz", **arrays)  # type: ignore[arg-type]
 
@@ -1224,7 +1256,7 @@ def _write_embeddings(
 def _frozen_identity(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "scripts.speaker_calibration_backend.frozen_model_identity",
-        lambda: ("speechbrain/test@rev", "speechbrain 0.0"),
+        lambda: (_TEST_MODEL_ID, "speechbrain 0.0"),
     )
 
 
@@ -1244,6 +1276,7 @@ def test_run_cli_analyze_writes_an_aggregate_report(tmp_path: Path) -> None:
     text = output.read_text(encoding="utf-8")
     assert exit_code == 0
     assert "provisional_pass" in text
+    assert "in-sample" in text  # FRR is zero by construction; the report must say so
     assert "gen-probe-01" not in text
     assert "impostor_a" not in text
     assert ".wav" not in text
@@ -1560,3 +1593,671 @@ def test_main_keeps_huggingface_offline_for_every_action_but_model_contract(
 
     assert warm_up.value.code == 0
     assert "HF_HUB_OFFLINE" not in os.environ
+
+
+# =====================================================================
+# Task 7 whole-branch review fixes
+# =====================================================================
+
+
+@pytest.fixture(autouse=True)
+def _restore_hf_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Let ``main()`` set the Hugging Face flags without leaking them to other tests."""
+    for name in ("HF_HUB_OFFLINE", "HF_HUB_DISABLE_TELEMETRY"):
+        monkeypatch.setenv(name, "seed")  # registers the original value for teardown
+        monkeypatch.delenv(name)
+
+
+def _rewrite_rows(tmp_path: Path, rows: list[dict[str, str]]) -> SpeakerManifest:
+    return load_manifest(_write_manifest(tmp_path, rows), tmp_path)
+
+
+# --- strict manifest ---------------------------------------------------
+
+
+def test_manifest_rejects_a_missing_wav_unless_verification_is_skipped(tmp_path: Path) -> None:
+    row = _sample_row(tmp_path, sample_id="a")
+    path = _write_manifest(tmp_path, [row])
+    (tmp_path / row["wav_path"]).unlink()
+
+    with pytest.raises(ValueError, match="missing"):
+        load_manifest(path, tmp_path)
+
+    assert load_manifest(path, tmp_path, verify_files=False).samples[0].sample_id == "a"
+
+
+def test_manifest_without_verification_accepts_a_damaged_wav(tmp_path: Path) -> None:
+    row = _sample_row(tmp_path, sample_id="a")
+    path = _write_manifest(tmp_path, [row])
+    (tmp_path / row["wav_path"]).write_bytes(b"damaged")
+
+    with pytest.raises(ValueError, match="sha256"):
+        load_manifest(path, tmp_path)
+
+    assert len(load_manifest(path, tmp_path, verify_files=False).samples) == 1
+
+
+def test_manifest_error_messages_carry_no_hash_or_file_name(tmp_path: Path) -> None:
+    row = _sample_row(tmp_path, sample_id="a")
+    path = _write_manifest(tmp_path, [row])
+    (tmp_path / row["wav_path"]).write_bytes(b"damaged")
+
+    with pytest.raises(ValueError, match="manifest row 1") as excinfo:
+        load_manifest(path, tmp_path)
+
+    assert row["sha256"] not in str(excinfo.value)
+    assert row["wav_path"] not in str(excinfo.value)
+
+
+def test_manifest_rejects_a_row_that_does_not_name_a_wav_file(tmp_path: Path) -> None:
+    row = _sample_row(tmp_path, sample_id="a", wav_path="a.txt")
+    path = _write_manifest(tmp_path, [row])
+
+    with pytest.raises(ValueError, match=r"\.wav"):
+        load_manifest(path, tmp_path)
+
+
+def test_remove_samples_rejects_a_row_that_is_not_an_object(tmp_path: Path) -> None:
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps({"schema_version": 1, "samples": ["oops"]}), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="not a sample object"):
+        remove_samples_atomic(path, {"a"})
+
+
+# --- corpus matrix -----------------------------------------------------
+
+
+def test_corpus_rejects_byte_identical_audio(tmp_path: Path) -> None:
+    rows = _minimum_corpus_rows(tmp_path)
+    source = tmp_path / rows[0]["wav_path"]
+    target = tmp_path / rows[1]["wav_path"]
+    target.write_bytes(source.read_bytes())
+    rows[1]["sha256"] = sha256_of_file(target)
+
+    with pytest.raises(ValueError, match="byte-identical"):
+        validate_corpus(_rewrite_rows(tmp_path, rows))
+
+
+def test_corpus_requires_every_impostor_to_read_each_phrase_twice(tmp_path: Path) -> None:
+    rows = _minimum_corpus_rows(tmp_path)
+    first = next(
+        r for r in rows if r["subject_id"] == "impostor_a" and r["phrase_id"] == "phrase-01"
+    )
+    first["phrase_id"] = "phrase-02"  # keeps 18 impostor samples but leaves phrase-01 once
+
+    with pytest.raises(ValueError, match="each frozen phrase"):
+        validate_corpus(_rewrite_rows(tmp_path, rows))
+
+
+def test_corpus_requires_the_reference_to_read_each_phrase_twice(tmp_path: Path) -> None:
+    rows = _minimum_corpus_rows(tmp_path)
+    next(r for r in rows if r["sample_class"] == "reference")["phrase_id"] = "phrase-03"
+
+    with pytest.raises(ValueError, match="reference participant"):
+        validate_corpus(_rewrite_rows(tmp_path, rows))
+
+
+def test_corpus_requires_genuine_samples_to_cover_every_phrase(tmp_path: Path) -> None:
+    rows = _minimum_corpus_rows(tmp_path)
+    for row in rows:
+        if row["sample_class"] == "genuine":
+            row["phrase_id"] = "phrase-01"
+
+    with pytest.raises(ValueError, match="cover all three"):
+        validate_corpus(_rewrite_rows(tmp_path, rows))
+
+
+def test_corpus_limits_replay_to_the_two_quiet_conditions(tmp_path: Path) -> None:
+    rows = _minimum_corpus_rows(tmp_path)
+    next(r for r in rows if r["sample_class"] == "replay")["condition"] = "background-near"
+
+    with pytest.raises(ValueError, match="replay conditions"):
+        validate_corpus(_rewrite_rows(tmp_path, rows))
+
+
+def test_find_orphan_wavs_lists_only_unreferenced_files(tmp_path: Path) -> None:
+    manifest = _load_minimum_manifest(tmp_path)
+    stray = tmp_path / "stray.wav"
+    stray.write_bytes(_wav_bytes())
+
+    assert find_orphan_wavs(manifest, tmp_path) == [stray.resolve()]
+
+
+def test_run_cli_validate_reports_an_orphan_wav_without_touching_it(tmp_path: Path) -> None:
+    _write_manifest(tmp_path, _minimum_corpus_rows(tmp_path))
+    stray = tmp_path / "stray.wav"
+    stray.write_bytes(_wav_bytes())
+
+    assert run_cli(parse_cli_args(["validate", "--corpus-root", str(tmp_path)])) != 0
+    assert stray.exists()
+
+
+def test_report_hides_the_distance_range_of_a_tiny_cell() -> None:
+    summary = ConditionSummary(
+        sample_class="genuine",
+        condition="quiet-near",
+        total=2,
+        accepted=2,
+        rejected=0,
+        distance_min=0.123456,
+        distance_max=0.234567,
+        distance_mean=0.179,
+    )
+
+    row = _condition_row(summary)
+
+    assert "0.1234" not in row
+    assert "n/a" in row
+
+
+def test_report_shows_the_distance_range_of_a_large_enough_cell() -> None:
+    summary = ConditionSummary(
+        sample_class="genuine",
+        condition="quiet-near",
+        total=3,
+        accepted=3,
+        rejected=0,
+        distance_min=0.1,
+        distance_max=0.3,
+        distance_mean=0.2,
+    )
+
+    assert "0.1000" in _condition_row(summary)
+
+
+# --- durable writes ----------------------------------------------------
+
+
+def test_write_new_file_atomic_refuses_to_overwrite(tmp_path: Path) -> None:
+    target = tmp_path / "a.wav"
+    target.write_bytes(b"first")
+
+    with pytest.raises(FileExistsError):
+        write_new_file_atomic(target, b"second")
+
+    assert target.read_bytes() == b"first"
+
+
+def test_write_new_file_atomic_creates_the_file_and_leaves_no_temp(tmp_path: Path) -> None:
+    target = tmp_path / "a.wav"
+
+    write_new_file_atomic(target, b"payload")
+
+    assert target.read_bytes() == b"payload"
+    assert not target.with_name("a.wav.tmp").exists()
+
+
+def test_atomic_writers_remove_the_temp_file_when_the_write_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _boom(_fd: int) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr("scripts.speaker_calibration_corpus.os.fsync", _boom)
+
+    with pytest.raises(OSError, match="disk full"):
+        write_text_atomic(tmp_path / "m.json", "{}")
+    with pytest.raises(OSError, match="disk full"):
+        write_new_file_atomic(tmp_path / "a.wav", b"x")
+
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_npz_writer_removes_the_temp_file_when_the_write_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from scripts import speaker_calibration as module  # noqa: PLC0415 -- patches this module
+
+    def _boom(_fd: int) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(module.os, "fsync", _boom)
+
+    with pytest.raises(OSError, match="disk full"):
+        module._write_npz_atomic(tmp_path / "e.npz", {"a": np.zeros(3)})
+
+    assert list(tmp_path.iterdir()) == []
+
+
+# --- argument safety ---------------------------------------------------
+
+
+@pytest.mark.parametrize("session", ["a/b", "a\\b", "x:y", "", "UPPER", "a b", "../x"])
+def test_cli_rejects_a_session_id_that_is_unsafe_in_a_file_name(session: str) -> None:
+    with pytest.raises(SystemExit):
+        parse_cli_args(
+            [
+                "capture",
+                "--class",
+                "genuine",
+                "--subject",
+                "owner",
+                "--session",
+                session,
+                "--phrase",
+                "phrase-01",
+                "--condition",
+                "quiet-near",
+            ]
+        )
+
+
+def test_cli_rejects_a_manifest_or_output_outside_the_corpus_root(tmp_path: Path) -> None:
+    root = tmp_path / "corpus"
+    root.mkdir()
+    outside = tmp_path / "elsewhere.json"
+
+    with pytest.raises(SystemExit):
+        parse_cli_args(["validate", "--corpus-root", str(root), "--manifest", str(outside)])
+    with pytest.raises(SystemExit):
+        parse_cli_args(["analyze", "--corpus-root", str(root), "--output", str(outside)])
+
+
+def test_cli_purge_model_cache_is_only_valid_for_cleanup() -> None:
+    with pytest.raises(SystemExit):
+        parse_cli_args(["validate", "--purge-model-cache"])
+
+    assert parse_cli_args(["cleanup", "--purge-model-cache"]).purge_model_cache is True
+    assert parse_cli_args(["cleanup"]).purge_model_cache is False
+
+
+# --- capture guards ----------------------------------------------------
+
+
+def test_signal_guard_accepts_a_speech_level_phrase() -> None:
+    _reject_unusable_signal(_tone_wav_bytes(seconds=4.0))  # no raise
+
+
+def test_signal_guard_rejects_digital_silence() -> None:
+    with pytest.raises(ValueError, match="speech-level"):
+        _reject_unusable_signal(_wav_bytes(frames=16_000 * 4))
+
+
+def test_signal_guard_rejects_room_noise_that_only_tripped_the_vad() -> None:
+    quiet = _tone_wav_bytes(seconds=4.0, amplitude=100)  # about -50 dBFS
+
+    with pytest.raises(ValueError, match="speech-level"):
+        _reject_unusable_signal(quiet)
+
+
+def test_signal_guard_rejects_a_clipped_take() -> None:
+    rails = np.tile(np.array([32_767, -32_768], dtype=np.int16), 32_000)  # 4 s square wave
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(16_000)
+        handle.writeframes(rails.tobytes())
+    clipped = buf.getvalue()
+
+    with pytest.raises(ValueError, match="clipped"):
+        _reject_unusable_signal(clipped)
+
+
+def test_signal_guard_rejects_an_overlong_take() -> None:
+    with pytest.raises(ValueError, match="max"):
+        _reject_unusable_signal(_tone_wav_bytes(seconds=16.0))
+
+
+def test_capture_logs_no_sample_id_file_name_or_timestamp(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level("INFO")
+
+    assert run_cli(_capture_opts(tmp_path), capture_audio=_wav_bytes) == 0
+
+    stored = next(tmp_path.glob("*.wav")).stem
+    logged = " ".join(record.getMessage() for record in caplog.records)
+    assert "captured one" in logged
+    assert stored not in logged
+    assert ".wav" not in logged
+
+
+def test_capture_removes_its_wav_when_the_manifest_append_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _boom(*_: object) -> None:
+        raise OSError("manifest is locked")
+
+    monkeypatch.setattr("scripts.speaker_calibration.append_sample_atomic", _boom)
+
+    assert run_cli(_capture_opts(tmp_path), capture_audio=_wav_bytes) != 0
+    assert list(tmp_path.glob("*.wav")) == []
+    assert list(tmp_path.glob("*.tmp")) == []
+
+
+# --- embeddings provenance --------------------------------------------
+
+
+def _analyze_after(tmp_path: Path, rows: list[dict[str, str]]) -> tuple[int, Path]:
+    output = tmp_path / "report.md"
+    return run_cli(_analyze_opts(tmp_path, output)), output
+
+
+@pytest.mark.usefixtures("_frozen_identity")
+def test_analyze_refuses_vectors_from_another_model(tmp_path: Path) -> None:
+    rows = _minimum_corpus_rows(tmp_path)
+    _write_manifest(tmp_path, rows)
+    _write_embeddings(tmp_path, rows, model_id="someone/else@other")
+
+    code, output = _analyze_after(tmp_path, rows)
+
+    assert code != 0
+    assert not output.exists()
+
+
+@pytest.mark.usefixtures("_frozen_identity")
+def test_analyze_refuses_vectors_without_a_recorded_model(tmp_path: Path) -> None:
+    rows = _minimum_corpus_rows(tmp_path)
+    _write_manifest(tmp_path, rows)
+    arrays = {r["sample_id"]: _unit_at_distance(0.2) for r in rows}
+    arrays.update({LATENCY_KEY_PREFIX + r["sample_id"]: np.array(1.0) for r in rows})
+    np.savez(tmp_path / "embeddings.npz", **arrays)  # type: ignore[arg-type]  # numpy stub
+
+    code, output = _analyze_after(tmp_path, rows)
+
+    assert code != 0
+    assert not output.exists()
+
+
+@pytest.mark.usefixtures("_frozen_identity")
+def test_analyze_refuses_vectors_computed_from_different_audio(tmp_path: Path) -> None:
+    rows = _minimum_corpus_rows(tmp_path)
+    _write_manifest(tmp_path, rows)
+    stale = [{**rows[0], "sha256": "0" * 64}, *rows[1:]]
+    _write_embeddings(tmp_path, stale)  # the vector of sample 0 came from other audio
+
+    code, output = _analyze_after(tmp_path, rows)
+
+    assert code != 0
+    assert not output.exists()
+
+
+@pytest.mark.usefixtures("_frozen_identity")
+@pytest.mark.parametrize("bad", [float("nan"), -1.0])
+def test_analyze_refuses_an_invalid_stored_latency(tmp_path: Path, bad: float) -> None:
+    rows = _minimum_corpus_rows(tmp_path)
+    _write_manifest(tmp_path, rows)
+    _write_embeddings(tmp_path, rows)
+    with np.load(tmp_path / "embeddings.npz") as stored:
+        arrays = {key: np.asarray(stored[key]) for key in stored.files}
+    arrays[LATENCY_KEY_PREFIX + rows[0]["sample_id"]] = np.array(bad)
+    np.savez(tmp_path / "embeddings.npz", **arrays)  # type: ignore[arg-type]  # numpy stub
+
+    code, output = _analyze_after(tmp_path, rows)
+
+    assert code != 0
+    assert not output.exists()
+
+
+@pytest.mark.usefixtures("_frozen_identity")
+def test_analyze_refuses_an_orphan_wav(tmp_path: Path) -> None:
+    rows = _corpus_with_embeddings(tmp_path)
+    (tmp_path / "stray.wav").write_bytes(_wav_bytes())
+
+    code, output = _analyze_after(tmp_path, rows)
+
+    assert code != 0
+    assert not output.exists()
+
+
+@pytest.mark.usefixtures("_frozen_identity")
+def test_analyze_refuses_a_wav_that_disappeared_after_embed(tmp_path: Path) -> None:
+    rows = _corpus_with_embeddings(tmp_path)
+    (tmp_path / rows[0]["wav_path"]).unlink()
+
+    code, output = _analyze_after(tmp_path, rows)
+
+    assert code != 0
+    assert not output.exists()
+
+
+# --- discard robustness ------------------------------------------------
+
+
+def test_run_cli_discard_honours_a_withdrawal_despite_a_damaged_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rows = _corpus_with_embeddings(tmp_path)
+    mine = [r for r in rows if r["subject_id"] == "impostor_a"]
+    (tmp_path / mine[0]["wav_path"]).write_bytes(b"damaged")
+    (tmp_path / mine[1]["wav_path"]).unlink()
+    _confirm(monkeypatch)
+
+    assert run_cli(_discard_opts(tmp_path, "--subject", "impostor_a")) == 0
+    assert not (_manifest_ids(tmp_path) & {r["sample_id"] for r in mine})
+
+
+def test_run_cli_discard_drops_provenance_keys_but_keeps_the_model_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rows = _corpus_with_embeddings(tmp_path)
+    gone = [r for r in rows if r["subject_id"] == "impostor_a"]
+    _confirm(monkeypatch)
+
+    assert run_cli(_discard_opts(tmp_path, "--subject", "impostor_a")) == 0
+    with np.load(tmp_path / "embeddings.npz") as stored:
+        assert MODEL_KEY in stored.files
+        assert all(SHA_KEY_PREFIX + r["sample_id"] not in stored.files for r in gone)
+
+
+def test_run_cli_discard_without_a_terminal_deletes_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rows = _corpus_with_embeddings(tmp_path)
+    before = (tmp_path / "manifest.json").read_bytes()
+
+    def _no_terminal(*_: object) -> str:
+        raise EOFError
+
+    monkeypatch.setattr("builtins.input", _no_terminal)
+
+    assert run_cli(_discard_opts(tmp_path, "--subject", "impostor_a")) != 0
+    assert (tmp_path / "manifest.json").read_bytes() == before
+    assert all((tmp_path / r["wav_path"]).exists() for r in rows)
+
+
+# --- cleanup -----------------------------------------------------------
+
+
+def _cleanup_opts(tmp_path: Path, *flags: str) -> SpeakerCliOptions:
+    return parse_cli_args(["cleanup", "--corpus-root", str(tmp_path), *flags])
+
+
+def _corpus_with_cache(tmp_path: Path) -> Path:
+    _corpus_with_embeddings(tmp_path)
+    (tmp_path / "aggregate-report.md").write_text("report", encoding="utf-8")
+    cache = tmp_path / "model-cache" / "embedding_model.ckpt"
+    cache.parent.mkdir()
+    cache.write_bytes(b"weights")
+    return cache
+
+
+def test_cleanup_deletes_the_corpus_and_keeps_the_model_cache_by_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache = _corpus_with_cache(tmp_path)
+    _confirm(monkeypatch)
+
+    assert run_cli(_cleanup_opts(tmp_path)) == 0
+
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["model-cache"]
+    assert cache.read_bytes() == b"weights"
+
+
+def test_cleanup_can_also_purge_the_model_cache_and_leaves_no_empty_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _corpus_with_cache(tmp_path)
+    _confirm(monkeypatch)
+
+    assert run_cli(_cleanup_opts(tmp_path, "--purge-model-cache")) == 0
+
+    assert list(tmp_path.rglob("*")) == []
+
+
+def test_cleanup_needs_the_typed_confirmation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _corpus_with_cache(tmp_path)
+    before = sorted(tmp_path.rglob("*"))
+    _confirm(monkeypatch, "no")
+
+    assert run_cli(_cleanup_opts(tmp_path)) != 0
+    assert sorted(tmp_path.rglob("*")) == before
+
+
+def test_cleanup_without_a_terminal_deletes_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _corpus_with_cache(tmp_path)
+    before = sorted(tmp_path.rglob("*"))
+
+    def _no_terminal(*_: object) -> str:
+        raise EOFError
+
+    monkeypatch.setattr("builtins.input", _no_terminal)
+
+    assert run_cli(_cleanup_opts(tmp_path)) != 0
+    assert sorted(tmp_path.rglob("*")) == before
+
+
+def test_cleanup_refuses_a_directory_that_is_not_a_calibration_corpus(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _corpus_with_embeddings(tmp_path)
+    precious = tmp_path / "thesis.docx"
+    precious.write_bytes(b"do not delete")
+    (tmp_path / "notes").mkdir()
+    (tmp_path / "notes" / "todo.txt").write_bytes(b"also precious")
+    _confirm(monkeypatch)
+
+    assert run_cli(_cleanup_opts(tmp_path)) != 0
+
+    assert precious.read_bytes() == b"do not delete"
+    assert (tmp_path / "manifest.json").exists()
+
+
+def test_cleanup_of_a_missing_root_is_a_no_op(tmp_path: Path) -> None:
+    assert run_cli(_cleanup_opts(tmp_path / "absent")) == 0
+
+
+# --- telemetry ---------------------------------------------------------
+
+
+def test_main_disables_hub_telemetry_for_every_action(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from scripts import speaker_calibration as module  # noqa: PLC0415 -- patches this module
+
+    monkeypatch.setattr("scripts.speaker_calibration_backend.run_model_contract", lambda: 0)
+    monkeypatch.setattr(sys, "argv", ["x", "model-contract"])
+
+    with pytest.raises(SystemExit):
+        module.main()
+
+    assert os.environ["HF_HUB_DISABLE_TELEMETRY"] == "1"
+
+
+# --- backend -----------------------------------------------------------
+
+
+def _fake_snapshot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Fake the Hub snapshot and return an identical cache directory."""
+    from scripts import speaker_calibration_backend as backend  # noqa: PLC0415 -- patches it
+
+    snapshot = tmp_path / "hub" / "snapshots" / _MODEL_REVISION
+    cache = tmp_path / "cache"
+    snapshot.mkdir(parents=True)
+    cache.mkdir()
+    for name in backend._CACHED_MODEL_FILES:
+        (snapshot / name).write_bytes(name.encode())
+        (cache / name).write_bytes(name.encode())
+
+    def _download(_repo: str, filename: str, **_: object) -> str:
+        return str(snapshot / filename)
+
+    monkeypatch.setattr("huggingface_hub.hf_hub_download", _download)
+    return cache
+
+
+def test_resolved_revision_accepts_a_cache_identical_to_the_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from scripts.speaker_calibration_backend import (  # noqa: PLC0415 -- patched module
+        _assert_resolved_revision,
+    )
+
+    cache = _fake_snapshot(tmp_path, monkeypatch)
+
+    assert _MODEL_REVISION in _assert_resolved_revision(cache)
+
+
+def test_resolved_revision_rejects_a_cached_file_that_differs_from_the_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from scripts.speaker_calibration_backend import (  # noqa: PLC0415 -- patched module
+        _assert_resolved_revision,
+    )
+
+    cache = _fake_snapshot(tmp_path, monkeypatch)
+    (cache / "embedding_model.ckpt").write_bytes(b"another checkpoint")
+
+    with pytest.raises(ValueError, match="differs"):
+        _assert_resolved_revision(cache)
+
+
+def test_resolved_revision_rejects_a_missing_cached_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from scripts.speaker_calibration_backend import (  # noqa: PLC0415 -- patched module
+        _assert_resolved_revision,
+    )
+
+    cache = _fake_snapshot(tmp_path, monkeypatch)
+    (cache / "classifier.ckpt").unlink()
+
+    with pytest.raises(ValueError, match="missing"):
+        _assert_resolved_revision(cache)
+
+
+def test_model_contract_fails_when_the_offline_load_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from scripts import speaker_calibration_backend as backend  # noqa: PLC0415 -- patches it
+
+    def _load(*, allow_network: bool) -> object:
+        if not allow_network:
+            raise RuntimeError("cannot load offline")
+        return _FakeEncoder()
+
+    monkeypatch.setattr(backend, "load_frozen_encoder", _load)
+    monkeypatch.setattr(backend, "_assert_resolved_revision", lambda _cache_dir=None: "snapshot")
+
+    assert backend.run_model_contract() == 1
+
+
+def test_model_contract_succeeds_with_one_online_and_one_offline_load(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from scripts import speaker_calibration_backend as backend  # noqa: PLC0415 -- patches it
+
+    loads: list[bool] = []
+
+    def _load(*, allow_network: bool) -> object:
+        loads.append(allow_network)
+        return _FakeEncoder()
+
+    monkeypatch.setattr(backend, "load_frozen_encoder", _load)
+    monkeypatch.setattr(backend, "_assert_resolved_revision", lambda _cache_dir=None: "snapshot")
+
+    assert backend.run_model_contract() == 0
+    assert loads == [True, False]
+
+
+def test_model_cache_is_anchored_to_the_repository_not_the_working_directory() -> None:
+    from scripts.speaker_calibration_backend import _MODEL_CACHE_DIR  # noqa: PLC0415
+
+    assert _MODEL_CACHE_DIR.is_absolute()
+    assert _MODEL_CACHE_DIR.as_posix().endswith("project-history/calibration/speaker/model-cache")
