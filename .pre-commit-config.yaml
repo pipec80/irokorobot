@@ -94,11 +94,14 @@ repos:
         name: Detect Secrets
         entry: uv run detect-secrets-hook --baseline .secrets.baseline
         language: system
+        # El inventario de la auditoría 0049 lista el SHA-256 de cada archivo leído:
+        # cadenas hex de alta entropía que no son secretos.
         exclude: |
           (?x)^(
               .*\.lock$|
               .*\.md$|
-              tests/.*
+              tests/.*|
+              docs/plans/open/0049-server-audit-inventory\.csv
           )$
 
       # --- G. Datos reales del hogar (nombres, fechas, mascotas) ---

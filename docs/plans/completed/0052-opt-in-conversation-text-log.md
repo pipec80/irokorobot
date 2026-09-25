@@ -1,16 +1,18 @@
 # 0052 — Opt-in conversation text log
 
-> **Status:** Implemented on `feat/0052-conversation-text-log` (2026-09-24), on
-> Pipec's explicit request; not merged. Pipec chose this scope after the first
-> real `just run-server` + `just run-robot` session, where the logs showed only
-> character counts and the synthesized voice was hard to understand.
+> **Status:** Completed 2026-09-24 — merged as PR #132 (`a12ef8a`). Done on
+> Pipec's explicit request after the first real `just run-server` +
+> `just run-robot` session, where the logs showed only character counts and the
+> synthesized voice was hard to understand. Real acceptance: Pipec confirmed
+> `Heard:` / `Spoken:` on both consoles, including the owner's own-children
+> answer. Historical evidence only — this document authorizes nothing.
 
 **Goal:** Let the operator read, on their own machine, exactly what Iroko heard
 and what it says, without weakening the rule that household content is never
 logged (Plans 0031 and 0032).
 
 **Amends:** the global constraint "do not log transcripts, model output, TTS
-sentences…" of [Plan 0031](../completed/0031-server-production-baseline-design.md). The
+sentences…" of [Plan 0031](0031-server-production-baseline-design.md). The
 constraint stays the default; this plan adds one deliberate, off-by-default
 exception.
 
