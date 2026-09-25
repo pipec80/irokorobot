@@ -115,6 +115,62 @@ only after a measured need.
 | Alternative TTS | Conditional, non-blocking | Piper and the WAV contract remain the accepted baseline; compare another adapter only for a measured product need. | Future plan outside the pre-electronics critical path |
 | Care and education | Future responsibilities, non-blocking | Require separate ADRs, policies, risks, outcomes/feedback and acceptance after the companion core. | Future responsibility profiles |
 
+### Pre-purchase readiness gate — "plug it in and it works"
+
+Recorded 2026-09-24 on Pipec's decision. New electronics are not budgeted yet, and
+the goal is that when they are bought they connect to a brain that already
+works, with no cognitive or security rework. This section says exactly what
+"ready" means so that nobody has to reconstruct it from a conversation. It adds
+no plan and authorizes no work; the single-WIP rule and the table above still
+govern order.
+
+**Ready to buy electronics when all four blocks are closed, each with its own
+evidence:**
+
+| Block | What must be true | Where it is defined | State on 2026-09-24 |
+|---|---|---|---|
+| A. The 19 required slices | Every row of the portfolio table above is closed: CM-0, PC-3A, PC-3B, PC-4, CM-1…CM-7, PC-5, P2.1, R2, R3, P2.3, P2.4, P3.1, P3.2 | The portfolio table | 1 of 19 closed; PC-3A is `NOW` (Plan 0047) |
+| B. Audit repairs (not counted in the 19) | [Plan 0050](../plans/open/0050-server-audit-repairs.md) executed (12 tasks: import cycles, one seam to Ollama, fail-closed parsing, image bounds, stored classification honoured, owner-scoped readiness, setup contract, dead settings, no names in logs, architecture guards, the owner → stranger matrix, docs truth) | 0050; [0049 §13](../plans/open/0049-server-objective-conformance-audit.md) | Draft, queued behind 0047 |
+| C. Operation-bound grants | [ADR-0015](../adr/0015-owner-grant-scope-and-speaker-binding.md) accepted and implemented (Plan 0051): a PIN or face grant is bound to one named operation and, in stages, to the speaker; closes F-08, F-09, F-16 and the ADR-0009 non-conformance | ADR-0015, ADR-0008, ADR-0009 | ADR Proposed; plan not written |
+| D. Seed load ("step 0") | The baseline data (owner, household, photos, classifications) loads in person from a local file or form through the same writer as conversation; the owner → stranger matrix passes once per loading channel; it replaces the onboarding that used to live in the agent prompt | 0050 *Non-goals*; unnumbered plan after 0047 and ADR-0015 | Not written |
+
+Blocks B–D are not part of the 19 (the count stays 19) but gate the purchase
+because hardware attached to an unbound grant, or to a brain with no baseline
+data, would repeat the problem the audit found. P4.2 still opens only after A;
+this gate is what makes the *purchase* safe.
+
+**Cross-cutting evidence that must also exist** (owned by the plans that create
+the load, see the table above): the CPU/RAM/token/latency budget measured across
+STT, LLM, VLM, embeddings and consolidation; the diarization decision before
+P3.2 (explicit turn-taking constraint or local diarization); and the real
+longitudinal scenario CM-7 (`learn → restart → recall → correct → restart →
+recall current truth → forget → do not disclose`).
+
+**What "it works when plugged in" means for any new device.** A device is an
+adapter behind an existing software contract, never a reason to change one:
+
+1. It produces a typed observation or typed identity evidence with source, time,
+   confidence and expiry (P0.1 vocabulary; P2.1 for sensors; PC-4 for identity).
+2. Missing, weak or failed evidence is `unknown` and grants nothing by itself;
+   authorization stays in the policy layer, so a new sensor cannot widen access.
+3. It is proven first as a simulator or replay against the same contract tests;
+   replacing the simulator by the real device must not change a test.
+4. The server does not learn the device exists (server = generic API, robot =
+   generic client); only the adapter in the robot side knows the hardware.
+5. Physical *actuation* is a different, later gate: P4.2 (typed action
+   proposals, safety layer, emergency stop, human acceptance). An LLM never
+   commands a motor directly.
+
+**Not required before buying, on purpose:** a fingerprint reader or any other
+electronic biometric (future adapter for the identity seam, no ADR yet), cloud
+escalation (P4.1, optional), R4 PDF/OCR, alternative TTS, and the care and
+education responsibilities. The current PC microphone, webcam and speakers are
+the provisional body until then.
+
+**Who decides.** Closing a block is evidence-based (each plan's own gates). The
+decision to spend money is Pipec's and is not made by this document; it only
+states what is ready.
+
 ### How Chat and Codex advance the portfolio
 
 1. Read this table to identify the first row whose dependencies are closed.
@@ -336,6 +392,13 @@ The next product target is Iroko with Pipec, using the `personal` profile from
 does not create a general UI or family onboarding. It proves that identity,
 authorization, local face/voice evidence, visual scene understanding, memory,
 and recovery work together through the actual PC robot path.
+
+Delivery is to order, not a commercial product, so the baseline data (owner,
+household, photos, classifications) is loaded once, in person with the owner,
+from a local file or form ("step 0"; unnumbered plan after 0047 and ADR-0015).
+Security checks exist independently of how data is loaded; what the robot learns
+afterwards refines facts and never silently overwrites seeded sensitive ones. See
+the *Non-goals* of [Plan 0050](../plans/open/0050-server-audit-repairs.md).
 
 ### P1.1 — Owner-authenticated memory MVP
 

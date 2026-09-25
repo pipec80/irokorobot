@@ -35,6 +35,38 @@ to see the code, tests, verified gaps, and future delivery sequence.
 | [0015](0015-personal-companion-design.md) | Approved product design; PC-1 is complete and PC-2 has a provisional calibrated acceptance | Controller, policy/audit, V4 household tools, identity/session seam, working memory, legacy extraction/vector storage, STT/TTS, face engine | PC-3 speaker, PC-4 fusion, CM-1…CM-7 longitudinal memory, PC-5 integrated personal acceptance, and PC-6 family remain open (CM-0 closed) |
 | [0047](0047-speaker-evidence-calibration-study.md) | **Ready / NOW** (promoted 2026-09-08). Tasks 0–3 complete on `feat/0047-speaker-calibration` (no PR) — Task 3 frozen backend a technical PASS, p95 231 ms < 500 ms budget; Tasks 4–6 held for consented-adult confirmation | WAV/audio contract, microphone capture, face-calibration numeric/corpus pattern | Capture + measure PC-3A (Tasks 4–6) once three adults confirmed, or close via Task 7; PC-3B and PC-4 remain separate |
 
+## Propuesta de auditoría — no ejecutable
+
+[0049 — conformidad de server con sus objetivos](0049-server-objective-conformance-audit.md)
+es un **Draft** solicitado el 2026-09-22: contiene un diagnóstico inicial,
+inventario de lectura y una campaña de revisión independiente propuesta.
+No reemplaza NOW 0047 ni autoriza reparaciones de código. Su revisión
+independiente del 2026-09-23 y 2026-09-24 está en su §13.
+
+[0050 — server audit repairs](0050-server-audit-repairs.md) es un **Draft**
+en cola tras NOW 0047: doce tareas acotadas, ensayadas y con pruebas propias
+que cierran los hallazgos reproducidos de 0049 (ciclos de importación,
+respuestas malformadas de Ollama, un solo punto de salida a Ollama, límite de
+imagen antes de decodificar, clasificación almacenada en el lector V4,
+readiness por dueño, contrato de entrada del setup, settings muertos, nombres
+fuera de los logs, guardas de arquitectura, matriz dueño → desconocido con
+reglas de intención por palabra completa, y documentación). No es ejecutable
+hasta que Pipec lo promueva y confirme sus seis decisiones.
+
+[ADR-0015](../../adr/0015-owner-grant-scope-and-speaker-binding.md) (**Proposed**)
+propone cómo ligar el grant PIN a una operación (hoy incumple ADR-0009) y a la
+evidencia del hablante; el Plan 0051 lo implementará una vez aceptado.
+
+**Paso 0 — carga inicial (sin numerar, decidido 2026-09-24).** Un plan futuro,
+posterior a 0047 y a ADR-0015, que carga los datos base del dueño y su hogar de
+forma presencial desde un archivo local (o formulario) y sustituye al onboarding
+del prompt. Sus reglas —la seguridad no depende del canal de carga, y lo que el
+robot aprende después refina datos sin pisar los cargados— están en el
+*Non-goals* de 0050. No es ejecutable ni tiene número hasta que se redacte.
+El criterio completo de «listo para comprar electrónica» (los 19 slices, 0050,
+ADR-0015/0051 y el paso 0) está en la
+[puerta previa a la compra](../../roadmap/cognitive-roadmap.md#pre-purchase-readiness-gate--plug-it-in-and-it-works).
+
 ## Server-production capsule — CLOSED 2026-09-03
 
 [Plan 0031](../completed/0031-server-production-baseline-design.md) locked

@@ -81,7 +81,7 @@ print `Heard:` (the transcript) and `Spoken:` (each sentence sent to the voice,
 including deterministic answers such as your own children). It prints to the console only,
 never to `logs/server.log`, and startup logs a warning while it is on. Turn it
 off when you finish, and do not say a PIN aloud while it is on
-([Plan 0052](../plans/open/0052-opt-in-conversation-text-log.md)).
+([Plan 0052](../plans/completed/0052-opt-in-conversation-text-log.md)).
 
 ## 2. QA tools, by what they isolate
 
