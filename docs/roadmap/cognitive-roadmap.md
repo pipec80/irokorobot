@@ -129,15 +129,41 @@ evidence:**
 
 | Block | What must be true | Where it is defined | State on 2026-09-25 |
 |---|---|---|---|
-| A. The 19 required slices | Every row of the portfolio table above is closed: CM-0, PC-3A, PC-3B, PC-4, CM-1…CM-7, PC-5, P2.1, R2, R3, P2.3, P2.4, P3.1, P3.2 | The portfolio table | 2 of 19 closed (CM-0, PC-3A); no plan is `NOW` |
+| A. The memory path of the portfolio (amended 2026-09-25) | PC-3B, PC-4 and CM-1…CM-7 are closed (the other rows of the 19 continue after the purchase; see below) | The portfolio table | 2 of 19 closed (CM-0, PC-3A); no plan is `NOW` |
 | B. Audit repairs (not counted in the 19) | [Plan 0050](../plans/open/0050-server-audit-repairs.md) executed (12 tasks: import cycles, one seam to Ollama, fail-closed parsing, image bounds, stored classification honoured, owner-scoped readiness, setup contract, dead settings, no names in logs, architecture guards, the owner → stranger matrix, docs truth) | 0050; [0049 §13](../plans/open/0049-server-objective-conformance-audit.md) | Draft; 0047 closed, awaiting Pipec's promotion |
-| C. Operation-bound grants | [ADR-0015](../adr/0015-owner-grant-scope-and-speaker-binding.md) accepted and implemented (Plan 0051): a PIN or face grant is bound to one named operation and, in stages, to the speaker; closes F-08, F-09, F-16 and the ADR-0009 non-conformance | ADR-0015, ADR-0008, ADR-0009 | ADR Proposed; plan not written |
+| C. Operation-bound grants | [ADR-0015](../adr/0015-owner-grant-scope-and-speaker-binding.md) accepted and implemented (Plan 0051): a PIN or face grant is bound to one named operation and, in stages, to the speaker; closes F-08, F-09, F-16 and the ADR-0009 non-conformance | ADR-0015, ADR-0008, ADR-0009 | ADR accepted 2026-09-25; Plan 0051 not written |
 | D. Seed load ("step 0") | The baseline data (owner, household, photos, classifications) loads in person from a local file or form through the same writer as conversation; the owner → stranger matrix passes once per loading channel; it replaces the onboarding that used to live in the agent prompt | 0050 *Non-goals*; unnumbered plan after 0047 and ADR-0015 | Not written |
 
 Blocks B–D are not part of the 19 (the count stays 19) but gate the purchase
 because hardware attached to an unbound grant, or to a brain with no baseline
 data, would repeat the problem the audit found. P4.2 still opens only after A;
 this gate is what makes the *purchase* safe.
+
+**Amended 2026-09-25 (Pipec's decision): electronics are bought when the longitudinal
+memory closes.** At CM-7 the brain is solid enough to test with real hardware, so the
+purchase point moves earlier. Block A then means the memory path (PC-3B, PC-4,
+CM-1…CM-7); the other rows of the 19 (PC-5, P2.1, R2, R3, P2.3, P2.4, P3.1, P3.2)
+continue with the hardware in hand, and P4.2 (the physical-architecture plan) still
+waits for all 19. One risk is recorded: P2.1 defines the typed sensor-observation
+contract, so its design must exist before the sensors are chosen, or the purchase can
+force rework.
+
+**Agreed delivery order to longitudinal memory (2026-09-25).** One plan in `NOW` at a
+time; each row is re-audited before it gets a number (rule 6).
+
+| Step | Work | Why here |
+|---:|---|---|
+| 0 | Accept ADR-0015; re-audit PC-3B and write its plan | Decisions and documents, no code |
+| 1 | PC-3B — consented voice enrollment, revocation, typed `VOICE` evidence | Pipec's original route: voice and face to authorize private data |
+| 2 | PC-4 — voice + face fusion, replay and liveness, `ambiguous` on conflict, PIN always available | Closes the authorization of private data; decides the face veto (ADR-0015 §2) |
+| 3 | Plan 0051 — a grant is bound to one named operation | CM-1 adds scoped permissions; ADR-0015 requires each to declare its scope |
+| 4 | Plan 0050 — the 12 audit repairs | One seam to Ollama, fail-closed parsing, owner → stranger matrix: the base CM-3 builds on |
+| 5 | Step 0 — seed load of the owner and household data (plan not written) | Baseline data in place before memory learns anything |
+| 6 | Uvicorn concurrency calibration (small `perf` plan) | The only open leftover of the server baseline |
+| 7 | CM-1 … CM-7 in order | The roadmap chain; CM-7 is the real longitudinal scenario |
+| 8 | Buy the electronics | Memory is the solid thing to test on hardware |
+
+Independent of the queue: the second GT-P3110 tablet (a hobby task).
 
 **Cross-cutting evidence that must also exist** (owned by the plans that create
 the load, see the table above): the CPU/RAM/token/latency budget measured across
