@@ -13,8 +13,8 @@ personal companion, then to a privacy-preserving family companion. This plan
 stays open because PC-3 through PC-6 and CM-1 through CM-7 contain real work.
 CM-0 closed 2026-09-08 (Plan 0046 — a benchmark and a measured RED baseline,
 not longitudinal memory); PC-3A closed 2026-09-25 (Plan 0047, provisional
-PASS) and PC-3B was re-audited and drafted 2026-09-25 as
-[Plan 0053](0053-consented-speaker-runtime-evidence.md), still a `Draft`.
+PASS) and PC-3B is [Plan 0053](0053-consented-speaker-runtime-evidence.md),
+promoted to `NOW` on 2026-09-25.
 
 It is an umbrella and product-acceptance reference. Do not implement it as one
 batch and do not infer a future plan number from it.
@@ -223,7 +223,7 @@ PC-1 complete
   -> PC-2 complete (provisional calibration)
   -> CM-0 reproducible RED baseline (Plan 0046 closed 2026-09-08)
   -> PC-3A speaker calibration (Plan 0047 closed 2026-09-25, provisional PASS)
-  -> PC-3B speaker runtime evidence <- current cursor (Plan 0053, Draft)
+  -> PC-3B speaker runtime evidence <- current cursor (Plan 0053, NOW)
   -> PC-4 identity fusion
   -> P2.2 / CM-1..CM-7 longitudinal memory
   -> PC-5 personal companion acceptance
@@ -234,8 +234,8 @@ CM-0, the reproducible benchmark, is closed (Plan 0046, 2026-09-08): it created
 the RED evidence needed to prevent implementation by intuition. PC-3A is closed
 (Plan 0047, 2026-09-25); the next product slice is PC-3B. Its re-audit against
 that evidence ran on 2026-09-25 and produced
-[Plan 0053](0053-consented-speaker-runtime-evidence.md), a `Draft` awaiting
-Pipec's decisions and promotion.
+[Plan 0053](0053-consented-speaker-runtime-evidence.md), which Pipec promoted to
+`NOW` the same day.
 
 ## Non-goals
 

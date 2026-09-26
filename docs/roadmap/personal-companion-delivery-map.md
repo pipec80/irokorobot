@@ -147,7 +147,7 @@ P0 fully accepted
 PC-2 accepted (provisional calibration)
   -> CM-0 reproducible longitudinal baseline — Plan 0046 closed 2026-09-08 (benchmark GREEN, baseline RED)
   -> PC-3A speaker calibration — Plan 0047 closed 2026-09-25 (provisional PASS: 0/24 false accepts, 6/8 replay accepted, p95 231ms)
-  -> PC-3B consented speaker runtime evidence — re-audited 2026-09-25, drafted as Plan 0053 (Draft) (current cursor)
+  -> PC-3B consented speaker runtime evidence — Plan 0053, promoted to NOW 2026-09-25 (current cursor)
   -> PC-4 conservative identity fusion — unstarted
   -> CM-1..CM-7 longitudinal memory — unstarted
   -> PC-5 integrated personal acceptance — unstarted
