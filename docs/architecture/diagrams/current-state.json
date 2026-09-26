@@ -43,6 +43,6 @@
   "cards": [
     { "dot": "cyan", "title": "Hard boundary", "items": ["Server is a generic audio API — it does not know the robot exists", "Robot is a generic audio client — it does not know STT/LLM/TTS exist", "Only the audio contract is shared: WAV · 16kHz · mono · int16"] },
     { "dot": "emerald", "title": "Cognitive path", "items": ["Controller returns an immutable response plan before any generation", "Safe plans never reach the LLM, legacy memory, or consolidation", "Ollama is the only accepted LLM/VLM runtime (ADR-0004)"] },
-    { "dot": "rose", "title": "Known gaps", "items": ["Face evidence has no liveness/anti-spoofing defense (photo authenticates)", "Speaker recognition absent on main; PC-3A calibration in progress", "Longitudinal memory benchmark (CM-0) measured RED — single-turn extraction only"] }
+    { "dot": "rose", "title": "Known gaps", "items": ["Face evidence has no liveness/anti-spoofing defense (photo authenticates)", "Speaker recognition absent at runtime; PC-3A study closed (provisional PASS), PC-3B/PC-4 open", "Longitudinal memory benchmark (CM-0) measured RED — single-turn extraction only"] }
   ]
 }

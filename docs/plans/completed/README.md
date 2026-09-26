@@ -45,5 +45,15 @@ map, smoke scenario id, and one scoring-denominator leak were adjusted during
 execution (rulings recorded in the plan's closure banner). No runtime memory,
 authorization, prompt, model, or API change.
 
+[Plan 0047](0047-speaker-evidence-calibration-study.md) closed PC-3A on
+2026-09-25 with a **provisional PASS**: a local, offline calibration study —
+not speaker recognition. It added an out-of-runtime harness
+(`scripts/speaker_calibration*.py`, `just speaker-calibration`) around a frozen
+SpeechBrain ECAPA backend, and measured 62 private samples (deleted afterwards):
+0/24 live-impostor false accepts at a 0.4834 cosine-distance threshold, 0/24
+genuine false rejects (in-sample), 6/8 replay probes accepted and a frozen-protocol
+p95 of 231 ms. `VOICE` stays untrusted; PC-3B (enrollment/runtime) and PC-4
+(fusion, replay/liveness) remain open. No runtime, API or database change.
+
 Do not modify a completed plan to create a new decision. Record architecture
 changes in a new ADR and create a new open plan.

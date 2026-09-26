@@ -11,21 +11,15 @@ Git ancestry, and recorded runtime evidence on 2026-08-25 (updated after the
 combined P0-C operator runbook passed and Plan 0013's STT-accuracy debt
 closed), re-audited 2026-09-01 after Plan 0030 closed, aligned on
 2026-09-07 with the longitudinal-memory design and its first two bounded
-plans, updated 2026-09-08 after Plan 0046 closed CM-0, and again 2026-09-08
-after Plan 0047 (PC-3A) was promoted to `Ready`/`NOW` on Pipec's explicit
-decision (readiness amendment + independent review APPROVE WITH MINOR FIXES
-both complete); Tasks 0–3 are now complete (Task 3 a technical PASS) and
-Tasks 4–6 are held.
+plans, updated 2026-09-08 after Plan 0046 closed CM-0, and again 2026-09-25
+after Plan 0047 (PC-3A) closed with a provisional PASS and moved to
+`completed/`.
 Existing components named under **Reuse** must not be rebuilt by a later plan.
 
 For daily work, do not choose a plan from this inventory. Follow the
 single-WIP [operational board](../README.md#operational-board) — **CM-0
-(Plan 0046) closed 2026-09-08; Plan 0047 (PC-3A) was promoted to `Ready`/`NOW`
-on Pipec's explicit decision 2026-09-08.** Execution is staged: Tasks 0–3
-(numeric layer, corpus CLI, frozen backend + p95 gate) are complete on
-`feat/0047-speaker-calibration` — Task 3 (2026-09-08) is a technical PASS,
-measured p95 231 ms < the precommitted 500 ms budget. Tasks 4–6 (household
-capture) are held with no date until three consenting adults are confirmed. Use the
+(Plan 0046) closed 2026-09-08 and PC-3A (Plan 0047) closed 2026-09-25 with a
+provisional PASS; `NOW` is empty until Pipec promotes the next plan.** Use the
 [personal-companion delivery map](../../roadmap/personal-companion-delivery-map.md)
 and [conversational-memory delivery map](../../roadmap/conversational-memory-delivery-map.md)
 to see the code, tests, verified gaps, and future delivery sequence.
@@ -33,18 +27,17 @@ to see the code, tests, verified gaps, and future delivery sequence.
 | Plan | Implementation reality | Reuse | Remaining closure |
 |---|---|---|---|
 | [0015](0015-personal-companion-design.md) | Approved product design; PC-1 is complete and PC-2 has a provisional calibrated acceptance | Controller, policy/audit, V4 household tools, identity/session seam, working memory, legacy extraction/vector storage, STT/TTS, face engine | PC-3 speaker, PC-4 fusion, CM-1…CM-7 longitudinal memory, PC-5 integrated personal acceptance, and PC-6 family remain open (CM-0 closed) |
-| [0047](0047-speaker-evidence-calibration-study.md) | **Ready / NOW** (promoted 2026-09-08). Tasks 0–3 complete on `feat/0047-speaker-calibration` (no PR) — Task 3 frozen backend a technical PASS, p95 231 ms < 500 ms budget; Tasks 4–6 held for consented-adult confirmation | WAV/audio contract, microphone capture, face-calibration numeric/corpus pattern | Capture + measure PC-3A (Tasks 4–6) once three adults confirmed, or close via Task 7; PC-3B and PC-4 remain separate |
 
 ## Propuesta de auditoría — no ejecutable
 
 [0049 — conformidad de server con sus objetivos](0049-server-objective-conformance-audit.md)
 es un **Draft** solicitado el 2026-09-22: contiene un diagnóstico inicial,
 inventario de lectura y una campaña de revisión independiente propuesta.
-No reemplaza NOW 0047 ni autoriza reparaciones de código. Su revisión
+No reemplaza al plan NOW (0047 cerró el 2026-09-25) ni autoriza reparaciones de código. Su revisión
 independiente del 2026-09-23 y 2026-09-24 está en su §13.
 
 [0050 — server audit repairs](0050-server-audit-repairs.md) es un **Draft**
-en cola tras NOW 0047: doce tareas acotadas, ensayadas y con pruebas propias
+en cola tras el cierre de 0047: doce tareas acotadas, ensayadas y con pruebas propias
 que cierran los hallazgos reproducidos de 0049 (ciclos de importación,
 respuestas malformadas de Ollama, un solo punto de salida a Ollama, límite de
 imagen antes de decodificar, clasificación almacenada en el lector V4,
@@ -111,11 +104,10 @@ the benchmark harness is GREEN and the measured baseline is a reproducible
 cognitive RED (`ac43c58`, exit 1); it changed no runtime memory. See
 [completed/0046](../completed/0046-reproducible-longitudinal-memory-baseline.md).
 
-Canonical execution order: **Plan 0047 (PC-3A) is `Ready`/`NOW`**, promoted
-2026-09-08 on Pipec's explicit decision; Tasks 0–3 are complete on
-`feat/0047-speaker-calibration` (Task 3 a technical PASS, p95 231 ms), Tasks
-4–6 wait for consented-adult confirmation. The server capsule (Plan 0031,
-children 0032–0045) is fully closed.
+Canonical execution order: **no plan is `NOW`.** Plan 0047 (PC-3A) closed
+2026-09-25 with a provisional PASS (see [completed/0047](../completed/0047-speaker-evidence-calibration-study.md)); the next plan needs
+Pipec's promotion after the queue-rule-4 re-audit. The server capsule (Plan
+0031, children 0032–0045) is fully closed.
 
 [Plan 0048](../completed/0048-fastapi-baseline-final-hardening.md) closed
 2026-09-07: a bounded follow-up to a second independent audit of the server

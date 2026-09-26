@@ -75,8 +75,8 @@ are adjacent.
 | Order | Track | Delivery slice | Verifiable outcome / exit evidence | Depends on | Commitment | Current state | Detail and executable ownership |
 |---:|---|---|---|---|---|---|---|
 | 1 | Evaluation | CM-0 — reproducible longitudinal baseline | A versioned synthetic benchmark runs reproducibly; the harness finishes GREEN while the measured product remains honestly RED or passes without relaxed thresholds. | Closed P0/PC-1/PC-2 foundations | Required | **Complete 2026-09-08** — benchmark GREEN, baseline RED (`ac43c58`, exit 1) | [Memory map](conversational-memory-delivery-map.md#delivery-sequence); [Plan 0046](../plans/completed/0046-reproducible-longitudinal-memory-baseline.md) |
-| 2 | Biometrics | PC-3A — speaker calibration study | A frozen local backend and versioned genuine/impostor corpus measure FAR/FRR, replay, quality, failure posture and CPU feasibility without granting identity or authorization. | CM-0 closed; Plan 0047 readiness amendment approved | Required | `Ready`/`NOW` — promoted 2026-09-08. **Tasks 0–3 complete** on `feat/0047-speaker-calibration` (no PR): numeric layer, corpus CLI, and (Task 3, 2026-09-08) the frozen backend — a **technical PASS**, measured p95 231 ms < the precommitted 500 ms budget. CPU feasibility is settled; FAR/FRR/replay/quality are not — Task 4 (owner capture) is complete 2026-09-14 (ref 6/6, genuine 24/24); Task 5 is in progress — replay 8/6 done, the 18-sample impostor minimum waits on three consenting adults — then Task 6 measures and Task 7 closes | [Plan 0015](../plans/open/0015-personal-companion-design.md#pc-3--speaker-evidence--unstarted-pc-3a-plan-queued); [Plan 0047](../plans/open/0047-speaker-evidence-calibration-study.md) |
-| 3 | Biometrics | PC-3B — consented speaker runtime evidence | Local enrollment, consent, revocation and verification produce typed `VOICE` evidence; missing, weak or failed evidence remains `unknown` and grants no capability directly. | PC-3A measured and accepted | Required | Unplanned | [Plan 0015](../plans/open/0015-personal-companion-design.md#pc-3--speaker-evidence--unstarted-pc-3a-plan-queued); future bounded plan |
+| 2 | Biometrics | PC-3A — speaker calibration study | A frozen local backend and versioned genuine/impostor corpus measure FAR/FRR, replay, quality, failure posture and CPU feasibility without granting identity or authorization. | CM-0 closed; Plan 0047 readiness amendment approved | Required | **Complete 2026-09-25** — Plan 0047 **PROVISIONAL PASS** (2026-09-25): frozen SpeechBrain `1.1.1` ECAPA (`0f99f2d0…`) on CPU; 62 private samples (reference 6, genuine 24 over two sessions and four conditions, live impostor 24 from four consenting adults, replay 8) give a selected cosine-distance threshold of 0.4834 with 0/24 live-impostor false accepts, 0/24 genuine false rejects (in-sample, zero by construction; separation between the farthest genuine and the closest impostor distance 0.342) and 6/8 replay probes accepted; the frozen latency protocol measured p95 231 ms < 500 ms. Voice is not standalone high-assurance evidence and `VOICE` stays untrusted; PC-3B and PC-4 are still open (executed on `feat/0047-speaker-calibration`, PR pending) | [Plan 0015](../plans/open/0015-personal-companion-design.md#pc-3--speaker-evidence--pc-3a-closed-pc-3b-unplanned); [Plan 0047](../plans/completed/0047-speaker-evidence-calibration-study.md) |
+| 3 | Biometrics | PC-3B — consented speaker runtime evidence | Local enrollment, consent, revocation and verification produce typed `VOICE` evidence; missing, weak or failed evidence remains `unknown` and grants no capability directly. | PC-3A measured and accepted | Required | Unplanned | [Plan 0015](../plans/open/0015-personal-companion-design.md#pc-3--speaker-evidence--pc-3a-closed-pc-3b-unplanned); future bounded plan |
 | 4 | Identity | PC-4 — conservative multimodal fusion | PIN/session, face and voice evidence are fused deterministically; conflict is `ambiguous`; expiry, absence, replay/spoof risk, provider failure and local recovery have explicit outcomes. | PC-3B; existing PC-2 face evidence | Required | Unplanned | [Plan 0015](../plans/open/0015-personal-companion-design.md#pc-4--conservative-identity-fusion--unstarted); future bounded plan |
 | 5 | Memory policy | CM-1 — explicit personal-memory capabilities | Policy distinguishes `read`, `propose`, `confirm`, `correct` and `forget` scopes without turning identity into authorization. | PC-4; current identity and policy foundations | Required | Unplanned | [Memory map](conversational-memory-delivery-map.md); future bounded plan |
 | 6 | Memory identity | CM-2 — authorized actor propagation | The resolved authorized actor reaches generic conversation without prompt name interpolation or implicit expansion of the current grant. | CM-1 | Required | Unplanned | [Memory map](conversational-memory-delivery-map.md#delivery-sequence); future bounded plan |
@@ -127,10 +127,10 @@ govern order.
 **Ready to buy electronics when all four blocks are closed, each with its own
 evidence:**
 
-| Block | What must be true | Where it is defined | State on 2026-09-24 |
+| Block | What must be true | Where it is defined | State on 2026-09-25 |
 |---|---|---|---|
-| A. The 19 required slices | Every row of the portfolio table above is closed: CM-0, PC-3A, PC-3B, PC-4, CM-1…CM-7, PC-5, P2.1, R2, R3, P2.3, P2.4, P3.1, P3.2 | The portfolio table | 1 of 19 closed; PC-3A is `NOW` (Plan 0047) |
-| B. Audit repairs (not counted in the 19) | [Plan 0050](../plans/open/0050-server-audit-repairs.md) executed (12 tasks: import cycles, one seam to Ollama, fail-closed parsing, image bounds, stored classification honoured, owner-scoped readiness, setup contract, dead settings, no names in logs, architecture guards, the owner → stranger matrix, docs truth) | 0050; [0049 §13](../plans/open/0049-server-objective-conformance-audit.md) | Draft, queued behind 0047 |
+| A. The 19 required slices | Every row of the portfolio table above is closed: CM-0, PC-3A, PC-3B, PC-4, CM-1…CM-7, PC-5, P2.1, R2, R3, P2.3, P2.4, P3.1, P3.2 | The portfolio table | 2 of 19 closed (CM-0, PC-3A); no plan is `NOW` |
+| B. Audit repairs (not counted in the 19) | [Plan 0050](../plans/open/0050-server-audit-repairs.md) executed (12 tasks: import cycles, one seam to Ollama, fail-closed parsing, image bounds, stored classification honoured, owner-scoped readiness, setup contract, dead settings, no names in logs, architecture guards, the owner → stranger matrix, docs truth) | 0050; [0049 §13](../plans/open/0049-server-objective-conformance-audit.md) | Draft; 0047 closed, awaiting Pipec's promotion |
 | C. Operation-bound grants | [ADR-0015](../adr/0015-owner-grant-scope-and-speaker-binding.md) accepted and implemented (Plan 0051): a PIN or face grant is bound to one named operation and, in stages, to the speaker; closes F-08, F-09, F-16 and the ADR-0009 non-conformance | ADR-0015, ADR-0008, ADR-0009 | ADR Proposed; plan not written |
 | D. Seed load ("step 0") | The baseline data (owner, household, photos, classifications) loads in person from a local file or form through the same writer as conversation; the owner → stranger matrix passes once per loading channel; it replaces the onboarding that used to live in the agent prompt | 0050 *Non-goals*; unnumbered plan after 0047 and ADR-0015 | Not written |
 
@@ -184,25 +184,18 @@ states what is ready.
    plan. New evidence may split or combine implementation plans, but it must not
    silently remove the row's product outcome.
 
-CM-0 is closed (Plan 0046, 2026-09-08). The current cursor is PC-3A: Plan 0047,
-**promoted to `Ready`/`NOW` on Pipec's explicit decision 2026-09-08**. Its
-backend/dependency readiness gate was frozen by the 2026-09-08 amendment
-(SpeechBrain `1.1.1` `EncoderClassifier`, ECAPA revision `0f99f2d0…`,
-Apache-2.0, the frozen preprocessing/tensor contract, the exact `uv add`
-command, the latency protocol, three Spanish phrases, four `condition` labels
-and a p95 ≤ 500 ms budget), and its independent plan review (2026-09-08)
-returned APPROVE WITH MINOR FIXES with all findings applied. Execution is
-staged: Tasks 0–3 (numeric layer, corpus CLI, frozen backend + p95 gate) are
-**complete** on `feat/0047-speaker-calibration` (no PR) — Task 3 (2026-09-08) is
-a technical PASS with a measured p95 of 231 ms against the precommitted 500 ms
-budget, and `torch`/`torchaudio` were pinned to the `pytorch-cpu` index by a
-same-day amendment. CPU feasibility is answered; the FAR/FRR/replay/quality
-outcome is not. Task 4 (owner capture) closed 2026-09-14 (reference 6/6, genuine 24/24) and
-Task 5 is in progress: replay probes are done (8/6) and only the 18-sample
-live-impostor minimum remains, pending three consenting adults; if
-Pipec instead closes the study, Task 7 records an honest technical result with
-no capture. Rows 3–19 are not executable and their plan numbers are
-intentionally unreserved.
+CM-0 (Plan 0046, 2026-09-08) and PC-3A (Plan 0047, 2026-09-25) are closed. Plan 0047 froze SpeechBrain `1.1.1` `EncoderClassifier` with the ECAPA revision
+`0f99f2d0…` (Apache-2.0, CPU, offline after cache) and measured it on a private
+corpus of 62 samples, since deleted: threshold 0.4834, 0/24 live-impostor false
+accepts (95 % rule-of-three bound ≈ 12.5 %), 0/24 genuine false rejects
+(in-sample, zero by construction; separation 0.342), 6/8 replay probes accepted
+and a frozen-protocol p95 of 231 ms against the 500 ms budget. The result is
+**provisional**: one owner, four impostors, no held-out data. Replay acceptance
+forbids treating voice as standalone high-assurance evidence, and `VOICE` stays
+untrusted. No plan is `NOW`. The next row is PC-3B (consented enrollment,
+revocation and runtime evidence); per rule 6 it must be re-audited against this
+evidence before it gets a number. Rows 3–19 are not executable and their plan
+numbers are intentionally unreserved.
 
 ## C0 — Documentation foundation
 

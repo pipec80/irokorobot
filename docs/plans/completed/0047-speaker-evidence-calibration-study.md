@@ -10,30 +10,21 @@
 > `superpowers:requesting-code-review` for independent review. Pipec—not an
 > agent—owns every real microphone, impostor and replay capture checkpoint.
 
-**Status:** Ready / NOW — **promoted 2026-09-08 on Pipec's explicit decision.**
-All 9 readiness blockers were cleared 2026-09-08: the readiness amendment froze
-the backend, model revision, dependency command, tensor contract, latency
-protocol, phrases, conditions and p95 budget (see "Frozen readiness contract"
-below); an independent plan review (2026-09-08) returned **APPROVE WITH MINOR
-FIXES**, and all 2 MEDIUM + 6 LOW findings were applied (see "Independent review"
-below). Plan 0046 (CM-0) closed 2026-09-08.
+**Status:** **Closed 2026-09-25 — PC-3A PROVISIONAL PASS.** The plan was promoted
+to `Ready`/`NOW` on 2026-09-08 on Pipec's explicit decision, after all 9 readiness
+blockers were cleared and an independent plan review returned **APPROVE WITH MINOR
+FIXES** with every finding applied. It executed on `feat/0047-speaker-calibration`;
+the branch merges when Pipec opens the PR. The measured result and the closure
+evidence are in "Study result and closure record" below.
 
-**Execution is deliberately staged.** Pipec authorized Tasks 0–3 (the pure
-numeric layer, the private-corpus CLI and the frozen backend + CPU-feasibility
-gate) to run now, on branch `feat/0047-speaker-calibration`. Tasks 4–6 (real
-household capture) stay **open, no date** until three consenting adults are
-confirmed for the 18-sample live-impostor minimum — the plan forbids lowering
-the matrix or substituting voices, so it stops there by design. If Task 3
-returns a technical FAIL, Task 7 runs instead and the study closes as an
-evidence-complete FAIL with no capture.
-
-**Progress (updated 2026-09-21).** Tasks 0–3 are complete (Task 3 a technical
-PASS). Task 4 is complete (2026-09-14): reference 6/6, genuine 24/24. Pipec ran
-the owner-only work and the third-party recruitment as two parallel tracks
-rather than a strict sequence, so the replay half of Task 5 is also done (8/6).
-`validate` now reports a single unmet minimum — the 18 live-impostor samples —
-which waits on three consenting adults Pipec contacted on 2026-09-14. Nothing
-has been measured yet: no embeddings, no FAR/FRR, no study verdict.
+**Execution history.** Tasks 0–3 (numeric layer, private-corpus CLI, frozen backend
+and the CPU p95 gate — a technical PASS) ran first. Pipec then ran the owner-only
+capture (Task 4, 2026-09-14) and the third-party recruitment as two parallel tracks
+instead of a strict sequence, so the replay half of Task 5 finished with Task 4.
+The live-impostor captures ended 2026-09-25; Task 6 measured the corpus the same
+day and Task 7 (independent reviews, privacy cleanup, documentation) closed the
+study. The sections below keep the original task text; the closure record holds
+the final evidence.
 
 **Goal:** Evaluate whether a local CPU speaker-embedding backend can separate
 Pipec's live voice from consenting live impostors under household conditions;
@@ -62,7 +53,7 @@ microphone capture, and — frozen by the 2026-09-08 readiness amendment —
 model `speechbrain/spkrec-ecapa-voxceleb` at revision `0f99f2d0…`, plus pytest,
 Ruff, mypy and `just`. No cloud inference is allowed.
 
-**Spec:** [Plan 0015 PC-3](0015-personal-companion-design.md),
+**Spec:** [Plan 0015 PC-3](../open/0015-personal-companion-design.md),
 [identity and access](../../architecture/identity-and-access.md),
 [current state](../../architecture/current-state.md),
 [ADR 0006](../../adr/0006-personal-and-family-companion-profiles.md).
@@ -497,7 +488,7 @@ files named by the approved amendment:
 | `tests/slow/test_speaker_calibration_backend.py` | Create opt-in frozen-model smoke/contract tests; never part of ordinary unit execution. |
 | `pyproject.toml`, `uv.lock` | Add the exact approved package to the root development group and record the generated resolution; no subproject dependency edit. |
 | `justfile` | Add `speaker-calibration *ARGS` after dependencies are locked. |
-| `docs/plans/open/0047-speaker-evidence-calibration-study.md` | Persistent checkpoints and final measured evidence. |
+| `docs/plans/completed/0047-speaker-evidence-calibration-study.md` | Persistent checkpoints and final measured evidence. |
 | `docs/architecture/current-state.md`, `docs/architecture/identity-and-access.md` | Record study result while keeping `VOICE` untrusted. |
 | `docs/roadmap/personal-companion-delivery-map.md`, `docs/roadmap/cognitive-roadmap.md` | Record PC-3A result and PC-3B/PC-4 remaining work. |
 | `docs/plans/README.md`, `docs/plans/open/README.md` | Operational status and eventual move to `completed/`. |
@@ -1181,115 +1172,217 @@ Operating notes for Task 5 and any recapture (no data in them):
 
 **Owner:** Pipec and consenting adults.
 
-- [ ] Obtain explicit consent independently from at least three adults and
-  assign only local pseudonyms. **In progress — Pipec independently contacted
-  three candidate adults 2026-09-14; awaiting their availability.**
-- [ ] Capture at least 18 live impostor probes. They must be spoken live during
-  capture and distributed across the frozen phrases.
-- [ ] Allow immediate withdrawal and execute targeted deletion/manifest repair
-  before proceeding if requested. **Procedure ready:** `just speaker-calibration
-  discard --subject impostor_x` (typed confirmation), then re-run `embed` and
-  `analyze`. Not triggered — no participant has been recorded yet.
+- [x] Obtain explicit consent independently from at least three adults and
+  assign only local pseudonyms. **Done — four adults consented (three were the
+  required minimum) and were recorded under local letter pseudonyms only.**
+- [x] Capture at least 18 live impostor probes. They must be spoken live during
+  capture and distributed across the frozen phrases. **Done 2026-09-25 — 24/24
+  (6 per adult: three phrases × two repetitions, all `quiet-near`).**
+- [x] Allow immediate withdrawal and execute targeted deletion/manifest repair
+  before proceeding if requested. **Procedure built and rehearsed:** `just
+  speaker-calibration discard --subject impostor_x` (typed confirmation), then
+  re-run `embed` and `analyze`. No participant withdrew. The tool was used once
+  for a technical exclusion (one take that Pipec himself had recorded as a test,
+  mislabeled as an impostor).
 - [x] Pipec creates at least six replay probes using the frozen procedure. Keep
   replay labels separate from live impostors. **Done 2026-09-14 — 8/6, one
   session, all 3 phrases at both `quiet-near` and `quiet-far`.**
-- [ ] Validate corpus counts, class labels, distinct files, session/phrase
-  separation and hashes. Do not inspect or publish transcripts. **Partially
-  done: `validate` confirms every class except impostor already meets its
-  minimum (single remaining error: impostor count).**
-- [ ] Confirm again that private artifacts are ignored and absent from staged
-  changes.
+- [x] Validate corpus counts, class labels, distinct files, session/phrase
+  separation and hashes. Do not inspect or publish transcripts. **Done — `validate`
+  passed on the full 62-sample corpus, and again under the stricter matrix rules
+  added in Task 7.**
+- [x] Confirm again that private artifacts are ignored and absent from staged
+  changes. **Confirmed — `project-history/` is ignored (`.gitignore`), and no path
+  under it was ever tracked or staged.**
 
 **Checkpoint:** if consented minimums cannot be reached, pause. Do not lower the
-matrix silently or substitute internet/synthetic voices.
+matrix silently or substitute internet/synthetic voices. (Not triggered.)
 
 ## Task 6: Analyze, choose or reject the candidate
 
 **Owner:** orchestrator executes only after Pipec confirms capture complete.
+**Executed 2026-09-25** after Pipec confirmed the capture complete.
 
-**Groundwork done ahead of capture (2026-09-21, Pipec-authorized).** The
-impostor recruitment is the only step that needs third parties, so everything
-that does not depend on it was built and rehearsed early. This does **not** check
-any Task 6 box: the study has no verdict until the 18 live-impostor samples exist.
+Groundwork built ahead of capture (2026-09-21, Pipec-authorized): `analyze` (pure,
+`scripts/speaker_calibration_analysis.py`) wired end to end in the CLI, and `embed`
+handed the frozen backend by `main()` (only for `embed`; the other actions never
+import `torch`). Per-sample latency is informational: the gating result stays the
+frozen Task 3 protocol.
 
-- `analyze` is implemented (`scripts/speaker_calibration_analysis.py`, pure, 12
-  synthetic-vector tests) and wired end to end in the CLI (6 more CLI tests):
-  it loads the manifest, refuses an incomplete corpus, requires one vector and
-  one latency per sample, proves the pinned revision is cached (offline), writes
-  the aggregate report atomically and refuses to overwrite it. Exit `0` means
-  the report was produced — a measured `fail_distance_overlap` is a result, not
-  an error. Without a zero-observed-FAR threshold the report still carries every
-  figure, computed at the lowest-FAR operating point and labelled a diagnostic;
-  no threshold is selected.
-- `embed` was never reachable from `just`: `main()` did not hand the frozen
-  backend to it. It now does (only for `embed`; `validate`/`analyze`/`cleanup`
-  still never import torch), discards one warm-up embedding and records a
-  per-sample latency next to each vector in `embeddings.npz`.
-- `embed` ran once over the 38 private samples collected so far (exit 0,
-  nothing tracked). It does not validate the full matrix — `analyze` does — so it
-  must simply be **re-run after the impostors are captured** to cover them.
-- Per-sample latency is informational: the gating result stays the frozen
-  Task 3 protocol (3 s clip, quiet machine, p95 231 ms). Over real 4–5 s clips
-  on a busier machine the per-sample p95 was higher; `analyze` records that as a
-  limitation rather than changing the gate.
-
-Task 7 note: `cleanup` deletes **every** file under the corpus root, including
-`model-cache/` (~85 MB, no captured audio), although block 2 lets that cache
-stay at Pipec's choice. Decide then whether `cleanup` should skip it.
-
-- [ ] Run the frozen analyze command from the readiness amendment. Analysis
+- [x] Run the frozen analyze command from the readiness amendment. Analysis
   must not access microphone/network and must use the already cached exact
-  model revision.
-- [ ] Produce per-condition aggregate distance ranges/counts, live-impostor
+  model revision. **Done. `analyze` first made one unrelated Hugging Face request
+  (an agent-harness registry lookup made by `huggingface_hub`); it was found by a
+  socket guard, fixed by forcing offline mode for every action but `model-contract`
+  (`1b59ad3`) and re-verified — zero connection attempts.**
+- [x] Produce per-condition aggregate distance ranges/counts, live-impostor
   FAR, genuine FRR, replay accept rate, exclusion reasons and p50/p95 CPU
-  embedding latency.
-- [ ] Apply the fixed rule: choose the lowest-risk zero-observed-FAR threshold
+  embedding latency. **See the closure record.**
+- [x] Apply the fixed rule: choose the lowest-risk zero-observed-FAR threshold
   with minimum FRR; a tie chooses the lower threshold. If none exists, result
-  is FAIL and no compromise threshold is selected.
-- [ ] Compare measured p95 with the readiness-amended feasibility bound.
-- [ ] Independently inspect the aggregate report against local raw results
-  without copying raw samples into tracked files.
-- [ ] Record one conclusion: `PROVISIONAL PASS`, `FAIL — distance overlap`,
+  is FAIL and no compromise threshold is selected. **A zero-observed-FAR
+  threshold exists: 0.4834.**
+- [x] Compare measured p95 with the readiness-amended feasibility bound. **Frozen
+  protocol p95 231 ms < 500 ms. Per-sample p95 over the real 4–5 s clips on a
+  loaded machine was 536 ms — recorded as informational, as the plan defined.**
+- [x] Independently inspect the aggregate report against local raw results
+  without copying raw samples into tracked files. **Done — after the Task 7 fixes the
+  embeddings were recomputed from the WAVs and `analyze` was re-run; every figure
+  matched the first run.**
+- [x] Record one conclusion: `PROVISIONAL PASS`, `FAIL — distance overlap`,
   `FAIL — backend/latency`, or `INVALID — corpus/procedure`. Only the first can
-  inform PC-3B; none changes runtime here.
-- [ ] Report replay acceptance separately and state explicitly that PC-4 owns
+  inform PC-3B; none changes runtime here. **`PROVISIONAL PASS`.**
+- [x] Report replay acceptance separately and state explicitly that PC-4 owns
   anti-spoofing. A replay accepted at any rate forbids standalone high-assurance
-  claims.
+  claims. **6 of 8 replay probes were accepted; voice is not standalone
+  high-assurance evidence, and replay/liveness belongs to PC-4.**
 
 ## Task 7: Privacy cleanup and documentation closure
 
-- [ ] After Pipec accepts the aggregate report, resolve and list each exact
+- [x] After Pipec accepts the aggregate report, resolve and list each exact
   private artifact path under the corpus root, verify all stay within that
   root, and delete individual files without recursive broad-target commands.
-- [ ] Confirm WAVs, embeddings, manifests, per-sample scores and temporary
+  **Done 2026-09-25 (Pipec accepted the report and authorized the deletion).
+  Before deleting, the corpus root held 62 WAVs, 1 embeddings archive, 1 manifest,
+  1 aggregate report and 5 model files; every path resolved inside the root and none
+  was tracked. `cleanup` (which refuses anything that is not a known corpus
+  artifact) deleted the 65 corpus files by exact path; the orchestrator supplied
+  the typed confirmation under Pipec's explicit go-ahead in chat.**
+- [x] Confirm WAVs, embeddings, manifests, per-sample scores and temporary
   caches containing samples are gone. Model package/cache may remain only if it
-  contains no captured audio and Pipec chooses to retain it.
-- [ ] Run the current canonical gate, the scoped script checks (Block 6 — the
-  gate does not see `scripts/`), then documentation hook/diff checks:
-
-  ```powershell
-  just gate
-  uv run ruff check scripts/speaker_calibration.py scripts/speaker_calibration_models.py
-  uv run ruff format --check scripts/speaker_calibration.py scripts/speaker_calibration_models.py
-  uv run mypy scripts/speaker_calibration.py scripts/speaker_calibration_models.py
-  just check
-  git diff --check
-  ```
-
-- [ ] Run a privacy search over tracked diff for names, `.wav`, embeddings,
+  contains no captured audio and Pipec chooses to retain it. **Verified: no WAV,
+  embeddings archive, manifest or report remains under `project-history/calibration/`;
+  temporary analysis scripts and reports outside the repository were deleted. Only the
+  5 model files (about 85 MB, no captured audio) remain, kept by `cleanup`'s default so
+  a later PC-3B can reuse them; `just speaker-calibration cleanup --purge-model-cache`
+  removes them.**
+- [x] Run the current canonical gate, the scoped script checks (Block 6 — the
+  gate does not see `scripts/`), then documentation hook/diff checks. **Done:
+  `just gate` GREEN (1417 tests passed, ruff, mypy, security lint, `pip-audit`: no
+  known vulnerabilities); scoped `ruff check`, `ruff format --check` and `mypy` over
+  all five `scripts/speaker_calibration*.py` files and their tests clean; the slow
+  backend tests (5) pass against the real cached model; `just check`,
+  `git diff --check` and `uv lock --check` clean.** `pip-audit` cannot audit the two
+  local `+cpu` builds of `torch`/`torchaudio` (not on PyPI); accepted.
+- [x] Run a privacy search over tracked diff for names, `.wav`, embeddings,
   absolute paths, manifest hashes and transcript content; explain benign code
-  literals.
-- [ ] Inspect all changes produced by the auto-fixing `just gate` before final
-  review; do not assume the pre-gate diff is the final diff.
-- [ ] Obtain whole-branch spec, code-quality, dependency/license and privacy
-  reviews. Resolve all high/medium findings and rerun affected gates.
-- [ ] Update canonical docs without changing `VOICE` trust or claiming PC-3
+  literals. **Done over the whole branch diff: no 64-hex hash, no capture
+  timestamp, no absolute or user path, no real name (the reserved-terms guard
+  passed in every commit). The `.wav` hits are code literals and synthetic test
+  fixtures; the `impostor_*` hits are the letter pseudonym pattern and synthetic test
+  ids; the only phrases are the frozen neutral study phrases.**
+- [x] Inspect all changes produced by the auto-fixing `just gate` before final
+  review; do not assume the pre-gate diff is the final diff. **The gate produced no
+  file change.**
+- [x] Obtain whole-branch spec, code-quality, dependency/license and privacy
+  reviews. Resolve all high/medium findings and rerun affected gates. **Done — see
+  "Task 7 review record".**
+- [x] Update canonical docs without changing `VOICE` trust or claiming PC-3
   complete. If provisional PASS, state that PC-3B enrollment/runtime and PC-4
-  fusion/replay remain open. If FAIL, record the exact blocked outcome.
-- [ ] Move this plan to `completed/` only with measured evidence and verified
+  fusion/replay remain open. If FAIL, record the exact blocked outcome. **Done:
+  current state, identity and access, the roadmap, both delivery maps, the plan
+  indexes and the architecture diagram.**
+- [x] Move this plan to `completed/` only with measured evidence and verified
   deletion. Use `superpowers:finishing-a-development-branch`; Pipec chooses
-  merge/PR/keep and branch deletion.
-- [ ] Commit: `docs(plan): record speaker calibration study`
+  merge/PR/keep and branch deletion. **Moved; Pipec's merge/PR choice is pending.**
+- [x] Commit: `docs(plan): record speaker calibration study`
+
+## Study result and closure record (2026-09-25)
+
+Aggregates only — no sample id, file name, timestamp, per-sample score, hash or
+transcript is recorded here, in keeping with the plan's privacy rule.
+
+**Outcome: `PROVISIONAL PASS` — closes PC-3A only.**
+
+**Backend (frozen).** SpeechBrain `1.1.1` `EncoderClassifier`, model
+`speechbrain/spkrec-ecapa-voxceleb` at revision `0f99f2d0…` (Apache-2.0), CPU,
+offline after the one-time cache warm-up; 192-d embeddings, cosine distance to the
+centroid of the six L2-normalized references; a sample matches when
+`distance <= threshold`.
+
+**Corpus (private, deleted).** 62 samples: reference 6 (one session, `quiet-near`);
+genuine 24 (two sessions, three phrases, all four conditions: `quiet-near` 7,
+`quiet-far` 7, `background-near` 5, `background-far` 5); live impostor 24 (four
+consenting adults, 6 each, `quiet-near`); replay 8 (`quiet-near` 5, `quiet-far` 3).
+Exclusions were all technical (clipped or premature takes, takes where the VAD
+followed a singer in background music, and one mislabeled test take); none entered
+the accepted corpus.
+
+| Measure | Result |
+|---|---|
+| Selected threshold (cosine distance) | 0.4834 (lowest-FRR threshold with zero observed impostor accepts) |
+| Live-impostor false accepts / FAR | 0 of 24 / 0.0 — the 95 % rule-of-three bound on the true FAR is only about 12.5 % |
+| Genuine false rejects / FRR | 0 of 24 / 0.0 — **in-sample, zero by construction** (the threshold is the largest genuine distance below the closest impostor); no held-out check |
+| Separation (closest impostor minus farthest genuine distance) | 0.342 |
+| Distance ranges | genuine 0.2272–0.4834 (`quiet-near` 0.2272–0.4694, `quiet-far` 0.2413–0.3674, `background-near` 0.2407–0.4834, `background-far` 0.3342–0.4248); impostor 0.8256–0.9550 |
+| Replay probes accepted | 6 of 8 (0.75): `quiet-near` 5 of 5, `quiet-far` 1 of 3 (range 0.3322–0.7575) |
+| CPU embedding latency, frozen Task 3 protocol | p50 222.6 ms / **p95 231.2 ms** < the 500 ms budget |
+| Per-sample latency over the real clips (informational) | p50 431 ms / p95 536 ms on a loaded development laptop; the gate is the frozen protocol |
+
+**Limitations.** One owner, four impostors and no held-out data make the result
+provisional evidence, not population-level security. Replay was accepted, so voice
+must never be standalone high-assurance evidence; replay/liveness is PC-4's job.
+`VOICE` stays untrusted identity evidence. This study made no enrollment, no stored
+voiceprint, no runtime adapter and no change to the audio or API contract. **PC-3B
+(consented enrollment, revocation, runtime evidence) and PC-4 (fusion and
+replay/liveness handling) remain open; PC-3 is not complete.** The model's training
+data (VoxCeleb) carries its own licence; that is acceptable for this local,
+non-redistributed study but a redistributing or production PC-3B must review it.
+
+**Interface changes made during execution (recorded, all inside `scripts/`).**
+Beyond the original file map: a fifth module (`speaker_calibration_analysis.py`), a
+seventh CLI action (`discard`), `--purge-model-cache` on `cleanup`, and these
+behaviors — a manifest is strict (a missing or damaged WAV fails `validate` and
+`analyze`; `discard` loads leniently so a withdrawal always works); `embeddings.npz`
+records the model id and each WAV's hash, and `analyze` refuses stale or foreign
+vectors; the corpus rules add per-phrase repetitions, distinct audio, replay
+conditions and impostor/owner session separation; `embed` deliberately does not run
+the full-matrix `validate` (it must embed a partial corpus during capture) — `analyze`
+does. `torch`/`torchaudio` are pinned to the `pytorch-cpu` index (a same-day,
+Pipec-approved amendment).
+
+### Task 7 review record
+
+Independent reviewers (no shared session history), all read-only: **spec compliance
+and code quality**; **security, privacy and dependency/license**; **silent failures
+and test quality**; then a **re-review of the fixes**. None found a critical issue;
+the analysis maths, path safety, atomic manifest writes and the no-network posture
+were confirmed. Every finding was fixed, except those listed under "not adopted", in
+`0c77e5c`, `ef3f23d` and `13175ac` (TDD; the unit suite grew from 136 to 199 tests):
+
+- a missing or damaged WAV was silently accepted, and a damaged file could block a
+  withdrawal → strict manifest; lenient `discard`;
+- capture accepted silence, clipping, overlong takes and left orphan WAVs on a
+  crash → a signal guard (its floor calibrated from real-corpus aggregates so the
+  quietest legitimate far-field take passes), atomic WAV write with rollback, orphan
+  detection, safe session ids;
+- `cleanup` would delete any directory it was pointed at and always deleted the
+  model cache → refuses non-corpus directories, keeps the cache unless
+  `--purge-model-cache`, needs a terminal;
+- embeddings had no provenance → model id and per-WAV hash, checked by `analyze`;
+- the model-cache check trusted the wrong location → each cached file is compared
+  byte for byte with the pinned snapshot; `model-contract` now fails if the offline
+  load fails;
+- the report could mislead → ranges hidden for cells under 3 samples; an explicit
+  in-sample-FRR limitation and the separation figure;
+- capture logs carried sample ids; durable writes lacked `fsync`/temp cleanup; Hub
+  telemetry; unsafe path arguments; corpus rules weaker than the protocol; slow
+  tests that could hide a real failure or leak environment → all fixed.
+
+Dependency and licence review: every new package is permissively licensed (Apache-2.0,
+BSD, MIT); `explicit = true` keeps the `pytorch-cpu` index to `torch` and
+`torchaudio`; no copyleft; `pip-audit` clean.
+
+**Findings not adopted, with reasons:** moving the numeric layer to break the
+CLI ↔ analysis/backend import cycle (the documented deferred imports are the simpler
+fix and keep `torch` out of `validate`/`analyze`); a `manifest.json.bak` (it would
+retain a withdrawn participant's rows, defeating `discard`); `uv run --frozen` in the
+recipe (consistent with the other recipes; offline and telemetry are enforced
+in-process); an embed-time audio-energy check (single-operator threat model — the
+capture guard and `validate` cover it); sample ids removed from error messages for
+rows that are *invalid* (needed to repair them — routine logs carry none). The
+drafts of Plans 0049/0050 (another session's work) still describe 0047 as `NOW`;
+they were not edited here.
 
 ## Rollback and incident boundary
 
