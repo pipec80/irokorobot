@@ -1,7 +1,7 @@
 # 0049 — Auditoría de conformidad de server con sus objetivos
 
 **Estado:** Draft. Propuesta de auditoría; no es un plan de implementación ni
-reemplaza el NOW 0047. La revisión inicial de esta conversación está autorizada;
+reemplaza al plan NOW (0047 cerró el 2026-09-25). La revisión inicial de esta conversación está autorizada;
 la campaña completa descrita aquí queda propuesta, no ejecutada.
 
 **Fecha:** 2026-09-22.
@@ -10,8 +10,8 @@ la campaña completa descrita aquí queda propuesta, no ejecutada.
 (§13). Ajusta la clasificación de F-02, F-03, F-06 y F-08–F-12, añade F-13…F-24,
 completa la lectura de la frontera de protección (100 %) y traslada las
 reparaciones verificadas al borrador
-[0050 — server audit repairs](0050-server-audit-repairs.md) (12 tareas, en cola
-tras 0047). Las decisiones sobre el alcance del grant y su ligadura al hablante
+[0050 — server audit repairs](0050-server-audit-repairs.md) (12 tareas, en cola;
+0047 cerró el 2026-09-25). Las decisiones sobre el alcance del grant y su ligadura al hablante
 están en el [ADR-0015](../../adr/0015-owner-grant-scope-and-speaker-binding.md)
 (propuesto). Las notas «Ajuste 2026-09-23» dentro de cada hallazgo remiten a esa
 revisión y sus números de tarea siguen la versión final de 0050.
@@ -755,7 +755,7 @@ confirman con dobles el camino frame reconocido → respuesta protegida sin PIN.
 La lógica cumple el alcance facial existente; no prueba identidad del hablante.
 Añadir voz por sí solo tampoco certifica la asociación: un plan posterior debe
 definir evidencia vinculada al mismo turno, ambigüedad y fallback. Mantener el
-NOW 0047; no implementar fusión biométrica dentro de esta auditoría.
+alcance de 0047 (cerrado 2026-09-25); no implementar fusión biométrica dentro de esta auditoría.
 
 **Ajuste 2026-09-23 (§13) — reclasificado:** brecha ya planificada, no
 hallazgo nuevo. La evidencia de hablante es el Plan 0047 (PC-3A) y la fusión

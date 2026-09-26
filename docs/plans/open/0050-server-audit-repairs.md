@@ -1,7 +1,8 @@
 # 0050 — Server audit repairs
 
-> **Status:** Draft — queued behind NOW 0047. Not executable until Pipec
-> promotes it to `Ready`/`NOW` after 0047 closes and confirms the six
+> **Status:** Draft — Plan 0047 closed 2026-09-25, so this is now the queued
+> candidate for `NOW`. Not executable until Pipec promotes it to
+> `Ready`/`NOW` and confirms the six
 > decisions under *Decisions confirmed at promotion*. Written 2026-09-23 and
 > extended 2026-09-24 from the verified findings of the 0049 audit, its
 > independent review (0049 §13) and a full read of the protection boundary.

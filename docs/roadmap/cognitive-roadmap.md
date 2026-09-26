@@ -463,13 +463,13 @@ identities) held zero false accepts and zero false rejects; the measured
 threshold (`0.5815`, replacing the unvalidated `0.25`) was confirmed live
 with 3 accepted + 3 denied real turns. Explicitly provisional — only 3
 impostor identities were measured, and the anti-spoofing gap above is
-untouched. Speaker evidence (PC-3) and fusion (PC-4) are not started.
+untouched. Speaker evidence: the PC-3A calibration study closed 2026-09-25 (provisional PASS, replay accepted 6/8) but PC-3B runtime evidence and fusion (PC-4) are not started.
 
 **Exit gate (not yet met):** calibrated local evaluation covers agreement,
 conflict, expiry, backend failure, false accept, and false reject. Conflicting
 evidence returns `ambiguous`; the administrative recovery path remains
 available. PC-2's own real-camera calibration is closed; the exit gate still
-needs PC-3 (speaker evidence) and PC-4 (fusion), neither started.
+needs PC-3B (speaker runtime evidence; PC-3A is closed) and PC-4 (fusion), neither started.
 
 ### X1 — Server production baseline checkpoint — **CLOSED 2026-09-03**
 

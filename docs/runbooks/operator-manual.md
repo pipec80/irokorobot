@@ -103,12 +103,36 @@ problem can be localized without running the whole loop.
 | `manage_household_roles.py` | `uv run python scripts/manage_household_roles.py bootstrap-owner` | Local role bootstrap, direct DB, no HTTP | No | No |
 | `migrate_memory_v4.py` | `uv run python scripts/migrate_memory_v4.py --apply` | Legacy-fact migration into v4, dry-run first | No | No |
 | `eval_chat.py` / `eval_consolidation.py` | `just eval-chat` / `just eval-memory` | Response/extraction quality against real Ollama — not `pytest` | Needs `just services` | Yes |
+| `speaker_calibration.py` | `just speaker-calibration <action>` | Speaker-embedding calibration corpus and analysis (Plan 0047, PC-3A) — capture, embed, analyze, discard, cleanup; local only, never in the runtime | No (mic only for `capture`) | Yes for the recipe |
 | `eval_longitudinal_memory.py` | `just eval-longitudinal` | Longitudinal-memory capability probe (multi-session recall, correction, cross-person privacy, deletion, provenance) against real Ollama + a temp DB — not `pytest` | Needs `just services` | Yes |
 
 Rule of thumb: audio sounds wrong → `mic_test.py`/`piper_test.py` first (they
 need nothing else running). The answer is wrong but audio is fine →
 `pipeline_test.py` (bypasses HTTP, exercises the real LLM path directly).
 Something only breaks through the real server → `client_test.py`/`chat_test.py`.
+
+### Speaker calibration — `just speaker-calibration` (Plan 0047, PC-3A)
+
+A local, offline study harness — not part of the runtime and not speaker
+recognition. Plan 0047 closed 2026-09-25 with a provisional PASS (see
+[the plan](../plans/completed/0047-speaker-evidence-calibration-study.md)); the tool
+stays for a re-run or for PC-3B calibration. Actions (one per call; PowerShell strips
+quotes, so pass words unquoted):
+
+| Action | What it does |
+|---|---|
+| `model-contract` | The only action allowed on the network: downloads the pinned ECAPA revision (~85 MB) into the gitignored cache and proves it loads offline |
+| `capture` | Records one sample with the microphone (phrase shown, 3-2-1 countdown and beep). Needs `--class --subject --session --phrase --condition`. Rejects silent, clipped, too short or too long takes |
+| `validate` | Checks the manifest, hashes, the corpus matrix and stray WAV files |
+| `embed` | Computes one embedding and latency per sample, with the model id and WAV hash |
+| `analyze` | Writes an aggregate-only report (`aggregate-report.md`); refuses to overwrite one |
+| `discard` | Permanently deletes one participant's (`--subject`) or one sample's (`--sample`) data, after typing `delete` |
+| `cleanup` | Deletes every private artifact after typing `delete`; keeps the model cache unless `--purge-model-cache` |
+
+Privacy rules: the corpus lives only under `project-history/calibration/speaker/`
+(gitignored); use letter pseudonyms (`impostor_a`), never names; report counts
+and ranges only — no sample ids, file names or per-sample scores in chat or docs;
+only consenting adults; an agent never records, imitates or replays a voice.
 
 ### Longitudinal-memory baseline — `just eval-longitudinal` (Plan 0046, CM-0)
 
@@ -219,10 +243,13 @@ owner held to the camera authenticates. No calibrated real-camera study
 [`current-state.md`](../architecture/current-state.md) for the full
 disclosure. Real-camera acceptance is a future plan, not yet written.
 
-### Tier 3 — Voice evidence (PC-3, not started)
+### Tier 3 — Voice evidence (PC-3B, not started; PC-3A calibration closed)
 
 Planned: a real speaker-enrollment/verification adapter through the same
-typed evidence contract. STT/VAD are not voice identity by themselves.
+typed evidence contract. STT/VAD are not voice identity by themselves. The
+PC-3A study (Plan 0047, 2026-09-25) measured a candidate backend offline —
+provisional PASS, but 6 of 8 replay probes were accepted, so voice alone is never
+high-assurance evidence. `VOICE` stays untrusted; nothing is wired at runtime.
 
 ### Tier 4 — Conservative fusion (PC-4, not started)
 
