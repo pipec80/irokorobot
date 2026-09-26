@@ -46,9 +46,9 @@ fuera de los logs, guardas de arquitectura, matriz dueño → desconocido con
 reglas de intención por palabra completa, y documentación). No es ejecutable
 hasta que Pipec lo promueva y confirme sus seis decisiones.
 
-[ADR-0015](../../adr/0015-owner-grant-scope-and-speaker-binding.md) (**Proposed**)
-propone cómo ligar el grant PIN a una operación (hoy incumple ADR-0009) y a la
-evidencia del hablante; el Plan 0051 lo implementará una vez aceptado.
+[ADR-0015](../../adr/0015-owner-grant-scope-and-speaker-binding.md) (**Accepted**, 2026-09-25)
+liga el grant PIN a una operación (hoy incumple ADR-0009) y, por etapas, a la
+evidencia del hablante; el Plan 0051 lo implementa y aún no está redactado.
 
 **Paso 0 — carga inicial (sin numerar, decidido 2026-09-24).** Un plan futuro,
 posterior a 0047 y a ADR-0015, que carga los datos base del dueño y su hogar de

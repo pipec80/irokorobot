@@ -1,6 +1,6 @@
 # 0015 — Bind the owner grant to a named operation and to speaker evidence
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-09-25, Pipec)
 - **Date:** 2026-09-24
 - **Builds on:** [ADR 0008](0008-progressive-owner-authentication.md),
   [ADR 0009](0009-locked-posture-and-scoped-capabilities.md)
@@ -54,7 +54,8 @@ known MVP limit; they need staging, not an immediate change.
 
 ## Decision
 
-Proposed; nothing here changes until it is accepted.
+Accepted 2026-09-25. Nothing changes in code until Plan 0051 (decision 1)
+and PC-4 (decision 2) implement it.
 
 ### 1. Bind every grant to a named operation (enforces ADR 0009)
 
@@ -143,7 +144,8 @@ use.
 
 ## Follow-up
 
-- Plan 0051 — scoped grants (decision 1). Written after this ADR is accepted.
+- Plan 0051 — scoped grants (decision 1). Unblocked by this acceptance; written
+  when it reaches `NOW`, after PC-3B and PC-4 in the agreed order.
 - PC-4 — speaker binding, face veto and liveness (decision 2).
 - [Capability matrix](../architecture/current-state.md) (added by Plan 0050,
   Task 12).
