@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Iroko cognitive runtime — current state",
+    "output": "iroko-architecture.html",
+    "quality_profile": "showcase",
+    "views": [
+      { "id": "classic-turn", "label": "Classic voice turn", "focus": ["robot", "api", "stt", "controller", "ollama", "tts"], "note": "The audio contract path: robot captures audio, server transcribes, decides, and speaks back." },
+      { "id": "identity-and-policy", "label": "Identity and policy", "focus": ["controller", "policy", "face", "memory"], "note": "Protected household branches are fail-closed and audited before any memory read." },
+      { "id": "memory-write", "label": "Memory write path", "focus": ["controller", "ollama", "consolidation", "memory"], "note": "Legacy generation feeds consolidation, which writes facts/episodes back to SQLite." }
+    ]
+  },
+  "components": [
+    { "id": "robot", "type": "external", "label": "Robot client", "sublabel": "mic · webcam · speaker", "pos": [40, 300], "size": [140, 64] },
+    { "id": "api", "type": "backend", "label": "Server API", "sublabel": "FastAPI :8000", "pos": [250, 300], "size": [140, 64], "tag": "audio-only contract" },
+    { "id": "stt", "type": "backend", "label": "Faster Whisper", "sublabel": "STT · CPU/int8", "pos": [460, 300], "size": [140, 64] },
+    { "id": "controller", "type": "backend", "label": "Cognitive Controller", "sublabel": "P0.3 decide()", "pos": [670, 300], "size": [150, 64], "tag": "immutable plan" },
+    { "id": "policy", "type": "security", "label": "Household Policy", "sublabel": "P0.5 fail-closed", "pos": [670, 110], "size": [150, 64] },
+    { "id": "face", "type": "security", "label": "Face Authentication", "sublabel": "PC-2 consent-gated", "pos": [460, 110], "size": [150, 64], "tag": "no anti-spoofing" },
+    { "id": "ollama", "type": "external", "label": "Ollama", "sublabel": "local LLM / VLM", "pos": [900, 300], "size": [140, 64] },
+    { "id": "consolidation", "type": "backend", "label": "Consolidation", "sublabel": "extraction + normalize", "pos": [900, 460], "size": [150, 64] },
+    { "id": "memory", "type": "database", "label": "SQLite + sqlite-vec", "sublabel": "episodic/vector v3 · v4", "pos": [670, 460], "size": [160, 64] },
+    { "id": "tts", "type": "backend", "label": "Piper", "sublabel": "local TTS", "pos": [250, 460], "size": [140, 64] }
+  ],
+  "boundaries": [
+    { "kind": "security-group", "label": "P0.5 authorization — fail-closed", "wraps": ["policy", "face"] },
+    { "kind": "region", "label": "Local-only runtime (ADR-0004 — no cloud LLM/VLM)", "wraps": ["ollama"] }
+  ],
+  "connections": [
+    { "id": "robot-to-api", "from": "robot", "to": "api", "label": "POST /transcribe · WAV 16kHz mono int16", "variant": "emphasis", "labelDy": -26 },
+    { "id": "api-to-stt", "from": "api", "to": "stt", "label": "audio → text", "labelDy": -26 },
+    { "id": "stt-to-controller", "from": "stt", "to": "controller", "label": "transcript → typed event", "labelDy": 75 },
+    { "id": "controller-to-policy", "from": "controller", "to": "policy", "label": "protected branch check", "variant": "security", "fromSide": "top", "toSide": "bottom" },
+    { "id": "controller-to-face", "from": "controller", "to": "face", "label": "identity evidence (optional frame)", "variant": "security", "fromSide": "left", "toSide": "right" },
+    { "id": "controller-to-ollama", "from": "controller", "to": "ollama", "label": "generic turn / grounded scene", "variant": "emphasis", "labelDy": 56 },
+    { "id": "controller-to-memory", "from": "controller", "to": "memory", "label": "v4 authorized read", "fromSide": "bottom", "toSide": "top" },
+    { "id": "ollama-to-consolidation", "from": "ollama", "to": "consolidation", "label": "LLM extraction", "fromSide": "bottom", "toSide": "top" },
+    { "id": "consolidation-to-memory", "from": "consolidation", "to": "memory", "label": "writes facts/episodes", "labelDy": -33 },
+    { "id": "api-to-tts", "from": "api", "to": "tts", "label": "response text", "labelDy": -58 },
+    { "id": "tts-to-robot", "from": "tts", "to": "robot", "label": "audio_base64", "variant": "emphasis", "fromSide": "left", "toSide": "bottom" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Hard boundary", "items": ["Server is a generic audio API — it does not know the robot exists", "Robot is a generic audio client — it does not know STT/LLM/TTS exist", "Only the audio contract is shared: WAV · 16kHz · mono · int16"] },
+    { "dot": "emerald", "title": "Cognitive path", "items": ["Controller returns an immutable response plan before any generation", "Safe plans never reach the LLM, legacy memory, or consolidation", "Ollama is the only accepted LLM/VLM runtime (ADR-0004)"] },
+    { "dot": "rose", "title": "Known gaps", "items": ["Face evidence has no liveness/anti-spoofing defense (photo authenticates)", "Speaker recognition absent at runtime; PC-3A study closed (provisional PASS), PC-3B/PC-4 open", "Longitudinal memory benchmark (CM-0) measured RED — single-turn extraction only"] }
+  ]
+}

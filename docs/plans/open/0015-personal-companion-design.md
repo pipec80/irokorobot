@@ -12,7 +12,8 @@ Define the path from the accepted cognitive foundation to a trustworthy
 personal companion, then to a privacy-preserving family companion. This plan
 stays open because PC-3 through PC-6 and CM-1 through CM-7 contain real work.
 CM-0 closed 2026-09-08 (Plan 0046 — a benchmark and a measured RED baseline,
-not longitudinal memory); PC-3A has a queued design and no executable plan.
+not longitudinal memory); PC-3A closed 2026-09-25 (Plan 0047, provisional
+PASS) and PC-3B has no plan yet.
 
 It is an umbrella and product-acceptance reference. Do not implement it as one
 batch and do not infer a future plan number from it.
@@ -59,7 +60,8 @@ can still authenticate. PC-4 owns multimodal conflict and anti-spoofing policy.
 
 ### Work that remains open
 
-- **PC-3:** consented speaker enrollment and calibrated speaker evidence;
+- **PC-3B:** consented speaker enrollment and runtime speaker evidence
+  (PC-3A, the calibration study, is closed);
 - **PC-4:** conservative multimodal identity fusion and recovery;
 - **P2.2 / CM-1…CM-7:** authorized, corrigible and forgettable longitudinal
   conversational memory (CM-0, the benchmark and RED baseline, is closed);
@@ -69,9 +71,8 @@ can still authenticate. PC-4 owns multimodal conflict and anti-spoofing policy.
 
 [Plan 0046](../completed/0046-reproducible-longitudinal-memory-baseline.md)
 closed CM-0 on 2026-09-08 (benchmark GREEN, measured baseline RED at `ac43c58`).
-[Plan 0047](0047-speaker-evidence-calibration-study.md) preserves the reviewed
-PC-3A calibration design in `Queued` and is not executable until its
-backend/dependency readiness gate is resolved and approved. There is no
+[Plan 0047](../completed/0047-speaker-evidence-calibration-study.md) executed the
+PC-3A calibration study and closed 2026-09-25 with a provisional PASS. There is no
 physical `docs/plans/NOW.md`; the operational board is
 [`docs/plans/README.md`](../README.md#operational-board).
 
@@ -141,7 +142,7 @@ Face evidence uses explicit consent, the typed identity contract and the same
 authorization boundary as PIN. Enrollment cannot choose an arbitrary subject,
 revocation purges biometric rows, and PIN remains an independent recovery path.
 
-### PC-3 — Speaker evidence — unstarted; PC-3A plan queued
+### PC-3 — Speaker evidence — PC-3A closed; PC-3B unplanned
 
 Add a local speaker-verification adapter with explicit enrollment, consent,
 revocation and a calibrated threshold. STT and VAD do not identify speakers.
@@ -152,9 +153,11 @@ it must never grant capabilities directly.
 accept/reject behavior, backend-failure posture and revocation. No household
 member's real voice may enter the repository.
 
-Plan 0047 deliberately covers only the calibration study. Even a provisional
-PASS leaves production enrollment, revocation and trusted evidence for a
-future PC-3B plan.
+Plan 0047 covered only the calibration study and closed 2026-09-25 with a
+provisional PASS (0/24 live-impostor false accepts, 0/24 genuine false rejects
+in-sample, 6/8 replay accepted, p95 231 ms). Production enrollment, revocation
+and trusted evidence are left for a future PC-3B plan, and replay/liveness for
+PC-4.
 
 ### PC-4 — Conservative identity fusion — unstarted
 
@@ -218,8 +221,8 @@ correction, revocation and non-disclosure through the real path.
 PC-1 complete
   -> PC-2 complete (provisional calibration)
   -> CM-0 reproducible RED baseline (Plan 0046 closed 2026-09-08)
-  -> PC-3A speaker calibration (Plan 0047 queued) <- current cursor
-  -> PC-3B speaker runtime evidence
+  -> PC-3A speaker calibration (Plan 0047 closed 2026-09-25, provisional PASS)
+  -> PC-3B speaker runtime evidence <- current cursor (unplanned)
   -> PC-4 identity fusion
   -> P2.2 / CM-1..CM-7 longitudinal memory
   -> PC-5 personal companion acceptance
@@ -227,9 +230,9 @@ PC-1 complete
 ```
 
 CM-0, the reproducible benchmark, is closed (Plan 0046, 2026-09-08): it created
-the RED evidence needed to prevent implementation by intuition. The next product
-slice is PC-3A. Plan 0047 is numbered only to preserve the next reviewed
-handoff; its `Queued` status and readiness gate prevent premature execution.
+the RED evidence needed to prevent implementation by intuition. PC-3A is closed
+(Plan 0047, 2026-09-25); the next product slice is PC-3B, which needs a
+re-audit against that evidence before it gets a plan number.
 
 ## Non-goals
 

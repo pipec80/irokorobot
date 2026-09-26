@@ -146,6 +146,10 @@ face-auth-demo *ARGS:
 face-calibration *ARGS:
     uv run --env-file .env python scripts/face_calibration.py {{ARGS}}
 
+# Estudio de calibracion de voz (Plan 0047): corpus privado, validacion y reporte agregado
+speaker-calibration *ARGS:
+    uv run --env-file .env python scripts/speaker_calibration.py {{ARGS}}
+
 # Descarga una vez el modelo Silero VAD (R1) - dependencia efimera, no toca pyproject.toml
 fetch-vad-model *ARGS:
     uv run --with silero-vad python scripts/fetch_silero_vad_model.py {{ARGS}}

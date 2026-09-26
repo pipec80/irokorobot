@@ -113,6 +113,15 @@ producer is an explicit local one-use unlock. Consented face, speaker, and a
 future fingerprint reader can later produce the same typed, expiring evidence.
 They do not create parallel authorization paths.
 
+**Speaker evidence calibration (Plan 0047, closed 2026-09-25).** A local, offline
+study measured whether a CPU speaker embedding separates the owner from consenting
+live impostors: a provisional PASS (0/24 impostor false accepts at the selected
+threshold, 0/24 genuine false rejects in-sample, 6/8 replay probes accepted). It
+changes no rule here: `VOICE` remains untrusted identity evidence, the study
+produced no enrollment or runtime adapter (PC-3B), and because replays were
+accepted a voice match must never be standalone high-assurance evidence — replay
+and liveness handling belongs to the fusion work (PC-4).
+
 Persistent installation data includes the owner, roles, onboarding state,
 configured methods, consent, and audit. Authentication itself is transient:
 person ID, method, issue/expiry times, scope, opaque token reference, and
