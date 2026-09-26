@@ -214,7 +214,7 @@ real-hardware proof of concept 2026-08-27)
 
 ```env
 FACE_AUTHENTICATION_ENABLED=true          # server
-FACE_AUTHENTICATION_MATCH_THRESHOLD=0.25  # stricter than the generic 0.4
+FACE_AUTHENTICATION_MATCH_THRESHOLD=0.5815  # measured by Plan 0030
 ROBOT_FACE_AUTH_ENABLED=true              # robot
 ```
 
@@ -265,7 +265,7 @@ best-score guess. The PIN remains available even if every biometric fails.
 | `ROBOT_STREAMING` | `false` | Use `/transcribe/stream` instead of classic `/transcribe` |
 | `VISION_ENABLED` | `false` | Server: enables `/vision/describe`, `/vision/respond` scene description (unrelated to face auth) |
 | `FACE_AUTHENTICATION_ENABLED` | `false` | Server: attempt face resolution when a frame is attached to a protected turn |
-| `FACE_AUTHENTICATION_MATCH_THRESHOLD` | `0.25` | Stricter, separate match bound for authentication (layered on top of `FACE_MATCH_THRESHOLD`) |
+| `FACE_AUTHENTICATION_MATCH_THRESHOLD` | `0.5815` | Stricter, separate match bound for authentication (layered on top of `FACE_MATCH_THRESHOLD`); measured by Plan 0030, provisional |
 | `ROBOT_FACE_AUTH_ENABLED` | `false` | Robot: capture and attach one webcam frame per turn |
 | `FACE_MATCH_THRESHOLD` | `0.4` | Generic conversational face-recognition threshold (unrelated to authentication) |
 | `UVICORN_WORKERS` | `1` | Must stay `1` — owner/face grants are process-local; the server refuses to start otherwise |

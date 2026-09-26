@@ -71,7 +71,8 @@ specific conflict instead of redesigning the project implicitly.
   corrigible, forgettable longitudinal memory. **CM-0 closed 2026-09-08**
   ([Plan 0046](../plans/completed/0046-reproducible-longitudinal-memory-baseline.md)):
   the benchmark harness is GREEN and the measured baseline is a reproducible
-  cognitive RED. CM-1…CM-7 remain unplanned. PC-3A ([Plan 0047](../plans/completed/0047-speaker-evidence-calibration-study.md)) closed 2026-09-25 with a provisional PASS; the next slice is PC-3B.
+  cognitive RED. CM-1…CM-7 remain unplanned. PC-3A ([Plan 0047](../plans/completed/0047-speaker-evidence-calibration-study.md)) closed 2026-09-25 with a provisional PASS; the next slice is PC-3B, re-audited and
+  drafted 2026-09-25 as [Plan 0053](../plans/open/0053-consented-speaker-runtime-evidence.md) (`Draft`).
 - [`p0-runtime-policy-audit.md`](p0-runtime-policy-audit.md): current
   disposition of remaining public-route and operator-acceptance gaps.
 - [`implementation-guardrails.md`](implementation-guardrails.md): tracked
