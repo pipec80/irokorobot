@@ -16,7 +16,11 @@ import pytest
 from server.cognition.identity import HouseholdRole
 from server.cognition.models import CognitiveEvent
 from server.cognition.response_plan import TextTurnPayload
-from server.cognition.speaker_authentication import SpeakerRequestResolver, SpeakerVerdict
+from server.cognition.speaker_authentication import (
+    ReferenceCounter,
+    SpeakerRequestResolver,
+    SpeakerVerdict,
+)
 from server.memory.declarative import upsert_entity
 from server.memory.voice_consent import (
     grant_voice_consent,
@@ -79,7 +83,9 @@ async def _async_probe(_wav_bytes: bytes) -> np.ndarray:
     return probe
 
 
-def _resolver_over_real_db(owner: int, *, count_references: object) -> SpeakerRequestResolver:
+def _resolver_over_real_db(
+    owner: int, *, count_references: ReferenceCounter
+) -> SpeakerRequestResolver:
     """Build a resolver whose repository seams are the REAL Task 1 functions,
     except the one seam each test below replaces with a real side effect."""
     return SpeakerRequestResolver(
