@@ -13,8 +13,8 @@ personal companion, then to a privacy-preserving family companion. This plan
 stays open because PC-3 through PC-6 and CM-1 through CM-7 contain real work.
 CM-0 closed 2026-09-08 (Plan 0046 — a benchmark and a measured RED baseline,
 not longitudinal memory); PC-3A closed 2026-09-25 (Plan 0047, provisional
-PASS) and PC-3B was re-audited and drafted 2026-09-25 as
-[Plan 0053](0053-consented-speaker-runtime-evidence.md), still a `Draft`.
+PASS) and PC-3B is [Plan 0053](0053-consented-speaker-runtime-evidence.md),
+promoted to `NOW` on 2026-09-25.
 
 It is an umbrella and product-acceptance reference. Do not implement it as one
 batch and do not infer a future plan number from it.
@@ -143,7 +143,7 @@ Face evidence uses explicit consent, the typed identity contract and the same
 authorization boundary as PIN. Enrollment cannot choose an arbitrary subject,
 revocation purges biometric rows, and PIN remains an independent recovery path.
 
-### PC-3 — Speaker evidence — PC-3A closed; PC-3B unplanned
+### PC-3 — Speaker evidence — PC-3A closed; PC-3B is Plan 0053, NOW
 
 Add a local speaker-verification adapter with explicit enrollment, consent,
 revocation and a calibrated threshold. STT and VAD do not identify speakers.
@@ -157,8 +157,9 @@ member's real voice may enter the repository.
 Plan 0047 covered only the calibration study and closed 2026-09-25 with a
 provisional PASS (0/24 live-impostor false accepts, 0/24 genuine false rejects
 in-sample, 6/8 replay accepted, p95 231 ms). Production enrollment, revocation
-and trusted evidence are left for a future PC-3B plan, and replay/liveness for
-PC-4.
+and trusted evidence are [Plan 0053](0053-consented-speaker-runtime-evidence.md)
+(PC-3B), promoted to `NOW` on 2026-09-25 with every decision answered;
+replay/liveness stays PC-4's.
 
 ### PC-4 — Conservative identity fusion — unstarted
 
@@ -223,7 +224,7 @@ PC-1 complete
   -> PC-2 complete (provisional calibration)
   -> CM-0 reproducible RED baseline (Plan 0046 closed 2026-09-08)
   -> PC-3A speaker calibration (Plan 0047 closed 2026-09-25, provisional PASS)
-  -> PC-3B speaker runtime evidence <- current cursor (Plan 0053, Draft)
+  -> PC-3B speaker runtime evidence <- current cursor (Plan 0053, NOW)
   -> PC-4 identity fusion
   -> P2.2 / CM-1..CM-7 longitudinal memory
   -> PC-5 personal companion acceptance
@@ -234,8 +235,8 @@ CM-0, the reproducible benchmark, is closed (Plan 0046, 2026-09-08): it created
 the RED evidence needed to prevent implementation by intuition. PC-3A is closed
 (Plan 0047, 2026-09-25); the next product slice is PC-3B. Its re-audit against
 that evidence ran on 2026-09-25 and produced
-[Plan 0053](0053-consented-speaker-runtime-evidence.md), a `Draft` awaiting
-Pipec's decisions and promotion.
+[Plan 0053](0053-consented-speaker-runtime-evidence.md), which Pipec promoted to
+`NOW` the same day.
 
 ## Non-goals
 
