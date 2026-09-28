@@ -173,6 +173,28 @@ class Settings(BaseSettings):
     speaker_model_revision: str = (
         "0f99f2d0ebe89ac095bcc5903c4dd8f72b367286"  # pragma: allowlist secret
     )
+    # Cosine-DISTANCE upper bound for a speaker match against the reference
+    # centroid (0 = identical voice). Measured by Plan 0047's calibration
+    # study: 0/24 live-impostor false accepts and 0/24 genuine false rejects
+    # at 0.4834 — but IN-SAMPLE (the FRR is zero by construction), on one
+    # owner and four impostors, with no held-out data, and 6 of 8 replay
+    # probes were ACCEPTED. Provisional: voice is never standalone
+    # high-assurance evidence, and this value grants nothing by itself.
+    speaker_authentication_match_threshold: float = 0.4834
+    # Fewer references than this and verification is not attempted at all —
+    # a centroid of one or two samples is not what the study measured.
+    speaker_min_reference_count: int = 3
+    # Shortest VERIFICATION-time clip the resolver will embed at all — deliberately
+    # distinct from `speaker_min_enrollment_s` (Task 3): a code reviewer's
+    # finding (A6) is that a very short but loud clip already passes
+    # `has_voiced_energy`, and nothing else bounded how little audio Plan
+    # 0047's frozen protocol was ever measured against. Its 3-5 s real clips
+    # are the only evidence this study has; a shorter turn utterance is
+    # untested territory the resolver refuses rather than guesses about.
+    # PROVISIONAL (round 2 of A6): 1.5 s is a conservative choice, not a
+    # measured one — Plan 0047 never tested anything between 1.5 and 3 s
+    # either. Revisit with Task 8's real acceptance evidence.
+    speaker_min_verification_s: float = 1.5
 
     # ---------------- Sensors ----------------
     sensor_debounce_seconds: int = 30
