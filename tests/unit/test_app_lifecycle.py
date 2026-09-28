@@ -96,4 +96,13 @@ async def test_a_startup_failure_after_client_creation_still_closes_it(
             pytest.fail("must not reach the yield after a startup failure")
 
     assert app.state.resources.http_client.is_closed is True
-    assert app.state.ready is False
+    # `getattr` with a default, matching `test_app_state_ready_is_false_before_lifespan`
+    # above: `lifespan` only ever sets `ready` on a FULLY successful startup
+    # (right before its `yield`) or on ordinary shutdown — a failure that
+    # aborts before that point never touches the attribute at all, so it can
+    # be legitimately absent here, not just `False`. A direct
+    # `app.state.ready is False` is order-dependent on whatever earlier test
+    # in the same xdist worker process last ran a full lifespan cycle against
+    # this same shared `app` singleton — found by a real run under parallel
+    # `just gate`, not by inspection.
+    assert getattr(app.state, "ready", False) is False
