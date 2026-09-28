@@ -209,6 +209,14 @@ class Settings(BaseSettings):
     # Shortest utterance accepted for ENROLMENT. Verification uses whatever the
     # turn already carried; enrolment refuses a reference this short.
     speaker_min_enrollment_s: float = 2.0
+    # Master on/off for in-request speaker evidence (Plan 0053). Off by
+    # default: with it off no speaker model is loaded, torch is never
+    # imported, and the turn behaves exactly as it does today. Voice evidence
+    # grants nothing even when on — fusion is PC-4. Declared here (Task 5)
+    # rather than Task 6, which the plan's own file table assigns it to,
+    # because Task 5's own enrolment route already gates on it — see this
+    # plan's Task 5 ruling in the SDD ledger.
+    speaker_authentication_enabled: bool = False
 
     # ---------------- Sensors ----------------
     sensor_debounce_seconds: int = 30
