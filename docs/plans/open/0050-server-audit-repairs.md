@@ -122,6 +122,15 @@ into a concrete scope model and Plan 0051 implements it once accepted. The write
 path (F-04, F-17) belongs to CM-1…CM-7. Task 11 pins today's behaviour for all of
 them with characterization tests, so changing it later is a deliberate act.
 
+**Re-audit note (added 2026-09-28, queue rule 4).** The agreed delivery order
+(`docs/plans/README.md`) now runs PC-3B, PC-4 and Plan 0051 *before* this
+plan reaches `NOW`. Plan 0051 implements exactly the scope model Task 11's
+two characterization tests pin as "today's behaviour" — so when this plan is
+finally promoted, re-audit Task 11 against whatever Plan 0051 actually merged
+before executing it, per queue rule 4, rather than assuming the version
+rehearsed before Plan 0051 existed still matches the real grant-scope
+behaviour. Found while reviewing Plan 0053 (A11); no code changes here.
+
 ## Decisions confirmed at promotion
 
 Pipec confirms these when promoting the plan; each is the minimal option.
