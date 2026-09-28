@@ -257,7 +257,7 @@ reported.
 |---|---|
 | `server/src/server/db.py` | One `_MIGRATIONS` entry |
 | `tests/integration/test_biometric_consent_schema.py:85`, `tests/integration/test_household_authorization_schema.py:47`, `tests/integration/test_memory_v4_schema.py:39`, `tests/integration/test_owner_credentials_schema.py:49` | Each hardcodes `PRAGMA user_version == (7,)`; bump to `(8,)` in the same commit as the migration (Task 1 Step 4b) |
-| `server/src/server/settings.py` | Seven settings, added by the task that needs each (Task 1: `speaker_model`, `speaker_model_revision`; Task 2: `speaker_authentication_match_threshold`, `speaker_min_reference_count`; Task 3: `speaker_model_cache_dir`, `speaker_min_enrollment_s`; Task 6: `speaker_authentication_enabled`) |
+| `server/src/server/settings.py` | Eight fields plus one computed property, added by the task that needs each (Task 1: `speaker_model`, `speaker_model_revision`; Task 2: `speaker_authentication_match_threshold`, `speaker_min_reference_count`, `speaker_min_verification_s`; Task 3: `speaker_model_cache_dir_override` field + `speaker_model_cache_dir` property, `speaker_min_enrollment_s`; Task 6: `speaker_authentication_enabled`) |
 | `server/src/server/schemas_auth.py` | `VoiceEnrollResponse` |
 | `server/src/server/routers/auth.py` | Two routes |
 | `server/src/server/routers/transcribe.py` | Composition order plus the flagged resolver |
@@ -797,6 +797,9 @@ Expected: FAIL — `No module named 'server.cognition.speaker_authentication'`.
     # 0047's frozen protocol was ever measured against. Its 3–5 s real clips
     # are the only evidence this study has; a shorter turn utterance is
     # untested territory the resolver refuses rather than guesses about.
+    # PROVISIONAL (round 2 of A6): 1.5 s is a conservative choice, not a
+    # measured one — Plan 0047 never tested anything between 1.5 and 3 s
+    # either. Revisit with Task 8's real acceptance evidence.
     speaker_min_verification_s: float = 1.5
 ```
 
@@ -888,7 +891,9 @@ git log -1 --pretty=%s
 **Files:**
 - Create: `server/src/server/voice/speaker_embedding.py`
 - Modify: `server/pyproject.toml`, `pyproject.toml`, `uv.lock` (D-3)
-- Modify: `server/src/server/settings.py` (`speaker_model_cache_dir`, `speaker_min_enrollment_s`)
+- Modify: `server/src/server/settings.py` (`speaker_model_cache_dir_override` +
+  `speaker_model_cache_dir` property, `speaker_min_enrollment_s`)
+- Modify: `tests/unit/test_settings.py` (the cache-dir precedence tests, A8)
 - Test: `tests/unit/test_speaker_embedding.py`,
   `tests/slow/test_speaker_embedding_real_model.py`
 
@@ -1058,6 +1063,23 @@ def test_near_silence_has_no_voiced_energy() -> None:
     assert speaker_embedding.has_voiced_energy(_tone()) is True
 
 
+@pytest.mark.parametrize(
+    ("seconds", "expected"),
+    [
+        (0.5, False),  # below the floor
+        (1.5, True),  # exactly at the floor — the comparison is `>=`
+        (3.0, True),  # above the floor
+    ],
+)
+def test_the_duration_floor_at_below_and_above_the_boundary(
+    monkeypatch: pytest.MonkeyPatch, seconds: float, expected: bool
+) -> None:
+    """Finding A6 (round 2): the floor's own boundary must be tested, not
+    just one point comfortably below and one comfortably above it."""
+    monkeypatch.setattr(speaker_embedding.settings, "speaker_min_verification_s", 1.5)
+    assert speaker_embedding.meets_verification_duration(_tone(seconds=seconds)) is expected
+
+
 def test_a_short_loud_clip_still_fails_the_duration_floor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1067,7 +1089,34 @@ def test_a_short_loud_clip_still_fails_the_duration_floor(
     short_loud = _tone(seconds=0.5)
     assert speaker_embedding.has_voiced_energy(short_loud) is True
     assert speaker_embedding.meets_verification_duration(short_loud) is False
-    assert speaker_embedding.meets_verification_duration(_tone(seconds=3.0)) is True
+
+
+def test_a_clip_that_fails_to_decode_fails_both_gates(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Round 2 of A4: `validate_wav_contract` checks only the header; a data
+    chunk that fails to decode past it must degrade the gates to `False`,
+    never raise past them."""
+
+    def _explode(_wav_bytes: bytes) -> np.ndarray:
+        raise wave.Error("truncated data chunk")
+
+    monkeypatch.setattr(speaker_embedding, "_decode", _explode)
+    assert speaker_embedding.has_voiced_energy(b"irrelevant") is False
+    assert speaker_embedding.meets_verification_duration(b"irrelevant") is False
+
+
+async def test_embed_wav_reports_a_late_decode_failure_as_audio_contract_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Round 2 of A4: the same failure inside `embed_wav` itself must not
+    escape as a raw `wave.Error` — it is re-typed to `AudioContractError`,
+    the type this function's own docstring already promised."""
+
+    def _explode(_wav_bytes: bytes) -> np.ndarray:
+        raise wave.Error("truncated data chunk")
+
+    monkeypatch.setattr(speaker_embedding, "_decode", _explode)
+    with pytest.raises(AudioContractError):
+        await speaker_embedding.embed_wav(_tone())
 
 
 def test_model_id_comes_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1120,6 +1169,7 @@ import wave
 import numpy as np
 
 from server.audio_contract import validate_wav_contract
+from server.exceptions import AudioContractError
 from server.request_context import run_in_executor_with_context
 from server.settings import settings
 
@@ -1171,9 +1221,12 @@ def has_voiced_energy(wav_bytes: bytes) -> bool:
 
     Returns:
         `False` for a clip whose mean absolute amplitude is at or below the
-        silence floor, which must never be verified against a voiceprint.
+        silence floor (which must never be verified against a voiceprint),
+        or that fails to decode at all — see `_safe_decode`.
     """
-    samples = _decode(wav_bytes)
+    samples = _safe_decode(wav_bytes)
+    if samples is None:
+        return False
     return bool(np.mean(np.abs(samples)) > _MIN_MEAN_ABS_AMPLITUDE / _INT16_FULL_SCALE)
 
 
@@ -1190,9 +1243,12 @@ def meets_verification_duration(wav_bytes: bytes) -> bool:
 
     Returns:
         `False` when the clip is shorter than
-        `settings.speaker_min_verification_s`.
+        `settings.speaker_min_verification_s`, or fails to decode at all.
     """
-    return len(_decode(wav_bytes)) / _SAMPLE_RATE >= settings.speaker_min_verification_s
+    samples = _safe_decode(wav_bytes)
+    if samples is None:
+        return False
+    return len(samples) / _SAMPLE_RATE >= settings.speaker_min_verification_s
 
 
 async def embed_wav(wav_bytes: bytes) -> np.ndarray:
@@ -1210,13 +1266,19 @@ async def embed_wav(wav_bytes: bytes) -> np.ndarray:
         A 1-D `np.ndarray` of exactly 192 finite floats.
 
     Raises:
-        AudioContractError: If the bytes break the audio contract.
+        AudioContractError: If the bytes break the audio contract, including
+            a header that passes `validate_wav_contract` but whose data chunk
+            fails to decode (that validator checks the header only, never
+            the full payload — a code reviewer's finding, round 2 of A4).
         SpeakerBackendError: If the model cannot be loaded, its cached files
             do not match the pinned revision, or it returns a non-finite,
             wrong-length or all-zero vector.
     """
     validate_wav_contract(wav_bytes, max_duration_s=settings.max_audio_duration_s)
-    wave_f32 = _decode(wav_bytes)
+    try:
+        wave_f32 = _decode(wav_bytes)
+    except wave.Error as exc:
+        raise AudioContractError("Audio failed to decode past its header") from exc
     return await run_in_executor_with_context(_executor, partial(_embed_sync, wave_f32))
 
 
@@ -1243,10 +1305,32 @@ def _embed_sync(wave_f32: np.ndarray) -> np.ndarray:
 
 
 def _decode(wav_bytes: bytes) -> np.ndarray:
-    """Decode a contract WAV to float32 in [-1.0, 1.0), as Plan 0047 froze it."""
+    """Decode a contract WAV to float32 in [-1.0, 1.0), as Plan 0047 froze it.
+
+    Raises:
+        wave.Error: If the data chunk fails to decode past the header that
+            `validate_wav_contract` already checked — never caught here;
+            callers decide what that means for them (`embed_wav` re-raises
+            typed, `_safe_decode` swallows it).
+    """
     with wave.open(io.BytesIO(wav_bytes), "rb") as handle:
         frames = handle.readframes(handle.getnframes())
     return np.frombuffer(frames, dtype=np.int16).astype(np.float32) / _INT16_FULL_SCALE
+
+
+def _safe_decode(wav_bytes: bytes) -> np.ndarray | None:
+    """Decode for the pure gate functions, never raising.
+
+    `has_voiced_energy`/`meets_verification_duration` gate whether
+    verification is even attempted; a clip that cannot be measured is
+    treated the same as one that fails the gate (`None` -> the caller
+    returns `False`) rather than adding a fourth exception type to the
+    resolver's boundary for what is, here, just "cannot assess."
+    """
+    try:
+        return _decode(wav_bytes)
+    except wave.Error:
+        return None
 
 
 def _load_encoder() -> Any:  # noqa: ANN401 -- speechbrain ships no type stubs
@@ -1320,28 +1404,93 @@ underlying intent — running fully offline on Pipec's own machine, once
 already warmed up — is preserved exactly, just not through a manual file
 copy. Task 3 Step 7 below is corrected accordingly.
 
-Add the settings this task needs:
+**A8 (round 2): the round-1 "fix" was cosmetic, not real.** A Pydantic field
+default is evaluated once, at class-definition time — `speaker_model_cache_dir:
+Path = models_dir / "speechbrain"` (round 1's instruction) captures the
+*class-body-time* value of `models_dir`, never whatever a `.env` file or
+`MODELS_DIR` environment variable overrides it to at construction time. Two
+sibling fields on a Pydantic `BaseSettings` do not follow each other at
+runtime just because one referenced the other's default in the class body.
+Confirmed no such derived-field pattern exists anywhere else in
+`settings.py` today (`grep -n "model_validator\|@property" settings.py` finds
+none) — this is new, not a precedent to copy from elsewhere in the file.
+
+Add the settings this task needs, with an explicit override field plus a
+computed property instead — precedence is env override, then derive from
+`models_dir`. **A leading-underscore field name does not work here** — an
+earlier draft of this fix used `_speaker_model_cache_dir_override` and that
+raises `NameError: Fields must not use names with leading underscores` the
+moment the class is defined, confirmed by actually constructing the class
+with pydantic-settings installed in this repo, not assumed:
 
 ```python
-    # Frozen model cache. Copied once from the Plan 0047 study cache; never
-    # read from project-history/, which is gitignored local history. Composed
-    # from `models_dir` (already defined above), not a second hardcoded
-    # "models" literal — one root, one place to change it.
-    speaker_model_cache_dir: Path = Path("models") / "speechbrain"  # overridden below
-    # Shortest utterance accepted for ENROLMENT. Verification uses whatever the
-    # turn already carried; enrolment refuses a reference this short.
-    speaker_min_enrollment_s: float = 2.0
+# Frozen model cache location. `speaker_model_cache_dir_override` is the
+# explicit env escape hatch (SPEAKER_MODEL_CACHE_DIR via the alias);
+# when unset, the `speaker_model_cache_dir` property below derives it
+# from `models_dir` AT ACCESS TIME, not at class-definition time — a
+# plain field default referencing `models_dir` would not follow a later
+# env override of `models_dir` (A8, round 2: the round-1 fix for this
+# looked right but was not — a Pydantic field default is fixed once, at
+# class-definition time).
+speaker_model_cache_dir_override: Path | None = Field(default=None, alias="SPEAKER_MODEL_CACHE_DIR")
+# Shortest utterance accepted for ENROLMENT. Verification uses whatever the
+# turn already carried; enrolment refuses a reference this short.
+speaker_min_enrollment_s: float = 2.0
+
+
+@property
+def speaker_model_cache_dir(self) -> Path:
+    """Resolve the speaker model's `savedir`: explicit override, else
+    `models_dir / "speechbrain"`, computed fresh on every access."""
+    return self.speaker_model_cache_dir_override or self.models_dir / "speechbrain"
 ```
 
-The `Path("models")` literal above is a placeholder only — write the actual
-default as `models_dir / "speechbrain"` inside the `Settings` class, next to
-`models_dir: Path = Path("models")`'s own definition, so both settings share
-one root and a future change to `models_dir` moves the speaker cache with it.
+Verified end to end against the installed `pydantic-settings`: with no
+override, `speaker_model_cache_dir` resolves to `models/speechbrain`; with
+`SPEAKER_MODEL_CACHE_DIR` set, it resolves to exactly that value; with only
+`MODELS_DIR` overridden and no explicit speaker override, it correctly moves
+with it (e.g. `MODELS_DIR=other-models` yields `other-models/speechbrain`).
+Placement inside the class body does not matter functionally — a `@property`
+only runs when accessed on a real instance, well after `__init__` has set
+every field — but put it near `speaker_model_cache_dir_override` for
+readability. Every existing call site (`settings.speaker_model_cache_dir`) is
+unchanged — it still reads a `Path`, so nothing downstream needs to know it
+became a property.
+
+**Files:** also modify `tests/unit/test_settings.py` (existing file, follows
+its own `monkeypatch.setenv(...)` + fresh `ServerSettings(_env_file=None)`
+idiom already used there — see `test_server_settings_reads_env_vars`):
+
+```python
+# appended to tests/unit/test_settings.py
+def test_speaker_model_cache_dir_defaults_under_models_dir() -> None:
+    settings = ServerSettings(_env_file=None)  # type: ignore[call-arg]
+    assert settings.speaker_model_cache_dir == settings.models_dir / "speechbrain"
+
+
+def test_speaker_model_cache_dir_follows_a_relocated_models_dir(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MODELS_DIR", "other-models")
+    settings = ServerSettings(_env_file=None)  # type: ignore[call-arg]
+    assert settings.speaker_model_cache_dir == Path("other-models") / "speechbrain"
+
+
+def test_speaker_model_cache_dir_explicit_override_wins(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MODELS_DIR", "other-models")
+    monkeypatch.setenv("SPEAKER_MODEL_CACHE_DIR", "custom/speaker-cache")
+    settings = ServerSettings(_env_file=None)  # type: ignore[call-arg]
+    assert settings.speaker_model_cache_dir == Path("custom/speaker-cache")
+```
 
 - [ ] **Step 5: Run the tests to verify they pass**
 
-Run: `uv run pytest tests/unit/test_speaker_embedding.py -v`
-Expected: 7 passed.
+Run: `uv run pytest tests/unit/test_speaker_embedding.py tests/unit/test_settings.py -v`
+Expected: 12 passed from the first file (the duration-boundary case is
+parametrized 3 ways), plus the 3 new cache-dir precedence cases in the
+second (A8's real fix).
 
 - [ ] **Step 6: Add the one slow test against the real cached model**
 
@@ -1352,16 +1501,46 @@ revision is not cached offline on this machine. Synthetic audio only; never a
 human recording."""
 
 import pytest
-from server.voice.speaker_embedding import SpeakerBackendError, embed_wav, model_id
+from server.settings import settings
+from server.voice.speaker_embedding import embed_wav, model_id
 
 pytestmark = pytest.mark.slow
 
 
-async def test_the_real_encoder_returns_the_frozen_shape() -> None:
+def _revision_is_cached_offline() -> bool:
+    """Probe the standard HF cache for the pinned revision only — never a
+    reason to swallow a REAL failure below.
+
+    Round 2 of A2: an earlier draft caught bare `SpeakerBackendError` around
+    the whole `embed_wav` call and skipped on any of it — but
+    `SpeakerBackendError` is also `_embed_sync`'s catch-all for a genuinely
+    corrupt cache, a broken `torch`/`speechbrain` install, or a real
+    inference regression. That would have reported "not installed" for a
+    real bug. This probe answers only "is the pinned revision cached
+    offline?" — the ONE legitimate skip condition — using the exact same
+    lookup `_load_encoder`'s own `overwrite=True` path performs.
+    """
+    from huggingface_hub import hf_hub_download  # noqa: PLC0415 -- deferred heavy import
+
     try:
-        vector = await embed_wav(_tone())  # same helper as the unit test, copied locally
-    except SpeakerBackendError:
+        hf_hub_download(
+            settings.speaker_model,
+            "hyperparams.yaml",
+            revision=settings.speaker_model_revision,
+            local_files_only=True,
+        )
+    except Exception:  # noqa: BLE001 -- huggingface_hub's own not-found error type
+        return False
+    return True
+
+
+async def test_the_real_encoder_returns_the_frozen_shape() -> None:
+    if not _revision_is_cached_offline():
         pytest.skip("frozen speaker model revision not cached offline on this machine")
+    # No try/except past this point: if the revision IS cached and this
+    # still raises, that is a real regression and the test must fail, not
+    # skip — the exact gap the round-2 review found.
+    vector = await embed_wav(_tone())
     assert vector.shape == (192,)
     assert "@" in model_id()
 ```
@@ -1388,7 +1567,7 @@ than silently loading nothing.
 - [ ] **Step 8: Commit**
 
 ```bash
-git add server/src/server/voice/speaker_embedding.py server/src/server/settings.py server/pyproject.toml pyproject.toml uv.lock tests/unit/test_speaker_embedding.py tests/slow/test_speaker_embedding_real_model.py
+git add server/src/server/voice/speaker_embedding.py server/src/server/settings.py server/pyproject.toml pyproject.toml uv.lock tests/unit/test_speaker_embedding.py tests/unit/test_settings.py tests/slow/test_speaker_embedding_real_model.py
 git commit -m "feat(voice): frozen CPU speaker embedding adapter"
 git log -1 --pretty=%s
 ```
@@ -1431,10 +1610,12 @@ git log -1 --pretty=%s
 from datetime import UTC, datetime
 from uuid import uuid4
 
+import aiosqlite
 from server.cognition.identity import ActivePersonStatus, IdentityEvidenceSource
 from server.cognition.models import CognitiveEvent
 from server.cognition.response_plan import TextTurnPayload
 from server.cognition.speaker_authentication import SpeakerRequestResolver
+from server.exceptions import BrainMemoryError
 from server.voice.speaker_embedding import SpeakerBackendError
 
 _OWNER_ID = 42
@@ -1498,11 +1679,28 @@ async def test_a_dead_backend_degrades_instead_of_raising() -> None:
 
 
 @pytest.mark.parametrize("seam", ["count_references", "read_consent", "read_role"])
-async def test_any_repository_read_failing_degrades_instead_of_raising(seam: str) -> None:
-    """A code reviewer's Important finding (A4): only `embed` was ever
-    guarded; a DB hiccup on any other boundary must degrade the same way,
-    never escape to the caller (the plan's own fail-closed constraint)."""
-    resolver = _resolver(**{seam: _raise(BrainMemoryError("db unavailable"))})
+@pytest.mark.parametrize(
+    "exc",
+    [
+        BrainMemoryError("db unavailable"),
+        aiosqlite.OperationalError("database is locked"),
+    ],
+    ids=["BrainMemoryError", "real-sqlite-error"],
+)
+async def test_any_repository_read_failing_degrades_instead_of_raising(
+    seam: str, exc: Exception
+) -> None:
+    """A code reviewer's Important finding (A4), extended in round 2: only
+    `embed` was ever guarded, and the round-1 fix only caught
+    `BrainMemoryError` — but none of Task 1's repository functions actually
+    raise that type on a real SQLite failure (verified against
+    `memory/household_authorization.py`'s `get_active_role` and Task 1's own
+    `voiceprints.py`, neither of which wraps `execute()`/`fetchone()` in
+    anything). The real type, `aiosqlite.Error` (== `sqlite3.Error`,
+    confirmed against the installed package), is what this parametrization
+    adds — the case that actually matters, since it is what a genuine DB
+    hiccup raises."""
+    resolver = _resolver(**{seam: _raise(exc)})
     context = await resolver.resolve_actor(_event())
     assert context.evidence == ()
     assert resolver.last_verdict is SpeakerVerdict.UNAVAILABLE
@@ -1555,33 +1753,61 @@ Mirror `FaceRequestResolver`: one cached `_resolve` per request, every boundary
 injected, `VisionError`-equivalent (`SpeakerBackendError`) caught and degraded
 to `UNAVAILABLE`, and the evidence built only on `VERIFIED`.
 
-**Error-boundary contract (a code reviewer's Important finding, A4).** The
-original excerpt only wrapped `embed()`; `count_references`, `read_consent`,
-`read_role` and `distance` are also repository reads that can raise
-`BrainMemoryError` when the DB is briefly unavailable, and none of the
-Global Constraint's "every failure produces `unknown`; no path raises to the
-caller" is honoured if any of them escapes uncaught. The whole
-evidence-gathering pipeline is wrapped in one boundary instead of a narrow
-one: any `BrainMemoryError` from a repository read, or `SpeakerBackendError`/
-`AudioContractError` from the embedding step, degrades to `UNAVAILABLE`
-uniformly. `has_energy` is excluded on purpose: it is pure, does no I/O, and
-runs only on audio the turn's own upload pipeline already validated before
-the resolver ever sees it (Task 6) — there is no realistic failure to guard.
+**Error-boundary contract (a code reviewer's Important finding, A4; corrected
+in round 2).** The original excerpt only wrapped `embed()`; `count_references`,
+`read_consent`, `read_role` and `distance` are also repository reads whose
+failure must not escape either. **Round 1's fix caught the wrong exception
+type for most of them**: reading the real repository code
+(`memory/household_authorization.py:76-85`'s `get_active_role`, and Task 1's
+own `voiceprints.py`) shows none of them wrap a raw SQLite failure into
+`BrainMemoryError` — that type is only ever raised by `db.py`'s
+connection/migration-level functions, never by a plain `execute()`/`fetchone()`
+call site. A real DB hiccup during any of these reads raises
+`aiosqlite.Error` (confirmed identical to `sqlite3.Error` against the
+installed package), which round 1's `except (BrainMemoryError, ...)` would
+not have caught at all. Both types are now caught.
 
-Add `from server.exceptions import AudioContractError, BrainMemoryError` to
-the module's imports (both raised by repository/backend boundaries the
-resolver now catches; `AudioContractError` lives in `server.exceptions`, not
-`server.audio_contract`).
+`has_energy`/`has_duration` are **not** exception-free the way round 1 claimed
+either: `validate_wav_contract` (already run once, before the resolver ever
+sees this audio) checks only the WAV *header* — channel count, sample width,
+frame rate, declared frame count, duration — never the full integrity of the
+data chunk. A subtly truncated or corrupted payload can still pass that
+header check and later raise `wave.Error` when `_decode` reads it a second
+time inside `has_voiced_energy`/`meets_verification_duration`. Rather than add
+a fourth exception type to this resolver's boundary, `speaker_embedding.py`'s
+two gate functions catch `wave.Error` internally and return `False` — a clip
+that cannot even be measured is treated the same as one that fails the gate,
+which is the correct direction (deny, not crash) and keeps the failure
+localized to the one module that already owns WAV decoding.
 
-**Revocation-race contract (A3).** This resolver does not read a single
-consistent snapshot: each repository call is independently authoritative for
-its own `await`. A consent grant revoked at any point between two of this
-resolver's own awaits — including between `count_references` and
-`distance` — must not produce `VERIFIED`, because `centroid_distance` reads
-`voice_profiles` fresh every call with no cache: once purged, it returns
-`None` and the verdict is `UNKNOWN` before consent is even checked. This is
-stated here as the contract Task 4's Step 4b test proves with a *real*
-interleaving against a real temporary DB, not a mocked double.
+Add `from server.exceptions import AudioContractError, BrainMemoryError` and
+`import aiosqlite` to the module's imports (`AudioContractError` lives in
+`server.exceptions`, not `server.audio_contract`).
+
+**Revocation-race contract (A3, corrected in round 2).** This resolver does
+not read one consistent snapshot; it makes a precise, narrower promise than
+"safe at any point," which a first draft overstated. The exact guarantee:
+**`read_consent` is the resolver's last repository read before the decision,
+with no further `await` between it and `evaluate_speaker_verification`** —
+so the verdict can only ever reflect the consent state that existed at the
+moment that specific read completed; nothing that happens afterward (there
+is nothing left to happen before the decision) can change it. Two concrete
+cases follow from that placement and are each proven by Step 4b's tests
+against a real DB, not a mocked double:
+
+1. A revoke landing before `distance` is computed (e.g., during
+   `count_references`) empties `voice_profiles`, so `centroid_distance`
+   returns `None` regardless of what `read_consent` sees later.
+2. A revoke landing after `role` is read but before `read_consent` completes
+   is the case a first draft left unguarded — `consent_active` used to be
+   read *before* `role`, so a revoke in that exact gap left a stale `True`
+   captured in a local variable that was never re-checked. Reading `role`
+   first and `read_consent` last closes it.
+
+A grant revoked and then *re-consented* before this resolver's own
+`read_consent` call is not a race to defend against — it is simply the
+current state, and this resolver correctly reflects it, proven by its own
+test below.
 
 ```python
 class SpeakerRequestResolver:
@@ -1608,13 +1834,31 @@ class SpeakerRequestResolver:
             if enough and usable_clip:
                 embedding = await self._embed(self._wav)
                 distance = await self._distance(self._owner_person_id, embedding, self._model_id)
-            consent_active = await self._read_consent(self._owner_person_id)
+            # `read_consent` is deliberately the LAST await before the
+            # decision below, with no other await between it and
+            # `evaluate_speaker_verification` — a code reviewer's finding
+            # (round 2 of A3) is that an earlier draft read `role` after
+            # `consent_active`, leaving a revoke landing in that exact gap
+            # unguarded (the captured `consent_active=True` local was never
+            # re-checked). Reading role first and consent last means the
+            # ONLY state this decision can ever reflect is whichever
+            # consent state existed at the moment this resolver's own
+            # consent read completed — nothing after that point can change
+            # the outcome, because nothing awaits again before it is used.
             role = await self._read_role(self._owner_person_id)
-        except (BrainMemoryError, SpeakerBackendError, AudioContractError) as exc:
+            consent_active = await self._read_consent(self._owner_person_id)
+        except (BrainMemoryError, aiosqlite.Error, SpeakerBackendError, AudioContractError) as exc:
             # Any of the four repository/backend reads above can fail this
             # way; whichever ones already succeeded are simply discarded —
             # `backend_available=False` alone forces UNAVAILABLE regardless
             # (Task 2's `test_unavailable_wins_over_a_matching_distance`).
+            # `aiosqlite.Error` (== `sqlite3.Error`, verified against the
+            # installed package) is caught explicitly because none of Task
+            # 1's repository functions wrap a raw SQLite failure into
+            # `BrainMemoryError` — that codebase-wide convention lets a DB
+            # hiccup surface as a generic 500 at the HTTP boundary
+            # elsewhere, which this turn-time boundary cannot afford
+            # (round 2 of A4).
             logger.warning("Speaker evidence degraded to unavailable: %s", exc)
             backend_available = False
 
@@ -1662,8 +1906,8 @@ a second, small function with the same body shape instead.
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/unit/test_speaker_authentication.py -v`
-Expected: 23 passed (11 from Task 2, 12 from Task 4 — the boundary test is
-parametrized 3 ways).
+Expected: 26 passed (11 from Task 2, 15 from Task 4 — the repository-failure
+boundary test is parametrized 3 seams × 2 exception types).
 
 - [ ] **Step 4b: Prove the revocation race with a real DB, not a mock (A3)**
 
@@ -1678,6 +1922,15 @@ against the same temporary DB — reproducing "another request's revoke landed
 between this resolver's own two reads" deterministically, on a single-threaded
 event loop, without `asyncio.gather` or timing hacks.
 
+This file is self-contained — it does **not** reuse `tests/unit/test_speaker_authentication.py`'s
+private helpers across files (an earlier draft claimed to; those helpers are
+themselves an undefined seam list there, so nothing existed to import). Every
+double it needs is written out below, including `has_duration` (required by
+the constructor) and an **async** `embed` double (`embed_wav` is `async def`
+since Task 3; a plain lambda returning a value directly, as an earlier draft
+had, fails immediately with `TypeError: object cannot be used in 'await'
+expression` — a code reviewer's finding, round 2).
+
 ```python
 # tests/integration/test_speaker_evidence_revocation_race.py
 """Integration test for the revocation-race contract (Plan 0053, Task 4,
@@ -1686,7 +1939,9 @@ under test."""
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -1694,15 +1949,22 @@ if TYPE_CHECKING:
 import numpy as np
 import pytest
 from server.cognition.identity import HouseholdRole
+from server.cognition.models import CognitiveEvent
+from server.cognition.response_plan import TextTurnPayload
 from server.cognition.speaker_authentication import SpeakerRequestResolver, SpeakerVerdict
 from server.memory.declarative import upsert_entity
-from server.memory.voice_consent import grant_voice_consent, revoke_voice_consent
+from server.memory.voice_consent import (
+    grant_voice_consent,
+    has_active_voice_consent,
+    revoke_voice_consent,
+)
 from server.settings import settings
 from server.voice.voiceprints import centroid_distance, count_voiceprints, enroll_voiceprint
 
 from server import db
 
 MODEL_ID = "test-model@rev1"
+_NOW = datetime(2026, 9, 25, 12, 0, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -1716,15 +1978,66 @@ async def memory_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: i
     db._conn = None
 
 
-async def test_a_revoke_landing_between_count_and_distance_yields_unknown(
-    memory_db: None,
-) -> None:
-    owner = await upsert_entity(name="canary-owner", type="person")
+def _event() -> CognitiveEvent[TextTurnPayload]:
+    return CognitiveEvent(
+        event_id=uuid4(),
+        schema_version=1,
+        event_type="text.turn",
+        occurred_at=_NOW,
+        recorded_at=_NOW,
+        source="audio.transcribe",
+        correlation_id=uuid4(),
+        causation_id=None,
+        subject_id=None,
+        payload=TextTurnPayload(message="canary", conversation_id="canary-scope"),
+    )
+
+
+async def _owner_role(_person_id: int) -> HouseholdRole:
+    return HouseholdRole.OWNER
+
+
+async def _enrolled_owner(owner_entity_id: int | None = None) -> int:
+    """Grant consent and store 3 real, distinct references for a fresh owner."""
+    owner = owner_entity_id or await upsert_entity(name="canary-owner", type="person")
     await grant_voice_consent(owner)
     for axis in range(3):
         vector = np.zeros(192, dtype=np.float32)
         vector[axis] = 1.0
         await enroll_voiceprint(owner, vector, "canary-owner", MODEL_ID)
+    return owner
+
+
+async def _async_probe(_wav_bytes: bytes) -> np.ndarray:
+    probe = np.zeros(192, dtype=np.float32)
+    probe[0] = 1.0
+    return probe
+
+
+def _resolver_over_real_db(owner: int, *, count_references: object) -> SpeakerRequestResolver:
+    """Build a resolver whose repository seams are the REAL Task 1 functions,
+    except the one seam each test below replaces with a real side effect."""
+    return SpeakerRequestResolver(
+        wav_bytes=b"canary-wav",
+        owner_person_id=owner,
+        clock=lambda: _NOW,
+        read_role=_owner_role,
+        read_consent=has_active_voice_consent,
+        count_references=count_references,
+        distance_to_centroid=lambda person_id, embedding, model_id: centroid_distance(
+            person_id, embedding, model_id
+        ),
+        embed=_async_probe,
+        has_energy=lambda _wav: True,
+        has_duration=lambda _wav: True,
+        model_id=MODEL_ID,
+    )
+
+
+async def test_a_revoke_landing_between_count_and_distance_yields_unknown(
+    memory_db: None,
+) -> None:
+    owner = await _enrolled_owner()
 
     async def _count_then_revoke(entity_id: int, model_id: str) -> int:
         """Real `count_references`, but a real revoke lands right after —
@@ -1734,20 +2047,40 @@ async def test_a_revoke_landing_between_count_and_distance_yields_unknown(
         await revoke_voice_consent(entity_id)
         return count
 
-    probe = np.zeros(192, dtype=np.float32)
-    probe[0] = 1.0
+    resolver = _resolver_over_real_db(owner, count_references=_count_then_revoke)
+    context = await resolver.resolve_actor(_event())
+
+    assert context.evidence == ()
+    assert resolver.last_verdict is SpeakerVerdict.UNKNOWN
+
+
+async def test_a_revoke_landing_after_role_before_consent_yields_unknown(
+    memory_db: None,
+) -> None:
+    """Round 2 of A3 — the case an earlier draft left unguarded: `role` was
+    read before `consent_active`, so a revoke completing in exactly that
+    window left a stale `True` uncaught. `read_role` is now the seam that
+    performs the real side effect, since `read_consent` is the resolver's
+    own final await and must observe whatever `read_role` already changed."""
+    owner = await _enrolled_owner()
+
+    async def _role_then_revoke(_person_id: int) -> HouseholdRole:
+        await revoke_voice_consent(owner)
+        return HouseholdRole.OWNER
+
     resolver = SpeakerRequestResolver(
         wav_bytes=b"canary-wav",
         owner_person_id=owner,
         clock=lambda: _NOW,
-        read_role=lambda _person_id: _owner_role(),
-        read_consent=lambda person_id: _has_active_voice_consent_stub(person_id),
-        count_references=_count_then_revoke,
+        read_role=_role_then_revoke,
+        read_consent=has_active_voice_consent,
+        count_references=lambda entity_id, model_id: count_voiceprints(entity_id, model_id),
         distance_to_centroid=lambda person_id, embedding, model_id: centroid_distance(
             person_id, embedding, model_id
         ),
-        embed=lambda _wav: probe,
+        embed=_async_probe,
         has_energy=lambda _wav: True,
+        has_duration=lambda _wav: True,
         model_id=MODEL_ID,
     )
 
@@ -1755,19 +2088,35 @@ async def test_a_revoke_landing_between_count_and_distance_yields_unknown(
 
     assert context.evidence == ()
     assert resolver.last_verdict is SpeakerVerdict.UNKNOWN
+
+
+async def test_a_revoke_followed_by_fresh_consent_is_not_a_race_to_defend(
+    memory_db: None,
+) -> None:
+    """A revoke-then-reconsent completing entirely before this resolver's own
+    `read_consent` call is not an attack — it is simply the current state by
+    the time this resolver asks, and verification must succeed normally."""
+    owner = await _enrolled_owner()
+    await revoke_voice_consent(owner)
+    await grant_voice_consent(owner)
+
+    resolver = _resolver_over_real_db(
+        owner, count_references=lambda entity_id, model_id: count_voiceprints(entity_id, model_id)
+    )
+    context = await resolver.resolve_actor(_event())
+
+    assert resolver.last_verdict is SpeakerVerdict.VERIFIED
+    assert context.evidence[0].candidate_person_id == owner
 ```
 
-`_event`, `_NOW`, `_owner_role` and `_has_active_voice_consent_stub` are the
-same small fixtures Task 4's unit test file already defines — reuse them
-rather than redefining. `read_consent` is stubbed `True` here on purpose: the
-point of this test is that the **reference purge alone**, not a consent
-check, already makes distance `None`. `count_references` is the one seam
-replaced with a function that performs a real side effect (the revoke) — not
+`count_references` is the one seam in the first test that is replaced
+with a function performing a real side effect (the revoke), rather than
 a double that merely returns a canned value — so this test genuinely proves
 the DB-level interleaving, not the resolver's ability to read a mock.
 
 Run: `uv run pytest tests/integration/test_speaker_evidence_revocation_race.py -v`
-Expected: 1 passed.
+Expected: 3 passed — the revoke-before-distance case, the round-2
+revoke-after-role case, and the revoke-then-reconsent case.
 
 - [ ] **Step 5: Prove the identity core is untouched**
 
@@ -2089,7 +2438,10 @@ git log -1 --pretty=%s
 
 One block after the face block, stating the threshold's provenance, that it is
 provisional and in-sample, that replay was accepted 6 of 8, and that the flag
-is off by default.
+is off by default. Include `SPEAKER_MODEL_CACHE_DIR` (commented out, showing
+it is optional and defaults to `MODELS_DIR/speechbrain` — A8) and
+`SPEAKER_MIN_VERIFICATION_S` (default `1.5`, marked provisional per its own
+setting comment — A6, round 2).
 
 - [ ] **Step 2: Write the demo script**
 
@@ -2197,7 +2549,12 @@ name, never a per-sample score.
    sample. Record how many were accepted.
 4. **Negative cases.** No enrolment; consent revoked; silence; a very short
    utterance; the model files removed. Each produces `unknown` and a working
-   turn.
+   turn. **Also (A6, round 2):** `speaker_min_verification_s` (1.5 s default)
+   is a provisional, conservative floor — not itself derived from Plan
+   0047's measurements, which never tested anything shorter than 3–5 s.
+   Note whether any genuine utterance around 1.5–3 s gets rejected in
+   practice, so the value can be revisited with real evidence instead of
+   guesswork.
 5. **Revocation.** Revoke, then confirm directly in SQLite that no
    `voice_profiles` row survives for that person.
 6. **Optional, Pipec's call.** A consenting adult repeats step 2 as an
@@ -2373,11 +2730,20 @@ had missed. Applied here:
 - **A7 (Critical, self-inflicted).** A wording bug from the *previous* fix
   pass: Plan 0015 said Plan 0053 delivers "trusted evidence," contradicting
   this very plan's own Global Constraints. Fixed.
-- **A8 (Important).** The earlier fix for `speaker_model_cache_dir` was
-  cosmetic — Pydantic field defaults are fixed at class-definition time and
-  do not follow a same-named sibling field's runtime override. Superseded by
-  A2's fix: the setting still exists as `savedir`, but nothing depends on it
-  being pre-populated correctly any more.
+- **A8 (Important, still open after round 1 — corrected in round 2).** Round
+  1's fix was cosmetic — a Pydantic field default is fixed at
+  class-definition time and does not follow a same-named sibling field's
+  runtime override, and A2's `overwrite=True` fix (which makes `savedir`'s
+  *content* self-correcting) does not touch where `savedir`'s *path* value
+  comes from — those are two different bugs, and round 1's record wrongly
+  called this one "superseded." Fixed for real in round 2 with a
+  `speaker_model_cache_dir_override` field (aliased to
+  `SPEAKER_MODEL_CACHE_DIR`) and a `speaker_model_cache_dir` property
+  deriving from `models_dir` at access time — verified empirically against
+  the installed `pydantic-settings` for all three cases (default, an
+  explicit override, and a relocated `MODELS_DIR` with no explicit
+  override), and along the way confirmed that a leading-underscore field
+  name is rejected outright (`NameError`) rather than just "not working."
 - **A9 (Important).** `test_api_contract.py` has no route-count assertion,
   so "run it and see if it fails" could never catch a missing or malformed
   new route. Added a real assertion of both routes' paths, methods and
@@ -2389,6 +2755,78 @@ had missed. Applied here:
   0050 recording that its Task 11 characterization tests must be re-audited
   against whatever Plan 0051 actually merges, since the agreed order now
   runs PC-4 and 0051 before 0050 reaches `NOW`. No code changed.
+
+### Round 2 (2026-09-28) — a second external critique, of round 1's own fixes
+
+Pipec forwarded a second, six-point critique reviewing round 1's actual
+changes, not the original plan. All six held up on independent verification;
+two of them named a real defect in round 1's own fix, not just the original
+plan:
+
+1. **A3, still real.** Round 1's fix read `consent_active` before `role` —
+   a revoke landing in exactly that gap left a stale `True` uncaught, and
+   the round-1 test only ever exercised the revoke-before-distance case
+   while the prose claimed "any point." `read_role` and `read_consent` are
+   now ordered so consent is the last read before the decision, closing the
+   actual gap; the contract prose was rewritten to state precisely what is
+   guaranteed instead of overclaiming; two new tests
+   (revoke-after-role-before-consent, revoke-then-reconsent) were added.
+2. **Round 1's own Step 4b test didn't match the interface it tests.** It
+   called the constructor without `has_duration` (added earlier the same
+   round) and passed a plain, non-async `embed` double against an
+   `await`ed, `async def` seam — both would have failed immediately, before
+   ever reaching the revocation logic under test. Rewritten self-contained,
+   with an async `embed` double and every required seam present; no longer
+   claims to reuse another test file's private, unwritten helpers.
+3. **A2's real-model test converted genuine failures into skips.** Catching
+   bare `SpeakerBackendError` around the whole `embed_wav` call and
+   skipping on any of it meant a corrupted cache, a broken install, or a
+   real inference regression would all report as "not installed."
+   Rewritten to probe the standard HF cache for the pinned revision only
+   (the one legitimate skip condition) and let anything else raised by
+   `embed_wav` fail the test for real.
+4. **A4 caught the wrong exception type, and a second gap next to it.**
+   None of Task 1's repository functions (nor the existing
+   `get_active_role`) wrap a raw SQLite failure into `BrainMemoryError` —
+   verified against the real code, not assumed — so round 1's
+   `except (BrainMemoryError, ...)` would not have caught what a genuine DB
+   hiccup actually raises. Added `aiosqlite.Error` (confirmed identical to
+   `sqlite3.Error`) to the boundary and to a new parametrized test case.
+   Separately, `validate_wav_contract` checks only the WAV header, never the
+   full data chunk — round 1's claim that `has_energy`/`has_duration` have
+   "no realistic failure to guard" was wrong; both now catch `wave.Error`
+   internally via a shared `_safe_decode` helper and degrade to `False`,
+   and `embed_wav`'s own decode call is now typed to `AudioContractError`
+   on the same failure instead of leaking a raw `wave.Error`.
+5. **A8 was not actually fixed in round 1, despite being recorded as
+   "superseded."** A2's `overwrite=True` fix corrects `savedir`'s
+   *content*; it does nothing for where the setting's *path* value comes
+   from, which was the actual bug A8 named and round 1 conflated the two.
+   Fixed for real this round with a `speaker_model_cache_dir_override`
+   field and a `speaker_model_cache_dir` property — and, while implementing
+   it, an even more basic problem surfaced and was caught before it shipped
+   a second time: a leading-underscore field name is rejected outright by
+   Pydantic (`NameError`), confirmed by actually constructing the class
+   with the installed `pydantic-settings`, not assumed a second time. All
+   three precedence cases (default, explicit override, relocated
+   `models_dir`) are now verified the same way and pinned by new tests in
+   `tests/unit/test_settings.py`.
+6. **A6's 1.5 s floor was not backed by the evidence its own comment
+   cited.** The comment said Plan 0047 only measured 3–5 s clips and
+   framed anything shorter as untested territory, then picked 1.5 s anyway
+   — a value inside the very range it called untested. The settings-count
+   inventory in the File structure table also still said "seven," though
+   an eighth (`speaker_min_verification_s`) had already been added earlier
+   the same round. Left the conservative default in place but marked it
+   explicitly provisional rather than evidence-backed, and added a
+   parametrized test at exactly the boundary in addition to the existing
+   below/above cases; fixed the settings-count inventory.
+
+Verified again, the same way as round 1: every change re-checked against the
+real installed packages (`speechbrain`, `pydantic-settings`) rather than
+assumed, `uv run ruff format --check .` / `ruff check .` clean, the
+reserved-terms guard clean, and a mechanical link/anchor check over every
+touched document.
 
 ## Execution handoff
 
