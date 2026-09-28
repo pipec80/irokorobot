@@ -116,3 +116,28 @@ def test_robot_settings_reads_server_url(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setenv("SERVER_URL", "http://homelab:8000")
     settings = RobotSettings(_env_file=None)  # type: ignore[call-arg]
     assert settings.server_url == "http://homelab:8000"
+
+
+@pytest.mark.unit
+def test_speaker_model_cache_dir_defaults_under_models_dir() -> None:
+    settings = ServerSettings(_env_file=None)  # type: ignore[call-arg]
+    assert settings.speaker_model_cache_dir == settings.models_dir / "speechbrain"
+
+
+@pytest.mark.unit
+def test_speaker_model_cache_dir_follows_a_relocated_models_dir(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MODELS_DIR", "other-models")
+    settings = ServerSettings(_env_file=None)  # type: ignore[call-arg]
+    assert settings.speaker_model_cache_dir == Path("other-models") / "speechbrain"
+
+
+@pytest.mark.unit
+def test_speaker_model_cache_dir_explicit_override_wins(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MODELS_DIR", "other-models")
+    monkeypatch.setenv("SPEAKER_MODEL_CACHE_DIR", "custom/speaker-cache")
+    settings = ServerSettings(_env_file=None)  # type: ignore[call-arg]
+    assert settings.speaker_model_cache_dir == Path("custom/speaker-cache")

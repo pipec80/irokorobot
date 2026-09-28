@@ -195,6 +195,20 @@ class Settings(BaseSettings):
     # measured one — Plan 0047 never tested anything between 1.5 and 3 s
     # either. Revisit with Task 8's real acceptance evidence.
     speaker_min_verification_s: float = 1.5
+    # Frozen model cache location. `speaker_model_cache_dir_override` is the
+    # explicit env escape hatch (SPEAKER_MODEL_CACHE_DIR via the alias);
+    # when unset, the `speaker_model_cache_dir` property below derives it
+    # from `models_dir` AT ACCESS TIME, not at class-definition time — a
+    # plain field default referencing `models_dir` would not follow a later
+    # env override of `models_dir` (A8, round 2: the round-1 fix for this
+    # looked right but was not — a Pydantic field default is fixed once, at
+    # class-definition time).
+    speaker_model_cache_dir_override: Path | None = Field(
+        default=None, alias="SPEAKER_MODEL_CACHE_DIR"
+    )
+    # Shortest utterance accepted for ENROLMENT. Verification uses whatever the
+    # turn already carried; enrolment refuses a reference this short.
+    speaker_min_enrollment_s: float = 2.0
 
     # ---------------- Sensors ----------------
     sensor_debounce_seconds: int = 30
@@ -208,6 +222,12 @@ class Settings(BaseSettings):
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
     _coerce_uvicorn_workers = field_validator("uvicorn_workers", mode="before")(_coerce_to_int)
+
+    @property
+    def speaker_model_cache_dir(self) -> Path:
+        """Resolve the speaker model's `savedir`: explicit override, else
+        `models_dir / "speechbrain"`, computed fresh on every access."""
+        return self.speaker_model_cache_dir_override or self.models_dir / "speechbrain"
 
 
 settings = Settings()  # pyright: ignore[reportCallIssue] — required fields are read from env vars by pydantic-settings
