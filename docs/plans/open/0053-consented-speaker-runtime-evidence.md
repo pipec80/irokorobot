@@ -258,6 +258,7 @@ reported.
 | `server/src/server/db.py` | One `_MIGRATIONS` entry |
 | `tests/integration/test_biometric_consent_schema.py:85`, `tests/integration/test_household_authorization_schema.py:47`, `tests/integration/test_memory_v4_schema.py:39`, `tests/integration/test_owner_credentials_schema.py:49` | Each hardcodes `PRAGMA user_version == (7,)`; bump to `(8,)` in the same commit as the migration (Task 1 Step 4b) |
 | `server/src/server/settings.py` | Eight fields plus one computed property, added by the task that needs each (Task 1: `speaker_model`, `speaker_model_revision`; Task 2: `speaker_authentication_match_threshold`, `speaker_min_reference_count`, `speaker_min_verification_s`; Task 3: `speaker_model_cache_dir_override` field + `speaker_model_cache_dir` property, `speaker_min_enrollment_s`; Task 6: `speaker_authentication_enabled`) |
+| `tests/unit/test_settings.py` | Task 3 — the cache-dir precedence tests (A8) |
 | `server/src/server/schemas_auth.py` | `VoiceEnrollResponse` |
 | `server/src/server/routers/auth.py` | Two routes |
 | `server/src/server/routers/transcribe.py` | Composition order plus the flagged resolver |
@@ -1119,6 +1120,35 @@ async def test_embed_wav_reports_a_late_decode_failure_as_audio_contract_error(
         await speaker_embedding.embed_wav(_tone())
 
 
+def _genuinely_truncated_wav() -> bytes:
+    """Chop exactly the last byte off a real WAV's data chunk.
+
+    Round 3: the two tests above only ever mock `_decode` to raise
+    `wave.Error` — they never prove a REAL corrupted payload hits this path,
+    and a real one does not raise `wave.Error` at all. `wave.open()` and
+    `readframes()` tolerate a short read silently (confirmed empirically:
+    they return 31999 bytes instead of the declared 32000 for a 1-second
+    clip missing its last byte); the actual failure is `np.frombuffer`
+    raising `ValueError: buffer size must be a multiple of element size`
+    on the now-odd byte count. Both code paths need this real case, not
+    just the mocked one.
+    """
+    return _tone()[:-1]
+
+
+def test_a_genuinely_truncated_wav_fails_both_gates() -> None:
+    """Round 3, the real (non-mocked) counterpart to the test above."""
+    truncated = _genuinely_truncated_wav()
+    assert speaker_embedding.has_voiced_energy(truncated) is False
+    assert speaker_embedding.meets_verification_duration(truncated) is False
+
+
+async def test_embed_wav_reports_a_real_truncation_as_audio_contract_error() -> None:
+    """Round 3, the real (non-mocked) counterpart to the mocked test above."""
+    with pytest.raises(AudioContractError):
+        await speaker_embedding.embed_wav(_genuinely_truncated_wav())
+
+
 def test_model_id_comes_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(speaker_embedding.settings, "speaker_model", "m")
     monkeypatch.setattr(speaker_embedding.settings, "speaker_model_revision", "r")
@@ -1269,7 +1299,10 @@ async def embed_wav(wav_bytes: bytes) -> np.ndarray:
         AudioContractError: If the bytes break the audio contract, including
             a header that passes `validate_wav_contract` but whose data chunk
             fails to decode (that validator checks the header only, never
-            the full payload — a code reviewer's finding, round 2 of A4).
+            the full payload — a code reviewer's finding, round 2 of A4) or
+            decodes to a byte count `np.frombuffer` cannot reshape into
+            int16 samples (round 3: a truncated data chunk raises `ValueError`
+            here, not `wave.Error` — both are caught).
         SpeakerBackendError: If the model cannot be loaded, its cached files
             do not match the pinned revision, or it returns a non-finite,
             wrong-length or all-zero vector.
@@ -1277,7 +1310,7 @@ async def embed_wav(wav_bytes: bytes) -> np.ndarray:
     validate_wav_contract(wav_bytes, max_duration_s=settings.max_audio_duration_s)
     try:
         wave_f32 = _decode(wav_bytes)
-    except wave.Error as exc:
+    except (wave.Error, ValueError) as exc:
         raise AudioContractError("Audio failed to decode past its header") from exc
     return await run_in_executor_with_context(_executor, partial(_embed_sync, wave_f32))
 
@@ -1309,9 +1342,15 @@ def _decode(wav_bytes: bytes) -> np.ndarray:
 
     Raises:
         wave.Error: If the data chunk fails to decode past the header that
-            `validate_wav_contract` already checked — never caught here;
-            callers decide what that means for them (`embed_wav` re-raises
-            typed, `_safe_decode` swallows it).
+            `validate_wav_contract` already checked.
+        ValueError: If `wave` returns a frame buffer `np.frombuffer` cannot
+            reshape into whole int16 samples — a truncated data chunk with
+            an odd byte count raises this, not `wave.Error` (round 3: an
+            earlier version of this module only caught `wave.Error`,
+            verified empirically to be the wrong/incomplete type by actually
+            calling `np.frombuffer` on an odd-length buffer). Neither
+            exception is caught here; callers decide what it means for
+            them (`embed_wav` re-raises typed, `_safe_decode` swallows it).
     """
     with wave.open(io.BytesIO(wav_bytes), "rb") as handle:
         frames = handle.readframes(handle.getnframes())
@@ -1329,7 +1368,7 @@ def _safe_decode(wav_bytes: bytes) -> np.ndarray | None:
     """
     try:
         return _decode(wav_bytes)
-    except wave.Error:
+    except (wave.Error, ValueError):
         return None
 
 
@@ -1488,8 +1527,9 @@ def test_speaker_model_cache_dir_explicit_override_wins(
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/unit/test_speaker_embedding.py tests/unit/test_settings.py -v`
-Expected: 12 passed from the first file (the duration-boundary case is
-parametrized 3 ways), plus the 3 new cache-dir precedence cases in the
+Expected: 14 passed from the first file (the duration-boundary case is
+parametrized 3 ways; round 3 added the two real-truncated-WAV cases
+alongside the mocked ones), plus the 3 new cache-dir precedence cases in the
 second (A8's real fix).
 
 - [ ] **Step 6: Add the one slow test against the real cached model**
@@ -1519,7 +1559,17 @@ def _revision_is_cached_offline() -> bool:
     real bug. This probe answers only "is the pinned revision cached
     offline?" — the ONE legitimate skip condition — using the exact same
     lookup `_load_encoder`'s own `overwrite=True` path performs.
+
+    Round 3: the first version of this probe still caught bare `Exception`,
+    which is the same mistake one level down — a config error (e.g. a
+    malformed `HF_HOME`) or a permissions error would also report as
+    "not cached" and silently skip instead of failing loud. Narrowed to the
+    exact type `hf_hub_download(local_files_only=True)` raises for a
+    genuinely absent local revision, confirmed by actually calling it
+    against an unresolvable revision with the installed `huggingface_hub`:
+    `huggingface_hub.errors.LocalEntryNotFoundError`.
     """
+    from huggingface_hub.errors import LocalEntryNotFoundError  # noqa: PLC0415 -- deferred
     from huggingface_hub import hf_hub_download  # noqa: PLC0415 -- deferred heavy import
 
     try:
@@ -1529,9 +1579,32 @@ def _revision_is_cached_offline() -> bool:
             revision=settings.speaker_model_revision,
             local_files_only=True,
         )
-    except Exception:  # noqa: BLE001 -- huggingface_hub's own not-found error type
+    except LocalEntryNotFoundError:
         return False
     return True
+
+
+def test_a_genuinely_unresolvable_revision_is_a_legitimate_absence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Round 3: proves the ONE case this probe is meant to swallow, using a
+    revision guaranteed not to be cached (an all-zero SHA)."""
+    monkeypatch.setattr(settings, "speaker_model_revision", "0" * 40)
+    assert _revision_is_cached_offline() is False
+
+
+def test_an_unexpected_error_is_not_swallowed_as_absence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Round 3: a config or permissions error must fail this test loudly,
+    never silently report as 'not cached, skip'."""
+
+    def _explode(*_args: object, **_kwargs: object) -> None:
+        raise OSError("permission denied reading HF_HOME")
+
+    monkeypatch.setattr("huggingface_hub.hf_hub_download", _explode)
+    with pytest.raises(OSError, match="permission denied"):
+        _revision_is_cached_offline()
 
 
 async def test_the_real_encoder_returns_the_frozen_shape() -> None:
@@ -1558,11 +1631,14 @@ uv run pytest tests/slow/test_speaker_embedding_real_model.py -v
 ```
 
 Expected: the first command prints a path under `.../snapshots/0f99f2d0.../`;
-the test PASSES, with no network access (confirm nothing under
-`models/speechbrain` existed before this step — the test itself creates it as
-a side effect of the real load). On a machine that never ran the warm-up, both
-commands fail cleanly (a `LocalEntryNotFoundError`, and the test skips) rather
-than silently loading nothing.
+`uv run pytest -v` shows 3 passed — the two `_revision_is_cached_offline`
+probe tests (round 3) plus `test_the_real_encoder_returns_the_frozen_shape`,
+with no network access (confirm nothing under `models/speechbrain` existed
+before this step — the test itself creates it as a side effect of the real
+load). On a machine that never ran the warm-up, the first command fails
+cleanly with `LocalEntryNotFoundError` and the real-encoder test skips
+rather than silently loading nothing; the two probe tests still pass either
+way, since neither depends on the model actually being cached.
 
 - [ ] **Step 8: Commit**
 
@@ -1807,7 +1883,10 @@ against a real DB, not a mocked double:
 A grant revoked and then *re-consented* before this resolver's own
 `read_consent` call is not a race to defend against — it is simply the
 current state, and this resolver correctly reflects it, proven by its own
-test below.
+tests below. Consent alone does not restore verification, though: revocation
+purges every stored reference (Task 1), so a bare re-consent with no
+re-enrolment still correctly yields `UNKNOWN` — verification resumes only
+once both consent and enough fresh references exist again.
 
 ```python
 class SpeakerRequestResolver:
@@ -2090,15 +2169,44 @@ async def test_a_revoke_landing_after_role_before_consent_yields_unknown(
     assert resolver.last_verdict is SpeakerVerdict.UNKNOWN
 
 
-async def test_a_revoke_followed_by_fresh_consent_is_not_a_race_to_defend(
+async def test_revoke_then_reconsent_without_reenrolling_stays_unknown(
     memory_db: None,
 ) -> None:
-    """A revoke-then-reconsent completing entirely before this resolver's own
-    `read_consent` call is not an attack — it is simply the current state by
-    the time this resolver asks, and verification must succeed normally."""
+    """Round 3: an earlier draft of this test asserted `VERIFIED` here, which
+    the resolver cannot honestly produce — `revoke_voice_consent` purges
+    every `voice_profiles` row by design (Task 1: "consent and biometric
+    data share one lifecycle"), and re-granting consent alone does not
+    restore them. Zero references is below `speaker_min_reference_count`
+    regardless of consent, so the correct, and only honest, outcome is
+    `UNKNOWN`. The code was not changed to satisfy the wrong expectation;
+    the test was."""
+    owner = await _enrolled_owner()
+    await revoke_voice_consent(owner)
+    await grant_voice_consent(owner)  # consent restored; references were NOT
+
+    resolver = _resolver_over_real_db(
+        owner, count_references=lambda entity_id, model_id: count_voiceprints(entity_id, model_id)
+    )
+    context = await resolver.resolve_actor(_event())
+
+    assert context.evidence == ()
+    assert resolver.last_verdict is SpeakerVerdict.UNKNOWN
+
+
+async def test_revoke_then_reconsent_and_reenroll_can_verify_again(
+    memory_db: None,
+) -> None:
+    """The real positive case round 3 asked for: once BOTH consent and
+    enough fresh references exist again, verification succeeds normally —
+    a revoke-then-reconsent is not itself an attack to defend against, it
+    is simply the current state by the time this resolver asks."""
     owner = await _enrolled_owner()
     await revoke_voice_consent(owner)
     await grant_voice_consent(owner)
+    for axis in range(3):
+        vector = np.zeros(192, dtype=np.float32)
+        vector[axis] = 1.0
+        await enroll_voiceprint(owner, vector, "canary-owner", MODEL_ID)
 
     resolver = _resolver_over_real_db(
         owner, count_references=lambda entity_id, model_id: count_voiceprints(entity_id, model_id)
@@ -2115,8 +2223,9 @@ a double that merely returns a canned value — so this test genuinely proves
 the DB-level interleaving, not the resolver's ability to read a mock.
 
 Run: `uv run pytest tests/integration/test_speaker_evidence_revocation_race.py -v`
-Expected: 3 passed — the revoke-before-distance case, the round-2
-revoke-after-role case, and the revoke-then-reconsent case.
+Expected: 4 passed — the revoke-before-distance case, the round-2
+revoke-after-role case, and the two round-3 reconsent cases (without and
+with re-enrolment).
 
 - [ ] **Step 5: Prove the identity core is untouched**
 
@@ -2827,6 +2936,55 @@ real installed packages (`speechbrain`, `pydantic-settings`) rather than
 assumed, `uv run ruff format --check .` / `ruff check .` clean, the
 reserved-terms guard clean, and a mechanical link/anchor check over every
 touched document.
+
+### Round 3 (2026-09-28) — a third critique, of round 2's tests themselves
+
+Pipec forwarded a four-point critique reviewing round 2's own new tests and
+one scope-list omission. All four held up:
+
+1. **The reconsent test asserted the wrong outcome.** It enrolled, revoked
+   (which purges every reference — Task 1's own design), re-consented
+   without re-enrolling, then asserted `VERIFIED`. The resolver cannot
+   honestly produce that: zero references is below
+   `speaker_min_reference_count` regardless of consent. Split into two
+   tests instead of changing the resolver to satisfy the wrong expectation:
+   reconsent-without-reenrolment now correctly asserts `UNKNOWN`;
+   reconsent-**and**-reenrolment (the real positive case) asserts
+   `VERIFIED`.
+2. **`_decode` can also raise `ValueError`, not just `wave.Error`.**
+   `np.frombuffer(frames, dtype=np.int16)` raises
+   `ValueError: buffer size must be a multiple of element size` for an
+   odd-length buffer, which a truncated data chunk produces — confirmed by
+   actually building a real WAV, chopping exactly its last byte, and
+   running it through `wave.open`/`readframes`/`np.frombuffer` (the header
+   read tolerates the truncation silently; `np.frombuffer` is what raises).
+   Round 2's `except wave.Error` clauses (in `_safe_decode` and `embed_wav`)
+   would not have caught this. `ValueError` is now caught alongside
+   `wave.Error` in both places, and a **real** truncated WAV — not only the
+   existing mocked `wave.Error` double — now exercises both
+   `has_voiced_energy`/`meets_verification_duration` and `embed_wav`.
+3. **The slow test's cache probe still caught bare `Exception`.** One
+   level removed from round 2's original bug (which swallowed
+   `SpeakerBackendError` around the whole `embed_wav` call) but the same
+   mistake: a config or permissions error would also report as "not
+   cached, skip." Narrowed to the exact type confirmed by actually calling
+   `hf_hub_download(local_files_only=True)` against an unresolvable
+   revision with the installed `huggingface_hub`:
+   `huggingface_hub.errors.LocalEntryNotFoundError`. Added one test for the
+   legitimate-absence case and one proving an unrelated error still
+   propagates rather than being swallowed.
+4. **`tests/unit/test_settings.py` was ordered as a Task 3 edit but absent
+   from the global "Nothing outside this list may be created or modified"
+   table** — an internal contradiction a strict reading of the plan would
+   have stopped on. Added it to the global Modify table.
+
+Verified the same way as rounds 1 and 2 — nothing assumed: the truncated-WAV
+construction and the exact `ValueError`/`LocalEntryNotFoundError` types were
+both confirmed by actually running the real code (`numpy`, `wave`,
+`huggingface_hub`, all installed in this repo), not inferred from
+documentation. `uv run ruff format --check .` / `ruff check .` clean, the
+reserved-terms guard clean, and a mechanical link/anchor check finds 0
+broken.
 
 ## Execution handoff
 
