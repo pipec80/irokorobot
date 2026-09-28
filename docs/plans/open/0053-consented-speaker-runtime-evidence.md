@@ -36,7 +36,7 @@ aiosqlite, NumPy, SpeechBrain `1.1.1` `EncoderClassifier` (ECAPA, revision
 `0f99f2d0…`, Apache-2.0) on CPU torch, `uv` workspace, pytest with
 `pytest-asyncio`.
 
-**Spec:** [Plan 0015 — personal companion design, PC-3](0015-personal-companion-design.md#pc-3--speaker-evidence--pc-3a-closed-pc-3b-unplanned),
+**Spec:** [Plan 0015 — personal companion design, PC-3](0015-personal-companion-design.md#pc-3--speaker-evidence--pc-3a-closed-pc-3b-is-plan-0053-now),
 with the roadmap row as its one-line contract and
 [ADR 0015](../../adr/0015-owner-grant-scope-and-speaker-binding.md) decision 2
 bounding it.
@@ -69,10 +69,10 @@ and is reported — it is never designed around.
    decision 2 in full — speaker *binding*, the face veto and liveness are PC-4.
 5. [ADR 0006](../../adr/0006-personal-and-family-companion-profiles.md) — face
    and voice are never the sole recovery route.
-6. [`identity-and-access.md`](../../architecture/identity-and-access.md):
-   *Separate concepts*, *Progressive authentication*, *Identity evidence*.
-7. [`current-state.md`](../../architecture/current-state.md): the rows
+6. [`current-state.md`](../../architecture/current-state.md): the rows
    *Consented local face evidence (Plan 0029 / PC-2)* and *Speaker recognition*.
+7. [`identity-and-access.md`](../../architecture/identity-and-access.md):
+   *Separate concepts*, *Progressive authentication*, *Identity evidence*.
 8. [Plan 0047](../completed/0047-speaker-evidence-calibration-study.md): the
    *Frozen readiness contract*, the *Study result and closure record*, the
    *Task 7 review record*.
@@ -130,7 +130,7 @@ not options.
 | D-5 | Threshold and reference-set policy | **0.4834 as a default-off provisional value**, marked in-sample at the setting itself; **minimum 3 references** before verification is attempted; a held-out genuine check during acceptance |
 | D-6 | When the embedding is computed | **Only** when the flag is on, the turn reaches a protected branch, and no face or PIN evidence already identified the actor; at most once per request; never on the public path |
 | D-7 | Ordering against Plan 0051 (ADR-0015 scope) | **Keep the agreed order.** Both new routes carry an explicit ADR-0015 marker so Plan 0051 picks them up |
-| D-8 | Observability of the verdict | **Log and audit only.** No wire change: a client must not be told that voice authenticated a turn before PC-4 exists |
+| D-8 | Observability of the verdict | **Log only, advisory.** No wire change and no `authorization_audit_events` row for the per-turn verdict itself — that table is reserved for actual authorization decisions (enrolment, revocation, protected reads), and a turn's speaker verdict grants nothing to decide. A client must not be told that voice authenticated a turn before PC-4 exists |
 
 ### Why no vec0 table
 
@@ -255,7 +255,8 @@ reported.
 | File | Change |
 |---|---|
 | `server/src/server/db.py` | One `_MIGRATIONS` entry |
-| `server/src/server/settings.py` | Six settings, added by the task that needs each |
+| `tests/integration/test_biometric_consent_schema.py:85`, `tests/integration/test_household_authorization_schema.py:47`, `tests/integration/test_memory_v4_schema.py:39`, `tests/integration/test_owner_credentials_schema.py:49` | Each hardcodes `PRAGMA user_version == (7,)`; bump to `(8,)` in the same commit as the migration (Task 1 Step 4b) |
+| `server/src/server/settings.py` | Seven settings, added by the task that needs each (Task 1: `speaker_model`, `speaker_model_revision`; Task 2: `speaker_authentication_match_threshold`, `speaker_min_reference_count`; Task 3: `speaker_model_cache_dir`, `speaker_min_enrollment_s`; Task 6: `speaker_authentication_enabled`) |
 | `server/src/server/schemas_auth.py` | `VoiceEnrollResponse` |
 | `server/src/server/routers/auth.py` | Two routes |
 | `server/src/server/routers/transcribe.py` | Composition order plus the flagged resolver |
@@ -380,7 +381,7 @@ def _unit_vector(axis: int) -> np.ndarray:
 
 
 async def test_grant_is_idempotent(memory_db: None) -> None:
-    person = await upsert_entity(name="canary-owner", entity_type="person")
+    person = await upsert_entity(name="canary-owner", type="person")
     first = await grant_voice_consent(person)
     second = await grant_voice_consent(person)
     assert first == second
@@ -388,7 +389,7 @@ async def test_grant_is_idempotent(memory_db: None) -> None:
 
 
 async def test_revoke_purges_every_voiceprint(memory_db: None) -> None:
-    person = await upsert_entity(name="canary-owner", entity_type="person")
+    person = await upsert_entity(name="canary-owner", type="person")
     await grant_voice_consent(person)
     await enroll_voiceprint(person, _unit_vector(0), "canary-owner", MODEL_ID)
     await enroll_voiceprint(person, _unit_vector(1), "canary-owner", MODEL_ID)
@@ -400,21 +401,21 @@ async def test_revoke_purges_every_voiceprint(memory_db: None) -> None:
 
 
 async def test_revoke_is_idempotent_without_a_grant(memory_db: None) -> None:
-    person = await upsert_entity(name="canary-owner", entity_type="person")
+    person = await upsert_entity(name="canary-owner", type="person")
     await revoke_voice_consent(person)  # must not raise
     assert await has_active_voice_consent(person) is False
 
 
 async def test_vectors_from_another_model_are_not_counted(memory_db: None) -> None:
     """Review Focus 2: a model change must invalidate stored references."""
-    person = await upsert_entity(name="canary-owner", entity_type="person")
+    person = await upsert_entity(name="canary-owner", type="person")
     await enroll_voiceprint(person, _unit_vector(0), "canary-owner", MODEL_ID)
     assert await count_voiceprints(person, "other-model@rev2") == 0
     assert await centroid_distance(person, _unit_vector(0), "other-model@rev2") is None
 
 
 async def test_centroid_distance_matches_the_study_arithmetic(memory_db: None) -> None:
-    person = await upsert_entity(name="canary-owner", entity_type="person")
+    person = await upsert_entity(name="canary-owner", type="person")
     await enroll_voiceprint(person, _unit_vector(0), "canary-owner", MODEL_ID)
     await enroll_voiceprint(person, _unit_vector(1), "canary-owner", MODEL_ID)
 
@@ -425,9 +426,16 @@ async def test_centroid_distance_matches_the_study_arithmetic(memory_db: None) -
 
 
 async def test_centroid_distance_is_none_without_references(memory_db: None) -> None:
-    person = await upsert_entity(name="canary-owner", entity_type="person")
+    person = await upsert_entity(name="canary-owner", type="person")
     assert await centroid_distance(person, _unit_vector(0), MODEL_ID) is None
 ```
+
+**Note on `upsert_entity`:** the real signature
+(`server/src/server/memory/declarative.py:61-67`) is
+`upsert_entity(*, name: str, type: EntityType, ...)` — the keyword is `type`,
+not `entity_type`. The tests above already use the correct keyword; an earlier
+draft of this plan did not, and a code reviewer confirmed it against
+`tests/integration/test_biometric_consent_schema.py:108`.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -482,6 +490,28 @@ In `server/src/server/db.py`, append one line to `_MIGRATIONS`:
     (7, "migration_007_biometric_consent.sql"),
     (8, "migration_008_voice_consent.sql"),          <- new line
 ```
+
+- [ ] **Step 4b: Bump the four hardcoded version assertions this breaks**
+
+Adding migration 8 moves a fresh DB's `PRAGMA user_version` from 7 to 8.
+Four *existing* tests outside this plan's usual scope hardcode the old value
+and will fail the moment migration 008 registers — found by a technical
+review of this plan, not by running the suite. Bump each from `(7,)` to
+`(8,)`:
+
+```bash
+sed -i 's/(7,)/(8,)/' tests/integration/test_biometric_consent_schema.py tests/integration/test_household_authorization_schema.py tests/integration/test_owner_credentials_schema.py
+```
+
+`tests/integration/test_memory_v4_schema.py:39` asserts
+`version_row == (7,)` on its own line — edit it by hand, not with the same
+`sed`, so the substitution does not also touch an unrelated `(7,)` literal
+elsewhere in that file if one exists. `tests/integration/test_memory_integration.py:225`
+reads `db._MIGRATIONS[-1][0]` dynamically and needs no change — confirm it
+still passes unedited.
+
+Run: `uv run pytest tests/integration/test_biometric_consent_schema.py tests/integration/test_household_authorization_schema.py tests/integration/test_memory_v4_schema.py tests/integration/test_owner_credentials_schema.py tests/integration/test_memory_integration.py -v`
+Expected: all pass, on `(8,)`.
 
 - [ ] **Step 5: Write the consent repository**
 
@@ -856,7 +886,10 @@ git log -1 --pretty=%s
 **Interfaces:**
 - Consumes: `server.audio_contract.validate_wav_contract`, `settings`.
 - Produces:
-  - `SpeakerBackendError(ServerError)`
+  - `SpeakerBackendError(Exception)` — there is no shared `ServerError` base in
+    `server/src/server/exceptions.py` (every exception there, including
+    `VisionError`, inherits directly from `Exception`); mirror that pattern,
+    not an invented base class.
   - `embed_wav(wav_bytes: bytes) -> np.ndarray` — 192 finite floats
   - `has_voiced_energy(wav_bytes: bytes) -> bool`
   - `model_id() -> str` — `f"{settings.speaker_model}@{settings.speaker_model_revision}"`
@@ -872,6 +905,22 @@ Keep the root `[dependency-groups] dev` entries: the study harness under
 `scripts/` still needs them and `just gate` runs from the root. Confirm the
 `pytorch-cpu` index still applies (`[tool.uv.sources]` in the root
 `pyproject.toml` is workspace-wide).
+
+`pyproject.toml`'s `[[tool.mypy.overrides]]` block already whitelists
+`speechbrain.*` (around line 285) — added for the study, still correct. It
+does **not** whitelist `torch.*`/`torchaudio.*`. Add both to the same
+`module = [...]` list in the same edit:
+
+```toml
+    "speechbrain.*",
+    "torch.*",
+    "torchaudio.*",
+```
+
+Run: `uv run mypy server/src robot/src`
+Expected: zero errors. If `torch`/`torchaudio` ship usable stubs and the
+override turns out to be unnecessary, `mypy` still passes with it present —
+leave it in rather than removing it speculatively.
 
 - [ ] **Step 2: Write the failing adapter tests with a typed fake encoder**
 
@@ -994,7 +1043,6 @@ import wave
 import numpy as np
 
 from server.audio_contract import validate_wav_contract
-from server.exceptions import ServerError
 from server.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -1006,11 +1054,20 @@ _EMBEDDING_DIM: Final = 192
 # compared against the centroid (Review Focus 1).
 _MIN_MEAN_ABS_AMPLITUDE: Final = 200.0
 
-_encoder: Any | None = None  # noqa: ANN401 -- speechbrain ships no type stubs
+# No `ANN401` noqa here: that rule fires on a dynamically-typed function
+# parameter or return annotation, not on a bare module-level variable — an
+# unused noqa trips `RUF100`. `vision/faces.py:36`'s equivalent
+# (`_analyzer: Any = None`) carries none either; mirror it exactly.
+_encoder: Any | None = None
 
 
-class SpeakerBackendError(ServerError):
-    """The speaker backend could not produce an embedding."""
+class SpeakerBackendError(Exception):
+    """The speaker backend could not produce an embedding.
+
+    Every exception in `server.exceptions` (including `VisionError`, this
+    module's closest sibling) inherits directly from `Exception` — there is
+    no shared `ServerError` base in this codebase to subclass.
+    """
 
 
 def model_id() -> str:
@@ -1055,7 +1112,13 @@ def embed_wav(wav_bytes: bytes) -> np.ndarray:
         tensor = torch.from_numpy(wave_f32).unsqueeze(0)
         output = encoder.encode_batch(wavs=tensor, wav_lens=None, normalize=False)
         vector = np.asarray(output.squeeze().detach().cpu().numpy(), dtype=np.float32)
-    except (OSError, RuntimeError, ValueError, ImportError) as exc:
+    except Exception as exc:  # noqa: BLE001 -- a corrupt/half-downloaded model
+        # (Review Focus 4) can raise almost anything: a hyperpyyaml parse
+        # error, a torch deserialization error, or something neither names.
+        # The Global Constraint is "every failure produces `unknown`; no path
+        # raises to the caller" — a narrower tuple risks exactly the escape
+        # that constraint forbids, so this is the one deliberate broad catch
+        # in the plan, immediately re-typed into `SpeakerBackendError`.
         raise SpeakerBackendError("Speaker backend unavailable") from exc
     if vector.shape != (_EMBEDDING_DIM,) or not np.isfinite(vector).all() or not vector.any():
         raise SpeakerBackendError(f"Speaker backend returned an unusable vector {vector.shape}")
@@ -1094,12 +1157,19 @@ Add the settings this task needs:
 
 ```python
     # Frozen model cache. Copied once from the Plan 0047 study cache; never
-    # read from project-history/, which is gitignored local history.
-    speaker_model_cache_dir: Path = Path("models") / "speechbrain"
+    # read from project-history/, which is gitignored local history. Composed
+    # from `models_dir` (already defined above), not a second hardcoded
+    # "models" literal — one root, one place to change it.
+    speaker_model_cache_dir: Path = Path("models") / "speechbrain"  # overridden below
     # Shortest utterance accepted for ENROLMENT. Verification uses whatever the
     # turn already carried; enrolment refuses a reference this short.
     speaker_min_enrollment_s: float = 2.0
 ```
+
+The `Path("models")` literal above is a placeholder only — write the actual
+default as `models_dir / "speechbrain"` inside the `Settings` class, next to
+`models_dir: Path = Path("models")`'s own definition, so both settings share
+one root and a future change to `models_dir` moves the speaker cache with it.
 
 - [ ] **Step 5: Run the tests to verify they pass**
 
@@ -1158,10 +1228,13 @@ git log -1 --pretty=%s
 **Interfaces:**
 - Consumes: Task 1's `count_voiceprints` / `centroid_distance` /
   `has_active_voice_consent`, Task 2's verdict table, Task 3's `embed_wav` /
-  `has_voiced_energy` / `model_id`, `memory.household_authorization.get_active_role`,
-  `memory.entity_labels.get_person_label`.
+  `has_voiced_energy` / `model_id`, `memory.household_authorization.get_active_role`.
+  `memory.entity_labels.get_person_label` is **not** consumed here — `VOICE`
+  evidence never identifies anybody (`candidate_person_id` is set, but
+  `resolve_active_person` cannot resolve it, and this resolver never builds a
+  `PersonRecord`), unlike `FaceRequestResolver`, which genuinely needs it.
 - Produces:
-  - `SpeakerRequestResolver(*, wav_bytes, owner_person_id, clock, read_role, read_consent, count_references, distance_to_centroid, embed, model_id)`
+  - `SpeakerRequestResolver(*, wav_bytes, owner_person_id, clock, read_role, read_consent, count_references, distance_to_centroid, embed, has_energy, model_id)`
   - `await resolver.resolve_actor(event) -> ActivePersonContext`
   - `resolver.last_verdict: SpeakerVerdict | None`
   - `build_default_speaker_resolver(wav_bytes: bytes, owner_person_id: int) -> SpeakerRequestResolver`
@@ -1324,9 +1397,13 @@ class SpeakerRequestResolver:
 ```
 
 The log line carries the verdict only — never a name, a distance or a
-transcript (D-8). `_unknown_active_person` builds the same safe
-`ActivePersonContext` shape `face_authentication.py` uses, with
-`status=UNKNOWN`, `role=HouseholdRole.UNKNOWN` and the supplied evidence tuple.
+transcript (D-8). `_unknown_active_person(event, reason, *, evidence=())` is a
+**new, module-private helper in `speaker_authentication.py`** — same shape as
+`face_authentication.py:116-131`'s function of the same name
+(`status=UNKNOWN`, `role=HouseholdRole.UNKNOWN`), but that function takes only
+`event` and cannot be imported and reused across modules (it is private, and
+the two modules would otherwise couple on each other's internals — LoD). Write
+a second, small function with the same body shape instead.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -1357,8 +1434,10 @@ git log -1 --pretty=%s
 
 **Interfaces:**
 - Consumes: `_is_loopback`, `_authorize_face_action` (renamed
-  `_authorize_biometric_action`, same behaviour, both callers updated),
-  `read_limited_upload`, Task 1's repository, Task 3's adapter.
+  `_authorize_biometric_action`, same behaviour; its two existing callers
+  today, `enroll_owner_face` and `revoke_owner_face`, keep calling it under
+  the new name, and this task adds two more — four callers total after this
+  task), `read_limited_upload`, Task 1's repository, Task 3's adapter.
 - Produces: `POST /auth/owner/voice/enroll` returning
   `VoiceEnrollResponse{profile_id: int, enrolled_at: datetime, reference_count: int}`;
   `POST /auth/owner/voice/revoke` returning 204.
@@ -1436,6 +1515,48 @@ than `settings.speaker_min_enrollment_s` or without `has_voiced_energy`;
 `vision.enroll_person` becomes `embed_wav` plus `enroll_voiceprint`; and
 `grant_face_consent` becomes `grant_voice_consent`. A `SpeakerBackendError`
 becomes a 503, exactly as `VisionError` does for faces.
+
+Write the same ADR-0015 sentence into **`revoke_owner_voice`**'s docstring too
+— the plan's own completion criterion 10 requires the marker on *both* routes,
+and the real `revoke_owner_face` this route mirrors
+(`server/src/server/routers/auth.py:333-358`) carries no such note today, so
+copying its body verbatim would silently miss it:
+
+```python
+@router.post(
+    "/voice/revoke",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=error_responses(
+        (401, "Absent, expired, consumed, or otherwise unauthorized token"),
+        (403, "Caller is not on loopback"),
+    ),
+)
+async def revoke_owner_voice(
+    http_request: Request,
+    owner_unlock_service: OwnerUnlockServiceDep,
+    x_iroko_identity_token: IdentityTokenDep = None,
+) -> None:
+    """Revoke the token's own owner's voice consent and purge stored voiceprints.
+
+    ADR-0015 decision 1: this is `biometric_admin`, not
+    `personal_protected_read`. Plan 0051 binds the grant's scope; until then
+    it consumes the same unscoped one-use token the face routes consume.
+
+    Args:
+        http_request: Raw ASGI request used only to check loopback origin.
+        owner_unlock_service: Lifespan-owned unlock service (Plan 0040).
+        x_iroko_identity_token: One-use owner unlock token issued by
+            `POST /auth/owner/unlock`.
+
+    Raises:
+        HTTPException: 403 for a non-loopback caller; 401 for an absent,
+            expired, consumed, or otherwise unauthorized token.
+    """
+```
+
+The body underneath is otherwise `revoke_owner_face`'s body with
+`_authorize_biometric_action(..., event_type="voice.revoke")` and
+`revoke_voice_consent(actor.person_id)` substituted in.
 
 - [ ] **Step 5: Run the tests to verify they pass**
 
@@ -1610,11 +1731,19 @@ the roadmap row, both delivery maps, both plan indexes, and this plan's own
 closure record — each stating plainly that `VOICE` stays untrusted, that replay
 is not defended, and that PC-4 owns fusion.
 
-- [ ] **Step 5: Regenerate the architecture diagram**
+- [ ] **Step 5: Regenerate the architecture diagram, or record why not**
 
-Per the standing rule, after editing `current-state.md` regenerate
-`docs/architecture/diagrams/current-state.{json,html}` with the Archify skill
-(`validate` then `deliver`).
+The standing rule is unconditional: after editing `current-state.md`,
+regenerate `docs/architecture/diagrams/current-state.{json,html}` with the
+Archify skill (`validate` then `deliver`). Check first whether Task 8's edit
+to `current-state.md` actually changed anything the diagram's "Known gaps"
+card states (as of this plan's writing it says "Speaker recognition absent
+at runtime; PC-3A study closed (provisional PASS), PC-3B/PC-4 open," which
+stays literally true right up until PC-3B closes). If the diagram-visible
+facts genuinely did not change, regenerate anyway — the rule does not carve
+out an exception for "probably still true" — or, if regeneration is skipped,
+say so explicitly in the closure commit with the reason, rather than skipping
+it silently. Silently skipping it once makes the next skip easier to justify.
 
 - [ ] **Step 6: Obtain an independent review and resolve every finding**
 
@@ -1694,6 +1823,16 @@ uv run ruff format --check scripts/speaker_auth_demo.py
 uv run mypy scripts/speaker_auth_demo.py
 ```
 
+Completion criterion 10 (the ADR-0015 marker), checked mechanically rather
+than by memory:
+
+```bash
+grep -c "ADR-0015" server/src/server/routers/auth.py
+```
+
+Expected: at least 2 — one hit inside `enroll_owner_voice`'s docstring, one
+inside `revoke_owner_voice`'s. Zero or one means the criterion is not met.
+
 ## Completion criteria
 
 1. Every task's RED test was observed failing first, and all gates above are
@@ -1730,7 +1869,7 @@ works with the flag off.
 | One owner, four impostors, no held-out data | The measured FAR of 0 has a 95 % rule-of-three bound near 12.5 %, and the FRR is zero by construction | Flag off by default; provenance at the setting; held-out genuine check at acceptance |
 | `torch` in the server | Package size, slower cold start, an unauditable local `+cpu` build | Lazy import, flag off by default, cost accepted explicitly in D-3 |
 | Latency on the hot path | p95 536 ms per real clip on a loaded laptop | One embedding per request, protected branch only, never the public path |
-| Ordering against Plan 0051 | Two routes born against an unscoped token | ADR-0015 markers on both routes |
+| Ordering against Plan 0051 | Two new routes extend a live, named ADR-0009 non-conformance (a PIN read-grant can already administer face biometrics; this plan lets the same bearer token also enrol/revoke voice) to a second modality before Plan 0051 fixes it | Explicit ADR-0015 markers on both routes and this plan's own docstrings say so in plain language — not mitigated, honestly extended, by Pipec's own D-7 |
 | Duplicated consent repository | Two near-identical modules | Accepted deliberately (D-2); a shared abstraction needs a third modality |
 | Quiet scope creep into fusion | The tempting next step is merging voice into the face/PIN context | Non-goals, file scope, and completion criterion 2 |
 

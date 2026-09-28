@@ -143,7 +143,7 @@ Face evidence uses explicit consent, the typed identity contract and the same
 authorization boundary as PIN. Enrollment cannot choose an arbitrary subject,
 revocation purges biometric rows, and PIN remains an independent recovery path.
 
-### PC-3 — Speaker evidence — PC-3A closed; PC-3B unplanned
+### PC-3 — Speaker evidence — PC-3A closed; PC-3B is Plan 0053, NOW
 
 Add a local speaker-verification adapter with explicit enrollment, consent,
 revocation and a calibrated threshold. STT and VAD do not identify speakers.
@@ -157,8 +157,9 @@ member's real voice may enter the repository.
 Plan 0047 covered only the calibration study and closed 2026-09-25 with a
 provisional PASS (0/24 live-impostor false accepts, 0/24 genuine false rejects
 in-sample, 6/8 replay accepted, p95 231 ms). Production enrollment, revocation
-and trusted evidence are left for a future PC-3B plan, and replay/liveness for
-PC-4.
+and trusted evidence are [Plan 0053](0053-consented-speaker-runtime-evidence.md)
+(PC-3B), promoted to `NOW` on 2026-09-25 with every decision answered;
+replay/liveness stays PC-4's.
 
 ### PC-4 — Conservative identity fusion — unstarted
 

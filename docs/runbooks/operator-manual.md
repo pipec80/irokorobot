@@ -243,13 +243,15 @@ owner held to the camera authenticates. No calibrated real-camera study
 [`current-state.md`](../architecture/current-state.md) for the full
 disclosure. Real-camera acceptance is a future plan, not yet written.
 
-### Tier 3 — Voice evidence (PC-3B, not started; PC-3A calibration closed)
+### Tier 3 — Voice evidence (PC-3B is Plan 0053, Ready in NOW; PC-3A calibration closed)
 
-Planned: a real speaker-enrollment/verification adapter through the same
-typed evidence contract. STT/VAD are not voice identity by themselves. The
-PC-3A study (Plan 0047, 2026-09-25) measured a candidate backend offline —
-provisional PASS, but 6 of 8 replay probes were accepted, so voice alone is never
-high-assurance evidence. `VOICE` stays untrusted; nothing is wired at runtime.
+In progress (Plan 0053): a real speaker-enrollment/verification adapter
+through the same typed evidence contract. STT/VAD are not voice identity by
+themselves. The PC-3A study (Plan 0047, 2026-09-25) measured a candidate
+backend offline — provisional PASS, but 6 of 8 replay probes were accepted,
+so voice alone is never high-assurance evidence. `VOICE` stays untrusted;
+nothing is wired at runtime yet — this section is updated again when Plan
+0053 closes (its own Task 8, Step 4).
 
 ### Tier 4 — Conservative fusion (PC-4, not started)
 
