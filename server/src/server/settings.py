@@ -164,6 +164,16 @@ class Settings(BaseSettings):
     # Contents are gitignored — family photos never reach the repo.
     images_dir: Path = Path("server/src/server/images")
 
+    # ---------------- Speaker evidence (Plan 0053, PC-3B) ----------------
+    # Frozen by Plan 0047's readiness contract and calibrated against this
+    # exact revision. Changing either value invalidates every stored
+    # voiceprint: vectors record the model that produced them and are never
+    # compared across models.
+    speaker_model: str = "speechbrain/spkrec-ecapa-voxceleb"
+    speaker_model_revision: str = (
+        "0f99f2d0ebe89ac095bcc5903c4dd8f72b367286"  # pragma: allowlist secret
+    )
+
     # ---------------- Sensors ----------------
     sensor_debounce_seconds: int = 30
     sensor_delta_threshold: float = 0.5

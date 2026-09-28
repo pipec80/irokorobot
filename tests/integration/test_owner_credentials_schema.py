@@ -46,7 +46,7 @@ async def test_migration_six_adds_owner_pin_credentials_table(credentials_db: No
     # The fixture runs every pending migration, so this reflects the latest
     # registered version (7, since migration_007_biometric_consent.sql),
     # not specifically "6" — migration 6's table presence is asserted below.
-    assert await version_cursor.fetchone() == (7,)
+    assert await version_cursor.fetchone() == (8,)
     await version_cursor.close()
 
     tables_cursor = await conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
