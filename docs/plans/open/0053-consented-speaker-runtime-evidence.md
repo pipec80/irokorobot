@@ -126,7 +126,7 @@ not options.
 | D-1 | Proceed with PC-3B despite the provisional, in-sample calibration | **Yes.** PC-3B grants nothing, so the provisional threshold cannot cause a disclosure on its own; replay and liveness stay PC-4's gate |
 | D-2 | Where the voiceprint and its consent live | **New tables in migration 008**, mirroring 003 + 007, no data migration. Refined while writing the tasks and **confirmed by Pipec on 2026-09-25**: no `vec0` virtual table — see [Why no vec0 table](#why-no-vec0-table) |
 | D-3 | `torch` + `speechbrain` as server runtime dependencies | **Yes**, behind the existing `pytorch-cpu` index, with a lazy import so a server with the flag off never loads them |
-| D-4 | Model identity and cache location | **`Settings`**, never a runtime constant; cache under `MODELS_DIR/speechbrain`; **copy** the existing 85 MB study cache instead of re-downloading, so first boot is offline |
+| D-4 | Model identity and cache location | **`Settings`**, never a runtime constant; `savedir` under `MODELS_DIR/speechbrain` — populated automatically on first real load, **not** by manually copying files (a technical review of Task 3 found that speechbrain's `fetch()` reads the machine's *standard* Hugging Face cache, never `savedir`, and only writes into it; see the correction next to `_load_encoder` in Task 3). First boot stays offline because the standard cache already holds the pinned revision from Plan 0047's own warm-up on the same machine |
 | D-5 | Threshold and reference-set policy | **0.4834 as a default-off provisional value**, marked in-sample at the setting itself; **minimum 3 references** before verification is attempted; a held-out genuine check during acceptance |
 | D-6 | When the embedding is computed | **Only** when the flag is on, the turn reaches a protected branch, and no face or PIN evidence already identified the actor; at most once per request; never on the public path |
 | D-7 | Ordering against Plan 0051 (ADR-0015 scope) | **Keep the agreed order.** Both new routes carry an explicit ADR-0015 marker so Plan 0051 picks them up |
@@ -245,6 +245,7 @@ reported.
 | `scripts/speaker_auth_demo.py` | Local enrol/revoke helper over loopback HTTP |
 | `tests/integration/test_voice_consent_schema.py` | Task 1 |
 | `tests/unit/test_speaker_authentication.py` | Tasks 2 and 4 |
+| `tests/integration/test_speaker_evidence_revocation_race.py` | Task 4 — a real DB proves the revocation-race contract (A3) |
 | `tests/unit/test_speaker_embedding.py` | Task 3 |
 | `tests/slow/test_speaker_embedding_real_model.py` | Task 3, `slow` marker |
 | `tests/integration/test_owner_voice_enrollment.py` | Task 5 |
@@ -775,7 +776,7 @@ def test_unavailable_wins_over_a_matching_distance() -> None:
 Run: `uv run pytest tests/unit/test_speaker_authentication.py -v`
 Expected: FAIL — `No module named 'server.cognition.speaker_authentication'`.
 
-- [ ] **Step 3: Add the two settings**
+- [ ] **Step 3: Add the three settings**
 
 ```python
     # Cosine-DISTANCE upper bound for a speaker match against the reference
@@ -789,6 +790,14 @@ Expected: FAIL — `No module named 'server.cognition.speaker_authentication'`.
     # Fewer references than this and verification is not attempted at all —
     # a centroid of one or two samples is not what the study measured.
     speaker_min_reference_count: int = 3
+    # Shortest VERIFICATION-time clip the resolver will embed at all — deliberately
+    # distinct from `speaker_min_enrollment_s` (Task 3): a code reviewer's
+    # finding (A6) is that a very short but loud clip already passes
+    # `has_voiced_energy`, and nothing else bounded how little audio Plan
+    # 0047's frozen protocol was ever measured against. Its 3–5 s real clips
+    # are the only evidence this study has; a shorter turn utterance is
+    # untested territory the resolver refuses rather than guesses about.
+    speaker_min_verification_s: float = 1.5
 ```
 
 - [ ] **Step 4: Write the pure table**
@@ -890,8 +899,20 @@ git log -1 --pretty=%s
     `server/src/server/exceptions.py` (every exception there, including
     `VisionError`, inherits directly from `Exception`); mirror that pattern,
     not an invented base class.
-  - `embed_wav(wav_bytes: bytes) -> np.ndarray` — 192 finite floats
-  - `has_voiced_energy(wav_bytes: bytes) -> bool`
+  - `async def embed_wav(wav_bytes: bytes) -> np.ndarray` — 192 finite floats.
+    **Async, not sync** — the real inference is CPU-bound and measured at
+    p50 431 / p95 536 ms per real clip (Plan 0047). Calling it synchronously
+    from `async def _resolve` (Task 4) would block the single-worker event
+    loop (`UVICORN_WORKERS=1`, ADR-0010) for that whole duration on every
+    verification, stalling every other concurrent request on the process —
+    found by an external review of this plan, not by running it.
+    `vision/faces.py` already solves exactly this for face detection with
+    `run_in_executor_with_context` and a dedicated bounded
+    `ThreadPoolExecutor`; mirror that pattern instead of inventing one.
+  - `has_voiced_energy(wav_bytes: bytes) -> bool` — pure, CPU-light, stays sync
+  - `meets_verification_duration(wav_bytes: bytes) -> bool` — pure, CPU-light,
+    stays sync; bounds verification-time audio separately from
+    `speaker_min_enrollment_s` (A6)
   - `model_id() -> str` — `f"{settings.speaker_model}@{settings.speaker_model_revision}"`
 
 - [ ] **Step 1: Move the dependencies**
@@ -969,22 +990,22 @@ class _FakeEncoder:
         return _FakeOutput(self._vector)
 
 
-def test_embed_returns_192_finite_floats(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_embed_returns_192_finite_floats(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(speaker_embedding, "_load_encoder", lambda: _FakeEncoder())
-    vector = speaker_embedding.embed_wav(_tone())
+    vector = await speaker_embedding.embed_wav(_tone())
     assert vector.shape == (192,)
     assert np.isfinite(vector).all()
 
 
-def test_non_contract_wav_never_reaches_the_model(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_non_contract_wav_never_reaches_the_model(monkeypatch: pytest.MonkeyPatch) -> None:
     encoder = _FakeEncoder()
     monkeypatch.setattr(speaker_embedding, "_load_encoder", lambda: encoder)
     with pytest.raises(AudioContractError):
-        speaker_embedding.embed_wav(_wav(np.zeros(16_000), rate=44_100))
+        await speaker_embedding.embed_wav(_wav(np.zeros(16_000), rate=44_100))
     assert encoder.calls == 0
 
 
-def test_a_broken_loader_raises_the_typed_error(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_a_broken_loader_raises_the_typed_error(monkeypatch: pytest.MonkeyPatch) -> None:
     """Review Focus 4: corrupt or half-downloaded model files must degrade."""
 
     def _explode() -> object:
@@ -992,13 +1013,61 @@ def test_a_broken_loader_raises_the_typed_error(monkeypatch: pytest.MonkeyPatch)
 
     monkeypatch.setattr(speaker_embedding, "_load_encoder", _explode)
     with pytest.raises(SpeakerBackendError):
-        speaker_embedding.embed_wav(_tone())
+        await speaker_embedding.embed_wav(_tone())
+
+
+async def test_embedding_runs_off_the_event_loop() -> None:
+    """A code reviewer's Critical finding: inference must not block the loop.
+
+    A fake encoder that blocks for 200ms (well above real inference time)
+    must not delay a concurrent coroutine that yields immediately — proving
+    the CPU-bound work actually left the event loop thread, not merely that
+    the function is declared `async def`.
+    """
+    import asyncio
+    import time
+
+    class _SlowEncoder:
+        def encode_batch(self, wavs: object, wav_lens: object, normalize: bool) -> object:
+            time.sleep(0.2)  # simulates real CPU-bound inference, off-thread
+            return _FakeOutput(np.ones(192, dtype=np.float32))
+
+    async def _tick_counter(stop: asyncio.Event) -> int:
+        ticks = 0
+        while not stop.is_set():
+            await asyncio.sleep(0.01)
+            ticks += 1
+        return ticks
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(speaker_embedding, "_load_encoder", lambda: _SlowEncoder())
+    stop = asyncio.Event()
+    counter = asyncio.ensure_future(_tick_counter(stop))
+    await speaker_embedding.embed_wav(_tone())
+    stop.set()
+    ticks = await counter
+    monkeypatch.undo()
+    # A blocked loop would let ~0 ticks fire during the 200ms sleep; a
+    # genuinely off-loop executor lets several fire concurrently.
+    assert ticks >= 5
 
 
 def test_near_silence_has_no_voiced_energy() -> None:
     """Review Focus 1: a format-perfect silent WAV must never verify."""
     assert speaker_embedding.has_voiced_energy(_wav(np.zeros(48_000))) is False
     assert speaker_embedding.has_voiced_energy(_tone()) is True
+
+
+def test_a_short_loud_clip_still_fails_the_duration_floor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Finding A6: energy alone is not enough — a clip below
+    speaker_min_verification_s must be rejected even with plenty of energy."""
+    monkeypatch.setattr(speaker_embedding.settings, "speaker_min_verification_s", 1.5)
+    short_loud = _tone(seconds=0.5)
+    assert speaker_embedding.has_voiced_energy(short_loud) is True
+    assert speaker_embedding.meets_verification_duration(short_loud) is False
+    assert speaker_embedding.meets_verification_duration(_tone(seconds=3.0)) is True
 
 
 def test_model_id_comes_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1030,11 +1099,19 @@ identity from `settings` instead of hardcoding it, because runtime code may not
 hardcode a model name. Every heavy import is deferred, so a server with
 `SPEAKER_AUTHENTICATION_ENABLED=false` never imports torch.
 
+Inference is CPU-bound (measured p50 431 / p95 536 ms per real clip, Plan
+0047) and runs in a dedicated bounded executor, exactly like
+`vision/faces.py`'s face detection — never inline on the async event loop,
+which this process shares with every other concurrent request
+(`UVICORN_WORKERS=1`, ADR-0010).
+
 Audio contract: WAV, 16 000 Hz, mono, signed int16. No cloud inference
 (ADR-0004). A returned vector is untrusted identity evidence, never
 authorization.
 """
 
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 import io
 import logging
 from typing import Any, Final
@@ -1043,16 +1120,24 @@ import wave
 import numpy as np
 
 from server.audio_contract import validate_wav_contract
+from server.request_context import run_in_executor_with_context
 from server.settings import settings
 
 logger = logging.getLogger(__name__)
 
 _INT16_FULL_SCALE: Final = 32768.0
 _EMBEDDING_DIM: Final = 192
+_SAMPLE_RATE: Final = 16_000
 # Mean absolute sample value below which the clip is treated as silence. A
 # contract-perfect silent WAV embeds like any other and would otherwise be
 # compared against the centroid (Review Focus 1).
 _MIN_MEAN_ABS_AMPLITUDE: Final = 200.0
+
+# CPU speaker inference is not thread-safe per encoder instance and would
+# block the event loop if run inline — serialize it on its own bounded pool,
+# exactly like `vision/faces.py`'s `_executor`. A dedicated pool, not the
+# loop's default: the STT/TTS/face paths each already have their own.
+_executor = ThreadPoolExecutor(max_workers=1)
 
 # No `ANN401` noqa here: that rule fires on a dynamically-typed function
 # parameter or return annotation, not on a bare module-level variable — an
@@ -1078,6 +1163,9 @@ def model_id() -> str:
 def has_voiced_energy(wav_bytes: bytes) -> bool:
     """Return whether the clip carries more than background-level energy.
 
+    Pure and CPU-light (one NumPy pass over already-decoded samples) — stays
+    synchronous and is never dispatched to the executor, unlike `embed_wav`.
+
     Args:
         wav_bytes: Raw WAV bytes — 16 000 Hz, mono, signed int16.
 
@@ -1089,8 +1177,31 @@ def has_voiced_energy(wav_bytes: bytes) -> bool:
     return bool(np.mean(np.abs(samples)) > _MIN_MEAN_ABS_AMPLITUDE / _INT16_FULL_SCALE)
 
 
-def embed_wav(wav_bytes: bytes) -> np.ndarray:
+def meets_verification_duration(wav_bytes: bytes) -> bool:
+    """Return whether the clip is long enough to attempt verification at all.
+
+    A code reviewer's finding (A6): `speaker_min_enrollment_s` bounds
+    enrolment only. Without a separate floor here, a short but loud clip
+    passes `has_voiced_energy` and gets embedded regardless — territory
+    Plan 0047 never measured (its shortest real clips were 3–5 s).
+
+    Args:
+        wav_bytes: Raw WAV bytes — 16 000 Hz, mono, signed int16.
+
+    Returns:
+        `False` when the clip is shorter than
+        `settings.speaker_min_verification_s`.
+    """
+    return len(_decode(wav_bytes)) / _SAMPLE_RATE >= settings.speaker_min_verification_s
+
+
+async def embed_wav(wav_bytes: bytes) -> np.ndarray:
     """Embed one contract WAV into a 192-d speaker vector on CPU.
+
+    The audio-contract check runs inline (microseconds, pure Python) so a
+    malformed WAV fails fast without consuming an executor slot; the actual
+    CPU-bound inference runs on `_executor` via
+    `run_in_executor_with_context`, off the event loop.
 
     Args:
         wav_bytes: Raw WAV bytes — 16 000 Hz, mono, signed int16.
@@ -1100,11 +1211,17 @@ def embed_wav(wav_bytes: bytes) -> np.ndarray:
 
     Raises:
         AudioContractError: If the bytes break the audio contract.
-        SpeakerBackendError: If the model cannot be loaded or returns a
-            non-finite, wrong-length or all-zero vector.
+        SpeakerBackendError: If the model cannot be loaded, its cached files
+            do not match the pinned revision, or it returns a non-finite,
+            wrong-length or all-zero vector.
     """
     validate_wav_contract(wav_bytes, max_duration_s=settings.max_audio_duration_s)
     wave_f32 = _decode(wav_bytes)
+    return await run_in_executor_with_context(_executor, partial(_embed_sync, wave_f32))
+
+
+def _embed_sync(wave_f32: np.ndarray) -> np.ndarray:
+    """Run the frozen forward pass on the executor thread — never call directly."""
     try:
         encoder = _load_encoder()
         import torch  # noqa: PLC0415 -- deferred so the flag-off path never imports torch
@@ -1133,7 +1250,15 @@ def _decode(wav_bytes: bytes) -> np.ndarray:
 
 
 def _load_encoder() -> Any:  # noqa: ANN401 -- speechbrain ships no type stubs
-    """Construct the frozen encoder once per process, offline, on CPU."""
+    """Construct the frozen encoder once per process, offline, on CPU.
+
+    Runs on the executor thread (called only from `_embed_sync`), so the
+    first, slow load never blocks the event loop either.
+
+    Raises:
+        SpeakerBackendError: If the pinned revision is not present in the
+            local Hugging Face cache offline.
+    """
     global _encoder  # noqa: PLW0603 -- one process-wide model, like vision.faces
     if _encoder is not None:
         return _encoder
@@ -1143,15 +1268,57 @@ def _load_encoder() -> Any:  # noqa: ANN401 -- speechbrain ships no type stubs
     cache_dir = settings.speaker_model_cache_dir
     cache_dir.mkdir(parents=True, exist_ok=True)
     logger.info("Loading speaker model %s (CPU, offline)", model_id())
-    _encoder = EncoderClassifier.from_hparams(
-        source=settings.speaker_model,
-        savedir=str(cache_dir),
-        run_opts={"device": "cpu"},
-        local_strategy=LocalStrategy.COPY,  # SYMLINK breaks on Windows without Dev Mode
-        fetch_config=FetchConfig(revision=settings.speaker_model_revision, allow_network=False),
-    )
+    try:
+        _encoder = EncoderClassifier.from_hparams(
+            source=settings.speaker_model,
+            savedir=str(cache_dir),
+            run_opts={"device": "cpu"},
+            local_strategy=LocalStrategy.COPY,  # SYMLINK breaks on Windows without Dev Mode
+            fetch_config=FetchConfig(
+                revision=settings.speaker_model_revision,
+                allow_network=False,
+                # `overwrite=True` is the fix for a code reviewer's Important
+                # finding (A2): speechbrain's `fetch()` returns a file
+                # already present at `savedir` AS-IS, with NO revision check
+                # at all, whenever `overwrite`/`allow_updates` are both
+                # false (verified by reading the installed
+                # `speechbrain/utils/fetching.py`) — so a stale or
+                # wrong-revision `savedir` would silently keep being trusted
+                # forever. `overwrite=True` forces every load to re-resolve
+                # through `huggingface_hub.hf_hub_download(revision=...,
+                # local_files_only=True)` — the SAME offline, revision-pinned
+                # lookup the Plan 0047 study itself verified with
+                # `_assert_resolved_revision` — which raises if that exact
+                # revision is not cached, instead of trusting `savedir`
+                # blindly. It never touches the network (`allow_network`
+                # stays `False`) and only re-copies into `savedir` when the
+                # resolved source changed, so `_load_encoder`'s own
+                # per-process memoization keeps this a one-time cost.
+                overwrite=True,
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001 -- huggingface_hub raises its own error types here
+        raise SpeakerBackendError(f"Speaker model {model_id()} is not cached offline") from exc
     return _encoder
 ```
+
+**Correction to D-4 (found while fixing A2).** "Copy the study's cache into
+`MODELS_DIR/speechbrain`" is not what makes offline loading work, and reading
+the installed `speechbrain/utils/fetching.py` shows why: with
+`LocalStrategy.COPY` (not `COPY_SKIP_CACHE`), `fetch()` always resolves
+through `huggingface_hub.hf_hub_download(cache_dir=None, ...)` — the
+**standard, machine-wide** Hugging Face cache (`~/.cache/huggingface/hub` or
+`$HF_HOME`), never `savedir` — and only copies the result *into* `savedir`
+afterward. `savedir` is a destination, not a source. What must actually be
+true offline is that the **standard HF cache** already holds the pinned
+revision, which it already does on the machine that ran Plan 0047's one-time
+warm-up (`model-contract`, `allow_network=True`, 2026-09-21) — no manual copy
+into `MODELS_DIR/speechbrain` is needed, and doing it achieves nothing by
+itself. `speaker_model_cache_dir` still matters as `savedir`: it is where
+`EncoderClassifier` writes its own local copy after resolving, and D-4's
+underlying intent — running fully offline on Pipec's own machine, once
+already warmed up — is preserved exactly, just not through a manual file
+copy. Task 3 Step 7 below is corrected accordingly.
 
 Add the settings this task needs:
 
@@ -1174,40 +1341,49 @@ one root and a future change to `models_dir` moves the speaker cache with it.
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/unit/test_speaker_embedding.py -v`
-Expected: 5 passed.
+Expected: 7 passed.
 
 - [ ] **Step 6: Add the one slow test against the real cached model**
 
 ```python
 # tests/slow/test_speaker_embedding_real_model.py
-"""One real-model check (Plan 0053, Task 3) — skipped when the frozen model is
-not cached on this machine. Synthetic audio only; never a human recording."""
+"""One real-model check (Plan 0053, Task 3) — skipped when the frozen
+revision is not cached offline on this machine. Synthetic audio only; never a
+human recording."""
 
 import pytest
-from server.settings import settings
-from server.voice.speaker_embedding import embed_wav, model_id
+from server.voice.speaker_embedding import SpeakerBackendError, embed_wav, model_id
 
 pytestmark = pytest.mark.slow
 
 
-def test_the_real_encoder_returns_the_frozen_shape() -> None:
-    if not (settings.speaker_model_cache_dir / "hyperparams.yaml").is_file():
-        pytest.skip("frozen speaker model not cached on this machine")
-    vector = embed_wav(_tone())  # same helper as the unit test, copied locally
+async def test_the_real_encoder_returns_the_frozen_shape() -> None:
+    try:
+        vector = await embed_wav(_tone())  # same helper as the unit test, copied locally
+    except SpeakerBackendError:
+        pytest.skip("frozen speaker model revision not cached offline on this machine")
     assert vector.shape == (192,)
     assert "@" in model_id()
 ```
 
-- [ ] **Step 7: Warm the cache from the study's copy (once, locally)**
+- [ ] **Step 7: Confirm the machine is warmed up (no manual copy needed)**
+
+Per the D-4 correction above, `_load_encoder()` reads the **standard** Hugging
+Face cache, not `models/speechbrain` — there is nothing to copy there by
+hand. Confirm the standard cache already holds the pinned revision (it does
+on the machine that ran Plan 0047's `model-contract` warm-up):
 
 ```powershell
-New-Item -ItemType Directory -Force models/speechbrain
-Copy-Item project-history/calibration/speaker/model-cache/* models/speechbrain/
+uv run python -c "from huggingface_hub import hf_hub_download; print(hf_hub_download('speechbrain/spkrec-ecapa-voxceleb', 'hyperparams.yaml', revision='0f99f2d0ebe89ac095bcc5903c4dd8f72b367286', local_files_only=True))"
 uv run pytest tests/slow/test_speaker_embedding_real_model.py -v
 ```
 
-Expected: PASS, with no network access. If the cache is absent the test skips —
-that is the CI behaviour and it is correct.
+Expected: the first command prints a path under `.../snapshots/0f99f2d0.../`;
+the test PASSES, with no network access (confirm nothing under
+`models/speechbrain` existed before this step — the test itself creates it as
+a side effect of the real load). On a machine that never ran the warm-up, both
+commands fail cleanly (a `LocalEntryNotFoundError`, and the test skips) rather
+than silently loading nothing.
 
 - [ ] **Step 8: Commit**
 
@@ -1224,20 +1400,27 @@ git log -1 --pretty=%s
 **Files:**
 - Modify: `server/src/server/cognition/speaker_authentication.py` (second half)
 - Test: `tests/unit/test_speaker_authentication.py` (append)
+- Create: `tests/integration/test_speaker_evidence_revocation_race.py`
 
 **Interfaces:**
 - Consumes: Task 1's `count_voiceprints` / `centroid_distance` /
-  `has_active_voice_consent`, Task 2's verdict table, Task 3's `embed_wav` /
-  `has_voiced_energy` / `model_id`, `memory.household_authorization.get_active_role`.
+  `has_active_voice_consent`, Task 2's verdict table, Task 3's `embed_wav`
+  (async) / `has_voiced_energy` / `meets_verification_duration` / `model_id`,
+  `server.exceptions.BrainMemoryError`,
+  `memory.household_authorization.get_active_role`.
   `memory.entity_labels.get_person_label` is **not** consumed here — `VOICE`
   evidence never identifies anybody (`candidate_person_id` is set, but
   `resolve_active_person` cannot resolve it, and this resolver never builds a
   `PersonRecord`), unlike `FaceRequestResolver`, which genuinely needs it.
 - Produces:
-  - `SpeakerRequestResolver(*, wav_bytes, owner_person_id, clock, read_role, read_consent, count_references, distance_to_centroid, embed, has_energy, model_id)`
+  - `SpeakerRequestResolver(*, wav_bytes, owner_person_id, clock, read_role, read_consent, count_references, distance_to_centroid, embed, has_energy, has_duration, model_id)`
   - `await resolver.resolve_actor(event) -> ActivePersonContext`
   - `resolver.last_verdict: SpeakerVerdict | None`
-  - `build_default_speaker_resolver(wav_bytes: bytes, owner_person_id: int) -> SpeakerRequestResolver`
+  - `build_default_speaker_resolver(wav_bytes: bytes, owner_person_id: int) -> SpeakerRequestResolver` —
+    wires every seam to its real implementation (Task 1's repository
+    functions, Task 3's `embed_wav`/`has_voiced_energy`/`meets_verification_duration`/`model_id`,
+    `get_active_role`), exactly as `build_default_face_request_resolver` does
+    for faces
 
 - [ ] **Step 1: Write the failing resolver tests**
 
@@ -1278,6 +1461,12 @@ def _resolver(**overrides: object) -> SpeakerRequestResolver:
     ...  # fill each seam from the Interfaces block; defaults verify
 
 
+# `embed` is `async def embed_wav` (Task 3) and is awaited as such in
+# `_resolve` — every double bound to it here (the default, `_CountingEmbed`,
+# `_raise(...)`) must itself be an async callable (`async def` or an
+# `async def __call__`), not a plain function returning a value.
+
+
 async def test_a_verified_speaker_produces_untrusted_voice_evidence() -> None:
     resolver = _resolver()
     context = await resolver.resolve_actor(_event())
@@ -1308,9 +1497,26 @@ async def test_a_dead_backend_degrades_instead_of_raising() -> None:
     assert resolver.last_verdict is SpeakerVerdict.UNAVAILABLE
 
 
+@pytest.mark.parametrize("seam", ["count_references", "read_consent", "read_role"])
+async def test_any_repository_read_failing_degrades_instead_of_raising(seam: str) -> None:
+    """A code reviewer's Important finding (A4): only `embed` was ever
+    guarded; a DB hiccup on any other boundary must degrade the same way,
+    never escape to the caller (the plan's own fail-closed constraint)."""
+    resolver = _resolver(**{seam: _raise(BrainMemoryError("db unavailable"))})
+    context = await resolver.resolve_actor(_event())
+    assert context.evidence == ()
+    assert resolver.last_verdict is SpeakerVerdict.UNAVAILABLE
+
+
 async def test_silence_is_never_verified() -> None:
     """Review Focus 1."""
     resolver = _resolver(has_energy=_false_sync)
+    assert (await resolver.resolve_actor(_event())).evidence == ()
+
+
+async def test_a_too_short_clip_is_never_verified() -> None:
+    """Finding A6 — energy alone is not a sufficient verification gate."""
+    resolver = _resolver(has_duration=_false_sync)
     assert (await resolver.resolve_actor(_event())).evidence == ()
 
 
@@ -1321,7 +1527,11 @@ async def test_a_reference_from_another_model_is_ignored() -> None:
 
 
 async def test_revocation_mid_turn_loses_the_references() -> None:
-    """Review Focus 3 — the purge empties the centroid before comparison."""
+    """Review Focus 3, unit level — a mocked double proves the resolver reads
+    `evaluate_speaker_verification`'s `distance=None` branch correctly. The
+    REAL interleaving, against a real DB, is Step 4b's integration test —
+    a code reviewer's finding (A3) that this mock alone does not reproduce
+    an actual concurrent revoke."""
     resolver = _resolver(distance_to_centroid=_none)
     assert (await resolver.resolve_actor(_event())).evidence == ()
 
@@ -1343,32 +1553,76 @@ Expected: FAIL — `cannot import name 'SpeakerRequestResolver'`.
 
 Mirror `FaceRequestResolver`: one cached `_resolve` per request, every boundary
 injected, `VisionError`-equivalent (`SpeakerBackendError`) caught and degraded
-to `UNAVAILABLE`, and the evidence built only on `VERIFIED`:
+to `UNAVAILABLE`, and the evidence built only on `VERIFIED`.
+
+**Error-boundary contract (a code reviewer's Important finding, A4).** The
+original excerpt only wrapped `embed()`; `count_references`, `read_consent`,
+`read_role` and `distance` are also repository reads that can raise
+`BrainMemoryError` when the DB is briefly unavailable, and none of the
+Global Constraint's "every failure produces `unknown`; no path raises to the
+caller" is honoured if any of them escapes uncaught. The whole
+evidence-gathering pipeline is wrapped in one boundary instead of a narrow
+one: any `BrainMemoryError` from a repository read, or `SpeakerBackendError`/
+`AudioContractError` from the embedding step, degrades to `UNAVAILABLE`
+uniformly. `has_energy` is excluded on purpose: it is pure, does no I/O, and
+runs only on audio the turn's own upload pipeline already validated before
+the resolver ever sees it (Task 6) — there is no realistic failure to guard.
+
+Add `from server.exceptions import AudioContractError, BrainMemoryError` to
+the module's imports (both raised by repository/backend boundaries the
+resolver now catches; `AudioContractError` lives in `server.exceptions`, not
+`server.audio_contract`).
+
+**Revocation-race contract (A3).** This resolver does not read a single
+consistent snapshot: each repository call is independently authoritative for
+its own `await`. A consent grant revoked at any point between two of this
+resolver's own awaits — including between `count_references` and
+`distance` — must not produce `VERIFIED`, because `centroid_distance` reads
+`voice_profiles` fresh every call with no cache: once purged, it returns
+`None` and the verdict is `UNKNOWN` before consent is even checked. This is
+stated here as the contract Task 4's Step 4b test proves with a *real*
+interleaving against a real temporary DB, not a mocked double.
 
 ```python
 class SpeakerRequestResolver:
     """Request-scoped speaker resolver bound to one turn's audio (excerpt)."""
 
     async def _resolve(self, event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
-        """Run the one-shot energy -> embed -> compare -> decide pipeline."""
+        """Run the one-shot energy -> embed -> compare -> decide pipeline.
+
+        `evaluate_speaker_verification` stays the ONE place that decides
+        VERIFIED/UNKNOWN/UNAVAILABLE — a DB or backend failure sets
+        `backend_available=False` and passes safe placeholder values for
+        whatever this pipeline never got to read, rather than a second,
+        duplicate decision point that bypasses the verdict table.
+        """
+        reference_count = 0
         distance: float | None = None
+        consent_active = False
+        role = HouseholdRole.UNKNOWN
         backend_available = True
-        reference_count = await self._count_references(self._owner_person_id, self._model_id)
-        enough = reference_count >= settings.speaker_min_reference_count
-        if enough and self._has_energy(self._wav):
-            try:
-                embedding = self._embed(self._wav)
-            except (SpeakerBackendError, AudioContractError) as exc:
-                logger.warning("Speaker backend degraded to unavailable: %s", exc)
-                backend_available = False
-            else:
+        try:
+            reference_count = await self._count_references(self._owner_person_id, self._model_id)
+            enough = reference_count >= settings.speaker_min_reference_count
+            usable_clip = self._has_energy(self._wav) and self._has_duration(self._wav)
+            if enough and usable_clip:
+                embedding = await self._embed(self._wav)
                 distance = await self._distance(self._owner_person_id, embedding, self._model_id)
+            consent_active = await self._read_consent(self._owner_person_id)
+            role = await self._read_role(self._owner_person_id)
+        except (BrainMemoryError, SpeakerBackendError, AudioContractError) as exc:
+            # Any of the four repository/backend reads above can fail this
+            # way; whichever ones already succeeded are simply discarded —
+            # `backend_available=False` alone forces UNAVAILABLE regardless
+            # (Task 2's `test_unavailable_wins_over_a_matching_distance`).
+            logger.warning("Speaker evidence degraded to unavailable: %s", exc)
+            backend_available = False
 
         verdict = evaluate_speaker_verification(
             reference_count=reference_count,
             distance=distance,
-            consent_active=await self._read_consent(self._owner_person_id),
-            role=await self._read_role(self._owner_person_id),
+            consent_active=consent_active,
+            role=role,
             backend_available=backend_available,
         )
         self.last_verdict = verdict
@@ -1408,7 +1662,112 @@ a second, small function with the same body shape instead.
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/unit/test_speaker_authentication.py -v`
-Expected: 19 passed.
+Expected: 23 passed (11 from Task 2, 12 from Task 4 — the boundary test is
+parametrized 3 ways).
+
+- [ ] **Step 4b: Prove the revocation race with a real DB, not a mock (A3)**
+
+**Files:**
+- Create: `tests/integration/test_speaker_evidence_revocation_race.py`
+
+The unit test above only proves the resolver *reads* a `None` distance
+correctly; it never actually revokes anything concurrently. This test forces
+a real interleaving: `count_references` is wrapped so that, the moment it is
+awaited, it *also* performs a real revoke through Task 1's real repository
+against the same temporary DB — reproducing "another request's revoke landed
+between this resolver's own two reads" deterministically, on a single-threaded
+event loop, without `asyncio.gather` or timing hacks.
+
+```python
+# tests/integration/test_speaker_evidence_revocation_race.py
+"""Integration test for the revocation-race contract (Plan 0053, Task 4,
+finding A3) — a real temporary DB, no mocked repository calls for the parts
+under test."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+import numpy as np
+import pytest
+from server.cognition.identity import HouseholdRole
+from server.cognition.speaker_authentication import SpeakerRequestResolver, SpeakerVerdict
+from server.memory.declarative import upsert_entity
+from server.memory.voice_consent import grant_voice_consent, revoke_voice_consent
+from server.settings import settings
+from server.voice.voiceprints import centroid_distance, count_voiceprints, enroll_voiceprint
+
+from server import db
+
+MODEL_ID = "test-model@rev1"
+
+
+@pytest.fixture
+async def memory_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[misc]
+    monkeypatch.setattr(settings, "brain_db_path", tmp_path / "test.db")
+    db._conn = None
+    await db.open_db()
+    await db.run_migrations()
+    yield
+    await db.close_db()
+    db._conn = None
+
+
+async def test_a_revoke_landing_between_count_and_distance_yields_unknown(
+    memory_db: None,
+) -> None:
+    owner = await upsert_entity(name="canary-owner", type="person")
+    await grant_voice_consent(owner)
+    for axis in range(3):
+        vector = np.zeros(192, dtype=np.float32)
+        vector[axis] = 1.0
+        await enroll_voiceprint(owner, vector, "canary-owner", MODEL_ID)
+
+    async def _count_then_revoke(entity_id: int, model_id: str) -> int:
+        """Real `count_references`, but a real revoke lands right after —
+        reproducing another request's revoke completing between this
+        resolver's own two awaits, on the same single-threaded loop."""
+        count = await count_voiceprints(entity_id, model_id)
+        await revoke_voice_consent(entity_id)
+        return count
+
+    probe = np.zeros(192, dtype=np.float32)
+    probe[0] = 1.0
+    resolver = SpeakerRequestResolver(
+        wav_bytes=b"canary-wav",
+        owner_person_id=owner,
+        clock=lambda: _NOW,
+        read_role=lambda _person_id: _owner_role(),
+        read_consent=lambda person_id: _has_active_voice_consent_stub(person_id),
+        count_references=_count_then_revoke,
+        distance_to_centroid=lambda person_id, embedding, model_id: centroid_distance(
+            person_id, embedding, model_id
+        ),
+        embed=lambda _wav: probe,
+        has_energy=lambda _wav: True,
+        model_id=MODEL_ID,
+    )
+
+    context = await resolver.resolve_actor(_event())
+
+    assert context.evidence == ()
+    assert resolver.last_verdict is SpeakerVerdict.UNKNOWN
+```
+
+`_event`, `_NOW`, `_owner_role` and `_has_active_voice_consent_stub` are the
+same small fixtures Task 4's unit test file already defines — reuse them
+rather than redefining. `read_consent` is stubbed `True` here on purpose: the
+point of this test is that the **reference purge alone**, not a consent
+check, already makes distance `None`. `count_references` is the one seam
+replaced with a function that performs a real side effect (the revoke) — not
+a double that merely returns a canned value — so this test genuinely proves
+the DB-level interleaving, not the resolver's ability to read a mock.
+
+Run: `uv run pytest tests/integration/test_speaker_evidence_revocation_race.py -v`
+Expected: 1 passed.
 
 - [ ] **Step 5: Prove the identity core is untouched**
 
@@ -1418,7 +1777,7 @@ Expected: all pass, and an empty diff for `identity.py`.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add server/src/server/cognition/speaker_authentication.py tests/unit/test_speaker_authentication.py
+git add server/src/server/cognition/speaker_authentication.py tests/unit/test_speaker_authentication.py tests/integration/test_speaker_evidence_revocation_race.py
 git commit -m "feat(cognition): request-scoped untrusted speaker evidence"
 git log -1 --pretty=%s
 ```
@@ -1452,7 +1811,11 @@ oversized upload -> 413; empty body -> 422; a 44.1 kHz or stereo WAV -> 422; a
 row and one active grant; a second valid clip -> `reference_count == 2` and
 still one grant; revoke -> 204, zero rows, no active grant; every attempt
 writes one `authorization_audit_events` row; no response body or log line
-contains the owner's name.
+contains the owner's name. **Plus the flag matrix (A5):** with
+`speaker_authentication_enabled=False`, enrol returns 503 with no token
+consumed and no `voice_profiles` row written even given a valid token and
+audio; with the flag `False`, revoke on an existing grant still returns 204
+and still purges.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -1476,6 +1839,21 @@ Add it to `__all__`.
 
 - [ ] **Step 4: Write the routes**
 
+**Flag matrix (A5, a code reviewer's finding).** The Rollback boundary
+originally said everything sits behind the flag but never stated whether
+enrolment does, and the face precedent it mirrors does not gate enrolment by
+its own flag at all (`FACE_AUTHENTICATION_ENABLED` is checked only in
+`routers/transcribe.py`, never in `routers/auth.py`). Adopting the reviewer's
+own recommendation as the explicit contract, stricter than the face
+precedent by design — less voice data collected while the feature is
+nominally off:
+
+| Operation | Flag off | Flag on |
+|---|---|---|
+| Enrol (`POST /voice/enroll`) | **503**, no read, no write | Normal behaviour |
+| Verify (turn-time, Task 6) | Resolver never runs; no evidence attached | Normal behaviour |
+| Revoke (`POST /voice/revoke`) | **Always works** — the user-facing undo must not itself be gated | Normal behaviour |
+
 ```python
 @router.post(
     "/voice/enroll",
@@ -1483,7 +1861,7 @@ Add it to `__all__`.
         (401, "Absent, expired, consumed, or otherwise unauthorized token"),
         (403, "Caller is not on loopback"),
         (413, "Audio exceeds the upload size limit"),
-        (503, "Speaker model unavailable"),
+        (503, "Speaker authentication is disabled, or the speaker model is unavailable"),
     ),
 )
 async def enroll_owner_voice(
@@ -1500,21 +1878,35 @@ async def enroll_owner_voice(
     `settings.speaker_min_reference_count` references are required before any
     verification is attempted.
 
+    Disabled entirely while `settings.speaker_authentication_enabled` is
+    `False` — no token is consumed and no audio is read, unlike face
+    enrolment, which has no equivalent gate (Plan 0053's flag matrix is
+    stricter on purpose: less voice data collected while the feature is off).
+
     ADR-0015 decision 1: this is `biometric_admin`, not
     `personal_protected_read`. Plan 0051 binds the grant's scope; until then
     it consumes the same unscoped one-use token the face routes consume.
     ...
     """
+    if not settings.speaker_authentication_enabled:
+        raise HTTPException(status_code=503, detail="Speaker authentication is disabled")
+    ...
 ```
 
-The body is the face route's body with three substitutions: `_read_face_image`
-becomes a `_read_enrollment_audio` helper that calls `read_limited_upload(...,
-limit=settings.max_audio_upload_bytes)`, then `validate_wav_contract(...,
-max_duration_s=settings.max_audio_duration_s)`, then rejects a clip shorter
-than `settings.speaker_min_enrollment_s` or without `has_voiced_energy`;
-`vision.enroll_person` becomes `embed_wav` plus `enroll_voiceprint`; and
-`grant_face_consent` becomes `grant_voice_consent`. A `SpeakerBackendError`
-becomes a 503, exactly as `VisionError` does for faces.
+The `if not settings.speaker_authentication_enabled` check runs immediately
+after the existing loopback check and before the token is touched — a
+disabled feature must not spend the owner's one-use grant. The rest of the
+body is the face route's body with three further substitutions:
+`_read_face_image` becomes a `_read_enrollment_audio` helper that calls
+`read_limited_upload(..., limit=settings.max_audio_upload_bytes)`, then
+`validate_wav_contract(..., max_duration_s=settings.max_audio_duration_s)`,
+then rejects a clip shorter than `settings.speaker_min_enrollment_s` or
+without `has_voiced_energy`; `vision.enroll_person` becomes `embed_wav` plus
+`enroll_voiceprint`; and `grant_face_consent` becomes `grant_voice_consent`. A
+`SpeakerBackendError` becomes a 503, exactly as `VisionError` does for faces.
+`revoke_owner_voice` below carries **no** such flag check — it must keep
+working even with the feature nominally off, so an owner can always purge
+whatever was captured before they turned it off.
 
 Write the same ADR-0015 sentence into **`revoke_owner_voice`**'s docstring too
 — the plan's own completion criterion 10 requires the marker on *both* routes,
@@ -1563,11 +1955,37 @@ The body underneath is otherwise `revoke_owner_face`'s body with
 Run: `uv run pytest tests/integration/test_owner_voice_enrollment.py -v`
 Expected: all pass.
 
-- [ ] **Step 6: Confirm the OpenAPI surface grew by exactly two routes**
+- [ ] **Step 6: Prove the two new routes exist with the right shape (A9)**
 
-Run: `uv run pytest tests/integration/test_api_contract.py -v`
-Expected: PASS. If a route-count assertion fails, update it deliberately in the
-same commit — never by loosening the assertion.
+A code reviewer's finding: `test_api_contract.py` only pins that *existing*
+routes are still present (`test_every_existing_route_is_still_present`); it
+has no route-count assertion, so it cannot fail when new routes are missing
+or malformed — running it alone proves nothing about what this task added.
+Add a real, new assertion to this task's own test file instead:
+
+```python
+# appended to tests/integration/test_owner_voice_enrollment.py
+def test_the_two_new_routes_are_documented_with_the_expected_shape(
+    client: TestClient,
+) -> None:
+    schema = client.get("/openapi.json").json()
+    paths = schema["paths"]
+
+    enroll = paths["/auth/owner/voice/enroll"]["post"]
+    assert enroll["responses"]["200"]["content"]["application/json"]["schema"]["$ref"].endswith(
+        "VoiceEnrollResponse"
+    )
+    assert {"401", "403", "413", "503"} <= enroll["responses"].keys()
+
+    revoke = paths["/auth/owner/voice/revoke"]["post"]
+    assert revoke["responses"]["204"]
+    assert {"401", "403"} <= revoke["responses"].keys()
+```
+
+Run: `uv run pytest tests/integration/test_owner_voice_enrollment.py -v && uv run pytest tests/integration/test_api_contract.py -v`
+Expected: both PASS. The second command still only proves nothing else was
+broken; the first is what actually proves this task's own routes exist with
+the documented shape.
 
 - [ ] **Step 7: Commit**
 
@@ -1675,11 +2093,15 @@ is off by default.
 
 - [ ] **Step 2: Write the demo script**
 
-`scripts/speaker_auth_demo.py` mirrors `scripts/face_auth_demo.py`:
-`--enroll` (records nothing by itself — it takes a WAV path or uses the
+`scripts/speaker_auth_demo.py` mirrors `scripts/face_auth_demo.py` **exactly**
+— `--enroll` (records nothing by itself — it takes a WAV path or uses the
 existing `mic_test` capture helper the operator already runs), `--revoke`,
-`--status`. It unlocks over loopback with the PIN, then calls the two new
-routes. It never writes audio to the repository.
+`--device`/equivalent argument, unlocking over loopback with the PIN before
+calling the matching route. No `--status`: a code reviewer's finding is that
+`face_auth_demo.py`, the precedent this task claims to mirror, has no such
+flag either, and there is no backing endpoint to call — no
+`GET /auth/owner/voice/status` exists in this plan, and adding one is new
+scope nobody asked for (YAGNI). It never writes audio to the repository.
 
 - [ ] **Step 3: Add the recipe**
 
@@ -1858,8 +2280,10 @@ inside `revoke_owner_voice`'s. Zero or one means the criterion is not met.
 
 Everything is additive and behind `SPEAKER_AUTHENTICATION_ENABLED=false`.
 Rolling back means turning the flag off; migration 008 is additive and its
-tables are unused when the flag is off. Revocation is the user-facing undo and
-works with the flag off.
+tables are unused when the flag is off. The exact per-operation matrix (A5,
+Task 5): with the flag off, enrolment returns 503 and never reads or writes;
+verification never runs and attaches no evidence; **revocation always works**
+regardless of the flag, so the user-facing undo is never itself gated.
 
 ## Risks
 
@@ -1901,6 +2325,70 @@ Run against the spec with fresh eyes, per `superpowers:writing-plans`.
    contract, the other a model contract, and Task 1's test pins that they
    agree.
 4. **Review Focus.** All five entries have an owning task and a named test.
+
+## External critique record (2026-09-28)
+
+Pipec forwarded an 11-item critique (A1–A11) from outside this session.
+Verified each independently against the real code before applying anything;
+all 11 held up — including two the plan's own earlier three-subagent review
+had missed. Applied here:
+
+- **A1 (Critical).** `embed_wav` was synchronous and called inline from
+  `async def _resolve` — on a single-worker server (`UVICORN_WORKERS=1`,
+  ADR-0010) that blocks every other concurrent request for the full
+  inference time (measured p50 431 / p95 536 ms). Fixed by mirroring
+  `vision/faces.py`'s own `run_in_executor_with_context` pattern: `embed_wav`
+  is now `async def`, dispatching the real inference to a dedicated bounded
+  `ThreadPoolExecutor`.
+- **A2 (Important) → a deeper finding while fixing it.** Reading the
+  installed `speechbrain/utils/fetching.py` (not guessed) showed that
+  `fetch()` returns a file already present at `savedir` completely
+  unverified whenever `overwrite`/`allow_updates` are both false — and that
+  `savedir` is a copy *destination*, never the source consulted for offline
+  resolution, which is always the *standard* Hugging Face cache. This meant
+  D-4's original "copy the study's cache into `MODELS_DIR/speechbrain`"
+  instruction achieved nothing by itself and would have made the
+  never-re-verified-savedir problem worse, not better. Fixed with one
+  `FetchConfig(overwrite=True)`, forcing every load to re-resolve through
+  the pinned-revision, offline-only Hugging Face lookup instead of trusting
+  `savedir` blindly; Task 3 Step 7 and D-4 are rewritten accordingly.
+- **A3 (Medium).** The revocation-race test only mocked
+  `distance_to_centroid=None`; added a real integration test
+  (`test_speaker_evidence_revocation_race.py`) that performs an actual
+  revoke against a real temporary DB between two of the resolver's own
+  awaits, and stated the contract explicitly next to the resolver.
+- **A4 (Important).** Only `embed` was exception-guarded. The whole
+  evidence-gathering pipeline is now one boundary: any `BrainMemoryError`
+  from a repository read, or backend error from embedding, degrades to
+  `UNAVAILABLE` through the same single call to `evaluate_speaker_verification`
+  — not a second, duplicate decision point (an inconsistency my own first
+  attempt at this fix introduced and then corrected before it landed here).
+- **A5 (Medium).** Added the explicit per-operation flag matrix: off blocks
+  enrol (503, no token spent) and verification (resolver never runs); revoke
+  always works. Stricter than the face precedent on purpose.
+- **A6 (Important).** Added `speaker_min_verification_s`, distinct from
+  `speaker_min_enrollment_s`, and `meets_verification_duration` gating the
+  resolver alongside `has_voiced_energy` — a short, loud clip no longer
+  reaches the model untested.
+- **A7 (Critical, self-inflicted).** A wording bug from the *previous* fix
+  pass: Plan 0015 said Plan 0053 delivers "trusted evidence," contradicting
+  this very plan's own Global Constraints. Fixed.
+- **A8 (Important).** The earlier fix for `speaker_model_cache_dir` was
+  cosmetic — Pydantic field defaults are fixed at class-definition time and
+  do not follow a same-named sibling field's runtime override. Superseded by
+  A2's fix: the setting still exists as `savedir`, but nothing depends on it
+  being pre-populated correctly any more.
+- **A9 (Important).** `test_api_contract.py` has no route-count assertion,
+  so "run it and see if it fails" could never catch a missing or malformed
+  new route. Added a real assertion of both routes' paths, methods and
+  response shapes to this task's own test file.
+- **A10 (Medium).** `--status` was invented; `face_auth_demo.py`, the
+  precedent this task claims to mirror, has no such flag and no endpoint
+  backs it. Removed (YAGNI).
+- **A11 (Note, out of Plan 0053's scope).** Added one paragraph to Plan
+  0050 recording that its Task 11 characterization tests must be re-audited
+  against whatever Plan 0051 actually merges, since the agreed order now
+  runs PC-4 and 0051 before 0050 reaches `NOW`. No code changed.
 
 ## Execution handoff
 

@@ -157,9 +157,10 @@ member's real voice may enter the repository.
 Plan 0047 covered only the calibration study and closed 2026-09-25 with a
 provisional PASS (0/24 live-impostor false accepts, 0/24 genuine false rejects
 in-sample, 6/8 replay accepted, p95 231 ms). Production enrollment, revocation
-and trusted evidence are [Plan 0053](0053-consented-speaker-runtime-evidence.md)
-(PC-3B), promoted to `NOW` on 2026-09-25 with every decision answered;
-replay/liveness stays PC-4's.
+and typed, still-untrusted `VOICE` evidence are
+[Plan 0053](0053-consented-speaker-runtime-evidence.md) (PC-3B), promoted to
+`NOW` on 2026-09-25 with every decision answered; trust/fusion and
+replay/liveness stay PC-4's.
 
 ### PC-4 — Conservative identity fusion — unstarted
 
