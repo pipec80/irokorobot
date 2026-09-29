@@ -10,12 +10,15 @@
 > task, and `superpowers:verification-before-completion` before any claim that
 > a task or the plan is done.
 
-- **Status:** `Ready` — **promoted to `NOW` by Pipec on 2026-09-25**, after he
-  answered every decision below. It is the single executable plan; no other
-  plan under `open/` may be started while this one is open.
+- **Status:** **Closed 2026-09-29 — PC-3B implemented and accepted locally.**
+  Promoted to `NOW` by Pipec on 2026-09-25 after he answered every decision
+  below; executed on `feat/0053-speaker-runtime-evidence`. The measured result,
+  the deviations and the independent review are in
+  [Closure record](#closure-record-2026-09-29). `VOICE` stays untrusted, replay is
+  not defended and fusion belongs to PC-4.
 - **Roadmap row:** [PC-3B](../../roadmap/cognitive-roadmap.md#canonical-pre-electronics-delivery-portfolio),
   step 1 of the [agreed delivery order](../../roadmap/cognitive-roadmap.md#pre-purchase-readiness-gate--plug-it-in-and-it-works).
-- **Evidence it builds on:** [Plan 0047](../completed/0047-speaker-evidence-calibration-study.md#study-result-and-closure-record-2026-09-25)
+- **Evidence it builds on:** [Plan 0047](0047-speaker-evidence-calibration-study.md#study-result-and-closure-record-2026-09-25)
   (PC-3A, provisional PASS, merged as PR #134 / `de4c6cf`).
 
 **Goal:** Let the owner enrol their voice locally and consentedly so a
@@ -36,7 +39,7 @@ aiosqlite, NumPy, SpeechBrain `1.1.1` `EncoderClassifier` (ECAPA, revision
 `0f99f2d0…`, Apache-2.0) on CPU torch, `uv` workspace, pytest with
 `pytest-asyncio`.
 
-**Spec:** [Plan 0015 — personal companion design, PC-3](0015-personal-companion-design.md#pc-3--speaker-evidence--pc-3a-closed-pc-3b-is-plan-0053-now),
+**Spec:** [Plan 0015 — personal companion design, PC-3](../open/0015-personal-companion-design.md#pc-3--speaker-evidence--pc-3a-and-pc-3b-closed),
 with the roadmap row as its one-line contract and
 [ADR 0015](../../adr/0015-owner-grant-scope-and-speaker-binding.md) decision 2
 bounding it.
@@ -73,10 +76,10 @@ and is reported — it is never designed around.
    *Consented local face evidence (Plan 0029 / PC-2)* and *Speaker recognition*.
 7. [`identity-and-access.md`](../../architecture/identity-and-access.md):
    *Separate concepts*, *Progressive authentication*, *Identity evidence*.
-8. [Plan 0047](../completed/0047-speaker-evidence-calibration-study.md): the
+8. [Plan 0047](0047-speaker-evidence-calibration-study.md): the
    *Frozen readiness contract*, the *Study result and closure record*, the
    *Task 7 review record*.
-9. [Plan 0029](../completed/0029-consented-local-face-evidence.md) — the
+9. [Plan 0029](0029-consented-local-face-evidence.md) — the
    structural template this plan mirrors.
 10. Code, read before writing: `cognition/identity.py`,
     `cognition/face_authentication.py`, `routers/auth.py`,
@@ -2986,12 +2989,80 @@ documentation. `uv run ruff format --check .` / `ruff check .` clean, the
 reserved-terms guard clean, and a mechanical link/anchor check finds 0
 broken.
 
+## Closure record (2026-09-29)
+
+**Result.** PC-3B is implemented behind `SPEAKER_AUTHENTICATION_ENABLED=false`.
+Eight tasks, each RED first, plus three fix commits found by the gate and one by
+the acceptance run. `just gate` is green (ruff, mypy, pyright, tests with the
+80 % coverage floor, `ruff --select S`, `pip-audit`). `cognition/identity.py` and
+`tests/unit/test_active_person_identity.py` have an empty diff: `VOICE` is still
+absent from `_RESOLVABLE_SOURCES`.
+
+**Real-hardware acceptance (Pipec, one owner, one laptop microphone).** Outcomes
+only; no audio, name, distance or score was recorded.
+
+| Case | Outcome |
+|---|---|
+| Enrolment | 3 references through `just speaker-auth-demo --enroll`; the first call took about 15 s (model load), the next two about 350 ms |
+| Genuine protected turns | 5 of 5 full-length turns `verified`; every one still received the standard denial without PIN or face (`status=unknown`, `evidence=1`) |
+| Non-protected turns | The resolver was not consulted (D-6), as designed |
+| Silence | 422 "No speech detected" before the resolver runs |
+| 1 s clip | `unknown` (below the 1.5 s floor), normal denial |
+| Model files absent | `unavailable`, warning logged, normal denial, no 500 |
+| Model restored | `verified` again after a restart |
+| Revocation | `unknown` on the next turn; `voice_profiles` = 0 and active `voice_consent_grants` = 0 in SQLite |
+| Captured audio | None left; a stray all-zero `acceptance_test_silence.wav` from 2026-09-03 is gitignored and not voice |
+
+**Not measured, and therefore not claimed.** Impostors at runtime; genuine
+utterances between 1.5 s and 3 s (the 1.5 s floor is a conservative guess, Plan
+0047 never tested it); more than one acoustic condition (the run did not vary
+distance or noise deliberately); a second owner; latency under load. The
+threshold `0.4834` remains provisional and in-sample, and **6 of 8 replay probes
+were accepted in Plan 0047**, so a recording of the owner can verify. Nothing here
+defends replay or liveness; that, fusion and the face veto are PC-4 and
+[ADR 0015](../../adr/0015-owner-grant-scope-and-speaker-binding.md).
+
+**Deviations from the plan text (all ledgered).**
+- `speaker_authentication_enabled` was added in Task 5, not Task 6: Task 5's own
+  route already gates on it.
+- Several places the plan described in prose were written from the description
+  (`_resolver` test helper, `_read_enrollment_audio`, `_speaker_augmented_actor_resolver`).
+- Verbatim snippets that did not pass this repo's ruff/pyright (en dash, needless
+  lambdas, `PT006`, `ARG002`, an `object`-typed parameter) were corrected without
+  weakening any rule; the step-4 scoped `mypy scripts/…` check is not clean even
+  for its precedent `face_auth_demo.py` (no `py.typed` marker), so it was judged
+  against that precedent.
+- `scripts/speaker_auth_demo.py` first imported `scripts.mic_test`, which is not
+  importable when a script is run by path; it now records with `sounddevice`.
+- A pre-existing order-dependent assertion in `tests/unit/test_app_lifecycle.py`
+  (`app.state.ready` may legitimately be absent after a partial startup failure)
+  failed under `pytest-xdist`; fixed with the `getattr` pattern its sibling uses.
+
+**Independent review.** A read-only subagent (Sonnet, clean context, at Pipec's
+choice) reviewed the whole branch: 0 Critical, 3 Important, 8 Minor. Fixed, each
+with a test that failed first: a `nan`/`-inf` distance failed open in the verdict
+table; the owner lookup in the turn wrapper was unguarded and re-read on every
+call; the wrapper had no direct tests; a too-short or silent clip burned the
+one-use token before validation; corrupt stored blobs raised untyped numpy
+errors; a flat DC offset counted as voiced energy; the evidence claimed
+`calibrated=True` for a provisional threshold; the stored label duplicated the
+owner's name; the failure cause was not logged. **Left open (deferred to Pipec):**
+a cool-down after a failed model load plus an `asyncio.wait_for` timeout on the
+embedding (needs a new environment variable, which this plan forbids), and the
+theoretical read-then-read window between the reference count and the distance
+(it needs three PIN-gated enrolments inside about 0.5 s).
+
+**Observation.** `huggingface_hub` asks `huggingface.co/api/agent-harnesses` once a
+day to detect AI agent harnesses. It downloads nothing and is skipped with
+`HF_HUB_OFFLINE=1`, under which the model loads normally; the operator manual
+recommends it.
+
 ## Execution handoff
 
-Plan complete. It lives under `docs/plans/open/` — the project's plan location,
-which overrides the skill's default path — and Pipec promoted it to `NOW` in
-[`docs/plans/README.md`](../README.md#operational-board) on 2026-09-25, so it is
-executable.
+Plan was complete when written under `docs/plans/open/` — the project's plan
+location, which overrides the skill's default path — and Pipec promoted it to
+`NOW` in [`docs/plans/README.md`](../README.md#operational-board) on 2026-09-25.
+It moved to `completed/` on 2026-09-29 (see the closure record).
 
 **Recommended execution approach: Native** — `superpowers:executing-plans`, one
 agent implementing every task in a fresh Claude Code session, with an

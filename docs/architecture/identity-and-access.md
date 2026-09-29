@@ -122,6 +122,18 @@ produced no enrollment or runtime adapter (PC-3B), and because replays were
 accepted a voice match must never be standalone high-assurance evidence — replay
 and liveness handling belongs to the fusion work (PC-4).
 
+**Speaker runtime evidence (Plan 0053, PC-3B).** Consented local enrolment and
+revocation now exist behind `SPEAKER_AUTHENTICATION_ENABLED` (default off): a
+turn on a protected branch, where face and PIN did not already identify the
+actor, may attach typed `VOICE` evidence with a `verified`, `unknown` or
+`unavailable` verdict. The evidence stays untrusted. `VOICE` is not in
+`_RESOLVABLE_SOURCES`, so it cannot identify anyone, widen access or replace the
+PIN, and a `verified` verdict still receives the same denial as any
+unauthenticated turn. Replay is not defended (6 of 8 probes were accepted in the
+study) and there is no liveness check. Fusing voice with face or PIN, binding a
+grant to the speaker and the face veto remain PC-4 and
+[ADR 0015](../adr/0015-owner-grant-scope-and-speaker-binding.md).
+
 Persistent installation data includes the owner, roles, onboarding state,
 configured methods, consent, and audit. Authentication itself is transient:
 person ID, method, issue/expiry times, scope, opaque token reference, and

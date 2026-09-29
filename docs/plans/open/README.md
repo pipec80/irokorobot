@@ -14,14 +14,14 @@ closed), re-audited 2026-09-01 after Plan 0030 closed, aligned on
 plans, updated 2026-09-08 after Plan 0046 closed CM-0, and again 2026-09-25
 after Plan 0047 (PC-3A) closed with a provisional PASS and moved to
 `completed/`, and again 2026-09-25 when the PC-3B re-audit produced
-[Plan 0053](0053-consented-speaker-runtime-evidence.md), now `Ready` in `NOW`.
+[Plan 0053](../completed/0053-consented-speaker-runtime-evidence.md), which closed 2026-09-29.
 Existing components named under **Reuse** must not be rebuilt by a later plan.
 
 For daily work, do not choose a plan from this inventory. Follow the
 single-WIP [operational board](../README.md#operational-board) — **CM-0
 (Plan 0046) closed 2026-09-08, PC-3A (Plan 0047) closed 2026-09-25 with a
-provisional PASS, and Pipec promoted [Plan 0053](0053-consented-speaker-runtime-evidence.md)
-(PC-3B) to `NOW` the same day.** Use the
+provisional PASS, and PC-3B ([Plan 0053](../completed/0053-consented-speaker-runtime-evidence.md))
+closed 2026-09-29; `NOW` is empty until PC-4 is planned.** Use the
 [personal-companion delivery map](../../roadmap/personal-companion-delivery-map.md)
 and [conversational-memory delivery map](../../roadmap/conversational-memory-delivery-map.md)
 to see the code, tests, verified gaps, and future delivery sequence.
@@ -52,18 +52,11 @@ hasta que Pipec lo promueva y confirme sus seis decisiones.
 liga el grant PIN a una operación (hoy incumple ADR-0009) y, por etapas, a la
 evidencia del hablante; el Plan 0051 lo implementa y aún no está redactado.
 
-[0053 — consented speaker runtime evidence](0053-consented-speaker-runtime-evidence.md)
-es el plan **`Ready` en `NOW`** (PC-3B), escrito el 2026-09-25 tras la re-auditoría de la regla 4/6
-contra el código en `main` (`751ce46`). Mantiene el resultado de producto de la fila
-—enrolamiento consentido, revocación y evidencia `VOICE` tipada que no concede nada—
-y registra catorce hallazgos que la fila no preveía: `VOICE` ya es **irresoluble**,
-no sólo no confiable (`cognition/identity.py:147-154`), así que `resolve_active_person`
-no se toca; el backend congelado vive en el grupo `dev`, no en el servidor
-(`pyproject.toml:72-75`); la identidad se compone **antes** de leer el audio
-(`routers/transcribe.py:410-413`, `:534-537`); y la constante de modelo del estudio no
-puede copiarse a código de runtime. Pipec respondió las ocho decisiones (D-1…D-8) y lo promovió a `NOW` el
-2026-09-25, así que es el único plan ejecutable; se ejecuta en una sesión
-nueva, en una rama simple desde `main`.
+[0053 — consented speaker runtime evidence](../completed/0053-consented-speaker-runtime-evidence.md)
+(PC-3B) **cerró el 2026-09-29** y ya vive en `completed/`: enrolamiento consentido, revocación que
+purga los voiceprints y evidencia `VOICE` tipada que **no concede nada** (sigue fuera de
+`_RESOLVABLE_SOURCES`), detrás de `SPEAKER_AUTHENTICATION_ENABLED=false`. Aceptado en hardware real
+y revisado de forma independiente; el replay no está defendido y la fusión es PC-4, que aún no tiene plan.
 
 **Paso 0 — carga inicial (sin numerar, decidido 2026-09-24).** Un plan futuro,
 posterior a 0047 y a ADR-0015, que carga los datos base del dueño y su hogar de
@@ -119,8 +112,8 @@ the benchmark harness is GREEN and the measured baseline is a reproducible
 cognitive RED (`ac43c58`, exit 1); it changed no runtime memory. See
 [completed/0046](../completed/0046-reproducible-longitudinal-memory-baseline.md).
 
-Canonical execution order: **[Plan 0053](0053-consented-speaker-runtime-evidence.md)
-(PC-3B) is `NOW`.** Plan 0047 (PC-3A) closed 2026-09-25 with a provisional PASS
+Canonical execution order: **`NOW` is empty; PC-4 is next and unplanned.** Plan 0053 (PC-3B)
+closed 2026-09-29, and Plan 0047 (PC-3A) closed 2026-09-25 with a provisional PASS
 (see [completed/0047](../completed/0047-speaker-evidence-calibration-study.md)); the
 queue-rule-4 re-audit of the next row ran the same day, produced Plan 0053, and
 Pipec answered its decisions and promoted it. The server capsule (Plan

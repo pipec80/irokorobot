@@ -62,6 +62,7 @@ batches:
 | [0015](../plans/open/0015-personal-companion-design.md) | Product direction | Reuse of the existing local cognitive/audio/memory foundations | PC-3, PC-4, longitudinal memory, PC-5 and PC-6 |
 | [0046](../plans/completed/0046-reproducible-longitudinal-memory-baseline.md) | **Closed 2026-09-08** | Repaired evaluators, Ollama, temporary SQLite and deterministic scoring patterns | CM-0 delivered: benchmark GREEN, measured baseline RED (`ac43c58`, exit 1); no runtime memory change |
 | [0047](../plans/completed/0047-speaker-evidence-calibration-study.md) | **Closed 2026-09-25 — PC-3A provisional PASS** (`feat/0047-speaker-calibration`, merged as PR #134) | Audio contract, capture and face-calibration study pattern | Threshold 0.4834, 0/24 impostor false accepts, 0/24 genuine false rejects (in-sample), 6/8 replay accepted, p95 231 ms; PC-3B and PC-4 stay open |
+| [0053](../plans/completed/0053-consented-speaker-runtime-evidence.md) | **Closed 2026-09-29 — PC-3B** (`feat/0053-speaker-runtime-evidence`) | Face consent/enrolment pattern (Plan 0029), frozen backend (Plan 0047) | Consented voice enrolment and revocation, untrusted `VOICE` evidence behind `SPEAKER_AUTHENTICATION_ENABLED` (default off); accepted on real hardware, replay not defended; PC-4 stays open |
 | [0020](../plans/completed/0020-p0-operator-qa-remediation-design.md) | Operator-QA defect umbrella | C5 via completed Plan 0021, C6 via completed Plan 0022, C7 via completed Plan 0023 | None — its own required real acceptance rerun passed 2026-08-25 |
 | [0024](../plans/completed/0024-owner-authenticated-memory-mvp-design.md) | PC-1 integration design | Existing identity, policy, child-memory, and channel seams; Plans 0025–0028 merged/executed | Delivery complete — PC-1 accepted |
 | [0031](../plans/completed/0031-server-production-baseline-design.md) | Cross-cutting server reference capsule | Existing FastAPI/Starlette/Uvicorn and accepted server/robot contracts | None — every child (0032–0045) closed 2026-09-03 |
@@ -119,8 +120,8 @@ every one of those gaps, and Plan 0028 proved them on real hardware:
   table directly.
 
 Consented face evidence and its provisional real-camera calibration are now
-implemented by Plans 0029/0030. Speaker recognition remains absent; STT and VAD
-do not identify a speaker. Neither biometric path reopens the completed PC-1
+implemented by Plans 0029/0030. Speaker evidence exists since Plan 0053 (untrusted, default off, replay not defended); STT and VAD
+do not identify a speaker except through the untrusted, default-off `VOICE` evidence of Plan 0053. Neither biometric path reopens the completed PC-1
 proof.
 
 ## One delivery chain
@@ -147,8 +148,8 @@ P0 fully accepted
 PC-2 accepted (provisional calibration)
   -> CM-0 reproducible longitudinal baseline — Plan 0046 closed 2026-09-08 (benchmark GREEN, baseline RED)
   -> PC-3A speaker calibration — Plan 0047 closed 2026-09-25 (provisional PASS: 0/24 false accepts, 6/8 replay accepted, p95 231ms)
-  -> PC-3B consented speaker runtime evidence — Plan 0053, promoted to NOW 2026-09-25 (current cursor)
-  -> PC-4 conservative identity fusion — unstarted
+  -> PC-3B consented speaker runtime evidence — Plan 0053 closed 2026-09-29 (untrusted VOICE evidence, default off)
+  -> PC-4 conservative identity fusion — unstarted (current cursor, no plan yet)
   -> CM-1..CM-7 longitudinal memory — unstarted
   -> PC-5 integrated personal acceptance — unstarted
   -> continue at portfolio row 13; the cross-track tail is not duplicated here
