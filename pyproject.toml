@@ -281,6 +281,8 @@ module = [
     "insightface.*",
     "onnxruntime.*",
     "speechbrain.*",
+    "torch.*",
+    "torchaudio.*",
 ]
 ignore_missing_imports = true
 

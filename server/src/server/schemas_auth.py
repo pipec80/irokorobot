@@ -6,7 +6,12 @@ from typing import Annotated
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, SecretStr
 
-__all__ = ["FaceEnrollResponse", "OwnerUnlockRequest", "OwnerUnlockResponse"]
+__all__ = [
+    "FaceEnrollResponse",
+    "OwnerUnlockRequest",
+    "OwnerUnlockResponse",
+    "VoiceEnrollResponse",
+]
 
 # ASCII decimal digits only. `str.isdigit()` also accepts Arabic-Indic and other
 # Unicode digits, which can never derive the stored verifier — accepting them
@@ -63,3 +68,13 @@ class FaceEnrollResponse(BaseModel):
 
     profile_id: int
     enrolled_at: datetime
+
+
+class VoiceEnrollResponse(BaseModel):
+    """Result of a successful authenticated owner voiceprint enrollment."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    profile_id: int
+    enrolled_at: datetime
+    reference_count: int

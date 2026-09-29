@@ -142,6 +142,10 @@ faces-demo *ARGS:
 face-auth-demo *ARGS:
     uv run --env-file .env python scripts/face_auth_demo.py {{ARGS}}
 
+# Enrola/revoca la voz del owner para evidencia de hablante (Plan 0053, requiere PIN local)
+speaker-auth-demo *ARGS:
+    uv run --env-file .env python scripts/speaker_auth_demo.py {{ARGS}}
+
 # Calibracion con camara real (Plan 0030): captura, corpus y barrido de umbral FAR/FRR
 face-calibration *ARGS:
     uv run --env-file .env python scripts/face_calibration.py {{ARGS}}

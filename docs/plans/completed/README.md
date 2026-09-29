@@ -30,6 +30,12 @@ one-terminal-event guarantee, the NDJSON 200 OpenAPI contract, `/health`
 wording + injectable `create_app`) and left only Uvicorn concurrency
 calibration open, as its own `perf(...)` plan.
 
+[Plan 0053](0053-consented-speaker-runtime-evidence.md) closed PC-3B on
+2026-09-29: consented voice enrolment and revocation plus **untrusted** `VOICE`
+evidence behind `SPEAKER_AUTHENTICATION_ENABLED` (default off), accepted on real
+hardware and independently reviewed. It grants nothing; replay is not defended and
+fusion is PC-4.
+
 [Plan 0046](0046-reproducible-longitudinal-memory-baseline.md) closed CM-0 on
 2026-09-08: it delivered a longitudinal-memory **benchmark and a measured RED
 baseline**, not longitudinal memory. It repaired the two stale eval entrypoints,

@@ -2528,8 +2528,13 @@ dependencies = [
     { name = "python-multipart" },
     { name = "pyyaml" },
     { name = "soxr" },
+    { name = "speechbrain" },
     { name = "sqlite-vec" },
     { name = "starlette" },
+    { name = "torch", version = "2.14.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'darwin'" },
+    { name = "torch", version = "2.14.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
+    { name = "torchaudio", version = "2.11.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "python_full_version < '3.15' and sys_platform == 'darwin'" },
+    { name = "torchaudio", version = "2.11.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "python_full_version >= '3.15' or sys_platform != 'darwin'" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -2548,8 +2553,11 @@ requires-dist = [
     { name = "python-multipart", specifier = ">=0.0.20,<1.0.0" },
     { name = "pyyaml", specifier = ">=6.0.3,<7.0.0" },
     { name = "soxr", specifier = ">=1.1.0,<2.0.0" },
+    { name = "speechbrain", specifier = "==1.1.1" },
     { name = "sqlite-vec", specifier = ">=0.1.6" },
     { name = "starlette", specifier = ">=1.6.0,<2.0.0" },
+    { name = "torch", specifier = ">=2.14.0,<3.0.0", index = "https://download.pytorch.org/whl/cpu" },
+    { name = "torchaudio", specifier = ">=2.11.0,<3.0.0", index = "https://download.pytorch.org/whl/cpu" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.52.1,<1.0.0" },
 ]
 
@@ -2869,13 +2877,13 @@ resolution-markers = [
     "python_full_version < '3.13' and sys_platform == 'darwin'",
 ]
 dependencies = [
-    { name = "filelock" },
-    { name = "fsspec" },
-    { name = "jinja2" },
-    { name = "networkx" },
-    { name = "setuptools" },
-    { name = "sympy" },
-    { name = "typing-extensions" },
+    { name = "filelock", marker = "sys_platform == 'darwin'" },
+    { name = "fsspec", marker = "sys_platform == 'darwin'" },
+    { name = "jinja2", marker = "sys_platform == 'darwin'" },
+    { name = "networkx", marker = "sys_platform == 'darwin'" },
+    { name = "setuptools", marker = "sys_platform == 'darwin'" },
+    { name = "sympy", marker = "sys_platform == 'darwin'" },
+    { name = "typing-extensions", marker = "sys_platform == 'darwin'" },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.0-cp312-cp312-macosx_14_0_arm64.whl", hash = "sha256:ab7e226c18d3cbc134dfa952d18ab1df202055dd33446837c8fd050ad449e6f5", upload-time = "2026-09-02T00:26:12Z" },
@@ -2897,13 +2905,13 @@ resolution-markers = [
     "python_full_version < '3.13' and sys_platform != 'darwin'",
 ]
 dependencies = [
-    { name = "filelock" },
-    { name = "fsspec" },
-    { name = "jinja2" },
-    { name = "networkx" },
-    { name = "setuptools" },
-    { name = "sympy" },
-    { name = "typing-extensions" },
+    { name = "filelock", marker = "sys_platform != 'darwin'" },
+    { name = "fsspec", marker = "sys_platform != 'darwin'" },
+    { name = "jinja2", marker = "sys_platform != 'darwin'" },
+    { name = "networkx", marker = "sys_platform != 'darwin'" },
+    { name = "setuptools", marker = "sys_platform != 'darwin'" },
+    { name = "sympy", marker = "sys_platform != 'darwin'" },
+    { name = "typing-extensions", marker = "sys_platform != 'darwin'" },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.0%2Bcpu-cp312-cp312-linux_s390x.whl", hash = "sha256:07aefe1a437b6f1b41b0cba15e16583e2f43549ec9d062fcea8e7981a78e014a", upload-time = "2026-09-02T18:31:32Z" },

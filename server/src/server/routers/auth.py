@@ -14,10 +14,12 @@ separate from — and never modifies — the quarantined public
 """
 
 from datetime import UTC, datetime
+import io
 from ipaddress import ip_address
 import logging
 from typing import Annotated
 from uuid import uuid4
+import wave
 
 from fastapi import (
     APIRouter,
@@ -30,6 +32,7 @@ from fastapi import (
 )
 
 from server import vision
+from server.audio_contract import validate_wav_contract
 from server.cognition.authorization import (
     AuthorizationRequest,
     DataSensitivity,
@@ -50,6 +53,7 @@ from server.cognition.owner_authentication import (
 from server.cognition.response_plan import TextTurnPayload
 from server.dependencies import IdentityTokenDep, OwnerUnlockServiceDep
 from server.exceptions import (
+    AudioContractError,
     EnrollmentRejectedError,
     ImageContractError,
     UploadTooLargeError,
@@ -57,21 +61,32 @@ from server.exceptions import (
 )
 from server.memory.biometric_consent import grant_face_consent, revoke_face_consent
 from server.memory.household_authorization import record_authorization_decision
+from server.memory.voice_consent import grant_voice_consent, revoke_voice_consent
 from server.schemas import error_responses
 from server.schemas_auth import (
     FaceEnrollResponse,
     OwnerUnlockRequest,
     OwnerUnlockResponse,
+    VoiceEnrollResponse,
 )
 from server.settings import settings
 from server.text_turn import new_interaction_scope
 from server.uploads import read_limited_upload
+from server.voice.speaker_embedding import (
+    SpeakerBackendError,
+    embed_wav,
+    has_voiced_energy,
+    model_id as _current_model_id,
+)
+from server.voice.voiceprints import count_voiceprints, enroll_voiceprint
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth/owner", tags=["Auth"])
 
 _UNAUTHORIZED_DETAIL = "Owner authentication failed"
+# Not the owner's name: the label is never read, so it must not duplicate a real name.
+_VOICEPRINT_LABEL = "owner"
 
 
 def _is_loopback(request: Request) -> bool:
@@ -174,7 +189,7 @@ def _face_event(event_type: str) -> CognitiveEvent[TextTurnPayload]:
     )
 
 
-async def _authorize_face_action(
+async def _authorize_biometric_action(
     owner_unlock_service: OwnerUnlockService, token: str | None, *, event_type: str
 ) -> tuple[ActivePersonContext, AuthorizationRequest, AuthorizationDecision]:
     """Resolve the request-scoped actor and evaluate the biometric-admin policy.
@@ -188,7 +203,8 @@ async def _authorize_face_action(
     Args:
         owner_unlock_service: Lifespan-owned unlock service (Plan 0040).
         token: Optional one-use owner unlock token from the request header.
-        event_type: Synthetic event type — `"face.enroll"` or `"face.revoke"`.
+        event_type: Synthetic event type — `"face.enroll"`, `"face.revoke"`,
+            `"voice.enroll"` (Plan 0053), or `"voice.revoke"` (Plan 0053).
 
     Returns:
         The resolved actor, the request that was evaluated, and its
@@ -298,7 +314,7 @@ async def enroll_owner_face(
     if not _is_loopback(http_request):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Local access only")
 
-    actor, request, decision = await _authorize_face_action(
+    actor, request, decision = await _authorize_biometric_action(
         owner_unlock_service, x_iroko_identity_token, event_type="face.enroll"
     )
     await record_authorization_decision(request, decision)
@@ -350,7 +366,7 @@ async def revoke_owner_face(
     if not _is_loopback(http_request):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Local access only")
 
-    actor, request, decision = await _authorize_face_action(
+    actor, request, decision = await _authorize_biometric_action(
         owner_unlock_service, x_iroko_identity_token, event_type="face.revoke"
     )
     await record_authorization_decision(request, decision)
@@ -358,3 +374,196 @@ async def revoke_owner_face(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_UNAUTHORIZED_DETAIL)
 
     await revoke_face_consent(actor.person_id)
+
+
+def _enrollment_duration_s(audio_bytes: bytes) -> float:
+    """Return a contract-passing WAV's duration in seconds.
+
+    Call only after `validate_wav_contract` already accepted *audio_bytes* —
+    this re-reads the same header without re-validating it.
+    """
+    with wave.open(io.BytesIO(audio_bytes), "rb") as handle:
+        return handle.getnframes() / handle.getframerate()
+
+
+async def _read_enrollment_audio(audio: UploadFile) -> bytes:
+    """Read and validate one voice-enrollment clip against the audio contract.
+
+    Audio contract: WAV, 16 000 Hz, mono, signed int16. The returned bytes
+    are embedded and discarded by the caller — never stored, never logged.
+
+    Args:
+        audio: Multipart upload carrying the enrollment clip.
+
+    Returns:
+        The raw, validated WAV bytes.
+
+    Raises:
+        HTTPException 413: If the upload exceeds MAX_UPLOAD_BYTES.
+        HTTPException 422: If the WAV fails the audio contract, is shorter
+            than `settings.speaker_min_enrollment_s`, or carries no voiced
+            energy (Review Focus 1).
+    """
+    try:
+        audio_bytes = await read_limited_upload(audio, limit=settings.max_audio_upload_bytes)
+    except UploadTooLargeError as exc:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Audio too large — max {exc.limit // 1024 // 1024} MB",
+        ) from exc
+    if not audio_bytes:
+        raise HTTPException(status_code=422, detail="Audio file is empty")
+    try:
+        validate_wav_contract(audio_bytes, max_duration_s=settings.max_audio_duration_s)
+    except AudioContractError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if _enrollment_duration_s(audio_bytes) < settings.speaker_min_enrollment_s:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Audio is shorter than the {settings.speaker_min_enrollment_s:.1f}s "
+                "enrollment minimum"
+            ),
+        )
+    if not has_voiced_energy(audio_bytes):
+        raise HTTPException(status_code=422, detail="Audio is too quiet to enroll")
+    return audio_bytes
+
+
+@router.post(
+    "/voice/enroll",
+    responses=error_responses(
+        (401, "Absent, expired, consumed, or otherwise unauthorized token"),
+        (403, "Caller is not on loopback"),
+        (413, "Audio exceeds the upload size limit"),
+        (503, "Speaker authentication is disabled, or the speaker model is unavailable"),
+    ),
+)
+async def enroll_owner_voice(
+    http_request: Request,
+    owner_unlock_service: OwnerUnlockServiceDep,
+    audio: Annotated[UploadFile, File(description="WAV 16kHz mono int16 · one utterance")],
+    x_iroko_identity_token: IdentityTokenDep = None,
+) -> VoiceEnrollResponse:
+    """Enroll one reference voiceprint for the token's own owner.
+
+    Audio contract: WAV, 16 000 Hz, mono, signed int16. The audio is embedded
+    and discarded — never stored, never logged, never transcribed. Several
+    calls build the reference set the runtime compares a centroid against;
+    `settings.speaker_min_reference_count` references are required before any
+    verification is attempted.
+
+    Disabled entirely while `settings.speaker_authentication_enabled` is
+    `False` — no token is consumed and no audio is read, unlike face
+    enrolment, which has no equivalent gate (Plan 0053's flag matrix is
+    stricter on purpose: less voice data collected while the feature is off).
+
+    ADR-0015 decision 1: this is `biometric_admin`, not
+    `personal_protected_read`. Plan 0051 binds the grant's scope; until then
+    it consumes the same unscoped one-use token the face routes consume.
+
+    Args:
+        http_request: Raw ASGI request used only to check loopback origin.
+        owner_unlock_service: Lifespan-owned unlock service (Plan 0040).
+        audio: WAV 16 000 Hz mono int16 clip, one utterance.
+        x_iroko_identity_token: One-use owner unlock token issued by
+            `POST /auth/owner/unlock`.
+
+    Returns:
+        The new voiceprint's row id, the enrollment timestamp, and how many
+        references this person now has for the currently configured model.
+
+    Raises:
+        HTTPException: 403 for a non-loopback caller; 503 if speaker
+            authentication is disabled, or if the speaker model itself
+            fails; 401 for an absent, expired, consumed, or otherwise
+            unauthorized token; 413 for an oversized upload; 422 for audio
+            that fails the contract, is too short, or is too quiet.
+    """
+    if not _is_loopback(http_request):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Local access only")
+    if not settings.speaker_authentication_enabled:
+        raise HTTPException(status_code=503, detail="Speaker authentication is disabled")
+
+    # Validate the clip BEFORE spending the one-use token: three references need
+    # three PINs, and a too-short or silent clip is the likeliest operator error.
+    audio_bytes = await _read_enrollment_audio(audio)
+    actor, request, decision = await _authorize_biometric_action(
+        owner_unlock_service, x_iroko_identity_token, event_type="voice.enroll"
+    )
+    await record_authorization_decision(request, decision)
+    if (
+        decision.decision is not AuthorizationStatus.ALLOWED
+        or actor.person_id is None
+        or actor.display_name is None
+    ):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_UNAUTHORIZED_DETAIL)
+
+    current_model_id = _current_model_id()
+    try:
+        embedding = await embed_wav(audio_bytes)
+    except SpeakerBackendError as exc:
+        logger.error(
+            "Voice enrollment backend failed: %s (cause: %s)",
+            exc,
+            type(exc.__cause__).__name__ if exc.__cause__ is not None else "none",
+        )
+        raise HTTPException(status_code=503, detail="Speaker model unavailable") from exc
+
+    # Consent first: a voiceprint must never exist without an active grant.
+    await grant_voice_consent(actor.person_id)
+    profile_id = await enroll_voiceprint(
+        actor.person_id, embedding, _VOICEPRINT_LABEL, current_model_id
+    )
+    reference_count = await count_voiceprints(actor.person_id, current_model_id)
+    return VoiceEnrollResponse(
+        profile_id=profile_id,
+        enrolled_at=datetime.now(UTC),
+        reference_count=reference_count,
+    )
+
+
+@router.post(
+    "/voice/revoke",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=error_responses(
+        (401, "Absent, expired, consumed, or otherwise unauthorized token"),
+        (403, "Caller is not on loopback"),
+    ),
+)
+async def revoke_owner_voice(
+    http_request: Request,
+    owner_unlock_service: OwnerUnlockServiceDep,
+    x_iroko_identity_token: IdentityTokenDep = None,
+) -> None:
+    """Revoke the token's own owner's voice consent and purge stored voiceprints.
+
+    ADR-0015 decision 1: this is `biometric_admin`, not
+    `personal_protected_read`. Plan 0051 binds the grant's scope; until then
+    it consumes the same unscoped one-use token the face routes consume.
+
+    Carries no `speaker_authentication_enabled` check — unlike enrolment,
+    revocation must keep working even with the feature nominally off, so an
+    owner can always purge whatever was captured before they turned it off.
+
+    Args:
+        http_request: Raw ASGI request used only to check loopback origin.
+        owner_unlock_service: Lifespan-owned unlock service (Plan 0040).
+        x_iroko_identity_token: One-use owner unlock token issued by
+            `POST /auth/owner/unlock`.
+
+    Raises:
+        HTTPException: 403 for a non-loopback caller; 401 for an absent,
+            expired, consumed, or otherwise unauthorized token.
+    """
+    if not _is_loopback(http_request):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Local access only")
+
+    actor, request, decision = await _authorize_biometric_action(
+        owner_unlock_service, x_iroko_identity_token, event_type="voice.revoke"
+    )
+    await record_authorization_decision(request, decision)
+    if decision.decision is not AuthorizationStatus.ALLOWED or actor.person_id is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_UNAUTHORIZED_DETAIL)
+
+    await revoke_voice_consent(actor.person_id)

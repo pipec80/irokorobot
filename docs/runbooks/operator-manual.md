@@ -243,15 +243,40 @@ owner held to the camera authenticates. No calibrated real-camera study
 [`current-state.md`](../architecture/current-state.md) for the full
 disclosure. Real-camera acceptance is a future plan, not yet written.
 
-### Tier 3 — Voice evidence (PC-3B is Plan 0053, Ready in NOW; PC-3A calibration closed)
+### Tier 3 — Voice evidence (PC-3B, Plan 0053; untrusted, replay not defended)
 
-In progress (Plan 0053): a real speaker-enrollment/verification adapter
-through the same typed evidence contract. STT/VAD are not voice identity by
-themselves. The PC-3A study (Plan 0047, 2026-09-25) measured a candidate
-backend offline — provisional PASS, but 6 of 8 replay probes were accepted,
-so voice alone is never high-assurance evidence. `VOICE` stays untrusted;
-nothing is wired at runtime yet — this section is updated again when Plan
-0053 closes (its own Task 8, Step 4).
+A consented, local speaker check that attaches **untrusted** `VOICE` evidence to
+a protected turn. It never identifies anyone and never unlocks anything: a
+`verified` verdict still receives the same denial as an unauthenticated turn,
+because `VOICE` is not a resolvable identity source. Fusion with face/PIN is
+Tier 4 (PC-4). Off by default.
+
+Enable and enrol (server on loopback, owner and PIN already configured):
+
+1. Put `SPEAKER_AUTHENTICATION_ENABLED=true` in `.env` and restart
+   `just run-server`. Optional but recommended: `HF_HUB_OFFLINE=1`, which stops
+   `huggingface_hub` from its once-a-day request to `huggingface.co` (an agent
+   registry lookup, not a model download; verified to load the model normally).
+2. `just speaker-auth-demo --enroll` three times (5 s each, quiet room, normal
+   distance). It asks for the PIN each time and keeps the audio in memory only.
+   At least 3 references are required before any verification is attempted.
+   The first call is slow (about 15 s) because it loads the model.
+3. Ask a protected question with `just test-client`. The server log shows
+   `Speaker verdict: verified | unknown | unavailable`; no name, distance or
+   score is ever logged. `evidence=1` in the `Turn actor` line means voice
+   evidence was attached; the answer is still the denial.
+4. `just speaker-auth-demo --revoke` deletes the consent and **every** stored
+   voiceprint (checked in SQLite: `voice_profiles` and active
+   `voice_consent_grants` both 0). Revocation works even with the flag off.
+
+Behaviour to expect: silence gives a 422 before the speaker check runs; a clip
+shorter than 1.5 s gives `unknown`; missing model files give `unavailable` and a
+normal turn; enrolment returns 503 while the flag is off. The threshold `0.4834`
+and the 1.5 s floor are **provisional**: Plan 0047 measured them in-sample on one
+owner, and **6 of 8 replay probes were accepted**, so a recording of the owner
+can pass. Acceptance on 2026-09-29 (one owner, one laptop microphone): 5 of 5
+full-length genuine turns verified; impostors at runtime, utterances between
+1.5 s and 3 s and more than one acoustic condition were not measured.
 
 ### Tier 4 — Conservative fusion (PC-4, not started)
 
@@ -270,6 +295,12 @@ best-score guess. The PIN remains available even if every biometric fails.
 | `FACE_AUTHENTICATION_MATCH_THRESHOLD` | `0.5815` | Stricter, separate match bound for authentication (layered on top of `FACE_MATCH_THRESHOLD`); measured by Plan 0030, provisional |
 | `ROBOT_FACE_AUTH_ENABLED` | `false` | Robot: capture and attach one webcam frame per turn |
 | `FACE_MATCH_THRESHOLD` | `0.4` | Generic conversational face-recognition threshold (unrelated to authentication) |
+| `SPEAKER_AUTHENTICATION_ENABLED` | `false` | Server: consult the speaker resolver once per protected turn and attach untrusted `VOICE` evidence; enrolment returns 503 while off, revocation always works |
+| `SPEAKER_AUTHENTICATION_MATCH_THRESHOLD` | `0.4834` | Cosine distance to the reference centroid; provisional and in-sample (Plan 0047) |
+| `SPEAKER_MIN_REFERENCE_COUNT` | `3` | References required before verification is attempted |
+| `SPEAKER_MIN_VERIFICATION_S` / `SPEAKER_MIN_ENROLLMENT_S` | `1.5` / `2.0` | Shortest clip embedded at a turn / accepted at enrolment; the first is a conservative guess, not measured |
+| `SPEAKER_MODEL_RETRY_COOLDOWN_S` | `60` | Seconds to wait after a failed speaker-model load before trying again |
+| `SPEAKER_MODEL_CACHE_DIR` | unset | Optional override; defaults to `MODELS_DIR/speechbrain` |
 | `UVICORN_WORKERS` | `1` | Must stay `1` — owner/face grants are process-local; the server refuses to start otherwise |
 
 **The one real startup guard:** `ROBOT_STREAMING=true` on the robot plus

@@ -10,6 +10,7 @@ import time
 from typing import Annotated, Literal
 from uuid import uuid4
 
+import aiosqlite
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 import httpx
@@ -24,7 +25,7 @@ from server.cognition.face_authentication import (
     compose_face_then_pin_resolver,
 )
 from server.cognition.household_tools import HouseholdKnowledgeTools
-from server.cognition.identity import ActivePersonContext
+from server.cognition.identity import ActivePersonContext, ActivePersonStatus
 from server.cognition.models import CognitiveEvent
 from server.cognition.owner_authentication import OwnerRequestResolver, OwnerUnlockService
 from server.cognition.response_plan import (
@@ -33,10 +34,20 @@ from server.cognition.response_plan import (
     TextTurnPayload,
     scene_unavailable_plan,
 )
+from server.cognition.speaker_authentication import (
+    SpeakerRequestResolver,
+    build_default_speaker_resolver,
+)
 from server.dependencies import IdentityTokenDep, OwnerUnlockServiceDep, ResourcesDep
-from server.exceptions import AudioContractError, ImageContractError, UploadTooLargeError
+from server.exceptions import (
+    AudioContractError,
+    BrainMemoryError,
+    ImageContractError,
+    UploadTooLargeError,
+)
 from server.memory.consolidation import consolidate_turn
 from server.memory.household_authorization import record_authorization_decision
+from server.memory.owner_credentials import get_active_owner_pin_credential
 from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
 from server.pipeline import (
     _elapsed_ms,
@@ -172,10 +183,71 @@ class _RequestIdentity:
         return None
 
 
+def _speaker_augmented_actor_resolver(
+    base_resolve_actor: ActivePersonResolver, wav_bytes: bytes
+) -> ActivePersonResolver:
+    """Wrap *base_resolve_actor* to consult untrusted VOICE evidence (Plan 0053).
+
+    D-6: consulted only when the flag is on, only when the composed face/PIN
+    result did not already identify the actor, and at most once per request
+    — the speaker resolver instance is built lazily on the first call and
+    reused on every later one, mirroring how `SpeakerRequestResolver` caches
+    within itself; the controller can call the actor resolver more than once
+    while deciding one turn (`CognitiveController.decide`).
+
+    `compose_face_then_pin_resolver` itself is not edited: this wraps its
+    result from the outside. `VOICE` stays unresolvable —
+    `_RESOLVABLE_SOURCES` is unedited — so this can only ever ATTACH
+    untrusted evidence to the still-unidentified context, never upgrade its
+    `status` or `person_id`.
+
+    Args:
+        base_resolve_actor: The existing PIN-only or face-then-PIN resolver.
+        wav_bytes: The current turn's own audio, already read and validated.
+
+    Returns:
+        A resolver that falls through to the speaker resolver only when
+        needed, and attaches its evidence to the base context otherwise
+        unchanged.
+    """
+    speaker: SpeakerRequestResolver | None = None
+    owner_checked = False
+
+    async def resolve_actor(event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
+        nonlocal speaker, owner_checked
+        context = await base_resolve_actor(event)
+        if context.status is ActivePersonStatus.IDENTIFIED:
+            return context
+        if speaker is None:
+            if owner_checked:
+                return context
+            owner_checked = True
+            try:
+                credential = await get_active_owner_pin_credential()
+            except (BrainMemoryError, aiosqlite.Error) as exc:
+                # A turn without a token used to touch no database at all; the
+                # speaker check must never turn a DB hiccup into a failed turn.
+                logger.warning("Speaker evidence skipped, owner lookup failed: %s", exc)
+                return context
+            if credential is None:
+                return context
+            speaker = build_default_speaker_resolver(wav_bytes, credential.person_entity_id)
+        speaker_context = await speaker.resolve_actor(event)
+        if not speaker_context.evidence:
+            return context
+        return context.model_copy(update={"evidence": context.evidence + speaker_context.evidence})
+
+    return resolve_actor
+
+
 def _build_request_identity(
-    owner_unlock_service: OwnerUnlockService, token: str | None, frame: bytes | None
+    owner_unlock_service: OwnerUnlockService,
+    token: str | None,
+    frame: bytes | None,
+    wav_bytes: bytes | None,
 ) -> _RequestIdentity:
-    """Compose this request's actor/consent resolver from PIN and optional face evidence.
+    """Compose this request's actor/consent resolver from PIN, optional face,
+    and optional speaker evidence.
 
     Args:
         owner_unlock_service: Lifespan-owned unlock service (Plan 0040).
@@ -185,21 +257,29 @@ def _build_request_identity(
             `settings.face_authentication_enabled` is `False` — in either
             case this resolves to exactly the existing PIN-only path
             (Plan 0026/0027).
+        wav_bytes: The current turn's own audio, already read and validated
+            (Plan 0053). Consulted only when
+            `settings.speaker_authentication_enabled` is `True` and the
+            composed face/PIN result did not already identify the actor —
+            see `_speaker_augmented_actor_resolver`.
 
     Returns:
-        A `_RequestIdentity` wrapping either the plain PIN resolver or the
-        face-first, PIN-fallback composed pair (Plan 0029).
+        A `_RequestIdentity` wrapping the plain PIN resolver, the
+        face-first, PIN-fallback composed pair (Plan 0029), or either one
+        additionally augmented with untrusted `VOICE` evidence (Plan 0053).
     """
     pin = owner_unlock_service.for_request(token)
     if not settings.face_authentication_enabled or frame is None:
-        return _RequestIdentity(
-            resolve_actor=pin.resolve_actor,
-            resolve_consent=pin.resolve_consent,
-            pin=pin,
-            face=None,
-        )
-    face = build_default_face_request_resolver(frame)
-    resolve_actor, resolve_consent = compose_face_then_pin_resolver(face, pin)
+        resolve_actor: ActivePersonResolver = pin.resolve_actor
+        resolve_consent: ConsentResolver = pin.resolve_consent
+        face = None
+    else:
+        face = build_default_face_request_resolver(frame)
+        resolve_actor, resolve_consent = compose_face_then_pin_resolver(face, pin)
+
+    if settings.speaker_authentication_enabled and wav_bytes is not None:
+        resolve_actor = _speaker_augmented_actor_resolver(resolve_actor, wav_bytes)
+
     return _RequestIdentity(
         resolve_actor=resolve_actor,
         resolve_consent=resolve_consent,
@@ -407,10 +487,10 @@ async def transcribe(
             logger.warning(
                 "Owner-authentication frame rejected — continuing without it: %s", exc.detail
             )
-    request_identity = _build_request_identity(
-        owner_unlock_service, x_iroko_identity_token, frame_bytes
-    )
     audio_bytes = await _read_audio_upload(audio)
+    request_identity = _build_request_identity(
+        owner_unlock_service, x_iroko_identity_token, frame_bytes, audio_bytes
+    )
 
     text_heard, stt_ms = await _run_stt(audio_bytes, [])
 
@@ -531,10 +611,10 @@ async def transcribe_stream(
             logger.warning(
                 "Owner-authentication frame rejected — continuing without it: %s", exc.detail
             )
-    request_identity = _build_request_identity(
-        owner_unlock_service, x_iroko_identity_token, frame_bytes
-    )
     audio_bytes = await _read_audio_upload(audio)
+    request_identity = _build_request_identity(
+        owner_unlock_service, x_iroko_identity_token, frame_bytes, audio_bytes
+    )
 
     text_heard, stt_ms = await _run_stt(audio_bytes, [])
 

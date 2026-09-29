@@ -114,7 +114,7 @@ CM-0 RED benchmark (can run first; does not change runtime)
 
 Plan 0046 realized CM-0 (closed 2026-09-08) and **PC-3A /
 [Plan 0047](../plans/completed/0047-speaker-evidence-calibration-study.md)** closed
-2026-09-25 with a provisional PASS. The next slice is PC-3B, not CM-1:
+2026-09-25 with a provisional PASS, and **PC-3B / Plan 0053** closed 2026-09-29. The next slice is PC-4, not CM-1:
 CM-1 stays unplanned until PC-3 and PC-4 close per the product order above. The
 numbering of CM-1 through CM-7 is not reserved:
 each stage will be written only after its predecessor is closed and re-audited.
