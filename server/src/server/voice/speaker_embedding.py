@@ -18,6 +18,8 @@ Audio contract: WAV, 16 000 Hz, mono, signed int16. No cloud inference
 authorization.
 """
 
+import asyncio
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 import io
@@ -59,6 +61,10 @@ _encoder: Any | None = None
 # younger than `settings.speaker_model_retry_cooldown_s` the loader refuses to
 # retry, so a broken model is not re-read from disk on every protected turn.
 _load_failed_at: float | None = None
+# True while an embedding that already timed out is still running on the single
+# worker thread (a thread cannot be cancelled). New embeddings are refused at
+# once instead of queueing behind it and making every protected turn wait.
+_embedding_stuck = False
 
 
 class SpeakerBackendError(Exception):
@@ -149,7 +155,36 @@ async def embed_wav(wav_bytes: bytes) -> np.ndarray:
         wave_f32 = _decode(wav_bytes)
     except (wave.Error, ValueError) as exc:
         raise AudioContractError("Audio failed to decode past its header") from exc
-    return await run_in_executor_with_context(_executor, partial(_embed_sync, wave_f32))
+    return await _run_bounded(partial(_embed_sync, wave_f32))
+
+
+async def _run_bounded(work: Callable[[], np.ndarray]) -> np.ndarray:
+    """Run *work* on the executor, giving up after `speaker_embed_timeout_s`.
+
+    Raises:
+        SpeakerBackendError: If the backend is still busy with a timed-out call, or
+            this call does not finish in time.
+    """
+    global _embedding_stuck  # noqa: PLW0603 -- one process-wide worker thread
+    if _embedding_stuck:
+        raise SpeakerBackendError("Speaker backend is still busy with a timed-out embedding")
+    task = asyncio.create_task(run_in_executor_with_context(_executor, work))
+    task.add_done_callback(_on_embedding_done)
+    try:
+        return await asyncio.wait_for(
+            asyncio.shield(task), timeout=settings.speaker_embed_timeout_s
+        )
+    except TimeoutError as exc:
+        _embedding_stuck = True
+        raise SpeakerBackendError("Speaker embedding timed out") from exc
+
+
+def _on_embedding_done(task: asyncio.Task[np.ndarray]) -> None:
+    """Free the worker flag and mark an abandoned task's outcome as seen."""
+    global _embedding_stuck  # noqa: PLW0603 -- one process-wide worker thread
+    _embedding_stuck = False
+    if not task.cancelled():
+        task.exception()
 
 
 def _embed_sync(wave_f32: np.ndarray) -> np.ndarray:
