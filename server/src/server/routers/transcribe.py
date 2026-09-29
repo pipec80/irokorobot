@@ -10,6 +10,7 @@ import time
 from typing import Annotated, Literal
 from uuid import uuid4
 
+import aiosqlite
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 import httpx
@@ -38,7 +39,12 @@ from server.cognition.speaker_authentication import (
     build_default_speaker_resolver,
 )
 from server.dependencies import IdentityTokenDep, OwnerUnlockServiceDep, ResourcesDep
-from server.exceptions import AudioContractError, ImageContractError, UploadTooLargeError
+from server.exceptions import (
+    AudioContractError,
+    BrainMemoryError,
+    ImageContractError,
+    UploadTooLargeError,
+)
 from server.memory.consolidation import consolidate_turn
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.owner_credentials import get_active_owner_pin_credential
@@ -205,14 +211,24 @@ def _speaker_augmented_actor_resolver(
         unchanged.
     """
     speaker: SpeakerRequestResolver | None = None
+    owner_checked = False
 
     async def resolve_actor(event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
-        nonlocal speaker
+        nonlocal speaker, owner_checked
         context = await base_resolve_actor(event)
         if context.status is ActivePersonStatus.IDENTIFIED:
             return context
         if speaker is None:
-            credential = await get_active_owner_pin_credential()
+            if owner_checked:
+                return context
+            owner_checked = True
+            try:
+                credential = await get_active_owner_pin_credential()
+            except (BrainMemoryError, aiosqlite.Error) as exc:
+                # A turn without a token used to touch no database at all; the
+                # speaker check must never turn a DB hiccup into a failed turn.
+                logger.warning("Speaker evidence skipped, owner lookup failed: %s", exc)
+                return context
             if credential is None:
                 return context
             speaker = build_default_speaker_resolver(wav_bytes, credential.person_entity_id)

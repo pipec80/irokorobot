@@ -26,12 +26,20 @@ def _pack(embedding: np.ndarray) -> bytes:
 
 
 def _unpack(blob: bytes) -> np.ndarray:
-    """Read one stored voiceprint back into a 1-D float32 array."""
+    """Read one stored voiceprint back into a 1-D float32 array.
+
+    Raises:
+        BrainMemoryError: If the blob is not exactly one 192-d float32 vector.
+    """
+    if len(blob) != VOICEPRINT_DIM * 4:
+        raise BrainMemoryError("Stored voiceprint has an unexpected size")
     return np.frombuffer(blob, dtype=np.float32)
 
 
 def _l2_normalized(vector: np.ndarray) -> np.ndarray:
     """Return *vector* scaled to unit length, exactly as the study did."""
+    if not np.isfinite(vector).all():
+        raise BrainMemoryError("Refusing to store or compare a non-finite voiceprint")
     norm = float(np.linalg.norm(vector))
     if norm == 0.0:
         raise BrainMemoryError("Refusing to store or compare an all-zero voiceprint")
@@ -86,7 +94,13 @@ async def _references(entity_id: int, model_id: str) -> list[np.ndarray]:
 
 async def count_voiceprints(entity_id: int, model_id: str) -> int:
     """Return how many usable references this person has for *model_id*."""
-    return len(await _references(entity_id, model_id))
+    cursor = await get_conn().execute(
+        "SELECT COUNT(*) FROM voice_profiles WHERE entity_id = ? AND model_id = ?",
+        (entity_id, model_id),
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    return int(row[0]) if row is not None else 0
 
 
 async def centroid_distance(entity_id: int, embedding: np.ndarray, model_id: str) -> float | None:

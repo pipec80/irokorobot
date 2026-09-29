@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 
 import numpy as np
 import pytest
+from server.exceptions import BrainMemoryError
 from server.memory.declarative import upsert_entity
 from server.memory.voice_consent import (
     grant_voice_consent,
@@ -96,3 +97,36 @@ async def test_centroid_distance_matches_the_study_arithmetic(memory_db: None) -
 async def test_centroid_distance_is_none_without_references(memory_db: None) -> None:
     person = await upsert_entity(name="canary-owner", type="person")
     assert await centroid_distance(person, _unit_vector(0), MODEL_ID) is None
+
+
+async def _insert_raw_blob(entity_id: int, blob: bytes) -> None:
+    await db.get_conn().execute(
+        "INSERT INTO voice_profiles (entity_id, label, embedding, model_id) VALUES (?, ?, ?, ?)",
+        (entity_id, "canary", blob, MODEL_ID),
+    )
+    await db.get_conn().commit()
+
+
+async def test_a_corrupt_stored_blob_is_a_typed_error_not_a_raw_numpy_one(
+    memory_db: None,
+) -> None:
+    """Review M-4: the resolver catches BrainMemoryError; a raw ValueError would be a 500."""
+    person = await upsert_entity(name="canary-owner", type="person")
+    await enroll_voiceprint(person, _unit_vector(0), "canary", MODEL_ID)
+    await _insert_raw_blob(person, b"\0")  # wrong length
+    with pytest.raises(BrainMemoryError):
+        await centroid_distance(person, _unit_vector(0), MODEL_ID)
+
+
+async def test_a_non_finite_stored_blob_is_a_typed_error(memory_db: None) -> None:
+    person = await upsert_entity(name="canary-owner", type="person")
+    await _insert_raw_blob(person, np.full(VOICEPRINT_DIM, np.nan, dtype=np.float32).tobytes())
+    with pytest.raises(BrainMemoryError):
+        await centroid_distance(person, _unit_vector(0), MODEL_ID)
+
+
+async def test_a_non_finite_embedding_is_refused(memory_db: None) -> None:
+    person = await upsert_entity(name="canary-owner", type="person")
+    bad = np.full(VOICEPRINT_DIM, np.nan, dtype=np.float32)
+    with pytest.raises(BrainMemoryError):
+        await enroll_voiceprint(person, bad, "canary", MODEL_ID)

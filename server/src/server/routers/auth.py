@@ -85,6 +85,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth/owner", tags=["Auth"])
 
 _UNAUTHORIZED_DETAIL = "Owner authentication failed"
+# Not the owner's name: the label is never read, so it must not duplicate a real name.
+_VOICEPRINT_LABEL = "owner"
 
 
 def _is_loopback(request: Request) -> bool:
@@ -483,6 +485,9 @@ async def enroll_owner_voice(
     if not settings.speaker_authentication_enabled:
         raise HTTPException(status_code=503, detail="Speaker authentication is disabled")
 
+    # Validate the clip BEFORE spending the one-use token: three references need
+    # three PINs, and a too-short or silent clip is the likeliest operator error.
+    audio_bytes = await _read_enrollment_audio(audio)
     actor, request, decision = await _authorize_biometric_action(
         owner_unlock_service, x_iroko_identity_token, event_type="voice.enroll"
     )
@@ -494,18 +499,22 @@ async def enroll_owner_voice(
     ):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_UNAUTHORIZED_DETAIL)
 
-    audio_bytes = await _read_enrollment_audio(audio)
     current_model_id = _current_model_id()
     try:
         embedding = await embed_wav(audio_bytes)
     except SpeakerBackendError as exc:
-        logger.error("Voice enrollment backend failed: %s", exc)
+        logger.error(
+            "Voice enrollment backend failed: %s (cause: %s)",
+            exc,
+            type(exc.__cause__).__name__ if exc.__cause__ is not None else "none",
+        )
         raise HTTPException(status_code=503, detail="Speaker model unavailable") from exc
 
-    profile_id = await enroll_voiceprint(
-        actor.person_id, embedding, actor.display_name, current_model_id
-    )
+    # Consent first: a voiceprint must never exist without an active grant.
     await grant_voice_consent(actor.person_id)
+    profile_id = await enroll_voiceprint(
+        actor.person_id, embedding, _VOICEPRINT_LABEL, current_model_id
+    )
     reference_count = await count_voiceprints(actor.person_id, current_model_id)
     return VoiceEnrollResponse(
         profile_id=profile_id,

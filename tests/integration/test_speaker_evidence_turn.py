@@ -9,10 +9,13 @@ match must still deny a protected question without a PIN or a face.
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 import io
 from pathlib import Path
+import subprocess
 import sys
 from unittest.mock import AsyncMock
+from uuid import uuid4
 import wave
 
 from fastapi.testclient import TestClient
@@ -21,8 +24,12 @@ import numpy as np
 from pydantic import SecretStr
 import pytest
 from server.cognition import speaker_authentication as speaker_auth_module
+from server.cognition.identity import HouseholdRole, IdentityEvidenceSource
+from server.cognition.models import CognitiveEvent
 from server.cognition.owner_authentication import owner_unlock_service
+from server.cognition.response_plan import TextTurnPayload
 from server.main import app
+from server.memory.household_authorization import get_active_role, revoke_active_role
 from server.memory.voice_consent import grant_voice_consent
 from server.personal_setup import PersonalSetupInput, PersonalSetupResult, apply_personal_setup
 from server.resources import AppResources
@@ -224,3 +231,80 @@ async def test_a_backend_failure_does_not_fail_the_turn(
     body = response.json()
     assert body["authentication_consumed"] is False
     assert body["identity_source"] is None
+
+
+@pytest.mark.integration
+async def test_flag_on_stream_route_consults_the_speaker_once(
+    turn_db: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review I-3: the wiring was duplicated in the streaming route and untested there."""
+    monkeypatch.setattr(settings, "speaker_authentication_enabled", True)
+    await _enroll_speaker(turn_db.owner_entity_id)
+    embed = AsyncMock(return_value=_matching_probe())
+    monkeypatch.setattr(speaker_auth_module, "embed_wav", embed)
+    _mock_stt_tts(monkeypatch, text=_CHILD_QUESTION)
+
+    async with _client() as client:
+        response = await client.post(
+            "/transcribe/stream", files={"audio": ("clip.wav", _tone_wav(), "audio/wav")}
+        )
+
+    assert response.status_code == 200
+    embed.assert_awaited_once()
+    assert "Joaquin" not in response.text
+    assert "Martina" not in response.text
+
+
+def _event() -> CognitiveEvent[TextTurnPayload]:
+    now = datetime(2026, 9, 29, 12, 0, tzinfo=UTC)
+    return CognitiveEvent(
+        event_id=uuid4(),
+        schema_version=1,
+        event_type="text.turn",
+        occurred_at=now,
+        recorded_at=now,
+        source="audio.transcribe",
+        correlation_id=uuid4(),
+        causation_id=None,
+        subject_id=None,
+        payload=TextTurnPayload(message="canary", conversation_id="canary-scope"),
+    )
+
+
+@pytest.mark.integration
+async def test_a_role_change_takes_effect_on_the_next_turn(
+    turn_db: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review Focus 5 / M-7: real DB, real `get_active_role`, real default wiring."""
+    monkeypatch.setattr(speaker_auth_module, "embed_wav", AsyncMock(return_value=_matching_probe()))
+    await _enroll_speaker(turn_db.owner_entity_id)
+    owner = turn_db.owner_entity_id
+    assert await get_active_role(owner) is HouseholdRole.OWNER
+
+    before = await speaker_auth_module.build_default_speaker_resolver(
+        _tone_wav(), owner
+    ).resolve_actor(_event())
+    await revoke_active_role(person_entity_id=owner)
+    after = await speaker_auth_module.build_default_speaker_resolver(
+        _tone_wav(), owner
+    ).resolve_actor(_event())
+
+    assert [item.source for item in before.evidence] == [IdentityEvidenceSource.VOICE]
+    assert after.evidence == ()
+
+
+def test_importing_the_app_never_loads_the_speaker_stack() -> None:
+    """Review M-7: prove the lazy imports in a clean interpreter, not via `sys.modules`.
+
+    Deleting `torch` from `sys.modules` in-process says nothing about whether a
+    fresh server with the flag off would load it; a subprocess does.
+    """
+    code = (
+        "import sys; import server.main, server.routers.transcribe, server.routers.auth; "
+        "bad = [m for m in ('torch', 'torchaudio', 'speechbrain') if m in sys.modules]; "
+        "sys.exit(1 if bad else 0)"
+    )
+    result = subprocess.run(  # noqa: S603 -- fixed argv, no user input
+        [sys.executable, "-c", code], capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0, result.stderr

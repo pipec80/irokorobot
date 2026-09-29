@@ -52,6 +52,7 @@ _executor = ThreadPoolExecutor(max_workers=1)
 # parameter or return annotation, not on a bare module-level variable — an
 # unused noqa trips `RUF100`. `vision/faces.py:36`'s equivalent
 # (`_analyzer: Any = None`) carries none either; mirror it exactly.
+# `Any`: speechbrain ships no type stubs, so the encoder has no importable type.
 _encoder: Any | None = None
 
 
@@ -86,7 +87,9 @@ def has_voiced_energy(wav_bytes: bytes) -> bool:
     samples = _safe_decode(wav_bytes)
     if samples is None:
         return False
-    return bool(np.mean(np.abs(samples)) > _MIN_MEAN_ABS_AMPLITUDE / _INT16_FULL_SCALE)
+    # Remove the mean first: a flat DC offset is not speech but has a large mean |x|.
+    centered = samples - float(np.mean(samples))
+    return bool(np.mean(np.abs(centered)) > _MIN_MEAN_ABS_AMPLITUDE / _INT16_FULL_SCALE)
 
 
 def meets_verification_duration(wav_bytes: bytes) -> bool:
@@ -151,7 +154,8 @@ def _embed_sync(wave_f32: np.ndarray) -> np.ndarray:
         import torch  # noqa: PLC0415 -- deferred so the flag-off path never imports torch
 
         tensor = torch.from_numpy(wave_f32).unsqueeze(0)
-        output = encoder.encode_batch(wavs=tensor, wav_lens=None, normalize=False)
+        with torch.inference_mode():
+            output = encoder.encode_batch(wavs=tensor, wav_lens=None, normalize=False)
         vector = np.asarray(output.squeeze().detach().cpu().numpy(), dtype=np.float32)
     except Exception as exc:
         # (Review Focus 4) can raise almost anything: a hyperpyyaml parse

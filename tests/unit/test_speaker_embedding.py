@@ -227,3 +227,9 @@ def test_model_id_comes_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(speaker_embedding.settings, "speaker_model", "m")
     monkeypatch.setattr(speaker_embedding.settings, "speaker_model_revision", "r")
     assert speaker_embedding.model_id() == "m@r"
+
+
+def test_a_constant_dc_offset_is_not_voiced_energy() -> None:
+    """Review M-5: `mean(|x|)` counted a flat offset as energy; the mean must go first."""
+    flat = _wav(np.full(48_000, 3_000, dtype=np.int16))
+    assert speaker_embedding.has_voiced_energy(flat) is False

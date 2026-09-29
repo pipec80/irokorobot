@@ -34,6 +34,7 @@ from server.personal_setup import PersonalSetupInput, PersonalSetupResult, apply
 from server.resources import AppResources
 from server.routers import auth as auth_module
 from server.settings import settings
+from server.voice.speaker_embedding import SpeakerBackendError
 
 from server import db
 
@@ -710,3 +711,83 @@ def test_the_two_new_routes_are_documented_with_the_expected_shape(
     revoke = paths["/auth/owner/voice/revoke"]["post"]
     assert revoke["responses"]["204"]
     assert {"401", "403"} <= revoke["responses"].keys()
+
+
+@pytest.mark.integration
+async def test_a_rejected_clip_does_not_burn_the_one_use_token(
+    voice_db: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review M-1: three enrolments need three PINs; a 422 must not cost one."""
+    service = _real_service()
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
+    monkeypatch.setattr(auth_module, "embed_wav", _fake_embed_wav)
+    unlock = await service.unlock(_PIN)
+    assert unlock is not None
+
+    async with _loopback_client() as client:
+        too_short = await client.post(
+            "/auth/owner/voice/enroll",
+            headers={"X-Iroko-Identity-Token": unlock.token},
+            files=_enroll_files(_tone(1.0)),
+        )
+        retry = await client.post(
+            "/auth/owner/voice/enroll",
+            headers={"X-Iroko-Identity-Token": unlock.token},
+            files=_enroll_files(),
+        )
+
+    assert too_short.status_code == 422
+    assert retry.status_code == 200
+
+
+@pytest.mark.integration
+async def test_a_dead_speaker_backend_returns_503_and_enrolls_nothing(
+    voice_db: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service = _real_service()
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
+    monkeypatch.setattr(
+        auth_module, "embed_wav", AsyncMock(side_effect=SpeakerBackendError("model unavailable"))
+    )
+    unlock = await service.unlock(_PIN)
+    assert unlock is not None
+
+    async with _loopback_client() as client:
+        response = await client.post(
+            "/auth/owner/voice/enroll",
+            headers={"X-Iroko-Identity-Token": unlock.token},
+            files=_enroll_files(),
+        )
+
+    assert response.status_code == 503
+    cursor = await db.get_conn().execute("SELECT COUNT(*) FROM voice_profiles")
+    row = await cursor.fetchone()
+    await cursor.close()
+    assert row is not None
+    assert row[0] == 0
+
+
+@pytest.mark.integration
+async def test_the_stored_label_is_not_the_owner_name(
+    voice_db: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review M-8: the label was an unused copy of a real name."""
+    service = _real_service()
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
+    monkeypatch.setattr(auth_module, "embed_wav", _fake_embed_wav)
+    unlock = await service.unlock(_PIN)
+    assert unlock is not None
+
+    async with _loopback_client() as client:
+        response = await client.post(
+            "/auth/owner/voice/enroll",
+            headers={"X-Iroko-Identity-Token": unlock.token},
+            files=_enroll_files(),
+        )
+
+    assert response.status_code == 200
+    cursor = await db.get_conn().execute("SELECT label FROM voice_profiles")
+    row = await cursor.fetchone()
+    await cursor.close()
+    assert row is not None
+    assert _OWNER_NAME.casefold() not in str(row[0]).casefold()

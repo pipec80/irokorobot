@@ -64,6 +64,12 @@ def test_every_other_failure_is_unknown(override: dict[str, object]) -> None:
     assert _evaluate(**override) is SpeakerVerdict.UNKNOWN
 
 
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_a_non_finite_distance_never_verifies(bad: float) -> None:
+    """Review I-1: `nan > threshold` is False, so a negated comparison fails open."""
+    assert _evaluate(distance=bad) is SpeakerVerdict.UNKNOWN
+
+
 def test_unavailable_wins_over_a_matching_distance() -> None:
     """A dead backend is never reported as a match, whatever else is true."""
     assert _evaluate(backend_available=False, distance=0.0) is SpeakerVerdict.UNAVAILABLE
@@ -284,3 +290,26 @@ async def test_the_role_is_read_on_every_request() -> None:
     await _resolver(read_role=role_reader).resolve_actor(_event())
     await _resolver(read_role=role_reader).resolve_actor(_event())
     assert role_reader.calls == 2
+
+
+async def test_verified_evidence_is_not_declared_calibrated() -> None:
+    """Review M-6: the threshold is provisional and in-sample, so no calibration claim."""
+    context = await _resolver().resolve_actor(_event())
+    assert context.evidence[0].confidence.calibrated is False
+
+
+async def test_the_configured_model_id_reaches_both_repository_reads() -> None:
+    """Review M-7: the resolver must ask for the CONFIGURED model, not any model."""
+    seen: list[str] = []
+
+    async def _count(_entity_id: int, model_id: str) -> int:
+        seen.append(model_id)
+        return settings.speaker_min_reference_count
+
+    async def _distance(_person_id: int, _embedding: np.ndarray, model_id: str) -> float:
+        seen.append(model_id)
+        return 0.0
+
+    resolver = _resolver(count_references=_count, distance_to_centroid=_distance)
+    await resolver.resolve_actor(_event())
+    assert seen == ["test-model@rev1", "test-model@rev1"]

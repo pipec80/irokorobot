@@ -12,6 +12,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from enum import StrEnum
 import logging
+import math
 from uuid import uuid4
 
 import aiosqlite
@@ -99,7 +100,14 @@ def evaluate_speaker_verification(
         return SpeakerVerdict.UNAVAILABLE
     if reference_count < settings.speaker_min_reference_count:
         return SpeakerVerdict.UNKNOWN
-    if distance is None or distance > settings.speaker_authentication_match_threshold:
+    # Affirmative and finite on purpose: `nan > threshold` is False, so a negated
+    # comparison would let a corrupt distance through (a security predicate must
+    # fail closed, not open).
+    if (
+        distance is None
+        or not math.isfinite(distance)
+        or not distance <= settings.speaker_authentication_match_threshold
+    ):
         return SpeakerVerdict.UNKNOWN
     if not consent_active:
         return SpeakerVerdict.UNKNOWN
@@ -266,7 +274,11 @@ class SpeakerRequestResolver:
             # hiccup surface as a generic 500 at the HTTP boundary
             # elsewhere, which this turn-time boundary cannot afford
             # (round 2 of A4).
-            logger.warning("Speaker evidence degraded to unavailable: %s", exc)
+            logger.warning(
+                "Speaker evidence degraded to unavailable: %s (cause: %s)",
+                exc,
+                type(exc.__cause__).__name__ if exc.__cause__ is not None else "none",
+            )
             backend_available = False
 
         verdict = evaluate_speaker_verification(
@@ -291,7 +303,9 @@ class SpeakerRequestResolver:
             confidence=Confidence(
                 score=1.0,
                 basis=ConfidenceBasis.MEASURED,
-                calibrated=True,
+                # The threshold is provisional and in-sample (Plan 0047), so no
+                # calibration claim: a future fusion step must not read this as one.
+                calibrated=False,
                 reason="Speaker match within the provisional authentication threshold",
             ),
             observed_at=self._clock(),
