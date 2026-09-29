@@ -25,8 +25,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import getpass
+import io
 import logging
 from pathlib import Path
+import wave
 
 import httpx
 from server.settings import settings
@@ -35,6 +37,31 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 logger = logging.getLogger(__name__)
 
 _DEFAULT_SECONDS = 5
+_SAMPLE_RATE = 16_000
+
+
+def _record(seconds: int, device: int | None) -> bytes:
+    """Record *seconds* from the microphone and return contract WAV bytes.
+
+    Audio contract: WAV, 16 000 Hz, mono, signed int16. Kept in memory only.
+    """
+    import sounddevice as sd  # noqa: PLC0415 -- deferred, demo-only dependency
+
+    frames = sd.rec(
+        int(seconds * _SAMPLE_RATE),
+        samplerate=_SAMPLE_RATE,
+        channels=1,
+        dtype="int16",
+        device=device,
+    )
+    sd.wait()
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(_SAMPLE_RATE)
+        handle.writeframes(frames.tobytes())
+    return buffer.getvalue()
 
 
 def _get_wav(wav_path: str | None, seconds: int, device: int | None) -> bytes:
@@ -43,10 +70,8 @@ def _get_wav(wav_path: str | None, seconds: int, device: int | None) -> bytes:
         resolved = Path(wav_path)
         print(f"  WAV: {resolved}")  # noqa: T201
         return resolved.read_bytes()
-    from scripts.mic_test import record  # noqa: PLC0415 -- deferred, demo-only dependency
-
-    print(f"  Grabando {seconds}s desde el microfono...")  # noqa: T201
-    return record(seconds, device)
+    print(f"  Grabando {seconds}s desde el microfono... habla ahora")  # noqa: T201
+    return _record(seconds, device)
 
 
 async def _read_pin() -> str:
