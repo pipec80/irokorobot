@@ -233,3 +233,83 @@ def test_a_constant_dc_offset_is_not_voiced_energy() -> None:
     """Review M-5: `mean(|x|)` counted a flat offset as energy; the mean must go first."""
     flat = _wav(np.full(48_000, 3_000, dtype=np.int16))
     assert speaker_embedding.has_voiced_energy(flat) is False
+
+
+class _FakeClock:
+    """Controllable stand-in for `time.monotonic`."""
+
+    def __init__(self) -> None:
+        self.now = 1_000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def _fresh_loader_state(monkeypatch: pytest.MonkeyPatch) -> _FakeClock:
+    clock = _FakeClock()
+    monkeypatch.setattr(speaker_embedding, "_encoder", None)
+    monkeypatch.setattr(speaker_embedding, "_load_failed_at", None)
+    monkeypatch.setattr(speaker_embedding.time, "monotonic", clock)
+    monkeypatch.setattr(speaker_embedding.settings, "speaker_model_retry_cooldown_s", 60.0)
+    return clock
+
+
+def test_a_failed_model_load_is_not_retried_during_the_cooldown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review M-3: a broken model must not be re-read from disk on every protected turn."""
+    clock = _fresh_loader_state(monkeypatch)
+    attempts = 0
+
+    def _fail() -> object:
+        nonlocal attempts
+        attempts += 1
+        raise SpeakerBackendError("not cached offline")
+
+    monkeypatch.setattr(speaker_embedding, "_build_encoder", _fail)
+
+    with pytest.raises(SpeakerBackendError):
+        speaker_embedding._load_encoder()
+    clock.now += 59.0
+    with pytest.raises(SpeakerBackendError):
+        speaker_embedding._load_encoder()
+
+    assert attempts == 1
+
+
+def test_the_load_is_retried_once_the_cooldown_has_passed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = _fresh_loader_state(monkeypatch)
+    outcomes: list[object] = [SpeakerBackendError("down"), "encoder"]
+
+    def _build() -> object:
+        outcome = outcomes.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    monkeypatch.setattr(speaker_embedding, "_build_encoder", _build)
+
+    with pytest.raises(SpeakerBackendError):
+        speaker_embedding._load_encoder()
+    clock.now += 61.0
+
+    assert speaker_embedding._load_encoder() == "encoder"
+    assert speaker_embedding._load_failed_at is None
+
+
+def test_a_loaded_encoder_is_reused_without_rebuilding(monkeypatch: pytest.MonkeyPatch) -> None:
+    _fresh_loader_state(monkeypatch)
+    builds = 0
+
+    def _build() -> object:
+        nonlocal builds
+        builds += 1
+        return "encoder"
+
+    monkeypatch.setattr(speaker_embedding, "_build_encoder", _build)
+
+    assert speaker_embedding._load_encoder() == "encoder"
+    assert speaker_embedding._load_encoder() == "encoder"
+    assert builds == 1

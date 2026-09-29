@@ -22,6 +22,7 @@ from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 import io
 import logging
+import time
 from typing import Any, Final
 import wave
 
@@ -54,6 +55,10 @@ _executor = ThreadPoolExecutor(max_workers=1)
 # (`_analyzer: Any = None`) carries none either; mirror it exactly.
 # `Any`: speechbrain ships no type stubs, so the encoder has no importable type.
 _encoder: Any | None = None
+# `time.monotonic()` of the last failed model load, or `None`. While it is
+# younger than `settings.speaker_model_retry_cooldown_s` the loader refuses to
+# retry, so a broken model is not re-read from disk on every protected turn.
+_load_failed_at: float | None = None
 
 
 class SpeakerBackendError(Exception):
@@ -206,18 +211,41 @@ def _safe_decode(wav_bytes: bytes) -> np.ndarray | None:
 
 
 def _load_encoder() -> Any:  # noqa: ANN401 -- speechbrain ships no type stubs
-    """Construct the frozen encoder once per process, offline, on CPU.
+    """Return the process-wide encoder, building it once and backing off on failure.
 
     Runs on the executor thread (called only from `_embed_sync`), so the
-    first, slow load never blocks the event loop either.
+    first, slow load never blocks the event loop either. After a failed load
+    no new attempt is made for `settings.speaker_model_retry_cooldown_s`
+    seconds; a later attempt that succeeds clears the failure.
+
+    Raises:
+        SpeakerBackendError: If the pinned revision is not present in the
+            local Hugging Face cache offline, or a load failed too recently.
+    """
+    global _encoder, _load_failed_at  # noqa: PLW0603 -- one process-wide model
+    if _encoder is not None:
+        return _encoder
+    if (
+        _load_failed_at is not None
+        and time.monotonic() - _load_failed_at < settings.speaker_model_retry_cooldown_s
+    ):
+        raise SpeakerBackendError("Speaker model load failed recently; not retrying yet")
+    try:
+        _encoder = _build_encoder()
+    except Exception:
+        _load_failed_at = time.monotonic()
+        raise
+    _load_failed_at = None
+    return _encoder
+
+
+def _build_encoder() -> Any:  # noqa: ANN401 -- speechbrain ships no type stubs
+    """Construct the frozen encoder, offline, on CPU.
 
     Raises:
         SpeakerBackendError: If the pinned revision is not present in the
             local Hugging Face cache offline.
     """
-    global _encoder  # noqa: PLW0603 -- one process-wide model, like vision.faces
-    if _encoder is not None:
-        return _encoder
     from speechbrain.inference.speaker import EncoderClassifier  # noqa: PLC0415 -- deferred
     from speechbrain.utils.fetching import FetchConfig, LocalStrategy  # noqa: PLC0415 -- deferred
 
@@ -225,7 +253,7 @@ def _load_encoder() -> Any:  # noqa: ANN401 -- speechbrain ships no type stubs
     cache_dir.mkdir(parents=True, exist_ok=True)
     logger.info("Loading speaker model %s (CPU, offline)", model_id())
     try:
-        _encoder = EncoderClassifier.from_hparams(
+        return EncoderClassifier.from_hparams(
             source=settings.speaker_model,
             savedir=str(cache_dir),
             run_opts={"device": "cpu"},
@@ -255,4 +283,3 @@ def _load_encoder() -> Any:  # noqa: ANN401 -- speechbrain ships no type stubs
         )
     except Exception as exc:
         raise SpeakerBackendError(f"Speaker model {model_id()} is not cached offline") from exc
-    return _encoder

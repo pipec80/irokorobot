@@ -3046,11 +3046,13 @@ call; the wrapper had no direct tests; a too-short or silent clip burned the
 one-use token before validation; corrupt stored blobs raised untyped numpy
 errors; a flat DC offset counted as voiced energy; the evidence claimed
 `calibrated=True` for a provisional threshold; the stored label duplicated the
-owner's name; the failure cause was not logged. **Left open (deferred to Pipec):**
-a cool-down after a failed model load plus an `asyncio.wait_for` timeout on the
-embedding (needs a new environment variable, which this plan forbids), and the
-theoretical read-then-read window between the reference count and the distance
-(it needs three PIN-gated enrolments inside about 0.5 s).
+owner's name; the failure cause was not logged. **Left open.** A cool-down after a failed model load was added on 2026-09-29 at Pipec's
+request (`SPEAKER_MODEL_RETRY_COOLDOWN_S`, default 60 s; the plan's "no new environment
+variable" constraint was lifted for it). Still open: an `asyncio.wait_for` timeout on the
+embedding (a hung backend blocks that turn; cancelling the executor thread is not
+possible, so it needs a design decision), and the theoretical window between the
+reference count and the distance (it needs three PIN-gated enrolments inside about
+0.5 s).
 
 **Observation.** `huggingface_hub` asks `huggingface.co/api/agent-harnesses` once a
 day to detect AI agent harnesses. It downloads nothing and is skipped with

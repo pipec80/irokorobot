@@ -217,6 +217,10 @@ class Settings(BaseSettings):
     # because Task 5's own enrolment route already gates on it — see this
     # plan's Task 5 ruling in the SDD ledger.
     speaker_authentication_enabled: bool = False
+    # After a failed speaker-model load, wait this long before trying again. A
+    # missing or corrupt model would otherwise be re-read from disk on every
+    # protected turn. Added after Plan 0053's independent review (M-3).
+    speaker_model_retry_cooldown_s: float = Field(default=60.0, ge=0.0)
 
     # ---------------- Sensors ----------------
     sensor_debounce_seconds: int = 30
