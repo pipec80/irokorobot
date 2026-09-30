@@ -414,7 +414,7 @@ async def _read_optional_frame(frame: UploadFile) -> bytes:
         The raw, validated frame bytes.
 
     Raises:
-        HTTPException 413: If the frame exceeds MAX_UPLOAD_BYTES.
+        HTTPException 413: If the frame exceeds MAX_IMAGE_UPLOAD_BYTES.
         HTTPException 422: If the frame is empty, an unrecognized format,
             fails to decode, or exceeds the 1280x720 contract limit.
     """
@@ -459,7 +459,7 @@ async def transcribe(
     """Transcribe audio, generate a robot response, and synthesize speech.
 
     Args:
-        audio: WAV at 16kHz, mono, int16, within MAX_UPLOAD_BYTES.
+        audio: WAV at 16kHz, mono, int16, within MAX_AUDIO_UPLOAD_BYTES.
         background_tasks: Queue for successful voice-turn consolidation.
         x_iroko_identity_token: Optional one-use owner unlock token. Absent,
             expired, replayed, or malformed tokens resolve to the public
@@ -583,7 +583,7 @@ async def transcribe_stream(
     """Transcribe audio and stream the robot's reply sentence by sentence (R3).
 
     Args:
-        audio: WAV at 16kHz, mono, int16, within MAX_UPLOAD_BYTES.
+        audio: WAV at 16kHz, mono, int16, within MAX_AUDIO_UPLOAD_BYTES.
         background_tasks: Queue for successful voice-turn consolidation.
         x_iroko_identity_token: Optional one-use owner unlock token — same
             contract as classic /transcribe (Plan 0027).

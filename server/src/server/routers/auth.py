@@ -245,7 +245,7 @@ async def _read_face_image(image: UploadFile) -> bytes:
         The raw, validated image bytes.
 
     Raises:
-        HTTPException 413: If the image exceeds MAX_UPLOAD_BYTES.
+        HTTPException 413: If the image exceeds MAX_IMAGE_UPLOAD_BYTES.
         HTTPException 422: If the image is empty, an unrecognized format,
             fails to decode, or exceeds the 1280x720 contract limit.
     """
@@ -399,7 +399,7 @@ async def _read_enrollment_audio(audio: UploadFile) -> bytes:
         The raw, validated WAV bytes.
 
     Raises:
-        HTTPException 413: If the upload exceeds MAX_UPLOAD_BYTES.
+        HTTPException 413: If the upload exceeds MAX_AUDIO_UPLOAD_BYTES.
         HTTPException 422: If the WAV fails the audio contract, is shorter
             than `settings.speaker_min_enrollment_s`, or carries no voiced
             energy (Review Focus 1).

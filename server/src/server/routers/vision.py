@@ -151,7 +151,7 @@ async def _read_contract_image(image: UploadFile) -> bytes:
         The raw, validated image bytes.
 
     Raises:
-        HTTPException 413: If the image exceeds MAX_UPLOAD_BYTES.
+        HTTPException 413: If the image exceeds MAX_IMAGE_UPLOAD_BYTES.
         HTTPException 422: If the image is empty, an unrecognized format,
             fails to decode, or exceeds the 1280x720 contract limit.
     """
