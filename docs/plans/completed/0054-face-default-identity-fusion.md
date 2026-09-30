@@ -10,14 +10,14 @@
 > `superpowers:verification-before-completion` before any claim that a task or
 > the plan is done.
 
-- **Status:** `Draft` — written 2026-09-30 after the PC-4 brainstorm with Pipec.
-  Not executable until Pipec reads it and promotes it to `NOW`
-  ([`docs/plans/README.md`](../README.md#operational-board) is empty today).
+- **Status:** `Closed` 2026-09-30 — written after the PC-4 brainstorm with Pipec,
+  promoted to `NOW` by Pipec and executed the same day; the real-hardware matrix was run by
+  Pipec (see the [closure record](#closure-record)).
 - **Roadmap row:** [PC-4](../../roadmap/cognitive-roadmap.md#canonical-pre-electronics-delivery-portfolio),
   step 2 of the [agreed delivery order](../../roadmap/cognitive-roadmap.md#pre-purchase-readiness-gate--plug-it-in-and-it-works).
-- **Evidence it builds on:** [Plan 0053](../completed/0053-consented-speaker-runtime-evidence.md)
+- **Evidence it builds on:** [Plan 0053](0053-consented-speaker-runtime-evidence.md)
   (PC-3B, merged as PRs #144–#147) and
-  [Plan 0030](../completed/0030-real-camera-face-acceptance.md).
+  [Plan 0030](0030-real-camera-face-acceptance.md).
 
 **Goal:** Identify the owner by face by default, raise the assurance to `strong`
 when the voice agrees, and require `strong` for reserved data — so a stranger never
@@ -67,7 +67,7 @@ is reported — it is never designed around.
    evidence*, *Active person context*, *Initial fusion rules*.
 5. [`current-state.md`](../../architecture/current-state.md): the rows *Consented local
    face evidence (Plan 0029 / PC-2)* and *Speaker recognition (Plan 0053 / PC-3B)*.
-6. [Plan 0053](../completed/0053-consented-speaker-runtime-evidence.md), *Closure
+6. [Plan 0053](0053-consented-speaker-runtime-evidence.md), *Closure
    record* — what voice does today and what was not measured.
 7. Code, read before writing: `cognition/identity.py`, `cognition/authorization.py`,
    `cognition/face_authentication.py`, `cognition/speaker_authentication.py`,
@@ -197,7 +197,7 @@ out to need that is not listed stops the work and is reported.
 | `server/src/server/cognition/authorization.py` | `HIGH_ASSURANCE_CATEGORIES` and the `p0.5.assurance-required` denial |
 | `server/src/server/cognition/face_authentication.py` | `OTHER_PERSON` verdict; delete `compose_face_then_pin_resolver` |
 | `server/src/server/routers/transcribe.py` | Use the fused resolver; delete the Plan 0053 wrapper; `identity_source` |
-| `server/src/server/schemas.py`, `server/src/server/schemas_streaming.py` | `identity_source` gains `"face_voice"` |
+| `server/src/server/schemas.py`, `server/src/server/schemas_streaming.py`, `server/src/server/streaming.py` | `identity_source` gains `"face_voice"` (`streaming.py` was missing from the original list; Pipec authorized it during execution) |
 | `tests/unit/test_active_person_identity.py`, `tests/unit/test_household_authorization_policy.py`, `tests/unit/test_face_authentication.py`, `tests/integration/test_speaker_evidence_turn.py` | As each task states |
 | `docs/architecture/current-state.md`, `docs/architecture/identity-and-access.md`, `docs/runbooks/operator-manual.md`, `docs/roadmap/cognitive-roadmap.md`, `docs/roadmap/personal-companion-delivery-map.md`, `docs/plans/README.md`, `docs/plans/open/README.md`, `docs/adr/0015-owner-grant-scope-and-speaker-binding.md`, this plan | Closure documentation |
 | `docs/architecture/diagrams/current-state.{json,html}` | Regenerated with the Archify skill after `current-state.md` changes |
@@ -1859,6 +1859,120 @@ consumes it yet) and the veto. Rolling back means reverting the PR; no migration
    `FaceAuthenticationVerdict.OTHER_PERSON` (Task 3) is what Task 4 branches on;
    `SpeakerVerdict` and `SpeakerRequestResolver` are unchanged from Plan 0053.
 4. **Review Focus.** All five entries have an owning task and a named test.
+
+## Closure record
+
+**Status of this record: CLOSED 2026-09-30 — Tasks 0–7 done.** Outcomes only — never a
+frame, audio, name or score.
+
+### Execution record (2026-09-30, branch `feat/0054-identity-fusion`)
+
+- Baseline on `main` (`35f9eb5`, after PR #148 was squash-merged at Pipec's instruction):
+  `just gate` passed, 1529 tests.
+- One commit per task, each new test observed RED first (Task 1: `ImportError`; Task 2: the
+  two `SECURITY` denials returned `allowed`; Task 3: no `OTHER_PERSON`; Task 4: no module;
+  Task 5: `identity_source` never `face_voice` and the old wrapper embedded without a face).
+  A mutation of the veto ordering was caught by four fused-resolver tests.
+- Last full `pytest -n auto` on the branch: 1556 passed. `ruff`, `mypy` and `pyright` clean.
+  `tests/integration/test_face_authenticated_turn.py` passes **unedited**.
+- Task 7 Step 1, `just gate` after the fixes below (2026-09-30): **PASS** — lint, `mypy`,
+  `pyright`, 1557 tests (baseline 1529, +28: 1556 plus the resolver-to-policy test added after
+  the review) and `pip-audit` clean. The first attempt failed
+  `audit`: three advisories against `urllib3 2.7.0` (fixed in 2.8.0) were published after
+  the baseline gate ran, and `uv.lock` was bumped in its own commit (ruling 7). Also green:
+  `test_api_contract.py`, `test_face_authenticated_turn.py` (unedited), `uv lock --check`,
+  `git diff --check`, `check_reserved_terms.py`, and no match for the two removed composers.
+- Two timeout tests in `tests/unit/test_speaker_embedding.py` failed on some full runs.
+  Root cause, reproduced: `embed_wav` imports `torch` lazily inside its executor thread and
+  the tests wait 0.2 s, so the first such test in a cold `xdist` worker paid the import
+  inside the window (cold process alone: 3 of 3 failed; torch pre-imported: 3 of 3 passed).
+  The module and the test are identical to `main`; the defect predates this plan.
+
+### Independent review (Task 7 Step 4, before the hardware run at Pipec's request)
+
+A fresh reviewer (subagent, `sonnet`, Pipec's standing rule) read the whole branch
+(`35f9eb5..d68f413`) and returned **with fixes**: no Critical, one Important, nine Minor. It
+independently confirmed the five Review Focus items (probes and mutations, all failing
+closed). Disposition:
+
+- **Important I-1** — with the owner's face matched a presented PIN token is not consulted, so
+  it cannot rescue a hoarse day. ADR 0016 §5 and §6 disagreed; Pipec chose to **clarify the
+  ADR, not the code** (ruling 8).
+- **Fixed:** the docstrings in `routers/transcribe.py` (they omitted `face_voice`); the docs
+  that said the server log records why a reserved request was denied (it is the audit row's
+  `policy_id`); a first-turn model-load note in the operator manual; roadmap row 2 ("PIN always
+  available"); a resolver-to-policy test and log-field assertions in `test_identity_fusion.py`
+  (mutation RED: a face alone reaching `strong` failed six tests); `_warm_torch` now imports
+  torch plainly instead of `importorskip`; the text-only edits Pipec authorized outside the list
+  (ruling 9).
+- **Deferred minors:** the face resolver catches only `VisionError`, so a database error in the
+  match, role or consent read still surfaces as a generic 500 (pre-existing, fails closed);
+  `OTHER_PERSON` also fires for a matched entity with no role; `identity_source`'s literal is
+  repeated in five places and `FusedIdentityResolver.consumed` is unused in production;
+  `_utc_now` is copied in three modules; no integration test of the `OTHER_PERSON` veto against
+  a real database role; `test_a_backend_failure_does_not_fail_the_turn` (Plan 0053) is now
+  vacuous, and the plan said to leave it; the branch name in `current-state.md` disappears on
+  squash and is updated when the hardware evidence is recorded.
+
+### Rulings taken during execution
+
+| # | Ruling | Why | Cost if wrong |
+|--:|---|---|---|
+| 1 | `server/src/server/streaming.py` (`stream_response_plan`'s `identity_source` annotation and its docstring) was modified although it was not in the file list | `mypy` and `pyright` failed at the new value; Pipec authorized it explicitly when asked | Revert one annotation |
+| 2 | Task 4's tests use a `matches=False` fixture parameter and a `_Pin` named tuple instead of `_match_face`/`_token` accesses and `type: ignore` | Pipec allowed public equivalents; intent unchanged | None |
+| 3 | The two Task 4 veto tests also assert consent is `NOT_REQUIRED` | They replace the deleted composer test that pinned it | None |
+| 4 | Stale docstrings in `tests/integration/test_speaker_evidence_turn.py` were updated | They said `_RESOLVABLE_SOURCES` was unedited | None |
+| 5 | `cognition/speaker_authentication.py` was **not** edited although its docstrings still say `VOICE` is absent from `_RESOLVABLE_SOURCES` | The plan lists it under "Never touched" | One stale docstring, reported to Pipec — superseded: its docstrings were corrected under ruling 9 once Pipec authorized it |
+| 6 | `tests/unit/test_speaker_embedding.py` gained a module-scoped `_warm_torch` fixture although it was not in the file list | Two timeout tests failed on cold workers (root cause above); Pipec authorized a test-only fix | Revert one fixture |
+| 7 | `uv.lock` bumps `urllib3` 2.7.0 → 2.8.0 although the plan adds no dependency change | `just gate`'s `audit` failed on three advisories published after the baseline; the bump was the only lock change; Pipec authorized it | Revert one lock entry |
+| 8 | ADR 0016 §5/§6 and its negative consequences were clarified: a presented PIN token is not consulted once the owner's face matched (the code already behaved so) | The independent review found §5 and §6 inconsistent; Pipec chose to clarify the ADR, not the code | Reserved data on a hoarse day cannot be rescued by the PIN |
+| 9 | Text-only edits outside the file list: comments in `settings.py` and `speaker_authentication.py`, and stale PC-4 statements in `docs/architecture/README.md`, `docs/roadmap/conversational-memory-delivery-map.md`, `docs/plans/open/0015-personal-companion-design.md` and ADR 0016's header | The independent review found them false; Pipec authorized them | Revert text |
+| 10 | `uv.lock` also bumps `virtualenv` 21.7.8 → 21.14.1 | `just gate`'s `audit` failed on four advisories published after the previous gate (transitive development dependency, the only lock change); done under Pipec's standing rule to keep dependencies fresh, like ruling 7 | Revert one lock entry |
+
+### What stays open
+
+- **Replay is not defended.** A photograph identifies at `basic`, unchanged; a photograph
+  plus a recording of the exact question would satisfy `strong` once a reserved capability
+  exists.
+- **No reserved capability exists yet.** `HIGH_ASSURANCE_CATEGORIES = {SECURITY}` is proven
+  only by synthetic policy tests.
+- Scoping the PIN grant to a named operation is Plan 0051.
+
+### Real-hardware outcomes (Task 7 Step 2)
+
+Run by Pipec on 2026-09-30 with `just run-server` and `just run-robot` (face and speaker
+authentication on; one owner, one laptop camera and microphone). Outcomes only.
+
+| # | Case | Outcome |
+|--:|---|---|
+| 1 | Owner alone, normal light | **PASS** — `face_and_voice`, answered. The first run showed `face_only` because the earlier revocation had left no voiceprints; after re-enrolling three references the repeat gave `face_and_voice` (2.4 s) |
+| 2 | Face visible, voice muffled | **PASS** — voice `unknown`, `face_only`, answered at `basic` |
+| 3 | Photo of the owner on a phone screen, another person speaking | The photo did **not** identify in 3 attempts: `no_evidence`, denied (not `veto_multiple_faces`). The expected `face_only` answer was not reproduced; Pipec counts the denial as acceptable. Not a liveness defense |
+| 4 | Owner's voice recording played, no face in frame | **PASS** — `no_evidence`, denied; the speaker was never consulted or embedded |
+| 5 | Photo plus recording of the exact question | Replaced by Pipec with a stronger variant: a video of the owner asking the question, played on a phone in good light and audio. 2 attempts, both `no_evidence`, denied, speaker never consulted. The residual replay risk was **not demonstrated** with this setup; it stays undefended |
+| 6 | Two people in frame | **PASS** — `veto_multiple_faces`, denied |
+| 7 | Camera covered | **PASS** — `no_evidence`, denied |
+| 8 | Speaker model files hidden (both model folders), server restarted | **PASS** — `backend_unavailable`, answered at `basic` |
+| 9 | Optional: PIN token | Not run |
+
+Also observed: two genuine short utterances (1.6 s and 2.3 s) were `verified`; the first
+protected turn after a server restart takes 8 to 13 s because it loads the face and speaker
+models; public turns produced no fusion line and no face or voice activity. A voice recording
+alone never opens anything; a photograph or video on a phone screen did not identify here, but
+no liveness exists, so a better spoof (a large print, a monitor) is not excluded.
+
+### Completion criteria check
+
+All ten criteria hold: each task's RED test was observed first and `just gate` is green with
+no configuration weakened (1); `test_face_authenticated_turn.py` passes unedited (2);
+`SECURITY` is denied at `basic` with `p0.5.assurance-required` and allowed at `strong`, and
+`CHILD_DATA` is allowed at `basic` (3); a face and a voice of different people or another
+enrolled person's face never identify, and a veto never consumes the PIN token (4); a dead or
+unverified voice answers at `basic` (5, cases 1, 2 and 8); public turns and turns without an
+owner face never build the speaker resolver (6, cases 4 and 7); the wire change is one
+additive `identity_source` value (7); no name, transcript, distance or score reached a log,
+audit row or response (8); the real-hardware run recorded every case that was run, with the
+photograph and video results above (9); and the documentation states what stays open (10).
 
 ## Execution handoff
 

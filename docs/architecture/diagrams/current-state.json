@@ -17,7 +17,7 @@
     { "id": "stt", "type": "backend", "label": "Faster Whisper", "sublabel": "STT · CPU/int8", "pos": [460, 300], "size": [140, 64] },
     { "id": "controller", "type": "backend", "label": "Cognitive Controller", "sublabel": "P0.3 decide()", "pos": [670, 300], "size": [150, 64], "tag": "immutable plan" },
     { "id": "policy", "type": "security", "label": "Household Policy", "sublabel": "P0.5 fail-closed", "pos": [670, 110], "size": [150, 64] },
-    { "id": "face", "type": "security", "label": "Face Authentication", "sublabel": "PC-2 consent-gated", "pos": [460, 110], "size": [150, 64], "tag": "no anti-spoofing" },
+    { "id": "face", "type": "security", "label": "Face + voice fusion", "sublabel": "PC-4 · consent-gated", "pos": [460, 110], "size": [150, 64], "tag": "photo = basic" },
     { "id": "ollama", "type": "external", "label": "Ollama", "sublabel": "local LLM / VLM", "pos": [900, 300], "size": [140, 64] },
     { "id": "consolidation", "type": "backend", "label": "Consolidation", "sublabel": "extraction + normalize", "pos": [900, 460], "size": [150, 64] },
     { "id": "memory", "type": "database", "label": "SQLite + sqlite-vec", "sublabel": "episodic/vector v3 · v4", "pos": [670, 460], "size": [160, 64] },
@@ -32,7 +32,7 @@
     { "id": "api-to-stt", "from": "api", "to": "stt", "label": "audio → text", "labelDy": -26 },
     { "id": "stt-to-controller", "from": "stt", "to": "controller", "label": "transcript → typed event", "labelDy": 75 },
     { "id": "controller-to-policy", "from": "controller", "to": "policy", "label": "protected branch check", "variant": "security", "fromSide": "top", "toSide": "bottom" },
-    { "id": "controller-to-face", "from": "controller", "to": "face", "label": "identity evidence (optional frame)", "variant": "security", "fromSide": "left", "toSide": "right" },
+    { "id": "controller-to-face", "from": "controller", "to": "face", "label": "face + voice evidence", "variant": "security", "fromSide": "left", "toSide": "right" },
     { "id": "controller-to-ollama", "from": "controller", "to": "ollama", "label": "generic turn / grounded scene", "variant": "emphasis", "labelDy": 56 },
     { "id": "controller-to-memory", "from": "controller", "to": "memory", "label": "v4 authorized read", "fromSide": "bottom", "toSide": "top" },
     { "id": "ollama-to-consolidation", "from": "ollama", "to": "consolidation", "label": "LLM extraction", "fromSide": "bottom", "toSide": "top" },
@@ -43,6 +43,6 @@
   "cards": [
     { "dot": "cyan", "title": "Hard boundary", "items": ["Server is a generic audio API — it does not know the robot exists", "Robot is a generic audio client — it does not know STT/LLM/TTS exist", "Only the audio contract is shared: WAV · 16kHz · mono · int16"] },
     { "dot": "emerald", "title": "Cognitive path", "items": ["Controller returns an immutable response plan before any generation", "Safe plans never reach the LLM, legacy memory, or consolidation", "Ollama is the only accepted LLM/VLM runtime (ADR-0004)"] },
-    { "dot": "rose", "title": "Known gaps", "items": ["Face evidence has no liveness/anti-spoofing defense (photo authenticates)", "Speaker evidence (PC-3B) is untrusted and default-off: replay not defended, fusion (PC-4) not started", "Longitudinal memory benchmark (CM-0) measured RED — single-turn extraction only"] }
+    { "dot": "rose", "title": "Known gaps", "items": ["No liveness or replay defense: a photo identifies at basic; photo + recording would reach strong", "Reserved data needs strong assurance but no reserved capability exists yet; replay is measured, not defended", "Longitudinal memory benchmark (CM-0) measured RED — single-turn extraction only"] }
   ]
 }

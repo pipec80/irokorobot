@@ -211,8 +211,9 @@ class Settings(BaseSettings):
     speaker_min_enrollment_s: float = 2.0
     # Master on/off for in-request speaker evidence (Plan 0053). Off by
     # default: with it off no speaker model is loaded, torch is never
-    # imported, and the turn behaves exactly as it does today. Voice evidence
-    # grants nothing even when on — fusion is PC-4. Declared here (Task 5)
+    # imported, and the turn behaves exactly as it does today. With it on, a
+    # verified voice of the same person raises the owner's face from `basic` to
+    # `strong` (Plan 0054, ADR 0016); a voice alone identifies nobody. Declared here (Task 5)
     # rather than Task 6, which the plan's own file table assigns it to,
     # because Task 5's own enrolment route already gates on it — see this
     # plan's Task 5 ruling in the SDD ledger.

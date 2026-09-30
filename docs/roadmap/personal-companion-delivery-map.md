@@ -63,6 +63,7 @@ batches:
 | [0046](../plans/completed/0046-reproducible-longitudinal-memory-baseline.md) | **Closed 2026-09-08** | Repaired evaluators, Ollama, temporary SQLite and deterministic scoring patterns | CM-0 delivered: benchmark GREEN, measured baseline RED (`ac43c58`, exit 1); no runtime memory change |
 | [0047](../plans/completed/0047-speaker-evidence-calibration-study.md) | **Closed 2026-09-25 — PC-3A provisional PASS** (`feat/0047-speaker-calibration`, merged as PR #134) | Audio contract, capture and face-calibration study pattern | Threshold 0.4834, 0/24 impostor false accepts, 0/24 genuine false rejects (in-sample), 6/8 replay accepted, p95 231 ms; PC-3B and PC-4 stay open |
 | [0053](../plans/completed/0053-consented-speaker-runtime-evidence.md) | **Closed 2026-09-29 — PC-3B** (`feat/0053-speaker-runtime-evidence`) | Face consent/enrolment pattern (Plan 0029), frozen backend (Plan 0047) | Consented voice enrolment and revocation, untrusted `VOICE` evidence behind `SPEAKER_AUTHENTICATION_ENABLED` (default off); accepted on real hardware, replay not defended; PC-4 stays open |
+| [0054](../plans/completed/0054-face-default-identity-fusion.md) | **Closed 2026-09-30 — PC-4** | Face evidence (Plan 0029), speaker evidence (Plan 0053), `resolve_active_person`, the policy | Face-default fusion with an assurance level: face `basic`, face plus verified voice `strong`, reserved data need `strong`, another person vetoes; accepted on real hardware; replay not defended, no reserved capability yet |
 | [0020](../plans/completed/0020-p0-operator-qa-remediation-design.md) | Operator-QA defect umbrella | C5 via completed Plan 0021, C6 via completed Plan 0022, C7 via completed Plan 0023 | None — its own required real acceptance rerun passed 2026-08-25 |
 | [0024](../plans/completed/0024-owner-authenticated-memory-mvp-design.md) | PC-1 integration design | Existing identity, policy, child-memory, and channel seams; Plans 0025–0028 merged/executed | Delivery complete — PC-1 accepted |
 | [0031](../plans/completed/0031-server-production-baseline-design.md) | Cross-cutting server reference capsule | Existing FastAPI/Starlette/Uvicorn and accepted server/robot contracts | None — every child (0032–0045) closed 2026-09-03 |
@@ -149,7 +150,8 @@ PC-2 accepted (provisional calibration)
   -> CM-0 reproducible longitudinal baseline — Plan 0046 closed 2026-09-08 (benchmark GREEN, baseline RED)
   -> PC-3A speaker calibration — Plan 0047 closed 2026-09-25 (provisional PASS: 0/24 false accepts, 6/8 replay accepted, p95 231ms)
   -> PC-3B consented speaker runtime evidence — Plan 0053 closed 2026-09-29 (untrusted VOICE evidence, default off)
-  -> PC-4 conservative identity fusion — unstarted (current cursor, no plan yet)
+  -> PC-4 conservative identity fusion — Plan 0054 closed 2026-09-30 (face `basic`, voice raises to
+     `strong`, reserved data need `strong`; accepted on real hardware, replay not defended)
   -> CM-1..CM-7 longitudinal memory — unstarted
   -> PC-5 integrated personal acceptance — unstarted
   -> continue at portfolio row 13; the cross-track tail is not duplicated here
@@ -178,15 +180,15 @@ already uses (Plan 0026), with no change to `controller.py` or
   `has_active_face_consent`); revocation performs a real purge of
   `face_profiles` and `vec_faces` rows for that person, not a soft flag.
 - `IdentityEvidenceSource.FACE` added to `_TRUSTED_IDENTIFIED_SOURCES`
-  (`cognition/identity.py`); `VOICE` and `CONTEXT` remain unresolved
-  (PC-3/PC-4 territory).
+  (`cognition/identity.py`); `CONTEXT` remains unresolved, and `VOICE` became a
+  corroborating source only in Plan 0054 (it never identifies alone).
 - In-request face resolution: `cognition/face_authentication.py` — a pure
   6-row verdict function (0 faces -> unknown, 2+ faces -> ambiguous and
   terminal — never falls through to the PIN, 1-face variations ->
-  unknown/identified by match+consent+role), a lazy single-inference-per-turn
-  `FaceRequestResolver`, and `compose_face_then_pin_resolver()`, which tries
-  face first and falls through to the existing PIN resolver only on a
-  non-ambiguous unresolved face result. A stricter, separate
+  unknown/identified by match+consent+role, a match with another enrolled
+  person -> `other_person`, also terminal) and a lazy single-inference-per-turn
+  `FaceRequestResolver`; Plan 0054 replaced `compose_face_then_pin_resolver()`
+  with `cognition/identity_fusion.py`. A stricter, separate
   `settings.face_authentication_match_threshold` — measured by Plan 0030 at
   `0.5815`, replacing the unvalidated `0.25` default — applies on
   top of the existing generic `settings.face_match_threshold` (`0.4`).
@@ -198,7 +200,7 @@ already uses (Plan 0026), with no change to `controller.py` or
 - Router wiring: an optional multipart `frame` field on classic and
   streaming `/transcribe`, gated by `settings.face_authentication_enabled`
   (default `false` — with it off, the frame is never even read). An
-  additive `identity_source: "face" | "local_unlock" | null` response field
+  additive `identity_source: "face" | "face_voice" | "local_unlock" | null` response field
   reports which evidence source authenticated the turn, never a name or
   protected value.
 - Robot-side capture: opt-in (`settings.robot_face_auth_enabled`, default
@@ -207,9 +209,9 @@ already uses (Plan 0026), with no change to `controller.py` or
 
 **Known limitation, stated plainly:** this plan has no liveness or
 anti-spoofing defense. A photograph of the owner held up to the camera
-authenticates under this slice, exactly as every task reviewer reported. The
-real mitigation is PC-4 (voice fusion), not yet built — closing Plan 0030
-did not touch this gap. Real-camera calibration and acceptance (threshold
+authenticates under this slice, exactly as every task reviewer reported. PC-4
+(Plan 0054) keeps that at assurance `basic` and requires `strong` for reserved
+data, with no liveness defense — closing Plan 0030 did not touch this gap. Real-camera calibration and acceptance (threshold
 tuning, false-accept/false-reject rates, lighting, distance, glasses) closed
 2026-09-01 as
 [Plan 0030](../plans/completed/0030-real-camera-face-acceptance.md):

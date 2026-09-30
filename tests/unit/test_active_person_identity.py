@@ -10,6 +10,7 @@ from server.cognition.identity import (
     ActivePersonContext,
     ActivePersonStatus,
     HouseholdRole,
+    IdentityAssurance,
     IdentityEvidence,
     IdentityEvidenceSource,
     PersonRecord,
@@ -435,25 +436,6 @@ def test_resolver_marks_face_and_local_unlock_distinct_candidates_as_ambiguous()
     assert context.role is HouseholdRole.UNKNOWN
 
 
-def test_resolver_returns_unknown_for_voice_evidence() -> None:
-    """VOICE evidence for a verified person must stay untrusted and unresolved."""
-    voice = IdentityEvidence(
-        evidence_id=uuid4(),
-        source=IdentityEvidenceSource.VOICE,
-        candidate_person_id=42,
-        confidence=_confidence(),
-        observed_at=_RESOLVED_AT,
-        reference="voice-match",
-    )
-
-    context = _resolve((voice,), {42: _person(42)})
-
-    assert context.person_id is None
-    assert context.display_name is None
-    assert context.status is ActivePersonStatus.UNKNOWN
-    assert context.role is HouseholdRole.UNKNOWN
-
-
 def test_resolver_returns_unknown_for_context_evidence() -> None:
     """CONTEXT evidence for a verified person must stay untrusted and unresolved."""
     context_evidence = IdentityEvidence(
@@ -471,3 +453,89 @@ def test_resolver_returns_unknown_for_context_evidence() -> None:
     assert context.display_name is None
     assert context.status is ActivePersonStatus.UNKNOWN
     assert context.role is HouseholdRole.UNKNOWN
+
+
+def _source_evidence(
+    source: IdentityEvidenceSource,
+    person_id: int = 42,
+    *,
+    expires_at: datetime | None = None,
+) -> IdentityEvidence:
+    """Build evidence of one source for one person, observed just before resolution."""
+    return IdentityEvidence(
+        evidence_id=uuid4(),
+        source=source,
+        candidate_person_id=person_id,
+        confidence=_confidence(),
+        observed_at=_RESOLVED_AT - timedelta(minutes=1),
+        expires_at=expires_at,
+        reference=f"{source.value}-match",
+    )
+
+
+_FACE = IdentityEvidenceSource.FACE
+_VOICE = IdentityEvidenceSource.VOICE
+_PIN = IdentityEvidenceSource.LOCAL_UNLOCK
+_MANUAL = IdentityEvidenceSource.MANUAL
+_SESSION = IdentityEvidenceSource.SESSION
+_CONTEXT = IdentityEvidenceSource.CONTEXT
+
+
+@pytest.mark.parametrize(
+    "sources, status, assurance",
+    [
+        ((_FACE,), ActivePersonStatus.IDENTIFIED, IdentityAssurance.BASIC),
+        ((_FACE, _VOICE), ActivePersonStatus.IDENTIFIED, IdentityAssurance.STRONG),
+        ((_VOICE,), ActivePersonStatus.PROBABLE, IdentityAssurance.NONE),
+        ((_PIN,), ActivePersonStatus.IDENTIFIED, IdentityAssurance.STRONG),
+        ((_PIN, _FACE), ActivePersonStatus.IDENTIFIED, IdentityAssurance.STRONG),
+        ((_PIN, _VOICE), ActivePersonStatus.IDENTIFIED, IdentityAssurance.STRONG),
+        ((_PIN, _FACE, _VOICE), ActivePersonStatus.IDENTIFIED, IdentityAssurance.STRONG),
+        ((_MANUAL,), ActivePersonStatus.IDENTIFIED, IdentityAssurance.BASIC),
+        ((_SESSION,), ActivePersonStatus.PROBABLE, IdentityAssurance.NONE),
+        ((_SESSION, _VOICE), ActivePersonStatus.PROBABLE, IdentityAssurance.NONE),
+        ((_CONTEXT,), ActivePersonStatus.UNKNOWN, IdentityAssurance.NONE),
+    ],
+)
+def test_the_fusion_table_for_one_person(
+    sources: tuple[IdentityEvidenceSource, ...],
+    status: ActivePersonStatus,
+    assurance: IdentityAssurance,
+) -> None:
+    """ADR 0016 §2 as data: every combination of sources for one verified person."""
+    context = _resolve(tuple(_source_evidence(source) for source in sources), {42: _person(42)})
+
+    assert context.status is status
+    assert context.assurance is assurance
+    if status is ActivePersonStatus.UNKNOWN:
+        assert context.person_id is None
+
+
+def test_face_and_voice_of_different_people_are_ambiguous() -> None:
+    """Review Focus 1: corroboration needs the SAME person; conflict is never resolved."""
+    context = _resolve(
+        (_source_evidence(_FACE, 42), _source_evidence(_VOICE, 7)),
+        {42: _person(42), 7: _person(7)},
+    )
+
+    assert context.status is ActivePersonStatus.AMBIGUOUS
+    assert context.person_id is None
+    assert context.assurance is IdentityAssurance.NONE
+
+
+def test_expired_voice_evidence_leaves_the_face_at_basic() -> None:
+    """Review Focus 3: a stale voice degrades to the default path, it does not deny."""
+    expired = _source_evidence(_VOICE, expires_at=_RESOLVED_AT - timedelta(seconds=1))
+
+    context = _resolve((_source_evidence(_FACE), expired), {42: _person(42)})
+
+    assert context.status is ActivePersonStatus.IDENTIFIED
+    assert context.assurance is IdentityAssurance.BASIC
+
+
+def test_a_context_defaults_to_no_assurance() -> None:
+    """Default construction never claims assurance."""
+    context = _resolve((), {})
+
+    assert context.status is ActivePersonStatus.UNKNOWN
+    assert context.assurance is IdentityAssurance.NONE

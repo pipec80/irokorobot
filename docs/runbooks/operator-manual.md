@@ -171,9 +171,10 @@ never be `0` on the strength of the gates.
 ## 3. Security ladder — what Iroko can do at each tier
 
 This is the actual, current state of progressive authentication (ADR-0008,
-ADR-0009). Each tier is strictly additive: a later tier never removes an
-earlier one, and the PIN stays a full, independent recovery path at every
-tier above it.
+ADR-0009, ADR-0016). Each tier is strictly additive: a later tier never removes
+an earlier one. The face is the daily way to identify the owner; the PIN is
+optional and administrative, and when biometrics fail the recovery is local
+administration on the server host, not a spoken step.
 
 ### Tier 0 — No authentication (default, unknown speaker)
 
@@ -207,7 +208,9 @@ corrected 2026-08-26; the only real robot startup guard is
 `ROBOT_STREAMING` vs. the server's `VISION_ENABLED`, see §4).
 **Limitation, by design:** this proves possession of the local secret, not
 the physical identity of the speaker. One-use scope and the short TTL are
-the accepted mitigation.
+the accepted mitigation. Under ADR 0016 the PIN is not the daily path: it stays
+as an optional `strong` factor when a token is presented and as the credential
+of local administration (enrolling and revoking biometrics over loopback).
 
 ### Tier 2 — Face evidence (Plan 0029, code/tests merged 2026-08-25; first
 real-hardware proof of concept 2026-08-27)
@@ -227,7 +230,9 @@ which really deletes the stored face profiles, not a soft flag.
 After enrollment, a protected question is answered from the webcam frame
 attached to that same turn — no PIN needed for it. Two-or-more detected
 faces is a hard denial that does **not** fall back to asking for the PIN (a
-stranger sharing the frame would still overhear the answer).
+stranger sharing the frame would still overhear the answer). Since Plan 0054 a
+face that matches another enrolled person is also a hard denial, even when a PIN
+token is presented, and it does not consume that token.
 
 Validated live 2026-08-27: `just onboard` enrolled Pipec's face, then
 `just run-robot` correctly identified him on a real streaming turn
@@ -237,19 +242,18 @@ on one person's hardware, not a calibrated study** — no threshold tuning,
 no false-accept/false-reject measurement, no lighting/distance/glasses
 variation.
 
-**Known gap, not yet closed:** no liveness/anti-spoofing — a photo of the
-owner held to the camera authenticates. No calibrated real-camera study
-(false-accept/reject rates, lighting, distance, glasses) exists yet. See
+**Known gap, not closed:** no liveness/anti-spoofing — a photo of the owner
+held to the camera identifies at assurance `basic`, enough for ordinary private
+data. The calibrated real-camera study closed as Plan 0030 (provisional). See
 [`current-state.md`](../architecture/current-state.md) for the full
-disclosure. Real-camera acceptance is a future plan, not yet written.
+disclosure.
 
-### Tier 3 — Voice evidence (PC-3B, Plan 0053; untrusted, replay not defended)
+### Tier 3 — Voice evidence (PC-3B, Plan 0053; raises assurance since Plan 0054; replay not defended)
 
-A consented, local speaker check that attaches **untrusted** `VOICE` evidence to
-a protected turn. It never identifies anyone and never unlocks anything: a
-`verified` verdict still receives the same denial as an unauthenticated turn,
-because `VOICE` is not a resolvable identity source. Fusion with face/PIN is
-Tier 4 (PC-4). Off by default.
+A consented, local speaker check. It never identifies anyone on its own: it is
+consulted only after the owner's face matched, and a verified voice of the same
+person raises the face's assurance from `basic` to `strong` (Tier 4). A voice with
+no owner face in the frame is never even embedded. Off by default.
 
 Enable and enrol (server on loopback, owner and PIN already configured):
 
@@ -261,28 +265,65 @@ Enable and enrol (server on loopback, owner and PIN already configured):
    distance). It asks for the PIN each time and keeps the audio in memory only.
    At least 3 references are required before any verification is attempted.
    The first call is slow (about 15 s) because it loads the model.
-3. Ask a protected question with `just test-client`. The server log shows
-   `Speaker verdict: verified | unknown | unavailable`; no name, distance or
-   score is ever logged. `evidence=1` in the `Turn actor` line means voice
-   evidence was attached; the answer is still the denial.
+3. Ask a protected question through `just run-robot` with
+   `ROBOT_FACE_AUTH_ENABLED=true`, so the turn carries your face. The server log
+   shows `Speaker verdict: verified | unknown | unavailable` and the fusion outcome
+   `Identity fusion: face_and_voice | face_only | backend_unavailable | ...`; no
+   name, distance or score is ever logged. Without a frame the speaker is not
+   consulted at all.
 4. `just speaker-auth-demo --revoke` deletes the consent and **every** stored
    voiceprint (checked in SQLite: `voice_profiles` and active
    `voice_consent_grants` both 0). Revocation works even with the flag off.
 
 Behaviour to expect: silence gives a 422 before the speaker check runs; a clip
-shorter than 1.5 s gives `unknown`; missing model files give `unavailable` and a
-normal turn; enrolment returns 503 while the flag is off. The threshold `0.4834`
-and the 1.5 s floor are **provisional**: Plan 0047 measured them in-sample on one
-owner, and **6 of 8 replay probes were accepted**, so a recording of the owner
-can pass. Acceptance on 2026-09-29 (one owner, one laptop microphone): 5 of 5
-full-length genuine turns verified; impostors at runtime, utterances between
-1.5 s and 3 s and more than one acoustic condition were not measured.
+shorter than 1.5 s gives `unknown` (the answer stays at `basic`); missing model
+files give `unavailable` and a normal turn; enrolment returns 503 while the flag
+is off. The threshold `0.4834` and the 1.5 s floor are **provisional**: Plan 0047
+measured them in-sample on one owner, and **6 of 8 replay probes were accepted**,
+so a recording of the owner can pass. Acceptance on 2026-09-29 (one owner, one
+laptop microphone): 5 of 5 full-length genuine turns verified; impostors at
+runtime, utterances between 1.5 s and 3 s and more than one acoustic condition
+were not measured.
 
-### Tier 4 — Conservative fusion (PC-4, not started)
+### Tier 4 — Face-default fusion (PC-4, Plan 0054, ADR 0016; accepted on real hardware 2026-09-30)
 
-Planned: combine one-use/face/voice evidence without a second authorization
-system. Agreement may lower friction; conflict becomes `ambiguous`, never a
-best-score guess. The PIN remains available even if every biometric fails.
+The face identifies the owner by default. A verified voice of the same person
+raises the assurance; an optional PIN token is also `strong`. One deterministic
+rule combines them, and no path adds a second authorization system:
+
+| Evidence of the turn | Result | Assurance | Server log reason |
+|---|---|---|---|
+| Owner's face and a verified voice of the same person | answers | `strong` | `face_and_voice` |
+| Owner's face only (voice unverified, muffled, or the backend down) | answers | `basic` | `face_only` / `backend_unavailable` |
+| Optional PIN token, when the face did not identify | answers | `strong` | `pin` |
+| Another enrolled person's face, or two or more faces (even with a token) | denies, token kept | — | `veto_other_person` / `veto_multiple_faces` |
+| No face, unknown face, or a voice alone | denies | — | `no_evidence` |
+
+With the owner's face matched a presented PIN token is neither consulted nor spent, and the
+robot attaches a frame on every turn while `ROBOT_FACE_AUTH_ENABLED` is on, so in practice
+the PIN raises assurance only when the face fails (ADR 0016 §5/§6).
+
+`basic` is enough for ordinary private data such as the child read. Reserved
+categories (`security`: account numbers, passwords) need `strong`, but **no
+reserved capability exists yet**, so that requirement is proven by policy tests
+and cannot be tried on hardware. The denial text is always the same generic one;
+only the server log (the fusion reason) and, for a reserved request, the authorization
+audit row (`policy_id` `p0.5.assurance-required`) say why. With
+`SPEAKER_AUTHENTICATION_ENABLED=true` the first protected turn after a server start also
+loads the speaker model (about 15 s on the development laptop, bounded at 30 s); later
+turns pay well under a second (p95 231 ms in Plan 0047). The PIN is optional and administrative (loopback enrolment
+and revocation); recovery when face or voice fail is `just face-auth-demo`,
+`just speaker-auth-demo` or `just setup-personal` on the server host, never a
+spoken step.
+
+**Known gaps, stated plainly:** a photograph of the owner still identifies at
+`basic`; a photograph plus a recording of the exact question would satisfy
+`strong` once a reserved capability exists. Replay and liveness are measured on
+hardware, not defended. Pipec's real-hardware matrix (2026-09-30, one owner, one laptop
+camera and microphone; [Plan 0054](../plans/completed/0054-face-default-identity-fusion.md))
+passed the owner, muffled-voice, voice-recording-only, two-faces, covered-camera and
+missing-voice-model cases; a phone-screen photo (3 attempts) and video (2 attempts) did not
+identify, which says nothing about a better spoof; the optional PIN case was not run.
 
 ## 4. Feature-flag reference
 
@@ -295,7 +336,7 @@ best-score guess. The PIN remains available even if every biometric fails.
 | `FACE_AUTHENTICATION_MATCH_THRESHOLD` | `0.5815` | Stricter, separate match bound for authentication (layered on top of `FACE_MATCH_THRESHOLD`); measured by Plan 0030, provisional |
 | `ROBOT_FACE_AUTH_ENABLED` | `false` | Robot: capture and attach one webcam frame per turn |
 | `FACE_MATCH_THRESHOLD` | `0.4` | Generic conversational face-recognition threshold (unrelated to authentication) |
-| `SPEAKER_AUTHENTICATION_ENABLED` | `false` | Server: consult the speaker resolver once per protected turn and attach untrusted `VOICE` evidence; enrolment returns 503 while off, revocation always works |
+| `SPEAKER_AUTHENTICATION_ENABLED` | `false` | Server: after the owner's face matched, consult the speaker resolver once per protected turn and raise the assurance to `strong` on a verified voice; enrolment returns 503 while off, revocation always works |
 | `SPEAKER_AUTHENTICATION_MATCH_THRESHOLD` | `0.4834` | Cosine distance to the reference centroid; provisional and in-sample (Plan 0047) |
 | `SPEAKER_MIN_REFERENCE_COUNT` | `3` | References required before verification is attempted |
 | `SPEAKER_MIN_VERIFICATION_S` / `SPEAKER_MIN_ENROLLMENT_S` | `1.5` / `2.0` | Shortest clip embedded at a turn / accepted at enrolment; the first is a conservative guess, not measured |

@@ -3,11 +3,11 @@
 Resolves owner identity from an optional webcam frame attached to the same
 request as the question — no PIN, no gesture. This mirrors the shape
 `OwnerRequestResolver` (`server.cognition.owner_authentication`, Plan
-0025/0026) already exposes, so a face-first, PIN-fallback pair can be
-composed behind one `(resolve_actor, resolve_consent)` seam. Authentication
-here never substitutes for the existing authorization/consent evaluation —
-it only supplies fresh, in-memory identity evidence and a narrowly scoped
-consent signal for one turn.
+0025/0026) already exposes; `server.cognition.identity_fusion` (Plan 0054)
+composes it with voice and the optional PIN. Authentication here never
+substitutes for the existing authorization/consent evaluation — it only
+supplies fresh, in-memory identity evidence and a narrowly scoped consent
+signal for one turn.
 """
 
 from collections.abc import Awaitable, Callable
@@ -19,7 +19,6 @@ from uuid import uuid4
 import numpy as np
 
 from server.cognition.authorization import ConsentStatus
-from server.cognition.controller import ActivePersonResolver, ConsentResolver
 from server.cognition.identity import (
     ActivePersonContext,
     ActivePersonStatus,
@@ -30,7 +29,6 @@ from server.cognition.identity import (
     resolve_active_person,
 )
 from server.cognition.models import CognitiveEvent, Confidence, ConfidenceBasis
-from server.cognition.owner_authentication import OwnerRequestResolver
 from server.cognition.response_plan import TextTurnPayload
 from server.exceptions import VisionError
 from server.memory.biometric_consent import has_active_face_consent
@@ -50,7 +48,6 @@ __all__ = [
     "FaceAuthenticationVerdict",
     "FaceRequestResolver",
     "build_default_face_request_resolver",
-    "compose_face_then_pin_resolver",
     "evaluate_face_authentication",
 ]
 
@@ -71,6 +68,7 @@ class FaceAuthenticationVerdict(StrEnum):
     IDENTIFIED = "identified"
     UNKNOWN = "unknown"
     AMBIGUOUS = "ambiguous"
+    OTHER_PERSON = "other_person"
 
 
 def evaluate_face_authentication(
@@ -98,17 +96,21 @@ def evaluate_face_authentication(
 
     Returns:
         `AMBIGUOUS` when two or more faces are present — matching is not
-        even attempted in that case. `IDENTIFIED` only for exactly one
-        detected face with a within-threshold match, active consent, and
-        the owner role. `UNKNOWN` for every other case.
+        even attempted in that case. `OTHER_PERSON` for exactly one face
+        with a within-threshold match of someone who is not the owner —
+        positive evidence of another enrolled person, whatever their
+        consent. `IDENTIFIED` only for exactly one detected face with a
+        within-threshold match, active consent, and the owner role.
+        `UNKNOWN` for every other case.
     """
     if detected_face_count >= _MIN_AMBIGUOUS_FACES:
         return FaceAuthenticationVerdict.AMBIGUOUS
     if match is None:
         return FaceAuthenticationVerdict.UNKNOWN
-    if not consent_active:
-        return FaceAuthenticationVerdict.UNKNOWN
     if role is not HouseholdRole.OWNER:
+        # Positive evidence of another enrolled person: a veto, consent or not.
+        return FaceAuthenticationVerdict.OTHER_PERSON
+    if not consent_active:
         return FaceAuthenticationVerdict.UNKNOWN
     return FaceAuthenticationVerdict.IDENTIFIED
 
@@ -131,8 +133,18 @@ def _unknown_active_person(event: CognitiveEvent[TextTurnPayload]) -> ActivePers
     )
 
 
-def _ambiguous_active_person(event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
-    """Build the safe, non-disclosing actor for a multi-face-in-frame turn."""
+def _ambiguous_active_person(
+    event: CognitiveEvent[TextTurnPayload], reason: str = "Multiple faces detected in frame"
+) -> ActivePersonContext:
+    """Build the safe, non-disclosing actor for a vetoed turn.
+
+    Args:
+        event: The protected event this resolution is scoped to.
+        reason: Human-readable explanation carried on the confidence record.
+
+    Returns:
+        An `AMBIGUOUS` actor with no person, name or evidence.
+    """
     return ActivePersonContext(
         person_id=None,
         display_name=None,
@@ -141,7 +153,7 @@ def _ambiguous_active_person(event: CognitiveEvent[TextTurnPayload]) -> ActivePe
             score=0.0,
             basis=ConfidenceBasis.NOT_APPLICABLE,
             calibrated=False,
-            reason="Multiple faces detected in frame",
+            reason=reason,
         ),
         role=HouseholdRole.UNKNOWN,
         evidence=(),
@@ -198,9 +210,10 @@ class FaceRequestResolver:
 
         Returns:
             The identified owner context, the safe ambiguous context when
-            two or more faces share the frame, or the safe unknown actor
-            for every other case (no frame, no face, no match, no consent,
-            wrong role, or a degraded vision pipeline).
+            two or more faces share the frame or the face matches another
+            enrolled person, or the safe unknown actor for every other case
+            (no frame, no face, no match, no consent, or a degraded vision
+            pipeline).
         """
         if self._cached_context is not None:
             return self._cached_context
@@ -231,6 +244,8 @@ class FaceRequestResolver:
             return await self._identify(event, match, role)
         if verdict is FaceAuthenticationVerdict.AMBIGUOUS:
             return _ambiguous_active_person(event)
+        if verdict is FaceAuthenticationVerdict.OTHER_PERSON:
+            return _ambiguous_active_person(event, "Face matches another enrolled person")
         return _unknown_active_person(event)
 
     async def _detected_faces(self) -> list[DetectedFace]:
@@ -341,45 +356,6 @@ class FaceRequestResolver:
         if self.consumed and actor.person_id is not None and actor.role is HouseholdRole.OWNER:
             return ConsentStatus.GRANTED
         return ConsentStatus.NOT_REQUIRED
-
-
-def compose_face_then_pin_resolver(
-    face: FaceRequestResolver, pin: OwnerRequestResolver
-) -> tuple[ActivePersonResolver, ConsentResolver]:
-    """Compose face-first, PIN-fallback actor and consent resolution.
-
-    Args:
-        face: Request-scoped in-turn face evidence resolver.
-        pin: Request-scoped owner PIN resolver (Plan 0025/0026).
-
-    Returns:
-        A `(resolve_actor, resolve_consent)` pair for `CognitiveController`.
-        Face evidence is tried first: an identified face actor short-
-        circuits and returns immediately without consulting the PIN; an
-        ambiguous face verdict (a stranger sharing the frame) also short-
-        circuits and denies, without consulting the PIN either; any other
-        face outcome falls through unchanged to the PIN resolver, exactly
-        preserving the existing Plan 0026/0027 no-frame behavior.
-    """
-
-    async def resolve_actor(event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
-        actor = await face.resolve_actor(event)
-        if actor.status is ActivePersonStatus.IDENTIFIED:
-            return actor
-        if face.last_verdict is FaceAuthenticationVerdict.AMBIGUOUS:
-            return actor
-        return await pin.resolve_actor(event)
-
-    async def resolve_consent(
-        event: CognitiveEvent[TextTurnPayload], actor: ActivePersonContext
-    ) -> ConsentStatus:
-        if face.last_verdict is FaceAuthenticationVerdict.AMBIGUOUS:
-            return ConsentStatus.NOT_REQUIRED
-        if face.consumed:
-            return await face.resolve_consent(event, actor)
-        return await pin.resolve_consent(event, actor)
-
-    return resolve_actor, resolve_consent
 
 
 def _utc_now() -> datetime:
