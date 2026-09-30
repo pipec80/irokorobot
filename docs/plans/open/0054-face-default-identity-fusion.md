@@ -1874,11 +1874,17 @@ only — never a frame, audio, name or score.
   Task 5: `identity_source` never `face_voice` and the old wrapper embedded without a face).
   A mutation of the veto ordering was caught by four fused-resolver tests.
 - Last full `pytest -n auto` on the branch: 1556 passed. `ruff`, `mypy` and `pyright` clean.
-  `tests/integration/test_face_authenticated_turn.py` passes **unedited**. The final
-  `just gate` of Task 7 Step 1 is recorded below when run.
-- One full run showed two transient timing failures in
-  `tests/unit/test_speaker_embedding.py` under `-n auto` load (code this plan does not
-  touch): 21/21 in isolation, green on two other full runs.
+  `tests/integration/test_face_authenticated_turn.py` passes **unedited**.
+- Task 7 Step 1, `just gate` after the fixes below (2026-09-30): lint, `mypy`, `pyright`
+  and 1556 tests pass. The `audit` step failed: three advisories against `urllib3 2.7.0`
+  (fixed in 2.8.0) were published after the baseline gate ran. `uv lock --upgrade-package
+  urllib3 --dry-run` shows that bump is the only change; it is outside this plan's scope and
+  awaits Pipec's authorization, so the gate is **not** fully green.
+- Two timeout tests in `tests/unit/test_speaker_embedding.py` failed on some full runs.
+  Root cause, reproduced: `embed_wav` imports `torch` lazily inside its executor thread and
+  the tests wait 0.2 s, so the first such test in a cold `xdist` worker paid the import
+  inside the window (cold process alone: 3 of 3 failed; torch pre-imported: 3 of 3 passed).
+  The module and the test are identical to `main`; the defect predates this plan.
 
 ### Rulings taken during execution
 
@@ -1889,6 +1895,7 @@ only — never a frame, audio, name or score.
 | 3 | The two Task 4 veto tests also assert consent is `NOT_REQUIRED` | They replace the deleted composer test that pinned it | None |
 | 4 | Stale docstrings in `tests/integration/test_speaker_evidence_turn.py` were updated | They said `_RESOLVABLE_SOURCES` was unedited | None |
 | 5 | `cognition/speaker_authentication.py` was **not** edited although its docstrings still say `VOICE` is absent from `_RESOLVABLE_SOURCES` | The plan lists it under "Never touched" | One stale docstring, reported to Pipec |
+| 6 | `tests/unit/test_speaker_embedding.py` gained a module-scoped `_warm_torch` fixture although it was not in the file list | Two timeout tests failed on cold workers (root cause above); Pipec authorized a test-only fix | Revert one fixture |
 
 ### What stays open
 

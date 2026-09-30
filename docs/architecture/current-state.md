@@ -326,9 +326,11 @@ See [P0-S hardening audit](../history/audits/p0-s-hardening-audit.md) for eviden
   observed its new tests RED before GREEN, and a mutation of the veto ordering was caught
   by four fused-resolver tests; the last full `pytest -n auto` passed 1556 tests, `ruff`,
   `mypy` and `pyright` were clean, and `tests/integration/test_face_authenticated_turn.py`
-  passes unedited (the face alone still answers ordinary private data). One full run showed
-  two transient timing failures in `tests/unit/test_speaker_embedding.py` under `-n auto` load
-  (code this plan does not touch; 21/21 in isolation and green on two other full runs).
+  passes unedited (the face alone still answers ordinary private data). Two timeout tests in
+  `tests/unit/test_speaker_embedding.py` failed on some full runs: `embed_wav` imports `torch`
+  lazily inside its executor thread, so the first such test in a cold `xdist` worker paid the
+  import inside a 0.2 s window (cold process alone: 3 of 3 failed; torch pre-imported: 3 of 3
+  passed). A module-scoped warm-up fixture fixed it, test-only; the defect predates this plan.
   The real-hardware matrix has not been run: no acceptance is claimed here yet.
 
 R1 runtime proof is complete — see
