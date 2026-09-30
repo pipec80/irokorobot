@@ -30,6 +30,12 @@ one-terminal-event guarantee, the NDJSON 200 OpenAPI contract, `/health`
 wording + injectable `create_app`) and left only Uvicorn concurrency
 calibration open, as its own `perf(...)` plan.
 
+[Plan 0054](0054-face-default-identity-fusion.md) closed PC-4 on 2026-09-30: the
+owner's face alone identifies at assurance `basic`, a verified voice of the same person
+raises it to `strong`, reserved data (`SECURITY`) will require `strong`, and another
+enrolled person or two faces veto. Accepted on real hardware by Pipec and independently
+reviewed; replay is not defended and no reserved capability exists yet.
+
 [Plan 0053](0053-consented-speaker-runtime-evidence.md) closed PC-3B on
 2026-09-29: consented voice enrolment and revocation plus **untrusted** `VOICE`
 evidence behind `SPEAKER_AUTHENTICATION_ENABLED` (default off), accepted on real

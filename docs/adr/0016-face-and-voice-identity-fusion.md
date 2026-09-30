@@ -7,7 +7,7 @@
   [ADR 0009](0009-locked-posture-and-scoped-capabilities.md)
 - **Refines:** [ADR 0015](0015-owner-grant-scope-and-speaker-binding.md) decision 2
   (speaker binding, face veto)
-- **Implemented by:** PC-4, [Plan 0054](../plans/open/0054-face-default-identity-fusion.md)
+- **Implemented by:** PC-4, [Plan 0054](../plans/completed/0054-face-default-identity-fusion.md)
 
 ## Context
 

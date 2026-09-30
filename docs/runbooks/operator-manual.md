@@ -285,7 +285,7 @@ laptop microphone): 5 of 5 full-length genuine turns verified; impostors at
 runtime, utterances between 1.5 s and 3 s and more than one acoustic condition
 were not measured.
 
-### Tier 4 — Face-default fusion (PC-4, Plan 0054, ADR 0016; implemented, real-hardware matrix pending)
+### Tier 4 — Face-default fusion (PC-4, Plan 0054, ADR 0016; accepted on real hardware 2026-09-30)
 
 The face identifies the owner by default. A verified voice of the same person
 raises the assurance; an optional PIN token is also `strong`. One deterministic
@@ -319,9 +319,11 @@ spoken step.
 **Known gaps, stated plainly:** a photograph of the owner still identifies at
 `basic`; a photograph plus a recording of the exact question would satisfy
 `strong` once a reserved capability exists. Replay and liveness are measured on
-hardware, not defended. Pipec's real-hardware matrix (nine cases, listed in
-[Plan 0054](../plans/open/0054-face-default-identity-fusion.md)) has not been run
-yet; its outcomes are recorded there and in `current-state.md`.
+hardware, not defended. Pipec's real-hardware matrix (2026-09-30, one owner, one laptop
+camera and microphone; [Plan 0054](../plans/completed/0054-face-default-identity-fusion.md))
+passed the owner, muffled-voice, voice-recording-only, two-faces, covered-camera and
+missing-voice-model cases; a phone-screen photo (3 attempts) and video (2 attempts) did not
+identify, which says nothing about a better spoof; the optional PIN case was not run.
 
 ## 4. Feature-flag reference
 

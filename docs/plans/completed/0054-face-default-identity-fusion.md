@@ -10,14 +10,14 @@
 > `superpowers:verification-before-completion` before any claim that a task or
 > the plan is done.
 
-- **Status:** `Ready` — written 2026-09-30 after the PC-4 brainstorm with Pipec;
-  read and promoted to `NOW` by Pipec on 2026-09-30
-  ([`docs/plans/README.md`](../README.md#operational-board)).
+- **Status:** `Closed` 2026-09-30 — written after the PC-4 brainstorm with Pipec,
+  promoted to `NOW` by Pipec and executed the same day; the real-hardware matrix was run by
+  Pipec (see the [closure record](#closure-record)).
 - **Roadmap row:** [PC-4](../../roadmap/cognitive-roadmap.md#canonical-pre-electronics-delivery-portfolio),
   step 2 of the [agreed delivery order](../../roadmap/cognitive-roadmap.md#pre-purchase-readiness-gate--plug-it-in-and-it-works).
-- **Evidence it builds on:** [Plan 0053](../completed/0053-consented-speaker-runtime-evidence.md)
+- **Evidence it builds on:** [Plan 0053](0053-consented-speaker-runtime-evidence.md)
   (PC-3B, merged as PRs #144–#147) and
-  [Plan 0030](../completed/0030-real-camera-face-acceptance.md).
+  [Plan 0030](0030-real-camera-face-acceptance.md).
 
 **Goal:** Identify the owner by face by default, raise the assurance to `strong`
 when the voice agrees, and require `strong` for reserved data — so a stranger never
@@ -67,7 +67,7 @@ is reported — it is never designed around.
    evidence*, *Active person context*, *Initial fusion rules*.
 5. [`current-state.md`](../../architecture/current-state.md): the rows *Consented local
    face evidence (Plan 0029 / PC-2)* and *Speaker recognition (Plan 0053 / PC-3B)*.
-6. [Plan 0053](../completed/0053-consented-speaker-runtime-evidence.md), *Closure
+6. [Plan 0053](0053-consented-speaker-runtime-evidence.md), *Closure
    record* — what voice does today and what was not measured.
 7. Code, read before writing: `cognition/identity.py`, `cognition/authorization.py`,
    `cognition/face_authentication.py`, `cognition/speaker_authentication.py`,
@@ -1862,8 +1862,8 @@ consumes it yet) and the veto. Rolling back means reverting the PR; no migration
 
 ## Closure record
 
-**Status of this record: Tasks 0–6 done; Task 7 (Pipec's real hardware) pending.** Outcomes
-only — never a frame, audio, name or score.
+**Status of this record: CLOSED 2026-09-30 — Tasks 0–7 done.** Outcomes only — never a
+frame, audio, name or score.
 
 ### Execution record (2026-09-30, branch `feat/0054-identity-fusion`)
 
@@ -1939,8 +1939,39 @@ closed). Disposition:
 
 ### Real-hardware outcomes (Task 7 Step 2)
 
-Pending: Pipec runs the nine cases of [What needs Pipec's real hardware](#what-needs-pipecs-real-hardware)
-and this section then records the outcome of each, outcomes only.
+Run by Pipec on 2026-09-30 with `just run-server` and `just run-robot` (face and speaker
+authentication on; one owner, one laptop camera and microphone). Outcomes only.
+
+| # | Case | Outcome |
+|--:|---|---|
+| 1 | Owner alone, normal light | **PASS** — `face_and_voice`, answered. The first run showed `face_only` because the earlier revocation had left no voiceprints; after re-enrolling three references the repeat gave `face_and_voice` (2.4 s) |
+| 2 | Face visible, voice muffled | **PASS** — voice `unknown`, `face_only`, answered at `basic` |
+| 3 | Photo of the owner on a phone screen, another person speaking | The photo did **not** identify in 3 attempts: `no_evidence`, denied (not `veto_multiple_faces`). The expected `face_only` answer was not reproduced; Pipec counts the denial as acceptable. Not a liveness defense |
+| 4 | Owner's voice recording played, no face in frame | **PASS** — `no_evidence`, denied; the speaker was never consulted or embedded |
+| 5 | Photo plus recording of the exact question | Replaced by Pipec with a stronger variant: a video of the owner asking the question, played on a phone in good light and audio. 2 attempts, both `no_evidence`, denied, speaker never consulted. The residual replay risk was **not demonstrated** with this setup; it stays undefended |
+| 6 | Two people in frame | **PASS** — `veto_multiple_faces`, denied |
+| 7 | Camera covered | **PASS** — `no_evidence`, denied |
+| 8 | Speaker model files hidden (both model folders), server restarted | **PASS** — `backend_unavailable`, answered at `basic` |
+| 9 | Optional: PIN token | Not run |
+
+Also observed: two genuine short utterances (1.6 s and 2.3 s) were `verified`; the first
+protected turn after a server restart takes 8 to 13 s because it loads the face and speaker
+models; public turns produced no fusion line and no face or voice activity. A voice recording
+alone never opens anything; a photograph or video on a phone screen did not identify here, but
+no liveness exists, so a better spoof (a large print, a monitor) is not excluded.
+
+### Completion criteria check
+
+All ten criteria hold: each task's RED test was observed first and `just gate` is green with
+no configuration weakened (1); `test_face_authenticated_turn.py` passes unedited (2);
+`SECURITY` is denied at `basic` with `p0.5.assurance-required` and allowed at `strong`, and
+`CHILD_DATA` is allowed at `basic` (3); a face and a voice of different people or another
+enrolled person's face never identify, and a veto never consumes the PIN token (4); a dead or
+unverified voice answers at `basic` (5, cases 1, 2 and 8); public turns and turns without an
+owner face never build the speaker resolver (6, cases 4 and 7); the wire change is one
+additive `identity_source` value (7); no name, transcript, distance or score reached a log,
+audit row or response (8); the real-hardware run recorded every case that was run, with the
+photograph and video results above (9); and the documentation states what stays open (10).
 
 ## Execution handoff
 

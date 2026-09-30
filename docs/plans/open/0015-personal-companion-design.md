@@ -162,7 +162,7 @@ and typed, still-untrusted `VOICE` evidence are
 [Plan 0053](../completed/0053-consented-speaker-runtime-evidence.md) (PC-3B), closed
 2026-09-29 and accepted on real hardware; trust/fusion and replay/liveness stay PC-4's.
 
-### PC-4 — Conservative identity fusion — implemented (Plan 0054), hardware matrix pending
+### PC-4 — Conservative identity fusion — closed (Plan 0054)
 
 Combine face, speaker and temporary administrative/session evidence through
 typed deterministic policy. Agreement may strengthen a result; conflict must
@@ -226,7 +226,7 @@ PC-1 complete
   -> CM-0 reproducible RED baseline (Plan 0046 closed 2026-09-08)
   -> PC-3A speaker calibration (Plan 0047 closed 2026-09-25, provisional PASS)
   -> PC-3B speaker runtime evidence (Plan 0053, closed 2026-09-29)
-  -> PC-4 conservative identity fusion <- current cursor (Plan 0054 implemented 2026-09-30, real-hardware matrix pending)
+  -> PC-4 conservative identity fusion (Plan 0054, closed 2026-09-30)
   -> P2.2 / CM-1..CM-7 longitudinal memory
   -> PC-5 personal companion acceptance
   -> PC-6 family profile
@@ -235,7 +235,7 @@ PC-1 complete
 CM-0, the reproducible benchmark, is closed (Plan 0046, 2026-09-08): it created
 the RED evidence needed to prevent implementation by intuition. PC-3A is closed
 (Plan 0047, 2026-09-25) and so is PC-3B ([Plan 0053](../completed/0053-consented-speaker-runtime-evidence.md),
-2026-09-29); PC-4 ([Plan 0054](0054-face-default-identity-fusion.md)) is implemented (2026-09-30) and awaits its real-hardware matrix.
+2026-09-29); PC-4 ([Plan 0054](../completed/0054-face-default-identity-fusion.md)) closed 2026-09-30, accepted on real hardware.
 
 ## Non-goals
 

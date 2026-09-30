@@ -63,7 +63,7 @@ batches:
 | [0046](../plans/completed/0046-reproducible-longitudinal-memory-baseline.md) | **Closed 2026-09-08** | Repaired evaluators, Ollama, temporary SQLite and deterministic scoring patterns | CM-0 delivered: benchmark GREEN, measured baseline RED (`ac43c58`, exit 1); no runtime memory change |
 | [0047](../plans/completed/0047-speaker-evidence-calibration-study.md) | **Closed 2026-09-25 — PC-3A provisional PASS** (`feat/0047-speaker-calibration`, merged as PR #134) | Audio contract, capture and face-calibration study pattern | Threshold 0.4834, 0/24 impostor false accepts, 0/24 genuine false rejects (in-sample), 6/8 replay accepted, p95 231 ms; PC-3B and PC-4 stay open |
 | [0053](../plans/completed/0053-consented-speaker-runtime-evidence.md) | **Closed 2026-09-29 — PC-3B** (`feat/0053-speaker-runtime-evidence`) | Face consent/enrolment pattern (Plan 0029), frozen backend (Plan 0047) | Consented voice enrolment and revocation, untrusted `VOICE` evidence behind `SPEAKER_AUTHENTICATION_ENABLED` (default off); accepted on real hardware, replay not defended; PC-4 stays open |
-| [0054](../plans/open/0054-face-default-identity-fusion.md) | **NOW — PC-4 implemented 2026-09-30, real-hardware matrix pending** (`feat/0054-identity-fusion`) | Face evidence (Plan 0029), speaker evidence (Plan 0053), `resolve_active_person`, the policy | Face-default fusion with an assurance level: face `basic`, face plus verified voice `strong`, reserved data need `strong`, another person vetoes; replay not defended, no reserved capability yet |
+| [0054](../plans/completed/0054-face-default-identity-fusion.md) | **Closed 2026-09-30 — PC-4** | Face evidence (Plan 0029), speaker evidence (Plan 0053), `resolve_active_person`, the policy | Face-default fusion with an assurance level: face `basic`, face plus verified voice `strong`, reserved data need `strong`, another person vetoes; accepted on real hardware; replay not defended, no reserved capability yet |
 | [0020](../plans/completed/0020-p0-operator-qa-remediation-design.md) | Operator-QA defect umbrella | C5 via completed Plan 0021, C6 via completed Plan 0022, C7 via completed Plan 0023 | None — its own required real acceptance rerun passed 2026-08-25 |
 | [0024](../plans/completed/0024-owner-authenticated-memory-mvp-design.md) | PC-1 integration design | Existing identity, policy, child-memory, and channel seams; Plans 0025–0028 merged/executed | Delivery complete — PC-1 accepted |
 | [0031](../plans/completed/0031-server-production-baseline-design.md) | Cross-cutting server reference capsule | Existing FastAPI/Starlette/Uvicorn and accepted server/robot contracts | None — every child (0032–0045) closed 2026-09-03 |
@@ -150,8 +150,8 @@ PC-2 accepted (provisional calibration)
   -> CM-0 reproducible longitudinal baseline — Plan 0046 closed 2026-09-08 (benchmark GREEN, baseline RED)
   -> PC-3A speaker calibration — Plan 0047 closed 2026-09-25 (provisional PASS: 0/24 false accepts, 6/8 replay accepted, p95 231ms)
   -> PC-3B consented speaker runtime evidence — Plan 0053 closed 2026-09-29 (untrusted VOICE evidence, default off)
-  -> PC-4 conservative identity fusion — Plan 0054 implemented 2026-09-30 (face `basic`, voice
-     raises to `strong`, reserved data need `strong`); real-hardware matrix pending (current cursor)
+  -> PC-4 conservative identity fusion — Plan 0054 closed 2026-09-30 (face `basic`, voice raises to
+     `strong`, reserved data need `strong`; accepted on real hardware, replay not defended)
   -> CM-1..CM-7 longitudinal memory — unstarted
   -> PC-5 integrated personal acceptance — unstarted
   -> continue at portfolio row 13; the cross-track tail is not duplicated here
