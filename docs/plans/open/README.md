@@ -56,7 +56,13 @@ evidencia del hablante; el Plan 0051 lo implementa y aún no está redactado.
 (PC-3B) **cerró el 2026-09-29** y ya vive en `completed/`: enrolamiento consentido, revocación que
 purga los voiceprints y evidencia `VOICE` tipada que **no concede nada** (sigue fuera de
 `_RESOLVABLE_SOURCES`), detrás de `SPEAKER_AUTHENTICATION_ENABLED=false`. Aceptado en hardware real
-y revisado de forma independiente; el replay no está defendido y la fusión es PC-4, que aún no tiene plan.
+y revisado de forma independiente; el replay no está defendido y la fusión es PC-4.
+
+[0054 — face-default identity fusion](0054-face-default-identity-fusion.md) (PC-4) es un **Draft**
+escrito el 2026-09-30 sobre [ADR-0016](../../adr/0016-face-and-voice-identity-fusion.md) (**Accepted**):
+la cara identifica por defecto (`basic`), la voz de la misma persona sube a `strong`, los datos
+reservados (`SECURITY`) exigen `strong`, y otra persona enrolada o dos caras vetan. No es
+ejecutable hasta que Pipec lo lea y lo promueva a `NOW`.
 
 **Paso 0 — carga inicial (sin numerar, decidido 2026-09-24).** Un plan futuro,
 posterior a 0047 y a ADR-0015, que carga los datos base del dueño y su hogar de
@@ -112,7 +118,7 @@ the benchmark harness is GREEN and the measured baseline is a reproducible
 cognitive RED (`ac43c58`, exit 1); it changed no runtime memory. See
 [completed/0046](../completed/0046-reproducible-longitudinal-memory-baseline.md).
 
-Canonical execution order: **`NOW` is empty; PC-4 is next and unplanned.** Plan 0053 (PC-3B)
+Canonical execution order: **`NOW` is empty; PC-4 is next and has a Draft plan (0054) awaiting Pipec's promotion.** Plan 0053 (PC-3B)
 closed 2026-09-29, and Plan 0047 (PC-3A) closed 2026-09-25 with a provisional PASS
 (see [completed/0047](../completed/0047-speaker-evidence-calibration-study.md)); the
 queue-rule-4 re-audit of the next row ran the same day, produced Plan 0053, and
