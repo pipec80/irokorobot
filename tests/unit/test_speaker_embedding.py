@@ -15,6 +15,17 @@ from server.voice import speaker_embedding
 from server.voice.speaker_embedding import SpeakerBackendError
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _warm_torch() -> None:
+    """Import torch once, outside every timed test window.
+
+    `embed_wav` imports torch lazily inside its executor thread, and the timeout tests
+    wait only 0.2 s. Without this, the first test of a cold process paid the import inside
+    that window and failed depending on which tests shared the xdist worker.
+    """
+    pytest.importorskip("torch")
+
+
 def _wav(samples: np.ndarray, *, rate: int = 16_000, channels: int = 1) -> bytes:
     """Build a WAV container around *samples* (int16)."""
     buffer = io.BytesIO()
