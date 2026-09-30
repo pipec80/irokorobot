@@ -3051,9 +3051,11 @@ owner's name; the failure cause was not logged. **Left open.** Two follow-ups we
 (`SPEAKER_MODEL_RETRY_COOLDOWN_S`, default 60 s) and a timeout on the embedding
 (`SPEAKER_EMBED_TIMEOUT_S`, default 30 s, above the first call's model load). On timeout the
 turn degrades to `unavailable`; the worker thread cannot be cancelled, so it is marked busy
-and later embeddings are refused at once until it finishes. Still open: the theoretical window
-between the reference count and the distance (it needs three PIN-gated enrolments inside
-about 0.5 s).
+and later embeddings are refused at once until it finishes. The read-then-read window was
+closed on 2026-09-30: `centroid_match` returns the distance and the number of references it
+used from one query, and the verdict uses that count instead of the earlier one (a revoke,
+re-consent and single re-enrolment during the embedding now yields `unknown`). Nothing from
+the review remains open.
 
 **Observation.** `huggingface_hub` asks `huggingface.co/api/agent-harnesses` once a
 day to detect AI agent harnesses. It downloads nothing and is skipped with

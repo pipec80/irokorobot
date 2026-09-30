@@ -38,7 +38,7 @@ from server.voice.speaker_embedding import (
     meets_verification_duration,
     model_id as _current_model_id,
 )
-from server.voice.voiceprints import centroid_distance, count_voiceprints
+from server.voice.voiceprints import CentroidMatch, centroid_match, count_voiceprints
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ type Clock = Callable[[], datetime]
 type RoleReader = Callable[[int], Awaitable[HouseholdRole]]
 type ConsentReader = Callable[[int], Awaitable[bool]]
 type ReferenceCounter = Callable[[int, str], Awaitable[int]]
-type DistanceComputer = Callable[[int, np.ndarray, str], Awaitable[float | None]]
+type CentroidMatcher = Callable[[int, np.ndarray, str], Awaitable[CentroidMatch | None]]
 type Embedder = Callable[[bytes], Awaitable[np.ndarray]]
 type EnergyGate = Callable[[bytes], bool]
 type DurationGate = Callable[[bytes], bool]
@@ -168,7 +168,7 @@ class SpeakerRequestResolver:
         read_role: RoleReader,
         read_consent: ConsentReader,
         count_references: ReferenceCounter,
-        distance_to_centroid: DistanceComputer,
+        match_centroid: CentroidMatcher,
         embed: Embedder,
         has_energy: EnergyGate,
         has_duration: DurationGate,
@@ -187,8 +187,9 @@ class SpeakerRequestResolver:
                 an active voice consent grant.
             count_references: Boundary that counts stored references for the
                 configured model.
-            distance_to_centroid: Boundary that computes the cosine distance
-                from a fresh embedding to the person's reference centroid.
+            match_centroid: Boundary that computes the cosine distance
+                from a fresh embedding to the person's reference centroid,
+                together with how many references that read used.
             embed: Boundary that embeds the bound audio into a 192-d vector.
             has_energy: Boundary that rejects near-silent audio before it is
                 ever embedded.
@@ -203,7 +204,7 @@ class SpeakerRequestResolver:
         self._read_role = read_role
         self._read_consent = read_consent
         self._count_references = count_references
-        self._distance = distance_to_centroid
+        self._match = match_centroid
         self._embed = embed
         self._has_energy = has_energy
         self._has_duration = has_duration
@@ -248,7 +249,13 @@ class SpeakerRequestResolver:
             usable_clip = self._has_energy(self._wav) and self._has_duration(self._wav)
             if enough and usable_clip:
                 embedding = await self._embed(self._wav)
-                distance = await self._distance(self._owner_person_id, embedding, self._model_id)
+                match = await self._match(self._owner_person_id, embedding, self._model_id)
+                if match is not None:
+                    # The count the distance was computed from replaces the earlier
+                    # count: revoke plus re-enrol during the embedding must not let
+                    # fewer than the minimum references verify.
+                    distance = match.distance
+                    reference_count = match.reference_count
             # `read_consent` is deliberately the LAST await before the
             # decision below, with no other await between it and
             # `evaluate_speaker_verification` — a code reviewer's finding
@@ -342,7 +349,7 @@ def build_default_speaker_resolver(
         read_role=get_active_role,
         read_consent=has_active_voice_consent,
         count_references=count_voiceprints,
-        distance_to_centroid=centroid_distance,
+        match_centroid=centroid_match,
         embed=embed_wav,
         has_energy=has_voiced_energy,
         has_duration=meets_verification_duration,

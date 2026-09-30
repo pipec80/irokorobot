@@ -20,7 +20,7 @@ from server.memory.voice_consent import (
 from server.settings import settings
 from server.voice.voiceprints import (
     VOICEPRINT_DIM,
-    centroid_distance,
+    centroid_match,
     count_voiceprints,
     enroll_voiceprint,
 )
@@ -80,23 +80,24 @@ async def test_vectors_from_another_model_are_not_counted(memory_db: None) -> No
     person = await upsert_entity(name="canary-owner", type="person")
     await enroll_voiceprint(person, _unit_vector(0), "canary-owner", MODEL_ID)
     assert await count_voiceprints(person, "other-model@rev2") == 0
-    assert await centroid_distance(person, _unit_vector(0), "other-model@rev2") is None
+    assert await centroid_match(person, _unit_vector(0), "other-model@rev2") is None
 
 
-async def test_centroid_distance_matches_the_study_arithmetic(memory_db: None) -> None:
+async def test_centroid_match_uses_the_study_arithmetic(memory_db: None) -> None:
     person = await upsert_entity(name="canary-owner", type="person")
     await enroll_voiceprint(person, _unit_vector(0), "canary-owner", MODEL_ID)
     await enroll_voiceprint(person, _unit_vector(1), "canary-owner", MODEL_ID)
 
     # Centroid of two orthogonal unit vectors, L2-normalized, is 45 degrees
     # from each: cosine similarity sqrt(0.5), so distance 1 - sqrt(0.5).
-    distance = await centroid_distance(person, _unit_vector(0), MODEL_ID)
-    assert distance == pytest.approx(1.0 - 0.5**0.5, abs=1e-6)
+    match = await centroid_match(person, _unit_vector(0), MODEL_ID)
+    assert match is not None
+    assert match.distance == pytest.approx(1.0 - 0.5**0.5, abs=1e-6)
 
 
-async def test_centroid_distance_is_none_without_references(memory_db: None) -> None:
+async def test_centroid_match_is_none_without_references(memory_db: None) -> None:
     person = await upsert_entity(name="canary-owner", type="person")
-    assert await centroid_distance(person, _unit_vector(0), MODEL_ID) is None
+    assert await centroid_match(person, _unit_vector(0), MODEL_ID) is None
 
 
 async def _insert_raw_blob(entity_id: int, blob: bytes) -> None:
@@ -115,14 +116,14 @@ async def test_a_corrupt_stored_blob_is_a_typed_error_not_a_raw_numpy_one(
     await enroll_voiceprint(person, _unit_vector(0), "canary", MODEL_ID)
     await _insert_raw_blob(person, b"\0")  # wrong length
     with pytest.raises(BrainMemoryError):
-        await centroid_distance(person, _unit_vector(0), MODEL_ID)
+        await centroid_match(person, _unit_vector(0), MODEL_ID)
 
 
 async def test_a_non_finite_stored_blob_is_a_typed_error(memory_db: None) -> None:
     person = await upsert_entity(name="canary-owner", type="person")
     await _insert_raw_blob(person, np.full(VOICEPRINT_DIM, np.nan, dtype=np.float32).tobytes())
     with pytest.raises(BrainMemoryError):
-        await centroid_distance(person, _unit_vector(0), MODEL_ID)
+        await centroid_match(person, _unit_vector(0), MODEL_ID)
 
 
 async def test_a_non_finite_embedding_is_refused(memory_db: None) -> None:
@@ -130,3 +131,13 @@ async def test_a_non_finite_embedding_is_refused(memory_db: None) -> None:
     bad = np.full(VOICEPRINT_DIM, np.nan, dtype=np.float32)
     with pytest.raises(BrainMemoryError):
         await enroll_voiceprint(person, bad, "canary", MODEL_ID)
+
+
+async def test_the_match_reports_how_many_references_it_actually_used(memory_db: None) -> None:
+    """Review M-4: the count must come from the SAME read as the distance."""
+    person = await upsert_entity(name="canary-owner", type="person")
+    for axis in range(3):
+        await enroll_voiceprint(person, _unit_vector(axis), "canary", MODEL_ID)
+    match = await centroid_match(person, _unit_vector(0), MODEL_ID)
+    assert match is not None
+    assert match.reference_count == 3

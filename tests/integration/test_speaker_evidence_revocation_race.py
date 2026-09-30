@@ -28,7 +28,7 @@ from server.memory.voice_consent import (
     revoke_voice_consent,
 )
 from server.settings import settings
-from server.voice.voiceprints import centroid_distance, count_voiceprints, enroll_voiceprint
+from server.voice.voiceprints import centroid_match, count_voiceprints, enroll_voiceprint
 
 from server import db
 
@@ -95,7 +95,7 @@ def _resolver_over_real_db(
         read_role=_owner_role,
         read_consent=has_active_voice_consent,
         count_references=count_references,
-        distance_to_centroid=centroid_distance,
+        match_centroid=centroid_match,
         embed=_async_probe,
         has_energy=lambda _wav: True,
         has_duration=lambda _wav: True,
@@ -144,7 +144,7 @@ async def test_a_revoke_landing_after_role_before_consent_yields_unknown(
         read_role=_role_then_revoke,
         read_consent=has_active_voice_consent,
         count_references=count_voiceprints,
-        distance_to_centroid=centroid_distance,
+        match_centroid=centroid_match,
         embed=_async_probe,
         has_energy=lambda _wav: True,
         has_duration=lambda _wav: True,
@@ -199,3 +199,29 @@ async def test_revoke_then_reconsent_and_reenroll_can_verify_again(
 
     assert resolver.last_verdict is SpeakerVerdict.VERIFIED
     assert context.evidence[0].candidate_person_id == owner
+
+
+async def test_references_replaced_between_count_and_match_do_not_verify(
+    memory_db: None,
+) -> None:
+    """Review M-4: revoke, re-consent and enrol ONE reference after the count was read.
+
+    The pre-embedding count says 3, but the references the distance is really
+    computed from are fewer than the minimum, so the verdict must be UNKNOWN.
+    """
+    owner = await _enrolled_owner()
+
+    async def _count_then_replace(entity_id: int, model_id: str) -> int:
+        count = await count_voiceprints(entity_id, model_id)
+        await revoke_voice_consent(entity_id)
+        await grant_voice_consent(entity_id)
+        vector = np.zeros(192, dtype=np.float32)
+        vector[0] = 1.0
+        await enroll_voiceprint(entity_id, vector, "canary-owner", model_id)
+        return count
+
+    resolver = _resolver_over_real_db(owner, count_references=_count_then_replace)
+    context = await resolver.resolve_actor(_event())
+
+    assert context.evidence == ()
+    assert resolver.last_verdict is SpeakerVerdict.UNKNOWN

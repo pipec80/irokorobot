@@ -18,6 +18,7 @@ from server.cognition.speaker_authentication import (
 from server.exceptions import BrainMemoryError
 from server.settings import settings
 from server.voice.speaker_embedding import SpeakerBackendError
+from server.voice.voiceprints import CentroidMatch
 
 
 def _evaluate(**overrides: object) -> SpeakerVerdict:
@@ -108,10 +109,13 @@ async def _default_count_references(_entity_id: int, _model_id: str) -> int:
     return settings.speaker_min_reference_count
 
 
-async def _default_distance_to_centroid(
+async def _default_match_centroid(
     _person_id: int, _embedding: np.ndarray, _model_id: str
-) -> float:
-    return settings.speaker_authentication_match_threshold - 0.01
+) -> CentroidMatch:
+    return CentroidMatch(
+        distance=settings.speaker_authentication_match_threshold - 0.01,
+        reference_count=settings.speaker_min_reference_count,
+    )
 
 
 async def _default_embed(_wav_bytes: bytes) -> np.ndarray:
@@ -182,7 +186,7 @@ def _resolver(**overrides: object) -> SpeakerRequestResolver:
         "read_role": _default_read_role,
         "read_consent": _default_read_consent,
         "count_references": _default_count_references,
-        "distance_to_centroid": _default_distance_to_centroid,
+        "match_centroid": _default_match_centroid,
         "embed": _default_embed,
         "has_energy": _default_has_energy,
         "has_duration": _default_has_duration,
@@ -280,7 +284,7 @@ async def test_revocation_mid_turn_loses_the_references() -> None:
     REAL interleaving, against a real DB, is Step 4b's integration test —
     a code reviewer's finding (A3) that this mock alone does not reproduce
     an actual concurrent revoke."""
-    resolver = _resolver(distance_to_centroid=_none)
+    resolver = _resolver(match_centroid=_none)
     assert (await resolver.resolve_actor(_event())).evidence == ()
 
 
@@ -306,10 +310,26 @@ async def test_the_configured_model_id_reaches_both_repository_reads() -> None:
         seen.append(model_id)
         return settings.speaker_min_reference_count
 
-    async def _distance(_person_id: int, _embedding: np.ndarray, model_id: str) -> float:
+    async def _distance(_person_id: int, _embedding: np.ndarray, model_id: str) -> CentroidMatch:
         seen.append(model_id)
-        return 0.0
+        return CentroidMatch(distance=0.0, reference_count=settings.speaker_min_reference_count)
 
-    resolver = _resolver(count_references=_count, distance_to_centroid=_distance)
+    resolver = _resolver(count_references=_count, match_centroid=_distance)
     await resolver.resolve_actor(_event())
     assert seen == ["test-model@rev1", "test-model@rev1"]
+
+
+async def test_the_reference_count_of_the_match_overrides_the_earlier_count() -> None:
+    """Review M-4: the count taken before the embedding may be stale by the time
+    the distance is computed; the verdict must use the count the distance used."""
+
+    async def _stale_high(*_args: object) -> int:
+        return settings.speaker_min_reference_count
+
+    async def _fewer_used(*_args: object) -> CentroidMatch:
+        return CentroidMatch(distance=0.0, reference_count=1)
+
+    resolver = _resolver(count_references=_stale_high, match_centroid=_fewer_used)
+
+    assert (await resolver.resolve_actor(_event())).evidence == ()
+    assert resolver.last_verdict is SpeakerVerdict.UNKNOWN
