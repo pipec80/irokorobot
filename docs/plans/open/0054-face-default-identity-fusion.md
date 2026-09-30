@@ -10,9 +10,9 @@
 > `superpowers:verification-before-completion` before any claim that a task or
 > the plan is done.
 
-- **Status:** `Draft` — written 2026-09-30 after the PC-4 brainstorm with Pipec.
-  Not executable until Pipec reads it and promotes it to `NOW`
-  ([`docs/plans/README.md`](../README.md#operational-board) is empty today).
+- **Status:** `Ready` — written 2026-09-30 after the PC-4 brainstorm with Pipec;
+  read and promoted to `NOW` by Pipec on 2026-09-30
+  ([`docs/plans/README.md`](../README.md#operational-board)).
 - **Roadmap row:** [PC-4](../../roadmap/cognitive-roadmap.md#canonical-pre-electronics-delivery-portfolio),
   step 2 of the [agreed delivery order](../../roadmap/cognitive-roadmap.md#pre-purchase-readiness-gate--plug-it-in-and-it-works).
 - **Evidence it builds on:** [Plan 0053](../completed/0053-consented-speaker-runtime-evidence.md)

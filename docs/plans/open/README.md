@@ -21,7 +21,8 @@ For daily work, do not choose a plan from this inventory. Follow the
 single-WIP [operational board](../README.md#operational-board) — **CM-0
 (Plan 0046) closed 2026-09-08, PC-3A (Plan 0047) closed 2026-09-25 with a
 provisional PASS, and PC-3B ([Plan 0053](../completed/0053-consented-speaker-runtime-evidence.md))
-closed 2026-09-29; `NOW` is empty until PC-4 is planned.** Use the
+closed 2026-09-29; `NOW` is [Plan 0054](0054-face-default-identity-fusion.md) (PC-4),
+promoted 2026-09-30.** Use the
 [personal-companion delivery map](../../roadmap/personal-companion-delivery-map.md)
 and [conversational-memory delivery map](../../roadmap/conversational-memory-delivery-map.md)
 to see the code, tests, verified gaps, and future delivery sequence.
@@ -58,11 +59,11 @@ purga los voiceprints y evidencia `VOICE` tipada que **no concede nada** (sigue 
 `_RESOLVABLE_SOURCES`), detrás de `SPEAKER_AUTHENTICATION_ENABLED=false`. Aceptado en hardware real
 y revisado de forma independiente; el replay no está defendido y la fusión es PC-4.
 
-[0054 — face-default identity fusion](0054-face-default-identity-fusion.md) (PC-4) es un **Draft**
-escrito el 2026-09-30 sobre [ADR-0016](../../adr/0016-face-and-voice-identity-fusion.md) (**Accepted**):
-la cara identifica por defecto (`basic`), la voz de la misma persona sube a `strong`, los datos
-reservados (`SECURITY`) exigen `strong`, y otra persona enrolada o dos caras vetan. No es
-ejecutable hasta que Pipec lo lea y lo promueva a `NOW`.
+[0054 — face-default identity fusion](0054-face-default-identity-fusion.md) (PC-4) está **Ready y en
+`NOW`** desde el 2026-09-30, escrito sobre [ADR-0016](../../adr/0016-face-and-voice-identity-fusion.md)
+(**Accepted**): la cara identifica por defecto (`basic`), la voz de la misma persona sube a `strong`,
+los datos reservados (`SECURITY`) exigen `strong`, y otra persona enrolada o dos caras vetan. Pipec lo
+leyó y lo promovió; el replay se mide, no se defiende.
 
 **Paso 0 — carga inicial (sin numerar, decidido 2026-09-24).** Un plan futuro,
 posterior a 0047 y a ADR-0015, que carga los datos base del dueño y su hogar de
@@ -118,7 +119,7 @@ the benchmark harness is GREEN and the measured baseline is a reproducible
 cognitive RED (`ac43c58`, exit 1); it changed no runtime memory. See
 [completed/0046](../completed/0046-reproducible-longitudinal-memory-baseline.md).
 
-Canonical execution order: **`NOW` is empty; PC-4 is next and has a Draft plan (0054) awaiting Pipec's promotion.** Plan 0053 (PC-3B)
+Canonical execution order: **`NOW` is Plan 0054 (PC-4), promoted by Pipec on 2026-09-30.** Plan 0053 (PC-3B)
 closed 2026-09-29, and Plan 0047 (PC-3A) closed 2026-09-25 with a provisional PASS
 (see [completed/0047](../completed/0047-speaker-evidence-calibration-study.md)); the
 queue-rule-4 re-audit of the next row ran the same day, produced Plan 0053, and
