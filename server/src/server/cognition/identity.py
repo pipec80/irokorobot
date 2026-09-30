@@ -25,6 +25,7 @@ __all__ = [
     "ActivePersonContext",
     "ActivePersonStatus",
     "HouseholdRole",
+    "IdentityAssurance",
     "IdentityEvidence",
     "IdentityEvidenceSource",
     "PersonRecord",
@@ -50,6 +51,19 @@ class ActivePersonStatus(str, _Enum):  # noqa: UP042
     PROBABLE = "probable"
     UNKNOWN = "unknown"
     AMBIGUOUS = "ambiguous"
+
+
+class IdentityAssurance(str, _Enum):  # noqa: UP042
+    """How strongly the evidence of one turn establishes the actor (ADR 0016).
+
+    `BASIC` is the owner's face alone (or a manual selection); `STRONG` is face and
+    voice of the same person agreeing, or an owner unlock grant. Reserved data
+    categories require `STRONG`. `NONE` is carried by every non-identified result.
+    """
+
+    NONE = "none"
+    BASIC = "basic"
+    STRONG = "strong"
 
 
 class HouseholdRole(str, _Enum):  # noqa: UP042
@@ -120,6 +134,7 @@ class ActivePersonContext(_BaseModel):
     role: HouseholdRole
     evidence: tuple[IdentityEvidence, ...]
     resolved_at: _StrictDatetime
+    assurance: IdentityAssurance = IdentityAssurance.NONE
 
     _validate_resolved_at = _field_validator("resolved_at")(_require_aware_utc)
 
@@ -151,7 +166,22 @@ _TRUSTED_IDENTIFIED_SOURCES = frozenset(
         IdentityEvidenceSource.FACE,
     }
 )
-_RESOLVABLE_SOURCES = _TRUSTED_IDENTIFIED_SOURCES | {IdentityEvidenceSource.SESSION}
+# VOICE is resolvable but never trusted on its own: it corroborates a face (ADR 0016).
+_RESOLVABLE_SOURCES = _TRUSTED_IDENTIFIED_SOURCES | {
+    IdentityEvidenceSource.SESSION,
+    IdentityEvidenceSource.VOICE,
+}
+
+
+def _assurance_for(sources: frozenset[IdentityEvidenceSource]) -> IdentityAssurance:
+    """Return the assurance that a set of agreeing sources establishes (ADR 0016 §2)."""
+    if IdentityEvidenceSource.LOCAL_UNLOCK in sources:
+        return IdentityAssurance.STRONG
+    if IdentityEvidenceSource.FACE in sources and IdentityEvidenceSource.VOICE in sources:
+        return IdentityAssurance.STRONG
+    if sources & _TRUSTED_IDENTIFIED_SOURCES:
+        return IdentityAssurance.BASIC
+    return IdentityAssurance.NONE
 
 
 def _resolved_candidates(
@@ -159,7 +189,7 @@ def _resolved_candidates(
     lookup_person: PersonLookup,
     resolved_at: _datetime,
 ) -> tuple[tuple[IdentityEvidence, PersonRecord], ...]:
-    """Return unexpired manual, session, or local-unlock evidence for verified people."""
+    """Return unexpired resolvable evidence (manual, session, local-unlock, face, voice)."""
     candidates: list[tuple[IdentityEvidence, PersonRecord]] = []
     for item in evidence:
         if item.source not in _RESOLVABLE_SOURCES:
@@ -184,11 +214,15 @@ def resolve_active_person(
     lookup_role: RoleLookup = _unknown_role,
     clock: Clock,
 ) -> ActivePersonContext:
-    """Resolve manual or session evidence into a conservative person context.
+    """Fuse manual, session, local-unlock, face and voice evidence into a person context.
+
+    Voice never identifies on its own: it only corroborates a face of the same person,
+    which raises the result's `assurance` to `STRONG` (ADR 0016).
 
     Args:
         evidence: Immutable identity evidence supplied for one turn.
         lookup_person: Boundary that verifies a candidate person ID.
+        lookup_role: Boundary that reads a verified person's household role.
         clock: Source of the resolution timestamp.
 
     Returns:
@@ -211,6 +245,7 @@ def resolve_active_person(
             if selected_evidence.source in _TRUSTED_IDENTIFIED_SOURCES
             else ActivePersonStatus.PROBABLE
         )
+        sources = frozenset(item.source for item, _ in candidates)
         return ActivePersonContext(
             person_id=selected_person.person_id,
             display_name=selected_person.display_name,
@@ -219,6 +254,11 @@ def resolve_active_person(
             role=lookup_role(selected_person.person_id),
             evidence=evidence,
             resolved_at=resolved_at,
+            assurance=(
+                _assurance_for(sources)
+                if status is ActivePersonStatus.IDENTIFIED
+                else IdentityAssurance.NONE
+            ),
         )
     status = ActivePersonStatus.AMBIGUOUS if person_ids else ActivePersonStatus.UNKNOWN
     return ActivePersonContext(
