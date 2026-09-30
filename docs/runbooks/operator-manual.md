@@ -303,7 +303,11 @@ rule combines them, and no path adds a second authorization system:
 categories (`security`: account numbers, passwords) need `strong`, but **no
 reserved capability exists yet**, so that requirement is proven by policy tests
 and cannot be tried on hardware. The denial text is always the same generic one;
-only the log says why. The PIN is optional and administrative (loopback enrolment
+only the server log (the fusion reason) and, for a reserved request, the authorization
+audit row (`policy_id` `p0.5.assurance-required`) say why. With
+`SPEAKER_AUTHENTICATION_ENABLED=true` the first protected turn after a server start also
+loads the speaker model (about 15 s on the development laptop, bounded at 30 s); later
+turns pay well under a second (p95 231 ms in Plan 0047). The PIN is optional and administrative (loopback enrolment
 and revocation); recovery when face or voice fail is `just face-auth-demo`,
 `just speaker-auth-demo` or `just setup-personal` on the server host, never a
 spoken step.

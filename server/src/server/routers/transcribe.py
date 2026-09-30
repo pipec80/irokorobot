@@ -363,7 +363,7 @@ async def transcribe(
     Returns:
         Existing audio response contract with text, WAV, emotion, timings,
         whether this turn consumed a fresh owner unlock grant, and which
-        evidence source (face/local_unlock/none) identified the actor.
+        evidence source (face/face_voice/local_unlock/none) identified the actor.
 
     Raises:
         HTTPException: 413 for size, 422 for WAV/speech, or 500 for STT/TTS.
@@ -487,7 +487,7 @@ async def transcribe_stream(
         NDJSON events ordered as text, emotion, audio chunks, then timings.
         The terminal `done` event additionally reports whether this turn
         consumed a fresh owner unlock grant and which evidence source
-        (face/local_unlock/none) identified the actor.
+        (face/face_voice/local_unlock/none) identified the actor.
 
     Raises:
         HTTPException: 413 for size, 422 for WAV/speech, or 500 for STT.

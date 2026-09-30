@@ -233,8 +233,9 @@ data.
 
 `basic` is enough for ordinary private data such as the child read. `strong` is required
 for the categories in `HIGH_ASSURANCE_CATEGORIES` (`security` today); a reserved request
-answered at `basic` is denied with the same generic text as any other denial, and only
-the server log records why. Positive evidence of another person vetoes even when a PIN
+answered at `basic` is denied with the same generic text as any other denial; only the
+authorization audit row (`policy_id` `p0.5.assurance-required`) records why, while the
+server log carries the fusion reason of the turn. Positive evidence of another person vetoes even when a PIN
 token is presented and does not consume it; ignorance (an unknown face, an unknown voice,
 a missing signal) never vetoes and never adds. The voice is consulted only after the
 owner's face matched. Evidence whose `expires_at` has passed never participates.
