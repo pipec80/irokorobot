@@ -324,7 +324,7 @@ See [P0-S hardening audit](../history/audits/p0-s-hardening-audit.md) for eviden
 - Plan 0054 (PC-4) implementation on `feat/0054-identity-fusion` (2026-09-30): the
   baseline `just gate` on `main` (`35f9eb5`) passed 1529 tests; each of the five code tasks
   observed its new tests RED before GREEN, and a mutation of the veto ordering was caught
-  by four fused-resolver tests; the last full `pytest -n auto` passed 1556 tests, `ruff`,
+  by four fused-resolver tests; the last full `just gate` passed 1557 tests, `ruff`,
   `mypy` and `pyright` were clean, and `tests/integration/test_face_authenticated_turn.py`
   passes unedited (the face alone still answers ordinary private data). Two timeout tests in
   `tests/unit/test_speaker_embedding.py` failed on some full runs: `embed_wav` imports `torch`

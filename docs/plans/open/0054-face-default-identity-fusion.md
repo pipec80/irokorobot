@@ -1876,7 +1876,8 @@ only — never a frame, audio, name or score.
 - Last full `pytest -n auto` on the branch: 1556 passed. `ruff`, `mypy` and `pyright` clean.
   `tests/integration/test_face_authenticated_turn.py` passes **unedited**.
 - Task 7 Step 1, `just gate` after the fixes below (2026-09-30): **PASS** — lint, `mypy`,
-  `pyright`, 1556 tests (baseline 1529, +27) and `pip-audit` clean. The first attempt failed
+  `pyright`, 1557 tests (baseline 1529, +28: 1556 plus the resolver-to-policy test added after
+  the review) and `pip-audit` clean. The first attempt failed
   `audit`: three advisories against `urllib3 2.7.0` (fixed in 2.8.0) were published after
   the baseline gate ran, and `uv.lock` was bumped in its own commit (ruling 7). Also green:
   `test_api_contract.py`, `test_face_authenticated_turn.py` (unedited), `uv lock --check`,
@@ -1886,6 +1887,32 @@ only — never a frame, audio, name or score.
   the tests wait 0.2 s, so the first such test in a cold `xdist` worker paid the import
   inside the window (cold process alone: 3 of 3 failed; torch pre-imported: 3 of 3 passed).
   The module and the test are identical to `main`; the defect predates this plan.
+
+### Independent review (Task 7 Step 4, before the hardware run at Pipec's request)
+
+A fresh reviewer (subagent, `sonnet`, Pipec's standing rule) read the whole branch
+(`35f9eb5..d68f413`) and returned **with fixes**: no Critical, one Important, nine Minor. It
+independently confirmed the five Review Focus items (probes and mutations, all failing
+closed). Disposition:
+
+- **Important I-1** — with the owner's face matched a presented PIN token is not consulted, so
+  it cannot rescue a hoarse day. ADR 0016 §5 and §6 disagreed; Pipec chose to **clarify the
+  ADR, not the code** (ruling 8).
+- **Fixed:** the docstrings in `routers/transcribe.py` (they omitted `face_voice`); the docs
+  that said the server log records why a reserved request was denied (it is the audit row's
+  `policy_id`); a first-turn model-load note in the operator manual; roadmap row 2 ("PIN always
+  available"); a resolver-to-policy test and log-field assertions in `test_identity_fusion.py`
+  (mutation RED: a face alone reaching `strong` failed six tests); `_warm_torch` now imports
+  torch plainly instead of `importorskip`; the text-only edits Pipec authorized outside the list
+  (ruling 9).
+- **Deferred minors:** the face resolver catches only `VisionError`, so a database error in the
+  match, role or consent read still surfaces as a generic 500 (pre-existing, fails closed);
+  `OTHER_PERSON` also fires for a matched entity with no role; `identity_source`'s literal is
+  repeated in five places and `FusedIdentityResolver.consumed` is unused in production;
+  `_utc_now` is copied in three modules; no integration test of the `OTHER_PERSON` veto against
+  a real database role; `test_a_backend_failure_does_not_fail_the_turn` (Plan 0053) is now
+  vacuous, and the plan said to leave it; the branch name in `current-state.md` disappears on
+  squash and is updated when the hardware evidence is recorded.
 
 ### Rulings taken during execution
 
