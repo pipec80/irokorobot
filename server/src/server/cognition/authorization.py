@@ -7,13 +7,19 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from server.cognition.identity import ActivePersonContext, ActivePersonStatus, HouseholdRole
+from server.cognition.identity import (
+    ActivePersonContext,
+    ActivePersonStatus,
+    HouseholdRole,
+    IdentityAssurance,
+)
 from server.cognition.models import AuthorizationAction, AuthorizationDecision, AuthorizationStatus
 
 _StrictInteger = Annotated[int, Field(strict=True)]
 _StrictUUID = Annotated[UUID, Field(strict=True)]
 
 __all__ = [
+    "HIGH_ASSURANCE_CATEGORIES",
     "AuthorizationRequest",
     "ConsentStatus",
     "DataSensitivity",
@@ -87,6 +93,17 @@ _SENSITIVE_CATEGORIES = frozenset(
         DataSensitivity.SECURITY,
     }
 )
+# Categories whose reads need face-and-voice agreement or an owner unlock (ADR 0016
+# §3). Only SECURITY today; others join when a capability declares them.
+HIGH_ASSURANCE_CATEGORIES = frozenset({DataSensitivity.SECURITY})
+
+
+def _lacks_required_assurance(request: AuthorizationRequest) -> bool:
+    """Return whether a reserved request is made with less than `strong` assurance."""
+    return (
+        bool(request.sensitivity & HIGH_ASSURANCE_CATEGORIES)
+        and request.actor.assurance is not IdentityAssurance.STRONG
+    )
 
 
 def _categories(request: AuthorizationRequest) -> frozenset[str]:
@@ -370,5 +387,12 @@ def evaluate_authorization(request: AuthorizationRequest) -> AuthorizationDecisi
             AuthorizationStatus.DENIED,
             "p0.5.identity-unresolved",
             "A resolved household role is required for this request.",
+        )
+    if _lacks_required_assurance(request):
+        return _decision(
+            request,
+            AuthorizationStatus.DENIED,
+            "p0.5.assurance-required",
+            "Reserved data needs face and voice agreement or an owner unlock.",
         )
     return _evaluate_resolved_request(request)

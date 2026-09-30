@@ -11,7 +11,12 @@ from server.cognition.authorization import (
     DataVisibility,
     evaluate_authorization,
 )
-from server.cognition.identity import ActivePersonContext, ActivePersonStatus, HouseholdRole
+from server.cognition.identity import (
+    ActivePersonContext,
+    ActivePersonStatus,
+    HouseholdRole,
+    IdentityAssurance,
+)
 from server.cognition.models import (
     AuthorizationAction,
     AuthorizationStatus,
@@ -199,3 +204,64 @@ def test_public_household_read_by_child_requires_confirmation_not_access() -> No
     )
 
     assert decision.decision is AuthorizationStatus.REQUIRES_CONFIRMATION
+
+
+def _strong(actor: ActivePersonContext) -> ActivePersonContext:
+    return actor.model_copy(update={"assurance": IdentityAssurance.STRONG})
+
+
+def _basic(actor: ActivePersonContext) -> ActivePersonContext:
+    return actor.model_copy(update={"assurance": IdentityAssurance.BASIC})
+
+
+def _reserved_read(actor: ActivePersonContext) -> AuthorizationRequest:
+    return _request(
+        actor,
+        action=AuthorizationAction.READ_HOUSEHOLD_DATA,
+        visibility=frozenset({DataVisibility.PERSONAL}),
+        sensitivity=frozenset({DataSensitivity.SECURITY}),
+        consent=ConsentStatus.GRANTED,
+        target_person_id=7,
+    )
+
+
+def test_reserved_data_is_denied_at_basic_assurance() -> None:
+    """Review Focus 4: a face alone must not open account numbers or passwords."""
+    decision = evaluate_authorization(_reserved_read(_basic(_actor(role=HouseholdRole.OWNER))))
+
+    assert decision.decision is AuthorizationStatus.DENIED
+    assert decision.policy_id == "p0.5.assurance-required"
+
+
+def test_reserved_data_is_denied_without_any_assurance() -> None:
+    decision = evaluate_authorization(_reserved_read(_actor(role=HouseholdRole.OWNER)))
+
+    assert decision.decision is AuthorizationStatus.DENIED
+    assert decision.policy_id == "p0.5.assurance-required"
+
+
+def test_reserved_data_is_allowed_at_strong_assurance() -> None:
+    decision = evaluate_authorization(_reserved_read(_strong(_actor(role=HouseholdRole.OWNER))))
+
+    assert decision.decision is AuthorizationStatus.ALLOWED
+    assert decision.policy_id == "p0.5.owner-sensitive-consent"
+
+
+@pytest.mark.parametrize("assurance", [IdentityAssurance.NONE, IdentityAssurance.BASIC])
+def test_child_data_does_not_need_strong_assurance(assurance: IdentityAssurance) -> None:
+    """The live protected capability keeps working on the default face path."""
+    actor = _actor(role=HouseholdRole.OWNER).model_copy(update={"assurance": assurance})
+
+    decision = evaluate_authorization(
+        _request(
+            actor,
+            action=AuthorizationAction.READ_HOUSEHOLD_DATA,
+            visibility=frozenset({DataVisibility.PERSONAL}),
+            sensitivity=frozenset({DataSensitivity.CHILD_DATA}),
+            consent=ConsentStatus.GRANTED,
+            target_person_id=7,
+        )
+    )
+
+    assert decision.decision is AuthorizationStatus.ALLOWED
+    assert decision.policy_id == "p0.5.owner-sensitive-consent"
