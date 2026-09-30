@@ -290,26 +290,30 @@ async def test_another_enrolled_person_vetoes_even_with_a_valid_token() -> None:
     fused = _fused(
         face=_face_resolver(role=HouseholdRole.ADULT), speaker_factory=factory, pin=pin.resolver
     )
+    event = _event()
 
-    actor = await fused.resolve_actor(_event())
+    actor = await fused.resolve_actor(event)
 
     assert actor.status is ActivePersonStatus.AMBIGUOUS
     assert fused.last_reason is FusionReason.VETO_OTHER_PERSON
     assert pin.resolver.consumed is False
     assert _token_is_still_spendable(pin)
     assert factory.owner_ids == []
+    assert await fused.resolve_consent(event, actor) is ConsentStatus.NOT_REQUIRED
 
 
 async def test_two_faces_veto_even_with_a_valid_token_and_keep_the_token() -> None:
     pin = _pin(with_token=True)
     fused = _fused(face=_face_resolver(faces=2), speaker_factory=_verified(), pin=pin.resolver)
+    event = _event()
 
-    actor = await fused.resolve_actor(_event())
+    actor = await fused.resolve_actor(event)
 
     assert actor.status is ActivePersonStatus.AMBIGUOUS
     assert fused.last_reason is FusionReason.VETO_MULTIPLE_FACES
     assert pin.resolver.consumed is False
     assert _token_is_still_spendable(pin)
+    assert await fused.resolve_consent(event, actor) is ConsentStatus.NOT_REQUIRED
 
 
 async def test_an_unknown_face_falls_through_to_a_valid_pin_token() -> None:

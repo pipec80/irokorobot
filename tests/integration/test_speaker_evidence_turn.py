@@ -1,9 +1,9 @@
-"""The speaker resolver is inert with the flag off and produces untrusted
-evidence with it on (Plan 0053, Task 6).
+"""The speaker resolver is inert with the flag off and is consulted only after an
+owner's face matched with it on (Plan 0053, Task 6; Plan 0054).
 
 Mirrors `tests/integration/test_face_authenticated_turn.py`'s fixtures and
-`_client()` helper. `VOICE` evidence never identifies the actor —
-`_RESOLVABLE_SOURCES` is unedited — so even a positively-verified speaker
+`_client()` helper. `VOICE` evidence never identifies the actor on its own — it
+only corroborates a face (ADR 0016) — so even a positively-verified speaker
 match must still deny a protected question without a PIN or a face.
 """
 
@@ -167,8 +167,8 @@ def test_flag_off_leaves_the_response_shape_unchanged(
 async def test_flag_on_still_denies_a_protected_question_without_pin_or_face(
     turn_db: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Even a positively-verified speaker match cannot disclose — VOICE is
-    unresolvable by construction (`_RESOLVABLE_SOURCES` is unedited)."""
+    """Even a positively-verified speaker match cannot disclose — VOICE alone is
+    never a trusted source (it only corroborates a face, ADR 0016)."""
     monkeypatch.setattr(settings, "speaker_authentication_enabled", True)
     await _enroll_speaker(turn_db.owner_entity_id)
     monkeypatch.setattr(speaker_auth_module, "embed_wav", AsyncMock(return_value=_matching_probe()))
@@ -188,11 +188,12 @@ async def test_flag_on_still_denies_a_protected_question_without_pin_or_face(
 
 
 @pytest.mark.integration
-async def test_flag_on_reads_the_audio_exactly_once(
+async def test_flag_on_without_a_face_never_embeds(
     turn_db: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """D-6: at most one embedding per request, even though the controller can
-    call the actor resolver more than once while deciding a protected turn."""
+    """Plan 0054: voice is consulted only after an owner's face matched, so a
+    turn without a frame never embeds (the face-present cases live in
+    `test_identity_fusion_turn.py`)."""
     monkeypatch.setattr(settings, "speaker_authentication_enabled", True)
     await _enroll_speaker(turn_db.owner_entity_id)
     embed = AsyncMock(return_value=_matching_probe())
@@ -205,7 +206,7 @@ async def test_flag_on_reads_the_audio_exactly_once(
         )
 
     assert response.status_code == 200
-    embed.assert_awaited_once()
+    embed.assert_not_awaited()
 
 
 @pytest.mark.integration
@@ -234,10 +235,10 @@ async def test_a_backend_failure_does_not_fail_the_turn(
 
 
 @pytest.mark.integration
-async def test_flag_on_stream_route_consults_the_speaker_once(
+async def test_flag_on_stream_without_a_face_never_embeds(
     turn_db: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Review I-3: the wiring was duplicated in the streaming route and untested there."""
+    """Review I-3: the wiring is duplicated in the streaming route, so it is pinned there too."""
     monkeypatch.setattr(settings, "speaker_authentication_enabled", True)
     await _enroll_speaker(turn_db.owner_entity_id)
     embed = AsyncMock(return_value=_matching_probe())
@@ -250,7 +251,7 @@ async def test_flag_on_stream_route_consults_the_speaker_once(
         )
 
     assert response.status_code == 200
-    embed.assert_awaited_once()
+    embed.assert_not_awaited()
     assert "Joaquin" not in response.text
     assert "Martina" not in response.text
 

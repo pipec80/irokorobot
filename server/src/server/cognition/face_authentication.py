@@ -3,11 +3,11 @@
 Resolves owner identity from an optional webcam frame attached to the same
 request as the question — no PIN, no gesture. This mirrors the shape
 `OwnerRequestResolver` (`server.cognition.owner_authentication`, Plan
-0025/0026) already exposes, so a face-first, PIN-fallback pair can be
-composed behind one `(resolve_actor, resolve_consent)` seam. Authentication
-here never substitutes for the existing authorization/consent evaluation —
-it only supplies fresh, in-memory identity evidence and a narrowly scoped
-consent signal for one turn.
+0025/0026) already exposes; `server.cognition.identity_fusion` (Plan 0054)
+composes it with voice and the optional PIN. Authentication here never
+substitutes for the existing authorization/consent evaluation — it only
+supplies fresh, in-memory identity evidence and a narrowly scoped consent
+signal for one turn.
 """
 
 from collections.abc import Awaitable, Callable
@@ -19,7 +19,6 @@ from uuid import uuid4
 import numpy as np
 
 from server.cognition.authorization import ConsentStatus
-from server.cognition.controller import ActivePersonResolver, ConsentResolver
 from server.cognition.identity import (
     ActivePersonContext,
     ActivePersonStatus,
@@ -30,7 +29,6 @@ from server.cognition.identity import (
     resolve_active_person,
 )
 from server.cognition.models import CognitiveEvent, Confidence, ConfidenceBasis
-from server.cognition.owner_authentication import OwnerRequestResolver
 from server.cognition.response_plan import TextTurnPayload
 from server.exceptions import VisionError
 from server.memory.biometric_consent import has_active_face_consent
@@ -50,7 +48,6 @@ __all__ = [
     "FaceAuthenticationVerdict",
     "FaceRequestResolver",
     "build_default_face_request_resolver",
-    "compose_face_then_pin_resolver",
     "evaluate_face_authentication",
 ]
 
@@ -359,45 +356,6 @@ class FaceRequestResolver:
         if self.consumed and actor.person_id is not None and actor.role is HouseholdRole.OWNER:
             return ConsentStatus.GRANTED
         return ConsentStatus.NOT_REQUIRED
-
-
-def compose_face_then_pin_resolver(
-    face: FaceRequestResolver, pin: OwnerRequestResolver
-) -> tuple[ActivePersonResolver, ConsentResolver]:
-    """Compose face-first, PIN-fallback actor and consent resolution.
-
-    Args:
-        face: Request-scoped in-turn face evidence resolver.
-        pin: Request-scoped owner PIN resolver (Plan 0025/0026).
-
-    Returns:
-        A `(resolve_actor, resolve_consent)` pair for `CognitiveController`.
-        Face evidence is tried first: an identified face actor short-
-        circuits and returns immediately without consulting the PIN; an
-        ambiguous face verdict (a stranger sharing the frame) also short-
-        circuits and denies, without consulting the PIN either; any other
-        face outcome falls through unchanged to the PIN resolver, exactly
-        preserving the existing Plan 0026/0027 no-frame behavior.
-    """
-
-    async def resolve_actor(event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
-        actor = await face.resolve_actor(event)
-        if actor.status is ActivePersonStatus.IDENTIFIED:
-            return actor
-        if face.last_verdict is FaceAuthenticationVerdict.AMBIGUOUS:
-            return actor
-        return await pin.resolve_actor(event)
-
-    async def resolve_consent(
-        event: CognitiveEvent[TextTurnPayload], actor: ActivePersonContext
-    ) -> ConsentStatus:
-        if face.last_verdict is FaceAuthenticationVerdict.AMBIGUOUS:
-            return ConsentStatus.NOT_REQUIRED
-        if face.consumed:
-            return await face.resolve_consent(event, actor)
-        return await pin.resolve_consent(event, actor)
-
-    return resolve_actor, resolve_consent
 
 
 def _utc_now() -> datetime:

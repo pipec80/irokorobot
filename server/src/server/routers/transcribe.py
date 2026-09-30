@@ -10,7 +10,6 @@ import time
 from typing import Annotated, Literal
 from uuid import uuid4
 
-import aiosqlite
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 import httpx
@@ -19,13 +18,9 @@ from server import turn_log, vision
 from server.audio_contract import validate_wav_contract
 from server.cognition.authorization import evaluate_authorization
 from server.cognition.controller import ActivePersonResolver, CognitiveController, ConsentResolver
-from server.cognition.face_authentication import (
-    FaceRequestResolver,
-    build_default_face_request_resolver,
-    compose_face_then_pin_resolver,
-)
 from server.cognition.household_tools import HouseholdKnowledgeTools
-from server.cognition.identity import ActivePersonContext, ActivePersonStatus
+from server.cognition.identity import ActivePersonContext
+from server.cognition.identity_fusion import FusedIdentityResolver, build_fused_identity_resolver
 from server.cognition.models import CognitiveEvent
 from server.cognition.owner_authentication import OwnerRequestResolver, OwnerUnlockService
 from server.cognition.response_plan import (
@@ -34,20 +29,14 @@ from server.cognition.response_plan import (
     TextTurnPayload,
     scene_unavailable_plan,
 )
-from server.cognition.speaker_authentication import (
-    SpeakerRequestResolver,
-    build_default_speaker_resolver,
-)
 from server.dependencies import IdentityTokenDep, OwnerUnlockServiceDep, ResourcesDep
 from server.exceptions import (
     AudioContractError,
-    BrainMemoryError,
     ImageContractError,
     UploadTooLargeError,
 )
 from server.memory.consolidation import consolidate_turn
 from server.memory.household_authorization import record_authorization_decision
-from server.memory.owner_credentials import get_active_owner_pin_credential
 from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
 from server.pipeline import (
     _elapsed_ms,
@@ -137,107 +126,29 @@ def _voice_event_from_transcript(message: str) -> CognitiveEvent[TextTurnPayload
 
 @dataclass
 class _RequestIdentity:
-    """Uniform per-request actor/consent resolver, whichever evidence it used.
-
-    Wraps either the plain PIN resolver (Plan 0026/0027, when face
-    authentication is disabled or no frame was supplied) or the composed
-    face-then-PIN pair (Plan 0029) behind one shape, so both `/transcribe`
-    endpoints can read `.resolve_actor`, `.resolve_consent`, `.consumed`,
-    and `.identity_source` without branching on which evidence source
-    produced identity.
+    """Uniform per-request actor/consent resolver over the fused identity evidence.
 
     Attributes:
-        resolve_actor: The actor resolver to hand to the controller — the
-            bare PIN resolver, or the composed face-then-PIN pair.
-        resolve_consent: The matching consent resolver for `resolve_actor`.
-        pin: The underlying PIN resolver, always present, used to report
-            `.consumed`/`.identity_source` for the PIN path.
-        face: The underlying face resolver, present only when face
-            authentication was attempted for this request.
+        resolve_actor: The actor resolver to hand to the controller.
+        resolve_consent: The matching consent resolver.
+        pin: The underlying PIN resolver, used to report `.consumed`.
+        fused: The fusion resolver, used to report `.identity_source`.
     """
 
     resolve_actor: ActivePersonResolver
     resolve_consent: ConsentResolver
     pin: OwnerRequestResolver
-    face: FaceRequestResolver | None
+    fused: FusedIdentityResolver
 
     @property
     def consumed(self) -> bool:
-        """Whether this request consumed a fresh one-use owner PIN unlock grant.
-
-        Reports only the PIN grant's consumption state, unchanged from Plan
-        0026/0027's meaning — a face-authenticated turn never touches the PIN
-        resolver, so the caller's held token remains valid and must not be
-        discarded. Use `identity_source` to learn whether THIS turn was
-        face-authenticated instead.
-        """
+        """Whether this request consumed a fresh one-use owner PIN unlock grant."""
         return self.pin.consumed
 
     @property
-    def identity_source(self) -> Literal["face", "local_unlock"] | None:
-        """Which evidence source identified the actor, or `None` for neither."""
-        if self.face is not None and self.face.consumed:
-            return "face"
-        if self.pin.consumed:
-            return "local_unlock"
-        return None
-
-
-def _speaker_augmented_actor_resolver(
-    base_resolve_actor: ActivePersonResolver, wav_bytes: bytes
-) -> ActivePersonResolver:
-    """Wrap *base_resolve_actor* to consult untrusted VOICE evidence (Plan 0053).
-
-    D-6: consulted only when the flag is on, only when the composed face/PIN
-    result did not already identify the actor, and at most once per request
-    — the speaker resolver instance is built lazily on the first call and
-    reused on every later one, mirroring how `SpeakerRequestResolver` caches
-    within itself; the controller can call the actor resolver more than once
-    while deciding one turn (`CognitiveController.decide`).
-
-    `compose_face_then_pin_resolver` itself is not edited: this wraps its
-    result from the outside. `VOICE` stays unresolvable —
-    `_RESOLVABLE_SOURCES` is unedited — so this can only ever ATTACH
-    untrusted evidence to the still-unidentified context, never upgrade its
-    `status` or `person_id`.
-
-    Args:
-        base_resolve_actor: The existing PIN-only or face-then-PIN resolver.
-        wav_bytes: The current turn's own audio, already read and validated.
-
-    Returns:
-        A resolver that falls through to the speaker resolver only when
-        needed, and attaches its evidence to the base context otherwise
-        unchanged.
-    """
-    speaker: SpeakerRequestResolver | None = None
-    owner_checked = False
-
-    async def resolve_actor(event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
-        nonlocal speaker, owner_checked
-        context = await base_resolve_actor(event)
-        if context.status is ActivePersonStatus.IDENTIFIED:
-            return context
-        if speaker is None:
-            if owner_checked:
-                return context
-            owner_checked = True
-            try:
-                credential = await get_active_owner_pin_credential()
-            except (BrainMemoryError, aiosqlite.Error) as exc:
-                # A turn without a token used to touch no database at all; the
-                # speaker check must never turn a DB hiccup into a failed turn.
-                logger.warning("Speaker evidence skipped, owner lookup failed: %s", exc)
-                return context
-            if credential is None:
-                return context
-            speaker = build_default_speaker_resolver(wav_bytes, credential.person_entity_id)
-        speaker_context = await speaker.resolve_actor(event)
-        if not speaker_context.evidence:
-            return context
-        return context.model_copy(update={"evidence": context.evidence + speaker_context.evidence})
-
-    return resolve_actor
+    def identity_source(self) -> Literal["face", "face_voice", "local_unlock"] | None:
+        """Which evidence identified the actor, or `None` for none."""
+        return self.fused.source
 
 
 def _build_request_identity(
@@ -246,45 +157,25 @@ def _build_request_identity(
     frame: bytes | None,
     wav_bytes: bytes | None,
 ) -> _RequestIdentity:
-    """Compose this request's actor/consent resolver from PIN, optional face,
-    and optional speaker evidence.
+    """Compose this request's actor/consent resolver (Plan 0054, ADR 0016).
 
     Args:
         owner_unlock_service: Lifespan-owned unlock service (Plan 0040).
         token: Optional one-use owner PIN unlock token from the request header.
-        frame: Optional webcam frame bytes already read and validated from
-            the multipart upload. `None` whenever no frame was supplied, or
-            `settings.face_authentication_enabled` is `False` — in either
-            case this resolves to exactly the existing PIN-only path
-            (Plan 0026/0027).
-        wav_bytes: The current turn's own audio, already read and validated
-            (Plan 0053). Consulted only when
-            `settings.speaker_authentication_enabled` is `True` and the
-            composed face/PIN result did not already identify the actor —
-            see `_speaker_augmented_actor_resolver`.
+        frame: Optional validated webcam frame; `None` when absent or face
+            authentication is off.
+        wav_bytes: The turn's own audio — WAV, 16 000 Hz, mono, int16.
 
     Returns:
-        A `_RequestIdentity` wrapping the plain PIN resolver, the
-        face-first, PIN-fallback composed pair (Plan 0029), or either one
-        additionally augmented with untrusted `VOICE` evidence (Plan 0053).
+        A `_RequestIdentity` over one `FusedIdentityResolver`.
     """
     pin = owner_unlock_service.for_request(token)
-    if not settings.face_authentication_enabled or frame is None:
-        resolve_actor: ActivePersonResolver = pin.resolve_actor
-        resolve_consent: ConsentResolver = pin.resolve_consent
-        face = None
-    else:
-        face = build_default_face_request_resolver(frame)
-        resolve_actor, resolve_consent = compose_face_then_pin_resolver(face, pin)
-
-    if settings.speaker_authentication_enabled and wav_bytes is not None:
-        resolve_actor = _speaker_augmented_actor_resolver(resolve_actor, wav_bytes)
-
+    fused = build_fused_identity_resolver(pin, frame=frame, wav_bytes=wav_bytes)
     return _RequestIdentity(
-        resolve_actor=resolve_actor,
-        resolve_consent=resolve_consent,
+        resolve_actor=fused.resolve_actor,
+        resolve_consent=fused.resolve_consent,
         pin=pin,
-        face=face,
+        fused=fused,
     )
 
 
@@ -313,10 +204,9 @@ def _voice_controller(
         client: Shared, lifecycle-owned HTTP client (Plan 0039), closed over
             by the legacy-turn delegate and the consolidation scheduler.
         background_tasks: Queue used to schedule post-turn consolidation.
-        request_identity: Optional request-scoped actor/consent resolver —
-            the plain PIN resolver, or the composed face-then-PIN pair
-            (Plan 0029). When omitted, the controller falls back to its own
-            public-unknown defaults.
+        request_identity: Optional request-scoped actor/consent resolver over
+            the fused face, voice and PIN evidence (Plan 0054). When omitted,
+            the controller falls back to its own public-unknown defaults.
     """
 
     async def legacy_turn(message: str, conversation_id: str) -> TextTurnResult:

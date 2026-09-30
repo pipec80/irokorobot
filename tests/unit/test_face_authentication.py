@@ -1,7 +1,7 @@
-"""Unit tests for the pure face verdict, request resolver, and PIN composition."""
+"""Unit tests for the pure face verdict and the request-scoped face resolver."""
 
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 import logging
 from unittest.mock import AsyncMock
 from uuid import UUID
@@ -12,7 +12,6 @@ from server.cognition.authorization import ConsentStatus
 from server.cognition.face_authentication import (
     FaceAuthenticationVerdict,
     FaceRequestResolver,
-    compose_face_then_pin_resolver,
     evaluate_face_authentication,
 )
 from server.cognition.identity import (
@@ -20,9 +19,7 @@ from server.cognition.identity import (
     HouseholdRole,
     PersonRecord,
 )
-from server.cognition.identity_sessions import IdentitySessionRegistry
 from server.cognition.models import CognitiveEvent
-from server.cognition.owner_authentication import OwnerRequestResolver
 from server.cognition.response_plan import TextTurnPayload
 from server.exceptions import VisionError
 from server.settings import settings
@@ -390,137 +387,3 @@ async def test_resolve_consent_granted_only_after_identified_resolution() -> Non
     unknown_actor = await unknown_resolver.resolve_actor(event)
     unknown_consent = await unknown_resolver.resolve_consent(event, unknown_actor)
     assert unknown_consent is not ConsentStatus.GRANTED
-
-
-# ---------------------------------------------------------------------------
-# compose_face_then_pin_resolver
-# ---------------------------------------------------------------------------
-
-
-def _pin_resolver() -> OwnerRequestResolver:
-    registry = IdentitySessionRegistry(
-        lookup_person=lambda _pid: None, clock=lambda: _NOW, ttl=timedelta(seconds=60)
-    )
-    return OwnerRequestResolver(
-        token=None,
-        registry=registry,
-        read_role=AsyncMock(side_effect=lambda _pid: HouseholdRole.OWNER),
-        read_person=AsyncMock(side_effect=lambda _pid: None),
-        clock=lambda: _NOW,
-    )
-
-
-@pytest.mark.unit
-async def test_face_identified_short_circuits_pin_resolver() -> None:
-    """A face-identified owner must never trigger the PIN resolver."""
-
-    async def detect_one(_frame: bytes) -> list[DetectedFace]:
-        return [_face(1)]
-
-    async def match_close(_embedding: np.ndarray) -> FaceMatch | None:
-        return _match(0.1)
-
-    face = _resolver(frame=_FRAME, detect_faces=detect_one, match_face=match_close)
-    pin = _pin_resolver()
-    pin.resolve_actor = AsyncMock(wraps=pin.resolve_actor)  # type: ignore[method-assign]
-    resolve_actor, _ = compose_face_then_pin_resolver(face, pin)
-
-    actor = await resolve_actor(_event())
-
-    assert actor.status is ActivePersonStatus.IDENTIFIED
-    pin.resolve_actor.assert_not_awaited()  # type: ignore[attr-defined]
-
-
-@pytest.mark.unit
-async def test_face_ambiguous_short_circuits_pin_resolver_and_denies() -> None:
-    """A stranger sharing the frame must deny without ever consulting the PIN."""
-
-    async def detect_two(_frame: bytes) -> list[DetectedFace]:
-        return [_face(1), _face(2)]
-
-    face = _resolver(frame=_FRAME, detect_faces=detect_two)
-    pin = _pin_resolver()
-    pin.resolve_actor = AsyncMock(wraps=pin.resolve_actor)  # type: ignore[method-assign]
-    resolve_actor, _ = compose_face_then_pin_resolver(face, pin)
-
-    actor = await resolve_actor(_event())
-
-    assert actor.status is ActivePersonStatus.AMBIGUOUS
-    assert actor.person_id is None
-    assert actor.display_name is None
-    pin.resolve_actor.assert_not_awaited()  # type: ignore[attr-defined]
-
-
-@pytest.mark.unit
-async def test_face_ambiguous_short_circuits_pin_resolve_consent_too() -> None:
-    """An ambiguous face verdict must deny consent without ever consulting the PIN."""
-
-    async def detect_two(_frame: bytes) -> list[DetectedFace]:
-        return [_face(1), _face(2)]
-
-    face = _resolver(frame=_FRAME, detect_faces=detect_two)
-    pin = _pin_resolver()
-    pin.resolve_consent = AsyncMock(wraps=pin.resolve_consent)  # type: ignore[method-assign]
-    resolve_actor, resolve_consent = compose_face_then_pin_resolver(face, pin)
-    event = _event()
-
-    actor = await resolve_actor(event)
-    consent = await resolve_consent(event, actor)
-
-    assert consent is ConsentStatus.NOT_REQUIRED
-    pin.resolve_consent.assert_not_awaited()  # type: ignore[attr-defined]
-
-
-@pytest.mark.unit
-async def test_face_unknown_falls_through_to_pin_unchanged() -> None:
-    """No frame supplied must preserve the exact existing PIN-only behavior."""
-    face = _resolver(frame=None)
-    pin = _pin_resolver()
-    expected = await pin.resolve_actor(_event())
-    pin.resolve_actor = AsyncMock(return_value=expected)  # type: ignore[method-assign]
-    resolve_actor, _ = compose_face_then_pin_resolver(face, pin)
-
-    actor = await resolve_actor(_event())
-
-    assert actor == expected
-    pin.resolve_actor.assert_awaited_once()  # type: ignore[attr-defined]
-
-
-@pytest.mark.unit
-async def test_resolve_consent_routes_to_face_when_face_identified() -> None:
-    """Consent for a face-identified actor must be asked to the face resolver."""
-
-    async def detect_one(_frame: bytes) -> list[DetectedFace]:
-        return [_face(1)]
-
-    async def match_close(_embedding: np.ndarray) -> FaceMatch | None:
-        return _match(0.1)
-
-    face = _resolver(frame=_FRAME, detect_faces=detect_one, match_face=match_close)
-    pin = _pin_resolver()
-    pin.resolve_consent = AsyncMock(wraps=pin.resolve_consent)  # type: ignore[method-assign]
-    resolve_actor, resolve_consent = compose_face_then_pin_resolver(face, pin)
-    event = _event()
-
-    actor = await resolve_actor(event)
-    consent = await resolve_consent(event, actor)
-
-    assert consent is ConsentStatus.GRANTED
-    pin.resolve_consent.assert_not_awaited()  # type: ignore[attr-defined]
-
-
-@pytest.mark.unit
-async def test_resolve_consent_routes_to_pin_when_face_did_not_identify() -> None:
-    """Consent for a PIN-identified actor must be asked to the PIN resolver, not face."""
-    face = _resolver(frame=None)
-    pin = _pin_resolver()
-    pin.resolve_consent = AsyncMock(wraps=pin.resolve_consent)  # type: ignore[method-assign]
-    face.resolve_consent = AsyncMock(wraps=face.resolve_consent)  # type: ignore[method-assign]
-    resolve_actor, resolve_consent = compose_face_then_pin_resolver(face, pin)
-    event = _event()
-
-    actor = await resolve_actor(event)
-    await resolve_consent(event, actor)
-
-    pin.resolve_consent.assert_awaited_once()  # type: ignore[attr-defined]
-    face.resolve_consent.assert_not_awaited()  # type: ignore[attr-defined]

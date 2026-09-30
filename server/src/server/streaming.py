@@ -130,7 +130,7 @@ async def stream_response_plan(
     stt_ms: int,
     request_start: float,
     authentication_consumed: bool = False,
-    identity_source: Literal["face", "local_unlock"] | None = None,
+    identity_source: Literal["face", "face_voice", "local_unlock"] | None = None,
 ) -> AsyncIterator[str]:
     """Render an already-authorized plan without LLM or memory work.
 
@@ -139,7 +139,8 @@ async def stream_response_plan(
             consumed a fresh one-use token for this plan (Plan 0027).
             Carried only on the terminal ``done`` event.
         identity_source: Which evidence source identified the actor for this
-            turn — ``"face"``, ``"local_unlock"``, or ``None`` (Plan 0029).
+            turn — ``"face"``, ``"face_voice"``, ``"local_unlock"``, or ``None``
+            (Plans 0029 and 0054).
             Never a name or other protected value. Carried only on the
             terminal ``done`` event.
 

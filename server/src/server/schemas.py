@@ -220,11 +220,13 @@ class TranscribeResponse(BaseModel):
     authentication_consumed: bool = Field(
         default=False, description="Whether this turn consumed a fresh owner unlock grant"
     )
-    # Additive field (Plan 0029): which evidence source produced the
-    # identified actor for this turn, if any. Never a name or other
-    # protected value — only "face", "local_unlock", or None.
-    identity_source: Literal["face", "local_unlock"] | None = Field(
-        default=None, description="Which evidence source identified the actor for this turn"
+    # Additive field (Plan 0029, "face_voice" added by Plan 0054): which evidence
+    # source produced the identified actor for this turn, if any. Never a name or
+    # other protected value — only "face", "face_voice", "local_unlock", or None.
+    identity_source: Literal["face", "face_voice", "local_unlock"] | None = Field(
+        default=None,
+        description="Which evidence identified the actor for this turn: the face alone, "
+        "the face corroborated by the voice, or an owner unlock grant",
     )
 
 
