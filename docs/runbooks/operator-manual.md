@@ -300,6 +300,7 @@ best-score guess. The PIN remains available even if every biometric fails.
 | `SPEAKER_MIN_REFERENCE_COUNT` | `3` | References required before verification is attempted |
 | `SPEAKER_MIN_VERIFICATION_S` / `SPEAKER_MIN_ENROLLMENT_S` | `1.5` / `2.0` | Shortest clip embedded at a turn / accepted at enrolment; the first is a conservative guess, not measured |
 | `SPEAKER_MODEL_RETRY_COOLDOWN_S` | `60` | Seconds to wait after a failed speaker-model load before trying again |
+| `SPEAKER_EMBED_TIMEOUT_S` | `30` | Longest a protected turn waits for the embedding (the first call also loads the model, about 15 s); on expiry the turn degrades to `unavailable` |
 | `SPEAKER_MODEL_CACHE_DIR` | unset | Optional override; defaults to `MODELS_DIR/speechbrain` |
 | `UVICORN_WORKERS` | `1` | Must stay `1` — owner/face grants are process-local; the server refuses to start otherwise |
 

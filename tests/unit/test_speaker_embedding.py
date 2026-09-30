@@ -4,6 +4,7 @@ or loads torch weights."""
 
 import asyncio
 import io
+import threading
 import time
 import wave
 
@@ -313,3 +314,87 @@ def test_a_loaded_encoder_is_reused_without_rebuilding(monkeypatch: pytest.Monke
     assert speaker_embedding._load_encoder() == "encoder"
     assert speaker_embedding._load_encoder() == "encoder"
     assert builds == 1
+
+
+class _BlockingEncoder:
+    """Blocks inside `encode_batch` until released — a hung backend."""
+
+    def __init__(self) -> None:
+        self.release = threading.Event()
+        self.calls = 0
+
+    def encode_batch(
+        self,
+        wavs: object,  # noqa: ARG002 -- fake ignores the tensor
+        wav_lens: object = None,  # noqa: ARG002
+        normalize: bool = False,  # noqa: ARG002
+    ) -> object:
+        self.calls += 1
+        self.release.wait(timeout=10)
+        return _FakeOutput(np.ones(192, dtype=np.float32))
+
+
+async def test_a_hung_backend_times_out_instead_of_blocking_the_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review M-3: nothing bounded how long a protected turn waited for the embedding."""
+    encoder = _BlockingEncoder()
+    monkeypatch.setattr(speaker_embedding, "_load_encoder", lambda: encoder)
+    monkeypatch.setattr(speaker_embedding, "_embedding_stuck", False)
+    monkeypatch.setattr(speaker_embedding.settings, "speaker_embed_timeout_s", 0.2)
+    try:
+        started = time.monotonic()
+        with pytest.raises(SpeakerBackendError):
+            await speaker_embedding.embed_wav(_tone())
+        assert time.monotonic() - started < 2.0
+    finally:
+        encoder.release.set()
+        await _wait_until_not_stuck()
+
+
+async def test_while_a_timed_out_embedding_still_runs_new_ones_are_refused_at_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The single worker is still busy: queueing behind it would delay every turn."""
+    encoder = _BlockingEncoder()
+    monkeypatch.setattr(speaker_embedding, "_load_encoder", lambda: encoder)
+    monkeypatch.setattr(speaker_embedding, "_embedding_stuck", False)
+    monkeypatch.setattr(speaker_embedding.settings, "speaker_embed_timeout_s", 0.2)
+    try:
+        with pytest.raises(SpeakerBackendError):
+            await speaker_embedding.embed_wav(_tone())
+        started = time.monotonic()
+        with pytest.raises(SpeakerBackendError):
+            await speaker_embedding.embed_wav(_tone())
+        assert time.monotonic() - started < 0.1
+        assert encoder.calls == 1
+    finally:
+        encoder.release.set()
+        await _wait_until_not_stuck()
+
+
+async def test_embedding_recovers_once_the_abandoned_work_finishes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    encoder = _BlockingEncoder()
+    monkeypatch.setattr(speaker_embedding, "_load_encoder", lambda: encoder)
+    monkeypatch.setattr(speaker_embedding, "_embedding_stuck", False)
+    monkeypatch.setattr(speaker_embedding.settings, "speaker_embed_timeout_s", 0.2)
+    with pytest.raises(SpeakerBackendError):
+        await speaker_embedding.embed_wav(_tone())
+
+    encoder.release.set()
+    await _wait_until_not_stuck()
+    monkeypatch.setattr(speaker_embedding.settings, "speaker_embed_timeout_s", 5.0)
+
+    vector = await speaker_embedding.embed_wav(_tone())
+    assert vector.shape == (192,)
+
+
+async def _wait_until_not_stuck() -> None:
+    """Let the abandoned executor call finish so it cannot leak into another test."""
+    for _ in range(200):
+        if not speaker_embedding._embedding_stuck:
+            return
+        await asyncio.sleep(0.01)
+    pytest.fail("the abandoned embedding never finished")

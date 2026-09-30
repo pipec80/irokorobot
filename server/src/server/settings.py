@@ -221,6 +221,12 @@ class Settings(BaseSettings):
     # missing or corrupt model would otherwise be re-read from disk on every
     # protected turn. Added after Plan 0053's independent review (M-3).
     speaker_model_retry_cooldown_s: float = Field(default=60.0, ge=0.0)
+    # Longest a protected turn waits for the speaker embedding. Normal inference
+    # is about 0.5 s, but the FIRST call also loads the model (about 15 s on the
+    # dev laptop), so this must stay above that. On expiry the turn degrades to
+    # `unavailable`; the worker thread cannot be cancelled and is marked busy
+    # until it finishes. Added after Plan 0053's independent review (M-3).
+    speaker_embed_timeout_s: float = Field(default=30.0, gt=0.0)
 
     # ---------------- Sensors ----------------
     sensor_debounce_seconds: int = 30
