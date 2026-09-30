@@ -320,7 +320,7 @@ See [P0-S hardening audit](../history/audits/p0-s-hardening-audit.md) for eviden
   impostor identities were measured; a wider round is welcome but not
   required to keep this closed.
 
-- Plan 0054 (PC-4) implementation on `feat/0054-identity-fusion` (2026-09-30): the
+- Plan 0054 (PC-4) implementation (2026-09-30): the
   baseline `just gate` on `main` (`35f9eb5`) passed 1529 tests; each of the five code tasks
   observed its new tests RED before GREEN, and a mutation of the veto ordering was caught
   by four fused-resolver tests; the last full `just gate` passed 1557 tests, `ruff`,

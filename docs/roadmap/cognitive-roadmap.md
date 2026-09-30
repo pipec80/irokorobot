@@ -492,9 +492,8 @@ identities) held zero false accepts and zero false rejects; the measured
 threshold (`0.5815`, replacing the unvalidated `0.25`) was confirmed live
 with 3 accepted + 3 denied real turns. Explicitly provisional — only 3
 impostor identities were measured, and the anti-spoofing gap above is
-untouched. Speaker evidence: the PC-3A calibration study closed 2026-09-25 (provisional PASS, replay accepted 6/8) and PC-3B runtime evidence closed 2026-09-29 (untrusted, replay not defended); fusion (PC-4, Plan 0054) was implemented 2026-09-30 and
-awaits Pipec's real-hardware matrix — replay is not defended and no reserved capability
-exists yet.
+untouched. Speaker evidence: the PC-3A calibration study closed 2026-09-25 (provisional PASS, replay accepted 6/8) and PC-3B runtime evidence closed 2026-09-29 (untrusted, replay not defended); fusion (PC-4, Plan 0054) closed 2026-09-30 after Pipec's
+real-hardware matrix — replay is not defended and no reserved capability exists yet.
 
 **Exit gate (not yet met):** calibrated local evaluation covers agreement,
 conflict, expiry, backend failure, false accept, and false reject. Conflicting
