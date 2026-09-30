@@ -1,6 +1,6 @@
 # 0016 — Identify the owner by face; require more assurance for reserved data
 
-- **Status:** Proposed (2026-09-30, awaiting Pipec's acceptance)
+- **Status:** Accepted (2026-09-30, Pipec)
 - **Date:** 2026-09-30
 - **Builds on:** [ADR 0006](0006-personal-and-family-companion-profiles.md),
   [ADR 0008](0008-progressive-owner-authentication.md),
