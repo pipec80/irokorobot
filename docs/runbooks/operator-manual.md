@@ -299,6 +299,10 @@ rule combines them, and no path adds a second authorization system:
 | Another enrolled person's face, or two or more faces (even with a token) | denies, token kept | — | `veto_other_person` / `veto_multiple_faces` |
 | No face, unknown face, or a voice alone | denies | — | `no_evidence` |
 
+With the owner's face matched a presented PIN token is neither consulted nor spent, and the
+robot attaches a frame on every turn while `ROBOT_FACE_AUTH_ENABLED` is on, so in practice
+the PIN raises assurance only when the face fails (ADR 0016 §5/§6).
+
 `basic` is enough for ordinary private data such as the child read. Reserved
 categories (`security`: account numbers, passwords) need `strong`, but **no
 reserved capability exists yet**, so that requirement is proven by policy tests

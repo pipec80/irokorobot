@@ -1898,6 +1898,8 @@ only — never a frame, audio, name or score.
 | 5 | `cognition/speaker_authentication.py` was **not** edited although its docstrings still say `VOICE` is absent from `_RESOLVABLE_SOURCES` | The plan lists it under "Never touched" | One stale docstring, reported to Pipec |
 | 6 | `tests/unit/test_speaker_embedding.py` gained a module-scoped `_warm_torch` fixture although it was not in the file list | Two timeout tests failed on cold workers (root cause above); Pipec authorized a test-only fix | Revert one fixture |
 | 7 | `uv.lock` bumps `urllib3` 2.7.0 → 2.8.0 although the plan adds no dependency change | `just gate`'s `audit` failed on three advisories published after the baseline; the bump was the only lock change; Pipec authorized it | Revert one lock entry |
+| 8 | ADR 0016 §5/§6 and its negative consequences were clarified: a presented PIN token is not consulted once the owner's face matched (the code already behaved so) | The independent review found §5 and §6 inconsistent; Pipec chose to clarify the ADR, not the code | Reserved data on a hoarse day cannot be rescued by the PIN |
+| 9 | Text-only edits outside the file list: comments in `settings.py` and `speaker_authentication.py`, and stale PC-4 statements in `docs/architecture/README.md`, `docs/roadmap/conversational-memory-delivery-map.md`, `docs/plans/open/0015-personal-companion-design.md` and ADR 0016's header | The independent review found them false; Pipec authorized them | Revert text |
 
 ### What stays open
 

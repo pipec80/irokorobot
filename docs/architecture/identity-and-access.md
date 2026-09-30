@@ -240,7 +240,8 @@ token is presented and does not consume it; ignorance (an unknown face, an unkno
 a missing signal) never vetoes and never adds. The voice is consulted only after the
 owner's face matched. Evidence whose `expires_at` has passed never participates.
 
-The PIN is optional and administrative: an optional `strong` factor and the credential of
+The PIN is optional and administrative: an optional `strong` factor — consulted only on a
+turn the owner's face did not resolve, never once the face matched — and the credential of
 local administration. When face or voice fail, recovery is local administration on the
 server host (ADR 0006), never a spoken step. Replay and liveness are measured, not
 defended.

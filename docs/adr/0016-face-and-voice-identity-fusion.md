@@ -1,13 +1,13 @@
 # 0016 — Identify the owner by face; require more assurance for reserved data
 
-- **Status:** Accepted (2026-09-30, Pipec)
+- **Status:** Accepted (2026-09-30, Pipec); §5, §6 and the negative consequences clarified 2026-09-30, during Plan 0054's execution, on Pipec's decision (a presented PIN token is not consulted once the owner's face matched)
 - **Date:** 2026-09-30
 - **Builds on:** [ADR 0006](0006-personal-and-family-companion-profiles.md),
   [ADR 0008](0008-progressive-owner-authentication.md),
   [ADR 0009](0009-locked-posture-and-scoped-capabilities.md)
 - **Refines:** [ADR 0015](0015-owner-grant-scope-and-speaker-binding.md) decision 2
   (speaker binding, face veto)
-- **Implemented by:** PC-4, a future numbered plan under `docs/plans/`
+- **Implemented by:** PC-4, [Plan 0054](../plans/open/0054-face-default-identity-fusion.md)
 
 ## Context
 
@@ -99,14 +99,15 @@ introduced: with one enrolled speaker it cannot be measured honestly.
 
 Face first; voice only when the face matched the owner (the only case in which
 corroboration exists); the PIN only when a token was presented and nothing resolved or
-vetoed. Identity is resolved only on protected turns, so the embedding (about 0.5 s, one
+vetoed. When the owner's face matched, a presented token is not consulted and stays unspent: the PIN raises assurance only on a turn the face did not resolve. Identity is resolved only on protected turns, so the embedding (about 0.5 s, one
 per request) is paid there and never on public turns. Without a token there is no PIN
 lookup at all.
 
 ### 6. The PIN is optional and administrative
 
 The PIN is not promoted, prompted or documented as a normal path. It stays as (a) a valid
-optional `strong` factor when a token is presented, useful for reserved data, and (b) the
+optional `strong` factor when a token is presented on a turn the face did not resolve (for
+example a dark room), useful for reserved data, and (b) the
 credential of **local administration** for enrolling and revoking biometrics over
 loopback, until Plan 0051 binds it to its operation.
 
@@ -163,8 +164,11 @@ justifies it.
 
 - A photograph still opens ordinary private data (as today); photograph + matching
   recording still opens reserved data.
-- A hoarse or dark day denies the owner reserved data until it passes or a local
-  re-enrolment or PIN is used.
+- A hoarse day (face matched, voice not verified) denies the owner reserved data until it
+  passes or a local re-enrolment is done: a presented PIN token does not rescue it, because
+  it is not consulted once the face matched, and the robot attaches a frame on every turn
+  while `ROBOT_FACE_AUTH_ENABLED` is on. A dark day (the face fails) can be answered with a
+  PIN token.
 - A `strong` requirement pays the embedding time on every protected turn whose face
   matched, even when the data turns out to need only `basic`.
 - The optional PIN remains a bearer token until Plan 0051 scopes it.
