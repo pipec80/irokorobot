@@ -21,9 +21,10 @@ def _warm_torch() -> None:
 
     `embed_wav` imports torch lazily inside its executor thread, and the timeout tests
     wait only 0.2 s. Without this, the first test of a cold process paid the import inside
-    that window and failed depending on which tests shared the xdist worker.
+    that window and failed depending on which tests shared the xdist worker. torch is a hard
+    dependency of the server, so a missing install must fail here, not skip the module.
     """
-    pytest.importorskip("torch")
+    import torch  # noqa: F401, PLC0415 -- the import itself is the warm-up
 
 
 def _wav(samples: np.ndarray, *, rate: int = 16_000, channels: int = 1) -> bytes:
