@@ -8,7 +8,13 @@ from uuid import UUID, uuid4
 
 import numpy as np
 import pytest
-from server.cognition.authorization import ConsentStatus
+from server.cognition.authorization import (
+    AuthorizationRequest,
+    ConsentStatus,
+    DataSensitivity,
+    DataVisibility,
+    evaluate_authorization,
+)
 from server.cognition.face_authentication import FaceRequestResolver
 from server.cognition.identity import (
     ActivePersonContext,
@@ -21,7 +27,13 @@ from server.cognition.identity import (
 )
 from server.cognition.identity_fusion import FusedIdentityResolver, FusionReason
 from server.cognition.identity_sessions import IdentitySessionRegistry
-from server.cognition.models import CognitiveEvent, Confidence, ConfidenceBasis
+from server.cognition.models import (
+    AuthorizationAction,
+    AuthorizationStatus,
+    CognitiveEvent,
+    Confidence,
+    ConfidenceBasis,
+)
 from server.cognition.owner_authentication import OwnerRequestResolver
 from server.cognition.response_plan import TextTurnPayload
 from server.cognition.speaker_authentication import SpeakerVerdict
@@ -364,3 +376,36 @@ async def test_the_log_carries_the_reason_and_no_personal_data(
     joined = "\n".join(record.getMessage() for record in caplog.records)
     assert "face_and_voice" in joined
     assert "Canary" not in joined
+    fusion_records = [r for r in caplog.records if vars(r).get("event") == "identity.fusion"]
+    assert len(fusion_records) == 1
+    assert vars(fusion_records[0])["reason"] == FusionReason.FACE_AND_VOICE
+    assert all("Canary" not in str(value) for value in vars(fusion_records[0]).values())
+
+
+def _reserved_read(actor: ActivePersonContext) -> AuthorizationRequest:
+    """A synthetic SECURITY read of the actor's own data — no reserved capability exists yet."""
+    return AuthorizationRequest(
+        actor=actor,
+        action=AuthorizationAction.READ_HOUSEHOLD_DATA,
+        target_person_id=actor.person_id,
+        visibility=frozenset({DataVisibility.PERSONAL}),
+        sensitivity=frozenset({DataSensitivity.SECURITY}),
+        consent=ConsentStatus.GRANTED,
+        correlation_id=uuid4(),
+        requested_at=_NOW,
+    )
+
+
+async def test_the_fused_actor_reaches_reserved_data_only_with_strong_assurance() -> None:
+    """The seam between fusion and policy: a face alone is denied; face plus voice or a PIN is not."""
+    face_only = await _fused(face=_face_resolver()).resolve_actor(_event())
+    with_voice = await _fused(face=_face_resolver(), speaker_factory=_verified()).resolve_actor(
+        _event()
+    )
+    with_pin = await _fused(face=None, pin=_pin(with_token=True).resolver).resolve_actor(_event())
+
+    denied = evaluate_authorization(_reserved_read(face_only))
+    assert denied.decision is AuthorizationStatus.DENIED
+    assert denied.policy_id == "p0.5.assurance-required"
+    for actor in (with_voice, with_pin):
+        assert evaluate_authorization(_reserved_read(actor)).decision is AuthorizationStatus.ALLOWED
