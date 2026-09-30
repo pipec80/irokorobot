@@ -71,6 +71,7 @@ class FaceAuthenticationVerdict(StrEnum):
     IDENTIFIED = "identified"
     UNKNOWN = "unknown"
     AMBIGUOUS = "ambiguous"
+    OTHER_PERSON = "other_person"
 
 
 def evaluate_face_authentication(
@@ -98,17 +99,21 @@ def evaluate_face_authentication(
 
     Returns:
         `AMBIGUOUS` when two or more faces are present — matching is not
-        even attempted in that case. `IDENTIFIED` only for exactly one
-        detected face with a within-threshold match, active consent, and
-        the owner role. `UNKNOWN` for every other case.
+        even attempted in that case. `OTHER_PERSON` for exactly one face
+        with a within-threshold match of someone who is not the owner —
+        positive evidence of another enrolled person, whatever their
+        consent. `IDENTIFIED` only for exactly one detected face with a
+        within-threshold match, active consent, and the owner role.
+        `UNKNOWN` for every other case.
     """
     if detected_face_count >= _MIN_AMBIGUOUS_FACES:
         return FaceAuthenticationVerdict.AMBIGUOUS
     if match is None:
         return FaceAuthenticationVerdict.UNKNOWN
-    if not consent_active:
-        return FaceAuthenticationVerdict.UNKNOWN
     if role is not HouseholdRole.OWNER:
+        # Positive evidence of another enrolled person: a veto, consent or not.
+        return FaceAuthenticationVerdict.OTHER_PERSON
+    if not consent_active:
         return FaceAuthenticationVerdict.UNKNOWN
     return FaceAuthenticationVerdict.IDENTIFIED
 
@@ -131,8 +136,18 @@ def _unknown_active_person(event: CognitiveEvent[TextTurnPayload]) -> ActivePers
     )
 
 
-def _ambiguous_active_person(event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
-    """Build the safe, non-disclosing actor for a multi-face-in-frame turn."""
+def _ambiguous_active_person(
+    event: CognitiveEvent[TextTurnPayload], reason: str = "Multiple faces detected in frame"
+) -> ActivePersonContext:
+    """Build the safe, non-disclosing actor for a vetoed turn.
+
+    Args:
+        event: The protected event this resolution is scoped to.
+        reason: Human-readable explanation carried on the confidence record.
+
+    Returns:
+        An `AMBIGUOUS` actor with no person, name or evidence.
+    """
     return ActivePersonContext(
         person_id=None,
         display_name=None,
@@ -141,7 +156,7 @@ def _ambiguous_active_person(event: CognitiveEvent[TextTurnPayload]) -> ActivePe
             score=0.0,
             basis=ConfidenceBasis.NOT_APPLICABLE,
             calibrated=False,
-            reason="Multiple faces detected in frame",
+            reason=reason,
         ),
         role=HouseholdRole.UNKNOWN,
         evidence=(),
@@ -198,9 +213,10 @@ class FaceRequestResolver:
 
         Returns:
             The identified owner context, the safe ambiguous context when
-            two or more faces share the frame, or the safe unknown actor
-            for every other case (no frame, no face, no match, no consent,
-            wrong role, or a degraded vision pipeline).
+            two or more faces share the frame or the face matches another
+            enrolled person, or the safe unknown actor for every other case
+            (no frame, no face, no match, no consent, or a degraded vision
+            pipeline).
         """
         if self._cached_context is not None:
             return self._cached_context
@@ -231,6 +247,8 @@ class FaceRequestResolver:
             return await self._identify(event, match, role)
         if verdict is FaceAuthenticationVerdict.AMBIGUOUS:
             return _ambiguous_active_person(event)
+        if verdict is FaceAuthenticationVerdict.OTHER_PERSON:
+            return _ambiguous_active_person(event, "Face matches another enrolled person")
         return _unknown_active_person(event)
 
     async def _detected_faces(self) -> list[DetectedFace]:

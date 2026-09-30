@@ -105,12 +105,18 @@ def test_one_face_match_but_consent_inactive_is_unknown() -> None:
 
 
 @pytest.mark.unit
-def test_one_face_match_consent_but_non_owner_role_is_unknown() -> None:
-    """A consenting, matched non-owner must never be treated as the owner."""
+@pytest.mark.parametrize("consent_active", [True, False])
+def test_one_face_match_of_a_non_owner_is_positive_evidence_of_another_person(
+    consent_active: bool,
+) -> None:
+    """ADR 0016 §4: a match with someone who is not the owner vetoes, consent or not."""
     verdict = evaluate_face_authentication(
-        detected_face_count=1, match=_match(0.1), consent_active=True, role=HouseholdRole.ADULT
+        detected_face_count=1,
+        match=_match(0.1),
+        consent_active=consent_active,
+        role=HouseholdRole.ADULT,
     )
-    assert verdict is FaceAuthenticationVerdict.UNKNOWN
+    assert verdict is FaceAuthenticationVerdict.OTHER_PERSON
 
 
 @pytest.mark.unit
@@ -257,8 +263,8 @@ async def test_match_within_threshold_but_consent_inactive_resolves_unknown() ->
 
 
 @pytest.mark.unit
-async def test_match_within_threshold_consent_but_non_owner_role_resolves_unknown() -> None:
-    """A close, consenting match that is not the owner must not authenticate."""
+async def test_match_within_threshold_of_a_non_owner_resolves_ambiguous() -> None:
+    """A close match with another enrolled person denies and never identifies."""
 
     async def detect_one(_frame: bytes) -> list[DetectedFace]:
         return [_face(1)]
@@ -275,8 +281,9 @@ async def test_match_within_threshold_consent_but_non_owner_role_resolves_unknow
 
     actor = await resolver.resolve_actor(_event())
 
-    assert actor.status is ActivePersonStatus.UNKNOWN
+    assert actor.status is ActivePersonStatus.AMBIGUOUS
     assert actor.person_id is None
+    assert resolver.last_verdict is FaceAuthenticationVerdict.OTHER_PERSON
 
 
 @pytest.mark.unit
