@@ -1,6 +1,6 @@
 # 0015 — Bind the owner grant to a named operation and to speaker evidence
 
-- **Status:** Accepted (2026-09-25, Pipec)
+- **Status:** Accepted (2026-09-25, Pipec); decision 2 refined by [ADR 0016](0016-face-and-voice-identity-fusion.md)
 - **Date:** 2026-09-24
 - **Builds on:** [ADR 0008](0008-progressive-owner-authentication.md),
   [ADR 0009](0009-locked-posture-and-scoped-capabilities.md)

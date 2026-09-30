@@ -117,22 +117,22 @@ They do not create parallel authorization paths.
 study measured whether a CPU speaker embedding separates the owner from consenting
 live impostors: a provisional PASS (0/24 impostor false accepts at the selected
 threshold, 0/24 genuine false rejects in-sample, 6/8 replay probes accepted). It
-changes no rule here: `VOICE` remains untrusted identity evidence, the study
-produced no enrollment or runtime adapter (PC-3B), and because replays were
-accepted a voice match must never be standalone high-assurance evidence — replay
-and liveness handling belongs to the fusion work (PC-4).
+changes no rule here: `VOICE` remains untrusted identity evidence on its own, the
+study produced no enrollment or runtime adapter (PC-3B), and because replays were
+accepted a voice match must never be standalone high-assurance evidence —
+[ADR 0016](../adr/0016-face-and-voice-identity-fusion.md) enforces that by requiring
+a face for `strong`; replay and liveness stay undefended.
 
-**Speaker runtime evidence (Plan 0053, PC-3B).** Consented local enrolment and
-revocation now exist behind `SPEAKER_AUTHENTICATION_ENABLED` (default off): a
-turn on a protected branch, where face and PIN did not already identify the
-actor, may attach typed `VOICE` evidence with a `verified`, `unknown` or
-`unavailable` verdict. The evidence stays untrusted. `VOICE` is not in
-`_RESOLVABLE_SOURCES`, so it cannot identify anyone, widen access or replace the
-PIN, and a `verified` verdict still receives the same denial as any
-unauthenticated turn. Replay is not defended (6 of 8 probes were accepted in the
-study) and there is no liveness check. Fusing voice with face or PIN, binding a
-grant to the speaker and the face veto remain PC-4 and
-[ADR 0015](../adr/0015-owner-grant-scope-and-speaker-binding.md).
+**Speaker runtime evidence (Plan 0053, PC-3B; fused by Plan 0054, PC-4).** Consented
+local enrolment and revocation exist behind `SPEAKER_AUTHENTICATION_ENABLED` (default
+off). On a protected turn whose owner face matched, the speaker check returns a
+`verified`, `unknown` or `unavailable` verdict; a `verified` voice of the same person
+raises the face's assurance from `basic` to `strong`. `VOICE` is resolvable but never
+trusted on its own, so it cannot identify anyone, and a voice with no owner face is
+never even embedded. Replay is not defended (6 of 8 probes were accepted in the
+study) and there is no liveness check. Binding a grant to one named operation and to
+the speaker remains [ADR 0015](../adr/0015-owner-grant-scope-and-speaker-binding.md)
+and Plan 0051.
 
 Persistent installation data includes the owner, roles, onboarding state,
 configured methods, consent, and audit. Authentication itself is transient:
@@ -168,7 +168,7 @@ unlocked” state.
 
 | Field | Meaning |
 |---|---|
-| `source` | `face`, `voice`, `session`, `manual`, or `context`. |
+| `source` | `face`, `voice`, `session`, `manual`, `local_unlock`, or `context`. |
 | `candidate_person_id` | Existing SQLite entity ID, or null when no match exists. |
 | `confidence` | Evidence-specific calibrated/estimated confidence. |
 | `observed_at` | Timezone-aware UTC observation time. |
@@ -190,6 +190,7 @@ ActivePersonContext
 ├── confidence: Confidence
 ├── role: owner | adult | child | guest | unknown
 ├── evidence: immutable collection[IdentityEvidence]
+├── assurance: none | basic | strong
 ├── resolved_at: aware UTC datetime
 └── expires_at: aware UTC datetime
 ```
@@ -209,27 +210,39 @@ other domain IDs are UUIDs.
 - Display names are presentation only; IDs are used for relationships and
   access decisions.
 - Manually confirmed identity is explicit evidence with its own expiration.
+- `assurance` is `none` for every result that is not `identified`; it never authorizes
+  by itself — policy reads it only for the reserved categories.
 
-## Initial fusion rules
+## Fusion rules and assurance
 
-Rules are configurable and calibrated with the household. A conservative
-starting policy is:
+[ADR 0016](../adr/0016-face-and-voice-identity-fusion.md) fixes the rule as one
+deterministic function, `resolve_active_person`, over one enrolled owner. Fusion says
+who the evidence indicates and how strongly; it never authorizes —
+`evaluate_authorization` still decides whether that actor may perform the action on the
+data.
 
-```text
-face >= face_identified_threshold
-+ voice >= voice_identified_threshold
-+ both point to the same entity
-=> identified
+| Evidence of the turn | Result | Assurance |
+|---|---|---|
+| Owner's face and a verified voice of the same person | `identified` | `strong` |
+| Owner's face only | `identified` | `basic` |
+| An optional PIN token, only when one is presented | `identified` | `strong` |
+| Verified voice only | `probable` (never authorizes) | `none` |
+| Face of another enrolled person, or two or more faces | `ambiguous` | `none` |
+| Sources that point at different people | `ambiguous` | `none` |
+| Unknown face or voice, no usable or expired evidence | `unknown` | `none` |
 
-one strong source, no conflict
-=> probable
+`basic` is enough for ordinary private data such as the child read. `strong` is required
+for the categories in `HIGH_ASSURANCE_CATEGORIES` (`security` today); a reserved request
+answered at `basic` is denied with the same generic text as any other denial, and only
+the server log records why. Positive evidence of another person vetoes even when a PIN
+token is presented and does not consume it; ignorance (an unknown face, an unknown voice,
+a missing signal) never vetoes and never adds. The voice is consulted only after the
+owner's face matched. Evidence whose `expires_at` has passed never participates.
 
-strong sources point to different entities
-=> ambiguous
-
-no usable evidence
-=> unknown
-```
+The PIN is optional and administrative: an optional `strong` factor and the credential of
+local administration. When face or voice fail, recovery is local administration on the
+server host (ADR 0006), never a spoken step. Replay and liveness are measured, not
+defended.
 
 These are product rules, not permanent numeric truths. Thresholds belong in
 configuration and require real family evaluation, including false-accept and

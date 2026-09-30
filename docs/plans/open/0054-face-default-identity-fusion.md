@@ -197,7 +197,7 @@ out to need that is not listed stops the work and is reported.
 | `server/src/server/cognition/authorization.py` | `HIGH_ASSURANCE_CATEGORIES` and the `p0.5.assurance-required` denial |
 | `server/src/server/cognition/face_authentication.py` | `OTHER_PERSON` verdict; delete `compose_face_then_pin_resolver` |
 | `server/src/server/routers/transcribe.py` | Use the fused resolver; delete the Plan 0053 wrapper; `identity_source` |
-| `server/src/server/schemas.py`, `server/src/server/schemas_streaming.py` | `identity_source` gains `"face_voice"` |
+| `server/src/server/schemas.py`, `server/src/server/schemas_streaming.py`, `server/src/server/streaming.py` | `identity_source` gains `"face_voice"` (`streaming.py` was missing from the original list; Pipec authorized it during execution) |
 | `tests/unit/test_active_person_identity.py`, `tests/unit/test_household_authorization_policy.py`, `tests/unit/test_face_authentication.py`, `tests/integration/test_speaker_evidence_turn.py` | As each task states |
 | `docs/architecture/current-state.md`, `docs/architecture/identity-and-access.md`, `docs/runbooks/operator-manual.md`, `docs/roadmap/cognitive-roadmap.md`, `docs/roadmap/personal-companion-delivery-map.md`, `docs/plans/README.md`, `docs/plans/open/README.md`, `docs/adr/0015-owner-grant-scope-and-speaker-binding.md`, this plan | Closure documentation |
 | `docs/architecture/diagrams/current-state.{json,html}` | Regenerated with the Archify skill after `current-state.md` changes |
@@ -1859,6 +1859,50 @@ consumes it yet) and the veto. Rolling back means reverting the PR; no migration
    `FaceAuthenticationVerdict.OTHER_PERSON` (Task 3) is what Task 4 branches on;
    `SpeakerVerdict` and `SpeakerRequestResolver` are unchanged from Plan 0053.
 4. **Review Focus.** All five entries have an owning task and a named test.
+
+## Closure record
+
+**Status of this record: Tasks 0–6 done; Task 7 (Pipec's real hardware) pending.** Outcomes
+only — never a frame, audio, name or score.
+
+### Execution record (2026-09-30, branch `feat/0054-identity-fusion`)
+
+- Baseline on `main` (`35f9eb5`, after PR #148 was squash-merged at Pipec's instruction):
+  `just gate` passed, 1529 tests.
+- One commit per task, each new test observed RED first (Task 1: `ImportError`; Task 2: the
+  two `SECURITY` denials returned `allowed`; Task 3: no `OTHER_PERSON`; Task 4: no module;
+  Task 5: `identity_source` never `face_voice` and the old wrapper embedded without a face).
+  A mutation of the veto ordering was caught by four fused-resolver tests.
+- Last full `pytest -n auto` on the branch: 1556 passed. `ruff`, `mypy` and `pyright` clean.
+  `tests/integration/test_face_authenticated_turn.py` passes **unedited**. The final
+  `just gate` of Task 7 Step 1 is recorded below when run.
+- One full run showed two transient timing failures in
+  `tests/unit/test_speaker_embedding.py` under `-n auto` load (code this plan does not
+  touch): 21/21 in isolation, green on two other full runs.
+
+### Rulings taken during execution
+
+| # | Ruling | Why | Cost if wrong |
+|--:|---|---|---|
+| 1 | `server/src/server/streaming.py` (`stream_response_plan`'s `identity_source` annotation and its docstring) was modified although it was not in the file list | `mypy` and `pyright` failed at the new value; Pipec authorized it explicitly when asked | Revert one annotation |
+| 2 | Task 4's tests use a `matches=False` fixture parameter and a `_Pin` named tuple instead of `_match_face`/`_token` accesses and `type: ignore` | Pipec allowed public equivalents; intent unchanged | None |
+| 3 | The two Task 4 veto tests also assert consent is `NOT_REQUIRED` | They replace the deleted composer test that pinned it | None |
+| 4 | Stale docstrings in `tests/integration/test_speaker_evidence_turn.py` were updated | They said `_RESOLVABLE_SOURCES` was unedited | None |
+| 5 | `cognition/speaker_authentication.py` was **not** edited although its docstrings still say `VOICE` is absent from `_RESOLVABLE_SOURCES` | The plan lists it under "Never touched" | One stale docstring, reported to Pipec |
+
+### What stays open
+
+- **Replay is not defended.** A photograph identifies at `basic`, unchanged; a photograph
+  plus a recording of the exact question would satisfy `strong` once a reserved capability
+  exists.
+- **No reserved capability exists yet.** `HIGH_ASSURANCE_CATEGORIES = {SECURITY}` is proven
+  only by synthetic policy tests.
+- Scoping the PIN grant to a named operation is Plan 0051.
+
+### Real-hardware outcomes (Task 7 Step 2)
+
+Pending: Pipec runs the nine cases of [What needs Pipec's real hardware](#what-needs-pipecs-real-hardware)
+and this section then records the outcome of each, outcomes only.
 
 ## Execution handoff
 
