@@ -1,8 +1,9 @@
 """Pure speaker verdict and request-scoped speaker evidence (Plan 0053, PC-3B).
 
-`VERIFIED` never means authorized. The resolver below attaches untrusted
-`IdentityEvidenceSource.VOICE` evidence, which `resolve_active_person` does not
-resolve — fusing voice with face or PIN is PC-4, not this module.
+`VERIFIED` never means authorized. The resolver below attaches
+`IdentityEvidenceSource.VOICE` evidence, which `resolve_active_person` accepts only as
+corroboration of a face of the same person (Plan 0054, ADR 0016) — the fusion lives in
+`server.cognition.identity_fusion`, not in this module.
 
 Audio contract for every WAV this module touches: WAV, 16 000 Hz, mono, signed
 int16.
@@ -133,9 +134,10 @@ def _unknown_active_person(
         event: The protected event this resolution is scoped to.
         reason: Human-readable explanation carried on the confidence record.
         evidence: Untrusted evidence to attach — empty for a failed verdict,
-            or exactly one `VOICE` item when verification succeeded. `VOICE`
-            is absent from `_RESOLVABLE_SOURCES`, so attaching it here can
-            never change `status` or `person_id`.
+            or exactly one `VOICE` item when verification succeeded. This
+            context is built directly, never through `resolve_active_person`,
+            so attaching `VOICE` here can never change `status` or `person_id`;
+            the fusion decides what the evidence is worth.
 
     Returns:
         The safe, never-identifying actor context.
