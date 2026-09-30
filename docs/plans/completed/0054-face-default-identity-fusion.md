@@ -1927,6 +1927,7 @@ closed). Disposition:
 | 7 | `uv.lock` bumps `urllib3` 2.7.0 → 2.8.0 although the plan adds no dependency change | `just gate`'s `audit` failed on three advisories published after the baseline; the bump was the only lock change; Pipec authorized it | Revert one lock entry |
 | 8 | ADR 0016 §5/§6 and its negative consequences were clarified: a presented PIN token is not consulted once the owner's face matched (the code already behaved so) | The independent review found §5 and §6 inconsistent; Pipec chose to clarify the ADR, not the code | Reserved data on a hoarse day cannot be rescued by the PIN |
 | 9 | Text-only edits outside the file list: comments in `settings.py` and `speaker_authentication.py`, and stale PC-4 statements in `docs/architecture/README.md`, `docs/roadmap/conversational-memory-delivery-map.md`, `docs/plans/open/0015-personal-companion-design.md` and ADR 0016's header | The independent review found them false; Pipec authorized them | Revert text |
+| 10 | `uv.lock` also bumps `virtualenv` 21.7.8 → 21.14.1 | `just gate`'s `audit` failed on four advisories published after the previous gate (transitive development dependency, the only lock change); done under Pipec's standing rule to keep dependencies fresh, like ruling 7 | Revert one lock entry |
 
 ### What stays open
 
