@@ -7,7 +7,7 @@ calibrated (threshold 0.4834). No audio is ever stored, and no vector produced
 by a different model is ever compared.
 """
 
-from typing import Final
+from typing import Final, NamedTuple
 
 import numpy as np
 
@@ -17,7 +17,20 @@ from server.exceptions import BrainMemoryError
 
 VOICEPRINT_DIM: Final = 192
 
-__all__ = ["VOICEPRINT_DIM", "centroid_distance", "count_voiceprints", "enroll_voiceprint"]
+__all__ = [
+    "VOICEPRINT_DIM",
+    "CentroidMatch",
+    "centroid_match",
+    "count_voiceprints",
+    "enroll_voiceprint",
+]
+
+
+class CentroidMatch(NamedTuple):
+    """Distance to a person's reference centroid plus how many references built it."""
+
+    distance: float
+    reference_count: int
 
 
 def _pack(embedding: np.ndarray) -> bytes:
@@ -103,8 +116,15 @@ async def count_voiceprints(entity_id: int, model_id: str) -> int:
     return int(row[0]) if row is not None else 0
 
 
-async def centroid_distance(entity_id: int, embedding: np.ndarray, model_id: str) -> float | None:
-    """Return the cosine distance from *embedding* to this person's centroid.
+async def centroid_match(
+    entity_id: int, embedding: np.ndarray, model_id: str
+) -> CentroidMatch | None:
+    """Compare *embedding* with this person's reference centroid in ONE read.
+
+    The distance and the number of references it was computed from come from
+    the same query, so a revocation or re-enrolment between an earlier count
+    and this call cannot make the verdict rest on references that no longer
+    exist.
 
     Args:
         entity_id: Person whose references are compared.
@@ -113,8 +133,9 @@ async def centroid_distance(entity_id: int, embedding: np.ndarray, model_id: str
             produced by any other model are ignored.
 
     Returns:
-        The cosine distance in ``[0, 2]`` — lower is closer — or ``None`` when
-        this person has no reference for *model_id*.
+        The cosine distance in ``[0, 2]`` (lower is closer) with the number of
+        references used, or ``None`` when this person has no reference for
+        *model_id*.
 
     Raises:
         BrainMemoryError: If the DB is unavailable or a vector is all zeros.
@@ -123,4 +144,7 @@ async def centroid_distance(entity_id: int, embedding: np.ndarray, model_id: str
     if not references:
         return None
     centroid = _l2_normalized(np.mean(np.stack(references), axis=0))
-    return float(1.0 - np.dot(centroid, _l2_normalized(embedding)))
+    return CentroidMatch(
+        distance=float(1.0 - np.dot(centroid, _l2_normalized(embedding))),
+        reference_count=len(references),
+    )
