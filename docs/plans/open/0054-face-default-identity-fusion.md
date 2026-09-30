@@ -1875,11 +1875,12 @@ only — never a frame, audio, name or score.
   A mutation of the veto ordering was caught by four fused-resolver tests.
 - Last full `pytest -n auto` on the branch: 1556 passed. `ruff`, `mypy` and `pyright` clean.
   `tests/integration/test_face_authenticated_turn.py` passes **unedited**.
-- Task 7 Step 1, `just gate` after the fixes below (2026-09-30): lint, `mypy`, `pyright`
-  and 1556 tests pass. The `audit` step failed: three advisories against `urllib3 2.7.0`
-  (fixed in 2.8.0) were published after the baseline gate ran. `uv lock --upgrade-package
-  urllib3 --dry-run` shows that bump is the only change; it is outside this plan's scope and
-  awaits Pipec's authorization, so the gate is **not** fully green.
+- Task 7 Step 1, `just gate` after the fixes below (2026-09-30): **PASS** — lint, `mypy`,
+  `pyright`, 1556 tests (baseline 1529, +27) and `pip-audit` clean. The first attempt failed
+  `audit`: three advisories against `urllib3 2.7.0` (fixed in 2.8.0) were published after
+  the baseline gate ran, and `uv.lock` was bumped in its own commit (ruling 7). Also green:
+  `test_api_contract.py`, `test_face_authenticated_turn.py` (unedited), `uv lock --check`,
+  `git diff --check`, `check_reserved_terms.py`, and no match for the two removed composers.
 - Two timeout tests in `tests/unit/test_speaker_embedding.py` failed on some full runs.
   Root cause, reproduced: `embed_wav` imports `torch` lazily inside its executor thread and
   the tests wait 0.2 s, so the first such test in a cold `xdist` worker paid the import
@@ -1896,6 +1897,7 @@ only — never a frame, audio, name or score.
 | 4 | Stale docstrings in `tests/integration/test_speaker_evidence_turn.py` were updated | They said `_RESOLVABLE_SOURCES` was unedited | None |
 | 5 | `cognition/speaker_authentication.py` was **not** edited although its docstrings still say `VOICE` is absent from `_RESOLVABLE_SOURCES` | The plan lists it under "Never touched" | One stale docstring, reported to Pipec |
 | 6 | `tests/unit/test_speaker_embedding.py` gained a module-scoped `_warm_torch` fixture although it was not in the file list | Two timeout tests failed on cold workers (root cause above); Pipec authorized a test-only fix | Revert one fixture |
+| 7 | `uv.lock` bumps `urllib3` 2.7.0 → 2.8.0 although the plan adds no dependency change | `just gate`'s `audit` failed on three advisories published after the baseline; the bump was the only lock change; Pipec authorized it | Revert one lock entry |
 
 ### What stays open
 
