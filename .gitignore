@@ -25,6 +25,9 @@ coverage.xml
 # Secrets and environment
 .env
 .env.local
+# Any other variant or backup (.env.bak, .env.old, ...) — only the sample is tracked
+.env.*
+!.env.example
 .secrets.baseline
 
 # Brain database (runtime data, never commit)
