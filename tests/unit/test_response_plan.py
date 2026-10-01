@@ -4,7 +4,7 @@ from datetime import date
 
 from pydantic import ValidationError
 import pytest
-from server.cognition import CognitiveController, ResponsePlan, TextTurnPayload
+from server.cognition import ResponsePlan, TextTurnPayload
 from server.cognition.models import KnowledgeStatus
 from server.cognition.response_plan import (
     InformationNeed,
@@ -55,8 +55,7 @@ def test_response_plan_rejects_known_claim_without_known_tool_result() -> None:
         )
 
 
-def test_cognition_package_exports_p03_public_contracts() -> None:
-    """Keep chat adapters from importing private cognition module paths."""
-    assert CognitiveController.__name__ == "CognitiveController"
+def test_cognition_package_exports_response_contracts() -> None:
+    """Keep adapters importing turn contracts from the vocabulary package."""
     assert ResponsePlan.__name__ == "ResponsePlan"
     assert TextTurnPayload.__name__ == "TextTurnPayload"
