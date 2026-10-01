@@ -1,6 +1,7 @@
 # 0050 — Server audit repairs
 
-> **Status:** Draft — Plan 0047 closed 2026-09-25. Queue position (revised
+> **Status:** `Ready` — promoted and selected as `NOW` by Pipec on 2026-10-01
+> (decisions 1–5 confirmed as proposed). Was a draft after Plan 0047 closed 2026-09-25. Queue position (revised
 > 2026-09-30): after the Plan 0055 follow-ups and **before** Plan 0051, which is
 > now the first plan of CM-1; the seed load ("step 0") moved after CM-3. Task 11
 > therefore pins today's grant behaviour as rehearsed, and Plan 0051 changes it
@@ -11,8 +12,8 @@
 > scope, Tasks 0, 4 and 12, and non-goals below. Plan 0055 merged on 2026-10-01
 > (PR #152, `1c0a914`): Task 0 must revalidate the examples and tests on its merged result before
 > any implementation. The examples are not patches to apply blindly.
-> Not executable until the post-0055 review is recorded, Pipec confirms the
-> outstanding choices listed below, and promotes this plan to `Ready`/`NOW`.
+> Task 0 records that post-0055 revalidation before any implementation; Pipec
+> confirmed the outstanding choices below and promoted this plan to `Ready`/`NOW`.
 > Written 2026-09-23 and
 > extended 2026-09-24 from the verified findings of the 0049 audit, its
 > independent review (0049 §13) and a full read of the protection boundary.
@@ -147,10 +148,10 @@ scoping. The canonical portfolio, not a historical rehearsal, governs order.
 
 ## Decisions confirmed at promotion
 
-Outstanding choices at promotion are 1, 3, 4, 5 and the comma-only separator
-in 2. Making children optional was already decided on 2026-09-23; decision 6
-was confirmed on 2026-09-24. Preserve those decisions rather than asking for
-them again. Resolving the remaining choices does not itself promote the plan.
+Decisions 1, 3, 4, 5 and the comma-only separator in 2 were confirmed by Pipec
+on 2026-10-01 as proposed below, and he promoted the plan the same day. Making
+children optional was decided on 2026-09-23; decision 6 was confirmed on
+2026-09-24. Preserve those decisions rather than asking for them again.
 
 1. **`server.cognition` stays domain vocabulary only.** It stops re-exporting
    `CognitiveController`, `HouseholdKnowledgeTools`, `HouseholdToolName`,
