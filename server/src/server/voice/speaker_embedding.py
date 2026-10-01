@@ -158,6 +158,21 @@ async def embed_wav(wav_bytes: bytes) -> np.ndarray:
     return await _run_bounded(partial(_embed_sync, wave_f32))
 
 
+async def warm_up() -> None:
+    """Load the speaker model on the embedding worker so the first turn does not pay for it.
+
+    Raises:
+        SpeakerBackendError: If the model cannot be loaded. The load cool-down of
+            `_load_encoder` then applies to the first real turn.
+    """
+    try:
+        await run_in_executor_with_context(_executor, _load_encoder)
+    except SpeakerBackendError:
+        raise
+    except Exception as exc:
+        raise SpeakerBackendError("Speaker model warm-up failed") from exc
+
+
 async def _run_bounded(work: Callable[[], np.ndarray]) -> np.ndarray:
     """Run *work* on the executor, giving up after `speaker_embed_timeout_s`.
 

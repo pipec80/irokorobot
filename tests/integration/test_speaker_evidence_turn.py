@@ -302,7 +302,8 @@ def test_importing_the_app_never_loads_the_speaker_stack() -> None:
     """
     code = (
         "import sys; import server.main, server.routers.transcribe, server.routers.auth; "
-        "bad = [m for m in ('torch', 'torchaudio', 'speechbrain') if m in sys.modules]; "
+        "heavy = ('torch', 'torchaudio', 'speechbrain', 'insightface'); "
+        "bad = [m for m in heavy if m in sys.modules]; "
         "sys.exit(1 if bad else 0)"
     )
     result = subprocess.run(  # noqa: S603 -- fixed argv, no user input
