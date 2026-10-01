@@ -279,21 +279,79 @@ its owning task:
 
 **Files:** this plan's evidence/status only. No production repair in this task.
 
-- [ ] Record branch, clean/dirty status, base SHA and Plan 0055's merge. Work
+- [x] Record branch, clean/dirty status, base SHA and Plan 0055's merge. Work
   on the authorized implementation branch; do not switch away from or discard
   another task's uncommitted changes.
-- [ ] Run `just gate` and record its actual outcome and count. A pre-existing
+- [x] Run `just gate` and record its actual outcome and count. A pre-existing
   failure is reported with its owning task; a historical green run is not a
   substitute for this baseline.
-- [ ] Check each task's named symbols, fixtures and permitted files against
+- [x] Check each task's named symbols, fixtures and permitted files against
   that baseline. In particular: Tasks 4/8/9 overlap 0055; Task 10 preserves
   `IdentityAssurance`; Task 11 preserves face-first fusion and speaker routes.
   Replace stale snippets before their task runs. Do not insist that the
   historical module count or number of failing tests remain identical.
-- [ ] Record which defects still reproduce, which changes are already present,
+- [x] Record which defects still reproduce, which changes are already present,
   and any scope conflict. Already-fixed documentation and links are verification
   items, not changes to reapply. A changed accepted contract stops the affected
   task; it is not redesigned by this plan.
+
+**Task 0 record (executed 2026-10-01, branch `fix/0050-server-audit-repairs`).**
+No production change; evidence only.
+
+- **Baseline.** Base SHA `42b8908` (`main` == `origin/main`, clean tree), which
+  contains Plan 0055 (PR #152, `1c0a914`). `just gate`: **1607 passed** in
+  195.7 s, `ruff --select S` clean, `pip-audit` no known vulnerabilities, "Gate
+  passed". Nothing pre-existing is red.
+- **Still reproduces (RED pending in each task).**
+  - Task 1: 86 server modules now (78 at the audit baseline); the standalone
+    import probe still fails for exactly the same nine (`server.characters` and
+    its four submodules, `llm_streaming`, `memory.household_authorization`,
+    `memory.policy_gated_v4_reader`, `text_turn`). The pure-core probe loads 30
+    non-cognition modules plus `aiosqlite` and `httpx`.
+  - Task 2: `llm_transport.py` still reads `resp.json()["message"]["content"]`
+    and `event.get("message", {}).get("content", "")`.
+  - Task 3: `ollama_url` is still read by `vision/describe.py` and
+    `memory/embeddings.py` besides `llm_transport.py`/`settings.py`.
+  - Task 4: `_read_contract_image`, `_read_face_image` and
+    `_read_optional_frame` exist unchanged; `max_image_pixels` has no reader;
+    `pillow` is not a declared `server` dependency; `SECURITY.md` and the
+    `main.py` comment still name the removed helper.
+  - Task 5: `policy_gated_v4_reader.py` still has no classification filter.
+  - Tasks 6–7: `_derive_readiness`, `_confirm_credential`, `_split_names`, the
+    wizard prompt `Child names (comma or space separated)`, two PIN patterns
+    (`pin_credentials._PIN_PATTERN`, `schemas_auth._PIN_PATTERN`) and the
+    `except BrainMemoryError` handlers in `personal_setup.main` and
+    `scripts/onboard.py` are as the plan describes.
+  - Task 8: exactly the six unread settings the plan predicts
+    (`dashboard_enabled`, `default_user_id`, `max_image_pixels` — Task 4 —,
+    `sensor_aggregation_interval_seconds`, `sensor_debounce_seconds`,
+    `sensor_delta_threshold`); the two tuteo strings and `vision_look_phrase`.
+  - Task 9: `faces.recognize()` still logs the matched names at INFO.
+  - Task 10: `_require_aware_utc` is still copied in `identity.py` and
+    `authorization.py` (and defined in `models.py`).
+  - Task 11: `"te presento a"` is still an enrollment phrase and the household,
+    birth, age, relationship and date rules still use `term in normalized`.
+- **Adaptations to the plan's examples (post-0055/0054 state).**
+  - Task 8 Step 5: Plan 0055's lifecycle tests already read `ready` through
+    `getattr(app.state, "ready", False)` (with a comment explaining the order
+    dependence) in **both** `test_app_state_ready_is_false_before_lifespan` and
+    `test_a_startup_failure_after_client_creation_still_closes_it`. The RED is
+    obtained by changing both assertions to `app.state.ready is False` and
+    deleting that comment; the fix (`new_app.state.ready = False` in
+    `create_app`) is unchanged.
+  - Task 11 Step 3 / Step 5: `tests/fixtures/intent_resolution_es.json` holds
+    **53** rows today, not the 62/73 the plan implies; after the eleven added
+    rows it holds 64. Assert the failures by row text, not by corpus size.
+  - Task 11 harness: `owner_unlock_service`, `get_owner_unlock_service`,
+    `AppResources`, `llm.generate_response`, the `consolidate_turn` binding in
+    `routers.transcribe` and the `silence_wav_bytes` fixture all exist as the
+    matrix expects. The matrix sends no frame, so face/speaker flags (default
+    off) stay out of its path; face-first fusion is covered by the existing
+    identity-fusion suites, which Task 11 re-runs.
+- **Scope conflicts.** None found. Every file the tasks touch is in *Permitted
+  files*; `identity_fusion.py`, `speaker_authentication.py` and the voice
+  consent/storage modules are read-only and untouched. Plan 0055's warm-up,
+  shared clock, `IdentitySource` alias and store-error guard stay as merged.
 
 ## Task 1: Break the import cycles and keep the cognitive core pure
 
