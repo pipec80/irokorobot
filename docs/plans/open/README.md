@@ -29,7 +29,7 @@ to see the code, tests, verified gaps, and future delivery sequence.
 
 | Plan | Implementation reality | Reuse | Remaining closure |
 |---|---|---|---|
-| [0015](0015-personal-companion-design.md) | Approved product design; PC-1 is complete and PC-2 has a provisional calibrated acceptance | Controller, policy/audit, V4 household tools, identity/session seam, working memory, legacy extraction/vector storage, STT/TTS, face engine | PC-3 speaker, PC-4 fusion, CM-1…CM-7 longitudinal memory, PC-5 integrated personal acceptance, and PC-6 family remain open (CM-0 closed) |
+| [0015](0015-personal-companion-design.md) | Approved product design; PC-1 to PC-4 are closed (PC-2 and PC-3A with provisional calibrations) | Controller, policy/audit, V4 household tools, identity/session seam, working memory, legacy extraction/vector storage, STT/TTS, face engine | CM-1…CM-7 longitudinal memory, PC-5 integrated personal acceptance and PC-6 family remain open (CM-0 closed) |
 
 ## Propuesta de auditoría — no ejecutable
 
@@ -51,7 +51,7 @@ hasta que Pipec lo promueva y confirme sus seis decisiones.
 
 [ADR-0015](../../adr/0015-owner-grant-scope-and-speaker-binding.md) (**Accepted**, 2026-09-25)
 liga el grant PIN a una operación (hoy incumple ADR-0009) y, por etapas, a la
-evidencia del hablante; el Plan 0051 lo implementa y aún no está redactado.
+evidencia del hablante; el Plan 0051 lo implementa como primer plan de CM-1 y aún no está redactado.
 
 [0053 — consented speaker runtime evidence](../completed/0053-consented-speaker-runtime-evidence.md)
 (PC-3B) **cerró el 2026-09-29** y ya vive en `completed/`: enrolamiento consentido, revocación que
@@ -66,17 +66,18 @@ defecto (`basic`), la voz de la misma persona sube a `strong`, los datos reserva
 exigen `strong`, y otra persona enrolada o dos caras vetan. Aceptado en hardware real por Pipec; el
 replay no está defendido y aún no existe ninguna capacidad reservada.
 
-[0055 — PC-4 identity fusion follow-ups](0055-pc4-identity-fusion-followups.md) es un **Draft** escrito el 2026-09-30 tras cerrar el Plan 0054: un error de base de datos al reconocer la cara degrada a desconocido en vez de fallar el turno, los modelos de cara y voz se precargan al arrancar (la prueba real midió 8 a 13 s en el primer turno protegido), una sola definición de `identity_source` y del reloj, y dos huecos de cobertura cerrados. No cambia la regla de identidad ni el OpenAPI. No es ejecutable hasta que Pipec lo lea y lo promueva a `NOW`.
+[0055 — PC-4 identity fusion follow-ups](0055-pc4-identity-fusion-followups.md) está **Ready** y es el `NOW` (aprobado por Pipec el 2026-10-01), escrito el 2026-09-30 tras cerrar el Plan 0054: un error de base de datos al reconocer la cara degrada a desconocido en vez de fallar el turno, los modelos de cara y voz se precargan al arrancar (la prueba real midió 8 a 13 s en el primer turno protegido), una sola definición de `identity_source` y del reloj, y dos huecos de cobertura cerrados. No cambia la regla de identidad ni el OpenAPI. Se ejecuta en una sesión nueva.
 
-**Paso 0 — carga inicial (sin numerar, decidido 2026-09-24).** Un plan futuro,
-posterior a 0047 y a ADR-0015, que carga los datos base del dueño y su hogar de
-forma presencial desde un archivo local (o formulario) y sustituye al onboarding
-del prompt. Sus reglas —la seguridad no depende del canal de carga, y lo que el
-robot aprende después refina datos sin pisar los cargados— están en el
-*Non-goals* de 0050. No es ejecutable ni tiene número hasta que se redacte.
-El criterio completo de «listo para comprar electrónica» (los 19 slices, 0050,
-ADR-0015/0051 y el paso 0) está en la
-[puerta previa a la compra](../../roadmap/cognitive-roadmap.md#pre-purchase-readiness-gate--plug-it-in-and-it-works).
+**Paso 0 — carga inicial (sin numerar, decidido 2026-09-24, reubicado 2026-09-30).**
+Un plan futuro que carga los datos base del dueño y su hogar de forma presencial
+desde un archivo local (o formulario). Va después de CM-3 porque es el segundo
+canal de entrada del escritor canónico de CM-3; hasta entonces el setup sigue
+siendo `just setup-personal` y `just onboard`. Sus reglas —la seguridad no depende
+del canal de carga, y lo que el robot aprende después refina datos sin pisar los
+cargados— están en el *Non-goals* de 0050. El orden único y las tres vías de la
+compra de electrónica están en el
+[portafolio](../../roadmap/cognitive-roadmap.md#canonical-pre-electronics-delivery-portfolio)
+y en la [puerta previa a la compra](../../roadmap/cognitive-roadmap.md#pre-purchase-readiness-gate--plug-it-in-and-it-works).
 
 ## Server-production capsule — CLOSED 2026-09-03
 
@@ -136,9 +137,7 @@ guarantee in `guarantee_terminal_event`, the `/transcribe/stream` 200
 documented as `application/x-ndjson`, `/health` wording + a
 settings-injectable `create_app`). 1073 tests, 90.10% coverage, all gates
 green. The "how should FastAPI do this?" phase is over; the server baseline
-is done. Only Uvicorn concurrency calibration remains, deferred to its own
-`perf(...)` plan pending measurement on real homelab hardware; it does not
-replace or compete with the canonical `NOW` item.
+is done. Only Uvicorn concurrency calibration remains; since 2026-09-30 it is measured on the homelab server inside PC-5 (portfolio row 12), not in a separate `perf(...)` plan.
 
 ## Status rule
 

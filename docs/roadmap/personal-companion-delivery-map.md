@@ -74,12 +74,12 @@ Four of them (0014, 0020, 0024, 0031) now live under `plans/completed/` — they
 never had their own executable code or gates, and moved there once every
 slice they governed closed elsewhere (0031 closed 2026-09-03, once its
 children 0032–0045 all closed). 0015 remains under `plans/open/` because
-PC-3 through PC-6 are still real work. CM-0 is closed (Plan 0046, 2026-09-08 — a
+PC-5 and PC-6 are still real work (PC-3 and PC-4 closed later). CM-0 is closed (Plan 0046, 2026-09-08 — a
 benchmark and a measured RED baseline, not longitudinal memory); PC-3A / Plan
 0047 closed 2026-09-25 with a provisional PASS (0/24 live-impostor false
 accepts, 0/24 genuine false rejects in-sample, 6/8 replay accepted, p95 231 ms <
-500 ms); the private corpus was deleted, `VOICE` stays untrusted and PC-3B/PC-4
-remain open.
+500 ms); the private corpus was deleted. PC-3B (Plan 0053) and PC-4 (Plan 0054) closed
+later, on 2026-09-29 and 2026-09-30.
 
 ## Code-to-outcome traceability
 
@@ -152,12 +152,15 @@ PC-2 accepted (provisional calibration)
   -> PC-3B consented speaker runtime evidence — Plan 0053 closed 2026-09-29 (untrusted VOICE evidence, default off)
   -> PC-4 conservative identity fusion — Plan 0054 closed 2026-09-30 (face `basic`, voice raises to
      `strong`, reserved data need `strong`; accepted on real hardware, replay not defended)
-  -> CM-1..CM-7 longitudinal memory — unstarted
+  -> hardening: Plan 0055 (PC-4 follow-ups), Plan 0050 (audit repairs) — drafts;
+     voice-pipeline reliability and diagnostics — not written
+  -> CM-1..CM-7 longitudinal memory (CM-1 starts with Plan 0051; seed load after CM-3) — unstarted
   -> PC-5 integrated personal acceptance — unstarted
   -> continue at portfolio row 13; the cross-track tail is not duplicated here
 ```
 
-Plan 0015 remains open as reference; PC-3 through PC-6 are still real work.
+Plan 0015 remains open as reference; PC-5, PC-6 and CM-1…CM-7 are still real
+work (PC-3 and PC-4 closed on 2026-09-29 and 2026-09-30).
 CM-0 is closed (Plan 0046); PC-3A / Plan 0047 is closed (2026-09-25,
 provisional PASS), and PC-5 includes the longitudinal-memory gate defined in
 the [memory delivery map](conversational-memory-delivery-map.md). The complete

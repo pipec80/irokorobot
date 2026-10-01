@@ -30,147 +30,105 @@ social profile (`personal` or `family`) and the responsibility
 `personal + companion`; `care` and `education` remain unimplemented future
 responsibilities with no product claim.
 
-## Priority summary
+## Phases at a glance
 
-| Priority | Capability | Contribution | Depends on |
-|---|---|---|---|
-| C0 | Canonical documentation | Lets later Codex tasks execute bounded plans without chat/local-only context. | Repository inspection |
-| P0.1 | Typed cognitive domain models | One stable vocabulary for evidence, context, confidence, authorization, and outcomes. | C0 |
-| P0.2 | Active-person context | Stops assuming the owner and isolates conversations by identity state. | P0.1 |
-| P0-S1 | Biometric enrollment quarantine | Prevents public biometric poisoning until household policy exists. | P0.2 |
-| P0-S2 | Desktop security and drift | Makes desktop defaults least-exposed and aligns operating guidance. | P0-S1 |
-| P0.3 | Deterministic tools and small controller | Separates evidence gathering, retrieval, policy, generation, and validation. | P0.1–P0.2 |
-| P0.4 | Relational memory v4 | Correct entity links, cardinality, time, provenance, dates, and counts. | P0.1–P0.3 |
-| P0.5 | Household authorization | Filters protected data before retrieval and generation. | P0.2, P0.4 |
-| P0-C | Runtime policy hardening | Makes every enabled public route obey the P0 controller/policy boundary and proves it through the robot. | P0.3–P0.5 |
-| P1.1 | Owner-authenticated memory MVP | Uses a one-use local unlock to prove the authorized “Joaquín y Martina” path and paired denial. | P0-C6 audible streaming |
-| P1.2 | Progressive biometric identity | Adds consented face, then speaker evidence through the same authentication contract. | P1.1, P0.2 |
-| X1 | Server production baseline | Freezes privacy, upload, SQLite, CI, Uvicorn, lifecycle, OpenAPI, and streaming rules before adding the next identity capability. | Plan 0030 real-camera closure |
-| P1.3 | Personal companion acceptance | Demonstrates authentication, authorized longitudinal memory, visual scene, recovery, correction, forgetting, and denial through the real PC path. | P1.1–P1.2, P2.2 longitudinal gate |
-| P2.1 | Situated perception and WorldState | Represents fresh observations independently of durable memory. | P1 controller/policy |
-| P2.2 | Memory lifecycle and retrieval quality | Adds a reproducible benchmark, candidates, scoped authorization, V4 canonical writes, protected episodes, relevance thresholds, correction and complete forgetting. | P0.4–P0.5, P1 identity |
-| P2.3 | Bounded adaptation and initiative | Makes Iroko more personal and proactive without prompt growth or surveillance. | P1 identity, P2.1–P2.2 |
-| P2.4 | Outcomes and feedback contracts | Separates observed results and authorized feedback from events and memory before any responsibility claims learning from reality. | P2.1–P2.2 |
-| P3.1 | Family onboarding UI and consent | Builds the family profile, selective privacy, and reviewable household truth. | P1 acceptance, P2.2 |
-| P3.2 | Family companion interaction | Extends social interaction to multiple members without blanket data access. | P3.1, P1.2, P2.1 |
-| Future care | Bounded care capabilities | Adds only individually validated, non-clinical or clinically governed capabilities; no blanket caregiver authority. | Accepted companion core, P2.4, separate ADR and plans |
-| Future education | Bounded education capabilities | Adds individually validated learning-support capabilities without creating a second brain. | Accepted companion core, P2.4, separate ADR and plans |
-| P4 | Cloud escalation and physical body | Evaluates optional cloud and safe embodiment only after cognitive policy is stable. | P0–P3 acceptance gates |
+- **P0 — trustworthy cognitive foundation:** closed.
+- **P1 — personal companion:** identity closed (PC-1…PC-4); integrated acceptance
+  (PC-5 / P1.3) open.
+- **P2 — situated cognition and memory quality:** conversational memory (P2.2,
+  CM-1…CM-7) is next; perception (P2.1), adaptation (P2.3) and outcomes (P2.4)
+  follow.
+- **P3 — family:** after the personal companion is accepted.
+- **P4 — cloud escalation (optional) and physical body:** after the 19 slices.
+
+The order of the remaining work is the portfolio below; what is already closed
+is summarized in [Closed foundations](#closed-foundations--history).
 
 ## Canonical pre-electronics delivery portfolio
 
-This is the single canonical linearization of the remaining product work before
-P4.2 may begin. The specialized delivery maps explain individual tracks, but
-they do not define competing queues. If another document presents a shorter
-chain, this table governs the cross-track order.
+This is the **only** delivery queue. The specialized maps (personal companion,
+conversational memory, RAG) explain one track in depth and the plan router holds
+the single `NOW` item; neither defines order. If another document shows a
+different order, this table governs and the other document is stale.
 
-The portfolio contains 19 required delivery slices. A slice is a stable product
-outcome, not a reserved plan number and not implementation authorization. Only
-the one item shown as `NOW` in [`docs/plans/README.md`](../plans/README.md) may
-be executed, and only after the user explicitly authorizes its `Ready` plan.
-The `Order` column is the product delivery cursor; `Depends on` lists actual
-hard gates and does not invent a technical dependency merely because two rows
-are adjacent.
+Iroko has one product axis: the personal companion, `STT -> memory -> LLM ->
+TTS`, where memory is the brain. Identity (PC-1…PC-4) answers *who is speaking*
+and is closed. Conversational memory (CM-1…CM-7) is the next chapter of the same
+companion, not a separate program: it makes "¿te acuerdas de…?" work for the
+owner and keeps every private fact closed to anyone else. Documentary retrieval
+(R2, R3) adds documents afterwards; its other stages are already CM or P2.1 work
+(see [RAG §25](../architecture/rag-and-memory-retrieval.md#25-secuencia-de-evolución)).
 
-| Order | Track | Delivery slice | Verifiable outcome / exit evidence | Depends on | Commitment | Current state | Detail and executable ownership |
-|---:|---|---|---|---|---|---|---|
-| 1 | Evaluation | CM-0 — reproducible longitudinal baseline | A versioned synthetic benchmark runs reproducibly; the harness finishes GREEN while the measured product remains honestly RED or passes without relaxed thresholds. | Closed P0/PC-1/PC-2 foundations | Required | **Complete 2026-09-08** — benchmark GREEN, baseline RED (`ac43c58`, exit 1) | [Memory map](conversational-memory-delivery-map.md#delivery-sequence); [Plan 0046](../plans/completed/0046-reproducible-longitudinal-memory-baseline.md) |
-| 2 | Biometrics | PC-3A — speaker calibration study | A frozen local backend and versioned genuine/impostor corpus measure FAR/FRR, replay, quality, failure posture and CPU feasibility without granting identity or authorization. | CM-0 closed; Plan 0047 readiness amendment approved | Required | **Complete 2026-09-25** — Plan 0047 **PROVISIONAL PASS** (2026-09-25): frozen SpeechBrain `1.1.1` ECAPA (`0f99f2d0…`) on CPU; 62 private samples (reference 6, genuine 24 over two sessions and four conditions, live impostor 24 from four consenting adults, replay 8) give a selected cosine-distance threshold of 0.4834 with 0/24 live-impostor false accepts, 0/24 genuine false rejects (in-sample, zero by construction; separation between the farthest genuine and the closest impostor distance 0.342) and 6/8 replay probes accepted; the frozen latency protocol measured p95 231 ms < 500 ms. Voice is not standalone high-assurance evidence and `VOICE` stays untrusted; PC-3B and PC-4 are still open (executed on `feat/0047-speaker-calibration`, merged as PR #134 / `de4c6cf`) | [Plan 0015](../plans/open/0015-personal-companion-design.md#pc-3--speaker-evidence--pc-3a-and-pc-3b-closed); [Plan 0047](../plans/completed/0047-speaker-evidence-calibration-study.md) |
-| 3 | Biometrics | PC-3B — consented speaker runtime evidence | Local enrollment, consent, revocation and verification produce typed `VOICE` evidence; missing, weak or failed evidence remains `unknown` and grants no capability directly. | PC-3A measured and accepted | Required | **Complete 2026-09-29** — [Plan 0053](../plans/completed/0053-consented-speaker-runtime-evidence.md) (re-audited under queue rule 4/6 on 2026-09-25, executed on `feat/0053-speaker-runtime-evidence`): migration 008, consented enrolment and revocation (revocation purges every voiceprint), a pure verdict table and a request-scoped resolver that attaches untrusted `VOICE` evidence once per protected turn, only when face/PIN did not identify the actor, behind `SPEAKER_AUTHENTICATION_ENABLED=false`. Accepted on real hardware (one owner, one laptop microphone): 5 of 5 genuine protected turns `verified` and still denied; silence, a 1 s clip, missing model files and revocation all degrade to `unknown`/`unavailable`; SQLite shows 0 voiceprints after revoke. An independent review found 3 Important and 8 Minor issues, fixed with RED tests. `VOICE` stays untrusted (`cognition/identity.py` has an empty diff), replay is not defended (6/8 accepted in PC-3A) and impostors, 1.5–3 s utterances and a second acoustic condition were not measured; fusion is PC-4 | [Plan 0015](../plans/open/0015-personal-companion-design.md#pc-3--speaker-evidence--pc-3a-and-pc-3b-closed); [Plan 0053](../plans/completed/0053-consented-speaker-runtime-evidence.md) |
-| 4 | Identity | PC-4 — conservative multimodal fusion | PIN/session, face and voice evidence are fused deterministically; conflict is `ambiguous`; expiry, absence, replay/spoof risk, provider failure and local recovery have explicit outcomes. | PC-3B; existing PC-2 face evidence | Required | **Complete 2026-09-30** — [Plan 0054](../plans/completed/0054-face-default-identity-fusion.md) / [ADR-0016](../adr/0016-face-and-voice-identity-fusion.md) (accepted on real hardware by Pipec, one owner and one laptop camera and microphone): the owner's face alone identifies at assurance `basic`, a verified voice of the same person raises it to `strong`, reserved data (`SECURITY`) will require `strong`, and another enrolled person or two faces veto even with a PIN token. No reserved capability exists yet, and replay is measured, not defended: a phone-screen photo (3 attempts) and video (2 attempts) did not identify | [Plan 0015](../plans/open/0015-personal-companion-design.md#pc-4--conservative-identity-fusion--closed-plan-0054); [Plan 0054](../plans/completed/0054-face-default-identity-fusion.md) |
-| 5 | Memory policy | CM-1 — explicit personal-memory capabilities | Policy distinguishes `read`, `propose`, `confirm`, `correct` and `forget` scopes without turning identity into authorization. | PC-4; current identity and policy foundations | Required | Unplanned | [Memory map](conversational-memory-delivery-map.md); future bounded plan |
-| 6 | Memory identity | CM-2 — authorized actor propagation | The resolved authorized actor reaches generic conversation without prompt name interpolation or implicit expansion of the current grant. | CM-1 | Required | Unplanned | [Memory map](conversational-memory-delivery-map.md#delivery-sequence); future bounded plan |
-| 7 | Memory writes | CM-3 — candidates and canonical V4 promotion | Automatic extraction creates candidates; deterministic confirmation/promotion writes canonical V4 facts and relations with provenance and contradiction handling. | CM-0, CM-1, CM-2 | Required | Unplanned | [Memory map](conversational-memory-delivery-map.md#lifecycle); future bounded plan |
-| 8 | Memory privacy | CM-4 — protected episodes | Episodes declare owner, subjects, visibility, sensitivity, consent, validity and retention instead of relying on unstructured metadata. | CM-3 | Required | Unplanned | [Memory map](conversational-memory-delivery-map.md#delivery-sequence); future bounded plan |
-| 9 | Memory retrieval | CM-5 — authorized relevant retrieval | Authorization, lifecycle and validity filter candidates before the prompt; relevance policy permits zero results and preserves provenance. | CM-4 | Required | Unplanned | [Memory map](conversational-memory-delivery-map.md#retrieval); future bounded plan |
-| 10 | Memory lifecycle | CM-6 — complete correction and forgetting | Correction and deletion propagate through facts, relations, episodes, embeddings, summaries and caches without protected content surviving in retrieval. | CM-3 through CM-5 | Required | Unplanned | [Memory map](conversational-memory-delivery-map.md#forgetting); future bounded plan |
-| 11 | Memory acceptance | CM-7 — real longitudinal scenario | The real server/robot path proves `learn -> restart -> recall -> correct -> restart -> recall current truth -> forget -> do not disclose`. | CM-0 through CM-6, PC-3, PC-4 | Required | Unplanned | [Memory map](conversational-memory-delivery-map.md#delivery-sequence); future bounded plan |
-| 12 | Personal product | PC-5 / P1.3 — integrated personal acceptance | Pipec completes approved voice, biometric, protected-memory, visual, correction, forgetting, denial, degradation and audible-output scenarios with literal transcripts and audit outcomes. | PC-4 and CM-7 longitudinal gate | Required | Unplanned | [Plan 0015](../plans/open/0015-personal-companion-design.md#pc-5--integrated-personal-companion-acceptance--unstarted); future bounded plan |
-| 13 | Perception | P2.1 — structured perception and `WorldState` | Typed observations for people, objects, sensor state and location carry source, time, confidence and expiry; stale state expires and simulated sensors can later be replaced by firmware. | P1 controller and policy | Required | Unplanned | [Memory and world state](../architecture/memory-and-world-state.md#world-state-is-not-long-term-memory); future bounded plan |
-| 14 | Documentary retrieval | R2 — minimum authorized source | One local Markdown or text source type is versioned, classified, chunked and retrieved with owner, visibility, provenance and deletion semantics. | CM lifecycle and authorization stable | Required | Unplanned | [RAG evolution](../architecture/rag-and-memory-retrieval.md); future ADR/plan as required |
-| 15 | Hybrid retrieval | R3 — lexical and hybrid baseline | Local lexical and vector retrieval operate over authorized candidates; RRF, deduplication, zero-result behavior and measured quality cover semantic and exact-term queries. | R2; CM-5 retrieval boundary | Required | Unplanned | [RAG evolution](../architecture/rag-and-memory-retrieval.md); future ADR/plan as required |
-| 16 | Interaction | P2.3 — bounded adaptation and initiative | Personality remains coherent and private; transient interactions do not become permanent traits; initiative is explainable, sparse, rate-limited, cancelable and disableable. | P2.1, P2.2 and accepted personal identity | Required | Unplanned | [P2.3](#p23--personality-adaptation-and-bounded-initiative); future bounded plan |
-| 17 | Learning evidence | P2.4 — outcomes and feedback | Decisions/actions link to observed outcomes and authorized feedback without collapsing events, telemetry or autobiographical memory or claiming unobserved learning. | P2.1 and P2.2 | Required | Unplanned | [P2.4](#p24--outcomes-and-feedback-contracts); future bounded plan |
-| 18 | Family | P3.1 / PC-6A — onboarding and consent | One idempotent service creates household members, roles, relationships, visibility and revocable consent; owner/admin does not inherit another adult's private data. | PC-5, P2.2 | Required | Unplanned | [P3.1](#p31--family-onboarding-ui-and-consent); [Plan 0015](../plans/open/0015-personal-companion-design.md#pc-6--family-profile--unstarted); future bounded plan |
-| 19 | Family | P3.2 / PC-6B — family interaction acceptance | Multi-member acceptance covers adults, children, guests, pets, identity conflict, personal/shared/`recipient_only` isolation and biometric-failure recovery. | P3.1, P1.2, P2.1 | Required | Unplanned | [P3.2](#p32--family-companion-interaction); future bounded plan |
+Numbered rows are the 19 required product slices. Rows marked `—` are hardening
+or data-loading work that belongs to the queue without being a slice, so the
+count stays 19. A row is neither a reserved plan number nor authorization: only
+the `NOW` item in [`docs/plans/README.md`](../plans/README.md) may be executed,
+after Pipec authorizes its `Ready` plan, and each row is re-audited against the
+merged code before its plan is written (queue rule 4). `Depends on` lists hard
+gates only.
 
-After all 19 required slices close with their own evidence, P4.2 may open its
-first physical-architecture plan. That plan must decide the Raspberry Pi versus
-microcontroller responsibility boundary, typed action proposals, capability
-checks, electrical and motion safety, simulation, emergency stop and human
-acceptance before motion. P4.1 cloud escalation is optional and does not block
-P4.2.
+| Order | Slice | Verifiable outcome / exit evidence | Depends on | State | Detail |
+|---:|---|---|---|---|---|
+| 1 | CM-0 — longitudinal benchmark | A versioned synthetic suite runs reproducibly; the harness is GREEN and the measured product honestly RED. | — | **Complete 2026-09-08** — Extraction scored precision 0.25 and recall 0.25. The full longitudinal run recorded 75 steps: 3 failed and 72 unsupported. The report's `source_commit` is `38fa89c`; `ac43c58` is the commit that added the report. It is a historical measurement, and memory code changed afterwards (PR #131, Plan 0053). | [Plan 0046](../plans/completed/0046-reproducible-longitudinal-memory-baseline.md); [baseline](../evals/0046-longitudinal-memory-baseline.md) |
+| 2 | PC-3A — speaker calibration | FAR/FRR, replay, quality and CPU latency measured offline on a frozen backend. | CM-0 | **Complete 2026-09-25** — provisional: threshold 0.4834, 0/24 false accepts, 6/8 replay accepted, p95 231 ms | [Plan 0047](../plans/completed/0047-speaker-evidence-calibration-study.md) |
+| 3 | PC-3B — consented speaker evidence | Local enrolment, revocation and typed `VOICE` evidence; weak or failed evidence is `unknown`. | PC-3A | **Complete 2026-09-29** | [Plan 0053](../plans/completed/0053-consented-speaker-runtime-evidence.md) |
+| 4 | PC-4 — identity fusion | The owner's face identifies at `basic`, face plus verified voice at `strong`; another enrolled person or two faces veto; the PIN is optional. | PC-3B | **Complete 2026-09-30** — accepted on real hardware; replay not defended; no reserved capability yet | [Plan 0054](../plans/completed/0054-face-default-identity-fusion.md); [ADR-0016](../adr/0016-face-and-voice-identity-fusion.md) |
+| — | PC-4 follow-ups | A store error during face recognition degrades to `unknown`; face and speaker models warm at startup; one `identity_source` and one clock; two coverage holes closed. | PC-4 | **Ready — `NOW`** (approved 2026-10-01) | [Plan 0055](../plans/open/0055-pc4-identity-fusion-followups.md) |
+| — | Audit repairs | The 12 repairs of the 0049 audit: import cycles, one seam to Ollama, fail-closed parsing of Ollama transport responses (not the classic `response`/`emotion` parser), image bounds, stored classification honoured, owner-scoped readiness, setup contract, dead settings, no names in logs, architecture guards, the owner → stranger matrix, docs truth. | — | Draft; re-audit against PC-3B/PC-4 before promotion | [Plan 0050](../plans/open/0050-server-audit-repairs.md) |
+| — | Voice-pipeline reliability and truthful diagnostics | Whisper no longer returns its own initial prompt from a noise clip (seen four times) and the first utterance after a restart is transcribed correctly; the classic parser rejects a non-text `response` (for example `{"response": []}`) while the raw-text fallback stays a separate, explicit decision; `just test-pipeline` runs again (its `llm.generate_response` call lacks the client) and is described as an STT → LLM → TTS smoke test, not the cognitive path; `just eval-chat` measures the streaming `EMOTION:` protocol (0049 O-04), not only the classic generator; the longitudinal evaluator reports the three staged verdicts (personal, family, full suite) defined in the [evaluation spec](../architecture/longitudinal-conversational-memory-evaluation.md#cm-0-measured-baseline). | Audit repairs | Not written | [0049 O-04](../plans/open/0049-server-objective-conformance-audit.md) |
+| 5 | CM-1 — scoped memory capabilities | First every grant is bound to one named operation ([ADR-0015](../adr/0015-owner-grant-scope-and-speaker-binding.md) decision 1, implemented by **Plan 0051**, the first plan of this slice; its scope must also cover the voice enrolment and revocation endpoints Plan 0053 added after the ADR, a household-looking stub answer that today spends a grant, and the optional PIN hardware case left unrun by Plan 0054); then policy distinguishes `read`, `propose`, `confirm`, `correct` and `forget` for personal memory, and `SECURITY` data declare their `strong` requirement, without turning identity into authorization. | PC-4 | Unplanned | [Memory map](conversational-memory-delivery-map.md#delivery-sequence) |
+| 6 | CM-2 — authorized actor propagation | The actor and grants resolved by face, voice or PIN reach the generic conversation, with no name interpolated into the prompt and no widened grant. Today identity is resolved only on protected turns ([ADR-0016 §5](../adr/0016-face-and-voice-identity-fusion.md#5-turn-order)), so CM-2 needs a new ADR that supersedes that section: when a generic turn is identified (cost: one face check and one ~0.5 s voice embedding), how an authorized session is kept, and when its history is discarded. `just chat-test` is adapted, because it expects continuity between unauthenticated public requests. Its first visible result is short-term continuity: the identified actor's last turns (in-process working memory, never persisted) reach the next turn, and a change of speaker or an `unknown`/`ambiguous` turn clears them — with its own acceptance test. Connecting the actor is not enabling durable memory: legacy retrieval and consolidation stay blocked, and each read or write opens only in the slice that implements its guarantees (writes CM-3, episodes CM-4, retrieval CM-5). | CM-1 | Unplanned | [Memory map](conversational-memory-delivery-map.md#current-fracture) |
+| 7 | CM-3 — candidates and the canonical V4 writer | Extraction only proposes; one deterministic writer assigns the classification (never the speaker) and promotes to V4 facts and relations with provenance, deduplication and contradictions. Every channel it claims is tested separately: today classic and streaming voice schedule consolidation but `/chat` does not. A spoken "lo recordaré" from the LLM is never evidence of a write; confirming, correcting and forgetting need their own controller branches. | CM-2; audit repairs | Unplanned | [Memory map](conversational-memory-delivery-map.md#lifecycle) |
+| — | Seed load ("step 0") | Owner, household, photos and classifications load in person from a local file or form as a second input channel of the CM-3 writer; seeded sensitive facts change only with owner verification; the owner → stranger matrix passes once per channel. Until then `just setup-personal` and `just onboard` remain the setup. | CM-3 | Not written | Rules in [0050 *Non-goals*](../plans/open/0050-server-audit-repairs.md#non-goals) |
+| 8 | CM-4 — protected episodes | Episodes declare owner, subjects, visibility, sensitivity, consent, validity and retention. | CM-3 | Unplanned | [Memory map](conversational-memory-delivery-map.md#delivery-sequence) |
+| 9 | CM-5 — authorized relevant retrieval | Person, visibility, sensitivity and validity filter vector and structured candidates before the prompt; a relevance threshold permits zero results and keeps provenance (RAG stage R1). Structured household reads beyond the children list and count (today every other authorized family question answers "todavía no está conectada") go through the same authorized seam. The first reserved (`SECURITY`) category becomes real here: written with that classification by the CM-3 writer, read only at assurance `strong`, while `basic` (face alone) and strangers get the generic denial; which datum it is is decided when CM-3 is planned. | CM-4 | Unplanned | [Memory map](conversational-memory-delivery-map.md#retrieval) |
+| 10 | CM-6 — correction and forgetting | Correction and deletion reach facts, relations, episodes, embeddings, summaries and caches. | CM-3 through CM-5 | Unplanned | [Memory map](conversational-memory-delivery-map.md#forgetting) |
+| 11 | CM-7 — real longitudinal scenario | The real server/robot path proves `learn -> restart -> recall -> correct -> restart -> recall current truth -> forget -> do not disclose`, including turn-to-turn continuity, one `SECURITY` datum (`strong` reads it, `basic` and strangers do not) and the benchmark's **personal acceptance** verdict PASS without relaxed thresholds. Family acceptance stays `pending` for P3.2 (`recipient_only_message`, `two_adult_private_facts`) and the full suite keeps failing until then; no scenario is excluded. | CM-0 through CM-6 | Unplanned | [Evaluation](../architecture/longitudinal-conversational-memory-evaluation.md#pc-5-longitudinal-gate) |
+| 12 | PC-5 / P1.3 — integrated personal acceptance | Pipec completes voice, biometric, protected-memory, visual, correction, forgetting, denial, degradation and audible-output scenarios with literal transcripts; it decides whether scene description must work in streaming mode (today the robot refuses to start with streaming and server vision together, so scenes are classic-only); the CPU/RAM/latency budget and the Uvicorn concurrency (`UVICORN_LIMIT_CONCURRENCY`) are measured on the homelab server. | CM-7 | Unplanned | [Plan 0015](../plans/open/0015-personal-companion-design.md#pc-5--integrated-personal-companion-acceptance--unstarted) |
+| 13 | P2.1 — structured perception and `WorldState` | Typed observations for people, objects, sensor state and location carry source, time, confidence and expiry; simulated sensors can later be replaced by firmware. | P1 controller and policy | Unplanned | [Memory and world state](../architecture/memory-and-world-state.md#world-state-is-not-long-term-memory) |
+| 14 | R2 — minimum documentary source | One local Markdown or text source is versioned, classified, chunked and retrieved with owner, visibility, provenance and deletion. | CM-5, CM-6 | Unplanned | [RAG §25](../architecture/rag-and-memory-retrieval.md#25-secuencia-de-evolución) |
+| 15 | R3 — lexical and hybrid retrieval | Lexical and vector retrieval over authorized candidates; RRF, deduplication, zero results and measured quality. | R2 | Unplanned | [RAG §15](../architecture/rag-and-memory-retrieval.md#15-recuperación-híbrida) |
+| 16 | P2.3 — bounded adaptation and initiative | Personality stays coherent and private; initiative is explainable, sparse, rate-limited and disableable. | P2.1, CM-7 | Unplanned | [P2.3](#p23--personality-adaptation-and-bounded-initiative) |
+| 17 | P2.4 — outcomes and feedback | Decisions link to observed outcomes and authorized feedback without claiming unobserved learning. | P2.1, CM-7 | Unplanned | [P2.4](#p24--outcomes-and-feedback-contracts) |
+| 18 | P3.1 / PC-6A — family onboarding and consent | One idempotent service, the seed-load writer extended to more members, creates members, roles, relationships, visibility and revocable consent. | PC-5 | Unplanned | [P3.1](#p31--family-onboarding-ui-and-consent) |
+| 19 | P3.2 / PC-6B — family interaction acceptance | Adults, children, guests, pets, identity conflict, personal/shared/`recipient_only` isolation and biometric-failure recovery; the family-scope CM benchmark scenarios left pending by CM-7 turn GREEN. | P3.1, P2.1 | Unplanned | [P3.2](#p32--family-companion-interaction) |
+
+After all 19 slices close with their own evidence, P4.2 may open its first
+physical-architecture plan: the Raspberry Pi versus microcontroller boundary,
+typed action proposals, capability checks, electrical and motion safety,
+simulation, emergency stop and human acceptance before motion. P4.1 cloud
+escalation is optional and does not block P4.2.
 
 ### Cross-cutting gates and conditional work
 
-These items do not increase the 19-slice count. Required cross-cutting evidence
-belongs in the plans that create the load or behavior; conditional work opens
-only after a measured need.
+These items do not add slices. Required evidence belongs to the plan that creates
+the load or the behavior; conditional work opens only after a measured need.
 
 | Item | Classification | Required disposition | Owned by |
 |---|---|---|---|
-| CPU, RAM, token and latency budget | Cross-cutting required evidence | Measure bounded contention among STT, LLM, VLM, embeddings and consolidation; do not create an unbounded parallel workload or a separate scheduler by default. | CM/R2/R3 implementation gates and PC-5 acceptance |
-| Diarization / simultaneous speakers | Required decision, conditional implementation | Before P3.2 becomes `Ready`, choose and test either an explicit turn-taking product constraint or local diarization. Speaker verification alone is not diarization. | P3.2 readiness design; a separate plan only if diarization is selected |
-| R4 PDF, OCR, advanced chunking and reranking | Conditional | Open only when real documentary cases or R3 metrics prove Markdown/text plus base hybrid retrieval insufficient. | [RAG evolution](../architecture/rag-and-memory-retrieval.md) |
-| Alternative TTS | Conditional, non-blocking | Piper and the WAV contract remain the accepted baseline; compare another adapter only for a measured product need. | Future plan outside the pre-electronics critical path |
-| Care and education | Future responsibilities, non-blocking | Require separate ADRs, policies, risks, outcomes/feedback and acceptance after the companion core. | Future responsibility profiles |
+| CPU, RAM, token and latency budget | Cross-cutting required evidence | Measure bounded contention among STT, LLM, VLM, embeddings and consolidation, plus the Uvicorn concurrency limit, on the homelab server; no unbounded parallel workload or separate scheduler by default. | CM plans that add load; PC-5 acceptance |
+| Liveness and replay defense | Conditional per [ADR-0016 §9](../adr/0016-face-and-voice-identity-fusion.md#9-replay-and-spoofing-measured-not-closed) | Replay is measured, not defended: a photograph plus a recording of the exact question can still reach `strong`. A liveness plan opens only if the measurement justifies it; making it a mandatory gate needs a new ADR that supersedes that section. | CM-5, which introduces the first reserved read, re-measures and decides |
+| Remaining biometric measurements | Required before relying on voice beyond the laptop | Runtime impostors, genuine utterances of 1.5–3 s and a second acoustic condition were never measured (PC-3B). | The recalibration of electronics track 1, or PC-5 if the laptop stays the body |
+| Privacy contract of the senses | Required before any new continuous capture | What is kept, what never leaves the device, and a physical switch and indicator once there is hardware. Needs an ADR. It gates new capture (an always-on microphone or camera, recording beyond one turn), not the purchase: porting today's per-turn capture to the Pi does not need it. | An ADR written with the seed load |
+| Diarization / simultaneous speakers | Required decision, conditional implementation | Before P3.2 becomes `Ready`, choose an explicit turn-taking constraint or local diarization. Speaker verification is not diarization. | P3.2 readiness design |
+| R4 PDF, OCR, advanced chunking and reranking | Conditional | Only when real documents or R3 metrics prove Markdown/text plus hybrid retrieval insufficient. | [RAG evolution](../architecture/rag-and-memory-retrieval.md) |
+| Alternative TTS | Conditional, non-blocking | Piper and the WAV contract remain the baseline. | Future plan outside the critical path |
+| Care and education | Future responsibilities, non-blocking | Separate ADRs, policies, outcomes/feedback and acceptance after the companion core. | Future responsibility profiles |
 
 ### Pre-purchase readiness gate — "plug it in and it works"
 
-Recorded 2026-09-24 on Pipec's decision. New electronics are not budgeted yet, and
-the goal is that when they are bought they connect to a brain that already
-works, with no cognitive or security rework. This section says exactly what
-"ready" means so that nobody has to reconstruct it from a conversation. It adds
-no plan and authorizes no work; the single-WIP rule and the table above still
-govern order.
+Revised 2026-09-30 on Pipec's decision; it replaces the 2026-09-25 rule "buy the
+electronics when CM-7 closes" and its blocks A–D. The server is a generic audio
+API and the robot a generic audio client
+([ADR 0002](../adr/0002-server-robot-separation.md)), and `robot/` already owns
+capture, playback and the camera. Buying electronics therefore splits into three
+independent tracks, and only the last two wait on software:
 
-**Ready to buy electronics when all four blocks are closed, each with its own
-evidence:**
-
-| Block | What must be true | Where it is defined | State on 2026-09-25 |
+| Track | What | Gate | Why |
 |---|---|---|---|
-| A. The memory path of the portfolio (amended 2026-09-25) | PC-3B, PC-4 and CM-1…CM-7 are closed (the other rows of the 19 continue after the purchase; see below) | The portfolio table | 4 of 19 closed (CM-0, PC-3A, PC-3B, PC-4 — [Plan 0054](../plans/completed/0054-face-default-identity-fusion.md), 2026-09-30); `NOW` is empty |
-| B. Audit repairs (not counted in the 19) | [Plan 0050](../plans/open/0050-server-audit-repairs.md) executed (12 tasks: import cycles, one seam to Ollama, fail-closed parsing, image bounds, stored classification honoured, owner-scoped readiness, setup contract, dead settings, no names in logs, architecture guards, the owner → stranger matrix, docs truth) | 0050; [0049 §13](../plans/open/0049-server-objective-conformance-audit.md) | Draft; 0047 closed, awaiting Pipec's promotion |
-| C. Operation-bound grants | [ADR-0015](../adr/0015-owner-grant-scope-and-speaker-binding.md) accepted and implemented (Plan 0051): a PIN or face grant is bound to one named operation and, in stages, to the speaker; closes F-08, F-09, F-16 and the ADR-0009 non-conformance | ADR-0015, ADR-0008, ADR-0009 | ADR accepted 2026-09-25; Plan 0051 not written |
-| D. Seed load ("step 0") | The baseline data (owner, household, photos, classifications) loads in person from a local file or form through the same writer as conversation; the owner → stranger matrix passes once per loading channel; it replaces the onboarding that used to live in the agent prompt | 0050 *Non-goals*; unnumbered plan after 0047 and ADR-0015 | Not written |
-
-Blocks B–D are not part of the 19 (the count stays 19) but gate the purchase
-because hardware attached to an unbound grant, or to a brain with no baseline
-data, would repeat the problem the audit found. P4.2 still opens only after A;
-this gate is what makes the *purchase* safe.
-
-**Amended 2026-09-25 (Pipec's decision): electronics are bought when the longitudinal
-memory closes.** At CM-7 the brain is solid enough to test with real hardware, so the
-purchase point moves earlier. Block A then means the memory path (PC-3B, PC-4,
-CM-1…CM-7); the other rows of the 19 (PC-5, P2.1, R2, R3, P2.3, P2.4, P3.1, P3.2)
-continue with the hardware in hand, and P4.2 (the physical-architecture plan) still
-waits for all 19. One risk is recorded: P2.1 defines the typed sensor-observation
-contract, so its design must exist before the sensors are chosen, or the purchase can
-force rework.
-
-**Agreed delivery order to longitudinal memory (2026-09-25).** One plan in `NOW` at a
-time; each row is re-audited before it gets a number (rule 6).
-
-| Step | Work | Why here |
-|---:|---|---|
-| 0 | Accept ADR-0015; re-audit PC-3B and write its plan | Decisions and documents, no code. **Done 2026-09-25** — ADR-0015 accepted; PC-3B re-audited, written as [Plan 0053](../plans/completed/0053-consented-speaker-runtime-evidence.md), its eight decisions answered and the plan promoted to `NOW` |
-| 1 | PC-3B — consented voice enrollment, revocation, typed `VOICE` evidence | **Done 2026-09-29** ([Plan 0053](../plans/completed/0053-consented-speaker-runtime-evidence.md)). Pipec's original route: voice and face to authorize private data |
-| 2 | PC-4 — voice + face fusion, replay and liveness, `ambiguous` on conflict, PIN optional and administrative (ADR-0016) | Closes the authorization of private data; decides the face veto (ADR-0015 §2). **Done 2026-09-30** ([Plan 0054](../plans/completed/0054-face-default-identity-fusion.md), [ADR-0016](../adr/0016-face-and-voice-identity-fusion.md), accepted on real hardware by Pipec): the face is the default, voice raises to `strong`, the PIN is optional and administrative; replay is not defended and no reserved capability exists yet |
-| 3 | Plan 0051 — a grant is bound to one named operation | CM-1 adds scoped permissions; ADR-0015 requires each to declare its scope |
-| 4 | Plan 0050 — the 12 audit repairs | One seam to Ollama, fail-closed parsing, owner → stranger matrix: the base CM-3 builds on |
-| 5 | Step 0 — seed load of the owner and household data (plan not written) | Baseline data in place before memory learns anything |
-| 6 | Uvicorn concurrency calibration (small `perf` plan) | The only open leftover of the server baseline |
-| 7 | CM-1 … CM-7 in order | The roadmap chain; CM-7 is the real longitudinal scenario |
-| 8 | Buy the electronics | Memory is the solid thing to test on hardware |
-
-Independent of the queue: the second GT-P3110 tablet (a hobby task).
-
-**Cross-cutting evidence that must also exist** (owned by the plans that create
-the load, see the table above): the CPU/RAM/token/latency budget measured across
-STT, LLM, VLM, embeddings and consolidation; the diarization decision before
-P3.2 (explicit turn-taking constraint or local diarization); and the real
-longitudinal scenario CM-7 (`learn → restart → recall → correct → restart →
-recall current truth → forget → do not disclose`).
+| 1. The same senses on the Pi | Raspberry Pi 5 with a microphone, a speaker and a camera replacing the laptop's | None in the cognitive queue | It is a port of the robot client; the server does not change. Required work: repeat the face ([Plan 0030](../plans/completed/0030-real-camera-face-acceptance.md)) and speaker ([Plan 0047](../plans/completed/0047-speaker-evidence-calibration-study.md)) calibrations on the new devices, because the thresholds `0.5815` and `0.4834` were measured on the laptop and are device-specific. |
+| 2. New kinds of sensors | Temperature, distance, presence and similar | The P2.1 contract is designed (row 13) | A sensor is an adapter behind a typed observation; choosing sensors before the contract can force rework. |
+| 3. Anything that moves | Motors and actuators | P4.2, after the 19 slices | Typed action proposals, a safety layer, an emergency stop and human acceptance come first. |
 
 **What "it works when plugged in" means for any new device.** A device is an
 adapter behind an existing software contract, never a reason to change one:
@@ -190,10 +148,10 @@ adapter behind an existing software contract, never a reason to change one:
 **Not required before buying, on purpose:** a fingerprint reader or any other
 electronic biometric (future adapter for the identity seam, no ADR yet), cloud
 escalation (P4.1, optional), R4 PDF/OCR, alternative TTS, and the care and
-education responsibilities. The current PC microphone, webcam and speakers are
-the provisional body until then.
+education responsibilities. Independent of the queue: the second GT-P3110 tablet
+(a hobby task).
 
-**Who decides.** Closing a block is evidence-based (each plan's own gates). The
+**Who decides.** Closing a row is evidence-based (each plan's own gates). The
 decision to spend money is Pipec's and is not made by this document; it only
 states what is ready.
 
@@ -205,336 +163,56 @@ states what is ready.
 4. Close it with observed RED/GREEN evidence, review, required gates and real
    acceptance where applicable.
 5. Update this row, the specialized delivery map, current state and the plan
-   router in the same closure documentation change.
+   router in the same closure documentation change. Closure narratives live in
+   the completed plan, not in this table.
 6. Re-audit the next row before assigning a plan number or writing its detailed
    plan. New evidence may split or combine implementation plans, but it must not
    silently remove the row's product outcome.
 
-CM-0 (Plan 0046, 2026-09-08) and PC-3A (Plan 0047, 2026-09-25) are closed. Plan 0047 froze SpeechBrain `1.1.1` `EncoderClassifier` with the ECAPA revision
-`0f99f2d0…` (Apache-2.0, CPU, offline after cache) and measured it on a private
-corpus of 62 samples, since deleted: threshold 0.4834, 0/24 live-impostor false
-accepts (95 % rule-of-three bound ≈ 12.5 %), 0/24 genuine false rejects
-(in-sample, zero by construction; separation 0.342), 6/8 replay probes accepted
-and a frozen-protocol p95 of 231 ms against the 500 ms budget. The result is
-**provisional**: one owner, four impostors, no held-out data. Replay acceptance
-forbids treating voice as standalone high-assurance evidence, and `VOICE` stays
-untrusted. The next row, PC-3B (consented enrollment, revocation and runtime
-evidence), closed 2026-09-29 as
-[Plan 0053](../plans/completed/0053-consented-speaker-runtime-evidence.md): `VOICE`
-evidence exists behind a default-off flag. PC-4 (fusion) closed 2026-09-30 as
-[Plan 0054](../plans/completed/0054-face-default-identity-fusion.md) (accepted on real
-hardware; replay not defended; no reserved capability yet). `NOW` is empty. Rows
-4–19 are not executable and their plan numbers are intentionally unreserved.
+Rows 1–4 are closed and `NOW` is Plan 0055. What each row still needs before
+it can become `NOW` (checked 2026-10-01):
 
-## C0 — Documentation foundation
+| Work | What is really missing |
+|---|---|
+| Plan 0055 | Nothing: approved as `Ready` and selected as `NOW` by Pipec on 2026-10-01; its Task 0 re-verifies the base when it is executed |
+| Plan 0050 | Revalidated after 0055 merges (known items (a)–(h) in the plan) and Pipec's decisions 1–5 |
+| Voice-pipeline reliability and diagnostics | A plan is written: Whisper prompt echo and first-turn STT, the classic parser, `test-pipeline`, `eval-chat` streaming and the staged benchmark verdicts |
+| CM-1 / Plan 0051 | Plan 0051 is written; CM-1 must also cover the later memory permissions (`read`, `propose`, `confirm`, `correct`, `forget`) |
+| CM-2 | An ADR on identity in generic turns (it supersedes ADR-0016 §5), then the plan |
+| CM-3 → seed load → CM-7 | Separate plans; the first `SECURITY` datum and its gates are specified before it is enabled |
+| PC-5 | The streaming-with-vision scope is decided when its plan is written; measurement on the homelab happens during acceptance |
 
-This phase is the current documentation-only work. It creates accepted ADRs,
-an implementation snapshot, canonical architecture documents, this roadmap,
-and narrow executable plans. It makes no production-code change.
+## Closed foundations — history
 
-**Exit gate**
+Closed work is summarized here in one line per phase; its evidence (commands,
+counts, commits, real-hardware runs) lives in each completed plan, not in this
+file.
 
-- all future requirements needed for the cognitive foundation exist in tracked
-  documents;
-- `project-history/local-docs/` is explicitly historical/reference-only;
-- contradictions between current behavior and target behavior are named;
-- a future Codex can start from one named plan without reconstructing the chat;
-- no code or commit is included in the documentation pass.
+| Phase | Outcome | Closed by |
+|---|---|---|
+| C0 | Canonical tracked documentation; `project-history/` is reference-only | Documentation pass |
+| P0.1–P0.2 | Typed domain models; active-person context with `identified`, `probable`, `unknown` and `ambiguous`; working history isolated by identity | [0001](../plans/completed/0001-cognitive-domain-models.md), [0002](../plans/completed/0002-active-person-context.md) |
+| P0-S | Public biometric enrollment quarantined; least-exposed desktop defaults; cloud providers quarantined | [0002a](../plans/completed/0002a-local-first-provider-quarantine.md), [0002b](../plans/completed/0002b-biometric-enrollment-quarantine.md), [0002c](../plans/completed/0002c-desktop-security-and-drift.md) |
+| P0.3 | Small typed controller; deterministic date and age; no ToolRegistry until several real tools share a need | [0003](../plans/completed/0003-typed-controller-and-deterministic-tools.md) |
+| P0.4 | Relational memory V4: entity-ID relations, cardinality, lifecycle and a dry-run-first migration; v3 stays the runtime compatibility path | [0004](../plans/completed/0004-relational-memory-v4-design-and-migration.md), [0005](../plans/completed/0005-relational-memory-v4-implementation.md) |
+| P0.5 | Deterministic fail-closed household authorization; policy-gated V4 reader and family tools | [0007](../plans/completed/0007-household-authorization-foundation.md)–[0010](../plans/completed/0010-policy-gated-v4-family-tools.md) |
+| P0-C | Every public route obeys the controller/policy boundary; combined operator acceptance on 2026-08-25 | [0011](../plans/completed/0011-p0-closure-and-acceptance.md)–[0023](../plans/completed/0023-p0-grounded-visual-dialogue.md) |
+| P1.1 / PC-1 | A freshly authenticated owner hears the children's names through the real server/robot path; without authentication nothing is revealed | [0024](../plans/completed/0024-owner-authenticated-memory-mvp-design.md)–[0028](../plans/completed/0028-owner-authenticated-memory-runtime-acceptance.md) |
+| X1 | Server production baseline: privacy, uploads, PIN hardening, SQLite transactions, CI, Uvicorn, lifecycle, OpenAPI and streaming | [0031](../plans/completed/0031-server-production-baseline-design.md)–[0045](../plans/completed/0045-async-test-client-resources-parity.md), [0048](../plans/completed/0048-fastapi-baseline-final-hardening.md) |
+| CM-0 | Longitudinal benchmark and its RED baseline | [0046](../plans/completed/0046-reproducible-longitudinal-memory-baseline.md) |
+| P1.2 / PC-2…PC-4 | Consented face evidence (threshold 0.5815), consented speaker evidence (0.4834) and fusion: face `basic`, face plus voice `strong`, another person vetoes | [0029](../plans/completed/0029-consented-local-face-evidence.md), [0030](../plans/completed/0030-real-camera-face-acceptance.md), [0047](../plans/completed/0047-speaker-evidence-calibration-study.md), [0053](../plans/completed/0053-consented-speaker-runtime-evidence.md), [0054](../plans/completed/0054-face-default-identity-fusion.md) |
 
-## P0 — Trustworthy cognitive foundation
+Real-hardware acceptances are historical: they cover only the recorded
+scenarios, devices and configuration and are not a new run on the current tree.
+Limits carried forward from these phases, each owned by a queue row or a
+cross-cutting item above: no liveness (a photograph identifies at `basic`) and
+replay measured but not defended; on hardware Plan 0054 proved the two-faces
+veto, while the veto of a single other enrolled person is proven only against
+test doubles (Plan 0055, Task 4); the calibrations are provisional (one owner,
+few impostors, laptop devices); the grant is not bound to an operation (CM-1);
+the generic conversation has no continuity or memory (CM-2…CM-5).
 
-P0 answers five questions for every turn: What happened? Who is interacting?
-What are they allowed to do or know? What evidence is needed? What result can
-the system support?
-
-### P0.1 — Typed cognitive domain models
-
-Implement [Plan 0001](../plans/completed/0001-cognitive-domain-models.md) exactly within
-its file scope. The models are pure values; they do not integrate with current
-routes or invoke providers.
-
-**Outcome:** later services share typed observations, events, confidence,
-authorization, context, and explicit knowledge states.
-
-**Exit gate:** serialization, datetime, immutability, enum, authorization, and
-no-I/O tests pass offline with no new framework.
-
-### P0.2 — Active-person context and conversation isolation
-
-Implement [Plan 0002](../plans/completed/0002-active-person-context.md) after P0.1.
-It introduces typed identity evidence and `ActivePersonContext`, preserves the
-current integer entity IDs, and removes owner identity as an implicit fact of
-every voice turn.
-
-**Minimum outcomes**
-
-- `identified`, `probable`, `unknown`, and `ambiguous` are represented;
-- evidence can include authenticated session, manual selection, face, speaker,
-  and conversational continuity without treating any one signal as permission;
-- an unknown or ambiguous speaker is a valid state;
-- working history is isolated so a new/unknown person cannot inherit owner
-  context from `voice-primary`;
-- no biometric implementation is required in this first slice.
-
-**Exit gate:** tests prove conflicting identity evidence does not silently pick
-the owner and private history is not reused across identity boundaries.
-
-### P0-S — Hardening and consistency
-
-P0-S is two small prerequisite slices, not a shortcut to P0.5.
-
-- **P0-S1:** [Plan 0002b](../plans/completed/0002b-biometric-enrollment-quarantine.md)
-  quarantines both HTTP and conversational public face enrollment. It preserves
-  existing biometric data and does not introduce authentication or roles.
-- **P0-S2:** [Plan 0002c](../plans/completed/0002c-desktop-security-and-drift.md) changes
-  desktop exposure defaults and aligns configuration, scripts, and evidence
-  after P0-S1 revalidation.
-
-**Exit gate: COMPLETE.** No public request can persist a biometric profile;
-active documentation/configuration no longer claims removed identity scopes or
-a cloud-default runtime. Plan 0003 is complete; later plans remain Draft.
-
-### P0.3 — Small controller and deterministic tools
-
-**Exit gate: COMPLETE.** [Plan 0003](../plans/completed/0003-typed-controller-and-deterministic-tools.md)
-pilots one typed controller behind `/chat` without changing `text_turn` or the
-audio API. It creates a fresh `CognitiveEvent`, returns an immutable
-`ResponsePlan`, calculates current date and age from a strict ISO birth date,
-and returns `unknown` or `unauthorized` for out-of-scope requests before legacy
-delegation. Generic safe text preserves the existing local text-turn behavior.
-
-The complete P0.3 slice intentionally does **not** add a ToolRegistry: two
-closed static functions do not justify registration, dispatch, metadata, or a
-framework. Reconsider it only when an approved later plan has multiple real
-tools with a shared requirement.
-
-The long-term intended turn sequence is:
-
-```text
-receive event
--> resolve active person
--> classify intent/information need
--> evaluate preliminary policy
--> execute deterministic tools
--> retrieve authorized memory
--> assemble bounded context
--> generate locally
--> validate result
--> propose memory candidate
--> optionally consider cloud escalation
-```
-
-Future typed tools, once P0.4/P0.5 make them trustworthy, may include:
-
-- `identify_current_person`;
-- `get_person_details`;
-- `get_children` and `count_relationships`;
-- `calculate_age` from ISO birth date and current date;
-- current date/time;
-- known authorized preferences;
-- current perception/world state;
-- `remember_confirmed_fact` only after memory policy approves it.
-
-P0.3 verification recorded 514 passing repository tests, clean lint/type/audit
-gates, and no dependency, schema, memory, authorization-policy, provider/cloud,
-vision, robot, or audio-contract change. It did not implement deterministic
-family queries; those require P0.4 relational memory and P0.5 authorization.
-
-### P0.4 — Relational memory v4
-
-**Plan 0004 and [Plan 0005](../plans/completed/0005-relational-memory-v4-implementation.md)
-are complete; P0.4 merged as `3b01b58` through PR #40.** The bounded
-slice adds only an additive SQLite v4 foundation:
-integer entity relationships, predicate cardinality, lifecycle metadata, and an
-explicit dry-run-first local migration with an audit ledger. It keeps literal
-facts distinct from entity relationships and leaves the v3 runtime reader/writer
-unchanged until P0.5 policy exists.
-
-**Exit gate:** migration fixtures preserve current data; multi-value preferences
-do not erase each other; inverse relations and historical intervals are
-consistent; age remains derived; and v3 remains the unchanged runtime
-compatibility path. A later P0.5-gated cutover plan owns production retrieval,
-tools, and writes.
-
-### P0.5 — Household authorization
-
-**P0.5-A is complete — merged to `main` as `960f160` through PR #42.**
-[Plan 0007](../plans/completed/0007-household-authorization-foundation.md) implements
-role and data-category policy as a deterministic service, safe local role/audit
-records, an explicit local owner bootstrap, and controller enforcement before
-protected delegation. It uses the minimum roles `owner`, `adult`, `child`,
-`guest`, and `unknown`, while allowing per-person overrides later. It does not
-connect v4 data to runtime prompts or family tools; that P0.5-B cutover is
-written only after a fresh revalidation.
-
-**P0.5-A exit gate:** decisions are deterministic and fail closed; local role
-bootstrap is explicit and auditable; protected controller branches evaluate
-policy before delegation; missing policy defaults to denial or confirmation;
-child, biometric, medical, private, location, and action categories have
-explicit rules; denials are auditable and do not leak protected facts.
-
-**P0.5 overall exit gate:** policy-gated v4 retrieval/model-context and family
-tools are added under a separately revalidated P0.5-B plan; protected values
-are filtered before retrieval and never enter a prompt when denied. The current
-[Plan 0008 design](../plans/completed/0008-policy-gated-v4-household-tools-design.md)
-keeps child relationships and birth dates consent-gated and public chat
-unknown-by-default; it does not authorize a public identity or consent path.
-[Plan 0009](../plans/completed/0009-policy-gated-v4-reader.md) is complete: PR #45
-merged as `a7550d0` on 2026-08-13 after its local 555-test gate and green
-GitHub CI. It adds the reader-only cut.
-
-**P0.5-B2 is Complete in [Plan 0010](../plans/completed/0010-policy-gated-v4-family-tools.md).**
-PR #48 merged as `0d16969` on 2026-08-14 after local `just lint`, `just
-typecheck`, `just test` (571 passed), `just audit`, `just check`, and green
-GitHub CI. It adds only a policy-gated internal family-tool seam and two
-self-referential child-query patterns. Public chat remains unknown-by-default,
-and cannot provide identity or consent or invoke the v4 reader.
-
-**P0 foundation and runtime acceptance are both complete (2026-08-25).**
-[Plan 0011](../plans/completed/0011-p0-closure-and-acceptance.md) records the merged-main
-foundation evidence. [Plan 0012](../plans/completed/0012-p0-runtime-acceptance-design.md)
-connected P0 to `just run-server` plus `just run-robot` and its operator
-runbook passed. P1.1's executable slices (Plans 0025–0028) are merged and
-their runtime acceptance is closed as of Plan 0028's 2026-08-21 execution.
-[Plan 0013](../plans/completed/0013-p0-voice-controller-bridge.md)'s own R1
-runtime acceptance is also closed: R1-03 initially failed on STT accuracy
-(Plan 0028's evidence), root-caused to a stale "Omnibot" name in
-`WHISPER_INITIAL_PROMPT`/`WHISPER_HOTWORDS`, fixed, and reconfirmed PASS on
-2026-08-25 as part of the combined P0-C operator runbook (P0-C5 [Plan
-0021](../plans/completed/0021-p0-typed-intent-resolution.md), P0-C6 [Plan
-0022](../plans/completed/0022-p0-reliable-streaming-output.md), and P0-C7
-[Plan 0023](../plans/completed/0023-p0-grounded-visual-dialogue.md) together)
-— see
-[`p0-runtime-acceptance.md`](../runbooks/p0-runtime-acceptance.md).
-
-## P1 — Personal companion
-
-The next product target is Iroko with Pipec, using the `personal` profile from
-[ADR 0006](../adr/0006-personal-and-family-companion-profiles.md). This phase
-does not create a general UI or family onboarding. It proves that identity,
-authorization, local face/voice evidence, visual scene understanding, memory,
-and recovery work together through the actual PC robot path.
-
-Delivery is to order, not a commercial product, so the baseline data (owner,
-household, photos, classifications) is loaded once, in person with the owner,
-from a local file or form ("step 0"; unnumbered plan after 0047 and ADR-0015).
-Security checks exist independently of how data is loaded; what the robot learns
-afterwards refines facts and never silently overwrites seeded sensitive ones. See
-the *Non-goals* of [Plan 0050](../plans/open/0050-server-audit-repairs.md).
-
-### P1.1 — Owner-authenticated memory MVP
-
-Connect only the path needed for the first product proof: explicit first boot,
-Pipec as the confirmed owner, confirmed child relationships, a local
-short-lived one-use unlock, active-person resolution, policy-gated structured
-retrieval, and audible output. It must not be a public admin API.
-
-**Exit gate — MET (2026-08-21):** after one explicit local unlock, Pipec asks
-“¿quiénes son mis hijos?” and hears the exact confirmed child names through
-`just run-server` plus `just run-robot`; without fresh authentication the
-same request reveals no names, count, hint, or fact existence. Both
-scenarios were repeated 3 times each in classic mode and 3 times each in
-streaming mode, with real microphone/speaker hardware, and are audited.
-[Plan 0024](../plans/completed/0024-owner-authenticated-memory-mvp-design.md)
-defines the design. Its executable portfolio is
-[0025 owner setup and PIN](../plans/completed/0025-personal-owner-bootstrap-and-pin-setup.md)
-(merged, PR #56) → [0026 classic authenticated turn](../plans/completed/0026-one-use-owner-authenticated-classic-turn.md)
-(merged, PR #57) → [0027 streaming parity](../plans/completed/0027-one-use-owner-streaming-parity.md)
-(merged) → [0028 real runtime acceptance](../plans/completed/0028-owner-authenticated-memory-runtime-acceptance.md)
-(executed, PASS). P1.1 is complete.
-
-The [personal-companion delivery map](personal-companion-delivery-map.md)
-is the canonical cross-plan traceability view. It identifies which foundations
-already exist in code/tests, which gaps are verified absent, and which one
-bounded plan owns each remaining outcome. It does not authorize execution.
-
-**Order revision (2026-08-20):** P1.1 runs immediately after P0-C6 instead of
-waiting for full P0-C acceptance. P0.5 built the owner role, policy, and audit,
-but no local path produces an identified owner, so every public route stays
-permanently unknown and no operator run can exercise an authorized path.
-Running P1.1 earlier supplies that missing key, so the remaining P0-C slices
-and the combined acceptance run can be exercised as the owner as well as as a
-stranger. P1.2 and P1.3 keep their original P0-C acceptance prerequisite.
-[ADR 0007](../adr/0007-first-boot-and-default-posture.md) keeps explicit first
-boot and owner-before-household ordering. [ADR
-0008](../adr/0008-progressive-owner-authentication.md) supersedes automatic
-owner-by-local-channel presumption: every protected request needs fresh,
-expiring authentication evidence. The first method is a one-use local unlock;
-face and voice follow without blocking this proof.
-
-### P1.2 — Progressive biometric identity
-
-First integrate consented local face evidence, then add a real speaker
-enrollment/verification adapter, then conservative fusion with temporary
-manual/session evidence. Specialized models emit typed evidence; they do not
-grant access directly. STT/VAD are not voice identity. The VLM may describe a
-scene, but is not the authority that names Pipec.
-
-**Progress (2026-08-25):** the face-evidence slice (PC-2) is merged —
-[Plan 0029](../plans/completed/0029-consented-local-face-evidence.md), PR #73. A
-protected turn now resolves the owner from an in-request webcam frame through
-the same typed evidence and authorization contract the PIN (Plan 0026) uses,
-with the PIN kept as an independent recovery path. It has no liveness/
-anti-spoofing defense — a photograph authenticates under this slice.
-
-**Progress (2026-08-27):** first real-hardware proof of concept, via the new
-unified `just onboard` flow — Pipec enrolled his own face and a live
-`just run-robot` conversation turn was correctly identified and answered
-("Tus hijos son nala y martina.") with no PIN and no token. One successful
-run on one person's hardware; not a calibrated study — no threshold tuning,
-no false-accept/false-reject measurement, no lighting/distance/glasses
-variation.
-
-**Progress (2026-09-01):** PC-2's real-camera calibration closed —
-[Plan 0030](../plans/completed/0030-real-camera-face-acceptance.md). 36 real
-genuine samples and 18 real impostor samples (3 unrelated household
-identities) held zero false accepts and zero false rejects; the measured
-threshold (`0.5815`, replacing the unvalidated `0.25`) was confirmed live
-with 3 accepted + 3 denied real turns. Explicitly provisional — only 3
-impostor identities were measured, and the anti-spoofing gap above is
-untouched. Speaker evidence: the PC-3A calibration study closed 2026-09-25 (provisional PASS, replay accepted 6/8) and PC-3B runtime evidence closed 2026-09-29 (untrusted, replay not defended); fusion (PC-4, Plan 0054) closed 2026-09-30 after Pipec's
-real-hardware matrix — replay is not defended and no reserved capability exists yet.
-
-**Exit gate (not yet met):** calibrated local evaluation covers agreement,
-conflict, expiry, backend failure, false accept, and false reject. Conflicting
-evidence returns `ambiguous`; the administrative recovery path remains
-available. PC-2's own real-camera calibration is closed; the exit gate still
-needed PC-4 (fusion); PC-3A, PC-3B and PC-4 are closed (PC-4 on 2026-09-30, accepted on real
-hardware; replay still not defended).
-
-### X1 — Server production baseline checkpoint — **CLOSED 2026-09-03**
-
-Plan 0030 closed the real-camera acceptance it owned (2026-09-01); the
-bounded priority since then was the server-production capsule documented in
-[Plan 0031](../plans/completed/0031-server-production-baseline-design.md), run
-through children 0032–0045 (0045 was a gap Plan 0042's own gate found) one
-at a time. **All are closed as of 2026-09-03** — [Plan
-0042](../plans/completed/0042-server-baseline-closure.md) verified the
-complete baseline through automated and real runtime evidence and closed
-the capsule; [Plan 0044](../plans/completed/0044-official-fastapi-conventions.md)
-closed last among the capsule children, aligning the HTTP layer with official
-FastAPI conventions. No child plan remains under Plan 0031. A later
-second-audit follow-up,
-[Plan 0048](../plans/completed/0048-fastapi-baseline-final-hardening.md),
-closed 2026-09-07 with four bounded edges and no wire change; the server
-baseline is done and only Uvicorn concurrency calibration remains, deferred to
-its own `perf(...)` plan.
-
-This checkpoint did not add a companion feature and does not close P1.2. It
-standardized the HTTP/ASGI foundation that later face, speaker, fusion, and
-family work will reuse. Plan 0031 stays reference-only.
-
-**Exit gate — met**
-
-- privacy, upload, PIN, SQLite, CI, Uvicorn, lifecycle, OpenAPI, and streaming
-  child plans met their own tests/reviews;
-- full deterministic coverage: 90.03% (required 80%);
-- the real server/robot path passed all 7 capsule closure scenarios
-  (Pipec, 2026-09-03);
-- ADR 0010–0013 remain accepted and were re-confirmed matched by the merged
-  code at closure.
-
-### P1.3 — Personal companion acceptance
+## P1.3 — Personal companion acceptance (PC-5)
 
 Demonstrate the full companion flow with `just run-server` and
 `just run-robot`: voice, face/voice evidence, authorized personal data,
@@ -738,15 +416,3 @@ Respect the permitted file list. If code or current behavior
 contradicts the plan, stop and report the exact conflict; do not redesign or
 expand scope. Run the listed verification. Do not commit unless asked.
 ```
-
-[Plan 0001](../plans/completed/0001-cognitive-domain-models.md),
-[Plan 0002](../plans/completed/0002-active-person-context.md), and
-[Plan 0002a](../plans/completed/0002a-local-first-provider-quarantine.md) are complete.
-Plans 0002b, 0002c, 0003, the Plan 0004 design, and Plan 0005 are complete;
-Plan 0005 merged as `3b01b58` through PR #40. Plan 0007 P0.5-A merged as
-`960f160` through PR #42. Plan 0008 is approved and Plan 0009 P0.5-B1 is
-complete, merged as `a7550d0` through PR #45. Plan 0010 P0.5-B2 then merged
-as `0d16969` through PR #48, and Plan 0011 records the completed P0 closure.
-P1 implementation plans are written just in time after a fresh revalidation;
-the accepted personal-companion design is not permission to implement it before
-P0-C operator acceptance.

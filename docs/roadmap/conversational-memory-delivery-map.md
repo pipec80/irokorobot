@@ -1,7 +1,7 @@
 # Conversational-memory delivery map
 
 **Status:** canonical design; CM-0 closed (Plan 0046, 2026-09-08); CM-1 unplanned
-**Last reviewed:** 2026-09-08
+**Last reviewed:** 2026-09-30
 
 ## Objective
 
@@ -64,9 +64,31 @@ Evidence current at the time this map was written:
 - `memory/semantic.py` retrieves by file, optional type, and distance, with no
   prior filters by person, visibility, sensitivity, or authorization, and no
   minimum relevance threshold.
+- the production conversational routes never emit `MANUAL` evidence:
+  `IdentitySessionRegistry.select_person` has test callers only, and only the
+  tests and the offline `scripts/eval_chat.py` build that evidence directly
+  (verified 2026-09-30). Reusable history, vector retrieval and consolidation are
+  therefore off for every speaker, the face-identified owner included;
+  "¿te acuerdas de…?" does not work for anyone yet. Even the previous turn is
+  lost: without `MANUAL` evidence `text_turn.py` prepares `history=None` and
+  clears the working memory after each reply, so "estoy arreglando una
+  bicicleta" followed by "¿qué herramienta necesito?" reaches the LLM without
+  the first sentence;
+- only the children list and count are connected: every other authorized
+  household question answers that the information "todavía no está conectada",
+  and no controller branch confirms, corrects or forgets a memory;
+- channels differ: classic and streaming voice pass a consolidation scheduler,
+  `/chat` does not, so fixing one channel does not fix the others.
 
-The current manual barrier accidentally contains part of the risk, but it is
-not a sufficient policy for a conversational personal memory.
+The current conversational route neither persists nor retrieves memories. That
+blocks this disclosure path, but it does not yet prove that secrets are protected
+once memory is enabled, nor that the database holds no earlier content, nor that
+every output is confidential (for example, the opt-in console transcript of Plan
+0052 is independent of memory). The barrier is a limitation, not a policy.
+Connecting the actor (CM-2) does not lift it: `memory/context.py::build_context`
+receives no actor or authorization and the legacy consolidation stores the full
+turn text, so each legacy read or write stays blocked until the slice that
+implements its guarantees (CM-3 writes, CM-4 episodes, CM-5 retrieval).
 
 ## Reusable capabilities
 
@@ -93,34 +115,29 @@ once in the
 | Stage | Verifiable outcome | Dependencies | Executable plan |
 |---|---|---|---|
 | CM-0 | Versioned longitudinal benchmark and one reproducible RED run | evaluation specification | [Plan 0046](../plans/completed/0046-reproducible-longitudinal-memory-baseline.md) — **closed 2026-09-08**: benchmark GREEN, measured baseline RED (`ac43c58`, exit 1) |
-| CM-1 | Explicit `read`, `propose`, `confirm`, `correct`, and `forget` capabilities for personal memory | current policy and identity; PC-4 per the product order below | not written |
-| CM-2 | The authorized actor reaches the conversational flow without interpolating names or expanding permissions implicitly | CM-1 | not written |
-| CM-3 | Extraction creates candidates; confirmation/promotion writes canonical V4 facts and relations | CM-0, CM-1, CM-2 | not written |
+| CM-1 | Every grant bound to one named operation (ADR-0015 decision 1, Plan 0051), then explicit `read`, `propose`, `confirm`, `correct`, and `forget` capabilities for personal memory | current policy and identity; PC-4 (closed) | Plan 0051 first, then not written |
+| CM-2 | The authorized actor and its grants reach the conversational flow without interpolating names or expanding permissions implicitly; short-term continuity (in-process working memory for the identified actor, cleared on a change of speaker) has its own acceptance test; durable legacy paths stay blocked. Identifying generic turns supersedes ADR-0016 §5 and needs a new ADR | CM-1 | not written |
+| CM-3 | Extraction creates candidates; one writer assigns the classification and promotes to canonical V4 facts and relations. The seed load ("step 0") follows as its second input channel | CM-0, CM-1, CM-2; Plan 0050 | not written |
 | CM-4 | Episodes declare owner, visibility, sensitivity, consent, and retention | CM-3 | not written |
 | CM-5 | Retrieval filters authorization and validity before the prompt and applies a relevance threshold | CM-4 | not written |
 | CM-6 | Correction and forgetting reach facts, relations, episodes, embeddings, summaries, and derived caches | CM-3 through CM-5 | not written |
-| CM-7 | A real scenario learns, restarts, recalls, corrects, forgets, and does not disclose | CM-0 through CM-6, PC-3, PC-4 | not written |
+| CM-7 | A real scenario learns, restarts, recalls, corrects, forgets, and does not disclose; the benchmark is GREEN on its personal-scope scenarios, and the family-scope ones (`recipient_only_message`, `two_adult_private_facts`) stay reported as pending for P3.2 | CM-0 through CM-6, PC-3, PC-4 | not written |
 
-The product order is therefore:
+The single cross-track order, including the hardening rows (Plans 0055 and
+0050) and the seed load, lives only in the
+[canonical portfolio](cognitive-roadmap.md#canonical-pre-electronics-delivery-portfolio).
+CM is not a separate program: it is the memory half of the personal companion,
+and PC-5 cannot close without CM-7. Its only biometric dependency, PC-4, closed
+on 2026-09-30; its biometric dependency is closed, and the queue places
+Plans 0055 and 0050 ahead of CM-1.
 
-```text
-CM-0 RED benchmark (can run first; does not change runtime)
-  -> PC-3 speaker
-  -> PC-4 multimodal fusion
-  -> CM-1..CM-7 / P2.2 longitudinal
-  -> PC-5 integrated personal acceptance
-  -> continue in P2.1 per the canonical pre-electronics portfolio
-```
-
-Plan 0046 realized CM-0 (closed 2026-09-08) and **PC-3A /
-[Plan 0047](../plans/completed/0047-speaker-evidence-calibration-study.md)** closed
-2026-09-25 with a provisional PASS, and **PC-3B / Plan 0053** closed 2026-09-29. **PC-4 / [Plan 0054](../plans/completed/0054-face-default-identity-fusion.md)** closed 2026-09-30, accepted on real hardware. The next slice is not CM-1 yet:
-CM-1 stays unplanned until its predecessors in the product order above close. The
-numbering of CM-1 through CM-7 is not reserved:
-each stage will be written only after its predecessor is closed and re-audited.
-The R2/R3 documentation stages and the P3.1/P3.2 family work are not part of
-this memory subsequence; they appear in the master portfolio and must not be
-inserted as implicit CM plans.
+The documentary-retrieval stages of
+[RAG §25](../architecture/rag-and-memory-retrieval.md#25-secuencia-de-evolución)
+overlap this map: R1 is CM-5 and R5 is CM-3, CM-4 and CM-6. Only R2 and R3
+(documents and hybrid search) are separate portfolio rows, after CM-5 and CM-6.
+The CM-1…CM-7 plan numbers are not reserved, except Plan 0051 as the first plan
+of CM-1; each stage is written only after its predecessor closes and is
+re-audited.
 
 ## Contracts that must become explicit
 
