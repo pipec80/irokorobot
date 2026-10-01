@@ -7,15 +7,24 @@ from pathlib import Path
 from pydantic import SecretStr
 import pytest
 from server.cognition.identity import HouseholdRole
-from server.cognition.pin_credentials import verify_pin
+from server.cognition.pin_credentials import hash_pin, verify_pin
 from server.exceptions import BrainMemoryError
-from server.memory.household_authorization import bootstrap_initial_owner, get_active_role
+from server.memory.declarative import upsert_entity
+from server.memory.household_authorization import (
+    bootstrap_initial_owner,
+    get_active_role,
+    revoke_active_role,
+)
 from server.memory.meta import get_flag
-from server.memory.owner_credentials import get_active_owner_pin_credential
+from server.memory.owner_credentials import (
+    get_active_owner_pin_credential,
+    save_owner_pin_credential,
+)
 from server.personal_setup import (
     PersonalSetupInput,
     apply_personal_setup,
     check_db_available,
+    read_personal_setup_status,
     run_personal_setup_wizard,
 )
 from server.settings import settings
@@ -378,3 +387,71 @@ async def test_check_db_available_raises_when_a_transaction_is_already_open(
 
     may_release.set()
     await asyncio.wait_for(holder, timeout=_GUARD_TIMEOUT_S)
+
+
+@pytest.mark.integration
+async def test_status_is_ready_after_a_confirmed_setup(setup_db: None) -> None:
+    """The owner-scoped status agrees with a completed wizard setup."""
+    await apply_personal_setup(_valid_input())
+
+    status = await read_personal_setup_status()
+
+    assert status.personal_security_ready is True
+
+
+@pytest.mark.integration
+async def test_status_is_ready_for_an_owner_without_children(setup_db: None) -> None:
+    """Owner + PIN is a complete personal setup; children are optional."""
+    owner = await upsert_entity(name="Owner", type="person")
+    await bootstrap_initial_owner(person_entity_id=owner, confirmed_person_entity_id=owner)
+    await save_owner_pin_credential(person_entity_id=owner, credential=hash_pin("482173"))
+
+    status = await read_personal_setup_status()
+
+    assert status.active_child_relation_count == 0
+    assert status.personal_security_ready is True
+
+
+@pytest.mark.integration
+async def test_status_rejects_a_credential_belonging_to_another_person(setup_db: None) -> None:
+    """One owner and one credential are insufficient when their person IDs differ."""
+    result = await apply_personal_setup(_valid_input())
+    other = await upsert_entity(name="Canary Other", type="person")
+    # Deliberately seed an incoherent legacy row in the temporary test database.
+    # The public credential writer correctly rejects a non-owner.
+    async with db.transaction() as conn:
+        await conn.execute(
+            "UPDATE owner_pin_credentials SET person_entity_id = ? WHERE person_entity_id = ?",
+            (other, result.owner_entity_id),
+        )
+
+    status = await read_personal_setup_status()
+
+    assert status.owner_count == 1
+    assert status.active_credential_count == 1
+    assert status.personal_security_ready is False
+
+
+@pytest.mark.integration
+async def test_revoking_the_owner_role_revokes_the_pin_credential(setup_db: None) -> None:
+    """A person who is no longer the owner keeps no usable PIN credential."""
+    result = await apply_personal_setup(_valid_input())
+
+    await revoke_active_role(person_entity_id=result.owner_entity_id)
+
+    assert await get_active_owner_pin_credential() is None
+
+
+@pytest.mark.integration
+async def test_status_is_not_ready_after_the_owner_role_moves(setup_db: None) -> None:
+    """A successor owner without a credential is not a ready setup."""
+    result = await apply_personal_setup(_valid_input())
+    await revoke_active_role(person_entity_id=result.owner_entity_id)
+    successor = await upsert_entity(name="Successor", type="person")
+    await bootstrap_initial_owner(person_entity_id=successor, confirmed_person_entity_id=successor)
+
+    status = await read_personal_setup_status()
+
+    assert status.owner_count == 1
+    assert status.active_credential_count == 0
+    assert status.personal_security_ready is False
