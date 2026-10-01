@@ -253,9 +253,9 @@
   },
   {
     "text": "Te presento a Martina.",
-    "need": "biometric_enrollment",
-    "match": "exact",
-    "rule_id": "enrollment.biometric.v1"
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
   },
   {
     "text": "Conoce a esta persona.",
@@ -316,5 +316,71 @@
     "need": "generic_conversation",
     "match": "none",
     "rule_id": null
+  },
+  {
+    "text": "¿Cómo preparo unas papas fritas?",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "Necesito una receta con papa.",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "Los humanos son curiosos.",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "Me lavo las manos antes de comer.",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "Llega la primavera.",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "El ambiente familiar es cálido.",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "Es un buen ratio de compresión.",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "Las mujeres astronautas fueron pioneras.",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "Mi papá es ingeniero.",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "Mis niños duermen.",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "Mi mujer cocina.",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
   }
 ]

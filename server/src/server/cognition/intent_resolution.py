@@ -8,6 +8,7 @@ controller remains the sole owner of policy, tools, audit, and generation.
 
 from collections.abc import Callable
 from enum import StrEnum
+from itertools import pairwise
 import re
 import unicodedata
 
@@ -38,33 +39,71 @@ class IntentResolution(BaseModel):
 
 _NON_WORD_RUN = re.compile(r"[^\w]+", re.UNICODE)
 
-_PRIVATE_HOUSEHOLD_TERMS = (
-    "hijo",
-    "hija",
-    "nino",
-    "nina",
-    "familia",
-    "preferencia",
-    "le gusta",
-    "padre",
-    "madre",
-    "papa",
-    "mama",
-    "hermano",
-    "pareja",
-    "esposa",
-    "esposo",
-    "marido",
-    "mujer",
-    "abuelo",
-    "abuela",
-    "tio",
-    "tia",
-    "primo",
-    "prima",
+_POSSESSIVES = frozenset(
+    {"mi", "mis", "tu", "tus", "su", "sus", "nuestro", "nuestra", "nuestros", "nuestras"}
 )
-_BIRTH_INFORMATION_TERMS = ("nacio", "nacimiento")
-_RELATIONSHIP_TERMS = ("relacion",)
+# Words that name the household on their own, plural forms included.
+_HOUSEHOLD_WORDS = frozenset(
+    {
+        "hijo",
+        "hija",
+        "hijos",
+        "hijas",
+        "familia",
+        "familias",
+        "familiares",
+        "preferencia",
+        "preferencias",
+        "padre",
+        "madre",
+        "padres",
+        "madres",
+        "hermano",
+        "hermana",
+        "hermanos",
+        "hermanas",
+        "abuelo",
+        "abuela",
+        "abuelos",
+        "abuelas",
+        "esposo",
+        "esposa",
+        "esposos",
+        "esposas",
+        "marido",
+        "maridos",
+        "mama",
+        "mamas",
+        "tio",
+        "tia",
+        "tios",
+        "tias",
+        "primo",
+        "prima",
+        "primos",
+        "primas",
+    }
+)
+# Words that mean a relative only with a possessive ("mi mujer") and mean something
+# else alone ("papas fritas", "las mujeres astronautas", "la primavera").
+_HOUSEHOLD_WORDS_NEEDING_POSSESSIVE = frozenset(
+    {
+        "nino",
+        "nina",
+        "ninos",
+        "ninas",
+        "papa",
+        "papas",
+        "pareja",
+        "parejas",
+        "mujer",
+        "mujeres",
+    }
+)
+_HOUSEHOLD_PHRASES = ("le gusta", "les gusta")
+_BIRTH_WORDS = frozenset({"nacio", "nacimiento", "nacimientos"})
+_AGE_WORDS = frozenset({"edad", "edades", "anos"})
+_RELATIONSHIP_WORDS = frozenset({"relacion", "relaciones"})
 _OWN_CHILDREN_LIST_PATTERNS = ("como se llaman mis hijos", "quienes son mis hijos")
 _OWN_CHILDREN_COUNT_PATTERNS = ("cuantos hijos tengo",)
 _CURRENT_DATE_PATTERNS = (
@@ -87,7 +126,6 @@ _BIOMETRIC_ENROLLMENT_PATTERNS = (
     "mirame bien",
     "mirala bien",
     "miralo bien",
-    "te presento a",
     "conoce a",
 )
 _ACTIVE_IDENTITY_PATTERNS = (
@@ -141,7 +179,7 @@ def _resolution(need: InformationNeed, match: IntentMatch, rule_id: str | None) 
 
 def _own_children_list_rule(normalized: str) -> IntentResolution | None:
     """Recognize only the two reviewed self-child-list phrasings."""
-    if any(pattern in normalized for pattern in _OWN_CHILDREN_LIST_PATTERNS):
+    if any(_contains_word_phrase(normalized, pattern) for pattern in _OWN_CHILDREN_LIST_PATTERNS):
         return _resolution(
             InformationNeed.OWN_CHILDREN_LIST, IntentMatch.EXACT, "own_children.list.v1"
         )
@@ -150,25 +188,46 @@ def _own_children_list_rule(normalized: str) -> IntentResolution | None:
 
 def _own_children_count_rule(normalized: str) -> IntentResolution | None:
     """Recognize the reviewed self-child-count phrasing."""
-    if any(pattern in normalized for pattern in _OWN_CHILDREN_COUNT_PATTERNS):
+    if any(_contains_word_phrase(normalized, pattern) for pattern in _OWN_CHILDREN_COUNT_PATTERNS):
         return _resolution(
             InformationNeed.OWN_CHILDREN_COUNT, IntentMatch.EXACT, "own_children.count.v1"
         )
     return None
 
 
+def _names_a_relative(words: list[str]) -> bool:
+    """Whether the message names the household, whole words only.
+
+    A kin word that is ambiguous alone counts only right after a possessive, so
+    "mi mujer" is protected and "las mujeres astronautas" is not.
+    """
+    if any(word in _HOUSEHOLD_WORDS for word in words):
+        return True
+    return any(
+        word in _HOUSEHOLD_WORDS_NEEDING_POSSESSIVE and previous in _POSSESSIVES
+        for previous, word in pairwise(words)
+    )
+
+
 def _protected_household_rule(normalized: str) -> IntentResolution | None:
-    """Recognize any protected household, family-relation, or birth term."""
-    if any(term in normalized for term in (*_PRIVATE_HOUSEHOLD_TERMS, *_BIRTH_INFORMATION_TERMS)):
+    """Recognize a protected household, family-relation, or birth request."""
+    words = normalized.split()
+    if _names_a_relative(words) or any(
+        _contains_word_phrase(normalized, phrase) for phrase in _HOUSEHOLD_PHRASES
+    ):
         return _resolution(
-            InformationNeed.PROTECTED_HOUSEHOLD, IntentMatch.EXACT, _protected_rule_id(normalized)
+            InformationNeed.PROTECTED_HOUSEHOLD, IntentMatch.EXACT, _protected_rule_id(words)
+        )
+    if any(word in _BIRTH_WORDS for word in words):
+        return _resolution(
+            InformationNeed.PROTECTED_HOUSEHOLD, IntentMatch.EXACT, "birth.protected.v1"
         )
     return None
 
 
-def _protected_rule_id(normalized: str) -> str:
+def _protected_rule_id(words: list[str]) -> str:
     """Distinguish a birth-specific protected request from a general one."""
-    if any(term in normalized for term in _BIRTH_INFORMATION_TERMS):
+    if any(word in _BIRTH_WORDS for word in words):
         return "birth.protected.v1"
     return "household.protected.v1"
 
@@ -234,8 +293,9 @@ def _current_date_stt_alias_rule(normalized: str) -> IntentResolution | None:
 
 def _current_date_rule(normalized: str) -> IntentResolution | None:
     """Recognize the reviewed unambiguous current-date phrasings."""
-    matches = ("fecha" in normalized and "hoy" in normalized) or any(
-        pattern in normalized for pattern in _CURRENT_DATE_PATTERNS
+    words = normalized.split()
+    matches = ("fecha" in words and "hoy" in words) or any(
+        _contains_word_phrase(normalized, pattern) for pattern in _CURRENT_DATE_PATTERNS
     )
     if matches:
         return _resolution(InformationNeed.CURRENT_DATE, IntentMatch.EXACT, "date.current.v1")
@@ -244,7 +304,7 @@ def _current_date_rule(normalized: str) -> IntentResolution | None:
 
 def _explicit_age_rule(normalized: str) -> IntentResolution | None:
     """Recognize an explicit self-age request by its ISO-strict controller tool."""
-    if "edad" in normalized or "anos" in normalized:
+    if any(word in _AGE_WORDS for word in normalized.split()):
         return _resolution(
             InformationNeed.EXPLICIT_BIRTH_DATE_AGE, IntentMatch.EXACT, "age.explicit.v1"
         )
@@ -253,7 +313,7 @@ def _explicit_age_rule(normalized: str) -> IntentResolution | None:
 
 def _relationship_rule(normalized: str) -> IntentResolution | None:
     """Recognize a generic relationship/profile question."""
-    if any(term in normalized for term in _RELATIONSHIP_TERMS):
+    if any(word in _RELATIONSHIP_WORDS for word in normalized.split()):
         return _resolution(
             InformationNeed.RELATIONSHIP_OR_PROFILE, IntentMatch.EXACT, "relationship.profile.v1"
         )
