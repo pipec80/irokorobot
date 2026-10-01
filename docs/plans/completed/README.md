@@ -30,6 +30,13 @@ one-terminal-event guarantee, the NDJSON 200 OpenAPI contract, `/health`
 wording + injectable `create_app`) and left only Uvicorn concurrency
 calibration open, as its own `perf(...)` plan.
 
+[Plan 0055](0055-pc4-identity-fusion-followups.md) closed the PC-4 follow-ups on
+2026-10-01: a store error while the face is resolved degrades to `unknown`, the face and
+speaker models warm at startup behind their flags, `identity_source` and the clock have one
+definition each, and the other-person veto is pinned against real role rows. It changes no
+identity rule and no OpenAPI; the latency gain is unmeasured and it has had no independent
+review yet.
+
 [Plan 0054](0054-face-default-identity-fusion.md) closed PC-4 on 2026-09-30: the
 owner's face alone identifies at assurance `basic`, a verified voice of the same person
 raises it to `strong`, reserved data (`SECURITY`) will require `strong`, and another

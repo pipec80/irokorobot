@@ -66,7 +66,7 @@ defecto (`basic`), la voz de la misma persona sube a `strong`, los datos reserva
 exigen `strong`, y otra persona enrolada o dos caras vetan. Aceptado en hardware real por Pipec; el
 replay no está defendido y aún no existe ninguna capacidad reservada.
 
-[0055 — PC-4 identity fusion follow-ups](0055-pc4-identity-fusion-followups.md) está **Ready** y es el `NOW` (aprobado por Pipec el 2026-10-01), escrito el 2026-09-30 tras cerrar el Plan 0054: un error de base de datos al reconocer la cara degrada a desconocido en vez de fallar el turno, los modelos de cara y voz se precargan al arrancar (la prueba real midió 8 a 13 s en el primer turno protegido), una sola definición de `identity_source` y del reloj, y dos huecos de cobertura cerrados. No cambia la regla de identidad ni el OpenAPI. Se ejecuta en una sesión nueva.
+[0055 — PC-4 identity fusion follow-ups](../completed/0055-pc4-identity-fusion-followups.md) **cerró el 2026-10-01** y ya vive en `completed/`: un error de base de datos al reconocer la cara degrada a desconocido en vez de fallar el turno, los modelos de cara y voz se precargan al arrancar (la mejora de latencia no está medida), una sola definición de `identity_source` y del reloj, y el veto de otra persona queda probado contra filas reales. No cambió la regla de identidad ni el OpenAPI. No hay plan `Ready` ni `NOW`: el siguiente (0050, voz-pipeline, CM-1/0051) lo promueve Pipec.
 
 **Paso 0 — carga inicial (sin numerar, decidido 2026-09-24, reubicado 2026-09-30).**
 Un plan futuro que carga los datos base del dueño y su hogar de forma presencial

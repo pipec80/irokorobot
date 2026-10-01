@@ -10,7 +10,7 @@
 > `superpowers:verification-before-completion` before any claim that a task or
 > the plan is done.
 
-- **Status:** `Ready` — written 2026-09-30 after Plan 0054 (PC-4) closed, from the
+- **Status:** `Closed` 2026-10-01 — see the [closure record](#closure-record). Was `Ready` — written 2026-09-30 after Plan 0054 (PC-4) closed, from the
   deferred findings of its independent review and from what Pipec's real-hardware run
   showed. **Approved as `Ready` and selected as `NOW` by Pipec on 2026-10-01**
   ([`docs/plans/README.md`](../README.md#operational-board)). Execute it in a new
@@ -1104,3 +1104,51 @@ default path. It became `Ready` and `NOW` on 2026-10-01 by Pipec's approval.
 session, with an independent whole-branch review at the end. Execute Tasks 0–6
 in order: the baseline precedes all changes, several tasks share production
 and test files, and documentation closure follows verification and review.
+
+---
+
+## Closure record
+
+Executed 2026-10-01 inline in one session on `feat/0055-pc4-followups` (base `main` at
+`251fa54`), one commit per task. **Tested SHA `983ac3c`** (code and documentation tasks; this
+closure edit only moves and rewords documentation).
+
+| Task | Commit | RED observed first |
+|---|---|---|
+| 1 — face store error degrades to `unknown` | `fix(cognition): degrade a face store error to unknown` | 13 failures: the error escaped `resolve_actor` and the routes returned 500 |
+| 2 — warm the models at startup | `feat(server): warm the face and speaker models at startup` | 10 failures: `warm_up` and `main.faces` did not exist |
+| 3 — one definition for the repeated values | `refactor(cognition): define identity source and clock once` | collection errors: `IdentitySource` and `clock` did not exist; OpenAPI byte-identical before and after |
+| 4 — coverage holes | `test(cognition): pin the other-person veto to a real role row` | characterization (16 pass); temporary mutation of the non-owner verdict to `UNKNOWN` failed exactly the 8 cases with a valid token, then was restored |
+| 5 — documentation | `docs(plan): document the pc-4 follow-ups` | not applicable |
+
+**Gates.** `just gate` passed (lint, typecheck, tests, audit); `just test-cov` passed with 1599
+tests and 91.46 % coverage (floor 80 %). `tests/integration/test_face_authenticated_turn.py` is
+unedited and passes; `uv lock --check` clean; `rg 'def _utc_now' server/src` prints nothing and
+`IdentitySource =` is defined once, in `schemas.py`. Baseline before the work: 1557 tests on
+`main` (the Task 0 gate run also collected the first RED tests, whose 9 failures were exactly
+those new tests).
+
+**Not done, stated plainly.**
+
+- **No independent review.** Only the author read the whole diff (no finding above Minor). The
+  plan says Pipec decides whether the independent review is a subagent or his own reading; it is
+  still open.
+- **Hardware check not run.** Startup-to-ready and first protected-turn latency are unmeasured;
+  nothing here claims the warm-up is faster. Replay and liveness stay undefended; no reserved
+  capability exists; Whisper's prompt echo (D-4) and PIN scoping (Plan 0051) stay in their plans.
+
+**Rulings taken during execution.**
+
+1. The ledger lives in this record, not in `.superpowers/` (that directory is not git-ignored).
+2. Task 2's commit also contains `tests/integration/test_speaker_evidence_turn.py`: the task text
+   extends its fresh-interpreter import test but the plan's commit list omitted the file.
+3. The `_face_resolver` test helper gained `fail_at` and `detect_calls` so one parametrized unit
+   test covers the four face boundaries and proves a single attempt per request.
+4. A shared `_post_turn` helper normalizes the classic and streaming answers in the integration
+   tests, so each case is written once for both routes.
+5. `identity_fusion.py` imports `IdentitySource` under `TYPE_CHECKING` (ruff `TC001`); it is only
+   an annotation there.
+6. Two commits were first aborted by the `mixed line ending` pre-commit hook, which fixed the
+   files; re-staging and recommitting gave the same content.
+7. `docs/plans/open/0050-server-audit-repairs.md` still says Plan 0055 is pending. It is outside
+   this plan's file table, so it was left for Plan 0050's own revalidation (its Task 0).
