@@ -24,14 +24,15 @@ from server.cognition import (
     face_authentication as face_auth_module,
     speaker_authentication as speaker_auth_module,
 )
-from server.cognition.identity import PersonRecord
+from server.cognition.identity import HouseholdRole, PersonRecord
 from server.cognition.identity_sessions import IdentitySessionRegistry
 from server.cognition.owner_authentication import OwnerUnlockService, owner_unlock_service
 from server.dependencies import get_owner_unlock_service
 from server.main import app
 from server.memory.biometric_consent import grant_face_consent
+from server.memory.declarative import upsert_entity
 from server.memory.entity_labels import get_person_label
-from server.memory.household_authorization import get_active_role
+from server.memory.household_authorization import assign_household_role, get_active_role
 from server.memory.owner_credentials import get_active_owner_pin_credential
 from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
 from server.memory.relational_v4 import get_active_entity_relations
@@ -378,6 +379,65 @@ async def test_a_store_error_in_face_resolution_still_honours_a_valid_pin(
     assert turn.identity_source == "local_unlock"
     assert turn.consumed is True
     embed.assert_not_awaited()
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("route", _ROUTES)
+@pytest.mark.parametrize("with_token", [True, False], ids=["token", "no-token"])
+@pytest.mark.parametrize("consent", [True, False], ids=["consent", "no-consent"])
+@pytest.mark.parametrize("role", [HouseholdRole.ADULT, None], ids=["adult", "no-role"])
+async def test_another_enrolled_person_vetoes_against_a_real_role_row(
+    route: str,
+    with_token: bool,
+    consent: bool,
+    role: HouseholdRole | None,
+    fusion_db: PersonalSetupResult,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review Focus 5: the veto holds against real rows and never spends the PIN token.
+
+    A face matched to an enrolled person who is not the owner vetoes whatever their
+    consent — and, by decision D-3, also when that person has no household role.
+    """
+    other_id = await upsert_entity(name="Canary Adult", type="person")
+    if role is not None:
+        await assign_household_role(
+            person_entity_id=other_id, role=role, grantor_entity_id=fusion_db.owner_entity_id
+        )
+    if consent:
+        await grant_face_consent(other_id)
+    await enroll_face(other_id, _STRANGER_FACE, label="Canary Adult")
+    service = _service()
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
+    headers: dict[str, str] | None = None
+    if with_token:
+        unlock = await service.unlock(_PIN)
+        assert unlock is not None
+        headers = {"X-Iroko-Identity-Token": unlock.token}
+    _detect(monkeypatch, [_detected(_STRANGER_FACE)])
+    embed = _embed(monkeypatch, _MATCHING_VOICE)
+    _mock_stt_tts(monkeypatch)
+    reads = _spy_on_child_reads(monkeypatch)
+
+    async with _client() as client:
+        vetoed = await _post_turn(client, route, headers=headers)
+        reads.assert_not_awaited()
+        embed.assert_not_awaited()
+        alone = await _post_turn(client, route, headers=headers, frame=False)
+
+    assert vetoed.status_code == 200
+    assert vetoed.errors == []
+    assert vetoed.text == _DENIAL
+    assert vetoed.identity_source is None
+    assert vetoed.consumed is False
+    if with_token:
+        assert alone.text == _CHILD_ANSWER
+        assert alone.identity_source == "local_unlock"
+        assert alone.consumed is True
+    else:
+        assert alone.text == _DENIAL
+        assert alone.identity_source is None
+        assert alone.consumed is False
 
 
 @pytest.mark.integration
