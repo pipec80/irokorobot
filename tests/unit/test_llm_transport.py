@@ -11,6 +11,7 @@ import json
 
 import httpx
 import pytest
+from server.exceptions import LLMError
 
 from server import llm_transport
 
@@ -153,3 +154,70 @@ async def test_ollama_chat_stream_sets_stream_true() -> None:
     payload = captured["payload"]
     assert isinstance(payload, dict)
     assert payload["stream"] is True
+
+
+async def _drain(sink: list[str], stream: AsyncIterator[str]) -> None:
+    """Consume a delta stream into *sink* so a `pytest.raises` block stays one statement."""
+    async for delta in stream:
+        sink.append(delta)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"message": {"content": None}},
+        {"message": None},
+        {"message": {"role": "assistant"}},
+        ["not", "an", "object"],
+    ],
+)
+async def test_ollama_chat_rejects_a_body_without_text_content(body: object) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=body)
+
+    async with _mock_client(handler) as client:
+        with pytest.raises(LLMError):
+            await llm_transport.ollama_chat(client, [], model="qwen2.5:3b")
+
+
+@pytest.mark.unit
+async def test_ollama_chat_wraps_a_non_json_body() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"<html>proxy error</html>")
+
+    async with _mock_client(handler) as client:
+        with pytest.raises(LLMError):
+            await llm_transport.ollama_chat(client, [], model="qwen2.5:3b")
+
+
+@pytest.mark.unit
+async def test_ollama_chat_stream_rejects_a_null_message() -> None:
+    handler = _stream_handler(['{"message": {"content": "Hola"}}', '{"message": null}'])
+    async with _mock_client(handler) as client:
+        with pytest.raises(LLMError):
+            await _drain([], llm_transport.ollama_chat_stream(client, [], model="qwen2.5:3b"))
+
+
+@pytest.mark.unit
+async def test_ollama_chat_stream_rejects_a_midstream_error_line() -> None:
+    handler = _stream_handler(['{"message": {"content": "Hola"}}', '{"error": "runner stopped"}'])
+    deltas: list[str] = []
+    async with _mock_client(handler) as client:
+        with pytest.raises(LLMError):
+            await _drain(deltas, llm_transport.ollama_chat_stream(client, [], model="qwen2.5:3b"))
+    assert deltas == ["Hola"]
+
+
+@pytest.mark.unit
+async def test_ollama_chat_stream_accepts_an_empty_thinking_delta() -> None:
+    handler = _stream_handler(
+        [
+            '{"message": {"role": "assistant", "content": "", "thinking": "hmm"}}',
+            '{"message": {"content": "Hola"}}',
+            '{"done": true}',
+        ]
+    )
+    async with _mock_client(handler) as client:
+        deltas = [d async for d in llm_transport.ollama_chat_stream(client, [], model="qwen2.5:3b")]
+    assert deltas == ["Hola"]

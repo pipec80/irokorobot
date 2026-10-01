@@ -1,16 +1,10 @@
-"""Shared Ollama chat transport, used by llm.py and memory/consolidation.py.
+"""Shared Ollama ``/api/chat`` transport helpers.
 
-Design note (R3): the conversation path (llm.py) and the consolidation path
-(memory/consolidation.py) send Ollama completely different prompts/schemas —
-chat wants ``{"response", "emotion"}``, consolidation wants a
-``TurnExtraction`` JSON schema — so their payloads and parsing are NOT merged
-here. What genuinely repeats byte-for-byte across both call sites (and a
-third, non-chat one in vision/describe.py) is the transport itself: building
-the ``httpx.AsyncClient``, the ``POST {ollama_url}/api/chat`` call,
-``raise_for_status()``, reading ``resp.json()["message"]["content"]``, and
-stripping ```json fences from the result. That transport layer — plus its
-``stream=true`` NDJSON counterpart needed for R3's sentence-streaming TTS —
-lives here as the single shared helper.
+Used by llm.py, llm_streaming.py and memory/consolidation.py. Every caller
+passes the lifespan-owned ``httpx.AsyncClient`` (Plan 0039); nothing here
+constructs one. Building prompts and parsing the model's own output stay with
+each caller: chat wants ``{"response", "emotion"}``, consolidation a
+``TurnExtraction`` schema.
 """
 
 from collections.abc import AsyncIterator
@@ -20,6 +14,7 @@ from typing import Any
 
 import httpx
 
+from server.exceptions import LLMError
 from server.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -38,6 +33,25 @@ def strip_json_fences(raw: str) -> str:
         The text with any leading/trailing fence markers removed and stripped.
     """
     return raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+
+
+def message_content(payload: object) -> str:
+    """Return ``message.content`` from one decoded Ollama ``/api/chat`` object.
+
+    Args:
+        payload: One decoded JSON response body or NDJSON stream line.
+
+    Returns:
+        The message text, possibly empty.
+
+    Raises:
+        LLMError: If the object carries no string ``message.content``.
+    """
+    message = payload.get("message") if isinstance(payload, dict) else None
+    content = message.get("content") if isinstance(message, dict) else None
+    if not isinstance(content, str):
+        raise LLMError("Ollama response carries no text message content")
+    return content
 
 
 async def ollama_chat(
@@ -68,6 +82,7 @@ async def ollama_chat(
 
     Raises:
         httpx.HTTPError: If the Ollama server is unreachable or returns an error.
+        LLMError: If the response body is not JSON or carries no text content.
     """
     url = f"{settings.ollama_url}/api/chat"
     payload: dict[str, Any] = {  # Any: heterogeneous Ollama request payload
@@ -81,8 +96,11 @@ async def ollama_chat(
         payload["options"] = options
     resp = await client.post(url, json=payload, timeout=timeout)
     resp.raise_for_status()
-    content: str = resp.json()["message"]["content"]
-    return content
+    try:
+        body: object = resp.json()
+    except ValueError as exc:
+        raise LLMError("Ollama returned a non-JSON response") from exc
+    return message_content(body)
 
 
 async def ollama_chat_stream(
@@ -115,6 +133,7 @@ async def ollama_chat_stream(
 
     Raises:
         httpx.HTTPError: If the Ollama server is unreachable or returns an error.
+        LLMError: If a line reports an error or carries no text message content.
     """
     url = f"{settings.ollama_url}/api/chat"
     payload: dict[str, Any] = {  # Any: heterogeneous Ollama request payload
@@ -130,6 +149,10 @@ async def ollama_chat_stream(
             if not line.strip():
                 continue
             event = json.loads(line)
-            delta = event.get("message", {}).get("content", "")
+            if isinstance(event, dict) and "error" in event:
+                raise LLMError("Ollama reported an error mid-stream")
+            if isinstance(event, dict) and "message" not in event:
+                continue
+            delta = message_content(event)
             if delta:
                 yield delta
