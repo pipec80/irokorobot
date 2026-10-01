@@ -8,8 +8,8 @@
 >
 > **Plan review updated 2026-10-01 against `e14c6ae` (static, not an execution).**
 > The former re-audit items (a)–(h) are incorporated into the required reading,
-> scope, Tasks 0, 4 and 12, and non-goals below. Plan 0055 is still pending:
-> Task 0 must revalidate the examples and tests on its merged result before
+> scope, Tasks 0, 4 and 12, and non-goals below. Plan 0055 merged on 2026-10-01
+> (PR #152, `1c0a914`): Task 0 must revalidate the examples and tests on its merged result before
 > any implementation. The examples are not patches to apply blindly.
 > Not executable until the post-0055 review is recorded, Pipec confirms the
 > outstanding choices listed below, and promotes this plan to `Ready`/`NOW`.
