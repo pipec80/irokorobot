@@ -9,15 +9,15 @@ from __future__ import annotations
 import hashlib
 import logging
 import struct
-from typing import TYPE_CHECKING, Final
+from typing import Final
+
+import httpx
 
 from server import db
 from server.db import get_conn
-from server.exceptions import BrainMemoryError
+from server.exceptions import BrainMemoryError, LLMError
+from server.llm_transport import ollama_embed
 from server.settings import settings
-
-if TYPE_CHECKING:
-    import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -102,29 +102,16 @@ async def embed(client: httpx.AsyncClient, text: str) -> list[float]:
         logger.debug("Embedding cache hit for hash %s", h)
         return _unpack(row[0], EMBEDDING_DIM)
 
-    # /api/embed is Ollama's current endpoint (/api/embeddings is legacy).
-    # It takes "input" and returns a list of embeddings (batched API).
-    url = f"{settings.ollama_url}/api/embed"
-    payload = {"model": settings.embedding_model, "input": text}
     try:
-        # Was a hardcoded 30.0, inconsistent with every other Ollama call
-        # site's settings.ollama_timeout_s (Plan 0039).
-        resp = await client.post(url, json=payload, timeout=settings.ollama_timeout_s)
-        resp.raise_for_status()
-        data = resp.json()
-        embeddings = data.get("embeddings")
-        vec: list[float] | None = (
-            embeddings[0] if isinstance(embeddings, list) and embeddings else None
+        vec = await ollama_embed(
+            client, text, model=settings.embedding_model, timeout=settings.ollama_timeout_s
         )
-        if not isinstance(vec, list) or len(vec) != EMBEDDING_DIM:
-            got = len(vec) if isinstance(vec, list) else "invalid"
-            raise BrainMemoryError(
-                f"Ollama embedding has unexpected shape: expected {EMBEDDING_DIM}, got {got}"
-            )
-    except BrainMemoryError:
-        raise
-    except Exception as exc:
+    except (httpx.HTTPError, LLMError) as exc:
         raise BrainMemoryError("Ollama embeddings call failed") from exc
+    if len(vec) != EMBEDDING_DIM:
+        raise BrainMemoryError(
+            f"Ollama embedding has unexpected shape: expected {EMBEDDING_DIM}, got {len(vec)}"
+        )
 
     # The write lock is acquired only around the INSERT itself, not the
     # Ollama round-trip above: holding it across a network call would

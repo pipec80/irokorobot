@@ -1,13 +1,16 @@
-"""Shared Ollama ``/api/chat`` transport helpers.
+"""Shared Ollama transport: the one place that talks HTTP to Ollama.
 
-Used by llm.py, llm_streaming.py and memory/consolidation.py. Every caller
+Chat (``/api/chat``, plain and streaming) and embeddings (``/api/embed``) live
+here; llm.py, llm_streaming.py, memory/consolidation.py, memory/embeddings.py
+and vision/describe.py all reach Ollama through these helpers, and
+``tests/unit/test_ollama_seam.py`` keeps it that way. Every caller
 passes the lifespan-owned ``httpx.AsyncClient`` (Plan 0039); nothing here
 constructs one. Building prompts and parsing the model's own output stay with
 each caller: chat wants ``{"response", "emotion"}``, consolidation a
 ``TurnExtraction`` schema.
 """
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping, Sequence
 import json
 import logging
 from typing import Any
@@ -18,6 +21,10 @@ from server.exceptions import LLMError
 from server.settings import settings
 
 logger = logging.getLogger(__name__)
+
+#: One Ollama chat message: ``role`` and ``content`` strings, plus an ``images``
+#: list of base64 strings on a multimodal (VLM) turn.
+type ChatMessage = Mapping[str, str | list[str]]
 
 
 def strip_json_fences(raw: str) -> str:
@@ -56,7 +63,7 @@ def message_content(payload: object) -> str:
 
 async def ollama_chat(
     client: httpx.AsyncClient,
-    messages: list[dict[str, str]],
+    messages: Sequence[ChatMessage],
     *,
     model: str,
     format_schema: dict[str, Any] | None = None,  # Any: JSON-schema literal, heterogeneous
@@ -105,7 +112,7 @@ async def ollama_chat(
 
 async def ollama_chat_stream(
     client: httpx.AsyncClient,
-    messages: list[dict[str, str]],
+    messages: Sequence[ChatMessage],
     *,
     model: str,
     options: dict[str, float] | None = None,
@@ -156,3 +163,43 @@ async def ollama_chat_stream(
             delta = message_content(event)
             if delta:
                 yield delta
+
+
+async def ollama_embed(
+    client: httpx.AsyncClient,
+    text: str,
+    *,
+    model: str,
+    timeout: float | None = None,
+) -> list[float]:
+    """Call Ollama's ``/api/embed`` for one text and return its embedding vector.
+
+    Args:
+        client: Shared, lifecycle-owned HTTP client (Plan 0039) — never
+            constructed here.
+        text: Non-empty text to embed.
+        model: Ollama embedding model name.
+        timeout: Optional per-request timeout override, in seconds.
+
+    Returns:
+        The first embedding of the response, as floats. Its length is the
+        caller's contract to check.
+
+    Raises:
+        httpx.HTTPError: If the Ollama server is unreachable or returns an error.
+        LLMError: If the body is not JSON or carries no numeric vector.
+    """
+    url = f"{settings.ollama_url}/api/embed"
+    resp = await client.post(url, json={"model": model, "input": text}, timeout=timeout)
+    resp.raise_for_status()
+    try:
+        body: object = resp.json()
+    except ValueError as exc:
+        raise LLMError("Ollama returned a non-JSON response") from exc
+    embeddings = body.get("embeddings") if isinstance(body, dict) else None
+    vector = embeddings[0] if isinstance(embeddings, list) and embeddings else None
+    if not isinstance(vector, list) or not all(
+        isinstance(value, int | float) and not isinstance(value, bool) for value in vector
+    ):
+        raise LLMError("Ollama embedding response carries no numeric vector")
+    return [float(value) for value in vector]

@@ -102,3 +102,31 @@ async def test_embed_accepts_correct_dimension_vector(
     result = await embeddings.embed(http_client, "hola")
 
     assert len(result) == 768
+
+
+@pytest.mark.integration
+@pytest.mark.usefixtures("_real_memory_db")
+async def test_embed_wraps_a_transport_failure(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unreachable Ollama surfaces as the memory layer's own error."""
+    monkeypatch.setattr(
+        httpx.AsyncClient, "post", AsyncMock(side_effect=httpx.ConnectError("refused"))
+    )
+
+    with pytest.raises(BrainMemoryError, match="embeddings call failed"):
+        await embeddings.embed(http_client, "hola")
+
+
+@pytest.mark.integration
+@pytest.mark.usefixtures("_real_memory_db")
+@pytest.mark.parametrize("body", [{}, {"embeddings": []}, {"embeddings": [None]}])
+async def test_embed_rejects_a_malformed_body(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, body: dict[str, object]
+) -> None:
+    """A body without a vector fails as BrainMemoryError, never a raw KeyError."""
+    response = httpx.Response(200, json=body, request=httpx.Request("POST", "http://ollama"))
+    monkeypatch.setattr(httpx.AsyncClient, "post", AsyncMock(return_value=response))
+
+    with pytest.raises(BrainMemoryError):
+        await embeddings.embed(http_client, "hola")

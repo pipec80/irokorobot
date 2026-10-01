@@ -136,3 +136,18 @@ async def test_describe_image_wraps_a_transport_failure(
 
     with pytest.raises(VisionError):
         await describe_image(http_client, b"fake-image-bytes")
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.parametrize("payload", [{"message": {"content": None}}, {"message": None}])
+async def test_describe_image_rejects_a_null_description(
+    http_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    payload: dict[str, Any],
+) -> None:
+    """A null VLM message must be a VisionError, never "None" or a raw TypeError."""
+    _mock_post(monkeypatch, _FakeResponse(payload))
+
+    with pytest.raises(VisionError):
+        await describe_image(http_client, b"fake-image-bytes")

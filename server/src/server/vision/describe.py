@@ -19,7 +19,8 @@ import time
 import httpx
 import numpy as np
 
-from server.exceptions import ImageContractError, VisionError
+from server.exceptions import ImageContractError, LLMError, VisionError
+from server.llm_transport import ChatMessage, ollama_chat
 from server.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -133,28 +134,25 @@ async def describe_image(client: httpx.AsyncClient, image: bytes) -> tuple[str, 
         VisionError: If the VLM backend is unreachable, errors out, or
             returns an empty/unexpected response.
     """
-    payload = {
-        "model": settings.vlm_model,
-        "messages": [
-            {
-                "role": "user",
-                "content": _DESCRIBE_PROMPT,
-                "images": [base64.b64encode(image).decode("ascii")],
-            }
-        ],
-        "stream": False,
-        "options": {"temperature": 0.3},
+    message: ChatMessage = {
+        "role": "user",
+        "content": _DESCRIBE_PROMPT,
+        "images": [base64.b64encode(image).decode("ascii")],
     }
     t0 = time.perf_counter()
     try:
-        resp = await client.post(
-            f"{settings.ollama_url}/api/chat", json=payload, timeout=settings.ollama_timeout_s
-        )
-        resp.raise_for_status()
-        description = str(resp.json()["message"]["content"]).strip()
+        description = (
+            await ollama_chat(
+                client,
+                [message],
+                model=settings.vlm_model,
+                options={"temperature": 0.3},
+                timeout=settings.ollama_timeout_s,
+            )
+        ).strip()
     except httpx.HTTPError as exc:
         raise VisionError(f"VLM backend unavailable ({settings.vlm_model}): {exc}") from exc
-    except (KeyError, ValueError) as exc:
+    except LLMError as exc:
         raise VisionError(f"VLM returned an unexpected response: {exc}") from exc
     if not description:
         raise VisionError("VLM returned an empty description")

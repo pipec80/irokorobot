@@ -221,3 +221,74 @@ async def test_ollama_chat_stream_accepts_an_empty_thinking_delta() -> None:
     async with _mock_client(handler) as client:
         deltas = [d async for d in llm_transport.ollama_chat_stream(client, [], model="qwen2.5:3b")]
     assert deltas == ["Hola"]
+
+
+@pytest.mark.unit
+async def test_ollama_chat_sends_message_images_verbatim() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["payload"] = json.loads(request.content)
+        return httpx.Response(200, json={"message": {"content": "una mesa"}})
+
+    message = {"role": "user", "content": "Describe", "images": ["QUJD"]}
+    async with _mock_client(handler) as client:
+        text = await llm_transport.ollama_chat(
+            client, [message], model="vlm", options={"temperature": 0.3}, timeout=5.0
+        )
+
+    assert text == "una mesa"
+    payload = captured["payload"]
+    assert isinstance(payload, dict)
+    assert payload["messages"] == [message]
+    assert payload["options"] == {"temperature": 0.3}
+    assert payload["stream"] is False
+    assert "format" not in payload
+
+
+@pytest.mark.unit
+async def test_ollama_embed_posts_to_api_embed_and_returns_the_vector() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["payload"] = json.loads(request.content)
+        return httpx.Response(200, json={"embeddings": [[0.5, 1, 2.25]]})
+
+    async with _mock_client(handler) as client:
+        vector = await llm_transport.ollama_embed(client, "hola", model="nomic", timeout=5.0)
+
+    assert vector == [0.5, 1.0, 2.25]
+    assert str(captured["url"]).endswith("/api/embed")
+    assert captured["payload"] == {"model": "nomic", "input": "hola"}
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"embeddings": []},
+        {"embeddings": [None]},
+        {"embeddings": [["x"]]},
+        {"embeddings": [[True]]},
+        ["not", "an", "object"],
+    ],
+)
+async def test_ollama_embed_rejects_a_body_without_a_numeric_vector(body: object) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=body)
+
+    async with _mock_client(handler) as client:
+        with pytest.raises(LLMError):
+            await llm_transport.ollama_embed(client, "hola", model="nomic")
+
+
+@pytest.mark.unit
+async def test_ollama_embed_wraps_a_non_json_body() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"nope")
+
+    async with _mock_client(handler) as client:
+        with pytest.raises(LLMError):
+            await llm_transport.ollama_embed(client, "hola", model="nomic")
