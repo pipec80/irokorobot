@@ -2,6 +2,7 @@
 
 from collections.abc import Awaitable, Callable
 from datetime import datetime
+import logging
 from typing import Protocol
 from uuid import UUID
 
@@ -31,6 +32,8 @@ from server.memory.relational_v4 import (
 )
 
 __all__ = ["LiteralReadResult", "PolicyGatedV4Reader", "RelationReadResult"]
+
+logger = logging.getLogger(__name__)
 
 type PolicyEvaluator = Callable[[AuthorizationRequest], AuthorizationDecision]
 type AuditWriter = Callable[[AuthorizationRequest, AuthorizationDecision], Awaitable[None]]
@@ -84,7 +87,11 @@ class RelationReadResult(BaseModel):
 
 
 class PolicyGatedV4Reader:
-    """Authorize and audit bounded v4 reads before raw storage access."""
+    """Authorize and audit bounded v4 reads before raw storage access.
+
+    A row is returned only when its stored ``visibility`` and ``sensitivity``
+    equal the classification the policy just authorized.
+    """
 
     def __init__(
         self,
@@ -149,9 +156,12 @@ class PolicyGatedV4Reader:
                 reason="household data is not authorized",
             )
 
-        facts = await self._literal_reader(
-            subject_entity_id=subject_entity_id,
-            definition=definition,
+        facts = _authorized_rows(
+            await self._literal_reader(
+                subject_entity_id=subject_entity_id,
+                definition=definition,
+            ),
+            definition,
         )
         if not facts:
             return LiteralReadResult(
@@ -212,10 +222,13 @@ class PolicyGatedV4Reader:
                 reason="household data is not authorized",
             )
 
-        relations = await self._relation_reader(
-            definition=definition,
-            source_entity_id=source_entity_id,
-            target_entity_id=target_entity_id,
+        relations = _authorized_rows(
+            await self._relation_reader(
+                definition=definition,
+                source_entity_id=source_entity_id,
+                target_entity_id=target_entity_id,
+            ),
+            definition,
         )
         if not relations:
             return RelationReadResult(
@@ -248,6 +261,28 @@ class PolicyGatedV4Reader:
         decision = self._policy_evaluator(request)
         await self._audit_writer(request, decision)
         return decision
+
+
+def _authorized_rows[RowT: (LiteralFactV4, EntityRelationV4)](
+    rows: list[RowT],
+    definition: PredicateDefinition,
+) -> list[RowT]:
+    """Keep only rows stored with exactly the classification the policy authorized.
+
+    Every current writer stores the predicate defaults, so today this drops
+    nothing; a row persisted with any other label fails closed instead of
+    leaking under the default decision.
+    """
+    authorized = (definition.default_visibility, definition.default_sensitivity)
+    kept = [row for row in rows if (row.visibility, row.sensitivity) == authorized]
+    withheld = len(rows) - len(kept)
+    if withheld:
+        logger.warning(
+            "Withheld %d v4 row(s) stored outside the authorized classification",
+            withheld,
+            extra={"event": "memory.v4_classification_mismatch", "withheld": withheld},
+        )
+    return kept
 
 
 def _definition_for_kind(

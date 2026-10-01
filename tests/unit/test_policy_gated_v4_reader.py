@@ -286,3 +286,55 @@ async def test_relation_requires_exactly_one_endpoint_before_collaborators() -> 
     policy_evaluator.assert_not_called()
     audit_writer.assert_not_awaited()
     relation_reader.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_literal_row_stored_stricter_than_authorized_is_withheld() -> None:
+    """Only rows stored with the authorized classification leave the gate."""
+    calls: list[str] = []
+    stricter = _literal_fact().model_copy(
+        update={"visibility": "private", "sensitivity": "medical"}
+    )
+    default = _literal_fact().model_copy(update={"id": 3, "value_text": "musica"})
+    reader = PolicyGatedV4Reader(
+        policy_evaluator=lambda request: _allowed_decision(request, calls),
+        audit_writer=AsyncMock(),
+        literal_reader=AsyncMock(return_value=[stricter, default]),
+    )
+
+    result = await reader.read_active_literals(
+        actor=_actor(HouseholdRole.OWNER, 7),
+        subject_entity_id=7,
+        predicate_alias="le_gusta",
+        consent=ConsentStatus.NOT_REQUIRED,
+        correlation_id=_CORRELATION_ID,
+        requested_at=_NOW,
+    )
+
+    assert result.status is KnowledgeStatus.KNOWN
+    assert [fact.value_text for fact in result.facts] == ["musica"]
+
+
+@pytest.mark.asyncio
+async def test_relation_rows_all_stored_stricter_become_a_permitted_absence() -> None:
+    """A relation read whose every row is misclassified reports no record."""
+    calls: list[str] = []
+    stricter = _child_relation().model_copy(update={"visibility": "private"})
+    reader = PolicyGatedV4Reader(
+        policy_evaluator=lambda request: _allowed_decision(request, calls),
+        audit_writer=AsyncMock(),
+        relation_reader=AsyncMock(return_value=[stricter]),
+    )
+
+    result = await reader.read_active_relations(
+        actor=_actor(HouseholdRole.OWNER, 7),
+        predicate_alias="child_of",
+        target_entity_id=7,
+        consent=ConsentStatus.GRANTED,
+        correlation_id=_CORRELATION_ID,
+        requested_at=_NOW,
+    )
+
+    assert result.status is KnowledgeStatus.UNKNOWN
+    assert result.relations == ()
+    assert result.reason == "no active authorized record"
