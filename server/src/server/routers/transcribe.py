@@ -14,7 +14,7 @@ from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 import httpx
 
-from server import turn_log, vision
+from server import turn_log
 from server.audio_contract import validate_wav_contract
 from server.cognition.authorization import evaluate_authorization
 from server.cognition.controller import ActivePersonResolver, CognitiveController, ConsentResolver
@@ -32,7 +32,6 @@ from server.cognition.response_plan import (
 from server.dependencies import IdentityTokenDep, OwnerUnlockServiceDep, ResourcesDep
 from server.exceptions import (
     AudioContractError,
-    ImageContractError,
     UploadTooLargeError,
 )
 from server.memory.consolidation import consolidate_turn
@@ -44,6 +43,7 @@ from server.pipeline import (
     _run_stt,
     _run_tts,
 )
+from server.routers.image_upload import read_contract_image
 from server.schemas import IdentitySource, TranscribeResponse, error_responses
 from server.schemas_streaming import StreamEvent
 from server.settings import settings
@@ -281,51 +281,6 @@ async def _read_audio_upload(audio: UploadFile) -> bytes:
     return audio_bytes
 
 
-async def _read_optional_frame(frame: UploadFile) -> bytes:
-    """Read and validate one owner-authentication frame against the image contract.
-
-    Duplicated minimally from `routers/vision.py`'s `_read_contract_image` —
-    Plan 0029 keeps that router untouched, so this router cannot import from
-    it (same pattern Task 4 used in `routers/auth.py`'s `_read_face_image`).
-
-    The caller must only invoke this when `settings.face_authentication_enabled`
-    is `True` and a frame was actually supplied — this function always reads
-    and validates whatever it is given.
-
-    Image contract: JPEG/PNG/WebP/GIF/BMP · max 1280x720 · ONE frame.
-
-    Args:
-        frame: Multipart upload carrying the webcam frame.
-
-    Returns:
-        The raw, validated frame bytes.
-
-    Raises:
-        HTTPException 413: If the frame exceeds MAX_IMAGE_UPLOAD_BYTES.
-        HTTPException 422: If the frame is empty, an unrecognized format,
-            fails to decode, or exceeds the 1280x720 contract limit.
-    """
-    try:
-        frame_bytes = await read_limited_upload(frame, limit=settings.max_image_upload_bytes)
-    except UploadTooLargeError as exc:
-        raise HTTPException(
-            status_code=413,
-            detail=f"Frame too large — max {exc.limit // 1024 // 1024} MB",
-        ) from exc
-    if not frame_bytes:
-        raise HTTPException(status_code=422, detail="Frame file is empty")
-    if not vision.is_known_image_format(frame_bytes):
-        raise HTTPException(
-            status_code=422,
-            detail="Unsupported image format (contract: JPEG/PNG/WebP/GIF/BMP · max 1280x720)",
-        )
-    try:
-        vision.decode_and_validate_image(frame_bytes)
-    except ImageContractError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return frame_bytes
-
-
 @router.post(
     "",
     responses=error_responses((413, "Audio or attached frame exceeds the upload size limit")),
@@ -369,7 +324,7 @@ async def transcribe(
     frame_bytes: bytes | None = None
     if settings.face_authentication_enabled and frame is not None:
         try:
-            frame_bytes = await _read_optional_frame(frame)
+            frame_bytes = await read_contract_image(frame, noun="Frame")
         except HTTPException as exc:
             logger.warning(
                 "Owner-authentication frame rejected — continuing without it: %s", exc.detail
@@ -493,7 +448,7 @@ async def transcribe_stream(
     frame_bytes: bytes | None = None
     if settings.face_authentication_enabled and frame is not None:
         try:
-            frame_bytes = await _read_optional_frame(frame)
+            frame_bytes = await read_contract_image(frame, noun="Frame")
         except HTTPException as exc:
             logger.warning(
                 "Owner-authentication frame rejected — continuing without it: %s", exc.detail

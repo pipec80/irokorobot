@@ -26,11 +26,12 @@ from server.cognition.response_plan import (
     TextTurnPayload,
     current_perception_plan,
 )
-from server.exceptions import ImageContractError, UploadTooLargeError, VisionError
+from server.exceptions import VisionError
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
 from server.pipeline import _run_tts
 from server.resources import ResourcesDep
+from server.routers.image_upload import read_contract_image
 from server.schemas import (
     TranscribeResponse,
     VisionDescribeResponse,
@@ -39,7 +40,6 @@ from server.schemas import (
 )
 from server.settings import settings
 from server.text_turn import TextTurnResult, new_interaction_scope, process_text_turn
-from server.uploads import read_limited_upload
 from server.vision.perception import perceive_scene
 
 logger = logging.getLogger(__name__)
@@ -139,43 +139,6 @@ def _vision_controller(client: httpx.AsyncClient) -> CognitiveController:
     )
 
 
-async def _read_contract_image(image: UploadFile) -> bytes:
-    """Read an upload and validate it against the image contract.
-
-    Image contract: JPEG/PNG/WebP/GIF/BMP · max 1280x720 · ONE frame.
-
-    Args:
-        image: Multipart upload from a vision endpoint.
-
-    Returns:
-        The raw, validated image bytes.
-
-    Raises:
-        HTTPException 413: If the image exceeds MAX_IMAGE_UPLOAD_BYTES.
-        HTTPException 422: If the image is empty, an unrecognized format,
-            fails to decode, or exceeds the 1280x720 contract limit.
-    """
-    try:
-        image_bytes = await read_limited_upload(image, limit=settings.max_image_upload_bytes)
-    except UploadTooLargeError as exc:
-        raise HTTPException(
-            status_code=413,
-            detail=f"Image too large — max {exc.limit // 1024 // 1024} MB",
-        ) from exc
-    if not image_bytes:
-        raise HTTPException(status_code=422, detail="Image file is empty")
-    if not vision.is_known_image_format(image_bytes):
-        raise HTTPException(
-            status_code=422,
-            detail="Unsupported image format (contract: JPEG/PNG/WebP/GIF/BMP · max 1280x720)",
-        )
-    try:
-        vision.decode_and_validate_image(image_bytes)
-    except ImageContractError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return image_bytes
-
-
 @router.post(
     "/describe",
     responses=error_responses(
@@ -203,7 +166,7 @@ async def vision_describe(
     if not settings.vision_enabled:
         raise HTTPException(status_code=503, detail="Vision is disabled (VISION_ENABLED=false)")
 
-    image_bytes = await _read_contract_image(image)
+    image_bytes = await read_contract_image(image)
 
     try:
         description, duration_ms = await vision.describe_image(resources.http_client, image_bytes)
@@ -294,7 +257,7 @@ async def vision_respond(
     if isinstance(decision, SceneDescriptionRequest):
         if not settings.vision_enabled:
             raise HTTPException(status_code=503, detail="Vision is disabled (VISION_ENABLED=false)")
-        image_bytes = await _read_contract_image(image)
+        image_bytes = await read_contract_image(image)
         try:
             description = await perceive_scene(resources.http_client, image_bytes)
             plan = current_perception_plan(description)

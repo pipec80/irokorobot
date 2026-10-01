@@ -212,7 +212,7 @@ def create_app(app_settings: Settings | None = None) -> FastAPI:
     # argument. It rejects a body over budget before any router or multipart
     # parsing runs, which matters because a field the app never reads (an
     # optional frame with face auth disabled) would otherwise never be sized at
-    # all: `_read_optional_frame` simply never executes for it.
+    # all: `read_contract_image` simply never executes for it.
     new_app.add_middleware(
         RequestBodyLimitMiddleware, max_body_size=settings.max_request_body_bytes
     )

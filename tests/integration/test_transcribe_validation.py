@@ -182,7 +182,7 @@ def test_transcribe_an_oversized_frame_is_rejected_even_when_never_read(
     """A field the app never reads must still be bounded, or it isn't bounded at all.
 
     `face_authentication_enabled` defaults to `False`, and in that state the
-    handler never calls `_read_optional_frame` — the field is accepted but
+    handler never calls `read_contract_image` — the field is accepted but
     completely inert by design. Without a raw request-body ceiling, an
     oversized `frame` would sail past every per-file check that exists,
     because none of them ever run for it. Only the ASGI-level budget can
