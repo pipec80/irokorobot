@@ -169,9 +169,11 @@ async def _validation_error_without_input(
 def create_app(app_settings: Settings | None = None) -> FastAPI:
     """Compose the FastAPI application: logging, middleware, routers, lifespan.
 
-    Configuring logging is the first thing this does, and only this does —
-    importing `server.main` alone must not create a log directory or any
-    other side effect (Plan 0039); only calling `create_app()` does.
+    Configuring logging is the first thing this does. This module also builds
+    its default `app` at import time for `server.main:app`, so importing
+    `server.main` runs this once — including creating the log directory when
+    `LOG_TO_FILE` is on. Build any other instance with `create_app(Settings(...))`
+    for isolation.
 
     Args:
         app_settings: Configuration for this app instance. Defaults to the
@@ -206,6 +208,9 @@ def create_app(app_settings: Settings | None = None) -> FastAPI:
     )
     # Read by `lifespan` — the only settings seam this factory owns.
     new_app.state.settings = cfg
+    # "Not started" is a state, not a missing attribute: `lifespan`'s failure path and
+    # `/ready` both read it.
+    new_app.state.ready = False
     new_app.add_middleware(GZipMiddleware, minimum_size=1000)
     # `FastAPI(...)` does not accept `max_body_size` — only `Starlette.__init__`
     # does (Plan 0034) — so the raw ceiling is a middleware, not a constructor

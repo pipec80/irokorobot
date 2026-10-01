@@ -314,7 +314,7 @@ def _ambiguous_date_plan() -> ResponsePlan:
     """Ask for a safe clarification when a known STT date form is ambiguous."""
     return _unknown_plan(
         InformationNeed.AMBIGUOUS_DATE_QUERY,
-        "No entendí si preguntas por la fecha actual o por información personal. "
+        "No entendí si preguntás por la fecha actual o por información personal. "
         "¿Podrías reformularlo?",
     )
 
@@ -409,7 +409,7 @@ def _household_tool_plan(
         names = _spanish_join(result.value)
         response = f"Tus hijos son {names}."
     elif need is InformationNeed.OWN_CHILDREN_COUNT and isinstance(result.value, int):
-        response = f"Tienes {result.value} hijos."
+        response = f"Tenés {result.value} hijos."
     else:
         return _unknown_plan(
             need,
