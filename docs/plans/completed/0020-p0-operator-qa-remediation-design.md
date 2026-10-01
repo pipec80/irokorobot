@@ -478,7 +478,7 @@ specification. The remediation now runs:
 1. **C6 via Plan 0022** — the audible-streaming fix, first. It has no
    technical dependency on C5: the permitted file scopes are disjoint and the
    only link was a status line.
-2. **PC-1 of the [personal companion design](0015-personal-companion-design.md)**
+2. **PC-1 of the [personal companion design](../open/0015-personal-companion-design.md)**
    — local owner onboarding, pulled ahead of the remaining P0-C slices.
 3. **C5 via Plan 0021** — typed intent resolution.
 4. **C7 via Plan 0023** — grounded visual dialogue, revised so a resolved

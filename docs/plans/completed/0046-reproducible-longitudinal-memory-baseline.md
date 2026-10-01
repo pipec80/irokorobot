@@ -88,7 +88,7 @@ No dependency is added.
 [longitudinal conversational-memory evaluation](../../architecture/longitudinal-conversational-memory-evaluation.md),
 [conversational-memory delivery map](../../roadmap/conversational-memory-delivery-map.md),
 [memory and world state](../../architecture/memory-and-world-state.md), and
-[Plan 0015](0015-personal-companion-design.md).
+[Plan 0015](../open/0015-personal-companion-design.md).
 
 **Baseline semantics:** GREEN means the benchmark software is correct. The
 expected CM-0 product result is RED because the current runtime does not yet

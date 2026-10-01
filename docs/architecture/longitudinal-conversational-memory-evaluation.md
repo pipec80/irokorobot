@@ -123,17 +123,40 @@ enforced by `validate_dataset_privacy`.
 - extraction and abstention report precision/recall; CM-0 records them without
   inventing a release threshold.
 
-**Baseline result** (`ac43c58`, `just eval-longitudinal --runs 3`, exit `1`,
+**Staged acceptance (decided 2026-09-30; not implemented yet).** Some
+scenarios need family capabilities that the queue delivers only in P3.2
+(`recipient_only_message` needs a recado delivered to its recipient;
+`two_adult_private_facts` needs a second identified adult). The report will
+carry three verdicts, computed separately:
+
+- **Personal acceptance:** PASS when every personal-scope scenario passes the
+  frozen gates above, with no relaxed threshold and no unsupported case in
+  that scope. This is the CM-7 exit evidence.
+- **Family acceptance:** `pending` until P3.2; it then passes under the same
+  rules.
+- **Full suite:** keeps failing while any scenario is unsupported or pending;
+  pending scenarios stay visible and are never excluded.
+
+Today `scripts/longitudinal_eval_aggregation.py::determine_exit_code` fails on
+any unsupported case, which is the correct full-suite verdict. Tagging each
+scenario's scope (a dataset version bump) and reporting the three verdicts is
+owned by the voice-pipeline reliability and diagnostics row of the
+[portfolio](../roadmap/cognitive-roadmap.md#canonical-pre-electronics-delivery-portfolio).
+
+**Baseline result** (report `source_commit` `38fa89c`, added in `ac43c58`;
+`just eval-longitudinal --runs 3`, exit `1`,
 report [`docs/evals/0046-longitudinal-memory-baseline.md`](../evals/0046-longitudinal-memory-baseline.md)):
 single-turn extraction is the only live seam and is **measured, not passing** —
-precision/recall `0.25` on the Spanish suite (`qwen2.5:3b` chat,
+precision `0.25` and recall `0.25` on the Spanish suite (`qwen2.5:3b` chat,
 `qwen3:4b-instruct-2507-q4_K_M` consolidation), scored `FAIL`; there is no
 extraction release gate in CM-0. Every other operation (`propose`, `restart`,
 `recall`, `correct`, `forget`, `inspect_derivatives`) is honestly `unsupported`
 with its exact missing seam. All four frozen gates `FAIL`. The production
-database hash was unchanged before and after the run.
+database hash was unchanged before and after the run. The full run recorded 75
+steps: 3 failed and 72 unsupported.
 
-This is the current reproducible RED. CM-1…CM-7 will be measured against it and
+This is the latest recorded RED; it is historical, and memory code changed
+afterwards (PR #131, Plan 0053), so it is not a measurement of the current tree. CM-1…CM-7 will be measured against it and
 must not relax a threshold or hide an unsupported category to move the number.
 
 ## Recovered historical baseline

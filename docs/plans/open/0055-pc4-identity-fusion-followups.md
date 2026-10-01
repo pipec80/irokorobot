@@ -10,20 +10,24 @@
 > `superpowers:verification-before-completion` before any claim that a task or
 > the plan is done.
 
-- **Status:** `Draft` — written 2026-09-30 after Plan 0054 (PC-4) closed, from the
+- **Status:** `Ready` — written 2026-09-30 after Plan 0054 (PC-4) closed, from the
   deferred findings of its independent review and from what Pipec's real-hardware run
-  showed. Not executable until Pipec reads it and promotes it to `NOW`
-  ([`docs/plans/README.md`](../README.md#operational-board) is empty today).
-- **Roadmap row:** none of its own. It hardens the closed PC-4 row
-  ([portfolio row 4](../../roadmap/cognitive-roadmap.md#canonical-pre-electronics-delivery-portfolio))
+  showed. **Approved as `Ready` and selected as `NOW` by Pipec on 2026-10-01**
+  ([`docs/plans/README.md`](../README.md#operational-board)). Execute it in a new
+  session; Task 0 re-verifies the base before any code changes.
+- **Plan review:** revised 2026-10-01 against `e14c6ae`, by source inspection.
+  This documentation edit is not a code execution, a new hardware run or promotion.
+- **Roadmap row:** the unnumbered PC-4 follow-ups row, before Plan 0050
+  ([canonical portfolio](../../roadmap/cognitive-roadmap.md#canonical-pre-electronics-delivery-portfolio)). It hardens closed PC-4
   and changes no product behavior Pipec has not decided (see the decisions below).
 - **Evidence it builds on:** [Plan 0054](../completed/0054-face-default-identity-fusion.md),
   its *Independent review* section and its real-hardware outcomes.
 
 **Goal:** Close the small, known weaknesses PC-4 left so they do not compound with the
 first reserved capability: a database error during face recognition must deny quietly
-instead of failing the turn; the first protected turn after a server start must not take
-8 to 13 s; one definition for each value the code repeats; and two coverage holes
+instead of failing the turn when the remaining stores are healthy; move identity-model
+loading from the first protected turn to startup (measure latency separately);
+one definition for each value the code repeats; and two coverage holes
 (another person's face against a real role row, and a vacuous test) closed.
 
 **Architecture:** No new subsystem and no change to the identity rule. One `try/except` in
@@ -92,7 +96,7 @@ Nothing in the re-audit contradicts the closed plan or the ADR.
 
 | # | Decision |
 |---|---|
-| D-1 | A database error while resolving the face degrades to `unknown`: the turn continues as unidentified (generic denial), logs one warning carrying only the exception class, and never raises to the caller |
+| D-1 | A caught storage error from the face resolver contributes no identifying or veto evidence and logs only its exception class. Resolution continues through the existing PIN path; without a valid PIN the actor is unknown. This does not promise recovery from a failure of PIN storage, policy audit or the whole database |
 | D-2 | When `FACE_AUTHENTICATION_ENABLED` or `SPEAKER_AUTHENTICATION_ENABLED` is on, the matching model is loaded at server start, in the existing `lifespan`; a failed warm-up logs a warning and falls back to the lazy load. No new setting |
 | D-3 | A matched face whose entity has no household role keeps vetoing (conservative); the operator manual documents it |
 | D-4 | Whisper returning its own initial prompt from noise is **not** part of this plan; it gets its own plan |
@@ -108,8 +112,10 @@ Every task's requirements implicitly include this section.
   proves it).
 - **Audio contract:** WAV, 16 000 Hz, mono, signed int16, documented in every function that
   touches audio.
-- **Fail closed:** a store error produces a non-identifying outcome; no path raises to the
-  caller; no bare `except`; every `except` names its exceptions.
+- **Fail closed:** catch the named storage exceptions from face resolution only;
+  the face contributes no identification or veto. Preserve independent PIN
+  resolution and the controller's policy/audit. Do not swallow unrelated errors
+  or describe this guard as recovery from a total database outage.
 - **Privacy:** no name, transcript, distance or score reaches a log line; the new warning
   carries the exception class only.
 - **Real household data never enters the repository.** Tests use canaries;
@@ -176,6 +182,7 @@ that owns the code.
 | `tests/unit/test_identity_fusion.py`, `tests/unit/test_app_lifecycle.py`, `tests/integration/test_identity_fusion_turn.py`, `tests/integration/test_speaker_evidence_turn.py` | As each task states |
 | `docs/runbooks/operator-manual.md`, `docs/architecture/current-state.md`, `docs/plans/README.md`, `docs/plans/open/README.md`, `docs/plans/completed/README.md`, this plan | Closure documentation |
 | `docs/architecture/diagrams/current-state.{json,html}` | Regenerated with Archify after `current-state.md` changes |
+| `docs/roadmap/cognitive-roadmap.md`, `docs/roadmap/personal-companion-delivery-map.md` | Mark this hardening row closed without changing the delivery order |
 
 **Never touched:** `cognition/identity.py`, `cognition/authorization.py`, `voice/voiceprints.py`,
 `memory/`, `robot/src/`, `scripts/`, `pyproject.toml`, `uv.lock`.
@@ -186,28 +193,44 @@ that owns the code.
 
 **Files:** none. No code in this task.
 
-- [ ] **Step 1: Branch from an up-to-date `main`**
+- [ ] **Step 1: Record the authorized implementation baseline**
 
-```bash
-git checkout main && git pull --ff-only
+This step applies when the plan is promoted, not while editing this draft on
+`docs/single-delivery-queue`. Record branch, SHA and working-tree status. Do not
+switch branches with someone else's uncommitted work. After that work is safely
+closed and `main` is current, create the implementation branch:
+
+```powershell
+git checkout main
+git pull --ff-only
 git checkout -b feat/0055-pc4-followups
 ```
 
+Check each command's exit code before the next. Never discard work to make
+the tree clean.
+
 - [ ] **Step 2: Re-verify the load-bearing findings**
 
-```bash
-grep -n "def warm_up" server/src/server/vision/faces.py server/src/server/voice/speaker_embedding.py
-grep -rn "def _utc_now" server/src | wc -l
-grep -n "_STORE_ERRORS" server/src/server/cognition/identity_fusion.py
+```powershell
+rg -n "def warm_up" server/src/server/vision/faces.py server/src/server/voice/speaker_embedding.py
+rg -n "def _utc_now" server/src
+rg -n "_STORE_ERRORS" server/src/server/cognition/identity_fusion.py
 ```
 
-Expected: the first prints nothing, the second prints `4`, the third prints nothing. **Any
-mismatch stops the plan and is reported to Pipec — it is not worked around.**
+Expected: no warm-up definitions, four clock definitions, no store-error guard.
+`rg` exit 1 means no matches, not a tool failure. Re-audit any mismatch before
+implementation rather than deleting a new legitimate change to restore these counts.
 
 - [ ] **Step 3: Confirm the green baseline**
 
 Run: `just gate`
 Expected: PASS. Record the test count; later tasks grow from it.
+
+- [ ] **Step 4: Capture the OpenAPI baseline before any implementation**
+
+Use the Task 3 snapshot command now, with `openapi-before.json`. Refuse to
+overwrite an existing file. Keep this untracked artifact until Task 3 compares
+it; never regenerate the baseline after changing the implementation.
 
 ---
 
@@ -220,7 +243,8 @@ Expected: PASS. Record the test count; later tasks grow from it.
 **Interfaces:**
 - Consumes: `FaceRequestResolver.resolve_actor` (may raise `BrainMemoryError` or
   `aiosqlite.Error`), `OwnerRequestResolver` (unchanged).
-- Produces: `FusedIdentityResolver.resolve_actor` never raises those two; on such an error
+- Produces: `FusedIdentityResolver.resolve_actor` catches those two **only from
+  `FaceRequestResolver.resolve_actor`**; on such an error
   it logs `Face identity degraded to unknown: <ExceptionClass>`, leaves `source` as `None`
   and ends with `FusionReason.NO_EVIDENCE` (or `PIN` when a valid token follows).
 
@@ -298,6 +322,13 @@ async def test_a_store_error_in_the_face_still_lets_a_valid_pin_token_through() 
     assert fused.source == "local_unlock"
 ```
 
+Also parameterize the injected error boundary over face matching, role lookup,
+consent lookup and person-label lookup. Each of the two named exception types
+must leave no face evidence and must not call the speaker. Resolve twice on
+the same fused resolver and assert one face attempt and one warning: the
+request cache must retain the safe result. Keep PIN-store failures outside this
+test's claim; Task 1 must not silently convert them into successful authorization.
+
 In `tests/integration/test_identity_fusion_turn.py` add `import aiosqlite` (third-party
 block) and append:
 
@@ -319,10 +350,27 @@ async def test_a_store_error_in_face_resolution_denies_instead_of_failing_the_tu
 
     body = response.json()
     assert response.status_code == 200
-    assert "Joaquín" not in body["llm_response"]
+    assert (
+        body["llm_response"]
+        == "No puedo acceder a información familiar privada sin una autorización comprobada."
+    )
     assert body["identity_source"] is None
+    assert body["authentication_consumed"] is False
     embed.assert_not_awaited()
 ```
+
+Repeat the route check for `/transcribe/stream`: parse NDJSON, require one
+terminal `done` (no `error`), an audio event with the same denial, no identifying
+source, no token consumption and no speaker call. Also cover both routes with
+a valid PIN while injecting the same face-local failure: require the child
+answer, `local_unlock` and a consumed grant. Spy on the raw V4 relation
+reader and assert it was not awaited in the tokenless denial cases. Inject a
+real `PolicyGatedV4Reader(relation_reader=AsyncMock(wraps=get_active_entity_relations))`
+through the `server.routers.transcribe.PolicyGatedV4Reader` constructor seam;
+patching the repository symbol alone does not replace its bound default argument.
+This fixture injects a
+face-read failure while the rest of SQLite/audit is healthy; it does not
+simulate a database-wide outage.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -390,12 +438,14 @@ Expected: all pass.
 
 - [ ] **Step 5: Run the wider checks**
 
-Run: `uv run ruff check --fix server tests && uv run ruff format server tests && uv run mypy --config-file=pyproject.toml server/src robot/src && uv run pyright && uv run pytest tests/unit tests/integration/test_face_authenticated_turn.py tests/integration/test_identity_fusion_turn.py -q -p no:cacheprovider`
+Run `just lint`, then `just typecheck`, then
+`uv run pytest tests/unit tests/integration/test_face_authenticated_turn.py tests/integration/test_identity_fusion_turn.py -q -p no:cacheprovider`.
+Check each exit code and stop on failure.
 Expected: clean and green.
 
 - [ ] **Step 6: Commit**
 
-```bash
+```powershell
 git add server/src/server/cognition/identity_fusion.py tests/unit/test_identity_fusion.py tests/integration/test_identity_fusion_turn.py
 git commit -m "fix(cognition): degrade a face store error to unknown"
 git log -1 --pretty=%s
@@ -530,6 +580,26 @@ async def test_a_failed_warm_up_does_not_stop_the_server(
 
 (`SpeakerBackendError` is imported from `server.voice.speaker_embedding`.)
 
+Complete these tests before implementation:
+
+- Parameterize the successful lifespan case over all four face/speaker flag
+  combinations. Assert the enabled loader is awaited once and the disabled
+  loader is never awaited. Repeat using `create_app(Settings(...))` with flags
+  opposite to the module-global settings, to prove `cfg` controls startup.
+- In the loader tests, record `threading.get_ident()` inside the stub and prove
+  it differs from the event-loop thread. A single call does not prove off-loop
+  execution. Keep the existing loader caches and speaker failure cool-down.
+- Use exception messages containing an invented sensitive canary in the failed
+  warm-up test. Require both class names in warnings and no canary, traceback
+  or raw exception message. A failed face load must not skip speaker warm-up.
+- Extend the fresh-interpreter import test in
+  `tests/integration/test_speaker_evidence_turn.py` to also reject `insightface`.
+  Preserve the checks for `torch`, `torchaudio` and `speechbrain`.
+
+Warm-up is awaited before readiness; it moves work to startup and does not
+provide a startup deadline. Do not promise a successful lazy retry or a latency
+gain after a failed load. Measure startup and first-turn time in Task 6.
+
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/unit/test_model_warm_up.py tests/unit/test_app_lifecycle.py -q -n0 -p no:cacheprovider`
@@ -574,11 +644,13 @@ In `main.py`: add `Awaitable, Callable` to the `collections.abc` import, and
 
 ```python
 async def _warm_up(name: str, load: Callable[[], Awaitable[None]]) -> None:
-    """Load one optional model at startup; a failure only moves its cost to the first turn."""
+    """Attempt optional startup loading, preserving lazy retry and its cool-down."""
     try:
         await load()
     except (VisionError, speaker_embedding.SpeakerBackendError) as exc:
-        logger.warning("%s warm-up failed; it will load on first use: %s", name, exc)
+        logger.warning(
+            "%s warm-up failed; lazy retry remains available (%s)", name, type(exc).__name__
+        )
 ```
 
 and in `lifespan`, right after `tts.preload()`:
@@ -597,12 +669,14 @@ Expected: all pass, including `test_importing_the_app_never_loads_the_speaker_st
 
 - [ ] **Step 5: Run the wider checks**
 
-Run: `uv run ruff check --fix server tests && uv run ruff format server tests && uv run mypy --config-file=pyproject.toml server/src robot/src && uv run pyright && uv run pytest tests/unit tests/integration/test_speaker_evidence_turn.py -q -p no:cacheprovider`
+Run `just lint`, then `just typecheck`, then
+`uv run pytest tests/unit tests/integration/test_speaker_evidence_turn.py -q -p no:cacheprovider`.
+Check each exit code and stop on failure.
 Expected: clean and green.
 
 - [ ] **Step 6: Commit**
 
-```bash
+```powershell
 git add server/src/server/vision/faces.py server/src/server/voice/speaker_embedding.py server/src/server/main.py tests/unit/test_model_warm_up.py tests/unit/test_app_lifecycle.py
 git commit -m "feat(server): warm the face and speaker models at startup"
 git log -1 --pretty=%s
@@ -628,14 +702,14 @@ git log -1 --pretty=%s
 module runs the package `__init__`, which imports the memory layer, which imports
 `server.schemas` (for `EntityType`) — a cycle. `schemas.py` is the existing leaf for such aliases.
 
-- [ ] **Step 1: Capture the OpenAPI before any change**
+- [ ] **Step 1: Reuse the OpenAPI baseline captured in Task 0**
 
-```bash
-uv run python -c "import json; from server.main import app; open('openapi-before.json','w').write(json.dumps(app.openapi(), sort_keys=True))"
+```powershell
+uv run python -c "import json; from pathlib import Path; from server.main import app; p=Path('openapi-before.json'); assert not p.exists(), 'Refusing to overwrite baseline'; p.write_text(json.dumps(app.openapi(), sort_keys=True), encoding='utf-8')"
 ```
 
-Expected: `openapi-before.json` exists in the repository root (it is deleted in Step 6 and never
-committed).
+Run this command in Task 0 only. Here, verify the file still exists; do not
+recapture it after Tasks 1 or 2. It is deleted in Step 6 and never committed.
 
 - [ ] **Step 2: Write the failing tests**
 
@@ -655,12 +729,12 @@ def test_identity_source_lists_the_three_evidence_sources() -> None:
 
 
 def test_every_identity_source_annotation_comes_from_that_definition() -> None:
-    expected = {*get_args(IdentitySource), type(None)}
+    expected = IdentitySource | None
     for model in (TranscribeResponse, StreamDoneEvent):
         annotation = model.model_fields["identity_source"].annotation
-        assert set(get_args(annotation)) == expected
+        assert annotation == expected
     hint = get_type_hints(streaming.stream_response_plan)["identity_source"]
-    assert set(get_args(hint)) == expected
+    assert hint == expected
 ```
 
 ```python
@@ -769,24 +843,25 @@ def utc_now() -> datetime:
 
 - [ ] **Step 5: Run the tests and prove nothing observable changed**
 
-```bash
+```powershell
 uv run pytest tests/unit/test_identity_source_contract.py tests/unit/test_cognition_clock.py -q -n0 -p no:cacheprovider
-uv run python -c "import json; from server.main import app; open('openapi-after.json','w').write(json.dumps(app.openapi(), sort_keys=True))"
-python -c "import sys; a=open('openapi-before.json').read(); b=open('openapi-after.json').read(); sys.exit(0 if a==b else 1)"
-echo "openapi-identical=$?"
-uv run ruff check --fix server tests && uv run ruff format server tests && uv run mypy --config-file=pyproject.toml server/src robot/src && uv run pyright
-uv run pytest -n auto -q -p no:cacheprovider
+uv run python -c "import json; from pathlib import Path; from server.main import app; Path('openapi-after.json').write_text(json.dumps(app.openapi(), sort_keys=True), encoding='utf-8')"
+uv run python -c "from pathlib import Path; import sys; sys.exit(0 if Path('openapi-before.json').read_bytes() == Path('openapi-after.json').read_bytes() else 1)"
+if ($LASTEXITCODE -ne 0) { throw 'OpenAPI changed' }
+just lint
+just typecheck
+just test
 ```
 
-Expected: the new tests pass, `openapi-identical=0`, everything clean, and the **whole** suite
+Expected: the new tests pass, the OpenAPI comparison exits 0, everything is clean, and the **whole** suite
 passes — `authentication_consumed` keeps its meaning (`test_owner_authenticated_turn.py`,
 `test_owner_authenticated_stream.py`, `test_identity_fusion_turn.py`).
 
 - [ ] **Step 6: Commit**
 
-```bash
-rm openapi-before.json openapi-after.json
-git add server tests
+```powershell
+Remove-Item -LiteralPath openapi-before.json, openapi-after.json
+git add server/src/server/cognition/clock.py server/src/server/cognition/identity_fusion.py server/src/server/cognition/face_authentication.py server/src/server/cognition/owner_authentication.py server/src/server/cognition/speaker_authentication.py server/src/server/schemas.py server/src/server/schemas_streaming.py server/src/server/streaming.py server/src/server/routers/transcribe.py tests/unit/test_cognition_clock.py tests/unit/test_identity_source_contract.py
 git commit -m "refactor(cognition): define identity source and clock once"
 git log -1 --pretty=%s
 git status --short
@@ -804,56 +879,53 @@ Expected: a clean tree (neither JSON file is tracked).
 **Interfaces:** consumes `upsert_entity`, `assign_household_role`, `enroll_face`,
 `grant_face_consent`; produces no production change.
 
-- [ ] **Step 1: Write the test that pins the veto against a real role row**
+- [ ] **Step 1: Pin the veto against real role and consent rows**
 
-In `tests/integration/test_identity_fusion_turn.py` add to the imports
-`from server.cognition.identity import HouseholdRole, PersonRecord` (extend the existing
-`identity` import), `from server.memory.declarative import upsert_entity` and
-`assign_household_role` to the `household_authorization` import. Append:
+Extend `tests/integration/test_identity_fusion_turn.py` using its temporary
+`fusion_db`, real unlock service, `_STRANGER_FACE`, `_detect`, `_embed`,
+`_mock_stt_tts`, `_files` and `_client` fixtures/helpers. Add
+`upsert_entity` and `assign_household_role` imports as needed.
 
-```python
-@pytest.mark.integration
-@pytest.mark.parametrize("other_consents", [True, False])
-async def test_another_enrolled_person_vetoes_against_a_real_role_row(
-    fusion_db: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch, other_consents: bool
-) -> None:
-    """Review Focus 5: a real adult's face vetoes, consent or not, and spends no token."""
-    other_id = await upsert_entity(name="Canary Adult", type="person")
-    await assign_household_role(
-        person_entity_id=other_id,
-        role=HouseholdRole.ADULT,
-        grantor_entity_id=fusion_db.owner_entity_id,
-    )
-    if other_consents:
-        await grant_face_consent(other_id)
-    await enroll_face(other_id, _STRANGER_FACE, label="Canary Adult")
-    service = _service()
-    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
-    unlock = await service.unlock(_PIN)
-    assert unlock is not None
-    embed = _embed(monkeypatch, _MATCHING_VOICE)
-    _mock_stt_tts(monkeypatch)
-    headers = {"X-Iroko-Identity-Token": unlock.token}
+Create `test_another_enrolled_person_vetoes_against_a_real_role_row`,
+parameterized over:
 
-    _detect(monkeypatch, [_detected(_STRANGER_FACE)])
-    async with _client() as client:
-        vetoed = await client.post("/transcribe", headers=headers, files=_files())
-        alone = await client.post("/transcribe", headers=headers, files=_files(with_frame=False))
+- `/transcribe` and `/transcribe/stream`;
+- a valid owner token supplied or absent;
+- face consent granted or absent for the other person;
+- an active `HouseholdRole.ADULT` row or no role row (D-3).
 
-    assert "Joaquín" not in vetoed.json()["llm_response"]
-    assert vetoed.json()["identity_source"] is None
-    assert vetoed.json()["authentication_consumed"] is False
-    assert alone.json()["identity_source"] == "local_unlock"
-    embed.assert_not_awaited()
-```
+Create an invented `Canary Adult` person; assign the adult role only for that
+case, optionally grant face consent, and enroll its synthetic face through the
+existing repository helper. Keep role lookup and consent lookup real; mock
+only detection, speaker embedding, STT and TTS as the suite already does.
+
+For each vetoed turn require HTTP 200, the controller's exact private denial
+(`No puedo acceder a información familiar privada sin una autorización comprobada.`),
+`identity_source is None`, and `authentication_consumed is False`. In
+streaming, read the text from the audio event and the identity fields from
+the terminal `done` event, and require no error event. Assert speaker embedding
+was never awaited. Spy on the raw V4 children reader used by the controller
+and assert it was never called during the vetoed turn; absence of a single
+canary name is not a sufficient disclosure check.
+
+For cases with a token, after these assertions, reuse the **same** token on
+the same route without a frame. Require the known child answer,
+`identity_source == "local_unlock"` and `authentication_consumed is True`.
+This proves the veto did not spend the grant. Keep this second request outside
+the no-read assertion interval. Without a token, the subsequent no-frame
+request must remain denied.
 
 - [ ] **Step 2: Run it and prove it bites**
 
-Run: `uv run pytest tests/integration/test_identity_fusion_turn.py -q -n0 -p no:cacheprovider -k real_role_row`
-Expected: PASS (this characterizes behavior that already exists). Then **mutate**: in
-`face_authentication.evaluate_face_authentication` change the non-owner branch to
-`return FaceAuthenticationVerdict.UNKNOWN`, rerun, and confirm both parametrized cases FAIL
-(the vetoed turn falls through to the PIN and answers). Restore the line and rerun to see PASS.
+Run:
+`uv run pytest tests/integration/test_identity_fusion_turn.py -q -n0 -p no:cacheprovider -k real_role_row`.
+
+Expected: PASS, since this characterizes existing behavior. Temporarily
+change the non-owner branch of `evaluate_face_authentication` from
+`OTHER_PERSON` to `UNKNOWN`; rerun and require the cases **with a valid PIN**
+to fail because the veto is bypassed. Tokenless cases may still deny and do
+not prove that mutation is caught. Restore the line before proceeding and
+rerun for PASS. No production mutation belongs in the commit.
 
 - [ ] **Step 3: Remove the vacuous test**
 
@@ -861,17 +933,20 @@ In `tests/integration/test_speaker_evidence_turn.py` delete
 `test_a_backend_failure_does_not_fail_the_turn` (its turn posts no frame, so the speaker is
 never consulted; the real behavior is pinned by
 `test_a_dead_speaker_backend_does_not_fail_the_face_turn` in `test_identity_fusion_turn.py`),
-then let `ruff check --fix` drop the imports it leaves unused.
+then let `ruff check --fix` drop the imports it leaves unused. Preserve Task 2's
+fresh-interpreter import check, including its added `insightface` assertion.
 
 - [ ] **Step 4: Run the affected suites**
 
-Run: `uv run ruff check --fix server tests && uv run ruff format server tests && uv run mypy --config-file=pyproject.toml server/src robot/src && uv run pyright && uv run pytest tests/integration/test_identity_fusion_turn.py tests/integration/test_speaker_evidence_turn.py -q -p no:cacheprovider`
+Run `just lint`, then `just typecheck`, then
+`uv run pytest tests/integration/test_identity_fusion_turn.py tests/integration/test_speaker_evidence_turn.py -q -p no:cacheprovider`.
+Check each exit code and stop on failure.
 Expected: clean and green.
 
 - [ ] **Step 5: Commit**
 
-```bash
-git add tests
+```powershell
+git add tests/integration/test_identity_fusion_turn.py tests/integration/test_speaker_evidence_turn.py
 git commit -m "test(cognition): pin the other-person veto to a real role row"
 git log -1 --pretty=%s
 ```
@@ -882,18 +957,23 @@ git log -1 --pretty=%s
 
 **Files:** see the Modify table's docs rows. No code.
 
-- [ ] **Step 1:** `operator-manual.md`: in *Tier 4* replace the first-turn-latency sentence with
-  the startup warm-up (the two models load when the server starts while their flags are on; a
-  failed warm-up falls back to the lazy load); add that a database error while resolving the face
-  now denies with `no_evidence` and one warning instead of an error; add (D-3) that a face matched
+- [ ] **Step 1:** `operator-manual.md`: in *Tier 4* document startup warm-up behind
+  the existing flags and lazy retry after failure, including the speaker cool-down.
+  Keep previous latency numbers labeled historical until Task 6 supplies a new
+  measurement. A caught face-store error contributes no evidence and logs one
+  warning; a healthy independent PIN path may still authorize. This is not a
+  promise that a whole database outage yields a successful denial. Add (D-3) that a face matched
   to an entity with no household role also vetoes and the PIN cannot bypass it, so such a profile
   is fixed through local administration.
-- [ ] **Step 2:** `current-state.md`: extend the *Identity fusion* row with Plan 0055's four
-  changes and their measured evidence; remove the first-turn-latency remark from the verification
-  bullets if it is now false.
-- [ ] **Step 3:** `docs/plans/README.md` (`NOW` empty again, a `CLOSED` row for 0055, a dependency
-  row), `docs/plans/open/README.md`, `docs/plans/completed/README.md`; move this plan to
-  `completed/` and fix its relative links; record the closure in this plan.
+- [ ] **Step 2:** `current-state.md`: extend the *Identity fusion* row with the delivered
+  changes, distinguishing automated evidence from any new hardware measurement.
+  Do not erase historical hardware findings or claim a speed-up from unit tests.
+- [ ] **Step 3:** Prepare closure updates for `docs/plans/README.md`,
+  `docs/plans/open/README.md`, `docs/plans/completed/README.md`, the canonical
+  portfolio and the PC delivery map. Keep this plan open until Task 6 passes;
+  only then move it to `completed/`, fix links, clear its `NOW` entry, add its
+  `CLOSED` entry and record the verified closure. Preserve the successor order
+  0050 → pipeline reliability and diagnostics → CM-1.
 - [ ] **Step 4:** Regenerate the architecture diagram with the Archify skill (`validate` then
   `deliver`, from `.claude/skills/archify`, POSIX paths) because `current-state.md` changed.
 - [ ] **Step 5:** `uv run ruff format --check .`, `uv run ruff check .`,
@@ -905,17 +985,24 @@ git log -1 --pretty=%s
 
 ## Task 6: Verification, review and closure
 
-- [ ] **Step 1:** `just gate`. Expected: PASS, test count grown by the new tests, coverage at or
-  above the floor. If the `audit` step fails on a newly published advisory of a transitive
+- [ ] **Step 1:** `just gate`, then `just test-cov`. Both must pass; the latter
+  checks the configured 80% coverage floor, which `just gate` does not measure.
+  Record actual counts and the tested SHA. If the `audit` step fails on a newly published advisory of a transitive
   dependency, stop and ask Pipec; do not bump a lock on your own.
 - [ ] **Step 2: Optional hardware check (Pipec only).** With both flags on, restart
   `just run-server` and watch the startup log show the face and speaker models loading; then ask
-  one protected question. Record only the outcome (first protected turn faster than 8 s, or not).
-  An agent never claims it.
+  one protected question. Record startup-to-ready time, first protected-turn
+  time, flag configuration and outcomes without private content. Compare only
+  equivalent hardware/configuration. If omitted, mark hardware latency
+  unmeasured; automated closure does not prove a speed-up. An agent never claims it.
 - [ ] **Step 3:** Independent whole-branch review with `superpowers:requesting-code-review`;
   resolve findings with `superpowers:receiving-code-review`. Pipec decides whether it is a
   subagent or his own reading.
-- [ ] **Step 4:** `superpowers:finishing-a-development-branch`. One PR, squash-merge, branch deleted.
+- [ ] **Step 4:** Apply Task 5's closure moves only after the gates and review
+  pass; recheck changed documentation links, reserved terms and `git diff --check`.
+  Then use `superpowers:finishing-a-development-branch` within the user's
+  integration authorization. One PR; do not infer permission to merge or
+  delete a branch from this plan alone.
 
 ---
 
@@ -935,6 +1022,7 @@ git log -1 --pretty=%s
 
 ```powershell
 just gate
+just test-cov
 uv run ruff format --check .
 uv run ruff check .
 uv run pyright
@@ -945,9 +1033,9 @@ uv lock --check
 git diff --check
 ```
 
-```bash
-grep -rn "def _utc_now" server/src
-grep -n "Literal\[\"face\", \"face_voice\", \"local_unlock\"\]" -r server/src
+```powershell
+rg -n 'def _utc_now' server/src
+rg -n 'IdentitySource\s*=' server/src
 ```
 
 Expected: the first prints nothing; the second prints exactly one line, in `schemas.py`.
@@ -958,15 +1046,17 @@ Expected: the first prints nothing; the second prints exactly one line, in `sche
    use the characterization nets named in their steps), and all gates above are green with no
    configuration weakened.
 2. `tests/integration/test_face_authenticated_turn.py` passes unedited.
-3. A store error during face recognition yields a generic denial and one warning carrying only
-   the exception class; it never raises, never identifies and never vetoes; a valid PIN token
-   still works.
+3. The named store errors from face resolution produce one class-only warning
+   and no face identity or veto. With remaining stores healthy, no token yields
+   the private denial and a valid PIN still works, in classic and streaming.
+   Errors from PIN resolution or policy audit are outside this guard.
 4. With the flags on, the models load at startup and a failed warm-up only logs; with the flags
    off nothing is loaded and `torch` / `insightface` are never imported.
 5. The generated OpenAPI is byte-identical before and after; `authentication_consumed` and
    `identity_source` keep their meaning.
-6. The other-person veto is pinned against a real role row, with and without consent, and spends
-   no token; the vacuous Plan 0053 test is gone.
+6. The other-person veto is pinned with real adult/no-role and consent records,
+   on both routes, with and without a token. It reads no protected child data
+   and spends no token; the vacuous Plan 0053 test is gone.
 7. `_utc_now` exists nowhere; `IdentitySource` has one definition.
 8. Documentation states what changed and what stays open: replay and liveness undefended, no
    reserved capability yet, Whisper's prompt echo in its own plan, PIN scoping in Plan 0051.
@@ -980,7 +1070,7 @@ existing flags, three de-duplications and tests. Rolling back means reverting th
 
 | Risk | Why it matters | Mitigation |
 |---|---|---|
-| Warm-up slows server start by a few seconds | Pipec restarts the server often while developing | It only runs with the identity flags on; the gain is a first protected turn near 2.4 s instead of 8 to 13 s |
+| Awaited warm-up delays readiness; a stuck loader can delay it indefinitely | Loading moves to startup; this plan adds no startup deadline | Enable only through existing flags; measure startup and first-turn latency, and report a blocked loader rather than claiming a guaranteed 2.4 s turn |
 | A failed speaker warm-up starts the 60 s load cool-down | The first real turn within a minute of a failed start is refused as `unavailable` | The failure was real (model missing); the turn degrades to `basic` exactly as today |
 | `schemas.py` gaining an alias used by the cognition layer | A cognition module importing the API schemas module | `memory/` already imports `EntityType` from it; `schemas.py` stays a leaf |
 | Catching store errors could hide a real bug | A broken database would look like "unknown" | One warning per occurrence names the exception class; the error types are the two the repositories raise, not `Exception` |
@@ -990,8 +1080,8 @@ existing flags, three de-duplications and tests. Rolling back means reverting th
 1. **Spec coverage.** The ADR's fail-closed rule → Task 1; R-2 (hardware evidence) → Task 2;
    R-3 to R-5 → Task 3; R-6, R-7 → Task 4; R-8 and the operator-facing changes → Task 5. Every
    decision D-1 to D-4 has a task or a stated exclusion.
-2. **Placeholder scan.** Task 5 lists documentation edits by target and content; every code step
-   shows code.
+2. **Placeholder scan.** Task 5 lists documentation edits by target and content;
+   code steps give examples or precise fixture, action and assertion requirements.
 3. **Type consistency.** `IdentitySource` (Task 3) is what `FusedIdentityResolver.source`,
    `_RequestIdentity.identity_source` and `stream_response_plan` use; `warm_up` (Task 2) is what
    `lifespan` awaits; `_STORE_ERRORS` (Task 1) is the only new exception tuple.
@@ -999,10 +1089,18 @@ existing flags, three de-duplications and tests. Rolling back means reverting th
 
 ## Execution handoff
 
+**Static plan review, 2026-10-01 (`e14c6ae`).** Corrected the union-type
+assertion and the denial literal against source; broadened the planned
+store-failure/veto checks across routes and PIN conditions; specified flag,
+off-loop and log-privacy checks for warm-up. Moved the OpenAPI baseline ahead
+of implementation and closure after gates/review; separated coverage and
+hardware measurements from `just gate`. These are plan corrections, not new
+RED/GREEN results, hardware evidence or promotion.
+
 Plan written under `docs/plans/open/` — the project's plan location, which overrides the skill's
-default path. It is `Draft` until Pipec reads it and promotes it to `NOW`.
+default path. It became `Ready` and `NOW` on 2026-10-01 by Pipec's approval.
 
 **Recommended execution approach: Native** — `superpowers:executing-plans`, one agent in a fresh
-Claude Code session, with an independent whole-branch review at the end. There are five small
-tasks, only Tasks 1 and 4 share a file, and a shipped mistake is contained: the identity rule does
-not change and every behavior added is either a fail-closed guard or a startup convenience.
+session, with an independent whole-branch review at the end. Execute Tasks 0–6
+in order: the baseline precedes all changes, several tasks share production
+and test files, and documentation closure follows verification and review.

@@ -1733,7 +1733,7 @@ git log -1 --pretty=%s
 - [ ] **Step 1:** `current-state.md`: rewrite the *Consented local face evidence* known-gap sentence and the *Speaker recognition* row from measured evidence — the face is the default at `basic`, voice raises to `strong`, reserved data (`SECURITY`) needs `strong`, no reserved capability exists yet, replay is measured but not defended.
 - [ ] **Step 2:** `identity-and-access.md`: replace *Initial fusion rules* with the ADR 0016 table and the assurance levels; keep the sentence that identity is never authorization.
 - [ ] **Step 3:** `operator-manual.md`: rewrite *Tier 3* (voice raises assurance) and *Tier 4* (fusion is implemented; PIN is optional and administrative; recovery is local administration); add nothing to the flag table (no new variable).
-- [ ] **Step 4:** ADR index and ADR 0015: add "decision 2 refined by [ADR 0016](0016-face-and-voice-identity-fusion.md)" to ADR 0015's status line and the index row.
+- [ ] **Step 4:** ADR index and ADR 0015: add "decision 2 refined by [ADR 0016](../../adr/0016-face-and-voice-identity-fusion.md)" to ADR 0015's status line and the index row.
 - [ ] **Step 5:** roadmap PC-4 row and personal-companion map, plan indexes (`docs/plans/README.md`, `docs/plans/open/README.md`), and this plan's closure record — each stating plainly that replay is not defended and that no reserved capability exists yet.
 - [ ] **Step 6:** Regenerate the architecture diagram with the Archify skill (`validate` then `deliver`, from `.claude/skills/archify`, using POSIX paths). Update the "Known gaps" card first.
 - [ ] **Step 7:** `uv run ruff format --check .`, `uv run ruff check .`, `uv run python scripts/check_reserved_terms.py`, and a mechanical link/anchor check on the touched docs.

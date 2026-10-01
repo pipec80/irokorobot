@@ -10,7 +10,8 @@
 
 Define the path from the accepted cognitive foundation to a trustworthy
 personal companion, then to a privacy-preserving family companion. This plan
-stays open because PC-3 through PC-6 and CM-1 through CM-7 contain real work.
+stays open because PC-5, PC-6 and CM-1 through CM-7 contain real work (PC-3 and
+PC-4 closed on 2026-09-29 and 2026-09-30).
 CM-0 closed 2026-09-08 (Plan 0046 — a benchmark and a measured RED baseline,
 not longitudinal memory); PC-3A closed 2026-09-25 (Plan 0047, provisional
 PASS); PC-3B closed 2026-09-29 as
@@ -62,9 +63,6 @@ assurance `basic`, requires `strong` for reserved data and does not defend repla
 
 ### Work that remains open
 
-- **PC-3B:** consented speaker enrollment and runtime speaker evidence
-  (PC-3A, the calibration study, is closed);
-- **PC-4:** conservative multimodal identity fusion and recovery;
 - **P2.2 / CM-1…CM-7:** authorized, corrigible and forgettable longitudinal
   conversational memory (CM-0, the benchmark and RED baseline, is closed);
 - **PC-5:** integrated personal-companion acceptance through the real PC path;
@@ -183,8 +181,8 @@ Plan 0046 delivered CM-0 (closed 2026-09-08): the benchmark software finished
 GREEN and recorded a measured product baseline that is honestly RED
 (`ac43c58`, exit 1 — single-turn extraction is the only live seam and scores
 below par, every other operation is `unsupported`). It implemented no CM-1
-capability and changed no runtime memory. CM-1…CM-7 remain unplanned and wait
-for PC-3 and PC-4.
+capability and changed no runtime memory. CM-1…CM-7 remain unplanned; their
+biometric dependencies (PC-3, PC-4) closed on 2026-09-29 and 2026-09-30.
 
 **Gate:** the canonical evaluation proves `aprendo -> reinicio -> recuerdo ->
 corrijo -> reinicio -> recuerdo la verdad vigente -> olvido -> no revelo`.

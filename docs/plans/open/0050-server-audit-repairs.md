@@ -1,9 +1,19 @@
 # 0050 — Server audit repairs
 
-> **Status:** Draft — Plan 0047 closed 2026-09-25. Agreed queue position
-> (2026-09-25): after PC-3B, PC-4 and Plan 0051, before step 0 and CM-1.
-> Not executable until Pipec promotes it to `Ready`/`NOW` and confirms the six
-> decisions under *Decisions confirmed at promotion*. Written 2026-09-23 and
+> **Status:** Draft — Plan 0047 closed 2026-09-25. Queue position (revised
+> 2026-09-30): after the Plan 0055 follow-ups and **before** Plan 0051, which is
+> now the first plan of CM-1; the seed load ("step 0") moved after CM-3. Task 11
+> therefore pins today's grant behaviour as rehearsed, and Plan 0051 changes it
+> deliberately afterwards.
+>
+> **Plan review updated 2026-10-01 against `e14c6ae` (static, not an execution).**
+> The former re-audit items (a)–(h) are incorporated into the required reading,
+> scope, Tasks 0, 4 and 12, and non-goals below. Plan 0055 is still pending:
+> Task 0 must revalidate the examples and tests on its merged result before
+> any implementation. The examples are not patches to apply blindly.
+> Not executable until the post-0055 review is recorded, Pipec confirms the
+> outstanding choices listed below, and promotes this plan to `Ready`/`NOW`.
+> Written 2026-09-23 and
 > extended 2026-09-24 from the verified findings of the 0049 audit, its
 > independent review (0049 §13) and a full read of the protection boundary.
 
@@ -28,14 +38,20 @@ false statement with a true one. Five static guards make the controls permanent.
 pytest (+ xdist). Same pins as the current lock, plus an explicit `pillow`.
 
 **Spec:** [0049 — server objective conformance audit](0049-server-objective-conformance-audit.md)
-(§3, §9, §11, §13) and the proposed
+(§3, §9, §11, §13), accepted
 [ADR-0015 — grant scope and speaker binding](../../adr/0015-owner-grant-scope-and-speaker-binding.md).
+ADR-0015 decision 2 is refined by accepted
+[ADR-0016](../../adr/0016-face-and-voice-identity-fusion.md); operation scoping
+is still future Plan 0051, not part of this repair.
 
-**Rehearsal:** every task below was rehearsed on a scratch copy of the tree.
+**Historical rehearsal (before Plans 0053–0055):** the original tasks were rehearsed on a scratch copy of the tree.
 Each RED failed for the reason stated, each GREEN passed, `ruff check`,
 `ruff format --check` and `mypy server/src robot/src` were clean, and the whole
 suite passed with all tasks applied (1,417 passed, 5 skipped). The code blocks
-are the code that ran.
+record that rehearsal, not validation on the current tree. Tests and acceptance
+criteria added by this documentation review have not been executed. Record a
+fresh RED/GREEN result for each task during implementation; do not reuse the
+historical count as its evidence.
 
 ## Why this plan exists
 
@@ -94,9 +110,9 @@ The audit verified, against baseline `ac8275d`, these defects (all reproduced):
 
 ## Task overview
 
-Each task is self-contained — files, interfaces, failing test, implementation,
-green run, one commit — and leaves the tree releasable. Two thirds of this file is
-code that was run; read the task table, then only the tasks you are reviewing.
+Each implementation task names files, interfaces, tests and verification.
+Task 0 validates the baseline before any change. Most examples come from the
+historical rehearsal; additions and post-0055 adaptations need fresh execution.
 
 | # | Task | Closes | Decision |
 |---:|---|---|---|
@@ -118,22 +134,23 @@ Findings whose fix needs a product decision are **not** fixed here — see
 and one use, but not to a named operation as ADR-0009 requires (F-16, a
 non-conformance), and it proves the PIN, not the speaker (F-08, F-09):
 [ADR-0015](../../adr/0015-owner-grant-scope-and-speaker-binding.md) turns that
-into a concrete scope model and Plan 0051 implements it once accepted. The write
-path (F-04, F-17) belongs to CM-1…CM-7. Task 11 pins today's behaviour for all of
-them with characterization tests, so changing it later is a deliberate act.
+into an accepted scope model; Plan 0051 implements decision 1 later. ADR-0016
+already refines speaker binding and face veto. The write path (F-04, F-17)
+belongs to CM-1…CM-7, with canonical writes/deduplication in CM-3. Task 11
+characterizes the current PIN limits on classic voice, not every biometric
+combination or every memory operation.
 
-**Re-audit note (added 2026-09-28, queue rule 4).** The agreed delivery order
-(`docs/plans/README.md`) now runs PC-3B, PC-4 and Plan 0051 *before* this
-plan reaches `NOW`. Plan 0051 implements exactly the scope model Task 11's
-two characterization tests pin as "today's behaviour" — so when this plan is
-finally promoted, re-audit Task 11 against whatever Plan 0051 actually merged
-before executing it, per queue rule 4, rather than assuming the version
-rehearsed before Plan 0051 existed still matches the real grant-scope
-behaviour. Found while reviewing Plan 0053 (A11); no code changes here.
+**Current order (2026-09-30):** completed PC-3B/PC-4, then Plan 0055,
+this plan, the voice-pipeline reliability plan, and CM-1 starting with 0051.
+Task 0 revalidates on merged 0055; Task 11 intentionally precedes operation
+scoping. The canonical portfolio, not a historical rehearsal, governs order.
 
 ## Decisions confirmed at promotion
 
-Pipec confirms these when promoting the plan; each is the minimal option.
+Outstanding choices at promotion are 1, 3, 4, 5 and the comma-only separator
+in 2. Making children optional was already decided on 2026-09-23; decision 6
+was confirmed on 2026-09-24. Preserve those decisions rather than asking for
+them again. Resolving the remaining choices does not itself promote the plan.
 
 1. **`server.cognition` stays domain vocabulary only.** It stops re-exporting
    `CognitiveController`, `HouseholdKnowledgeTools`, `HouseholdToolName`,
@@ -175,7 +192,10 @@ Pipec confirms these when promoting the plan; each is the minimal option.
 
 - `AGENTS.md` (local runtime authority) and
   `docs/architecture/implementation-guardrails.md`.
-- ADR-0004, ADR-0005, ADR-0008, ADR-0012, ADR-0013 and the proposed ADR-0015.
+- ADR-0004, ADR-0005, ADR-0008, ADR-0009, ADR-0012, ADR-0013, accepted ADR-0015
+  and ADR-0016 (including face precedence, PIN consumption and replay limits).
+- Completed Plan 0055 and its recorded closure; Plans 0053/0054 for the
+  current speaker routes and fusion contract.
 - `docs/architecture/current-state.md`, `server-production-baseline.md`
   (HTTP clients, uploads), `identity-and-access.md`,
   `memory-and-world-state.md`.
@@ -223,6 +243,14 @@ schema or migration changes. The local agent rules (`.claude/rules`,
 `.codex/rules`) were already corrected on 2026-09-24; they are gitignored and
 never part of the PR.
 
+`cognition/identity_fusion.py`, `cognition/speaker_authentication.py`, the
+speaker embedding implementation and voice consent/storage are **read-only
+regression context** here. Task 4 keeps the new audio-enrolment reader intact;
+the image-reader extraction does not require changing the audio contract.
+Preserve Plan 0055's warm-up, shared clock, identity-source alias and store-error
+guard. If a task actually needs an additional production file, stop and report
+the specific dependency; do not expand this list implicitly.
+
 ## Review Focus
 
 Inputs the spec implies that are most likely to bite, each pinned by a test in
@@ -245,6 +273,26 @@ its owning task:
    protected (Task 11).
 
 ---
+
+## Task 0: Revalidate on the merged Plan 0055 baseline
+
+**Files:** this plan's evidence/status only. No production repair in this task.
+
+- [ ] Record branch, clean/dirty status, base SHA and Plan 0055's merge. Work
+  on the authorized implementation branch; do not switch away from or discard
+  another task's uncommitted changes.
+- [ ] Run `just gate` and record its actual outcome and count. A pre-existing
+  failure is reported with its owning task; a historical green run is not a
+  substitute for this baseline.
+- [ ] Check each task's named symbols, fixtures and permitted files against
+  that baseline. In particular: Tasks 4/8/9 overlap 0055; Task 10 preserves
+  `IdentityAssurance`; Task 11 preserves face-first fusion and speaker routes.
+  Replace stale snippets before their task runs. Do not insist that the
+  historical module count or number of failing tests remain identical.
+- [ ] Record which defects still reproduce, which changes are already present,
+  and any scope conflict. Already-fixed documentation and links are verification
+  items, not changes to reapply. A changed accepted contract stops the affected
+  task; it is not redesigned by this plan.
 
 ## Task 1: Break the import cycles and keep the cognitive core pure
 
@@ -1090,6 +1138,12 @@ def test_only_the_transport_reads_the_ollama_url() -> None:
   noun: str = "Image") -> bytes` raising `HTTPException` 413/422. `noun`
   (`"Image"` or `"Frame"`) is only the word used in error details; no test pins
   those strings.
+
+The shared reader is **image-only**. Keep `_read_enrollment_audio` from Plan
+0053 and `_read_audio_upload` unchanged; their WAV validation and error mapping
+are different contracts. Preserve 0055's changes in `main.py` and
+`routers/transcribe.py`. Run the face- and voice-enrolment integration suites
+after the extraction, in addition to this task's image tests.
 
 - [ ] **Step 1: Declare the dependency.**
   `uv add --package server "pillow>=12.3.0,<13.0.0"`. `uv.lock` must still
@@ -1948,6 +2002,26 @@ async def test_status_is_ready_for_an_owner_without_children(setup_db: None) -> 
 
 
 @pytest.mark.integration
+async def test_status_rejects_a_credential_belonging_to_another_person(setup_db: None) -> None:
+    """One owner and one credential are insufficient when their person IDs differ."""
+    result = await apply_personal_setup(_valid_input())
+    other = await upsert_entity(name="Canary Other", type="person")
+    # Deliberately seed an incoherent legacy row in the temporary test database.
+    # The public credential writer correctly rejects a non-owner.
+    async with db.transaction() as conn:
+        await conn.execute(
+            "UPDATE owner_pin_credentials SET person_entity_id = ? WHERE person_entity_id = ?",
+            (other, result.owner_entity_id),
+        )
+
+    status = await read_personal_setup_status()
+
+    assert status.owner_count == 1
+    assert status.active_credential_count == 1
+    assert status.personal_security_ready is False
+
+
+@pytest.mark.integration
 async def test_revoking_the_owner_role_revokes_the_pin_credential(setup_db: None) -> None:
     """A person who is no longer the owner keeps no usable PIN credential."""
     result = await apply_personal_setup(_valid_input())
@@ -1978,6 +2052,13 @@ async def test_status_is_not_ready_after_the_owner_role_moves(setup_db: None) ->
   link), `test_revoking_the_owner_role_revokes_the_pin_credential` fails (the
   credential stays active) and `..._after_the_owner_role_moves` fails
   (`active_credential_count == 1`); the first passes.
+
+  The mismatched-person case must also fail on the old implementation: its
+  fixture retains the setup's child rows, one owner and one active credential.
+  After the fix, temporarily replace the owner-ID check with only the two
+  counts; this case must fail again. Restore the correct check and observe
+  PASS. This avoids mistaking the revocation test
+  (which leaves zero active credentials) for proof of owner-scoped readiness.
 
 - [ ] **Step 3: Implement.** One owner-scoped check, used by both readiness
   paths:
@@ -3139,9 +3220,15 @@ invented canary:
 | *Documented limit:* a valid grant answers whoever presents it (ADR-0008, F-08) | `test_a_valid_grant_answers_whoever_presents_it_documented_limit` |
 | *Documented limit:* the grant is not bound to an operation — "who am I" spends it and names the owner (F-16, ADR-0009) | `test_who_am_i_with_a_grant_names_the_owner_and_spends_it_documented_limit` |
 
-The two *documented limit* tests are characterizations: they pass today and pin
-behaviour that ADR-0015 may change. When it does, the test is rewritten with the
+The two *documented limit* tests are characterizations: they pin pre-0051
+behaviour that accepted ADR-0015 requires Plan 0051 to change. When it does, the test is rewritten with the
 change — a change of the grant contract cannot go unnoticed.
+
+The fixture sends **no facial frame**. It proves PIN behavior and non-inheritance
+on the classic route, not which physical person spoke or full streaming parity.
+Run the existing owner-authenticated classic/streaming, face-authenticated and
+identity-fusion integration suites as regression nets. Preserve face-first
+precedence, veto token preservation and voice corroboration from ADR-0016.
 
 The harness (`_service`, `_client`, the DB fixture) is a small copy of the one in
 `test_owner_authenticated_turn.py`. Sharing it is a separate test refactor.
@@ -3787,94 +3874,64 @@ async def test_who_am_i_with_a_grant_names_the_owner_and_spends_it_documented_li
   `test(server): add the owner-stranger matrix and match intent rules by word`.
 
 
-## Task 12: Documentation that says what the code does, and a capability matrix
+## Task 12: Documentation that says what the code does
 
 **Files:** the docs listed under *Permitted files*. No production code.
 
-The audit's documentation findings (F-03, F-04, O-02, §12) come down to one
-problem: a reader cannot tell, from the docs, what is real today, what is
-designed, and who owns what is missing. This task corrects the false statements
-and adds one table that answers those three questions.
+The documentation pass of 2026-09-30 already corrected the memory-path
+description, PIN TTL and several links. Preserve it. Update the existing
+capability table in `current-state.md`; do not add a competing table or
+restore the former pre-PC-4 template.
 
-- [ ] **Step 1: Correct `docs/architecture/current-state.md`.** Find each row by
-  its first cell:
-
-  - *One-use owner-authenticated classic turn (Plan 0026)* — replace "issues a 60s
-    one-use `LOCAL_UNLOCK` grant" with "issues a one-use `LOCAL_UNLOCK` grant
-    valid for `OWNER_UNLOCK_TTL_SECONDS` (300 s by default since PR #76)", and
-    add "The grant is a bearer token: it proves the PIN was entered, not who is
-    speaking (ADR-0008; ADR-0015 proposes its scope and speaker binding)." — with
-    `ADR-0015` linked to `../adr/0015-owner-grant-scope-and-speaker-binding.md`,
-    the path from `docs/architecture/`.
-  - *B2 controller dispatch* — replace "Public `/chat` cannot provide either and
-    never reaches the v4 reader." with "Public `/chat` is an unknown actor and
-    reaches the v4 reader only when the request carries a valid one-use owner
-    grant (Plan 0026 row)."
-  - *P0.3 cognitive controller* — append "The pure core is enforced by
-    `tests/integration/test_import_graph.py`."
-  - *Personal owner/children/PIN setup (Plan 0025)* — append "Children are
-    optional and only a comma separates two names (Plan 0050); readiness means an
-    active owner holds the active credential."
-  - Add a row *Server audit repairs (Plan 0050)* listing what now holds: every
-    module imports standalone; one seam to Ollama; malformed Ollama responses
-    become errors, not text; image bounds are read from the header; the v4 reader
-    honours the stored classification; the owner → stranger matrix runs in CI.
-
-- [ ] **Step 2: Add the capability matrix** as a new section of `current-state.md`
-  (before the long execution history), so that a newcomer reads the present
-  before the past. Keep it short and update it when a capability changes:
-
-```markdown
-### Capability matrix — what is real today
-
-| Capability | Status | Where | Proof | Known limit | Owner |
-|---|---|---|---|---|---|
-| Public conversation | Implemented | `text_turn.prepare_text_turn`, `/chat`, `/transcribe` | `tests/integration/test_owner_stranger_matrix.py` | The model gets no memory or history; nothing is learned from a stranger | — |
-| Intent classification (which questions are protected) | Implemented | `cognition/intent_resolution.py` | `tests/fixtures/intent_resolution_es.json` (reviewed corpus) | A closed Spanish rule set that matches whole words. It protects on the mention of a household, birth or relationship word, not on a question about one, so it over-blocks by design ("¿Cuándo nació Napoleón?"); it fails closed | CM plans |
-| Owner PIN unlock (one-use grant) | Implemented | `cognition/owner_authentication.py`, `POST /auth/owner/unlock` | Plans 0026–0028; the matrix | Bearer token: proves the PIN, not the speaker. Not bound to a named operation as ADR-0009 requires: `OwnerUnlockScope` is never enforced, so the same token authorizes the protected read, "¿quién soy?" (which spends it) and face enrollment/revocation | ADR-0015, Plan 0051 |
-| Consented face evidence | Implemented, off by default | `cognition/face_authentication.py` | Plans 0029–0030 | No liveness (a photo authenticates); one unrecognized face falls through to the PIN | ADR-0015, PC-4 |
-| Speaker recognition | Absent; calibration study | `scripts/speaker_calibration*` | Plan 0047 | Never trusted evidence | PC-3A, PC-3B |
-| Protected household read (children list and count) | Implemented | `HouseholdKnowledgeTools`, `PolicyGatedV4Reader` | Plans 0009–0010, 0026; the matrix | Only child questions are wired; the preference, birth-date and age tools exist without a controller branch | CM plans |
-| Conversation memory (legacy) | Implemented, separate from v4 | `memory/`, `consolidation.py` | CM-0 baseline (RED) | No actor reaches legacy retrieval; learning is not policy-evaluated (`PROPOSE_MEMORY` and `COMMIT_MEMORY` have no production caller) | CM-1…CM-7 |
-| v4 write path | Repository only | `memory/relational_v4.py` | Repository tests | Re-asserting a literal raises `IntegrityError`, re-asserting a relation is idempotent; the duplicate/conflict check documented in `memory-and-world-state.md` belongs to the writer | CM-1 |
-| Family policy profile | Not implemented | `cognition/authorization.py` | — | The policy is `personal`: an owner reads any target's sensitive data with consent; ADR-0006 requires the family profile to withhold other adults' private data | Family plan |
-| Legacy onboarding checklist | Disconnected | `onboarding.py` | Unit tests | `next_missing_slot` has no caller and reads legacy tables; do not reconnect verbatim | CM plan |
-| Dynamic STT hotwords | Disconnected on purpose (PR #31) | `pipeline._entity_hotwords` | `test_unresolved_voice_turn_does_not_load_entity_hotwords` | Reconnect only gated by identity | PC-4, CM |
-
-"Onboarding complete" has three meanings: `personal_security_ready` (an active
-owner holds the active credential — the only one that gates anything), the
-legacy `onboarding_complete` flag (the old checklist), and the face phase of
-`scripts/onboard.py`.
-```
-
-- [ ] **Step 3: Refresh the architecture diagram.** Per the standing rule, after
-  editing `current-state.md` regenerate `docs/architecture/diagrams/current-state.{json,html}`
-  with the Archify skill (`validate` → `deliver`) so the diagram's "Known gaps"
-  match the matrix.
-
-- [ ] **Step 4: Fix `docs/runbooks/operator-manual.md`.** Task 7 already fixed the
-  wizard sequence. Also replace the pasted `_memory_prompt_state` snippet in §6
-  with prose that cannot drift — "`text_turn._memory_prompt_state` builds the
-  legacy context, never enables onboarding and returns no slot" — and link the
-  capability matrix from the introduction.
-
-- [ ] **Step 5: Fix two broken links.**
-  `docs/plans/completed/0020-p0-operator-qa-remediation-design.md` and
-  `docs/plans/completed/0046-reproducible-longitudinal-memory-baseline.md` link
-  `0015-personal-companion-design.md` as if it were in their own directory; the
-  target is `../open/0015-personal-companion-design.md`. Re-run the mechanical
-  link check (inline relative links to files, outside code fences): 0 missing.
-
-- [ ] **Step 6: Close the loop in 0049.** Add to its header a line "Repairs: Plan
-  0050" and, in §13, mark F-01, F-02, F-06, F-07, F-10, F-11, F-12, F-13, F-14,
-  F-15, F-18, F-19, F-20, F-21, F-22, F-23, F-24 and O-01 as closed by 0050, F-08/F-09/F-16 as
-  owned by ADR-0015 and Plan 0051, and F-04/F-17 as owned by CM-1…CM-7.
-
-- [ ] **Step 7: Verify and commit.** `uv run ruff format --check .` (CI formats
-  Python blocks inside Markdown), `uv run ruff check .`, `git diff --check`, and
-  the reserved-terms guard over the changed docs. Commit —
-  `docs: align current-state, runbook and links with plan 0050`.
-
+- [ ] **Step 1: Record only delivered behavior and fresh evidence.**
+  Update the controller/import boundary (Task 1), transport validation and
+  common Ollama access (Tasks 2–3), image bounds (Task 4), V4 classification
+  filtering (Task 5), owner-scoped readiness and optional-child setup (Tasks
+  6–7), lifecycle/logging/guards (Tasks 8–10), and the exact route and doubles
+  covered by the owner–stranger matrix (Task 11). Record commands, SHA,
+  outcomes and limitations, not historical counts presented as new runs.
+- [ ] **Step 2: Preserve these capability distinctions.**
+  - PC-3B and PC-4 are delivered; voice corroborates an owner's face, never
+    identifies on its own. Preserve ADR-0016 and the completed 0055 behavior.
+  - PIN grants still lack operation enforcement; accepted ADR-0015 decision 1
+    is owned by Plan 0051. Task 11 characterizes that limit; it does not fix it.
+  - Child list/count reach V4 through PIN on chat/voice, or the authorized
+    facial path on voice. Broader V4 household queries remain CM-5 work.
+  - Production generic conversation still has no reusable history or durable
+    retrieval/consolidation. Tests and the offline evaluator can create
+    `MANUAL` evidence; production routes do not. `/chat` still has no
+    consolidation scheduler.
+  - Canonical conversational V4 writes/deduplication belong to CM-3, protected
+    episodes to CM-4, authorized retrieval to CM-5, correction/forgetting to
+    CM-6. Existing repositories and a RED benchmark do not deliver them.
+  - Task 2 validates the transport envelope, not the classic generated
+    `response`/`emotion` object. Voice-pipeline reliability owns that parser,
+    diagnostics and the STT defects.
+  - Replay remains undefended; CM-5 revisits it before the first reserved read
+    under ADR-0016 §9. Uvicorn measurement remains in PC-5.
+- [ ] **Step 3: Update the operator manual.** Preserve Task 7's wizard
+  sequence. Replace the copied `_memory_prompt_state` implementation with a
+  link and an accurate description of its disabled legacy onboarding.
+  Distinguish current `personal_security_ready`, the legacy onboarding flag,
+  and biometric enrolment; they do not prove conversational learning.
+- [ ] **Step 4: Regenerate the architecture diagram** after updating
+  `current-state.md`, using Archify `validate` then `deliver`. Keep source
+  JSON and delivered HTML together.
+- [ ] **Step 5: Verify links instead of reapplying completed fixes.** The
+  links from completed Plans 0020/0046 to `../open/0015-personal-companion-design.md`
+  were corrected in the 2026-09-30 documentation pass. Check inline local file
+  targets and touched anchors; change a link only if it is still wrong.
+- [ ] **Step 6: Close only findings actually verified.** Update 0049 §13
+  with the fresh evidence for F-01, F-02, F-06, F-07, F-10 through F-15,
+  F-18 through F-24 and O-01. Do not mark all as closed just because this
+  task ran. F-16 remains Plan 0051; describe F-08/F-09 against ADR-0016
+  and the measured replay limits rather than reassigning already-delivered
+  fusion to 0051. F-04 remains CM-1…CM-7; F-17's writer semantics belong to
+  CM-3. O-04 remains the pipeline diagnostics row.
+- [ ] **Step 7: Verify and commit.** Run the documentation hooks and
+  `git diff --check`, plus the reserved-terms guard over the changed docs.
+  Commit `docs: align current-state and runbook with plan 0050`.
+  Full code/coverage/runtime gates below still apply before plan closure.
 
 ## Non-goals
 
@@ -3890,10 +3947,12 @@ Deliberately excluded, each with its owner so that nothing is left as text only:
   Separately, ADR-0008 accepts that the grant proves the PIN, not the speaker, and
   a single unrecognized face falls through to the PIN. The scope model, the
   unlock API shape and the face-veto trade-off are product decisions with
-  usability costs, so they are proposed in
-  [ADR-0015](../../adr/0015-owner-grant-scope-and-speaker-binding.md); Plan 0051
-  implements it once accepted. Task 11 pins today's behaviour so that changing it
-  is deliberate. Face liveness and speaker evidence are PC-4 and Plan 0047.
+  usability costs. Accepted
+  [ADR-0015](../../adr/0015-owner-grant-scope-and-speaker-binding.md) decision 1
+  is implemented by Plan 0051, including the voice administration endpoints
+  added by 0053. ADR-0016 already governs face/voice fusion and veto; replay
+  remains undefended and is revisited by CM-5 before the first reserved read.
+  Task 11 characterizes the remaining PIN limits, not an obsolete fusion rule.
 - **Legacy ↔ v4 memory integration and write authorization (F-04, F-17).**
   Identified turns do not reach legacy retrieval, learning is not
   policy-evaluated, and a v4 literal re-assertion raises while a relation
@@ -3915,8 +3974,9 @@ Deliberately excluded, each with its owner so that nothing is left as text only:
   duplicate, and never silently overwrites a seeded sensitive fact: preferences
   update on their own, seeded household facts change only with owner
   verification, and the classification is assigned by the writer, never by the
-  speaker. Owner: an unnumbered plan after 0047 and ADR-0015 (so that it is born
-  with the operation-bound grant), with the refinement semantics in CM-1…CM-7
+  speaker. Owner: an unnumbered plan after CM-3, as the second input channel of
+  its canonical writer; CM-1 has already supplied operation-bound grants.
+  Refinement semantics belong to CM-3 and correction/forgetting to CM-6
   (F-17 is today's "re-assert" case). Fingerprint or other electronic biometrics
   are future evidence behind the same identity seam; nothing is built for them
   now. Task 11 stays as rehearsed: a per-channel test needs the importer, so it
@@ -3930,6 +3990,10 @@ Deliberately excluded, each with its owner so that nothing is left as text only:
   regex. Owner: the CM plans; the capability matrix records it.
 - **Family policy profile.** The policy is `personal`. Owner: the family plan;
   the capability matrix records it.
+- **Voice-pipeline reliability and diagnostics.** The classic generated-output
+  parser, Whisper prompt echo/first-turn accuracy, `test-pipeline`, streaming
+  protocol evaluation and staged benchmark verdicts belong to the next
+  portfolio row. Task 2 validates only the Ollama transport envelope.
 - **Deleting unconnected foundations** (`HouseholdKnowledgeTools`
   preference/birth-date/age methods, `onboarding.next_missing_slot`,
   `pipeline._entity_hotwords`). They are the seams of CM-1…CM-7; the matrix names
@@ -3970,7 +4034,7 @@ uv run pytest -m "not slow and not hardware and not eval" `
 
 ## Completion criteria
 
-- All 78 `server` modules import standalone; importing
+- Every `server` module inventoried on the Task 0 baseline imports standalone; importing
   `server.cognition.controller` loads no module outside `server.cognition` and
   neither `aiosqlite`, `fastapi` nor `httpx` (Task 1).
 - A `null` or non-object Ollama message, a non-JSON body or a mid-stream `error`
@@ -4009,21 +4073,34 @@ only — never values, names or transcripts):
    `personal_security_ready` must still be `True` for the existing setup. If it
    flips to `False`, stop — the real data has the incoherence Task 6 now
    detects; report it before merging.
-2. `just run-server` + `just run-robot`: one classic and one streaming voice turn
-   (`outcome=ok`); then the protected question with the owner's PIN (answered)
-   and the same question from someone else without it (denied, nothing
-   revealed); then "Te presento a mi amigo …" (a greeting, not the enrollment
-   refusal).
-3. One `/vision/respond` scene question answered from the camera.
+2. `just run-server` + `just run-robot`: one classic and one streaming generic
+   voice turn (`outcome=ok`) and the introduction case (a normal answer, not
+   the enrollment refusal). Record the active flags for each mode; streaming
+   still requires scene vision off on this client.
+3. In each voice mode, present a fresh PIN token on a protected child query
+   **without a resolving or vetoing face**. Require an authorized response,
+   `identity_source=local_unlock` and `authentication_consumed=true` (the
+   streaming values are in `done`). An answer obtained through the face does
+   not pass this PIN case. Replaying the spent token must deny. Then repeat
+   without a token or identifying face: generic denial, no private values.
+4. With face/speaker flags on, retain an owner-face authorized turn and a
+   two-face veto; verify that the veto does not consume a presented token.
+   Record only the source, consumption, outcome and timing. These are
+   regression probes, not new biometric calibration or liveness evidence.
+5. In classic mode with scene vision enabled, one `/vision/respond` scene
+   question is answered from the camera. Do not claim streaming scenes.
 
 ## Rollback
 
 Revert the squash-merged PR as one unit. The only lock change is the explicit
-`pillow` entry (same version); no schema, data or wire change.
+`pillow` entry (same version); no schema migration or wire change. Revoking an
+owner role under Task 6 also revokes its credential; reverting code does not
+reactivate credentials already revoked. Recovery uses the existing local setup.
 
 ## Closure
 
-One PR from `fix/0050-server-audit-repairs` (branched from `main` after 0047 and
-the household-data scrub merge), squash-merged, branch deleted. On merge: move
+One PR from `fix/0050-server-audit-repairs`, based on `main` after Plan 0055
+and the Task 0 revalidation. Promotion and implementation are separate from
+the current documentation edit on `docs/single-delivery-queue`. On merge: move
 this file to `completed/`, update the board and `current-state.md`, and record
 the closure in 0049 §13.

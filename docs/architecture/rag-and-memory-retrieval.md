@@ -791,6 +791,14 @@ de STT, acentos omitidos, nombres, códigos técnicos y preguntas compuestas.
 
 Esta arquitectura no cambia la prioridad inmediata del compañero personal.
 
+**Correspondencia con el portafolio (2026-09-30).** Varias etapas ya tienen dueño
+en otra fila de la
+[cola única](../roadmap/cognitive-roadmap.md#canonical-pre-electronics-delivery-portfolio),
+así que no se planifican aparte: R0 es PC-1 (cerrado); R1 es CM-5; R5 es CM-3,
+CM-4 y CM-6; R6 depende de P2.1. Solo **R2** y **R3** son filas propias, después
+de CM-5 y CM-6; R4 es condicional. Cargar los datos del dueño y del hogar no es
+RAG: es la carga inicial estructurada en V4 («paso 0»).
+
 ### R0 — MVP personal autenticado
 
 Completar Plan 0024: Pipec autenticado obtiene “Joaquín y Martina”; sin

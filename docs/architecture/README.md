@@ -61,8 +61,7 @@ specific conflict instead of redesigning the project implicitly.
   [Plan 0048](../plans/completed/0048-fastapi-baseline-final-hardening.md)
   (semantic `max_length`, the streaming one-terminal-event guarantee, the
   NDJSON 200 OpenAPI contract, `/health` wording + injectable `create_app`).
-  Only Uvicorn concurrency calibration remains, deferred to its own
-  `perf(...)` plan.
+  Only Uvicorn concurrency calibration remains; since 2026-09-30 it is measured on the homelab server inside PC-5 (portfolio row 12), not in a separate `perf(...)` plan.
 - [`../roadmap/personal-companion-delivery-map.md`](../roadmap/personal-companion-delivery-map.md):
   canonical mapping from the personal-companion outcome to existing code,
   tests, verified gaps, and the one accountable executable plan.

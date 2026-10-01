@@ -6,7 +6,7 @@
   the baseline and closed four bounded follow-up edges via
   [Plan 0048](../plans/completed/0048-fastapi-baseline-final-hardening.md)
   — see "Second audit and Plan 0048" below. Only Uvicorn concurrency
-  calibration is still open, as its own `perf(...)` plan.
+  calibration is still open; since 2026-09-30 it is measured on the homelab server inside PC-5 (portfolio row 12), not in a separate `perf(...)` plan.
 - **Audited commit:** `7d68641` (original audit); see "Verified baseline" for
   the current state after the closed children
 - **Audit date:** 2026-08-31; closed 2026-09-03
@@ -195,7 +195,7 @@ closed them:
 
 Uvicorn concurrency (`UVICORN_LIMIT_CONCURRENCY=100`) remains uncalibrated
 by deliberate choice — it needs p50/p95/RAM/queueing measurement on the
-real homelab hardware and is deferred to its own `perf(...)` plan. With
+real homelab hardware; since 2026-09-30 it is measured on the homelab server inside PC-5 (portfolio row 12), not in a separate `perf(...)` plan. With
 that one exception, the server baseline is closed: the standing convention
 for any new endpoint is Pydantic contract → thin router → typed `Depends`
 → domain/service → typed response → known errors → OpenAPI → API tests →
