@@ -31,7 +31,7 @@ wording + injectable `create_app`) and left only Uvicorn concurrency
 calibration open, as its own `perf(...)` plan.
 
 [Plan 0055](0055-pc4-identity-fusion-followups.md) closed the PC-4 follow-ups on
-2026-10-01: a store error while the face is resolved degrades to `unknown`, the face and
+2026-10-01 (merged as PR #152, `1c0a914`): a store error while the face is resolved degrades to `unknown`, the face and
 speaker models warm at startup behind their flags, `identity_source` and the clock have one
 definition each, and the other-person veto is pinned against real role rows and survives a
 failing consent read. It changes no identity rule and no OpenAPI; one hardware sample shows the first protected turn at 3.58 s (was 8 to 13 s). A static independent review reported one blocker, fixed before closing.

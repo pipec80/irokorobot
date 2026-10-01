@@ -10,7 +10,7 @@
 > `superpowers:verification-before-completion` before any claim that a task or
 > the plan is done.
 
-- **Status:** `Closed` 2026-10-01 — see the [closure record](#closure-record). Was `Ready` — written 2026-09-30 after Plan 0054 (PC-4) closed, from the
+- **Status:** `Closed` and merged 2026-10-01 (PR #152, squash `1c0a914`) — see the [closure record](#closure-record). Was `Ready` — written 2026-09-30 after Plan 0054 (PC-4) closed, from the
   deferred findings of its independent review and from what Pipec's real-hardware run
   showed. **Approved as `Ready` and selected as `NOW` by Pipec on 2026-10-01**
   ([`docs/plans/README.md`](../README.md#operational-board)). Execute it in a new

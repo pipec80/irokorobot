@@ -128,8 +128,8 @@ The single cross-track order, including the hardening rows (Plans 0055 and
 [canonical portfolio](cognitive-roadmap.md#canonical-pre-electronics-delivery-portfolio).
 CM is not a separate program: it is the memory half of the personal companion,
 and PC-5 cannot close without CM-7. Its only biometric dependency, PC-4, closed
-on 2026-09-30; its biometric dependency is closed, and the queue places
-Plans 0055 and 0050 ahead of CM-1.
+on 2026-09-30, and its hardening follow-up, Plan 0055, merged on 2026-10-01
+(PR #152); the queue places Plan 0050 ahead of CM-1.
 
 The documentary-retrieval stages of
 [RAG §25](../architecture/rag-and-memory-retrieval.md#25-secuencia-de-evolución)
