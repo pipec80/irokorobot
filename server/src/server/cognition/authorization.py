@@ -1,6 +1,6 @@
 """Pure, fail-closed authorization contracts and household policy."""
 
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import StrEnum
 from typing import Annotated
 from uuid import UUID
@@ -13,7 +13,12 @@ from server.cognition.identity import (
     HouseholdRole,
     IdentityAssurance,
 )
-from server.cognition.models import AuthorizationAction, AuthorizationDecision, AuthorizationStatus
+from server.cognition.models import (
+    AuthorizationAction,
+    AuthorizationDecision,
+    AuthorizationStatus,
+    require_aware_utc,
+)
 
 _StrictInteger = Annotated[int, Field(strict=True)]
 _StrictUUID = Annotated[UUID, Field(strict=True)]
@@ -60,13 +65,6 @@ class ConsentStatus(StrEnum):
     REVOKED = "revoked"
 
 
-def _require_aware_utc(value: datetime) -> datetime:
-    """Reject naive timestamps and normalize aware timestamps to UTC."""
-    if value.tzinfo is None or value.utcoffset() is None:
-        raise ValueError("datetime must be timezone-aware")
-    return value.astimezone(UTC)
-
-
 class AuthorizationRequest(BaseModel):
     """Minimum immutable inputs for one local policy decision."""
 
@@ -81,7 +79,7 @@ class AuthorizationRequest(BaseModel):
     correlation_id: _StrictUUID
     requested_at: datetime
 
-    _validate_requested_at = field_validator("requested_at")(_require_aware_utc)
+    _validate_requested_at = field_validator("requested_at")(require_aware_utc)
 
 
 _SENSITIVE_CATEGORIES = frozenset(

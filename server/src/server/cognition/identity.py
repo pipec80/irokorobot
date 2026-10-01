@@ -2,7 +2,7 @@
 
 from collections.abc import Callable as _Callable
 from dataclasses import dataclass as _dataclass
-from datetime import UTC as _UTC, datetime as _datetime
+from datetime import datetime as _datetime
 from enum import Enum as _Enum
 from typing import Annotated as _Annotated, Self as _Self
 from uuid import UUID as _UUID
@@ -15,7 +15,12 @@ from pydantic import (
     model_validator as _model_validator,
 )
 
-from server.cognition.models import Confidence, ConfidenceBasis
+from server.cognition.models import (
+    Confidence,
+    ConfidenceBasis,
+    normalize_optional_aware_utc,
+    require_aware_utc,
+)
 
 _StrictUUID = _Annotated[_UUID, _Field(strict=True)]
 _StrictInteger = _Annotated[int, _Field(strict=True)]
@@ -85,20 +90,6 @@ class PersonRecord:
     entity_type: str
 
 
-def _require_aware_utc(value: _datetime) -> _datetime:
-    """Reject naive timestamps and normalize aware timestamps to UTC."""
-    if value.tzinfo is None or value.utcoffset() is None:
-        raise ValueError("datetime must be timezone-aware")
-    return value.astimezone(_UTC)
-
-
-def _normalize_optional_aware_utc(value: _datetime | None) -> _datetime | None:
-    """Preserve absent timestamps and normalize supplied values to UTC."""
-    if value is None:
-        return None
-    return _require_aware_utc(value)
-
-
 class IdentityEvidence(_BaseModel):
     """Immutable, safe evidence supporting an identity candidate."""
 
@@ -112,8 +103,8 @@ class IdentityEvidence(_BaseModel):
     reference: str
     expires_at: _StrictDatetime | None = None
 
-    _validate_observed_at = _field_validator("observed_at")(_require_aware_utc)
-    _validate_expires_at = _field_validator("expires_at")(_normalize_optional_aware_utc)
+    _validate_observed_at = _field_validator("observed_at")(require_aware_utc)
+    _validate_expires_at = _field_validator("expires_at")(normalize_optional_aware_utc)
 
     @_model_validator(mode="after")
     def _validate_expiry_after_observation(self) -> _Self:
@@ -136,7 +127,7 @@ class ActivePersonContext(_BaseModel):
     resolved_at: _StrictDatetime
     assurance: IdentityAssurance = IdentityAssurance.NONE
 
-    _validate_resolved_at = _field_validator("resolved_at")(_require_aware_utc)
+    _validate_resolved_at = _field_validator("resolved_at")(require_aware_utc)
 
 
 type PersonLookup = _Callable[[int], PersonRecord | None]
