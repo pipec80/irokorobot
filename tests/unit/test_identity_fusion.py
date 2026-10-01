@@ -438,6 +438,34 @@ async def test_a_store_error_in_face_resolution_degrades_to_unknown(
     assert "secret-canary" not in warnings[0]
 
 
+@pytest.mark.parametrize("with_token", [True, False], ids=["token", "no-token"])
+@pytest.mark.parametrize("error", _STORE_FAILURES, ids=lambda e: type(e).__name__)
+async def test_a_consent_error_does_not_erase_a_confirmed_other_person_veto(
+    error: Exception, with_token: bool
+) -> None:
+    """The role already proved another enrolled person; a later store error keeps the veto.
+
+    Consent never changes a non-owner verdict, so reading it must not be able to turn a
+    veto into an unknown that falls through to the PIN.
+    """
+    pin = _pin(with_token=with_token)
+    factory = _verified()
+    face = _face_resolver(role=HouseholdRole.ADULT, store_error=error, fail_at="consent")
+    fused = _fused(face=face, speaker_factory=factory, pin=pin.resolver)
+    event = _event()
+
+    actor = await fused.resolve_actor(event)
+
+    assert actor.status is ActivePersonStatus.AMBIGUOUS
+    assert fused.last_reason is FusionReason.VETO_OTHER_PERSON
+    assert fused.source is None
+    assert pin.resolver.consumed is False
+    if with_token:
+        assert _token_is_still_spendable(pin)
+    assert factory.owner_ids == []
+    assert await fused.resolve_consent(event, actor) is ConsentStatus.NOT_REQUIRED
+
+
 async def test_a_store_error_in_the_face_still_lets_a_valid_pin_token_through() -> None:
     """The face says nothing, so the PIN path is still consulted."""
     pin = _pin(with_token=True)

@@ -309,6 +309,7 @@ async def _post_turn(
     events = [json.loads(line) for line in response.text.strip().split("\n") if line.strip()]
     done = [e for e in events if e["type"] == "done"]
     assert len(done) == 1
+    assert events[-1]["type"] == "done"
     return _Turn(
         response.status_code,
         next(e for e in events if e["type"] == "audio")["text"],
@@ -438,6 +439,59 @@ async def test_another_enrolled_person_vetoes_against_a_real_role_row(
         assert alone.text == _DENIAL
         assert alone.identity_source is None
         assert alone.consumed is False
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("route", _ROUTES)
+@pytest.mark.parametrize("with_token", [True, False], ids=["token", "no-token"])
+async def test_a_consent_error_does_not_erase_the_veto_of_another_enrolled_person(
+    route: str,
+    with_token: bool,
+    fusion_db: PersonalSetupResult,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Another person's role is confirmed before consent is read; consent failing keeps the veto."""
+    other_id = await upsert_entity(name="Canary Adult", type="person")
+    await assign_household_role(
+        person_entity_id=other_id,
+        role=HouseholdRole.ADULT,
+        grantor_entity_id=fusion_db.owner_entity_id,
+    )
+    await enroll_face(other_id, _STRANGER_FACE, label="Canary Adult")
+    service = _service()
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
+    headers: dict[str, str] | None = None
+    if with_token:
+        unlock = await service.unlock(_PIN)
+        assert unlock is not None
+        headers = {"X-Iroko-Identity-Token": unlock.token}
+    _detect(monkeypatch, [_detected(_STRANGER_FACE)])
+    monkeypatch.setattr(
+        face_auth_module,
+        "has_active_face_consent",
+        AsyncMock(side_effect=aiosqlite.Error("db down")),
+    )
+    embed = _embed(monkeypatch, _MATCHING_VOICE)
+    _mock_stt_tts(monkeypatch)
+    reads = _spy_on_child_reads(monkeypatch)
+
+    async with _client() as client:
+        vetoed = await _post_turn(client, route, headers=headers)
+        reads.assert_not_awaited()
+        embed.assert_not_awaited()
+        alone = await _post_turn(client, route, headers=headers, frame=False)
+
+    assert vetoed.status_code == 200
+    assert vetoed.errors == []
+    assert vetoed.text == _DENIAL
+    assert vetoed.identity_source is None
+    assert vetoed.consumed is False
+    if with_token:
+        assert alone.text == _CHILD_ANSWER
+        assert alone.identity_source == "local_unlock"
+        assert alone.consumed is True
+    else:
+        assert alone.text == _DENIAL
 
 
 @pytest.mark.integration
