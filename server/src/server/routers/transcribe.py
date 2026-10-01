@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 import logging
 import time
-from typing import Annotated, Literal
+from typing import Annotated
 from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
@@ -22,7 +22,7 @@ from server.cognition.household_tools import HouseholdKnowledgeTools
 from server.cognition.identity import ActivePersonContext
 from server.cognition.identity_fusion import FusedIdentityResolver, build_fused_identity_resolver
 from server.cognition.models import CognitiveEvent
-from server.cognition.owner_authentication import OwnerRequestResolver, OwnerUnlockService
+from server.cognition.owner_authentication import OwnerUnlockService
 from server.cognition.response_plan import (
     ResponsePlan,
     SceneDescriptionRequest,
@@ -44,7 +44,7 @@ from server.pipeline import (
     _run_stt,
     _run_tts,
 )
-from server.schemas import TranscribeResponse, error_responses
+from server.schemas import IdentitySource, TranscribeResponse, error_responses
 from server.schemas_streaming import StreamEvent
 from server.settings import settings
 from server.streaming import guarantee_terminal_event, stream_pipeline, stream_response_plan
@@ -131,22 +131,20 @@ class _RequestIdentity:
     Attributes:
         resolve_actor: The actor resolver to hand to the controller.
         resolve_consent: The matching consent resolver.
-        pin: The underlying PIN resolver, used to report `.consumed`.
-        fused: The fusion resolver, used to report `.identity_source`.
+        fused: The fusion resolver, the source of `.consumed` and `.identity_source`.
     """
 
     resolve_actor: ActivePersonResolver
     resolve_consent: ConsentResolver
-    pin: OwnerRequestResolver
     fused: FusedIdentityResolver
 
     @property
     def consumed(self) -> bool:
         """Whether this request consumed a fresh one-use owner PIN unlock grant."""
-        return self.pin.consumed
+        return self.fused.consumed
 
     @property
-    def identity_source(self) -> Literal["face", "face_voice", "local_unlock"] | None:
+    def identity_source(self) -> IdentitySource | None:
         """Which evidence identified the actor, or `None` for none."""
         return self.fused.source
 
@@ -174,7 +172,6 @@ def _build_request_identity(
     return _RequestIdentity(
         resolve_actor=fused.resolve_actor,
         resolve_consent=fused.resolve_consent,
-        pin=pin,
         fused=fused,
     )
 

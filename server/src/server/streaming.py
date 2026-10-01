@@ -17,7 +17,6 @@ stays exclusive to classic /transcribe (see app.py's robot_streaming flag).
 from collections.abc import AsyncIterator
 import json
 import logging
-from typing import Literal
 
 import httpx
 
@@ -26,6 +25,7 @@ from server.cognition.response_plan import ResponsePlan
 from server.conversation_log import log_spoken
 from server.exceptions import LLMError, TTSError
 from server.pipeline import _elapsed_ms, _log_pipeline_timing
+from server.schemas import IdentitySource
 from server.schemas_streaming import (
     StreamAudioEvent,
     StreamDoneEvent,
@@ -130,7 +130,7 @@ async def stream_response_plan(
     stt_ms: int,
     request_start: float,
     authentication_consumed: bool = False,
-    identity_source: Literal["face", "face_voice", "local_unlock"] | None = None,
+    identity_source: IdentitySource | None = None,
 ) -> AsyncIterator[str]:
     """Render an already-authorized plan without LLM or memory work.
 

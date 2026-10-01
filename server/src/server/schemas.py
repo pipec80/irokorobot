@@ -7,6 +7,10 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+# Which evidence identified the actor of a turn (Plan 0054, ADR 0016). Defined once and
+# shared by the response schemas, the streaming renderer and the fusion resolver.
+IdentitySource = Literal["face", "face_voice", "local_unlock"]
+
 EntityType = Literal[
     "person",
     "place",
@@ -223,7 +227,7 @@ class TranscribeResponse(BaseModel):
     # Additive field (Plan 0029, "face_voice" added by Plan 0054): which evidence
     # source produced the identified actor for this turn, if any. Never a name or
     # other protected value — only "face", "face_voice", "local_unlock", or None.
-    identity_source: Literal["face", "face_voice", "local_unlock"] | None = Field(
+    identity_source: IdentitySource | None = Field(
         default=None,
         description="Which evidence identified the actor for this turn: the face alone, "
         "the face corroborated by the voice, or an owner unlock grant",

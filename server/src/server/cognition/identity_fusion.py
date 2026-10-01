@@ -13,15 +13,16 @@ int16.
 """
 
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import StrEnum
 from functools import partial
 import logging
-from typing import Literal
+from typing import TYPE_CHECKING
 
 import aiosqlite
 
 from server.cognition.authorization import ConsentStatus
+from server.cognition.clock import utc_now
 from server.cognition.face_authentication import (
     FaceAuthenticationVerdict,
     FaceRequestResolver,
@@ -45,6 +46,9 @@ from server.cognition.speaker_authentication import (
 from server.exceptions import BrainMemoryError
 from server.settings import settings
 
+if TYPE_CHECKING:
+    from server.schemas import IdentitySource
+
 logger = logging.getLogger(__name__)
 
 # The identity store failing is not evidence of anything: the face then says nothing.
@@ -54,7 +58,6 @@ __all__ = ["FusedIdentityResolver", "FusionReason", "build_fused_identity_resolv
 
 type Clock = Callable[[], datetime]
 type SpeakerFactory = Callable[[int], SpeakerRequestResolver]
-type IdentitySource = Literal["face", "face_voice", "local_unlock"]
 
 
 class FusionReason(StrEnum):
@@ -212,11 +215,6 @@ class FusedIdentityResolver:
         return fused
 
 
-def _utc_now() -> datetime:
-    """Return the current aware UTC timestamp for production boundaries."""
-    return datetime.now(UTC)
-
-
 def build_fused_identity_resolver(
     pin: OwnerRequestResolver, *, frame: bytes | None, wav_bytes: bytes | None
 ) -> FusedIdentityResolver:
@@ -242,6 +240,4 @@ def build_fused_identity_resolver(
         if settings.speaker_authentication_enabled and wav_bytes is not None
         else None
     )
-    return FusedIdentityResolver(
-        pin=pin, face=face, speaker_factory=speaker_factory, clock=_utc_now
-    )
+    return FusedIdentityResolver(pin=pin, face=face, speaker_factory=speaker_factory, clock=utc_now)

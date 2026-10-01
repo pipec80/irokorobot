@@ -10,7 +10,7 @@ int16.
 """
 
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import StrEnum
 import logging
 import math
@@ -19,6 +19,7 @@ from uuid import uuid4
 import aiosqlite
 import numpy as np
 
+from server.cognition.clock import utc_now
 from server.cognition.identity import (
     ActivePersonContext,
     ActivePersonStatus,
@@ -324,11 +325,6 @@ class SpeakerRequestResolver:
         return _unknown_active_person(event, "Speaker evidence is untrusted", evidence=(evidence,))
 
 
-def _utc_now() -> datetime:
-    """Return the current aware UTC timestamp for production boundaries."""
-    return datetime.now(UTC)
-
-
 def build_default_speaker_resolver(
     wav_bytes: bytes, owner_person_id: int
 ) -> SpeakerRequestResolver:
@@ -347,7 +343,7 @@ def build_default_speaker_resolver(
     return SpeakerRequestResolver(
         wav_bytes=wav_bytes,
         owner_person_id=owner_person_id,
-        clock=_utc_now,
+        clock=utc_now,
         read_role=get_active_role,
         read_consent=has_active_voice_consent,
         count_references=count_voiceprints,
