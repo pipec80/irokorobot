@@ -253,3 +253,28 @@ async def test_enrolling_a_face_never_logs_the_persons_name(
 
     assert profile_id > 0, "the profile must still be stored and its id returned"
     assert _PERSON not in caplog.text
+
+
+@pytest.mark.integration
+@pytest.mark.usefixtures("_real_memory_db")
+async def test_recognizing_a_face_never_logs_the_persons_name(
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`recognize()` used to log the matched names next to the biometric lookup.
+
+    Face recognition is disconnected from the runtime today (PR #31) and returns
+    with P1.2; this keeps the name out of the log line before it does. The match
+    itself must still succeed: the count is logged, the name is not.
+    """
+    entity_id = await declarative.upsert_entity(name=_PERSON, type="person")
+    embedding = np.zeros(512, dtype=np.float32)
+    await faces.enroll_face(entity_id=entity_id, embedding=embedding, label=_PERSON)
+    monkeypatch.setattr(faces, "extract_faces", AsyncMock(return_value=[embedding]))
+
+    with caplog.at_level(logging.DEBUG, logger="server.vision.faces"):
+        matches, unknown = await faces.recognize(b"frame")
+
+    assert [match.name for match in matches] == [_PERSON], "the person must still be recognized"
+    assert unknown == 0
+    assert _PERSON not in caplog.text
