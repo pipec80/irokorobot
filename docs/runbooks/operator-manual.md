@@ -442,20 +442,19 @@ independent reasons, both verified against the current code:**
    existing owner, never as the mechanism that establishes one. `just setup-personal`
    has no conversational alternative today.
 2. **It is fully disconnected, right now.** The one function that could pass real
-   values into it always hardcodes them away:
-   ```python
-   async def _memory_prompt_state(
-       message: str,
-   ) -> tuple[MemoryContext | None, bool, OnboardingSlot | None]:
-       """Resolve legacy-compatible persistent context without global onboarding."""
-       context = await build_context(message)
-       return context, False, None
-   ```
-   `onboarding.py::next_missing_slot()` has zero live callers anywhere in the
-   repo — confirmed by grep, not inference. This matches what
-   [ADR-0007](../adr/0007-first-boot-and-default-posture.md) flagged as
-   "built, tested, zero production callers" back on 2026-08-19; it is still true
-   after everything Plan 0029 added.
+   values into it, [`text_turn.py::_memory_prompt_state`](../../server/src/server/text_turn.py),
+   builds the legacy memory context and always returns `onboarding=False` and no
+   slot (a memory error degrades to a stateless turn). `onboarding.py::next_missing_slot()`
+   has zero live callers anywhere in the repo — confirmed by grep, not inference.
+   This matches what [ADR-0007](../adr/0007-first-boot-and-default-posture.md)
+   flagged as "built, tested, zero production callers" back on 2026-08-19; it is
+   still true after everything Plan 0029 added.
+
+Three things look alike and must not be confused: `personal_security_ready` (an
+active owner holds the active PIN credential — what `just setup-personal status`
+reports), the legacy `onboarding_complete` flag (a separate, never-set meta flag of
+this disabled interview) and biometric enrolment (consented face and voice
+references). None of them proves that Iroko has learned anything conversationally.
 
 **Do not reconnect this as-is if it ever comes up.** Its checklist reads/writes the
 legacy v3 fact tables (`load_entity_with_facts`, `find_facts_by_predicate`), not the

@@ -340,8 +340,9 @@ No production change; evidence only.
     deleting that comment; the fix (`new_app.state.ready = False` in
     `create_app`) is unchanged.
   - Task 11 Step 3 / Step 5: `tests/fixtures/intent_resolution_es.json` holds
-    **53** rows today, not the 62/73 the plan implies; after the eleven added
-    rows it holds 64. Assert the failures by row text, not by corpus size.
+    **53** rows today and 64 after the eleven added rows (one existing row also
+    changes); the plan's "73" counts the tests of `test_intent_resolution.py`
+    (64 corpus cases plus 9 others), and that number held in execution.
   - Task 11 harness: `owner_unlock_service`, `get_owner_unlock_service`,
     `AppResources`, `llm.generate_response`, the `consolidate_turn` binding in
     `routers.transcribe` and the `silence_wav_bytes` fixture all exist as the
@@ -352,6 +353,19 @@ No production change; evidence only.
   files*; `identity_fusion.py`, `speaker_authentication.py` and the voice
   consent/storage modules are read-only and untouched. Plan 0055's warm-up,
   shared clock, `IdentitySource` alias and store-error guard stay as merged.
+
+**Execution note (2026-10-01).** Tasks 1–11 each landed as one commit
+(`58ea56d`, `e936488`, `35bae11`, `ceddf11`, `12b749e`, `3f41a3c`, `4680e71`,
+`2cfa789`, `8115af9`, `fa7ed98`, `dd388b1`), every new test observed RED for the
+stated reason before GREEN (counts matched the plan: 2, 7, 11, 1 + import error,
+3, 4, 9, 5 + 4 voseo, 1, 1, 3 + 9). Two corrections to the plan's own steps:
+Task 4's `grep -r` over the whole tree is slow, use `git grep`; Task 7's
+wizard-failure assertion joins output with a space instead of a newline (same
+meaning). **Open observation:** the full `just test` after Task 11 reported one
+failed test whose name was not captured (the output was piped through `tail`);
+it did not reproduce in four later full runs at the same code (`just gate`,
+the coverage command and two `just test` runs). If it reappears, capture the
+failure before anything else.
 
 ## Task 1: Break the import cycles and keep the cognitive core pure
 
