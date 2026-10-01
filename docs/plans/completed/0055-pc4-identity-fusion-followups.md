@@ -1133,8 +1133,7 @@ those new tests).
 - **Independent review: static only.** Pipec reported a static independent review of the branch
   (no subagent) with one blocker, since fixed (see *Review findings* below). It is a source read, not
   a new hardware run.
-- **Hardware check not run.** Startup-to-ready and first protected-turn latency are unmeasured;
-  nothing here claims the warm-up is faster. Replay and liveness stay undefended; no reserved
+- **Hardware: one sample, not a benchmark.** (Pipec, 2026-10-01, same laptop, face and speaker flags on, robot sending a frame): start-up took 9 s from `starting` to `ONLINE` (face model about 1 s, speaker model about 3 s, both inside start-up); the first protected turn after the restart (`face_only`; the speaker verdict was `unknown`) took 3.58 s end to end with no model-load line, against 8 to 13 s on 2026-09-30. One sample, not a controlled before/after: no run on `main` was made in the same session. Nothing here claims more than that sample. Replay and liveness stay undefended; no reserved
   capability exists; Whisper's prompt echo (D-4) and PIN scoping (Plan 0051) stay in their plans.
 
 **Review findings.**
@@ -1151,8 +1150,7 @@ those new tests).
   event of every `/transcribe/stream` response, not only that exactly one `done` exists.
 - **Left as the plan decided (D-1).** A failing *role* read still degrades to `unknown`: nothing
   was confirmed, so there is no veto to keep.
-- The optional hardware measurement stays pending and no latency improvement is claimed; Plan 0050
-  may update its own text during its revalidation.
+- The same hardware session reproduced Whisper's prompt echo on a 1.3 s clip (a public turn that the LLM then took 14.7 s to answer): decision D-4, owned by the voice-pipeline plan, not this one. Plan 0050 may update its own text during its revalidation. No private content is recorded here: the session's console log printed real household names (`LOG_CONVERSATION_TEXT` on), and none were copied.
 
 **Rulings taken during execution.**
 

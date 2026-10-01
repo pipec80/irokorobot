@@ -34,8 +34,7 @@ calibration open, as its own `perf(...)` plan.
 2026-10-01: a store error while the face is resolved degrades to `unknown`, the face and
 speaker models warm at startup behind their flags, `identity_source` and the clock have one
 definition each, and the other-person veto is pinned against real role rows and survives a
-failing consent read. It changes no identity rule and no OpenAPI; the latency gain is
-unmeasured. A static independent review reported one blocker, fixed before closing.
+failing consent read. It changes no identity rule and no OpenAPI; one hardware sample shows the first protected turn at 3.58 s (was 8 to 13 s). A static independent review reported one blocker, fixed before closing.
 
 [Plan 0054](0054-face-default-identity-fusion.md) closed PC-4 on 2026-09-30: the
 owner's face alone identifies at assurance `basic`, a verified voice of the same person

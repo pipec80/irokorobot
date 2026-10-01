@@ -320,8 +320,7 @@ speaker model the 60 s load cool-down then applies, so a first turn within a min
 failed start degrades to `basic` instead of retrying. There is no startup deadline: a
 blocked loader delays readiness. The earlier figures in this manual (about 15 s for the
 speaker model; 8 to 13 s for the first protected turn on the development laptop, 2026-09-30)
-are **historical, measured before the warm-up**; the post-warm-up numbers are not measured
-yet.
+are **historical, measured before the warm-up**. Hardware sample (Pipec, 2026-10-01, same laptop, face and speaker flags on, robot sending a frame): start-up took 9 s from `starting` to `ONLINE` (face model about 1 s, speaker model about 3 s, both inside start-up); the first protected turn after the restart (`face_only`; the speaker verdict was `unknown`) took 3.58 s end to end with no model-load line, against 8 to 13 s on 2026-09-30. One sample, not a controlled before/after: no run on `main` was made in the same session.
 
 **Identity-store errors.** If the identity store raises an error while the face is being
 resolved (matching, role, consent or label lookup), the face contributes no evidence and no
