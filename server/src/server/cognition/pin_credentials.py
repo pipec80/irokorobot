@@ -11,8 +11,11 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-__all__ = ["EncodedPinCredential", "hash_pin", "verify_pin"]
+__all__ = ["EncodedPinCredential", "hash_pin", "validate_pin", "verify_pin"]
 
+# ASCII decimal digits only. `str.isdigit()` also accepts Arabic-Indic and other
+# Unicode digits, which can never derive the stored verifier — accepting them
+# would only spend a deliberately slow scrypt round on impossible input.
 _PIN_PATTERN = re.compile(r"^[0-9]{6,12}$")
 _SCRYPT_N = 2**15
 _SCRYPT_R = 8
@@ -50,10 +53,18 @@ class EncodedPinCredential(BaseModel):
     _validate_verifier = field_validator("verifier")(_require_verifier_length)
 
 
-def _validate_pin(pin: str) -> None:
+def validate_pin(pin: str) -> None:
     """Raise ValueError if the candidate is not 6-12 ASCII digits.
 
-    Never includes the candidate PIN in the exception text.
+    The one definition of the PIN format: unlock requests, setup and hashing
+    all call it.
+
+    Args:
+        pin: Candidate PIN.
+
+    Raises:
+        ValueError: If the shape is wrong. The message never contains the
+            candidate.
     """
     if not _PIN_PATTERN.fullmatch(pin):
         raise ValueError("PIN must be 6 to 12 ASCII digits")
@@ -87,7 +98,7 @@ def hash_pin(pin: str, *, salt: bytes | None = None) -> EncodedPinCredential:
     Raises:
         ValueError: If the PIN is not 6 to 12 ASCII digits.
     """
-    _validate_pin(pin)
+    validate_pin(pin)
     used_salt = salt if salt is not None else secrets.token_bytes(_SALT_LENGTH)
     verifier = _derive(pin, used_salt)
     parameters_json = json.dumps(
@@ -116,7 +127,7 @@ def verify_pin(pin: str, credential: EncodedPinCredential) -> bool:
             verifier, or parameters do not match the expected shape. Never
             includes the candidate PIN in the exception text.
     """
-    _validate_pin(pin)
+    validate_pin(pin)
     if len(credential.salt) != _SALT_LENGTH:
         raise ValueError(f"credential salt must be a {_SALT_LENGTH}-byte salt")
     if len(credential.verifier) != _SCRYPT_DKLEN:

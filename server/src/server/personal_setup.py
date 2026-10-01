@@ -18,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, SecretStr
 
 from server import db
 from server.cognition.identity import HouseholdRole
-from server.cognition.pin_credentials import hash_pin, verify_pin
+from server.cognition.pin_credentials import hash_pin, validate_pin, verify_pin
 from server.db import get_conn
 from server.exceptions import BrainMemoryError
 from server.memory.declarative import upsert_entity
@@ -93,13 +93,12 @@ def _validate_input(data: PersonalSetupInput) -> None:
     """Reject an incomplete or inconsistent submission before any write.
 
     Raises:
-        ValueError: If the owner name is blank, no child name is given, a
-            child name is blank, or two child names fold to the same name.
+        ValueError: If the owner name is blank, a child name is blank, two child
+            names fold to the same name, or the PIN is not 6 to 12 ASCII digits.
     """
     if not data.owner_name.strip():
         raise ValueError("owner_name must not be blank")
-    if not data.child_names:
-        raise ValueError("child_names must include at least one child")
+    validate_pin(data.pin.get_secret_value())
     if any(not name.strip() for name in data.child_names):
         raise ValueError("child_names must not contain a blank name")
 
@@ -223,9 +222,8 @@ async def apply_personal_setup(data: PersonalSetupInput) -> PersonalSetupResult:
 
 
 def _split_names(line: str) -> list[str]:
-    """Split one free-text line into individual names by comma or whitespace."""
-    parts = [part.strip() for part in line.replace(",", " ").split(" ")]
-    return [part for part in parts if part]
+    """Split one wizard line into child names; only a comma separates two names."""
+    return [" ".join(part.split()) for part in line.split(",") if part.strip()]
 
 
 async def run_personal_setup_wizard(
@@ -253,10 +251,7 @@ async def run_personal_setup_wizard(
         write_text("Setup cancelled: owner name is required.")
         return None
 
-    children_line = read_text("Child names (comma or space separated): ").strip()
-    if not children_line:
-        write_text("Setup cancelled: at least one child name is required.")
-        return None
+    children_line = read_text("Child names (comma separated, optional): ").strip()
     child_names = tuple(_split_names(children_line))
 
     pin = read_secret("PIN (6-12 digits): ")
@@ -264,9 +259,14 @@ async def run_personal_setup_wizard(
     if pin != pin_confirmation:
         write_text("Setup cancelled: PIN confirmation did not match.")
         return None
+    try:
+        validate_pin(pin)
+    except ValueError as exc:
+        write_text(f"Setup cancelled: {exc}.")
+        return None
 
     write_text(f"Owner: {owner_name}")
-    write_text(f"Children: {', '.join(child_names)}")
+    write_text(f"Children: {', '.join(child_names) or '(none)'}")
     write_text("PIN: ******")
     confirmation = read_text(f"Type {_CONFIRMATION_TOKEN} to confirm: ")
     if confirmation != _CONFIRMATION_TOKEN:
@@ -406,6 +406,6 @@ def main() -> None:
     args = parser.parse_args()
     try:
         asyncio.run(_run(args.command))
-    except BrainMemoryError as exc:
+    except (BrainMemoryError, ValueError) as exc:
         print(str(exc))  # noqa: T201 — CLI adapter, not application logging
         sys.exit(1)

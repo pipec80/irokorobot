@@ -52,10 +52,14 @@ just setup-personal          # the interactive wizard (requires run-server/run-r
 ```
 
 The wizard's exact prompt sequence (`personal_setup.py::run_personal_setup_wizard`):
-`Owner name:` → `Child names (comma or space separated):` → `PIN (6-12
-digits):` (hidden) → `Confirm PIN:` (hidden) → a summary, then `Type CONFIRM
-to confirm:` before anything is written. Re-running with the same PIN is a
-no-op; a different PIN rotates the credential.
+`Owner name:` → `Child names (comma separated, optional):` → `PIN (6-12
+digits):` (hidden) → `Confirm PIN:` (hidden) → a summary, then `Type SI to
+confirm:` before anything is written. Owner + PIN alone is a complete setup:
+a blank children answer creates no children, and only a comma separates two
+names (`Ana María, Juan` is two children). The PIN format is checked before
+anything is written, so a malformed PIN cancels the wizard with a message and
+no entity exists. Re-running with the same PIN is a no-op; a different PIN
+rotates the credential.
 
 ## 1. Starting the system
 

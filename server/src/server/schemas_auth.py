@@ -1,10 +1,11 @@
 """Request/response contracts for the local owner unlock and face endpoints."""
 
 from datetime import datetime
-import re
 from typing import Annotated
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, SecretStr
+
+from server.cognition.pin_credentials import validate_pin
 
 __all__ = [
     "FaceEnrollResponse",
@@ -12,11 +13,6 @@ __all__ = [
     "OwnerUnlockResponse",
     "VoiceEnrollResponse",
 ]
-
-# ASCII decimal digits only. `str.isdigit()` also accepts Arabic-Indic and other
-# Unicode digits, which can never derive the stored verifier — accepting them
-# would only spend a deliberately slow scrypt round on impossible input.
-_PIN_PATTERN = re.compile(r"^[0-9]{6,12}$")
 
 
 def _require_pin_shape(pin: SecretStr) -> SecretStr:
@@ -35,8 +31,7 @@ def _require_pin_shape(pin: SecretStr) -> SecretStr:
         ValueError: If the shape is wrong. The message never contains the
             candidate — it would otherwise be echoed in the 422 body.
     """
-    if not _PIN_PATTERN.fullmatch(pin.get_secret_value()):
-        raise ValueError("PIN must be 6 to 12 ASCII digits")
+    validate_pin(pin.get_secret_value())
     return pin
 
 
