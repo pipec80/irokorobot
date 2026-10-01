@@ -6,19 +6,23 @@ was presented and nothing resolved or vetoed. Positive evidence of another perso
 enrolled face, or two or more faces) vetoes and never consumes the PIN token. The final
 status and assurance come from `resolve_active_person`, the single place that fuses
 evidence. Voice is a corroborating source: it can raise a face to `strong`, never identify.
+A store error while resolving the face degrades to unknown.
 
 Audio contract for every WAV the speaker resolver touches: WAV, 16 000 Hz, mono, signed
 int16.
 """
 
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import StrEnum
 from functools import partial
 import logging
-from typing import Literal
+from typing import TYPE_CHECKING
+
+import aiosqlite
 
 from server.cognition.authorization import ConsentStatus
+from server.cognition.clock import utc_now
 from server.cognition.face_authentication import (
     FaceAuthenticationVerdict,
     FaceRequestResolver,
@@ -39,15 +43,21 @@ from server.cognition.speaker_authentication import (
     SpeakerVerdict,
     build_default_speaker_resolver,
 )
+from server.exceptions import BrainMemoryError
 from server.settings import settings
 
+if TYPE_CHECKING:
+    from server.schemas import IdentitySource
+
 logger = logging.getLogger(__name__)
+
+# The identity store failing is not evidence of anything: the face then says nothing.
+_STORE_ERRORS = (BrainMemoryError, aiosqlite.Error)
 
 __all__ = ["FusedIdentityResolver", "FusionReason", "build_fused_identity_resolver"]
 
 type Clock = Callable[[], datetime]
 type SpeakerFactory = Callable[[int], SpeakerRequestResolver]
-type IdentitySource = Literal["face", "face_voice", "local_unlock"]
 
 
 class FusionReason(StrEnum):
@@ -136,17 +146,9 @@ class FusedIdentityResolver:
 
     async def _resolve(self, event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
         """Run face, then voice, then PIN, stopping at the first identification or veto."""
-        if self._face is not None:
-            face_context = await self._face.resolve_actor(event)
-            verdict = self._face.last_verdict
-            if verdict is FaceAuthenticationVerdict.AMBIGUOUS:
-                self.last_reason = FusionReason.VETO_MULTIPLE_FACES
-                return face_context
-            if verdict is FaceAuthenticationVerdict.OTHER_PERSON:
-                self.last_reason = FusionReason.VETO_OTHER_PERSON
-                return face_context
-            if face_context.status is ActivePersonStatus.IDENTIFIED:
-                return await self._with_voice(event, face_context)
+        face_outcome = await self._resolve_face(event)
+        if face_outcome is not None:
+            return face_outcome
         pin_context = await self._pin.resolve_actor(event)
         if self._pin.consumed:
             self.last_reason = FusionReason.PIN
@@ -154,6 +156,29 @@ class FusedIdentityResolver:
         else:
             self.last_reason = FusionReason.NO_EVIDENCE
         return pin_context
+
+    async def _resolve_face(
+        self, event: CognitiveEvent[TextTurnPayload]
+    ) -> ActivePersonContext | None:
+        """Return the face path's final context, or `None` to fall through to the PIN."""
+        if self._face is None:
+            return None
+        try:
+            face_context = await self._face.resolve_actor(event)
+        except _STORE_ERRORS as exc:
+            # Fail closed: neither a veto nor an identification, and nothing personal logged.
+            logger.warning("Face identity degraded to unknown: %s", type(exc).__name__)
+            return None
+        verdict = self._face.last_verdict
+        if verdict is FaceAuthenticationVerdict.AMBIGUOUS:
+            self.last_reason = FusionReason.VETO_MULTIPLE_FACES
+            return face_context
+        if verdict is FaceAuthenticationVerdict.OTHER_PERSON:
+            self.last_reason = FusionReason.VETO_OTHER_PERSON
+            return face_context
+        if face_context.status is ActivePersonStatus.IDENTIFIED:
+            return await self._with_voice(event, face_context)
+        return None
 
     async def _with_voice(
         self, event: CognitiveEvent[TextTurnPayload], face_context: ActivePersonContext
@@ -190,11 +215,6 @@ class FusedIdentityResolver:
         return fused
 
 
-def _utc_now() -> datetime:
-    """Return the current aware UTC timestamp for production boundaries."""
-    return datetime.now(UTC)
-
-
 def build_fused_identity_resolver(
     pin: OwnerRequestResolver, *, frame: bytes | None, wav_bytes: bytes | None
 ) -> FusedIdentityResolver:
@@ -220,6 +240,4 @@ def build_fused_identity_resolver(
         if settings.speaker_authentication_enabled and wav_bytes is not None
         else None
     )
-    return FusedIdentityResolver(
-        pin=pin, face=face, speaker_factory=speaker_factory, clock=_utc_now
-    )
+    return FusedIdentityResolver(pin=pin, face=face, speaker_factory=speaker_factory, clock=utc_now)

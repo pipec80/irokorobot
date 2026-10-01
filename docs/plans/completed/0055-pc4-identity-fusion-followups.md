@@ -10,7 +10,7 @@
 > `superpowers:verification-before-completion` before any claim that a task or
 > the plan is done.
 
-- **Status:** `Ready` — written 2026-09-30 after Plan 0054 (PC-4) closed, from the
+- **Status:** `Closed` 2026-10-01 — see the [closure record](#closure-record). Was `Ready` — written 2026-09-30 after Plan 0054 (PC-4) closed, from the
   deferred findings of its independent review and from what Pipec's real-hardware run
   showed. **Approved as `Ready` and selected as `NOW` by Pipec on 2026-10-01**
   ([`docs/plans/README.md`](../README.md#operational-board)). Execute it in a new
@@ -1104,3 +1104,66 @@ default path. It became `Ready` and `NOW` on 2026-10-01 by Pipec's approval.
 session, with an independent whole-branch review at the end. Execute Tasks 0–6
 in order: the baseline precedes all changes, several tasks share production
 and test files, and documentation closure follows verification and review.
+
+---
+
+## Closure record
+
+Executed 2026-10-01 inline in one session on `feat/0055-pc4-followups` (base `main` at
+`251fa54`), one commit per task. **Tested SHA `ea02e24`** (the review fix below; documentation commits after it change no code).
+
+| Task | Commit | RED observed first |
+|---|---|---|
+| 1 — face store error degrades to `unknown` | `fix(cognition): degrade a face store error to unknown` | 13 failures: the error escaped `resolve_actor` and the routes returned 500 |
+| 2 — warm the models at startup | `feat(server): warm the face and speaker models at startup` | 10 failures: `warm_up` and `main.faces` did not exist |
+| 3 — one definition for the repeated values | `refactor(cognition): define identity source and clock once` | collection errors: `IdentitySource` and `clock` did not exist; OpenAPI byte-identical before and after |
+| 4 — coverage holes | `test(cognition): pin the other-person veto to a real role row` | characterization (16 pass); temporary mutation of the non-owner verdict to `UNKNOWN` failed exactly the 8 cases with a valid token, then was restored |
+| 5 — documentation | `docs(plan): document the pc-4 follow-ups` | not applicable |
+| Review fix | `fix(cognition): keep another person's veto when consent fails` | 6 failures: with another enrolled person's role confirmed, a failing consent read became `unknown`, fell through to the PIN and spent a valid token |
+
+**Gates.** `just gate` passed (lint, typecheck, tests, audit); `just test-cov` passed with 1607
+tests and 91.43 % coverage (floor 80 %). `tests/integration/test_face_authenticated_turn.py` is
+unedited and passes; `uv lock --check` clean; `rg 'def _utc_now' server/src` prints nothing and
+`IdentitySource =` is defined once, in `schemas.py`. Baseline before the work: 1557 tests on
+`main` (the Task 0 gate run also collected the first RED tests, whose 9 failures were exactly
+those new tests).
+
+**Not done, stated plainly.**
+
+- **Independent review: static only.** Pipec reported a static independent review of the branch
+  (no subagent) with one blocker, since fixed (see *Review findings* below). It is a source read, not
+  a new hardware run.
+- **Hardware: one sample, not a benchmark.** (Pipec, 2026-10-01, same laptop, face and speaker flags on, robot sending a frame): start-up took 9 s from `starting` to `ONLINE` (face model about 1 s, speaker model about 3 s, both inside start-up); the first protected turn after the restart (`face_only`; the speaker verdict was `unknown`) took 3.58 s end to end with no model-load line, against 8 to 13 s on 2026-09-30. One sample, not a controlled before/after: no run on `main` was made in the same session. Nothing here claims more than that sample. Replay and liveness stay undefended; no reserved
+  capability exists; Whisper's prompt echo (D-4) and PIN scoping (Plan 0051) stay in their plans.
+
+**Review findings.**
+
+- **Blocker, fixed.** `FaceRequestResolver._match_when_singular` confirmed a non-owner role and then
+  read consent; a store error there escaped, `FusedIdentityResolver` degraded it to `unknown`, and a
+  valid PIN token could then pass despite the evidence of another enrolled person. Consent only
+  matters for the owner (`evaluate_face_authentication` vetoes any other role first), so it is now
+  read only when the role is `OWNER`; the confirmed veto cannot be lost to a second read. Regression
+  tests, both routes, with and without a token (the token stays spendable and still works
+  afterwards): `test_a_consent_error_does_not_erase_a_confirmed_other_person_veto` (unit) and
+  `test_a_consent_error_does_not_erase_the_veto_of_another_enrolled_person` (integration).
+- **Streaming terminal event.** The integration helper now asserts that `done` is the last NDJSON
+  event of every `/transcribe/stream` response, not only that exactly one `done` exists.
+- **Left as the plan decided (D-1).** A failing *role* read still degrades to `unknown`: nothing
+  was confirmed, so there is no veto to keep.
+- The same hardware session reproduced Whisper's prompt echo on a 1.3 s clip (a public turn that the LLM then took 14.7 s to answer): decision D-4, owned by the voice-pipeline plan, not this one. Plan 0050 may update its own text during its revalidation. No private content is recorded here: the session's console log printed real household names (`LOG_CONVERSATION_TEXT` on), and none were copied.
+
+**Rulings taken during execution.**
+
+1. The ledger lives in this record, not in `.superpowers/` (that directory is not git-ignored).
+2. Task 2's commit also contains `tests/integration/test_speaker_evidence_turn.py`: the task text
+   extends its fresh-interpreter import test but the plan's commit list omitted the file.
+3. The `_face_resolver` test helper gained `fail_at` and `detect_calls` so one parametrized unit
+   test covers the four face boundaries and proves a single attempt per request.
+4. A shared `_post_turn` helper normalizes the classic and streaming answers in the integration
+   tests, so each case is written once for both routes.
+5. `identity_fusion.py` imports `IdentitySource` under `TYPE_CHECKING` (ruff `TC001`); it is only
+   an annotation there.
+6. Two commits were first aborted by the `mixed line ending` pre-commit hook, which fixed the
+   files; re-staging and recommitting gave the same content.
+7. `docs/plans/open/0050-server-audit-repairs.md` still says Plan 0055 is pending. It is outside
+   this plan's file table, so it was left for Plan 0050's own revalidation (its Task 0).

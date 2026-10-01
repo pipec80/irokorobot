@@ -308,10 +308,34 @@ categories (`security`: account numbers, passwords) need `strong`, but **no
 reserved capability exists yet**, so that requirement is proven by policy tests
 and cannot be tried on hardware. The denial text is always the same generic one;
 only the server log (the fusion reason) and, for a reserved request, the authorization
-audit row (`policy_id` `p0.5.assurance-required`) say why. With
-`SPEAKER_AUTHENTICATION_ENABLED=true` the first protected turn after a server start also
-loads the speaker model (about 15 s on the development laptop, bounded at 30 s); later
-turns pay well under a second (p95 231 ms in Plan 0047). The PIN is optional and administrative (loopback enrolment
+audit row (`policy_id` `p0.5.assurance-required`) say why.
+
+**Startup warm-up (Plan 0055).** With `FACE_AUTHENTICATION_ENABLED=true` and/or
+`SPEAKER_AUTHENTICATION_ENABLED=true` the server loads the matching model while it
+starts, before it reports ready, so start-up takes longer and the first protected turn
+no longer pays for the load. With both flags off nothing is loaded and `torch` and
+`insightface` are never imported. A failed warm-up only logs one warning (the exception
+class, never its message) and the model loads lazily on first use, as before; for the
+speaker model the 60 s load cool-down then applies, so a first turn within a minute of a
+failed start degrades to `basic` instead of retrying. There is no startup deadline: a
+blocked loader delays readiness. The earlier figures in this manual (about 15 s for the
+speaker model; 8 to 13 s for the first protected turn on the development laptop, 2026-09-30)
+are **historical, measured before the warm-up**. Hardware sample (Pipec, 2026-10-01, same laptop, face and speaker flags on, robot sending a frame): start-up took 9 s from `starting` to `ONLINE` (face model about 1 s, speaker model about 3 s, both inside start-up); the first protected turn after the restart (`face_only`; the speaker verdict was `unknown`) took 3.58 s end to end with no model-load line, against 8 to 13 s on 2026-09-30. One sample, not a controlled before/after: no run on `main` was made in the same session.
+
+**Identity-store errors.** If the identity store raises an error while the face is being
+resolved (matching, role, consent or label lookup), the face contributes no evidence and no
+veto: one warning logs the exception class only, and resolution continues through the PIN
+path. With no valid PIN token the actor is unknown and the usual generic denial is
+returned instead of a server error; with a valid token the PIN still works. This guard
+covers only the face lookups: it does not promise a graceful answer when PIN storage, the
+authorization audit or the whole database is down.
+
+**A face with no household role.** A face matched to an enrolled entity that has no
+household role also vetoes, and a PIN token cannot bypass it (the conservative choice,
+decision D-3 of Plan 0055). Such a profile is fixed through local administration, not from
+a conversation.
+
+The PIN is optional and administrative (loopback enrolment
 and revocation); recovery when face or voice fail is `just face-auth-demo`,
 `just speaker-auth-demo` or `just setup-personal` on the server host, never a
 spoken step.

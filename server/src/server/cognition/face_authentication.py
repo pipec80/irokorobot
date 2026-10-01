@@ -11,7 +11,7 @@ signal for one turn.
 """
 
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import StrEnum
 import logging
 from uuid import uuid4
@@ -19,6 +19,7 @@ from uuid import uuid4
 import numpy as np
 
 from server.cognition.authorization import ConsentStatus
+from server.cognition.clock import utc_now
 from server.cognition.identity import (
     ActivePersonContext,
     ActivePersonStatus,
@@ -277,7 +278,8 @@ class FaceRequestResolver:
             faces: Every face detected in the bound frame.
 
         Returns:
-            The threshold-filtered match with its role and consent state,
+            The threshold-filtered match with its role and consent state (consent
+            is only read for the owner and is `False` for any other role),
             or `(None, HouseholdRole.UNKNOWN, False)` when matching was
             skipped or found nobody within the authentication threshold.
         """
@@ -287,7 +289,12 @@ class FaceRequestResolver:
         if match is None:
             return None, HouseholdRole.UNKNOWN, False
         role = await self._read_role(match.entity_id)
-        consent_active = await self._read_consent(match.entity_id)
+        # Consent only matters for the owner (`evaluate_face_authentication` vetoes any
+        # other role before looking at it), so a non-owner's confirmed role is never put
+        # at risk by a second read that cannot change the verdict.
+        consent_active = (
+            await self._read_consent(match.entity_id) if role is HouseholdRole.OWNER else False
+        )
         return match, role, consent_active
 
     async def _strict_match(self, face: DetectedFace) -> FaceMatch | None:
@@ -358,11 +365,6 @@ class FaceRequestResolver:
         return ConsentStatus.NOT_REQUIRED
 
 
-def _utc_now() -> datetime:
-    """Return the current aware UTC timestamp for production boundaries."""
-    return datetime.now(UTC)
-
-
 async def _read_person_record(person_entity_id: int) -> PersonRecord | None:
     """Adapt the safe entity-label lookup to the identity `PersonRecord` shape."""
     label = await get_person_label(entity_id=person_entity_id)
@@ -386,7 +388,7 @@ def build_default_face_request_resolver(frame: bytes | None) -> FaceRequestResol
     """
     return FaceRequestResolver(
         frame=frame,
-        clock=_utc_now,
+        clock=utc_now,
         read_role=get_active_role,
         read_person=_read_person_record,
         detect_faces=_detect_faces_default,

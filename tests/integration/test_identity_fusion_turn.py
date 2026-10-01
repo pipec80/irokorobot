@@ -10,9 +10,11 @@ from datetime import UTC, datetime, timedelta
 import io
 import json
 from pathlib import Path
+from typing import NamedTuple
 from unittest.mock import AsyncMock
 import wave
 
+import aiosqlite
 import cv2
 from httpx import ASGITransport, AsyncClient
 import numpy as np
@@ -22,18 +24,22 @@ from server.cognition import (
     face_authentication as face_auth_module,
     speaker_authentication as speaker_auth_module,
 )
-from server.cognition.identity import PersonRecord
+from server.cognition.identity import HouseholdRole, PersonRecord
 from server.cognition.identity_sessions import IdentitySessionRegistry
 from server.cognition.owner_authentication import OwnerUnlockService, owner_unlock_service
 from server.dependencies import get_owner_unlock_service
 from server.main import app
 from server.memory.biometric_consent import grant_face_consent
+from server.memory.declarative import upsert_entity
 from server.memory.entity_labels import get_person_label
-from server.memory.household_authorization import get_active_role
+from server.memory.household_authorization import assign_household_role, get_active_role
 from server.memory.owner_credentials import get_active_owner_pin_credential
+from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
+from server.memory.relational_v4 import get_active_entity_relations
 from server.memory.voice_consent import grant_voice_consent
 from server.personal_setup import PersonalSetupInput, PersonalSetupResult, apply_personal_setup
 from server.resources import AppResources
+from server.routers import transcribe as transcribe_router
 from server.settings import settings
 from server.vision.faces import DetectedFace, enroll_face
 from server.voice.speaker_embedding import SpeakerBackendError, model_id
@@ -271,6 +277,221 @@ async def test_speaker_evidence_off_leaves_the_face_at_basic_and_never_embeds(
 
     assert response.json()["identity_source"] == "face"
     embed.assert_not_awaited()
+
+
+_DENIAL = "No puedo acceder a información familiar privada sin una autorización comprobada."
+_ROUTES = ["/transcribe", "/transcribe/stream"]
+
+
+class _Turn(NamedTuple):
+    """What a route answered, normalized across the classic and streaming shapes."""
+
+    status_code: int
+    text: str
+    identity_source: str | None
+    consumed: bool
+    errors: list[dict[str, object]]
+
+
+async def _post_turn(
+    client: AsyncClient, route: str, *, headers: dict[str, str] | None = None, frame: bool = True
+) -> _Turn:
+    response = await client.post(route, headers=headers, files=_files(with_frame=frame))
+    if route == "/transcribe":
+        body = response.json()
+        return _Turn(
+            response.status_code,
+            body["llm_response"],
+            body["identity_source"],
+            body["authentication_consumed"],
+            [],
+        )
+    events = [json.loads(line) for line in response.text.strip().split("\n") if line.strip()]
+    done = [e for e in events if e["type"] == "done"]
+    assert len(done) == 1
+    assert events[-1]["type"] == "done"
+    return _Turn(
+        response.status_code,
+        next(e for e in events if e["type"] == "audio")["text"],
+        done[0]["identity_source"],
+        done[0]["authentication_consumed"],
+        [e for e in events if e["type"] == "error"],
+    )
+
+
+def _spy_on_child_reads(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    """Wrap the raw V4 relation reader the controller uses, to prove it was (not) read."""
+    spy = AsyncMock(wraps=get_active_entity_relations)
+    monkeypatch.setattr(
+        transcribe_router, "PolicyGatedV4Reader", lambda: PolicyGatedV4Reader(relation_reader=spy)
+    )
+    return spy
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("route", _ROUTES)
+async def test_a_store_error_in_face_resolution_denies_instead_of_failing_the_turn(
+    route: str, fusion_db: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review Focus 1, end to end: a generic denial, never a 500, and no private read."""
+    _detect(monkeypatch, [_detected(_OWNER_FACE)])
+    monkeypatch.setattr(
+        face_auth_module, "get_active_role", AsyncMock(side_effect=aiosqlite.Error("db down"))
+    )
+    embed = _embed(monkeypatch, _MATCHING_VOICE)
+    _mock_stt_tts(monkeypatch)
+    reads = _spy_on_child_reads(monkeypatch)
+
+    async with _client() as client:
+        turn = await _post_turn(client, route)
+
+    assert turn.status_code == 200
+    assert turn.errors == []
+    assert turn.text == _DENIAL
+    assert turn.identity_source is None
+    assert turn.consumed is False
+    embed.assert_not_awaited()
+    reads.assert_not_awaited()
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("route", _ROUTES)
+async def test_a_store_error_in_face_resolution_still_honours_a_valid_pin(
+    route: str, fusion_db: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The face store failing says nothing about the PIN: the token still unlocks."""
+    service = _service()
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
+    unlock = await service.unlock(_PIN)
+    assert unlock is not None
+    _detect(monkeypatch, [_detected(_OWNER_FACE)])
+    monkeypatch.setattr(
+        face_auth_module, "get_active_role", AsyncMock(side_effect=aiosqlite.Error("db down"))
+    )
+    embed = _embed(monkeypatch, _MATCHING_VOICE)
+    _mock_stt_tts(monkeypatch)
+
+    async with _client() as client:
+        turn = await _post_turn(client, route, headers={"X-Iroko-Identity-Token": unlock.token})
+
+    assert turn.status_code == 200
+    assert turn.errors == []
+    assert turn.text == _CHILD_ANSWER
+    assert turn.identity_source == "local_unlock"
+    assert turn.consumed is True
+    embed.assert_not_awaited()
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("route", _ROUTES)
+@pytest.mark.parametrize("with_token", [True, False], ids=["token", "no-token"])
+@pytest.mark.parametrize("consent", [True, False], ids=["consent", "no-consent"])
+@pytest.mark.parametrize("role", [HouseholdRole.ADULT, None], ids=["adult", "no-role"])
+async def test_another_enrolled_person_vetoes_against_a_real_role_row(
+    route: str,
+    with_token: bool,
+    consent: bool,
+    role: HouseholdRole | None,
+    fusion_db: PersonalSetupResult,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review Focus 5: the veto holds against real rows and never spends the PIN token.
+
+    A face matched to an enrolled person who is not the owner vetoes whatever their
+    consent — and, by decision D-3, also when that person has no household role.
+    """
+    other_id = await upsert_entity(name="Canary Adult", type="person")
+    if role is not None:
+        await assign_household_role(
+            person_entity_id=other_id, role=role, grantor_entity_id=fusion_db.owner_entity_id
+        )
+    if consent:
+        await grant_face_consent(other_id)
+    await enroll_face(other_id, _STRANGER_FACE, label="Canary Adult")
+    service = _service()
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
+    headers: dict[str, str] | None = None
+    if with_token:
+        unlock = await service.unlock(_PIN)
+        assert unlock is not None
+        headers = {"X-Iroko-Identity-Token": unlock.token}
+    _detect(monkeypatch, [_detected(_STRANGER_FACE)])
+    embed = _embed(monkeypatch, _MATCHING_VOICE)
+    _mock_stt_tts(monkeypatch)
+    reads = _spy_on_child_reads(monkeypatch)
+
+    async with _client() as client:
+        vetoed = await _post_turn(client, route, headers=headers)
+        reads.assert_not_awaited()
+        embed.assert_not_awaited()
+        alone = await _post_turn(client, route, headers=headers, frame=False)
+
+    assert vetoed.status_code == 200
+    assert vetoed.errors == []
+    assert vetoed.text == _DENIAL
+    assert vetoed.identity_source is None
+    assert vetoed.consumed is False
+    if with_token:
+        assert alone.text == _CHILD_ANSWER
+        assert alone.identity_source == "local_unlock"
+        assert alone.consumed is True
+    else:
+        assert alone.text == _DENIAL
+        assert alone.identity_source is None
+        assert alone.consumed is False
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("route", _ROUTES)
+@pytest.mark.parametrize("with_token", [True, False], ids=["token", "no-token"])
+async def test_a_consent_error_does_not_erase_the_veto_of_another_enrolled_person(
+    route: str,
+    with_token: bool,
+    fusion_db: PersonalSetupResult,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Another person's role is confirmed before consent is read; consent failing keeps the veto."""
+    other_id = await upsert_entity(name="Canary Adult", type="person")
+    await assign_household_role(
+        person_entity_id=other_id,
+        role=HouseholdRole.ADULT,
+        grantor_entity_id=fusion_db.owner_entity_id,
+    )
+    await enroll_face(other_id, _STRANGER_FACE, label="Canary Adult")
+    service = _service()
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
+    headers: dict[str, str] | None = None
+    if with_token:
+        unlock = await service.unlock(_PIN)
+        assert unlock is not None
+        headers = {"X-Iroko-Identity-Token": unlock.token}
+    _detect(monkeypatch, [_detected(_STRANGER_FACE)])
+    monkeypatch.setattr(
+        face_auth_module,
+        "has_active_face_consent",
+        AsyncMock(side_effect=aiosqlite.Error("db down")),
+    )
+    embed = _embed(monkeypatch, _MATCHING_VOICE)
+    _mock_stt_tts(monkeypatch)
+    reads = _spy_on_child_reads(monkeypatch)
+
+    async with _client() as client:
+        vetoed = await _post_turn(client, route, headers=headers)
+        reads.assert_not_awaited()
+        embed.assert_not_awaited()
+        alone = await _post_turn(client, route, headers=headers, frame=False)
+
+    assert vetoed.status_code == 200
+    assert vetoed.errors == []
+    assert vetoed.text == _DENIAL
+    assert vetoed.identity_source is None
+    assert vetoed.consumed is False
+    if with_token:
+        assert alone.text == _CHILD_ANSWER
+        assert alone.identity_source == "local_unlock"
+        assert alone.consumed is True
+    else:
+        assert alone.text == _DENIAL
 
 
 @pytest.mark.integration

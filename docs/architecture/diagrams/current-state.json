@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "views": [
       { "id": "classic-turn", "label": "Classic voice turn", "focus": ["robot", "api", "stt", "controller", "ollama", "tts"], "note": "The audio contract path: robot captures audio, server transcribes, decides, and speaks back." },
-      { "id": "identity-and-policy", "label": "Identity and policy", "focus": ["controller", "policy", "face", "memory"], "note": "Protected household branches are fail-closed and audited before any memory read." },
+      { "id": "identity-and-policy", "label": "Identity and policy", "focus": ["controller", "policy", "face", "memory"], "note": "Protected household branches are fail-closed and audited before any memory read; a face-store error degrades to unknown." },
       { "id": "memory-write", "label": "Memory write path", "focus": ["controller", "ollama", "consolidation", "memory"], "note": "Legacy generation would feed consolidation into SQLite, but the path is dormant: it needs MANUAL evidence that no production route issues." }
     ]
   },

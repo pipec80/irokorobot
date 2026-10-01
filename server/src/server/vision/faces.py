@@ -139,6 +139,15 @@ async def detect_faces(image: bytes) -> list[DetectedFace]:
     return await run_in_executor_with_context(_executor, partial(_detect_sync, image))
 
 
+async def warm_up() -> None:
+    """Load the face model on the executor thread so the first turn does not pay for it.
+
+    Raises:
+        VisionError: If insightface or its models cannot be loaded.
+    """
+    await run_in_executor_with_context(_executor, _get_analyzer)
+
+
 async def extract_faces(image: bytes) -> list[np.ndarray]:
     """Return only the embeddings of every face in a frame (recognition path).
 

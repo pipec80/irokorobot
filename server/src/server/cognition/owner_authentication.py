@@ -10,13 +10,14 @@ signal for one child-data read.
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from enum import StrEnum
 from math import ceil
 
 from pydantic import BaseModel, ConfigDict
 
 from server.cognition.authorization import ConsentStatus
+from server.cognition.clock import utc_now
 from server.cognition.identity import (
     ActivePersonContext,
     ActivePersonStatus,
@@ -320,11 +321,6 @@ class OwnerUnlockService:
         )
 
 
-def _utc_now() -> datetime:
-    """Return the current aware UTC timestamp for production boundaries."""
-    return datetime.now(UTC)
-
-
 async def _read_person_record(person_entity_id: int) -> PersonRecord | None:
     """Adapt the safe entity-label lookup to the identity `PersonRecord` shape."""
     label = await get_person_label(entity_id=person_entity_id)
@@ -345,11 +341,11 @@ def build_default_owner_unlock_service() -> OwnerUnlockService:
     """
     registry = IdentitySessionRegistry(
         lookup_person=lambda _person_id: None,
-        clock=_utc_now,
+        clock=utc_now,
         ttl=timedelta(seconds=settings.owner_unlock_ttl_seconds),
     )
     return OwnerUnlockService(
-        clock=_utc_now,
+        clock=utc_now,
         registry=registry,
         read_credential=get_active_owner_pin_credential,
         read_role=get_active_role,

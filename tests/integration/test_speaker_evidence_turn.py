@@ -34,7 +34,7 @@ from server.memory.voice_consent import grant_voice_consent
 from server.personal_setup import PersonalSetupInput, PersonalSetupResult, apply_personal_setup
 from server.resources import AppResources
 from server.settings import settings
-from server.voice.speaker_embedding import SpeakerBackendError, model_id as _speaker_model_id
+from server.voice.speaker_embedding import model_id as _speaker_model_id
 from server.voice.voiceprints import enroll_voiceprint
 
 from server import db, llm, stt, tts
@@ -210,31 +210,6 @@ async def test_flag_on_without_a_face_never_embeds(
 
 
 @pytest.mark.integration
-async def test_a_backend_failure_does_not_fail_the_turn(
-    turn_db: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A dead speaker backend degrades to no evidence — the turn still completes."""
-    monkeypatch.setattr(settings, "speaker_authentication_enabled", True)
-    await _enroll_speaker(turn_db.owner_entity_id)
-    monkeypatch.setattr(
-        speaker_auth_module,
-        "embed_wav",
-        AsyncMock(side_effect=SpeakerBackendError("model unavailable")),
-    )
-    _mock_stt_tts(monkeypatch, text=_CHILD_QUESTION)
-
-    async with _client() as client:
-        response = await client.post(
-            "/transcribe", files={"audio": ("clip.wav", _tone_wav(), "audio/wav")}
-        )
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["authentication_consumed"] is False
-    assert body["identity_source"] is None
-
-
-@pytest.mark.integration
 async def test_flag_on_stream_without_a_face_never_embeds(
     turn_db: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -302,7 +277,8 @@ def test_importing_the_app_never_loads_the_speaker_stack() -> None:
     """
     code = (
         "import sys; import server.main, server.routers.transcribe, server.routers.auth; "
-        "bad = [m for m in ('torch', 'torchaudio', 'speechbrain') if m in sys.modules]; "
+        "heavy = ('torch', 'torchaudio', 'speechbrain', 'insightface'); "
+        "bad = [m for m in heavy if m in sys.modules]; "
         "sys.exit(1 if bad else 0)"
     )
     result = subprocess.run(  # noqa: S603 -- fixed argv, no user input

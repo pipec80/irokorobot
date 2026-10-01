@@ -73,7 +73,7 @@ gates only.
 | 2 | PC-3A — speaker calibration | FAR/FRR, replay, quality and CPU latency measured offline on a frozen backend. | CM-0 | **Complete 2026-09-25** — provisional: threshold 0.4834, 0/24 false accepts, 6/8 replay accepted, p95 231 ms | [Plan 0047](../plans/completed/0047-speaker-evidence-calibration-study.md) |
 | 3 | PC-3B — consented speaker evidence | Local enrolment, revocation and typed `VOICE` evidence; weak or failed evidence is `unknown`. | PC-3A | **Complete 2026-09-29** | [Plan 0053](../plans/completed/0053-consented-speaker-runtime-evidence.md) |
 | 4 | PC-4 — identity fusion | The owner's face identifies at `basic`, face plus verified voice at `strong`; another enrolled person or two faces veto; the PIN is optional. | PC-3B | **Complete 2026-09-30** — accepted on real hardware; replay not defended; no reserved capability yet | [Plan 0054](../plans/completed/0054-face-default-identity-fusion.md); [ADR-0016](../adr/0016-face-and-voice-identity-fusion.md) |
-| — | PC-4 follow-ups | A store error during face recognition degrades to `unknown`; face and speaker models warm at startup; one `identity_source` and one clock; two coverage holes closed. | PC-4 | **Ready — `NOW`** (approved 2026-10-01) | [Plan 0055](../plans/open/0055-pc4-identity-fusion-followups.md) |
+| — | PC-4 follow-ups | A store error during face recognition degrades to `unknown`; face and speaker models warm at startup; one `identity_source` and one clock; two coverage holes closed. | PC-4 | **Complete 2026-10-01** — automated gates green; one hardware sample: first protected turn 3.58 s (was 8 to 13 s); static independent review blocker fixed | [Plan 0055](../plans/completed/0055-pc4-identity-fusion-followups.md) |
 | — | Audit repairs | The 12 repairs of the 0049 audit: import cycles, one seam to Ollama, fail-closed parsing of Ollama transport responses (not the classic `response`/`emotion` parser), image bounds, stored classification honoured, owner-scoped readiness, setup contract, dead settings, no names in logs, architecture guards, the owner → stranger matrix, docs truth. | — | Draft; re-audit against PC-3B/PC-4 before promotion | [Plan 0050](../plans/open/0050-server-audit-repairs.md) |
 | — | Voice-pipeline reliability and truthful diagnostics | Whisper no longer returns its own initial prompt from a noise clip (seen four times) and the first utterance after a restart is transcribed correctly; the classic parser rejects a non-text `response` (for example `{"response": []}`) while the raw-text fallback stays a separate, explicit decision; `just test-pipeline` runs again (its `llm.generate_response` call lacks the client) and is described as an STT → LLM → TTS smoke test, not the cognitive path; `just eval-chat` measures the streaming `EMOTION:` protocol (0049 O-04), not only the classic generator; the longitudinal evaluator reports the three staged verdicts (personal, family, full suite) defined in the [evaluation spec](../architecture/longitudinal-conversational-memory-evaluation.md#cm-0-measured-baseline). | Audit repairs | Not written | [0049 O-04](../plans/open/0049-server-objective-conformance-audit.md) |
 | 5 | CM-1 — scoped memory capabilities | First every grant is bound to one named operation ([ADR-0015](../adr/0015-owner-grant-scope-and-speaker-binding.md) decision 1, implemented by **Plan 0051**, the first plan of this slice; its scope must also cover the voice enrolment and revocation endpoints Plan 0053 added after the ADR, a household-looking stub answer that today spends a grant, and the optional PIN hardware case left unrun by Plan 0054); then policy distinguishes `read`, `propose`, `confirm`, `correct` and `forget` for personal memory, and `SECURITY` data declare their `strong` requirement, without turning identity into authorization. | PC-4 | Unplanned | [Memory map](conversational-memory-delivery-map.md#delivery-sequence) |
@@ -169,13 +169,12 @@ states what is ready.
    plan. New evidence may split or combine implementation plans, but it must not
    silently remove the row's product outcome.
 
-Rows 1–4 are closed and `NOW` is Plan 0055. What each row still needs before
+Rows 1–4 and the PC-4 follow-ups are closed and `NOW` is empty. What each row still needs before
 it can become `NOW` (checked 2026-10-01):
 
 | Work | What is really missing |
 |---|---|
-| Plan 0055 | Nothing: approved as `Ready` and selected as `NOW` by Pipec on 2026-10-01; its Task 0 re-verifies the base when it is executed |
-| Plan 0050 | Revalidated after 0055 merges (known items (a)–(h) in the plan) and Pipec's decisions 1–5 |
+| Plan 0050 | Revalidation against `main` (known items (a)–(h) in the plan; Plan 0055 closed 2026-10-01) and Pipec's decisions 1–5 |
 | Voice-pipeline reliability and diagnostics | A plan is written: Whisper prompt echo and first-turn STT, the classic parser, `test-pipeline`, `eval-chat` streaming and the staged benchmark verdicts |
 | CM-1 / Plan 0051 | Plan 0051 is written; CM-1 must also cover the later memory permissions (`read`, `propose`, `confirm`, `correct`, `forget`) |
 | CM-2 | An ADR on identity in generic turns (it supersedes ADR-0016 §5), then the plan |
@@ -207,8 +206,8 @@ scenarios, devices and configuration and are not a new run on the current tree.
 Limits carried forward from these phases, each owned by a queue row or a
 cross-cutting item above: no liveness (a photograph identifies at `basic`) and
 replay measured but not defended; on hardware Plan 0054 proved the two-faces
-veto, while the veto of a single other enrolled person is proven only against
-test doubles (Plan 0055, Task 4); the calibrations are provisional (one owner,
+veto, while the veto of a single other enrolled person was proven only against
+test doubles until Plan 0055 (Task 4) pinned it against real role rows in automated tests; the calibrations are provisional (one owner,
 few impostors, laptop devices); the grant is not bound to an operation (CM-1);
 the generic conversation has no continuity or memory (CM-2…CM-5).
 

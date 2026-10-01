@@ -1,6 +1,6 @@
 """FastAPI application entrypoint — assembles routers and starts the server."""
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import AsyncExitStack, asynccontextmanager
 import importlib.metadata
 import logging
@@ -17,12 +17,15 @@ from server import stt, tts
 from server.chat_ui import mount_chat_ui
 from server.cognition.owner_authentication import owner_unlock_service
 from server.db import close_db, open_db, run_migrations
+from server.exceptions import VisionError
 from server.logging_setup import configure_logging
 from server.memory import retention
 from server.request_context import RequestContextMiddleware
 from server.resources import AppResources
 from server.routers import auth, chat, system, transcribe, vision
 from server.settings import Settings, settings
+from server.vision import faces
+from server.voice import speaker_embedding
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +60,21 @@ _OPENAPI_TAGS = [
         "description": "Scene description, face enrollment, and visual dialogue.",
     },
 ]
+
+
+async def _warm_up(name: str, load: Callable[[], Awaitable[None]]) -> None:
+    """Attempt optional startup loading, preserving lazy retry and its cool-down.
+
+    Args:
+        name: Human label of the model, for the warning.
+        load: Coroutine function that loads one model.
+    """
+    try:
+        await load()
+    except (VisionError, speaker_embedding.SpeakerBackendError) as exc:
+        logger.warning(
+            "%s warm-up failed; lazy retry remains available (%s)", name, type(exc).__name__
+        )
 
 
 @asynccontextmanager
@@ -94,6 +112,10 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
         stt.preload()
         tts.preload()
+        if cfg.face_authentication_enabled:
+            await _warm_up("Face model", faces.warm_up)
+        if cfg.speaker_authentication_enabled:
+            await _warm_up("Speaker model", speaker_embedding.warm_up)
 
         if cfg.memory_enabled:
             await open_db()
