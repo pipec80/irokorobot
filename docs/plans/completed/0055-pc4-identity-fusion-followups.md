@@ -1110,8 +1110,7 @@ and test files, and documentation closure follows verification and review.
 ## Closure record
 
 Executed 2026-10-01 inline in one session on `feat/0055-pc4-followups` (base `main` at
-`251fa54`), one commit per task. **Tested SHA `983ac3c`** (code and documentation tasks; this
-closure edit only moves and rewords documentation).
+`251fa54`), one commit per task. **Tested SHA `ea02e24`** (the review fix below; documentation commits after it change no code).
 
 | Task | Commit | RED observed first |
 |---|---|---|
@@ -1120,9 +1119,10 @@ closure edit only moves and rewords documentation).
 | 3 — one definition for the repeated values | `refactor(cognition): define identity source and clock once` | collection errors: `IdentitySource` and `clock` did not exist; OpenAPI byte-identical before and after |
 | 4 — coverage holes | `test(cognition): pin the other-person veto to a real role row` | characterization (16 pass); temporary mutation of the non-owner verdict to `UNKNOWN` failed exactly the 8 cases with a valid token, then was restored |
 | 5 — documentation | `docs(plan): document the pc-4 follow-ups` | not applicable |
+| Review fix | `fix(cognition): keep another person's veto when consent fails` | 6 failures: with another enrolled person's role confirmed, a failing consent read became `unknown`, fell through to the PIN and spent a valid token |
 
-**Gates.** `just gate` passed (lint, typecheck, tests, audit); `just test-cov` passed with 1599
-tests and 91.46 % coverage (floor 80 %). `tests/integration/test_face_authenticated_turn.py` is
+**Gates.** `just gate` passed (lint, typecheck, tests, audit); `just test-cov` passed with 1607
+tests and 91.43 % coverage (floor 80 %). `tests/integration/test_face_authenticated_turn.py` is
 unedited and passes; `uv lock --check` clean; `rg 'def _utc_now' server/src` prints nothing and
 `IdentitySource =` is defined once, in `schemas.py`. Baseline before the work: 1557 tests on
 `main` (the Task 0 gate run also collected the first RED tests, whose 9 failures were exactly
@@ -1130,12 +1130,29 @@ those new tests).
 
 **Not done, stated plainly.**
 
-- **No independent review.** Only the author read the whole diff (no finding above Minor). The
-  plan says Pipec decides whether the independent review is a subagent or his own reading; it is
-  still open.
+- **Independent review: static only.** Pipec reported a static independent review of the branch
+  (no subagent) with one blocker, since fixed (see *Review findings* below). It is a source read, not
+  a new hardware run.
 - **Hardware check not run.** Startup-to-ready and first protected-turn latency are unmeasured;
   nothing here claims the warm-up is faster. Replay and liveness stay undefended; no reserved
   capability exists; Whisper's prompt echo (D-4) and PIN scoping (Plan 0051) stay in their plans.
+
+**Review findings.**
+
+- **Blocker, fixed.** `FaceRequestResolver._match_when_singular` confirmed a non-owner role and then
+  read consent; a store error there escaped, `FusedIdentityResolver` degraded it to `unknown`, and a
+  valid PIN token could then pass despite the evidence of another enrolled person. Consent only
+  matters for the owner (`evaluate_face_authentication` vetoes any other role first), so it is now
+  read only when the role is `OWNER`; the confirmed veto cannot be lost to a second read. Regression
+  tests, both routes, with and without a token (the token stays spendable and still works
+  afterwards): `test_a_consent_error_does_not_erase_a_confirmed_other_person_veto` (unit) and
+  `test_a_consent_error_does_not_erase_the_veto_of_another_enrolled_person` (integration).
+- **Streaming terminal event.** The integration helper now asserts that `done` is the last NDJSON
+  event of every `/transcribe/stream` response, not only that exactly one `done` exists.
+- **Left as the plan decided (D-1).** A failing *role* read still degrades to `unknown`: nothing
+  was confirmed, so there is no veto to keep.
+- The optional hardware measurement stays pending and no latency improvement is claimed; Plan 0050
+  may update its own text during its revalidation.
 
 **Rulings taken during execution.**
 
