@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, NamedTuple, cast
 from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
+import aiosqlite
 import numpy as np
 import pytest
 from server.cognition.authorization import (
@@ -37,6 +38,7 @@ from server.cognition.models import (
 from server.cognition.owner_authentication import OwnerRequestResolver
 from server.cognition.response_plan import TextTurnPayload
 from server.cognition.speaker_authentication import SpeakerVerdict
+from server.exceptions import BrainMemoryError
 from server.vision.faces import DetectedFace, FaceMatch
 
 if TYPE_CHECKING:
@@ -66,27 +68,48 @@ def _event() -> CognitiveEvent[TextTurnPayload]:
 
 
 def _face_resolver(
-    *, faces: int = 1, role: HouseholdRole = HouseholdRole.OWNER, matches: bool = True
+    *,
+    faces: int = 1,
+    role: HouseholdRole = HouseholdRole.OWNER,
+    matches: bool = True,
+    store_error: Exception | None = None,
+    fail_at: str = "role",
+    detect_calls: list[int] | None = None,
 ) -> FaceRequestResolver:
-    """A real FaceRequestResolver over doubles: `faces` detected, a close match or none."""
+    """A real FaceRequestResolver over doubles: `faces` detected, a close match or none.
+
+    `store_error`, when given, is raised by the boundary named in `fail_at`
+    (`match`, `role`, `consent` or `person`) — the identity store failing.
+    `detect_calls` records one entry per detection, to prove a single attempt.
+    """
+
+    def maybe_fail(boundary: str) -> None:
+        if store_error is not None and fail_at == boundary:
+            raise store_error
 
     async def detect(_frame: bytes) -> list[DetectedFace]:
+        if detect_calls is not None:
+            detect_calls.append(1)
         return [
             DetectedFace(embedding=np.zeros(512, dtype=np.float32), score=0.9, width=200.0)
         ] * faces
 
     async def match(_embedding: np.ndarray) -> FaceMatch | None:
+        maybe_fail("match")
         if not matches:
             return None
         return FaceMatch(entity_id=_OWNER_ID, name="Canary", distance=0.1)
 
     async def read_role(_person_id: int) -> HouseholdRole:
+        maybe_fail("role")
         return role
 
     async def read_person(person_id: int) -> PersonRecord | None:
+        maybe_fail("person")
         return _OWNER if person_id == _OWNER_ID else None
 
     async def read_consent(_person_id: int) -> bool:
+        maybe_fail("consent")
         return True
 
     return FaceRequestResolver(
@@ -380,6 +403,51 @@ async def test_the_log_carries_the_reason_and_no_personal_data(
     assert len(fusion_records) == 1
     assert vars(fusion_records[0])["reason"] == FusionReason.FACE_AND_VOICE
     assert all("Canary" not in str(value) for value in vars(fusion_records[0]).values())
+
+
+_STORE_FAILURES = [aiosqlite.Error("secret-canary"), BrainMemoryError("secret-canary")]
+_FACE_BOUNDARIES = ["match", "role", "consent", "person"]
+
+
+@pytest.mark.parametrize("fail_at", _FACE_BOUNDARIES)
+@pytest.mark.parametrize("error", _STORE_FAILURES, ids=lambda e: type(e).__name__)
+async def test_a_store_error_in_face_resolution_degrades_to_unknown(
+    error: Exception, fail_at: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Review Focus 1: the store failing neither identifies nor vetoes, and never raises."""
+    factory = _verified()
+    detect_calls: list[int] = []
+    face = _face_resolver(store_error=error, fail_at=fail_at, detect_calls=detect_calls)
+    fused = _fused(face=face, speaker_factory=factory)
+    event = _event()
+
+    with caplog.at_level(logging.WARNING):
+        actor = await fused.resolve_actor(event)
+        again = await fused.resolve_actor(event)
+
+    assert actor.status is ActivePersonStatus.UNKNOWN
+    assert again is actor
+    assert fused.source is None
+    assert fused.last_reason is FusionReason.NO_EVIDENCE
+    assert factory.owner_ids == []
+    assert detect_calls == [1]
+    assert await fused.resolve_consent(event, actor) is ConsentStatus.NOT_REQUIRED
+    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert type(error).__name__ in warnings[0]
+    assert "secret-canary" not in warnings[0]
+
+
+async def test_a_store_error_in_the_face_still_lets_a_valid_pin_token_through() -> None:
+    """The face says nothing, so the PIN path is still consulted."""
+    pin = _pin(with_token=True)
+    fused = _fused(face=_face_resolver(store_error=aiosqlite.Error("db down")), pin=pin.resolver)
+
+    actor = await fused.resolve_actor(_event())
+
+    assert actor.status is ActivePersonStatus.IDENTIFIED
+    assert fused.last_reason is FusionReason.PIN
+    assert fused.source == "local_unlock"
 
 
 def _reserved_read(actor: ActivePersonContext) -> AuthorizationRequest:
