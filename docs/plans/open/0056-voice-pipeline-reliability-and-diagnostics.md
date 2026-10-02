@@ -44,8 +44,10 @@ and the staged-acceptance section of the
 a scratch copy of the working tree at `main` (`f39869e`) and reverted, twice: once
 before the plan was promoted and again after its independent review (which corrected
 the family-stage gates, made the streaming classifier incremental and production-equal,
-tightened the echo rule, redesigned the first-turn probe and fixed a log). With them
-applied: `just gate` passed **1798 tests** (baseline 1695), `ruff check`,
+tightened the echo rule, redesigned the first-turn probe and fixed a log) and a third
+time after a follow-up point (the streaming evaluator now also stops reading when
+production would stop, so a provider error after an invalid start is not an `ERROR`). With them
+applied: `just gate` passed **1805 tests** (baseline 1695), `ruff check`,
 `ruff format --check`, `mypy` and `pyright` were clean, both probes ran against the
 real local models, and the 31 existing longitudinal tests that the dataset bump breaks
 were fixed by exactly the edits listed in Task 3 Step 7. The RED of Task 1 was observed
@@ -89,7 +91,8 @@ owning task:
 4. A model whose tokens split a second `EMOTION:` tag or a code fence across deltas
    must be classified as production classifies it, not as the whole text would be
    (Task 4: an equivalence test against the real streaming consumer over several
-   fragmentations).
+   fragmentations), and a provider error that arrives after production has already
+   decided an invalid start must not turn that observation into an `ERROR`.
 5. A provider error during a measurement is reported separately and never counted as
    a protocol failure or as a pass (Task 4).
 6. The staged verdicts: a complete gating run can pass every stage (the family stage
@@ -136,9 +139,9 @@ Evidence already recorded (nothing here is a new claim):
 Confirmed by Pipec on 2026-10-02: **D-1** and **D-5** (thresholds) and the "one plan,
 repair and measure" scope during design, and **D-2 to D-7** as proposed when he promoted
 the plan the same day. **D-8** and the refinements of D-1 and D-6 below were added by
-the plan's independent review the same day: **D-8 is pending Pipec's confirmation**
-(Task 0 stops until it is recorded here as confirmed). Preserve the confirmed ones
-rather than asking again.
+the plan's independent review the same day; Pipec confirmed **D-8** on 2026-10-02 when he
+backed the review's proposal and asked to proceed with its remaining points. Preserve
+them rather than asking again.
 
 1. **D-1 — The echo guard discards the transcript** (the route then answers "no speech
    understood", the same path as silence). No retry, no added latency. It is a
@@ -174,7 +177,7 @@ rather than asking again.
    transcribed correctly — is judged in the real acceptance session, not by this probe.
 7. **D-7 — Malformed JSON still falls back to raw text.** Whether that fallback should
    exist is a separate, explicit decision and stays outside this plan.
-8. **D-8 — Stage gates (pending confirmation).** Each acceptance stage is judged on the
+8. **D-8 — Stage gates (confirmed 2026-10-02).** Each acceptance stage is judged on the
    frozen gates its own scenarios can feed, because a gate needs a non-empty
    denominator. Personal: all four. Family: the disclosure gate
    (`forbidden_disclosure_rate`), because the two family scenarios are cross-person
@@ -225,8 +228,6 @@ or migration changes. `server/src/server/streaming*.py` and `llm_streaming.py` a
 
 **Files:** this plan's evidence note only. No production change.
 
-- [ ] Confirm that decision D-8 is recorded as confirmed in *Decisions*. If it still
-  says pending, stop and ask Pipec: Task 3 depends on it.
 - [ ] Record branch, base SHA and `git status`. Work on `fix/0056-voice-pipeline`
   created from the merged `main`; do not discard other uncommitted work.
 - [ ] Run `just gate`; record its outcome and test count (the baseline after Plan 0050
@@ -1109,7 +1110,13 @@ differently can be valid or not ("EMO" + "TION:anger" is accepted live). Whole-t
 validation would give a different rate. `test_the_evaluator_agrees_with_production_for_every_fragmentation`
 runs the real `streaming._consume_llm_stream` (TTS stubbed) over fourteen replies and
 six fragmentations each and compares both the fallback and its logged reason; if
-production changes, that test fails here. The **fallback rate** is
+production changes, that test fails here. The measurement also **stops reading when
+production would stop**: once a delta makes `_consume_body` reject the body start the
+observation is decided and the stream is closed (so Ollama stops generating); a provider
+error after that point never happens live and is not counted. An error before any
+decision stays an `ERROR`, and so does one after production accepted the body (live that
+would be a partial fallback, which is a provider failure, not a protocol one). Tests pin
+each of these against the real consumer. The **fallback rate** is
 `(INVALID_PROTOCOL + EMPTY_STREAM) / (VALID + INVALID_PROTOCOL + EMPTY_STREAM)`; `ERROR`
 runs are reported but excluded from it. A tag with no body is `INVALID_PROTOCOL`, as in
 production; `EMPTY_STREAM` is a reply with nothing but whitespace.
@@ -1244,6 +1251,93 @@ async def test_the_evaluator_agrees_with_production_for_every_fragmentation(
 
         assert fell_back == (reason is not None)
         assert classify_deltas(fragments) is expected[reason], fragments
+
+
+async def _production_after_a_provider_error(
+    fragments: list[str], monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> str:
+    """Run the real consumer on a stream that fails after its fragments."""
+
+    async def deltas(_client: object, _inputs: object) -> AsyncIterator[str]:
+        for fragment in fragments:
+            yield fragment
+        raise LLMError("provider failed")
+
+    monkeypatch.setattr(streaming, "_text_deltas", deltas)
+    monkeypatch.setattr(tts, "synthesize", AsyncMock(return_value=("QQ==", 10)))
+    state = StreamState(request_start=time.perf_counter())
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="server.streaming_render"):
+        try:
+            async for _line in streaming._consume_llm_stream(
+                cast("httpx.AsyncClient", Mock()), cast("streaming.PreparedTextTurn", None), state
+            ):
+                pass
+        except LLMError:
+            return "provider_error"
+    match = re.search(r"reason=(\w+)", caplog.text)
+    return match.group(1) if match else "ok"
+
+
+async def _evaluator_after_a_provider_error(fragments: list[str]) -> str:
+    """Measure one stream that fails after its fragments and name the single outcome."""
+
+    async def generate(
+        _client: httpx.AsyncClient, _text: str, **_kwargs: object
+    ) -> AsyncIterator[str]:
+        for fragment in fragments:
+            yield fragment
+        raise LLMError("provider failed")
+
+    result = await measure_stream_protocol([_turn()], client=_client(), runs=1, generate=generate)
+    if result.errors:
+        return "provider_error"
+    return "invalid_protocol" if result.invalid_protocol else "other"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "fragments, expected",
+    [
+        (["EMOTION:joy\n{"], "invalid_protocol"),
+        (["EMOTION:joy\n", "[1]"], "invalid_protocol"),
+        (["EMOTION:joy\nHola"], "provider_error"),
+        (["EMOTION:joy\n"], "provider_error"),
+        (["Hola sin etiqueta"], "provider_error"),
+        ([], "provider_error"),
+    ],
+)
+async def test_a_provider_error_after_production_decided_is_not_an_error(
+    fragments: list[str],
+    expected: str,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Production stops at an invalid start, so a later provider error never happens live."""
+    assert await _production_after_a_provider_error(fragments, monkeypatch, caplog) == expected
+    assert await _evaluator_after_a_provider_error(fragments) == expected
+
+
+@pytest.mark.unit
+async def test_the_evaluator_stops_and_closes_the_stream_when_production_would_stop() -> None:
+    closed: list[bool] = []
+    resumed: list[bool] = []
+
+    async def generate(
+        _client: httpx.AsyncClient, _text: str, **_kwargs: object
+    ) -> AsyncIterator[str]:
+        try:
+            yield "EMOTION:joy\n{"
+            resumed.append(True)
+            yield "never consumed"
+        finally:
+            closed.append(True)
+
+    result = await measure_stream_protocol([_turn()], client=_client(), runs=1, generate=generate)
+
+    assert result.invalid_protocol == 1
+    assert resumed == []
+    assert closed == [True]
 
 
 def _client() -> httpx.AsyncClient:
@@ -1474,6 +1568,35 @@ def _classify_end_of_stream(buffer: str, state: StreamState) -> StreamOutcome:
     return StreamOutcome.VALID
 
 
+class _StreamClassifier:
+    """Consume deltas one at a time, exactly as `streaming._consume_llm_stream` does."""
+
+    def __init__(self) -> None:
+        self._state = StreamState(request_start=0.0)
+        self._buffer = ""
+
+    def feed(self, delta: str) -> StreamOutcome | None:
+        """Take one delta; return ``INVALID_PROTOCOL`` once production would stop reading.
+
+        Returns:
+            The decided outcome, or ``None`` while production would keep consuming.
+        """
+        self._buffer += delta
+        if self._state.pending_emotion is None and self._state.emotion is None:
+            self._buffer, consumed = _consume_preamble(self._buffer, self._state)
+            if not consumed:
+                return None
+        try:
+            self._buffer, _sentences = _consume_body(self._buffer, self._state)
+        except LLMError:
+            return StreamOutcome.INVALID_PROTOCOL
+        return None
+
+    def finish(self) -> StreamOutcome:
+        """Decide the outcome once the stream has ended without an earlier decision."""
+        return _classify_end_of_stream(self._buffer, self._state)
+
+
 def classify_deltas(deltas: Iterable[str]) -> StreamOutcome:
     """Classify one streamed reply the way production consumes it.
 
@@ -1483,19 +1606,12 @@ def classify_deltas(deltas: Iterable[str]) -> StreamOutcome:
     Returns:
         ``VALID``, ``INVALID_PROTOCOL`` or ``EMPTY_STREAM`` (nothing but whitespace).
     """
-    state = StreamState(request_start=0.0)
-    buffer = ""
+    classifier = _StreamClassifier()
     for delta in deltas:
-        buffer += delta
-        if state.pending_emotion is None and state.emotion is None:
-            buffer, consumed = _consume_preamble(buffer, state)
-            if not consumed:
-                continue
-        try:
-            buffer, _sentences = _consume_body(buffer, state)
-        except LLMError:
-            return StreamOutcome.INVALID_PROTOCOL
-    return _classify_end_of_stream(buffer, state)
+        decided = classifier.feed(delta)
+        if decided is not None:
+            return decided
+    return classifier.finish()
 
 
 @dataclass(frozen=True)
@@ -1563,22 +1679,36 @@ def _tally(outcomes: Sequence[StreamOutcome]) -> StreamProtocolResult:
 async def _stream_once(
     turn: StreamTurn, client: httpx.AsyncClient, generate: StreamGenerator
 ) -> StreamOutcome:
+    """Classify one live stream while it arrives and stop when production would stop.
+
+    A provider error that comes after production has already decided (an invalid body
+    start) never happens live, so it must not turn that observation into an ``ERROR``.
+    """
+    classifier = _StreamClassifier()
+    stream = generate(
+        client,
+        turn.text,
+        context=turn.context,
+        history=turn.history,
+        active_person=turn.active_person,
+    )
     try:
-        deltas = [
-            delta
-            async for delta in generate(
-                client,
-                turn.text,
-                context=turn.context,
-                history=turn.history,
-                active_person=turn.active_person,
-            )
-            if delta
-        ]
+        async for delta in stream:
+            if not delta:
+                continue
+            decided = classifier.feed(delta)
+            if decided is not None:
+                return decided
     except Exception as exc:
         logger.warning("Provider call failed for %s (%s)", turn.label, type(exc).__name__)
         return StreamOutcome.ERROR
-    return classify_deltas(deltas)
+    finally:
+        # Stop the model generating: an abandoned async generator would keep the HTTP
+        # stream (and Ollama) running until it is garbage collected.
+        aclose = getattr(stream, "aclose", None)
+        if aclose is not None:
+            await aclose()
+    return classifier.finish()
 
 
 async def measure_stream_protocol(
@@ -2459,12 +2589,21 @@ the executor records the output lines, never a transcript. Raw reports go under
 
 - [ ] **Step 1: `current-state.md`.** Add one row, *Voice-pipeline reliability
   (Plan 0056)*, stating only delivered behaviour: the classic parser's contract, the
-  echo guard (discards, three-word minimum), `test-pipeline` as a smoke test,
+  echo guard (discards a transcript covering at least 60 % of the prompt's words, never
+  fewer than three, or the prompt repeated; a prompt under three words never triggers
+  it; one accepted false positive), `test-pipeline` as a smoke test,
   `eval-chat --mode stream`, the staged verdicts and dataset version 2, and the
   measured numbers with their limitations. Preserve the Plan 0050 and PC-4 rows.
 - [ ] **Step 2: Evaluation spec.** In the longitudinal evaluation spec change "(decided
   2026-09-30; not implemented yet)" to the implemented state, describe dataset version 2
-  (`scope`), and keep the 0046 baseline described as the version-1 measurement.
+  (`scope`), and keep the 0046 baseline described as the version-1 measurement. State
+  the decision D-8 explicitly where the spec says family acceptance "passes under the
+  same rules": personal acceptance and the full suite keep all four frozen gates; the
+  family stage is judged on the disclosure gate, because the current family scenarios
+  prove cross-person isolation (propose and recall) and feed no other gate; deletion,
+  truth-current and provenance are evidenced by the personal stage and the full suite;
+  adding family scenarios that exercise another gate (P3.2) adds that gate to
+  `STAGE_GATES["family"]`.
 - [ ] **Step 3: Operator manual.** Say what `just test-pipeline`, `just probe-stt` and
   `just eval-chat --mode stream` do and do not prove; correct any sentence found by the
   Task 0 grep that still calls `test-pipeline` the full pipeline.
