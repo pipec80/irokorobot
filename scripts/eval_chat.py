@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
-import argparse
+from pathlib import Path
+import sys
+
+# Direct execution (``python scripts/eval_chat.py``) puts ``scripts/`` on
+# ``sys.path[0]``, not the repo root, so ``from scripts.…`` imports fail. Under
+# pytest the repo root is already on the path, so this only matters for the
+# justfile entrypoint. Must run before any ``from scripts.…`` import below.
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import argparse  # after the sys.path bootstrap, by design
 import asyncio
 from collections import defaultdict
 from datetime import UTC, datetime
 import logging
 import math
-from pathlib import Path
 import re
 import time
 from typing import TYPE_CHECKING, Literal, NoReturn
