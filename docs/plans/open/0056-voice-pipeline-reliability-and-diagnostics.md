@@ -38,6 +38,18 @@ decision D-4 of [Plan 0055](../completed/0055-pc4-identity-fusion-followups.md)
 and the staged-acceptance section of the
 [longitudinal evaluation spec](../../architecture/longitudinal-conversational-memory-evaluation.md#cm-0-measured-baseline).
 
+**Rehearsal (2026-10-02, before Plan 0056 was promoted).** Tasks 1 to 6 were applied
+from the code blocks below onto a scratch copy of the working tree at `main` (`9d4cb0e`)
+and reverted. With them applied: `just gate` passed **1766 tests** (baseline 1695),
+`ruff check`, `ruff format --check`, `mypy` and `pyright` were clean, and the 31
+existing longitudinal tests that the dataset bump breaks were fixed by exactly the edits
+listed in Task 3 Step 7. The RED of Task 1 was observed against the old parser: 15
+failures (7 "did not raise", 4 `TypeError`, 4 `AttributeError`). The other tasks' RED
+steps were **not** separately observed in the rehearsal and must be observed during
+execution; Tasks 0, 7 and 8 need Pipec's machine or the merged state and were not
+rehearsed. Treat the blocks as rehearsed code, not as a substitute for the fresh
+RED/GREEN record each task requires.
+
 ## Global Constraints
 
 - Audio contract everywhere: WAV · 16 000 Hz · mono · int16. Any new function that
@@ -373,10 +385,9 @@ async def test_run_pipeline_passes_an_http_client_to_the_llm(
 
     call = generate.await_args
     assert call is not None
-    client, text = call.args[:2]
-    assert isinstance(client, httpx.AsyncClient)
-    assert text == "hola robot"
-    assert client.is_closed
+    assert isinstance(call.args[0], httpx.AsyncClient)
+    assert call.args[1] == "hola robot"
+    assert call.args[0].is_closed
 ```
 
 - [ ] **Step 2: Watch it fail.** `uv run pytest tests/unit/test_pipeline_test_script.py -v -n0`.
@@ -460,12 +471,15 @@ from scripts.longitudinal_eval_aggregation import staged_verdicts
 from scripts.longitudinal_eval_models import (
     LongitudinalStep,
     ProbeObservation,
+    ScenarioScope,
     ScoredStep,
     StagedVerdict,
+    StagedVerdicts,
 )
+from scripts.longitudinal_eval_report import _staged_section
 from scripts.longitudinal_eval_scoring import score_step
 
-_SCOPES = {"mine": "personal", "theirs": "family"}
+_SCOPES: dict[str, ScenarioScope] = {"mine": "personal", "theirs": "family"}
 
 
 def _expected(required_any: list[list[str]] | None = None) -> dict[str, object]:
@@ -591,6 +605,23 @@ def test_the_frozen_dataset_declares_a_scope_for_every_scenario() -> None:
         "recipient_only_message",
     }
     assert set(scopes.values()) == {"personal", "family"}
+
+
+@pytest.mark.unit
+def test_the_report_section_lists_the_three_verdicts() -> None:
+    section = _staged_section(
+        StagedVerdicts(
+            personal=StagedVerdict.PASS,
+            family=StagedVerdict.PENDING,
+            full_suite=StagedVerdict.FAIL,
+        )
+    )
+
+    assert section is not None
+    assert "| Personal acceptance (CM-7 exit evidence) | PASS |" in section
+    assert "| Family acceptance (pending until P3.2) | PENDING |" in section
+    assert "| Full suite | FAIL |" in section
+    assert _staged_section(None) is None
 ```
 
 - [ ] **Step 2: Watch them fail.** `uv run pytest tests/unit/test_longitudinal_staged_verdicts.py -v -n0`
@@ -758,36 +789,25 @@ def _staged_section(staged: StagedVerdicts | None) -> str | None:
     )
 ```
 
-  and in `render_report`, `sections` drops the `None` entries:
+  Add `StagedVerdicts` to the `TYPE_CHECKING` models import of the report module and
+  `staged_verdicts` to the aggregation import of the runner. In `render_report`,
+  `sections` drops the `None` entries:
   `"\n\n".join(section for section in sections if section is not None) + "\n"`.
-  Add this test to the new test file:
-
-```python
-@pytest.mark.unit
-def test_the_report_section_lists_the_three_verdicts() -> None:
-    from scripts.longitudinal_eval_models import StagedVerdicts
-    from scripts.longitudinal_eval_report import _staged_section
-
-    section = _staged_section(
-        StagedVerdicts(
-            personal=StagedVerdict.PASS,
-            family=StagedVerdict.PENDING,
-            full_suite=StagedVerdict.FAIL,
-        )
-    )
-
-    assert section is not None
-    assert "| Personal acceptance (CM-7 exit evidence) | PASS |" in section
-    assert "| Family acceptance (pending until P3.2) | PENDING |" in section
-    assert "| Full suite | FAIL |" in section
-    assert _staged_section(None) is None
-```
+  (The report-section test is the last test of the file above.)
 
 - [ ] **Step 7: Existing tests.** `uv run pytest tests/unit/test_eval_longitudinal_memory.py -n0`
-  will fail where it pins version 1 (`suite.version == 1`, `"dataset_version": 1`,
-  `first.dataset_version == 1`) or builds a scenario without `scope`. Change those to
-  `2` / add `"scope": "personal"`, nothing else. The frozen scoring tests must pass
-  unedited.
+  fails in 31 tests (rehearsed) because of the bump. Make exactly these edits, nothing
+  else (the frozen scoring tests must pass unedited):
+  - `_scenario()` and `_lscenario()` add `"scope": "personal"` after `"scenario_id"`;
+  - `_suite_doc()` returns `{"version": 2, ...}`;
+  - `test_load_suite_rejects_a_non_version_one_document` becomes
+    `test_load_suite_rejects_a_document_that_is_not_version_two` and sets
+    `doc["version"] = 1`;
+  - `assert suite.version == 1` becomes `== 2`; `"dataset_version": 1` becomes `2`;
+    `assert first.dataset_version == 1` becomes `== 2`;
+  - in `test_cli_full_red_run_writes_a_report_and_returns_one` add
+    `assert "## Staged acceptance" in report` and
+    `assert "| Full suite | FAIL |" in report` (this proves the runner wires the verdicts).
 
 - [ ] **Step 8: GREEN.** The new file, `test_eval_longitudinal_memory.py`, then
   `just test`, `just typecheck`, `uv run ruff check . && uv run ruff format --check .`.
@@ -839,6 +859,7 @@ from server.exceptions import LLMError
 
 from scripts.eval_stream_protocol import (
     StreamOutcome,
+    StreamProtocolResult,
     StreamTurn,
     classify_stream_text,
     measure_stream_protocol,
@@ -850,7 +871,7 @@ from scripts.eval_stream_protocol import (
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    ("text", "outcome"),
+    "text, outcome",
     [
         ("EMOTION:joy\nHola, ¿cómo estás?", StreamOutcome.VALID),
         ("EMOTION:joy\n", StreamOutcome.EMPTY),
@@ -927,8 +948,6 @@ async def test_measure_splits_the_counts_by_turn_source() -> None:
 
 @pytest.mark.unit
 def test_the_fallback_rate_is_none_when_nothing_was_graded() -> None:
-    from scripts.eval_stream_protocol import StreamProtocolResult
-
     assert StreamProtocolResult.none().fallback_rate is None
 
 
@@ -943,8 +962,6 @@ def test_public_turns_are_synthetic_and_context_free() -> None:
 
 @pytest.mark.unit
 def test_exit_code_applies_the_threshold_and_provider_errors() -> None:
-    from scripts.eval_stream_protocol import StreamProtocolResult
-
     clean = StreamProtocolResult(valid=19, invalid_protocol=1, empty=0, errors=0, by_source={})
     errored = StreamProtocolResult(valid=19, invalid_protocol=0, empty=0, errors=1, by_source={})
 
@@ -956,8 +973,6 @@ def test_exit_code_applies_the_threshold_and_provider_errors() -> None:
 
 @pytest.mark.unit
 def test_the_report_states_the_rate_and_never_prints_model_output() -> None:
-    from scripts.eval_stream_protocol import StreamProtocolResult
-
     report = render_stream_report(
         StreamProtocolResult(valid=57, invalid_protocol=3, empty=0, errors=0, by_source={}),
         model="qwen2.5:3b",
@@ -985,8 +1000,6 @@ def test_parse_cli_args_accepts_the_stream_mode() -> None:
 async def test_run_cli_stream_mode_measures_and_never_calls_the_classic_generator(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from scripts.eval_stream_protocol import StreamProtocolResult
-
     measured = AsyncMock(
         return_value=StreamProtocolResult(
             valid=60, invalid_protocol=0, empty=0, errors=0, by_source={}
@@ -1029,9 +1042,10 @@ import enum
 import logging
 from typing import TYPE_CHECKING
 
-from server import llm_streaming
 from server.exceptions import LLMError
 from server.streaming_protocol import parse_streaming_emotion, validate_streaming_body_start
+
+from server import llm_streaming
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable, Sequence
@@ -1142,11 +1156,8 @@ class StreamProtocolResult:
         if not self.graded:
             return None
         return (self.invalid_protocol + self.empty) / self.graded
-```
 
-  Then:
 
-```python
 def _tally(outcomes: Sequence[StreamOutcome]) -> StreamProtocolResult:
     return StreamProtocolResult(
         valid=outcomes.count(StreamOutcome.VALID),
@@ -1248,14 +1259,17 @@ def stream_exit_code(result: StreamProtocolResult, *, max_fallback_rate: float |
     return 0
 ```
 
-  Keep the test, the dataclass and the report consistent (the `5.00 %` assertion needs
-  `invalid_protocol=3` over 60 graded). Resolve every ruff finding rather than
-  suppressing it, except a justified `noqa` for the broad `except Exception`, which
-  mirrors `eval_chat._run_case`.
+
+  The `5.00 %` assertion of the report test needs `invalid_protocol=3` over 60 graded.
+  The broad `except Exception` in `_stream_once` mirrors `eval_chat._run_case` (a
+  provider failure of any kind is an `ERROR` observation).
 
 - [ ] **Step 4: Wire the CLI.** In `scripts/eval_chat.py`: import
   `StreamTurn, measure_stream_protocol, public_turns, render_stream_report, stream_exit_code`
-  from `scripts.eval_stream_protocol`; add the two `CliOptions` fields; add to
+  from `scripts.eval_stream_protocol` (right after `from server import llm`; let
+  `ruff --fix` sort it), and in `tests/unit/test_eval_chat.py` add
+  `from scripts.eval_stream_protocol import StreamProtocolResult` to the top-level
+  imports (the appended tests use it); add the two `CliOptions` fields; add to
   `parse_cli_args`:
 
 ```python
@@ -1264,11 +1278,11 @@ def stream_exit_code(result: StreamProtocolResult, *, max_fallback_rate: float |
 ```
 
   passing `mode=namespace.mode, max_fallback_rate=namespace.max_fallback_rate` to
-  `CliOptions`; and at the top of `run_cli`, after case selection:
+  `CliOptions`; and in `run_cli`, right after the `factory = client_factory or ...` line:
 
 ```python
     if options.mode == "stream":
-        return await _run_stream_mode(options, cases, client_factory or _default_client_factory)
+        return await _run_stream_mode(options, cases, factory)
 ```
 
 ```python
@@ -1334,8 +1348,9 @@ prompt repeated and nothing else.
 """Whisper prompt-echo guard (Plan 0056, Task 5; Plan 0055 decision D-4)."""
 
 import pytest
-from server import stt
 from server.stt import is_prompt_echo
+
+from server import stt
 
 _PROMPT = "Conversación con un robot doméstico llamado Iroko."
 
@@ -1403,7 +1418,7 @@ class _FakeModel:
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    ("heard", "expected"),
+    "heard, expected",
     [(_PROMPT, ""), ("Enciende la luz de la sala", "Enciende la luz de la sala")],
 )
 def test_transcribe_sync_discards_only_an_echo(
@@ -1564,7 +1579,7 @@ def test_an_unknown_noise_kind_is_rejected() -> None:
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    ("reference", "hypothesis", "rate"),
+    "reference, hypothesis, rate",
     [
         ("a b c", "a b c", 0.0),
         ("a b c", "a x c", 1 / 3),
@@ -1588,7 +1603,7 @@ def test_summarize_noise_separates_empty_echo_and_other() -> None:
 
     assert (summary.clips, summary.empty, summary.echo, summary.other) == (4, 2, 1, 1)
     assert summary.other_rate == pytest.approx(0.25)
-    assert summary.needs_follow_up is False
+    assert summary.needs_follow_up is True  # 25 % is above the 5 % rule
 
 
 @pytest.mark.unit
@@ -1627,7 +1642,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import base64
-from collections.abc import Sequence
 from dataclasses import dataclass
 import io
 import json
@@ -1636,11 +1650,16 @@ from pathlib import Path
 import statistics
 import subprocess
 import sys
+from typing import TYPE_CHECKING
 import wave
 
 import numpy as np
-from server import stt, tts
 from server.settings import settings
+
+from server import stt, tts
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 
