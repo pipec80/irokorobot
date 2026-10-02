@@ -4163,6 +4163,23 @@ only — never values, names or transcripts):
 5. In classic mode with scene vision enabled, one `/vision/respond` scene
    question is answered from the camera. Do not claim streaming scenes.
 
+### Acceptance record (in progress, outcomes only)
+
+Pipec, 2026-10-01, branch `fix/0050-server-audit-repairs` at `a7b58f3`, face and
+speaker flags on, streaming mode, `LOG_CONVERSATION_TEXT` on:
+
+| Case | Result |
+|---|---|
+| 1 — `just setup-personal status` on the real database | PASS: `schema_version=8`, `owner_count=1`, `active_child_relation_count=2`, `active_credential_count=1`, `personal_security_ready=True`. |
+| 2 — streaming generic turn | Not run yet (only a protected turn was). |
+| 2 — classic generic turn and the introduction case | Not run yet. |
+| 3 — PIN token without a face (both modes), replay, no token | Not run yet. |
+| 4 — owner-face authorized turn, streaming | PASS (partial): the protected child-list question was answered through the face, `Identity fusion: face_only`, speaker verdict `unknown`, `need=own_children_list status=known source=deterministic`, `llm_ms=0`, total 2995 ms, `chunks=1`. Start-up reached ONLINE in about 9 s with both models warmed. The two-face veto was not run. |
+| 5 — `/vision/respond` scene question (classic) | Not run yet. |
+
+This is not the plan's acceptance: cases 2, 3, the veto of case 4 and case 5 are
+still open.
+
 ## Rollback
 
 Revert the squash-merged PR as one unit. The only lock change is the explicit
