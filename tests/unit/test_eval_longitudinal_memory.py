@@ -1707,7 +1707,12 @@ def test_cli_smoke_only_run_that_fully_passes_returns_zero(
 
     options = _options(tmp_path, only=("extraction_family_and_pet",))
     assert asyncio.run(run_cli(options)) == 0
-    assert "non-gating" in (tmp_path / "report.md").read_text(encoding="utf-8")
+    report = (tmp_path / "report.md").read_text(encoding="utf-8")
+    assert "non-gating" in report
+    # A partial run must never be presented as acceptance evidence (Plan 0056 review).
+    assert "## Staged results (partial run" in report
+    assert "CM-7 exit evidence" not in report
+    assert "judged on all four" not in report
 
 
 @pytest.mark.unit

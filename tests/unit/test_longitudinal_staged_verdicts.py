@@ -326,3 +326,24 @@ def test_the_report_section_lists_the_three_verdicts() -> None:
     assert "| Full suite | FAIL |" in section
     assert "family on the disclosure gate" in section
     assert _staged_section(None) is None
+
+
+@pytest.mark.unit
+def test_a_non_gating_section_is_not_presented_as_acceptance() -> None:
+    """Without the frozen gates a PASS only means the steps passed, never CM-7."""
+    section = _staged_section(
+        StagedVerdicts(
+            personal=StagedVerdict.PASS,
+            family=StagedVerdict.NOT_RUN,
+            full_suite=StagedVerdict.PASS,
+        ),
+        gating=False,
+    )
+
+    assert section is not None
+    assert "partial run" in section
+    assert "gates were not applied" in section
+    assert "CM-7" not in section.replace("not CM-7", "")
+    assert "judged on all four" not in section
+    assert "| Personal | PASS |" in section
+    assert "| Family | NOT_RUN |" in section
