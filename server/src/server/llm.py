@@ -77,36 +77,65 @@ def _classic_system_prompt(base_prompt: str) -> str:
     return base_prompt + _CLASSIC_OUTPUT_CONTRACT
 
 
+def _coerce_emotion(value: object) -> str:
+    """Return a valid emotion; anything else (unknown or non-text) becomes neutral.
+
+    The log carries a fixed reason only, never the model's own text (Plan 0032).
+    """
+    if isinstance(value, str):
+        emotion = value.lower()
+        if emotion in VALID_EMOTIONS:
+            return emotion
+        logger.warning("Unknown emotion from LLM — defaulting to neutral")
+    else:
+        logger.warning("Non-text emotion from LLM — defaulting to neutral")
+    return FALLBACK_EMOTION
+
+
+def _salvage_or_raw(raw: str, text: str, exc: Exception) -> tuple[str, str]:
+    """Malformed-JSON fallback (unchanged behaviour): salvage the field, else raw text."""
+    match = _RESPONSE_RE.search(text)
+    if match:
+        logger.warning("LLM returned malformed JSON (%s) — salvaged response field", exc)
+        try:
+            salvaged: str = json.loads(f'"{match.group(1)}"')
+        except json.JSONDecodeError:
+            salvaged = match.group(1)
+        return salvaged, FALLBACK_EMOTION
+    logger.warning("LLM returned non-JSON output (%s) — using raw text", exc)
+    return raw, FALLBACK_EMOTION
+
+
 def _parse_llm_output(raw: str) -> tuple[str, str]:
-    """Extract response text and emotion from model JSON output; falls back
-    to raw text + neutral emotion when the JSON is malformed.
+    """Extract response text and emotion from the classic JSON contract.
+
+    Malformed JSON, or an object without a ``response`` key, keeps falling back to
+    raw text (a separate decision, Plan 0056 D-7). A well-formed object whose
+    ``response`` is not non-blank text, or valid JSON that is not an object, is
+    rejected: nothing speakable can be recovered from it.
 
     Args:
         raw: Raw string from the model, expected to be valid JSON.
 
     Returns:
         Tuple of (response_text, emotion).
+
+    Raises:
+        LLMError: If the output is valid JSON but carries no speakable text.
     """
     text = strip_json_fences(raw)
     try:
         data = json.loads(text)
-        response_text = data["response"]
-        emotion = data.get("emotion", FALLBACK_EMOTION).lower()
-        if emotion not in VALID_EMOTIONS:
-            logger.warning("Unknown emotion '%s' from LLM — defaulting to neutral", emotion)
-            emotion = FALLBACK_EMOTION
-        return response_text, emotion
-    except (json.JSONDecodeError, KeyError) as exc:
-        match = _RESPONSE_RE.search(text)
-        if match:
-            logger.warning("LLM returned malformed JSON (%s) — salvaged response field", exc)
-            try:
-                salvaged: str = json.loads(f'"{match.group(1)}"')
-            except json.JSONDecodeError:
-                salvaged = match.group(1)
-            return salvaged, FALLBACK_EMOTION
-        logger.warning("LLM returned non-JSON output (%s) — using raw text", exc)
-        return raw, FALLBACK_EMOTION
+    except json.JSONDecodeError as exc:
+        return _salvage_or_raw(raw, text, exc)
+    if not isinstance(data, dict):
+        raise LLMError("Classic response is not a JSON object")
+    if "response" not in data:
+        return _salvage_or_raw(raw, text, KeyError("response"))
+    response_text = data["response"]
+    if not isinstance(response_text, str) or not response_text.strip():
+        raise LLMError("Classic response field is not non-blank text")
+    return response_text, _coerce_emotion(data.get("emotion", FALLBACK_EMOTION))
 
 
 async def _generate_ollama(
