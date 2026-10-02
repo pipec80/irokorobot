@@ -98,6 +98,10 @@ run-robot:
 test-pipeline *ARGS:
     uv run --env-file .env python scripts/pipeline_test.py {{ARGS}}
 
+# Sondas de STT del Plan 0056 (cargan Whisper real; con el servidor detenido): noise | first-turn
+probe-stt *ARGS:
+    uv run --env-file .env python scripts/stt_probes.py {{ARGS}}
+
 # Configura owner/hijos/PIN local. Requiere run-server y run-robot detenidos
 setup-personal *ARGS:
     uv run --env-file .env --package server personal-setup {{ARGS}}
