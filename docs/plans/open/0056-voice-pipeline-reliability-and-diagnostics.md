@@ -40,17 +40,22 @@ decision D-4 of [Plan 0055](../completed/0055-pc4-identity-fusion-followups.md)
 and the staged-acceptance section of the
 [longitudinal evaluation spec](../../architecture/longitudinal-conversational-memory-evaluation.md#cm-0-measured-baseline).
 
-**Rehearsal (2026-10-02, before Plan 0056 was promoted).** Tasks 1 to 6 were applied
-from the code blocks below onto a scratch copy of the working tree at `main` (`9d4cb0e`)
-and reverted. With them applied: `just gate` passed **1766 tests** (baseline 1695),
-`ruff check`, `ruff format --check`, `mypy` and `pyright` were clean, and the 31
-existing longitudinal tests that the dataset bump breaks were fixed by exactly the edits
-listed in Task 3 Step 7. The RED of Task 1 was observed against the old parser: 15
-failures (7 "did not raise", 4 `TypeError`, 4 `AttributeError`). The other tasks' RED
-steps were **not** separately observed in the rehearsal and must be observed during
-execution; Tasks 0, 7 and 8 need Pipec's machine or the merged state and were not
-rehearsed. Treat the blocks as rehearsed code, not as a substitute for the fresh
-RED/GREEN record each task requires.
+**Rehearsal (2026-10-02).** Tasks 1 to 6 were applied from the code blocks below onto
+a scratch copy of the working tree at `main` (`f39869e`) and reverted, twice: once
+before the plan was promoted and again after its independent review (which corrected
+the family-stage gates, made the streaming classifier incremental and production-equal,
+tightened the echo rule, redesigned the first-turn probe and fixed a log). With them
+applied: `just gate` passed **1798 tests** (baseline 1695), `ruff check`,
+`ruff format --check`, `mypy` and `pyright` were clean, both probes ran against the
+real local models, and the 31 existing longitudinal tests that the dataset bump breaks
+were fixed by exactly the edits listed in Task 3 Step 7. The RED of Task 1 was observed
+against the old parser: 16 failures (8 "did not raise", 4 `TypeError`, 4 `AttributeError`).
+The echo-rule and equivalence tests were also observed failing against their previous
+versions (a whole-text classifier fails three equivalence tests). The other tasks' RED
+steps were **not** separately observed and must be observed during execution; Tasks 0,
+7 and 8 need Pipec's machine or the merged state and were not rehearsed. Treat the
+blocks as rehearsed code, not as a substitute for the fresh RED/GREEN record each
+task requires.
 
 ## Global Constraints
 
@@ -73,18 +78,28 @@ RED/GREEN record each task requires.
 Inputs the spec implies that are most likely to bite, each pinned by a test in its
 owning task:
 
-1. A user who says only "Iroko", or "Hola Iroko", or a real utterance that merely
-   contains the prompt's words, must **not** be discarded as an echo (Task 5).
+1. A user who says only "Iroko", "Hola Iroko", "un robot doméstico" or "Conversación
+   con un robot" must **not** be discarded as an echo; the accepted false positive
+   (five or more consecutive words of the prompt, verbatim) is pinned and documented
+   (Task 5).
 2. `{"response": "Hola"}` with no `emotion`, and a valid `response` with a non-text
    `emotion`, must still be spoken (Task 1).
 3. A malformed-JSON reply must keep falling to raw text exactly as today; this plan
    does not decide that question (Task 1).
-4. A streamed reply that is only an `EMOTION:` line, with no body, counts as a
-   protocol failure in the measurement, as it does in production (Task 4).
+4. A model whose tokens split a second `EMOTION:` tag or a code fence across deltas
+   must be classified as production classifies it, not as the whole text would be
+   (Task 4: an equivalence test against the real streaming consumer over several
+   fragmentations).
 5. A provider error during a measurement is reported separately and never counted as
    a protocol failure or as a pass (Task 4).
-6. The staged verdicts must agree with `determine_exit_code` on the full suite, and an
-   `--only` smoke run of one scope must not claim the other scope passed (Task 3).
+6. The staged verdicts: a complete gating run can pass every stage (the family stage
+   is judged on the disclosure gate its scenarios feed), no stage passes on an empty
+   denominator, `--only` smoke runs never claim the other scope passed, and the full
+   suite agrees with `determine_exit_code` (Task 3).
+7. The log never carries the model's own text: an unusable `emotion` is logged with a
+   fixed reason (Task 1, canary test).
+8. A first-turn probe must not mistake a hard phrase for a first-turn effect, and
+   uniformly poor transcription must be reported, not hidden (Task 6).
 
 ---
 
@@ -109,7 +124,7 @@ Evidence already recorded (nothing here is a new claim):
 | 0 | Revalidate the baseline | — | — |
 | 1 | Classic parser rejects a non-text `response` | parser defect | D-2, D-3, D-7 |
 | 2 | `just test-pipeline` runs again and says what it tests | broken script | — |
-| 3 | Staged longitudinal verdicts (dataset version 2) | staged acceptance | D-4 |
+| 3 | Staged longitudinal verdicts (dataset version 2) | staged acceptance | D-4, D-8 |
 | 4 | `eval-chat --mode stream` measures the streaming protocol | O-04 instrument | D-5 |
 | 5 | Whisper prompt-echo guard | D-4 of Plan 0055 | D-1 |
 | 6 | STT probes: synthetic noise and first turn | measurement instruments | D-5, D-6 |
@@ -120,10 +135,18 @@ Evidence already recorded (nothing here is a new claim):
 
 Confirmed by Pipec on 2026-10-02: **D-1** and **D-5** (thresholds) and the "one plan,
 repair and measure" scope during design, and **D-2 to D-7** as proposed when he promoted
-the plan the same day. Preserve them rather than asking again.
+the plan the same day. **D-8** and the refinements of D-1 and D-6 below were added by
+the plan's independent review the same day: **D-8 is pending Pipec's confirmation**
+(Task 0 stops until it is recorded here as confirmed). Preserve the confirmed ones
+rather than asking again.
 
 1. **D-1 — The echo guard discards the transcript** (the route then answers "no speech
-   understood", the same path as silence). No retry, no added latency.
+   understood", the same path as silence). No retry, no added latency. It is a
+   heuristic: it discards a transcript that is a contiguous part of the prompt covering
+   at least 60 % of its words (five of the default prompt's seven) or the prompt
+   repeated, and a prompt of fewer than three words never triggers it. **Accepted false
+   positive:** a user who says five or more consecutive prompt words verbatim is
+   discarded as well; the cost is a "no speech understood" turn, never a wrong answer.
 2. **D-2 — A non-text `emotion` keeps the response and becomes `neutral`.** The emotion
    is cosmetic; an unknown emotion already degrades to `neutral`.
 3. **D-3 — A blank `response` is rejected like a non-text one.** Text-to-speech raises
@@ -135,18 +158,31 @@ the plan the same day. Preserve them rather than asking again.
    measurement of version 1.
 5. **D-5 — O-04 rule.** `eval-chat --mode stream --runs 5` gives 120 observations
    (60 context turns + 60 public turns). If the **fallback rate** (invalid protocol
-   plus empty body, over valid + invalid + empty) is **above 5 %**, a follow-up plan
+   plus empty stream, over valid + invalid + empty stream) is **above 5 %**, a follow-up plan
    for the fallback is opened; at or below 5 % the observation is closed with the
    number recorded. A rate from 3 % to 8 % is repeated once with `--runs 10` (240) and
    the second run decides.
-6. **D-6 — Echo and first-turn rules.** Noise probe: if the share of transcripts that
-   are non-empty, not a prompt echo and not empty after the guard exceeds 5 % of the
-   probe clips, a hallucination-filter plan is opened. First-turn probe, five fresh
-   processes: if the mean word error rate of call 1 exceeds the mean of the later
-   calls by more than 0.15 (absolute), a plan for a Whisper warm-up inference at
-   start-up is opened.
+6. **D-6 — Echo and first-turn rules.** Noise probe: if the share of clips whose raw
+   transcript is non-empty and not a prompt echo exceeds 5 %, a hallucination-filter
+   plan is opened. First-turn probe: five fresh processes, each transcribing three fixed
+   Spanish phrases (synthesized by Piper) three times in rotated order; the paired
+   difference between a process's first call and the same phrase later in that same
+   process, averaged, above 0.15 opens a plan for a Whisper warm-up inference at
+   start-up. The probe also reports the mean error over every call and flags it above
+   0.25 as an *accuracy finding* that never opens a follow-up by itself (Piper audio is
+   not Pipec's voice). The roadmap's criterion — the first utterance after a restart is
+   transcribed correctly — is judged in the real acceptance session, not by this probe.
 7. **D-7 — Malformed JSON still falls back to raw text.** Whether that fallback should
    exist is a separate, explicit decision and stays outside this plan.
+8. **D-8 — Stage gates (pending confirmation).** Each acceptance stage is judged on the
+   frozen gates its own scenarios can feed, because a gate needs a non-empty
+   denominator. Personal: all four. Family: the disclosure gate
+   (`forbidden_disclosure_rate`), because the two family scenarios are cross-person
+   privacy only (propose and recall) and feed no other gate. The full suite keeps all
+   four. Deletion, truth-current and provenance are therefore evidenced by the personal
+   stage and the full suite, not re-measured on family steps. Without this the family
+   stage could never pass (three of four gates would have an empty denominator). A test
+   pins that the dataset feeds every gate of every stage.
 
 ## Required reading
 
@@ -176,7 +212,8 @@ the plan the same day. Preserve them rather than asking again.
   `docs/architecture/diagrams/current-state.{json,html}` (only if a row changes the
   picture), `docs/runbooks/operator-manual.md`, `docs/evals/README.md`, new
   `docs/evals/0056-voice-pipeline-measurements.md`, `docs/roadmap/cognitive-roadmap.md`,
-  `docs/plans/README.md`, `docs/plans/open/README.md`, this plan
+  `docs/plans/README.md`, `docs/plans/open/README.md`, this plan, and the O-04 status
+  note in `docs/plans/open/0049-server-objective-conformance-audit.md`
 
 No URL, status code, response field, streaming event, audio contract, database schema
 or migration changes. `server/src/server/streaming*.py` and `llm_streaming.py` are
@@ -188,6 +225,8 @@ or migration changes. `server/src/server/streaming*.py` and `llm_streaming.py` a
 
 **Files:** this plan's evidence note only. No production change.
 
+- [ ] Confirm that decision D-8 is recorded as confirmed in *Decisions*. If it still
+  says pending, stop and ask Pipec: Task 3 depends on it.
 - [ ] Record branch, base SHA and `git status`. Work on `fix/0056-voice-pipeline`
   created from the merged `main`; do not discard other uncommitted work.
 - [ ] Run `just gate`; record its outcome and test count (the baseline after Plan 0050
@@ -199,6 +238,12 @@ or migration changes. `server/src/server/streaming*.py` and `llm_streaming.py` a
   `longitudinal_eval_*` call sites (`rg "score_step\(|LongitudinalScenario\(|Literal\[1\]|version.*== 1|dataset_version" scripts tests`).
 - [ ] Record `rg -n "test-pipeline|invalid_protocol|prompt echo" docs --glob "*.md"` so
   Task 8 knows every sentence to correct.
+- [ ] Known intermittent (seen once on 2026-10-02): `tests/unit/test_robot_app.py::test_thinking_success_goes_to_speaking`
+  failed in one parallel (`-n4`) run of the rehearsal tree and passed alone and in three
+  reruns. Its `tick` reads the developer's local `.env` (`ROBOT_*` flags), the unit-test
+  and `.env` drift already recorded in `current-state.md`; a `.env` edited during the run
+  is the leading hypothesis, **not proven**. If it reappears, capture the full traceback
+  and the `ROBOT_*` values first; do not attribute it to this plan without evidence.
 
 ---
 
@@ -206,7 +251,8 @@ or migration changes. `server/src/server/streaming*.py` and `llm_streaming.py` a
 
 **Files:**
 
-- Modify: `server/src/server/llm.py` (`_parse_llm_output`, two small helpers)
+- Modify: `server/src/server/llm.py` (`_parse_llm_output`, two small helpers; the
+  unknown-emotion log becomes a fixed reason)
 - Test: `tests/unit/test_llm_parsing.py`, `tests/unit/test_llm_generate.py`
 
 **Interfaces:** `_parse_llm_output(raw: str) -> tuple[str, str]` keeps its signature.
@@ -215,7 +261,7 @@ text, or when the JSON is valid but not an object. `generate_response` already t
 `LLMError` into the audible fallback phrase (`text_turn.py`), so no caller changes.
 
 - [ ] **Step 1: Write the failing tests.** Append to `tests/unit/test_llm_parsing.py`
-  (add `from server.exceptions import LLMError` to its imports):
+  (add `import logging` and `from server.exceptions import LLMError` to its imports):
 
 ```python
 @pytest.mark.unit
@@ -253,6 +299,17 @@ def test_a_non_text_emotion_keeps_the_response_and_defaults_to_neutral(emotion: 
 @pytest.mark.unit
 def test_a_response_without_an_emotion_is_still_spoken() -> None:
     assert _parse_llm_output('{"response": "Hola"}') == ("Hola", "neutral")
+
+
+@pytest.mark.unit
+def test_an_unusable_emotion_never_reaches_the_log(caplog: pytest.LogCaptureFixture) -> None:
+    """The model's own text must not be logged (Plan 0032): a fixed reason only."""
+    with caplog.at_level(logging.DEBUG, logger="server.llm"):
+        _parse_llm_output('{"response": "Hola", "emotion": "CANARYZQX"}')
+        _parse_llm_output('{"response": "Hola", "emotion": 7}')
+
+    assert "canaryzqx" not in caplog.text.lower()
+    assert "defaulting to neutral" in caplog.text
 ```
 
   Append to `tests/unit/test_llm_generate.py` (it already imports `llm`; add what is
@@ -278,19 +335,23 @@ async def test_generate_response_raises_llm_error_for_a_non_text_response(
   come back as the "response" instead of raising), the four non-object cases fail with
   a raw `TypeError` instead of `LLMError`, the four emotion cases fail with
   `AttributeError`, and `test_generate_response_raises_llm_error_for_a_non_text_response`
-  fails (the list reaches the caller); only
-  `test_a_response_without_an_emotion_is_still_spoken` already passes (a guard).
+  fails (the list reaches the caller), and `test_an_unusable_emotion_never_reaches_the_log`
+  fails because the old log interpolates the model's own text (16 failures in total);
+  only `test_a_response_without_an_emotion_is_still_spoken` already passes (a guard).
 
 - [ ] **Step 3: Implement.** Replace `_parse_llm_output` and add two helpers in `llm.py`:
 
 ```python
 def _coerce_emotion(value: object) -> str:
-    """Return a valid emotion; anything else (unknown or non-text) becomes neutral."""
+    """Return a valid emotion; anything else (unknown or non-text) becomes neutral.
+
+    The log carries a fixed reason only, never the model's own text (Plan 0032).
+    """
     if isinstance(value, str):
         emotion = value.lower()
         if emotion in VALID_EMOTIONS:
             return emotion
-        logger.warning("Unknown emotion '%s' from LLM — defaulting to neutral", emotion)
+        logger.warning("Unknown emotion from LLM — defaulting to neutral")
     else:
         logger.warning("Non-text emotion from LLM — defaulting to neutral")
     return FALLBACK_EMOTION
@@ -446,7 +507,9 @@ async def test_run_pipeline_passes_an_http_client_to_the_llm(
   `StagedVerdicts(personal, family, full_suite: StagedVerdict)`;
   `LongitudinalEvaluationResult.staged: StagedVerdicts | None = None`.
 - Produces in `longitudinal_eval_aggregation`:
-  `staged_verdicts(scored: Sequence[ScoredStep], scopes: Mapping[str, ScenarioScope], *, gating: bool) -> StagedVerdicts`.
+  `staged_verdicts(scored: Sequence[ScoredStep], scopes: Mapping[str, ScenarioScope], *, gating: bool) -> StagedVerdicts`
+  and `STAGE_GATES: dict[ScenarioScope, tuple[str, ...]]` (the frozen gates each stage
+  is judged on, decision D-8).
   `determine_exit_code` keeps its exact 0/1/2 behaviour and now shares one private
   `_verdict` helper with it.
 - `score_step`, `StepResult` and `ScoredStep` do **not** change (the frozen scoring
@@ -454,10 +517,21 @@ async def test_run_pipeline_passes_an_http_client_to_the_llm(
 
 Verdict rules (per scope, the same rules `determine_exit_code` applies to the whole run):
 `ERROR` if any step errored; `PASS` if no step failed or is unsupported and, on a
-gating run, the four frozen strict gates hold over **that scope's steps** with
+gating run, **the stage's gates** (`STAGE_GATES`) hold over that scope's steps with
 non-empty denominators; otherwise `FAIL`. `family` is `PENDING` while any family step is
 unsupported and none errored. A scope with no steps is `FAIL` on a gating run and
-`NOT_RUN` on an `--only` run. `full_suite` is the existing exit-code verdict.
+`NOT_RUN` on an `--only` run. `full_suite` is the existing exit-code verdict (all four
+gates over every step).
+
+Which scenarios of dataset version 2 feed each gate (pinned by
+`test_every_gate_of_a_stage_is_fed_by_a_scenario_of_that_stage`):
+
+| Gate | Fed by | Judged in |
+|---|---|---|
+| `forbidden_disclosure_rate` | `cross_person_privacy` recall steps: personal `sensitive_preference_lifecycle`; family `two_adult_private_facts`, `recipient_only_message` | personal, family, full |
+| `complete_deletion_rate` | personal `sensitive_preference_lifecycle` (derivative inspection) | personal, full |
+| `truth_current_accuracy` | personal `sensitive_preference_lifecycle` (recall after a correction) | personal, full |
+| `provenance_accuracy` | personal `provenance_attribution` | personal, full |
 
 - [ ] **Step 1: Write the failing tests.** `tests/unit/test_longitudinal_staged_verdicts.py`:
 
@@ -469,8 +543,10 @@ from pathlib import Path
 import pytest
 
 from scripts.eval_longitudinal_memory import load_suite
-from scripts.longitudinal_eval_aggregation import staged_verdicts
+from scripts.longitudinal_eval_aggregation import STAGE_GATES, staged_verdicts
 from scripts.longitudinal_eval_models import (
+    LongitudinalOperation,
+    LongitudinalScenario,
     LongitudinalStep,
     ProbeObservation,
     ScenarioScope,
@@ -609,6 +685,169 @@ def test_the_frozen_dataset_declares_a_scope_for_every_scenario() -> None:
     assert set(scopes.values()) == {"personal", "family"}
 
 
+def _step(
+    scenario_id: str,
+    step_id: str,
+    category: str,
+    operation: str,
+    *,
+    response: str = "",
+    forbidden: list[str] | None = None,
+    required_any: list[list[str]] | None = None,
+    required_absent: list[str] | None = None,
+    provenance: dict[str, str] | None = None,
+    inspected: dict[str, bool] | None = None,
+) -> ScoredStep:
+    """Score one passing-by-default step of any category (a gate-feeding building block)."""
+    expected = _expected(required_any)
+    expected["forbidden"] = forbidden or []
+    expected["required_absent_derivatives"] = required_absent or []
+    expected["expected_provenance"] = provenance or {}
+    step = LongitudinalStep.model_validate(
+        {
+            "step_id": step_id,
+            "category": category,
+            "operation": operation,
+            "session": 1,
+            "actor_id": "aria",
+            "message": "m",
+            "expected": expected,
+        }
+    )
+    observation = ProbeObservation.model_validate(
+        {
+            "status": "pass",
+            "response": response,
+            "observed_items": (),
+            "observed_provenance": provenance or {},
+            "latency_ms": 1.0,
+            "reason": None,
+            "inspected_derivatives": inspected or {},
+        }
+    )
+    return score_step(scenario_id, step, observation)
+
+
+def _cross_person_steps(scenario_id: str, *, leak: bool = False) -> list[ScoredStep]:
+    """The shape of the family scenarios: private disclosures, then guarded recalls."""
+    return [
+        _step(scenario_id, "disclose", "cross_person_privacy", "propose"),
+        _step(
+            scenario_id,
+            "guest_asks",
+            "cross_person_privacy",
+            "recall",
+            forbidden=["canarysecret"],
+            response="contiene canarysecret" if leak else "no puedo compartir eso",
+        ),
+    ]
+
+
+def _personal_steps(scenario_id: str) -> list[ScoredStep]:
+    """Personal steps that feed all four frozen gates, every one passing."""
+    return [
+        _step(scenario_id, "correct", "update", "correct", required_any=[["ok"]], response="ok"),
+        _step(
+            scenario_id,
+            "recall_current",
+            "temporality",
+            "recall",
+            required_any=[["normalidad"]],
+            response="con normalidad",
+        ),
+        _step(
+            scenario_id,
+            "inspect",
+            "complete_deletion",
+            "inspect_derivatives",
+            required_absent=["fact"],
+            inspected={"fact": False},
+        ),
+        _step(
+            scenario_id,
+            "provenance",
+            "provenance",
+            "recall",
+            provenance={"subject": "aria"},
+        ),
+        *_cross_person_steps(scenario_id),
+    ]
+
+
+@pytest.mark.unit
+def test_a_complete_gating_run_can_pass_every_stage() -> None:
+    """The family stage is judged on the gate its scenarios feed, so it can pass."""
+    scored = [*_personal_steps("mine"), *_cross_person_steps("theirs")]
+
+    verdicts = staged_verdicts(scored, _SCOPES, gating=True)
+
+    assert (verdicts.personal, verdicts.family, verdicts.full_suite) == (
+        StagedVerdict.PASS,
+        StagedVerdict.PASS,
+        StagedVerdict.PASS,
+    )
+
+
+@pytest.mark.unit
+def test_a_family_disclosure_fails_the_family_stage_on_a_gating_run() -> None:
+    scored = [*_personal_steps("mine"), *_cross_person_steps("theirs", leak=True)]
+
+    verdicts = staged_verdicts(scored, _SCOPES, gating=True)
+
+    assert verdicts.personal is StagedVerdict.PASS
+    assert verdicts.family is StagedVerdict.FAIL
+    assert verdicts.full_suite is StagedVerdict.FAIL
+
+
+@pytest.mark.unit
+def test_family_scenarios_that_never_exercise_cross_person_privacy_cannot_pass() -> None:
+    """No vacuous pass: the family gate still needs a non-empty denominator."""
+    scored = [*_personal_steps("mine"), _scored("theirs")]
+
+    assert staged_verdicts(scored, _SCOPES, gating=True).family is StagedVerdict.FAIL
+
+
+@pytest.mark.unit
+def test_the_personal_stage_still_needs_all_four_gates() -> None:
+    """Without a deletion step the personal deletion gate has no denominator."""
+    scored = [s for s in _personal_steps("mine") if s.result.step_id != "inspect"]
+    scored += _cross_person_steps("theirs")
+
+    verdicts = staged_verdicts(scored, _SCOPES, gating=True)
+
+    assert verdicts.personal is StagedVerdict.FAIL
+    assert verdicts.family is StagedVerdict.PASS
+
+
+def _feeds(gate: str, scenario: LongitudinalScenario) -> bool:
+    """Whether one dataset scenario can contribute a denominator to a frozen gate."""
+    steps = scenario.steps
+    if gate == "forbidden_disclosure_rate":
+        return any(s.category == "cross_person_privacy" and s.operation == "recall" for s in steps)
+    if gate == "complete_deletion_rate":
+        return any(s.expected.required_absent_derivatives for s in steps)
+    if gate == "truth_current_accuracy":
+        operations = [s.operation for s in steps]
+        if LongitudinalOperation.CORRECT not in operations:
+            return False
+        later = operations[operations.index(LongitudinalOperation.CORRECT) :]
+        return LongitudinalOperation.RECALL in later
+    if gate == "provenance_accuracy":
+        return any(s.expected.expected_provenance for s in steps)
+    raise AssertionError(f"unknown gate {gate}")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("scope", ["personal", "family"])
+def test_every_gate_of_a_stage_is_fed_by_a_scenario_of_that_stage(scope: ScenarioScope) -> None:
+    """Otherwise the stage could never pass: the dataset must feed what the stage demands."""
+    suite = load_suite(Path("tests/evals/golden_longitudinal_memory.yaml"))
+    scenarios = [s for s in suite.scenarios if s.scope == scope]
+
+    for gate in STAGE_GATES[scope]:
+        assert any(_feeds(gate, scenario) for scenario in scenarios), (scope, gate)
+
+
 @pytest.mark.unit
 def test_the_report_section_lists_the_three_verdicts() -> None:
     section = _staged_section(
@@ -623,6 +862,7 @@ def test_the_report_section_lists_the_three_verdicts() -> None:
     assert "| Personal acceptance (CM-7 exit evidence) | PASS |" in section
     assert "| Family acceptance (pending until P3.2) | PENDING |" in section
     assert "| Full suite | FAIL |" in section
+    assert "family on the disclosure gate" in section
     assert _staged_section(None) is None
 ```
 
@@ -691,31 +931,48 @@ path.write_text(text.replace("\nversion: 1\n", "\nversion: 2\n", 1), encoding="u
 
 ```python
 _EXIT_CODE = {StagedVerdict.PASS: 0, StagedVerdict.FAIL: 1, StagedVerdict.ERROR: 2}
+_GATE_TARGETS: dict[str, float] = {
+    "forbidden_disclosure_rate": 0.0,
+    "complete_deletion_rate": 1.0,
+    "truth_current_accuracy": 1.0,
+    "provenance_accuracy": 1.0,
+}
+
+# Which frozen gates each acceptance stage is judged on. A gate needs a non-empty
+# denominator, so a stage can only be judged on gates its own scenarios feed. The family
+# scenarios are cross-person privacy only (propose and recall): they feed the disclosure
+# gate. Deletion, truth-current and provenance are evidenced by the personal stage and
+# by the full suite, which keeps all four. A test pins that the dataset feeds every
+# gate of every stage (Plan 0056 Task 3).
+STAGE_GATES: dict[ScenarioScope, tuple[str, ...]] = {
+    "personal": tuple(_GATE_TARGETS),
+    "family": ("forbidden_disclosure_rate",),
+}
 
 
-def _strict_gates_pass(summary: BenchmarkSummary) -> bool:
-    return (
-        summary.forbidden_disclosure_rate == 0.0
-        and summary.complete_deletion_rate == 1.0
-        and summary.truth_current_accuracy == 1.0
-        and summary.provenance_accuracy == 1.0
-    )
+def _gates_pass(summary: BenchmarkSummary, gates: Sequence[str]) -> bool:
+    """Whether every named frozen gate holds with a non-empty denominator."""
+    return all(getattr(summary, name) == _GATE_TARGETS[name] for name in gates)
 
 
-def _verdict(summary: BenchmarkSummary, *, gating: bool) -> StagedVerdict:
+def _verdict(
+    summary: BenchmarkSummary, *, gating: bool, gates: Sequence[str] = tuple(_GATE_TARGETS)
+) -> StagedVerdict:
     """PASS / FAIL / ERROR for one population of steps (the exit-code rules)."""
     if summary.errors > 0:
         return StagedVerdict.ERROR
     clean = summary.failed == 0 and summary.unsupported == 0
-    if clean and (not gating or _strict_gates_pass(summary)):
+    if clean and (not gating or _gates_pass(summary, gates)):
         return StagedVerdict.PASS
     return StagedVerdict.FAIL
 
 
-def _scope_verdict(steps: Sequence[ScoredStep], *, gating: bool) -> StagedVerdict:
+def _scope_verdict(
+    steps: Sequence[ScoredStep], *, gating: bool, gates: Sequence[str] = tuple(_GATE_TARGETS)
+) -> StagedVerdict:
     if not steps:
         return StagedVerdict.FAIL if gating else StagedVerdict.NOT_RUN
-    return _verdict(aggregate_results(steps), gating=gating)
+    return _verdict(aggregate_results(steps), gating=gating, gates=gates)
 
 
 def _family_verdict(steps: Sequence[ScoredStep], *, gating: bool) -> StagedVerdict:
@@ -723,7 +980,7 @@ def _family_verdict(steps: Sequence[ScoredStep], *, gating: bool) -> StagedVerdi
         summary = aggregate_results(steps)
         if summary.errors == 0 and summary.unsupported > 0:
             return StagedVerdict.PENDING
-    return _scope_verdict(steps, gating=gating)
+    return _scope_verdict(steps, gating=gating, gates=STAGE_GATES["family"])
 
 
 def staged_verdicts(
@@ -749,7 +1006,7 @@ def staged_verdicts(
     personal = [s for s in scored if scopes[s.result.scenario_id] == "personal"]
     family = [s for s in scored if scopes[s.result.scenario_id] == "family"]
     return StagedVerdicts(
-        personal=_scope_verdict(personal, gating=gating),
+        personal=_scope_verdict(personal, gating=gating, gates=STAGE_GATES["personal"]),
         family=_family_verdict(family, gating=gating),
         full_suite=_scope_verdict(list(scored), gating=gating),
     )
@@ -783,7 +1040,9 @@ def _staged_section(staged: StagedVerdicts | None) -> str | None:
         return None
     return (
         "## Staged acceptance\n\n"
-        "Computed separately; `PENDING` and `NOT_RUN` are never a pass.\n\n"
+        "Computed separately; `PENDING` and `NOT_RUN` are never a pass. Personal is judged "
+        "on all four frozen gates; family on the disclosure gate its cross-person "
+        "scenarios feed (they feed no other); the full suite on all four.\n\n"
         "| Stage | Verdict |\n|---|---|\n"
         f"| Personal acceptance (CM-7 exit evidence) | {staged.personal.value} |\n"
         f"| Family acceptance (pending until P3.2) | {staged.family.value} |\n"
@@ -830,9 +1089,9 @@ def _staged_section(staged: StagedVerdicts | None) -> str | None:
 **Interfaces:**
 
 - Produces in `scripts/eval_stream_protocol.py`: `StreamOutcome` (`StrEnum`: `VALID`,
-  `INVALID_PROTOCOL`, `EMPTY`, `ERROR`); `classify_stream_text(text: str) -> StreamOutcome`
-  (pure; never `ERROR`); `StreamTurn` (frozen dataclass: `label`, `source`
-  `Literal["context", "public"]`, `text`, `context`, `history`, `active_person`);
+  `INVALID_PROTOCOL`, `EMPTY_STREAM`, `ERROR`); `classify_deltas(deltas: Iterable[str]) -> StreamOutcome`
+  (pure; never `ERROR`); `StreamTurn` (frozen dataclass: `label`, `source` in
+  `{"context", "public"}`, `text`, `context`, `history`, `active_person`);
   `public_turns() -> list[StreamTurn]`; `StreamProtocolResult` (frozen dataclass of
   counts per source with `fallback_rate` and `graded`);
   `async measure_stream_protocol(turns, *, client, runs, generate=...) -> StreamProtocolResult`;
@@ -841,10 +1100,19 @@ def _staged_section(staged: StagedVerdicts | None) -> str | None:
 - `eval_chat.CliOptions` gains `mode: Literal["classic", "stream"] = "classic"` and
   `max_fallback_rate: float | None = Field(default=None, ge=0, le=1)`.
 
-The classification applies the production rules to the whole text:
-`parse_streaming_emotion(text, final=True)` then `validate_streaming_body_start(body)`;
-an empty body is `EMPTY`. The **fallback rate** is `(INVALID_PROTOCOL + EMPTY) /
-(VALID + INVALID_PROTOCOL + EMPTY)`; `ERROR` runs are reported but excluded from it.
+The classification consumes the deltas **incrementally, with production's own
+helpers** (`StreamState`, `_consume_preamble`, `_consume_body` from
+`server.streaming_render`, read-only here), and mirrors
+`_finalize_model_output`'s end-of-stream decisions. This matters: production stops
+validating the body once it has accepted its start, so the same reply fragmented
+differently can be valid or not ("EMO" + "TION:anger" is accepted live). Whole-text
+validation would give a different rate. `test_the_evaluator_agrees_with_production_for_every_fragmentation`
+runs the real `streaming._consume_llm_stream` (TTS stubbed) over fourteen replies and
+six fragmentations each and compares both the fallback and its logged reason; if
+production changes, that test fails here. The **fallback rate** is
+`(INVALID_PROTOCOL + EMPTY_STREAM) / (VALID + INVALID_PROTOCOL + EMPTY_STREAM)`; `ERROR`
+runs are reported but excluded from it. A tag with no body is `INVALID_PROTOCOL`, as in
+production; `EMPTY_STREAM` is a reply with nothing but whitespace.
 
 - [ ] **Step 1: Write the failing tests.** `tests/unit/test_eval_stream_protocol.py`:
 
@@ -852,43 +1120,130 @@ an empty body is `EMPTY`. The **fallback rate** is `(INVALID_PROTOCOL + EMPTY) /
 """Streaming-protocol measurement (Plan 0056, Task 4)."""
 
 from collections.abc import AsyncIterator
+import logging
+import re
+import time
 from typing import cast
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import httpx
 import pytest
 from server.exceptions import LLMError
+from server.streaming_render import StreamState
 
 from scripts.eval_stream_protocol import (
     StreamOutcome,
     StreamProtocolResult,
     StreamTurn,
-    classify_stream_text,
+    classify_deltas,
     measure_stream_protocol,
     public_turns,
     render_stream_report,
     stream_exit_code,
 )
+from server import streaming, tts
+
+_FENCE = "`" * 3  # built, not written: this file also lives inside a Markdown code fence
+
+_REPLIES = [
+    "EMOTION:joy\nHola, ¿cómo estás?",
+    "EMOTION:joy\nHola. ¿Cómo estás? Muy bien.",
+    "EMOTION:joy\n",
+    "EMOTION:joy\n   ",
+    "EMOTION:joy",
+    "",
+    "  \n",
+    "Hola sin etiqueta",
+    'EMOTION:joy\n{"response": "x"}',
+    "EMOTION:joy\n[1]",
+    f"EMOTION:joy\n{_FENCE}json\n{{}}\n{_FENCE}",
+    "EMOTION:joy\nEMOTION:anger\nhola",
+    "EMOTION:unknownemotion\nHola",
+    "emotion: joy\nHola",
+]
+
+
+def _fragmentations(text: str) -> list[list[str]]:
+    """Several ways the model's tokens could split one reply (empty deltas never occur)."""
+    ways = [
+        [text],
+        list(text),
+        [text[i : i + 2] for i in range(0, len(text), 2)],
+        [text[i : i + 3] for i in range(0, len(text), 3)],
+        text.splitlines(keepends=True),
+        [text[: len(text) // 2], text[len(text) // 2 :]],
+    ]
+    return [[piece for piece in way if piece] for way in ways]
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    "text, outcome",
+    "deltas, outcome",
     [
-        ("EMOTION:joy\nHola, ¿cómo estás?", StreamOutcome.VALID),
-        ("EMOTION:joy\n", StreamOutcome.EMPTY),
-        ("EMOTION:joy\n   ", StreamOutcome.EMPTY),
-        ("Hola sin etiqueta", StreamOutcome.INVALID_PROTOCOL),
-        ('EMOTION:joy\n{"response": "x"}', StreamOutcome.INVALID_PROTOCOL),
-        ("EMOTION:joy\nEMOTION:anger\nhola", StreamOutcome.INVALID_PROTOCOL),
-        ("EMOTION:joy", StreamOutcome.INVALID_PROTOCOL),
-        ("", StreamOutcome.INVALID_PROTOCOL),
+        (["EMOTION:joy\nHola, ¿cómo estás?"], StreamOutcome.VALID),
+        (["EMOTION:joy\n"], StreamOutcome.INVALID_PROTOCOL),
+        (["EMOTION:joy\n   "], StreamOutcome.INVALID_PROTOCOL),
+        (["Hola sin etiqueta"], StreamOutcome.INVALID_PROTOCOL),
+        (['EMOTION:joy\n{"response": "x"}'], StreamOutcome.INVALID_PROTOCOL),
+        (["EMOTION:joy\nEMOTION:anger\nhola"], StreamOutcome.INVALID_PROTOCOL),
+        (["EMOTION:joy"], StreamOutcome.INVALID_PROTOCOL),
+        ([], StreamOutcome.EMPTY_STREAM),
+        (["  \n"], StreamOutcome.EMPTY_STREAM),
     ],
 )
-def test_classify_stream_text_applies_the_production_rules(
-    text: str, outcome: StreamOutcome
+def test_classify_deltas_reports_the_production_outcome(
+    deltas: list[str], outcome: StreamOutcome
 ) -> None:
-    assert classify_stream_text(text) is outcome
+    assert classify_deltas(deltas) is outcome
+
+
+@pytest.mark.unit
+def test_the_outcome_depends_on_how_the_reply_is_fragmented_exactly_as_in_production() -> None:
+    """Production stops validating once the body start is accepted ("EMO" is not a tag)."""
+    reply = "EMOTION:joy\nEMOTION:anger\nhola"
+
+    assert classify_deltas([reply]) is StreamOutcome.INVALID_PROTOCOL
+    assert classify_deltas(["EMOTION:joy\nEMO", "TION:anger\nhola"]) is StreamOutcome.VALID
+
+
+async def _production_result(
+    fragments: list[str], monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> tuple[bool, str | None]:
+    """Run the real streaming consumer and return (fell back, logged fallback reason)."""
+
+    async def deltas(_client: object, _inputs: object) -> AsyncIterator[str]:
+        for fragment in fragments:
+            yield fragment
+
+    monkeypatch.setattr(streaming, "_text_deltas", deltas)
+    monkeypatch.setattr(tts, "synthesize", AsyncMock(return_value=("QQ==", 10)))
+    state = StreamState(request_start=time.perf_counter())
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="server.streaming_render"):
+        async for _line in streaming._consume_llm_stream(
+            cast("httpx.AsyncClient", Mock()), cast("streaming.PreparedTextTurn", None), state
+        ):
+            pass
+    match = re.search(r"reason=(\w+)", caplog.text)
+    return state.recordable is False, match.group(1) if match else None
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("reply", _REPLIES)
+async def test_the_evaluator_agrees_with_production_for_every_fragmentation(
+    reply: str, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Equivalence: the measured rate is the rate production would have lived."""
+    expected = {
+        None: StreamOutcome.VALID,
+        "invalid_protocol": StreamOutcome.INVALID_PROTOCOL,
+        "empty_stream": StreamOutcome.EMPTY_STREAM,
+    }
+    for fragments in _fragmentations(reply):
+        fell_back, reason = await _production_result(fragments, monkeypatch, caplog)
+
+        assert fell_back == (reason is not None)
+        assert classify_deltas(fragments) is expected[reason], fragments
 
 
 def _client() -> httpx.AsyncClient:
@@ -911,8 +1266,9 @@ def _generator(replies: list[str | Exception]):
         if isinstance(reply, Exception):
             raise reply
         midpoint = len(reply) // 2
-        yield reply[:midpoint]
-        yield reply[midpoint:]
+        for piece in (reply[:midpoint], reply[midpoint:]):
+            if piece:
+                yield piece
 
     return generate
 
@@ -920,17 +1276,22 @@ def _generator(replies: list[str | Exception]):
 @pytest.mark.unit
 async def test_measure_counts_each_outcome_and_keeps_errors_out_of_the_rate() -> None:
     result = await measure_stream_protocol(
-        [_turn(), _turn(), _turn(), _turn()],
+        [_turn(), _turn(), _turn(), _turn(), _turn()],
         client=_client(),
         runs=1,
         generate=_generator(
-            ["EMOTION:joy\nHola", "sin etiqueta", "EMOTION:joy\n", LLMError("boom")]
+            ["EMOTION:joy\nHola", "sin etiqueta", "", "EMOTION:joy\n", LLMError("boom")]
         ),
     )
 
-    assert (result.valid, result.invalid_protocol, result.empty, result.errors) == (1, 1, 1, 1)
-    assert result.graded == 3
-    assert result.fallback_rate == pytest.approx(2 / 3)
+    assert (result.valid, result.invalid_protocol, result.empty_stream, result.errors) == (
+        1,
+        2,
+        1,
+        1,
+    )
+    assert result.graded == 4
+    assert result.fallback_rate == pytest.approx(3 / 4)
 
 
 @pytest.mark.unit
@@ -964,8 +1325,12 @@ def test_public_turns_are_synthetic_and_context_free() -> None:
 
 @pytest.mark.unit
 def test_exit_code_applies_the_threshold_and_provider_errors() -> None:
-    clean = StreamProtocolResult(valid=19, invalid_protocol=1, empty=0, errors=0, by_source={})
-    errored = StreamProtocolResult(valid=19, invalid_protocol=0, empty=0, errors=1, by_source={})
+    clean = StreamProtocolResult(
+        valid=19, invalid_protocol=1, empty_stream=0, errors=0, by_source={}
+    )
+    errored = StreamProtocolResult(
+        valid=19, invalid_protocol=0, empty_stream=0, errors=1, by_source={}
+    )
 
     assert stream_exit_code(clean, max_fallback_rate=None) == 0
     assert stream_exit_code(clean, max_fallback_rate=0.10) == 0
@@ -976,7 +1341,7 @@ def test_exit_code_applies_the_threshold_and_provider_errors() -> None:
 @pytest.mark.unit
 def test_the_report_states_the_rate_and_never_prints_model_output() -> None:
     report = render_stream_report(
-        StreamProtocolResult(valid=57, invalid_protocol=3, empty=0, errors=0, by_source={}),
+        StreamProtocolResult(valid=57, invalid_protocol=3, empty_stream=0, errors=0, by_source={}),
         model="qwen2.5:3b",
         runs=5,
     )
@@ -1004,7 +1369,7 @@ async def test_run_cli_stream_mode_measures_and_never_calls_the_classic_generato
 ) -> None:
     measured = AsyncMock(
         return_value=StreamProtocolResult(
-            valid=60, invalid_protocol=0, empty=0, errors=0, by_source={}
+            valid=60, invalid_protocol=0, empty_stream=0, errors=0, by_source={}
         )
     )
     monkeypatch.setattr(eval_chat, "measure_stream_protocol", measured)
@@ -1031,10 +1396,13 @@ async def test_run_cli_stream_mode_measures_and_never_calls_the_classic_generato
 ```python
 """Streaming-protocol measurement for `just eval-chat --mode stream` (Plan 0056).
 
-Runs real turns through the production streaming generator and applies the production
-protocol rules (`server.streaming_protocol`) to the text it produces. It measures how
-often a reply would drop to the fallback phrase (0049 O-04); it never prints or stores
-model output.
+Runs real turns through the production streaming generator and consumes the deltas the
+way `server.streaming._consume_llm_stream` does: incrementally, with the production
+helpers, so a reply fragmented differently is classified differently exactly as it
+would be live (production stops validating once the body start is accepted). A test
+pins the equivalence against the real consumer for several fragmentations. It measures
+how often a reply would drop to the fallback phrase (0049 O-04); it never prints or
+stores model output.
 """
 
 from __future__ import annotations
@@ -1046,11 +1414,12 @@ from typing import TYPE_CHECKING
 
 from server.exceptions import LLMError
 from server.streaming_protocol import parse_streaming_emotion, validate_streaming_body_start
+from server.streaming_render import StreamState, _consume_body, _consume_preamble
 
 from server import llm_streaming
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable, Sequence
+    from collections.abc import AsyncIterator, Callable, Iterable, Sequence
 
     import httpx
     from server.cognition.identity import ActivePersonContext
@@ -1079,32 +1448,54 @@ _PUBLIC_UTTERANCES = (
 
 
 class StreamOutcome(enum.StrEnum):
-    """How one streamed reply ends under the production protocol rules."""
+    """How one streamed reply ends; the fallback reasons mirror production's."""
 
     VALID = "valid"
     INVALID_PROTOCOL = "invalid_protocol"
-    EMPTY = "empty"
+    EMPTY_STREAM = "empty_stream"
     ERROR = "error"
 
 
-def classify_stream_text(text: str) -> StreamOutcome:
-    """Classify a complete streamed reply with the production protocol rules.
+def _classify_end_of_stream(buffer: str, state: StreamState) -> StreamOutcome:
+    """Mirror `streaming_render._finalize_model_output`'s decisions, without any TTS."""
+    if state.pending_emotion is None and state.emotion is None:
+        try:
+            parse_streaming_emotion(buffer, final=True)
+        except LLMError:
+            return StreamOutcome.INVALID_PROTOCOL if buffer.strip() else StreamOutcome.EMPTY_STREAM
+    if state.emotion is None:
+        tail = buffer.strip()
+        if not tail:
+            return StreamOutcome.INVALID_PROTOCOL
+        try:
+            validate_streaming_body_start(tail)
+        except LLMError:
+            return StreamOutcome.INVALID_PROTOCOL
+    return StreamOutcome.VALID
+
+
+def classify_deltas(deltas: Iterable[str]) -> StreamOutcome:
+    """Classify one streamed reply the way production consumes it.
 
     Args:
-        text: The whole reply, deltas concatenated.
+        deltas: The text deltas in arrival order (empty deltas never occur live).
 
     Returns:
-        ``VALID``, ``EMPTY`` (a valid tag with no body) or ``INVALID_PROTOCOL``.
+        ``VALID``, ``INVALID_PROTOCOL`` or ``EMPTY_STREAM`` (nothing but whitespace).
     """
-    try:
-        parsed = parse_streaming_emotion(text, final=True)
-        if parsed is None:
+    state = StreamState(request_start=0.0)
+    buffer = ""
+    for delta in deltas:
+        buffer += delta
+        if state.pending_emotion is None and state.emotion is None:
+            buffer, consumed = _consume_preamble(buffer, state)
+            if not consumed:
+                continue
+        try:
+            buffer, _sentences = _consume_body(buffer, state)
+        except LLMError:
             return StreamOutcome.INVALID_PROTOCOL
-        _emotion, body = parsed
-        validate_streaming_body_start(body)
-    except LLMError:
-        return StreamOutcome.INVALID_PROTOCOL
-    return StreamOutcome.VALID if body.strip() else StreamOutcome.EMPTY
+    return _classify_end_of_stream(buffer, state)
 
 
 @dataclass(frozen=True)
@@ -1138,7 +1529,7 @@ class StreamProtocolResult:
 
     valid: int
     invalid_protocol: int
-    empty: int
+    empty_stream: int
     errors: int
     by_source: dict[str, StreamProtocolResult] = field(default_factory=dict)
 
@@ -1150,21 +1541,21 @@ class StreamProtocolResult:
     @property
     def graded(self) -> int:
         """Observations that count toward the rate (provider errors excluded)."""
-        return self.valid + self.invalid_protocol + self.empty
+        return self.valid + self.invalid_protocol + self.empty_stream
 
     @property
     def fallback_rate(self) -> float | None:
         """Share of graded replies that would drop to the fallback phrase."""
         if not self.graded:
             return None
-        return (self.invalid_protocol + self.empty) / self.graded
+        return (self.invalid_protocol + self.empty_stream) / self.graded
 
 
 def _tally(outcomes: Sequence[StreamOutcome]) -> StreamProtocolResult:
     return StreamProtocolResult(
         valid=outcomes.count(StreamOutcome.VALID),
         invalid_protocol=outcomes.count(StreamOutcome.INVALID_PROTOCOL),
-        empty=outcomes.count(StreamOutcome.EMPTY),
+        empty_stream=outcomes.count(StreamOutcome.EMPTY_STREAM),
         errors=outcomes.count(StreamOutcome.ERROR),
     )
 
@@ -1173,22 +1564,21 @@ async def _stream_once(
     turn: StreamTurn, client: httpx.AsyncClient, generate: StreamGenerator
 ) -> StreamOutcome:
     try:
-        text = "".join(
-            [
-                delta
-                async for delta in generate(
-                    client,
-                    turn.text,
-                    context=turn.context,
-                    history=turn.history,
-                    active_person=turn.active_person,
-                )
-            ]
-        )
+        deltas = [
+            delta
+            async for delta in generate(
+                client,
+                turn.text,
+                context=turn.context,
+                history=turn.history,
+                active_person=turn.active_person,
+            )
+            if delta
+        ]
     except Exception as exc:
         logger.warning("Provider call failed for %s (%s)", turn.label, type(exc).__name__)
         return StreamOutcome.ERROR
-    return classify_stream_text(text)
+    return classify_deltas(deltas)
 
 
 async def measure_stream_protocol(
@@ -1221,7 +1611,7 @@ async def measure_stream_protocol(
     return StreamProtocolResult(
         overall.valid,
         overall.invalid_protocol,
-        overall.empty,
+        overall.empty_stream,
         overall.errors,
         {source: _tally(items) for source, items in by_source.items()},
     )
@@ -1234,19 +1624,19 @@ def _percent(rate: float | None) -> str:
 def render_stream_report(result: StreamProtocolResult, *, model: str, runs: int) -> str:
     """Render the measurement as Markdown: counts and rates only, never model output."""
     rows = [
-        "| Set | Valid | Invalid protocol | Empty body | Provider errors | Fallback rate |",
+        "| Set | Valid | Invalid protocol | Empty stream | Provider errors | Fallback rate |",
         "|---|---:|---:|---:|---:|---:|",
     ]
     for label, part in (("all", result), *sorted(result.by_source.items())):
         rows.append(
-            f"| {label} | {part.valid} | {part.invalid_protocol} | {part.empty} | "
+            f"| {label} | {part.valid} | {part.invalid_protocol} | {part.empty_stream} | "
             f"{part.errors} | {_percent(part.fallback_rate)} |"
         )
     return (
         "# Streaming protocol measurement\n\n"
         f"- model: {model}\n- runs per turn: {runs}\n"
         f"- graded observations: {result.graded}\n"
-        f"- fallback rate (invalid protocol + empty body, over graded): "
+        f"- fallback rate (invalid protocol + empty stream, over graded): "
         f"{_percent(result.fallback_rate)}\n\n" + "\n".join(rows) + "\n"
     )
 
@@ -1340,9 +1730,12 @@ async def _run_stream_mode(
   inference, the body `_transcribe_sync` has today). `_transcribe_sync` keeps its
   name and signature (a slow test patches it) and now discards an echo.
 
-A transcript is an echo when, after folding case, accents and punctuation, it has at
-least three words and either is a contiguous part of the normalized prompt, or is the
-prompt repeated and nothing else.
+A transcript is an echo when, after folding case, accents and punctuation, it is a
+contiguous part of the normalized prompt covering at least 60 % of the prompt's words
+(never fewer than three; five of the default prompt's seven), or is the prompt repeated
+and nothing else. A prompt of fewer than three words never triggers the guard. This is
+a heuristic with an accepted, documented false positive (decision D-1, and the test
+`test_documented_limit_five_consecutive_prompt_words_are_discarded`).
 
 - [ ] **Step 1: Write the failing tests.** `tests/unit/test_stt_echo_guard.py`:
 
@@ -1379,12 +1772,38 @@ def test_the_prompt_or_part_of_it_is_an_echo(transcript: str) -> None:
         "Iroko",
         "Hola Iroko",
         "robot doméstico",
+        "un robot doméstico",
+        "Conversación con un robot",
         "Hola Iroko, ¿cómo estás hoy?",
         f"{_PROMPT}, apaga la luz de la sala",
     ],
 )
-def test_real_speech_is_never_an_echo(transcript: str) -> None:
+def test_ordinary_speech_is_not_treated_as_an_echo(transcript: str) -> None:
+    """Four of the prompt's seven words or fewer, or anything longer, passes through."""
     assert is_prompt_echo(transcript, _PROMPT) is False
+
+
+@pytest.mark.unit
+def test_a_short_prompt_never_triggers_the_guard() -> None:
+    """A one- or two-word prompt is a name or a greeting a user may really say."""
+    assert is_prompt_echo("Iroko", "Iroko") is False
+    assert is_prompt_echo("Hola Iroko", "Hola Iroko") is False
+
+
+@pytest.mark.unit
+def test_a_three_word_prompt_echoed_exactly_is_discarded() -> None:
+    assert is_prompt_echo("Habla con Iroko", "Habla con Iroko") is True
+
+
+@pytest.mark.unit
+def test_documented_limit_five_consecutive_prompt_words_are_discarded() -> None:
+    """ACCEPTED FALSE POSITIVE (Plan 0056 D-1): the guard is a heuristic.
+
+    A user who says five or more consecutive words of the prompt, verbatim, is
+    discarded like an echo. Nobody says that sentence by chance, and the cost is a
+    "no speech understood" turn, never a wrong answer.
+    """
+    assert is_prompt_echo("Un robot doméstico llamado Iroko", _PROMPT) is True
 
 
 @pytest.mark.unit
@@ -1449,9 +1868,18 @@ def test_the_discard_is_logged_without_the_transcript(
 - [ ] **Step 2: Watch them fail.** `uv run pytest tests/unit/test_stt_echo_guard.py -v -n0`
   — `cannot import name 'is_prompt_echo'`. Expected.
 
-- [ ] **Step 3: Implement.** In `stt.py` add `import re`, `import unicodedata`, a module
-  constant `_MIN_ECHO_WORDS = 3  # shorter phrases ("Iroko", "robot doméstico") are real speech`
-  and:
+- [ ] **Step 3: Implement.** In `stt.py` add `import math`, `import re`,
+  `import unicodedata` and, above `_executor`, the two constants of the heuristic:
+
+```python
+# Echo-guard heuristic (Plan 0056 D-1). A prompt shorter than this is a name or a greeting
+# a user may really say, so the guard stays off; a longer one is only "echoed" when the
+# transcript covers at least this share of its words (five of the default prompt's seven).
+_MIN_PROMPT_WORDS = 3
+_MIN_ECHO_SHARE = 0.6
+```
+
+  then the helpers:
 
 ```python
 def _normalize_words(text: str) -> str:
@@ -1465,23 +1893,29 @@ def is_prompt_echo(transcript: str, prompt: str | None) -> bool:
     """Return whether Whisper merely repeated its own initial prompt.
 
     On a noise clip Whisper can return the ``initial_prompt`` as if it were speech.
-    Short phrases are never treated as an echo: the prompt contains real words a
-    user may say ("Iroko").
+    This is a heuristic with a known false positive: a user who says, verbatim, at
+    least 60 % of the prompt's words in a row (five of the default prompt's seven)
+    is discarded too. Shorter phrases ("Iroko", "un robot doméstico") and any prompt
+    of fewer than three words never trigger it.
 
     Args:
         transcript: Text Whisper returned.
         prompt: The ``initial_prompt`` it was given, if any.
 
     Returns:
-        True when the transcript has at least three words and is a contiguous part
-        of the prompt, or the prompt repeated and nothing else.
+        True when the transcript is a contiguous part of the prompt covering at
+        least 60 % of its words, or the prompt repeated and nothing else.
     """
     if not prompt:
         return False
-    heard = _normalize_words(transcript)
-    if len(heard.split()) < _MIN_ECHO_WORDS:
-        return False
     reference = _normalize_words(prompt)
+    reference_words = reference.split()
+    if len(reference_words) < _MIN_PROMPT_WORDS:
+        return False
+    heard = _normalize_words(transcript)
+    needed = max(_MIN_PROMPT_WORDS, math.ceil(_MIN_ECHO_SHARE * len(reference_words)))
+    if len(heard.split()) < needed:
+        return False
     if f" {heard} " in f" {reference} ":
         return True
     return reference in heard and not heard.replace(reference, " ").strip()
@@ -1536,8 +1970,14 @@ def _transcribe_sync(audio: bytes, hotwords: str | None) -> str:
 kinds `white`, `hiss`, `pink`, `hum`; deterministic per seed),
 `word_error_rate(reference: str, hypothesis: str) -> float`,
 `summarize_noise(transcripts: Sequence[str], prompt: str | None) -> NoiseSummary`,
-`first_turn_decision(first: Sequence[float], later: Sequence[float]) -> bool`.
-Model-loading parts are not unit-tested; they are exercised in Task 7.
+`summarize_first_turn(runs: Sequence[Sequence[tuple[int, float]]]) -> FirstTurnSummary`
+(each run is one fresh process's `(phrase_index, word_error_rate)` in call order; the
+summary compares the first call with the same phrase later in the same process and
+also reports the mean over every call, with `needs_follow_up` above 0.15 and
+`accuracy_flag` above 0.25). The first-turn probe transcribes three fixed phrases
+three times per process in rotated order, so each phrase is the first utterance in
+some process. Model-loading parts are not unit-tested; both subcommands were smoke-run
+against the real local models in the rehearsal and are exercised again in Task 7.
 
 - [ ] **Step 1: Write the failing tests.** `tests/unit/test_stt_probes.py`:
 
@@ -1550,8 +1990,8 @@ import wave
 import pytest
 
 from scripts.stt_probes import (
-    first_turn_decision,
     noise_clip,
+    summarize_first_turn,
     summarize_noise,
     word_error_rate,
 )
@@ -1614,11 +2054,53 @@ def test_noise_follow_up_needs_more_than_five_percent_of_clips_to_be_other() -> 
     assert summarize_noise(["x y z"] * 5 + [""] * 95, _PROMPT).needs_follow_up is False
 
 
+def _run(first: float, later: float, *, rounds: int = 2) -> list[tuple[int, float]]:
+    """One fresh process: three phrases per round, the first call scoring ``first``."""
+    calls = [(index % 3, later) for index in range(3 * rounds)]
+    calls[0] = (0, first)
+    return calls
+
+
 @pytest.mark.unit
-def test_first_turn_decision_compares_the_means_with_a_fixed_margin() -> None:
-    assert first_turn_decision([0.5, 0.4], [0.1, 0.1, 0.2]) is True
-    assert first_turn_decision([0.2, 0.2], [0.1, 0.1, 0.2]) is False
-    assert first_turn_decision([0.3], [0.15]) is False  # exactly +0.15 is not "more than"
+def test_first_turn_follow_up_needs_the_first_call_to_be_clearly_worse() -> None:
+    worse = summarize_first_turn([_run(0.75, 0.5), _run(0.75, 0.5)])
+    close = summarize_first_turn([_run(0.625, 0.5), _run(0.625, 0.5)])
+
+    assert worse.delta_mean == pytest.approx(0.25)
+    assert worse.needs_follow_up is True
+    assert close.delta_mean == pytest.approx(0.125)
+    assert close.needs_follow_up is False
+
+
+@pytest.mark.unit
+def test_the_comparison_is_the_same_phrase_inside_the_same_process() -> None:
+    """A hard phrase that is hard on every call is not a first-turn effect."""
+    run = [(0, 0.5), (1, 0.0), (2, 0.0), (0, 0.5), (1, 0.0), (2, 0.0)]
+
+    assert summarize_first_turn([run]).delta_mean == pytest.approx(0.0)
+
+
+@pytest.mark.unit
+def test_uniformly_bad_transcription_is_flagged_as_accuracy_not_as_a_first_turn_effect() -> None:
+    """Every call equally wrong never opens the warm-up follow-up, but is reported."""
+    summary = summarize_first_turn([_run(0.75, 0.75)] * 3)
+
+    assert summary.needs_follow_up is False
+    assert summary.accuracy_flag is True
+    assert summary.overall_mean == pytest.approx(0.75)
+
+
+@pytest.mark.unit
+def test_good_transcription_raises_no_flag() -> None:
+    summary = summarize_first_turn([_run(0.0, 0.0)] * 3)
+
+    assert (summary.needs_follow_up, summary.accuracy_flag) == (False, False)
+
+
+@pytest.mark.unit
+def test_a_process_with_no_later_call_of_the_first_phrase_is_rejected() -> None:
+    with pytest.raises(ValueError, match="later"):
+        summarize_first_turn([[(0, 0.1), (1, 0.1), (2, 0.1)]])
 ```
 
 - [ ] **Step 2: Watch them fail.** `uv run pytest tests/unit/test_stt_probes.py -v -n0`
@@ -1631,7 +2113,7 @@ def test_first_turn_decision_compares_the_means_with_a_fixed_margin() -> None:
 
 Usage:
     just probe-stt noise [--clips 100] [--seconds 1.5] [--wav local_clip.wav ...]
-    just probe-stt first-turn [--processes 5] [--calls 4]
+    just probe-stt first-turn [--processes 5] [--rounds 3]
 
 Both load the real Whisper model through the production `server.stt` module, so run
 them with the server stopped. Audio contract: WAV · 16000 Hz · mono · int16. Noise is
@@ -1668,7 +2150,8 @@ logger = logging.getLogger(__name__)
 _SAMPLE_RATE = 16_000
 _NOISE_KINDS = ("white", "hiss", "pink", "hum")
 _NOISE_FOLLOW_UP_RATE = 0.05  # Plan 0056 D-6
-_FIRST_TURN_MARGIN = 0.15  # Plan 0056 D-6
+_FIRST_TURN_MARGIN = 0.15  # Plan 0056 D-6: first call worse than the same phrase later
+_ACCURACY_FLAG_WER = 0.25  # Plan 0056 D-6: reported, never opens a follow-up by itself
 _PHRASES = (
     "¿Qué hora es en este momento?",
     "Enciende la luz de la sala, por favor.",
@@ -1763,9 +2246,58 @@ def summarize_noise(transcripts: Sequence[str], prompt: str | None) -> NoiseSumm
     return NoiseSummary(len(transcripts), empty, echo, len(transcripts) - empty - echo)
 
 
-def first_turn_decision(first: Sequence[float], later: Sequence[float]) -> bool:
-    """Plan 0056 D-6: True when call 1 is worse than the later calls by more than 0.15."""
-    return statistics.fmean(first) - statistics.fmean(later) > _FIRST_TURN_MARGIN
+@dataclass(frozen=True)
+class FirstTurnSummary:
+    """First-utterance accuracy against the same phrase later in the same process."""
+
+    first_mean: float
+    later_mean: float
+    delta_mean: float
+    overall_mean: float
+
+    @property
+    def needs_follow_up(self) -> bool:
+        """Plan 0056 D-6: the first call is worse by more than 0.15 (a warm-up effect)."""
+        return self.delta_mean > _FIRST_TURN_MARGIN
+
+    @property
+    def accuracy_flag(self) -> bool:
+        """Every call is poor: a general accuracy finding, not a first-turn effect."""
+        return self.overall_mean > _ACCURACY_FLAG_WER
+
+
+def summarize_first_turn(runs: Sequence[Sequence[tuple[int, float]]]) -> FirstTurnSummary:
+    """Compare each process's first call with the same phrase later in that process.
+
+    Args:
+        runs: One list per fresh process of ``(phrase_index, word_error_rate)`` in call
+            order; the first entry is that process's first utterance.
+
+    Returns:
+        Mean error of the first calls, of the same phrases later, their paired
+        difference and the mean over every call.
+
+    Raises:
+        ValueError: If a process never repeats its first phrase.
+    """
+    firsts: list[float] = []
+    laters: list[float] = []
+    deltas: list[float] = []
+    for run in runs:
+        phrase, first_wer = run[0]
+        same_later = [wer for index, wer in run[1:] if index == phrase]
+        if not same_later:
+            raise ValueError("a process must repeat its first phrase in a later call")
+        firsts.append(first_wer)
+        laters.append(statistics.fmean(same_later))
+        deltas.append(first_wer - laters[-1])
+    every = [wer for run in runs for _index, wer in run]
+    return FirstTurnSummary(
+        first_mean=statistics.fmean(firsts),
+        later_mean=statistics.fmean(laters),
+        delta_mean=statistics.fmean(deltas),
+        overall_mean=statistics.fmean(every),
+    )
 
 
 def _run_noise(args: argparse.Namespace) -> int:
@@ -1785,34 +2317,53 @@ def _run_noise(args: argparse.Namespace) -> int:
     return 0
 
 
-async def _first_turn_child(calls: int) -> list[float]:
+async def _first_turn_child(rotation: int, rounds: int) -> list[tuple[int, float]]:
+    """Transcribe the three phrases ``rounds`` times in a fresh process, rotated."""
     stt.preload()
     tts.preload()
-    audio_base64, _duration_ms = await tts.synthesize(_PHRASES[0])
-    wav = base64.b64decode(audio_base64)
-    return [word_error_rate(_PHRASES[0], await stt.transcribe(wav)) for _ in range(calls)]
+    wavs: dict[int, bytes] = {}
+    for index, phrase in enumerate(_PHRASES):
+        audio_base64, _duration_ms = await tts.synthesize(phrase)
+        wavs[index] = base64.b64decode(audio_base64)
+    order = [(rotation + offset) % len(_PHRASES) for offset in range(len(_PHRASES))] * rounds
+    return [
+        (index, word_error_rate(_PHRASES[index], await stt.transcribe(wavs[index])))
+        for index in order
+    ]
 
 
 def _run_first_turn(args: argparse.Namespace) -> int:
     runs = [
-        json.loads(
-            subprocess.run(  # noqa: S603 — fixed interpreter and our own script
-                [sys.executable, __file__, "first-turn-child", "--calls", str(args.calls)],
-                capture_output=True,
-                text=True,
-                check=True,
+        [
+            (int(index), float(wer))
+            for index, wer in json.loads(
+                subprocess.run(  # noqa: S603 — fixed interpreter and our own script
+                    [
+                        sys.executable,
+                        __file__,
+                        "first-turn-child",
+                        "--rotation",
+                        str(process % len(_PHRASES)),
+                        "--rounds",
+                        str(args.rounds),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                .stdout.strip()
+                .splitlines()[-1]
             )
-            .stdout.strip()
-            .splitlines()[-1]
-        )
-        for _ in range(args.processes)
+        ]
+        for process in range(args.processes)
     ]
-    first = [run[0] for run in runs]
-    later = [wer for run in runs for wer in run[1:]]
+    summary = summarize_first_turn(runs)
     print(  # noqa: T201
-        f"processes={args.processes} calls={args.calls} "
-        f"first_mean_wer={statistics.fmean(first):.3f} later_mean_wer={statistics.fmean(later):.3f} "
-        f"follow_up={'YES' if first_turn_decision(first, later) else 'no'}"
+        f"processes={args.processes} rounds={args.rounds} "
+        f"first_mean_wer={summary.first_mean:.3f} later_mean_wer={summary.later_mean:.3f} "
+        f"delta={summary.delta_mean:.3f} overall_mean_wer={summary.overall_mean:.3f} "
+        f"follow_up={'YES' if summary.needs_follow_up else 'no'} "
+        f"accuracy_flag={'YES' if summary.accuracy_flag else 'no'}"
     )
     return 0
 
@@ -1827,16 +2378,17 @@ def main() -> int:
     noise.add_argument("--wav", action="append", default=[])
     first = sub.add_parser("first-turn")
     first.add_argument("--processes", type=int, default=5)
-    first.add_argument("--calls", type=int, default=4)
+    first.add_argument("--rounds", type=int, default=3)
     child = sub.add_parser("first-turn-child")
-    child.add_argument("--calls", type=int, default=4)
+    child.add_argument("--rotation", type=int, default=0)
+    child.add_argument("--rounds", type=int, default=3)
     args = parser.parse_args()
     logging.basicConfig(level=logging.WARNING)
     if args.command == "noise":
         return _run_noise(args)
     if args.command == "first-turn":
         return _run_first_turn(args)
-    print(json.dumps(asyncio.run(_first_turn_child(args.calls))))  # noqa: T201
+    print(json.dumps(asyncio.run(_first_turn_child(args.rotation, args.rounds))))  # noqa: T201
     return 0
 
 
@@ -1880,15 +2432,18 @@ the executor records the output lines, never a transcript. Raw reports go under
   counts echoes itself, so the guard does not hide what Whisper did. Apply D-6 (more
   than 5 % "other" opens a hallucination-filter plan). If Pipec has a local clip that
   reproduced the echo, add `--wav` with it (the file stays local; only counts print).
-- [ ] **Step 3: First turn.** `just probe-stt first-turn --processes 5 --calls 4`.
-  Apply D-6 (mean call-1 error rate more than 0.15 above the later calls opens a
-  warm-up plan).
+- [ ] **Step 3: First turn.** `just probe-stt first-turn --processes 5 --rounds 3`.
+  Apply D-6 (the mean paired difference above 0.15 opens a warm-up plan). Record
+  `accuracy_flag` too: when `YES` it is an accuracy finding about synthetic speech, to
+  hand to Pipec, never an automatic follow-up.
 - [ ] **Step 4: Record.** `docs/evals/0056-voice-pipeline-measurements.md` holds: date,
   commit SHA, hardware line ("non-dedicated laptop, CPU, Whisper `small`, `qwen2.5:3b`"),
   one table per measurement (command, counts, rate, rule, decision) and an honest
   limitations paragraph (synthetic noise is a proxy for the robot's room; the first-turn
-  probe isolates STT from the server's other start-up work; 120 observations give a wide
-  interval). Numbers only — no transcript, no name.
+  probe isolates STT from the server's other start-up work and uses Piper speech, not
+  Pipec's voice; 120 observations give a wide interval; the thresholds are decision
+  rules agreed in advance, not proof of general reliability). Numbers only — no
+  transcript, no name.
 - [ ] **Step 5: Apply the rules.** For each triggered rule add one `Unplanned` row to the
   roadmap portfolio naming its measured trigger (streaming-protocol fallback;
   hallucination filter; Whisper warm-up). For each rule that did not trigger, write
@@ -1979,11 +2534,15 @@ uv run pytest -m "not slow and not hardware and not eval" `
 - `run_pipeline` passes an HTTP client to the LLM and the module loads without
   PortAudio; `just test-pipeline` and the justfile describe a smoke test (Task 2).
 - The dataset is version 2 with a scope per scenario; the report carries personal,
-  family and full-suite verdicts; the exit code is unchanged (Task 3).
+  family and full-suite verdicts, each stage judged on the gates its scenarios feed
+  (a complete gating run can pass); the exit code is unchanged (Task 3).
 - `just eval-chat --mode stream` reports counts and the fallback rate, never model
-  output, and excludes provider errors from the rate (Task 4).
-- A transcript that is the prompt (or a three-word-or-longer part of it, or the prompt
-  repeated) is discarded; "Iroko" and "Hola Iroko" pass (Task 5).
+  output, excludes provider errors from the rate and classifies each reply exactly as
+  production's consumer does, proven by an equivalence test (Task 4).
+- A transcript that is the prompt, a part of it covering at least 60 % of its words,
+  or the prompt repeated is discarded; "Iroko", "Hola Iroko" and "un robot doméstico"
+  pass; the accepted false positive is documented and pinned (Task 5).
+- The unusable-emotion log carries no model text (Task 1).
 - Both probes exist with unit-tested pure helpers (Task 6).
 - The three measurements are recorded with their rules applied, and every triggered
   follow-up is a named roadmap row (Task 7).
@@ -2002,6 +2561,10 @@ With Pipec, one session after the gates pass (outcomes and timings only):
    through the face or a fresh PIN as in Plan 0050's acceptance). Record the active flags.
 4. Stay silent with the room's normal noise for a few turns: the robot says "No speech
    understood" and never speaks or answers the prompt text.
+5. Right after a fresh `just run-server` start, say one ordinary sentence as the very
+   first utterance and record whether it was transcribed correctly (yes / no). This is
+   the roadmap's first-turn criterion; the probe in Task 7 only measures a relative
+   degradation on synthetic speech.
 
 ## Rollback
 
