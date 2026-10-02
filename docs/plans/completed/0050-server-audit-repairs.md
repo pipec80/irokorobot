@@ -1,7 +1,7 @@
 # 0050 — Server audit repairs
 
-> **Status:** `Closed` 2026-10-01 — implemented on `fix/0050-server-audit-repairs`
-> (Tasks 1–12, one commit each), automated gates green, real-hardware acceptance
+> **Status:** `Closed` 2026-10-01 — merged as PR #154 (`a496c1f`) from
+> `fix/0050-server-audit-repairs` (Tasks 1–12, one commit each), automated gates green, real-hardware acceptance
 > recorded below with one case not run (the two-face veto; no second person was
 > available). Promoted and selected as `NOW` by Pipec on 2026-10-01 (decisions 1–5
 > confirmed as proposed). Was a draft after Plan 0047 closed 2026-09-25. Queue
