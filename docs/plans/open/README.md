@@ -49,6 +49,15 @@ palabra completa). `just gate` verde con 1695 tests y aceptación en hardware de
 Pipec, salvo el veto de dos caras, que no se corrió. Ya no hay un plan `NOW`;
 Pipec elige el siguiente.
 
+[0056 — voice-pipeline reliability and diagnostics](0056-voice-pipeline-reliability-and-diagnostics.md)
+está **Ready** y es el `NOW` (promovido por Pipec el 2026-10-02): nueve tareas que reparan lo determinista (parser clásico,
+`just test-pipeline`, guarda contra el eco del prompt de Whisper), amplían los evaluadores
+(`eval-chat --mode stream`, veredictos por etapas con dataset versión 2) y **miden** lo que no se
+conoce (fallback del protocolo de streaming, eco y alucinaciones sobre ruido sintético, primer turno
+tras reiniciar), con la regla de decisión fijada antes de medir. Sus siete decisiones están
+confirmadas; se ejecuta en una sesión nueva, en su propia rama desde `main`, y su Task 0
+revalida todo contra esa base antes de tocar código.
+
 [ADR-0015](../../adr/0015-owner-grant-scope-and-speaker-binding.md) (**Accepted**, 2026-09-25)
 liga el grant PIN a una operación (hoy incumple ADR-0009) y, por etapas, a la
 evidencia del hablante; el Plan 0051 lo implementa como primer plan de CM-1 y aún no está redactado.
