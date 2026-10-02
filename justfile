@@ -118,7 +118,7 @@ memory-test *ARGS:
 eval-memory *ARGS:
     uv run --env-file .env python scripts/eval_consolidation.py {{ARGS}}
 
-# Eval aislado de fidelidad del LLM; requiere provider real, no usa STT/retrieval/TTS
+# Eval de fidelidad del LLM (clásico) o, con --mode stream, del protocolo EMOTION: del streaming; requiere Ollama real, no usa STT/retrieval/TTS
 eval-chat *ARGS:
     uv run --env-file .env python scripts/eval_chat.py {{ARGS}}
 
