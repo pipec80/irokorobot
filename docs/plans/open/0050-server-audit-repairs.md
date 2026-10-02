@@ -4173,12 +4173,14 @@ speaker flags on, streaming mode, `LOG_CONVERSATION_TEXT` on:
 | 1 — `just setup-personal status` on the real database | PASS: `schema_version=8`, `owner_count=1`, `active_child_relation_count=2`, `active_credential_count=1`, `personal_security_ready=True`. |
 | 2 — streaming generic turn | PASS: `outcome=ok`, `route=stream.legacy_text_turn`, 2 chunks, `llm=16517ms` (first model call after start-up, the known cold-load baseline), total 18744 ms; no identity resolved and memory skipped. |
 | 2 — streaming introduction case ("te presento a mi amigo Tom") | PASS: answered as ordinary conversation (`outcome=ok`, 2 chunks, `llm=3123ms`, total 5444 ms), not the enrollment refusal; no entity or role created (not queried), memory skipped. The model's reply is its own wording and says nothing the plan checks. |
-| 2 — classic generic turn and classic introduction | Not run yet. |
+| 2 — classic generic turn | PASS: `route=voice.legacy_text_turn`, `llm=3648ms`, total 6349 ms, no identity resolved, memory skipped. |
+| 2 — classic introduction ("te presento a mi amigo Tom") | PASS: answered as a greeting (`need=generic_conversation`, `llm=6107ms`, total 10226 ms), not the enrollment refusal; memory skipped and discarded. |
+| 4 — owner-face authorized turn, classic | PASS: `Identity fusion: face_only`, speaker verdict `unknown`, `status=identified role=owner`, `need=own_children_list status=known source=deterministic`, `llm_ms=0`, total 5291 ms. A mis-transcribed first attempt ("¿Quién es a mis hijos?") resolved to `protected_household` and got the fixed "todavía no está conectada" answer with `llm_ms=0` — the existing behaviour for other household questions, caused by STT, not by this plan. |
 | 3 — PIN token without a face (both modes), replay, no token | Not run yet. |
 | 4 — owner-face authorized turn, streaming | PASS (partial): the protected child-list question was answered through the face, `Identity fusion: face_only`, speaker verdict `unknown`, `need=own_children_list status=known source=deterministic`, `llm_ms=0`, total 2995 ms, `chunks=1`. Start-up reached ONLINE in about 9 s with both models warmed. The two-face veto was not run. |
 | 5 — `/vision/respond` scene question (classic) | Not run yet. |
 
-This is not the plan's acceptance: the classic-mode part of case 2, case 3, the
+This is not the plan's acceptance: case 3 (PIN without a face), the two-face
 veto of case 4 and case 5 are still open.
 
 ## Rollback
