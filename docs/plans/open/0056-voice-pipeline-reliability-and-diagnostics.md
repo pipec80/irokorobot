@@ -2711,6 +2711,31 @@ Revert the squash-merged PR as one unit. No schema migration, wire change or new
 dependency. Reverting the dataset bump restores version 1; the 0046 baseline report
 was never rewritten.
 
+## Execution record
+
+Branch `fix/0056-voice-pipeline`, created from `main` at `0d94e2f` (2026-10-02).
+
+- **Task 0.** Clean tree; `just gate` passed with 1695 tests, the baseline. Every symbol
+  named above exists as described. Eleven `docs/` files mention `test-pipeline`,
+  `invalid_protocol` or *prompt echo* (the list Task 8 reviews).
+- **Tasks 1 to 6.** One commit each; each new test was observed RED for the stated
+  reason (Task 1: 16 failures, as rehearsed) before its implementation. `just test`
+  after Task 6: 1805 tests, equal to the rehearsal.
+- **Deviation 1 (found by running Task 7).** `just eval-chat` failed under direct
+  execution (`No module named 'scripts'`): `python scripts/eval_chat.py` puts `scripts/`,
+  not the repo root, on `sys.path`, which an in-process test cannot see. Fixed with the
+  bootstrap `eval_longitudinal_memory.py` already uses, plus a subprocess test
+  (`1b4707a`).
+- **Deviation 2 (found by independent review).** On a non-gating run the staged report
+  still called the personal verdict "CM-7 exit evidence" and said the four gates had
+  been applied. `_staged_section` now takes `gating` and labels a partial run
+  "not acceptance evidence"; the full-report test covers it (`213c989`). The gating
+  wording and its test are unchanged. `just test`: 1807 tests.
+- **Task 7.** Measurements recorded in
+  [`docs/evals/0056-voice-pipeline-measurements.md`](../../evals/0056-voice-pipeline-measurements.md):
+  streaming fallback 29.17 % (follow-up opened), noise 0 % and first-turn difference
+  0.000 (both closed).
+
 ## Closure
 
 One PR from `fix/0056-voice-pipeline`, based on `main` after the Task 0 revalidation.
