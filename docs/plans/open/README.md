@@ -39,16 +39,15 @@ inventario de lectura y una campaña de revisión independiente propuesta.
 No reemplaza al plan NOW (0047 cerró el 2026-09-25) ni autoriza reparaciones de código. Su revisión
 independiente del 2026-09-23 y 2026-09-24 está en su §13.
 
-[0050 — server audit repairs](0050-server-audit-repairs.md) está **Ready** y es el `NOW`
-(promovido por Pipec el 2026-10-01 tras cerrar 0055): doce tareas acotadas, ensayadas y con pruebas propias
-que cierran los hallazgos reproducidos de 0049 (ciclos de importación,
-respuestas malformadas de Ollama, un solo punto de salida a Ollama, límite de
-imagen antes de decodificar, clasificación almacenada en el lector V4,
-readiness por dueño, contrato de entrada del setup, settings muertos, nombres
-fuera de los logs, guardas de arquitectura, matriz dueño → desconocido con
-reglas de intención por palabra completa, y documentación). Sus seis decisiones
-están confirmadas (las cinco últimas el 2026-10-01). Se ejecuta en una sesión nueva sobre su
-propia rama desde `main`; su Task 0 revalida todo contra esa base antes de tocar código.
+[0050 — server audit repairs](../completed/0050-server-audit-repairs.md) **cerró el 2026-10-01** y ya vive en
+`completed/`: ejecutó las doce tareas que cierran los hallazgos reproducidos de 0049
+(ciclos de importación, un solo punto de salida a Ollama, límite de imagen antes
+de decodificar, clasificación almacenada en el lector V4, readiness por dueño,
+contrato de entrada del setup, settings muertos, nombres fuera de los logs,
+guardas de arquitectura, matriz dueño → desconocido y reglas de intención por
+palabra completa). `just gate` verde con 1695 tests y aceptación en hardware de
+Pipec, salvo el veto de dos caras, que no se corrió. Ya no hay un plan `NOW`;
+Pipec elige el siguiente.
 
 [ADR-0015](../../adr/0015-owner-grant-scope-and-speaker-binding.md) (**Accepted**, 2026-09-25)
 liga el grant PIN a una operación (hoy incumple ADR-0009) y, por etapas, a la

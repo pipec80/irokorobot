@@ -352,11 +352,6 @@ async def recognize(image: bytes) -> tuple[list[FaceMatch], int]:
             unknown += 1
         elif found.entity_id not in matches:
             matches[found.entity_id] = found
-    names = ", ".join(m.name for m in matches.values()) or "—"
-    logger.info(
-        "Faces recognized: %d match(es) [%s], %d unknown",
-        len(matches),
-        names,
-        unknown,
-    )
+    # Counts only: a household member's name never goes to the log (Plan 0032).
+    logger.info("Faces recognized: %d match(es), %d unknown", len(matches), unknown)
     return list(matches.values()), unknown

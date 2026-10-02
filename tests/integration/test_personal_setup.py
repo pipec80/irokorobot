@@ -3,24 +3,34 @@
 import asyncio
 from collections.abc import AsyncIterator
 from pathlib import Path
+import sys
 
 from pydantic import SecretStr
 import pytest
 from server.cognition.identity import HouseholdRole
-from server.cognition.pin_credentials import verify_pin
+from server.cognition.pin_credentials import hash_pin, verify_pin
 from server.exceptions import BrainMemoryError
-from server.memory.household_authorization import bootstrap_initial_owner, get_active_role
+from server.memory.declarative import upsert_entity
+from server.memory.household_authorization import (
+    bootstrap_initial_owner,
+    get_active_role,
+    revoke_active_role,
+)
 from server.memory.meta import get_flag
-from server.memory.owner_credentials import get_active_owner_pin_credential
+from server.memory.owner_credentials import (
+    get_active_owner_pin_credential,
+    save_owner_pin_credential,
+)
 from server.personal_setup import (
     PersonalSetupInput,
     apply_personal_setup,
     check_db_available,
+    read_personal_setup_status,
     run_personal_setup_wizard,
 )
 from server.settings import settings
 
-from server import db
+from server import db, personal_setup
 
 _GUARD_TIMEOUT_S = 5.0
 
@@ -178,26 +188,48 @@ async def test_different_confirmed_pin_rotates_one_active_credential(setup_db: N
     assert int(total_row[0]) == 2
 
 
+def _setup_names() -> tuple[str, ...]:
+    """Every entity name the confirmed north-star input creates."""
+    data = _valid_input()
+    return (data.owner_name, *data.child_names)
+
+
 @pytest.mark.integration
-async def test_partial_failure_is_safely_resumable(setup_db: None) -> None:
-    """An invalid PIN fails after entities are written; a valid rerun still converges."""
+async def test_malformed_pin_is_rejected_before_any_write(setup_db: None) -> None:
+    """A PIN that could never be stored is refused before a single entity exists."""
     with pytest.raises(ValueError, match="6 to 12 ASCII digits"):
         await apply_personal_setup(
             PersonalSetupInput(
-                owner_name="Pipec",
-                child_names=("Joaquín", "Martina"),
-                pin=SecretStr("bad"),
+                owner_name="Owner", child_names=("Ana", "Juan"), pin=SecretStr("bad")
             )
         )
 
-    assert await _entities_named(("Pipec", "Joaquín", "Martina")) == 3
+    assert await _entities_named(("Owner", "Ana", "Juan")) == 0
     assert await get_active_owner_pin_credential() is None
 
+
+@pytest.mark.integration
+async def test_failure_after_the_children_is_safely_resumable(
+    setup_db: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A storage failure after the entities are written converges on a rerun."""
+    real_confirm_credential = personal_setup._confirm_credential
+
+    async def failing(**_kwargs: object) -> None:
+        raise BrainMemoryError("disk full")
+
+    monkeypatch.setattr(personal_setup, "_confirm_credential", failing)
+    with pytest.raises(BrainMemoryError, match="disk full"):
+        await apply_personal_setup(_valid_input())
+
+    assert await _entities_named(_setup_names()) == len(_setup_names())
+    assert await get_active_owner_pin_credential() is None
+
+    monkeypatch.setattr(personal_setup, "_confirm_credential", real_confirm_credential)
     result = await apply_personal_setup(_valid_input())
 
-    assert await _entities_named(("Pipec", "Joaquín", "Martina")) == 3
+    assert await _entities_named(_setup_names()) == len(_setup_names())
     assert result.personal_security_ready is True
-
     role_cursor = await db.get_conn().execute("SELECT COUNT(*) FROM household_role_assignments")
     role_row = await role_cursor.fetchone()
     await role_cursor.close()
@@ -257,23 +289,84 @@ async def test_wizard_cancels_on_blank_owner_name(setup_db: None) -> None:
 
 
 @pytest.mark.integration
-async def test_wizard_cancels_on_blank_children(setup_db: None) -> None:
-    """A blank children answer cancels before any write."""
-    io = _ScriptedIO(text_answers=["Pipec", ""], secret_answers=[])
+@pytest.mark.parametrize("children_line", ["", " , , "])
+async def test_wizard_accepts_an_owner_without_children(setup_db: None, children_line: str) -> None:
+    """A blank children answer completes an owner + PIN setup with no children."""
+    io = _ScriptedIO(
+        text_answers=["Owner", children_line, "SI"],
+        secret_answers=["482173", "482173"],
+    )
+
+    result = await run_personal_setup_wizard(
+        read_text=io.read_text, read_secret=io.read_secret, write_text=io.write_text
+    )
+
+    assert result is not None
+    assert result.child_entity_ids == ()
+    assert result.personal_security_ready is True
+    assert "Children: (none)" in io.outputs
+    assert await _child_relation_count() == 0
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("children_line", ["Ana María, Juan", "Ana   María,  , Juan,"])
+async def test_wizard_keeps_compound_names_and_splits_on_commas_only(
+    setup_db: None, children_line: str
+) -> None:
+    """A compound name stays one child; only commas separate children."""
+    io = _ScriptedIO(
+        text_answers=["Owner", children_line, "SI"],
+        secret_answers=["482173", "482173"],
+    )
+
+    result = await run_personal_setup_wizard(
+        read_text=io.read_text, read_secret=io.read_secret, write_text=io.write_text
+    )
+
+    assert result is not None
+    assert len(result.child_entity_ids) == 2
+    assert await _entities_named(("Ana María", "Juan")) == 2
+    assert "Children: Ana María, Juan" in io.outputs
+
+
+@pytest.mark.integration
+async def test_wizard_cancels_on_a_malformed_pin_before_any_write(setup_db: None) -> None:
+    """A PIN outside the 6-12 digit rule cancels the wizard with no entity written."""
+    io = _ScriptedIO(text_answers=["Owner", "Ana"], secret_answers=["abc", "abc"])
 
     result = await run_personal_setup_wizard(
         read_text=io.read_text, read_secret=io.read_secret, write_text=io.write_text
     )
 
     assert result is None
-    assert await _entities_named(("Pipec",)) == 0
+    assert any("6 to 12 ASCII digits" in line for line in io.outputs)
+    assert "abc" not in " ".join(io.outputs)
+    assert await _entities_named(("Owner", "Ana")) == 0
+
+
+def test_the_cli_reports_a_rejected_submission_without_a_traceback(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A ValueError from the setup service exits 1 with its message, not a traceback."""
+
+    async def rejected(_command: str | None) -> None:
+        raise ValueError("child_names must not contain a duplicate child name")
+
+    monkeypatch.setattr(personal_setup, "_run", rejected)
+    monkeypatch.setattr(sys, "argv", ["personal-setup"])
+
+    with pytest.raises(SystemExit) as caught:
+        personal_setup.main()
+
+    assert caught.value.code == 1
+    assert "duplicate child name" in capsys.readouterr().out
 
 
 @pytest.mark.integration
 async def test_wizard_cancels_on_pin_mismatch(setup_db: None) -> None:
     """A mismatched PIN confirmation cancels before any write."""
     io = _ScriptedIO(
-        text_answers=["Pipec", "Joaquín Martina"],
+        text_answers=["Pipec", "Joaquín, Martina"],
         secret_answers=["482173", "482174"],
     )
 
@@ -289,7 +382,7 @@ async def test_wizard_cancels_on_pin_mismatch(setup_db: None) -> None:
 async def test_wizard_cancels_on_non_si_confirmation(setup_db: None) -> None:
     """Any confirmation other than the literal SI cancels before any write."""
     io = _ScriptedIO(
-        text_answers=["Pipec", "Joaquín Martina", "yes"],
+        text_answers=["Pipec", "Joaquín, Martina", "yes"],
         secret_answers=["482173", "482173"],
     )
 
@@ -305,7 +398,7 @@ async def test_wizard_cancels_on_non_si_confirmation(setup_db: None) -> None:
 async def test_wizard_summary_redacts_pin_and_shows_only_names(setup_db: None) -> None:
     """The pre-confirmation summary never prints the PIN digits."""
     io = _ScriptedIO(
-        text_answers=["Pipec", "Joaquín Martina", "NO"],
+        text_answers=["Pipec", "Joaquín, Martina", "NO"],
         secret_answers=["482173", "482173"],
     )
 
@@ -325,7 +418,7 @@ async def test_wizard_summary_redacts_pin_and_shows_only_names(setup_db: None) -
 async def test_wizard_success_applies_setup_and_never_prints_secret(setup_db: None) -> None:
     """A confirmed SI answer applies the setup and never echoes the PIN."""
     io = _ScriptedIO(
-        text_answers=["Pipec", "Joaquín Martina", "SI"],
+        text_answers=["Pipec", "Joaquín, Martina", "SI"],
         secret_answers=["482173", "482173"],
     )
 
@@ -378,3 +471,71 @@ async def test_check_db_available_raises_when_a_transaction_is_already_open(
 
     may_release.set()
     await asyncio.wait_for(holder, timeout=_GUARD_TIMEOUT_S)
+
+
+@pytest.mark.integration
+async def test_status_is_ready_after_a_confirmed_setup(setup_db: None) -> None:
+    """The owner-scoped status agrees with a completed wizard setup."""
+    await apply_personal_setup(_valid_input())
+
+    status = await read_personal_setup_status()
+
+    assert status.personal_security_ready is True
+
+
+@pytest.mark.integration
+async def test_status_is_ready_for_an_owner_without_children(setup_db: None) -> None:
+    """Owner + PIN is a complete personal setup; children are optional."""
+    owner = await upsert_entity(name="Owner", type="person")
+    await bootstrap_initial_owner(person_entity_id=owner, confirmed_person_entity_id=owner)
+    await save_owner_pin_credential(person_entity_id=owner, credential=hash_pin("482173"))
+
+    status = await read_personal_setup_status()
+
+    assert status.active_child_relation_count == 0
+    assert status.personal_security_ready is True
+
+
+@pytest.mark.integration
+async def test_status_rejects_a_credential_belonging_to_another_person(setup_db: None) -> None:
+    """One owner and one credential are insufficient when their person IDs differ."""
+    result = await apply_personal_setup(_valid_input())
+    other = await upsert_entity(name="Canary Other", type="person")
+    # Deliberately seed an incoherent legacy row in the temporary test database.
+    # The public credential writer correctly rejects a non-owner.
+    async with db.transaction() as conn:
+        await conn.execute(
+            "UPDATE owner_pin_credentials SET person_entity_id = ? WHERE person_entity_id = ?",
+            (other, result.owner_entity_id),
+        )
+
+    status = await read_personal_setup_status()
+
+    assert status.owner_count == 1
+    assert status.active_credential_count == 1
+    assert status.personal_security_ready is False
+
+
+@pytest.mark.integration
+async def test_revoking_the_owner_role_revokes_the_pin_credential(setup_db: None) -> None:
+    """A person who is no longer the owner keeps no usable PIN credential."""
+    result = await apply_personal_setup(_valid_input())
+
+    await revoke_active_role(person_entity_id=result.owner_entity_id)
+
+    assert await get_active_owner_pin_credential() is None
+
+
+@pytest.mark.integration
+async def test_status_is_not_ready_after_the_owner_role_moves(setup_db: None) -> None:
+    """A successor owner without a credential is not a ready setup."""
+    result = await apply_personal_setup(_valid_input())
+    await revoke_active_role(person_entity_id=result.owner_entity_id)
+    successor = await upsert_entity(name="Successor", type="person")
+    await bootstrap_initial_owner(person_entity_id=successor, confirmed_person_entity_id=successor)
+
+    status = await read_personal_setup_status()
+
+    assert status.owner_count == 1
+    assert status.active_credential_count == 0
+    assert status.personal_security_ready is False

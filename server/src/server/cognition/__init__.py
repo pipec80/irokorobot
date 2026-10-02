@@ -7,13 +7,6 @@ from server.cognition.authorization import (
     DataVisibility,
     evaluate_authorization,
 )
-from server.cognition.controller import CognitiveController
-from server.cognition.household_tools import (
-    HouseholdKnowledgeTools,
-    HouseholdToolName,
-    HouseholdToolResult,
-    PreferencePredicate,
-)
 from server.cognition.identity import (
     ActivePersonContext,
     ActivePersonStatus,
@@ -58,17 +51,13 @@ __all__ = [
     "AuthorizationDecision",
     "AuthorizationRequest",
     "AuthorizationStatus",
-    "CognitiveController",
     "CognitiveEvent",
     "Confidence",
     "ConfidenceBasis",
     "ConsentStatus",
     "DataSensitivity",
     "DataVisibility",
-    "HouseholdKnowledgeTools",
     "HouseholdRole",
-    "HouseholdToolName",
-    "HouseholdToolResult",
     "IdentityEvidence",
     "IdentityEvidenceSource",
     "InformationNeed",
@@ -77,7 +66,6 @@ __all__ = [
     "KnowledgeStatus",
     "Observation",
     "ObservationModality",
-    "PreferencePredicate",
     "ResponseClaim",
     "ResponsePlan",
     "ResponseSource",

@@ -303,7 +303,7 @@ def test_stream_ambiguous_date_alias_avoids_llm(
     events = _parse_ndjson(response.text)
     assert [event["type"] for event in events] == ["text_heard", "emotion", "audio", "done"]
     assert events[2]["text"] == (
-        "No entendí si preguntas por la fecha actual o por información personal. "
+        "No entendí si preguntás por la fecha actual o por información personal. "
         "¿Podrías reformularlo?"
     )
     assert events[-1]["llm_ms"] == 0

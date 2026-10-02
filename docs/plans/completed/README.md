@@ -30,6 +30,14 @@ one-terminal-event guarantee, the NDJSON 200 OpenAPI contract, `/health`
 wording + injectable `create_app`) and left only Uvicorn concurrency
 calibration open, as its own `perf(...)` plan.
 
+[Plan 0050](0050-server-audit-repairs.md) closed on 2026-10-01 the repairs of the
+[0049 audit](../open/0049-server-objective-conformance-audit.md): standalone imports
+and a pure cognitive core, one transport seam to Ollama, header-first image bounds,
+a V4 reader that honours stored classification, owner-scoped setup readiness, dead
+settings removed, no names in logs, static architecture guards and the owner →
+stranger matrix, with two grant limits pinned for Plan 0051. `just gate` 1695 tests;
+accepted on real hardware except the two-face veto, which was not run.
+
 [Plan 0055](0055-pc4-identity-fusion-followups.md) closed the PC-4 follow-ups on
 2026-10-01 (merged as PR #152, `1c0a914`): a store error while the face is resolved degrades to `unknown`, the face and
 speaker models warm at startup behind their flags, `identity_source` and the clock have one

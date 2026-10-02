@@ -55,13 +55,13 @@ from server.dependencies import IdentityTokenDep, OwnerUnlockServiceDep
 from server.exceptions import (
     AudioContractError,
     EnrollmentRejectedError,
-    ImageContractError,
     UploadTooLargeError,
     VisionError,
 )
 from server.memory.biometric_consent import grant_face_consent, revoke_face_consent
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.voice_consent import grant_voice_consent, revoke_voice_consent
+from server.routers.image_upload import read_contract_image
 from server.schemas import error_responses
 from server.schemas_auth import (
     FaceEnrollResponse,
@@ -229,47 +229,6 @@ async def _authorize_biometric_action(
     return actor, request, decision
 
 
-async def _read_face_image(image: UploadFile) -> bytes:
-    """Read and validate one face-enrollment image against the image contract.
-
-    Duplicated minimally from `routers/vision.py`'s `_read_contract_image` —
-    Plan 0029 Task 4 keeps `routers/vision.py` untouched, so this router
-    cannot import from it.
-
-    Image contract: JPEG/PNG/WebP/GIF/BMP · max 1280x720 · ONE frame.
-
-    Args:
-        image: Multipart upload carrying the enrollment frame.
-
-    Returns:
-        The raw, validated image bytes.
-
-    Raises:
-        HTTPException 413: If the image exceeds MAX_IMAGE_UPLOAD_BYTES.
-        HTTPException 422: If the image is empty, an unrecognized format,
-            fails to decode, or exceeds the 1280x720 contract limit.
-    """
-    try:
-        image_bytes = await read_limited_upload(image, limit=settings.max_image_upload_bytes)
-    except UploadTooLargeError as exc:
-        raise HTTPException(
-            status_code=413,
-            detail=f"Image too large — max {exc.limit // 1024 // 1024} MB",
-        ) from exc
-    if not image_bytes:
-        raise HTTPException(status_code=422, detail="Image file is empty")
-    if not vision.is_known_image_format(image_bytes):
-        raise HTTPException(
-            status_code=422,
-            detail="Unsupported image format (contract: JPEG/PNG/WebP/GIF/BMP · max 1280x720)",
-        )
-    try:
-        vision.decode_and_validate_image(image_bytes)
-    except ImageContractError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return image_bytes
-
-
 @router.post(
     "/face/enroll",
     responses=error_responses(
@@ -325,7 +284,7 @@ async def enroll_owner_face(
     ):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_UNAUTHORIZED_DETAIL)
 
-    image_bytes = await _read_face_image(image)
+    image_bytes = await read_contract_image(image)
     try:
         outcome = await vision.enroll_person(name=actor.display_name, image=image_bytes)
     except EnrollmentRejectedError as exc:

@@ -252,7 +252,11 @@ async def assign_household_role(
 
 
 async def revoke_active_role(*, person_entity_id: int) -> None:
-    """Logically revoke one active role while retaining its assignment history."""
+    """Logically revoke one active role while retaining its assignment history.
+
+    The person's active PIN credential is revoked in the same transaction: a
+    credential outliving its owner role would be a dormant unlock secret.
+    """
     async with db.transaction() as conn:
         cursor = await conn.execute(
             "UPDATE household_role_assignments SET revoked_at = datetime('now') "
@@ -263,6 +267,11 @@ async def revoke_active_role(*, person_entity_id: int) -> None:
         await cursor.close()
         if updated != 1:
             raise ValueError("no active household role exists for this person")
+        await conn.execute(
+            "UPDATE owner_pin_credentials SET revoked_at = datetime('now') "
+            "WHERE person_entity_id = ? AND revoked_at IS NULL",
+            (person_entity_id,),
+        )
         await _record_event(
             actor_entity_id=None,
             target_entity_id=person_entity_id,

@@ -13,13 +13,16 @@ be, a property the server verifies from the bytes it receives.
 from __future__ import annotations
 
 import base64
+from io import BytesIO
 import logging
 import time
 
 import httpx
 import numpy as np
+from PIL import Image, UnidentifiedImageError
 
-from server.exceptions import ImageContractError, VisionError
+from server.exceptions import ImageContractError, LLMError, VisionError
+from server.llm_transport import ChatMessage, ollama_chat
 from server.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -81,27 +84,47 @@ def is_known_image_format(image: bytes) -> bool:
     return image[:4] == _RIFF_MAGIC and image[8:12] == _WEBP_MAGIC
 
 
-def decode_and_validate_image(image: bytes) -> None:
-    """Decode *image* and enforce the contract's dimension limits.
+def _check_dimensions(width: int, height: int) -> None:
+    """Raise when a frame exceeds the 1280x720 contract bound."""
+    if width > MAX_IMAGE_WIDTH or height > MAX_IMAGE_HEIGHT:
+        raise ImageContractError(
+            f"Image is {width}x{height} — contract max is {MAX_IMAGE_WIDTH}x{MAX_IMAGE_HEIGHT}"
+        )
 
-    This is the real (not just magic-byte) validation: it decodes the
-    frame once to prove it is a genuine, well-formed image within the
-    contract's 1280x720 bound.
+
+def _header_dimensions(image: bytes) -> tuple[int, int]:
+    """Read ``(width, height)`` from the image header without decoding pixels."""
+    try:
+        with Image.open(BytesIO(image)) as header:
+            return header.size
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:
+        raise ImageContractError(
+            "Image could not be decoded — unsupported or corrupt file"
+        ) from exc
+
+
+def decode_and_validate_image(image: bytes) -> None:
+    """Validate *image* against the contract's dimension limits.
+
+    The declared width and height are read from the header and bounded BEFORE
+    any pixel is decoded, so a few kilobytes cannot ask for hundreds of
+    megabytes of frame. The frame is then decoded once to prove it is a
+    genuine, well-formed image, and its decoded size is checked again because
+    an EXIF rotation can swap the axes.
 
     Args:
         image: Raw upload bytes — contract: JPEG/PNG/WebP/GIF/BMP · max
             1280x720 · one frame.
 
     Raises:
-        ImageContractError: If the bytes fail to decode as an image, or
-            the decoded width/height exceeds the contract limit.
+        ImageContractError: If the header cannot be read, the bytes fail to
+            decode, or the width/height exceeds the contract limit.
 
     Note:
-        This decodes the frame purely to validate it; ``vision.faces``
-        decodes it again later for face inference. Avoiding that double
-        decode is a valid follow-up optimization — out of scope here
-        (PROMPT B3, item 6).
+        ``vision.faces`` decodes the frame again later for face inference.
+        Avoiding that double decode is a valid follow-up optimization.
     """
+    _check_dimensions(*_header_dimensions(image))
     # Lazy: cv2 is heavy and only needed when vision actually runs.
     import cv2  # noqa: PLC0415
 
@@ -109,10 +132,7 @@ def decode_and_validate_image(image: bytes) -> None:
     if frame is None:
         raise ImageContractError("Image could not be decoded — unsupported or corrupt file")
     height, width = frame.shape[:2]
-    if width > MAX_IMAGE_WIDTH or height > MAX_IMAGE_HEIGHT:
-        raise ImageContractError(
-            f"Image is {width}x{height} — contract max is {MAX_IMAGE_WIDTH}x{MAX_IMAGE_HEIGHT}"
-        )
+    _check_dimensions(width, height)
 
 
 async def describe_image(client: httpx.AsyncClient, image: bytes) -> tuple[str, int]:
@@ -133,28 +153,25 @@ async def describe_image(client: httpx.AsyncClient, image: bytes) -> tuple[str, 
         VisionError: If the VLM backend is unreachable, errors out, or
             returns an empty/unexpected response.
     """
-    payload = {
-        "model": settings.vlm_model,
-        "messages": [
-            {
-                "role": "user",
-                "content": _DESCRIBE_PROMPT,
-                "images": [base64.b64encode(image).decode("ascii")],
-            }
-        ],
-        "stream": False,
-        "options": {"temperature": 0.3},
+    message: ChatMessage = {
+        "role": "user",
+        "content": _DESCRIBE_PROMPT,
+        "images": [base64.b64encode(image).decode("ascii")],
     }
     t0 = time.perf_counter()
     try:
-        resp = await client.post(
-            f"{settings.ollama_url}/api/chat", json=payload, timeout=settings.ollama_timeout_s
-        )
-        resp.raise_for_status()
-        description = str(resp.json()["message"]["content"]).strip()
+        description = (
+            await ollama_chat(
+                client,
+                [message],
+                model=settings.vlm_model,
+                options={"temperature": 0.3},
+                timeout=settings.ollama_timeout_s,
+            )
+        ).strip()
     except httpx.HTTPError as exc:
         raise VisionError(f"VLM backend unavailable ({settings.vlm_model}): {exc}") from exc
-    except (KeyError, ValueError) as exc:
+    except LLMError as exc:
         raise VisionError(f"VLM returned an unexpected response: {exc}") from exc
     if not description:
         raise VisionError("VLM returned an empty description")

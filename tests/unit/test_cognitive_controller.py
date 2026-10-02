@@ -215,7 +215,7 @@ async def test_controller_clarifies_ambiguous_stt_date_without_legacy_delegate()
 
     assert plan.status is KnowledgeStatus.UNKNOWN
     assert plan.response == (
-        "No entendí si preguntas por la fecha actual o por información personal. "
+        "No entendí si preguntás por la fecha actual o por información personal. "
         "¿Podrías reformularlo?"
     )
     audit.assert_not_awaited()
@@ -334,7 +334,7 @@ async def test_controller_dispatches_trusted_child_count_without_legacy_delegate
     plan = await controller.handle(_event("¿Cuántos hijos tengo?"))
 
     assert plan.status is KnowledgeStatus.KNOWN
-    assert plan.response == "Tienes 2 hijos."
+    assert plan.response == "Tenés 2 hijos."
     assert plan.tool_results[0].tool_name == "count_children"
     tools.count_children.assert_awaited_once()
     legacy_turn.assert_not_awaited()

@@ -93,18 +93,18 @@ class Confidence(_BaseModel):
     reason: str | None = None
 
 
-def _require_aware_utc(value: _datetime) -> _datetime:
+def require_aware_utc(value: _datetime) -> _datetime:
     """Reject naive timestamps and normalize aware timestamps to UTC."""
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError("datetime must be timezone-aware")
     return value.astimezone(_UTC)
 
 
-def _normalize_optional_aware_utc(value: _datetime | None) -> _datetime | None:
+def normalize_optional_aware_utc(value: _datetime | None) -> _datetime | None:
     """Preserve absent optional timestamps and normalize supplied values to UTC."""
     if value is None:
         return None
-    return _require_aware_utc(value)
+    return require_aware_utc(value)
 
 
 class AuthorizationDecision(_BaseModel):
@@ -121,8 +121,8 @@ class AuthorizationDecision(_BaseModel):
     correlation_id: _StrictUUID
     expires_at: _datetime | None = None
 
-    _validate_evaluated_at = _field_validator("evaluated_at")(_require_aware_utc)
-    _validate_expires_at = _field_validator("expires_at")(_normalize_optional_aware_utc)
+    _validate_evaluated_at = _field_validator("evaluated_at")(require_aware_utc)
+    _validate_expires_at = _field_validator("expires_at")(normalize_optional_aware_utc)
 
 
 class Observation[PayloadT: _BaseModel](_BaseModel):
@@ -140,9 +140,9 @@ class Observation[PayloadT: _BaseModel](_BaseModel):
     confidence: Confidence
     expires_at: _datetime | None = None
 
-    _validate_captured_at = _field_validator("captured_at")(_require_aware_utc)
-    _validate_received_at = _field_validator("received_at")(_require_aware_utc)
-    _validate_expires_at = _field_validator("expires_at")(_normalize_optional_aware_utc)
+    _validate_captured_at = _field_validator("captured_at")(require_aware_utc)
+    _validate_received_at = _field_validator("received_at")(require_aware_utc)
+    _validate_expires_at = _field_validator("expires_at")(normalize_optional_aware_utc)
 
 
 class CognitiveEvent[PayloadT: _BaseModel](_BaseModel):
@@ -161,8 +161,8 @@ class CognitiveEvent[PayloadT: _BaseModel](_BaseModel):
     subject_id: int | None
     payload: PayloadT
 
-    _validate_occurred_at = _field_validator("occurred_at")(_require_aware_utc)
-    _validate_recorded_at = _field_validator("recorded_at")(_require_aware_utc)
+    _validate_occurred_at = _field_validator("occurred_at")(require_aware_utc)
+    _validate_recorded_at = _field_validator("recorded_at")(require_aware_utc)
 
 
 class ActiveContext(_BaseModel):
@@ -180,4 +180,4 @@ class ActiveContext(_BaseModel):
     confidence: Confidence
     authorization: AuthorizationDecision
 
-    _validate_created_at = _field_validator("created_at")(_require_aware_utc)
+    _validate_created_at = _field_validator("created_at")(require_aware_utc)

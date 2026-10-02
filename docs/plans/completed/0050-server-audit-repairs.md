@@ -1,11 +1,14 @@
 # 0050 — Server audit repairs
 
-> **Status:** `Ready` — promoted and selected as `NOW` by Pipec on 2026-10-01
-> (decisions 1–5 confirmed as proposed). Was a draft after Plan 0047 closed 2026-09-25. Queue position (revised
-> 2026-09-30): after the Plan 0055 follow-ups and **before** Plan 0051, which is
-> now the first plan of CM-1; the seed load ("step 0") moved after CM-3. Task 11
-> therefore pins today's grant behaviour as rehearsed, and Plan 0051 changes it
-> deliberately afterwards.
+> **Status:** `Closed` 2026-10-01 — implemented on `fix/0050-server-audit-repairs`
+> (Tasks 1–12, one commit each), automated gates green, real-hardware acceptance
+> recorded below with one case not run (the two-face veto; no second person was
+> available). Promoted and selected as `NOW` by Pipec on 2026-10-01 (decisions 1–5
+> confirmed as proposed). Was a draft after Plan 0047 closed 2026-09-25. Queue
+> position (revised 2026-09-30): after the Plan 0055 follow-ups and **before** Plan
+> 0051, which is now the first plan of CM-1; the seed load ("step 0") moved after
+> CM-3. Task 11 therefore pins today's grant behaviour as rehearsed, and Plan 0051
+> changes it deliberately afterwards.
 >
 > **Plan review updated 2026-10-01 against `e14c6ae` (static, not an execution).**
 > The former re-audit items (a)–(h) are incorporated into the required reading,
@@ -38,7 +41,7 @@ false statement with a true one. Five static guards make the controls permanent.
 **Tech Stack:** Python 3.12, FastAPI, httpx, aiosqlite, OpenCV 5, Pillow 12,
 pytest (+ xdist). Same pins as the current lock, plus an explicit `pillow`.
 
-**Spec:** [0049 — server objective conformance audit](0049-server-objective-conformance-audit.md)
+**Spec:** [0049 — server objective conformance audit](../open/0049-server-objective-conformance-audit.md)
 (§3, §9, §11, §13), accepted
 [ADR-0015 — grant scope and speaker binding](../../adr/0015-owner-grant-scope-and-speaker-binding.md).
 ADR-0015 decision 2 is refined by accepted
@@ -279,21 +282,93 @@ its owning task:
 
 **Files:** this plan's evidence/status only. No production repair in this task.
 
-- [ ] Record branch, clean/dirty status, base SHA and Plan 0055's merge. Work
+- [x] Record branch, clean/dirty status, base SHA and Plan 0055's merge. Work
   on the authorized implementation branch; do not switch away from or discard
   another task's uncommitted changes.
-- [ ] Run `just gate` and record its actual outcome and count. A pre-existing
+- [x] Run `just gate` and record its actual outcome and count. A pre-existing
   failure is reported with its owning task; a historical green run is not a
   substitute for this baseline.
-- [ ] Check each task's named symbols, fixtures and permitted files against
+- [x] Check each task's named symbols, fixtures and permitted files against
   that baseline. In particular: Tasks 4/8/9 overlap 0055; Task 10 preserves
   `IdentityAssurance`; Task 11 preserves face-first fusion and speaker routes.
   Replace stale snippets before their task runs. Do not insist that the
   historical module count or number of failing tests remain identical.
-- [ ] Record which defects still reproduce, which changes are already present,
+- [x] Record which defects still reproduce, which changes are already present,
   and any scope conflict. Already-fixed documentation and links are verification
   items, not changes to reapply. A changed accepted contract stops the affected
   task; it is not redesigned by this plan.
+
+**Task 0 record (executed 2026-10-01, branch `fix/0050-server-audit-repairs`).**
+No production change; evidence only.
+
+- **Baseline.** Base SHA `42b8908` (`main` == `origin/main`, clean tree), which
+  contains Plan 0055 (PR #152, `1c0a914`). `just gate`: **1607 passed** in
+  195.7 s, `ruff --select S` clean, `pip-audit` no known vulnerabilities, "Gate
+  passed". Nothing pre-existing is red.
+- **Still reproduces (RED pending in each task).**
+  - Task 1: 86 server modules now (78 at the audit baseline); the standalone
+    import probe still fails for exactly the same nine (`server.characters` and
+    its four submodules, `llm_streaming`, `memory.household_authorization`,
+    `memory.policy_gated_v4_reader`, `text_turn`). The pure-core probe loads 30
+    non-cognition modules plus `aiosqlite` and `httpx`.
+  - Task 2: `llm_transport.py` still reads `resp.json()["message"]["content"]`
+    and `event.get("message", {}).get("content", "")`.
+  - Task 3: `ollama_url` is still read by `vision/describe.py` and
+    `memory/embeddings.py` besides `llm_transport.py`/`settings.py`.
+  - Task 4: `_read_contract_image`, `_read_face_image` and
+    `_read_optional_frame` exist unchanged; `max_image_pixels` has no reader;
+    `pillow` is not a declared `server` dependency; `SECURITY.md` and the
+    `main.py` comment still name the removed helper.
+  - Task 5: `policy_gated_v4_reader.py` still has no classification filter.
+  - Tasks 6–7: `_derive_readiness`, `_confirm_credential`, `_split_names`, the
+    wizard prompt `Child names (comma or space separated)`, two PIN patterns
+    (`pin_credentials._PIN_PATTERN`, `schemas_auth._PIN_PATTERN`) and the
+    `except BrainMemoryError` handlers in `personal_setup.main` and
+    `scripts/onboard.py` are as the plan describes.
+  - Task 8: exactly the six unread settings the plan predicts
+    (`dashboard_enabled`, `default_user_id`, `max_image_pixels` — Task 4 —,
+    `sensor_aggregation_interval_seconds`, `sensor_debounce_seconds`,
+    `sensor_delta_threshold`); the two tuteo strings and `vision_look_phrase`.
+  - Task 9: `faces.recognize()` still logs the matched names at INFO.
+  - Task 10: `_require_aware_utc` is still copied in `identity.py` and
+    `authorization.py` (and defined in `models.py`).
+  - Task 11: `"te presento a"` is still an enrollment phrase and the household,
+    birth, age, relationship and date rules still use `term in normalized`.
+- **Adaptations to the plan's examples (post-0055/0054 state).**
+  - Task 8 Step 5: Plan 0055's lifecycle tests already read `ready` through
+    `getattr(app.state, "ready", False)` (with a comment explaining the order
+    dependence) in **both** `test_app_state_ready_is_false_before_lifespan` and
+    `test_a_startup_failure_after_client_creation_still_closes_it`. The RED is
+    obtained by changing both assertions to `app.state.ready is False` and
+    deleting that comment; the fix (`new_app.state.ready = False` in
+    `create_app`) is unchanged.
+  - Task 11 Step 3 / Step 5: `tests/fixtures/intent_resolution_es.json` holds
+    **53** rows today and 64 after the eleven added rows (one existing row also
+    changes); the plan's "73" counts the tests of `test_intent_resolution.py`
+    (64 corpus cases plus 9 others), and that number held in execution.
+  - Task 11 harness: `owner_unlock_service`, `get_owner_unlock_service`,
+    `AppResources`, `llm.generate_response`, the `consolidate_turn` binding in
+    `routers.transcribe` and the `silence_wav_bytes` fixture all exist as the
+    matrix expects. The matrix sends no frame, so face/speaker flags (default
+    off) stay out of its path; face-first fusion is covered by the existing
+    identity-fusion suites, which Task 11 re-runs.
+- **Scope conflicts.** None found. Every file the tasks touch is in *Permitted
+  files*; `identity_fusion.py`, `speaker_authentication.py` and the voice
+  consent/storage modules are read-only and untouched. Plan 0055's warm-up,
+  shared clock, `IdentitySource` alias and store-error guard stay as merged.
+
+**Execution note (2026-10-01).** Tasks 1–11 each landed as one commit
+(`58ea56d`, `e936488`, `35bae11`, `ceddf11`, `12b749e`, `3f41a3c`, `4680e71`,
+`2cfa789`, `8115af9`, `fa7ed98`, `dd388b1`), every new test observed RED for the
+stated reason before GREEN (counts matched the plan: 2, 7, 11, 1 + import error,
+3, 4, 9, 5 + 4 voseo, 1, 1, 3 + 9). Two corrections to the plan's own steps:
+Task 4's `grep -r` over the whole tree is slow, use `git grep`; Task 7's
+wizard-failure assertion joins output with a space instead of a newline (same
+meaning). **Open observation:** the full `just test` after Task 11 reported one
+failed test whose name was not captured (the output was piped through `tail`);
+it did not reproduce in four later full runs at the same code (`just gate`,
+the coverage command and two `just test` runs). If it reappears, capture the
+failure before anything else.
 
 ## Task 1: Break the import cycles and keep the cognitive core pure
 
@@ -4091,17 +4166,31 @@ only — never values, names or transcripts):
 5. In classic mode with scene vision enabled, one `/vision/respond` scene
    question is answered from the camera. Do not claim streaming scenes.
 
-## Rollback
+### Acceptance record (in progress, outcomes only)
 
-Revert the squash-merged PR as one unit. The only lock change is the explicit
-`pillow` entry (same version); no schema migration or wire change. Revoking an
-owner role under Task 6 also revokes its credential; reverting code does not
-reactivate credentials already revoked. Recovery uses the existing local setup.
+Pipec, 2026-10-01, branch `fix/0050-server-audit-repairs` at `a7b58f3`, face and
+speaker flags on, streaming mode, `LOG_CONVERSATION_TEXT` on:
 
-## Closure
+| Case | Result |
+|---|---|
+| 1 — `just setup-personal status` on the real database | PASS: `schema_version=8`, `owner_count=1`, `active_child_relation_count=2`, `active_credential_count=1`, `personal_security_ready=True`. |
+| 2 — streaming generic turn | PASS: `outcome=ok`, `route=stream.legacy_text_turn`, 2 chunks, `llm=16517ms` (first model call after start-up, the known cold-load baseline), total 18744 ms; no identity resolved and memory skipped. |
+| 2 — streaming introduction case ("te presento a mi amigo Tom") | PASS: answered as ordinary conversation (`outcome=ok`, 2 chunks, `llm=3123ms`, total 5444 ms), not the enrollment refusal; no entity or role created (not queried), memory skipped. The model's reply is its own wording and says nothing the plan checks. |
+| 2 — classic generic turn | PASS: `route=voice.legacy_text_turn`, `llm=3648ms`, total 6349 ms, no identity resolved, memory skipped. |
+| 2 — classic introduction ("te presento a mi amigo Tom") | PASS: answered as a greeting (`need=generic_conversation`, `llm=6107ms`, total 10226 ms), not the enrollment refusal; memory skipped and discarded. |
+| 4 — owner-face authorized turn, classic | PASS: `Identity fusion: face_only`, speaker verdict `unknown`, `status=identified role=owner`, `need=own_children_list status=known source=deterministic`, `llm_ms=0`, total 5291 ms. A mis-transcribed first attempt ("¿Quién es a mis hijos?") resolved to `protected_household` and got the fixed "todavía no está conectada" answer with `llm_ms=0` — the existing behaviour for other household questions, caused by STT, not by this plan. |
+| 3 — PIN without a face, classic | PASS: robot flag `ROBOT_FACE_AUTH_ENABLED=false` (no frame sent), startup PIN accepted (`POST /auth/owner/unlock` 200). The protected child question was answered with `Identity fusion: pin`, `status=identified role=owner`, `need=own_children_list status=known`, `llm_ms=0`, total 2096 ms. The next identical question, with no token and no face, was denied: `Identity fusion: no_evidence`, `status=unauthorized`, generic denial, `llm_ms=0` (the robot only clears its token when the response says `authentication_consumed=true`, so a request without a token proves the first one consumed it). The `identity_source` and `authentication_consumed` wire fields themselves are not printed by the robot; the server's `Identity fusion: pin` reason is the evidence. The literal replay of a spent token was not repeated by hand (covered by the automated replay tests). |
+| 3 — PIN without a face, streaming | PASS: same flags, streaming. The protected child question was answered with `Identity fusion: pin`, `role=owner`, `need=own_children_list status=known`, `llm_ms=0`, total 5605 ms; after two generic turns the same question, with no token and no face, was denied (`Identity fusion: no_evidence`, `status=unauthorized`, `llm_ms=0`, 2464 ms). The token survived the two generic turns in between and was spent only by the protected one. Side observation: one introduction turn ended with `outcome=protocol_fallback` (`Stream fallback: reason=invalid_protocol`) and the audible fallback phrase, not the enrollment refusal; it is the known O-04 behaviour of the small model (frequency still unmeasured, owned by the voice-pipeline plan). |
+| 4 — owner-face authorized turn, streaming | PASS (partial): the protected child-list question was answered through the face, `Identity fusion: face_only`, speaker verdict `unknown`, `need=own_children_list status=known source=deterministic`, `llm_ms=0`, total 2995 ms, `chunks=1`. Start-up reached ONLINE in about 9 s with both models warmed. The two-face veto was not run. |
+| 5 — `/vision/respond` scene question (classic) | PASS: with `VISION_ENABLED=true` the voice turn asked for a frame (`route=voice.vision-cue`, "A ver, dejame mirar..."), `/vision/respond` returned 200 and `Turn decision: channel=vision need=scene_description source=current_perception llm_ms=0`; Pipec confirmed the description matched what the camera saw. The VLM call now goes through `llm_transport.ollama_chat` (Task 3). Latency: `Scene described in 116600 ms`, total 118974 ms — a cold `qwen3-vl:2b-instruct` load on the non-dedicated laptop (the repository's documented cold VLM baseline is about 140 s), not measured against a warm model and not a regression claim. |
 
-One PR from `fix/0050-server-audit-repairs`, based on `main` after Plan 0055
-and the Task 0 revalidation. Promotion and implementation are separate from
-the current documentation edit on `docs/single-delivery-queue`. On merge: move
-this file to `completed/`, update the board and `current-state.md`, and record
-the closure in 0049 §13.
+**Verdict (Pipec, 2026-10-01):** accepted with one case not run. Cases 1, 2 (both
+modes, generic and introduction), 3 (both modes), 4 (owner-face authorized turn in
+both modes) and 5 passed on real hardware. The two-face veto of case 4 was **not
+run**: no second person was available. It stays covered by the automated tests of
+Plan 0054/0055 (`veto_multiple_faces`, veto never consumes a token) and by the
+2026-09-30 PC-4 hardware acceptance, which ran it; Plan 0050 did not change that
+code; `identity_fusion.py` and the veto logic are untouched. No acceptance case failed. Side evidence: the server started and served
+all turns with the five removed settings still present in the real `.env`
+(`DEFAULT_USER_ID`, three `SENSOR_*` knobs, `DASHBOARD_ENABLED`), so `extra="ignore"`
+keeps an old `.env` valid as decision 4 requires.

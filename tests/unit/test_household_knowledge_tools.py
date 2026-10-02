@@ -298,7 +298,7 @@ async def test_preferences_preserve_multiple_active_values() -> None:
 async def test_get_person_birth_date_returns_one_strict_active_value() -> None:
     """Expose a birth date only through the consent-gated v4 tool boundary."""
     birth = _literal("2016-10-14").model_copy(
-        update={"predicate": "birth_date", "subject_entity_id": 8}
+        update={"predicate": "birth_date", "subject_entity_id": 8, "sensitivity": "child_data"}
     )
     literal_reader = AsyncMock(return_value=[birth])
     reader = PolicyGatedV4Reader(
@@ -358,7 +358,9 @@ async def test_birth_date_requires_consent_before_reader() -> None:
 async def test_age_uses_one_birth_date_and_rejects_inconsistent_active_rows() -> None:
     """Calculate from one v4 birth date and never choose between competing values."""
     birth = _literal("2016-10-14")
-    birth = birth.model_copy(update={"predicate": "birth_date", "subject_entity_id": 8})
+    birth = birth.model_copy(
+        update={"predicate": "birth_date", "subject_entity_id": 8, "sensitivity": "child_data"}
+    )
     conflicting = birth.model_copy(update={"id": 2, "value_text": "2017-10-14"})
     literal_reader = AsyncMock(return_value=[birth])
     reader = PolicyGatedV4Reader(

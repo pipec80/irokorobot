@@ -42,7 +42,7 @@
   ],
   "cards": [
     { "dot": "cyan", "title": "Hard boundary", "items": ["Server is a generic audio API — it does not know the robot exists", "Robot is a generic audio client — it does not know STT/LLM/TTS exist", "Only the audio contract is shared: WAV · 16kHz · mono · int16"] },
-    { "dot": "emerald", "title": "Cognitive path", "items": ["Controller returns an immutable response plan before any generation", "Safe plans never reach the LLM, legacy memory, or consolidation", "Ollama is the only accepted LLM/VLM runtime (ADR-0004)"] },
-    { "dot": "rose", "title": "Known gaps", "items": ["No liveness or replay defense: a photo identifies at basic; photo + recording would reach strong", "Reserved data needs strong assurance but no reserved capability exists yet; replay is measured, not defended", "Conversational memory is dormant: no turn-to-turn continuity, retrieval or consolidation yet (CM-2 to CM-5); CM-0 baseline RED"] }
+    { "dot": "emerald", "title": "Cognitive path", "items": ["Controller returns an immutable response plan before any generation", "Safe plans never reach the LLM, legacy memory, or consolidation", "Ollama is the only accepted LLM/VLM runtime (ADR-0004), reached only through one transport module"] },
+    { "dot": "rose", "title": "Known gaps", "items": ["No liveness or replay defense: a photo identifies at basic; photo + recording would reach strong", "Reserved data needs strong assurance but no reserved capability exists yet; replay is measured, not defended; a PIN grant is not bound to an operation (ADR-0015)", "Conversational memory is dormant: no turn-to-turn continuity, retrieval or consolidation yet (CM-2 to CM-5); CM-0 baseline RED"] }
   ]
 }

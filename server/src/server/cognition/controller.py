@@ -1,8 +1,10 @@
 """Small sequential cognitive controller for the P0.3 chat pilot."""
 
+from __future__ import annotations
+
 from collections.abc import Awaitable, Callable
-from datetime import date
 import re
+from typing import TYPE_CHECKING
 
 from server.cognition.authorization import (
     AuthorizationRequest,
@@ -12,7 +14,6 @@ from server.cognition.authorization import (
     evaluate_authorization,
 )
 from server.cognition.calendar_tools import calculate_age, get_current_date
-from server.cognition.household_tools import HouseholdKnowledgeTools, HouseholdToolResult
 from server.cognition.identity import ActivePersonContext, ActivePersonStatus, HouseholdRole
 from server.cognition.intent_resolution import IntentResolution, resolve_information_need
 from server.cognition.models import (
@@ -33,7 +34,12 @@ from server.cognition.response_plan import (
     TextTurnPayload,
     ToolResult,
 )
-from server.text_turn import TextTurnResult
+
+if TYPE_CHECKING:
+    from datetime import date
+
+    from server.cognition.household_tools import HouseholdKnowledgeTools, HouseholdToolResult
+    from server.text_turn import TextTurnResult
 
 type LegacyTextTurn = Callable[[str, str], Awaitable[TextTurnResult]]
 type ActivePersonResolver = Callable[
@@ -308,7 +314,7 @@ def _ambiguous_date_plan() -> ResponsePlan:
     """Ask for a safe clarification when a known STT date form is ambiguous."""
     return _unknown_plan(
         InformationNeed.AMBIGUOUS_DATE_QUERY,
-        "No entendí si preguntas por la fecha actual o por información personal. "
+        "No entendí si preguntás por la fecha actual o por información personal. "
         "¿Podrías reformularlo?",
     )
 
@@ -403,7 +409,7 @@ def _household_tool_plan(
         names = _spanish_join(result.value)
         response = f"Tus hijos son {names}."
     elif need is InformationNeed.OWN_CHILDREN_COUNT and isinstance(result.value, int):
-        response = f"Tienes {result.value} hijos."
+        response = f"Tenés {result.value} hijos."
     else:
         return _unknown_plan(
             need,

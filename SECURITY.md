@@ -53,7 +53,8 @@ Every upload is bounded twice: a raw ASGI body-size ceiling
 (`MAX_REQUEST_BODY_BYTES`, Starlette's native
 `RequestBodyLimitMiddleware`), checked before any parsing, and per-file
 semantic budgets (`MAX_AUDIO_UPLOAD_BYTES`, `MAX_IMAGE_UPLOAD_BYTES`,
-`MAX_IMAGE_PIXELS`, `MAX_AUDIO_DURATION_S`) checked per part. An oversized
+`MAX_AUDIO_DURATION_S`) checked per part; the image contract's 1280×720 bound
+is read from the image header before any pixel decode. An oversized
 request is rejected with `413` before it reaches STT/vision processing, and
 an upload's own `filename` is never trusted for any filesystem or logging
 decision.

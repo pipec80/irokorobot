@@ -6,7 +6,7 @@
   [ADR 0009](0009-locked-posture-and-scoped-capabilities.md)
 - **Origin:** [0049 audit](../plans/open/0049-server-objective-conformance-audit.md)
   findings F-08, F-09 and F-16; repairs that do not need this decision are in
-  [Plan 0050](../plans/open/0050-server-audit-repairs.md)
+  [Plan 0050](../plans/completed/0050-server-audit-repairs.md)
 
 ## Context
 

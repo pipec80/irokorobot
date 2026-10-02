@@ -173,3 +173,33 @@ async def test_child_relation_requires_consent_before_target_read(
             "Owner policy permits this consented sensitive request.",
         )
     ]
+
+
+@pytest.mark.integration
+async def test_row_reclassified_in_storage_is_withheld_from_an_allowed_read(
+    policy_reader_db: None,
+) -> None:
+    """A stored stricter label governs the read even though writers store defaults."""
+    owner_id = await _owner_id()
+    fact = await assert_literal_fact(
+        subject_entity_id=owner_id,
+        definition=_predicate("le_gusta"),
+        value="robotica",
+    )
+    await db.get_conn().execute(
+        "UPDATE literal_facts_v4 SET visibility = 'private', sensitivity = 'medical' WHERE id = ?",
+        (fact.id,),
+    )
+    await db.get_conn().commit()
+
+    result = await PolicyGatedV4Reader().read_active_literals(
+        actor=_identified_owner(owner_id),
+        subject_entity_id=owner_id,
+        predicate_alias="le_gusta",
+        consent=ConsentStatus.NOT_REQUIRED,
+        correlation_id=_PREFERENCE_CORRELATION_ID,
+        requested_at=_NOW,
+    )
+
+    assert result.status is KnowledgeStatus.UNKNOWN
+    assert result.facts == ()

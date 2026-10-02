@@ -68,7 +68,6 @@ class Settings(BaseSettings):
     # grow past what its own contract needs.
     max_audio_upload_bytes: int = 10 * 1024 * 1024  # 10 MB — well above any realistic utterance
     max_image_upload_bytes: int = 5 * 1024 * 1024  # 5 MB — well above a 1280x720 frame
-    max_image_pixels: int = 1280 * 720
     max_audio_duration_s: float = 30.0  # well above any realistic utterance
     # Raw ASGI body ceiling for the combined audio+frame route: the two
     # per-file budgets above, plus multipart framing overhead.
@@ -112,7 +111,6 @@ class Settings(BaseSettings):
     working_memory_size: int = 20
     semantic_top_k: int = 6
 
-    default_user_id: str = "pipec"
     memory_enabled: bool = True
     robot_character: str = "iroko"
     # Re-read character markdown profiles from disk on every request when
@@ -129,7 +127,7 @@ class Settings(BaseSettings):
     vlm_model: str = "qwen3-vl:2b-instruct"
     # Spoken immediately when a visual question is detected — buys the VLM
     # its inference time without a silent robot (V0.5).
-    vision_look_phrase: str = "A ver, déjame mirar..."
+    vision_look_phrase: str = "A ver, dejame mirar..."
     # ---------------- Vision V1: faces ----------------
     face_model: str = "buffalo_l"
     # Cosine-DISTANCE upper bound for a face match (0 = identical face).
@@ -230,13 +228,7 @@ class Settings(BaseSettings):
     speaker_embed_timeout_s: float = Field(default=30.0, gt=0.0)
 
     # ---------------- Sensors ----------------
-    sensor_debounce_seconds: int = 30
-    sensor_delta_threshold: float = 0.5
     sensor_retention_hours: int = 72
-    sensor_aggregation_interval_seconds: int = 3600
-
-    # ---------------- Dashboard ----------------
-    dashboard_enabled: bool = True
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 

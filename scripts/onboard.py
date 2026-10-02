@@ -135,7 +135,7 @@ def main() -> None:
     args = parser.parse_args()
     try:
         asyncio.run(_run(skip_face=args.skip_face, device=args.device))
-    except BrainMemoryError as exc:
+    except (BrainMemoryError, ValueError) as exc:
         print(str(exc))  # noqa: T201
         raise SystemExit(1) from exc
 

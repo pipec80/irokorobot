@@ -18,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, SecretStr
 
 from server import db
 from server.cognition.identity import HouseholdRole
-from server.cognition.pin_credentials import hash_pin, verify_pin
+from server.cognition.pin_credentials import hash_pin, validate_pin, verify_pin
 from server.db import get_conn
 from server.exceptions import BrainMemoryError
 from server.memory.declarative import upsert_entity
@@ -93,13 +93,12 @@ def _validate_input(data: PersonalSetupInput) -> None:
     """Reject an incomplete or inconsistent submission before any write.
 
     Raises:
-        ValueError: If the owner name is blank, no child name is given, a
-            child name is blank, or two child names fold to the same name.
+        ValueError: If the owner name is blank, a child name is blank, two child
+            names fold to the same name, or the PIN is not 6 to 12 ASCII digits.
     """
     if not data.owner_name.strip():
         raise ValueError("owner_name must not be blank")
-    if not data.child_names:
-        raise ValueError("child_names must include at least one child")
+    validate_pin(data.pin.get_secret_value())
     if any(not name.strip() for name in data.child_names):
         raise ValueError("child_names must not contain a blank name")
 
@@ -157,14 +156,23 @@ async def _confirm_credential(*, owner_entity_id: int, pin: SecretStr) -> None:
     await save_owner_pin_credential(person_entity_id=owner_entity_id, credential=encoded)
 
 
+async def _owner_security_ready(owner_entity_id: int) -> bool:
+    """Reread that this entity is the active owner and holds the active credential."""
+    if await get_active_role(owner_entity_id) is not HouseholdRole.OWNER:
+        return False
+    credential = await get_active_owner_pin_credential()
+    return credential is not None and credential.person_entity_id == owner_entity_id
+
+
 async def _derive_readiness(*, owner_entity_id: int, child_names: tuple[str, ...]) -> bool:
-    """Reread owner role, active child relations/labels, and credential.
+    """Reread the owner, the confirmed child labels, and the credential.
 
     Returns:
-        True only if the owner role, the exact confirmed child labels, and
-        an active credential for this owner all independently verify.
+        True only if this entity is the active owner holding the active
+        credential and every confirmed child is an active child of the owner.
+        Children are optional: with none confirmed only the owner is checked.
     """
-    if await get_active_role(owner_entity_id) is not HouseholdRole.OWNER:
+    if not await _owner_security_ready(owner_entity_id):
         return False
 
     relations = await get_active_entity_relations(
@@ -177,11 +185,7 @@ async def _derive_readiness(*, owner_entity_id: int, child_names: tuple[str, ...
         if label is None:
             return False
         active_labels.add(_fold_name(label.display_name))
-    if active_labels != expected_names:
-        return False
-
-    credential = await get_active_owner_pin_credential()
-    return credential is not None and credential.person_entity_id == owner_entity_id
+    return expected_names <= active_labels
 
 
 async def apply_personal_setup(data: PersonalSetupInput) -> PersonalSetupResult:
@@ -218,9 +222,8 @@ async def apply_personal_setup(data: PersonalSetupInput) -> PersonalSetupResult:
 
 
 def _split_names(line: str) -> list[str]:
-    """Split one free-text line into individual names by comma or whitespace."""
-    parts = [part.strip() for part in line.replace(",", " ").split(" ")]
-    return [part for part in parts if part]
+    """Split one wizard line into child names; only a comma separates two names."""
+    return [" ".join(part.split()) for part in line.split(",") if part.strip()]
 
 
 async def run_personal_setup_wizard(
@@ -248,10 +251,7 @@ async def run_personal_setup_wizard(
         write_text("Setup cancelled: owner name is required.")
         return None
 
-    children_line = read_text("Child names (comma or space separated): ").strip()
-    if not children_line:
-        write_text("Setup cancelled: at least one child name is required.")
-        return None
+    children_line = read_text("Child names (comma separated, optional): ").strip()
     child_names = tuple(_split_names(children_line))
 
     pin = read_secret("PIN (6-12 digits): ")
@@ -259,9 +259,14 @@ async def run_personal_setup_wizard(
     if pin != pin_confirmation:
         write_text("Setup cancelled: PIN confirmation did not match.")
         return None
+    try:
+        validate_pin(pin)
+    except ValueError as exc:
+        write_text(f"Setup cancelled: {exc}.")
+        return None
 
     write_text(f"Owner: {owner_name}")
-    write_text(f"Children: {', '.join(child_names)}")
+    write_text(f"Children: {', '.join(child_names) or '(none)'}")
     write_text("PIN: ******")
     confirmation = read_text(f"Type {_CONFIRMATION_TOKEN} to confirm: ")
     if confirmation != _CONFIRMATION_TOKEN:
@@ -297,7 +302,9 @@ async def read_personal_setup_status() -> PersonalSetupStatus:
 
     Returns:
         Schema version, owner/child-relation/credential counts, derived
-        `personal_security_ready`, and the separate legacy onboarding state.
+        `personal_security_ready` (an active owner holds the active credential —
+        never inferred from the global counts), and the separate legacy
+        onboarding state.
     """
     conn = get_conn()
     version_cursor = await conn.execute("PRAGMA user_version")
@@ -327,6 +334,13 @@ async def read_personal_setup_status() -> PersonalSetupStatus:
     await credential_cursor.close()
     active_credential_count = int(credential_row[0]) if credential_row else 0
 
+    credential = await get_active_owner_pin_credential()
+    ready = (
+        owner_count == 1
+        and active_credential_count == 1
+        and credential is not None
+        and await _owner_security_ready(credential.person_entity_id)
+    )
     onboarding_complete = await get_flag("onboarding_complete") is not None
 
     return PersonalSetupStatus(
@@ -334,9 +348,7 @@ async def read_personal_setup_status() -> PersonalSetupStatus:
         owner_count=owner_count,
         active_child_relation_count=active_child_relation_count,
         active_credential_count=active_credential_count,
-        personal_security_ready=(
-            owner_count == 1 and active_child_relation_count >= 1 and active_credential_count == 1
-        ),
+        personal_security_ready=ready,
         onboarding_complete=onboarding_complete,
     )
 
@@ -394,6 +406,6 @@ def main() -> None:
     args = parser.parse_args()
     try:
         asyncio.run(_run(args.command))
-    except BrainMemoryError as exc:
+    except (BrainMemoryError, ValueError) as exc:
         print(str(exc))  # noqa: T201 — CLI adapter, not application logging
         sys.exit(1)

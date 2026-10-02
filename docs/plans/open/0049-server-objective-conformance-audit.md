@@ -4,13 +4,18 @@
 reemplaza al plan NOW (0047 cerró el 2026-09-25). La revisión inicial de esta conversación está autorizada;
 la campaña completa descrita aquí queda propuesta, no ejecutada.
 
+**Estado de las reparaciones (2026-10-01):** ejecutadas y cerradas por 0050
+(aceptación en hardware de Pipec, salvo el veto de dos caras, que no se corrió);
+ver §13, «Estado tras ejecutar 0050». Este documento sigue siendo un registro de
+auditoría, no un plan ejecutable.
+
 **Fecha:** 2026-09-22.
 **Ampliación de onboarding:** 2026-09-23, sobre el mismo baseline.
 **Revisión independiente:** 2026-09-23 y 2026-09-24, sobre el mismo baseline
 (§13). Ajusta la clasificación de F-02, F-03, F-06 y F-08–F-12, añade F-13…F-24,
 completa la lectura de la frontera de protección (100 %) y traslada las
 reparaciones verificadas al borrador
-[0050 — server audit repairs](0050-server-audit-repairs.md) (12 tareas, en cola;
+[0050 — server audit repairs](../completed/0050-server-audit-repairs.md) (12 tareas, en cola;
 0047 cerró el 2026-09-25). Las decisiones sobre el alcance del grant y su ligadura al hablante
 están en el [ADR-0015](../../adr/0015-owner-grant-scope-and-speaker-binding.md)
 (propuesto). Las notas «Ajuste 2026-09-23» dentro de cada hallazgo remiten a esa
@@ -1063,6 +1068,39 @@ todas las tareas aplicadas (**1.417 passed, 5 skipped**).
 | O-01 | Ampliado: el PIN se valida tras escribir y el CLI muestra un traceback | 0050 Task 7 |
 | O-02 | Tres significados de «onboarding completo» | Glosario en la matriz (0050 Task 12) |
 | O-03 | Datos reales del hogar en archivos versionados | PR #131 e historial (abajo) |
+
+### Estado tras ejecutar 0050 (2026-10-01)
+
+Se ejecutó [0050](../completed/0050-server-audit-repairs.md) en la rama
+`fix/0050-server-audit-repairs`, sobre `42b8908` (línea base: `just gate` en
+verde, 1.607 tests). Cada tarea observó su RED antes del GREEN y salió en un
+commit propio; el conteo de la suite creció de 1.607 a 1.695. Solo se marcan
+cerrados los hallazgos verificados con esa evidencia; los demás conservan su
+destino.
+
+| ID | Estado | Evidencia fresca |
+|---|---|---|
+| F-01 | Cerrado | Task 3 (`35bae11`): `llm_transport` es el único módulo que lee `ollama_url`; guarda AST `test_ollama_seam.py`. |
+| F-02 | Cerrado en el sobre de transporte | Tasks 2–3 (`e936488`, `35bae11`): mensaje nulo o no objeto, cuerpo no JSON y línea `error` a mitad de stream son `LLMError`/`VisionError`. No valida el objeto `response`/`emotion` generado: pertenece al plan de fiabilidad del pipeline de voz. |
+| F-05, F-06, F-07, O-01 | Cerrados | Tasks 6–7 (`3f41a3c`, `4680e71`): `personal_security_ready` se deriva del dueño con la credencial activa; revocar un rol revoca la credencial; PIN validado antes de escribir; hijos opcionales; solo la coma separa nombres; un rechazo es un mensaje con código 1. |
+| F-10 | Cerrado | Task 5 (`12b749e`): el lector V4 solo devuelve filas cuya clasificación guardada es la autorizada. |
+| F-11 | Cerrado | Task 1 (`58ea56d`): los 86 módulos importan solos y el núcleo cognitivo no carga SQLite, FastAPI ni httpx (sondas en subproceso). |
+| F-12, F-13, F-19, F-22 | Cerrados | Tasks 4 y 8 (`ceddf11`, `2cfa789`): seis settings sin lector eliminados y un test impide que vuelvan; docstring de `create_app` veraz; `app.state.ready` inicia en `False`; tres cadenas en voseo. |
+| F-14, F-18 | Cerrados | Task 4 (`ceddf11`): dimensiones leídas del header (Pillow explícito) antes de `cv2.imdecode`, rotación EXIF acotada tras decodificar, un solo `read_contract_image`. |
+| F-15 | Cerrado | Task 7: un único `validate_pin`; test de fuente única. |
+| F-20, F-21 | Cerrados | Task 11 (`dd388b1`): reglas por palabra completa; «Te presento a…» ya no es frase de enrolamiento; corpus revisado ampliado. |
+| F-23 | Cerrado | Task 10 (`fa7ed98`): `require_aware_utc` definido una vez, con guarda. |
+| F-24 | Cerrado | Task 9 (`8115af9`): `faces.recognize()` registra solo conteos. |
+| F-16 | Abierto → Plan 0051 | Task 11 fija con dos tests de caracterización que el grant no está ligado a una operación y que «¿quién soy?» lo gasta. |
+| F-08, F-09 | Límites vigentes | Task 11 fija que un grant válido responde a quien lo presente. La fusión cara/voz y el veto ya los gobierna ADR-0016 (PC-4); el replay sigue sin defensa y se revisa en CM-5. |
+| F-03 | Parcial | `current-state.md` y el manual del operador actualizados; reglas locales corregidas el 2026-09-24. |
+| F-04, F-17 | Abiertos → CM-1…CM-7 | Sin cambio; la escritura canónica y la deduplicación son de CM-3. |
+| O-02 | Aclarado | El manual del operador distingue `personal_security_ready`, `onboarding_complete` y el enrolamiento biométrico. |
+| O-04 | Abierto | Sigue en el plan de fiabilidad del pipeline de voz. |
+
+La aceptación en hardware real de 0050 la hizo Pipec el 2026-10-01 (casos 1, 2,
+3, 4 y 5; el veto de dos caras no se corrió); el detalle está en la sección *Real
+runtime acceptance* del plan.
 
 ### F-13 — El docstring de `create_app` contradice el import con efectos
 
