@@ -175,7 +175,7 @@ it can become `NOW` (checked 2026-10-01):
 
 | Work | What is really missing |
 |---|---|
-| Voice-pipeline reliability and diagnostics | Nothing: promoted to `Ready` and selected as `NOW` by Pipec on 2026-10-02 with decisions D-1 to D-7 confirmed (D-8, the per-stage gates, awaits confirmation); its Task 0 revalidates the baseline before any code |
+| Voice-pipeline reliability and diagnostics | Nothing: promoted to `Ready` and selected as `NOW` by Pipec on 2026-10-02 with decisions D-1 to D-8 confirmed (D-8: each stage is judged on the frozen gates its scenarios feed); its Task 0 revalidates the baseline before any code |
 | CM-1 / Plan 0051 | Plan 0051 is not drafted yet; it needs writing, and CM-1 must also cover the later memory permissions (`read`, `propose`, `confirm`, `correct`, `forget`) |
 | CM-2 | An ADR on identity in generic turns (it supersedes ADR-0016 §5), then the plan |
 | CM-3 → seed load → CM-7 | Separate plans; the first `SECURITY` datum and its gates are specified before it is enabled |

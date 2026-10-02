@@ -54,8 +54,8 @@ está **Ready** y es el `NOW` (promovido por Pipec el 2026-10-02): nueve tareas 
 `just test-pipeline`, guarda contra el eco del prompt de Whisper), amplían los evaluadores
 (`eval-chat --mode stream`, veredictos por etapas con dataset versión 2) y **miden** lo que no se
 conoce (fallback del protocolo de streaming, eco y alucinaciones sobre ruido sintético, primer turno
-tras reiniciar), con la regla de decisión fijada antes de medir. Sus decisiones D-1 a D-7 están
-confirmadas (la D-8, sobre las compuertas de cada etapa, espera la confirmación de Pipec); se ejecuta en una sesión nueva, en su propia rama desde `main`, y su Task 0
+tras reiniciar), con la regla de decisión fijada antes de medir. Sus decisiones D-1 a D-8 están
+confirmadas (la D-8: cada etapa se juzga con las compuertas que sus escenarios alimentan); se ejecuta en una sesión nueva, en su propia rama desde `main`, y su Task 0
 revalida todo contra esa base antes de tocar código.
 
 [ADR-0015](../../adr/0015-owner-grant-scope-and-speaker-binding.md) (**Accepted**, 2026-09-25)
