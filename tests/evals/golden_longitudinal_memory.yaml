@@ -1,4 +1,5 @@
-# Longitudinal-memory evaluation suite - version 1 (Plan 0046, CM-0).
+# Longitudinal-memory evaluation suite - version 2 (Plan 0056: version 1 plus a
+# `scope` per scenario; scenario content unchanged).
 #
 # Purpose: a deterministic, synthetic benchmark that lives OUTSIDE the runtime.
 # Every identity, place and fact below is invented. No household names, no real
@@ -15,7 +16,7 @@
 # abstention, provenance, cross_person_privacy, complete_deletion,
 # false_memory_resistance.
 
-version: 1
+version: 2
 
 scenarios:
   # -------------------------------------------------------------------------
@@ -25,6 +26,7 @@ scenarios:
   # Subject matter is a correctable preference tied to a sensitive episode.
   # -------------------------------------------------------------------------
   - scenario_id: sensitive_preference_lifecycle
+    scope: personal
     tags:
       - "category:update"
       - "category:multi_session"
@@ -183,6 +185,7 @@ scenarios:
   # deceptive negation that must not become a positive stored fact.
   # -------------------------------------------------------------------------
   - scenario_id: extraction_family_and_pet
+    scope: personal
     tags:
       - "category:extraction"
       - "domain:birthdate"
@@ -223,6 +226,7 @@ scenarios:
   # know" rather than a confident invention.
   # -------------------------------------------------------------------------
   - scenario_id: abstention_unknown_fact
+    scope: personal
     tags:
       - "category:abstention"
       - "domain:abstention-unknown"
@@ -253,6 +257,7 @@ scenarios:
   # Aria; a later recall must name who said it and how it was learned.
   # -------------------------------------------------------------------------
   - scenario_id: provenance_attribution
+    scope: personal
     tags:
       - "category:provenance"
       - "seam:provenance-tracking-unsupported"
@@ -305,6 +310,7 @@ scenarios:
   # framing must not be accepted or echoed as established truth.
   # -------------------------------------------------------------------------
   - scenario_id: false_memory_resistance_claim
+    scope: personal
     tags:
       - "category:false_memory_resistance"
       - "seam:candidate-lifecycle-unsupported"
@@ -336,6 +342,7 @@ scenarios:
   # fact. A recall a moment later must not treat it as confirmed.
   # -------------------------------------------------------------------------
   - scenario_id: perceptual_evidence_stays_proposed
+    scope: personal
     tags:
       - "category:false_memory_resistance"
       - "domain:perceptual-nondurable"
@@ -385,6 +392,7 @@ scenarios:
   # domicile must not be reported as current.
   # -------------------------------------------------------------------------
   - scenario_id: domicile_temporal_validity
+    scope: personal
     tags:
       - "category:temporality"
       - "domain:domicile-temporal"
@@ -431,6 +439,7 @@ scenarios:
   # neither an unknown guest nor the other adult automatically receives it.
   # -------------------------------------------------------------------------
   - scenario_id: two_adult_private_facts
+    scope: family
     tags:
       - "category:cross_person_privacy"
       - "domain:private-fact:aria"
@@ -511,6 +520,7 @@ scenarios:
   # from an unauthorized one.
   # -------------------------------------------------------------------------
   - scenario_id: recipient_only_message
+    scope: family
     tags:
       - "category:cross_person_privacy"
       - "domain:recipient-only"

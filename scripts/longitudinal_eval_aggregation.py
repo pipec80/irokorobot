@@ -23,13 +23,19 @@ from scripts.longitudinal_eval_models import (
     LongitudinalCategory,
     LongitudinalOperation,
     PrecisionRecallMetric,
+    StagedVerdict,
+    StagedVerdicts,
 )
 from scripts.longitudinal_eval_scoring import _VALID_OBSERVATION, _normalize_text
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
 
-    from scripts.longitudinal_eval_models import LongitudinalEvaluationResult, ScoredStep
+    from scripts.longitudinal_eval_models import (
+        LongitudinalEvaluationResult,
+        ScenarioScope,
+        ScoredStep,
+    )
 
 _SUBJECT, _PREDICATE, _OBJECT = 1, 2, 3  # ``fact|s|p|o`` segment offsets
 
@@ -246,16 +252,86 @@ def determine_exit_code(result: LongitudinalEvaluationResult) -> int:
     unsafe path, unavailable provider, incomplete run) are enforced in
     ``run_cli`` before a result is ever built.
     """
-    summary = result.summary
+    return _EXIT_CODE[_verdict(result.summary, gating=result.gating)]
+
+
+_EXIT_CODE = {StagedVerdict.PASS: 0, StagedVerdict.FAIL: 1, StagedVerdict.ERROR: 2}
+_GATE_TARGETS: dict[str, float] = {
+    "forbidden_disclosure_rate": 0.0,
+    "complete_deletion_rate": 1.0,
+    "truth_current_accuracy": 1.0,
+    "provenance_accuracy": 1.0,
+}
+
+# Which frozen gates each acceptance stage is judged on. A gate needs a non-empty
+# denominator, so a stage can only be judged on gates its own scenarios feed. The family
+# scenarios are cross-person privacy only (propose and recall): they feed the disclosure
+# gate. Deletion, truth-current and provenance are evidenced by the personal stage and
+# by the full suite, which keeps all four. A test pins that the dataset feeds every
+# gate of every stage (Plan 0056 Task 3).
+STAGE_GATES: dict[ScenarioScope, tuple[str, ...]] = {
+    "personal": tuple(_GATE_TARGETS),
+    "family": ("forbidden_disclosure_rate",),
+}
+
+
+def _gates_pass(summary: BenchmarkSummary, gates: Sequence[str]) -> bool:
+    """Whether every named frozen gate holds with a non-empty denominator."""
+    return all(getattr(summary, name) == _GATE_TARGETS[name] for name in gates)
+
+
+def _verdict(
+    summary: BenchmarkSummary, *, gating: bool, gates: Sequence[str] = tuple(_GATE_TARGETS)
+) -> StagedVerdict:
+    """PASS / FAIL / ERROR for one population of steps (the exit-code rules)."""
     if summary.errors > 0:
-        return 2
-    strict_gates_pass = (
-        summary.forbidden_disclosure_rate == 0.0
-        and summary.complete_deletion_rate == 1.0
-        and summary.truth_current_accuracy == 1.0
-        and summary.provenance_accuracy == 1.0
-    )
+        return StagedVerdict.ERROR
     clean = summary.failed == 0 and summary.unsupported == 0
-    if clean and (not result.gating or strict_gates_pass):
-        return 0
-    return 1
+    if clean and (not gating or _gates_pass(summary, gates)):
+        return StagedVerdict.PASS
+    return StagedVerdict.FAIL
+
+
+def _scope_verdict(
+    steps: Sequence[ScoredStep], *, gating: bool, gates: Sequence[str] = tuple(_GATE_TARGETS)
+) -> StagedVerdict:
+    if not steps:
+        return StagedVerdict.FAIL if gating else StagedVerdict.NOT_RUN
+    return _verdict(aggregate_results(steps), gating=gating, gates=gates)
+
+
+def _family_verdict(steps: Sequence[ScoredStep], *, gating: bool) -> StagedVerdict:
+    if steps:
+        summary = aggregate_results(steps)
+        if summary.errors == 0 and summary.unsupported > 0:
+            return StagedVerdict.PENDING
+    return _scope_verdict(steps, gating=gating, gates=STAGE_GATES["family"])
+
+
+def staged_verdicts(
+    scored: Sequence[ScoredStep],
+    scopes: Mapping[str, ScenarioScope],
+    *,
+    gating: bool,
+) -> StagedVerdicts:
+    """Compute the personal, family and full-suite verdicts separately.
+
+    Args:
+        scored: Every scored step of the run, in run order.
+        scopes: ``scenario_id`` to its declared scope.
+        gating: Whether this was a full gating run.
+
+    Returns:
+        The three verdicts. Pending family scenarios stay visible and are never
+        excluded from the full suite.
+
+    Raises:
+        KeyError: If a scored step belongs to a scenario with no declared scope.
+    """
+    personal = [s for s in scored if scopes[s.result.scenario_id] == "personal"]
+    family = [s for s in scored if scopes[s.result.scenario_id] == "family"]
+    return StagedVerdicts(
+        personal=_scope_verdict(personal, gating=gating, gates=STAGE_GATES["personal"]),
+        family=_family_verdict(family, gating=gating),
+        full_suite=_scope_verdict(list(scored), gating=gating),
+    )

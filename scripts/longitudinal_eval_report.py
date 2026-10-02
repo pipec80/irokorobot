@@ -31,6 +31,7 @@ if TYPE_CHECKING:
         LongitudinalEvaluationResult,
         PrecisionRecallMetric,
         RunMetadata,
+        StagedVerdicts,
         StepResult,
     )
 
@@ -56,6 +57,7 @@ def render_report(result: LongitudinalEvaluationResult) -> str:
         _header(result),
         _metadata_section(result.metadata),
         _headline_section(result.summary),
+        _staged_section(result.staged),
         _gate_section(result.summary),
         _extraction_section(result.summary),
         _rate_section(result.summary),
@@ -65,7 +67,7 @@ def render_report(result: LongitudinalEvaluationResult) -> str:
         _unsupported_table(result.results),
         _step_table(result.results),
     ]
-    return "\n\n".join(sections) + "\n"
+    return "\n\n".join(section for section in sections if section is not None) + "\n"
 
 
 def _fmt(value: float | None) -> str:
@@ -138,6 +140,21 @@ def _headline_section(summary: BenchmarkSummary) -> str:
         f"- failed: {summary.failed}\n"
         f"- unsupported: {summary.unsupported}\n"
         f"- errors: {summary.errors}"
+    )
+
+
+def _staged_section(staged: StagedVerdicts | None) -> str | None:
+    if staged is None:
+        return None
+    return (
+        "## Staged acceptance\n\n"
+        "Computed separately; `PENDING` and `NOT_RUN` are never a pass. Personal is judged "
+        "on all four frozen gates; family on the disclosure gate its cross-person "
+        "scenarios feed (they feed no other); the full suite on all four.\n\n"
+        "| Stage | Verdict |\n|---|---|\n"
+        f"| Personal acceptance (CM-7 exit evidence) | {staged.personal.value} |\n"
+        f"| Family acceptance (pending until P3.2) | {staged.family.value} |\n"
+        f"| Full suite | {staged.full_suite.value} |"
     )
 
 

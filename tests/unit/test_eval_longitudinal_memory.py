@@ -115,6 +115,7 @@ def _scenario(**over: object) -> dict[str, object]:
     """Return a schema-valid one-step scenario dict, overridden by keyword."""
     scenario: dict[str, object] = {
         "scenario_id": "sc1",
+        "scope": "personal",
         "tags": ["category:extraction"],
         "actors": {"aria": {"actor_id": "aria", "role": "subject"}},
         "steps": [_step()],
@@ -126,7 +127,7 @@ def _scenario(**over: object) -> dict[str, object]:
 def _suite_doc(scenarios: list[dict[str, object]] | None = None) -> dict[str, object]:
     """Return a suite document, defaulting to a single extraction scenario."""
     chosen = scenarios if scenarios is not None else [_scenario()]
-    return {"version": 1, "scenarios": chosen}
+    return {"version": 2, "scenarios": chosen}
 
 
 def _write(tmp_path: Path, text: str) -> Path:
@@ -147,9 +148,9 @@ def _write_suite(tmp_path: Path, doc: object) -> Path:
 
 
 @pytest.mark.unit
-def test_load_suite_rejects_a_non_version_one_document(tmp_path: Path) -> None:
+def test_load_suite_rejects_a_document_that_is_not_version_two(tmp_path: Path) -> None:
     doc = _suite_doc()
-    doc["version"] = 2
+    doc["version"] = 1
     with pytest.raises(ValueError, match="version"):
         load_suite(_write_suite(tmp_path, doc))
 
@@ -223,7 +224,7 @@ def test_load_suite_accepts_a_minimal_fully_covering_suite(tmp_path: Path) -> No
         for index, category in enumerate(LongitudinalCategory)
     ]
     suite = load_suite(_write_suite(tmp_path, _suite_doc([_scenario(steps=steps)])))
-    assert suite.version == 1
+    assert suite.version == 2
     assert len(suite.scenarios[0].steps) == len(list(LongitudinalCategory))
 
 
@@ -962,7 +963,7 @@ def _metadata(**over: object) -> RunMetadata:
         "worktree_dirty": False,
         "worktree_status": [],
         "dataset_path": "tests/evals/golden_longitudinal_memory.yaml",
-        "dataset_version": 1,
+        "dataset_version": 2,
         "dataset_sha256": _ZEROES_SHA,
         "python_version": "3.12.0",
         "provider": "ollama",
@@ -1040,6 +1041,7 @@ def _lscenario(steps: list[LongitudinalStep], **over: object) -> LongitudinalSce
     """Return a schema-valid ``LongitudinalScenario`` with keyword overrides."""
     base: dict[str, object] = {
         "scenario_id": "sc1",
+        "scope": "personal",
         "tags": ["category:extraction"],
         "actors": {"aria": {"actor_id": "aria", "role": "subject"}},
         "steps": steps,
@@ -1270,7 +1272,7 @@ def test_metadata_is_complete_and_the_dataset_hash_is_deterministic(
     second = collect_run_metadata(_GOLDEN, [], [])
     assert first.dataset_sha256 == second.dataset_sha256
     assert first.dataset_sha256 == hashlib.sha256(_GOLDEN.read_bytes()).hexdigest()
-    assert first.dataset_version == 1
+    assert first.dataset_version == 2
     assert first.provider == "ollama"
     assert first.branch == "feat/0046-longitudinal-memory-baseline"
     assert first.temporary_database_name == "brain.db"
@@ -1685,6 +1687,8 @@ def test_cli_full_red_run_writes_a_report_and_returns_one(
     report = raw.decode("utf-8")
     assert report.startswith("# Longitudinal-memory evaluation report")
     assert "gating baseline" in report
+    assert "## Staged acceptance" in report
+    assert "| Full suite | FAIL |" in report
     assert settings.brain_db_path == original
 
 

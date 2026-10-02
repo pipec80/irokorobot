@@ -49,6 +49,7 @@ _DEFAULT_DATASET = _REPO_ROOT / "tests" / "evals" / "golden_longitudinal_memory.
 _DEFAULT_OUTPUT = _REPO_ROOT / "docs" / "evals" / "longitudinal-memory-cm0.md"
 
 _ALL_CATEGORIES: frozenset[LongitudinalCategory] = frozenset(LongitudinalCategory)
+_SUITE_VERSION = 2  # Plan 0056: version 1 plus a ``scope`` per scenario
 
 _EMAIL_RE = re.compile(r"[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}", re.IGNORECASE)
 _WINDOWS_PATH_RE = re.compile(r"[a-z]:\\users\\|\\users\\", re.IGNORECASE)
@@ -79,18 +80,18 @@ def load_suite(path: Path) -> LongitudinalSuite:
     """Load and semantically validate one versioned longitudinal suite.
 
     Args:
-        path: Path to a version-1 YAML suite.
+        path: Path to a version-2 YAML suite.
 
     Returns:
         The parsed, structurally and semantically valid suite.
 
     Raises:
-        ValueError: On a non-version-1 mapping, a schema violation, or a failed
+        ValueError: On a non-version-2 mapping, a schema violation, or a failed
             semantic rule (unique ids, actor refs, sessions, expectations,
             category coverage).
     """
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    _require_version_one(raw)
+    _require_supported_version(raw)
     try:
         suite = LongitudinalSuite.model_validate(raw)
     except ValidationError as exc:
@@ -104,9 +105,9 @@ def load_suite(path: Path) -> LongitudinalSuite:
     return suite
 
 
-def _require_version_one(raw: object) -> None:
-    if not isinstance(raw, dict) or raw.get("version") != 1:
-        raise ValueError('longitudinal suite "version" must be exactly 1')
+def _require_supported_version(raw: object) -> None:
+    if not isinstance(raw, dict) or raw.get("version") != _SUITE_VERSION:
+        raise ValueError(f'longitudinal suite "version" must be exactly {_SUITE_VERSION}')
 
 
 def _check_unique_ids(suite: LongitudinalSuite) -> None:

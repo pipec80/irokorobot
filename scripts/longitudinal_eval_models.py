@@ -56,6 +56,29 @@ class LongitudinalOperation(enum.StrEnum):
     INSPECT_DERIVATIVES = "inspect_derivatives"
 
 
+ScenarioScope = Literal["personal", "family"]
+
+
+class StagedVerdict(enum.StrEnum):
+    """Verdict of one acceptance stage; ``PENDING`` and ``NOT_RUN`` never mean PASS."""
+
+    PASS = "PASS"  # noqa: S105  # enum member, not a credential
+    FAIL = "FAIL"
+    PENDING = "PENDING"
+    ERROR = "ERROR"
+    NOT_RUN = "NOT_RUN"
+
+
+class StagedVerdicts(BaseModel):
+    """Personal, family and full-suite verdicts, computed separately."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    personal: StagedVerdict
+    family: StagedVerdict
+    full_suite: StagedVerdict
+
+
 class EvaluationActor(BaseModel):
     """One synthetic participant referenced by a scenario's steps."""
 
@@ -105,6 +128,7 @@ class LongitudinalScenario(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     scenario_id: str
+    scope: ScenarioScope
     tags: list[str]
     actors: dict[str, EvaluationActor]
     steps: list[LongitudinalStep]
@@ -115,7 +139,7 @@ class LongitudinalSuite(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    version: Literal[1]
+    version: Literal[2]
     scenarios: list[LongitudinalScenario]
 
 
@@ -242,7 +266,7 @@ class RunMetadata(BaseModel):
     worktree_dirty: bool
     worktree_status: list[str]
     dataset_path: str
-    dataset_version: Literal[1]
+    dataset_version: Literal[2]
     dataset_sha256: str
     python_version: str
     provider: Literal["ollama"]
@@ -265,6 +289,7 @@ class LongitudinalEvaluationResult(BaseModel):
     results: list[StepResult]
     summary: BenchmarkSummary
     gating: bool
+    staged: StagedVerdicts | None = None
 
 
 @dataclass(frozen=True)
