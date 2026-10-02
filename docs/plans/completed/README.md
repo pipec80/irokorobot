@@ -30,7 +30,7 @@ one-terminal-event guarantee, the NDJSON 200 OpenAPI contract, `/health`
 wording + injectable `create_app`) and left only Uvicorn concurrency
 calibration open, as its own `perf(...)` plan.
 
-[Plan 0050](0050-server-audit-repairs.md) closed on 2026-10-01 the repairs of the
+[Plan 0050](0050-server-audit-repairs.md) closed on 2026-10-01 (merged as PR #154, `a496c1f`) the repairs of the
 [0049 audit](../open/0049-server-objective-conformance-audit.md): standalone imports
 and a pure cognitive core, one transport seam to Ollama, header-first image bounds,
 a V4 reader that honours stored classification, owner-scoped setup readiness, dead
