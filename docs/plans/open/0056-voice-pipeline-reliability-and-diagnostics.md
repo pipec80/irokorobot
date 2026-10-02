@@ -2,8 +2,9 @@
 
 > **Status:** `Ready` — written 2026-10-02 after Plan 0050 closed; promoted and
 > selected as `NOW` by Pipec on 2026-10-02, with decisions D-1 to D-7 below confirmed
-> as proposed. Execute it in a new session on its own branch from the merged `main`;
-> its Task 0 revalidates the baseline before any code. Queue position: the first row
+> as proposed. Executed 2026-10-02 on `fix/0056-voice-pipeline` (see the
+> *Execution record* below); pending Pipec's real-runtime acceptance and the merge.
+> Queue position: the first row
 > after the audit repairs in the
 > [canonical portfolio](../../roadmap/cognitive-roadmap.md#canonical-pre-electronics-delivery-portfolio),
 > ahead of CM-1 / Plan 0051.

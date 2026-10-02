@@ -97,7 +97,7 @@ problem can be localized without running the whole loop.
 |---|---|---|:---:|:---:|
 | `mic_test.py` | `uv run python scripts/mic_test.py` | Mic capture → Whisper STT only | No | No |
 | `piper_test.py` | `uv run python scripts/piper_test.py --text ...` | Text → Piper TTS → speaker only | No | No |
-| `pipeline_test.py` | `just test-pipeline` | Full `mic → STT → LLM → TTS → speaker`, real production code, no HTTP | No | Yes (Ollama) |
+| `pipeline_test.py` | `just test-pipeline` | Smoke test of the three model seams, `mic → STT → LLM → TTS → speaker` (the mic is optional with `--text`); real model code, but no controller, identity, memory or HTTP | No | Yes (Ollama) |
 | `client_test.py` | `just test-client` | Full HTTP round trip through the real running server | Yes | No |
 | `chat_test.py` | `just chat-test` | `/chat` text-only: continuity, isolation, interactive mode | Yes | No |
 | `memory_test.py` | `just memory-test --session` / `--show-db` | Public voice channel + raw SQLite memory state | Yes (except `--show-db`) | No |
@@ -106,14 +106,24 @@ problem can be localized without running the whole loop.
 | `face_auth_demo.py` | `just face-auth-demo --enroll` / `--revoke` | The Plan 0029 admin endpoints — enroll/revoke the owner's face | Yes, owner+PIN configured | No |
 | `manage_household_roles.py` | `uv run python scripts/manage_household_roles.py bootstrap-owner` | Local role bootstrap, direct DB, no HTTP | No | No |
 | `migrate_memory_v4.py` | `uv run python scripts/migrate_memory_v4.py --apply` | Legacy-fact migration into v4, dry-run first | No | No |
-| `eval_chat.py` / `eval_consolidation.py` | `just eval-chat` / `just eval-memory` | Response/extraction quality against real Ollama — not `pytest` | Needs `just services` | Yes |
+| `eval_chat.py` / `eval_consolidation.py` | `just eval-chat` / `just eval-memory` | Response/extraction quality against real Ollama — not `pytest`. `just eval-chat --mode stream` instead measures how often a streamed reply would drop to the fallback phrase (the `EMOTION:` protocol, Plan 0056); it reports counts and rates, never model output | Needs `just services` | Yes |
+| `stt_probes.py` | `just probe-stt noise` / `just probe-stt first-turn` | Whisper on synthetic noise (empty, prompt echo or other text, read before the echo guard) and first-utterance accuracy over fresh processes (Plan 0056); loads the real models, so run it with the server stopped | No | Yes |
 | `speaker_calibration.py` | `just speaker-calibration <action>` | Speaker-embedding calibration corpus and analysis (Plan 0047, PC-3A) — capture, embed, analyze, discard, cleanup; local only, never in the runtime | No (mic only for `capture`) | Yes for the recipe |
 | `eval_longitudinal_memory.py` | `just eval-longitudinal` | Longitudinal-memory capability probe (multi-session recall, correction, cross-person privacy, deletion, provenance) against real Ollama + a temp DB — not `pytest` | Needs `just services` | Yes |
 
 Rule of thumb: audio sounds wrong → `mic_test.py`/`piper_test.py` first (they
 need nothing else running). The answer is wrong but audio is fine →
-`pipeline_test.py` (bypasses HTTP, exercises the real LLM path directly).
+`pipeline_test.py` (bypasses HTTP and the cognitive controller; it only shows
+whether the three models work, not whether the household path does).
 Something only breaks through the real server → `client_test.py`/`chat_test.py`.
+
+What the Plan 0056 tools do **not** prove: `probe-stt noise` uses synthetic noise,
+not your room, so a clean result does not show the echo guard works on real silence;
+`probe-stt first-turn` uses Piper speech and isolates STT from the server's other
+start-up work, so it cannot say whether *your* first utterance after a restart is
+heard correctly (judge that by speaking it); and `eval-chat --mode stream` measures
+the protocol on 120 repeated golden and chit-chat turns, a wide interval, not a
+general reliability figure.
 
 ### Speaker calibration — `just speaker-calibration` (Plan 0047, PC-3A)
 
