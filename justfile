@@ -94,7 +94,7 @@ run-server:
 run-robot:
     uv run --env-file .env --package robot robot
 
-# Valida el pipeline completo: mic → STT → LLM → TTS → speaker
+# Humo STT → LLM → TTS (el micrófono es opcional con --text). No recorre el controlador, la identidad ni la API: para eso, chat-test o el robot
 test-pipeline *ARGS:
     uv run --env-file .env python scripts/pipeline_test.py {{ARGS}}
 

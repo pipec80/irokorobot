@@ -1,6 +1,8 @@
-"""Debug script: mic → STT → LLM → TTS → speaker — full pipeline validation.
+"""Smoke test: mic → STT → LLM → TTS → speaker — the three model seams only.
 
-Imports the actual server modules so this exercises the real production code path.
+Imports the actual server modules so this exercises the real model code path.
+It does not run the cognitive controller, identity, memory or the HTTP API; use
+`just chat-test` or the robot for those.
 Requires .env in repo root with local Ollama settings such as OLLAMA_URL.
 
 Audio contract: WAV · 16000 Hz · mono · int16.
@@ -23,8 +25,9 @@ from pathlib import Path
 import time
 import wave
 
+import httpx
 import numpy as np
-import sounddevice as sd
+from server.settings import settings
 
 from server import llm, stt, tts
 
@@ -46,6 +49,8 @@ def _header(step: str) -> None:
 
 def list_devices() -> None:
     """Print available audio input devices."""
+    import sounddevice as sd  # noqa: PLC0415 — PortAudio is only needed with a microphone
+
     print("\n=== Audio Input Devices ===")  # noqa: T201
     for i, dev in enumerate(sd.query_devices()):
         if dev["max_input_channels"] > 0:  # type: ignore[index]
@@ -64,6 +69,8 @@ def record(seconds: int, device: int | None) -> bytes:
     Returns:
         WAV bytes at 16kHz mono int16.
     """
+    import sounddevice as sd  # noqa: PLC0415 — PortAudio is only needed with a microphone
+
     logger.info("Recording %d seconds on device %s... speak now!", seconds, device or "default")
     frames = sd.rec(
         int(seconds * _SAMPLE_RATE),
@@ -94,6 +101,8 @@ def play_wav(wav_bytes: bytes) -> None:
     Args:
         wav_bytes: WAV at 16kHz mono int16.
     """
+    import sounddevice as sd  # noqa: PLC0415 — PortAudio is only needed with a microphone
+
     with wave.open(io.BytesIO(wav_bytes)) as wf:
         sample_rate = wf.getframerate()
         raw = wf.readframes(wf.getnframes())
@@ -136,7 +145,8 @@ async def run_pipeline(
     # ── Step 2: LLM ──────────────────────────────────────────────────────
     _header("2/3  LLM  (Ollama)")
     t0 = time.perf_counter()
-    llm_response, emotion = await llm.generate_response(text_heard)
+    async with httpx.AsyncClient(timeout=settings.ollama_timeout_s) as client:
+        llm_response, emotion = await llm.generate_response(client, text_heard)
     elapsed = time.perf_counter() - t0
     print(f"  response : {llm_response}")  # noqa: T201
     print(f"  emotion  : {emotion}")  # noqa: T201
