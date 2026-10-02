@@ -1,11 +1,14 @@
 # 0050 — Server audit repairs
 
-> **Status:** `Ready` — promoted and selected as `NOW` by Pipec on 2026-10-01
-> (decisions 1–5 confirmed as proposed). Was a draft after Plan 0047 closed 2026-09-25. Queue position (revised
-> 2026-09-30): after the Plan 0055 follow-ups and **before** Plan 0051, which is
-> now the first plan of CM-1; the seed load ("step 0") moved after CM-3. Task 11
-> therefore pins today's grant behaviour as rehearsed, and Plan 0051 changes it
-> deliberately afterwards.
+> **Status:** `Closed` 2026-10-01 — implemented on `fix/0050-server-audit-repairs`
+> (Tasks 1–12, one commit each), automated gates green, real-hardware acceptance
+> recorded below with one case not run (the two-face veto; no second person was
+> available). Promoted and selected as `NOW` by Pipec on 2026-10-01 (decisions 1–5
+> confirmed as proposed). Was a draft after Plan 0047 closed 2026-09-25. Queue
+> position (revised 2026-09-30): after the Plan 0055 follow-ups and **before** Plan
+> 0051, which is now the first plan of CM-1; the seed load ("step 0") moved after
+> CM-3. Task 11 therefore pins today's grant behaviour as rehearsed, and Plan 0051
+> changes it deliberately afterwards.
 >
 > **Plan review updated 2026-10-01 against `e14c6ae` (static, not an execution).**
 > The former re-audit items (a)–(h) are incorporated into the required reading,
@@ -38,7 +41,7 @@ false statement with a true one. Five static guards make the controls permanent.
 **Tech Stack:** Python 3.12, FastAPI, httpx, aiosqlite, OpenCV 5, Pillow 12,
 pytest (+ xdist). Same pins as the current lock, plus an explicit `pillow`.
 
-**Spec:** [0049 — server objective conformance audit](0049-server-objective-conformance-audit.md)
+**Spec:** [0049 — server objective conformance audit](../open/0049-server-objective-conformance-audit.md)
 (§3, §9, §11, §13), accepted
 [ADR-0015 — grant scope and speaker binding](../../adr/0015-owner-grant-scope-and-speaker-binding.md).
 ADR-0015 decision 2 is refined by accepted
@@ -4181,22 +4184,13 @@ speaker flags on, streaming mode, `LOG_CONVERSATION_TEXT` on:
 | 4 — owner-face authorized turn, streaming | PASS (partial): the protected child-list question was answered through the face, `Identity fusion: face_only`, speaker verdict `unknown`, `need=own_children_list status=known source=deterministic`, `llm_ms=0`, total 2995 ms, `chunks=1`. Start-up reached ONLINE in about 9 s with both models warmed. The two-face veto was not run. |
 | 5 — `/vision/respond` scene question (classic) | PASS: with `VISION_ENABLED=true` the voice turn asked for a frame (`route=voice.vision-cue`, "A ver, dejame mirar..."), `/vision/respond` returned 200 and `Turn decision: channel=vision need=scene_description source=current_perception llm_ms=0`; Pipec confirmed the description matched what the camera saw. The VLM call now goes through `llm_transport.ollama_chat` (Task 3). Latency: `Scene described in 116600 ms`, total 118974 ms — a cold `qwen3-vl:2b-instruct` load on the non-dedicated laptop (the repository's documented cold VLM baseline is about 140 s), not measured against a warm model and not a regression claim. |
 
-This is not the plan's acceptance: the two-face veto of case 4 is still open. Side evidence: the server started and served
+**Verdict (Pipec, 2026-10-01):** accepted with one case not run. Cases 1, 2 (both
+modes, generic and introduction), 3 (both modes), 4 (owner-face authorized turn in
+both modes) and 5 passed on real hardware. The two-face veto of case 4 was **not
+run**: no second person was available. It stays covered by the automated tests of
+Plan 0054/0055 (`veto_multiple_faces`, veto never consumes a token) and by the
+2026-09-30 PC-4 hardware acceptance, which ran it; Plan 0050 did not change that
+code; `identity_fusion.py` and the veto logic are untouched. No acceptance case failed. Side evidence: the server started and served
 all turns with the five removed settings still present in the real `.env`
 (`DEFAULT_USER_ID`, three `SENSOR_*` knobs, `DASHBOARD_ENABLED`), so `extra="ignore"`
 keeps an old `.env` valid as decision 4 requires.
-
-## Rollback
-
-Revert the squash-merged PR as one unit. The only lock change is the explicit
-`pillow` entry (same version); no schema migration or wire change. Revoking an
-owner role under Task 6 also revokes its credential; reverting code does not
-reactivate credentials already revoked. Recovery uses the existing local setup.
-
-## Closure
-
-One PR from `fix/0050-server-audit-repairs`, based on `main` after Plan 0055
-and the Task 0 revalidation. Promotion and implementation are separate from
-the current documentation edit on `docs/single-delivery-queue`. On merge: move
-this file to `completed/`, update the board and `current-state.md`, and record
-the closure in 0049 §13.

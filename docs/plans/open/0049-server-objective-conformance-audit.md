@@ -4,7 +4,8 @@
 reemplaza al plan NOW (0047 cerró el 2026-09-25). La revisión inicial de esta conversación está autorizada;
 la campaña completa descrita aquí queda propuesta, no ejecutada.
 
-**Estado de las reparaciones (2026-10-01):** ejecutadas por 0050 en su rama;
+**Estado de las reparaciones (2026-10-01):** ejecutadas y cerradas por 0050
+(aceptación en hardware de Pipec, salvo el veto de dos caras, que no se corrió);
 ver §13, «Estado tras ejecutar 0050». Este documento sigue siendo un registro de
 auditoría, no un plan ejecutable.
 
@@ -14,7 +15,7 @@ auditoría, no un plan ejecutable.
 (§13). Ajusta la clasificación de F-02, F-03, F-06 y F-08–F-12, añade F-13…F-24,
 completa la lectura de la frontera de protección (100 %) y traslada las
 reparaciones verificadas al borrador
-[0050 — server audit repairs](0050-server-audit-repairs.md) (12 tareas, en cola;
+[0050 — server audit repairs](../completed/0050-server-audit-repairs.md) (12 tareas, en cola;
 0047 cerró el 2026-09-25). Las decisiones sobre el alcance del grant y su ligadura al hablante
 están en el [ADR-0015](../../adr/0015-owner-grant-scope-and-speaker-binding.md)
 (propuesto). Las notas «Ajuste 2026-09-23» dentro de cada hallazgo remiten a esa
@@ -1070,7 +1071,7 @@ todas las tareas aplicadas (**1.417 passed, 5 skipped**).
 
 ### Estado tras ejecutar 0050 (2026-10-01)
 
-Se ejecutó [0050](0050-server-audit-repairs.md) en la rama
+Se ejecutó [0050](../completed/0050-server-audit-repairs.md) en la rama
 `fix/0050-server-audit-repairs`, sobre `42b8908` (línea base: `just gate` en
 verde, 1.607 tests). Cada tarea observó su RED antes del GREEN y salió en un
 commit propio; el conteo de la suite creció de 1.607 a 1.695. Solo se marcan
@@ -1097,8 +1098,9 @@ destino.
 | O-02 | Aclarado | El manual del operador distingue `personal_security_ready`, `onboarding_complete` y el enrolamiento biométrico. |
 | O-04 | Abierto | Sigue en el plan de fiabilidad del pipeline de voz. |
 
-La aceptación en hardware real de 0050 sigue pendiente (sección *Real runtime
-acceptance* del plan); este registro no la sustituye.
+La aceptación en hardware real de 0050 la hizo Pipec el 2026-10-01 (casos 1, 2,
+3, 4 y 5; el veto de dos caras no se corrió); el detalle está en la sección *Real
+runtime acceptance* del plan.
 
 ### F-13 — El docstring de `create_app` contradice el import con efectos
 

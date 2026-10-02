@@ -152,7 +152,7 @@ PC-2 accepted (provisional calibration)
   -> PC-3B consented speaker runtime evidence — Plan 0053 closed 2026-09-29 (untrusted VOICE evidence, default off)
   -> PC-4 conservative identity fusion — Plan 0054 closed 2026-09-30 (face `basic`, voice raises to
      `strong`, reserved data need `strong`; accepted on real hardware, replay not defended)
-  -> hardening: Plan 0055 (PC-4 follow-ups) closed 2026-10-01; Plan 0050 (audit repairs) — `Ready`/`NOW` since 2026-10-01;
+  -> hardening: Plan 0055 (PC-4 follow-ups) closed 2026-10-01; Plan 0050 (audit repairs) closed 2026-10-01;
      voice-pipeline reliability and diagnostics — not written
   -> CM-1..CM-7 longitudinal memory (CM-1 starts with Plan 0051; seed load after CM-3) — unstarted
   -> PC-5 integrated personal acceptance — unstarted
