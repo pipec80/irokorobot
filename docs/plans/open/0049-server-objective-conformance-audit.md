@@ -1096,7 +1096,7 @@ destino.
 | F-03 | Parcial | `current-state.md` y el manual del operador actualizados; reglas locales corregidas el 2026-09-24. |
 | F-04, F-17 | Abiertos → CM-1…CM-7 | Sin cambio; la escritura canónica y la deduplicación son de CM-3. |
 | O-02 | Aclarado | El manual del operador distingue `personal_security_ready`, `onboarding_complete` y el enrolamiento biométrico. |
-| O-04 | Abierto | Sigue en el plan de fiabilidad del pipeline de voz. |
+| O-04 | Abierto → plan de reparación | Medido por el Plan 0056: 29,17 % de respaldo (por encima del 5 %); fila `Unplanned` en el roadmap. |
 
 La aceptación en hardware real de 0050 la hizo Pipec el 2026-10-01 (casos 1, 2,
 3, 4 y 5; el veto de dos caras no se corrió); el detalle está en la sección *Real
@@ -1265,6 +1265,13 @@ con este modelo. Dueño: medirla con `just eval-chat` tras cerrar 0047; si el
 respaldo es habitual, un plan propio decide entre reintentar una vez, rescatar el
 texto útil o cambiar de modelo. Hasta entonces queda como observación abierta,
 no como reparación.
+
+**Medición (2026-10-02, Plan 0056):** `just eval-chat --mode stream --runs 5` dio
+**29,17 % de respaldo** (35 de 120; 56,67 % en turnos con contexto de memoria y 1,67 %
+en turnos sin contexto; 0 errores del proveedor), por encima del 5 % acordado de
+antemano. El respaldo es habitual, no ocasional: queda abierta una fila `Unplanned`
+en el roadmap para el plan de reparación. Detalle y límites en
+[`0056-voice-pipeline-measurements.md`](../../evals/0056-voice-pipeline-measurements.md).
 
 ### O-05 — Caída de Ollama 0.33.1 en la GPU MX450 (2026-09-24, resuelta)
 

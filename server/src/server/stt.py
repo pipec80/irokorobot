@@ -7,6 +7,9 @@ from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 import io
 import logging
+import math
+import re
+import unicodedata
 
 from faster_whisper import WhisperModel
 from faster_whisper.transcribe import VadOptions
@@ -16,6 +19,12 @@ from server.request_context import run_in_executor_with_context
 from server.settings import settings
 
 logger = logging.getLogger(__name__)
+
+# Echo-guard heuristic (Plan 0056 D-1). A prompt shorter than this is a name or a greeting
+# a user may really say, so the guard stays off; a longer one is only "echoed" when the
+# transcript covers at least this share of its words (five of the default prompt's seven).
+_MIN_PROMPT_WORDS = 3
+_MIN_ECHO_SHARE = 0.6
 
 _executor = ThreadPoolExecutor(max_workers=2)
 _model: WhisperModel | None = None
@@ -67,8 +76,68 @@ def _merge_hotwords(base: str | None, extra: list[str] | None) -> str | None:
     return " ".join(tokens) or None
 
 
+def _normalize_words(text: str) -> str:
+    """Fold case, accents and punctuation so two spellings of one phrase compare equal."""
+    folded = unicodedata.normalize("NFKD", text.casefold())
+    unaccented = "".join(c for c in folded if not unicodedata.combining(c))
+    return " ".join(re.sub(r"[\W_]+", " ", unaccented).split())
+
+
+def is_prompt_echo(transcript: str, prompt: str | None) -> bool:
+    """Return whether Whisper merely repeated its own initial prompt.
+
+    On a noise clip Whisper can return the ``initial_prompt`` as if it were speech.
+    This is a heuristic with a known false positive: a user who says, verbatim, at
+    least 60 % of the prompt's words in a row (five of the default prompt's seven)
+    is discarded too. Shorter phrases ("Iroko", "un robot doméstico") and any prompt
+    of fewer than three words never trigger it.
+
+    Args:
+        transcript: Text Whisper returned.
+        prompt: The ``initial_prompt`` it was given, if any.
+
+    Returns:
+        True when the transcript is a contiguous part of the prompt covering at
+        least 60 % of its words, or the prompt repeated and nothing else.
+    """
+    if not prompt:
+        return False
+    reference = _normalize_words(prompt)
+    reference_words = reference.split()
+    if len(reference_words) < _MIN_PROMPT_WORDS:
+        return False
+    heard = _normalize_words(transcript)
+    needed = max(_MIN_PROMPT_WORDS, math.ceil(_MIN_ECHO_SHARE * len(reference_words)))
+    if len(heard.split()) < needed:
+        return False
+    if f" {heard} " in f" {reference} ":
+        return True
+    return reference in heard and not heard.replace(reference, " ").strip()
+
+
 def _transcribe_sync(audio: bytes, hotwords: str | None) -> str:
-    """Run Whisper inference synchronously (blocking).
+    """Run Whisper inference and discard a transcript that is the prompt itself.
+
+    Args:
+        audio: Raw WAV bytes at 16kHz mono int16.
+        hotwords: Merged hotwords string, or ``None``.
+
+    Returns:
+        Transcribed text, or ``""`` when Whisper only echoed its initial prompt.
+
+    Raises:
+        TranscriptionError: If audio cannot be processed.
+        ValueError: If audio is empty.
+    """
+    text = _whisper_text(audio, hotwords)
+    if is_prompt_echo(text, settings.whisper_initial_prompt):
+        logger.warning("Whisper returned its own initial prompt — transcript discarded")
+        return ""
+    return text
+
+
+def _whisper_text(audio: bytes, hotwords: str | None) -> str:
+    """Run Whisper inference synchronously (blocking) and return the raw transcript.
 
     Args:
         audio: Raw WAV bytes at 16kHz mono int16.
@@ -76,7 +145,7 @@ def _transcribe_sync(audio: bytes, hotwords: str | None) -> str:
             proper nouns, or ``None``.
 
     Returns:
-        Transcribed text string.
+        Transcribed text string, exactly as Whisper produced it.
 
     Raises:
         TranscriptionError: If audio cannot be processed.

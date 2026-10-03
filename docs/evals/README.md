@@ -92,3 +92,14 @@ error or a cleanup error each exit `2`.
   household names or reserved terms. The Ollama URL is stored stripped of user
   info and query string; each `--reserved-term` value is replaced with
   `<redacted>` and only its count is kept.
+
+## Voice-pipeline measurements — `just eval-chat --mode stream`, `just probe-stt`
+
+Plan 0056 recorded three measurements against decision rules written before the
+runs: the streaming-protocol fallback rate, prompt echo and hallucination on
+synthetic noise, and first-utterance accuracy after a restart. The curated record is
+[`0056-voice-pipeline-measurements.md`](0056-voice-pipeline-measurements.md); the raw
+streaming report is
+[`0056-stream-protocol-run1.md`](0056-stream-protocol-run1.md). These reports hold
+counts and rates only, never model output or a transcript. The probes load the real
+Whisper (and Piper) models, so run them with the server stopped.

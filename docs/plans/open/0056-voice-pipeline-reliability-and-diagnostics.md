@@ -2,8 +2,9 @@
 
 > **Status:** `Ready` — written 2026-10-02 after Plan 0050 closed; promoted and
 > selected as `NOW` by Pipec on 2026-10-02, with decisions D-1 to D-7 below confirmed
-> as proposed. Execute it in a new session on its own branch from the merged `main`;
-> its Task 0 revalidates the baseline before any code. Queue position: the first row
+> as proposed. Executed 2026-10-02 on `fix/0056-voice-pipeline` (see the
+> *Execution record* below); accepted by Pipec on real hardware the same day; pending the merge.
+> Queue position: the first row
 > after the audit repairs in the
 > [canonical portfolio](../../roadmap/cognitive-roadmap.md#canonical-pre-electronics-delivery-portfolio),
 > ahead of CM-1 / Plan 0051.
@@ -2710,6 +2711,50 @@ With Pipec, one session after the gates pass (outcomes and timings only):
 Revert the squash-merged PR as one unit. No schema migration, wire change or new
 dependency. Reverting the dataset bump restores version 1; the 0046 baseline report
 was never rewritten.
+
+## Execution record
+
+Branch `fix/0056-voice-pipeline`, created from `main` at `0d94e2f` (2026-10-02).
+
+- **Task 0.** Clean tree; `just gate` passed with 1695 tests, the baseline. Every symbol
+  named above exists as described. Eleven `docs/` files mention `test-pipeline`,
+  `invalid_protocol` or *prompt echo* (the list Task 8 reviews).
+- **Tasks 1 to 6.** One commit each; each new test was observed RED for the stated
+  reason (Task 1: 16 failures, as rehearsed) before its implementation. `just test`
+  after Task 6: 1805 tests, equal to the rehearsal.
+- **Deviation 1 (found by running Task 7).** `just eval-chat` failed under direct
+  execution (`No module named 'scripts'`): `python scripts/eval_chat.py` puts `scripts/`,
+  not the repo root, on `sys.path`, which an in-process test cannot see. Fixed with the
+  bootstrap `eval_longitudinal_memory.py` already uses, plus a subprocess test
+  (`1b4707a`).
+- **Deviation 2 (found by independent review).** On a non-gating run the staged report
+  still called the personal verdict "CM-7 exit evidence" and said the four gates had
+  been applied. `_staged_section` now takes `gating` and labels a partial run
+  "not acceptance evidence"; the full-report test covers it (`213c989`). The gating
+  wording and its test are unchanged. `just test`: 1807 tests.
+- **Task 7.** Measurements recorded in
+  [`docs/evals/0056-voice-pipeline-measurements.md`](../../evals/0056-voice-pipeline-measurements.md):
+  streaming fallback 29.17 % (follow-up opened), noise 0 % and first-turn difference
+  0.000 (both closed).
+
+- **Real runtime acceptance (Pipec, 2026-10-02; outcomes only, no transcripts or
+  names).** Console text logging was on; face and speaker identity were active.
+  1. `just test-pipeline --text hola robot --no-play` completed (STT skipped; LLM
+     13.67 s on the first, cold call; Piper synthesis 1.95 s).
+  2. Server and robot in **streaming** mode: a generic turn went through
+     `stream.legacy_text_turn` and ended `Stream done: outcome=ok chunks=2` (first
+     audio 6.21 s, total 6.97 s, no fallback); a protected turn resolved
+     `face_and_voice` fusion (speaker verdict `verified`, role owner), took the
+     deterministic route and answered in 3.28 s with a 200.
+  3. **Classic mode was not run**, by Pipec's decision; it stays covered by the
+     automated tests only.
+  4. Silence: for about 30 s with the room's normal noise the robot kept "Waiting for
+     speech", sent no audio request (the server saw only `/health`) and spoke nothing.
+     The echo guard itself was **not exercised** (no request reached STT), so this
+     shows the capture gate held, not the guard; the guard is evidenced by its tests.
+  5. First utterance after a fresh `run-server`: the first request after start-up
+     was transcribed without a visible error (STT 3.0 s, against 1.8 s for the next
+     turn; one pair, not conclusive).
 
 ## Closure
 

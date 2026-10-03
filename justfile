@@ -94,9 +94,13 @@ run-server:
 run-robot:
     uv run --env-file .env --package robot robot
 
-# Valida el pipeline completo: mic → STT → LLM → TTS → speaker
+# Humo STT → LLM → TTS (el micrófono es opcional con --text). No recorre el controlador, la identidad ni la API: para eso, chat-test o el robot
 test-pipeline *ARGS:
     uv run --env-file .env python scripts/pipeline_test.py {{ARGS}}
+
+# Sondas de STT del Plan 0056 (cargan Whisper real; con el servidor detenido): noise | first-turn
+probe-stt *ARGS:
+    uv run --env-file .env python scripts/stt_probes.py {{ARGS}}
 
 # Configura owner/hijos/PIN local. Requiere run-server y run-robot detenidos
 setup-personal *ARGS:
@@ -118,7 +122,7 @@ memory-test *ARGS:
 eval-memory *ARGS:
     uv run --env-file .env python scripts/eval_consolidation.py {{ARGS}}
 
-# Eval aislado de fidelidad del LLM; requiere provider real, no usa STT/retrieval/TTS
+# Eval de fidelidad del LLM (clásico) o, con --mode stream, del protocolo EMOTION: del streaming; requiere Ollama real, no usa STT/retrieval/TTS
 eval-chat *ARGS:
     uv run --env-file .env python scripts/eval_chat.py {{ARGS}}
 

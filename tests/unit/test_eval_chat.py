@@ -1,6 +1,9 @@
 import contextlib
 from datetime import UTC, datetime
+import os
 from pathlib import Path
+import subprocess
+import sys
 from typing import cast
 from unittest.mock import AsyncMock, Mock, call, create_autospec
 
@@ -28,6 +31,7 @@ from scripts.eval_chat import (
     select_cases,
     write_report,
 )
+from scripts.eval_stream_protocol import StreamProtocolResult
 
 VALID_SUITE_YAML = """
 version: 1
@@ -736,3 +740,60 @@ def test_justfile_exposes_eval_chat_and_forwards_arguments() -> None:
 
     assert "eval-chat *ARGS:" in justfile
     assert "python scripts/eval_chat.py {{ARGS}}" in justfile
+
+
+@pytest.mark.unit
+def test_parse_cli_args_accepts_the_stream_mode() -> None:
+    options = parse_cli_args(["--mode", "stream", "--runs", "5", "--max-fallback-rate", "0.05"])
+
+    assert options.mode == "stream"
+    assert options.max_fallback_rate == 0.05
+    assert parse_cli_args([]).mode == "classic"
+
+
+@pytest.mark.unit
+async def test_run_cli_stream_mode_measures_and_never_calls_the_classic_generator(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    measured = AsyncMock(
+        return_value=StreamProtocolResult(
+            valid=60, invalid_protocol=0, empty_stream=0, errors=0, by_source={}
+        )
+    )
+    monkeypatch.setattr(eval_chat, "measure_stream_protocol", measured)
+    classic = AsyncMock()
+    monkeypatch.setattr(eval_chat.llm, "generate_response", classic)
+    factory = _RecordingClientCM
+    output = tmp_path / "stream.md"
+
+    code = await run_cli(
+        eval_chat.CliOptions(mode="stream", runs=5, output=output), client_factory=factory
+    )
+
+    assert code == 0
+    measured.assert_awaited_once()
+    classic.assert_not_called()
+    assert output.read_text(encoding="utf-8")
+
+
+@pytest.mark.unit
+def test_eval_chat_runs_under_direct_execution_like_the_justfile_recipe(tmp_path: Path) -> None:
+    """`python scripts/eval_chat.py` puts scripts/ (not the repo root) on sys.path.
+
+    An in-process test cannot see this: pytest already has the repo root on the path.
+    """
+    script = Path(__file__).resolve().parents[2] / "scripts" / "eval_chat.py"
+    env = {key: value for key, value in os.environ.items() if key != "PYTHONPATH"}
+
+    completed = subprocess.run(  # noqa: S603 — fixed interpreter and our own script
+        [sys.executable, str(script), "--help"],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=60,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "--mode" in completed.stdout

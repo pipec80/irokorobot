@@ -31,7 +31,11 @@ import httpx
 from server.settings import settings
 
 from scripts.eval_longitudinal_memory import load_suite, validate_dataset_privacy
-from scripts.longitudinal_eval_aggregation import aggregate_results, determine_exit_code
+from scripts.longitudinal_eval_aggregation import (
+    aggregate_results,
+    determine_exit_code,
+    staged_verdicts,
+)
 from scripts.longitudinal_eval_driver import CurrentRuntimeDriver
 from scripts.longitudinal_eval_metadata import collect_run_metadata, sanitize_url
 from scripts.longitudinal_eval_models import (
@@ -243,6 +247,7 @@ async def _execute(
         results=[step.result for step in scored],
         summary=aggregate_results(scored),
         gating=gating,
+        staged=staged_verdicts(scored, {s.scenario_id: s.scope for s in selected}, gating=gating),
     )
 
 

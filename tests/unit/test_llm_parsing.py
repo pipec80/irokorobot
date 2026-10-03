@@ -1,6 +1,9 @@
 """Unit tests for server.llm._parse_llm_output."""
 
+import logging
+
 import pytest
+from server.exceptions import LLMError
 from server.llm import _parse_llm_output
 
 
@@ -89,3 +92,51 @@ def test_salvage_unescapes_json_string() -> None:
     raw = '{"response": "dijo \\"hola\\" fuerte", "emotion":'
     text, _ = _parse_llm_output(raw)
     assert text == 'dijo "hola" fuerte'
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "raw",
+    [
+        '{"response": [], "emotion": "joy"}',
+        '{"response": null, "emotion": "joy"}',
+        '{"response": 7, "emotion": "joy"}',
+        '{"response": {"text": "hola"}, "emotion": "joy"}',
+        '{"response": "", "emotion": "joy"}',
+        '{"response": "   ", "emotion": "joy"}',
+    ],
+)
+def test_a_non_text_or_blank_response_is_rejected(raw: str) -> None:
+    with pytest.raises(LLMError):
+        _parse_llm_output(raw)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("raw", ["[]", '"hola"', "7", "null"])
+def test_valid_json_that_is_not_an_object_is_rejected(raw: str) -> None:
+    with pytest.raises(LLMError):
+        _parse_llm_output(raw)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("emotion", ["7", "null", '["joy"]', '{"a": 1}'])
+def test_a_non_text_emotion_keeps_the_response_and_defaults_to_neutral(emotion: str) -> None:
+    response, got = _parse_llm_output(f'{{"response": "Hola", "emotion": {emotion}}}')
+    assert response == "Hola"
+    assert got == "neutral"
+
+
+@pytest.mark.unit
+def test_a_response_without_an_emotion_is_still_spoken() -> None:
+    assert _parse_llm_output('{"response": "Hola"}') == ("Hola", "neutral")
+
+
+@pytest.mark.unit
+def test_an_unusable_emotion_never_reaches_the_log(caplog: pytest.LogCaptureFixture) -> None:
+    """The model's own text must not be logged (Plan 0032): a fixed reason only."""
+    with caplog.at_level(logging.DEBUG, logger="server.llm"):
+        _parse_llm_output('{"response": "Hola", "emotion": "CANARYZQX"}')
+        _parse_llm_output('{"response": "Hola", "emotion": 7}')
+
+    assert "canaryzqx" not in caplog.text.lower()
+    assert "defaulting to neutral" in caplog.text

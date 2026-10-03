@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
-import argparse
+from pathlib import Path
+import sys
+
+# Direct execution (``python scripts/eval_chat.py``) puts ``scripts/`` on
+# ``sys.path[0]``, not the repo root, so ``from scripts.…`` imports fail. Under
+# pytest the repo root is already on the path, so this only matters for the
+# justfile entrypoint. Must run before any ``from scripts.…`` import below.
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import argparse  # after the sys.path bootstrap, by design
 import asyncio
 from collections import defaultdict
 from datetime import UTC, datetime
 import logging
 import math
-from pathlib import Path
 import re
 import time
 from typing import TYPE_CHECKING, Literal, NoReturn
@@ -39,6 +48,13 @@ from server.schemas import (  # noqa: TC002 — Pydantic resolves these fields a
 from server.settings import settings
 import yaml
 
+from scripts.eval_stream_protocol import (
+    StreamTurn,
+    measure_stream_protocol,
+    public_turns,
+    render_stream_report,
+    stream_exit_code,
+)
 from server import llm
 
 if TYPE_CHECKING:
@@ -267,6 +283,8 @@ class CliOptions(BaseModel):
     only: str | None = None
     output: Path | None = None
     min_pass_rate: float | None = Field(default=None, ge=0, le=1)
+    mode: Literal["classic", "stream"] = "classic"
+    max_fallback_rate: float | None = Field(default=None, ge=0, le=1)
 
 
 def load_suite(path: Path) -> GoldenSuite:
@@ -549,6 +567,8 @@ def parse_cli_args(argv: Sequence[str] | None = None) -> CliOptions:
     parser.add_argument("--only")
     parser.add_argument("--output")
     parser.add_argument("--min-pass-rate", type=float)
+    parser.add_argument("--mode", choices=("classic", "stream"), default="classic")
+    parser.add_argument("--max-fallback-rate", type=float)
     namespace = parser.parse_args(argv)
     output = Path(namespace.output).expanduser().resolve() if namespace.output else None
     return CliOptions(
@@ -557,6 +577,8 @@ def parse_cli_args(argv: Sequence[str] | None = None) -> CliOptions:
         only=namespace.only,
         output=output,
         min_pass_rate=namespace.min_pass_rate,
+        mode=namespace.mode,
+        max_fallback_rate=namespace.max_fallback_rate,
     )
 
 
@@ -584,6 +606,8 @@ async def run_cli(
     suite = load_suite(_GOLDEN_PATH)
     cases = select_cases(suite, options.only)
     factory = client_factory or _default_client_factory
+    if options.mode == "stream":
+        return await _run_stream_mode(options, cases, factory)
     async with factory() as client:
         evaluation = await run_evaluation(
             cases, client=client, runs=options.runs, provider=options.provider
@@ -601,6 +625,34 @@ async def run_cli(
         evaluation.summary,
         min_pass_rate=options.min_pass_rate,
     )
+
+
+async def _run_stream_mode(
+    options: CliOptions, cases: list[GoldenCase], factory: ClientFactory
+) -> int:
+    """Measure the streaming protocol on the golden context turns plus public turns."""
+    turns = [
+        StreamTurn(
+            case.id,
+            "context",
+            case.question,
+            case.context,
+            case.history,
+            case.active_person.to_context() if case.active_person else None,
+        )
+        for case in cases
+    ]
+    async with factory() as client:
+        result = await measure_stream_protocol(
+            [*turns, *public_turns()], client=client, runs=options.runs
+        )
+    stamp = datetime.now(UTC).strftime("%Y-%m-%d-%H%M%S")
+    output = options.output or _REPORT_DIRECTORY / f"{stamp}-chat-stream-ollama.md"
+    write_report(output, render_stream_report(result, model=_effective_model(), runs=options.runs))
+    logger.info(
+        "Stream measurement complete: fallback_rate=%s report=%s", result.fallback_rate, output
+    )
+    return stream_exit_code(result, max_fallback_rate=options.max_fallback_rate)
 
 
 def main() -> NoReturn:

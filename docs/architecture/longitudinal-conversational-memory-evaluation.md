@@ -123,27 +123,41 @@ enforced by `validate_dataset_privacy`.
 - extraction and abstention report precision/recall; CM-0 records them without
   inventing a release threshold.
 
-**Staged acceptance (decided 2026-09-30; not implemented yet).** Some
+**Staged acceptance (decided 2026-09-30; implemented by Plan 0056).** Some
 scenarios need family capabilities that the queue delivers only in P3.2
 (`recipient_only_message` needs a recado delivered to its recipient;
-`two_adult_private_facts` needs a second identified adult). The report will
-carry three verdicts, computed separately:
+`two_adult_private_facts` needs a second identified adult). Dataset version 2
+declares a `scope` (`personal` or `family`) on every scenario; the scenario content is
+the version-1 content, and only the two scenarios above are `family`. The report
+carries three verdicts, computed separately by
+`scripts/longitudinal_eval_aggregation.py::staged_verdicts`:
 
 - **Personal acceptance:** PASS when every personal-scope scenario passes the
-  frozen gates above, with no relaxed threshold and no unsupported case in
+  four frozen gates above, with no relaxed threshold and no unsupported case in
   that scope. This is the CM-7 exit evidence.
-- **Family acceptance:** `pending` until P3.2; it then passes under the same
-  rules.
-- **Full suite:** keeps failing while any scenario is unsupported or pending;
-  pending scenarios stay visible and are never excluded.
+- **Family acceptance:** `PENDING` while any family step is unsupported; it then
+  passes when no family step fails and the **disclosure gate** holds (see below).
+- **Full suite:** keeps all four gates over every step and keeps failing while any
+  scenario is unsupported or pending; pending scenarios stay visible and are never
+  excluded. It is the verdict `determine_exit_code` has always returned, and the
+  exit codes `0`/`1`/`2` are unchanged.
 
-Today `scripts/longitudinal_eval_aggregation.py::determine_exit_code` fails on
-any unsupported case, which is the correct full-suite verdict. Tagging each
-scenario's scope (a dataset version bump) and reporting the three verdicts is
-owned by the voice-pipeline reliability and diagnostics row of the
-[portfolio](../roadmap/cognitive-roadmap.md#canonical-pre-electronics-delivery-portfolio).
+**Which gates each stage is judged on (decision D-8 of Plan 0056).** A gate needs a
+non-empty denominator, so a stage can only be judged on gates its own scenarios feed.
+Personal acceptance and the full suite use all four. The family stage uses the
+disclosure gate (`forbidden_disclosure_rate`) only, because the two current family
+scenarios prove cross-person isolation (propose and recall) and feed no other gate;
+without this rule the family stage could never pass. Deletion, truth-current and
+provenance are evidenced by the personal stage and the full suite, not re-measured on
+family steps. When P3.2 adds family scenarios that exercise another gate, that gate is
+added to `STAGE_GATES["family"]`. A test pins that the dataset feeds every gate of
+every stage.
 
-**Baseline result** (report `source_commit` `38fa89c`, added in `ac43c58`;
+A **non-gating run** (`--only`, or fewer than three runs) cannot be acceptance
+evidence: its report labels the section a partial run and shows step verdicts only,
+because the frozen gates were not applied.
+
+**Baseline result** (the dataset-version-1 measurement; report `source_commit` `38fa89c`, added in `ac43c58`;
 `just eval-longitudinal --runs 3`, exit `1`,
 report [`docs/evals/0046-longitudinal-memory-baseline.md`](../evals/0046-longitudinal-memory-baseline.md)):
 single-turn extraction is the only live seam and is **measured, not passing** —

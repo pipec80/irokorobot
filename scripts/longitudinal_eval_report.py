@@ -31,6 +31,7 @@ if TYPE_CHECKING:
         LongitudinalEvaluationResult,
         PrecisionRecallMetric,
         RunMetadata,
+        StagedVerdicts,
         StepResult,
     )
 
@@ -56,6 +57,7 @@ def render_report(result: LongitudinalEvaluationResult) -> str:
         _header(result),
         _metadata_section(result.metadata),
         _headline_section(result.summary),
+        _staged_section(result.staged, gating=result.gating),
         _gate_section(result.summary),
         _extraction_section(result.summary),
         _rate_section(result.summary),
@@ -65,7 +67,7 @@ def render_report(result: LongitudinalEvaluationResult) -> str:
         _unsupported_table(result.results),
         _step_table(result.results),
     ]
-    return "\n\n".join(sections) + "\n"
+    return "\n\n".join(section for section in sections if section is not None) + "\n"
 
 
 def _fmt(value: float | None) -> str:
@@ -138,6 +140,37 @@ def _headline_section(summary: BenchmarkSummary) -> str:
         f"- failed: {summary.failed}\n"
         f"- unsupported: {summary.unsupported}\n"
         f"- errors: {summary.errors}"
+    )
+
+
+def _staged_section(staged: StagedVerdicts | None, *, gating: bool = True) -> str | None:
+    """Render the stage verdicts; a non-gating run is never labelled as acceptance.
+
+    Without the frozen gates a ``PASS`` only means every executed step passed, so a
+    partial run (``--only`` or fewer than three runs) cannot be CM-7 or family evidence.
+    """
+    if staged is None:
+        return None
+    if not gating:
+        return (
+            "## Staged results (partial run — not acceptance evidence)\n\n"
+            "This run is non-gating: each stage is judged on its executed steps only and the "
+            "frozen gates were not applied, so a `PASS` here is not CM-7 or family acceptance. "
+            "`PENDING` and `NOT_RUN` are never a pass.\n\n"
+            "| Stage | Step verdict (gates not applied) |\n|---|---|\n"
+            f"| Personal | {staged.personal.value} |\n"
+            f"| Family | {staged.family.value} |\n"
+            f"| Full suite | {staged.full_suite.value} |"
+        )
+    return (
+        "## Staged acceptance\n\n"
+        "Computed separately; `PENDING` and `NOT_RUN` are never a pass. Personal is judged "
+        "on all four frozen gates; family on the disclosure gate its cross-person "
+        "scenarios feed (they feed no other); the full suite on all four.\n\n"
+        "| Stage | Verdict |\n|---|---|\n"
+        f"| Personal acceptance (CM-7 exit evidence) | {staged.personal.value} |\n"
+        f"| Family acceptance (pending until P3.2) | {staged.family.value} |\n"
+        f"| Full suite | {staged.full_suite.value} |"
     )
 
 

@@ -63,7 +63,7 @@ def collect_run_metadata(
         worktree_dirty=bool(status),
         worktree_status=status,
         dataset_path=_relative_dataset_path(dataset_path),
-        dataset_version=1,
+        dataset_version=2,
         dataset_sha256=hashlib.sha256(Path(dataset_path).read_bytes()).hexdigest(),
         python_version=platform.python_version(),
         provider="ollama",

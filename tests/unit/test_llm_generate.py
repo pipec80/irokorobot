@@ -390,3 +390,16 @@ def test_format_memory_block_with_data_includes_entity_and_memory() -> None:
     assert "ingeniero" in block
     assert "Té verde preference" in block
     assert "Memoria activa" in block
+
+
+@pytest.mark.unit
+async def test_generate_response_raises_llm_error_for_a_non_text_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A model that answers `{"response": []}` becomes the audible fallback, not TTS input."""
+    monkeypatch.setattr(
+        llm, "ollama_chat", AsyncMock(return_value='{"response": [], "emotion": "joy"}')
+    )
+    async with httpx.AsyncClient() as client:  # no request is sent: ollama_chat is stubbed
+        with pytest.raises(LLMError):
+            await llm.generate_response(client, "hola")
