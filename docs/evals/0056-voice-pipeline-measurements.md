@@ -2,7 +2,7 @@
 
 > **Status:** Historical measurement, recorded 2026-10-02. Numbers only: no
 > transcript, no model output and no name appear here. The decision rules were
-> written in [Plan 0056](../plans/open/0056-voice-pipeline-reliability-and-diagnostics.md#decisions)
+> written in [Plan 0056](../plans/completed/0056-voice-pipeline-reliability-and-diagnostics.md#decisions)
 > (D-5, D-6) **before** the runs.
 
 ## Conditions
