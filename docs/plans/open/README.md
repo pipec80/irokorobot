@@ -57,7 +57,7 @@ conoce (fallback del protocolo de streaming, eco y alucinaciones sobre ruido sin
 tras reiniciar), con la regla de decisión fijada antes de medir. Sus decisiones D-1 a D-8 están
 confirmadas (la D-8: cada etapa se juzga con las compuertas que sus escenarios alimentan); se ejecutó el 2026-10-02 en `fix/0056-voice-pipeline` (Tareas 0 a 8; `just test` 1807). Las
 mediciones abrieron un seguimiento (respaldo del streaming, 29,17 %) y cerraron dos (ruido y
-primer turno). Sigue siendo el `NOW` hasta la aceptación real de Pipec y el merge.
+primer turno). Pipec la aceptó en hardware real ese mismo día (el modo clásico no se corrió); sigue siendo el `NOW` hasta el merge.
 
 [ADR-0015](../../adr/0015-owner-grant-scope-and-speaker-binding.md) (**Accepted**, 2026-09-25)
 liga el grant PIN a una operación (hoy incumple ADR-0009) y, por etapas, a la
