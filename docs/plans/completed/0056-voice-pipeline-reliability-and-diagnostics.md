@@ -1,13 +1,13 @@
 # 0056 — Voice-pipeline reliability and truthful diagnostics
 
-> **Status:** `Ready` — written 2026-10-02 after Plan 0050 closed; promoted and
-> selected as `NOW` by Pipec on 2026-10-02, with decisions D-1 to D-7 below confirmed
-> as proposed. Executed 2026-10-02 on `fix/0056-voice-pipeline` (see the
-> *Execution record* below); accepted by Pipec on real hardware the same day; pending the merge.
-> Queue position: the first row
-> after the audit repairs in the
-> [canonical portfolio](../../roadmap/cognitive-roadmap.md#canonical-pre-electronics-delivery-portfolio),
-> ahead of CM-1 / Plan 0051.
+> **Status:** `Closed` 2026-10-02 — merged as PR #159 (`4d62f26`). Written
+> 2026-10-02 after Plan 0050 closed; promoted and selected as `NOW` by Pipec the same
+> day with decisions D-1 to D-8 confirmed; executed on `fix/0056-voice-pipeline` and
+> accepted by Pipec on real hardware (classic mode not run; see the *Execution
+> record*). Measured outcome: the streaming-protocol fallback (29.17 %) opened a
+> follow-up row in the
+> [canonical portfolio](../../roadmap/cognitive-roadmap.md#canonical-pre-electronics-delivery-portfolio);
+> the noise and first-turn rules closed.
 
 > **For agentic workers:** REQUIRED SUB-SKILLS: `superpowers:test-driven-development`,
 > `superpowers:verification-before-completion`. Execute only while this is the
@@ -34,10 +34,10 @@ Same pins as the current lock.
 
 **Spec:** the roadmap row
 [*Voice-pipeline reliability and truthful diagnostics*](../../roadmap/cognitive-roadmap.md#canonical-pre-electronics-delivery-portfolio),
-[0049 O-04](0049-server-objective-conformance-audit.md) (streaming protocol fallback),
-decision D-4 of [Plan 0055](../completed/0055-pc4-identity-fusion-followups.md)
+[0049 O-04](../open/0049-server-objective-conformance-audit.md) (streaming protocol fallback),
+decision D-4 of [Plan 0055](0055-pc4-identity-fusion-followups.md)
 (Whisper prompt echo), the *Non-goals* of
-[Plan 0050](../completed/0050-server-audit-repairs.md) (classic parser, `test-pipeline`)
+[Plan 0050](0050-server-audit-repairs.md) (classic parser, `test-pipeline`)
 and the staged-acceptance section of the
 [longitudinal evaluation spec](../../architecture/longitudinal-conversational-memory-evaluation.md#cm-0-measured-baseline).
 

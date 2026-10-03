@@ -49,15 +49,15 @@ palabra completa). `just gate` verde con 1695 tests y aceptación en hardware de
 Pipec, salvo el veto de dos caras, que no se corrió. Ya no hay un plan `NOW`;
 Pipec elige el siguiente.
 
-[0056 — voice-pipeline reliability and diagnostics](0056-voice-pipeline-reliability-and-diagnostics.md)
-está **Ready** y es el `NOW` (promovido por Pipec el 2026-10-02): nueve tareas que reparan lo determinista (parser clásico,
+[0056 — voice-pipeline reliability and diagnostics](../completed/0056-voice-pipeline-reliability-and-diagnostics.md)
+**cerró el 2026-10-02** (PR #159, `4d62f26`) y ya vive en `completed/`: nueve tareas que reparan lo determinista (parser clásico,
 `just test-pipeline`, guarda contra el eco del prompt de Whisper), amplían los evaluadores
 (`eval-chat --mode stream`, veredictos por etapas con dataset versión 2) y **miden** lo que no se
 conoce (fallback del protocolo de streaming, eco y alucinaciones sobre ruido sintético, primer turno
 tras reiniciar), con la regla de decisión fijada antes de medir. Sus decisiones D-1 a D-8 están
-confirmadas (la D-8: cada etapa se juzga con las compuertas que sus escenarios alimentan); se ejecutó el 2026-10-02 en `fix/0056-voice-pipeline` (Tareas 0 a 8; `just test` 1807). Las
+confirmadas (la D-8: cada etapa se juzga con las compuertas que sus escenarios alimentan); se ejecutó el 2026-10-02 (Tareas 0 a 8; `just test` 1807). Las
 mediciones abrieron un seguimiento (respaldo del streaming, 29,17 %) y cerraron dos (ruido y
-primer turno). Pipec la aceptó en hardware real ese mismo día (el modo clásico no se corrió); sigue siendo el `NOW` hasta el merge.
+primer turno). Pipec la aceptó en hardware real ese mismo día (el modo clásico no se corrió). Ya no hay un plan `NOW`; Pipec elige el siguiente. El siguiente número libre es 0057.
 
 [ADR-0015](../../adr/0015-owner-grant-scope-and-speaker-binding.md) (**Accepted**, 2026-09-25)
 liga el grant PIN a una operación (hoy incumple ADR-0009) y, por etapas, a la
