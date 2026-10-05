@@ -6,6 +6,10 @@
 > promotes it to `Ready` and selects it as `NOW`; until then `NOW` stays empty and
 > nothing here may be executed. The decisions below are proposals for that moment.
 >
+> **Queue position (Pipec, 2026-10-05):** after CM-1 (Plan 0051) and before CM-2. The
+> streaming repair that follows this diagnosis is a hard gate of CM-2, the first slice
+> that puts memory or history in the prompt; nothing in CM-1 depends on it.
+>
 > The review found, and this revision fixes: a probe that counted errors and cut
 > streams as runs; a rule that read a long first wait as a withheld stream; a headline
 > and a dominant shape that mixed production with experiments; ten duplicate variants;

@@ -60,8 +60,9 @@ mediciones abrieron un seguimiento (respaldo del streaming, 29,17 %) y cerraron 
 primer turno). Pipec la aceptó en hardware real ese mismo día (el modo clásico no se corrió). Ya no hay un plan `NOW`; Pipec elige el siguiente.
 
 [0057 — diagnóstico del respaldo del protocolo de streaming](0057-stream-protocol-diagnosis.md)
-es un **Draft** escrito el 2026-10-05, a la espera de que Pipec lo promueva; hasta entonces no se
-ejecuta y `NOW` sigue vacío. Solo diagnostica y no toca `server/src`: clasifica las formas de
+es un **Draft** escrito el 2026-10-05, a la espera de su turno y de que Pipec lo promueva; el orden
+confirmado por Pipec el 2026-10-05 es CM-1 (Plan 0051) primero y esta reparación después, antes de CM-2;
+hasta entonces no se ejecuta y `NOW` sigue vacío. Solo diagnostica y no toca `server/src`: clasifica las formas de
 fallo (enum cerrado, sin texto), hace una ablación por factor (contexto de memoria, persona,
 historial, posición del contrato, pregunta), mide si la validación del cuerpo depende de cómo
 llegan los tokens (defecto confirmado por lectura del código y fijado por un test) y comprueba
