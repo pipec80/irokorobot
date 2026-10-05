@@ -71,7 +71,16 @@ antes de medir. La reparación que le sigue sigue siendo `Unplanned`. El siguien
 
 [ADR-0015](../../adr/0015-owner-grant-scope-and-speaker-binding.md) (**Accepted**, 2026-09-25)
 liga el grant PIN a una operación (hoy incumple ADR-0009) y, por etapas, a la
-evidencia del hablante; el Plan 0051 lo implementa como primer plan de CM-1 y aún no está redactado.
+evidencia del hablante; el Plan 0051 lo implementa como primer plan de CM-1.
+
+[0051 — grants del dueño con alcance](0051-scoped-owner-grants.md) es un **Draft** escrito el
+2026-10-05, a la espera de que Pipec lo promueva (primero en la cola, antes de la reparación del
+streaming). Implementa la decisión 1 de ADR-0015: cada grant queda ligado a una operación
+(`personal_protected_read` por defecto, `biometric_admin` para enrolar o revocar cara y voz); un grant
+presentado a otra operación se rechaza **sin gastarse**; «¿Quién soy?» y la respuesta «todavía no está
+conectada» observan al actor y dejan de gastar el grant. El cambio de contrato es aditivo
+(`scope` opcional en `POST /auth/owner/unlock`), el robot no cambia y no hay migración. Incluye la
+aceptación en hardware, con el caso opcional del PIN que el Plan 0054 dejó sin correr.
 
 [0053 — consented speaker runtime evidence](../completed/0053-consented-speaker-runtime-evidence.md)
 (PC-3B) **cerró el 2026-09-29** y ya vive en `completed/`: enrolamiento consentido, revocación que

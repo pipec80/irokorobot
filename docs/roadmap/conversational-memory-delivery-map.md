@@ -115,7 +115,7 @@ once in the
 | Stage | Verifiable outcome | Dependencies | Executable plan |
 |---|---|---|---|
 | CM-0 | Versioned longitudinal benchmark and one reproducible RED run | evaluation specification | [Plan 0046](../plans/completed/0046-reproducible-longitudinal-memory-baseline.md) — **closed 2026-09-08**: benchmark GREEN, measured baseline RED (`ac43c58`, exit 1) |
-| CM-1 | Every grant bound to one named operation (ADR-0015 decision 1, Plan 0051), then explicit `read`, `propose`, `confirm`, `correct`, and `forget` capabilities for personal memory | current policy and identity; PC-4 (closed) | Plan 0051 first, then not written |
+| CM-1 | Every grant bound to one named operation (ADR-0015 decision 1, Plan 0051), then explicit `read`, `propose`, `confirm`, `correct`, and `forget` capabilities for personal memory | current policy and identity; PC-4 (closed) | [Plan 0051](../plans/open/0051-scoped-owner-grants.md) drafted 2026-10-05; the rest not written |
 | CM-2 | The authorized actor and its grants reach the conversational flow without interpolating names or expanding permissions implicitly; short-term continuity (in-process working memory for the identified actor, cleared on a change of speaker) has its own acceptance test; durable legacy paths stay blocked. Identifying generic turns supersedes ADR-0016 §5 and needs a new ADR | CM-1 | not written |
 | CM-3 | Extraction creates candidates; one writer assigns the classification and promotes to canonical V4 facts and relations. The seed load ("step 0") follows as its second input channel | CM-0, CM-1, CM-2; Plan 0050 | not written |
 | CM-4 | Episodes declare owner, visibility, sensitivity, consent, and retention | CM-3 | not written |
