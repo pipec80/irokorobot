@@ -57,7 +57,16 @@ conoce (fallback del protocolo de streaming, eco y alucinaciones sobre ruido sin
 tras reiniciar), con la regla de decisión fijada antes de medir. Sus decisiones D-1 a D-8 están
 confirmadas (la D-8: cada etapa se juzga con las compuertas que sus escenarios alimentan); se ejecutó el 2026-10-02 (Tareas 0 a 8; `just test` 1807). Las
 mediciones abrieron un seguimiento (respaldo del streaming, 29,17 %) y cerraron dos (ruido y
-primer turno). Pipec la aceptó en hardware real ese mismo día (el modo clásico no se corrió). Ya no hay un plan `NOW`; Pipec elige el siguiente. El siguiente número libre es 0057.
+primer turno). Pipec la aceptó en hardware real ese mismo día (el modo clásico no se corrió). Ya no hay un plan `NOW`; Pipec elige el siguiente.
+
+[0057 — diagnóstico del respaldo del protocolo de streaming](0057-stream-protocol-diagnosis.md)
+es un **Draft** escrito el 2026-10-05, a la espera de que Pipec lo promueva; hasta entonces no se
+ejecuta y `NOW` sigue vacío. Solo diagnostica y no toca `server/src`: clasifica las formas de
+fallo (enum cerrado, sin texto), hace una ablación por factor (contexto de memoria, persona,
+historial, posición del contrato, pregunta), mide si la validación del cuerpo depende de cómo
+llegan los tokens (defecto confirmado por lectura del código y fijado por un test) y comprueba
+si Ollama emite en incremental una respuesta con esquema JSON. Las reglas de lectura quedan fijadas
+antes de medir. La reparación que le sigue sigue siendo `Unplanned`. El siguiente número libre es 0058.
 
 [ADR-0015](../../adr/0015-owner-grant-scope-and-speaker-binding.md) (**Accepted**, 2026-09-25)
 liga el grant PIN a una operación (hoy incumple ADR-0009) y, por etapas, a la
