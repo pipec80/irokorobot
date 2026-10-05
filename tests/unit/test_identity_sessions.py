@@ -241,3 +241,16 @@ def test_clearing_a_token_forgets_its_scope() -> None:
 
     assert registry.evidence_for(token, scope="read") is None
     assert registry.consume_evidence(token, scope="read") is None
+
+
+def test_a_scoped_token_cannot_be_spent_by_a_caller_that_names_no_scope() -> None:
+    """Spending fails closed: a grant bound to an operation is never redeemed unscoped."""
+    now = [_NOW]
+    registry = _scoped_registry(now)
+    token = registry.issue_for_person(
+        _person(42), source=IdentityEvidenceSource.LOCAL_UNLOCK, scope="read"
+    )
+
+    assert registry.consume_evidence(token) is None
+    assert registry.evidence_for(token, scope="read") is not None  # refused, not spent
+    assert registry.consume_evidence(token, scope="read") is not None

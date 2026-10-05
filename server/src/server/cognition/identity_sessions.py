@@ -160,16 +160,19 @@ class IdentitySessionRegistry:
         Args:
             token: Opaque token returned by :meth:`issue_for_person` or
                 :meth:`select_person`.
-            scope: The operation the caller authorizes. When given, a token issued for
-                another operation (or for none) is refused and **kept**: presenting a
-                grant to the wrong operation never burns it.
+            scope: The operation the caller authorizes; it must equal the scope the token
+                was issued for (``None`` only matches a token issued for none). Any other
+                token is refused and **kept**: presenting a grant to the wrong operation
+                never burns it.
 
         Returns:
             The evidence if the token was present, within ``scope`` and unexpired, else
             ``None``. A token that is within ``scope`` is removed either way — a second
             call with the same token always returns ``None``.
         """
-        if token in self._evidence_by_token and not self._scope_allows(token, scope):
+        # Spending fails closed: the asked scope must equal the recorded one, so a token
+        # bound to an operation is never redeemed by a caller that names none.
+        if token in self._evidence_by_token and self._scope_by_token.get(token) != scope:
             return None
         evidence = self._evidence_by_token.pop(token, None)
         self._scope_by_token.pop(token, None)
