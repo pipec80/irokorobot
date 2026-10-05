@@ -73,9 +73,9 @@ antes de medir. La reparación que le sigue sigue siendo `Unplanned`. El siguien
 liga el grant PIN a una operación (hoy incumple ADR-0009) y, por etapas, a la
 evidencia del hablante; el Plan 0051 lo implementa como primer plan de CM-1.
 
-[0051 — grants del dueño con alcance](0051-scoped-owner-grants.md) es un **Draft** escrito el
-2026-10-05, a la espera de que Pipec lo promueva (primero en la cola, antes de la reparación del
-streaming). Implementa la decisión 1 de ADR-0015: cada grant queda ligado a una operación
+[0051 — grants del dueño con alcance](0051-scoped-owner-grants.md) está **Ready y es el plan `NOW`**
+desde el 2026-10-05 (Pipec lo promovió y confirmó D-1 a D-7; va primero en la cola, antes de la
+reparación del streaming). Implementa la decisión 1 de ADR-0015: cada grant queda ligado a una operación
 (`personal_protected_read` por defecto, `biometric_admin` para enrolar o revocar cara y voz); un grant
 presentado a otra operación se rechaza **sin gastarse**; «¿Quién soy?» y la respuesta «todavía no está
 conectada» observan al actor y dejan de gastar el grant. El cambio de contrato es aditivo

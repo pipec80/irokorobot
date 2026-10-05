@@ -1,10 +1,10 @@
 # 0051 — Scoped owner grants
 
-> **Status:** `Draft` — written 2026-10-05 as the first plan of CM-1, after the queue
-> order was confirmed by Pipec the same day (CM-1 first, then the streaming-protocol
-> repair, then CM-2). **Not authorized.** Pipec promotes it to `Ready` and selects it as
-> `NOW`; until then `NOW` stays empty and nothing here may be executed. The decisions
-> below are proposals for that moment.
+> **Status:** `Ready` and `NOW` — written 2026-10-05 as the first plan of CM-1, after the
+> queue order was confirmed by Pipec the same day (CM-1 first, then the streaming-protocol
+> repair, then CM-2). Pipec promoted it to `Ready`, selected it as `NOW` and confirmed
+> decisions D-1 to D-7 as written on 2026-10-05; he also chose inline execution
+> (`superpowers:executing-plans`) with one independent whole-branch review before the PR.
 
 > **For agentic workers:** REQUIRED SUB-SKILLS: `superpowers:executing-plans`,
 > `superpowers:test-driven-development`, `superpowers:verification-before-completion`,
@@ -141,8 +141,8 @@ owning task:
 
 ## Decisions
 
-Proposed 2026-10-05; Pipec confirms them when he promotes the plan, and they are not
-asked again afterwards.
+Proposed 2026-10-05 and **confirmed by Pipec on 2026-10-05** when he promoted the plan;
+they are not asked again.
 
 1. **D-1 — A closed scope set, additive on the wire.** `personal_protected_read` (the
    default) and `biometric_admin`, as ADR-0015 decision 1 says. `POST /auth/owner/unlock`
