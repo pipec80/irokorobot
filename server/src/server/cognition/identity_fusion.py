@@ -97,6 +97,7 @@ class FusedIdentityResolver:
         self._speaker_factory = speaker_factory
         self._clock = clock
         self._cached: ActivePersonContext | None = None
+        self._peeked: ActivePersonContext | None = None
         self.last_reason: FusionReason | None = None
         self.source: IdentitySource | None = None
 
@@ -117,14 +118,38 @@ class FusedIdentityResolver:
         """
         if self._cached is not None:
             return self._cached
-        context = await self._resolve(event)
+        context = await self._resolve(event, consume=True)
         self._cached = context
+        self._log_outcome()
+        return context
+
+    async def peek_actor(self, event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
+        """Resolve the actor the same way, but never spend the PIN grant (ADR-0015).
+
+        For the branches that read nothing ("who am I", a household question that is not
+        connected yet): the face and the voice are judged as usual, a presented token only
+        names its owner, and it stays spendable by the branch that reads data.
+
+        Args:
+            event: The event this observation is scoped to.
+
+        Returns:
+            The same context `resolve_actor` would return, with the token unspent.
+        """
+        if self._peeked is not None:
+            return self._peeked
+        context = await self._resolve(event, consume=False)
+        self._peeked = context
+        self._log_outcome()
+        return context
+
+    def _log_outcome(self) -> None:
+        """Log the closed reason of this request's identity outcome, never any content."""
         logger.info(
             "Identity fusion: %s",
             self.last_reason.value if self.last_reason else "none",
             extra={"event": "identity.fusion", "reason": self.last_reason},
         )
-        return context
 
     async def resolve_consent(
         self, event: CognitiveEvent[TextTurnPayload], actor: ActivePersonContext
@@ -144,13 +169,26 @@ class FusedIdentityResolver:
             return await self._pin.resolve_consent(event, actor)
         return ConsentStatus.NOT_REQUIRED
 
-    async def _resolve(self, event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
-        """Run face, then voice, then PIN, stopping at the first identification or veto."""
+    async def _resolve(
+        self, event: CognitiveEvent[TextTurnPayload], *, consume: bool
+    ) -> ActivePersonContext:
+        """Run face, then voice, then PIN, stopping at the first identification or veto.
+
+        Args:
+            event: The event this resolution is scoped to.
+            consume: Whether the PIN step spends the token (a read) or only names its
+                owner (an observation).
+        """
         face_outcome = await self._resolve_face(event)
         if face_outcome is not None:
             return face_outcome
-        pin_context = await self._pin.resolve_actor(event)
-        if self._pin.consumed:
+        if consume:
+            pin_context = await self._pin.resolve_actor(event)
+            by_pin = self._pin.consumed
+        else:
+            pin_context = await self._pin.peek_actor(event)
+            by_pin = pin_context.status is ActivePersonStatus.IDENTIFIED
+        if by_pin:
             self.last_reason = FusionReason.PIN
             self.source = "local_unlock"
         else:
