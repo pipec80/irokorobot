@@ -16,6 +16,7 @@ from scripts.eval_stream_protocol import (
     StreamOutcome,
     StreamProtocolResult,
     StreamTurn,
+    _StreamClassifier,
     classify_deltas,
     measure_stream_protocol,
     public_turns,
@@ -305,3 +306,14 @@ def test_the_report_states_the_rate_and_never_prints_model_output() -> None:
     assert "fallback rate" in report.lower()
     assert "5.00 %" in report
     assert "qwen2.5:3b" in report
+
+
+@pytest.mark.unit
+def test_the_classifier_counts_the_sentences_production_would_speak() -> None:
+    classifier = _StreamClassifier()
+
+    classifier.feed("EMOTION:joy\nHola. ¿Cómo")
+    assert classifier.sentences_seen == 1
+
+    classifier.feed(" estás? Bien")
+    assert classifier.sentences_seen == 2
