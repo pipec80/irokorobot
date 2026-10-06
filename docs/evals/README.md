@@ -103,3 +103,11 @@ streaming report is
 [`0056-stream-protocol-run1.md`](0056-stream-protocol-run1.md). These reports hold
 counts and rates only, never model output or a transcript. The probes load the real
 Whisper (and Piper) models, so run them with the server stopped.
+
+## Scoped owner grants acceptance (Plan 0051)
+
+[`0051-scoped-grant-acceptance.md`](0051-scoped-grant-acceptance.md) records the
+real-hardware acceptance of operation-bound owner grants (ADR-0015 decision 1): the read and
+administration scopes refusing each other without spending the grant, "who am I" and the
+"not connected yet" answer keeping it, the face and PIN paths run separately, and the
+Plan 0054 PIN case. Outcomes only: no name, transcript or photo.
