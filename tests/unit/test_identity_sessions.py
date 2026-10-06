@@ -169,3 +169,88 @@ def test_issue_for_person_rejects_a_non_person_record() -> None:
 
     with pytest.raises(ValueError, match="person"):
         registry.issue_for_person(pet, source=IdentityEvidenceSource.LOCAL_UNLOCK)
+
+
+def _scoped_registry(now: list[datetime]) -> SessionIdentityRegistry:
+    return SessionIdentityRegistry(
+        lookup_person=_lookup({42: _person(42)}),
+        clock=lambda: now[0],
+        ttl=timedelta(minutes=5),
+    )
+
+
+def test_a_token_issued_for_one_scope_is_refused_for_another_and_survives() -> None:
+    """Presenting a grant to the wrong operation never burns it (ADR-0015, Plan 0051)."""
+    now = [_NOW]
+    registry = _scoped_registry(now)
+    token = registry.issue_for_person(
+        _person(42), source=IdentityEvidenceSource.LOCAL_UNLOCK, scope="read"
+    )
+
+    assert registry.consume_evidence(token, scope="admin") is None
+    assert registry.evidence_for(token, scope="admin") is None
+
+    assert registry.evidence_for(token, scope="read") is not None
+    assert registry.consume_evidence(token, scope="read") is not None
+    assert registry.consume_evidence(token, scope="read") is None
+
+
+def test_evidence_for_never_consumes_and_respects_the_scope() -> None:
+    now = [_NOW]
+    registry = _scoped_registry(now)
+    token = registry.issue_for_person(
+        _person(42), source=IdentityEvidenceSource.LOCAL_UNLOCK, scope="read"
+    )
+
+    assert registry.evidence_for(token, scope="read") is not None
+    assert registry.evidence_for(token, scope="read") is not None
+    assert registry.evidence_for(token) is not None  # no scope asked: legacy behaviour
+
+
+def test_a_token_without_a_recorded_scope_is_refused_when_a_scope_is_required() -> None:
+    now = [_NOW]
+    registry = _scoped_registry(now)
+    token = registry.select_person(42)
+    assert token is not None
+
+    assert registry.consume_evidence(token, scope="read") is None
+    assert registry.consume_evidence(token) is not None  # unscoped callers are unchanged
+
+
+def test_an_expired_scoped_token_is_gone_for_every_scope() -> None:
+    now = [_NOW]
+    registry = _scoped_registry(now)
+    token = registry.issue_for_person(
+        _person(42), source=IdentityEvidenceSource.LOCAL_UNLOCK, scope="read"
+    )
+
+    now[0] = _NOW + timedelta(minutes=6)
+
+    assert registry.consume_evidence(token, scope="read") is None
+    assert registry.evidence_for(token) is None
+
+
+def test_clearing_a_token_forgets_its_scope() -> None:
+    now = [_NOW]
+    registry = _scoped_registry(now)
+    token = registry.issue_for_person(
+        _person(42), source=IdentityEvidenceSource.LOCAL_UNLOCK, scope="read"
+    )
+
+    registry.clear(token)
+
+    assert registry.evidence_for(token, scope="read") is None
+    assert registry.consume_evidence(token, scope="read") is None
+
+
+def test_a_scoped_token_cannot_be_spent_by_a_caller_that_names_no_scope() -> None:
+    """Spending fails closed: a grant bound to an operation is never redeemed unscoped."""
+    now = [_NOW]
+    registry = _scoped_registry(now)
+    token = registry.issue_for_person(
+        _person(42), source=IdentityEvidenceSource.LOCAL_UNLOCK, scope="read"
+    )
+
+    assert registry.consume_evidence(token) is None
+    assert registry.evidence_for(token, scope="read") is not None  # refused, not spent
+    assert registry.consume_evidence(token, scope="read") is not None

@@ -4,14 +4,16 @@ Verifies the persistent PIN credential from the ``personal`` setup, issues an
 opaque one-use token, and exposes a request-scoped resolver that the
 controller awaits only for protected branches. Authentication here never
 substitutes for the existing authorization/consent evaluation — it only
-supplies fresh, consumable identity evidence and a narrowly scoped consent
-signal for one child-data read.
+supplies fresh, consumable identity evidence and a consent signal bound to one
+named operation (`OwnerUnlockScope`, ADR-0015): a grant issued for one operation
+never authorizes another.
 """
 
 import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 from enum import StrEnum
+import logging
 from math import ceil
 
 from pydantic import BaseModel, ConfigDict
@@ -22,6 +24,7 @@ from server.cognition.identity import (
     ActivePersonContext,
     ActivePersonStatus,
     HouseholdRole,
+    IdentityEvidence,
     IdentityEvidenceSource,
     PersonRecord,
     resolve_active_person,
@@ -42,6 +45,8 @@ __all__ = [
     "OwnerUnlockScope",
     "OwnerUnlockService",
 ]
+
+logger = logging.getLogger(__name__)
 
 _MAX_FAILURES = 5
 _FAILURE_WINDOW = timedelta(seconds=60)
@@ -74,9 +79,16 @@ class OwnerUnlockRateLimitedError(Exception):
 
 
 class OwnerUnlockScope(StrEnum):
-    """Closed capability granted by one consumed owner unlock."""
+    """Closed set of operations one owner unlock can be bound to (ADR-0015 decision 1).
+
+    Attributes:
+        PERSONAL_PROTECTED_READ: One protected read of the owner's confirmed child data
+            (the default, so every existing client is unchanged).
+        BIOMETRIC_ADMIN: Enrolling or revoking the owner's face or voice.
+    """
 
     PERSONAL_PROTECTED_READ = "personal_protected_read"
+    BIOMETRIC_ADMIN = "biometric_admin"
 
 
 class OwnerUnlockResult(BaseModel):
@@ -86,6 +98,7 @@ class OwnerUnlockResult(BaseModel):
 
     token: str
     expires_at: datetime
+    scope: OwnerUnlockScope = OwnerUnlockScope.PERSONAL_PROTECTED_READ
 
 
 async def _default_to_thread(fn: Callable[[], bool]) -> bool:
@@ -112,7 +125,7 @@ def _unknown_active_person(event: CognitiveEvent[TextTurnPayload]) -> ActivePers
 
 
 class OwnerRequestResolver:
-    """Request-scoped actor/consent resolver bound to one optional token."""
+    """Request-scoped actor/consent resolver bound to one optional token and one operation."""
 
     def __init__(
         self,
@@ -122,6 +135,7 @@ class OwnerRequestResolver:
         read_role: RoleReader,
         read_person: PersonReader,
         clock: Clock,
+        scope: OwnerUnlockScope = OwnerUnlockScope.PERSONAL_PROTECTED_READ,
     ) -> None:
         """Create a resolver for exactly one HTTP request.
 
@@ -131,12 +145,15 @@ class OwnerRequestResolver:
             read_role: Boundary that reads a person's active household role.
             read_person: Boundary that reads a person's safe display record.
             clock: Source of the resolution timestamp.
+            scope: The one operation this request authorizes. A token issued for another
+                operation is refused and left unspent.
         """
         self._token = token
         self._registry = registry
         self._read_role = read_role
         self._read_person = read_person
         self._clock = clock
+        self._scope = scope
         self.consumed = False
 
     @property
@@ -144,7 +161,31 @@ class OwnerRequestResolver:
         """Return the exact granted capability, or empty before consumption."""
         if not self.consumed:
             return frozenset()
-        return frozenset({OwnerUnlockScope.PERSONAL_PROTECTED_READ.value, _CHILD_DATA_CATEGORY})
+        if self._scope is OwnerUnlockScope.PERSONAL_PROTECTED_READ:
+            return frozenset({self._scope.value, _CHILD_DATA_CATEGORY})
+        return frozenset({self._scope.value})
+
+    async def peek_actor(self, event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
+        """Name the owner behind the token without spending the grant.
+
+        Used by branches that only need to know who is asking ("who am I", a household
+        question that reads nothing): a bystander or a harmless question never burns the
+        owner's one-use grant.
+
+        Args:
+            event: The event this observation is scoped to.
+
+        Returns:
+            The identified owner context, or the safe unknown actor when the token is
+            absent, expired, unknown or issued for another operation.
+        """
+        if self._token is None:
+            return _unknown_active_person(event)
+        evidence = self._registry.evidence_for(self._token, scope=self._scope.value)
+        if evidence is None:
+            self._log_scope_mismatch()
+            return _unknown_active_person(event)
+        return await self._context_for(evidence, event)
 
     async def resolve_actor(self, event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
         """Consume the bound token at most once and resolve the owner actor.
@@ -154,14 +195,25 @@ class OwnerRequestResolver:
 
         Returns:
             The identified owner context, or the safe unknown actor when the
-            token is absent, already consumed, expired, or invalid.
+            token is absent, already consumed, expired, invalid or issued for
+            another operation (in which case it is not consumed).
         """
         if self._token is None:
             return _unknown_active_person(event)
-        evidence = self._registry.consume_evidence(self._token)
-        if evidence is None or evidence.candidate_person_id is None:
+        evidence = self._registry.consume_evidence(self._token, scope=self._scope.value)
+        if evidence is None:
+            self._log_scope_mismatch()
             return _unknown_active_person(event)
+        context = await self._context_for(evidence, event)
+        self.consumed = context.person_id is not None
+        return context
 
+    async def _context_for(
+        self, evidence: IdentityEvidence, event: CognitiveEvent[TextTurnPayload]
+    ) -> ActivePersonContext:
+        """Resolve the owner context a piece of grant evidence stands for."""
+        if evidence.candidate_person_id is None:
+            return _unknown_active_person(event)
         person = await self._read_person(evidence.candidate_person_id)
         if person is None:
             return _unknown_active_person(event)
@@ -170,14 +222,17 @@ class OwnerRequestResolver:
         def _lookup_person(person_id: int) -> PersonRecord | None:
             return person if person_id == person.person_id else None
 
-        context = resolve_active_person(
+        return resolve_active_person(
             evidence=(evidence,),
             lookup_person=_lookup_person,
             lookup_role=lambda _person_id: role,
             clock=self._clock,
         )
-        self.consumed = context.person_id is not None
-        return context
+
+    def _log_scope_mismatch(self) -> None:
+        """Log a closed reason when a live token was refused for another operation."""
+        if self._token is not None and self._registry.evidence_for(self._token) is not None:
+            logger.info("Owner grant refused: scope_mismatch")
 
     async def resolve_consent(
         self,
@@ -259,11 +314,14 @@ class OwnerUnlockService:
             self._blocked_until = now + _BLOCK_DURATION
             self._failures.clear()
 
-    async def unlock(self, pin: str) -> OwnerUnlockResult | None:
-        """Verify a candidate PIN and issue one opaque one-use grant.
+    async def unlock(
+        self, pin: str, scope: OwnerUnlockScope = OwnerUnlockScope.PERSONAL_PROTECTED_READ
+    ) -> OwnerUnlockResult | None:
+        """Verify a candidate PIN and issue one opaque one-use grant for one operation.
 
         Args:
             pin: Candidate PIN from the local unlock request.
+            scope: The one operation the grant may authorize.
 
         Returns:
             The opaque token and its expiry, or ``None`` for any failure —
@@ -296,18 +354,24 @@ class OwnerUnlockService:
             if person is None:
                 return None
             token = self._registry.issue_for_person(
-                person, source=IdentityEvidenceSource.LOCAL_UNLOCK
+                person, source=IdentityEvidenceSource.LOCAL_UNLOCK, scope=scope.value
             )
             evidence = self._registry.evidence_for(token)
             if evidence is None or evidence.expires_at is None:
                 return None
-            return OwnerUnlockResult(token=token, expires_at=evidence.expires_at)
+            return OwnerUnlockResult(token=token, expires_at=evidence.expires_at, scope=scope)
 
-    def for_request(self, token: str | None) -> OwnerRequestResolver:
-        """Build a fresh resolver scoped to exactly one HTTP request.
+    def for_request(
+        self,
+        token: str | None,
+        scope: OwnerUnlockScope = OwnerUnlockScope.PERSONAL_PROTECTED_READ,
+    ) -> OwnerRequestResolver:
+        """Build a fresh resolver scoped to exactly one HTTP request and one operation.
 
         Args:
             token: Optional opaque token carried by the current request.
+            scope: The operation this request authorizes; a token issued for another
+                operation is refused and left unspent.
 
         Returns:
             A resolver that consumes the token at most once.
@@ -318,6 +382,7 @@ class OwnerUnlockService:
             read_role=self._read_role,
             read_person=self._read_person,
             clock=self._clock,
+            scope=scope,
         )
 
 

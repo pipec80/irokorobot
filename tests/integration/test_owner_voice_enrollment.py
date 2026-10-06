@@ -24,7 +24,11 @@ from pydantic import SecretStr
 import pytest
 from server.cognition.identity import PersonRecord
 from server.cognition.identity_sessions import IdentitySessionRegistry
-from server.cognition.owner_authentication import OwnerUnlockService, owner_unlock_service
+from server.cognition.owner_authentication import (
+    OwnerUnlockScope,
+    OwnerUnlockService,
+    owner_unlock_service,
+)
 from server.dependencies import get_owner_unlock_service
 from server.main import app
 from server.memory.entity_labels import get_person_label
@@ -195,7 +199,7 @@ async def test_expired_token_denies_without_touching_the_speaker_model(
 
     service = _real_service(clock=clock)
     monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
-    unlock = await service.unlock(_PIN)
+    unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
     assert unlock is not None
     now = now + timedelta(seconds=61)
 
@@ -220,7 +224,7 @@ async def test_consumed_token_denies_second_use_without_touching_the_speaker_mod
     """Reusing an already-consumed token must deny without a second enrollment."""
     service = _real_service()
     monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
-    unlock = await service.unlock(_PIN)
+    unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
     assert unlock is not None
     monkeypatch.setattr(auth_module, "embed_wav", _fake_embed_wav)
 
@@ -288,7 +292,7 @@ async def test_oversized_enrollment_upload_returns_413_without_touching_the_spea
     """An authenticated caller still cannot bypass the per-file byte budget."""
     service = _real_service()
     monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
-    unlock = await service.unlock(_PIN)
+    unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
     assert unlock is not None
     embed = AsyncMock(wraps=_fake_embed_wav)
     monkeypatch.setattr(auth_module, "embed_wav", embed)
@@ -312,7 +316,7 @@ async def test_empty_body_returns_422_without_touching_the_speaker_model(
     """An empty upload is rejected before any embedding is attempted."""
     service = _real_service()
     monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
-    unlock = await service.unlock(_PIN)
+    unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
     assert unlock is not None
     embed = AsyncMock()
     monkeypatch.setattr(auth_module, "embed_wav", embed)
@@ -335,7 +339,7 @@ async def test_off_contract_audio_returns_422_without_touching_the_speaker_model
     """A 44.1kHz stereo clip fails the audio contract before it is embedded."""
     service = _real_service()
     monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
-    unlock = await service.unlock(_PIN)
+    unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
     assert unlock is not None
     embed = AsyncMock()
     monkeypatch.setattr(auth_module, "embed_wav", embed)
@@ -359,7 +363,7 @@ async def test_a_one_second_clip_returns_422_without_touching_the_speaker_model(
     """Shorter than `speaker_min_enrollment_s` (2.0s) is rejected outright."""
     service = _real_service()
     monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
-    unlock = await service.unlock(_PIN)
+    unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
     assert unlock is not None
     embed = AsyncMock()
     monkeypatch.setattr(auth_module, "embed_wav", embed)
@@ -382,7 +386,7 @@ async def test_a_near_silent_clip_returns_422_without_touching_the_speaker_model
     """Review Focus 1 — a format-perfect but near-silent clip never enrolls."""
     service = _real_service()
     monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
-    unlock = await service.unlock(_PIN)
+    unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
     assert unlock is not None
     embed = AsyncMock()
     monkeypatch.setattr(auth_module, "embed_wav", embed)
@@ -406,7 +410,7 @@ async def test_successful_enroll_grants_consent_and_creates_one_profile(
     """A successful enrollment returns 200, grants consent, and persists one profile."""
     service = _real_service()
     monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
-    unlock = await service.unlock(_PIN)
+    unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
     assert unlock is not None
     monkeypatch.setattr(auth_module, "embed_wav", _fake_embed_wav)
     grant = AsyncMock(wraps=auth_module.grant_voice_consent)
@@ -454,7 +458,7 @@ async def test_second_enrollment_for_same_owner_persists_profile_and_reuses_cons
     monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
     monkeypatch.setattr(auth_module, "embed_wav", _fake_embed_wav)
 
-    first_unlock = await service.unlock(_PIN)
+    first_unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
     assert first_unlock is not None
     async with _loopback_client() as client:
         first = await client.post(
@@ -463,7 +467,7 @@ async def test_second_enrollment_for_same_owner_persists_profile_and_reuses_cons
             files=_enroll_files(),
         )
 
-    second_unlock = await service.unlock(_PIN)
+    second_unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
     assert second_unlock is not None
     async with _loopback_client() as client:
         second = await client.post(
@@ -510,7 +514,7 @@ async def test_every_enroll_attempt_writes_one_audit_event(
     before = (await cursor.fetchone())[0]  # type: ignore[index]
     await cursor.close()
 
-    unlock = await service.unlock(_PIN)
+    unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
     assert unlock is not None
     async with _loopback_client() as client:
         allowed = await client.post(
@@ -548,7 +552,7 @@ async def test_no_response_body_or_log_contains_the_owner_name(
     """
     service = _real_service()
     monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
-    unlock = await service.unlock(_PIN)
+    unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
     assert unlock is not None
     monkeypatch.setattr(auth_module, "embed_wav", _fake_embed_wav)
 
@@ -572,7 +576,7 @@ async def test_revoke_with_valid_token_purges_consent_and_returns_204(
     """A valid token revokes exactly the token owner's consent."""
     service = _real_service()
     monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
-    unlock = await service.unlock(_PIN)
+    unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
     assert unlock is not None
     revoke = AsyncMock(wraps=auth_module.revoke_voice_consent)
     monkeypatch.setattr(auth_module, "revoke_voice_consent", revoke)
@@ -631,7 +635,7 @@ async def test_flag_off_enroll_returns_503_without_a_token_or_a_write(
     monkeypatch.setattr(settings, "speaker_authentication_enabled", False)
     service = _real_service()
     monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
-    unlock = await service.unlock(_PIN)
+    unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
     assert unlock is not None
     embed = AsyncMock()
     monkeypatch.setattr(auth_module, "embed_wav", embed)
@@ -665,7 +669,7 @@ async def test_flag_off_revoke_still_works_and_purges(
     service = _real_service()
     monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
     monkeypatch.setattr(auth_module, "embed_wav", _fake_embed_wav)
-    unlock = await service.unlock(_PIN)
+    unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
     assert unlock is not None
     async with _loopback_client() as client:
         enroll_response = await client.post(
@@ -676,7 +680,7 @@ async def test_flag_off_revoke_still_works_and_purges(
     assert enroll_response.status_code == 200
 
     monkeypatch.setattr(settings, "speaker_authentication_enabled", False)
-    revoke_unlock = await service.unlock(_PIN)
+    revoke_unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
     assert revoke_unlock is not None
     async with _loopback_client() as client:
         response = await client.post(
@@ -721,7 +725,7 @@ async def test_a_rejected_clip_does_not_burn_the_one_use_token(
     service = _real_service()
     monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
     monkeypatch.setattr(auth_module, "embed_wav", _fake_embed_wav)
-    unlock = await service.unlock(_PIN)
+    unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
     assert unlock is not None
 
     async with _loopback_client() as client:
@@ -749,7 +753,7 @@ async def test_a_dead_speaker_backend_returns_503_and_enrolls_nothing(
     monkeypatch.setattr(
         auth_module, "embed_wav", AsyncMock(side_effect=SpeakerBackendError("model unavailable"))
     )
-    unlock = await service.unlock(_PIN)
+    unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
     assert unlock is not None
 
     async with _loopback_client() as client:
@@ -775,7 +779,7 @@ async def test_the_stored_label_is_not_the_owner_name(
     service = _real_service()
     monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
     monkeypatch.setattr(auth_module, "embed_wav", _fake_embed_wav)
-    unlock = await service.unlock(_PIN)
+    unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
     assert unlock is not None
 
     async with _loopback_client() as client:
@@ -791,3 +795,47 @@ async def test_the_stored_label_is_not_the_owner_name(
     await cursor.close()
     assert row is not None
     assert _OWNER_NAME.casefold() not in str(row[0]).casefold()
+
+
+@pytest.mark.integration
+async def test_a_read_grant_denies_voice_enrollment_without_touching_the_speaker_model(
+    voice_db: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A grant issued for a protected read is not a biometric-administration grant."""
+    service = _real_service()
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
+    unlock = await service.unlock(_PIN)  # the default scope: personal_protected_read
+    assert unlock is not None
+    embed = AsyncMock()
+    monkeypatch.setattr(auth_module, "embed_wav", embed)
+
+    async with _loopback_client() as client:
+        response = await client.post(
+            "/auth/owner/voice/enroll",
+            headers={"X-Iroko-Identity-Token": unlock.token},
+            files=_enroll_files(),
+        )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Owner authentication failed"}
+    embed.assert_not_awaited()
+
+
+@pytest.mark.integration
+async def test_a_read_grant_denies_voice_revocation_and_revokes_nothing(
+    voice_db: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service = _real_service()
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
+    unlock = await service.unlock(_PIN)
+    assert unlock is not None
+    revoke = AsyncMock()
+    monkeypatch.setattr(auth_module, "revoke_voice_consent", revoke)
+
+    async with _loopback_client() as client:
+        response = await client.post(
+            "/auth/owner/voice/revoke", headers={"X-Iroko-Identity-Token": unlock.token}
+        )
+
+    assert response.status_code == 401
+    revoke.assert_not_awaited()

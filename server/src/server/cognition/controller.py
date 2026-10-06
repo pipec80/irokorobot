@@ -104,6 +104,7 @@ class CognitiveController:
         today: Callable[[], date],
         legacy_turn: LegacyTextTurn,
         active_person_resolver: ActivePersonResolver = _unknown_active_person,
+        observed_person_resolver: ActivePersonResolver = _unknown_active_person,
         policy_evaluator: PolicyEvaluator = evaluate_authorization,
         audit_writer: AuditWriter = _discard_audit,
         household_tools: HouseholdKnowledgeTools | None = None,
@@ -115,7 +116,11 @@ class CognitiveController:
         Args:
             today: Local date boundary owned by the adapter composition root.
             legacy_turn: Existing generic text-turn service for safe fallback.
-            active_person_resolver: Trusted internal active-person boundary.
+            active_person_resolver: Trusted internal active-person boundary that may
+                spend a one-use grant; awaited only by the branch that reads data.
+            observed_person_resolver: The same actor seen from the evidence already on
+                the request, without spending any grant (ADR-0015); used by the
+                branches that read nothing. Defaults to the public unknown actor.
             policy_evaluator: Pure deterministic authorization evaluator.
             audit_writer: Local safe-audit boundary for protected decisions.
             household_tools: Optional closed P0.5-B2 family-tool collaborator.
@@ -125,6 +130,7 @@ class CognitiveController:
         self._today = today
         self._legacy_turn = legacy_turn
         self._active_person_resolver = active_person_resolver
+        self._observed_person_resolver = observed_person_resolver
         self._policy_evaluator = policy_evaluator
         self._audit_writer = audit_writer
         self._household_tools = household_tools
@@ -211,9 +217,13 @@ class CognitiveController:
         need: InformationNeed,
         actor: ActivePersonContext | None = None,
     ) -> ResponsePlan:
-        """Authorize and audit a protected branch before any legacy delegation."""
+        """Authorize and audit a protected branch before any legacy delegation.
+
+        When the caller did not already resolve the actor, it is only observed: this
+        branch answers "not connected yet" and reads no data, so it never spends a grant.
+        """
         request = AuthorizationRequest(
-            actor=await self._active_person_resolver(event) if actor is None else actor,
+            actor=await self._observed_person_resolver(event) if actor is None else actor,
             action=AuthorizationAction.READ_HOUSEHOLD_DATA,
             visibility=frozenset({DataVisibility.HOUSEHOLD}),
             sensitivity=frozenset({DataSensitivity.PRIVATE}),
@@ -234,13 +244,12 @@ class CognitiveController:
         self,
         event: CognitiveEvent[TextTurnPayload],
     ) -> ResponsePlan:
-        """Confirm the speaker only from this request's fresh owner evidence.
+        """Confirm the speaker only from the evidence already on this request.
 
-        Reuses the same injected `active_person_resolver` the protected
-        household branches already use, so this consumes the same one-use
-        owner grant a household read would — no separate identity mechanism.
+        Uses the observed actor and never spends a one-use grant (ADR-0015): a
+        bystander asking "who am I" cannot burn the owner's read grant.
         """
-        actor = await self._active_person_resolver(event)
+        actor = await self._observed_person_resolver(event)
         if actor.status is ActivePersonStatus.IDENTIFIED and actor.display_name is not None:
             return ResponsePlan(
                 need=InformationNeed.ACTIVE_IDENTITY,

@@ -196,7 +196,8 @@ already uses (Plan 0026), with no change to `controller.py` or
   `0.5815`, replacing the unvalidated `0.25` default — applies on
   top of the existing generic `settings.face_match_threshold` (`0.4`).
 - Authenticated enrollment: `POST /auth/owner/face/enroll` and `/revoke`
-  (`routers/auth.py`), loopback-only, requiring a fresh PIN-consumed token;
+  (`routers/auth.py`), loopback-only, requiring a fresh PIN-consumed token
+  issued for `biometric_admin` (Plan 0051; a read grant is refused and stays unspent);
   the enrolled subject is always the token's own owner, never a
   request-supplied name. The pre-existing quarantined public
   `POST /vision/enroll` is untouched and still returns 503.

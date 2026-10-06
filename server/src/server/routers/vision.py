@@ -133,6 +133,7 @@ def _vision_controller(client: httpx.AsyncClient) -> CognitiveController:
         today=_today,
         legacy_turn=legacy_turn,
         active_person_resolver=_public_unknown_vision_actor,
+        observed_person_resolver=_public_unknown_vision_actor,
         policy_evaluator=evaluate_authorization,
         audit_writer=record_authorization_decision,
         household_tools=HouseholdKnowledgeTools(reader=PolicyGatedV4Reader()),

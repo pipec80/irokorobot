@@ -21,7 +21,11 @@ from pydantic import SecretStr
 import pytest
 from server.cognition.identity import PersonRecord
 from server.cognition.identity_sessions import IdentitySessionRegistry
-from server.cognition.owner_authentication import OwnerUnlockService, owner_unlock_service
+from server.cognition.owner_authentication import (
+    OwnerUnlockScope,
+    OwnerUnlockService,
+    owner_unlock_service,
+)
 from server.dependencies import get_owner_unlock_service
 from server.exceptions import EnrollmentRejectedError
 from server.main import app
@@ -174,7 +178,7 @@ async def test_expired_token_denies_without_touching_face_model(
 
     service = _real_service(clock=clock)
     monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
-    unlock = await service.unlock(_PIN)
+    unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
     assert unlock is not None
     now = now + timedelta(seconds=61)
 
@@ -199,7 +203,7 @@ async def test_consumed_token_denies_second_use_without_touching_face_model(
     """Reusing an already-consumed token must deny without a second enrollment."""
     service = _real_service()
     monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
-    unlock = await service.unlock(_PIN)
+    unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
     assert unlock is not None
     monkeypatch.setattr(
         vision,
@@ -271,7 +275,7 @@ async def test_multiple_faces_rejection_maps_to_422_without_persisting_consent(
     """A multi-face frame is rejected with its code and grants no consent."""
     service = _real_service()
     monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
-    unlock = await service.unlock(_PIN)
+    unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
     assert unlock is not None
     monkeypatch.setattr(
         vision,
@@ -304,7 +308,7 @@ async def test_other_rejection_codes_map_to_422_without_persisting_consent(
     """Every other rejection code also maps to 422 and grants no consent."""
     service = _real_service()
     monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
-    unlock = await service.unlock(_PIN)
+    unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
     assert unlock is not None
     monkeypatch.setattr(
         vision,
@@ -333,7 +337,7 @@ async def test_oversized_enrollment_image_returns_413_without_touching_the_face_
     """An authenticated caller still cannot bypass the per-file byte budget."""
     service = _real_service()
     monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
-    unlock = await service.unlock(_PIN)
+    unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
     assert unlock is not None
     enroll = AsyncMock(wraps=vision.enroll_person)
     monkeypatch.setattr(vision, "enroll_person", enroll)
@@ -357,7 +361,7 @@ async def test_successful_enroll_grants_consent_and_creates_one_profile(
     """A successful enrollment returns 200, grants consent, and persists one profile."""
     service = _real_service()
     monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
-    unlock = await service.unlock(_PIN)
+    unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
     assert unlock is not None
     monkeypatch.setattr(vision, "enroll_person", _fake_enroll_person)
     grant = AsyncMock(wraps=auth_module.grant_face_consent)
@@ -394,7 +398,7 @@ async def test_second_enrollment_for_same_owner_persists_profile_and_reuses_cons
     monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
     monkeypatch.setattr(vision, "enroll_person", _fake_enroll_person)
 
-    first_unlock = await service.unlock(_PIN)
+    first_unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
     assert first_unlock is not None
     async with _loopback_client() as client:
         first = await client.post(
@@ -403,7 +407,7 @@ async def test_second_enrollment_for_same_owner_persists_profile_and_reuses_cons
             files=_enroll_files(),
         )
 
-    second_unlock = await service.unlock(_PIN)
+    second_unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
     assert second_unlock is not None
     async with _loopback_client() as client:
         second = await client.post(
@@ -442,7 +446,7 @@ async def test_extra_name_field_is_ignored_and_owner_name_is_used(
     """An injected `name` form field never overrides the token owner's name."""
     service = _real_service()
     monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
-    unlock = await service.unlock(_PIN)
+    unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
     assert unlock is not None
     enroll = AsyncMock(side_effect=_fake_enroll_person)
     monkeypatch.setattr(vision, "enroll_person", enroll)
@@ -472,7 +476,7 @@ async def test_revoke_with_valid_token_purges_consent_and_returns_204(
     """A valid token revokes exactly the token owner's consent."""
     service = _real_service()
     monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
-    unlock = await service.unlock(_PIN)
+    unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
     assert unlock is not None
     revoke = AsyncMock(wraps=auth_module.revoke_face_consent)
     monkeypatch.setattr(auth_module, "revoke_face_consent", revoke)
@@ -516,6 +520,53 @@ async def test_revoke_with_invalid_token_denies_without_purging(
         response = await client.post(
             "/auth/owner/face/revoke",
             headers={"X-Iroko-Identity-Token": "not-a-real-token"},
+        )
+
+    assert response.status_code == 401
+    revoke.assert_not_awaited()
+
+
+@pytest.mark.integration
+async def test_a_read_grant_denies_face_enrollment_without_touching_the_model(
+    face_db: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A grant issued for a protected read is not a biometric-administration grant."""
+    service = _real_service()
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
+    unlock = await service.unlock(_PIN)  # the default scope: personal_protected_read
+    assert unlock is not None
+    enroll = AsyncMock()
+    monkeypatch.setattr(vision, "enroll_person", enroll)
+    grant = AsyncMock()
+    monkeypatch.setattr(auth_module, "grant_face_consent", grant)
+
+    async with _loopback_client() as client:
+        response = await client.post(
+            "/auth/owner/face/enroll",
+            headers={"X-Iroko-Identity-Token": unlock.token},
+            files=_enroll_files(),
+        )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Owner authentication failed"}
+    enroll.assert_not_awaited()
+    grant.assert_not_awaited()
+
+
+@pytest.mark.integration
+async def test_a_read_grant_denies_face_revocation_and_revokes_nothing(
+    face_db: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service = _real_service()
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
+    unlock = await service.unlock(_PIN)
+    assert unlock is not None
+    revoke = AsyncMock()
+    monkeypatch.setattr(auth_module, "revoke_face_consent", revoke)
+
+    async with _loopback_client() as client:
+        response = await client.post(
+            "/auth/owner/face/revoke", headers={"X-Iroko-Identity-Token": unlock.token}
         )
 
     assert response.status_code == 401

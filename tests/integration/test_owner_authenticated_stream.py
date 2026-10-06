@@ -21,7 +21,11 @@ from pydantic import SecretStr
 import pytest
 from server.cognition.identity import PersonRecord
 from server.cognition.identity_sessions import IdentitySessionRegistry
-from server.cognition.owner_authentication import OwnerUnlockService, owner_unlock_service
+from server.cognition.owner_authentication import (
+    OwnerUnlockScope,
+    OwnerUnlockService,
+    owner_unlock_service,
+)
 from server.dependencies import get_owner_unlock_service
 from server.main import app
 from server.memory.entity_labels import get_person_label
@@ -260,3 +264,56 @@ async def test_stream_generic_turn_with_valid_token_does_not_consume_it(
     audio_events = [event for event in protected_events if event["type"] == "audio"]
     assert audio_events[0]["text"] == _CHILD_ANSWER
     assert protected_events[-1]["authentication_consumed"] is True
+
+
+@pytest.mark.integration
+async def test_stream_who_am_i_names_the_owner_and_keeps_the_grant(
+    acceptance_db: None, monkeypatch: pytest.MonkeyPatch, silence_wav_bytes: bytes
+) -> None:
+    """ADR-0015 parity: "who am I" over the stream spends no grant either."""
+    service = _service()
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
+    unlock = await service.unlock(_PIN)
+    assert unlock is not None
+
+    async with _client() as client:
+        _mock_stt_tts(monkeypatch, text="¿Quién soy?")
+        identity = await _post_stream(
+            client, token=unlock.token, silence_wav_bytes=silence_wav_bytes
+        )
+
+        identity_events = _parse_ndjson(identity)
+        spoken = [event for event in identity_events if event["type"] == "audio"]
+        assert spoken[0]["text"] == "Sos Pipec."
+        assert identity_events[-1]["authentication_consumed"] is False
+
+        _mock_stt_tts(monkeypatch, text=_CHILD_QUESTION)
+        protected = await _post_stream(
+            client, token=unlock.token, silence_wav_bytes=silence_wav_bytes
+        )
+
+    protected_events = _parse_ndjson(protected)
+    audio_events = [event for event in protected_events if event["type"] == "audio"]
+    assert audio_events[0]["text"] == _CHILD_ANSWER
+    assert protected_events[-1]["authentication_consumed"] is True
+
+
+@pytest.mark.integration
+async def test_stream_refuses_an_administration_grant_for_a_read_and_keeps_it(
+    acceptance_db: None, monkeypatch: pytest.MonkeyPatch, silence_wav_bytes: bytes
+) -> None:
+    service = _service()
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
+    unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
+    assert unlock is not None
+    _mock_stt_tts(monkeypatch, text=_CHILD_QUESTION)
+
+    async with _client() as client:
+        response = await _post_stream(
+            client, token=unlock.token, silence_wav_bytes=silence_wav_bytes
+        )
+
+    events = _parse_ndjson(response)
+    audio_events = [event for event in events if event["type"] == "audio"]
+    assert audio_events[0]["text"] != _CHILD_ANSWER
+    assert events[-1]["authentication_consumed"] is False

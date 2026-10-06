@@ -35,7 +35,7 @@ from server.cognition.models import (
     Confidence,
     ConfidenceBasis,
 )
-from server.cognition.owner_authentication import OwnerRequestResolver
+from server.cognition.owner_authentication import OwnerRequestResolver, OwnerUnlockScope
 from server.cognition.response_plan import TextTurnPayload
 from server.cognition.speaker_authentication import SpeakerVerdict
 from server.exceptions import BrainMemoryError
@@ -182,12 +182,16 @@ class _Pin(NamedTuple):
     token: str | None
 
 
-def _pin(*, with_token: bool = False) -> _Pin:
+def _pin(
+    *, with_token: bool = False, scope: OwnerUnlockScope = OwnerUnlockScope.PERSONAL_PROTECTED_READ
+) -> _Pin:
     registry = IdentitySessionRegistry(
         lookup_person=lambda _pid: None, clock=lambda: _NOW, ttl=timedelta(seconds=60)
     )
     token = (
-        registry.issue_for_person(_OWNER, source=IdentityEvidenceSource.LOCAL_UNLOCK)
+        registry.issue_for_person(
+            _OWNER, source=IdentityEvidenceSource.LOCAL_UNLOCK, scope=scope.value
+        )
         if with_token
         else None
     )
@@ -505,3 +509,104 @@ async def test_the_fused_actor_reaches_reserved_data_only_with_strong_assurance(
     assert denied.policy_id == "p0.5.assurance-required"
     for actor in (with_voice, with_pin):
         assert evaluate_authorization(_reserved_read(actor)).decision is AuthorizationStatus.ALLOWED
+
+
+# --- Plan 0051: observing the actor never spends the grant (ADR-0015) ----------
+
+
+async def test_observing_with_a_pin_token_names_the_owner_and_leaves_the_grant_spendable() -> None:
+    pin = _pin(with_token=True)
+    fused = _fused(face=None, pin=pin.resolver)
+
+    actor = await fused.peek_actor(_event())
+
+    assert actor.status is ActivePersonStatus.IDENTIFIED
+    assert actor.person_id == _OWNER_ID
+    assert fused.last_reason is FusionReason.PIN
+    assert fused.source == "local_unlock"
+    assert fused.consumed is False
+    assert _token_is_still_spendable(pin)
+
+
+async def test_a_spending_resolution_after_an_observation_still_consumes_the_grant() -> None:
+    pin = _pin(with_token=True)
+    fused = _fused(face=None, pin=pin.resolver)
+    event = _event()
+
+    await fused.peek_actor(event)
+    actor = await fused.resolve_actor(event)
+
+    assert actor.status is ActivePersonStatus.IDENTIFIED
+    assert fused.consumed is True
+    assert not _token_is_still_spendable(pin)
+
+
+async def test_observing_with_an_identified_face_never_touches_a_presented_token() -> None:
+    pin = _pin(with_token=True)
+    fused = _fused(face=_face_resolver(), pin=pin.resolver)
+
+    actor = await fused.peek_actor(_event())
+
+    assert actor.person_id == _OWNER_ID
+    assert fused.source == "face"
+    assert _token_is_still_spendable(pin)
+
+
+async def test_observing_keeps_every_veto_and_still_does_not_touch_the_token() -> None:
+    pin = _pin(with_token=True)
+    fused = _fused(face=_face_resolver(faces=2), pin=pin.resolver)
+
+    actor = await fused.peek_actor(_event())
+
+    assert actor.status is not ActivePersonStatus.IDENTIFIED
+    assert fused.last_reason is FusionReason.VETO_MULTIPLE_FACES
+    assert _token_is_still_spendable(pin)
+
+
+async def test_observing_is_cached_so_the_face_is_detected_once() -> None:
+    detect_calls: list[int] = []
+    fused = _fused(face=_face_resolver(detect_calls=detect_calls))
+    event = _event()
+
+    first = await fused.peek_actor(event)
+    second = await fused.peek_actor(event)
+
+    assert first is second
+    assert detect_calls == [1]
+
+
+async def test_observing_without_evidence_is_the_unknown_actor() -> None:
+    fused = _fused(face=None)
+
+    actor = await fused.peek_actor(_event())
+
+    assert actor.status is ActivePersonStatus.UNKNOWN
+    assert fused.last_reason is FusionReason.NO_EVIDENCE
+    assert fused.source is None
+
+
+async def test_observing_ignores_a_token_issued_for_another_operation() -> None:
+    pin = _pin(with_token=True, scope=OwnerUnlockScope.BIOMETRIC_ADMIN)
+    fused = _fused(face=None, pin=pin.resolver)
+
+    actor = await fused.peek_actor(_event())
+
+    assert actor.status is ActivePersonStatus.UNKNOWN
+    assert fused.last_reason is FusionReason.NO_EVIDENCE
+    assert pin.token is not None
+    assert pin.registry.evidence_for(pin.token) is not None  # refused, never spent
+
+
+async def test_observing_after_a_spending_resolution_returns_the_resolved_actor() -> None:
+    """A peek after the grant was spent must not rewrite the outcome or lose the owner."""
+    pin = _pin(with_token=True)
+    fused = _fused(face=None, pin=pin.resolver)
+    event = _event()
+
+    spent = await fused.resolve_actor(event)
+    observed = await fused.peek_actor(event)
+
+    assert observed is spent
+    assert observed.status is ActivePersonStatus.IDENTIFIED
+    assert fused.last_reason is FusionReason.PIN
+    assert fused.source == "local_unlock"

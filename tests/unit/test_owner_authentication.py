@@ -311,3 +311,138 @@ async def test_the_rate_limit_error_reports_when_to_retry() -> None:
 async def _always_wrong(fn):
     """Stand in for the verifier, always rejecting the candidate."""
     return False
+
+
+# --- Plan 0051: every grant is bound to one named operation (ADR-0015) --------
+
+
+@pytest.mark.unit
+async def test_unlock_defaults_to_the_read_scope_and_can_ask_for_biometric_admin() -> None:
+    service = _service(credential=_credential())
+
+    default = await service.unlock(_PIN)
+    admin = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
+
+    assert default is not None
+    assert default.scope is OwnerUnlockScope.PERSONAL_PROTECTED_READ
+    assert admin is not None
+    assert admin.scope is OwnerUnlockScope.BIOMETRIC_ADMIN
+
+
+@pytest.mark.unit
+async def test_a_read_grant_cannot_authorize_biometric_admin_and_is_not_burned() -> None:
+    service = _service(credential=_credential())
+    unlock = await service.unlock(_PIN)
+    assert unlock is not None
+    event = _event()
+
+    admin = service.for_request(unlock.token, scope=OwnerUnlockScope.BIOMETRIC_ADMIN)
+    refused = await admin.resolve_actor(event)
+    refused_consent = await admin.resolve_consent(event, refused)
+
+    assert refused.status is ActivePersonStatus.UNKNOWN
+    assert admin.consumed is False
+    assert refused_consent is not ConsentStatus.GRANTED
+
+    read = service.for_request(unlock.token)
+    owner = await read.resolve_actor(event)
+    assert owner.status is ActivePersonStatus.IDENTIFIED
+    assert read.consumed is True
+
+
+@pytest.mark.unit
+async def test_a_biometric_admin_grant_cannot_authorize_a_read_and_is_not_burned() -> None:
+    service = _service(credential=_credential())
+    unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
+    assert unlock is not None
+    event = _event()
+
+    read = service.for_request(unlock.token)
+    refused = await read.resolve_actor(event)
+
+    assert refused.status is ActivePersonStatus.UNKNOWN
+    assert read.consumed is False
+
+    admin = service.for_request(unlock.token, scope=OwnerUnlockScope.BIOMETRIC_ADMIN)
+    owner = await admin.resolve_actor(event)
+    consent = await admin.resolve_consent(event, owner)
+    assert owner.status is ActivePersonStatus.IDENTIFIED
+    assert admin.consumed is True
+    assert consent is ConsentStatus.GRANTED
+
+
+@pytest.mark.unit
+async def test_the_granted_scope_names_only_the_operation_that_consumed_the_grant() -> None:
+    service = _service(credential=_credential())
+    unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
+    assert unlock is not None
+    admin = service.for_request(unlock.token, scope=OwnerUnlockScope.BIOMETRIC_ADMIN)
+
+    assert admin.scope == frozenset()  # nothing before consumption
+    await admin.resolve_actor(_event())
+
+    assert admin.scope == frozenset({OwnerUnlockScope.BIOMETRIC_ADMIN.value})
+
+
+@pytest.mark.unit
+async def test_peeking_identifies_the_owner_without_spending_the_grant() -> None:
+    service = _service(credential=_credential())
+    unlock = await service.unlock(_PIN)
+    assert unlock is not None
+    event = _event()
+
+    peeking = service.for_request(unlock.token)
+    seen = await peeking.peek_actor(event)
+    seen_again = await peeking.peek_actor(event)
+
+    assert seen.status is ActivePersonStatus.IDENTIFIED
+    assert seen.person_id == _OWNER_ID
+    assert seen_again.status is ActivePersonStatus.IDENTIFIED
+    assert peeking.consumed is False
+    assert peeking.scope == frozenset()
+
+    reading = service.for_request(unlock.token)
+    assert (await reading.resolve_actor(event)).status is ActivePersonStatus.IDENTIFIED
+    assert reading.consumed is True
+
+
+@pytest.mark.unit
+async def test_peeking_is_unknown_without_a_token_for_this_scope_or_after_expiry() -> None:
+    now = _NOW
+
+    def clock() -> datetime:
+        return now
+
+    service = _service(clock=clock, credential=_credential())
+    unlock = await service.unlock(_PIN)
+    assert unlock is not None
+    event = _event()
+
+    assert (await service.for_request(None).peek_actor(event)).status is ActivePersonStatus.UNKNOWN
+    assert (await service.for_request("not-a-token").peek_actor(event)).status is (
+        ActivePersonStatus.UNKNOWN
+    )
+    admin = service.for_request(unlock.token, scope=OwnerUnlockScope.BIOMETRIC_ADMIN)
+    assert (await admin.peek_actor(event)).status is ActivePersonStatus.UNKNOWN
+
+    now = _NOW + timedelta(seconds=61)
+    assert (await service.for_request(unlock.token).peek_actor(event)).status is (
+        ActivePersonStatus.UNKNOWN
+    )
+
+
+@pytest.mark.unit
+async def test_a_scope_mismatch_is_logged_as_a_closed_reason_and_never_the_token(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    service = _service(credential=_credential())
+    unlock = await service.unlock(_PIN)
+    assert unlock is not None
+
+    with caplog.at_level(logging.INFO):
+        admin = service.for_request(unlock.token, scope=OwnerUnlockScope.BIOMETRIC_ADMIN)
+        await admin.resolve_actor(_event())
+
+    joined = "\n".join(record.getMessage() for record in caplog.records)
+    assert "scope_mismatch" in joined
+    assert unlock.token not in joined

@@ -78,6 +78,12 @@ async def chat(
         turn_log.log_actor("chat", actor)
         return actor
 
+    async def observe_actor(event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
+        """Name the actor for branches that read nothing, without spending the grant."""
+        actor = await request_identity.peek_actor(event)
+        turn_log.log_actor("chat", actor)
+        return actor
+
     async def legacy_turn(message: str, conversation_id: str) -> TextTurnResult:
         """Delegate to text-turn orchestration with the shared HTTP client."""
         return await process_text_turn(resources.http_client, message, conversation_id)
@@ -86,6 +92,7 @@ async def chat(
         today=_today,
         legacy_turn=legacy_turn,
         active_person_resolver=resolve_actor,
+        observed_person_resolver=observe_actor,
         policy_evaluator=evaluate_authorization,
         audit_writer=record_authorization_decision,
         household_tools=HouseholdKnowledgeTools(reader=PolicyGatedV4Reader()),

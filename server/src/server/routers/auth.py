@@ -4,9 +4,10 @@ Never trusts `X-Forwarded-For` or any other proxy header — the server does
 not enable `proxy_headers`, and every route additionally checks the raw ASGI
 connection origin before touching any downstream service.
 
-Face enrollment/revocation are the ONLY way to register or purge biometric
-authentication evidence: both require a fresh PIN-consumed token from
-`POST /auth/owner/unlock`, enroll or revoke exclusively the token's own
+Face and voice enrollment/revocation are the ONLY way to register or purge
+biometric authentication evidence: all require a fresh PIN-consumed token from
+`POST /auth/owner/unlock` issued for `biometric_admin` (a read grant is refused
+and stays unspent, ADR-0015), enroll or revoke exclusively the token's own
 owner, and route through the same deterministic authorization pipeline
 (`evaluate_authorization`) every other protected action uses. This is
 separate from — and never modifies — the quarantined public
@@ -48,6 +49,7 @@ from server.cognition.models import (
 )
 from server.cognition.owner_authentication import (
     OwnerUnlockRateLimitedError,
+    OwnerUnlockScope,
     OwnerUnlockService,
 )
 from server.cognition.response_plan import TextTurnPayload
@@ -129,15 +131,16 @@ async def unlock_owner(
     response: Response,
     owner_unlock_service: OwnerUnlockServiceDep,
 ) -> OwnerUnlockResponse:
-    """Verify the local owner PIN and issue one opaque one-use grant.
+    """Verify the local owner PIN and issue one opaque one-use grant for one operation.
 
     Args:
-        request: The candidate PIN — never logged or echoed.
+        request: The candidate PIN — never logged or echoed — and the optional scope the
+            grant is bound to (`personal_protected_read` when absent).
         http_request: Raw ASGI request used only to check loopback origin.
         owner_unlock_service: Lifespan-owned unlock service (Plan 0040).
 
     Returns:
-        The opaque token and its expiry on a successful local unlock.
+        The opaque token, its expiry and the scope it is bound to.
 
     Raises:
         HTTPException: 403 for a non-loopback caller, 401 for a wrong PIN or
@@ -147,7 +150,7 @@ async def unlock_owner(
     if not _is_loopback(http_request):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Local access only")
     try:
-        result = await owner_unlock_service.unlock(request.pin.get_secret_value())
+        result = await owner_unlock_service.unlock(request.pin.get_secret_value(), request.scope)
     except OwnerUnlockRateLimitedError as exc:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -158,7 +161,7 @@ async def unlock_owner(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_UNAUTHORIZED_DETAIL)
     # The body carries a usable grant; no cache may retain it.
     response.headers["Cache-Control"] = "no-store"
-    return OwnerUnlockResponse(token=result.token, expires_at=result.expires_at)
+    return OwnerUnlockResponse(token=result.token, expires_at=result.expires_at, scope=result.scope)
 
 
 def _face_event(event_type: str) -> CognitiveEvent[TextTurnPayload]:
@@ -194,7 +197,8 @@ async def _authorize_biometric_action(
 ) -> tuple[ActivePersonContext, AuthorizationRequest, AuthorizationDecision]:
     """Resolve the request-scoped actor and evaluate the biometric-admin policy.
 
-    Consumes the bound one-use token at most once via a fresh resolver, then
+    Consumes the bound one-use token at most once via a fresh resolver bound to
+    `biometric_admin` (a token issued for a read is refused and not spent), then
     evaluates `ENROLL_BIOMETRIC` through the same deterministic
     `evaluate_authorization` pipeline every other protected action uses —
     covering both the owner-role check and the explicit consent check for a
@@ -211,7 +215,7 @@ async def _authorize_biometric_action(
         decision. The decision is `ALLOWED` only for a fresh, consumed
         owner grant.
     """
-    resolver = owner_unlock_service.for_request(token)
+    resolver = owner_unlock_service.for_request(token, scope=OwnerUnlockScope.BIOMETRIC_ADMIN)
     event = _face_event(event_type)
     actor = await resolver.resolve_actor(event)
     consent = await resolver.resolve_consent(event, actor)
@@ -249,9 +253,10 @@ async def enroll_owner_face(
     """Enroll the token's own owner's face as local authentication evidence.
 
     The only way to register a face for owner authentication: loopback-only,
-    requires a fresh PIN-consumed unlock token, and always enrolls the
-    token's own owner — no `name` (or any other subject) field is accepted
-    from the request.
+    requires a fresh PIN-consumed unlock token issued for `biometric_admin`
+    (a default read grant is refused with 401 and stays unspent), and always
+    enrolls the token's own owner — no `name` (or any other subject) field is
+    accepted from the request.
 
     Args:
         http_request: Raw ASGI request used only to check loopback origin.
@@ -311,6 +316,9 @@ async def revoke_owner_face(
     x_iroko_identity_token: IdentityTokenDep = None,
 ) -> None:
     """Revoke the token's own owner's face consent and purge stored profiles.
+
+    Requires an unlock token issued for `biometric_admin`; a default read grant
+    is refused with 401 and stays unspent (ADR-0015).
 
     Args:
         http_request: Raw ASGI request used only to check loopback origin.
@@ -417,9 +425,8 @@ async def enroll_owner_voice(
     enrolment, which has no equivalent gate (Plan 0053's flag matrix is
     stricter on purpose: less voice data collected while the feature is off).
 
-    ADR-0015 decision 1: this is `biometric_admin`, not
-    `personal_protected_read`. Plan 0051 binds the grant's scope; until then
-    it consumes the same unscoped one-use token the face routes consume.
+    ADR-0015 decision 1: this is a `biometric_admin` operation. The token must
+    have been issued with that scope; a read grant is refused and stays unspent.
 
     Args:
         http_request: Raw ASGI request used only to check loopback origin.
@@ -497,9 +504,8 @@ async def revoke_owner_voice(
 ) -> None:
     """Revoke the token's own owner's voice consent and purge stored voiceprints.
 
-    ADR-0015 decision 1: this is `biometric_admin`, not
-    `personal_protected_read`. Plan 0051 binds the grant's scope; until then
-    it consumes the same unscoped one-use token the face routes consume.
+    ADR-0015 decision 1: this is a `biometric_admin` operation. The token must
+    have been issued with that scope; a read grant is refused and stays unspent.
 
     Carries no `speaker_authentication_enabled` check — unlike enrolment,
     revocation must keep working even with the feature nominally off, so an

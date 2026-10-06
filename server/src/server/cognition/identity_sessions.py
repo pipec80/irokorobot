@@ -36,6 +36,8 @@ class IdentitySessionRegistry:
         self._clock = clock
         self._ttl = ttl
         self._evidence_by_token: dict[str, IdentityEvidence] = {}
+        # The operation a token was issued for; a token issued without one has no entry.
+        self._scope_by_token: dict[str, str] = {}
 
     def select_person(self, person_id: int) -> str | None:
         """Record a manual session selection only for an existing person ID.
@@ -77,20 +79,28 @@ class IdentitySessionRegistry:
         self._evidence_by_token[token] = evidence
         return token
 
-    def evidence_for(self, token: str) -> IdentityEvidence | None:
-        """Return unexpired safe selection evidence for an opaque token.
+    def _scope_allows(self, token: str, scope: str | None) -> bool:
+        """Whether a caller asking for ``scope`` may use ``token`` (``None`` asks for none)."""
+        return scope is None or self._scope_by_token.get(token) == scope
+
+    def evidence_for(self, token: str, *, scope: str | None = None) -> IdentityEvidence | None:
+        """Return unexpired safe selection evidence for an opaque token, without consuming it.
 
         Args:
             token: Opaque session token returned by :meth:`select_person`.
+            scope: The operation the caller is about to authorize. When given, a token
+                issued for another operation (or for none) yields ``None``.
 
         Returns:
-            Immutable evidence when still fresh, otherwise ``None``.
+            Immutable evidence when still fresh and within ``scope``, otherwise ``None``.
         """
         evidence = self._evidence_by_token.get(token)
         if evidence is None:
             return None
         if evidence.expires_at is not None and evidence.expires_at <= self._clock():
             self.clear(token)
+            return None
+        if not self._scope_allows(token, scope):
             return None
         return evidence
 
@@ -101,14 +111,18 @@ class IdentitySessionRegistry:
             token: Opaque session token returned by :meth:`select_person`.
         """
         self._evidence_by_token.pop(token, None)
+        self._scope_by_token.pop(token, None)
 
-    def issue_for_person(self, person: PersonRecord, *, source: IdentityEvidenceSource) -> str:
+    def issue_for_person(
+        self, person: PersonRecord, *, source: IdentityEvidenceSource, scope: str | None = None
+    ) -> str:
         """Issue one-use evidence for an already-verified person record.
 
         Args:
             person: A person record verified by the caller (e.g. a successful
                 local-unlock PIN check), not re-verified here.
             source: The evidence source to record, e.g. ``LOCAL_UNLOCK``.
+            scope: The one operation this token may authorize; ``None`` records none.
 
         Returns:
             An opaque token that must be redeemed exactly once via
@@ -136,21 +150,32 @@ class IdentitySessionRegistry:
         )
         token = _uuid4().hex
         self._evidence_by_token[token] = evidence
+        if scope is not None:
+            self._scope_by_token[token] = scope
         return token
 
-    def consume_evidence(self, token: str) -> IdentityEvidence | None:
+    def consume_evidence(self, token: str, *, scope: str | None = None) -> IdentityEvidence | None:
         """Redeem one-use evidence exactly once, then invalidate the token.
 
         Args:
             token: Opaque token returned by :meth:`issue_for_person` or
                 :meth:`select_person`.
+            scope: The operation the caller authorizes; it must equal the scope the token
+                was issued for (``None`` only matches a token issued for none). Any other
+                token is refused and **kept**: presenting a grant to the wrong operation
+                never burns it.
 
         Returns:
-            The evidence if the token was present and unexpired, else
-            ``None``. The token is removed either way — a second call with
-            the same token always returns ``None``.
+            The evidence if the token was present, within ``scope`` and unexpired, else
+            ``None``. A token that is within ``scope`` is removed either way — a second
+            call with the same token always returns ``None``.
         """
+        # Spending fails closed: the asked scope must equal the recorded one, so a token
+        # bound to an operation is never redeemed by a caller that names none.
+        if token in self._evidence_by_token and self._scope_by_token.get(token) != scope:
+            return None
         evidence = self._evidence_by_token.pop(token, None)
+        self._scope_by_token.pop(token, None)
         if evidence is None:
             return None
         if evidence.expires_at is not None and evidence.expires_at <= self._clock():

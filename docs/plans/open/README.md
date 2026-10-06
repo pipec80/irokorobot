@@ -71,16 +71,18 @@ antes de medir. La reparación que le sigue sigue siendo `Unplanned`. El siguien
 
 [ADR-0015](../../adr/0015-owner-grant-scope-and-speaker-binding.md) (**Accepted**, 2026-09-25)
 liga el grant PIN a una operación (hoy incumple ADR-0009) y, por etapas, a la
-evidencia del hablante; el Plan 0051 lo implementa como primer plan de CM-1.
+evidencia del hablante; el Plan 0051 implementó la decisión 1 como primer plan de CM-1 (cerrado el 2026-10-06).
 
-[0051 — grants del dueño con alcance](0051-scoped-owner-grants.md) es un **Draft** escrito el
-2026-10-05, a la espera de que Pipec lo promueva (primero en la cola, antes de la reparación del
-streaming). Implementa la decisión 1 de ADR-0015: cada grant queda ligado a una operación
-(`personal_protected_read` por defecto, `biometric_admin` para enrolar o revocar cara y voz); un grant
-presentado a otra operación se rechaza **sin gastarse**; «¿Quién soy?» y la respuesta «todavía no está
-conectada» observan al actor y dejan de gastar el grant. El cambio de contrato es aditivo
-(`scope` opcional en `POST /auth/owner/unlock`), el robot no cambia y no hay migración. Incluye la
-aceptación en hardware, con el caso opcional del PIN que el Plan 0054 dejó sin correr.
+[0051 — grants del dueño con alcance](../completed/0051-scoped-owner-grants.md) **cerró el 2026-10-06**
+(primer plan de CM-1; el número de PR se anota en el PR de cierre). Implementa la decisión 1 de ADR-0015:
+cada grant queda ligado a una operación (`personal_protected_read` por defecto, `biometric_admin` para
+enrolar o revocar cara y voz); un grant presentado a otra operación se rechaza **sin gastarse**;
+«¿Quién soy?» y la respuesta «todavía no está conectada» observan al actor y dejan de gastar el grant.
+El cambio de contrato es aditivo (`scope` opcional en `POST /auth/owner/unlock`), el robot no cambia y no hay
+migración. Pipec lo aceptó en hardware real ([registro](../../evals/0051-scoped-grant-acceptance.md)), con
+el caso del PIN que el Plan 0054 dejó sin correr; revocar la cara con un token administrativo (204) no se
+corrió. `NOW` vuelve a quedar vacío; el siguiente es el Plan 0057 (diagnóstico) y luego la reparación del
+streaming. El siguiente número libre es 0058.
 
 [0053 — consented speaker runtime evidence](../completed/0053-consented-speaker-runtime-evidence.md)
 (PC-3B) **cerró el 2026-09-29** y ya vive en `completed/`: enrolamiento consentido, revocación que

@@ -130,9 +130,9 @@ off). On a protected turn whose owner face matched, the speaker check returns a
 raises the face's assurance from `basic` to `strong`. `VOICE` is resolvable but never
 trusted on its own, so it cannot identify anyone, and a voice with no owner face is
 never even embedded. Replay is not defended (6 of 8 probes were accepted in the
-study) and there is no liveness check. Binding a grant to one named operation and to
-the speaker remains [ADR 0015](../adr/0015-owner-grant-scope-and-speaker-binding.md)
-and Plan 0051.
+study) and there is no liveness check. Binding a grant to one named operation is
+implemented (Plan 0051, see *Locked posture and capability scope*); binding it to the
+speaker remains staged by [ADR 0015](../adr/0015-owner-grant-scope-and-speaker-binding.md).
 
 Persistent installation data includes the owner, roles, onboarding state,
 configured methods, consent, and audit. Authentication itself is transient:
@@ -155,12 +155,17 @@ conversation, or TTS. It disables access to protected capabilities. Unknown
 working context remains isolated and must not be attributed or consolidated
 into Pipec's persistent memory.
 
-The initial PIN grant is exactly one `personal_protected_read` of confirmed
-`child_data`. It is not permission to modify memory, enroll biometrics, control
-lights, restart a computer, administer the home, or invoke actuators. Those
-capabilities require separately named policy decisions and, where appropriate,
-fresh confirmation and local safety checks. There is no global “fully
-unlocked” state.
+Every PIN grant is bound to the **one operation named at unlock** (ADR 0015 decision 1,
+Plan 0051). `OwnerUnlockScope` has two members: `personal_protected_read` (the default;
+exactly one read of confirmed `child_data`) and `biometric_admin` (enrolling or
+revoking the owner's face or voice). A grant presented to any other operation is
+refused and is **not spent**, so a bystander or a wrong call cannot burn it. A read
+grant is not permission to modify memory, enroll biometrics, control lights, restart a
+computer, administer the home, or invoke actuators, and an administration grant is not
+permission to read protected data. Those capabilities require separately named policy
+decisions, each declaring its own scope in the plan that adds it, and, where
+appropriate, fresh confirmation and local safety checks. There is no global “fully
+unlocked” state. The grant still proves the PIN, not the speaker (ADR 0008).
 
 ## Identity evidence
 

@@ -1,10 +1,12 @@
 # 0051 — Scoped owner grants
 
-> **Status:** `Draft` — written 2026-10-05 as the first plan of CM-1, after the queue
-> order was confirmed by Pipec the same day (CM-1 first, then the streaming-protocol
-> repair, then CM-2). **Not authorized.** Pipec promotes it to `Ready` and selects it as
-> `NOW`; until then `NOW` stays empty and nothing here may be executed. The decisions
-> below are proposals for that moment.
+> **Status:** `Closed` 2026-10-06 (code, gates, independent review and real-hardware acceptance
+> recorded; the PR number and squash SHA are added by the closure documentation PR). Was `Ready`
+> and `NOW` — written 2026-10-05 as the first plan of CM-1, after the
+> queue order was confirmed by Pipec the same day (CM-1 first, then the streaming-protocol
+> repair, then CM-2). Pipec promoted it to `Ready`, selected it as `NOW` and confirmed
+> decisions D-1 to D-7 as written on 2026-10-05; he also chose inline execution
+> (`superpowers:executing-plans`) with one independent whole-branch review before the PR.
 
 > **For agentic workers:** REQUIRED SUB-SKILLS: `superpowers:executing-plans`,
 > `superpowers:test-driven-development`, `superpowers:verification-before-completion`,
@@ -141,8 +143,8 @@ owning task:
 
 ## Decisions
 
-Proposed 2026-10-05; Pipec confirms them when he promotes the plan, and they are not
-asked again afterwards.
+Proposed 2026-10-05 and **confirmed by Pipec on 2026-10-05** when he promoted the plan;
+they are not asked again.
 
 1. **D-1 — A closed scope set, additive on the wire.** `personal_protected_read` (the
    default) and `biometric_admin`, as ADR-0015 decision 1 says. `POST /auth/owner/unlock`
@@ -189,14 +191,16 @@ asked again afterwards.
 - `server/src/server/cognition/identity_sessions.py`, `owner_authentication.py`,
   `identity_fusion.py`, `controller.py`
 - `server/src/server/schemas_auth.py`, `server/src/server/routers/auth.py`, `chat.py`,
-  `transcribe.py`
+  `transcribe.py`, `vision.py` (one line, added during execution: the public visual
+  controller passes its public-unknown resolver as the observing seam, so the
+  `Turn actor: channel=vision` log line survives on the branches that no longer spend)
 - `scripts/onboard.py`, `scripts/face_auth_demo.py`, `scripts/speaker_auth_demo.py`
 - Tests: `tests/unit/test_identity_sessions.py`, `test_owner_authentication.py`,
   `test_identity_fusion.py`, `test_cognitive_controller.py`, new
   `test_biometric_admin_scope_callers.py`; `tests/integration/test_owner_unlock_endpoint.py`,
   `test_owner_face_enrollment.py`, `test_owner_voice_enrollment.py`,
   `test_owner_stranger_matrix.py`, `test_owner_authenticated_turn.py`,
-  `test_owner_authenticated_stream.py`
+  `test_owner_authenticated_stream.py`; new `test_vision_actor_logging.py`
 - Docs: `docs/adr/0015-owner-grant-scope-and-speaker-binding.md`,
   `docs/adr/0016-face-and-voice-identity-fusion.md` (three sentences),
   `docs/architecture/current-state.md` and `docs/architecture/identity-and-access.md`,
@@ -2522,6 +2526,13 @@ executor records outcomes only (a status, a yes or no, a timing), never a name, 
 transcript or a photo. Record the active flags (`FACE_AUTHENTICATION_ENABLED`,
 `SPEAKER_AUTHENTICATION_ENABLED`, `ROBOT_STREAMING`).
 
+**Isolate the PIN path (review finding, 2026-10-05).** The fusion resolver asks the face
+first (`identity_fusion.py`, `_resolve`): an identified face can authorize a read and leave
+the PIN token untouched, which would look like a scope failure when it is not. Run Steps 2
+to 6 with `FACE_AUTHENTICATION_ENABLED=false` and **restart the server** after changing it.
+The face path is checked on its own in Step 6b. Do not read `identity_source=pin`: the
+contract value for a PIN grant is `local_unlock` (`pin` is only the fusion's logged reason).
+
 - [ ] **Step 1: Administration still works with its own scope.** `just setup-personal
   status` reports ready. `just onboard` (face phase) completes: it asks for the PIN,
   enrols the face and prints the profile id. With the speaker flag on,
@@ -2544,8 +2555,14 @@ transcript or a photo. Record the active flags (`FACE_AUTHENTICATION_ENABLED`,
   scope and present that token to `POST /auth/owner/face/revoke`: 401.
 - [ ] **Step 6: The unrun PIN case of Plan 0054 (D-7).** With the face not identifying
   (camera covered, or `FACE_AUTHENTICATION_ENABLED=false`), a presented read grant
-  answers the child question with identity source `pin`, assurance `strong`. Record it,
-  or record that it was not run and why.
+  answers the child question with `identity_source=local_unlock`, assurance `strong`
+  (with the face flag off, as in the isolation note above). Record it, or record that it
+  was not run and why.
+- [ ] **Step 6b: The face path, on its own.** Restart the server with
+  `FACE_AUTHENTICATION_ENABLED=true`, no PIN prompt and no token: the enrolled face alone
+  answers the child question with `identity_source=face`, `authentication_consumed=false`.
+  Then present a read grant while the face identifies: the answer comes from the face and
+  the token stays unspent (`authentication_consumed=false`). Record both outcomes.
 - [ ] **Step 7: Record.** `docs/evals/0051-scoped-grant-acceptance.md` holds: date, commit
   SHA, hardware line, the flags, one row per case above with its outcome, and a
   *Limitations* paragraph (one owner, one machine; replay and the bearer limit are not
@@ -2680,7 +2697,49 @@ robot is untouched, so a revert restores the unscoped grant exactly as it was.
 
 ## Execution record
 
-_Empty until the plan is promoted and executed._
+Promoted to `Ready` and `NOW` by Pipec on 2026-10-05 (D-1 to D-7 confirmed, inline
+execution, one independent review before the PR). Branch `feat/0051-scoped-owner-grants`
+from `main` at `e2ff025`; baseline `just gate` 1807 tests; after Task 5 and the review
+fixes, 1858.
+
+Rulings made during execution:
+
+- **Fail-closed spending.** `IdentitySessionRegistry.consume_evidence` requires the asked
+  scope to equal the recorded one, so a scoped token is never redeemed by a caller that
+  names no scope (the plan only refused a different scope). `evidence_for` stays
+  permissive without a scope: it never spends and the plan pins it. Commit `a4d10c2`,
+  RED first. Cost if wrong: one more argument for a future caller.
+- **`vision.py` joins the permitted files** (one line plus `test_vision_actor_logging.py`),
+  to keep the actor log line the review found missing. Cost if wrong: revert one line.
+- **Peek after spend returns the resolved actor** (`FusedIdentityResolver.peek_actor`
+  returns the cached actor once `resolve_actor` ran), found by the review; unreachable
+  from today's routes, fixed with a RED test.
+- **Left as is:** the `"biometric_admin"` literal in the three scripts (pinned by
+  `test_biometric_admin_scope_callers.py`), the `identity_source` field description in
+  `schemas.py` (a peek-only turn with a PIN token reports `local_unlock` while
+  `authentication_consumed` is `false`; documented in `current-state.md` in Task 7), and an
+  expired wrong-scope token staying in the registry until read again (bounded, no effect).
+- **Task 6 checklist corrected** after a second review: PIN cases run with the face flag
+  off, a separate face-path step, and the source value is `local_unlock`.
+
+Results:
+
+- **Review.** Two independent read-only reviews of `git diff main...HEAD` (a code reviewer
+  against the plan and the rules, a silent-failure hunter): 0 Critical, 0 Important. Their
+  minor findings were fixed (peek after spend, the `vision.py` log line, the face and voice
+  route docstrings) or ruled on above; a third review of the checklist corrected Task 6.
+- **Gates.** `just gate` 1807 tests on the baseline and 1858 after the review fixes;
+  `ruff`, `mypy`, `uv run ruff format --check .`, the link check, the reserved-terms guard and
+  `git diff --check` clean; `git diff --stat main -- robot` empty; diagram validated, unchanged
+  (no node mentions grants).
+- **Hardware.** Task 6 ran on 2026-10-06 and is recorded in
+  [`docs/evals/0051-scoped-grant-acceptance.md`](../../evals/0051-scoped-grant-acceptance.md):
+  every case passed; the face-revoke 204 with an administration token was not run (it deletes the
+  owner's face) and the wire fields `identity_source` and `assurance` of Plan 0054's PIN case
+  were not observed on the robot (the server log showed the PIN fusion reason).
+- **Documentation.** ADR-0015 and ADR-0016, `current-state.md`, `identity-and-access.md`, the
+  operator manual, the roadmap and both delivery maps, and the board now describe grants bound
+  to one operation; the plan moved to `completed/`.
 
 ## Closure
 

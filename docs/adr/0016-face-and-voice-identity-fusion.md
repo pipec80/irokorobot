@@ -109,7 +109,9 @@ The PIN is not promoted, prompted or documented as a normal path. It stays as (a
 optional `strong` factor when a token is presented on a turn the face did not resolve (for
 example a dark room), useful for reserved data, and (b) the
 credential of **local administration** for enrolling and revoking biometrics over
-loopback, until Plan 0051 binds it to its operation.
+loopback. Plan 0051 bound each grant to one operation: administration needs a
+`biometric_admin` grant, a protected read needs the default `personal_protected_read`
+grant, and neither authorizes the other.
 
 ### 7. Recovery is local administration
 
@@ -171,7 +173,8 @@ justifies it.
   PIN token.
 - A `strong` requirement pays the embedding time on every protected turn whose face
   matched, even when the data turns out to need only `basic`.
-- The optional PIN remains a bearer token until Plan 0051 scopes it.
+- The optional PIN remains a bearer of the PIN, never of the speaker; Plan 0051 scoped it to
+  one operation, so a read grant cannot administer biometrics and the reverse.
 
 ## Test consequences
 
@@ -189,4 +192,4 @@ two people in frame, and voice backend down.
 Revisit when a measured false-rejection rate makes the reserved-data denial too costly,
 when the first reserved capability (`SECURITY` data) is built, when a second household
 member is enrolled (PC-6: voice can then produce a different-person outcome), when
-liveness is planned, or when Plan 0051 scopes the PIN.
+liveness is planned, or when a new protected capability declares its own grant scope.

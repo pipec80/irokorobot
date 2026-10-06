@@ -69,7 +69,9 @@ async def _run_face_phase(url: str, device: int) -> None:
     print("== Paso 2/2: enrolar tu cara ==")  # noqa: T201
     pin = await asyncio.to_thread(getpass.getpass, "Owner PIN: ")
     async with httpx.AsyncClient(timeout=30) as client:
-        unlock_resp = await client.post(f"{url}/auth/owner/unlock", json={"pin": pin})
+        unlock_resp = await client.post(
+            f"{url}/auth/owner/unlock", json={"pin": pin, "scope": "biometric_admin"}
+        )
         if unlock_resp.is_error:
             print(f"PIN rechazado: {unlock_resp.status_code}")  # noqa: T201
             raise SystemExit(1)
