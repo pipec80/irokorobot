@@ -22,6 +22,7 @@ from scripts.eval_stream_protocol import (
     render_stream_report,
     stream_exit_code,
 )
+from scripts.stream_fragmentation import reply_fragmentations
 from server import streaming, tts
 
 _FENCE = "`" * 3  # built, not written: this file also lives inside a Markdown code fence
@@ -42,19 +43,6 @@ _REPLIES = [
     "EMOTION:unknownemotion\nHola",
     "emotion: joy\nHola",
 ]
-
-
-def _fragmentations(text: str) -> list[list[str]]:
-    """Several ways the model's tokens could split one reply (empty deltas never occur)."""
-    ways = [
-        [text],
-        list(text),
-        [text[i : i + 2] for i in range(0, len(text), 2)],
-        [text[i : i + 3] for i in range(0, len(text), 3)],
-        text.splitlines(keepends=True),
-        [text[: len(text) // 2], text[len(text) // 2 :]],
-    ]
-    return [[piece for piece in way if piece] for way in ways]
 
 
 @pytest.mark.unit
@@ -120,7 +108,7 @@ async def test_the_evaluator_agrees_with_production_for_every_fragmentation(
         "invalid_protocol": StreamOutcome.INVALID_PROTOCOL,
         "empty_stream": StreamOutcome.EMPTY_STREAM,
     }
-    for fragments in _fragmentations(reply):
+    for fragments in reply_fragmentations(reply):
         fell_back, reason = await _production_result(fragments, monkeypatch, caplog)
 
         assert fell_back == (reason is not None)
