@@ -1056,7 +1056,7 @@ todas las tareas aplicadas (**1.417 passed, 5 skipped**).
 | F-13 | Nuevo. Docstring de `create_app` falso | 0050 Task 8 |
 | F-14 | Nuevo. Límite de imagen comprobado tras decodificar | 0050 Task 4 |
 | F-15 | Nuevo. Regla del PIN definida dos veces | 0050 Task 7 |
-| F-16 | Nuevo. **Incumple ADR-0009**: el grant no está ligado a una operación | ADR-0015 §1 y Plan 0051; fijado por 0050 Task 11 |
+| F-16 | Nuevo. **Incumple ADR-0009**: el grant no está ligado a una operación | ADR-0015 §1 y Plan 0051 (cerrado 2026-10-06); fijado por 0050 Task 11 |
 | F-17 | Nuevo. Asimetría de idempotencia en el repositorio V4; latente | CM-1 (matriz) |
 | F-18 | Nuevo. Lector de imágenes triplicado | 0050 Task 4 |
 | F-19 | Nuevo. Tres cadenas en tuteo frente a la regla de la persona | 0050 Task 8 |
@@ -1091,7 +1091,7 @@ destino.
 | F-20, F-21 | Cerrados | Task 11 (`dd388b1`): reglas por palabra completa; «Te presento a…» ya no es frase de enrolamiento; corpus revisado ampliado. |
 | F-23 | Cerrado | Task 10 (`fa7ed98`): `require_aware_utc` definido una vez, con guarda. |
 | F-24 | Cerrado | Task 9 (`8115af9`): `faces.recognize()` registra solo conteos. |
-| F-16 | Abierto → Plan 0051 | Task 11 fija con dos tests de caracterización que el grant no está ligado a una operación y que «¿quién soy?» lo gasta. |
+| F-16 | **Cerrado** por el Plan 0051 (2026-10-06) | Task 11 fijó con dos tests de caracterización que el grant no estaba ligado a una operación y que «¿quién soy?» lo gastaba; el Plan 0051 ligó cada grant a una operación y reescribió el segundo test (el límite portador sigue fijado). |
 | F-08, F-09 | Límites vigentes | Task 11 fija que un grant válido responde a quien lo presente. La fusión cara/voz y el veto ya los gobierna ADR-0016 (PC-4); el replay sigue sin defensa y se revisa en CM-5. |
 | F-03 | Parcial | `current-state.md` y el manual del operador actualizados; reglas locales corregidas el 2026-09-24. |
 | F-04, F-17 | Abiertos → CM-1…CM-7 | Sin cambio; la escritura canónica y la deduplicación son de CM-3. |
@@ -1155,8 +1155,8 @@ tiene el token, pero cada capacidad protegida nueva heredaría el mismo
 comodín. La forma concreta de la corrección (qué alcances, qué cambia en el
 API de desbloqueo, qué pasa con «¿quién soy?») tiene costo de uso, así que se
 propone en el [ADR-0015](../../adr/0015-owner-grant-scope-and-speaker-binding.md)
-y la implementa el Plan 0051 una vez aceptado. 0050 Task 11 fija el
-comportamiento actual con dos tests de caracterización.
+y la implementó el Plan 0051 (cerrado el 2026-10-06). 0050 Task 11 fijó el
+comportamiento de entonces con dos tests de caracterización.
 
 ### F-17 — Asimetría de idempotencia en el repositorio V4
 

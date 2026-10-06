@@ -154,7 +154,7 @@ PC-2 accepted (provisional calibration)
      `strong`, reserved data need `strong`; accepted on real hardware, replay not defended)
   -> hardening: Plan 0055 (PC-4 follow-ups) closed 2026-10-01; Plan 0050 (audit repairs) closed 2026-10-01;
      Plan 0056 (voice-pipeline reliability and diagnostics) closed 2026-10-02; the streaming-fallback repair it measured (29.17 %, a synthetic evaluation) is unplanned and ordered after CM-1, before CM-2 (diagnosis: Plan 0057, Draft)
-  -> CM-1..CM-7 longitudinal memory (CM-1 starts with Plan 0051; seed load after CM-3) — unstarted
+  -> CM-1..CM-7 longitudinal memory (CM-1 began with Plan 0051, closed 2026-10-06; seed load after CM-3) — in progress
   -> PC-5 integrated personal acceptance — unstarted
   -> continue at portfolio row 13; the cross-track tail is not duplicated here
 ```

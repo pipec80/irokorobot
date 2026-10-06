@@ -60,9 +60,9 @@ mediciones abrieron un seguimiento (respaldo del streaming, 29,17 %) y cerraron 
 primer turno). Pipec la aceptó en hardware real ese mismo día (el modo clásico no se corrió). Ya no hay un plan `NOW`; Pipec elige el siguiente.
 
 [0057 — diagnóstico del respaldo del protocolo de streaming](0057-stream-protocol-diagnosis.md)
-es un **Draft** escrito el 2026-10-05, a la espera de su turno y de que Pipec lo promueva; el orden
-confirmado por Pipec el 2026-10-05 es CM-1 (Plan 0051) primero y esta reparación después, antes de CM-2;
-hasta entonces no se ejecuta y `NOW` sigue vacío. Solo diagnostica y no toca `server/src`: clasifica las formas de
+es un **Draft** escrito el 2026-10-05, a la espera de que Pipec lo promueva; el orden confirmado por
+Pipec el 2026-10-05 era CM-1 (Plan 0051, ya cerrado) primero y esta reparación después, antes de CM-2;
+hasta que lo promueva no se ejecuta y `NOW` sigue vacío. Solo diagnostica y no toca `server/src`: clasifica las formas de
 fallo (enum cerrado, sin texto), hace una ablación por factor (contexto de memoria, persona,
 historial, posición del contrato, pregunta), mide si la validación del cuerpo depende de cómo
 llegan los tokens (defecto confirmado por lectura del código y fijado por un test) y comprueba
@@ -70,7 +70,7 @@ si Ollama emite en incremental una respuesta con esquema JSON. Las reglas de lec
 antes de medir. La reparación que le sigue sigue siendo `Unplanned`. El siguiente número libre es 0058.
 
 [ADR-0015](../../adr/0015-owner-grant-scope-and-speaker-binding.md) (**Accepted**, 2026-09-25)
-liga el grant PIN a una operación (hoy incumple ADR-0009) y, por etapas, a la
+liga el grant PIN a una operación (incumplía ADR-0009 hasta el Plan 0051) y, por etapas, a la
 evidencia del hablante; el Plan 0051 implementó la decisión 1 como primer plan de CM-1 (cerrado el 2026-10-06).
 
 [0051 — grants del dueño con alcance](../completed/0051-scoped-owner-grants.md) **cerró el 2026-10-06**
