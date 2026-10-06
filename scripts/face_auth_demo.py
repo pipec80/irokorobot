@@ -90,7 +90,9 @@ async def _unlock(client: httpx.AsyncClient, url: str) -> str:
         SystemExit: If the PIN is rejected or the server is unreachable.
     """
     pin = await _read_pin()
-    resp = await client.post(f"{url}/auth/owner/unlock", json={"pin": pin})
+    resp = await client.post(
+        f"{url}/auth/owner/unlock", json={"pin": pin, "scope": "biometric_admin"}
+    )
     if resp.is_error:
         logger.error("Unlock rejected: %s %s", resp.status_code, resp.text[:200])
         raise SystemExit(1)

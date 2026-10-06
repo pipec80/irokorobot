@@ -5,6 +5,7 @@ from typing import Annotated
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, SecretStr
 
+from server.cognition.owner_authentication import OwnerUnlockScope
 from server.cognition.pin_credentials import validate_pin
 
 __all__ = [
@@ -45,6 +46,15 @@ class OwnerUnlockRequest(BaseModel):
         AfterValidator(_require_pin_shape),
         Field(description="Local owner PIN — 6 to 12 ASCII digits."),
     ]
+    scope: Annotated[
+        OwnerUnlockScope,
+        Field(
+            description=(
+                "The one operation the grant may authorize: `personal_protected_read` "
+                "(the default) or `biometric_admin` (face or voice enrolment and revocation)."
+            )
+        ),
+    ] = OwnerUnlockScope.PERSONAL_PROTECTED_READ
 
 
 class OwnerUnlockResponse(BaseModel):
@@ -54,6 +64,7 @@ class OwnerUnlockResponse(BaseModel):
 
     token: str
     expires_at: datetime
+    scope: OwnerUnlockScope = Field(description="The operation this grant is bound to.")
 
 
 class FaceEnrollResponse(BaseModel):

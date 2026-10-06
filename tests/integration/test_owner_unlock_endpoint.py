@@ -10,6 +10,7 @@ import pytest
 from server.cognition.owner_authentication import (
     OwnerUnlockRateLimitedError,
     OwnerUnlockResult,
+    OwnerUnlockScope,
 )
 from server.dependencies import get_owner_unlock_service
 from server.main import app
@@ -24,9 +25,13 @@ class _FakeService:
         self._result = result
         self._raises = raises
         self.received_pin: str | None = None
+        self.received_scope: OwnerUnlockScope | None = None
 
-    async def unlock(self, pin: str) -> OwnerUnlockResult | None:
+    async def unlock(
+        self, pin: str, scope: OwnerUnlockScope = OwnerUnlockScope.PERSONAL_PROTECTED_READ
+    ) -> OwnerUnlockResult | None:
         self.received_pin = pin
+        self.received_scope = scope
         if self._raises is not None:
             raise self._raises
         return self._result
@@ -56,7 +61,7 @@ async def _remote_client() -> AsyncIterator[AsyncClient]:
 
 
 @pytest.mark.integration
-async def test_loopback_with_valid_pin_returns_only_token_and_expiry(
+async def test_loopback_with_valid_pin_returns_only_token_expiry_and_scope(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A loopback caller with a correct PIN receives exactly token and expiry."""
@@ -67,7 +72,7 @@ async def test_loopback_with_valid_pin_returns_only_token_and_expiry(
         response = await client.post("/auth/owner/unlock", json={"pin": "482173"})
 
     assert response.status_code == 200
-    assert set(response.json()) == {"token", "expires_at"}
+    assert set(response.json()) == {"token", "expires_at", "scope"}
     assert response.json()["token"] == "opaque-token"  # noqa: S105 — fixture value
     assert fake.received_pin == "482173"
 
@@ -140,8 +145,11 @@ async def test_openapi_exposes_no_person_role_or_session_fields() -> None:
     schemas = response.json()["components"]["schemas"]
     unlock_request = schemas["OwnerUnlockRequest"]
     unlock_response = schemas["OwnerUnlockResponse"]
-    assert set(unlock_request["properties"]) == {"pin"}
-    assert set(unlock_response["properties"]) == {"token", "expires_at"}
+    assert set(unlock_request["properties"]) == {"pin", "scope"}
+    assert set(unlock_response["properties"]) == {"token", "expires_at", "scope"}
+    scope_schema = schemas["OwnerUnlockScope"]
+    assert scope_schema["enum"] == ["personal_protected_read", "biometric_admin"]
+    assert "scope" not in unlock_request.get("required", [])  # additive: clients unchanged
 
 
 @pytest.mark.integration
@@ -295,3 +303,52 @@ async def test_an_unparseable_client_address_is_forbidden(
         response = await client.post("/auth/owner/unlock", json={"pin": "482173"})
 
     assert response.status_code == 403
+
+
+@pytest.mark.integration
+async def test_an_unlock_without_a_scope_is_a_read_grant_and_says_so(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Absent `scope` keeps every existing client unchanged (ADR-0015 decision 1)."""
+    fake = _FakeService(result=_result())
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: fake)
+
+    async with _loopback_client() as client:
+        response = await client.post("/auth/owner/unlock", json={"pin": "482173"})
+
+    assert fake.received_scope is OwnerUnlockScope.PERSONAL_PROTECTED_READ
+    assert response.json()["scope"] == "personal_protected_read"
+
+
+@pytest.mark.integration
+async def test_an_unlock_can_ask_for_biometric_admin_and_the_response_echoes_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result = _result().model_copy(update={"scope": OwnerUnlockScope.BIOMETRIC_ADMIN})
+    fake = _FakeService(result=result)
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: fake)
+
+    async with _loopback_client() as client:
+        response = await client.post(
+            "/auth/owner/unlock", json={"pin": "482173", "scope": "biometric_admin"}
+        )
+
+    assert response.status_code == 200
+    assert fake.received_scope is OwnerUnlockScope.BIOMETRIC_ADMIN
+    assert response.json()["scope"] == "biometric_admin"
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("scope", ["root", "personal_protected_write", "", None, 3])
+async def test_an_unknown_scope_is_rejected_without_echoing_the_pin(
+    scope: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = _FakeService(result=_result())
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: fake)
+
+    async with _loopback_client() as client:
+        response = await client.post("/auth/owner/unlock", json={"pin": "482173", "scope": scope})
+
+    assert response.status_code == 422
+    assert "482173" not in response.text
+    assert fake.received_pin is None
