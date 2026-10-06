@@ -595,3 +595,18 @@ async def test_observing_ignores_a_token_issued_for_another_operation() -> None:
     assert fused.last_reason is FusionReason.NO_EVIDENCE
     assert pin.token is not None
     assert pin.registry.evidence_for(pin.token) is not None  # refused, never spent
+
+
+async def test_observing_after_a_spending_resolution_returns_the_resolved_actor() -> None:
+    """A peek after the grant was spent must not rewrite the outcome or lose the owner."""
+    pin = _pin(with_token=True)
+    fused = _fused(face=None, pin=pin.resolver)
+    event = _event()
+
+    spent = await fused.resolve_actor(event)
+    observed = await fused.peek_actor(event)
+
+    assert observed is spent
+    assert observed.status is ActivePersonStatus.IDENTIFIED
+    assert fused.last_reason is FusionReason.PIN
+    assert fused.source == "local_unlock"

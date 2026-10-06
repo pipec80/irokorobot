@@ -134,8 +134,11 @@ class FusedIdentityResolver:
             event: The event this observation is scoped to.
 
         Returns:
-            The same context `resolve_actor` would return, with the token unspent.
+            The same context `resolve_actor` would return, with the token unspent; the
+            already resolved actor when the grant was spent earlier in this request.
         """
+        if self._cached is not None:
+            return self._cached
         if self._peeked is not None:
             return self._peeked
         context = await self._resolve(event, consume=False)

@@ -253,9 +253,10 @@ async def enroll_owner_face(
     """Enroll the token's own owner's face as local authentication evidence.
 
     The only way to register a face for owner authentication: loopback-only,
-    requires a fresh PIN-consumed unlock token, and always enrolls the
-    token's own owner — no `name` (or any other subject) field is accepted
-    from the request.
+    requires a fresh PIN-consumed unlock token issued for `biometric_admin`
+    (a default read grant is refused with 401 and stays unspent), and always
+    enrolls the token's own owner — no `name` (or any other subject) field is
+    accepted from the request.
 
     Args:
         http_request: Raw ASGI request used only to check loopback origin.
@@ -315,6 +316,9 @@ async def revoke_owner_face(
     x_iroko_identity_token: IdentityTokenDep = None,
 ) -> None:
     """Revoke the token's own owner's face consent and purge stored profiles.
+
+    Requires an unlock token issued for `biometric_admin`; a default read grant
+    is refused with 401 and stays unspent (ADR-0015).
 
     Args:
         http_request: Raw ASGI request used only to check loopback origin.
@@ -421,8 +425,8 @@ async def enroll_owner_voice(
     enrolment, which has no equivalent gate (Plan 0053's flag matrix is
     stricter on purpose: less voice data collected while the feature is off).
 
-    ADR-0015 decision 1: this is `biometric_admin`, not
-    `personal_protected_read`: the token must have been issued with that scope.
+    ADR-0015 decision 1: this is a `biometric_admin` operation. The token must
+    have been issued with that scope; a read grant is refused and stays unspent.
 
     Args:
         http_request: Raw ASGI request used only to check loopback origin.
@@ -500,8 +504,8 @@ async def revoke_owner_voice(
 ) -> None:
     """Revoke the token's own owner's voice consent and purge stored voiceprints.
 
-    ADR-0015 decision 1: this is `biometric_admin`, not
-    `personal_protected_read`: the token must have been issued with that scope.
+    ADR-0015 decision 1: this is a `biometric_admin` operation. The token must
+    have been issued with that scope; a read grant is refused and stays unspent.
 
     Carries no `speaker_authentication_enabled` check — unlike enrolment,
     revocation must keep working even with the feature nominally off, so an
