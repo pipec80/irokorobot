@@ -1,7 +1,7 @@
 # 0051 — Scoped owner grants
 
-> **Status:** `Closed` 2026-10-06 (code, gates, independent review and real-hardware acceptance
-> recorded; the PR number and squash SHA are added by the closure documentation PR). Was `Ready`
+> **Status:** `Closed` 2026-10-06 and merged as PR #164 (`1ecd63c`) (code, gates, independent
+> review and real-hardware acceptance recorded). Was `Ready`
 > and `NOW` — written 2026-10-05 as the first plan of CM-1, after the
 > queue order was confirmed by Pipec the same day (CM-1 first, then the streaming-protocol
 > repair, then CM-2). Pipec promoted it to `Ready`, selected it as `NOW` and confirmed
