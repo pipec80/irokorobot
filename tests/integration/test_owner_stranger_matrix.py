@@ -5,8 +5,9 @@ receives their private data; anyone else can chat but gets none of it, changes
 nothing and inherits nothing. Every value is an invented canary — the real
 proof, with the owner's own data, runs locally and records outcomes only.
 
-Two tests are characterizations of documented limits (ADR-0008, ADR-0015): they
-pass today and must be rewritten deliberately when ADR-0015 changes the grant.
+One test is a characterization of a documented limit (ADR-0008): the grant proves the
+PIN, not the speaker, and stays until speaker binding changes it. The grant itself is
+bound to one named operation (ADR-0015, Plan 0051).
 """
 
 from collections.abc import AsyncGenerator, AsyncIterator
@@ -20,7 +21,11 @@ from pydantic import SecretStr
 import pytest
 from server.cognition.identity import PersonRecord
 from server.cognition.identity_sessions import IdentitySessionRegistry
-from server.cognition.owner_authentication import OwnerUnlockService, owner_unlock_service
+from server.cognition.owner_authentication import (
+    OwnerUnlockScope,
+    OwnerUnlockService,
+    owner_unlock_service,
+)
 from server.dependencies import get_owner_unlock_service
 from server.main import app
 from server.memory.declarative import assert_fact
@@ -108,6 +113,13 @@ class _Voice:
         self._stt = stt_mock
         self._wav = wav
         self.service = service
+
+    async def revoke_face(self, token: str) -> int:
+        """Ask for a biometric-administration action (a face revocation) and return its status."""
+        response = await self._client.post(
+            "/auth/owner/face/revoke", headers={"X-Iroko-Identity-Token": token}
+        )
+        return response.status_code
 
     async def speak(self, text: str, *, token: str | None = None) -> dict[str, object]:
         """Speak *text* (optionally presenting a grant) and return the JSON body."""
@@ -297,14 +309,11 @@ async def test_a_valid_grant_answers_whoever_presents_it_documented_limit(
 
 
 @pytest.mark.integration
-async def test_who_am_i_with_a_grant_names_the_owner_and_spends_it_documented_limit(
-    voice: _Voice,
-) -> None:
-    """DOCUMENTED LIMIT (ADR-0015): "who am I" consumes the one-use grant.
+async def test_who_am_i_names_the_owner_and_keeps_the_grant(voice: _Voice) -> None:
+    """ADR-0015: "who am I" confirms identity from the request and spends no grant.
 
-    The answer names the grant's owner to whoever presents it, and the grant is
-    gone afterwards, so a later protected question is denied. Pinned so that
-    ADR-0015's decision about the grant's scope changes this deliberately.
+    A bystander who asks it cannot burn the owner's read grant; the grant still
+    answers the next protected question.
     """
     unlock = await voice.service.unlock(_PIN)
     assert unlock is not None
@@ -313,5 +322,64 @@ async def test_who_am_i_with_a_grant_names_the_owner_and_spends_it_documented_li
     later = await voice.speak(_CHILD_QUESTION, token=unlock.token)
 
     assert identity["llm_response"] == "Sos Owner."
-    assert identity["authentication_consumed"] is True
-    assert later["llm_response"] == _DENIAL
+    assert identity["authentication_consumed"] is False
+    assert later["llm_response"] == _CHILD_ANSWER
+    assert later["authentication_consumed"] is True
+
+
+@pytest.mark.integration
+async def test_a_household_question_that_reads_nothing_keeps_the_grant(voice: _Voice) -> None:
+    """The "not connected yet" answer reads no data, so it must not burn the grant."""
+    unlock = await voice.service.unlock(_PIN)
+    assert unlock is not None
+
+    stub = await voice.speak("¿Cómo se llama mi esposa?", token=unlock.token)
+    later = await voice.speak(_CHILD_QUESTION, token=unlock.token)
+
+    assert "todavía no está conectada" in str(stub["llm_response"])
+    assert stub["authentication_consumed"] is False
+    assert later["llm_response"] == _CHILD_ANSWER
+
+
+@pytest.mark.integration
+async def test_a_read_grant_cannot_administer_biometrics_and_still_answers_a_read(
+    voice: _Voice,
+) -> None:
+    """A token issued for a protected read is refused by biometric administration, unspent."""
+    unlock = await voice.service.unlock(_PIN)
+    assert unlock is not None
+
+    refused = await voice.revoke_face(unlock.token)
+    answer = await voice.speak(_CHILD_QUESTION, token=unlock.token)
+
+    assert refused == 401
+    assert answer["llm_response"] == _CHILD_ANSWER
+    assert answer["authentication_consumed"] is True
+
+
+@pytest.mark.integration
+async def test_a_biometric_admin_grant_cannot_read_and_still_administers(voice: _Voice) -> None:
+    """A token issued for biometric administration is refused by a read, unspent."""
+    unlock = await voice.service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
+    assert unlock is not None
+
+    answer = await voice.speak(_CHILD_QUESTION, token=unlock.token)
+    administered = await voice.revoke_face(unlock.token)
+
+    assert answer["llm_response"] == _DENIAL
+    assert answer["authentication_consumed"] is False
+    assert administered == 204
+
+
+@pytest.mark.integration
+async def test_an_administration_grant_is_one_use_even_after_a_refused_read(
+    voice: _Voice,
+) -> None:
+    unlock = await voice.service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
+    assert unlock is not None
+
+    await voice.speak(_CHILD_QUESTION, token=unlock.token)
+    first = await voice.revoke_face(unlock.token)
+    second = await voice.revoke_face(unlock.token)
+
+    assert (first, second) == (204, 401)

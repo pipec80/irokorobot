@@ -129,12 +129,14 @@ class _RequestIdentity:
     """Uniform per-request actor/consent resolver over the fused identity evidence.
 
     Attributes:
-        resolve_actor: The actor resolver to hand to the controller.
+        resolve_actor: The actor resolver to hand to the controller; it may spend the grant.
+        peek_actor: The same actor observed without spending any grant (ADR-0015).
         resolve_consent: The matching consent resolver.
         fused: The fusion resolver, the source of `.consumed` and `.identity_source`.
     """
 
     resolve_actor: ActivePersonResolver
+    peek_actor: ActivePersonResolver
     resolve_consent: ConsentResolver
     fused: FusedIdentityResolver
 
@@ -171,6 +173,7 @@ def _build_request_identity(
     fused = build_fused_identity_resolver(pin, frame=frame, wav_bytes=wav_bytes)
     return _RequestIdentity(
         resolve_actor=fused.resolve_actor,
+        peek_actor=fused.peek_actor,
         resolve_consent=fused.resolve_consent,
         fused=fused,
     )
@@ -187,6 +190,19 @@ def _logged_voice_actor_resolver(
         return actor
 
     return resolve_actor
+
+
+def _logged_voice_observer(
+    request_identity: _RequestIdentity,
+) -> ActivePersonResolver:
+    """Wrap the observing resolver to keep the actor log line without spending a grant."""
+
+    async def observe_actor(event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
+        actor = await request_identity.peek_actor(event)
+        turn_log.log_actor("voice", actor)
+        return actor
+
+    return observe_actor
 
 
 def _voice_controller(
@@ -227,6 +243,7 @@ def _voice_controller(
         today=_today,
         legacy_turn=legacy_turn,
         active_person_resolver=_logged_voice_actor_resolver(request_identity),
+        observed_person_resolver=_logged_voice_observer(request_identity),
         policy_evaluator=evaluate_authorization,
         audit_writer=record_authorization_decision,
         household_tools=HouseholdKnowledgeTools(reader=PolicyGatedV4Reader()),

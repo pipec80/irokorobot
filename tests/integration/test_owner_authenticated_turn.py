@@ -17,7 +17,11 @@ from pydantic import SecretStr
 import pytest
 from server.cognition.identity import PersonRecord
 from server.cognition.identity_sessions import IdentitySessionRegistry
-from server.cognition.owner_authentication import OwnerUnlockService, owner_unlock_service
+from server.cognition.owner_authentication import (
+    OwnerUnlockScope,
+    OwnerUnlockService,
+    owner_unlock_service,
+)
 from server.dependencies import get_owner_unlock_service
 from server.main import app
 from server.memory.entity_labels import get_person_label
@@ -304,3 +308,53 @@ async def test_transcribe_replayed_token_denies_without_reading_v4(
     assert first.json()["authentication_consumed"] is True
     assert second.json()["authentication_consumed"] is False
     reader_spy.assert_not_awaited()
+
+
+@pytest.mark.integration
+async def test_chat_who_am_i_names_the_owner_and_keeps_the_grant(
+    acceptance_db: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ADR-0015: "who am I" over `/chat` spends no grant; the next read still answers."""
+    service = _service()
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
+    unlock = await service.unlock(_PIN)
+    assert unlock is not None
+    headers = {"X-Iroko-Identity-Token": unlock.token}
+
+    async with _client() as client:
+        identity = await client.post(
+            "/chat",
+            headers=headers,
+            json={"message": "¿Quién soy?", "conversation_id": "acceptance-owner"},
+        )
+        read = await client.post(
+            "/chat",
+            headers=headers,
+            json={"message": _CHILD_QUESTION, "conversation_id": "acceptance-owner"},
+        )
+
+    assert identity.json()["response"] == "Sos Pipec."
+    assert identity.json()["authentication_consumed"] is False
+    assert read.json()["response"] == _CHILD_ANSWER
+    assert read.json()["authentication_consumed"] is True
+
+
+@pytest.mark.integration
+async def test_chat_refuses_an_administration_grant_for_a_read_and_keeps_it(
+    acceptance_db: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A token issued for biometric administration never answers a protected read."""
+    service = _service()
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
+    unlock = await service.unlock(_PIN, OwnerUnlockScope.BIOMETRIC_ADMIN)
+    assert unlock is not None
+
+    async with _client() as client:
+        response = await client.post(
+            "/chat",
+            headers={"X-Iroko-Identity-Token": unlock.token},
+            json={"message": _CHILD_QUESTION, "conversation_id": "acceptance-owner"},
+        )
+
+    assert response.json()["response"] != _CHILD_ANSWER
+    assert response.json()["authentication_consumed"] is False

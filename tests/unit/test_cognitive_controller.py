@@ -558,13 +558,13 @@ async def test_controller_biometric_enrollment_returns_fixed_denial_without_came
 
 @pytest.mark.asyncio
 async def test_controller_active_identity_greets_the_authenticated_owner() -> None:
-    """ACTIVE_IDENTITY consumes the same request-scoped grant as a household read."""
+    """ACTIVE_IDENTITY names the observed owner and never spends a grant (ADR-0015)."""
     legacy_turn = AsyncMock()
     owner = _actor(HouseholdRole.OWNER, person_id=1)
     controller = CognitiveController(
         today=lambda: date(2026, 8, 12),
         legacy_turn=legacy_turn,
-        active_person_resolver=_resolver(owner),
+        observed_person_resolver=_resolver(owner),
     )
 
     plan = await controller.handle(_event("¿Quién soy?"))
@@ -587,3 +587,97 @@ async def test_controller_active_identity_denies_without_fresh_evidence() -> Non
     assert plan.status is KnowledgeStatus.UNKNOWN
     assert plan.response == "Todavía no puedo confirmar quién sos."
     legacy_turn.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_who_am_i_never_awaits_the_resolver_that_spends_the_grant() -> None:
+    """The answer comes from the observed actor; the consuming resolver stays untouched."""
+    owner = _actor(HouseholdRole.OWNER, person_id=1)
+    spending = AsyncMock(return_value=owner)
+    controller = CognitiveController(
+        today=lambda: date(2026, 8, 12),
+        legacy_turn=AsyncMock(),
+        active_person_resolver=spending,
+        observed_person_resolver=_resolver(owner),
+    )
+
+    plan = await controller.handle(_event("¿Quién soy?"))
+
+    assert plan.response == "Sos Ada."
+    spending.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_household_question_that_reads_nothing_never_spends_the_grant() -> None:
+    """The "not connected yet" answer reads no data, so it must not burn the owner's grant."""
+    owner = _actor(HouseholdRole.OWNER, person_id=7)
+    spending = AsyncMock(return_value=owner)
+    audit = AsyncMock()
+    seen: list[ActivePersonContext] = []
+
+    def policy(request: AuthorizationRequest) -> AuthorizationDecision:
+        seen.append(request.actor)
+        return _decision(request, AuthorizationStatus.ALLOWED)
+
+    controller = CognitiveController(
+        today=lambda: date(2026, 8, 12),
+        legacy_turn=AsyncMock(),
+        active_person_resolver=spending,
+        observed_person_resolver=_resolver(owner),
+        policy_evaluator=policy,
+        audit_writer=audit,
+    )
+
+    plan = await controller.handle(_event("¿Cómo se llama mi esposa?"))
+
+    assert plan.status is KnowledgeStatus.UNKNOWN
+    assert "todavía" in plan.response
+    spending.assert_not_awaited()
+    assert seen == [owner]  # the policy still judged the observed actor
+    audit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_an_observed_stranger_is_denied_a_household_question() -> None:
+    controller = CognitiveController(
+        today=lambda: date(2026, 8, 12),
+        legacy_turn=AsyncMock(),
+        observed_person_resolver=_resolver(_actor(HouseholdRole.UNKNOWN, None)),
+    )
+
+    plan = await controller.handle(_event("¿Cómo se llama mi esposa?"))
+
+    assert plan.status is KnowledgeStatus.UNAUTHORIZED
+
+
+@pytest.mark.asyncio
+async def test_the_children_read_is_the_only_branch_that_spends_the_grant() -> None:
+    """Only the branch that reads authorized data awaits the consuming resolver."""
+    owner = _actor(HouseholdRole.OWNER, person_id=7)
+    spending = AsyncMock(return_value=owner)
+    observed = AsyncMock(return_value=owner)
+    tools = Mock()
+    tools.get_children = AsyncMock(
+        return_value=HouseholdToolResult(
+            tool_name=HouseholdToolName.GET_CHILDREN,
+            status=KnowledgeStatus.KNOWN,
+            value=("Joaquín",),
+        )
+    )
+    controller = CognitiveController(
+        today=lambda: date(2026, 8, 12),
+        legacy_turn=AsyncMock(),
+        active_person_resolver=spending,
+        observed_person_resolver=observed,
+        household_tools=tools,
+        consent_resolver=AsyncMock(return_value=ConsentStatus.GRANTED),
+    )
+
+    await controller.handle(_event("¿Quién soy?"))
+    await controller.handle(_event("¿Cómo se llama mi esposa?"))
+    spending.assert_not_awaited()
+
+    plan = await controller.handle(_event("¿Cómo se llaman mis hijos?"))
+
+    spending.assert_awaited_once()
+    assert plan.status is KnowledgeStatus.KNOWN
