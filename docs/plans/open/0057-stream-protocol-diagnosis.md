@@ -6,7 +6,7 @@
 > promotes it to `Ready` and selects it as `NOW`; until then `NOW` stays empty and
 > nothing here may be executed. The decisions below are proposals for that moment.
 >
-> **Queue position (Pipec, 2026-10-05):** after CM-1 (Plan 0051) and before CM-2. The
+> **Queue position (Pipec, 2026-10-05):** after CM-1 (Plan 0051, closed 2026-10-06) and before CM-2. The
 > streaming repair that follows this diagnosis is a hard gate of CM-2, the first slice
 > that puts memory or history in the prompt; nothing in CM-1 depends on it.
 >

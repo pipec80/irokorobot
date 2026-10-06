@@ -130,7 +130,8 @@ replacement for it, never the only recovery route.
   same request-scoped grant a household read already consumes, and keeps the
   fixed unknown copy (`Todavía no puedo confirmar quién sos.`) only when no
   fresh authenticated evidence resolves — implemented and operator-confirmed
-  2026-08-25.
+  2026-08-25. Since Plan 0051 (2026-10-06, ADR 0015) that branch only observes the
+  actor and no longer spends the grant.
 - PC-1 needs a small state machine and a CLI/voice entry point that do not
   exist yet; this ADR authorizes and scopes that work, it does not implement
   it.

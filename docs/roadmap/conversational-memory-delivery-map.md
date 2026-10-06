@@ -135,8 +135,8 @@ The documentary-retrieval stages of
 [RAG §25](../architecture/rag-and-memory-retrieval.md#25-secuencia-de-evolución)
 overlap this map: R1 is CM-5 and R5 is CM-3, CM-4 and CM-6. Only R2 and R3
 (documents and hybrid search) are separate portfolio rows, after CM-5 and CM-6.
-The CM-1…CM-7 plan numbers are not reserved, except Plan 0051 as the first plan
-of CM-1; each stage is written only after its predecessor closes and is
+The CM-1…CM-7 plan numbers are not reserved (Plan 0051, the first plan of CM-1, is
+closed); each stage is written only after its predecessor closes and is
 re-audited.
 
 ## Contracts that must become explicit
