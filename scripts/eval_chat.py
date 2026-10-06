@@ -627,11 +627,16 @@ async def run_cli(
     )
 
 
-async def _run_stream_mode(
-    options: CliOptions, cases: list[GoldenCase], factory: ClientFactory
-) -> int:
-    """Measure the streaming protocol on the golden context turns plus public turns."""
-    turns = [
+def golden_stream_turns(cases: Sequence[GoldenCase]) -> list[StreamTurn]:
+    """Turn golden cases into the ``context`` streaming turns both stream tools measure.
+
+    Args:
+        cases: Validated golden cases.
+
+    Returns:
+        One ``StreamTurn`` per case, carrying its memory context, history and active person.
+    """
+    return [
         StreamTurn(
             case.id,
             "context",
@@ -642,9 +647,15 @@ async def _run_stream_mode(
         )
         for case in cases
     ]
+
+
+async def _run_stream_mode(
+    options: CliOptions, cases: list[GoldenCase], factory: ClientFactory
+) -> int:
+    """Measure the streaming protocol on the golden context turns plus public turns."""
     async with factory() as client:
         result = await measure_stream_protocol(
-            [*turns, *public_turns()], client=client, runs=options.runs
+            [*golden_stream_turns(cases), *public_turns()], client=client, runs=options.runs
         )
     stamp = datetime.now(UTC).strftime("%Y-%m-%d-%H%M%S")
     output = options.output or _REPORT_DIRECTORY / f"{stamp}-chat-stream-ollama.md"
