@@ -30,6 +30,11 @@ one-terminal-event guarantee, the NDJSON 200 OpenAPI contract, `/health`
 wording + injectable `create_app`) and left only Uvicorn concurrency
 calibration open, as its own `perf(...)` plan.
 
+[Plan 0051](0051-scoped-owner-grants.md) closed on 2026-10-06 (CM-1, first plan): every owner grant is
+bound to one named operation (`personal_protected_read` or `biometric_admin`), a grant presented to the
+wrong operation is refused without being spent, and "who am I" and the "not connected yet" answer no
+longer spend it; accepted on real hardware, with the bearer limit still pinned.
+
 [Plan 0050](0050-server-audit-repairs.md) closed on 2026-10-01 (merged as PR #154, `a496c1f`) the repairs of the
 [0049 audit](../open/0049-server-objective-conformance-audit.md): standalone imports
 and a pure cognitive core, one transport seam to Ollama, header-first image bounds,

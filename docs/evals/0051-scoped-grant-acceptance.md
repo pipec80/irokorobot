@@ -2,7 +2,7 @@
 
 > **Status:** Historical acceptance record, 2026-10-06. Outcomes only: no transcript,
 > no name, no photo and no answer text appear here. The cases were written in
-> [Plan 0051](../plans/open/0051-scoped-owner-grants.md#task-6-real-hardware-acceptance)
+> [Plan 0051](../plans/completed/0051-scoped-owner-grants.md#task-6-real-hardware-acceptance)
 > and corrected once before running (PIN cases with the face off, a separate face
 > step, and the wire value `local_unlock`).
 

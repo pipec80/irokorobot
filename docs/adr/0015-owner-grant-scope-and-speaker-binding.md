@@ -1,6 +1,6 @@
 # 0015 — Bind the owner grant to a named operation and to speaker evidence
 
-- **Status:** Accepted (2026-09-25, Pipec); decision 2 refined by [ADR 0016](0016-face-and-voice-identity-fusion.md)
+- **Status:** Accepted (2026-09-25, Pipec); decision 1 implemented by [Plan 0051](../plans/completed/0051-scoped-owner-grants.md) (2026-10-06); decision 2 refined by [ADR 0016](0016-face-and-voice-identity-fusion.md); decision 3 unchanged
 - **Date:** 2026-09-24
 - **Builds on:** [ADR 0008](0008-progressive-owner-authentication.md),
   [ADR 0009](0009-locked-posture-and-scoped-capabilities.md)
@@ -54,8 +54,9 @@ known MVP limit; they need staging, not an immediate change.
 
 ## Decision
 
-Accepted 2026-09-25. Nothing changes in code until Plan 0051 (decision 1)
-and PC-4 (decision 2) implement it.
+Accepted 2026-09-25. Decision 1 was implemented by Plan 0051. Decision 2 is refined by
+ADR 0016 (PC-4) and was not touched by Plan 0051: the grant still proves the PIN, not
+the speaker. Decision 3 is unchanged.
 
 ### 1. Bind every grant to a named operation (enforces ADR 0009)
 
@@ -71,6 +72,14 @@ and PC-4 (decision 2) implement it.
 - `scripts/onboard.py` unlocks with `biometric_admin` for the face phase.
 - "¿Quién soy?" confirms identity from the evidence already on the request and
   does not consume a grant. Its copy is unchanged.
+- Decisions Plan 0051 took where this ADR left room: a grant presented to the wrong
+  operation is refused **and not spent** (it looks exactly like an absent token, and
+  only the closed reason `scope_mismatch` is logged), so a bystander or a wrong call
+  cannot burn the owner's grant; and the unlock response echoes the `scope` it
+  granted. The household answer "not connected yet", which reads nothing, observes
+  the actor like "¿quién soy?" and does not spend the grant either; only the
+  branch that reads authorized data does. Spending also fails closed: a token bound
+  to an operation is redeemed only by a caller that names that operation.
 
 ### 2. Speaker binding is staged, and adds no code now
 
@@ -131,10 +140,12 @@ risk but costs a PIN more often; the setting is already the operator's lever.
 ## Test consequences
 
 The two characterization tests in
-`tests/integration/test_owner_stranger_matrix.py` are rewritten by the plan that
-implements decision 1: the one for "¿quién soy?" asserts the grant survives, and a
-new pair asserts that a read-scoped token is refused by face enrollment and the
-reverse. The bearer characterization stays until PC-4 changes it.
+`tests/integration/test_owner_stranger_matrix.py` were rewritten by Plan 0051: the one
+for "¿quién soy?" now asserts the grant survives, and new tests assert that a
+read-scoped token is refused by biometric administration and the reverse, each
+unspent, with the administration grant still one-use. The bearer characterization
+(a valid read grant answers whoever presents it) stays: the grant proves the PIN, not
+the speaker (decision 2).
 
 ## Review
 
@@ -144,8 +155,8 @@ use.
 
 ## Follow-up
 
-- Plan 0051 — scoped grants (decision 1). Unblocked by this acceptance; written
-  when it reaches `NOW`, after PC-3B and PC-4 in the agreed order.
+- Plan 0051 — scoped grants (decision 1): implemented, accepted on hardware on
+  2026-10-06 ([evidence](../evals/0051-scoped-grant-acceptance.md)).
 - PC-4 — speaker binding, face veto and liveness (decision 2).
 - [Capability matrix](../architecture/current-state.md) (added by Plan 0050,
   Task 12).

@@ -207,7 +207,11 @@ Always available, nothing to turn on.
 
 One spoken/typed local PIN issues one opaque, one-use grant (60 s TTL) that
 authorizes exactly one `personal_protected_read` of `child_data` — nothing
-else.
+else. Since Plan 0051 every grant is bound to the one operation named at unlock: the
+robot's grant is always the read scope, a grant presented to the wrong operation is
+refused **without being spent**, and "¿Quién soy?" and the "not connected yet"
+household answer do not spend it either (only the children read does). The server log
+shows `Owner grant refused: scope_mismatch` when that happens.
 
 ```powershell
 $env:ROBOT_OWNER_UNLOCK_PROMPT = "true"   # or set in .env
@@ -239,7 +243,11 @@ Enroll with `just onboard` (§6 covers the full identity+PIN+face flow) — it
 prompts for the owner PIN, warns before capturing ("Mira a la camara..."),
 and calls the same endpoint `just face-auth-demo --enroll` uses directly if
 you need the standalone tool. Revoke with `just face-auth-demo --revoke`,
-which really deletes the stored face profiles, not a soft flag.
+which really deletes the stored face profiles, not a soft flag. Both scripts
+unlock for `biometric_admin` themselves (Plan 0051): the enrolment and revocation
+routes refuse a read grant with 401, and an administration grant never answers a
+protected question, so enrolling and then asking a protected question takes two
+unlocks.
 
 After enrollment, a protected question is answered from the webcam frame
 attached to that same turn — no PIN needed for it. Two-or-more detected
@@ -276,7 +284,8 @@ Enable and enrol (server on loopback, owner and PIN already configured):
    `huggingface_hub` from its once-a-day request to `huggingface.co` (an agent
    registry lookup, not a model download; verified to load the model normally).
 2. `just speaker-auth-demo --enroll` three times (5 s each, quiet room, normal
-   distance). It asks for the PIN each time and keeps the audio in memory only.
+   distance). It asks for the PIN each time (it unlocks for `biometric_admin`) and keeps
+   the audio in memory only.
    At least 3 references are required before any verification is attempted.
    The first call is slow (about 15 s) because it loads the model.
 3. Ask a protected question through `just run-robot` with

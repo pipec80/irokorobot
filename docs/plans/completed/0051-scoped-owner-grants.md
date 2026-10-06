@@ -1,6 +1,8 @@
 # 0051 — Scoped owner grants
 
-> **Status:** `Ready` and `NOW` — written 2026-10-05 as the first plan of CM-1, after the
+> **Status:** `Closed` 2026-10-06 (code, gates, independent review and real-hardware acceptance
+> recorded; the PR number and squash SHA are added by the closure documentation PR). Was `Ready`
+> and `NOW` — written 2026-10-05 as the first plan of CM-1, after the
 > queue order was confirmed by Pipec the same day (CM-1 first, then the streaming-protocol
 > repair, then CM-2). Pipec promoted it to `Ready`, selected it as `NOW` and confirmed
 > decisions D-1 to D-7 as written on 2026-10-05; he also chose inline execution
@@ -2719,6 +2721,25 @@ Rulings made during execution:
   expired wrong-scope token staying in the registry until read again (bounded, no effect).
 - **Task 6 checklist corrected** after a second review: PIN cases run with the face flag
   off, a separate face-path step, and the source value is `local_unlock`.
+
+Results:
+
+- **Review.** Two independent read-only reviews of `git diff main...HEAD` (a code reviewer
+  against the plan and the rules, a silent-failure hunter): 0 Critical, 0 Important. Their
+  minor findings were fixed (peek after spend, the `vision.py` log line, the face and voice
+  route docstrings) or ruled on above; a third review of the checklist corrected Task 6.
+- **Gates.** `just gate` 1807 tests on the baseline and 1858 after the review fixes;
+  `ruff`, `mypy`, `uv run ruff format --check .`, the link check, the reserved-terms guard and
+  `git diff --check` clean; `git diff --stat main -- robot` empty; diagram validated, unchanged
+  (no node mentions grants).
+- **Hardware.** Task 6 ran on 2026-10-06 and is recorded in
+  [`docs/evals/0051-scoped-grant-acceptance.md`](../../evals/0051-scoped-grant-acceptance.md):
+  every case passed; the face-revoke 204 with an administration token was not run (it deletes the
+  owner's face) and the wire fields `identity_source` and `assurance` of Plan 0054's PIN case
+  were not observed on the robot (the server log showed the PIN fusion reason).
+- **Documentation.** ADR-0015 and ADR-0016, `current-state.md`, `identity-and-access.md`, the
+  operator manual, the roadmap and both delivery maps, and the board now describe grants bound
+  to one operation; the plan moved to `completed/`.
 
 ## Closure
 
