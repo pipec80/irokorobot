@@ -1,10 +1,10 @@
 # 0057 — Streaming-protocol fallback diagnosis
 
-> **Status:** `Draft` — written 2026-10-05 after Plan 0056 closed and two reviews of
-> its follow-up (an author analysis and an independent senior audit), and revised the
-> same day after an independent review of this draft. **Not authorized.** Pipec
-> promotes it to `Ready` and selects it as `NOW`; until then `NOW` stays empty and
-> nothing here may be executed. The decisions below are proposals for that moment.
+> **Status:** `Ready` and `NOW` — written 2026-10-05 after Plan 0056 closed and two
+> reviews of its follow-up (an author analysis and an independent senior audit), and
+> revised the same day after an independent review of this draft. **Promoted by Pipec
+> on 2026-10-06**, who confirmed decisions D-1 to D-7 exactly as written below; they are
+> not asked again. Executed from `feat/0057-stream-protocol-diagnosis`.
 >
 > **Queue position (Pipec, 2026-10-05):** after CM-1 (Plan 0051, closed 2026-10-06) and before CM-2. The
 > streaming repair that follows this diagnosis is a hard gate of CM-2, the first slice
@@ -204,8 +204,8 @@ must state and, because the rule lives in code and tests, record in an ADR.
 
 ## Decisions
 
-Proposed 2026-10-05; Pipec confirms them when he promotes the plan, and they are not
-asked again afterwards.
+Proposed 2026-10-05; **confirmed by Pipec on 2026-10-06** (D-1 to D-7, exactly as
+written) when he promoted the plan; they are not asked again.
 
 1. **D-1 — Diagnosis only.** No file under `server/src` is edited: not
    `streaming*.py`, `llm_streaming.py`, `llm.py`, `characters/` nor anything else.

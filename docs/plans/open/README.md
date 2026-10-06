@@ -22,7 +22,7 @@ single-WIP [operational board](../README.md#operational-board) — **CM-0
 (Plan 0046) closed 2026-09-08, PC-3A (Plan 0047) closed 2026-09-25 with a
 provisional PASS, and PC-3B ([Plan 0053](../completed/0053-consented-speaker-runtime-evidence.md))
 closed 2026-09-29, and PC-4 ([Plan 0054](../completed/0054-face-default-identity-fusion.md))
-closed 2026-09-30; `NOW` is empty.** Use the
+closed 2026-09-30; since 2026-10-06 `NOW` is Plan 0057.** Use the
 [personal-companion delivery map](../../roadmap/personal-companion-delivery-map.md)
 and [conversational-memory delivery map](../../roadmap/conversational-memory-delivery-map.md)
 to see the code, tests, verified gaps, and future delivery sequence.
@@ -60,9 +60,9 @@ mediciones abrieron un seguimiento (respaldo del streaming, 29,17 %) y cerraron 
 primer turno). Pipec la aceptó en hardware real ese mismo día (el modo clásico no se corrió). Ya no hay un plan `NOW`; Pipec elige el siguiente.
 
 [0057 — diagnóstico del respaldo del protocolo de streaming](0057-stream-protocol-diagnosis.md)
-es un **Draft** escrito el 2026-10-05, a la espera de que Pipec lo promueva; el orden confirmado por
-Pipec el 2026-10-05 era CM-1 (Plan 0051, ya cerrado) primero y esta reparación después, antes de CM-2;
-hasta que lo promueva no se ejecuta y `NOW` sigue vacío. Solo diagnostica y no toca `server/src`: clasifica las formas de
+está **Ready y es el `NOW`**: escrito el 2026-10-05 y promovido por Pipec el 2026-10-06, con las decisiones
+D-1 a D-7 confirmadas tal cual; el orden confirmado por Pipec el 2026-10-05 era CM-1 (Plan 0051, ya
+cerrado) primero y esta reparación después, antes de CM-2. Solo diagnostica y no toca `server/src`: clasifica las formas de
 fallo (enum cerrado, sin texto), hace una ablación por factor (contexto de memoria, persona,
 historial, posición del contrato, pregunta), mide si la validación del cuerpo depende de cómo
 llegan los tokens (defecto confirmado por lectura del código y fijado por un test) y comprueba
@@ -81,8 +81,8 @@ enrolar o revocar cara y voz); un grant presentado a otra operación se rechaza 
 El cambio de contrato es aditivo (`scope` opcional en `POST /auth/owner/unlock`), el robot no cambia y no hay
 migración. Pipec lo aceptó en hardware real ([registro](../../evals/0051-scoped-grant-acceptance.md)), con
 el caso del PIN que el Plan 0054 dejó sin correr; revocar la cara con un token administrativo (204) no se
-corrió. `NOW` vuelve a quedar vacío; el siguiente es el Plan 0057 (diagnóstico) y luego la reparación del
-streaming. El siguiente número libre es 0058.
+corrió. `NOW` quedó vacío hasta que Pipec promovió el Plan 0057 (diagnóstico, 2026-10-06); la reparación del
+streaming viene después. El siguiente número libre es 0058.
 
 [0053 — consented speaker runtime evidence](../completed/0053-consented-speaker-runtime-evidence.md)
 (PC-3B) **cerró el 2026-09-29** y ya vive en `completed/`: enrolamiento consentido, revocación que
@@ -154,7 +154,7 @@ the benchmark harness is GREEN and the measured baseline is a reproducible
 cognitive RED (`ac43c58`, exit 1); it changed no runtime memory. See
 [completed/0046](../completed/0046-reproducible-longitudinal-memory-baseline.md).
 
-Canonical execution order: **`NOW` is empty; Plan 0054 (PC-4) closed 2026-09-30.** Plan 0053 (PC-3B)
+Canonical execution order: **`NOW` is Plan 0057 (since 2026-10-06); Plan 0054 (PC-4) closed 2026-09-30.** Plan 0053 (PC-3B)
 closed 2026-09-29, and Plan 0047 (PC-3A) closed 2026-09-25 with a provisional PASS
 (see [completed/0047](../completed/0047-speaker-evidence-calibration-study.md)); the
 queue-rule-4 re-audit of the next row ran the same day, produced Plan 0053, and
