@@ -194,3 +194,40 @@ async def test_the_diagnosis_runs_every_unit_and_keeps_provider_errors_apart() -
         StreamOutcome.ERROR,
         StreamOutcome.INVALID_PROTOCOL,
     }
+
+
+class _BrokenClose:
+    """A stream whose ``aclose`` fails after it has already delivered its reply."""
+
+    def __call__(self, _client: httpx.AsyncClient, _text: str, **_kwargs: object) -> "_BrokenClose":
+        return self
+
+    def __aiter__(self) -> AsyncIterator[str]:
+        return self._deltas()
+
+    @staticmethod
+    async def _deltas() -> AsyncIterator[str]:
+        yield "EMOTION:joy\nHola. Bien."
+
+    async def aclose(self) -> None:
+        raise RuntimeError("close failed")
+
+
+@pytest.mark.unit
+async def test_a_stream_that_fails_to_close_does_not_cost_the_observation(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """One bad close must not lose the hundreds of observations measured around it."""
+    with caplog.at_level("WARNING"):
+        obs = await observe_once(
+            _unit(),
+            run=1,
+            position=0,
+            client=_client(),
+            generate=cast("StreamGenerator", _BrokenClose()),
+            clock=itertools.count(0.0, 0.01).__next__,
+        )
+
+    assert obs.outcome is StreamOutcome.VALID
+    assert "RuntimeError" in caplog.text
+    assert "close failed" not in caplog.text

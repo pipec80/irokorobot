@@ -561,3 +561,62 @@ def test_a_spread_out_arrival_is_compatible_with_incremental_generation_not_proo
     assert "evidence against" in reading
     assert "is wrong" not in reading
     assert "did not withhold" not in reading
+
+
+@pytest.mark.unit
+def test_a_change_of_exactly_the_threshold_is_a_signal_despite_float_error() -> None:
+    """42/60 against 33/60 is exactly 15 points, but 0.7 - 0.55 in floats is 14.999..."""
+    runs = 60
+    observations = [
+        *_case(StreamVariant.FULL, "a", 42, runs=runs),
+        *_case(StreamVariant.FULL_REPEAT, "a", 42, runs=runs),
+        *_case(StreamVariant.NO_CONTEXT, "a", 33, runs=runs),
+    ]
+
+    result = compare_to_full(observations, StreamVariant.NO_CONTEXT, runs)
+
+    assert result.noise_pp == pytest.approx(0.0)
+    assert result.reading == "exploratory signal"
+
+
+@pytest.mark.unit
+def test_a_drift_of_exactly_the_threshold_is_flagged_despite_float_error() -> None:
+    assert drift_flagged([0.7, 0.55])
+
+
+@pytest.mark.unit
+def test_a_change_equal_to_the_noise_is_not_a_signal_despite_float_error() -> None:
+    """Both numbers are 40 points, one computed as 40.00000000000001."""
+    observations = [
+        *_case(StreamVariant.FULL, "a", 7, runs=10),
+        *_case(StreamVariant.FULL_REPEAT, "a", 3, runs=10),
+        *_case(StreamVariant.NO_CONTEXT, "a", 3, runs=10),
+    ]
+
+    result = compare_to_full(observations, StreamVariant.NO_CONTEXT, 10)
+
+    assert result.change_pp is not None
+    assert result.noise_pp is not None
+    assert round(result.change_pp, 6) == round(result.noise_pp, 6) == 40.0
+    assert result.reading == "no signal"
+
+
+@pytest.mark.unit
+def test_a_large_change_in_the_opposite_direction_is_not_called_no_signal() -> None:
+    observations = [
+        *_case(StreamVariant.FULL, "a", 1),
+        *_case(StreamVariant.FULL_REPEAT, "a", 1),
+        *_case(StreamVariant.CONTRACT_FIRST, "a", 5),
+    ]
+
+    result = compare_to_full(observations, StreamVariant.CONTRACT_FIRST, _RUNS)
+
+    assert result.change_pp == pytest.approx(-80.0)
+    assert result.reading == "opposite direction"
+
+
+@pytest.mark.unit
+def test_two_shapes_at_exactly_half_are_mixed_not_a_dominant_one() -> None:
+    assert dominant_shape({"no_tag": 2, "tag_same_line": 2}) is None
+    assert dominant_shape({"tag_same_line": 3, "no_tag": 1}) == "tag_same_line"
+    assert dominant_shape({"tag_same_line": 1}) == "tag_same_line"

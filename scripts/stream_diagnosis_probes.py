@@ -4,6 +4,9 @@ The diagnosis must say which Ollama and which model it measured, and whether Oll
 streams a reply constrained by a JSON schema chunk by chunk or withholds it until the
 end. ``llm_streaming`` states the second as a fact; nobody has measured it. Only closed
 statuses, counts and milliseconds are kept, never model text.
+
+Over the ~200-line guideline on purpose: the facts, the arrival rule and the probe share
+one vocabulary (statuses and patterns) that the report imports as a unit.
 """
 
 from __future__ import annotations

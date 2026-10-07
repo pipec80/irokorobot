@@ -75,7 +75,7 @@ def _malformed_tag_shape(text: str) -> FailureShape:
 
 def _tag_prefixed_shape(text: str, stripped: str) -> FailureShape:
     """Classify a reply whose first non-blank text is ``EMOTION:`` but is not a valid line."""
-    if stripped is not text and parse_streaming_emotion(stripped) is not None:
+    if stripped != text and parse_streaming_emotion(stripped) is not None:
         return FailureShape.LEADING_WHITESPACE
     return _malformed_tag_shape(stripped)
 

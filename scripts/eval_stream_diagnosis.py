@@ -92,6 +92,21 @@ def _speech_start_ms(
     return end_ms if decided_ms is None else decided_ms
 
 
+async def _close_stream(stream: object, label: str) -> None:
+    """Stop the model generating: an abandoned async generator keeps Ollama running.
+
+    A failing close is logged by type and ignored: it must not cost the hundreds of
+    observations measured around it.
+    """
+    aclose = getattr(stream, "aclose", None)
+    if aclose is None:
+        return
+    try:
+        await aclose()
+    except Exception as exc:
+        logger.warning("Closing the stream failed for %s (%s)", label, type(exc).__name__)
+
+
 async def observe_once(
     unit: DiagnosisUnit,
     *,
@@ -138,13 +153,12 @@ async def observe_once(
                 decided_ms = now_ms
                 break
     except Exception as exc:
+        # Any provider or stream failure is one ERROR observation, logged by type only
+        # (never the message, which could carry model text); it must not end the run.
         logger.warning("Provider call failed for %s (%s)", turn.label, type(exc).__name__)
         failed = True
     finally:
-        # Stop the model generating: an abandoned async generator keeps Ollama running.
-        aclose = getattr(stream, "aclose", None)
-        if aclose is not None:
-            await aclose()
+        await _close_stream(stream, turn.label)
     end_ms = _ms(clock() - started)
     text = "".join(pieces)
     outcome = StreamOutcome.ERROR

@@ -3,6 +3,9 @@
 Nothing here reads, prints or stores model output; the rules behind each reading live
 in ``stream_diagnosis_stats`` and ``stream_diagnosis_probes``. The headline and the
 failure shapes describe the baseline (``full``); every other variant is read apart.
+
+Over the ~200-line guideline on purpose: one module per report, one function per
+section, no shared state; splitting it would only scatter the section order.
 """
 
 from __future__ import annotations

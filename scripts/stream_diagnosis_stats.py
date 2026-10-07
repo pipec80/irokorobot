@@ -6,6 +6,9 @@ measurement is run. Nothing here reads, prints or stores model output.
 The baseline is the ``full`` variant: the rate and the dominant failure shape describe
 production's own prompt. Every other variant is an intervention and is read apart,
 against ``full`` on the very turns it ran, with its denominators in view.
+
+Over the ~200-line guideline on purpose: every rule that turns a number into a reading
+lives here, in one place, so they cannot drift apart before the run.
 """
 
 from __future__ import annotations
@@ -36,6 +39,8 @@ READING_SIGNAL = "exploratory signal"
 READING_NO_SIGNAL = "no signal"
 READING_INCOMPLETE = "incomplete"
 READING_CONTROL = "control"
+READING_OPPOSITE = "opposite direction"
+_PP_DECIMALS = 6
 
 
 @dataclass(frozen=True)
@@ -111,12 +116,24 @@ def shape_counts(observations: Iterable[Observation]) -> dict[str, int]:
 
 
 def dominant_shape(counts: dict[str, int]) -> str | None:
-    """Return the shape holding at least half of the fallbacks, if there is one."""
+    """Return the shape holding at least half of the fallbacks, if exactly one does.
+
+    Two shapes at exactly half each are a mixed picture, not a dominant one.
+    """
     total = sum(counts.values())
-    for shape, count in counts.items():
-        if total and count / total >= DOMINANT_SHAPE_SHARE:
-            return shape
-    return None
+    leaders = [
+        shape for shape, count in counts.items() if total and count / total >= DOMINANT_SHAPE_SHARE
+    ]
+    return leaders[0] if len(leaders) == 1 else None
+
+
+def _pp(points: float) -> float:
+    """Round percentage points so a threshold met exactly is not missed by float error.
+
+    ``0.7 - 0.55`` is ``0.15000000000000002`` and ``(0.7 - 0.55) * 100`` can fall short
+    of 15; the rules say "at least 15 points", so compare after rounding.
+    """
+    return round(points, _PP_DECIMALS)
 
 
 @dataclass(frozen=True)
@@ -203,15 +220,20 @@ class Comparison:
 
         A signal needs a change of at least 15 points that also exceeds the noise measured
         on the very same turns. A comparison without a complete control on its turns is
-        ``incomplete``: it can never be a signal.
+        ``incomplete``: it can never be a signal. A change of the same size in the
+        opposite direction (the intervention made the rate worse) is labelled as such, so
+        it is not read as "no effect"; it is not a cause either.
         """
         if self.variant is StreamVariant.FULL_REPEAT:
             return READING_CONTROL
         change = self.change_pp
         if change is None or self.noise_pp is None:
             return READING_INCOMPLETE
-        if change >= SIGNAL_THRESHOLD_PP and change > self.noise_pp:
+        change, noise = _pp(change), _pp(self.noise_pp)
+        if change >= SIGNAL_THRESHOLD_PP and change > noise:
             return READING_SIGNAL
+        if change <= -SIGNAL_THRESHOLD_PP and -change > noise:
+            return READING_OPPOSITE
         return READING_NO_SIGNAL
 
 
@@ -287,7 +309,7 @@ def drift_rates(observations: Sequence[Observation]) -> list[float | None]:
 def drift_flagged(rates: Sequence[float | None]) -> bool:
     """Whether the highest and lowest quarter differ by at least 15 percentage points."""
     known = [rate for rate in rates if rate is not None]
-    return bool(known) and (max(known) - min(known)) * PERCENT >= DRIFT_THRESHOLD_PP
+    return bool(known) and _pp((max(known) - min(known)) * PERCENT) >= DRIFT_THRESHOLD_PP
 
 
 def _nearest_rank(ordered: Sequence[int], percent: int) -> int:

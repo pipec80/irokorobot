@@ -390,3 +390,16 @@ async def test_the_whole_pipeline_runs_on_the_real_suite_with_a_fake_model() -> 
     assert sorted(o.position for o in observations) == list(range(len(units) * 2))
     for section in ("## 1.", "## 2.", "## 3.", "## 4.", "## 5.", "## 6.", "## 7.", "## 8."):
         assert section in report
+
+
+@pytest.mark.unit
+def test_a_bad_option_exits_two_with_a_log_line_not_a_traceback(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["diagnose_stream_protocol.py", "--runs", "0"])
+
+    with caplog.at_level("ERROR", logger=cli.logger.name), pytest.raises(SystemExit) as raised:
+        cli.main()
+
+    assert raised.value.code == cli.EXIT_PREFLIGHT
+    assert "Invalid options" in caplog.text

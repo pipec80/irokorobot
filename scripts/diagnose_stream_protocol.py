@@ -164,7 +164,12 @@ async def run_cli(options: CliOptions, *, client_factory: ClientFactory | None =
 def main() -> NoReturn:
     """Run the command-line diagnosis and exit with its status."""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
-    raise SystemExit(asyncio.run(run_cli(parse_cli_args())))
+    try:
+        options = parse_cli_args()
+    except ValueError as exc:
+        logger.error("Invalid options: %s", exc)
+        raise SystemExit(EXIT_PREFLIGHT) from exc
+    raise SystemExit(asyncio.run(run_cli(options)))
 
 
 if __name__ == "__main__":
