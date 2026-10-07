@@ -68,12 +68,14 @@ def test_classify_deltas_reports_the_production_outcome(
 
 
 @pytest.mark.unit
-def test_the_outcome_depends_on_how_the_reply_is_fragmented_exactly_as_in_production() -> None:
-    """Production stops validating once the body start is accepted ("EMO" is not a tag)."""
+def test_a_forbidden_prefix_split_across_deltas_is_judged_like_the_whole_text() -> None:
+    """The prefix EMO may still become a second tag, so the evaluator waits for the rest."""
     reply = "EMOTION:joy\nEMOTION:anger\nhola"
 
     assert classify_deltas([reply]) is StreamOutcome.INVALID_PROTOCOL
-    assert classify_deltas(["EMOTION:joy\nEMO", "TION:anger\nhola"]) is StreamOutcome.VALID
+    assert (
+        classify_deltas(["EMOTION:joy\nEMO", "TION:anger\nhola"]) is StreamOutcome.INVALID_PROTOCOL
+    )
 
 
 async def _production_result(
@@ -96,6 +98,18 @@ async def _production_result(
             pass
     match = re.search(r"reason=(\w+)", caplog.text)
     return state.recordable is False, match.group(1) if match else None
+
+
+@pytest.mark.unit
+async def test_production_never_speaks_a_forbidden_prefix_split_across_deltas(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    fell_back, reason = await _production_result(
+        ["EMOTION:joy\nEMO", "TION:anger\nhola"], monkeypatch, caplog
+    )
+
+    assert fell_back
+    assert reason == "invalid_protocol"
 
 
 @pytest.mark.unit

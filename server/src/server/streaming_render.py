@@ -24,7 +24,11 @@ from server.schemas_streaming import (
 )
 from server.sentences import split_first_sentence
 from server.settings import settings
-from server.streaming_protocol import parse_streaming_emotion, validate_streaming_body_start
+from server.streaming_protocol import (
+    is_body_start_undecided,
+    parse_streaming_emotion,
+    validate_streaming_body_start,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -155,16 +159,19 @@ def _consume_body(buffer: str, state: StreamState) -> tuple[str, list[str]]:
     """Split complete sentences off the body, promoting emotion once valid.
 
     Promotes ``pending_emotion`` to emitted ``emotion`` the first time
-    non-whitespace content passes ``validate_streaming_body_start``.
+    non-whitespace content passes ``validate_streaming_body_start``. While the
+    body is still a prefix of a forbidden start (``E``, a lone backtick) nothing is
+    promoted or spoken: the next delta decides it.
 
     Raises:
         LLMError: If the body content is structurally invalid.
     """
-    if state.emotion is None:
-        stripped = buffer.lstrip()
-        if stripped:
-            validate_streaming_body_start(stripped)
-            state.emotion = state.pending_emotion
+    has_content = bool(buffer.strip())
+    if state.emotion is None and has_content:
+        if is_body_start_undecided(buffer):
+            return buffer, []
+        validate_streaming_body_start(buffer)
+        state.emotion = state.pending_emotion
     sentences: list[str] = []
     while (split := split_first_sentence(buffer)) is not None:
         sentence, buffer = split

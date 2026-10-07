@@ -17,7 +17,7 @@ from __future__ import annotations
 import pytest
 from server.exceptions import LLMError
 
-from server import llm_streaming
+from server import llm_streaming, streaming_protocol
 
 
 @pytest.mark.unit
@@ -106,10 +106,24 @@ def test_full_hybrid_example_rejected_before_speech() -> None:
 @pytest.mark.unit
 def test_llm_streaming_reexports_protocol_functions() -> None:
     """llm_streaming.py must still resolve both names for existing call sites."""
-    from server import streaming_protocol  # noqa: PLC0415 — keeps collection RED-safe
-
     assert llm_streaming.parse_streaming_emotion is streaming_protocol.parse_streaming_emotion
     assert (
         llm_streaming.validate_streaming_body_start
         is streaming_protocol.validate_streaming_body_start
     )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("body", ["E", "EM", "emotion", "  EMOTION", "`", "``"])
+def test_a_body_that_could_still_become_a_forbidden_start_is_undecided(body: str) -> None:
+    """A prefix of ``EMOTION:`` or of a code fence cannot be judged yet: wait for more."""
+    assert streaming_protocol.is_body_start_undecided(body)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "body", ["", "   ", "Hola", "Es", "{", "[", "EMOTION:", "emotion:joy", "`x", "`" * 3, "Eso."]
+)
+def test_a_body_that_is_decided_is_not_undecided(body: str) -> None:
+    """Decided means allowed (plain text) or already forbidden (``validate`` rejects it)."""
+    assert not streaming_protocol.is_body_start_undecided(body)

@@ -98,14 +98,14 @@ async def test_a_valid_reply_starts_speaking_at_its_first_closed_sentence() -> N
 
 
 @pytest.mark.unit
-async def test_a_prefix_split_across_deltas_is_an_undue_accept() -> None:
-    """Production speaks what the whole text would reject: the 0057 fragmentation defect."""
+async def test_a_prefix_split_across_deltas_is_no_longer_an_undue_accept() -> None:
+    """The 0057 fragmentation defect, repaired: production waits for the rest of "EMO"."""
     obs = await _observe(_FakeStream("EMOTION:joy\nEMO", "TION:anger\nhola"))
 
-    assert obs.outcome is StreamOutcome.VALID
+    assert obs.outcome is StreamOutcome.INVALID_PROTOCOL
     assert obs.whole_text_outcome is StreamOutcome.INVALID_PROTOCOL
-    assert obs.fragmentation_consistent is False
-    assert obs.undue_accept
+    assert obs.fragmentation_consistent is True
+    assert not obs.undue_accept
 
 
 @pytest.mark.unit

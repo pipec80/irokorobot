@@ -13,6 +13,8 @@ _FENCE = "`" * 3  # built, not written: this file also lives inside a Markdown c
 
 # Replies production judges the same way however the tokens split.
 _CONSISTENT = [
+    "EMOTION:joy\nEMOTION:anger\nhola",
+    f"EMOTION:joy\n{_FENCE}json\n{{}}\n{_FENCE}",
     "EMOTION:joy\nHola, ¿cómo estás?",
     "EMOTION:joy\n",
     "EMOTION:joy",
@@ -22,11 +24,9 @@ _CONSISTENT = [
     "",
 ]
 
-# Replies whose verdict depends on the split TODAY: production validates the start of the
-# body once, with the first fragment, so a prefix that is still undecidable ("E", "`")
-# is accepted and the rest is never checked. Plan 0057 pins this defect; the repair plan
-# flips these into ``_CONSISTENT``.
-_INCONSISTENT_TODAY = [
+# Replies whose body starts with a prefix that is still undecidable ("E", "`"): production
+# waits for the rest instead of speaking it (Plan 0058, ADR 0017 decision 3).
+_SPLIT_PREFIX_REPLIES = [
     "EMOTION:joy\nEMOTION:anger\nhola",
     f"EMOTION:joy\n{_FENCE}json\n{{}}\n{_FENCE}",
 ]
@@ -54,9 +54,9 @@ def test_a_reply_judged_the_same_under_every_split_is_consistent(reply: str) -> 
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("reply", _INCONSISTENT_TODAY)
-def test_the_known_fragmentation_defect_is_pinned_until_the_repair_plan(reply: str) -> None:
-    """Whole, the reply is rejected; split inside its first body token, it is spoken."""
+@pytest.mark.parametrize("reply", _SPLIT_PREFIX_REPLIES)
+def test_a_split_forbidden_prefix_is_rejected_under_every_split(reply: str) -> None:
+    """The 0057 defect: split inside its first body token, the reply used to be spoken."""
     assert classify_deltas([reply]) is StreamOutcome.INVALID_PROTOCOL
-    assert fragmentation_outcomes(reply) == {StreamOutcome.VALID, StreamOutcome.INVALID_PROTOCOL}
-    assert not is_fragmentation_consistent(reply)
+    assert fragmentation_outcomes(reply) == {StreamOutcome.INVALID_PROTOCOL}
+    assert is_fragmentation_consistent(reply)

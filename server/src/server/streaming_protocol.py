@@ -20,7 +20,10 @@ _EMOTION_TAG_RE = re.compile(r"^EMOTION:\s*(\w+)\s*\n", re.IGNORECASE)
 # output here (it may contain arbitrary, unbounded model text).
 _INVALID_PROTOCOL_MESSAGE = "Invalid streaming response protocol"
 
-_INVALID_BODY_PREFIXES = ("{", "[", "```")
+_FENCE = "`" * 3  # built, not written: this module is quoted inside Markdown fences
+_TAG = "EMOTION:"
+_INVALID_BODY_PREFIXES = ("{", "[", _FENCE)
+_UNDECIDED_BODY_PREFIXES = (_TAG, _FENCE)
 
 
 def parse_streaming_emotion(
@@ -59,6 +62,25 @@ def parse_streaming_emotion(
     return emotion, buffer[match.end() :]
 
 
+def is_body_start_undecided(body: str) -> bool:
+    """Whether the body so far is a proper prefix of a forbidden start (tag or fence).
+
+    A body that begins ``E`` or a single backtick may still become ``EMOTION:`` or a
+    code fence once the next token arrives, so it can be neither spoken nor judged yet.
+
+    Args:
+        body: The text after the preamble, as received so far.
+
+    Returns:
+        True while more text is needed to know whether the body start is allowed.
+    """
+    stripped = body.lstrip()
+    return bool(stripped) and any(
+        len(stripped) < len(prefix) and prefix.startswith(stripped.upper())
+        for prefix in _UNDECIDED_BODY_PREFIXES
+    )
+
+
 def validate_streaming_body_start(body: str) -> None:
     """Reject structured metadata or a repeated protocol tag before speech.
 
@@ -75,5 +97,5 @@ def validate_streaming_body_start(body: str) -> None:
             ``{``, ``[``, a code fence, or another ``EMOTION:`` tag.
     """
     stripped = body.lstrip()
-    if stripped.startswith(_INVALID_BODY_PREFIXES) or stripped.upper().startswith("EMOTION:"):
+    if stripped.startswith(_INVALID_BODY_PREFIXES) or stripped.upper().startswith(_TAG):
         raise LLMError(_INVALID_PROTOCOL_MESSAGE)
