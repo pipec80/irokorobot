@@ -30,8 +30,7 @@ one-terminal-event guarantee, the NDJSON 200 OpenAPI contract, `/health`
 wording + injectable `create_app`) and left only Uvicorn concurrency
 calibration open, as its own `perf(...)` plan.
 
-[Plan 0057](0057-stream-protocol-diagnosis.md) closed on 2026-10-06 (branch `feat/0057-stream-protocol-diagnosis`; the PR number
-and squash SHA are recorded after the merge): a diagnosis of why the streaming protocol drops to the fallback phrase,
+[Plan 0057](0057-stream-protocol-diagnosis.md) closed on 2026-10-06 and merged as PR #166 (`a78e05a`, 2026-10-07): a diagnosis of why the streaming protocol drops to the fallback phrase,
 with nothing under `server/src` changed. `just diagnose-stream` ran on `qwen2.5:3b` for 820 streams over two seeds: the
 dominant failure shape is a tag that shares its line with the text, removing the memory block lowers the rate (exploratory,
 confirmed by a second seed that also tripped the order-effect rule), a schema-constrained reply arrives spread over time, and the fragmentation defect is pinned by a
