@@ -4795,9 +4795,18 @@ Executed 2026-10-06 on `feat/0057-stream-protocol-diagnosis`, from `main` at `c0
   pyright, 0 errors), `just check`, `just audit`, `uv build --all-packages`, the exact CI coverage
   command (2079 passed in the CI selection, 91.99 % coverage) and `git diff --stat main -- server` (empty);
   `just gate`: **2096 passed** (the 2089 of Task 7 plus 7 tests for the review fixes).
-- **Live voice-turn acceptance:** the plan states that none applies (no production code, request,
-  response, streaming event or audio path changes) and asks for Pipec's explicit confirmation rather
-  than a silent skip; it is asked of Pipec before the push.
+- **Live acceptance (Pipec, 2026-10-07):** the plan states that no live voice-turn acceptance applies
+  (no production code, request, response, streaming event or audio path changes) and asks for an
+  explicit confirmation rather than a silent skip. Pipec chose to run one anyway and stated that the
+  session counts as the acceptance. One streaming session with the robot and server started by
+  Pipec on this branch (`ROBOT_STREAMING`, face authentication, speaker authentication and the
+  owner-PIN prompt on): 5 turns, no fallback phrase. Three turns were deterministic (identity,
+  own-children list, protected household data) with the actor identified from the face
+  (`face_only`, owner); two were free conversation through the model, both `outcome=ok`. The speaker
+  verdict was `unknown` on every identity turn because no voiceprint is enrolled (0 profiles stored,
+  2 consent grants), so voice was not validated in this session and no `face_voice` fusion was
+  seen; that is a state of the local data, not a finding of this plan. Outcomes only: no
+  transcript, no name.
 
 ## Closure
 
