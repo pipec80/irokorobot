@@ -71,7 +71,8 @@ La regla de orden de ejecución saltó en la segunda corrida y queda sin resolve
 fragmentación y está escrita como [Plan 0058](0058-stream-protocol-repair.md) (ver abajo).
 
 [0058 — reparación del protocolo de respuesta del streaming](0058-stream-protocol-repair.md) es un **borrador
-`QUEUED` escrito el 2026-10-07**, sin autorizar y sin revisión independiente: Pipec lo promueve (y confirma sus
+`QUEUED` escrito el 2026-10-07**, sin autorizar y con una revisión independiente del mismo día (aprobado con
+arreglos, ya aplicados): Pipec lo promueve (y confirma sus
 decisiones D-5 a D-8) antes de que nadie lo ejecute. Pipec eligió la reparación ese día: una gramática de la
 etiqueta `EMOTION:` tolerante (la etiqueta que comparte línea con el texto) **más** rescatar como texto plano,
 con la emoción `neutral`, una respuesta sin etiqueta, registrado en el

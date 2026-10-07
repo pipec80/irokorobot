@@ -1,7 +1,8 @@
 # 0058 — Streaming reply protocol repair
 
 > **Status:** `Draft` — written 2026-10-07 after Plan 0057 closed and after a read-only audit
-> of the streaming path (below). **Not authorized:** `NOW` is empty and only Pipec promotes a
+> of the streaming path (below), then independently reviewed the same day (approved with fixes;
+> every fix is applied). **Not authorized:** `NOW` is empty and only Pipec promotes a
 > plan. Pipec fixed decisions D-1 to D-4 in the planning session of 2026-10-07; D-5 to D-8 are
 > proposed here and become decisions when Pipec promotes the plan. The protocol it implements is
 > [ADR 0017](../../adr/0017-streaming-reply-protocol.md), `Proposed` until Task 6 passes.
@@ -55,16 +56,22 @@ written test-first and its RED was observed for the stated reason before its cod
 code tasks applied:
 
 - **Streaming-related tests** (the 15 files of the streaming protocol, evaluator and diagnosis, plus
-  the streaming integration files): 354 passing before, 476 after. RED observed per task: 24 failing
-  items, then 12, 19, 4 and 1; GREEN 374, 400, 469, 473 and 476.
-- **CI selection** (`-m "not slow and not hardware and not eval"`): 2081 tests before, 2203 after
-  (+122, net of the tests deleted or merged). 2202 passed; one failed only because
+  the streaming integration files): 354 passing before, 484 after. RED observed per task: 24 failing
+  items, then 16, 19, 4 and 1; GREEN 374, 405, 477, 481 and 484.
+- **CI selection** (`-m "not slow and not hardware and not eval"`): 2081 tests before, 2211 after
+  (+130, net of the tests deleted or merged). 2210 passed; one failed only because
   `test_eval_chat_runs_under_direct_execution_like_the_justfile_recipe` spawns a subprocess that
   imports the installed `server` of the real checkout instead of the scratch copy (the same artifact
   as one `test_diagnose_stream_protocol.py` test, deselected in the copy). Both run in the real tree
   under the full `uv run pytest` of *Verification*.
 - **Static checks:** `ruff check` and `ruff format --check` over the explicit paths of every touched
   file, `mypy server/src robot/src` (102 files) and `pyright` were clean.
+- **Independent review** (a fresh reviewer, 2026-10-07): it applied every diff of the plan with `patch`
+  onto `git archive 747bca6` (no fuzz, byte-identical to the rehearsal), reproduced the RED counts,
+  killed 29 mutants of the rehearsed code and fuzzed 4000 random replies and splits against the
+  wire rules. It approved with fixes; the fixes are in this plan (a tag mention hidden in markup, the
+  gate stated in counts, the tag-only scope of F-8, the outcome name, the tests of the rejected
+  batch) and the rehearsal above was repeated after them.
 
 Not rehearsed: the live path against a real Ollama, Task 0, Task 6 and Task 7 (they need Pipec's
 local processes). The scratch copy had no `.git` of the repository, so commit titles and the
@@ -137,7 +144,7 @@ The code and tests of the path were read again against `main` (`747bca6`) before
 | F-5 | Low | `llm_streaming.py` | A "temporary" re-export with a `noqa: F401` citing a task long closed; only two test files still read it. | Task 3 |
 | F-6 | Low | `_finalize_model_output` | Calls `parse_streaming_emotion(buffer, final=True)` and drops the result; the call can only raise, so the logic reads as if it could match. | Task 2 |
 | F-7 | Low | `streaming.py` and `streaming_render._done_event` | `llm_ms` computed in two places. | Task 5 |
-| F-8 | Medium | `_consume_body` | Only the start of the body is validated: a second tag or JSON in the middle of the reply is spoken. | Task 2 |
+| F-8 | Medium | `_consume_body` | Only the start of the body is validated: a second tag in the middle of the reply is spoken. (JSON or a code fence in the middle is not guarded either: it stays a known limit, see *Non-goals*.) | Task 2 (tags only) |
 
 Not changed, on purpose: `llm_streaming._build_messages` duplicates a four-line helper of `llm.py`
 (its own comment says why, and widening `llm.py`'s public API for one call site is worse).
@@ -169,7 +176,9 @@ so the plan can be read alone. Decision numbers refer to the ADR.
    proper prefix of `EMOTION:` or of a code fence, waits and speaks nothing. At the end of the
    stream an undecided start is a violation; an undecided body prefix is ordinary text (decision 3).
 4. A body that starts with `{`, `[`, a code fence or `EMOTION:` is refused (decision 4).
-5. No sentence and no unfinished tail containing `EMOTION:` in any letter case is spoken
+5. No sentence and no unfinished tail that mentions `EMOTION` followed by a colon is spoken, in any
+   letter case, with up to three symbols between them (`**EMOTION**:`) and either colon width;
+   `demotion:` does not count
    (decision 5).
 6. The fallback is one fixed phrase, with no retry. Exactly one `emotion` event precedes the first
    `audio`; `done` only follows audio (decision 6, ADR 0012).
@@ -185,7 +194,7 @@ so the plan can be read alone. Decision numbers refer to the ADR.
 | D-3 | R-5 (execution-order effect) is closed here: Task 0 runs seed 59 on the unchanged code and reads it with Plan 0057's 15-point rule. | Pipec, 2026-10-07 |
 | D-4 | The contract text in the prompt is not touched, so the measured change is attributed to the parser. | Pipec, 2026-10-07 |
 | D-5 | A rescued turn is recorded as a normal turn (emotion `neutral`) and logged as `rescued_no_tag`; a fallback is never recorded. | Proposed |
-| D-6 | A tag is never spoken, at any position, in any mode; what was spoken stays and the fallback follows (`partial_fallback`). | Proposed |
+| D-6 | A tag is never spoken, at any position, in any mode; what was spoken stays and the fallback follows (logged as `protocol_fallback`). | Proposed |
 | D-7 | The wire, the robot, the schemas, the settings and the dependencies do not change. | Proposed |
 | D-8 | The diagnosis keeps naming shapes with Plan 0057's strict grammar (frozen in `stream_failure_shapes.py`) and reports the replies production now speaks anyway as *tolerated*. | Proposed |
 
@@ -197,10 +206,20 @@ These are constants of the reading, fixed **before** Task 6 and not changed afte
   only): the fallback rate of `full` is at or below **5.00 %** in context turns **and** in public
   turns; the report shows 0 undue accepts and 0 split-dependent replies; no provider error is read
   as a pass (the instrument already keeps them out of the rate).
-- **Noise band.** A rate above 5 % and up to 8 % in a seed may be repeated once with `--runs 10`,
-  and the repeat decides that seed; a rate above 8 % fails the gate outright.
-- **Controls, not gates.** `full_repeat` is the noise control and is reported; the counts of
-  *tolerated* replies by strict-0057 shape are reported.
+- **In counts.** Each cell is 12 turns × 5 runs = 60 streams, so the gate means **at most 3
+  fallbacks of 60**. One golden turn that falls back in all 5 runs is 5 of 60 (8.33 %) and fails the
+  gate by itself: the gate really says that no golden turn may fail persistently (Plan 0057 saw two
+  such turns in each seed). The report's section 4 prints the number of turns with at least one
+  fallback and of turns that fell back in every run; both are recorded.
+- **Noise band.** Exactly 4 fallbacks of 60 (6.67 %) in a seed may be repeated once with `--runs 10`
+  (120 streams, at most 6 fallbacks to pass) and the repeat decides that seed; 5 or more of 60 fails
+  the gate outright, and a pass is final. The public half is not discriminating (the baseline is
+  already 1.7 to 3.3 %): it only guards against a regression.
+- **Controls and a read, not gates.** `full_repeat` is the noise control and is reported. The
+  counts of *tolerated* replies by strict-0057 shape are reported too, and **Pipec reads them before
+  Task 7**: the gate counts only fallbacks, so a repair that speaks junk would never fail it.
+  Tolerated `other_label` replies (a label such as `Emoción: joy` read aloud) are the ones to look
+  at; a share that Pipec finds too high stops the plan the same way a failed gate does.
 - **R-5 (Task 0).** The fallback rate by quarter of the shuffled order, all variants together. A
   spread of **15 points or more** means the order effect is real and Plan 0057's R-3 confirmations
   need re-reading; a smaller spread means run 2 most likely mixed variants unevenly per quarter. It
@@ -667,7 +686,7 @@ def test_the_end_of_the_stream_is_judged_in_one_place(
 `tests/unit/test_streaming_protocol.py`:
 
 ```diff
-@@ -127,3 +127,31 @@ def test_a_body_that_could_still_become_a_forbidden_start_is_undecided(body: str
+@@ -127,3 +127,46 @@ def test_a_body_that_could_still_become_a_forbidden_start_is_undecided(body: str
  def test_a_body_that_is_decided_is_not_undecided(body: str) -> None:
      """Decided means allowed (plain text) or already forbidden (``validate`` rejects it)."""
      assert not streaming_protocol.is_body_start_undecided(body)
@@ -684,7 +703,15 @@ def test_the_end_of_the_stream_is_judged_in_one_place(
 +@pytest.mark.unit
 +@pytest.mark.parametrize(
 +    "text",
-+    ["Hola. EMOTION:joy", "**EMOTION:** joy", "emotion: joy", "Claro, emotion:joy otra vez."],
++    [
++        "Hola. EMOTION:joy",
++        "**EMOTION:** joy",
++        "**EMOTION**: joy",
++        "EMOTION\uff1a joy",
++        "EMOTION : joy",
++        "emotion: joy",
++        "Claro, emotion:joy otra vez.",
++    ],
 +)
 +def test_reject_embedded_tag_refuses_a_tag_anywhere(text: str) -> None:
 +    with pytest.raises(streaming_protocol.StreamProtocolError) as exc_info:
@@ -695,7 +722,14 @@ def test_the_end_of_the_stream_is_judged_in_one_place(
 +
 +@pytest.mark.unit
 +@pytest.mark.parametrize(
-+    "text", ["La emoción es alegría.", "Emotion es una palabra.", "¿Qué emoción sientes?", ""]
++    "text",
++    [
++        "La emoción es alegría.",
++        "Emotion es una palabra.",
++        "Una demotion: palabra rara.",
++        "¿Qué emoción sientes?",
++        "",
++    ],
 +)
 +def test_reject_embedded_tag_allows_plain_speech(text: str) -> None:
 +    streaming_protocol.reject_embedded_tag(text)
@@ -720,7 +754,7 @@ def test_the_end_of_the_stream_is_judged_in_one_place(
 `tests/integration/test_transcribe_stream.py`:
 
 ```diff
-@@ -586,6 +586,39 @@ def test_stream_structured_body_uses_audible_protocol_fallback(
+@@ -586,6 +586,55 @@ def test_stream_structured_body_uses_audible_protocol_fallback(
      record.assert_not_called()
 
 
@@ -757,6 +791,22 @@ def test_the_end_of_the_stream_is_judged_in_one_place(
 +    record.assert_not_called()
 +
 +
++@pytest.mark.integration
++def test_stream_a_rejected_batch_still_sends_exactly_one_emotion_before_the_audio(
++    client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
++) -> None:
++    """The robot raises on audio before emotion: a rejected batch must not swallow the event."""
++    monkeypatch.setattr(streaming, "record_text_turn", Mock())
++    monkeypatch.setattr(tts, "synthesize", AsyncMock(return_value=("QQ==", 10)))
++    events = _post_stream_with_deltas(
++        client, monkeypatch, silence_wav_bytes, ["EMOTION:joy\nHola. EMOTION:anger\nAdiós."]
++    )
++    kinds = [event["type"] for event in events]
++    assert kinds.count("emotion") == 1
++    assert kinds.index("emotion") < kinds.index("audio")
++    assert kinds[-1] == "done"
++
++
  @pytest.mark.integration
  def test_stream_truncated_emotion_uses_audible_protocol_fallback(
      client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
@@ -779,7 +829,7 @@ second tag in a later delta fails because the sentence that carries the tag is s
 `server/src/server/streaming_protocol.py`:
 
 ```diff
-@@ -20,6 +20,11 @@ _EMOTION_TAG_RE = re.compile(r"^EMOTION:\s*(\w+)\s*\n", re.IGNORECASE)
+@@ -20,10 +20,16 @@ _EMOTION_TAG_RE = re.compile(r"^EMOTION:\s*(\w+)\s*\n", re.IGNORECASE)
  # output here (it may contain arbitrary, unbounded model text).
  _INVALID_PROTOCOL_MESSAGE = "Invalid streaming response protocol"
 
@@ -791,7 +841,12 @@ second tag in a later delta fails because the sentence that carries the tag is s
  _FENCE = "`" * 3  # built, not written: this module is quoted inside Markdown fences
  _TAG = "EMOTION:"
  _INVALID_BODY_PREFIXES = ("{", "[", _FENCE)
-@@ -48,13 +53,13 @@ def parse_streaming_emotion(
+ _UNDECIDED_BODY_PREFIXES = (_TAG, _FENCE)
++_TAG_MENTION_RE = re.compile(r"\bemotion\W{0,3}[:\uff1a]", re.IGNORECASE)
+
+
+ def parse_streaming_emotion(
+@@ -48,13 +54,13 @@ def parse_streaming_emotion(
          ``final=False``).
 
      Raises:
@@ -807,7 +862,7 @@ second tag in a later delta fails because the sentence that carries the tag is s
          return None
      emotion = match.group(1).lower()
      if emotion not in VALID_EMOTIONS:
-@@ -93,9 +98,22 @@ def validate_streaming_body_start(body: str) -> None:
+@@ -93,9 +99,24 @@ def validate_streaming_body_start(body: str) -> None:
          body: The response text remaining after the emotion preamble.
 
      Raises:
@@ -828,9 +883,11 @@ second tag in a later delta fails because the sentence that carries the tag is s
 +        text: One sentence, or the final unfinished tail, about to be spoken.
 +
 +    Raises:
-+        StreamProtocolError: If ``text`` contains ``EMOTION:`` in any letter case.
++        StreamProtocolError: If ``text`` mentions ``EMOTION`` followed by a colon, in any
++            letter case, with up to three symbols between them (``**EMOTION**:``) and
++            either colon width.
 +    """
-+    if _TAG in text.upper():
++    if _TAG_MENTION_RE.search(text):
 +        raise StreamProtocolError(_INVALID_PROTOCOL_MESSAGE)
 ```
 
@@ -1288,7 +1345,15 @@ def test_a_body_that_is_decided_is_not_undecided(body: str) -> None:
 @pytest.mark.unit
 @pytest.mark.parametrize(
     "text",
-    ["Hola. EMOTION:joy", "**EMOTION:** joy", "emotion: joy", "Claro, emotion:joy otra vez."],
+    [
+        "Hola. EMOTION:joy",
+        "**EMOTION:** joy",
+        "**EMOTION**: joy",
+        "EMOTION\uff1a joy",
+        "EMOTION : joy",
+        "emotion: joy",
+        "Claro, emotion:joy otra vez.",
+    ],
 )
 def test_reject_embedded_tag_refuses_a_tag_anywhere(text: str) -> None:
     with pytest.raises(StreamProtocolError) as exc_info:
@@ -1299,7 +1364,14 @@ def test_reject_embedded_tag_refuses_a_tag_anywhere(text: str) -> None:
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    "text", ["La emoción es alegría.", "Emotion es una palabra.", "¿Qué emoción sientes?", ""]
+    "text",
+    [
+        "La emoción es alegría.",
+        "Emotion es una palabra.",
+        "Una demotion: palabra rara.",
+        "¿Qué emoción sientes?",
+        "",
+    ],
 )
 def test_reject_embedded_tag_allows_plain_speech(text: str) -> None:
     reject_embedded_tag(text)
@@ -1382,7 +1454,7 @@ def test_reject_embedded_tag_allows_plain_speech(text: str) -> None:
 `tests/unit/test_eval_stream_protocol.py`:
 
 ```diff
-@@ -45,6 +45,13 @@ _REPLIES = [
+@@ -45,6 +45,14 @@ _REPLIES = [
      "emotion: joy\nHola",
      "EMOTION:joy\nHola. EMOTION:anger\nAdiós.",
      "EMOTION:joy\nHola. **EMOTION:** joy",
@@ -1392,11 +1464,12 @@ def test_reject_embedded_tag_allows_plain_speech(text: str) -> None:
 +    "\nEMOTION:anger\nCalma.",
 +    "Emoción pura. Gracias.",
 +    "Claro. EMOTION:joy\nHola",
++    "**EMOTION**: joy\nHola. Qué tal.",
 +    '{"response": "x"}',
  ]
 
 
-@@ -55,7 +62,12 @@ _REPLIES = [
+@@ -55,7 +63,12 @@ _REPLIES = [
          (["EMOTION:joy\nHola, ¿cómo estás?"], StreamOutcome.VALID),
          (["EMOTION:joy\n"], StreamOutcome.INVALID_PROTOCOL),
          (["EMOTION:joy\n   "], StreamOutcome.INVALID_PROTOCOL),
@@ -1410,7 +1483,7 @@ def test_reject_embedded_tag_allows_plain_speech(text: str) -> None:
          (['EMOTION:joy\n{"response": "x"}'], StreamOutcome.INVALID_PROTOCOL),
          (["EMOTION:joy\nEMOTION:anger\nhola"], StreamOutcome.INVALID_PROTOCOL),
          (["EMOTION:joy"], StreamOutcome.INVALID_PROTOCOL),
-@@ -180,6 +192,7 @@ async def _evaluator_after_a_provider_error(fragments: list[str]) -> str:
+@@ -180,6 +193,7 @@ async def _evaluator_after_a_provider_error(fragments: list[str]) -> str:
      [
          (["EMOTION:joy\n{"], "invalid_protocol"),
          (["EMOTION:joy\n", "[1]"], "invalid_protocol"),
@@ -1418,7 +1491,7 @@ def test_reject_embedded_tag_allows_plain_speech(text: str) -> None:
          (["EMOTION:joy\nHola"], "provider_error"),
          (["EMOTION:joy\n"], "provider_error"),
          (["Hola sin etiqueta"], "provider_error"),
-@@ -258,13 +271,13 @@ async def test_measure_counts_each_outcome_and_keeps_errors_out_of_the_rate() ->
+@@ -258,13 +272,13 @@ async def test_measure_counts_each_outcome_and_keeps_errors_out_of_the_rate() ->
      )
 
      assert (result.valid, result.invalid_protocol, result.empty_stream, result.errors) == (
@@ -1434,7 +1507,7 @@ def test_reject_embedded_tag_allows_plain_speech(text: str) -> None:
 
 
  @pytest.mark.unit
-@@ -274,7 +287,7 @@ async def test_measure_splits_the_counts_by_turn_source() -> None:
+@@ -274,7 +288,7 @@ async def test_measure_splits_the_counts_by_turn_source() -> None:
          client=_client(),
          runs=2,
          generate=_generator(
@@ -1524,8 +1597,8 @@ def test_reject_embedded_tag_allows_plain_speech(text: str) -> None:
 `tests/integration/test_transcribe_stream.py`:
 
 ```diff
-@@ -619,6 +619,112 @@ def test_stream_a_tag_after_the_first_sentence_keeps_the_audio_and_adds_the_fall
-     record.assert_not_called()
+@@ -635,6 +635,114 @@ def test_stream_a_rejected_batch_still_sends_exactly_one_emotion_before_the_audi
+     assert kinds[-1] == "done"
 
 
 +@pytest.mark.integration
@@ -1591,6 +1664,8 @@ def test_reject_embedded_tag_allows_plain_speech(text: str) -> None:
 +        ["EMOTION:joy. Hola"],
 +        ["EMOTION:<joy>\nHola"],
 +        ['{"response": "hola"}'],
++        ["**EMOTION**: joy\nHola. Qué tal."],
++        ["EMOTION\uff1ajoy\nHola. Qué tal."],
 +    ],
 +)
 +def test_stream_a_tag_that_can_never_be_valid_uses_audible_protocol_fallback(
@@ -1637,7 +1712,7 @@ def test_reject_embedded_tag_allows_plain_speech(text: str) -> None:
  @pytest.mark.integration
  def test_stream_truncated_emotion_uses_audible_protocol_fallback(
      client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
-@@ -675,7 +781,8 @@ def test_every_done_has_prior_contract_valid_audio(
+@@ -691,7 +799,8 @@ def test_every_done_has_prior_contract_valid_audio(
          ["EMOTION:ale"],
          [],
          ["EMOTION:joy\n   "],
@@ -1647,7 +1722,7 @@ def test_reject_embedded_tag_allows_plain_speech(text: str) -> None:
      ]
      for deltas in invalid_delta_cases:
          events = _post_stream_with_deltas(client, monkeypatch, silence_wav_bytes, deltas)
-@@ -757,7 +864,7 @@ async def test_stream_protocol_fallback_tts_failure_has_no_done(
+@@ -773,7 +882,7 @@ async def test_stream_protocol_fallback_tts_failure_has_no_done(
      )
 
      async def plain_text(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
@@ -1656,7 +1731,7 @@ def test_reject_embedded_tag_allows_plain_speech(text: str) -> None:
 
      monkeypatch.setattr(llm_streaming, "generate_response_stream", plain_text)
      monkeypatch.setattr(tts, "synthesize", AsyncMock(side_effect=TTSError("piper down")))
-@@ -789,7 +896,7 @@ async def test_stream_tts_failure_logs_tts_error_outcome(
+@@ -805,7 +914,7 @@ async def test_stream_tts_failure_logs_tts_error_outcome(
      )
 
      async def plain_text(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
@@ -1733,6 +1808,8 @@ _INVALID_BODY_PREFIXES = ("{", "[", _FENCE)
 _UNDECIDED_BODY_PREFIXES = (_TAG, _FENCE)
 _INLINE_SPACE = " \t\r"
 _WORD_AFTER_TAG_RE = re.compile(r"\s*(\w+)")
+# A tag mention in speech: **EMOTION**: and a fullwidth colon count; demotion: does not.
+_TAG_MENTION_RE = re.compile(r"\bemotion\W{0,3}[:\uff1a]", re.IGNORECASE)
 
 # Bounded, content-free message — never interpolate the raw candidate/model
 # output here (it may contain arbitrary, unbounded model text).
@@ -1865,9 +1942,11 @@ def reject_embedded_tag(text: str) -> None:
         text: One sentence, or the final unfinished tail, about to be spoken.
 
     Raises:
-        StreamProtocolError: If ``text`` contains ``EMOTION:`` in any letter case.
+        StreamProtocolError: If ``text`` mentions ``EMOTION`` followed by a colon, in any
+            letter case, with up to three symbols between them (``**EMOTION**:``) and
+            either colon width.
     """
-    if _TAG in text.upper():
+    if _TAG_MENTION_RE.search(text):
         raise StreamProtocolError(_INVALID_PROTOCOL_MESSAGE)
 ```
 
@@ -2551,12 +2630,17 @@ just diagnose-stream --variants full full_repeat --seed 59 --structured-runs 0 -
 - [ ] **Step 2:** Add a section **After the repair** to `docs/evals/0058-stream-protocol-repair.md`,
   with the same *Conditions* table plus the commit, and for each seed: the fallback rate of `full`
   per source against the baseline of Plan 0057 (43 to 52 % and 1.7 to 3.3 %) and of Task 0; the
-  `full_repeat` control; the *Tolerated* counts by shape; undue accepts and split-dependent counts.
-  Read the gate **by the rules fixed above**, in a table (gate, value, met or not). Numbers only.
+  `full_repeat` control; the *Tolerated* counts by shape; undue accepts and split-dependent counts;
+  the turns with at least one fallback and the turns that fell back in every run. Read the shape
+  `tag_same_line` twice: under the fallbacks it is a tag followed by a word that is not an emotion;
+  under *Tolerated* it is a known emotion that is now spoken. Read the gate **by the rules fixed
+  above**, in a table (gate, value, met or not). Numbers only.
 - [ ] **Step 3:** If a seed lands in the noise band, Pipec repeats **that seed** once with `--runs 10`
   and the repeat decides it; record both.
-- [ ] **Step 4:** If any gate is not met, stop here: commit the evidence, report, and do not continue
-  to Task 7. Otherwise commit.
+- [ ] **Step 4:** If any gate is not met, or Pipec stops the plan after reading the tolerated counts,
+  stop here: commit the evidence, report, and do not continue to Task 7. The evidence is kept by a
+  docs-only branch from `main` that carries just these documents and its own PR; the code branch is
+  not merged. Otherwise commit.
 
 ```powershell
 git add docs/evals/0058-stream-repair-seed57.md docs/evals/0058-stream-repair-seed59.md docs/evals/0058-stream-protocol-repair.md
@@ -2576,7 +2660,8 @@ Only after the gate of Task 6 is met.
 - [ ] **Step 2:** `docs/architecture/current-state.md`: the streaming section states the grammar of
   ADR 0017 and the measured rates after the repair, with their limits (one model, the generator and
   not the voice path). Regenerate the architecture diagram with the Archify skill
-  (`validate` then `deliver`) so it does not lag the document.
+  (`validate` then `deliver`) so it does not lag the document; the skill is local and git-ignored, so
+  this step runs on Pipec's machine.
 - [ ] **Step 3:** `docs/roadmap/cognitive-roadmap.md`: the *Streaming-protocol fallback repair* row
   becomes closed with Plan 0058, and CM-2's dependency on it is met; the "What is really missing"
   entry loses the repair.
@@ -2603,6 +2688,19 @@ Each has an owner or is out of the queue:
 - The real end-to-end rate of a spoken turn (the measurement is the generator only; PC-5 acceptance
   or a telemetry plan owns it).
 - Any robot, schema, OpenAPI, setting or dependency change.
+- Interrupting the robot while it speaks (barge-in). The loop stays half-duplex; the gap is a row of the
+  roadmap's cross-cutting table, unplanned, and this plan neither blocks nor changes it.
+- Guarding JSON or a code fence in the **middle** of a reply (ADR 0017 decision 4 is about how a body
+  *starts*); and a label that does not use the English keyword (`Emoción: joy`), which is still
+  spoken. Both are known limits recorded in the ADR.
+- A rescued count in `eval-chat --mode stream`: with the rescue its fallback rate drifts towards 0 % if
+  the model stops tagging; the *Tolerated* column of `just diagnose-stream` is the instrument that
+  shows it, and the `rescued_no_tag` log line the only trace in production.
+- Keeping the emotion tag in the assistant turns of the stored history. The history sent to the model
+  holds untagged replies while the prompt demands a tag, which may push a small model to omit it
+  (turns with history fell back 43 to 52 % against 1.7 to 3.3 % without, but removing only the memory
+  block already cut it to 17 %, so this is a hypothesis, not a finding). It is a variant for a later
+  measurement and, like the prompt, outside this plan (D-4).
 - Re-grading the Plan 0057 reports (they hold no reply text, so they cannot be re-read with another
   grammar; the comparison is by running the instrument again).
 
@@ -2652,7 +2750,8 @@ Record outcomes only: which cases ran, which did not, and the counts of case 3.
 
 Each task is one commit; revert them in reverse order. Nothing under `server/src` merges unless
 Task 6 met its gate. The wire, the schema, the robot and the settings are untouched, so no data or
-client migration exists. If the gate fails, the branch is not merged and ADR 0017 stays `Proposed`.
+client migration exists. If the gate fails, the code branch is not merged, ADR 0017 stays `Proposed`,
+and the measurement evidence is preserved by a docs-only PR (Task 6, step 4).
 
 ## Execution record
 

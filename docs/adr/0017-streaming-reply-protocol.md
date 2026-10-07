@@ -85,8 +85,10 @@ different route.
 
 ### 5. A tag is never spoken
 
-No sentence, and no unfinished tail, that contains `EMOTION:` in any letter case is spoken, at any
-position. Whatever had already been spoken stays; the fallback phrase follows (`partial_fallback`).
+No sentence, and no unfinished tail, that mentions `EMOTION` followed by a colon is spoken, at any
+position, in any letter case, with up to three symbols between the two (`**EMOTION**:`) and either
+colon width; `demotion:` does not count. Whatever had already been spoken stays; the fallback phrase
+follows (logged as `protocol_fallback`).
 
 ### 6. The fallback stays one fixed phrase, with no retry
 
@@ -114,6 +116,11 @@ the robot is untouched.
   (one seed). Rejected on that evidence.
 - **Reword the contract or add an example.** Changes the prompt and the parser together, so the
   measurement could not attribute the effect; left for a later decision.
+- **Tag the assistant turns of the stored history.** The history sent to the model holds untagged
+  replies while the prompt demands a tag; a small model may imitate the history and omit the tag. The
+  Plan 0057 data fit that only in part (turns with history fell back 43 to 52 %, context-free turns
+  1.7 to 3.3 %, but removing only the memory block cut it to 17 %), so it is a hypothesis for a later
+  measurement, not a decision here.
 - **Another model.** Out of scope of this decision (ADR 0004 keeps Ollama the only runtime); the
   protocol must work for the model in use.
 
@@ -125,17 +132,20 @@ the robot is untouched.
   of replaced by a phrase that says the robot is still waking up.
 - A reply that cannot be valid is refused as soon as that is known, not after the whole
   generation.
-- The fragmentation defect closes: a forbidden prefix split across deltas is judged as the whole
-  text is, under every split.
+- The fragmentation defect closes: a forbidden prefix split across deltas gets the same verdict (speak
+  or fall back) as the whole text, under every split. What had already been spoken before a rejection
+  can still differ with the split.
 - No wire, schema, robot, setting or dependency change.
 
 ### Negative
 
-- A model that ignores the contract is now **spoken**, not hidden: a label such as `Emoción: joy`
-  on its own line is read aloud, and nothing marks the turn except the `rescued_no_tag` log line.
+- A model that ignores the contract is now **spoken**, not hidden: a label that does not use the English
+  keyword (`Emoción: joy`) is read aloud, and nothing marks the turn except the `rescued_no_tag` log
+  line. A spoken label also enters the stored history of the next turns.
+- JSON or a code fence in the **middle** of a reply (decision 4 is about how a body starts) is spoken.
 - A late tag after untagged speech (`Claro. EMOTION:joy`...) speaks the first sentence and then the
-  fallback phrase (`partial_fallback`).
-- Honest text that contains the characters `emotion:` falls back.
+  fallback phrase (`protocol_fallback`).
+- Honest text that mentions `emotion:` falls back.
 - Rescued turns carry emotion `neutral`, which the user-emotion window ignores, so adaptation sees
   nothing from them.
 - Rule 4 of the previous behaviour ("plain text without the tag is a fallback") is reversed on
@@ -147,3 +157,8 @@ Revisit if, in real use, replies that carry no tag are common enough that the co
 effectively ignored (the diagnosis counts them as *tolerated*), if a model change moves the
 shapes, if a spoken label or markup is reported, or if a schema-constrained stream becomes the
 cheaper way to carry the emotion.
+
+Revisit too when the robot gets its face. The `emotion` event is the context for a future facial
+expression (the eyes), so a rescued reply, which always carries `neutral`, would show no
+expression. That is the moment to decide whether the emotion should stop depending on the model
+writing a tag (classified apart, or carried by a schema).
