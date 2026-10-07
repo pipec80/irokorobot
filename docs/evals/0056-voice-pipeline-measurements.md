@@ -39,8 +39,9 @@ split, not from a guess.
 generator (12 golden turns with memory context and 12 public turns, five runs each), not
 from production telemetry, and the "context" split mixes four factors (memory block, active
 person, history and the question itself). [Plan 0057](0057-stream-protocol-diagnosis.md)
-measured them apart: the memory block is where most of the difference comes from, and the
-dominant failure shape is a tag that shares its line with the text.
+measured them apart: removing the memory block lowered the fallback rate on the same turns (an
+exploratory signal confirmed by a second seed, not a cause), and the dominant failure shape is a
+tag that shares its line with the text.
 
 ## 2. Prompt echo and hallucination on synthetic noise
 

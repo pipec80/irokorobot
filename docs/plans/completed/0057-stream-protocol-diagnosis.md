@@ -4774,9 +4774,30 @@ Executed 2026-10-06 on `feat/0057-stream-protocol-diagnosis`, from `main` at `c0
   and annotated; roadmap rows, the delivery map, `current-state.md` (a new row), the operator
   manual, the evals index and the 0049 O-04 note aligned with the record; the board shows the
   plan closed, `NOW` empty and 0058 as the next free number; this file moved to `completed/`.
-  Architecture diagram: `archify validate` (showcase) passed and no node text mentions this
-  subject, so it is unchanged. Docs checks: relative links, `check_reserved_terms.py`,
+  Architecture diagram: `archify validate` and `deliver` (showcase) pass and no node text mentions
+  this subject; the delivered HTML is byte-identical to the committed one, so it is unchanged. Docs checks: relative links, `check_reserved_terms.py`,
   `ruff format --check .`, `ruff check .` and `git diff --check` clean.
+- **Independent review (two read-only sonnet agents, 2026-10-06):** 0 Critical. The code review
+  found one Important (a threshold met exactly, such as 42/60 against 33/60, was missed by float
+  error in R-3 and R-5; none of the recorded rows sits at a limit) and minor points; all were fixed
+  test-first in `b0d957b` (exact threshold comparison, a worse-than-baseline intervention labelled
+  `opposite direction`, a tie between two shapes read as mixed, a failing stream close logged and
+  ignored, a bad option exiting `2` with a log line, justifications for three modules over the size
+  guideline). Not changed on purpose: an interrupt or an unexpected error in the middle of a run
+  still loses the observations (the same as `eval-chat --mode stream`; the report is written once, at
+  the end), and tests read repository files relative to the working directory like the existing
+  eval tests. The evidence review confirmed every number of the record against the raw reports and
+  found five Important wording problems (a factor ranking the data does not support, the missing
+  counter-evidence of `public_with_context`, a loose R-7 summary, an inconsistent sign in the summary
+  table, an inexact per-turn limitation) and thirteen minor ones; all were corrected in the record and
+  in the documents that repeat it.
+- **Final verification after the fixes:** `uv lock --check`, `just lint`, `just typecheck` (mypy and
+  pyright, 0 errors), `just check`, `just audit`, `uv build --all-packages`, the exact CI coverage
+  command (2079 passed in the CI selection, 91.99 % coverage) and `git diff --stat main -- server` (empty);
+  `just gate`: **2096 passed** (the 2089 of Task 7 plus 7 tests for the review fixes).
+- **Live voice-turn acceptance:** the plan states that none applies (no production code, request,
+  response, streaming event or audio path changes) and asks for Pipec's explicit confirmation rather
+  than a silent skip; it is asked of Pipec before the push.
 
 ## Closure
 

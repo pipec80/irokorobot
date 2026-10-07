@@ -11,12 +11,13 @@
 | Item | Value |
 |---|---|
 | Date | 2026-10-06 |
-| Commit | `0bf77d5` (the diagnosis code at the end of Task 7; no later commit touches `scripts/` or `server/`) |
+| Commit | both runs were made with the code at `0bf77d5` (the end of Task 7). The later commit `b0d957b` fixed the review findings (a threshold met exactly was missed by float error, an intervention that made things worse is now labelled `opposite direction`, a tie between two shapes is read as mixed, a failing stream close no longer ends a run); none of them changes a number recorded here, and `server/` is untouched |
 | Machine | non-dedicated development laptop (Docker and development tools running alongside); Ollama running, server and robot stopped |
 | Model | `qwen2.5:3b`, digest `357c53fb659c` |
 | Ollama | 0.34.4 |
 | Generation options | server defaults (production passes none) |
 | Who ran it | Pipec, locally; the executor recorded only the printed numbers |
+| Seed | fixes only the shuffled execution order; Ollama's sampling is not seeded, so a run cannot be reproduced bit for bit |
 | Instrument | `just diagnose-stream`: the **generator** (`generate_response_stream`) over the golden and public turns, not the full microphone → server → audio path |
 
 Raw reports: [smoke](0057-stream-diagnosis-smoke.md) (1 run per turn, instrument
@@ -48,6 +49,8 @@ this measurement neither confirms nor retires it.
 | context | 31 | `tag_same_line` 30 (96.77 %), `no_tag` 1 | **dominant: `tag_same_line`** |
 | public | 1 | `tag_same_line` 1 | one fallback only: not read |
 
+(The raw report prints "dominant" for a single fallback; this record does not read it.)
+
 `tag_same_line` is a reply whose `EMOTION:<x>` tag shares its line with the text. The
 candidate the plan's table points to is a tolerant tag grammar (specified with valid and
 invalid examples). It is a pointer for the repair plan, not a decision (D-6).
@@ -64,12 +67,16 @@ Noise: mean absolute difference per turn between `full` and `full_repeat` on tho
 | `no_person` | 1 | 4/5 | 3/5 | +20.0 | 0.0 | hint only (1 turn) |
 | `no_history` | 1 | 5/5 | 3/5 | +40.0 | 20.0 | hint only (1 turn) |
 | `public_with_context` | 12 | 1/60 | 6/60 | +8.3 | 1.7 | no signal (below 15 pp) |
-| `contract_first` | 24 | 32/120 | 120/120 | −73.3 | 9.2 | no signal: it made things worse |
+| `contract_first` | 24 | 32/120 | 120/120 | −73.3 | 9.2 | opposite direction (it made things worse; the raw report, made before that label existed, prints `no signal`) |
 
 `contract_first` fell back in all 120 runs, every one `no_tag`, in context and public
 turns alike. The unit test of Task 3 pins that its prompt carries the same content as
 production's with only the contract moved, so this is not an instrument artefact; the
-mechanism is not measured here.
+mechanism is not measured here, and one seed is all there is. It is the largest effect of the
+whole experiment and it points away from moving the contract to the start of the prompt.
+
+The raw reports label every row with a signal "exploratory signal"; this record reads
+`no_person` and `no_history` as hints because each rests on one turn (the R-3 rule says to).
 
 ### R-4 — concentration in `full`
 
@@ -80,8 +87,10 @@ spread over most context turns, not concentrated in two or three.
 ### R-5 — execution order
 
 Fallback rate by quarter of the shuffled order, all variants together: 41.6 %, 42.4 %,
-44.0 %, 37.6 %. The spread is 6.4 points, under the 15-point rule: no order effect in this
-run (run 2 below fired the rule).
+44.0 %, 37.6 %. The spread is 6.4 points, under the 15-point rule: the rule did not fire in this
+run (run 2 below fired it). Each quarter mixes variants with very different rates (for example
+`contract_first` is a quarter of the streams at 100 %), so an order effect is neither shown nor
+excluded.
 
 ### R-6 — do the chunks of a schema-constrained reply arrive spread over time
 
@@ -94,7 +103,8 @@ The schema-constrained reply reached this client spread over time, which is comp
 with incremental generation and is evidence against the `llm_streaming.py` header's claim
 that Ollama withholds schema-constrained output until the end, **for this Ollama version
 and model**. A client cannot see when generation ended, so this is not a proof of how
-Ollama works internally.
+Ollama works internally. The probe uses one fixed synthetic question with a minimal system
+prompt (not production's prompts) and 5 runs.
 
 ### R-7 — cost of a fallback (`full`, time at which production would hand its first sentence, or the fallback, to TTS; TTS excluded)
 
@@ -103,8 +113,9 @@ Ollama works internally.
 | valid reply, first sentence | 88 | 4157 | 8452 |
 | fallback | 32 | 4315 | 15049 |
 
-No threshold: a fallback turn takes about as long as a good one at the median and
-noticeably longer at p95, and ends in the fixed phrase.
+No threshold. The median fallback is not faster than a good reply: 4315 against 4157 ms in run 1
+and 3978 against 2848 ms in run 2 (the `full_repeat` control: 4323 against 3269 and 3894 against
+2919), and the p95 is longer in both runs. It ends in the fixed phrase.
 
 ## Run 2 — seed 58, confirmation of the R-3 signals
 
@@ -139,43 +150,58 @@ not repeated (R-6 was clear in run 1).
   each quarter holds 80 streams of mixed variants (fallback rates by variant run from 10 % to
   80 % in this run), so a
   different mix per quarter moves the rate on its own, and the counts-only report does not
-  separate that from a real order effect. **Unresolved**; it does not touch the R-1, R-2 or R-6
-  readings, and it weakens how far run 2 alone can be trusted for R-3.
+  separate that from a real order effect. **Unresolved.** R-1 and R-6 do not depend on the order
+  and R-2 held in both seeds, but the R-3 confirmations come from the run that tripped the rule,
+  so they carry that caveat.
 - **R-7 (`full`):** valid first sentence p50 / p95 2848 / 5885 ms (n 92); fallback 3978 / 7915 ms
   (n 28), against 4157 / 8452 and 4315 / 15049 in run 1.
 
 ## Readings after both runs
 
+Sign convention of the "Change (pp)" columns, as in the raw reports: positive means the intervention
+**lowered** the fallback rate (`full` minus the variant); for `public_with_context`, which adds a
+factor, positive means the rate **rose**.
+
 | Rule | Reading | Status |
 |---|---|---|
-| R-1 | 0 of 820 streams: the fragmentation defect was not seen on real output; it stays a correctness defect pinned by test and enters the repair plan as its first task | not observed live; carried to repair |
+| R-1 | no reply in 820 was judged differently under any token split (0 undue accepts, 0 split-dependent); the shapes that could trigger the defect (a second tag or a code fence after the tag) did not occur | not observed live; it stays a correctness defect pinned by test and enters the repair plan as its first task |
 | R-2 | `tag_same_line` dominant in `full` with context in both seeds (96.77 % and 84.62 % of fallbacks) | consistent across two seeds; candidate: tolerant tag grammar |
-| R-3 `no_context` | removing the memory block lowered the fallback rate on the same 12 turns by 35.0 then 26.7 points, above the noise of those turns (16.7, 15.0) | **confirmed** by a second seed, as an input to the repair plan, not as a cause |
-| R-3 `question_only` | −90.0 then −60.0 points on 2 turns | confirmed on 2 turns; the variant removes three factors at once, so it does not isolate any |
-| R-3 `no_history` | −40.0 then −60.0 points on 1 turn | repeated, but 1 turn: a hint |
+| R-3 `no_context` | removing the memory block lowered the fallback rate on the same 12 turns by +35.0 then +26.7 points, above the noise of those turns (16.7, 15.0) | **confirmed** by a second seed (the run that tripped R-5), as an input to the repair plan, not as a cause |
+| R-3 `question_only` | +90.0 then +60.0 points on 2 turns | repeated on 2 turns; the variant removes three factors at once, so it does not isolate any |
+| R-3 `no_history` | +40.0 then +60.0 points on 1 turn | repeated, but 1 turn: a hint |
 | R-3 `no_person` | +20.0 then −20.0 | **not confirmed**; no reading |
-| R-3 `public_with_context`, `contract_first` | no signal (run 1 only) | not repeated, not needed |
-| R-4 | failures spread over most context turns in both runs | consistent |
-| R-5 | no order effect in run 1 (6.4 points); fired in run 2 (28.8 points) | unresolved; see run 2 |
-| R-6 | incremental, 5 of 5, with the plain-text control also incremental | evidence against the header's claim for this Ollama and model; not proof of Ollama's internals |
-| R-7 | a fallback turn lasts about as long as a good one at the median and longer at p95 | recorded |
+| R-3 `public_with_context` | +8.3 points (the rate rose from 1.7 % to 10.0 %), below 15 | no signal (run 1 only); see the paragraph below |
+| R-3 `contract_first` | −73.3 points (the rate rose to 100 %), run 1 only | opposite direction; one seed |
+| R-4 | failures spread over most context turns in both runs | consistent in breadth; which turns fail the most changes between seeds |
+| R-5 | the rule did not fire in run 1 (6.4 points); it fired in run 2 (28.8 points) | unresolved; see run 2 |
+| R-6 | incremental, 5 of 5, with the plain-text control also incremental | evidence against the header's claim for this Ollama, model and probe prompt; not proof of Ollama's internals |
+| R-7 | the median fallback is not faster than a good reply (4.3 and 4.0 s against 4.2 and 2.8 s in `full`, runs 1 and 2) and the p95 is longer in both | recorded |
 
-What this means for the repair plan, and what it does not: the memory block (and, to a lesser
-degree, the history and the person) is where the failure rate comes from in this set, and the
-failure is mostly a tag that shares its line with the text. This does **not** say the memory
-content causes it (the block also changes the prompt's length and shape), and the
-repairs that follow (a tolerant tag grammar, a retry, rescuing plain text, another model, a
-schema-constrained stream) are still to be chosen and tested by that plan (D-6).
+What this means for the repair plan, and what it does not. In this set, removing the memory block
+lowered the fallback rate on the same 12 turns (confirmed by a second seed, exploratory), `no_history`
+points the same way on one turn, `no_person` was not confirmed, and the factors are **not ranked**:
+the per-factor denominators are too small and `question_only` removes three at once. The failure is
+mostly a tag that shares its line with the text. This does **not** say the memory content causes it:
+adding the same blocks to public questions raised the rate only from 1.7 % to 10.0 %, far below the
+51.67 % of the golden turns, which points at the question itself or at an interaction, and the block
+also changes the prompt's content and length. Moving the contract to the start of the prompt made the
+tag disappear in 120 of 120 runs (one seed). The repairs the plan lists (a tolerant tag grammar, a
+retry, rescuing plain text, another model, a schema-constrained stream) are still to be chosen and
+tested by the repair plan (D-6), which also owns correcting the stale header of `llm_streaming.py`
+(it claims Ollama withholds structured output; D-1 forbids editing it here).
 
 ## Limitations
 
 - The generator, not the full voice path: nothing here is the real rate of a spoken turn.
 - One model (`qwen2.5:3b`), one Ollama version, one synthetic set.
 - The golden turns are 12 cases repeated five times, not 60 independent conversations;
-  500 streams give a wide interval, and per-turn results (4 to 5 of 5) show the failures
-  depend strongly on the turn.
+  500 streams give a wide interval. Per-turn results range from 0 to 5 of 5 and change partly
+  between seeds (for example `resolved_face_enrollment` 4 of 5 then 1 of 5); only some turns repeat
+  (`corrected_age_active_fact` fell back 5 and 5 times).
 - `no_person` and `no_history` each rest on one turn, and `question_only` on two:
   one fallback moves them by 20 points at least. Read them as hints.
 - The rules were agreed in advance and are not proof; a repair plan must still choose
   and test its own change.
-- The machine is not dedicated, so the timings describe this laptop.
+- The machine is not dedicated, so the timings describe this laptop, and the duration of the
+  runs was not recorded.
+- The R-6 probe uses one synthetic question with a minimal system prompt, not production's prompts.
