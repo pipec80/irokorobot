@@ -55,6 +55,9 @@ from server.text_turn import (
 
 logger = logging.getLogger(__name__)
 
+# Outcomes whose reply was spoken whole and is persisted as a normal turn.
+_RECORDED_OUTCOMES = frozenset({StreamOutcome.OK, StreamOutcome.RESCUED})
+
 
 async def _text_deltas(client: httpx.AsyncClient, inputs: PreparedTextTurn) -> AsyncIterator[str]:
     """Yield "EMOTION:xxx\\n"-tagged text deltas from local Ollama, token by token."""
@@ -84,12 +87,12 @@ async def _consume_llm_stream(
     buffer = ""
     async for delta in _text_deltas(client, inputs):
         buffer += delta
-        if state.pending_emotion is None and state.emotion is None:
-            buffer, consumed = _consume_preamble(buffer, state)
-            if not consumed:
-                continue
         emotion_before = state.emotion
         try:
+            if state.pending_emotion is None and state.emotion is None:
+                buffer, consumed = _consume_preamble(buffer, state)
+                if not consumed:
+                    continue
             buffer, sentences = _consume_body(buffer, state)
         except StreamProtocolError:
             state.outcome = StreamOutcome.PROTOCOL_FALLBACK
@@ -111,7 +114,7 @@ def _record_success(
     scheduler: ConsolidationScheduler,
 ) -> None:
     """Persist a turn — only ever called for a fully successful stream."""
-    if state.outcome is not StreamOutcome.OK or not state.recordable or not state.response_parts:
+    if state.outcome not in _RECORDED_OUTCOMES or not state.recordable or not state.response_parts:
         return
     record_text_turn(
         prepared.message,

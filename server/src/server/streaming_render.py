@@ -38,6 +38,7 @@ class StreamOutcome(StrEnum):
     """How one streamed turn ended — drives the final `done` log line."""
 
     OK = "ok"
+    RESCUED = "rescued_no_tag"
     PROTOCOL_FALLBACK = "protocol_fallback"
     LLM_FALLBACK = "llm_fallback"
     PARTIAL_FALLBACK = "partial_fallback"
@@ -142,18 +143,26 @@ async def emit_fallback(state: StreamState, *, reason: StreamFallbackReason) -> 
 
 
 def _consume_preamble(buffer: str, state: StreamState) -> tuple[str, bool]:
-    """Consume the EMOTION preamble line once it is fully buffered.
+    """Consume the start of the reply once ``parse_streaming_emotion`` has decided it.
+
+    A reply with no tag is rescued: its whole text is the body, the emotion is
+    ``neutral`` and the turn is logged as ``rescued_no_tag`` (it is still recorded).
 
     Returns:
-        ``(remaining_buffer, True)`` once the preamble line was consumed
-        (stored in ``state.pending_emotion``), or ``(buffer, False)`` while
-        more input may still complete it.
+        ``(remaining_buffer, True)`` once the start was decided (stored in
+        ``state.pending_emotion``), or ``(buffer, False)`` while more input may
+        still decide it.
+
+    Raises:
+        StreamProtocolError: If the tag can never become valid.
     """
     parsed = parse_streaming_emotion(buffer)
     if parsed is None:
         return buffer, False
-    state.pending_emotion, remainder = parsed
-    return remainder, True
+    state.pending_emotion = parsed.emotion
+    if parsed.rescued:
+        state.outcome = StreamOutcome.RESCUED
+    return parsed.remainder, True
 
 
 def _consume_body(buffer: str, state: StreamState) -> tuple[str, list[str]]:

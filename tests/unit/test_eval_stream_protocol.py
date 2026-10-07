@@ -45,6 +45,14 @@ _REPLIES = [
     "emotion: joy\nHola",
     "EMOTION:joy\nHola. EMOTION:anger\nAdiós.",
     "EMOTION:joy\nHola. **EMOTION:** joy",
+    "EMOTION:joy ¡Hola! ¿Qué tal?",
+    "EMOTION: Hola, ¿cómo estás?",
+    "EMOTION:joy. Hola",
+    "\nEMOTION:anger\nCalma.",
+    "Emoción pura. Gracias.",
+    "Claro. EMOTION:joy\nHola",
+    "**EMOTION**: joy\nHola. Qué tal.",
+    '{"response": "x"}',
 ]
 
 
@@ -55,7 +63,12 @@ _REPLIES = [
         (["EMOTION:joy\nHola, ¿cómo estás?"], StreamOutcome.VALID),
         (["EMOTION:joy\n"], StreamOutcome.INVALID_PROTOCOL),
         (["EMOTION:joy\n   "], StreamOutcome.INVALID_PROTOCOL),
-        (["Hola sin etiqueta"], StreamOutcome.INVALID_PROTOCOL),
+        (["Hola sin etiqueta"], StreamOutcome.VALID),
+        (["EMOTION:joy ¡Hola!"], StreamOutcome.VALID),
+        (["\nEMOTION:joy\nHola"], StreamOutcome.VALID),
+        (["EMOTION: Hola, ¿cómo estás?"], StreamOutcome.INVALID_PROTOCOL),
+        (['{"response": "x"}'], StreamOutcome.INVALID_PROTOCOL),
+        (["Claro. EMOTION:joy\nHola"], StreamOutcome.INVALID_PROTOCOL),
         (['EMOTION:joy\n{"response": "x"}'], StreamOutcome.INVALID_PROTOCOL),
         (["EMOTION:joy\nEMOTION:anger\nhola"], StreamOutcome.INVALID_PROTOCOL),
         (["EMOTION:joy"], StreamOutcome.INVALID_PROTOCOL),
@@ -180,6 +193,7 @@ async def _evaluator_after_a_provider_error(fragments: list[str]) -> str:
     [
         (["EMOTION:joy\n{"], "invalid_protocol"),
         (["EMOTION:joy\n", "[1]"], "invalid_protocol"),
+        (["EMOTION: Hola, ¿cómo"], "invalid_protocol"),
         (["EMOTION:joy\nHola"], "provider_error"),
         (["EMOTION:joy\n"], "provider_error"),
         (["Hola sin etiqueta"], "provider_error"),
@@ -258,13 +272,13 @@ async def test_measure_counts_each_outcome_and_keeps_errors_out_of_the_rate() ->
     )
 
     assert (result.valid, result.invalid_protocol, result.empty_stream, result.errors) == (
-        1,
         2,
+        1,
         1,
         1,
     )
     assert result.graded == 4
-    assert result.fallback_rate == pytest.approx(3 / 4)
+    assert result.fallback_rate == pytest.approx(2 / 4)
 
 
 @pytest.mark.unit
@@ -274,7 +288,7 @@ async def test_measure_splits_the_counts_by_turn_source() -> None:
         client=_client(),
         runs=2,
         generate=_generator(
-            ["EMOTION:joy\nHola", "EMOTION:joy\nHola", "sin etiqueta", "sin etiqueta"]
+            ["EMOTION:joy\nHola", "EMOTION:joy\nHola", '{"response": "x"}', '{"response": "x"}']
         ),
     )
 

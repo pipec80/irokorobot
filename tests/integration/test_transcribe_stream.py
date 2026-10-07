@@ -636,6 +636,114 @@ def test_stream_a_rejected_batch_still_sends_exactly_one_emotion_before_the_audi
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize(
+    "deltas, emotion, spoken",
+    [
+        (
+            ["EMOTION:joy ¡Qué ", "emocionante! Cuéntame."],
+            "joy",
+            ["¡Qué emocionante!", "Cuéntame."],
+        ),
+        (["\nEMOTION:anger\nCalma."], "anger", ["Calma."]),
+        (["Hola. ", "¿Cómo estás?"], "neutral", ["Hola.", "¿Cómo estás?"]),
+    ],
+)
+def test_stream_tolerated_replies_are_spoken_and_recorded(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+    deltas: list[str],
+    emotion: str,
+    spoken: list[str],
+) -> None:
+    """A tag sharing its line, a leading blank and a reply with no tag are all spoken."""
+    record = Mock()
+    synthesize = AsyncMock(return_value=("QQ==", 10))
+    monkeypatch.setattr(streaming, "record_text_turn", record)
+    monkeypatch.setattr(tts, "synthesize", synthesize)
+    events = _post_stream_with_deltas(client, monkeypatch, silence_wav_bytes, deltas)
+    assert [event["type"] for event in events] == [
+        "text_heard",
+        "emotion",
+        *["audio"] * len(spoken),
+        "done",
+    ]
+    assert events[1]["value"] == emotion
+    assert [call.args[0] for call in synthesize.await_args_list] == spoken
+    record.assert_called_once()
+    assert record.call_args.args[2] == " ".join(spoken)
+    assert record.call_args.args[3] == emotion
+
+
+@pytest.mark.integration
+def test_stream_a_reply_without_a_tag_logs_the_rescued_outcome(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.INFO, logger="server.streaming_render")
+
+    _post_stream_with_deltas(client, monkeypatch, silence_wav_bytes, ["Hola. ¿Cómo estás?"])
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert any("Stream done: outcome=rescued_no_tag" in message for message in messages)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "deltas",
+    [
+        ["EMOTION: Hola, ¿cómo estás?"],
+        ["EMOTION:joy. Hola"],
+        ["EMOTION:<joy>\nHola"],
+        ['{"response": "hola"}'],
+        ["**EMOTION**: joy\nHola. Qué tal."],
+        ["EMOTION\uff1ajoy\nHola. Qué tal."],
+    ],
+)
+def test_stream_a_tag_that_can_never_be_valid_uses_audible_protocol_fallback(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+    deltas: list[str],
+) -> None:
+    record = Mock()
+    synthesize = AsyncMock(return_value=("QQ==", 10))
+    monkeypatch.setattr(streaming, "record_text_turn", record)
+    monkeypatch.setattr(tts, "synthesize", synthesize)
+    events = _post_stream_with_deltas(client, monkeypatch, silence_wav_bytes, deltas)
+    _assert_audible_protocol_fallback(events)
+    synthesize.assert_awaited_once_with(settings.llm_fallback_phrase)
+    record.assert_not_called()
+
+
+@pytest.mark.integration
+def test_stream_a_tag_after_untagged_speech_keeps_the_audio_and_adds_the_fallback(
+    client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Known limit (ADR 0017): the sentence before a late tag has already been spoken."""
+    record = Mock()
+    synthesize = AsyncMock(return_value=("QQ==", 10))
+    monkeypatch.setattr(streaming, "record_text_turn", record)
+    monkeypatch.setattr(tts, "synthesize", synthesize)
+    events = _post_stream_with_deltas(
+        client, monkeypatch, silence_wav_bytes, ["Claro. EMOTION:joy\nHola"]
+    )
+    assert [event["type"] for event in events] == [
+        "text_heard",
+        "emotion",
+        "audio",
+        "audio",
+        "done",
+    ]
+    assert events[1]["value"] == "neutral"
+    spoken = [call.args[0] for call in synthesize.await_args_list]
+    assert spoken == ["Claro.", settings.llm_fallback_phrase]
+    record.assert_not_called()
+
+
+@pytest.mark.integration
 def test_stream_truncated_emotion_uses_audible_protocol_fallback(
     client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -691,7 +799,8 @@ def test_every_done_has_prior_contract_valid_audio(
         ["EMOTION:ale"],
         [],
         ["EMOTION:joy\n   "],
-        ["Hola sin protocolo."],
+        ['{"response": "hola"}'],
+        ["EMOTION: Hola, ¿cómo estás?"],
     ]
     for deltas in invalid_delta_cases:
         events = _post_stream_with_deltas(client, monkeypatch, silence_wav_bytes, deltas)
@@ -773,7 +882,7 @@ async def test_stream_protocol_fallback_tts_failure_has_no_done(
     )
 
     async def plain_text(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
-        yield "Hola sin protocolo."
+        yield '{"response": "hola"}'
 
     monkeypatch.setattr(llm_streaming, "generate_response_stream", plain_text)
     monkeypatch.setattr(tts, "synthesize", AsyncMock(side_effect=TTSError("piper down")))
@@ -805,7 +914,7 @@ async def test_stream_tts_failure_logs_tts_error_outcome(
     )
 
     async def plain_text(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
-        yield "Hola sin protocolo."
+        yield '{"response": "hola"}'
 
     monkeypatch.setattr(llm_streaming, "generate_response_stream", plain_text)
     monkeypatch.setattr(tts, "synthesize", AsyncMock(side_effect=TTSError("piper down")))

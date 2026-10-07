@@ -127,18 +127,3 @@ def test_streaming_system_prompt_appends_exactly_one_contract() -> None:
     assert prompt.count("EMOTION:") == 1
     assert '"response"' not in prompt
     assert '"emotion"' not in prompt
-
-
-@pytest.mark.unit
-def test_parse_streaming_emotion_valid_tag() -> None:
-    assert llm_streaming.parse_streaming_emotion("EMOTION:joy\nhola") == ("joy", "hola")
-
-
-@pytest.mark.unit
-def test_parse_streaming_emotion_unknown_tag_defaults_neutral() -> None:
-    assert llm_streaming.parse_streaming_emotion("EMOTION:cosmic\nhola") == ("neutral", "hola")
-
-
-@pytest.mark.unit
-def test_parse_streaming_emotion_no_tag_returns_none() -> None:
-    assert llm_streaming.parse_streaming_emotion("hola sin tag") is None

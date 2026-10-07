@@ -32,14 +32,6 @@ from server.onboarding import OnboardingSlot
 from server.schemas import ConversationTurn, MemoryContext
 from server.settings import settings
 
-# Re-exported temporarily so existing call sites/tests can keep resolving
-# the streaming protocol from this module. Task 3 moves the orchestration
-# call-sites in streaming.py to import from streaming_protocol directly.
-from server.streaming_protocol import (  # noqa: F401
-    parse_streaming_emotion,
-    validate_streaming_body_start,
-)
-
 # Sole owner of the streaming /transcribe/stream output contract.
 # build_system_prompt is format-neutral (identity/behavior only) — this is
 # the ONLY place the streaming EMOTION-tag contract is appended, so the

@@ -123,13 +123,25 @@ async def test_an_invalid_body_start_decides_at_once_and_closes_the_stream() -> 
 
 
 @pytest.mark.unit
-async def test_a_reply_without_the_tag_waits_for_the_end_of_the_stream() -> None:
+async def test_a_reply_without_the_tag_is_spoken_from_its_first_closed_sentence() -> None:
     obs = await _observe(_FakeStream("Hola ", "sin etiqueta."))
 
-    assert obs.outcome is StreamOutcome.INVALID_PROTOCOL
+    assert obs.outcome is StreamOutcome.VALID
     assert obs.shape is FailureShape.NO_TAG
-    assert obs.speech_start_ms == obs.end_ms == 30
+    assert not obs.fell_back
+    assert obs.speech_start_ms == 20  # the second delta closes the first sentence
+    assert obs.end_ms == 30
     assert obs.first_delta_ms == 10
+
+
+@pytest.mark.unit
+async def test_json_without_a_tag_waits_for_nothing_and_falls_back() -> None:
+    obs = await _observe(_FakeStream('{"response": "x"}'))
+
+    assert obs.outcome is StreamOutcome.INVALID_PROTOCOL
+    assert obs.shape is FailureShape.JSON_START
+    assert obs.fell_back
+    assert obs.speech_start_ms == obs.first_delta_ms == 10
 
 
 @pytest.mark.unit
@@ -169,7 +181,7 @@ async def test_an_observation_never_holds_the_reply_text() -> None:
 
 @pytest.mark.unit
 async def test_the_diagnosis_runs_every_unit_and_keeps_provider_errors_apart() -> None:
-    replies: list[str | Exception] = ["EMOTION:joy\nHola.", LLMError("boom"), "sin etiqueta"]
+    replies: list[str | Exception] = ["EMOTION:joy\nHola.", LLMError("boom"), '{"response": "x"}']
     queue = iter(replies)
 
     def generate_for(_variant: StreamVariant) -> StreamGenerator:

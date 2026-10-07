@@ -1,20 +1,28 @@
-"""Pure parsing/validation for the streaming EMOTION-tag output protocol.
+"""Pure parsing/validation for the streaming EMOTION-tag output protocol (ADR 0017).
 
 llm_streaming.py owns prompt assembly and the Ollama transport; this module
 owns only the wire-format rules for what a valid streamed response looks
-like. Kept dependency-free of I/O and logging on purpose: Task 3 will call
-these functions from the orchestration loop in streaming.py to decide
-whether a candidate response is speakable at all, so they must be safe to
-unit test in isolation and must never leak raw model output into an
-exception message (that text may contain anything the model produced).
+like. Kept dependency-free of I/O and logging on purpose: the orchestration
+loop in streaming.py calls these functions to decide whether a candidate
+response is speakable at all, so they must be safe to unit test in isolation
+and must never leak raw model output into an exception message (that text
+may contain anything the model produced).
 """
 
+from dataclasses import dataclass
 import re
 
 from server.exceptions import LLMError
 from server.llm import FALLBACK_EMOTION, VALID_EMOTIONS
 
-_EMOTION_TAG_RE = re.compile(r"^EMOTION:\s*(\w+)\s*\n", re.IGNORECASE)
+_TAG = "EMOTION:"
+_FENCE = "`" * 3  # built, not written: this module is quoted inside Markdown fences
+_INVALID_BODY_PREFIXES = ("{", "[", _FENCE)
+_UNDECIDED_BODY_PREFIXES = (_TAG, _FENCE)
+_INLINE_SPACE = " \t\r"
+_WORD_AFTER_TAG_RE = re.compile(r"\s*(\w+)")
+# A tag mention in speech: **EMOTION**: and a fullwidth colon count; demotion: does not.
+_TAG_MENTION_RE = re.compile(r"\bemotion\W{0,3}[:\uff1a]", re.IGNORECASE)
 
 # Bounded, content-free message — never interpolate the raw candidate/model
 # output here (it may contain arbitrary, unbounded model text).
@@ -25,48 +33,81 @@ class StreamProtocolError(LLMError):
     """The model's streamed output broke the protocol (never carries model text)."""
 
 
-_FENCE = "`" * 3  # built, not written: this module is quoted inside Markdown fences
-_TAG = "EMOTION:"
-_INVALID_BODY_PREFIXES = ("{", "[", _FENCE)
-_UNDECIDED_BODY_PREFIXES = (_TAG, _FENCE)
-# A tag mention in speech: **EMOTION**: and a fullwidth colon count; demotion: does not.
-_TAG_MENTION_RE = re.compile(r"\bemotion\W{0,3}[:\uff1a]", re.IGNORECASE)
+@dataclass(frozen=True)
+class Preamble:
+    """The decided start of a streamed reply.
+
+    Attributes:
+        emotion: A member of ``VALID_EMOTIONS``: ``neutral`` when the model named an
+            unknown one or sent no tag at all.
+        remainder: The text after the tag, or the whole reply when it was rescued.
+        rescued: True when the reply carried no tag and is spoken as plain text.
+    """
+
+    emotion: str
+    remainder: str
+    rescued: bool = False
 
 
-def parse_streaming_emotion(
-    buffer: str,
-    *,
-    final: bool = False,
-) -> tuple[str, str] | None:
-    """Parse one complete emotion preamble or reject an invalid protocol.
+def _is_proper_prefix(text: str, target: str) -> bool:
+    """Whether ``text`` could still grow into ``target`` (ignoring letter case)."""
+    return len(text) < len(target) and target.startswith(text.upper())
+
+
+def _decide(text: str) -> Preamble | None:
+    """Decide the preamble of ``text`` (already left-stripped) or ask for more input.
+
+    Raises:
+        StreamProtocolError: If the tag is present but can never become valid.
+    """
+    if not text or _is_proper_prefix(text, _TAG):
+        return None
+    if not text.upper().startswith(_TAG):
+        return Preamble(FALLBACK_EMOTION, text, rescued=True)
+    after_tag = text[len(_TAG) :]
+    word = _WORD_AFTER_TAG_RE.match(after_tag)
+    if word is None:
+        if after_tag.strip():
+            raise StreamProtocolError(_INVALID_PROTOCOL_MESSAGE)
+        return None  # only whitespace after the colon so far: the word has not started
+    rest = after_tag[word.end() :]
+    line_rest = rest.lstrip(_INLINE_SPACE)
+    if not line_rest:
+        return None  # the word may still grow, or the newline may still come
+    emotion = word.group(1).lower()
+    if line_rest[0] == "\n":
+        return Preamble(emotion if emotion in VALID_EMOTIONS else FALLBACK_EMOTION, line_rest[1:])
+    if rest[0] not in _INLINE_SPACE or emotion not in VALID_EMOTIONS:
+        raise StreamProtocolError(_INVALID_PROTOCOL_MESSAGE)
+    return Preamble(emotion, line_rest)
+
+
+def parse_streaming_emotion(buffer: str, *, final: bool = False) -> Preamble | None:
+    """Decide how a streamed reply starts, as soon as the text allows it.
+
+    A reply may open with ``EMOTION:<emotion>`` on its own line, with the same tag
+    followed by the text on the same line (only for a known emotion), or with no tag at
+    all (rescued as plain text with the ``neutral`` emotion). Leading whitespace is
+    ignored. A tag that can never become valid is refused at once.
 
     Args:
         buffer: Text accumulated so far from generate_response_stream.
-        final: Whether the stream has ended and no more text will arrive.
-            When True, a buffer that still has no complete valid
-            "EMOTION:<emotion>\\n" line is treated as a protocol violation
-            rather than "keep waiting".
+        final: Whether the stream has ended and no more text will arrive. When True,
+            a buffer that is still undecided is a protocol violation rather than
+            "keep waiting".
 
     Returns:
-        ``(emotion, remainder)`` once the tag line is fully buffered
-        (validated against ``VALID_EMOTIONS``, defaulting to neutral for an
-        unknown tag), or ``None`` if the first line hasn't arrived yet and
-        more input may still complete it (only possible when
-        ``final=False``).
+        A ``Preamble`` once the start is decided, or ``None`` while more input may
+        still decide it (only possible when ``final=False``).
 
     Raises:
-        StreamProtocolError: If ``final`` is True and the buffer never produced a
-            complete, valid protocol line.
+        StreamProtocolError: If the start can never be valid, or ``final`` is True and
+            the buffer is still undecided.
     """
-    match = _EMOTION_TAG_RE.match(buffer)
-    if match is None:
-        if final:
-            raise StreamProtocolError(_INVALID_PROTOCOL_MESSAGE)
-        return None
-    emotion = match.group(1).lower()
-    if emotion not in VALID_EMOTIONS:
-        emotion = FALLBACK_EMOTION
-    return emotion, buffer[match.end() :]
+    preamble = _decide(buffer.lstrip())
+    if preamble is None and final:
+        raise StreamProtocolError(_INVALID_PROTOCOL_MESSAGE)
+    return preamble
 
 
 def is_body_start_undecided(body: str) -> bool:
@@ -83,8 +124,7 @@ def is_body_start_undecided(body: str) -> bool:
     """
     stripped = body.lstrip()
     return bool(stripped) and any(
-        len(stripped) < len(prefix) and prefix.startswith(stripped.upper())
-        for prefix in _UNDECIDED_BODY_PREFIXES
+        _is_proper_prefix(stripped, prefix) for prefix in _UNDECIDED_BODY_PREFIXES
     )
 
 

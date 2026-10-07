@@ -73,15 +73,15 @@ def test_stream_empty_audio_returns_422(client: TestClient) -> None:
 
 
 @pytest.mark.integration
-def test_stream_plain_text_uses_audible_protocol_fallback(
+def test_stream_json_without_a_tag_uses_audible_protocol_fallback(
     client: TestClient,
     silence_wav_bytes: bytes,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Plain text with no EMOTION tag at all is invalid output — spoken as fallback."""
+    """Structured output with no EMOTION tag is invalid output — spoken as fallback."""
 
     async def fake_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
-        for delta in ("Hola. ", "¿Cómo estás?"):
+        for delta in ('{"response": ', '"Hola.", "emotion": "joy"}'):
             yield delta
 
     monkeypatch.setattr(llm_streaming, "generate_response_stream", fake_stream)

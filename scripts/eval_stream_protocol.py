@@ -2,9 +2,8 @@
 
 Runs real turns through the production streaming generator and consumes the deltas the
 way `server.streaming._consume_llm_stream` does: incrementally, with the production
-helpers, so a reply fragmented differently is classified differently exactly as it
-would be live (production stops validating once the body start is accepted). A test
-pins the equivalence against the real consumer for several fragmentations. It measures
+helpers, so a reply is judged exactly as it would be live. A test pins the equivalence
+against the real consumer for several fragmentations. It measures
 how often a reply would drop to the fallback phrase (0049 O-04); it never prints or
 stores model output.
 """
@@ -90,11 +89,11 @@ class _StreamClassifier:
             The decided outcome, or ``None`` while production would keep consuming.
         """
         self._buffer += delta
-        if self._state.pending_emotion is None and self._state.emotion is None:
-            self._buffer, consumed = _consume_preamble(self._buffer, self._state)
-            if not consumed:
-                return None
         try:
+            if self._state.pending_emotion is None and self._state.emotion is None:
+                self._buffer, consumed = _consume_preamble(self._buffer, self._state)
+                if not consumed:
+                    return None
             self._buffer, sentences = _consume_body(self._buffer, self._state)
         except StreamProtocolError:
             return StreamOutcome.INVALID_PROTOCOL

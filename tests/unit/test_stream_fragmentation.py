@@ -46,6 +46,22 @@ def test_the_family_includes_word_and_punctuation_tokens() -> None:
     assert ["EMOTION", ":", "joy", "\n", "Hola"] in reply_fragmentations("EMOTION:joy\nHola")
 
 
+# Replies the protocol of ADR 0017 speaks although the 0057 grammar refused them.
+_TOLERATED = [
+    "EMOTION:joy ¡Hola! ¿Qué tal?",
+    "emotion: sadness Lo siento mucho.",
+    "\nEMOTION:anger\nCalma.",
+    "Hola sin etiqueta",
+    "Emoción pura. Gracias.",
+]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("reply", _TOLERATED)
+def test_a_tolerated_reply_is_accepted_under_every_split(reply: str) -> None:
+    assert fragmentation_outcomes(reply) == {StreamOutcome.VALID}
+
+
 @pytest.mark.unit
 @pytest.mark.parametrize("reply", _CONSISTENT)
 def test_a_reply_judged_the_same_under_every_split_is_consistent(reply: str) -> None:

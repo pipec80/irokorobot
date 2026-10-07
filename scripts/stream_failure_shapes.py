@@ -9,14 +9,15 @@ from __future__ import annotations
 import enum
 import re
 
-from server.streaming_protocol import parse_streaming_emotion
-
 _TAG_PREFIX = "EMOTION:"
 _WRAPPERS = "<[({\"'«*_`"
 _JSON_STARTS = ("{", "[")
 _FENCE = "`" * 3  # built, not written: this module is quoted inside Markdown fences
 _LABEL_RE = re.compile(r"^\W*(?:emoci[oó]n|emotion|mood|sentimiento|estado)\b", re.IGNORECASE)
 _WORD_RE = re.compile(r"\w+")
+# Plan 0057's strict grammar, frozen on purpose: a shape names what the MODEL wrote, so it
+# must not change when the protocol learns to tolerate one (Plan 0058, ADR 0017).
+_STRICT_TAG_RE = re.compile(r"^EMOTION:\s*\w+\s*\n", re.IGNORECASE)
 
 
 class FailureShape(enum.StrEnum):
@@ -39,6 +40,12 @@ class FailureShape(enum.StrEnum):
     BODY_FENCE = "body_fence"
     SECOND_TAG = "second_tag"
     OTHER = "other"
+
+
+def _strict_body(text: str) -> str | None:
+    """Return what follows a strictly well-formed ``EMOTION:<x>`` line, or ``None``."""
+    match = _STRICT_TAG_RE.match(text)
+    return None if match is None else text[match.end() :]
 
 
 def _body_shape(body: str) -> FailureShape:
@@ -75,7 +82,7 @@ def _malformed_tag_shape(text: str) -> FailureShape:
 
 def _tag_prefixed_shape(text: str, stripped: str) -> FailureShape:
     """Classify a reply whose first non-blank text is ``EMOTION:`` but is not a valid line."""
-    if stripped != text and parse_streaming_emotion(stripped) is not None:
+    if stripped != text and _strict_body(stripped) is not None:
         return FailureShape.LEADING_WHITESPACE
     return _malformed_tag_shape(stripped)
 
@@ -103,11 +110,12 @@ def classify_failure_shape(text: str) -> FailureShape:
         text: The reply as received (may be partial when production stopped reading).
 
     Returns:
-        A ``FailureShape``. ``VALID`` means the text, taken whole, passes the protocol.
+        A ``FailureShape``. ``VALID`` means the text, taken whole, passes the strict
+        0057 grammar; production may speak more (ADR 0017), never less.
     """
     if not text.strip():
         return FailureShape.EMPTY
-    parsed = parse_streaming_emotion(text)
-    if parsed is not None:
-        return _body_shape(parsed[1])
+    body = _strict_body(text)
+    if body is not None:
+        return _body_shape(body)
     return _unparsed_shape(text)

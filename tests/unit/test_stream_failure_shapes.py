@@ -49,13 +49,37 @@ def test_every_shape_is_named_exactly(text: str, shape: FailureShape) -> None:
     assert classify_failure_shape(text) is shape
 
 
+# Shapes of replies the protocol of ADR 0017 now speaks although the strict 0057 grammar
+# named them failures: a tag sharing its line, text before any tag, a leading blank, a label.
+_TOLERATED = {
+    FailureShape.NO_TAG,
+    FailureShape.OTHER_LABEL,
+    FailureShape.LEADING_WHITESPACE,
+    FailureShape.TAG_SAME_LINE,
+}
+
+
+def _whole_text_outcome(text: str) -> StreamOutcome:
+    return classify_deltas([text] if text else [])
+
+
 @pytest.mark.unit
 @pytest.mark.parametrize("text, shape", _CASES)
-def test_valid_shape_agrees_with_the_whole_text_protocol(text: str, shape: FailureShape) -> None:
-    """The shape table and the protocol never disagree about speakable text."""
-    whole = classify_deltas([text] if text else [])
+def test_a_strictly_valid_shape_is_always_speakable(text: str, shape: FailureShape) -> None:
+    """The strict reading never accepts what production refuses (production may accept more)."""
+    if shape is FailureShape.VALID:
+        assert _whole_text_outcome(text) is StreamOutcome.VALID
 
-    assert (shape is FailureShape.VALID) == (whole is StreamOutcome.VALID)
+
+@pytest.mark.unit
+def test_the_shapes_production_now_tolerates_are_exactly_these() -> None:
+    tolerated = {
+        shape
+        for text, shape in _CASES
+        if shape is not FailureShape.VALID and _whole_text_outcome(text) is StreamOutcome.VALID
+    }
+
+    assert tolerated == _TOLERATED
 
 
 @pytest.mark.unit
