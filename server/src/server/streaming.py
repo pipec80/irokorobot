@@ -32,6 +32,7 @@ from server.schemas_streaming import (
     StreamEmotionEvent,
     StreamTextHeardEvent,
 )
+from server.streaming_protocol import StreamProtocolError
 from server.streaming_render import (
     StreamErrorCode,
     StreamFallbackReason,
@@ -90,7 +91,7 @@ async def _consume_llm_stream(
         emotion_before = state.emotion
         try:
             buffer, sentences = _consume_body(buffer, state)
-        except LLMError:
+        except StreamProtocolError:
             state.outcome = StreamOutcome.PROTOCOL_FALLBACK
             async for line in emit_fallback(state, reason=StreamFallbackReason.INVALID_PROTOCOL):
                 yield line

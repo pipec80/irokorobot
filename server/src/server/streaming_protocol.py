@@ -20,10 +20,17 @@ _EMOTION_TAG_RE = re.compile(r"^EMOTION:\s*(\w+)\s*\n", re.IGNORECASE)
 # output here (it may contain arbitrary, unbounded model text).
 _INVALID_PROTOCOL_MESSAGE = "Invalid streaming response protocol"
 
+
+class StreamProtocolError(LLMError):
+    """The model's streamed output broke the protocol (never carries model text)."""
+
+
 _FENCE = "`" * 3  # built, not written: this module is quoted inside Markdown fences
 _TAG = "EMOTION:"
 _INVALID_BODY_PREFIXES = ("{", "[", _FENCE)
 _UNDECIDED_BODY_PREFIXES = (_TAG, _FENCE)
+# A tag mention in speech: **EMOTION**: and a fullwidth colon count; demotion: does not.
+_TAG_MENTION_RE = re.compile(r"\bemotion\W{0,3}[:\uff1a]", re.IGNORECASE)
 
 
 def parse_streaming_emotion(
@@ -48,13 +55,13 @@ def parse_streaming_emotion(
         ``final=False``).
 
     Raises:
-        LLMError: If ``final`` is True and the buffer never produced a
+        StreamProtocolError: If ``final`` is True and the buffer never produced a
             complete, valid protocol line.
     """
     match = _EMOTION_TAG_RE.match(buffer)
     if match is None:
         if final:
-            raise LLMError(_INVALID_PROTOCOL_MESSAGE)
+            raise StreamProtocolError(_INVALID_PROTOCOL_MESSAGE)
         return None
     emotion = match.group(1).lower()
     if emotion not in VALID_EMOTIONS:
@@ -93,9 +100,24 @@ def validate_streaming_body_start(body: str) -> None:
         body: The response text remaining after the emotion preamble.
 
     Raises:
-        LLMError: If ``body`` (ignoring leading whitespace) starts with
+        StreamProtocolError: If ``body`` (ignoring leading whitespace) starts with
             ``{``, ``[``, a code fence, or another ``EMOTION:`` tag.
     """
     stripped = body.lstrip()
     if stripped.startswith(_INVALID_BODY_PREFIXES) or stripped.upper().startswith(_TAG):
-        raise LLMError(_INVALID_PROTOCOL_MESSAGE)
+        raise StreamProtocolError(_INVALID_PROTOCOL_MESSAGE)
+
+
+def reject_embedded_tag(text: str) -> None:
+    """Reject speech that contains a protocol tag anywhere (ADR 0017, decision 5).
+
+    Args:
+        text: One sentence, or the final unfinished tail, about to be spoken.
+
+    Raises:
+        StreamProtocolError: If ``text`` mentions ``EMOTION`` followed by a colon, in any
+            letter case, with up to three symbols between them (``**EMOTION**:``) and
+            either colon width.
+    """
+    if _TAG_MENTION_RE.search(text):
+        raise StreamProtocolError(_INVALID_PROTOCOL_MESSAGE)

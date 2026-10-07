@@ -16,9 +16,14 @@ import enum
 import logging
 from typing import TYPE_CHECKING
 
-from server.exceptions import LLMError
-from server.streaming_protocol import parse_streaming_emotion, validate_streaming_body_start
-from server.streaming_render import StreamState, _consume_body, _consume_preamble
+from server.streaming_protocol import StreamProtocolError
+from server.streaming_render import (
+    StreamFallbackReason,
+    StreamState,
+    _consume_body,
+    _consume_preamble,
+    classify_stream_end,
+)
 
 from server import llm_streaming
 
@@ -61,21 +66,13 @@ class StreamOutcome(enum.StrEnum):
 
 
 def _classify_end_of_stream(buffer: str, state: StreamState) -> StreamOutcome:
-    """Mirror `streaming_render._finalize_model_output`'s decisions, without any TTS."""
-    if state.pending_emotion is None and state.emotion is None:
-        try:
-            parse_streaming_emotion(buffer, final=True)
-        except LLMError:
-            return StreamOutcome.INVALID_PROTOCOL if buffer.strip() else StreamOutcome.EMPTY_STREAM
-    if state.emotion is None:
-        tail = buffer.strip()
-        if not tail:
-            return StreamOutcome.INVALID_PROTOCOL
-        try:
-            validate_streaming_body_start(tail)
-        except LLMError:
-            return StreamOutcome.INVALID_PROTOCOL
-    return StreamOutcome.VALID
+    """Map production's end-of-stream judgement (`classify_stream_end`) to an outcome."""
+    reason = classify_stream_end(buffer, state)
+    if reason is None:
+        return StreamOutcome.VALID
+    if reason is StreamFallbackReason.EMPTY_STREAM:
+        return StreamOutcome.EMPTY_STREAM
+    return StreamOutcome.INVALID_PROTOCOL
 
 
 class _StreamClassifier:
@@ -99,7 +96,7 @@ class _StreamClassifier:
                 return None
         try:
             self._buffer, sentences = _consume_body(self._buffer, self._state)
-        except LLMError:
+        except StreamProtocolError:
             return StreamOutcome.INVALID_PROTOCOL
         self.sentences_seen += len(sentences)
         return None

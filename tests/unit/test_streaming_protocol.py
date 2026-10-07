@@ -114,6 +114,49 @@ def test_llm_streaming_reexports_protocol_functions() -> None:
 
 
 @pytest.mark.unit
+def test_a_protocol_error_is_an_llm_error_and_the_body_validator_raises_it() -> None:
+    """Callers that catch ``LLMError`` keep working; the streaming loop catches the subclass."""
+    assert issubclass(streaming_protocol.StreamProtocolError, LLMError)
+    with pytest.raises(streaming_protocol.StreamProtocolError):
+        streaming_protocol.validate_streaming_body_start('{"response": "hola"}')
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Hola. EMOTION:joy",
+        "**EMOTION:** joy",
+        "**EMOTION**: joy",
+        "EMOTION\uff1a joy",
+        "EMOTION : joy",
+        "emotion: joy",
+        "Claro, emotion:joy otra vez.",
+    ],
+)
+def test_reject_embedded_tag_refuses_a_tag_anywhere(text: str) -> None:
+    with pytest.raises(streaming_protocol.StreamProtocolError) as exc_info:
+        streaming_protocol.reject_embedded_tag(text)
+
+    assert text not in str(exc_info.value)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "text",
+    [
+        "La emoción es alegría.",
+        "Emotion es una palabra.",
+        "Una demotion: palabra rara.",
+        "¿Qué emoción sientes?",
+        "",
+    ],
+)
+def test_reject_embedded_tag_allows_plain_speech(text: str) -> None:
+    streaming_protocol.reject_embedded_tag(text)
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize("body", ["E", "EM", "emotion", "  EMOTION", "`", "``"])
 def test_a_body_that_could_still_become_a_forbidden_start_is_undecided(body: str) -> None:
     """A prefix of ``EMOTION:`` or of a code fence cannot be judged yet: wait for more."""

@@ -587,6 +587,55 @@ def test_stream_structured_body_uses_audible_protocol_fallback(
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize(
+    "deltas",
+    [
+        ["EMOTION:joy\nHola. ", "EMOTION:anger\nAdiós."],
+        ["EMOTION:joy\nHola. Adiós EMOTION:anger"],
+    ],
+)
+def test_stream_a_tag_after_the_first_sentence_keeps_the_audio_and_adds_the_fallback(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+    deltas: list[str],
+) -> None:
+    """A tag is never spoken; what already played stays and the fallback follows (ADR 0017)."""
+    record = Mock()
+    synthesize = AsyncMock(return_value=("QQ==", 10))
+    monkeypatch.setattr(streaming, "record_text_turn", record)
+    monkeypatch.setattr(tts, "synthesize", synthesize)
+    events = _post_stream_with_deltas(client, monkeypatch, silence_wav_bytes, deltas)
+    assert [event["type"] for event in events] == [
+        "text_heard",
+        "emotion",
+        "audio",
+        "audio",
+        "done",
+    ]
+    assert events[1]["value"] == "joy"
+    spoken = [call.args[0] for call in synthesize.await_args_list]
+    assert spoken == ["Hola.", settings.llm_fallback_phrase]
+    record.assert_not_called()
+
+
+@pytest.mark.integration
+def test_stream_a_rejected_batch_still_sends_exactly_one_emotion_before_the_audio(
+    client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The robot raises on audio before emotion: a rejected batch must not swallow the event."""
+    monkeypatch.setattr(streaming, "record_text_turn", Mock())
+    monkeypatch.setattr(tts, "synthesize", AsyncMock(return_value=("QQ==", 10)))
+    events = _post_stream_with_deltas(
+        client, monkeypatch, silence_wav_bytes, ["EMOTION:joy\nHola. EMOTION:anger\nAdiós."]
+    )
+    kinds = [event["type"] for event in events]
+    assert kinds.count("emotion") == 1
+    assert kinds.index("emotion") < kinds.index("audio")
+    assert kinds[-1] == "done"
+
+
+@pytest.mark.integration
 def test_stream_truncated_emotion_uses_audible_protocol_fallback(
     client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
 ) -> None:

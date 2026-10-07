@@ -14,7 +14,6 @@ import logging
 
 from server import llm, tts
 from server.conversation_log import log_spoken
-from server.exceptions import LLMError
 from server.pipeline import _elapsed_ms
 from server.schemas_streaming import (
     StreamAudioEvent,
@@ -25,8 +24,10 @@ from server.schemas_streaming import (
 from server.sentences import split_first_sentence
 from server.settings import settings
 from server.streaming_protocol import (
+    StreamProtocolError,
     is_body_start_undecided,
     parse_streaming_emotion,
+    reject_embedded_tag,
     validate_streaming_body_start,
 )
 
@@ -161,21 +162,25 @@ def _consume_body(buffer: str, state: StreamState) -> tuple[str, list[str]]:
     Promotes ``pending_emotion`` to emitted ``emotion`` the first time
     non-whitespace content passes ``validate_streaming_body_start``. While the
     body is still a prefix of a forbidden start (``E``, a lone backtick) nothing is
-    promoted or spoken: the next delta decides it.
+    promoted or spoken: the next delta decides it. No sentence that carries a
+    protocol tag is released, and a rejected batch promotes nothing, so the
+    fallback can still send the one ``emotion`` event the robot requires.
 
     Raises:
-        LLMError: If the body content is structurally invalid.
+        StreamProtocolError: If the body content is structurally invalid.
     """
     has_content = bool(buffer.strip())
     if state.emotion is None and has_content:
         if is_body_start_undecided(buffer):
             return buffer, []
         validate_streaming_body_start(buffer)
-        state.emotion = state.pending_emotion
     sentences: list[str] = []
     while (split := split_first_sentence(buffer)) is not None:
         sentence, buffer = split
+        reject_embedded_tag(sentence)
         sentences.append(sentence)
+    if state.emotion is None and has_content:
+        state.emotion = state.pending_emotion
     return buffer, sentences
 
 
@@ -186,30 +191,42 @@ def _preamble_fallback_reason(buffer: str) -> StreamFallbackReason:
     return StreamFallbackReason.EMPTY_STREAM
 
 
+def classify_stream_end(buffer: str, state: StreamState) -> StreamFallbackReason | None:
+    """Decide whether what is left when the stream ends can be spoken.
+
+    The single judgement shared by production and by the evaluator under ``scripts/``.
+
+    Args:
+        buffer: Text received but not yet spoken.
+        state: The turn's state at the end of the stream.
+
+    Returns:
+        ``None`` when the end can be spoken, otherwise the reason it cannot.
+    """
+    if state.pending_emotion is None and state.emotion is None:
+        return _preamble_fallback_reason(buffer)
+    tail = buffer.strip()
+    if state.emotion is None and not tail:
+        return StreamFallbackReason.INVALID_PROTOCOL
+    try:
+        if state.emotion is None:
+            validate_streaming_body_start(tail)
+        reject_embedded_tag(tail)
+    except StreamProtocolError:
+        return StreamFallbackReason.INVALID_PROTOCOL
+    return None
+
+
 async def _finalize_model_output(buffer: str, state: StreamState) -> AsyncIterator[str]:
     """Validate stream EOF; emit the final sentence or a safe fallback."""
-    if state.pending_emotion is None and state.emotion is None:
-        try:
-            parse_streaming_emotion(buffer, final=True)
-        except LLMError:
-            state.outcome = StreamOutcome.PROTOCOL_FALLBACK
-            reason = _preamble_fallback_reason(buffer)
-            async for line in emit_fallback(state, reason=reason):
-                yield line
-            return
+    reason = classify_stream_end(buffer, state)
+    if reason is not None:
+        state.outcome = StreamOutcome.PROTOCOL_FALLBACK
+        async for line in emit_fallback(state, reason=reason):
+            yield line
+        return
     tail = buffer.strip()
     if state.emotion is None:
-        valid_body = bool(tail)
-        if valid_body:
-            try:
-                validate_streaming_body_start(tail)
-            except LLMError:
-                valid_body = False
-        if not valid_body:
-            state.outcome = StreamOutcome.PROTOCOL_FALLBACK
-            async for line in emit_fallback(state, reason=StreamFallbackReason.INVALID_PROTOCOL):
-                yield line
-            return
         if state.pending_emotion is None:
             raise RuntimeError("pending_emotion must be set before promoting to emotion")
         state.emotion = state.pending_emotion

@@ -43,6 +43,8 @@ _REPLIES = [
     "EMOTION:joy\nEMOTION:anger\nhola",
     "EMOTION:unknownemotion\nHola",
     "emotion: joy\nHola",
+    "EMOTION:joy\nHola. EMOTION:anger\nAdiós.",
+    "EMOTION:joy\nHola. **EMOTION:** joy",
 ]
 
 
