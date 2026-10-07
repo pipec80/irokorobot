@@ -190,6 +190,21 @@ retry, rescuing plain text, another model, a schema-constrained stream) are stil
 tested by the repair plan (D-6), which also owns correcting the stale header of `llm_streaming.py`
 (it claims Ollama withholds structured output; D-1 forbids editing it here).
 
+## Open follow-up — R-5 (decided by Pipec, 2026-10-07)
+
+R-5 stays **unresolved on purpose**; no third run was made. To close it later, repeat the
+confirmation run with a third seed and compare the quarters of its execution order with run 2:
+
+```
+just diagnose-stream --variants full full_repeat no_context no_person no_history question_only --seed 59 --structured-runs 0 --output docs/evals/0057-stream-diagnosis-run3.md
+```
+
+It needs Ollama running, the server and robot stopped, and about 30 minutes on this laptop. Read it
+with the same rules: if its quarters differ by 15 points or more again, the order effect is real
+and the R-3 confirmations need re-reading; if not, run 2 was most likely mixing variants per
+quarter. The cheapest moment is when the repair plan measures its own change, because that run must
+repeat the baseline anyway.
+
 ## Limitations
 
 - The generator, not the full voice path: nothing here is the real rate of a spoken turn.
