@@ -1,10 +1,11 @@
 # 0057 — Streaming-protocol fallback diagnosis
 
-> **Status:** `Draft` — written 2026-10-05 after Plan 0056 closed and two reviews of
-> its follow-up (an author analysis and an independent senior audit), and revised the
-> same day after an independent review of this draft. **Not authorized.** Pipec
-> promotes it to `Ready` and selects it as `NOW`; until then `NOW` stays empty and
-> nothing here may be executed. The decisions below are proposals for that moment.
+> **Status:** `Closed` 2026-10-06 — written 2026-10-05 after Plan 0056 closed and two
+> reviews of its follow-up (an author analysis and an independent senior audit), and
+> revised the same day after an independent review of this draft. **Promoted by Pipec
+> on 2026-10-06**, who confirmed decisions D-1 to D-7 exactly as written below, and
+> executed the same day from `feat/0057-stream-protocol-diagnosis` (see the execution
+> record at the end). The PR number and squash SHA are added after the merge.
 >
 > **Queue position (Pipec, 2026-10-05):** after CM-1 (Plan 0051, closed 2026-10-06) and before CM-2. The
 > streaming repair that follows this diagnosis is a hard gate of CM-2, the first slice
@@ -59,7 +60,7 @@ constant fixed **before** the run.
 **Spec:** the roadmap row
 [*Streaming-protocol fallback repair*](../../roadmap/cognitive-roadmap.md#canonical-pre-electronics-delivery-portfolio),
 [0056 measurements](../../evals/0056-voice-pipeline-measurements.md#1-streaming-protocol-fallback-0049-o-04),
-[0049 O-04](0049-server-objective-conformance-audit.md), and the rules in
+[0049 O-04](../open/0049-server-objective-conformance-audit.md), and the rules in
 *Protocol rules this plan relies on* below. Those rules are stated here from the code
 and its tests, which outrank a plan under the repository's own order, and from
 [`current-state.md`](../../architecture/current-state.md); no historical plan is a
@@ -204,8 +205,8 @@ must state and, because the rule lives in code and tests, record in an ADR.
 
 ## Decisions
 
-Proposed 2026-10-05; Pipec confirms them when he promotes the plan, and they are not
-asked again afterwards.
+Proposed 2026-10-05; **confirmed by Pipec on 2026-10-06** (D-1 to D-7, exactly as
+written) when he promoted the plan; they are not asked again.
 
 1. **D-1 — Diagnosis only.** No file under `server/src` is edited: not
    `streaming*.py`, `llm_streaming.py`, `llm.py`, `characters/` nor anything else.
@@ -4746,7 +4747,66 @@ recorded evidence under `docs/evals/` is history and is not rewritten.
 
 ## Execution record
 
-_Empty until the plan is promoted and executed._
+Executed 2026-10-06 on `feat/0057-stream-protocol-diagnosis`, from `main` at `c062282`.
+
+- **Promotion:** `a5091c2` (Ready/NOW, D-1 to D-7 confirmed by Pipec as written).
+- **Task 0:** base `just gate` on `main`: **1858 passed** (not the 1807 the plan quotes; Plan 0051
+  added 51). Symbols the plan imports exist as described. Docs inventory: 27 mentions of the
+  29.17 % / 56.67 % / "golden cases repeated" / "streaming-protocol fallback" text in 11 files, for
+  Task 9.
+- **Tasks 1 to 7:** `754ecdb`, `e1cc96f`, `880d432`, `dba88e8`, `bdcd983`, `244d6f8`, `0bf77d5`,
+  one commit each, every new test observed RED for its stated reason (a missing module, or
+  `AttributeError: ... 'sentences_seen'` for the counter) before the implementation. After Task 7,
+  `just gate`: **2089 passed** (1858 + 231, as rehearsed), `ruff check` and `ruff format --check`
+  over every touched `scripts/` and test path, `mypy server/src robot/src` clean,
+  `git diff --stat main -- server` empty.
+- **Intermittent failure, recorded and not attributed:** the first gate after Task 7 reported one
+  crashed xdist worker in `tests/unit/test_robot_app.py::test_thinking_success_goes_to_speaking`
+  (1 failed, 2088 passed). The file passes alone (34 of 34) and the next full gate passed. It touches
+  none of this plan's files. (The rehearsal saw a different intermittent, in
+  `tests/slow/test_speaker_embedding_real_model.py`, which did not reappear.)
+- **Task 8:** run by Pipec on his non-dedicated laptop; smoke (48 streams, 0 errors, Ollama 0.34.4,
+  model digest `357c53fb659c` filled), run 1 (seed 57, 500 streams, 0 errors) and run 2 (seed 58,
+  320 streams, 0 errors). Readings and statuses in
+  [`docs/evals/0057-stream-protocol-diagnosis.md`](../../evals/0057-stream-protocol-diagnosis.md).
+  R-5 fired in run 2 and stays unresolved; `no_context` was confirmed, `no_person` was not.
+- **Task 9:** the 0056 record corrected ("12 golden cases repeated five times, 60 observations")
+  and annotated; roadmap rows, the delivery map, `current-state.md` (a new row), the operator
+  manual, the evals index and the 0049 O-04 note aligned with the record; the board shows the
+  plan closed, `NOW` empty and 0058 as the next free number; this file moved to `completed/`.
+  Architecture diagram: `archify validate` and `deliver` (showcase) pass and no node text mentions
+  this subject; the delivered HTML is byte-identical to the committed one, so it is unchanged. Docs checks: relative links, `check_reserved_terms.py`,
+  `ruff format --check .`, `ruff check .` and `git diff --check` clean.
+- **Independent review (two read-only sonnet agents, 2026-10-06):** 0 Critical. The code review
+  found one Important (a threshold met exactly, such as 42/60 against 33/60, was missed by float
+  error in R-3 and R-5; none of the recorded rows sits at a limit) and minor points; all were fixed
+  test-first in `b0d957b` (exact threshold comparison, a worse-than-baseline intervention labelled
+  `opposite direction`, a tie between two shapes read as mixed, a failing stream close logged and
+  ignored, a bad option exiting `2` with a log line, justifications for three modules over the size
+  guideline). Not changed on purpose: an interrupt or an unexpected error in the middle of a run
+  still loses the observations (the same as `eval-chat --mode stream`; the report is written once, at
+  the end), and tests read repository files relative to the working directory like the existing
+  eval tests. The evidence review confirmed every number of the record against the raw reports and
+  found five Important wording problems (a factor ranking the data does not support, the missing
+  counter-evidence of `public_with_context`, a loose R-7 summary, an inconsistent sign in the summary
+  table, an inexact per-turn limitation) and thirteen minor ones; all were corrected in the record and
+  in the documents that repeat it.
+- **Final verification after the fixes:** `uv lock --check`, `just lint`, `just typecheck` (mypy and
+  pyright, 0 errors), `just check`, `just audit`, `uv build --all-packages`, the exact CI coverage
+  command (2079 passed in the CI selection, 91.99 % coverage) and `git diff --stat main -- server` (empty);
+  `just gate`: **2096 passed** (the 2089 of Task 7 plus 7 tests for the review fixes).
+- **Live acceptance (Pipec, 2026-10-07):** the plan states that no live voice-turn acceptance applies
+  (no production code, request, response, streaming event or audio path changes) and asks for an
+  explicit confirmation rather than a silent skip. Pipec chose to run one anyway and stated that the
+  session counts as the acceptance. One streaming session with the robot and server started by
+  Pipec on this branch (`ROBOT_STREAMING`, face authentication, speaker authentication and the
+  owner-PIN prompt on): 5 turns, no fallback phrase. Three turns were deterministic (identity,
+  own-children list, protected household data) with the actor identified from the face
+  (`face_only`, owner); two were free conversation through the model, both `outcome=ok`. The speaker
+  verdict was `unknown` on every identity turn because no voiceprint is enrolled (0 profiles stored,
+  2 consent grants), so voice was not validated in this session and no `face_voice` fusion was
+  seen; that is a state of the local data, not a finding of this plan. Outcomes only: no
+  transcript, no name.
 
 ## Closure
 

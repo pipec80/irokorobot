@@ -84,6 +84,7 @@ class _StreamClassifier:
     def __init__(self) -> None:
         self._state = StreamState(request_start=0.0)
         self._buffer = ""
+        self.sentences_seen = 0
 
     def feed(self, delta: str) -> StreamOutcome | None:
         """Take one delta; return ``INVALID_PROTOCOL`` once production would stop reading.
@@ -97,9 +98,10 @@ class _StreamClassifier:
             if not consumed:
                 return None
         try:
-            self._buffer, _sentences = _consume_body(self._buffer, self._state)
+            self._buffer, sentences = _consume_body(self._buffer, self._state)
         except LLMError:
             return StreamOutcome.INVALID_PROTOCOL
+        self.sentences_seen += len(sentences)
         return None
 
     def finish(self) -> StreamOutcome:

@@ -126,6 +126,10 @@ eval-memory *ARGS:
 eval-chat *ARGS:
     uv run --env-file .env python scripts/eval_chat.py {{ARGS}}
 
+# Diagnostico del respaldo del streaming (Plan 0057): variantes por factor, formas de fallo y tiempos; requiere Ollama real y el servidor detenido
+diagnose-stream *ARGS:
+    uv run --env-file .env python scripts/diagnose_stream_protocol.py {{ARGS}}
+
 # Baseline reproducible de memoria longitudinal contra Ollama real + DB temporal (Plan 0046)
 eval-longitudinal *ARGS:
     uv run --env-file .env python scripts/eval_longitudinal_memory.py {{ARGS}}

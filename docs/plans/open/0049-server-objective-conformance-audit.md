@@ -1096,7 +1096,7 @@ destino.
 | F-03 | Parcial | `current-state.md` y el manual del operador actualizados; reglas locales corregidas el 2026-09-24. |
 | F-04, F-17 | Abiertos → CM-1…CM-7 | Sin cambio; la escritura canónica y la deduplicación son de CM-3. |
 | O-02 | Aclarado | El manual del operador distingue `personal_security_ready`, `onboarding_complete` y el enrolamiento biométrico. |
-| O-04 | Abierto → plan de reparación | Medido por el Plan 0056: 29,17 % de respaldo (por encima del 5 %); fila `Unplanned` en el roadmap. |
+| O-04 | Abierto → plan de reparación | Medido por el Plan 0056: 29,17 % de respaldo (por encima del 5 %); fila `Unplanned` en el roadmap. Diagnosticado por el Plan 0057 (2026-10-06): forma dominante `tag_same_line`, que quitar el bloque de memoria baja la tasa (señal exploratoria, no una causa) y una respuesta con esquema que llega repartida en el tiempo; ver [el registro](../../evals/0057-stream-protocol-diagnosis.md). La reparación sigue sin plan. |
 
 La aceptación en hardware real de 0050 la hizo Pipec el 2026-10-01 (casos 1, 2,
 3, 4 y 5; el veto de dos caras no se corrió); el detalle está en la sección *Real
