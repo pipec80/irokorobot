@@ -30,6 +30,13 @@ one-terminal-event guarantee, the NDJSON 200 OpenAPI contract, `/health`
 wording + injectable `create_app`) and left only Uvicorn concurrency
 calibration open, as its own `perf(...)` plan.
 
+[Plan 0057](0057-stream-protocol-diagnosis.md) closed on 2026-10-06 (branch `feat/0057-stream-protocol-diagnosis`; the PR number
+and squash SHA are recorded after the merge): a diagnosis of why the streaming protocol drops to the fallback phrase,
+with nothing under `server/src` changed. `just diagnose-stream` ran on `qwen2.5:3b` for 820 streams over two seeds: the
+dominant failure shape is a tag that shares its line with the text, the memory block is the largest factor (exploratory,
+confirmed by a second seed), a schema-constrained reply arrives incrementally, and the fragmentation defect is pinned by a
+test and was not seen on live output. [Record](../../evals/0057-stream-protocol-diagnosis.md); the repair stays `Unplanned`.
+
 [Plan 0051](0051-scoped-owner-grants.md) closed on 2026-10-06 (merged as PR #164, `1ecd63c`; CM-1, first plan): every owner grant is
 bound to one named operation (`personal_protected_read` or `biometric_admin`), a grant presented to the
 wrong operation is refused without being spent, and "who am I" and the "not connected yet" answer no

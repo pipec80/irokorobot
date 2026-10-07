@@ -2,7 +2,7 @@
 
 > **Status:** Historical measurement, recorded 2026-10-06. Numbers only: no reply,
 > no transcript and no household name appear here. The reading rules (R-1 to R-7)
-> were written in [Plan 0057](../plans/open/0057-stream-protocol-diagnosis.md#rules-fixed-before-the-run)
+> were written in [Plan 0057](../plans/completed/0057-stream-protocol-diagnosis.md#rules-fixed-before-the-run)
 > **before** the runs and were not changed afterwards. Every intervention reading is
 > *exploratory*: it is an input to a repair plan, not a cause.
 

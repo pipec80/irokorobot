@@ -35,6 +35,13 @@ carry golden memory context (56.67 %) and almost absent in context-free chit-cha
 (1.67 %). The measurement does not say why. The follow-up plan should start from that
 split, not from a guess.
 
+*Added 2026-10-06:* these rates come from a synthetic evaluation of the streaming
+generator (12 golden turns with memory context and 12 public turns, five runs each), not
+from production telemetry, and the "context" split mixes four factors (memory block, active
+person, history and the question itself). [Plan 0057](0057-stream-protocol-diagnosis.md)
+measured them apart: the memory block is where most of the difference comes from, and the
+dominant failure shape is a tag that shares its line with the text.
+
 ## 2. Prompt echo and hallucination on synthetic noise
 
 Command: `just probe-stt noise --clips 100` (the probe reads the raw transcript,
@@ -77,7 +84,8 @@ with a measured difference of 0.000, and the accuracy flag is not raised (0.200)
 - The first-turn probe isolates STT from the server's other start-up work and uses
   Piper speech, not Pipec's voice. The roadmap's criterion (the first utterance after a
   restart is transcribed correctly) is judged in the real acceptance session.
-- 120 observations give a wide interval, and the context turns are 60 golden cases
-  repeated five times, not 60 independent conversations.
+- 120 observations give a wide interval, and the context turns are **12 golden cases
+  repeated five times (60 observations)**, not 60 independent conversations
+  (corrected 2026-10-06; it said 60 cases).
 - The thresholds are decision rules agreed in advance, not proof of general
   reliability.

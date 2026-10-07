@@ -107,6 +107,7 @@ problem can be localized without running the whole loop.
 | `manage_household_roles.py` | `uv run python scripts/manage_household_roles.py bootstrap-owner` | Local role bootstrap, direct DB, no HTTP | No | No |
 | `migrate_memory_v4.py` | `uv run python scripts/migrate_memory_v4.py --apply` | Legacy-fact migration into v4, dry-run first | No | No |
 | `eval_chat.py` / `eval_consolidation.py` | `just eval-chat` / `just eval-memory` | Response/extraction quality against real Ollama — not `pytest`. `just eval-chat --mode stream` instead measures how often a streamed reply would drop to the fallback phrase (the `EMOTION:` protocol, Plan 0056); it reports counts and rates, never model output | Needs `just services` | Yes |
+| `diagnose_stream_protocol.py` | `just diagnose-stream` | Why a streamed reply drops to the fallback phrase (Plan 0057): runs the golden and public turns under variants that each remove or move one factor, in a seeded shuffled order, and reports failure shapes, an ablation read against a noise control, timings and whether a schema-constrained reply arrives spread over time. Counts only, never model output; `--runs`, `--seed`, `--variants`, `--structured-runs`, `--output`. About an hour for the default 500 streams on a laptop; exit `0`, `1` (a provider error, the report is still written) or `2` (Ollama not answering, nothing written) | Run it with the server stopped | Yes |
 | `stt_probes.py` | `just probe-stt noise` / `just probe-stt first-turn` | Whisper on synthetic noise (empty, prompt echo or other text, read before the echo guard) and first-utterance accuracy over fresh processes (Plan 0056); loads the real models, so run it with the server stopped | No | Yes |
 | `speaker_calibration.py` | `just speaker-calibration <action>` | Speaker-embedding calibration corpus and analysis (Plan 0047, PC-3A) — capture, embed, analyze, discard, cleanup; local only, never in the runtime | No (mic only for `capture`) | Yes for the recipe |
 | `eval_longitudinal_memory.py` | `just eval-longitudinal` | Longitudinal-memory capability probe (multi-session recall, correction, cross-person privacy, deletion, provenance) against real Ollama + a temp DB — not `pytest` | Needs `just services` | Yes |
@@ -123,7 +124,10 @@ not your room, so a clean result does not show the echo guard works on real sile
 start-up work, so it cannot say whether *your* first utterance after a restart is
 heard correctly (judge that by speaking it); and `eval-chat --mode stream` measures
 the protocol on 120 repeated golden and chit-chat turns, a wide interval, not a
-general reliability figure.
+general reliability figure. `diagnose-stream` measures the generator for the configured
+model, not the microphone → server → audio path, and its readings are exploratory
+signals read against rules fixed in advance (see the
+[Plan 0057 record](../evals/0057-stream-protocol-diagnosis.md)), never a cause.
 
 ### Speaker calibration — `just speaker-calibration` (Plan 0047, PC-3A)
 

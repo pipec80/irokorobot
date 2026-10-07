@@ -22,7 +22,7 @@ single-WIP [operational board](../README.md#operational-board) — **CM-0
 (Plan 0046) closed 2026-09-08, PC-3A (Plan 0047) closed 2026-09-25 with a
 provisional PASS, and PC-3B ([Plan 0053](../completed/0053-consented-speaker-runtime-evidence.md))
 closed 2026-09-29, and PC-4 ([Plan 0054](../completed/0054-face-default-identity-fusion.md))
-closed 2026-09-30; since 2026-10-06 `NOW` is Plan 0057.** Use the
+closed 2026-09-30; `NOW` is empty (Plan 0057 closed 2026-10-06).** Use the
 [personal-companion delivery map](../../roadmap/personal-companion-delivery-map.md)
 and [conversational-memory delivery map](../../roadmap/conversational-memory-delivery-map.md)
 to see the code, tests, verified gaps, and future delivery sequence.
@@ -59,15 +59,16 @@ confirmadas (la D-8: cada etapa se juzga con las compuertas que sus escenarios a
 mediciones abrieron un seguimiento (respaldo del streaming, 29,17 %) y cerraron dos (ruido y
 primer turno). Pipec la aceptó en hardware real ese mismo día (el modo clásico no se corrió). Ya no hay un plan `NOW`; Pipec elige el siguiente.
 
-[0057 — diagnóstico del respaldo del protocolo de streaming](0057-stream-protocol-diagnosis.md)
-está **Ready y es el `NOW`**: escrito el 2026-10-05 y promovido por Pipec el 2026-10-06, con las decisiones
-D-1 a D-7 confirmadas tal cual; el orden confirmado por Pipec el 2026-10-05 era CM-1 (Plan 0051, ya
-cerrado) primero y esta reparación después, antes de CM-2. Solo diagnostica y no toca `server/src`: clasifica las formas de
-fallo (enum cerrado, sin texto), hace una ablación por factor (contexto de memoria, persona,
-historial, posición del contrato, pregunta), mide si la validación del cuerpo depende de cómo
-llegan los tokens (defecto confirmado por lectura del código y fijado por un test) y comprueba
-si Ollama emite en incremental una respuesta con esquema JSON. Las reglas de lectura quedan fijadas
-antes de medir. La reparación que le sigue sigue siendo `Unplanned`. El siguiente número libre es 0058.
+[0057 — diagnóstico del respaldo del protocolo de streaming](../completed/0057-stream-protocol-diagnosis.md)
+**cerró el 2026-10-06** y ya vive en `completed/`: promovido por Pipec ese día con las decisiones D-1 a D-7
+confirmadas tal cual, solo diagnostica y no tocó `server/src`. Midió, con reglas de lectura fijadas antes
+(820 streams con dos semillas, solo el generador), que la forma de fallo dominante es una etiqueta que comparte
+línea con el texto (`tag_same_line`), que quitar el bloque de memoria baja la tasa de respaldo (señal exploratoria
+confirmada por una segunda semilla, no una causa), que una respuesta con esquema JSON llega de forma incremental
+al cliente y que el defecto de fragmentación no apareció en salida real (0 de 820) pero sigue fijado por un test.
+La regla de orden de ejecución saltó en la segunda corrida y queda sin resolver. Ver
+[el registro](../../evals/0057-stream-protocol-diagnosis.md). La reparación sigue siendo `Unplanned` y empieza por
+el defecto de fragmentación. El siguiente número libre es 0058.
 
 [ADR-0015](../../adr/0015-owner-grant-scope-and-speaker-binding.md) (**Accepted**, 2026-09-25)
 liga el grant PIN a una operación (incumplía ADR-0009 hasta el Plan 0051) y, por etapas, a la
@@ -154,7 +155,7 @@ the benchmark harness is GREEN and the measured baseline is a reproducible
 cognitive RED (`ac43c58`, exit 1); it changed no runtime memory. See
 [completed/0046](../completed/0046-reproducible-longitudinal-memory-baseline.md).
 
-Canonical execution order: **`NOW` is Plan 0057 (since 2026-10-06); Plan 0054 (PC-4) closed 2026-09-30.** Plan 0053 (PC-3B)
+Canonical execution order: **`NOW` is empty (Plan 0057 closed 2026-10-06); Plan 0054 (PC-4) closed 2026-09-30.** Plan 0053 (PC-3B)
 closed 2026-09-29, and Plan 0047 (PC-3A) closed 2026-09-25 with a provisional PASS
 (see [completed/0047](../completed/0047-speaker-evidence-calibration-study.md)); the
 queue-rule-4 re-audit of the next row ran the same day, produced Plan 0053, and

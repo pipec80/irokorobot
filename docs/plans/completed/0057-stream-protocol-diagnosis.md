@@ -1,10 +1,11 @@
 # 0057 — Streaming-protocol fallback diagnosis
 
-> **Status:** `Ready` and `NOW` — written 2026-10-05 after Plan 0056 closed and two
+> **Status:** `Closed` 2026-10-06 — written 2026-10-05 after Plan 0056 closed and two
 > reviews of its follow-up (an author analysis and an independent senior audit), and
 > revised the same day after an independent review of this draft. **Promoted by Pipec
-> on 2026-10-06**, who confirmed decisions D-1 to D-7 exactly as written below; they are
-> not asked again. Executed from `feat/0057-stream-protocol-diagnosis`.
+> on 2026-10-06**, who confirmed decisions D-1 to D-7 exactly as written below, and
+> executed the same day from `feat/0057-stream-protocol-diagnosis` (see the execution
+> record at the end). The PR number and squash SHA are added after the merge.
 >
 > **Queue position (Pipec, 2026-10-05):** after CM-1 (Plan 0051, closed 2026-10-06) and before CM-2. The
 > streaming repair that follows this diagnosis is a hard gate of CM-2, the first slice
@@ -59,7 +60,7 @@ constant fixed **before** the run.
 **Spec:** the roadmap row
 [*Streaming-protocol fallback repair*](../../roadmap/cognitive-roadmap.md#canonical-pre-electronics-delivery-portfolio),
 [0056 measurements](../../evals/0056-voice-pipeline-measurements.md#1-streaming-protocol-fallback-0049-o-04),
-[0049 O-04](0049-server-objective-conformance-audit.md), and the rules in
+[0049 O-04](../open/0049-server-objective-conformance-audit.md), and the rules in
 *Protocol rules this plan relies on* below. Those rules are stated here from the code
 and its tests, which outrank a plan under the repository's own order, and from
 [`current-state.md`](../../architecture/current-state.md); no historical plan is a
@@ -4769,6 +4770,13 @@ Executed 2026-10-06 on `feat/0057-stream-protocol-diagnosis`, from `main` at `c0
   320 streams, 0 errors). Readings and statuses in
   [`docs/evals/0057-stream-protocol-diagnosis.md`](../../evals/0057-stream-protocol-diagnosis.md).
   R-5 fired in run 2 and stays unresolved; `no_context` was confirmed, `no_person` was not.
+- **Task 9:** the 0056 record corrected ("12 golden cases repeated five times, 60 observations")
+  and annotated; roadmap rows, the delivery map, `current-state.md` (a new row), the operator
+  manual, the evals index and the 0049 O-04 note aligned with the record; the board shows the
+  plan closed, `NOW` empty and 0058 as the next free number; this file moved to `completed/`.
+  Architecture diagram: `archify validate` (showcase) passed and no node text mentions this
+  subject, so it is unchanged. Docs checks: relative links, `check_reserved_terms.py`,
+  `ruff format --check .`, `ruff check .` and `git diff --check` clean.
 
 ## Closure
 
