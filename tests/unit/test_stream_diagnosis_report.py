@@ -27,6 +27,7 @@ from scripts.stream_diagnosis_stats import (
     percentiles,
     shape_counts,
     summarize,
+    tolerated_shape_counts,
 )
 from scripts.stream_diagnosis_variants import StreamVariant
 from scripts.stream_failure_shapes import FailureShape
@@ -620,3 +621,44 @@ def test_two_shapes_at_exactly_half_are_mixed_not_a_dominant_one() -> None:
     assert dominant_shape({"no_tag": 2, "tag_same_line": 2}) is None
     assert dominant_shape({"tag_same_line": 3, "no_tag": 1}) == "tag_same_line"
     assert dominant_shape({"tag_same_line": 1}) == "tag_same_line"
+
+
+@pytest.mark.unit
+def test_a_valid_reply_with_a_failure_shape_is_tolerated_not_a_fallback() -> None:
+    tolerated = _obs(shape=FailureShape.TAG_SAME_LINE)
+
+    assert tolerated.tolerated
+    assert not tolerated.fell_back
+    assert not _ok().tolerated
+    assert not _bad().tolerated
+    assert not _err().tolerated
+
+
+@pytest.mark.unit
+def test_tolerated_shapes_are_counted_apart_from_fallback_shapes() -> None:
+    observations = [
+        _obs(shape=FailureShape.TAG_SAME_LINE),
+        _obs(shape=FailureShape.TAG_SAME_LINE),
+        _obs(shape=FailureShape.NO_TAG),
+        _bad(shape=FailureShape.TAG_WRAPPED),
+        _ok(),
+    ]
+
+    assert tolerated_shape_counts(observations) == {"tag_same_line": 2, "no_tag": 1}
+    assert shape_counts(observations) == {"tag_wrapped": 1}
+    assert summarize(observations).tolerated == 3
+
+
+@pytest.mark.unit
+def test_the_report_lists_the_tolerated_shapes_of_the_baseline() -> None:
+    observations = [
+        *_case(StreamVariant.FULL, "a", 1),
+        _obs(shape=FailureShape.TAG_SAME_LINE, position=2),
+    ]
+
+    report = render_diagnosis_report(observations, _context(), None)
+    section = report.split("## 3. Failure shapes")[1].split("## 4.")[0]
+
+    assert "Tolerated in `full` (context)" in section
+    assert "| tag_same_line | 1 |" in section
+    assert "Tolerated" in report.split("## 1. Fallback by variant and source")[1].split("## 2.")[0]

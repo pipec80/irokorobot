@@ -65,6 +65,15 @@ class Observation:
         return self.outcome in (StreamOutcome.INVALID_PROTOCOL, StreamOutcome.EMPTY_STREAM)
 
     @property
+    def tolerated(self) -> bool:
+        """Production spoke a reply whose shape the strict 0057 grammar named a failure."""
+        return (
+            self.outcome is StreamOutcome.VALID
+            and self.shape is not None
+            and self.shape is not FailureShape.VALID
+        )
+
+    @property
     def undue_accept(self) -> bool:
         """Production spoke a reply that the whole text would have rejected."""
         return (

@@ -30,6 +30,7 @@ from scripts.stream_diagnosis_stats import (
     percentiles,
     shape_counts,
     summarize,
+    tolerated_shape_counts,
 )
 from scripts.stream_diagnosis_variants import VARIANT_DESCRIPTIONS, StreamVariant
 
@@ -86,6 +87,7 @@ def _variant_section(observations: Sequence[Observation]) -> list[str]:
                 s.empty_stream,
                 s.errors,
                 _percent(s.fallback_rate),
+                s.tolerated,
                 s.undue_accept,
                 s.inconsistent,
             )
@@ -98,6 +100,7 @@ def _variant_section(observations: Sequence[Observation]) -> list[str]:
         "Empty",
         "Errors",
         "Fallback rate",
+        "Tolerated",
         "Undue accept",
         "Split-dependent",
     )
@@ -175,6 +178,9 @@ def _shape_section(observations: Sequence[Observation]) -> list[str]:
             lines.extend([f"Dominant shape in `full` ({source}): `{dominant}`.", ""])
         else:
             lines.extend([f"No shape holds half of the fallbacks in `full` ({source}).", ""])
+        tolerated = tolerated_shape_counts(o for o in baseline if o.source == source)
+        header = (f"Tolerated in `full` ({source}), by strict-0057 shape", "Count")
+        lines.extend(_table(header, tolerated.items()))
     rows = []
     for (variant, source), items in group_by_variant_and_source(observations).items():
         if variant is StreamVariant.FULL:

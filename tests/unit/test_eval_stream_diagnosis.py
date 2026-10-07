@@ -95,6 +95,7 @@ async def test_a_valid_reply_starts_speaking_at_its_first_closed_sentence() -> N
     assert obs.reply_chars == len("EMOTION:joy\nHola. ¿Cómo estás?")
     assert not obs.fell_back
     assert not obs.undue_accept
+    assert not obs.tolerated
 
 
 @pytest.mark.unit
@@ -128,10 +129,21 @@ async def test_a_reply_without_the_tag_is_spoken_from_its_first_closed_sentence(
 
     assert obs.outcome is StreamOutcome.VALID
     assert obs.shape is FailureShape.NO_TAG
+    assert obs.tolerated
     assert not obs.fell_back
     assert obs.speech_start_ms == 20  # the second delta closes the first sentence
     assert obs.end_ms == 30
     assert obs.first_delta_ms == 10
+
+
+@pytest.mark.unit
+async def test_a_tag_sharing_its_line_is_tolerated_and_keeps_its_strict_shape() -> None:
+    obs = await _observe(_FakeStream("EMOTION:joy ¡Hola! ", "¿Qué tal?"))
+
+    assert obs.outcome is StreamOutcome.VALID
+    assert obs.shape is FailureShape.TAG_SAME_LINE
+    assert obs.tolerated
+    assert not obs.undue_accept
 
 
 @pytest.mark.unit

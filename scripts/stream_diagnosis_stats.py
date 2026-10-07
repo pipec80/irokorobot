@@ -21,7 +21,7 @@ from scripts.eval_stream_protocol import StreamOutcome
 from scripts.stream_diagnosis_variants import StreamVariant
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Callable, Iterable, Sequence
 
     from scripts.eval_stream_diagnosis import Observation
 
@@ -53,6 +53,7 @@ class GroupSummary:
     errors: int
     undue_accept: int
     inconsistent: int
+    tolerated: int
 
     @property
     def graded(self) -> int:
@@ -82,6 +83,7 @@ def summarize(observations: Iterable[Observation]) -> GroupSummary:
         errors=sum(o.outcome is StreamOutcome.ERROR for o in items),
         undue_accept=sum(o.undue_accept for o in items),
         inconsistent=sum(o.fragmentation_consistent is False for o in items),
+        tolerated=sum(o.tolerated for o in items),
     )
 
 
@@ -106,13 +108,25 @@ def group_by_variant_and_source(
     )
 
 
-def shape_counts(observations: Iterable[Observation]) -> dict[str, int]:
-    """Count the failure shapes of the replies that fell back, most frequent first."""
+def _count_shapes(
+    observations: Iterable[Observation], keep: Callable[[Observation], bool]
+) -> dict[str, int]:
+    """Count the shapes of the observations ``keep`` accepts, most frequent first."""
     counts: dict[str, int] = defaultdict(int)
     for obs in observations:
-        if obs.fell_back and obs.shape is not None:
+        if keep(obs) and obs.shape is not None:
             counts[obs.shape.value] += 1
     return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
+
+
+def shape_counts(observations: Iterable[Observation]) -> dict[str, int]:
+    """Count the failure shapes of the replies that fell back, most frequent first."""
+    return _count_shapes(observations, lambda obs: obs.fell_back)
+
+
+def tolerated_shape_counts(observations: Iterable[Observation]) -> dict[str, int]:
+    """Count the strict-0057 shapes of the replies production spoke anyway (ADR 0017)."""
+    return _count_shapes(observations, lambda obs: obs.tolerated)
 
 
 def dominant_shape(counts: dict[str, int]) -> str | None:
