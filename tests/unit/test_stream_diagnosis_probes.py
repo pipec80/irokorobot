@@ -54,6 +54,41 @@ def test_parse_digest_finds_the_model_by_name_or_model_and_truncates() -> None:
 
 
 @pytest.mark.unit
+def test_parse_digest_resolves_the_implicit_latest_tag() -> None:
+    """A configured ``qwen2.5`` is what Ollama lists as ``qwen2.5:latest``."""
+    body = {
+        "models": [
+            {"name": "qwen2.5:3b", "model": "qwen2.5:3b", "digest": "3b" * 32},
+            {
+                "name": "qwen2.5:latest",
+                "model": "qwen2.5:latest",
+                "digest": "abcdef012345" + "0" * 52,
+            },
+        ]
+    }
+
+    assert parse_digest(body, "qwen2.5") == "abcdef012345"
+    assert parse_digest(body, "qwen2.5:latest") == "abcdef012345"
+
+
+@pytest.mark.unit
+def test_parse_digest_keeps_the_exact_comparison_for_an_explicit_tag() -> None:
+    only_latest = {"models": [{"name": "qwen2.5:latest", "digest": "a" * 64}]}
+    only_3b = {"models": [{"name": "qwen2.5:3b", "digest": "b" * 64}]}
+
+    assert parse_digest(only_latest, "qwen2.5:3b") == "unknown"
+    assert parse_digest(only_3b, "qwen2.5") == "unknown"
+    assert parse_digest(only_3b, "qwen2.5:3b") == "b" * 12
+
+
+@pytest.mark.unit
+def test_parse_digest_does_not_mistake_a_registry_port_for_a_tag() -> None:
+    body = {"models": [{"name": "localhost:5000/team/model:latest", "digest": "c" * 64}]}
+
+    assert parse_digest(body, "localhost:5000/team/model") == "c" * 12
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     "body", [None, {}, {"models": []}, {"models": ["x"]}, {"models": [{"name": "m"}]}]
 )

@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 _UNKNOWN = "unknown"
 _DIGEST_CHARS = 12
+_DEFAULT_TAG = "latest"
 _MS_PER_SECOND = 1000
 # Rules fixed before measuring (Plan 0057, R-6). Chunks of a burst reach the client
 # within a few milliseconds; a model generating on this machine spaces its chunks by
@@ -60,11 +61,30 @@ def parse_version(body: object) -> str:
     return _UNKNOWN
 
 
+def _tag_candidates(model: str) -> tuple[str, ...]:
+    """Names Ollama may list for ``model``: itself, plus ``:latest`` when no tag is given.
+
+    A name without a tag means ``:latest``, and ``/api/tags`` lists it that way. A colon
+    before the last ``/`` is a registry port, not a tag. An explicit tag such as ``:3b``
+    is compared exactly.
+    """
+    if ":" in model.rsplit("/", 1)[-1]:
+        return (model,)
+    return (model, f"{model}:{_DEFAULT_TAG}")
+
+
 def parse_digest(body: object, model: str) -> str:
-    """Return the first characters of ``model``'s digest from an ``/api/tags`` body."""
+    """Return the first characters of ``model``'s digest from an ``/api/tags`` body.
+
+    An untagged ``model`` (``qwen2.5``) matches its implicit ``:latest`` entry; an
+    explicit tag (``qwen2.5:3b``) matches only that exact name.
+    """
+    candidates = _tag_candidates(model)
     models = body.get("models") if isinstance(body, dict) else None
     for entry in models if isinstance(models, list) else []:
-        if not isinstance(entry, dict) or model not in (entry.get("name"), entry.get("model")):
+        if not isinstance(entry, dict) or not (
+            entry.get("name") in candidates or entry.get("model") in candidates
+        ):
             continue
         digest = entry.get("digest")
         if isinstance(digest, str) and digest:
