@@ -1,11 +1,11 @@
 # 0058 — Streaming reply protocol repair
 
-> **Status:** `Draft` — written 2026-10-07 after Plan 0057 closed and after a read-only audit
-> of the streaming path (below), then independently reviewed the same day (approved with fixes;
-> every fix is applied). **Not authorized:** `NOW` is empty and only Pipec promotes a
-> plan. Pipec fixed decisions D-1 to D-4 in the planning session of 2026-10-07; D-5 to D-8 are
-> proposed here and become decisions when Pipec promotes the plan. The protocol it implements is
-> [ADR 0017](../../adr/0017-streaming-reply-protocol.md), `Proposed` until Task 6 passes.
+> **Status:** `Ready` — written 2026-10-07 after Plan 0057 closed and after a read-only audit
+> of the streaming path (below), independently reviewed the same day (approved with fixes; every
+> fix applied), and **promoted by Pipec on 2026-10-07**, who fixed decisions D-1 to D-4 in the
+> planning session and confirmed D-5 to D-8 exactly as written below. It is the `NOW` item. The
+> protocol it implements is [ADR 0017](../../adr/0017-streaming-reply-protocol.md), `Proposed` until
+> Task 6 passes.
 >
 > **Queue position (Pipec, 2026-10-05):** after CM-1 (Plan 0051, closed) and the diagnosis
 > (Plan 0057, closed); a hard gate of CM-2, the first slice that puts memory or history in the
@@ -193,10 +193,10 @@ so the plan can be read alone. Decision numbers refer to the ADR.
 | D-2 | Gate: the fallback rate of `full` is at or below **5 %** in context turns and in public turns, in seeds 57 and 59, with 0 undue accepts and 0 split-dependent replies (rules fixed below). | Pipec, 2026-10-07 |
 | D-3 | R-5 (execution-order effect) is closed here: Task 0 runs seed 59 on the unchanged code and reads it with Plan 0057's 15-point rule. | Pipec, 2026-10-07 |
 | D-4 | The contract text in the prompt is not touched, so the measured change is attributed to the parser. | Pipec, 2026-10-07 |
-| D-5 | A rescued turn is recorded as a normal turn (emotion `neutral`) and logged as `rescued_no_tag`; a fallback is never recorded. | Proposed |
-| D-6 | A tag is never spoken, at any position, in any mode; what was spoken stays and the fallback follows (logged as `protocol_fallback`). | Proposed |
-| D-7 | The wire, the robot, the schemas, the settings and the dependencies do not change. | Proposed |
-| D-8 | The diagnosis keeps naming shapes with Plan 0057's strict grammar (frozen in `stream_failure_shapes.py`) and reports the replies production now speaks anyway as *tolerated*. | Proposed |
+| D-5 | A rescued turn is recorded as a normal turn (emotion `neutral`) and logged as `rescued_no_tag`; a fallback is never recorded. | Pipec, 2026-10-07 (proposed in the draft, confirmed as written) |
+| D-6 | A tag is never spoken, at any position, in any mode; what was spoken stays and the fallback follows (logged as `protocol_fallback`). | Pipec, 2026-10-07 (proposed in the draft, confirmed as written) |
+| D-7 | The wire, the robot, the schemas, the settings and the dependencies do not change. | Pipec, 2026-10-07 (proposed in the draft, confirmed as written) |
+| D-8 | The diagnosis keeps naming shapes with Plan 0057's strict grammar (frozen in `stream_failure_shapes.py`) and reports the replies production now speaks anyway as *tolerated*. | Pipec, 2026-10-07 (proposed in the draft, confirmed as written) |
 
 ## Rules fixed before the run
 

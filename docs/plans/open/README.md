@@ -22,7 +22,7 @@ single-WIP [operational board](../README.md#operational-board) — **CM-0
 (Plan 0046) closed 2026-09-08, PC-3A (Plan 0047) closed 2026-09-25 with a
 provisional PASS, and PC-3B ([Plan 0053](../completed/0053-consented-speaker-runtime-evidence.md))
 closed 2026-09-29, and PC-4 ([Plan 0054](../completed/0054-face-default-identity-fusion.md))
-closed 2026-09-30; `NOW` is empty (Plan 0057 closed 2026-10-06).** Use the
+closed 2026-09-30; `NOW` is Plan 0058 (promoted 2026-10-07).** Use the
 [personal-companion delivery map](../../roadmap/personal-companion-delivery-map.md)
 and [conversational-memory delivery map](../../roadmap/conversational-memory-delivery-map.md)
 to see the code, tests, verified gaps, and future delivery sequence.
@@ -70,10 +70,9 @@ La regla de orden de ejecución saltó en la segunda corrida y queda sin resolve
 [el registro](../../evals/0057-stream-protocol-diagnosis.md). La reparación empieza por el defecto de
 fragmentación y está escrita como [Plan 0058](0058-stream-protocol-repair.md) (ver abajo).
 
-[0058 — reparación del protocolo de respuesta del streaming](0058-stream-protocol-repair.md) es un **borrador
-`QUEUED` escrito el 2026-10-07**, sin autorizar y con una revisión independiente del mismo día (aprobado con
-arreglos, ya aplicados): Pipec lo promueve (y confirma sus
-decisiones D-5 a D-8) antes de que nadie lo ejecute. Pipec eligió la reparación ese día: una gramática de la
+[0058 — reparación del protocolo de respuesta del streaming](0058-stream-protocol-repair.md) está `Ready` y es el
+**`NOW` desde el 2026-10-07**: se escribió ese día, tuvo una revisión independiente (aprobado con arreglos, ya
+aplicados) y Pipec lo promovió confirmando sus decisiones D-5 a D-8 tal cual. Pipec eligió la reparación ese día: una gramática de la
 etiqueta `EMOTION:` tolerante (la etiqueta que comparte línea con el texto) **más** rescatar como texto plano,
 con la emoción `neutral`, una respuesta sin etiqueta, registrado en el
 [ADR 0017](../../adr/0017-streaming-reply-protocol.md) (`Proposed`), sin tocar el prompt. La Tarea 0 corre la
@@ -166,7 +165,7 @@ the benchmark harness is GREEN and the measured baseline is a reproducible
 cognitive RED (`ac43c58`, exit 1); it changed no runtime memory. See
 [completed/0046](../completed/0046-reproducible-longitudinal-memory-baseline.md).
 
-Canonical execution order: **`NOW` is empty (Plan 0057 closed 2026-10-06); Plan 0054 (PC-4) closed 2026-09-30.** Plan 0053 (PC-3B)
+Canonical execution order: **`NOW` is Plan 0058 (promoted 2026-10-07; Plan 0057 closed 2026-10-06); Plan 0054 (PC-4) closed 2026-09-30.** Plan 0053 (PC-3B)
 closed 2026-09-29, and Plan 0047 (PC-3A) closed 2026-09-25 with a provisional PASS
 (see [completed/0047](../completed/0047-speaker-evidence-calibration-study.md)); the
 queue-rule-4 re-audit of the next row ran the same day, produced Plan 0053, and
