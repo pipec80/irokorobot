@@ -2755,8 +2755,21 @@ and the measurement evidence is preserved by a docs-only PR (Task 6, step 4).
 
 ## Execution record
 
-*(Filled in during execution: commits per task, RED reasons observed, test counts against the
-baseline, gate result, the Task 0 and Task 6 numbers, acceptance outcomes.)*
+Branch `feat/0058-stream-protocol-repair`, from `main` at `eaabbe1`. One plain branch, no worktree,
+no subagent; the final review was a self-review by the executor.
+
+| Task | Commit | RED observed (reason) | GREEN |
+|---:|---|---|---|
+| 0 | `90bf4ec` | n/a (Pipec's run; baseline context 58.33 %, public 0.00 %, R-5 spread 15.0 points) | n/a |
+| 1 | `026323f` | 24 failing: `AttributeError` for `is_body_start_undecided`, and `VALID` where `INVALID_PROTOCOL` expected | 465 (stream selection) |
+| 2 | `d166da4` | 15 failing + 1 collection `ImportError` (`StreamProtocolError`, `classify_stream_end`); the second-tag-in-a-later-delta case failed because the sentence was spoken | 496 |
+| 3 | `ae587a0` | 18 failing + 1 collection `ImportError` (`Preamble`): refused tolerated replies, no `rescued_no_tag` log, empty tolerated-shape set | 568, mypy and pyright clean, `test_api_contract` 9 passed |
+| 4 | `9eb72ed` | collection `ImportError` (`tolerated_shape_counts`), 3 `AttributeError` (`tolerated`) | 85 |
+| 5 | `d3d4c23` | collection `ImportError` (`llm_elapsed_ms`) | 575 (stream selection) |
+
+`just gate` after Task 5: 2229 passed, ruff, mypy, pyright and `check_reserved_terms` clean, audit
+clean. `robot/` and `docs/adr/` untouched; the generated OpenAPI is unchanged (contract test green).
+Tasks 6 and 7 are pending (Pipec's measurement, then the documentation).
 
 ## Closure
 
