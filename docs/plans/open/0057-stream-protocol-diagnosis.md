@@ -4746,7 +4746,29 @@ recorded evidence under `docs/evals/` is history and is not rewritten.
 
 ## Execution record
 
-_Empty until the plan is promoted and executed._
+Executed 2026-10-06 on `feat/0057-stream-protocol-diagnosis`, from `main` at `c062282`.
+
+- **Promotion:** `a5091c2` (Ready/NOW, D-1 to D-7 confirmed by Pipec as written).
+- **Task 0:** base `just gate` on `main`: **1858 passed** (not the 1807 the plan quotes; Plan 0051
+  added 51). Symbols the plan imports exist as described. Docs inventory: 27 mentions of the
+  29.17 % / 56.67 % / "golden cases repeated" / "streaming-protocol fallback" text in 11 files, for
+  Task 9.
+- **Tasks 1 to 7:** `754ecdb`, `e1cc96f`, `880d432`, `dba88e8`, `bdcd983`, `244d6f8`, `0bf77d5`,
+  one commit each, every new test observed RED for its stated reason (a missing module, or
+  `AttributeError: ... 'sentences_seen'` for the counter) before the implementation. After Task 7,
+  `just gate`: **2089 passed** (1858 + 231, as rehearsed), `ruff check` and `ruff format --check`
+  over every touched `scripts/` and test path, `mypy server/src robot/src` clean,
+  `git diff --stat main -- server` empty.
+- **Intermittent failure, recorded and not attributed:** the first gate after Task 7 reported one
+  crashed xdist worker in `tests/unit/test_robot_app.py::test_thinking_success_goes_to_speaking`
+  (1 failed, 2088 passed). The file passes alone (34 of 34) and the next full gate passed. It touches
+  none of this plan's files. (The rehearsal saw a different intermittent, in
+  `tests/slow/test_speaker_embedding_real_model.py`, which did not reappear.)
+- **Task 8:** run by Pipec on his non-dedicated laptop; smoke (48 streams, 0 errors, Ollama 0.34.4,
+  model digest `357c53fb659c` filled), run 1 (seed 57, 500 streams, 0 errors) and run 2 (seed 58,
+  320 streams, 0 errors). Readings and statuses in
+  [`docs/evals/0057-stream-protocol-diagnosis.md`](../../evals/0057-stream-protocol-diagnosis.md).
+  R-5 fired in run 2 and stays unresolved; `no_context` was confirmed, `no_person` was not.
 
 ## Closure
 

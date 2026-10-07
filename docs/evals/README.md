@@ -104,6 +104,21 @@ streaming report is
 counts and rates only, never model output or a transcript. The probes load the real
 Whisper (and Piper) models, so run them with the server stopped.
 
+## Streaming-protocol diagnosis — `just diagnose-stream`
+
+`scripts/diagnose_stream_protocol.py` (Plan 0057) streams the golden and public turns
+through the unchanged production generator under variants that each remove or move one
+factor (memory context, person, history, the contract's position), in a seeded shuffled
+order, and writes a counts-only report: failure shapes, an ablation read against a noise
+control, whether the verdict depends on how the tokens are split, timings, and whether
+Ollama streams a schema-constrained reply. It needs Ollama running and the server stopped;
+it measures the generator, not the microphone → server → audio path. The curated record is
+[`0057-stream-protocol-diagnosis.md`](0057-stream-protocol-diagnosis.md); the raw reports
+are [`0057-stream-diagnosis-smoke.md`](0057-stream-diagnosis-smoke.md) (instrument check),
+[`0057-stream-diagnosis-run1.md`](0057-stream-diagnosis-run1.md) (seed 57) and
+[`0057-stream-diagnosis-run2.md`](0057-stream-diagnosis-run2.md) (seed 58, confirmation).
+They hold counts, rates and closed shape names, never model output.
+
 ## Scoped owner grants acceptance (Plan 0051)
 
 [`0051-scoped-grant-acceptance.md`](0051-scoped-grant-acceptance.md) records the
