@@ -67,8 +67,19 @@ línea con el texto (`tag_same_line`), que quitar el bloque de memoria baja la t
 confirmada por una segunda semilla, no una causa), que una respuesta con esquema JSON llega de forma incremental
 al cliente y que el defecto de fragmentación no apareció en salida real (0 de 820) pero sigue fijado por un test.
 La regla de orden de ejecución saltó en la segunda corrida y queda sin resolver. Ver
-[el registro](../../evals/0057-stream-protocol-diagnosis.md). La reparación sigue siendo `Unplanned` y empieza por
-el defecto de fragmentación. El siguiente número libre es 0058.
+[el registro](../../evals/0057-stream-protocol-diagnosis.md). La reparación empieza por el defecto de
+fragmentación y está escrita como [Plan 0058](0058-stream-protocol-repair.md) (ver abajo).
+
+[0058 — reparación del protocolo de respuesta del streaming](0058-stream-protocol-repair.md) es un **borrador
+`QUEUED` escrito el 2026-10-07**, sin autorizar y con una revisión independiente del mismo día (aprobado con
+arreglos, ya aplicados): Pipec lo promueve (y confirma sus
+decisiones D-5 a D-8) antes de que nadie lo ejecute. Pipec eligió la reparación ese día: una gramática de la
+etiqueta `EMOTION:` tolerante (la etiqueta que comparte línea con el texto) **más** rescatar como texto plano,
+con la emoción `neutral`, una respuesta sin etiqueta, registrado en el
+[ADR 0017](../../adr/0017-streaming-reply-protocol.md) (`Proposed`), sin tocar el prompt. La Tarea 0 corre la
+tercera semilla del Plan 0057 sobre el código sin cambios (cierra la regla de orden R-5); la compuerta es una
+tasa de respaldo de `full` de 5 % o menos en turnos con contexto y públicos, en dos semillas, con 0 aceptaciones
+indebidas y 0 respuestas dependientes de la fragmentación. Es compuerta dura de CM-2. El siguiente número libre es 0059.
 
 [ADR-0015](../../adr/0015-owner-grant-scope-and-speaker-binding.md) (**Accepted**, 2026-09-25)
 liga el grant PIN a una operación (incumplía ADR-0009 hasta el Plan 0051) y, por etapas, a la
@@ -83,7 +94,7 @@ El cambio de contrato es aditivo (`scope` opcional en `POST /auth/owner/unlock`)
 migración. Pipec lo aceptó en hardware real ([registro](../../evals/0051-scoped-grant-acceptance.md)), con
 el caso del PIN que el Plan 0054 dejó sin correr; revocar la cara con un token administrativo (204) no se
 corrió. `NOW` quedó vacío hasta que Pipec promovió el Plan 0057 (diagnóstico, 2026-10-06); la reparación del
-streaming viene después. El siguiente número libre es 0058.
+streaming viene después. El siguiente número libre es 0059.
 
 [0053 — consented speaker runtime evidence](../completed/0053-consented-speaker-runtime-evidence.md)
 (PC-3B) **cerró el 2026-09-29** y ya vive en `completed/`: enrolamiento consentido, revocación que
