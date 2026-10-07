@@ -171,7 +171,7 @@ states what is ready.
    plan. New evidence may split or combine implementation plans, but it must not
    silently remove the row's product outcome.
 
-Rows 1–4, the PC-4 follow-ups, Plan 0050 and Plan 0056 are closed and `NOW` is empty. What each row still needs before
+Rows 1–4, the PC-4 follow-ups, Plan 0050, Plan 0056, Plan 0051 (CM-1's first plan) and Plan 0057 (the streaming-protocol diagnosis) are closed and `NOW` is empty. What each row still needs before
 it can become `NOW` (checked 2026-10-02):
 
 | Work | What is really missing |
