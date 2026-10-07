@@ -5,7 +5,7 @@
 > revised the same day after an independent review of this draft. **Promoted by Pipec
 > on 2026-10-06**, who confirmed decisions D-1 to D-7 exactly as written below, and
 > executed the same day from `feat/0057-stream-protocol-diagnosis` (see the execution
-> record at the end). The PR number and squash SHA are added after the merge.
+> record at the end). Merged as PR #166 (`a78e05a`) on 2026-10-07.
 >
 > **Queue position (Pipec, 2026-10-05):** after CM-1 (Plan 0051, closed 2026-10-06) and before CM-2. The
 > streaming repair that follows this diagnosis is a hard gate of CM-2, the first slice
