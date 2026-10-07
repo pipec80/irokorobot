@@ -7,6 +7,7 @@ from server.streaming_render import (
     StreamState,
     _consume_body,
     classify_stream_end,
+    llm_elapsed_ms,
 )
 
 
@@ -59,3 +60,13 @@ def test_the_end_of_the_stream_is_judged_in_one_place(
     buffer: str, pending: str | None, emotion: str | None, expected: StreamFallbackReason | None
 ) -> None:
     assert classify_stream_end(buffer, _state(pending=pending, emotion=emotion)) is expected
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "total_ms, stt_ms, tts_ms, expected", [(100, 30, 20, 50), (100, 0, 0, 100), (10, 30, 20, 0)]
+)
+def test_the_llm_time_is_what_is_left_after_stt_and_tts_and_never_negative(
+    total_ms: int, stt_ms: int, tts_ms: int, expected: int
+) -> None:
+    assert llm_elapsed_ms(total_ms, stt_ms, tts_ms) == expected

@@ -244,6 +244,11 @@ async def _finalize_model_output(buffer: str, state: StreamState) -> AsyncIterat
         yield await synthesize_sentence(tail, state)
 
 
+def llm_elapsed_ms(total_ms: int, stt_ms: int, tts_ms: int) -> int:
+    """Return the time not spent in STT or TTS, never negative (rounding can overshoot)."""
+    return max(0, total_ms - stt_ms - tts_ms)
+
+
 def _log_stream_metrics(state: StreamState, total_ms: int) -> None:
     """Log the bounded operational metrics line shared by every stream outcome."""
     logger.info(
@@ -280,7 +285,7 @@ def _done_event(
     if state.audio_chunks < 1:
         raise RuntimeError("Refusing to emit done before any audio chunk was spoken")
     total_ms = _elapsed_ms(request_start)
-    llm_ms = max(0, total_ms - stt_ms - state.tts_ms_total)
+    llm_ms = llm_elapsed_ms(total_ms, stt_ms, state.tts_ms_total)
     _log_stream_metrics(state, total_ms)
     done = StreamDoneEvent(
         stt_ms=stt_ms,

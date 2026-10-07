@@ -45,6 +45,7 @@ from server.streaming_render import (
     _log_stream_metrics,
     emit_fallback,
     error_event,
+    llm_elapsed_ms,
     synthesize_sentence,
 )
 from server.text_turn import (
@@ -229,7 +230,7 @@ async def stream_pipeline(
     _record_success(prepared, state, schedule_consolidation)
 
     total_ms = _elapsed_ms(request_start)
-    llm_ms = max(0, total_ms - stt_ms - state.tts_ms_total)
+    llm_ms = llm_elapsed_ms(total_ms, stt_ms, state.tts_ms_total)
     _log_pipeline_timing("stream.legacy_text_turn", stt_ms, llm_ms, state.tts_ms_total, total_ms)
     yield _done_event(stt_ms, request_start, state)
 

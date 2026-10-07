@@ -3,16 +3,18 @@
 llm.generate_response() returns a finished (text, emotion) tuple — there is
 no seam to emit per-sentence audio while the model is still generating. The
 JSON schema it forces via Ollama structured outputs ({"response", "emotion"})
-is not streameable either: Ollama withholds structured output until the full
-object is ready, defeating the point of streaming.
+is read whole, once the reply is complete. (Plan 0057 measured that such a
+reply does reach the client spread over time, so Ollama is not known to
+withhold it; this header no longer claims it does.)
 
-This module trades the JSON contract for a streaming-friendly one: the model
-is asked to prefix its plain-text answer with "EMOTION:<emotion>\\n" on its
-own first line, then answer normally. generate_response_stream() yields raw
-text deltas as they arrive; parse_streaming_emotion() extracts the emotion
-tag once the caller has buffered up to the first newline. Kept as a separate
-module (not added to llm.py) so llm.py stays under the file size limit and
-the non-streaming contract used by POST /transcribe is untouched.
+This module uses a plain-text contract instead (ADR 0017): the model is asked
+to prefix its answer with "EMOTION:<emotion>" and then answer normally.
+generate_response_stream() yields raw text deltas as they arrive;
+streaming_protocol.parse_streaming_emotion() decides how the reply starts once
+enough has been buffered, and tolerates a tag that shares its line with the
+text or no tag at all. Kept as a separate module (not added to llm.py) so
+llm.py stays under the file size limit and the non-streaming contract used by
+POST /transcribe is untouched.
 
 Streaming is local-only: it uses the configured Ollama model and yields its
 token deltas to the sentence-streaming pipeline.
@@ -156,8 +158,8 @@ async def generate_response_stream(
 
     Yields:
         Raw text deltas as Ollama generates them. The first delta(s) carry
-        the ``EMOTION:xxx\\n`` tag inline — use ``parse_streaming_emotion``
-        once enough has been buffered to see the first newline.
+        the ``EMOTION:xxx`` tag inline — decide how the reply starts with
+        ``streaming_protocol.parse_streaming_emotion`` on the buffered text.
 
     Raises:
         ValueError: If text is empty.
