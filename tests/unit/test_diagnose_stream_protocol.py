@@ -369,7 +369,7 @@ def test_the_real_suite_expands_to_the_units_the_plan_promises() -> None:
 
 @pytest.mark.unit
 async def test_the_whole_pipeline_runs_on_the_real_suite_with_a_fake_model() -> None:
-    replies = itertools.cycle(["EMOTION:joy\nHola. Bien.", "sin etiqueta", "EMOTION:joy\n{x}"])
+    replies = itertools.cycle(["Hola. Bien.", "sin etiqueta", '{"x": 1}'])
 
     def generate_for(_variant: StreamVariant) -> Callable[..., AsyncIterator[str]]:
         async def generate(

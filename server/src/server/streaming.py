@@ -32,18 +32,19 @@ from server.schemas_streaming import (
     StreamEmotionEvent,
     StreamTextHeardEvent,
 )
+from server.streaming_protocol import StreamProtocolError
 from server.streaming_render import (
     StreamErrorCode,
     StreamFallbackReason,
     StreamOutcome,
     StreamState,
     _consume_body,
-    _consume_preamble,
     _done_event,
     _finalize_model_output,
     _log_stream_metrics,
     emit_fallback,
     error_event,
+    llm_elapsed_ms,
     synthesize_sentence,
 )
 from server.text_turn import (
@@ -51,12 +52,13 @@ from server.text_turn import (
     PreparedTextTurn,
     record_text_turn,
 )
+from server.user_emotion import classify_user_emotion
 
 logger = logging.getLogger(__name__)
 
 
 async def _text_deltas(client: httpx.AsyncClient, inputs: PreparedTextTurn) -> AsyncIterator[str]:
-    """Yield "EMOTION:xxx\\n"-tagged text deltas from local Ollama, token by token."""
+    """Yield plain-text deltas from local Ollama, token by token."""
     async for delta in llm_streaming.generate_response_stream(
         client,
         inputs.message,
@@ -73,24 +75,22 @@ async def _text_deltas(client: httpx.AsyncClient, inputs: PreparedTextTurn) -> A
 async def _consume_llm_stream(
     client: httpx.AsyncClient, inputs: PreparedTextTurn, state: StreamState
 ) -> AsyncIterator[str]:
-    """Consume LLM deltas, emit emotion once its body validates, synthesize sentences.
+    """Consume LLM deltas, emit emotion once the reply validates, synthesize sentences.
 
-    Emotion is buffered in ``state.pending_emotion`` and only promoted once
-    body content passes ``validate_streaming_body_start`` (see
-    ``streaming_render._consume_body``). A protocol violation mid-stream
-    converts into the same audible fallback as a provider failure.
+    The reply is plain text. The turn's emotion is the user's, decided from their message
+    before the model answers (``classify_user_emotion``, ADR 0018), buffered in
+    ``state.pending_emotion`` and only promoted once the reply passes the body guards (see
+    ``streaming_render._consume_body``). A protocol violation mid-stream converts into the
+    same audible fallback as a provider failure.
     """
+    state.pending_emotion = classify_user_emotion(inputs.message)
     buffer = ""
     async for delta in _text_deltas(client, inputs):
         buffer += delta
-        if state.pending_emotion is None and state.emotion is None:
-            buffer, consumed = _consume_preamble(buffer, state)
-            if not consumed:
-                continue
         emotion_before = state.emotion
         try:
             buffer, sentences = _consume_body(buffer, state)
-        except LLMError:
+        except StreamProtocolError:
             state.outcome = StreamOutcome.PROTOCOL_FALLBACK
             async for line in emit_fallback(state, reason=StreamFallbackReason.INVALID_PROTOCOL):
                 yield line
@@ -186,8 +186,8 @@ async def stream_pipeline(
     httpx's ``aiter_lines()`` — no extra dependency.
 
     Event order: text_heard -> emotion -> audio (one per sentence) -> done.
-    An LLM failure or any invalid model output (hybrid JSON, a truncated
-    tag, an empty stream, ...) speaks the fallback phrase instead of
+    An LLM failure or any invalid model output (hybrid JSON, a protocol tag,
+    an empty stream, ...) speaks the fallback phrase instead of
     aborting — never a silent success (P0-C6). A TTS failure logs the same
     metrics `done` would have and re-raises without emitting `done`.
 
@@ -225,7 +225,7 @@ async def stream_pipeline(
     _record_success(prepared, state, schedule_consolidation)
 
     total_ms = _elapsed_ms(request_start)
-    llm_ms = max(0, total_ms - stt_ms - state.tts_ms_total)
+    llm_ms = llm_elapsed_ms(total_ms, stt_ms, state.tts_ms_total)
     _log_pipeline_timing("stream.legacy_text_turn", stt_ms, llm_ms, state.tts_ms_total, total_ms)
     yield _done_event(stt_ms, request_start, state)
 

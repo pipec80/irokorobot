@@ -50,12 +50,22 @@ def test_every_shape_is_named_exactly(text: str, shape: FailureShape) -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("text, shape", _CASES)
-def test_valid_shape_agrees_with_the_whole_text_protocol(text: str, shape: FailureShape) -> None:
-    """The shape table and the protocol never disagree about speakable text."""
-    whole = classify_deltas([text] if text else [])
+def test_the_shapes_keep_plan_0057s_strict_reading_of_the_tag() -> None:
+    """Plan 0059 stopped asking for the tag, but the shape names must not move.
 
-    assert (shape is FailureShape.VALID) == (whole is StreamOutcome.VALID)
+    ``VALID`` still means "a well-formed ``EMOTION:<x>`` line followed by plain text" and
+    ``NO_TAG`` still means "no tag at all": they now name what a model wrote although it was
+    not asked to, so they no longer say whether the protocol speaks the reply.
+    """
+    tagged = "EMOTION:joy\nHola, ¿cómo estás?"
+    plain = "Hola sin etiqueta"
+
+    assert classify_failure_shape(tagged) is FailureShape.VALID
+    assert (
+        classify_deltas([tagged]) is StreamOutcome.INVALID_PROTOCOL
+    )  # a tag at the start falls back
+    assert classify_failure_shape(plain) is FailureShape.NO_TAG
+    assert classify_deltas([plain]) is StreamOutcome.VALID  # plain text is the protocol now
 
 
 @pytest.mark.unit

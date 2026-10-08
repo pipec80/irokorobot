@@ -82,40 +82,51 @@ async def _observe(generate: _FakeStream, unit: DiagnosisUnit | None = None) -> 
 
 @pytest.mark.unit
 async def test_a_valid_reply_starts_speaking_at_its_first_closed_sentence() -> None:
-    obs = await _observe(_FakeStream("EMOTION:joy\nHola. ", "¿Cómo estás?"))
+    obs = await _observe(_FakeStream("Hola. ", "¿Cómo estás?"))
 
     assert obs.outcome is StreamOutcome.VALID
-    assert obs.shape is FailureShape.VALID
+    # The shape keeps Plan 0057's strict reading: it names what the model wrote (no tag).
+    assert obs.shape is FailureShape.NO_TAG
     assert obs.whole_text_outcome is StreamOutcome.VALID
     assert obs.fragmentation_consistent is True
     assert obs.first_delta_ms == 10
     assert obs.speech_start_ms == 10  # the first delta already closes "Hola."
     assert obs.end_ms == 30
     assert obs.delta_count == 2
-    assert obs.reply_chars == len("EMOTION:joy\nHola. ¿Cómo estás?")
+    assert obs.reply_chars == len("Hola. ¿Cómo estás?")
     assert not obs.fell_back
     assert not obs.undue_accept
 
 
 @pytest.mark.unit
-async def test_a_prefix_split_across_deltas_is_an_undue_accept() -> None:
-    """Production speaks what the whole text would reject: the 0057 fragmentation defect."""
-    obs = await _observe(_FakeStream("EMOTION:joy\nEMO", "TION:anger\nhola"))
+async def test_a_reply_without_a_closed_sentence_starts_speaking_when_the_stream_ends() -> None:
+    obs = await _observe(_FakeStream("Hola ", "sin punto"))
 
     assert obs.outcome is StreamOutcome.VALID
+    assert obs.speech_start_ms == obs.end_ms == 30
+    assert obs.first_delta_ms == 10
+
+
+@pytest.mark.unit
+async def test_a_prefix_split_across_deltas_is_no_longer_an_undue_accept() -> None:
+    """The 0057 fragmentation defect is closed: the split tag is judged like the whole text."""
+    obs = await _observe(_FakeStream("Hola. EMO", "TION:joy. Más."))
+
+    assert obs.outcome is StreamOutcome.INVALID_PROTOCOL
     assert obs.whole_text_outcome is StreamOutcome.INVALID_PROTOCOL
-    assert obs.fragmentation_consistent is False
-    assert obs.undue_accept
+    assert obs.fragmentation_consistent is True
+    assert obs.fell_back
+    assert not obs.undue_accept
 
 
 @pytest.mark.unit
 async def test_an_invalid_body_start_decides_at_once_and_closes_the_stream() -> None:
-    generate = _FakeStream("EMOTION:joy\n{", "never consumed")
+    generate = _FakeStream("{", "never consumed")
 
     obs = await _observe(generate)
 
     assert obs.outcome is StreamOutcome.INVALID_PROTOCOL
-    assert obs.shape is FailureShape.BODY_JSON
+    assert obs.shape is FailureShape.JSON_START
     assert obs.fell_back
     assert obs.speech_start_ms == obs.first_delta_ms == 10
     assert obs.delta_count == 1
@@ -123,13 +134,16 @@ async def test_an_invalid_body_start_decides_at_once_and_closes_the_stream() -> 
 
 
 @pytest.mark.unit
-async def test_a_reply_without_the_tag_waits_for_the_end_of_the_stream() -> None:
-    obs = await _observe(_FakeStream("Hola ", "sin etiqueta."))
+async def test_a_reply_that_starts_with_a_tag_falls_back_at_once() -> None:
+    """Decision D-6: a tag the model writes anyway at the start is refused, not rescued."""
+    generate = _FakeStream("EMOTION:joy\n", "Hola.", "never consumed")
+
+    obs = await _observe(generate)
 
     assert obs.outcome is StreamOutcome.INVALID_PROTOCOL
-    assert obs.shape is FailureShape.NO_TAG
-    assert obs.speech_start_ms == obs.end_ms == 30
-    assert obs.first_delta_ms == 10
+    assert obs.fell_back
+    assert obs.shape is FailureShape.TAG_ONLY
+    assert (generate.closed, generate.resumed) == (True, False)
 
 
 @pytest.mark.unit
@@ -144,7 +158,7 @@ async def test_an_empty_stream_is_an_empty_observation() -> None:
 
 @pytest.mark.unit
 async def test_a_provider_error_is_an_error_not_a_protocol_verdict() -> None:
-    obs = await _observe(_FakeStream("EMOTION:joy\nHola", fail=True))
+    obs = await _observe(_FakeStream("Hola", fail=True))
 
     assert obs.outcome is StreamOutcome.ERROR
     assert obs.shape is None
@@ -156,7 +170,7 @@ async def test_a_provider_error_is_an_error_not_a_protocol_verdict() -> None:
 
 @pytest.mark.unit
 async def test_an_observation_never_holds_the_reply_text() -> None:
-    obs = await _observe(_FakeStream(f"EMOTION:joy\n{_CANARY}. ", f"{_CANARY}."))
+    obs = await _observe(_FakeStream(f"{_CANARY}. ", f"{_CANARY}."))
 
     assert _CANARY not in repr(obs)
     text_fields = [
@@ -169,7 +183,7 @@ async def test_an_observation_never_holds_the_reply_text() -> None:
 
 @pytest.mark.unit
 async def test_the_diagnosis_runs_every_unit_and_keeps_provider_errors_apart() -> None:
-    replies: list[str | Exception] = ["EMOTION:joy\nHola.", LLMError("boom"), "sin etiqueta"]
+    replies: list[str | Exception] = ["Hola.", LLMError("boom"), '{"x": 1}']
     queue = iter(replies)
 
     def generate_for(_variant: StreamVariant) -> StreamGenerator:
@@ -207,7 +221,7 @@ class _BrokenClose:
 
     @staticmethod
     async def _deltas() -> AsyncIterator[str]:
-        yield "EMOTION:joy\nHola. Bien."
+        yield "Hola. Bien."
 
     async def aclose(self) -> None:
         raise RuntimeError("close failed")

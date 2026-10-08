@@ -73,12 +73,12 @@ def test_stream_empty_audio_returns_422(client: TestClient) -> None:
 
 
 @pytest.mark.integration
-def test_stream_plain_text_uses_audible_protocol_fallback(
+def test_stream_plain_text_is_spoken_with_the_users_emotion(
     client: TestClient,
     silence_wav_bytes: bytes,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Plain text with no EMOTION tag at all is invalid output — spoken as fallback."""
+    """Plain text is the whole protocol (ADR 0018): spoken as is, no fallback phrase."""
 
     async def fake_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
         for delta in ("Hola. ", "¿Cómo estás?"):
@@ -89,8 +89,36 @@ def test_stream_plain_text_uses_audible_protocol_fallback(
     events = _parse_ndjson(response.text)
 
     assert response.status_code == 200
-    assert [event["type"] for event in events] == ["text_heard", "emotion", "audio", "done"]
+    assert [event["type"] for event in events] == [
+        "text_heard",
+        "emotion",
+        "audio",
+        "audio",
+        "done",
+    ]
     assert events[0] == {"type": "text_heard", "value": "hola robot"}
+    assert events[1] == {"type": "emotion", "value": "neutral"}  # nothing explicit in "hola robot"
+    assert [events[2]["text"], events[3]["text"]] == ["Hola.", "¿Cómo estás?"]
+
+
+@pytest.mark.integration
+def test_stream_tagged_reply_uses_audible_protocol_fallback(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A reply that starts with a tag anyway is not spoken: the fixed phrase is (D-6)."""
+
+    async def fake_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
+        for delta in ("EMOTION:joy\n", "Hola. ¿Cómo estás?"):
+            yield delta
+
+    monkeypatch.setattr(llm_streaming, "generate_response_stream", fake_stream)
+    response = _post_stream(client, silence_wav_bytes)
+    events = _parse_ndjson(response.text)
+
+    assert response.status_code == 200
+    assert [event["type"] for event in events] == ["text_heard", "emotion", "audio", "done"]
     assert events[1] == {"type": "emotion", "value": "neutral"}
     assert events[2]["text"] == settings.llm_fallback_phrase
     assert events[-1]["type"] == "done"

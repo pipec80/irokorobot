@@ -1,11 +1,21 @@
 # 0058 — Streaming reply protocol repair
 
-> **Status:** `Ready` — written 2026-10-07 after Plan 0057 closed and after a read-only audit
-> of the streaming path (below), independently reviewed the same day (approved with fixes; every
-> fix applied), and **promoted by Pipec on 2026-10-07**, who fixed decisions D-1 to D-4 in the
-> planning session and confirmed D-5 to D-8 exactly as written below. It is the `NOW` item. The
-> protocol it implements is [ADR 0017](../../adr/0017-streaming-reply-protocol.md), `Proposed` until
-> Task 6 passes.
+> **Status:** `Closed without meeting its gate (2026-10-07)` and **replaced by
+> [Plan 0059](0059-user-emotion-apart.md) (2026-10-08).** Tasks 0 to 5 were executed on the branch
+> `feat/0058-stream-protocol-repair` (never merged to `main`); Task 6 measured 35.00 % of context
+> turns falling back in seed 57 (21 of 60, gate 5 %), so by this plan's own rule it stopped there:
+> Task 7 was not done, [ADR 0017](../../adr/0017-streaming-reply-protocol.md) was never `Accepted`
+> (it is `Superseded` by [ADR 0018](../../adr/0018-user-emotion-decided-apart.md)). The evidence is
+> `docs/evals/0058-stream-protocol-repair.md` (a docs-only PR). Plan 0059 re-implemented the guards
+> of Tasks 1 and 2 on a design with no tag; the tolerant grammar of Task 3 was dropped. The text
+> below is the plan as it was written and promoted on 2026-10-07, kept as the record of what was
+> tried.
+>
+> *Original status:* `Ready` — written 2026-10-07 after Plan 0057 closed and after a read-only
+> audit of the streaming path (below), independently reviewed the same day (approved with fixes;
+> every fix applied), and **promoted by Pipec on 2026-10-07**, who fixed decisions D-1 to D-4 in
+> the planning session and confirmed D-5 to D-8 exactly as written below. It was the `NOW` item.
+> The protocol it implemented was [ADR 0017](../../adr/0017-streaming-reply-protocol.md).
 >
 > **Queue position (Pipec, 2026-10-05):** after CM-1 (Plan 0051, closed) and the diagnosis
 > (Plan 0057, closed); a hard gate of CM-2, the first slice that puts memory or history in the

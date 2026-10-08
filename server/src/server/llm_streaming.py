@@ -1,16 +1,19 @@
 """Ollama-only streaming variant of llm.generate_response (R3).
 
 llm.generate_response() returns a finished (text, emotion) tuple — there is
-no seam to emit per-sentence audio while the model is still generating. The
-JSON schema it forces via Ollama structured outputs ({"response", "emotion"})
-is not streameable either: Ollama withholds structured output until the full
-object is ready, defeating the point of streaming.
+no seam to emit per-sentence audio while the model is still generating, and
+its JSON contract ({"response", "emotion"}) has to be parsed whole before
+anything can be spoken. (Plan 0057 measured that a schema-constrained reply
+does reach the client spread over time, so this is not a claim that Ollama
+withholds structured output; it is a choice not to parse an incomplete
+object.)
 
-This module trades the JSON contract for a streaming-friendly one: the model
-is asked to prefix its plain-text answer with "EMOTION:<emotion>\\n" on its
-own first line, then answer normally. generate_response_stream() yields raw
-text deltas as they arrive; parse_streaming_emotion() extracts the emotion
-tag once the caller has buffered up to the first newline. Kept as a separate
+This module uses a plain-text contract instead: the model is asked for plain
+text only, with no JSON, no label and no tag. generate_response_stream()
+yields raw text deltas as they arrive. The emotion of the turn is not the
+model's to write: it is decided apart from the reply, as a function of what
+the user said (server.user_emotion, ADR 0018), and the orchestration in
+streaming.py promotes it to the single `emotion` event. Kept as a separate
 module (not added to llm.py) so llm.py stays under the file size limit and
 the non-streaming contract used by POST /transcribe is untouched.
 
@@ -26,34 +29,24 @@ import httpx
 from server.characters import build_system_prompt, get_character
 from server.cognition.identity import ActivePersonContext
 from server.exceptions import LLMError
-from server.llm import VALID_EMOTIONS
 from server.llm_transport import ollama_chat_stream
 from server.onboarding import OnboardingSlot
 from server.schemas import ConversationTurn, MemoryContext
 from server.settings import settings
 
-# Re-exported temporarily so existing call sites/tests can keep resolving
-# the streaming protocol from this module. Task 3 moves the orchestration
-# call-sites in streaming.py to import from streaming_protocol directly.
-from server.streaming_protocol import (  # noqa: F401
-    parse_streaming_emotion,
-    validate_streaming_body_start,
-)
-
 # Sole owner of the streaming /transcribe/stream output contract.
 # build_system_prompt is format-neutral (identity/behavior only) — this is
-# the ONLY place the streaming EMOTION-tag contract is appended, so the
+# the ONLY place the streaming plain-text contract is appended, so the
 # model never sees it mixed with the classic JSON contract from llm.py.
+# It names no label or tag on purpose: the emotion is decided apart (ADR 0018).
 _STREAMING_OUTPUT_CONTRACT = (
-    "\n\nResponde en texto plano (sin JSON). La primera línea debe ser "
-    "exactamente 'EMOTION:<emocion>' donde <emocion> es una de: "
-    f"{', '.join(sorted(VALID_EMOTIONS))}. Después de esa línea, escribí tu "
-    "respuesta normal."
+    "\n\nResponde únicamente en texto plano: sin JSON, sin etiquetas, sin listas "
+    "ni formato. Escribe solo lo que dirías en voz alta."
 )
 
 
 def _streaming_system_prompt(base_prompt: str) -> str:
-    """Append the streaming emotion-tag output contract to a format-neutral prompt.
+    """Append the streaming plain-text output contract to a format-neutral prompt.
 
     Args:
         base_prompt: Format-neutral prompt built by ``build_system_prompt``.
@@ -163,9 +156,8 @@ async def generate_response_stream(
         active_person: Internally resolved person context for this turn, if any.
 
     Yields:
-        Raw text deltas as Ollama generates them. The first delta(s) carry
-        the ``EMOTION:xxx\\n`` tag inline — use ``parse_streaming_emotion``
-        once enough has been buffered to see the first newline.
+        Raw plain-text deltas as Ollama generates them. The reply carries no
+        emotion label: the caller decides the turn's emotion apart from it.
 
     Raises:
         ValueError: If text is empty.

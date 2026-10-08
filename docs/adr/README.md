@@ -24,6 +24,7 @@ supersedes it and update the old one's status.
 | [0014](0014-orthogonal-social-and-responsibility-profiles.md) | Keep social and responsibility profiles orthogonal | Accepted |
 | [0015](0015-owner-grant-scope-and-speaker-binding.md) | Bind the owner grant to a named operation and to speaker evidence | Accepted; decision 2 refined by [0016](0016-face-and-voice-identity-fusion.md) |
 | [0016](0016-face-and-voice-identity-fusion.md) | Identify the owner by face; require more assurance for reserved data | Accepted |
-| [0017](0017-streaming-reply-protocol.md) | Speak what the model means: a tolerant, bounded streaming reply protocol | Proposed; Accepted when Plan 0058's measurement passes |
+| [0017](0017-streaming-reply-protocol.md) | Speak what the model means: a tolerant, bounded streaming reply protocol | Superseded by [0018](0018-user-emotion-decided-apart.md); never Accepted |
+| [0018](0018-user-emotion-decided-apart.md) | Decide the user's emotion apart from the streamed reply | Accepted (Plan 0059's measurement met its gate) |
 
 New ADRs start from [`0000-adr-template.md`](0000-adr-template.md).
