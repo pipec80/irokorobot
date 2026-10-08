@@ -69,10 +69,13 @@ is added.
 
 The field and the event keep the name `emotion`. Exactly one `emotion` event precedes the first
 `audio` event (ADR 0012); `done` still follows audio only. The emotion is fixed at the start of
-the turn and promoted just before the first audio, and only after the sentence batch that
-triggers it has passed validation, so a rejected sentence promotes no emotion and the fallback
-can always send that one event. The robot, the schemas, the settings and the dependencies are
-untouched.
+the turn and sent with the first content of the reply that passes the start guards, and only if
+every sentence closed in that same step passes the tag guard. If a later sentence is rejected,
+the fallback phrase therefore follows an `emotion` event that already carries the user's emotion;
+if the first content itself is rejected, nothing was promoted and the fallback sends `neutral`.
+The *value* of the single event on a fallback can thus depend on how the text was split into
+deltas; its *count and position* never do, and the fallback can always send it. The robot, the
+schemas, the settings and the dependencies are untouched.
 
 ### 4. A tag the model writes anyway is never spoken
 
@@ -80,7 +83,12 @@ A model may still write a tag by habit or imitation of its history. Two rules co
 
 - **At any position:** no spoken sentence, and no unfinished tail, that mentions `EMOTION`
   followed by a colon is spoken, in any letter case, with up to three symbols between the word and
-  the colon (`**EMOTION**:`) and either colon width; `demotion:` does not count.
+  the colon (`**EMOTION**:`, `_EMOTION_:`), after Unicode NFKC normalisation and dropping
+  invisible format characters (so a fullwidth colon or fullwidth letters do not hide it);
+  `demotion:`, `1EMOTION:` and `emotion_name:` do not count. **Known limits**, which need output
+  no model is asked for: more than three symbols between the word and the colon, and a sentence
+  terminator between them (`EMOTION.:`; the sentence splitter cuts there first) are not caught.
+  Sentences already spoken before a rejection stay spoken.
 - **At the start:** a reply that **starts** with a tag, with JSON (`{` or `[`) or with a code
   fence is refused: the fixed fallback phrase is spoken, with no retry. This is conservative on
   purpose; the share of such replies is measured, and a later plan may rescue them if it matters.

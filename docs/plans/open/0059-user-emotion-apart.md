@@ -190,7 +190,69 @@ unless Task 6 met its gate. The wire, the schema, the robot and the settings are
 
 ## Execution record
 
-*(Filled in during execution.)*
+Branch `feat/0059-user-emotion-apart`, from `main` at `eaabbe1`. One plain branch, no worktree.
+Pipec authorised subagents (Sonnet) for this plan: one for the classifier, one for ADR 0018, one
+for the core streaming change; none committed, the executor did. Two further read-only agents
+audited the finished branch (see *Audit*).
+
+| Part | Commit | RED observed (reason) | GREEN |
+|---|---|---|---|
+| Plan + skeleton | `6a11fac` | n/a | n/a |
+| ADR 0018, ADR index, ADR 0017 status | `74d4f2b` | n/a (docs) | `ruff`, reserved terms clean |
+| Task 2 classifier | `e02c49d` | 34 failing (`'neutral' == '<label>'`: the skeleton never fires) | 115 |
+| Task 2 audit fix | `2edb49d` | 4 failing: three false positives found by the executor's adversarial audit ("quiero llorar de risa" read as sadness, "qué pena tengo de preguntarte" read as sadness, "dime qué rabia da esto" read as anger) | 118 |
+| Tasks 1, 3, 4 and the instrument adaptation of 5 | `9739ea7` | 33 failing + 53 errors (the fixture patches `streaming.classify_user_emotion`, absent) + 2 collection `ImportError` | `just gate` 2289 passed; mypy, pyright, ruff, `check_reserved_terms`, `pip-audit` clean |
+
+Checks by the executor beyond the tests: 20 000 random replies cut at random points give the same
+verdict (speak or fall back) as the whole text, 0 mismatches; a 300 KB utterance classifies in
+about 200 ms; the OpenAPI is identical (`test_api_contract`, 9 passed); `robot/` and
+`.env.example` untouched.
+
+### Rulings
+
+- **R-1.** The plan said "cherry-pick Tasks 1, 2, 4 and 5 of Plan 0058". That was wrong:
+  0058's Task 4 counted *tolerated* tags (no meaning once no tag is requested) and its Tasks 1 and
+  2 sit on the tag-start grammar that this plan removes. They were re-implemented on the
+  plain-text design, using the abandoned branch only as a reference.
+- **R-2.** Five files outside *Permitted files* were touched, all trivially:
+  `server/src/server/llm.py` (a stale comment about the tag protocol) and four tests that fed
+  `EMOTION:joy` deltas into fake replies (`test_diagnose_stream_protocol.py`,
+  `test_stream_diagnosis_variants.py`, `tests/integration/test_conversation_text_log.py`,
+  `test_sensitive_logging.py`). They are accepted as part of this plan.
+- **R-3.** The core commit groups Tasks 1, 3, 4 and the instrument adaptation (D-8).
+
+### Audit (two read-only agents on the finished branch, plus the executor)
+
+No Critical finding: in 2067 targeted cases and 19 000 random delta sequences through the real
+pipeline there was never zero or a second `emotion` event, audio before `emotion`, a stream
+without audio or terminal event, or a recorded fallback; the evaluator and production agreed in
+every case. Findings, all to be fixed with a test seen RED first **after** Pipec's measurements
+of `9739ea7` finish (so that the measured code does not change under the run):
+
+| # | Severity | Finding | Fix |
+|---|---|---|---|
+| A-1 | Medium (proved) | A tag wrapped in underscores (`_EMOTION_: joy`, `EMOTION_:`, and a reply that *starts* `_EMOTION:joy_`) is spoken, recorded and counted VALID: `_` is a word character for the regex. Contradicts D-6. | `(?<![^\W_])emotion[\W_]{0,3}...` and a start check that strips leading `_*`. |
+| A-2 | Important (test gap, proved by mutation) | Nothing pins the `emotion` event emitted at the end of a stream that ends on an undecided prefix (`E`, a backtick). | Integration tests for `["E"]` and `["`"]`. |
+| A-3 | Minor | Emotion is promoted at the first non-blank content, not "just before the first audio after a validated batch": ADR 0018 §3, the `_consume_body` docstring and a test comment say otherwise. The wire is valid; the *value* on a fallback depends on how tokens split. | Reword the three texts. |
+| A-4 | Minor | Tag guard bypasses: four or more symbols between `EMOTION` and the colon, fullwidth Latin letters, zero-width characters, a sentence terminator between them (`EMOTION.: x`, the splitter cuts first). | NFKC and drop format characters before matching; document the rest as limits. |
+| A-5 | Minor | The classifier reads quoted or requested text as the user's feeling ("Traduce estoy triste al inglés", "Repite después de mí estoy furioso", "Mi madre piensa que estoy enojado", "Traduce: me alegra verte", "tengo ganas de llorar de la risa"); the neutral set was tuned in-sample. | More blockers (`traduce`, `repite`, `di`, `diga`, `llame`, `lee`, `cita`, `piensa`, `cree`, `opina`), `:` no longer splits clauses, `de la risa`; the audit's phrases join the neutral set. |
+| A-6 | Minor | Classifier time is quadratic in the number of matches (100 KB of `no estoy triste ` took 12.5 s); not reachable today (STT is capped at 30 s, `MAX_TURN_MESSAGE_CHARS` is 4000). | Cap the text it reads. |
+| A-7 | Minor, latent | `_consume_body` sets `state.emotion = None` when `pending_emotion` is `None`. Unreachable through the pipeline. | Raise `RuntimeError`. |
+| A-8 | Minor | `text_turn.record_text_turn` docstring still says "Emotion detected during generation". | Reword (one file outside *Permitted files*, ruling R-2). |
+| A-9 | Decision kept | A stream cut inside a forbidden prefix (`E`, a lone backtick) is spoken and recorded, as ADR 0018 §4 says. | Stays; listed under *Known limits*. |
+| A-10 | Accepted | `llm_elapsed_ms` is a drive-by extraction from the audit of Plan 0058 (F-7), not a task of this plan (ruling R-4). | None. |
+
+### Known limits and what is left undone
+
+- A fence or JSON in the **middle** of a reply is still spoken (non-goal).
+- A reply that **starts** with a tag still falls back (D-6); how often is reported by Task 6.
+- The classifier is silent for most turns (precision-first); it does not read sarcasm or
+  context ("estoy feliz porque murió un perro" is read as joy: the user said it).
+- `scripts/stream_diagnosis_report.py` keeps prose about "the `llm_streaming.py` claim", which the
+  new header no longer makes (harmless; to clean up).
+- The robot's facial *expression* is not designed (name `expression` reserved by ADR 0018).
+- No end-to-end rate of a spoken turn is measured (the instrument runs the generator only).
+- Hardware acceptance (completion criterion 6) is Pipec's and is not done yet.
 
 ## Closure
 
