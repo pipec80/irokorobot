@@ -41,8 +41,9 @@ _EMOTION_RULES: dict[str, tuple[str, ...]] = {
         ),
         r"\bme siento (?:muy |tan )?(?:solo|sola)\b",
         r"\bme (?:entristece|deprime|da (?:mucha )?tristeza|pone (?:muy )?triste)\b",
-        r"\bque (?:tristeza|pena|lastima|desgracia)\b",
-        r"\b(?:tengo ganas de|quiero) llorar\b",
+        r"\bque (?:tristeza|lastima|desgracia)\b",
+        r"\bque pena\b(?! (?:tengo|me da|da)\b)",  # "que pena tengo de..." is embarrassment
+        r"\b(?:tengo ganas de|quiero) llorar\b(?! de (?:risa|alegria|emocion|felicidad)\b)",
     ),
     "surprise": (
         r"\bno (?:lo )?puedo creer(?:lo)?\b(?! en\b)",
@@ -62,6 +63,7 @@ _COMPILED_RULES = tuple(
 _BLOCKING_WORDS = frozenset(
     {"no", "nunca", "jamas", "tampoco", "ni", "sin", "si", "cuando", "aunque", "quizas", "quiza"}
     | {"ojala", "dice", "dijo", "dicen", "dijeron", "decia", "afirma", "cuenta"}
+    | {"dime", "escribe", "inventa", "pon"}  # requests to produce text, not a statement
 )
 _BLOCKING_WINDOW = 3  # words looked at before a match
 

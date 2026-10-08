@@ -84,6 +84,9 @@ NEUTRAL: tuple[str, ...] = (
     "Estoy cansado de caminar",
     "Estoy listo para empezar",
     "No puedo creer en los horóscopos",
+    "Quiero llorar de risa con ese chiste",
+    "Qué pena tengo de preguntarte esto",
+    "Dime qué rabia da esto, es una frase hecha",
     "",
     "   ",
 )
