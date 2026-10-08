@@ -1,8 +1,6 @@
 # 0017 — Speak what the model means: a tolerant, bounded streaming reply protocol
 
-- **Status:** Proposed (2026-10-07) — becomes Accepted when the measurement of
-  [Plan 0058](../plans/open/0058-stream-protocol-repair.md) meets its gate (Task 6); until then
-  nothing in `server/src` follows it
+- **Status:** Superseded by [ADR 0018](0018-user-emotion-decided-apart.md) (2026-10-08) — never Accepted; Plan 0058 did not meet its gate
 - **Date:** 2026-10-07
 - **Builds on:** [ADR 0004](0004-local-first-cognitive-policy.md),
   [ADR 0012](0012-line-delimited-stream-terminal-events.md)
