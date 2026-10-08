@@ -27,6 +27,7 @@ from server.routers import transcribe as transcribe_module
 from server.schemas import ConversationTurn
 from server.settings import settings
 from server.text_turn import PreparedTextTurn
+from server.user_emotion import classify_user_emotion
 
 from server import llm, llm_streaming, pipeline, streaming, stt, tts
 
@@ -60,14 +61,23 @@ def _manual_active_person() -> ActivePersonContext:
     )
 
 
+_USER_EMOTION = "joy"  # what the stubbed classifier decides for every turn unless a test says so
+_FENCE = "`" * 3  # built, not written: this file also lives inside a Markdown code fence
+
+
 @pytest.fixture(autouse=True)
 def _mock_stt_and_tts(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Default: successful STT/TTS with canned answers; LLM set per test."""
+    """Default: successful STT/TTS with canned answers; LLM set per test.
+
+    The streamed reply is plain text (ADR 0018); the emotion event comes from the user's
+    message, so the classifier is pinned to a non-neutral value to make the wire observable.
+    """
     monkeypatch.setattr(stt, "transcribe", AsyncMock(return_value="hola robot"))
     monkeypatch.setattr(tts, "synthesize", AsyncMock(return_value=("QQ==", 10)))
+    monkeypatch.setattr(streaming, "classify_user_emotion", lambda _text: _USER_EMOTION)
 
     async def local_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
-        yield "EMOTION:joy\nHola. ¿Cómo estás?"
+        yield "Hola. ¿Cómo estás?"
 
     monkeypatch.setattr(llm_streaming, "generate_response_stream", local_stream)
 
@@ -126,6 +136,46 @@ def test_stream_happy_path_emits_sentence_audio(
         duration = events[-1][field]
         assert isinstance(duration, (int, float))
         assert duration >= 0
+
+
+@pytest.mark.integration
+def test_stream_emits_one_emotion_before_the_first_audio_from_the_users_message(
+    client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ADR 0018: the emotion is the user's, decided from their words, never from the reply."""
+    seen: list[str] = []
+
+    def classify(text: str) -> str:
+        seen.append(text)
+        return "sadness"
+
+    monkeypatch.setattr(streaming, "classify_user_emotion", classify)
+
+    events = _parse_ndjson(_post_stream(client, silence_wav_bytes).text)
+
+    assert seen == ["hola robot"]
+    kinds = [event["type"] for event in events]
+    assert kinds == ["text_heard", "emotion", "audio", "audio", "done"]
+    assert events[1] == {"type": "emotion", "value": "sadness"}
+
+
+@pytest.mark.integration
+def test_stream_real_classifier_decides_an_explicit_feeling(
+    client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With the real classifier an explicit statement of a feeling reaches the wire."""
+    monkeypatch.setattr(streaming, "classify_user_emotion", classify_user_emotion)
+    monkeypatch.setattr(stt, "transcribe", AsyncMock(return_value="Estoy triste."))
+
+    async def local_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
+        yield "Lo siento mucho."
+
+    monkeypatch.setattr(llm_streaming, "generate_response_stream", local_stream)
+
+    events = _parse_ndjson(_post_stream(client, silence_wav_bytes).text)
+
+    assert [event["type"] for event in events] == ["text_heard", "emotion", "audio", "done"]
+    assert events[1] == {"type": "emotion", "value": "sadness"}
 
 
 @pytest.mark.integration
@@ -209,7 +259,7 @@ def test_stream_answers_current_date_without_legacy_generation(
     record = Mock()
 
     async def legacy_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
-        yield "EMOTION:joy\nRespuesta legacy."
+        yield "Respuesta legacy."
 
     llm_stream = Mock(side_effect=legacy_stream)
     monkeypatch.setattr(stt, "transcribe", AsyncMock(return_value="¿Qué fecha es hoy?"))
@@ -251,7 +301,7 @@ def test_stream_supervised_date_alias_avoids_llm(
     record = Mock()
 
     async def legacy_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
-        yield "EMOTION:joy\nRespuesta legacy."
+        yield "Respuesta legacy."
 
     llm_stream = Mock(side_effect=legacy_stream)
     monkeypatch.setattr(stt, "transcribe", AsyncMock(return_value="Me dice la fecha actual."))
@@ -286,7 +336,7 @@ def test_stream_ambiguous_date_alias_avoids_llm(
     record = Mock()
 
     async def legacy_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
-        yield "EMOTION:joy\nRespuesta legacy."
+        yield "Respuesta legacy."
 
     llm_stream = Mock(side_effect=legacy_stream)
     monkeypatch.setattr(stt, "transcribe", AsyncMock(return_value="¿Qué vía es hoy?"))
@@ -374,7 +424,7 @@ def test_stream_denies_private_household_request_before_legacy_generation(
     record = Mock()
 
     async def legacy_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
-        yield "EMOTION:joy\nRespuesta legacy."
+        yield "Respuesta legacy."
 
     llm_stream = Mock(side_effect=legacy_stream)
     audit = AsyncMock()
@@ -504,7 +554,7 @@ def test_stream_happy_path_ollama_streams_multiple_deltas(
     client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     async def fake_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
-        for delta in ("EMOTION:joy\n", "Hola. ", "¿Cómo estás?"):
+        for delta in ("Hola. ", "¿Cómo", " estás?"):
             yield delta
 
     monkeypatch.setattr(llm_streaming, "generate_response_stream", fake_stream)
@@ -529,7 +579,7 @@ async def test_stream_uses_local_deltas_after_invalid_runtime_provider_mutation(
     prepared = PreparedTextTurn("hola", "public-turn", None, None, False, None, None, None)
 
     async def local_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
-        yield "EMOTION:joy\nHola."
+        yield "Hola."
 
     monkeypatch.setattr(settings, "llm_provider", "anthropic")
     monkeypatch.setattr(llm_streaming, "generate_response_stream", local_stream)
@@ -537,7 +587,7 @@ async def test_stream_uses_local_deltas_after_invalid_runtime_provider_mutation(
 
     deltas = [delta async for delta in streaming._text_deltas(http_client, prepared)]
 
-    assert deltas == ["EMOTION:joy\nHola."]
+    assert deltas == ["Hola."]
 
 
 def _assert_audible_protocol_fallback(events: list[dict[str, object]]) -> None:
@@ -559,7 +609,7 @@ def test_stream_hybrid_json_uses_audible_protocol_fallback(
     client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The observed 2026-08-17 hybrid output must speak fallback, never silence."""
-    deltas = ['EMOTION: joy {"response": "¡Qué emocionante!", "emotion": "joy"}']
+    deltas = ['{"response": "¡Qué emocionante!", "emotion": "joy"}']
     record = Mock()
     synthesize = AsyncMock(return_value=("QQ==", 10))
     monkeypatch.setattr(streaming, "record_text_turn", record)
@@ -574,8 +624,8 @@ def test_stream_hybrid_json_uses_audible_protocol_fallback(
 def test_stream_structured_body_uses_audible_protocol_fallback(
     client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A valid emotion line followed by a JSON body is still invalid output."""
-    deltas = ['EMOTION:joy\n{"response": "hola"}']
+    """A reply that is a JSON object (the classic contract leaking in) is invalid output."""
+    deltas = ['{"response": "hola"}']
     record = Mock()
     synthesize = AsyncMock(return_value=("QQ==", 10))
     monkeypatch.setattr(streaming, "record_text_turn", record)
@@ -587,15 +637,31 @@ def test_stream_structured_body_uses_audible_protocol_fallback(
 
 
 @pytest.mark.integration
-def test_stream_truncated_emotion_uses_audible_protocol_fallback(
-    client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    "deltas",
+    [
+        ["EMOTION:joy\nHola. ¿Cómo estás?"],
+        ["EMOTION:", "joy\nHola."],
+        ["emotion: joy Hola."],
+        ["EMOTION:ale"],
+        ["EMO", "TION:joy\nHola."],
+        [f"{_FENCE}json\n", '{"response": "hola"}\n', _FENCE],
+        [_FENCE[:2], _FENCE[2:] + "json\n{}"],
+        ["[1, 2]"],
+    ],
+)
+def test_stream_reply_that_starts_with_a_tag_or_structure_falls_back(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+    deltas: list[str],
 ) -> None:
-    """Stream ends mid tag ("EMOTION:ale", no \\n) — spoken as fallback, never silence."""
+    """Decision D-6: a tag at the start, JSON or a code fence is never spoken or recorded."""
     record = Mock()
     synthesize = AsyncMock(return_value=("QQ==", 10))
     monkeypatch.setattr(streaming, "record_text_turn", record)
     monkeypatch.setattr(tts, "synthesize", synthesize)
-    events = _post_stream_with_deltas(client, monkeypatch, silence_wav_bytes, ["EMOTION:ale"])
+    events = _post_stream_with_deltas(client, monkeypatch, silence_wav_bytes, deltas)
     _assert_audible_protocol_fallback(events)
     synthesize.assert_awaited_once_with(settings.llm_fallback_phrase)
     record.assert_not_called()
@@ -617,15 +683,15 @@ def test_stream_empty_model_output_uses_audible_protocol_fallback(
 
 
 @pytest.mark.integration
-def test_stream_emotion_only_uses_audible_protocol_fallback(
+def test_stream_whitespace_only_uses_audible_protocol_fallback(
     client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A valid tag followed by an empty/whitespace-only body is invalid output."""
+    """A reply made only of whitespace is an empty stream, spoken as fallback."""
     record = Mock()
     synthesize = AsyncMock(return_value=("QQ==", 10))
     monkeypatch.setattr(streaming, "record_text_turn", record)
     monkeypatch.setattr(tts, "synthesize", synthesize)
-    events = _post_stream_with_deltas(client, monkeypatch, silence_wav_bytes, ["EMOTION:joy\n   "])
+    events = _post_stream_with_deltas(client, monkeypatch, silence_wav_bytes, ["  ", "\n   "])
     _assert_audible_protocol_fallback(events)
     synthesize.assert_awaited_once_with(settings.llm_fallback_phrase)
     record.assert_not_called()
@@ -637,12 +703,13 @@ def test_every_done_has_prior_contract_valid_audio(
 ) -> None:
     """No matter how the model misbehaves, `done` always follows at least one audio event."""
     invalid_delta_cases = [
-        ['EMOTION: joy {"response": "hola", "emotion": "joy"}'],
-        ['EMOTION:joy\n{"response": "hola"}'],
+        ['{"response": "hola", "emotion": "joy"}'],
+        ["EMOTION:joy\nHola."],
         ["EMOTION:ale"],
         [],
-        ["EMOTION:joy\n   "],
-        ["Hola sin protocolo."],
+        ["   \n"],
+        ["Hola. Luego EMOTION:anger. Adiós."],
+        ["Hola. EMOTION:anger"],
     ]
     for deltas in invalid_delta_cases:
         events = _post_stream_with_deltas(client, monkeypatch, silence_wav_bytes, deltas)
@@ -660,7 +727,7 @@ def test_stream_invalid_output_is_not_logged_raw(
 ) -> None:
     """The raw invalid candidate text must never reach an INFO/WARN log line."""
     raw_marker = "¡Qué emocionante!"
-    deltas = [f'EMOTION: joy {{"response": "{raw_marker}", "emotion": "joy"}}']
+    deltas = [f'{{"response": "{raw_marker}", "emotion": "joy"}}']
     caplog.set_level(logging.INFO)
     _post_stream_with_deltas(client, monkeypatch, silence_wav_bytes, deltas)
     for record in caplog.records:
@@ -681,7 +748,6 @@ async def test_stream_partial_llm_failure_preserves_audio_then_fallback(
     monkeypatch.setattr(streaming, "record_text_turn", record)
 
     async def partial_then_fail(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
-        yield "EMOTION:joy\n"
         yield "Hola. "
         raise LLMError("provider died mid-stream")
 
@@ -723,10 +789,10 @@ async def test_stream_protocol_fallback_tts_failure_has_no_done(
         "hola robot", "interaction:tts-fail", None, None, False, None, None, None
     )
 
-    async def plain_text(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
-        yield "Hola sin protocolo."
+    async def not_plain_text(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
+        yield '{"response": "hola"}'
 
-    monkeypatch.setattr(llm_streaming, "generate_response_stream", plain_text)
+    monkeypatch.setattr(llm_streaming, "generate_response_stream", not_plain_text)
     monkeypatch.setattr(tts, "synthesize", AsyncMock(side_effect=TTSError("piper down")))
 
     collected: list[str] = []
@@ -756,7 +822,7 @@ async def test_stream_tts_failure_logs_tts_error_outcome(
     )
 
     async def plain_text(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
-        yield "Hola sin protocolo."
+        yield "Hola sin problemas."
 
     monkeypatch.setattr(llm_streaming, "generate_response_stream", plain_text)
     monkeypatch.setattr(tts, "synthesize", AsyncMock(side_effect=TTSError("piper down")))
@@ -800,9 +866,7 @@ def test_stream_fallback_logs_operational_metrics(
     """An invalid-output fallback stream must log the done metrics with outcome=protocol_fallback."""
     caplog.set_level(logging.INFO, logger="server.streaming_render")
 
-    _post_stream_with_deltas(
-        client, monkeypatch, silence_wav_bytes, ['EMOTION:joy\n{"response": "hola"}']
-    )
+    _post_stream_with_deltas(client, monkeypatch, silence_wav_bytes, ['{"response": "hola"}'])
 
     assert any(
         "Stream done: outcome=protocol_fallback" in record.getMessage() for record in caplog.records
@@ -810,13 +874,14 @@ def test_stream_fallback_logs_operational_metrics(
 
 
 @pytest.mark.integration
-def test_stream_unknown_emotion_prefix_falls_back_to_neutral(
+def test_stream_neutral_user_message_sends_the_neutral_emotion(
     client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Tag line completes but names an emotion outside VALID_EMOTIONS."""
+    """No explicit feeling in the user's words: the one emotion event is ``neutral``."""
+    monkeypatch.setattr(streaming, "classify_user_emotion", lambda _text: "neutral")
 
     async def fake_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
-        for delta in ("EMOTION:sarcasmo\n", "Hola."):
+        for delta in ("¡Qué alegría!", " Hola."):
             yield delta
 
     monkeypatch.setattr(llm_streaming, "generate_response_stream", fake_stream)
@@ -828,8 +893,65 @@ def test_stream_unknown_emotion_prefix_falls_back_to_neutral(
     emotion_events = [e for e in events if e["type"] == "emotion"]
     assert emotion_events == [{"type": "emotion", "value": "neutral"}]
     audio_events = [e for e in events if e["type"] == "audio"]
-    assert [e["text"] for e in audio_events] == ["Hola."]
+    assert [e["text"] for e in audio_events] == ["¡Qué alegría!", "Hola."]
     assert events[-1]["type"] == "done"
+
+
+@pytest.mark.integration
+def test_stream_plain_reply_is_recorded_with_the_users_emotion(
+    client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A fully spoken plain-text reply is stored as a normal turn with the classified emotion."""
+    record = Mock()
+    monkeypatch.setattr(streaming, "record_text_turn", record)
+
+    events = _parse_ndjson(_post_stream(client, silence_wav_bytes).text)
+
+    assert events[-1]["type"] == "done"
+    assert record.call_args.args[2:] == ("Hola. ¿Cómo estás?", _USER_EMOTION)
+
+
+def _assert_one_emotion_before_the_first_audio(events: list[dict[str, object]]) -> None:
+    """The robot requires exactly one `emotion` event, and before any `audio` event."""
+    kinds = [event["type"] for event in events]
+    assert kinds.count("emotion") == 1
+    assert kinds.index("emotion") < kinds.index("audio")
+    assert kinds[-1] == "done"
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "deltas, spoken_before_fallback",
+    [
+        (["Hola. ", "Luego EMOTION:anger. Adiós."], ["Hola."]),
+        (["Hola. ", "Luego EMOTION:anger"], ["Hola."]),
+        (["Hola. EMO", "TION:joy. Adiós."], ["Hola."]),
+        (["Hola. ", "**EMOTION**: anger"], ["Hola."]),
+        (["Hola. Luego EMOTION:anger. Adiós."], []),
+        (["Hola. Luego EMOTION", ":anger. Adiós."], ["Hola."]),
+    ],
+)
+def test_stream_a_tag_in_the_body_is_never_spoken_and_the_turn_is_not_recorded(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+    deltas: list[str],
+    spoken_before_fallback: list[str],
+) -> None:
+    """What was spoken stays, the tag never is, the fallback follows with one emotion event."""
+    record = Mock()
+    monkeypatch.setattr(streaming, "record_text_turn", record)
+
+    events = _post_stream_with_deltas(client, monkeypatch, silence_wav_bytes, deltas)
+
+    _assert_one_emotion_before_the_first_audio(events)
+    spoken = [str(event["text"]) for event in events if event["type"] == "audio"]
+    assert spoken == [*spoken_before_fallback, settings.llm_fallback_phrase]
+    assert not any("EMOTION" in text.upper() for text in spoken)
+    # A rejected batch promotes nothing: with nothing spoken the fallback sends ``neutral``.
+    expected = _USER_EMOTION if spoken_before_fallback else "neutral"
+    assert next(e for e in events if e["type"] == "emotion")["value"] == expected
+    record.assert_not_called()
 
 
 @pytest.mark.integration
@@ -934,13 +1056,13 @@ async def test_streaming_propagates_prepared_identity_history_and_recording_scop
 
     async def generate_stream(*_args: object, **kwargs: object) -> AsyncIterator[str]:
         streamed_kwargs.update(kwargs)
-        yield "EMOTION:joy\nHola."
+        yield "Hola."
 
     monkeypatch.setattr(llm_streaming, "generate_response_stream", generate_stream)
 
     local_deltas = [delta async for delta in streaming._text_deltas(http_client, prepared)]
 
-    assert local_deltas == ["EMOTION:joy\nHola."]
+    assert local_deltas == ["Hola."]
     assert streamed_kwargs["history"] == history
     assert streamed_kwargs["active_person"] is active_person
 

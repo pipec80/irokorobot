@@ -1,62 +1,34 @@
-"""Unit tests for server.streaming_protocol: strict streaming wire format.
+"""Unit tests for server.streaming_protocol: the guards of a plain-text stream (ADR 0018).
 
-Covers the P0-C6 Task 2 defense-in-depth fix: parse_streaming_emotion and
-validate_streaming_body_start must positively detect ANY invalid model
-output — hybrid JSON, a truncated tag, an empty stream, or a repeated
-protocol tag — instead of silently letting it through as speakable text.
-
-Imports server.llm_streaming as a module (not the individual names) so a
-missing attribute (validate_streaming_body_start does not exist there yet
-pre-implementation) or an unsupported keyword argument (parse_streaming_emotion
-does not accept ``final`` yet pre-implementation) fails inside a test
-assertion rather than at collection time.
+The model answers in plain text and the emotion is decided apart, so this module has no tag
+grammar left. ``validate_streaming_body_start``, ``is_body_start_undecided`` and
+``reject_embedded_tag`` decide what may be spoken; none of them may leak model text into an
+exception message.
 """
 
 from __future__ import annotations
 
 import pytest
 from server.exceptions import LLMError
+from server.streaming_protocol import (
+    StreamProtocolError,
+    is_body_start_undecided,
+    reject_embedded_tag,
+    validate_streaming_body_start,
+)
 
-from server import llm_streaming
+from server import llm_streaming, streaming_protocol
 
-
-@pytest.mark.unit
-def test_parse_emotion_waits_for_fragmented_line() -> None:
-    """A valid tag arriving token-by-token must not be rejected mid-stream."""
-    fragments = ["EMO", "EMOTION", "EMOTION:", "EMOTION:jo", "EMOTION:joy"]
-    for fragment in fragments:
-        assert llm_streaming.parse_streaming_emotion(fragment, final=False) is None
-
-    assert llm_streaming.parse_streaming_emotion("EMOTION:joy\n", final=False) == ("joy", "")
-    assert llm_streaming.parse_streaming_emotion("EMOTION:joy\nhola", final=True) == (
-        "joy",
-        "hola",
-    )
-
-    # Unknown emotion still completes the line, but normalizes to neutral.
-    assert llm_streaming.parse_streaming_emotion("EMOTION:cosmic\nhola", final=False) == (
-        "neutral",
-        "hola",
-    )
+_FENCE = "`" * 3  # built, not written: this file also lives inside a Markdown code fence
+_FULLWIDTH_COLON = chr(0xFF1A)  # built, not written: an ambiguous character in the source
 
 
 @pytest.mark.unit
-def test_parse_emotion_rejects_incomplete_final_line() -> None:
-    """A stream that ends without ever completing a valid line is invalid."""
-    incomplete_cases = [
-        "",  # empty final stream
-        "EMOTION:jo",  # truncated emotion tag, no newline
-        "EMOTION:joy",  # missing newline entirely
-        'EMOTION: joy {"response":"hola"}',  # hybrid tag+JSON, no newline
-        "hola sin protocolo",  # never started the protocol
-    ]
-    for buffer in incomplete_cases:
-        with pytest.raises(LLMError) as exc_info:
-            llm_streaming.parse_streaming_emotion(buffer, final=True)
-        message = str(exc_info.value)
-        assert message  # bounded, non-empty
-        if buffer:
-            assert buffer not in message
+@pytest.mark.parametrize("name", ["parse_streaming_emotion", "Preamble"])
+def test_the_tag_start_grammar_is_gone(name: str) -> None:
+    """ADR 0018: nobody asks the model for a tag, so nothing parses one at the start."""
+    assert not hasattr(streaming_protocol, name)
+    assert not hasattr(llm_streaming, name)
 
 
 @pytest.mark.unit
@@ -66,50 +38,84 @@ def test_validate_body_rejects_structured_json() -> None:
         '{"response": "hola", "emotion": "joy"}',
         '{"response":"hola"}',
         '["hola", "chau"]',
-        '```json\n{"response": "hola"}\n```',
+        f'{_FENCE}json\n{{"response": "hola"}}\n{_FENCE}',
         '  {"response": "hola"}',  # leading whitespace before the brace
     ]
     for body in hybrid_bodies:
-        with pytest.raises(LLMError) as exc_info:
-            llm_streaming.validate_streaming_body_start(body)
+        with pytest.raises(StreamProtocolError) as exc_info:
+            validate_streaming_body_start(body)
         assert body not in str(exc_info.value)
 
 
 @pytest.mark.unit
-def test_validate_body_rejects_repeated_protocol() -> None:
-    """A second EMOTION: tag inside the body means the model repeated the preamble."""
-    repeated_bodies = [
+def test_validate_body_rejects_a_reply_that_starts_with_a_tag() -> None:
+    """A tag the model writes anyway at the start is refused (decision D-6)."""
+    tagged_bodies = [
         "EMOTION:joy\nhola de nuevo",
         "emotion:joy\nhola",
         "  EMOTION:sadness\nhola",
     ]
-    for body in repeated_bodies:
-        with pytest.raises(LLMError) as exc_info:
-            llm_streaming.validate_streaming_body_start(body)
+    for body in tagged_bodies:
+        with pytest.raises(StreamProtocolError) as exc_info:
+            validate_streaming_body_start(body)
         assert body not in str(exc_info.value)
 
     # A normal plain-text body must pass without raising.
-    llm_streaming.validate_streaming_body_start("hola, como estas?")
+    validate_streaming_body_start("hola, como estas?")
 
 
 @pytest.mark.unit
-def test_full_hybrid_example_rejected_before_speech() -> None:
-    """EMOTION:joy\\n{"response":"hola"} — valid tag, but the body is JSON."""
-    result = llm_streaming.parse_streaming_emotion('EMOTION:joy\n{"response":"hola"}', final=True)
-    assert result is not None
-    emotion, body = result
-    assert emotion == "joy"
-    with pytest.raises(LLMError):
-        llm_streaming.validate_streaming_body_start(body)
+def test_a_protocol_error_is_an_llm_error() -> None:
+    """Callers that catch ``LLMError`` keep working; the streaming loop catches the subclass."""
+    assert issubclass(StreamProtocolError, LLMError)
 
 
 @pytest.mark.unit
-def test_llm_streaming_reexports_protocol_functions() -> None:
-    """llm_streaming.py must still resolve both names for existing call sites."""
-    from server import streaming_protocol  # noqa: PLC0415 — keeps collection RED-safe
+@pytest.mark.parametrize("body", ["E", "EM", "emotion", "  EMOTION", "`", "``"])
+def test_a_body_that_could_still_become_a_forbidden_start_is_undecided(body: str) -> None:
+    """A prefix of ``EMOTION:`` or of a code fence cannot be judged yet: wait for more."""
+    assert is_body_start_undecided(body)
 
-    assert llm_streaming.parse_streaming_emotion is streaming_protocol.parse_streaming_emotion
-    assert (
-        llm_streaming.validate_streaming_body_start
-        is streaming_protocol.validate_streaming_body_start
-    )
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "body", ["", "   ", "Hola", "Es", "{", "[", "EMOTION:", "emotion:joy", "`x", _FENCE, "Eso."]
+)
+def test_a_body_that_is_decided_is_not_undecided(body: str) -> None:
+    """Decided means allowed (plain text) or already forbidden (``validate`` rejects it)."""
+    assert not is_body_start_undecided(body)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Hola. EMOTION:joy",
+        "**EMOTION:** joy",
+        "**EMOTION**: joy",
+        f"EMOTION{_FULLWIDTH_COLON} joy",
+        "EMOTION : joy",
+        "emotion: joy",
+        "Claro, emotion:joy otra vez.",
+    ],
+)
+def test_reject_embedded_tag_refuses_a_tag_anywhere(text: str) -> None:
+    with pytest.raises(StreamProtocolError) as exc_info:
+        reject_embedded_tag(text)
+
+    assert text not in str(exc_info.value)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "text",
+    [
+        "La emoción es alegría.",
+        "Emotion es una palabra.",
+        "Una demotion: palabra rara.",
+        "¿Qué emoción sientes?",
+        "",
+    ],
+)
+def test_reject_embedded_tag_allows_plain_speech(text: str) -> None:
+    reject_embedded_tag(text)

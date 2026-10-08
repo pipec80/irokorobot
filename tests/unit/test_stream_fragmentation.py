@@ -1,4 +1,4 @@
-"""Fragmentation consistency of the streaming protocol (Plan 0057, Task 2)."""
+"""Fragmentation consistency of the streaming protocol (Plans 0057 and 0059)."""
 
 import pytest
 
@@ -11,30 +11,33 @@ from scripts.stream_fragmentation import (
 
 _FENCE = "`" * 3  # built, not written: this file also lives inside a Markdown code fence
 
-# Replies production judges the same way however the tokens split.
+# Replies production judges the same way however the tokens split. The two that Plan 0057
+# pinned as split-dependent (a tag or a fence split inside the first body token) joined this
+# list when the guards learned to wait on an undecided body start.
 _CONSISTENT = [
-    "EMOTION:joy\nHola, ¿cómo estás?",
-    "EMOTION:joy\n",
-    "EMOTION:joy",
+    "Hola, ¿cómo estás?",
+    "Hola. ¿Cómo estás? Muy bien.",
     "Hola sin etiqueta",
-    'EMOTION:joy\n{"response": "x"}',
-    "EMOTION:joy\n[1]",
+    "E",
+    "`",
     "",
-]
-
-# Replies whose verdict depends on the split TODAY: production validates the start of the
-# body once, with the first fragment, so a prefix that is still undecidable ("E", "`")
-# is accepted and the rest is never checked. Plan 0057 pins this defect; the repair plan
-# flips these into ``_CONSISTENT``.
-_INCONSISTENT_TODAY = [
+    '{"response": "x"}',
+    "[1]",
+    "EMOTION:joy\nHola",
+    "emotion: joy\nHola",
     "EMOTION:joy\nEMOTION:anger\nhola",
-    f"EMOTION:joy\n{_FENCE}json\n{{}}\n{_FENCE}",
+    f"{_FENCE}json\n{{}}\n{_FENCE}",
+    "Hola. EMOTION:joy",
+    "Hola. EMOTION:joy. Adiós.",
+    "Hola. **EMOTION**: joy. Adiós.",
+    f"Hola. EMOTION{chr(0xFF1A)} joy",
+    "La emoción es alegría. Demotion: no cuenta.",
 ]
 
 
 @pytest.mark.unit
 def test_every_fragmentation_re_delivers_the_same_text() -> None:
-    text = "EMOTION:joy\nHola. ¿Cómo estás? Muy bien."
+    text = "Hola. ¿Cómo estás? Muy bien."
 
     for fragments in reply_fragmentations(text):
         assert "".join(fragments) == text
@@ -54,9 +57,11 @@ def test_a_reply_judged_the_same_under_every_split_is_consistent(reply: str) -> 
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("reply", _INCONSISTENT_TODAY)
-def test_the_known_fragmentation_defect_is_pinned_until_the_repair_plan(reply: str) -> None:
-    """Whole, the reply is rejected; split inside its first body token, it is spoken."""
+@pytest.mark.parametrize(
+    "reply",
+    ["EMOTION:joy\nEMOTION:anger\nhola", f"{_FENCE}json\n{{}}\n{_FENCE}", "Hola. EMOTION:joy"],
+)
+def test_a_forbidden_prefix_is_rejected_under_every_split(reply: str) -> None:
+    """The whole text and every fragmentation of it share the INVALID verdict (decision D-6)."""
     assert classify_deltas([reply]) is StreamOutcome.INVALID_PROTOCOL
-    assert fragmentation_outcomes(reply) == {StreamOutcome.VALID, StreamOutcome.INVALID_PROTOCOL}
-    assert not is_fragmentation_consistent(reply)
+    assert fragmentation_outcomes(reply) == {StreamOutcome.INVALID_PROTOCOL}

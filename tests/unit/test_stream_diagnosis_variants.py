@@ -184,7 +184,7 @@ async def _captured_messages(
         _client: httpx.AsyncClient, messages: list[dict[str, str]], **_kwargs: object
     ) -> AsyncIterator[str]:
         captured.append(messages)
-        yield "EMOTION:joy\nHola."
+        yield "Hola."
 
     monkeypatch.setattr(llm_streaming, "ollama_chat_stream", fake_stream)
     turn = unit.turn

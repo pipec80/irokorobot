@@ -38,7 +38,7 @@ def is_connectivity_failure(exc: BaseException) -> bool:
     return isinstance(exc.__cause__, (httpx.ConnectError, httpx.ConnectTimeout))
 
 
-# Public: shared with llm_streaming.py for its "EMOTION:xxx\n" tag protocol.
+# Public: the closed emotion set of the classic JSON contract and of user_emotion.py (ADR 0018).
 VALID_EMOTIONS = frozenset({"neutral", "joy", "anger", "sadness", "surprise"})
 FALLBACK_EMOTION = "neutral"
 

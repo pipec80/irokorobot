@@ -2,11 +2,11 @@
 
 Runs real turns through the production streaming generator and consumes the deltas the
 way `server.streaming._consume_llm_stream` does: incrementally, with the production
-helpers, so a reply fragmented differently is classified differently exactly as it
-would be live (production stops validating once the body start is accepted). A test
-pins the equivalence against the real consumer for several fragmentations. It measures
-how often a reply would drop to the fallback phrase (0049 O-04); it never prints or
-stores model output.
+helpers, so a reply is judged exactly as it would be live. A test pins the equivalence
+against the real consumer for several fragmentations. It measures the generator only (the
+turn's emotion is decided apart from the reply, so it is preset to the neutral fallback
+here) and how often a reply would drop to the fallback phrase (0049 O-04); it never
+prints or stores model output.
 """
 
 from __future__ import annotations
@@ -16,9 +16,14 @@ import enum
 import logging
 from typing import TYPE_CHECKING
 
-from server.exceptions import LLMError
-from server.streaming_protocol import parse_streaming_emotion, validate_streaming_body_start
-from server.streaming_render import StreamState, _consume_body, _consume_preamble
+from server.llm import FALLBACK_EMOTION
+from server.streaming_protocol import StreamProtocolError
+from server.streaming_render import (
+    StreamFallbackReason,
+    StreamState,
+    _consume_body,
+    classify_stream_end,
+)
 
 from server import llm_streaming
 
@@ -61,28 +66,20 @@ class StreamOutcome(enum.StrEnum):
 
 
 def _classify_end_of_stream(buffer: str, state: StreamState) -> StreamOutcome:
-    """Mirror `streaming_render._finalize_model_output`'s decisions, without any TTS."""
-    if state.pending_emotion is None and state.emotion is None:
-        try:
-            parse_streaming_emotion(buffer, final=True)
-        except LLMError:
-            return StreamOutcome.INVALID_PROTOCOL if buffer.strip() else StreamOutcome.EMPTY_STREAM
-    if state.emotion is None:
-        tail = buffer.strip()
-        if not tail:
-            return StreamOutcome.INVALID_PROTOCOL
-        try:
-            validate_streaming_body_start(tail)
-        except LLMError:
-            return StreamOutcome.INVALID_PROTOCOL
-    return StreamOutcome.VALID
+    """Map production's end-of-stream judgement (`classify_stream_end`) to an outcome."""
+    reason = classify_stream_end(buffer, state)
+    if reason is None:
+        return StreamOutcome.VALID
+    if reason is StreamFallbackReason.EMPTY_STREAM:
+        return StreamOutcome.EMPTY_STREAM
+    return StreamOutcome.INVALID_PROTOCOL
 
 
 class _StreamClassifier:
     """Consume deltas one at a time, exactly as `streaming._consume_llm_stream` does."""
 
     def __init__(self) -> None:
-        self._state = StreamState(request_start=0.0)
+        self._state = StreamState(request_start=0.0, pending_emotion=FALLBACK_EMOTION)
         self._buffer = ""
         self.sentences_seen = 0
 
@@ -93,13 +90,9 @@ class _StreamClassifier:
             The decided outcome, or ``None`` while production would keep consuming.
         """
         self._buffer += delta
-        if self._state.pending_emotion is None and self._state.emotion is None:
-            self._buffer, consumed = _consume_preamble(self._buffer, self._state)
-            if not consumed:
-                return None
         try:
             self._buffer, sentences = _consume_body(self._buffer, self._state)
-        except LLMError:
+        except StreamProtocolError:
             return StreamOutcome.INVALID_PROTOCOL
         self.sentences_seen += len(sentences)
         return None

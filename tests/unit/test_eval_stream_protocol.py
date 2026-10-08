@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator
 import logging
 import re
 import time
+from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock, Mock
 
@@ -29,34 +30,44 @@ from server import streaming, tts
 _FENCE = "`" * 3  # built, not written: this file also lives inside a Markdown code fence
 
 _REPLIES = [
-    "EMOTION:joy\nHola, ¿cómo estás?",
-    "EMOTION:joy\nHola. ¿Cómo estás? Muy bien.",
-    "EMOTION:joy\n",
-    "EMOTION:joy\n   ",
-    "EMOTION:joy",
+    "Hola, ¿cómo estás?",
+    "Hola. ¿Cómo estás? Muy bien.",
     "",
     "  \n",
+    "E",
+    "`",
     "Hola sin etiqueta",
-    'EMOTION:joy\n{"response": "x"}',
-    "EMOTION:joy\n[1]",
-    f"EMOTION:joy\n{_FENCE}json\n{{}}\n{_FENCE}",
-    "EMOTION:joy\nEMOTION:anger\nhola",
-    "EMOTION:unknownemotion\nHola",
+    'Claro. {"x": 1} fin.',
+    '{"response": "x"}',
+    "[1]",
+    f"{_FENCE}json\n{{}}\n{_FENCE}",
+    "EMOTION:joy\nHola",
     "emotion: joy\nHola",
+    "EMOTION:joy",
+    "Hola. EMOTION:joy",
+    "Hola. EMOTION:joy. Adiós.",
+    "Hola. Mi emotion : joy es alta. Chau.",
+    "Hola. **EMOTION**: joy",
+    "La emoción es alegría. Demotion: no cuenta.",
 ]
+
+_INPUTS = cast("streaming.PreparedTextTurn", SimpleNamespace(message="hola"))
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
     "deltas, outcome",
     [
-        (["EMOTION:joy\nHola, ¿cómo estás?"], StreamOutcome.VALID),
-        (["EMOTION:joy\n"], StreamOutcome.INVALID_PROTOCOL),
-        (["EMOTION:joy\n   "], StreamOutcome.INVALID_PROTOCOL),
-        (["Hola sin etiqueta"], StreamOutcome.INVALID_PROTOCOL),
-        (['EMOTION:joy\n{"response": "x"}'], StreamOutcome.INVALID_PROTOCOL),
-        (["EMOTION:joy\nEMOTION:anger\nhola"], StreamOutcome.INVALID_PROTOCOL),
+        (["Hola, ¿cómo estás?"], StreamOutcome.VALID),
+        (["Hola sin etiqueta"], StreamOutcome.VALID),
+        (["E"], StreamOutcome.VALID),  # an undecided prefix at the end is ordinary text
+        (['{"response": "x"}'], StreamOutcome.INVALID_PROTOCOL),
+        (["[1]"], StreamOutcome.INVALID_PROTOCOL),
+        ([f"{_FENCE}json"], StreamOutcome.INVALID_PROTOCOL),
+        (["EMOTION:joy\nHola"], StreamOutcome.INVALID_PROTOCOL),
         (["EMOTION:joy"], StreamOutcome.INVALID_PROTOCOL),
+        (["Hola. EMOTION:joy. Adiós."], StreamOutcome.INVALID_PROTOCOL),
+        (["Hola. EMOTION:joy"], StreamOutcome.INVALID_PROTOCOL),
         ([], StreamOutcome.EMPTY_STREAM),
         (["  \n"], StreamOutcome.EMPTY_STREAM),
     ],
@@ -68,12 +79,14 @@ def test_classify_deltas_reports_the_production_outcome(
 
 
 @pytest.mark.unit
-def test_the_outcome_depends_on_how_the_reply_is_fragmented_exactly_as_in_production() -> None:
-    """Production stops validating once the body start is accepted ("EMO" is not a tag)."""
-    reply = "EMOTION:joy\nEMOTION:anger\nhola"
+def test_a_forbidden_prefix_split_across_deltas_is_judged_like_the_whole_text() -> None:
+    """The old defect is closed: "EMO" + "TION:" is a tag however the tokens split."""
+    whole = "Hola. EMOTION:joy. Adiós."
 
-    assert classify_deltas([reply]) is StreamOutcome.INVALID_PROTOCOL
-    assert classify_deltas(["EMOTION:joy\nEMO", "TION:anger\nhola"]) is StreamOutcome.VALID
+    assert classify_deltas([whole]) is StreamOutcome.INVALID_PROTOCOL
+    assert classify_deltas(["Hola. EMO", "TION:joy. Adiós."]) is StreamOutcome.INVALID_PROTOCOL
+    assert classify_deltas(["EMO", "TION:joy\nHola"]) is StreamOutcome.INVALID_PROTOCOL
+    assert classify_deltas(["``", "`json\n{}"]) is StreamOutcome.INVALID_PROTOCOL
 
 
 async def _production_result(
@@ -91,7 +104,7 @@ async def _production_result(
     caplog.clear()
     with caplog.at_level(logging.WARNING, logger="server.streaming_render"):
         async for _line in streaming._consume_llm_stream(
-            cast("httpx.AsyncClient", Mock()), cast("streaming.PreparedTextTurn", None), state
+            cast("httpx.AsyncClient", Mock()), _INPUTS, state
         ):
             pass
     match = re.search(r"reason=(\w+)", caplog.text)
@@ -133,7 +146,7 @@ async def _production_after_a_provider_error(
     with caplog.at_level(logging.WARNING, logger="server.streaming_render"):
         try:
             async for _line in streaming._consume_llm_stream(
-                cast("httpx.AsyncClient", Mock()), cast("streaming.PreparedTextTurn", None), state
+                cast("httpx.AsyncClient", Mock()), _INPUTS, state
             ):
                 pass
         except LLMError:
@@ -162,11 +175,13 @@ async def _evaluator_after_a_provider_error(fragments: list[str]) -> str:
 @pytest.mark.parametrize(
     "fragments, expected",
     [
-        (["EMOTION:joy\n{"], "invalid_protocol"),
-        (["EMOTION:joy\n", "[1]"], "invalid_protocol"),
-        (["EMOTION:joy\nHola"], "provider_error"),
-        (["EMOTION:joy\n"], "provider_error"),
-        (["Hola sin etiqueta"], "provider_error"),
+        (["{"], "invalid_protocol"),
+        (["  ", "[1]"], "invalid_protocol"),
+        (["EMOTION:joy\nHola"], "invalid_protocol"),
+        (["Hola. EMOTION:joy. Adiós."], "invalid_protocol"),
+        (["Hola"], "provider_error"),
+        (["Hola. Adiós."], "provider_error"),
+        (["E"], "provider_error"),
         ([], "provider_error"),
     ],
 )
@@ -190,7 +205,7 @@ async def test_the_evaluator_stops_and_closes_the_stream_when_production_would_s
         _client: httpx.AsyncClient, _text: str, **_kwargs: object
     ) -> AsyncIterator[str]:
         try:
-            yield "EMOTION:joy\n{"
+            yield "{"
             resumed.append(True)
             yield "never consumed"
         finally:
@@ -236,9 +251,7 @@ async def test_measure_counts_each_outcome_and_keeps_errors_out_of_the_rate() ->
         [_turn(), _turn(), _turn(), _turn(), _turn()],
         client=_client(),
         runs=1,
-        generate=_generator(
-            ["EMOTION:joy\nHola", "sin etiqueta", "", "EMOTION:joy\n", LLMError("boom")]
-        ),
+        generate=_generator(["Hola", '{"x": 1}', "", "Hola. EMOTION:joy", LLMError("boom")]),
     )
 
     assert (result.valid, result.invalid_protocol, result.empty_stream, result.errors) == (
@@ -257,9 +270,7 @@ async def test_measure_splits_the_counts_by_turn_source() -> None:
         [_turn("context"), _turn("public")],
         client=_client(),
         runs=2,
-        generate=_generator(
-            ["EMOTION:joy\nHola", "EMOTION:joy\nHola", "sin etiqueta", "sin etiqueta"]
-        ),
+        generate=_generator(["Hola", "Hola", '{"x": 1}', '{"x": 1}']),
     )
 
     assert result.by_source["context"].fallback_rate == 0.0
@@ -312,8 +323,19 @@ def test_the_report_states_the_rate_and_never_prints_model_output() -> None:
 def test_the_classifier_counts_the_sentences_production_would_speak() -> None:
     classifier = _StreamClassifier()
 
-    classifier.feed("EMOTION:joy\nHola. ¿Cómo")
+    classifier.feed("Hola. ¿Cómo")
     assert classifier.sentences_seen == 1
 
     classifier.feed(" estás? Bien")
     assert classifier.sentences_seen == 2
+
+
+@pytest.mark.unit
+def test_the_classifier_presets_the_neutral_fallback_emotion() -> None:
+    """The evaluator measures the generator only: the user's emotion is not its business."""
+    classifier = _StreamClassifier()
+
+    assert classifier.feed("Hola. ¿Cómo") is None
+
+    assert classifier._state.pending_emotion == "neutral"
+    assert classifier._state.emotion == "neutral"

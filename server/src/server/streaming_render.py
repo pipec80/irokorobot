@@ -14,7 +14,6 @@ import logging
 
 from server import llm, tts
 from server.conversation_log import log_spoken
-from server.exceptions import LLMError
 from server.pipeline import _elapsed_ms
 from server.schemas_streaming import (
     StreamAudioEvent,
@@ -24,7 +23,12 @@ from server.schemas_streaming import (
 )
 from server.sentences import split_first_sentence
 from server.settings import settings
-from server.streaming_protocol import parse_streaming_emotion, validate_streaming_body_start
+from server.streaming_protocol import (
+    StreamProtocolError,
+    is_body_start_undecided,
+    reject_embedded_tag,
+    validate_streaming_body_start,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +75,20 @@ def error_event(code: StreamErrorCode, *, retryable: bool = False) -> str:
     """
     event = StreamErrorEvent(code=code.value, detail=_ERROR_DETAIL[code], retryable=retryable)
     return event.model_dump_json() + "\n"
+
+
+def llm_elapsed_ms(total_ms: int, stt_ms: int, tts_ms: int) -> int:
+    """Return the time the LLM took: what is left of the total once STT and TTS are removed.
+
+    Args:
+        total_ms: Whole request time.
+        stt_ms: Speech-to-text time.
+        tts_ms: Summed text-to-speech time of every spoken sentence.
+
+    Returns:
+        The remainder in milliseconds, never negative (the parts are measured separately).
+    """
+    return max(0, total_ms - stt_ms - tts_ms)
 
 
 class StreamFallbackReason(StrEnum):
@@ -136,77 +154,76 @@ async def emit_fallback(state: StreamState, *, reason: StreamFallbackReason) -> 
     yield await synthesize_sentence(settings.llm_fallback_phrase, state)
 
 
-def _consume_preamble(buffer: str, state: StreamState) -> tuple[str, bool]:
-    """Consume the EMOTION preamble line once it is fully buffered.
+def _consume_body(buffer: str, state: StreamState) -> tuple[str, list[str]]:
+    """Split complete sentences off the reply, promoting the emotion once it is valid.
+
+    Promotes ``pending_emotion`` (the user's emotion, decided at the start of the turn) to
+    the emitted ``emotion`` the first time content passes ``validate_streaming_body_start``.
+    While the start is still a prefix of a forbidden one (``E``, a lone backtick) nothing is
+    promoted or spoken: the next delta decides it. No sentence that carries a protocol tag is
+    released, and a rejected batch promotes nothing, so the fallback can still send the one
+    ``emotion`` event the robot requires.
 
     Returns:
-        ``(remaining_buffer, True)`` once the preamble line was consumed
-        (stored in ``state.pending_emotion``), or ``(buffer, False)`` while
-        more input may still complete it.
-    """
-    parsed = parse_streaming_emotion(buffer)
-    if parsed is None:
-        return buffer, False
-    state.pending_emotion, remainder = parsed
-    return remainder, True
-
-
-def _consume_body(buffer: str, state: StreamState) -> tuple[str, list[str]]:
-    """Split complete sentences off the body, promoting emotion once valid.
-
-    Promotes ``pending_emotion`` to emitted ``emotion`` the first time
-    non-whitespace content passes ``validate_streaming_body_start``.
+        ``(remaining_buffer, sentences)`` where ``sentences`` are safe to speak.
 
     Raises:
-        LLMError: If the body content is structurally invalid.
+        StreamProtocolError: If the reply is structurally invalid or mentions a tag.
     """
-    if state.emotion is None:
-        stripped = buffer.lstrip()
-        if stripped:
-            validate_streaming_body_start(stripped)
-            state.emotion = state.pending_emotion
+    has_content = bool(buffer.strip())
+    if state.emotion is None and has_content:
+        if is_body_start_undecided(buffer):
+            return buffer, []
+        validate_streaming_body_start(buffer)
     sentences: list[str] = []
     while (split := split_first_sentence(buffer)) is not None:
         sentence, buffer = split
+        reject_embedded_tag(sentence)
         sentences.append(sentence)
+    if state.emotion is None and has_content:
+        state.emotion = state.pending_emotion
     return buffer, sentences
 
 
-def _preamble_fallback_reason(buffer: str) -> StreamFallbackReason:
-    """Classify an EOF with no valid preamble as empty or invalid protocol."""
-    if buffer.strip():
+def classify_stream_end(buffer: str, state: StreamState) -> StreamFallbackReason | None:
+    """Decide whether what is left when the stream ends can be spoken.
+
+    The single judgement shared by production and by the evaluator under ``scripts/``.
+    A tail that is still a prefix of a forbidden start (``E``) is ordinary text here.
+
+    Args:
+        buffer: Text received but not yet spoken.
+        state: The turn's state at the end of the stream.
+
+    Returns:
+        ``None`` when the end can be spoken, otherwise the reason it cannot.
+    """
+    tail = buffer.strip()
+    if state.emotion is None and not tail:
+        return StreamFallbackReason.EMPTY_STREAM
+    try:
+        if state.emotion is None:
+            validate_streaming_body_start(tail)
+        reject_embedded_tag(tail)
+    except StreamProtocolError:
         return StreamFallbackReason.INVALID_PROTOCOL
-    return StreamFallbackReason.EMPTY_STREAM
+    return None
 
 
 async def _finalize_model_output(buffer: str, state: StreamState) -> AsyncIterator[str]:
     """Validate stream EOF; emit the final sentence or a safe fallback."""
-    if state.pending_emotion is None and state.emotion is None:
-        try:
-            parse_streaming_emotion(buffer, final=True)
-        except LLMError:
-            state.outcome = StreamOutcome.PROTOCOL_FALLBACK
-            reason = _preamble_fallback_reason(buffer)
-            async for line in emit_fallback(state, reason=reason):
-                yield line
-            return
-    tail = buffer.strip()
+    reason = classify_stream_end(buffer, state)
+    if reason is not None:
+        state.outcome = StreamOutcome.PROTOCOL_FALLBACK
+        async for line in emit_fallback(state, reason=reason):
+            yield line
+        return
     if state.emotion is None:
-        valid_body = bool(tail)
-        if valid_body:
-            try:
-                validate_streaming_body_start(tail)
-            except LLMError:
-                valid_body = False
-        if not valid_body:
-            state.outcome = StreamOutcome.PROTOCOL_FALLBACK
-            async for line in emit_fallback(state, reason=StreamFallbackReason.INVALID_PROTOCOL):
-                yield line
-            return
         if state.pending_emotion is None:
             raise RuntimeError("pending_emotion must be set before promoting to emotion")
         state.emotion = state.pending_emotion
         yield StreamEmotionEvent(value=state.emotion).model_dump_json() + "\n"
+    tail = buffer.strip()
     if tail:
         yield await synthesize_sentence(tail, state)
 
@@ -247,7 +264,7 @@ def _done_event(
     if state.audio_chunks < 1:
         raise RuntimeError("Refusing to emit done before any audio chunk was spoken")
     total_ms = _elapsed_ms(request_start)
-    llm_ms = max(0, total_ms - stt_ms - state.tts_ms_total)
+    llm_ms = llm_elapsed_ms(total_ms, stt_ms, state.tts_ms_total)
     _log_stream_metrics(state, total_ms)
     done = StreamDoneEvent(
         stt_ms=stt_ms,

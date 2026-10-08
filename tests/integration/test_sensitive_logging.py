@@ -71,7 +71,7 @@ def test_streaming_turn_never_logs_the_spoken_sentence(
     monkeypatch.setattr(tts, "synthesize", AsyncMock(return_value=("QQ==", 42)))
 
     async def sentinel_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
-        yield f"EMOTION:joy\n{_REPLY}."
+        yield f"{_REPLY}."
 
     monkeypatch.setattr(llm_streaming, "generate_response_stream", sentinel_stream)
 

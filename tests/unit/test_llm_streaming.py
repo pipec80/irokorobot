@@ -1,9 +1,9 @@
 """Unit tests for server.llm_streaming: streaming output contract ownership.
 
-Covers the P0-C6 Task 1 fix: llm_streaming.py is the sole owner of the
-streaming EMOTION-tag output contract, appended exactly once to a
-format-neutral base prompt from build_system_prompt — never mixed with the
-classic JSON contract owned by llm.py.
+llm_streaming.py is the sole owner of the streaming output contract, appended exactly once to a
+format-neutral base prompt from build_system_prompt. Since Plan 0059 (ADR 0018) the contract asks
+for plain text only: no JSON, no label, no tag, and no mention of the protocol tag at all — the
+emotion of the turn is decided apart from the reply.
 """
 
 from __future__ import annotations
@@ -33,7 +33,6 @@ def _capturing_stream_factory(captured: dict[str, object]) -> object:
     ) -> AsyncIterator[str]:
         captured["messages"] = messages
         captured["model"] = model
-        yield "EMOTION:neutral\n"
         yield "hola"
 
     return _fake
@@ -49,11 +48,11 @@ async def test_generate_response_stream_empty_text_raises_value_error(
 
 
 @pytest.mark.unit
-async def test_generate_response_stream_uses_single_streaming_contract(
+async def test_generate_response_stream_uses_single_plain_text_contract(
     http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The system prompt must carry exactly one streaming contract, no JSON markers."""
+    """The system prompt carries one plain-text contract: no tag, no JSON markers."""
     captured: dict[str, object] = {}
     monkeypatch.setattr(llm_streaming, "ollama_chat_stream", _capturing_stream_factory(captured))
 
@@ -62,10 +61,11 @@ async def test_generate_response_stream_uses_single_streaming_contract(
     messages = captured["messages"]
     assert isinstance(messages, list)
     system_prompt = messages[0]["content"]
-    assert system_prompt.count("EMOTION:") == 1
+    assert "EMOTION" not in system_prompt
+    assert system_prompt.count(llm_streaming._STREAMING_OUTPUT_CONTRACT) == 1
     assert '"response"' not in system_prompt
     assert '"emotion"' not in system_prompt
-    assert "".join(deltas) == "EMOTION:neutral\nhola"
+    assert "".join(deltas) == "hola"
 
 
 @pytest.mark.unit
@@ -90,7 +90,8 @@ async def test_generate_response_stream_dynamic_profile_has_single_contract(
     messages = captured["messages"]
     assert isinstance(messages, list)
     system_prompt = messages[0]["content"]
-    assert system_prompt.count("EMOTION:") == 1
+    assert "EMOTION" not in system_prompt
+    assert system_prompt.count(llm_streaming._STREAMING_OUTPUT_CONTRACT) == 1
     assert '"response"' not in system_prompt
     assert '"emotion"' not in system_prompt
     assert "vendedor carismático" in system_prompt
@@ -101,14 +102,14 @@ async def test_generate_response_stream_no_structured_format_argument(
     http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Streaming must never pass a structured `format` schema — it disables streaming."""
+    """Streaming must never pass a structured `format` schema: the reply is plain text."""
     received_kwargs: dict[str, object] = {}
 
     async def _fake(
         _client: httpx.AsyncClient, messages: list[dict[str, str]], **kwargs: object
     ) -> AsyncIterator[str]:
         received_kwargs.update(kwargs)
-        yield "EMOTION:neutral\n"
+        yield "hola"
 
     monkeypatch.setattr(llm_streaming, "ollama_chat_stream", _fake)
 
@@ -120,25 +121,28 @@ async def test_generate_response_stream_no_structured_format_argument(
 
 
 @pytest.mark.unit
-def test_streaming_system_prompt_appends_exactly_one_contract() -> None:
+def test_streaming_system_prompt_appends_exactly_one_plain_text_contract() -> None:
     prompt = llm_streaming._streaming_system_prompt("base prompt")
 
     assert prompt.startswith("base prompt")
-    assert prompt.count("EMOTION:") == 1
+    assert prompt.endswith(llm_streaming._STREAMING_OUTPUT_CONTRACT)
+    assert prompt.count(llm_streaming._STREAMING_OUTPUT_CONTRACT) == 1
+    assert "EMOTION" not in prompt
     assert '"response"' not in prompt
     assert '"emotion"' not in prompt
 
 
 @pytest.mark.unit
-def test_parse_streaming_emotion_valid_tag() -> None:
-    assert llm_streaming.parse_streaming_emotion("EMOTION:joy\nhola") == ("joy", "hola")
+def test_the_contract_asks_for_plain_text_and_names_no_tag() -> None:
+    contract = llm_streaming._STREAMING_OUTPUT_CONTRACT
+
+    assert "texto plano" in contract
+    assert "EMOTION" not in contract.upper()
+    assert "emoci" not in contract.lower()
 
 
 @pytest.mark.unit
-def test_parse_streaming_emotion_unknown_tag_defaults_neutral() -> None:
-    assert llm_streaming.parse_streaming_emotion("EMOTION:cosmic\nhola") == ("neutral", "hola")
-
-
-@pytest.mark.unit
-def test_parse_streaming_emotion_no_tag_returns_none() -> None:
-    assert llm_streaming.parse_streaming_emotion("hola sin tag") is None
+@pytest.mark.parametrize("name", ["parse_streaming_emotion", "validate_streaming_body_start"])
+def test_the_protocol_functions_are_no_longer_re_exported(name: str) -> None:
+    """The temporary re-export is gone: callers import from streaming_protocol."""
+    assert not hasattr(llm_streaming, name)

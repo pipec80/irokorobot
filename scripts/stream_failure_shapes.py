@@ -2,6 +2,11 @@
 
 The output is one member of a fixed enum, never a slice of the reply: a report can
 count shapes without ever holding, logging or storing model text.
+
+Plan 0059 stopped asking the model for the tag, so the server no longer parses one. The
+shapes keep Plan 0057's strict reading (a well-formed ``EMOTION:<x>`` line), frozen here,
+so their names do not move: they now name what a model wrote although it was not asked
+to, and no longer say whether the protocol speaks the reply.
 """
 
 from __future__ import annotations
@@ -9,9 +14,8 @@ from __future__ import annotations
 import enum
 import re
 
-from server.streaming_protocol import parse_streaming_emotion
-
 _TAG_PREFIX = "EMOTION:"
+_TAG_LINE_RE = re.compile(r"^EMOTION:\s*\w+\s*\n", re.IGNORECASE)
 _WRAPPERS = "<[({\"'«*_`"
 _JSON_STARTS = ("{", "[")
 _FENCE = "`" * 3  # built, not written: this module is quoted inside Markdown fences
@@ -39,6 +43,12 @@ class FailureShape(enum.StrEnum):
     BODY_FENCE = "body_fence"
     SECOND_TAG = "second_tag"
     OTHER = "other"
+
+
+def _after_tag_line(text: str) -> str | None:
+    """Return the text after a well-formed ``EMOTION:<x>`` line, or ``None`` if there is none."""
+    match = _TAG_LINE_RE.match(text)
+    return None if match is None else text[match.end() :]
 
 
 def _body_shape(body: str) -> FailureShape:
@@ -75,7 +85,7 @@ def _malformed_tag_shape(text: str) -> FailureShape:
 
 def _tag_prefixed_shape(text: str, stripped: str) -> FailureShape:
     """Classify a reply whose first non-blank text is ``EMOTION:`` but is not a valid line."""
-    if stripped != text and parse_streaming_emotion(stripped) is not None:
+    if stripped != text and _after_tag_line(stripped) is not None:
         return FailureShape.LEADING_WHITESPACE
     return _malformed_tag_shape(stripped)
 
@@ -107,7 +117,7 @@ def classify_failure_shape(text: str) -> FailureShape:
     """
     if not text.strip():
         return FailureShape.EMPTY
-    parsed = parse_streaming_emotion(text)
-    if parsed is not None:
-        return _body_shape(parsed[1])
+    body = _after_tag_line(text)
+    if body is not None:
+        return _body_shape(body)
     return _unparsed_shape(text)
