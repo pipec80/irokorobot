@@ -21,6 +21,8 @@ from server import llm_streaming, streaming_protocol
 
 _FENCE = "`" * 3  # built, not written: this file also lives inside a Markdown code fence
 _FULLWIDTH_COLON = chr(0xFF1A)  # built, not written: an ambiguous character in the source
+_FULLWIDTH_LATIN_TAG = "".join(chr(ord(letter) + 0xFEE0) for letter in "EMOTION")
+_ZERO_WIDTH_SPACE = chr(0x200B)
 
 
 @pytest.mark.unit
@@ -97,6 +99,15 @@ def test_a_body_that_is_decided_is_not_undecided(body: str) -> None:
         "EMOTION : joy",
         "emotion: joy",
         "Claro, emotion:joy otra vez.",
+        # Underscore wrappers: "_" is a word character, so it needs its own rule (audit A-1).
+        "_EMOTION_: joy. Hola.",
+        "__EMOTION__: joy",
+        "Hola. _EMOTION_: joy.",
+        "Hola. EMOTION_: joy.",
+        "_EMOTION:joy_",
+        # Compatibility forms are normalised first (audit A-4).
+        _FULLWIDTH_LATIN_TAG + ": joy",
+        "EMOTION" + _ZERO_WIDTH_SPACE * 2 + ": joy",
     ],
 )
 def test_reject_embedded_tag_refuses_a_tag_anywhere(text: str) -> None:
@@ -114,6 +125,8 @@ def test_reject_embedded_tag_refuses_a_tag_anywhere(text: str) -> None:
         "Emotion es una palabra.",
         "Una demotion: palabra rara.",
         "¿Qué emoción sientes?",
+        "El campo emotion_name: vacío",
+        "Escribe EMOTIONS: aquí",
         "",
     ],
 )

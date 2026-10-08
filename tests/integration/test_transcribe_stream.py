@@ -948,10 +948,37 @@ def test_stream_a_tag_in_the_body_is_never_spoken_and_the_turn_is_not_recorded(
     spoken = [str(event["text"]) for event in events if event["type"] == "audio"]
     assert spoken == [*spoken_before_fallback, settings.llm_fallback_phrase]
     assert not any("EMOTION" in text.upper() for text in spoken)
-    # A rejected batch promotes nothing: with nothing spoken the fallback sends ``neutral``.
+    # The emotion is promoted with the first content that passes the start guards, so it is
+    # already sent when a later sentence is rejected; a batch rejected on its own first content
+    # promotes nothing and the fallback sends ``neutral`` (audit A-3).
     expected = _USER_EMOTION if spoken_before_fallback else "neutral"
     assert next(e for e in events if e["type"] == "emotion")["value"] == expected
     record.assert_not_called()
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("deltas", [["E"], ["`"], ["Emo"], ["``"]])
+def test_stream_that_ends_inside_an_undecided_prefix_still_sends_the_emotion_first(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+    deltas: list[str],
+) -> None:
+    """Audit A-2: the only path that sends ``emotion`` at the end of the stream.
+
+    The reply never got past the undecided start, so the end-of-stream branch of
+    ``_finalize_model_output`` must send the single ``emotion`` event before the tail audio
+    (the robot raises on audio before emotion). The tail is ordinary text (ADR 0018).
+    """
+    record = Mock()
+    monkeypatch.setattr(streaming, "record_text_turn", record)
+
+    events = _post_stream_with_deltas(client, monkeypatch, silence_wav_bytes, deltas)
+
+    assert [event["type"] for event in events] == ["text_heard", "emotion", "audio", "done"]
+    assert events[1]["value"] == _USER_EMOTION
+    assert events[2]["text"] == deltas[0]
+    record.assert_called_once()
 
 
 @pytest.mark.integration

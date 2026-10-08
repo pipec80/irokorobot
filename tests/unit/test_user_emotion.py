@@ -87,6 +87,18 @@ NEUTRAL: tuple[str, ...] = (
     "Quiero llorar de risa con ese chiste",
     "Qué pena tengo de preguntarte esto",
     "Dime qué rabia da esto, es una frase hecha",
+    # Out-of-sample traps found by the independent audit (audit A-5): requested, quoted or
+    # reported text is not the user's own feeling.
+    "Traduce estoy triste al inglés",
+    "Traduce: me alegra verte",
+    "Escribe una carta que diga estoy contento",
+    "Repite después de mí estoy furioso",
+    "Di me siento solo",
+    "Pon una canción que se llame me alegra",
+    "El libro se llama Qué alegría",
+    "Tengo ganas de llorar de la risa",
+    "Mi madre piensa que estoy enojado",
+    "Mi jefe cree que estoy molesto",
     "",
     "   ",
 )
@@ -197,3 +209,10 @@ def test_a_question_clause_does_not_hide_a_feeling_in_another_clause() -> None:
 @pytest.mark.unit
 def test_the_first_explicit_feeling_wins() -> None:
     assert classify_user_emotion("Estoy triste, pero estoy feliz") == "sadness"
+
+
+@pytest.mark.unit
+def test_only_the_first_characters_of_a_huge_text_are_read() -> None:
+    """Audit A-6: the work is bounded by the longest turn the API accepts."""
+    assert classify_user_emotion("hola " * 100 + "Estoy triste.") == "sadness"
+    assert classify_user_emotion("hola " * 5000 + "Estoy triste.") == FALLBACK_EMOTION

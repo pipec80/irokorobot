@@ -43,7 +43,7 @@ _EMOTION_RULES: dict[str, tuple[str, ...]] = {
         r"\bme (?:entristece|deprime|da (?:mucha )?tristeza|pone (?:muy )?triste)\b",
         r"\bque (?:tristeza|lastima|desgracia)\b",
         r"\bque pena\b(?! (?:tengo|me da|da)\b)",  # "que pena tengo de..." is embarrassment
-        r"\b(?:tengo ganas de|quiero) llorar\b(?! de (?:risa|alegria|emocion|felicidad)\b)",
+        r"\b(?:tengo ganas de|quiero) llorar\b(?! de (?:la )?(?:risa|alegria|emocion|felicidad)\b)",
     ),
     "surprise": (
         r"\bno (?:lo )?puedo creer(?:lo)?\b(?! en\b)",
@@ -63,18 +63,35 @@ _COMPILED_RULES = tuple(
 _BLOCKING_WORDS = frozenset(
     {"no", "nunca", "jamas", "tampoco", "ni", "sin", "si", "cuando", "aunque", "quizas", "quiza"}
     | {"ojala", "dice", "dijo", "dicen", "dijeron", "decia", "afirma", "cuenta"}
-    | {"dime", "escribe", "inventa", "pon"}  # requests to produce text, not a statement
+    | {"dime", "escribe", "inventa", "pon", "di", "diga", "traduce", "repite", "lee", "cita"}
+    | {"llame", "llama", "piensa", "cree", "opina", "supone"}  # requests, titles, reported views
 )
 _BLOCKING_WINDOW = 3  # words looked at before a match
+# The longest turn the API accepts (cognition.response_plan.MAX_TURN_MESSAGE_CHARS); reading
+# no more bounds the work, because the rules are quadratic in the number of matches.
+_MAX_CHARS = 4000
 
 # A clause that opens with one of these is a question even when the transcript has no "?".
 _QUESTION_OPENERS = ("por que ", "como ", "cuando ", "donde ", "quien ", "cual ", "acaso ")
 
-# Text containing one of these is irony or a quotation: never the user's plain statement.
+# Text containing one of these is irony, a quotation or a repeat-after-me request: never the
+# user's plain statement.
 _QUOTE_CHARS = frozenset('"«»“”')
-_IRONY_MARKERS = ("si claro", "ya claro", "como no", "claro que si", "jaja", "ja ja", "jeje")
+_IRONY_MARKERS = (
+    "si claro",
+    "ya claro",
+    "como no",
+    "claro que si",
+    "jaja",
+    "ja ja",
+    "jeje",
+    "repite despues de mi",
+    "repite conmigo",
+    "di conmigo",
+    "repite lo siguiente",
+)
 
-_CLAUSE = re.compile(r"[^.,;:!?¿\n]+\??")
+_CLAUSE = re.compile(r"[^.,;!?¿\n]+\??")
 _NON_WORD = re.compile(r"[^a-z0-9?]+")
 
 
@@ -119,7 +136,7 @@ def classify_user_emotion(text: str) -> str:
     Returns:
         A member of ``VALID_EMOTIONS``; ``FALLBACK_EMOTION`` when no feeling is explicit.
     """
-    normalised = _normalise(text)
+    normalised = _normalise(text[:_MAX_CHARS])
     if not _is_plain_statement(normalised):
         return FALLBACK_EMOTION
     for clause in _CLAUSE.findall(normalised):

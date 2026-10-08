@@ -249,7 +249,8 @@ def record_text_turn(
         message: Current user message.
         conversation_id: Ephemeral working-memory identifier.
         response: Generated assistant response.
-        emotion: Emotion detected during generation.
+        emotion: The user's emotion for this turn (the classic path reads it from the model's
+            JSON; the streaming path decides it from the user's text before generating).
         active_person: Internally resolved evidence for this turn only.
         history_scope: Internal working-memory key calculated during preparation.
         schedule_consolidation: Optional channel-owned scheduling callback.

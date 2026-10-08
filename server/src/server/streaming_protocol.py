@@ -9,6 +9,7 @@ may contain anything the model produced).
 """
 
 import re
+import unicodedata
 
 from server.exceptions import LLMError
 
@@ -16,8 +17,10 @@ _TAG = "EMOTION:"
 _FENCE = "`" * 3  # built, not written: this module is quoted inside Markdown fences
 _INVALID_BODY_PREFIXES = ("{", "[", _FENCE)
 _UNDECIDED_BODY_PREFIXES = (_TAG, _FENCE)
-# A tag mention in speech: **EMOTION**: and a fullwidth colon count; demotion: does not.
-_TAG_MENTION_RE = re.compile(r"\bemotion\W{0,3}[:\N{FULLWIDTH COLON}]", re.IGNORECASE)
+# A tag mention in speech, after NFKC (so a fullwidth colon or fullwidth letters are plain):
+# **EMOTION**: and _EMOTION_: count; demotion:, 1EMOTION: and emotion_name: do not. "_" is a
+# word character, hence the explicit lookbehind and the [\W_] gap.
+_TAG_MENTION_RE = re.compile(r"(?<![^\W_])emotion[\W_]{0,3}:", re.IGNORECASE)
 
 # Bounded, content-free message — never interpolate the raw candidate/model
 # output here (it may contain arbitrary, unbounded model text).
@@ -76,10 +79,23 @@ def reject_embedded_tag(text: str) -> None:
     Args:
         text: One sentence, or the final unfinished tail, about to be spoken.
 
+    Text is first normalised with NFKC and stripped of invisible format characters, so
+    fullwidth letters or colons and zero-width characters do not hide a tag.
+
+    Known limits (they need output no model is asked for): more than three symbols between
+    ``EMOTION`` and the colon, and a sentence terminator between them (``EMOTION.:``, the
+    sentence splitter cuts there before this check sees the colon) are not caught.
+
     Raises:
         StreamProtocolError: If ``text`` mentions ``EMOTION`` followed by a colon, in any
-            letter case, with up to three symbols between them (``**EMOTION**:``) and
-            either colon width.
+            letter case, with up to three symbols between them (``**EMOTION**:``,
+            ``_EMOTION_:``).
     """
-    if _TAG_MENTION_RE.search(text):
+    if _TAG_MENTION_RE.search(_visible_text(text)):
         raise StreamProtocolError(_INVALID_PROTOCOL_MESSAGE)
+
+
+def _visible_text(text: str) -> str:
+    """Return ``text`` in NFKC form without invisible format characters (Unicode Cf)."""
+    normalised = unicodedata.normalize("NFKC", text)
+    return "".join(char for char in normalised if unicodedata.category(char) != "Cf")

@@ -31,6 +31,26 @@ def test_a_sentence_that_carries_a_tag_is_never_released() -> None:
 
 
 @pytest.mark.unit
+def test_a_reply_that_starts_with_an_underscore_wrapped_tag_is_never_released() -> None:
+    """Audit A-1: the whole reply is refused, whatever the wrapper around the tag."""
+    state = _state()
+
+    with pytest.raises(StreamProtocolError):
+        _consume_body("_EMOTION:joy_\nHola. Que tal.", state)
+
+    assert state.emotion is None
+
+
+@pytest.mark.unit
+def test_consuming_a_body_without_a_pending_emotion_is_a_programming_error() -> None:
+    """Audit A-7: audio must never go out before an emotion event could be sent."""
+    state = _state(pending=None)
+
+    with pytest.raises(RuntimeError):
+        _consume_body("Hola. Bien", state)
+
+
+@pytest.mark.unit
 def test_a_tag_after_the_emotion_was_promoted_is_still_refused() -> None:
     state = _state(emotion="joy")
 

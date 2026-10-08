@@ -158,18 +158,25 @@ def _consume_body(buffer: str, state: StreamState) -> tuple[str, list[str]]:
     """Split complete sentences off the reply, promoting the emotion once it is valid.
 
     Promotes ``pending_emotion`` (the user's emotion, decided at the start of the turn) to
-    the emitted ``emotion`` the first time content passes ``validate_streaming_body_start``.
-    While the start is still a prefix of a forbidden one (``E``, a lone backtick) nothing is
-    promoted or spoken: the next delta decides it. No sentence that carries a protocol tag is
-    released, and a rejected batch promotes nothing, so the fallback can still send the one
-    ``emotion`` event the robot requires.
+    the emitted ``emotion`` the first time content passes ``validate_streaming_body_start``
+    and every sentence closed in the same call passes ``reject_embedded_tag``. While the
+    start is still a prefix of a forbidden one (``E``, a lone backtick) nothing is promoted
+    or spoken: the next delta decides it. No sentence that carries a protocol tag is released.
+    The promotion happens with the first content, not with the first closed sentence, so if a
+    later sentence is rejected the fallback follows an ``emotion`` event that already carries
+    the user's emotion; a call rejected on its own first content promotes nothing and the
+    fallback sends ``neutral``. Either way exactly one ``emotion`` precedes the first audio,
+    which is what the robot requires.
 
     Returns:
         ``(remaining_buffer, sentences)`` where ``sentences`` are safe to speak.
 
     Raises:
         StreamProtocolError: If the reply is structurally invalid or mentions a tag.
+        RuntimeError: If ``state.pending_emotion`` was never set (a programming error).
     """
+    if state.pending_emotion is None:
+        raise RuntimeError("pending_emotion must be set before consuming the reply")
     has_content = bool(buffer.strip())
     if state.emotion is None and has_content:
         if is_body_start_undecided(buffer):
