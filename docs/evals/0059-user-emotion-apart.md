@@ -76,5 +76,22 @@ the auditors' test runs, gave 5176 ms: load alone moves the figure that much.
   tone-adaptation window therefore changes less often than a model that labelled freely would
   (see ADR 0018, *Consequences*). The classifier was measured on a labelled set of invented
   sentences (see the plan), not on real speech.
-- Hardware acceptance (five small-talk turns and one turn with memory, no fallback phrase, the
-  console ending `outcome=ok`) is Pipec's and is not recorded here.
+- The real path is covered only by the acceptance below.
+
+## Real-hardware acceptance (Pipec, 2026-10-08)
+
+Development laptop, microphone, Piper, Ollama `qwen2.5:3b`, `ROBOT_STREAMING=true`, server and robot started by
+Pipec; commit `228b146`. Outcomes only.
+
+| Case | Result |
+|---|---|
+| 1. Small talk, no fallback phrase | Pass: 13 turns over two sessions, every one `outcome=ok`, no `protocol_fallback` |
+| 2. A turn that carries memory | Not exercisable: every turn logs `Turn memory: skipped (no verified identity)`; production puts no history or memory in the prompt before CM-2 |
+| 3. The emotion event | Pass: exactly one `emotion` before the first audio each time; `neutral` in 11 turns, `joy` in one, `sadness` for a sentence in which the user said they were a little sad |
+| 4. No tag or label spoken aloud | Pass for the three turns whose text was logged (`LOG_CONVERSATION_TEXT=true`); the first ten turns were not logged as text and nothing odd was reported |
+| 5. The robot behaves as before | Pass: emotion then audio, sentence by sentence |
+
+**Finding, open:** in one turn the model answered in French although the transcript was Spanish. The
+benchmark does not measure the language of a reply and no streaming contract tells the model to answer in
+Spanish, so it is not known whether it predates this plan. It is recorded as open work in the plan's
+*Closure*; it was not fixed here because it would change the prompt that was measured.

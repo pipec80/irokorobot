@@ -1,8 +1,9 @@
 # 0059 — The user's emotion is decided apart from the streamed reply
 
 > **Status:** `Closed 2026-10-08` — code complete, the gate of Task 6 **met in both seeds**
-> ([record](../../evals/0059-user-emotion-apart.md)); the branch awaits Pipec's PR, and Pipec's
-> acceptance on real hardware is **not done** (see *Closure*). Written 2026-10-08 after Plan 0058
+> ([record](../../evals/0059-user-emotion-apart.md)); the branch awaits Pipec's PR. Pipec's
+> acceptance on real hardware was done on 2026-10-08 (cases 1, 3, 4 and 5; case 2 cannot be
+> exercised until CM-2; one reply in French is an open finding, see *Closure*). Written 2026-10-08 after Plan 0058
 > closed without meeting its gate, and **promoted by Pipec on 2026-10-08** ("avancemos con esas 7
 > tareas"), who fixed decisions D-1 to D-8 in the planning conversation. The protocol it
 > implements is [ADR 0018](../../adr/0018-user-emotion-decided-apart.md) (`Accepted` by the gate);
@@ -258,7 +259,8 @@ of `9739ea7` finish (so that the measured code does not change under the run):
 - No end-to-end rate of a spoken turn is measured (the instrument runs the generator only).
 - The classifier was measured on a labelled set of invented sentences (66 plus the audit's), not
   on real speech; its recall on explicit statements was 85.7 % of 28 in the first set.
-- Hardware acceptance (completion criterion 6) is Pipec's and is not done yet.
+- Hardware acceptance (completion criterion 6) was done by Pipec on 2026-10-08 with the
+  limits recorded in *Closure*.
 
 ## Closure
 
@@ -278,10 +280,15 @@ merge (the PR number is in the PR itself).
 
 **What remains open (so it is not forgotten):**
 
-1. **Pipec's acceptance on real hardware (criterion 6): not done.** Five small-talk turns
-   (including a greeting and a question about the weather), one turn that carries memory (state a
-   fact, ask about it two turns later), the server console ending `outcome=ok`, nothing like a
-   tag or label spoken aloud, the robot playing emotion and audio as before.
+1. **Pipec's acceptance on real hardware (criterion 6): done 2026-10-08, with two limits.**
+   Two sessions on the development laptop (microphone, Piper, Ollama `qwen2.5:3b`, streaming on),
+   13 turns, every one ended `outcome=ok` with no `protocol_fallback`; the robot received exactly
+   one `emotion` before the first audio each time (`neutral` in 11 turns, `joy` in one and
+   `sadness` for a sentence in which the user said they were a little sad); with
+   `LOG_CONVERSATION_TEXT=true` the spoken sentences of three turns carried no tag, label or
+   fallback phrase. **Not exercised:** the turn with memory (production sends no history or memory
+   to the prompt without a verified identity, so it cannot be tested before CM-2), and the spoken
+   text of the first ten turns was not logged.
 2. **Plan 0058's evidence PR** (#170, docs only) is separate and unmerged; this branch cites its
    record in backticks, not as a link.
 3. **The robot's facial expression** (a transient reaction for the future face, which need not
@@ -295,5 +302,12 @@ merge (the PR number is in the PR itself).
 7. **Cleanup:** the report prose about the old `llm_streaming.py` header in
    `scripts/stream_diagnosis_report.py`; the diagnosis instrument's `undue_accept` and
    `contract_first` variant now describe a protocol that no longer exists and could be simplified.
-8. **CM-2 is unblocked** by this plan (the streaming repair was its hard gate) but is not started;
+8. **The language of the reply (found in acceptance, open).** In one turn the model answered
+   in French although the transcript was Spanish. The benchmark does not measure the language of a
+   reply, and neither the old nor the new streaming contract (nor the character prompt) tells the
+   model to answer in Spanish, so it is not known whether it predates this plan; Pipec's rule is that
+   all voice is in Spanish. Candidate fix, not done: one sentence in the streaming contract, with a
+   test, and a language check in the instrument. It changes the prompt that was measured, so one seed
+   would have to be repeated.
+9. **CM-2 is unblocked** by this plan (the streaming repair was its hard gate) but is not started;
    the next free plan number is 0060.
