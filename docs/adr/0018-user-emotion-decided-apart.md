@@ -1,13 +1,13 @@
 # 0018 — Decide the user's emotion apart from the streamed reply
 
-- **Status:** Proposed (2026-10-08) — becomes Accepted when the measurement of
-  [Plan 0059](../plans/open/0059-user-emotion-apart.md) meets its gate (Task 6); until then
-  nothing in `server/src` follows it
+- **Status:** Accepted (2026-10-08) — the measurement of
+  [Plan 0059](../plans/completed/0059-user-emotion-apart.md) met its gate in both seeds (0 of 60
+  context and 0 of 60 public fallbacks each; [record](../evals/0059-user-emotion-apart.md))
 - **Date:** 2026-10-08
 - **Builds on:** [ADR 0004](0004-local-first-cognitive-policy.md),
   [ADR 0012](0012-line-delimited-stream-terminal-events.md)
 - **Replaces:** [ADR 0017](0017-streaming-reply-protocol.md), which was never Accepted
-- **Implemented by:** [Plan 0059](../plans/open/0059-user-emotion-apart.md)
+- **Implemented by:** [Plan 0059](../plans/completed/0059-user-emotion-apart.md)
 
 ## Context
 
@@ -18,7 +18,7 @@ instead of the reply.
 
 **Why ADR 0017 is replaced.** ADR 0017 kept the tag and made the parser tolerant: a tag sharing
 its line with the text, a reply with no tag (rescued as `neutral`), and an undecided start that
-waits. [Plan 0058](../plans/open/0058-stream-protocol-repair.md) implemented that and measured it
+waits. [Plan 0058](../plans/completed/0058-stream-protocol-repair.md) implemented that and measured it
 (`docs/evals/0058-stream-protocol-repair.md`, in the evidence PR; `qwen2.5:3b`, the generator
 only, a non-dedicated laptop). In seed 57 the fallback rate of turns with memory context was
 **35.00 %** (21 of 60) after the tolerant grammar, against 51.67 % before it, with a gate of 5 %.

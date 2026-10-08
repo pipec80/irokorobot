@@ -6,7 +6,7 @@
   [ADR 0012](0012-line-delimited-stream-terminal-events.md)
 - **Replaces:** the streaming reply rules that lived only in code and tests (the strict
   `EMOTION:` line and "plain text without the tag is a fallback"); no earlier ADR governed them
-- **Implemented by:** [Plan 0058](../plans/open/0058-stream-protocol-repair.md)
+- **Implemented by:** [Plan 0058](../plans/completed/0058-stream-protocol-repair.md)
 
 ## Context
 

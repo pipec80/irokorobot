@@ -22,7 +22,7 @@ single-WIP [operational board](../README.md#operational-board) — **CM-0
 (Plan 0046) closed 2026-09-08, PC-3A (Plan 0047) closed 2026-09-25 with a
 provisional PASS, and PC-3B ([Plan 0053](../completed/0053-consented-speaker-runtime-evidence.md))
 closed 2026-09-29, and PC-4 ([Plan 0054](../completed/0054-face-default-identity-fusion.md))
-closed 2026-09-30; `NOW` is Plan 0058 (promoted 2026-10-07).** Use the
+closed 2026-09-30; `NOW` is empty (Plan 0059 closed 2026-10-08).** Use the
 [personal-companion delivery map](../../roadmap/personal-companion-delivery-map.md)
 and [conversational-memory delivery map](../../roadmap/conversational-memory-delivery-map.md)
 to see the code, tests, verified gaps, and future delivery sequence.
@@ -68,17 +68,11 @@ confirmada por una segunda semilla, no una causa), que una respuesta con esquema
 al cliente y que el defecto de fragmentación no apareció en salida real (0 de 820) pero sigue fijado por un test.
 La regla de orden de ejecución saltó en la segunda corrida y queda sin resolver. Ver
 [el registro](../../evals/0057-stream-protocol-diagnosis.md). La reparación empieza por el defecto de
-fragmentación y está escrita como [Plan 0058](0058-stream-protocol-repair.md) (ver abajo).
+fragmentación y está escrita como [Plan 0058](../completed/0058-stream-protocol-repair.md) (ver abajo).
 
-[0058 — reparación del protocolo de respuesta del streaming](0058-stream-protocol-repair.md) está `Ready` y es el
-**`NOW` desde el 2026-10-07**: se escribió ese día, tuvo una revisión independiente (aprobado con arreglos, ya
-aplicados) y Pipec lo promovió confirmando sus decisiones D-5 a D-8 tal cual. Pipec eligió la reparación ese día: una gramática de la
-etiqueta `EMOTION:` tolerante (la etiqueta que comparte línea con el texto) **más** rescatar como texto plano,
-con la emoción `neutral`, una respuesta sin etiqueta, registrado en el
-[ADR 0017](../../adr/0017-streaming-reply-protocol.md) (`Proposed`), sin tocar el prompt. La Tarea 0 corre la
-tercera semilla del Plan 0057 sobre el código sin cambios (cierra la regla de orden R-5); la compuerta es una
-tasa de respaldo de `full` de 5 % o menos en turnos con contexto y públicos, en dos semillas, con 0 aceptaciones
-indebidas y 0 respuestas dependientes de la fragmentación. Es compuerta dura de CM-2. El siguiente número libre es 0059.
+[0058 — reparación del protocolo de respuesta del streaming](../completed/0058-stream-protocol-repair.md) **cerró el 2026-10-07 sin cumplir su compuerta** y ya vive en `completed/`: su código (una gramática tolerante de la etiqueta `EMOTION:` más rescatar como texto plano una respuesta sin etiqueta) quedó solo en la rama `feat/0058-stream-protocol-repair`, sin mergear. Pipec midió que seguían cayendo al respaldo 21 de 60 turnos con contexto en la semilla 57 (35,00 %, compuerta 5 %), 20 de ellos por una etiqueta en la misma línea cuya palabra siguiente no es una emoción. La evidencia está en `docs/evals/0058-stream-protocol-repair.md` (PR solo de documentos, #170, sin mergear).
+
+[0059 — la emoción del usuario se decide aparte](../completed/0059-user-emotion-apart.md) **cerró el 2026-10-08**: Pipec la promovió ese día con sus decisiones D-1 a D-8. El modelo responde en texto plano y la emoción del turno la decide una función pura y prudente sobre lo que dijo el usuario (`user_emotion.classify_user_emotion`; sin segunda llamada al LLM, sin cambio de cable, robot intacto), con las guardas que sobreviven (una etiqueta nunca se habla; un inicio indeciso espera). La compuerta se cumplió en las dos semillas con el código final: 0 de 60 turnos con contexto y 0 de 60 públicos cayeron al respaldo ([registro](../../evals/0059-user-emotion-apart.md)); `just gate` 2315 tests. Una auditoría independiente (dos agentes de solo lectura) no halló nada crítico y sus arreglos están dentro. El [ADR 0018](../../adr/0018-user-emotion-decided-apart.md) quedó `Accepted` y el 0017 `Superseded`. **Pendiente:** la aceptación en hardware real de Pipec, la *expresión* facial del robot, un clasificador basado en modelo cuando haya uno mayor, la tasa de extremo a extremo. `NOW` quedó vacío; CM-2 queda desbloqueado. El siguiente número libre es 0060.
 
 [ADR-0015](../../adr/0015-owner-grant-scope-and-speaker-binding.md) (**Accepted**, 2026-09-25)
 liga el grant PIN a una operación (incumplía ADR-0009 hasta el Plan 0051) y, por etapas, a la
@@ -93,7 +87,7 @@ El cambio de contrato es aditivo (`scope` opcional en `POST /auth/owner/unlock`)
 migración. Pipec lo aceptó en hardware real ([registro](../../evals/0051-scoped-grant-acceptance.md)), con
 el caso del PIN que el Plan 0054 dejó sin correr; revocar la cara con un token administrativo (204) no se
 corrió. `NOW` quedó vacío hasta que Pipec promovió el Plan 0057 (diagnóstico, 2026-10-06); la reparación del
-streaming viene después. El siguiente número libre es 0059.
+streaming viene después.
 
 [0053 — consented speaker runtime evidence](../completed/0053-consented-speaker-runtime-evidence.md)
 (PC-3B) **cerró el 2026-09-29** y ya vive en `completed/`: enrolamiento consentido, revocación que
@@ -165,7 +159,7 @@ the benchmark harness is GREEN and the measured baseline is a reproducible
 cognitive RED (`ac43c58`, exit 1); it changed no runtime memory. See
 [completed/0046](../completed/0046-reproducible-longitudinal-memory-baseline.md).
 
-Canonical execution order: **`NOW` is Plan 0058 (promoted 2026-10-07; Plan 0057 closed 2026-10-06); Plan 0054 (PC-4) closed 2026-09-30.** Plan 0053 (PC-3B)
+Canonical execution order: **`NOW` is empty (Plan 0059 closed 2026-10-08; Plan 0057 closed 2026-10-06); Plan 0054 (PC-4) closed 2026-09-30.** Plan 0053 (PC-3B)
 closed 2026-09-29, and Plan 0047 (PC-3A) closed 2026-09-25 with a provisional PASS
 (see [completed/0047](../completed/0047-speaker-evidence-calibration-study.md)); the
 queue-rule-4 re-audit of the next row ran the same day, produced Plan 0053, and

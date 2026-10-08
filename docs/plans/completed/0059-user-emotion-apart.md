@@ -1,10 +1,12 @@
 # 0059 — The user's emotion is decided apart from the streamed reply
 
-> **Status:** `Ready` — written 2026-10-08 after Plan 0058 closed without meeting its gate, and
-> **promoted by Pipec on 2026-10-08** ("avancemos con esas 7 tareas"), who fixed decisions D-1 to
-> D-8 in the planning conversation. It is the `NOW` item. The protocol it implements is
-> [ADR 0018](../../adr/0018-user-emotion-decided-apart.md), `Proposed` until Task 6 passes; it
-> supersedes the never-accepted [ADR 0017](../../adr/0017-streaming-reply-protocol.md).
+> **Status:** `Closed 2026-10-08` — code complete, the gate of Task 6 **met in both seeds**
+> ([record](../../evals/0059-user-emotion-apart.md)); the branch awaits Pipec's PR, and Pipec's
+> acceptance on real hardware is **not done** (see *Closure*). Written 2026-10-08 after Plan 0058
+> closed without meeting its gate, and **promoted by Pipec on 2026-10-08** ("avancemos con esas 7
+> tareas"), who fixed decisions D-1 to D-8 in the planning conversation. The protocol it
+> implements is [ADR 0018](../../adr/0018-user-emotion-decided-apart.md) (`Accepted` by the gate);
+> it supersedes the never-accepted [ADR 0017](../../adr/0017-streaming-reply-protocol.md).
 
 > **For agentic workers:** REQUIRED SUB-SKILLS: `superpowers:test-driven-development`,
 > `superpowers:verification-before-completion`, `superpowers:finishing-a-development-branch`.
@@ -245,15 +247,53 @@ of `9739ea7` finish (so that the measured code does not change under the run):
 ### Known limits and what is left undone
 
 - A fence or JSON in the **middle** of a reply is still spoken (non-goal).
-- A reply that **starts** with a tag still falls back (D-6); how often is reported by Task 6.
+- A reply that **starts** with a tag still falls back (D-6); none did in the 480 streams of Task 6.
 - The classifier is silent for most turns (precision-first); it does not read sarcasm or
   context ("estoy feliz porque murió un perro" is read as joy: the user said it).
+- The tag guard does not catch more than three symbols between `EMOTION` and the colon, nor a
+  sentence terminator between them (`EMOTION.:`); ADR 0018 §4 lists them as known limits.
 - `scripts/stream_diagnosis_report.py` keeps prose about "the `llm_streaming.py` claim", which the
   new header no longer makes (harmless; to clean up).
 - The robot's facial *expression* is not designed (name `expression` reserved by ADR 0018).
 - No end-to-end rate of a spoken turn is measured (the instrument runs the generator only).
+- The classifier was measured on a labelled set of invented sentences (66 plus the audit's), not
+  on real speech; its recall on explicit statements was 85.7 % of 28 in the first set.
 - Hardware acceptance (completion criterion 6) is Pipec's and is not done yet.
 
 ## Closure
 
-*(Filled in when the plan closes.)*
+**Measurement (Task 6, 2026-10-08, final code `228b146`).** `full` fell back in 0 of 60 context
+and 0 of 60 public streams in seed 57 and in seed 59 (gate: at most 3 of 60); 0 undue accepts, 0
+split-dependent replies, no stream started with a tag anyway; time to first speech did not get
+slower (indicative only). Record: [`docs/evals/0059-user-emotion-apart.md`](../../evals/0059-user-emotion-apart.md).
+
+**Verification.** `just gate` 2315 passed (2099 on `main` when Plan 0057 closed), ruff, ruff
+format, mypy, pyright, `check_reserved_terms` and `pip-audit` clean; OpenAPI byte-identical
+(`test_api_contract`); `robot/`, `.env.example`, the settings and the dependencies untouched.
+
+**Commits** (branch `feat/0059-user-emotion-apart`): `6a11fac` plan and skeleton, `74d4f2b` ADR
+0018, `e02c49d` and `2edb49d` classifier, `9739ea7` core change, `8c63cbb` audit fixes, `228b146`
+audit record, plus the documentation commit of this closure. PR: to be opened for Pipec's review and
+merge (the PR number is in the PR itself).
+
+**What remains open (so it is not forgotten):**
+
+1. **Pipec's acceptance on real hardware (criterion 6): not done.** Five small-talk turns
+   (including a greeting and a question about the weather), one turn that carries memory (state a
+   fact, ask about it two turns later), the server console ending `outcome=ok`, nothing like a
+   tag or label spoken aloud, the robot playing emotion and audio as before.
+2. **Plan 0058's evidence PR** (#170, docs only) is separate and unmerged; this branch cites its
+   record in backticks, not as a link.
+3. **The robot's facial expression** (a transient reaction for the future face, which need not
+   equal the user's feeling): no plan; ADR 0018 reserves the name `expression`.
+4. **A model-based classifier** behind `classify_user_emotion`, when a larger model exists; today
+   most turns are `neutral`.
+5. **The end-to-end rate** of a spoken turn (STT → controller → TTS → robot) is not measured; the
+   instrument covers the generator only.
+6. **Known limits of the tag guard** (above) and of the middle-of-reply JSON or code fence, which
+   is still spoken.
+7. **Cleanup:** the report prose about the old `llm_streaming.py` header in
+   `scripts/stream_diagnosis_report.py`; the diagnosis instrument's `undue_accept` and
+   `contract_first` variant now describe a protocol that no longer exists and could be simplified.
+8. **CM-2 is unblocked** by this plan (the streaming repair was its hard gate) but is not started;
+   the next free plan number is 0060.
