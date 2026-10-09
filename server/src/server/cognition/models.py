@@ -70,6 +70,11 @@ class AuthorizationAction(str, _Enum):  # noqa: UP042
     DELETE_HOUSEHOLD_DATA = "delete_household_data"
     CONSIDER_CLOUD_ESCALATION = "consider_cloud_escalation"
     PROPOSE_PHYSICAL_ACTION = "propose_physical_action"
+    READ_PERSONAL_CONVERSATION_MEMORY = "read_personal_conversation_memory"
+    PROPOSE_PERSONAL_MEMORY = "propose_personal_memory"
+    CONFIRM_PERSONAL_MEMORY = "confirm_personal_memory"
+    CORRECT_PERSONAL_MEMORY = "correct_personal_memory"
+    FORGET_PERSONAL_MEMORY = "forget_personal_memory"
 
 
 class ObservationModality(str, _Enum):  # noqa: UP042
