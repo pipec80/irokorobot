@@ -1,7 +1,7 @@
 """A personal-memory decision is appended to the audit table unchanged (ADR 0019 §6)."""
 
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
 
@@ -72,6 +72,7 @@ async def test_each_new_action_is_recorded_with_its_value_and_a_cm1_policy_id(
         candidate_person_id=owner_id,
         confidence=Confidence(score=1.0, basis=ConfidenceBasis.ASSERTED, calibrated=True),
         observed_at=_AT,
+        expires_at=_AT + timedelta(seconds=300),
         reference="session-selection",
         grant_scope="personal_memory_forget",
         grant_spent=True,

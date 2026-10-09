@@ -96,8 +96,9 @@ class IdentityEvidence(_BaseModel):
     Attributes:
         grant_scope: For a `local_unlock` item, the operation its owner PIN grant was
             issued for (ADR 0019 §4); `None` for any other source or an unscoped grant.
-        grant_spent: Whether this request spent the grant. A peeked grant names its owner
-            but is not spent; only a spent grant can authorize an operation.
+        grant_spent: Whether the registry redeemed (spent) the item for this request. A
+            peeked grant names its owner but is not spent; only a spent grant can authorize
+            an operation. Only the policy's reading of a `local_unlock` item gives it meaning.
     """
 
     model_config = _ConfigDict(frozen=True, extra="forbid")

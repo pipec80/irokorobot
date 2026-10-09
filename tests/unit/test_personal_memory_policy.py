@@ -230,11 +230,6 @@ _UNRESOLVED_ID = "p0.5.identity-unresolved"
 _DEFAULT_DENY_ID = "p0.5.default-deny"
 
 
-def _visibility_id(visibility: frozenset[DataVisibility]) -> str:
-    """Render a visibility set as a stable pytest id."""
-    return "+".join(sorted(item.value for item in visibility))
-
-
 def _actor(
     *,
     role: HouseholdRole = HouseholdRole.OWNER,
@@ -710,6 +705,41 @@ def test_an_expired_grant_authorizes_nothing_even_when_marked_spent() -> None:
     expired = _pin_actor(_FORGET_SCOPE, kind="expired")
 
     _assert_outcome(_decide(_FORGET, actor=expired), _DENIED, _GRANT_SCOPE_ID)
+
+
+def test_a_grant_expiring_exactly_at_request_time_authorizes_nothing() -> None:
+    """The boundary is closed: `expires_at == requested_at` is already expired."""
+    boundary = _pin_evidence(scope=_FORGET_SCOPE).model_copy(update={"expires_at": _REQUESTED_AT})
+    owner = _actor(assurance=IdentityAssurance.STRONG, evidence=(boundary,))
+
+    _assert_outcome(_decide(_FORGET, actor=owner), _DENIED, _GRANT_SCOPE_ID)
+
+
+def test_a_grant_without_an_expiry_authorizes_nothing() -> None:
+    """The registry always sets an expiry; an item without one is not a trusted grant."""
+    unbounded = _pin_evidence(scope=_FORGET_SCOPE).model_copy(update={"expires_at": None})
+    owner = _actor(assurance=IdentityAssurance.STRONG, evidence=(unbounded,))
+
+    _assert_outcome(_decide(_FORGET, actor=owner), _DENIED, _GRANT_SCOPE_ID)
+
+
+@pytest.mark.parametrize("action", [_READ, _PROPOSE, _CONFIRM, _CORRECT, _FORGET])
+def test_a_request_with_no_visibility_is_not_the_owners_own_data(
+    action: AuthorizationAction,
+) -> None:
+    """`AuthorizationRequest` forbids an empty set; the policy must not rely on that alone."""
+    request = AuthorizationRequest.model_construct(
+        actor=_strong_actor_for(action),
+        action=action,
+        target_person_id=_OWNER_ID,
+        visibility=frozenset(),
+        sensitivity=_NORMAL,
+        consent=ConsentStatus.NOT_REQUIRED,
+        correlation_id=_CORRELATION_ID,
+        requested_at=_REQUESTED_AT,
+    )
+
+    _assert_outcome(evaluate_authorization(request), _DENIED, _OWN_DATA_ID)
 
 
 def test_a_grant_is_judged_after_assurance_and_before_consent() -> None:

@@ -439,6 +439,7 @@ def _is_own_data(request: AuthorizationRequest, capability: PersonalMemoryCapabi
         # Defence in depth: a missing target never matches, even if an actor id were absent.
         request.target_person_id is not None
         and request.target_person_id == request.actor.person_id
+        and bool(request.visibility)
         and request.visibility <= capability.visibilities
     )
 
@@ -463,14 +464,16 @@ def _is_invalid_grant(
     """Return whether one `local_unlock` item cannot authorize this request.
 
     It must carry the capability's own scope, have been spent by this request, name the
-    acting person and still be fresh at request time (ADR 0019 §4).
+    acting person and still be fresh at request time (ADR 0019 §4). An item with no
+    expiry is never trusted: the registry always sets one.
     """
     return (
         capability.unlock_scope is None
         or item.grant_scope != capability.unlock_scope
         or not item.grant_spent
         or item.candidate_person_id != request.actor.person_id
-        or (item.expires_at is not None and item.expires_at <= request.requested_at)
+        or item.expires_at is None
+        or item.expires_at <= request.requested_at
     )
 
 
