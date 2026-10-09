@@ -156,9 +156,12 @@ working context remains isolated and must not be attributed or consolidated
 into Pipec's persistent memory.
 
 Every PIN grant is bound to the **one operation named at unlock** (ADR 0015 decision 1,
-Plan 0051). `OwnerUnlockScope` has two members: `personal_protected_read` (the default;
-exactly one read of confirmed `child_data`) and `biometric_admin` (enrolling or
-revoking the owner's face or voice). A grant presented to any other operation is
+Plan 0051, extended by [ADR 0019](../adr/0019-personal-memory-capabilities.md)). `OwnerUnlockScope`
+has four members: `personal_protected_read` (the default; exactly one read of confirmed
+`child_data`), `biometric_admin` (enrolling or revoking the owner's face or voice),
+`personal_memory_read` (one read of the owner's own personal conversation memory) and
+`personal_memory_forget` (one erasure of the owner's own personal memory). None of the
+four unlocks another. A grant presented to any other operation is
 refused and is **not spent**, so a bystander or a wrong call cannot burn it. A read
 grant is not permission to modify memory, enroll biometrics, control lights, restart a
 computer, administer the home, or invoke actuators, and an administration grant is not
@@ -237,7 +240,12 @@ data.
 | Unknown face or voice, no usable or expired evidence | `unknown` | `none` |
 
 `basic` is enough for ordinary private data such as the child read. `strong` is required
-for the categories in `HIGH_ASSURANCE_CATEGORIES` (`security` today); a reserved request
+for the categories in `HIGH_ASSURANCE_CATEGORIES` (`security` today). A capability may also
+declare a minimum above the category floor: the personal-memory capabilities of ADR 0019
+demand `strong` for `confirm` and `forget`, and for `biometric`, `medical` and `location`
+data in every one of them (`PERSONAL_MEMORY_STRONG_CATEGORIES`), so a photograph of the owner
+reaches none of it. The rank is compared through `ASSURANCE_RANK`, never with `<` on the
+`str` enum. A reserved request
 answered at `basic` is denied with the same generic text as any other denial; only the
 authorization audit row (`policy_id` `p0.5.assurance-required`) records why, while the
 server log carries the fusion reason of the turn. Positive evidence of another person vetoes even when a PIN
@@ -370,6 +378,9 @@ The matrix is a starting policy and must remain configurable:
 | Own profile | Yes | Yes | Yes | No |
 | Another person's private memories | Policy | Policy | No | No |
 | Modify confirmed memory | Yes | Confirmation/limited | Propose only | No |
+| Read, propose, correct own personal memory (ADR 0019) | Yes, own data only; `strong` for `biometric`, `medical`, `location` | No | No | No |
+| Confirm own personal memory (ADR 0019) | Yes, `strong` (face and verified voice) | No | No | No |
+| Forget own personal memory (ADR 0019) | Yes, `strong` and a PIN grant spent for `personal_memory_forget` | No | No | No |
 | Enroll biometrics | Yes with subject consent | Configurable with consent | No direct administration | No |
 | Export/delete household memory | Yes | No | No | No |
 | Execute physical actions | Policy + local safety | Policy + local safety | Restricted | No by default |

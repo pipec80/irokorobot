@@ -184,7 +184,7 @@ below par, every other operation is `unsupported`). It implemented no CM-1
 capability and changed no runtime memory. When it closed, CM-1…CM-7 were
 unplanned; their biometric dependencies (PC-3, PC-4) closed on 2026-09-29 and
 2026-09-30. Since then CM-1 began with Plan 0051 (closed 2026-10-06) and its
-memory capabilities are Plan 0060 (`NOW` since 2026-10-09); CM-2…CM-7 remain
+memory capabilities closed as Plan 0060 (policy only, 2026-10-09); CM-2…CM-7 remain
 unplanned.
 
 **Gate:** the canonical evaluation proves `aprendo -> reinicio -> recuerdo ->

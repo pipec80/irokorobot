@@ -147,6 +147,7 @@ class IdentitySessionRegistry:
             observed_at=observed_at,
             expires_at=observed_at + self._ttl,
             reference=_SELECTION_REFERENCE,
+            grant_scope=scope,
         )
         token = _uuid4().hex
         self._evidence_by_token[token] = evidence
@@ -166,9 +167,10 @@ class IdentitySessionRegistry:
                 never burns it.
 
         Returns:
-            The evidence if the token was present, within ``scope`` and unexpired, else
-            ``None``. A token that is within ``scope`` is removed either way — a second
-            call with the same token always returns ``None``.
+            The evidence, marked ``grant_spent``, if the token was present, within
+            ``scope`` and unexpired, else ``None``. A token that is within ``scope`` is
+            removed either way — a second call with the same token always returns
+            ``None``. The stored item is never mutated: only the returned copy is spent.
         """
         # Spending fails closed: the asked scope must equal the recorded one, so a token
         # bound to an operation is never redeemed by a caller that names none.
@@ -180,7 +182,7 @@ class IdentitySessionRegistry:
             return None
         if evidence.expires_at is not None and evidence.expires_at <= self._clock():
             return None
-        return evidence
+        return evidence.model_copy(update={"grant_spent": True})
 
 
 # Compatibility for the implementation name used before Plan 0002 review.

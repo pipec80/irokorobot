@@ -91,7 +91,15 @@ class PersonRecord:
 
 
 class IdentityEvidence(_BaseModel):
-    """Immutable, safe evidence supporting an identity candidate."""
+    """Immutable, safe evidence supporting an identity candidate.
+
+    Attributes:
+        grant_scope: For a `local_unlock` item, the operation its owner PIN grant was
+            issued for (ADR 0019 §4); `None` for any other source or an unscoped grant.
+        grant_spent: Whether the registry redeemed (spent) the item for this request. A
+            peeked grant names its owner but is not spent; only a spent grant can authorize
+            an operation. Only the policy's reading of a `local_unlock` item gives it meaning.
+    """
 
     model_config = _ConfigDict(frozen=True, extra="forbid")
 
@@ -102,6 +110,8 @@ class IdentityEvidence(_BaseModel):
     observed_at: _StrictDatetime
     reference: str
     expires_at: _StrictDatetime | None = None
+    grant_scope: str | None = None
+    grant_spent: bool = False
 
     _validate_observed_at = _field_validator("observed_at")(require_aware_utc)
     _validate_expires_at = _field_validator("expires_at")(normalize_optional_aware_utc)

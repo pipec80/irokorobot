@@ -1,12 +1,11 @@
 # 0060 — Personal-memory capabilities (CM-1)
 
-> **Status:** `Ready` — written 2026-10-08 as the rest of CM-1, after Pipec confirmed the queue
-> order the same day (CM-1 before CM-2), and **promoted by Pipec on 2026-10-09**, who chose D-3
-> (`confirm` needs `strong`, 2026-10-08) and D-10 (`biometric`, `medical` and `location` data need
-> `strong`, 2026-10-09) himself and confirmed D-1, D-2 and D-4 to D-9 exactly as written below. It
-> is the `NOW` item. D-4 to D-6 came out of independent security and architecture reviews of
-> [ADR 0019](../../adr/0019-personal-memory-capabilities.md) (`Proposed`, becomes `Accepted` when
-> this plan closes; the reasoning is in the ADR).
+> **Status:** `Closed 2026-10-09` — written 2026-10-08 as the rest of CM-1, promoted by Pipec on
+> 2026-10-09 (who chose D-3 and D-10 himself and confirmed D-1, D-2 and D-4 to D-9 exactly as
+> written below), executed the same day in the session that promoted it, and accepted at runtime by
+> Pipec ([record](../../evals/0060-personal-memory-capabilities-acceptance.md)). The policy is
+> complete and **not connected**: nothing consumes it. [ADR 0019](../../adr/0019-personal-memory-capabilities.md)
+> is `Accepted`.
 
 > **For agentic workers:** REQUIRED SUB-SKILLS: `superpowers:executing-plans`,
 > `superpowers:test-driven-development`, `superpowers:verification-before-completion`,
@@ -3813,8 +3812,61 @@ Existing audit rows are unaffected (the action column is free text).
 
 ## Execution record
 
-(Empty until the plan is executed.)
+Executed inline in one session on 2026-10-09 (Pipec asked to keep the session that promoted the plan),
+on the branch `feat/0060-personal-memory-capabilities` cut from `main` at `f4b340a` (documents only
+since the rehearsal's `29cfbc0`). Task 0: `just gate` 2315 passed, and every re-audit command found
+what the plan names. Every new test was watched failing for the stated reason before its
+implementation; the four documented green-on-arrival groups were proven by mutation (Task 1: 2
+failures; Task 5: 4, 4 and 9; Task 6: the four scope-string tests each caught; Task 7: 1, 5 and 16
+source sets).
+
+| Task | Commit |
+|---:|---|
+| 1 | `d8c8bdd` test(server): pin the old authorization decisions |
+| 2 | `45c643f` feat(server): add the five personal-memory actions |
+| 3 | `ab080b0` feat(server): declare personal-memory capabilities |
+| 4 | `d4d32b8` feat(server): evaluate personal-memory requests |
+| 5 | `de03ac8` test(server): exhaustive personal-memory policy matrix |
+| 6 | `fff5361` feat(server): bind personal-memory grants to their scope |
+| 7 | `6423c64` test(server): guard the personal-memory policy boundary |
+| review | `17d5cb6` fix(server): fail closed on grants without expiry |
+| 9 | `e87193e` and the closing documentation commit |
+
+`just gate` after Task 7: 2508 passed (2315 + 193, exactly the rehearsal). One fresh-context review
+of the whole branch (a read-only agent on `sonnet`, Pipec's standing dispatch rule; the skill
+prefers the most capable model): 0 Critical, 0 Important, 6 Minor. Four were fixed with a failing
+test first and are in `17d5cb6`: an unexpired-looking `local_unlock` item with **no expiry** counted
+as fresh forever; an **empty visibility set** passed the own-data test (the request model forbids
+it, the tests build requests without validation); the expiry boundary (`expires_at == requested_at`)
+was untested; and the `grant_spent` docstring. An unused test helper was removed. Two Minor were
+left on purpose: the duplicated test helpers between the characterization and the policy files (the
+characterization keeps literal grids so that a new enum member cannot enter it), and the size of
+`authorization.py` (about 630 lines; ADR 0019 §5 rejects a separate module because of the import
+cycle, and D-8 states it). Final `just gate`: **2515 passed**, green.
+
+Rulings made while executing: the plan ran in the promoting session instead of a new one (Pipec's
+request); the final reviewer ran on `sonnet` (his standing rule); the four review fixes went in
+although the skill defers Minor findings (his standing "fix everything found" policy); the plan's
+diffs were applied with a script that restores the blank context lines the document lost and
+normalizes line endings to LF, nothing else was changed from the rehearsed code.
 
 ## Closure
 
-(Empty until the plan is closed.)
+Task 8 was run by Pipec on 2026-10-09 ([record](../../evals/0060-personal-memory-capabilities-acceptance.md)):
+the unlock endpoint issued and echoed `personal_memory_read` and `personal_memory_forget` (200), refused
+an unknown scope (422, the body without the PIN) and still defaulted to `personal_protected_read`; the
+deterministic voice turns (own children, date) behaved as before, and a greeting through the model
+answered normally once Ollama was running. A first greeting run, with Ollama not running, spoke the
+server's fallback phrase (`reason=llm_error`): the environment, not this change.
+
+State after closing: the personal-memory capabilities exist as policy only. `confirm` is reachable
+only with face and a verified voice (no PIN route) and `forget` cannot be exercised when the owner's
+face identifies the turn (the PIN is not consulted then); both are for the wiring plans and for the
+CM-2 ADR that supersedes ADR 0016 §5. `NOW` is empty; the next free plan number is 0061 and the next
+free ADR number is 0020.
+
+Follow-ups with no plan yet: the server does not warn when Ollama is down (the health check passes
+and the first greeting turns speak the fallback phrase); an alert or a health field would have
+shown it at start-up. It is outside this plan's scope. Both follow-ups (this one and the unwired
+confirm/forget cases above) are tracked in the cross-cutting table of the
+[roadmap](../../roadmap/cognitive-roadmap.md#cross-cutting-gates-and-conditional-work).

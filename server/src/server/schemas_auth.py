@@ -51,7 +51,9 @@ class OwnerUnlockRequest(BaseModel):
         Field(
             description=(
                 "The one operation the grant may authorize: `personal_protected_read` "
-                "(the default) or `biometric_admin` (face or voice enrolment and revocation)."
+                "(the default), `biometric_admin` (face or voice enrolment and revocation), "
+                "`personal_memory_read` (read the owner's own conversation memory) or "
+                "`personal_memory_forget` (one erasure of the owner's own memory)."
             )
         ),
     ] = OwnerUnlockScope.PERSONAL_PROTECTED_READ

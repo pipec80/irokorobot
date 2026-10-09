@@ -217,6 +217,12 @@ refused **without being spent**, and "¿Quién soy?" and the "not connected yet"
 household answer do not spend it either (only the children read does). The server log
 shows `Owner grant refused: scope_mismatch` when that happens.
 
+`POST /auth/owner/unlock` accepts four scopes: `personal_protected_read` (the default),
+`biometric_admin`, and, since Plan 0060, `personal_memory_read` and `personal_memory_forget`.
+The last two exist only as policy (nothing consumes them yet), so the robot never asks for
+them and no spoken turn uses them; the endpoint still issues and echoes them, and an unknown
+scope is a 422 whose body never contains the PIN.
+
 ```powershell
 $env:ROBOT_OWNER_UNLOCK_PROMPT = "true"   # or set in .env
 just run-robot

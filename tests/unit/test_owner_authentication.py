@@ -446,3 +446,16 @@ async def test_a_scope_mismatch_is_logged_as_a_closed_reason_and_never_the_token
     joined = "\n".join(record.getMessage() for record in caplog.records)
     assert "scope_mismatch" in joined
     assert unlock.token not in joined
+
+
+# --- Plan 0060: personal-memory scopes (ADR 0019 §4) ----------------------------------------
+
+
+@pytest.mark.unit
+async def test_the_service_issues_a_grant_for_each_personal_memory_scope() -> None:
+    service = _service(credential=_credential())
+
+    for scope in (OwnerUnlockScope.PERSONAL_MEMORY_READ, OwnerUnlockScope.PERSONAL_MEMORY_FORGET):
+        unlock = await service.unlock(_PIN, scope)
+        assert unlock is not None
+        assert unlock.scope is scope

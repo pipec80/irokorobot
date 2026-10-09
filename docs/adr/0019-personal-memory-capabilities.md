@@ -1,8 +1,9 @@
 # 0019 — Authorize personal memory by named capability, assurance and grant scope
 
-- **Status:** Proposed (2026-10-08) — becomes Accepted when
-  [Plan 0060](../plans/open/0060-cm1-personal-memory-capabilities.md) closes; until then nothing
-  in `server/src` follows it
+- **Status:** Accepted (2026-10-09, Pipec) — implemented as policy by
+  [Plan 0060](../plans/completed/0060-cm1-personal-memory-capabilities.md) (`just gate` 2515 passed,
+  runtime check recorded in the [acceptance record](../evals/0060-personal-memory-capabilities-acceptance.md));
+  nothing consumes it yet
 - **Date:** 2026-10-08
 - **Builds on:** [ADR 0009](0009-locked-posture-and-scoped-capabilities.md),
   [ADR 0015](0015-owner-grant-scope-and-speaker-binding.md),
@@ -12,7 +13,7 @@
   `child_data`) and ADR 0016 §3 (a capability may declare a minimum assurance above the category
   floor, and biometric, medical and location data raise it to `strong` for these capabilities).
   Nothing is superseded.
-- **Implemented by:** [Plan 0060](../plans/open/0060-cm1-personal-memory-capabilities.md)
+- **Implemented by:** [Plan 0060](../plans/completed/0060-cm1-personal-memory-capabilities.md)
 
 ## Context
 
@@ -287,6 +288,6 @@ caller needs a PIN for `propose`, `confirm` or `correct`.
 
 ## Follow-up
 
-- [Plan 0060](../plans/open/0060-cm1-personal-memory-capabilities.md) — implements this ADR (`Ready`, `NOW` since 2026-10-09).
+- [Plan 0060](../plans/completed/0060-cm1-personal-memory-capabilities.md) — implements this ADR (closed 2026-10-09).
 - CM-2 — an ADR on identity in generic turns that revises ADR 0016 §5.
 - CM-3, CM-5, CM-6 — writer and confirmation, retrieval, and the real reach of forgetting.

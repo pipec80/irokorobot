@@ -26,6 +26,6 @@ supersedes it and update the old one's status.
 | [0016](0016-face-and-voice-identity-fusion.md) | Identify the owner by face; require more assurance for reserved data | Accepted |
 | [0017](0017-streaming-reply-protocol.md) | Speak what the model means: a tolerant, bounded streaming reply protocol | Superseded by [0018](0018-user-emotion-decided-apart.md); never Accepted |
 | [0018](0018-user-emotion-decided-apart.md) | Decide the user's emotion apart from the streamed reply | Accepted (Plan 0059's measurement met its gate) |
-| [0019](0019-personal-memory-capabilities.md) | Authorize personal memory by named capability, assurance and grant scope | Proposed; Accepted when Plan 0060 closes |
+| [0019](0019-personal-memory-capabilities.md) | Authorize personal memory by named capability, assurance and grant scope | Accepted (2026-10-09); implemented as policy by Plan 0060, nothing consumes it yet |
 
 New ADRs start from [`0000-adr-template.md`](0000-adr-template.md).
