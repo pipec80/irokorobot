@@ -10,7 +10,8 @@
 - **Refines:** ADR 0015 decision 1 (the closed scope set gains `personal_memory_read` and
   `personal_memory_forget`; `personal_protected_read` keeps meaning one read of confirmed
   `child_data`) and ADR 0016 §3 (a capability may declare a minimum assurance above the category
-  floor). Nothing is superseded.
+  floor, and biometric, medical and location data raise it to `strong` for these capabilities).
+  Nothing is superseded.
 - **Implemented by:** [Plan 0060](../plans/open/0060-cm1-personal-memory-capabilities.md)
 
 ## Context
@@ -96,9 +97,18 @@ for these five actions the answer is `denied`, never `requires_confirmation`. Fa
 - The assurance of an actor is compared by an explicit rank (`none` 0, `basic` 1, `strong` 2),
   never by `<`. The existing rule that `SECURITY` data needs `strong` (ADR 0016 §3,
   `HIGH_ASSURANCE_CATEGORIES`) runs first, for every action, and keeps its `p0.5.assurance-required`
-  id; there is no second per-category assurance table. The sensitive set that requires consent is
-  the existing one (`biometric`, `medical`, `location`, `child_data`, `security`); a drift test fails
+  id; there is no per-category assurance table. The sensitive set that requires consent is the
+  existing one (`biometric`, `medical`, `location`, `child_data`, `security`); a drift test fails
   when a `DataSensitivity` member is classified in neither place.
+- **Biometric, medical and location data raise the minimum to `strong` for every personal-memory
+  capability** (Pipec, 2026-10-09), through one constant, `PERSONAL_MEMORY_STRONG_CATEGORIES`. The
+  face resolver grants consent to any identified owner, so without this a photograph of the owner
+  would reach health, location and biometric memory at `basic`. `child_data` stays at the
+  capability's minimum, because ADR 0016 §1 already accepts the owner's face for the child read.
+  The constant does not touch `HIGH_ASSURANCE_CATEGORIES`, so the eleven old actions do not move.
+  Consequences: such data is read through a verified voice or a spent `personal_memory_read` grant,
+  and `propose` and `correct` reach it only through face and a verified voice (they have no PIN
+  route).
 - "Consent required" means `ConsentStatus.granted` strictly: `not_required`, `missing` and
   `revoked` all deny on a sensitive category. Today the resolvers produce only `granted` or
   `not_required`.
@@ -192,10 +202,11 @@ Whoever wires a capability must:
   erasure the person asked for.
 - **Face and voice at `strong` suffice for `forget`.** Rejected: both are replayable (ADR 0016 §9)
   and the action cannot be undone.
-- **A per-category assurance table.** Rejected for now: its `strong` column would equal
-  `HIGH_ASSURANCE_CATEGORIES` (`security`), which the generic gate already enforces, so it could not
-  change an outcome and would copy the sensitive set. Whether other categories should join the
-  `strong` set is the open decision below, not a reason for a second table.
+- **A per-category assurance table, or adding the categories to `HIGH_ASSURANCE_CATEGORIES`.**
+  Rejected: the table would copy the sensitive set, and the global set would also change the eleven
+  old actions. One constant read only by the personal-memory evaluator says the same thing.
+- **Leave `biometric`, `medical` and `location` at `basic` plus consent.** Rejected by Pipec
+  (2026-10-09): the face grants consent automatically, so a photograph would reach them.
 - **A separate policy module.** Rejected: an import cycle with the request types for no change of
   behaviour; one responsibility.
 - **Leave both new scopes to the plan that wires the first consumer.** Rejected by Pipec
@@ -216,12 +227,10 @@ Whoever wires a capability must:
 
 ### Negative
 
-- **A photograph reads, proposes and corrects every personal category except `security`.** At
-  `basic` the face is enough, and the face resolver grants consent to any identified owner (there is
-  no consent record), so the consent column is vacuous on the face path today and `medical`,
-  `biometric`, `location` and `child_data` memory are reachable that way. ADR 0016 §3 said other
-  categories would join `HIGH_ASSURANCE_CATEGORIES` when a capability declares them; this ADR
-  declares none. It is the owner's call (see *Open decision*), pinned by the matrix test as it stands.
+- **A photograph still reads, proposes and corrects `normal`, `private` and `child_data` personal
+  memory.** At `basic` the face is enough for these, and the face resolver grants consent to any
+  identified owner (there is no consent record), so the consent column is vacuous on the face path
+  today. Health, location and biometric memory are held at `strong` (decision 3).
 - **Proposals and corrections at `basic` are a new accepted risk.** ADR 0016 §9 accepted that a
   photograph opens ordinary private data for reads; `propose` and `correct` at `basic` let it also
   write a candidate or a superseding version, and a second person talking beside the owner can have
@@ -254,8 +263,9 @@ A characterization test pins the decisions of the eleven old actions over a fixe
 change. The enum snapshot in `tests/unit/test_cognitive_models.py` and the scope enum pin in
 `tests/integration/test_owner_unlock_endpoint.py` change. An exhaustive matrix over role, assurance,
 visibility, sensitivity, consent and PIN evidence is compared with an oracle written in the test.
-Drift tests tie the table to `DataSensitivity`, `HIGH_ASSURANCE_CATEGORIES`, the sensitive set and
-`OwnerUnlockScope`. Real-resolver tests prove that a peeked forget grant is denied and a spent one
+Drift tests tie the table and `PERSONAL_MEMORY_STRONG_CATEGORIES` to `DataSensitivity`,
+`HIGH_ASSURANCE_CATEGORIES`, the sensitive set and `OwnerUnlockScope`; a named test pins that a
+photograph-level (`basic`) owner is denied biometric, medical and location memory. Real-resolver tests prove that a peeked forget grant is denied and a spent one
 allowed. Architecture guards pin the no-consumer rules, and an invariant test over
 `resolve_active_person` pins that `strong` implies a `local_unlock` item or a face and a voice.
 
@@ -268,15 +278,6 @@ that says "two members", the role matrix, the assurance paragraph); the capabili
 memory map; the plan index entries (the plan moves to `completed/`, so every `plans/open/0060`
 link in these documents is repointed). The `OwnerUnlockScope` docstring changes in code with the
 plan.
-
-## Open decision
-
-Should `biometric`, `medical` and `location` data require `strong` for `read`, `propose` and
-`correct`, so that a photograph cannot reach them? As drafted they need only `basic` plus consent,
-and the face grants consent automatically. Requiring `strong` is a small change (a per-capability set
-of categories that raise the minimum) with a cost: those reads would then need a verified voice or a
-spent `personal_memory_read` grant. Pipec decides when he promotes Plan 0060; the draft pins the
-current behaviour.
 
 ## Review
 

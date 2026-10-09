@@ -6,8 +6,8 @@
 > (`confirm` needs `strong`) was chosen by Pipec on 2026-10-08; the others are proposals for the
 > moment of promotion, D-4 to D-6 came out of independent security and architecture reviews of the
 > draft [ADR 0019](../../adr/0019-personal-memory-capabilities.md) (`Proposed`, becomes `Accepted`
-> when this plan closes; the reasoning is in the ADR), and **D-10 is an open decision Pipec must
-> settle at promotion**.
+> when this plan closes; the reasoning is in the ADR), and D-10 (`biometric`, `medical` and
+> `location` data need `strong`) was decided by Pipec on 2026-10-09.
 
 > **For agentic workers:** REQUIRED SUB-SKILLS: `superpowers:executing-plans`,
 > `superpowers:test-driven-development`, `superpowers:verification-before-completion`,
@@ -52,8 +52,8 @@ the [conversational-memory map](../../roadmap/conversational-memory-delivery-map
 **Rehearsal (2026-10-08).** Every diff below was produced test-first in a scratch copy of `main`
 (`29cfbc0`), one commit per task, with the real virtual environment, and then reworked once after
 independent code and security reviews. Under the CI marker filter
-(`-m "not slow and not hardware and not eval" -n auto`) the suite went from **2298** to **2472**
-passed (+174: Task 1 +23, Task 2 0, Task 3 +7, Task 4 +69, Task 5 +21, Task 6 +44, Task 7 +10).
+(`-m "not slow and not hardware and not eval" -n auto`) the suite went from **2298** to **2491**
+passed (+193: Task 1 +23, Task 2 0, Task 3 +8, Task 4 +83, Task 5 +21, Task 6 +48, Task 7 +10).
 `ruff check .`, `ruff format --check .` (416 files), `mypy server/src robot/src` (103 files) and
 pyright (0 errors) were clean after every task. The RED of each task was observed for the stated
 reason. Four things are green on arrival by design and prove themselves by a mutation step: the
@@ -61,8 +61,8 @@ Task 1 characterization, the Task 5 oracle matrix, the Task 7 guards and invaria
 four scope-string tests of `test_biometric_admin_scope_callers.py` (Task 6). Not rehearsed:
 Task 8 (real runtime) and Task 9 (documentation). Treat the diffs as rehearsed code, not as a
 substitute for the RED/GREEN record each task requires. `just gate` counts more tests than the CI
-filter (2315 at `29cfbc0`). `authorization.py` grows from about 400 to 610 lines and
-`test_personal_memory_policy.py` is 962 lines (exhaustive matrices, parametrized); see D-8.
+filter (2315 at `29cfbc0`). `authorization.py` grows from about 400 to 628 lines and
+`test_personal_memory_policy.py` is 1,060 lines (exhaustive matrices, parametrized); see D-8.
 
 ## Global Constraints
 
@@ -121,9 +121,9 @@ Inputs the spec implies that are most likely to bite, each pinned by a test in i
 13. A `local_unlock` item that names another person than the actor, or that is expired, never
     counts, even when marked spent (Task 6): the real resolvers cannot build one today, but the
     evidence tuple is the caller's input and an irreversible capability should not trust it blindly.
-14. As drafted, a photograph of the owner reaches `medical`, `biometric`, `location` and `child_data`
-    personal memory for read, propose and correct (the face grants consent automatically); the
-    matrix pins that on purpose until D-10 is decided (Tasks 4 and 5).
+14. A photograph of the owner (`basic`, with the consent the face grants automatically) is denied
+    `biometric`, `medical` and `location` personal memory for read, propose and correct, alone or in
+    a mixed set, and still reaches `normal`, `private` and `child_data` (D-10; Tasks 3 to 5).
 
 ---
 
@@ -168,7 +168,8 @@ confirmed by Pipec when he promotes the plan, and are not asked again afterwards
    correct; `personal`, `private` or `temporary` for forget (erasure must reach whatever a writer can
    store under the owner's name). Others get `denied`, never `requires_confirmation`.
 3. **D-3 — Minimum assurance per capability.** `read`, `propose`, `correct`: `basic` (the owner's
-   face). `confirm` and `forget`: `strong`. `confirm` is the commit point of a memory, and a face
+   face), except for `biometric`, `medical` and `location` data (D-10). `confirm` and `forget`:
+   `strong`. `confirm` is the commit point of a memory, and a face
    alone cannot tell the owner from a photograph or from a second person speaking beside them;
    a consequence is that `confirm` is reachable only through face and a verified voice (it has no
    PIN route) until a plan that wires it adds a `personal_memory_confirm` scope.
@@ -191,22 +192,23 @@ confirmed by Pipec when he promotes the plan, and are not asked again afterwards
    confirmed-execution turn calls the consuming resolver with the forget scope, because a peeked
    grant is always denied, so the "are you sure?" turn must not gate on a `forget` decision.
 8. **D-8 — The policy stays in `authorization.py`.** It grows from about 400 to about 610 lines
-   (and `test_personal_memory_policy.py` is about 960 lines of exhaustive, parametrized matrices,
-   trimmed once from 1,244 by a review with the coverage kept) and
+   (and `test_personal_memory_policy.py` is about 1,060 lines of exhaustive, parametrized matrices,
+   trimmed once by a review with the coverage kept) and
    the old dispatcher is renamed `_evaluate_legacy_request` (unchanged) so the new dispatcher stays
    under the return-count limit. The size guideline says to split when a second responsibility
    appears; extracting the request types so a separate module can import them is deferred.
 9. **D-9 — Acceptance is automated plus one short operator check.** Nothing consumes the new
    capabilities, so there is no spoken turn to try; Pipec confirms the unlock endpoint accepts and
    echoes the two new scopes and that the default scope is unchanged (Task 8).
-10. **D-10 — OPEN, Pipec decides at promotion: should `biometric`, `medical` and `location` data
-    require `strong` for `read`, `propose` and `correct`?** The draft pins today's behaviour: `basic`
-    plus consent, and the face resolver grants consent to any identified owner, so a photograph
-    reaches those categories (not `security`, which the generic gate already holds at `strong`).
-    The stricter option adds a category set to `PersonalMemoryCapability` (Task 3), raises the
-    assurance check in the evaluator (Task 4) and changes the oracle (Task 5), at the cost that those
-    reads then need a verified voice or a spent `personal_memory_read` grant. If Pipec chooses it,
-    re-rehearse Tasks 3 to 5 before executing.
+10. **D-10 — `biometric`, `medical` and `location` data require `strong` for every personal-memory
+    capability (Pipec, 2026-10-09).** The face resolver grants consent to any identified owner, so
+    at `basic` a photograph would reach them (`security` is already held at `strong` by the generic
+    gate). One public constant, `PERSONAL_MEMORY_STRONG_CATEGORIES` (Task 3), raises the minimum in
+    the evaluator (Task 4); `child_data` stays at the capability minimum because ADR 0016 §1 already
+    accepts the owner's face for the child read; `HIGH_ASSURANCE_CATEGORIES` is untouched so the
+    eleven old actions do not move. Cost: such data is read through a verified voice or a spent
+    `personal_memory_read` grant, and `propose` and `correct` reach it only through face and a
+    verified voice.
 
 ## Required reading
 
@@ -716,19 +718,23 @@ index ee9e1ba..ead7752 100644
 - Consumes: the five actions of Task 2.
 - Produces: `ASSURANCE_RANK` (`none` 0, `basic` 1, `strong` 2),
   `PersonalMemoryCapability(min_assurance, consent_applies, requires_unlock, unlock_scope,
-  visibilities)` and the read-only `PERSONAL_MEMORY_CAPABILITIES`, exported in `__all__`.
+  visibilities)`, the read-only `PERSONAL_MEMORY_CAPABILITIES` and
+  `PERSONAL_MEMORY_STRONG_CATEGORIES` (`biometric`, `medical`, `location`: they raise the minimum to
+  `strong` for every capability, D-10), exported in `__all__`.
 
 - [ ] **Step 1: Write the failing tests** (one literal-table equality test, drift tests against
-  `DataSensitivity`, `HIGH_ASSURANCE_CATEGORIES` and the sensitive set, the rank test and a read-only
-  test; RED is an `ImportError`):
+  `DataSensitivity`, `HIGH_ASSURANCE_CATEGORIES` and the sensitive set, a test that the strong
+  categories are exactly `biometric`, `medical` and `location` (inside the sensitive set, disjoint
+  from `HIGH_ASSURANCE_CATEGORIES`, without `child_data`), the rank test and a read-only test; RED is
+  an `ImportError`):
 
 ```diff
 diff --git a/tests/unit/test_personal_memory_policy.py b/tests/unit/test_personal_memory_policy.py
 new file mode 100644
-index 0000000..11a3dab
+index 0000000..0b4b73e
 --- /dev/null
 +++ b/tests/unit/test_personal_memory_policy.py
-@@ -0,0 +1,160 @@
+@@ -0,0 +1,175 @@
 +"""Unit tests for the personal-memory capabilities of the authorization policy (ADR 0019)."""
 +
 +from typing import TYPE_CHECKING, cast
@@ -739,6 +745,7 @@ index 0000000..11a3dab
 +    ASSURANCE_RANK,
 +    HIGH_ASSURANCE_CATEGORIES,
 +    PERSONAL_MEMORY_CAPABILITIES,
++    PERSONAL_MEMORY_STRONG_CATEGORIES,
 +    DataSensitivity,
 +    DataVisibility,
 +    PersonalMemoryCapability,
@@ -865,6 +872,20 @@ index 0000000..11a3dab
 +    assert set(HIGH_ASSURANCE_CATEGORIES) == {DataSensitivity.SECURITY}
 +
 +
++def test_the_categories_that_raise_the_minimum_to_strong_are_biometric_medical_location() -> None:
++    """ADR 0019 §3 (owner decision D-10): a photograph of the owner must not reach these."""
++    strong = PERSONAL_MEMORY_STRONG_CATEGORIES
++
++    assert strong == {
++        DataSensitivity.BIOMETRIC,
++        DataSensitivity.MEDICAL,
++        DataSensitivity.LOCATION,
++    }
++    assert strong <= authorization._SENSITIVE_CATEGORIES
++    assert not strong & HIGH_ASSURANCE_CATEGORIES  # security stays on the generic gate
++    assert DataSensitivity.CHILD_DATA not in strong  # ADR 0016 accepts the face for that read
++
++
 +def test_assurance_rank_is_total_and_not_lexicographic() -> None:
 +    """`IdentityAssurance` is a str enum: comparing members orders them alphabetically."""
 +    assert IdentityAssurance.BASIC < IdentityAssurance.NONE  # the trap, documented
@@ -893,15 +914,15 @@ index 0000000..11a3dab
 
 - [ ] **Step 2: Run them to see them fail.**
   `uv run pytest tests/unit/test_personal_memory_policy.py -q -p no:cacheprovider`
-  Expected RED: `ImportError: cannot import name 'ASSURANCE_RANK' from
-  'server.cognition.authorization'`.
+  Expected RED: `ImportError: cannot import name ... from 'server.cognition.authorization'` (the
+  first new name of the import list; the rehearsal saw `PERSONAL_MEMORY_STRONG_CATEGORIES`).
 - [ ] **Step 3: Implement.** The table is where each capability declares its minimum assurance, its
   consent rule, its PIN route and its visibilities; there is no per-category assurance table (the
   `SECURITY` rule is the existing generic gate):
 
 ```diff
 diff --git a/server/src/server/cognition/authorization.py b/server/src/server/cognition/authorization.py
-index bbfe7ff..e62d28a 100644
+index bbfe7ff..5d27cb9 100644
 --- a/server/src/server/cognition/authorization.py
 +++ b/server/src/server/cognition/authorization.py
 @@ -1,7 +1,10 @@
@@ -915,13 +936,14 @@ index bbfe7ff..e62d28a 100644
  from typing import Annotated
  from uuid import UUID
 
-@@ -24,11 +27,14 @@ _StrictInteger = Annotated[int, Field(strict=True)]
+@@ -24,11 +27,15 @@ _StrictInteger = Annotated[int, Field(strict=True)]
  _StrictUUID = Annotated[UUID, Field(strict=True)]
 
  __all__ = [
 +    "ASSURANCE_RANK",
      "HIGH_ASSURANCE_CATEGORIES",
 +    "PERSONAL_MEMORY_CAPABILITIES",
++    "PERSONAL_MEMORY_STRONG_CATEGORIES",
      "AuthorizationRequest",
      "ConsentStatus",
      "DataSensitivity",
@@ -930,10 +952,19 @@ index bbfe7ff..e62d28a 100644
      "evaluate_authorization",
  ]
 
-@@ -95,6 +101,85 @@ _SENSITIVE_CATEGORIES = frozenset(
+@@ -94,6 +101,93 @@ _SENSITIVE_CATEGORIES = frozenset(
+ # Categories whose reads need face-and-voice agreement or an owner unlock (ADR 0016
  # §3). Only SECURITY today; others join when a capability declares them.
  HIGH_ASSURANCE_CATEGORIES = frozenset({DataSensitivity.SECURITY})
-
++# ADR 0019 §3: data of these categories raises the minimum assurance of EVERY personal-memory
++# capability to `strong`, so a photograph of the owner cannot reach it. `security` is held by
++# the generic gate above (HIGH_ASSURANCE_CATEGORIES, which must not change: it also governs the
++# eleven older actions); `child_data` stays at the capability minimum because ADR 0016 already
++# accepts the owner's face for the child read.
++PERSONAL_MEMORY_STRONG_CATEGORIES = frozenset(
++    {DataSensitivity.BIOMETRIC, DataSensitivity.MEDICAL, DataSensitivity.LOCATION}
++)
++
 +# `IdentityAssurance` is a str enum, so `<` on its members is alphabetical (`basic` < `none`).
 +# Compare assurance only through this rank (ADR 0019 §3).
 +ASSURANCE_RANK: Mapping[IdentityAssurance, int] = MappingProxyType(
@@ -1012,14 +1043,13 @@ index bbfe7ff..e62d28a 100644
 +        }
 +    )
 +)
-+
+
 
  def _lacks_required_assurance(request: AuthorizationRequest) -> bool:
-     """Return whether a reserved request is made with less than `strong` assurance."""
 ```
 
 - [ ] **Step 4: Run, lint, commit.** `uv run pytest tests/unit/test_personal_memory_policy.py
-  tests/unit/test_authorization_characterization.py -q -p no:cacheprovider` (7 new tests pass);
+  tests/unit/test_authorization_characterization.py -q -p no:cacheprovider` (8 new tests pass);
   `ruff check` and `ruff format --check` over the touched paths; `uv run mypy server/src`; commit
   `feat(server): declare personal-memory capabilities (plan 0060)`.
 
@@ -1037,7 +1067,9 @@ index bbfe7ff..e62d28a 100644
 - Produces: the dispatch in `_evaluate_resolved_request` and `_evaluate_personal_memory`, with
   policy ids `cm1.personal-memory.{owner-only,own-data-only,assurance-required,grant-scope,
   consent-required,allowed}`. The old dispatcher is renamed `_evaluate_legacy_request`, unchanged.
-  In this task the grant rule is not there yet (Task 6 adds it).
+  The assurance check demands `strong` when the request's sensitivity intersects
+  `PERSONAL_MEMORY_STRONG_CATEGORIES`, otherwise the capability's minimum, by rank. In this task the
+  grant rule is not there yet (Task 6 adds it).
 
 - [ ] **Step 1: Write the failing tests** (cases per action, precedence, consent, visibilities,
   fail-closed, and a round trip through the audit table against a temporary SQLite database):
@@ -1152,7 +1184,7 @@ index 0000000..ff942c3
 +    assert stored_decision == AuthorizationStatus.ALLOWED.value
 +    assert policy_id == "cm1.personal-memory.allowed"
 diff --git a/tests/unit/test_personal_memory_policy.py b/tests/unit/test_personal_memory_policy.py
-index 11a3dab..56c5d40 100644
+index 0b4b73e..fbee7ad 100644
 --- a/tests/unit/test_personal_memory_policy.py
 +++ b/tests/unit/test_personal_memory_policy.py
 @@ -1,6 +1,9 @@
@@ -1165,10 +1197,10 @@ index 11a3dab..56c5d40 100644
 
  import pytest
  from server.cognition import authorization
-@@ -8,12 +11,26 @@ from server.cognition.authorization import (
-     ASSURANCE_RANK,
+@@ -9,12 +12,26 @@ from server.cognition.authorization import (
      HIGH_ASSURANCE_CATEGORIES,
      PERSONAL_MEMORY_CAPABILITIES,
+     PERSONAL_MEMORY_STRONG_CATEGORIES,
 +    AuthorizationRequest,
 +    ConsentStatus,
      DataSensitivity,
@@ -1194,7 +1226,7 @@ index 11a3dab..56c5d40 100644
 
  if TYPE_CHECKING:
      from collections.abc import MutableMapping
-@@ -158,3 +175,309 @@ def test_the_tables_are_read_only() -> None:
+@@ -173,3 +190,356 @@ def test_the_tables_are_read_only() -> None:
          ranks[IdentityAssurance.NONE] = 9
      with pytest.raises(TypeError):
          del capabilities[_READ]
@@ -1213,6 +1245,7 @@ index 11a3dab..56c5d40 100644
 +_NON_FORGET = (_READ, _PROPOSE, _CONFIRM, _CORRECT)
 +_BASIC_ACTIONS = (_READ, _PROPOSE, _CORRECT)
 +_STRONG_ACTIONS = (_CONFIRM, _FORGET)
++GRANTED = ConsentStatus.GRANTED
 +_ALL_CONSENTS = (
 +    ConsentStatus.NOT_REQUIRED,
 +    ConsentStatus.MISSING,
@@ -1460,11 +1493,57 @@ index 11a3dab..56c5d40 100644
 +
 +
 +def test_enough_assurance_with_missing_consent_is_consent_required() -> None:
++    """Child data stays at the capability minimum, so `basic` reaches the consent rule."""
 +    decision = _decide(
-+        _READ, sensitivity=frozenset({DataSensitivity.LOCATION}), consent=ConsentStatus.MISSING
++        _READ, sensitivity=frozenset({DataSensitivity.CHILD_DATA}), consent=ConsentStatus.MISSING
 +    )
 +
 +    _assert_outcome(decision, _DENIED, _CONSENT_ID)
++
++
++_STRONG_CATEGORY_CASES = [
++    (action, category)
++    for action in _BASIC_ACTIONS
++    for category in (DataSensitivity.BIOMETRIC, DataSensitivity.MEDICAL, DataSensitivity.LOCATION)
++]
++
++
++@pytest.mark.parametrize("action, category", _STRONG_CATEGORY_CASES)
++def test_a_photograph_of_the_owner_cannot_reach_biometric_medical_or_location_memory(
++    action: AuthorizationAction, category: DataSensitivity
++) -> None:
++    """Owner decision D-10: a face alone (`basic`) is denied even with granted consent."""
++    sensitivity = frozenset({category})
++    face_only = _actor(assurance=IdentityAssurance.BASIC)
++
++    photographed = _decide(action, actor=face_only, sensitivity=sensitivity, consent=GRANTED)
++    strong = _decide(
++        action, actor=_strong_actor_for(action), sensitivity=sensitivity, consent=GRANTED
++    )
++
++    _assert_outcome(photographed, _DENIED, _ASSURANCE_ID)
++    _assert_outcome(strong, _ALLOWED, _ALLOWED_ID)
++
++
++@pytest.mark.parametrize("action", _BASIC_ACTIONS)
++def test_child_data_stays_at_the_capability_minimum(action: AuthorizationAction) -> None:
++    """ADR 0016 already accepts the owner's face for the child read."""
++    decision = _decide(action, sensitivity=frozenset({DataSensitivity.CHILD_DATA}), consent=GRANTED)
++
++    _assert_outcome(decision, _ALLOWED, _ALLOWED_ID)
++
++
++def test_a_mixed_set_with_one_strong_category_needs_strong_assurance() -> None:
++    mixed = frozenset({DataSensitivity.NORMAL, DataSensitivity.MEDICAL})
++
++    _assert_outcome(_decide(_READ, sensitivity=mixed, consent=GRANTED), _DENIED, _ASSURANCE_ID)
++
++
++def test_assurance_is_judged_before_consent_for_a_strong_category() -> None:
++    """A medical read at `basic` with missing consent is told about assurance first."""
++    decision = _decide(_READ, sensitivity=_MEDICAL, consent=ConsentStatus.MISSING)
++
++    _assert_outcome(decision, _DENIED, _ASSURANCE_ID)
 +
 +
 +def test_an_action_missing_from_the_table_falls_back_to_the_default_deny(
@@ -1508,18 +1587,25 @@ index 11a3dab..56c5d40 100644
 
 - [ ] **Step 2: Run them to see them fail.**
   `uv run pytest tests/unit/test_personal_memory_policy.py tests/integration/test_personal_memory_audit.py -q -p no:cacheprovider`
-  Expected RED: of the 71 tests in the policy file, 47 fail with `assert 'p0.5.default-deny' ==
-  'cm1.personal-memory.allowed'` (or `... 'cm1.personal-memory.consent-required'`); the 7 structural
-  tests of Task 3 are already green and 17 cases hold only because the unmapped actions fall to the
-  default deny. The 5 audit tests fail with `assert 'denied' == 'allowed'`.
+  Expected RED: most new policy tests fail with `assert 'p0.5.default-deny' ==
+  'cm1.personal-memory.allowed'` (or `... 'cm1.personal-memory.consent-required'`); the structural
+  tests of Task 3 are already green and some cases hold only because the unmapped actions fall to the
+  default deny. The 5 audit tests fail with `assert 'denied' == 'allowed'`. When only the
+  strong-category rule is missing (it can be written last to see it), 11 tests fail: the nine
+  `test_a_photograph_of_the_owner_cannot_reach_biometric_medical_or_location_memory[...]` cases and
+  the mixed-set test with `assert 'cm1.personal-memory.allowed' ==
+  'cm1.personal-memory.assurance-required'`, and the "assurance before consent" test with
+  `assert 'cm1.personal-memory.consent-required' == 'cm1.personal-memory.assurance-required'`.
+  `test_child_data_stays_at_the_capability_minimum` is green on arrival (it pins that `child_data`
+  is not in the strong set).
 - [ ] **Step 3: Implement.**
 
 ```diff
 diff --git a/server/src/server/cognition/authorization.py b/server/src/server/cognition/authorization.py
-index e62d28a..36ea82b 100644
+index 5d27cb9..30ad7f5 100644
 --- a/server/src/server/cognition/authorization.py
 +++ b/server/src/server/cognition/authorization.py
-@@ -415,8 +415,83 @@ def _evaluate_physical_action_proposal(request: AuthorizationRequest) -> Authori
+@@ -424,8 +424,92 @@ def _evaluate_physical_action_proposal(request: AuthorizationRequest) -> Authori
      )
 
 
@@ -1543,8 +1629,17 @@ index e62d28a..36ea82b 100644
 +
 +
 +def _lacks_assurance(request: AuthorizationRequest, capability: PersonalMemoryCapability) -> bool:
-+    """Return whether the actor's assurance ranks below the capability's minimum."""
-+    return ASSURANCE_RANK[request.actor.assurance] < ASSURANCE_RANK[capability.min_assurance]
++    """Return whether the actor's assurance ranks below what this request needs.
++
++    The need is `strong` when the data includes a category in
++    `PERSONAL_MEMORY_STRONG_CATEGORIES`, else the capability's own minimum.
++    """
++    required = (
++        IdentityAssurance.STRONG
++        if request.sensitivity & PERSONAL_MEMORY_STRONG_CATEGORIES
++        else capability.min_assurance
++    )
++    return ASSURANCE_RANK[request.actor.assurance] < ASSURANCE_RANK[required]
 +
 +
 +def _lacks_consent(request: AuthorizationRequest, capability: PersonalMemoryCapability) -> bool:
@@ -1605,7 +1700,7 @@ index e62d28a..36ea82b 100644
      if request.action in {
          AuthorizationAction.READ_HOUSEHOLD_DATA,
          AuthorizationAction.EXECUTE_HOUSEHOLD_TOOL,
-@@ -446,6 +521,18 @@ def _evaluate_resolved_request(request: AuthorizationRequest) -> AuthorizationDe
+@@ -455,6 +539,18 @@ def _evaluate_resolved_request(request: AuthorizationRequest) -> AuthorizationDe
      )
 
 
@@ -1642,8 +1737,9 @@ index e62d28a..36ea82b 100644
 - Consumes: the evaluator of Task 4.
 - Produces: an **oracle written in the test with literal sets and literal policy ids** (it imports no
   table): 127 sensitivity subsets × 3 assurances × 4 consents × 5 actions for an identified owner on
-  own data (7,620 cells, which also proves `forget` is consent-invariant and that nothing asks for
-  confirmation), and 18 actors × 3 targets × 63 visibility subsets × 5 actions (17,010 cells) whose
+  own data (7,620 cells, which also proves `forget` is consent-invariant, that nothing asks for
+  confirmation and that `biometric`, `medical` and `location` need `strong` while `child_data` does
+  not), and 18 actors × 3 targets × 63 visibility subsets × 5 actions (17,010 cells) whose
   only allowed cells are an identified owner on own, reachable data.
 
 - [ ] **Step 1: Write the matrix** — it is green on arrival because it restates Task 4's behaviour
@@ -1651,7 +1747,7 @@ index e62d28a..36ea82b 100644
 
 ```diff
 diff --git a/tests/unit/test_personal_memory_policy.py b/tests/unit/test_personal_memory_policy.py
-index 56c5d40..57f27e9 100644
+index fbee7ad..96218c5 100644
 --- a/tests/unit/test_personal_memory_policy.py
 +++ b/tests/unit/test_personal_memory_policy.py
 @@ -1,6 +1,8 @@
@@ -1663,7 +1759,7 @@ index 56c5d40..57f27e9 100644
  from types import MappingProxyType
  from typing import TYPE_CHECKING, cast
  from uuid import UUID
-@@ -23,6 +25,8 @@ from server.cognition.identity import (
+@@ -24,6 +26,8 @@ from server.cognition.identity import (
      ActivePersonStatus,
      HouseholdRole,
      IdentityAssurance,
@@ -1672,7 +1768,7 @@ index 56c5d40..57f27e9 100644
  )
  from server.cognition.models import (
      AuthorizationAction,
-@@ -220,6 +224,7 @@ def _actor(
+@@ -236,6 +240,7 @@ def _actor(
      assurance: IdentityAssurance = IdentityAssurance.BASIC,
      status: ActivePersonStatus = ActivePersonStatus.IDENTIFIED,
      person_id: int | None = _OWNER_ID,
@@ -1680,7 +1776,7 @@ index 56c5d40..57f27e9 100644
  ) -> ActivePersonContext:
      """Build one active person for a pure personal-memory case (no media, no database)."""
      return ActivePersonContext(
-@@ -232,7 +237,7 @@ def _actor(
+@@ -248,7 +253,7 @@ def _actor(
              calibrated=False,
          ),
          role=role,
@@ -1689,7 +1785,7 @@ index 56c5d40..57f27e9 100644
          resolved_at=_REQUESTED_AT,
          assurance=assurance,
      )
-@@ -481,3 +486,226 @@ def test_decisions_carry_the_requested_action_and_only_safe_labels() -> None:
+@@ -543,3 +548,233 @@ def test_decisions_carry_the_requested_action_and_only_safe_labels() -> None:
          assert "Ada" not in decision.reason
          assert not any(char.isdigit() for char in decision.reason)
          assert decision.policy_id.startswith(("cm1.personal-memory.", "p0.5."))
@@ -1734,6 +1830,7 @@ index 56c5d40..57f27e9 100644
 +    "forget_personal_memory": 2,
 +}
 +_ORACLE_SENSITIVE = frozenset({"biometric", "medical", "location", "child_data", "security"})
++_ORACLE_STRONG_CATEGORIES = frozenset({"biometric", "medical", "location"})
 +_ORACLE_PERSONAL = frozenset({"personal"})
 +_ORACLE_VISIBILITIES = {
 +    "read_personal_conversation_memory": _ORACLE_PERSONAL,
@@ -1834,7 +1931,13 @@ index 56c5d40..57f27e9 100644
 +    rank = _ORACLE_RANK[assurance]
 +    if "security" in sensitivity and rank < _ORACLE_RANK["strong"]:
 +        return "denied", "p0.5.assurance-required"
-+    if rank < _ORACLE_MIN_RANK[action]:
++    # Owner decision D-10: biometric, medical or location data needs `strong` whatever the action.
++    needed = (
++        _ORACLE_RANK["strong"]
++        if _ORACLE_STRONG_CATEGORIES & set(sensitivity)
++        else _ORACLE_MIN_RANK[action]
++    )
++    if rank < needed:
 +        return "denied", "cm1.personal-memory.assurance-required"
 +    needs_consent = action != _FORGET_VALUE and _ORACLE_SENSITIVE & set(sensitivity)
 +    if needs_consent and consent != "granted":
@@ -1919,13 +2022,15 @@ index 56c5d40..57f27e9 100644
 ```
 
 - [ ] **Step 2: Run it.** `uv run pytest tests/unit/test_personal_memory_policy.py -q -p no:cacheprovider`
-  passes (21 new tests, about 1 s).
+  passes (21 new tests, about 1 s; the oracle was updated for the strong categories).
 - [ ] **Step 3: Prove it bites (mutation).** Temporarily set `forget`'s `min_assurance` to
   `IdentityAssurance.BASIC` in the table. The rehearsal saw 4 failures: the Task 3 literal-table
   test, a rank case, `test_the_owner_matrix_agrees_with_the_oracle_in_every_cell[forget_personal_memory-basic]`
   and `test_only_an_identified_owner_on_own_reachable_data_is_ever_allowed[forget_personal_memory]`.
-  Do the same with `confirm`: the same four kinds of test fail. Revert and confirm `git diff` is
-  empty.
+  Do the same with `confirm`: the same four kinds of test fail. Then remove `medical` from
+  `PERSONAL_MEMORY_STRONG_CATEGORIES`: 9 tests fail (the constant test, three photograph-medical
+  cases, the mixed-set test, the assurance-before-consent test and the three `basic` matrix tests of
+  read, propose and correct). Revert each and confirm `git diff` is empty.
 - [ ] **Step 4: Lint and commit.** `ruff check` and `ruff format --check` over the file; commit
   `test(server): exhaustive personal-memory policy matrix (plan 0060)`.
 
@@ -2521,7 +2626,7 @@ index 0000000..9ce75d5
 +    assert first.grant_spent is True
 +    assert second is None
 diff --git a/tests/unit/test_personal_memory_policy.py b/tests/unit/test_personal_memory_policy.py
-index 57f27e9..7451e9c 100644
+index 96218c5..882ed6d 100644
 --- a/tests/unit/test_personal_memory_policy.py
 +++ b/tests/unit/test_personal_memory_policy.py
 @@ -1,6 +1,6 @@
@@ -2532,7 +2637,7 @@ index 57f27e9..7451e9c 100644
  from functools import cache
  from itertools import combinations, product
  from types import MappingProxyType
-@@ -35,6 +35,7 @@ from server.cognition.models import (
+@@ -36,6 +36,7 @@ from server.cognition.models import (
      Confidence,
      ConfidenceBasis,
  )
@@ -2540,7 +2645,7 @@ index 57f27e9..7451e9c 100644
 
  if TYPE_CHECKING:
      from collections.abc import MutableMapping
-@@ -244,9 +245,8 @@ def _actor(
+@@ -260,9 +261,8 @@ def _actor(
 
 
  def _strong_actor_for(action: AuthorizationAction) -> ActivePersonContext:
@@ -2552,7 +2657,7 @@ index 57f27e9..7451e9c 100644
 
 
  def _decide(
-@@ -294,7 +294,13 @@ def test_assurance_is_compared_by_rank_against_each_actions_minimum(
+@@ -310,7 +310,13 @@ def test_assurance_is_compared_by_rank_against_each_actions_minimum(
      action: AuthorizationAction, assurance: IdentityAssurance, policy_id: str
  ) -> None:
      """Read, propose and correct need `basic`; confirm and forget need `strong`; none never."""
@@ -2567,7 +2672,7 @@ index 57f27e9..7451e9c 100644
 
      assert decision.policy_id == policy_id
      assert decision.action is action
-@@ -488,14 +494,183 @@ def test_decisions_carry_the_requested_action_and_only_safe_labels() -> None:
+@@ -550,14 +556,212 @@ def test_decisions_carry_the_requested_action_and_only_safe_labels() -> None:
          assert decision.policy_id.startswith(("cm1.personal-memory.", "p0.5."))
 
 
@@ -2666,6 +2771,35 @@ index 57f27e9..7451e9c 100644
 +    _assert_outcome(_decide(_FORGET, actor=both), _DENIED, _GRANT_SCOPE_ID)
 +
 +
++@pytest.mark.parametrize(
++    "category", [DataSensitivity.BIOMETRIC, DataSensitivity.MEDICAL, DataSensitivity.LOCATION]
++)
++def test_a_spent_read_grant_reads_strong_categories_but_the_writes_have_no_pin_route(
++    category: DataSensitivity,
++) -> None:
++    """The PIN makes the actor strong, so it reaches the read; propose and correct stay face-only."""
++    sensitivity = frozenset({category})
++    grant = _pin_actor(_READ_SCOPE)
++
++    read = _decide(_READ, actor=grant, sensitivity=sensitivity, consent=GRANTED)
++
++    _assert_outcome(read, _ALLOWED, _ALLOWED_ID)
++    for action in (_PROPOSE, _CORRECT):
++        write = _decide(action, actor=grant, sensitivity=sensitivity, consent=GRANTED)
++        _assert_outcome(write, _DENIED, _GRANT_SCOPE_ID)
++
++
++def test_proposing_and_correcting_medical_data_is_reachable_only_through_face_and_voice() -> None:
++    both = _face_voice_actor()
++    face_only = _actor(assurance=IdentityAssurance.BASIC, evidence=(_face_evidence(),))
++
++    for action in (_PROPOSE, _CORRECT):
++        reached = _decide(action, actor=both, sensitivity=_MEDICAL, consent=GRANTED)
++        photographed = _decide(action, actor=face_only, sensitivity=_MEDICAL, consent=GRANTED)
++        _assert_outcome(reached, _ALLOWED, _ALLOWED_ID)
++        _assert_outcome(photographed, _DENIED, _ASSURANCE_ID)
++
++
 +def test_every_pin_item_must_carry_the_right_scope_and_be_spent() -> None:
 +    right = _pin_evidence(scope=_FORGET_SCOPE)
 +    wrong = right.model_copy(
@@ -2754,7 +2888,7 @@ index 57f27e9..7451e9c 100644
 
  _ASSURANCE_VALUES = ("none", "basic", "strong")
  _ROLE_VALUES = ("owner", "adult", "child", "guest", "unknown")
-@@ -535,8 +710,34 @@ _ORACLE_VISIBILITIES = {
+@@ -598,8 +802,34 @@ _ORACLE_VISIBILITIES = {
      "correct_personal_memory": _ORACLE_PERSONAL,
      "forget_personal_memory": frozenset({"personal", "private", "temporary"}),
  }
@@ -2789,7 +2923,7 @@ index 57f27e9..7451e9c 100644
 
  def _subsets(values: tuple[str, ...]) -> tuple[tuple[str, ...], ...]:
      """Return every non-empty subset of a literal value tuple, in a stable order."""
-@@ -561,17 +762,33 @@ def _face_evidence() -> IdentityEvidence:
+@@ -624,17 +854,33 @@ def _face_evidence() -> IdentityEvidence:
      )
 
 
@@ -2826,7 +2960,7 @@ index 57f27e9..7451e9c 100644
      )
 
 
-@@ -583,6 +800,7 @@ def _matrix_outcome(
+@@ -646,6 +892,7 @@ def _matrix_outcome(
      visibility: tuple[str, ...],
      sensitivity: tuple[str, ...],
      consent: str,
@@ -2834,7 +2968,7 @@ index 57f27e9..7451e9c 100644
  ) -> tuple[str, str]:
      """Evaluate one matrix case and return (status, policy id).
 
-@@ -590,7 +808,7 @@ def _matrix_outcome(
+@@ -653,7 +900,7 @@ def _matrix_outcome(
      literal values, so there is nothing for validation to reject.
      """
      request = AuthorizationRequest.model_construct(
@@ -2843,7 +2977,7 @@ index 57f27e9..7451e9c 100644
          action=AuthorizationAction(action),
          target_person_id=target,
          visibility=frozenset(DataVisibility(item) for item in visibility),
-@@ -604,9 +822,9 @@ def _matrix_outcome(
+@@ -667,9 +914,9 @@ def _matrix_outcome(
 
 
  def _owner_outcome(
@@ -2855,7 +2989,7 @@ index 57f27e9..7451e9c 100644
      return _matrix_outcome(
          action,
          ("owner", "identified", assurance, _OWNER_ID),
-@@ -614,21 +832,34 @@ def _owner_outcome(
+@@ -677,16 +924,27 @@ def _owner_outcome(
          ("personal",),
          sensitivity,
          consent,
@@ -2888,14 +3022,16 @@ index 57f27e9..7451e9c 100644
      rank = _ORACLE_RANK[assurance]
      if "security" in sensitivity and rank < _ORACLE_RANK["strong"]:
          return "denied", "p0.5.assurance-required"
-     if rank < _ORACLE_MIN_RANK[action]:
+@@ -698,6 +956,8 @@ def _oracle(
+     )
+     if rank < needed:
          return "denied", "cm1.personal-memory.assurance-required"
 +    if not _grant_is_valid(action, pin):
 +        return "denied", "cm1.personal-memory.grant-scope"
      needs_consent = action != _FORGET_VALUE and _ORACLE_SENSITIVE & set(sensitivity)
      if needs_consent and consent != "granted":
          return "denied", "cm1.personal-memory.consent-required"
-@@ -643,19 +874,20 @@ def test_the_matrix_sizes_are_the_ones_the_adr_argues_over() -> None:
+@@ -712,19 +972,20 @@ def test_the_matrix_sizes_are_the_ones_the_adr_argues_over() -> None:
  @pytest.mark.parametrize("assurance", _ASSURANCE_VALUES)
  @pytest.mark.parametrize("action", _ACTION_VALUES)
  def test_the_owner_matrix_agrees_with_the_oracle_in_every_cell(action: str, assurance: str) -> None:
@@ -2924,7 +3060,7 @@ index 57f27e9..7451e9c 100644
 
 
  def _gate_oracle(
-@@ -666,8 +898,9 @@ def _gate_oracle(
+@@ -735,8 +996,9 @@ def _gate_oracle(
  ) -> bool:
      """Allowed only for an identified owner on their own data of a reachable visibility.
 
@@ -2936,7 +3072,7 @@ index 57f27e9..7451e9c 100644
      """
      role, status, assurance, _ = actor
      return (
-@@ -703,9 +936,27 @@ def test_only_an_identified_owner_on_own_reachable_data_is_ever_allowed(action:
+@@ -772,9 +1034,27 @@ def test_only_an_identified_owner_on_own_reachable_data_is_ever_allowed(action:
      for actor, target, visibility in product(
          actors, (None, _OWNER_ID, _OTHER_ID), _VISIBILITY_SUBSETS
      ):
@@ -2969,10 +3105,13 @@ index 57f27e9..7451e9c 100644
 
 - [ ] **Step 2: Run them to see them fail.**
   `uv run pytest tests/unit/test_personal_memory_policy.py tests/unit/test_personal_memory_grants.py tests/unit/test_identity_sessions.py tests/unit/test_owner_authentication.py tests/unit/test_biometric_admin_scope_callers.py tests/integration/test_owner_unlock_endpoint.py tests/integration/test_personal_memory_audit.py -q -p no:cacheprovider`
-  Expected RED: 31 of the 102 tests of the policy file fail with `assert 'cm1.personal-memory.allowed'
+  Expected RED: the new grant tests of the policy file fail with `assert 'cm1.personal-memory.allowed'
   == 'cm1.personal-memory.grant-scope'` (with only the base grant rule and before the other-person and
   expiry check, five tests still failed for that reason: the two readable ones and three matrix
-  cells); the grants, owner-authentication and unlock-endpoint files fail at
+  cells); two readable tests that a spent `personal_memory_read` grant reads the strong categories
+  and that proposing or correcting medical data is reachable only through face and voice are green
+  on arrival (the production rule already exists) and are proven by the strong-category mutation of
+  Task 5; the grants, owner-authentication and unlock-endpoint files fail at
   collection with `AttributeError: type object 'OwnerUnlockScope' has no attribute
   'PERSONAL_MEMORY_READ'`; others with `AttributeError: 'IdentityEvidence' object has no attribute
   'grant_scope'` and `ValidationError ... grant_scope Extra inputs are not permitted`.
@@ -2980,7 +3119,7 @@ index 57f27e9..7451e9c 100644
 
 ```diff
 diff --git a/server/src/server/cognition/authorization.py b/server/src/server/cognition/authorization.py
-index 36ea82b..2093113 100644
+index 30ad7f5..2c186f8 100644
 --- a/server/src/server/cognition/authorization.py
 +++ b/server/src/server/cognition/authorization.py
 @@ -15,6 +15,8 @@ from server.cognition.identity import (
@@ -2992,8 +3131,8 @@ index 36ea82b..2093113 100644
  )
  from server.cognition.models import (
      AuthorizationAction,
-@@ -437,6 +439,39 @@ def _lacks_assurance(request: AuthorizationRequest, capability: PersonalMemoryCa
-     return ASSURANCE_RANK[request.actor.assurance] < ASSURANCE_RANK[capability.min_assurance]
+@@ -455,6 +457,39 @@ def _lacks_assurance(request: AuthorizationRequest, capability: PersonalMemoryCa
+     return ASSURANCE_RANK[request.actor.assurance] < ASSURANCE_RANK[required]
 
 
 +def _is_invalid_grant(
@@ -3032,7 +3171,7 @@ index 36ea82b..2093113 100644
  def _lacks_consent(request: AuthorizationRequest, capability: PersonalMemoryCapability) -> bool:
      """Return whether sensitive data is requested without granted consent."""
      return (
-@@ -475,6 +510,13 @@ def _evaluate_personal_memory(
+@@ -493,6 +528,13 @@ def _evaluate_personal_memory(
              "assurance-required",
              "This personal memory request needs stronger identity assurance.",
          )
@@ -3640,7 +3779,7 @@ git diff --stat main -- robot
 - Explicit-path ruff over every touched file (`just lint` skips `scripts/`, the hook does not).
 - The CI command with coverage:
   `uv run pytest -m "not slow and not hardware and not eval" --cov=server/src --cov=robot/src --cov-report=term --cov-fail-under=80`.
-- `just gate` last; record the test count (rehearsal: +174 under the CI filter).
+- `just gate` last; record the test count (rehearsal: +193 under the CI filter).
 - `git diff --stat main -- robot` must be empty; `git diff --stat main -- server/src` must list only
   the six production files of *Permitted files*.
 
