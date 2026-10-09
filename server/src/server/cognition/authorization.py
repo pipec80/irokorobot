@@ -424,8 +424,92 @@ def _evaluate_physical_action_proposal(request: AuthorizationRequest) -> Authori
     )
 
 
-def _evaluate_resolved_request(request: AuthorizationRequest) -> AuthorizationDecision:
-    """Evaluate a request after the caller has established a trusted actor."""
+def _personal_memory_decision(
+    request: AuthorizationRequest, status: AuthorizationStatus, outcome: str, reason: str
+) -> AuthorizationDecision:
+    """Build a personal-memory decision whose reason never carries a protected value."""
+    return _decision(request, status, f"cm1.personal-memory.{outcome}", reason)
+
+
+def _is_own_data(request: AuthorizationRequest, capability: PersonalMemoryCapability) -> bool:
+    """Return whether the data is the actor's own and of a visibility the capability reaches."""
+    return (
+        # Defence in depth: a missing target never matches, even if an actor id were absent.
+        request.target_person_id is not None
+        and request.target_person_id == request.actor.person_id
+        and request.visibility <= capability.visibilities
+    )
+
+
+def _lacks_assurance(request: AuthorizationRequest, capability: PersonalMemoryCapability) -> bool:
+    """Return whether the actor's assurance ranks below what this request needs.
+
+    The need is `strong` when the data includes a category in
+    `PERSONAL_MEMORY_STRONG_CATEGORIES`, else the capability's own minimum.
+    """
+    required = (
+        IdentityAssurance.STRONG
+        if request.sensitivity & PERSONAL_MEMORY_STRONG_CATEGORIES
+        else capability.min_assurance
+    )
+    return ASSURANCE_RANK[request.actor.assurance] < ASSURANCE_RANK[required]
+
+
+def _lacks_consent(request: AuthorizationRequest, capability: PersonalMemoryCapability) -> bool:
+    """Return whether sensitive data is requested without granted consent."""
+    return (
+        capability.consent_applies
+        and _has_sensitive_data(request)
+        and request.consent is not ConsentStatus.GRANTED
+    )
+
+
+def _evaluate_personal_memory(
+    request: AuthorizationRequest, capability: PersonalMemoryCapability
+) -> AuthorizationDecision:
+    """Evaluate one personal-memory capability in the fixed order of ADR 0019 §5.
+
+    The generic gates (identity resolved; `security` data needs `strong`) have already run.
+    The result is never `REQUIRES_CONFIRMATION`.
+    """
+    if request.actor.role is not HouseholdRole.OWNER:
+        return _personal_memory_decision(
+            request,
+            AuthorizationStatus.DENIED,
+            "owner-only",
+            "Personal memory is reserved for the household owner.",
+        )
+    if not _is_own_data(request, capability):
+        return _personal_memory_decision(
+            request,
+            AuthorizationStatus.DENIED,
+            "own-data-only",
+            "Personal memory covers only the actor's own data.",
+        )
+    if _lacks_assurance(request, capability):
+        return _personal_memory_decision(
+            request,
+            AuthorizationStatus.DENIED,
+            "assurance-required",
+            "This personal memory request needs stronger identity assurance.",
+        )
+    if _lacks_consent(request, capability):
+        return _personal_memory_decision(
+            request,
+            AuthorizationStatus.DENIED,
+            "consent-required",
+            "Required consent is absent or revoked.",
+        )
+    return _personal_memory_decision(
+        request,
+        AuthorizationStatus.ALLOWED,
+        "allowed",
+        "Policy permits this request on the owner's own personal memory.",
+    )
+
+
+def _evaluate_legacy_request(request: AuthorizationRequest) -> AuthorizationDecision:
+    """Evaluate one of the pre-existing actions; anything unlisted is denied."""
     if request.action in {
         AuthorizationAction.READ_HOUSEHOLD_DATA,
         AuthorizationAction.EXECUTE_HOUSEHOLD_TOOL,
@@ -453,6 +537,18 @@ def _evaluate_resolved_request(request: AuthorizationRequest) -> AuthorizationDe
         "p0.5.default-deny",
         "No policy grants this request.",
     )
+
+
+def _evaluate_resolved_request(request: AuthorizationRequest) -> AuthorizationDecision:
+    """Evaluate a request after the caller has established a trusted actor.
+
+    An action absent from `PERSONAL_MEMORY_CAPABILITIES` falls through to the legacy
+    evaluation, whose last branch is the default deny.
+    """
+    capability = PERSONAL_MEMORY_CAPABILITIES.get(request.action)
+    if capability is not None:
+        return _evaluate_personal_memory(request, capability)
+    return _evaluate_legacy_request(request)
 
 
 def evaluate_authorization(request: AuthorizationRequest) -> AuthorizationDecision:
