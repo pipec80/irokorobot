@@ -287,6 +287,6 @@ caller needs a PIN for `propose`, `confirm` or `correct`.
 
 ## Follow-up
 
-- [Plan 0060](../plans/open/0060-cm1-personal-memory-capabilities.md) — implements this ADR (Draft).
+- [Plan 0060](../plans/open/0060-cm1-personal-memory-capabilities.md) — implements this ADR (`Ready`, `NOW` since 2026-10-09).
 - CM-2 — an ADR on identity in generic turns that revises ADR 0016 §5.
 - CM-3, CM-5, CM-6 — writer and confirmation, retrieval, and the real reach of forgetting.

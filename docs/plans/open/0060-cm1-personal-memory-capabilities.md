@@ -1,13 +1,12 @@
 # 0060 — Personal-memory capabilities (CM-1)
 
-> **Status:** `Draft` — written 2026-10-08 as the rest of CM-1, after Pipec confirmed the queue
-> order the same day (CM-1 before CM-2). **Not authorized.** Pipec promotes it to `Ready` and
-> selects it as `NOW`; until then `NOW` stays empty and nothing here may be executed. Decision D-3
-> (`confirm` needs `strong`) was chosen by Pipec on 2026-10-08; the others are proposals for the
-> moment of promotion, D-4 to D-6 came out of independent security and architecture reviews of the
-> draft [ADR 0019](../../adr/0019-personal-memory-capabilities.md) (`Proposed`, becomes `Accepted`
-> when this plan closes; the reasoning is in the ADR), and D-10 (`biometric`, `medical` and
-> `location` data need `strong`) was decided by Pipec on 2026-10-09.
+> **Status:** `Ready` — written 2026-10-08 as the rest of CM-1, after Pipec confirmed the queue
+> order the same day (CM-1 before CM-2), and **promoted by Pipec on 2026-10-09**, who chose D-3
+> (`confirm` needs `strong`, 2026-10-08) and D-10 (`biometric`, `medical` and `location` data need
+> `strong`, 2026-10-09) himself and confirmed D-1, D-2 and D-4 to D-9 exactly as written below. It
+> is the `NOW` item. D-4 to D-6 came out of independent security and architecture reviews of
+> [ADR 0019](../../adr/0019-personal-memory-capabilities.md) (`Proposed`, becomes `Accepted` when
+> this plan closes; the reasoning is in the ADR).
 
 > **For agentic workers:** REQUIRED SUB-SKILLS: `superpowers:executing-plans`,
 > `superpowers:test-driven-development`, `superpowers:verification-before-completion`,
@@ -157,8 +156,9 @@ Inputs the spec implies that are most likely to bite, each pinned by a test in i
 
 ## Decisions
 
-Proposed 2026-10-08. D-3 is Pipec's own choice (2026-10-08, after the security audit); the rest are
-confirmed by Pipec when he promotes the plan, and are not asked again afterwards.
+Proposed 2026-10-08 and confirmed by Pipec on 2026-10-09, when he promoted the plan. D-3 is his own
+choice (2026-10-08, after the security audit) and D-10 his own decision (2026-10-09); the rest were
+confirmed exactly as written. They are not asked again.
 
 1. **D-1 — Five new closed actions; the old ones do not move.** The names are the memory map's.
    `PROPOSE_MEMORY`, `COMMIT_MEMORY`, `DELETE_HOUSEHOLD_DATA` and `EXPORT_HOUSEHOLD_DATA` stay as
@@ -191,7 +191,7 @@ confirmed by Pipec when he promotes the plan, and are not asked again afterwards
    evaluated at most once per spent grant and a second target needs a fresh grant; and only the
    confirmed-execution turn calls the consuming resolver with the forget scope, because a peeked
    grant is always denied, so the "are you sure?" turn must not gate on a `forget` decision.
-8. **D-8 — The policy stays in `authorization.py`.** It grows from about 400 to about 610 lines
+8. **D-8 — The policy stays in `authorization.py`.** It grows from about 400 to about 630 lines
    (and `test_personal_memory_policy.py` is about 1,060 lines of exhaustive, parametrized matrices,
    trimmed once by a review with the coverage kept) and
    the old dispatcher is renamed `_evaluate_legacy_request` (unchanged) so the new dispatcher stays

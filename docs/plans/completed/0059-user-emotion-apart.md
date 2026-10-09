@@ -1,7 +1,7 @@
 # 0059 — The user's emotion is decided apart from the streamed reply
 
 > **Status:** `Closed 2026-10-08` — code complete, the gate of Task 6 **met in both seeds**
-> ([record](../../evals/0059-user-emotion-apart.md)); the branch awaits Pipec's PR. Pipec's
+> ([record](../../evals/0059-user-emotion-apart.md)); merged as PR #171 (`29cfbc0`). Pipec's
 > acceptance on real hardware was done on 2026-10-08 (cases 1, 3, 4 and 5; case 2 cannot be
 > exercised until CM-2; one reply in French is an open finding, see *Closure*). Written 2026-10-08 after Plan 0058
 > closed without meeting its gate, and **promoted by Pipec on 2026-10-08** ("avancemos con esas 7
