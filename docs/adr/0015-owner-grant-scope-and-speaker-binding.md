@@ -1,6 +1,6 @@
 # 0015 — Bind the owner grant to a named operation and to speaker evidence
 
-- **Status:** Accepted (2026-09-25, Pipec); decision 1 implemented by [Plan 0051](../plans/completed/0051-scoped-owner-grants.md) (2026-10-06); decision 2 refined by [ADR 0016](0016-face-and-voice-identity-fusion.md); decision 3 unchanged
+- **Status:** Accepted (2026-09-25, Pipec); decision 1 implemented by [Plan 0051](../plans/completed/0051-scoped-owner-grants.md) (2026-10-06) and its scope set extended by [ADR 0019](0019-personal-memory-capabilities.md) (`personal_memory_read`, `personal_memory_forget`); decision 2 refined by [ADR 0016](0016-face-and-voice-identity-fusion.md); decision 3 unchanged
 - **Date:** 2026-09-24
 - **Builds on:** [ADR 0008](0008-progressive-owner-authentication.md),
   [ADR 0009](0009-locked-posture-and-scoped-capabilities.md)

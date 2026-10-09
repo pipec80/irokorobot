@@ -1,6 +1,6 @@
 # 0016 — Identify the owner by face; require more assurance for reserved data
 
-- **Status:** Accepted (2026-09-30, Pipec); §5, §6 and the negative consequences clarified 2026-09-30, during Plan 0054's execution, on Pipec's decision (a presented PIN token is not consulted once the owner's face matched)
+- **Status:** Accepted (2026-09-30, Pipec); §3 (assurance) refined by [ADR 0019](0019-personal-memory-capabilities.md) (a capability may declare a minimum above the category floor); §5, §6 and the negative consequences clarified 2026-09-30, during Plan 0054's execution, on Pipec's decision (a presented PIN token is not consulted once the owner's face matched)
 - **Date:** 2026-09-30
 - **Builds on:** [ADR 0006](0006-personal-and-family-companion-profiles.md),
   [ADR 0008](0008-progressive-owner-authentication.md),

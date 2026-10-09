@@ -126,3 +126,12 @@ real-hardware acceptance of operation-bound owner grants (ADR-0015 decision 1): 
 administration scopes refusing each other without spending the grant, "who am I" and the
 "not connected yet" answer keeping it, the face and PIN paths run separately, and the
 Plan 0054 PIN case. Outcomes only: no name, transcript or photo.
+
+## Personal-memory capabilities acceptance (Plan 0060)
+
+[`0060-personal-memory-capabilities-acceptance.md`](0060-personal-memory-capabilities-acceptance.md)
+records the runtime check of the two scopes Plan 0060 adds to `POST /auth/owner/unlock`
+(`personal_memory_read` and `personal_memory_forget`), the unchanged default scope, the
+rejection of an unknown scope without echoing the PIN, and the voice turns that do not use the
+model. The capabilities themselves are policy and nothing consumes them. Outcomes only: no name,
+transcript or PIN.
