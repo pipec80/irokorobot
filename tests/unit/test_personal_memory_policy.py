@@ -1,6 +1,8 @@
 """Unit tests for the personal-memory capabilities of the authorization policy (ADR 0019)."""
 
 from datetime import UTC, datetime
+from functools import cache
+from itertools import combinations, product
 from types import MappingProxyType
 from typing import TYPE_CHECKING, cast
 from uuid import UUID
@@ -24,6 +26,8 @@ from server.cognition.identity import (
     ActivePersonStatus,
     HouseholdRole,
     IdentityAssurance,
+    IdentityEvidence,
+    IdentityEvidenceSource,
 )
 from server.cognition.models import (
     AuthorizationAction,
@@ -236,6 +240,7 @@ def _actor(
     assurance: IdentityAssurance = IdentityAssurance.BASIC,
     status: ActivePersonStatus = ActivePersonStatus.IDENTIFIED,
     person_id: int | None = _OWNER_ID,
+    evidence: tuple[IdentityEvidence, ...] = (),
 ) -> ActivePersonContext:
     """Build one active person for a pure personal-memory case (no media, no database)."""
     return ActivePersonContext(
@@ -248,7 +253,7 @@ def _actor(
             calibrated=False,
         ),
         role=role,
-        evidence=(),
+        evidence=evidence,
         resolved_at=_REQUESTED_AT,
         assurance=assurance,
     )
@@ -543,3 +548,233 @@ def test_decisions_carry_the_requested_action_and_only_safe_labels() -> None:
         assert "Ada" not in decision.reason
         assert not any(char.isdigit() for char in decision.reason)
         assert decision.policy_id.startswith(("cm1.personal-memory.", "p0.5."))
+
+
+# --- exhaustive matrix against an oracle written from the ADR, not from the tables ------
+#
+# The oracle below deliberately imports no table from `authorization`: it restates ADR 0019
+# §2, §3 and §5 with literal values, so a wrong table row cannot agree with itself. Because
+# it only ever answers "allowed" or "denied", agreeing with it also proves that no cell asks
+# for confirmation, that raising assurance never turns an allow into a deny, that widening
+# the category set never turns a deny into an allow, and that withdrawing consent never
+# allows what granted consent denied.
+
+_ASSURANCE_VALUES = ("none", "basic", "strong")
+_ROLE_VALUES = ("owner", "adult", "child", "guest", "unknown")
+_VISIBILITY_VALUES = ("public", "household", "adults", "personal", "private", "temporary")
+_SENSITIVITY_VALUES = (
+    "normal",
+    "private",
+    "biometric",
+    "medical",
+    "location",
+    "child_data",
+    "security",
+)
+_CONSENT_VALUES = ("not_required", "granted", "missing", "revoked")
+_ACTION_VALUES = (
+    "read_personal_conversation_memory",
+    "propose_personal_memory",
+    "confirm_personal_memory",
+    "correct_personal_memory",
+    "forget_personal_memory",
+)
+_FORGET_VALUE = "forget_personal_memory"
+_ORACLE_RANK = {"none": 0, "basic": 1, "strong": 2}
+_ORACLE_MIN_RANK = {
+    "read_personal_conversation_memory": 1,
+    "propose_personal_memory": 1,
+    "confirm_personal_memory": 2,
+    "correct_personal_memory": 1,
+    "forget_personal_memory": 2,
+}
+_ORACLE_SENSITIVE = frozenset({"biometric", "medical", "location", "child_data", "security"})
+_ORACLE_STRONG_CATEGORIES = frozenset({"biometric", "medical", "location"})
+_ORACLE_PERSONAL = frozenset({"personal"})
+_ORACLE_VISIBILITIES = {
+    "read_personal_conversation_memory": _ORACLE_PERSONAL,
+    "propose_personal_memory": _ORACLE_PERSONAL,
+    "confirm_personal_memory": _ORACLE_PERSONAL,
+    "correct_personal_memory": _ORACLE_PERSONAL,
+    "forget_personal_memory": frozenset({"personal", "private", "temporary"}),
+}
+_MATRIX_ALLOWED = ("allowed", "cm1.personal-memory.allowed")
+
+
+def _subsets(values: tuple[str, ...]) -> tuple[tuple[str, ...], ...]:
+    """Return every non-empty subset of a literal value tuple, in a stable order."""
+    return tuple(
+        subset for size in range(1, len(values) + 1) for subset in combinations(values, size)
+    )
+
+
+_SENSITIVITY_SUBSETS = _subsets(_SENSITIVITY_VALUES)
+_VISIBILITY_SUBSETS = _subsets(_VISIBILITY_VALUES)
+
+
+def _face_evidence() -> IdentityEvidence:
+    """Build the one piece of evidence a face-identified owner carries (no PIN grant)."""
+    return IdentityEvidence(
+        evidence_id=UUID("55555555-5555-5555-5555-555555555555"),
+        source=IdentityEvidenceSource.FACE,
+        candidate_person_id=_OWNER_ID,
+        confidence=Confidence(score=0.95, basis=ConfidenceBasis.MEASURED, calibrated=True),
+        observed_at=_REQUESTED_AT,
+        reference="face-turn",
+    )
+
+
+@cache
+def _matrix_actor(
+    role: str, status: str, assurance: str, person_id: int | None
+) -> ActivePersonContext:
+    """Return one face-only actor for the matrices; unresolved actors carry no evidence."""
+    return _actor(
+        role=HouseholdRole(role),
+        status=ActivePersonStatus(status),
+        assurance=IdentityAssurance(assurance),
+        person_id=person_id,
+        evidence=(_face_evidence(),) if person_id is not None else (),
+    )
+
+
+@cache
+def _matrix_outcome(
+    action: str,
+    actor: tuple[str, str, str, int | None],
+    target: int | None,
+    visibility: tuple[str, ...],
+    sensitivity: tuple[str, ...],
+    consent: str,
+) -> tuple[str, str]:
+    """Evaluate one matrix case and return (status, policy id).
+
+    The request is built with `model_construct` to keep the sweeps fast; the inputs are
+    literal values, so there is nothing for validation to reject.
+    """
+    request = AuthorizationRequest.model_construct(
+        actor=_matrix_actor(*actor),
+        action=AuthorizationAction(action),
+        target_person_id=target,
+        visibility=frozenset(DataVisibility(item) for item in visibility),
+        sensitivity=frozenset(DataSensitivity(item) for item in sensitivity),
+        consent=ConsentStatus(consent),
+        correlation_id=_CORRELATION_ID,
+        requested_at=_REQUESTED_AT,
+    )
+    decision = evaluate_authorization(request)
+    return decision.decision.value, decision.policy_id
+
+
+def _owner_outcome(
+    action: str, assurance: str, sensitivity: tuple[str, ...], consent: str
+) -> tuple[str, str]:
+    """Evaluate the face-identified owner (person 7) on their own {personal} data."""
+    return _matrix_outcome(
+        action,
+        ("owner", "identified", assurance, _OWNER_ID),
+        _OWNER_ID,
+        ("personal",),
+        sensitivity,
+        consent,
+    )
+
+
+def _oracle(
+    action: str, assurance: str, sensitivity: tuple[str, ...], consent: str
+) -> tuple[str, str]:
+    """State the ADR's rule for a face-identified owner acting on their own personal data.
+
+    Forget's PIN-grant requirement is not modelled here yet.
+    """
+    rank = _ORACLE_RANK[assurance]
+    if "security" in sensitivity and rank < _ORACLE_RANK["strong"]:
+        return "denied", "p0.5.assurance-required"
+    # Owner decision D-10: biometric, medical or location data needs `strong` whatever the action.
+    needed = (
+        _ORACLE_RANK["strong"]
+        if _ORACLE_STRONG_CATEGORIES & set(sensitivity)
+        else _ORACLE_MIN_RANK[action]
+    )
+    if rank < needed:
+        return "denied", "cm1.personal-memory.assurance-required"
+    needs_consent = action != _FORGET_VALUE and _ORACLE_SENSITIVE & set(sensitivity)
+    if needs_consent and consent != "granted":
+        return "denied", "cm1.personal-memory.consent-required"
+    return _MATRIX_ALLOWED
+
+
+def test_the_matrix_sizes_are_the_ones_the_adr_argues_over() -> None:
+    assert len(_SENSITIVITY_SUBSETS) == 127
+    assert len(_VISIBILITY_SUBSETS) == 63
+
+
+@pytest.mark.parametrize("assurance", _ASSURANCE_VALUES)
+@pytest.mark.parametrize("action", _ACTION_VALUES)
+def test_the_owner_matrix_agrees_with_the_oracle_in_every_cell(action: str, assurance: str) -> None:
+    """127 sensitivity sets x 4 consents per (action, assurance): 7 620 cells in all."""
+    mismatches = [
+        (sensitivity, consent, got, want)
+        for sensitivity, consent in product(_SENSITIVITY_SUBSETS, _CONSENT_VALUES)
+        if (got := _owner_outcome(action, assurance, sensitivity, consent))
+        != (want := _oracle(action, assurance, sensitivity, consent))
+    ]
+
+    assert not mismatches, mismatches[:3]
+    if action == _FORGET_VALUE:  # erasure never depends on consent, revoked or not
+        for sensitivity in _SENSITIVITY_SUBSETS:
+            outcomes = {_owner_outcome(action, assurance, sensitivity, c) for c in _CONSENT_VALUES}
+            assert len(outcomes) == 1, sensitivity
+
+
+def _gate_oracle(
+    action: str,
+    actor: tuple[str, str, str, int | None],
+    target: int | None,
+    visibility: tuple[str, ...],
+) -> bool:
+    """Allowed only for an identified owner on their own data of a reachable visibility.
+
+    Sensitivity is normal and consent granted in this sweep, so only the identity, target,
+    visibility and assurance gates can deny. Forget's PIN-grant rule is not modelled yet.
+    """
+    role, status, assurance, _ = actor
+    return (
+        role == "owner"
+        and status == "identified"
+        and target == _OWNER_ID
+        and set(visibility) <= _ORACLE_VISIBILITIES[action]
+        and _ORACLE_RANK[assurance] >= _ORACLE_MIN_RANK[action]
+    )
+
+
+def _all_actors() -> tuple[tuple[str, str, str, int | None], ...]:
+    """Return the 18 actors: 15 identified, a probable owner, an unknown and an ambiguous one."""
+    identified = tuple(
+        (role, "identified", assurance, _OWNER_ID)
+        for role in _ROLE_VALUES
+        for assurance in _ASSURANCE_VALUES
+    )
+    return (
+        *identified,
+        ("owner", "probable", "none", _OWNER_ID),
+        ("unknown", "unknown", "none", None),
+        ("unknown", "ambiguous", "none", None),
+    )
+
+
+@pytest.mark.parametrize("action", _ACTION_VALUES)
+def test_only_an_identified_owner_on_own_reachable_data_is_ever_allowed(action: str) -> None:
+    """18 actors x 3 targets (none, own, foreign) x 63 visibility sets: 3 402 cells per action."""
+    actors = _all_actors()
+    assert len(actors) == 18
+    mismatches = []
+    for actor, target, visibility in product(
+        actors, (None, _OWNER_ID, _OTHER_ID), _VISIBILITY_SUBSETS
+    ):
+        status, _ = _matrix_outcome(action, actor, target, visibility, ("normal",), "granted")
+        want = _gate_oracle(action, actor, target, visibility)
+        if (status == "allowed") != want or status == "requires_confirmation":
+            mismatches.append((actor, target, visibility, status))
+
+    assert not mismatches, mismatches[:3]
