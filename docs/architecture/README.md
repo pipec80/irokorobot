@@ -70,7 +70,10 @@ specific conflict instead of redesigning the project implicitly.
   corrigible, forgettable longitudinal memory. **CM-0 closed 2026-09-08**
   ([Plan 0046](../plans/completed/0046-reproducible-longitudinal-memory-baseline.md)):
   the benchmark harness is GREEN and the measured baseline is a reproducible
-  cognitive RED. CM-1…CM-7 remain unplanned. PC-3A ([Plan 0047](../plans/completed/0047-speaker-evidence-calibration-study.md)) closed 2026-09-25 with a provisional PASS, and PC-3B ([Plan 0053](../plans/completed/0053-consented-speaker-runtime-evidence.md)) closed 2026-09-29 with default-off `VOICE` evidence; PC-4 ([Plan 0054](../plans/completed/0054-face-default-identity-fusion.md)) closed 2026-09-30, accepted on real hardware.
+  cognitive RED. CM-1's grant scoping is closed
+  ([Plan 0051](../plans/completed/0051-scoped-owner-grants.md)) and its memory
+  capabilities are drafted ([Plan 0060](../plans/open/0060-cm1-personal-memory-capabilities.md));
+  CM-2…CM-7 remain unplanned. PC-3A ([Plan 0047](../plans/completed/0047-speaker-evidence-calibration-study.md)) closed 2026-09-25 with a provisional PASS, and PC-3B ([Plan 0053](../plans/completed/0053-consented-speaker-runtime-evidence.md)) closed 2026-09-29 with default-off `VOICE` evidence; PC-4 ([Plan 0054](../plans/completed/0054-face-default-identity-fusion.md)) closed 2026-09-30, accepted on real hardware.
 - [`p0-runtime-policy-audit.md`](p0-runtime-policy-audit.md): current
   disposition of remaining public-route and operator-acceptance gaps.
 - [`implementation-guardrails.md`](implementation-guardrails.md): tracked
