@@ -1,6 +1,6 @@
 """Unit tests for the personal-memory capabilities of the authorization policy (ADR 0019)."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from functools import cache
 from itertools import combinations, product
 from types import MappingProxyType
@@ -36,6 +36,7 @@ from server.cognition.models import (
     Confidence,
     ConfidenceBasis,
 )
+from server.cognition.owner_authentication import OwnerUnlockScope
 
 if TYPE_CHECKING:
     from collections.abc import MutableMapping
@@ -260,9 +261,8 @@ def _actor(
 
 
 def _strong_actor_for(action: AuthorizationAction) -> ActivePersonContext:
-    """A hand-built strong owner (no evidence) who can exercise `action`."""
-    del action
-    return _actor(assurance=IdentityAssurance.STRONG)
+    """A strong owner who can exercise `action`: a spent forget grant, else face and voice."""
+    return _pin_actor(_FORGET_SCOPE) if action is _FORGET else _face_voice_actor()
 
 
 def _decide(
@@ -310,7 +310,13 @@ def test_assurance_is_compared_by_rank_against_each_actions_minimum(
     action: AuthorizationAction, assurance: IdentityAssurance, policy_id: str
 ) -> None:
     """Read, propose and correct need `basic`; confirm and forget need `strong`; none never."""
-    decision = _decide(action, actor=_actor(assurance=assurance))
+    actor = (
+        _strong_actor_for(action)
+        if assurance is IdentityAssurance.STRONG
+        else _actor(assurance=assurance)
+    )
+
+    decision = _decide(action, actor=actor)
 
     assert decision.policy_id == policy_id
     assert decision.action is action
@@ -550,14 +556,212 @@ def test_decisions_carry_the_requested_action_and_only_safe_labels() -> None:
         assert decision.policy_id.startswith(("cm1.personal-memory.", "p0.5."))
 
 
+# --- grants carried by the evidence (ADR 0019 §4) -----------------------------
+
+_READ_SCOPE = "personal_memory_read"
+_FORGET_SCOPE = "personal_memory_forget"
+_GRANT_SCOPE_ID = "cm1.personal-memory.grant-scope"
+# Every scope string a grant could carry: the four real ones, a stranger and "none issued".
+_ANY_GRANT_SCOPE = (
+    "personal_protected_read",
+    "biometric_admin",
+    _READ_SCOPE,
+    _FORGET_SCOPE,
+    "anything",
+    None,
+)
+
+
+def _pin_evidence(
+    *, scope: str | None, spent: bool = True, kind: str = "owner"
+) -> IdentityEvidence:
+    """Build the evidence an owner PIN grant leaves.
+
+    `kind` is `owner` (a fresh grant for the owner), `other_person` (a grant for someone
+    else) or `expired` (a grant whose lifetime ended before the request).
+    """
+    return IdentityEvidence(
+        evidence_id=UUID("66666666-6666-6666-6666-666666666666"),
+        source=IdentityEvidenceSource.LOCAL_UNLOCK,
+        candidate_person_id=_OTHER_ID if kind == "other_person" else _OWNER_ID,
+        confidence=Confidence(score=1.0, basis=ConfidenceBasis.ASSERTED, calibrated=True),
+        observed_at=_REQUESTED_AT - timedelta(seconds=120),
+        expires_at=_REQUESTED_AT - timedelta(seconds=60)
+        if kind == "expired"
+        else _REQUESTED_AT + timedelta(seconds=60),
+        reference="session-selection",
+        grant_scope=scope,
+        grant_spent=spent,
+    )
+
+
+def _voice_evidence() -> IdentityEvidence:
+    """Build the voice evidence that corroborates the owner's face."""
+    return IdentityEvidence(
+        evidence_id=UUID("77777777-7777-7777-7777-777777777777"),
+        source=IdentityEvidenceSource.VOICE,
+        candidate_person_id=_OWNER_ID,
+        confidence=Confidence(score=1.0, basis=ConfidenceBasis.MEASURED, calibrated=False),
+        observed_at=_REQUESTED_AT,
+        reference="in-turn-speaker-evidence",
+    )
+
+
+def _pin_actor(
+    scope: str | None, *, spent: bool = True, kind: str = "owner"
+) -> ActivePersonContext:
+    """A strong owner identified by one PIN grant of `scope`, spent or only peeked."""
+    return _actor(
+        assurance=IdentityAssurance.STRONG,
+        evidence=(_pin_evidence(scope=scope, spent=spent, kind=kind),),
+    )
+
+
+def _face_voice_actor() -> ActivePersonContext:
+    """A hand-built strong owner whose evidence is a face and a voice, with no PIN item."""
+    return _actor(
+        assurance=IdentityAssurance.STRONG, evidence=(_face_evidence(), _voice_evidence())
+    )
+
+
+def test_a_grant_counts_only_for_its_own_operation_and_only_once_spent() -> None:
+    """Read and forget each accept one scope; every other scope, and a peek, is refused."""
+    for action, own in ((_READ, _READ_SCOPE), (_FORGET, _FORGET_SCOPE)):
+        for scope in _ANY_GRANT_SCOPE:
+            decision = _decide(action, actor=_pin_actor(scope))
+            if scope == own:
+                _assert_outcome(decision, _ALLOWED, _ALLOWED_ID)
+            else:
+                _assert_outcome(decision, _DENIED, _GRANT_SCOPE_ID)
+        peeked = _decide(action, actor=_pin_actor(own, spent=False))
+        _assert_outcome(peeked, _DENIED, _GRANT_SCOPE_ID)
+
+
+def test_propose_confirm_and_correct_have_no_pin_route() -> None:
+    """Any PIN item denies them, whatever its scope: a spent read grant is the example."""
+    for action in (_PROPOSE, _CONFIRM, _CORRECT):
+        _assert_outcome(_decide(action, actor=_pin_actor(_READ_SCOPE)), _DENIED, _GRANT_SCOPE_ID)
+
+
+def test_a_hand_built_strong_actor_reads_and_confirms_but_cannot_forget() -> None:
+    both = _face_voice_actor()
+
+    _assert_outcome(_decide(_READ, actor=both), _ALLOWED, _ALLOWED_ID)
+    _assert_outcome(_decide(_CONFIRM, actor=both), _ALLOWED, _ALLOWED_ID)
+    _assert_outcome(_decide(_FORGET, actor=both), _DENIED, _GRANT_SCOPE_ID)
+
+
+@pytest.mark.parametrize(
+    "category", [DataSensitivity.BIOMETRIC, DataSensitivity.MEDICAL, DataSensitivity.LOCATION]
+)
+def test_a_spent_read_grant_reads_strong_categories_but_the_writes_have_no_pin_route(
+    category: DataSensitivity,
+) -> None:
+    """The PIN makes the actor strong, so it reaches the read; propose and correct stay face-only."""
+    sensitivity = frozenset({category})
+    grant = _pin_actor(_READ_SCOPE)
+
+    read = _decide(_READ, actor=grant, sensitivity=sensitivity, consent=GRANTED)
+
+    _assert_outcome(read, _ALLOWED, _ALLOWED_ID)
+    for action in (_PROPOSE, _CORRECT):
+        write = _decide(action, actor=grant, sensitivity=sensitivity, consent=GRANTED)
+        _assert_outcome(write, _DENIED, _GRANT_SCOPE_ID)
+
+
+def test_proposing_and_correcting_medical_data_is_reachable_only_through_face_and_voice() -> None:
+    both = _face_voice_actor()
+    face_only = _actor(assurance=IdentityAssurance.BASIC, evidence=(_face_evidence(),))
+
+    for action in (_PROPOSE, _CORRECT):
+        reached = _decide(action, actor=both, sensitivity=_MEDICAL, consent=GRANTED)
+        photographed = _decide(action, actor=face_only, sensitivity=_MEDICAL, consent=GRANTED)
+        _assert_outcome(reached, _ALLOWED, _ALLOWED_ID)
+        _assert_outcome(photographed, _DENIED, _ASSURANCE_ID)
+
+
+def test_every_pin_item_must_carry_the_right_scope_and_be_spent() -> None:
+    right = _pin_evidence(scope=_FORGET_SCOPE)
+    wrong = right.model_copy(
+        update={
+            "evidence_id": UUID("88888888-8888-8888-8888-888888888888"),
+            "grant_scope": _READ_SCOPE,
+        }
+    )
+    mixed = _actor(assurance=IdentityAssurance.STRONG, evidence=(right, wrong))
+    face_and_grant = _actor(assurance=IdentityAssurance.STRONG, evidence=(_face_evidence(), right))
+
+    _assert_outcome(_decide(_FORGET, actor=mixed), _DENIED, _GRANT_SCOPE_ID)
+    _assert_outcome(_decide(_FORGET, actor=face_and_grant), _ALLOWED, _ALLOWED_ID)
+
+
+def test_a_grant_for_another_person_next_to_a_strong_owner_authorizes_nothing() -> None:
+    """A spent forget grant of someone else must not ride on the owner's face and voice."""
+    foreign = _pin_evidence(scope=_FORGET_SCOPE, kind="other_person")
+    owner = _actor(
+        assurance=IdentityAssurance.STRONG,
+        evidence=(_face_evidence(), _voice_evidence(), foreign),
+    )
+
+    _assert_outcome(_decide(_FORGET, actor=owner), _DENIED, _GRANT_SCOPE_ID)
+
+
+def test_an_expired_grant_authorizes_nothing_even_when_marked_spent() -> None:
+    expired = _pin_actor(_FORGET_SCOPE, kind="expired")
+
+    _assert_outcome(_decide(_FORGET, actor=expired), _DENIED, _GRANT_SCOPE_ID)
+
+
+def test_a_grant_is_judged_after_assurance_and_before_consent() -> None:
+    wrong_scope_no_consent = _decide(
+        _READ, actor=_pin_actor(_FORGET_SCOPE), sensitivity=_MEDICAL, consent=ConsentStatus.MISSING
+    )
+    low_assurance_wrong_scope = _decide(
+        _FORGET,
+        actor=_actor(
+            assurance=IdentityAssurance.BASIC, evidence=(_pin_evidence(scope=_READ_SCOPE),)
+        ),
+    )
+
+    _assert_outcome(wrong_scope_no_consent, _DENIED, _GRANT_SCOPE_ID)
+    _assert_outcome(low_assurance_wrong_scope, _DENIED, _ASSURANCE_ID)
+
+
+def test_a_manual_selection_is_not_a_pin_grant() -> None:
+    """Only `local_unlock` evidence triggers the grant rules; a manual one is ignored."""
+    manual = _pin_evidence(scope=None).model_copy(update={"source": IdentityEvidenceSource.MANUAL})
+    actor = _actor(assurance=IdentityAssurance.BASIC, evidence=(manual,))
+
+    _assert_outcome(_decide(_READ, actor=actor), _ALLOWED, _ALLOWED_ID)
+
+
+def test_the_unlock_scope_enum_and_the_table_scopes_agree() -> None:
+    table_scopes = {
+        capability.unlock_scope
+        for capability in PERSONAL_MEMORY_CAPABILITIES.values()
+        if capability.unlock_scope is not None
+    }
+
+    assert [scope.value for scope in OwnerUnlockScope] == [
+        "personal_protected_read",
+        "biometric_admin",
+        "personal_memory_read",
+        "personal_memory_forget",
+    ]
+    assert table_scopes == {
+        OwnerUnlockScope.PERSONAL_MEMORY_READ.value,
+        OwnerUnlockScope.PERSONAL_MEMORY_FORGET.value,
+    }
+
+
 # --- exhaustive matrix against an oracle written from the ADR, not from the tables ------
 #
 # The oracle below deliberately imports no table from `authorization`: it restates ADR 0019
-# §2, §3 and §5 with literal values, so a wrong table row cannot agree with itself. Because
+# §2, §3, §4 and §5 with literal values, so a wrong table row cannot agree with itself. Because
 # it only ever answers "allowed" or "denied", agreeing with it also proves that no cell asks
 # for confirmation, that raising assurance never turns an allow into a deny, that widening
-# the category set never turns a deny into an allow, and that withdrawing consent never
-# allows what granted consent denied.
+# the category set never turns a deny into an allow, that withdrawing consent never allows
+# what granted consent denied, and that a peeked grant is never better than a spent one.
 
 _ASSURANCE_VALUES = ("none", "basic", "strong")
 _ROLE_VALUES = ("owner", "adult", "child", "guest", "unknown")
@@ -598,7 +802,33 @@ _ORACLE_VISIBILITIES = {
     "correct_personal_memory": _ORACLE_PERSONAL,
     "forget_personal_memory": frozenset({"personal", "private", "temporary"}),
 }
+_ORACLE_UNLOCK_SCOPE = {
+    "read_personal_conversation_memory": "personal_memory_read",
+    "forget_personal_memory": "personal_memory_forget",
+}
 _MATRIX_ALLOWED = ("allowed", "cm1.personal-memory.allowed")
+
+# A PIN item as (scope it carries, spent?, kind); None means the actor holds only a face item.
+type Pin = tuple[str | None, bool, str] | None
+_FORGET_PIN: Pin = ("personal_memory_forget", True, "owner")
+_PIN_SCOPES = (
+    "personal_protected_read",
+    "biometric_admin",
+    "personal_memory_read",
+    "personal_memory_forget",
+    None,
+)
+# Every PIN state the matrix visits: none; each scope spent or only peeked; and a spent grant
+# of the two real scopes that belongs to another person or has expired.
+_PIN_STATES: tuple[Pin, ...] = (
+    None,
+    *((scope, spent, "owner") for scope in _PIN_SCOPES for spent in (True, False)),
+    *(
+        (scope, True, kind)
+        for scope in ("personal_memory_read", "personal_memory_forget")
+        for kind in ("other_person", "expired")
+    ),
+)
 
 
 def _subsets(values: tuple[str, ...]) -> tuple[tuple[str, ...], ...]:
@@ -624,17 +854,33 @@ def _face_evidence() -> IdentityEvidence:
     )
 
 
+def _best_pin(action: str) -> Pin:
+    """The grant state that lets the owner exercise `action`: only forget needs a PIN grant."""
+    return _FORGET_PIN if action == _FORGET_VALUE else None
+
+
 @cache
 def _matrix_actor(
-    role: str, status: str, assurance: str, person_id: int | None
+    role: str, status: str, assurance: str, person_id: int | None, pin: Pin
 ) -> ActivePersonContext:
-    """Return one face-only actor for the matrices; unresolved actors carry no evidence."""
+    """Return one actor for the matrices.
+
+    A resolved actor carries either one PIN item (when `pin` is given) or one face item;
+    an unresolved actor carries no evidence. A legitimate PIN item names the owner and is
+    still fresh at the request time.
+    """
+    if person_id is None:
+        evidence: tuple[IdentityEvidence, ...] = ()
+    elif pin is None:
+        evidence = (_face_evidence(),)
+    else:
+        evidence = (_pin_evidence(scope=pin[0], spent=pin[1], kind=pin[2]),)
     return _actor(
         role=HouseholdRole(role),
         status=ActivePersonStatus(status),
         assurance=IdentityAssurance(assurance),
         person_id=person_id,
-        evidence=(_face_evidence(),) if person_id is not None else (),
+        evidence=evidence,
     )
 
 
@@ -646,6 +892,7 @@ def _matrix_outcome(
     visibility: tuple[str, ...],
     sensitivity: tuple[str, ...],
     consent: str,
+    pin: Pin,
 ) -> tuple[str, str]:
     """Evaluate one matrix case and return (status, policy id).
 
@@ -653,7 +900,7 @@ def _matrix_outcome(
     literal values, so there is nothing for validation to reject.
     """
     request = AuthorizationRequest.model_construct(
-        actor=_matrix_actor(*actor),
+        actor=_matrix_actor(*actor, pin),
         action=AuthorizationAction(action),
         target_person_id=target,
         visibility=frozenset(DataVisibility(item) for item in visibility),
@@ -667,9 +914,9 @@ def _matrix_outcome(
 
 
 def _owner_outcome(
-    action: str, assurance: str, sensitivity: tuple[str, ...], consent: str
+    action: str, assurance: str, sensitivity: tuple[str, ...], consent: str, pin: Pin
 ) -> tuple[str, str]:
-    """Evaluate the face-identified owner (person 7) on their own {personal} data."""
+    """Evaluate the identified owner (person 7) on their own {personal} data."""
     return _matrix_outcome(
         action,
         ("owner", "identified", assurance, _OWNER_ID),
@@ -677,16 +924,27 @@ def _owner_outcome(
         ("personal",),
         sensitivity,
         consent,
+        pin,
     )
 
 
-def _oracle(
-    action: str, assurance: str, sensitivity: tuple[str, ...], consent: str
-) -> tuple[str, str]:
-    """State the ADR's rule for a face-identified owner acting on their own personal data.
+def _grant_is_valid(action: str, pin: Pin) -> bool:
+    """ADR 0019 §4: forget needs a spent forget grant; read accepts only a spent read grant.
 
-    Forget's PIN-grant requirement is not modelled here yet.
+    A grant must also name the owner and still be fresh; propose, confirm and correct accept
+    no PIN item at all.
     """
+    if pin is None:
+        return action != _FORGET_VALUE
+    scope, spent, kind = pin
+    wanted = _ORACLE_UNLOCK_SCOPE.get(action)
+    return wanted is not None and spent and scope == wanted and kind == "owner"
+
+
+def _oracle(
+    action: str, assurance: str, sensitivity: tuple[str, ...], consent: str, pin: Pin
+) -> tuple[str, str]:
+    """State the ADR's rule for an identified owner acting on their own personal data."""
     rank = _ORACLE_RANK[assurance]
     if "security" in sensitivity and rank < _ORACLE_RANK["strong"]:
         return "denied", "p0.5.assurance-required"
@@ -698,6 +956,8 @@ def _oracle(
     )
     if rank < needed:
         return "denied", "cm1.personal-memory.assurance-required"
+    if not _grant_is_valid(action, pin):
+        return "denied", "cm1.personal-memory.grant-scope"
     needs_consent = action != _FORGET_VALUE and _ORACLE_SENSITIVE & set(sensitivity)
     if needs_consent and consent != "granted":
         return "denied", "cm1.personal-memory.consent-required"
@@ -712,19 +972,20 @@ def test_the_matrix_sizes_are_the_ones_the_adr_argues_over() -> None:
 @pytest.mark.parametrize("assurance", _ASSURANCE_VALUES)
 @pytest.mark.parametrize("action", _ACTION_VALUES)
 def test_the_owner_matrix_agrees_with_the_oracle_in_every_cell(action: str, assurance: str) -> None:
-    """127 sensitivity sets x 4 consents per (action, assurance): 7 620 cells in all."""
+    """127 sensitivity sets x 4 consents x 15 PIN states per (action, assurance)."""
     mismatches = [
-        (sensitivity, consent, got, want)
-        for sensitivity, consent in product(_SENSITIVITY_SUBSETS, _CONSENT_VALUES)
-        if (got := _owner_outcome(action, assurance, sensitivity, consent))
-        != (want := _oracle(action, assurance, sensitivity, consent))
+        (sensitivity, consent, pin, got, want)
+        for sensitivity, consent, pin in product(_SENSITIVITY_SUBSETS, _CONSENT_VALUES, _PIN_STATES)
+        if (got := _owner_outcome(action, assurance, sensitivity, consent, pin))
+        != (want := _oracle(action, assurance, sensitivity, consent, pin))
     ]
 
     assert not mismatches, mismatches[:3]
     if action == _FORGET_VALUE:  # erasure never depends on consent, revoked or not
-        for sensitivity in _SENSITIVITY_SUBSETS:
-            outcomes = {_owner_outcome(action, assurance, sensitivity, c) for c in _CONSENT_VALUES}
-            assert len(outcomes) == 1, sensitivity
+        for sensitivity, pin in product(_SENSITIVITY_SUBSETS, _PIN_STATES):
+            granted = _owner_outcome(action, assurance, sensitivity, "granted", pin)
+            for consent in _CONSENT_VALUES:
+                assert _owner_outcome(action, assurance, sensitivity, consent, pin) == granted
 
 
 def _gate_oracle(
@@ -735,8 +996,9 @@ def _gate_oracle(
 ) -> bool:
     """Allowed only for an identified owner on their own data of a reachable visibility.
 
-    Sensitivity is normal and consent granted in this sweep, so only the identity, target,
-    visibility and assurance gates can deny. Forget's PIN-grant rule is not modelled yet.
+    Sensitivity is normal and consent granted in this sweep, and every actor holds the grant
+    state its action needs (`_best_pin`), so only the identity, target, visibility and
+    assurance gates can deny.
     """
     role, status, assurance, _ = actor
     return (
@@ -772,9 +1034,27 @@ def test_only_an_identified_owner_on_own_reachable_data_is_ever_allowed(action: 
     for actor, target, visibility in product(
         actors, (None, _OWNER_ID, _OTHER_ID), _VISIBILITY_SUBSETS
     ):
-        status, _ = _matrix_outcome(action, actor, target, visibility, ("normal",), "granted")
+        status, _ = _matrix_outcome(
+            action, actor, target, visibility, ("normal",), "granted", _best_pin(action)
+        )
         want = _gate_oracle(action, actor, target, visibility)
         if (status == "allowed") != want or status == "requires_confirmation":
             mismatches.append((actor, target, visibility, status))
 
     assert not mismatches, mismatches[:3]
+
+
+def test_forget_is_never_allowed_to_any_actor_without_a_spent_forget_grant() -> None:
+    """18 actors x 3 targets x 63 visibility sets, face-only evidence: not one forget."""
+    allowed = [
+        (actor, target, visibility)
+        for actor, target, visibility in product(
+            _all_actors(), (None, _OWNER_ID, _OTHER_ID), _VISIBILITY_SUBSETS
+        )
+        if _matrix_outcome(_FORGET_VALUE, actor, target, visibility, ("normal",), "granted", None)[
+            0
+        ]
+        == "allowed"
+    ]
+
+    assert not allowed, allowed[:3]

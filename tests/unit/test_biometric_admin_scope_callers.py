@@ -39,3 +39,21 @@ def test_the_robot_never_asks_for_the_administration_scope() -> None:
     sources = (_ROOT / "robot" / "src" / "robot").rglob("*.py")
 
     assert not [path.name for path in sources if "biometric_admin" in path.read_text("utf-8")]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("scope", ["personal_memory_read", "personal_memory_forget"])
+def test_the_robot_never_asks_for_a_personal_memory_scope(scope: str) -> None:
+    """The robot is a generic audio client: it neither knows nor spends memory grants."""
+    sources = (_ROOT / "robot" / "src" / "robot").rglob("*.py")
+
+    assert not [path.name for path in sources if scope in path.read_text("utf-8")]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("scope", ["personal_memory_read", "personal_memory_forget"])
+def test_no_script_asks_for_a_personal_memory_scope_yet(scope: str) -> None:
+    """Nothing is wired (ADR 0019 §6): the scopes exist in the policy and the unlock enum only."""
+    sources = (_ROOT / "scripts").glob("*.py")
+
+    assert not [path.name for path in sources if scope in path.read_text("utf-8")]

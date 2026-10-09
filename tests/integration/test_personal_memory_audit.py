@@ -18,6 +18,8 @@ from server.cognition.identity import (
     ActivePersonStatus,
     HouseholdRole,
     IdentityAssurance,
+    IdentityEvidence,
+    IdentityEvidenceSource,
 )
 from server.cognition.models import (
     AuthorizationAction,
@@ -63,13 +65,24 @@ async def test_each_new_action_is_recorded_with_its_value_and_a_cm1_policy_id(
 ) -> None:
     """The audit `action` column is free text: the new values need no migration."""
     owner_id = await upsert_entity(name="Ada", type="person")
+    # Forget alone needs a PIN grant spent for it (ADR 0019 §4); the others need none.
+    grant = IdentityEvidence(
+        evidence_id=UUID("55555555-5555-5555-5555-555555555555"),
+        source=IdentityEvidenceSource.LOCAL_UNLOCK,
+        candidate_person_id=owner_id,
+        confidence=Confidence(score=1.0, basis=ConfidenceBasis.ASSERTED, calibrated=True),
+        observed_at=_AT,
+        reference="session-selection",
+        grant_scope="personal_memory_forget",
+        grant_spent=True,
+    )
     owner = ActivePersonContext(
         person_id=owner_id,
         display_name="Ada",
         status=ActivePersonStatus.IDENTIFIED,
         confidence=Confidence(score=1.0, basis=ConfidenceBasis.ASSERTED, calibrated=False),
         role=HouseholdRole.OWNER,
-        evidence=(),
+        evidence=(grant,) if action is AuthorizationAction.FORGET_PERSONAL_MEMORY else (),
         resolved_at=_AT,
         assurance=IdentityAssurance.STRONG,
     )

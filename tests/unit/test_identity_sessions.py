@@ -66,6 +66,8 @@ def test_registry_uses_an_opaque_token_and_retains_safe_evidence_only() -> None:
         "observed_at",
         "reference",
         "expires_at",
+        "grant_scope",
+        "grant_spent",
     }
 
 
@@ -254,3 +256,40 @@ def test_a_scoped_token_cannot_be_spent_by_a_caller_that_names_no_scope() -> Non
     assert registry.consume_evidence(token) is None
     assert registry.evidence_for(token, scope="read") is not None  # refused, not spent
     assert registry.consume_evidence(token, scope="read") is not None
+
+
+# --- Plan 0060: the evidence carries the scope of its grant and whether it was spent ----------
+
+
+def test_issued_evidence_carries_its_scope_and_is_unspent_until_consumed() -> None:
+    now = [_NOW]
+    registry = _scoped_registry(now)
+    token = registry.issue_for_person(
+        _person(42), source=IdentityEvidenceSource.LOCAL_UNLOCK, scope="read"
+    )
+
+    peeked = registry.evidence_for(token, scope="read")
+    assert peeked is not None
+    assert (peeked.grant_scope, peeked.grant_spent) == ("read", False)
+
+    spent = registry.consume_evidence(token, scope="read")
+    assert spent is not None
+    assert (spent.grant_scope, spent.grant_spent) == ("read", True)
+    assert spent.evidence_id == peeked.evidence_id
+    assert peeked.grant_spent is False  # the object peeked earlier is never mutated
+
+
+def test_a_grant_issued_without_a_scope_carries_none_and_a_selection_is_not_a_grant() -> None:
+    now = [_NOW]
+    registry = _scoped_registry(now)
+    unscoped = registry.issue_for_person(_person(42), source=IdentityEvidenceSource.LOCAL_UNLOCK)
+    selected = registry.select_person(42)
+    assert selected is not None
+
+    unscoped_evidence = registry.consume_evidence(unscoped)
+    selection_evidence = registry.evidence_for(selected)
+
+    assert unscoped_evidence is not None
+    assert (unscoped_evidence.grant_scope, unscoped_evidence.grant_spent) == (None, True)
+    assert selection_evidence is not None
+    assert (selection_evidence.grant_scope, selection_evidence.grant_spent) == (None, False)

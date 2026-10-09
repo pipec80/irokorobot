@@ -85,10 +85,16 @@ class OwnerUnlockScope(StrEnum):
         PERSONAL_PROTECTED_READ: One protected read of the owner's confirmed child data
             (the default, so every existing client is unchanged).
         BIOMETRIC_ADMIN: Enrolling or revoking the owner's face or voice.
+        PERSONAL_MEMORY_READ: Reading the owner's own personal conversation memory
+            (ADR 0019). It does not unlock child data and the child-data grant does not
+            unlock it.
+        PERSONAL_MEMORY_FORGET: One erasure of the owner's own personal memory (ADR 0019).
     """
 
     PERSONAL_PROTECTED_READ = "personal_protected_read"
     BIOMETRIC_ADMIN = "biometric_admin"
+    PERSONAL_MEMORY_READ = "personal_memory_read"
+    PERSONAL_MEMORY_FORGET = "personal_memory_forget"
 
 
 class OwnerUnlockResult(BaseModel):

@@ -148,7 +148,12 @@ async def test_openapi_exposes_no_person_role_or_session_fields() -> None:
     assert set(unlock_request["properties"]) == {"pin", "scope"}
     assert set(unlock_response["properties"]) == {"token", "expires_at", "scope"}
     scope_schema = schemas["OwnerUnlockScope"]
-    assert scope_schema["enum"] == ["personal_protected_read", "biometric_admin"]
+    assert scope_schema["enum"] == [
+        "personal_protected_read",
+        "biometric_admin",
+        "personal_memory_read",
+        "personal_memory_forget",
+    ]
     assert "scope" not in unlock_request.get("required", [])  # additive: clients unchanged
 
 
@@ -336,6 +341,26 @@ async def test_an_unlock_can_ask_for_biometric_admin_and_the_response_echoes_it(
     assert response.status_code == 200
     assert fake.received_scope is OwnerUnlockScope.BIOMETRIC_ADMIN
     assert response.json()["scope"] == "biometric_admin"
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "scope", [OwnerUnlockScope.PERSONAL_MEMORY_READ, OwnerUnlockScope.PERSONAL_MEMORY_FORGET]
+)
+async def test_an_unlock_can_ask_for_a_personal_memory_scope_and_the_response_echoes_it(
+    scope: OwnerUnlockScope, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = _FakeService(result=_result().model_copy(update={"scope": scope}))
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: fake)
+
+    async with _loopback_client() as client:
+        response = await client.post(
+            "/auth/owner/unlock", json={"pin": "482173", "scope": scope.value}
+        )
+
+    assert response.status_code == 200
+    assert fake.received_scope is scope
+    assert response.json()["scope"] == scope.value
 
 
 @pytest.mark.integration

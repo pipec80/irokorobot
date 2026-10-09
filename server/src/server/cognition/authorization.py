@@ -15,6 +15,8 @@ from server.cognition.identity import (
     ActivePersonStatus,
     HouseholdRole,
     IdentityAssurance,
+    IdentityEvidence,
+    IdentityEvidenceSource,
 )
 from server.cognition.models import (
     AuthorizationAction,
@@ -455,6 +457,39 @@ def _lacks_assurance(request: AuthorizationRequest, capability: PersonalMemoryCa
     return ASSURANCE_RANK[request.actor.assurance] < ASSURANCE_RANK[required]
 
 
+def _is_invalid_grant(
+    item: IdentityEvidence, request: AuthorizationRequest, capability: PersonalMemoryCapability
+) -> bool:
+    """Return whether one `local_unlock` item cannot authorize this request.
+
+    It must carry the capability's own scope, have been spent by this request, name the
+    acting person and still be fresh at request time (ADR 0019 §4).
+    """
+    return (
+        capability.unlock_scope is None
+        or item.grant_scope != capability.unlock_scope
+        or not item.grant_spent
+        or item.candidate_person_id != request.actor.person_id
+        or (item.expires_at is not None and item.expires_at <= request.requested_at)
+    )
+
+
+def _has_invalid_grant(request: AuthorizationRequest, capability: PersonalMemoryCapability) -> bool:
+    """Return whether an owner PIN grant is missing where required or does not count.
+
+    Every `local_unlock` item must be valid for this capability; a capability with no scope
+    accepts no PIN grant at all.
+    """
+    grants = [
+        item
+        for item in request.actor.evidence
+        if item.source is IdentityEvidenceSource.LOCAL_UNLOCK
+    ]
+    if capability.requires_unlock and not grants:
+        return True
+    return any(_is_invalid_grant(item, request, capability) for item in grants)
+
+
 def _lacks_consent(request: AuthorizationRequest, capability: PersonalMemoryCapability) -> bool:
     """Return whether sensitive data is requested without granted consent."""
     return (
@@ -492,6 +527,13 @@ def _evaluate_personal_memory(
             AuthorizationStatus.DENIED,
             "assurance-required",
             "This personal memory request needs stronger identity assurance.",
+        )
+    if _has_invalid_grant(request, capability):
+        return _personal_memory_decision(
+            request,
+            AuthorizationStatus.DENIED,
+            "grant-scope",
+            "An owner unlock spent for exactly this operation is required.",
         )
     if _lacks_consent(request, capability):
         return _personal_memory_decision(
