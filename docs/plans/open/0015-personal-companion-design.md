@@ -181,8 +181,11 @@ Plan 0046 delivered CM-0 (closed 2026-09-08): the benchmark software finished
 GREEN and recorded a measured product baseline that is honestly RED
 (`ac43c58`, exit 1 — single-turn extraction is the only live seam and scores
 below par, every other operation is `unsupported`). It implemented no CM-1
-capability and changed no runtime memory. CM-1…CM-7 remain unplanned; their
-biometric dependencies (PC-3, PC-4) closed on 2026-09-29 and 2026-09-30.
+capability and changed no runtime memory. When it closed, CM-1…CM-7 were
+unplanned; their biometric dependencies (PC-3, PC-4) closed on 2026-09-29 and
+2026-09-30. Since then CM-1 began with Plan 0051 (closed 2026-10-06) and its
+memory capabilities are Plan 0060 (`NOW` since 2026-10-09); CM-2…CM-7 remain
+unplanned.
 
 **Gate:** the canonical evaluation proves `aprendo -> reinicio -> recuerdo ->
 corrijo -> reinicio -> recuerdo la verdad vigente -> olvido -> no revelo`.
