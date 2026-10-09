@@ -3867,4 +3867,6 @@ free ADR number is 0020.
 
 Follow-ups with no plan yet: the server does not warn when Ollama is down (the health check passes
 and the first greeting turns speak the fallback phrase); an alert or a health field would have
-shown it at start-up. It is outside this plan's scope.
+shown it at start-up. It is outside this plan's scope. Both follow-ups (this one and the unwired
+confirm/forget cases above) are tracked in the cross-cutting table of the
+[roadmap](../../roadmap/cognitive-roadmap.md#cross-cutting-gates-and-conditional-work).
