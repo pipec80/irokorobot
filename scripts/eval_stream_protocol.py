@@ -17,6 +17,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from server.llm import FALLBACK_EMOTION
+from server.schemas import ConversationTurn
 from server.streaming_protocol import StreamProtocolError
 from server.streaming_render import (
     StreamFallbackReason,
@@ -25,6 +26,7 @@ from server.streaming_render import (
     classify_stream_end,
 )
 
+from scripts.reply_language import judge_language
 from server import llm_streaming
 
 if TYPE_CHECKING:
@@ -32,14 +34,14 @@ if TYPE_CHECKING:
 
     import httpx
     from server.cognition.identity import ActivePersonContext
-    from server.schemas import ConversationTurn, MemoryContext
+    from server.schemas import MemoryContext
 
     type StreamGenerator = Callable[..., AsyncIterator[str]]
 
 logger = logging.getLogger(__name__)
 
 _PERCENT = 100
-_SOURCES = ("context", "public")
+_SOURCES = ("context", "public", "history")
 _PUBLIC_UTTERANCES = (
     "Hola, ¿cómo estás?",
     "Te presento a mi amigo Tom.",
@@ -53,6 +55,93 @@ _PUBLIC_UTTERANCES = (
     "Hoy fue un día largo.",
     "¿Cómo se prepara un té?",
     "Me gusta la música tranquila.",
+)
+
+
+# Invented one-line facts followed by a question that only the history answers (ADR 0020
+# §7). Each entry is (labelled exchanges, question): no household data of any kind.
+_HISTORY_DIALOGUES: tuple[tuple[tuple[tuple[str, str], ...], str], ...] = (
+    (
+        (("Mi número favorito es el 42.", "Anotado: tu número favorito es el 42."),),
+        "¿Cuál es mi número favorito?",
+    ),
+    (
+        (
+            (
+                "Esta noche voy a cocinar lentejas.",
+                "¡Qué buena idea! Las lentejas son muy reconfortantes.",
+            ),
+        ),
+        "¿Qué te dije que iba a cocinar?",
+    ),
+    (
+        (
+            (
+                "Tengo una reunión mañana a las nueve.",
+                "Entendido, mañana a las nueve tienes una reunión.",
+            ),
+        ),
+        "¿A qué hora es mi reunión?",
+    ),
+    (
+        (
+            (
+                "Estoy aprendiendo a tocar la guitarra.",
+                "¡Qué genial! La guitarra es un instrumento hermoso.",
+            ),
+        ),
+        "¿Qué instrumento estoy aprendiendo?",
+    ),
+    (
+        (
+            (
+                "Compré una planta nueva para la sala.",
+                "Qué lindo, una planta alegra cualquier sala.",
+            ),
+        ),
+        "¿Dónde puse la planta?",
+    ),
+    (
+        (("Mañana voy a viajar a la playa.", "¡Qué bien! Disfruta mucho de la playa."),),
+        "¿A dónde voy a viajar mañana?",
+    ),
+    (
+        (
+            (
+                "El código de mi bicicleta es Zorro.",
+                "Entendido, el código de tu bicicleta es Zorro.",
+            ),
+        ),
+        "¿Cuál era el código de mi bicicleta?",
+    ),
+    (
+        (
+            (
+                "Hoy me levanté muy temprano.",
+                "Madrugar a veces cuesta, pero rinde mucho.",
+            ),
+        ),
+        "¿Qué te conté sobre mi mañana?",
+    ),
+    (
+        (
+            ("Quiero aprender ajedrez.", "Es un juego excelente para entrenar la mente."),
+            ("Empezaré con las aperturas.", "Buena idea, las aperturas son la base."),
+        ),
+        "¿Qué quiero aprender y por dónde voy a empezar?",
+    ),
+    (
+        (("Mi tortuga se llama Cobalto.", "Qué nombre tan original para una tortuga."),),
+        "¿Cómo se llama mi tortuga?",
+    ),
+    (
+        (("Prefiero el té sin azúcar.", "Anotado, té sin azúcar."),),
+        "¿Cómo prefiero el té?",
+    ),
+    (
+        (("Mañana es mi día libre.", "¡Qué bien, aprovéchalo!"),),
+        "¿Qué te dije sobre mañana?",
+    ),
 )
 
 
@@ -81,6 +170,7 @@ class _StreamClassifier:
     def __init__(self) -> None:
         self._state = StreamState(request_start=0.0, pending_emotion=FALLBACK_EMOTION)
         self._buffer = ""
+        self._spoken: list[str] = []
         self.sentences_seen = 0
 
     def feed(self, delta: str) -> StreamOutcome | None:
@@ -94,12 +184,17 @@ class _StreamClassifier:
             self._buffer, sentences = _consume_body(self._buffer, self._state)
         except StreamProtocolError:
             return StreamOutcome.INVALID_PROTOCOL
+        self._spoken.extend(sentences)
         self.sentences_seen += len(sentences)
         return None
 
     def finish(self) -> StreamOutcome:
         """Decide the outcome once the stream has ended without an earlier decision."""
         return _classify_end_of_stream(self._buffer, self._state)
+
+    def reply_text(self) -> str:
+        """Return what production would have spoken, to be judged and then dropped."""
+        return " ".join([*self._spoken, self._buffer]).strip()
 
 
 def classify_deltas(deltas: Iterable[str]) -> StreamOutcome:
@@ -136,6 +231,25 @@ class StreamTurn:
             raise ValueError(f"source must be one of {_SOURCES}, got {self.source!r}")
 
 
+def history_turns() -> list[StreamTurn]:
+    """Return synthetic dialogues whose question depends on the history (ADR 0020 §7)."""
+    return [
+        StreamTurn(
+            f"history_{index}",
+            "history",
+            question,
+            None,
+            [
+                ConversationTurn(role=role, content=content)
+                for user, assistant in exchanges
+                for role, content in (("user", user), ("assistant", assistant))
+            ],
+            None,
+        )
+        for index, (exchanges, question) in enumerate(_HISTORY_DIALOGUES, start=1)
+    ]
+
+
 def public_turns() -> list[StreamTurn]:
     """Return the synthetic, context-free chit-chat turns (public-channel shape)."""
     return [
@@ -153,6 +267,8 @@ class StreamProtocolResult:
     empty_stream: int
     errors: int
     by_source: dict[str, StreamProtocolResult] = field(default_factory=dict)
+    not_spanish: int = 0
+    language_judged: int = 0
 
     @classmethod
     def none(cls) -> StreamProtocolResult:
@@ -172,22 +288,30 @@ class StreamProtocolResult:
         return (self.invalid_protocol + self.empty_stream) / self.graded
 
 
-def _tally(outcomes: Sequence[StreamOutcome]) -> StreamProtocolResult:
+def _tally(
+    observations: Sequence[tuple[StreamOutcome, bool | None]],
+) -> StreamProtocolResult:
+    outcomes = [outcome for outcome, _ in observations]
+    languages = [spanish for _, spanish in observations if spanish is not None]
     return StreamProtocolResult(
         valid=outcomes.count(StreamOutcome.VALID),
         invalid_protocol=outcomes.count(StreamOutcome.INVALID_PROTOCOL),
         empty_stream=outcomes.count(StreamOutcome.EMPTY_STREAM),
         errors=outcomes.count(StreamOutcome.ERROR),
+        not_spanish=languages.count(False),
+        language_judged=len(languages),
     )
 
 
 async def _stream_once(
     turn: StreamTurn, client: httpx.AsyncClient, generate: StreamGenerator
-) -> StreamOutcome:
+) -> tuple[StreamOutcome, bool | None]:
     """Classify one live stream while it arrives and stop when production would stop.
 
     A provider error that comes after production has already decided (an invalid body
     start) never happens live, so it must not turn that observation into an ``ERROR``.
+    The second item is the language verdict of a reply that would be spoken
+    (``None`` for anything else, or when the reply is too short to judge).
     """
     classifier = _StreamClassifier()
     stream = generate(
@@ -203,17 +327,20 @@ async def _stream_once(
                 continue
             decided = classifier.feed(delta)
             if decided is not None:
-                return decided
+                return decided, None
     except Exception as exc:
         logger.warning("Provider call failed for %s (%s)", turn.label, type(exc).__name__)
-        return StreamOutcome.ERROR
+        return StreamOutcome.ERROR, None
     finally:
         # Stop the model generating: an abandoned async generator would keep the HTTP
         # stream (and Ollama) running until it is garbage collected.
         aclose = getattr(stream, "aclose", None)
         if aclose is not None:
             await aclose()
-    return classifier.finish()
+    outcome = classifier.finish()
+    if outcome is not StreamOutcome.VALID:
+        return outcome, None
+    return outcome, judge_language(classifier.reply_text())
 
 
 async def measure_stream_protocol(
@@ -235,20 +362,22 @@ async def measure_stream_protocol(
         Overall and per-source counts. Provider errors are counted separately and
         never as a protocol failure or a pass.
     """
-    outcomes: list[StreamOutcome] = []
-    by_source: dict[str, list[StreamOutcome]] = {}
+    observations: list[tuple[StreamOutcome, bool | None]] = []
+    by_source: dict[str, list[tuple[StreamOutcome, bool | None]]] = {}
     for turn in turns:
         for _ in range(runs):
-            outcome = await _stream_once(turn, client, generate)
-            outcomes.append(outcome)
-            by_source.setdefault(turn.source, []).append(outcome)
-    overall = _tally(outcomes)
+            observation = await _stream_once(turn, client, generate)
+            observations.append(observation)
+            by_source.setdefault(turn.source, []).append(observation)
+    overall = _tally(observations)
     return StreamProtocolResult(
         overall.valid,
         overall.invalid_protocol,
         overall.empty_stream,
         overall.errors,
         {source: _tally(items) for source, items in by_source.items()},
+        overall.not_spanish,
+        overall.language_judged,
     )
 
 
@@ -259,20 +388,24 @@ def _percent(rate: float | None) -> str:
 def render_stream_report(result: StreamProtocolResult, *, model: str, runs: int) -> str:
     """Render the measurement as Markdown: counts and rates only, never model output."""
     rows = [
-        "| Set | Valid | Invalid protocol | Empty stream | Provider errors | Fallback rate |",
-        "|---|---:|---:|---:|---:|---:|",
+        "| Set | Valid | Invalid protocol | Empty stream | Provider errors | Fallback rate "
+        "| Not in Spanish |",
+        "|---|---:|---:|---:|---:|---:|---:|",
     ]
     for label, part in (("all", result), *sorted(result.by_source.items())):
         rows.append(
             f"| {label} | {part.valid} | {part.invalid_protocol} | {part.empty_stream} | "
-            f"{part.errors} | {_percent(part.fallback_rate)} |"
+            f"{part.errors} | {_percent(part.fallback_rate)} | "
+            f"{part.not_spanish} of {part.language_judged} |"
         )
     return (
         "# Streaming protocol measurement\n\n"
         f"- model: {model}\n- runs per turn: {runs}\n"
         f"- graded observations: {result.graded}\n"
         f"- fallback rate (invalid protocol + empty stream, over graded): "
-        f"{_percent(result.fallback_rate)}\n\n" + "\n".join(rows) + "\n"
+        f"{_percent(result.fallback_rate)}\n"
+        f"- replies not in Spanish (word-list heuristic, replies it could judge): "
+        f"{result.not_spanish} of {result.language_judged}\n\n" + "\n".join(rows) + "\n"
     )
 
 

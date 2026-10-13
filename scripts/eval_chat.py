@@ -50,6 +50,7 @@ import yaml
 
 from scripts.eval_stream_protocol import (
     StreamTurn,
+    history_turns,
     measure_stream_protocol,
     public_turns,
     render_stream_report,
@@ -652,10 +653,12 @@ def golden_stream_turns(cases: Sequence[GoldenCase]) -> list[StreamTurn]:
 async def _run_stream_mode(
     options: CliOptions, cases: list[GoldenCase], factory: ClientFactory
 ) -> int:
-    """Measure the streaming protocol on the golden context turns plus public turns."""
+    """Measure the streaming protocol on the golden context, public and history turns."""
     async with factory() as client:
         result = await measure_stream_protocol(
-            [*golden_stream_turns(cases), *public_turns()], client=client, runs=options.runs
+            [*golden_stream_turns(cases), *public_turns(), *history_turns()],
+            client=client,
+            runs=options.runs,
         )
     stamp = datetime.now(UTC).strftime("%Y-%m-%d-%H%M%S")
     output = options.output or _REPORT_DIRECTORY / f"{stamp}-chat-stream-ollama.md"
