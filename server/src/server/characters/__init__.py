@@ -75,11 +75,15 @@ _PROFILES_DIR = Path(__file__).parent / "profiles"
 # Anti-confabulation: small models fill memory gaps with invented names said
 # with full confidence, which then get re-consolidated as facts (observed live
 # 2026-07-06). This block is always present, with or without active memory.
+# The same conversation counts as a source because an identified person has
+# short-term continuity (ADR 0020): without it the model answered "I don't
+# remember" to something said a minute earlier.
 _MEMORY_DISCIPLINE = """
 MEMORY DISCIPLINE — non-negotiable:
-- The authorized memory block appended below (when present) is your ONLY source of \
-truth about people, family, pets, dates, and preferences.
-- If asked about something NOT present in that memory, admit you don't \
+- The authorized memory block appended below (when present) and what the person \
+said earlier in this same conversation are your ONLY sources of truth about \
+people, family, pets, dates, and preferences.
+- If asked about something NOT present in those sources, admit you don't \
 remember it yet and ask them to tell you — NEVER invent or guess names, \
 ages, or facts. A wrong confident answer poisons your own memory."""
 
