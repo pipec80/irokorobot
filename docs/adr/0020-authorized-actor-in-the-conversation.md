@@ -1,6 +1,6 @@
 # 0020 — Identify the speaker on every turn and keep short-term continuity for the identified person
 
-- **Status:** Proposed (2026-10-09) — becomes Accepted when the plan that implements it closes;
+- **Status:** Proposed (2026-10-09, revised 2026-10-13) — becomes Accepted when the plan that implements it closes;
   until then nothing in `server/src` follows it
 - **Date:** 2026-10-09
 - **Builds on:** [ADR 0006](0006-personal-and-family-companion-profiles.md),
@@ -11,7 +11,8 @@
 - **Supersedes:** the sentence of [ADR 0016](0016-face-and-voice-identity-fusion.md) §5 that says
   "Identity is resolved only on protected turns, so the embedding (about 0.5 s, one per request) is
   paid there and never on public turns", and the part of the same section that makes a presented
-  PIN token unreachable after a face match for every operation (decision 5 below). The rest of §5,
+  local-unlock grant (today issued by the PIN) unreachable after a face match for every operation
+  (decision 5 below). The rest of §5,
   §1 to §4 and §6 to §9 stand.
 - **Implemented by:** CM-2, plan to be written (the next free plan number is 0061)
 
@@ -48,6 +49,14 @@ turn. Today there is none, for two independent reasons.
 7. ADR 0019 left `forget` unreachable on a turn whose owner face matched, because ADR 0016 §5 does
    not consult a presented PIN token after a face match ("Fixing it belongs to the CM-2 ADR that
    revises §5"). `confirm` has no PIN route by design.
+8. The PIN is checked in one place only: `unlock()` in `cognition/owner_authentication.py` calls
+   `verify_pin` and, on success, issues a grant with `issue_for_person(..., source=LOCAL_UNLOCK,
+   scope=...)`. Everything downstream (the grant registry, the scopes, fusion and the policy) sees
+   only that scoped `LOCAL_UNLOCK` grant, never the PIN.
+9. The voice is consulted only after the owner's face matched, on protected turns. On 2026-10-13 no
+   voice profile is enrolled (both voice consents were revoked by the acceptance runs of Plans 0053
+   and 0051), so those turns stay at `basic`; `strong` through face and voice comes back with a
+   re-enrolment (`just speaker-auth-demo --enroll`).
 
 ### Facts the design has to respect
 
@@ -78,9 +87,10 @@ Each generic turn resolves the speaker with the evidence the turn already carrie
 - `/chat`: the optional identity token of the default scope, observed and not spent;
 - anything else: no evidence, so the turn is `unknown`.
 
-The resolution is capped at `basic`: the voice is not consulted on a generic turn (the roughly
-0.5 s embedding is saved on every chat turn). The voice is computed on demand, as today, on a
-protected turn whose operation needs `strong`. Resolving a turn must not change what a protected
+The voice is not consulted on a generic turn (the roughly 0.5 s embedding is saved on every chat
+turn), so a face identifies at `basic`; a token observed on `/chat` keeps the assurance its grant
+already gives. The voice is computed on demand, as today, on a protected turn whose operation
+needs `strong`. Resolving a turn must not change what a protected
 branch decides: the protected resolvers are unchanged except by decision 5.
 
 ### 2. Who has continuity
@@ -123,7 +133,12 @@ change of speaker is seen only through the face (decision 1): a second person wh
 owner's face stays in front of the camera is not detected, which is the same limit ADR 0016 already
 accepts for `basic`.
 
-### 5. A presented PIN token is consulted by operation, not by turn (supersedes ADR 0016 §5)
+### 5. A local-unlock grant is consulted by operation, not by turn (supersedes ADR 0016 §5)
+
+A local-unlock grant is the one-use, scoped token that a local factor issues. Today the only such
+factor is the PIN; any future local factor that issues the same scoped `LOCAL_UNLOCK` grant (for
+example a fingerprint reader) is covered by this decision without a new ADR, although adding the
+factor itself needs its own.
 
 ADR 0016 §5 stands for the token of the default scope: when the owner's face matched, that token is
 not consulted and stays unspent. The new rule is for operations that declare their own grant:
@@ -136,13 +151,15 @@ not consulted and stays unspent. The new rule is for operations that declare the
 
 Consequences: a `personal_protected_read` token is still ignored after a face match (Plan 0054's
 decision is kept); a `personal_memory_forget` token is consulted and spent on a `forget` turn even
-when the face matched, so `forget` becomes reachable; a token of any other scope is still refused
+when the face matched, so `forget` becomes reachable once a route wires it; a token of any other scope is still refused
 without being spent (ADR 0015 decision 1). The vetoes of ADR 0016 §4 apply first: another enrolled
 person's face, or two or more faces, make the turn `ambiguous` and no token is consumed. `confirm`
 keeps having no PIN route.
 
-The routers therefore build the consuming resolver **per operation**, with the capability's own
-scope (ADR 0019 §6, obligation 1), instead of one request-wide resolver with the default scope.
+CM-2 implements this rule in the fusion resolver: a resolver built for a declared scope applies it,
+and one built for the default scope behaves exactly as today. Each route adopts a resolver built
+for its operation's own scope when that operation is wired (ADR 0019 §6, obligation 1); until then
+the routes keep their request-wide resolver of the default scope.
 
 ### 6. What the prompt receives
 
@@ -155,7 +172,8 @@ the emotion function are untouched.
 
 `/chat` without a token stays stateless, so the A/B isolation check stays as it is. The continuity
 check is rewritten to use an owner token (the script asks for the PIN as a hidden prompt, never
-logs it, and unlocks with the default scope once per run); without a token it reports "continuity
+logs it, unlocks with the default scope once per run and finishes within the token's lifetime;
+the token is only observed, never spent); without a token it reports "continuity
 not checked" instead of failing. The script keeps being a smoke test and gains no new endpoint.
 
 ### 8. Acceptance
@@ -164,9 +182,10 @@ The plan that implements this ADR has an automated acceptance and a run by Pipec
 (a) a sentence followed by a question that depends on it, answered as a continuation; (b) a second
 person in frame, which suspends the history and does not answer from it; (c) more than 180 seconds
 of silence, after which the context is gone; (d) the added latency of the face check on a generic
-turn, measured and recorded (it is not known today); (e) a `forget` turn with the owner's face in
-frame and a spent `personal_memory_forget` token, which now reaches the policy. Durable memory
-remains blocked and tested as blocked.
+turn, measured and recorded (it is not known today). Decision 5 is accepted by automated tests
+only: a resolver built for the `personal_memory_forget` scope consults and spends a forget grant
+after a face match, with the real resolvers; there is no spoken `forget` to try until CM-6 wires
+it. Durable memory remains blocked and tested as blocked.
 
 ## Alternatives considered
 
@@ -239,7 +258,10 @@ negative consequences; the CM-2 rows of the roadmap and the conversational-memor
 Revisit on a measured false-rejection rate of the face that clears conversations too often, a
 second enrolled household member (P3, per-person conversations), a measured latency that makes the
 per-turn face check unacceptable, liveness or replay defence (ADR 0016 §9), the first capability
-that consumes a personal-memory action (CM-3 onward), or a mandatory voice check on chat.
+that consumes a personal-memory action (CM-3 onward), a mandatory voice check on chat, or a second
+local-unlock factor such as a fingerprint reader on the robot (it would be another verifier of the
+same scoped grant, so decision 5 holds, but the sensor itself needs its own ADR and the privacy
+contract of the senses).
 
 ## Follow-up
 
