@@ -1,11 +1,10 @@
 """Integration tests for onboarding behavior through POST /transcribe."""
 
-from collections.abc import Generator
 from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
 import pytest
-from server.memory import meta, working
+from server.memory import meta
 from server.routers import transcribe as transcribe_module
 from server.settings import settings
 
@@ -13,7 +12,7 @@ from server import llm, onboarding, pipeline, stt, tts
 
 
 @pytest.fixture(autouse=True)
-def _mock_memory_pipeline(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
+def _mock_memory_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
     """Enable memory with mocked model boundaries for each onboarding test."""
     monkeypatch.setattr(settings, "memory_enabled", True)
     monkeypatch.setattr(stt, "transcribe", AsyncMock(return_value="hola robot"))
@@ -21,11 +20,6 @@ def _mock_memory_pipeline(monkeypatch: pytest.MonkeyPatch) -> Generator[None, No
     monkeypatch.setattr(tts, "synthesize", AsyncMock(return_value=("AAAA", 42)))
     monkeypatch.setattr(pipeline, "list_entity_names", AsyncMock(return_value=[]))
     monkeypatch.setattr(transcribe_module, "consolidate_turn", AsyncMock())
-    working._buffers.clear()
-    working._emotion_buffers.clear()
-    yield
-    working._buffers.clear()
-    working._emotion_buffers.clear()
 
 
 @pytest.mark.integration

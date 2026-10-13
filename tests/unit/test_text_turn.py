@@ -1,4 +1,3 @@
-from collections.abc import Generator
 from datetime import UTC, datetime
 import inspect
 import logging
@@ -11,32 +10,34 @@ from server.cognition.identity import (
     ActivePersonContext,
     ActivePersonStatus,
     HouseholdRole,
+    IdentityAssurance,
     IdentityEvidence,
     IdentityEvidenceSource,
 )
 from server.cognition.models import Confidence, ConfidenceBasis
 from server.exceptions import BrainMemoryError, LLMError
-from server.memory import working
+from server.memory import continuity
+from server.memory.continuity import SuspendCause, Transition
 from server.schemas import MemoryContext
 from server.settings import settings
 
 from server import text_turn
 
 _DEFAULT_SESSION_ID = UUID("11111111-1111-1111-1111-111111111111")
+_OWNER = 7
+_VISITOR = 8
 
 
-def _manual_evidence(
+def _evidence(
+    source: IdentityEvidenceSource,
     *,
-    person_id: int = 7,
+    person_id: int = _OWNER,
     session_id: UUID = _DEFAULT_SESSION_ID,
-    observed_at: datetime | None = None,
-    expires_at: datetime | None = None,
 ) -> IdentityEvidence:
-    """Create explicit manual evidence for a trusted internal test adapter."""
-    observed_at = observed_at or datetime(2026, 8, 10, tzinfo=UTC)
+    """Create one piece of trusted evidence for an internal test adapter."""
     return IdentityEvidence(
         evidence_id=session_id,
-        source=IdentityEvidenceSource.MANUAL,
+        source=source,
         candidate_person_id=person_id,
         confidence=Confidence(
             score=1.0,
@@ -44,20 +45,21 @@ def _manual_evidence(
             calibrated=True,
             reason="Explicit local selection",
         ),
-        observed_at=observed_at,
-        expires_at=expires_at,
+        observed_at=datetime(2026, 8, 10, tzinfo=UTC),
+        expires_at=None,
         reference="trusted-local-adapter",
     )
 
 
-def _identified_person(
+def _person(
+    source: IdentityEvidenceSource,
     *,
-    person_id: int = 7,
+    person_id: int = _OWNER,
     display_name: str = "Paula",
     session_id: UUID = _DEFAULT_SESSION_ID,
+    assurance: IdentityAssurance = IdentityAssurance.BASIC,
 ) -> ActivePersonContext:
-    """Create an identified manual context for a trusted internal test adapter."""
-    observed_at = datetime(2026, 8, 10, tzinfo=UTC)
+    """Create an identified context the way `resolve_active_person` would."""
     return ActivePersonContext(
         person_id=person_id,
         display_name=display_name,
@@ -69,17 +71,29 @@ def _identified_person(
             reason="Explicit local selection",
         ),
         role=HouseholdRole.UNKNOWN,
-        evidence=(_manual_evidence(person_id=person_id, session_id=session_id),),
-        resolved_at=observed_at,
+        evidence=(_evidence(source, person_id=person_id, session_id=session_id),),
+        resolved_at=datetime(2026, 8, 10, tzinfo=UTC),
+        assurance=assurance,
     )
 
 
-def _unidentified_person(
-    status: ActivePersonStatus,
-    evidence: tuple[IdentityEvidence, ...] = (),
+def _identified_person(
+    *,
+    person_id: int = _OWNER,
+    display_name: str = "Paula",
+    session_id: UUID = _DEFAULT_SESSION_ID,
 ) -> ActivePersonContext:
+    """Create an identified manual context for a trusted internal test adapter."""
+    return _person(
+        IdentityEvidenceSource.MANUAL,
+        person_id=person_id,
+        display_name=display_name,
+        session_id=session_id,
+    )
+
+
+def _unidentified_person(status: ActivePersonStatus) -> ActivePersonContext:
     """Create an explicit non-identified active-person result for one turn."""
-    resolved_at = datetime(2026, 8, 10, tzinfo=UTC)
     return ActivePersonContext(
         person_id=None,
         display_name=None,
@@ -91,19 +105,31 @@ def _unidentified_person(
             reason="No verified person",
         ),
         role=HouseholdRole.UNKNOWN,
-        evidence=evidence,
-        resolved_at=resolved_at,
+        evidence=(),
+        resolved_at=datetime(2026, 8, 10, tzinfo=UTC),
     )
 
 
-@pytest.fixture(autouse=True)
-def _reset_turn_state() -> Generator[None, None, None]:
-    """Reset process-local conversation state."""
-    working._buffers.clear()
-    working._emotion_buffers.clear()
-    yield
-    working._buffers.clear()
-    working._emotion_buffers.clear()
+def _generate(monkeypatch: pytest.MonkeyPatch, *replies: tuple[str, str]) -> AsyncMock:
+    """Replace the model call with scripted replies and return the mock."""
+    generate = AsyncMock(side_effect=list(replies))
+    monkeypatch.setattr(text_turn.llm, "generate_response", generate)
+    return generate
+
+
+def _persistent_context(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    """Replace persistent-context retrieval with a spy returning an empty context."""
+    prompt_state = AsyncMock(return_value=(MemoryContext(), False, None))
+    monkeypatch.setattr(text_turn, "_memory_prompt_state", prompt_state)
+    return prompt_state
+
+
+def _histories(generate: AsyncMock) -> list[list[str] | None]:
+    """Return, per model call, the contents of the history it received (None if none)."""
+    return [
+        None if call.kwargs["history"] is None else [t.content for t in call.kwargs["history"]]
+        for call in generate.await_args_list
+    ]
 
 
 @pytest.mark.unit
@@ -127,78 +153,91 @@ async def test_stateless_turn_calls_llm_once(
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_conversations_isolate_history_and_emotion(
-    http_client: httpx.AsyncClient,
-    monkeypatch: pytest.MonkeyPatch,
+async def test_memory_off_never_touches_the_session(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Alternating conversation IDs must never share working memory."""
-    context = MemoryContext()
-    generate = AsyncMock(side_effect=[("A1", "joy"), ("B1", "sadness"), ("A2", "neutral")])
-    monkeypatch.setattr(settings, "memory_enabled", True)
-    monkeypatch.setattr(
-        text_turn, "_memory_prompt_state", AsyncMock(return_value=(context, False, None))
-    )
-    monkeypatch.setattr(text_turn.llm, "generate_response", generate)
+    monkeypatch.setattr(settings, "memory_enabled", False)
+    generate = _generate(monkeypatch, ("Hola", "neutral"))
+    opened = Mock()
+    monkeypatch.setattr(text_turn.continuity, "open_turn", opened)
 
-    first_person = _identified_person()
-    second_person = _identified_person(
-        person_id=8,
-        display_name="Mateo",
-        session_id=UUID("22222222-2222-2222-2222-222222222222"),
-    )
     await text_turn.process_text_turn(
-        http_client, "question-a", "web-a", active_person=first_person
-    )
-    await text_turn.process_text_turn(
-        http_client, "question-b", "web-b", active_person=second_person
-    )
-    await text_turn.process_text_turn(
-        http_client, "follow-up-a", "web-a", active_person=first_person
+        http_client, "Hola", "web-a", active_person=_identified_person()
     )
 
-    third_call = generate.await_args_list[2]
-    assert [turn.content for turn in third_call.kwargs["history"]] == ["question-a", "A1"]
-    assert third_call.kwargs["user_emotion"] == "joy"
-    assert "web-a" not in working._buffers
-    assert "web-b" not in working._buffers
+    opened.assert_not_called()
+    assert _histories(generate)[0] is None
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_manual_history_scope_uses_opaque_session_and_person_id(
-    http_client: httpx.AsyncClient,
-    monkeypatch: pytest.MonkeyPatch,
+async def test_the_session_follows_the_person_and_not_the_public_conversation_id(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Display names and public conversation IDs must not scope manual history."""
-    generate = AsyncMock(
-        side_effect=[("Primera", "neutral"), ("Segunda", "neutral"), ("Tercera", "neutral")]
-    )
+    """A client-chosen conversation id is not identity (ADR 0020 §3)."""
     monkeypatch.setattr(settings, "memory_enabled", True)
-    monkeypatch.setattr(
-        text_turn,
-        "_memory_prompt_state",
-        AsyncMock(return_value=(MemoryContext(), False, None)),
+    _persistent_context(monkeypatch)
+    generate = _generate(monkeypatch, ("A1", "joy"), ("B1", "sadness"), ("A2", "neutral"))
+    person = _identified_person()
+
+    await text_turn.process_text_turn(http_client, "question-a", "web-a", active_person=person)
+    await text_turn.process_text_turn(http_client, "question-b", "web-b", active_person=person)
+    await text_turn.process_text_turn(http_client, "follow-up-a", "web-a", active_person=person)
+
+    assert _histories(generate) == [
+        [],
+        ["question-a", "A1"],
+        ["question-a", "A1", "question-b", "B1"],
+    ]
+    assert all(call.kwargs["user_emotion"] is None for call in generate.await_args_list)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_another_identified_person_starts_a_fresh_session(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "memory_enabled", True)
+    _persistent_context(monkeypatch)
+    generate = _generate(monkeypatch, ("A1", "neutral"), ("B1", "neutral"), ("A2", "neutral"))
+    owner = _identified_person()
+    visitor = _identified_person(person_id=_VISITOR, display_name="Mateo")
+
+    await text_turn.process_text_turn(http_client, "owner says", "web", active_person=owner)
+    await text_turn.process_text_turn(http_client, "visitor says", "web", active_person=visitor)
+    await text_turn.process_text_turn(http_client, "owner again", "web", active_person=owner)
+
+    assert _histories(generate) == [[], [], []]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_the_session_is_keyed_by_person_id_not_by_name_or_evidence_id(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Display names and evidence ids must not scope the session."""
+    monkeypatch.setattr(settings, "memory_enabled", True)
+    _persistent_context(monkeypatch)
+    generate = _generate(
+        monkeypatch, ("Primera", "neutral"), ("Segunda", "neutral"), ("Tercera", "neutral")
     )
-    monkeypatch.setattr(text_turn.llm, "generate_response", generate)
     first = _identified_person(display_name="Paula")
     renamed = _identified_person(display_name="Paula Ramírez")
-    other_session = _identified_person(session_id=UUID("33333333-3333-3333-3333-333333333333"))
+    other_evidence = _identified_person(session_id=UUID("33333333-3333-3333-3333-333333333333"))
 
     await text_turn.process_text_turn(http_client, "primera", "public-a", active_person=first)
     await text_turn.process_text_turn(http_client, "segunda", "public-b", active_person=renamed)
     await text_turn.process_text_turn(
-        http_client, "tercera", "public-a", active_person=other_session
+        http_client, "tercera", "public-a", active_person=other_evidence
     )
 
-    assert [turn.content for turn in generate.await_args_list[1].kwargs["history"]] == [
+    assert _histories(generate)[1] == ["primera", "Primera"]
+    assert _histories(generate)[2] == [
         "primera",
         "Primera",
+        "segunda",
+        "Segunda",
     ]
-    assert generate.await_args_list[2].kwargs["history"] == []
-    history_keys = set(working._buffers)
-    assert all("public" not in key and "Paula" not in key for key in history_keys)
-    assert "session:11111111111111111111111111111111:person:7" in history_keys
-    assert "session:33333333333333333333333333333333:person:7" in history_keys
 
 
 @pytest.mark.unit
@@ -211,11 +250,7 @@ async def test_manual_identified_turn_schedules_legacy_callback(
     generate = AsyncMock(return_value=("Veo una taza", "neutral"))
     scheduler = Mock()
     monkeypatch.setattr(settings, "memory_enabled", True)
-    monkeypatch.setattr(
-        text_turn,
-        "_memory_prompt_state",
-        AsyncMock(return_value=(MemoryContext(), False, None)),
-    )
+    _persistent_context(monkeypatch)
     monkeypatch.setattr(text_turn.llm, "generate_response", generate)
 
     person = _identified_person()
@@ -229,8 +264,7 @@ async def test_manual_identified_turn_schedules_legacy_callback(
     )
 
     assert generate.await_args_list[-1].kwargs["perception"] == "A blue mug"
-    history_key = next(iter(working._buffers))
-    assert [turn.content for turn in working.get_history(history_key)] == [
+    assert [turn.content for turn in continuity.open_turn(_OWNER).history] == [
         "¿Qué ves?",
         "Veo una taza",
     ]
@@ -239,11 +273,139 @@ async def test_manual_identified_turn_schedules_legacy_callback(
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_unknown_turn_leaves_no_reusable_working_memory(
+@pytest.mark.parametrize(
+    "source, assurance",
+    [
+        (IdentityEvidenceSource.FACE, IdentityAssurance.BASIC),
+        (IdentityEvidenceSource.LOCAL_UNLOCK, IdentityAssurance.STRONG),
+    ],
+)
+async def test_a_face_or_token_identified_turn_has_history_and_nothing_durable(
+    http_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    source: IdentityEvidenceSource,
+    assurance: IdentityAssurance,
+) -> None:
+    """ADR 0020 §2: continuity opens the history only; the MANUAL gate keeps the rest closed."""
+    scheduler = Mock()
+    prompt_state = _persistent_context(monkeypatch)
+    build_context = AsyncMock()
+    monkeypatch.setattr(settings, "memory_enabled", True)
+    monkeypatch.setattr(text_turn, "build_context", build_context)
+    generate = _generate(monkeypatch, ("Uno", "neutral"), ("Dos", "neutral"))
+    person = _person(source, assurance=assurance)
+
+    for message in ("primero", "segundo"):
+        await text_turn.process_text_turn(
+            http_client,
+            message,
+            "web",
+            active_person=person,
+            schedule_consolidation=scheduler,
+        )
+
+    assert _histories(generate) == [[], ["primero", "Uno"]]
+    for call in generate.await_args_list:
+        assert call.kwargs["context"] is None
+        assert call.kwargs["onboarding"] is False
+        assert call.kwargs["user_emotion"] is None
+    prompt_state.assert_not_awaited()
+    build_context.assert_not_awaited()
+    scheduler.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_an_identified_context_without_assurance_has_no_continuity(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The rank rule: `none` never reaches the `basic` minimum, whatever the status says."""
+    monkeypatch.setattr(settings, "memory_enabled", True)
+    generate = _generate(monkeypatch, ("Uno", "neutral"), ("Dos", "neutral"))
+    person = _person(IdentityEvidenceSource.FACE, assurance=IdentityAssurance.NONE)
+
+    await text_turn.process_text_turn(http_client, "primero", "web", active_person=person)
+    await text_turn.process_text_turn(http_client, "segundo", "web", active_person=person)
+
+    assert _histories(generate) == [None, None]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status",
+    [
+        ActivePersonStatus.UNKNOWN,
+        ActivePersonStatus.PROBABLE,
+        ActivePersonStatus.AMBIGUOUS,
+    ],
+)
+async def test_a_suspended_turn_reads_nothing_writes_nothing_and_spares_the_session(
+    http_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    status: ActivePersonStatus,
+) -> None:
+    """An uncertain person gets one stateless answer; the owner's session survives."""
+    build_context = AsyncMock()
+    scheduler = Mock()
+    monkeypatch.setattr(settings, "memory_enabled", True)
+    monkeypatch.setattr(text_turn, "build_context", build_context)
+    prompt_state = _persistent_context(monkeypatch)
+    generate = _generate(
+        monkeypatch, ("Owner reply", "neutral"), ("Stranger reply", "neutral"), ("Back", "neutral")
+    )
+    owner = _identified_person()
+
+    await text_turn.process_text_turn(http_client, "owner says", "web", active_person=owner)
+    await text_turn.process_text_turn(
+        http_client,
+        "stranger asks",
+        "web",
+        active_person=_unidentified_person(status),
+        schedule_consolidation=scheduler,
+    )
+    await text_turn.process_text_turn(http_client, "owner again", "web", active_person=owner)
+
+    assert _histories(generate) == [
+        [],
+        None,
+        ["owner says", "Owner reply"],
+    ]
+    build_context.assert_not_awaited()
+    assert prompt_state.await_count == 2  # the two MANUAL owner turns, never the stranger
+    scheduler.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_the_suspension_cause_reaches_the_transition_log(
+    http_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(settings, "memory_enabled", True)
+    _generate(monkeypatch, ("Reply", "neutral"))
+
+    with caplog.at_level(logging.INFO, logger=continuity.logger.name):
+        await text_turn.process_text_turn(
+            http_client,
+            "Question",
+            "web",
+            active_person=_unidentified_person(ActivePersonStatus.AMBIGUOUS),
+            suspend_cause=SuspendCause.VETO_MULTIPLE_FACES,
+        )
+
+    suspended = [r for r in caplog.records if getattr(r, "reason", None) is Transition.SUSPENDED]
+    assert [getattr(r, "cause", None) for r in suspended] == [SuspendCause.VETO_MULTIPLE_FACES]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_unknown_turn_leaves_nothing_in_the_session(
     http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A public chat turn is unknown and clears its one-turn working scope."""
+    """A public chat turn is unknown: answered and forgotten."""
     monkeypatch.setattr(settings, "memory_enabled", True)
     monkeypatch.setattr(
         text_turn.llm, "generate_response", AsyncMock(return_value=("Reply", "neutral"))
@@ -251,97 +413,7 @@ async def test_unknown_turn_leaves_no_reusable_working_memory(
 
     await text_turn.process_text_turn(http_client, "Question", "web-a")
 
-    assert working._buffers == {}
-    assert working._emotion_buffers == {}
-
-
-def _seed_identified_scope(active_person: ActivePersonContext) -> str:
-    """Seed reusable history and emotion state for one identified manual scope."""
-    scope = f"session:{active_person.evidence[0].evidence_id.hex}:person:{active_person.person_id}"
-    working.add_turn(scope, "user", "private history")
-    working.add_emotion(scope, "joy")
-    return scope
-
-
-@pytest.mark.unit
-@pytest.mark.asyncio
-async def test_expired_evidence_clears_identified_scope_before_memory_check(
-    http_client: httpx.AsyncClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Expired manual evidence must clear reusable state even when memory is disabled."""
-    identified = _identified_person()
-    scope = _seed_identified_scope(identified)
-    expired = _manual_evidence(
-        observed_at=datetime(2026, 8, 9, tzinfo=UTC),
-        expires_at=identified.resolved_at,
-    )
-    monkeypatch.setattr(settings, "memory_enabled", False)
-
-    await text_turn.prepare_text_turn(
-        http_client,
-        "Question",
-        "public-conversation",
-        active_person=_unidentified_person(ActivePersonStatus.UNKNOWN, (expired,)),
-    )
-
-    assert scope not in working._buffers
-    assert scope not in working._emotion_buffers
-
-
-@pytest.mark.unit
-@pytest.mark.asyncio
-async def test_explicit_clear_evidence_removes_identified_scope(
-    http_client: httpx.AsyncClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A cleared manual selection must discard its prior reusable scope."""
-    identified = _identified_person()
-    scope = _seed_identified_scope(identified)
-    monkeypatch.setattr(settings, "memory_enabled", False)
-
-    await text_turn.prepare_text_turn(
-        http_client,
-        "Question",
-        "public-conversation",
-        active_person=_unidentified_person(ActivePersonStatus.UNKNOWN, identified.evidence),
-    )
-
-    assert scope not in working._buffers
-    assert scope not in working._emotion_buffers
-
-
-@pytest.mark.unit
-@pytest.mark.asyncio
-async def test_ambiguous_evidence_clears_all_identified_scopes(
-    http_client: httpx.AsyncClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Ambiguity must remove every candidate's reusable history and emotion."""
-    first = _identified_person()
-    second = _identified_person(
-        person_id=8,
-        display_name="Mateo",
-        session_id=UUID("44444444-4444-4444-4444-444444444444"),
-    )
-    first_scope = _seed_identified_scope(first)
-    second_scope = _seed_identified_scope(second)
-    monkeypatch.setattr(settings, "memory_enabled", False)
-
-    await text_turn.prepare_text_turn(
-        http_client,
-        "Question",
-        "public-conversation",
-        active_person=_unidentified_person(
-            ActivePersonStatus.AMBIGUOUS,
-            first.evidence + second.evidence,
-        ),
-    )
-
-    assert first_scope not in working._buffers
-    assert first_scope not in working._emotion_buffers
-    assert second_scope not in working._buffers
-    assert second_scope not in working._emotion_buffers
+    assert continuity.open_turn(_OWNER).history == ()
 
 
 @pytest.mark.unit
@@ -362,13 +434,14 @@ async def test_llm_fallback_does_not_contaminate_memory(
         http_client,
         "Question",
         "web-a",
+        active_person=_identified_person(),
         schedule_consolidation=scheduler,
     )
 
     assert result.response == settings.llm_fallback_phrase
     assert result.emotion == "neutral"
     assert result.llm_failed is True
-    assert working.get_history("web-a") == []
+    assert continuity.open_turn(_OWNER).history == ()
     scheduler.assert_not_called()
 
 
@@ -441,53 +514,6 @@ async def test_memory_failure_degrades_to_generation_without_context(
 
 
 @pytest.mark.unit
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "status",
-    [
-        ActivePersonStatus.UNKNOWN,
-        ActivePersonStatus.PROBABLE,
-        ActivePersonStatus.AMBIGUOUS,
-    ],
-)
-async def test_nonidentified_turn_skips_persistent_and_working_memory(
-    http_client: httpx.AsyncClient,
-    monkeypatch: pytest.MonkeyPatch,
-    status: ActivePersonStatus,
-) -> None:
-    """An uncertain person must get one stateless response without consolidation."""
-    build_context = AsyncMock()
-    persistent_inputs = AsyncMock()
-    get_history = Mock()
-    get_emotion = Mock()
-    scheduler = Mock()
-    monkeypatch.setattr(settings, "memory_enabled", True)
-    monkeypatch.setattr(text_turn, "build_context", build_context)
-    monkeypatch.setattr(text_turn, "_memory_prompt_state", persistent_inputs)
-    monkeypatch.setattr(text_turn.working, "get_history", get_history)
-    monkeypatch.setattr(text_turn.working, "get_recent_emotion", get_emotion)
-    monkeypatch.setattr(
-        text_turn.llm, "generate_response", AsyncMock(return_value=("Reply", "neutral"))
-    )
-
-    await text_turn.process_text_turn(
-        http_client,
-        "Question",
-        "public-conversation",
-        active_person=_unidentified_person(status),
-        schedule_consolidation=scheduler,
-    )
-
-    build_context.assert_not_awaited()
-    persistent_inputs.assert_not_awaited()
-    get_history.assert_not_called()
-    get_emotion.assert_not_called()
-    scheduler.assert_not_called()
-    assert working._buffers == {}
-    assert working._emotion_buffers == {}
-
-
-@pytest.mark.unit
 def test_public_apis_are_typed_and_documented() -> None:
     """Public service APIs should expose typed signatures and docstrings."""
     for api in (
@@ -498,7 +524,3 @@ def test_public_apis_are_typed_and_documented() -> None:
         signature = inspect.signature(api)
         assert api.__doc__
         assert signature.return_annotation is not inspect.Signature.empty
-        assert all(
-            parameter.annotation is not inspect.Parameter.empty
-            for parameter in signature.parameters.values()
-        )

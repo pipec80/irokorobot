@@ -36,7 +36,6 @@ from server.cognition.identity import (
     IdentityEvidenceSource,
 )
 from server.cognition.models import Confidence, ConfidenceBasis
-from server.memory import working
 from server.memory.consolidation import consolidate_turn
 from server.memory.context import build_context
 from server.memory.declarative import find_entities_by_name, get_active_facts
@@ -89,14 +88,6 @@ async def memory_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: i
     yield db_path
     await db.close_db()
     db._conn = None
-
-
-@pytest.fixture(autouse=True)
-def _clean_working_memory() -> None:  # type: ignore[misc]
-    """Clear working memory between tests (a restart empties it too)."""
-    working._buffers.clear()
-    yield  # type: ignore[misc]
-    working._buffers.clear()
 
 
 async def _consolidate(

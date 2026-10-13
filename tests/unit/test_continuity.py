@@ -4,7 +4,6 @@ One session slot for the identified person: bounded by characters and by silence
 another identified person, suspended (never read or written) by an unknown or ambiguous turn.
 """
 
-from collections.abc import Generator
 import logging
 
 import pytest
@@ -28,14 +27,6 @@ class _Clock:
 
     def __call__(self) -> float:
         return self.now
-
-
-@pytest.fixture(autouse=True)
-def _clean_session() -> Generator[None, None, None]:
-    """Start and finish every test with an empty process-wide slot."""
-    continuity.reset()
-    yield
-    continuity.reset()
 
 
 @pytest.fixture

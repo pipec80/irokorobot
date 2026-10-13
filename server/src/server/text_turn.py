@@ -10,16 +10,19 @@ from uuid import uuid4
 import httpx
 
 from server import llm, turn_log
+from server.cognition.authorization import ASSURANCE_RANK
 from server.cognition.identity import (
     ActivePersonContext,
     ActivePersonStatus,
+    IdentityAssurance,
     IdentityEvidence,
     IdentityEvidenceSource,
     resolve_active_person,
 )
 from server.exceptions import BrainMemoryError, LLMError
-from server.memory import working
+from server.memory import continuity
 from server.memory.context import build_context
+from server.memory.continuity import ContinuityTurn, SuspendCause
 from server.onboarding import OnboardingSlot
 from server.schemas import ConversationTurn, MemoryContext
 from server.settings import settings
@@ -42,7 +45,7 @@ class PreparedTextTurn:
     user_emotion: str | None
     perception: str | None
     active_person: ActivePersonContext | None = None
-    history_scope: str | None = None
+    continuity: ContinuityTurn | None = None
 
 
 @dataclass(frozen=True)
@@ -86,29 +89,26 @@ def _manual_evidence(active_person: ActivePersonContext) -> IdentityEvidence | N
 
 
 def new_interaction_scope() -> str:
-    """Create an opaque working-memory scope for one unresolved request.
+    """Create an opaque conversation identifier for one unresolved request.
 
     Returns:
-        A process-local scope not derived from user input or exposed by a response.
+        A process-local identifier not derived from user input or exposed by a response.
+        It labels an event only: it is never identity and never selects the session.
     """
     return f"interaction:{uuid4().hex}"
 
 
-def _history_scope(active_person: ActivePersonContext) -> str:
-    """Return an internal history key without trusting a public conversation ID."""
-    evidence = _manual_evidence(active_person)
-    if evidence is not None:
-        return f"session:{evidence.evidence_id.hex}:person:{active_person.person_id}"
-    return new_interaction_scope()
+def _continuity_person_id(active_person: ActivePersonContext) -> int | None:
+    """Return the person who may use the short-term session, or ``None`` (ADR 0020 §2).
 
-
-def _clear_evidence_scopes(active_person: ActivePersonContext) -> None:
-    """Clear histories associated with expired, cleared, or ambiguous evidence."""
-    for evidence in active_person.evidence:
-        if evidence.candidate_person_id is not None:
-            working.clear(
-                f"session:{evidence.evidence_id.hex}:person:{evidence.candidate_person_id}"
-            )
+    Only a person identified by a trusted source with an assurance of at least ``basic``
+    has continuity. Assurance is compared through its rank, never alphabetically.
+    """
+    if active_person.status is not ActivePersonStatus.IDENTIFIED or active_person.person_id is None:
+        return None
+    if ASSURANCE_RANK[active_person.assurance] < ASSURANCE_RANK[IdentityAssurance.BASIC]:
+        return None
+    return active_person.person_id
 
 
 async def _memory_prompt_state(
@@ -131,16 +131,23 @@ async def prepare_text_turn(
     *,
     perception: str | None = None,
     active_person: ActivePersonContext | None = None,
+    suspend_cause: SuspendCause | None = None,
 ) -> PreparedTextTurn:
     """Resolve shared prompt inputs for one conversation.
 
+    The speaker decides what the turn may read (ADR 0020): an identified person gets the
+    short-term session's history; an unknown or ambiguous speaker suspends it and the turn
+    reads nothing. Persistent context stays behind the ``MANUAL`` gate, so durable memory is
+    still closed for every other speaker.
+
     Args:
         client: Shared, lifecycle-owned HTTP client (Plan 0039), forwarded
-            to memory retrieval when a verified identity has history.
+            to memory retrieval when a manually verified identity has history.
         message: Current user message.
-        conversation_id: Ephemeral working-memory identifier.
+        conversation_id: Ephemeral conversation label; never identity, never selects history.
         perception: Optional textual visual perception for this turn.
         active_person: Internally resolved evidence for this turn only.
+        suspend_cause: Why the speaker could not be identified, for the transition log.
 
     Returns:
         Immutable inputs for one LLM generation.
@@ -151,10 +158,6 @@ async def prepare_text_turn(
     if not conversation_id:
         raise ValueError("conversation_id must not be empty")
     resolved_person = _resolve_turn_person(active_person)
-    history_scope = _history_scope(resolved_person)
-    manual_evidence = _manual_evidence(resolved_person)
-    if manual_evidence is None:
-        _clear_evidence_scopes(resolved_person)
     if not settings.memory_enabled:
         turn_log.log_memory("skipped", "MEMORY_ENABLED is off")
         return PreparedTextTurn(
@@ -167,29 +170,21 @@ async def prepare_text_turn(
             user_emotion=None,
             perception=perception,
             active_person=resolved_person,
-            history_scope=history_scope,
         )
-    if manual_evidence is None:
+    person_id = _continuity_person_id(resolved_person)
+    turn = continuity.open_turn(person_id, None if person_id is not None else suspend_cause)
+    history = list(turn.history) if turn.writable else None
+    context: MemoryContext | None = None
+    onboarding = False
+    slot: OnboardingSlot | None = None
+    if _manual_evidence(resolved_person) is not None:
+        context, onboarding, slot = await _memory_prompt_state(client, message)
+        turn_log.log_memory("loaded", f"verified identity, history_turns={len(history or [])}")
+    else:
         turn_log.log_memory(
-            "skipped",
-            "no verified identity — no history, no retrieval, no vector search",
+            "loaded" if turn.writable else "skipped",
+            f"history_turns={len(history or [])}, no retrieval, no vector search",
         )
-        return PreparedTextTurn(
-            message=message,
-            conversation_id=conversation_id,
-            context=None,
-            history=None,
-            onboarding=False,
-            onboarding_slot=None,
-            user_emotion=None,
-            perception=perception,
-            active_person=resolved_person,
-            history_scope=history_scope,
-        )
-    history = working.get_history(history_scope)
-    user_emotion = working.get_recent_emotion(history_scope)
-    turn_log.log_memory("loaded", f"verified identity, history_turns={len(history)}")
-    context, onboarding, slot = await _memory_prompt_state(client, message)
     return PreparedTextTurn(
         message=message,
         conversation_id=conversation_id,
@@ -197,10 +192,10 @@ async def prepare_text_turn(
         history=history,
         onboarding=onboarding,
         onboarding_slot=slot,
-        user_emotion=user_emotion,
+        user_emotion=None,
         perception=perception,
         active_person=resolved_person,
-        history_scope=history_scope,
+        continuity=turn,
     )
 
 
@@ -235,38 +230,31 @@ async def _generate(client: httpx.AsyncClient, prepared: PreparedTextTurn) -> tu
 
 def record_text_turn(
     message: str,
-    _conversation_id: str,
     response: str,
-    emotion: str,
     *,
     active_person: ActivePersonContext | None = None,
-    history_scope: str | None = None,
+    continuity_turn: ContinuityTurn | None = None,
     schedule_consolidation: ConsolidationScheduler | None = None,
 ) -> None:
     """Record a successful turn and optionally schedule consolidation.
 
     Args:
         message: Current user message.
-        conversation_id: Ephemeral working-memory identifier.
         response: Generated assistant response.
-        emotion: The user's emotion for this turn (the classic path reads it from the model's
-            JSON; the streaming path decides it from the user's text before generating).
         active_person: Internally resolved evidence for this turn only.
-        history_scope: Internal working-memory key calculated during preparation.
-        schedule_consolidation: Optional channel-owned scheduling callback.
+        continuity_turn: The session view this turn read; a suspended or stale turn writes
+            nothing.
+        schedule_consolidation: Optional channel-owned scheduling callback; reached only by a
+            manually verified identity, never by a face or a token.
     """
     if not settings.memory_enabled:
         return
     resolved_person = _resolve_turn_person(active_person)
-    scope = history_scope or _history_scope(resolved_person)
-    working.add_emotion(scope, emotion)
-    working.add_turn(scope, "user", message)
-    working.add_turn(scope, "assistant", response)
-    if _manual_evidence(resolved_person) is None:
-        working.clear(scope)
-        turn_log.log_memory("discarded", "no verified identity — working memory cleared")
-        return
-    if schedule_consolidation is not None:
+    if continuity_turn is not None and continuity.record_pair(continuity_turn, message, response):
+        turn_log.log_memory("recorded", "identified speaker, exchange kept in the session")
+    else:
+        turn_log.log_memory("discarded", "no identified speaker, nothing kept")
+    if schedule_consolidation is not None and _manual_evidence(resolved_person) is not None:
         # Identity gates this legacy callback; it is not an authorization decision.
         schedule_consolidation(message, response, resolved_person)
         turn_log.log_memory("consolidation-scheduled", "verified identity")
@@ -279,6 +267,7 @@ async def process_text_turn(
     *,
     perception: str | None = None,
     active_person: ActivePersonContext | None = None,
+    suspend_cause: SuspendCause | None = None,
     schedule_consolidation: ConsolidationScheduler | None = None,
 ) -> TextTurnResult:
     """Generate and record one channel-agnostic text turn.
@@ -286,9 +275,10 @@ async def process_text_turn(
     Args:
         client: Shared, lifecycle-owned HTTP client (Plan 0039).
         message: Current user message.
-        conversation_id: Ephemeral working-memory identifier.
+        conversation_id: Ephemeral conversation label; never identity.
         perception: Optional textual visual perception for this turn.
         active_person: Internally resolved evidence for this turn only.
+        suspend_cause: Why the speaker could not be identified, for the transition log.
         schedule_consolidation: Optional channel-owned scheduling callback.
 
     Returns:
@@ -301,16 +291,15 @@ async def process_text_turn(
         conversation_id,
         perception=perception,
         active_person=active_person,
+        suspend_cause=suspend_cause,
     )
     response, emotion, llm_failed = await _generate(client, prepared)
     if not llm_failed:
         record_text_turn(
             message,
-            conversation_id,
             response,
-            emotion,
             active_person=prepared.active_person,
-            history_scope=prepared.history_scope,
+            continuity_turn=prepared.continuity,
             schedule_consolidation=schedule_consolidation,
         )
     duration_ms = round((time.perf_counter() - started) * 1000)
