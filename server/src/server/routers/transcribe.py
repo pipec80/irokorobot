@@ -3,8 +3,10 @@
 Audio contract: WAV · 16000 Hz · mono · int16.
 """
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from functools import partial
 import logging
 import time
 from typing import Annotated
@@ -18,6 +20,10 @@ from server import turn_log
 from server.audio_contract import validate_wav_contract
 from server.cognition.authorization import evaluate_authorization
 from server.cognition.controller import ActivePersonResolver, CognitiveController, ConsentResolver
+from server.cognition.generic_identity import (
+    GenericIdentification,
+    identify_generic_speaker,
+)
 from server.cognition.household_tools import HouseholdKnowledgeTools
 from server.cognition.identity import ActivePersonContext
 from server.cognition.identity_fusion import FusedIdentityResolver, build_fused_identity_resolver
@@ -60,6 +66,8 @@ from server.uploads import read_limited_upload
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/transcribe", tags=["Audio"])
+
+type SpeakerIdentifier = Callable[[], Awaitable[GenericIdentification]]
 
 
 class NDJSONStreamingResponse(StreamingResponse):
@@ -210,6 +218,7 @@ def _voice_controller(
     background_tasks: BackgroundTasks,
     *,
     request_identity: _RequestIdentity | None = None,
+    identify_speaker: SpeakerIdentifier | None = None,
 ) -> CognitiveController:
     """Compose the bounded controller used by a public voice turn.
 
@@ -220,14 +229,25 @@ def _voice_controller(
         request_identity: Optional request-scoped actor/consent resolver over
             the fused face, voice and PIN evidence (Plan 0054). When omitted,
             the controller falls back to its own public-unknown defaults.
+        identify_speaker: Names the speaker of a generic turn from the face and an
+            observed token (Plan 0061, ADR 0020); when omitted the speaker is unknown.
     """
 
     async def legacy_turn(message: str, conversation_id: str) -> TextTurnResult:
-        """Delegate generic public conversation through the existing text service."""
+        """Name the speaker, then converse through the existing text service."""
+        speaker = (
+            await identify_speaker()
+            if identify_speaker is not None
+            else GenericIdentification(actor=None, cause=None)
+        )
+        if speaker.actor is not None:
+            turn_log.log_actor("voice", speaker.actor)
         return await process_text_turn(
             client,
             message,
             conversation_id,
+            active_person=speaker.actor,
+            suspend_cause=speaker.cause,
             schedule_consolidation=_consolidation_scheduler(client, background_tasks),
         )
 
@@ -359,7 +379,16 @@ async def transcribe(
 
     event = _voice_event_from_transcript(text_heard)
     controller = _voice_controller(
-        resources.http_client, background_tasks, request_identity=request_identity
+        resources.http_client,
+        background_tasks,
+        request_identity=request_identity,
+        identify_speaker=partial(
+            identify_generic_speaker,
+            owner_unlock_service.for_request,
+            token=x_iroko_identity_token,
+            frame=frame_bytes,
+            event=event,
+        ),
     )
     decision = await controller.decide(event)
 
@@ -505,10 +534,20 @@ async def transcribe_stream(
             )
         )
 
+    speaker = await identify_generic_speaker(
+        owner_unlock_service.for_request,
+        token=x_iroko_identity_token,
+        frame=frame_bytes,
+        event=event,
+    )
+    if speaker.actor is not None:
+        turn_log.log_actor("voice", speaker.actor)
     prepared = await prepare_text_turn(
         resources.http_client,
         event.payload.message,
         event.payload.conversation_id,
+        active_person=speaker.actor,
+        suspend_cause=speaker.cause,
     )
 
     return NDJSONStreamingResponse(

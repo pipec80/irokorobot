@@ -7,10 +7,12 @@ from unittest.mock import ANY, AsyncMock, Mock
 
 from httpx import ASGITransport, AsyncClient
 import pytest
+from server.cognition.identity import ActivePersonStatus
 from server.cognition.owner_authentication import owner_unlock_service
 from server.cognition.response_plan import MAX_TURN_MESSAGE_CHARS
 from server.main import app
 from server.memory import continuity
+from server.memory.continuity import SuspendCause
 from server.resources import AppResources
 from server.routers import chat
 from server.settings import settings
@@ -59,7 +61,14 @@ async def test_chat_returns_exact_contract_and_calls_service_once(
         "conversation_id": "web-primary",
         "authentication_consumed": False,
     }
-    process.assert_awaited_once_with(ANY, "Hello", "web-primary")
+    process.assert_awaited_once()
+    call = process.await_args
+    assert call is not None
+    assert call.args == (ANY, "Hello", "web-primary")
+    # No frame and no token: the speaker is the public unknown, and the turn is suspended
+    # for lack of evidence (ADR 0020 §1).
+    assert call.kwargs["active_person"].status is ActivePersonStatus.UNKNOWN
+    assert call.kwargs["suspend_cause"] is SuspendCause.NO_EVIDENCE
 
 
 @pytest.mark.integration
