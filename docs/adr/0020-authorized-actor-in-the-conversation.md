@@ -13,8 +13,8 @@
 - **Supersedes:** the sentence of [ADR 0016](0016-face-and-voice-identity-fusion.md) §5 that says
   "Identity is resolved only on protected turns, so the embedding (about 0.5 s, one per request) is
   paid there and never on public turns", and the part of the same section that makes a presented
-  local-unlock grant (today issued by the PIN) unreachable after a face match for every operation
-  (decision 6 below). The rest of §5, §1 to §4 and §6 to §9 stand.
+  local-unlock grant (today issued by the PIN) unreachable after a face match even for operations
+  that declare their own scope (decision 6 below). The rest of §5, §1 to §4 and §6 to §9 stand.
 - **Implemented by:** CM-2, plan to be written (the next free plan number is 0061)
 
 ## Context
@@ -94,12 +94,15 @@ turn. Today there is none, for two independent reasons.
 The voice is never consulted on a generic turn (the roughly 0.5 s embedding is saved on every chat
 turn), so a face identifies at `basic`; an observed token keeps the assurance its grant gives. The
 voice is computed on demand, as today, on a protected turn whose operation needs `strong`.
-Identification on a generic turn uses its own resolver call, separate from the cache a protected
-branch uses, and does not change what a protected branch decides (except decision 6).
+Identification on a generic turn uses **its own face-only resolver instance** (built without the
+audio, so no speaker factory exists), separate from the request's resolver and its cache; its
+`source` and `last_reason` are never copied to a response (decision 8), and it does not change what
+a protected branch decides. When `MEMORY_ENABLED` is off, generic identification is skipped
+entirely, since nothing would use it.
 
 **Failures never fail the turn.** Any error of the face or token path on a generic turn (store,
 model, detector or executor) degrades the turn to `unknown`, which is answered normally and logged
-with a closed reason. STT keeps running before identification with no entity hotwords; an
+with a closed reason (decision 5). STT keeps running before identification with no entity hotwords; an
 identified generic turn does not load owner metadata or hotwords.
 
 ### 2. Who has continuity, and what it opens
@@ -109,7 +112,8 @@ at least `basic` has short-term continuity, and only while `MEMORY_ENABLED` is o
 **turn history only**:
 
 - the recent-emotion buffer stays closed: no tone directive is derived from the conversation
-  (the streamed `emotion` event keeps coming from ADR 0018's pure function);
+  (the streamed `emotion` event keeps coming from ADR 0018's pure function). This also removes the
+  tone directive that a `MANUAL` turn gets today, a path only tests exercise;
 - the persistent context, vector retrieval, consolidation and the presentation guidance keep their
   `MANUAL` gate, so durable memory stays off for every speaker, the identified owner included;
 - the turns of the conversation carry no speaker attribution and are never extracted, consolidated
@@ -122,7 +126,10 @@ history of an unknown speaker is kept, not even request-local (narrower than ADR
 
 There is **one session slot**, in process memory and never persisted: the device has one microphone
 and the loop is half-duplex. The slot records the person it belongs to and a generation counter;
-`conversation_id` is never used to select it. A `MANUAL` turn uses the same slot (the separate
+`conversation_id` is never used to select it. The generation increases only when the session is
+replaced (another person), deleted or expires; a suspension does not touch it, so a stranger's turn
+never drops the owner's concurrent write, and two overlapping turns of the same person both write,
+in order. A `MANUAL` turn uses the same slot (the separate
 `session:<evidence>:person:<id>` working scope is retired).
 
 - **Size:** at most 3000 characters of turn content. Whole user-and-assistant pairs leave oldest
@@ -146,7 +153,8 @@ Setting names and defaults are fixed by the plan (for example `WORKING_MEMORY_MA
 | — (180 s of silence) | deleted | n/a |
 
 A suspended session resumes only when the same person is identified again before it expires; the
-turns spoken while it was suspended are not written anywhere. The second row is unreachable with
+turns spoken while it was suspended are not written anywhere. "Suspended" is not a stored state: an
+`unknown` or `ambiguous` turn simply neither reads nor writes the session, and logs that it did so. The second row is unreachable with
 one enrolled owner (another enrolled face vetoes to `ambiguous` and the PIN requires the owner), so
 it is tested with synthetic evidence.
 
@@ -163,7 +171,9 @@ is stale (another turn changed the session meanwhile) is dropped.
 ### 5. Logging
 
 Every transition is logged with a closed reason (`continued`, `started`, `replaced`, `suspended`,
-`expired`) and no content. The person id may appear in these lines, as it already does in the turn
+`expired`) and no content. A `suspended` line also carries the identification outcome, from a
+closed set (`no_evidence`, `veto_other_person`, `veto_multiple_faces`, `backend_unavailable`,
+`error`), so suspensions and deletions can be counted by cause. The person id may appear in these lines, as it already does in the turn
 actor log. Conversation text stays out of logs unless `LOG_CONVERSATION_TEXT` is on.
 
 ### 6. A local-unlock grant is consulted by operation, not by turn (supersedes ADR 0016 §5)
@@ -183,18 +193,21 @@ declares its own scope:
 > `grant_spent`), at `strong`, and the reported identity source is `local_unlock`.
 
 A token of any other scope is still refused without being spent (ADR 0015 decision 1); the vetoes
-of ADR 0016 §4 apply first, and then no token is consumed. `confirm` keeps having no local-unlock
-route. CM-2 implements the rule in the fusion resolver of the voice and streaming routes, with a
-resolver built for the default scope behaving exactly as today; `/chat` consults its token without
-any face, so it is unaffected. Each route adopts a resolver built for its operation's scope when
-that operation is wired (ADR 0019 §6, obligation 1): `forget` becomes reachable with a face in frame
-once CM-6 wires it.
+of ADR 0016 §4 apply first, and then no token is consumed. If the token names a different person
+than the matched face, the turn is `ambiguous` and the token is not consumed. `confirm` keeps
+having no local-unlock route. `/chat` consults its token without any face, so it is unaffected.
+
+**When it is built.** No route uses a declared scope on a voice or streaming turn until an
+operation such as `forget` is wired, so CM-2 does **not** implement this rule (no code for a later
+phase): it is decided here and implemented by the plan that wires the first operation with its own
+scope (CM-6 for `forget`), in the fusion resolver, with a resolver built for the default scope
+behaving exactly as today (ADR 0019 §6, obligation 1).
 
 ### 7. What the prompt receives
 
 The history goes in the chat messages of both builders (`llm.py` and `llm_streaming.py`). No name,
 id or role of the speaker is interpolated into the system prompt or the history, and no grant
-widens. One sentence of `_MEMORY_DISCIPLINE` changes, minimally: what the person said earlier in
+widens. One sentence of `_MEMORY_DISCIPLINE` (in `characters/__init__.py`) changes, minimally: what the person said earlier in
 this same conversation may also be relied on, and nothing beyond the memory block and this
 conversation may be invented. Nothing else in the prompt, the streaming protocol or the emotion
 function changes.
@@ -222,17 +235,17 @@ token the script reports "continuity not checked" instead of failing. It gains n
 
 Automated: every row of the transition table, the size and silence limits with a fake clock, the
 generation rule, failures degrading to `unknown`, no grant spent and no voice embedding on a
-generic turn, the default-scope token still ignored after a face match and a declared-scope token
-consulted, the speaker's name absent from prompt and history, durable memory still blocked, and a
-new owner-to-stranger scenario (the owner says something, a stranger or an ambiguous turn asks for
-it, nothing is disclosed). Decision 6 is accepted by automated tests only, with the real resolvers:
-there is no spoken `forget` until CM-6.
+generic turn, the default-scope token still ignored after a face match, the speaker's name absent
+from prompt and history, durable memory still blocked, and a new owner-to-stranger scenario with
+**no token in the request** (the owner says something, a stranger or an ambiguous turn asks for it,
+nothing is disclosed). Decision 6 is not built in CM-2, so it has no test there.
 
-By Pipec on real hardware: (a) a sentence followed by a question that depends on it, answered as a
-continuation; (b) a second person beside the owner (suspends, nothing answered from it) and a
-second person alone in frame (suspends); (c) more than 180 seconds of silence, after which the
-context is gone; (d) the added latency of the face check on a generic turn and the count of
-suspensions by closed reason, measured and recorded; plus the measurement of decision 7.
+By Pipec on real hardware, with no token presented: (a) a sentence followed by a question that
+depends on it, answered as a continuation; (b) a second person beside the owner (suspends, nothing
+answered from it) and a second person alone in frame (suspends); (c) more than 180 seconds of
+silence, after which the context is gone; (d) the added latency of the face check on a generic turn
+and the counts of suspensions and deletions by closed reason, measured and recorded; plus the
+measurement of decision 7.
 
 ## Alternatives considered
 
@@ -284,6 +297,9 @@ suspensions by closed reason, measured and recorded; plus the measurement of dec
   prompt of the 3B model longer and slower. Both are measured, not assumed.
 - A transcript of the session stays in process memory until it expires and is next accessed, or the
   server restarts; a restart loses it.
+- An owner token is a bearer credential (ADR 0008, ADR 0015): for its lifetime, whoever presents it
+  on a turn the face did not resolve is identified as the owner on generic turns and sees the last
+  180 s of the session. Observing it never spends it, so this lasts until the token expires.
 - Generic and protected turns do not share context: after "what are my children called?", a
   follow-up chat turn does not know that question was asked.
 
@@ -296,8 +312,12 @@ The tests that pin "a generic turn has no history and clears working memory" cha
 survive: `test_transcribe_memory.py` (fallback not recorded, no hotwords, no owner metadata, no
 consolidation for a face-identified turn), `test_owner_stranger_matrix.py` (plus the new scenario),
 `test_face_authenticated_turn.py`, `test_identity_fusion_turn.py` and `test_speaker_evidence_turn.py`
-(no embedding on a generic turn; `identity_source` still `None`), `test_vision_memoria.py`. A guard
-keeps every read of the session inside its own module.
+(no embedding on a generic turn; `identity_source` still `None`), `test_vision_memoria.py` and
+`test_eval_longitudinal_memory.py` (its source check on the buffers). Tests that reset the working
+buffers directly (`test_memory_integration.py`, `test_transcribe_onboarding.py`) follow the new
+API, and the prompt and message tests (`test_llm_generate.py`, `test_llm_streaming.py`,
+`test_character_parser.py`) follow the `_MEMORY_DISCIPLINE` sentence and the history in messages. A
+guard keeps every read of the session inside its own module.
 
 ## Docs to update when this ADR is Accepted
 
@@ -326,6 +346,7 @@ its own ADR and the privacy contract of the senses).
 ## Follow-up
 
 The CM-2 plan (number 0061 at the time of writing): identification on generic turns per channel,
-the session slot with its limits and generation rule, the transition logging, the per-operation
-resolver rule, the `_MEMORY_DISCIPLINE` sentence and its measurement, the `chat-test` adaptation and
-the acceptance above. Written only after Pipec accepts this ADR's text.
+the session slot with its limits and generation rule, the transition logging, the
+`_MEMORY_DISCIPLINE` sentence and its measurement, the `chat-test` adaptation and the acceptance
+above. Written only after Pipec accepts this ADR's text. Decision 6 is implemented by the plan that
+wires the first operation with its own scope (CM-6 for `forget`).
