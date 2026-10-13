@@ -108,7 +108,11 @@ class Settings(BaseSettings):
 
     consolidation_model: str = "qwen2.5:3b"
 
+    # Short-term continuity of the identified person (ADR 0020): at most this many messages,
+    # this many characters of turn content, and this long without a written turn.
     working_memory_size: int = 20
+    working_memory_max_chars: PositiveInt = 3000
+    working_memory_idle_seconds: PositiveInt = 180
     semantic_top_k: int = 6
 
     memory_enabled: bool = True
