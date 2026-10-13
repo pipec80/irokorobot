@@ -22,7 +22,7 @@ single-WIP [operational board](../README.md#operational-board) — **CM-0
 (Plan 0046) closed 2026-09-08, PC-3A (Plan 0047) closed 2026-09-25 with a
 provisional PASS, and PC-3B ([Plan 0053](../completed/0053-consented-speaker-runtime-evidence.md))
 closed 2026-09-29, and PC-4 ([Plan 0054](../completed/0054-face-default-identity-fusion.md))
-closed 2026-09-30; `NOW` is empty (Plan 0060 closed 2026-10-09).** Use the
+closed 2026-09-30; `NOW` is [Plan 0061](0061-cm2-generic-turn-continuity.md) (promoted 2026-10-13; Plan 0060 closed 2026-10-09).** Use the
 [personal-companion delivery map](../../roadmap/personal-companion-delivery-map.md)
 and [conversational-memory delivery map](../../roadmap/conversational-memory-delivery-map.md)
 to see the code, tests, verified gaps, and future delivery sequence.
@@ -30,6 +30,10 @@ to see the code, tests, verified gaps, and future delivery sequence.
 | Plan | Implementation reality | Reuse | Remaining closure |
 |---|---|---|---|
 | [0015](0015-personal-companion-design.md) | Approved product design; PC-1 to PC-4 are closed (PC-2 and PC-3A with provisional calibrations) | Controller, policy/audit, V4 household tools, identity/session seam, working memory, legacy extraction/vector storage, STT/TTS, face engine | CM-1…CM-7 longitudinal memory, PC-5 integrated personal acceptance and PC-6 family remain open (CM-0 closed) |
+
+## Plan en curso (`NOW`)
+
+[0061 — continuidad de corto plazo para la persona identificada (CM-2)](0061-cm2-generic-turn-continuity.md) está **`Ready`** y es el `NOW` desde el 2026-10-13: lo escribió la sesión que sigue al [ADR 0020](../../adr/0020-authorized-actor-in-the-conversation.md) (revisado por dos auditorías) con `superpowers:writing-plans` y lo ensayó test a test en una copia de `main` (`2385981`; suite del filtro de CI de 2498 a 2580) y lo revisó un agente independiente. Diez tareas: la ranura de continuidad (3000 caracteres, 180 s, una sola persona, generación), la identificación de los turnos genéricos sin voz y sin gastar el grant, su cableado en `text_turn` y en las tres rutas, una frase del prompt con compuerta medida, las guardas y el escenario sin token, `just chat-test` con el token del dueño, la aceptación en hardware y la verdad documental. No cambia el cable ni abre memoria durable. Pipec lo promovió y confirmó sus decisiones D-1 a D-12 tal como están escritas; la decisión 6 del ADR (grant por operación) queda para CM-6. Se ejecuta en una sesión nueva.
 
 ## Propuesta de auditoría — no ejecutable
 
