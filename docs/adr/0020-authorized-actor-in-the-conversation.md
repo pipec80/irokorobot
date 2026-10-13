@@ -1,19 +1,20 @@
 # 0020 — Identify the speaker on every turn and keep short-term continuity for the identified person
 
-- **Status:** Proposed (2026-10-09, revised 2026-10-13) — becomes Accepted when the plan that implements it closes;
-  until then nothing in `server/src` follows it
+- **Status:** Proposed (2026-10-09, revised 2026-10-13 after an independent completeness audit) —
+  becomes Accepted when the plan that implements it closes; until then nothing in `server/src`
+  follows it
 - **Date:** 2026-10-09
 - **Builds on:** [ADR 0006](0006-personal-and-family-companion-profiles.md),
   [ADR 0009](0009-locked-posture-and-scoped-capabilities.md),
   [ADR 0015](0015-owner-grant-scope-and-speaker-binding.md),
   [ADR 0016](0016-face-and-voice-identity-fusion.md),
+  [ADR 0018](0018-user-emotion-decided-apart.md),
   [ADR 0019](0019-personal-memory-capabilities.md)
 - **Supersedes:** the sentence of [ADR 0016](0016-face-and-voice-identity-fusion.md) §5 that says
   "Identity is resolved only on protected turns, so the embedding (about 0.5 s, one per request) is
   paid there and never on public turns", and the part of the same section that makes a presented
   local-unlock grant (today issued by the PIN) unreachable after a face match for every operation
-  (decision 5 below). The rest of §5,
-  §1 to §4 and §6 to §9 stand.
+  (decision 6 below). The rest of §5, §1 to §4 and §6 to §9 stand.
 - **Implemented by:** CM-2, plan to be written (the next free plan number is 0061)
 
 ## Context
@@ -23,29 +24,33 @@ conversation, with no name interpolated into the prompt and no widened grant, an
 visible result be short-term continuity: the last turns of the identified person reach the next
 turn. Today there is none, for two independent reasons.
 
-### What holds today (verified in code at `main` `bbbab5c`, 2026-10-09)
+### What holds today (verified in code at `bbbab5c`, 2026-10-09; `main` has changed only documents and CI since)
 
-1. A generic turn never resolves identity. The controller returns no decision for it and none of
-   the three channels (`POST /transcribe`, `POST /transcribe/stream`, `POST /chat`) passes an
-   `active_person` to `process_text_turn` or `prepare_text_turn`. Face, voice and PIN resolution is
-   lazy and runs only when a protected branch awaits the resolver. The cost of identity on a generic
-   turn is therefore zero today.
-2. Even a resolved actor would not open the history. `text_turn.py` opens the working history only
-   for `IdentityEvidenceSource.MANUAL` evidence, and no production code emits it
+1. A generic turn never resolves identity. The controller returns no decision for it, and none of
+   the four callers of the generic turn (`POST /transcribe` and `POST /chat` through
+   `process_text_turn`, `POST /transcribe/stream` through `prepare_text_turn`, and
+   `POST /vision/respond`, whose actor is fixed to the public unknown) passes a resolved
+   `active_person`. Face, voice and PIN resolution is lazy and runs only when a protected branch
+   awaits the resolver, so identity costs nothing on a generic turn today.
+2. Even a resolved actor would not open the history. `text_turn.py` opens working history only for
+   `IdentityEvidenceSource.MANUAL` evidence, and no production code emits it
    (`IdentitySessionRegistry.select_person` has no caller outside tests). Every generic turn runs
-   with `history=None` and `context=None`; `record_text_turn` writes the turn to working memory and
-   clears it at once ("Turn memory: discarded (no verified identity — working memory cleared)").
-3. Working memory is two module dictionaries in `server/memory/working.py` (turns and emotions),
-   keyed by an arbitrary string, bounded only by `WORKING_MEMORY_SIZE` (20 messages). It has no
-   time limit and no character limit.
-4. The history reaches the model as chat messages before the current turn (`llm._build_messages`),
-   not inside the system prompt. The speaker's name is never interpolated into the prompt; the
-   presentation guidance is static text gated on `MANUAL` evidence.
+   with `history=None` and `context=None`; `record_text_turn` writes the turn and clears it at once
+   ("Turn memory: discarded (no verified identity — working memory cleared)"). A turn whose model
+   call fails is not recorded at all.
+3. Working memory is two module dictionaries in `server/memory/working.py` (turns and recent
+   emotions), keyed by an arbitrary string, with no lock, no time limit and no character limit;
+   only `WORKING_MEMORY_SIZE` (20 messages) bounds it. It is gated by `MEMORY_ENABLED`.
+4. The history reaches the model as chat messages before the current turn (`_build_messages` in
+   both `llm.py` and `llm_streaming.py`), never inside the system prompt. The speaker's name is
+   never interpolated into the prompt. The recent emotion, however, is written into the system
+   prompt as a tone directive, and the always-present `_MEMORY_DISCIPLINE` text says the memory
+   block is the *only* source of truth about people, family, pets, dates and preferences.
 5. The robot attaches a webcam frame on every turn when `ROBOT_FACE_AUTH_ENABLED` is on (default
-   off); the server reads it only when `FACE_AUTHENTICATION_ENABLED` is on (default off). `/chat`
-   carries no frame or audio, only an optional `X-Iroko-Identity-Token`.
+   off); the server reads it only when `FACE_AUTHENTICATION_ENABLED` is on (default off). Voice and
+   streaming requests may also carry `X-Iroko-Identity-Token`; `/chat` carries only that token.
 6. `just chat-test` expects continuity between unauthenticated public requests of `/chat`; the
-   server cannot give it today, so its "continuity" check should fail.
+   server cannot give it today.
 7. ADR 0019 left `forget` unreachable on a turn whose owner face matched, because ADR 0016 §5 does
    not consult a presented PIN token after a face match ("Fixing it belongs to the CM-2 ADR that
    revises §5"). `confirm` has no PIN route by design.
@@ -57,214 +62,270 @@ turn. Today there is none, for two independent reasons.
    voice profile is enrolled (both voice consents were revoked by the acceptance runs of Plans 0053
    and 0051), so those turns stay at `basic`; `strong` through face and voice comes back with a
    re-enrolment (`just speaker-auth-demo --enroll`).
+10. Only one server worker exists: `UVICORN_WORKERS` is typed `Literal[1]` and grants are
+    process-local.
 
 ### Facts the design has to respect
 
 1. Identity evidence is never authorization (ADR 0006, ADR 0008, ADR 0009). The locked posture
-   keeps bounded general conversation for an unknown actor; request-local working context may be
-   kept only inside an isolated unknown interaction, never merged into a known person's history.
+   keeps bounded general conversation for an unknown actor and never merges an unknown speaker's
+   words into a known person's history.
 2. `conversation_id` separates working histories and is never identity or authorization
    (`identity-and-access.md`, *Conversation isolation*).
 3. Face alone gives `basic`; voice corroboration gives `strong`; ordinary private data needs only
-   `basic` (ADR 0016 §1 to §3). A photograph still identifies at `basic` (ADR 0016 §9, measured, not
-   defended).
-4. `ambiguous` and `unknown` are valid outcomes. Two faces, another enrolled person's face, or
-   sources that point at different people make a turn `ambiguous`; `ambiguous` exposes neither
-   person's private context.
+   `basic` (ADR 0016 §1 to §3). A photograph still identifies at `basic` (ADR 0016 §9).
+4. `ambiguous` and `unknown` are valid outcomes, and `ambiguous` exposes neither person's private
+   context.
 5. Durable memory stays blocked until its own slice: writes CM-3, episodes CM-4, retrieval CM-5.
-   Connecting the actor is not enabling durable memory.
-6. Grants are process-local; `UVICORN_WORKERS` must stay 1.
+6. A turn that carries history in the prompt is where the streaming fallback rate matters (the
+   roadmap's reason to order CM-2 after the streaming repair); a history-bearing streamed turn has
+   never been measured, and one reply in French is an open finding of Plan 0059.
 
 ## Decision
 
-### 1. Every turn tries to identify its speaker, cheaply
+### 1. Every generic turn tries to identify its speaker, cheaply and without side effects
 
-Each generic turn resolves the speaker with the evidence the turn already carries, in a mode that
-**never spends a grant** and **never computes a voice embedding**:
+| Channel | Evidence used on a generic turn |
+|---|---|
+| `POST /transcribe`, `POST /transcribe/stream` | the face in the frame (when face authentication is on and a frame was sent); a presented token of the default scope only when the face did not resolve, in ADR 0016 §5 order, **observed and never spent** |
+| `POST /chat` | the presented token of the default scope, observed and never spent |
+| `POST /vision/respond` | none: its actor stays the public unknown, so it neither reads, writes nor changes any conversation |
 
-- voice and streaming turns: the face in the frame, when face authentication is on and a frame was
-  sent;
-- `/chat`: the optional identity token of the default scope, observed and not spent;
-- anything else: no evidence, so the turn is `unknown`.
+The voice is never consulted on a generic turn (the roughly 0.5 s embedding is saved on every chat
+turn), so a face identifies at `basic`; an observed token keeps the assurance its grant gives. The
+voice is computed on demand, as today, on a protected turn whose operation needs `strong`.
+Identification on a generic turn uses its own resolver call, separate from the cache a protected
+branch uses, and does not change what a protected branch decides (except decision 6).
 
-The voice is not consulted on a generic turn (the roughly 0.5 s embedding is saved on every chat
-turn), so a face identifies at `basic`; a token observed on `/chat` keeps the assurance its grant
-already gives. The voice is computed on demand, as today, on a protected turn whose operation
-needs `strong`. Resolving a turn must not change what a protected
-branch decides: the protected resolvers are unchanged except by decision 5.
+**Failures never fail the turn.** Any error of the face or token path on a generic turn (store,
+model, detector or executor) degrades the turn to `unknown`, which is answered normally and logged
+with a closed reason. STT keeps running before identification with no entity hotwords; an
+identified generic turn does not load owner metadata or hotwords.
 
-### 2. Who has continuity
+### 2. Who has continuity, and what it opens
 
 Only a person `identified` by a trusted source (`FACE`, `LOCAL_UNLOCK` or `MANUAL`) with assurance
-at least `basic` has short-term continuity. This gate opens **working memory only**. The existing
-`MANUAL` gate on the persistent context, vector retrieval, consolidation and the presentation
-guidance is untouched, so durable memory stays off for every speaker, the identified owner included.
-A speaker who is not identified has no continuity at all: the turn is answered and forgotten, as
-today. No history of an unknown speaker is kept, not even request-local.
+at least `basic` has short-term continuity, and only while `MEMORY_ENABLED` is on. This opens the
+**turn history only**:
+
+- the recent-emotion buffer stays closed: no tone directive is derived from the conversation
+  (the streamed `emotion` event keeps coming from ADR 0018's pure function);
+- the persistent context, vector retrieval, consolidation and the presentation guidance keep their
+  `MANUAL` gate, so durable memory stays off for every speaker, the identified owner included;
+- the turns of the conversation carry no speaker attribution and are never extracted, consolidated
+  or promoted: attributing an utterance to its speaker stays with CM-3 (ADR 0019).
+
+A speaker who is not identified has no continuity at all: the turn is answered and forgotten. No
+history of an unknown speaker is kept, not even request-local (narrower than ADR 0009 allows).
 
 ### 3. The continuity session
 
-There is one live conversation at a time, in process memory, never persisted: the device has one
-microphone and the loop is half-duplex. It records the person it belongs to (key
-`continuity:person:<id>`, an opaque scope that carries the person id; `conversation_id` is never
-used as identity). Two limits, both read from settings:
+There is **one session slot**, in process memory and never persisted: the device has one microphone
+and the loop is half-duplex. The slot records the person it belongs to and a generation counter;
+`conversation_id` is never used to select it. A `MANUAL` turn uses the same slot (the separate
+`session:<evidence>:person:<id>` working scope is retired).
 
-- **size:** at most 3000 characters of history; the oldest turns leave first. The existing
-  `WORKING_MEMORY_SIZE` cap stays as an upper bound on messages;
-- **silence:** a conversation not extended for 180 seconds is deleted.
+- **Size:** at most 3000 characters of turn content. Whole user-and-assistant pairs leave oldest
+  first; a single pair larger than the cap is not kept. `WORKING_MEMORY_SIZE` stays as an upper
+  bound on messages.
+- **Silence:** a session not extended for 180 seconds expires. Expiry is checked on every access
+  against an injectable clock (no background sweeper); an expired session is dropped at that access.
+  Silence is measured from the last turn written; a suspended session keeps ageing.
 
-Setting names and defaults are fixed by the plan (a pair such as `WORKING_MEMORY_MAX_CHARS=3000`
-and `WORKING_MEMORY_IDLE_SECONDS=180`, both added to `.env.example`). The silence is measured from
-the last turn written; a suspended conversation (below) keeps ageing and expires at 180 seconds like
-any other.
+Setting names and defaults are fixed by the plan (for example `WORKING_MEMORY_MAX_CHARS=3000` and
+`WORKING_MEMORY_IDLE_SECONDS=180`, both in `.env.example`).
 
 ### 4. Transitions
 
-| The next turn is | Effect on the live conversation | Does the turn read or write it? |
+| The generic turn's speaker is | Effect on the session | Does the turn read or write it? |
 |---|---|---|
-| the same identified person | continues | reads it, then writes the new turn |
-| another identified person | the previous conversation is deleted; a new one starts | reads nothing, writes its own |
-| `ambiguous` | **suspended**: kept, but not read, not written and not shown to anyone | no |
-| `unknown` (including no evidence) | deleted | no |
-| idle for 180 s | deleted | n/a |
+| the same identified person | continues | reads it, then writes the new pair |
+| another identified person | the previous session is deleted; a new one starts | reads nothing, writes its own |
+| `ambiguous` | **suspended**: kept, not read, not written | no |
+| `unknown`, `probable`, or no evidence (including a failure, decision 1) | **suspended** | no |
+| — (180 s of silence) | deleted | n/a |
 
-A suspended conversation resumes only if the same person is identified again before it expires. A
-change of speaker is seen only through the face (decision 1): a second person who speaks while the
-owner's face stays in front of the camera is not detected, which is the same limit ADR 0016 already
-accepts for `basic`.
+A suspended session resumes only when the same person is identified again before it expires; the
+turns spoken while it was suspended are not written anywhere. The second row is unreachable with
+one enrolled owner (another enrolled face vetoes to `ambiguous` and the PIN requires the owner), so
+it is tested with synthetic evidence.
 
-### 5. A local-unlock grant is consulted by operation, not by turn (supersedes ADR 0016 §5)
+**Which turns take part.** Only generic turns read, write or apply a transition. Deterministic and
+protected turns (date, age, own children, "who am I", the scene stub) neither read nor write the
+session nor apply a transition, and do not extend its silence; a protected answer therefore never
+enters the history, and protected data cannot reach a later prompt through it.
+
+**When.** The transition is applied when the turn's speaker is resolved, before generation. A turn
+whose generation fails, falls back, or produces nothing recordable writes nothing and leaves the
+session as the transition left it. A write carries the generation it read; a write whose generation
+is stale (another turn changed the session meanwhile) is dropped.
+
+### 5. Logging
+
+Every transition is logged with a closed reason (`continued`, `started`, `replaced`, `suspended`,
+`expired`) and no content. The person id may appear in these lines, as it already does in the turn
+actor log. Conversation text stays out of logs unless `LOG_CONVERSATION_TEXT` is on.
+
+### 6. A local-unlock grant is consulted by operation, not by turn (supersedes ADR 0016 §5)
 
 A local-unlock grant is the one-use, scoped token that a local factor issues. Today the only such
 factor is the PIN; any future local factor that issues the same scoped `LOCAL_UNLOCK` grant (for
 example a fingerprint reader) is covered by this decision without a new ADR, although adding the
 factor itself needs its own.
 
-ADR 0016 §5 stands for the token of the default scope: when the owner's face matched, that token is
-not consulted and stays unspent. The new rule is for operations that declare their own grant:
+ADR 0016 §5 stands for the default scope: when the owner's face matched, a default-scope token is
+not consulted and stays unspent. The new rule is for a fusion resolver built for an operation that
+declares its own scope:
 
-> After the owner's face matched, a presented token is consulted if and only if its scope is the
-> scope the requested operation declares **and** the evidence of the turn does not already satisfy
-> that operation (a spent grant that is required and missing, or an assurance rank below the
-> operation's minimum). The consuming resolver then spends it and the turn gains `LOCAL_UNLOCK`
-> evidence at `strong`.
+> After the owner's face matched and no veto applied, a presented token of **exactly** that
+> operation's scope is consulted and spent by the consuming resolver. The resolved context then
+> carries the face evidence and the spent `LOCAL_UNLOCK` item (with its `grant_scope` and
+> `grant_spent`), at `strong`, and the reported identity source is `local_unlock`.
 
-Consequences: a `personal_protected_read` token is still ignored after a face match (Plan 0054's
-decision is kept); a `personal_memory_forget` token is consulted and spent on a `forget` turn even
-when the face matched, so `forget` becomes reachable once a route wires it; a token of any other scope is still refused
-without being spent (ADR 0015 decision 1). The vetoes of ADR 0016 §4 apply first: another enrolled
-person's face, or two or more faces, make the turn `ambiguous` and no token is consumed. `confirm`
-keeps having no PIN route.
+A token of any other scope is still refused without being spent (ADR 0015 decision 1); the vetoes
+of ADR 0016 §4 apply first, and then no token is consumed. `confirm` keeps having no local-unlock
+route. CM-2 implements the rule in the fusion resolver of the voice and streaming routes, with a
+resolver built for the default scope behaving exactly as today; `/chat` consults its token without
+any face, so it is unaffected. Each route adopts a resolver built for its operation's scope when
+that operation is wired (ADR 0019 §6, obligation 1): `forget` becomes reachable with a face in frame
+once CM-6 wires it.
 
-CM-2 implements this rule in the fusion resolver: a resolver built for a declared scope applies it,
-and one built for the default scope behaves exactly as today. Each route adopts a resolver built
-for its operation's own scope when that operation is wired (ADR 0019 §6, obligation 1); until then
-the routes keep their request-wide resolver of the default scope.
+### 7. What the prompt receives
 
-### 6. What the prompt receives
+The history goes in the chat messages of both builders (`llm.py` and `llm_streaming.py`). No name,
+id or role of the speaker is interpolated into the system prompt or the history, and no grant
+widens. One sentence of `_MEMORY_DISCIPLINE` changes, minimally: what the person said earlier in
+this same conversation may also be relied on, and nothing beyond the memory block and this
+conversation may be invented. Nothing else in the prompt, the streaming protocol or the emotion
+function changes.
 
-The history goes in the chat messages, as `llm._build_messages` already does. No name, id or role of
-the speaker is interpolated into the system prompt or the history, and no grant widens. The
-presentation guidance and its `MANUAL` gate do not change. Generation, the streaming protocol and
-the emotion function are untouched.
+Because the prompt and the messages change, the plan measures a history-bearing streamed turn
+before it closes: the fallback rate of `full` at or below 5 % (the streaming repair's rule) and
+replies in Spanish, with the evaluation instruments of Plans 0056 to 0059.
 
-### 7. `just chat-test`
+### 8. Wire fields
 
-`/chat` without a token stays stateless, so the A/B isolation check stays as it is. The continuity
-check is rewritten to use an owner token (the script asks for the PIN as a hidden prompt, never
-logs it, unlocks with the default scope once per run and finishes within the token's lifetime;
-the token is only observed, never spent); without a token it reports "continuity
-not checked" instead of failing. The script keeps being a smoke test and gains no new endpoint.
+A generic turn keeps reporting `identity_source = None` and `authentication_consumed = false` on
+every channel, as today: identification on a generic turn is internal and changes no response
+field. The protected turns report as before.
 
-### 8. Acceptance
+### 9. `just chat-test`
 
-The plan that implements this ADR has an automated acceptance and a run by Pipec on real hardware:
-(a) a sentence followed by a question that depends on it, answered as a continuation; (b) a second
-person in frame, which suspends the history and does not answer from it; (c) more than 180 seconds
-of silence, after which the context is gone; (d) the added latency of the face check on a generic
-turn, measured and recorded (it is not known today). Decision 5 is accepted by automated tests
-only: a resolver built for the `personal_memory_forget` scope consults and spends a forget grant
-after a face match, with the real resolvers; there is no spoken `forget` to try until CM-6 wires
-it. Durable memory remains blocked and tested as blocked.
+The smoke order stays: introduce a marker in conversation A, ask in conversation B, recall in A. A
+and the recall carry an owner token (the script asks for the PIN as a hidden prompt, never logs it,
+unlocks with the default scope once per run and finishes within the token's lifetime; the token is
+only observed, never spent); B carries none, so it is `unknown`, suspends the session and cannot
+see it, and the recall in A resumes it. Interactive mode asks for the PIN in the same way. Without a
+token the script reports "continuity not checked" instead of failing. It gains no new endpoint.
+
+### 10. Acceptance
+
+Automated: every row of the transition table, the size and silence limits with a fake clock, the
+generation rule, failures degrading to `unknown`, no grant spent and no voice embedding on a
+generic turn, the default-scope token still ignored after a face match and a declared-scope token
+consulted, the speaker's name absent from prompt and history, durable memory still blocked, and a
+new owner-to-stranger scenario (the owner says something, a stranger or an ambiguous turn asks for
+it, nothing is disclosed). Decision 6 is accepted by automated tests only, with the real resolvers:
+there is no spoken `forget` until CM-6.
+
+By Pipec on real hardware: (a) a sentence followed by a question that depends on it, answered as a
+continuation; (b) a second person beside the owner (suspends, nothing answered from it) and a
+second person alone in frame (suspends); (c) more than 180 seconds of silence, after which the
+context is gone; (d) the added latency of the face check on a generic turn and the count of
+suspensions by closed reason, measured and recorded; plus the measurement of decision 7.
 
 ## Alternatives considered
 
 - **Keep identity lazy and give continuity only to `MANUAL` evidence.** Rejected: no production path
-  emits `MANUAL`, so the companion would still forget the previous sentence; emitting `MANUAL` from
-  a face would turn face evidence into the persistent-memory key, which this ADR does not open.
+  emits `MANUAL`, so the companion would still forget the previous sentence.
 - **Continuity for unknown speakers in an isolated per-conversation session.** Allowed by ADR 0009
   but rejected by Pipec on 2026-10-09: it needs a way to say "the same visitor" without using
   `conversation_id` as identity, and it keeps a stranger's words in memory.
-- **Delete the history on an `ambiguous` turn.** The roadmap's earlier wording; rejected by Pipec
-  because a visitor entering the frame would cost the owner the context of a conversation they are
-  still having. Suspending exposes nothing: no turn reads a suspended conversation.
-- **Face and voice on every generic turn.** Detects a change of speaker better (a voice mismatch
-  becomes `ambiguous`) at about 0.5 s per turn and a dependency on the voice model for all chat.
-  Rejected: chat needs only `basic`.
-- **Always consult a presented PIN token, even after a face match.** Would also rescue the "hoarse
-  day", but reverses Plan 0054's accepted-on-hardware decision and spends a token on turns that do
-  not need it. Rejected.
-- **Leave `forget` unreachable with a face.** Rejected: the spoken "forget this" in front of the
-  camera would never work, which ADR 0019 named as a defect to fix here.
-- **One continuity conversation per person.** Not needed with one enrolled owner and a half-duplex
-  device; revisit with the family profile (P3).
+- **Delete the session on an `ambiguous` or `unknown` turn.** The roadmap's earlier wording, and the
+  first draft of this ADR for `unknown`. Rejected by Pipec (2026-10-09 for `ambiguous`, 2026-10-13
+  for `unknown`): any anonymous `/chat`, a turn without a frame, a camera failure or the owner
+  looking away would wipe the context, and `just chat-test` could not pass. Suspending exposes
+  nothing: no turn reads a suspended session, and 180 s of silence still deletes it.
+- **Face and voice on every generic turn.** Detects a change of speaker better, at about 0.5 s per
+  turn and a dependency on the voice model for all chat. Rejected: chat needs only `basic`.
+- **Always consult a presented token, even after a face match.** Reverses Plan 0054's decision and
+  spends tokens on turns that do not need them. Rejected.
+- **Leave `forget` unreachable with a face.** Rejected: ADR 0019 named it a defect to fix here.
+- **Leave the prompt untouched.** Rejected by Pipec on 2026-10-13: the model could answer "I don't
+  remember" to something said a minute earlier.
+- **Open the recent-emotion buffer with the history.** Rejected: it writes a tone directive into
+  the system prompt from the conversation, which needs its own policy; ADR 0018 already gives the
+  streamed emotion.
+- **One session per person.** Not needed with one enrolled owner and a half-duplex device; revisit
+  with the family profile (P3).
 
 ## Consequences
 
 ### Positive
 
 - The companion remembers the last few turns of the person using it, for the first time, with no
-  durable memory and no new route.
-- Unknown and ambiguous speakers get nothing from the owner's conversation, and an unknown speaker
-  leaves nothing behind.
-- `forget` becomes reachable by voice with a face in frame, through its own spent grant.
+  durable memory, no new route and no new response field.
+- Unknown and ambiguous speakers get nothing from the owner's session and leave nothing behind; an
+  anonymous request or a face miss no longer costs the owner the conversation.
+- `forget` becomes reachable with a face in frame through its own spent grant, once wired.
 - Chat turns do not pay the voice embedding.
 
 ### Negative
 
-- A photograph of the owner in front of the camera receives the owner's continuity (`basic`,
-  ADR 0016 §9).
-- A second person speaking while the owner's face stays in frame is not detected.
-- Continuity exists only where there is evidence: with `ROBOT_FACE_AUTH_ENABLED` and
-  `FACE_AUTHENTICATION_ENABLED` off, voice and streaming turns are `unknown` and stateless, as
-  today; `/chat` needs a token.
+- A photograph of the owner in front of the camera receives the owner's session (`basic`,
+  ADR 0016 §9), and a second person speaking while the owner's face stays in frame is not detected.
+- Continuity exists only where there is evidence: with face authentication off, voice and streaming
+  turns are `unknown`; `/chat` needs a token, which lasts `OWNER_UNLOCK_TTL_SECONDS` (300 s); a
+  protected question spends that token, so the next `/chat` turn is `unknown` (the session is
+  suspended, not lost) until a new unlock.
+- The web chat's "new conversation" no longer separates conversations for an identified person,
+  because `conversation_id` is not identity.
 - A face check is paid on every generic turn when face authentication is on; the history makes the
-  3B model's prompt longer and slower. Both are measured in the acceptance, not assumed.
-- The state is one process's memory: a restart, or a second worker, loses the conversation.
-- A dark day (the face fails) clears the conversation as an `unknown` turn.
+  prompt of the 3B model longer and slower. Both are measured, not assumed.
+- A transcript of the session stays in process memory until it expires and is next accessed, or the
+  server restarts; a restart loses it.
+- Generic and protected turns do not share context: after "what are my children called?", a
+  follow-up chat turn does not know that question was asked.
 
 ## Test consequences
 
-The tests that pin "a generic turn has no history and clears working memory" change on purpose
-(`test_text_turn.py`, `test_chat_endpoint.py`, `test_transcribe_stream.py`,
-`test_transcribe_pipeline.py`, `test_vision_dialog.py` and `test_chat_test.py`, among the ones the
-plan lists after reading them). New tests pin each row of the transition table, the character cap
-and the silence limit with a fake clock, that an unknown or ambiguous turn reads and writes nothing,
-that no durable path opens (retrieval, consolidation and context stay off), that no resolution on a
-generic turn spends a grant or computes a voice embedding, that the default-scope token is still
-ignored after a face match and the forget-scope token is consulted, and that the speaker's name
-reaches neither the prompt nor the history.
+The tests that pin "a generic turn has no history and clears working memory" change on purpose:
+`test_text_turn.py`, `test_chat_endpoint.py`, `test_transcribe_stream.py`,
+`test_transcribe_pipeline.py`, `test_vision_dialog.py`, `test_chat_test.py` and
+`test_working_memory.py` (new limits and API). Kept and re-run, because their guarantees must
+survive: `test_transcribe_memory.py` (fallback not recorded, no hotwords, no owner metadata, no
+consolidation for a face-identified turn), `test_owner_stranger_matrix.py` (plus the new scenario),
+`test_face_authenticated_turn.py`, `test_identity_fusion_turn.py` and `test_speaker_evidence_turn.py`
+(no embedding on a generic turn; `identity_source` still `None`), `test_vision_memoria.py`. A guard
+keeps every read of the session inside its own module.
 
 ## Docs to update when this ADR is Accepted
 
-The ADR index row; ADR 0016's status line (§5 partially superseded) and ADR 0019's follow-up and
-negative consequences; the CM-2 rows of the roadmap and the conversational-memory map (an
-`ambiguous` turn suspends instead of clearing); `identity-and-access.md` (fusion paragraph and
-*Conversation isolation*); the working-memory rows, the diagram line and the Archify diagram of
-`current-state.md`; `.env.example`; the operator manual's `chat-test` line; the plan indexes.
+The ADR index row; ADR 0016's status line (§5 partially superseded); ADR 0019 (follow-up, the
+attribution sentence and the `forget` consequence); ADR 0015's "a public turn reaches the model
+with no history" and ADR 0009's request-local note (a pointer to this ADR); ADR 0005's working
+history line; the CM-2 rows of the roadmap and the conversational-memory map, and the map's
+*Current fracture* and reusable-capabilities lines; `identity-and-access.md` (fusion paragraph,
+the locked-posture sentence, *Conversation isolation*, whose `voice:<session-id>:person:<id>`
+proposal this ADR replaces with one session slot); `cognitive-contracts.md`,
+`cognitive-architecture.md` and `memory-and-world-state.md` (working context lasts 180 s);
+`current-state.md` (diagram line and working-memory rows) and its Archify diagram; the Plan 0059
+record (its memory case becomes exercisable); `.env.example`; the operator manual's `chat-test`
+line; the plan indexes.
 
 ## Review
 
-Revisit on a measured false-rejection rate of the face that clears conversations too often, a
-second enrolled household member (P3, per-person conversations), a measured latency that makes the
-per-turn face check unacceptable, liveness or replay defence (ADR 0016 §9), the first capability
-that consumes a personal-memory action (CM-3 onward), a mandatory voice check on chat, or a second
-local-unlock factor such as a fingerprint reader on the robot (it would be another verifier of the
-same scoped grant, so decision 5 holds, but the sensor itself needs its own ADR and the privacy
-contract of the senses).
+Revisit on a measured false-rejection rate of the face that suspends sessions too often, a second
+enrolled household member (P3, per-person sessions), a measured latency that makes the per-turn face
+check unacceptable, a history-bearing fallback rate above the rule, liveness or replay defence
+(ADR 0016 §9), the first capability that consumes a personal-memory action (CM-3 onward), a
+mandatory voice check on chat, or a second local-unlock factor such as a fingerprint reader on the
+robot (another verifier of the same scoped grant, so decision 6 holds, but the sensor itself needs
+its own ADR and the privacy contract of the senses).
 
 ## Follow-up
 
-The CM-2 plan (number 0061 at the time of writing): thread the resolved actor through the channels,
-the working-memory session with its two limits, the per-operation resolver, the `chat-test`
-adaptation and the acceptance above. Written only after Pipec accepts this ADR.
+The CM-2 plan (number 0061 at the time of writing): identification on generic turns per channel,
+the session slot with its limits and generation rule, the transition logging, the per-operation
+resolver rule, the `_MEMORY_DISCIPLINE` sentence and its measurement, the `chat-test` adaptation and
+the acceptance above. Written only after Pipec accepts this ADR's text.
