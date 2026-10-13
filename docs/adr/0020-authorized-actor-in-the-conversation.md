@@ -15,7 +15,10 @@
   paid there and never on public turns", and the part of the same section that makes a presented
   local-unlock grant (today issued by the PIN) unreachable after a face match even for operations
   that declare their own scope (decision 6 below). The rest of §5, §1 to §4 and §6 to §9 stand.
-- **Implemented by:** CM-2, plan to be written (the next free plan number is 0061)
+- **Amends:** [ADR 0016](0016-face-and-voice-identity-fusion.md) §8 (the closed log reasons):
+  `error` joins the set, and `backend_unavailable`, which named a voice backend that is down,
+  also names a face detector that failed (§5 below; decided in Plan 0061, D-3)
+- **Implemented by:** CM-2, [Plan 0061](../plans/open/0061-cm2-generic-turn-continuity.md) (`Ready`, `NOW` since 2026-10-13)
 
 ## Context
 
@@ -137,7 +140,9 @@ in order. A `MANUAL` turn uses the same slot (the separate
   bound on messages.
 - **Silence:** a session not extended for 180 seconds expires. Expiry is checked on every access
   against an injectable clock (no background sweeper); an expired session is dropped at that access.
-  Silence is measured from the last turn written; a suspended session keeps ageing.
+  Silence is measured from the last turn written; a suspended session keeps ageing. A write is
+  not an access: a turn admitted before the limit that finishes after it still writes and
+  refreshes the silence, and the next opening finds it fresh.
 
 Setting names and defaults are fixed by the plan (for example `WORKING_MEMORY_MAX_CHARS=3000` and
 `WORKING_MEMORY_IDLE_SECONDS=180`, both in `.env.example`).
@@ -173,7 +178,8 @@ is stale (another turn changed the session meanwhile) is dropped.
 Every transition is logged with a closed reason (`continued`, `started`, `replaced`, `suspended`,
 `expired`) and no content. A `suspended` line also carries the identification outcome, from a
 closed set (`no_evidence`, `veto_other_person`, `veto_multiple_faces`, `backend_unavailable`,
-`error`), so suspensions and deletions can be counted by cause. The person id may appear in these lines, as it already does in the turn
+`error`), so suspensions and deletions can be counted by cause. They are the reasons of ADR 0016 §8 plus
+`error`, and `backend_unavailable` also covers a face detector that failed. The person id may appear in these lines, as it already does in the turn
 actor log. Conversation text stays out of logs unless `LOG_CONVERSATION_TEXT` is on.
 
 ### 6. A local-unlock grant is consulted by operation, not by turn (supersedes ADR 0016 §5)
@@ -345,8 +351,9 @@ its own ADR and the privacy contract of the senses).
 
 ## Follow-up
 
-The CM-2 plan (number 0061 at the time of writing): identification on generic turns per channel,
+The CM-2 plan is [Plan 0061](../plans/open/0061-cm2-generic-turn-continuity.md), written on
+2026-10-13 after this ADR's text was reviewed twice: identification on generic turns per channel,
 the session slot with its limits and generation rule, the transition logging, the
 `_MEMORY_DISCIPLINE` sentence and its measurement, the `chat-test` adaptation and the acceptance
-above. Written only after Pipec accepts this ADR's text. Decision 6 is implemented by the plan that
-wires the first operation with its own scope (CM-6 for `forget`).
+above. Decision 6 is implemented by the plan that wires the first operation with its own scope
+(CM-6 for `forget`).
