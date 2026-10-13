@@ -38,7 +38,7 @@ from server.cognition.models import (
 from server.cognition.owner_authentication import OwnerRequestResolver, OwnerUnlockScope
 from server.cognition.response_plan import TextTurnPayload
 from server.cognition.speaker_authentication import SpeakerVerdict
-from server.exceptions import BrainMemoryError
+from server.exceptions import BrainMemoryError, VisionError
 from server.vision.faces import DetectedFace, FaceMatch
 
 if TYPE_CHECKING:
@@ -432,7 +432,7 @@ async def test_a_store_error_in_face_resolution_degrades_to_unknown(
     assert actor.status is ActivePersonStatus.UNKNOWN
     assert again is actor
     assert fused.source is None
-    assert fused.last_reason is FusionReason.NO_EVIDENCE
+    assert fused.last_reason is FusionReason.ERROR
     assert factory.owner_ids == []
     assert detect_calls == [1]
     assert await fused.resolve_consent(event, actor) is ConsentStatus.NOT_REQUIRED
@@ -440,6 +440,35 @@ async def test_a_store_error_in_face_resolution_degrades_to_unknown(
     assert len(warnings) == 1
     assert type(error).__name__ in warnings[0]
     assert "secret-canary" not in warnings[0]
+
+
+async def test_a_failed_face_detector_is_reported_as_an_unavailable_backend() -> None:
+    """ADR 0020 §5: a detector failure is not "no evidence", and a valid token still works."""
+
+    async def failing_detect(_frame: bytes) -> list[DetectedFace]:
+        raise VisionError("model unavailable")
+
+    face = FaceRequestResolver(
+        frame=_FRAME,
+        clock=lambda: _NOW,
+        read_role=AsyncMock(return_value=HouseholdRole.OWNER),
+        read_person=AsyncMock(return_value=_OWNER),
+        detect_faces=AsyncMock(side_effect=failing_detect),
+        match_face=AsyncMock(),
+        read_consent=AsyncMock(return_value=True),
+    )
+    fused = _fused(face=face)
+
+    actor = await fused.peek_actor(_event())
+
+    assert actor.status is ActivePersonStatus.UNKNOWN
+    assert fused.last_reason is FusionReason.BACKEND_UNAVAILABLE
+
+    with_token = _pin(with_token=True)
+    fused_with_token = _fused(face=face, pin=with_token.resolver)
+
+    assert (await fused_with_token.peek_actor(_event())).status is ActivePersonStatus.IDENTIFIED
+    assert fused_with_token.last_reason is FusionReason.PIN
 
 
 @pytest.mark.parametrize("with_token", [True, False], ids=["token", "no-token"])
