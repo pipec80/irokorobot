@@ -1,12 +1,12 @@
 # 0062 — Memory candidates and the canonical writer, first cut (CM-3a)
 
-> **Status:** `Queued` — written 2026-10-14 from [ADR 0021](../../adr/0021-memory-candidates-and-the-canonical-writer.md),
+> **Status:** `Ready` and `NOW` — written 2026-10-14 from [ADR 0021](../../adr/0021-memory-candidates-and-the-canonical-writer.md),
 > rehearsed in a scratch copy of `main` (`f92e43d`) and independently reviewed (see *Review record*).
-> Not executable until Pipec promotes it to `Ready` and `NOW`. Decisions D-1 to D-14 are
-> **proposed**, not confirmed. It is the first of the two plans of CM-3a: it has **no spoken
-> dialogue and no hardware**; the offer, the answer and the hardware acceptance are Plan 0063.
+> Promoted by Pipec on 2026-10-14, who confirmed decisions D-1 to D-14 as written. It is the first
+> of the two plans of CM-3a: it has **no spoken dialogue and no hardware**; the offer, the answer
+> and the hardware acceptance are Plan 0063. To be executed in a **new session**.
 
-> **For agentic workers:** if the status above says `Queued`, stop: Pipec has not promoted this plan.
+> **For agentic workers:** if the status above does not say `Ready`, stop: Pipec has not promoted this plan.
 > REQUIRED SUB-SKILLS: `superpowers:executing-plans`,
 > `superpowers:test-driven-development`, `superpowers:verification-before-completion`,
 > `superpowers:finishing-a-development-branch`. Execute only while this is the explicitly
@@ -180,8 +180,8 @@ Inputs the ADR implies that are most likely to bite, each pinned by a test in it
 
 ## Decisions
 
-**Proposed 2026-10-14; Pipec confirms or changes each one when he promotes the plan.** The
-recommendation is the text of each item. None of them contradicts the ADR; the ones that fill a gap
+**Proposed 2026-10-14 and confirmed as written by Pipec when he promoted the plan the same
+day.** The recommendation is the text of each item. None of them contradicts the ADR; the ones that fill a gap
 the ADR left to the plan say so.
 
 1. **D-1 — Module layout.** `memory/candidate_types.py` (the closed vocabulary, pure),
@@ -314,7 +314,7 @@ only.
 
 **Files:** this plan's evidence note only. No production change.
 
-- [ ] **Step 0: Status.** Confirm this plan says `Ready` (Pipec's promotion). If it says `Queued`, stop.
+- [ ] **Step 0: Status.** Confirm this plan says `Ready` (Pipec's promotion). If it says anything else, stop.
 - [ ] **Step 1: Branch.** `git checkout main && git pull`, confirm a clean tree, then
   `git checkout -b feat/0062-cm3a-candidates-and-writer`. Record the base SHA (the rehearsal ran at
   `f92e43d`; if `main` moved, say so and re-check that the diffs below still apply). The diffs are
