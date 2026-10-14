@@ -33,7 +33,7 @@ to see the code, tests, verified gaps, and future delivery sequence.
 
 ## Plan en curso (`NOW`)
 
-No hay plan `NOW`. [0061 — continuidad de corto plazo para la persona identificada (CM-2)](../completed/0061-cm2-generic-turn-continuity.md) **cerró el 2026-10-13** y ya vive en `completed/`: la ranura de continuidad (3000 caracteres, 180 s, una sola persona, generación), la identificación de los turnos genéricos sin voz y sin gastar el grant, su cableado en las tres rutas, una frase del prompt con compuerta medida (fallback 0,00 % en `history` en dos corridas), las guardas, `just chat-test` con el token del dueño y la aceptación en hardware de Pipec. El [ADR 0020](../../adr/0020-authorized-actor-in-the-conversation.md) quedó `Accepted`; no abre memoria durable ni cambia el cable. Pipec elige el siguiente; el número libre es 0062.
+No hay plan `NOW`. [0061 — continuidad de corto plazo para la persona identificada (CM-2)](../completed/0061-cm2-generic-turn-continuity.md) **cerró el 2026-10-13** y ya vive en `completed/`: la ranura de continuidad (3000 caracteres, 180 s, una sola persona, generación), la identificación de los turnos genéricos sin voz y sin gastar el grant, su cableado en las tres rutas, una frase del prompt con compuerta medida (fallback 0,00 % en `history` en dos corridas), las guardas, `just chat-test` con el token del dueño y la aceptación en hardware de Pipec. El [ADR 0020](../../adr/0020-authorized-actor-in-the-conversation.md) quedó `Accepted`; no abre memoria durable ni cambia el cable. Pipec elige el siguiente; el número libre es 0062. El diseño de CM-3 es el [ADR 0021](../../adr/0021-memory-candidates-and-the-canonical-writer.md) (`Proposed`, 2026-10-14).
 
 ## Propuesta de auditoría — no ejecutable
 
