@@ -54,6 +54,12 @@ def _event() -> CognitiveEvent[TextTurnPayload]:
     )
 
 
+@pytest.fixture(autouse=True)
+def _memory_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Identification is on only with memory on; do not depend on the ambient `MEMORY_ENABLED`."""
+    monkeypatch.setattr(settings, "memory_enabled", True)
+
+
 class _World:
     """One request's doubles: a face resolver, a token registry and what the builder saw."""
 

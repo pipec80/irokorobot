@@ -387,7 +387,7 @@ async def test_an_administration_grant_is_one_use_even_after_a_refused_read(
 
 @pytest.mark.integration
 async def test_what_the_owner_said_is_never_given_to_a_turn_with_no_token(
-    voice: _Voice, llm_calls: list[dict[str, object]]
+    voice: _Voice, llm_calls: list[dict[str, object]], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """ADR 0020: the owner's short-term conversation answers the owner and nobody else.
 
@@ -395,6 +395,7 @@ async def test_what_the_owner_said_is_never_given_to_a_turn_with_no_token(
     history, and the owner's words cannot be quoted back. The owner, presenting the same
     token (observed, never spent), picks the conversation up again.
     """
+    monkeypatch.setattr(settings, "memory_enabled", True)  # identification needs memory on
     unlock = await voice.service.unlock(_PIN)
     assert unlock is not None
 

@@ -44,6 +44,9 @@ async def test_chat_returns_exact_contract_and_calls_service_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A valid request should map one service result to the public contract."""
+    # Identification of a generic turn is on only with memory on (ADR 0020); pin it so the
+    # assertion below does not depend on the ambient `MEMORY_ENABLED`.
+    monkeypatch.setattr(settings, "memory_enabled", True)
     process = AsyncMock(return_value=TextTurnResult("Reply", "joy", 42, False))
     monkeypatch.setattr(chat, "process_text_turn", process)
 
