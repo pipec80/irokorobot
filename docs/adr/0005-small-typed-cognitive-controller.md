@@ -6,7 +6,8 @@
 ## Context
 
 The current `server.text_turn` module already orchestrates memory retrieval,
-working history, onboarding, emotion, visual perception, LLM generation, and
+working history (since [ADR 0020](0020-authorized-actor-in-the-conversation.md), the short-term
+session of the identified person), onboarding, emotion, visual perception, LLM generation, and
 turn recording. It is a useful starting point, but it does not explicitly
 resolve the active person, enforce authorization before retrieval, execute
 deterministic family tools, maintain a current world state, or represent

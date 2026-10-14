@@ -165,8 +165,10 @@ blackboard and does not read the database by itself.
 | `confidence` | `Confidence` | Confidence in the resolved context. |
 | `authorization` | `AuthorizationDecision` | Permission applicable to the intended use. |
 
-`conversation_id` separates short working histories. It is not a user account,
-identity proof, or authorization grant.
+`conversation_id` labels a conversation. It is not a user account, identity proof or
+authorization grant, and since [ADR 0020](../adr/0020-authorized-actor-in-the-conversation.md)
+it does not select the short-term history either: that session belongs to the identified
+person.
 
 The richer `ActivePersonContext`, including identity state and its evidence, is
 defined in [Identity, household access, and consent](identity-and-access.md).

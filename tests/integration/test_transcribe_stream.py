@@ -23,6 +23,7 @@ from server.cognition.identity import (
 from server.cognition.models import Confidence, ConfidenceBasis, KnowledgeStatus
 from server.cognition.response_plan import InformationNeed, ResponsePlan, ResponseSource
 from server.exceptions import LLMError, TTSError
+from server.memory.continuity import ContinuityTurn
 from server.routers import transcribe as transcribe_module
 from server.schemas import ConversationTurn
 from server.settings import settings
@@ -236,12 +237,7 @@ def test_stream_prepares_shared_voice_turn(
     new_scope.assert_called_once_with()
     assert prepare.await_args is not None
     assert prepare.await_args.args[1:] == ("hola robot", scope)
-    assert record.call_args.args == (
-        "hola robot",
-        scope,
-        "Hola. ¿Cómo estás?",
-        "joy",
-    )
+    assert record.call_args.args == ("hola robot", "Hola. ¿Cómo estás?")
     assert callable(record.call_args.kwargs["schedule_consolidation"])
 
 
@@ -898,17 +894,17 @@ def test_stream_neutral_user_message_sends_the_neutral_emotion(
 
 
 @pytest.mark.integration
-def test_stream_plain_reply_is_recorded_with_the_users_emotion(
+def test_stream_plain_reply_is_recorded_as_a_normal_turn(
     client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A fully spoken plain-text reply is stored as a normal turn with the classified emotion."""
+    """A fully spoken plain-text reply is recorded as one ordinary exchange (ADR 0020)."""
     record = Mock()
     monkeypatch.setattr(streaming, "record_text_turn", record)
 
     events = _parse_ndjson(_post_stream(client, silence_wav_bytes).text)
 
     assert events[-1]["type"] == "done"
-    assert record.call_args.args[2:] == ("Hola. ¿Cómo estás?", _USER_EMOTION)
+    assert record.call_args.args[1:] == ("Hola. ¿Cómo estás?",)
 
 
 def _assert_one_emotion_before_the_first_audio(events: list[dict[str, object]]) -> None:
@@ -1077,7 +1073,7 @@ async def test_streaming_propagates_prepared_identity_history_and_recording_scop
         None,
         None,
         active_person,
-        "session:11111111111111111111111111111111:person:7",
+        ContinuityTurn((), 7, 0),
     )
     streamed_kwargs: dict[str, object] = {}
 
@@ -1110,7 +1106,7 @@ async def test_streaming_propagates_prepared_identity_history_and_recording_scop
     record_call = record.call_args
     assert record_call is not None
     assert record_call.kwargs["active_person"] is active_person
-    assert record_call.kwargs["history_scope"] == prepared.history_scope
+    assert record_call.kwargs["continuity_turn"] is prepared.continuity
 
 
 @pytest.mark.integration
@@ -1131,7 +1127,7 @@ async def test_streaming_schedules_manual_identity_for_consolidation(
         None,
         None,
         active_person,
-        "session:11111111111111111111111111111111:person:7",
+        ContinuityTurn((), 7, 0),
     )
     scheduler = Mock()
     monkeypatch.setattr(settings, "memory_enabled", True)

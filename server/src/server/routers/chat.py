@@ -8,6 +8,7 @@ from fastapi import APIRouter
 from server import turn_log
 from server.cognition.authorization import evaluate_authorization
 from server.cognition.controller import CognitiveController
+from server.cognition.generic_identity import identify_generic_speaker
 from server.cognition.household_tools import HouseholdKnowledgeTools
 from server.cognition.identity import ActivePersonContext
 from server.cognition.models import CognitiveEvent
@@ -72,6 +73,7 @@ async def chat(
         whether this turn consumed a fresh owner unlock grant.
     """
     request_identity = owner_unlock_service.for_request(x_iroko_identity_token)
+    event = _event_from_request(request)
 
     async def resolve_actor(event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
         actor = await request_identity.resolve_actor(event)
@@ -85,8 +87,22 @@ async def chat(
         return actor
 
     async def legacy_turn(message: str, conversation_id: str) -> TextTurnResult:
-        """Delegate to text-turn orchestration with the shared HTTP client."""
-        return await process_text_turn(resources.http_client, message, conversation_id)
+        """Name the speaker (observing the token, never spending it), then converse."""
+        speaker = await identify_generic_speaker(
+            owner_unlock_service.for_request,
+            token=x_iroko_identity_token,
+            frame=None,
+            event=event,
+        )
+        if speaker.actor is not None:
+            turn_log.log_actor("chat", speaker.actor)
+        return await process_text_turn(
+            resources.http_client,
+            message,
+            conversation_id,
+            active_person=speaker.actor,
+            suspend_cause=speaker.cause,
+        )
 
     controller = CognitiveController(
         today=_today,
@@ -98,7 +114,6 @@ async def chat(
         household_tools=HouseholdKnowledgeTools(reader=PolicyGatedV4Reader()),
         consent_resolver=request_identity.resolve_consent,
     )
-    event = _event_from_request(request)
     decision = await controller.decide(event)
     # Chat has no camera round-trip at all — a scene request always gets the
     # fixed unavailable plan.

@@ -14,8 +14,21 @@ from robot.conversation_log import CONVERSATION_LOGGER_NAME as ROBOT_CONVERSATIO
 from server.cognition.owner_authentication import owner_unlock_service
 from server.conversation_log import CONVERSATION_LOGGER_NAME as SERVER_CONVERSATION_LOGGER
 from server.main import app
+from server.memory import continuity
 from server.resources import AppResources
 from server.settings import settings
+
+
+@pytest.fixture(autouse=True)
+def _continuity_session_empty() -> Generator[None, None, None]:
+    """Start and finish every test with an empty short-term session (ADR 0020).
+
+    The session is one process-wide slot, so a test that leaves a person in it would
+    otherwise hand that person's history to the next test in the same worker.
+    """
+    continuity.reset()
+    yield
+    continuity.reset()
 
 
 @pytest.fixture(autouse=True)

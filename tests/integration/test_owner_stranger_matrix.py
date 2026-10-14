@@ -383,3 +383,33 @@ async def test_an_administration_grant_is_one_use_even_after_a_refused_read(
     second = await voice.revoke_face(unlock.token)
 
     assert (first, second) == (204, 401)
+
+
+@pytest.mark.integration
+async def test_what_the_owner_said_is_never_given_to_a_turn_with_no_token(
+    voice: _Voice, llm_calls: list[dict[str, object]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ADR 0020: the owner's short-term conversation answers the owner and nobody else.
+
+    The next speaker presents nothing, so they are the public unknown: the model receives no
+    history, and the owner's words cannot be quoted back. The owner, presenting the same
+    token (observed, never spent), picks the conversation up again.
+    """
+    monkeypatch.setattr(settings, "memory_enabled", True)  # identification needs memory on
+    unlock = await voice.service.unlock(_PIN)
+    assert unlock is not None
+
+    await voice.speak("Mi clave temporal es zqx-session-5", token=unlock.token)
+    stranger = await voice.speak("¿Qué dijo la persona anterior?")
+    await voice.speak("¿Qué te dije antes?", token=unlock.token)
+
+    assert len(llm_calls) == 3
+    assert llm_calls[0]["history"] == []
+    assert llm_calls[1]["history"] is None
+    assert "zqx-session-5" not in str(stranger["llm_response"])
+    resumed = llm_calls[2]["history"]
+    assert resumed is not None
+    assert [turn.content for turn in resumed] == [  # type: ignore[attr-defined]  # ConversationTurn items
+        "Mi clave temporal es zqx-session-5",
+        _LLM_REPLY,
+    ]

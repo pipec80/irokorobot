@@ -86,7 +86,7 @@ Pipec; commit `228b146`. Outcomes only.
 | Case | Result |
 |---|---|
 | 1. Small talk, no fallback phrase | Pass: 13 turns over two sessions, every one `outcome=ok`, no `protocol_fallback` |
-| 2. A turn that carries memory | Not exercisable: every turn logs `Turn memory: skipped (no verified identity)`; production puts no history or memory in the prompt before CM-2 |
+| 2. A turn that carries memory | Not exercisable: every turn logs `Turn memory: skipped (no verified identity)`; production puts no history or memory in the prompt before CM-2. *Exercisable since Plan 0061 (2026-10-13): a turn of the identified owner now carries the session's history, measured in [`0061-stream-history-run1.md`](0061-stream-history-run1.md) and [`run2`](0061-stream-history-run2.md) (0.00 % fallback on the `history` set both times).* |
 | 3. The emotion event | Pass: exactly one `emotion` before the first audio each time; `neutral` in 11 turns, `joy` in one, `sadness` for a sentence in which the user said they were a little sad |
 | 4. No tag or label spoken aloud | Pass for the three turns whose text was logged (`LOG_CONVERSATION_TEXT=true`); the first ten turns were not logged as text and nothing odd was reported |
 | 5. The robot behaves as before | Pass: emotion then audio, sentence by sentence |

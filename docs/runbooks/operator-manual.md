@@ -99,7 +99,7 @@ problem can be localized without running the whole loop.
 | `piper_test.py` | `uv run python scripts/piper_test.py --text ...` | Text → Piper TTS → speaker only | No | No |
 | `pipeline_test.py` | `just test-pipeline` | Smoke test of the three model seams, `mic → STT → LLM → TTS → speaker` (the mic is optional with `--text`); real model code, but no controller, identity, memory or HTTP | No | Yes (Ollama) |
 | `client_test.py` | `just test-client` | Full HTTP round trip through the real running server | Yes | No |
-| `chat_test.py` | `just chat-test` | `/chat` text-only: continuity, isolation, interactive mode | Yes | No |
+| `chat_test.py` | `just chat-test` | `/chat` text-only: contract, A/B isolation and, with the owner PIN (hidden prompt; Enter skips it), the continuity of the identified owner; interactive mode | Yes | No |
 | `memory_test.py` | `just memory-test --session` / `--show-db` | Public voice channel + raw SQLite memory state | Yes (except `--show-db`) | No |
 | `vision_demo.py` | `just vision-demo` | Webcam frame → `/vision/describe` (scene only, no identity) | Yes, `VISION_ENABLED=true` | No |
 | `faces_demo.py` | `just faces-demo --see` | Webcam/photo → `/vision/respond` scene dialogue (still no biometrics) | Yes | No |
@@ -331,6 +331,7 @@ rule combines them, and no path adds a second authorization system:
 | Optional PIN token, when the face did not identify | answers | `strong` | `pin` |
 | Another enrolled person's face, or two or more faces (even with a token) | denies, token kept | — | `veto_other_person` / `veto_multiple_faces` |
 | No face, unknown face, or a voice alone | denies | — | `no_evidence` |
+| The face detector or the identity store failed | denies | — | `backend_unavailable` / `error` |
 
 With the owner's face matched a presented PIN token is neither consulted nor spent, and the
 robot attaches a frame on every turn while `ROBOT_FACE_AUTH_ENABLED` is on, so in practice

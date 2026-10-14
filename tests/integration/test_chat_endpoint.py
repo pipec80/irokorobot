@@ -7,10 +7,12 @@ from unittest.mock import ANY, AsyncMock, Mock
 
 from httpx import ASGITransport, AsyncClient
 import pytest
+from server.cognition.identity import ActivePersonStatus
 from server.cognition.owner_authentication import owner_unlock_service
 from server.cognition.response_plan import MAX_TURN_MESSAGE_CHARS
 from server.main import app
-from server.memory import working
+from server.memory import continuity
+from server.memory.continuity import SuspendCause
 from server.resources import AppResources
 from server.routers import chat
 from server.settings import settings
@@ -36,19 +38,15 @@ async def _client() -> AsyncIterator[AsyncClient]:
             yield client
 
 
-@pytest.fixture(autouse=True)
-def _clear_working_memory() -> None:
-    """Reset process-local conversation buffers before each test."""
-    working._buffers.clear()
-    working._emotion_buffers.clear()
-
-
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_chat_returns_exact_contract_and_calls_service_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A valid request should map one service result to the public contract."""
+    # Identification of a generic turn is on only with memory on (ADR 0020); pin it so the
+    # assertion below does not depend on the ambient `MEMORY_ENABLED`.
+    monkeypatch.setattr(settings, "memory_enabled", True)
     process = AsyncMock(return_value=TextTurnResult("Reply", "joy", 42, False))
     monkeypatch.setattr(chat, "process_text_turn", process)
 
@@ -66,7 +64,14 @@ async def test_chat_returns_exact_contract_and_calls_service_once(
         "conversation_id": "web-primary",
         "authentication_consumed": False,
     }
-    process.assert_awaited_once_with(ANY, "Hello", "web-primary")
+    process.assert_awaited_once()
+    call = process.await_args
+    assert call is not None
+    assert call.args == (ANY, "Hello", "web-primary")
+    # No frame and no token: the speaker is the public unknown, and the turn is suspended
+    # for lack of evidence (ADR 0020 §1).
+    assert call.kwargs["active_person"].status is ActivePersonStatus.UNKNOWN
+    assert call.kwargs["suspend_cause"] is SuspendCause.NO_EVIDENCE
 
 
 @pytest.mark.integration
@@ -182,15 +187,11 @@ async def test_chat_openapi_uses_request_and_response_schemas() -> None:
 async def test_chat_without_internal_evidence_is_one_turn_and_stateless(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Public conversation IDs must not unlock history or persistent memory."""
+    """An unidentified chat turn gets no history or persistent memory and leaves nothing."""
     build_context = AsyncMock()
-    get_history = Mock()
-    get_emotion = Mock()
     generate = AsyncMock(side_effect=[("A1", "joy"), ("B1", "sadness"), ("A2", "neutral")])
     monkeypatch.setattr(settings, "memory_enabled", True)
     monkeypatch.setattr(text_turn, "build_context", build_context)
-    monkeypatch.setattr(text_turn.working, "get_history", get_history)
-    monkeypatch.setattr(text_turn.working, "get_recent_emotion", get_emotion)
     monkeypatch.setattr(text_turn.llm, "generate_response", generate)
 
     async with _client() as client:
@@ -206,12 +207,9 @@ async def test_chat_without_internal_evidence_is_one_turn_and_stateless(
             assert response.status_code == 200
 
     build_context.assert_not_awaited()
-    get_history.assert_not_called()
-    get_emotion.assert_not_called()
     assert [item.kwargs["context"] for item in generate.await_args_list] == [None, None, None]
     assert [item.kwargs["history"] for item in generate.await_args_list] == [None, None, None]
-    assert working._buffers == {}
-    assert working._emotion_buffers == {}
+    assert continuity.open_turn(7).history == ()
 
 
 @pytest.mark.integration

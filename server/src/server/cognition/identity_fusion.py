@@ -69,6 +69,7 @@ class FusionReason(StrEnum):
     VETO_OTHER_PERSON = "veto_other_person"
     VETO_MULTIPLE_FACES = "veto_multiple_faces"
     BACKEND_UNAVAILABLE = "backend_unavailable"
+    ERROR = "error"
     NO_EVIDENCE = "no_evidence"
 
 
@@ -98,6 +99,7 @@ class FusedIdentityResolver:
         self._clock = clock
         self._cached: ActivePersonContext | None = None
         self._peeked: ActivePersonContext | None = None
+        self._face_store_failed = False
         self.last_reason: FusionReason | None = None
         self.source: IdentitySource | None = None
 
@@ -195,8 +197,16 @@ class FusedIdentityResolver:
             self.last_reason = FusionReason.PIN
             self.source = "local_unlock"
         else:
-            self.last_reason = FusionReason.NO_EVIDENCE
+            self.last_reason = self._reason_without_identification()
         return pin_context
+
+    def _reason_without_identification(self) -> FusionReason:
+        """Return why nothing identified the actor: a failing face path, or no evidence."""
+        if self._face_store_failed:
+            return FusionReason.ERROR
+        if self._face is not None and self._face.detection_failed:
+            return FusionReason.BACKEND_UNAVAILABLE
+        return FusionReason.NO_EVIDENCE
 
     async def _resolve_face(
         self, event: CognitiveEvent[TextTurnPayload]
@@ -209,6 +219,7 @@ class FusedIdentityResolver:
         except _STORE_ERRORS as exc:
             # Fail closed: neither a veto nor an identification, and nothing personal logged.
             logger.warning("Face identity degraded to unknown: %s", type(exc).__name__)
+            self._face_store_failed = True
             return None
         verdict = self._face.last_verdict
         if verdict is FaceAuthenticationVerdict.AMBIGUOUS:

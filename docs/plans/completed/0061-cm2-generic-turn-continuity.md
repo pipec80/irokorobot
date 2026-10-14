@@ -1,10 +1,11 @@
 # 0061 — Short-term continuity for the identified person (CM-2)
 
-> **Status:** `Ready` and `NOW` — written 2026-10-13 from [ADR 0020](../../adr/0020-authorized-actor-in-the-conversation.md)
-> (`Proposed`, reviewed by two independent audits and merged in #176 and #177), rehearsed in a scratch
-> copy of `main` (`2385981`) and independently reviewed (see *Review record*). Pipec promoted it on
-> 2026-10-13 and confirmed decisions D-1 to D-12 exactly as written. Execute it in a **new session**.
-> ADR 0020 becomes `Accepted` when this plan closes.
+> **Status:** `Closed 2026-10-13` — written 2026-10-13 from [ADR 0020](../../adr/0020-authorized-actor-in-the-conversation.md),
+> rehearsed in a scratch copy of `main` (`2385981`), independently reviewed (see *Review record*),
+> promoted by Pipec the same day (decisions D-1 to D-12 confirmed as written), executed in a new
+> session on one plain branch, and accepted on real hardware by Pipec
+> ([record](../../evals/0061-generic-turn-continuity-acceptance.md)). ADR 0020 is `Accepted`.
+> See *Execution record* at the end.
 
 > **For agentic workers:** if the status above says `Queued`, stop: Pipec has not promoted this plan.
 > REQUIRED SUB-SKILLS: `superpowers:executing-plans`,
@@ -4640,3 +4641,44 @@ reason is the one observable difference) and the two settings.
 - **Barge-in and the robot's expression** (`Unplanned` rows of the roadmap).
 - **Removing the dead `user_emotion` plumbing** until the tone policy is decided (D-5).
 - **Voice on the generic turn**: it stays on protected turns that ask for `strong`.
+
+## Execution record
+
+Executed 2026-10-13 on `feat/0061-cm2-generic-turn-continuity` from `main` at `838a44f`, inline
+(no subagents, no worktree), one commit per task, every new test observed RED for the stated
+reason before its implementation.
+
+| Task | Commit | Result |
+|---:|---|---|
+| 0 | — | `just gate` 2515 passed; the assumption greps matched; guards 83 passed |
+| 1 | `fc0c3c7` | continuity slot, 24 tests |
+| 2 | `14f461c` | generic identification, 68 tests; the mutation (`resolve_actor`, `wav_bytes=b"x"`) failed exactly the two named tests |
+| 3 | `de918e1` | `text_turn` wired, `working.py` deleted; unit + integration 2533 |
+| 4 | `903a799` | three routes; 6 of the 7 new scenarios were RED, the visual one is green by design and its mutation failed it alone |
+| 5 | `5941b6a` | prompt sentence, 50 tests |
+| 6 | `bf38fd6` | history set and language heuristic, 135 tests |
+| 7 | `724922e` | guards and the no-token scenario; 33 tests; the mutation (`person_id = 1`) failed 11 tests |
+| 8 | `6cb3299` | `chat-test` carries the token, 12 tests |
+| 9 | — | run by Pipec; [acceptance record](../../evals/0061-generic-turn-continuity-acceptance.md) |
+| 10 | the closing commit | documents, ADR 0020 `Accepted`, this plan moved to `completed/` |
+
+`just gate` at the end of Task 8: **2597 passed** (baseline 2515, +82 as rehearsed), lint, types,
+`ruff --select S` and `pip-audit` clean.
+
+**Rulings.** (1) The plan's Task 7 said ten tests fail under its mutation; eleven did, which bites
+at least as much. (2) Task 8's RED showed only the `ImportError` that the plan names first; the
+`EOFError` case it names second was masked and passes after the implementation. (3) The whole-branch
+review was a self-review by the executor, because Pipec's rules forbid subagents unless he asks; no
+Critical or Important finding. (4) Cases b1 and b2 of Task 9 used a face shown on an iPad instead of
+a second person (none was available); they are recorded as substitutes. (5) The one `history` reply
+the language heuristic judged not Spanish was not located (reports keep counts only) and Pipec
+accepted it as the heuristic's limit.
+
+**Deferred minor.** `PreparedTextTurn.user_emotion` and the prompt plumbing stay always `None`
+(decision D-5, tone-policy follow-up).
+
+**Follow-ups with no plan** (all in the cross-cutting table of the
+[roadmap](../../roadmap/cognitive-roadmap.md#cross-cutting-gates-and-conditional-work)): the cost of
+the face check on a generic turn (median about 0.9 s, maximum 1.6 s on the development laptop),
+recorded and not judged; the language of the reply and the model inventing a value when the session
+is empty; a Whisper echo of its own prompt reaching the controller once.

@@ -19,6 +19,7 @@ from scripts.eval_stream_protocol import (
     StreamTurn,
     _StreamClassifier,
     classify_deltas,
+    history_turns,
     measure_stream_protocol,
     public_turns,
     render_stream_report,
@@ -289,6 +290,57 @@ def test_public_turns_are_synthetic_and_context_free() -> None:
     assert len(turns) == 12
     assert all(t.source == "public" and t.context is None and t.history is None for t in turns)
     assert any("Tom" in t.text for t in turns)
+
+
+@pytest.mark.unit
+def test_history_turns_are_synthetic_dialogues_that_depend_on_their_history() -> None:
+    """ADR 0020 §7: the measurement needs turns that carry a conversation in the prompt."""
+    turns = history_turns()
+
+    assert len(turns) == 12
+    assert len({turn.label for turn in turns}) == 12
+    for turn in turns:
+        assert turn.source == "history"
+        assert turn.context is None
+        assert turn.active_person is None
+        assert turn.history
+        roles = [item.role for item in turn.history]
+        assert roles == ["user", "assistant"] * (len(roles) // 2)
+
+
+@pytest.mark.unit
+async def test_measure_counts_replies_that_are_not_spanish_and_skips_the_undetermined() -> None:
+    spanish = "Claro, tu número favorito es el cuarenta y dos."
+    english = "Of course, your favorite number is forty-two and I am happy to help you."
+    result = await measure_stream_protocol(
+        [_turn("history"), _turn("history"), _turn("history"), _turn("history")],
+        client=_client(),
+        runs=1,
+        generate=_generator([spanish, english, "Hola.", '{"x": 1}']),
+    )
+
+    assert result.language_judged == 2  # the short reply is undetermined, the invalid one skipped
+    assert result.not_spanish == 1
+    assert result.by_source["history"].language_judged == 2
+    assert result.by_source["history"].not_spanish == 1
+
+
+@pytest.mark.unit
+def test_the_report_counts_replies_not_in_spanish_and_never_prints_them() -> None:
+    result = StreamProtocolResult(
+        valid=60,
+        invalid_protocol=0,
+        empty_stream=0,
+        errors=0,
+        by_source={},
+        not_spanish=2,
+        language_judged=58,
+    )
+
+    report = render_stream_report(result, model="qwen2.5:3b", runs=5)
+
+    assert "not in Spanish" in report
+    assert "2 of 58" in report
 
 
 @pytest.mark.unit

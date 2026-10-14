@@ -313,3 +313,67 @@ def test_the_personal_memory_guards_detect_a_violation() -> None:
     assert _outside(leak, _GRANT_FIELD_HOMES, _GRANT_FIELD_NAMES) == ["routers/leak.py"]
     assert _calls(leak, "select_person") == ["routers/leak.py"]
     assert _issued_as_manual(leak) == ["routers/leak.py"]
+
+
+# --- the short-term continuity session (Plan 0061, ADR 0020) ----------------------------
+_SESSION_HOME = "memory/continuity.py"
+_SESSION_CALLERS = frozenset({_SESSION_HOME, "text_turn.py"})
+_SESSION_PRIVATE_NAMES = frozenset({"_session", "_slot", "ContinuitySession"})
+_GENERIC_IDENTITY_HOME = "cognition/generic_identity.py"
+
+
+def _keyword_values(sources: Mapping[str, str], module: str, keyword: str) -> list[ast.expr]:
+    """The value of every `keyword=...` argument used anywhere in one module."""
+    return [
+        node.value
+        for node in ast.walk(ast.parse(sources[module]))
+        if isinstance(node, ast.keyword) and node.arg == keyword
+    ]
+
+
+@pytest.mark.unit
+def test_the_session_is_opened_and_written_only_by_the_text_turn_service() -> None:
+    """A route or a tool that read the session would bypass the speaker's transition."""
+    sources = _sources()
+
+    assert sorted(_calls(sources, "open_turn")) == sorted(_SESSION_CALLERS)
+    assert sorted(_calls(sources, "record_pair")) == sorted(_SESSION_CALLERS)
+    assert _outside(sources, frozenset({_SESSION_HOME}), _SESSION_PRIVATE_NAMES) == []
+
+
+@pytest.mark.unit
+def test_identifying_a_generic_turn_never_spends_a_grant_or_computes_a_voice() -> None:
+    """ADR 0020 §1: observe the token (`peek_actor`), and pass no audio to the resolver."""
+    sources = _sources()
+
+    assert _calls({_GENERIC_IDENTITY_HOME: sources[_GENERIC_IDENTITY_HOME]}, "resolve_actor") == []
+    assert (
+        _calls({_GENERIC_IDENTITY_HOME: sources[_GENERIC_IDENTITY_HOME]}, "resolve_consent") == []
+    )
+    wav_values = _keyword_values(sources, _GENERIC_IDENTITY_HOME, "wav_bytes")
+    assert wav_values
+    assert all(isinstance(v, ast.Constant) and v.value is None for v in wav_values)
+
+
+@pytest.mark.unit
+def test_the_continuity_guards_detect_a_violation() -> None:
+    leak = {
+        "routers/leak.py": (
+            "turn = continuity.open_turn(7)\n"
+            "ok = continuity.record_pair(turn, 'a', 'b')\n"
+            "slot = continuity._session\n"
+        ),
+        "cognition/generic_identity.py": (
+            "actor = await fused.resolve_actor(event)\n"
+            "fused = build(pin, frame=frame, wav_bytes=audio)\n"
+        ),
+        "memory/continuity.py": "x = _session.open_turn(1)\n",
+    }
+
+    assert _calls(leak, "open_turn") == ["routers/leak.py", "memory/continuity.py"]
+    assert _outside(leak, frozenset({_SESSION_HOME}), _SESSION_PRIVATE_NAMES) == ["routers/leak.py"]
+    assert _calls({_GENERIC_IDENTITY_HOME: leak[_GENERIC_IDENTITY_HOME]}, "resolve_actor") == [
+        _GENERIC_IDENTITY_HOME
+    ]
+    (wav_value,) = _keyword_values(leak, _GENERIC_IDENTITY_HOME, "wav_bytes")
+    assert not (isinstance(wav_value, ast.Constant) and wav_value.value is None)

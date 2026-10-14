@@ -40,7 +40,7 @@ database migration.
 
 | Layer | Purpose | Lifetime | Examples |
 |---|---|---|---|
-| Working context | Keep one conversation coherent. | Minutes or one session. | Recent turns, pending clarification. |
+| Working context | Keep one conversation coherent. | 180 seconds of silence, at most 3000 characters, in process only ([ADR 0020](../adr/0020-authorized-actor-in-the-conversation.md)). | Recent turns, pending clarification. |
 | World state | Represent what is probably true now. | Seconds to hours, with TTL. | Person visible, door open, room occupied. |
 | Declarative facts | Store confirmed literal knowledge. | Until superseded or revoked. | Birth date, preferred name, allergy. |
 | Relationships | Connect known entities by identity. | Validity interval. | Ana is parent of Leo. |

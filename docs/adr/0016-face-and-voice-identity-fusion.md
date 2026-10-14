@@ -1,6 +1,6 @@
 # 0016 — Identify the owner by face; require more assurance for reserved data
 
-- **Status:** Accepted (2026-09-30, Pipec); §3 (assurance) refined by [ADR 0019](0019-personal-memory-capabilities.md) (a capability may declare a minimum above the category floor); §5, §6 and the negative consequences clarified 2026-09-30, during Plan 0054's execution, on Pipec's decision (a presented PIN token is not consulted once the owner's face matched)
+- **Status:** Accepted (2026-09-30, Pipec); §3 (assurance) refined by [ADR 0019](0019-personal-memory-capabilities.md) (a capability may declare a minimum above the category floor); §5, §6 and the negative consequences clarified 2026-09-30, during Plan 0054's execution, on Pipec's decision (a presented PIN token is not consulted once the owner's face matched); §5 partially superseded and §8 amended by [ADR 0020](0020-authorized-actor-in-the-conversation.md) (2026-10-13: a generic turn also identifies its speaker, without the voice, and the closed log reasons gain `error`)
 - **Date:** 2026-09-30
 - **Builds on:** [ADR 0006](0006-personal-and-family-companion-profiles.md),
   [ADR 0008](0008-progressive-owner-authentication.md),
@@ -99,8 +99,9 @@ introduced: with one enrolled speaker it cannot be measured honestly.
 
 Face first; voice only when the face matched the owner (the only case in which
 corroboration exists); the PIN only when a token was presented and nothing resolved or
-vetoed. When the owner's face matched, a presented token is not consulted and stays unspent: the PIN raises assurance only on a turn the face did not resolve. Identity is resolved only on protected turns, so the embedding (about 0.5 s, one
-per request) is paid there and never on public turns. Without a token there is no PIN
+vetoed. When the owner's face matched, a presented token is not consulted and stays unspent: the PIN raises assurance only on a turn the face did not resolve. The embedding (about 0.5 s, one
+per request) is paid only on protected turns. A generic turn also resolves its speaker, but
+by face and an observed token only, never by voice (ADR 0020 §1). Without a token there is no PIN
 lookup at all.
 
 ### 6. The PIN is optional and administrative
@@ -126,7 +127,9 @@ The spoken and returned text is the existing generic denial in every non-authori
 case, including a reserved request answered with only `basic` assurance. The reason goes
 only to the server log as a closed enum with no name, distance or score: `pin`,
 `face_and_voice`, `face_only`, `insufficient_assurance`, `veto_other_person`,
-`veto_multiple_faces`, `backend_unavailable`, `no_evidence`. The additive response field
+`veto_multiple_faces`, `backend_unavailable`, `error`, `no_evidence`. `backend_unavailable`
+also names a face detector that failed and `error` a face or identity store that failed
+(ADR 0020 §5; before, both were logged as `no_evidence`). The additive response field
 `identity_source` gains `"face_voice"`.
 
 ### 9. Replay and spoofing: measured, not closed

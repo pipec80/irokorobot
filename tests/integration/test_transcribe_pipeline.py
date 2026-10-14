@@ -331,8 +331,10 @@ def test_transcribe_uses_distinct_internal_scopes_per_request(
         conversation_id: str,
         *,
         schedule_consolidation: ConsolidationScheduler,
+        active_person: object = None,
+        suspend_cause: object = None,
     ) -> TextTurnResult:
-        _ = client, schedule_consolidation
+        _ = client, schedule_consolidation, active_person, suspend_cause
         return TextTurnResult("shared reply", "joy", 7, False)
 
     process = AsyncMock(side_effect=process_turn)

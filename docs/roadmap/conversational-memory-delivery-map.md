@@ -1,8 +1,9 @@
 # Conversational-memory delivery map
 
 **Status:** canonical design; CM-0 closed (Plan 0046, 2026-09-08); CM-1's grant scoping closed
-(Plan 0051, 2026-10-06) and its memory capabilities closed as policy only (Plan 0060, 2026-10-09)
-**Last reviewed:** 2026-10-09
+(Plan 0051, 2026-10-06) and its memory capabilities closed as policy only (Plan 0060, 2026-10-09);
+CM-2 closed (Plan 0061, 2026-10-13: short-term continuity for the identified person)
+**Last reviewed:** 2026-10-13
 
 ## Objective
 
@@ -70,11 +71,12 @@ Evidence current at the time this map was written:
   tests and the offline `scripts/eval_chat.py` build that evidence directly
   (verified 2026-09-30). Reusable history, vector retrieval and consolidation are
   therefore off for every speaker, the face-identified owner included;
-  "¿te acuerdas de…?" does not work for anyone yet. Even the previous turn is
-  lost: without `MANUAL` evidence `text_turn.py` prepares `history=None` and
-  clears the working memory after each reply, so "estoy arreglando una
-  bicicleta" followed by "¿qué herramienta necesito?" reaches the LLM without
-  the first sentence;
+  "¿te acuerdas de…?" does not work for anyone yet. *Since Plan 0061 (CM-2,
+  2026-10-13) the previous turn is no longer lost:* the identified person's
+  last exchanges reach the next turn for 180 s of silence and 3000 characters,
+  in process only, so "estoy arreglando una bicicleta" followed by "¿qué
+  herramienta necesito?" reaches the LLM with the first sentence. Persistent
+  history, retrieval and consolidation stay off;
 - only the children list and count are connected: every other authorized
   household question answers that the information "todavía no está conectada",
   and no controller branch confirms, corrects or forgets a memory;
@@ -100,7 +102,9 @@ What already exists must not be rebuilt:
 - policy and audit evaluator;
 - V4 facts and relations with state and validity;
 - authorized household reads;
-- working memory bounded by identity and session;
+- short-term continuity of the identified person (`memory/continuity.py`, Plan 0061):
+  one in-process session slot bounded by characters and silence, suspended for an
+  unknown or ambiguous speaker;
 - local extraction through Ollama;
 - episodic storage and SQLite/sqlite-vec vector search;
 - isolation tests that prevent legacy memory when the currently required
@@ -117,7 +121,7 @@ once in the
 |---|---|---|---|
 | CM-0 | Versioned longitudinal benchmark and one reproducible RED run | evaluation specification | [Plan 0046](../plans/completed/0046-reproducible-longitudinal-memory-baseline.md) — **closed 2026-09-08**: benchmark GREEN, measured baseline RED (`ac43c58`, exit 1) |
 | CM-1 | Every grant bound to one named operation (ADR-0015 decision 1, Plan 0051), then explicit `read`, `propose`, `confirm`, `correct`, and `forget` capabilities for personal memory | current policy and identity; PC-4 (closed) | [Plan 0051](../plans/completed/0051-scoped-owner-grants.md) **closed 2026-10-06**; the memory capabilities are [Plan 0060](../plans/completed/0060-cm1-personal-memory-capabilities.md) (closed 2026-10-09; policy only, nothing wired; [ADR 0019](../adr/0019-personal-memory-capabilities.md) `Accepted`) |
-| CM-2 | The authorized actor and its grants reach the conversational flow without interpolating names or expanding permissions implicitly; short-term continuity (in-process working memory for the identified actor, deleted by another identified person or 180 s of silence, suspended on an `unknown` or `ambiguous` turn, per [ADR 0020](../adr/0020-authorized-actor-in-the-conversation.md) `Proposed`) has its own acceptance test; durable legacy paths stay blocked. Identifying generic turns supersedes ADR-0016 §5 and needs a new ADR | CM-1 | [ADR 0020](../adr/0020-authorized-actor-in-the-conversation.md) `Proposed`; [Plan 0061](../plans/open/0061-cm2-generic-turn-continuity.md) `Ready` (`NOW`) |
+| CM-2 | The authorized actor and its grants reach the conversational flow without interpolating names or expanding permissions implicitly; short-term continuity (in-process working memory for the identified actor, deleted by another identified person or 180 s of silence, suspended on an `unknown` or `ambiguous` turn, per [ADR 0020](../adr/0020-authorized-actor-in-the-conversation.md) `Accepted`) has its own acceptance test; durable legacy paths stay blocked. Identifying generic turns supersedes part of ADR-0016 §5 | CM-1 | [ADR 0020](../adr/0020-authorized-actor-in-the-conversation.md) `Accepted`; [Plan 0061](../plans/completed/0061-cm2-generic-turn-continuity.md) — **closed 2026-10-13**, accepted on real hardware ([record](../evals/0061-generic-turn-continuity-acceptance.md)) |
 | CM-3 | Extraction creates candidates; one writer assigns the classification and promotes to canonical V4 facts and relations. The seed load ("step 0") follows as its second input channel | CM-0, CM-1, CM-2; Plan 0050 | not written |
 | CM-4 | Episodes declare owner, visibility, sensitivity, consent, and retention | CM-3 | not written |
 | CM-5 | Retrieval filters authorization and validity before the prompt and applies a relevance threshold | CM-4 | not written |

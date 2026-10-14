@@ -201,6 +201,9 @@ class FaceRequestResolver:
         self._read_consent = read_consent
         self.consumed = False
         self.last_verdict: FaceAuthenticationVerdict | None = None
+        # True when the detector itself failed (as opposed to finding no face), so a caller
+        # can tell "the backend is down" from "nobody was in frame" (ADR 0020 §5).
+        self.detection_failed = False
         self._cached_context: ActivePersonContext | None = None
 
     async def resolve_actor(self, event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
@@ -262,6 +265,7 @@ class FaceRequestResolver:
             return await self._detect_faces(self._frame)
         except VisionError as exc:
             logger.warning("Face detection failed, degrading to unknown: %s", exc)
+            self.detection_failed = True
             return []
 
     async def _match_when_singular(

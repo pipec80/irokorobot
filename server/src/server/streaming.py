@@ -114,11 +114,9 @@ def _record_success(
         return
     record_text_turn(
         prepared.message,
-        prepared.conversation_id,
         " ".join(state.response_parts),
-        state.emotion or llm.FALLBACK_EMOTION,
         active_person=prepared.active_person,
-        history_scope=prepared.history_scope,
+        continuity_turn=prepared.continuity,
         schedule_consolidation=scheduler,
     )
 

@@ -341,6 +341,27 @@ async def test_vision_error_degrades_to_unknown_without_raising() -> None:
 
 
 @pytest.mark.unit
+async def test_a_failed_detector_is_flagged_and_a_clean_run_is_not() -> None:
+    """The flag lets a caller tell "the backend failed" from "nobody was there" (ADR 0020 §5)."""
+
+    async def failing_detect(_frame: bytes) -> list[DetectedFace]:
+        raise VisionError("model unavailable")
+
+    async def detect_nobody(_frame: bytes) -> list[DetectedFace]:
+        return []
+
+    failed = _resolver(frame=_FRAME, detect_faces=failing_detect)
+    nobody = _resolver(frame=_FRAME, detect_faces=detect_nobody)
+    assert not failed.detection_failed
+
+    await failed.resolve_actor(_event())
+    await nobody.resolve_actor(_event())
+
+    assert failed.detection_failed
+    assert not nobody.detection_failed
+
+
+@pytest.mark.unit
 async def test_no_frame_embedding_or_token_appears_in_logs(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
