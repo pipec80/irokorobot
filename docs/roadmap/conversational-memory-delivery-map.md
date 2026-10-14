@@ -2,8 +2,9 @@
 
 **Status:** canonical design; CM-0 closed (Plan 0046, 2026-09-08); CM-1's grant scoping closed
 (Plan 0051, 2026-10-06) and its memory capabilities closed as policy only (Plan 0060, 2026-10-09);
-CM-2 closed (Plan 0061, 2026-10-13: short-term continuity for the identified person)
-**Last reviewed:** 2026-10-13
+CM-2 closed (Plan 0061, 2026-10-13: short-term continuity for the identified person); CM-3 designed
+in [ADR 0021](../adr/0021-memory-candidates-and-the-canonical-writer.md) (`Proposed`, 2026-10-14) and split into CM-3a and CM-3b
+**Last reviewed:** 2026-10-14
 
 ## Objective
 
@@ -122,11 +123,12 @@ once in the
 | CM-0 | Versioned longitudinal benchmark and one reproducible RED run | evaluation specification | [Plan 0046](../plans/completed/0046-reproducible-longitudinal-memory-baseline.md) — **closed 2026-09-08**: benchmark GREEN, measured baseline RED (`ac43c58`, exit 1) |
 | CM-1 | Every grant bound to one named operation (ADR-0015 decision 1, Plan 0051), then explicit `read`, `propose`, `confirm`, `correct`, and `forget` capabilities for personal memory | current policy and identity; PC-4 (closed) | [Plan 0051](../plans/completed/0051-scoped-owner-grants.md) **closed 2026-10-06**; the memory capabilities are [Plan 0060](../plans/completed/0060-cm1-personal-memory-capabilities.md) (closed 2026-10-09; policy only, nothing wired; [ADR 0019](../adr/0019-personal-memory-capabilities.md) `Accepted`) |
 | CM-2 | The authorized actor and its grants reach the conversational flow without interpolating names or expanding permissions implicitly; short-term continuity (in-process working memory for the identified actor, deleted by another identified person or 180 s of silence, suspended on an `unknown` or `ambiguous` turn, per [ADR 0020](../adr/0020-authorized-actor-in-the-conversation.md) `Accepted`) has its own acceptance test; durable legacy paths stay blocked. Identifying generic turns supersedes part of ADR-0016 §5 | CM-1 | [ADR 0020](../adr/0020-authorized-actor-in-the-conversation.md) `Accepted`; [Plan 0061](../plans/completed/0061-cm2-generic-turn-continuity.md) — **closed 2026-10-13**, accepted on real hardware ([record](../evals/0061-generic-turn-continuity-acceptance.md)) |
-| CM-3 | Extraction creates candidates; one writer assigns the classification and promotes to canonical V4 facts and relations. The seed load ("step 0") follows as its second input channel | CM-0, CM-1, CM-2; Plan 0050 | not written |
-| CM-4 | Episodes declare owner, visibility, sensitivity, consent, and retention | CM-3 | not written |
+| CM-3a | Extraction creates candidates; one writer assigns the classification and promotes to canonical V4 facts. First cut: the owner's own `likes`, `dislikes` and `prefers`, by voice, where every candidate, spoken value and promotion requires face and voice of the same person on that turn; it closes none of the benchmark's write steps ("CM-3" without a letter names CM-3a and CM-3b). The seed load ("step 0") follows as its second input channel | CM-0, CM-1, CM-2; Plan 0050 | [ADR 0021](../adr/0021-memory-candidates-and-the-canonical-writer.md) `Proposed`; Plans 0062 and 0063, not written |
+| CM-3b | The rest of the personal-scope write steps CM-7 needs: third-party relations, `lives_in` with validity, facts reported by another person, a disclosure rule, perceptual candidates, the first `SECURITY` datum and a benchmark `confirm` step (each tied to its owner in ADR 0021 decision 13) | CM-3a | not written; **required before CM-7** |
+| CM-4 | Episodes declare owner, visibility, sensitivity, consent, and retention | CM-3a | not written |
 | CM-5 | Retrieval filters authorization and validity before the prompt and applies a relevance threshold | CM-4 | not written |
-| CM-6 | Correction and forgetting reach facts, relations, episodes, embeddings, summaries, and derived caches | CM-3 through CM-5 | not written |
-| CM-7 | A real scenario learns, restarts, recalls, corrects, forgets, and does not disclose; the benchmark is GREEN on its personal-scope scenarios, and the family-scope ones (`recipient_only_message`, `two_adult_private_facts`) stay reported as pending for P3.2 | CM-0 through CM-6, PC-3, PC-4 | not written |
+| CM-6 | Correction and forgetting reach facts, relations, episodes, embeddings, summaries, and derived caches | CM-3a through CM-5, and CM-3b for the dataset's write steps | not written |
+| CM-7 | A real scenario learns, restarts, recalls, corrects, forgets, and does not disclose; the benchmark is GREEN on its personal-scope scenarios, and the family-scope ones (`recipient_only_message`, `two_adult_private_facts`) stay reported as pending for P3.2 | CM-0 through CM-6 (including CM-3b), PC-3, PC-4 | not written |
 
 The single cross-track order, including the hardening rows (Plans 0055 and
 0050) and the seed load, lives only in the
