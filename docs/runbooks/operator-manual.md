@@ -199,8 +199,10 @@ administration on the server host, not a spoken step.
 Always available, nothing to turn on.
 
 - **Can:** perceive mic/camera under existing local privacy settings,
-  transcribe, hold bounded general conversation, speak through TTS, keep an
-  isolated request-local "unknown" context.
+  transcribe, hold bounded general conversation and speak through TTS. An
+  unknown or ambiguous speaker keeps nothing between turns (ADR 0020): the
+  turn is answered and forgotten, and it never touches the identified
+  person's short-term session.
 - **Cannot:** read, enumerate, or confirm personal/household memory;
   attribute a statement to the owner; mutate memory/identity/consent/
   credentials; control a device or the PC; enroll any biometric.
@@ -374,6 +376,21 @@ and revocation); recovery when face or voice fail is `just face-auth-demo`,
 `just speaker-auth-demo` or `just setup-personal` on the server host, never a
 spoken step.
 
+**Short-term continuity on a generic turn (Plan 0061, ADR 0020).** A conversation
+turn that no protected branch claimed also names its speaker, by the face (`basic`)
+or by a presented default-scope token that is only observed, never spent; the voice
+is not consulted. An identified person gets one in-process session: the last
+exchanges reach the next turn until 180 s pass without a written turn or 3000
+characters are exceeded, another identified person replaces it, and an unknown or
+ambiguous speaker suspends it for that turn without reading or erasing it. Nothing
+is persisted and no durable memory opens. To follow it, read two server log lines
+(closed reasons, never text): `Generic identification: identified | no_evidence |
+veto_other_person | veto_multiple_faces | backend_unavailable | error (N ms)` and
+`Continuity: started | continued | replaced | suspended | expired`. The face check
+costs about 0.2 to 1.6 s on the development laptop (Plan 0061's acceptance). With
+`MEMORY_ENABLED=false` none of this runs. `/vision/respond` is the public unknown
+and neither reads nor writes the session. A restart forgets everything, by design.
+
 **Known gaps, stated plainly:** a photograph of the owner still identifies at
 `basic`; a photograph plus a recording of the exact question would satisfy
 `strong` once a reserved capability exists. Replay and liveness are measured on
@@ -401,6 +418,10 @@ identify, which says nothing about a better spoof; the optional PIN case was not
 | `SPEAKER_MODEL_RETRY_COOLDOWN_S` | `60` | Seconds to wait after a failed speaker-model load before trying again |
 | `SPEAKER_EMBED_TIMEOUT_S` | `30` | Longest a protected turn waits for the embedding (the first call also loads the model, about 15 s); on expiry the turn degrades to `unavailable` |
 | `SPEAKER_MODEL_CACHE_DIR` | unset | Optional override; defaults to `MODELS_DIR/speechbrain` |
+| `MEMORY_ENABLED` | `true` | Server: the whole memory subsystem. Off, generic turns identify nobody, keep no session and touch no store |
+| `WORKING_MEMORY_SIZE` | `20` | Upper bound on messages kept in the short-term session (below 2 keeps nothing) |
+| `WORKING_MEMORY_MAX_CHARS` | `3000` | Characters of turn content the session may hold; whole oldest exchanges leave first |
+| `WORKING_MEMORY_IDLE_SECONDS` | `180` | Seconds without a written turn after which the session is forgotten |
 | `UVICORN_WORKERS` | `1` | Must stay `1` — owner/face grants are process-local; the server refuses to start otherwise |
 
 **The one real startup guard:** `ROBOT_STREAMING=true` on the robot plus
@@ -415,6 +436,9 @@ combination above is safe to mix.
   (gitignored — local history, never cited as a plan's required reading).
 - The combined P0 operator runbook:
   [`p0-runtime-acceptance.md`](p0-runtime-acceptance.md).
+- Plan 0061 acceptance (short-term continuity, the face check's cost and the history
+  stream measurements, outcomes only):
+  [`0061-generic-turn-continuity-acceptance.md`](../evals/0061-generic-turn-continuity-acceptance.md).
 - What's actually implemented right now, including open gaps:
   [`current-state.md`](../architecture/current-state.md).
 - What's authorized to build next: [`docs/plans/README.md`](../plans/README.md).
@@ -466,9 +490,11 @@ the conversational path to "the robot learns who its owner is." **It is not, for
 independent reasons, both verified against the current code:**
 
 1. **It could never create the owner even if it worked.** The gate at
-   `text_turn.py`'s `prepare_text_turn()` — `if manual_evidence is None: ...
-   onboarding=False` — means this interview only starts for an ALREADY-identified
-   actor. It was designed as a "get to know you better" layer on top of an
+   `text_turn.py`'s `prepare_text_turn()` — the persistent context and the
+   onboarding slot are loaded only when `_manual_evidence(...)` is not `None`, and
+   a face- or token-identified turn gets the short-term history only
+   (`onboarding=False`) — means this interview only starts for an
+   ALREADY-identified actor. It was designed as a "get to know you better" layer on top of an
    existing owner, never as the mechanism that establishes one. `just setup-personal`
    has no conversational alternative today.
 2. **It is fully disconnected, right now.** The one function that could pass real
