@@ -30,7 +30,8 @@ When the current request has no fresh, valid evidence, the actor remains
 - STT may transcribe the current utterance;
 - Iroko may produce bounded general conversation and TTS output;
 - request-local working context may be retained only inside an isolated
-  unknown interaction;
+  unknown interaction (since [ADR 0020](0020-authorized-actor-in-the-conversation.md) an unknown
+  or ambiguous turn keeps nothing at all, and the identified person has one short-term session);
 - safe status or authentication guidance may be returned without confirming
   whether protected data exists.
 

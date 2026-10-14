@@ -100,3 +100,5 @@ p95 of 231 ms. `VOICE` stays untrusted; PC-3B (enrollment/runtime) and PC-4
 
 Do not modify a completed plan to create a new decision. Record architecture
 changes in a new ADR and create a new open plan.
+
+[Plan 0061](0061-cm2-generic-turn-continuity.md) closed on 2026-10-13 (CM-2, short-term continuity): the face (or an observed `/chat` token) names the speaker of a generic turn, with no voice embedding and no grant spent, and the identified person gets one in-process session slot (3000 characters, 180 s of silence, replaced by another identified person, suspended by an unknown or ambiguous turn) in place of `memory/working.py`. `just gate` 2597 tests (baseline 2515); a measured prompt sentence (`history` fallback 0.00 % in two runs); accepted on real hardware by Pipec, with an iPad face standing in for the second person; the face check costs a median of about 0.9 s on a generic turn. [Record](../../evals/0061-generic-turn-continuity-acceptance.md); [ADR 0020](../../adr/0020-authorized-actor-in-the-conversation.md) `Accepted`.

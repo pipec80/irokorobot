@@ -16,7 +16,9 @@ inherit the owner's authorization. Reading the protection boundary in full
 (2026-09-24, baseline `ac8275d`) shows which parts hold and which do not.
 
 **What holds.** A public turn reaches the model with no memory context and no
-history; a protected question without a grant is denied before any storage read;
+history (since [ADR 0020](0020-authorized-actor-in-the-conversation.md), a turn whose speaker the
+face or an observed token identifies reads the short-term session; an unknown or ambiguous one
+still reads nothing); a protected question without a grant is denied before any storage read;
 a stranger's words are never consolidated; a spent grant is not inherited by the
 next speaker. Plan 0050 Task 11 turns these into an executable matrix.
 

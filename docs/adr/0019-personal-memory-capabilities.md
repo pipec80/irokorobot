@@ -237,13 +237,16 @@ Whoever wires a capability must:
   write a candidate or a superseding version, and a second person talking beside the owner can have
   their words proposed (the face is in frame, the voice is not checked). Neither becomes the owner's
   truth without `confirm`, which is `strong`, and `correct` never destroys the prior version.
-  Attribution of an utterance to its speaker belongs to CM-2 and CM-3.
+  Attribution of an utterance to its speaker belongs to CM-3: CM-2 ([ADR 0020](0020-authorized-actor-in-the-conversation.md))
+  gives the identified person a short-term session but does not attribute or store anything.
 - **`confirm` is reachable only through face and a verified voice.** It has no PIN route, so it is
   unavailable where speaker authentication is off or the owner's voice is not enrolled (the default
   today). A plan that wires it may add a `personal_memory_confirm` scope if that proves too costly.
 - **`forget` is not reachable on a turn whose owner face matched**, because the PIN is not consulted
   then (ADR 0016 §5). It is reachable on `/chat` without a frame, or with face authentication off.
-  Fixing it belongs to the CM-2 ADR that revises §5.
+  [ADR 0020](0020-authorized-actor-in-the-conversation.md) decision 6 settles the rule (a grant of a
+  declared scope is consulted after a face match) and leaves it to the plan that wires the first
+  operation with its own scope (CM-6 for `forget`).
 - **`forget` extends the bearer limit to an irreversible action.** The grant proves the PIN, not
   the speaker (ADR 0008, ADR 0015), binds neither a target nor an utterance and lives 300 s. It is
   mitigated by single use, the confirmation step and a shorter lifetime (wiring obligation 6), not
@@ -289,5 +292,6 @@ caller needs a PIN for `propose`, `confirm` or `correct`.
 ## Follow-up
 
 - [Plan 0060](../plans/completed/0060-cm1-personal-memory-capabilities.md) — implements this ADR (closed 2026-10-09).
-- CM-2 — an ADR on identity in generic turns that revises ADR 0016 §5.
+- CM-2 — [ADR 0020](0020-authorized-actor-in-the-conversation.md), implemented by
+  [Plan 0061](../plans/completed/0061-cm2-generic-turn-continuity.md) (closed 2026-10-13).
 - CM-3, CM-5, CM-6 — writer and confirmation, retrieval, and the real reach of forgetting.

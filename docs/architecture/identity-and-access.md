@@ -151,9 +151,10 @@ or `conversation_id` never authenticates a person.
 
 Per [ADR 0009](../adr/0009-locked-posture-and-scoped-capabilities.md), an
 unknown actor does not disable Iroko's senses, STT, bounded general
-conversation, or TTS. It disables access to protected capabilities. Unknown
-working context remains isolated and must not be attributed or consolidated
-into Pipec's persistent memory.
+conversation, or TTS. It disables access to protected capabilities. An unknown
+or ambiguous speaker neither reads nor writes the short-term session
+([ADR 0020](../adr/0020-authorized-actor-in-the-conversation.md)) and is never
+attributed or consolidated into Pipec's persistent memory.
 
 Every PIN grant is bound to the **one operation named at unlock** (ADR 0015 decision 1,
 Plan 0051, extended by [ADR 0019](../adr/0019-personal-memory-capabilities.md)). `OwnerUnlockScope`
@@ -251,7 +252,11 @@ authorization audit row (`policy_id` `p0.5.assurance-required`) records why, whi
 server log carries the fusion reason of the turn. Positive evidence of another person vetoes even when a PIN
 token is presented and does not consume it; ignorance (an unknown face, an unknown voice,
 a missing signal) never vetoes and never adds. The voice is consulted only after the
-owner's face matched. Evidence whose `expires_at` has passed never participates.
+owner's face matched on a protected turn. A generic turn resolves the same face first and an
+observed default-scope token second, without the voice and without spending the grant
+([ADR 0020](../adr/0020-authorized-actor-in-the-conversation.md) §1); a failed face detector is
+logged as `backend_unavailable` and a failed identity store as `error`, both degrading to an
+unknown speaker. Evidence whose `expires_at` has passed never participates.
 
 The PIN is optional and administrative: an optional `strong` factor — consulted only on a
 turn the owner's face did not resolve, never once the face matched — and the credential of
@@ -273,19 +278,23 @@ biometric evidence, owner approval, or another factor.
 
 ## Conversation isolation
 
-`conversation_id` separates working history and must never act as identity or
-authorization. The global voice ID is transitional.
+`conversation_id` is a client-chosen label: it must never act as identity or
+authorization and it never selects history
+([ADR 0020](../adr/0020-authorized-actor-in-the-conversation.md)).
 
-After active-person resolution exists, a voice working session should be scoped
-to an interaction/session and resolved person when known, for example:
-
-```text
-voice:<session-id>:person:<entity-id>
-voice:<session-id>:unknown
-```
+There is **one** short-term session slot in the process, because the device has one
+microphone and a half-duplex loop. It belongs to a person id, so two public ids share the
+identified person's session and one id shared by two people does not. It is bounded by
+3000 characters and 180 seconds of silence (measured from the last written turn) and is
+never persisted. Another identified person replaces it; an unknown, probable or ambiguous
+speaker *suspends* it for that turn — the turn reads nothing, writes nothing, and the
+owner's session survives and keeps ageing. A write carries the generation it read and is
+dropped when the session moved on. The earlier proposal of per-interaction keys
+(`voice:<session-id>:person:<id>`) is replaced by this slot; per-person sessions for several
+enrolled members belong to the family profile (P3).
 
 Do not merge an unknown speaker's history into a known person's history after a
-late guess without an explicit reconciliation rule.
+late guess: there is no reconciliation, the unknown turn simply is not kept.
 
 ## Household roles
 

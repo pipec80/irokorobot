@@ -1,8 +1,8 @@
 # 0020 — Identify the speaker on every turn and keep short-term continuity for the identified person
 
-- **Status:** Proposed (2026-10-09, revised 2026-10-13 after an independent completeness audit) —
-  becomes Accepted when the plan that implements it closes; until then nothing in `server/src`
-  follows it
+- **Status:** Accepted (2026-10-13, Pipec) — proposed 2026-10-09 and revised 2026-10-13 after an
+  independent completeness audit; accepted when Plan 0061 closed, with the four acceptance cases
+  of §10 run on real hardware
 - **Date:** 2026-10-09
 - **Builds on:** [ADR 0006](0006-personal-and-family-companion-profiles.md),
   [ADR 0009](0009-locked-posture-and-scoped-capabilities.md),
@@ -18,7 +18,9 @@
 - **Amends:** [ADR 0016](0016-face-and-voice-identity-fusion.md) §8 (the closed log reasons):
   `error` joins the set, and `backend_unavailable`, which named a voice backend that is down,
   also names a face detector that failed (§5 below; decided in Plan 0061, D-3)
-- **Implemented by:** CM-2, [Plan 0061](../plans/open/0061-cm2-generic-turn-continuity.md) (`Ready`, `NOW` since 2026-10-13)
+- **Implemented by:** CM-2, [Plan 0061](../plans/completed/0061-cm2-generic-turn-continuity.md)
+  (closed 2026-10-13); acceptance record in
+  [the 0061 acceptance note](../evals/0061-generic-turn-continuity-acceptance.md)
 
 ## Context
 
@@ -351,9 +353,16 @@ its own ADR and the privacy contract of the senses).
 
 ## Follow-up
 
-The CM-2 plan is [Plan 0061](../plans/open/0061-cm2-generic-turn-continuity.md), written on
-2026-10-13 after this ADR's text was reviewed twice: identification on generic turns per channel,
-the session slot with its limits and generation rule, the transition logging, the
-`_MEMORY_DISCIPLINE` sentence and its measurement, the `chat-test` adaptation and the acceptance
-above. Decision 6 is implemented by the plan that wires the first operation with its own scope
-(CM-6 for `forget`).
+CM-2 is closed: [Plan 0061](../plans/completed/0061-cm2-generic-turn-continuity.md) implemented
+identification on generic turns per channel, the session slot with its limits and generation rule,
+the transition logging, the `_MEMORY_DISCIPLINE` sentence and its measurement, and the `chat-test`
+adaptation; its acceptance on real hardware is recorded in
+[the acceptance note](../evals/0061-generic-turn-continuity-acceptance.md). Decision 6 is
+implemented by the plan that wires the first operation with its own scope (CM-6 for `forget`).
+
+Open after acceptance, none of them a regression of this decision (they live in the roadmap's
+transversal follow-ups): the measured cost of the face check on a generic turn (median about
+0.9 s, maximum 1.6 s on the development laptop) is recorded for the *Review* trigger above, not
+judged; a reply of the language measurement that the word-list heuristic judged not Spanish was
+not located (the report keeps counts only); and the small local model still invents a value when
+the session is empty, which is the confabulation finding of Plan 0059, not a continuity defect.

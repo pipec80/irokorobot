@@ -324,7 +324,8 @@ Episodic memory  = a retained experience
 Semantic memory  = stable learned knowledge
 Knowledge graph  = typed entity relationships and literal facts
 Procedural memory= how to perform a learned task (deferred)
-Working memory   = bounded current conversation state
+Working memory   = bounded current conversation state (one in-process session of the
+                   identified person: 3000 characters, 180 s of silence; ADR 0020)
 ```
 
 Telemetry is not memory. Frames are not memory. LLM output is not evidence.

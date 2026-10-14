@@ -135,3 +135,15 @@ records the runtime check of the two scopes Plan 0060 adds to `POST /auth/owner/
 rejection of an unknown scope without echoing the PIN, and the voice turns that do not use the
 model. The capabilities themselves are policy and nothing consumes them. Outcomes only: no name,
 transcript or PIN.
+
+## Short-term continuity acceptance (Plan 0061)
+
+[`0061-generic-turn-continuity-acceptance.md`](0061-generic-turn-continuity-acceptance.md)
+records the four real-hardware cases of ADR 0020 §10 (continuity, a second face, no evidence,
+180 s of silence), the measured cost of the face check on a generic turn and the counts of
+transitions by closed reason, and `just chat-test` with and without the owner PIN. The two
+history-bearing stream measurements are
+[`0061-stream-history-run1.md`](0061-stream-history-run1.md) and
+[`0061-stream-history-run2.md`](0061-stream-history-run2.md); both give the `history` set a
+0.00 % fallback rate and report the replies judged not Spanish as counts only. Outcomes only: no
+name, transcript, PIN or token.
