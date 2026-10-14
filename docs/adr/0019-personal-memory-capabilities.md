@@ -285,7 +285,7 @@ plan.
 
 ## Review
 
-Revisit when the CM-2 ADR revises ADR 0016 §5, when CM-3 introduces the writer, when a consent
+Revisit when the CM-2 ADR revises ADR 0016 §5 (done by [ADR 0020](0020-authorized-actor-in-the-conversation.md), 2026-10-13), when CM-3 introduces the writer, when a consent
 store or an enrolled voice is the normal case, when the family profile is planned, or if any real
 caller needs a PIN for `propose`, `confirm` or `correct`.
 
