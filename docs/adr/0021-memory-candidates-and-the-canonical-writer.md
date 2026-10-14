@@ -21,8 +21,9 @@
   gate and that turns are "never extracted, consolidated or promoted": an identified generic turn
   may now be **extracted for candidates** (decision 4). Consolidation, episodes, persistent context
   and retrieval stay closed.
-- **Implemented by:** Plan 0062 (candidates and the writer, no hardware) and Plan 0063 (the spoken
-  confirmation and its hardware acceptance); both unwritten. "CM-3" without a letter names both
+- **Implemented by:** [Plan 0062](../plans/open/0062-cm3a-memory-candidates-and-writer.md)
+  (candidates and the writer, no hardware; `Ready`, `NOW` since 2026-10-14) and Plan 0063 (the
+  spoken confirmation and its hardware acceptance; unwritten). "CM-3" without a letter names both
   CM-3a (this ADR) and CM-3b (decision 13).
 
 ## Context
@@ -500,7 +501,8 @@ gate's economics.
 
 ## Follow-up
 
-- Plan 0062 — candidates, the writer and the extraction (unwritten).
+- [Plan 0062](../plans/open/0062-cm3a-memory-candidates-and-writer.md) — candidates, the writer
+  and the extraction (written 2026-10-14, `Ready`).
 - Plan 0063 — the spoken confirmation and its hardware acceptance (unwritten).
 - Phase 0 — enrolment first, access levels, escalation with company (decision 13).
 - CM-3b, CM-4, CM-5, CM-6.

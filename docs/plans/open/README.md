@@ -22,7 +22,7 @@ single-WIP [operational board](../README.md#operational-board) — **CM-0
 (Plan 0046) closed 2026-09-08, PC-3A (Plan 0047) closed 2026-09-25 with a
 provisional PASS, and PC-3B ([Plan 0053](../completed/0053-consented-speaker-runtime-evidence.md))
 closed 2026-09-29, and PC-4 ([Plan 0054](../completed/0054-face-default-identity-fusion.md))
-closed 2026-09-30; `NOW` is empty (Plan 0061 closed 2026-10-13).** Use the
+closed 2026-09-30; `NOW` is [Plan 0062](0062-cm3a-memory-candidates-and-writer.md) (promoted 2026-10-14; Plan 0061 closed 2026-10-13).** Use the
 [personal-companion delivery map](../../roadmap/personal-companion-delivery-map.md)
 and [conversational-memory delivery map](../../roadmap/conversational-memory-delivery-map.md)
 to see the code, tests, verified gaps, and future delivery sequence.
@@ -33,7 +33,9 @@ to see the code, tests, verified gaps, and future delivery sequence.
 
 ## Plan en curso (`NOW`)
 
-No hay plan `NOW`. [0061 — continuidad de corto plazo para la persona identificada (CM-2)](../completed/0061-cm2-generic-turn-continuity.md) **cerró el 2026-10-13** y ya vive en `completed/`: la ranura de continuidad (3000 caracteres, 180 s, una sola persona, generación), la identificación de los turnos genéricos sin voz y sin gastar el grant, su cableado en las tres rutas, una frase del prompt con compuerta medida (fallback 0,00 % en `history` en dos corridas), las guardas, `just chat-test` con el token del dueño y la aceptación en hardware de Pipec. El [ADR 0020](../../adr/0020-authorized-actor-in-the-conversation.md) quedó `Accepted`; no abre memoria durable ni cambia el cable. Pipec elige el siguiente; el número libre es 0062. El diseño de CM-3 es el [ADR 0021](../../adr/0021-memory-candidates-and-the-canonical-writer.md) (`Proposed`, 2026-10-14).
+[0062 — candidatos de memoria y escritor canónico, primer corte (CM-3a)](0062-cm3a-memory-candidates-and-writer.md) está **`Ready`** y es el `NOW` desde el 2026-10-14: lo escribió la sesión que sigue al [ADR 0021](../../adr/0021-memory-candidates-and-the-canonical-writer.md) con `superpowers:writing-plans`, lo ensayó test a test en una copia de `main` (`f92e43d`; suite del filtro de CI de 2580 a 2888) y lo revisó un agente independiente, cuyos siete hallazgos están corregidos y registrados en el plan. Dieciséis tareas: la tabla de candidatos (migración 009, `secure_delete`, scrub físico), el almacén con compare-and-set, la puerta de preferencias, el extractor y el clasificador, el actor de cara y voz, la política auditada antes del efecto, el escritor canónico `promote` (una costura que ninguna ruta llama), la propuesta en segundo plano con la voz del propio clip, el retiro de `consolidate_turn`, `PROPOSE_MEMORY` y `COMMIT_MEMORY`, el humo local y la verdad documental. No hay diálogo hablado ni hardware: la oferta, la respuesta y la aceptación en hardware son el Plan 0063. Pipec lo promovió y confirmó sus decisiones D-1 a D-14 tal como están escritas. Se ejecuta en una sesión nueva.
+
+El `NOW` anterior fue [0061 — continuidad de corto plazo para la persona identificada (CM-2)](../completed/0061-cm2-generic-turn-continuity.md) **cerró el 2026-10-13** y ya vive en `completed/`: la ranura de continuidad (3000 caracteres, 180 s, una sola persona, generación), la identificación de los turnos genéricos sin voz y sin gastar el grant, su cableado en las tres rutas, una frase del prompt con compuerta medida (fallback 0,00 % en `history` en dos corridas), las guardas, `just chat-test` con el token del dueño y la aceptación en hardware de Pipec. El [ADR 0020](../../adr/0020-authorized-actor-in-the-conversation.md) quedó `Accepted`; no abre memoria durable ni cambia el cable. Pipec elige el siguiente; el número libre es 0062. El diseño de CM-3 es el [ADR 0021](../../adr/0021-memory-candidates-and-the-canonical-writer.md) (`Proposed`, 2026-10-14).
 
 ## Propuesta de auditoría — no ejecutable
 
@@ -165,7 +167,7 @@ the benchmark harness is GREEN and the measured baseline is a reproducible
 cognitive RED (`ac43c58`, exit 1); it changed no runtime memory. See
 [completed/0046](../completed/0046-reproducible-longitudinal-memory-baseline.md).
 
-Canonical execution order: **`NOW` is empty (Plan 0060 closed 2026-10-09; Plan 0059 closed 2026-10-08); Plan 0054 (PC-4) closed 2026-09-30.** Plan 0053 (PC-3B)
+Canonical execution order: **`NOW` is [Plan 0062](0062-cm3a-memory-candidates-and-writer.md) (promoted 2026-10-14; Plan 0061 closed 2026-10-13); Plan 0054 (PC-4) closed 2026-09-30.** Plan 0053 (PC-3B)
 closed 2026-09-29, and Plan 0047 (PC-3A) closed 2026-09-25 with a provisional PASS
 (see [completed/0047](../completed/0047-speaker-evidence-calibration-study.md)); the
 queue-rule-4 re-audit of the next row ran the same day, produced Plan 0053, and
