@@ -3,7 +3,7 @@
 > **Status:** `Closed 2026-10-13` — written 2026-10-13 from [ADR 0020](../../adr/0020-authorized-actor-in-the-conversation.md),
 > rehearsed in a scratch copy of `main` (`2385981`), independently reviewed (see *Review record*),
 > promoted by Pipec the same day (decisions D-1 to D-12 confirmed as written), executed in a new
-> session on one plain branch, and accepted on real hardware by Pipec
+> session on one plain branch (merged as PR #179, `ec8178b`), and accepted on real hardware by Pipec
 > ([record](../../evals/0061-generic-turn-continuity-acceptance.md)). ADR 0020 is `Accepted`.
 > See *Execution record* at the end.
 
@@ -4660,7 +4660,8 @@ reason before its implementation.
 | 7 | `724922e` | guards and the no-token scenario; 33 tests; the mutation (`person_id = 1`) failed 11 tests |
 | 8 | `6cb3299` | `chat-test` carries the token, 12 tests |
 | 9 | — | run by Pipec; [acceptance record](../../evals/0061-generic-turn-continuity-acceptance.md) |
-| 10 | the closing commit | documents, ADR 0020 `Accepted`, this plan moved to `completed/` |
+| 10 | `175bbc2` | documents, ADR 0020 `Accepted`, this plan moved to `completed/` |
+| CI | `283c9c5` | CI failed 11 tests of `test_generic_identity.py` because identification is off with `MEMORY_ENABLED=false` and they did not pin it; pinned there and in two more tests, then the whole CI selection passed with `MEMORY_ENABLED=false` (2580) |
 
 `just gate` at the end of Task 8: **2597 passed** (baseline 2515, +82 as rehearsed), lint, types,
 `ruff --select S` and `pip-audit` clean.
