@@ -16,7 +16,13 @@ from pydantic import BaseModel, ConfigDict
 
 from server.cognition.response_plan import InformationNeed
 
-__all__ = ["IntentMatch", "IntentResolution", "resolve_information_need"]
+__all__ = [
+    "IntentMatch",
+    "IntentResolution",
+    "MemoryAnswer",
+    "parse_memory_answer",
+    "resolve_information_need",
+]
 
 
 class IntentMatch(StrEnum):
@@ -37,7 +43,66 @@ class IntentResolution(BaseModel):
     rule_id: str | None
 
 
+class MemoryAnswer(BaseModel):
+    """A spoken answer to a memory offer: accept or reject, and the value it names.
+
+    Attributes:
+        accept: ``True`` for «sí, autorizo guardar …», ``False`` for «no autorizo guardar …».
+        phrase: The value the answer repeats, folded (lower case, no accents); the memory
+            layer compares it with the offered candidate. Never logged.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    accept: bool
+    phrase: str
+
+
 _NON_WORD_RUN = re.compile(r"[^\w]+", re.UNICODE)
+
+# The closed answer grammar (Plan 0063, Pipec's option A): a closed verb **and** the value. A bare
+# «sí» or a verb alone is never an answer, so a phrase known in advance promotes nothing. The
+# verbs are neutral Spanish (tuteo): Pipec lives in Santiago de Chile.
+# Words that may open an answer: a call to the robot, a repeated «sí», «claro».
+_ANSWER_OPENERS = frozenset({"iroko", "oye", "bueno", "ok", "claro", "si"})
+_ANSWER_ACCEPT_PREFIXES = (
+    "autorizo que guardes",
+    "apruebo que guardes",
+    "autorizo a guardar",
+    "apruebo a guardar",
+    "autorizo guardar",
+    "apruebo guardar",
+    "guardalo",
+    "guarda",
+    "autorizo",
+    "apruebo",
+)
+_ANSWER_REJECT_PREFIXES = (
+    "no autorizo que guardes",
+    "no apruebo que guardes",
+    "no autorizo a guardar",
+    "no apruebo a guardar",
+    "no autorizo guardar",
+    "no apruebo guardar",
+    "no lo guardes",
+    "no guardes",
+    "no autorizo",
+    "no apruebo",
+    "olvidalo",
+    "borralo",
+)
+# Short verbs that ordinary speech also uses («guarda silencio», «olvídalo, no importa», «bórralo
+# todo»): after one of them the value must start with an article, as a spoken taste usually does.
+_ANSWER_SHORT_PREFIXES = frozenset(
+    {"guardalo", "guarda", "no lo guardes", "no guardes", "olvidalo", "borralo"}
+)
+_ANSWER_ARTICLES = frozenset({"el", "la", "los", "las", "un", "una", "unos", "unas", "lo"})
+# Courtesy words a speaker adds after the value; they are not part of it.
+_ANSWER_TRAILERS = ("por favor", "gracias", "porfa")
+# The value is a noun phrase of at most five words plus its article.
+_MAX_ANSWER_PHRASE_WORDS = 6
+# Words that continue the verb rather than start the value («autorizo guardar», «que guardes»).
+_ANSWER_CONNECTORS = frozenset({"guardar", "que"})
 
 _POSSESSIVES = frozenset(
     {"mi", "mis", "tu", "tus", "su", "sus", "nuestro", "nuestra", "nuestros", "nuestras"}
@@ -320,6 +385,67 @@ def _relationship_rule(normalized: str) -> IntentResolution | None:
     return None
 
 
+def parse_memory_answer(message: str) -> MemoryAnswer | None:
+    """Read a spoken answer to a memory offer, or say that *message* is not one.
+
+    Pure and closed (ADR 0021 decision 9): optional openers («Iroko», «sí, claro»), then one
+    closed verb, then the value, then optional courtesy words. Rejections are tried first, so
+    «no autorizo …» never reads as «autorizo …»; a repeated «no, no» is one «no».
+
+    Args:
+        message: Raw transcript or chat text in Spanish.
+
+    Returns:
+        The answer and the folded value it repeats, or ``None`` when the message has no closed
+        verb, no value, or a value longer than a short noun phrase.
+    """
+    words = normalize_spanish(message).split()
+    while words and words[0] in _ANSWER_OPENERS:
+        words.pop(0)
+    while words[:2] == ["no", "no"]:
+        words.pop(0)
+    text = _without_trailers(" ".join(words))
+    for prefixes, accept in ((_ANSWER_REJECT_PREFIXES, False), (_ANSWER_ACCEPT_PREFIXES, True)):
+        for prefix in prefixes:
+            if text.startswith(f"{prefix} "):
+                return _answer(prefix, text[len(prefix) :].split(), accept=accept)
+    return None
+
+
+def _without_trailers(text: str) -> str:
+    """Drop the courtesy words a speaker adds after the value («…, gracias»)."""
+    trimmed = True
+    while trimmed:
+        trimmed = False
+        for trailer in _ANSWER_TRAILERS:
+            if text.endswith(f" {trailer}"):
+                text = text[: -len(trailer) - 1]
+                trimmed = True
+    return text
+
+
+def _answer(prefix: str, phrase: list[str], *, accept: bool) -> MemoryAnswer | None:
+    """Return the answer when *phrase* is a value, or ``None``."""
+    # «autorizo guardar» with nothing after it is a verb, not a value; «autorizo a guardar el
+    # mate» names it.
+    if phrase[:2] == ["a", "guardar"]:
+        phrase = phrase[2:]
+    if not phrase or phrase[0] in _ANSWER_CONNECTORS or len(phrase) > _MAX_ANSWER_PHRASE_WORDS:
+        return None
+    if prefix in _ANSWER_SHORT_PREFIXES and phrase[0] not in _ANSWER_ARTICLES:
+        return None
+    return MemoryAnswer(accept=accept, phrase=" ".join(phrase))
+
+
+def _memory_answer_rule(normalized: str) -> IntentResolution | None:
+    """Recognize the closed shape of an answer to a memory offer (value included)."""
+    if parse_memory_answer(normalized) is not None:
+        return _resolution(InformationNeed.MEMORY_ANSWER, IntentMatch.EXACT, "memory.answer.v1")
+    return None
+
+
+# Order matters: every protected, dated or identity rule runs before the answer shape, so an
+# answer can never reach a protected branch's data and a protected question is never an answer.
 _RULES: tuple[Callable[[str], IntentResolution | None], ...] = (
     _own_children_list_rule,
     _own_children_count_rule,
@@ -332,6 +458,7 @@ _RULES: tuple[Callable[[str], IntentResolution | None], ...] = (
     _explicit_age_rule,
     _relationship_rule,
     _scene_description_rule,
+    _memory_answer_rule,
 )
 
 

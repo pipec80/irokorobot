@@ -41,6 +41,8 @@ class InformationNeed(StrEnum):
     SCENE_DESCRIPTION = "scene_description"
     ACTIVE_IDENTITY = "active_identity"
     BIOMETRIC_ENROLLMENT = "biometric_enrollment"
+    # A spoken answer to a memory offer: a closed verb and the offered value (ADR 0021 §9).
+    MEMORY_ANSWER = "memory_answer"
 
 
 class ResponseSource(StrEnum):
