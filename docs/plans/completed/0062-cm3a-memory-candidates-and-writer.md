@@ -9220,8 +9220,8 @@ accuracy and test coverage. What it fixed beyond the plan text:
 | 1. `just gate` | pass (2972 unfiltered, 2955 under the CI selection) |
 | 2. Switch off, start-up | pass: migration 9 applied over the real database, `Candidates voided at start-up: 0`, server ONLINE |
 | 3. Switch on, start-up | pass: server ONLINE, `Candidates reconciled at start-up: 0 expired` (the plan expected no candidate line; this one is new) |
-| 4. A matching sentence without enrolment | PENDING (Pipec, with the face in frame) |
-| 5. A non-matching sentence | PENDING (Pipec, with the face in frame) |
+| 4. A matching sentence without enrolment | pass: `dropped (strong_unreachable)`, 0 rows in `memory_candidates` |
+| 5. A non-matching sentence | pass: `dropped (gate_no_match)`, no voice check, no model call |
 | 6, 7. Stored case and `just reset-db` with a live candidate | not run (optional: they need an enrolled voice) |
 
 **Accepted costs of the closed grammar** (D-6): a taste after an attribution and a soft break is

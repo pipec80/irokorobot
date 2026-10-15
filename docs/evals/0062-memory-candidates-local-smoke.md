@@ -6,8 +6,8 @@ Plan 0063). It proves, on the real database and the real start-up path, what the
 temporary ones.
 
 - date: 2026-10-15
-- code: branch `feat/0062-cm3a-candidates-and-writer` at `1d65c01` (14 task commits and 4
-  review-fix commits)
+- code: branch `feat/0062-cm3a-candidates-and-writer` at `0539f2d` (14 task commits, 4
+  review-fix commits and the closing docs commit)
 - database: the real `data/omnibot.db` at schema version 8 before the run (backed up with the
   SQLite backup API first), migrated by the server itself
 - chat model: `qwen2.5:3b`; Ollama started by the lead, server started by the lead with
@@ -18,8 +18,8 @@ temporary ones.
 | 1 | `just gate` | green | **pass**: 2972 tests (2955 under the CI selection; baseline 2597), pyright 0 errors, mypy 115 files, pip-audit clean |
 | 2 | Start-up with `MEMORY_CANDIDATES_ENABLED=false` (the default) | migration 9 applied, `Candidates voided at start-up: 0`, ONLINE | **pass**: migration 9 applied over the version-8 database, the line appeared with `0`, server ONLINE |
 | 3 | Start-up with `MEMORY_CANDIDATES_ENABLED=true` | ONLINE, nothing voided | **pass**: ONLINE; the server logs `Candidates reconciled at start-up: 0 expired` (a line the plan text did not predict; it is information, not a void) |
-| 4 | A matching sentence with the owner's face in frame, voice not enrolled | normal reply, `Candidate proposal: dropped (strong_unreachable)`, `SELECT COUNT(*) FROM memory_candidates` is 0 | PENDING |
-| 5 | A non-matching sentence | `dropped (gate_no_match)`, no voice check, no model call | PENDING |
+| 4 | A matching sentence with the owner's face in frame, voice not enrolled | normal reply, `Candidate proposal: dropped (strong_unreachable)`, `SELECT COUNT(*) FROM memory_candidates` is 0 | **pass**: normal reply, the proposal was scheduled for the face-identified speaker, the voice verdict was `unknown` and the log read `Candidate proposal: dropped (strong_unreachable)`; the table holds 0 rows |
+| 5 | A non-matching sentence | `dropped (gate_no_match)`, no voice check, no model call | **pass**: `Candidate proposal: dropped (gate_no_match)`; no voice check, no model call |
 | 6 | Voice enrolled, the stored case | `stored=1`, one `proposed` row | not run (optional; the voice is not enrolled; belongs to the Plan 0063 acceptance) |
 | 7 | `just reset-db` with a live candidate | `Voided 1 live candidate(s)`, then the backup | not run (needs step 6) |
 
