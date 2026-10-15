@@ -2,8 +2,10 @@
 
 - **Status:** Proposed (2026-10-14). Scope and design chosen by Pipec in a brainstorming session of
   that day; revised the same day after two independent read-only audits against the code and after
-  Pipec stated the firewall rule of decision 3. Accepted when Plan 0063 closes with its hardware
-  cases run.
+  Pipec stated the firewall rule of decision 3. Amended on 2026-10-15, before Plan 0063 was
+  written, with Pipec's decisions for the dialogue: neutral Spanish with tuteo (not voseo), the
+  answer's closed verbs, filler phrases before a taste, one open offer per person (decisions 4
+  and 9). Accepted when Plan 0063 closes with its hardware cases run.
 - **Date:** 2026-10-14
 - **Builds on:** [ADR 0006](0006-personal-and-family-companion-profiles.md),
   [ADR 0009](0009-locked-posture-and-scoped-capabilities.md),
@@ -23,8 +25,9 @@
   and retrieval stay closed.
 - **Implemented by:** [Plan 0062](../plans/completed/0062-cm3a-memory-candidates-and-writer.md)
   (candidates and the writer, no hardware; closed 2026-10-15, PR #183; decisions 1 to 8, 10, 11 and
-  12) and Plan 0063 (decision 9: the spoken offer and answer, and the hardware acceptance;
-  unwritten, the next plan). This ADR stays `Proposed` until Plan 0063 closes. "CM-3" without a
+  12) and [Plan 0063](../plans/open/0063-cm3a-memory-dialogue.md) (decision 9: the spoken offer
+  and answer, and the hardware acceptance; written 2026-10-15, `Draft` until Pipec promotes it).
+  This ADR stays `Proposed` until Plan 0063 closes. "CM-3" without a
   letter names both CM-3a (this ADR) and CM-3b (decision 13).
 
 ## Context
@@ -155,7 +158,10 @@ a stranger: it says nothing about it, and the reply is the ordinary one.
 - **Gate.** A closed list of first-person Spanish patterns, matched after case and accent folding,
   returning the set of predicates the text may carry: `me gusta(n)`, `me encanta(n)`, `amo`,
   `adoro` (likes); `no me gusta(n)`, `odio`, `detesto`, `no soporto` (dislikes); `prefiero`, `mi
-  favorito/a es` (prefers). The plan fixes the table. It refuses, with a closed reason: a question or
+  favorito/a es` (prefers). The plan fixes the table. A short closed list of fillers may sit right
+  before the trigger — the phrases «la verdad es que» and «es que», and «oye» (Pipec, 2026-10-15) —
+  as whole phrases, never free words, so a habit or a condition («siempre que me gusta…») still
+  refuses. It refuses, with a closed reason: a question or
   conditional; a third person as experiencer; **a clause rather than a thing** (`prefiero que no
   menciones…`, `me gusta que…`: an instruction to the robot, which is CM-3b's disclosure rule);
   any negated form other than `no me gusta(n)` and `no soporto`; a **contrast inside one taste**
@@ -309,22 +315,29 @@ One function, **one `db.transaction()`**, never relying on an `IntegrityError`:
   `log_spoken`, neither enters the continuity history or the `llm_ms` accounting, and there is
   never an offer on a fallback reply. The candidate becomes `offered` once the response has been
   built; no claim is made that it was heard.
-- **Phrases** (fixed templates in `memory/lexicon.py`, Spanish, voseo, filled with the stored value,
-  which already passed decision 4): "Antes me dijiste que te gusta {x}. ¿Querés que lo guarde?
-  Decime «sí, guardá {x}»." and the dislike and prefer forms. The offer does not promise recall;
-  that is CM-5.
-- **The answer repeats the value.** A closed `InformationNeed.MEMORY_ANSWER`, recognised by a pure
-  grammar in `intent_resolution`, matches a message that carries a closed verb (yes: `guardá`,
-  `guardalo`, `recordá`, `recordalo`, `anotá`; no: `no lo guardes`, `olvidalo`, `borralo`) and a
-  noun phrase. A bare "sí" or any phrase an attacker can know in advance never promotes.
+- **Phrases** (fixed templates in `memory/lexicon.py`, neutral Spanish with **tuteo** — Pipec
+  lives in Santiago de Chile, amended 2026-10-15 — filled with the stored value, which already
+  passed decision 4): «Antes me dijiste que te gusta {x}. ¿Quieres que lo guarde? Dime: sí,
+  autorizo guardar {x}.», with «te gustan» before a plural article, and the dislike («… que no te
+  gusta {x}.») and prefer («… que prefieres {x}.») forms. The offer does not promise recall; that
+  is CM-5.
+- **The answer repeats the value** (Pipec's option A, 2026-10-15). A closed
+  `InformationNeed.MEMORY_ANSWER`, recognised by a pure grammar in `intent_resolution`, matches a
+  message that carries a closed verb (yes: `autorizo`, `apruebo` — alone or followed by
+  `guardar`, `a guardar` or `que guardes` — `guarda`, `guárdalo`; no: the same with `no`,
+  `no lo guardes`, `no guardes`, `olvídalo`, `bórralo`) and the value. A bare «sí» or any phrase an
+  attacker can know in advance never promotes. After the short verbs the value starts with an
+  article, because ordinary speech uses them too («guarda silencio»).
+- **One open offer per person.** While an offer waits for its answer, nothing else of that person
+  is offered, so an answer always names the offer it resolves.
 - **No oracle.** The controller branch for that need resolves the actor (face and voice) **first**,
   for every message of that shape and whether or not an offer exists, and only then reads the
   actor's own candidates. The collaborator is injected **only by the voice routes**; on `/chat` and
   `/vision/respond` it is absent and the need falls through. Anything that is not a `strong` answer
   by the subject, carrying the value of an `offered` candidate, **falls through to ordinary
   generation, byte-identical**: no new phrase, no state change, no attempt counted.
-- **Results:** "Listo, lo guardé." or "Está bien, no lo guardo." only after the transaction commits;
-  after a contradiction, "No lo guardé: ya tengo algo distinto guardado."
+- **Results:** «Listo, lo guardé.» or «Está bien, no lo guardo.» only after the transaction
+  commits; after a contradiction, «No lo guardé: ya tengo guardado algo distinto.»
 - **Replay is not defended** (ADR 0016 §9). A recording of the owner saying the offered answer, with
   a photograph, could confirm it; it cannot choose the value, which the owner said earlier, and a
   liveness defence belongs to Phase 0.
@@ -493,7 +506,10 @@ turn into RED tests, each from an audit finding or a decision above:
 
 ## Acceptance (Plan 0063, real hardware, outcomes only)
 
-Enrol the face and the voice first. Each case is recorded as pass or fail, never with its content:
+Enrol the face and the voice first. Each case is recorded as pass or fail, never with its content.
+Pipec runs the acceptance alone (2026-10-15): "another voice" is a recording or a different
+synthetic voice played near the microphone, and "another face" a photo on a phone; they are
+recorded as substitutes:
 
 1. State a preference; on a later turn the offer is spoken; saying «sí, guardá {x}» in the owner's
    voice creates one `personal` fact with `confirmed_by`; the audit shows `allowed` for read and
