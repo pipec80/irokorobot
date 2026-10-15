@@ -1,7 +1,8 @@
-"""Characterization guard: the eleven pre-existing authorization actions never change.
+"""Characterization guard: the nine pre-existing authorization actions never change.
 
-Plan 0060 adds personal-memory actions to the policy. This file pins the exact decision of
-every action that existed before, over a fixed grid, so a new action cannot shift an old one
+Plan 0060 adds personal-memory actions to the policy (Plan 0062 retires `propose_memory` and
+`commit_memory`, which nothing consumed). This file pins the exact decision of every action
+that remains from before, over a fixed grid, so a new action cannot shift an old one
 by accident. The grid uses literal value tuples (never enum iteration): a new enum member
 therefore cannot silently enter it, and a renamed or removed value fails loudly.
 
@@ -44,8 +45,6 @@ _LEGACY_ACTIONS = (
     "general_conversation",
     "read_household_data",
     "execute_household_tool",
-    "propose_memory",
-    "commit_memory",
     "manage_household_role",
     "enroll_biometric",
     "export_household_data",
@@ -212,8 +211,6 @@ _EXPECTED_DIGESTS: dict[str, str] = {
     "general_conversation": ("45ae2d0642f8fbfbeb5ea7a2f4cd1e1b5a5487a5ab01e97a5473d52f6461c638"),
     "read_household_data": ("dd378d2f1c75fa7ca09aca3a137fb09aa11d7f35f55ca5d8c9cea9f2b05523c6"),
     "execute_household_tool": ("0b9de2733707a882238b887d99624f5306c0e1394ad7de8b524925b15b9fa7f7"),
-    "propose_memory": ("1a66187ddf8212a1f5a08bae175b8da2236cfb6e59b96564a62ac8acd9743743"),
-    "commit_memory": ("56b0f98d4ae17bb5b5d7e68b266df3f752bf429ff193d950fc88253c18c3407a"),
     "manage_household_role": ("10e8e49deca66537dad7ebc4a05d2181a1e738eae9c16855449ced9ad90176eb"),
     "enroll_biometric": ("fea4b8d850f64302c906f7f7cdb727c2259ec2566c087c67f6c4b9b2bd234902"),
     "export_household_data": ("b585ee06d63c0f07d02b5ad38c97ce087ed8d17062870845dcbd55e8941ff6fe"),
@@ -254,19 +251,6 @@ _EXPECTED_COUNTS: dict[str, dict[tuple[str, str], int]] = {
         ("requires_confirmation", "p0.5.child-public-confirmation"): 9,
         ("requires_confirmation", "p0.5.sensitive-confirmation"): 976,
     },
-    "propose_memory": {
-        ("allowed", "p0.5.owner-memory-proposal"): 2591,
-        ("denied", "p0.5.assurance-required"): 3072,
-        ("denied", "p0.5.default-deny"): 567,
-        ("denied", "p0.5.identity-unresolved"): 1134,
-        ("requires_confirmation", "p0.5.memory-proposal-confirmation"): 5182,
-    },
-    "commit_memory": {
-        ("allowed", "p0.5.owner-administration"): 2591,
-        ("denied", "p0.5.assurance-required"): 3072,
-        ("denied", "p0.5.default-deny"): 5749,
-        ("denied", "p0.5.identity-unresolved"): 1134,
-    },
     "manage_household_role": {
         ("allowed", "p0.5.owner-administration"): 2591,
         ("denied", "p0.5.assurance-required"): 3072,
@@ -306,7 +290,7 @@ _EXPECTED_COUNTS: dict[str, dict[tuple[str, str], int]] = {
         ("denied", "p0.5.identity-unresolved"): 1134,
     },
 }
-_EXPECTED_GRID_SIZE = 138006
+_EXPECTED_GRID_SIZE = 112914
 
 
 @pytest.mark.parametrize("action", _LEGACY_ACTIONS)

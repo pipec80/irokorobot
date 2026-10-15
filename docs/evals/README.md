@@ -147,3 +147,10 @@ history-bearing stream measurements are
 [`0061-stream-history-run2.md`](0061-stream-history-run2.md); both give the `history` set a
 0.00 % fallback rate and report the replies judged not Spanish as counts only. Outcomes only: no
 name, transcript, PIN or token.
+
+## Memory-candidates local smoke (Plan 0062)
+
+[`0062-memory-candidates-local-smoke.md`](0062-memory-candidates-local-smoke.md) is the Plan 0062
+local smoke: start-up with `MEMORY_CANDIDATES_ENABLED` off and on, and the spoken sentence with
+the face in frame. It is not an acceptance (no offer, no answer, no hardware case: those are
+Plan 0063). Outcomes only: no name, transcript, preference value or voiceprint.

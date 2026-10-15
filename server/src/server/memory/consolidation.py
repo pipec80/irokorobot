@@ -1,34 +1,29 @@
-"""Extract entities, facts, and episodic memories from a conversation turn.
+"""The benchmark's extraction seam: one local-model call over a whole exchange.
 
-Runs as a FastAPI ``BackgroundTask`` — the caller has already returned a
-response to the user. All errors are caught, logged, and swallowed so that
-consolidation failures are never visible to the user.
+``consolidate_turn`` — the ``MANUAL``-gated writer of the legacy tables — is gone (ADR 0021
+decision 11, Plan 0062): it never ran in production, wrote around the authorization policy and
+stored the whole turn as an episode. What stays is the prompt and ``_extract_via_ollama``, which
+``just eval-memory`` (``scripts/eval_consolidation.py``) calls directly and the CM-0
+benchmark (``just eval-longitudinal``) calls through
+``scripts/eval_consolidation.extract_case_items``, behaviourally unchanged, so the baseline
+stays comparable until CM-3b replaces it. Nothing under ``server`` calls it at runtime.
+
+The candidate path of CM-3a has its own extractor (``candidate_extraction``), which sees only
+the user's words.
 """
 
 from __future__ import annotations
 
-import asyncio
-import logging
+from typing import TYPE_CHECKING
 
-import httpx
-
-from server.cognition.identity import (
-    ActivePersonContext,
-    ActivePersonStatus,
-    IdentityEvidenceSource,
-)
 from server.exceptions import LLMError
 from server.llm_transport import ollama_chat, strip_json_fences
-from server.memory.declarative import assert_fact, find_entities_by_name, upsert_entity
-from server.memory.normalize import normalize_extraction
-from server.memory.semantic import store_memory
-from server.schemas import EntityType, TurnExtraction
+from server.schemas import TurnExtraction
 from server.settings import settings
 
-logger = logging.getLogger(__name__)
+if TYPE_CHECKING:
+    import httpx
 
-_LOW_IMPORTANCE = 0.2
-_RETRY_DELAY_S = 5.0
 _EXTRACTION_SYSTEM = """\
 Eres un extractor de información de conversaciones para la memoria de un \
 robot asistente personal.
@@ -111,173 +106,7 @@ async def _extract_via_ollama(
     text = strip_json_fences(raw)
     try:
         return TurnExtraction.model_validate_json(text)
-    except Exception as exc:
-        raise LLMError(f"Extraction returned invalid JSON: {exc}") from exc
-
-
-async def _extract(
-    client: httpx.AsyncClient, user_text: str, assistant_text: str
-) -> TurnExtraction:
-    """Extract locally with Ollama, retrying once on a transient failure.
-
-    Transient failures (model still loading or a brief local HTTP interruption)
-    get a single retry after a short delay.
-
-    Args:
-        client: Shared, lifecycle-owned HTTP client (Plan 0039).
-        user_text: The user's message.
-        assistant_text: The robot's response.
-
-    Returns:
-        Validated ``TurnExtraction``.
-
-    Raises:
-        LLMError: If both attempts fail with a malformed response.
-        httpx.HTTPError: If both attempts fail reaching Ollama.
-    """
-    try:
-        return await _extract_via_ollama(client, user_text, assistant_text)
-    except (LLMError, httpx.HTTPError) as exc:
-        logger.warning(
-            "Local extraction failed — retrying in %.0fs: %s",
-            _RETRY_DELAY_S,
-            exc,
-        )
-        await asyncio.sleep(_RETRY_DELAY_S)
-        return await _extract_via_ollama(client, user_text, assistant_text)
-
-
-def _manual_active_person_name(active_person: ActivePersonContext | None) -> str | None:
-    """Return a validated turn-local subject reference, never authorization."""
-    if (
-        active_person is None
-        or active_person.status is not ActivePersonStatus.IDENTIFIED
-        or active_person.person_id is None
-        or active_person.display_name is None
-    ):
-        return None
-    if any(
-        evidence.source is IdentityEvidenceSource.MANUAL
-        and evidence.candidate_person_id == active_person.person_id
-        for evidence in active_person.evidence
-    ):
-        return active_person.display_name
-    return None
-
-
-async def consolidate_turn(  # noqa: PLR0912
-    client: httpx.AsyncClient,
-    user_text: str,
-    assistant_text: str,
-    *,
-    active_person: ActivePersonContext | None = None,
-) -> None:
-    """Extract and persist entities, facts, and memories from one turn.
-
-    Designed to run as a ``BackgroundTask`` after the HTTP response has been
-    sent. All exceptions are caught and logged — failures here must never
-    propagate to the user.
-
-    Args:
-        client: Shared, lifecycle-owned HTTP client (Plan 0039). The app's
-            lifespan outlives any single request's background tasks, so
-            this stays valid for the whole call.
-        user_text: The user's message.
-        assistant_text: The robot's response.
-        active_person: Explicit manual identity evidence for this turn only.
-    """
-    active_person_name = _manual_active_person_name(active_person)
-    if active_person_name is None:
-        logger.info("Skipping consolidation without identified manual evidence")
-        return
-    try:
-        extraction = await _extract(client, user_text, assistant_text)
-    except (LLMError, httpx.HTTPError) as exc:
-        logger.warning("Consolidation extraction failed: %s", exc)
-        return
-
-    extraction = normalize_extraction(
-        extraction,
-        active_person_name=active_person_name,
-        user_text=user_text,
-    )
-
-    if extraction.importance < _LOW_IMPORTANCE and not extraction.facts:
-        logger.debug("Turn below importance threshold — skipping consolidation")
-        return
-
-    entity_ids: dict[str, int] = {}
-    for ent in extraction.entities:
-        try:
-            eid = await upsert_entity(
-                name=ent.name,
-                type=ent.type,
-                attributes=ent.attributes,
-                aliases=ent.aliases,
-            )
-            entity_ids[ent.name] = eid
-        except Exception as exc:
-            logger.warning(
-                "Entity upsert failed: type=%s (%s)",
-                ent.type,
-                type(exc).__name__,
-                extra={"event": "entity.upsert_failed", "error_type": type(exc).__name__},
-            )
-
-    memory_id: int | None = None
-    if extraction.episodic_summary:
-        try:
-            memory_id = await store_memory(
-                client,
-                kind="episodic",
-                content=f"[user] {user_text}\n[assistant] {assistant_text}",
-                summary=extraction.episodic_summary,
-                importance=extraction.importance,
-                related_entities=list(entity_ids.values()),
-            )
-        except Exception as exc:
-            logger.warning("Memory store failed: %s", exc)
-
-    for fact in extraction.facts:
-        entity_id: int | None = entity_ids.get(fact.subject)
-        if entity_id is None:
-            matches = await find_entities_by_name(fact.subject, limit=1)
-            if matches:
-                entity_id = int(matches[0]["id"])
-            else:
-                # A validated active person is a person, not an abstract concept.
-                implicit_type: EntityType = (
-                    "person"
-                    if fact.subject.casefold() == active_person_name.casefold()
-                    else "concept"
-                )
-                try:
-                    entity_id = await upsert_entity(name=fact.subject, type=implicit_type)
-                except Exception as exc:
-                    logger.warning(
-                        "Implicit entity creation failed (%s)",
-                        type(exc).__name__,
-                        extra={
-                            "event": "entity.implicit_failed",
-                            "error_type": type(exc).__name__,
-                        },
-                    )
-                    continue
-        try:
-            await assert_fact(
-                entity_id=entity_id,
-                predicate=fact.predicate,
-                object_value=fact.object,
-                confidence=fact.confidence,
-                source_memory_id=memory_id,
-            )
-        except Exception as exc:
-            logger.warning("Fact insert failed: %s", exc)
-
-    logger.info(
-        "Consolidated turn: entities=%d facts=%d memory_id=%s importance=%.2f",
-        len(entity_ids),
-        len(extraction.facts),
-        memory_id,
-        extraction.importance,
-    )
+    except ValueError:
+        # `from None` and no `{exc}`: a pydantic error quotes the offending input, which is the
+        # model's own output about the household; it must not reach a log line.
+        raise LLMError("Extraction returned invalid JSON") from None

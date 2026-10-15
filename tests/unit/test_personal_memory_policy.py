@@ -48,8 +48,6 @@ _LEGACY_ACTIONS = frozenset(
         "general_conversation",
         "read_household_data",
         "execute_household_tool",
-        "propose_memory",
-        "commit_memory",
         "manage_household_role",
         "enroll_biometric",
         "export_household_data",

@@ -19,8 +19,11 @@ _RAW_V4_READERS = frozenset(
         "get_entity_relation",
     }
 )
-# The policy gate, and the local setup that re-reads what it just wrote.
-_MAY_IMPORT_RAW_V4_READERS = frozenset({"memory/policy_gated_v4_reader.py", "personal_setup.py"})
+# The policy gate, the local setup that re-reads what it just wrote, and the one canonical
+# writer, which compares the active rows' folded keys inside its own transaction (Plan 0062).
+_MAY_IMPORT_RAW_V4_READERS = frozenset(
+    {"memory/policy_gated_v4_reader.py", "personal_setup.py", "memory/memory_writer.py"}
+)
 # The repository itself, and the setup status that counts child links.
 _MAY_QUERY_V4_TABLES = frozenset({"memory/relational_v4.py", "personal_setup.py"})
 _V4_TABLE_SQL = re.compile(
@@ -139,20 +142,24 @@ _NEW_ACTION_NAMES = frozenset(
         "forget_personal_memory",
     }
 )
-# CM-3 decides what happens to these four; until then only the model and the policy know them.
+# `PROPOSE_MEMORY` and `COMMIT_MEMORY` left in Plan 0062 (nothing consumed them). Delete and
+# export are CM-6's, so until then only the model and the policy know them.
 _LEGACY_MEMORY_ACTION_NAMES = frozenset(
     {
-        "PROPOSE_MEMORY",
-        "COMMIT_MEMORY",
         "DELETE_HOUSEHOLD_DATA",
         "EXPORT_HOUSEHOLD_DATA",
-        "propose_memory",
-        "commit_memory",
         "delete_household_data",
         "export_household_data",
     }
 )
-_ACTION_HOMES = frozenset({"cognition/models.py", "cognition/authorization.py"})
+_RETIRED_ACTION_NAMES = frozenset(
+    {"PROPOSE_MEMORY", "COMMIT_MEMORY", "propose_memory", "commit_memory"}
+)
+# The model and the policy, plus the one module that asks the policy about a candidate step
+# (Plan 0062): every other module reaches the actions through it.
+_ACTION_HOMES = frozenset(
+    {"cognition/models.py", "cognition/authorization.py", "memory/candidate_policy.py"}
+)
 _MEMORY_SCOPE_MEMBER_NAMES = frozenset({"PERSONAL_MEMORY_READ", "PERSONAL_MEMORY_FORGET"})
 _MEMORY_SCOPE_VALUES = frozenset({"personal_memory_read", "personal_memory_forget"})
 # Only the enum names its members. The policy table repeats the plain strings because
@@ -160,13 +167,13 @@ _MEMORY_SCOPE_VALUES = frozenset({"personal_memory_read", "personal_memory_forge
 _SCOPE_MEMBER_HOMES = frozenset({"cognition/owner_authentication.py"})
 _SCOPE_VALUE_HOMES = frozenset({"cognition/owner_authentication.py", "cognition/authorization.py"})
 # `manual` evidence counts as `basic`; these are the modules that reference it today (grep on
-# 2026-10-08). A new one must be a decision, not an accident.
+# 2026-10-08, minus `memory/consolidation.py`, whose `consolidate_turn` left in Plan 0062). A new
+# one must be a decision, not an accident.
 _MANUAL_HOMES = frozenset(
     {
         "characters/__init__.py",
         "cognition/identity.py",
         "cognition/identity_sessions.py",
-        "memory/consolidation.py",
         "text_turn.py",
     }
 )
@@ -242,7 +249,7 @@ def test_the_personal_memory_actions_exist_only_in_the_model_and_the_policy() ->
 
 @pytest.mark.unit
 def test_the_legacy_memory_actions_are_used_only_by_the_model_and_the_policy() -> None:
-    """Nobody else consumes `propose_memory`, `commit_memory`, delete or export (verified)."""
+    """Nobody else consumes delete or export (verified)."""
     assert _outside(_sources(), _ACTION_HOMES, _LEGACY_MEMORY_ACTION_NAMES) == []
 
 
@@ -280,7 +287,7 @@ def test_the_personal_memory_guards_detect_a_violation() -> None:
         "routers/leak.py": (
             "from server.cognition.models import AuthorizationAction\n"
             "a = AuthorizationAction.FORGET_PERSONAL_MEMORY\n"
-            "b = AuthorizationAction.COMMIT_MEMORY\n"
+            "b = AuthorizationAction.DELETE_HOUSEHOLD_DATA\n"
             "c = OwnerUnlockScope.PERSONAL_MEMORY_FORGET\n"
             'd = "read_personal_conversation_memory"\n'
             'e = "delete_household_data"\n'
@@ -377,3 +384,136 @@ def test_the_continuity_guards_detect_a_violation() -> None:
     ]
     (wav_value,) = _keyword_values(leak, _GENERIC_IDENTITY_HOME, "wav_bytes")
     assert not (isinstance(wav_value, ast.Constant) and wav_value.value is None)
+
+
+# --- memory candidates (Plan 0062, ADR 0021) ---------------------------------------------
+# The store is the only module that issues SQL against the candidate table, so the scrub, the
+# compare-and-set and the cap cannot be bypassed by a second writer.
+_CANDIDATE_TABLE_SQL = re.compile(
+    r"\b(?:FROM|JOIN|INTO|UPDATE|DELETE\s+FROM)\s+memory_candidates\b"
+)
+_MAY_QUERY_CANDIDATES = frozenset({"memory/candidates.py"})
+
+
+def _candidate_table_queriers(sources: Mapping[str, str]) -> list[str]:
+    """Modules, besides the store, that put SQL on `memory_candidates`."""
+    return [
+        name
+        for name, text in sources.items()
+        if name not in _MAY_QUERY_CANDIDATES and _CANDIDATE_TABLE_SQL.search(text)
+    ]
+
+
+@pytest.mark.unit
+def test_the_candidate_table_is_queried_only_by_the_store() -> None:
+    assert _candidate_table_queriers(_sources()) == []
+
+
+@pytest.mark.unit
+def test_the_candidate_guard_detects_a_violation() -> None:
+    leak = {
+        "memory/leak.py": "SQL = \"UPDATE memory_candidates SET status = 'offered'\"\n",
+        "memory/candidates.py": 'SQL = "SELECT 1 FROM memory_candidates"\n',
+        "prose.py": '"""The memory_candidates table is described here."""\n',
+    }
+
+    assert _candidate_table_queriers(leak) == ["memory/leak.py"]
+
+
+# --- who may start a candidate proposal (Plan 0062, ADR 0021 decision 1) -----------------
+# Only the two voice routes and the text-turn service they call may name the proposal entry
+# point or its scheduler: `/chat` and `/vision/respond` have no audio, so they have no `strong`
+# and must never create a candidate. `consolidate_turn` is gone for good.
+_PROPOSAL_NAMES = frozenset({"propose_candidates", "schedule_proposal", "ProposalScheduler"})
+_PROPOSAL_HOMES = frozenset(
+    {
+        "memory/candidate_proposal.py",
+        "routers/transcribe.py",
+        "streaming.py",
+        "text_turn.py",
+    }
+)
+
+
+@pytest.mark.unit
+def test_only_the_voice_routes_and_the_text_turn_service_start_a_proposal() -> None:
+    assert _outside(_sources(), _PROPOSAL_HOMES, _PROPOSAL_NAMES) == []
+
+
+def _imports_name(sources: Mapping[str, str], name: str) -> list[str]:
+    """Modules that import *name* (an import alias is not a Name node)."""
+    return [
+        module
+        for module, text in sources.items()
+        if any(
+            isinstance(node, ast.ImportFrom) and any(alias.name == name for alias in node.names)
+            for node in ast.walk(ast.parse(text))
+        )
+    ]
+
+
+@pytest.mark.unit
+def test_the_retired_consolidation_writer_has_no_reference_left() -> None:
+    sources = _sources()
+
+    assert _outside(sources, frozenset(), frozenset({"consolidate_turn"})) == []
+    assert _imports_name(sources, "consolidate_turn") == []
+
+
+@pytest.mark.unit
+def test_the_proposal_guards_detect_a_violation() -> None:
+    leak = {
+        "routers/chat.py": "x = propose_candidates(client, text, actor)\n",
+        "routers/vision.py": "process_text_turn(c, m, i, schedule_proposal=cb)\n",
+        "routers/transcribe.py": "x = propose_candidates\n",
+        "memory/legacy.py": "from x import consolidate_turn\n",
+    }
+
+    assert _outside(leak, _PROPOSAL_HOMES, _PROPOSAL_NAMES) == [
+        "routers/chat.py",
+        "routers/vision.py",
+    ]
+    assert _imports_name(leak, "consolidate_turn") == ["memory/legacy.py"]
+
+
+@pytest.mark.unit
+def test_the_retired_memory_actions_exist_nowhere() -> None:
+    """ADR 0021 decision 11: no enum member, branch or string names them any more."""
+    assert _outside(_sources(), frozenset(), _RETIRED_ACTION_NAMES) == []
+
+
+# --- who may write or move a candidate (Plan 0062, ADR 0021 decisions 3 and 8) --------------
+# The firewall rule (face and voice of the same person on the turn's clip) is enforced by the
+# caller of the store, so the callers are pinned: a second caller must be a decision, not an
+# accident. Plan 0063 adds the dialogue module that offers and answers.
+_CANDIDATE_INSERT_HOMES = frozenset({"memory/candidates.py", "memory/candidate_proposal.py"})
+_CANDIDATE_MOVE_HOMES = frozenset({"memory/candidates.py", "memory/memory_writer.py"})
+_CANDIDATE_MOVES = frozenset(
+    {"mark_offered", "resolve_candidate", "resolve_candidate_in_transaction"}
+)
+_WRITER_HOMES = frozenset({"memory/memory_writer.py"})
+
+
+@pytest.mark.unit
+def test_only_the_proposal_inserts_and_only_the_writer_resolves_a_candidate() -> None:
+    sources = _sources()
+
+    assert _outside(sources, _CANDIDATE_INSERT_HOMES, frozenset({"insert_candidate"})) == []
+    assert _outside(sources, _CANDIDATE_MOVE_HOMES, _CANDIDATE_MOVES) == []
+    assert _outside(sources, _WRITER_HOMES, frozenset({"promote"})) == []
+
+
+@pytest.mark.unit
+def test_the_candidate_caller_guards_detect_a_violation() -> None:
+    leak = {
+        "routers/leak.py": "await insert_candidate(p)\nawait candidates.mark_offered(1)\n",
+        "memory/candidate_proposal.py": "await insert_candidate(p)\n",
+        "memory/memory_writer.py": "await resolve_candidate_in_transaction(c)\nawait promote(1)\n",
+        "memory/other.py": "await promote(1)\n",
+    }
+
+    assert _outside(leak, _CANDIDATE_INSERT_HOMES, frozenset({"insert_candidate"})) == [
+        "routers/leak.py"
+    ]
+    assert _outside(leak, _CANDIDATE_MOVE_HOMES, _CANDIDATE_MOVES) == ["routers/leak.py"]
+    assert _outside(leak, _WRITER_HOMES, frozenset({"promote"})) == ["memory/other.py"]

@@ -33,8 +33,14 @@ _MIGRATIONS: tuple[tuple[int, str], ...] = (
     (6, "migration_006_owner_credentials.sql"),
     (7, "migration_007_biometric_consent.sql"),
     (8, "migration_008_voice_consent.sql"),
+    (9, "migration_009_memory_candidates.sql"),
 )
 _conn: aiosqlite.Connection | None = None
+
+# How long a statement waits for a lock held by another connection. A checkpoint waits less:
+# it holds the write lock while it waits, and giving up only postpones the scrub.
+_BUSY_TIMEOUT_MS = 5000
+_CHECKPOINT_BUSY_MS = 500
 
 # Owns every runtime write transaction (Plan 0035, ADR 0011). Startup
 # migrations run before any request can arrive and never touch this lock —
@@ -75,6 +81,10 @@ async def open_db() -> None:
         await _conn.execute("PRAGMA journal_mode = WAL")
         await _conn.execute("PRAGMA synchronous = NORMAL")
         await _conn.execute("PRAGMA foreign_keys = ON")
+        # ON, not FAST: a scrubbed candidate value must be overwritten with zeros in the file
+        # and in every page the write-ahead log re-writes (ADR 0021 decision 6). The cost is a
+        # little extra I/O on deletes, and this database is small and local.
+        await _conn.execute("PRAGMA secure_delete = ON")
         # Defends against contention from a process outside our own lock
         # (an offline script, an operator's sqlite3 shell) — it does not
         # replace `transaction()`'s coroutine-level ownership, which is what
@@ -82,11 +92,65 @@ async def open_db() -> None:
         # sqlite3 already defaults `connect(timeout=5.0)` to the same 5000ms,
         # so this line changes no observed behavior; it exists so the value
         # is a decision made here, not an implicit stdlib default.
-        await _conn.execute("PRAGMA busy_timeout = 5000")
+        await _conn.execute(f"PRAGMA busy_timeout = {_BUSY_TIMEOUT_MS}")
         await _conn.commit()
     except Exception as exc:
         raise BrainMemoryError("Failed to open SQLite") from exc
     _write_lock = asyncio.Lock()
+
+
+async def checkpoint_wal() -> bool:
+    """Fold the write-ahead log into the database file and truncate it, if SQLite lets it.
+
+    A scrub overwrites the page it changed, but the write-ahead log keeps the earlier frames
+    until a checkpoint copies them out and the log is reset. Callers that erase a protected
+    value call this after the transaction that erased it commits (ADR 0021 decision 6).
+
+    The module's write lock is held so no transaction of this connection is open (a checkpoint
+    inside one is refused). The checkpoint never raises for a lock or a connection that is no
+    longer usable: another connection reading the file (an operator's shell) or a cursor left
+    open on this one only postpones it, and the caller must not fail an operation that already
+    committed because of it.
+
+    Returns:
+        ``True`` when the log was truncated; ``False`` when it was busy or locked (try again at
+        the next store entry or retention run).
+
+    Raises:
+        BrainMemoryError: If the database is not open.
+    """
+    conn = get_conn()
+    if _write_lock is None:
+        raise BrainMemoryError("DB not open — call open_db() first")
+    async with _write_lock:
+        try:
+            await conn.execute(f"PRAGMA busy_timeout = {_CHECKPOINT_BUSY_MS}")
+            cursor = await conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            row = await cursor.fetchone()
+            await cursor.close()
+        except (aiosqlite.Error, ValueError) as exc:
+            # ValueError: aiosqlite raises it for a connection that is no longer active.
+            logger.warning("WAL checkpoint postponed (%s)", type(exc).__name__)
+            return False
+        finally:
+            await _restore_busy_timeout(conn)
+    # (busy, log frames, checkpointed frames): busy is 1 when a reader pinned the log.
+    if row is None or int(row[0]) != 0:
+        logger.warning("WAL checkpoint postponed (busy)")
+        return False
+    return True
+
+
+async def _restore_busy_timeout(conn: aiosqlite.Connection) -> None:
+    """Put the normal busy timeout back after a checkpoint; never raises.
+
+    A restore that fails (the connection closed under us) must not replace the checkpoint's own
+    outcome, so it is logged by class and swallowed.
+    """
+    try:
+        await conn.execute(f"PRAGMA busy_timeout = {_BUSY_TIMEOUT_MS}")
+    except (aiosqlite.Error, ValueError) as exc:
+        logger.warning("Busy timeout not restored after a checkpoint (%s)", type(exc).__name__)
 
 
 async def close_db() -> None:

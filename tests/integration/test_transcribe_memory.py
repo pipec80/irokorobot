@@ -73,7 +73,7 @@ def _mock_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
 def memory_on(monkeypatch: pytest.MonkeyPatch) -> None:
     """Enable memory while unresolved requests clean up their own turn scope."""
     monkeypatch.setattr(settings, "memory_enabled", True)
-    monkeypatch.setattr(transcribe_module, "consolidate_turn", AsyncMock())
+    monkeypatch.setattr(transcribe_module, "propose_candidates", AsyncMock())
 
 
 @pytest.mark.integration
@@ -84,9 +84,9 @@ def test_fallback_turn_is_not_recorded(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A fallback apology should not enter working or persistent memory."""
-    consolidate = AsyncMock()
+    propose = AsyncMock()
     monkeypatch.setattr(llm, "generate_response", AsyncMock(side_effect=LLMError("down")))
-    monkeypatch.setattr(transcribe_module, "consolidate_turn", consolidate)
+    monkeypatch.setattr(transcribe_module, "propose_candidates", propose)
     monkeypatch.setattr(pipeline, "list_entity_names", AsyncMock(return_value=[]))
     monkeypatch.setattr(
         text_turn, "_memory_prompt_state", AsyncMock(return_value=(None, False, None))
@@ -98,7 +98,7 @@ def test_fallback_turn_is_not_recorded(
     )
 
     assert response.status_code == 200
-    consolidate.assert_not_awaited()
+    propose.assert_not_awaited()
 
 
 @pytest.mark.integration
@@ -253,14 +253,18 @@ async def test_consolidation_eval_rejects_legacy_alias_before_provider(
 
 @pytest.mark.integration
 @pytest.mark.usefixtures("memory_on")
-def test_unidentified_voice_turn_does_not_schedule_consolidation(
+def test_unidentified_voice_turn_does_not_schedule_a_proposal(
     client: TestClient,
     silence_wav_bytes: bytes,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A voice turn with no internal manual evidence must never persist facts."""
-    consolidate = AsyncMock()
-    monkeypatch.setattr(transcribe_module, "consolidate_turn", consolidate)
+    """A voice turn with no face-identified speaker must never propose a candidate.
+
+    The kill-switch is on, so only the missing face actor keeps the proposal from being scheduled.
+    """
+    monkeypatch.setattr(settings, "memory_candidates_enabled", True)
+    propose = AsyncMock()
+    monkeypatch.setattr(transcribe_module, "propose_candidates", propose)
     monkeypatch.setattr(pipeline, "list_entity_names", AsyncMock(return_value=[]))
 
     response = client.post(
@@ -269,7 +273,7 @@ def test_unidentified_voice_turn_does_not_schedule_consolidation(
     )
 
     assert response.status_code == 200
-    consolidate.assert_not_awaited()
+    propose.assert_not_awaited()
 
 
 @pytest.mark.integration

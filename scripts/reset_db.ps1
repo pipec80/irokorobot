@@ -73,6 +73,14 @@ if (-not (Test-Path $dbPath)) {
     exit 0
 }
 
+# 1b. A live memory candidate holds something the owner said about themselves (ADR 0021):
+#     void it and overwrite its bytes BEFORE the file is copied to the backup folder.
+uv run python scripts/scrub_candidates.py $dbPath
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: could not void live memory candidates - the database was NOT copied."
+    exit 1
+}
+
 # 2. Backup with timestamp before touching anything.
 New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
 $stamp = Get-Date -Format "yyyy-MM-dd_HHmmss"

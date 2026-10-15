@@ -7,6 +7,7 @@ plan owns any production reader or writer cutover.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
@@ -54,6 +55,10 @@ class LiteralFactV4(BaseModel):
     sensitivity: str
     superseded_at: str | None
     superseded_by: int | None
+    # Who confirmed the fact and when (ADR 0021): set by the one candidate writer, absent for
+    # every fact that was never a candidate. Defaulted so older constructions keep working.
+    confirmed_by_entity_id: int | None = None
+    confirmed_at: str | None = None
 
 
 class EntityRelationV4(BaseModel):
@@ -170,6 +175,8 @@ def _literal_from_row(row: SqlRow) -> LiteralFactV4:
         sensitivity=_required_text(row[11]),
         superseded_at=_optional_text(row[12]),
         superseded_by=_optional_int(row[13]),
+        confirmed_by_entity_id=_optional_int(row[14]),
+        confirmed_at=_optional_text(row[15]),
     )
 
 
@@ -195,7 +202,8 @@ def _relation_from_row(row: SqlRow) -> EntityRelationV4:
 
 _LITERAL_COLUMNS = """
     id, subject_entity_id, predicate, value_text, confidence, source_memory_id, asserted_at,
-    valid_from, valid_to, lifecycle, visibility, sensitivity, superseded_at, superseded_by
+    valid_from, valid_to, lifecycle, visibility, sensitivity, superseded_at, superseded_by,
+    confirmed_by_entity_id, confirmed_at
 """
 _RELATION_COLUMNS = """
     id, source_entity_id, predicate, target_entity_id, confidence, source_memory_id, asserted_at,
@@ -294,14 +302,48 @@ async def assert_literal_fact(
     confidence: float = 0.9,
     source_memory_id: int | None = None,
     asserted_at: str | None = None,
+    visibility: str | None = None,
+    sensitivity: str | None = None,
+    confirmed_by_entity_id: int | None = None,
+    confirmed_at: str | None = None,
     manage_transaction: bool = True,
 ) -> LiteralFactV4:
     """Persist a typed literal while applying its registry lifecycle rule.
 
     The function has no runtime authorization semantics. It is limited to v4
     foundation and receives a previously resolved closed-registry definition.
-    ``manage_transaction=False`` is reserved for the local legacy migration,
-    which owns one transaction for a record and its migration ledger entry.
+
+    ``visibility`` and ``sensitivity`` default to the registry's values, which are the
+    household reader's read contract; a caller that stores something else (the candidate
+    writer stores the owner's own ``personal`` data) states it explicitly and the registry
+    does not move. ``confirmed_by_entity_id`` and ``confirmed_at`` record who confirmed the
+    fact and when.
+
+    ``manage_transaction=False`` joins a transaction the caller already owns (the legacy
+    migration, which commits a record with its ledger entry, and the candidate writer, which
+    commits a fact with its candidate's resolution). The call then neither opens, commits
+    nor rolls back, and ``db.transaction()`` is not reentrant, so the caller must not nest.
+
+    Args:
+        subject_entity_id: The entity the literal describes.
+        definition: The previously resolved closed-registry predicate definition.
+        value: The raw literal; normalized by the registry rule.
+        confidence: Confidence in the fact, between 0 and 1.
+        source_memory_id: The episodic memory it came from, if any.
+        asserted_at: Assertion timestamp; SQLite's now when ``None``.
+        visibility: Overrides the registry's default visibility.
+        sensitivity: Overrides the registry's default sensitivity.
+        confirmed_by_entity_id: The entity that confirmed the fact, if any.
+        confirmed_at: When it was confirmed, if it was.
+        manage_transaction: ``False`` joins the caller's open transaction.
+
+    Returns:
+        The stored literal fact.
+
+    Raises:
+        ValueError: If the value is not a valid canonical literal or the confidence is out
+            of range.
+        RuntimeError: If the stored row cannot be read back.
     """
     await _validate_literal_subject(subject_entity_id, definition)
     normalized_value = normalize_literal(definition, value)
@@ -310,6 +352,12 @@ async def assert_literal_fact(
     if not 0.0 <= confidence <= 1.0:
         raise ValueError("confidence must be between 0 and 1")
 
+    stamp = _LiteralStamp(
+        visibility=visibility or definition.default_visibility,
+        sensitivity=sensitivity or definition.default_sensitivity,
+        confirmed_by_entity_id=confirmed_by_entity_id,
+        confirmed_at=confirmed_at,
+    )
     if manage_transaction:
         async with db.transaction() as conn:
             literal_fact_id = await _insert_literal_fact(
@@ -320,11 +368,11 @@ async def assert_literal_fact(
                 confidence=confidence,
                 source_memory_id=source_memory_id,
                 asserted_at=asserted_at,
+                stamp=stamp,
             )
     else:
-        # Reserved for the local legacy migration, which owns one transaction
-        # for a record and its migration ledger entry — this call must not
-        # open (or commit/roll back) a transaction of its own.
+        # The caller owns one transaction (a legacy-migration record with its ledger entry, or
+        # a candidate promotion): this call must not open, commit or roll back one of its own.
         literal_fact_id = await _insert_literal_fact(
             get_conn(),
             subject_entity_id=subject_entity_id,
@@ -333,11 +381,22 @@ async def assert_literal_fact(
             confidence=confidence,
             source_memory_id=source_memory_id,
             asserted_at=asserted_at,
+            stamp=stamp,
         )
     result = await get_literal_fact(literal_fact_id)
     if result is None:
         raise RuntimeError("new literal fact was not readable after commit")
     return result
+
+
+@dataclass(frozen=True)
+class _LiteralStamp:
+    """The classification and confirmation one literal is stored with."""
+
+    visibility: str
+    sensitivity: str
+    confirmed_by_entity_id: int | None
+    confirmed_at: str | None
 
 
 async def _insert_literal_fact(
@@ -349,14 +408,15 @@ async def _insert_literal_fact(
     confidence: float,
     source_memory_id: int | None,
     asserted_at: str | None,
+    stamp: _LiteralStamp,
 ) -> int:
     """Issue the INSERT (and same-predicate supersede) on an active connection."""
     cursor = await conn.execute(
         "INSERT INTO literal_facts_v4 "
         "(subject_entity_id, predicate, value_text, confidence, source_memory_id, asserted_at, "
-        "visibility, sensitivity, valid_from) "
+        "visibility, sensitivity, valid_from, confirmed_by_entity_id, confirmed_at) "
         "VALUES (?, ?, ?, ?, ?, COALESCE(?, datetime('now')), ?, ?, "
-        "CASE WHEN ? THEN COALESCE(?, datetime('now')) ELSE NULL END)",
+        "CASE WHEN ? THEN COALESCE(?, datetime('now')) ELSE NULL END, ?, ?)",
         (
             subject_entity_id,
             definition.canonical_id,
@@ -364,10 +424,12 @@ async def _insert_literal_fact(
             confidence,
             source_memory_id,
             asserted_at,
-            definition.default_visibility,
-            definition.default_sensitivity,
+            stamp.visibility,
+            stamp.sensitivity,
             definition.temporal,
             asserted_at,
+            stamp.confirmed_by_entity_id,
+            stamp.confirmed_at,
         ),
     )
     if cursor.lastrowid is None:

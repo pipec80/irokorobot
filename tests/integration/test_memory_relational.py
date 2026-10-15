@@ -8,10 +8,8 @@ even across a simulated restart (fresh working memory, DB only).
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
-from uuid import UUID
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -19,57 +17,16 @@ if TYPE_CHECKING:
     import httpx
 
 import pytest
-from server.cognition.identity import (
-    ActivePersonContext,
-    ActivePersonStatus,
-    HouseholdRole,
-    IdentityEvidence,
-    IdentityEvidenceSource,
-)
-from server.cognition.models import Confidence, ConfidenceBasis
-from server.memory.consolidation import consolidate_turn
 from server.memory.context import build_context
 from server.memory.declarative import assert_fact, list_entity_names, upsert_entity
-from server.memory.meta import set_flag
 from server.memory.relations import (
     entities_for_relations,
     find_facts_by_predicate,
     load_entity_by_id,
 )
-from server.schemas import ExtractedEntity, ExtractedFact, TurnExtraction
 from server.settings import settings
 
 from server import db
-
-
-def _identified_person() -> ActivePersonContext:
-    """Create explicit manual evidence for the relational persistence path."""
-    observed_at = datetime(2026, 8, 10, tzinfo=UTC)
-    confidence = Confidence(
-        score=1.0,
-        basis=ConfidenceBasis.ASSERTED,
-        calibrated=True,
-        reason="Explicit local selection",
-    )
-    return ActivePersonContext(
-        person_id=1,
-        display_name="Felipe",
-        status=ActivePersonStatus.IDENTIFIED,
-        confidence=confidence,
-        role=HouseholdRole.UNKNOWN,
-        evidence=(
-            IdentityEvidence(
-                evidence_id=UUID("66666666-6666-6666-6666-666666666666"),
-                source=IdentityEvidenceSource.MANUAL,
-                candidate_person_id=1,
-                confidence=confidence,
-                observed_at=observed_at,
-                expires_at=None,
-                reference="trusted-local-adapter",
-            ),
-        ),
-        resolved_at=observed_at,
-    )
 
 
 @pytest.fixture
@@ -175,50 +132,6 @@ async def test_vision_como_se_llama_mi_mascota(
     assert luna is not None
     predicates = {f.predicate for f in luna.facts}
     assert {"mascota_de", "especie"} <= predicates
-
-
-@pytest.mark.integration
-async def test_dirty_extraction_repaired_end_to_end(
-    family_db: Path, http_client: httpx.AsyncClient
-) -> None:
-    """The exact 2026-07-06 failure, repaired: dirty qwen output → clean facts.
-
-    consolidate_turn receives the inverted/invented extraction observed live
-    and, after guardrails, the relational question must find the child.
-    """
-    await set_flag("owner_name", "Felipe")
-    dirty = TurnExtraction(
-        entities=[ExtractedEntity(name="martina", type="person")],
-        facts=[
-            ExtractedFact(subject="usuario", predicate="tiene_hijo_de", object="martina"),
-            ExtractedFact(subject="Felipe", predicate="trabaja_en", object=""),
-        ],
-        episodic_summary=None,
-        importance=0.6,
-    )
-    with (
-        patch(
-            "server.memory.consolidation._extract",
-            new_callable=AsyncMock,
-            return_value=dirty,
-        ),
-        patch(
-            "server.memory.consolidation.store_memory",
-            new_callable=AsyncMock,
-            return_value=1,
-        ),
-    ):
-        await consolidate_turn(
-            http_client,
-            "tengo una hija martina",
-            "¡Qué lindo!",
-            active_person=_identified_person(),
-        )
-
-    children = {name for _id, name, _obj in await find_facts_by_predicate("hijo_de")}
-    assert "Martina" in children  # title-cased, direction repaired
-    # The empty-object fact must not exist
-    assert await find_facts_by_predicate("trabaja_en") == []
 
 
 @pytest.mark.integration

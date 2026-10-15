@@ -194,3 +194,99 @@ async def test_relation_target_filter_returns_only_active_inverse_matches(
 
     assert {relation.source_entity_id for relation in relations} == {maximo_id, sofia_id}
     assert {relation.target_entity_id for relation in relations} == {felipe_id}
+
+
+@pytest.mark.integration
+async def test_a_literal_carries_who_confirmed_it_and_when(household_db: None) -> None:
+    """ADR 0021 decision 8: the writer states the confirmation, the repository stores it."""
+    owner_id = await upsert_entity(name="Felipe", type="person")
+    likes = _predicate("likes")
+
+    fact = await assert_literal_fact(
+        subject_entity_id=owner_id,
+        definition=likes,
+        value="el mate",
+        confirmed_by_entity_id=owner_id,
+        confirmed_at="2026-10-14T10:00:00.000000+00:00",
+    )
+
+    assert fact.confirmed_by_entity_id == owner_id
+    assert fact.confirmed_at == "2026-10-14T10:00:00.000000+00:00"
+    stored = await get_literal_fact(fact.id)
+    assert stored == fact
+
+
+@pytest.mark.integration
+async def test_an_unconfirmed_literal_has_no_confirmation(household_db: None) -> None:
+    owner_id = await upsert_entity(name="Felipe", type="person")
+
+    fact = await assert_literal_fact(
+        subject_entity_id=owner_id, definition=_predicate("likes"), value="cafe"
+    )
+
+    assert fact.confirmed_by_entity_id is None
+    assert fact.confirmed_at is None
+
+
+@pytest.mark.integration
+async def test_the_caller_chooses_visibility_and_sensitivity_without_changing_the_registry(
+    household_db: None,
+) -> None:
+    """The registry default is the household reader's read contract and does not move."""
+    owner_id = await upsert_entity(name="Felipe", type="person")
+    likes = _predicate("likes")
+    default_visibility = likes.default_visibility
+
+    explicit = await assert_literal_fact(
+        subject_entity_id=owner_id,
+        definition=likes,
+        value="el mate",
+        visibility="personal",
+        sensitivity="private",
+    )
+    implicit = await assert_literal_fact(
+        subject_entity_id=owner_id, definition=likes, value="el cafe"
+    )
+
+    assert (explicit.visibility, explicit.sensitivity) == ("personal", "private")
+    assert (implicit.visibility, implicit.sensitivity) == (default_visibility, "normal")
+    assert _predicate("likes").default_visibility == default_visibility == "household"
+
+
+@pytest.mark.integration
+async def test_an_unknown_visibility_is_refused_by_the_schema(household_db: None) -> None:
+    owner_id = await upsert_entity(name="Felipe", type="person")
+
+    with pytest.raises(sqlite3.IntegrityError):
+        await assert_literal_fact(
+            subject_entity_id=owner_id,
+            definition=_predicate("likes"),
+            value="el mate",
+            visibility="everyone",
+        )
+
+
+async def _write_inside_a_failing_transaction(owner_id: int, likes: PredicateDefinition) -> None:
+    """Write a literal into a caller-owned transaction, then fail the caller."""
+    async with db.transaction():
+        await assert_literal_fact(
+            subject_entity_id=owner_id,
+            definition=likes,
+            value="el mate",
+            manage_transaction=False,
+        )
+        raise RuntimeError("caller rolled back")
+
+
+@pytest.mark.integration
+async def test_a_caller_owned_transaction_neither_opens_nor_commits_its_own(
+    household_db: None,
+) -> None:
+    """`manage_transaction=False` joins the caller's `db.transaction()` (and is not reentrant)."""
+    owner_id = await upsert_entity(name="Felipe", type="person")
+    likes = _predicate("likes")
+
+    with pytest.raises(RuntimeError, match="caller rolled back"):
+        await _write_inside_a_failing_transaction(owner_id, likes)
+
+    assert await get_active_literal_facts(subject_entity_id=owner_id, definition=likes) == []

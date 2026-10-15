@@ -40,7 +40,8 @@ from server.exceptions import (
     AudioContractError,
     UploadTooLargeError,
 )
-from server.memory.consolidation import consolidate_turn
+from server.memory.candidate_proposal import propose_candidates
+from server.memory.candidate_types import CandidateChannel
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
 from server.pipeline import (
@@ -55,7 +56,7 @@ from server.schemas_streaming import StreamEvent
 from server.settings import settings
 from server.streaming import guarantee_terminal_event, stream_pipeline, stream_response_plan
 from server.text_turn import (
-    ConsolidationScheduler,
+    ProposalScheduler,
     TextTurnResult,
     new_interaction_scope,
     prepare_text_turn,
@@ -215,22 +216,23 @@ def _logged_voice_observer(
 
 def _voice_controller(
     client: httpx.AsyncClient,
-    background_tasks: BackgroundTasks,
     *,
     request_identity: _RequestIdentity | None = None,
     identify_speaker: SpeakerIdentifier | None = None,
+    schedule_proposal: ProposalScheduler | None = None,
 ) -> CognitiveController:
     """Compose the bounded controller used by a public voice turn.
 
     Args:
         client: Shared, lifecycle-owned HTTP client (Plan 0039), closed over
-            by the legacy-turn delegate and the consolidation scheduler.
-        background_tasks: Queue used to schedule post-turn consolidation.
+            by the legacy-turn delegate.
         request_identity: Optional request-scoped actor/consent resolver over
             the fused face, voice and PIN evidence (Plan 0054). When omitted,
             the controller falls back to its own public-unknown defaults.
         identify_speaker: Names the speaker of a generic turn from the face and an
             observed token (Plan 0061, ADR 0020); when omitted the speaker is unknown.
+        schedule_proposal: Schedules the background candidate proposal of a successful
+            generic turn (Plan 0062); when omitted nothing is proposed.
     """
 
     async def legacy_turn(message: str, conversation_id: str) -> TextTurnResult:
@@ -248,7 +250,7 @@ def _voice_controller(
             conversation_id,
             active_person=speaker.actor,
             suspend_cause=speaker.cause,
-            schedule_consolidation=_consolidation_scheduler(client, background_tasks),
+            schedule_proposal=schedule_proposal,
         )
 
     if request_identity is None:
@@ -271,30 +273,36 @@ def _voice_controller(
     )
 
 
-def _consolidation_scheduler(
+def _proposal_scheduler(
     client: httpx.AsyncClient,
     background_tasks: BackgroundTasks,
-) -> ConsolidationScheduler:
-    """Adapt FastAPI background tasks to the text service callback.
+    *,
+    event: CognitiveEvent[TextTurnPayload],
+    wav_bytes: bytes,
+    channel: CandidateChannel,
+) -> ProposalScheduler:
+    """Adapt FastAPI background tasks to the text service's proposal callback (ADR 0021 §10).
 
     Args:
         client: Shared, lifecycle-owned HTTP client (Plan 0039) — safe to
             close over here, since the app's lifespan outlives any single
             request's background tasks.
-        background_tasks: Queue used to schedule post-turn consolidation.
+        background_tasks: Queue used to run the proposal after the response was sent.
+        event: The turn's event; its correlation id joins audit rows to candidates.
+        wav_bytes: The turn's own clip — WAV, 16 000 Hz, mono, int16 — held in memory only,
+            for the voice check that runs before anything is extracted.
+        channel: The voice route the proposal belongs to.
     """
 
-    def schedule(
-        message: str,
-        response: str,
-        active_person: ActivePersonContext,
-    ) -> None:
+    def schedule(message: str, active_person: ActivePersonContext) -> None:
         background_tasks.add_task(
-            consolidate_turn,
+            propose_candidates,
             client,
             message,
-            response,
-            active_person=active_person,
+            active_person,
+            event=event,
+            wav_bytes=wav_bytes,
+            channel=channel,
         )
 
     return schedule
@@ -339,7 +347,7 @@ async def transcribe(
 
     Args:
         audio: WAV at 16kHz, mono, int16, within MAX_AUDIO_UPLOAD_BYTES.
-        background_tasks: Queue for successful voice-turn consolidation.
+        background_tasks: Queue for the candidate proposal of a successful voice turn.
         x_iroko_identity_token: Optional one-use owner unlock token. Absent,
             expired, replayed, or malformed tokens resolve to the public
             unknown actor without disclosing which case occurred.
@@ -380,7 +388,6 @@ async def transcribe(
     event = _voice_event_from_transcript(text_heard)
     controller = _voice_controller(
         resources.http_client,
-        background_tasks,
         request_identity=request_identity,
         identify_speaker=partial(
             identify_generic_speaker,
@@ -388,6 +395,13 @@ async def transcribe(
             token=x_iroko_identity_token,
             frame=frame_bytes,
             event=event,
+        ),
+        schedule_proposal=_proposal_scheduler(
+            resources.http_client,
+            background_tasks,
+            event=event,
+            wav_bytes=audio_bytes,
+            channel=CandidateChannel.VOICE_CLASSIC,
         ),
     )
     decision = await controller.decide(event)
@@ -472,7 +486,7 @@ async def transcribe_stream(
 
     Args:
         audio: WAV at 16kHz, mono, int16, within MAX_AUDIO_UPLOAD_BYTES.
-        background_tasks: Queue for successful voice-turn consolidation.
+        background_tasks: Queue for the candidate proposal of a successful voice turn.
         x_iroko_identity_token: Optional one-use owner unlock token — same
             contract as classic /transcribe (Plan 0027).
         frame: Optional webcam frame attached for in-request face
@@ -512,7 +526,7 @@ async def transcribe_stream(
 
     event = _voice_event_from_transcript(text_heard)
     decision = await _voice_controller(
-        resources.http_client, background_tasks, request_identity=request_identity
+        resources.http_client, request_identity=request_identity
     ).decide(event)
     # Streaming has no second-round frame upload — a scene request always
     # gets the fixed unavailable plan, regardless of VISION_ENABLED.
@@ -557,8 +571,12 @@ async def transcribe_stream(
                 prepared=prepared,
                 stt_ms=stt_ms,
                 request_start=request_start,
-                schedule_consolidation=_consolidation_scheduler(
-                    resources.http_client, background_tasks
+                schedule_proposal=_proposal_scheduler(
+                    resources.http_client,
+                    background_tasks,
+                    event=event,
+                    wav_bytes=audio_bytes,
+                    channel=CandidateChannel.VOICE_STREAM,
                 ),
             )
         )

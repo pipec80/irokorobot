@@ -9,7 +9,7 @@ import pytest
 from server.exceptions import LLMError, TranscriptionError, TTSError
 from server.routers import transcribe as transcribe_module
 from server.settings import settings
-from server.text_turn import ConsolidationScheduler, TextTurnResult
+from server.text_turn import ProposalScheduler, TextTurnResult
 
 from server import llm, stt, tts
 
@@ -330,11 +330,11 @@ def test_transcribe_uses_distinct_internal_scopes_per_request(
         message: str,
         conversation_id: str,
         *,
-        schedule_consolidation: ConsolidationScheduler,
+        schedule_proposal: ProposalScheduler,
         active_person: object = None,
         suspend_cause: object = None,
     ) -> TextTurnResult:
-        _ = client, schedule_consolidation, active_person, suspend_cause
+        _ = client, schedule_proposal, active_person, suspend_cause
         return TextTurnResult("shared reply", "joy", 7, False)
 
     process = AsyncMock(side_effect=process_turn)

@@ -69,7 +69,10 @@ new capabilities, and this ADR connects nothing.
 `confirm_personal_memory`, `correct_personal_memory` and `forget_personal_memory`, with the names
 the memory map uses. The eleven existing actions keep their exact decisions (a characterization
 guard pins them over a fixed grid). `PROPOSE_MEMORY` and `COMMIT_MEMORY` stay as they are and the
-plan that introduces the single writer (CM-3) decides whether to retire them; **no new code may
+plan that introduces the single writer (CM-3) decides whether to retire them (decided:
+[ADR 0021](0021-memory-candidates-and-the-canonical-writer.md) decision 11 retires them and
+[Plan 0062](../plans/completed/0062-cm3a-memory-candidates-and-writer.md) did, so today there are
+nine old actions); **no new code may
 use them, or `DELETE_HOUSEHOLD_DATA` or `EXPORT_HOUSEHOLD_DATA`, for personal memory** (an
 architecture guard pins it). Personal-visibility data is authorized through the five new actions
 only. `READ_HOUSEHOLD_DATA` with `personal` visibility is pre-existing behaviour, pinned and not to
@@ -91,7 +94,7 @@ for these five actions the answer is `denied`, never `requires_confirmation`. Fa
 |---|---|---|---|
 | `read_personal_conversation_memory` | `basic` | required | a spent `personal_memory_read` grant counts; any other PIN grant does not |
 | `propose_personal_memory` | `basic` | required | none: only non-PIN evidence (face, face and voice) counts |
-| `confirm_personal_memory` | `strong` | required | none, as above: only face and a verified voice reach `strong` here |
+| `confirm_personal_memory` | `strong` | required | none, as above: only face and a verified voice reach `strong` here. First caller: the memory writer's `promote` ([Plan 0062](../plans/completed/0062-cm3a-memory-candidates-and-writer.md)), still unreachable from a route (Plan 0063) |
 | `correct_personal_memory` | `basic` | required | none, as above |
 | `forget_personal_memory` | `strong` | **not applied** | **required**: a spent `personal_memory_forget` grant; face and voice alone never suffice |
 

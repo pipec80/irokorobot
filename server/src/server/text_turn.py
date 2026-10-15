@@ -19,6 +19,7 @@ from server.cognition.identity import (
     IdentityEvidenceSource,
     resolve_active_person,
 )
+from server.cognition.strong_actor import is_face_actor
 from server.exceptions import BrainMemoryError, LLMError
 from server.memory import continuity
 from server.memory.context import build_context
@@ -29,7 +30,10 @@ from server.settings import settings
 
 logger = logging.getLogger(__name__)
 
-ConsolidationScheduler = Callable[[str, str, ActivePersonContext], None]
+#: Channel-owned callback that schedules a background candidate proposal (ADR 0021 §10). It
+#: receives the user's own words and the face-identified actor; the route that owns the clip
+#: and the turn's correlation id binds them. It never receives the assistant's reply.
+ProposalScheduler = Callable[[str, ActivePersonContext], None]
 
 
 @dataclass(frozen=True)
@@ -234,9 +238,9 @@ def record_text_turn(
     *,
     active_person: ActivePersonContext | None = None,
     continuity_turn: ContinuityTurn | None = None,
-    schedule_consolidation: ConsolidationScheduler | None = None,
+    schedule_proposal: ProposalScheduler | None = None,
 ) -> None:
-    """Record a successful turn and optionally schedule consolidation.
+    """Record a successful turn and optionally schedule a candidate proposal.
 
     Args:
         message: Current user message.
@@ -244,8 +248,9 @@ def record_text_turn(
         active_person: Internally resolved evidence for this turn only.
         continuity_turn: The session view this turn read; a suspended or stale turn writes
             nothing.
-        schedule_consolidation: Optional channel-owned scheduling callback; reached only by a
-            manually verified identity, never by a face or a token.
+        schedule_proposal: Optional channel-owned scheduling callback; reached only by a
+            face-identified speaker with no token, and only with the candidate kill-switch on.
+            The callback's own background task checks the voice before anything is extracted.
     """
     if not settings.memory_enabled:
         return
@@ -254,10 +259,15 @@ def record_text_turn(
         turn_log.log_memory("recorded", "identified speaker, exchange kept in the session")
     else:
         turn_log.log_memory("discarded", "no identified speaker, nothing kept")
-    if schedule_consolidation is not None and _manual_evidence(resolved_person) is not None:
-        # Identity gates this legacy callback; it is not an authorization decision.
-        schedule_consolidation(message, response, resolved_person)
-        turn_log.log_memory("consolidation-scheduled", "verified identity")
+    if (
+        schedule_proposal is not None
+        and settings.memory_candidates_enabled
+        and is_face_actor(resolved_person)
+    ):
+        # Identity gates this callback; it is not an authorization decision (the policy is
+        # asked, and audited, in the background task, with the voice of the turn's own clip).
+        schedule_proposal(message, resolved_person)
+        turn_log.log_memory("proposal-scheduled", "face-identified speaker")
 
 
 async def process_text_turn(
@@ -268,7 +278,7 @@ async def process_text_turn(
     perception: str | None = None,
     active_person: ActivePersonContext | None = None,
     suspend_cause: SuspendCause | None = None,
-    schedule_consolidation: ConsolidationScheduler | None = None,
+    schedule_proposal: ProposalScheduler | None = None,
 ) -> TextTurnResult:
     """Generate and record one channel-agnostic text turn.
 
@@ -279,7 +289,7 @@ async def process_text_turn(
         perception: Optional textual visual perception for this turn.
         active_person: Internally resolved evidence for this turn only.
         suspend_cause: Why the speaker could not be identified, for the transition log.
-        schedule_consolidation: Optional channel-owned scheduling callback.
+        schedule_proposal: Optional channel-owned proposal scheduling callback.
 
     Returns:
         Text, emotion, elapsed time, and fallback status for the turn.
@@ -300,7 +310,7 @@ async def process_text_turn(
             response,
             active_person=prepared.active_person,
             continuity_turn=prepared.continuity,
-            schedule_consolidation=schedule_consolidation,
+            schedule_proposal=schedule_proposal,
         )
     duration_ms = round((time.perf_counter() - started) * 1000)
     return TextTurnResult(response, emotion, duration_ms, llm_failed)

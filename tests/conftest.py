@@ -14,9 +14,10 @@ from robot.conversation_log import CONVERSATION_LOGGER_NAME as ROBOT_CONVERSATIO
 from server.cognition.owner_authentication import owner_unlock_service
 from server.conversation_log import CONVERSATION_LOGGER_NAME as SERVER_CONVERSATION_LOGGER
 from server.main import app
-from server.memory import continuity
+from server.memory import candidates, continuity
+from server.memory.candidate_limits import limiter as candidate_limiter
 from server.resources import AppResources
-from server.settings import settings
+from server.settings import Settings, settings
 
 
 @pytest.fixture(autouse=True)
@@ -29,6 +30,58 @@ def _continuity_session_empty() -> Generator[None, None, None]:
     continuity.reset()
     yield
     continuity.reset()
+
+
+@pytest.fixture(autouse=True)
+def _candidate_extraction_limiter_idle() -> Generator[None, None, None]:
+    """Start and finish every test with an idle extraction limiter (ADR 0021).
+
+    The limiter is process-wide (one extraction at a time, so many per hour), so a test that
+    leaves a slot taken or an hour spent would otherwise fail the next test of its worker.
+    """
+    candidate_limiter.reset()
+    yield
+    candidate_limiter.reset()
+
+
+_CANDIDATE_LIMITS = (
+    "memory_candidate_ttl_seconds",
+    "memory_candidate_max_live",
+    "memory_candidate_value_max_chars",
+    "memory_candidate_max_offers",
+    "memory_candidate_answer_seconds",
+    "memory_candidate_extractions_per_hour",
+)
+
+
+@pytest.fixture(autouse=True)
+def _memory_candidate_limits_at_their_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Start every test with the candidate limits at the ADR's defaults, not a developer's `.env`.
+
+    A test that needs another limit sets it itself.
+    """
+    for name in _CANDIDATE_LIMITS:
+        monkeypatch.setattr(settings, name, Settings.model_fields[name].default)
+
+
+@pytest.fixture(autouse=True)
+def _candidate_checkpoint_not_owed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Start every test with no write-ahead-log checkpoint owed by an earlier test (ADR 0021).
+
+    The owed-checkpoint flag is process-wide; a test that leaves it set would make the next
+    test of its worker run a checkpoint it never asked for.
+    """
+    monkeypatch.setattr(candidates, "_checkpoint_pending", False)
+
+
+@pytest.fixture(autouse=True)
+def _memory_candidates_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Start every test with the candidate kill-switch off (ADR 0021).
+
+    A developer's `.env` may switch candidates on; without this pin a test that never asked for
+    them would schedule proposals. A test that wants them sets the flag itself.
+    """
+    monkeypatch.setattr(settings, "memory_candidates_enabled", False)
 
 
 @pytest.fixture(autouse=True)

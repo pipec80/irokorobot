@@ -164,7 +164,7 @@ def resolve_information_need(message: str) -> IntentResolution:
         The closed, deterministic resolution — need, match kind, and a
         privacy-safe rule identifier (``None`` only for generic conversation).
     """
-    normalized = _normalize(message)
+    normalized = normalize_spanish(message)
     for rule in _RULES:
         resolution = rule(normalized)
         if resolution is not None:
@@ -238,7 +238,7 @@ def _contains_word_phrase(normalized: str, pattern: str) -> bool:
     Plain substring checks would let "que ves" false-hit inside "aunque
     vestirse" (the "que ves" letters span the word boundary). Padding both
     sides with a single space reproduces the old regex ``\\b...\\b``
-    guarantee cheaply, since `_normalize` already collapses every non-word
+    guarantee cheaply, since `normalize_spanish` already collapses every non-word
     run to exactly one space.
     """
     return f" {pattern} " in f" {normalized} "
@@ -335,12 +335,20 @@ _RULES: tuple[Callable[[str], IntentResolution | None], ...] = (
 )
 
 
-def _normalize(message: str) -> str:
+def normalize_spanish(message: str) -> str:
     """Fold accents/case and collapse punctuation for closed Spanish matching.
 
     NFD-decomposes, strips combining accents, casefolds, replaces each
     non-word run with one space, then trims — so surrounding punctuation and
-    inconsistent whitespace never affect classification.
+    inconsistent whitespace never affect classification. Public because the
+    memory layer's closed grammars (ADR 0021) fold text the same way; it is the one
+    folding function they share rather than another copy.
+
+    Args:
+        message: Raw transcript or chat text.
+
+    Returns:
+        The folded text: lower case, no accents, words separated by single spaces.
     """
     decomposed = unicodedata.normalize("NFD", message)
     stripped = "".join(
