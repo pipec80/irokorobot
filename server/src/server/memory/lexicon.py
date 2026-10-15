@@ -3,6 +3,10 @@
 Stopwords keep greetings from firing entity lookups; relation triggers map
 possessive questions ("mis hijos", "mi mascota") to the canonical predicate
 that answers them via reverse fact lookup (see memory/relations.py).
+
+It also holds the closed Spanish grammar of memory candidates (ADR 0021): preference triggers,
+lead-in, negation and clause words, articles, allowed infinitives, topics and the denied
+person and sensitive vocabulary.
 """
 
 from __future__ import annotations
@@ -221,8 +225,9 @@ PERSON_WORDS = frozenset(
     }
 )  # fmt: skip
 
-#: Place, health, money, credential, life-event and disclosure vocabulary: a clause that
-#: contains one is never a taste. A second layer under the closed topic set.
+#: Place, health, money, credential, life-event and disclosure vocabulary: a taste whose
+#: trigger-and-object words, or whose extracted object, contain one is refused. A second layer
+#: under the closed topic set.
 SENSITIVE_WORDS = frozenset(
     {
         # place and address
@@ -255,15 +260,39 @@ SENSITIVE_WORDS = frozenset(
 )  # fmt: skip
 
 
+# "pin", "mama": a two-letter word has no diminutive stem worth guessing.
+_MIN_DIMINUTIVE_WORD = 2
+
+
+def _inflections(word: str) -> set[str]:
+    """Return a folded word with its plural and its diminutives, so a list entry is enough.
+
+    The deny lists are written in the singular; a person, a role or a sensitive thing said in the
+    plural (``vecinos``, ``hospitales``) or as a diminutive (``perritos``, ``casitas``) is the same
+    thing and must be refused just as firmly.
+    """
+    forms = {word, f"{word}s", f"{word}es"}
+    if word.endswith(("o", "a")) and len(word) > _MIN_DIMINUTIVE_WORD:
+        stem = word[:-1]
+        for ending in ("ito", "ita"):
+            diminutive = f"{stem}{ending}"
+            forms.update({diminutive, f"{diminutive}s"})
+    return forms
+
+
 def candidate_denied_words() -> frozenset[str]:
     """Return every folded word a candidate's object may never contain.
 
     Returns:
         Person and role words, place/health/money/credential/disclosure words and the folded
-        keys of ``RELATION_TRIGGERS`` (hijo, mascota, perro, gato, esposa, edad, ...).
+        keys of ``RELATION_TRIGGERS`` (hijo, mascota, perro, gato, esposa, edad, ...), each with
+        its plural and diminutive forms.
     """
     relation_words = {
         unicodedata.normalize("NFD", word).encode("ascii", "ignore").decode("ascii")
         for word in RELATION_TRIGGERS
     }
-    return PERSON_WORDS | SENSITIVE_WORDS | frozenset(relation_words)
+    denied: set[str] = set()
+    for word in PERSON_WORDS | SENSITIVE_WORDS | relation_words:
+        denied |= _inflections(word)
+    return frozenset(denied)

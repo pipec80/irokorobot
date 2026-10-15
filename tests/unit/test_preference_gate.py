@@ -170,3 +170,55 @@ def test_each_taste_carries_the_words_after_its_own_trigger() -> None:
         ("likes", ("el", "mate", "verde")),
         ("dislikes", ("el", "cilantro")),
     ]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "odio los vecinos",
+        "me gustan los niños",
+        "detesto los médicos",
+        "odio las suegras",
+        "me encantan los bebés",
+        "odio los musulmanes",
+        "odio los judíos",
+        "odio los políticos",
+        "me gustan los hospitales",
+        "me gustan los perritos",
+        "me gustan las casitas del barrio",
+    ],
+)
+def test_the_deny_lists_cover_plurals_and_diminutives(text: str) -> None:
+    result = match_preference(text)
+
+    assert result.predicates == frozenset()
+    assert result.reason is CandidateReason.SENSITIVE_TOPIC
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "me gusta todo menos el café",
+        "me gusta el café excepto el descafeinado",
+        "me encanta todo salvo el cilantro",
+        "prefiero el mate al café",
+        "prefiero el mate en vez del café",
+        "prefiero el mate en lugar del café",
+    ],
+)
+def test_a_contrast_inside_one_taste_is_not_a_taste(text: str) -> None:
+    """The model must not pick which side of "todo menos X" or "A al B" is the taste."""
+    result = match_preference(text)
+
+    assert result.predicates == frozenset()
+    assert result.reason is CandidateReason.NEGATION_UNSUPPORTED
+
+
+@pytest.mark.parametrize(
+    "text, predicates",
+    [("me gusta el pollo al horno", _LIKES), ("Prefiero el té sin azúcar", _PREFERS)],
+)
+def test_a_modifier_that_is_not_a_contrast_still_passes(
+    text: str, predicates: frozenset[str]
+) -> None:
+    assert match_preference(text).predicates == predicates

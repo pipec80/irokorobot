@@ -11,7 +11,10 @@ spending a voice check and a model call is worth it, and it refuses on doubt:
   gusta`` (a correction, CM-6) and ``prefiero no hablar de ...`` never pass;
 * a third person or a lead-in the grammar does not know (``mi hermano dice que me gusta``), and a
   taste that follows an attribution after a soft break (``mi hija dice: me gusta el helado``);
-* a clause that names a person, a place, health, money, a credential or a disclosure.
+* an object (the words from the trigger to the next coordinator) that names a person, a place,
+  health, money, a credential or a disclosure, in the singular, the plural or a diminutive;
+* a contrast inside one taste (``todo menos el café``, ``prefiero el mate al café``): the model
+  never picks which side of it is the taste.
 
 Each accepted taste is returned with the words that follow its own trigger, so the classifier can
 tie the model's object to a trigger of the same predicate (the model never decides the polarity).
@@ -43,6 +46,12 @@ _HARD_STOP = re.compile(r"[.!?¿¡…\n]")
 _COORDINATION = re.compile(r"\s(?:pero|y|e|ni|aunque|sino)\s")
 _PREFERS = "prefers"
 _OBJECT_OPENING_PREPOSITIONS = frozenset({"a", "al"})
+# Inside ONE taste these words say "this one, not that one": which side is the taste is not
+# something the model may pick ("me gusta todo menos el café"), so the whole taste is dropped.
+_EXCLUSION_WORDS = frozenset({"menos", "excepto", "salvo"})
+# After "prefiero", "al" and "en vez de / en lugar de" introduce the thing that is NOT preferred.
+_PREFERS_CONTRAST_WORDS = frozenset({"al"})
+_PREFERS_CONTRAST_PHRASES = (" en vez ", " en lugar ")
 _PREFIX_WORDS = LEAD_IN_WORDS | GREETING_WORDS | NEGATORS
 
 
@@ -93,6 +102,19 @@ def _lead_refusal(lead: list[str]) -> CandidateReason | None:
     return None
 
 
+def _contrast_refusal(predicate: str, trailing: list[str]) -> CandidateReason | None:
+    """Refuse a taste that sets one thing against another inside its own words."""
+    if any(word in _EXCLUSION_WORDS for word in trailing):
+        return CandidateReason.NEGATION_UNSUPPORTED
+    if predicate == _PREFERS:
+        padded = f" {' '.join(trailing)} "
+        if any(word in _PREFERS_CONTRAST_WORDS for word in trailing[1:]) or any(
+            phrase in padded for phrase in _PREFERS_CONTRAST_PHRASES
+        ):
+            return CandidateReason.NEGATION_UNSUPPORTED
+    return None
+
+
 def _object_refusal(trigger_and_object: list[str], trailing: list[str]) -> CandidateReason | None:
     """Refuse what follows a trigger unless it is a plain, positive, non-sensitive thing."""
     if not trailing or trailing[0] in CLAUSE_OPENERS or "que" in trailing:
@@ -114,10 +136,15 @@ def _match_part(folded: str) -> GateMatch | CandidateReason | None:
     lead = folded[: found.start()].split()
     trailing = folded[found.end() :].split()
     # The favourite trigger carries words ("mi hijo favorito es"): they are checked too.
-    refusal = _lead_refusal(lead) or _object_refusal(folded[found.start() :].split(), trailing)
+    predicate = _predicate_of(found.group(0))
+    refusal = (
+        _lead_refusal(lead)
+        or _object_refusal(folded[found.start() :].split(), trailing)
+        or _contrast_refusal(predicate, trailing)
+    )
     if refusal is not None:
         return refusal
-    return GateMatch(predicate=_predicate_of(found.group(0)), words=tuple(trailing))
+    return GateMatch(predicate=predicate, words=tuple(trailing))
 
 
 def match_preference(text: str) -> GateResult:
