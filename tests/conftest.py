@@ -32,6 +32,16 @@ def _continuity_session_empty() -> Generator[None, None, None]:
 
 
 @pytest.fixture(autouse=True)
+def _memory_candidates_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Start every test with the candidate kill-switch off (ADR 0021).
+
+    A developer's `.env` may switch candidates on; without this pin a test that never asked for
+    them would schedule proposals. A test that wants them sets the flag itself.
+    """
+    monkeypatch.setattr(settings, "memory_candidates_enabled", False)
+
+
+@pytest.fixture(autouse=True)
 def _conversation_text_logs_off() -> None:
     """Start every test with both opt-in conversation loggers disabled (Plan 0052).
 

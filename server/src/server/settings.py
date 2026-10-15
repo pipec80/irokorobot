@@ -116,6 +116,18 @@ class Settings(BaseSettings):
     semantic_top_k: int = 6
 
     memory_enabled: bool = True
+    # Memory candidates (ADR 0021, CM-3a): what the identified owner says about their own
+    # tastes is kept as a short-lived candidate and promoted only by the one writer. Off by
+    # default and a kill-switch for every path (proposal, offer, answer, promotion).
+    memory_candidates_enabled: bool = False
+    memory_candidate_ttl_seconds: PositiveInt = 86_400
+    memory_candidate_max_live: PositiveInt = 5
+    memory_candidate_value_max_chars: PositiveInt = 80
+    memory_candidate_max_offers: PositiveInt = 2
+    memory_candidate_answer_seconds: PositiveInt = 60
+    # Extraction is one local-model call (about 41 s on the shared laptop): at most one is in
+    # flight and at most this many start in any rolling hour.
+    memory_candidate_extractions_per_hour: PositiveInt = 12
     robot_character: str = "iroko"
     # Re-read character markdown profiles from disk on every request when
     # they change (prompt-engineering aid). OFF by default: production loads
