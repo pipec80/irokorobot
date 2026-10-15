@@ -242,14 +242,41 @@ async def test_the_session_is_keyed_by_person_id_not_by_name_or_evidence_id(
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_manual_identified_turn_schedules_legacy_callback(
+async def test_a_face_identified_turn_schedules_a_proposal_with_the_users_words_only(
     http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Only manual identity may reach consolidation and must remain attached."""
+    """ADR 0021 §10: the callback gets the user's text and the actor, never the reply."""
     generate = AsyncMock(return_value=("Veo una taza", "neutral"))
     scheduler = Mock()
     monkeypatch.setattr(settings, "memory_enabled", True)
+    monkeypatch.setattr(settings, "memory_candidates_enabled", True)
+    monkeypatch.setattr(text_turn.llm, "generate_response", generate)
+    person = _person(IdentityEvidenceSource.FACE)
+
+    await text_turn.process_text_turn(
+        http_client,
+        "me gusta el mate",
+        "web",
+        schedule_proposal=scheduler,
+        active_person=person,
+    )
+
+    scheduler.assert_called_once_with("me gusta el mate", person)
+    assert "Veo una taza" not in str(scheduler.call_args)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_a_manual_identified_turn_keeps_its_history_but_proposes_nothing(
+    http_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The retired MANUAL gate no longer reaches a writer; the persistent context keeps it."""
+    generate = AsyncMock(return_value=("Veo una taza", "neutral"))
+    scheduler = Mock()
+    monkeypatch.setattr(settings, "memory_enabled", True)
+    monkeypatch.setattr(settings, "memory_candidates_enabled", True)
     _persistent_context(monkeypatch)
     monkeypatch.setattr(text_turn.llm, "generate_response", generate)
 
@@ -259,7 +286,7 @@ async def test_manual_identified_turn_schedules_legacy_callback(
         "¿Qué ves?",
         "vision-a",
         perception="A blue mug",
-        schedule_consolidation=scheduler,
+        schedule_proposal=scheduler,
         active_person=person,
     )
 
@@ -268,7 +295,80 @@ async def test_manual_identified_turn_schedules_legacy_callback(
         "¿Qué ves?",
         "Veo una taza",
     ]
-    scheduler.assert_called_once_with("¿Qué ves?", "Veo una taza", person)
+    scheduler.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_the_kill_switch_stops_the_proposal_before_it_is_scheduled(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scheduler = Mock()
+    monkeypatch.setattr(settings, "memory_enabled", True)
+    monkeypatch.setattr(settings, "memory_candidates_enabled", False)
+    _generate(monkeypatch, ("Uno", "neutral"))
+
+    await text_turn.process_text_turn(
+        http_client,
+        "me gusta el mate",
+        "web",
+        schedule_proposal=scheduler,
+        active_person=_person(IdentityEvidenceSource.FACE),
+    )
+
+    scheduler.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "source",
+    [IdentityEvidenceSource.LOCAL_UNLOCK, IdentityEvidenceSource.MANUAL],
+)
+async def test_a_token_or_manual_turn_never_proposes(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, source: IdentityEvidenceSource
+) -> None:
+    """A PIN grant proves the PIN, not the speaker: no candidate from a token (ADR 0021 §3)."""
+    scheduler = Mock()
+    monkeypatch.setattr(settings, "memory_enabled", True)
+    monkeypatch.setattr(settings, "memory_candidates_enabled", True)
+    _persistent_context(monkeypatch)
+    _generate(monkeypatch, ("Uno", "neutral"))
+
+    await text_turn.process_text_turn(
+        http_client,
+        "me gusta el mate",
+        "web",
+        schedule_proposal=scheduler,
+        active_person=_person(source, assurance=IdentityAssurance.STRONG),
+    )
+
+    scheduler.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status",
+    [ActivePersonStatus.UNKNOWN, ActivePersonStatus.PROBABLE, ActivePersonStatus.AMBIGUOUS],
+)
+async def test_an_unidentified_turn_never_proposes(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, status: ActivePersonStatus
+) -> None:
+    scheduler = Mock()
+    monkeypatch.setattr(settings, "memory_enabled", True)
+    monkeypatch.setattr(settings, "memory_candidates_enabled", True)
+    _generate(monkeypatch, ("Uno", "neutral"))
+
+    await text_turn.process_text_turn(
+        http_client,
+        "me gusta el mate",
+        "web",
+        schedule_proposal=scheduler,
+        active_person=_unidentified_person(status),
+    )
+
+    scheduler.assert_not_called()
 
 
 @pytest.mark.unit
@@ -301,7 +401,7 @@ async def test_a_face_or_token_identified_turn_has_history_and_nothing_durable(
             message,
             "web",
             active_person=person,
-            schedule_consolidation=scheduler,
+            schedule_proposal=scheduler,
         )
 
     assert _histories(generate) == [[], ["primero", "Uno"]]
@@ -362,7 +462,7 @@ async def test_a_suspended_turn_reads_nothing_writes_nothing_and_spares_the_sess
         "stranger asks",
         "web",
         active_person=_unidentified_person(status),
-        schedule_consolidation=scheduler,
+        schedule_proposal=scheduler,
     )
     await text_turn.process_text_turn(http_client, "owner again", "web", active_person=owner)
 
@@ -435,7 +535,7 @@ async def test_llm_fallback_does_not_contaminate_memory(
         "Question",
         "web-a",
         active_person=_identified_person(),
-        schedule_consolidation=scheduler,
+        schedule_proposal=scheduler,
     )
 
     assert result.response == settings.llm_fallback_phrase

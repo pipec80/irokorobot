@@ -19,7 +19,7 @@ def _mock_memory_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(llm, "generate_response", AsyncMock(return_value=("hola humano", "joy")))
     monkeypatch.setattr(tts, "synthesize", AsyncMock(return_value=("AAAA", 42)))
     monkeypatch.setattr(pipeline, "list_entity_names", AsyncMock(return_value=[]))
-    monkeypatch.setattr(transcribe_module, "consolidate_turn", AsyncMock())
+    monkeypatch.setattr(transcribe_module, "propose_candidates", AsyncMock())
 
 
 @pytest.mark.integration

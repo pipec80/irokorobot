@@ -165,9 +165,9 @@ def llm_calls(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, object]]:
 
 @pytest.fixture
 def consolidation(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
-    """Replace post-turn consolidation so a scheduled write is observable."""
+    """Replace the post-turn candidate proposal so a scheduled write is observable."""
     mock = AsyncMock()
-    monkeypatch.setattr("server.routers.transcribe.consolidate_turn", mock)
+    monkeypatch.setattr("server.routers.transcribe.propose_candidates", mock)
     return mock
 
 

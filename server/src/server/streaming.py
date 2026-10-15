@@ -48,8 +48,8 @@ from server.streaming_render import (
     synthesize_sentence,
 )
 from server.text_turn import (
-    ConsolidationScheduler,
     PreparedTextTurn,
+    ProposalScheduler,
     record_text_turn,
 )
 from server.user_emotion import classify_user_emotion
@@ -107,7 +107,7 @@ async def _consume_llm_stream(
 def _record_success(
     prepared: PreparedTextTurn,
     state: StreamState,
-    scheduler: ConsolidationScheduler,
+    scheduler: ProposalScheduler,
 ) -> None:
     """Persist a turn — only ever called for a fully successful stream."""
     if state.outcome is not StreamOutcome.OK or not state.recordable or not state.response_parts:
@@ -117,7 +117,7 @@ def _record_success(
         " ".join(state.response_parts),
         active_person=prepared.active_person,
         continuity_turn=prepared.continuity,
-        schedule_consolidation=scheduler,
+        schedule_proposal=scheduler,
     )
 
 
@@ -175,7 +175,7 @@ async def stream_pipeline(
     prepared: PreparedTextTurn,
     stt_ms: int,
     request_start: float,
-    schedule_consolidation: ConsolidationScheduler,
+    schedule_proposal: ProposalScheduler,
 ) -> AsyncIterator[str]:
     """Stream STT->LLM->TTS as NDJSON, synthesizing speech sentence by sentence.
 
@@ -194,7 +194,7 @@ async def stream_pipeline(
         prepared: Shared prompt inputs and internal scope for one voice request.
         stt_ms: STT elapsed time, measured by the caller.
         request_start: ``time.perf_counter()`` reading from request start.
-        schedule_consolidation: Channel-owned background scheduling callback.
+        schedule_proposal: Channel-owned background proposal scheduling callback.
 
     Yields:
         NDJSON lines (each ending in ``\\n``), see schemas_streaming.py.
@@ -220,7 +220,7 @@ async def stream_pipeline(
         async for line in emit_fallback(state, reason=StreamFallbackReason.LLM_ERROR):
             yield line
 
-    _record_success(prepared, state, schedule_consolidation)
+    _record_success(prepared, state, schedule_proposal)
 
     total_ms = _elapsed_ms(request_start)
     llm_ms = llm_elapsed_ms(total_ms, stt_ms, state.tts_ms_total)

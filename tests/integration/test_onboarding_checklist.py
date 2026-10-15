@@ -8,65 +8,21 @@ mentioned before the owner introduced himself.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, patch
-from uuid import UUID
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import httpx
 
 import pytest
-from server.cognition.identity import (
-    ActivePersonContext,
-    ActivePersonStatus,
-    HouseholdRole,
-    IdentityEvidence,
-    IdentityEvidenceSource,
-)
-from server.cognition.models import Confidence, ConfidenceBasis
-from server.memory.consolidation import consolidate_turn
 from server.memory.declarative import assert_fact, upsert_entity
-from server.memory.meta import get_flag, set_flag
+from server.memory.meta import set_flag
 from server.onboarding import next_missing_slot
-from server.schemas import ExtractedEntity, ExtractedFact, TurnExtraction
 from server.settings import settings
 
 from server import db
 
 _OWNER = "Felipe Castro"
-
-
-def _identified_person() -> ActivePersonContext:
-    """Create explicit manual evidence for consolidation compatibility tests."""
-    observed_at = datetime(2026, 8, 10, tzinfo=UTC)
-    confidence = Confidence(
-        score=1.0,
-        basis=ConfidenceBasis.ASSERTED,
-        calibrated=True,
-        reason="Explicit local selection",
-    )
-    return ActivePersonContext(
-        person_id=1,
-        display_name=_OWNER,
-        status=ActivePersonStatus.IDENTIFIED,
-        confidence=confidence,
-        role=HouseholdRole.UNKNOWN,
-        evidence=(
-            IdentityEvidence(
-                evidence_id=UUID("55555555-5555-5555-5555-555555555555"),
-                source=IdentityEvidenceSource.MANUAL,
-                candidate_person_id=1,
-                confidence=confidence,
-                observed_at=observed_at,
-                expires_at=None,
-                reference="trusted-local-adapter",
-            ),
-        ),
-        resolved_at=observed_at,
-    )
 
 
 @pytest.fixture
@@ -178,57 +134,3 @@ async def test_all_covered_returns_none(onboarding_db: Path) -> None:
         await assert_fact(entity_id=owner_id, predicate=predicate, object_value="dato")
 
     assert await next_missing_slot() is None
-
-
-def _turn(entities: list[ExtractedEntity], facts: list[ExtractedFact]) -> TurnExtraction:
-    return TurnExtraction(entities=entities, facts=facts, episodic_summary=None, importance=0.8)
-
-
-@pytest.mark.integration
-async def test_self_introduction_does_not_anchor_legacy_owner(
-    onboarding_db: Path,
-    http_client: httpx.AsyncClient,
-) -> None:
-    """No incoming turn may infer or replace the legacy household owner."""
-    kids_turn = _turn(
-        entities=[
-            ExtractedEntity(name="Joaquín", type="person"),
-            ExtractedEntity(name="Martina", type="person"),
-        ],
-        facts=[
-            ExtractedFact(subject="Joaquín", predicate="hijo_de", object="Usuario"),
-            ExtractedFact(subject="Martina", predicate="hijo_de", object="Usuario"),
-        ],
-    )
-    intro_turn = _turn(
-        entities=[ExtractedEntity(name="Felipe Castro", type="person")],
-        facts=[ExtractedFact(subject="usuario", predicate="edad", object="40")],
-    )
-    with (
-        patch("server.memory.consolidation._extract", new_callable=AsyncMock) as extract,
-        patch(
-            "server.memory.consolidation.store_memory",
-            new_callable=AsyncMock,
-            return_value=None,
-        ),
-    ):
-        extract.return_value = kids_turn
-        await consolidate_turn(
-            http_client,
-            "sí, tengo dos hijos, Joaquín y mi hija Martina",
-            "¡Qué maravilla!",
-        )
-        assert await get_flag("owner_name") is None
-
-        extract.return_value = intro_turn
-        await consolidate_turn(
-            http_client,
-            "te quería contar de mí, me llamo Felipe Castro",
-            "¡Un gusto!",
-            active_person=_identified_person(),
-        )
-
-    assert await get_flag("owner_name") is None
-    slot = await next_missing_slot()
-    assert slot is not None
-    assert slot.key == "nombre"

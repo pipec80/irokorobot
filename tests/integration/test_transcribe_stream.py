@@ -17,12 +17,14 @@ from server.cognition.identity import (
     ActivePersonContext,
     ActivePersonStatus,
     HouseholdRole,
+    IdentityAssurance,
     IdentityEvidence,
     IdentityEvidenceSource,
 )
 from server.cognition.models import Confidence, ConfidenceBasis, KnowledgeStatus
 from server.cognition.response_plan import InformationNeed, ResponsePlan, ResponseSource
 from server.exceptions import LLMError, TTSError
+from server.memory.candidate_types import CandidateChannel
 from server.memory.continuity import ContinuityTurn
 from server.routers import transcribe as transcribe_module
 from server.schemas import ConversationTurn
@@ -59,6 +61,33 @@ def _manual_active_person() -> ActivePersonContext:
             ),
         ),
         resolved_at=resolved_at,
+    )
+
+
+def _face_active_person() -> ActivePersonContext:
+    """Create the owner as the face identifies them (ADR 0020), for proposal-scheduling tests."""
+    resolved_at = datetime(2026, 8, 10, tzinfo=UTC)
+    confidence = Confidence(
+        score=1.0, basis=ConfidenceBasis.MEASURED, calibrated=True, reason="In-turn face match"
+    )
+    return ActivePersonContext(
+        person_id=7,
+        display_name="Paula",
+        status=ActivePersonStatus.IDENTIFIED,
+        confidence=confidence,
+        role=HouseholdRole.OWNER,
+        evidence=(
+            IdentityEvidence(
+                evidence_id=UUID("22222222-2222-2222-2222-222222222222"),
+                source=IdentityEvidenceSource.FACE,
+                candidate_person_id=7,
+                confidence=confidence,
+                observed_at=resolved_at,
+                reference="in-turn-face-evidence",
+            ),
+        ),
+        resolved_at=resolved_at,
+        assurance=IdentityAssurance.BASIC,
     )
 
 
@@ -238,7 +267,7 @@ def test_stream_prepares_shared_voice_turn(
     assert prepare.await_args is not None
     assert prepare.await_args.args[1:] == ("hola robot", scope)
     assert record.call_args.args == ("hola robot", "Hola. ¿Cómo estás?")
-    assert callable(record.call_args.kwargs["schedule_consolidation"])
+    assert callable(record.call_args.kwargs["schedule_proposal"])
 
 
 @pytest.mark.integration
@@ -756,7 +785,7 @@ async def test_stream_partial_llm_failure_preserves_audio_then_fallback(
             prepared=prepared,
             stt_ms=0,
             request_start=time.perf_counter(),
-            schedule_consolidation=lambda *_a, **_k: None,
+            schedule_proposal=lambda *_a, **_k: None,
         )
     ]
 
@@ -798,7 +827,7 @@ async def test_stream_protocol_fallback_tts_failure_has_no_done(
             prepared=prepared,
             stt_ms=0,
             request_start=time.perf_counter(),
-            schedule_consolidation=lambda *_a, **_k: None,
+            schedule_proposal=lambda *_a, **_k: None,
         ):
             collected.append(line)
 
@@ -830,7 +859,7 @@ async def test_stream_tts_failure_logs_tts_error_outcome(
             prepared=prepared,
             stt_ms=0,
             request_start=time.perf_counter(),
-            schedule_consolidation=lambda *_a, **_k: None,
+            schedule_proposal=lambda *_a, **_k: None,
         ):
             pass
 
@@ -1099,7 +1128,7 @@ async def test_streaming_propagates_prepared_identity_history_and_recording_scop
             prepared=prepared,
             stt_ms=0,
             request_start=time.perf_counter(),
-            schedule_consolidation=lambda _message, _response, _active_person: None,
+            schedule_proposal=lambda _message, _active_person: None,
         )
     ]
 
@@ -1111,14 +1140,14 @@ async def test_streaming_propagates_prepared_identity_history_and_recording_scop
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_streaming_schedules_manual_identity_for_consolidation(
+async def test_streaming_schedules_the_proposal_for_a_face_identified_speaker(
     http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Streaming must preserve manual identity through its scheduler callback."""
-    active_person = _manual_active_person()
+    """Streaming hands the proposal callback the user's words and the actor, never the reply."""
+    active_person = _face_active_person()
     prepared = PreparedTextTurn(
-        "hola robot",
+        "me gusta el mate",
         "public-id",
         None,
         [],
@@ -1131,6 +1160,7 @@ async def test_streaming_schedules_manual_identity_for_consolidation(
     )
     scheduler = Mock()
     monkeypatch.setattr(settings, "memory_enabled", True)
+    monkeypatch.setattr(settings, "memory_candidates_enabled", True)
 
     _ = [
         line
@@ -1139,33 +1169,40 @@ async def test_streaming_schedules_manual_identity_for_consolidation(
             prepared=prepared,
             stt_ms=0,
             request_start=time.perf_counter(),
-            schedule_consolidation=scheduler,
+            schedule_proposal=scheduler,
         )
     ]
 
-    scheduler.assert_called_once_with("hola robot", "Hola. ¿Cómo estás?", active_person)
+    scheduler.assert_called_once_with("me gusta el mate", active_person)
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_background_scheduler_forwards_manual_identity(
+@pytest.mark.parametrize("channel", list(CandidateChannel))
+async def test_the_background_bridge_carries_the_clip_the_event_and_the_channel(
     http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
+    channel: CandidateChannel,
 ) -> None:
-    """The FastAPI background bridge must pass identity as data, not permission."""
-    active_person = _manual_active_person()
-    consolidate = AsyncMock()
+    """The FastAPI background bridge passes identity as data and keeps the clip in memory."""
+    active_person = _face_active_person()
+    propose = AsyncMock()
     background_tasks = BackgroundTasks()
-    monkeypatch.setattr(transcribe_module, "consolidate_turn", consolidate)
+    monkeypatch.setattr(transcribe_module, "propose_candidates", propose)
+    event = transcribe_module._voice_event_from_transcript("me gusta el mate")
 
-    scheduler = transcribe_module._consolidation_scheduler(http_client, background_tasks)
-    scheduler("hola robot", "Hola.", active_person)
+    scheduler = transcribe_module._proposal_scheduler(
+        http_client, background_tasks, event=event, wav_bytes=b"canary-clip", channel=channel
+    )
+    scheduler("me gusta el mate", active_person)
     await background_tasks()
 
-    consolidate.assert_awaited_once_with(
+    propose.assert_awaited_once_with(
         http_client,
-        "hola robot",
-        "Hola.",
-        active_person=active_person,
+        "me gusta el mate",
+        active_person,
+        event=event,
+        wav_bytes=b"canary-clip",
+        channel=channel,
     )
-    assert active_person.role is HouseholdRole.UNKNOWN
+    assert active_person.role is HouseholdRole.OWNER

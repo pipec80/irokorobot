@@ -7,10 +7,8 @@ consolidation) with a real temporary SQLite database. External services
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
-from uuid import UUID
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -18,15 +16,6 @@ if TYPE_CHECKING:
     import httpx
 
 import pytest
-from server.cognition.identity import (
-    ActivePersonContext,
-    ActivePersonStatus,
-    HouseholdRole,
-    IdentityEvidence,
-    IdentityEvidenceSource,
-)
-from server.cognition.models import Confidence, ConfidenceBasis
-from server.memory.consolidation import consolidate_turn
 from server.memory.context import build_context
 from server.memory.declarative import (
     assert_fact,
@@ -35,40 +24,10 @@ from server.memory.declarative import (
     upsert_entity,
 )
 from server.memory.meta import get_flag, set_flag
-from server.schemas import ExtractedEntity, ExtractedFact, MemoryContext, TurnExtraction
+from server.schemas import MemoryContext
 from server.settings import settings
 
 from server import db
-
-
-def _identified_person() -> ActivePersonContext:
-    """Create manual evidence for the legacy-compatible test path."""
-    observed_at = datetime(2026, 8, 10, tzinfo=UTC)
-    confidence = Confidence(
-        score=1.0,
-        basis=ConfidenceBasis.ASSERTED,
-        calibrated=True,
-        reason="Explicit local selection",
-    )
-    return ActivePersonContext(
-        person_id=1,
-        display_name="Pipec",
-        status=ActivePersonStatus.IDENTIFIED,
-        confidence=confidence,
-        role=HouseholdRole.UNKNOWN,
-        evidence=(
-            IdentityEvidence(
-                evidence_id=UUID("44444444-4444-4444-4444-444444444444"),
-                source=IdentityEvidenceSource.MANUAL,
-                candidate_person_id=1,
-                confidence=confidence,
-                observed_at=observed_at,
-                expires_at=None,
-                reference="trusted-local-adapter",
-            ),
-        ),
-        resolved_at=observed_at,
-    )
 
 
 @pytest.fixture
@@ -218,112 +177,3 @@ async def test_run_migrations_is_idempotent(memory_db: Path) -> None:
     await cur.close()
     assert row is not None
     assert int(row[0]) == db._MIGRATIONS[-1][0]
-
-
-@pytest.mark.integration
-async def test_consolidating_self_intro_does_not_anchor_owner(
-    memory_db: Path, http_client: httpx.AsyncClient
-) -> None:
-    """A self-introduction must not mutate legacy household metadata."""
-    fake_extraction = TurnExtraction(
-        entities=[ExtractedEntity(name="Pipec", type="person")],
-        facts=[],
-        episodic_summary="El dueño se presentó.",
-        importance=0.9,
-    )
-    with (
-        patch(
-            "server.memory.consolidation._extract",
-            new_callable=AsyncMock,
-            return_value=fake_extraction,
-        ),
-        patch(
-            "server.memory.consolidation.store_memory",
-            new_callable=AsyncMock,
-            return_value=1,
-        ),
-    ):
-        await consolidate_turn(
-            http_client,
-            "me llamo Pipec",
-            "¡Un gusto, Pipec!",
-            active_person=_identified_person(),
-        )
-
-    assert await get_flag("owner_name") is None
-    assert await get_flag("onboarding_complete") is None
-
-
-@pytest.mark.integration
-async def test_implicit_active_person_entity_is_person(
-    memory_db: Path, http_client: httpx.AsyncClient
-) -> None:
-    """A turn-local active-person fact creates a PERSON entity, not a concept."""
-    fake_extraction = TurnExtraction(
-        entities=[],
-        facts=[
-            ExtractedFact(
-                subject="usuario", predicate="fecha_nacimiento", object="17 de agosto de 1979"
-            )
-        ],
-        importance=0.8,
-    )
-    with (
-        patch(
-            "server.memory.consolidation._extract",
-            new_callable=AsyncMock,
-            return_value=fake_extraction,
-        ),
-        patch(
-            "server.memory.consolidation.store_memory",
-            new_callable=AsyncMock,
-            return_value=None,
-        ),
-    ):
-        await consolidate_turn(
-            http_client,
-            "nací el 17 de agosto de 1979",
-            "¡Qué fecha!",
-            active_person=_identified_person(),
-        )
-
-    matches = await find_entities_by_name("Pipec", limit=1)
-    assert matches
-    assert matches[0]["type"] == "person"
-
-
-@pytest.mark.integration
-async def test_consolidate_turn_with_mocked_ollama(
-    memory_db: Path, http_client: httpx.AsyncClient
-) -> None:
-    """consolidate_turn must extract and persist entities when Ollama is mocked."""
-
-    fake_extraction = TurnExtraction(
-        entities=[ExtractedEntity(name="Luna", type="person")],
-        facts=[ExtractedFact(subject="Luna", predicate="es", object="un gato")],
-        episodic_summary="El usuario habla de su gato Luna.",
-        importance=0.8,
-    )
-
-    with (
-        patch(
-            "server.memory.consolidation._extract_via_ollama",
-            new_callable=AsyncMock,
-            return_value=fake_extraction,
-        ),
-        patch(
-            "server.memory.consolidation.store_memory",
-            new_callable=AsyncMock,
-            return_value=1,
-        ),
-    ):
-        await consolidate_turn(
-            http_client,
-            "Mi gato Luna es muy juguetón",
-            "Qué bonito",
-            active_person=_identified_person(),
-        )
-
-    entities = await find_entities_by_name("Luna")
-    assert len(entities) >= 1
-    assert entities[0]["name"] == "Luna"

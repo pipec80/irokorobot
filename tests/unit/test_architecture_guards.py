@@ -167,13 +167,13 @@ _MEMORY_SCOPE_VALUES = frozenset({"personal_memory_read", "personal_memory_forge
 _SCOPE_MEMBER_HOMES = frozenset({"cognition/owner_authentication.py"})
 _SCOPE_VALUE_HOMES = frozenset({"cognition/owner_authentication.py", "cognition/authorization.py"})
 # `manual` evidence counts as `basic`; these are the modules that reference it today (grep on
-# 2026-10-08). A new one must be a decision, not an accident.
+# 2026-10-08, minus `memory/consolidation.py`, whose `consolidate_turn` left in Plan 0062). A new
+# one must be a decision, not an accident.
 _MANUAL_HOMES = frozenset(
     {
         "characters/__init__.py",
         "cognition/identity.py",
         "cognition/identity_sessions.py",
-        "memory/consolidation.py",
         "text_turn.py",
     }
 )
@@ -418,3 +418,59 @@ def test_the_candidate_guard_detects_a_violation() -> None:
     }
 
     assert _candidate_table_queriers(leak) == ["memory/leak.py"]
+
+
+# --- who may start a candidate proposal (Plan 0062, ADR 0021 decision 1) -----------------
+# Only the two voice routes and the text-turn service they call may name the proposal entry
+# point or its scheduler: `/chat` and `/vision/respond` have no audio, so they have no `strong`
+# and must never create a candidate. `consolidate_turn` is gone for good.
+_PROPOSAL_NAMES = frozenset({"propose_candidates", "schedule_proposal", "ProposalScheduler"})
+_PROPOSAL_HOMES = frozenset(
+    {
+        "memory/candidate_proposal.py",
+        "routers/transcribe.py",
+        "streaming.py",
+        "text_turn.py",
+    }
+)
+
+
+@pytest.mark.unit
+def test_only_the_voice_routes_and_the_text_turn_service_start_a_proposal() -> None:
+    assert _outside(_sources(), _PROPOSAL_HOMES, _PROPOSAL_NAMES) == []
+
+
+def _imports_name(sources: Mapping[str, str], name: str) -> list[str]:
+    """Modules that import *name* (an import alias is not a Name node)."""
+    return [
+        module
+        for module, text in sources.items()
+        if any(
+            isinstance(node, ast.ImportFrom) and any(alias.name == name for alias in node.names)
+            for node in ast.walk(ast.parse(text))
+        )
+    ]
+
+
+@pytest.mark.unit
+def test_the_retired_consolidation_writer_has_no_reference_left() -> None:
+    sources = _sources()
+
+    assert _outside(sources, frozenset(), frozenset({"consolidate_turn"})) == []
+    assert _imports_name(sources, "consolidate_turn") == []
+
+
+@pytest.mark.unit
+def test_the_proposal_guards_detect_a_violation() -> None:
+    leak = {
+        "routers/chat.py": "x = propose_candidates(client, text, actor)\n",
+        "routers/vision.py": "process_text_turn(c, m, i, schedule_proposal=cb)\n",
+        "routers/transcribe.py": "x = propose_candidates\n",
+        "memory/legacy.py": "from x import consolidate_turn\n",
+    }
+
+    assert _outside(leak, _PROPOSAL_HOMES, _PROPOSAL_NAMES) == [
+        "routers/chat.py",
+        "routers/vision.py",
+    ]
+    assert _imports_name(leak, "consolidate_turn") == ["memory/legacy.py"]
