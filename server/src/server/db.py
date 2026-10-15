@@ -107,9 +107,10 @@ async def checkpoint_wal() -> bool:
     value call this after the transaction that erased it commits (ADR 0021 decision 6).
 
     The module's write lock is held so no transaction of this connection is open (a checkpoint
-    inside one is refused). The checkpoint never raises for a lock: another connection reading
-    the file (an operator's shell) or a cursor left open on this one only postpones it, and the
-    caller must not fail an operation that already committed because of it.
+    inside one is refused). The checkpoint never raises for a lock or a connection that is no
+    longer usable: another connection reading the file (an operator's shell) or a cursor left
+    open on this one only postpones it, and the caller must not fail an operation that already
+    committed because of it.
 
     Returns:
         ``True`` when the log was truncated; ``False`` when it was busy or locked (try again at
@@ -127,16 +128,29 @@ async def checkpoint_wal() -> bool:
             cursor = await conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
             row = await cursor.fetchone()
             await cursor.close()
-        except aiosqlite.Error as exc:
+        except (aiosqlite.Error, ValueError) as exc:
+            # ValueError: aiosqlite raises it for a connection that is no longer active.
             logger.warning("WAL checkpoint postponed (%s)", type(exc).__name__)
             return False
         finally:
-            await conn.execute(f"PRAGMA busy_timeout = {_BUSY_TIMEOUT_MS}")
+            await _restore_busy_timeout(conn)
     # (busy, log frames, checkpointed frames): busy is 1 when a reader pinned the log.
     if row is None or int(row[0]) != 0:
         logger.warning("WAL checkpoint postponed (busy)")
         return False
     return True
+
+
+async def _restore_busy_timeout(conn: aiosqlite.Connection) -> None:
+    """Put the normal busy timeout back after a checkpoint; never raises.
+
+    A restore that fails (the connection closed under us) must not replace the checkpoint's own
+    outcome, so it is logged by class and swallowed.
+    """
+    try:
+        await conn.execute(f"PRAGMA busy_timeout = {_BUSY_TIMEOUT_MS}")
+    except (aiosqlite.Error, ValueError) as exc:
+        logger.warning("Busy timeout not restored after a checkpoint (%s)", type(exc).__name__)
 
 
 async def close_db() -> None:

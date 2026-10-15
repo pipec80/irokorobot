@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta, timezone
 import logging
 import sqlite3
@@ -9,7 +10,8 @@ from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 import pytest
-from server.memory import candidates
+from server.exceptions import BrainMemoryError
+from server.memory import candidates, retention
 from server.memory.candidate_types import CandidateChannel, CandidateStatus, ProposedCandidate
 from server.memory.candidates import InsertStatus, iso_utc
 from server.memory.declarative import upsert_entity
@@ -38,6 +40,8 @@ async def store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterato
     """A fresh database, with the candidate subsystem on."""
     monkeypatch.setattr(settings, "brain_db_path", tmp_path / "candidates.db")
     monkeypatch.setattr(settings, "memory_candidates_enabled", True)
+    # The owed-checkpoint flag is process state: every test starts as a fresh process.
+    monkeypatch.setattr(candidates, "_checkpoint_pending", False)
     db._conn = None
     await db.open_db()
     await db.run_migrations()
@@ -159,6 +163,28 @@ async def test_a_duplicate_at_the_cap_is_still_a_duplicate(monkeypatch: pytest.M
     again = await _insert(owner, _proposal("el mate", "mate"))
 
     assert again.status is InsertStatus.DUPLICATE
+
+
+@pytest.mark.usefixtures("store")
+async def test_the_precheck_names_the_refusal_without_writing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The proposal asks before it audits, so "allowed" is not logged for a sure refusal."""
+    monkeypatch.setattr(settings, "memory_candidate_max_live", 1)
+    owner = await _person()
+    mate = _proposal("el mate", "mate")
+    assert await candidates.precheck_insert(mate, subject_person_id=owner) is None
+
+    await _insert(owner, mate)
+
+    assert await candidates.precheck_insert(mate, subject_person_id=owner) is InsertStatus.DUPLICATE
+    jazz = _proposal("el jazz", "jazz")
+    assert await candidates.precheck_insert(jazz, subject_person_id=owner) is InsertStatus.CAPACITY
+    monkeypatch.setattr(settings, "memory_candidates_enabled", False)
+    assert await candidates.precheck_insert(jazz, subject_person_id=owner) is InsertStatus.DISABLED
+    cursor = await db.get_conn().execute("SELECT COUNT(*) FROM memory_candidates")
+    assert await cursor.fetchone() == (1,)
+    await cursor.close()
 
 
 @pytest.mark.usefixtures("store")
@@ -385,11 +411,10 @@ async def test_start_up_with_the_kill_switch_off_voids_every_live_candidate(
         assert (candidate.value_text, candidate.value_key) == (None, None)
 
 
-async def _housekeeping(now: datetime) -> None:
-    """What the retention job does with candidates, without the rest of the job."""
-    async with db.transaction() as conn:
-        scrubbed = await candidates.run_housekeeping(conn, now)
-    await candidates.checkpoint_after_scrub(scrubbed)
+async def _retention_run_at(now: datetime, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Run the real retention job as if the clock read *now*."""
+    monkeypatch.setattr(retention, "utc_now", lambda: now)
+    await retention._run_once()
 
 
 def _file_bytes(db_path: Path) -> bytes:
@@ -421,7 +446,8 @@ async def test_a_scrubbed_value_is_gone_from_the_file_and_the_log(
             stored.candidate_id, owner, to=CandidateStatus.REJECTED, correlation_id=uuid4(), now=_T0
         )
     elif scrub == "expire":
-        await _housekeeping(_T0 + timedelta(seconds=settings.memory_candidate_ttl_seconds))
+        later = _T0 + timedelta(seconds=settings.memory_candidate_ttl_seconds)
+        await _retention_run_at(later, monkeypatch)
     else:
         await candidates.reset_for_startup(_T0, enabled=False)
 
@@ -429,7 +455,9 @@ async def test_a_scrubbed_value_is_gone_from_the_file_and_the_log(
 
 
 @pytest.mark.usefixtures("store")
-async def test_no_log_line_carries_a_value(caplog: pytest.LogCaptureFixture) -> None:
+async def test_no_log_line_carries_a_value(
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
     owner = await _person()
     with caplog.at_level(logging.DEBUG, logger="server"):
         stored = await _insert(owner, _proposal(_CANARY, "zumo de pomelo rosado"))
@@ -438,21 +466,23 @@ async def test_no_log_line_carries_a_value(caplog: pytest.LogCaptureFixture) -> 
         await candidates.resolve_candidate(
             stored.candidate_id, owner, to=CandidateStatus.REJECTED, correlation_id=uuid4(), now=_T0
         )
-        await _housekeeping(_T0)
+        await _retention_run_at(_T0, monkeypatch)
         await candidates.reset_for_startup(_T0, enabled=True)
 
     assert "pomelo" not in caplog.text
 
 
-async def test_a_scrub_whose_checkpoint_was_blocked_is_finished_at_the_next_entry(
-    store: Path,
-) -> None:
-    """A reader pinned the log: the page was erased, the old frames stay until a later retry."""
+async def _reject_with_the_log_pinned(db_path: Path) -> None:
+    """Reject an offered canary candidate while another reader pins the write-ahead log.
+
+    The page is erased and the resolution commits, but SQLite postpones the checkpoint, so the
+    frames that still hold the canary stay in the ``-wal`` file.
+    """
     owner = await _person()
     stored = await _insert(owner, _proposal(_CANARY, "zumo de pomelo rosado"))
     assert stored.candidate_id is not None
     await candidates.mark_offered(stored.candidate_id, owner, correlation_id=uuid4(), now=_T0)
-    reader = sqlite3.connect(store)
+    reader = sqlite3.connect(db_path)
     reader.execute("BEGIN")
     reader.execute("SELECT COUNT(*) FROM memory_candidates").fetchall()
     try:
@@ -465,8 +495,101 @@ async def test_a_scrub_whose_checkpoint_was_blocked_is_finished_at_the_next_entr
         )
     finally:
         reader.close()
-
     assert resolved is True  # the resolution committed; the postponed checkpoint did not fail it
+
+
+async def test_a_scrub_whose_checkpoint_was_blocked_is_finished_at_the_next_entry(
+    store: Path,
+) -> None:
+    """A reader pinned the log: the page was erased, the old frames stay until a later retry."""
+    await _reject_with_the_log_pinned(store)
+    assert _CANARY.encode() in _file_bytes(store)  # precondition: the blocked scrub left bytes
+
     await candidates.checkpoint_after_scrub(0)
 
     assert _CANARY.encode() not in _file_bytes(store)
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+async def test_a_checkpoint_owed_by_a_previous_process_is_finished_at_start_up(
+    store: Path, monkeypatch: pytest.MonkeyPatch, enabled: bool
+) -> None:
+    """The owed-checkpoint flag lives in memory: a restart forgets it, so start-up truncates."""
+    await _reject_with_the_log_pinned(store)
+    assert _CANARY.encode() in _file_bytes(store)  # precondition: the old frames are in the log
+    monkeypatch.setattr(candidates, "_checkpoint_pending", False)  # the new process
+
+    await candidates.reset_for_startup(_T0 + timedelta(seconds=1), enabled=enabled)
+
+    assert _CANARY.encode() not in _file_bytes(store)
+
+
+async def test_start_up_with_the_switch_on_scrubs_a_candidate_that_lapsed_while_down(
+    store: Path,
+) -> None:
+    owner = await _person()
+    stored = await _insert(owner, _proposal(_CANARY, "zumo de pomelo rosado"))
+    assert stored.candidate_id is not None
+    assert _CANARY.encode() in _file_bytes(store)
+    later = _T0 + timedelta(seconds=settings.memory_candidate_ttl_seconds)
+
+    await candidates.reset_for_startup(later, enabled=True)
+
+    assert await _status(stored.candidate_id) is CandidateStatus.EXPIRED
+    assert _CANARY.encode() not in _file_bytes(store)
+
+
+@pytest.mark.parametrize("failure", [BrainMemoryError, ValueError, asyncio.CancelledError])
+async def test_a_checkpoint_that_raises_still_leaves_the_owed_checkpoint_recorded(
+    store: Path, monkeypatch: pytest.MonkeyPatch, failure: type[BaseException]
+) -> None:
+    """Shutdown cancellation or a closed connection must not make the process forget the debt."""
+    attempts: list[str] = []
+
+    async def _raises() -> bool:
+        attempts.append("raised")
+        raise failure
+
+    async def _finishes() -> bool:
+        attempts.append("finished")
+        return True
+
+    monkeypatch.setattr(db, "checkpoint_wal", _raises)
+    with pytest.raises(failure):
+        await candidates.checkpoint_after_scrub(1)
+    monkeypatch.setattr(db, "checkpoint_wal", _finishes)
+
+    await candidates.checkpoint_after_scrub(0)  # scrubbed nothing, but the debt is still owed
+    await candidates.checkpoint_after_scrub(0)  # paid: no further call
+
+    assert attempts == ["raised", "finished"]
+
+
+@pytest.mark.usefixtures("store")
+async def test_the_insert_is_logged_before_a_failing_checkpoint_and_names_its_turn(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A checkpoint problem must not hide that a value was stored."""
+    owner = await _person()
+    await _insert(owner, _proposal("el mate", "mate"))
+    caplog.clear()  # the seeding insert logs too; only the one below is under test
+    later = _T0 + timedelta(seconds=settings.memory_candidate_ttl_seconds)
+    turn = uuid4()
+
+    async def _raises() -> bool:
+        raise BrainMemoryError("not open")
+
+    monkeypatch.setattr(db, "checkpoint_wal", _raises)
+    with caplog.at_level(logging.INFO, logger="server"), pytest.raises(BrainMemoryError):
+        await candidates.insert_candidate(
+            _proposal("el jazz", "jazz"),
+            subject_person_id=owner,
+            asserted_by_person_id=owner,
+            channel=CandidateChannel.VOICE_CLASSIC,
+            correlation_id=turn,
+            now=later,
+        )
+
+    events = [r for r in caplog.records if getattr(r, "event", "") == "candidate.insert"]
+    assert len(events) == 1
+    assert getattr(events[0], "correlation_id", None) == str(turn)

@@ -39,24 +39,51 @@ _SQL_OUTBOX = (
 )
 
 
-async def _run_once() -> None:
-    """Execute all retention DELETE statements in a single transaction.
+async def _purge_time_bounded_rows() -> None:
+    """Delete the expired sensor, embedding-cache and outbox rows in one transaction.
 
-    Errors are caught and logged without re-raising so the background loop
-    continues running on the next tick.
+    Raises:
+        Exception: Whatever the database raised; ``_run_once`` reports it by class.
     """
     sensor_threshold = f"-{settings.sensor_retention_hours} hours"
+    async with db.transaction() as conn:
+        await conn.execute(_SQL_SENSOR_READINGS, (sensor_threshold,))
+        await conn.execute(_SQL_SENSOR_AGGREGATES)
+        await conn.execute(_SQL_EMBEDDINGS_CACHE)
+        await conn.execute(_SQL_OUTBOX)
+    logger.info("Retention purge complete (sensor_threshold=%s)", sensor_threshold)
+
+
+async def _reclaim_candidates() -> None:
+    """Expire and scrub lapsed candidates, then truncate the log, apart from the other purges.
+
+    The housekeeping has its own transaction so a failure of the sensor purge cannot roll it
+    back (nor the reverse), and the checkpoint runs after the commit with its own error report:
+    the scrub has already happened by then and must not be reported as a failed purge.
+    """
     try:
         async with db.transaction() as conn:
-            await conn.execute(_SQL_SENSOR_READINGS, (sensor_threshold,))
-            await conn.execute(_SQL_SENSOR_AGGREGATES)
-            await conn.execute(_SQL_EMBEDDINGS_CACHE)
-            await conn.execute(_SQL_OUTBOX)
             scrubbed = await run_housekeeping(conn, utc_now())
-        await checkpoint_after_scrub(scrubbed)
-        logger.info("Retention purge complete (sensor_threshold=%s)", sensor_threshold)
     except Exception as exc:
-        logger.warning("Retention purge failed: %s", exc)
+        logger.warning("Candidate housekeeping failed (%s)", type(exc).__name__)
+        return
+    try:
+        await checkpoint_after_scrub(scrubbed)
+    except Exception as exc:
+        logger.warning("Candidate checkpoint failed after the scrub (%s)", type(exc).__name__)
+
+
+async def _run_once() -> None:
+    """Run the time-bounded purge and the candidate reclaim, each in its own transaction.
+
+    Errors are caught and logged by exception class (never the message) without re-raising so
+    the background loop continues running on the next tick.
+    """
+    try:
+        await _purge_time_bounded_rows()
+    except Exception as exc:
+        logger.warning("Retention purge failed (%s)", type(exc).__name__)
+    await _reclaim_candidates()
 
 
 async def _loop() -> None:

@@ -6,6 +6,7 @@ import sqlite3
 from typing import TYPE_CHECKING
 
 import pytest
+from server.exceptions import BrainMemoryError
 from server.memory.declarative import upsert_entity
 from server.memory.predicate_registry import resolve_predicate
 from server.memory.relational_v4 import assert_literal_fact
@@ -216,7 +217,8 @@ async def test_a_checkpoint_with_a_cursor_open_on_the_shared_connection_does_not
 ) -> None:
     owner = await _owner()
     await _insert(owner, "el mate", "mate", "proposed")
-    # Many rows and one fetch: the statement stays active, as a coroutine between an execute\n    # and its fetchall would leave it.
+    # Many rows and one fetch: the statement stays active, as a coroutine between an execute
+    # and its fetchall would leave it.
     cursor = await db.get_conn().execute("SELECT * FROM sqlite_master")
     await cursor.fetchone()
 
@@ -233,3 +235,67 @@ async def test_a_checkpoint_restores_the_normal_busy_timeout(candidate_db: Path)
     cursor = await db.get_conn().execute("PRAGMA busy_timeout")
     assert await cursor.fetchone() == (5000,)
     await cursor.close()
+
+
+class _Cursor:
+    """A cursor that reports a finished (non-busy) checkpoint."""
+
+    async def fetchone(self) -> tuple[int, int, int]:
+        return (0, 0, 0)
+
+    async def close(self) -> None:
+        return None
+
+
+class _ConnectionThatCannotRestoreTheTimeout:
+    """Stands in for the connection: the busy-timeout restore (and optionally more) fails.
+
+    A closed aiosqlite connection raises ``ValueError`` from ``execute``.
+    """
+
+    def __init__(self, *, fail_checkpoint: bool) -> None:
+        self._fail_checkpoint = fail_checkpoint
+        self._timeouts = 0
+
+    async def execute(self, sql: str) -> _Cursor:
+        if sql.startswith("PRAGMA busy_timeout"):
+            self._timeouts += 1
+            if self._timeouts > 1:  # the first sets the short wait, the second restores it
+                raise ValueError("no active connection")
+            return _Cursor()
+        if self._fail_checkpoint:
+            raise ValueError("no active connection")
+        return _Cursor()
+
+
+async def test_a_finished_checkpoint_survives_a_failed_busy_timeout_restore(
+    candidate_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The log was truncated: a restore that raises must not turn that into an error."""
+    real = db._conn
+    monkeypatch.setattr(db, "_conn", _ConnectionThatCannotRestoreTheTimeout(fail_checkpoint=False))
+    try:
+        assert await db.checkpoint_wal() is True
+    finally:
+        monkeypatch.setattr(db, "_conn", real)
+
+
+async def test_a_checkpoint_that_fails_on_a_closed_connection_reports_false_not_raises(
+    candidate_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Both the checkpoint and the restore raise ValueError: the caller still gets ``False``."""
+    real = db._conn
+    monkeypatch.setattr(db, "_conn", _ConnectionThatCannotRestoreTheTimeout(fail_checkpoint=True))
+    try:
+        assert await db.checkpoint_wal() is False
+    finally:
+        monkeypatch.setattr(db, "_conn", real)
+
+
+async def test_a_checkpoint_without_an_open_database_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(db, "_conn", None)
+
+    with pytest.raises(BrainMemoryError):
+        await db.checkpoint_wal()

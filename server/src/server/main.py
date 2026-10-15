@@ -122,8 +122,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             await open_db()
             stack.push_async_callback(close_db)
             await run_migrations()
-            # Before any request: offers of the previous process return to `proposed`,
-            # and with the switch off every live candidate value is voided.
+            # Before any request: offers of the previous process return to `proposed`, with
+            # the switch off every live candidate value is voided, and the write-ahead log is
+            # truncated either way (a checkpoint the previous process owed is forgotten).
             await candidates.reset_for_startup(utc_now(), enabled=cfg.memory_candidates_enabled)
             retention.start_background_job()
             stack.push_async_callback(retention.stop_background_job)

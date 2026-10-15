@@ -14,8 +14,11 @@ guarantees, in code and in the schema:
   UTC ISO 8601; the store never uses SQLite's ``datetime('now')``.
 * **Bounded and idempotent.** A repeated statement is a no-op insert; at the per-person cap a
   new candidate is refused and an old one is never evicted.
-* **Housekeeping on every entry.** Lapsed candidates are expired and unanswered offers return
-  to ``proposed`` inside the entry's own transaction, whatever the retention job did.
+* **Housekeeping on every write entry.** Lapsed candidates are expired and unanswered offers
+  return to ``proposed`` inside the entry's own transaction (insert, offer, resolve and the
+  writer's promote), whatever the retention job did. Reads (``get_candidate``,
+  ``get_candidate_in_transaction``, ``resolve_candidate_in_transaction``, ``void_live_candidates``)
+  run none of it.
 
 Logs carry ids, the predicate, a status and a closed reason, never a value.
 """
@@ -50,6 +53,7 @@ __all__ = [
     "insert_candidate",
     "iso_utc",
     "mark_offered",
+    "precheck_insert",
     "reset_for_startup",
     "resolve_candidate",
     "resolve_candidate_in_transaction",
@@ -218,14 +222,18 @@ _checkpoint_pending = False
 async def checkpoint_after_scrub(scrubbed: int) -> None:
     """Truncate the write-ahead log after a transaction that erased a value, or retry one owed.
 
+    Never raises for a busy log: the operation that erased the value has already committed. The
+    debt is recorded before the checkpoint is attempted, so a checkpoint that raises (a
+    cancellation at shutdown, a closed connection) still leaves it owed to the next entry.
+
     Args:
         scrubbed: How many values the transaction that just committed erased. ``0`` only
-            retries a checkpoint a previous call could not complete. Never raises for a busy
-            log: the operation that erased the value has already committed.
+            retries a checkpoint a previous call could not complete.
     """
-    global _checkpoint_pending  # noqa: PLW0603 — one owed checkpoint per process, like the slot
+    global _checkpoint_pending  # noqa: PLW0603 — one owed checkpoint per process (single worker, ADR 0010)
     if not scrubbed and not _checkpoint_pending:
         return
+    _checkpoint_pending = True
     _checkpoint_pending = not await db.checkpoint_wal()
 
 
@@ -249,9 +257,9 @@ async def insert_candidate(
         now: The caller's clock reading.
 
     Returns:
-        ``INSERTED`` with the id; ``DUPLICATE`` for a live candidate with the same key;
-        ``CAPACITY`` at the per-person cap (nothing is evicted); ``DISABLED`` with the
-        kill-switch off.
+        ``INSERTED`` with the id; ``DUPLICATE`` for a live candidate of that person with the
+        same predicate and key; ``CAPACITY`` at the per-person cap (nothing is evicted);
+        ``DISABLED`` with the kill-switch off.
     """
     if not settings.memory_candidates_enabled:
         return InsertResult(InsertStatus.DISABLED)
@@ -260,7 +268,7 @@ async def insert_candidate(
         result = await _insert_in_transaction(
             conn, proposal, subject_person_id, asserted_by_person_id, channel, correlation_id, now
         )
-    await checkpoint_after_scrub(scrubbed)
+    # Logged before the checkpoint: a checkpoint problem must not hide that a value was stored.
     logger.info(
         "Candidate insert: %s",
         result.status.value,
@@ -270,9 +278,60 @@ async def insert_candidate(
             "candidate_id": result.candidate_id,
             "predicate": proposal.predicate,
             "channel": channel,
+            "correlation_id": str(correlation_id),
         },
     )
+    await checkpoint_after_scrub(scrubbed)
     return result
+
+
+async def _blocking_status(
+    conn: aiosqlite.Connection, subject_person_id: int, predicate: str, value_key: str
+) -> InsertStatus | None:
+    """Return ``DUPLICATE`` or ``CAPACITY`` when the insert rules refuse, else ``None``."""
+    cursor = await conn.execute(
+        "SELECT 1 FROM memory_candidates WHERE subject_person_id = ? AND predicate = ? "
+        "AND value_key = ? AND status IN ('proposed', 'offered')",
+        (subject_person_id, predicate, value_key),
+    )
+    duplicate = await cursor.fetchone()
+    await cursor.close()
+    if duplicate is not None:
+        return InsertStatus.DUPLICATE
+    cursor = await conn.execute(
+        "SELECT COUNT(*) FROM memory_candidates WHERE subject_person_id = ? "
+        "AND status IN ('proposed', 'offered')",
+        (subject_person_id,),
+    )
+    live_row = await cursor.fetchone()
+    await cursor.close()
+    if live_row is not None and int(live_row[0]) >= settings.memory_candidate_max_live:
+        return InsertStatus.CAPACITY
+    return None
+
+
+async def precheck_insert(
+    proposal: ProposedCandidate, *, subject_person_id: int
+) -> InsertStatus | None:
+    """Say, without writing, why ``insert_candidate`` would refuse this proposal right now.
+
+    The caller asks before it writes an audit row, so the audit log does not say "allowed" for a
+    proposal the store was always going to refuse. It is advisory: ``insert_candidate`` decides
+    again inside its own transaction.
+
+    Args:
+        proposal: The classifier's output.
+        subject_person_id: Whose memory it would become.
+
+    Returns:
+        ``DISABLED`` with the kill-switch off, ``DUPLICATE`` for a live candidate with the same
+        predicate and key, ``CAPACITY`` at the per-person cap, or ``None`` when it would insert.
+    """
+    if not settings.memory_candidates_enabled:
+        return InsertStatus.DISABLED
+    return await _blocking_status(
+        db.get_conn(), subject_person_id, proposal.predicate, proposal.value_key
+    )
 
 
 async def _insert_in_transaction(
@@ -285,24 +344,11 @@ async def _insert_in_transaction(
     now: datetime,
 ) -> InsertResult:
     """Apply the duplicate and cap rules, then insert, inside an open transaction."""
-    cursor = await conn.execute(
-        "SELECT 1 FROM memory_candidates WHERE subject_person_id = ? AND predicate = ? "
-        "AND value_key = ? AND status IN ('proposed', 'offered')",
-        (subject_person_id, proposal.predicate, proposal.value_key),
+    blocked = await _blocking_status(
+        conn, subject_person_id, proposal.predicate, proposal.value_key
     )
-    duplicate = await cursor.fetchone()
-    await cursor.close()
-    if duplicate is not None:
-        return InsertResult(InsertStatus.DUPLICATE)
-    cursor = await conn.execute(
-        "SELECT COUNT(*) FROM memory_candidates WHERE subject_person_id = ? "
-        "AND status IN ('proposed', 'offered')",
-        (subject_person_id,),
-    )
-    live_row = await cursor.fetchone()
-    await cursor.close()
-    if live_row is not None and int(live_row[0]) >= settings.memory_candidate_max_live:
-        return InsertResult(InsertStatus.CAPACITY)
+    if blocked is not None:
+        return InsertResult(blocked)
     cursor = await conn.execute(
         "INSERT INTO memory_candidates (subject_person_id, asserted_by_person_id, predicate, "
         "value_text, value_key, status, channel, source_correlation_id, proposed_at, expires_at) "
@@ -479,6 +525,13 @@ async def resolve_candidate(
     return resolved
 
 
+async def _void_live_in_transaction(now: datetime) -> int:
+    """Void every live candidate in one transaction, without checkpointing the log."""
+    async with db.transaction() as conn:
+        cursor = await conn.execute(VOID_LIVE_SQL, (iso_utc(now),))
+        return await _rowcount(cursor)
+
+
 async def void_live_candidates(now: datetime) -> int:
     """Void every live candidate (start-up with the kill-switch off).
 
@@ -488,9 +541,7 @@ async def void_live_candidates(now: datetime) -> int:
     Returns:
         How many candidates were voided.
     """
-    async with db.transaction() as conn:
-        cursor = await conn.execute(VOID_LIVE_SQL, (iso_utc(now),))
-        voided = await _rowcount(cursor)
+    voided = await _void_live_in_transaction(now)
     await checkpoint_after_scrub(voided)
     return voided
 
@@ -500,8 +551,10 @@ async def reset_for_startup(now: datetime, *, enabled: bool) -> None:
 
     With the switch off every live candidate is voided. With it on, an ``offered``
     candidate returns to ``proposed`` (whatever was said in the previous process is gone and
-    the answer window cannot be trusted) and lapsed candidates are expired. Runs before any
-    request is served.
+    the answer window cannot be trusted) and lapsed candidates are expired. Either way the
+    write-ahead log is then truncated once: a checkpoint a previous process still owed is
+    forgotten with it, so start-up cannot assume nothing is owed. Runs before any request is
+    served.
 
     Args:
         now: The caller's clock reading.
@@ -509,14 +562,16 @@ async def reset_for_startup(now: datetime, *, enabled: bool) -> None:
             reads it from the app's own settings, not from the module global).
     """
     if not enabled:
-        voided = await void_live_candidates(now)
-        logger.info("Candidates voided at start-up: %d", voided)
-        return
-    async with db.transaction() as conn:
-        cursor = await conn.execute(
-            "UPDATE memory_candidates SET status = 'proposed', offered_at = NULL, "
-            "offer_correlation_id = NULL WHERE status = 'offered'"
-        )
-        await cursor.close()
-        scrubbed = await expire_lapsed_in_transaction(conn, now)
-    await checkpoint_after_scrub(scrubbed)
+        scrubbed = await _void_live_in_transaction(now)
+        logger.info("Candidates voided at start-up: %d", scrubbed)
+    else:
+        async with db.transaction() as conn:
+            cursor = await conn.execute(
+                "UPDATE memory_candidates SET status = 'proposed', offered_at = NULL, "
+                "offer_correlation_id = NULL WHERE status = 'offered'"
+            )
+            await cursor.close()
+            scrubbed = await expire_lapsed_in_transaction(conn, now)
+        logger.info("Candidates reconciled at start-up: %d expired", scrubbed)
+    # `max(..., 1)`: truncate even when this start-up erased nothing (see the docstring).
+    await checkpoint_after_scrub(max(scrubbed, 1))

@@ -8,6 +8,7 @@ keeps running on the next tick.
 
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
+import logging
 from pathlib import Path
 from uuid import uuid4
 
@@ -21,14 +22,15 @@ from server import db
 
 
 @pytest.fixture
-async def real_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[None]:
+async def real_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[Path]:
     """Open a fresh temporary real SQLite DB with the full app schema applied."""
     db_path = tmp_path / "retention-test.db"
     monkeypatch.setattr(settings, "brain_db_path", db_path)
+    monkeypatch.setattr(candidates, "_checkpoint_pending", False)
     db._conn = None
     await db.open_db()
     await db.run_migrations()
-    yield
+    yield db_path
     await db.close_db()
     db._conn = None
 
@@ -108,3 +110,124 @@ async def test_run_once_expires_and_scrubs_a_lapsed_candidate_whatever_the_kill_
     assert (expired.status, expired.value_text) == (CandidateStatus.EXPIRED, None)
     assert kept is not None
     assert (kept.status, kept.value_text) == (CandidateStatus.PROPOSED, "el jazz")
+
+
+_CANARY = "zumo de pomelo rosado"
+
+
+def _file_bytes(db_path: Path) -> bytes:
+    """The database file and its write-ahead log, concatenated as an attacker would read them."""
+    pieces = [db_path.read_bytes()]
+    wal = db_path.with_name(db_path.name + "-wal")
+    if wal.exists():
+        pieces.append(wal.read_bytes())
+    return b"".join(pieces)
+
+
+async def _insert_a_stale_canary(monkeypatch: pytest.MonkeyPatch) -> int:
+    """Store a candidate that lapsed two days ago, holding the canary value."""
+    owner = await upsert_entity(name="Canary Owner", type="person")
+    monkeypatch.setattr(settings, "memory_candidates_enabled", True)
+    stale = await candidates.insert_candidate(
+        ProposedCandidate(predicate="likes", value_text=_CANARY, value_key="pomelo"),
+        subject_person_id=owner,
+        asserted_by_person_id=owner,
+        channel=CandidateChannel.VOICE_CLASSIC,
+        correlation_id=uuid4(),
+        now=datetime.now(UTC) - timedelta(days=2),
+    )
+    assert stale.candidate_id is not None
+    monkeypatch.setattr(settings, "memory_candidates_enabled", False)
+    return stale.candidate_id
+
+
+@pytest.mark.integration
+async def test_run_once_physically_scrubs_a_lapsed_candidate_from_the_file_and_the_log(
+    real_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The job erases the value and truncates the log: the bytes are gone, not just unreferenced."""
+    stale_id = await _insert_a_stale_canary(monkeypatch)
+    assert _CANARY.encode() in _file_bytes(real_db)  # non-vacuous: the value is on disk now
+
+    await retention._run_once()
+
+    expired = await candidates.get_candidate(stale_id)
+    assert expired is not None
+    assert expired.status is CandidateStatus.EXPIRED
+    assert _CANARY.encode() not in _file_bytes(real_db)
+
+
+@pytest.mark.integration
+async def test_a_failing_sensor_purge_does_not_stop_the_candidate_expiry(
+    real_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The candidate housekeeping has its own transaction: one failure cannot roll back the other."""
+    stale_id = await _insert_a_stale_canary(monkeypatch)
+    monkeypatch.setattr(retention, "_SQL_SENSOR_READINGS", "NOT VALID SQL")
+
+    await retention._run_once()
+
+    expired = await candidates.get_candidate(stale_id)
+    assert expired is not None
+    assert (expired.status, expired.value_text) == (CandidateStatus.EXPIRED, None)
+    assert _CANARY.encode() not in _file_bytes(real_db)
+
+
+@pytest.mark.integration
+@pytest.mark.usefixtures("real_db")
+async def test_a_failing_candidate_housekeeping_does_not_undo_the_sensor_purge(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = db.get_conn()
+    await conn.execute(
+        "INSERT INTO sensor_readings (sensor_id, sensor_type, value, unit, created_at) "
+        "VALUES ('s1', 'temp', 1.0, 'C', datetime('now', '-100 hours'))"
+    )
+    await conn.commit()
+
+    async def _fails(_conn: object, _now: datetime) -> int:
+        raise RuntimeError("housekeeping broke")
+
+    monkeypatch.setattr(retention, "run_housekeeping", _fails)
+
+    await retention._run_once()
+
+    cursor = await conn.execute("SELECT COUNT(*) FROM sensor_readings")
+    assert await cursor.fetchone() == (0,)
+    await cursor.close()
+
+
+@pytest.mark.integration
+@pytest.mark.usefixtures("real_db")
+async def test_a_checkpoint_error_after_the_commit_is_not_reported_as_a_failed_purge(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    leaked_text = "pomelo-in-an-exception-message"
+
+    async def _raises(_scrubbed: int) -> None:
+        raise ValueError(leaked_text)
+
+    monkeypatch.setattr(retention, "checkpoint_after_scrub", _raises)
+
+    with caplog.at_level(logging.INFO, logger="server"):
+        await retention._run_once()
+
+    assert "Retention purge failed" not in caplog.text
+    assert "checkpoint" in caplog.text.lower()
+    assert "ValueError" in caplog.text
+    assert leaked_text not in caplog.text
+
+
+@pytest.mark.integration
+@pytest.mark.usefixtures("real_db")
+async def test_a_failed_purge_logs_the_exception_class_never_its_message(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr(retention, "_SQL_SENSOR_READINGS", "NOT VALID SQL pomelo")
+
+    with caplog.at_level(logging.INFO, logger="server"):
+        await retention._run_once()
+
+    assert "Retention purge failed" in caplog.text
+    assert "OperationalError" in caplog.text
+    assert "pomelo" not in caplog.text

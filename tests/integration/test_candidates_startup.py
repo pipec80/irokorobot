@@ -53,7 +53,9 @@ async def _candidate_after_a_start(
     monkeypatch.setattr(main.stt, "preload", lambda: None)
     monkeypatch.setattr(main.tts, "preload", lambda: None)
     monkeypatch.setattr(settings, "memory_enabled", True)
-    monkeypatch.setattr(settings, "memory_candidates_enabled", switch_on)
+    # The module global says the OPPOSITE of the app's own settings: the lifespan documents that
+    # it reads the latter, and only a disagreement can tell which one it really read.
+    monkeypatch.setattr(settings, "memory_candidates_enabled", not switch_on)
     app = create_app(
         Settings(
             memory_enabled=True,
