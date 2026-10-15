@@ -553,7 +553,8 @@ gate's economics.
 - [Plan 0062](../plans/completed/0062-cm3a-memory-candidates-and-writer.md) — candidates, the writer
   and the extraction (written 2026-10-14; closed 2026-10-15, PR #183; no hardware, no spoken
   dialogue; `promote` has no caller in a route yet).
-- Plan 0063 — **next**: the spoken offer and answer (decision 9) and the hardware acceptance;
-  unwritten, it is what moves this ADR to `Accepted`. The next free ADR number is 0022.
+- [Plan 0063](../plans/open/0063-cm3a-memory-dialogue.md) — **`Ready` and `NOW`** since
+  2026-10-15 (PR #185, promoted in PR #186): the spoken offer and answer (decision 9) and the
+  hardware acceptance; it is what moves this ADR to `Accepted`. The next free ADR number is 0022.
 - Phase 0 — enrolment first, access levels, escalation with company (decision 13).
 - CM-3b, CM-4, CM-5, CM-6.

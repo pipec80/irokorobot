@@ -79,7 +79,8 @@ specific conflict instead of redesigning the project implicitly.
   a face-identified voice turn can leave a stored memory candidate, behind a default-off
   kill-switch, with one canonical writer that nothing calls yet and no spoken offer
   ([ADR 0021](../adr/0021-memory-candidates-and-the-canonical-writer.md), `Proposed` until
-  Plan 0063 closes it); CM-3b and CM-4…CM-7 remain unplanned. PC-3A ([Plan 0047](../plans/completed/0047-speaker-evidence-calibration-study.md)) closed 2026-09-25 with a provisional PASS, and PC-3B ([Plan 0053](../plans/completed/0053-consented-speaker-runtime-evidence.md)) closed 2026-09-29 with default-off `VOICE` evidence; PC-4 ([Plan 0054](../plans/completed/0054-face-default-identity-fusion.md)) closed 2026-09-30, accepted on real hardware.
+  [Plan 0063](../plans/open/0063-cm3a-memory-dialogue.md) — the spoken offer and answer, `Ready`
+  and `NOW` since 2026-10-15 — closes it); CM-3b and CM-4…CM-7 remain unplanned. PC-3A ([Plan 0047](../plans/completed/0047-speaker-evidence-calibration-study.md)) closed 2026-09-25 with a provisional PASS, and PC-3B ([Plan 0053](../plans/completed/0053-consented-speaker-runtime-evidence.md)) closed 2026-09-29 with default-off `VOICE` evidence; PC-4 ([Plan 0054](../plans/completed/0054-face-default-identity-fusion.md)) closed 2026-09-30, accepted on real hardware.
 - [`p0-runtime-policy-audit.md`](p0-runtime-policy-audit.md): current
   disposition of remaining public-route and operator-acceptance gaps.
 - [`implementation-guardrails.md`](implementation-guardrails.md): tracked
