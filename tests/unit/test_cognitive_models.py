@@ -134,8 +134,6 @@ def _event_values() -> dict[str, object]:
                 "general_conversation",
                 "read_household_data",
                 "execute_household_tool",
-                "propose_memory",
-                "commit_memory",
                 "manage_household_role",
                 "enroll_biometric",
                 "export_household_data",
@@ -220,7 +218,7 @@ def test_authorization_decision_requires_aware_utc_time_and_is_immutable() -> No
     assert isinstance(decision.data_categories, frozenset)
 
     with pytest.raises(ValidationError):
-        decision.action = AuthorizationAction.COMMIT_MEMORY
+        decision.action = AuthorizationAction.DELETE_HOUSEHOLD_DATA
 
     with pytest.raises(ValidationError):
         AuthorizationDecision.model_validate(
@@ -380,7 +378,7 @@ def test_authorization_request_is_immutable_and_rejects_untyped_categories() -> 
     )
 
     with pytest.raises(ValidationError):
-        request.action = AuthorizationAction.COMMIT_MEMORY
+        request.action = AuthorizationAction.DELETE_HOUSEHOLD_DATA
     with pytest.raises(ValidationError):
         AuthorizationRequest.model_validate(
             {**request.model_dump(), "visibility": frozenset({"unclassified"})}

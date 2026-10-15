@@ -62,8 +62,6 @@ class AuthorizationAction(str, _Enum):  # noqa: UP042
     GENERAL_CONVERSATION = "general_conversation"
     READ_HOUSEHOLD_DATA = "read_household_data"
     EXECUTE_HOUSEHOLD_TOOL = "execute_household_tool"
-    PROPOSE_MEMORY = "propose_memory"
-    COMMIT_MEMORY = "commit_memory"
     MANAGE_HOUSEHOLD_ROLE = "manage_household_role"
     ENROLL_BIOMETRIC = "enroll_biometric"
     EXPORT_HOUSEHOLD_DATA = "export_household_data"

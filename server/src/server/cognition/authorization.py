@@ -344,30 +344,6 @@ def _evaluate_read(request: AuthorizationRequest) -> AuthorizationDecision:
     return _evaluate_normal_household_read(request)
 
 
-def _evaluate_memory_proposal(request: AuthorizationRequest) -> AuthorizationDecision:
-    """Evaluate a proposed durable memory update without persisting it."""
-    if request.actor.role is HouseholdRole.OWNER:
-        return _decision(
-            request,
-            AuthorizationStatus.ALLOWED,
-            "p0.5.owner-memory-proposal",
-            "Owner policy permits a memory proposal.",
-        )
-    if request.actor.role in {HouseholdRole.ADULT, HouseholdRole.CHILD}:
-        return _decision(
-            request,
-            AuthorizationStatus.REQUIRES_CONFIRMATION,
-            "p0.5.memory-proposal-confirmation",
-            "Memory proposals require a scoped confirmation.",
-        )
-    return _decision(
-        request,
-        AuthorizationStatus.DENIED,
-        "p0.5.default-deny",
-        "No policy grants this request.",
-    )
-
-
 def _evaluate_owner_administration(request: AuthorizationRequest) -> AuthorizationDecision:
     """Evaluate an owner-only administrative operation."""
     if request.actor.role is HouseholdRole.OWNER:
@@ -560,10 +536,7 @@ def _evaluate_legacy_request(request: AuthorizationRequest) -> AuthorizationDeci
         AuthorizationAction.EXECUTE_HOUSEHOLD_TOOL,
     }:
         return _evaluate_read(request)
-    if request.action is AuthorizationAction.PROPOSE_MEMORY:
-        return _evaluate_memory_proposal(request)
     if request.action in {
-        AuthorizationAction.COMMIT_MEMORY,
         AuthorizationAction.MANAGE_HOUSEHOLD_ROLE,
         AuthorizationAction.EXPORT_HOUSEHOLD_DATA,
         AuthorizationAction.DELETE_HOUSEHOLD_DATA,

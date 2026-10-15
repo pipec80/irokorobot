@@ -142,18 +142,18 @@ _NEW_ACTION_NAMES = frozenset(
         "forget_personal_memory",
     }
 )
-# CM-3 decides what happens to these four; until then only the model and the policy know them.
+# `PROPOSE_MEMORY` and `COMMIT_MEMORY` left in Plan 0062 (nothing consumed them); these two
+# are CM-6's, so until then only the model and the policy know them.
 _LEGACY_MEMORY_ACTION_NAMES = frozenset(
     {
-        "PROPOSE_MEMORY",
-        "COMMIT_MEMORY",
         "DELETE_HOUSEHOLD_DATA",
         "EXPORT_HOUSEHOLD_DATA",
-        "propose_memory",
-        "commit_memory",
         "delete_household_data",
         "export_household_data",
     }
+)
+_RETIRED_ACTION_NAMES = frozenset(
+    {"PROPOSE_MEMORY", "COMMIT_MEMORY", "propose_memory", "commit_memory"}
 )
 # The model and the policy, plus the one module that asks the policy about a candidate step
 # (Plan 0062): every other module reaches the actions through it.
@@ -249,7 +249,7 @@ def test_the_personal_memory_actions_exist_only_in_the_model_and_the_policy() ->
 
 @pytest.mark.unit
 def test_the_legacy_memory_actions_are_used_only_by_the_model_and_the_policy() -> None:
-    """Nobody else consumes `propose_memory`, `commit_memory`, delete or export (verified)."""
+    """Nobody else consumes delete or export (verified)."""
     assert _outside(_sources(), _ACTION_HOMES, _LEGACY_MEMORY_ACTION_NAMES) == []
 
 
@@ -287,7 +287,7 @@ def test_the_personal_memory_guards_detect_a_violation() -> None:
         "routers/leak.py": (
             "from server.cognition.models import AuthorizationAction\n"
             "a = AuthorizationAction.FORGET_PERSONAL_MEMORY\n"
-            "b = AuthorizationAction.COMMIT_MEMORY\n"
+            "b = AuthorizationAction.DELETE_HOUSEHOLD_DATA\n"
             "c = OwnerUnlockScope.PERSONAL_MEMORY_FORGET\n"
             'd = "read_personal_conversation_memory"\n'
             'e = "delete_household_data"\n'
@@ -474,3 +474,46 @@ def test_the_proposal_guards_detect_a_violation() -> None:
         "routers/vision.py",
     ]
     assert _imports_name(leak, "consolidate_turn") == ["memory/legacy.py"]
+
+
+@pytest.mark.unit
+def test_the_retired_memory_actions_exist_nowhere() -> None:
+    """ADR 0021 decision 11: no enum member, branch or string names them any more."""
+    assert _outside(_sources(), frozenset(), _RETIRED_ACTION_NAMES) == []
+
+
+# --- who may write or move a candidate (Plan 0062, ADR 0021 decisions 3 and 8) --------------
+# The firewall rule (face and voice of the same person on the turn's clip) is enforced by the
+# caller of the store, so the callers are pinned: a second caller must be a decision, not an
+# accident. Plan 0063 adds the dialogue module that offers and answers.
+_CANDIDATE_INSERT_HOMES = frozenset({"memory/candidates.py", "memory/candidate_proposal.py"})
+_CANDIDATE_MOVE_HOMES = frozenset({"memory/candidates.py", "memory/memory_writer.py"})
+_CANDIDATE_MOVES = frozenset(
+    {"mark_offered", "resolve_candidate", "resolve_candidate_in_transaction"}
+)
+_WRITER_HOMES = frozenset({"memory/memory_writer.py"})
+
+
+@pytest.mark.unit
+def test_only_the_proposal_inserts_and_only_the_writer_resolves_a_candidate() -> None:
+    sources = _sources()
+
+    assert _outside(sources, _CANDIDATE_INSERT_HOMES, frozenset({"insert_candidate"})) == []
+    assert _outside(sources, _CANDIDATE_MOVE_HOMES, _CANDIDATE_MOVES) == []
+    assert _outside(sources, _WRITER_HOMES, frozenset({"promote"})) == []
+
+
+@pytest.mark.unit
+def test_the_candidate_caller_guards_detect_a_violation() -> None:
+    leak = {
+        "routers/leak.py": "await insert_candidate(p)\nawait candidates.mark_offered(1)\n",
+        "memory/candidate_proposal.py": "await insert_candidate(p)\n",
+        "memory/memory_writer.py": "await resolve_candidate_in_transaction(c)\nawait promote(1)\n",
+        "memory/other.py": "await promote(1)\n",
+    }
+
+    assert _outside(leak, _CANDIDATE_INSERT_HOMES, frozenset({"insert_candidate"})) == [
+        "routers/leak.py"
+    ]
+    assert _outside(leak, _CANDIDATE_MOVE_HOMES, _CANDIDATE_MOVES) == ["routers/leak.py"]
+    assert _outside(leak, _WRITER_HOMES, frozenset({"promote"})) == ["memory/other.py"]
