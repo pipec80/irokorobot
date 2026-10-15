@@ -476,6 +476,43 @@ def test_the_proposal_guards_detect_a_violation() -> None:
     assert _imports_name(leak, "consolidate_turn") == ["memory/legacy.py"]
 
 
+# --- who may offer or answer (Plan 0063, ADR 0021 decision 9) ---------------------------------
+# The offer and the answer need the voice of the turn's own clip: only the voice routes bind
+# them, and the text turn, the stream and the controller carry the seams. `/chat` and
+# `/vision/respond` have no audio, so they never offer and never answer.
+_DIALOGUE_NAMES = frozenset(
+    {"prepare_offer", "OfferPreparer", "answer_offer", "MemoryAnswerer", "memory_answerer"}
+)
+_DIALOGUE_HOMES = frozenset(
+    {
+        "memory/candidate_dialogue.py",
+        "routers/transcribe.py",
+        "streaming.py",
+        "text_turn.py",
+        "cognition/controller.py",
+    }
+)
+
+
+@pytest.mark.unit
+def test_only_the_voice_routes_offer_or_answer_a_memory() -> None:
+    assert _outside(_sources(), _DIALOGUE_HOMES, _DIALOGUE_NAMES) == []
+
+
+@pytest.mark.unit
+def test_the_dialogue_guard_detects_a_violation() -> None:
+    leak = {
+        "routers/chat.py": "controller = CognitiveController(memory_answerer=a)\n",
+        "routers/vision.py": "x = prepare_offer(actor)\n",
+        "routers/transcribe.py": "x = prepare_offer(actor)\n",
+    }
+
+    assert _outside(leak, _DIALOGUE_HOMES, _DIALOGUE_NAMES) == [
+        "routers/chat.py",
+        "routers/vision.py",
+    ]
+
+
 @pytest.mark.unit
 def test_the_retired_memory_actions_exist_nowhere() -> None:
     """ADR 0021 decision 11: no enum member, branch or string names them any more."""

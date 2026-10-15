@@ -19,7 +19,13 @@ import httpx
 from server import turn_log
 from server.audio_contract import validate_wav_contract
 from server.cognition.authorization import evaluate_authorization
-from server.cognition.controller import ActivePersonResolver, CognitiveController, ConsentResolver
+from server.cognition.clock import utc_now
+from server.cognition.controller import (
+    ActivePersonResolver,
+    CognitiveController,
+    ConsentResolver,
+    MemoryAnswerer,
+)
 from server.cognition.generic_identity import (
     GenericIdentification,
     identify_generic_speaker,
@@ -27,9 +33,11 @@ from server.cognition.generic_identity import (
 from server.cognition.household_tools import HouseholdKnowledgeTools
 from server.cognition.identity import ActivePersonContext
 from server.cognition.identity_fusion import FusedIdentityResolver, build_fused_identity_resolver
+from server.cognition.intent_resolution import MemoryAnswer
 from server.cognition.models import CognitiveEvent
 from server.cognition.owner_authentication import OwnerUnlockService
 from server.cognition.response_plan import (
+    InformationNeed,
     ResponsePlan,
     SceneDescriptionRequest,
     TextTurnPayload,
@@ -39,6 +47,12 @@ from server.dependencies import IdentityTokenDep, OwnerUnlockServiceDep, Resourc
 from server.exceptions import (
     AudioContractError,
     UploadTooLargeError,
+)
+from server.memory.candidate_dialogue import (
+    OfferPreparer,
+    PendingOffer,
+    answer_offer,
+    prepare_offer,
 )
 from server.memory.candidate_proposal import propose_candidates
 from server.memory.candidate_types import CandidateChannel
@@ -220,6 +234,8 @@ def _voice_controller(
     request_identity: _RequestIdentity | None = None,
     identify_speaker: SpeakerIdentifier | None = None,
     schedule_proposal: ProposalScheduler | None = None,
+    prepare_offer: OfferPreparer | None = None,
+    memory_answerer: MemoryAnswerer | None = None,
 ) -> CognitiveController:
     """Compose the bounded controller used by a public voice turn.
 
@@ -233,6 +249,10 @@ def _voice_controller(
             observed token (Plan 0061, ADR 0020); when omitted the speaker is unknown.
         schedule_proposal: Schedules the background candidate proposal of a successful
             generic turn (Plan 0062); when omitted nothing is proposed.
+        prepare_offer: Prepares the memory offer spoken after a generic reply (Plan 0063);
+            when omitted nothing is offered.
+        memory_answerer: Answers a memory offer (Plan 0063); when omitted an answer-shaped
+            message is ordinary conversation.
     """
 
     async def legacy_turn(message: str, conversation_id: str) -> TextTurnResult:
@@ -251,6 +271,7 @@ def _voice_controller(
             active_person=speaker.actor,
             suspend_cause=speaker.cause,
             schedule_proposal=schedule_proposal,
+            prepare_offer=prepare_offer,
         )
 
     if request_identity is None:
@@ -270,6 +291,7 @@ def _voice_controller(
         audit_writer=record_authorization_decision,
         household_tools=HouseholdKnowledgeTools(reader=PolicyGatedV4Reader()),
         consent_resolver=request_identity.resolve_consent,
+        memory_answerer=memory_answerer,
     )
 
 
@@ -306,6 +328,71 @@ def _proposal_scheduler(
         )
 
     return schedule
+
+
+def _offer_preparer(
+    *, event: CognitiveEvent[TextTurnPayload], wav_bytes: bytes
+) -> OfferPreparer | None:
+    """Bind the turn's clip and event to the memory-offer preparation (ADR 0021 §9).
+
+    Args:
+        event: The turn's event; its correlation id stamps the audit row and the offer.
+        wav_bytes: The turn's own clip — WAV, 16 000 Hz, mono, int16 — held in memory only,
+            for the voice check that runs only when a candidate waits.
+
+    Returns:
+        The preparation, or ``None`` with the candidate kill-switch off.
+    """
+    if not settings.memory_candidates_enabled:
+        return None
+
+    async def prepare(actor: ActivePersonContext) -> PendingOffer | None:
+        return await prepare_offer(actor, wav_bytes=wav_bytes, event=event)
+
+    return prepare
+
+
+def _memory_answerer() -> MemoryAnswerer | None:
+    """Return the answer to a memory offer for a voice route, or ``None`` with the switch off.
+
+    With the switch off an answer-shaped message is ordinary conversation, and the actor is not
+    even resolved for it.
+    """
+    if not settings.memory_candidates_enabled:
+        return None
+
+    async def answer(
+        parsed: MemoryAnswer,
+        actor: ActivePersonContext,
+        event: CognitiveEvent[TextTurnPayload],
+    ) -> str | None:
+        return await answer_offer(
+            parsed, actor=actor, correlation_id=event.correlation_id, now=utc_now()
+        )
+
+    return answer
+
+
+async def _synthesize_reply(plan: ResponsePlan) -> tuple[str, int, int]:
+    """Synthesize the response and the memory offer as one WAV; the offer never costs the reply.
+
+    The spoken-text log carries the response only: the offer holds a value (ADR 0021 §9). When
+    the combined synthesis fails, the response is synthesized alone, so a failing offer never
+    turns a good reply into a 500.
+
+    Returns:
+        Base64 WAV (16 kHz, mono, int16), the synthesized duration and the TTS time in ms.
+
+    Raises:
+        HTTPException: 500 when even the response alone cannot be synthesized.
+    """
+    if plan.offer is None:
+        return await _run_tts(plan.response)
+    try:
+        return await _run_tts(f"{plan.response} {plan.offer}", logged_text=plan.response)
+    except HTTPException:
+        logger.warning("Memory offer not synthesized; speaking the reply alone")
+        return await _run_tts(plan.response)
 
 
 async def _read_audio_upload(audio: UploadFile) -> bytes:
@@ -403,6 +490,8 @@ async def transcribe(
             wav_bytes=audio_bytes,
             channel=CandidateChannel.VOICE_CLASSIC,
         ),
+        prepare_offer=_offer_preparer(event=event, wav_bytes=audio_bytes),
+        memory_answerer=_memory_answerer(),
     )
     decision = await controller.decide(event)
 
@@ -442,7 +531,9 @@ async def transcribe(
         plan = decision
 
     turn_log.log_decision("voice", plan)
-    audio_base64, duration_ms, tts_ms = await _run_tts(plan.response)
+    # One WAV carries the reply and the memory offer; `llm_response` and the spoken-text log
+    # carry the reply only (ADR 0021 decision 9).
+    audio_base64, duration_ms, tts_ms = await _synthesize_reply(plan)
 
     total_ms = _elapsed_ms(request_start)
     _log_pipeline_timing(f"voice.{plan.source.value}", stt_ms, plan.duration_ms, tts_ms, total_ms)
@@ -457,7 +548,11 @@ async def transcribe(
         tts_ms=tts_ms,
         total_ms=total_ms,
         authentication_consumed=request_identity.consumed,
-        identity_source=request_identity.identity_source,
+        # A generic reply never reports identity (ADR 0020), including an answer-shaped message
+        # that fell through after its actor was resolved: the wire is the ordinary one.
+        identity_source=None
+        if plan.need is InformationNeed.GENERIC_CONVERSATION
+        else request_identity.identity_source,
     )
 
 
@@ -526,7 +621,9 @@ async def transcribe_stream(
 
     event = _voice_event_from_transcript(text_heard)
     decision = await _voice_controller(
-        resources.http_client, request_identity=request_identity
+        resources.http_client,
+        request_identity=request_identity,
+        memory_answerer=_memory_answerer(),
     ).decide(event)
     # Streaming has no second-round frame upload — a scene request always
     # gets the fixed unavailable plan, regardless of VISION_ENABLED.
@@ -578,6 +675,7 @@ async def transcribe_stream(
                     wav_bytes=audio_bytes,
                     channel=CandidateChannel.VOICE_STREAM,
                 ),
+                prepare_offer=_offer_preparer(event=event, wav_bytes=audio_bytes),
             )
         )
     )

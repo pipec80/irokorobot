@@ -98,11 +98,13 @@ async def _run_stt(audio_bytes: bytes, hotwords: list[str]) -> tuple[str, int]:
     return text, _elapsed_ms(start)
 
 
-async def _run_tts(text: str) -> tuple[str, int, int]:
+async def _run_tts(text: str, *, logged_text: str | None = None) -> tuple[str, int, int]:
     """Synthesize speech and measure elapsed time.
 
     Args:
         text: Text to speak.
+        logged_text: What the opt-in spoken-text log may show instead of *text*; a memory offer
+            spoken after the reply carries a value and never reaches that log (ADR 0021 §9).
 
     Returns:
         Tuple of (base64 WAV audio, TTS-reported synthesis ms, elapsed ms).
@@ -117,5 +119,5 @@ async def _run_tts(text: str) -> tuple[str, int, int]:
         logger.error("TTS failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail="Speech synthesis failed") from exc
     logger.info("TTS synthesized: %d ms audio, %d chars in", duration_ms, len(text))
-    log_spoken(text)
+    log_spoken(text if logged_text is None else logged_text)
     return audio_base64, duration_ms, _elapsed_ms(start)
