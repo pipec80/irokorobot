@@ -29,14 +29,13 @@ from typing import TYPE_CHECKING
 
 from server import db
 from server.cognition.authorization import evaluate_authorization
-from server.cognition.strong_actor import is_face_and_voice_actor
 from server.memory.candidate_classifier import (
     CANDIDATE_SENSITIVITY,
     CANDIDATE_VISIBILITY,
     comparison_key,
 )
 from server.memory.candidate_policy import CandidateStep, authorize_step
-from server.memory.candidate_types import CandidateStatus
+from server.memory.candidate_types import CandidateReason, CandidateStatus
 from server.memory.candidates import (
     checkpoint_after_scrub,
     get_candidate_in_transaction,
@@ -47,7 +46,6 @@ from server.memory.candidates import (
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.predicate_registry import resolve_predicate
 from server.memory.relational_v4 import assert_literal_fact, get_active_literal_facts
-from server.settings import settings
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -64,6 +62,7 @@ __all__ = ["PromotionOutcome", "PromotionResult", "promote"]
 
 # Opposite polarity, by canonical predicate. `prefers` has no opposite.
 _OPPOSITE = {"likes": "dislikes", "dislikes": "likes"}
+_PROMOTION_EVENT = "candidate.promotion"
 
 
 class PromotionOutcome(StrEnum):
@@ -102,8 +101,9 @@ async def promote(
     """Promote one offered candidate of *actor* to a canonical V4 literal fact.
 
     Args:
-        candidate_id: The candidate. It is looked up by the actor's own person id, never by an
-            id the request carries.
+        candidate_id: The candidate row, looked up by this caller-supplied id and accepted
+            only when its subject is the actor's own person id. The subject is never taken
+            from the request: another person's candidate is ``NOT_OFFERED``.
         actor: The face-and-voice actor of the confirming turn.
         correlation_id: The confirming turn's id, for the audit row and the candidate.
         now: The caller's clock reading.
@@ -112,15 +112,23 @@ async def promote(
 
     Returns:
         ``DENIED`` for the kill-switch, a weaker actor, a policy refusal or an audit failure
-        (nothing is written); ``NOT_OFFERED`` for a candidate that is not the actor's, not
-        ``offered`` or lapsed; ``CONTRADICTION`` after closing the candidate; otherwise
-        ``PROMOTED`` or ``ALREADY_PRESENT`` with the fact id.
+        (nothing is written; ``authorize_step`` logged the closed reason); ``NOT_OFFERED``
+        for a candidate that is not the actor's, not ``offered`` or lapsed;
+        ``CONTRADICTION`` after closing the candidate; otherwise ``PROMOTED`` or
+        ``ALREADY_PRESENT`` with the fact id.
+
+    Raises:
+        RuntimeError: If the candidate's compare-and-set lost inside the transaction (another
+            writer resolved it between the read and the write). The transaction is rolled back.
+        ValueError: If ``assert_literal_fact`` rejects the value or confidence. Rolled back.
+        BrainMemoryError: If the database is not open. Rolled back.
     """
     person_id = actor.person_id
-    if not settings.memory_candidates_enabled or person_id is None:
+    if person_id is None:
+        # No person to name: authorize_step needs a subject, so the refusal is logged here.
+        _log_denied(CandidateReason.STRONG_UNREACHABLE, candidate_id, correlation_id)
         return PromotionResult(PromotionOutcome.DENIED)
-    if not is_face_and_voice_actor(actor):
-        return PromotionResult(PromotionOutcome.DENIED)
+    # The kill-switch and the face-and-voice rule are refused (and logged) by authorize_step.
     allowed = await authorize_step(
         CandidateStep.CONFIRM,
         actor=actor,
@@ -144,13 +152,30 @@ async def promote(
         "Candidate promotion: %s",
         result.outcome.value,
         extra={
-            "event": "candidate.promotion",
+            "event": _PROMOTION_EVENT,
             "outcome": result.outcome,
             "candidate_id": candidate_id,
             "fact_id": result.fact_id,
+            "correlation_id": str(correlation_id),
         },
     )
     return result
+
+
+def _log_denied(reason: CandidateReason, candidate_id: int, correlation_id: UUID) -> None:
+    """Log one early denial: ids and a closed reason, never a value."""
+    logger.info(
+        "Candidate promotion: %s (%s)",
+        PromotionOutcome.DENIED.value,
+        reason.value,
+        extra={
+            "event": _PROMOTION_EVENT,
+            "outcome": PromotionOutcome.DENIED,
+            "reason": reason,
+            "candidate_id": candidate_id,
+            "correlation_id": str(correlation_id),
+        },
+    )
 
 
 async def _promote_in_transaction(
@@ -161,7 +186,7 @@ async def _promote_in_transaction(
     correlation_id: UUID,
     now: datetime,
 ) -> PromotionResult:
-    """Run steps 1 to 5 inside the transaction the caller opened."""
+    """Run steps 1 (after housekeeping) to 5 inside the transaction the caller opened."""
     candidate = await get_candidate_in_transaction(conn, candidate_id)
     if (
         candidate is None
