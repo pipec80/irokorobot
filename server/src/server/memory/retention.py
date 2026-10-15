@@ -8,6 +8,9 @@ Retention windows (all configurable via settings):
   - ``sensor_aggregates_hourly``:  1 year (hardcoded — aggregates are small)
   - ``embeddings_cache``:       30 days (hardcoded)
   - ``outbox`` (synced only):   7 days (hardcoded)
+  - ``memory_candidates``:      past ``expires_at`` or out of offers (ADR 0021),
+    whatever the candidate kill-switch says; the value is scrubbed and the
+    write-ahead log truncated
 """
 
 from __future__ import annotations
@@ -16,6 +19,8 @@ import asyncio
 import logging
 
 from server import db
+from server.cognition.clock import utc_now
+from server.memory.candidates import checkpoint_after_scrub, run_housekeeping
 from server.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -47,6 +52,8 @@ async def _run_once() -> None:
             await conn.execute(_SQL_SENSOR_AGGREGATES)
             await conn.execute(_SQL_EMBEDDINGS_CACHE)
             await conn.execute(_SQL_OUTBOX)
+            scrubbed = await run_housekeeping(conn, utc_now())
+        await checkpoint_after_scrub(scrubbed)
         logger.info("Retention purge complete (sensor_threshold=%s)", sensor_threshold)
     except Exception as exc:
         logger.warning("Retention purge failed: %s", exc)

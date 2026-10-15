@@ -15,11 +15,12 @@ import uvicorn
 
 from server import stt, tts
 from server.chat_ui import mount_chat_ui
+from server.cognition.clock import utc_now
 from server.cognition.owner_authentication import owner_unlock_service
 from server.db import close_db, open_db, run_migrations
 from server.exceptions import VisionError
 from server.logging_setup import configure_logging
-from server.memory import retention
+from server.memory import candidates, retention
 from server.request_context import RequestContextMiddleware
 from server.resources import AppResources
 from server.routers import auth, chat, system, transcribe, vision
@@ -121,6 +122,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             await open_db()
             stack.push_async_callback(close_db)
             await run_migrations()
+            # Before any request: offers of the previous process return to `proposed`,
+            # and with the switch off every live candidate value is voided.
+            await candidates.reset_for_startup(utc_now(), enabled=cfg.memory_candidates_enabled)
             retention.start_background_job()
             stack.push_async_callback(retention.stop_background_job)
             logger.info("Brain memory enabled: %s", cfg.brain_db_path)
