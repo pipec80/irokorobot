@@ -54,7 +54,12 @@ logger = logging.getLogger(__name__)
 # The identity store failing is not evidence of anything: the face then says nothing.
 _STORE_ERRORS = (BrainMemoryError, aiosqlite.Error)
 
-__all__ = ["FusedIdentityResolver", "FusionReason", "build_fused_identity_resolver"]
+__all__ = [
+    "FusedIdentityResolver",
+    "FusionReason",
+    "build_fused_identity_resolver",
+    "fuse_face_and_voice",
+]
 
 type Clock = Callable[[], datetime]
 type SpeakerFactory = Callable[[int], SpeakerRequestResolver]
@@ -246,25 +251,51 @@ class FusedIdentityResolver:
         if speaker.last_verdict is SpeakerVerdict.UNAVAILABLE:
             self.last_reason = FusionReason.BACKEND_UNAVAILABLE
             return face_context
-        voice_evidence = tuple(
-            item for item in voice_context.evidence if item.candidate_person_id == owner_id
-        )
-        if speaker.last_verdict is not SpeakerVerdict.VERIFIED or not voice_evidence:
+        if speaker.last_verdict is not SpeakerVerdict.VERIFIED:
             return face_context
-        person = PersonRecord(
-            person_id=owner_id, display_name=face_context.display_name or "", entity_type="person"
-        )
-        fused = resolve_active_person(
-            evidence=face_context.evidence + voice_evidence,
-            lookup_person=lambda person_id: person if person_id == owner_id else None,
-            lookup_role=lambda _person_id: face_context.role,
-            clock=self._clock,
-        )
-        if fused.assurance is not IdentityAssurance.STRONG:
+        fused = fuse_face_and_voice(face_context, voice_context, clock=self._clock)
+        if fused is None:
             return face_context
         self.source = "face_voice"
         self.last_reason = FusionReason.FACE_AND_VOICE
         return fused
+
+
+def fuse_face_and_voice(
+    face_context: ActivePersonContext, voice_context: ActivePersonContext, *, clock: Clock
+) -> ActivePersonContext | None:
+    """Fuse an identified face with voice evidence of the same person, or say it does not fuse.
+
+    The single place where the face and a verified voice become `strong` (ADR 0016 §2); the
+    fused resolver and the memory writer's background voice check both use it.
+
+    Args:
+        face_context: A context identified by the face.
+        voice_context: The speaker resolver's context, carrying its untrusted `VOICE` evidence.
+        clock: Source of the resolution timestamp.
+
+    Returns:
+        The fused context at assurance `strong`, or `None` when the face is not identified,
+        the voice evidence names nobody or another person, or the fusion is not `strong`.
+    """
+    owner_id = face_context.person_id
+    if owner_id is None:
+        return None
+    voice_evidence = tuple(
+        item for item in voice_context.evidence if item.candidate_person_id == owner_id
+    )
+    if not voice_evidence:
+        return None
+    person = PersonRecord(
+        person_id=owner_id, display_name=face_context.display_name or "", entity_type="person"
+    )
+    fused = resolve_active_person(
+        evidence=face_context.evidence + voice_evidence,
+        lookup_person=lambda person_id: person if person_id == owner_id else None,
+        lookup_role=lambda _person_id: face_context.role,
+        clock=clock,
+    )
+    return fused if fused.assurance is IdentityAssurance.STRONG else None
 
 
 def build_fused_identity_resolver(
