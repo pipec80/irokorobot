@@ -1,8 +1,8 @@
 """Integration tests for the brain memory subsystem wiring.
 
-These tests exercise the DB-backed memory modules (declarative, context,
-consolidation) with a real temporary SQLite database. External services
-(Ollama for embeddings and consolidation) are mocked.
+These tests exercise the DB-backed memory modules (declarative, context, meta)
+with a real temporary SQLite database. External services (Ollama for
+embeddings) are mocked.
 """
 
 from __future__ import annotations

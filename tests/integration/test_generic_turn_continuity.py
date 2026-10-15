@@ -414,25 +414,32 @@ async def test_no_proposal_without_a_face_with_a_token_from_chat_or_with_the_swi
     unlock = await service.unlock(_PIN)
     assert unlock is not None
     headers = {"X-Iroko-Identity-Token": unlock.token}
-    _speak(monkeypatch, "Me gusta el mate", "Me gusta el mate", "Me gusta el mate")
-    _model(monkeypatch, "Uno.", "Dos.", "Tres.", "Cuatro.", "Cinco.")
+    _speak(monkeypatch, *(["Me gusta el mate"] * 5))
+    _model(monkeypatch, "Uno.", "Dos.", "Tres.", "Cuatro.", "Cinco.", "Seis.")
 
     async with _client() as client:
         # no frame: the speaker is unknown
-        await client.post("/transcribe", files=_files(with_frame=False))
+        no_frame = await client.post("/transcribe", files=_files(with_frame=False))
         # a token only: a PIN grant proves the PIN, not the speaker
-        await client.post("/transcribe", files=_files(with_frame=False), headers=headers)
+        token_only = await client.post(
+            "/transcribe", files=_files(with_frame=False), headers=headers
+        )
         # /chat has no audio, so it never proposes
-        await client.post(
+        chat = await client.post(
             "/chat",
             headers=headers,
             json={"message": "Me gusta el mate", "conversation_id": "web"},
         )
+        # two faces in frame: the speaker is ambiguous even with the owner among them
+        _detect(monkeypatch, _OWNER_FACE, _STRANGER_FACE)
+        two_faces = await client.post("/transcribe", files=_files())
         # the face is there, the kill-switch is off
         _detect(monkeypatch, _OWNER_FACE)
         monkeypatch.setattr(settings, "memory_candidates_enabled", False)
-        await client.post("/transcribe", files=_files())
+        switched_off = await client.post("/transcribe", files=_files())
 
+    statuses = [r.status_code for r in (no_frame, token_only, chat, two_faces, switched_off)]
+    assert statuses == [200] * 5
     proposals.assert_not_awaited()
 
 

@@ -258,7 +258,11 @@ def test_unidentified_voice_turn_does_not_schedule_a_proposal(
     silence_wav_bytes: bytes,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A voice turn with no face-identified speaker must never propose a candidate."""
+    """A voice turn with no face-identified speaker must never propose a candidate.
+
+    The kill-switch is on, so only the missing face actor keeps the proposal from being scheduled.
+    """
+    monkeypatch.setattr(settings, "memory_candidates_enabled", True)
     propose = AsyncMock()
     monkeypatch.setattr(transcribe_module, "propose_candidates", propose)
     monkeypatch.setattr(pipeline, "list_entity_names", AsyncMock(return_value=[]))

@@ -142,8 +142,8 @@ _NEW_ACTION_NAMES = frozenset(
         "forget_personal_memory",
     }
 )
-# `PROPOSE_MEMORY` and `COMMIT_MEMORY` left in Plan 0062 (nothing consumed them); these two
-# are CM-6's, so until then only the model and the policy know them.
+# `PROPOSE_MEMORY` and `COMMIT_MEMORY` left in Plan 0062 (nothing consumed them). Delete and
+# export are CM-6's, so until then only the model and the policy know them.
 _LEGACY_MEMORY_ACTION_NAMES = frozenset(
     {
         "DELETE_HOUSEHOLD_DATA",

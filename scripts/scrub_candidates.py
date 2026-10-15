@@ -37,6 +37,10 @@ def scrub(db_path: Path) -> int:
 
     Returns:
         How many live candidates were voided (0 when there is no file or no candidate table).
+
+    Raises:
+        sqlite3.Error: If the file cannot be opened or updated, or (``OperationalError``) the
+            write-ahead log could not be truncated because another connection holds it.
     """
     if not db_path.exists():
         return 0

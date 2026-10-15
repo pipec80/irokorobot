@@ -323,6 +323,27 @@ async def assert_literal_fact(
     migration, which commits a record with its ledger entry, and the candidate writer, which
     commits a fact with its candidate's resolution). The call then neither opens, commits
     nor rolls back, and ``db.transaction()`` is not reentrant, so the caller must not nest.
+
+    Args:
+        subject_entity_id: The entity the literal describes.
+        definition: The previously resolved closed-registry predicate definition.
+        value: The raw literal; normalized by the registry rule.
+        confidence: Confidence in the fact, between 0 and 1.
+        source_memory_id: The episodic memory it came from, if any.
+        asserted_at: Assertion timestamp; SQLite's now when ``None``.
+        visibility: Overrides the registry's default visibility.
+        sensitivity: Overrides the registry's default sensitivity.
+        confirmed_by_entity_id: The entity that confirmed the fact, if any.
+        confirmed_at: When it was confirmed, if it was.
+        manage_transaction: ``False`` joins the caller's open transaction.
+
+    Returns:
+        The stored literal fact.
+
+    Raises:
+        ValueError: If the value is not a valid canonical literal or the confidence is out
+            of range.
+        RuntimeError: If the stored row cannot be read back.
     """
     await _validate_literal_subject(subject_entity_id, definition)
     normalized_value = normalize_literal(definition, value)

@@ -267,7 +267,8 @@ def fuse_face_and_voice(
     """Fuse an identified face with voice evidence of the same person, or say it does not fuse.
 
     The single place where the face and a verified voice become `strong` (ADR 0016 §2); the
-    fused resolver and the memory writer's background voice check both use it.
+    fused resolver and the candidate proposal's background voice check
+    (``strong_actor.verify_face_and_voice``) both use it.
 
     Args:
         face_context: A context identified by the face.

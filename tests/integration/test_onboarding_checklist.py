@@ -1,9 +1,8 @@
 """Integration tests for the slot-driven onboarding checklist (F4-D2).
 
 The checklist derives the interview state from the DB, so these tests run
-against a real temporary SQLite database. The end-to-end scenario replays
-the 2026-07-13 live interview that broke the old heuristic: children
-mentioned before the owner introduced himself.
+against a real temporary SQLite database. (The end-to-end replay of the
+2026-07-13 live interview left with ``consolidate_turn``, Plan 0062.)
 """
 
 from __future__ import annotations

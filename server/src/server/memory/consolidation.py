@@ -3,7 +3,8 @@
 ``consolidate_turn`` — the ``MANUAL``-gated writer of the legacy tables — is gone (ADR 0021
 decision 11, Plan 0062): it never ran in production, wrote around the authorization policy and
 stored the whole turn as an episode. What stays is the prompt and ``_extract_via_ollama``, which
-the CM-0 benchmark (``just eval-longitudinal``) and ``just eval-memory`` use through
+``just eval-memory`` (``scripts/eval_consolidation.py``) calls directly and the CM-0
+benchmark (``just eval-longitudinal``) calls through
 ``scripts/eval_consolidation.extract_case_items``, behaviourally unchanged, so the baseline
 stays comparable until CM-3b replaces it. Nothing under ``server`` calls it at runtime.
 
