@@ -158,6 +158,9 @@ def configure_logging(settings: "Settings") -> None:
             "uvicorn": {"propagate": True},
             "uvicorn.access": {"propagate": True},
             "uvicorn.error": {"propagate": True},
+            # aiosqlite logs every statement with its parameters at DEBUG. A value the household
+            # told the robot (a candidate, a fact) must never reach a log, whatever LOG_LEVEL is.
+            "aiosqlite": {"level": "WARNING", "propagate": True},
             # Console only and never the file: the opt-in transcript log (Plan 0052).
             # Without the opt-in it has no handler, so a record goes nowhere.
             CONVERSATION_LOGGER_NAME: {

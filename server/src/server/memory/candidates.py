@@ -1,0 +1,522 @@
+"""The candidate store: claims the owner made about their own taste, until they lapse or resolve.
+
+A candidate is **not** canonical memory (ADR 0021 decision 6). This module is the only place
+that issues SQL against ``memory_candidates`` (an architecture guard pins it) and it
+guarantees, in code and in the schema:
+
+* **The value is scrubbed on resolution.** ``value_text`` and ``value_key`` exist only while a
+  candidate is ``proposed`` or ``offered``; a resolution that forgot to erase them is refused
+  by the table's ``CHECK``. A scrub is followed by a write-ahead-log checkpoint, so the old
+  bytes are not left in the log.
+* **Transitions are compare-and-set** (``UPDATE ... WHERE status = ?`` and a row count) and
+  always filtered by the subject, so another person can neither resolve nor lapse a candidate.
+* **One clock.** Every timestamp is supplied by the caller as an aware datetime and stored as
+  UTC ISO 8601; the store never uses SQLite's ``datetime('now')``.
+* **Bounded and idempotent.** A repeated statement is a no-op insert; at the per-person cap a
+  new candidate is refused and an old one is never evicted.
+* **Housekeeping on every entry.** Lapsed candidates are expired and unanswered offers return
+  to ``proposed`` inside the entry's own transaction, whatever the retention job did.
+
+Logs carry ids, the predicate, a status and a closed reason, never a value.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from enum import StrEnum
+import logging
+from typing import TYPE_CHECKING
+
+from server import db
+from server.memory.candidate_types import CandidateChannel, CandidateStatus, ProposedCandidate
+from server.settings import settings
+
+if TYPE_CHECKING:
+    from uuid import UUID
+
+    import aiosqlite
+
+logger = logging.getLogger(__name__)
+
+__all__ = [
+    "VOID_LIVE_SQL",
+    "Candidate",
+    "InsertResult",
+    "InsertStatus",
+    "checkpoint_after_scrub",
+    "expire_lapsed_in_transaction",
+    "get_candidate",
+    "insert_candidate",
+    "iso_utc",
+    "mark_offered",
+    "reset_for_startup",
+    "resolve_candidate",
+    "resolve_candidate_in_transaction",
+    "run_housekeeping",
+    "void_live_candidates",
+]
+
+_LIVE = ("proposed", "offered")
+_COLUMNS = (
+    "id, subject_person_id, asserted_by_person_id, predicate, value_text, value_key, status, "
+    "channel, source_correlation_id, offer_correlation_id, resolution_correlation_id, "
+    "proposed_at, offered_at, resolved_at, expires_at, offer_count, promoted_fact_id"
+)
+
+#: Void every live candidate. Used by start-up with the kill-switch off, and by
+#: ``scripts/scrub_candidates.py`` (stdlib ``sqlite3``) before ``just reset-db`` copies the
+#: database to ``data/backups``. One parameter: the resolution timestamp.
+VOID_LIVE_SQL = (
+    "UPDATE memory_candidates SET status = 'expired', value_text = NULL, value_key = NULL, "
+    "resolved_at = ? WHERE status IN ('proposed', 'offered')"
+)
+
+
+class InsertStatus(StrEnum):
+    """Closed outcome of one insert attempt."""
+
+    INSERTED = "inserted"
+    DUPLICATE = "duplicate"
+    CAPACITY = "capacity"
+    DISABLED = "disabled"
+
+
+@dataclass(frozen=True)
+class InsertResult:
+    """What ``insert_candidate`` did.
+
+    Attributes:
+        status: The closed outcome.
+        candidate_id: The new row's id when ``status`` is ``INSERTED``.
+    """
+
+    status: InsertStatus
+    candidate_id: int | None = None
+
+
+@dataclass(frozen=True)
+class Candidate:
+    """One stored candidate. ``value_text`` and ``value_key`` are ``None`` once resolved."""
+
+    id: int
+    subject_person_id: int
+    asserted_by_person_id: int
+    predicate: str
+    value_text: str | None
+    value_key: str | None
+    status: CandidateStatus
+    channel: CandidateChannel
+    source_correlation_id: str
+    offer_correlation_id: str | None
+    resolution_correlation_id: str | None
+    proposed_at: str
+    offered_at: str | None
+    resolved_at: str | None
+    expires_at: str
+    offer_count: int
+    promoted_fact_id: int | None
+
+
+def iso_utc(moment: datetime) -> str:
+    """Return *moment* as fixed-width UTC ISO 8601, the only timestamp format stored here.
+
+    Args:
+        moment: An aware datetime.
+
+    Returns:
+        ``YYYY-MM-DDTHH:MM:SS.ffffff+00:00``; fixed width, so strings sort like instants.
+
+    Raises:
+        ValueError: If *moment* is naive.
+    """
+    if moment.tzinfo is None or moment.utcoffset() is None:
+        raise ValueError("candidate timestamps must be timezone-aware")
+    return moment.astimezone(UTC).isoformat(timespec="microseconds")
+
+
+def _from_row(row: tuple[object, ...]) -> Candidate:
+    """Build the immutable model from one ``_COLUMNS`` row."""
+    return Candidate(
+        id=int(str(row[0])),
+        subject_person_id=int(str(row[1])),
+        asserted_by_person_id=int(str(row[2])),
+        predicate=str(row[3]),
+        value_text=None if row[4] is None else str(row[4]),
+        value_key=None if row[5] is None else str(row[5]),
+        status=CandidateStatus(str(row[6])),
+        channel=CandidateChannel(str(row[7])),
+        source_correlation_id=str(row[8]),
+        offer_correlation_id=None if row[9] is None else str(row[9]),
+        resolution_correlation_id=None if row[10] is None else str(row[10]),
+        proposed_at=str(row[11]),
+        offered_at=None if row[12] is None else str(row[12]),
+        resolved_at=None if row[13] is None else str(row[13]),
+        expires_at=str(row[14]),
+        offer_count=int(str(row[15])),
+        promoted_fact_id=None if row[16] is None else int(str(row[16])),
+    )
+
+
+async def _rowcount(cursor: aiosqlite.Cursor) -> int:
+    """Read and close a cursor, returning how many rows its statement changed."""
+    changed = cursor.rowcount
+    await cursor.close()
+    return changed
+
+
+async def expire_lapsed_in_transaction(conn: aiosqlite.Connection, now: datetime) -> int:
+    """Expire (and scrub) every live candidate past its deadline or out of offers.
+
+    Args:
+        conn: The connection of an open ``db.transaction()``.
+        now: The caller's clock reading.
+
+    Returns:
+        How many candidates were expired. The caller checkpoints the log when this is not 0.
+    """
+    stamp = iso_utc(now)
+    cursor = await conn.execute(
+        "UPDATE memory_candidates SET status = 'expired', value_text = NULL, value_key = NULL, "
+        "resolved_at = ? WHERE status IN ('proposed', 'offered') AND expires_at <= ?",
+        (stamp, stamp),
+    )
+    lapsed = await _rowcount(cursor)
+    cursor = await conn.execute(
+        "UPDATE memory_candidates SET status = 'expired', value_text = NULL, value_key = NULL, "
+        "resolved_at = ? WHERE status = 'proposed' AND offer_count >= ?",
+        (stamp, settings.memory_candidate_max_offers),
+    )
+    return lapsed + await _rowcount(cursor)
+
+
+async def run_housekeeping(conn: aiosqlite.Connection, now: datetime) -> int:
+    """Expire what lapsed and return unanswered offers to ``proposed``.
+
+    Args:
+        conn: The connection of an open ``db.transaction()``.
+        now: The caller's clock reading.
+
+    Returns:
+        How many candidates were scrubbed (expired); the caller checkpoints when not 0.
+    """
+    waited_since = iso_utc(now - timedelta(seconds=settings.memory_candidate_answer_seconds))
+    cursor = await conn.execute(
+        "UPDATE memory_candidates SET status = 'proposed', offered_at = NULL, "
+        "offer_correlation_id = NULL WHERE status = 'offered' AND offered_at <= ?",
+        (waited_since,),
+    )
+    await cursor.close()
+    return await expire_lapsed_in_transaction(conn, now)
+
+
+# A checkpoint that SQLite postponed (a reader pinned the log) is owed to the next entry: the
+# value was erased in the page but its old frames are still in the log until it is truncated.
+_checkpoint_pending = False
+
+
+async def checkpoint_after_scrub(scrubbed: int) -> None:
+    """Truncate the write-ahead log after a transaction that erased a value, or retry one owed.
+
+    Args:
+        scrubbed: How many values the transaction that just committed erased. ``0`` only
+            retries a checkpoint a previous call could not complete. Never raises for a busy
+            log: the operation that erased the value has already committed.
+    """
+    global _checkpoint_pending  # noqa: PLW0603 — one owed checkpoint per process, like the slot
+    if not scrubbed and not _checkpoint_pending:
+        return
+    _checkpoint_pending = not await db.checkpoint_wal()
+
+
+async def insert_candidate(
+    proposal: ProposedCandidate,
+    *,
+    subject_person_id: int,
+    asserted_by_person_id: int,
+    channel: CandidateChannel,
+    correlation_id: UUID,
+    now: datetime,
+) -> InsertResult:
+    """Store one accepted candidate, unless it repeats a live one or the person is at the cap.
+
+    Args:
+        proposal: The classifier's output.
+        subject_person_id: Whose memory it would become.
+        asserted_by_person_id: Who said it (the subject in CM-3a).
+        channel: The voice route it came from.
+        correlation_id: The turn's correlation id, so audit rows join to the candidate.
+        now: The caller's clock reading.
+
+    Returns:
+        ``INSERTED`` with the id; ``DUPLICATE`` for a live candidate with the same key;
+        ``CAPACITY`` at the per-person cap (nothing is evicted); ``DISABLED`` with the
+        kill-switch off.
+    """
+    if not settings.memory_candidates_enabled:
+        return InsertResult(InsertStatus.DISABLED)
+    async with db.transaction() as conn:
+        scrubbed = await run_housekeeping(conn, now)
+        result = await _insert_in_transaction(
+            conn, proposal, subject_person_id, asserted_by_person_id, channel, correlation_id, now
+        )
+    await checkpoint_after_scrub(scrubbed)
+    logger.info(
+        "Candidate insert: %s",
+        result.status.value,
+        extra={
+            "event": "candidate.insert",
+            "outcome": result.status,
+            "candidate_id": result.candidate_id,
+            "predicate": proposal.predicate,
+            "channel": channel,
+        },
+    )
+    return result
+
+
+async def _insert_in_transaction(
+    conn: aiosqlite.Connection,
+    proposal: ProposedCandidate,
+    subject_person_id: int,
+    asserted_by_person_id: int,
+    channel: CandidateChannel,
+    correlation_id: UUID,
+    now: datetime,
+) -> InsertResult:
+    """Apply the duplicate and cap rules, then insert, inside an open transaction."""
+    cursor = await conn.execute(
+        "SELECT 1 FROM memory_candidates WHERE subject_person_id = ? AND predicate = ? "
+        "AND value_key = ? AND status IN ('proposed', 'offered')",
+        (subject_person_id, proposal.predicate, proposal.value_key),
+    )
+    duplicate = await cursor.fetchone()
+    await cursor.close()
+    if duplicate is not None:
+        return InsertResult(InsertStatus.DUPLICATE)
+    cursor = await conn.execute(
+        "SELECT COUNT(*) FROM memory_candidates WHERE subject_person_id = ? "
+        "AND status IN ('proposed', 'offered')",
+        (subject_person_id,),
+    )
+    live_row = await cursor.fetchone()
+    await cursor.close()
+    if live_row is not None and int(live_row[0]) >= settings.memory_candidate_max_live:
+        return InsertResult(InsertStatus.CAPACITY)
+    cursor = await conn.execute(
+        "INSERT INTO memory_candidates (subject_person_id, asserted_by_person_id, predicate, "
+        "value_text, value_key, status, channel, source_correlation_id, proposed_at, expires_at) "
+        "VALUES (?, ?, ?, ?, ?, 'proposed', ?, ?, ?, ?)",
+        (
+            subject_person_id,
+            asserted_by_person_id,
+            proposal.predicate,
+            proposal.value_text,
+            proposal.value_key,
+            channel.value,
+            str(correlation_id),
+            iso_utc(now),
+            iso_utc(now + timedelta(seconds=settings.memory_candidate_ttl_seconds)),
+        ),
+    )
+    candidate_id = cursor.lastrowid
+    await cursor.close()
+    if candidate_id is None:
+        raise RuntimeError("INSERT into memory_candidates returned no lastrowid")
+    return InsertResult(InsertStatus.INSERTED, int(candidate_id))
+
+
+async def get_candidate(candidate_id: int) -> Candidate | None:
+    """Return one candidate by id, with no policy applied (callers filter by subject).
+
+    Args:
+        candidate_id: The row id.
+
+    Returns:
+        The candidate, or ``None`` when it does not exist.
+    """
+    cursor = await db.get_conn().execute(
+        f"SELECT {_COLUMNS} FROM memory_candidates WHERE id = ?",  # noqa: S608
+        (candidate_id,),
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    return _from_row(tuple(row)) if row is not None else None
+
+
+async def get_candidate_in_transaction(
+    conn: aiosqlite.Connection, candidate_id: int
+) -> Candidate | None:
+    """Return one candidate as seen by an open transaction.
+
+    Args:
+        conn: The connection of an open ``db.transaction()``.
+        candidate_id: The row id.
+
+    Returns:
+        The candidate, or ``None`` when it does not exist.
+    """
+    cursor = await conn.execute(
+        f"SELECT {_COLUMNS} FROM memory_candidates WHERE id = ?",  # noqa: S608
+        (candidate_id,),
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    return _from_row(tuple(row)) if row is not None else None
+
+
+async def mark_offered(
+    candidate_id: int, subject_person_id: int, *, correlation_id: UUID, now: datetime
+) -> bool:
+    """Move one ``proposed`` candidate to ``offered`` (compare-and-set).
+
+    Args:
+        candidate_id: The candidate.
+        subject_person_id: Whose it is; another person's id changes nothing.
+        correlation_id: The turn that spoke the offer.
+        now: The caller's clock reading.
+
+    Returns:
+        ``True`` when this call made the transition. ``False`` when the candidate is not
+        ``proposed``, lapsed, belongs to someone else, has used every offer, or the
+        kill-switch is off.
+    """
+    if not settings.memory_candidates_enabled:
+        return False
+    async with db.transaction() as conn:
+        scrubbed = await run_housekeeping(conn, now)
+        cursor = await conn.execute(
+            "UPDATE memory_candidates SET status = 'offered', offered_at = ?, "
+            "offer_correlation_id = ?, offer_count = offer_count + 1 "
+            "WHERE id = ? AND subject_person_id = ? AND status = 'proposed' AND offer_count < ?",
+            (
+                iso_utc(now),
+                str(correlation_id),
+                candidate_id,
+                subject_person_id,
+                settings.memory_candidate_max_offers,
+            ),
+        )
+        changed = await _rowcount(cursor)
+    await checkpoint_after_scrub(scrubbed)
+    return changed == 1
+
+
+async def resolve_candidate_in_transaction(
+    conn: aiosqlite.Connection,
+    candidate_id: int,
+    subject_person_id: int,
+    *,
+    to: CandidateStatus,
+    correlation_id: UUID,
+    now: datetime,
+    promoted_fact_id: int | None = None,
+) -> bool:
+    """Resolve one ``offered`` candidate and erase its value, inside an open transaction.
+
+    Args:
+        conn: The connection of an open ``db.transaction()``.
+        candidate_id: The candidate.
+        subject_person_id: Whose it is; another person's id changes nothing.
+        to: ``CONFIRMED`` or ``REJECTED``.
+        correlation_id: The turn that resolved it.
+        now: The caller's clock reading.
+        promoted_fact_id: The canonical fact it became, for ``CONFIRMED``.
+
+    Returns:
+        ``True`` when this call resolved it; ``False`` when it was not ``offered`` for that
+        subject (the compare-and-set lost, or someone else's candidate).
+
+    Raises:
+        ValueError: If *to* is not a resolution.
+    """
+    if to not in {CandidateStatus.CONFIRMED, CandidateStatus.REJECTED}:
+        raise ValueError("a candidate resolves to confirmed or rejected only")
+    cursor = await conn.execute(
+        "UPDATE memory_candidates SET status = ?, value_text = NULL, value_key = NULL, "
+        "resolved_at = ?, resolution_correlation_id = ?, promoted_fact_id = ? "
+        "WHERE id = ? AND subject_person_id = ? AND status = 'offered'",
+        (
+            to.value,
+            iso_utc(now),
+            str(correlation_id),
+            promoted_fact_id,
+            candidate_id,
+            subject_person_id,
+        ),
+    )
+    return await _rowcount(cursor) == 1
+
+
+async def resolve_candidate(
+    candidate_id: int,
+    subject_person_id: int,
+    *,
+    to: CandidateStatus,
+    correlation_id: UUID,
+    now: datetime,
+) -> bool:
+    """Resolve one ``offered`` candidate in its own transaction and checkpoint the log.
+
+    Args:
+        candidate_id: The candidate.
+        subject_person_id: Whose it is.
+        to: ``CONFIRMED`` or ``REJECTED``.
+        correlation_id: The turn that resolved it.
+        now: The caller's clock reading.
+
+    Returns:
+        ``True`` when this call resolved it; ``False`` otherwise or with the kill-switch off.
+    """
+    if not settings.memory_candidates_enabled:
+        return False
+    async with db.transaction() as conn:
+        scrubbed = await run_housekeeping(conn, now)
+        resolved = await resolve_candidate_in_transaction(
+            conn, candidate_id, subject_person_id, to=to, correlation_id=correlation_id, now=now
+        )
+    await checkpoint_after_scrub(scrubbed + int(resolved))
+    return resolved
+
+
+async def void_live_candidates(now: datetime) -> int:
+    """Void every live candidate (start-up with the kill-switch off).
+
+    Args:
+        now: The caller's clock reading.
+
+    Returns:
+        How many candidates were voided.
+    """
+    async with db.transaction() as conn:
+        cursor = await conn.execute(VOID_LIVE_SQL, (iso_utc(now),))
+        voided = await _rowcount(cursor)
+    await checkpoint_after_scrub(voided)
+    return voided
+
+
+async def reset_for_startup(now: datetime, *, enabled: bool) -> None:
+    """Make the store consistent with a process that has just started (ADR 0021 decision 6).
+
+    With the switch off every live candidate is voided. With it on, an ``offered``
+    candidate returns to ``proposed`` (whatever was said in the previous process is gone and
+    the answer window cannot be trusted) and lapsed candidates are expired. Runs before any
+    request is served.
+
+    Args:
+        now: The caller's clock reading.
+        enabled: ``MEMORY_CANDIDATES_ENABLED`` as the application was configured (the lifespan
+            reads it from the app's own settings, not from the module global).
+    """
+    if not enabled:
+        voided = await void_live_candidates(now)
+        logger.info("Candidates voided at start-up: %d", voided)
+        return
+    async with db.transaction() as conn:
+        cursor = await conn.execute(
+            "UPDATE memory_candidates SET status = 'proposed', offered_at = NULL, "
+            "offer_correlation_id = NULL WHERE status = 'offered'"
+        )
+        await cursor.close()
+        scrubbed = await expire_lapsed_in_transaction(conn, now)
+    await checkpoint_after_scrub(scrubbed)
