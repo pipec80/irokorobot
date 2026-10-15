@@ -14,7 +14,7 @@ from server.cognition.authorization import (
 from server.cognition.controller import CognitiveController
 from server.cognition.household_tools import HouseholdToolName, HouseholdToolResult
 from server.cognition.identity import ActivePersonContext, ActivePersonStatus, HouseholdRole
-from server.cognition.intent_resolution import IntentMatch, IntentResolution
+from server.cognition.intent_resolution import IntentMatch, IntentResolution, MemoryAnswer
 from server.cognition.models import (
     AuthorizationAction,
     AuthorizationDecision,
@@ -681,3 +681,109 @@ async def test_the_children_read_is_the_only_branch_that_spends_the_grant() -> N
 
     spending.assert_awaited_once()
     assert plan.status is KnowledgeStatus.KNOWN
+
+
+# --- the answer to a memory offer (Plan 0063, ADR 0021 decision 9) ----------------------------
+
+
+def _legacy(response: str = "Respuesta normal.") -> AsyncMock:
+    return AsyncMock(
+        return_value=TextTurnResult(
+            response=response, emotion="neutral", duration_ms=5, llm_failed=False
+        )
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_answer_resolves_the_actor_first_and_speaks_the_fixed_result() -> None:
+    """The actor is resolved (face and voice) before the answerer reads anything."""
+    order: list[str] = []
+    actor = _actor(HouseholdRole.OWNER, 7)
+
+    async def observe(_event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
+        order.append("actor")
+        return actor
+
+    async def answer(
+        parsed: MemoryAnswer, who: ActivePersonContext, event: CognitiveEvent[TextTurnPayload]
+    ) -> str | None:
+        order.append("answer")
+        assert parsed == MemoryAnswer(accept=True, phrase="el mate")
+        assert who is actor
+        assert event.correlation_id == UUID("22222222-2222-2222-2222-222222222222")
+        return "Listo, lo guardé."
+
+    legacy_turn = _legacy()
+    controller = CognitiveController(
+        today=lambda: date(2026, 8, 12),
+        legacy_turn=legacy_turn,
+        observed_person_resolver=observe,
+        memory_answerer=answer,
+    )
+
+    plan = await controller.handle(_event("Sí, autorizo guardar el mate"))
+
+    assert order == ["actor", "answer"]
+    assert plan.need is InformationNeed.MEMORY_ANSWER
+    assert plan.response == "Listo, lo guardé."
+    legacy_turn.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_answer_nobody_can_use_falls_through_to_the_ordinary_turn() -> None:
+    """No offer, a weaker actor or a refusal: the reply is exactly the generic one."""
+    observe = AsyncMock(return_value=_actor(HouseholdRole.OWNER, 7))
+    answer = AsyncMock(return_value=None)
+    legacy_turn = _legacy("Claro, el mate es rico.")
+    controller = CognitiveController(
+        today=lambda: date(2026, 8, 12),
+        legacy_turn=legacy_turn,
+        observed_person_resolver=observe,
+        memory_answerer=answer,
+    )
+
+    event = _event("Sí, autorizo guardar el mate")
+    assert await controller.decide(event) is None
+    plan = await controller.handle(event)
+
+    assert plan.need is InformationNeed.GENERIC_CONVERSATION
+    assert plan.response == "Claro, el mate es rico."
+    legacy_turn.assert_awaited_once()
+    # The classic route runs decide() then handle(): the answer is tried once per event.
+    observe.assert_awaited_once()
+    answer.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_channel_without_the_answerer_never_resolves_the_actor_for_an_answer() -> None:
+    """/chat and /vision/respond inject no answerer: the shape falls through untouched."""
+    observe = AsyncMock(return_value=_actor(HouseholdRole.OWNER, 7))
+    legacy_turn = _legacy()
+    controller = CognitiveController(
+        today=lambda: date(2026, 8, 12),
+        legacy_turn=legacy_turn,
+        observed_person_resolver=observe,
+    )
+
+    assert await controller.decide(_event("Sí, autorizo guardar el mate")) is None
+    observe.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_answer_branch_never_spends_a_grant() -> None:
+    """The answer uses the observing resolver; the spending one is never awaited."""
+    spend = AsyncMock(return_value=_actor(HouseholdRole.OWNER, 7))
+    observe = AsyncMock(return_value=_actor(HouseholdRole.OWNER, 7))
+    controller = CognitiveController(
+        today=lambda: date(2026, 8, 12),
+        legacy_turn=_legacy(),
+        active_person_resolver=spend,
+        observed_person_resolver=observe,
+        memory_answerer=AsyncMock(return_value="Está bien, no lo guardo."),
+    )
+
+    plan = await controller.decide(_event("No autorizo guardar el mate"))
+
+    assert isinstance(plan, ResponsePlan)
+    assert plan.response == "Está bien, no lo guardo."
+    spend.assert_not_awaited()
