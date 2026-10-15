@@ -152,7 +152,11 @@ _LEGACY_MEMORY_ACTION_NAMES = frozenset(
         "export_household_data",
     }
 )
-_ACTION_HOMES = frozenset({"cognition/models.py", "cognition/authorization.py"})
+# The model and the policy, plus the one module that asks the policy about a candidate step
+# (Plan 0062): every other module reaches the actions through it.
+_ACTION_HOMES = frozenset(
+    {"cognition/models.py", "cognition/authorization.py", "memory/candidate_policy.py"}
+)
 _MEMORY_SCOPE_MEMBER_NAMES = frozenset({"PERSONAL_MEMORY_READ", "PERSONAL_MEMORY_FORGET"})
 _MEMORY_SCOPE_VALUES = frozenset({"personal_memory_read", "personal_memory_forget"})
 # Only the enum names its members. The policy table repeats the plain strings because
