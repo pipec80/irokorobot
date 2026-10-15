@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime
 import inspect
 import logging
@@ -17,6 +18,7 @@ from server.cognition.identity import (
 from server.cognition.models import Confidence, ConfidenceBasis
 from server.exceptions import BrainMemoryError, LLMError
 from server.memory import continuity
+from server.memory.candidate_dialogue import PendingOffer
 from server.memory.continuity import SuspendCause, Transition
 from server.schemas import MemoryContext
 from server.settings import settings
@@ -624,3 +626,233 @@ def test_public_apis_are_typed_and_documented() -> None:
         signature = inspect.signature(api)
         assert api.__doc__
         assert signature.return_annotation is not inspect.Signature.empty
+
+
+# --- the spoken offer (Plan 0063, ADR 0021 decision 9) ----------------------------------------
+
+
+def _pending() -> PendingOffer:
+    return PendingOffer(
+        candidate_id=1,
+        subject_person_id=_OWNER,
+        phrase="Antes me dijiste que te gusta el mate.",
+        actor=_person(IdentityEvidenceSource.FACE, assurance=IdentityAssurance.STRONG),
+        correlation_id=UUID(int=1),
+    )
+
+
+def _offer_on(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    monkeypatch.setattr(settings, "memory_enabled", True)
+    monkeypatch.setattr(settings, "memory_candidates_enabled", True)
+    commit = AsyncMock(return_value="Antes me dijiste que te gusta el mate.")
+    monkeypatch.setattr(text_turn, "commit_offer", commit)
+    return commit
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_the_offer_is_prepared_while_the_reply_is_generated(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The voice check runs concurrently: generation waits for it and does not deadlock."""
+    commit = _offer_on(monkeypatch)
+    prepared = asyncio.Event()
+
+    async def generate(*_args: object, **_kwargs: object) -> tuple[str, str]:
+        await asyncio.wait_for(prepared.wait(), timeout=2)
+        return "Hola.", "neutral"
+
+    async def prepare(_actor: ActivePersonContext) -> PendingOffer:
+        prepared.set()
+        return _pending()
+
+    monkeypatch.setattr(text_turn.llm, "generate_response", generate)
+
+    result = await text_turn.process_text_turn(
+        http_client,
+        "hola",
+        "voice",
+        active_person=_person(IdentityEvidenceSource.FACE),
+        prepare_offer=prepare,
+    )
+
+    assert result.response == "Hola."
+    assert result.offer == "Antes me dijiste que te gusta el mate."
+    commit.assert_awaited_once()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_the_offer_never_enters_the_session_history(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _offer_on(monkeypatch)
+    _generate(monkeypatch, ("Hola.", "neutral"))
+
+    await text_turn.process_text_turn(
+        http_client,
+        "hola",
+        "voice",
+        active_person=_person(IdentityEvidenceSource.FACE),
+        prepare_offer=AsyncMock(return_value=_pending()),
+    )
+
+    assert [turn.content for turn in continuity.open_turn(_OWNER).history] == ["hola", "Hola."]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_a_fallback_reply_carries_no_offer(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    commit = _offer_on(monkeypatch)
+    monkeypatch.setattr(text_turn.llm, "generate_response", AsyncMock(side_effect=LLMError("down")))
+
+    result = await text_turn.process_text_turn(
+        http_client,
+        "hola",
+        "voice",
+        active_person=_person(IdentityEvidenceSource.FACE),
+        prepare_offer=AsyncMock(return_value=_pending()),
+    )
+
+    assert result.llm_failed
+    assert result.offer is None
+    commit.assert_not_awaited()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "actor",
+    [
+        _person(IdentityEvidenceSource.LOCAL_UNLOCK),
+        _person(IdentityEvidenceSource.MANUAL),
+        _unidentified_person(ActivePersonStatus.UNKNOWN),
+        None,
+    ],
+)
+async def test_only_a_face_identified_speaker_is_ever_offered_anything(
+    http_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    actor: ActivePersonContext | None,
+) -> None:
+    _offer_on(monkeypatch)
+    _generate(monkeypatch, ("Hola.", "neutral"))
+    prepare = AsyncMock(return_value=_pending())
+
+    result = await text_turn.process_text_turn(
+        http_client, "hola", "voice", active_person=actor, prepare_offer=prepare
+    )
+
+    assert result.offer is None
+    prepare.assert_not_awaited()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.parametrize("switch", ["memory_enabled", "memory_candidates_enabled"])
+async def test_either_switch_off_prepares_no_offer(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, switch: str
+) -> None:
+    _offer_on(monkeypatch)
+    monkeypatch.setattr(settings, switch, False)
+    _generate(monkeypatch, ("Hola.", "neutral"))
+    prepare = AsyncMock(return_value=_pending())
+
+    result = await text_turn.process_text_turn(
+        http_client,
+        "hola",
+        "voice",
+        active_person=_person(IdentityEvidenceSource.FACE),
+        prepare_offer=prepare,
+    )
+
+    assert result.offer is None
+    prepare.assert_not_awaited()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_an_offer_the_policy_or_the_store_refused_is_not_spoken(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    commit = _offer_on(monkeypatch)
+    commit.return_value = None
+    _generate(monkeypatch, ("Hola.", "neutral"))
+
+    result = await text_turn.process_text_turn(
+        http_client,
+        "hola",
+        "voice",
+        active_person=_person(IdentityEvidenceSource.FACE),
+        prepare_offer=AsyncMock(return_value=_pending()),
+    )
+
+    assert result.offer is None
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_committing_the_offer_never_counts_as_generation_time(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    commit = _offer_on(monkeypatch)
+
+    async def slow_commit(_pending: PendingOffer) -> str:
+        await asyncio.sleep(0.3)
+        return "Antes me dijiste que te gusta el mate."
+
+    commit.side_effect = slow_commit
+    _generate(monkeypatch, ("Hola.", "neutral"))
+
+    result = await text_turn.process_text_turn(
+        http_client,
+        "hola",
+        "voice",
+        active_person=_person(IdentityEvidenceSource.FACE),
+        prepare_offer=AsyncMock(return_value=_pending()),
+    )
+
+    assert result.offer is not None
+    assert result.duration_ms < 200
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_a_cancelled_turn_cancels_the_offer_it_was_preparing(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _offer_on(monkeypatch)
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    async def never_answers(*_args: object, **_kwargs: object) -> tuple[str, str]:
+        await asyncio.Event().wait()
+        return "x", "neutral"
+
+    async def prepare(_actor: ActivePersonContext) -> PendingOffer:
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+        return _pending()
+
+    monkeypatch.setattr(text_turn.llm, "generate_response", never_answers)
+    turn = asyncio.create_task(
+        text_turn.process_text_turn(
+            http_client,
+            "hola",
+            "voice",
+            active_person=_person(IdentityEvidenceSource.FACE),
+            prepare_offer=prepare,
+        )
+    )
+    await asyncio.wait_for(started.wait(), timeout=2)
+
+    turn.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await turn
+    await asyncio.wait_for(cancelled.wait(), timeout=2)

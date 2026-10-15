@@ -231,6 +231,7 @@ class CognitiveController:
             response=result.response,
             emotion=result.emotion,
             duration_ms=result.duration_ms,
+            offer=result.offer,
         )
 
     async def _protected_household_plan(

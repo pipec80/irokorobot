@@ -27,6 +27,7 @@ from server.cognition.models import (
 from server.cognition.response_plan import (
     InformationNeed,
     ResponsePlan,
+    ResponseSource,
     SceneDescriptionRequest,
     TextTurnPayload,
 )
@@ -787,3 +788,34 @@ async def test_the_answer_branch_never_spends_a_grant() -> None:
     assert isinstance(plan, ResponsePlan)
     assert plan.response == "Está bien, no lo guardo."
     spend.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_generic_plan_carries_the_offer_apart_from_the_response() -> None:
+    """The offer is spoken after the reply; it is never part of the reply's text."""
+    legacy_turn = AsyncMock(
+        return_value=TextTurnResult(
+            response="Hola.",
+            emotion="neutral",
+            duration_ms=5,
+            llm_failed=False,
+            offer="Antes me dijiste que te gusta el mate.",
+        )
+    )
+    controller = CognitiveController(today=lambda: date(2026, 8, 12), legacy_turn=legacy_turn)
+
+    plan = await controller.handle(_event("hola"))
+
+    assert plan.response == "Hola."
+    assert plan.offer == "Antes me dijiste que te gusta el mate."
+
+
+def test_an_empty_offer_is_refused_by_the_plan() -> None:
+    with pytest.raises(ValueError, match="offer"):
+        ResponsePlan(
+            need=InformationNeed.GENERIC_CONVERSATION,
+            status=KnowledgeStatus.UNKNOWN,
+            source=ResponseSource.LEGACY_TEXT_TURN,
+            response="Hola.",
+            offer="",
+        )
