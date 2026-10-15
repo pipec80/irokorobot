@@ -400,6 +400,88 @@ passed the owner, muffled-voice, voice-recording-only, two-faces, covered-camera
 missing-voice-model cases; a phone-screen photo (3 attempts) and video (2 attempts) did not
 identify, which says nothing about a better spoof; the optional PIN case was not run.
 
+### Memory candidates (Plan 0062, CM-3a, ADR 0021): off by default, and nothing is offered yet
+
+A successful generic **voice** turn (classic or streaming `/transcribe`) can leave a
+short-lived *memory candidate*: something the owner said about their own taste
+("me gusta el mate"). It is not memory. A candidate lives for `MEMORY_CANDIDATE_TTL_SECONDS`
+(24 h), and the one writer that could turn it into a V4 fact (`memory_writer.promote`) is
+called by no route yet. The spoken offer, the answer and the hardware acceptance are Plan
+0063, so today the feature only stores and lapses candidates. `/chat` and `/vision/respond`
+never propose.
+
+**What has to be true for a candidate to be stored**, in the order the server checks it, the
+cheap steps before the expensive ones:
+
+1. `MEMORY_CANDIDATES_ENABLED=true` (and `MEMORY_ENABLED=true`).
+2. The sentence passes a closed Spanish grammar of first-person tastes (`me gusta`, `no me
+   gusta`, `odio`, `prefiero`, ...). The grammar is conservative on purpose: the expected
+   failure is **too few candidates**, not a wrong one. Questions, "me gusta que ...",
+   plurals and diminutives of person or sensitive words, a contrast inside one taste ("todo
+   menos el café", "prefiero el mate al café") and capitalized names are refused;
+   `No, me gusta el mate` is a `likes` candidate by design; places and names in lower case
+   rely on the topic set.
+3. The speaker was identified by **face** on that turn, with no PIN token.
+4. The **voice** of that turn's own clip verified against the same person (no clip, a clip
+   under `SPEAKER_MIN_VERIFICATION_S`, another voice or a backend failure means no candidate).
+5. One extraction at a time and at most `MEMORY_CANDIDATE_EXTRACTIONS_PER_HOUR` per hour: the
+   extractor is one model call that sees only the user's words, with no retry (about 41 s on
+   the shared development laptop, in the background after the reply was sent).
+6. A pure classifier accepts the model's triple, both consents (face and voice) are still
+   active, the policy allows `propose_personal_memory` (the decision is audited before the
+   effect) and the store accepts it (not a repeat, the person under `MEMORY_CANDIDATE_MAX_LIVE`).
+
+**Turning it on safely.** It needs both identity flags and an enrolled owner:
+
+1. `FACE_AUTHENTICATION_ENABLED=true` and `SPEAKER_AUTHENTICATION_ENABLED=true` on the server,
+   `ROBOT_FACE_AUTH_ENABLED=true` on the robot (a frame per turn), and the owner enrolled for
+   **both** face and voice (`just setup-personal status` and Tier 2 and Tier 3 above; at least
+   `SPEAKER_MIN_REFERENCE_COUNT` voice references). With a face only, every matching turn ends
+   as `dropped (strong_unreachable)` and nothing is stored.
+2. Set `MEMORY_CANDIDATES_ENABLED=true` in `.env` and start the server yourself. The settings
+   are read at start-up. The log must show `Candidates reconciled at start-up: 0 expired`
+   (switch on; the migration that creates the table is number 9).
+3. Say one matching sentence with the owner's face in frame. The log should show
+   `Candidate proposal: stored=1 dropped=0` and `Candidate insert: inserted`. To count without
+   reading anything, query the file with the server stopped:
+   `SELECT status, COUNT(*) FROM memory_candidates GROUP BY status`. Do not select
+   `value_text` into a shared terminal or ticket: it is exactly what the owner said.
+
+**Reading the log.** Every line carries closed reasons, never a value, a transcript or an
+exception message.
+
+| Line | Meaning |
+|---|---|
+| `Candidate proposal: dropped (<reason>)` | The attempt ended early. Reasons: `gate_no_match` (no taste in the sentence; the usual case, no voice check and no model call), `not_a_taste`, `negation_unsupported`, `sensitive_topic`, `strong_unreachable` (no face actor, voice not verified, or a consent revoked), `busy`, `budget`, `denied` (switch off, model unreachable or malformed JSON, or the policy or its audit row refused) |
+| `Candidate proposal: stored=N dropped=M` | The attempt reached the model. The reasons of the dropped triples (`gate_mismatch`, `not_grounded`, `sensitive_topic`, `not_a_taste`, `duplicate`, `capacity`, ...) are in the structured `reasons` field of that record, not in the message |
+| `Candidate insert: <status>` | `inserted`, `duplicate`, `capacity` or `disabled` |
+| `Candidate promotion: <outcome>` | `promoted`, `already_present`, `contradiction`, `not_offered` or `denied`. No route calls the writer yet, so this line does not appear in a real run |
+| `Candidates voided at start-up: N` | Start-up with the switch **off**: N live candidates were erased |
+| `Candidates reconciled at start-up: N expired` | Start-up with the switch **on**: N lapsed candidates were erased |
+| `candidate.extraction_failed`, `candidate.enrolment_check_failed` | A warning with an `error_type`: the model call failed, or the consent read failed and the step was denied |
+| `candidate.proposal_error` | A warning that carries `error_type`, `error_file`, `error_line`, `error_function` and `stored`: an unexpected failure in the background task, located but never quoted. The user's reply was already sent |
+
+`aiosqlite` is held at `WARNING` because at `DEBUG` it prints statement parameters, which
+would put a stored value in the log.
+
+**Rolling back.** Either of these leaves no live candidate value in the database file:
+
+- set `MEMORY_CANDIDATES_ENABLED=false` and start the server once; the start-up logs
+  `Candidates voided at start-up: N`, erases the values and truncates the write-ahead log; or
+- with the server **stopped**, run `uv run python scripts/scrub_candidates.py data/omnibot.db`.
+  It prints `Voided N live candidate(s)`, exits `0` when none remains (also for a database
+  with no candidate table yet) and exits `1` when it could not scrub the file or truncate its
+  log because another process holds it.
+
+**`just reset-db` and backups.** `just reset-db` first runs `scripts/scrub_candidates.py`
+(voids the live candidates, overwrites their bytes, truncates the log) and only then copies the
+file to `data/backups`. When the scrub exits `1` it stops with `database was NOT copied`: close
+whatever holds `data/omnibot.db` (an SQLite browser, a second server) and run it again.
+The 14 backups that existed on 2026-10-15 predate migration 009 and hold no candidate table.
+The connection runs with `PRAGMA secure_delete = ON`, so a resolved candidate's bytes are
+overwritten, and a checkpoint that cannot finish is retried at the next store entry and
+hourly; a start-up always truncates the log.
+
 ## 4. Feature-flag reference
 
 | Variable | Default | Effect |
@@ -422,6 +504,13 @@ identify, which says nothing about a better spoof; the optional PIN case was not
 | `WORKING_MEMORY_SIZE` | `20` | Upper bound on messages kept in the short-term session (below 2 keeps nothing) |
 | `WORKING_MEMORY_MAX_CHARS` | `3000` | Characters of turn content the session may hold; whole oldest exchanges leave first |
 | `WORKING_MEMORY_IDLE_SECONDS` | `180` | Seconds without a written turn after which the session is forgotten |
+| `MEMORY_CANDIDATES_ENABLED` | `false` | Server: kill-switch of the memory-candidate path (Plan 0062). Off, nothing is proposed, stored or promoted and every live candidate is voided at the next start-up. On, it needs `FACE_AUTHENTICATION_ENABLED` and `SPEAKER_AUTHENTICATION_ENABLED` plus an enrolled owner face and voice, or every attempt ends as `strong_unreachable` |
+| `MEMORY_CANDIDATE_TTL_SECONDS` | `86400` | How long a candidate lives before it lapses and its value is erased |
+| `MEMORY_CANDIDATE_MAX_LIVE` | `5` | Live candidates one person may hold; at the cap a new one is dropped as `capacity`, nothing is evicted |
+| `MEMORY_CANDIDATE_VALUE_MAX_CHARS` | `80` | Longest spoken object a candidate may carry; longer is `not_a_taste` |
+| `MEMORY_CANDIDATE_MAX_OFFERS` | `2` | Times a candidate may be offered before it lapses (the offer is Plan 0063; no effect before it) |
+| `MEMORY_CANDIDATE_ANSWER_SECONDS` | `60` | Seconds an offered candidate waits for an answer before it returns to `proposed` (Plan 0063; no effect before it) |
+| `MEMORY_CANDIDATE_EXTRACTIONS_PER_HOUR` | `12` | Extraction model calls that may start in any rolling hour; beyond it a turn is dropped as `budget` (one at a time besides: `busy`) |
 | `UVICORN_WORKERS` | `1` | Must stay `1` — owner/face grants are process-local; the server refuses to start otherwise |
 
 **The one real startup guard:** `ROBOT_STREAMING=true` on the robot plus
@@ -439,6 +528,9 @@ combination above is safe to mix.
 - Plan 0061 acceptance (short-term continuity, the face check's cost and the history
   stream measurements, outcomes only):
   [`0061-generic-turn-continuity-acceptance.md`](../evals/0061-generic-turn-continuity-acceptance.md).
+- Plan 0062 local smoke (memory candidates: start-up paths on the real database, outcomes
+  only; the spoken offer and the hardware acceptance are Plan 0063):
+  [`0062-memory-candidates-local-smoke.md`](../evals/0062-memory-candidates-local-smoke.md).
 - What's actually implemented right now, including open gaps:
   [`current-state.md`](../architecture/current-state.md).
 - What's authorized to build next: [`docs/plans/README.md`](../plans/README.md).

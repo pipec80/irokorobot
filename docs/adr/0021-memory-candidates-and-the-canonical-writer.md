@@ -21,10 +21,11 @@
   gate and that turns are "never extracted, consolidated or promoted": an identified generic turn
   may now be **extracted for candidates** (decision 4). Consolidation, episodes, persistent context
   and retrieval stay closed.
-- **Implemented by:** [Plan 0062](../plans/open/0062-cm3a-memory-candidates-and-writer.md)
-  (candidates and the writer, no hardware; `Ready`, `NOW` since 2026-10-14) and Plan 0063 (the
-  spoken confirmation and its hardware acceptance; unwritten). "CM-3" without a letter names both
-  CM-3a (this ADR) and CM-3b (decision 13).
+- **Implemented by:** [Plan 0062](../plans/completed/0062-cm3a-memory-candidates-and-writer.md)
+  (candidates and the writer, no hardware; closed 2026-10-15, PR #183; decisions 1 to 8, 10, 11 and
+  12) and Plan 0063 (decision 9: the spoken offer and answer, and the hardware acceptance;
+  unwritten, the next plan). This ADR stays `Proposed` until Plan 0063 closes. "CM-3" without a
+  letter names both CM-3a (this ADR) and CM-3b (decision 13).
 
 ## Context
 
@@ -116,8 +117,11 @@ closes none of their write steps** ([evaluation spec](../architecture/longitudin
 | **Memory writer** | The only place that inserts a V4 fact from a candidate (`promote`, one transaction) |
 | **Offer and answer** (Plan 0063) | Composes the offer in the text-turn seam; reads the explicit answer |
 
-Proposed modules: `memory/preference_gate.py`, `candidate_extraction.py`, `candidate_classifier.py`,
-`candidates.py`, `memory_writer.py`. The repo already holds several accent and case folding copies (`declarative`,
+Modules: `memory/preference_gate.py`, `candidate_extraction.py`, `candidate_classifier.py`,
+`candidates.py`, `memory_writer.py`. Plan 0062 added the vocabulary (`candidate_types.py`), the
+policy check (`candidate_policy.py`), the limiter (`candidate_limits.py`), the background
+orchestrator (`candidate_proposal.py`), the composite enrolment reader (`enrollment.py`) and the
+face-and-voice actor (`cognition/strong_actor.py`). The repo already holds several accent and case folding copies (`declarative`,
 `legacy_v4_migration`, `personal_setup`, `stt`, `intent_resolution`, `user_emotion`); the plan reuses
 one, adds whitespace and punctuation collapse, and adds no further copy.
 
@@ -134,7 +138,9 @@ a stranger: it says nothing about it, and the reply is the ordinary one.
   resolution runs there, for the person the face named. It costs no visible latency. No clip, a clip
   below the floor, or a failed verification means **no candidate**.
 - **Never from a token.** An actor carrying a `LOCAL_UNLOCK` item is refused before any extraction.
-  The face-and-voice actor is built by a request resolver from `for_request(None)` (no token).
+  The face-and-voice actor is the turn's token-free face actor fused with the voice verdict of that
+  clip by `fuse_face_and_voice` (the fusion rule extracted from `FusedIdentityResolver`, so it
+  exists once); the face is not computed a second time.
 - **Fail closed and enrolment first.** Until the owner's face and voice are enrolled, CM-3a produces
   nothing, by design. The kill-switch `MEMORY_CANDIDATES_ENABLED` (default off) covers every path:
   proposal, offer, answer and promotion.
@@ -152,8 +158,12 @@ a stranger: it says nothing about it, and the reply is the ordinary one.
   favorito/a es` (prefers). The plan fixes the table. It refuses, with a closed reason: a question or
   conditional; a third person as experiencer; **a clause rather than a thing** (`prefiero que no
   menciones…`, `me gusta que…`: an instruction to the robot, which is CM-3b's disclosure rule);
-  any negated form other than `no me gusta(n)` and `no soporto`; and a **sensitive topic** from a
-  closed deny-list (health, address, money, credentials, disclosure vocabulary).
+  any negated form other than `no me gusta(n)` and `no soporto`; a **contrast inside one taste**
+  (`todo menos X`, `excepto`, `salvo`, and after `prefiero` an `al`, `en vez de` or `en lugar de`:
+  the model never picks which side is the taste); a taste that follows an attribution after a soft
+  break (`mi hija dice: me gusta el helado`); and a **sensitive topic** from a closed deny-list
+  (health, address, money, credentials, disclosure vocabulary), which also covers the plural and
+  the diminutive of each entry.
 - **A positive grammar and a closed topic set for the object.** The object is accepted only as a
   noun phrase of at most five words or an infinitive from a short allow-list, letters and spaces
   only, no Unicode format or control characters, no digits or URL, **and only when the extractor
@@ -168,11 +178,12 @@ a stranger: it says nothing about it, and the reply is the ordinary one.
   in the closed set, no free-form field;
   a predicate outside the set the gate returned is dropped. It uses `consolidation_model` and the
   existing `ollama_chat` helper **without a retry** (a missed candidate is restated; a retry doubles
-  a 41 s worst case) and logs the exception class only.
+  a 41 s worst case) and logs the exception class only (`candidate.extraction_failed`).
 - **Bounded cost.** Extraction runs only after the voice check of decision 3 passes. At most one
-  extraction is in flight (a matching turn that finds one running is dropped: `busy`), and there is a
-  per-hour budget (setting). The cap of decision 6 never evicts the owner's candidates to admit a new
-  one.
+  extraction is in flight (a matching turn that finds one running is dropped: `busy`, before the
+  voice check), and there is a per-hour budget (setting), whose slot is taken only after the voice
+  check so a bystander cannot spend the owner's hour. The cap of decision 6 never evicts the
+  owner's candidates to admit a new one.
 
 ### 5. The classifier assigns the classification; nobody else does
 
@@ -219,18 +230,26 @@ canonical memory, and a `proposed` lifecycle inside V4 is rejected (Alternatives
   `secure_delete`, a scrub is followed by a WAL checkpoint, and `just reset-db` voids live
   candidates before it copies the database to `data/backups`.
 - **Idempotent and bounded:** a unique partial index on `(subject_person_id, predicate,
-  value_key)` over `proposed` and `offered` (the insert is `ON CONFLICT DO NOTHING`); at most five
-  live candidates per person, checked and inserted in one transaction; **at the cap a new
-  candidate is refused**, never an old one evicted.
+  value_key)` over `proposed` and `offered` backs the rule; at most five live candidates per
+  person. The duplicate check, the cap check and the insert run in **one** transaction, so a
+  repeated taste is a no-op and **at the cap a new candidate is refused**, never an old one
+  evicted. A read-only `precheck_insert` asks the same question before the audit row is written,
+  so a repeated taste or a capped person leaves no `allowed` audit row; the transaction stays the
+  authority.
 - **Reclamation:** the existing `retention` job (start-up and hourly) also expires rows past
-  `expires_at` (24 h from proposal), whatever the kill-switch says; every store entry first does the
-  same in its own transaction; start-up also resets `offered` rows to `proposed` and, when the
-  kill-switch is off, voids every live row.
+  `expires_at` (24 h from proposal) or out of offers, whatever the kill-switch says, in its own
+  transaction apart from the other purges and logging the exception class only; every write entry
+  of the store (insert, offer, resolve and the writer's `promote`) runs the same housekeeping
+  first, inside its own transaction. Start-up resets `offered` rows to `proposed` and expires what
+  lapsed, or, when the kill-switch is off, voids every live row, and then **always** truncates the
+  write-ahead log: a checkpoint a previous process still owed is not forgotten across a restart.
+  `checkpoint_wal` never raises for a busy log or a closed connection; an owed checkpoint is
+  retried at the next write entry and at every hourly run.
 - **Transitions are compare-and-set** (`UPDATE … WHERE status = ?` and a row count). An `offered`
   candidate unanswered within `MEMORY_CANDIDATE_ANSWER_SECONDS` (proposed 60) returns to `proposed`
-  on the next access; it is offered at most `MEMORY_CANDIDATE_MAX_OFFERS` times (proposed 2), the
-  oldest first, and then expires. State changes only on a turn resolved to the subject at `strong`,
-  or on the clock.
+  on the next write entry; it is offered at most `MEMORY_CANDIDATE_MAX_OFFERS` times (proposed 2),
+  the oldest first, and then expires. State changes only on a turn resolved to the subject at
+  `strong`, or on the clock.
 - **No canonical oracle.** Duplicate and contradiction are decided **at promotion only**, so whether
   an offer appears never depends on what is stored. A *contradiction* is the same value key under
   the opposite polarity among the active canonical facts; the candidate is then closed `rejected`
@@ -250,7 +269,11 @@ canonical memory, and a `proposed` lifecycle inside V4 is rejected (Alternatives
 - **Actor:** face and voice from decision 3, never a token. One resolution serves the whole request,
   including the classic route's second `decide()`.
 - **Order:** classify, evaluate, **write the audit row, then** the effect. If the audit write fails,
-  nothing is stored or spoken (ADR 0019 §6.3). A rejection is audited like an acceptance.
+  nothing is stored or spoken (ADR 0019 §6.3). A rejection is audited like an acceptance. The
+  model call takes tens of seconds, so both consents are re-read before the audit row and again
+  right before the insert: a consent revoked meanwhile stores nothing, and the first re-read keeps
+  an `allowed` row from being written for it (the second closes the short window in which the
+  audit write waits for the write lock).
 - **Same person:** candidates are always selected by `subject_person_id = actor.person_id`, never
   by an id the request carries, and a promotion requires the same equality.
 
@@ -308,12 +331,15 @@ One function, **one `db.transaction()`**, never relying on an `IntegrityError`:
 
 ### 10. Where it runs
 
-Proposals run in the background task that follows a successful generic turn, from the `MANUAL` gate's
-call site in `record_text_turn`, replaced by "identified, face and voice verified (decision 3),
-enrolled, kill-switch on". The scheduler callback stops receiving the assistant's reply and gains the
-turn's correlation id and clip. A turn whose generation failed proposes nothing. Setting names and
-defaults are fixed by the plan, each documented in `.env.example`; the phrase tables, the deny-list
-and the grammar live in `memory/lexicon.py`; proposed: `MEMORY_CANDIDATES_ENABLED=false`,
+Proposals run in the background task that follows a successful generic voice turn. The `MANUAL`
+gate at the call site in `record_text_turn` is replaced by "identified by face with no token,
+kill-switch on" (identity only; it is not an authorization decision). The voice check of decision 3,
+the composite enrolment, the policy and its audit row all happen inside the background task, before
+anything is extracted or stored. The scheduler callback is `(message, actor)`: it never receives the
+assistant's reply, and the voice route closes over the turn's event (its correlation id), clip and
+channel, which `text_turn` does not know. A turn whose generation failed proposes nothing. The
+settings are fixed, each documented in `.env.example`; the phrase tables, the deny-list and the
+grammar live in `memory/lexicon.py`: `MEMORY_CANDIDATES_ENABLED=false`,
 `MEMORY_CANDIDATE_TTL_SECONDS=86400`, `MEMORY_CANDIDATE_MAX_LIVE=5`,
 `MEMORY_CANDIDATE_VALUE_MAX_CHARS=80`, `MEMORY_CANDIDATE_MAX_OFFERS=2`,
 `MEMORY_CANDIDATE_ANSWER_SECONDS=60`, `MEMORY_CANDIDATE_EXTRACTIONS_PER_HOUR=12`.
@@ -333,11 +359,18 @@ and the grammar live in `memory/lexicon.py`; proposed: `MEMORY_CANDIDATES_ENABLE
 ### 12. Logging and audit; ADR 0019's seven obligations
 
 Events carry ids, the canonical predicate, status, channel, a closed reason and counts, **never a
-value and never an exception's message**. These are memory-layer reasons, separate from ADR 0016
+value and never an exception's message**. A failure the closed reasons cannot name logs the
+exception class (and, for the proposal's catch-all, the innermost frame: file, line and function),
+never the message. These are memory-layer reasons, separate from ADR 0016
 §8's identity reasons. Closed reasons: `gate_no_match`, `not_a_taste`,
 `negation_unsupported`, `sensitive_topic`, `gate_mismatch`, `strong_unreachable`, `not_grounded`,
-`busy`, `budget`, `capacity`, `contradiction`, `duplicate`, `expired`, `denied`. Every evaluated
-proposal, offer and answer is a row of `authorization_audit_events` (action, categories, policy id).
+`busy`, `budget`, `capacity`, `contradiction`, `duplicate`, `expired`, `denied`. Structured events:
+`candidate.insert`, `candidate.proposal` and `candidate.promotion` (each carries the turn's
+`correlation_id`, which also stamps the audit row), `candidate.policy`,
+`candidate.extraction_failed`, `candidate.enrolment_check_failed` and
+`candidate.proposal_error`. Every evaluated proposal, offer and answer is a row of
+`authorization_audit_events` (action, categories, policy id); a proposal the store would refuse
+(a repeated taste, a capped person) is pre-checked read-only and leaves no row.
 
 | ADR 0019 §6 obligation | How CM-3a meets it |
 |---|---|
@@ -501,8 +534,10 @@ gate's economics.
 
 ## Follow-up
 
-- [Plan 0062](../plans/open/0062-cm3a-memory-candidates-and-writer.md) — candidates, the writer
-  and the extraction (written 2026-10-14, `Ready`).
-- Plan 0063 — the spoken confirmation and its hardware acceptance (unwritten).
+- [Plan 0062](../plans/completed/0062-cm3a-memory-candidates-and-writer.md) — candidates, the writer
+  and the extraction (written 2026-10-14; closed 2026-10-15, PR #183; no hardware, no spoken
+  dialogue; `promote` has no caller in a route yet).
+- Plan 0063 — **next**: the spoken offer and answer (decision 9) and the hardware acceptance;
+  unwritten, it is what moves this ADR to `Accepted`. The next free ADR number is 0022.
 - Phase 0 — enrolment first, access levels, escalation with company (decision 13).
 - CM-3b, CM-4, CM-5, CM-6.

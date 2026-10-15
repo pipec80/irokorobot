@@ -1,12 +1,16 @@
 # 0062 — Memory candidates and the canonical writer, first cut (CM-3a)
 
-> **Status:** `Ready` and `NOW` — written 2026-10-14 from [ADR 0021](../../adr/0021-memory-candidates-and-the-canonical-writer.md),
-> rehearsed in a scratch copy of `main` (`f92e43d`) and independently reviewed (see *Review record*).
-> Promoted by Pipec on 2026-10-14, who confirmed decisions D-1 to D-14 as written. It is the first
-> of the two plans of CM-3a: it has **no spoken dialogue and no hardware**; the offer, the answer
-> and the hardware acceptance are Plan 0063. To be executed in a **new session**.
+> **Status:** `Closed` 2026-10-15 — executed on branch `feat/0062-cm3a-candidates-and-writer`
+> (PR #183), see *Execution record*. It is the first of the two plans of CM-3a: it has **no spoken
+> dialogue and no hardware**; the offer, the answer and the hardware acceptance are Plan 0063
+> (free), and [ADR 0021](../../adr/0021-memory-candidates-and-the-canonical-writer.md) stays
+> `Proposed` until it closes.
+>
+> History: written 2026-10-14 from ADR 0021, rehearsed in a scratch copy of `main` (`f92e43d`) and
+> independently reviewed (see *Review record*); promoted to `Ready` and `NOW` by Pipec on
+> 2026-10-14, who confirmed decisions D-1 to D-14 as written.
 
-> **For agentic workers:** if the status above does not say `Ready`, stop: Pipec has not promoted this plan.
+> **For agentic workers:** this plan is closed. While it was open, the rule was: if the status did not say `Ready`, stop (Pipec had not promoted it).
 > REQUIRED SUB-SKILLS: `superpowers:executing-plans`,
 > `superpowers:test-driven-development`, `superpowers:verification-before-completion`,
 > `superpowers:finishing-a-development-branch`. Execute only while this is the explicitly
@@ -130,8 +134,11 @@ Inputs the ADR implies that are most likely to bite, each pinned by a test in it
    `IntegrityError` (Tasks 6, 10).
 4. **A sentence that is an instruction or a disclosure, or that the model "improves".** The
    benchmark's own sentence about a move, `prefiero no hablar de mi divorcio`, `ya no me gusta`,
-   `no, me gusta el mate`, an object the user did not say, a person, a pet, a place or a model-chosen
-   topic never become a candidate (Tasks 2, 3, 11).
+   an object the user did not say, a person, a pet, a place or a model-chosen
+   topic never become a candidate (Tasks 2, 3, 11). Nor does `no me gusta el mate` become a
+   *like*, nor `prefiero no hablar de ...` a preference. `no, me gusta el mate` (with the comma) **is**
+   a `likes` candidate by design: the comma makes it a spoken correction of what was just said, and
+   the owner must still confirm it in Plan 0063 before any fact exists.
 5. **Somebody else's taste, or the model's polarity.** `mi hija dice: me gusta el helado`,
    `mi hijo favorito es ...`, `me gusta el mate pero odio el cafe` with the model answering
    "likes cafe", `odio a Rodrigo`: the gate ties every object to the words after its own trigger and
@@ -224,7 +231,15 @@ the ADR left to the plan say so.
    (`ser`, `ir`, `callarme`) that are not on the list. `RELATION_TRIGGERS` keys
    (`perro`, `gato`, `mascota`, `hijo`, ...) are third parties by the ADR's own words, so "me gustan
    los gatos" is **not** captured in CM-3a; pets are CM-3b's. The lists are small on purpose and
-   grow only by a reviewed change.
+   grow only by a reviewed change. **Further costs, accepted after execution (the independent
+   review of 2026-10-15):** a contrast inside one taste is refused whole (`todo menos X`,
+   `excepto`, `salvo`, and after `prefiero` an `al`, `en vez de` or `en lugar de`), so
+   `prefiero el mate al cafe` is dropped while `me gusta el pollo al horno` passes and
+   `me gusta el cafe sin azucar` passes; the deny lists cover the plural and the diminutive of
+   each entry; places and names that Whisper writes in lower case rely on the closed topic set
+   (the capitalisation rule cannot see them); and `No, me gusta el mate` (with the comma) is a
+   `likes` candidate by design, a spoken correction that the owner must still confirm in Plan 0063
+   before any fact exists.
 7. **D-7 — `secure_delete=ON` for the whole connection, a `TRUNCATE` checkpoint after every
    scrub, and `aiosqlite` held at `WARNING`.** `ON`, not `FAST`; the cost is a little I/O on
    deletes of a small local database. The `aiosqlite` line is a finding of the rehearsal, not of the
@@ -9155,4 +9170,72 @@ log level (both safe to keep), the renamed scheduler parameter, and the two reti
 
 ## Execution record
 
-*(Filled in when the plan is executed.)*
+**Executed 2026-10-15** on the plain branch `feat/0062-cm3a-candidates-and-writer` (from `main`
+at `3717dc6`, no worktree); PR #183, squash-merge pending when this record was written. No spoken
+dialogue, no hardware, no wire change.
+
+**Commits.** 14 task commits, ordered by dependency waves rather than strictly 1 to 14 (the
+tasks inside a wave are independent): Task 1; Tasks 2, 5, 7 and 8; Tasks 3, 4, 6 and 9; Tasks 10
+and 12; Task 11; Task 13; Task 14. Then 4 review-fix commits (`4b98eb0`, `507d6be`, `7ab57f7`,
+`1d65c01`). Tasks 15 (local smoke) and 16 (documentation) are not code commits.
+
+**Gate.** `just gate` green: **2972** tests unfiltered and **2955** under the CI selection
+(baseline 2597 and 2580; the rehearsal counted 2905 and 2888 before the review additions);
+`mypy` 115 files, `pyright` 0 errors, `vulture` clean.
+
+**Independent review (4 reviewers, opus, read-only):** whole branch, silent failures, comment
+accuracy and test coverage. What it fixed beyond the plan text:
+
+- the deny lists cover plurals and diminutives;
+- a contrast inside one taste (`todo menos X`, `excepto`, `salvo`; `al` / `en vez de` /
+  `en lugar de` after `prefiero`) is refused;
+- a read-only `precheck_insert` runs before the audit row, so a repeated taste or a capped person
+  leaves no `allowed` audit row;
+- a second consent re-check runs right before the insert;
+- start-up always truncates the write-ahead log (an owed checkpoint is not forgotten across a
+  restart);
+- `checkpoint_wal` never raises for a closed connection;
+- retention expires candidates in its own transaction and logs the exception class only;
+- `list_known_names` fails closed on malformed aliases;
+- early `promote` denials log a closed reason;
+- `correlation_id` joins `candidate.insert`, `candidate.proposal` and `candidate.promotion`;
+- a catch-all failure of the proposal logs the class and the innermost frame (file, line,
+  function), never the message.
+
+**Deviations from the plan text.**
+
+- Commit order by dependency waves instead of strictly 1 to 14.
+- The RED of Task 13 was 24 failed tests and 4 errors, not the single `ImportError` the rehearsal
+  recorded.
+- The RED of Task 14 was 2 failures.
+- New log lines and events beyond the plan: `candidate.extraction_failed`,
+  `candidate.enrolment_check_failed`, `candidate.proposal_error` (with `error_file`,
+  `error_line`, `error_function`) and the start-up line `Candidates reconciled at start-up: N
+  expired` (with the switch off the line stays `Candidates voided at start-up: N`).
+
+**Local smoke (Task 15, 2026-10-15; outcomes only).**
+
+| Step | Result |
+|---|---|
+| 1. `just gate` | pass (2972 unfiltered, 2955 under the CI selection) |
+| 2. Switch off, start-up | pass: migration 9 applied over the real database, `Candidates voided at start-up: 0`, server ONLINE |
+| 3. Switch on, start-up | pass: server ONLINE, `Candidates reconciled at start-up: 0 expired` (the plan expected no candidate line; this one is new) |
+| 4. A matching sentence without enrolment | PENDING (Pipec, with the face in frame) |
+| 5. A non-matching sentence | PENDING (Pipec, with the face in frame) |
+| 6, 7. Stored case and `just reset-db` with a live candidate | not run (optional: they need an enrolled voice) |
+
+**Accepted costs of the closed grammar** (D-6): a taste after an attribution and a soft break is
+dropped; bare short or clitic infinitives not on the list are dropped; `me gusta el pollo al
+horno` passes but `prefiero el mate al cafe` does not; `me gusta el cafe sin azucar` passes;
+places and names that Whisper writes in lower case rely on the topic set; `No, me gusta el mate`
+is a `likes` candidate by design and must be confirmed in Plan 0063.
+
+**Follow-ups.**
+
+- **Plan 0063** (free number): the spoken offer, the answer and the hardware acceptance of
+  ADR 0021 decision 9; `promote` has no caller in a route yet. ADR 0021 stays `Proposed` until it
+  closes; the next free ADR number is 0022.
+- Reading a stored preference back is CM-5, correcting and forgetting is CM-6, third parties and
+  the rest of decision 13 are CM-3b.
+- Steps 4 and 5 of the smoke are pending Pipec's run and are recorded in
+  `docs/evals/0062-memory-candidates-local-smoke.md`.

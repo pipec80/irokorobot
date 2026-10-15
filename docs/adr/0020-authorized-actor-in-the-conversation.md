@@ -18,6 +18,12 @@
 - **Amends:** [ADR 0016](0016-face-and-voice-identity-fusion.md) §8 (the closed log reasons):
   `error` joins the set, and `backend_unavailable`, which named a voice backend that is down,
   also names a face detector that failed (§5 below; decided in Plan 0061, D-3)
+- **Amended by:** [ADR 0021](0021-memory-candidates-and-the-canonical-writer.md) §3 (Proposed,
+  implemented by Plan 0062 behind `MEMORY_CANDIDATES_ENABLED`, off by default): a generic voice
+  turn identified by the face now gets a background voice check on its own clip, and a candidate
+  may be extracted from it. This ADR is `Accepted` and ADR 0021 only `Proposed`; the default-off
+  switch keeps the two consistent until Plan 0063 closes. Decisions 1 and 2 above are unchanged
+  until then.
 - **Implemented by:** CM-2, [Plan 0061](../plans/completed/0061-cm2-generic-turn-continuity.md)
   (closed 2026-10-13); acceptance record in
   [the 0061 acceptance note](../evals/0061-generic-turn-continuity-acceptance.md)

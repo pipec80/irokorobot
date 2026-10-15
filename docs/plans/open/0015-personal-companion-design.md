@@ -91,7 +91,8 @@ generic conversation
 The current controller passes only message and conversation ID into the legacy
 turn. The legacy turn enables durable memory only for `MANUAL` evidence; face
 and local unlock do not enable its history, fact retrieval, vector search or
-consolidation. Consolidation writes through legacy APIs, while semantic search
+consolidation. Consolidation wrote through legacy APIs (Plan 0062 retired that
+write path on 2026-10-15), while semantic search
 does not yet filter person, visibility, sensitivity, validity or authorization
 and has no relevance threshold.
 

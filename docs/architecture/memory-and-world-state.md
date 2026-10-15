@@ -21,10 +21,15 @@ stages; a new database or vector service is not justified.
 
 The current runtime still has limits that later plans must handle explicitly:
 
-- the legacy writer stores relation targets as text and replaces facts as if
-  every predicate had one active value; the isolated V4 foundation already
-  supports entity-ID relationships, cardinality and lifecycle, but is not the
-  canonical conversational writer;
+- the legacy writer (`consolidate_turn`) stored relation targets as text and
+  replaced facts as if every predicate had one active value, and it never ran in
+  production; Plan 0062 retired it. The canonical conversational writer is now
+  `memory/memory_writer.py`, the only place a memory candidate becomes a V4
+  literal fact, with entity-ID subjects, cardinality and lifecycle. It is not
+  connected to a spoken confirmation yet (Plan 0063), so no conversation writes
+  durable memory today; a face-identified voice turn can only leave a
+  short-lived candidate, behind a default-off kill-switch
+  ([ADR 0021](../adr/0021-memory-candidates-and-the-canonical-writer.md));
 - semantic retrieval returns the nearest items without a relevance threshold;
 - retrieval is not yet filtered by the active person's authorization;
 - provenance, validity periods, verification state, and sensitivity are not
