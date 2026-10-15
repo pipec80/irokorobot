@@ -1,9 +1,10 @@
 # 0063 — The spoken memory offer and the explicit answer (CM-3a, second cut)
 
-> **Status:** `Draft` — written 2026-10-15 from [ADR 0021](../../adr/0021-memory-candidates-and-the-canonical-writer.md)
+> **Status:** `Ready` and `NOW` — written 2026-10-15 from [ADR 0021](../../adr/0021-memory-candidates-and-the-canonical-writer.md)
 > decision 9 with Pipec's decisions of the same day (D-1 to D-5), rehearsed in a scratch copy of
-> `main` (`73fcf8c`) and independently reviewed (see *Review record*). It becomes executable only
-> when Pipec promotes it to `Ready` and `NOW`. It is the second and last plan of CM-3a: the
+> `main` (`73fcf8c`) and independently reviewed (see *Review record*); merged as PR #185 and
+> promoted by Pipec on 2026-10-15, who confirmed decisions D-1 to D-15 as written (including the
+> article after the short verbs of D-2, one open offer per person, D-12 and D-15). It is the second and last plan of CM-3a: the
 > spoken offer, the explicit answer and the hardware acceptance; ADR 0021 becomes `Accepted` when
 > it closes. To be executed in a **new session**.
 
@@ -158,9 +159,9 @@ in its owning task:
 
 ## Decisions
 
-**Proposed 2026-10-15.** D-1 to D-5 are Pipec's, confirmed in conversation on 2026-10-15 before
-this plan was written and recorded in ADR 0021 by the change that adds this plan; the others are
-the plan's and are confirmed when Pipec promotes it.
+**Confirmed 2026-10-15.** D-1 to D-5 are Pipec's, confirmed in conversation on 2026-10-15 before
+this plan was written and recorded in ADR 0021 by the change that added this plan; D-6 to D-15
+are the plan's and Pipec confirmed them when he promoted it the same day.
 
 1. **D-1 — Neutral Spanish with tuteo (Pipec).** Every new spoken phrase uses tuteo, not the ADR's
    original voseo: «¿Quieres que lo guarde? Dime: …», «Listo, lo guardé.», «Está bien, no lo
