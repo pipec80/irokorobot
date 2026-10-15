@@ -15,6 +15,7 @@ from server.cognition.owner_authentication import owner_unlock_service
 from server.conversation_log import CONVERSATION_LOGGER_NAME as SERVER_CONVERSATION_LOGGER
 from server.main import app
 from server.memory import continuity
+from server.memory.candidate_limits import limiter as candidate_limiter
 from server.resources import AppResources
 from server.settings import settings
 
@@ -29,6 +30,18 @@ def _continuity_session_empty() -> Generator[None, None, None]:
     continuity.reset()
     yield
     continuity.reset()
+
+
+@pytest.fixture(autouse=True)
+def _candidate_extraction_limiter_idle() -> Generator[None, None, None]:
+    """Start and finish every test with an idle extraction limiter (ADR 0021).
+
+    The limiter is process-wide (one extraction at a time, so many per hour), so a test that
+    leaves a slot taken or an hour spent would otherwise fail the next test of its worker.
+    """
+    candidate_limiter.reset()
+    yield
+    candidate_limiter.reset()
 
 
 @pytest.fixture(autouse=True)

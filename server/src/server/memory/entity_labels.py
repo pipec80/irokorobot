@@ -1,10 +1,12 @@
 """Exact entity labels for authorized P0.5-B2 relationship results."""
 
+import json
+
 from pydantic import BaseModel, ConfigDict
 
 from server.db import get_conn
 
-__all__ = ["EntityLabel", "get_person_label"]
+__all__ = ["EntityLabel", "get_person_label", "list_known_names"]
 
 
 class EntityLabel(BaseModel):
@@ -34,3 +36,32 @@ async def get_person_label(*, entity_id: int) -> EntityLabel | None:
     if row is None:
         return None
     return EntityLabel(entity_id=int(row[0]), display_name=str(row[1]))
+
+
+async def list_known_names() -> frozenset[str]:
+    """Return every name and alias of the people and pets the household knows.
+
+    Used by the candidate classifier to refuse an object that is somebody's name (ADR 0021
+    decision 5); the folding is the classifier's, so the names are returned as stored.
+
+    Returns:
+        The names and aliases of every ``person`` entity and of every ``other`` entity (pets).
+
+    Raises:
+        BrainMemoryError: If the database is not open.
+    """
+    cursor = await get_conn().execute(
+        "SELECT name, aliases FROM entities WHERE type IN ('person', 'other')"
+    )
+    rows = list(await cursor.fetchall())
+    await cursor.close()
+    names: set[str] = set()
+    for name, aliases in rows:
+        names.add(str(name))
+        try:
+            decoded = json.loads(str(aliases))
+        except ValueError:
+            continue
+        if isinstance(decoded, list):
+            names.update(str(alias) for alias in decoded if isinstance(alias, str))
+    return frozenset(names)
