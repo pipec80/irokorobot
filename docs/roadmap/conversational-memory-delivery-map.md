@@ -5,7 +5,7 @@
 CM-2 closed (Plan 0061, 2026-10-13: short-term continuity for the identified person); CM-3 designed
 in [ADR 0021](../adr/0021-memory-candidates-and-the-canonical-writer.md) (`Proposed`, 2026-10-14) and split into CM-3a and CM-3b;
 CM-3a corte 1 closed (Plan 0062, 2026-10-15: candidate store, canonical writer without a route caller, background proposal),
-corte 2 (Plan 0063: offer, answer, hardware acceptance) next
+corte 2 ([Plan 0063](../plans/open/0063-cm3a-memory-dialogue.md): offer, answer, hardware acceptance) `Ready` and `NOW` since 2026-10-15
 **Last reviewed:** 2026-10-15
 
 ## Objective

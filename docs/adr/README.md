@@ -28,6 +28,6 @@ supersedes it and update the old one's status.
 | [0018](0018-user-emotion-decided-apart.md) | Decide the user's emotion apart from the streamed reply | Accepted (Plan 0059's measurement met its gate) |
 | [0019](0019-personal-memory-capabilities.md) | Authorize personal memory by named capability, assurance and grant scope | Accepted (2026-10-09); implemented as policy by Plan 0060, nothing consumes it yet |
 | [0020](0020-authorized-actor-in-the-conversation.md) | Identify the speaker on every turn and keep short-term continuity for the identified person | Accepted (2026-10-13); implemented by Plan 0061; partially supersedes 0016 §5 and amends 0016 §8 |
-| [0021](0021-memory-candidates-and-the-canonical-writer.md) | Keep what the owner says as a candidate, and let one deterministic writer promote it | Proposed (2026-10-14); to be implemented by Plans 0062 and 0063; refines 0019 §6 and §1 |
+| [0021](0021-memory-candidates-and-the-canonical-writer.md) | Keep what the owner says as a candidate, and let one deterministic writer promote it | Proposed (2026-10-14, amended 2026-10-15); implemented by Plan 0062 (closed 2026-10-15) and Plan 0063 (`Ready`/`NOW` since 2026-10-15), `Accepted` when Plan 0063 closes; refines 0019 §6 and §1 |
 
 New ADRs start from [`0000-adr-template.md`](0000-adr-template.md).
