@@ -13,9 +13,9 @@ Audio contract: every clip is WAV, 16 000 Hz, mono, signed int16.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from server.cognition.clock import utc_now
 from server.cognition.identity import (
@@ -40,10 +40,29 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["is_face_actor", "is_face_and_voice_actor", "verify_face_and_voice"]
+__all__ = [
+    "VoiceVerifier",
+    "is_face_actor",
+    "is_face_and_voice_actor",
+    "verify_face_and_voice",
+]
 
 type SpeakerBuilder = Callable[[bytes, int], SpeakerRequestResolver]
 type Clock = Callable[[], datetime]
+
+
+class VoiceVerifier(Protocol):
+    """The voice-check seam: ``verify_face_and_voice`` or a test double (same keywords)."""
+
+    def __call__(
+        self,
+        actor: ActivePersonContext,
+        *,
+        wav_bytes: bytes | None,
+        event: CognitiveEvent[TextTurnPayload],
+    ) -> Awaitable[ActivePersonContext | None]:
+        """Return the actor fused at ``strong``, or ``None`` when the voice was not verified."""
+        ...
 
 
 def _sources_of(actor: ActivePersonContext) -> set[IdentityEvidenceSource]:

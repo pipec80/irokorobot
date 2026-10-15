@@ -485,13 +485,15 @@ def test_the_retired_memory_actions_exist_nowhere() -> None:
 # --- who may write or move a candidate (Plan 0062, ADR 0021 decisions 3 and 8) --------------
 # The firewall rule (face and voice of the same person on the turn's clip) is enforced by the
 # caller of the store, so the callers are pinned: a second caller must be a decision, not an
-# accident. Plan 0063 adds the dialogue module that offers and answers.
+# accident. Plan 0063 added the dialogue module, which offers, rejects and asks the writer.
 _CANDIDATE_INSERT_HOMES = frozenset({"memory/candidates.py", "memory/candidate_proposal.py"})
-_CANDIDATE_MOVE_HOMES = frozenset({"memory/candidates.py", "memory/memory_writer.py"})
+_CANDIDATE_MOVE_HOMES = frozenset(
+    {"memory/candidates.py", "memory/memory_writer.py", "memory/candidate_dialogue.py"}
+)
 _CANDIDATE_MOVES = frozenset(
     {"mark_offered", "resolve_candidate", "resolve_candidate_in_transaction"}
 )
-_WRITER_HOMES = frozenset({"memory/memory_writer.py"})
+_WRITER_HOMES = frozenset({"memory/memory_writer.py", "memory/candidate_dialogue.py"})
 
 
 @pytest.mark.unit
@@ -510,6 +512,7 @@ def test_the_candidate_caller_guards_detect_a_violation() -> None:
         "memory/candidate_proposal.py": "await insert_candidate(p)\n",
         "memory/memory_writer.py": "await resolve_candidate_in_transaction(c)\nawait promote(1)\n",
         "memory/other.py": "await promote(1)\n",
+        "memory/candidate_dialogue.py": "await mark_offered(1)\nawait promote(1)\n",
     }
 
     assert _outside(leak, _CANDIDATE_INSERT_HOMES, frozenset({"insert_candidate"})) == [

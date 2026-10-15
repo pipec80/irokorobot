@@ -168,6 +168,24 @@ PREFERENCE_TRIGGERS: dict[str, str] = {
 }
 PREFERENCE_FAVOURITE = re.compile(r"mi (?:[a-z]+ ){0,2}favorit[oa] es")
 
+#: The spoken offer and its results (ADR 0021 decision 9, Plan 0063). Neutral Spanish with
+#: tuteo (Pipec lives in Santiago de Chile). ``{value}`` is the stored phrase, which already
+#: passed the gate and the classifier; the offer tells the exact answer, value included (Pipec's
+#: option A), and promises no recall (that is CM-5).
+OFFER_STATEMENTS: dict[str, str] = {
+    "likes": "Antes me dijiste que te {verb} {value}.",
+    "dislikes": "Antes me dijiste que no te {verb} {value}.",
+    "prefers": "Antes me dijiste que prefieres {value}.",
+}
+OFFER_QUESTION = "¿Quieres que lo guarde? Dime: sí, autorizo guardar {value}."
+#: An object that starts with one of these takes the plural verb ("te gustan las empanadas").
+PLURAL_ARTICLES = frozenset({"los", "las", "unos", "unas"})
+OFFER_VERB_SINGULAR = "gusta"
+OFFER_VERB_PLURAL = "gustan"
+ANSWER_SAVED_PHRASE = "Listo, lo guardé."
+ANSWER_REJECTED_PHRASE = "Está bien, no lo guardo."
+ANSWER_CONTRADICTION_PHRASE = "No lo guardé: ya tengo guardado algo distinto."
+
 #: Closed set of topics a taste may belong to; the extractor must place the object in one.
 CANDIDATE_TOPICS = frozenset(
     {"food", "drink", "music", "colour", "pastime", "sport", "animal", "weather", "media"}
