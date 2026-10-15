@@ -9222,7 +9222,8 @@ accuracy and test coverage. What it fixed beyond the plan text:
 | 3. Switch on, start-up | pass: server ONLINE, `Candidates reconciled at start-up: 0 expired` (the plan expected no candidate line; this one is new) |
 | 4. A matching sentence without enrolment | pass: `dropped (strong_unreachable)`, 0 rows in `memory_candidates` |
 | 5. A non-matching sentence | pass: `dropped (gate_no_match)`, no voice check, no model call |
-| 6, 7. Stored case and `just reset-db` with a live candidate | not run (optional: they need an enrolled voice) |
+| 6. Stored case (voice enrolled afterwards, same day) | pass: `verified`, `stored=1`, one `proposed` row |
+| 7. Void a live candidate before a backup | pass with `scripts/scrub_candidates.py` alone (`Voided 1`, exit 0, the value left the write-ahead log); `just reset-db` was not run on the real database because it deletes the file |
 
 **Accepted costs of the closed grammar** (D-6): a taste after an attribution and a soft break is
 dropped; bare short or clitic infinitives not on the list are dropped; `me gusta el pollo al
