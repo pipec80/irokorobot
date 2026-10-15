@@ -222,3 +222,41 @@ def test_a_modifier_that_is_not_a_contrast_still_passes(
     text: str, predicates: frozenset[str]
 ) -> None:
     assert match_preference(text).predicates == predicates
+
+
+@pytest.mark.parametrize(
+    "text, predicates",
+    [
+        ("La verdad es que me gusta el mate.", _LIKES),
+        ("es que me encanta el jazz", _LIKES),
+        ("oye me gusta el mate", _LIKES),
+        ("Es que no me gusta el cilantro", _DISLIKES),
+        ("Es que, me gusta el mate", _LIKES),
+    ],
+)
+def test_a_short_closed_list_of_fillers_may_lead_a_taste(
+    text: str, predicates: frozenset[str]
+) -> None:
+    """Plan 0063, Pipec's decision: «la verdad es que», «es que» and «oye» are fillers."""
+    result = match_preference(text)
+
+    assert result.predicates == predicates
+    assert result.reason is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "creo que me gusta el mate",
+        "dice que me gusta el mate",
+        "mi hermano dice que me gusta el mate",
+        "lo que me gusta es el mate",
+        "ya es que me gusta el mate",
+        "siempre que me gusta algo lo compro",
+        "que me gusta el mate",
+        "y que me gusta el jazz",
+        "es que es que me gusta el mate",
+    ],
+)
+def test_a_filler_never_admits_a_belief_an_attribution_or_a_negation(text: str) -> None:
+    assert match_preference(text).predicates == frozenset()

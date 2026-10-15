@@ -174,20 +174,26 @@ CANDIDATE_TOPICS = frozenset(
 )
 
 #: Words that may precede the trigger in the same clause ("la verdad, a mí me gusta ...").
+#: «oye» joined in Plan 0063 (Pipec's decision); it is an interjection, never an attribution.
 LEAD_IN_WORDS = frozenset(
     {
         "a", "mi", "yo", "la", "verdad", "siempre", "muy", "mucho", "muchisimo", "tambien",
         "y", "pero", "ademas", "en", "realidad", "honestamente", "sinceramente", "bueno",
         "che", "mira", "pues", "este", "eh", "igual", "entonces", "ahora", "claro",
-        "personalmente",
+        "personalmente", "oye",
     }
 )  # fmt: skip
+
+#: Closed filler phrases that may sit right before the trigger (Plan 0063, Pipec's decision):
+#: «la verdad es que me gusta…», «es que me encanta…». They are whole phrases, not free words,
+#: so "siempre que me gusta…" (a habit or a condition) and "dice que me gusta…" still refuse.
+LEAD_IN_PHRASES = ("la verdad es que", "es que")
 
 #: Words that may open a sentence before a taste without attributing it to somebody else
 #: ("hola Iroko, me gusta el mate"). A clause of other words before a soft break makes the next
 #: taste somebody else's ("mi hija dice: me gusta el helado").
 GREETING_WORDS = frozenset(
-    {"hola", "iroko", "oye", "dime", "escucha", "sabes", "que", "mira", "vamos", "ver"}
+    {"hola", "iroko", "oye", "dime", "escucha", "sabes", "que", "mira", "vamos", "ver", "es"}
 )
 
 #: A word that negates what follows or precedes: the only negated forms accepted are the
