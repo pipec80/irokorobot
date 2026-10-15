@@ -112,6 +112,10 @@ class StreamState:
     first_audio_ms: int | None = None
     recordable: bool = True
     outcome: StreamOutcome = StreamOutcome.OK
+    # Time spent committing the memory offer (audit, compare-and-set) after the reply: neither
+    # model nor synthesis time, so it is kept out of `llm_ms` (ADR 0021 decision 9).
+    offer_overhead_ms: int = 0
+    offer_tts_ms: int = 0
 
 
 async def synthesize_sentence(sentence: str, state: StreamState) -> str:
@@ -271,7 +275,7 @@ def _done_event(
     if state.audio_chunks < 1:
         raise RuntimeError("Refusing to emit done before any audio chunk was spoken")
     total_ms = _elapsed_ms(request_start)
-    llm_ms = llm_elapsed_ms(total_ms, stt_ms, state.tts_ms_total)
+    llm_ms = llm_elapsed_ms(total_ms, stt_ms, state.tts_ms_total + state.offer_overhead_ms)
     _log_stream_metrics(state, total_ms)
     done = StreamDoneEvent(
         stt_ms=stt_ms,
