@@ -19,8 +19,11 @@ _RAW_V4_READERS = frozenset(
         "get_entity_relation",
     }
 )
-# The policy gate, and the local setup that re-reads what it just wrote.
-_MAY_IMPORT_RAW_V4_READERS = frozenset({"memory/policy_gated_v4_reader.py", "personal_setup.py"})
+# The policy gate, the local setup that re-reads what it just wrote, and the one canonical
+# writer, which compares the active rows' folded keys inside its own transaction (Plan 0062).
+_MAY_IMPORT_RAW_V4_READERS = frozenset(
+    {"memory/policy_gated_v4_reader.py", "personal_setup.py", "memory/memory_writer.py"}
+)
 # The repository itself, and the setup status that counts child links.
 _MAY_QUERY_V4_TABLES = frozenset({"memory/relational_v4.py", "personal_setup.py"})
 _V4_TABLE_SQL = re.compile(
@@ -381,3 +384,37 @@ def test_the_continuity_guards_detect_a_violation() -> None:
     ]
     (wav_value,) = _keyword_values(leak, _GENERIC_IDENTITY_HOME, "wav_bytes")
     assert not (isinstance(wav_value, ast.Constant) and wav_value.value is None)
+
+
+# --- memory candidates (Plan 0062, ADR 0021) ---------------------------------------------
+# The store is the only module that issues SQL against the candidate table, so the scrub, the
+# compare-and-set and the cap cannot be bypassed by a second writer.
+_CANDIDATE_TABLE_SQL = re.compile(
+    r"\b(?:FROM|JOIN|INTO|UPDATE|DELETE\s+FROM)\s+memory_candidates\b"
+)
+_MAY_QUERY_CANDIDATES = frozenset({"memory/candidates.py"})
+
+
+def _candidate_table_queriers(sources: Mapping[str, str]) -> list[str]:
+    """Modules, besides the store, that put SQL on `memory_candidates`."""
+    return [
+        name
+        for name, text in sources.items()
+        if name not in _MAY_QUERY_CANDIDATES and _CANDIDATE_TABLE_SQL.search(text)
+    ]
+
+
+@pytest.mark.unit
+def test_the_candidate_table_is_queried_only_by_the_store() -> None:
+    assert _candidate_table_queriers(_sources()) == []
+
+
+@pytest.mark.unit
+def test_the_candidate_guard_detects_a_violation() -> None:
+    leak = {
+        "memory/leak.py": "SQL = \"UPDATE memory_candidates SET status = 'offered'\"\n",
+        "memory/candidates.py": 'SQL = "SELECT 1 FROM memory_candidates"\n',
+        "prose.py": '"""The memory_candidates table is described here."""\n',
+    }
+
+    assert _candidate_table_queriers(leak) == ["memory/leak.py"]
