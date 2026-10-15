@@ -49,15 +49,18 @@ __all__ = [
     "InsertStatus",
     "checkpoint_after_scrub",
     "expire_lapsed_in_transaction",
+    "find_offered",
     "get_candidate",
     "insert_candidate",
     "iso_utc",
     "mark_offered",
+    "next_offerable",
     "precheck_insert",
     "reset_for_startup",
     "resolve_candidate",
     "resolve_candidate_in_transaction",
     "run_housekeeping",
+    "still_offerable",
     "void_live_candidates",
 ]
 
@@ -405,6 +408,114 @@ async def get_candidate_in_transaction(
     cursor = await conn.execute(
         f"SELECT {_COLUMNS} FROM memory_candidates WHERE id = ?",  # noqa: S608
         (candidate_id,),
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    return _from_row(tuple(row)) if row is not None else None
+
+
+_OFFERABLE_SQL = (
+    "subject_person_id = ? "
+    "AND (status = 'proposed' OR (status = 'offered' AND offered_at <= ?)) "
+    "AND expires_at > ? AND offer_count < ? "
+    # One open offer per person: while an answer to one may still come, nothing else is
+    # offered, so an answer always names the offer it resolves.
+    "AND NOT EXISTS (SELECT 1 FROM memory_candidates AS open WHERE "
+    "open.subject_person_id = memory_candidates.subject_person_id "
+    "AND open.status = 'offered' AND open.offered_at > ?)"
+)
+
+
+def _offerable_args(subject_person_id: int, now: datetime) -> tuple[object, ...]:
+    """The parameters of ``_OFFERABLE_SQL`` for one person at *now*."""
+    waited_since = iso_utc(now - timedelta(seconds=settings.memory_candidate_answer_seconds))
+    return (
+        subject_person_id,
+        waited_since,
+        iso_utc(now),
+        settings.memory_candidate_max_offers,
+        waited_since,
+    )
+
+
+async def next_offerable(subject_person_id: int, *, now: datetime) -> Candidate | None:
+    """Return the subject's oldest candidate that may be offered now, without writing.
+
+    Read-only, like every reader of this store: housekeeping runs on the write entry that
+    follows (``mark_offered``), so an offer whose answer window has closed counts as offerable
+    here and is returned to ``proposed`` there before the compare-and-set. While one offer of
+    that person still waits for its answer, nothing is offerable.
+
+    Args:
+        subject_person_id: Whose candidate; another person's is never returned.
+        now: The caller's clock reading.
+
+    Returns:
+        The oldest live candidate of that person that has not lapsed and has offers left, or
+        ``None`` (also with the kill-switch off).
+    """
+    if not settings.memory_candidates_enabled:
+        return None
+    cursor = await db.get_conn().execute(
+        f"SELECT {_COLUMNS} FROM memory_candidates WHERE {_OFFERABLE_SQL} "  # noqa: S608
+        "ORDER BY proposed_at, id LIMIT 1",
+        _offerable_args(subject_person_id, now),
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    return _from_row(tuple(row)) if row is not None else None
+
+
+async def still_offerable(candidate_id: int, subject_person_id: int, *, now: datetime) -> bool:
+    """Say, without writing, whether one candidate may still be offered now.
+
+    Asked right before the policy's read step is audited, so the audit log does not say
+    "allowed" for an offer the compare-and-set was always going to lose (another turn offered
+    it, it lapsed during generation). It is advisory: ``mark_offered`` decides again.
+
+    Args:
+        candidate_id: The candidate the offer was prepared for.
+        subject_person_id: Whose it is.
+        now: The caller's clock reading.
+
+    Returns:
+        ``True`` when it is still offerable for that person; ``False`` otherwise or with the
+        kill-switch off.
+    """
+    if not settings.memory_candidates_enabled:
+        return False
+    cursor = await db.get_conn().execute(
+        f"SELECT 1 FROM memory_candidates WHERE id = ? AND {_OFFERABLE_SQL}",  # noqa: S608
+        (candidate_id, *_offerable_args(subject_person_id, now)),
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    return row is not None
+
+
+async def find_offered(
+    subject_person_id: int, value_key: str, *, now: datetime
+) -> Candidate | None:
+    """Return the subject's open offer with *value_key*, the one an answer may resolve.
+
+    Args:
+        subject_person_id: Whose offer; another person's is never returned.
+        value_key: The comparison key of the value the answer repeated.
+        now: The caller's clock reading.
+
+    Returns:
+        The ``offered`` candidate of that person with that key, still inside its answer window
+        and not lapsed, or ``None`` (also with the kill-switch off).
+    """
+    if not settings.memory_candidates_enabled:
+        return None
+    stamp = iso_utc(now)
+    waited_since = iso_utc(now - timedelta(seconds=settings.memory_candidate_answer_seconds))
+    cursor = await db.get_conn().execute(
+        f"SELECT {_COLUMNS} FROM memory_candidates WHERE subject_person_id = ? "  # noqa: S608
+        "AND status = 'offered' AND value_key = ? AND offered_at > ? AND expires_at > ? "
+        "ORDER BY offered_at DESC, id LIMIT 1",
+        (subject_person_id, value_key, waited_since, stamp),
     )
     row = await cursor.fetchone()
     await cursor.close()

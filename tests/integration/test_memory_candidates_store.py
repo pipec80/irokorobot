@@ -593,3 +593,150 @@ async def test_the_insert_is_logged_before_a_failing_checkpoint_and_names_its_tu
     events = [r for r in caplog.records if getattr(r, "event", "") == "candidate.insert"]
     assert len(events) == 1
     assert getattr(events[0], "correlation_id", None) == str(turn)
+
+
+# --- the dialogue's readers (Plan 0063, ADR 0021 decision 9) ---------------------------------
+
+
+@pytest.mark.usefixtures("store")
+async def test_the_oldest_proposed_candidate_of_that_person_is_the_one_offered() -> None:
+    owner = await _person()
+    visitor = await _person("Canary Visitor")
+    await _insert(visitor, _proposal("el rock", "rock"), now=_T0 - timedelta(minutes=5))
+    first = await _insert(owner, _proposal("el mate", "mate"), now=_T0)
+    await _insert(owner, _proposal("el jazz", "jazz"), now=_T0 + timedelta(minutes=1))
+
+    chosen = await candidates.next_offerable(owner, now=_T0 + timedelta(minutes=2))
+
+    assert chosen is not None
+    assert chosen.id == first.candidate_id
+    assert chosen.subject_person_id == owner
+
+
+@pytest.mark.usefixtures("store")
+async def test_nothing_is_offerable_when_lapsed_used_up_offered_or_switched_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner = await _person()
+    stored = await _insert(owner)
+    assert stored.candidate_id is not None
+    later = _T0 + timedelta(seconds=settings.memory_candidate_ttl_seconds + 1)
+
+    assert await candidates.next_offerable(owner, now=later) is None
+    assert await candidates.mark_offered(
+        stored.candidate_id, owner, correlation_id=uuid4(), now=_T0
+    )
+    assert await candidates.next_offerable(owner, now=_T0) is None
+    monkeypatch.setattr(settings, "memory_candidates_enabled", False)
+    assert await candidates.next_offerable(owner, now=_T0) is None
+
+
+@pytest.mark.usefixtures("store")
+async def test_a_candidate_offered_as_often_as_allowed_is_not_offered_again(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "memory_candidate_max_offers", 1)
+    owner = await _person()
+    stored = await _insert(owner)
+    assert stored.candidate_id is not None
+    assert await candidates.mark_offered(
+        stored.candidate_id, owner, correlation_id=uuid4(), now=_T0
+    )
+    answer_window = timedelta(seconds=settings.memory_candidate_answer_seconds + 1)
+
+    assert await candidates.next_offerable(owner, now=_T0 + answer_window) is None
+
+
+@pytest.mark.usefixtures("store")
+async def test_an_unanswered_offer_is_offerable_again_once_its_window_closed() -> None:
+    owner = await _person()
+    stored = await _insert(owner)
+    assert stored.candidate_id is not None
+    assert await candidates.mark_offered(
+        stored.candidate_id, owner, correlation_id=uuid4(), now=_T0
+    )
+    after_window = _T0 + timedelta(seconds=settings.memory_candidate_answer_seconds + 1)
+
+    again = await candidates.next_offerable(owner, now=after_window)
+
+    assert again is not None
+    assert again.id == stored.candidate_id
+    assert await candidates.mark_offered(
+        stored.candidate_id, owner, correlation_id=uuid4(), now=after_window
+    )
+
+
+@pytest.mark.usefixtures("store")
+async def test_an_answer_finds_only_that_persons_open_offer_with_that_key() -> None:
+    owner = await _person()
+    visitor = await _person("Canary Visitor")
+    mine = await _insert(owner, _proposal("el mate", "mate"))
+    theirs = await _insert(visitor, _proposal("el mate", "mate"))
+    assert mine.candidate_id is not None
+    assert theirs.candidate_id is not None
+    for candidate_id, person in ((mine.candidate_id, owner), (theirs.candidate_id, visitor)):
+        assert await candidates.mark_offered(candidate_id, person, correlation_id=uuid4(), now=_T0)
+    soon = _T0 + timedelta(seconds=10)
+
+    found = await candidates.find_offered(owner, "mate", now=soon)
+
+    assert found is not None
+    assert found.id == mine.candidate_id
+    assert await candidates.find_offered(owner, "jazz", now=soon) is None
+
+
+@pytest.mark.usefixtures("store")
+async def test_an_offer_past_its_answer_window_or_not_yet_made_is_not_answerable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner = await _person()
+    stored = await _insert(owner)
+    assert stored.candidate_id is not None
+
+    assert await candidates.find_offered(owner, "mate", now=_T0) is None
+    assert await candidates.mark_offered(
+        stored.candidate_id, owner, correlation_id=uuid4(), now=_T0
+    )
+    late = _T0 + timedelta(seconds=settings.memory_candidate_answer_seconds + 1)
+    assert await candidates.find_offered(owner, "mate", now=late) is None
+    monkeypatch.setattr(settings, "memory_candidates_enabled", False)
+    assert await candidates.find_offered(owner, "mate", now=_T0) is None
+
+
+@pytest.mark.usefixtures("store")
+async def test_nothing_else_is_offered_while_an_offer_waits_for_its_answer() -> None:
+    owner = await _person()
+    first = await _insert(owner, _proposal("el mate", "mate"), now=_T0)
+    await _insert(owner, _proposal("el jazz", "jazz"), now=_T0 + timedelta(seconds=1))
+    assert first.candidate_id is not None
+    assert await candidates.mark_offered(
+        first.candidate_id, owner, correlation_id=uuid4(), now=_T0 + timedelta(seconds=2)
+    )
+
+    waiting = _T0 + timedelta(seconds=10)
+    assert await candidates.next_offerable(owner, now=waiting) is None
+    window_closed = _T0 + timedelta(seconds=settings.memory_candidate_answer_seconds + 3)
+    again = await candidates.next_offerable(owner, now=window_closed)
+    assert again is not None
+    assert again.id == first.candidate_id
+
+
+@pytest.mark.usefixtures("store")
+async def test_still_offerable_says_whether_the_compare_and_set_can_win(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner = await _person()
+    visitor = await _person("Canary Visitor")
+    stored = await _insert(owner)
+    assert stored.candidate_id is not None
+    candidate_id = stored.candidate_id
+
+    assert await candidates.still_offerable(candidate_id, owner, now=_T0)
+    assert not await candidates.still_offerable(candidate_id, visitor, now=_T0)
+    lapsed = _T0 + timedelta(seconds=settings.memory_candidate_ttl_seconds + 1)
+    assert not await candidates.still_offerable(candidate_id, owner, now=lapsed)
+    assert await candidates.mark_offered(candidate_id, owner, correlation_id=uuid4(), now=_T0)
+    assert not await candidates.still_offerable(candidate_id, owner, now=_T0)
+    monkeypatch.setattr(settings, "memory_candidates_enabled", False)
+    window_closed = _T0 + timedelta(seconds=settings.memory_candidate_answer_seconds + 1)
+    assert not await candidates.still_offerable(candidate_id, owner, now=window_closed)
