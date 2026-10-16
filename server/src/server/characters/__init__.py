@@ -87,6 +87,13 @@ people, family, pets, dates, and preferences.
 remember it yet and ask them to tell you — NEVER invent or guess names, \
 ages, or facts. A wrong confident answer poisons your own memory."""
 
+# Plan 0064: the last block of every prompt (a small model weighs the end of its prompt). The
+# streaming route sometimes answered in another language (a reply in French was observed).
+_LANGUAGE_RULE = (
+    "\nIDIOMA — Responde siempre en español neutro, con tuteo (tú). "
+    "No uses otro idioma ni mezcles palabras de otro idioma, aunque la persona lo haga."
+)
+
 _PRESENTATION_GUIDANCE = """
 PRESENTATION GUIDANCE:
 - An explicitly identified manual context is available for this turn.
@@ -285,6 +292,7 @@ def build_system_prompt(
         parts.append(_format_memory_block(context))
     if perception:
         parts.append(_PERCEPTION_TEMPLATE.format(description=perception))
+    parts.append(_LANGUAGE_RULE)
     return "\n".join(parts)
 
 

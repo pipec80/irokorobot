@@ -40,8 +40,8 @@ from server.settings import settings
 # model never sees it mixed with the classic JSON contract from llm.py.
 # It names no label or tag on purpose: the emotion is decided apart (ADR 0018).
 _STREAMING_OUTPUT_CONTRACT = (
-    "\n\nResponde únicamente en texto plano: sin JSON, sin etiquetas, sin listas "
-    "ni formato. Escribe solo lo que dirías en voz alta."
+    "\n\nResponde únicamente en texto plano, siempre en español: sin JSON, sin etiquetas, "
+    "sin listas ni formato. Escribe solo lo que dirías en voz alta."
 )
 
 
