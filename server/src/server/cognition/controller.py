@@ -15,7 +15,12 @@ from server.cognition.authorization import (
 )
 from server.cognition.calendar_tools import calculate_age, get_current_date
 from server.cognition.identity import ActivePersonContext, ActivePersonStatus, HouseholdRole
-from server.cognition.intent_resolution import IntentResolution, resolve_information_need
+from server.cognition.intent_resolution import (
+    IntentResolution,
+    MemoryAnswer,
+    parse_memory_answer,
+    resolve_information_need,
+)
 from server.cognition.models import (
     AuthorizationAction,
     AuthorizationDecision,
@@ -37,6 +42,7 @@ from server.cognition.response_plan import (
 
 if TYPE_CHECKING:
     from datetime import date
+    from uuid import UUID
 
     from server.cognition.household_tools import HouseholdKnowledgeTools, HouseholdToolResult
     from server.text_turn import TextTurnResult
@@ -51,6 +57,12 @@ type ConsentResolver = Callable[
     [CognitiveEvent[TextTurnPayload], ActivePersonContext], Awaitable[ConsentStatus]
 ]
 type IntentResolver = Callable[[str], IntentResolution]
+#: Resolves a spoken answer to a memory offer for an actor already resolved from face and voice
+#: (ADR 0021 decision 9). Only the voice routes inject one; it returns the fixed result phrase,
+#: or ``None`` so the turn falls through to ordinary generation, byte for byte.
+type MemoryAnswerer = Callable[
+    [MemoryAnswer, ActivePersonContext, CognitiveEvent[TextTurnPayload]], Awaitable[str | None]
+]
 type ControllerDecision = ResponsePlan | SceneDescriptionRequest | None
 
 _BIOMETRIC_ENROLLMENT_RESPONSE = (
@@ -110,6 +122,7 @@ class CognitiveController:
         household_tools: HouseholdKnowledgeTools | None = None,
         consent_resolver: ConsentResolver = _not_required_consent,
         intent_resolver: IntentResolver = resolve_information_need,
+        memory_answerer: MemoryAnswerer | None = None,
     ) -> None:
         """Create a controller with injected calendar and legacy-generation seams.
 
@@ -126,6 +139,9 @@ class CognitiveController:
             household_tools: Optional closed P0.5-B2 family-tool collaborator.
             consent_resolver: Trusted internal scoped-consent boundary.
             intent_resolver: Pure, typed P0-C5 Spanish intent resolver.
+            memory_answerer: The answer to a memory offer (ADR 0021 decision 9); injected
+                only by the voice routes with the candidate kill-switch on. When absent an
+                answer-shaped message is ordinary conversation.
         """
         self._today = today
         self._legacy_turn = legacy_turn
@@ -136,6 +152,12 @@ class CognitiveController:
         self._household_tools = household_tools
         self._consent_resolver = consent_resolver
         self._intent_resolver = intent_resolver
+        self._memory_answerer = memory_answerer
+        # The classic route calls decide() twice on a turn that falls through (decide, then
+        # handle), with the same event: keyed by event_id, an answer is attempted once per
+        # event, so no audit row is written twice. The controller is built per request and
+        # lives for one request, so the cache is never evicted.
+        self._answers: dict[UUID, ResponsePlan | None] = {}
 
     async def handle(self, event: CognitiveEvent[TextTurnPayload]) -> ResponsePlan:
         """Produce one bounded response plan for a typed text event.
@@ -195,6 +217,8 @@ class CognitiveController:
                 decision = await self._active_identity_plan(event)
             case InformationNeed.SCENE_DESCRIPTION:
                 decision = SceneDescriptionRequest()
+            case InformationNeed.MEMORY_ANSWER:
+                decision = await self._memory_answer_plan(event)
             case InformationNeed.GENERIC_CONVERSATION:
                 decision = None
         return decision
@@ -209,6 +233,7 @@ class CognitiveController:
             response=result.response,
             emotion=result.emotion,
             duration_ms=result.duration_ms,
+            offer=result.offer,
         )
 
     async def _protected_household_plan(
@@ -258,6 +283,38 @@ class CognitiveController:
                 response=f"Sos {actor.display_name}.",
             )
         return _unknown_plan(InformationNeed.ACTIVE_IDENTITY, _ACTIVE_IDENTITY_UNKNOWN_RESPONSE)
+
+    async def _memory_answer_plan(
+        self,
+        event: CognitiveEvent[TextTurnPayload],
+    ) -> ResponsePlan | None:
+        """Answer a memory offer, or fall through to ordinary generation (``None``).
+
+        No oracle (ADR 0021 decision 9): when an answerer is wired, the actor is resolved
+        **first** for every message of this shape, whether or not an offer exists, so the
+        cost never reveals whether one does; only then does the answerer read the actor's own
+        candidates. The face-and-voice actor comes from the route's observing resolver, so
+        no PIN grant is ever spent: a token never answers a memory offer.
+        """
+        answer = parse_memory_answer(event.payload.message)
+        if self._memory_answerer is None or answer is None:
+            return None
+        if event.event_id in self._answers:
+            return self._answers[event.event_id]
+        actor = await self._observed_person_resolver(event)
+        phrase = await self._memory_answerer(answer, actor, event)
+        plan = (
+            None
+            if phrase is None
+            else ResponsePlan(
+                need=InformationNeed.MEMORY_ANSWER,
+                status=KnowledgeStatus.KNOWN,
+                source=ResponseSource.DETERMINISTIC,
+                response=phrase,
+            )
+        )
+        self._answers[event.event_id] = plan
+        return plan
 
     async def _own_children_plan(
         self,

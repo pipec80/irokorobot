@@ -32,7 +32,12 @@ class StreamAudioEvent(BaseModel):
     """NDJSON event carrying one synthesized sentence's audio."""
 
     type: Literal["audio"] = "audio"
-    text: str = Field(description="The sentence this audio chunk speaks")
+    text: str = Field(
+        description=(
+            "The sentence this audio chunk speaks; empty for the spoken memory offer, which "
+            "carries a value and must not be printed or logged"
+        )
+    )
     audio_base64: str = Field(description="WAV audio encoded as base64 — 16kHz mono int16")
     duration_ms: int = Field(ge=0, description="TTS synthesis time in milliseconds")
 

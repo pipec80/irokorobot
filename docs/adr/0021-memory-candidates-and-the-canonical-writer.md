@@ -1,11 +1,13 @@
 # 0021 — Keep what the owner says as a candidate, and let one deterministic writer promote it
 
-- **Status:** Proposed (2026-10-14). Scope and design chosen by Pipec in a brainstorming session of
-  that day; revised the same day after two independent read-only audits against the code and after
-  Pipec stated the firewall rule of decision 3. Amended on 2026-10-15, before Plan 0063 was
-  written, with Pipec's decisions for the dialogue: neutral Spanish with tuteo (not voseo), the
-  answer's closed verbs, filler phrases before a taste, one open offer per person (decisions 4
-  and 9). Accepted when Plan 0063 closes with its hardware cases run.
+- **Status:** Accepted (2026-10-16). Proposed 2026-10-14: scope and design chosen by Pipec in a
+  brainstorming session of that day; revised the same day after two independent read-only audits
+  against the code and after Pipec stated the firewall rule of decision 3. Amended on 2026-10-15,
+  before Plan 0063 was written, with Pipec's decisions for the dialogue: neutral Spanish with tuteo
+  (not voseo), the answer's closed verbs, filler phrases before a taste, one open offer per person
+  (decisions 4 and 9). Accepted when Plan 0063 closed with its hardware cases run (cases 1, 2, 3,
+  4, 6 and 7 passed, 5 partial, 8 measured on the shared laptop, 9 not run; see
+  [the acceptance note](../evals/0063-memory-dialogue-acceptance.md)).
 - **Date:** 2026-10-14
 - **Builds on:** [ADR 0006](0006-personal-and-family-companion-profiles.md),
   [ADR 0009](0009-locked-posture-and-scoped-capabilities.md),
@@ -25,9 +27,8 @@
   and retrieval stay closed.
 - **Implemented by:** [Plan 0062](../plans/completed/0062-cm3a-memory-candidates-and-writer.md)
   (candidates and the writer, no hardware; closed 2026-10-15, PR #183; decisions 1 to 8, 10, 11 and
-  12) and [Plan 0063](../plans/open/0063-cm3a-memory-dialogue.md) (decision 9: the spoken offer
-  and answer, and the hardware acceptance; written 2026-10-15, `Draft` until Pipec promotes it).
-  This ADR stays `Proposed` until Plan 0063 closes. "CM-3" without a
+  12) and [Plan 0063](../plans/completed/0063-cm3a-memory-dialogue.md) (decision 9: the spoken offer
+  and answer, and the hardware acceptance; closed 2026-10-16). "CM-3" without a
   letter names both CM-3a (this ADR) and CM-3b (decision 13).
 
 ## Context
@@ -304,8 +305,11 @@ One function, **one `db.transaction()`**, never relying on an `IntegrityError`:
 - **The offer is spoken only on a turn that is `strong` itself.** Whenever a `proposed` candidate
   exists, a generic voice turn starts the voice check concurrently with generation, so latency does
   not reveal it; if it fails, nothing is said. That is a third face-and-voice resolution per
-  request, about 0.5 s of voice plus the face pass, paid only while a candidate waits and measured
-  in Plan 0063. Every proposal, offer and answer re-checks consent through that resolution, so a
+  request, about 0.5 s of voice plus the face pass, paid only while a candidate waits. Measured in
+  Plan 0063 on the shared laptop: the offer's check is hidden behind the model's own time, and an
+  answer turn costs about 3 to 4 s over the speech-to-text with no model call. The check needs a
+  clip of about 3 s or more: three turns of about 1.5 s failed it and nothing was offered, which is
+  the intended silence. Every proposal, offer and answer re-checks consent through that resolution, so a
   revoked consent stops all three.
 - **Placement.** The offer is composed in the shared text-turn seam and carried as an optional
   `offer` of `TextTurnResult` and `ResponsePlan`: `decide()` runs twice on a classic turn and never
@@ -335,9 +339,14 @@ One function, **one `db.transaction()`**, never relying on an `IntegrityError`:
   actor's own candidates. The collaborator is injected **only by the voice routes**; on `/chat` and
   `/vision/respond` it is absent and the need falls through. Anything that is not a `strong` answer
   by the subject, carrying the value of an `offered` candidate, **falls through to ordinary
-  generation, byte-identical**: no new phrase, no state change, no attempt counted.
+  generation, byte-identical**: no new phrase, no state change, no attempt counted. Only after the
+  verified owner's own open offer was found (so nothing is revealed to anyone else) can a refused
+  or failed answer say a fixed phrase instead, so the model never improvises «listo» for something
+  that was not saved.
 - **Results:** «Listo, lo guardé.» or «Está bien, no lo guardo.» only after the transaction
-  commits; after a contradiction, «No lo guardé: ya tengo guardado algo distinto.»
+  commits; after a contradiction, «No lo guardé: ya tengo guardado algo distinto.»; if the open
+  offer was found and the step was refused or failed, «No pude guardarlo ahora. Dímelo de nuevo en
+  un rato.» (Plan 0063 review).
 - **Replay is not defended** (ADR 0016 §9). A recording of the owner saying the offered answer, with
   a photograph, could confirm it; it cannot choose the value, which the owner said earlier, and a
   liveness defence belongs to Phase 0.
@@ -511,8 +520,8 @@ Pipec runs the acceptance alone (2026-10-15): "another voice" is a recording or 
 synthetic voice played near the microphone, and "another face" a photo on a phone; they are
 recorded as substitutes:
 
-1. State a preference; on a later turn the offer is spoken; saying «sí, guardá {x}» in the owner's
-   voice creates one `personal` fact with `confirmed_by`; the audit shows `allowed` for read and
+1. State a preference; on a later turn the offer is spoken; saying «sí, autorizo guardar {x}» in the
+   owner's voice creates one `personal` fact with `confirmed_by`; the audit shows `allowed` for read and
    confirm.
 2. The same with the rejection: `rejected`, value gone, no fact.
 3. The same words in another person's voice while the owner's face (or a photograph) is in frame:
@@ -521,7 +530,8 @@ recorded as substitutes:
    candidate. The same with the owner's face but a recording of another voice.
 5. Restart between offer and answer: the candidate returns to `proposed`, is offered again, and the
    answer promotes.
-6. «Sí, guardalo» with no offer outstanding, or with a different value: an ordinary turn, no write.
+6. «Sí, autorizo guardar {y}» with no offer outstanding, or with a different value: an ordinary
+   turn, no write.
 7. The benchmark's sentence about the move is refused: no candidate.
 8. Extraction contention on the shared laptop (and the homelab when available), the cost of
    the third face-and-voice resolution per turn, and the false-rejection rate of the explicit
@@ -529,13 +539,21 @@ recorded as substitutes:
 9. A photograph plus an earlier recording of the owner is **measured, not defended**: the
    outcome is recorded (ADR 0016 §9) and feeds Phase 0's liveness decision.
 
+**Result (2026-10-16, Pipec alone, on the shared laptop; no homelab):** cases 1, 2, 3, 4 (a, b, c),
+6 (a, b) and 7 passed; case 5 is partial (the offer survived the restart and was offered again; the
+answer was mis-heard by the speech-to-text, and promotion after an offer is proven by case 1);
+case 8 is measured (the explicit answer parsed 2 of 4 times, the failures being Whisper `small`
+writing «autoriza a guardar …»; widening the closed verbs is left to the owner); case 9 and the
+homelab were **not run** and need a second person or device. Details, counts and the findings
+left open are in [the acceptance note](../evals/0063-memory-dialogue-acceptance.md).
+
 ## Docs to update
 
 With this ADR as **Proposed**: the ADR index; the CM-3 row of the roadmap and the memory map (CM-3a
 and CM-3b, dependency columns); the cross-cutting row on what CM-3a leaves; the roadmap's seed-load
 row and the local task table, which receive the Phase 0 items of decision 13.
 
-With **Accepted** (Plan 0063): ADR 0020's status and its *Review* trigger (the §1 and §2
+With **Accepted** (Plan 0063, done 2026-10-16): ADR 0020's status and its *Review* trigger (the §1 and §2
 amendments), the vocabulary and the *Lifecycle* contract of `memory-and-world-state.md` and the
 memory map, the CM-5 row ("decided when CM-3 is planned"), `current-state.md` and its Archify
 diagram, `architecture/README.md`, `identity-and-access.md` where it names `confirm` as unwired,
@@ -553,8 +571,12 @@ gate's economics.
 - [Plan 0062](../plans/completed/0062-cm3a-memory-candidates-and-writer.md) — candidates, the writer
   and the extraction (written 2026-10-14; closed 2026-10-15, PR #183; no hardware, no spoken
   dialogue; `promote` has no caller in a route yet).
-- [Plan 0063](../plans/open/0063-cm3a-memory-dialogue.md) — **`Ready` and `NOW`** since
-  2026-10-15 (PR #185, promoted in PR #186): the spoken offer and answer (decision 9) and the
-  hardware acceptance; it is what moves this ADR to `Accepted`. The next free ADR number is 0022.
+- [Plan 0063](../plans/completed/0063-cm3a-memory-dialogue.md) — the spoken offer and answer
+  (decision 9) and the hardware acceptance; closed 2026-10-16, it moved this ADR to `Accepted`. The
+  next free ADR number is 0022.
+- Left open by the acceptance, none of them a regression of this ADR: the model sometimes says it
+  saved something on a message that only has the shape of an answer (nothing is written);
+  occasional replies in French; whether the closed answer should admit the speech-to-text's common
+  mis-hearings; short turns cannot carry an offer; case 9 (replay) and a homelab measurement.
 - Phase 0 — enrolment first, access levels, escalation with company (decision 13).
 - CM-3b, CM-4, CM-5, CM-6.

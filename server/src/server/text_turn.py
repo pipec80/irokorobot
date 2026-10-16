@@ -1,7 +1,8 @@
 """Channel-agnostic text turn orchestration."""
 
+import asyncio
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 import logging
 import time
@@ -22,6 +23,7 @@ from server.cognition.identity import (
 from server.cognition.strong_actor import is_face_actor
 from server.exceptions import BrainMemoryError, LLMError
 from server.memory import continuity
+from server.memory.candidate_dialogue import OfferPreparer, PendingOffer, commit_offer
 from server.memory.context import build_context
 from server.memory.continuity import ContinuityTurn, SuspendCause
 from server.onboarding import OnboardingSlot
@@ -30,7 +32,7 @@ from server.settings import settings
 
 logger = logging.getLogger(__name__)
 
-#: Channel-owned callback that schedules a background candidate proposal (ADR 0021 §10). It
+#: Channel-owned callback that schedules a background candidate proposal (ADR 0021 decision 10). It
 #: receives the user's own words and the face-identified actor; the route that owns the clip
 #: and the turn's correlation id binds them. It never receives the assistant's reply.
 ProposalScheduler = Callable[[str, ActivePersonContext], None]
@@ -54,12 +56,23 @@ class PreparedTextTurn:
 
 @dataclass(frozen=True)
 class TextTurnResult:
-    """Structured output from one completed text turn."""
+    """Structured output from one completed text turn.
+
+    Attributes:
+        response: The reply text, exactly what is recorded in the session history.
+        emotion: The closed emotion label of the reply.
+        duration_ms: Generation time of the reply; the memory offer is never counted in it.
+        llm_failed: Whether the reply is the fallback phrase instead of a model answer.
+        offer: The spoken phrase of a memory offer, said after the reply. It is never part of
+            the reply's text, the session history, the wire's ``llm_response`` or
+            ``duration_ms`` (ADR 0021 decision 9). Hidden from ``repr``: it carries a value.
+    """
 
     response: str
     emotion: str
     duration_ms: int
     llm_failed: bool
+    offer: str | None = field(default=None, repr=False)
 
 
 def _missing_person(_: int) -> None:
@@ -270,6 +283,71 @@ def record_text_turn(
         turn_log.log_memory("proposal-scheduled", "face-identified speaker")
 
 
+def start_offer(
+    prepare_offer: OfferPreparer | None, active_person: ActivePersonContext | None
+) -> asyncio.Future[PendingOffer | None] | None:
+    """Start preparing a memory offer concurrently with generation, when one may exist.
+
+    Only a face-identified speaker with no token, with memory and the candidate kill-switch on,
+    starts it (ADR 0021 decisions 3 and 9). The preparation reads the store first and verifies
+    the voice only when a candidate waits; it runs concurrently with generation, so that extra
+    check is normally hidden behind the model's own latency.
+
+    Args:
+        prepare_offer: The route-bound preparation (it owns the clip and the event), or ``None``.
+        active_person: The turn's resolved speaker.
+
+    Returns:
+        The running preparation, or ``None`` when no offer can be made on this turn.
+    """
+    if (
+        prepare_offer is None
+        or active_person is None
+        or not settings.memory_enabled
+        or not settings.memory_candidates_enabled
+        or not is_face_actor(active_person)
+    ):
+        return None
+    return asyncio.ensure_future(prepare_offer(active_person))
+
+
+async def finish_offer(
+    task: asyncio.Future[PendingOffer | None] | None, *, reply_failed: bool
+) -> str | None:
+    """Commit the prepared offer once the reply was built, or drop it.
+
+    Args:
+        task: What ``start_offer`` returned.
+        reply_failed: Whether the reply is the fallback phrase; a fallback never carries one.
+
+    Returns:
+        The phrase to speak after the reply, or ``None``.
+    """
+    if task is None:
+        return None
+    if reply_failed:
+        task.cancel()
+        # Waits for the cancelled preparation without swallowing a cancellation of the caller.
+        await asyncio.gather(task, return_exceptions=True)
+        return None
+    try:
+        pending = await task
+    except Exception as exc:  # the reply is built: a broken preparation must not cost it
+        logger.warning("Memory offer preparation failed (%s)", type(exc).__name__)
+        return None
+    return None if pending is None else await commit_offer(pending)
+
+
+def drop_offer(task: asyncio.Future[PendingOffer | None] | None) -> None:
+    """Cancel a preparation the turn will never finish (it was cancelled or it raised).
+
+    Args:
+        task: What ``start_offer`` returned; a finished one is left alone.
+    """
+    if task is not None and not task.done():
+        task.cancel()
+
+
 async def process_text_turn(
     client: httpx.AsyncClient,
     message: str,
@@ -279,6 +357,7 @@ async def process_text_turn(
     active_person: ActivePersonContext | None = None,
     suspend_cause: SuspendCause | None = None,
     schedule_proposal: ProposalScheduler | None = None,
+    prepare_offer: OfferPreparer | None = None,
 ) -> TextTurnResult:
     """Generate and record one channel-agnostic text turn.
 
@@ -290,9 +369,11 @@ async def process_text_turn(
         active_person: Internally resolved evidence for this turn only.
         suspend_cause: Why the speaker could not be identified, for the transition log.
         schedule_proposal: Optional channel-owned proposal scheduling callback.
+        prepare_offer: Optional channel-owned memory-offer preparation (ADR 0021 decision 9); it runs
+            concurrently with generation.
 
     Returns:
-        Text, emotion, elapsed time, and fallback status for the turn.
+        Text, emotion, elapsed time, fallback status and the optional offer for the turn.
     """
     started = time.perf_counter()
     prepared = await prepare_text_turn(
@@ -303,14 +384,20 @@ async def process_text_turn(
         active_person=active_person,
         suspend_cause=suspend_cause,
     )
-    response, emotion, llm_failed = await _generate(client, prepared)
-    if not llm_failed:
-        record_text_turn(
-            message,
-            response,
-            active_person=prepared.active_person,
-            continuity_turn=prepared.continuity,
-            schedule_proposal=schedule_proposal,
-        )
-    duration_ms = round((time.perf_counter() - started) * 1000)
-    return TextTurnResult(response, emotion, duration_ms, llm_failed)
+    offer_task = start_offer(prepare_offer, prepared.active_person)
+    try:
+        response, emotion, llm_failed = await _generate(client, prepared)
+        if not llm_failed:
+            record_text_turn(
+                message,
+                response,
+                active_person=prepared.active_person,
+                continuity_turn=prepared.continuity,
+                schedule_proposal=schedule_proposal,
+            )
+        # Measured before the offer is committed: the offer never counts as generation time.
+        duration_ms = round((time.perf_counter() - started) * 1000)
+        offer = await finish_offer(offer_task, reply_failed=llm_failed)
+    finally:
+        drop_offer(offer_task)
+    return TextTurnResult(response, emotion, duration_ms, llm_failed, offer)

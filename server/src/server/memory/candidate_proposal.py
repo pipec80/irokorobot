@@ -30,14 +30,18 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 
 import aiosqlite
 import httpx
 
 from server.cognition.authorization import evaluate_authorization
 from server.cognition.clock import utc_now
-from server.cognition.strong_actor import is_face_actor, verify_face_and_voice
+from server.cognition.strong_actor import (
+    VoiceVerifier,
+    is_face_actor,
+    verify_face_and_voice,
+)
 from server.exceptions import BrainMemoryError, LLMError
 from server.memory.candidate_classifier import classify
 from server.memory.candidate_extraction import extract_candidates
@@ -73,20 +77,6 @@ type Extractor = Callable[[httpx.AsyncClient, str], Awaitable[tuple[RawCandidate
 type NameReader = Callable[[], Awaitable[frozenset[str]]]
 type EnrollmentReader = Callable[[int], Awaitable[bool]]
 type Clock = Callable[[], datetime]
-
-
-class VoiceVerifier(Protocol):
-    """The voice-check seam: ``verify_face_and_voice`` or a test double (same keyword names)."""
-
-    def __call__(
-        self,
-        actor: ActivePersonContext,
-        *,
-        wav_bytes: bytes | None,
-        event: CognitiveEvent[TextTurnPayload],
-    ) -> Awaitable[ActivePersonContext | None]:
-        """Return the actor fused at ``strong``, or ``None`` when the voice was not verified."""
-        ...
 
 
 # What an insert that did not store a candidate is reported as (`INSERTED` is absent).

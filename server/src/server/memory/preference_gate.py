@@ -30,6 +30,7 @@ from server.memory.candidate_types import CandidateReason, GateMatch
 from server.memory.lexicon import (
     CLAUSE_OPENERS,
     GREETING_WORDS,
+    LEAD_IN_PHRASES,
     LEAD_IN_WORDS,
     NEGATORS,
     PREFERENCE_FAVOURITE,
@@ -93,8 +94,29 @@ def _predicate_of(trigger: str) -> str:
     return PREFERENCE_TRIGGERS[trigger]
 
 
+def _without_filler(lead: list[str]) -> list[str]:
+    """Drop one closed filler phrase («es que», «la verdad es que») right before the trigger.
+
+    The phrase must **end** the lead, as whole words, so it is filler only right against the
+    trigger; anywhere else its words are checked like any other, and «siempre que me
+    gusta…» (a condition) still refuses.
+    """
+    text = " ".join(lead)
+    for phrase in LEAD_IN_PHRASES:
+        if text == phrase:
+            return []
+        if text.endswith(f" {phrase}"):
+            return text[: -len(phrase) - 1].split()
+    return lead
+
+
 def _lead_refusal(lead: list[str]) -> CandidateReason | None:
-    """Refuse a negated or unknown lead-in: only a short closed list may precede a trigger."""
+    """Refuse a negated or unknown lead-in.
+
+    Only a short closed list of words, plus the closed filler phrases of ``LEAD_IN_PHRASES``,
+    may precede a trigger.
+    """
+    lead = _without_filler(lead)
     if any(word in NEGATORS for word in lead):
         return CandidateReason.NEGATION_UNSUPPORTED
     if any(word not in LEAD_IN_WORDS for word in lead):

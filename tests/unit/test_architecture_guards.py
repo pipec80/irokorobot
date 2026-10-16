@@ -476,6 +476,91 @@ def test_the_proposal_guards_detect_a_violation() -> None:
     assert _imports_name(leak, "consolidate_turn") == ["memory/legacy.py"]
 
 
+# --- who may offer or answer (Plan 0063, ADR 0021 decision 9) ---------------------------------
+# The offer and the answer need the voice of the turn's own clip: only the voice routes bind
+# them, and the text turn, the stream and the controller carry the seams. `/chat` and
+# `/vision/respond` have no audio, so they never offer and never answer.
+_DIALOGUE_NAMES = frozenset(
+    {"prepare_offer", "OfferPreparer", "answer_offer", "MemoryAnswerer", "memory_answerer"}
+)
+_DIALOGUE_HOMES = frozenset(
+    {
+        "memory/candidate_dialogue.py",
+        "routers/transcribe.py",
+        "streaming.py",
+        "text_turn.py",
+        "cognition/controller.py",
+    }
+)
+
+
+@pytest.mark.unit
+def test_only_the_voice_routes_offer_or_answer_a_memory() -> None:
+    assert _outside(_sources(), _DIALOGUE_HOMES, _DIALOGUE_NAMES) == []
+
+
+@pytest.mark.unit
+def test_the_dialogue_guard_detects_a_violation() -> None:
+    leak = {
+        "routers/chat.py": "controller = CognitiveController(memory_answerer=a)\n",
+        "routers/vision.py": "x = prepare_offer(actor)\n",
+        "routers/transcribe.py": "x = prepare_offer(actor)\n",
+    }
+
+    assert _outside(leak, _DIALOGUE_HOMES, _DIALOGUE_NAMES) == [
+        "routers/chat.py",
+        "routers/vision.py",
+    ]
+
+
+# The offer's own steps (Plan 0063): the store's offer lookups are reached only by the dialogue,
+# and the dialogue's commit only by the text-turn service that owns the reply. grep on 2026-10-15.
+_OFFER_LOOKUP_NAMES = frozenset({"find_offered", "next_offerable", "still_offerable"})
+_OFFER_LOOKUP_HOMES = frozenset({"memory/candidates.py", "memory/candidate_dialogue.py"})
+_OFFER_COMMIT_NAMES = frozenset({"commit_offer"})
+_OFFER_COMMIT_HOMES = frozenset({"memory/candidate_dialogue.py", "text_turn.py"})
+# `start_offer` and `finish_offer` belong to the text-turn service; the stream drives them too.
+_OFFER_LIFECYCLE_NAMES = frozenset({"start_offer", "finish_offer"})
+_OFFER_LIFECYCLE_HOMES = frozenset({"text_turn.py", "streaming.py"})
+
+
+@pytest.mark.unit
+def test_the_offer_steps_are_named_only_by_the_dialogue_and_the_text_turn() -> None:
+    sources = _sources()
+
+    assert _outside(sources, _OFFER_LOOKUP_HOMES, _OFFER_LOOKUP_NAMES) == []
+    assert _outside(sources, _OFFER_COMMIT_HOMES, _OFFER_COMMIT_NAMES) == []
+    assert _outside(sources, _OFFER_LIFECYCLE_HOMES, _OFFER_LIFECYCLE_NAMES) == []
+
+
+@pytest.mark.unit
+def test_the_offer_step_guards_detect_a_violation() -> None:
+    leak = {
+        "routers/chat.py": (
+            "offered = await candidates.find_offered(conn, person_id)\n"
+            "await commit_offer(pending)\n"
+            "task = start_offer(prepare, actor)\n"
+        ),
+        "routers/transcribe.py": "x = await still_offerable(conn, candidate)\n",
+        "memory/other.py": "x = next_offerable(conn, person_id)\nawait commit_offer(p)\n",
+        "memory/candidates.py": "x = find_offered(c)\ny = next_offerable(c)\n",
+        "memory/candidate_dialogue.py": "await commit_offer(p)\nawait still_offerable(c)\n",
+        "text_turn.py": "await commit_offer(p)\nt = start_offer(a, b)\n",
+        "streaming.py": "t = start_offer(a, b)\nawait finish_offer(t)\n",
+    }
+
+    assert _outside(leak, _OFFER_LOOKUP_HOMES, _OFFER_LOOKUP_NAMES) == [
+        "memory/other.py",
+        "routers/chat.py",
+        "routers/transcribe.py",
+    ]
+    assert _outside(leak, _OFFER_COMMIT_HOMES, _OFFER_COMMIT_NAMES) == [
+        "memory/other.py",
+        "routers/chat.py",
+    ]
+    assert _outside(leak, _OFFER_LIFECYCLE_HOMES, _OFFER_LIFECYCLE_NAMES) == ["routers/chat.py"]
+
+
 @pytest.mark.unit
 def test_the_retired_memory_actions_exist_nowhere() -> None:
     """ADR 0021 decision 11: no enum member, branch or string names them any more."""
@@ -485,13 +570,15 @@ def test_the_retired_memory_actions_exist_nowhere() -> None:
 # --- who may write or move a candidate (Plan 0062, ADR 0021 decisions 3 and 8) --------------
 # The firewall rule (face and voice of the same person on the turn's clip) is enforced by the
 # caller of the store, so the callers are pinned: a second caller must be a decision, not an
-# accident. Plan 0063 adds the dialogue module that offers and answers.
+# accident. Plan 0063 added the dialogue module, which offers, rejects and asks the writer.
 _CANDIDATE_INSERT_HOMES = frozenset({"memory/candidates.py", "memory/candidate_proposal.py"})
-_CANDIDATE_MOVE_HOMES = frozenset({"memory/candidates.py", "memory/memory_writer.py"})
+_CANDIDATE_MOVE_HOMES = frozenset(
+    {"memory/candidates.py", "memory/memory_writer.py", "memory/candidate_dialogue.py"}
+)
 _CANDIDATE_MOVES = frozenset(
     {"mark_offered", "resolve_candidate", "resolve_candidate_in_transaction"}
 )
-_WRITER_HOMES = frozenset({"memory/memory_writer.py"})
+_WRITER_HOMES = frozenset({"memory/memory_writer.py", "memory/candidate_dialogue.py"})
 
 
 @pytest.mark.unit
@@ -510,6 +597,7 @@ def test_the_candidate_caller_guards_detect_a_violation() -> None:
         "memory/candidate_proposal.py": "await insert_candidate(p)\n",
         "memory/memory_writer.py": "await resolve_candidate_in_transaction(c)\nawait promote(1)\n",
         "memory/other.py": "await promote(1)\n",
+        "memory/candidate_dialogue.py": "await mark_offered(1)\nawait promote(1)\n",
     }
 
     assert _outside(leak, _CANDIDATE_INSERT_HOMES, frozenset({"insert_candidate"})) == [

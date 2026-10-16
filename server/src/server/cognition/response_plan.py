@@ -41,6 +41,8 @@ class InformationNeed(StrEnum):
     SCENE_DESCRIPTION = "scene_description"
     ACTIVE_IDENTITY = "active_identity"
     BIOMETRIC_ENROLLMENT = "biometric_enrollment"
+    # A spoken answer to a memory offer: a closed verb and the offered value (ADR 0021 decision 9).
+    MEMORY_ANSWER = "memory_answer"
 
 
 class ResponseSource(StrEnum):
@@ -85,6 +87,10 @@ class ResponsePlan(BaseModel):
     duration_ms: int = Field(default=0, ge=0)
     tool_results: tuple[ToolResult, ...] = ()
     claims: tuple[ResponseClaim, ...] = ()
+    # A memory offer spoken after the response (ADR 0021 decision 9). Only the classic voice
+    # route speaks it, synthesized with the response and never returned in `llm_response`;
+    # `stream_response_plan` and chat ignore it.
+    offer: str | None = Field(default=None, min_length=1, repr=False)  # carries a value
 
     @model_validator(mode="after")
     def _known_claims_require_known_tools(self) -> "ResponsePlan":

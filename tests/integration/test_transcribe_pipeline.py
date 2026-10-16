@@ -333,8 +333,9 @@ def test_transcribe_uses_distinct_internal_scopes_per_request(
         schedule_proposal: ProposalScheduler,
         active_person: object = None,
         suspend_cause: object = None,
+        prepare_offer: object = None,
     ) -> TextTurnResult:
-        _ = client, schedule_proposal, active_person, suspend_cause
+        _ = client, schedule_proposal, active_person, suspend_cause, prepare_offer
         return TextTurnResult("shared reply", "joy", 7, False)
 
     process = AsyncMock(side_effect=process_turn)

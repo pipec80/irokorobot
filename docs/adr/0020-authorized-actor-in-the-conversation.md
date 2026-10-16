@@ -18,12 +18,13 @@
 - **Amends:** [ADR 0016](0016-face-and-voice-identity-fusion.md) §8 (the closed log reasons):
   `error` joins the set, and `backend_unavailable`, which named a voice backend that is down,
   also names a face detector that failed (§5 below; decided in Plan 0061, D-3)
-- **Amended by:** [ADR 0021](0021-memory-candidates-and-the-canonical-writer.md) §3 (Proposed,
-  implemented by Plan 0062 behind `MEMORY_CANDIDATES_ENABLED`, off by default): a generic voice
-  turn identified by the face now gets a background voice check on its own clip, and a candidate
-  may be extracted from it. This ADR is `Accepted` and ADR 0021 only `Proposed`; the default-off
-  switch keeps the two consistent until Plan 0063 closes. Decisions 1 and 2 above are unchanged
-  until then.
+- **Amended by:** [ADR 0021](0021-memory-candidates-and-the-canonical-writer.md) §3 and §9
+  (`Accepted` 2026-10-16, implemented by Plans 0062 and 0063 behind `MEMORY_CANDIDATES_ENABLED`,
+  off by default): a generic voice turn identified by the face now gets a background voice check
+  on its own clip, a candidate may be extracted from it, and, while a candidate waits, the voice
+  is checked concurrently with generation so that the offer can be spoken; a message with the
+  shape of an answer resolves the actor (face and voice) first. Decisions 1 and 2 above are
+  amended only for those turns; with the switch off they hold as written.
 - **Implemented by:** CM-2, [Plan 0061](../plans/completed/0061-cm2-generic-turn-continuity.md)
   (closed 2026-10-13); acceptance record in
   [the 0061 acceptance note](../evals/0061-generic-turn-continuity-acceptance.md)
@@ -352,8 +353,9 @@ line; the plan indexes.
 Revisit on a measured false-rejection rate of the face that suspends sessions too often, a second
 enrolled household member (P3, per-person sessions), a measured latency that makes the per-turn face
 check unacceptable, a history-bearing fallback rate above the rule, liveness or replay defence
-(ADR 0016 §9), the first capability that consumes a personal-memory action (CM-3 onward), a
-mandatory voice check on chat, or a second local-unlock factor such as a fingerprint reader on the
+(ADR 0016 §9), a capability that consumes a personal-memory action beyond the ones CM-3a wired
+(`propose`, `read` and `confirm`; CM-3b onward), the measured cost of the third face-and-voice
+resolution on an answer turn (ADR 0021, Plan 0063 acceptance), a mandatory voice check on chat, or a second local-unlock factor such as a fingerprint reader on the
 robot (another verifier of the same scoped grant, so decision 6 holds, but the sensor itself needs
 its own ADR and the privacy contract of the senses).
 

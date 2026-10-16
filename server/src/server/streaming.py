@@ -17,6 +17,7 @@ stays exclusive to classic /transcribe (see app.py's robot_streaming flag).
 from collections.abc import AsyncIterator
 import json
 import logging
+import time
 
 import httpx
 
@@ -24,6 +25,7 @@ from server import llm, llm_streaming, tts
 from server.cognition.response_plan import ResponsePlan
 from server.conversation_log import log_spoken
 from server.exceptions import LLMError, TTSError
+from server.memory.candidate_dialogue import OfferPreparer
 from server.pipeline import _elapsed_ms, _log_pipeline_timing
 from server.schemas import IdentitySource
 from server.schemas_streaming import (
@@ -50,7 +52,10 @@ from server.streaming_render import (
 from server.text_turn import (
     PreparedTextTurn,
     ProposalScheduler,
+    drop_offer,
+    finish_offer,
     record_text_turn,
+    start_offer,
 )
 from server.user_emotion import classify_user_emotion
 
@@ -104,13 +109,18 @@ async def _consume_llm_stream(
         yield line
 
 
+def _succeeded(state: StreamState) -> bool:
+    """Whether the whole reply was spoken from valid model output (no fallback)."""
+    return state.outcome is StreamOutcome.OK and state.recordable and bool(state.response_parts)
+
+
 def _record_success(
     prepared: PreparedTextTurn,
     state: StreamState,
     scheduler: ProposalScheduler,
 ) -> None:
     """Persist a turn — only ever called for a fully successful stream."""
-    if state.outcome is not StreamOutcome.OK or not state.recordable or not state.response_parts:
+    if not _succeeded(state):
         return
     record_text_turn(
         prepared.message,
@@ -119,6 +129,41 @@ def _record_success(
         continuity_turn=prepared.continuity,
         schedule_proposal=scheduler,
     )
+
+
+def _note_offer_overhead(state: StreamState, started: float) -> None:
+    """Record how long the offer step took beyond its own synthesis (kept out of llm_ms)."""
+    spent = round((time.perf_counter() - started) * 1000)
+    state.offer_overhead_ms = max(0, spent - state.offer_tts_ms)
+
+
+async def _offer_event(offer: str, state: StreamState) -> str | None:
+    """Synthesize the memory offer as one more audio event with empty text (ADR 0021 decision 9).
+
+    The text stays empty, so the robot prints nothing, and the offer never reaches
+    ``log_spoken``: it carries a value. Its synthesis counts as TTS time, so ``llm_ms`` stays
+    the model's.
+
+    Audio contract: the event carries one base64 WAV clip — 16 000 Hz, mono, int16.
+
+    Args:
+        offer: The spoken offer phrase; it carries a value, so a failure logs only the class.
+        state: The turn's stream state; its TTS totals are updated with this synthesis.
+
+    Returns:
+        The NDJSON ``audio`` line (ending in ``\\n``), or ``None`` when the synthesis failed.
+        Any ``Exception`` is caught here, not only ``TTSError``/``ValueError``: the reply was
+        already spoken, so a broken offer is skipped and never costs the turn its ``done``.
+    """
+    try:
+        audio_base64, duration_ms = await tts.synthesize(offer)
+    except Exception as exc:  # the reply was spoken: any failure of the offer is skipped
+        logger.warning("Memory offer not synthesized (%s)", type(exc).__name__)
+        return None
+    state.tts_ms_total += duration_ms
+    state.offer_tts_ms = duration_ms
+    event = StreamAudioEvent(text="", audio_base64=audio_base64, duration_ms=duration_ms)
+    return event.model_dump_json() + "\n"
 
 
 async def stream_response_plan(
@@ -176,6 +221,7 @@ async def stream_pipeline(
     stt_ms: int,
     request_start: float,
     schedule_proposal: ProposalScheduler,
+    prepare_offer: OfferPreparer | None = None,
 ) -> AsyncIterator[str]:
     """Stream STT->LLM->TTS as NDJSON, synthesizing speech sentence by sentence.
 
@@ -183,7 +229,8 @@ async def stream_pipeline(
     async generator via StreamingResponse and consumable on the robot with
     httpx's ``aiter_lines()`` — no extra dependency.
 
-    Event order: text_heard -> emotion -> audio (one per sentence) -> done.
+    Event order: text_heard -> emotion -> audio (one per sentence) -> the offer's audio, with
+    empty text, when one was prepared -> done.
     An LLM failure or any invalid model output (hybrid JSON, a protocol tag,
     an empty stream, ...) speaks the fallback phrase instead of
     aborting — never a silent success (P0-C6). A TTS failure logs the same
@@ -195,6 +242,8 @@ async def stream_pipeline(
         stt_ms: STT elapsed time, measured by the caller.
         request_start: ``time.perf_counter()`` reading from request start.
         schedule_proposal: Channel-owned background proposal scheduling callback.
+        prepare_offer: Channel-owned memory-offer preparation (ADR 0021 decision 9); it runs while
+            the model streams, and a prepared offer is spoken after the reply, before ``done``.
 
     Yields:
         NDJSON lines (each ending in ``\\n``), see schemas_streaming.py.
@@ -202,28 +251,44 @@ async def stream_pipeline(
     yield StreamTextHeardEvent(value=prepared.message).model_dump_json() + "\n"
 
     state = StreamState(request_start=request_start)
+    offer_task = start_offer(prepare_offer, prepared.active_person)
     try:
-        async for line in _consume_llm_stream(client, prepared, state):
-            yield line
-    except TTSError:
-        state.outcome = StreamOutcome.TTS_ERROR
-        _log_stream_metrics(state, _elapsed_ms(request_start))
-        raise
-    except (LLMError, ValueError) as exc:
-        if llm.is_connectivity_failure(exc):
-            logger.warning("Streaming LLM unreachable — speaking fallback phrase: %s", exc)
-        else:
-            logger.error("Streaming LLM failed — speaking fallback phrase: %s", exc, exc_info=True)
-        state.outcome = (
-            StreamOutcome.PARTIAL_FALLBACK if state.audio_chunks else StreamOutcome.LLM_FALLBACK
-        )
-        async for line in emit_fallback(state, reason=StreamFallbackReason.LLM_ERROR):
-            yield line
+        try:
+            async for line in _consume_llm_stream(client, prepared, state):
+                yield line
+        except TTSError:
+            state.outcome = StreamOutcome.TTS_ERROR
+            _log_stream_metrics(state, _elapsed_ms(request_start))
+            # Let the cancelled preparation finish before the error propagates, so no
+            # background task outlives the turn.
+            await finish_offer(offer_task, reply_failed=True)
+            raise
+        except (LLMError, ValueError) as exc:
+            if llm.is_connectivity_failure(exc):
+                logger.warning("Streaming LLM unreachable — speaking fallback phrase: %s", exc)
+            else:
+                logger.error(
+                    "Streaming LLM failed — speaking fallback phrase: %s", exc, exc_info=True
+                )
+            state.outcome = (
+                StreamOutcome.PARTIAL_FALLBACK if state.audio_chunks else StreamOutcome.LLM_FALLBACK
+            )
+            async for line in emit_fallback(state, reason=StreamFallbackReason.LLM_ERROR):
+                yield line
 
-    _record_success(prepared, state, schedule_proposal)
+        _record_success(prepared, state, schedule_proposal)
+        offer_started = time.perf_counter()
+        offer = await finish_offer(offer_task, reply_failed=not _succeeded(state))
+        offer_line = await _offer_event(offer, state) if offer is not None else None
+        if offer_line is not None:
+            yield offer_line
+    finally:
+        # A client that hangs up mid-stream must not leave the preparation running.
+        drop_offer(offer_task)
+    _note_offer_overhead(state, offer_started)
 
     total_ms = _elapsed_ms(request_start)
-    llm_ms = llm_elapsed_ms(total_ms, stt_ms, state.tts_ms_total)
+    llm_ms = llm_elapsed_ms(total_ms, stt_ms, state.tts_ms_total + state.offer_overhead_ms)
     _log_pipeline_timing("stream.legacy_text_turn", stt_ms, llm_ms, state.tts_ms_total, total_ms)
     yield _done_event(stt_ms, request_start, state)
 

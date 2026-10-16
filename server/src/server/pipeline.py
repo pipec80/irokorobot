@@ -98,14 +98,19 @@ async def _run_stt(audio_bytes: bytes, hotwords: list[str]) -> tuple[str, int]:
     return text, _elapsed_ms(start)
 
 
-async def _run_tts(text: str) -> tuple[str, int, int]:
+async def _run_tts(text: str, *, logged_text: str | None = None) -> tuple[str, int, int]:
     """Synthesize speech and measure elapsed time.
 
     Args:
         text: Text to speak.
+        logged_text: What the opt-in spoken-text log may show instead of *text*; a memory offer
+            spoken after the reply carries a value and never reaches that log (ADR 0021
+            decision 9). When it is given, *text* carries a value, so a failure logs only the
+            exception class, never its message.
 
     Returns:
-        Tuple of (base64 WAV audio, TTS-reported synthesis ms, elapsed ms).
+        Tuple of (base64 WAV audio — 16 kHz, mono, int16, TTS-reported synthesis ms, elapsed
+        ms).
 
     Raises:
         HTTPException 500: If TTS fails.
@@ -114,8 +119,12 @@ async def _run_tts(text: str) -> tuple[str, int, int]:
     try:
         audio_base64, duration_ms = await tts.synthesize(text)
     except (TTSError, ValueError) as exc:
-        logger.error("TTS failed: %s", exc, exc_info=True)
+        if logged_text is None:
+            logger.error("TTS failed: %s", exc, exc_info=True)
+        else:
+            # *text* carries a value the engine's message and its cause may quote: class only.
+            logger.error("TTS failed (%s)", type(exc).__name__)
         raise HTTPException(status_code=500, detail="Speech synthesis failed") from exc
     logger.info("TTS synthesized: %d ms audio, %d chars in", duration_ms, len(text))
-    log_spoken(text)
+    log_spoken(text if logged_text is None else logged_text)
     return audio_base64, duration_ms, _elapsed_ms(start)

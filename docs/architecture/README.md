@@ -74,13 +74,14 @@ specific conflict instead of redesigning the project implicitly.
   ([Plan 0051](../plans/completed/0051-scoped-owner-grants.md)) and its memory
   capabilities are policy only ([Plan 0060](../plans/completed/0060-cm1-personal-memory-capabilities.md));
   CM-2 (short-term continuity for the identified person) closed 2026-10-13
-  ([Plan 0061](../plans/completed/0061-cm2-generic-turn-continuity.md)); CM-3a's first cut closed
-  2026-10-15 ([Plan 0062](../plans/completed/0062-cm3a-memory-candidates-and-writer.md)):
-  a face-identified voice turn can leave a stored memory candidate, behind a default-off
-  kill-switch, with one canonical writer that nothing calls yet and no spoken offer
-  ([ADR 0021](../adr/0021-memory-candidates-and-the-canonical-writer.md), `Proposed` until
-  [Plan 0063](../plans/open/0063-cm3a-memory-dialogue.md) — the spoken offer and answer, `Ready`
-  and `NOW` since 2026-10-15 — closes it); CM-3b and CM-4…CM-7 remain unplanned. PC-3A ([Plan 0047](../plans/completed/0047-speaker-evidence-calibration-study.md)) closed 2026-09-25 with a provisional PASS, and PC-3B ([Plan 0053](../plans/completed/0053-consented-speaker-runtime-evidence.md)) closed 2026-09-29 with default-off `VOICE` evidence; PC-4 ([Plan 0054](../plans/completed/0054-face-default-identity-fusion.md)) closed 2026-09-30, accepted on real hardware.
+  ([Plan 0061](../plans/completed/0061-cm2-generic-turn-continuity.md)); CM-3a closed
+  2026-10-16: its first cut ([Plan 0062](../plans/completed/0062-cm3a-memory-candidates-and-writer.md),
+  2026-10-15) lets a face-identified voice turn leave a stored memory candidate with one
+  canonical writer, and [Plan 0063](../plans/completed/0063-cm3a-memory-dialogue.md) (closed
+  2026-10-16, accepted on real hardware) adds the spoken offer and the explicit spoken answer
+  that promote or reject it, all behind a default-off kill-switch
+  ([ADR 0021](../adr/0021-memory-candidates-and-the-canonical-writer.md), `Accepted`
+  2026-10-16); CM-3b and CM-4…CM-7 remain unplanned. PC-3A ([Plan 0047](../plans/completed/0047-speaker-evidence-calibration-study.md)) closed 2026-09-25 with a provisional PASS, and PC-3B ([Plan 0053](../plans/completed/0053-consented-speaker-runtime-evidence.md)) closed 2026-09-29 with default-off `VOICE` evidence; PC-4 ([Plan 0054](../plans/completed/0054-face-default-identity-fusion.md)) closed 2026-09-30, accepted on real hardware.
 - [`p0-runtime-policy-audit.md`](p0-runtime-policy-audit.md): current
   disposition of remaining public-route and operator-acceptance gaps.
 - [`implementation-guardrails.md`](implementation-guardrails.md): tracked
