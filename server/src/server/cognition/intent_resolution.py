@@ -63,35 +63,53 @@ _NON_WORD_RUN = re.compile(r"[^\w]+", re.UNICODE)
 
 # The closed answer grammar (ADR 0021 decision 9): a closed verb **and** the value. It is closed
 # on purpose, so a bare «sí» or a verb alone promotes nothing. The verbs are neutral Spanish
-# (tuteo), not voseo.
+# (tuteo), not voseo. It also admits what the speech-to-text writes for those verbs (Plan 0064,
+# D-3): the third person («autoriza», «aprueba»), the openers «ya», «dale» and «po», a trailing
+# «po», and a leading «mi»/«mis» before the value.
 
-# Words that may open an answer: a call to the robot, a repeated «sí», «claro».
-_ANSWER_OPENERS = frozenset({"iroko", "oye", "bueno", "ok", "claro", "si"})
+# Words that may open an answer: a call to the robot, a repeated «sí», «claro», «ya», «po».
+_ANSWER_OPENERS = frozenset({"iroko", "oye", "bueno", "ok", "claro", "si", "ya", "dale", "po"})
 # Within each prefix tuple the order matters: the first match wins, so the longest verb comes
 # first («autorizo guardar» before «autorizo»), or the shorter one would leave its tail in the value.
 _ANSWER_ACCEPT_PREFIXES = (
     "autorizo que guardes",
     "apruebo que guardes",
+    "autoriza que guardes",
+    "aprueba que guardes",
     "autorizo a guardar",
     "apruebo a guardar",
+    "autoriza a guardar",
+    "aprueba a guardar",
     "autorizo guardar",
     "apruebo guardar",
+    "autoriza guardar",
+    "aprueba guardar",
     "guardalo",
     "guarda",
     "autorizo",
     "apruebo",
+    "autoriza",
+    "aprueba",
 )
 _ANSWER_REJECT_PREFIXES = (
     "no autorizo que guardes",
     "no apruebo que guardes",
+    "no autoriza que guardes",
+    "no aprueba que guardes",
     "no autorizo a guardar",
     "no apruebo a guardar",
+    "no autoriza a guardar",
+    "no aprueba a guardar",
     "no autorizo guardar",
     "no apruebo guardar",
+    "no autoriza guardar",
+    "no aprueba guardar",
     "no lo guardes",
     "no guardes",
     "no autorizo",
     "no apruebo",
+    "no autoriza",
+    "no aprueba",
     "olvidalo",
     "borralo",
 )
@@ -105,7 +123,9 @@ _ANSWER_SHORT_PREFIXES = frozenset(
 # guard), so a unit test pins both lists together.
 _ANSWER_ARTICLES = frozenset({"el", "la", "los", "las", "un", "una", "unos", "unas", "lo"})
 # Courtesy words a speaker adds after the value; they are not part of it.
-_ANSWER_TRAILERS = ("por favor", "gracias", "porfa")
+_ANSWER_TRAILERS = ("por favor", "gracias", "porfa", "po")
+# «mi café»: the possessive is dropped from the value and counts as the article of a short verb.
+_ANSWER_POSSESSIVES = frozenset({"mi", "mis"})
 # The value is a short noun phrase: at most six words, its article included when it has one.
 _MAX_ANSWER_PHRASE_WORDS = 6
 # Words that continue the verb rather than start the value («autorizo guardar», «que guardes»).
@@ -395,10 +415,11 @@ def _relationship_rule(normalized: str) -> IntentResolution | None:
 def parse_memory_answer(message: str) -> MemoryAnswer | None:
     """Read a spoken answer to a memory offer, or say that *message* is not one.
 
-    Pure and closed (ADR 0021 decision 9): optional openers («Iroko», «sí, claro»), then one
-    closed verb, then the value, then optional courtesy words. A rejection starts with «no»,
-    «olvídalo» or «bórralo», never with an accepting verb, so the two sets never compete; a
-    repeated «no, no» is one «no».
+    Pure and closed (ADR 0021 decision 9): optional openers («Iroko», «sí, claro», «ya», «dale»,
+    «po»), then one closed verb (first or third person: «autorizo»/«autoriza»), then the value
+    with one optional leading «mi»/«mis», then optional courtesy words (a trailing «po»
+    included). A rejection starts with «no», «olvídalo» or «bórralo», never with an accepting
+    verb, so the two sets never compete; a repeated «no, no» is one «no».
 
     Args:
         message: Raw transcript or chat text in Spanish.
@@ -440,9 +461,12 @@ def _answer(prefix: str, phrase: list[str], *, accept: bool) -> MemoryAnswer | N
     # verb, not a value. «autorizo a guardar el mate» matches the long prefix and names it.
     if phrase[:2] == ["a", "guardar"]:
         phrase = phrase[2:]
+    possessive = bool(phrase) and phrase[0] in _ANSWER_POSSESSIVES
+    if possessive:
+        phrase = phrase[1:]
     if not phrase or phrase[0] in _ANSWER_CONNECTORS or len(phrase) > _MAX_ANSWER_PHRASE_WORDS:
         return None
-    if prefix in _ANSWER_SHORT_PREFIXES and phrase[0] not in _ANSWER_ARTICLES:
+    if prefix in _ANSWER_SHORT_PREFIXES and not possessive and phrase[0] not in _ANSWER_ARTICLES:
         return None
     return MemoryAnswer(accept=accept, phrase=" ".join(phrase))
 
