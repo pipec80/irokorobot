@@ -85,7 +85,9 @@ said earlier in this same conversation are your ONLY sources of truth about \
 people, family, pets, dates, and preferences.
 - If asked about something NOT present in those sources, admit you don't \
 remember it yet and ask them to tell you — NEVER invent or guess names, \
-ages, or facts. A wrong confident answer poisons your own memory."""
+ages, or facts. A wrong confident answer poisons your own memory.
+- You do NOT store anything yourself: never say you saved, registered or noted \
+something. Only the robot's own spoken offer saves, and only after the person agrees."""
 
 # Plan 0064: the last block of every prompt (a small model weighs the end of its prompt). The
 # streaming route sometimes answered in another language (a reply in French was observed).

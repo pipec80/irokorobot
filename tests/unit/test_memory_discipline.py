@@ -45,6 +45,14 @@ def test_the_admission_rule_names_both_sources_and_still_forbids_inventing() -> 
     assert "NEVER invent or guess" in _MEMORY_DISCIPLINE
 
 
+def test_the_model_is_told_it_stores_nothing_itself() -> None:
+    """Plan 0064, D-2: support for the claim guard, which is the actual guarantee."""
+    prompt = build_system_prompt(get_character("iroko"), None)
+
+    assert "You do NOT store anything yourself" in prompt
+    assert "never say you saved, registered or noted" in prompt
+
+
 def test_the_block_is_always_in_the_system_prompt() -> None:
     prompt = build_system_prompt(get_character("iroko"), None)
 
