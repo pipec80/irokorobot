@@ -119,7 +119,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         if cfg.speaker_authentication_enabled:
             await _warm_up("Speaker model", speaker_embedding.warm_up)
         # Only warns: a server that starts before Ollama still starts (Plan 0064).
-        await probe_ollama(http_client, cfg.ollama_url)
+        await probe_ollama(http_client)
 
         if cfg.memory_enabled:
             await open_db()

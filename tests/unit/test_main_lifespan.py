@@ -55,4 +55,4 @@ async def test_lifespan_probes_ollama_once_and_an_unreachable_one_never_stops_th
         assert main.app.state.ready is True
         client = main.app.state.resources.http_client
 
-    probe.assert_awaited_once_with(client, settings.ollama_url)
+    probe.assert_awaited_once_with(client)

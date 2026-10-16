@@ -1,7 +1,7 @@
 """Shared Ollama transport: the one place that talks HTTP to Ollama.
 
-Chat (``/api/chat``, plain and streaming) and embeddings (``/api/embed``) live
-here; llm.py, llm_streaming.py, memory/consolidation.py,
+Chat (``/api/chat``, plain and streaming), embeddings (``/api/embed``) and the
+start-up reachability check (``/api/tags``) live here; llm.py, llm_streaming.py, memory/consolidation.py,
 memory/candidate_extraction.py, memory/embeddings.py and vision/describe.py all
 reach Ollama through these helpers, and
 ``tests/unit/test_ollama_seam.py`` keeps it that way. Every caller
@@ -204,3 +204,18 @@ async def ollama_embed(
     ):
         raise LLMError("Ollama embedding response carries no numeric vector")
     return [float(value) for value in vector]
+
+
+async def check_reachable(client: httpx.AsyncClient) -> None:
+    """Call Ollama's ``/api/tags`` once to see whether it answers.
+
+    Args:
+        client: Shared, lifecycle-owned HTTP client (Plan 0039) — never
+            constructed here.
+
+    Raises:
+        httpx.HTTPError: If the Ollama server is unreachable or returns an error.
+        httpx.InvalidURL: If ``settings.ollama_url`` is not a valid URL.
+    """
+    resp = await client.get(f"{settings.ollama_url}/api/tags")
+    resp.raise_for_status()

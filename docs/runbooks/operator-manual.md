@@ -106,7 +106,7 @@ problem can be localized without running the whole loop.
 | `face_auth_demo.py` | `just face-auth-demo --enroll` / `--revoke` | The Plan 0029 admin endpoints — enroll/revoke the owner's face | Yes, owner+PIN configured | No |
 | `manage_household_roles.py` | `uv run python scripts/manage_household_roles.py bootstrap-owner` | Local role bootstrap, direct DB, no HTTP | No | No |
 | `migrate_memory_v4.py` | `uv run python scripts/migrate_memory_v4.py --apply` | Legacy-fact migration into v4, dry-run first | No | No |
-| `eval_chat.py` / `eval_consolidation.py` | `just eval-chat` / `just eval-memory` | Response/extraction quality against real Ollama — not `pytest`. `just eval-chat --mode stream` instead measures how often a streamed reply would drop to the fallback phrase (the `EMOTION:` protocol, Plan 0056); it reports counts and rates, never model output | Needs `just services` | Yes |
+| `eval_chat.py` / `eval_consolidation.py` | `just eval-chat` / `just eval-memory` | Response/extraction quality against real Ollama — not `pytest`. `just eval-chat --mode stream` instead measures how often a streamed reply would drop to the fallback phrase (the plain-text contract, Plans 0056 and 0059) and how often a reply is not in Spanish (Plan 0064); it reports counts and rates, never model output | Needs `just services` | Yes |
 | `diagnose_stream_protocol.py` | `just diagnose-stream` | Why a streamed reply drops to the fallback phrase (Plan 0057): runs the golden and public turns under variants that each remove or move one factor, in a seeded shuffled order, and reports failure shapes, an ablation read against a noise control, timings and whether a schema-constrained reply arrives spread over time. Counts only, never model output; `--runs`, `--seed`, `--variants`, `--structured-runs`, `--output`. The default 500 streams take on the order of an hour on a non-dedicated laptop (an estimate; the duration of the recorded run was not noted); exit `0`, `1` (a provider error, the report is still written) or `2` (Ollama not answering, nothing written) | Run it with the server stopped | Yes |
 | `stt_probes.py` | `just probe-stt noise` / `just probe-stt first-turn` | Whisper on synthetic noise (empty, prompt echo or other text, read before the echo guard) and first-utterance accuracy over fresh processes (Plan 0056); loads the real models, so run it with the server stopped | No | Yes |
 | `speaker_calibration.py` | `just speaker-calibration <action>` | Speaker-embedding calibration corpus and analysis (Plan 0047, PC-3A) — capture, embed, analyze, discard, cleanup; local only, never in the runtime | No (mic only for `capture`) | Yes for the recipe |
@@ -464,8 +464,10 @@ speaks, in this order:
    repeated.
 2. To accept, answer with a closed verb **and the value**: `autorizo`, `apruebo`, `guarda`,
    `guárdalo`, in the long forms too («autorizo guardar el mate», «autorizo a guardar …»,
-   «apruebo que guardes …»). Iroko says «Listo, lo guardé.» and the taste becomes a confirmed
-   fact.
+   «apruebo que guardes …»). Since Plan 0064 the answer also survives how Whisper writes it:
+   the third person (`autoriza`, `aprueba`), a leading «ya», «dale» or «po», a trailing «po»
+   and «mi»/«mis» before the value («sí po, autoriza a guardar mi café»). Iroko says «Listo,
+   lo guardé.» and the taste becomes a confirmed fact.
 3. To decline: `no autorizo`, `no apruebo`, `no lo guardes`, `no guardes`, `olvídalo`, `bórralo`,
    again followed by the value. Iroko says «Está bien, no lo guardo.» and the candidate's value is
    erased.
@@ -500,15 +502,24 @@ silencio» or «olvídalo, no importa» never count.
 [`0063-memory-dialogue-acceptance.md`](../evals/0063-memory-dialogue-acceptance.md), one owner,
 the shared laptop, no homelab):
 
-- The explicit answer was parsed **2 of 4** times: Whisper `small` sometimes writes
-  «autoriza a guardar …» or changes the article, so the answer falls through to ordinary
-  conversation. Nothing is written when that happens (the safe direction); say it again, slowly,
-  or wait for the second offer. Widening the closed verbs is the owner's decision.
+- The explicit answer was parsed **2 of 4** times in the Plan 0063 acceptance: Whisper `small`
+  writes «autoriza a guardar …», «sí po, …» or «mi» before the value. Plan 0064 widened the
+  grammar for exactly those writings (not yet re-measured on hardware). When an answer is still
+  not understood, it falls through to ordinary conversation and nothing is written (the safe
+  direction); say it again, slowly, or wait for the second offer.
 - On a message that only has the *shape* of an answer (another voice, or no open offer), the
-  language model may say it saved something. **It did not**: only the lines below prove a write.
-- About 2 of 12 turns were answered partly or wholly in French.
+  language model used to say it saved something. **It did not.** Since Plan 0064 the robot
+  replaces any model sentence that claims to have saved, registered or noted something with
+  «Eso no lo he guardado.» (a bare «Anotado.» is left alone). Only the lines below prove a
+  write.
+- About 2 of 12 turns were answered partly or wholly in French. Since Plan 0064 every prompt asks
+  for Spanish (the last block of the master prompt and the streaming contract) and the robot
+  speaks tuteo everywhere; `just eval-chat --mode stream` reports the *Not in Spanish* count.
 - The first chat turn after Ollama starts can fail while memory is short (the stream speaks its
-  fallback phrase, still in voseo); warm the model first.
+  fallback phrase); warm the model first, with one ordinary sentence after the start. Since Plan
+  0064 the server logs one warning at start-up when Ollama does not answer `/api/tags`; it does
+  **not** detect this cold-start failure, because a model that is still loading answers
+  `/api/tags`.
 - Replay (a photo plus an earlier recording) was not measured.
 
 **Reading the log.** Every line carries closed reasons, never a value, a transcript or an
