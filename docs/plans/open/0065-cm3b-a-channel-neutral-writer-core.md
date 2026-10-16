@@ -15,7 +15,7 @@
 > `superpowers:finishing-a-development-branch`. **Pipec's rules win over the skills:** one plain
 > branch from `main`, never a git worktree, subagents only if Pipec asks, this plan lives under
 > `docs/plans/`. One commit per task, every code test observed RED for the stated reason first (the
-> text-only Task 9 has none). If evidence contradicts the plan, stop and report instead of
+> text-only Task 8 has none). If evidence contradicts the plan, stop and report instead of
 > redesigning. The Bash tool of this environment loses backslashes and non-ASCII characters in
 > heredocs: use the Write and Edit tools. Run the suite with `MEMORY_ENABLED=false` (CI does). A test
 > that builds data at a fixed date must pin the clock too (Plan 0063 shipped a test that broke the
@@ -63,8 +63,7 @@ object, owner, channel)` with the classification table, the invariants and the v
 | 6c | `promote` becomes the first caller | 2 |
 | 7a | Dataset v3: schema, version, frozen v2 | 5 |
 | 7b | Dataset v3: scenarios and an honest driver | 5, 9 |
-| 8 | (reserved: none) | — |
-| 9 | Documentation truth | the docs this plan makes stale |
+| 8 | Documentation truth | the docs this plan makes stale |
 
 ## Review Focus
 
@@ -156,7 +155,7 @@ benchmark still has a provenance denominator; (7) `Joaquín` and `Joaquin` colli
   `tests/evals/golden_longitudinal_memory_v2.yaml`),
   `scripts/{longitudinal_eval_driver,eval_longitudinal_memory,longitudinal_eval_models,longitudinal_eval_metadata}.py`.
 - Tests: the files named in each task and their new files.
-- Docs (Task 9): the list there.
+- Docs (Task 8): the list there.
 
 No new URL, route, status code, response field or setting. `robot/src`, `/chat`, `/vision/respond`,
 the household reader's contract, `personal_setup`, the legacy migration and the spoken dialogue are
@@ -392,7 +391,7 @@ tests`).
   full offline run to confirm the report still generates (record counts only).
 - [ ] **Step 4: Commit** `feat(evals): personal provenance, honest confirm and a pending SECURITY scenario (plan 0065)`.
 
-## Task 9: Documentation truth (text only, no RED)
+## Task 8: Documentation truth (text only, no RED)
 
 - [ ] ADR 0022 `Accepted` (the date and what Pipec confirmed); ADR 0019 §2 and ADR 0021 decisions 4,
   5 and 13 (cross-references and the derived-age exception); `docs/architecture/identity-and-access.md`
@@ -421,7 +420,7 @@ tests`).
 
 ## Completion criteria
 
-1. Tasks 0 to 9 done, one commit per task, every code test RED before GREEN.
+1. Tasks 0 to 8 done, one commit per task, every code test RED before GREEN.
 2. `just gate` green; the Plan 0062 and 0063 tests unchanged except the two declared edits.
 3. The same fact written from two channels has one classification and records its asserter and
    channel; a homonym is never created twice; a `security` value is refused without a trace.
