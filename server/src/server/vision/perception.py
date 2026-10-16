@@ -42,7 +42,7 @@ _ENROLL_REJECTIONS: dict[str, str] = {
     ),
 }
 
-_RECOGNIZED_TEMPLATE = "[Reconoces a {names} frente a ti — salúdalos por su nombre.]"
+_RECOGNIZED_TEMPLATE = "[Reconoces a {names} frente a ti — saluda por su nombre.]"
 _UNKNOWN_LINE = (
     "[También ves a alguien que NO reconoces — puedes preguntar su nombre "
     "con naturalidad, sin alarma.]"
