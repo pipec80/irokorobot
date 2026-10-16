@@ -2,10 +2,11 @@
 
 Three steps ask ADR 0019's policy a question about the owner's own personal memory:
 
-* ``PROPOSE`` asks ``propose_personal_memory`` before a candidate is stored (Plan 0062);
-* ``READ`` asks ``read_personal_conversation_memory`` before an offer is spoken (Plan 0063);
-* ``CONFIRM`` asks ``confirm_personal_memory`` inside ``memory_writer.promote`` (Plan 0062),
-  whose spoken caller is Plan 0063.
+* ``PROPOSE`` asks ``propose_personal_memory`` before a candidate is stored;
+* ``READ`` asks ``read_personal_conversation_memory`` before an offer is spoken
+  (``candidate_dialogue.commit_offer``);
+* ``CONFIRM`` asks ``confirm_personal_memory`` inside ``memory_writer.promote``, which the spoken
+  answer reaches through ``candidate_dialogue.answer_offer``.
 
 The policy minimums are ``basic`` for propose and read and ``strong`` for confirm, but every
 caller of CM-3a demands more (the firewall rule): the actor must be the composite of face and

@@ -154,7 +154,9 @@ class CognitiveController:
         self._intent_resolver = intent_resolver
         self._memory_answerer = memory_answerer
         # The classic route calls decide() twice on a turn that falls through (decide, then
-        # handle): an answer is attempted once per event, so no audit row is written twice.
+        # handle), with the same event: keyed by event_id, an answer is attempted once per
+        # event, so no audit row is written twice. The controller is built per request and
+        # lives for one request, so the cache is never evicted.
         self._answers: dict[UUID, ResponsePlan | None] = {}
 
     async def handle(self, event: CognitiveEvent[TextTurnPayload]) -> ResponsePlan:
@@ -288,10 +290,11 @@ class CognitiveController:
     ) -> ResponsePlan | None:
         """Answer a memory offer, or fall through to ordinary generation (``None``).
 
-        No oracle (ADR 0021 decision 9): the actor is resolved from face and voice **first**,
-        for every message of this shape and whether or not an offer exists, and only then
-        does the answerer read the actor's own candidates. The observing resolver is used,
-        so no PIN grant is ever spent: a token never answers a memory offer.
+        No oracle (ADR 0021 decision 9): when an answerer is wired, the actor is resolved
+        **first** for every message of this shape, whether or not an offer exists, so the
+        cost never reveals whether one does; only then does the answerer read the actor's own
+        candidates. The face-and-voice actor comes from the route's observing resolver, so
+        no PIN grant is ever spent: a token never answers a memory offer.
         """
         answer = parse_memory_answer(event.payload.message)
         if self._memory_answerer is None or answer is None:

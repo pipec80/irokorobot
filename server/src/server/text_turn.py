@@ -32,7 +32,7 @@ from server.settings import settings
 
 logger = logging.getLogger(__name__)
 
-#: Channel-owned callback that schedules a background candidate proposal (ADR 0021 §10). It
+#: Channel-owned callback that schedules a background candidate proposal (ADR 0021 decision 10). It
 #: receives the user's own words and the face-identified actor; the route that owns the clip
 #: and the turn's correlation id binds them. It never receives the assistant's reply.
 ProposalScheduler = Callable[[str, ActivePersonContext], None]
@@ -56,14 +56,22 @@ class PreparedTextTurn:
 
 @dataclass(frozen=True)
 class TextTurnResult:
-    """Structured output from one completed text turn."""
+    """Structured output from one completed text turn.
+
+    Attributes:
+        response: The reply text, exactly what is recorded in the session history.
+        emotion: The closed emotion label of the reply.
+        duration_ms: Generation time of the reply; the memory offer is never counted in it.
+        llm_failed: Whether the reply is the fallback phrase instead of a model answer.
+        offer: The spoken phrase of a memory offer, said after the reply. It is never part of
+            the reply's text, the session history, the wire's ``llm_response`` or
+            ``duration_ms`` (ADR 0021 decision 9). Hidden from ``repr``: it carries a value.
+    """
 
     response: str
     emotion: str
     duration_ms: int
     llm_failed: bool
-    # The spoken memory offer (ADR 0021 decision 9), spoken after the reply. It is never part of
-    # the reply's text, the session history, the wire's `llm_response` or `duration_ms`.
     offer: str | None = field(default=None, repr=False)
 
 
@@ -281,8 +289,9 @@ def start_offer(
     """Start preparing a memory offer concurrently with generation, when one may exist.
 
     Only a face-identified speaker with no token, with memory and the candidate kill-switch on,
-    starts it (ADR 0021 decisions 3 and 9); the preparation itself checks the voice and only
-    when a candidate waits, so latency never says whether one exists.
+    starts it (ADR 0021 decisions 3 and 9). The preparation reads the store first and verifies
+    the voice only when a candidate waits; it runs concurrently with generation, so that extra
+    check is normally hidden behind the model's own latency.
 
     Args:
         prepare_offer: The route-bound preparation (it owns the clip and the event), or ``None``.
@@ -360,7 +369,7 @@ async def process_text_turn(
         active_person: Internally resolved evidence for this turn only.
         suspend_cause: Why the speaker could not be identified, for the transition log.
         schedule_proposal: Optional channel-owned proposal scheduling callback.
-        prepare_offer: Optional channel-owned memory-offer preparation (ADR 0021 §9); it runs
+        prepare_offer: Optional channel-owned memory-offer preparation (ADR 0021 decision 9); it runs
             concurrently with generation.
 
     Returns:

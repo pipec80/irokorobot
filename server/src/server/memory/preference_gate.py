@@ -95,7 +95,12 @@ def _predicate_of(trigger: str) -> str:
 
 
 def _without_filler(lead: list[str]) -> list[str]:
-    """Drop one closed filler phrase («es que») that sits right before the trigger."""
+    """Drop one closed filler phrase («es que», «la verdad es que») right before the trigger.
+
+    The phrase must **end** the lead, as whole words, so it is filler only right against the
+    trigger; anywhere else its words are checked like any other, and «siempre que me
+    gusta…» (a condition) still refuses.
+    """
     text = " ".join(lead)
     for phrase in LEAD_IN_PHRASES:
         if text == phrase:
@@ -106,7 +111,11 @@ def _without_filler(lead: list[str]) -> list[str]:
 
 
 def _lead_refusal(lead: list[str]) -> CandidateReason | None:
-    """Refuse a negated or unknown lead-in: only a short closed list may precede a trigger."""
+    """Refuse a negated or unknown lead-in.
+
+    Only a short closed list of words, plus the closed filler phrases of ``LEAD_IN_PHRASES``,
+    may precede a trigger.
+    """
     lead = _without_filler(lead)
     if any(word in NEGATORS for word in lead):
         return CandidateReason.NEGATION_UNSUPPORTED

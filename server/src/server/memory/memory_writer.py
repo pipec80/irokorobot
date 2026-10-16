@@ -13,8 +13,8 @@ One function, ``promote`` (ADR 0021 decision 8), in **one** ``db.transaction()``
 
 The duplicate and the contradiction are decided by comparing folded keys, never by relying on
 the ``IntegrityError`` a duplicate raises (a test pins that error, and it would roll back the
-whole transaction). Nothing here is wired to a route in Plan 0062: it is a seam, proven with
-doubles, that Plan 0063's spoken confirmation will call.
+whole transaction). The spoken confirmation is wired to it: ``candidate_dialogue.answer_offer``
+promotes a confirmed candidate through this one writer.
 
 The policy is asked and audited **before** the transaction (ADR 0019 §6.3), through
 ``authorize_step``; a refusal writes nothing.

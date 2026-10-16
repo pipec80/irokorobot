@@ -1,4 +1,4 @@
-"""The spoken offer and the explicit answer (ADR 0021 decision 9, Plan 0063).
+"""The spoken offer and the explicit answer (ADR 0021 decision 9).
 
 A candidate the owner stated earlier is offered back on a later generic voice turn, and only an
 explicit answer that repeats the value resolves it. Both need the face **and** the voice of the
@@ -11,7 +11,7 @@ revealed to anybody else.
 * ``commit_offer`` runs once the reply was built (never on a fallback): it asks the policy for
   ``read_personal_conversation_memory`` (audited before the effect) and moves the candidate to
   ``offered``. No claim is made that the offer was heard.
-* ``answer_offer`` is the controller's answer branch: a «sí» promotes through the one writer, a
+* ``answer_offer`` is what the voice routes bind as the controller's ``MemoryAnswerer``: a «sí» promotes through the one writer, a
   «no» is audited as ``confirm_personal_memory`` and rejects the candidate.
 
 Audio contract for the clip: WAV, 16 000 Hz, mono, signed int16, held in memory only. Logs carry
@@ -123,7 +123,8 @@ def compose_offer(predicate: str, value_text: str) -> str:
         value_text: The stored phrase, article included ("las empanadas").
 
     Returns:
-        The statement and the question, which tells the exact answer with the value.
+        The statement followed by the question; the question dictates the exact answer to
+        say, value included, because the answer grammar requires it.
 
     Raises:
         ValueError: If *predicate* has no offer.
@@ -162,8 +163,8 @@ async def prepare_offer(
         clock: Source of "now" for the store's deadlines.
 
     Returns:
-        The offer to speak once the reply is built, or ``None``. Never raises: any failure is
-        logged by its class and offers nothing.
+        The offer to speak once the reply is built, or ``None``. Never raises (a cancellation
+        excepted): any failure is logged by its class and offers nothing.
     """
     try:
         if not settings.memory_candidates_enabled or not is_face_actor(actor):
@@ -208,7 +209,7 @@ async def commit_offer(
     Returns:
         The offer's phrase, or ``None`` when the candidate is no longer offerable (asked before
         the audit, so no "allowed" row is written for it), the policy refused, the audit failed
-        or the compare-and-set lost anyway. Never raises.
+        or the compare-and-set lost anyway. Never raises (a cancellation excepted).
     """
     try:
         moment = now or utc_now()

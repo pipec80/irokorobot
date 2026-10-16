@@ -249,9 +249,10 @@ def _voice_controller(
             observed token (Plan 0061, ADR 0020); when omitted the speaker is unknown.
         schedule_proposal: Schedules the background candidate proposal of a successful
             generic turn (Plan 0062); when omitted nothing is proposed.
-        prepare_offer: Prepares the memory offer spoken after a generic reply (Plan 0063);
-            when omitted nothing is offered.
-        memory_answerer: Answers a memory offer (Plan 0063); when omitted an answer-shaped
+        prepare_offer: Prepares the memory offer spoken after a generic reply (ADR 0021
+            decision 9); when omitted nothing is offered.
+        memory_answerer: Answers a memory offer (ADR 0021 decision 9). Only used together
+            with ``request_identity``, the resolver it needs; when omitted an answer-shaped
             message is ordinary conversation.
     """
 
@@ -303,7 +304,7 @@ def _proposal_scheduler(
     wav_bytes: bytes,
     channel: CandidateChannel,
 ) -> ProposalScheduler:
-    """Adapt FastAPI background tasks to the text service's proposal callback (ADR 0021 §10).
+    """Adapt FastAPI background tasks to the text service's proposal callback (ADR 0021 decision 10).
 
     Args:
         client: Shared, lifecycle-owned HTTP client (Plan 0039) — safe to
@@ -333,7 +334,7 @@ def _proposal_scheduler(
 def _offer_preparer(
     *, event: CognitiveEvent[TextTurnPayload], wav_bytes: bytes
 ) -> OfferPreparer | None:
-    """Bind the turn's clip and event to the memory-offer preparation (ADR 0021 §9).
+    """Bind the turn's clip and event to the memory-offer preparation (ADR 0021 decision 9).
 
     Args:
         event: The turn's event; its correlation id stamps the audit row and the offer.
@@ -341,7 +342,8 @@ def _offer_preparer(
             for the voice check that runs only when a candidate waits.
 
     Returns:
-        The preparation, or ``None`` with the candidate kill-switch off.
+        The preparation, or ``None`` with ``MEMORY_ENABLED`` or ``MEMORY_CANDIDATES_ENABLED``
+        off.
     """
     if not (settings.memory_enabled and settings.memory_candidates_enabled):
         return None
@@ -353,10 +355,10 @@ def _offer_preparer(
 
 
 def _memory_answerer() -> MemoryAnswerer | None:
-    """Return the answer to a memory offer for a voice route, or ``None`` with the switch off.
+    """Return the answer to a memory offer for a voice route, or ``None`` with a switch off.
 
-    With the switch off an answer-shaped message is ordinary conversation, and the actor is not
-    even resolved for it.
+    With ``MEMORY_ENABLED`` or ``MEMORY_CANDIDATES_ENABLED`` off an answer-shaped message is
+    ordinary conversation, and the actor is not even resolved for it.
     """
     if not (settings.memory_enabled and settings.memory_candidates_enabled):
         return None
@@ -376,12 +378,18 @@ def _memory_answerer() -> MemoryAnswerer | None:
 async def _synthesize_reply(plan: ResponsePlan) -> tuple[str, int, int]:
     """Synthesize the response and the memory offer as one WAV; the offer never costs the reply.
 
-    The spoken-text log carries the response only: the offer holds a value (ADR 0021 §9). When
+    The spoken-text log carries the response only: the offer holds a value (ADR 0021 decision 9). When
     the combined synthesis fails, the response is synthesized alone, so a failing offer never
-    turns a good reply into a 500.
+    turns a good reply into a 500. The first failure is already logged by ``_run_tts`` at error
+    level, with the exception class only, since the combined text carries a value.
+
+    Args:
+        plan: The authorized plan; ``plan.offer``, when set, is spoken right after the response
+            in the same clip.
 
     Returns:
-        Base64 WAV (16 kHz, mono, int16), the synthesized duration and the TTS time in ms.
+        Tuple of (base64 WAV audio — 16 kHz, mono, int16, TTS-reported synthesis ms, elapsed
+        TTS ms), as ``_run_tts`` returns.
 
     Raises:
         HTTPException: 500 when even the response alone cannot be synthesized.

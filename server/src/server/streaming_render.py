@@ -83,7 +83,9 @@ def llm_elapsed_ms(total_ms: int, stt_ms: int, tts_ms: int) -> int:
     Args:
         total_ms: Whole request time.
         stt_ms: Speech-to-text time.
-        tts_ms: Summed text-to-speech time of every spoken sentence.
+        tts_ms: Every non-model millisecond the caller measured after STT: the summed synthesis
+            time of every spoken clip (the offer's included) plus the offer step's own
+            overhead (``StreamState.offer_overhead_ms``), so neither is read as model time.
 
     Returns:
         The remainder in milliseconds, never negative (the parts are measured separately).
@@ -112,9 +114,12 @@ class StreamState:
     first_audio_ms: int | None = None
     recordable: bool = True
     outcome: StreamOutcome = StreamOutcome.OK
-    # Time spent committing the memory offer (audit, compare-and-set) after the reply: neither
-    # model nor synthesis time, so it is kept out of `llm_ms` (ADR 0021 decision 9).
+    # Time the offer took after the reply, minus its own synthesis: waiting for its preparation,
+    # the audit and the compare-and-set. It is neither model nor TTS time, so it is kept out of
+    # `llm_ms` (ADR 0021 decision 9).
     offer_overhead_ms: int = 0
+    # Synthesis time of the offer's audio. It is already inside `tts_ms_total`; it is kept
+    # apart so the overhead above can subtract it and count it only once.
     offer_tts_ms: int = 0
 
 

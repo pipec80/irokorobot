@@ -104,10 +104,13 @@ async def _run_tts(text: str, *, logged_text: str | None = None) -> tuple[str, i
     Args:
         text: Text to speak.
         logged_text: What the opt-in spoken-text log may show instead of *text*; a memory offer
-            spoken after the reply carries a value and never reaches that log (ADR 0021 §9).
+            spoken after the reply carries a value and never reaches that log (ADR 0021
+            decision 9). When it is given, *text* carries a value, so a failure logs only the
+            exception class, never its message.
 
     Returns:
-        Tuple of (base64 WAV audio, TTS-reported synthesis ms, elapsed ms).
+        Tuple of (base64 WAV audio — 16 kHz, mono, int16, TTS-reported synthesis ms, elapsed
+        ms).
 
     Raises:
         HTTPException 500: If TTS fails.

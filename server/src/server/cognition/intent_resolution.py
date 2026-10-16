@@ -48,7 +48,8 @@ class MemoryAnswer(BaseModel):
     """A spoken answer to a memory offer: accept or reject, and the value it names.
 
     Attributes:
-        accept: ``True`` for «sí, autorizo guardar …», ``False`` for «no autorizo guardar …».
+        accept: ``True`` for a verb that accepts («autorizo guardar …»), ``False`` for one that
+            rejects («no autorizo guardar …», «olvídalo …»).
         phrase: The value the answer repeats, folded (lower case, no accents); the memory
             layer compares it with the offered candidate. Never logged.
     """
@@ -61,11 +62,14 @@ class MemoryAnswer(BaseModel):
 
 _NON_WORD_RUN = re.compile(r"[^\w]+", re.UNICODE)
 
-# The closed answer grammar (Plan 0063, Pipec's option A): a closed verb **and** the value. A bare
-# «sí» or a verb alone is never an answer, so a phrase known in advance promotes nothing. The
-# verbs are neutral Spanish (tuteo): Pipec lives in Santiago de Chile.
+# The closed answer grammar (ADR 0021 decision 9): a closed verb **and** the value. It is closed
+# on purpose, so a bare «sí» or a verb alone promotes nothing. The verbs are neutral Spanish
+# (tuteo), not voseo.
+
 # Words that may open an answer: a call to the robot, a repeated «sí», «claro».
 _ANSWER_OPENERS = frozenset({"iroko", "oye", "bueno", "ok", "claro", "si"})
+# Within each prefix tuple the order matters: the first match wins, so the longest verb comes
+# first («autorizo guardar» before «autorizo»), or the shorter one would leave its tail in the value.
 _ANSWER_ACCEPT_PREFIXES = (
     "autorizo que guardes",
     "apruebo que guardes",
@@ -99,7 +103,7 @@ _ANSWER_SHORT_PREFIXES = frozenset(
 )
 # Courtesy words a speaker adds after the value; they are not part of it.
 _ANSWER_TRAILERS = ("por favor", "gracias", "porfa")
-# The value is a noun phrase of at most five words plus its article.
+# The value is a short noun phrase: at most six words, its article included when it has one.
 _MAX_ANSWER_PHRASE_WORDS = 6
 # Words that continue the verb rather than start the value («autorizo guardar», «que guardes»).
 _ANSWER_CONNECTORS = frozenset({"guardar", "que"})
@@ -389,15 +393,17 @@ def parse_memory_answer(message: str) -> MemoryAnswer | None:
     """Read a spoken answer to a memory offer, or say that *message* is not one.
 
     Pure and closed (ADR 0021 decision 9): optional openers («Iroko», «sí, claro»), then one
-    closed verb, then the value, then optional courtesy words. Rejections are tried first, so
-    «no autorizo …» never reads as «autorizo …»; a repeated «no, no» is one «no».
+    closed verb, then the value, then optional courtesy words. A rejection starts with «no»,
+    «olvídalo» or «bórralo», never with an accepting verb, so the two sets never compete; a
+    repeated «no, no» is one «no».
 
     Args:
         message: Raw transcript or chat text in Spanish.
 
     Returns:
         The answer and the folded value it repeats, or ``None`` when the message has no closed
-        verb, no value, or a value longer than a short noun phrase.
+        verb, a verb alone with no value, a value longer than a short noun phrase, a value that
+        starts with «guardar» or «que», or a short verb without an article («guarda silencio»).
     """
     words = normalize_spanish(message).split()
     while words and words[0] in _ANSWER_OPENERS:
@@ -426,8 +432,9 @@ def _without_trailers(text: str) -> str:
 
 def _answer(prefix: str, phrase: list[str], *, accept: bool) -> MemoryAnswer | None:
     """Return the answer when *phrase* is a value, or ``None``."""
-    # «autorizo guardar» with nothing after it is a verb, not a value; «autorizo a guardar el
-    # mate» names it.
+    # «autorizo a guardar» with nothing after it does not match its own prefix (no trailing
+    # space) and falls to the shorter «autorizo», leaving «a guardar» as the "value": that is a
+    # verb, not a value. «autorizo a guardar el mate» matches the long prefix and names it.
     if phrase[:2] == ["a", "guardar"]:
         phrase = phrase[2:]
     if not phrase or phrase[0] in _ANSWER_CONNECTORS or len(phrase) > _MAX_ANSWER_PHRASE_WORDS:
@@ -444,8 +451,8 @@ def _memory_answer_rule(normalized: str) -> IntentResolution | None:
     return None
 
 
-# Order matters: every protected, dated or identity rule runs before the answer shape, so an
-# answer can never reach a protected branch's data and a protected question is never an answer.
+# Order matters: the answer shape is the last rule, so a message that also matches a protected,
+# dated or identity rule is classified by that rule and never treated as an answer.
 _RULES: tuple[Callable[[str], IntentResolution | None], ...] = (
     _own_children_list_rule,
     _own_children_count_rule,

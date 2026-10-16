@@ -61,7 +61,16 @@ class VoiceVerifier(Protocol):
         wav_bytes: bytes | None,
         event: CognitiveEvent[TextTurnPayload],
     ) -> Awaitable[ActivePersonContext | None]:
-        """Return the actor fused at ``strong``, or ``None`` when the voice was not verified."""
+        """Return the actor fused at ``strong``, or ``None`` when the voice was not verified.
+
+        Args:
+            actor: The face-identified actor of the turn (never a token actor).
+            wav_bytes: The turn's own clip — WAV, 16 000 Hz, mono, int16 — or ``None``.
+            event: The turn's event; the speaker resolver stamps its evidence from it.
+
+        Returns:
+            The actor fused at ``strong``, or ``None`` when the voice was not verified.
+        """
         ...
 
 

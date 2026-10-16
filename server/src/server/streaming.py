@@ -138,11 +138,22 @@ def _note_offer_overhead(state: StreamState, started: float) -> None:
 
 
 async def _offer_event(offer: str, state: StreamState) -> str | None:
-    """Synthesize the memory offer as one more audio event with empty text (ADR 0021 §9).
+    """Synthesize the memory offer as one more audio event with empty text (ADR 0021 decision 9).
 
     The text stays empty, so the robot prints nothing, and the offer never reaches
     ``log_spoken``: it carries a value. Its synthesis counts as TTS time, so ``llm_ms`` stays
-    the model's. A failing synthesis skips the offer: the reply was already spoken.
+    the model's.
+
+    Audio contract: the event carries one base64 WAV clip — 16 000 Hz, mono, int16.
+
+    Args:
+        offer: The spoken offer phrase; it carries a value, so a failure logs only the class.
+        state: The turn's stream state; its TTS totals are updated with this synthesis.
+
+    Returns:
+        The NDJSON ``audio`` line (ending in ``\\n``), or ``None`` when the synthesis failed.
+        Any ``Exception`` is caught here, not only ``TTSError``/``ValueError``: the reply was
+        already spoken, so a broken offer is skipped and never costs the turn its ``done``.
     """
     try:
         audio_base64, duration_ms = await tts.synthesize(offer)
@@ -218,7 +229,8 @@ async def stream_pipeline(
     async generator via StreamingResponse and consumable on the robot with
     httpx's ``aiter_lines()`` — no extra dependency.
 
-    Event order: text_heard -> emotion -> audio (one per sentence) -> done.
+    Event order: text_heard -> emotion -> audio (one per sentence) -> the offer's audio, with
+    empty text, when one was prepared -> done.
     An LLM failure or any invalid model output (hybrid JSON, a protocol tag,
     an empty stream, ...) speaks the fallback phrase instead of
     aborting — never a silent success (P0-C6). A TTS failure logs the same
@@ -230,7 +242,7 @@ async def stream_pipeline(
         stt_ms: STT elapsed time, measured by the caller.
         request_start: ``time.perf_counter()`` reading from request start.
         schedule_proposal: Channel-owned background proposal scheduling callback.
-        prepare_offer: Channel-owned memory-offer preparation (ADR 0021 §9); it runs while
+        prepare_offer: Channel-owned memory-offer preparation (ADR 0021 decision 9); it runs while
             the model streams, and a prepared offer is spoken after the reply, before ``done``.
 
     Yields:
@@ -247,6 +259,8 @@ async def stream_pipeline(
         except TTSError:
             state.outcome = StreamOutcome.TTS_ERROR
             _log_stream_metrics(state, _elapsed_ms(request_start))
+            # Let the cancelled preparation finish before the error propagates, so no
+            # background task outlives the turn.
             await finish_offer(offer_task, reply_failed=True)
             raise
         except (LLMError, ValueError) as exc:

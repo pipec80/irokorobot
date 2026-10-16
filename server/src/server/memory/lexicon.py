@@ -168,10 +168,11 @@ PREFERENCE_TRIGGERS: dict[str, str] = {
 }
 PREFERENCE_FAVOURITE = re.compile(r"mi (?:[a-z]+ ){0,2}favorit[oa] es")
 
-#: The spoken offer and its results (ADR 0021 decision 9, Plan 0063). Neutral Spanish with
-#: tuteo (Pipec lives in Santiago de Chile). ``{value}`` is the stored phrase, which already
-#: passed the gate and the classifier; the offer tells the exact answer, value included (Pipec's
-#: option A), and promises no recall (that is CM-5).
+#: The spoken offer and its results (ADR 0021 decision 9). Neutral Spanish with tuteo (Pipec
+#: lives in Santiago de Chile). ``{value}`` is the stored phrase, which already passed the gate
+#: and the classifier. The offer dictates the exact answer, value included, so a spoken «sí»
+#: alone can never promote anything; it promises no recall (that is CM-5). ``{verb}`` is used
+#: only by the ``likes`` and ``dislikes`` statements (the plural form agrees with the value).
 OFFER_STATEMENTS: dict[str, str] = {
     "likes": "Antes me dijiste que te {verb} {value}.",
     "dislikes": "Antes me dijiste que no te {verb} {value}.",
@@ -182,6 +183,7 @@ OFFER_QUESTION = "¿Quieres que lo guarde? Dime: sí, autorizo guardar {value}."
 PLURAL_ARTICLES = frozenset({"los", "las", "unos", "unas"})
 OFFER_VERB_SINGULAR = "gusta"
 OFFER_VERB_PLURAL = "gustan"
+#: Fixed result phrases: they never carry the value, so what is said back leaks nothing.
 ANSWER_SAVED_PHRASE = "Listo, lo guardé."
 ANSWER_REJECTED_PHRASE = "Está bien, no lo guardo."
 ANSWER_CONTRADICTION_PHRASE = "No lo guardé: ya tengo guardado algo distinto."
@@ -195,7 +197,7 @@ CANDIDATE_TOPICS = frozenset(
 )
 
 #: Words that may precede the trigger in the same clause ("la verdad, a mí me gusta ...").
-#: «oye» joined in Plan 0063 (Pipec's decision); it is an interjection, never an attribution.
+#: «oye» is an interjection, never an attribution.
 LEAD_IN_WORDS = frozenset(
     {
         "a", "mi", "yo", "la", "verdad", "siempre", "muy", "mucho", "muchisimo", "tambien",
@@ -205,14 +207,15 @@ LEAD_IN_WORDS = frozenset(
     }
 )  # fmt: skip
 
-#: Closed filler phrases that may sit right before the trigger (Plan 0063, Pipec's decision):
+#: Closed filler phrases that may sit right before the trigger:
 #: «la verdad es que me gusta…», «es que me encanta…». They are whole phrases, not free words,
 #: so "siempre que me gusta…" (a habit or a condition) and "dice que me gusta…" still refuse.
 LEAD_IN_PHRASES = ("la verdad es que", "es que")
 
 #: Words that may open a sentence before a taste without attributing it to somebody else
 #: ("hola Iroko, me gusta el mate"). A clause of other words before a soft break makes the next
-#: taste somebody else's ("mi hija dice: me gusta el helado").
+#: taste somebody else's ("mi hija dice: me gusta el helado"). «es» is here only so the filler
+#: «es que» / «la verdad es que» does not count as such a clause when it precedes a soft break.
 GREETING_WORDS = frozenset(
     {"hola", "iroko", "oye", "dime", "escucha", "sabes", "que", "mira", "vamos", "ver", "es"}
 )

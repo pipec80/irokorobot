@@ -17,8 +17,11 @@ guarantees, in code and in the schema:
 * **Housekeeping on every write entry.** Lapsed candidates are expired and unanswered offers
   return to ``proposed`` inside the entry's own transaction (insert, offer, resolve and the
   writer's promote), whatever the retention job did. Reads (``get_candidate``,
-  ``get_candidate_in_transaction``, ``resolve_candidate_in_transaction``, ``void_live_candidates``)
-  run none of it.
+  ``get_candidate_in_transaction``, ``resolve_candidate_in_transaction``, ``void_live_candidates``,
+  ``next_offerable``, ``still_offerable`` and ``find_offered``) run none of it. That is why an
+  offer whose answer window has closed still counts as offerable to ``next_offerable`` and
+  ``still_offerable``: ``mark_offered``, the write entry that follows, returns it to ``proposed``
+  before its own compare-and-set.
 
 Logs carry ids, the predicate, a status and a closed reason, never a value.
 """
@@ -526,6 +529,9 @@ async def mark_offered(
     candidate_id: int, subject_person_id: int, *, correlation_id: UUID, now: datetime
 ) -> bool:
     """Move one ``proposed`` candidate to ``offered`` (compare-and-set).
+
+    It also receives a candidate that is still ``offered`` but whose answer window has closed:
+    housekeeping, run first, returns it to ``proposed``, so the transition then succeeds.
 
     Args:
         candidate_id: The candidate.
