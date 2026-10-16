@@ -285,7 +285,7 @@ async def test_a_token_or_a_manual_actor_is_never_offered_anything(
     verify = AsyncMock(return_value=_strong(owner))
 
     offer = await prepare_offer(
-        _actor(owner, *sources), wav_bytes=_WAV, event=_event(), verify=verify
+        _actor(owner, *sources), wav_bytes=_WAV, event=_event(), verify=verify, clock=lambda: _NOW
     )
 
     assert offer is None
@@ -296,7 +296,11 @@ async def test_a_voice_that_is_not_verified_is_offered_nothing(owner: int) -> No
     await _candidate(owner)
 
     offer = await prepare_offer(
-        _actor(owner), wav_bytes=_WAV, event=_event(), verify=AsyncMock(return_value=None)
+        _actor(owner),
+        wav_bytes=_WAV,
+        event=_event(),
+        verify=AsyncMock(return_value=None),
+        clock=lambda: _NOW,
     )
 
     assert offer is None
@@ -307,7 +311,12 @@ async def test_the_switch_off_prepares_nothing(owner: int, monkeypatch: pytest.M
     monkeypatch.setattr(settings, "memory_candidates_enabled", False)
     verify = AsyncMock(return_value=_strong(owner))
 
-    assert await prepare_offer(_actor(owner), wav_bytes=_WAV, event=_event(), verify=verify) is None
+    assert (
+        await prepare_offer(
+            _actor(owner), wav_bytes=_WAV, event=_event(), verify=verify, clock=lambda: _NOW
+        )
+        is None
+    )
     verify.assert_not_awaited()
 
 
@@ -318,7 +327,9 @@ async def test_a_failing_preparation_never_raises_and_never_logs_its_message(
     verify = AsyncMock(side_effect=RuntimeError("zumo de pomelo"))
 
     with caplog.at_level(logging.DEBUG):
-        offer = await prepare_offer(_actor(owner), wav_bytes=_WAV, event=_event(), verify=verify)
+        offer = await prepare_offer(
+            _actor(owner), wav_bytes=_WAV, event=_event(), verify=verify, clock=lambda: _NOW
+        )
 
     assert offer is None
     assert not _leaked(caplog, "pomelo")
@@ -387,6 +398,7 @@ async def test_a_voice_verified_for_another_person_is_offered_nothing(owner: int
         wav_bytes=_WAV,
         event=_event(),
         verify=AsyncMock(return_value=_strong(visitor)),
+        clock=lambda: _NOW,
     )
 
     assert offer is None
@@ -741,6 +753,7 @@ async def test_no_log_line_carries_the_value(owner: int, caplog: pytest.LogCaptu
             wav_bytes=_WAV,
             event=_event(),
             verify=AsyncMock(return_value=_strong(owner)),
+            clock=lambda: _NOW,
         )
         assert offer is not None
         await commit_offer(offer, now=_NOW, audit=AsyncMock())

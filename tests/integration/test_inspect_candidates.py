@@ -179,10 +179,16 @@ def test_the_default_database_is_the_one_the_server_uses(
 def test_an_unreadable_file_says_why_without_a_value(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A directory exists but cannot be opened: the reason is a fixed sqlite phrase."""
+    """A directory exists but cannot be opened: the reason is a fixed sqlite phrase.
+
+    The phrase depends on the operating system («unable to open database file» on Windows,
+    «disk I/O error» on Linux), so the test pins that it is sqlite's reason and not a bare class.
+    """
     assert inspect_candidates.main([str(tmp_path)]) == 1
 
-    assert "unable to open database file" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert err.startswith("Could not read ")
+    assert ("unable to open database file" in err) or ("disk I/O error" in err)
 
 
 def test_the_inspector_never_creates_a_database(tmp_path: Path) -> None:
