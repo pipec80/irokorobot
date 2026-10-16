@@ -33,6 +33,16 @@ _CLAIMS = [
     "Me acordaré de eso.",
     "Será registrada tu preferencia.",
     "LO GUARDÉ.",
+    # Past and perfect forms need no pronoun object (review of Plan 0064).
+    "Guardé tu café en mi memoria.",
+    "He guardado tu gusto.",
+    "Anoté que te gusta el mate.",
+    "Ya guardé que te gusta el café.",
+    "Tomé nota de tu gusto.",
+    "Se ha guardado.",
+    # A question mark only exempts the question itself, not a claim before it.
+    "Lo guardé, ¿quieres algo más?",
+    "Listo, lo guardé, ¿y tú?",
 ]
 
 _NOT_CLAIMS = [
@@ -53,6 +63,12 @@ _NOT_CLAIMS = [
     "El mate es una bebida caliente.",
     "Me alegra verte.",
     "Dime: sí, autorizo guardar el mate.",
+    # An offer or a condition is not a claim to have saved.
+    "Si quieres, lo guardo.",
+    "Lo guardaré cuando me lo pidas.",
+    "Aún no lo he guardado, pero lo guardaré si me lo pides.",
+    "Nunca lo he guardado ni lo guardaré.",
+    "¿Lo guardé, o no?",
 ]
 
 

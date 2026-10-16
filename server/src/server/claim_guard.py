@@ -8,6 +8,8 @@ The lexicon is closed and exact. It is matched on the sentence casefolded **with
 accents (so ``guardé``, I saved, is a claim and ``guarde``, that I save, is not), one sentence at
 a time. A bare participle («Anotado.») is not a claim: the continuity of ADR 0020 keeps what was
 said. A question is never a claim, and a negation in the three words before the match cancels it.
+The past and perfect forms need no object («Guardé tu café.»); the present and future forms need
+one («lo guardo») and an offer or a condition («si quieres, lo guardo») makes them harmless.
 
 Apply it to **model-generated** text only. The deterministic results of Plan 0063 and the
 fallback phrases must reach the wire byte for byte.
@@ -20,27 +22,39 @@ from server.sentences import split_first_sentence
 
 REPLACEMENT = "Eso no lo he guardado."
 
-# 1. An object followed by the speaker's own saving verb (preterite, present, future or perfect).
-_OBJECT = r"(?:lo|la|los|las|eso|esto|todo)"
-_SPEAKER_VERBS = (
-    r"(?:guardé|guardaré|guardo|registré|registraré|registro|almacené|almacenaré|almaceno"
-    r"|memoricé|memorizaré|memorizo|anoté|anotaré|anoto|apunté|apuntaré|apunto"
-    r"|he guardado|he registrado|he almacenado|he memorizado|he anotado|he apuntado)"
+# 1. The speaker's own saving verb in the past or perfect: a claim with or without an object.
+_PAST_CLAIM = (
+    r"(?:guardé|registré|almacené|memoricé|anoté|apunté|tomé\s+nota"
+    r"|he\s+(?:guardado|registrado|almacenado|memorizado|anotado|apuntado))"
 )
 # 2. The state of the thing said, or «lo tengo guardado».
-_STATE_VERBS = r"(?:queda|quedó|quedará|está|estará|ha\s+sido|fue|será)"
+_STATE_VERBS = r"(?:queda|quedó|quedará|está|estará|ha\s+sido|se\s+ha|fue|será)"
 _PARTICIPLES = r"(?:guardad|registrad|almacenad|memorizad|anotad|apuntad)[oa]s?"
-# 3. A promise to recall.
 _CLAIM_PATTERNS = tuple(
     re.compile(pattern)
     for pattern in (
-        rf"\b{_OBJECT}\s+{_SPEAKER_VERBS}\b",
+        rf"\b{_PAST_CLAIM}\b",
         rf"\b{_STATE_VERBS}\s+{_PARTICIPLES}\b",
         r"\blo\s+tengo\s+(?:guardado|anotado|registrado)\b",
+    )
+)
+# 3. A promise in the present or future: it needs an object (not «guardo silencio»), and an offer
+# or a condition in the same sentence («si quieres», «cuando me lo pidas», «ni lo guardaré»)
+# makes it harmless.
+_OBJECT = r"(?:lo|la|los|las|eso|esto|todo)"
+_PRESENT_FUTURE = (
+    r"(?:guardaré|guardo|registraré|registro|almacenaré|almaceno"
+    r"|memorizaré|memorizo|anotaré|anoto|apuntaré|apunto)"
+)
+_PROMISE_PATTERNS = tuple(
+    re.compile(pattern)
+    for pattern in (
+        rf"\b{_OBJECT}\s+{_PRESENT_FUTURE}\b",
         r"\b(?:lo|la|eso|esto)\s+recordaré\b",
         r"\bme\s+acordaré\b",
     )
 )
+_CONDITION = re.compile(r"\b(?:si|cuando|ni)\b")
 # «No lo he guardado», «todavía no lo guardo» (the «no» ends the phrase): a negation in the three
 # words before the match, with no punctuation between, cancels the claim.
 _NEGATION_BEFORE = re.compile(r"\b(?:no|nunca|jamás)\s+(?:\w+\s+){0,2}$")
@@ -58,15 +72,20 @@ def claims_memory_action(sentence: str) -> bool:
         sentence: One sentence of model-generated text.
 
     Returns:
-        ``True`` when the sentence matches the closed lexicon, is not a question and is not
-        negated; ``False`` otherwise (including a bare participle such as «Anotado.»).
+        ``True`` when the sentence matches the closed lexicon outside a question and outside a
+        negation; ``False`` otherwise (including a bare participle such as «Anotado.»).
     """
-    if "?" in sentence or "¿" in sentence:
-        return False
+    question_start = sentence.rfind("¿")
+    if question_start < 0 and "?" in sentence:
+        return False  # a question written without «¿»: the whole sentence is the question
     folded = _fold(sentence)
+    patterns = list(_CLAIM_PATTERNS)
+    if _CONDITION.search(folded) is None:
+        patterns.extend(_PROMISE_PATTERNS)
     return any(
         _NEGATION_BEFORE.search(folded[: match.start()]) is None
-        for pattern in _CLAIM_PATTERNS
+        and not (question_start >= 0 and match.start() > question_start)
+        for pattern in patterns
         for match in pattern.finditer(folded)
     )
 
