@@ -4,6 +4,7 @@ from collections.abc import AsyncGenerator, Generator
 import io
 import logging
 from pathlib import Path
+from unittest.mock import AsyncMock
 import wave
 
 from fastapi.testclient import TestClient
@@ -82,6 +83,17 @@ def _memory_candidates_off(monkeypatch: pytest.MonkeyPatch) -> None:
     them would schedule proposals. A test that wants them sets the flag itself.
     """
     monkeypatch.setattr(settings, "memory_candidates_enabled", False)
+
+
+@pytest.fixture(autouse=True)
+def _ollama_probe_offline(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Start every test with the start-up Ollama probe stubbed out (Plan 0064).
+
+    Any test that enters the lifespan would otherwise do a real ``GET /api/tags`` against
+    ``localhost:11434``; the suite must be offline and deterministic. A test of the probe
+    wiring replaces this stub with its own.
+    """
+    monkeypatch.setattr("server.main.probe_ollama", AsyncMock(return_value=True))
 
 
 @pytest.fixture(autouse=True)
