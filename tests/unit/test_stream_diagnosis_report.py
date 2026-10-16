@@ -523,8 +523,8 @@ def test_a_report_without_the_control_probe_says_so() -> None:
         ),
         (ArrivalPattern.BURST, ArrivalPattern.INCREMENTAL, "differs from the plain-text control"),
         (ArrivalPattern.BURST, ArrivalPattern.BURST, "cannot tell generation from buffering"),
-        (ArrivalPattern.BURST, ArrivalPattern.INCONCLUSIVE, "stays unproven"),
-        (ArrivalPattern.BURST, None, "stays unproven"),
+        (ArrivalPattern.BURST, ArrivalPattern.INCONCLUSIVE, "remains unproven"),
+        (ArrivalPattern.BURST, None, "remains unproven"),
         (ArrivalPattern.INCONCLUSIVE, ArrivalPattern.INCREMENTAL, "No conclusion"),
         (ArrivalPattern.INCONCLUSIVE, None, "No conclusion"),
     ],
@@ -539,7 +539,7 @@ def test_a_burst_is_never_read_as_proof_that_ollama_withholds_the_reply(
     assert fragment in reading
     assert "header holds" not in reading
     if constrained is ArrivalPattern.INCONCLUSIVE:
-        assert "not evidence that the" in reading
+        assert "not evidence for or against" in reading
 
 
 @pytest.mark.unit
@@ -548,7 +548,7 @@ def test_the_report_states_what_a_client_side_probe_can_and_cannot_see() -> None
 
     assert "as this client received them" in report
     assert "a burst never proves" in report
-    assert "stays unproven" in report
+    assert "remains unproven" in report
     assert "header holds" not in report
 
 
