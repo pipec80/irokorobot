@@ -35,6 +35,7 @@ from server.memory import candidate_dialogue, candidates
 from server.memory.candidate_classifier import comparison_key
 from server.memory.candidate_dialogue import (
     ANSWER_CONTRADICTION_PHRASE,
+    ANSWER_FAILED_PHRASE,
     ANSWER_REJECTED_PHRASE,
     ANSWER_SAVED_PHRASE,
     PendingOffer,
@@ -155,6 +156,13 @@ async def _likes(person_id: int) -> list[object]:
     definition = resolve_predicate("likes")
     assert definition is not None
     return list(await get_active_literal_facts(subject_entity_id=person_id, definition=definition))
+
+
+def _leaked(caplog: pytest.LogCaptureFixture, canary: str) -> bool:
+    """Whether *canary* shows in any record's message or in any of its ``extra`` fields."""
+    return any(
+        canary in record.getMessage() or canary in str(record.__dict__) for record in caplog.records
+    )
 
 
 def _actions(audit: AsyncMock) -> list[tuple[AuthorizationAction, str]]:
@@ -310,7 +318,7 @@ async def test_a_failing_preparation_never_raises_and_never_logs_its_message(
         offer = await prepare_offer(_actor(owner), wav_bytes=_WAV, event=_event(), verify=verify)
 
     assert offer is None
-    assert "pomelo" not in caplog.text
+    assert not _leaked(caplog, "pomelo")
     assert "RuntimeError" in caplog.text
 
 
@@ -464,7 +472,7 @@ async def test_a_failing_audit_never_rejects(owner: int) -> None:
         audit=AsyncMock(side_effect=RuntimeError("audit down")),
     )
 
-    assert phrase is None
+    assert phrase == ANSWER_FAILED_PHRASE
     stored = await candidates.get_candidate(candidate_id)
     assert stored is not None
     assert stored.status is CandidateStatus.OFFERED
@@ -616,7 +624,7 @@ async def test_the_switch_off_answers_nothing(owner: int, monkeypatch: pytest.Mo
     assert await _status(candidate_id) is CandidateStatus.OFFERED
 
 
-async def test_a_failing_answer_falls_through_and_never_logs_its_message(
+async def test_a_failing_answer_says_it_could_not_save_and_never_logs_its_message(
     owner: int, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     await _candidate(owner, offered=True)
@@ -633,9 +641,92 @@ async def test_a_failing_answer_falls_through_and_never_logs_its_message(
             audit=AsyncMock(),
         )
 
-    assert phrase is None
-    assert "pomelo" not in caplog.text
+    assert phrase == ANSWER_FAILED_PHRASE
+    assert not _leaked(caplog, "pomelo")
     assert "RuntimeError" in caplog.text
+
+
+async def test_an_accept_the_writer_denies_says_it_could_not_save(owner: int) -> None:
+    candidate_id = await _candidate(owner, offered=True)
+
+    phrase = await answer_offer(
+        MemoryAnswer(accept=True, phrase="el mate"),
+        actor=_strong(owner),
+        correlation_id=_TURN,
+        now=_NOW + timedelta(seconds=10),
+        audit=AsyncMock(side_effect=RuntimeError("audit down")),
+    )
+
+    assert phrase == ANSWER_FAILED_PHRASE
+    assert await _status(candidate_id) is CandidateStatus.OFFERED
+    assert await _likes(owner) == []
+
+
+async def test_a_lookup_that_fails_before_the_offer_is_found_falls_through(
+    owner: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No oracle: until the verified owner's own offer is found nothing is said about it."""
+    await _candidate(owner, offered=True)
+    monkeypatch.setattr(candidate_dialogue, "find_offered", AsyncMock(side_effect=OSError("disk")))
+
+    phrase = await answer_offer(
+        MemoryAnswer(accept=True, phrase="el mate"),
+        actor=_strong(owner),
+        correlation_id=_TURN,
+        now=_NOW,
+        audit=AsyncMock(),
+    )
+
+    assert phrase is None
+
+
+async def test_a_failure_names_the_turn_the_candidate_and_where_without_a_value(
+    owner: int, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    candidate_id = await _candidate(owner, "el quokka", "quokka", offered=True)
+
+    async def boom(*_args: object, **_kwargs: object) -> None:
+        raise TypeError("el quokka")
+
+    monkeypatch.setattr(candidate_dialogue, "promote", boom)
+
+    with caplog.at_level(logging.DEBUG):
+        await answer_offer(
+            MemoryAnswer(accept=True, phrase="el quokka"),
+            actor=_strong(owner),
+            correlation_id=_TURN,
+            now=_NOW,
+            audit=AsyncMock(),
+        )
+
+    failures = [r for r in caplog.records if r.__dict__.get("event") == "candidate.answer_error"]
+    assert len(failures) == 1
+    record = failures[0]
+    # A TypeError is a programming bug, not an operational failure: it is an ERROR with a site.
+    assert record.levelno == logging.ERROR
+    assert record.__dict__["correlation_id"] == str(_TURN)
+    assert record.__dict__["candidate_id"] == candidate_id
+    assert record.__dict__["site"].endswith(":boom")  # the innermost frame, never a message
+    assert not _leaked(caplog, "quokka")
+
+
+async def test_an_operational_failure_stays_a_warning(
+    owner: int, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    await _candidate(owner, offered=True)
+    monkeypatch.setattr(candidate_dialogue, "promote", AsyncMock(side_effect=OSError("disk")))
+
+    with caplog.at_level(logging.DEBUG):
+        await answer_offer(
+            MemoryAnswer(accept=True, phrase="el mate"),
+            actor=_strong(owner),
+            correlation_id=_TURN,
+            now=_NOW,
+            audit=AsyncMock(),
+        )
+
+    failures = [r for r in caplog.records if r.__dict__.get("event") == "candidate.answer_error"]
+    assert [r.levelno for r in failures] == [logging.WARNING]
 
 
 async def test_no_log_line_carries_the_value(owner: int, caplog: pytest.LogCaptureFixture) -> None:
@@ -659,4 +750,5 @@ async def test_no_log_line_carries_the_value(owner: int, caplog: pytest.LogCaptu
         )
 
     assert await _status(candidate_id) is CandidateStatus.CONFIRMED
-    assert "quokka" not in caplog.text
+    assert caplog.records
+    assert not _leaked(caplog, "quokka")

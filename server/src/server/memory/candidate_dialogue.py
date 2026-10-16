@@ -23,6 +23,9 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 import logging
+from pathlib import Path
+import sqlite3
+import traceback
 from typing import TYPE_CHECKING
 
 from server.cognition.authorization import evaluate_authorization
@@ -33,6 +36,7 @@ from server.cognition.strong_actor import (
     is_face_and_voice_actor,
     verify_face_and_voice,
 )
+from server.exceptions import BrainMemoryError
 from server.memory.candidate_classifier import comparison_key
 from server.memory.candidate_policy import CandidateStep, authorize_step
 from server.memory.candidate_types import CandidateStatus
@@ -46,6 +50,7 @@ from server.memory.candidates import (
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.lexicon import (
     ANSWER_CONTRADICTION_PHRASE,
+    ANSWER_FAILED_PHRASE,
     ANSWER_REJECTED_PHRASE,
     ANSWER_SAVED_PHRASE,
     OFFER_QUESTION,
@@ -71,6 +76,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "ANSWER_CONTRADICTION_PHRASE",
+    "ANSWER_FAILED_PHRASE",
     "ANSWER_REJECTED_PHRASE",
     "ANSWER_SAVED_PHRASE",
     "OfferPreparer",
@@ -180,7 +186,7 @@ async def prepare_offer(
             correlation_id=event.correlation_id,
         )
     except Exception as exc:  # background seam of a turn: never reaches the user's reply
-        _log_failure("candidate.offer", exc)
+        _log_failure("candidate.offer", exc, event.correlation_id)
         return None
 
 
@@ -231,7 +237,7 @@ async def commit_offer(
         _log("candidate.offer", "offered", offer.candidate_id, offer.correlation_id)
         return offer.phrase
     except Exception as exc:  # the reply was built; a failing offer must not break it
-        _log_failure("candidate.offer", exc)
+        _log_failure("candidate.offer", exc, offer.correlation_id, offer.candidate_id)
         return None
 
 
@@ -258,9 +264,35 @@ async def answer_offer(
         audit: The audit writer; tests inject doubles.
 
     Returns:
-        The fixed result phrase, or ``None`` to fall through to ordinary generation (switch
-        off, a weaker actor, no open offer with that value, a refusal or any failure).
-        Never raises.
+        The fixed result phrase. ``None`` falls through to ordinary generation: switch off, a
+        weaker actor, no open offer with that value or a failing lookup, none of which may be
+        told apart. Once the verified owner's own open offer is found, a refusal or a failure
+        says ``ANSWER_FAILED_PHRASE`` instead, so the model never improvises «listo». Never
+        raises (a cancellation excepted).
+    """
+    candidate_id = await _find_open_offer(answer, actor, correlation_id, now)
+    person_id = actor.person_id
+    if candidate_id is None or person_id is None:
+        return None
+    try:
+        if answer.accept:
+            spoken = await _accept(candidate_id, actor, correlation_id, now, policy, audit)
+        else:
+            spoken = await _reject(
+                candidate_id, actor, person_id, correlation_id, now, policy, audit
+            )
+    except Exception as exc:  # fail closed, and tell the owner: the offer was theirs
+        _log_failure("candidate.answer", exc, correlation_id, candidate_id)
+        return ANSWER_FAILED_PHRASE
+    return ANSWER_FAILED_PHRASE if spoken is None else spoken
+
+
+async def _find_open_offer(
+    answer: MemoryAnswer, actor: ActivePersonContext, correlation_id: UUID, now: datetime
+) -> int | None:
+    """Return the id of the actor's open offer that *answer* names, or ``None``.
+
+    Everything before the offer is found falls through silently: nothing is observable about it.
     """
     try:
         person_id = actor.person_id
@@ -272,14 +304,10 @@ async def answer_offer(
             return None
         key = comparison_key(answer.phrase)
         candidate = await find_offered(person_id, key, now=now) if key else None
-        if candidate is None:
-            return None
-        if answer.accept:
-            return await _accept(candidate.id, actor, correlation_id, now, policy, audit)
-        return await _reject(candidate.id, actor, person_id, correlation_id, now, policy, audit)
     except Exception as exc:  # fail closed: the turn falls through to ordinary generation
-        _log_failure("candidate.answer", exc)
+        _log_failure("candidate.answer", exc, correlation_id)
         return None
+    return None if candidate is None else candidate.id
 
 
 async def _accept(
@@ -357,11 +385,48 @@ def _log(event: str, outcome: str, candidate_id: int, correlation_id: UUID) -> N
     )
 
 
-def _log_failure(event: str, exc: Exception) -> None:
-    """Log a failure by its class only: the message of a database error can carry a value."""
-    logger.warning(
-        "Candidate %s failed (%s)",
+#: Failures a bad moment explains (database, disk, a lost race); any other class is a bug.
+_OPERATIONAL_FAILURES = (
+    BrainMemoryError,
+    sqlite3.Error,
+    OSError,
+    TimeoutError,
+    RuntimeError,
+    ValueError,
+)
+
+
+def _failure_site(exc: Exception) -> str:
+    """Return ``file:line:function`` of the innermost frame; it never carries a message."""
+    frames = traceback.extract_tb(exc.__traceback__)
+    if not frames:
+        return "unknown"
+    frame = frames[-1]
+    return f"{Path(frame.filename).name}:{frame.lineno}:{frame.name}"
+
+
+def _log_failure(
+    event: str, exc: Exception, correlation_id: UUID, candidate_id: int | None = None
+) -> None:
+    """Log a failure by class, site and ids only: a database error's message can carry a value.
+
+    A class a bad moment explains is a warning; any other (a ``TypeError`` from signature drift)
+    is a bug and an error, with the site to find it.
+    """
+    operational = isinstance(exc, _OPERATIONAL_FAILURES)
+    name = type(exc).__name__
+    site = _failure_site(exc)
+    logger.log(
+        logging.WARNING if operational else logging.ERROR,
+        "Candidate %s failed (%s at %s)",
         event.removeprefix("candidate."),
-        type(exc).__name__,
-        extra={"event": f"{event}_error", "error_type": type(exc).__name__},
+        name,
+        site,
+        extra={
+            "event": f"{event}_error",
+            "error_type": name,
+            "site": site,
+            "candidate_id": candidate_id,
+            "correlation_id": str(correlation_id),
+        },
     )

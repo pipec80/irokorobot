@@ -185,6 +185,9 @@ OFFER_VERB_PLURAL = "gustan"
 ANSWER_SAVED_PHRASE = "Listo, lo guardé."
 ANSWER_REJECTED_PHRASE = "Está bien, no lo guardo."
 ANSWER_CONTRADICTION_PHRASE = "No lo guardé: ya tengo guardado algo distinto."
+#: Said only to the verified owner whose open offer was found and then could not be settled,
+#: so the model never improvises a "listo" for something that was not saved.
+ANSWER_FAILED_PHRASE = "No pude guardarlo ahora. Dímelo de nuevo en un rato."
 
 #: Closed set of topics a taste may belong to; the extractor must place the object in one.
 CANDIDATE_TOPICS = frozenset(
