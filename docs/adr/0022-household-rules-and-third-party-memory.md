@@ -6,9 +6,11 @@
   carries the recommendation of that audit; **Pipec confirms each when he accepts this ADR** (they
   are his to make): decisions 0 to 14 of the audit table were confirmed by him on 2026-10-16
   («estan correctas todas»), with the changes of that day (decision 0, the stated age of decision 6);
-  the three decisions the review added (marked *Pipec to confirm* below) wait for him. Accepted when
-  he confirms them and [Plan 0065](../plans/open/0065-cm3b-a-channel-neutral-writer-core.md) closes;
-  Plan 0065 may start while this ADR is `Proposed` once those three are confirmed.
+  the three decisions the review added (marked *Confirmed by Pipec* below) he **confirmed the same day
+  by taking the recommendations** (migration 010 for the asserter and channel; the personal
+  provenance scenario; no homonymous third parties until Step 0). Accepted when
+  [Plan 0065](../plans/open/0065-cm3b-a-channel-neutral-writer-core.md) closes; that plan may start
+  while this ADR is `Proposed`, now that those three are confirmed.
 - **Date:** 2026-10-16
 - **Builds on:** [ADR 0006](0006-personal-and-family-companion-profiles.md),
   [ADR 0009](0009-locked-posture-and-scoped-capabilities.md),
@@ -99,7 +101,7 @@ confirmer)`. `promote` (the spoken confirmation, CM-3a) and the Step 0 import ar
 it; a future perceptual source would be a third. **The speaker never assigns the classification**:
 the writer does, from the predicate and the subject (Plan 0050 rule 1, ADR 0021 decision 5).
 
-*Pipec to confirm — where the asserter and the channel live.* V4 has no column for them
+*Confirmed by Pipec, 2026-10-16 — where the asserter and the channel live.* V4 has no column for them
 (Context 1). Recommendation: **migration 010, additive** (`ALTER TABLE … ADD COLUMN
 asserted_by_entity_id INTEGER REFERENCES entities(id) ON DELETE SET NULL` and `ADD COLUMN channel
 TEXT` on both V4 tables; SQLite needs no table rebuild for that). It gives the provenance the
@@ -135,7 +137,7 @@ in the `personal` profile. The benchmark scenario `provenance_attribution` needs
 people and **stays in the `family` scope**; so that the personal stage keeps a provenance
 denominator, dataset v3 **adds one personal-scope provenance scenario** (the owner states a fact; a
 later recall must name `subject=owner, assertor=owner, source=conversation`). No gate moves.
-*Pipec to confirm.* The writer keeps one invariant, with a test: nobody but the subject writes into
+*Confirmed by Pipec, 2026-10-16.* The writer keeps one invariant, with a test: nobody but the subject writes into
 the subject's `personal` memory.
 
 ### 6. Validity and dates

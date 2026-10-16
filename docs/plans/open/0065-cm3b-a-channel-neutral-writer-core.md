@@ -3,14 +3,15 @@
 > **Status:** `Draft` — written 2026-10-16 from the CM-3b audit of the same day and from
 > [ADR 0022](../../adr/0022-household-rules-and-third-party-memory.md) (`Proposed`); **rewritten the
 > same day after an independent review** that found six blockers (see *Review record*). **Blocked**
-> until Pipec confirms the three decisions ADR 0022 marks *Pipec to confirm* (where the asserter and
-> channel live, the personal provenance scenario, the homonym rule) and marks this plan `Ready` and
-> `NOW`; to be executed in a **new session**. **Not rehearsed** in a scratch copy: the tasks below
+> only by the queue: Pipec confirmed on 2026-10-16 (by taking the recommendations) the three
+> decisions ADR 0022 marked *Pipec to confirm* (migration 010 for the asserter and channel, the
+> personal provenance scenario, the homonym rule); it waits for Plan 0064 to close and for Pipec to
+> mark it `Ready` and `NOW`; to be executed in a **new session**. **Not rehearsed** in a scratch copy: the tasks below
 > are specifications (files, rules, tests to write first), not rehearsed diffs. It does not require
 > Plan 0064.
 
-> **For agentic workers:** if the status above does not say `Ready`, or ADR 0022 does not say that
-> its three open decisions were confirmed, stop. REQUIRED SUB-SKILLS: `superpowers:executing-plans`,
+> **For agentic workers:** if the status above does not say `Ready`, stop (ADR 0022 records that
+> its three open decisions were confirmed on 2026-10-16). REQUIRED SUB-SKILLS: `superpowers:executing-plans`,
 > `superpowers:test-driven-development`, `superpowers:verification-before-completion`,
 > `superpowers:finishing-a-development-branch`. **Pipec's rules win over the skills:** one plain
 > branch from `main`, never a git worktree, subagents only if Pipec asks, this plan lives under
@@ -165,8 +166,8 @@ not edited.
 
 ## Task 0: Revalidate the baseline
 
-- [ ] **Step 0:** this plan says `Ready` and ADR 0022 says that its three open decisions were
-  confirmed by Pipec (its status line names the date). Otherwise stop.
+- [ ] **Step 0:** this plan says `Ready` and ADR 0022's status line records that its three open
+  decisions were confirmed by Pipec on 2026-10-16. Otherwise stop.
 - [ ] **Step 0b:** the Plan 0063 code and the documents of this plan are in `main`
   (`git fetch && git merge-base --is-ancestor <0063 squash commit> origin/main`). Otherwise stop.
 - [ ] **Step 1:** `git checkout main && git pull`, clean tree, `git checkout -b feat/0065-cm3b-a-writer-core`.
