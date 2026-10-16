@@ -154,3 +154,11 @@ name, transcript, PIN or token.
 local smoke: start-up with `MEMORY_CANDIDATES_ENABLED` off and on, and the spoken sentence with
 the face in frame. It is not an acceptance (no offer, no answer, no hardware case: those are
 Plan 0063). Outcomes only: no name, transcript, preference value or voiceprint.
+
+## Memory dialogue acceptance (Plan 0063)
+
+[`0063-memory-dialogue-acceptance.md`](0063-memory-dialogue-acceptance.md) is the hardware
+acceptance of ADR 0021: accept, reject, another voice, a missing or second face, a restart
+between the offer and the answer, an answer with no offer or another value, the measurements of
+the shared laptop and the follow-ups it found. Outcomes only: no name, transcript, preference
+value, PIN or token.
