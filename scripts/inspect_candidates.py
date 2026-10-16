@@ -10,6 +10,9 @@ Usage:
     uv run python scripts/inspect_candidates.py
     uv run python scripts/inspect_candidates.py path/to/omnibot.db
 
+Without a path it reads the database the server uses (``BRAIN_DB_PATH``). A table the file does
+not have is named in the report, so a row of zeros is never mistaken for "nothing happened".
+
 Exit status: 0 with a report; 1 when the file does not exist or cannot be read.
 """
 
@@ -19,13 +22,17 @@ from pathlib import Path
 import sqlite3
 import sys
 
-_DEFAULT_DB = Path("data/omnibot.db")
-_STATUSES: tuple[str, ...] = ("proposed", "offered", "confirmed", "rejected", "expired")
+from server.cognition.models import AuthorizationAction
+from server.memory.candidate_types import CandidateStatus
+from server.settings import settings
+
+_STATUSES: tuple[str, ...] = tuple(status.value for status in CandidateStatus)
 _ACTIONS: tuple[str, ...] = (
-    "propose_personal_memory",
-    "read_personal_conversation_memory",
-    "confirm_personal_memory",
+    AuthorizationAction.PROPOSE_PERSONAL_MEMORY.value,
+    AuthorizationAction.READ_PERSONAL_CONVERSATION_MEMORY.value,
+    AuthorizationAction.CONFIRM_PERSONAL_MEMORY.value,
 )
+_TABLES: tuple[str, ...] = ("memory_candidates", "authorization_audit_events", "literal_facts_v4")
 _DECISIONS: tuple[str, ...] = ("allowed", "denied", "requires_confirmation")
 _TASTES: tuple[str, ...] = ("likes", "dislikes", "prefers")
 
@@ -38,11 +45,13 @@ class Inspection:
         candidates: Candidates per status.
         audit: Audit rows per (memory action, decision).
         confirmed_facts: Active personal-taste facts that carry who confirmed them.
+        missing_tables: Tables the file does not have; their counts are zero by absence.
     """
 
     candidates: dict[str, int]
     audit: dict[tuple[str, str], int]
     confirmed_facts: int
+    missing_tables: tuple[str, ...] = ()
 
 
 def _tables(connection: sqlite3.Connection) -> set[str]:
@@ -57,14 +66,17 @@ def inspect(db_path: Path) -> Inspection:
         db_path: A SQLite database file of this project; it is never written.
 
     Returns:
-        The counts. A database that predates a table reports zeros for it.
+        The counts. A database that predates a table reports zeros for it and names it in
+        ``missing_tables``.
 
     Raises:
         sqlite3.Error: If the file cannot be opened or read.
     """
-    connection = sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True)
+    # as_uri() percent-encodes the path, so a "#", a "?" or a "%" in it cannot change the URI.
+    connection = sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True)
     try:
         tables = _tables(connection)
+        missing = tuple(name for name in _TABLES if name not in tables)
         candidates: dict[str, int] = dict.fromkeys(_STATUSES, 0)
         if "memory_candidates" in tables:
             for status, count in connection.execute(
@@ -91,7 +103,9 @@ def inspect(db_path: Path) -> Inspection:
             confirmed = int(row[0]) if row is not None else 0
     finally:
         connection.close()
-    return Inspection(candidates=candidates, audit=audit, confirmed_facts=confirmed)
+    return Inspection(
+        candidates=candidates, audit=audit, confirmed_facts=confirmed, missing_tables=missing
+    )
 
 
 def render(inspection: Inspection) -> str:
@@ -111,6 +125,8 @@ def render(inspection: Inspection) -> str:
         )
         lines.append(f"audit {action}: {decisions}")
     lines.append(f"confirmed facts: {inspection.confirmed_facts}")
+    if inspection.missing_tables:
+        lines.append(f"missing tables: {' '.join(inspection.missing_tables)}")
     return "\n".join(lines) + "\n"
 
 
@@ -124,13 +140,17 @@ def main(argv: list[str] | None = None) -> int:
         The process exit status.
     """
     parser = argparse.ArgumentParser(description="Count the memory-candidate dialogue's traces.")
-    parser.add_argument("db_path", nargs="?", type=Path, default=_DEFAULT_DB)
+    parser.add_argument("db_path", nargs="?", type=Path, default=settings.brain_db_path)
     args = parser.parse_args(argv)
     if not args.db_path.exists():
         sys.stderr.write(f"No database at {args.db_path}.\n")
         return 1
     try:
         inspection = inspect(args.db_path)
+    except sqlite3.OperationalError as exc:
+        # The queries select counts, never a value: sqlite's own reason is safe and actionable.
+        sys.stderr.write(f"Could not read {args.db_path}: {exc}\n")
+        return 1
     except sqlite3.Error as exc:
         sys.stderr.write(f"Could not read {args.db_path}: {type(exc).__name__}\n")
         return 1
