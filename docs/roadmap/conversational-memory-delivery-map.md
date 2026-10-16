@@ -3,10 +3,11 @@
 **Status:** canonical design; CM-0 closed (Plan 0046, 2026-09-08); CM-1's grant scoping closed
 (Plan 0051, 2026-10-06) and its memory capabilities closed as policy only (Plan 0060, 2026-10-09);
 CM-2 closed (Plan 0061, 2026-10-13: short-term continuity for the identified person); CM-3 designed
-in [ADR 0021](../adr/0021-memory-candidates-and-the-canonical-writer.md) (`Proposed`, 2026-10-14) and split into CM-3a and CM-3b;
-CM-3a corte 1 closed (Plan 0062, 2026-10-15: candidate store, canonical writer without a route caller, background proposal),
-corte 2 ([Plan 0063](../plans/open/0063-cm3a-memory-dialogue.md): offer, answer, hardware acceptance) `Ready` and `NOW` since 2026-10-15
-**Last reviewed:** 2026-10-15
+in [ADR 0021](../adr/0021-memory-candidates-and-the-canonical-writer.md) (`Accepted`, 2026-10-16) and split into CM-3a and CM-3b;
+CM-3a closed (corte 1 [Plan 0062](../plans/completed/0062-cm3a-memory-candidates-and-writer.md), 2026-10-15: candidate store,
+canonical writer, background proposal; corte 2 [Plan 0063](../plans/completed/0063-cm3a-memory-dialogue.md), 2026-10-16: spoken
+offer, explicit answer, hardware acceptance); CM-3b is next in the queue and required before CM-7
+**Last reviewed:** 2026-10-16
 
 ## Objective
 
@@ -92,9 +93,13 @@ Evidence current at the time this map was written:
   schedules a background candidate proposal (default-off
   `MEMORY_CANDIDATES_ENABLED`) that also needs the voice of the same person on
   the turn's own clip; `memory_writer.promote` is the only place a candidate
-  becomes a V4 literal fact and no route calls it yet. `/chat` has no audio, so
-  it cannot create or confirm a candidate, and fixing one channel does not fix
-  the others.
+  becomes a V4 literal fact. *Since Plan 0063 (CM-3a corte 2, 2026-10-16) the classic
+  and streaming voice routes call it:* a later generic turn speaks an offer
+  for a `proposed` candidate and only an explicit spoken answer that repeats the
+  value (face and voice of the same person on that turn's own clip) promotes or
+  rejects it, still behind the default-off `MEMORY_CANDIDATES_ENABLED`. `/chat` has
+  no audio, so it cannot create or confirm a candidate, and fixing one channel does
+  not fix the others.
 
 The current conversational route neither persists nor retrieves memories. That
 blocks this disclosure path, but it does not yet prove that secrets are protected
@@ -104,8 +109,9 @@ every output is confidential (for example, the opt-in console transcript of Plan
 Connecting the actor (CM-2) does not lift it: `memory/context.py::build_context`
 receives no actor or authorization, so each legacy read stays blocked until the
 slice that implements its guarantees (CM-4 episodes, CM-5 retrieval); the legacy
-write path was retired by Plan 0062 and the new write path only proposes
-candidates until Plan 0063 wires the answer.
+write path was retired by Plan 0062 and the new write path proposes candidates
+and, since Plan 0063, promotes one only after an explicit spoken answer; nothing
+can be read back until CM-5.
 
 ## Reusable capabilities
 
@@ -120,9 +126,9 @@ What already exists must not be rebuilt:
   one in-process session slot bounded by characters and silence, suspended for an
   unknown or ambiguous speaker;
 - local extraction through Ollama;
-- the candidate store (`memory_candidates`, migration 009) and the canonical writer
-  (`memory_writer.promote`, Plan 0062): a seam proven with doubles that no route
-  calls yet;
+- the candidate store (`memory_candidates`, migration 009), the canonical writer
+  (`memory_writer.promote`, Plan 0062) and the spoken offer and explicit answer that
+  call it (`memory/candidate_dialogue.py`, Plan 0063);
 - episodic storage and SQLite/sqlite-vec vector search;
 - isolation tests that prevent legacy memory when the currently required
   evidence is missing.
@@ -139,8 +145,8 @@ once in the
 | CM-0 | Versioned longitudinal benchmark and one reproducible RED run | evaluation specification | [Plan 0046](../plans/completed/0046-reproducible-longitudinal-memory-baseline.md) — **closed 2026-09-08**: benchmark GREEN, measured baseline RED (`ac43c58`, exit 1) |
 | CM-1 | Every grant bound to one named operation (ADR-0015 decision 1, Plan 0051), then explicit `read`, `propose`, `confirm`, `correct`, and `forget` capabilities for personal memory | current policy and identity; PC-4 (closed) | [Plan 0051](../plans/completed/0051-scoped-owner-grants.md) **closed 2026-10-06**; the memory capabilities are [Plan 0060](../plans/completed/0060-cm1-personal-memory-capabilities.md) (closed 2026-10-09; policy only, nothing wired; [ADR 0019](../adr/0019-personal-memory-capabilities.md) `Accepted`) |
 | CM-2 | The authorized actor and its grants reach the conversational flow without interpolating names or expanding permissions implicitly; short-term continuity (in-process working memory for the identified actor, deleted by another identified person or 180 s of silence, suspended on an `unknown` or `ambiguous` turn, per [ADR 0020](../adr/0020-authorized-actor-in-the-conversation.md) `Accepted`) has its own acceptance test; durable legacy paths stay blocked. Identifying generic turns supersedes part of ADR-0016 §5 | CM-1 | [ADR 0020](../adr/0020-authorized-actor-in-the-conversation.md) `Accepted`; [Plan 0061](../plans/completed/0061-cm2-generic-turn-continuity.md) — **closed 2026-10-13**, accepted on real hardware ([record](../evals/0061-generic-turn-continuity-acceptance.md)) |
-| CM-3a | Extraction creates candidates; one writer assigns the classification and promotes to canonical V4 facts. First cut: the owner's own `likes`, `dislikes` and `prefers`, by voice, where every candidate, spoken value and promotion requires face and voice of the same person on that turn; it closes none of the benchmark's write steps ("CM-3" without a letter names CM-3a and CM-3b). The seed load ("step 0") follows as its second input channel | CM-0, CM-1, CM-2; Plan 0050 | [ADR 0021](../adr/0021-memory-candidates-and-the-canonical-writer.md) `Proposed` (`Accepted` when Plan 0063 closes); corte 1 [Plan 0062](../plans/completed/0062-cm3a-memory-candidates-and-writer.md) — **closed 2026-10-15** (PR #183; no spoken dialogue, no hardware; gate 2972); corte 2 [Plan 0063](../plans/open/0063-cm3a-memory-dialogue.md) (the offer, the answer and the hardware acceptance) written, rehearsed and promoted 2026-10-15: `Ready` and `NOW` |
-| CM-3b | The rest of the personal-scope write steps CM-7 needs: third-party relations, `lives_in` with validity, facts reported by another person, a disclosure rule, perceptual candidates, the first `SECURITY` datum and a benchmark `confirm` step (each tied to its owner in ADR 0021 decision 13) | CM-3a | not written; **required before CM-7** |
+| CM-3a | Extraction creates candidates; one writer assigns the classification and promotes to canonical V4 facts. First cut: the owner's own `likes`, `dislikes` and `prefers`, by voice, where every candidate, spoken value and promotion requires face and voice of the same person on that turn; it closes none of the benchmark's write steps ("CM-3" without a letter names CM-3a and CM-3b). The seed load ("step 0") follows as its second input channel | CM-0, CM-1, CM-2; Plan 0050 | [ADR 0021](../adr/0021-memory-candidates-and-the-canonical-writer.md) `Accepted` (2026-10-16); corte 1 [Plan 0062](../plans/completed/0062-cm3a-memory-candidates-and-writer.md) — **closed 2026-10-15** (PR #183; no spoken dialogue, no hardware; gate 2972); corte 2 [Plan 0063](../plans/completed/0063-cm3a-memory-dialogue.md) (the offer, the answer and the hardware acceptance) — **closed 2026-10-16** (gate 3217; hardware cases 1, 2, 3, 4, 6 and 7 passed, 5 partial, 8 measured on the laptop, 9 not run; [record](../evals/0063-memory-dialogue-acceptance.md)). **CM-3a is closed** |
+| CM-3b | The rest of the personal-scope write steps CM-7 needs: third-party relations, `lives_in` with validity, facts reported by another person, a disclosure rule, perceptual candidates, the first `SECURITY` datum and a benchmark `confirm` step (each tied to its owner in ADR 0021 decision 13) | CM-3a (closed 2026-10-16) | not written; next in the queue; **required before CM-7** |
 | CM-4 | Episodes declare owner, visibility, sensitivity, consent, and retention | CM-3a | not written |
 | CM-5 | Retrieval filters authorization and validity before the prompt and applies a relevance threshold | CM-4 | not written |
 | CM-6 | Correction and forgetting reach facts, relations, episodes, embeddings, summaries, and derived caches | CM-3a through CM-5, and CM-3b for the dataset's write steps | not written |

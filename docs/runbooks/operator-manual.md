@@ -400,15 +400,17 @@ passed the owner, muffled-voice, voice-recording-only, two-faces, covered-camera
 missing-voice-model cases; a phone-screen photo (3 attempts) and video (2 attempts) did not
 identify, which says nothing about a better spoof; the optional PIN case was not run.
 
-### Memory candidates (Plan 0062, CM-3a, ADR 0021): off by default, and nothing is offered yet
+### Memory candidates and the memory dialogue (Plans 0062 and 0063, CM-3a, ADR 0021): off by default
 
 A successful generic **voice** turn (classic or streaming `/transcribe`) can leave a
 short-lived *memory candidate*: something the owner said about their own taste
 ("me gusta el mate"). It is not memory. A candidate lives for `MEMORY_CANDIDATE_TTL_SECONDS`
-(24 h), and the one writer that could turn it into a V4 fact (`memory_writer.promote`) is
-called by no route yet. The spoken offer, the answer and the hardware acceptance are Plan
-0063, so today the feature only stores and lapses candidates. `/chat` and `/vision/respond`
-never propose.
+(24 h). On a later voice turn the robot **offers** to keep it, out loud, and only the owner's
+spoken answer promotes it, through the one writer (`memory_writer.promote`), into a confirmed
+fact. [Plan 0063](../plans/completed/0063-cm3a-memory-dialogue.md) added the offer and the answer
+(closed 2026-10-16); the hardware acceptance is
+[`0063-memory-dialogue-acceptance.md`](../evals/0063-memory-dialogue-acceptance.md). `/chat` and
+`/vision/respond` never propose, offer or answer.
 
 **What has to be true for a candidate to be stored**, in the order the server checks it, the
 cheap steps before the expensive ones:
@@ -443,19 +445,87 @@ cheap steps before the expensive ones:
    (switch on; the migration that creates the table is number 9).
 3. Say one matching sentence with the owner's face in frame. The log should show
    `Candidate proposal: stored=1 dropped=0` and `Candidate insert: inserted`. To count without
-   reading anything, query the file with the server stopped:
-   `SELECT status, COUNT(*) FROM memory_candidates GROUP BY status`. Do not select
-   `value_text` into a shared terminal or ticket: it is exactly what the owner said.
+   reading anything, run `uv run python scripts/inspect_candidates.py` (see *Counting what
+   happened* below). Do not select `value_text` into a shared terminal or ticket: it is exactly
+   what the owner said.
+4. The offer and the answer need no further switch: with `MEMORY_ENABLED=true` and
+   `MEMORY_CANDIDATES_ENABLED=true` the voice routes offer and listen for answers (next
+   subsection).
+
+**The dialogue: what Iroko says and what you answer.** With the switch on, a stored candidate is
+offered on a **later** turn of the same person, as a second voice clip after the reply (classic
+`/transcribe`: the same audio; streaming: one more audio event after the reply). The text the
+robot returns is the reply only; the offer is not written to the conversation history. Iroko
+speaks, in this order:
+
+1. The offer, with the stored phrase in place of `{x}`: «Antes me dijiste que te gusta(n) {x}.
+   ¿Quieres que lo guarde? Dime: sí, autorizo guardar {x}.» (a dislike says «que no te gusta(n)»,
+   a preference «que prefieres»). It dictates the answer, so say it back: the value must be
+   repeated.
+2. To accept, answer with a closed verb **and the value**: `autorizo`, `apruebo`, `guarda`,
+   `guárdalo`, in the long forms too («autorizo guardar el mate», «autorizo a guardar …»,
+   «apruebo que guardes …»). Iroko says «Listo, lo guardé.» and the taste becomes a confirmed
+   fact.
+3. To decline: `no autorizo`, `no apruebo`, `no lo guardes`, `no guardes`, `olvídalo`, `bórralo`,
+   again followed by the value. Iroko says «Está bien, no lo guardo.» and the candidate's value is
+   erased.
+4. If the owner already has a different confirmed taste for the same thing, Iroko says «No lo
+   guardé: ya tengo guardado algo distinto.» and writes nothing.
+5. If the owner's own open offer was found but could not be settled (a database or policy
+   failure), Iroko says «No pude guardarlo ahora. Dímelo de nuevo en un rato.» Nothing was
+   written; answer again later.
+
+A bare «sí», a verb with no value or a different value promotes nothing: the message is
+ordinary conversation. The short verbs (`guarda`, `guárdalo`, `no lo guardes`, `no guardes`,
+`olvídalo`, `bórralo`) also need an article before the value («guarda el mate»), so «guarda
+silencio» or «olvídalo, no importa» never count.
+
+**The rules around it.**
+
+- **The turn must be long.** The offer needs the voice check of that turn's own clip, so the
+  turn that carries it should be a full sentence of about 3 s or more. A short turn («hola»,
+  about 1.5 s) usually fails the voice check, logs `Candidate offer: voice_unverified` and
+  offers nothing; the candidate waits for a better turn.
+- **One offer at a time per person**, and the answer window is `MEMORY_CANDIDATE_ANSWER_SECONDS`
+  (60 s). After it the candidate returns to `proposed` and can be offered again, at most
+  `MEMORY_CANDIDATE_MAX_OFFERS` (2) times; after the second offer it lapses unanswered.
+- **Face and voice of the same person**, on the clip of the answering turn too. With another
+  voice, no face or two faces the message is ordinary conversation, byte for byte: Iroko
+  never says whether an offer exists. The cost of that check (about 3 to 4 s over the
+  speech-to-text, no model call) is paid by every message that has the shape of an answer, with
+  or without an open offer.
+- **The robot software is unchanged**; there is no new setting and no wire change.
+
+**Known limits, measured on hardware** (outcomes in
+[`0063-memory-dialogue-acceptance.md`](../evals/0063-memory-dialogue-acceptance.md), one owner,
+the shared laptop, no homelab):
+
+- The explicit answer was parsed **2 of 4** times: Whisper `small` sometimes writes
+  «autoriza a guardar …» or changes the article, so the answer falls through to ordinary
+  conversation. Nothing is written when that happens (the safe direction); say it again, slowly,
+  or wait for the second offer. Widening the closed verbs is the owner's decision.
+- On a message that only has the *shape* of an answer (another voice, or no open offer), the
+  language model may say it saved something. **It did not**: only the lines below prove a write.
+- About 2 of 12 turns were answered partly or wholly in French.
+- The first chat turn after Ollama starts can fail while memory is short (the stream speaks its
+  fallback phrase, still in voseo); warm the model first.
+- Replay (a photo plus an earlier recording) was not measured.
 
 **Reading the log.** Every line carries closed reasons, never a value, a transcript or an
-exception message.
+exception message. `logs/server.log` is JSON Lines (one object per line: `ts`, `level`, `logger`,
+`msg` and the structured fields), so `msg` holds the text in the table.
 
 | Line | Meaning |
 |---|---|
 | `Candidate proposal: dropped (<reason>)` | The attempt ended early. Reasons: `gate_no_match` (no taste in the sentence; the usual case, no voice check and no model call), `not_a_taste`, `negation_unsupported`, `sensitive_topic`, `strong_unreachable` (no face actor, voice not verified, or a consent revoked), `busy`, `budget`, `denied` (switch off, model unreachable or malformed JSON, or the policy or its audit row refused) |
 | `Candidate proposal: stored=N dropped=M` | The attempt reached the model. The reasons of the dropped triples (`gate_mismatch`, `not_grounded`, `sensitive_topic`, `not_a_taste`, `duplicate`, `capacity`, ...) are in the structured `reasons` field of that record, not in the message |
 | `Candidate insert: <status>` | `inserted`, `duplicate`, `capacity` or `disabled` |
-| `Candidate promotion: <outcome>` | `promoted`, `already_present`, `contradiction`, `not_offered` or `denied`. No route calls the writer yet, so this line does not appear in a real run |
+| `Candidate promotion: <outcome>` | The writer's own line: `promoted`, `already_present`, `contradiction`, `not_offered` or `denied`. It appears only after a spoken «sí, autorizo guardar …» |
+| `Candidate offer: <outcome>` | `offered` (the offer was spoken after the reply), `voice_unverified` (a candidate waited but the voice of that turn's clip did not verify as the same person, so nothing was offered) or `not_offerable` (the candidate lapsed or was taken between the check and the reply) |
+| `Candidate answer: <outcome>` | The result of a spoken answer to an open offer: `promoted`, `already_present`, `contradiction`, `not_offered`, `denied` (the writer's outcomes, repeated) or `rejected` (the owner declined) |
+| `Candidate offer failed (...)` / `Candidate answer failed (...)` | A warning (an error when the failure is not an operational class) with `error_type` and `site`, the file, line and function; never a message or a value. On an answer failure the owner heard the fixed failure phrase |
+| `Speaker verdict: verified \| unknown \| unavailable` | Every voice check of the turn, offers and answers included. `verified` is the only verdict that lets an offer or an answer through; `unknown` is another voice, a very short clip or fewer than `SPEAKER_MIN_REFERENCE_COUNT` references; `unavailable` is the speaker model or its backend failing |
+| `Identity fusion: <reason>` | Whom the turn is attributed to; `face_and_voice` is the only reason that can answer an offer, `face_only` or `no_evidence` mean the message went on as ordinary conversation |
 | `Candidates voided at start-up: N` | Start-up with the switch **off**: N live candidates were erased |
 | `Candidates reconciled at start-up: N expired` | Start-up with the switch **on**: N lapsed candidates were erased |
 | `candidate.extraction_failed`, `candidate.enrolment_check_failed` | A warning with an `error_type`: the model call failed, or the consent read failed and the step was denied |
@@ -466,12 +536,39 @@ would put a stored value in the log.
 
 **Rolling back.** Either of these leaves no live candidate value in the database file:
 
-- set `MEMORY_CANDIDATES_ENABLED=false` and start the server once; the start-up logs
+- set `MEMORY_CANDIDATES_ENABLED=false` (and restart the server; settings are read at start-up).
+  From the first turn after that start nothing is proposed, **offered or answered**: the voice
+  routes inject neither the offer nor the answerer, so an answer-shaped message is ordinary
+  conversation and the actor is not even resolved for it. The start-up logs
   `Candidates voided at start-up: N`, erases the values and truncates the write-ahead log; or
 - with the server **stopped**, run `uv run python scripts/scrub_candidates.py data/omnibot.db`.
   It prints `Voided N live candidate(s)`, exits `0` when none remains (also for a database
   with no candidate table yet) and exits `1` when it could not scrub the file or truncate its
   log because another process holds it.
+
+Facts already confirmed by a spoken «autorizo guardar …» are not candidates and stay in the
+database; rolling back does not erase them.
+
+**Counting what happened, without seeing a sentence.** With the server running or stopped (it
+opens the file read-only):
+
+```text
+uv run python scripts/inspect_candidates.py
+uv run python scripts/inspect_candidates.py path/to/omnibot.db
+```
+
+It prints one line per kind of count and never a value, a name or a transcript:
+`candidates:` the number in each status (`proposed`, `offered`, `confirmed`, `rejected`,
+`expired`, ...); `audit <action>:` the `allowed`, `denied` and `requires_confirmation` rows
+of the three memory steps (`propose`, `read`, `confirm`); `confirmed facts:` the active
+personal tastes that carry who confirmed them; and `missing tables:` when the file predates a
+table, so a row of zeros is never mistaken for "nothing happened". Without a path it reads
+`BRAIN_DB_PATH`. It exits `1` when the file does not exist or cannot be read.
+
+**WARNING: never use `just reset-db` for this.** It deletes the **whole** database after a
+backup: face and voice enrolments, the PIN, household data and every memory, not just the
+candidates. To cancel what the dialogue left behind use the switch and
+`scripts/scrub_candidates.py` above.
 
 **`just reset-db` and backups.** `just reset-db` first runs `scripts/scrub_candidates.py`
 (voids the live candidates, overwrites their bytes, truncates the log) and only then copies the
@@ -504,12 +601,12 @@ hourly; a start-up always truncates the log.
 | `WORKING_MEMORY_SIZE` | `20` | Upper bound on messages kept in the short-term session (below 2 keeps nothing) |
 | `WORKING_MEMORY_MAX_CHARS` | `3000` | Characters of turn content the session may hold; whole oldest exchanges leave first |
 | `WORKING_MEMORY_IDLE_SECONDS` | `180` | Seconds without a written turn after which the session is forgotten |
-| `MEMORY_CANDIDATES_ENABLED` | `false` | Server: kill-switch of the memory-candidate path (Plan 0062). Off, nothing is proposed, stored or promoted and every live candidate is voided at the next start-up. On, it needs `FACE_AUTHENTICATION_ENABLED` and `SPEAKER_AUTHENTICATION_ENABLED` plus an enrolled owner face and voice, or every attempt ends as `strong_unreachable` |
+| `MEMORY_CANDIDATES_ENABLED` | `false` | Server: kill-switch of the memory-candidate path and its spoken dialogue (Plans 0062 and 0063; left `false` by default on purpose). Off, nothing is proposed, stored, offered, answered or promoted and every live candidate is voided at the next start-up. On, it needs `MEMORY_ENABLED`, `FACE_AUTHENTICATION_ENABLED` and `SPEAKER_AUTHENTICATION_ENABLED` on the server, `ROBOT_FACE_AUTH_ENABLED` on the robot, plus an enrolled owner face and voice (at least `SPEAKER_MIN_REFERENCE_COUNT` references), or every attempt ends as `strong_unreachable` |
 | `MEMORY_CANDIDATE_TTL_SECONDS` | `86400` | How long a candidate lives before it lapses and its value is erased |
 | `MEMORY_CANDIDATE_MAX_LIVE` | `5` | Live candidates one person may hold; at the cap a new one is dropped as `capacity`, nothing is evicted |
 | `MEMORY_CANDIDATE_VALUE_MAX_CHARS` | `80` | Longest spoken object a candidate may carry; longer is `not_a_taste` |
-| `MEMORY_CANDIDATE_MAX_OFFERS` | `2` | Times a candidate may be offered before it lapses (the offer is Plan 0063; no effect before it) |
-| `MEMORY_CANDIDATE_ANSWER_SECONDS` | `60` | Seconds an offered candidate waits for an answer before it returns to `proposed` (Plan 0063; no effect before it) |
+| `MEMORY_CANDIDATE_MAX_OFFERS` | `2` | Times a candidate may be offered before it lapses (Plan 0063) |
+| `MEMORY_CANDIDATE_ANSWER_SECONDS` | `60` | Seconds an offered candidate waits for an answer before it returns to `proposed` and can be offered again (Plan 0063) |
 | `MEMORY_CANDIDATE_EXTRACTIONS_PER_HOUR` | `12` | Extraction model calls that may start in any rolling hour; beyond it a turn is dropped as `budget` (one at a time besides: `busy`) |
 | `UVICORN_WORKERS` | `1` | Must stay `1` — owner/face grants are process-local; the server refuses to start otherwise |
 
@@ -529,8 +626,10 @@ combination above is safe to mix.
   stream measurements, outcomes only):
   [`0061-generic-turn-continuity-acceptance.md`](../evals/0061-generic-turn-continuity-acceptance.md).
 - Plan 0062 local smoke (memory candidates: start-up paths on the real database, outcomes
-  only; the spoken offer and the hardware acceptance are Plan 0063):
-  [`0062-memory-candidates-local-smoke.md`](../evals/0062-memory-candidates-local-smoke.md).
+  only): [`0062-memory-candidates-local-smoke.md`](../evals/0062-memory-candidates-local-smoke.md).
+- Plan 0063 hardware acceptance (the spoken offer, the explicit answer and the firewall around
+  them, outcomes only):
+  [`0063-memory-dialogue-acceptance.md`](../evals/0063-memory-dialogue-acceptance.md).
 - What's actually implemented right now, including open gaps:
   [`current-state.md`](../architecture/current-state.md).
 - What's authorized to build next: [`docs/plans/README.md`](../plans/README.md).

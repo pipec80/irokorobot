@@ -254,9 +254,24 @@ token is presented and does not consume it; ignorance (an unknown face, an unkno
 a missing signal) never vetoes and never adds. The voice is consulted only after the
 owner's face matched on a protected turn. A generic turn resolves the same face first and an
 observed default-scope token second, without the voice and without spending the grant
-([ADR 0020](../adr/0020-authorized-actor-in-the-conversation.md) §1); a failed face detector is
+([ADR 0020](../adr/0020-authorized-actor-in-the-conversation.md) §1), except for the memory
+candidates of ADR 0021: a voice turn that matches the preference gate, one that finds a
+candidate waiting to be offered and a message shaped like an answer to an offer each check the
+voice of that turn's own clip, in the background, concurrently with generation or before the
+answer, for the person the face named; a failed face detector is
 logged as `backend_unavailable` and a failed identity store as `error`, both degrading to an
 unknown speaker. Evidence whose `expires_at` has passed never participates.
+
+Since Plans 0062 and 0063 (CM-3a, [ADR 0021](../adr/0021-memory-candidates-and-the-canonical-writer.md))
+three of the ADR 0019 capabilities have a spoken caller, behind the default-off
+`MEMORY_CANDIDATES_ENABLED`: `propose` (a stored taste), `read` (the first one: it asks the
+policy before an offer is spoken, through `candidate_dialogue`) and `confirm` (the explicit
+answer; the same step also runs inside `memory_writer.promote`). The policy minimums stay
+`basic`, `basic` and `strong`, but every one of these callers demands the face and the voice
+of the same person on that turn's own clip and never a token: a face alone, a PIN grant or a
+second face in frame is refused before the policy is asked, and the turn is then the ordinary
+one, byte for byte, so nothing reveals that a candidate exists. `correct` and `forget` are
+still not connected (CM-6).
 
 The PIN is optional and administrative: an optional `strong` factor — consulted only on a
 turn the owner's face did not resolve, never once the face matched — and the credential of
@@ -388,7 +403,7 @@ The matrix is a starting policy and must remain configurable:
 | Another person's private memories | Policy | Policy | No | No |
 | Modify confirmed memory | Yes | Confirmation/limited | Propose only | No |
 | Read, propose, correct own personal memory (ADR 0019) | Yes, own data only; `strong` for `biometric`, `medical`, `location` | No | No | No |
-| Confirm own personal memory (ADR 0019) | Yes, `strong` (face and verified voice) | No | No | No |
+| Confirm own personal memory (ADR 0019); spoken answer to an offer (ADR 0021) | Yes, `strong` (face and verified voice of that turn, never a token) | No | No | No |
 | Forget own personal memory (ADR 0019) | Yes, `strong` and a PIN grant spent for `personal_memory_forget` | No | No | No |
 | Enroll biometrics | Yes with subject consent | Configurable with consent | No direct administration | No |
 | Export/delete household memory | Yes | No | No | No |

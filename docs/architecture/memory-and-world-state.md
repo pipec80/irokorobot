@@ -25,10 +25,12 @@ The current runtime still has limits that later plans must handle explicitly:
   replaced facts as if every predicate had one active value, and it never ran in
   production; Plan 0062 retired it. The canonical conversational writer is now
   `memory/memory_writer.py`, the only place a memory candidate becomes a V4
-  literal fact, with entity-ID subjects, cardinality and lifecycle. It is not
-  connected to a spoken confirmation yet (Plan 0063), so no conversation writes
-  durable memory today; a face-identified voice turn can only leave a
-  short-lived candidate, behind a default-off kill-switch
+  literal fact, with entity-ID subjects, cardinality and lifecycle. Since Plan
+  0063 (closed 2026-10-16) it is reached by a spoken offer and an explicit spoken
+  answer, so the one conversational write path exists end to end, but only
+  behind the default-off kill-switch `MEMORY_CANDIDATES_ENABLED`; with it off no
+  conversation writes durable memory. Reading a stored taste back is CM-5, and
+  correcting or forgetting one is CM-6
   ([ADR 0021](../adr/0021-memory-candidates-and-the-canonical-writer.md));
 - semantic retrieval returns the nearest items without a relevance threshold;
 - retrieval is not yet filtered by the active person's authorization;
@@ -172,6 +174,50 @@ Automatic extraction creates a **candidate**, never household truth. Promotion
 may be automatic only when an explicit predicate policy permits it; otherwise
 the authorized subject or delegate confirms or rejects it. Inference remains
 labelled as inference even when its confidence is high.
+
+### Candidate lifecycle (CM-3a, ADR 0021)
+
+A candidate lives in its own table (`memory_candidates`), never inside the
+canonical V4 tables, and has one of five statuses:
+
+```text
+proposed --offered aloud--> offered --answer "yes" + value--> confirmed (one V4 fact)
+    ^                          |
+    |                          +--answer "no" + value--------> rejected
+    +-- no answer in time -----+
+                               (a candidate past its lifetime or out of offers: expired)
+```
+
+- **proposed:** the person said a first-person taste on a voice turn whose face
+  and voice were both verified; nothing has been said back yet.
+- **offered:** the robot spoke the offer on a later voice turn. The offer and
+  the answer are spoken, never typed. The status records that the offer was
+  built for that reply, not that the person heard it.
+- **confirmed:** the person repeated an explicit answer that carries the value;
+  the single writer inserted one canonical `personal` fact that records who
+  confirmed it and when.
+- **rejected:** the explicit negative answer, or a contradiction found at
+  promotion. The stored value is erased.
+- **expired:** the lifetime lapsed or the offers ran out; the value is erased.
+
+Rules of the contract:
+
+- **One open offer per person.** While an offer waits for its answer, nothing
+  else of that person is offered, so an answer always names the offer it resolves.
+- **A response window.** An offer unanswered within
+  `MEMORY_CANDIDATE_ANSWER_SECONDS` (60) returns to `proposed`; a candidate is
+  offered at most `MEMORY_CANDIDATE_MAX_OFFERS` (2) times and then expires.
+- **The answer repeats the value.** A bare «sí» or any phrase an attacker could
+  know in advance never promotes: a closed verb and the offered value are both
+  required, and short verbs need an article before the value.
+- **Face and voice of the same person, on that turn's own clip,** for every
+  proposal, offer, answer and promotion, never a token. Anything else is the
+  ordinary turn, byte for byte, so the existence of a candidate is never revealed.
+- **Erased on resolution.** A resolved candidate holds no value; this is a
+  schema rule, not a convention.
+- **Not defended:** replay (a photograph plus an earlier recording of the owner)
+  is measured and unprotected (ADR 0016 section 9); a replay can confirm only a
+  value the owner already said.
 
 Conversational memory requires capabilities narrower than a generic personal
 read grant:

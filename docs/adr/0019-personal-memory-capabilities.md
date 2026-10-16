@@ -3,7 +3,10 @@
 - **Status:** Accepted (2026-10-09, Pipec) — implemented as policy by
   [Plan 0060](../plans/completed/0060-cm1-personal-memory-capabilities.md) (`just gate` 2515 passed,
   runtime check recorded in the [acceptance record](../evals/0060-personal-memory-capabilities-acceptance.md));
-  nothing consumes it yet
+  consumed since by CM-3a ([ADR 0021](0021-memory-candidates-and-the-canonical-writer.md),
+  [Plan 0062](../plans/completed/0062-cm3a-memory-candidates-and-writer.md) and
+  [Plan 0063](../plans/completed/0063-cm3a-memory-dialogue.md)): `propose`, `read` and `confirm`
+  have callers; `correct` and `forget` still have none
 - **Date:** 2026-10-08
 - **Builds on:** [ADR 0009](0009-locked-posture-and-scoped-capabilities.md),
   [ADR 0015](0015-owner-grant-scope-and-speaker-binding.md),
@@ -92,9 +95,9 @@ for these five actions the answer is `denied`, never `requires_confirmation`. Fa
 
 | Capability | Minimum assurance | Consent for sensitive categories | PIN route |
 |---|---|---|---|
-| `read_personal_conversation_memory` | `basic` | required | a spent `personal_memory_read` grant counts; any other PIN grant does not |
+| `read_personal_conversation_memory` | `basic` | required | a spent `personal_memory_read` grant counts; any other PIN grant does not. First spoken caller: the offer (`candidate_dialogue.commit_offer`, Plan 0063), asked after the reply is built and audited before the candidate becomes `offered` |
 | `propose_personal_memory` | `basic` | required | none: only non-PIN evidence (face, face and voice) counts |
-| `confirm_personal_memory` | `strong` | required | none, as above: only face and a verified voice reach `strong` here. First caller: the memory writer's `promote` ([Plan 0062](../plans/completed/0062-cm3a-memory-candidates-and-writer.md)), still unreachable from a route (Plan 0063) |
+| `confirm_personal_memory` | `strong` | required | none, as above: only face and a verified voice reach `strong` here. First caller: the memory writer's `promote` ([Plan 0062](../plans/completed/0062-cm3a-memory-candidates-and-writer.md)); since [Plan 0063](../plans/completed/0063-cm3a-memory-dialogue.md) it is reached from the voice routes by the spoken answer (`candidate_dialogue.answer_offer`, which also audits the step for a rejection) |
 | `correct_personal_memory` | `basic` | required | none, as above |
 | `forget_personal_memory` | `strong` | **not applied** | **required**: a spent `personal_memory_forget` grant; face and voice alone never suffice |
 

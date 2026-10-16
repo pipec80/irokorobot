@@ -1,14 +1,18 @@
 # 0063 — The spoken memory offer and the explicit answer (CM-3a, second cut)
 
-> **Status:** `Ready` and `NOW` — written 2026-10-15 from [ADR 0021](../../adr/0021-memory-candidates-and-the-canonical-writer.md)
-> decision 9 with Pipec's decisions of the same day (D-1 to D-5), rehearsed in a scratch copy of
-> `main` (`73fcf8c`) and independently reviewed (see *Review record*); merged as PR #185 and
-> promoted by Pipec on 2026-10-15, who confirmed decisions D-1 to D-15 as written (including the
-> article after the short verbs of D-2, one open offer per person, D-12 and D-15). It is the second and last plan of CM-3a: the
-> spoken offer, the explicit answer and the hardware acceptance; ADR 0021 becomes `Accepted` when
-> it closes. To be executed in a **new session**.
+> **Status:** `Closed` 2026-10-16 — executed on branch `feat/0063-cm3a-memory-dialogue`, see
+> *Execution record*. It is the second and last plan of CM-3a: the spoken offer, the explicit
+> answer and the hardware acceptance. [ADR 0021](../../adr/0021-memory-candidates-and-the-canonical-writer.md)
+> is `Accepted`. Hardware acceptance:
+> [`docs/evals/0063-memory-dialogue-acceptance.md`](../../evals/0063-memory-dialogue-acceptance.md).
+>
+> History: written 2026-10-15 from ADR 0021 decision 9 with Pipec's decisions of the same day
+> (D-1 to D-5), rehearsed in a scratch copy of `main` (`73fcf8c`) and independently reviewed (see
+> *Review record*); merged as PR #185 and promoted by Pipec on 2026-10-15, who confirmed decisions
+> D-1 to D-15 as written (including the article after the short verbs of D-2, one open offer per
+> person, D-12 and D-15).
 
-> **For agentic workers:** if the status above does not say `Ready`, stop: Pipec has not promoted this plan.
+> **For agentic workers:** this plan is closed. While it was open, the rule was: if the status did not say `Ready`, stop (Pipec had not promoted it).
 > REQUIRED SUB-SKILLS: `superpowers:executing-plans`, `superpowers:test-driven-development`,
 > `superpowers:verification-before-completion`, `superpowers:finishing-a-development-branch`.
 > Execute only while this is the explicitly authorized `NOW` item, in a new session. **Pipec's
@@ -4886,4 +4890,67 @@ generic plans (null, as before for every generic reply).
 
 ## Execution record
 
-*(Filled in when the plan is executed.)*
+**Executed 2026-10-15 and 2026-10-16** on the plain branch `feat/0063-cm3a-memory-dialogue` (from
+`main` at `0a07719`, no worktree). The diffs of Tasks 1 to 9 were applied with
+`git apply --recount --ignore-whitespace` from the plan's own blocks and each task was observed
+RED for the stated reason before its implementation. Hardware acceptance by Pipec on 2026-10-16.
+
+**Commits.** 9 task commits (Tasks 1 to 9, one each), then 6 review-fix commits: the dialogue's
+failure paths, the repr/log/failure hardening, the inspector, the comments, the coverage-gap
+tests and a revert of an import that broke the cognitive core's import-graph guard; then the
+acceptance note. Tasks 10 and 11 are documentation.
+
+**Gate.** `just gate` green: **3217** tests (baseline 2972; the rehearsal counted +160 for the nine
+tasks and the review added 85), ruff, mypy, bandit `S` and `pip-audit` clean.
+
+**Independent review (4 reviewers, read-only):** the whole branch (opus; no critical, no
+important finding, 8 minor), the silent failures and value leaks, the tests (against mutations)
+and the comments. Everything they found was fixed with a RED test or pinned with a test that a
+mutation breaks, except the items below. What the review changed beyond the plan text:
+
+- once the verified owner's own open offer is found, a refused or failed answer says a fixed
+  phrase («No pude guardarlo ahora. Dímelo de nuevo en un rato.») instead of falling through to
+  the model, which could say «listo» for something that was not saved; before the offer is found
+  nothing differs from the ordinary turn;
+- failures log the turn, the candidate and the innermost frame (never a message), as an error when
+  the class is a bug;
+- the offer, the repeated value and the actor no longer show in a repr; a failed combined
+  synthesis logs its class only; a failing preparation or offer synthesis is skipped, not fatal;
+- both voice routes bind the dialogue only with `MEMORY_ENABLED` and `MEMORY_CANDIDATES_ENABLED`;
+- the inspector reads the server's configured database, quotes the path, names missing tables and
+  reports sqlite's own reason for an unreadable file.
+
+**Rulings (decisions taken during execution).**
+
+- A promotion that raises (`RuntimeError` for a lost compare-and-set, `ValueError` for a value the
+  writer refuses) says the fixed failure phrase and leaves the candidate `offered`; it is bounded
+  by the answer window and `MEMORY_CANDIDATE_MAX_OFFERS`, and no state change is made without an
+  audit row.
+- The two route warnings for a skipped offer synthesis carry no ids: the `offered` log row written
+  just before already names the candidate and the turn.
+- The cognitive core cannot import `server.memory` (import-graph guard): the answer grammar keeps
+  its own list of articles and a unit test pins it to the lexicon's.
+- The common Chilean openers («ya, autorizo…», «sí po…», «sí, dale…») and the verb variants the
+  speech-to-text writes («autoriza a guardar…») are **not** accepted: widening the closed grammar
+  of D-2 is Pipec's decision.
+
+**Deferred minors.** The legacy stream path has no test that pins the offer's time out of
+`llm_ms`; `scripts/scrub_candidates.py` keeps its fixed default path (always passed explicitly);
+the two date speech-to-text aliases are exact-match rules, so «guarda el que día soy» has the
+shape of an answer (it falls through without an open offer).
+
+**Hardware acceptance (Task 10).** Cases 1, 2, 3, 4 (a, b, c), 6 (a, b) and 7 passed; case 5 is
+partial (the offer survived the restart and was offered again; the answer was mis-heard by the
+speech-to-text); case 8 measured on the shared laptop (no homelab); case 9 (replay) not run. Pipec
+ran it alone, so "another voice" was a translator app or a Windows text-to-speech voice and
+"another face" a photo on a phone. The false rejection of the explicit answer was 2 of 4 on this
+laptop with Whisper `small`. The note
+[`0063-memory-dialogue-acceptance.md`](../../evals/0063-memory-dialogue-acceptance.md) holds
+outcomes and counts only. `just reset-db` was never run on the real database;
+`MEMORY_CANDIDATES_ENABLED` was set back to `false`.
+
+**Findings left open (no plan yet).** The model says it has saved or registered something on a
+message with the shape of an answer that was not one; replies in French on about 2 of 12 turns;
+whether to widen the closed verbs; short turns (about 1.5 s) cannot carry an offer because the
+voice check needs a longer clip; cold-start Ollama fails when memory is short; the model-down
+phrase is still in voseo; case 9 and a homelab run need a second person or device.
