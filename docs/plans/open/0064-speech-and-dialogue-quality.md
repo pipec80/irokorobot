@@ -1,12 +1,12 @@
 # 0064 — Speech and dialogue quality: Spanish, tuteo, no false «guardé», a forgiving answer
 
-> **Status:** `Draft` — written 2026-10-16 from the audit of the three items before Step 0
-> (streaming repair, CM-1 remainder, CM-3b) and from the findings of the Plan 0063 hardware
-> acceptance; **revised the same day after an independent review** (two read-only reviewers; their
-> findings are folded in, see *Review record*). Pipec decided D-1, D-2 and D-3 on 2026-10-16; D-4 to
-> D-8 are the plan's and wait for his confirmation when he promotes it. **Not rehearsed** in a
-> scratch copy: the code below is the specification of each task, not a rehearsed diff. It is not
-> executable until Pipec marks it `Ready` and `NOW`; to be executed in a **new session**.
+> **Status:** `Ready` and `NOW` — promoted by Pipec on 2026-10-16, who confirmed D-1 to D-8 (D-1,
+> D-2 and D-3 are his; he took the recommendations for D-4 to D-8). Written the same day from the
+> audit of the three items before Step 0 (streaming repair, CM-1 remainder, CM-3b) and from the
+> findings of the Plan 0063 hardware acceptance, and **revised after an independent review** (two
+> read-only reviewers; their findings are folded in, see *Review record*). **Not rehearsed** in a
+> scratch copy: the code below is the specification of each task, not a rehearsed diff. To be
+> executed in a **new session**.
 
 > **For agentic workers:** if the status above does not say `Ready`, stop: Pipec has not promoted
 > this plan. REQUIRED SUB-SKILLS: `superpowers:executing-plans`,
@@ -106,7 +106,7 @@ read it from the working copy).
    Cost to know: a message with the shape of an answer makes the controller verify face and voice
    first (3 to 4 s, ADR 0021 decision 9), so the wider grammar makes that check fire on a few more
    ordinary phrases («guarda mi …»); it still writes nothing without an open offer.
-4. **D-4 — The language gate (plan default, Pipec ratifies).** The 0061 runs already had 1 of 147
+4. **D-4 — The language gate (plan default, ratified by Pipec on 2026-10-16).** The 0061 runs already had 1 of 147
    and 3 of 164 replies judged not Spanish, so a threshold of 2 % would pass without any change.
    The gate is therefore: (a) **no worse than the baseline** measured in Task 0 on the same
    command, and (b) **none of Pipec's first 20 hardware turns** after the change in another
