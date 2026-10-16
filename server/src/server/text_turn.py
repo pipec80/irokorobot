@@ -2,7 +2,7 @@
 
 import asyncio
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 import logging
 import time
@@ -64,7 +64,7 @@ class TextTurnResult:
     llm_failed: bool
     # The spoken memory offer (ADR 0021 decision 9), spoken after the reply. It is never part of
     # the reply's text, the session history, the wire's `llm_response` or `duration_ms`.
-    offer: str | None = None
+    offer: str | None = field(default=None, repr=False)
 
 
 def _missing_person(_: int) -> None:
@@ -321,7 +321,11 @@ async def finish_offer(
         # Waits for the cancelled preparation without swallowing a cancellation of the caller.
         await asyncio.gather(task, return_exceptions=True)
         return None
-    pending = await task
+    try:
+        pending = await task
+    except Exception as exc:  # the reply is built: a broken preparation must not cost it
+        logger.warning("Memory offer preparation failed (%s)", type(exc).__name__)
+        return None
     return None if pending is None else await commit_offer(pending)
 
 

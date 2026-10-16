@@ -856,3 +856,27 @@ async def test_a_cancelled_turn_cancels_the_offer_it_was_preparing(
     with pytest.raises(asyncio.CancelledError):
         await turn
     await asyncio.wait_for(cancelled.wait(), timeout=2)
+
+
+async def test_a_preparation_that_raises_costs_the_reply_nothing() -> None:
+    """A seam injected later may raise: the built reply must not turn into a 500."""
+
+    async def boom() -> PendingOffer | None:
+        raise RuntimeError("canary")
+
+    task = asyncio.ensure_future(boom())
+
+    assert await text_turn.finish_offer(task, reply_failed=False) is None
+
+
+def test_the_offer_never_shows_in_the_repr_of_a_turn_result() -> None:
+    """A stray ``%s`` of the result must not print the value the offer carries."""
+    result = text_turn.TextTurnResult(
+        response="hola",
+        emotion="neutral",
+        duration_ms=1,
+        llm_failed=False,
+        offer="Antes me dijiste que te gusta el quokka.",
+    )
+
+    assert "quokka" not in repr(result)

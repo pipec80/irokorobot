@@ -146,7 +146,7 @@ async def _offer_event(offer: str, state: StreamState) -> str | None:
     """
     try:
         audio_base64, duration_ms = await tts.synthesize(offer)
-    except (TTSError, ValueError) as exc:
+    except Exception as exc:  # the reply was spoken: any failure of the offer is skipped
         logger.warning("Memory offer not synthesized (%s)", type(exc).__name__)
         return None
     state.tts_ms_total += duration_ms

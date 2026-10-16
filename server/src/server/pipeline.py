@@ -116,7 +116,11 @@ async def _run_tts(text: str, *, logged_text: str | None = None) -> tuple[str, i
     try:
         audio_base64, duration_ms = await tts.synthesize(text)
     except (TTSError, ValueError) as exc:
-        logger.error("TTS failed: %s", exc, exc_info=True)
+        if logged_text is None:
+            logger.error("TTS failed: %s", exc, exc_info=True)
+        else:
+            # *text* carries a value the engine's message and its cause may quote: class only.
+            logger.error("TTS failed (%s)", type(exc).__name__)
         raise HTTPException(status_code=500, detail="Speech synthesis failed") from exc
     logger.info("TTS synthesized: %d ms audio, %d chars in", duration_ms, len(text))
     log_spoken(text if logged_text is None else logged_text)

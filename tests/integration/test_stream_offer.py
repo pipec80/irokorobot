@@ -294,3 +294,14 @@ async def test_a_client_that_hangs_up_cancels_the_preparation(
     await stream.aclose()
 
     await asyncio.wait_for(cancelled.wait(), timeout=2)
+
+
+async def test_any_failure_of_the_offer_synthesis_is_skipped_not_fatal(
+    http_client: httpx.AsyncClient, stream_on: dict[str, Mock | AsyncMock]
+) -> None:
+    """The reply was already spoken: a closed executor or a disk error must not end it in error."""
+    stream_on["synthesize"].side_effect = [("UkVQTFk=", 30), RuntimeError("executor shut down")]
+
+    events = await _events(http_client, AsyncMock(return_value=_pending()))
+
+    assert [event["type"] for event in events] == ["text_heard", "emotion", "audio", "done"]

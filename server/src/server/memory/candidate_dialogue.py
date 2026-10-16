@@ -21,7 +21,7 @@ ids, a status and a closed outcome, never a value and never an exception's messa
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 from pathlib import Path
 import sqlite3
@@ -106,8 +106,8 @@ class PendingOffer:
 
     candidate_id: int
     subject_person_id: int
-    phrase: str
-    actor: ActivePersonContext
+    phrase: str = field(repr=False)
+    actor: ActivePersonContext = field(repr=False)
     correlation_id: UUID
 
 

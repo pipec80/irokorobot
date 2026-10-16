@@ -11,6 +11,7 @@ from server.cognition.intent_resolution import (
     resolve_information_need,
 )
 from server.cognition.response_plan import InformationNeed
+from server.memory.lexicon import ARTICLES
 
 pytestmark = pytest.mark.unit
 
@@ -104,3 +105,16 @@ def test_the_answer_is_frozen() -> None:
 
     with pytest.raises(ValueError, match="frozen"):
         answer.phrase = "el cafe"  # type: ignore[misc]  # mutation is what this test refutes
+
+
+def test_the_repeated_value_never_shows_in_the_repr_of_an_answer() -> None:
+    answer = parse_memory_answer("Sí, autorizo guardar el quokka")
+
+    assert answer is not None
+    assert "quokka" not in repr(answer)
+
+
+@pytest.mark.parametrize("article", sorted(ARTICLES))
+def test_every_article_the_classifier_admits_follows_a_short_verb(article: str) -> None:
+    """The grammar and the classifier share one list: a value they accept must answer."""
+    assert parse_memory_answer(f"guarda {article} mate") is not None

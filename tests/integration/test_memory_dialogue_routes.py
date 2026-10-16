@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 import io
 import json
+import logging
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
@@ -41,6 +42,7 @@ from server.memory.relational_v4 import get_active_literal_facts
 from server.memory.voice_consent import grant_voice_consent, revoke_voice_consent
 from server.personal_setup import PersonalSetupInput, PersonalSetupResult, apply_personal_setup
 from server.resources import AppResources
+from server.routers import transcribe as transcribe_router
 from server.settings import settings
 from server.vision.faces import DetectedFace, enroll_face
 from server.voice.speaker_embedding import model_id
@@ -478,3 +480,39 @@ async def test_chat_never_offers_a_waiting_candidate(
 
     assert response.json()["response"] == _REPLY
     assert await _status(candidate_id) is CandidateStatus.PROPOSED
+
+
+async def test_a_failing_combined_synthesis_never_logs_the_value(
+    household: PersonalSetupResult,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A TTS engine's message may quote the text it failed on: the offer carries the value."""
+    await _candidate(household.owner_entity_id)
+    synthesize = _scene(monkeypatch, "hola")
+    synthesize.side_effect = [TTSError(f"cannot say: {_OFFER}"), ("AAAA", 42)]
+
+    with caplog.at_level(logging.DEBUG):
+        async with _client() as client:
+            response = await client.post("/transcribe", files=_files())
+
+    assert response.status_code == 200
+    assert caplog.records
+    assert not any(
+        "mate" in record.getMessage() or "mate" in str(record.__dict__)
+        for record in caplog.records
+        if record.name != "httpx"
+    )
+
+
+@pytest.mark.parametrize("setting", ["memory_enabled", "memory_candidates_enabled"])
+def test_either_switch_off_binds_neither_the_preparation_nor_the_answerer(
+    monkeypatch: pytest.MonkeyPatch, setting: str
+) -> None:
+    """The candidates need the memory store: with it off an answer must not even resolve a face."""
+    monkeypatch.setattr(settings, "memory_enabled", True)
+    monkeypatch.setattr(settings, "memory_candidates_enabled", True)
+    monkeypatch.setattr(settings, setting, False)
+
+    assert transcribe_router._memory_answerer() is None
+    assert transcribe_router._offer_preparer(event=Mock(), wav_bytes=b"") is None

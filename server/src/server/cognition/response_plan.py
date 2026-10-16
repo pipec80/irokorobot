@@ -89,7 +89,7 @@ class ResponsePlan(BaseModel):
     claims: tuple[ResponseClaim, ...] = ()
     # A memory offer spoken after the response (ADR 0021 decision 9). The classic route
     # synthesizes it with the response but never returns it in `llm_response`.
-    offer: str | None = Field(default=None, min_length=1)
+    offer: str | None = Field(default=None, min_length=1, repr=False)  # carries a value
 
     @model_validator(mode="after")
     def _known_claims_require_known_tools(self) -> "ResponsePlan":

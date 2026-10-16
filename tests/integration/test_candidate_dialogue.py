@@ -752,3 +752,16 @@ async def test_no_log_line_carries_the_value(owner: int, caplog: pytest.LogCaptu
     assert await _status(candidate_id) is CandidateStatus.CONFIRMED
     assert caplog.records
     assert not _leaked(caplog, "quokka")
+
+
+async def test_the_offer_never_shows_in_the_repr_of_a_pending_offer(owner: int) -> None:
+    pending = PendingOffer(
+        candidate_id=1,
+        subject_person_id=owner,
+        phrase=compose_offer("likes", "el quokka"),
+        actor=_strong(owner),
+        correlation_id=_TURN,
+    )
+
+    assert "quokka" not in repr(pending)
+    assert "Canary" not in repr(pending)

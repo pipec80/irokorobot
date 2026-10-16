@@ -12,9 +12,10 @@ from itertools import pairwise
 import re
 import unicodedata
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from server.cognition.response_plan import InformationNeed
+from server.memory.lexicon import ARTICLES
 
 __all__ = [
     "IntentMatch",
@@ -55,7 +56,7 @@ class MemoryAnswer(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     accept: bool
-    phrase: str
+    phrase: str = Field(repr=False)  # a value: never printed by a stray ``%r``
 
 
 _NON_WORD_RUN = re.compile(r"[^\w]+", re.UNICODE)
@@ -96,7 +97,6 @@ _ANSWER_REJECT_PREFIXES = (
 _ANSWER_SHORT_PREFIXES = frozenset(
     {"guardalo", "guarda", "no lo guardes", "no guardes", "olvidalo", "borralo"}
 )
-_ANSWER_ARTICLES = frozenset({"el", "la", "los", "las", "un", "una", "unos", "unas", "lo"})
 # Courtesy words a speaker adds after the value; they are not part of it.
 _ANSWER_TRAILERS = ("por favor", "gracias", "porfa")
 # The value is a noun phrase of at most five words plus its article.
@@ -432,7 +432,7 @@ def _answer(prefix: str, phrase: list[str], *, accept: bool) -> MemoryAnswer | N
         phrase = phrase[2:]
     if not phrase or phrase[0] in _ANSWER_CONNECTORS or len(phrase) > _MAX_ANSWER_PHRASE_WORDS:
         return None
-    if prefix in _ANSWER_SHORT_PREFIXES and phrase[0] not in _ANSWER_ARTICLES:
+    if prefix in _ANSWER_SHORT_PREFIXES and phrase[0] not in ARTICLES:
         return None
     return MemoryAnswer(accept=accept, phrase=" ".join(phrase))
 

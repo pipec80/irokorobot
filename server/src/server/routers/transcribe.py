@@ -343,7 +343,7 @@ def _offer_preparer(
     Returns:
         The preparation, or ``None`` with the candidate kill-switch off.
     """
-    if not settings.memory_candidates_enabled:
+    if not (settings.memory_enabled and settings.memory_candidates_enabled):
         return None
 
     async def prepare(actor: ActivePersonContext) -> PendingOffer | None:
@@ -358,7 +358,7 @@ def _memory_answerer() -> MemoryAnswerer | None:
     With the switch off an answer-shaped message is ordinary conversation, and the actor is not
     even resolved for it.
     """
-    if not settings.memory_candidates_enabled:
+    if not (settings.memory_enabled and settings.memory_candidates_enabled):
         return None
 
     async def answer(
