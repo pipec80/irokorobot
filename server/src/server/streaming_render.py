@@ -13,6 +13,7 @@ from enum import StrEnum
 import logging
 
 from server import llm, tts
+from server.claim_guard import REPLACEMENT, replace_if_claim
 from server.conversation_log import log_spoken
 from server.pipeline import _elapsed_ms
 from server.schemas_streaming import (
@@ -121,6 +122,9 @@ class StreamState:
     # Synthesis time of the offer's audio. It is already inside `tts_ms_total`; it is kept
     # apart so the overhead above can subtract it and count it only once.
     offer_tts_ms: int = 0
+    # Whether the last model sentence spoken was the claim-guard replacement, so a run of
+    # claims across deltas is spoken as one replacement (Plan 0064).
+    last_sentence_replaced: bool = False
 
 
 async def synthesize_sentence(sentence: str, state: StreamState) -> str:
@@ -146,6 +150,31 @@ async def synthesize_sentence(sentence: str, state: StreamState) -> str:
     log_spoken(sentence)
     event = StreamAudioEvent(text=sentence, audio_base64=audio_base64, duration_ms=duration_ms)
     return event.model_dump_json() + "\n"
+
+
+async def synthesize_model_sentence(sentence: str, state: StreamState) -> str | None:
+    """Synthesize one sentence the model wrote, after the claim guard (Plan 0064).
+
+    Nothing the model says stores anything, so a sentence that claims it does is spoken as
+    ``REPLACEMENT`` instead. A run of such sentences across deltas collapses into one. Only
+    model text goes through here: the fallback phrase, the offer and every deterministic
+    plan keep using :func:`synthesize_sentence` and reach the wire byte for byte.
+
+    Audio contract: the clip is one base64 WAV — 16 000 Hz, mono, int16.
+
+    Args:
+        sentence: One closed sentence of model output that passed the protocol guards.
+        state: The turn's state.
+
+    Returns:
+        The NDJSON audio line, or ``None`` when the sentence is a repeated replacement.
+    """
+    spoken = replace_if_claim(sentence)
+    replaced = spoken == REPLACEMENT
+    if replaced and state.last_sentence_replaced:
+        return None
+    state.last_sentence_replaced = replaced
+    return await synthesize_sentence(spoken, state)
 
 
 async def emit_fallback(state: StreamState, *, reason: StreamFallbackReason) -> AsyncIterator[str]:
@@ -240,8 +269,8 @@ async def _finalize_model_output(buffer: str, state: StreamState) -> AsyncIterat
         state.emotion = state.pending_emotion
         yield StreamEmotionEvent(value=state.emotion).model_dump_json() + "\n"
     tail = buffer.strip()
-    if tail:
-        yield await synthesize_sentence(tail, state)
+    if tail and (audio := await synthesize_model_sentence(tail, state)) is not None:
+        yield audio
 
 
 def _log_stream_metrics(state: StreamState, total_ms: int) -> None:

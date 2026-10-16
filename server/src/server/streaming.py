@@ -47,7 +47,7 @@ from server.streaming_render import (
     emit_fallback,
     error_event,
     llm_elapsed_ms,
-    synthesize_sentence,
+    synthesize_model_sentence,
 )
 from server.text_turn import (
     PreparedTextTurn,
@@ -103,7 +103,8 @@ async def _consume_llm_stream(
         if state.emotion is not None and emotion_before is None:
             yield StreamEmotionEvent(value=state.emotion).model_dump_json() + "\n"
         for sentence in sentences:
-            yield await synthesize_sentence(sentence, state)
+            if (audio := await synthesize_model_sentence(sentence, state)) is not None:
+                yield audio
 
     async for line in _finalize_model_output(buffer, state):
         yield line

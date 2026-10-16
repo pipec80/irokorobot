@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 import httpx
 import httpx2
 import pytest
+from server.claim_guard import REPLACEMENT
 from server.cognition.identity import (
     ActivePersonContext,
     ActivePersonStatus,
@@ -32,7 +33,7 @@ from server.settings import settings
 from server.text_turn import PreparedTextTurn
 from server.user_emotion import classify_user_emotion
 
-from server import llm, llm_streaming, pipeline, streaming, stt, tts
+from server import llm, llm_streaming, pipeline, streaming, streaming_render, stt, tts
 
 
 def _manual_active_person() -> ActivePersonContext:
@@ -934,6 +935,63 @@ def test_stream_plain_reply_is_recorded_as_a_normal_turn(
 
     assert events[-1]["type"] == "done"
     assert record.call_args.args[1:] == ("Hola. ¿Cómo estás?",)
+
+
+@pytest.mark.integration
+def test_stream_a_sentence_that_claims_to_have_saved_is_replaced_everywhere(
+    client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Plan 0064: the model stores nothing, so the claim never reaches the wire, log or history."""
+    record = Mock()
+    spoken = Mock()
+    monkeypatch.setattr(streaming, "record_text_turn", record)
+    monkeypatch.setattr(streaming_render, "log_spoken", spoken)
+    deltas = ["Qué buen gusto. ", "Lo guardé en mi memoria. ", "¿Y qué más te gusta?"]
+
+    events = _post_stream_with_deltas(client, monkeypatch, silence_wav_bytes, deltas)
+
+    audio_texts = [str(e["text"]) for e in events if e["type"] == "audio"]
+    assert audio_texts == ["Qué buen gusto.", REPLACEMENT, "¿Y qué más te gusta?"]
+    assert events[-1]["type"] == "done"
+    assert [call.args[0] for call in spoken.call_args_list] == audio_texts
+    assert record.call_args.args[1:] == (" ".join(audio_texts),)
+
+
+@pytest.mark.integration
+def test_stream_claims_in_different_deltas_collapse_into_one_replacement(
+    client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    deltas = ["Lo guardé. ", "Lo anoté. ", "Lo he registrado. ", "Hola."]
+
+    events = _post_stream_with_deltas(client, monkeypatch, silence_wav_bytes, deltas)
+
+    assert [e["text"] for e in events if e["type"] == "audio"] == [REPLACEMENT, "Hola."]
+
+
+@pytest.mark.integration
+def test_stream_a_claim_in_the_unterminated_tail_is_replaced(
+    client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    events = _post_stream_with_deltas(
+        client, monkeypatch, silence_wav_bytes, ["Hola. ", "Lo guardé"]
+    )
+
+    assert [e["text"] for e in events if e["type"] == "audio"] == ["Hola.", REPLACEMENT]
+    assert events[-1]["type"] == "done"
+
+
+@pytest.mark.integration
+def test_stream_the_fallback_phrase_reaches_the_wire_byte_for_byte(
+    client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The guard touches model text only: the robot's own phrases are never rewritten."""
+    phrase = "Lo guardé, dame unos segundos."
+    monkeypatch.setattr(settings, "llm_fallback_phrase", phrase)
+    deltas = ['{"response": "Hola", "emotion": "joy"}']
+
+    events = _post_stream_with_deltas(client, monkeypatch, silence_wav_bytes, deltas)
+
+    assert [e["text"] for e in events if e["type"] == "audio"] == [phrase]
 
 
 def _assert_one_emotion_before_the_first_audio(events: list[dict[str, object]]) -> None:
