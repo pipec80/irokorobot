@@ -15,7 +15,6 @@ import unicodedata
 from pydantic import BaseModel, ConfigDict, Field
 
 from server.cognition.response_plan import InformationNeed
-from server.memory.lexicon import ARTICLES
 
 __all__ = [
     "IntentMatch",
@@ -101,6 +100,10 @@ _ANSWER_REJECT_PREFIXES = (
 _ANSWER_SHORT_PREFIXES = frozenset(
     {"guardalo", "guarda", "no lo guardes", "no guardes", "olvidalo", "borralo"}
 )
+# The articles a spoken taste may start with. The memory lexicon holds the same list
+# (``lexicon.ARTICLES``); the cognitive core cannot import ``server.memory`` (import-graph
+# guard), so a unit test pins both lists together.
+_ANSWER_ARTICLES = frozenset({"el", "la", "los", "las", "un", "una", "unos", "unas", "lo"})
 # Courtesy words a speaker adds after the value; they are not part of it.
 _ANSWER_TRAILERS = ("por favor", "gracias", "porfa")
 # The value is a short noun phrase: at most six words, its article included when it has one.
@@ -439,7 +442,7 @@ def _answer(prefix: str, phrase: list[str], *, accept: bool) -> MemoryAnswer | N
         phrase = phrase[2:]
     if not phrase or phrase[0] in _ANSWER_CONNECTORS or len(phrase) > _MAX_ANSWER_PHRASE_WORDS:
         return None
-    if prefix in _ANSWER_SHORT_PREFIXES and phrase[0] not in ARTICLES:
+    if prefix in _ANSWER_SHORT_PREFIXES and phrase[0] not in _ANSWER_ARTICLES:
         return None
     return MemoryAnswer(accept=accept, phrase=" ".join(phrase))
 

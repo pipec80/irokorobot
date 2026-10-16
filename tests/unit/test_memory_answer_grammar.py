@@ -6,6 +6,7 @@ without the value, is never an answer, so nothing an attacker can know in advanc
 
 import pytest
 from server.cognition.intent_resolution import (
+    _ANSWER_ARTICLES,
     _MAX_ANSWER_PHRASE_WORDS,
     _RULES,
     MemoryAnswer,
@@ -121,8 +122,12 @@ def test_the_repeated_value_never_shows_in_the_repr_of_an_answer() -> None:
 
 @pytest.mark.parametrize("article", sorted(ARTICLES))
 def test_every_article_the_classifier_admits_follows_a_short_verb(article: str) -> None:
-    """The grammar and the classifier share one list: a value they accept must answer."""
+    """The grammar keeps its own copy of the list (the core cannot import the memory layer)."""
     assert parse_memory_answer(f"guarda {article} mate") is not None
+
+
+def test_the_grammar_admits_no_article_the_classifier_does_not() -> None:
+    assert _ANSWER_ARTICLES == ARTICLES
 
 
 @pytest.mark.parametrize("message", ["apruebo el examen", "Apruebo la propuesta."])
