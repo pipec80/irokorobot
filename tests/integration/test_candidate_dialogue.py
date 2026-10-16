@@ -10,10 +10,11 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 import logging
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 from uuid import UUID, uuid4
 
 import pytest
+from server.cognition.authorization import evaluate_authorization
 from server.cognition.identity import (
     ActivePersonContext,
     HouseholdRole,
@@ -26,11 +27,13 @@ from server.cognition.intent_resolution import MemoryAnswer, parse_memory_answer
 from server.cognition.models import (
     AuthorizationAction,
     AuthorizationDecision,
+    AuthorizationStatus,
     CognitiveEvent,
     Confidence,
     ConfidenceBasis,
 )
 from server.cognition.response_plan import TextTurnPayload
+from server.cognition.strong_actor import is_face_and_voice_actor
 from server.memory import candidate_dialogue, candidates
 from server.memory.candidate_classifier import comparison_key
 from server.memory.candidate_dialogue import (
@@ -765,3 +768,165 @@ async def test_the_offer_never_shows_in_the_repr_of_a_pending_offer(owner: int) 
 
     assert "quokka" not in repr(pending)
     assert "Canary" not in repr(pending)
+
+
+# --- edges the first pass left open --------------------------------------------------------
+
+
+def _denying_policy(request: AuthorizationRequest) -> AuthorizationDecision:
+    """A policy double that refuses whatever it is asked (the dialogue asks CONFIRM only)."""
+    return AuthorizationDecision(
+        decision=AuthorizationStatus.DENIED,
+        action=request.action,
+        data_categories=frozenset(),
+        policy_id="canary.deny",
+        reason="canary",
+        evaluated_at=request.requested_at,
+        correlation_id=request.correlation_id,
+    )
+
+
+async def test_yes_to_a_value_already_saved_says_saved_and_keeps_one_fact(owner: int) -> None:
+    definition = resolve_predicate("likes")
+    assert definition is not None
+    fact = await assert_literal_fact(
+        subject_entity_id=owner, definition=definition, value="el mate"
+    )
+    candidate_id = await _candidate(owner, offered=True)
+
+    phrase = await answer_offer(
+        MemoryAnswer(accept=True, phrase="el mate"),
+        actor=_strong(owner),
+        correlation_id=_TURN,
+        now=_NOW + timedelta(seconds=10),
+        audit=AsyncMock(),
+    )
+
+    assert phrase == ANSWER_SAVED_PHRASE
+    stored = await candidates.get_candidate(candidate_id)
+    assert stored is not None
+    assert stored.status is CandidateStatus.CONFIRMED
+    assert stored.promoted_fact_id == fact.id
+    assert len(await _likes(owner)) == 1
+
+
+async def test_a_no_the_policy_denies_says_it_could_not_and_leaves_the_offer_open(
+    owner: int,
+) -> None:
+    candidate_id = await _candidate(owner, offered=True)
+    audit = AsyncMock()
+
+    phrase = await answer_offer(
+        MemoryAnswer(accept=False, phrase="el mate"),
+        actor=_strong(owner),
+        correlation_id=_TURN,
+        now=_NOW + timedelta(seconds=10),
+        policy=_denying_policy,
+        audit=audit,
+    )
+
+    assert phrase == ANSWER_FAILED_PHRASE
+    stored = await candidates.get_candidate(candidate_id)
+    assert stored is not None
+    assert stored.status is CandidateStatus.OFFERED
+    assert stored.value_text == "el mate"
+    assert _actions(audit) == [(AuthorizationAction.CONFIRM_PERSONAL_MEMORY, "denied")]
+
+
+async def test_a_no_that_loses_the_race_never_says_it_was_rejected(
+    owner: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    candidate_id = await _candidate(owner, offered=True)
+    resolve = AsyncMock(return_value=False)
+    monkeypatch.setattr(candidate_dialogue, "resolve_candidate", resolve)
+
+    phrase = await answer_offer(
+        MemoryAnswer(accept=False, phrase="el mate"),
+        actor=_strong(owner),
+        correlation_id=_TURN,
+        now=_NOW + timedelta(seconds=10),
+        audit=AsyncMock(),
+    )
+
+    resolve.assert_awaited_once()
+    assert phrase == ANSWER_FAILED_PHRASE
+    assert phrase != ANSWER_REJECTED_PHRASE
+    assert await _status(candidate_id) is CandidateStatus.OFFERED
+
+
+async def test_the_pending_offer_carries_the_actor_the_voice_check_returned(owner: int) -> None:
+    await _candidate(owner)
+    face = _actor(owner)
+    strong = _strong(owner)
+
+    offer = await prepare_offer(
+        face,
+        wav_bytes=_WAV,
+        event=_event(),
+        verify=AsyncMock(return_value=strong),
+        clock=lambda: _NOW,
+    )
+
+    assert offer is not None
+    assert offer.actor is strong
+    assert offer.actor is not face
+    assert is_face_and_voice_actor(offer.actor)
+    assert not is_face_and_voice_actor(face)
+
+
+# The longest value the classifier admits: five words, article included, at 80 characters
+# (``_MAX_WORDS`` and ``memory_candidate_value_max_chars``).
+_LONGEST_VALUE = "las " + " ".join(("quimbombocanariozz",) * 3 + ("quimbombocanariozzz",))
+
+
+async def test_the_longest_admitted_value_is_still_answerable_with_the_words_the_offer_asks(
+    owner: int,
+) -> None:
+    assert len(_LONGEST_VALUE.split()) == 5
+    assert len(_LONGEST_VALUE) <= settings.memory_candidate_value_max_chars
+    candidate_id = await _candidate(
+        owner, _LONGEST_VALUE, comparison_key(_LONGEST_VALUE), offered=True
+    )
+    instructed = compose_offer("likes", _LONGEST_VALUE).split("Dime: ", 1)[1]
+
+    answer = parse_memory_answer(instructed)
+
+    assert answer is not None
+    assert answer.accept
+    found = await candidates.find_offered(
+        owner, comparison_key(answer.phrase), now=_NOW + timedelta(seconds=10)
+    )
+    assert found is not None
+    assert found.id == candidate_id
+
+
+def test_a_plural_dislike_is_offered_with_the_plural_verb() -> None:
+    assert compose_offer("dislikes", "los hongos") == (
+        "Antes me dijiste que no te gustan los hongos. ¿Quieres que lo guarde? "
+        "Dime: sí, autorizo guardar los hongos."
+    )
+
+
+@pytest.mark.parametrize("seam", ["policy", "authorize_step"])
+async def test_a_policy_step_that_raises_speaks_nothing_and_offers_nothing(
+    owner: int, monkeypatch: pytest.MonkeyPatch, seam: str
+) -> None:
+    """The evaluator or the whole step raising (not just a failing audit) is contained."""
+    candidate_id = await _candidate(owner)
+    audit = AsyncMock()
+    failure = RuntimeError("policy down")
+    if seam == "authorize_step":
+        monkeypatch.setattr(candidate_dialogue, "authorize_step", AsyncMock(side_effect=failure))
+        policy = evaluate_authorization
+    else:
+        policy = Mock(side_effect=failure)
+
+    phrase = await commit_offer(_pending(candidate_id, owner), now=_NOW, policy=policy, audit=audit)
+
+    assert phrase is None
+    stored = await candidates.get_candidate(candidate_id)
+    assert stored is not None
+    assert stored.status is CandidateStatus.PROPOSED
+    assert stored.offer_count == 0
+    assert stored.offered_at is None
+    audit.assert_not_awaited()

@@ -164,10 +164,21 @@ async def test_the_offer_never_reaches_the_spoken_log_nor_the_session(
 async def test_the_offer_synthesis_is_tts_time_not_model_time(
     http_client: httpx.AsyncClient, stream_on: dict[str, Mock | AsyncMock]
 ) -> None:
+    async def synthesize(text: str) -> tuple[str, int]:
+        if text != _OFFER:
+            return "UkVQTFk=", 30
+        await asyncio.sleep(0.3)  # the offer's synthesis really takes this long
+        return "T0ZGRVI=", 300
+
+    stream_on["synthesize"].side_effect = synthesize
+
     events = await _events(http_client, AsyncMock(return_value=_pending()))
 
     done = events[-1]
-    assert done["tts_ms"] == 100
+    assert done["tts_ms"] == 330
+    llm_ms = done["llm_ms"]
+    assert isinstance(llm_ms, int)
+    assert llm_ms < 100  # the 300 ms of the offer's synthesis is TTS time, not the model's
 
 
 async def test_a_fallback_reply_carries_no_offer(
@@ -187,6 +198,69 @@ async def test_a_fallback_reply_carries_no_offer(
 
     assert [event["type"] for event in events].count("audio") == 1
     stream_on["commit"].assert_not_awaited()
+
+
+async def test_a_reply_that_fails_after_its_first_sentence_carries_no_offer(
+    http_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    stream_on: dict[str, Mock | AsyncMock],
+) -> None:
+    """PARTIAL_FALLBACK: a sentence was already spoken, then the model failed."""
+
+    async def broken_midway(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
+        yield f"{_REPLY} Y luego"
+        raise LLMError("down")
+
+    monkeypatch.setattr(llm_streaming, "generate_response_stream", broken_midway)
+    stream_on["synthesize"].side_effect = [("UkVQTFk=", 30), ("RkFMTA==", 20)]
+
+    events = await _events(http_client, AsyncMock(return_value=_pending()))
+
+    audio = [event for event in events if event["type"] == "audio"]
+    assert [event["text"] for event in audio] == [_REPLY, settings.llm_fallback_phrase]
+    assert [event["type"] for event in events][-1] == "done"
+    assert [call.args for call in stream_on["synthesize"].await_args_list] == [
+        (_REPLY,),
+        (settings.llm_fallback_phrase,),
+    ]
+    stream_on["commit"].assert_not_awaited()
+    assert [call.args[0] for call in stream_on["spoken"].call_args_list] == [
+        _REPLY,
+        settings.llm_fallback_phrase,
+    ]
+    stream_on["record"].assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "deltas",
+    [["{ no es texto"], [f"{_REPLY} ", "Luego EMOTION: joy."]],
+    ids=["invalid-start", "tag-after-a-spoken-sentence"],
+)
+async def test_a_reply_that_breaks_the_protocol_carries_no_offer(
+    http_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    stream_on: dict[str, Mock | AsyncMock],
+    deltas: list[str],
+) -> None:
+    """PROTOCOL_FALLBACK, before and after a sentence was spoken: no offer, no commit."""
+
+    async def generate_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
+        for delta in deltas:
+            yield delta
+
+    monkeypatch.setattr(llm_streaming, "generate_response_stream", generate_stream)
+    stream_on["synthesize"].side_effect = None
+    stream_on["synthesize"].return_value = ("RkFMTA==", 20)
+
+    events = await _events(http_client, AsyncMock(return_value=_pending()))
+
+    texts = [event["text"] for event in events if event["type"] == "audio"]
+    assert texts[-1] == settings.llm_fallback_phrase
+    assert "" not in texts  # no silent offer event
+    assert _OFFER not in [call.args[0] for call in stream_on["synthesize"].await_args_list]
+    assert events[-1]["type"] == "done"
+    stream_on["commit"].assert_not_awaited()
+    stream_on["record"].assert_not_called()
 
 
 async def test_an_offer_that_fails_to_synthesize_is_skipped_and_the_turn_still_ends_done(
@@ -246,17 +320,27 @@ async def test_a_reply_that_fails_to_synthesize_commits_no_offer(
 async def test_committing_the_offer_never_counts_as_model_time(
     http_client: httpx.AsyncClient, stream_on: dict[str, Mock | AsyncMock]
 ) -> None:
+    """The commit is audit and a compare-and-set: 0.5 s of it must not show up as model time."""
+
     async def slow_commit(_pending: PendingOffer) -> str:
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(0.5)
         return _OFFER
 
     stream_on["commit"].side_effect = slow_commit
+    # Both syntheses report 0 ms, so the whole half second can only be the commit's.
+    stream_on["synthesize"].side_effect = [("UkVQTFk=", 0), ("T0ZGRVI=", 0)]
 
     events = await _events(http_client, AsyncMock(return_value=_pending()))
 
-    llm_ms = events[-1]["llm_ms"]
+    done = events[-1]
+    assert done["type"] == "done"
+    assert done["tts_ms"] == 0
+    total_ms = done["total_ms"]
+    llm_ms = done["llm_ms"]
+    assert isinstance(total_ms, int)
     assert isinstance(llm_ms, int)
-    assert llm_ms < 200
+    assert total_ms >= 500  # the commit really ran inside the measured turn
+    assert llm_ms < 100
 
 
 async def test_a_client_that_hangs_up_cancels_the_preparation(

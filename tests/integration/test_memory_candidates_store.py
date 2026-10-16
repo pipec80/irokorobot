@@ -740,3 +740,110 @@ async def test_still_offerable_says_whether_the_compare_and_set_can_win(
     monkeypatch.setattr(settings, "memory_candidates_enabled", False)
     window_closed = _T0 + timedelta(seconds=settings.memory_candidate_answer_seconds + 1)
     assert not await candidates.still_offerable(candidate_id, owner, now=window_closed)
+
+
+# --- the readers' edges: person isolation, state filter, window and deadline boundaries ------
+
+
+@pytest.mark.usefixtures("store")
+async def test_another_persons_open_offer_does_not_block_this_persons_candidate() -> None:
+    """The one-open-offer rule is per person: a visitor's waiting offer blocks nobody else."""
+    owner = await _person()
+    visitor = await _person("Canary Visitor")
+    theirs = await _insert(visitor, _proposal("el rock", "rock"), now=_T0)
+    mine = await _insert(owner, _proposal("el mate", "mate"), now=_T0)
+    assert theirs.candidate_id is not None
+    assert mine.candidate_id is not None
+    assert await candidates.mark_offered(
+        theirs.candidate_id, visitor, correlation_id=uuid4(), now=_T0
+    )
+    waiting = _T0 + timedelta(seconds=10)
+
+    chosen = await candidates.next_offerable(owner, now=waiting)
+
+    assert chosen is not None
+    assert chosen.id == mine.candidate_id
+    assert await candidates.still_offerable(mine.candidate_id, owner, now=waiting)
+
+
+async def _resolved_candidate(owner: int, outcome: CandidateStatus) -> int:
+    """Store an offered candidate and leave it in *outcome*, the way production does."""
+    stored = await _insert(owner, _proposal(f"el {outcome.value}", outcome.value))
+    assert stored.candidate_id is not None
+    assert await candidates.mark_offered(
+        stored.candidate_id, owner, correlation_id=uuid4(), now=_T0
+    )
+    if outcome is CandidateStatus.EXPIRED:
+        later = _T0 + timedelta(seconds=settings.memory_candidate_ttl_seconds)
+        async with db.transaction() as conn:
+            assert await candidates.expire_lapsed_in_transaction(conn, later) == 1
+    else:
+        assert await candidates.resolve_candidate(
+            stored.candidate_id, owner, to=outcome, correlation_id=uuid4(), now=_T0
+        )
+    assert await _status(stored.candidate_id) is outcome
+    return stored.candidate_id
+
+
+@pytest.mark.usefixtures("store")
+@pytest.mark.parametrize(
+    "outcome", [CandidateStatus.CONFIRMED, CandidateStatus.REJECTED, CandidateStatus.EXPIRED]
+)
+async def test_a_resolved_or_expired_candidate_is_never_offerable_again(
+    outcome: CandidateStatus,
+) -> None:
+    owner = await _person()
+    candidate_id = await _resolved_candidate(owner, outcome)
+    window = settings.memory_candidate_answer_seconds
+
+    # Inside the answer window and right after it closed (when an `offered_at` check alone
+    # would let a row that kept its offer timestamp through); both well before any deadline.
+    for seconds in (10, window + 1):
+        moment = _T0 + timedelta(seconds=seconds)
+        assert await candidates.next_offerable(owner, now=moment) is None
+        assert not await candidates.still_offerable(candidate_id, owner, now=moment)
+
+
+@pytest.mark.usefixtures("store")
+async def test_the_answer_window_edge_belongs_to_the_offer_not_to_the_answer() -> None:
+    """At exactly ``answer_seconds`` the offer is no longer answerable and is offerable again."""
+    owner = await _person()
+    stored = await _insert(owner)
+    assert stored.candidate_id is not None
+    assert await candidates.mark_offered(
+        stored.candidate_id, owner, correlation_id=uuid4(), now=_T0
+    )
+    edge = _T0 + timedelta(seconds=settings.memory_candidate_answer_seconds)
+    just_inside = edge - timedelta(microseconds=1)
+
+    # One microsecond before the edge: answerable, and nothing is offered meanwhile.
+    found = await candidates.find_offered(owner, "mate", now=just_inside)
+    assert found is not None
+    assert found.id == stored.candidate_id
+    assert await candidates.next_offerable(owner, now=just_inside) is None
+    assert not await candidates.still_offerable(stored.candidate_id, owner, now=just_inside)
+
+    # On the edge: not answerable, and offerable. No instant is both, and none is neither.
+    assert await candidates.find_offered(owner, "mate", now=edge) is None
+    again = await candidates.next_offerable(owner, now=edge)
+    assert again is not None
+    assert again.id == stored.candidate_id
+    assert await candidates.still_offerable(stored.candidate_id, owner, now=edge)
+
+
+@pytest.mark.usefixtures("store")
+async def test_an_offer_past_its_deadline_is_not_answerable_even_inside_its_window() -> None:
+    """Reads run no housekeeping: the deadline is enforced by ``find_offered`` itself."""
+    owner = await _person()
+    stored = await _insert(owner)
+    assert stored.candidate_id is not None
+    deadline = _T0 + timedelta(seconds=settings.memory_candidate_ttl_seconds)
+    offered_at = deadline - timedelta(seconds=10)
+    assert await candidates.mark_offered(
+        stored.candidate_id, owner, correlation_id=uuid4(), now=offered_at
+    )
+
+    assert await candidates.find_offered(owner, "mate", now=deadline - timedelta(seconds=1))
+    assert await candidates.find_offered(owner, "mate", now=deadline) is None
+    # Nothing expired the row (a read writes nothing); the filter alone refused it.
+    assert await _status(stored.candidate_id) is CandidateStatus.OFFERED

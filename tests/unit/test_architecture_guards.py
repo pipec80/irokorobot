@@ -513,6 +513,54 @@ def test_the_dialogue_guard_detects_a_violation() -> None:
     ]
 
 
+# The offer's own steps (Plan 0063): the store's offer lookups are reached only by the dialogue,
+# and the dialogue's commit only by the text-turn service that owns the reply. grep on 2026-10-15.
+_OFFER_LOOKUP_NAMES = frozenset({"find_offered", "next_offerable", "still_offerable"})
+_OFFER_LOOKUP_HOMES = frozenset({"memory/candidates.py", "memory/candidate_dialogue.py"})
+_OFFER_COMMIT_NAMES = frozenset({"commit_offer"})
+_OFFER_COMMIT_HOMES = frozenset({"memory/candidate_dialogue.py", "text_turn.py"})
+# `start_offer` and `finish_offer` belong to the text-turn service; the stream drives them too.
+_OFFER_LIFECYCLE_NAMES = frozenset({"start_offer", "finish_offer"})
+_OFFER_LIFECYCLE_HOMES = frozenset({"text_turn.py", "streaming.py"})
+
+
+@pytest.mark.unit
+def test_the_offer_steps_are_named_only_by_the_dialogue_and_the_text_turn() -> None:
+    sources = _sources()
+
+    assert _outside(sources, _OFFER_LOOKUP_HOMES, _OFFER_LOOKUP_NAMES) == []
+    assert _outside(sources, _OFFER_COMMIT_HOMES, _OFFER_COMMIT_NAMES) == []
+    assert _outside(sources, _OFFER_LIFECYCLE_HOMES, _OFFER_LIFECYCLE_NAMES) == []
+
+
+@pytest.mark.unit
+def test_the_offer_step_guards_detect_a_violation() -> None:
+    leak = {
+        "routers/chat.py": (
+            "offered = await candidates.find_offered(conn, person_id)\n"
+            "await commit_offer(pending)\n"
+            "task = start_offer(prepare, actor)\n"
+        ),
+        "routers/transcribe.py": "x = await still_offerable(conn, candidate)\n",
+        "memory/other.py": "x = next_offerable(conn, person_id)\nawait commit_offer(p)\n",
+        "memory/candidates.py": "x = find_offered(c)\ny = next_offerable(c)\n",
+        "memory/candidate_dialogue.py": "await commit_offer(p)\nawait still_offerable(c)\n",
+        "text_turn.py": "await commit_offer(p)\nt = start_offer(a, b)\n",
+        "streaming.py": "t = start_offer(a, b)\nawait finish_offer(t)\n",
+    }
+
+    assert _outside(leak, _OFFER_LOOKUP_HOMES, _OFFER_LOOKUP_NAMES) == [
+        "memory/other.py",
+        "routers/chat.py",
+        "routers/transcribe.py",
+    ]
+    assert _outside(leak, _OFFER_COMMIT_HOMES, _OFFER_COMMIT_NAMES) == [
+        "memory/other.py",
+        "routers/chat.py",
+    ]
+    assert _outside(leak, _OFFER_LIFECYCLE_HOMES, _OFFER_LIFECYCLE_NAMES) == ["routers/chat.py"]
+
+
 @pytest.mark.unit
 def test_the_retired_memory_actions_exist_nowhere() -> None:
     """ADR 0021 decision 11: no enum member, branch or string names them any more."""

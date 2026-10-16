@@ -260,3 +260,15 @@ def test_a_short_closed_list_of_fillers_may_lead_a_taste(
 )
 def test_a_filler_never_admits_a_belief_an_attribution_or_a_negation(text: str) -> None:
     assert match_preference(text).predicates == frozenset()
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["Bueno la verdad es que me gusta el mate", "A mí es que me gusta el jazz"],
+)
+def test_a_filler_that_follows_other_lead_in_words_is_still_dropped(text: str) -> None:
+    """The filler is removed from the end of the lead-in, not only when it stands alone."""
+    result = match_preference(text)
+
+    assert result.predicates == _LIKES
+    assert result.reason is None

@@ -819,3 +819,54 @@ def test_an_empty_offer_is_refused_by_the_plan() -> None:
             response="Hola.",
             offer="",
         )
+
+
+@pytest.mark.asyncio
+async def test_a_repeated_decide_of_the_same_event_answers_the_offer_once() -> None:
+    """D-13: the plan is cached by event id, so decide() then handle() cannot answer twice."""
+    observe = AsyncMock(return_value=_actor(HouseholdRole.OWNER, 7))
+    answer = AsyncMock(return_value="Listo, lo guardé.")
+    legacy_turn = _legacy()
+    controller = CognitiveController(
+        today=lambda: date(2026, 8, 12),
+        legacy_turn=legacy_turn,
+        observed_person_resolver=observe,
+        memory_answerer=answer,
+    )
+    event = _event("Sí, autorizo guardar el mate")
+
+    first = await controller.decide(event)
+    second = await controller.decide(event)
+    handled = await controller.handle(event)
+
+    assert isinstance(first, ResponsePlan)
+    assert second is first
+    assert handled is first
+    answer.assert_awaited_once()
+    observe.assert_awaited_once()
+    legacy_turn.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_two_events_with_the_same_message_are_each_answered() -> None:
+    """The cache key is the event id, never the message: a second event is a second answer."""
+    answer = AsyncMock(side_effect=["Listo, lo guardé.", "Está bien, no lo guardo."])
+    controller = CognitiveController(
+        today=lambda: date(2026, 8, 12),
+        legacy_turn=_legacy(),
+        observed_person_resolver=AsyncMock(return_value=_actor(HouseholdRole.OWNER, 7)),
+        memory_answerer=answer,
+    )
+    first_event = _event("Sí, autorizo guardar el mate")
+    second_event = first_event.model_copy(
+        update={"event_id": UUID("33333333-3333-3333-3333-333333333333")}
+    )
+
+    first = await controller.decide(first_event)
+    second = await controller.decide(second_event)
+
+    assert isinstance(first, ResponsePlan)
+    assert isinstance(second, ResponsePlan)
+    assert first.response == "Listo, lo guardé."
+    assert second.response == "Está bien, no lo guardo."
+    assert answer.await_count == 2

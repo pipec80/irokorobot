@@ -6,11 +6,16 @@ without the value, is never an answer, so nothing an attacker can know in advanc
 
 import pytest
 from server.cognition.intent_resolution import (
+    _MAX_ANSWER_PHRASE_WORDS,
+    _RULES,
     MemoryAnswer,
+    _memory_answer_rule,
+    normalize_spanish,
     parse_memory_answer,
     resolve_information_need,
 )
 from server.cognition.response_plan import InformationNeed
+from server.memory.candidate_classifier import _MAX_WORDS
 from server.memory.lexicon import ARTICLES
 
 pytestmark = pytest.mark.unit
@@ -118,3 +123,109 @@ def test_the_repeated_value_never_shows_in_the_repr_of_an_answer() -> None:
 def test_every_article_the_classifier_admits_follows_a_short_verb(article: str) -> None:
     """The grammar and the classifier share one list: a value they accept must answer."""
     assert parse_memory_answer(f"guarda {article} mate") is not None
+
+
+@pytest.mark.parametrize("message", ["apruebo el examen", "Apruebo la propuesta."])
+def test_an_ordinary_apruebo_sentence_has_the_shape_of_an_answer(message: str) -> None:
+    """«Apruebo» is a long prefix, so it needs no article and these two sentences parse.
+
+    The shape alone resolves to ``MEMORY_ANSWER`` with the repeated value as the phrase. That is
+    accepted on purpose: only an open offer whose value is exactly «el examen» or «la propuesta»
+    can use it, and with no such offer the answerer returns ``None`` and the message falls
+    through to the ordinary turn (the controller test pins that fall-through). This test pins the
+    grammar's side, so that a change to the long prefixes is a visible decision.
+    """
+    answer = parse_memory_answer(message)
+
+    assert answer is not None
+    assert answer.accept is True
+    assert answer.phrase == normalize_spanish(message).removeprefix("apruebo ")
+    assert resolve_information_need(message).need is InformationNeed.MEMORY_ANSWER
+
+
+# One answer-shaped body per rule that runs before the answer rule. Each body starts with an
+# article and is at most six words, so the verb plus the body alone would be an answer: only the
+# order of the rules keeps the earlier rule's need.
+_PREEMPTING_BODIES = [
+    ("own_children.list.v1", InformationNeed.OWN_CHILDREN_LIST, "la como se llaman mis hijos"),
+    ("own_children.count.v1", InformationNeed.OWN_CHILDREN_COUNT, "el cuantos hijos tengo"),
+    ("household.protected.v1", InformationNeed.PROTECTED_HOUSEHOLD, "el cumpleanos de mi hijo"),
+    ("household.protected.v1", InformationNeed.PROTECTED_HOUSEHOLD, "lo que le gusta"),
+    ("birth.protected.v1", InformationNeed.PROTECTED_HOUSEHOLD, "la fecha de nacimiento"),
+    (
+        "enrollment.biometric.v1",
+        InformationNeed.BIOMETRIC_ENROLLMENT,
+        "la cara aprende mi cara",
+    ),
+    ("identity.active.v1", InformationNeed.ACTIVE_IDENTITY, "la pregunta quien soy"),
+    ("date.current.v1", InformationNeed.CURRENT_DATE, "el que dia es hoy"),
+    ("age.explicit.v1", InformationNeed.EXPLICIT_BIRTH_DATE_AGE, "la edad que tengo"),
+    ("relationship.profile.v1", InformationNeed.RELATIONSHIP_OR_PROFILE, "la relacion"),
+    ("scene.description.v1", InformationNeed.SCENE_DESCRIPTION, "lo que ves"),
+]
+# The two supervised STT aliases match the whole message only, so a verb in front takes the
+# message out of their reach; they are exercised bare.
+_BARE_ALIASES = [
+    ("date.ambiguous.stt.v1", InformationNeed.AMBIGUOUS_DATE_QUERY, "que dia soy"),
+    ("date.current.stt.v1", InformationNeed.CURRENT_DATE, "me dice la fecha actual"),
+]
+
+
+@pytest.mark.parametrize("verb", ["guarda", "autorizo guardar"])
+@pytest.mark.parametrize("rule_id, need, body", _PREEMPTING_BODIES)
+def test_an_earlier_rule_keeps_its_need_over_the_shape_of_an_answer(
+    verb: str, rule_id: str, need: InformationNeed, body: str
+) -> None:
+    """Order matters: a protected, dated or identity message is never read as an answer."""
+    message = f"{verb} {body}"
+
+    assert parse_memory_answer(message) is not None  # the shape alone would be an answer
+    resolution = resolve_information_need(message)
+    assert resolution.rule_id == rule_id
+    assert resolution.need is need
+    assert resolution.rule_id != "memory.answer.v1"
+
+
+@pytest.mark.parametrize("rule_id, need, message", _BARE_ALIASES)
+def test_a_bare_stt_alias_is_not_an_answer(
+    rule_id: str, need: InformationNeed, message: str
+) -> None:
+    resolution = resolve_information_need(message)
+
+    assert resolution.rule_id == rule_id
+    assert resolution.need is need
+
+
+def test_every_rule_before_the_answer_rule_has_a_case_that_it_wins() -> None:
+    """A new rule placed before the answer rule must add a case above, or this fails."""
+    assert _RULES[-1] is _memory_answer_rule
+    corpus = [
+        normalize_spanish(f"{verb} {body}")
+        for verb in ("guarda", "autorizo guardar")
+        for _, _, body in _PREEMPTING_BODIES
+    ] + [normalize_spanish(message) for _, _, message in _BARE_ALIASES]
+
+    unexercised = [
+        rule.__name__ for rule in _RULES[:-1] if not any(rule(text) is not None for text in corpus)
+    ]
+
+    assert unexercised == []
+
+
+_VALUE_WORDS = ("mate", "verde", "muy", "dulce", "claro", "fuerte", "suave", "tibio", "rico")
+
+
+@pytest.mark.parametrize("verb", ["autorizo guardar", "guarda"])
+def test_the_parser_admits_every_value_the_classifier_can_offer(verb: str) -> None:
+    """The offer's value is at most ``_MAX_WORDS`` words with its article; the answer repeats it.
+
+    If the classifier ever admitted a longer value than the parser, an offer could be made that
+    its own answer could never accept.
+    """
+    assert _MAX_ANSWER_PHRASE_WORDS >= _MAX_WORDS
+    value = " ".join(("el", *_VALUE_WORDS[: _MAX_WORDS - 1]))
+    assert len(value.split()) == _MAX_WORDS
+
+    answer = parse_memory_answer(f"{verb} {value}")
+
+    assert answer == MemoryAnswer(accept=True, phrase=value)

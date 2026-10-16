@@ -26,7 +26,10 @@ from server.cognition import (
     face_authentication as face_auth_module,
     speaker_authentication as speaker_auth_module,
 )
-from server.cognition.owner_authentication import owner_unlock_service
+from server.cognition.identity import PersonRecord
+from server.cognition.identity_sessions import IdentitySessionRegistry
+from server.cognition.owner_authentication import OwnerUnlockService, owner_unlock_service
+from server.dependencies import get_owner_unlock_service
 from server.exceptions import TTSError
 from server.main import app
 from server.memory import candidates
@@ -37,6 +40,9 @@ from server.memory.candidate_dialogue import (
     compose_offer,
 )
 from server.memory.candidate_types import CandidateChannel, CandidateStatus, ProposedCandidate
+from server.memory.entity_labels import get_person_label
+from server.memory.household_authorization import get_active_role
+from server.memory.owner_credentials import get_active_owner_pin_credential
 from server.memory.predicate_registry import resolve_predicate
 from server.memory.relational_v4 import get_active_literal_facts
 from server.memory.voice_consent import grant_voice_consent, revoke_voice_consent
@@ -151,6 +157,15 @@ def _scene(
     return synthesize
 
 
+def _stream_reply(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Script the streaming model to say the one reply sentence."""
+
+    async def stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
+        yield _REPLY
+
+    monkeypatch.setattr(llm_streaming, "generate_response_stream", stream)
+
+
 async def _candidate(owner: int) -> int:
     result = await candidates.insert_candidate(
         ProposedCandidate(predicate="likes", value_text="el mate", value_key="mate"),
@@ -255,9 +270,15 @@ async def test_no_is_said_and_audited_and_the_value_is_gone(
     assert await _likes(owner) == []
 
 
-async def test_another_voice_with_the_owner_face_is_offered_nothing_and_answers_nothing(
+async def test_another_voice_with_the_owner_face_is_offered_nothing(
     household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Nothing was offered, so the candidate stays proposed and nothing is audited on either turn.
+
+    That another voice cannot *answer* an open offer is the job of
+    ``test_a_fall_through_answer_is_the_ordinary_turn_on_the_wire`` (the candidate is ``offered``
+    there).
+    """
     owner = household.owner_entity_id
     candidate_id = await _candidate(owner)
     synthesize = _scene(monkeypatch, "hola", _ANSWER, voice=_OTHER_VOICE)
@@ -269,6 +290,8 @@ async def test_another_voice_with_the_owner_face_is_offered_nothing_and_answers_
     assert synthesize.await_args_list[0].args == (_REPLY,)
     assert offered.json()["llm_response"] == _REPLY
     assert answered.json()["llm_response"] == _REPLY
+    assert offered.json()["identity_source"] is None
+    assert answered.json()["identity_source"] is None
     assert await _status(candidate_id) is CandidateStatus.PROPOSED
     assert await _audit_rows() == []
 
@@ -298,6 +321,7 @@ async def test_an_answer_with_no_offer_outstanding_is_an_ordinary_turn(
         response = await client.post("/transcribe", files=_files())
 
     assert response.json()["llm_response"] == _REPLY
+    assert response.json()["identity_source"] is None
     assert synthesize.await_args_list[0].args == (f"{_REPLY} {_OFFER}",)
     assert await _status(candidate_id) is CandidateStatus.OFFERED
     assert await _audit_rows() == [("read_personal_conversation_memory", "allowed")]
@@ -359,7 +383,7 @@ async def test_the_classic_spoken_log_never_carries_the_offer(
 async def test_a_failing_combined_synthesis_still_speaks_the_reply(
     household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    await _candidate(household.owner_entity_id)
+    candidate_id = await _candidate(household.owner_entity_id)
     synthesize = _scene(monkeypatch, "hola")
     synthesize.side_effect = [TTSError("piper down"), ("AAAA", 42)]
 
@@ -372,6 +396,9 @@ async def test_a_failing_combined_synthesis_still_speaks_the_reply(
         (f"{_REPLY} {_OFFER}",),
         (_REPLY,),
     ]
+    # Accepted residue (plan decision D-9): the candidate was marked offered before the
+    # synthesis, and nobody can tell it was never heard.
+    assert await _status(candidate_id) is CandidateStatus.OFFERED
 
 
 async def test_a_fall_through_answer_is_the_ordinary_turn_on_the_wire(
@@ -393,7 +420,9 @@ async def test_a_fall_through_answer_is_the_ordinary_turn_on_the_wire(
     assert {k: v for k, v in answer.items() if k not in timing} == {
         k: v for k, v in ordinary.items() if k not in timing
     }
+    assert answer["identity_source"] is None
     assert await _status(candidate_id) is CandidateStatus.OFFERED
+    assert await _audit_rows() == []
 
 
 async def test_the_streaming_route_answers_too(
@@ -503,6 +532,183 @@ async def test_a_failing_combined_synthesis_never_logs_the_value(
         for record in caplog.records
         if record.name != "httpx"
     )
+
+
+async def test_ordinary_speech_shaped_like_an_answer_leaves_an_open_offer_alone(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The verified owner says «apruebo el examen»: a closed verb, but not the offered value."""
+    owner = household.owner_entity_id
+    candidate_id = await _candidate(owner)
+    assert await candidates.mark_offered(
+        candidate_id, owner, correlation_id=uuid4(), now=datetime.now(UTC)
+    )
+    _scene(monkeypatch, "apruebo el examen")
+
+    async with _client() as client:
+        response = await client.post("/transcribe", files=_files())
+
+    assert response.status_code == 200
+    assert response.json()["llm_response"] == _REPLY
+    assert response.json()["identity_source"] is None
+    assert await _status(candidate_id) is CandidateStatus.OFFERED
+    assert await _audit_rows() == []
+
+
+async def test_the_streaming_route_offers_another_voice_nothing(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    candidate_id = await _candidate(household.owner_entity_id)
+    synthesize = _scene(monkeypatch, "hola", voice=_OTHER_VOICE)
+    _stream_reply(monkeypatch)
+
+    async with _client() as client:
+        response = await client.post("/transcribe/stream", files=_files())
+
+    events = [json.loads(line) for line in response.text.splitlines()]
+    assert [event["type"] for event in events] == ["text_heard", "emotion", "audio", "done"]
+    assert [event["text"] for event in events if event["type"] == "audio"] == [_REPLY]
+    assert [call.args for call in synthesize.await_args_list] == [(_REPLY,)]
+    assert await _status(candidate_id) is CandidateStatus.PROPOSED
+    assert await _audit_rows() == []
+
+
+async def test_the_streaming_route_never_lets_another_voice_answer(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owner = household.owner_entity_id
+    candidate_id = await _candidate(owner)
+    assert await candidates.mark_offered(
+        candidate_id, owner, correlation_id=uuid4(), now=datetime.now(UTC)
+    )
+    _scene(monkeypatch, _ANSWER, voice=_OTHER_VOICE)
+    _stream_reply(monkeypatch)
+
+    async with _client() as client:
+        response = await client.post("/transcribe/stream", files=_files())
+
+    events = [json.loads(line) for line in response.text.splitlines()]
+    assert [event["type"] for event in events] == ["text_heard", "emotion", "audio", "done"]
+    assert [event["text"] for event in events if event["type"] == "audio"] == [_REPLY]
+    assert await _status(candidate_id) is CandidateStatus.OFFERED
+    assert await _audit_rows() == []
+
+
+async def test_a_second_face_in_frame_answers_nothing(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Another face vetoes the owner's: the open offer stays open and the turn is ordinary."""
+    owner = household.owner_entity_id
+    candidate_id = await _candidate(owner)
+    assert await candidates.mark_offered(
+        candidate_id, owner, correlation_id=uuid4(), now=datetime.now(UTC)
+    )
+    _scene(monkeypatch, _ANSWER, faces=(_OWNER_FACE, _STRANGER_FACE))
+
+    async with _client() as client:
+        response = await client.post("/transcribe", files=_files())
+
+    assert response.status_code == 200
+    assert response.json()["llm_response"] == _REPLY
+    assert response.json()["identity_source"] is None
+    assert await _status(candidate_id) is CandidateStatus.OFFERED
+    assert await _audit_rows() == []
+
+
+@pytest.mark.parametrize(
+    "setting, face_detections",
+    [("memory_candidates_enabled", 1), ("memory_enabled", 0)],
+    ids=["candidates-off", "memory-off"],
+)
+async def test_an_answer_shaped_message_with_a_switch_off_resolves_no_face_for_the_answer(
+    household: PersonalSetupResult,
+    monkeypatch: pytest.MonkeyPatch,
+    setting: str,
+    face_detections: int,
+) -> None:
+    """Only the generic turn's own speaker check may look at the frame, never the answerer.
+
+    With the candidate switch off the generic turn still names its speaker (one detection,
+    ADR 0020); with the store off nothing looks at the frame at all. Were the answerer bound,
+    the answer would cost a second detection.
+    """
+    owner = household.owner_entity_id
+    candidate_id = await _candidate(owner)
+    assert await candidates.mark_offered(
+        candidate_id, owner, correlation_id=uuid4(), now=datetime.now(UTC)
+    )
+    _scene(monkeypatch, _ANSWER)
+    detector = AsyncMock(return_value=[DetectedFace(embedding=_OWNER_FACE, score=0.9, width=200.0)])
+    monkeypatch.setattr(face_auth_module, "_detect_faces_default", detector)
+    embed = AsyncMock(return_value=_OWNER_VOICE)
+    monkeypatch.setattr(speaker_auth_module, "embed_wav", embed)
+    monkeypatch.setattr(settings, setting, False)
+
+    async with _client() as client:
+        response = await client.post("/transcribe", files=_files())
+
+    assert response.status_code == 200
+    assert response.json()["llm_response"] == _REPLY
+    assert detector.await_count == face_detections
+    embed.assert_not_awaited()
+    monkeypatch.setattr(settings, "memory_candidates_enabled", True)
+    assert await _status(candidate_id) is CandidateStatus.OFFERED
+
+
+def _unlock_service() -> OwnerUnlockService:
+    """A real unlock service over the household's own PIN credential and roles."""
+
+    async def read_person(person_entity_id: int) -> PersonRecord | None:
+        label = await get_person_label(entity_id=person_entity_id)
+        if label is None:
+            return None
+        return PersonRecord(
+            person_id=label.entity_id, display_name=label.display_name, entity_type="person"
+        )
+
+    registry = IdentitySessionRegistry(
+        lookup_person=lambda _pid: None, clock=lambda: datetime.now(UTC), ttl=timedelta(seconds=60)
+    )
+    return OwnerUnlockService(
+        clock=lambda: datetime.now(UTC),
+        registry=registry,
+        read_credential=get_active_owner_pin_credential,
+        read_role=get_active_role,
+        read_person=read_person,
+    )
+
+
+async def test_a_token_never_answers_an_offer_and_is_never_spent_by_the_attempt(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A valid owner PIN token with no face: the answer is ordinary and the grant stays usable."""
+    owner = household.owner_entity_id
+    candidate_id = await _candidate(owner)
+    assert await candidates.mark_offered(
+        candidate_id, owner, correlation_id=uuid4(), now=datetime.now(UTC)
+    )
+    service = _unlock_service()
+    monkeypatch.setitem(app.dependency_overrides, get_owner_unlock_service, lambda: service)
+    unlock = await service.unlock(_PIN)
+    assert unlock is not None
+    _scene(monkeypatch, _ANSWER, faces=())
+
+    async with _client() as client:
+        response = await client.post(
+            "/transcribe", headers={"X-Iroko-Identity-Token": unlock.token}, files=_files()
+        )
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["llm_response"] == _REPLY
+    assert body["authentication_consumed"] is False
+    assert body["identity_source"] is None
+    assert await _status(candidate_id) is CandidateStatus.OFFERED
+    assert await _audit_rows() == []
+    # The token is still alive and unspent: observing it again still names the owner.
+    event = transcribe_router._voice_event_from_transcript("hola")
+    still_there = await service.for_request(unlock.token).peek_actor(event)
+    assert still_there.person_id == owner
 
 
 @pytest.mark.parametrize("setting", ["memory_enabled", "memory_candidates_enabled"])
