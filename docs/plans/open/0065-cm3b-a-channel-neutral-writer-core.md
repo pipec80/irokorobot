@@ -63,6 +63,8 @@ Task 2 proves it is needed** (it should not be: the columns exist).
 ## Decisions
 
 1. **D-1 — Predicate names.** `species` (literal, single current, subject a pet);
+   `stated_age` (literal, single current, subject a person or a pet; the value is a whole number
+   from 0 to 130 and the row's `asserted_at` is its as-of date; ADR 0022 decision 6);
    `private_topic` (literal, multi-value, subject a person, `personal`/`normal`) for the disclosure
    rule; `access_code` (literal, single current, subject a person, `personal`/`security`) for the
    first SECURITY datum.
@@ -113,19 +115,23 @@ the household reader's contract and the spoken dialogue are not edited.
   server/src`, `rg -n "def promote" server/src`, `rg -n "PredicateDefinition\(" server/src/server/memory/predicate_registry.py`,
   `rg -n "class AuthorizationAction" server/src`, `rg -n "_VERSION|version" scripts/eval_longitudinal_memory.py tests/evals/golden_longitudinal_memory.yaml`.
 
-## Task 1: The registry knows `species`, `private_topic` and `access_code`
+## Task 1: The registry knows `species`, `stated_age`, `private_topic` and `access_code`
 
 **Files:** `server/src/server/memory/predicate_registry.py`; test
 `tests/unit/test_predicate_registry.py`.
 
 - [ ] **Step 1: Failing tests.** `resolve_predicate("species")` returns a literal, single-current
   definition whose subject types are the pet type only and whose format is text;
+  `resolve_predicate("stated_age")` is a single-current literal on a person or a pet that accepts
+  `"8"` and rejects `"ocho"`, `"-1"`, `"131"` and `"8 años"`;
   `resolve_predicate("private_topic")` is a multi-value literal on a person with default visibility
   `personal`; `resolve_predicate("access_code")` is a single-current literal on a person with
   default visibility `personal` and default sensitivity `security`; the Spanish aliases
-  (`especie`, `tema_privado`, `codigo_acceso`) resolve to them; a pet is rejected as the subject
+  (`especie`, `edad_dicha`, `tema_privado`, `codigo_acceso`) resolve to them; a pet is rejected as the subject
   of `private_topic` and `access_code`. Expected RED: `resolve_predicate(...)` returns `None`.
-- [ ] **Step 2: Implement** the three `PredicateDefinition`s. **Step 3:** run
+- [ ] **Step 2: Implement** the four `PredicateDefinition`s. `LiteralFormat` has only `TEXT` and
+  `ISO_DATE` today: add `LiteralFormat.INTEGER` with its normalizer (a whole number from 0 to 130,
+  digits only) next to the ISO-date one, and use it for `stated_age`. **Step 3:** run
   `tests/unit/test_predicate_registry.py tests/unit/test_architecture_guards.py` (a guard may list
   the registry's predicates); lint and types. **Step 4: Commit**
   `feat(server): register species, private topic and access code (plan 0065)`.
@@ -203,7 +209,9 @@ looked up in the writer's own table (D-2) from the predicate and the subject; th
 
 - [ ] **Step 1: Failing tests:** the same fact written through `voice_dialogue` and `import_file`
   has identical visibility and sensitivity; a child's `birth_date` is `household`/`child_data`; the
-  owner's `likes` is `personal`/`normal`; `species` of a pet is `household`/`normal`; **the invariant:**
+  owner's `likes` is `personal`/`normal`; `species` of a pet is `household`/`normal`; `stated_age` of a child is `household`/`child_data` and
+  the derived current age of a stated 8 written one year earlier reads 9 (a pure helper
+  `current_age(stated, as_of, today)` with its own tests, and a later `birth_date` wins); **the invariant:**
   a `personal` fact whose asserter is not its subject is refused with a closed reason; a `security`
   value is refused with the closed reason `security_storage_undecided` and **nothing is written and
   the value is in no log** (caplog and `extra` scanned); `perception` is refused; `lives_in` with a
@@ -230,7 +238,8 @@ tests that pin the dataset version and the driver's unsupported operations.
   what each change below does to comparability with the v2 baseline.
 - [ ] **Step 2: Failing tests** for each of: (a) the dataset `version` is `3` everywhere it is
   pinned (three code files) and v2 is still readable; (b) `expected_items` use V4 vocabulary
-  (`birth_date` as a full ISO date, `other` for a pet, `species` as a predicate); (c) the
+  (`birth_date` as a full ISO date, `stated_age` where the scenario only says an age, `other` for
+  a pet, `species` as a predicate); (c) the
   operation `confirm` exists in the schema and the driver reports it as supported by the
   canonical writer; (d) the SECURITY scenario exists with an **invented** code and a closed
   expected outcome (stored refused until Step 0, so the scenario is marked pending, not failing);

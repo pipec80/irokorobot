@@ -51,6 +51,20 @@ What the audit verified in code (`feat/0063-cm3a-memory-dialogue`, 2026-10-16):
 
 ## Decision
 
+### 0. The frame that governs the rest (Pipec, 2026-10-16)
+
+In the `personal` profile the speaker is always the identified owner, and **everything said is said
+by the owner about the owner's world**: the data belongs to the owner. Every first-person
+possessive («mi novia», «mi hija», «mi perro», «mi casa») is anchored to the owner; every fact is
+stored as household data of the owner, with the owner as asserter and as confirmer. Examples:
+«te presento a mi novia» is the owner's partner; «mi hija tiene 8 años» means the owner has a
+daughter (the existing one when exactly one is known, say the one named in the household) and her
+age, as stated, is 8. A reference by relationship resolves to the owner's household entity of that
+relationship when exactly one exists; when none exists the capture proposes creating it (and asks
+for the name if it was not given); when several exist it asks which; in doubt it discards. That
+resolution belongs to the spoken capture (tranche B); this ADR and Plan 0065 provide the rules and
+the writer it will call. Decisions 1 to 11 below are the consequences, not exceptions.
+
 ### 1. Who the owner may write about (profile `personal`)
 
 A closed set: the owner's **children, partner and pets**. Anyone else named (friends, a boss,
@@ -94,8 +108,11 @@ subject's `personal` memory.
 `lives_in` and `works_at` take `valid_from` = the spoken date when there is one, else the date of
 the assertion; the previous row is closed **at that `valid_from`** (not at `now`); "I used to live
 in X" without a date is a historical row with no `valid_from`. A date of birth is stored only as a
-**full ISO date**; a year alone and an age are not stored (the age is derived from `birth_date`,
-never persisted); the robot asks for the full date.
+**full ISO date** (a year alone is not stored; the robot asks for the full date). **A stated age
+is stored** (Pipec, 2026-10-16: «mi hija tiene 8 años» is kept) as the predicate `stated_age`,
+a single current value **with its as-of date** (the assertion date): «8, as of 2026-10-16». The
+current age is derived from it (the stated age plus the whole years elapsed) and a `birth_date`,
+when known, supersedes it. The age is never persisted as "today's age".
 
 ### 7. Entities
 

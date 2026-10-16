@@ -23,7 +23,7 @@
 
 **Goal:** What Iroko says sounds like one voice and tells the truth about memory. Every spoken
 string and every persona prompt uses neutral Spanish with **tuteo** (Pipec lives in Santiago de
-Chile; idioms may come later); the streaming contract asks for Spanish like the classic contract
+Chile; idioms may come later); the master prompt and the streaming contract ask for Spanish like the classic contract
 does; a model reply never claims to have saved, registered or noted anything (nothing is stored
 by the model: the only save is the deterministic one of Plan 0063); the explicit answer to a
 memory offer survives the way Whisper `small` actually writes it («autoriza a guardar mi café»,
@@ -31,7 +31,7 @@ memory offer survives the way Whisper `small` actually writes it («autoriza a g
 fixed. No wire change, no migration, no new route.
 
 **Architecture:** Five small, independent changes behind one plan.
-(1) One sentence in `_STREAMING_OUTPUT_CONTRACT`. (2) A tuteo pass over the two personas, the
+(1) One language rule in the master prompt (last block) and one in `_STREAMING_OUTPUT_CONTRACT`. (2) A tuteo pass over the two personas, the
 fixed controller strings, the perception templates and the fallback/look phrases, plus a guard
 test that no fixed string uses voseo (the *recognition* lexicons keep accepting voseo input).
 (3) A pure module `cognition/claim_guard.py` with `neutralize_memory_claims(text)`, applied to
@@ -136,22 +136,37 @@ No new URL, field, migration, setting or dependency. The robot (`robot/src`) is 
   `rg -n "def parse_memory_answer" server/src`, `rg -n "_MEMORY_DISCIPLINE" server/src`,
   `rg -n "llm_fallback_phrase" server/src .env.example`. A difference is reported before code.
 
-## Task 1: The streaming contract asks for Spanish
+## Task 1: The master prompt and the streaming contract ask for Spanish
 
-**Files:** modify `server/src/server/llm_streaming.py`; test modified
+Pipec's idea (2026-10-16): one rule in the master prompt, «siempre responde en español», may fix
+most of the drift. It goes in **both** places: the master prompt (`build_system_prompt`, which
+every route uses: classic, stream, onboarding, vision) and the streaming contract (the last thing
+the stream's model reads).
+
+**Files:** modify `server/src/server/characters/__init__.py`, `server/src/server/llm_streaming.py`;
+tests new `tests/unit/test_prompt_language.py` (it builds the prompt through `build_system_prompt`,
+like `tests/unit/test_memory_discipline.py` and `tests/unit/test_system_prompt_date.py`) and modified
 `tests/unit/test_llm_streaming.py`.
 
-- [ ] **Step 1: Failing test.** In `tests/unit/test_llm_streaming.py` (it already checks that the
-  contract says «texto plano» and names no tag), add a test that the system prompt built by
-  `_streaming_system_prompt("...")` contains the sentence `Responde siempre en español.` and still
-  names no tag. Expected RED: `AssertionError` (the sentence is absent).
-- [ ] **Step 2: Implement.** Extend `_STREAMING_OUTPUT_CONTRACT` to
-  `"\n\nResponde únicamente en texto plano, siempre en español: sin JSON, sin etiquetas, sin listas ni formato. Escribe solo lo que dirías en voz alta."`
-  and make the test match the exact phrase (`siempre en español`). Keep the comment that the
-  contract names no tag (ADR 0018).
-- [ ] **Step 3:** run `tests/unit/test_llm_streaming.py tests/unit/test_stream_diagnosis_variants.py`
-  (the second one uses the contract as text); lint and types over the files.
-- [ ] **Step 4: Commit** `feat(server): ask the streaming reply for Spanish (plan 0064)`.
+- [ ] **Step 1: Failing tests.** (a) `build_system_prompt(...)` for the default profile, with and
+  without memory, perception, onboarding and an emotion, **ends with** the language block
+  `_LANGUAGE_RULE` and contains `español` and `tuteo`; the block is the last part, after the
+  memory and perception blocks (a small model weighs the end of the prompt). (b) The streaming
+  prompt from `_streaming_system_prompt("...")` contains `siempre en español` and still names no
+  tag (ADR 0018). Expected RED: `AssertionError` (both absent).
+- [ ] **Step 2: Implement.** In `characters/__init__.py` add
+  `_LANGUAGE_RULE = "
+IDIOMA — Responde siempre en español neutro, tuteando a la persona (tú). No uses otro idioma ni mezcles palabras de otro idioma, aunque la persona lo haga."`
+  and append it as the **last** element of `parts` in `build_system_prompt`. In `llm_streaming.py`
+  extend `_STREAMING_OUTPUT_CONTRACT` to `"
+
+Responde únicamente en texto plano, siempre en español: sin JSON, sin etiquetas, sin listas ni formato. Escribe solo lo que dirías en voz alta."`
+  Keep the comment that the contract names no tag.
+- [ ] **Step 3:** run the two test files, `tests/unit/test_stream_diagnosis_variants.py` (it uses
+  the contract as text) and every test that pins the exact system prompt
+  (`rg -n "base_prompt|system_prompt" tests`); update those that compare the whole prompt. Lint and
+  types over the files.
+- [ ] **Step 4: Commit** `feat(server): ask every reply for Spanish in the master prompt (plan 0064)`.
 
 ## Task 2: One dialect, tuteo, everywhere the robot speaks
 
