@@ -123,13 +123,13 @@ def test_transcribe_ambiguous_date_alias_avoids_llm(
 
     assert response.status_code == 200
     assert response.json()["llm_response"] == (
-        "No entendí si preguntás por la fecha actual o por información personal. "
+        "No entendí si preguntas por la fecha actual o por información personal. "
         "¿Podrías reformularlo?"
     )
     assert response.json()["llm_ms"] == 0
     process.assert_not_awaited()
     tts_mock.assert_awaited_once_with(
-        "No entendí si preguntás por la fecha actual o por información personal. "
+        "No entendí si preguntas por la fecha actual o por información personal. "
         "¿Podrías reformularlo?"
     )
 
@@ -179,7 +179,7 @@ def test_transcribe_active_identity_denies_without_fresh_evidence(
 
     assert response.status_code == 200
     body = response.json()
-    assert body["llm_response"] == "Todavía no puedo confirmar quién sos."
+    assert body["llm_response"] == "Todavía no puedo confirmar quién eres."
     assert body["vision_requested"] is False
     process.assert_not_awaited()
 

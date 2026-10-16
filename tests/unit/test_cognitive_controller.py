@@ -216,7 +216,7 @@ async def test_controller_clarifies_ambiguous_stt_date_without_legacy_delegate()
 
     assert plan.status is KnowledgeStatus.UNKNOWN
     assert plan.response == (
-        "No entendí si preguntás por la fecha actual o por información personal. "
+        "No entendí si preguntas por la fecha actual o por información personal. "
         "¿Podrías reformularlo?"
     )
     audit.assert_not_awaited()
@@ -335,7 +335,7 @@ async def test_controller_dispatches_trusted_child_count_without_legacy_delegate
     plan = await controller.handle(_event("¿Cuántos hijos tengo?"))
 
     assert plan.status is KnowledgeStatus.KNOWN
-    assert plan.response == "Tenés 2 hijos."
+    assert plan.response == "Tienes 2 hijos."
     assert plan.tool_results[0].tool_name == "count_children"
     tools.count_children.assert_awaited_once()
     legacy_turn.assert_not_awaited()
@@ -572,7 +572,7 @@ async def test_controller_active_identity_greets_the_authenticated_owner() -> No
 
     assert isinstance(plan, ResponsePlan)
     assert plan.status is KnowledgeStatus.KNOWN
-    assert plan.response == "Sos Ada."
+    assert plan.response == "Eres Ada."
     legacy_turn.assert_not_awaited()
 
 
@@ -586,7 +586,7 @@ async def test_controller_active_identity_denies_without_fresh_evidence() -> Non
 
     assert isinstance(plan, ResponsePlan)
     assert plan.status is KnowledgeStatus.UNKNOWN
-    assert plan.response == "Todavía no puedo confirmar quién sos."
+    assert plan.response == "Todavía no puedo confirmar quién eres."
     legacy_turn.assert_not_awaited()
 
 
@@ -604,7 +604,7 @@ async def test_who_am_i_never_awaits_the_resolver_that_spends_the_grant() -> Non
 
     plan = await controller.handle(_event("¿Quién soy?"))
 
-    assert plan.response == "Sos Ada."
+    assert plan.response == "Eres Ada."
     spending.assert_not_awaited()
 
 

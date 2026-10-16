@@ -289,7 +289,7 @@ def test_vision_respond_active_identity_never_reads_the_frame(
     resp = _post_respond(client, _FAKE_JPEG, "¿Quién soy?")
 
     assert resp.status_code == 200
-    assert resp.json()["llm_response"] == "Todavía no puedo confirmar quién sos."
+    assert resp.json()["llm_response"] == "Todavía no puedo confirmar quién eres."
     vision_module.perceive_scene.assert_not_awaited()  # type: ignore[attr-defined]  # AsyncMock
     llm.generate_response.assert_not_awaited()  # type: ignore[attr-defined]  # AsyncMock
 

@@ -340,7 +340,7 @@ async def test_chat_active_identity_denies_without_fresh_evidence(
         )
 
     assert response.status_code == 200
-    assert response.json()["response"] == "Todavía no puedo confirmar quién sos."
+    assert response.json()["response"] == "Todavía no puedo confirmar quién eres."
     process.assert_not_awaited()
 
 

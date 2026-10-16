@@ -98,9 +98,9 @@ PRESENTATION GUIDANCE:
 # The echo provokes correction — if the robot repeats a garbled name, the
 # user fixes it next turn and fact versioning does the rest.
 _ONBOARDING_GOAL_TEMPLATE = """
-PRÓXIMO OBJETIVO de la entrevista: preguntale {question_hint}. UNA sola \
+PRÓXIMO OBJETIVO de la entrevista: pregúntale {question_hint}. UNA sola \
 pregunta. Cuando el usuario te dé un dato importante (nombre, fecha, \
-lugar), repetilo naturalmente en tu respuesta para confirmar que lo \
+lugar), repítelo naturalmente en tu respuesta para confirmar que lo \
 entendiste bien."""
 
 # V0.5: what the camera sees THIS turn enters the prompt like memory does —
@@ -108,8 +108,8 @@ entendiste bien."""
 _PERCEPTION_TEMPLATE = """
 --- Percepción visual (lo que ves AHORA MISMO por tu cámara) ---
 {description}
-Respondé a lo que el usuario preguntó usando lo que ves, en tu propia voz \
-y en español. No repitas la descripción literal — reaccioná a ella."""
+Responde a lo que el usuario preguntó usando lo que ves, en tu propia voz \
+y en español. No repitas la descripción literal — reacciona a ella."""
 
 _EMOTION_ADAPTATIONS: dict[str, str] = {
     "joy": "- The user seems happy — match with warmth; you may be slightly more playful than usual.",

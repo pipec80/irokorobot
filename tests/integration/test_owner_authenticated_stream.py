@@ -284,7 +284,7 @@ async def test_stream_who_am_i_names_the_owner_and_keeps_the_grant(
 
         identity_events = _parse_ndjson(identity)
         spoken = [event for event in identity_events if event["type"] == "audio"]
-        assert spoken[0]["text"] == "Sos Pipec."
+        assert spoken[0]["text"] == "Eres Pipec."
         assert identity_events[-1]["authentication_consumed"] is False
 
         _mock_stt_tts(monkeypatch, text=_CHILD_QUESTION)

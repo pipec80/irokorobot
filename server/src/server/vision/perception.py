@@ -27,24 +27,24 @@ logger = logging.getLogger(__name__)
 _ENROLL_REJECTIONS: dict[str, str] = {
     "no_face": (
         "No lograste ver ninguna cara clara para aprenderla. "
-        "Pedile con humor que se ponga frente a la cámara."
+        "Pídele con humor que se ponga frente a la cámara."
     ),
     "multiple_faces": (
-        "Ves varias caras a la vez y no sabés cuál aprender. "
-        "Pedile que se ponga solo frente a la cámara."
+        "Ves varias caras a la vez y no sabes cuál aprender. "
+        "Pídele que se ponga solo frente a la cámara."
     ),
     "low_quality": (
         "La imagen salió borrosa o con poca luz y no pudiste ver bien la cara. "
-        "Pedile que se acerque con mejor luz."
+        "Pídele que se acerque con mejor luz."
     ),
     "face_too_small": (
-        "La cara se ve demasiado lejos para aprenderla bien. Pedile que se acerque a la cámara."
+        "La cara se ve demasiado lejos para aprenderla bien. Pídele que se acerque a la cámara."
     ),
 }
 
-_RECOGNIZED_TEMPLATE = "[Reconocés a {names} frente a vos — saludá por su nombre.]"
+_RECOGNIZED_TEMPLATE = "[Reconoces a {names} frente a ti — salúdalos por su nombre.]"
 _UNKNOWN_LINE = (
-    "[También ves a alguien que NO reconocés — podés preguntar su nombre "
+    "[También ves a alguien que NO reconoces — puedes preguntar su nombre "
     "con naturalidad, sin alarma.]"
 )
 
@@ -158,6 +158,6 @@ async def enroll_from_frame(name: str, image: bytes) -> str:
             "Discúlpate brevemente."
         )
     return (
-        f"Acabás de aprender la cara de {outcome.name} — desde ahora podés "
-        "reconocerla al verla. Confirmáselo con calidez."
+        f"Acabas de aprender la cara de {outcome.name} — desde ahora puedes "
+        "reconocerla al verla. Confírmaselo con calidez."
     )

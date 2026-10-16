@@ -378,7 +378,7 @@ def test_stream_ambiguous_date_alias_avoids_llm(
     events = _parse_ndjson(response.text)
     assert [event["type"] for event in events] == ["text_heard", "emotion", "audio", "done"]
     assert events[2]["text"] == (
-        "No entendí si preguntás por la fecha actual o por información personal. "
+        "No entendí si preguntas por la fecha actual o por información personal. "
         "¿Podrías reformularlo?"
     )
     assert events[-1]["llm_ms"] == 0
@@ -527,7 +527,7 @@ def test_stream_active_identity_denies_without_fresh_evidence(
 
     assert response.status_code == 200
     events = _parse_ndjson(response.text)
-    assert str(events[2]["text"]) == "Todavía no puedo confirmar quién sos."
+    assert str(events[2]["text"]) == "Todavía no puedo confirmar quién eres."
     prepare.assert_not_awaited()
 
 
