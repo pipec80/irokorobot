@@ -2,7 +2,7 @@
 
 > **Status:** In progress. Numbers only: no reply, no transcript and no household name appear
 > here. The gate and the reading rules are fixed in
-> [Plan 0058](../plans/open/0058-stream-protocol-repair.md#rules-fixed-before-the-run) **before**
+> [Plan 0058](../plans/completed/0058-stream-protocol-repair.md#rules-fixed-before-the-run) **before**
 > the runs and are not changed afterwards.
 
 ## Conditions

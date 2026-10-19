@@ -4,7 +4,7 @@
 - **Date:** 2026-09-24
 - **Builds on:** [ADR 0008](0008-progressive-owner-authentication.md),
   [ADR 0009](0009-locked-posture-and-scoped-capabilities.md)
-- **Origin:** [0049 audit](../plans/open/0049-server-objective-conformance-audit.md)
+- **Origin:** [0049 audit](../plans/completed/0049-server-objective-conformance-audit.md)
   findings F-08, F-09 and F-16; repairs that do not need this decision are in
   [Plan 0050](../plans/completed/0050-server-audit-repairs.md)
 

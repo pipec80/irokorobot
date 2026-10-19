@@ -1,9 +1,8 @@
 # 0066 — The answer to a memory offer: a closed verb alone is enough
 
-> **Status:** `Draft` — written 2026-10-19 from Pipec's hardware session of the same day (Plan 0064
-> acceptance) and from his decision that day (D-1). **Pipec confirmed D-2 to D-7 on 2026-10-19**
-> after reading an example of each («así acepto todo»), and again that a bare «sí» stays out. It
-> still needs his promotion to `Ready` and `NOW`, which is his to give. **Not rehearsed** in a
+> **Status:** `Ready` and `NOW` — promoted by Pipec on 2026-10-19, who confirmed D-1 to D-7 (D-1 is
+> his decision of that day, after the Plan 0064 hardware session; D-2 to D-7 he confirmed after an
+> example of each, and that a bare «sí» stays out). Written the same day. **Not rehearsed** in a
 > scratch copy: the tasks below are specifications (files, rules, tests to write first), not
 > rehearsed diffs. To be executed in a **new session**. It does not depend on Plan 0065 and Plan
 > 0065 does not depend on it.
