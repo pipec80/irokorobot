@@ -1,13 +1,13 @@
 # 0067 — The reply to a memory offer: a dedicated listening mode, better words
 
-> **Status:** `Draft` — written 2026-10-19 after Pipec's first hardware session with Plan 0066 (the
+> **Status:** `Ready` and `NOW` — promoted by Pipec on 2026-10-19 and executed in the same session
+> (his choice: «todo tiene relación»), after Plan 0066 merged (PR #196). Written 2026-10-19 after Pipec's first hardware session with Plan 0066 (the
 > short answer promoted 1 of 2 times; the other fell to ordinary conversation). Pipec chose the
 > order: (1) a dedicated listening mode, (2) wider words and hotwords only in that mode, (3) measure
 > silence trimming and short voice references for the speaker check (that third item is the
 > separate [Plan 0068](0068-short-clip-speaker-measurement.md); this plan does not touch the voice
-> thresholds). The face-only fallback was **removed from scope** by Pipec. **Blocked by the queue:**
-> Plan 0066 must close first (PR #196 merged and its Task 6 counts recorded), then Pipec marks this
-> plan `Ready` and `NOW`; to be executed in a **new session**. **Not rehearsed** in a scratch copy:
+> thresholds). The face-only fallback was **removed from scope** by Pipec. Task 8 also records the
+> hardware counts Plan 0066 left open (its Task 6). **Not rehearsed** in a scratch copy:
 > the tasks below are specifications (files, rules, tests to write first), not rehearsed diffs.
 
 > **For agentic workers:** if the status above does not say `Ready`, stop: Pipec has not promoted
@@ -51,7 +51,7 @@ dependency.
 
 **Spec:** [ADR 0021](../../adr/0021-memory-candidates-and-the-canonical-writer.md) decision 9 and the
 Plan 0066 amendment, the Plan 0066 execution record
-([Plan 0066](0066-verb-only-answer.md)), the stream wire notes in
+([Plan 0066](../completed/0066-verb-only-answer.md)), the stream wire notes in
 [ADR 0012](../../adr/0012-line-delimited-stream-terminal-events.md), and the repository rules in
 `.claude/rules/` (not tracked; read them from the working copy).
 
@@ -167,7 +167,7 @@ owns the code.
 
 ## Task 0: Revalidate the baseline
 
-- [ ] **Step 0: Status.** This plan says `Ready`, Plan 0066 is closed, otherwise stop.
+- [ ] **Step 0: Status.** This plan says `Ready` and Plan 0066 is merged, otherwise stop.
 - [ ] **Step 1: Branch.** `git checkout main && git pull`, clean tree, then
   `git checkout -b feat/0067-reply-listening-mode`; record the base SHA.
 - [ ] **Step 2: Baseline.** `just gate`; record the outcome and test count (3398 at the close of the
@@ -350,6 +350,9 @@ near the microphone, answering the offer **in your own words**:
 - [ ] Two offers answered «sí, guárdala»: how many promoted.
 - [ ] Three offers left unanswered for 15 s: how many returned to normal listening on their own.
 - [ ] One unrelated question asked as the reply to an offer: it is answered normally.
+- [ ] Plan 0066's own counts, in the same session: two offers answered with the old full phrase
+  («sí, autorizo guardar …»): how many promoted; three casual «autorizo» or «sí, guarda» with
+  **no** open offer: nothing saved, an ordinary reply.
 
 If fewer than 4 of 5 pauses survive as one turn, report the count and the values of
 `VAD_REPLY_SILENCE_MS` and `REPLY_WAIT_S` you tried; those are tuning, not a redesign. A `Speaker

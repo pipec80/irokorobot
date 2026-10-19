@@ -1,6 +1,7 @@
 # 0066 — The answer to a memory offer: a closed verb alone is enough
 
-> **Status:** `Ready` and `NOW` — promoted by Pipec on 2026-10-19, who confirmed D-1 to D-7 (D-1 is
+> **Status:** `Closed` 2026-10-19 (PR #196, `ec4de64`). Its Task 6 (hardware counts) was folded by Pipec into [Plan 0067](../open/0067-reply-listening-mode.md) Task 8 the same day.
+> Before: `Ready` and `NOW` — promoted by Pipec on 2026-10-19, who confirmed D-1 to D-7 (D-1 is
 > his decision of that day, after the Plan 0064 hardware session; D-2 to D-7 he confirmed after an
 > example of each, and that a bare «sí» stays out). Written the same day. **Not rehearsed** in a
 > scratch copy: the tasks below are specifications (files, rules, tests to write first), not
@@ -332,8 +333,11 @@ migration is added.
 ## Execution record
 
 Executed 2026-10-19 on `feat/0066-verb-only-answer` (base `0009140`), tasks 0 to 5. **Task 6
-(hardware acceptance) is pending: Pipec runs it**, and the plan stays in `open/` and `NOW` until
-its counts are recorded here.
+(hardware acceptance)** had one session the same day: 1 of 2 short answers promoted; the other
+failed the speaker check (`Speaker verdict: unknown`) on a clip of about 2 s and fell to ordinary
+conversation, where the model improvised «te tomo nota». Pipec folded the remaining counts into
+Plan 0067 Task 8 and opened Plans 0067 (reply listening mode) and 0068 (short clips and the
+speaker check). Merged as PR #196.
 
 - **Baseline:** `just gate` 3326 passed plus one `slow` test (`test_the_real_encoder_returns_the_frozen_shape`)
   that timed out under the parallel load and passed alone (3 of 3), so 3327 as at the close of
