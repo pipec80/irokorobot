@@ -33,7 +33,7 @@ to see the code, tests, verified gaps, and future delivery sequence.
 
 ## Plan en curso (`NOW`)
 
-`NOW` es el [Plan 0064 — calidad del habla y del diálogo](0064-speech-and-dialogue-quality.md), promovido a `Ready` y `NOW` por Pipec el 2026-10-16 (decisiones D-1 a D-8 confirmadas); se ejecuta en una sesión nueva. Antes lo ocupaba [0063 — la oferta de memoria hablada y la respuesta explícita (CM-3a, segundo corte)](../completed/0063-cm3a-memory-dialogue.md), que **cerró el 2026-10-16** (PR #188) y ya vive en `completed/`.
+`NOW` es el [Plan 0064 — calidad del habla y del diálogo](0064-speech-and-dialogue-quality.md), promovido a `Ready` y `NOW` por Pipec el 2026-10-16 (decisiones D-1 a D-8 confirmadas); su código se ejecutó el 2026-10-16 en la rama `feat/0064-speech-and-dialogue-quality` (faltan el PR y la aceptación en hardware de Pipec; ver su registro de ejecución). Antes lo ocupaba [0063 — la oferta de memoria hablada y la respuesta explícita (CM-3a, segundo corte)](../completed/0063-cm3a-memory-dialogue.md), que **cerró el 2026-10-16** (PR #188) y ya vive en `completed/`.
 
 Borrador, **no ejecutable todavía**: [0065 — CM-3b, tramo A: el núcleo escritor neutral al canal](0065-cm3b-a-channel-neutral-writer-core.md), que espera a que cierre el 0064 y a la promoción de Pipec; el [ADR 0022](../../adr/0022-household-rules-and-third-party-memory.md) (`Proposed`) tiene confirmadas todas sus decisiones. Orden antes del Paso 0: 0064, 0065.
 
