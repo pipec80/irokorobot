@@ -35,7 +35,7 @@ to see the code, tests, verified gaps, and future delivery sequence.
 
 `NOW` está vacío. El [Plan 0064 — calidad del habla y del diálogo](../completed/0064-speech-and-dialogue-quality.md) **cerró el 2026-10-19** (PR #193) y ya vive en `completed/`: tuteo en todo lo que dice el robot, una regla de idioma al final del prompt, la respuesta explícita más tolerante a Whisper, una guardia contra «lo guardé» falso y un aviso al arrancar si Ollama no responde. En hardware: 0 de unos 24 turnos fuera del español y 1 de 2 respuestas entendidas. Pipec decidió además que un verbo cerrado solo («autorizo», «sí, autorizo») resuelva la oferta abierta; eso enmienda el ADR 0021 y es el [Plan 0066](0066-verb-only-answer.md), en borrador.
 
-Borrador, **no ejecutable todavía**: [0066 — la respuesta a la oferta de memoria: basta un verbo cerrado](0066-verb-only-answer.md), escrito el 2026-10-19 a partir de tu sesión en hardware; espera que confirmes sus decisiones D-2 a D-7 y lo promuevas. Es independiente del 0065.
+Borrador, **no ejecutable todavía**: [0066 — la respuesta a la oferta de memoria: basta un verbo cerrado](0066-verb-only-answer.md), escrito el 2026-10-19 a partir de tu sesión en hardware; Pipec confirmó D-1 a D-7 el 2026-10-19; espera que lo promuevas a `Ready` y `NOW`. Es independiente del 0065.
 
 Borrador, **no ejecutable todavía**: [0065 — CM-3b, tramo A: el núcleo escritor neutral al canal](0065-cm3b-a-channel-neutral-writer-core.md), que espera la promoción de Pipec (el 0064 ya cerró); el [ADR 0022](../../adr/0022-household-rules-and-third-party-memory.md) (`Proposed`) tiene confirmadas todas sus decisiones. Orden antes del Paso 0: 0065 (el 0064 ya cerró).
 
