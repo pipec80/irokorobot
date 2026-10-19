@@ -123,8 +123,8 @@ def compose_offer(predicate: str, value_text: str) -> str:
         value_text: The stored phrase, article included ("las empanadas").
 
     Returns:
-        The statement followed by the question; the question dictates the exact answer to
-        say, value included, because the answer grammar requires it.
+        The statement, which names the value, followed by the question; the question dictates
+        the short answer to say («sí, autorizo.»), a closed verb with no value.
 
     Raises:
         ValueError: If *predicate* has no offer.
@@ -137,7 +137,7 @@ def compose_offer(predicate: str, value_text: str) -> str:
     return " ".join(
         (
             statement.format(verb=verb, value=value_text),
-            OFFER_QUESTION.format(value=value_text),
+            OFFER_QUESTION,
         )
     )
 

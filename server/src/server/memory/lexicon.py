@@ -170,15 +170,16 @@ PREFERENCE_FAVOURITE = re.compile(r"mi (?:[a-z]+ ){0,2}favorit[oa] es")
 
 #: The spoken offer and its results (ADR 0021 decision 9). Neutral Spanish with tuteo (Pipec
 #: lives in Santiago de Chile). ``{value}`` is the stored phrase, which already passed the gate
-#: and the classifier. The offer dictates the exact answer, value included, so a spoken «sí»
-#: alone can never promote anything; it promises no recall (that is CM-5). ``{verb}`` is used
+#: and the classifier. The offer dictates the short answer, a closed verb («sí, autorizo.»), so a
+#: spoken «sí» alone can never promote anything; the statement before it names the value. It
+#: promises no recall (that is CM-5). ``{verb}`` is used
 #: only by the ``likes`` and ``dislikes`` statements (the plural form agrees with the value).
 OFFER_STATEMENTS: dict[str, str] = {
     "likes": "Antes me dijiste que te {verb} {value}.",
     "dislikes": "Antes me dijiste que no te {verb} {value}.",
     "prefers": "Antes me dijiste que prefieres {value}.",
 }
-OFFER_QUESTION = "¿Quieres que lo guarde? Dime: sí, autorizo guardar {value}."
+OFFER_QUESTION = "¿Quieres que lo guarde? Dime: sí, autorizo."
 #: An object that starts with one of these takes the plural verb ("te gustan las empanadas").
 PLURAL_ARTICLES = frozenset({"los", "las", "unos", "unas"})
 OFFER_VERB_SINGULAR = "gusta"

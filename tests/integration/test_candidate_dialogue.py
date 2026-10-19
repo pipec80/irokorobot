@@ -186,30 +186,28 @@ def _actions(audit: AsyncMock) -> list[tuple[AuthorizationAction, str]]:
         (
             "likes",
             "el mate",
-            "Antes me dijiste que te gusta el mate. ¿Quieres que lo guarde? "
-            "Dime: sí, autorizo guardar el mate.",
+            "Antes me dijiste que te gusta el mate. ¿Quieres que lo guarde? Dime: sí, autorizo.",
         ),
         (
             "likes",
             "las empanadas",
             "Antes me dijiste que te gustan las empanadas. ¿Quieres que lo guarde? "
-            "Dime: sí, autorizo guardar las empanadas.",
+            "Dime: sí, autorizo.",
         ),
         (
             "dislikes",
             "el cilantro",
             "Antes me dijiste que no te gusta el cilantro. ¿Quieres que lo guarde? "
-            "Dime: sí, autorizo guardar el cilantro.",
+            "Dime: sí, autorizo.",
         ),
         (
             "prefers",
             "el té",
-            "Antes me dijiste que prefieres el té. ¿Quieres que lo guarde? "
-            "Dime: sí, autorizo guardar el té.",
+            "Antes me dijiste que prefieres el té. ¿Quieres que lo guarde? Dime: sí, autorizo.",
         ),
     ],
 )
-def test_the_offer_is_neutral_spanish_and_tells_the_exact_answer(
+def test_the_offer_is_neutral_spanish_and_tells_the_short_answer(
     predicate: str, value: str, expected: str
 ) -> None:
     assert compose_offer(predicate, value) == expected
@@ -218,16 +216,25 @@ def test_the_offer_is_neutral_spanish_and_tells_the_exact_answer(
 @pytest.mark.parametrize(
     "value", ["el mate", "lo picante", "las empanadas", "bailar", "el café con leche"]
 )
-def test_the_answer_the_offer_asks_for_resolves_that_offer(value: str) -> None:
-    """Round trip: the words the robot tells the owner to say parse back to the same key."""
+async def test_the_answer_the_offer_asks_for_resolves_that_offer(owner: int, value: str) -> None:
+    """Round trip: the words the robot tells the owner to say are a verb alone that saves it."""
     offer = compose_offer("likes", value)
     instructed = offer.split("Dime: ", 1)[1]
+    candidate_id = await _candidate(owner, value, comparison_key(value), offered=True)
 
     answer = parse_memory_answer(instructed)
 
     assert answer is not None
-    assert answer.accept
-    assert comparison_key(answer.phrase) == comparison_key(value)
+    assert answer == MemoryAnswer(accept=True, phrase="")
+    phrase = await answer_offer(
+        answer,
+        actor=_strong(owner),
+        correlation_id=_TURN,
+        now=_NOW + timedelta(seconds=10),
+        audit=AsyncMock(),
+    )
+    assert phrase == ANSWER_SAVED_PHRASE
+    assert await _status(candidate_id) is CandidateStatus.CONFIRMED
 
 
 @pytest.mark.parametrize("value", ["bailar", "café", "las empanadas"])
@@ -1111,17 +1118,17 @@ async def test_the_pending_offer_carries_the_actor_the_voice_check_returned(owne
 _LONGEST_VALUE = "las " + " ".join(("quimbombocanariozz",) * 3 + ("quimbombocanariozzz",))
 
 
-async def test_the_longest_admitted_value_is_still_answerable_with_the_words_the_offer_asks(
+async def test_the_longest_admitted_value_is_still_answerable_with_the_full_phrase(
     owner: int,
 ) -> None:
+    """The old full answer keeps working: the value stays optional (Plan 0066)."""
     assert len(_LONGEST_VALUE.split()) == 5
     assert len(_LONGEST_VALUE) <= settings.memory_candidate_value_max_chars
     candidate_id = await _candidate(
         owner, _LONGEST_VALUE, comparison_key(_LONGEST_VALUE), offered=True
     )
-    instructed = compose_offer("likes", _LONGEST_VALUE).split("Dime: ", 1)[1]
 
-    answer = parse_memory_answer(instructed)
+    answer = parse_memory_answer(f"sí, autorizo guardar {_LONGEST_VALUE}")
 
     assert answer is not None
     assert answer.accept
@@ -1134,8 +1141,7 @@ async def test_the_longest_admitted_value_is_still_answerable_with_the_words_the
 
 def test_a_plural_dislike_is_offered_with_the_plural_verb() -> None:
     assert compose_offer("dislikes", "los hongos") == (
-        "Antes me dijiste que no te gustan los hongos. ¿Quieres que lo guarde? "
-        "Dime: sí, autorizo guardar los hongos."
+        "Antes me dijiste que no te gustan los hongos. ¿Quieres que lo guarde? Dime: sí, autorizo."
     )
 
 
