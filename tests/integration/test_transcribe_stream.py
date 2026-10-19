@@ -576,6 +576,60 @@ def test_unresolved_stream_does_not_load_entity_hotwords(
 
 
 @pytest.mark.integration
+def test_a_short_reply_request_biases_the_recognizer_and_nothing_else(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Plan 0067 D-4: the flag only chooses the fixed reply hotwords; no persistent names."""
+    list_names = AsyncMock(return_value=["Paula"])
+    stt_mock = AsyncMock(return_value="hola robot")
+    monkeypatch.setattr(pipeline, "list_entity_names", list_names)
+    monkeypatch.setattr(stt, "transcribe", stt_mock)
+    monkeypatch.setattr(settings, "memory_enabled", True)
+
+    response = client.post(
+        "/transcribe/stream",
+        files={"audio": ("a.wav", silence_wav_bytes, "audio/wav")},
+        data={"short_reply": "true"},
+    )
+
+    assert response.status_code == 200
+    list_names.assert_not_awaited()
+    assert stt_mock.await_args_list[-1].kwargs["extra_hotwords"] == list(stt.SHORT_REPLY_HOTWORDS)
+
+
+@pytest.mark.integration
+def test_a_short_reply_request_that_is_not_an_answer_is_the_ordinary_turn(
+    client: TestClient,
+    silence_wav_bytes: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A flagged reply that is an ordinary question gets exactly the unflagged events."""
+
+    async def fake_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
+        yield "Hola, qué gusto."
+
+    monkeypatch.setattr(llm_streaming, "generate_response_stream", fake_stream)
+    monkeypatch.setattr(stt, "transcribe", AsyncMock(return_value="hola robot"))
+    timing = {"stt_ms", "llm_ms", "tts_ms", "total_ms"}
+
+    def _events(data: dict[str, str]) -> list[dict[str, object]]:
+        response = client.post(
+            "/transcribe/stream",
+            files={"audio": ("a.wav", silence_wav_bytes, "audio/wav")},
+            data=data,
+        )
+        assert response.status_code == 200
+        return [
+            {k: v for k, v in event.items() if k not in timing}
+            for event in _parse_ndjson(response.text)
+        ]
+
+    assert _events({"short_reply": "true"}) == _events({})
+
+
+@pytest.mark.integration
 def test_stream_happy_path_ollama_streams_multiple_deltas(
     client: TestClient, silence_wav_bytes: bytes, monkeypatch: pytest.MonkeyPatch
 ) -> None:
