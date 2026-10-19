@@ -576,7 +576,7 @@ async def mark_offered(
             "WHERE id = ? AND subject_person_id = ? AND status = 'proposed' AND offer_count < ? "
             "AND NOT EXISTS (SELECT 1 FROM memory_candidates AS open WHERE "
             "open.subject_person_id = memory_candidates.subject_person_id "
-            "AND open.status = 'offered' AND open.offered_at > ? AND open.expires_at > ?)",
+            "AND open.status = 'offered' AND open.offered_at > ?)",
             (
                 stamp,
                 str(correlation_id),
@@ -584,7 +584,6 @@ async def mark_offered(
                 subject_person_id,
                 settings.memory_candidate_max_offers,
                 waited_since,
-                stamp,
             ),
         )
         changed = await _rowcount(cursor)

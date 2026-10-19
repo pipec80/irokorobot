@@ -248,6 +248,11 @@ def test_a_value_after_the_new_words_is_still_read_as_the_value(
         ("Acepto, acepto", True, ""),
         ("Sí, autorizo, autorizo", True, ""),
         ("Apruebo apruebo", True, ""),
+        ("Acepto, autorizo", True, ""),
+        ("Acepto, claro", True, ""),
+        ("No acepto, no acepto", False, ""),
+        ("Autorizo, sí, el mate", True, "el mate"),
+        ("Acepto, no", True, "no"),
         # Courtesy after the emphatic words, a trailer after a value, and the safe contradiction.
         ("Sí, autorizo, guárdalo, por favor", True, ""),
         ("Sí, acepto, guárdala, gracias", True, ""),

@@ -60,7 +60,7 @@ _PROMISE_PATTERNS = tuple(
 _CONDITION = re.compile(r"\b(?:si|cuando|ni)\b")
 # «No lo he guardado», «todavía no lo guardo» (the «no» ends the phrase): a negation in the three
 # words before the match, with no punctuation between, cancels the claim.
-_NEGATION_BEFORE = re.compile(r"\b(?:no|nunca|jamás)\s+(?:\w+\s+){0,2}$")
+_NEGATION_BEFORE = re.compile(r"\b(?:no|nunca|jamás|tampoco)\s+(?:\w+\s+){0,2}$")
 
 
 def _fold(sentence: str) -> str:

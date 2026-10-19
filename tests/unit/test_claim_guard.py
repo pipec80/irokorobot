@@ -72,6 +72,8 @@ _NOT_CLAIMS = [
     "Si quieres, lo guardo.",
     "Si quieres, tomo nota.",
     "No tomo nota de eso.",
+    "Tampoco tomo nota.",
+    "Tampoco lo guardé.",
     "¿Quieres que tome nota?",
     "Lo guardaré cuando me lo pidas.",
     "Aún no lo he guardado, pero lo guardaré si me lo pides.",

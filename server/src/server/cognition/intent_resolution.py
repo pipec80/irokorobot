@@ -160,7 +160,12 @@ _ANSWER_TRAILERS = ("por favor", "gracias", "porfa", "po")
 # Emphatic words a speaker adds after a LONG verb («autorizo, guárdalo», «autorizo, sí»; Plan 0067,
 # D-5). They are dropped from the end of the value only for a long verb: after a short one
 # «guarda, sí» stays refused, because there the word would be taken as the value.
-_ANSWER_LONG_VERB_TRAILERS = frozenset({"guardalo", "guardala", "si"})
+_ANSWER_LONG_VERB_TRAILERS = frozenset(
+    {"guardalo", "guardala", "si", "claro", "autorizo", "autoriza", "apruebo", "aprueba"}
+    | {"acepto", "acepta"}
+)
+# The same emphasis may also open the value («autorizo, sí, el mate»).
+_ANSWER_LONG_VERB_LEADERS = frozenset({"si", "claro"})
 # «mi café»: the possessive is dropped from the value and counts as the article of a short verb.
 _ANSWER_POSSESSIVES = frozenset({"mi", "mis"})
 # The value is a short noun phrase: at most six words, its article included when it has one.
@@ -512,10 +517,14 @@ def _answer(prefix: str, phrase: list[str], *, accept: bool, affirmed: bool) -> 
         affirmed: Whether a leading «sí» was among the openers.
     """
     if prefix not in _ANSWER_SHORT_PREFIXES:
-        # The verb itself repeated («acepto, acepto») is emphasis too, never a value.
-        verb = prefix.removeprefix("no ").split()[0]
-        while phrase and (phrase[-1] in _ANSWER_LONG_VERB_TRAILERS or phrase[-1] == verb):
+        # A repeated or second closed verb («acepto, acepto», «acepto, autorizo») is emphasis
+        # too, never a value; so is the «no» of a repeated rejection («no acepto, no acepto»).
+        while phrase and (
+            phrase[-1] in _ANSWER_LONG_VERB_TRAILERS or (not accept and phrase[-1] == "no")
+        ):
             phrase = phrase[:-1]
+        while phrase and phrase[0] in _ANSWER_LONG_VERB_LEADERS:
+            phrase = phrase[1:]
     # «a guardar» continues the verb («guarda a guardar …» is not a value): drop it, then one
     # possessive, as before. «autorizo a guardar» alone matches its own long prefix instead.
     if phrase[:2] == ["a", "guardar"]:

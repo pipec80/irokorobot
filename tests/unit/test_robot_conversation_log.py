@@ -126,9 +126,13 @@ async def test_streaming_thinking_logs_what_was_heard(
     """The first stream event carries the transcript."""
 
     async def _fake_transcribe_stream(
-        _audio: bytes, *, identity_token: str | None = None, frame: bytes | None = None
+        _audio: bytes,
+        *,
+        identity_token: str | None = None,
+        frame: bytes | None = None,
+        short_reply: bool = False,
     ) -> AsyncIterator[StreamEvent]:
-        del identity_token, frame
+        del identity_token, frame, short_reply
         yield TextHeardEvent(value=_HEARD)
 
     monkeypatch.setattr(app_streaming, "transcribe_stream", _fake_transcribe_stream)
