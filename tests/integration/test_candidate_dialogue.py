@@ -186,30 +186,28 @@ def _actions(audit: AsyncMock) -> list[tuple[AuthorizationAction, str]]:
         (
             "likes",
             "el mate",
-            "Antes me dijiste que te gusta el mate. ¿Quieres que lo guarde? "
-            "Dime: sí, autorizo guardar el mate.",
+            "Antes me dijiste que te gusta el mate. ¿Quieres que lo guarde? Dime: sí, autorizo.",
         ),
         (
             "likes",
             "las empanadas",
             "Antes me dijiste que te gustan las empanadas. ¿Quieres que lo guarde? "
-            "Dime: sí, autorizo guardar las empanadas.",
+            "Dime: sí, autorizo.",
         ),
         (
             "dislikes",
             "el cilantro",
             "Antes me dijiste que no te gusta el cilantro. ¿Quieres que lo guarde? "
-            "Dime: sí, autorizo guardar el cilantro.",
+            "Dime: sí, autorizo.",
         ),
         (
             "prefers",
             "el té",
-            "Antes me dijiste que prefieres el té. ¿Quieres que lo guarde? "
-            "Dime: sí, autorizo guardar el té.",
+            "Antes me dijiste que prefieres el té. ¿Quieres que lo guarde? Dime: sí, autorizo.",
         ),
     ],
 )
-def test_the_offer_is_neutral_spanish_and_tells_the_exact_answer(
+def test_the_offer_is_neutral_spanish_and_tells_the_short_answer(
     predicate: str, value: str, expected: str
 ) -> None:
     assert compose_offer(predicate, value) == expected
@@ -218,12 +216,33 @@ def test_the_offer_is_neutral_spanish_and_tells_the_exact_answer(
 @pytest.mark.parametrize(
     "value", ["el mate", "lo picante", "las empanadas", "bailar", "el café con leche"]
 )
-def test_the_answer_the_offer_asks_for_resolves_that_offer(value: str) -> None:
-    """Round trip: the words the robot tells the owner to say parse back to the same key."""
+async def test_the_answer_the_offer_asks_for_resolves_that_offer(owner: int, value: str) -> None:
+    """Round trip: the words the robot tells the owner to say are a verb alone that saves it."""
     offer = compose_offer("likes", value)
     instructed = offer.split("Dime: ", 1)[1]
+    candidate_id = await _candidate(owner, value, comparison_key(value), offered=True)
 
     answer = parse_memory_answer(instructed)
+
+    assert answer is not None
+    assert answer == MemoryAnswer(accept=True, phrase="")
+    phrase = await answer_offer(
+        answer,
+        actor=_strong(owner),
+        correlation_id=_TURN,
+        now=_NOW + timedelta(seconds=10),
+        audit=AsyncMock(),
+    )
+    assert phrase == ANSWER_SAVED_PHRASE
+    assert await _status(candidate_id) is CandidateStatus.CONFIRMED
+
+
+@pytest.mark.parametrize(
+    "value", ["el mate", "lo picante", "las empanadas", "bailar", "el café con leche"]
+)
+def test_the_full_phrase_with_the_value_still_parses_to_the_same_key(value: str) -> None:
+    """The value stays optional: the old answer that repeats it keeps working (Plan 0066)."""
+    answer = parse_memory_answer(f"sí, autorizo guardar {value}")
 
     assert answer is not None
     assert answer.accept
@@ -543,6 +562,215 @@ async def test_an_answer_with_another_value_falls_through_and_changes_nothing(
     assert phrase is None
     assert await _status(candidate_id) is CandidateStatus.OFFERED
     audit.assert_not_awaited()
+
+
+async def test_a_closed_verb_alone_promotes_the_one_open_offer(owner: int) -> None:
+    candidate_id = await _candidate(owner, offered=True)
+    audit = AsyncMock()
+
+    phrase = await answer_offer(
+        MemoryAnswer(accept=True, phrase=""),
+        actor=_strong(owner),
+        correlation_id=_TURN,
+        now=_NOW + timedelta(seconds=10),
+        audit=audit,
+    )
+
+    assert phrase == ANSWER_SAVED_PHRASE
+    assert await _status(candidate_id) is CandidateStatus.CONFIRMED
+    assert len(await _likes(owner)) == 1
+    assert _actions(audit) == [(AuthorizationAction.CONFIRM_PERSONAL_MEMORY, "allowed")]
+
+
+async def test_a_refusal_alone_rejects_the_one_open_offer(owner: int) -> None:
+    candidate_id = await _candidate(owner, offered=True)
+    audit = AsyncMock()
+
+    phrase = await answer_offer(
+        MemoryAnswer(accept=False, phrase=""),
+        actor=_strong(owner),
+        correlation_id=_TURN,
+        now=_NOW + timedelta(seconds=10),
+        audit=audit,
+    )
+
+    assert phrase == ANSWER_REJECTED_PHRASE
+    stored = await candidates.get_candidate(candidate_id)
+    assert stored is not None
+    assert stored.status is CandidateStatus.REJECTED
+    assert (stored.value_text, stored.value_key) == (None, None)
+    assert _actions(audit) == [(AuthorizationAction.CONFIRM_PERSONAL_MEMORY, "allowed")]
+    assert await _likes(owner) == []
+
+
+async def test_a_verb_alone_with_no_open_offer_falls_through_and_changes_nothing(
+    owner: int,
+) -> None:
+    candidate_id = await _candidate(owner)
+    audit = AsyncMock()
+
+    phrase = await answer_offer(
+        MemoryAnswer(accept=True, phrase=""),
+        actor=_strong(owner),
+        correlation_id=_TURN,
+        now=_NOW,
+        audit=audit,
+    )
+
+    assert phrase is None
+    assert await _status(candidate_id) is CandidateStatus.PROPOSED
+    assert await _likes(owner) == []
+    audit.assert_not_awaited()
+
+
+async def test_a_verb_alone_with_two_open_offers_falls_through_and_changes_nothing(
+    owner: int,
+) -> None:
+    first = await _candidate(owner, offered=True)
+    second = await _candidate(owner, "la pizza", "pizza", offered=True)
+    audit = AsyncMock()
+
+    phrase = await answer_offer(
+        MemoryAnswer(accept=True, phrase=""),
+        actor=_strong(owner),
+        correlation_id=_TURN,
+        now=_NOW + timedelta(seconds=10),
+        audit=audit,
+    )
+
+    assert phrase is None
+    assert await _status(first) is CandidateStatus.OFFERED
+    assert await _status(second) is CandidateStatus.OFFERED
+    assert await _likes(owner) == []
+    audit.assert_not_awaited()
+
+
+async def test_a_verb_alone_never_answers_another_persons_offer(owner: int) -> None:
+    visitor = await upsert_entity(name="Canary Visitor", type="person")
+    theirs = await _candidate(visitor, offered=True)
+    audit = AsyncMock()
+
+    phrase = await answer_offer(
+        MemoryAnswer(accept=True, phrase=""),
+        actor=_strong(owner),
+        correlation_id=_TURN,
+        now=_NOW + timedelta(seconds=10),
+        audit=audit,
+    )
+
+    assert phrase is None
+    assert await _status(theirs) is CandidateStatus.OFFERED
+    assert await _likes(visitor) == []
+    audit.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "sources",
+    [
+        (IdentityEvidenceSource.FACE,),
+        (IdentityEvidenceSource.VOICE,),
+        (IdentityEvidenceSource.FACE, IdentityEvidenceSource.LOCAL_UNLOCK),
+        (
+            IdentityEvidenceSource.FACE,
+            IdentityEvidenceSource.VOICE,
+            IdentityEvidenceSource.LOCAL_UNLOCK,
+        ),
+    ],
+)
+async def test_a_weaker_or_token_actor_cannot_answer_with_a_verb_alone(
+    owner: int,
+    sources: tuple[IdentityEvidenceSource, ...],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate_id = await _candidate(owner, offered=True)
+    audit = AsyncMock()
+    reader = AsyncMock(wraps=candidates.find_offered)
+    monkeypatch.setattr(candidate_dialogue, "find_offered", reader)
+
+    phrase = await answer_offer(
+        MemoryAnswer(accept=True, phrase=""),
+        actor=_actor(owner, *sources),
+        correlation_id=_TURN,
+        now=_NOW,
+        audit=audit,
+    )
+
+    assert phrase is None
+    assert await _status(candidate_id) is CandidateStatus.OFFERED
+    audit.assert_not_awaited()
+    reader.assert_not_awaited()
+
+
+async def test_a_verb_alone_after_the_window_falls_through(owner: int) -> None:
+    candidate_id = await _candidate(owner, offered=True)
+    late = _NOW + timedelta(seconds=settings.memory_candidate_answer_seconds + 1)
+
+    phrase = await answer_offer(
+        MemoryAnswer(accept=True, phrase=""),
+        actor=_strong(owner),
+        correlation_id=_TURN,
+        now=late,
+        audit=AsyncMock(),
+    )
+
+    assert phrase is None
+    assert await _status(candidate_id) is CandidateStatus.OFFERED
+
+
+async def test_a_phrase_of_stop_words_still_falls_through_and_changes_nothing(owner: int) -> None:
+    """Only the empty phrase means the open offer; «el» folds to an empty key and names nothing."""
+    candidate_id = await _candidate(owner, offered=True)
+    audit = AsyncMock()
+
+    phrase = await answer_offer(
+        MemoryAnswer(accept=True, phrase="el"),
+        actor=_strong(owner),
+        correlation_id=_TURN,
+        now=_NOW,
+        audit=audit,
+    )
+
+    assert phrase is None
+    assert await _status(candidate_id) is CandidateStatus.OFFERED
+    audit.assert_not_awaited()
+
+
+async def test_a_verb_alone_with_a_value_that_names_another_offer_resolves_nothing(
+    owner: int,
+) -> None:
+    """D-6: the short answer is not a rescue for a garbled value."""
+    candidate_id = await _candidate(owner, offered=True)
+
+    phrase = await answer_offer(
+        MemoryAnswer(accept=True, phrase="otra cosa"),
+        actor=_strong(owner),
+        correlation_id=_TURN,
+        now=_NOW,
+        audit=AsyncMock(),
+    )
+
+    assert phrase is None
+    assert await _status(candidate_id) is CandidateStatus.OFFERED
+
+
+async def test_the_log_of_a_verb_alone_carries_ids_and_no_value(
+    owner: int, caplog: pytest.LogCaptureFixture
+) -> None:
+    candidate_id = await _candidate(owner, "el quokka", "quokka", offered=True)
+
+    with caplog.at_level(logging.DEBUG):
+        phrase = await answer_offer(
+            MemoryAnswer(accept=True, phrase=""),
+            actor=_strong(owner),
+            correlation_id=_TURN,
+            now=_NOW + timedelta(seconds=5),
+            audit=AsyncMock(),
+        )
+
+    assert phrase == ANSWER_SAVED_PHRASE
+    assert await _status(candidate_id) is CandidateStatus.CONFIRMED
+    assert caplog.records
+    assert not _leaked(caplog, "quokka")
 
 
 async def test_an_answer_with_no_offer_outstanding_falls_through(owner: int) -> None:
@@ -902,17 +1130,17 @@ async def test_the_pending_offer_carries_the_actor_the_voice_check_returned(owne
 _LONGEST_VALUE = "las " + " ".join(("quimbombocanariozz",) * 3 + ("quimbombocanariozzz",))
 
 
-async def test_the_longest_admitted_value_is_still_answerable_with_the_words_the_offer_asks(
+async def test_the_longest_admitted_value_is_still_answerable_with_the_full_phrase(
     owner: int,
 ) -> None:
+    """The old full answer keeps working: the value stays optional (Plan 0066)."""
     assert len(_LONGEST_VALUE.split()) == 5
     assert len(_LONGEST_VALUE) <= settings.memory_candidate_value_max_chars
     candidate_id = await _candidate(
         owner, _LONGEST_VALUE, comparison_key(_LONGEST_VALUE), offered=True
     )
-    instructed = compose_offer("likes", _LONGEST_VALUE).split("Dime: ", 1)[1]
 
-    answer = parse_memory_answer(instructed)
+    answer = parse_memory_answer(f"sí, autorizo guardar {_LONGEST_VALUE}")
 
     assert answer is not None
     assert answer.accept
@@ -925,8 +1153,7 @@ async def test_the_longest_admitted_value_is_still_answerable_with_the_words_the
 
 def test_a_plural_dislike_is_offered_with_the_plural_verb() -> None:
     assert compose_offer("dislikes", "los hongos") == (
-        "Antes me dijiste que no te gustan los hongos. ¿Quieres que lo guarde? "
-        "Dime: sí, autorizo guardar los hongos."
+        "Antes me dijiste que no te gustan los hongos. ¿Quieres que lo guarde? Dime: sí, autorizo."
     )
 
 

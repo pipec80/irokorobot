@@ -50,7 +50,8 @@ class MemoryAnswer(BaseModel):
         accept: ``True`` for a verb that accepts («autorizo guardar …»), ``False`` for one that
             rejects («no autorizo guardar …», «olvídalo …»).
         phrase: The value the answer repeats, folded (lower case, no accents); the memory
-            layer compares it with the offered candidate. Never logged.
+            layer compares it with the offered candidate. Never logged. ``phrase == ""`` means
+            the open offer: the answer is a closed verb alone (Plan 0066) and names no value.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -61,11 +62,14 @@ class MemoryAnswer(BaseModel):
 
 _NON_WORD_RUN = re.compile(r"[^\w]+", re.UNICODE)
 
-# The closed answer grammar (ADR 0021 decision 9): a closed verb **and** the value. It is closed
-# on purpose, so a bare «sí» or a verb alone promotes nothing. The verbs are neutral Spanish
-# (tuteo), not voseo. It also admits what the speech-to-text writes for those verbs (Plan 0064,
-# D-3): the third person («autoriza», «aprueba»), the openers «ya», «dale» and «po», a trailing
-# «po», and a leading «mi»/«mis» before the value.
+# The closed answer grammar (ADR 0021 decision 9, Plan 0066): a closed verb, with or without the
+# value. It is closed on purpose, so a bare «sí» promotes nothing. A long verb («autorizo»,
+# «apruebo», «autoriza», «aprueba») stands alone; the short ones are ordinary speech and need a
+# cue: «guarda»/«guárdalo» a leading «sí», «olvídalo»/«bórralo» the value, while «no lo guardes»
+# and «no guardes» carry their own «no». The verbs are neutral Spanish (tuteo), not voseo. It
+# also admits what the speech-to-text writes for those verbs (Plan 0064, D-3): the third person
+# («autoriza», «aprueba»), the openers «ya», «dale» and «po», a trailing «po», and a leading
+# «mi»/«mis» before the value.
 
 # Words that may open an answer: a call to the robot, a repeated «sí», «claro», «ya», «po».
 _ANSWER_OPENERS = frozenset({"iroko", "oye", "bueno", "ok", "claro", "si", "ya", "dale", "po"})
@@ -118,6 +122,12 @@ _ANSWER_REJECT_PREFIXES = (
 _ANSWER_SHORT_PREFIXES = frozenset(
     {"guardalo", "guarda", "no lo guardes", "no guardes", "olvidalo", "borralo"}
 )
+# The short verbs that may also stand alone (Plan 0066, D-2 and D-3): the accepting ones only
+# after a leading «sí», the rejecting ones always because they carry their own «no».
+_ANSWER_SHORT_ALONE_AFTER_YES = frozenset({"guardalo", "guarda"})
+_ANSWER_SHORT_ALONE = frozenset({"no lo guardes", "no guardes"})
+# The folded «sí» among the openers: it marks the intent of a short accepting verb.
+_ANSWER_YES = "si"
 # The articles a spoken taste may start with. The memory lexicon holds the same list
 # (``lexicon.ARTICLES``); the cognitive core cannot import ``server.memory`` (import-graph
 # guard), so a unit test pins both lists together.
@@ -415,30 +425,39 @@ def _relationship_rule(normalized: str) -> IntentResolution | None:
 def parse_memory_answer(message: str) -> MemoryAnswer | None:
     """Read a spoken answer to a memory offer, or say that *message* is not one.
 
-    Pure and closed (ADR 0021 decision 9): optional openers («Iroko», «sí, claro», «ya», «dale»,
-    «po»), then one closed verb (first or third person: «autorizo»/«autoriza»), then the value
-    with one optional leading «mi»/«mis», then optional courtesy words (a trailing «po»
-    included). A rejection starts with «no», «olvídalo» or «bórralo», never with an accepting
-    verb, so the two sets never compete; a repeated «no, no» is one «no».
+    Pure and closed (ADR 0021 decision 9, Plan 0066): optional openers («Iroko», «sí, claro»,
+    «ya», «dale», «po»), then one closed verb (first or third person: «autorizo»/«autoriza»),
+    then optionally the value with one optional leading «mi»/«mis», then optional courtesy words
+    (a trailing «po» included). A rejection starts with «no», «olvídalo» or «bórralo», never
+    with an accepting verb, so the two sets never compete; a repeated «no, no» is one «no».
+
+    A verb alone answers the one open offer and returns an empty phrase: a long verb («autorizo»,
+    «apruebo», alone or with «guardar»/«a guardar»/«que guardes»), «guarda»/«guárdalo» after a
+    leading «sí», and «no lo guardes»/«no guardes». «Olvídalo» and «bórralo» always need a value.
 
     Args:
         message: Raw transcript or chat text in Spanish.
 
     Returns:
-        The answer and the folded value it repeats, or ``None`` when the message has no closed
-        verb, a verb alone with no value, a value longer than a short noun phrase, a value that
-        starts with «guardar» or «que», or a short verb without an article («guarda silencio»).
+        The answer and the folded value it repeats (``""`` for a verb alone), or ``None`` when
+        the message has no closed verb, a bare «sí», a short verb without its cue («guarda»,
+        «olvídalo»), a value longer than a short noun phrase, a value that starts with «guardar»
+        or «que», or a short verb followed by a non-article («guarda silencio»).
     """
     words = normalize_spanish(message).split()
+    affirmed = False
     while words and words[0] in _ANSWER_OPENERS:
+        affirmed = affirmed or words[0] == _ANSWER_YES
         words.pop(0)
     while words[:2] == ["no", "no"]:
         words.pop(0)
     text = _without_trailers(" ".join(words))
     for prefixes, accept in ((_ANSWER_REJECT_PREFIXES, False), (_ANSWER_ACCEPT_PREFIXES, True)):
         for prefix in prefixes:
-            if text.startswith(f"{prefix} "):
-                return _answer(prefix, text[len(prefix) :].split(), accept=accept)
+            if text == prefix or text.startswith(f"{prefix} "):
+                return _answer(
+                    prefix, text[len(prefix) :].split(), accept=accept, affirmed=affirmed
+                )
     return None
 
 
@@ -454,21 +473,39 @@ def _without_trailers(text: str) -> str:
     return text
 
 
-def _answer(prefix: str, phrase: list[str], *, accept: bool) -> MemoryAnswer | None:
-    """Return the answer when *phrase* is a value, or ``None``."""
-    # «autorizo a guardar» with nothing after it does not match its own prefix (no trailing
-    # space) and falls to the shorter «autorizo», leaving «a guardar» as the "value": that is a
-    # verb, not a value. «autorizo a guardar el mate» matches the long prefix and names it.
+def _answer(prefix: str, phrase: list[str], *, accept: bool, affirmed: bool) -> MemoryAnswer | None:
+    """Return the answer when *phrase* is a value or the verb may stand alone, or ``None``.
+
+    Args:
+        prefix: The folded closed verb the message started with.
+        phrase: The words after the verb.
+        accept: Whether the verb accepts the offer.
+        affirmed: Whether a leading «sí» was among the openers.
+    """
+    # «a guardar» continues the verb («guarda a guardar …» is not a value): drop it, then one
+    # possessive, as before. «autorizo a guardar» alone matches its own long prefix instead.
     if phrase[:2] == ["a", "guardar"]:
         phrase = phrase[2:]
     possessive = bool(phrase) and phrase[0] in _ANSWER_POSSESSIVES
     if possessive:
         phrase = phrase[1:]
-    if not phrase or phrase[0] in _ANSWER_CONNECTORS or len(phrase) > _MAX_ANSWER_PHRASE_WORDS:
+    if not phrase:
+        # A dangling «mi»/«mis» is a garbled value, not a verb alone (D-6).
+        return None if possessive else _answer_alone(prefix, accept=accept, affirmed=affirmed)
+    if phrase[0] in _ANSWER_CONNECTORS or len(phrase) > _MAX_ANSWER_PHRASE_WORDS:
         return None
     if prefix in _ANSWER_SHORT_PREFIXES and not possessive and phrase[0] not in _ANSWER_ARTICLES:
         return None
     return MemoryAnswer(accept=accept, phrase=" ".join(phrase))
+
+
+def _answer_alone(prefix: str, *, accept: bool, affirmed: bool) -> MemoryAnswer | None:
+    """Return the answer about the open offer for a verb with no value, or ``None`` (D-2, D-3)."""
+    if prefix not in _ANSWER_SHORT_PREFIXES:
+        return MemoryAnswer(accept=accept, phrase="")
+    if prefix in _ANSWER_SHORT_ALONE or (prefix in _ANSWER_SHORT_ALONE_AFTER_YES and affirmed):
+        return MemoryAnswer(accept=accept, phrase="")
+    return None
 
 
 def _memory_answer_rule(normalized: str) -> IntentResolution | None:

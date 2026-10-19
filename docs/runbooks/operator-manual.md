@@ -459,28 +459,36 @@ robot returns is the reply only; the offer is not written to the conversation hi
 speaks, in this order:
 
 1. The offer, with the stored phrase in place of `{x}`: «Antes me dijiste que te gusta(n) {x}.
-   ¿Quieres que lo guarde? Dime: sí, autorizo guardar {x}.» (a dislike says «que no te gusta(n)»,
-   a preference «que prefieres»). It dictates the answer, so say it back: the value must be
-   repeated.
-2. To accept, answer with a closed verb **and the value**: `autorizo`, `apruebo`, `guarda`,
-   `guárdalo`, in the long forms too («autorizo guardar el mate», «autorizo a guardar …»,
-   «apruebo que guardes …»). Since Plan 0064 the answer also survives how Whisper writes it:
-   the third person (`autoriza`, `aprueba`), a leading «ya», «dale» or «po», a trailing «po»
-   and «mi»/«mis» before the value («sí po, autoriza a guardar mi café»). Iroko says «Listo,
-   lo guardé.» and the taste becomes a confirmed fact.
-3. To decline: `no autorizo`, `no apruebo`, `no lo guardes`, `no guardes`, `olvídalo`, `bórralo`,
-   again followed by the value. Iroko says «Está bien, no lo guardo.» and the candidate's value is
-   erased.
+   ¿Quieres que lo guarde? Dime: sí, autorizo.» (a dislike says «que no te gusta(n)», a preference
+   «que prefieres»). The statement names the value and the question dictates the short answer, so
+   say it back: «sí, autorizo.» is enough (Plan 0066; until then the offer asked to repeat the
+   value, and that long answer still works).
+2. To accept, a closed verb **alone** is enough: `autorizo`, `autoriza`, `apruebo`, `aprueba`,
+   alone or followed by `guardar`, `a guardar` or `que guardes` («autorizo», «sí, autorizo.»,
+   «apruebo, gracias», «autorizo guardar»). `guarda` and `guárdalo` also work alone, but **only
+   after a leading «sí»** («sí, guarda», «sí po, guárdalo»), because «guarda» is an ordinary
+   imperative. The value stays optional: «autorizo guardar el mate», «autorizo a guardar …» and
+   «apruebo que guardes …» still work, and the value that you say **must match the open offer**
+   (a different or garbled value promotes nothing). The answer also survives how Whisper writes
+   it (Plan 0064): the third person, a leading «ya», «dale» or «po», a trailing «po» and
+   «mi»/«mis» before the value («sí po, autoriza a guardar mi café»). Iroko says «Listo, lo
+   guardé.» and the taste becomes a confirmed fact.
+3. To decline: `no autorizo`, `no apruebo` (also `no autoriza`, `no aprueba`), `no lo guardes` and
+   `no guardes` work alone. `olvídalo` and `bórralo` still need the value («olvídalo el mate»):
+   alone they are ordinary speech. Iroko says «Está bien, no lo guardo.» and the candidate's value
+   is erased.
 4. If the owner already has a different confirmed taste for the same thing, Iroko says «No lo
    guardé: ya tengo guardado algo distinto.» and writes nothing.
 5. If the owner's own open offer was found but could not be settled (a database or policy
    failure), Iroko says «No pude guardarlo ahora. Dímelo de nuevo en un rato.» Nothing was
    written; answer again later.
 
-A bare «sí», a verb with no value or a different value promotes nothing: the message is
-ordinary conversation. The short verbs (`guarda`, `guárdalo`, `no lo guardes`, `no guardes`,
-`olvídalo`, `bórralo`) also need an article before the value («guarda el mate»), so «guarda
-silencio» or «olvídalo, no importa» never count.
+A bare «sí» (also «ya», «dale» or «po» alone), «guarda» or «guárdalo» without a leading «sí», and
+a verb with a **different** value promote nothing: the message is ordinary conversation. A valueless
+answer resolves the offer only when **exactly one** offer of yours is open inside the 60 s window
+(zero or more than one: ordinary conversation). The short verbs (`guarda`, `guárdalo`, `olvídalo`,
+`bórralo`) followed by a value need an article before it («guarda el mate»), so «guarda silencio»
+or «olvídalo, no importa» never count.
 
 **The rules around it.**
 
@@ -495,7 +503,13 @@ silencio» or «olvídalo, no importa» never count.
   voice, no face or two faces the message is ordinary conversation, byte for byte: Iroko
   never says whether an offer exists. The cost of that check (about 3 to 4 s over the
   speech-to-text, no model call) is paid by every message that has the shape of an answer, with
-  or without an open offer.
+  or without an open offer. Since Plan 0066 that includes a bare «autorizo» or «sí, guarda» in
+  ordinary conversation with **no open offer**: it costs those 3 to 4 s, saves nothing and gets an
+  ordinary reply.
+- **A recording is not defended.** Nothing in the answer proves it is live (ADR 0016 §9). Since
+  Plan 0066 a recording of you saying «autorizo», played with your face in front of the robot
+  inside the 60 s window of an open offer, would promote that offer without knowing its value
+  ([ADR 0021](../adr/0021-memory-candidates-and-the-canonical-writer.md) decision 9).
 - **The robot software is unchanged**; there is no new setting and no wire change.
 
 **Known limits, measured on hardware** (outcomes in
@@ -504,7 +518,10 @@ the shared laptop, no homelab):
 
 - The explicit answer was parsed **2 of 4** times in the Plan 0063 acceptance: Whisper `small`
   writes «autoriza a guardar …», «sí po, …» or «mi» before the value. Plan 0064 widened the
-  grammar for exactly those writings (not yet re-measured on hardware). When an answer is still
+  grammar for exactly those writings, and Plan 0066 made the value optional because a word
+  inserted inside it was what failed (the answer that repeated the value was understood 1 of 2
+  times in the Plan 0064 session). The short answer is **not yet measured on hardware**: its
+  acceptance counts are pending until Pipec runs Task 6 of Plan 0066. When an answer is still
   not understood, it falls through to ordinary conversation and nothing is written (the safe
   direction); say it again, slowly, or wait for the second offer.
 - On a message that only has the *shape* of an answer (another voice, or no open offer), the
@@ -531,7 +548,7 @@ exception message. `logs/server.log` is JSON Lines (one object per line: `ts`, `
 | `Candidate proposal: dropped (<reason>)` | The attempt ended early. Reasons: `gate_no_match` (no taste in the sentence; the usual case, no voice check and no model call), `not_a_taste`, `negation_unsupported`, `sensitive_topic`, `strong_unreachable` (no face actor, voice not verified, or a consent revoked), `busy`, `budget`, `denied` (switch off, model unreachable or malformed JSON, or the policy or its audit row refused) |
 | `Candidate proposal: stored=N dropped=M` | The attempt reached the model. The reasons of the dropped triples (`gate_mismatch`, `not_grounded`, `sensitive_topic`, `not_a_taste`, `duplicate`, `capacity`, ...) are in the structured `reasons` field of that record, not in the message |
 | `Candidate insert: <status>` | `inserted`, `duplicate`, `capacity` or `disabled` |
-| `Candidate promotion: <outcome>` | The writer's own line: `promoted`, `already_present`, `contradiction`, `not_offered` or `denied`. It appears only after a spoken «sí, autorizo guardar …» |
+| `Candidate promotion: <outcome>` | The writer's own line: `promoted`, `already_present`, `contradiction`, `not_offered` or `denied`. It appears only after a spoken «sí, autorizo.» (or the long form that repeats the value) |
 | `Candidate offer: <outcome>` | `offered` (the offer was spoken after the reply), `voice_unverified` (a candidate waited but the voice of that turn's clip did not verify as the same person, so nothing was offered) or `not_offerable` (the candidate lapsed or was taken between the check and the reply) |
 | `Candidate answer: <outcome>` | The result of a spoken answer to an open offer: `promoted`, `already_present`, `contradiction`, `not_offered`, `denied` (the writer's outcomes, repeated) or `rejected` (the owner declined) |
 | `Candidate offer failed (...)` / `Candidate answer failed (...)` | A warning (an error when the failure is not an operational class) with `error_type` and `site`, the file, line and function; never a message or a value. On an answer failure the owner heard the fixed failure phrase |
@@ -557,7 +574,7 @@ would put a stored value in the log.
   with no candidate table yet) and exits `1` when it could not scrub the file or truncate its
   log because another process holds it.
 
-Facts already confirmed by a spoken «autorizo guardar …» are not candidates and stay in the
+Facts already confirmed by a spoken «autorizo» are not candidates and stay in the
 database; rolling back does not erase them.
 
 **Counting what happened, without seeing a sentence.** With the server running or stopped (it

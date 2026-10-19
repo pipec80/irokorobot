@@ -731,6 +731,48 @@ async def test_an_answer_resolves_the_actor_first_and_speaks_the_fixed_result() 
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "message, expected",
+    [
+        ("Sí, autorizo.", MemoryAnswer(accept=True, phrase="")),
+        ("No autorizo.", MemoryAnswer(accept=False, phrase="")),
+    ],
+)
+async def test_a_verb_alone_resolves_the_actor_first_and_reaches_the_answerer(
+    message: str, expected: MemoryAnswer
+) -> None:
+    """The short answer is the same shape as the long one: the actor first, then the answerer."""
+    order: list[str] = []
+    actor = _actor(HouseholdRole.OWNER, 7)
+
+    async def observe(_event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
+        order.append("actor")
+        return actor
+
+    async def answer(
+        parsed: MemoryAnswer, who: ActivePersonContext, _event: CognitiveEvent[TextTurnPayload]
+    ) -> str | None:
+        order.append("answer")
+        assert parsed == expected
+        assert who is actor
+        return "Listo, lo guardé."
+
+    legacy_turn = _legacy()
+    controller = CognitiveController(
+        today=lambda: date(2026, 8, 12),
+        legacy_turn=legacy_turn,
+        observed_person_resolver=observe,
+        memory_answerer=answer,
+    )
+
+    plan = await controller.handle(_event(message))
+
+    assert order == ["actor", "answer"]
+    assert plan.need is InformationNeed.MEMORY_ANSWER
+    legacy_turn.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_an_answer_nobody_can_use_falls_through_to_the_ordinary_turn() -> None:
     """No offer, a weaker actor or a refusal: the reply is exactly the generic one."""
     observe = AsyncMock(return_value=_actor(HouseholdRole.OWNER, 7))

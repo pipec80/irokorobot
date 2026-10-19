@@ -1,7 +1,8 @@
-"""The closed grammar of a spoken answer to a memory offer (ADR 0021 decision 9, Plan 0063).
+"""The closed grammar of a spoken answer to a memory offer (ADR 0021 decision 9, Plans 0063, 0066).
 
-Pipec's decision (option A): an answer is a closed verb **and** the value. A bare «sí», or a verb
-without the value, is never an answer, so nothing an attacker can know in advance promotes.
+Pipec's decision of 2026-10-19 (Plan 0066, D-1 to D-3): a closed verb alone is an answer, and the
+value stays optional; when it is present it must still be a short noun phrase. A bare «sí», and the
+short ordinary verbs without their «sí» («guarda», «olvídalo»), are never an answer.
 """
 
 import pytest
@@ -87,14 +88,16 @@ def test_the_answer_survives_how_the_speech_to_text_writes_it(
 @pytest.mark.parametrize(
     "message",
     [
-        "Autoriza",
         "Sí po",
         "Ya",
         "Dale",
         "Guarda silencio",
         "Guarda mi",
+        "Autorizo mi",
+        "Sí, autorizo mis",
+        "Sí, guarda mi",
         "Ya, guarda silencio",
-        "Autorizo guardar",
+        "Autorizo guardar uno dos tres cuatro cinco seis siete",
         "Autoriza guardar el mate de la abuela de mi vecino de al lado",
     ],
 )
@@ -106,29 +109,89 @@ def test_the_wider_grammar_still_refuses_what_is_not_an_answer(message: str) -> 
     "message",
     [
         "sí",
-        "Sí, autorizo",
-        "autorizo guardar",
-        "sí, guárdalo",
         "guárdalo",
-        "no lo guardes",
+        "Guarda",
         "olvídalo",
+        "Olvídalo",
+        "Bórralo",
+        "Sí, olvídalo",
+        "Sí, bórralo",
         "dale",
         "ok",
         "no",
         "sí, por favor",
         "me gusta el mate",
         "Guarda silencio, por favor",
+        "Sí, guarda silencio",
+        "Ya, guarda",
+        "Dale, guárdalo",
+        "Claro, guarda",
+        "Iroko, guarda",
+        "Oye, guárdalo",
+        "No guardes eso",
         "Olvídalo, no importa",
         "Bórralo todo",
         "no guardes nada",
-        "sí, autorizo a guardar",
         "",
         "   ",
     ],
 )
-def test_a_bare_yes_or_a_verb_without_the_value_is_never_an_answer(message: str) -> None:
+def test_a_bare_yes_or_a_short_ordinary_verb_is_never_an_answer(message: str) -> None:
+    """A bare «sí», and «guarda»/«olvídalo»/«bórralo» without their cue, resolve nothing (D-1, D-3)."""
     assert parse_memory_answer(message) is None
     assert resolve_information_need(message).need is not InformationNeed.MEMORY_ANSWER
+
+
+@pytest.mark.parametrize(
+    "message, accept",
+    [
+        ("Autorizo.", True),
+        ("Sí, autorizo.", True),
+        ("Autoriza", True),
+        ("Apruebo, gracias", True),
+        ("Aprueba po", True),
+        ("Dale, apruebo", True),
+        ("Sí, autorizo guardar", True),
+        ("Autorizo a guardar", True),
+        ("Sí, autorizo a guardar", True),
+        ("Autoriza que guardes", True),
+        ("Sí, guarda", True),
+        ("Sí, guárdalo", True),
+        ("Sí po, guárdalo", True),
+        ("No autorizo", False),
+        ("No, no apruebo", False),
+        ("No autoriza guardar", False),
+        ("No lo guardes", False),
+        ("No guardes", False),
+        ("Sí, ya, guarda", True),
+        ("No aprueba", False),
+        ("No autoriza", False),
+        ("No apruebo", False),
+        ("No lo guardes, gracias", False),
+    ],
+)
+def test_a_closed_verb_alone_is_an_answer_about_the_open_offer(message: str, accept: bool) -> None:
+    """Plan 0066, D-1 to D-3: the empty phrase means «the one open offer»."""
+    assert parse_memory_answer(message) == MemoryAnswer(accept=accept, phrase="")
+    resolution = resolve_information_need(message)
+    assert resolution.need is InformationNeed.MEMORY_ANSWER
+    assert resolution.rule_id == "memory.answer.v1"
+
+
+@pytest.mark.parametrize(
+    "message, accept, phrase",
+    [
+        ("Sí, autorizo guardar el mate", True, "el mate"),
+        ("Autorizo comer", True, "comer"),
+        ("No autorizo guardar el mate", False, "el mate"),
+        ("Sí, guarda el mate", True, "el mate"),
+    ],
+)
+def test_a_value_that_is_present_is_still_read_as_the_value(
+    message: str, accept: bool, phrase: str
+) -> None:
+    """The verb alone is new; a value after it is still parsed, and later compared (D-6)."""
+    assert parse_memory_answer(message) == MemoryAnswer(accept=accept, phrase=phrase)
 
 
 def test_a_closed_rule_resolved_earlier_wins_over_the_shape_of_an_answer() -> None:
