@@ -125,6 +125,9 @@ class StreamState:
     # Whether the last model sentence spoken was the claim-guard replacement, so a run of
     # claims across deltas is spoken as one replacement (Plan 0064).
     last_sentence_replaced: bool = False
+    # Whether the offer's audio event was actually emitted on this turn (Plan 0067); a
+    # committed offer whose synthesis failed leaves it false. Read by `_done_event`.
+    offer_spoken: bool = False
 
 
 async def synthesize_sentence(sentence: str, state: StreamState) -> str:
@@ -317,5 +320,6 @@ def _done_event(
         tts_ms=state.tts_ms_total,
         total_ms=total_ms,
         authentication_consumed=authentication_consumed,
+        expects_short_reply=state.offer_spoken,
     )
     return done.model_dump_json() + "\n"

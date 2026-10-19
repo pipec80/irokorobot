@@ -150,6 +150,37 @@ async def test_the_offer_is_one_more_audio_event_after_the_reply_with_no_text(
     assert stream_on["synthesize"].await_args_list[-1].args == (_OFFER,)
 
 
+async def test_done_expects_a_short_reply_after_a_spoken_offer(
+    http_client: httpx.AsyncClient, stream_on: dict[str, Mock | AsyncMock]
+) -> None:
+    events = await _events(http_client, AsyncMock(return_value=_pending()))
+
+    assert events[-1]["type"] == "done"
+    assert events[-1]["expects_short_reply"] is True
+
+
+async def test_done_expects_nothing_without_an_offer(
+    http_client: httpx.AsyncClient, stream_on: dict[str, Mock | AsyncMock]
+) -> None:
+    events = await _events(http_client, None)
+
+    assert events[-1]["type"] == "done"
+    assert events[-1]["expects_short_reply"] is False
+
+
+async def test_done_expects_nothing_when_the_offer_audio_failed(
+    http_client: httpx.AsyncClient, stream_on: dict[str, Mock | AsyncMock]
+) -> None:
+    """The offer is committed but its synthesis raises: no offer event, so no reply is expected."""
+    stream_on["synthesize"].side_effect = [("UkVQTFk=", 30), TTSError("piper down")]
+
+    events = await _events(http_client, AsyncMock(return_value=_pending()))
+
+    stream_on["commit"].assert_awaited_once()
+    assert [event["type"] for event in events] == ["text_heard", "emotion", "audio", "done"]
+    assert events[-1]["expects_short_reply"] is False
+
+
 async def test_the_offer_never_reaches_the_spoken_log_nor_the_session(
     http_client: httpx.AsyncClient, stream_on: dict[str, Mock | AsyncMock]
 ) -> None:
