@@ -33,9 +33,9 @@ to see the code, tests, verified gaps, and future delivery sequence.
 
 ## Plan en curso (`NOW`)
 
-`NOW` es el [Plan 0064 — calidad del habla y del diálogo](0064-speech-and-dialogue-quality.md), promovido a `Ready` y `NOW` por Pipec el 2026-10-16 (decisiones D-1 a D-8 confirmadas); su código se ejecutó el 2026-10-16 en la rama `feat/0064-speech-and-dialogue-quality` (faltan el PR y la aceptación en hardware de Pipec; ver su registro de ejecución). Antes lo ocupaba [0063 — la oferta de memoria hablada y la respuesta explícita (CM-3a, segundo corte)](../completed/0063-cm3a-memory-dialogue.md), que **cerró el 2026-10-16** (PR #188) y ya vive en `completed/`.
+`NOW` está vacío. El [Plan 0064 — calidad del habla y del diálogo](../completed/0064-speech-and-dialogue-quality.md) **cerró el 2026-10-19** (PR #193) y ya vive en `completed/`: tuteo en todo lo que dice el robot, una regla de idioma al final del prompt, la respuesta explícita más tolerante a Whisper, una guardia contra «lo guardé» falso y un aviso al arrancar si Ollama no responde. En hardware: 0 de unos 24 turnos fuera del español y 1 de 2 respuestas entendidas. Pipec decidió además que un verbo cerrado solo («autorizo», «sí, autorizo») resuelva la oferta abierta; eso enmienda el ADR 0021 y irá en un plan nuevo (0066, sin escribir).
 
-Borrador, **no ejecutable todavía**: [0065 — CM-3b, tramo A: el núcleo escritor neutral al canal](0065-cm3b-a-channel-neutral-writer-core.md), que espera a que cierre el 0064 y a la promoción de Pipec; el [ADR 0022](../../adr/0022-household-rules-and-third-party-memory.md) (`Proposed`) tiene confirmadas todas sus decisiones. Orden antes del Paso 0: 0064, 0065.
+Borrador, **no ejecutable todavía**: [0065 — CM-3b, tramo A: el núcleo escritor neutral al canal](0065-cm3b-a-channel-neutral-writer-core.md), que espera la promoción de Pipec (el 0064 ya cerró); el [ADR 0022](../../adr/0022-household-rules-and-third-party-memory.md) (`Proposed`) tiene confirmadas todas sus decisiones. Orden antes del Paso 0: 0065 (el 0064 ya cerró).
 
 El `NOW` anterior a ese fue [0062 — candidatos de memoria y escritor canónico, primer corte (CM-3a)](../completed/0062-cm3a-memory-candidates-and-writer.md), que **cerró el 2026-10-15** (PR #183) y vive en `completed/`: la tabla de candidatos (migración 009), el escritor canónico `promote`, la puerta de preferencias, el extractor que solo ve las palabras del usuario, el clasificador, la política auditada antes del efecto y la propuesta en segundo plano que exige la cara **y** la voz de la misma persona en el propio clip, detrás de `MEMORY_CANDIDATES_ENABLED=false`. Retiró `consolidate_turn`, `PROPOSE_MEMORY` y `COMMIT_MEMORY`. `just gate` 2972 tests (filtro de CI 2955; línea base 2597 / 2580).
 
@@ -171,7 +171,7 @@ the benchmark harness is GREEN and the measured baseline is a reproducible
 cognitive RED (`ac43c58`, exit 1); it changed no runtime memory. See
 [completed/0046](../completed/0046-reproducible-longitudinal-memory-baseline.md).
 
-Canonical execution order: **`NOW` is [Plan 0064](0064-speech-and-dialogue-quality.md) (promoted 2026-10-16); [Plan 0063](../completed/0063-cm3a-memory-dialogue.md) closed 2026-10-16, [Plan 0062](../completed/0062-cm3a-memory-candidates-and-writer.md) closed 2026-10-15, Plan 0061 closed 2026-10-13 and Plan 0054 (PC-4) closed 2026-09-30.** Plan 0053 (PC-3B)
+Canonical execution order: **`NOW` is empty; [Plan 0064](../completed/0064-speech-and-dialogue-quality.md) closed 2026-10-19, [Plan 0063](../completed/0063-cm3a-memory-dialogue.md) closed 2026-10-16, [Plan 0062](../completed/0062-cm3a-memory-candidates-and-writer.md) closed 2026-10-15, Plan 0061 closed 2026-10-13 and Plan 0054 (PC-4) closed 2026-09-30.** Plan 0053 (PC-3B)
 closed 2026-09-29, and Plan 0047 (PC-3A) closed 2026-09-25 with a provisional PASS
 (see [completed/0047](../completed/0047-speaker-evidence-calibration-study.md)); the
 queue-rule-4 re-audit of the next row ran the same day, produced Plan 0053, and

@@ -8,7 +8,7 @@
   (decisions 4 and 9). Accepted when Plan 0063 closed with its hardware cases run (cases 1, 2, 3,
   4, 6 and 7 passed, 5 partial, 8 measured on the shared laptop, 9 not run; see
   [the acceptance note](../evals/0063-memory-dialogue-acceptance.md)). Amended on 2026-10-16 by
-  [Plan 0064](../plans/open/0064-speech-and-dialogue-quality.md): decision 9's answer grammar
+  [Plan 0064](../plans/completed/0064-speech-and-dialogue-quality.md): decision 9's answer grammar
   admits how the speech-to-text writes the verbs, and a model sentence that claims a save is
   replaced.
 - **Date:** 2026-10-14
