@@ -331,4 +331,27 @@ migration is added.
 
 ## Execution record
 
-*(Filled in when the plan is executed.)*
+Executed 2026-10-19 on `feat/0066-verb-only-answer` (base `0009140`), tasks 0 to 5. **Task 6
+(hardware acceptance) is pending: Pipec runs it**, and the plan stays in `open/` and `NOW` until
+its counts are recorded here.
+
+- **Baseline:** `just gate` 3326 passed plus one `slow` test (`test_the_real_encoder_returns_the_frozen_shape`)
+  that timed out under the parallel load and passed alone (3 of 3), so 3327 as at the close of
+  Plan 0064. Not related to this plan.
+- **Commits:** one per task (1 to 4), then the review fixes and the documentation.
+- **Rulings.** (1) A dangling «mi»/«mis» after a verb («Autorizo mi») is refused, not read as a verb
+  alone: it is a garbled value (D-6). (2) The round-trip test of the offer now resolves a real offer
+  through `answer_offer`, and the longest-value test keeps covering the full phrase (the value stays
+  optional), because the key of an empty phrase is empty.
+- **Reviews** (three independent read-only reviewers on the branch): no Critical and no
+  correctness finding. Fixed: tests that pinned the «sí» cue of the short verbs, the rejections
+  alone, the visitor's offer not making the owner's ambiguous, the vision route with the short
+  answer, the rejection and the no-offer case on the streaming route, and the full-phrase round
+  trip; the ADR now states the honest-accident cost next to the replay cost.
+- **Deferred minors (not done):** a conditional «si» without accent counts as the «sí» cue
+  («si guarda»); emphatic phrasings such as «Sí, autorizo, guárdalo» or «Autorizo, sí» parse a
+  trailing word as a value and fall through (D-6; a possible follow-up if Task 6 misses);
+  `mark_offered` does not repeat the «no other open offer» guard (fails closed, existed before);
+  `tests/unit/test_claim_guard.py` still lists the old offer sentence (outside the permitted files);
+  `docs/architecture/memory-and-world-state.md` and ADR 0022 still say the answer repeats the value
+  (outside the permitted files).

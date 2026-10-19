@@ -10,7 +10,9 @@
   [the acceptance note](../evals/0063-memory-dialogue-acceptance.md)). Amended on 2026-10-16 by
   [Plan 0064](../plans/completed/0064-speech-and-dialogue-quality.md): decision 9's answer grammar
   admits how the speech-to-text writes the verbs, and a model sentence that claims a save is
-  replaced.
+  replaced. Amended on 2026-10-19 by Plan 0066 (Pipec's decision D-1, after the Plan 0064 hardware
+  session): decision 9's answer no longer has to repeat the value; a closed verb alone resolves the
+  person's one open offer, and the spoken offer teaches it. The cost is stated in decision 9.
 - **Date:** 2026-10-14
 - **Builds on:** [ADR 0006](0006-personal-and-family-companion-profiles.md),
   [ADR 0009](0009-locked-posture-and-scoped-capabilities.md),
@@ -325,10 +327,13 @@ One function, **one `db.transaction()`**, never relying on an `IntegrityError`:
 - **Phrases** (fixed templates in `memory/lexicon.py`, neutral Spanish with **tuteo** — Pipec
   lives in Santiago de Chile, amended 2026-10-15 — filled with the stored value, which already
   passed decision 4): «Antes me dijiste que te gusta {x}. ¿Quieres que lo guarde? Dime: sí,
-  autorizo guardar {x}.», with «te gustan» before a plural article, and the dislike («… que no te
-  gusta {x}.») and prefer («… que prefieres {x}.») forms. The offer does not promise recall; that
-  is CM-5.
-- **The answer repeats the value** (Pipec's option A, 2026-10-15). A closed
+  autorizo.», with «te gustan» before a plural article, and the dislike («… que no te
+  gusta {x}.») and prefer («… que prefieres {x}.») forms. The statement before the question names
+  the value; the question no longer repeats it. The offer does not promise recall; that is CM-5.
+  **Amended 2026-10-19 (Plan 0066, D-5):** until then the offer ended «Dime: sí, autorizo guardar
+  {x}.», the exact answer that repeated the value.
+- **The answer repeated the value** (Pipec's option A, 2026-10-15; the value became optional on
+  2026-10-19, see the last amendment of this bullet). A closed
   `InformationNeed.MEMORY_ANSWER`, recognised by a pure grammar in `intent_resolution`, matches a
   message that carries a closed verb (yes: `autorizo`, `apruebo` and, since Plan 0064, their
   third-person writings `autoriza`, `aprueba` — alone or followed by `guardar`, `a guardar` or
@@ -343,6 +348,28 @@ One function, **one `db.transaction()`**, never relying on an `IntegrityError`:
   alone still matches nothing, and the cost is known: more ordinary phrases («guarda mi …») have
   the shape of an answer and make the controller verify face and voice first (3 to 4 s); nothing
   is written without an open offer.
+  **Amended 2026-10-19 (Plan 0066, Pipec's decision D-1):** in the Plan 0064 hardware session the
+  answer that repeated the value was understood 1 of 2 times; the failure was a word the
+  speech-to-text inserted inside the value. Fewer words, fewer chances to garble them, so **a
+  closed verb alone resolves the person's one open offer** and the value is optional:
+  - *Which verbs stand alone (D-2).* The long verbs `autorizo`, `autoriza`, `apruebo`, `aprueba`,
+    alone or followed by `guardar`, `a guardar` or `que guardes` («sí, autorizo.»). The short verbs
+    `guarda` and `guárdalo` stand alone only after a leading «sí», because they are ordinary
+    imperatives («guarda silencio»).
+  - *Rejections alone (D-3).* `no autorizo`, `no apruebo` (and the third-person forms), `no lo
+    guardes` and `no guardes`, because they carry their own «no». `olvídalo` and `bórralo` still
+    require the value: alone they are ordinary speech («olvídalo, no importa») and would erase a
+    candidate by accident.
+  - *Exactly one open offer (D-4).* A valueless answer resolves the person's open offer only when
+    exactly one is open inside the answer window (`MEMORY_CANDIDATE_ANSWER_SECONDS`). Zero or more
+    than one falls through to ordinary generation, indistinguishable from any other non-answer.
+  - *A value that is present must still match (D-6).* «Autorizo guardar {y}» with an open offer for
+    another value resolves nothing, and a garbled value still falls through. The short answer is
+    the fix for that failure, not a rescue of it.
+  - *A bare «sí» still resolves nothing* (and neither do «ya», «dale» or «po» alone). The
+    controller still resolves face and voice first for every message of this shape, and `strong`
+    is still required. The messages with the shape of an answer grow by the casual «autorizo» and
+    «sí, guarda»; they cost the 3-to-4 s check and write nothing without an open offer.
 - **One open offer per person.** While an offer waits for its answer, nothing else of that person
   is offered, so an answer always names the offer it resolves.
 - **No oracle.** The controller branch for that need resolves the actor (face and voice) **first**,
@@ -364,6 +391,17 @@ One function, **one `db.transaction()`**, never relying on an `IntegrityError`:
 - **Replay is not defended** (ADR 0016 §9). A recording of the owner saying the offered answer, with
   a photograph, could confirm it; it cannot choose the value, which the owner said earlier, and a
   liveness defence belongs to Phase 0.
+  **Cost of the 2026-10-19 amendment (Plan 0066, D-7):** the value no longer has to be known to
+  answer. A recording of the owner saying «autorizo», played in front of the robot together with
+  the owner's face, inside the 60 s window of an open offer, can now promote that offer without
+  knowing its value. Replay was already undefended (ADR 0016 §9) and a recording of the full phrase
+  worked the same way once the offer had been spoken aloud. What bounds it stays as it was: the
+  answer window, the single open offer, the face and voice of the same person on that turn's own
+  clip, and the audit row of every step. The same holds for an honest accident: an «apruebo» or
+  «sí, guarda» said by the owner inside the window about something else (the robot's next reply
+  asked another question) answers the open offer, and a «no apruebo» rejects it and erases the
+  value. It is bounded by the same window, the single open offer and the audit row, and it is the
+  price of an answer that no longer repeats the value.
 
 ### 10. Where it runs
 
@@ -588,6 +626,9 @@ gate's economics.
 - [Plan 0063](../plans/completed/0063-cm3a-memory-dialogue.md) — the spoken offer and answer
   (decision 9) and the hardware acceptance; closed 2026-10-16, it moved this ADR to `Accepted`. The
   next free ADR number is 0022.
+- Plan 0066 — a closed verb alone answers the one open offer (written and promoted 2026-10-19; Pipec's
+  decision D-1; code and documentation done, hardware acceptance pending until Pipec runs its
+  Task 6). The full phrase that repeats the value still works.
 - Left open by the acceptance, none of them a regression of this ADR: the model sometimes says it
   saved something on a message that only has the shape of an answer (nothing is written);
   occasional replies in French; whether the closed answer should admit the speech-to-text's common
