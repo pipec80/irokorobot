@@ -703,6 +703,95 @@ async def test_an_offer_past_its_answer_window_or_not_yet_made_is_not_answerable
     assert await candidates.find_offered(owner, "mate", now=_T0) is None
 
 
+async def _offer(person: int, proposal: ProposedCandidate) -> int:
+    """Store *proposal* for *person* and mark it offered at ``_T0``; return its id."""
+    stored = await _insert(person, proposal)
+    assert stored.candidate_id is not None
+    assert await candidates.mark_offered(
+        stored.candidate_id, person, correlation_id=uuid4(), now=_T0
+    )
+    return stored.candidate_id
+
+
+@pytest.mark.usefixtures("store")
+async def test_without_a_key_the_one_open_offer_of_the_person_is_found() -> None:
+    owner = await _person()
+    offered_id = await _offer(owner, _proposal("el mate", "mate"))
+    await _insert(owner, _proposal("el jazz", "jazz"))  # merely proposed: not open
+    soon = _T0 + timedelta(seconds=10)
+
+    found = await candidates.find_offered(owner, None, now=soon)
+
+    assert found is not None
+    assert found.id == offered_id
+
+
+@pytest.mark.usefixtures("store")
+async def test_without_a_key_no_open_offer_finds_nothing() -> None:
+    owner = await _person()
+    await _insert(owner)  # proposed, never offered
+    soon = _T0 + timedelta(seconds=10)
+
+    assert await candidates.find_offered(owner, None, now=soon) is None
+
+
+@pytest.mark.usefixtures("store")
+async def test_without_a_key_two_open_offers_are_ambiguous_and_find_nothing() -> None:
+    owner = await _person()
+    await _offer(owner, _proposal("el mate", "mate"))
+    await _offer(owner, _proposal("el jazz", "jazz"))
+    soon = _T0 + timedelta(seconds=10)
+
+    assert await candidates.find_offered(owner, None, now=soon) is None
+    # A keyed call still names the one it means.
+    assert await candidates.find_offered(owner, "mate", now=soon) is not None
+
+
+@pytest.mark.usefixtures("store")
+async def test_without_a_key_another_persons_open_offer_is_never_found() -> None:
+    owner = await _person()
+    visitor = await _person("Canary Visitor")
+    await _offer(visitor, _proposal("el mate", "mate"))
+    soon = _T0 + timedelta(seconds=10)
+
+    assert await candidates.find_offered(owner, None, now=soon) is None
+
+
+@pytest.mark.usefixtures("store")
+async def test_without_a_key_an_offer_past_its_answer_window_is_not_found() -> None:
+    owner = await _person()
+    await _offer(owner, _proposal("el mate", "mate"))
+    late = _T0 + timedelta(seconds=settings.memory_candidate_answer_seconds + 1)
+
+    assert await candidates.find_offered(owner, None, now=late) is None
+
+
+@pytest.mark.usefixtures("store")
+async def test_without_a_key_the_kill_switch_off_finds_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner = await _person()
+    await _offer(owner, _proposal("el mate", "mate"))
+    monkeypatch.setattr(settings, "memory_candidates_enabled", False)
+    soon = _T0 + timedelta(seconds=10)
+
+    assert await candidates.find_offered(owner, None, now=soon) is None
+
+
+@pytest.mark.usefixtures("store")
+async def test_with_a_key_the_lookup_is_exactly_as_before() -> None:
+    owner = await _person()
+    offered_id = await _offer(owner, _proposal("el mate", "mate"))
+    soon = _T0 + timedelta(seconds=10)
+
+    found = await candidates.find_offered(owner, "mate", now=soon)
+
+    assert found is not None
+    assert found.id == offered_id
+    assert await candidates.find_offered(owner, "jazz", now=soon) is None
+    assert await candidates.find_offered(owner, "", now=soon) is None
+
+
 @pytest.mark.usefixtures("store")
 async def test_nothing_else_is_offered_while_an_offer_waits_for_its_answer() -> None:
     owner = await _person()

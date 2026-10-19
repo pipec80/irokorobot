@@ -497,23 +497,39 @@ async def still_offerable(candidate_id: int, subject_person_id: int, *, now: dat
 
 
 async def find_offered(
-    subject_person_id: int, value_key: str, *, now: datetime
+    subject_person_id: int, value_key: str | None, *, now: datetime
 ) -> Candidate | None:
-    """Return the subject's open offer with *value_key*, the one an answer may resolve.
+    """Return the subject's open offer, the one an answer may resolve.
+
+    With a *value_key* it is the offer with that key. With ``None`` it is the person's one open
+    offer, whatever its value: it is returned only when exactly one is open, so zero or several
+    cannot be told apart from each other by the caller.
 
     Args:
         subject_person_id: Whose offer; another person's is never returned.
-        value_key: The comparison key of the value the answer repeated.
+        value_key: The comparison key of the value the answer repeated, or ``None`` when the
+            answer named no value and means the person's one open offer.
         now: The caller's clock reading.
 
     Returns:
-        The ``offered`` candidate of that person with that key, still inside its answer window
-        and not lapsed, or ``None`` (also with the kill-switch off).
+        The ``offered`` candidate of that person (with that key, when one was given), still
+        inside its answer window and not lapsed, or ``None`` (also with the kill-switch off, and
+        with no key when none or more than one offer is open).
     """
     if not settings.memory_candidates_enabled:
         return None
     stamp = iso_utc(now)
     waited_since = iso_utc(now - timedelta(seconds=settings.memory_candidate_answer_seconds))
+    if value_key is None:
+        cursor = await db.get_conn().execute(
+            f"SELECT {_COLUMNS} FROM memory_candidates WHERE subject_person_id = ? "  # noqa: S608
+            "AND status = 'offered' AND offered_at > ? AND expires_at > ? "
+            "ORDER BY offered_at DESC, id LIMIT 2",
+            (subject_person_id, waited_since, stamp),
+        )
+        rows = list(await cursor.fetchall())
+        await cursor.close()
+        return _from_row(tuple(rows[0])) if len(rows) == 1 else None
     cursor = await db.get_conn().execute(
         f"SELECT {_COLUMNS} FROM memory_candidates WHERE subject_person_id = ? "  # noqa: S608
         "AND status = 'offered' AND value_key = ? AND offered_at > ? AND expires_at > ? "
