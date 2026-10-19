@@ -226,7 +226,11 @@ async def respond_vision(text: str, image: bytes) -> TranscribeResult:
 
 
 async def transcribe_stream(
-    audio: bytes, *, identity_token: str | None = None, frame: bytes | None = None
+    audio: bytes,
+    *,
+    identity_token: str | None = None,
+    frame: bytes | None = None,
+    short_reply: bool = False,
 ) -> AsyncIterator[StreamEvent]:
     """Send audio to POST /transcribe/stream and yield NDJSON events (R3).
 
@@ -243,6 +247,10 @@ async def transcribe_stream(
         frame: Optional webcam frame (JPEG bytes) attached for in-request
             face authentication (Plan 0029). Same generic-client boundary as
             ``transcribe()``'s ``frame`` — omitted entirely when None.
+        short_reply: True when this clip is the reply to a spoken question
+            (Plan 0067); sent as the form field ``short_reply=true``. The
+            robot does not know what the server does with it — omitted
+            entirely when False.
 
     Yields:
         Parsed StreamEvent variants in server order: text_heard, emotion,
@@ -263,11 +271,13 @@ async def transcribe_stream(
     files: dict[str, tuple[str, bytes, str]] = {"audio": ("audio.wav", audio, "audio/wav")}
     if frame is not None:
         files["frame"] = ("frame.jpg", frame, "image/jpeg")
+    form = {"short_reply": "true"} if short_reply else None
     try:
         async with client.stream(
             "POST",
             f"{settings.server_url}/transcribe/stream",
             files=files,
+            data=form,
             headers=headers,
         ) as response:
             response.raise_for_status()

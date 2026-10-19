@@ -66,6 +66,56 @@ def test_done_with_consumed_false_parses_false() -> None:
     assert event.authentication_consumed is False
 
 
+# --- Plan 0067: the additive `expects_short_reply` hint -----------------
+
+
+@pytest.mark.unit
+def test_done_without_expects_short_reply_defaults_to_false() -> None:
+    """An older server's `done` payload (no such key) means no reply is expected."""
+    event = parse_stream_event(
+        {"type": "done", "stt_ms": 1, "llm_ms": 2, "tts_ms": 3, "total_ms": 6}
+    )
+
+    assert isinstance(event, DoneEvent)
+    assert event.expects_short_reply is False
+
+
+@pytest.mark.unit
+def test_done_with_expects_short_reply_true_parses_true() -> None:
+    """A turn that ended with a spoken offer must surface the hint as True."""
+    event = parse_stream_event(
+        {
+            "type": "done",
+            "stt_ms": 1,
+            "llm_ms": 2,
+            "tts_ms": 3,
+            "total_ms": 6,
+            "expects_short_reply": True,
+        }
+    )
+
+    assert isinstance(event, DoneEvent)
+    assert event.expects_short_reply is True
+
+
+@pytest.mark.unit
+def test_done_with_expects_short_reply_false_parses_false() -> None:
+    """An explicit False must round-trip as False."""
+    event = parse_stream_event(
+        {
+            "type": "done",
+            "stt_ms": 1,
+            "llm_ms": 2,
+            "tts_ms": 3,
+            "total_ms": 6,
+            "expects_short_reply": False,
+        }
+    )
+
+    assert isinstance(event, DoneEvent)
+    assert event.expects_short_reply is False
+
+
 @pytest.mark.unit
 def test_other_event_types_unaffected() -> None:
     """The additive done field must not disturb the other three event types."""

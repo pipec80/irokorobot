@@ -41,3 +41,10 @@ class LoopContext:
     # authentication_consumed=true. IDLE must not reset it — it survives
     # across turns until consumed or the process restarts.
     identity_token: str | None = None
+    # Plan 0067 (reply mode, one shot): armed when a drained `done` says the
+    # turn ended with a spoken question. IDLE must not reset it — it survives
+    # until the next LISTENING moves it into ``short_reply``.
+    short_reply_next: bool = False
+    # True only for the turn LISTENING captured in reply mode; THINKING sends
+    # it to the server. IDLE resets it; ERROR clears both flags.
+    short_reply: bool = False

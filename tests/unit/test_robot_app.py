@@ -92,6 +92,100 @@ async def test_listening_capture_error_goes_to_error(
     assert await app.tick(RobotState.LISTENING, LoopContext()) == RobotState.ERROR
 
 
+# --- Plan 0067: one-shot reply listening mode ---------------------------
+
+
+@pytest.mark.unit
+async def test_listening_after_a_flagged_done_uses_reply_mode_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The hint applies to ONE capture; the next LISTENING is normal again (D-2)."""
+    capture_mock = AsyncMock(return_value=b"wav-bytes")
+    monkeypatch.setattr(app, "capture_utterance", capture_mock)
+    ctx = LoopContext(short_reply_next=True)
+
+    assert await app.tick(RobotState.LISTENING, ctx) == RobotState.THINKING
+
+    capture_mock.assert_awaited_once_with(
+        max_wait_s=app.settings.reply_wait_s,
+        close_silence_ms=app.settings.vad_reply_silence_ms,
+    )
+    assert ctx.short_reply is True
+    assert ctx.short_reply_next is False
+
+    capture_mock.reset_mock()
+    await app.tick(RobotState.IDLE, ctx)
+    assert ctx.short_reply is False
+
+    assert await app.tick(RobotState.LISTENING, ctx) == RobotState.THINKING
+
+    capture_mock.assert_awaited_once_with()
+    assert ctx.short_reply is False
+
+
+@pytest.mark.unit
+async def test_idle_keeps_the_pending_reply_hint() -> None:
+    """IDLE sits between the flagged turn and LISTENING: it must not drop the hint."""
+    ctx = LoopContext(short_reply=True, short_reply_next=True)
+
+    await app.tick(RobotState.IDLE, ctx)
+
+    assert ctx.short_reply is False
+    assert ctx.short_reply_next is True
+
+
+@pytest.mark.unit
+async def test_listening_normal_capture_keeps_calling_with_no_arguments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capture_mock = AsyncMock(return_value=b"wav-bytes")
+    monkeypatch.setattr(app, "capture_utterance", capture_mock)
+
+    await app.tick(RobotState.LISTENING, LoopContext())
+
+    capture_mock.assert_awaited_once_with()
+
+
+@pytest.mark.unit
+async def test_empty_reply_capture_returns_to_idle_and_clears_the_hint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Nothing heard in REPLY_WAIT_S: back to normal listening, hint gone."""
+    monkeypatch.setattr(app, "capture_utterance", AsyncMock(return_value=b""))
+    ctx = LoopContext(short_reply_next=True)
+
+    assert await app.tick(RobotState.LISTENING, ctx) == RobotState.IDLE
+
+    assert ctx.short_reply is False
+    assert ctx.short_reply_next is False
+
+
+@pytest.mark.unit
+async def test_capture_error_in_reply_mode_clears_the_hint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        app, "capture_utterance", AsyncMock(side_effect=AudioCaptureError("mic gone"))
+    )
+    ctx = LoopContext(short_reply_next=True)
+
+    assert await app.tick(RobotState.LISTENING, ctx) == RobotState.ERROR
+
+    assert ctx.short_reply is False
+    assert ctx.short_reply_next is False
+
+
+@pytest.mark.unit
+async def test_error_state_clears_both_reply_flags(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(app.asyncio, "sleep", AsyncMock())
+    ctx = LoopContext(short_reply=True, short_reply_next=True)
+
+    assert await app.tick(RobotState.ERROR, ctx) == RobotState.IDLE
+
+    assert ctx.short_reply is False
+    assert ctx.short_reply_next is False
+
+
 @pytest.mark.unit
 async def test_thinking_server_error_goes_to_error_not_crash(
     monkeypatch: pytest.MonkeyPatch,
