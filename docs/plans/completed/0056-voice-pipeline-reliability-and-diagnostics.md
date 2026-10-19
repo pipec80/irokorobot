@@ -34,7 +34,7 @@ Same pins as the current lock.
 
 **Spec:** the roadmap row
 [*Voice-pipeline reliability and truthful diagnostics*](../../roadmap/cognitive-roadmap.md#canonical-pre-electronics-delivery-portfolio),
-[0049 O-04](../open/0049-server-objective-conformance-audit.md) (streaming protocol fallback),
+[0049 O-04](0049-server-objective-conformance-audit.md) (streaming protocol fallback),
 decision D-4 of [Plan 0055](0055-pc4-identity-fusion-followups.md)
 (Whisper prompt echo), the *Non-goals* of
 [Plan 0050](0050-server-audit-repairs.md) (classic parser, `test-pipeline`)
@@ -217,7 +217,7 @@ them rather than asking again.
   picture), `docs/runbooks/operator-manual.md`, `docs/evals/README.md`, new
   `docs/evals/0056-voice-pipeline-measurements.md`, `docs/roadmap/cognitive-roadmap.md`,
   `docs/plans/README.md`, `docs/plans/open/README.md`, this plan, and the O-04 status
-  note in `docs/plans/open/0049-server-objective-conformance-audit.md`
+  note in `docs/plans/completed/0049-server-objective-conformance-audit.md`
 
 No URL, status code, response field, streaming event, audio contract, database schema
 or migration changes. `server/src/server/streaming*.py` and `llm_streaming.py` are

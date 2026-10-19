@@ -1,6 +1,6 @@
 # 0049 — Auditoría de conformidad de server con sus objetivos
 
-**Estado:** Draft. Propuesta de auditoría; no es un plan de implementación ni
+**Estado:** Archivado como registro (las reparaciones las cerró el Plan 0050 el 2026-10-01; se movió a `completed/` el 2026-10-19). Fue un Draft: propuesta de auditoría; no es un plan de implementación ni
 reemplaza al plan NOW (0047 cerró el 2026-09-25). La revisión inicial de esta conversación está autorizada;
 la campaña completa descrita aquí queda propuesta, no ejecutada.
 

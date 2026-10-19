@@ -1,10 +1,11 @@
 # 0066 — The answer to a memory offer: a closed verb alone is enough
 
-> **Status:** `Draft` — written 2026-10-19 from Pipec's hardware session of the same day (Plan 0064
-> acceptance) and from his decision that day (D-1). **Not executable** until Pipec confirms D-2 to
-> D-7 and marks it `Ready` and `NOW`. **Not rehearsed** in a scratch copy: the tasks below are
-> specifications (files, rules, tests to write first), not rehearsed diffs. To be executed in a
-> **new session**. It does not depend on Plan 0065 and Plan 0065 does not depend on it.
+> **Status:** `Ready` and `NOW` — promoted by Pipec on 2026-10-19, who confirmed D-1 to D-7 (D-1 is
+> his decision of that day, after the Plan 0064 hardware session; D-2 to D-7 he confirmed after an
+> example of each, and that a bare «sí» stays out). Written the same day. **Not rehearsed** in a
+> scratch copy: the tasks below are specifications (files, rules, tests to write first), not
+> rehearsed diffs. To be executed in a **new session**. It does not depend on Plan 0065 and Plan
+> 0065 does not depend on it.
 
 > **For agentic workers:** if the status above does not say `Ready`, stop: Pipec has not promoted
 > this plan. REQUIRED SUB-SKILLS: `superpowers:executing-plans`,
@@ -81,26 +82,26 @@ repository rules in `.claude/rules/` (not tracked; read them from the working co
 1. **D-1 — A closed verb alone is enough (Pipec, 2026-10-19).** A bare «sí» is still not (his
    choice among «verbo solo», «sí suelto» and «como está»). Face and voice verified on that turn stay
    mandatory.
-2. **D-2 — Which verbs stand alone (recommendation).** The long verbs `autorizo`, `autoriza`,
+2. **D-2 — Which verbs stand alone (Pipec, 2026-10-19).** The long verbs `autorizo`, `autoriza`,
    `apruebo`, `aprueba`, alone or followed by `guardar`, `a guardar` or `que guardes` («autorizo
    guardar» is a verb phrase, not a value). The short verbs `guarda` and `guárdalo` stand alone
    **only after a leading «sí»**: they are ordinary imperatives («guarda silencio»), and the «sí»
    marks the intent.
-3. **D-3 — Rejections alone (recommendation).** `no autorizo`, `no apruebo`, `no autoriza`, `no
+3. **D-3 — Rejections alone (Pipec, 2026-10-19).** `no autorizo`, `no apruebo`, `no autoriza`, `no
    aprueba` (long forms included), `no lo guardes` and `no guardes` stand alone, because they carry
    their own «no». `olvídalo` and `bórralo` keep requiring the value: alone they are ordinary speech
    («olvídalo, no importa») and would erase a candidate by accident.
-4. **D-4 — Exactly one open offer (recommendation).** A valueless answer resolves the person's open
+4. **D-4 — Exactly one open offer (Pipec, 2026-10-19).** A valueless answer resolves the person's open
    offer only when exactly one is open inside the answer window
    (`MEMORY_CANDIDATE_ANSWER_SECONDS`, 60 s). Zero or more than one falls through, which cannot be
    told apart from any other non-answer. The store already offers at most one per person, so more
    than one is defensive.
-5. **D-5 — The offer says the short answer (recommendation).** `OFFER_QUESTION` becomes «¿Quieres
+5. **D-5 — The offer says the short answer (Pipec, 2026-10-19).** `OFFER_QUESTION` becomes «¿Quieres
    que lo guarde? Dime: sí, autorizo.» The statement before it already names the value.
-6. **D-6 — A value that is present must still match.** «Autorizo guardar el chocolate» with an open
+6. **D-6 — A value that is present must still match (Pipec, 2026-10-19).** «Autorizo guardar el chocolate» with an open
    offer for another value resolves nothing, and a garbled value (the failed attempt of the hardware
    session) still falls through. The short answer is the fix for that failure, not a rescue of it.
-7. **D-7 — The cost is stated in the ADR, not hidden.** The value no longer has to be known to
+7. **D-7 — The cost is stated in the ADR, not hidden (Pipec, 2026-10-19).** The value no longer has to be known to
    answer. A recording of the owner saying «autorizo» played in front of the robot, together with the
    owner's face, inside the 60 s window of an open offer, can now promote that offer without knowing
    its value. Replay was already undefended (ADR 0016 §9) and a recording of the full phrase worked

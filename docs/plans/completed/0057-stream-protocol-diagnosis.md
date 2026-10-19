@@ -60,7 +60,7 @@ constant fixed **before** the run.
 **Spec:** the roadmap row
 [*Streaming-protocol fallback repair*](../../roadmap/cognitive-roadmap.md#canonical-pre-electronics-delivery-portfolio),
 [0056 measurements](../../evals/0056-voice-pipeline-measurements.md#1-streaming-protocol-fallback-0049-o-04),
-[0049 O-04](../open/0049-server-objective-conformance-audit.md), and the rules in
+[0049 O-04](0049-server-objective-conformance-audit.md), and the rules in
 *Protocol rules this plan relies on* below. Those rules are stated here from the code
 and its tests, which outrank a plan under the repository's own order, and from
 [`current-state.md`](../../architecture/current-state.md); no historical plan is a
@@ -307,7 +307,7 @@ Shape → candidate repair (a pointer for the repair plan, **not** a decision):
   `docs/architecture/diagrams/current-state.{json,html}`,
   `docs/runbooks/operator-manual.md`, `docs/plans/README.md`,
   `docs/plans/open/README.md`, this plan, and the O-04 note in
-  `docs/plans/open/0049-server-objective-conformance-audit.md`.
+  `docs/plans/completed/0049-server-objective-conformance-audit.md`.
 
 No URL, status code, response field, streaming event, audio contract, database schema,
 migration or dependency changes. **`server/src/**` is read-only.**

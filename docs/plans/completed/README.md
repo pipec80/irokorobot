@@ -48,7 +48,7 @@ wrong operation is refused without being spent, and "who am I" and the "not conn
 longer spend it; accepted on real hardware, with the bearer limit still pinned.
 
 [Plan 0050](0050-server-audit-repairs.md) closed on 2026-10-01 (merged as PR #154, `a496c1f`) the repairs of the
-[0049 audit](../open/0049-server-objective-conformance-audit.md): standalone imports
+[0049 audit](0049-server-objective-conformance-audit.md): standalone imports
 and a pure cognitive core, one transport seam to Ollama, header-first image bounds,
 a V4 reader that honours stored classification, owner-scoped setup readiness, dead
 settings removed, no names in logs, static architecture guards and the owner →

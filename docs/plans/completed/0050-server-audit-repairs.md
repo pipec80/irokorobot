@@ -41,7 +41,7 @@ false statement with a true one. Five static guards make the controls permanent.
 **Tech Stack:** Python 3.12, FastAPI, httpx, aiosqlite, OpenCV 5, Pillow 12,
 pytest (+ xdist). Same pins as the current lock, plus an explicit `pillow`.
 
-**Spec:** [0049 — server objective conformance audit](../open/0049-server-objective-conformance-audit.md)
+**Spec:** [0049 — server objective conformance audit](0049-server-objective-conformance-audit.md)
 (§3, §9, §11, §13), accepted
 [ADR-0015 — grant scope and speaker binding](../../adr/0015-owner-grant-scope-and-speaker-binding.md).
 ADR-0015 decision 2 is refined by accepted
@@ -240,7 +240,7 @@ children optional was decided on 2026-09-23; decision 6 was confirmed on
   `docs/plans/completed/0020-p0-operator-qa-remediation-design.md` and
   `docs/plans/completed/0046-reproducible-longitudinal-memory-baseline.md`,
   `docs/plans/README.md`, `docs/plans/open/README.md`, this plan, and the
-  status note in `docs/plans/open/0049-server-objective-conformance-audit.md`
+  status note in `docs/plans/completed/0049-server-objective-conformance-audit.md`
 
 No URL, status code, response field, streaming event, audio contract, database
 schema or migration changes. The local agent rules (`.claude/rules`,
