@@ -268,9 +268,10 @@ async def answer_offer(
     Returns:
         The fixed result phrase. ``None`` falls through to ordinary generation: switch off, a
         weaker actor, no open offer (with that value, when one was named; or not exactly one
-        for a verb alone) or a failing lookup, none of which may be told apart. Once the verified owner's own open offer is found, a refusal or a failure
-        says ``ANSWER_FAILED_PHRASE`` instead, so the model never improvises «listo». Never
-        raises (a cancellation excepted).
+        for a verb alone) or a failing lookup, none of which may be told apart. Once the
+        verified owner's own open offer is found, a refusal or a failure says
+        ``ANSWER_FAILED_PHRASE`` instead, so the model never improvises «listo». Never raises
+        (a cancellation excepted).
     """
     candidate_id = await _find_open_offer(answer, actor, correlation_id, now)
     person_id = actor.person_id

@@ -237,6 +237,18 @@ async def test_the_answer_the_offer_asks_for_resolves_that_offer(owner: int, val
     assert await _status(candidate_id) is CandidateStatus.CONFIRMED
 
 
+@pytest.mark.parametrize(
+    "value", ["el mate", "lo picante", "las empanadas", "bailar", "el café con leche"]
+)
+def test_the_full_phrase_with_the_value_still_parses_to_the_same_key(value: str) -> None:
+    """The value stays optional: the old answer that repeats it keeps working (Plan 0066)."""
+    answer = parse_memory_answer(f"sí, autorizo guardar {value}")
+
+    assert answer is not None
+    assert answer.accept
+    assert comparison_key(answer.phrase) == comparison_key(value)
+
+
 @pytest.mark.parametrize("value", ["bailar", "café", "las empanadas"])
 def test_a_value_repeated_with_mi_resolves_the_same_offer(value: str) -> None:
     """Whisper writes «autoriza a guardar mi café»: the leading «mi» is not part of the key."""

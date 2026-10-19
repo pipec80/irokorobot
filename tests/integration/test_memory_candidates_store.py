@@ -758,6 +758,20 @@ async def test_without_a_key_another_persons_open_offer_is_never_found() -> None
 
 
 @pytest.mark.usefixtures("store")
+async def test_without_a_key_another_persons_offer_does_not_make_mine_ambiguous() -> None:
+    owner = await _person()
+    visitor = await _person("Canary Visitor")
+    mine = await _offer(owner, _proposal("el mate", "mate"))
+    await _offer(visitor, _proposal("el jazz", "jazz"))
+    soon = _T0 + timedelta(seconds=10)
+
+    found = await candidates.find_offered(owner, None, now=soon)
+
+    assert found is not None
+    assert found.id == mine
+
+
+@pytest.mark.usefixtures("store")
 async def test_without_a_key_an_offer_past_its_answer_window_is_not_found() -> None:
     owner = await _person()
     await _offer(owner, _proposal("el mate", "mate"))
