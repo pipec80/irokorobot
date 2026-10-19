@@ -596,7 +596,9 @@ def test_a_short_reply_request_biases_the_recognizer_and_nothing_else(
 
     assert response.status_code == 200
     list_names.assert_not_awaited()
-    assert stt_mock.await_args_list[-1].kwargs["extra_hotwords"] == list(stt.SHORT_REPLY_HOTWORDS)
+    hotwords = stt_mock.await_args_list[-1].kwargs["extra_hotwords"]
+    assert hotwords == list(stt.SHORT_REPLY_HOTWORDS)
+    assert {"sí", "no", "acepto", "autorizo", "guárdala"} <= set(hotwords)
 
 
 @pytest.mark.integration

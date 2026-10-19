@@ -179,6 +179,31 @@ async def test_reply_capture_without_speech_returns_empty_after_the_wait(
 
 @pytest.mark.unit
 @pytest.mark.usefixtures("_short_vad_timings")
+@pytest.mark.parametrize("close_ms", [64, 32], ids=["equal-to-normal", "shorter-than-normal"])
+async def test_close_not_longer_than_the_normal_close_is_not_trimmed(
+    monkeypatch: pytest.MonkeyPatch, close_ms: int
+) -> None:
+    """A close <= vad_silence_ms trims nothing and equals a normal capture with that close."""
+    pattern = [30_000] * 3 + [0] * 20
+    monkeypatch.setattr(
+        audio_capture.sd, "InputStream", lambda **_kwargs: _FakePatternStream(pattern)
+    )
+    overridden = await audio_capture.capture_utterance(close_silence_ms=close_ms)
+    monkeypatch.setattr(settings, "vad_silence_ms", close_ms)
+    monkeypatch.setattr(
+        audio_capture.sd, "InputStream", lambda **_kwargs: _FakePatternStream(pattern)
+    )
+
+    normal_with_that_close = await audio_capture.capture_utterance()
+
+    silent_tail_chunks = audio_capture._ms_to_chunks(close_ms)
+    assert overridden != b""
+    assert overridden == normal_with_that_close
+    assert len(_wav_samples(overridden)) == (3 + silent_tail_chunks) * audio_capture._CHUNK_FRAMES
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("_short_vad_timings")
 async def test_capture_without_an_override_is_unchanged(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

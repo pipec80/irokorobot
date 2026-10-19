@@ -500,6 +500,53 @@ async def test_a_short_reply_request_saying_si_acepto_saves_the_offer(
     assert await _status(candidate_id) is CandidateStatus.CONFIRMED
 
 
+@pytest.mark.parametrize("heard", ["Sí.", "Guárdala."])
+async def test_a_short_reply_request_never_widens_the_grammar(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch, heard: str
+) -> None:
+    """Plan 0067 D-4: the flag only chooses hotwords; a bare «sí» still resolves nothing."""
+    owner = household.owner_entity_id
+    candidate_id = await _candidate(owner)
+    assert await candidates.mark_offered(
+        candidate_id, owner, correlation_id=uuid4(), now=datetime.now(UTC)
+    )
+    _scene(monkeypatch, heard)
+    _stream_reply(monkeypatch)
+
+    async with _client() as client:
+        response = await client.post(
+            "/transcribe/stream", files=_files(), data={"short_reply": "true"}
+        )
+
+    events = [json.loads(line) for line in response.text.splitlines()]
+    assert ANSWER_SAVED_PHRASE not in [event.get("text") for event in events]
+    assert await _status(candidate_id) is CandidateStatus.OFFERED
+    assert await _likes(owner) == []
+
+
+async def test_a_short_reply_request_never_lets_another_voice_answer(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The flag changes nothing about who answers: another voice with the owner's face fails."""
+    owner = household.owner_entity_id
+    candidate_id = await _candidate(owner)
+    assert await candidates.mark_offered(
+        candidate_id, owner, correlation_id=uuid4(), now=datetime.now(UTC)
+    )
+    _scene(monkeypatch, "Sí, acepto.", voice=_OTHER_VOICE)
+    _stream_reply(monkeypatch)
+
+    async with _client() as client:
+        response = await client.post(
+            "/transcribe/stream", files=_files(), data={"short_reply": "true"}
+        )
+
+    events = [json.loads(line) for line in response.text.splitlines()]
+    assert ANSWER_SAVED_PHRASE not in [event.get("text") for event in events]
+    assert await _status(candidate_id) is CandidateStatus.OFFERED
+    assert await _likes(owner) == []
+
+
 async def test_a_refusal_alone_rejects_the_offer_on_the_streaming_route(
     household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
 ) -> None:

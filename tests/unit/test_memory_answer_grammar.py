@@ -242,6 +242,28 @@ def test_a_value_after_the_new_words_is_still_read_as_the_value(
 
 
 @pytest.mark.parametrize(
+    "message, accept, phrase",
+    [
+        # An emphatic repeated verb is the verb alone, not a value (final review of Plan 0067).
+        ("Acepto, acepto", True, ""),
+        ("Sí, autorizo, autorizo", True, ""),
+        ("Apruebo apruebo", True, ""),
+        # Courtesy after the emphatic words, a trailer after a value, and the safe contradiction.
+        ("Sí, autorizo, guárdalo, por favor", True, ""),
+        ("Sí, acepto, guárdala, gracias", True, ""),
+        ("Acepto guardar el mate, sí", True, "el mate"),
+        ("No acepto, guárdalo", False, ""),
+        # The six-word limit, accepted at six.
+        ("Acepto guardar uno dos tres cuatro cinco seis", True, "uno dos tres cuatro cinco seis"),
+    ],
+)
+def test_emphasis_and_the_value_limit_around_the_new_words(
+    message: str, accept: bool, phrase: str
+) -> None:
+    assert parse_memory_answer(message) == MemoryAnswer(accept=accept, phrase=phrase)
+
+
+@pytest.mark.parametrize(
     "message",
     [
         "Guárdala",

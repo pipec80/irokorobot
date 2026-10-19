@@ -512,7 +512,9 @@ def _answer(prefix: str, phrase: list[str], *, accept: bool, affirmed: bool) -> 
         affirmed: Whether a leading «sí» was among the openers.
     """
     if prefix not in _ANSWER_SHORT_PREFIXES:
-        while phrase and phrase[-1] in _ANSWER_LONG_VERB_TRAILERS:
+        # The verb itself repeated («acepto, acepto») is emphasis too, never a value.
+        verb = prefix.removeprefix("no ").split()[0]
+        while phrase and (phrase[-1] in _ANSWER_LONG_VERB_TRAILERS or phrase[-1] == verb):
             phrase = phrase[:-1]
     # «a guardar» continues the verb («guarda a guardar …» is not a value): drop it, then one
     # possessive, as before. «autorizo a guardar» alone matches its own long prefix instead.

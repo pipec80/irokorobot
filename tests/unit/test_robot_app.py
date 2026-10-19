@@ -1,6 +1,7 @@
 """Unit tests for the robot FSM (robot.app) — all I/O mocked."""
 
 import base64
+from collections.abc import AsyncIterator
 from dataclasses import replace
 from datetime import UTC, datetime
 import logging
@@ -8,10 +9,23 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from robot.app import LoopContext, RobotState
-from robot.exceptions import AudioCaptureError, CameraError, NoSpeechError, ServerError
+from robot.exceptions import (
+    AudioCaptureError,
+    AudioPlaybackError,
+    CameraError,
+    NoSpeechError,
+    ServerError,
+)
 from robot.server_client import TranscribeResult
+from robot.stream_events import (
+    AudioEvent,
+    DoneEvent,
+    EmotionEvent,
+    StreamEvent,
+    TextHeardEvent,
+)
 
-from robot import app, app_streaming, server_client
+from robot import app, app_streaming, audio_playback, server_client
 
 _FAKE_RESULT = TranscribeResult(
     text_heard="hola robot",
@@ -623,3 +637,202 @@ async def test_thinking_never_logs_frame_bytes(
 
     joined = "\n".join(record.getMessage() for record in caplog.records)
     assert "fake-jpeg-marker" not in joined
+
+
+# --- Plan 0067: reply mode across whole FSM cycles (streaming) -----------
+
+
+def _stream_turn(*, expects_short_reply: bool) -> list[StreamEvent]:
+    """One well-ordered stream: text_heard, emotion, one audio chunk, done."""
+    return [
+        TextHeardEvent(value="hola"),
+        EmotionEvent("joy"),
+        AudioEvent(text="Hola.", audio_base64="ZmFrZQ==", duration_ms=10),
+        DoneEvent(
+            stt_ms=1, llm_ms=1, tts_ms=1, total_ms=3, expects_short_reply=expects_short_reply
+        ),
+    ]
+
+
+def _stub_transcribe_stream(
+    monkeypatch: pytest.MonkeyPatch, turns: list[list[StreamEvent]]
+) -> list[bool]:
+    """Replace transcribe_stream; return the short_reply value each call received."""
+    seen: list[bool] = []
+    pending = iter(turns)
+
+    async def _fake_transcribe_stream(
+        _audio: bytes,
+        *,
+        identity_token: str | None = None,
+        frame: bytes | None = None,
+        short_reply: bool = False,
+    ) -> AsyncIterator[StreamEvent]:
+        del identity_token, frame
+        seen.append(short_reply)
+        for event in next(pending):
+            yield event
+
+    monkeypatch.setattr(app_streaming, "transcribe_stream", _fake_transcribe_stream)
+    return seen
+
+
+def _stub_failing_transcribe_stream(monkeypatch: pytest.MonkeyPatch, failure: Exception) -> None:
+    """Replace transcribe_stream with one that raises ``failure`` on its first event."""
+
+    async def _failing_transcribe_stream(
+        _audio: bytes,
+        *,
+        identity_token: str | None = None,
+        frame: bytes | None = None,
+        short_reply: bool = False,
+    ) -> AsyncIterator[StreamEvent]:
+        del identity_token, frame, short_reply
+        raise failure
+        yield  # pragma: no cover - unreachable, keeps this an async generator
+
+    monkeypatch.setattr(app_streaming, "transcribe_stream", _failing_transcribe_stream)
+
+
+async def _drive(state: RobotState, ctx: LoopContext, steps: int) -> list[RobotState]:
+    """Tick the FSM ``steps`` times from ``state``; return each state entered."""
+    entered: list[RobotState] = []
+    for _ in range(steps):
+        state = await app.tick(state, ctx)
+        entered.append(state)
+    return entered
+
+
+@pytest.fixture
+def _streaming_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(app.settings, "robot_streaming", True)
+    monkeypatch.setattr(app.settings, "robot_face_auth_enabled", False)
+    monkeypatch.setattr(app.asyncio, "sleep", AsyncMock())
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("_streaming_mode")
+async def test_reply_cycle_applies_reply_mode_to_one_turn_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """LISTENING(reply) -> THINKING -> SPEAKING(done w/o hint) -> IDLE -> LISTENING -> THINKING."""
+    capture_mock = AsyncMock(return_value=b"wav")
+    monkeypatch.setattr(app, "capture_utterance", capture_mock)
+    monkeypatch.setattr(audio_playback, "play_wav", AsyncMock())
+    seen = _stub_transcribe_stream(
+        monkeypatch,
+        [_stream_turn(expects_short_reply=False), _stream_turn(expects_short_reply=False)],
+    )
+    ctx = LoopContext(short_reply_next=True)
+
+    # Six ticks: the sixth executes the second THINKING (entered at tick five).
+    visited = await _drive(RobotState.LISTENING, ctx, 6)
+
+    assert visited == [
+        RobotState.THINKING,
+        RobotState.SPEAKING,
+        RobotState.IDLE,
+        RobotState.LISTENING,
+        RobotState.THINKING,
+        RobotState.SPEAKING,
+    ]
+    assert seen == [True, False]
+    assert capture_mock.await_count == 2
+    first, second = capture_mock.await_args_list
+    assert first.args == ()
+    assert first.kwargs == {
+        "max_wait_s": app.settings.reply_wait_s,
+        "close_silence_ms": app.settings.vad_reply_silence_ms,
+    }
+    assert second.args == ()
+    assert second.kwargs == {}
+    assert ctx.short_reply_next is False
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("_streaming_mode")
+async def test_no_speech_in_a_reply_turn_leaves_the_next_listening_normal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """THINKING NoSpeechError -> IDLE -> LISTENING: the hint was spent, capture is normal."""
+    capture_mock = AsyncMock(return_value=b"wav")
+    monkeypatch.setattr(app, "capture_utterance", capture_mock)
+    _stub_failing_transcribe_stream(monkeypatch, NoSpeechError("silence"))
+    ctx = LoopContext(short_reply_next=True)
+
+    visited = await _drive(RobotState.LISTENING, ctx, 3)
+    assert visited == [RobotState.THINKING, RobotState.IDLE, RobotState.LISTENING]
+
+    await app.tick(RobotState.LISTENING, ctx)
+
+    first, second = capture_mock.await_args_list
+    assert first.kwargs == {
+        "max_wait_s": app.settings.reply_wait_s,
+        "close_silence_ms": app.settings.vad_reply_silence_ms,
+    }
+    assert second.args == ()
+    assert second.kwargs == {}
+    assert ctx.short_reply is False
+    assert ctx.short_reply_next is False
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("_streaming_mode")
+async def test_server_error_in_a_reply_turn_leaves_the_next_listening_normal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """THINKING ServerError -> ERROR -> IDLE -> LISTENING: both flags gone, capture normal."""
+    capture_mock = AsyncMock(return_value=b"wav")
+    monkeypatch.setattr(app, "capture_utterance", capture_mock)
+    _stub_failing_transcribe_stream(monkeypatch, ServerError("down"))
+    ctx = LoopContext(short_reply_next=True)
+
+    visited = await _drive(RobotState.LISTENING, ctx, 4)
+    assert visited == [
+        RobotState.THINKING,
+        RobotState.ERROR,
+        RobotState.IDLE,
+        RobotState.LISTENING,
+    ]
+
+    await app.tick(RobotState.LISTENING, ctx)
+
+    first, second = capture_mock.await_args_list
+    assert first.kwargs == {
+        "max_wait_s": app.settings.reply_wait_s,
+        "close_silence_ms": app.settings.vad_reply_silence_ms,
+    }
+    assert second.args == ()
+    assert second.kwargs == {}
+    assert ctx.short_reply is False
+    assert ctx.short_reply_next is False
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("_streaming_mode")
+async def test_playback_failure_after_a_flagged_done_leaves_the_next_listening_normal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A flagged done whose playback fails -> ERROR, which clears the armed hint."""
+    capture_mock = AsyncMock(return_value=b"wav")
+    monkeypatch.setattr(app, "capture_utterance", capture_mock)
+    monkeypatch.setattr(
+        audio_playback, "play_wav", AsyncMock(side_effect=AudioPlaybackError("device gone"))
+    )
+    _stub_transcribe_stream(monkeypatch, [_stream_turn(expects_short_reply=True)])
+    ctx = LoopContext(audio=b"wav")
+
+    visited = await _drive(RobotState.THINKING, ctx, 2)
+    # The flagged done was drained (hint armed) even though playback failed...
+    assert visited == [RobotState.SPEAKING, RobotState.ERROR]
+    assert ctx.short_reply_next is True
+
+    # ...and ERROR then clears it before the next listening.
+    visited = await _drive(RobotState.ERROR, ctx, 2)
+    assert visited == [RobotState.IDLE, RobotState.LISTENING]
+
+    await app.tick(RobotState.LISTENING, ctx)
+
+    capture_mock.assert_awaited_once_with()
+    assert ctx.short_reply is False
+    assert ctx.short_reply_next is False
