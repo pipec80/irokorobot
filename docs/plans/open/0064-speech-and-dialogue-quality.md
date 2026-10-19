@@ -581,9 +581,19 @@ guard stops it; the lifespan test asserts readiness but not `/health` with a fai
 **Language measurement (Task 7, D-4).** `just eval-chat --provider ollama --mode stream` on
 `qwen2.5:3b`: *before* the change (the code of `main` put back in the working tree for the run) 1 of
 97 replies judged not Spanish; *after*, 0 of 98 and 0 of 97 (two runs); fallback rate 0.00 % in all
-three. Gate (a), no worse than the baseline: met. Gate (b), none of Pipec's first 20 hardware turns
-in another language, and the count of «autorizo guardar el …» answers understood (baseline 2 of 4):
-**pending, Pipec's hardware session.** The three reports under `docs/evals/` were not committed.
+three. Gate (a), no worse than the baseline: met. Gate (b), Pipec's hardware session of
+2026-10-19 (laptop, `qwen2.5:3b`, streaming, `MEMORY_CANDIDATES_ENABLED=true`, face and voice
+enrolled): **0 of about 24 turns** answered in another language, in tuteo throughout; gate (b) met.
+Explicit answers to an offer: **1 of 2 understood** (baseline 2 of 4; too small a sample to compare).
+The one that failed was transcribed with an extra word inside it («autorizo comer, guardar …») and fell
+through to ordinary conversation, nothing written (the safe direction). Three offers were not made
+(`voice_unverified`) because the turn's clip was short or far from the microphone. The claim guard was
+not exercised by a real reply (the model never claimed a save). Speaking the whole phrase was judged
+cumbersome by Pipec, who decided on 2026-10-19 that a closed verb alone («autorizo», «sí, autorizo»,
+«apruebo», «sí, guarda») should resolve the single open offer, a bare «sí» still not: that amends
+ADR 0021 decision 9 (option A of 2026-10-15) and is **not** part of this plan (see its *Not here*
+section); it goes to a new plan. The three reports under `docs/evals/` were not committed.
 
 **Gate.** Full suite on the branch before the review fixes: 3310 passed, 1 failed (the seam test
-above, fixed). The final run is recorded when the plan closes.
+above, fixed). Final `just gate` on the branch (code and review fixes, before the documentation
+commit): **3327 passed**, ruff, mypy, pyright and the dependency audit clean.
