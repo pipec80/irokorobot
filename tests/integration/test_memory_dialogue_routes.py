@@ -479,6 +479,27 @@ async def test_a_verb_alone_saves_the_offer_on_the_streaming_route(
     assert await _status(candidate_id) is CandidateStatus.CONFIRMED
 
 
+async def test_a_short_reply_request_saying_si_acepto_saves_the_offer(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Plan 0067: the robot's reply turn («sí, acepto») resolves the open offer end to end."""
+    owner = household.owner_entity_id
+    candidate_id = await _candidate(owner)
+    assert await candidates.mark_offered(
+        candidate_id, owner, correlation_id=uuid4(), now=datetime.now(UTC)
+    )
+    _scene(monkeypatch, "Sí, acepto.")
+
+    async with _client() as client:
+        response = await client.post(
+            "/transcribe/stream", files=_files(), data={"short_reply": "true"}
+        )
+
+    events = [json.loads(line) for line in response.text.splitlines()]
+    assert [event["text"] for event in events if event["type"] == "audio"] == [ANSWER_SAVED_PHRASE]
+    assert await _status(candidate_id) is CandidateStatus.CONFIRMED
+
+
 async def test_a_refusal_alone_rejects_the_offer_on_the_streaming_route(
     household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
 ) -> None:

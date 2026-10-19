@@ -194,6 +194,72 @@ def test_a_value_that_is_present_is_still_read_as_the_value(
     assert parse_memory_answer(message) == MemoryAnswer(accept=accept, phrase=phrase)
 
 
+@pytest.mark.parametrize(
+    "message, accept",
+    [
+        ("Acepto", True),
+        ("Sí, acepto", True),
+        ("Acepta", True),
+        ("Acepto guardar", True),
+        ("Acepto a guardar", True),
+        ("Acepto que guardes", True),
+        ("Sí, guárdala", True),
+        ("Sí po, guárdala", True),
+        ("Sí, autorizo, guárdalo", True),
+        ("Sí, autorizo, guárdala", True),
+        ("Autorizo, sí", True),
+        ("Apruebo, guárdalo", True),
+        ("Sí, acepto, guárdala", True),
+        ("No acepto", False),
+        ("No, no acepta", False),
+        ("No acepto guardar", False),
+        ("No acepta que guardes", False),
+    ],
+)
+def test_the_words_people_say_are_an_answer_about_the_open_offer(
+    message: str, accept: bool
+) -> None:
+    """Plan 0067, D-5: «acepto» and «guárdala» join the closed verbs; courtesy words are no value."""
+    assert parse_memory_answer(message) == MemoryAnswer(accept=accept, phrase="")
+    resolution = resolve_information_need(message)
+    assert resolution.need is InformationNeed.MEMORY_ANSWER
+    assert resolution.rule_id == "memory.answer.v1"
+
+
+@pytest.mark.parametrize(
+    "message, accept, phrase",
+    [
+        ("Acepto guardar el mate", True, "el mate"),
+        ("Sí, acepto que guardes el jazz", True, "el jazz"),
+        ("No acepto guardar el mate", False, "el mate"),
+        ("Sí, guárdala, la sopa", True, "la sopa"),
+    ],
+)
+def test_a_value_after_the_new_words_is_still_read_as_the_value(
+    message: str, accept: bool, phrase: str
+) -> None:
+    assert parse_memory_answer(message) == MemoryAnswer(accept=accept, phrase=phrase)
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Guárdala",
+        "Ya, guárdala",
+        "Dale, guárdala",
+        "Acepto mi",
+        "Sí, guárdala silencio",
+        "Sí, guarda, sí",
+        "Sí, guárdalo, guárdala",
+        "Acepto guardar uno dos tres cuatro cinco seis siete",
+    ],
+)
+def test_the_new_words_do_not_widen_what_is_refused(message: str) -> None:
+    """A short verb keeps its cue; a trailing «sí» or «guárdalo» is a courtesy only after a long verb."""
+    assert parse_memory_answer(message) is None
+    assert resolve_information_need(message).need is not InformationNeed.MEMORY_ANSWER
+
+
 def test_a_closed_rule_resolved_earlier_wins_over_the_shape_of_an_answer() -> None:
     """A protected or dated message is never read as an answer: those rules run first."""
     assert resolve_information_need("guarda la fecha de hoy").need is InformationNeed.CURRENT_DATE
