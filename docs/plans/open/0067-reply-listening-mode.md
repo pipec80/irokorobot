@@ -385,4 +385,27 @@ differently and no migration is added.
 
 ## Execution record
 
-*(Filled in when the plan is executed.)*
+Executed 2026-10-19 on `feat/0067-reply-listening-mode` (base `b1dbe3f`), tasks 0 to 7, in the same
+session that closed Plan 0066 (Pipec's choice). **Task 8 (hardware) is pending: Pipec runs it**, and
+the plan stays `NOW` until its counts (and Plan 0066's) are recorded here.
+
+- **Baseline:** not re-run locally; `main` differed from Plan 0066's local gate (3398 passed) only by
+  documentation (PR #198), and CI passed on it.
+- **Commits:** one per task (1 to 6), then the review fixes and the documentation. The commit titles
+  this plan prescribed exceeded 72 characters; they were shortened by dropping « (plan 0067)».
+- **Rulings.** (1) The one-sentence `_STREAM_200_DESCRIPTION` change of Task 1 rides in the Task 4
+  commit (same file). (2) THINKING always passes `short_reply=ctx.short_reply`, so the robot's fake
+  `transcribe_stream` stubs gained the keyword. (3) The Task 5 end-to-end route test was green on
+  arrival because the grammar landed in parallel; its RED was observed on the unit grammar tests.
+  (4) Task 6 also treats «tomaré nota» as a promise (the same pair as «guardaré»/«guardo»), with a
+  test.
+- **Reviews** (tests and code, independent, read-only): no Critical and no Important finding on the
+  code. Fixed, each test-first: a repeated or second verb, «claro», a leading «sí» and a repeated
+  «no» around the verb are emphasis, not a value («Acepto, acepto», «Autorizo, sí, el mate»); «Tampoco
+  tomo nota.» is a negation, not a claim; the `mark_offered` guard now reads exactly the predicate of
+  `_OFFERABLE_SQL`; a robot test stub; the `.env.example` comment no longer names the offer. Test
+  hardening: the whole reply cycle and its exit paths on the robot, the flag never widens the grammar
+  nor who answers, and the hotwords are not empty. Accepted cost (no-oracle design, as «apruebo el
+  examen» since Plan 0064): ordinary sentences such as «acepto el reto» now have the answer shape and
+  pay the face-and-voice check before falling through.
+- **Gate:** `just gate` green, 3490 passed.

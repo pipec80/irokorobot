@@ -33,7 +33,7 @@ to see the code, tests, verified gaps, and future delivery sequence.
 
 ## Plan en curso (`NOW`)
 
-`NOW` es el [Plan 0067 — la respuesta a la oferta: un modo de escucha dedicado y mejores palabras](0067-reply-listening-mode.md), promovido a `Ready` y `NOW` por Pipec el 2026-10-19 y ejecutado en la misma sesión. Antes lo ocupaba el [Plan 0066 — la respuesta a la oferta de memoria: basta un verbo cerrado](../completed/0066-verb-only-answer.md), que **cerró el 2026-10-19** (PR #196); sus conteos de hardware (tarea 6) los registra la tarea 8 del 0067.
+`NOW` es el [Plan 0067 — la respuesta a la oferta: un modo de escucha dedicado y mejores palabras](0067-reply-listening-mode.md), promovido a `Ready` y `NOW` por Pipec el 2026-10-19 y ejecutado en la misma sesión; las tareas 0 a 7 están hechas y **la aceptación en hardware (tarea 8) queda pendiente hasta que Pipec la corra**. Antes lo ocupaba el [Plan 0066 — la respuesta a la oferta de memoria: basta un verbo cerrado](../completed/0066-verb-only-answer.md), que **cerró el 2026-10-19** (PR #196); sus conteos de hardware (tarea 6) los registra la tarea 8 del 0067.
 
 Borrador, **no ejecutable todavía**: [0065 — CM-3b, tramo A: el núcleo escritor neutral al canal](0065-cm3b-a-channel-neutral-writer-core.md), que espera la promoción de Pipec (el 0064 ya cerró); el [ADR 0022](../../adr/0022-household-rules-and-third-party-memory.md) (`Proposed`) tiene confirmadas todas sus decisiones. Orden antes del Paso 0: 0065 (el 0064 ya cerró).
 

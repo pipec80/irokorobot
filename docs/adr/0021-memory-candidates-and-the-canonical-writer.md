@@ -13,6 +13,9 @@
   replaced. Amended on 2026-10-19 by Plan 0066 (Pipec's decision D-1, after the Plan 0064 hardware
   session): decision 9's answer no longer has to repeat the value; a closed verb alone resolves the
   person's one open offer, and the spoken offer teaches it. The cost is stated in decision 9.
+  Amended on 2026-10-19 by Plan 0067: the stream tells the client when a spoken offer expects a
+  reply, the client may listen to that reply in its own mode, hotwords help the recognizer, and the
+  grammar admits «acepto» and «guárdala» (a note under decision 9; no change to who answers).
 - **Date:** 2026-10-14
 - **Builds on:** [ADR 0006](0006-personal-and-family-companion-profiles.md),
   [ADR 0009](0009-locked-posture-and-scoped-capabilities.md),
@@ -402,6 +405,37 @@ One function, **one `db.transaction()`**, never relying on an `IntegrityError`:
   asked another question) answers the open offer, and a «no apruebo» rejects it and erases the
   value. It is bounded by the same window, the single open offer and the audit row, and it is the
   price of an answer that no longer repeats the value.
+- **Note, 2026-10-19 (Plan 0067): listening for the reply, and the words people say.** In the first
+  hardware session of Plan 0066 the short answer promoted 1 of 2 times; the log showed a pause
+  inside «sí… acepto» cutting the clip in two, the speech-to-text writing «Si,autorizo», and a
+  grammar without «acepto» or «guárdala». Nothing here changes who may answer, the voice
+  thresholds, the open-offer lookup or what is stored; the face-and-voice firewall of decisions 3
+  and 9 is as it was.
+  - *The hint is additive.* The stream's `done` event carries `expects_short_reply: bool = False`,
+    true only when the offer's audio event was actually emitted on that turn (not when the offer
+    was committed and its synthesis then failed). The client may listen once in a reply mode of its
+    own (a longer end-of-speech pause, a shorter wait; the trailing silence it uploads is trimmed
+    back to a normal clip's). The parameters belong to the robot, so the server still does not know
+    what a robot is and the robot still does not know what a memory is. An older client ignores the
+    field and an older server never sends it.
+  - *The request field only chooses hotwords.* A client that listened in reply mode adds the form
+    field `short_reply=true` to that reply's `/transcribe/stream` request. Its only effect is the
+    fixed list `SHORT_REPLY_HOTWORDS` for the speech-to-text («sí», «no», «acepto», «autorizo»,
+    «apruebo», «guárdalo», «guárdala»; a generic list of short-reply words in `stt.py`, with no
+    memory concept). Identity, the open-offer lookup, the grammar and the writer behave exactly as
+    for any other turn, so a client that sets the field gains no oracle and no wider grammar, and a
+    flagged request whose transcript is not an answer is the ordinary turn. The classic
+    `/transcribe` route is unchanged.
+  - *The new words (Pipec: «lo más común es "sí acepto", "sí, guárdala"»).* `acepto` and `acepta`
+    are long verbs like `autorizo` (alone, or followed by `guardar`, `a guardar` or `que guardes`),
+    with `no acepto` and `no acepta` as rejections. `guárdala` is a short verb like `guárdalo`:
+    alone only after a leading «sí». After a long verb, `guárdalo`, `guárdala` and `sí` are
+    courtesy words, not a value («Sí, autorizo, guárdalo» is an answer). A bare «sí» still resolves
+    nothing, and the offer's own wording does not change.
+  - *Its cost.* More casual phrases have the shape of an answer («acepto», «sí, guárdala») and
+    make the controller verify face and voice first (3 to 4 s); nothing is written without an
+    open offer. The speaker check on short clips (a `Speaker verdict: unknown`) is measured in
+    Plan 0068, not here.
 
 ### 10. Where it runs
 
@@ -629,6 +663,10 @@ gate's economics.
 - Plan 0066 — a closed verb alone answers the one open offer (written and promoted 2026-10-19; Pipec's
   decision D-1; code and documentation done, hardware acceptance pending until Pipec runs its
   Task 6). The full phrase that repeats the value still works.
+- [Plan 0067](../plans/open/0067-reply-listening-mode.md) — the reply to the offer has its own
+  listening mode, hotwords for the recognizer and the words «acepto» and «guárdala» (2026-10-19;
+  code done, hardware acceptance pending until Pipec runs its Task 8). The speaker check on short
+  clips is Plan 0068.
 - Left open by the acceptance, none of them a regression of this ADR: the model sometimes says it
   saved something on a message that only has the shape of an answer (nothing is written);
   occasional replies in French; whether the closed answer should admit the speech-to-text's common

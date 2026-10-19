@@ -181,9 +181,9 @@ A candidate lives in its own table (`memory_candidates`), never inside the
 canonical V4 tables, and has one of five statuses:
 
 ```text
-proposed --offered aloud--> offered --answer "yes" + value--> confirmed (one V4 fact)
+proposed --offered aloud--> offered --explicit "yes" answer--> confirmed (one V4 fact)
     ^                          |
-    |                          +--answer "no" + value--------> rejected
+    |                          +--explicit "no" answer--------> rejected
     +-- no answer in time -----+
                                (a candidate past its lifetime or out of offers: expired)
 ```
@@ -193,8 +193,8 @@ proposed --offered aloud--> offered --answer "yes" + value--> confirmed (one V4 
 - **offered:** the robot spoke the offer on a later voice turn. The offer and
   the answer are spoken, never typed. The status records that the offer was
   built for that reply, not that the person heard it.
-- **confirmed:** the person repeated an explicit answer that carries the value;
-  the single writer inserted one canonical `personal` fact that records who
+- **confirmed:** the person gave an explicit spoken «yes» (a closed verb; the
+  value is optional and, when present, must match); the single writer inserted one canonical `personal` fact that records who
   confirmed it and when.
 - **rejected:** the explicit negative answer, or a contradiction found at
   promotion. The stored value is erased.
@@ -207,17 +207,24 @@ Rules of the contract:
 - **A response window.** An offer unanswered within
   `MEMORY_CANDIDATE_ANSWER_SECONDS` (60) returns to `proposed`; a candidate is
   offered at most `MEMORY_CANDIDATE_MAX_OFFERS` (2) times and then expires.
-- **The answer repeats the value.** A bare «sí» or any phrase an attacker could
-  know in advance never promotes: a closed verb and the offered value are both
-  required, and short verbs need an article before the value.
+- **The answer is an explicit closed verb; the value is optional** (Plans 0066
+  and 0067, ADR 0021 decision 9). A bare «sí» never promotes. A long verb alone
+  («autorizo», «acepto») answers the person's one open offer; the short verbs
+  («guarda», «guárdalo», «guárdala») answer alone only after a leading «sí», and
+  with a value they need an article before it. A value that is present must
+  match the open offer. A valueless answer resolves the offer only when exactly
+  one is open inside the window. The trade-off (a recording of the verb could
+  answer without knowing the value) is written in ADR 0021.
 - **Face and voice of the same person, on that turn's own clip,** for every
   proposal, offer, answer and promotion, never a token. Anything else is the
   ordinary turn, byte for byte, so the existence of a candidate is never revealed.
 - **Erased on resolution.** A resolved candidate holds no value; this is a
   schema rule, not a convention.
 - **Not defended:** replay (a photograph plus an earlier recording of the owner)
-  is measured and unprotected (ADR 0016 section 9); a replay can confirm only a
-  value the owner already said.
+  is measured and unprotected (ADR 0016 section 9); since Plan 0066 a replay of
+  the verb can answer an open offer without knowing its value, bounded by the
+  answer window, the single open offer, face and voice of that turn's clip, and
+  the audit row.
 
 Conversational memory requires capabilities narrower than a generic personal
 read grant:

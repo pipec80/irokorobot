@@ -195,7 +195,7 @@ speech-to-text and each candidate costs 30 to 60 s of extraction on the shared l
 ### 11. What does not change
 
 The firewall (face **and** voice of the same person on that turn's clip, never a token), the
-no-oracle rule, the closed answer that repeats the value, the audit-before-effect rule, and the
+no-oracle rule, the closed explicit answer (a closed verb; the value is optional since Plan 0066), the audit-before-effect rule, and the
 fact that a value never reaches a log, `llm_response` or the history. **Two consequences are
 accepted and written down** rather than hidden: a household read of `medical` or `location` data
 must require `strong` before any reader serves it (CM-5), because the household read today asks
