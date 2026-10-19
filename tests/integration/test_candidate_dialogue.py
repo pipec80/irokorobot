@@ -230,6 +230,16 @@ def test_the_answer_the_offer_asks_for_resolves_that_offer(value: str) -> None:
     assert comparison_key(answer.phrase) == comparison_key(value)
 
 
+@pytest.mark.parametrize("value", ["bailar", "café", "las empanadas"])
+def test_a_value_repeated_with_mi_resolves_the_same_offer(value: str) -> None:
+    """Whisper writes «autoriza a guardar mi café»: the leading «mi» is not part of the key."""
+    answer = parse_memory_answer(f"autoriza a guardar mi {value}")
+
+    assert answer is not None
+    assert answer.accept
+    assert comparison_key(answer.phrase) == comparison_key(value)
+
+
 def test_an_unknown_predicate_has_no_offer() -> None:
     with pytest.raises(ValueError, match="no offer"):
         compose_offer("lives_in", "la costa")

@@ -280,21 +280,22 @@ def probe_reading(constrained: StructuredProbeResult, plain: StructuredProbeResu
 
     A burst at the client is what a withheld reply, fast generation and buffering all
     look like; only a spread-out arrival of the schema-constrained reply is evidence
-    (against the claim, being compatible with incremental generation), and a contrast
-    with the plain-text control is a hint, not a proof.
+    (it is compatible with incremental generation), and a contrast with the
+    plain-text control is a hint, not a proof.
     """
     verdict = constrained.verdict
     if verdict is ArrivalPattern.INCREMENTAL:
         return (
             "The schema-constrained reply reached this client spread over time, which is "
             "compatible with incremental generation: streaming with a JSON schema is a "
-            "candidate protocol and this is evidence against the `llm_streaming.py` claim "
-            "that Ollama withholds it, though a client cannot see when generation ended."
+            "candidate protocol and this is evidence against Ollama withholding it, though a "
+            "client cannot see when generation ended."
         )
     if verdict is ArrivalPattern.INCONCLUSIVE:
         return (
             "No conclusion: the schema-constrained runs show no clear pattern, or too few "
-            "were complete. This is not evidence that the `llm_streaming.py` header is right."
+            "were complete. This is not evidence for or against Ollama withholding schema "
+            "output."
         )
     control = None if plain is None else plain.verdict
     if control is ArrivalPattern.INCREMENTAL:
@@ -302,20 +303,19 @@ def probe_reading(constrained: StructuredProbeResult, plain: StructuredProbeResu
             "The schema-constrained reply reached this client as a burst while the plain-text "
             "control arrived spread over time. That differs from the plain-text control and is "
             "consistent with Ollama withholding schema output, but a client cannot prove the "
-            "cause: the "
-            "`llm_streaming.py` claim stays unproven."
+            "cause: that Ollama withholds it remains unproven."
         )
     if control is ArrivalPattern.BURST:
         return (
             "Both the schema-constrained reply and the plain-text control reached this client "
-            "as bursts: this probe cannot tell generation from buffering here, so the "
-            "`llm_streaming.py` claim stays unproven."
+            "as bursts: this probe cannot tell generation from buffering here, so that "
+            "Ollama withholds the reply remains unproven."
         )
     return (
         "The schema-constrained reply reached this client as a burst, and without a "
         "plain-text control that reads clearly this cannot show that Ollama withholds it "
-        "(fast generation and buffering look the same): the `llm_streaming.py` claim stays "
-        "unproven."
+        "(fast generation and buffering look the same): that Ollama withholds it "
+        "remains unproven."
     )
 
 
@@ -351,8 +351,8 @@ def _probe_section(
     note = (
         "The probe sees the chunks as this client received them. It cannot tell a reply "
         "that Ollama withheld from fast generation, from buffering or from the client's own "
-        "reading, so a burst never proves the `llm_streaming.py` header; only a "
-        "spread-out arrival of the schema-constrained reply is evidence against it."
+        "reading, so a burst never proves that Ollama withholds the reply; only a "
+        "spread-out arrival of the schema-constrained reply is evidence that it does not."
     )
     lines = [
         "## 8. Stream arrival probe",

@@ -11,6 +11,7 @@ from uuid import uuid4
 import httpx
 
 from server import llm, turn_log
+from server.claim_guard import neutralize_memory_claims
 from server.cognition.authorization import ASSURANCE_RANK
 from server.cognition.identity import (
     ActivePersonContext,
@@ -230,6 +231,9 @@ async def _generate(client: httpx.AsyncClient, prepared: PreparedTextTurn) -> tu
             active_person=prepared.active_person,
             perception=prepared.perception,
         )
+        # The model stores nothing (Plan 0064): a claim of saving is false, and the history
+        # must never keep it, so the guard runs before the reply is logged or recorded.
+        response = neutralize_memory_claims(response)
         logger.info(
             "LLM produced %d chars (emotion=%s)",
             len(response),

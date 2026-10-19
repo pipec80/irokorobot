@@ -7,6 +7,7 @@ from uuid import UUID
 
 import httpx
 import pytest
+from server.claim_guard import REPLACEMENT
 from server.cognition.identity import (
     ActivePersonContext,
     ActivePersonStatus,
@@ -151,6 +152,72 @@ async def test_stateless_turn_calls_llm_once(
     assert result.duration_ms >= 0
     assert result.llm_failed is False
     generate.assert_awaited_once()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_a_reply_that_claims_to_have_saved_is_replaced(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Nothing the model says stores anything (Plan 0064, D-2): the claim is false."""
+    monkeypatch.setattr(settings, "memory_enabled", False)
+    _generate(monkeypatch, ("Perfecto, lo guardé.", "joy"))
+
+    result = await text_turn.process_text_turn(http_client, "Me gusta el mate", "web-a")
+
+    assert result.response == REPLACEMENT
+    assert result.emotion == "joy"
+    assert result.llm_failed is False
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_a_reply_without_a_claim_reaches_the_response_unchanged(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "memory_enabled", False)
+    _generate(monkeypatch, ("Anotado. ¿Y qué más te gusta?", "neutral"))
+
+    result = await text_turn.process_text_turn(http_client, "Me gusta el mate", "web-a")
+
+    assert result.response == "Anotado. ¿Y qué más te gusta?"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_a_claim_is_never_recorded_in_the_session_history(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The history keeps what was actually said, so the model never reads its own false claim."""
+    monkeypatch.setattr(settings, "memory_enabled", True)
+    monkeypatch.setattr(
+        text_turn, "_memory_prompt_state", AsyncMock(return_value=(None, False, None))
+    )
+    _generate(monkeypatch, ("Lo guardé.", "neutral"))
+
+    await text_turn.process_text_turn(
+        http_client, "Me gusta el mate", "web-a", active_person=_identified_person()
+    )
+
+    assert [turn.content for turn in continuity.open_turn(_OWNER).history] == [
+        "Me gusta el mate",
+        REPLACEMENT,
+    ]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_the_fallback_phrase_is_not_touched_by_the_guard(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "memory_enabled", False)
+    monkeypatch.setattr(settings, "llm_fallback_phrase", "Lo guardé, dame unos segundos.")
+    monkeypatch.setattr(text_turn.llm, "generate_response", AsyncMock(side_effect=LLMError("down")))
+
+    result = await text_turn.process_text_turn(http_client, "Hola", "web-a")
+
+    assert result.response == "Lo guardé, dame unos segundos."
+    assert result.llm_failed is True
 
 
 @pytest.mark.unit

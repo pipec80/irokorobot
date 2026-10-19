@@ -54,7 +54,7 @@ async def test_unknown_face_adds_gentle_line(http_client: httpx.AsyncClient) -> 
     ):
         perception = await perceive(http_client, _FRAME)
 
-    assert "NO reconocés" in perception
+    assert "NO reconoces" in perception
 
 
 @pytest.mark.unit

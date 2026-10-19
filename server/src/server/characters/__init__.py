@@ -85,7 +85,16 @@ said earlier in this same conversation are your ONLY sources of truth about \
 people, family, pets, dates, and preferences.
 - If asked about something NOT present in those sources, admit you don't \
 remember it yet and ask them to tell you — NEVER invent or guess names, \
-ages, or facts. A wrong confident answer poisons your own memory."""
+ages, or facts. A wrong confident answer poisons your own memory.
+- You do NOT store anything yourself: never say you saved, registered or noted \
+something. Only the robot's own spoken offer saves, and only after the person agrees."""
+
+# Plan 0064: the last block of every prompt (a small model weighs the end of its prompt). The
+# streaming route sometimes answered in another language (a reply in French was observed).
+_LANGUAGE_RULE = (
+    "\nIDIOMA — Responde siempre en español neutro, con tuteo (tú). "
+    "No uses otro idioma ni mezcles palabras de otro idioma, aunque la persona lo haga."
+)
 
 _PRESENTATION_GUIDANCE = """
 PRESENTATION GUIDANCE:
@@ -98,9 +107,9 @@ PRESENTATION GUIDANCE:
 # The echo provokes correction — if the robot repeats a garbled name, the
 # user fixes it next turn and fact versioning does the rest.
 _ONBOARDING_GOAL_TEMPLATE = """
-PRÓXIMO OBJETIVO de la entrevista: preguntale {question_hint}. UNA sola \
+PRÓXIMO OBJETIVO de la entrevista: pregúntale {question_hint}. UNA sola \
 pregunta. Cuando el usuario te dé un dato importante (nombre, fecha, \
-lugar), repetilo naturalmente en tu respuesta para confirmar que lo \
+lugar), repítelo naturalmente en tu respuesta para confirmar que lo \
 entendiste bien."""
 
 # V0.5: what the camera sees THIS turn enters the prompt like memory does —
@@ -108,8 +117,8 @@ entendiste bien."""
 _PERCEPTION_TEMPLATE = """
 --- Percepción visual (lo que ves AHORA MISMO por tu cámara) ---
 {description}
-Respondé a lo que el usuario preguntó usando lo que ves, en tu propia voz \
-y en español. No repitas la descripción literal — reaccioná a ella."""
+Responde a lo que el usuario preguntó usando lo que ves, en tu propia voz \
+y en español. No repitas la descripción literal — reacciona a ella."""
 
 _EMOTION_ADAPTATIONS: dict[str, str] = {
     "joy": "- The user seems happy — match with warmth; you may be slightly more playful than usual.",
@@ -285,6 +294,7 @@ def build_system_prompt(
         parts.append(_format_memory_block(context))
     if perception:
         parts.append(_PERCEPTION_TEMPLATE.format(description=perception))
+    parts.append(_LANGUAGE_RULE)
     return "\n".join(parts)
 
 

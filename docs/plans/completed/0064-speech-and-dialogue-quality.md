@@ -1,12 +1,12 @@
 # 0064 — Speech and dialogue quality: Spanish, tuteo, no false «guardé», a forgiving answer
 
-> **Status:** `Ready` and `NOW` — promoted by Pipec on 2026-10-16, who confirmed D-1 to D-8 (D-1,
+> **Status:** `Closed` on 2026-10-19 (PR #193; see the *Execution record*). It was `Ready` and
+> `NOW` — promoted by Pipec on 2026-10-16, who confirmed D-1 to D-8 (D-1,
 > D-2 and D-3 are his; he took the recommendations for D-4 to D-8). Written the same day from the
 > audit of the three items before Step 0 (streaming repair, CM-1 remainder, CM-3b) and from the
 > findings of the Plan 0063 hardware acceptance, and **revised after an independent review** (two
 > read-only reviewers; their findings are folded in, see *Review record*). **Not rehearsed** in a
-> scratch copy: the code below is the specification of each task, not a rehearsed diff. To be
-> executed in a **new session**.
+> scratch copy: the code below is the specification of each task, not a rehearsed diff.
 
 > **For agentic workers:** if the status above does not say `Ready`, stop: Pipec has not promoted
 > this plan. REQUIRED SUB-SKILLS: `superpowers:executing-plans`,
@@ -540,4 +540,60 @@ setting or migration is added.
 
 ## Execution record
 
-*(Filled in when the plan is executed.)*
+Executed on 2026-10-16 in one session, on the branch `feat/0064-speech-and-dialogue-quality`
+(base `ec68832`), one commit per task, plus review fixes. Counts only; no sentence, value or name
+was recorded.
+
+| Task | Result |
+|---|---|
+| 0 | Plan `Ready`; Plan 0063's code in `main`. The static half of `just gate` on `main` was green (ruff, mypy 116 files, pyright 0). The full suite was **not** run on `main` first (a first attempt ran about 100 minutes beside other processes and was stopped); the plan's 3217 at the close of Plan 0063 is the reference, and the branch run found one failure of its own (below). |
+| 1 | Tuteo everywhere; guard test `test_no_voseo_in_spoken_strings.py` (RED on 8 files, then green). |
+| 2 | `_LANGUAGE_RULE` last in the master prompt; «siempre en español» in the streaming contract. |
+| 3 | Answer grammar widened; all 12 accepted and 9 refused cases of the table, the 64 fixtures unchanged. |
+| 4a–4d | `claim_guard`, classic and stream guards, one prompt line; `test_generic_turn_continuity.py` untouched and green. |
+| 5 | Stale prose in `scripts/stream_diagnosis_report.py` and the `justfile`. |
+| 6 | Start-up Ollama probe (warn only). |
+
+**Rulings.** (1) The plan's probe read `cfg.ollama_url` in `main.py` and made the HTTP call in
+`ollama_probe.py`; the full suite showed that this breaks the accepted architecture guard of Plan
+0050 (`tests/unit/test_ollama_seam.py`: only `llm_transport` reads `ollama_url`). The call moved to
+`llm_transport.check_reachable` (which uses `settings.ollama_url`, like every other transport
+function) and `ollama_probe` keeps the policy; `llm_transport.py` is therefore touched although
+the plan did not list it. (2) The probe stub is one autouse fixture in `tests/conftest.py` instead
+of one stub per lifespan fixture. (3) `claim_guard` normalizes to NFC before casefolding.
+
+**Review.** Two independent read-only reviewers (no Critical finding). Fixed, each with a test that
+failed first: the probe did not survive a malformed `OLLAMA_URL` (`InvalidURL`, `ValueError`) and its
+3 s limit was per phase, not total; `claim_guard` missed claims without a pronoun object («He
+guardado tu gusto»), let a claim before a question pass («Lo guardé, ¿quieres algo más?») and replaced
+an offer («Si quieres, lo guardo»); the recognized-faces template had gained a plural object.
+
+**Deferred minors.** The present and future forms still need an object and a negation window of two
+words can cancel a real claim («No pasa nada, lo guardé»); the claim guard splits on `.`, `?` and `!`
+only, so a `…` or a newline does not end a sentence and a decimal such as «3.5» is split when a claim
+is replaced; the probe's warning carries the exception class but not the HTTP status; the voseo guard
+scans `*.py` and `*.md` only (the static chat UI, `robot/src` and `.env.example` were checked by
+hand); the allowlist entries for `candidate_extraction.py` and `consolidation.py` hold no voseo today
+and are not covered by the stale-allowlist test; Iroko's mission («Conservas…») and Nova's
+(«Registrar la vida cotidiana…») still use verbs that invite the model to claim a save, and only the
+guard stops it; the lifespan test asserts readiness but not `/health` with a failed probe.
+
+**Language measurement (Task 7, D-4).** `just eval-chat --provider ollama --mode stream` on
+`qwen2.5:3b`: *before* the change (the code of `main` put back in the working tree for the run) 1 of
+97 replies judged not Spanish; *after*, 0 of 98 and 0 of 97 (two runs); fallback rate 0.00 % in all
+three. Gate (a), no worse than the baseline: met. Gate (b), Pipec's hardware session of
+2026-10-19 (laptop, `qwen2.5:3b`, streaming, `MEMORY_CANDIDATES_ENABLED=true`, face and voice
+enrolled): **0 of about 24 turns** answered in another language, in tuteo throughout; gate (b) met.
+Explicit answers to an offer: **1 of 2 understood** (baseline 2 of 4; too small a sample to compare).
+The one that failed was transcribed with an extra word inside it («autorizo comer, guardar …») and fell
+through to ordinary conversation, nothing written (the safe direction). Three offers were not made
+(`voice_unverified`) because the turn's clip was short or far from the microphone. The claim guard was
+not exercised by a real reply (the model never claimed a save). Speaking the whole phrase was judged
+cumbersome by Pipec, who decided on 2026-10-19 that a closed verb alone («autorizo», «sí, autorizo»,
+«apruebo», «sí, guarda») should resolve the single open offer, a bare «sí» still not: that amends
+ADR 0021 decision 9 (option A of 2026-10-15) and is **not** part of this plan (see its *Not here*
+section); it goes to a new plan. The three reports under `docs/evals/` were not committed.
+
+**Gate.** Full suite on the branch before the review fixes: 3310 passed, 1 failed (the seam test
+above, fixed). Final `just gate` on the branch (code and review fixes, before the documentation
+commit): **3327 passed**, ruff, mypy, pyright and the dependency audit clean.

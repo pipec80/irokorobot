@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     # Spoken when the LLM backend is unreachable — TTS is local, so the
     # robot can always apologize out loud instead of going silent.
     llm_fallback_phrase: str = (
-        "Uy, mi cerebro todavía se está despertando. Dame unos segundos y volvé a hablarme."
+        "Uy, mi cerebro todavía se está despertando. Dame unos segundos y vuelve a hablarme."
     )
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5:3b"
@@ -143,7 +143,7 @@ class Settings(BaseSettings):
     vlm_model: str = "qwen3-vl:2b-instruct"
     # Spoken immediately when a visual question is detected — buys the VLM
     # its inference time without a silent robot (V0.5).
-    vision_look_phrase: str = "A ver, dejame mirar..."
+    vision_look_phrase: str = "A ver, déjame mirar..."
     # ---------------- Vision V1: faces ----------------
     face_model: str = "buffalo_l"
     # Cosine-DISTANCE upper bound for a face match (0 = identical face).

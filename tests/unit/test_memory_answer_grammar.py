@@ -60,6 +60,49 @@ def test_a_closed_verb_and_the_value_make_an_answer(
 
 
 @pytest.mark.parametrize(
+    "message, accept, phrase",
+    [
+        ("Sí, autoriza a guardar mi café", True, "cafe"),
+        ("Autoriza guardar el mate", True, "el mate"),
+        ("Ya, autorizo guardar el mate", True, "el mate"),
+        ("Sí po, autorizo guardar el mate", True, "el mate"),
+        ("Dale, autorizo guardar el mate", True, "el mate"),
+        ("Autorizo guardar el mate po", True, "el mate"),
+        ("Aprueba guardar las empanadas", True, "las empanadas"),
+        ("Autoriza que guardes el mate", True, "el mate"),
+        ("Autoriza guardar mis empanadas", True, "empanadas"),
+        ("No autoriza guardar el jazz", False, "el jazz"),
+        ("No, no autoriza a guardar mi jazz", False, "jazz"),
+        ("Guarda mi café", True, "cafe"),
+    ],
+)
+def test_the_answer_survives_how_the_speech_to_text_writes_it(
+    message: str, accept: bool, phrase: str
+) -> None:
+    """Whisper writes the third person, «po», «ya», «dale» and a leading «mi» (Plan 0064, D-3)."""
+    assert parse_memory_answer(message) == MemoryAnswer(accept=accept, phrase=phrase)
+    assert resolve_information_need(message).need is InformationNeed.MEMORY_ANSWER
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Autoriza",
+        "Sí po",
+        "Ya",
+        "Dale",
+        "Guarda silencio",
+        "Guarda mi",
+        "Ya, guarda silencio",
+        "Autorizo guardar",
+        "Autoriza guardar el mate de la abuela de mi vecino de al lado",
+    ],
+)
+def test_the_wider_grammar_still_refuses_what_is_not_an_answer(message: str) -> None:
+    assert parse_memory_answer(message) is None
+
+
+@pytest.mark.parametrize(
     "message",
     [
         "sí",

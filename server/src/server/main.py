@@ -21,6 +21,7 @@ from server.db import close_db, open_db, run_migrations
 from server.exceptions import VisionError
 from server.logging_setup import configure_logging
 from server.memory import candidates, retention
+from server.ollama_probe import probe_ollama
 from server.request_context import RequestContextMiddleware
 from server.resources import AppResources
 from server.routers import auth, chat, system, transcribe, vision
@@ -117,6 +118,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             await _warm_up("Face model", faces.warm_up)
         if cfg.speaker_authentication_enabled:
             await _warm_up("Speaker model", speaker_embedding.warm_up)
+        # Only warns: a server that starts before Ollama still starts (Plan 0064).
+        await probe_ollama(http_client)
 
         if cfg.memory_enabled:
             await open_db()

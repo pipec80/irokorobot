@@ -68,7 +68,7 @@ type ControllerDecision = ResponsePlan | SceneDescriptionRequest | None
 _BIOMETRIC_ENROLLMENT_RESPONSE = (
     "Todavía no puedo registrar rostros: hace falta administración local y consentimiento."
 )
-_ACTIVE_IDENTITY_UNKNOWN_RESPONSE = "Todavía no puedo confirmar quién sos."
+_ACTIVE_IDENTITY_UNKNOWN_RESPONSE = "Todavía no puedo confirmar quién eres."
 
 _ISO_DATE_PATTERN = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 _TWO_ITEMS = 2
@@ -280,7 +280,7 @@ class CognitiveController:
                 need=InformationNeed.ACTIVE_IDENTITY,
                 status=KnowledgeStatus.KNOWN,
                 source=ResponseSource.DETERMINISTIC,
-                response=f"Sos {actor.display_name}.",
+                response=f"Eres {actor.display_name}.",
             )
         return _unknown_plan(InformationNeed.ACTIVE_IDENTITY, _ACTIVE_IDENTITY_UNKNOWN_RESPONSE)
 
@@ -380,7 +380,7 @@ def _ambiguous_date_plan() -> ResponsePlan:
     """Ask for a safe clarification when a known STT date form is ambiguous."""
     return _unknown_plan(
         InformationNeed.AMBIGUOUS_DATE_QUERY,
-        "No entendí si preguntás por la fecha actual o por información personal. "
+        "No entendí si preguntas por la fecha actual o por información personal. "
         "¿Podrías reformularlo?",
     )
 
@@ -475,7 +475,7 @@ def _household_tool_plan(
         names = _spanish_join(result.value)
         response = f"Tus hijos son {names}."
     elif need is InformationNeed.OWN_CHILDREN_COUNT and isinstance(result.value, int):
-        response = f"Tenés {result.value} hijos."
+        response = f"Tienes {result.value} hijos."
     else:
         return _unknown_plan(
             need,

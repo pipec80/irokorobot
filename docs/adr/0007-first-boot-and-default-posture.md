@@ -128,7 +128,7 @@ replacement for it, never the only recovery route.
 - [Plan 0023](../plans/completed/0023-p0-grounded-visual-dialogue.md)'s
   `ACTIVE_IDENTITY` branch now greets a resolved owner by name, reusing the
   same request-scoped grant a household read already consumes, and keeps the
-  fixed unknown copy (`Todavía no puedo confirmar quién sos.`) only when no
+  fixed unknown copy (`Todavía no puedo confirmar quién eres.`, in tuteo since Plan 0064) only when no
   fresh authenticated evidence resolves — implemented and operator-confirmed
   2026-08-25. Since Plan 0051 (2026-10-06, ADR 0015) that branch only observes the
   actor and no longer spends the grant.

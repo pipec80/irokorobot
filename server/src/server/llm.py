@@ -59,7 +59,7 @@ _OLLAMA_RESPONSE_SCHEMA: dict[str, Any] = {
 # Sole owner of the classic contract — kept separate from llm_streaming.py's tag contract.
 _CLASSIC_OUTPUT_CONTRACT = f"""
 
-FORMATO — respondé SIEMPRE con JSON válido, sin texto adicional:
+FORMATO — responde SIEMPRE con JSON válido, sin texto adicional:
 {{"response": "<tu respuesta en español>", "emotion": "<emoción del usuario>"}}
 Emociones válidas: {", ".join(sorted(VALID_EMOTIONS))}.
 La emoción describe el estado del USUARIO, no el tuyo."""

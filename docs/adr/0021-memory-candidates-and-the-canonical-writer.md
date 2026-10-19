@@ -7,7 +7,10 @@
   (not voseo), the answer's closed verbs, filler phrases before a taste, one open offer per person
   (decisions 4 and 9). Accepted when Plan 0063 closed with its hardware cases run (cases 1, 2, 3,
   4, 6 and 7 passed, 5 partial, 8 measured on the shared laptop, 9 not run; see
-  [the acceptance note](../evals/0063-memory-dialogue-acceptance.md)).
+  [the acceptance note](../evals/0063-memory-dialogue-acceptance.md)). Amended on 2026-10-16 by
+  [Plan 0064](../plans/completed/0064-speech-and-dialogue-quality.md): decision 9's answer grammar
+  admits how the speech-to-text writes the verbs, and a model sentence that claims a save is
+  replaced.
 - **Date:** 2026-10-14
 - **Builds on:** [ADR 0006](0006-personal-and-family-companion-profiles.md),
   [ADR 0009](0009-locked-posture-and-scoped-capabilities.md),
@@ -327,11 +330,19 @@ One function, **one `db.transaction()`**, never relying on an `IntegrityError`:
   is CM-5.
 - **The answer repeats the value** (Pipec's option A, 2026-10-15). A closed
   `InformationNeed.MEMORY_ANSWER`, recognised by a pure grammar in `intent_resolution`, matches a
-  message that carries a closed verb (yes: `autorizo`, `apruebo` — alone or followed by
-  `guardar`, `a guardar` or `que guardes` — `guarda`, `guárdalo`; no: the same with `no`,
-  `no lo guardes`, `no guardes`, `olvídalo`, `bórralo`) and the value. A bare «sí» or any phrase an
-  attacker can know in advance never promotes. After the short verbs the value starts with an
-  article, because ordinary speech uses them too («guarda silencio»).
+  message that carries a closed verb (yes: `autorizo`, `apruebo` and, since Plan 0064, their
+  third-person writings `autoriza`, `aprueba` — alone or followed by `guardar`, `a guardar` or
+  `que guardes` — `guarda`, `guárdalo`; no: the same with `no`, `no lo guardes`, `no guardes`,
+  `olvídalo`, `bórralo`) and the value. A bare «sí» or any phrase an attacker can know in advance
+  never promotes. After the short verbs the value starts with an article, because ordinary speech
+  uses them too («guarda silencio»).
+  **Amended 2026-10-16 (Plan 0064, Pipec's decision D-3):** the answer survives how Whisper
+  `small` writes it. The openers `ya`, `dale` and `po` are skipped like «sí»; a trailing `po` is a
+  courtesy word like «gracias»; one leading `mi` or `mis` is dropped from the value and counts as
+  the article of a short verb («guarda mi café»). The value stays mandatory, an opener or a verb
+  alone still matches nothing, and the cost is known: more ordinary phrases («guarda mi …») have
+  the shape of an answer and make the controller verify face and voice first (3 to 4 s); nothing
+  is written without an open offer.
 - **One open offer per person.** While an offer waits for its answer, nothing else of that person
   is offered, so an answer always names the offer it resolves.
 - **No oracle.** The controller branch for that need resolves the actor (face and voice) **first**,
@@ -339,7 +350,10 @@ One function, **one `db.transaction()`**, never relying on an `IntegrityError`:
   actor's own candidates. The collaborator is injected **only by the voice routes**; on `/chat` and
   `/vision/respond` it is absent and the need falls through. Anything that is not a `strong` answer
   by the subject, carrying the value of an `offered` candidate, **falls through to ordinary
-  generation, byte-identical**: no new phrase, no state change, no attempt counted. Only after the
+  generation**: no new phrase, no state change, no attempt counted (the ordinary turn is written
+  by the model, and since Plan 0064 a model sentence that claims to have saved, registered or
+  noted something is replaced by «Eso no lo he guardado.», because only a promotion stores a
+  fact). Only after the
   verified owner's own open offer was found (so nothing is revealed to anyone else) can a refused
   or failed answer say a fixed phrase instead, so the model never improvises «listo» for something
   that was not saved.

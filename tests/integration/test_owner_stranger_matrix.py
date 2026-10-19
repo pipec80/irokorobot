@@ -321,7 +321,7 @@ async def test_who_am_i_names_the_owner_and_keeps_the_grant(voice: _Voice) -> No
     identity = await voice.speak("¿Quién soy?", token=unlock.token)
     later = await voice.speak(_CHILD_QUESTION, token=unlock.token)
 
-    assert identity["llm_response"] == "Sos Owner."
+    assert identity["llm_response"] == "Eres Owner."
     assert identity["authentication_consumed"] is False
     assert later["llm_response"] == _CHILD_ANSWER
     assert later["authentication_consumed"] is True

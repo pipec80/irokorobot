@@ -333,7 +333,7 @@ async def test_chat_who_am_i_names_the_owner_and_keeps_the_grant(
             json={"message": _CHILD_QUESTION, "conversation_id": "acceptance-owner"},
         )
 
-    assert identity.json()["response"] == "Sos Pipec."
+    assert identity.json()["response"] == "Eres Pipec."
     assert identity.json()["authentication_consumed"] is False
     assert read.json()["response"] == _CHILD_ANSWER
     assert read.json()["authentication_consumed"] is True
