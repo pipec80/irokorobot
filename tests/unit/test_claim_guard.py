@@ -40,6 +40,11 @@ _CLAIMS = [
     "Ya guardé que te gusta el café.",
     "Tomé nota de tu gusto.",
     "Se ha guardado.",
+    # The present tense of «tomar nota» is the same claim (Plan 0067, Task 6).
+    "Genial, te tomo nota.",
+    "Tomo nota.",
+    "Ya tomo nota de eso.",
+    "Tomaré nota.",
     # A question mark only exempts the question itself, not a claim before it.
     "Lo guardé, ¿quieres algo más?",
     "Listo, lo guardé, ¿y tú?",
@@ -62,9 +67,12 @@ _NOT_CLAIMS = [
     "La mesa está ordenada.",
     "El mate es una bebida caliente.",
     "Me alegra verte.",
-    "Dime: sí, autorizo guardar el mate.",
+    "¿Quieres que lo guarde? Dime: sí, autorizo.",
     # An offer or a condition is not a claim to have saved.
     "Si quieres, lo guardo.",
+    "Si quieres, tomo nota.",
+    "No tomo nota de eso.",
+    "¿Quieres que tome nota?",
     "Lo guardaré cuando me lo pidas.",
     "Aún no lo he guardado, pero lo guardaré si me lo pides.",
     "Nunca lo he guardado ni lo guardaré.",

@@ -149,6 +149,24 @@ async def _candidate(
     return result.candidate_id
 
 
+async def _force_offered_candidate(person_id: int, value: str, key: str) -> int:
+    """Store a candidate and force it to ``offered`` at ``_NOW`` with raw SQL.
+
+    The public API can no longer produce a second open offer for one person (``mark_offered``
+    refuses it), so the test of the lookup's defence in depth creates that state directly: the
+    lookup stays defended against it and the test keeps proving it.
+    """
+    candidate_id = await _candidate(person_id, value, key)
+    async with db.transaction() as conn:
+        cursor = await conn.execute(
+            "UPDATE memory_candidates SET status = 'offered', offered_at = ?, "
+            "offer_correlation_id = ?, offer_count = offer_count + 1 WHERE id = ?",
+            (candidates.iso_utc(_NOW), str(uuid4()), candidate_id),
+        )
+        await cursor.close()
+    return candidate_id
+
+
 async def _status(candidate_id: int) -> CandidateStatus:
     stored = await candidates.get_candidate(candidate_id)
     assert stored is not None
@@ -627,7 +645,7 @@ async def test_a_verb_alone_with_two_open_offers_falls_through_and_changes_nothi
     owner: int,
 ) -> None:
     first = await _candidate(owner, offered=True)
-    second = await _candidate(owner, "la pizza", "pizza", offered=True)
+    second = await _force_offered_candidate(owner, "la pizza", "pizza")
     audit = AsyncMock()
 
     phrase = await answer_offer(

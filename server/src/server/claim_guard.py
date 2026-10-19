@@ -9,7 +9,8 @@ accents (so ``guardé``, I saved, is a claim and ``guarde``, that I save, is not
 a time. A bare participle («Anotado.») is not a claim: the continuity of ADR 0020 keeps what was
 said. A question is never a claim, and a negation in the three words before the match cancels it.
 The past and perfect forms need no object («Guardé tu café.»); the present and future forms need
-one («lo guardo») and an offer or a condition («si quieres, lo guardo») makes them harmless.
+one («lo guardo»), except «tomo nota», which needs none, and an offer or a condition
+(«si quieres, lo guardo») makes them harmless.
 
 Apply it to **model-generated** text only. The deterministic results of Plan 0063 and the
 fallback phrases must reach the wire byte for byte.
@@ -52,6 +53,8 @@ _PROMISE_PATTERNS = tuple(
         rf"\b{_OBJECT}\s+{_PRESENT_FUTURE}\b",
         r"\b(?:lo|la|eso|esto)\s+recordaré\b",
         r"\bme\s+acordaré\b",
+        # «tomar nota» is the same promise and, like the past «tomé nota», needs no object.
+        r"\b(?:tomo|tomaré)\s+nota\b",
     )
 )
 _CONDITION = re.compile(r"\b(?:si|cuando|ni)\b")
