@@ -545,6 +545,215 @@ async def test_an_answer_with_another_value_falls_through_and_changes_nothing(
     audit.assert_not_awaited()
 
 
+async def test_a_closed_verb_alone_promotes_the_one_open_offer(owner: int) -> None:
+    candidate_id = await _candidate(owner, offered=True)
+    audit = AsyncMock()
+
+    phrase = await answer_offer(
+        MemoryAnswer(accept=True, phrase=""),
+        actor=_strong(owner),
+        correlation_id=_TURN,
+        now=_NOW + timedelta(seconds=10),
+        audit=audit,
+    )
+
+    assert phrase == ANSWER_SAVED_PHRASE
+    assert await _status(candidate_id) is CandidateStatus.CONFIRMED
+    assert len(await _likes(owner)) == 1
+    assert _actions(audit) == [(AuthorizationAction.CONFIRM_PERSONAL_MEMORY, "allowed")]
+
+
+async def test_a_refusal_alone_rejects_the_one_open_offer(owner: int) -> None:
+    candidate_id = await _candidate(owner, offered=True)
+    audit = AsyncMock()
+
+    phrase = await answer_offer(
+        MemoryAnswer(accept=False, phrase=""),
+        actor=_strong(owner),
+        correlation_id=_TURN,
+        now=_NOW + timedelta(seconds=10),
+        audit=audit,
+    )
+
+    assert phrase == ANSWER_REJECTED_PHRASE
+    stored = await candidates.get_candidate(candidate_id)
+    assert stored is not None
+    assert stored.status is CandidateStatus.REJECTED
+    assert (stored.value_text, stored.value_key) == (None, None)
+    assert _actions(audit) == [(AuthorizationAction.CONFIRM_PERSONAL_MEMORY, "allowed")]
+    assert await _likes(owner) == []
+
+
+async def test_a_verb_alone_with_no_open_offer_falls_through_and_changes_nothing(
+    owner: int,
+) -> None:
+    candidate_id = await _candidate(owner)
+    audit = AsyncMock()
+
+    phrase = await answer_offer(
+        MemoryAnswer(accept=True, phrase=""),
+        actor=_strong(owner),
+        correlation_id=_TURN,
+        now=_NOW,
+        audit=audit,
+    )
+
+    assert phrase is None
+    assert await _status(candidate_id) is CandidateStatus.PROPOSED
+    assert await _likes(owner) == []
+    audit.assert_not_awaited()
+
+
+async def test_a_verb_alone_with_two_open_offers_falls_through_and_changes_nothing(
+    owner: int,
+) -> None:
+    first = await _candidate(owner, offered=True)
+    second = await _candidate(owner, "la pizza", "pizza", offered=True)
+    audit = AsyncMock()
+
+    phrase = await answer_offer(
+        MemoryAnswer(accept=True, phrase=""),
+        actor=_strong(owner),
+        correlation_id=_TURN,
+        now=_NOW + timedelta(seconds=10),
+        audit=audit,
+    )
+
+    assert phrase is None
+    assert await _status(first) is CandidateStatus.OFFERED
+    assert await _status(second) is CandidateStatus.OFFERED
+    assert await _likes(owner) == []
+    audit.assert_not_awaited()
+
+
+async def test_a_verb_alone_never_answers_another_persons_offer(owner: int) -> None:
+    visitor = await upsert_entity(name="Canary Visitor", type="person")
+    theirs = await _candidate(visitor, offered=True)
+    audit = AsyncMock()
+
+    phrase = await answer_offer(
+        MemoryAnswer(accept=True, phrase=""),
+        actor=_strong(owner),
+        correlation_id=_TURN,
+        now=_NOW + timedelta(seconds=10),
+        audit=audit,
+    )
+
+    assert phrase is None
+    assert await _status(theirs) is CandidateStatus.OFFERED
+    assert await _likes(visitor) == []
+    audit.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "sources",
+    [
+        (IdentityEvidenceSource.FACE,),
+        (IdentityEvidenceSource.VOICE,),
+        (IdentityEvidenceSource.FACE, IdentityEvidenceSource.LOCAL_UNLOCK),
+        (
+            IdentityEvidenceSource.FACE,
+            IdentityEvidenceSource.VOICE,
+            IdentityEvidenceSource.LOCAL_UNLOCK,
+        ),
+    ],
+)
+async def test_a_weaker_or_token_actor_cannot_answer_with_a_verb_alone(
+    owner: int,
+    sources: tuple[IdentityEvidenceSource, ...],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate_id = await _candidate(owner, offered=True)
+    audit = AsyncMock()
+    reader = AsyncMock(wraps=candidates.find_offered)
+    monkeypatch.setattr(candidate_dialogue, "find_offered", reader)
+
+    phrase = await answer_offer(
+        MemoryAnswer(accept=True, phrase=""),
+        actor=_actor(owner, *sources),
+        correlation_id=_TURN,
+        now=_NOW,
+        audit=audit,
+    )
+
+    assert phrase is None
+    assert await _status(candidate_id) is CandidateStatus.OFFERED
+    audit.assert_not_awaited()
+    reader.assert_not_awaited()
+
+
+async def test_a_verb_alone_after_the_window_falls_through(owner: int) -> None:
+    candidate_id = await _candidate(owner, offered=True)
+    late = _NOW + timedelta(seconds=settings.memory_candidate_answer_seconds + 1)
+
+    phrase = await answer_offer(
+        MemoryAnswer(accept=True, phrase=""),
+        actor=_strong(owner),
+        correlation_id=_TURN,
+        now=late,
+        audit=AsyncMock(),
+    )
+
+    assert phrase is None
+    assert await _status(candidate_id) is CandidateStatus.OFFERED
+
+
+async def test_a_phrase_of_stop_words_still_falls_through_and_changes_nothing(owner: int) -> None:
+    """Only the empty phrase means the open offer; «el» folds to an empty key and names nothing."""
+    candidate_id = await _candidate(owner, offered=True)
+    audit = AsyncMock()
+
+    phrase = await answer_offer(
+        MemoryAnswer(accept=True, phrase="el"),
+        actor=_strong(owner),
+        correlation_id=_TURN,
+        now=_NOW,
+        audit=audit,
+    )
+
+    assert phrase is None
+    assert await _status(candidate_id) is CandidateStatus.OFFERED
+    audit.assert_not_awaited()
+
+
+async def test_a_verb_alone_with_a_value_that_names_another_offer_resolves_nothing(
+    owner: int,
+) -> None:
+    """D-6: the short answer is not a rescue for a garbled value."""
+    candidate_id = await _candidate(owner, offered=True)
+
+    phrase = await answer_offer(
+        MemoryAnswer(accept=True, phrase="otra cosa"),
+        actor=_strong(owner),
+        correlation_id=_TURN,
+        now=_NOW,
+        audit=AsyncMock(),
+    )
+
+    assert phrase is None
+    assert await _status(candidate_id) is CandidateStatus.OFFERED
+
+
+async def test_the_log_of_a_verb_alone_carries_ids_and_no_value(
+    owner: int, caplog: pytest.LogCaptureFixture
+) -> None:
+    candidate_id = await _candidate(owner, "el quokka", "quokka", offered=True)
+
+    with caplog.at_level(logging.DEBUG):
+        phrase = await answer_offer(
+            MemoryAnswer(accept=True, phrase=""),
+            actor=_strong(owner),
+            correlation_id=_TURN,
+            now=_NOW + timedelta(seconds=5),
+            audit=AsyncMock(),
+        )
+
+    assert phrase == ANSWER_SAVED_PHRASE
+    assert await _status(candidate_id) is CandidateStatus.CONFIRMED
+    assert caplog.records
+    assert not _leaked(caplog, "quokka")
+
+
 async def test_an_answer_with_no_offer_outstanding_falls_through(owner: int) -> None:
     candidate_id = await _candidate(owner)
     audit = AsyncMock()

@@ -257,7 +257,8 @@ async def answer_offer(
     shape, so the cost of the check never depends on whether an offer exists.
 
     Args:
-        answer: The parsed answer: accept or reject, and the value it repeats.
+        answer: The parsed answer: accept or reject, and the value it repeats. An empty phrase
+            is a closed verb alone and means the speaker's one open offer.
         actor: The turn's actor; only the face-and-voice composite may answer.
         correlation_id: The answering turn's id.
         now: The caller's clock reading.
@@ -266,8 +267,8 @@ async def answer_offer(
 
     Returns:
         The fixed result phrase. ``None`` falls through to ordinary generation: switch off, a
-        weaker actor, no open offer with that value or a failing lookup, none of which may be
-        told apart. Once the verified owner's own open offer is found, a refusal or a failure
+        weaker actor, no open offer (with that value, when one was named; or not exactly one
+        for a verb alone) or a failing lookup, none of which may be told apart. Once the verified owner's own open offer is found, a refusal or a failure
         says ``ANSWER_FAILED_PHRASE`` instead, so the model never improvises «listo». Never
         raises (a cancellation excepted).
     """
@@ -303,8 +304,11 @@ async def _find_open_offer(
             or not is_face_and_voice_actor(actor)
         ):
             return None
-        key = comparison_key(answer.phrase)
-        candidate = await find_offered(person_id, key, now=now) if key else None
+        if answer.phrase:
+            key = comparison_key(answer.phrase)
+            candidate = await find_offered(person_id, key, now=now) if key else None
+        else:  # a closed verb alone: the person's one open offer, whatever its value
+            candidate = await find_offered(person_id, None, now=now)
     except Exception as exc:  # fail closed: the turn falls through to ordinary generation
         _log_failure("candidate.answer", exc, correlation_id)
         return None

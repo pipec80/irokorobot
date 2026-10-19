@@ -68,6 +68,7 @@ _FRAME = cv2.imencode(".jpg", np.zeros((10, 10, 3), dtype=np.uint8))[1].tobytes(
 _OFFER = compose_offer("likes", "el mate")
 _REPLY = "Hola, qué gusto."
 _ANSWER = "Sí, autorizo guardar el mate"
+_SHORT_ANSWER = "Sí, autorizo."
 
 
 def _axis(size: int, axis: int) -> np.ndarray:
@@ -441,6 +442,77 @@ async def test_the_streaming_route_answers_too(
     events = [json.loads(line) for line in response.text.splitlines()]
     assert [event["text"] for event in events if event["type"] == "audio"] == [ANSWER_SAVED_PHRASE]
     assert await _status(candidate_id) is CandidateStatus.CONFIRMED
+
+
+async def test_a_verb_alone_saves_the_offer_on_the_classic_route(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owner = household.owner_entity_id
+    candidate_id = await _candidate(owner)
+    _scene(monkeypatch, "hola", _SHORT_ANSWER)
+
+    async with _client() as client:
+        await client.post("/transcribe", files=_files())
+        answered = await client.post("/transcribe", files=_files())
+
+    assert answered.json()["llm_response"] == ANSWER_SAVED_PHRASE
+    assert answered.json()["identity_source"] == "face_voice"
+    assert await _status(candidate_id) is CandidateStatus.CONFIRMED
+    assert len(await _likes(owner)) == 1
+
+
+async def test_a_verb_alone_saves_the_offer_on_the_streaming_route(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owner = household.owner_entity_id
+    candidate_id = await _candidate(owner)
+    assert await candidates.mark_offered(
+        candidate_id, owner, correlation_id=uuid4(), now=datetime.now(UTC)
+    )
+    _scene(monkeypatch, _SHORT_ANSWER)
+
+    async with _client() as client:
+        response = await client.post("/transcribe/stream", files=_files())
+
+    events = [json.loads(line) for line in response.text.splitlines()]
+    assert [event["text"] for event in events if event["type"] == "audio"] == [ANSWER_SAVED_PHRASE]
+    assert await _status(candidate_id) is CandidateStatus.CONFIRMED
+
+
+async def test_a_verb_alone_with_no_offer_is_an_ordinary_turn(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A casual «autorizo» costs the face-and-voice check and nothing else."""
+    owner = household.owner_entity_id
+    _scene(monkeypatch, _SHORT_ANSWER)
+
+    async with _client() as client:
+        response = await client.post("/transcribe", files=_files())
+
+    assert response.json()["llm_response"] == _REPLY
+    assert response.json()["identity_source"] is None
+    assert await _likes(owner) == []
+    assert await _audit_rows() == []
+
+
+async def test_chat_never_answers_with_a_verb_alone(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owner = household.owner_entity_id
+    candidate_id = await _candidate(owner)
+    assert await candidates.mark_offered(
+        candidate_id, owner, correlation_id=uuid4(), now=datetime.now(UTC)
+    )
+    _scene(monkeypatch)
+
+    async with _client() as client:
+        response = await client.post(
+            "/chat", json={"message": _SHORT_ANSWER, "conversation_id": "web"}
+        )
+
+    assert response.status_code == 200
+    assert response.json()["response"] == _REPLY
+    assert await _status(candidate_id) is CandidateStatus.OFFERED
 
 
 async def test_a_voice_consent_revoked_after_the_offer_answers_nothing(
