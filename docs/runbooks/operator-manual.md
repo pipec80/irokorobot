@@ -95,7 +95,7 @@ problem can be localized without running the whole loop.
 
 | Tool | Command | Isolates | Needs server? | Needs `.env`? |
 |---|---|---|:---:|:---:|
-| `mic_test.py` | `uv run python scripts/mic_test.py --model small` | Mic capture → Whisper STT only. **Its defaults are stale** (model `tiny`, the old «…Omnibot» prompt, a fixed-length recording instead of the robot's Silero capture), so a result here does not represent the robot; pass `--model small` and the current prompt. Plan 0069 Task 4 rewrites it as the capture auditor | No | No |
+| `mic_test.py` | `just mic-test devices` / `just mic-test record --seconds 6 --api mme` | Capture auditor (Plan 0069): lists the inputs with their host API and native rate; records one fixed-length take the way the robot opens the microphone (`mme`) or through WASAPI at the native rate (`wasapi`, resampled with `soxr`); reports peak, speech level, floor, SNR and clipping against the plan's targets; `--transcribe` runs the server's production Whisper options (stop the server first); `--save NAME` keeps the take under `project-history/calibration/stt/mic/` only | No | Yes |
 | `piper_test.py` | `uv run python scripts/piper_test.py --text ...` | Text → Piper TTS → speaker only | No | No |
 | `pipeline_test.py` | `just test-pipeline` | Smoke test of the three model seams, `mic → STT → LLM → TTS → speaker` (the mic is optional with `--text`); real model code, but no controller, identity, memory or HTTP | No | Yes (Ollama) |
 | `client_test.py` | `just test-client` | Full HTTP round trip through the real running server | Yes | No |

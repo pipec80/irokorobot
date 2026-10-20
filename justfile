@@ -98,6 +98,10 @@ run-robot:
 test-pipeline *ARGS:
     uv run --env-file .env python scripts/pipeline_test.py {{ARGS}}
 
+# Auditor de captura (Plan 0069): devices | record (niveles, MME o WASAPI, --transcribe con el servidor detenido)
+mic-test *ARGS:
+    uv run --env-file .env python scripts/mic_test.py {{ARGS}}
+
 # Sondas de STT del Plan 0056 (cargan Whisper real; con el servidor detenido): noise | first-turn
 probe-stt *ARGS:
     uv run --env-file .env python scripts/stt_probes.py {{ARGS}}

@@ -1,228 +1,286 @@
-"""Debug script: microphone capture → Whisper STT.
+"""mic_test.py - capture auditor for the robot's microphone (Plan 0069 Task 4).
 
-Standalone — no .env, no server, no Piper required.
-Tests only the audio capture + transcription pipeline.
+Lists the input devices, records one fixed-length take the way the robot opens the
+microphone (``--api mme``: the default device at 16 kHz, mono, int16, no ``device=``) or
+through WASAPI at the device's native rate (``--api wasapi``: one channel, resampled to
+16 kHz with ``soxr``), and reports its levels against Plan 0069's targets. Optionally
+transcribes it with the server's production decode options, through
+``server.stt.run_whisper``. Run it with the server stopped when transcribing.
 
-Audio contract: WAV · 16000 Hz · mono · int16.
+A saved take goes to ``project-history/calibration/stt/mic/`` (ignored by git), never
+elsewhere. Nothing here is played back.
 
 Usage:
-    uv run python scripts/mic_test.py
-    uv run python scripts/mic_test.py --seconds 8
-    uv run python scripts/mic_test.py --model small --language es
-    uv run python scripts/mic_test.py --save debug.wav
-    uv run python scripts/mic_test.py --list-devices
-    uv run python scripts/mic_test.py --prompt "Conversación con un robot llamado Omnibot."
+    just mic-test devices
+    just mic-test devices --save
+    just mic-test record --seconds 6 --api mme --save lv-c60-mme
+    just mic-test record --seconds 6 --api wasapi --transcribe
+    just mic-test record --transcribe --model medium --beam-size 1 --prompt Conversación con Iroko
+
+Audio contract of every saved take: WAV, 16 000 Hz, mono, int16.
 """
 
-import argparse
-import io
-import logging
+from __future__ import annotations
+
 from pathlib import Path
+import sys
+
+# Direct execution puts ``scripts/`` on ``sys.path[0]``; the ``from scripts.…`` imports
+# below need the repo root (pytest already has it through pyproject ``pythonpath``).
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import argparse  # after the sys.path bootstrap, by design
+from dataclasses import asdict, dataclass, replace
+import io
+import json
+import logging
+import re
+from typing import TYPE_CHECKING
 import wave
 
 from faster_whisper import WhisperModel
-from faster_whisper.transcribe import VadOptions
 import numpy as np
+from robot.audio_capture import CHUNK_FRAMES
+from server.settings import settings
 import sounddevice as sd
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
+from scripts.speaker_calibration_corpus import resolve_corpus_path, write_new_file_atomic
+from scripts.stt_audio_levels import (
+    CONTRACT_RATE,
+    LevelReport,
+    level_report,
+    level_verdicts,
+    to_contract,
+)
+from scripts.stt_corpus_models import STT_CORPUS_ROOT
+from server import stt
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
 logger = logging.getLogger(__name__)
 
-_SAMPLE_RATE = 16_000
-_CHANNELS = 1
-_DTYPE = "int16"
-_RMS_SPEECH_THRESHOLD = 200
-
-_DEFAULT_PROMPT = "Conversación con un robot doméstico llamado Omnibot."
-_NO_SPEECH_THRESHOLD = 0.6
-_LOGPROB_LOW = -1.0
-_LOGPROB_MED = -0.5
+_TAKE_NAME = re.compile(r"[A-Za-z0-9_-]+")
+_MIC_DIR = "mic"
 
 
-def list_devices() -> None:
-    """Print available audio input devices."""
-    print("\n=== Audio Input Devices ===")  # noqa: T201
-    for i, dev in enumerate(sd.query_devices()):
-        if dev["max_input_channels"] > 0:  # type: ignore[index]
-            marker = "→" if i == sd.default.device[0] else " "
-            print(f"  {marker} [{i}] {dev['name']}")  # type: ignore[index]  # noqa: T201
-    print()  # noqa: T201
+@dataclass(frozen=True)
+class InputDevice:
+    """One capture device as PortAudio lists it."""
+
+    index: int
+    name: str
+    host_api: str
+    channels: int
+    default_rate: int
+    is_default: bool
 
 
-def record(seconds: int, device: int | None) -> bytes:
-    """Record audio from microphone for N seconds.
-
-    Args:
-        seconds: Duration to record.
-        device: Input device index, or None for system default.
+def list_inputs() -> list[InputDevice]:
+    """List every device that can capture, with its host API and native rate.
 
     Returns:
-        WAV bytes at 16kHz mono int16.
+        The inputs in PortAudio order; ``is_default`` marks the device the robot opens.
     """
-    logger.info("Recording %d seconds on device %s... speak now!", seconds, device or "default")
-    frames = sd.rec(
-        int(seconds * _SAMPLE_RATE),
-        samplerate=_SAMPLE_RATE,
-        channels=_CHANNELS,
-        dtype=_DTYPE,
-        device=device,
-    )
-    sd.wait()
-    logger.info("Recording complete — encoding WAV")
-    buf = io.BytesIO()
-    with wave.open(buf, "wb") as wf:
-        wf.setnchannels(_CHANNELS)
-        wf.setsampwidth(2)
-        wf.setframerate(_SAMPLE_RATE)
-        wf.writeframes(frames.tobytes())
-    return buf.getvalue()
-
-
-def check_rms(frames: np.ndarray) -> None:
-    """Log RMS energy so you can verify the mic is actually picking up sound."""
-    rms = float(np.sqrt(np.mean(frames.astype(np.float32) ** 2)))
-    level = "OK" if rms > _RMS_SPEECH_THRESHOLD else "LOW — check mic volume or threshold"
-    logger.info("Audio RMS energy: %.0f  [%s]", rms, level)
-
-
-def transcribe(
-    wav_bytes: bytes,
-    model_size: str,
-    language: str,
-    prompt: str | None,
-    hotwords: str | None,
-    beam_size: int,
-) -> str:
-    """Transcribe WAV bytes using Whisper, printing per-segment quality metrics.
-
-    Args:
-        wav_bytes: WAV bytes at 16kHz mono int16.
-        model_size: Whisper model name (tiny/base/small/medium).
-        language: ISO 639-1 language code.
-        prompt: Initial prompt to anchor the model to the domain vocabulary.
-        hotwords: Comma-separated priority words for the model.
-        beam_size: Beam search width — higher = more accurate but slower.
-
-    Returns:
-        Transcribed text string.
-    """
-    logger.info(
-        "Loading Whisper '%s' (first run downloads ~%s)...", model_size, _model_size_mb(model_size)
-    )
-    model = WhisperModel(model_size, device="cpu", compute_type="int8")
-    vad_params = VadOptions(min_silence_duration_ms=500)
-    logger.info("Transcribing...")
-    segments, info = model.transcribe(
-        io.BytesIO(wav_bytes),
-        language=language,
-        beam_size=beam_size,
-        initial_prompt=prompt,
-        hotwords=hotwords,
-        condition_on_previous_text=False,
-        hallucination_silence_threshold=2.0,
-        vad_filter=True,
-        vad_parameters=vad_params,
-    )
-    logger.info(
-        "Language: %s (%.0f%%) — duration: %.1fs → %.1fs after VAD",
-        info.language,
-        info.language_probability * 100,
-        info.duration,
-        info.duration_after_vad,
-    )
-
-    parts: list[str] = []
-    print("\n=== Segments ===")  # noqa: T201
-    for seg in segments:
-        confidence = _confidence_label(seg.avg_logprob, seg.no_speech_prob)
-        print(  # noqa: T201
-            f"  [{seg.start:5.1f}s→{seg.end:5.1f}s]"
-            f"  logprob={seg.avg_logprob:+.2f}"
-            f"  no_speech={seg.no_speech_prob:.2f}"
-            f"  temp={seg.temperature or 0.0:.1f}"
-            f"  [{confidence}]"
-            f"  {seg.text.strip()}"
+    default_input = sd.default.device[0]
+    return [
+        InputDevice(
+            index=index,
+            name=str(device["name"]),
+            host_api=str(sd.query_hostapis(device["hostapi"])["name"]),
+            channels=int(device["max_input_channels"]),
+            default_rate=int(device["default_samplerate"]),
+            is_default=index == default_input,
         )
-        parts.append(seg.text.strip())
-    print()  # noqa: T201
-
-    return " ".join(parts)
-
-
-def _confidence_label(avg_logprob: float, no_speech_prob: float) -> str:
-    """Map Whisper segment metrics to a human-readable confidence label."""
-    if no_speech_prob > _NO_SPEECH_THRESHOLD:
-        return "NOISE/SILENCE"
-    if avg_logprob < _LOGPROB_LOW:
-        return "LOW"
-    if avg_logprob < _LOGPROB_MED:
-        return "MED"
-    return "HIGH"
+        for index, device in enumerate(sd.query_devices())
+        if int(device["max_input_channels"]) > 0
+    ]
 
 
-def _model_size_mb(model: str) -> str:
-    sizes = {
-        "tiny": "70 MB",
-        "base": "140 MB",
-        "small": "240 MB",
-        "medium": "760 MB",
-        "large": "1.5 GB",
-    }
-    return sizes.get(model, "?")
+def _wasapi_input() -> InputDevice:
+    """Return the WASAPI host API's default input device."""
+    for host in sd.query_hostapis():
+        if "WASAPI" in str(host["name"]):
+            device_index = int(host["default_input_device"])
+            for device in list_inputs():
+                if device.index == device_index:
+                    return device
+            break
+    raise SystemExit("no WASAPI input device found")
 
 
-def main() -> None:
-    """Entry point."""
-    parser = argparse.ArgumentParser(description="Mic → Whisper STT debug script")
-    parser.add_argument("--seconds", type=int, default=5, help="Recording duration (default: 5)")
-    parser.add_argument(
-        "--model", default="tiny", help="Whisper model: tiny/base/small/medium (default: tiny)"
+def record(api: str, seconds: float) -> tuple[np.ndarray, int]:
+    """Record one fixed-length take.
+
+    Args:
+        api: ``mme`` (the robot's way: default device, 16 kHz, mono, int16) or ``wasapi``
+            (the WASAPI default input at its native rate, one channel, then ``soxr``).
+        seconds: Length of the take.
+
+    Returns:
+        Int16 samples, 16 000 Hz, mono, and the rate the stream actually opened at.
+    """
+    if api == "mme":
+        with sd.InputStream(
+            samplerate=CONTRACT_RATE, channels=1, dtype="int16", blocksize=CHUNK_FRAMES
+        ) as stream:
+            data, _ = stream.read(int(seconds * CONTRACT_RATE))
+            opened = int(stream.samplerate)
+        return np.asarray(data, dtype=np.int16).reshape(-1), opened
+    device = _wasapi_input()
+    logger.info("WASAPI input: [%d] %s at %d Hz", device.index, device.name, device.default_rate)
+    with sd.InputStream(
+        device=device.index,
+        samplerate=device.default_rate,
+        channels=1,
+        dtype="float32",
+        extra_settings=sd.WasapiSettings(auto_convert=True),  # only for the mixdown
+    ) as stream:
+        data, _ = stream.read(int(seconds * device.default_rate))
+        opened = int(stream.samplerate)
+    return to_contract(np.asarray(data), opened, channels=1), opened
+
+
+def _wav(samples: np.ndarray) -> bytes:
+    """Encode int16 samples as WAV bytes — 16 kHz, mono, int16."""
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(CONTRACT_RATE)
+        handle.writeframes(samples.astype(np.int16).tobytes())
+    return buffer.getvalue()
+
+
+def _take_path(name: str) -> Path:
+    """Return the saved take's path; a name that is not plain is refused."""
+    if not _TAKE_NAME.fullmatch(name):
+        raise SystemExit(f"--save takes a plain name (letters, digits, _ and -), not {name!r}")
+    return resolve_corpus_path(STT_CORPUS_ROOT, Path(_MIC_DIR) / f"{name}.wav")
+
+
+def whisper_options(
+    args: argparse.Namespace, base: stt.WhisperDecodeOptions
+) -> stt.WhisperDecodeOptions:
+    """Apply the command line's overrides to the production decode options.
+
+    Args:
+        args: Parsed ``record`` arguments.
+        base: ``stt.decode_options(settings)``.
+
+    Returns:
+        *base* with only the beam size and the prompt that were given replaced.
+    """
+    options = base
+    if args.beam_size is not None:
+        options = replace(options, beam_size=args.beam_size)
+    if args.prompt:
+        options = replace(options, initial_prompt=" ".join(args.prompt))
+    return options
+
+
+def _format_db(value: float | None) -> str:
+    return "silence" if value is None else f"{value:.1f}"
+
+
+def _print_report(report: LevelReport, opened_rate: int, seconds: float) -> None:
+    verdicts = level_verdicts(report)
+    lines = [
+        f"take: {seconds:.1f} s, stream opened at {opened_rate} Hz",
+        f"peak:   {_format_db(report.peak_dbfs)} dBFS  [{verdicts['peak']}]",
+        f"speech: {_format_db(report.speech_rms_dbfs)} dBFS  [{verdicts['speech']}]",
+        f"floor:  {_format_db(report.floor_dbfs)} dBFS  [{verdicts['floor']}]",
+        f"snr:    {_format_db(report.snr_db)} dB",
+        f"clipped samples: {report.clipped_fraction:.4%}  [{verdicts['clipping']}]",
+    ]
+    print("\n".join(lines))  # noqa: T201 -- the operator's report table
+
+
+def _transcribe(samples: np.ndarray, args: argparse.Namespace) -> None:
+    model = WhisperModel(
+        args.model or settings.whisper_model,
+        device=settings.whisper_device,
+        compute_type=settings.whisper_compute_type,
     )
-    parser.add_argument("--language", default="es", help="Language code (default: es)")
-    parser.add_argument(
-        "--device", type=int, default=None, help="Input device index (default: system default)"
-    )
-    parser.add_argument("--save", type=str, default=None, help="Save WAV to file path (optional)")
-    parser.add_argument(
-        "--list-devices", action="store_true", help="List audio input devices and exit"
-    )
-    parser.add_argument(
-        "--prompt",
-        default=_DEFAULT_PROMPT,
-        help="Initial prompt to anchor model vocabulary (default: robot context)",
-    )
-    parser.add_argument(
-        "--hotwords", default=None, help="Comma-separated priority words (e.g. 'Omnibot,apagar')"
-    )
-    parser.add_argument("--beam-size", type=int, default=5, help="Beam size (default: 5)")
-    args = parser.parse_args()
+    options = whisper_options(args, stt.decode_options(settings))
+    hotwords = " ".join(args.hotwords) if args.hotwords else None
+    transcript = stt.run_whisper(model, _wav(samples), options, hotwords)
+    confidence = transcript.confidence
+    logprob = "none" if confidence is None else f"{confidence.avg_logprob:.3f}"
+    print(f"heard: {transcript.text or '(nothing)'}")  # noqa: T201 -- the operator's own take
+    print(f"logprob: {logprob}  after Whisper's VAD: {transcript.after_vad_s:.1f} s")  # noqa: T201
 
-    if args.list_devices:
-        list_devices()
-        return
 
-    wav_bytes = record(args.seconds, args.device)
+def _devices(save: bool) -> int:
+    inputs = list_inputs()
+    for device in inputs:
+        marker = "->" if device.is_default else "  "
+        print(  # noqa: T201 -- the operator's device table
+            f"{marker} [{device.index}] {device.name} | {device.host_api} | "
+            f"in {device.channels} | {device.default_rate} Hz"
+        )
+    if save:
+        target = resolve_corpus_path(STT_CORPUS_ROOT, Path(_MIC_DIR) / "devices.json")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps([asdict(d) for d in inputs], indent=2), encoding="utf-8")
+        logger.info("device list saved under the private corpus root")
+    return 0
 
-    raw_frames = np.frombuffer(wav_bytes[44:], dtype=np.int16)  # skip 44-byte WAV header
-    check_rms(raw_frames)
 
-    if args.save:
-        Path(args.save).write_bytes(wav_bytes)
-        logger.info("WAV saved → %s", args.save)
+def _record_take(args: argparse.Namespace) -> int:
+    target = _take_path(args.save) if args.save else None
+    samples, opened_rate = record(args.api, args.seconds)
+    _print_report(level_report(samples), opened_rate, len(samples) / CONTRACT_RATE)
+    if target is not None:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        write_new_file_atomic(target, _wav(samples))
+        logger.info("take saved under the private corpus root")
+    if args.transcribe:
+        _transcribe(samples, args)
+    return 0
 
-    text = transcribe(
-        wav_bytes,
-        args.model,
-        args.language,
-        prompt=args.prompt,
-        hotwords=args.hotwords,
-        beam_size=args.beam_size,
-    )
 
-    print(f"{'=' * 40}")  # noqa: T201
-    print(f"  {text or '(silence / no speech detected)'}")  # noqa: T201
-    print(f"{'=' * 40}\n")  # noqa: T201
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    """Parse the ``devices`` and ``record`` commands.
+
+    Args:
+        argv: Arguments without the program name; ``None`` reads ``sys.argv``.
+
+    Returns:
+        The parsed namespace.
+    """
+    parser = argparse.ArgumentParser(description="Capture auditor for the robot microphone")
+    commands = parser.add_subparsers(dest="command", required=True)
+    devices = commands.add_parser("devices", help="list the capture devices")
+    devices.add_argument("--save", action="store_true", help="save the list as JSON")
+    take = commands.add_parser("record", help="record one take and report its levels")
+    take.add_argument("--seconds", type=float, default=6.0)
+    take.add_argument("--api", choices=("mme", "wasapi"), default="mme")
+    take.add_argument("--save", default=None, help="plain name of the take to keep")
+    take.add_argument("--transcribe", action="store_true")
+    take.add_argument("--model", default=None, help="Whisper model (default: the server's)")
+    take.add_argument("--beam-size", type=int, default=None)
+    take.add_argument("--prompt", nargs="+", default=None)
+    take.add_argument("--hotwords", nargs="+", default=None)
+    return parser.parse_args(argv)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run one auditor command.
+
+    Args:
+        argv: Arguments without the program name.
+
+    Returns:
+        The process exit code.
+    """
+    args = parse_args(argv)
+    if args.command == "devices":
+        return _devices(args.save)
+    return _record_take(args)
 
 
 if __name__ == "__main__":
-    main()
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
+    raise SystemExit(main())
