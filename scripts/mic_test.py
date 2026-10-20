@@ -3,8 +3,8 @@
 Lists the input devices, records one take the way the robot opens the
 microphone (``--api mme``: the default device at 16 kHz, mono, int16, no ``device=``) or
 through WASAPI in the device's native format (``--api wasapi``: its rate and all its
-channels, float32, no Windows conversion; averaged to mono and resampled to 16 kHz with
-``soxr`` here), and reports its levels against Plan 0069's targets. Before the take
+channels, float32, no Windows conversion, read through PortAudio's callback; averaged to
+mono and resampled to 16 kHz with ``soxr`` here), and reports its levels against Plan 0069's targets. Before the take
 it shows the phrase to read; the stream settles, a countdown runs and the visual cue
 ``>>> HABLA <<<`` opens the window (the same sequence as the corpus tool); a stream that
 overflowed, or took longer than the audio it returned, is reported as lost audio. Optionally
@@ -43,9 +43,10 @@ from dataclasses import asdict, dataclass, replace
 import io
 import json
 import logging
+import queue
 import re
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 import wave
 
 from faster_whisper import WhisperModel
@@ -77,7 +78,71 @@ _MIC_DIR = "mic"
 _SETTLE_S = 0.5
 _COUNTDOWN = (3, 2, 1)
 _LATE_S = 0.5  # wall time beyond the audio's own length that means samples were dropped
+_STALL_S = 2.0  # a callback stream silent this long has stopped delivering
 _clock = time.monotonic
+
+
+class InputReader(Protocol):
+    """What ``record`` needs from an opened input: blocking reads and the channel count."""
+
+    @property
+    def channels(self) -> int:
+        """The channel count the input opened with."""
+        ...
+
+    def read(self, frames: int) -> tuple[np.ndarray, bool]:
+        """Return the next *frames* frames and whether audio overflowed behind them."""
+        ...
+
+
+class CallbackInput:
+    """An input PortAudio fills through its callback, read back in the blocking shape.
+
+    PortAudio's blocking read on WASAPI dropped about half of every take without raising
+    its overflow flag (Plan 0069, 2026-10-20: 9 s of audio took 19 s of wall time); the
+    callback receives every buffer, queued here and re-cut to the sizes ``read`` asks for.
+    """
+
+    def __init__(self, channels: int) -> None:
+        self.channels = channels
+        self._blocks: queue.Queue[tuple[np.ndarray, bool]] = queue.Queue()
+        self._pending = np.zeros((0, channels), dtype=np.float32)
+
+    def callback(self, indata: np.ndarray, _frames: int, _time: object, status: object) -> None:
+        """Queue one buffer; PortAudio reuses *indata*, so it is copied.
+
+        Args:
+            indata: Float32 frames, one column per channel.
+            _frames: Their count.
+            _time: PortAudio's timestamps (unused).
+            status: ``sd.CallbackFlags``; its ``input_overflow`` is kept.
+        """
+        self._blocks.put((indata.copy(), bool(getattr(status, "input_overflow", False))))
+
+    def read(self, frames: int) -> tuple[np.ndarray, bool]:
+        """Return the next *frames* frames and whether a buffer behind them overflowed.
+
+        Args:
+            frames: How many frames to return.
+
+        Returns:
+            Float32 frames, one column per channel, and the overflow flag.
+
+        Raises:
+            RuntimeError: If no buffer arrives for ``_STALL_S`` seconds.
+        """
+        parts, have, overflowed = [self._pending], len(self._pending), False
+        while have < frames:
+            try:
+                block, flag = self._blocks.get(timeout=_STALL_S)
+            except queue.Empty as error:
+                raise RuntimeError("the input stream stopped delivering audio") from error
+            parts.append(block)
+            have += len(block)
+            overflowed = overflowed or flag
+        data = np.concatenate(parts)
+        self._pending = data[frames:]
+        return data[:frames], overflowed
 
 
 @dataclass(frozen=True)
@@ -126,21 +191,23 @@ def _wasapi_input() -> InputDevice:
 
 
 @contextmanager
-def open_input(api: str) -> Generator[tuple[sd.InputStream, int]]:
+def open_input(api: str) -> Generator[tuple[InputReader, int]]:
     """Open the microphone one way or the other and yield the stream and its opened rate.
 
     Args:
         api: ``mme`` (the robot's way: default device, 16 kHz, mono, int16) or ``wasapi``
             (the WASAPI default input in its native format: its rate, all its channels,
-            float32; Windows converts nothing, ``as_contract`` does).
+            float32; Windows converts nothing, ``as_contract`` does; read through the
+            callback, see ``CallbackInput``).
 
     Yields:
-        The started stream and the rate it actually opened at.
+        The started input and the rate it actually opened at.
     """
     if api == "mme":
         stream = sd.InputStream(
             samplerate=CONTRACT_RATE, channels=1, dtype="int16", blocksize=CHUNK_FRAMES
         )
+        reader: InputReader = stream
     else:
         device = _wasapi_input()
         logger.info(
@@ -150,14 +217,17 @@ def open_input(api: str) -> Generator[tuple[sd.InputStream, int]]:
             device.default_rate,
             device.channels,
         )
+        callback_input = CallbackInput(device.channels)
         stream = sd.InputStream(
             device=device.index,
             samplerate=device.default_rate,
             channels=device.channels,
             dtype="float32",
+            callback=callback_input.callback,
         )
+        reader = callback_input
     with stream:
-        yield stream, int(stream.samplerate)
+        yield reader, int(stream.samplerate)
 
 
 def as_contract(data: np.ndarray, api: str, opened_rate: int, channels: int) -> np.ndarray:

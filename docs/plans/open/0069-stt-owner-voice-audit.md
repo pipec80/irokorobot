@@ -567,8 +567,11 @@ int16).
   [--save NAME] [--transcribe] [--model M] [--beam-size N] [--prompt WORDS...] [--hotwords WORDS...]`.
   `record --api mme` opens the default device exactly like the robot; `--api wasapi` opens the WASAPI
   device of the same name in its native format (its rate, every channel, float32, no `auto_convert`;
-  amended 2026-10-20: one channel through `auto_convert` came back garbled and half as long) and
-  converts with `to_contract`; an overflow, or a take that took longer than its audio, is logged; the opened rate is checked and printed.
+  amended 2026-10-20: one channel through `auto_convert` came back garbled and half as long, and so
+  did the native format through PortAudio's blocking read, which took 19 s for 9 s of audio with no
+  overflow flag; WASAPI is read through the stream callback) and converts with `to_contract`; an
+  overflow, or a take that took longer than its audio, is logged; the opened rate is checked and
+  printed.
   `--transcribe` uses `server.stt.run_whisper` with `decode_options(settings)` and the overrides
   given. Logging, not `print`, except the final report table (`# noqa: T201` with the reason).
 - [ ] Tests; `uv run ruff check scripts/mic_test.py scripts/stt_audio_levels.py tests/unit/test_stt_audio_levels.py tests/unit/test_mic_test.py`.
@@ -824,7 +827,8 @@ The agent gives the exact commands, one session at a time, and never runs them.
 (through `uv add soxr`), `uv.lock`, `.env.example`; test `tests/unit/test_audio_capture.py`.
 
 - [ ] **Failing tests:** with `audio_host_api="wasapi"`, the stream opens in the device's native format
-  (rate and channels, averaged to mono first); a stateful `soxr.ResampleStream` converts continuously (never block by block from
+  (rate and channels, averaged to mono first) and is read through its callback, never PortAudio's
+  blocking read (Task 4); a stateful `soxr.ResampleStream` converts continuously (never block by block from
   scratch) and a re-chunker hands the VAD exactly `CHUNK_FRAMES` int16 samples at 16 kHz, carrying the
   remainder; 1 s of 44.1 kHz and of 48 kHz input yields 16,000 samples in 512-sample chunks with no
   discontinuity at the chunk joins (a 1 kHz tone keeps its level within 0.5 dB); the default `"mme"`

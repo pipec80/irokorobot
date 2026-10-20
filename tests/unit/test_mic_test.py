@@ -40,24 +40,35 @@ _HOST_APIS = [
 ]
 
 
-class _OpenedStream:
-    """Stands in for ``sd.InputStream`` once opened: only its rate is read."""
+type _Block = tuple[np.ndarray, bool]
 
-    def __init__(self, samplerate: float) -> None:
-        self.samplerate = samplerate
+
+class _OpenedStream:
+    """Stands in for ``sd.InputStream``: once started it feeds its blocks to the callback."""
+
+    def __init__(self, kwargs: dict[str, object], blocks: list[_Block]) -> None:
+        self.kwargs = kwargs
+        self.samplerate = float(str(kwargs["samplerate"]))
+        self.blocks = blocks
 
     def __enter__(self) -> "_OpenedStream":
+        callback = self.kwargs.get("callback")
+        for block, overflowed in self.blocks:
+            assert callable(callback)
+            callback(block, len(block), None, SimpleNamespace(input_overflow=overflowed))
         return self
 
     def __exit__(self, *_exc: object) -> None:
         return None
 
 
-def _fake_sd(opened: list[dict[str, object]] | None = None) -> SimpleNamespace:
+def _fake_sd(
+    opened: list[dict[str, object]] | None = None, blocks: list[_Block] | None = None
+) -> SimpleNamespace:
     def _input_stream(**kwargs: object) -> _OpenedStream:
         if opened is not None:
             opened.append(kwargs)
-        return _OpenedStream(float(str(kwargs["samplerate"])))
+        return _OpenedStream(kwargs, blocks or [])
 
     return SimpleNamespace(
         query_devices=lambda: _DEVICES,
@@ -66,6 +77,16 @@ def _fake_sd(opened: list[dict[str, object]] | None = None) -> SimpleNamespace:
         InputStream=_input_stream,
         WasapiSettings=lambda **settings: settings,
     )
+
+
+def _ramp_blocks(sizes: list[int], overflowing: int) -> list[_Block]:
+    """Float32 blocks for the fake four-channel WASAPI input, counting up across blocks."""
+    blocks, start = [], 0
+    for number, size in enumerate(sizes):
+        frames = np.arange(start, start + size, dtype=np.float32)
+        blocks.append((np.repeat(frames[:, None], 4, axis=1), number == overflowing))
+        start += size
+    return blocks
 
 
 def _never(*_args: object) -> tuple[np.ndarray, int]:
@@ -246,7 +267,40 @@ def test_wasapi_opens_the_device_in_its_native_format(monkeypatch: pytest.Monkey
         pass
 
     assert rate == 48_000
-    assert opened == [{"device": 2, "samplerate": 48_000, "channels": 4, "dtype": "float32"}]
+    kwargs = dict(opened[0])
+    assert callable(kwargs.pop("callback"))  # never PortAudio's blocking read on WASAPI
+    assert kwargs == {"device": 2, "samplerate": 48_000, "channels": 4, "dtype": "float32"}
+
+
+@pytest.mark.unit
+def test_wasapi_reads_hand_back_every_callback_buffer_in_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        mic_test, "sd", _fake_sd(blocks=_ramp_blocks([480, 480, 480], overflowing=1))
+    )
+
+    with mic_test.open_input("wasapi") as (stream, _rate):
+        first, first_overflowed = stream.read(700)
+        second, second_overflowed = stream.read(740)
+
+    assert stream.channels == 4
+    assert np.array_equal(np.concatenate([first, second])[:, 0], np.arange(1440))
+    assert (first_overflowed, second_overflowed) == (True, False)
+
+
+@pytest.mark.unit
+def test_a_wasapi_stream_that_stops_delivering_fails_instead_of_hanging(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(mic_test, "sd", _fake_sd(blocks=_ramp_blocks([100], overflowing=-1)))
+    monkeypatch.setattr(mic_test, "_STALL_S", 0.01)
+
+    with (
+        mic_test.open_input("wasapi") as (stream, _rate),
+        pytest.raises(RuntimeError, match="stopped delivering"),
+    ):
+        stream.read(200)
 
 
 @pytest.mark.unit
