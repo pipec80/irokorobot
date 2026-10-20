@@ -110,6 +110,10 @@ stt-corpus *ARGS:
 stt-bench *ARGS:
     uv run --env-file .env python scripts/stt_bench.py {{ARGS}}
 
+# Brazo de texto del STT (Plan 0069): atribuye cada error al STT o al resto, conteos por capa
+stt-text-arm *ARGS:
+    uv run --env-file .env python scripts/stt_text_arm.py {{ARGS}}
+
 # Sondas de STT del Plan 0056 (cargan Whisper real; con el servidor detenido): noise | first-turn
 probe-stt *ARGS:
     uv run --env-file .env python scripts/stt_probes.py {{ARGS}}
