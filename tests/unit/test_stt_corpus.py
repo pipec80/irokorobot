@@ -5,7 +5,9 @@ Audio contract: WAV · 16000 Hz · mono · int16.
 """
 
 from dataclasses import replace
+import io
 from pathlib import Path
+import wave
 
 import numpy as np
 import pytest
@@ -13,6 +15,7 @@ from robot.audio_capture import CHUNK_FRAMES, SegmentationPolicy
 
 from scripts import check_reserved_terms, stt_corpus
 from scripts.speaker_calibration_corpus import sha256_of_file
+from scripts.stt_audio_levels import level_report, level_verdicts
 from scripts.stt_corpus_models import (
     SCRIPT_PATH,
     Clip,
@@ -43,6 +46,33 @@ def _policy(close_ms: int) -> SegmentationPolicy:
 
 def _clips(raw: np.ndarray, close_ms: int) -> list[bytes]:
     return stt_corpus.segment_take(raw, _policy(close_ms), vad_factory=_LoudVad)
+
+
+def _wav_bytes(samples: np.ndarray) -> bytes:
+    """Int16 samples as WAV bytes — 16 kHz, mono, int16."""
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(_RATE)
+        handle.writeframes(samples.astype(np.int16).tobytes())
+    return buffer.getvalue()
+
+
+@pytest.mark.unit
+def test_levels_are_judged_on_the_clips_not_on_the_whole_take() -> None:
+    rng = np.random.default_rng(69)
+
+    def noise(seconds: float) -> np.ndarray:
+        return rng.normal(0, 30, int(seconds * _RATE))  # about -61 dBFS
+
+    word = 3000 * np.sin(2 * np.pi * 220 * np.arange(int(0.5 * _RATE)) / _RATE)  # -23.8 dBFS
+    raw = np.concatenate([noise(3.4), word + noise(0.5), noise(3.1)]).astype(np.int16)
+    clip = raw[int(3.0 * _RATE) : int(4.7 * _RATE)]  # pre-roll, the word, the closing silence
+
+    assert level_verdicts(level_report(raw))["speech"] == "low"  # the word is 7 % of the take
+    assert stt_corpus.take_verdicts(raw, [_wav_bytes(clip)])["speech"] == "ok"
+    assert stt_corpus.take_verdicts(raw, [])["speech"] == "low"  # no clip: the take itself
 
 
 @pytest.mark.unit

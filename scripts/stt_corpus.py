@@ -211,8 +211,25 @@ def _show(message: str) -> None:
     logger.info("%s", message)
 
 
+def take_verdicts(raw: np.ndarray, clips: list[bytes]) -> dict[str, str]:
+    """Judge a take's levels on its clips, the audio the robot would upload.
+
+    The raw take carries the countdown, so a short word is a few percent of it and the
+    90th-percentile speech level lands in the silence; a clip is mostly voice.
+
+    Args:
+        raw: Int16 samples, 16 000 Hz, mono — the continuous take.
+        clips: Its clips (WAV bytes, 16 kHz, mono, int16); ``[]`` judges the take itself.
+
+    Returns:
+        ``level_verdicts`` of the clips joined, or of the raw take when there is none.
+    """
+    audio = np.concatenate([_samples(clip) for clip in clips]) if clips else raw
+    return level_verdicts(level_report(audio))
+
+
 def _report(raw: np.ndarray, clips: list[bytes]) -> None:
-    verdicts = level_verdicts(level_report(raw))
+    verdicts = take_verdicts(raw, clips)
     _show(
         f"   clips: {len(clips)}  peak {verdicts['peak']}  speech {verdicts['speech']}  "
         f"floor {verdicts['floor']}  clipping {verdicts['clipping']}"
