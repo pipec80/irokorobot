@@ -575,6 +575,51 @@ async def test_transcribe_stream_omits_frame_part_by_default(
     assert b'name="frame"' not in seen_content[0]
 
 
+# --- Plan 0067: the additive `short_reply` form field --------------------
+
+
+@pytest.mark.unit
+async def test_transcribe_stream_sends_short_reply_field_when_true(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A reply turn marks the request with the form field short_reply=true."""
+    seen_content: list[bytes] = []
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        seen_content.append(request.content)
+        return httpx.Response(200, text=_done_line() + "\n")
+
+    _patch_transport(monkeypatch, _handler)
+
+    async for _event in server_client.transcribe_stream(b"wav", short_reply=True):
+        pass
+
+    assert b'name="short_reply"' in seen_content[0]
+    assert b"\r\n\r\ntrue\r\n" in seen_content[0]
+    assert b'name="audio"' in seen_content[0]
+
+
+@pytest.mark.unit
+async def test_transcribe_stream_omits_short_reply_field_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without the flag the request is byte-for-byte what it was before this plan."""
+    seen_content: list[bytes] = []
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        seen_content.append(request.content)
+        return httpx.Response(200, text=_done_line() + "\n")
+
+    _patch_transport(monkeypatch, _handler)
+
+    async for _event in server_client.transcribe_stream(b"wav"):
+        pass
+    async for _event in server_client.transcribe_stream(b"wav", short_reply=False):
+        pass
+
+    assert all(b"short_reply" not in content for content in seen_content)
+
+
 @pytest.mark.unit
 async def test_transcribe_never_logs_frame_bytes(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture

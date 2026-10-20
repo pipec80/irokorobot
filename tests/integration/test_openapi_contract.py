@@ -40,3 +40,21 @@ def test_transcribe_stream_200_is_documented_as_ndjson() -> None:
     assert "application/json" not in content
     # The documented body references the streaming event line shapes.
     assert "schema" in content["application/x-ndjson"]
+
+
+@pytest.mark.api
+def test_transcribe_stream_documents_the_optional_short_reply_field() -> None:
+    """Plan 0067: an additive, optional request field; the classic route does not take it."""
+    schemas = app.openapi()["components"]["schemas"]
+    stream_ref = app.openapi()["paths"]["/transcribe/stream"]["post"]["requestBody"]
+    stream_body = schemas[
+        stream_ref["content"]["multipart/form-data"]["schema"]["$ref"].split("/")[-1]
+    ]
+    classic_ref = app.openapi()["paths"]["/transcribe"]["post"]["requestBody"]
+    classic_body = schemas[
+        classic_ref["content"]["multipart/form-data"]["schema"]["$ref"].split("/")[-1]
+    ]
+
+    assert "short_reply" in stream_body["properties"]
+    assert "short_reply" not in stream_body.get("required", [])
+    assert "short_reply" not in classic_body["properties"]

@@ -147,9 +147,13 @@ async def test_thinking_stream_sets_request_start_before_first_event(
     """THINKING must timestamp the request before consuming the first event."""
 
     async def _fake_transcribe_stream(
-        _audio: bytes, *, identity_token: str | None = None, frame: bytes | None = None
+        _audio: bytes,
+        *,
+        identity_token: str | None = None,
+        frame: bytes | None = None,
+        short_reply: bool = False,
     ) -> AsyncIterator[StreamEvent]:
-        del identity_token, frame
+        del identity_token, frame, short_reply
         yield TextHeardEvent(value="hola")
 
     monkeypatch.setattr(app_streaming, "transcribe_stream", _fake_transcribe_stream)
@@ -167,9 +171,13 @@ async def test_thinking_stream_server_error_goes_to_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def _broken_transcribe_stream(
-        _audio: bytes, *, identity_token: str | None = None, frame: bytes | None = None
+        _audio: bytes,
+        *,
+        identity_token: str | None = None,
+        frame: bytes | None = None,
+        short_reply: bool = False,
     ) -> AsyncIterator[StreamEvent]:
-        del identity_token, frame
+        del identity_token, frame, short_reply
         raise ServerError("down")
         yield  # pragma: no cover - unreachable, keeps this an async generator
 
@@ -187,11 +195,16 @@ async def test_thinking_stream_passes_the_held_identity_token(
     seen: dict[str, object] = {}
 
     async def _fake_transcribe_stream(
-        audio: bytes, *, identity_token: str | None = None, frame: bytes | None = None
+        audio: bytes,
+        *,
+        identity_token: str | None = None,
+        frame: bytes | None = None,
+        short_reply: bool = False,
     ) -> AsyncIterator[StreamEvent]:
         seen["audio"] = audio
         seen["identity_token"] = identity_token
         seen["frame"] = frame
+        seen["short_reply"] = short_reply
         yield TextHeardEvent(value="hola")
 
     monkeypatch.setattr(app_streaming, "transcribe_stream", _fake_transcribe_stream)
@@ -201,6 +214,7 @@ async def test_thinking_stream_passes_the_held_identity_token(
 
     assert state is RobotState.SPEAKING
     assert seen["identity_token"] == "opaque-token"  # noqa: S105 — fixture value
+    assert seen["short_reply"] is False
 
 
 @pytest.mark.unit
@@ -263,9 +277,13 @@ async def test_thinking_stream_face_auth_disabled_never_captures_frame(
     seen: dict[str, object] = {}
 
     async def _fake_transcribe_stream(
-        _audio: bytes, *, identity_token: str | None = None, frame: bytes | None = None
+        _audio: bytes,
+        *,
+        identity_token: str | None = None,
+        frame: bytes | None = None,
+        short_reply: bool = False,
     ) -> AsyncIterator[StreamEvent]:
-        del identity_token
+        del identity_token, short_reply
         seen["frame"] = frame
         yield TextHeardEvent(value="hola")
 
@@ -290,9 +308,13 @@ async def test_thinking_stream_face_auth_enabled_captures_and_forwards_frame(
     seen: dict[str, object] = {}
 
     async def _fake_transcribe_stream(
-        _audio: bytes, *, identity_token: str | None = None, frame: bytes | None = None
+        _audio: bytes,
+        *,
+        identity_token: str | None = None,
+        frame: bytes | None = None,
+        short_reply: bool = False,
     ) -> AsyncIterator[StreamEvent]:
-        del identity_token
+        del identity_token, short_reply
         seen["frame"] = frame
         yield TextHeardEvent(value="hola")
 
@@ -318,9 +340,13 @@ async def test_thinking_stream_face_auth_camera_error_degrades_to_no_frame(
     seen: dict[str, object] = {}
 
     async def _fake_transcribe_stream(
-        _audio: bytes, *, identity_token: str | None = None, frame: bytes | None = None
+        _audio: bytes,
+        *,
+        identity_token: str | None = None,
+        frame: bytes | None = None,
+        short_reply: bool = False,
     ) -> AsyncIterator[StreamEvent]:
-        del identity_token
+        del identity_token, short_reply
         seen["frame"] = frame
         yield TextHeardEvent(value="hola")
 
@@ -405,9 +431,13 @@ async def test_thinking_stream_never_logs_frame_bytes(
     monkeypatch.setattr(app_streaming, "capture_frame", MagicMock(return_value=frame_marker))
 
     async def _fake_transcribe_stream(
-        _audio: bytes, *, identity_token: str | None = None, frame: bytes | None = None
+        _audio: bytes,
+        *,
+        identity_token: str | None = None,
+        frame: bytes | None = None,
+        short_reply: bool = False,
     ) -> AsyncIterator[StreamEvent]:
-        del identity_token, frame
+        del identity_token, frame, short_reply
         yield TextHeardEvent(value="hola")
 
     monkeypatch.setattr(app_streaming, "transcribe_stream", _fake_transcribe_stream)
@@ -418,3 +448,79 @@ async def test_thinking_stream_never_logs_frame_bytes(
 
     joined = "\n".join(record.getMessage() for record in caplog.records)
     assert "fake-jpeg-marker" not in joined
+
+
+# --- Plan 0067: one-shot reply listening mode ---------------------------
+
+
+def _done_expecting_reply() -> DoneEvent:
+    return DoneEvent(stt_ms=1, llm_ms=1, tts_ms=1, total_ms=3, expects_short_reply=True)
+
+
+@pytest.mark.unit
+async def test_speaking_stream_arms_reply_mode_when_done_expects_a_reply(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A drained `done` carrying the hint arms exactly the next listening."""
+    monkeypatch.setattr(audio_playback, "play_wav", AsyncMock())
+    ctx = LoopContext()
+    ctx.stream_events = _events(EmotionEvent("joy"), _audio_event("Hola."), _done_expecting_reply())
+
+    state = await app_streaming.on_speaking_stream(ctx)
+
+    assert state is RobotState.IDLE
+    assert ctx.short_reply_next is True
+
+
+@pytest.mark.unit
+async def test_speaking_stream_does_not_arm_reply_mode_without_the_hint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(audio_playback, "play_wav", AsyncMock())
+    ctx = LoopContext()
+    ctx.stream_events = _events(EmotionEvent("joy"), _audio_event("Hola."), _DONE)
+
+    await app_streaming.on_speaking_stream(ctx)
+
+    assert ctx.short_reply_next is False
+
+
+@pytest.mark.unit
+async def test_speaking_stream_does_not_arm_reply_mode_when_eof_before_done(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only a validated, drained `done` arms the hint."""
+    monkeypatch.setattr(audio_playback, "play_wav", AsyncMock())
+    ctx = LoopContext()
+    ctx.stream_events = _events(EmotionEvent("joy"), _audio_event("Hola."))
+
+    state = await app_streaming.on_speaking_stream(ctx)
+
+    assert state is RobotState.ERROR
+    assert ctx.short_reply_next is False
+
+
+@pytest.mark.unit
+async def test_thinking_stream_passes_short_reply_for_the_reply_turn_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """THINKING sends short_reply=True for the reply turn and False for the next one."""
+    seen: list[bool] = []
+
+    async def _fake_transcribe_stream(
+        _audio: bytes,
+        *,
+        identity_token: str | None = None,
+        frame: bytes | None = None,
+        short_reply: bool = False,
+    ) -> AsyncIterator[StreamEvent]:
+        del identity_token, frame
+        seen.append(short_reply)
+        yield TextHeardEvent(value="hola")
+
+    monkeypatch.setattr(app_streaming, "transcribe_stream", _fake_transcribe_stream)
+
+    await app_streaming.on_thinking_stream(LoopContext(audio=b"x", short_reply=True))
+    await app_streaming.on_thinking_stream(LoopContext(audio=b"x", short_reply=False))
+
+    assert seen == [True, False]

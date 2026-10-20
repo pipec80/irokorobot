@@ -44,6 +44,10 @@ class DoneEvent:
     # grant. Additive — an older server's payload lacks the key and this
     # defaults to False (see parse_stream_event below).
     authentication_consumed: bool = False
+    # Plan 0067: the turn ended with a spoken question the robot should listen
+    # to once, with a short reply in mind. Additive — an older server's payload
+    # lacks the key and this defaults to False.
+    expects_short_reply: bool = False
 
 
 @dataclass(frozen=True)
@@ -95,6 +99,7 @@ def parse_stream_event(data: dict[str, Any]) -> StreamEvent:  # Any: raw NDJSON,
                 tts_ms=data["tts_ms"],
                 total_ms=data["total_ms"],
                 authentication_consumed=bool(data.get("authentication_consumed", False)),
+                expects_short_reply=bool(data.get("expects_short_reply", False)),
             )
         case "error":
             return ErrorEvent(

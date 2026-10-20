@@ -713,6 +713,75 @@ async def _offer(person: int, proposal: ProposedCandidate) -> int:
     return stored.candidate_id
 
 
+async def _force_offer(person: int, proposal: ProposedCandidate) -> int:
+    """Store *proposal* and force it to ``offered`` at ``_T0`` with raw SQL; return its id.
+
+    The public API can no longer produce a second open offer for one person (``mark_offered``
+    refuses it), so the tests of the lookup's defence in depth create that state directly: the
+    lookup stays defended against it and these tests keep proving it.
+    """
+    stored = await _insert(person, proposal)
+    assert stored.candidate_id is not None
+    async with db.transaction() as conn:
+        cursor = await conn.execute(
+            "UPDATE memory_candidates SET status = 'offered', offered_at = ?, "
+            "offer_correlation_id = ?, offer_count = offer_count + 1 WHERE id = ?",
+            (iso_utc(_T0), str(uuid4()), stored.candidate_id),
+        )
+        await cursor.close()
+    assert await _status(stored.candidate_id) is CandidateStatus.OFFERED
+    return stored.candidate_id
+
+
+@pytest.mark.usefixtures("store")
+async def test_a_second_offer_while_one_is_open_is_refused_and_changes_nothing() -> None:
+    owner = await _person()
+    await _offer(owner, _proposal("el mate", "mate"))
+    second = await _insert(owner, _proposal("el jazz", "jazz"))
+    assert second.candidate_id is not None
+    inside_window = _T0 + timedelta(seconds=10)
+
+    refused = await candidates.mark_offered(
+        second.candidate_id, owner, correlation_id=uuid4(), now=inside_window
+    )
+
+    assert refused is False
+    candidate = await candidates.get_candidate(second.candidate_id)
+    assert candidate is not None
+    assert candidate.status is CandidateStatus.PROPOSED
+    assert candidate.offer_count == 0
+    assert (candidate.offered_at, candidate.offer_correlation_id) == (None, None)
+    assert candidate.value_text == "el jazz"
+
+
+@pytest.mark.usefixtures("store")
+async def test_a_second_offer_succeeds_once_the_first_one_lapsed() -> None:
+    owner = await _person()
+    await _offer(owner, _proposal("el mate", "mate"))
+    second = await _insert(owner, _proposal("el jazz", "jazz"))
+    assert second.candidate_id is not None
+    after_window = _T0 + timedelta(seconds=settings.memory_candidate_answer_seconds + 1)
+
+    assert await candidates.mark_offered(
+        second.candidate_id, owner, correlation_id=uuid4(), now=after_window
+    )
+
+    assert await _status(second.candidate_id) is CandidateStatus.OFFERED
+
+
+@pytest.mark.usefixtures("store")
+async def test_another_persons_open_offer_does_not_refuse_this_persons_offer() -> None:
+    owner = await _person()
+    visitor = await _person("Canary Visitor")
+    await _offer(visitor, _proposal("el rock", "rock"))
+    mine = await _insert(owner, _proposal("el mate", "mate"))
+    assert mine.candidate_id is not None
+
+    assert await candidates.mark_offered(
+        mine.candidate_id, owner, correlation_id=uuid4(), now=_T0 + timedelta(seconds=10)
+    )
+
+
 @pytest.mark.usefixtures("store")
 async def test_without_a_key_the_one_open_offer_of_the_person_is_found() -> None:
     owner = await _person()
@@ -739,7 +808,7 @@ async def test_without_a_key_no_open_offer_finds_nothing() -> None:
 async def test_without_a_key_two_open_offers_are_ambiguous_and_find_nothing() -> None:
     owner = await _person()
     await _offer(owner, _proposal("el mate", "mate"))
-    await _offer(owner, _proposal("el jazz", "jazz"))
+    await _force_offer(owner, _proposal("el jazz", "jazz"))
     soon = _T0 + timedelta(seconds=10)
 
     assert await candidates.find_offered(owner, None, now=soon) is None

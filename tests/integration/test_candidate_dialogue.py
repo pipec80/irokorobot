@@ -149,6 +149,24 @@ async def _candidate(
     return result.candidate_id
 
 
+async def _force_offered_candidate(person_id: int, value: str, key: str) -> int:
+    """Store a candidate and force it to ``offered`` at ``_NOW`` with raw SQL.
+
+    The public API can no longer produce a second open offer for one person (``mark_offered``
+    refuses it), so the test of the lookup's defence in depth creates that state directly: the
+    lookup stays defended against it and the test keeps proving it.
+    """
+    candidate_id = await _candidate(person_id, value, key)
+    async with db.transaction() as conn:
+        cursor = await conn.execute(
+            "UPDATE memory_candidates SET status = 'offered', offered_at = ?, "
+            "offer_correlation_id = ?, offer_count = offer_count + 1 WHERE id = ?",
+            (candidates.iso_utc(_NOW), str(uuid4()), candidate_id),
+        )
+        await cursor.close()
+    return candidate_id
+
+
 async def _status(candidate_id: int) -> CandidateStatus:
     stored = await candidates.get_candidate(candidate_id)
     assert stored is not None
@@ -418,6 +436,20 @@ async def test_an_offer_already_made_elsewhere_is_neither_audited_nor_spoken(own
     audit.assert_not_awaited()
 
 
+async def test_a_second_candidate_is_neither_audited_nor_spoken_while_one_offer_is_open(
+    owner: int,
+) -> None:
+    """Plan 0067: one open offer per person; the second waits, unaudited and unspoken."""
+    first = await _candidate(owner, offered=True)
+    second = await _candidate(owner, "la pizza", "pizza")
+    audit = AsyncMock()
+
+    assert await commit_offer(_pending(second, owner), now=_NOW, audit=audit) is None
+    audit.assert_not_awaited()
+    assert await _status(first) is CandidateStatus.OFFERED
+    assert await _status(second) is CandidateStatus.PROPOSED
+
+
 async def test_a_voice_verified_for_another_person_is_offered_nothing(owner: int) -> None:
     visitor = await upsert_entity(name="Canary Visitor", type="person")
     await _candidate(owner)
@@ -627,7 +659,7 @@ async def test_a_verb_alone_with_two_open_offers_falls_through_and_changes_nothi
     owner: int,
 ) -> None:
     first = await _candidate(owner, offered=True)
-    second = await _candidate(owner, "la pizza", "pizza", offered=True)
+    second = await _force_offered_candidate(owner, "la pizza", "pizza")
     audit = AsyncMock()
 
     phrase = await answer_offer(

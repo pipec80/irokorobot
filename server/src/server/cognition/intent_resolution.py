@@ -70,6 +70,12 @@ _NON_WORD_RUN = re.compile(r"[^\w]+", re.UNICODE)
 # also admits what the speech-to-text writes for those verbs (Plan 0064, D-3): the third person
 # («autoriza», «aprueba»), the openers «ya», «dale» and «po», a trailing «po», and a leading
 # «mi»/«mis» before the value.
+#
+# Plan 0067, D-5 (Pipec: «lo más común es "sí acepto", "sí, guárdala"»): «acepto»/«acepta» are
+# long verbs like «autorizo» (also with «guardar», «a guardar», «que guardes»; «no acepto» rejects),
+# «guárdala» is a short verb like «guárdalo», and after a long verb «guárdalo», «guárdala» and «sí»
+# are courtesy words, not a value («sí, autorizo, guárdalo»). A bare «sí» or «guárdala» still
+# resolves nothing.
 
 # Words that may open an answer: a call to the robot, a repeated «sí», «claro», «ya», «po».
 _ANSWER_OPENERS = frozenset({"iroko", "oye", "bueno", "ok", "claro", "si", "ya", "dale", "po"})
@@ -80,51 +86,68 @@ _ANSWER_ACCEPT_PREFIXES = (
     "apruebo que guardes",
     "autoriza que guardes",
     "aprueba que guardes",
+    "acepto que guardes",
+    "acepta que guardes",
     "autorizo a guardar",
     "apruebo a guardar",
     "autoriza a guardar",
     "aprueba a guardar",
+    "acepto a guardar",
+    "acepta a guardar",
     "autorizo guardar",
     "apruebo guardar",
     "autoriza guardar",
     "aprueba guardar",
+    "acepto guardar",
+    "acepta guardar",
     "guardalo",
+    "guardala",
     "guarda",
     "autorizo",
     "apruebo",
     "autoriza",
     "aprueba",
+    "acepto",
+    "acepta",
 )
 _ANSWER_REJECT_PREFIXES = (
     "no autorizo que guardes",
     "no apruebo que guardes",
     "no autoriza que guardes",
     "no aprueba que guardes",
+    "no acepto que guardes",
+    "no acepta que guardes",
     "no autorizo a guardar",
     "no apruebo a guardar",
     "no autoriza a guardar",
     "no aprueba a guardar",
+    "no acepto a guardar",
+    "no acepta a guardar",
     "no autorizo guardar",
     "no apruebo guardar",
     "no autoriza guardar",
     "no aprueba guardar",
+    "no acepto guardar",
+    "no acepta guardar",
     "no lo guardes",
     "no guardes",
     "no autorizo",
     "no apruebo",
     "no autoriza",
     "no aprueba",
+    "no acepto",
+    "no acepta",
     "olvidalo",
     "borralo",
 )
 # Short verbs that ordinary speech also uses («guarda silencio», «olvídalo, no importa», «bórralo
 # todo»): after one of them the value must start with an article, as a spoken taste usually does.
 _ANSWER_SHORT_PREFIXES = frozenset(
-    {"guardalo", "guarda", "no lo guardes", "no guardes", "olvidalo", "borralo"}
+    {"guardalo", "guardala", "guarda", "no lo guardes", "no guardes", "olvidalo", "borralo"}
 )
 # The short verbs that may also stand alone (Plan 0066, D-2 and D-3): the accepting ones only
 # after a leading «sí», the rejecting ones always because they carry their own «no».
-_ANSWER_SHORT_ALONE_AFTER_YES = frozenset({"guardalo", "guarda"})
+_ANSWER_SHORT_ALONE_AFTER_YES = frozenset({"guardalo", "guardala", "guarda"})
 _ANSWER_SHORT_ALONE = frozenset({"no lo guardes", "no guardes"})
 # The folded «sí» among the openers: it marks the intent of a short accepting verb.
 _ANSWER_YES = "si"
@@ -134,6 +157,15 @@ _ANSWER_YES = "si"
 _ANSWER_ARTICLES = frozenset({"el", "la", "los", "las", "un", "una", "unos", "unas", "lo"})
 # Courtesy words a speaker adds after the value; they are not part of it.
 _ANSWER_TRAILERS = ("por favor", "gracias", "porfa", "po")
+# Emphatic words a speaker adds after a LONG verb («autorizo, guárdalo», «autorizo, sí»; Plan 0067,
+# D-5). They are dropped from the end of the value only for a long verb: after a short one
+# «guarda, sí» stays refused, because there the word would be taken as the value.
+_ANSWER_LONG_VERB_TRAILERS = frozenset(
+    {"guardalo", "guardala", "si", "claro", "autorizo", "autoriza", "apruebo", "aprueba"}
+    | {"acepto", "acepta"}
+)
+# The same emphasis may also open the value («autorizo, sí, el mate»).
+_ANSWER_LONG_VERB_LEADERS = frozenset({"si", "claro"})
 # «mi café»: the possessive is dropped from the value and counts as the article of a short verb.
 _ANSWER_POSSESSIVES = frozenset({"mi", "mis"})
 # The value is a short noun phrase: at most six words, its article included when it has one.
@@ -432,8 +464,10 @@ def parse_memory_answer(message: str) -> MemoryAnswer | None:
     with an accepting verb, so the two sets never compete; a repeated «no, no» is one «no».
 
     A verb alone answers the one open offer and returns an empty phrase: a long verb («autorizo»,
-    «apruebo», alone or with «guardar»/«a guardar»/«que guardes»), «guarda»/«guárdalo» after a
-    leading «sí», and «no lo guardes»/«no guardes». «Olvídalo» and «bórralo» always need a value.
+    «apruebo», «acepto», alone or with «guardar»/«a guardar»/«que guardes»), «guarda»/«guárdalo»/
+    «guárdala» after a leading «sí», and «no lo guardes»/«no guardes». «Olvídalo» and «bórralo»
+    always need a value. After a long verb, «guárdalo», «guárdala» and «sí» at the end are
+    courtesy words, not a value («sí, autorizo, guárdalo»); after a short verb they are refused.
 
     Args:
         message: Raw transcript or chat text in Spanish.
@@ -482,6 +516,15 @@ def _answer(prefix: str, phrase: list[str], *, accept: bool, affirmed: bool) -> 
         accept: Whether the verb accepts the offer.
         affirmed: Whether a leading «sí» was among the openers.
     """
+    if prefix not in _ANSWER_SHORT_PREFIXES:
+        # A repeated or second closed verb («acepto, acepto», «acepto, autorizo») is emphasis
+        # too, never a value; so is the «no» of a repeated rejection («no acepto, no acepto»).
+        while phrase and (
+            phrase[-1] in _ANSWER_LONG_VERB_TRAILERS or (not accept and phrase[-1] == "no")
+        ):
+            phrase = phrase[:-1]
+        while phrase and phrase[0] in _ANSWER_LONG_VERB_LEADERS:
+            phrase = phrase[1:]
     # «a guardar» continues the verb («guarda a guardar …» is not a value): drop it, then one
     # possessive, as before. «autorizo a guardar» alone matches its own long prefix instead.
     if phrase[:2] == ["a", "guardar"]:

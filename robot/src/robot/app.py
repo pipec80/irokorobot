@@ -61,17 +61,37 @@ async def _on_idle(ctx: LoopContext) -> RobotState:
     ctx.result = None
     ctx.stream_events = None
     ctx.stream_request_start = None
+    # short_reply_next is deliberately kept: it is armed by the turn that just
+    # finished and consumed by the LISTENING that follows (Plan 0067).
+    ctx.short_reply = False
     return RobotState.LISTENING
 
 
 async def _on_listening(ctx: LoopContext) -> RobotState:
-    """Capture one utterance; empty capture (onset timeout) cycles to IDLE."""
+    """Capture one utterance; empty capture (onset timeout) cycles to IDLE.
+
+    Reply mode (Plan 0067) applies to this single capture when the previous
+    turn armed ``ctx.short_reply_next``: a longer end-of-speech silence and a
+    shorter wait for speech to start. The hint is moved into ``ctx.short_reply``
+    (sent to the server by THINKING) and never survives this capture.
+    """
+    ctx.short_reply, ctx.short_reply_next = ctx.short_reply_next, False
     try:
-        ctx.audio = await capture_utterance()
+        if ctx.short_reply:
+            ctx.audio = await capture_utterance(
+                max_wait_s=settings.reply_wait_s,
+                close_silence_ms=settings.vad_reply_silence_ms,
+            )
+        else:
+            ctx.audio = await capture_utterance()
     except AudioCaptureError as exc:
         logger.error("Microphone capture failed: %s", exc)
+        ctx.short_reply = False
         return RobotState.ERROR
-    return RobotState.THINKING if ctx.audio else RobotState.IDLE
+    if not ctx.audio:
+        ctx.short_reply = False
+        return RobotState.IDLE
+    return RobotState.THINKING
 
 
 async def _on_thinking(ctx: LoopContext) -> RobotState:
@@ -143,8 +163,13 @@ async def _on_looking(ctx: LoopContext) -> RobotState:
     return RobotState.SPEAKING
 
 
-async def _on_error(_ctx: LoopContext) -> RobotState:
-    """Wait a beat and recover — the robot never stays down."""
+async def _on_error(ctx: LoopContext) -> RobotState:
+    """Wait a beat and recover — the robot never stays down.
+
+    Reply mode never outlives a failed turn (Plan 0067): both flags are cleared.
+    """
+    ctx.short_reply = False
+    ctx.short_reply_next = False
     await asyncio.sleep(_ERROR_RECOVERY_S)
     logger.info("Recovered from error — listening again")
     return RobotState.IDLE

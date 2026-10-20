@@ -82,7 +82,12 @@ async def on_thinking_stream(ctx: LoopContext) -> RobotState:
     of the stream is handed to SPEAKING via ``ctx.stream_events``.
     """
     frame = await capture_face_frame_if_enabled()
-    events = transcribe_stream(ctx.audio, identity_token=ctx.identity_token, frame=frame)
+    events = transcribe_stream(
+        ctx.audio,
+        identity_token=ctx.identity_token,
+        frame=frame,
+        short_reply=ctx.short_reply,
+    )
     ctx.stream_request_start = time.perf_counter()
     try:
         first = await anext(events)
@@ -124,7 +129,9 @@ async def _audio_chunks(
             token — cleared here only when the terminal DoneEvent reports
             ``authentication_consumed=True`` (Plan 0027). An EOF without
             ``done`` leaves the token untouched; a replay is safely denied
-            server-side.
+            server-side. It also receives ``short_reply_next`` from the
+            terminal DoneEvent's ``expects_short_reply`` (Plan 0067); an EOF
+            without ``done`` never arms reply mode.
 
     Yields:
         Decoded WAV bytes, one per audio event (i.e. one per sentence).
@@ -165,6 +172,8 @@ async def _audio_chunks(
     if done is not None:
         if done.authentication_consumed:
             ctx.identity_token = None
+        # Plan 0067: arm (or disarm) reply mode for the very next listening.
+        ctx.short_reply_next = done.expects_short_reply
         logger.info(
             "Pipeline (stream): stt=%dms llm=%dms tts=%dms total=%dms chunks=%d",
             done.stt_ms,

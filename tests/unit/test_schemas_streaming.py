@@ -27,6 +27,29 @@ def test_explicit_true_round_trips() -> None:
     assert '"authentication_consumed":true' in event.model_dump_json()
 
 
+# --- Plan 0067: the reply hint on `done` --------------------------------
+
+
+@pytest.mark.unit
+def test_done_event_defaults_to_no_short_reply_expected() -> None:
+    """Omitting the field (every existing call site) must say no reply is expected."""
+    event = StreamDoneEvent(stt_ms=1, llm_ms=2, tts_ms=3, total_ms=6)
+
+    assert event.expects_short_reply is False
+    assert '"expects_short_reply":false' in event.model_dump_json()
+
+
+@pytest.mark.unit
+def test_done_event_short_reply_round_trips() -> None:
+    """A spoken offer must serialize the hint as true and parse back as true."""
+    event = StreamDoneEvent(stt_ms=1, llm_ms=2, tts_ms=3, total_ms=6, expects_short_reply=True)
+
+    wire = event.model_dump_json()
+
+    assert '"expects_short_reply":true' in wire
+    assert StreamDoneEvent.model_validate_json(wire).expects_short_reply is True
+
+
 # --- Plan 0041: the terminal `error` event -----------------------------
 
 

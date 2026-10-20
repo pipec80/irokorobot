@@ -108,6 +108,8 @@ def test_robot_settings_defaults() -> None:
     assert settings.vad_silence_threshold_rms == 100
     assert settings.vad_preroll_ms == 400
     assert settings.vad_silence_ms == 800
+    assert settings.vad_reply_silence_ms == 1600
+    assert settings.reply_wait_s == 15.0
     assert settings.vad_model_path == Path("models/silero_vad.onnx")
 
 

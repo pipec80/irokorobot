@@ -472,9 +472,13 @@ speaks, in this order:
    (a different or garbled value promotes nothing). The answer also survives how Whisper writes
    it (Plan 0064): the third person, a leading «ya», «dale» or «po», a trailing «po» and
    «mi»/«mis» before the value («sí po, autoriza a guardar mi café»). Iroko says «Listo, lo
-   guardé.» and the taste becomes a confirmed fact.
-3. To decline: `no autorizo`, `no apruebo` (also `no autoriza`, `no aprueba`), `no lo guardes` and
-   `no guardes` work alone. `olvídalo` and `bórralo` still need the value («olvídalo el mate»):
+   guardé.» and the taste becomes a confirmed fact. Since Plan 0067 the words people actually say
+   also work: `acepto` and `acepta` are long verbs like `autorizo` («acepto», «sí, acepto»,
+   «acepto guardar»), `guárdala` is a short verb like `guárdalo` (only after a leading «sí»:
+   «sí, guárdala»), and after a long verb the courtesy words `guárdalo`, `guárdala` and `sí` are
+   accepted («sí, autorizo, guárdalo»).
+3. To decline: `no autorizo`, `no apruebo` (also `no autoriza`, `no aprueba`), `no acepto` and
+   `no acepta` (Plan 0067), `no lo guardes` and `no guardes` work alone. `olvídalo` and `bórralo` still need the value («olvídalo el mate»):
    alone they are ordinary speech. Iroko says «Está bien, no lo guardo.» and the candidate's value
    is erased.
 4. If the owner already has a different confirmed taste for the same thing, Iroko says «No lo
@@ -483,7 +487,7 @@ speaks, in this order:
    failure), Iroko says «No pude guardarlo ahora. Dímelo de nuevo en un rato.» Nothing was
    written; answer again later.
 
-A bare «sí» (also «ya», «dale» or «po» alone), «guarda» or «guárdalo» without a leading «sí», and
+A bare «sí» (also «ya», «dale» or «po» alone), «guarda», «guárdalo» or «guárdala» without a leading «sí», and
 a verb with a **different** value promote nothing: the message is ordinary conversation. A valueless
 answer resolves the offer only when **exactly one** offer of yours is open inside the 60 s window
 (zero or more than one: ordinary conversation). The short verbs (`guarda`, `guárdalo`, `olvídalo`,
@@ -510,7 +514,30 @@ or «olvídalo, no importa» never count.
   Plan 0066 a recording of you saying «autorizo», played with your face in front of the robot
   inside the 60 s window of an open offer, would promote that offer without knowing its value
   ([ADR 0021](../adr/0021-memory-candidates-and-the-canonical-writer.md) decision 9).
-- **The robot software is unchanged**; there is no new setting and no wire change.
+- **The robot listens to the reply in its own mode** (Plan 0067, robot streaming mode only; see
+  *Listening for the reply* below). The classic route and the robot's classic path are unchanged.
+
+**Listening for the reply (Plan 0067, robot streaming mode).** When the offer was actually
+spoken, the stream's `done` event says so (`expects_short_reply: true`) and the robot listens
+**once** in a reply mode: it waits longer for the end of your speech, so a pause inside
+«sí… acepto» stays one clip, and it gives up sooner if you say nothing. Then it goes back to
+normal listening. Two robot settings (in the robot's `.env`, read at start-up; defaults in
+`.env.example`), first values to be tuned on hardware, not measured ones:
+
+| Variable | Default | Effect |
+|---|---|---|
+| `VAD_REPLY_SILENCE_MS` | `1600` | Silence that ends the reply (normal listening: `VAD_SILENCE_MS`, 800). Raise it if a pause inside the answer still cuts it in two; lower it if the robot waits too long after you finish. The clip that is uploaded is trimmed back to the normal tail, so a longer value does not make the voice check worse |
+| `REPLY_WAIT_S` | `15` | Seconds to wait for you to start the reply (normal listening: 30). If nothing is heard the robot returns to normal listening by itself and the offer stays open until its 60 s window ends |
+
+The reply is an ordinary request with one extra form field, `short_reply=true`, whose only effect
+is a fixed list of hotwords for the speech-to-text (`sí`, `no`, `acepto`, `autorizo`, `apruebo`,
+`guárdalo`, `guárdala`; `SHORT_REPLY_HOTWORDS` in `server/src/server/stt.py`). It changes nothing
+about who may answer, the open-offer lookup or the words accepted: a reply that is not an answer
+(«¿qué hora es?») gets the ordinary reply. An older robot ignores the hint and an older server
+never sends it; both keep working. In the log a reply turn looks like any other turn: the same
+`Speaker verdict`, `Identity fusion` and `Candidate answer` lines, and `Speaker verdict` is
+unchanged (a `unknown` on a short clip is still the voice check, measured by Plan 0068, not a
+listening problem). The log has no line for reply mode itself.
 
 **Known limits, measured on hardware** (outcomes in
 [`0063-memory-dialogue-acceptance.md`](../evals/0063-memory-dialogue-acceptance.md), one owner,
@@ -520,8 +547,10 @@ the shared laptop, no homelab):
   writes «autoriza a guardar …», «sí po, …» or «mi» before the value. Plan 0064 widened the
   grammar for exactly those writings, and Plan 0066 made the value optional because a word
   inserted inside it was what failed (the answer that repeated the value was understood 1 of 2
-  times in the Plan 0064 session). The short answer is **not yet measured on hardware**: its
-  acceptance counts are pending until Pipec runs Task 6 of Plan 0066. When an answer is still
+  times in the Plan 0064 session; the first Plan 0066 session promoted 1 of 2; the other fell to
+  ordinary conversation). The short answer and the reply mode are **not yet measured on
+  hardware**: their acceptance counts are pending until Pipec runs Task 6 of Plan 0066 and Task 8
+  of [Plan 0067](../plans/open/0067-reply-listening-mode.md). When an answer is still
   not understood, it falls through to ordinary conversation and nothing is written (the safe
   direction); say it again, slowly, or wait for the second offer.
 - On a message that only has the *shape* of an answer (another voice, or no open offer), the
@@ -636,6 +665,7 @@ hourly; a start-up always truncates the log.
 | `MEMORY_CANDIDATE_MAX_OFFERS` | `2` | Times a candidate may be offered before it lapses (Plan 0063) |
 | `MEMORY_CANDIDATE_ANSWER_SECONDS` | `60` | Seconds an offered candidate waits for an answer before it returns to `proposed` and can be offered again (Plan 0063) |
 | `MEMORY_CANDIDATE_EXTRACTIONS_PER_HOUR` | `12` | Extraction model calls that may start in any rolling hour; beyond it a turn is dropped as `budget` (one at a time besides: `busy`) |
+| `VAD_REPLY_SILENCE_MS` / `REPLY_WAIT_S` | `1600` / `15` | Robot, streaming mode: end-of-speech silence and wait for speech when the robot listens once to the reply to a spoken memory offer (Plan 0067); first values to tune, see the memory dialogue above |
 | `UVICORN_WORKERS` | `1` | Must stay `1` — owner/face grants are process-local; the server refuses to start otherwise |
 
 **The one real startup guard:** `ROBOT_STREAMING=true` on the robot plus

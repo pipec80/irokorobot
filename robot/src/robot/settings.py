@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     vad_silence_threshold_rms: int = 100
     vad_preroll_ms: int = 400
     vad_silence_ms: int = 800
+    # Plan 0067: reply mode (the one capture after a turn whose done event says
+    # a short reply is expected). A longer end-of-speech silence keeps a pause
+    # inside the reply in one clip; the clip is still trimmed to the normal
+    # vad_silence_ms tail on upload.
+    vad_reply_silence_ms: int = 1600
+    # Plan 0067: seconds to wait for a reply to start before listening normally.
+    reply_wait_s: float = 15.0
     # Not vendored in git (see .gitignore *.onnx) — fetch with
     # scripts/fetch_silero_vad_model.py before enabling vad_engine=silero.
     vad_model_path: Path = Path("models/silero_vad.onnx")

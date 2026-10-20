@@ -12,7 +12,7 @@ import time
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 import httpx
 
@@ -69,6 +69,7 @@ from server.schemas import IdentitySource, TranscribeResponse, error_responses
 from server.schemas_streaming import StreamEvent
 from server.settings import settings
 from server.streaming import guarantee_terminal_event, stream_pipeline, stream_response_plan
+from server.stt import SHORT_REPLY_HOTWORDS
 from server.text_turn import (
     ProposalScheduler,
     TextTurnResult,
@@ -108,7 +109,8 @@ _STREAM_200_DESCRIPTION = (
     "(one per synthesized sentence), then exactly one terminal `done` "
     "(per-stage timing) or `error` (stable `code`, fixed client-safe "
     "`detail`, `retryable`). Every started stream ends in exactly one "
-    "terminal event followed by EOF (ADR-0012)."
+    "terminal event followed by EOF (ADR-0012). `done` carries `expects_short_reply`, "
+    "true when the turn ended with a spoken question the client should listen to once."
 )
 
 # `response_class=NDJSONStreamingResponse` also drives the media type of
@@ -584,6 +586,10 @@ async def transcribe_stream(
             description="JPEG/PNG/WebP/GIF/BMP · max 1280x720 · optional owner-authentication frame"
         ),
     ] = None,
+    short_reply: Annotated[
+        bool,
+        Form(description="Optional: the clip is a short reply; biases the speech-to-text only"),
+    ] = False,
 ) -> NDJSONStreamingResponse:
     """Transcribe audio and stream the robot's reply sentence by sentence (R3).
 
@@ -597,6 +603,9 @@ async def transcribe_stream(
             `settings.face_authentication_enabled` is `True` — otherwise
             accepted but completely inert. A malformed or oversized frame
             degrades to no frame instead of failing the turn.
+        short_reply: The client listened for a short reply (Plan 0067). It only adds the
+            fixed `SHORT_REPLY_HOTWORDS` to the speech-to-text; identity, the grammar and
+            everything after the transcript are exactly those of any other turn.
 
     Returns:
         NDJSON events ordered as text, emotion, audio chunks, then timings.
@@ -621,7 +630,9 @@ async def transcribe_stream(
         owner_unlock_service, x_iroko_identity_token, frame_bytes, audio_bytes
     )
 
-    text_heard, stt_ms = await _run_stt(audio_bytes, [])
+    text_heard, stt_ms = await _run_stt(
+        audio_bytes, list(SHORT_REPLY_HOTWORDS) if short_reply else []
+    )
 
     if not text_heard.strip():
         logger.warning("STT returned empty transcript — audio was silence or too short")

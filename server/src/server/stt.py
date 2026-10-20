@@ -26,6 +26,18 @@ logger = logging.getLogger(__name__)
 _MIN_PROMPT_WORDS = 3
 _MIN_ECHO_SHARE = 0.6
 
+#: The words of a short spoken reply («sí», «acepto», «guárdala»…), passed as extra hotwords
+#: only when a request asks for them (Plan 0067 D-4). The speech layer names no memory concept.
+SHORT_REPLY_HOTWORDS: tuple[str, ...] = (
+    "sí",
+    "no",
+    "acepto",
+    "autorizo",
+    "apruebo",
+    "guárdalo",
+    "guárdala",
+)
+
 _executor = ThreadPoolExecutor(max_workers=2)
 _model: WhisperModel | None = None
 

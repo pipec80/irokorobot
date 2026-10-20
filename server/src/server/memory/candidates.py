@@ -549,6 +549,10 @@ async def mark_offered(
     It also receives a candidate that is still ``offered`` but whose answer window has closed:
     housekeeping, run first, returns it to ``proposed``, so the transition then succeeds.
 
+    It repeats the "one open offer per person" rule of ``next_offerable`` inside the
+    compare-and-set: while another ``offered`` row of the same person is inside its answer
+    window and not lapsed, the transition is refused and nothing changes.
+
     Args:
         candidate_id: The candidate.
         subject_person_id: Whose it is; another person's id changes nothing.
@@ -557,23 +561,29 @@ async def mark_offered(
 
     Returns:
         ``True`` when this call made the transition. ``False`` when the candidate is not
-        ``proposed``, lapsed, belongs to someone else, has used every offer, or the
-        kill-switch is off.
+        ``proposed``, lapsed, belongs to someone else, has used every offer, the person already
+        has another open offer, or the kill-switch is off.
     """
     if not settings.memory_candidates_enabled:
         return False
+    stamp = iso_utc(now)
+    waited_since = iso_utc(now - timedelta(seconds=settings.memory_candidate_answer_seconds))
     async with db.transaction() as conn:
         scrubbed = await run_housekeeping(conn, now)
         cursor = await conn.execute(
             "UPDATE memory_candidates SET status = 'offered', offered_at = ?, "
             "offer_correlation_id = ?, offer_count = offer_count + 1 "
-            "WHERE id = ? AND subject_person_id = ? AND status = 'proposed' AND offer_count < ?",
+            "WHERE id = ? AND subject_person_id = ? AND status = 'proposed' AND offer_count < ? "
+            "AND NOT EXISTS (SELECT 1 FROM memory_candidates AS open WHERE "
+            "open.subject_person_id = memory_candidates.subject_person_id "
+            "AND open.status = 'offered' AND open.offered_at > ?)",
             (
-                iso_utc(now),
+                stamp,
                 str(correlation_id),
                 candidate_id,
                 subject_person_id,
                 settings.memory_candidate_max_offers,
+                waited_since,
             ),
         )
         changed = await _rowcount(cursor)

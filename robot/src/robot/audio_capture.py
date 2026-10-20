@@ -54,16 +54,47 @@ def _encode_wav(frames: list[np.ndarray], config: AudioConfig) -> bytes:
     return buf.getvalue()
 
 
-def _compute_chunk_budget(max_wait_s: float) -> tuple[int, int, int]:
+def _ms_to_chunks(duration_ms: int) -> int:
+    """Convert a silence duration in ms into a chunk count (at least one chunk)."""
+    return max(1, round(duration_ms / 1000 / _CHUNK_DURATION_S))
+
+
+def _compute_chunk_budget(
+    max_wait_s: float, close_silence_ms: int | None = None
+) -> tuple[int, int, int]:
     """Convert ms/s settings into chunk counts at the 32 ms chunk cadence.
+
+    Args:
+        max_wait_s: Seconds to wait for speech onset.
+        close_silence_ms: Silence that closes the utterance, replacing
+            ``settings.vad_silence_ms`` when given (reply mode).
 
     Returns:
         (silence_close_chunks, preroll_chunks, max_wait_chunks).
     """
-    silence_close_chunks = max(1, round(settings.vad_silence_ms / 1000 / _CHUNK_DURATION_S))
+    silence_ms = settings.vad_silence_ms if close_silence_ms is None else close_silence_ms
+    silence_close_chunks = _ms_to_chunks(silence_ms)
     preroll_chunks = max(0, round(settings.vad_preroll_ms / 1000 / _CHUNK_DURATION_S))
     max_wait_chunks = max(1, round(max_wait_s / _CHUNK_DURATION_S))
     return silence_close_chunks, preroll_chunks, max_wait_chunks
+
+
+def _trim_trailing_silence(frames: list[np.ndarray], closed_after_chunks: int) -> list[np.ndarray]:
+    """Cut a closed utterance back to the normal ``vad_silence_ms`` silent tail.
+
+    The capture loop ends exactly after ``closed_after_chunks`` trailing silent
+    chunks, so removing the surplus over the normal tail leaves the clip as long
+    as a normal capture would have produced.
+
+    Args:
+        frames: Int16 chunks (16 kHz mono) of a closed utterance.
+        closed_after_chunks: Trailing silent chunks the loop waited for.
+
+    Returns:
+        The frames, same format, with at most the normal silent tail.
+    """
+    surplus = closed_after_chunks - _ms_to_chunks(settings.vad_silence_ms)
+    return frames[:-surplus] if surplus > 0 else frames
 
 
 async def _capture_loop(
@@ -106,7 +137,9 @@ async def _capture_loop(
     return frames
 
 
-async def capture_utterance(max_wait_s: float = 30.0) -> bytes:
+async def capture_utterance(
+    max_wait_s: float = 30.0, *, close_silence_ms: int | None = None
+) -> bytes:
     """Capture a single spoken utterance from the microphone.
 
     Waits for speech onset (VAD engine from ``settings.vad_engine``), prepends
@@ -117,6 +150,11 @@ async def capture_utterance(max_wait_s: float = 30.0) -> bytes:
         max_wait_s: Maximum seconds to wait for speech onset. If nobody
             speaks within this window, returns empty bytes so the caller's
             loop can cycle instead of blocking forever.
+        close_silence_ms: Reply mode. When given, the utterance closes after
+            this much silence instead of ``settings.vad_silence_ms``, so a pause
+            inside the speech stays one clip. The returned clip is then cut back
+            to the normal ``settings.vad_silence_ms`` silent tail, so it is never
+            longer than a normal capture. ``None`` keeps the normal behavior.
 
     Returns:
         WAV bytes at 16kHz mono int16, or ``b""`` if no speech started
@@ -127,7 +165,9 @@ async def capture_utterance(max_wait_s: float = 30.0) -> bytes:
     """
     config = AudioConfig()
     vad = create_vad(settings.vad_engine)
-    silence_close_chunks, preroll_chunks, max_wait_chunks = _compute_chunk_budget(max_wait_s)
+    silence_close_chunks, preroll_chunks, max_wait_chunks = _compute_chunk_budget(
+        max_wait_s, close_silence_ms
+    )
 
     logger.info("Waiting for speech...")
     try:
@@ -145,4 +185,6 @@ async def capture_utterance(max_wait_s: float = 30.0) -> bytes:
 
     if not frames:
         return b""
+    if close_silence_ms is not None:
+        frames = _trim_trailing_silence(frames, silence_close_chunks)
     return _encode_wav(frames, config)

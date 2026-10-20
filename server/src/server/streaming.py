@@ -282,6 +282,7 @@ async def stream_pipeline(
         offer = await finish_offer(offer_task, reply_failed=not _succeeded(state))
         offer_line = await _offer_event(offer, state) if offer is not None else None
         if offer_line is not None:
+            state.offer_spoken = True
             yield offer_line
     finally:
         # A client that hangs up mid-stream must not leave the preparation running.
