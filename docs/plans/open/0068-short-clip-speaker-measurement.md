@@ -261,4 +261,27 @@ With `MEMORY_CANDIDATES_ENABLED=true`, counts only:
 
 ## Execution record
 
-*(Filled in when the plan is executed.)*
+Executed 2026-10-19 on `feat/0068-retry-and-speaker-study` (base `983d46f`), tasks 0 to 5, in the
+same session that closed Plans 0066 and 0067 (Pipec's choice). **Tasks 6 to 8 are Pipec's**: the
+hardware counts, the capture sessions (with at least three consenting adults) and the report; the
+plan stays `NOW` until they are recorded here.
+
+- **Baseline:** not re-run locally; `main` was Plan 0067's gate (3490 passed) plus documentation
+  (PR #200, CI green).
+- **Gate:** `just gate` green, 3654 passed after the review fixes.
+- **Rulings.** (1) The retry also requires active voice consent: without it the voice can never
+  verify, so asking again would only loop; the answer falls through as before (test-first). (2) An
+  undecodable clip logs `clip_s=0.0`. (3) Tasks 3 and 4 are one commit: both changed the same four
+  calibration modules. (4) The short study has its own phrases (`short-01` «Sí», `short-02` «Acepto»,
+  `short-03` «Sí, autorizo») and, when a corpus holds any short sample, writes the short report
+  instead of the long aggregate (that corpus has no long impostor or replay classes to score).
+  (5) Finding while writing the plan: «sí, autorizo que lo guardes», suggested to Pipec as a longer
+  answer, did not parse; Task 2 added «que lo/la guardes» after every long verb.
+- **Review** (independent, read-only, code and tooling): no Critical and no Important finding. Fixed,
+  test-first: a refusal is asked again as a refusal (`ANSWER_RETRY_REJECT_PHRASE` dictates «no
+  autorizo que lo guardes»), never as an acceptance; no retry with the speaker check switched off or
+  when the consent lookup fails; the `done` field comment names the retry; the study report states
+  the rule-of-three bound only for a variant with no accepts, warns that a click or steady noise
+  defeats the trim and that production refuses clips under 1.5 s; one speech floor shared by the
+  trim and the capture guard, and a drift guard on the threshold. Written into the ADR: the same
+  person can confirm a guessed value through the retry, a value already spoken aloud in the offer.

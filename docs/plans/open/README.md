@@ -33,10 +33,9 @@ to see the code, tests, verified gaps, and future delivery sequence.
 
 ## Plan en curso (`NOW`)
 
-`NOW` es el [Plan 0068 — respuestas cortas y la verificación de voz: un reintento cuando solo falló la voz, y una medición](0068-short-clip-speaker-measurement.md), promovido a `Ready` y `NOW` por Pipec el 2026-10-19 y ejecutado en la misma sesión. Antes lo ocupaba el [Plan 0067 — la respuesta a la oferta: un modo de escucha dedicado y mejores palabras](../completed/0067-reply-listening-mode.md), que **cerró el 2026-10-19** (PR #199); sus conteos de hardware (tarea 8) y los del 0066 los registra la tarea 6 del 0068.
+`NOW` es el [Plan 0068 — respuestas cortas y la verificación de voz: un reintento cuando solo falló la voz, y una medición](0068-short-clip-speaker-measurement.md), promovido a `Ready` y `NOW` por Pipec el 2026-10-19 y ejecutado en la misma sesión; las tareas 0 a 5 están hechas y **las tareas 6 a 8 (conteos de hardware, grabaciones e informe) quedan pendientes hasta que Pipec las corra**. Antes lo ocupaba el [Plan 0067 — la respuesta a la oferta: un modo de escucha dedicado y mejores palabras](../completed/0067-reply-listening-mode.md), que **cerró el 2026-10-19** (PR #199); sus conteos de hardware (tarea 8) y los del 0066 los registra la tarea 6 del 0068.
 
 Borrador, **no ejecutable todavía**: [0065 — CM-3b, tramo A: el núcleo escritor neutral al canal](0065-cm3b-a-channel-neutral-writer-core.md), que espera la promoción de Pipec (el 0064 ya cerró); el [ADR 0022](../../adr/0022-household-rules-and-third-party-memory.md) (`Proposed`) tiene confirmadas todas sus decisiones. Orden antes del Paso 0: 0065 (el 0064 ya cerró).
-
 
 El `NOW` anterior a ese fue [0062 — candidatos de memoria y escritor canónico, primer corte (CM-3a)](../completed/0062-cm3a-memory-candidates-and-writer.md), que **cerró el 2026-10-15** (PR #183) y vive en `completed/`: la tabla de candidatos (migración 009), el escritor canónico `promote`, la puerta de preferencias, el extractor que solo ve las palabras del usuario, el clasificador, la política auditada antes del efecto y la propuesta en segundo plano que exige la cara **y** la voz de la misma persona en el propio clip, detrás de `MEMORY_CANDIDATES_ENABLED=false`. Retiró `consolidate_turn`, `PROPOSE_MEMORY` y `COMMIT_MEMORY`. `just gate` 2972 tests (filtro de CI 2955; línea base 2597 / 2580).
 
