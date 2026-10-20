@@ -663,7 +663,7 @@ gate's economics.
 - Plan 0066 — a closed verb alone answers the one open offer (written and promoted 2026-10-19; Pipec's
   decision D-1; code and documentation done, hardware acceptance pending until Pipec runs its
   Task 6). The full phrase that repeats the value still works.
-- [Plan 0067](../plans/open/0067-reply-listening-mode.md) — the reply to the offer has its own
+- [Plan 0067](../plans/completed/0067-reply-listening-mode.md) — the reply to the offer has its own
   listening mode, hotwords for the recognizer and the words «acepto» and «guárdala» (2026-10-19;
   code done, hardware acceptance pending until Pipec runs its Task 8). The speaker check on short
   clips is Plan 0068.

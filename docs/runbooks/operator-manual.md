@@ -550,7 +550,7 @@ the shared laptop, no homelab):
   times in the Plan 0064 session; the first Plan 0066 session promoted 1 of 2; the other fell to
   ordinary conversation). The short answer and the reply mode are **not yet measured on
   hardware**: their acceptance counts are pending until Pipec runs Task 6 of Plan 0066 and Task 8
-  of [Plan 0067](../plans/open/0067-reply-listening-mode.md). When an answer is still
+  of [Plan 0067](../plans/completed/0067-reply-listening-mode.md). When an answer is still
   not understood, it falls through to ordinary conversation and nothing is written (the safe
   direction); say it again, slowly, or wait for the second offer.
 - On a message that only has the *shape* of an answer (another voice, or no open offer), the
