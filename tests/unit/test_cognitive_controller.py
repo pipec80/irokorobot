@@ -26,6 +26,7 @@ from server.cognition.models import (
 )
 from server.cognition.response_plan import (
     InformationNeed,
+    MemoryAnswerReply,
     ResponsePlan,
     ResponseSource,
     SceneDescriptionRequest,
@@ -707,12 +708,12 @@ async def test_an_answer_resolves_the_actor_first_and_speaks_the_fixed_result() 
 
     async def answer(
         parsed: MemoryAnswer, who: ActivePersonContext, event: CognitiveEvent[TextTurnPayload]
-    ) -> str | None:
+    ) -> MemoryAnswerReply | None:
         order.append("answer")
         assert parsed == MemoryAnswer(accept=True, phrase="el mate")
         assert who is actor
         assert event.correlation_id == UUID("22222222-2222-2222-2222-222222222222")
-        return "Listo, lo guardé."
+        return MemoryAnswerReply("Listo, lo guardé.")
 
     legacy_turn = _legacy()
     controller = CognitiveController(
@@ -751,11 +752,11 @@ async def test_a_verb_alone_resolves_the_actor_first_and_reaches_the_answerer(
 
     async def answer(
         parsed: MemoryAnswer, who: ActivePersonContext, _event: CognitiveEvent[TextTurnPayload]
-    ) -> str | None:
+    ) -> MemoryAnswerReply | None:
         order.append("answer")
         assert parsed == expected
         assert who is actor
-        return "Listo, lo guardé."
+        return MemoryAnswerReply("Listo, lo guardé.")
 
     legacy_turn = _legacy()
     controller = CognitiveController(
@@ -822,7 +823,7 @@ async def test_the_answer_branch_never_spends_a_grant() -> None:
         legacy_turn=_legacy(),
         active_person_resolver=spend,
         observed_person_resolver=observe,
-        memory_answerer=AsyncMock(return_value="Está bien, no lo guardo."),
+        memory_answerer=AsyncMock(return_value=MemoryAnswerReply("Está bien, no lo guardo.")),
     )
 
     plan = await controller.decide(_event("No autorizo guardar el mate"))
@@ -867,7 +868,7 @@ def test_an_empty_offer_is_refused_by_the_plan() -> None:
 async def test_a_repeated_decide_of_the_same_event_answers_the_offer_once() -> None:
     """D-13: the plan is cached by event id, so decide() then handle() cannot answer twice."""
     observe = AsyncMock(return_value=_actor(HouseholdRole.OWNER, 7))
-    answer = AsyncMock(return_value="Listo, lo guardé.")
+    answer = AsyncMock(return_value=MemoryAnswerReply("Listo, lo guardé."))
     legacy_turn = _legacy()
     controller = CognitiveController(
         today=lambda: date(2026, 8, 12),
@@ -892,7 +893,12 @@ async def test_a_repeated_decide_of_the_same_event_answers_the_offer_once() -> N
 @pytest.mark.asyncio
 async def test_two_events_with_the_same_message_are_each_answered() -> None:
     """The cache key is the event id, never the message: a second event is a second answer."""
-    answer = AsyncMock(side_effect=["Listo, lo guardé.", "Está bien, no lo guardo."])
+    answer = AsyncMock(
+        side_effect=[
+            MemoryAnswerReply("Listo, lo guardé."),
+            MemoryAnswerReply("Está bien, no lo guardo."),
+        ]
+    )
     controller = CognitiveController(
         today=lambda: date(2026, 8, 12),
         legacy_turn=_legacy(),
@@ -912,3 +918,99 @@ async def test_two_events_with_the_same_message_are_each_answered() -> None:
     assert first.response == "Listo, lo guardé."
     assert second.response == "Está bien, no lo guardo."
     assert answer.await_count == 2
+
+
+# --- the retry: only the voice failed (Plan 0068, D-3 and D-4) ---------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_retry_reply_becomes_a_deterministic_plan_that_expects_a_short_reply() -> None:
+    """The typed reply carries the hint into the plan; the actor is still resolved first."""
+    order: list[str] = []
+    actor = _actor(HouseholdRole.OWNER, 7)
+
+    async def observe(_event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
+        order.append("actor")
+        return actor
+
+    async def answer(
+        _parsed: MemoryAnswer, who: ActivePersonContext, _event: CognitiveEvent[TextTurnPayload]
+    ) -> MemoryAnswerReply | None:
+        order.append("answer")
+        assert who is actor
+        return MemoryAnswerReply("Dímelo un poco más largo.", expects_short_reply=True)
+
+    legacy_turn = _legacy()
+    controller = CognitiveController(
+        today=lambda: date(2026, 8, 12),
+        legacy_turn=legacy_turn,
+        observed_person_resolver=observe,
+        memory_answerer=answer,
+    )
+
+    plan = await controller.handle(_event("Sí, autorizo."))
+
+    assert order == ["actor", "answer"]
+    assert plan.need is InformationNeed.MEMORY_ANSWER
+    assert plan.source is ResponseSource.DETERMINISTIC
+    assert plan.status is KnowledgeStatus.KNOWN
+    assert plan.response == "Dímelo un poco más largo."
+    assert plan.expects_short_reply is True
+    assert plan.offer is None
+    legacy_turn.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_plain_reply_leaves_the_plan_without_the_hint() -> None:
+    controller = CognitiveController(
+        today=lambda: date(2026, 8, 12),
+        legacy_turn=_legacy(),
+        observed_person_resolver=AsyncMock(return_value=_actor(HouseholdRole.OWNER, 7)),
+        memory_answerer=AsyncMock(return_value=MemoryAnswerReply("Listo, lo guardé.")),
+    )
+
+    plan = await controller.handle(_event("Sí, autorizo."))
+
+    assert plan.expects_short_reply is False
+
+
+@pytest.mark.asyncio
+async def test_the_retry_is_cached_per_event_like_any_answer() -> None:
+    """decide() then handle() on the classic route must not ask the answerer twice."""
+    answer = AsyncMock(return_value=MemoryAnswerReply("Otra vez.", expects_short_reply=True))
+    observe = AsyncMock(return_value=_actor(HouseholdRole.OWNER, 7))
+    controller = CognitiveController(
+        today=lambda: date(2026, 8, 12),
+        legacy_turn=_legacy(),
+        observed_person_resolver=observe,
+        memory_answerer=answer,
+    )
+    event = _event("Sí, autorizo.")
+
+    first = await controller.decide(event)
+    handled = await controller.handle(event)
+
+    assert isinstance(first, ResponsePlan)
+    assert handled is first
+    assert first.expects_short_reply is True
+    answer.assert_awaited_once()
+    observe.assert_awaited_once()
+
+
+def test_a_plan_expects_no_short_reply_unless_told() -> None:
+    plan = ResponsePlan(
+        need=InformationNeed.CURRENT_DATE,
+        status=KnowledgeStatus.KNOWN,
+        source=ResponseSource.DETERMINISTIC,
+        response="Hoy es 2026-08-12.",
+    )
+
+    assert plan.expects_short_reply is False
+
+
+def test_the_typed_reply_is_frozen_and_defaults_to_no_hint() -> None:
+    reply = MemoryAnswerReply("Hola.")
+
+    assert reply.expects_short_reply is False
+    with pytest.raises(AttributeError):
+        reply.phrase = "otra"  # type: ignore[misc]  # mutation is what this test refutes

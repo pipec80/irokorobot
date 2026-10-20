@@ -124,6 +124,22 @@ def meets_verification_duration(wav_bytes: bytes) -> bool:
     return len(samples) / _SAMPLE_RATE >= settings.speaker_min_verification_s
 
 
+def clip_duration_s(wav_bytes: bytes) -> float:
+    """Return the clip length in seconds, for diagnostics only.
+
+    Args:
+        wav_bytes: Raw WAV bytes — 16 000 Hz, mono, signed int16.
+
+    Returns:
+        The decoded length in seconds, or `0.0` when the clip fails to decode
+        (see `_safe_decode`). Never raises.
+    """
+    samples = _safe_decode(wav_bytes)
+    if samples is None:
+        return 0.0
+    return len(samples) / _SAMPLE_RATE
+
+
 async def embed_wav(wav_bytes: bytes) -> np.ndarray:
     """Embed one contract WAV into a 192-d speaker vector on CPU.
 

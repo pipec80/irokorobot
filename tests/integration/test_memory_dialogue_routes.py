@@ -36,10 +36,12 @@ from server.memory import candidates
 from server.memory.biometric_consent import grant_face_consent, revoke_face_consent
 from server.memory.candidate_dialogue import (
     ANSWER_REJECTED_PHRASE,
+    ANSWER_RETRY_PHRASE,
     ANSWER_SAVED_PHRASE,
     compose_offer,
 )
 from server.memory.candidate_types import CandidateChannel, CandidateStatus, ProposedCandidate
+from server.memory.declarative import upsert_entity
 from server.memory.entity_labels import get_person_label
 from server.memory.household_authorization import get_active_role
 from server.memory.owner_credentials import get_active_owner_pin_credential
@@ -405,13 +407,18 @@ async def test_a_failing_combined_synthesis_still_speaks_the_reply(
 async def test_a_fall_through_answer_is_the_ordinary_turn_on_the_wire(
     household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Another voice saying the answer gets exactly what «hola» gets, field by field."""
+    """An answer that names no open offer of the face gets exactly what «hola» gets, field by field.
+
+    Plan 0068 (D-1, D-2): this used to be another voice saying the offered answer. That case now
+    gets the retry (see below); an answer for a value that is not on offer still falls through for
+    every actor, so the byte-identical wire is pinned with that one.
+    """
     owner = household.owner_entity_id
     candidate_id = await _candidate(owner)
     assert await candidates.mark_offered(
         candidate_id, owner, correlation_id=uuid4(), now=datetime.now(UTC)
     )
-    _scene(monkeypatch, "hola", _ANSWER, voice=_OTHER_VOICE)
+    _scene(monkeypatch, "hola", "Sí, autorizo guardar el café", voice=_OTHER_VOICE)
 
     async with _client() as client:
         ordinary = (await client.post("/transcribe", files=_files())).json()
@@ -423,6 +430,33 @@ async def test_a_fall_through_answer_is_the_ordinary_turn_on_the_wire(
     }
     assert answer["identity_source"] is None
     assert await _status(candidate_id) is CandidateStatus.OFFERED
+    assert await _audit_rows() == []
+
+
+async def test_another_voice_with_the_owner_face_hears_the_retry_on_the_classic_route(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Plan 0068 D-1 and D-2: the owner's face, another voice, the owner's open offer named.
+
+    Before the plan this was the ordinary turn. The cost is stated in D-2: whoever stands where
+    the owner's face is recognized hears that an offer is open (it was spoken aloud in the room),
+    and nothing is written, audited or moved.
+    """
+    owner = household.owner_entity_id
+    candidate_id = await _candidate(owner)
+    assert await candidates.mark_offered(
+        candidate_id, owner, correlation_id=uuid4(), now=datetime.now(UTC)
+    )
+    synthesize = _scene(monkeypatch, "hola", _SHORT_ANSWER, voice=_OTHER_VOICE)
+
+    async with _client() as client:
+        await client.post("/transcribe", files=_files())
+        answer = (await client.post("/transcribe", files=_files())).json()
+
+    assert answer["llm_response"] == ANSWER_RETRY_PHRASE
+    assert synthesize.await_args_list[-1].args == (ANSWER_RETRY_PHRASE,)
+    assert await _status(candidate_id) is CandidateStatus.OFFERED
+    assert await _likes(owner) == []
     assert await _audit_rows() == []
 
 
@@ -527,7 +561,11 @@ async def test_a_short_reply_request_never_widens_the_grammar(
 async def test_a_short_reply_request_never_lets_another_voice_answer(
     household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The flag changes nothing about who answers: another voice with the owner's face fails."""
+    """The flag changes nothing about who answers: another voice with the owner's face fails.
+
+    Plan 0068 (D-1, D-2): it used to fall through to ordinary generation; the owner's face with
+    their own open offer named now gets the retry phrase instead. It still saves nothing.
+    """
     owner = household.owner_entity_id
     candidate_id = await _candidate(owner)
     assert await candidates.mark_offered(
@@ -543,6 +581,7 @@ async def test_a_short_reply_request_never_lets_another_voice_answer(
 
     events = [json.loads(line) for line in response.text.splitlines()]
     assert ANSWER_SAVED_PHRASE not in [event.get("text") for event in events]
+    assert [event["text"] for event in events if event["type"] == "audio"] == [ANSWER_RETRY_PHRASE]
     assert await _status(candidate_id) is CandidateStatus.OFFERED
     assert await _likes(owner) == []
 
@@ -631,6 +670,8 @@ async def test_a_voice_consent_revoked_after_the_offer_answers_nothing(
         await revoke_voice_consent(owner)
         answered = await client.post("/transcribe", files=_files())
 
+    # Plan 0068: without voice consent the voice can never verify, so there is no retry (it would
+    # only loop): the answer falls through to the ordinary reply, and nothing is saved.
     assert answered.json()["llm_response"] == _REPLY
     assert await _status(candidate_id) is CandidateStatus.OFFERED
     assert await _audit_rows() == [("read_personal_conversation_memory", "allowed")]
@@ -753,12 +794,17 @@ async def test_the_streaming_route_offers_another_voice_nothing(
 async def test_the_streaming_route_never_lets_another_voice_answer(
     household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Another voice never saves; with the owner's face and their offer named it hears the retry.
+
+    Plan 0068 (D-1, D-2): this used to be the ordinary turn («_REPLY»). The retry phrase asks the
+    owner for a longer answer and the stream's ``done`` tells the robot to listen once more.
+    """
     owner = household.owner_entity_id
     candidate_id = await _candidate(owner)
     assert await candidates.mark_offered(
         candidate_id, owner, correlation_id=uuid4(), now=datetime.now(UTC)
     )
-    _scene(monkeypatch, _ANSWER, voice=_OTHER_VOICE)
+    synthesize = _scene(monkeypatch, _ANSWER, voice=_OTHER_VOICE)
     _stream_reply(monkeypatch)
 
     async with _client() as client:
@@ -766,9 +812,137 @@ async def test_the_streaming_route_never_lets_another_voice_answer(
 
     events = [json.loads(line) for line in response.text.splitlines()]
     assert [event["type"] for event in events] == ["text_heard", "emotion", "audio", "done"]
-    assert [event["text"] for event in events if event["type"] == "audio"] == [_REPLY]
-    assert await _status(candidate_id) is CandidateStatus.OFFERED
+    assert [event["text"] for event in events if event["type"] == "audio"] == [ANSWER_RETRY_PHRASE]
+    assert events[-1]["expects_short_reply"] is True
+    assert [call.args for call in synthesize.await_args_list] == [(ANSWER_RETRY_PHRASE,)]
+    assert await _status(candidate_id) is CandidateStatus.OFFERED  # the offer stays open
+    assert await _likes(owner) == []
     assert await _audit_rows() == []
+
+
+async def test_the_streaming_retry_is_followed_by_a_verified_answer_inside_the_window(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Plan 0068 Review Focus 4: the retry, then «sí, autorizo que lo guardes» in the owner's voice."""
+    owner = household.owner_entity_id
+    candidate_id = await _candidate(owner)
+    assert await candidates.mark_offered(
+        candidate_id, owner, correlation_id=uuid4(), now=datetime.now(UTC)
+    )
+    instructed = ANSWER_RETRY_PHRASE.rsplit(":", 1)[1].strip()
+    _scene(monkeypatch, _SHORT_ANSWER, voice=_OTHER_VOICE)
+    _stream_reply(monkeypatch)
+
+    async with _client() as client:
+        retry = await client.post("/transcribe/stream", files=_files())
+        _scene(monkeypatch, instructed)
+        promoted = await client.post("/transcribe/stream", files=_files())
+
+    retry_events = [json.loads(line) for line in retry.text.splitlines()]
+    promoted_events = [json.loads(line) for line in promoted.text.splitlines()]
+    assert [e["text"] for e in retry_events if e["type"] == "audio"] == [ANSWER_RETRY_PHRASE]
+    assert [e["text"] for e in promoted_events if e["type"] == "audio"] == [ANSWER_SAVED_PHRASE]
+    assert promoted_events[-1]["expects_short_reply"] is False
+    assert await _status(candidate_id) is CandidateStatus.CONFIRMED
+    assert len(await _likes(owner)) == 1
+
+
+@pytest.mark.parametrize(
+    "heard, mark_offer",
+    [
+        pytest.param(_SHORT_ANSWER, False, id="no-open-offer"),
+        pytest.param("Sí, autorizo guardar el café", True, id="another-value"),
+    ],
+)
+async def test_another_voice_without_a_matching_open_offer_gets_the_ordinary_stream_turn(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch, heard: str, mark_offer: bool
+) -> None:
+    """D-1 needs the offer: without one the retry would reveal nothing true, so it never speaks."""
+    owner = household.owner_entity_id
+    candidate_id = await _candidate(owner)
+    if mark_offer:
+        assert await candidates.mark_offered(
+            candidate_id, owner, correlation_id=uuid4(), now=datetime.now(UTC)
+        )
+    _scene(monkeypatch, heard, voice=_OTHER_VOICE)
+    _stream_reply(monkeypatch)
+
+    async with _client() as client:
+        response = await client.post("/transcribe/stream", files=_files())
+
+    events = [json.loads(line) for line in response.text.splitlines()]
+    assert ANSWER_RETRY_PHRASE not in [event.get("text") for event in events]
+    assert [event["text"] for event in events if event["type"] == "audio"] == [_REPLY]
+    assert events[-1]["expects_short_reply"] is False
+    assert await _likes(owner) == []
+    assert await _audit_rows() == []
+
+
+async def test_a_second_face_never_gets_the_retry_on_the_stream(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review Focus 1: another face vetoes the owner's, so there is no face actor to retry."""
+    owner = household.owner_entity_id
+    candidate_id = await _candidate(owner)
+    assert await candidates.mark_offered(
+        candidate_id, owner, correlation_id=uuid4(), now=datetime.now(UTC)
+    )
+    _scene(monkeypatch, _SHORT_ANSWER, faces=(_OWNER_FACE, _STRANGER_FACE), voice=_OTHER_VOICE)
+    _stream_reply(monkeypatch)
+
+    async with _client() as client:
+        response = await client.post("/transcribe/stream", files=_files())
+
+    events = [json.loads(line) for line in response.text.splitlines()]
+    assert [event["text"] for event in events if event["type"] == "audio"] == [_REPLY]
+    assert events[-1]["expects_short_reply"] is False
+    assert await _status(candidate_id) is CandidateStatus.OFFERED
+
+
+async def test_another_persons_face_never_gets_the_retry_for_the_owners_offer(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review Focus 1: a different, enrolled face has no open offer; the owner's stays unrevealed."""
+    owner = household.owner_entity_id
+    candidate_id = await _candidate(owner)
+    assert await candidates.mark_offered(
+        candidate_id, owner, correlation_id=uuid4(), now=datetime.now(UTC)
+    )
+    visitor = await upsert_entity(name="Canary Visitor", type="person")
+    await grant_face_consent(visitor)
+    await enroll_face(visitor, _STRANGER_FACE, label="Canary Visitor")
+    _scene(monkeypatch, _SHORT_ANSWER, faces=(_STRANGER_FACE,), voice=_OTHER_VOICE)
+    _stream_reply(monkeypatch)
+
+    async with _client() as client:
+        response = await client.post("/transcribe/stream", files=_files())
+
+    events = [json.loads(line) for line in response.text.splitlines()]
+    assert ANSWER_RETRY_PHRASE not in [event.get("text") for event in events]
+    assert [event["text"] for event in events if event["type"] == "audio"] == [_REPLY]
+    assert events[-1]["expects_short_reply"] is False
+    assert await _status(candidate_id) is CandidateStatus.OFFERED
+
+
+async def test_chat_never_gets_the_retry(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review Focus 2 and the plan's /chat clause: no answerer on /chat, so nothing changes."""
+    owner = household.owner_entity_id
+    candidate_id = await _candidate(owner)
+    assert await candidates.mark_offered(
+        candidate_id, owner, correlation_id=uuid4(), now=datetime.now(UTC)
+    )
+    _scene(monkeypatch)
+
+    async with _client() as client:
+        response = await client.post(
+            "/chat", json={"message": "Sí, autorizo que lo guardes", "conversation_id": "web"}
+        )
+
+    assert response.status_code == 200
+    assert response.json()["response"] == _REPLY
+    assert await _status(candidate_id) is CandidateStatus.OFFERED
 
 
 async def test_a_second_face_in_frame_answers_nothing(

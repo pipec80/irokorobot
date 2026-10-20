@@ -152,6 +152,70 @@ Privacy rules: the corpus lives only under `project-history/calibration/speaker/
 and ranges only — no sample ids, file names or per-sample scores in chat or docs;
 only consenting adults; an agent never records, imitates or replays a voice.
 
+#### Short-answer study (Plan 0068, Part B)
+
+The same tool measures whether a **short spoken answer** (1 to 2.5 s: «Sí», «Acepto», «Sí,
+autorizo») passes the speaker check as often as a long phrase. It changes no threshold, no
+enrollment and no runtime code: every variant is judged **at the fixed threshold 0.4834**. Pipec
+runs every capture; an agent never records, imitates or replays a voice, and the private corpus is
+deleted when the report is accepted (`discard`, then `cleanup` with the typed `delete`).
+
+Four new classes carry the study, each with its own phrases and minimums (counts of samples):
+
+| Class | Who and what | Phrases | Lower bound of a take | Minimum |
+|---|---|---|---|---|
+| `reference-short` | The owner, one quiet session, `quiet-near` only | `short-01` «Sí», `short-02` «Acepto», `short-03` «Sí, autorizo» | 1.0 s | 6 |
+| `genuine-short` | The owner, the same words, at least 2 later sessions, the four conditions | `short-01..03` | 1.0 s | 24 |
+| `impostor-short` | At least 3 consenting adults, live, the same words | `short-01..03` | 1.0 s | 18 |
+| `replay-short` | Pipec plays a recording of the owner | `short-01..03` | 1.0 s | 6 |
+
+A **long control** is captured too, because the Plan 0047 corpus was deleted: 6 `reference` and 6
+`genuine` samples with `phrase-01..03` (lower bound 2.5 s as always). A short sample never fills a
+long class minimum, and the reverse. `capture` still rejects silent, clipped and too-short takes.
+
+```powershell
+just speaker-calibration capture --class reference-short --subject owner --session short-ref-01 --phrase short-01 --condition quiet-near
+just speaker-calibration capture --class genuine-short --subject owner --session short-gen-01 --phrase short-02 --condition quiet-far
+just speaker-calibration capture --class impostor-short --subject impostor_a --session short-imp-01 --phrase short-03 --condition quiet-near
+just speaker-calibration capture --class replay-short --subject owner --session short-rep-01 --phrase short-01 --condition quiet-near
+just speaker-calibration capture --class reference --subject owner --session long-ref-01 --phrase phrase-01 --condition quiet-near
+just speaker-calibration capture --class genuine --subject owner --session long-gen-01 --phrase phrase-02 --condition quiet-near
+```
+
+A `*-short` class takes only `short-NN` phrases and a long class only `phrase-NN`; the CLI refuses
+the other combination. Replay samples use `--subject owner` (the voice being replayed) and the
+conditions `quiet-near` or `quiet-far` only. Then, in this order:
+
+1. `just speaker-calibration validate` checks the manifest, the hashes and the short-study matrix
+   (counts per class, at least 2 genuine sessions, all four conditions, at least 3 impostors, every
+   phrase covered).
+2. `just speaker-calibration embed` computes the embeddings, and for every probe clip also the
+   embedding of its **silence-trimmed** version. **Re-run `embed` after any capture or discard**:
+   the analysis refuses a stale `embeddings.npz`.
+3. `just speaker-calibration analyze` detects a short corpus by itself and writes the short
+   report (`aggregate-report.md`; it refuses to overwrite one).
+
+The short report compares, at the fixed threshold, **raw vs trimmed** probe clips (the clip as the
+robot sends it, with its pre-roll and silent tail, against the clip with the leading and trailing
+silence cut by a fixed energy rule) and **long-only vs long+short** references (the owner's long
+phrases alone, against those plus the short confirmations). Each cell lists, per class, the total,
+the clips accepted and the rate, the clips that were silent once trimmed, and the distance
+minimum, mean and maximum (shown only for three or more clips). It also gives accepts by clip
+length (1 to 1.5, 1.5 to 2 and 2 to 2.5 s) and the share of silence in the raw clips. Reading it:
+
+- A variant is **eligible** only with **0 impostor accepts** on `impostor-short`. A variant with
+  one or more is *not eligible* however well the owner does.
+- With 0 accepts out of n impostor clips, the true false-accept rate is not shown to be zero: the
+  rule of three bounds it at about 3/n at 95 % confidence (n = 18 gives about 17 %). The report
+  states the sample size next to it.
+- Genuine rates are **in-sample** (the owner's references and probes come from the same corpus), so
+  they are optimistic.
+- The result is a recommendation for a next plan (trim the embedding, enroll short confirmations,
+  or keep asking for a longer answer), never a threshold change.
+
+Privacy is as above: counts and ranges only, no sample ids, names or per-sample scores in chat or
+docs. Use letter pseudonyms for impostors.
+
 ### Longitudinal-memory baseline — `just eval-longitudinal` (Plan 0046, CM-0)
 
 An offline capability probe, not a `pytest` test. It runs the synthetic suite in
@@ -476,7 +540,9 @@ speaks, in this order:
    also work: `acepto` and `acepta` are long verbs like `autorizo` («acepto», «sí, acepto»,
    «acepto guardar»), `guárdala` is a short verb like `guárdalo` (only after a leading «sí»:
    «sí, guárdala»), and after a long verb the courtesy words `guárdalo`, `guárdala` and `sí` are
-   accepted («sí, autorizo, guárdalo»).
+   accepted («sí, autorizo, guárdalo»). Since Plan 0068 the long verbs also take «que lo
+   guardes» and «que la guardes» («sí, autorizo que lo guardes»), the exact words the retry below
+   dictates.
 3. To decline: `no autorizo`, `no apruebo` (also `no autoriza`, `no aprueba`), `no acepto` and
    `no acepta` (Plan 0067), `no lo guardes` and `no guardes` work alone. `olvídalo` and `bórralo` still need the value («olvídalo el mate»):
    alone they are ordinary speech. Iroko says «Está bien, no lo guardo.» and the candidate's value
@@ -486,6 +552,13 @@ speaks, in this order:
 5. If the owner's own open offer was found but could not be settled (a database or policy
    failure), Iroko says «No pude guardarlo ahora. Dímelo de nuevo en un rato.» Nothing was
    written; answer again later.
+6. **The retry (Plan 0068).** If your **face** is recognized and your open offer is the one your
+   words answer, but the **voice check failed** (a short «sí, autorizo.» often does), Iroko says
+   «No reconocí bien tu voz. Dímelo un poco más largo: sí, autorizo que lo guardes.» and the robot
+   listens once more in reply mode. Say the longer sentence it dictates. Nothing was saved,
+   audited or moved, and the 60 s window is **not** extended, so answer inside it. If you have
+   revoked the voice consent there is no retry (the voice could never verify): the message is
+   ordinary conversation, as before. In the log it is `Candidate answer: voice_retry`.
 
 A bare «sí» (also «ya», «dale» or «po» alone), «guarda», «guárdalo» or «guárdala» without a leading «sí», and
 a verb with a **different** value promote nothing: the message is ordinary conversation. A valueless
@@ -505,7 +578,11 @@ or «olvídalo, no importa» never count.
   `MEMORY_CANDIDATE_MAX_OFFERS` (2) times; after the second offer it lapses unanswered.
 - **Face and voice of the same person**, on the clip of the answering turn too. With another
   voice, no face or two faces the message is ordinary conversation, byte for byte: Iroko
-  never says whether an offer exists. The cost of that check (about 3 to 4 s over the
+  never says whether an offer exists. **One exception since Plan 0068:** when the owner's face is
+  recognized and the voice alone failed, the retry above is spoken instead, which reveals that an
+  offer is open; anyone speaking in front of the owner's face hears it too (an offer already
+  spoken aloud in the room), and it writes nothing. A token, another person's face or no open
+  offer still get ordinary conversation. The cost of that check (about 3 to 4 s over the
   speech-to-text, no model call) is paid by every message that has the shape of an answer, with
   or without an open offer. Since Plan 0066 that includes a bare «autorizo» or «sí, guarda» in
   ordinary conversation with **no open offer**: it costs those 3 to 4 s, saves nothing and gets an
@@ -536,8 +613,8 @@ about who may answer, the open-offer lookup or the words accepted: a reply that 
 («¿qué hora es?») gets the ordinary reply. An older robot ignores the hint and an older server
 never sends it; both keep working. In the log a reply turn looks like any other turn: the same
 `Speaker verdict`, `Identity fusion` and `Candidate answer` lines, and `Speaker verdict` is
-unchanged (a `unknown` on a short clip is still the voice check, measured by Plan 0068, not a
-listening problem). The log has no line for reply mode itself.
+unchanged (a `unknown` on a short clip is still the voice check, not a listening problem; since
+Plan 0068 its `gate` and `distance` fields say why, and the retry above answers it). The log has no line for reply mode itself.
 
 **Known limits, measured on hardware** (outcomes in
 [`0063-memory-dialogue-acceptance.md`](../evals/0063-memory-dialogue-acceptance.md), one owner,
@@ -550,7 +627,8 @@ the shared laptop, no homelab):
   times in the Plan 0064 session; the first Plan 0066 session promoted 1 of 2; the other fell to
   ordinary conversation). The short answer and the reply mode are **not yet measured on
   hardware**: their acceptance counts are pending until Pipec runs Task 6 of Plan 0066 and Task 8
-  of [Plan 0067](../plans/completed/0067-reply-listening-mode.md). When an answer is still
+  of [Plan 0067](../plans/completed/0067-reply-listening-mode.md). The retry of Plan 0068 and the
+  short-clip speaker measurement (Part B, above) are pending the same way. When an answer is still
   not understood, it falls through to ordinary conversation and nothing is written (the safe
   direction); say it again, slowly, or wait for the second offer.
 - On a message that only has the *shape* of an answer (another voice, or no open offer), the
@@ -579,9 +657,9 @@ exception message. `logs/server.log` is JSON Lines (one object per line: `ts`, `
 | `Candidate insert: <status>` | `inserted`, `duplicate`, `capacity` or `disabled` |
 | `Candidate promotion: <outcome>` | The writer's own line: `promoted`, `already_present`, `contradiction`, `not_offered` or `denied`. It appears only after a spoken «sí, autorizo.» (or the long form that repeats the value) |
 | `Candidate offer: <outcome>` | `offered` (the offer was spoken after the reply), `voice_unverified` (a candidate waited but the voice of that turn's clip did not verify as the same person, so nothing was offered) or `not_offerable` (the candidate lapsed or was taken between the check and the reply) |
-| `Candidate answer: <outcome>` | The result of a spoken answer to an open offer: `promoted`, `already_present`, `contradiction`, `not_offered`, `denied` (the writer's outcomes, repeated) or `rejected` (the owner declined) |
+| `Candidate answer: <outcome>` | The result of a spoken answer to an open offer: `promoted`, `already_present`, `contradiction`, `not_offered`, `denied` (the writer's outcomes, repeated), `rejected` (the owner declined) or `voice_retry` (Plan 0068: the face named the owner but the voice did not verify, the retry phrase was spoken and nothing was written; the line carries the candidate id only) |
 | `Candidate offer failed (...)` / `Candidate answer failed (...)` | A warning (an error when the failure is not an operational class) with `error_type` and `site`, the file, line and function; never a message or a value. On an answer failure the owner heard the fixed failure phrase |
-| `Speaker verdict: verified \| unknown \| unavailable` | Every voice check of the turn, offers and answers included. `verified` is the only verdict that lets an offer or an answer through; `unknown` is another voice, a very short clip or fewer than `SPEAKER_MIN_REFERENCE_COUNT` references; `unavailable` is the speaker model or its backend failing |
+| `Speaker verdict: verified \| unknown \| unavailable` | Every voice check of the turn, offers and answers included. `verified` is the only verdict that lets an offer or an answer through; `unknown` is another voice, a very short clip or fewer than `SPEAKER_MIN_REFERENCE_COUNT` references; `unavailable` is the speaker model or its backend failing. Since Plan 0068 the record also carries `clip_s` (the uploaded clip's seconds, one decimal), `distance` (to the owner's references, three decimals; **absent** when none was computed, never 0) and `gate` (the first reason the verdict was not `verified`: `ok`, `energy`, `duration`, `references`, `distance`, `consent`, `role` or `unavailable`). Read an `unknown` on a short answer by its `gate`: `distance` with a `distance` just above 0.4834 is a clip that nearly passed; `duration` or `energy` means the clip never reached the model (shorter than `SPEAKER_MIN_VERIFICATION_S`, or no voiced energy); `references` means too few stored references. Never audio, a name or a value |
 | `Identity fusion: <reason>` | Whom the turn is attributed to; `face_and_voice` is the only reason that can answer an offer, `face_only` or `no_evidence` mean the message went on as ordinary conversation |
 | `Candidates voided at start-up: N` | Start-up with the switch **off**: N live candidates were erased |
 | `Candidates reconciled at start-up: N expired` | Start-up with the switch **on**: N lapsed candidates were erased |

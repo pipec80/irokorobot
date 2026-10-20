@@ -12,7 +12,9 @@ revealed to anybody else.
   ``read_personal_conversation_memory`` (audited before the effect) and moves the candidate to
   ``offered``. No claim is made that the offer was heard.
 * ``answer_offer`` is what the voice routes bind as the controller's ``MemoryAnswerer``: a «sí» promotes through the one writer, a
-  «no» is audited as ``confirm_personal_memory`` and rejects the candidate.
+  «no» is audited as ``confirm_personal_memory`` and rejects the candidate. When only the voice
+  failed (the face named the person whose open offer the answer names) it asks for a longer answer
+  and writes nothing (Plan 0068, D-1).
 
 Audio contract for the clip: WAV, 16 000 Hz, mono, signed int16, held in memory only. Logs carry
 ids, a status and a closed outcome, never a value and never an exception's message.
@@ -30,6 +32,7 @@ from typing import TYPE_CHECKING
 
 from server.cognition.authorization import evaluate_authorization
 from server.cognition.clock import utc_now
+from server.cognition.response_plan import MemoryAnswerReply
 from server.cognition.strong_actor import (
     VoiceVerifier,
     is_face_actor,
@@ -52,6 +55,8 @@ from server.memory.lexicon import (
     ANSWER_CONTRADICTION_PHRASE,
     ANSWER_FAILED_PHRASE,
     ANSWER_REJECTED_PHRASE,
+    ANSWER_RETRY_PHRASE,
+    ANSWER_RETRY_REJECT_PHRASE,
     ANSWER_SAVED_PHRASE,
     OFFER_QUESTION,
     OFFER_STATEMENTS,
@@ -60,6 +65,7 @@ from server.memory.lexicon import (
     PLURAL_ARTICLES,
 )
 from server.memory.memory_writer import PromotionOutcome, promote
+from server.memory.voice_consent import has_active_voice_consent
 from server.settings import settings
 
 if TYPE_CHECKING:
@@ -78,6 +84,8 @@ __all__ = [
     "ANSWER_CONTRADICTION_PHRASE",
     "ANSWER_FAILED_PHRASE",
     "ANSWER_REJECTED_PHRASE",
+    "ANSWER_RETRY_PHRASE",
+    "ANSWER_RETRY_REJECT_PHRASE",
     "ANSWER_SAVED_PHRASE",
     "OfferPreparer",
     "PendingOffer",
@@ -250,8 +258,8 @@ async def answer_offer(
     now: datetime,
     policy: PolicyEvaluator = evaluate_authorization,
     audit: AuditWriter = record_authorization_decision,
-) -> str | None:
-    """Resolve the speaker's open offer that the answer names, or fall through.
+) -> MemoryAnswerReply | None:
+    """Resolve the speaker's open offer that the answer names, ask again, or fall through.
 
     The caller resolved the actor (face and voice) before calling, for every message of this
     shape, so the cost of the check never depends on whether an offer exists.
@@ -259,24 +267,35 @@ async def answer_offer(
     Args:
         answer: The parsed answer: accept or reject, and the value it repeats. An empty phrase
             is a closed verb alone and means the speaker's one open offer.
-        actor: The turn's actor; only the face-and-voice composite may answer.
+        actor: The turn's actor; only the face-and-voice composite may answer. A face-only
+            actor (no token) whose own open offer the answer names hears the retry instead.
         correlation_id: The answering turn's id.
         now: The caller's clock reading.
         policy: The pure evaluator; tests inject doubles.
         audit: The audit writer; tests inject doubles.
 
     Returns:
-        The fixed result phrase. ``None`` falls through to ordinary generation: switch off, a
-        weaker actor, no open offer (with that value, when one was named; or not exactly one
-        for a verb alone) or a failing lookup, none of which may be told apart. Once the
-        verified owner's own open offer is found, a refusal or a failure says
-        ``ANSWER_FAILED_PHRASE`` instead, so the model never improvises «listo». Never raises
-        (a cancellation excepted).
+        The fixed reply (a result phrase, never the value). ``None`` falls through to ordinary
+        generation: switch off, a token or voice-only actor, no open offer (with that value,
+        when one was named; or not exactly one for a verb alone) or a failing lookup, none of
+        which may be told apart. Once the verified owner's own open offer is found, a refusal
+        or a failure says ``ANSWER_FAILED_PHRASE`` instead, so the model never improvises
+        «listo». When only the voice failed (a face actor that is not the composite, whose
+        own open offer the answer names) the reply is ``ANSWER_RETRY_PHRASE`` (for a refusal
+        ``ANSWER_RETRY_REJECT_PHRASE``) with
+        ``expects_short_reply``: nothing is written, audited or moved, and the answer window
+        keeps running from the offer (Plan 0068, D-1). Never raises (a cancellation excepted).
     """
     candidate_id = await _find_open_offer(answer, actor, correlation_id, now)
     person_id = actor.person_id
     if candidate_id is None or person_id is None:
         return None
+    if not is_face_and_voice_actor(actor):  # the face named them, the voice did not verify
+        if not await _voice_could_verify(person_id, correlation_id):
+            return None  # without voice consent asking again would only loop
+        _log("candidate.answer", "voice_retry", candidate_id, correlation_id)
+        retry = ANSWER_RETRY_PHRASE if answer.accept else ANSWER_RETRY_REJECT_PHRASE
+        return MemoryAnswerReply(retry, expects_short_reply=True)
     try:
         if answer.accept:
             spoken = await _accept(candidate_id, actor, correlation_id, now, policy, audit)
@@ -286,8 +305,23 @@ async def answer_offer(
             )
     except Exception as exc:  # fail closed, and tell the owner: the offer was theirs
         _log_failure("candidate.answer", exc, correlation_id, candidate_id)
-        return ANSWER_FAILED_PHRASE
-    return ANSWER_FAILED_PHRASE if spoken is None else spoken
+        return MemoryAnswerReply(ANSWER_FAILED_PHRASE)
+    return MemoryAnswerReply(ANSWER_FAILED_PHRASE if spoken is None else spoken)
+
+
+async def _voice_could_verify(person_id: int, correlation_id: UUID) -> bool:
+    """Whether the person's voice may verify at all; fails closed.
+
+    It needs the speaker check switched on and the person's active voice consent; otherwise
+    asking again would only loop.
+    """
+    if not settings.speaker_authentication_enabled:
+        return False
+    try:
+        return await has_active_voice_consent(person_id)
+    except Exception as exc:  # fail closed: no retry, the turn falls through
+        _log_failure("candidate.answer", exc, correlation_id)
+        return False
 
 
 async def _find_open_offer(
@@ -296,14 +330,13 @@ async def _find_open_offer(
     """Return the id of the actor's open offer that *answer* names, or ``None``.
 
     Everything before the offer is found falls through silently: nothing is observable about it.
+    A face actor (the composite included) may look; the caller tells the composite, which may
+    answer, from a face-only actor, which only hears the retry (Plan 0068, D-1). A token, a
+    voice-only and an unknown actor never reach the store.
     """
     try:
         person_id = actor.person_id
-        if (
-            not settings.memory_candidates_enabled
-            or person_id is None
-            or not is_face_and_voice_actor(actor)
-        ):
+        if not settings.memory_candidates_enabled or person_id is None or not is_face_actor(actor):
             return None
         if answer.phrase:
             key = comparison_key(answer.phrase)

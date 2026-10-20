@@ -191,6 +191,17 @@ ANSWER_CONTRADICTION_PHRASE = "No lo guardé: ya tengo guardado algo distinto."
 #: Said only to the verified owner whose open offer was found and then could not be settled,
 #: so the model never improvises a "listo" for something that was not saved.
 ANSWER_FAILED_PHRASE = "No pude guardarlo ahora. Dímelo de nuevo en un rato."
+#: Said to a face-identified person whose open offer an answer named while their voice was not
+#: verified (Plan 0068, D-1): it asks for a longer answer instead of letting the model guess. It
+#: dictates, after the last colon, words the answer grammar accepts («que lo guardes»); a unit
+#: test pins the round trip. It never carries the value.
+ANSWER_RETRY_PHRASE = (
+    "No reconocí bien tu voz. Dímelo un poco más largo: sí, autorizo que lo guardes."
+)
+#: The same retry for a refusal: it dictates the refusal, never an acceptance.
+ANSWER_RETRY_REJECT_PHRASE = (
+    "No reconocí bien tu voz. Dímelo un poco más largo: no autorizo que lo guardes."
+)
 
 #: Closed set of topics a taste may belong to; the extractor must place the object in one.
 CANDIDATE_TOPICS = frozenset(

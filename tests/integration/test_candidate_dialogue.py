@@ -32,7 +32,7 @@ from server.cognition.models import (
     Confidence,
     ConfidenceBasis,
 )
-from server.cognition.response_plan import TextTurnPayload
+from server.cognition.response_plan import MemoryAnswerReply, TextTurnPayload
 from server.cognition.strong_actor import is_face_and_voice_actor
 from server.memory import candidate_dialogue, candidates
 from server.memory.candidate_classifier import comparison_key
@@ -40,6 +40,8 @@ from server.memory.candidate_dialogue import (
     ANSWER_CONTRADICTION_PHRASE,
     ANSWER_FAILED_PHRASE,
     ANSWER_REJECTED_PHRASE,
+    ANSWER_RETRY_PHRASE,
+    ANSWER_RETRY_REJECT_PHRASE,
     ANSWER_SAVED_PHRASE,
     PendingOffer,
     answer_offer,
@@ -51,6 +53,7 @@ from server.memory.candidate_types import CandidateChannel, CandidateStatus, Pro
 from server.memory.declarative import upsert_entity
 from server.memory.predicate_registry import resolve_predicate
 from server.memory.relational_v4 import assert_literal_fact, get_active_literal_facts
+from server.memory.voice_consent import grant_voice_consent, revoke_voice_consent
 from server.settings import settings
 
 from server import db
@@ -117,10 +120,13 @@ def _event() -> CognitiveEvent[TextTurnPayload]:
 async def owner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[int]:
     monkeypatch.setattr(settings, "brain_db_path", tmp_path / "dialogue.db")
     monkeypatch.setattr(settings, "memory_candidates_enabled", True)
+    monkeypatch.setattr(settings, "speaker_authentication_enabled", True)
     db._conn = None
     await db.open_db()
     await db.run_migrations()
-    yield await upsert_entity(name="Canary Owner", type="person")
+    owner_id = await upsert_entity(name="Canary Owner", type="person")
+    await grant_voice_consent(owner_id)  # an enrolled owner: the voice could verify (D-1)
+    yield owner_id
     await db.close_db()
     db._conn = None
 
@@ -251,7 +257,7 @@ async def test_the_answer_the_offer_asks_for_resolves_that_offer(owner: int, val
         now=_NOW + timedelta(seconds=10),
         audit=AsyncMock(),
     )
-    assert phrase == ANSWER_SAVED_PHRASE
+    assert phrase == MemoryAnswerReply(ANSWER_SAVED_PHRASE)
     assert await _status(candidate_id) is CandidateStatus.CONFIRMED
 
 
@@ -489,7 +495,7 @@ async def test_yes_with_the_value_promotes_the_offer(owner: int) -> None:
         audit=audit,
     )
 
-    assert phrase == ANSWER_SAVED_PHRASE
+    assert phrase == MemoryAnswerReply(ANSWER_SAVED_PHRASE)
     stored = await candidates.get_candidate(candidate_id)
     assert stored is not None
     assert stored.status is CandidateStatus.CONFIRMED
@@ -509,7 +515,7 @@ async def test_no_with_the_value_rejects_it_after_auditing_the_confirm_step(owne
         audit=audit,
     )
 
-    assert phrase == ANSWER_REJECTED_PHRASE
+    assert phrase == MemoryAnswerReply(ANSWER_REJECTED_PHRASE)
     stored = await candidates.get_candidate(candidate_id)
     assert stored is not None
     assert stored.status is CandidateStatus.REJECTED
@@ -533,7 +539,7 @@ async def test_the_reject_is_audited_before_the_candidate_changes(owner: int) ->
         audit=audit,
     )
 
-    assert phrase == ANSWER_REJECTED_PHRASE
+    assert phrase == MemoryAnswerReply(ANSWER_REJECTED_PHRASE)
     assert seen == [CandidateStatus.OFFERED]
 
 
@@ -548,7 +554,7 @@ async def test_a_failing_audit_never_rejects(owner: int) -> None:
         audit=AsyncMock(side_effect=RuntimeError("audit down")),
     )
 
-    assert phrase == ANSWER_FAILED_PHRASE
+    assert phrase == MemoryAnswerReply(ANSWER_FAILED_PHRASE)
     stored = await candidates.get_candidate(candidate_id)
     assert stored is not None
     assert stored.status is CandidateStatus.OFFERED
@@ -569,7 +575,7 @@ async def test_a_contradiction_is_said_plainly_and_writes_nothing(owner: int) ->
         audit=AsyncMock(),
     )
 
-    assert phrase == ANSWER_CONTRADICTION_PHRASE
+    assert phrase == MemoryAnswerReply(ANSWER_CONTRADICTION_PHRASE)
     assert await _likes(owner) == []
 
 
@@ -608,7 +614,7 @@ async def test_a_closed_verb_alone_promotes_the_one_open_offer(owner: int) -> No
         audit=audit,
     )
 
-    assert phrase == ANSWER_SAVED_PHRASE
+    assert phrase == MemoryAnswerReply(ANSWER_SAVED_PHRASE)
     assert await _status(candidate_id) is CandidateStatus.CONFIRMED
     assert len(await _likes(owner)) == 1
     assert _actions(audit) == [(AuthorizationAction.CONFIRM_PERSONAL_MEMORY, "allowed")]
@@ -626,7 +632,7 @@ async def test_a_refusal_alone_rejects_the_one_open_offer(owner: int) -> None:
         audit=audit,
     )
 
-    assert phrase == ANSWER_REJECTED_PHRASE
+    assert phrase == MemoryAnswerReply(ANSWER_REJECTED_PHRASE)
     stored = await candidates.get_candidate(candidate_id)
     assert stored is not None
     assert stored.status is CandidateStatus.REJECTED
@@ -696,10 +702,12 @@ async def test_a_verb_alone_never_answers_another_persons_offer(owner: int) -> N
     audit.assert_not_awaited()
 
 
+# Plan 0068, D-1: the face alone is no longer in this list. A face-only owner whose open offer the
+# answer names hears the retry phrase (see the retry tests below); a voice-only actor, a token
+# and a token with the composite still fall through before the store is read.
 @pytest.mark.parametrize(
     "sources",
     [
-        (IdentityEvidenceSource.FACE,),
         (IdentityEvidenceSource.VOICE,),
         (IdentityEvidenceSource.FACE, IdentityEvidenceSource.LOCAL_UNLOCK),
         (
@@ -799,7 +807,7 @@ async def test_the_log_of_a_verb_alone_carries_ids_and_no_value(
             audit=AsyncMock(),
         )
 
-    assert phrase == ANSWER_SAVED_PHRASE
+    assert phrase == MemoryAnswerReply(ANSWER_SAVED_PHRASE)
     assert await _status(candidate_id) is CandidateStatus.CONFIRMED
     assert caplog.records
     assert not _leaked(caplog, "quokka")
@@ -822,10 +830,10 @@ async def test_an_answer_with_no_offer_outstanding_falls_through(owner: int) -> 
     audit.assert_not_awaited()
 
 
+# Plan 0068, D-1: the face alone moved to the retry tests, as above.
 @pytest.mark.parametrize(
     "sources",
     [
-        (IdentityEvidenceSource.FACE,),
         (IdentityEvidenceSource.VOICE,),
         (IdentityEvidenceSource.FACE, IdentityEvidenceSource.LOCAL_UNLOCK),
         (
@@ -858,6 +866,309 @@ async def test_a_weaker_or_token_actor_cannot_answer(
     assert await _status(candidate_id) is CandidateStatus.OFFERED
     audit.assert_not_awaited()
     reader.assert_not_awaited()
+
+
+# --- the retry: only the voice failed (Plan 0068, D-1 and D-2) ----------------------------------
+
+_RETRY = MemoryAnswerReply(ANSWER_RETRY_PHRASE, expects_short_reply=True)
+_RETRY_NO = MemoryAnswerReply(ANSWER_RETRY_REJECT_PHRASE, expects_short_reply=True)
+
+
+def test_the_retry_reply_asks_to_listen_again_and_the_plain_reply_does_not() -> None:
+    assert MemoryAnswerReply(ANSWER_SAVED_PHRASE).expects_short_reply is False
+    assert _RETRY.expects_short_reply is True
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        MemoryAnswer(accept=True, phrase=""),
+        MemoryAnswer(accept=True, phrase="el mate"),
+        MemoryAnswer(accept=False, phrase=""),
+        MemoryAnswer(accept=False, phrase="el mate"),
+    ],
+    ids=["yes-alone", "yes-value", "no-alone", "no-value"],
+)
+async def test_a_face_only_owner_answering_their_open_offer_hears_the_retry_and_nothing_moves(
+    owner: int, answer: MemoryAnswer
+) -> None:
+    """D-1: the face named the owner, the voice did not verify, the answer names their open offer."""
+    candidate_id = await _candidate(owner, offered=True)
+    before = await candidates.get_candidate(candidate_id)
+    audit = AsyncMock()
+
+    reply = await answer_offer(
+        answer,
+        actor=_actor(owner),
+        correlation_id=_TURN,
+        now=_NOW + timedelta(seconds=10),
+        audit=audit,
+    )
+
+    # A refusal is asked again as a refusal, never as an acceptance (final review of Plan 0068).
+    assert reply == (_RETRY if answer.accept else _RETRY_NO)
+    assert await candidates.get_candidate(candidate_id) == before
+    assert await _status(candidate_id) is CandidateStatus.OFFERED
+    assert await _likes(owner) == []
+    audit.assert_not_awaited()
+
+
+def test_the_reject_retry_dictates_a_refusal() -> None:
+    dictated = parse_memory_answer(ANSWER_RETRY_REJECT_PHRASE.rsplit(":", 1)[1])
+    assert dictated == MemoryAnswer(accept=False, phrase="")
+
+
+async def test_no_retry_when_the_speaker_check_is_switched_off(
+    owner: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With the speaker check off the voice can never verify: no retry, it falls through."""
+    await _candidate(owner, offered=True)
+    monkeypatch.setattr(settings, "speaker_authentication_enabled", False)
+
+    reply = await answer_offer(
+        MemoryAnswer(accept=True, phrase=""),
+        actor=_actor(owner),
+        correlation_id=_TURN,
+        now=_NOW + timedelta(seconds=10),
+        audit=AsyncMock(),
+    )
+
+    assert reply is None
+
+
+async def test_a_failing_consent_lookup_gives_no_retry(
+    owner: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await _candidate(owner, offered=True)
+    monkeypatch.setattr(
+        candidate_dialogue,
+        "has_active_voice_consent",
+        AsyncMock(side_effect=RuntimeError("store down")),
+    )
+
+    reply = await answer_offer(
+        MemoryAnswer(accept=True, phrase=""),
+        actor=_actor(owner),
+        correlation_id=_TURN,
+        now=_NOW + timedelta(seconds=10),
+        audit=AsyncMock(),
+    )
+
+    assert reply is None
+
+
+async def test_no_retry_once_the_voice_consent_is_revoked(owner: int) -> None:
+    """Without voice consent the voice can never verify: asking again would loop, so it falls through."""
+    candidate_id = await _candidate(owner, offered=True)
+    await revoke_voice_consent(owner)
+
+    reply = await answer_offer(
+        MemoryAnswer(accept=True, phrase=""),
+        actor=_actor(owner),
+        correlation_id=_TURN,
+        now=_NOW + timedelta(seconds=10),
+        audit=AsyncMock(),
+    )
+
+    assert reply is None
+    assert await _status(candidate_id) is CandidateStatus.OFFERED
+
+
+async def test_the_retry_does_not_extend_the_answer_window(owner: int) -> None:
+    """The retry writes no offer row: the 60 s run from the offer, and a late strong answer falls through."""
+    candidate_id = await _candidate(owner, offered=True)
+    window = settings.memory_candidate_answer_seconds
+
+    retry = await answer_offer(
+        MemoryAnswer(accept=True, phrase=""),
+        actor=_actor(owner),
+        correlation_id=_TURN,
+        now=_NOW + timedelta(seconds=window - 5),
+        audit=AsyncMock(),
+    )
+    late = await answer_offer(
+        MemoryAnswer(accept=True, phrase=""),
+        actor=_strong(owner),
+        correlation_id=_TURN,
+        now=_NOW + timedelta(seconds=window + 1),
+        audit=AsyncMock(),
+    )
+
+    assert retry == _RETRY
+    assert late is None
+    assert await _status(candidate_id) is CandidateStatus.OFFERED
+
+
+async def test_after_the_retry_the_face_and_voice_owner_answers_inside_the_window(
+    owner: int,
+) -> None:
+    candidate_id = await _candidate(owner, offered=True)
+    audit = AsyncMock()
+    dictated = parse_memory_answer(ANSWER_RETRY_PHRASE.rsplit(":", 1)[1])
+    assert dictated is not None
+    assert dictated == MemoryAnswer(accept=True, phrase="")
+
+    retry = await answer_offer(
+        MemoryAnswer(accept=True, phrase=""),
+        actor=_actor(owner),
+        correlation_id=_TURN,
+        now=_NOW + timedelta(seconds=5),
+        audit=audit,
+    )
+    promoted = await answer_offer(
+        dictated,
+        actor=_strong(owner),
+        correlation_id=UUID(int=6364),
+        now=_NOW + timedelta(seconds=20),
+        audit=audit,
+    )
+
+    assert retry == _RETRY
+    assert promoted == MemoryAnswerReply(ANSWER_SAVED_PHRASE)
+    assert promoted is not None
+    assert promoted.expects_short_reply is False
+    assert await _status(candidate_id) is CandidateStatus.CONFIRMED
+    assert len(await _likes(owner)) == 1
+    assert _actions(audit) == [(AuthorizationAction.CONFIRM_PERSONAL_MEMORY, "allowed")]
+
+
+async def test_a_face_only_actor_with_no_open_offer_falls_through(owner: int) -> None:
+    candidate_id = await _candidate(owner)  # proposed, never offered
+    audit = AsyncMock()
+
+    reply = await answer_offer(
+        MemoryAnswer(accept=True, phrase=""),
+        actor=_actor(owner),
+        correlation_id=_TURN,
+        now=_NOW,
+        audit=audit,
+    )
+
+    assert reply is None
+    assert await _status(candidate_id) is CandidateStatus.PROPOSED
+    audit.assert_not_awaited()
+
+
+@pytest.mark.parametrize("phrase", ["el cafe", "el"])
+async def test_a_face_only_actor_naming_another_value_falls_through(
+    owner: int, phrase: str
+) -> None:
+    candidate_id = await _candidate(owner, offered=True)
+
+    reply = await answer_offer(
+        MemoryAnswer(accept=True, phrase=phrase),
+        actor=_actor(owner),
+        correlation_id=_TURN,
+        now=_NOW,
+        audit=AsyncMock(),
+    )
+
+    assert reply is None
+    assert await _status(candidate_id) is CandidateStatus.OFFERED
+
+
+async def test_a_face_only_verb_alone_with_two_open_offers_falls_through(owner: int) -> None:
+    first = await _candidate(owner, offered=True)
+    second = await _force_offered_candidate(owner, "la pizza", "pizza")
+
+    reply = await answer_offer(
+        MemoryAnswer(accept=True, phrase=""),
+        actor=_actor(owner),
+        correlation_id=_TURN,
+        now=_NOW + timedelta(seconds=10),
+        audit=AsyncMock(),
+    )
+
+    assert reply is None
+    assert await _status(first) is CandidateStatus.OFFERED
+    assert await _status(second) is CandidateStatus.OFFERED
+
+
+async def test_a_face_only_actor_never_hears_the_retry_for_another_persons_offer(
+    owner: int,
+) -> None:
+    """The offer must be the face-identified person's own: a visitor's open offer reveals nothing."""
+    visitor = await upsert_entity(name="Canary Visitor", type="person")
+    theirs = await _candidate(visitor, offered=True)
+
+    reply = await answer_offer(
+        MemoryAnswer(accept=True, phrase=""),
+        actor=_actor(owner),
+        correlation_id=_TURN,
+        now=_NOW + timedelta(seconds=10),
+        audit=AsyncMock(),
+    )
+
+    assert reply is None
+    assert await _status(theirs) is CandidateStatus.OFFERED
+
+
+async def test_a_face_only_verb_alone_after_the_window_falls_through(owner: int) -> None:
+    candidate_id = await _candidate(owner, offered=True)
+    late = _NOW + timedelta(seconds=settings.memory_candidate_answer_seconds + 1)
+
+    reply = await answer_offer(
+        MemoryAnswer(accept=True, phrase=""),
+        actor=_actor(owner),
+        correlation_id=_TURN,
+        now=late,
+        audit=AsyncMock(),
+    )
+
+    assert reply is None
+    assert await _status(candidate_id) is CandidateStatus.OFFERED
+
+
+async def test_the_switch_off_gives_no_retry(owner: int, monkeypatch: pytest.MonkeyPatch) -> None:
+    await _candidate(owner, offered=True)
+    monkeypatch.setattr(settings, "memory_candidates_enabled", False)
+
+    reply = await answer_offer(
+        MemoryAnswer(accept=True, phrase=""),
+        actor=_actor(owner),
+        correlation_id=_TURN,
+        now=_NOW,
+        audit=AsyncMock(),
+    )
+
+    assert reply is None
+    monkeypatch.setattr(settings, "memory_candidates_enabled", True)
+
+
+async def test_a_failing_lookup_for_a_face_only_actor_falls_through(
+    owner: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await _candidate(owner, offered=True)
+    monkeypatch.setattr(candidate_dialogue, "find_offered", AsyncMock(side_effect=OSError("disk")))
+
+    reply = await answer_offer(
+        MemoryAnswer(accept=True, phrase=""),
+        actor=_actor(owner),
+        correlation_id=_TURN,
+        now=_NOW,
+        audit=AsyncMock(),
+    )
+
+    assert reply is None
+
+
+async def test_the_retry_log_carries_ids_and_never_the_value(
+    owner: int, caplog: pytest.LogCaptureFixture
+) -> None:
+    await _candidate(owner, "el quokka", "quokka", offered=True)
+
+    with caplog.at_level(logging.DEBUG):
+        reply = await answer_offer(
+            MemoryAnswer(accept=True, phrase="el quokka"),
+            actor=_actor(owner),
+            correlation_id=_TURN,
+            now=_NOW + timedelta(seconds=5),
+            audit=AsyncMock(),
+        )
+
+    assert reply == _RETRY
+    assert not _leaked(caplog, "quokka")
+    assert ANSWER_RETRY_PHRASE not in caplog.text
 
 
 async def test_another_persons_offer_is_never_answered(owner: int) -> None:
@@ -926,7 +1237,7 @@ async def test_a_failing_answer_says_it_could_not_save_and_never_logs_its_messag
             audit=AsyncMock(),
         )
 
-    assert phrase == ANSWER_FAILED_PHRASE
+    assert phrase == MemoryAnswerReply(ANSWER_FAILED_PHRASE)
     assert not _leaked(caplog, "pomelo")
     assert "RuntimeError" in caplog.text
 
@@ -942,7 +1253,7 @@ async def test_an_accept_the_writer_denies_says_it_could_not_save(owner: int) ->
         audit=AsyncMock(side_effect=RuntimeError("audit down")),
     )
 
-    assert phrase == ANSWER_FAILED_PHRASE
+    assert phrase == MemoryAnswerReply(ANSWER_FAILED_PHRASE)
     assert await _status(candidate_id) is CandidateStatus.OFFERED
     assert await _likes(owner) == []
 
@@ -1085,7 +1396,7 @@ async def test_yes_to_a_value_already_saved_says_saved_and_keeps_one_fact(owner:
         audit=AsyncMock(),
     )
 
-    assert phrase == ANSWER_SAVED_PHRASE
+    assert phrase == MemoryAnswerReply(ANSWER_SAVED_PHRASE)
     stored = await candidates.get_candidate(candidate_id)
     assert stored is not None
     assert stored.status is CandidateStatus.CONFIRMED
@@ -1108,7 +1419,7 @@ async def test_a_no_the_policy_denies_says_it_could_not_and_leaves_the_offer_ope
         audit=audit,
     )
 
-    assert phrase == ANSWER_FAILED_PHRASE
+    assert phrase == MemoryAnswerReply(ANSWER_FAILED_PHRASE)
     stored = await candidates.get_candidate(candidate_id)
     assert stored is not None
     assert stored.status is CandidateStatus.OFFERED
@@ -1132,8 +1443,8 @@ async def test_a_no_that_loses_the_race_never_says_it_was_rejected(
     )
 
     resolve.assert_awaited_once()
-    assert phrase == ANSWER_FAILED_PHRASE
-    assert phrase != ANSWER_REJECTED_PHRASE
+    assert phrase == MemoryAnswerReply(ANSWER_FAILED_PHRASE)
+    assert phrase != MemoryAnswerReply(ANSWER_REJECTED_PHRASE)
     assert await _status(candidate_id) is CandidateStatus.OFFERED
 
 

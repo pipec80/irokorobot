@@ -20,8 +20,27 @@ from typing import TYPE_CHECKING, Final, Literal, Protocol, get_args
 if TYPE_CHECKING:
     import numpy as np
 
-SampleClass = Literal["reference", "genuine", "impostor", "replay"]
+SampleClass = Literal[
+    "reference",
+    "genuine",
+    "impostor",
+    "replay",
+    "reference-short",
+    "genuine-short",
+    "impostor-short",
+    "replay-short",
+]
 SAMPLE_CLASSES: Final[tuple[SampleClass, ...]] = get_args(SampleClass)
+# Plan 0047 classes (3-5 s fixed phrases) and Plan 0068 classes (1-2.5 s spoken
+# answers). A short class never counts toward a long-class minimum, or the reverse.
+LONG_CLASSES: Final[tuple[SampleClass, ...]] = ("reference", "genuine", "impostor", "replay")
+SHORT_CLASSES: Final[tuple[SampleClass, ...]] = (
+    "reference-short",
+    "genuine-short",
+    "impostor-short",
+    "replay-short",
+)
+SHORT_SUFFIX: Final = "-short"
 
 SCHEMA_VERSION: Final = 1
 CONDITIONS: Final = ("quiet-near", "quiet-far", "background-near", "background-far")
@@ -33,18 +52,44 @@ PHRASE_TEXT: Final[dict[str, str]] = {
     "phrase-02": "Guardé cinco libros nuevos en el estante de madera",
     "phrase-03": "Prefiero caminar por el parque cuando termina la tarde",
 }
+# Plan 0068 D-5: the short spoken answers. Same words for the owner and the
+# impostors, so the comparison is about the voice and not the vocabulary.
+SHORT_PHRASE_IDS: Final = ("short-01", "short-02", "short-03")
+SHORT_PHRASE_TEXT: Final[dict[str, str]] = {
+    "short-01": "Sí",
+    "short-02": "Acepto",
+    "short-03": "Sí, autorizo",
+}
+# Everything the capture prompt may show, long and short.
+ALL_PHRASE_IDS: Final = (*PHRASE_IDS, *SHORT_PHRASE_IDS)
+ALL_PHRASE_TEXT: Final[dict[str, str]] = {**PHRASE_TEXT, **SHORT_PHRASE_TEXT}
 OWNER_SUBJECT_ID: Final = "owner"
 IMPOSTOR_ID_PATTERN: Final = re.compile(r"^impostor_[a-z]+$")
 # Session ids become part of a WAV file name: lowercase words only, so no path
 # separator, drive colon (an NTFS alternate data stream) or empty value gets in.
 SESSION_ID_PATTERN: Final = re.compile(r"^[a-z0-9-]{1,40}$")
 EMBEDDING_DIM: Final = 192
+# Capture lower bound in seconds (Plan 0047 block 4 for long takes; Plan 0068 D-5
+# for short answers, which are a single word or two).
+LONG_MIN_CAPTURE_SECONDS: Final = 2.5
+SHORT_MIN_CAPTURE_SECONDS: Final = 1.0
 
 MINIMUM_SAMPLES: Final[dict[SampleClass, int]] = {
     "reference": 6,
     "genuine": 24,
     "impostor": 18,
     "replay": 6,
+}
+# Plan 0068 D-5 matrix, applied when the corpus holds any short sample: the long
+# reference and long genuine classes are then only the control (6 each); the short
+# classes carry the study. Impostor and replay exist only as short classes.
+SHORT_STUDY_MINIMUMS: Final[dict[SampleClass, int]] = {
+    "reference": 6,
+    "genuine": 6,
+    "reference-short": 6,
+    "genuine-short": 24,
+    "impostor-short": 18,
+    "replay-short": 6,
 }
 MIN_GENUINE_SESSIONS: Final = 2
 # Plan 0047 matrix: the reference and every live impostor read each frozen
@@ -89,6 +134,26 @@ _RATE_FIELDS: Final = (
     "replay_accept_rate",
 )
 _METRIC_FIELDS: Final = (*_RATE_FIELDS, "latency_p50_ms", "latency_p95_ms")
+
+
+def is_short_class(sample_class: str) -> bool:
+    """Return ``True`` for the Plan 0068 short-answer classes."""
+    return sample_class.endswith(SHORT_SUFFIX)
+
+
+def base_class(sample_class: str) -> str:
+    """Return the long class a class belongs to (``genuine-short`` -> ``genuine``)."""
+    return sample_class.removesuffix(SHORT_SUFFIX)
+
+
+def phrase_ids_for(sample_class: str) -> tuple[str, ...]:
+    """Return the frozen phrase ids a class may use: short ids only for short classes."""
+    return SHORT_PHRASE_IDS if is_short_class(sample_class) else PHRASE_IDS
+
+
+def min_capture_seconds(sample_class: str) -> float:
+    """Return the shortest live take, in seconds, ``capture`` accepts for a class."""
+    return SHORT_MIN_CAPTURE_SECONDS if is_short_class(sample_class) else LONG_MIN_CAPTURE_SECONDS
 
 
 @dataclass(frozen=True)
@@ -204,7 +269,7 @@ class AggregateSpeakerReport:
         for name in _METRIC_FIELDS:
             if getattr(self, name) is None:
                 raise ValueError(f"a measurement outcome requires {name}")
-        missing = set(SAMPLE_CLASSES) - set(self.sample_counts)
+        missing = set(LONG_CLASSES) - set(self.sample_counts)
         if missing:
             raise ValueError(f"sample_counts is missing classes: {sorted(missing)}")
         if not self.by_condition:
@@ -214,6 +279,130 @@ class AggregateSpeakerReport:
         if (self.selected_threshold is not None) != present:
             state = "a selected threshold" if present else "no selected threshold"
             raise ValueError(f"outcome {self.outcome} requires {state}")
+
+
+# --- Plan 0068 short-answer study -------------------------------------------
+
+# The speaker threshold the server runs today (Plan 0047, settings default). The
+# short-answer study judges every variant AT this value and never retunes it.
+SPEAKER_STUDY_THRESHOLD: Final = 0.4834
+# The one speech-level floor of the study: a 20 ms frame is speech when its RMS
+# (full scale = 1.0) is at least this. ``capture`` refuses a take whose 95th
+# percentile frame is under it and ``trim_silence`` keeps only frames at or above
+# it. It sits just under the quietest legitimate far-field take of the real corpus
+# (p95 ~0.0065, -44 dBFS) and above empty-room noise (~0.002).
+SPEECH_FRAME_RMS: Final = 0.004
+# Reserved ``embeddings.npz`` namespaces added for a short-answer corpus: the
+# embedding of the silence-trimmed clip and ``[raw_samples, trimmed_samples]``.
+TRIM_KEY_PREFIX: Final = "__trim__"
+CLIP_KEY_PREFIX: Final = "__clip__"
+
+# A cell smaller than this reports no distance range or mean: the range would
+# expose a single sample's raw score (Plan 0047 privacy rule - counts and ranges
+# only). Shared by the long-study and short-study renderers.
+MIN_CELL_FOR_RANGE: Final = 3
+
+ClipVariant = Literal["raw", "trimmed"]
+ReferenceSet = Literal["long-only", "long+short"]
+CLIP_VARIANTS: Final[tuple[ClipVariant, ...]] = get_args(ClipVariant)
+REFERENCE_SETS: Final[tuple[ReferenceSet, ...]] = get_args(ReferenceSet)
+# Classes scored against the reference centroids: the long genuine control and
+# the three short probe classes.
+SHORT_STUDY_PROBES: Final[tuple[SampleClass, ...]] = (
+    "genuine",
+    "genuine-short",
+    "impostor-short",
+    "replay-short",
+)
+
+
+@dataclass(frozen=True)
+class ClipInfo:
+    """Length of one clip before and after silence trimming, in samples at 16 kHz."""
+
+    raw_samples: int
+    trimmed_samples: int
+
+
+@dataclass(frozen=True)
+class VariantCell:
+    """One class scored in one variant. A silent-after-trim clip is rejected, with no distance.
+
+    ``distance_*`` are ``None`` for fewer than three scored clips: a range over one
+    or two clips would expose a raw per-sample score.
+    """
+
+    sample_class: SampleClass
+    total: int
+    accepted: int
+    silent: int
+    distance_min: float | None
+    distance_mean: float | None
+    distance_max: float | None
+
+
+@dataclass(frozen=True)
+class LengthBucketCell:
+    """Accepts of one class among the clips whose raw length falls in one bucket."""
+
+    sample_class: SampleClass
+    bucket: str
+    total: int
+    accepted: int
+
+
+@dataclass(frozen=True)
+class VariantResult:
+    """Every cell of one (clip variant, reference set) pair."""
+
+    clip: ClipVariant
+    references: ReferenceSet
+    cells: dict[str, VariantCell]
+    buckets: tuple[LengthBucketCell, ...]
+
+    @property
+    def impostor_accepts(self) -> int:
+        """Return how many short impostor clips this variant accepts."""
+        return self.cells["impostor-short"].accepted
+
+    @property
+    def eligible(self) -> bool:
+        """Return ``True`` only with 0 observed accepts on the short impostor class."""
+        return self.impostor_accepts == 0
+
+
+@dataclass(frozen=True)
+class SilenceShare:
+    """How much of the raw clips of one class the silence trim removes."""
+
+    sample_class: SampleClass
+    total: int
+    silent_clips: int
+    mean_share: float | None  # None for fewer than three clips
+
+
+@dataclass(frozen=True)
+class ShortStudyReport:
+    """Aggregate result of the Plan 0068 short-answer comparison - no ids, hashes or paths."""
+
+    model_id: str
+    package_version: str
+    threshold: float
+    sample_counts: dict[SampleClass, int]
+    variants: tuple[VariantResult, ...]
+    silence: tuple[SilenceShare, ...]
+    limitations: tuple[str, ...]
+
+    def variant(self, clip: str, references: str) -> VariantResult:
+        """Return the result of one (clip variant, reference set) pair.
+
+        Raises:
+            KeyError: If the pair is not one of the four compared variants.
+        """
+        for result in self.variants:
+            if (result.clip, result.references) == (clip, references):
+                return result
+        raise KeyError((clip, references))
 
 
 class SpeakerEmbeddingBackend(Protocol):

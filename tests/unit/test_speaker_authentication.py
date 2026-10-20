@@ -2,7 +2,10 @@
 request-scoped speaker resolver (Plan 0053, Task 4)."""
 
 from datetime import UTC, datetime
+import io
+import logging
 from uuid import uuid4
+import wave
 
 import aiosqlite
 import numpy as np
@@ -333,3 +336,143 @@ async def test_the_reference_count_of_the_match_overrides_the_earlier_count() ->
 
     assert (await resolver.resolve_actor(_event())).evidence == ()
     assert resolver.last_verdict is SpeakerVerdict.UNKNOWN
+
+
+# --- Plan 0068, Task 1: the verdict log says why -------------------------------------------
+
+_VERDICT_LOGGER = "server.cognition.speaker_authentication"
+# Attributes the stock record or the project's logging filters/formatter add on their own.
+_RECORD_BASELINE = frozenset(logging.makeLogRecord({}).__dict__) | {
+    "message",
+    "asctime",
+    "request_id",
+}
+_EXPECTED_EXTRA = {"event", "verdict", "clip_s", "distance", "gate"}
+
+
+def _silent_wav(seconds: float) -> bytes:
+    """Build a contract WAV (16 000 Hz, mono, int16) of *seconds* of zeros."""
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(16_000)
+        handle.writeframes(b"\x00\x00" * round(seconds * 16_000))
+    return buffer.getvalue()
+
+
+async def _verdict_record(
+    caplog: pytest.LogCaptureFixture, **overrides: object
+) -> logging.LogRecord:
+    """Resolve once and return the single `speaker.verdict` record it logged."""
+    caplog.set_level(logging.INFO, logger=_VERDICT_LOGGER)
+    await _resolver(**overrides).resolve_actor(_event())
+    records = [r for r in caplog.records if getattr(r, "event", None) == "speaker.verdict"]
+    assert len(records) == 1
+    return records[0]
+
+
+def _extras(record: logging.LogRecord) -> dict[str, object]:
+    return {k: v for k, v in record.__dict__.items() if k not in _RECORD_BASELINE}
+
+
+async def test_the_verdict_log_carries_clip_seconds_distance_and_gate_ok(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def _match(*_args: object) -> CentroidMatch:
+        return CentroidMatch(
+            distance=0.123456, reference_count=settings.speaker_min_reference_count
+        )
+
+    record = await _verdict_record(caplog, wav_bytes=_silent_wav(2.04), match_centroid=_match)
+    extras = _extras(record)
+    assert extras == {
+        "event": "speaker.verdict",
+        "verdict": "verified",
+        "clip_s": 2.0,
+        "distance": 0.123,
+        "gate": "ok",
+    }
+
+
+async def test_the_verdict_log_rounds_the_clip_to_a_tenth_of_a_second(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    record = await _verdict_record(caplog, wav_bytes=_silent_wav(2.46))
+    assert _extras(record)["clip_s"] == 2.5
+
+
+async def test_an_undecodable_clip_logs_zero_seconds(caplog: pytest.LogCaptureFixture) -> None:
+    record = await _verdict_record(caplog)  # the default b"canary-wav" is not a WAV
+    assert _extras(record)["clip_s"] == 0.0
+
+
+@pytest.mark.parametrize(
+    "gate, overrides, has_distance",
+    [
+        ("energy", {"has_energy": _false_sync}, False),
+        ("duration", {"has_duration": _false_sync}, False),
+        ("references", {"count_references": _zero}, False),
+        ("distance", {"match_centroid": _none}, False),
+        ("consent", {"read_consent": _false}, True),
+        ("unavailable", {"embed": _raise(SpeakerBackendError("down"))}, False),
+    ],
+)
+async def test_the_gate_names_the_first_reason_the_verdict_is_not_verified(
+    caplog: pytest.LogCaptureFixture,
+    gate: str,
+    overrides: dict[str, object],
+    has_distance: bool,
+) -> None:
+    record = await _verdict_record(caplog, **overrides)
+    extras = _extras(record)
+    assert extras["gate"] == gate
+    assert extras["verdict"] != "verified"
+    assert ("distance" in extras) is has_distance
+
+
+async def test_a_far_distance_is_logged_with_the_distance_gate(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def _far(*_args: object) -> CentroidMatch:
+        return CentroidMatch(distance=0.9, reference_count=settings.speaker_min_reference_count)
+
+    extras = _extras(await _verdict_record(caplog, match_centroid=_far))
+    assert extras["gate"] == "distance"
+    assert extras["distance"] == 0.9
+
+
+async def test_a_non_owner_role_logs_the_role_gate(caplog: pytest.LogCaptureFixture) -> None:
+    async def _guest(_person_id: int) -> HouseholdRole:
+        return HouseholdRole.UNKNOWN
+
+    extras = _extras(await _verdict_record(caplog, read_role=_guest))
+    assert extras["gate"] == "role"
+
+
+async def test_the_gate_reports_the_match_reference_count_not_the_stale_one(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def _fewer(*_args: object) -> CentroidMatch:
+        return CentroidMatch(distance=0.0, reference_count=1)
+
+    extras = _extras(await _verdict_record(caplog, match_centroid=_fewer))
+    assert extras["gate"] == "references"
+
+
+async def test_a_missing_distance_is_absent_not_zero_or_none(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    record = await _verdict_record(caplog, has_energy=_false_sync)
+    assert "distance" not in record.__dict__
+
+
+async def test_the_verdict_log_never_carries_audio_a_name_or_a_transcript(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    record = await _verdict_record(caplog, wav_bytes=_silent_wav(2.0))
+    extras = _extras(record)
+    assert set(extras) == _EXPECTED_EXTRA
+    assert all(isinstance(value, str | float) for value in extras.values())
+    assert not any(isinstance(value, bytes | bytearray) for value in extras.values())
+    assert record.getMessage() == "Speaker verdict: verified"

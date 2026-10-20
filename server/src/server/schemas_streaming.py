@@ -62,8 +62,9 @@ class StreamDoneEvent(BaseModel):
         description="Which evidence identified the actor for this turn: the face alone, "
         "the face corroborated by the voice, or an owner unlock grant",
     )
-    # Additive field (Plan 0067): true only when the offer's audio event was emitted on this
-    # turn. A client that does not know the field keeps working unchanged.
+    # Additive field (Plan 0067): true when the offer's audio event was emitted on this turn,
+    # or when the turn asked again for an answer whose voice did not verify (Plan 0068). A
+    # client that does not know the field keeps working unchanged.
     expects_short_reply: bool = Field(
         default=False,
         description="The turn ended with a spoken question the client should listen to once, "

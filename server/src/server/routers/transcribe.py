@@ -38,6 +38,7 @@ from server.cognition.models import CognitiveEvent
 from server.cognition.owner_authentication import OwnerUnlockService
 from server.cognition.response_plan import (
     InformationNeed,
+    MemoryAnswerReply,
     ResponsePlan,
     SceneDescriptionRequest,
     TextTurnPayload,
@@ -369,7 +370,7 @@ def _memory_answerer() -> MemoryAnswerer | None:
         parsed: MemoryAnswer,
         actor: ActivePersonContext,
         event: CognitiveEvent[TextTurnPayload],
-    ) -> str | None:
+    ) -> MemoryAnswerReply | None:
         return await answer_offer(
             parsed, actor=actor, correlation_id=event.correlation_id, now=utc_now()
         )

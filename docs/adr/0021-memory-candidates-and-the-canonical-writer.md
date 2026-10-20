@@ -16,6 +16,10 @@
   Amended on 2026-10-19 by Plan 0067: the stream tells the client when a spoken offer expects a
   reply, the client may listen to that reply in its own mode, hotwords help the recognizer, and the
   grammar admits «acepto» and «guárdala» (a note under decision 9; no change to who answers).
+  Amended on 2026-10-19 by Plan 0068: when only the voice check failed on a short answer, the owner
+  whose face is recognized hears one fixed retry sentence and the robot listens once more; the
+  grammar admits «que lo guardes» / «que la guardes». Nothing is written by the retry (a note under
+  decision 9; its cost is stated there).
 - **Date:** 2026-10-14
 - **Builds on:** [ADR 0006](0006-personal-and-family-companion-profiles.md),
   [ADR 0009](0009-locked-posture-and-scoped-capabilities.md),
@@ -436,6 +440,53 @@ One function, **one `db.transaction()`**, never relying on an `IntegrityError`:
     make the controller verify face and voice first (3 to 4 s); nothing is written without an
     open offer. The speaker check on short clips (a `Speaker verdict: unknown`) is measured in
     Plan 0068, not here.
+- **Amended 2026-10-19 (Plan 0068, Pipec's decision D-1): a retry when only the voice failed.** In
+  the first hardware session of Plan 0067 the owner answered three offers «Sí, autorizo.»: Whisper
+  heard the words every time, but the speaker check said `verified` once and `unknown` twice on the
+  same short clip. The two failures fell through to ordinary generation, and the model, which does
+  not have the spoken offer in its history, invented an answer to a question it never saw. Now,
+  when **all** of these hold, the reply is the fixed sentence `ANSWER_RETRY_PHRASE` («No reconocí
+  bien tu voz. Dímelo un poco más largo: sí, autorizo que lo guardes.») and the stream's `done`
+  carries `expects_short_reply` true, so the robot listens once more in the reply mode of Plan 0067:
+  - candidates and the answer path are on, and the message has the shape of an answer;
+  - the actor is identified **by face with no token** and is **not** the face-and-voice composite
+    (the voice did not verify);
+  - that person has **active voice consent**: without it the voice could never verify, so asking
+    again would only loop, and a revoked consent falls through exactly as before;
+  - the parsed answer names that same person's own open offer (by value, or the one open offer for
+    a verb alone, as in Plan 0066).
+
+  The retry **writes nothing, audits nothing and moves no offer**; the answer window keeps running
+  from the offer and is not extended. The retry is logged only as the outcome `voice_retry`, with
+  ids. A longer answer that now verifies (face and voice of the same person on that turn's own clip,
+  inside the window) promotes through the one writer as any answer does; after the window it is
+  ordinary conversation. Every other case is byte-identical to before: a token, a voice-only or
+  unknown actor, another person's face, no open offer, a different value, the switch off, a
+  revoked voice consent. The classic `/transcribe` and `/chat` routes are unchanged (no reply mode).
+  - *The grammar follows the retry.* The retry dictates «sí, autorizo que lo guardes», which did
+    not parse (only «que guardes» did). «que lo guardes» and «que la guardes» now follow every long
+    verb (`autorizo`, `autoriza`, `apruebo`, `aprueba`, `acepto`, `acepta`) and their «no» forms,
+    alone or followed by a value; a unit test pins that the words the retry dictates parse as an
+    accept with no value.
+  - *Its cost (D-2).* The face is identity evidence, not authorization, and a face-only actor
+    cannot answer. But a person who is **not** the owner and is speaking while the owner's face is
+    recognized (the owner in frame, someone else talking) now hears the retry phrase instead of
+    ordinary conversation when an offer of the owner's is open and the words name it. That reveals
+    that an offer is open, which the robot had already spoken aloud in the room, and it writes
+    nothing: a face-only or token-only actor still never promotes, rejects or erases. A different
+    face, a token, or no open offer still get ordinary conversation. Because the retry follows an
+    answer that **names** the open offer, that same person can also confirm a guessed value
+    («autorizo» plus a guessed value: retry means yes, ordinary conversation means no) within the window; the
+    value had been spoken aloud in the offer, so this adds nothing a person in the room had not
+    heard. A refusal is asked again as a refusal (`ANSWER_RETRY_REJECT_PHRASE` dictates «no autorizo
+    que lo guardes»), never as an acceptance, and with the speaker check switched off there is no
+    retry. Replay stays undefended (ADR 0016 §9) and the bounds of the Plan 0066 cost are unchanged.
+  - *Diagnostics.* The `Speaker verdict` log line carries the clip seconds, the distance when one
+    was computed and the first gate that failed (see the operator manual), so the next session shows
+    why a short clip said `unknown` without audio or text. Whether trimming the silence around a
+    short clip, or short confirmations among the references, would lift the owner's pass rate
+    without accepting an impostor is Plan 0068's measurement (Part B); no threshold, enrollment or
+    embedding changes here.
 
 ### 10. Where it runs
 

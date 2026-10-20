@@ -26,6 +26,7 @@ import pytest
 
 from scripts.speaker_calibration import (
     SpeakerThresholdResult,
+    _announce_capture,
     _load_frozen_backend,
     _reject_if_too_short,
     _reject_unusable_signal,
@@ -38,6 +39,7 @@ from scripts.speaker_calibration import (
     sweep_speaker_thresholds,
     zero_far_speaker_threshold,
 )
+from scripts.speaker_calibration_analysis import encode_wav_samples
 from scripts.speaker_calibration_backend import (
     _MODEL_REVISION,
     _MODEL_SOURCE,
@@ -60,18 +62,27 @@ from scripts.speaker_calibration_corpus import (
     write_text_atomic,
 )
 from scripts.speaker_calibration_models import (
+    CLIP_KEY_PREFIX,
     CONDITIONS,
     LATENCY_KEY_PREFIX,
+    LONG_CLASSES,
     MODEL_KEY,
     PHRASE_IDS,
     PHRASE_TEXT,
+    SAMPLE_CLASSES,
     SHA_KEY_PREFIX,
+    SHORT_CLASSES,
+    SHORT_PHRASE_IDS,
+    SHORT_PHRASE_TEXT,
+    SHORT_STUDY_MINIMUMS,
+    TRIM_KEY_PREFIX,
     AggregateSpeakerReport,
     ConditionSummary,
     SpeakerCliOptions,
     SpeakerEmbeddingBackend,
     SpeakerManifest,
     SpeakerSample,
+    min_capture_seconds,
 )
 
 if TYPE_CHECKING:
@@ -2304,4 +2315,577 @@ def test_cli_rejects_a_capture_condition_the_corpus_would_reject_later(
                 "--condition",
                 condition,
             ]
+        )
+
+
+# =====================================================================
+# Plan 0068 Task 3 - short-answer classes for the speaker study
+# =====================================================================
+
+
+def _short_study_rows(corpus_root: Path) -> list[dict[str, str]]:
+    """Build the smallest short-study matrix of Plan 0068 decision D-5.
+
+    6 long reference + 6 long genuine (the control), 6 reference-short,
+    24 genuine-short, 18 impostor-short and 6 replay-short. Silent placeholder WAVs.
+    """
+    rows: list[dict[str, str]] = []
+
+    def add(**fields: str) -> None:
+        rows.append(_sample_row(corpus_root, **fields))
+
+    for phrase in PHRASE_IDS:
+        for rep in (1, 2):
+            add(
+                sample_id=f"ref-{phrase}-{rep}",
+                sample_class="reference",
+                session_id="reference-01",
+                phrase_id=phrase,
+            )
+            add(
+                sample_id=f"ctl-{phrase}-{rep}",
+                sample_class="genuine",
+                session_id="control-01",
+                phrase_id=phrase,
+            )
+    for phrase in SHORT_PHRASE_IDS:
+        for rep in (1, 2):
+            add(
+                sample_id=f"sref-{phrase}-{rep}",
+                sample_class="reference-short",
+                session_id="short-reference-01",
+                phrase_id=phrase,
+            )
+    for session in ("short-probe-01", "short-probe-02"):
+        for phrase in SHORT_PHRASE_IDS:
+            for condition in CONDITIONS:
+                add(
+                    sample_id=f"sgen-{session}-{phrase}-{condition}",
+                    sample_class="genuine-short",
+                    session_id=session,
+                    phrase_id=phrase,
+                    condition=condition,
+                )
+    for who in ("impostor_a", "impostor_b", "impostor_c"):
+        for phrase in SHORT_PHRASE_IDS:
+            for rep in (1, 2):
+                add(
+                    sample_id=f"simp-{who}-{phrase}-{rep}",
+                    subject_id=who,
+                    sample_class="impostor-short",
+                    session_id=f"{who}-short-01",
+                    phrase_id=phrase,
+                )
+    for condition in ("quiet-near", "quiet-far"):
+        for phrase in SHORT_PHRASE_IDS:
+            add(
+                sample_id=f"srep-{condition}-{phrase}",
+                sample_class="replay-short",
+                session_id="short-replay-01",
+                phrase_id=phrase,
+                condition=condition,
+            )
+    return rows
+
+
+def _short_manifest(corpus_root: Path, rows: list[dict[str, str]]) -> SpeakerManifest:
+    return load_manifest(_write_manifest(corpus_root, rows), corpus_root)
+
+
+def test_short_classes_join_the_frozen_vocabulary() -> None:
+    assert {"reference-short", "genuine-short", "impostor-short", "replay-short"} <= set(
+        SAMPLE_CLASSES
+    )
+    assert set(LONG_CLASSES) == {"reference", "genuine", "impostor", "replay"}
+    assert set(SHORT_PHRASE_TEXT) == set(SHORT_PHRASE_IDS)
+    assert set(PHRASE_IDS).isdisjoint(SHORT_PHRASE_IDS)
+
+
+def test_the_short_study_matrix_has_the_d5_minimums() -> None:
+    assert SHORT_STUDY_MINIMUMS == {
+        "reference": 6,
+        "genuine": 6,
+        "reference-short": 6,
+        "genuine-short": 24,
+        "impostor-short": 18,
+        "replay-short": 6,
+    }
+
+
+def test_the_capture_lower_bound_is_2_5_s_for_long_classes_and_1_s_for_short_ones() -> None:
+    for sample_class in LONG_CLASSES:
+        assert min_capture_seconds(sample_class) == 2.5
+    for sample_class in SHORT_CLASSES:
+        assert min_capture_seconds(sample_class) == 1.0
+
+
+def test_corpus_accepts_the_short_study_minimum_matrix(tmp_path: Path) -> None:
+    validate_corpus(_short_manifest(tmp_path, _short_study_rows(tmp_path)))
+
+
+@pytest.mark.parametrize("sample_class", ["reference-short", "genuine-short", "impostor-short"])
+def test_a_short_class_below_its_minimum_is_rejected(tmp_path: Path, sample_class: str) -> None:
+    rows = _short_study_rows(tmp_path)
+    rows.remove(next(r for r in rows if r["sample_class"] == sample_class))
+
+    with pytest.raises(ValueError, match=f"{sample_class} needs at least"):
+        validate_corpus(_short_manifest(tmp_path, rows))
+
+
+def test_replay_short_below_its_minimum_is_rejected(tmp_path: Path) -> None:
+    rows = _short_study_rows(tmp_path)
+    rows.remove(next(r for r in rows if r["sample_class"] == "replay-short"))
+
+    with pytest.raises(ValueError, match="replay-short needs at least 6"):
+        validate_corpus(_short_manifest(tmp_path, rows))
+
+
+def test_short_samples_never_satisfy_the_long_control_minimum(tmp_path: Path) -> None:
+    rows = [r for r in _short_study_rows(tmp_path) if not r["sample_id"].startswith("ctl-")]
+
+    # Plenty of short genuines, but not one long genuine: the control is missing.
+    with pytest.raises(ValueError, match="genuine needs at least 6 samples, got 0"):
+        validate_corpus(_short_manifest(tmp_path, rows))
+
+
+def test_short_samples_never_satisfy_the_long_reference_minimum(tmp_path: Path) -> None:
+    rows = [r for r in _short_study_rows(tmp_path) if not r["sample_id"].startswith("ref-")]
+
+    with pytest.raises(ValueError, match="reference needs at least 6 samples, got 0"):
+        validate_corpus(_short_manifest(tmp_path, rows))
+
+
+def test_one_short_sample_cannot_pad_a_long_study_corpus(tmp_path: Path) -> None:
+    rows = _minimum_corpus_rows(tmp_path)
+    rows.append(
+        _sample_row(
+            tmp_path,
+            sample_id="stray-short",
+            sample_class="genuine-short",
+            session_id="short-probe-01",
+            phrase_id="short-01",
+        )
+    )
+
+    with pytest.raises(ValueError, match="needs at least"):
+        validate_corpus(_short_manifest(tmp_path, rows))
+
+
+def test_a_short_class_needs_a_short_phrase_and_a_long_class_a_long_one(tmp_path: Path) -> None:
+    rows = _short_study_rows(tmp_path)
+    next(r for r in rows if r["sample_class"] == "genuine-short")["phrase_id"] = "phrase-01"
+    with pytest.raises(ValueError, match="phrase_id"):
+        validate_corpus(_short_manifest(tmp_path, rows))
+
+    rows = _short_study_rows(tmp_path)
+    next(r for r in rows if r["sample_class"] == "reference")["phrase_id"] = "short-01"
+    with pytest.raises(ValueError, match="phrase_id"):
+        validate_corpus(_short_manifest(tmp_path, rows))
+
+
+def test_short_subjects_follow_the_same_pseudonym_rules(tmp_path: Path) -> None:
+    rows = _short_study_rows(tmp_path)
+    next(r for r in rows if r["sample_class"] == "genuine-short")["subject_id"] = "impostor_a"
+    with pytest.raises(ValueError, match="owner"):
+        validate_corpus(_short_manifest(tmp_path, rows))
+
+    rows = _short_study_rows(tmp_path)
+    next(r for r in rows if r["sample_class"] == "impostor-short")["subject_id"] = "owner"
+    with pytest.raises(ValueError, match="impostor"):
+        validate_corpus(_short_manifest(tmp_path, rows))
+
+
+def test_reference_short_must_be_one_quiet_near_session(tmp_path: Path) -> None:
+    rows = _short_study_rows(tmp_path)
+    next(r for r in rows if r["sample_class"] == "reference-short")["condition"] = "quiet-far"
+    with pytest.raises(ValueError, match="quiet-near"):
+        validate_corpus(_short_manifest(tmp_path, rows))
+
+    rows = _short_study_rows(tmp_path)
+    next(r for r in rows if r["sample_class"] == "reference-short")["session_id"] = "other-01"
+    with pytest.raises(ValueError, match="one dedicated session"):
+        validate_corpus(_short_manifest(tmp_path, rows))
+
+
+def test_reference_short_session_must_not_be_a_probe_session(tmp_path: Path) -> None:
+    rows = _short_study_rows(tmp_path)
+    for row in rows:
+        if row["sample_class"] == "reference-short":
+            row["session_id"] = "short-probe-01"
+
+    with pytest.raises(ValueError, match="reference and probe sessions must be distinct"):
+        validate_corpus(_short_manifest(tmp_path, rows))
+
+
+def test_genuine_short_needs_two_sessions_and_all_four_conditions(tmp_path: Path) -> None:
+    rows = _short_study_rows(tmp_path)
+    for row in rows:
+        if row["sample_class"] == "genuine-short":
+            row["session_id"] = "short-probe-01"
+    with pytest.raises(ValueError, match="at least 2 distinct sessions"):
+        validate_corpus(_short_manifest(tmp_path, rows))
+
+    rows = _short_study_rows(tmp_path)
+    for row in rows:
+        if row["sample_class"] == "genuine-short" and row["condition"] == "background-far":
+            row["condition"] = "quiet-near"
+    with pytest.raises(ValueError, match="all four frozen conditions"):
+        validate_corpus(_short_manifest(tmp_path, rows))
+
+
+def test_impostor_short_needs_three_adults_and_each_short_phrase_twice(tmp_path: Path) -> None:
+    rows = _short_study_rows(tmp_path)
+    for row in rows:
+        if row["sample_class"] == "impostor-short" and row["subject_id"] == "impostor_c":
+            row["subject_id"] = "impostor_a"
+    with pytest.raises(ValueError, match="at least 3 consenting adults"):
+        validate_corpus(_short_manifest(tmp_path, rows))
+
+    rows = _short_study_rows(tmp_path)
+    victim = next(
+        r for r in rows if r["sample_class"] == "impostor-short" and r["phrase_id"] == "short-02"
+    )
+    victim["phrase_id"] = "short-01"
+    with pytest.raises(ValueError, match="short-02 is short"):
+        validate_corpus(_short_manifest(tmp_path, rows))
+
+
+def test_genuine_short_must_cover_every_short_phrase(tmp_path: Path) -> None:
+    rows = _short_study_rows(tmp_path)
+    for row in rows:
+        if row["sample_class"] == "genuine-short" and row["phrase_id"] == "short-03":
+            row["phrase_id"] = "short-01"
+
+    with pytest.raises(ValueError, match="all three frozen phrases"):
+        validate_corpus(_short_manifest(tmp_path, rows))
+
+
+def test_replay_short_is_limited_to_the_two_quiet_conditions(tmp_path: Path) -> None:
+    rows = _short_study_rows(tmp_path)
+    next(r for r in rows if r["sample_class"] == "replay-short")["condition"] = "background-near"
+
+    with pytest.raises(ValueError, match="replay conditions"):
+        validate_corpus(_short_manifest(tmp_path, rows))
+
+
+def test_genuine_short_and_impostor_short_sessions_must_be_distinct(tmp_path: Path) -> None:
+    rows = _short_study_rows(tmp_path)
+    next(r for r in rows if r["sample_class"] == "impostor-short")["session_id"] = "short-probe-01"
+
+    with pytest.raises(ValueError, match="impostor sessions must be distinct"):
+        validate_corpus(_short_manifest(tmp_path, rows))
+
+
+def test_run_cli_validate_passes_on_the_short_study_matrix(tmp_path: Path) -> None:
+    _write_manifest(tmp_path, _short_study_rows(tmp_path))
+
+    assert run_cli(parse_cli_args(["validate", "--corpus-root", str(tmp_path)])) == 0
+
+
+# --- capture CLI for the short classes ---------------------------------
+
+
+def _capture_argv(
+    tmp_path: Path | None, sample_class: str, phrase: str, condition: str = "quiet-near"
+) -> list[str]:
+    subject = "impostor_a" if sample_class.startswith("impostor") else "owner"
+    root = ["--corpus-root", str(tmp_path)] if tmp_path is not None else []
+    return [
+        "capture",
+        *root,
+        "--class",
+        sample_class,
+        "--subject",
+        subject,
+        "--session",
+        "short-01",
+        "--phrase",
+        phrase,
+        "--condition",
+        condition,
+    ]
+
+
+@pytest.mark.parametrize("sample_class", SHORT_CLASSES)
+def test_cli_capture_parses_every_short_class_with_a_short_phrase(sample_class: str) -> None:
+    options = parse_cli_args(_capture_argv(None, sample_class, "short-02"))
+
+    assert options.sample_class == sample_class
+    assert options.phrase_id == "short-02"
+
+
+@pytest.mark.parametrize(
+    "sample_class, phrase",
+    [("genuine-short", "phrase-01"), ("genuine", "short-01")],
+)
+def test_cli_capture_rejects_a_phrase_of_the_other_family(sample_class: str, phrase: str) -> None:
+    with pytest.raises(SystemExit):
+        parse_cli_args(_capture_argv(None, sample_class, phrase))
+
+
+@pytest.mark.parametrize(
+    "sample_class, condition",
+    [("reference-short", "quiet-far"), ("replay-short", "background-near")],
+)
+def test_cli_rejects_a_short_capture_condition_the_corpus_would_reject_later(
+    sample_class: str, condition: str
+) -> None:
+    with pytest.raises(SystemExit):
+        parse_cli_args(_capture_argv(None, sample_class, "short-01", condition))
+
+
+def test_cli_rejects_an_owner_subject_for_impostor_short() -> None:
+    argv = _capture_argv(None, "impostor-short", "short-01")
+    argv[argv.index("--subject") + 1] = "owner"
+
+    with pytest.raises(SystemExit):
+        parse_cli_args(argv)
+
+
+def _live_capture(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, sample_class: str, wav: bytes
+) -> int:
+    """Run ``capture`` through the live-quality guards with a fake microphone."""
+    phrase = "short-01" if sample_class.endswith("-short") else "phrase-01"
+    monkeypatch.setattr("scripts.speaker_calibration._capture_live", lambda _phrase: wav)
+    return run_cli(parse_cli_args(_capture_argv(tmp_path, sample_class, phrase)))
+
+
+@pytest.mark.parametrize("sample_class", SHORT_CLASSES)
+def test_a_short_class_accepts_a_one_second_take(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, sample_class: str
+) -> None:
+    assert _live_capture(tmp_path, monkeypatch, sample_class, _tone_wav_bytes(seconds=1.0)) == 0
+    assert len(list(tmp_path.glob("*.wav"))) == 1
+
+
+@pytest.mark.parametrize("sample_class", LONG_CLASSES)
+def test_a_long_class_still_rejects_a_one_second_take(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, sample_class: str
+) -> None:
+    assert _live_capture(tmp_path, monkeypatch, sample_class, _tone_wav_bytes(seconds=1.0)) != 0
+    assert list(tmp_path.glob("*.wav")) == []
+    assert not (tmp_path / "manifest.json").exists()
+
+
+def test_a_short_class_still_rejects_a_take_under_one_second(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    wav = _tone_wav_bytes(seconds=0.8)
+
+    assert _live_capture(tmp_path, monkeypatch, "genuine-short", wav) != 0
+    assert list(tmp_path.glob("*.wav")) == []
+
+
+def test_a_short_class_still_rejects_silence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert _live_capture(tmp_path, monkeypatch, "genuine-short", _wav_bytes(frames=24_000)) != 0
+    assert list(tmp_path.glob("*.wav")) == []
+
+
+def test_a_short_class_still_rejects_a_clipped_take(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rails = np.tile(np.array([32_767, -32_768], dtype=np.int16), 12_000)  # 1.5 s square wave
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(16_000)
+        handle.writeframes(rails.tobytes())
+
+    assert _live_capture(tmp_path, monkeypatch, "genuine-short", buf.getvalue()) != 0
+    assert list(tmp_path.glob("*.wav")) == []
+
+
+def test_reject_if_too_short_takes_a_per_class_lower_bound() -> None:
+    one_second = _wav_bytes(frames=16_000)
+
+    _reject_if_too_short(one_second, minimum_seconds=1.0)  # no raise
+    with pytest.raises(ValueError, match="steady pace"):
+        _reject_if_too_short(one_second)  # the default bound is unchanged
+
+
+def test_capture_announces_the_short_phrase_text(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level("INFO")
+    # The countdown sleeps and beeps; stub both so the test stays fast and silent.
+    monkeypatch.setattr("scripts.speaker_calibration.time.sleep", lambda _s: None)
+    monkeypatch.setattr("scripts.speaker_calibration._play_start_cue", lambda: None)
+
+    _announce_capture("short-03")
+
+    assert SHORT_PHRASE_TEXT["short-03"] in " ".join(r.getMessage() for r in caplog.records)
+
+
+# =====================================================================
+# Plan 0068 Task 4 - embed and analyze for the short-answer study
+# =====================================================================
+
+_SHORT_SILENT_ID = "sgen-short-probe-01-short-01-quiet-near"
+
+
+def _audible_short_rows(corpus_root: Path) -> list[dict[str, str]]:
+    """Short-study rows whose WAVs are real tone clips with silence around them.
+
+    Each clip is 0.4 s of silence, 0.5 s of a synthetic tone (amplitude varies per
+    row so no two files are byte-identical) and 0.3 s of silence - non-biometric.
+    One genuine-short clip is pure silence, to exercise the empty-after-trim path.
+    """
+    rows = _short_study_rows(corpus_root)
+    for index, row in enumerate(rows):
+        quiet_before = np.zeros(6_400, dtype=np.int16)
+        quiet_after = np.zeros(4_800, dtype=np.int16)
+        step = np.arange(8_000, dtype=np.float64) / 16_000
+        tone = (np.sin(2.0 * np.pi * 220.0 * step) * (8_000 + index)).astype(np.int16)
+        clip = np.concatenate([quiet_before, tone, quiet_after])
+        if row["sample_id"] == _SHORT_SILENT_ID:
+            clip = np.zeros(19_200, dtype=np.int16)
+            clip[0] = 1  # keep the file distinct from every other silent placeholder
+        path = corpus_root / row["wav_path"]
+        path.write_bytes(encode_wav_samples(clip))
+        row["sha256"] = sha256_of_file(path)
+    return rows
+
+
+class _RecordingBackend:
+    """Typed double that records the length of every WAV it embeds."""
+
+    model_id = _TEST_MODEL_ID
+
+    def __init__(self) -> None:
+        self.lengths: list[int] = []
+
+    def embed_wav(self, wav_bytes: bytes) -> np.ndarray:
+        self.lengths.append(len(wav_bytes))
+        angle = np.radians(len(wav_bytes) % 90)
+        vec = np.zeros(192)
+        vec[0], vec[1] = np.cos(angle), np.sin(angle)
+        return vec
+
+
+def _embed_short_corpus(tmp_path: Path) -> tuple[list[dict[str, str]], _RecordingBackend]:
+    rows = _audible_short_rows(tmp_path)
+    _write_manifest(tmp_path, rows)
+    backend = _RecordingBackend()
+    code = run_cli(parse_cli_args(["embed", "--corpus-root", str(tmp_path)]), backend=backend)
+    assert code == 0
+    return rows, backend
+
+
+def test_embed_stores_a_trimmed_embedding_and_the_clip_lengths_of_every_short_probe(
+    tmp_path: Path,
+) -> None:
+    rows, _ = _embed_short_corpus(tmp_path)
+
+    probes = [r for r in rows if not r["sample_class"].startswith("reference")]
+    with np.load(tmp_path / "embeddings.npz") as stored:
+        for row in probes:
+            raw_n, trimmed_n = (int(v) for v in stored[CLIP_KEY_PREFIX + row["sample_id"]])
+            assert raw_n == 19_200
+            if row["sample_id"] == _SHORT_SILENT_ID:
+                assert trimmed_n == 0
+                assert TRIM_KEY_PREFIX + row["sample_id"] not in stored.files
+            else:
+                # 0.5 s tone plus a 0.1 s margin on each side
+                assert trimmed_n == 8_000 + 2 * 1_600
+                assert stored[TRIM_KEY_PREFIX + row["sample_id"]].shape == (192,)
+
+
+def test_embed_trims_probes_only_and_leaves_the_references_raw(tmp_path: Path) -> None:
+    rows, _ = _embed_short_corpus(tmp_path)
+
+    with np.load(tmp_path / "embeddings.npz") as stored:
+        for row in rows:
+            if row["sample_class"].startswith("reference"):
+                assert TRIM_KEY_PREFIX + row["sample_id"] not in stored.files
+                assert CLIP_KEY_PREFIX + row["sample_id"] not in stored.files
+
+
+def test_embed_feeds_the_backend_the_trimmed_audio(tmp_path: Path) -> None:
+    rows, backend = _embed_short_corpus(tmp_path)
+
+    audible_probes = sum(
+        1
+        for r in rows
+        if not r["sample_class"].startswith("reference") and r["sample_id"] != _SHORT_SILENT_ID
+    )
+    trimmed_wav = 44 + 2 * (8_000 + 2 * 1_600)  # header plus int16 payload
+    raw_wav = 44 + 2 * 19_200
+    # one warm-up and one raw embedding per sample, one trimmed embedding per audible probe
+    assert backend.lengths.count(trimmed_wav) == audible_probes
+    assert backend.lengths.count(raw_wav) >= len(rows)
+
+
+def test_embed_reports_how_many_clips_were_silent_after_trim_without_naming_them(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level("INFO")
+
+    _embed_short_corpus(tmp_path)
+
+    logged = " ".join(record.getMessage() for record in caplog.records)
+    assert "1 clip(s) had no audio left after trimming" in logged
+    assert "sgen-" not in logged
+
+
+def test_a_long_study_embed_writes_no_trim_or_clip_keys(tmp_path: Path) -> None:
+    _write_manifest(tmp_path, _minimum_corpus_rows(tmp_path))
+
+    run_cli(parse_cli_args(["embed", "--corpus-root", str(tmp_path)]), backend=_FakeBackend())
+
+    with np.load(tmp_path / "embeddings.npz") as stored:
+        assert not [n for n in stored.files if n.startswith((TRIM_KEY_PREFIX, CLIP_KEY_PREFIX))]
+
+
+@pytest.mark.usefixtures("_frozen_identity")
+def test_analyze_writes_the_short_answer_report_for_a_short_study_corpus(tmp_path: Path) -> None:
+    _embed_short_corpus(tmp_path)
+    output = tmp_path / "report.md"
+
+    exit_code = run_cli(_analyze_opts(tmp_path, output))
+
+    text = output.read_text(encoding="utf-8")
+    assert exit_code == 0
+    assert "Plan 0068" in text
+    for variant in ("clip=raw references=long-only", "clip=trimmed references=long+short"):
+        assert variant in text
+    assert "0.4834" in text
+    assert "1-1.5 s" in text
+    assert "sgen-" not in text
+    assert "impostor_a" not in text
+    assert ".wav" not in text
+
+
+@pytest.mark.usefixtures("_frozen_identity")
+def test_analyze_refuses_a_short_study_embedding_without_clip_lengths(tmp_path: Path) -> None:
+    _embed_short_corpus(tmp_path)
+    with np.load(tmp_path / "embeddings.npz") as stored:
+        kept = {k: np.asarray(stored[k]) for k in stored.files if not k.startswith(CLIP_KEY_PREFIX)}
+    np.savez(tmp_path / "embeddings.npz", **kept)  # type: ignore[arg-type]
+    output = tmp_path / "report.md"
+
+    assert run_cli(_analyze_opts(tmp_path, output)) != 0
+    assert not output.exists()
+
+
+def test_discard_drops_the_trim_and_clip_keys_of_the_discarded_samples(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rows, _ = _embed_short_corpus(tmp_path)
+    victim = next(r for r in rows if r["sample_class"] == "impostor-short")
+    _confirm(monkeypatch)
+
+    code = run_cli(_discard_opts(tmp_path, "--subject", victim["subject_id"]))
+
+    assert code == 0
+    with np.load(tmp_path / "embeddings.npz") as stored:
+        gone = [r["sample_id"] for r in rows if r["subject_id"] == victim["subject_id"]]
+        assert gone
+        assert all(
+            prefix + sample_id not in stored.files
+            for sample_id in gone
+            for prefix in ("", TRIM_KEY_PREFIX, CLIP_KEY_PREFIX)
         )

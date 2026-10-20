@@ -49,9 +49,11 @@ import numpy as np
 from scripts.speaker_calibration_corpus import (
     append_sample_atomic,
     find_orphan_wavs,
+    is_short_study,
     load_manifest,
     remove_samples_atomic,
     render_aggregate_report,
+    render_short_study_report,
     resolve_corpus_path,
     select_samples,
     sha256_of_file,
@@ -63,27 +65,36 @@ from scripts.speaker_calibration_corpus import (
     write_text_atomic,
 )
 from scripts.speaker_calibration_models import (
+    ALL_PHRASE_IDS,
+    ALL_PHRASE_TEXT,
     CAPTURE_FLAGS,
     CLI_ACTIONS,
+    CLIP_KEY_PREFIX,
     CONDITIONS,
     DEFAULT_CORPUS_ROOT,
     EMBEDDING_DIM,
     EMBEDDINGS_NAME,
     IMPOSTOR_ID_PATTERN,
     LATENCY_KEY_PREFIX,
+    LONG_MIN_CAPTURE_SECONDS,
     MANIFEST_NAME,
     MODEL_CACHE_DIRNAME,
     MODEL_KEY,
     OWNER_SUBJECT_ID,
-    PHRASE_IDS,
-    PHRASE_TEXT,
     REPLAY_CONDITIONS,
     REPORT_NAME,
     SAMPLE_CLASSES,
     SESSION_ID_PATTERN,
     SHA_KEY_PREFIX,
+    SPEECH_FRAME_RMS,
+    TRIM_KEY_PREFIX,
+    ClipInfo,
     SpeakerCliOptions,
     SpeakerSample,
+    base_class,
+    is_short_class,
+    min_capture_seconds,
+    phrase_ids_for,
 )
 
 if TYPE_CHECKING:
@@ -97,17 +108,16 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# A full read of any frozen phrase lasts ~4-5 s; a brisk-but-complete one still
-# clears ~2.8 s. Below this the VAD almost certainly closed on a mid-phrase
-# pause or clipped the start, so the capture is rejected rather than stored.
-_MIN_UTTERANCE_SECONDS = 2.5
+# A full read of any frozen long phrase lasts ~4-5 s; a brisk-but-complete one
+# still clears ~2.8 s. Below this the VAD almost certainly closed on a mid-phrase
+# pause or clipped the start, so the capture is rejected rather than stored. Short
+# answer classes (Plan 0068) use their own, lower bound: ``min_capture_seconds``.
+_MIN_UTTERANCE_SECONDS = LONG_MIN_CAPTURE_SECONDS
 # A live take far beyond a phrase read is music, a conversation or a stuck VAD.
 _MAX_LIVE_UTTERANCE_SECONDS = 15.0
-# 20 ms frames. The floor sits just under the quietest legitimate take of the real
-# corpus (a far-field replay, p95 frame RMS ~0.0065 = -44 dBFS) and above empty
-# room noise that merely tripped the VAD (~0.002).
+# 20 ms frames, judged against SPEECH_FRAME_RMS (defined once in the models module,
+# shared with the silence trim).
 _FRAME_SAMPLES = 320
-_MIN_SPEECH_FRAME_RMS = 0.004
 _INT16_FULL_SCALE = 32768.0
 # More than this share of samples pinned at the rails is a clipped, unusable take.
 _MAX_CLIPPED_FRACTION = 0.005
@@ -335,7 +345,7 @@ def parse_cli_args(argv: Sequence[str] | None = None) -> SpeakerCliOptions:
     parser.add_argument("--class", dest="sample_class", choices=SAMPLE_CLASSES, default=None)
     parser.add_argument("--subject", dest="subject_id", default=None)
     parser.add_argument("--session", dest="session_id", type=_session_id, default=None)
-    parser.add_argument("--phrase", dest="phrase_id", choices=PHRASE_IDS, default=None)
+    parser.add_argument("--phrase", dest="phrase_id", choices=ALL_PHRASE_IDS, default=None)
     parser.add_argument("--condition", choices=CONDITIONS, default=None)
     parser.add_argument("--sample", dest="sample_id", default=None)
     parser.add_argument("--purge-model-cache", action="store_true")
@@ -414,9 +424,13 @@ def _check_capture_subject(parser: argparse.ArgumentParser, args: argparse.Names
     if problem is not None:
         parser.error(f"--subject: {problem}")
     # Catch a rule the corpus validator would only flag after the recording.
-    if args.sample_class == "reference" and args.condition != "quiet-near":
+    if args.phrase_id not in phrase_ids_for(args.sample_class):
+        family = "short-NN" if is_short_class(args.sample_class) else "phrase-NN"
+        parser.error(f"--phrase: a {args.sample_class} sample reads a {family} phrase")
+    kind = base_class(args.sample_class)
+    if kind == "reference" and args.condition != "quiet-near":
         parser.error("--condition: reference samples are captured at quiet-near only")
-    if args.sample_class == "replay" and args.condition not in REPLAY_CONDITIONS:
+    if kind == "replay" and args.condition not in REPLAY_CONDITIONS:
         parser.error(f"--condition: replay samples use one of {REPLAY_CONDITIONS}")
 
 
@@ -499,7 +513,7 @@ def _run_capture(options: SpeakerCliOptions, capture_audio: Callable[[], bytes] 
     wav_bytes = _capture_live(options.phrase_id) if capture_audio is None else capture_audio()
     validate_wav_bytes(wav_bytes)
     if live:
-        _reject_if_too_short(wav_bytes)
+        _reject_if_too_short(wav_bytes, min_capture_seconds(options.sample_class))
         _reject_unusable_signal(wav_bytes)
     options.corpus_root.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%f")
@@ -541,7 +555,7 @@ def _announce_capture(phrase_id: str) -> None:
         phrase_id: One of the frozen phrase ids.
     """
     logger.info("---- %s ----------------------------------------", phrase_id)
-    logger.info("READ ALOUD:  %s", PHRASE_TEXT[phrase_id])
+    logger.info("READ ALOUD:  %s", ALL_PHRASE_TEXT[phrase_id])
     for count in (3, 2, 1):
         logger.info("   %d ...", count)
         time.sleep(1.0)
@@ -549,22 +563,24 @@ def _announce_capture(phrase_id: str) -> None:
     logger.info("   >>> SPEAK NOW <<<")
 
 
-def _reject_if_too_short(wav_bytes: bytes) -> None:
+def _reject_if_too_short(wav_bytes: bytes, minimum_seconds: float = _MIN_UTTERANCE_SECONDS) -> None:
     """Reject a live capture too short to be a full phrase read.
 
     Args:
         wav_bytes: The just-captured WAV — 16 000 Hz, mono, signed int16.
+        minimum_seconds: The class's lower bound (``min_capture_seconds``); the
+            default is the long-phrase bound of Plan 0047.
 
     Raises:
-        ValueError: If the utterance is under ``_MIN_UTTERANCE_SECONDS`` — the
-            VAD almost certainly closed on a mid-phrase pause or clipped start,
-            so nothing is written and the operator re-reads the phrase.
+        ValueError: If the utterance is under *minimum_seconds* — the VAD almost
+            certainly closed on a mid-phrase pause or clipped start, so nothing
+            is written and the operator re-reads the phrase.
     """
     with wave.open(io.BytesIO(wav_bytes), "rb") as handle:
         seconds = handle.getnframes() / handle.getframerate()
-    if seconds < _MIN_UTTERANCE_SECONDS:
+    if seconds < minimum_seconds:
         raise ValueError(
-            f"capture is only {seconds:.1f}s (need >= {_MIN_UTTERANCE_SECONDS}s) - "
+            f"capture is only {seconds:.1f}s (need >= {minimum_seconds}s) - "
             "read the whole phrase at a steady pace, no long pauses between words"
         )
 
@@ -599,7 +615,7 @@ def _reject_unusable_signal(wav_bytes: bytes) -> None:
         raise ValueError("capture is too short to measure its level")
     framed = samples[:usable].astype(np.float64) / _INT16_FULL_SCALE
     rms = np.sqrt(np.mean(framed.reshape(-1, _FRAME_SAMPLES) ** 2, axis=1))
-    if percentile(rms.tolist(), 0.95) < _MIN_SPEECH_FRAME_RMS:
+    if percentile(rms.tolist(), 0.95) < SPEECH_FRAME_RMS:
         raise ValueError("capture has no speech-level audio - speak closer or louder")
 
 
@@ -676,14 +692,53 @@ def _run_embed(options: SpeakerCliOptions, backend: SpeakerEmbeddingBackend | No
     if manifest.samples:  # one discarded embedding so the first timing is not a cold start
         backend.embed_wav(manifest.samples[0].wav_path.read_bytes())
     arrays: dict[str, np.ndarray] = {MODEL_KEY: np.array(backend.model_id)}
+    short_study = is_short_study(manifest.samples)
+    silent_after_trim = 0
     for sample in manifest.samples:
         vector, latency_ms = _embed_sample(backend, sample)
         arrays[sample.sample_id] = vector
         arrays[LATENCY_KEY_PREFIX + sample.sample_id] = np.array(latency_ms)
         arrays[SHA_KEY_PREFIX + sample.sample_id] = np.array(sample.sha256)
+        if short_study and base_class(sample.sample_class) != "reference":
+            trimmed_arrays = _embed_trimmed(backend, sample)
+            arrays.update(trimmed_arrays)
+            silent_after_trim += int(trimmed_arrays[CLIP_KEY_PREFIX + sample.sample_id][1] == 0)
     _write_npz_atomic(options.corpus_root / EMBEDDINGS_NAME, arrays)
     logger.info("wrote %d embeddings for model %s", len(manifest.samples), backend.model_id)
+    if silent_after_trim:
+        logger.warning("%d clip(s) had no audio left after trimming", silent_after_trim)
     return 0
+
+
+def _embed_trimmed(
+    backend: SpeakerEmbeddingBackend, sample: SpeakerSample
+) -> dict[str, np.ndarray]:
+    """Embed the silence-trimmed version of one probe clip (Plan 0068, D-6).
+
+    Args:
+        backend: The frozen embedding backend.
+        sample: A probe sample whose WAV is 16 000 Hz, mono, signed int16.
+
+    Returns:
+        ``CLIP_KEY_PREFIX + id`` -> ``[raw_samples, trimmed_samples]``, plus
+        ``TRIM_KEY_PREFIX + id`` -> the embedding of the trimmed clip when any audio
+        is left. A clip that is silent once trimmed has no embedding to store.
+    """
+    # Deferred: the analysis module imports this one at load time.
+    from scripts.speaker_calibration_analysis import (  # noqa: PLC0415
+        CLIP_SAMPLE_RATE,
+        decode_wav_samples,
+        encode_wav_samples,
+        trim_silence,
+    )
+
+    samples = decode_wav_samples(sample.wav_path.read_bytes())
+    trimmed = trim_silence(samples, CLIP_SAMPLE_RATE)
+    arrays = {CLIP_KEY_PREFIX + sample.sample_id: np.array([samples.size, trimmed.size])}
+    if trimmed.size:
+        vector = checked_embedding(backend.embed_wav(encode_wav_samples(trimmed)))
+        arrays[TRIM_KEY_PREFIX + sample.sample_id] = vector
+    return arrays
 
 
 def _embed_sample(
@@ -738,19 +793,71 @@ def _run_analyze(options: SpeakerCliOptions) -> int:
     validate_corpus(manifest)
     _require_no_orphan_wavs(manifest, options.corpus_root)
     # Deferred: both modules import this one at load time.
-    from scripts.speaker_calibration_analysis import build_report  # noqa: PLC0415
+    from scripts.speaker_calibration_analysis import (  # noqa: PLC0415
+        build_report,
+        build_short_study_report,
+    )
     from scripts.speaker_calibration_backend import frozen_model_identity  # noqa: PLC0415
 
     model_id, package_version = frozen_model_identity()
-    embeddings, latencies = _load_embeddings(
-        options.corpus_root / EMBEDDINGS_NAME, manifest, model_id
-    )
+    path = options.corpus_root / EMBEDDINGS_NAME
+    embeddings, latencies = _load_embeddings(path, manifest, model_id)
+    if is_short_study(manifest.samples):
+        trimmed, clips = _load_trim_data(path, manifest)
+        short = build_short_study_report(
+            manifest,
+            embeddings,
+            trimmed,
+            clips,
+            model_id=model_id,
+            package_version=package_version,
+        )
+        write_text_atomic(output, render_short_study_report(short))
+        logger.info("short-answer analysis written (%d variants)", len(short.variants))
+        return 0
     report = build_report(
         manifest, embeddings, latencies, model_id=model_id, package_version=package_version
     )
     write_text_atomic(output, render_aggregate_report(report))
     logger.info("analysis outcome: %s (aggregate report written)", report.outcome)
     return 0
+
+
+def _load_trim_data(
+    path: Path, manifest: SpeakerManifest
+) -> tuple[dict[str, np.ndarray], dict[str, ClipInfo]]:
+    """Load the trimmed embeddings and clip lengths ``embed`` stored for the probes.
+
+    Args:
+        path: The ``embeddings.npz`` written by ``embed``.
+        manifest: The validated short-study manifest.
+
+    Returns:
+        The trimmed embedding per probe whose trim left audio, and the raw and
+        trimmed length of every probe clip. Absent entries are reported by the
+        analysis as a request to re-run ``embed`` (counts only, never ids).
+    """
+    probe_ids = [s.sample_id for s in manifest.samples if base_class(s.sample_class) != "reference"]
+    with np.load(path) as stored:
+        present = set(stored.files)
+        trimmed = {
+            i: checked_embedding(stored[TRIM_KEY_PREFIX + i])
+            for i in probe_ids
+            if TRIM_KEY_PREFIX + i in present
+        }
+        clips = {
+            i: _checked_clip(stored[CLIP_KEY_PREFIX + i])
+            for i in probe_ids
+            if CLIP_KEY_PREFIX + i in present
+        }
+    return trimmed, clips
+
+
+def _checked_clip(value: np.ndarray) -> ClipInfo:
+    pair = np.asarray(value).ravel()
+    if pair.shape != (2,) or not np.issubdtype(pair.dtype, np.integer):
+        raise ValueError("a stored clip length is not a pair of integers - re-run embed")
+    return ClipInfo(raw_samples=int(pair[0]), trimmed_samples=int(pair[1]))
 
 
 def _load_embeddings(
@@ -839,7 +946,7 @@ def _purge_embeddings(path: Path, sample_ids: set[str]) -> None:
     drop = sample_ids | {
         prefix + sample_id
         for sample_id in sample_ids
-        for prefix in (LATENCY_KEY_PREFIX, SHA_KEY_PREFIX)
+        for prefix in (LATENCY_KEY_PREFIX, SHA_KEY_PREFIX, TRIM_KEY_PREFIX, CLIP_KEY_PREFIX)
     }
     with np.load(path) as stored:
         kept = {key: np.asarray(stored[key]) for key in stored.files if key not in drop}

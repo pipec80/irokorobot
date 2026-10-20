@@ -27,19 +27,27 @@ from server.exceptions import AudioContractError  # type: ignore[import-untyped]
 from scripts.speaker_calibration_models import (
     CONDITIONS,
     IMPOSTOR_ID_PATTERN,
+    MIN_CELL_FOR_RANGE,
     MIN_GENUINE_SESSIONS,
     MIN_IMPOSTOR_SUBJECTS,
     MIN_PHRASE_REPETITIONS,
     MINIMUM_SAMPLES,
     OWNER_SUBJECT_ID,
-    PHRASE_IDS,
     REPLAY_CONDITIONS,
     SAMPLE_CLASSES,
     SCHEMA_VERSION,
+    SHORT_STUDY_MINIMUMS,
+    SHORT_SUFFIX,
     AggregateSpeakerReport,
     ConditionSummary,
+    ShortStudyReport,
+    SilenceShare,
     SpeakerManifest,
     SpeakerSample,
+    VariantCell,
+    base_class,
+    is_short_class,
+    phrase_ids_for,
 )
 
 if TYPE_CHECKING:
@@ -48,10 +56,6 @@ if TYPE_CHECKING:
 # Generous ceiling: a fixed neutral phrase read and the 3-second latency WAV are
 # both far below this. It bounds only accidental oversized captures, not format.
 _MAX_WAV_SECONDS = 30.0
-# A cell smaller than this reports no distance range: the range would expose a
-# single sample's raw score (Plan 0047 privacy rule - counts and ranges only).
-_MIN_CELL_FOR_RANGE = 3
-
 _SAMPLE_FIELDS = frozenset(
     {
         "sample_id",
@@ -363,8 +367,11 @@ def _check_vocabulary(sample: SpeakerSample) -> None:
         raise ValueError(f"{sample.sample_id}: unknown sample_class {sample.sample_class!r}")
     if sample.condition not in CONDITIONS:
         raise ValueError(f"{sample.sample_id}: unknown condition {sample.condition!r}")
-    if sample.phrase_id not in PHRASE_IDS:
-        raise ValueError(f"{sample.sample_id}: unknown phrase_id {sample.phrase_id!r}")
+    if sample.phrase_id not in phrase_ids_for(sample.sample_class):
+        raise ValueError(
+            f"{sample.sample_id}: phrase_id {sample.phrase_id!r} is not a frozen "
+            f"{sample.sample_class} phrase"
+        )
 
 
 def subject_id_problem(sample_class: str, subject_id: str) -> str | None:
@@ -380,7 +387,7 @@ def subject_id_problem(sample_class: str, subject_id: str) -> str | None:
     Returns:
         A short reason without a sample id, or ``None`` when the id is allowed.
     """
-    if sample_class == "impostor":
+    if base_class(sample_class) == "impostor":
         if not IMPOSTOR_ID_PATTERN.fullmatch(subject_id):
             return "impostor subject_id must match impostor_[a-z]+"
     elif subject_id != OWNER_SUBJECT_ID:
@@ -406,51 +413,76 @@ def _check_distinct_audio(samples: Sequence[SpeakerSample]) -> None:
         raise ValueError("two samples carry byte-identical audio; a copy is not a new sample")
 
 
+def is_short_study(samples: Sequence[SpeakerSample]) -> bool:
+    """Return ``True`` when the corpus is the Plan 0068 short-answer study."""
+    return any(is_short_class(s.sample_class) for s in samples)
+
+
+def _study_class(samples: Sequence[SpeakerSample], base: str) -> str:
+    """Return the class that carries the full-matrix rules for *base* in this corpus.
+
+    A corpus with any short sample is the short-answer study, whose genuine,
+    impostor and replay rules apply to the short classes; the long reference and
+    long genuine classes are then only the control and keep their minimum of 6.
+    """
+    return base + SHORT_SUFFIX if is_short_study(samples) else base
+
+
 def _check_reference_session(samples: Sequence[SpeakerSample]) -> None:
-    references = [s for s in samples if s.sample_class == "reference"]
-    if not references:
-        return
-    sessions = {s.session_id for s in references}
-    if len(sessions) != 1:
-        raise ValueError(
-            f"reference samples must share one dedicated session, got {sorted(sessions)}"
-        )
-    if {s.condition for s in references} != {"quiet-near"}:
-        raise ValueError("reference samples must all be captured at quiet-near")
+    for sample_class in ("reference", "reference" + SHORT_SUFFIX):
+        references = [s for s in samples if s.sample_class == sample_class]
+        if not references:
+            continue
+        sessions = {s.session_id for s in references}
+        if len(sessions) != 1:
+            raise ValueError(
+                f"reference samples must share one dedicated session, got {sorted(sessions)}"
+            )
+        if {s.condition for s in references} != {"quiet-near"}:
+            raise ValueError("reference samples must all be captured at quiet-near")
+
+
+def _sessions_of(samples: Sequence[SpeakerSample], base: str) -> set[str]:
+    return {s.session_id for s in samples if base_class(s.sample_class) == base}
 
 
 def _check_session_separation(samples: Sequence[SpeakerSample]) -> None:
-    reference_sessions = {s.session_id for s in samples if s.sample_class == "reference"}
-    probe_sessions = {s.session_id for s in samples if s.sample_class != "reference"}
+    reference_sessions = _sessions_of(samples, "reference")
+    probe_sessions = {s.session_id for s in samples if base_class(s.sample_class) != "reference"}
     leaked = reference_sessions & probe_sessions
     if leaked:
         raise ValueError(f"reference and probe sessions must be distinct; shared: {sorted(leaked)}")
-    genuine_sessions = {s.session_id for s in samples if s.sample_class == "genuine"}
-    impostor_sessions = {s.session_id for s in samples if s.sample_class == "impostor"}
-    if genuine_sessions & impostor_sessions:
+    if _sessions_of(samples, "genuine") & _sessions_of(samples, "impostor"):
         raise ValueError("owner genuine sessions and impostor sessions must be distinct")
 
 
 def _check_minimum_matrix(samples: Sequence[SpeakerSample]) -> None:
-    for sample_class, minimum in MINIMUM_SAMPLES.items():
+    """Count each class exactly: a short sample never fills a long class, or the reverse."""
+    minimums = SHORT_STUDY_MINIMUMS if is_short_study(samples) else MINIMUM_SAMPLES
+    for sample_class, minimum in minimums.items():
         count = sum(1 for s in samples if s.sample_class == sample_class)
         if count < minimum:
             raise ValueError(f"{sample_class} needs at least {minimum} samples, got {count}")
 
 
 def _check_genuine_coverage(samples: Sequence[SpeakerSample]) -> None:
-    genuine = [s for s in samples if s.sample_class == "genuine"]
+    sample_class = _study_class(samples, "genuine")
+    genuine = [s for s in samples if s.sample_class == sample_class]
     if len({s.session_id for s in genuine}) < MIN_GENUINE_SESSIONS:
-        raise ValueError(f"genuine samples need at least {MIN_GENUINE_SESSIONS} distinct sessions")
+        raise ValueError(
+            f"{sample_class} samples need at least {MIN_GENUINE_SESSIONS} distinct sessions"
+        )
     if {s.condition for s in genuine} != set(CONDITIONS):
-        raise ValueError("genuine samples must span all four frozen conditions")
+        raise ValueError(f"{sample_class} samples must span all four frozen conditions")
 
 
 def _check_impostor_diversity(samples: Sequence[SpeakerSample]) -> None:
-    subjects = {s.subject_id for s in samples if s.sample_class == "impostor"}
+    sample_class = _study_class(samples, "impostor")
+    subjects = {s.subject_id for s in samples if s.sample_class == sample_class}
     if len(subjects) < MIN_IMPOSTOR_SUBJECTS:
         raise ValueError(
-            f"impostor samples need at least {MIN_IMPOSTOR_SUBJECTS} consenting adults, got {len(subjects)}"
+            f"{sample_class} samples need at least {MIN_IMPOSTOR_SUBJECTS} consenting adults, "
+            f"got {len(subjects)}"
         )
 
 
@@ -458,23 +490,27 @@ def _check_phrase_repetitions(samples: Sequence[SpeakerSample]) -> None:
     """Require each frozen phrase twice from the reference and from every impostor."""
     groups: dict[tuple[str, str], list[str]] = {}
     for s in samples:
-        if s.sample_class == "reference":
-            groups.setdefault(("reference", ""), []).append(s.phrase_id)
-        elif s.sample_class == "impostor":
-            groups.setdefault(("impostor", s.subject_id), []).append(s.phrase_id)
+        match base_class(s.sample_class):
+            case "reference":
+                groups.setdefault((s.sample_class, ""), []).append(s.phrase_id)
+            case "impostor":
+                groups.setdefault((s.sample_class, s.subject_id), []).append(s.phrase_id)
     for (sample_class, _), phrases in sorted(groups.items()):
-        for phrase in PHRASE_IDS:
+        for phrase in phrase_ids_for(sample_class):
             if phrases.count(phrase) < MIN_PHRASE_REPETITIONS:
                 raise ValueError(
                     f"every {sample_class} participant needs each frozen phrase at least "
                     f"{MIN_PHRASE_REPETITIONS} times; {phrase} is short"
                 )
-    if {s.phrase_id for s in samples if s.sample_class == "genuine"} != set(PHRASE_IDS):
-        raise ValueError("genuine samples must cover all three frozen phrases")
+    genuine_class = _study_class(samples, "genuine")
+    covered = {s.phrase_id for s in samples if s.sample_class == genuine_class}
+    if covered != set(phrase_ids_for(genuine_class)):
+        raise ValueError(f"{genuine_class} samples must cover all three frozen phrases")
 
 
 def _check_replay_conditions(samples: Sequence[SpeakerSample]) -> None:
-    bad = {s.condition for s in samples if s.sample_class == "replay"} - set(REPLAY_CONDITIONS)
+    replays = {s.condition for s in samples if base_class(s.sample_class) == "replay"}
+    bad = replays - set(REPLAY_CONDITIONS)
     if bad:
         raise ValueError(f"replay conditions must be one of {REPLAY_CONDITIONS}, got {sorted(bad)}")
 
@@ -519,7 +555,7 @@ def _condition_row(summary: ConditionSummary) -> str:
         f"| {summary.sample_class} | {summary.condition} | {summary.total} | {summary.accepted} "
         f"| {summary.rejected} |"
     )
-    if summary.total < _MIN_CELL_FOR_RANGE:
+    if summary.total < MIN_CELL_FOR_RANGE:
         # With one or two samples a min/max/mean IS a raw per-sample distance.
         return f"{head} n/a | n/a | n/a |"
     return (
@@ -535,3 +571,65 @@ def _fmt(value: float | None) -> str:
 def condition_key(sample_class: str, condition: str) -> str:
     """Return the deterministic ``by_condition`` dict key for one cell."""
     return f"{sample_class}/{condition}"
+
+
+def render_short_study_report(report: ShortStudyReport) -> str:
+    """Render the Plan 0068 short-answer report - no ids, subjects, hashes or paths."""
+    lines = [
+        "# Speaker calibration short-answer report (Plan 0068)",
+        "",
+        f"- Model: {report.model_id}",
+        f"- Package: {report.package_version}",
+        f"- Threshold (fixed, not retuned): {report.threshold}",
+        "",
+        "## Sample counts",
+        "",
+        *(f"- {cls}: {count}" for cls, count in sorted(report.sample_counts.items())),
+        "",
+        "## Variants",
+    ]
+    for variant in report.variants:
+        verdict = "eligible" if variant.eligible else "NOT eligible"
+        lines += [
+            "",
+            f"### clip={variant.clip} references={variant.references}",
+            "",
+            f"- Short impostor accepts: {variant.impostor_accepts} ({verdict})",
+            "",
+            "| class | total | accepted | rate | silent | dmin | dmean | dmax |",
+            "|---|---|---|---|---|---|---|---|",
+            *(_variant_row(cell) for cell in variant.cells.values()),
+            "",
+            "| class | clip length | total | accepted |",
+            "|---|---|---|---|",
+            *(
+                f"| {b.sample_class} | {b.bucket} | {b.total} | {b.accepted} |"
+                for b in variant.buckets
+            ),
+        ]
+    lines += [
+        "",
+        "## Silence in the raw clips",
+        "",
+        "| class | clips | fully silent after trim | mean silence share |",
+        "|---|---|---|---|",
+        *(_silence_row(share) for share in report.silence),
+        "",
+        "## Limitations",
+        "",
+        *(f"- {item}" for item in report.limitations),
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def _variant_row(cell: VariantCell) -> str:
+    rate = cell.accepted / cell.total if cell.total else 0.0
+    head = f"| {cell.sample_class} | {cell.total} | {cell.accepted} | {rate:.3f} | {cell.silent} |"
+    if cell.distance_min is None or cell.distance_mean is None or cell.distance_max is None:
+        return f"{head} n/a | n/a | n/a |"
+    return f"{head} {cell.distance_min:.4f} | {cell.distance_mean:.4f} | {cell.distance_max:.4f} |"
+
+
+def _silence_row(share: SilenceShare) -> str:
+    mean = "n/a" if share.mean_share is None else f"{share.mean_share:.3f}"
+    return f"| {share.sample_class} | {share.total} | {share.silent_clips} | {mean} |"

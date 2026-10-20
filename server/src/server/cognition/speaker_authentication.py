@@ -35,6 +35,7 @@ from server.memory.voice_consent import has_active_voice_consent
 from server.settings import settings
 from server.voice.speaker_embedding import (
     SpeakerBackendError,
+    clip_duration_s,
     embed_wav,
     has_voiced_energy,
     meets_verification_duration,
@@ -71,6 +72,20 @@ class SpeakerVerdict(StrEnum):
     UNAVAILABLE = "unavailable"
 
 
+def _distance_within_threshold(distance: float | None) -> bool:
+    """Return whether *distance* is a finite value at or under the match threshold.
+
+    Affirmative and finite on purpose: `nan > threshold` is False, so a negated
+    comparison would let a corrupt distance through (a security predicate must
+    fail closed, not open).
+    """
+    return (
+        distance is not None
+        and math.isfinite(distance)
+        and distance <= settings.speaker_authentication_match_threshold
+    )
+
+
 def evaluate_speaker_verification(
     *,
     reference_count: int,
@@ -102,20 +117,50 @@ def evaluate_speaker_verification(
         return SpeakerVerdict.UNAVAILABLE
     if reference_count < settings.speaker_min_reference_count:
         return SpeakerVerdict.UNKNOWN
-    # Affirmative and finite on purpose: `nan > threshold` is False, so a negated
-    # comparison would let a corrupt distance through (a security predicate must
-    # fail closed, not open).
-    if (
-        distance is None
-        or not math.isfinite(distance)
-        or not distance <= settings.speaker_authentication_match_threshold
-    ):
+    if not _distance_within_threshold(distance):
         return SpeakerVerdict.UNKNOWN
     if not consent_active:
         return SpeakerVerdict.UNKNOWN
     if role is not HouseholdRole.OWNER:
         return SpeakerVerdict.UNKNOWN
     return SpeakerVerdict.VERIFIED
+
+
+_GATE_OK = "ok"
+_DISTANCE_DIGITS = 3
+_CLIP_DIGITS = 1
+
+
+def _first_failed_gate(
+    *,
+    backend_available: bool,
+    reference_count: int,
+    energy_ok: bool,
+    duration_ok: bool,
+    distance: float | None,
+    consent_active: bool,
+    role: HouseholdRole,
+) -> str:
+    """Name the first reason the verdict is not `VERIFIED`, for the diagnostic log.
+
+    Mirrors the order of `evaluate_speaker_verification` (the one decision point);
+    the clip gates sit right after the reference count because that is the order the
+    resolver runs them in. It decides nothing — the verdict comes from the table.
+
+    Returns:
+        One of `unavailable`, `references`, `energy`, `duration`, `distance`,
+        `consent`, `role`, or `ok` when every gate passed.
+    """
+    failures = (
+        (not backend_available, "unavailable"),
+        (reference_count < settings.speaker_min_reference_count, "references"),
+        (not energy_ok, "energy"),
+        (not duration_ok, "duration"),
+        (not _distance_within_threshold(distance), "distance"),
+        (not consent_active, "consent"),
+        (role is not HouseholdRole.OWNER, "role"),
+    )
+    return next((name for failed, name in failures if failed), _GATE_OK)
 
 
 def _unknown_active_person(
@@ -246,11 +291,15 @@ class SpeakerRequestResolver:
         consent_active = False
         role = HouseholdRole.UNKNOWN
         backend_available = True
+        # Default to passed so a failure before the clip gates run is never blamed on them.
+        energy_ok = True
+        duration_ok = True
         try:
             reference_count = await self._count_references(self._owner_person_id, self._model_id)
             enough = reference_count >= settings.speaker_min_reference_count
-            usable_clip = self._has_energy(self._wav) and self._has_duration(self._wav)
-            if enough and usable_clip:
+            energy_ok = self._has_energy(self._wav)
+            duration_ok = energy_ok and self._has_duration(self._wav)
+            if enough and energy_ok and duration_ok:
                 embedding = await self._embed(self._wav)
                 match = await self._match(self._owner_person_id, embedding, self._model_id)
                 if match is not None:
@@ -299,11 +348,24 @@ class SpeakerRequestResolver:
             backend_available=backend_available,
         )
         self.last_verdict = verdict
-        logger.info(
-            "Speaker verdict: %s",
-            verdict.value,
-            extra={"event": "speaker.verdict", "verdict": verdict.value},
-        )
+        # Diagnostics only: seconds, a distance and a gate name — never audio, a name or text.
+        extra: dict[str, str | float] = {
+            "event": "speaker.verdict",
+            "verdict": verdict.value,
+            "clip_s": round(clip_duration_s(self._wav), _CLIP_DIGITS),
+            "gate": _first_failed_gate(
+                backend_available=backend_available,
+                reference_count=reference_count,
+                energy_ok=energy_ok,
+                duration_ok=duration_ok,
+                distance=distance,
+                consent_active=consent_active,
+                role=role,
+            ),
+        }
+        if distance is not None:
+            extra["distance"] = round(distance, _DISTANCE_DIGITS)
+        logger.info("Speaker verdict: %s", verdict.value, extra=extra)
         if verdict is not SpeakerVerdict.VERIFIED:
             return _unknown_active_person(event, "No speaker evidence")
         evidence = IdentityEvidence(
