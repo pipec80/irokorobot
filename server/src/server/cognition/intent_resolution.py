@@ -81,7 +81,21 @@ _NON_WORD_RUN = re.compile(r"[^\w]+", re.UNICODE)
 _ANSWER_OPENERS = frozenset({"iroko", "oye", "bueno", "ok", "claro", "si", "ya", "dale", "po"})
 # Within each prefix tuple the order matters: the first match wins, so the longest verb comes
 # first («autorizo guardar» before «autorizo»), or the shorter one would leave its tail in the value.
+# Plan 0068, D-1: «que lo guardes» / «que la guardes» follow every long verb, because the retry
+# phrase dictates «sí, autorizo que lo guardes» and the answer it asks for must parse.
 _ANSWER_ACCEPT_PREFIXES = (
+    "autorizo que lo guardes",
+    "autorizo que la guardes",
+    "apruebo que lo guardes",
+    "apruebo que la guardes",
+    "autoriza que lo guardes",
+    "autoriza que la guardes",
+    "aprueba que lo guardes",
+    "aprueba que la guardes",
+    "acepto que lo guardes",
+    "acepto que la guardes",
+    "acepta que lo guardes",
+    "acepta que la guardes",
     "autorizo que guardes",
     "apruebo que guardes",
     "autoriza que guardes",
@@ -111,6 +125,18 @@ _ANSWER_ACCEPT_PREFIXES = (
     "acepta",
 )
 _ANSWER_REJECT_PREFIXES = (
+    "no autorizo que lo guardes",
+    "no autorizo que la guardes",
+    "no apruebo que lo guardes",
+    "no apruebo que la guardes",
+    "no autoriza que lo guardes",
+    "no autoriza que la guardes",
+    "no aprueba que lo guardes",
+    "no aprueba que la guardes",
+    "no acepto que lo guardes",
+    "no acepto que la guardes",
+    "no acepta que lo guardes",
+    "no acepta que la guardes",
     "no autorizo que guardes",
     "no apruebo que guardes",
     "no autoriza que guardes",

@@ -32,6 +32,7 @@ from server.cognition.models import (
 )
 from server.cognition.response_plan import (
     InformationNeed,
+    MemoryAnswerReply,
     ResponseClaim,
     ResponsePlan,
     ResponseSource,
@@ -58,10 +59,12 @@ type ConsentResolver = Callable[
 ]
 type IntentResolver = Callable[[str], IntentResolution]
 #: Resolves a spoken answer to a memory offer for an actor already resolved from face and voice
-#: (ADR 0021 decision 9). Only the voice routes inject one; it returns the fixed result phrase,
-#: or ``None`` so the turn falls through to ordinary generation, byte for byte.
+#: (ADR 0021 decision 9). Only the voice routes inject one; it returns the fixed reply (a phrase
+#: and whether to listen again, Plan 0068), or ``None`` so the turn falls through to ordinary
+#: generation, byte for byte.
 type MemoryAnswerer = Callable[
-    [MemoryAnswer, ActivePersonContext, CognitiveEvent[TextTurnPayload]], Awaitable[str | None]
+    [MemoryAnswer, ActivePersonContext, CognitiveEvent[TextTurnPayload]],
+    Awaitable[MemoryAnswerReply | None],
 ]
 type ControllerDecision = ResponsePlan | SceneDescriptionRequest | None
 
@@ -302,15 +305,16 @@ class CognitiveController:
         if event.event_id in self._answers:
             return self._answers[event.event_id]
         actor = await self._observed_person_resolver(event)
-        phrase = await self._memory_answerer(answer, actor, event)
+        reply = await self._memory_answerer(answer, actor, event)
         plan = (
             None
-            if phrase is None
+            if reply is None
             else ResponsePlan(
                 need=InformationNeed.MEMORY_ANSWER,
                 status=KnowledgeStatus.KNOWN,
                 source=ResponseSource.DETERMINISTIC,
-                response=phrase,
+                response=reply.phrase,
+                expects_short_reply=reply.expects_short_reply,
             )
         )
         self._answers[event.event_id] = plan

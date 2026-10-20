@@ -18,7 +18,7 @@ from server.cognition.intent_resolution import (
 )
 from server.cognition.response_plan import InformationNeed
 from server.memory.candidate_classifier import _MAX_WORDS
-from server.memory.lexicon import ARTICLES
+from server.memory.lexicon import ANSWER_RETRY_PHRASE, ARTICLES
 
 pytestmark = pytest.mark.unit
 
@@ -266,6 +266,83 @@ def test_emphasis_and_the_value_limit_around_the_new_words(
     message: str, accept: bool, phrase: str
 ) -> None:
     assert parse_memory_answer(message) == MemoryAnswer(accept=accept, phrase=phrase)
+
+
+_LONG_VERBS = ("autorizo", "autoriza", "apruebo", "aprueba", "acepto", "acepta")
+
+
+@pytest.mark.parametrize("verb", _LONG_VERBS)
+@pytest.mark.parametrize("object_pronoun", ["lo", "la"])
+def test_a_long_verb_followed_by_que_lo_or_la_guardes_is_a_verb_alone(
+    verb: str, object_pronoun: str
+) -> None:
+    """Plan 0068, D-1: «sí, autorizo que lo guardes» is what the retry asks for, so it must parse."""
+    tail = f"que {object_pronoun} guardes"
+
+    for message in (f"{verb} {tail}", f"Sí, {verb} {tail}.", f"Sí, {verb} {tail}, gracias"):
+        assert parse_memory_answer(message) == MemoryAnswer(accept=True, phrase="")
+        resolution = resolve_information_need(message)
+        assert resolution.need is InformationNeed.MEMORY_ANSWER
+        assert resolution.rule_id == "memory.answer.v1"
+    assert parse_memory_answer(f"no {verb} {tail}") == MemoryAnswer(accept=False, phrase="")
+    assert parse_memory_answer(f"No, no {verb} {tail}.") == MemoryAnswer(accept=False, phrase="")
+
+
+@pytest.mark.parametrize(
+    "message, accept",
+    [
+        ("Sí, autorizo que lo guardes", True),
+        ("Acepto que la guardes", True),
+        ("Apruebo que lo guardes", True),
+        ("No autorizo que lo guardes", False),
+        ("No acepto que la guardes", False),
+    ],
+)
+def test_the_que_lo_guardes_forms_name_no_value(message: str, accept: bool) -> None:
+    assert parse_memory_answer(message) == MemoryAnswer(accept=accept, phrase="")
+
+
+@pytest.mark.parametrize(
+    "message, accept, phrase",
+    [
+        ("Autorizo que lo guardes el mate", True, "el mate"),
+        ("Sí, acepto que la guardes la sopa", True, "la sopa"),
+        ("No apruebo que lo guardes el mate", False, "el mate"),
+    ],
+)
+def test_a_value_after_que_lo_guardes_is_still_read_as_the_value(
+    message: str, accept: bool, phrase: str
+) -> None:
+    assert parse_memory_answer(message) == MemoryAnswer(accept=accept, phrase=phrase)
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Que lo guardes",
+        "Sí, que lo guardes",
+        "Guarda que lo guardes",
+        "Autorizo que lo guardes uno dos tres cuatro cinco seis siete",
+        "Autorizo que lo",
+    ],
+)
+def test_que_lo_guardes_does_not_widen_what_is_refused(message: str) -> None:
+    """The new forms hang on a long verb: alone, or with a value past the limit, nothing parses."""
+    assert parse_memory_answer(message) is None
+
+
+def test_the_words_the_retry_phrase_dictates_are_an_answer_that_works() -> None:
+    """Plan 0068, D-1 round trip: the robot only ever asks for words the grammar accepts."""
+    instructed = ANSWER_RETRY_PHRASE.rsplit(":", 1)[1].strip()
+
+    assert instructed == "sí, autorizo que lo guardes."
+    assert parse_memory_answer(instructed) == MemoryAnswer(accept=True, phrase="")
+    assert resolve_information_need(instructed).need is InformationNeed.MEMORY_ANSWER
+
+
+def test_the_retry_phrase_is_not_itself_an_answer() -> None:
+    """The robot's own words, heard back, must never read as the owner's answer."""
+    assert parse_memory_answer(ANSWER_RETRY_PHRASE) is None
 
 
 @pytest.mark.parametrize(

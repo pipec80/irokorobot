@@ -190,7 +190,9 @@ async def stream_response_plan(
 
     Yields:
         NDJSON text, emotion, one 16kHz mono int16 WAV audio response, and
-        final timing events.
+        final timing events. The terminal ``done`` carries the plan's
+        ``expects_short_reply`` (the memory-answer retry of Plan 0068), so the
+        client listens once more in its reply mode.
     """
     yield StreamTextHeardEvent(value=text_heard).model_dump_json() + "\n"
     yield StreamEmotionEvent(value=plan.emotion).model_dump_json() + "\n"
@@ -211,6 +213,7 @@ async def stream_response_plan(
         total_ms=total_ms,
         authentication_consumed=authentication_consumed,
         identity_source=identity_source,
+        expects_short_reply=plan.expects_short_reply,
     )
     yield done_event.model_dump_json() + "\n"
 

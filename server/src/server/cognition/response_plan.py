@@ -1,5 +1,6 @@
 """Immutable response-planning contracts for the P0.3 chat pilot."""
 
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Literal
 
@@ -91,6 +92,10 @@ class ResponsePlan(BaseModel):
     # route speaks it, synthesized with the response and never returned in `llm_response`;
     # `stream_response_plan` and chat ignore it.
     offer: str | None = Field(default=None, min_length=1, repr=False)  # carries a value
+    # The turn ended with a question the client should listen to once, with a short reply in
+    # mind (Plan 0068, D-3). `stream_response_plan` copies it into `done`; the classic route and
+    # chat ignore it.
+    expects_short_reply: bool = False
 
     @model_validator(mode="after")
     def _known_claims_require_known_tools(self) -> "ResponsePlan":
@@ -104,6 +109,23 @@ class ResponsePlan(BaseModel):
             if claim.status is KnowledgeStatus.KNOWN and claim.tool_name not in known_tools:
                 raise ValueError("known claim requires a known tool result")
         return self
+
+
+@dataclass(frozen=True)
+class MemoryAnswerReply:
+    """What the memory answerer says back: a fixed phrase, and whether to listen again.
+
+    Lives in the cognitive core so the controller can map it without importing
+    ``server.memory`` (ADR 0021 decision 9, Plan 0068 D-4).
+
+    Attributes:
+        phrase: The fixed sentence to speak; it never carries a stored value.
+        expects_short_reply: ``True`` when the sentence asks a question and the client should
+            listen once for a short answer (the retry of Plan 0068).
+    """
+
+    phrase: str
+    expects_short_reply: bool = False
 
 
 class SceneDescriptionRequest(BaseModel):
