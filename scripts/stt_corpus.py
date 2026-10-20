@@ -160,13 +160,14 @@ def pending_items(
 ) -> list[ScriptItem]:
     """List what is still to read, one entry per missing take, in a session-seeded order.
 
-    The main condition counts takes over every session (D-5: an item's ``reps`` are spread
-    over the two main sessions); the block counts each item once per session and condition.
+    The main condition counts main takes over every session (D-5: an item's ``reps`` are
+    spread over the two main sessions); the block counts each item once per condition over
+    every session, so the pilot is the block's ``c60`` cell (D-6). Neither counts the other.
 
     Args:
         items: The script items in scope.
         takes: Every take already in the manifest.
-        session: This session.
+        session: This session (it seeds the order).
         condition: This condition (D-6).
         style: ``careful`` or ``relaxed``.
         block: Whether this is the condition block.
@@ -180,7 +181,7 @@ def pending_items(
         if take.mode == "read"
         and take.condition == condition
         and take.style == style
-        and (not block or take.session == session)
+        and take.block == block
     )
     pending = [
         item for item in items for _ in range(max(0, _target(item, style, block) - done[item.id]))
@@ -301,6 +302,7 @@ def capture_session(
                 clips=(),
                 reference=reference,
                 deviated=not exact,
+                block=block,
             ),
             raw,
             clips,
@@ -440,10 +442,14 @@ def validate(root: Path, items: Sequence[ScriptItem]) -> int:
             path = resolve_corpus_path(root, relative)
             if not path.exists() or sha256_of_file(path) != digest:
                 broken += 1
-    counts = Counter((take.mode, take.condition, take.style) for take in takes)
-    for (mode, condition, style), number in sorted(counts.items()):
-        _show(f"{mode:5} {condition:11} {style:8} {number:4} takes")
-    main = Counter(t.item_id for t in takes if t.mode == "read" and t.condition == "c60")
+    counts = Counter(
+        (take.mode, "block" if take.block else "main", take.condition, take.style) for take in takes
+    )
+    for (mode, part, condition, style), number in sorted(counts.items()):
+        _show(f"{mode:5} {part:5} {condition:11} {style:8} {number:4} takes")
+    main = Counter(
+        t.item_id for t in takes if t.mode == "read" and t.condition == "c60" and not t.block
+    )
     short = [item.id for item in items if main[item.id] < item.reps]
     _show(f"main condition: {len(short)} items under their reps")
     _show(f"files missing or changed: {broken}")

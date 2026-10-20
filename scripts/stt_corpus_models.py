@@ -71,6 +71,7 @@ class Take:
     clips: tuple[Clip, ...]
     reference: str | None
     deviated: bool = False
+    block: bool = False  # a condition-block take (D-6), never one of the main reps (D-5)
 
 
 def _item(raw: dict[str, object]) -> ScriptItem:

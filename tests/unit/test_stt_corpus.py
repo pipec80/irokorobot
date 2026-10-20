@@ -6,6 +6,7 @@ Audio contract: WAV · 16000 Hz · mono · int16.
 
 from dataclasses import replace
 import io
+import logging
 from pathlib import Path
 import wave
 
@@ -203,7 +204,12 @@ class _Recorder:
 
 
 def _capture(
-    root: Path, answers: _Answers, recorder: _Recorder, items: list[ScriptItem] | None = None
+    root: Path,
+    answers: _Answers,
+    recorder: _Recorder,
+    items: list[ScriptItem] | None = None,
+    *,
+    block: bool = False,
 ) -> int:
     return stt_corpus.capture_session(
         items if items is not None else [_item(), _item("A02")],
@@ -211,7 +217,7 @@ def _capture(
         session="s1",
         condition="c60",
         style="careful",
-        block=False,
+        block=block,
         max_takes=1,
         recorder=recorder,
         ask=answers,
@@ -230,6 +236,7 @@ def test_capture_saves_the_raw_take_its_clips_and_one_manifest_line(tmp_path: Pa
     take = takes[0]
     assert (take.session, take.condition, take.style, take.mode) == ("s1", "c60", "careful", "read")
     assert take.deviated is False
+    assert take.block is False
     assert sha256_of_file(root / take.raw_path) == take.raw_sha256
     assert len(take.clips) == 1
     assert sha256_of_file(root / take.clips[0].path) == take.clips[0].sha256
@@ -269,15 +276,65 @@ def test_capture_resumes_where_it_stopped(tmp_path: Path) -> None:
     assert len(load_takes(root / "manifest.jsonl", root)) == 1
 
 
-@pytest.mark.unit
-def test_the_block_wants_each_item_once_per_session_and_condition(tmp_path: Path) -> None:
-    items = [_item(block=True), _item("A02", block=True), _item("A03")]
-
-    pending = stt_corpus.pending_items(
-        items, [], session="s3", condition="c30", style="careful", block=True
+def _read_take(item_id: str, *, session: str, block: bool) -> Take:
+    return Take(
+        take_id=f"{session}-c60-careful-{item_id}-1",
+        session=session,
+        condition="c60",
+        style="careful",
+        mode="read",
+        item_id=item_id,
+        raw_path="takes/unused.wav",
+        raw_sha256="",
+        clips=(),
+        reference=None,
+        block=block,
     )
 
-    assert sorted(item.id for item in pending) == ["A01", "A02"]
+
+@pytest.mark.unit
+def test_block_takes_do_not_count_toward_the_main_reps() -> None:
+    pilot = [_read_take("A01", session="s0", block=True)]
+
+    pending = stt_corpus.pending_items(
+        [_item(block=True)], pilot, session="s1", condition="c60", style="careful", block=False
+    )
+
+    assert [item.id for item in pending] == ["A01", "A01"]  # D-5: the 248 main takes stay whole
+
+
+@pytest.mark.unit
+def test_the_block_wants_each_item_once_per_condition_over_every_session() -> None:
+    items = [_item(block=True), _item("A02", block=True), _item("A03")]
+    takes = [
+        _read_take("A01", session="s0", block=True),  # the pilot: the block's c60 cell (D-6)
+        _read_take("A02", session="s1", block=False),  # a main take is not a block take
+    ]
+
+    def block_pending(condition: str) -> list[str]:
+        pending = stt_corpus.pending_items(
+            items, takes, session="s3", condition=condition, style="careful", block=True
+        )
+        return sorted(item.id for item in pending)
+
+    assert block_pending("c60") == ["A02"]
+    assert block_pending("c30") == ["A01", "A02"]
+
+
+@pytest.mark.unit
+def test_a_block_capture_is_marked_and_validate_leaves_it_out_of_the_main_count(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    root = tmp_path / "stt"
+    items = [_item(reps=1, block=True)]
+    caplog.set_level(logging.INFO, logger=stt_corpus.logger.name)
+
+    _capture(root, _Answers("", ""), _Recorder(), items=items, block=True)
+
+    assert load_takes(root / "manifest.jsonl", root)[0].block is True
+    assert stt_corpus.validate(root, items) == 0
+    assert "main condition: 1 items under their reps" in caplog.text
+    assert "block" in caplog.text
 
 
 @pytest.mark.unit
