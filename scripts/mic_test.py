@@ -31,6 +31,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import argparse  # after the sys.path bootstrap, by design
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, replace
 import io
 import json
@@ -57,7 +58,7 @@ from scripts.stt_corpus_models import STT_CORPUS_ROOT
 from server import stt
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterator, Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -110,36 +111,66 @@ def _wasapi_input() -> InputDevice:
     raise SystemExit("no WASAPI input device found")
 
 
+@contextmanager
+def open_input(api: str) -> Iterator[tuple[sd.InputStream, int]]:
+    """Open the microphone one way or the other and yield the stream and its opened rate.
+
+    Args:
+        api: ``mme`` (the robot's way: default device, 16 kHz, mono, int16) or ``wasapi``
+            (the WASAPI default input at its native rate, one float32 channel).
+
+    Yields:
+        The started stream and the rate it actually opened at.
+    """
+    if api == "mme":
+        stream = sd.InputStream(
+            samplerate=CONTRACT_RATE, channels=1, dtype="int16", blocksize=CHUNK_FRAMES
+        )
+    else:
+        device = _wasapi_input()
+        logger.info(
+            "WASAPI input: [%d] %s at %d Hz", device.index, device.name, device.default_rate
+        )
+        stream = sd.InputStream(
+            device=device.index,
+            samplerate=device.default_rate,
+            channels=1,
+            dtype="float32",
+            extra_settings=sd.WasapiSettings(auto_convert=True),  # only for the mixdown
+        )
+    with stream:
+        yield stream, int(stream.samplerate)
+
+
+def as_contract(data: np.ndarray, api: str, opened_rate: int) -> np.ndarray:
+    """Turn what ``open_input`` read into int16, 16 000 Hz, mono samples.
+
+    Args:
+        data: The samples read from the stream.
+        api: The API the stream was opened with.
+        opened_rate: The rate it opened at.
+
+    Returns:
+        Int16 samples, 16 000 Hz, mono.
+    """
+    if api == "mme":
+        return np.asarray(data, dtype=np.int16).reshape(-1)
+    return to_contract(np.asarray(data), opened_rate, channels=1)
+
+
 def record(api: str, seconds: float) -> tuple[np.ndarray, int]:
     """Record one fixed-length take.
 
     Args:
-        api: ``mme`` (the robot's way: default device, 16 kHz, mono, int16) or ``wasapi``
-            (the WASAPI default input at its native rate, one channel, then ``soxr``).
+        api: ``mme`` or ``wasapi`` (see ``open_input``).
         seconds: Length of the take.
 
     Returns:
         Int16 samples, 16 000 Hz, mono, and the rate the stream actually opened at.
     """
-    if api == "mme":
-        with sd.InputStream(
-            samplerate=CONTRACT_RATE, channels=1, dtype="int16", blocksize=CHUNK_FRAMES
-        ) as stream:
-            data, _ = stream.read(int(seconds * CONTRACT_RATE))
-            opened = int(stream.samplerate)
-        return np.asarray(data, dtype=np.int16).reshape(-1), opened
-    device = _wasapi_input()
-    logger.info("WASAPI input: [%d] %s at %d Hz", device.index, device.name, device.default_rate)
-    with sd.InputStream(
-        device=device.index,
-        samplerate=device.default_rate,
-        channels=1,
-        dtype="float32",
-        extra_settings=sd.WasapiSettings(auto_convert=True),  # only for the mixdown
-    ) as stream:
-        data, _ = stream.read(int(seconds * device.default_rate))
-        opened = int(stream.samplerate)
-    return to_contract(np.asarray(data), opened, channels=1), opened
+    with open_input(api) as (stream, rate):
+        data, _ = stream.read(int(seconds * rate))
+    return as_contract(data, api, rate), rate
 
 
 def _wav(samples: np.ndarray) -> bytes:

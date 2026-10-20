@@ -102,6 +102,10 @@ test-pipeline *ARGS:
 mic-test *ARGS:
     uv run --env-file .env python scripts/mic_test.py {{ARGS}}
 
+# Corpus privado del STT (Plan 0069): capture | free | annotate | validate | expect | cleanup (lo corre Pipec)
+stt-corpus *ARGS:
+    uv run --env-file .env python scripts/stt_corpus.py {{ARGS}}
+
 # Sondas de STT del Plan 0056 (cargan Whisper real; con el servidor detenido): noise | first-turn
 probe-stt *ARGS:
     uv run --env-file .env python scripts/stt_probes.py {{ARGS}}
