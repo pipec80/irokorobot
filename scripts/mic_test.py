@@ -58,7 +58,7 @@ from scripts.stt_corpus_models import STT_CORPUS_ROOT
 from server import stt
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Generator, Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +112,7 @@ def _wasapi_input() -> InputDevice:
 
 
 @contextmanager
-def open_input(api: str) -> Iterator[tuple[sd.InputStream, int]]:
+def open_input(api: str) -> Generator[tuple[sd.InputStream, int]]:
     """Open the microphone one way or the other and yield the stream and its opened rate.
 
     Args:

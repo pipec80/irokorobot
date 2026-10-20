@@ -106,6 +106,10 @@ mic-test *ARGS:
 stt-corpus *ARGS:
     uv run --env-file .env python scripts/stt_corpus.py {{ARGS}}
 
+# Banco determinista del STT (Plan 0069): run | segment | report | calibrate | probe | external-template; con el servidor detenido
+stt-bench *ARGS:
+    uv run --env-file .env python scripts/stt_bench.py {{ARGS}}
+
 # Sondas de STT del Plan 0056 (cargan Whisper real; con el servidor detenido): noise | first-turn
 probe-stt *ARGS:
     uv run --env-file .env python scripts/stt_probes.py {{ARGS}}
