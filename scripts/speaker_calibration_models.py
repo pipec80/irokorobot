@@ -286,6 +286,12 @@ class AggregateSpeakerReport:
 # The speaker threshold the server runs today (Plan 0047, settings default). The
 # short-answer study judges every variant AT this value and never retunes it.
 SPEAKER_STUDY_THRESHOLD: Final = 0.4834
+# The one speech-level floor of the study: a 20 ms frame is speech when its RMS
+# (full scale = 1.0) is at least this. ``capture`` refuses a take whose 95th
+# percentile frame is under it and ``trim_silence`` keeps only frames at or above
+# it. It sits just under the quietest legitimate far-field take of the real corpus
+# (p95 ~0.0065, -44 dBFS) and above empty-room noise (~0.002).
+SPEECH_FRAME_RMS: Final = 0.004
 # Reserved ``embeddings.npz`` namespaces added for a short-answer corpus: the
 # embedding of the silence-trimmed clip and ``[raw_samples, trimmed_samples]``.
 TRIM_KEY_PREFIX: Final = "__trim__"

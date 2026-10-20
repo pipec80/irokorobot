@@ -14,7 +14,9 @@ import wave
 import numpy as np
 import pytest
 
+from scripts import speaker_calibration, speaker_calibration_analysis
 from scripts.speaker_calibration_analysis import (
+    _short_limitations,
     build_report,
     build_short_study_report,
     decode_wav_samples,
@@ -27,7 +29,9 @@ from scripts.speaker_calibration_corpus import (
 )
 from scripts.speaker_calibration_models import (
     CONDITIONS,
+    SAMPLE_CLASSES,
     SPEAKER_STUDY_THRESHOLD,
+    SPEECH_FRAME_RMS,
     ClipInfo,
     ShortStudyReport,
     SpeakerManifest,
@@ -671,7 +675,7 @@ def test_the_limitations_state_the_rule_of_three_and_the_in_sample_caveat() -> N
 
     text = " ".join(report.limitations)
 
-    assert "rule of three" in text
+    assert "rule-of-three" in text
     assert "50.0 %" in text
     assert "in-sample" in text
     assert "0.4834" in text
@@ -688,3 +692,55 @@ def test_the_rendered_short_report_carries_the_cells_and_no_ids_subjects_or_path
     assert "sgen-0" not in text
     assert "impostor_a" not in text
     assert ".wav" not in text
+
+
+def _counts(impostors: int) -> dict[str, int]:
+    return {cls: impostors if cls == "impostor-short" else 1 for cls in SAMPLE_CLASSES}
+
+
+def test_the_rule_of_three_line_is_conditional_on_zero_observed_accepts() -> None:
+    lines = _short_limitations(_counts(18))  # type: ignore[arg-type]  # str keys are classes
+
+    assert (
+        "For a variant with 0 observed accepts in 18 short impostor clips, the 95 % "
+        "rule-of-three bound on the false-accept rate is about 16.7 %." in lines
+    )
+    assert not any("0 impostor accepts" in line for line in lines)
+
+
+def test_the_limitations_warn_that_the_trim_is_an_energy_rule() -> None:
+    text = " ".join(_short_limitations(_counts(18)))  # type: ignore[arg-type]  # as above
+
+    assert "click" in text
+    assert "background noise" in text
+    assert "defeats the trim" in text
+
+
+def test_the_limitations_say_production_refuses_clips_under_the_minimum_length() -> None:
+    text = " ".join(_short_limitations(_counts(18)))  # type: ignore[arg-type]  # as above
+
+    assert "SPEAKER_MIN_VERIFICATION_S" in text
+    assert "1.5 s" in text
+    assert "never reach the embedder" in text
+    assert "length-bucket" in text
+
+
+def test_the_study_threshold_equals_the_server_setting_default() -> None:
+    from server.settings import Settings  # noqa: PLC0415 -- server is only needed by this guard
+
+    field = Settings.model_fields["speaker_authentication_match_threshold"]
+
+    assert field.default == SPEAKER_STUDY_THRESHOLD
+
+
+def test_the_trim_and_the_capture_guard_share_one_speech_floor() -> None:
+    assert speaker_calibration.SPEECH_FRAME_RMS is SPEECH_FRAME_RMS
+    assert speaker_calibration_analysis.SPEECH_FRAME_RMS is SPEECH_FRAME_RMS
+    assert not hasattr(speaker_calibration, "_MIN_SPEECH_FRAME_RMS")
+    assert not hasattr(speaker_calibration_analysis, "TRIM_ACTIVE_RMS")
+
+
+def test_the_trim_keeps_exactly_what_the_capture_guard_accepts() -> None:
+    # amplitude 300 -> frame RMS ~0.0065 (guard accepts); amplitude 100 -> ~0.0022 (guard refuses)
+    assert trim_silence(_tone(1.0, amplitude=300), _RATE).size > 0
+    assert trim_silence(_tone(1.0, amplitude=100), _RATE).size == 0

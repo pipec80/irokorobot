@@ -86,6 +86,7 @@ from scripts.speaker_calibration_models import (
     SAMPLE_CLASSES,
     SESSION_ID_PATTERN,
     SHA_KEY_PREFIX,
+    SPEECH_FRAME_RMS,
     TRIM_KEY_PREFIX,
     ClipInfo,
     SpeakerCliOptions,
@@ -114,11 +115,9 @@ logger = logging.getLogger(__name__)
 _MIN_UTTERANCE_SECONDS = LONG_MIN_CAPTURE_SECONDS
 # A live take far beyond a phrase read is music, a conversation or a stuck VAD.
 _MAX_LIVE_UTTERANCE_SECONDS = 15.0
-# 20 ms frames. The floor sits just under the quietest legitimate take of the real
-# corpus (a far-field replay, p95 frame RMS ~0.0065 = -44 dBFS) and above empty
-# room noise that merely tripped the VAD (~0.002).
+# 20 ms frames, judged against SPEECH_FRAME_RMS (defined once in the models module,
+# shared with the silence trim).
 _FRAME_SAMPLES = 320
-_MIN_SPEECH_FRAME_RMS = 0.004
 _INT16_FULL_SCALE = 32768.0
 # More than this share of samples pinned at the rails is a clipped, unusable take.
 _MAX_CLIPPED_FRACTION = 0.005
@@ -616,7 +615,7 @@ def _reject_unusable_signal(wav_bytes: bytes) -> None:
         raise ValueError("capture is too short to measure its level")
     framed = samples[:usable].astype(np.float64) / _INT16_FULL_SCALE
     rms = np.sqrt(np.mean(framed.reshape(-1, _FRAME_SAMPLES) ** 2, axis=1))
-    if percentile(rms.tolist(), 0.95) < _MIN_SPEECH_FRAME_RMS:
+    if percentile(rms.tolist(), 0.95) < SPEECH_FRAME_RMS:
         raise ValueError("capture has no speech-level audio - speak closer or louder")
 
 

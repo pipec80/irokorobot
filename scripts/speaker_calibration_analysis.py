@@ -44,6 +44,7 @@ from scripts.speaker_calibration_models import (
     SAMPLE_CLASSES,
     SHORT_STUDY_PROBES,
     SPEAKER_STUDY_THRESHOLD,
+    SPEECH_FRAME_RMS,
     AggregateSpeakerReport,
     ClipInfo,
     ConditionSummary,
@@ -280,13 +281,12 @@ def _limitations(m: _Measurement, p95: float) -> tuple[str, ...]:
 # --- Plan 0068: silence trimming ---------------------------------------------
 
 # The fixed trim rule (Plan 0068 D-6). 20 ms frames; a frame is speech-level when
-# its RMS is at least TRIM_ACTIVE_RMS (the same floor ``capture`` uses to refuse a
+# its RMS is at least SPEECH_FRAME_RMS (the same floor ``capture`` uses to refuse a
 # take with no speech: above empty-room noise, under the quietest legitimate
 # far-field voice). Everything before the first and after the last speech-level
 # frame is dropped, except a margin of TRIM_MARGIN_SECONDS kept on each side so a
 # soft onset or release is not clipped. Interior audio is never touched.
 TRIM_FRAME_SECONDS: Final = 0.02
-TRIM_ACTIVE_RMS: Final = 0.004
 TRIM_MARGIN_SECONDS: Final = 0.1
 CLIP_SAMPLE_RATE: Final = 16_000  # the audio contract
 _INT16_FULL_SCALE: Final = 32768.0
@@ -325,7 +325,7 @@ def trim_silence(samples: np.ndarray, sample_rate: int) -> np.ndarray:
     starts = np.arange(0, samples.size, frame)
     lengths = np.minimum(frame, samples.size - starts)
     rms = np.sqrt(np.add.reduceat(energy, starts) / lengths)
-    active = np.flatnonzero(rms >= TRIM_ACTIVE_RMS)
+    active = np.flatnonzero(rms >= SPEECH_FRAME_RMS)
     if active.size == 0:
         return samples[:0].copy()
     first = max(0, int(active[0]) - margin_frames) * frame
@@ -555,12 +555,17 @@ def _short_limitations(counts: Mapping[SampleClass, int]) -> tuple[str, ...]:
         "nothing is retuned and no enrollment or runtime setting changes.",
         "Small consented corpus: genuine rates are in-sample - the same genuine clips judge every "
         "variant and there is no held-out set - so differences between variants are provisional.",
-        f"0 impostor accepts in {impostors} short impostor clips bounds the true FAR only to "
-        f"about {_RULE_OF_THREE / impostors * _PERCENT:.1f} % (95 % rule of three); a variant "
-        "with any impostor accept is not eligible.",
+        f"For a variant with 0 observed accepts in {impostors} short impostor clips, the 95 % "
+        "rule-of-three bound on the false-accept rate is about "
+        f"{_RULE_OF_THREE / impostors * _PERCENT:.1f} %.",
         "References are the raw enrollment clips in every variant; only probe clips are trimmed.",
         f"Trim rule: {TRIM_FRAME_SECONDS * 1000:.0f} ms frames, speech-level at RMS >= "
-        f"{TRIM_ACTIVE_RMS}, {TRIM_MARGIN_SECONDS * 1000:.0f} ms margin kept on each side.",
+        f"{SPEECH_FRAME_RMS}, {TRIM_MARGIN_SECONDS * 1000:.0f} ms margin kept on each side.",
+        "The trim treats any frame at or above the RMS floor as speech, so a click or steady "
+        "background noise above that floor defeats the trim.",
+        "The runtime refuses clips under SPEAKER_MIN_VERIFICATION_S (1.5 s), so raw 1-1.5 s clips "
+        "and trimmed clips under 1.5 s would never reach the embedder in production; read the "
+        "length-bucket table with that in mind.",
         "A clip with no audio left after trimming counts as rejected and has no distance.",
         "Distance ranges and silence shares are hidden for a cell of fewer than "
         f"{MIN_CELL_FOR_RANGE} clips.",
