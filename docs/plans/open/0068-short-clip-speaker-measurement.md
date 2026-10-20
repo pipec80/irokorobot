@@ -1,13 +1,13 @@
-# 0068 — Short clips and the speaker check: measure silence trimming and short references
+# 0068 — Short answers and the speaker check: a retry when only the voice failed, and a measurement
 
-> **Status:** `Draft` — written 2026-10-19 after Pipec's hardware session with Plan 0066. Third item of
-> the order Pipec chose (after [Plan 0067](0067-reply-listening-mode.md)): *measure* whether trimming the
-> silence and adding short voice references let the speaker check recognize the owner on a short
-> answer. It is a **measurement plan: it changes no runtime behavior, no threshold and no enrollment**
-> (the one runtime edit is a diagnostic log). The face-only fallback is **not** planned (Pipec).
-> Waits for Plan 0067 to close and for Pipec to mark it `Ready` and `NOW`; to be executed in a **new
-> session**. **Not rehearsed**; Tasks 2 and 3 name behavior and tests, and the executor re-reads
-> `scripts/speaker_calibration*.py` before touching them.
+> **Status:** `Ready` and `NOW` — promoted by Pipec on 2026-10-19 and executed in the same session
+> (his choice: «a final estamos en lo mismo, así vamos sumando mejoras»), after Plan 0067 merged
+> (PR #199). Written 2026-10-19 as a measurement-only draft; **rewritten the same day** after the
+> first hardware session of Plan 0067, when Pipec added the retry of Part A. Part A changes runtime
+> behavior (one fixed phrase); Part B is a measurement that changes no threshold and no enrollment.
+> The face-only fallback is **not** planned (Pipec). Task 6 also records the hardware counts that Plans
+> 0066 and 0067 left open. **Not rehearsed**; Tasks 3 and 4 name behavior and tests, and the executor
+> re-reads `scripts/speaker_calibration*.py` before touching them.
 
 > **For agentic workers:** if the status above does not say `Ready`, stop. REQUIRED SUB-SKILLS:
 > `superpowers:executing-plans`, `superpowers:test-driven-development`,
@@ -15,20 +15,44 @@
 > rules win: one plain branch from `main`, never a git worktree, subagents only if Pipec asks. An
 > agent never records, imitates or replays a voice and never reads the private corpus aloud; Pipec
 > runs every capture and deletes the corpus when he accepts the report. Record counts and distances
-> only, never a sentence. Create and edit files with the Write and Edit tools.
+> only, never a sentence. Create and edit files with the Write and Edit tools. Run the suite with
+> `MEMORY_ENABLED=false`. Every finding met while executing is fixed (Pipec's standing policy).
 
-**Goal:** An evidence-backed answer to: «on a 1–2.5 s answer, does the owner pass the speaker check
-more often if (a) the silence around the speech is trimmed before the embedding, (b) the stored
-references include short confirmations, or both — with no impostor accepted at the current
-threshold?» The answer becomes a recommendation for a later plan; this plan ships no behavior change.
+**Goal:** (A) When the owner's face is in front of the robot, an offer of theirs is open, and they
+answer it but **only the voice check failed**, the robot says one fixed sentence that asks for a
+longer answer and listens again in reply mode, instead of handing the bare «sí, autorizo» to the
+language model (which, not knowing the question, invents one). (B) An evidence-backed answer to: «on
+a 1–2.5 s answer, does the owner pass the speaker check more often if the silence around the speech
+is trimmed before the embedding, or if the stored references include short confirmations — with no
+impostor accepted at the current threshold?»
 
-**Why (facts from the code, 2026-10-19):** the whole uploaded clip is embedded, including the 0.4 s
-pre-roll and about 0.8 s of trailing silence the robot adds (`robot/audio_capture.py`), so a 1 s
-«sí» reaches the speaker model as about 2.2 s, half of it silence; the owner's three references are
-5 s fixed recordings in one condition; `SPEAKER_MIN_VERIFICATION_S=1.5` and the 1.5–3 s range were
-never measured (Plan 0047 captured 3–5 s phrases and its tool rejects live takes under 2.5 s); the
-`Speaker verdict` log carries only the verdict, so the distance is unobservable. The session log
-shows `verified` for clips of 2.6 s, 3.1 s and 5.8 s and `unknown` for 1.7 s, 2.1 s and 2.2 s.
+**Why:** In the first hardware session of Plan 0067 (2026-10-19), three offers were answered «Sí,
+autorizo.»: the reply mode worked every time (one turn, `hotwords=7`) and Whisper heard the words,
+but the speaker check said `verified` once and `unknown` twice on the same 2.5 s clip (2.1 s after
+the recognizer's VAD). The two failures fell through to ordinary generation, and the model replied
+«Entendido, estaré listo para tu cita a las 20 horas»: the spoken offer is not in its history, so it
+guessed. Facts from the code: the whole uploaded clip is embedded, including the 0.4 s pre-roll and
+the ~0.8 s silent tail the robot keeps; the owner's three references are 5 s fixed recordings in one
+condition; `SPEAKER_MIN_VERIFICATION_S=1.5` and the 1.5–3 s range were never measured (Plan 0047
+captured 3–5 s phrases); the `Speaker verdict` log carries only the verdict.
+
+**Architecture (Part A):** `answer_offer` already reads the actor and the open offer. When the actor
+is the owner identified **by face only** (no token, voice not verified), the parsed answer names an
+offer of that same person that is open (by value, or the one open offer for a verb alone), it
+returns a typed reply: the fixed retry phrase and «expects a short reply». It writes nothing, audits
+nothing and does not move the offer; the answer window keeps running from the offer. The controller
+turns the typed reply into a deterministic `ResponsePlan` that carries `expects_short_reply`, and the
+stream's `done` says so, so the robot's reply mode of Plan 0067 listens once more. Every other case is
+unchanged: a token, a weaker actor, another person's face, no open offer, a different value — fall
+through byte-identical, as today.
+
+**Tech Stack:** Python 3.12, FastAPI, SQLite, SpeechBrain ECAPA, pytest. No new dependency.
+
+**Spec:** [ADR 0021](../../adr/0021-memory-candidates-and-the-canonical-writer.md) decisions 3 and 9
+(this plan amends the «falls through byte-identical» clause for one case), the Plan 0067 record
+([Plan 0067](../completed/0067-reply-listening-mode.md)),
+[Plan 0047](../completed/0047-speaker-evidence-calibration-study.md) (the calibration procedure), and
+`.claude/rules/` (not tracked; read them from the working copy).
 
 ## Task overview
 
@@ -36,116 +60,204 @@ shows `verified` for clips of 2.6 s, 3.1 s and 5.8 s and `unknown` for 1.7 s, 2.
 |---:|---|---|
 | 0 | Revalidate the baseline | — |
 | 1 | The verdict log says why | clip seconds, distance, which gate |
-| 2 | The corpus tool accepts short classes | capture of short answers |
-| 3 | The analysis compares the variants | trimmed vs raw, long vs long+short references |
-| 4 | Capture sessions (Pipec) | the private corpus |
-| 5 | Analysis, report, recommendation, cleanup | the answer |
+| 2 | A retry when only the voice failed | Part A, Pipec's point 3 |
+| 3 | The corpus tool accepts short classes | capture of short answers |
+| 4 | The analysis compares the variants | trimmed vs raw, long vs long+short references |
+| 5 | Documentation truth | ADR 0021 amendment, manual, current state |
+| 6 | Hardware counts (Pipec) | Plan 0066 and 0067 leftovers, the retry |
+| 7 | Capture sessions (Pipec) | the private corpus |
+| 8 | Analysis, report, recommendation, cleanup | Part B's answer |
 
 ## Global Constraints
 
 - Private corpus only: never committed, never read aloud, deleted after Pipec accepts the report
   (typed `delete`), the model cache kept, as in Plan 0047. No real household names in anything tracked.
-- No runtime change except Task 1's log fields. No threshold, enrollment or settings change. The
-  threshold stays 0.4834; any variant is judged **at that threshold**.
+- No threshold, enrollment or speaker setting changes. Part B judges every variant **at** 0.4834.
+- The firewall of ADR 0021 decisions 3 and 9 is untouched for **writes**: only the face-and-voice
+  composite of the same person answers; a token never answers; the actor is resolved first for every
+  answer-shaped message. The retry is the only new observable outcome, and only for the owner's own
+  face with that person's own open offer.
 - A variant is only *recommended* if it keeps impostor accepts at 0 observed on the short impostor
-  class; the report states the upper bound (rule of three) with the sample size, and that the
-  genuine rate is in-sample.
-- The audio contract (WAV, 16 000 Hz, mono, int16); `ruff` clean over explicit paths including
-  `scripts/`; `mypy server/src robot/src` clean; commit titles at most 72 characters.
+  class; the report states the rule-of-three bound with the sample size and that genuine rates are
+  in-sample.
+- Audio contract (WAV, 16 000 Hz, mono, int16); `ruff` clean over explicit paths including `scripts/`;
+  `mypy server/src robot/src` clean; commit titles at most 72 characters (count them).
 
 ## Decisions
 
-1. **D-1 — The corpus (all private).** `reference-short` 6 (the owner's «sí», «acepto», «sí,
-   autorizo», in one quiet session), `genuine-short` 24 (the same words, 1–2.5 s, at least 2 later
+1. **D-1 — The retry (Pipec, 2026-10-19).** Phrase: `ANSWER_RETRY_PHRASE = "No reconocí bien tu voz.
+   Dímelo un poco más largo: sí, autorizo que lo guardes."` (tuteo neutro). **Finding while writing
+   this plan:** «sí, autorizo que lo guardes» does **not** parse today (only «que guardes» is a verb
+   form), although it was suggested to Pipec as a longer answer; Task 2 adds «que lo guardes» and «que
+   la guardes» after every long verb (and their «no» forms) so the retry asks for an answer that
+   works. Conditions, all required: answer switch on,
+   the actor is identified by face with no token (`is_face_actor`) and is **not** the face-and-voice
+   composite, and `find_offered` finds that person's open offer for the parsed answer (key, or `None`
+   for a verb alone). No write, no audit row, no offer change, no extension of the answer window.
+2. **D-2 — The cost, stated.** A person who is not the owner but stands where the owner's face is
+   recognized (the owner in frame, another person speaking) gets the retry phrase instead of ordinary
+   conversation. It reveals that an offer is open, which was already spoken aloud in the room; it
+   writes nothing. A different face, a token, or no open offer still get ordinary conversation. The
+   ADR 0021 amendment says so.
+3. **D-3 — The reply hint follows the retry.** `ResponsePlan.expects_short_reply: bool = False`; the
+   deterministic stream path copies it into `done.expects_short_reply`. The classic route ignores it
+   (its robot path has no reply mode).
+4. **D-4 — The typed reply lives in the cognitive core.** `MemoryAnswerReply(phrase: str,
+   expects_short_reply: bool = False)` (frozen) in `server/src/server/cognition/response_plan.py`;
+   `MemoryAnswerer` returns `MemoryAnswerReply | None`; `answer_offer` returns the same. The core
+   still imports nothing from `server.memory`.
+5. **D-5 — Part B's corpus (all private).** `reference-short` 6 (the owner's «sí», «acepto», «sí,
+   autorizo», one quiet session), `genuine-short` 24 (the same words, 1–2.5 s, at least 2 later
    sessions, the four conditions of Plan 0047), `impostor-short` 18 (at least 3 consenting adults,
-   live), `replay-short` 6 (Pipec plays; an agent never does). The Plan 0047 classes for long phrases
-   are recaptured or reused only if Pipec says the old ones are still valid (they were deleted
-   2026-09-25, so assume recapture of 6 long references and 6 long genuines as the control).
-2. **D-2 — Variants, per clip, offline.** `raw` (as the robot sends it), `trimmed` (leading and
-   trailing silence removed by a fixed energy rule defined and tested in Task 3, with the same RMS
-   floor family the robot's VAD uses). References: `long-only` vs `long+short`. Four cells, plus the
-   control with long phrases.
-3. **D-3 — Output.** For each cell: genuine distance range and rate under the threshold, impostor
-   distance range and accepts, replay accepts, clip-length buckets (1–1.5, 1.5–2, 2–2.5 s). Also the
-   share of silence in the raw clips. No threshold is retuned.
-4. **D-4 — The recommendation names the next plan, it does not make it.** If trimming helps and is
-   safe: a runtime plan for a trimmed embedding. If short references help: an enrollment plan. If
-   neither: the alternatives of the 2026-10-19 discussion (a longer spoken answer, a non-voice
-   confirmation).
+   live), `replay-short` 6 (Pipec plays). Plus a long control: 6 long references and 6 long genuines
+   recaptured (the Plan 0047 corpus was deleted on 2026-09-25).
+6. **D-6 — Variants, per clip, offline.** `raw` (as the robot sends it) and `trimmed` (leading and
+   trailing silence removed by a fixed energy rule defined and tested in Task 4); references
+   `long-only` and `long+short`. Output per cell: genuine distances and rate under the threshold,
+   impostor distances and accepts, replay accepts, clip-length buckets (1–1.5, 1.5–2, 2–2.5 s), and the
+   share of silence in raw clips.
+7. **D-7 — The recommendation names the next plan, it does not make it.** Trimming helps and is
+   safe → a runtime plan for a trimmed embedding; short references help → an enrollment plan;
+   neither → a longer spoken answer stays the rule, or a non-voice confirmation later.
 
 ## Required reading
 
-- `docs/plans/completed/0047-speaker-evidence-calibration-study.md` (procedure, frozen commands,
-  report format) and `docs/runbooks/operator-manual.md` (speaker section).
-- `server/src/server/voice/speaker_embedding.py`, `server/src/server/cognition/speaker_authentication.py`,
-  `scripts/speaker_calibration*.py`, `robot/src/robot/audio_capture.py`.
+- `AGENTS.md`, `docs/architecture/implementation-guardrails.md`, `.claude/rules/`.
+- ADR 0021 decisions 3 and 9 with their amendments; Plan 0047 (procedure, frozen commands, report
+  format); `docs/runbooks/operator-manual.md` (speaker and memory sections).
+- `server/src/server/memory/{candidate_dialogue,lexicon}.py`, `server/src/server/cognition/{controller,response_plan,strong_actor,speaker_authentication}.py`,
+  `server/src/server/streaming.py`, `server/src/server/routers/transcribe.py`,
+  `server/src/server/voice/speaker_embedding.py`, `scripts/speaker_calibration*.py`,
+  `robot/src/robot/audio_capture.py`.
+
+## Review Focus
+
+1. Another person's face (or two faces) with the owner's offer open: ordinary conversation, never the
+   retry (Task 2).
+2. A token-identified owner, or no face at all, answering: ordinary conversation (Task 2).
+3. The owner's face, voice unverified, but **no** open offer or a different value: ordinary
+   conversation, byte-identical (Task 2).
+4. The retry followed by a verified «sí, autorizo que lo guardes» inside the window: promoted; after
+   the window: ordinary conversation (Task 2).
+5. The verdict log never carries audio, a value or a name, and a missing distance is absent, not zero
+   (Task 1).
+
+---
 
 ## Task 0: Revalidate the baseline
 
-- [ ] Status `Ready` and Plan 0067 closed; branch `feat/0068-short-clip-speaker-measurement` from
-  `main`; `just gate`; record the count; re-audit the symbols named above.
+- [ ] Status `Ready`; branch `feat/0068-retry-and-speaker-study` from `main`; `just gate`; record the
+  count (3490 at the close of Plan 0067); `rg -n "def answer_offer|type MemoryAnswerer|class ResponsePlan|Speaker verdict" server/src` finds what this plan names.
 
 ## Task 1: The verdict log says why
 
-**Files:** modify `server/src/server/cognition/speaker_authentication.py`; test modified
+**Files:** `server/src/server/cognition/speaker_authentication.py`; test
 `tests/unit/test_speaker_authentication.py`.
 
-- [ ] **Step 1: Failing tests:** the `speaker.verdict` log record carries `clip_s` (rounded to 0.1 s),
-  `distance` (rounded to 0.001, absent when none was computed) and `gate` (one of `ok`, `energy`,
-  `duration`, `references`, `distance`, `consent`, `role`, `unavailable`); no field carries audio,
-  a name or a value. Expected RED: the extra fields are absent.
-- [ ] **Step 2: Implement** the fields in the existing log call and its `extra`; the verdict logic
-  and the order of checks do not change (the existing table tests stay green).
-- [ ] **Step 3:** run the two speaker test files; lint and types. **Step 4: Commit** `feat(server): log why the speaker check said unknown (plan 0068)`.
+- [ ] **Failing tests:** the `speaker.verdict` record carries `clip_s` (0.1 s), `distance` (0.001;
+  absent when none was computed) and `gate` (`ok`, `energy`, `duration`, `references`, `distance`,
+  `consent`, `role`, `unavailable`); nothing carries audio, a name or a value. RED: the fields are
+  absent.
+- [ ] **Implement** in the existing log call; the verdict logic and the order of checks do not change.
+- [ ] Run the speaker test files; lint and types. **Commit** `feat(server): log why the speaker check said unknown`.
 
-## Task 2: The corpus tool accepts short classes
+## Task 2: A retry when only the voice failed
 
-**Files:** modify `scripts/speaker_calibration.py` (and the corpus/models modules it uses); tests
-modified `tests/unit/test_speaker_calibration.py`.
+**Files:** `server/src/server/cognition/{response_plan,controller,intent_resolution}.py`,
+`server/src/server/memory/{candidate_dialogue,lexicon}.py`, `server/src/server/streaming.py`,
+`server/src/server/routers/transcribe.py` (the answerer binding); tests
+`tests/integration/test_candidate_dialogue.py`, `tests/unit/test_cognitive_controller.py`,
+`tests/integration/test_memory_dialogue_routes.py`, `tests/unit/test_architecture_guards.py` (run).
 
-- [ ] The four classes of D-1 exist in the manifest and the validation matrix with their minimums;
-  `capture` takes a per-class lower bound (default 2.5 s unchanged; the short classes accept 1.0 s) and
-  still rejects clipped takes and silence; a short class never satisfies a long-class minimum.
-  Tests first (RED on the unknown class), then implementation; `uv run ruff check scripts/...` over
-  explicit paths. Commit `feat(scripts): capture short answers for the speaker study (plan 0068)`.
+**Interfaces.** Produces `MemoryAnswerReply` (D-4), `ResponsePlan.expects_short_reply`,
+`ANSWER_RETRY_PHRASE` (D-1). `answer_offer(...) -> MemoryAnswerReply | None`; every existing result
+phrase becomes `MemoryAnswerReply(phrase)`.
 
-## Task 3: The analysis compares the variants
+- [ ] **Failing tests:** grammar (`tests/unit/test_memory_answer_grammar.py`): «Sí, autorizo que lo
+  guardes», «Acepto que la guardes», «Apruebo que lo guardes» → `(True, "")`; «No autorizo que lo
+  guardes» → `(False, "")`; «Autorizo que lo guardes el mate» → `(True, "el mate")`; the round trip:
+  the words the retry phrase dictates parse to `(True, "")`. Dialogue: a face-only owner (no voice evidence) with their open offer answers
+  «sí, autorizo» and with the value → retry phrase, `expects_short_reply` true, the offer still
+  `offered`, no fact, no audit; the same with no open offer, a different value, a token, another
+  person's face, the switch off → `None`; after a retry, the face-and-voice owner answers inside the
+  window → promoted. Controller: the typed reply becomes a deterministic plan carrying the flag; the
+  actor is still resolved before the answerer. Routes: on the stream, the owner's face with another
+  voice answering an open offer gets the retry phrase and `done.expects_short_reply` true, and the
+  offer stays open; on `/chat` nothing changes. The Plan 0066/0067 tests that assert «another voice
+  with the owner's face falls through» are updated to the retry, each with a comment naming D-2.
+  RED: `answer_offer` returns `None` for the face-only owner.
+- [ ] **Implement** the «que lo/la guardes» prefixes (longest first), the type, the field, the phrase, the branch in `_find_open_offer`/`answer_offer`
+  (before the face-and-voice check returns `None`), the controller mapping and the stream copy into
+  `done`.
+- [ ] Run the four test files plus `tests/integration/test_stream_offer.py` and
+  `tests/integration/test_import_graph.py`; lint and types. **Commit** `feat(server): ask again when only the voice failed on an answer`.
 
-**Files:** modify `scripts/speaker_calibration_analysis.py` (and its helpers); tests modified
+## Task 3: The corpus tool accepts short classes
+
+**Files:** `scripts/speaker_calibration.py` (and the corpus/models modules it uses); test
+`tests/unit/test_speaker_calibration.py`.
+
+- [ ] The classes of D-5 exist in the manifest and the validation matrix with their minimums;
+  `capture` takes a per-class lower bound (default 2.5 s unchanged; the short classes accept 1.0 s)
+  and still rejects clipped takes and silence; a short class never satisfies a long-class minimum.
+  Tests first (RED on the unknown class). **Commit** `feat(scripts): capture short answers for the speaker study`.
+
+## Task 4: The analysis compares the variants
+
+**Files:** `scripts/speaker_calibration_analysis.py` (and helpers); test
 `tests/unit/test_speaker_calibration_analysis.py`.
 
-- [ ] A pure `trim_silence(samples, sample_rate) -> samples` with a fixed, documented energy rule and
-  its tests (a clip of pure silence stays empty and is reported, speech inside is never cut, the
-  result is never longer than the input); the analysis embeds each clip as `raw` and `trimmed`, builds
-  the `long-only` and `long+short` centroids, and writes the cells and buckets of D-3 into the
-  aggregate report. Tests use synthetic tones and a fake encoder (no private data). Commit
-  `feat(scripts): compare trimmed and raw short clips in the speaker study (plan 0068)`.
+- [ ] A pure `trim_silence(samples, sample_rate) -> samples` with a fixed, documented energy rule
+  (pure silence stays empty and is reported; speech inside is never cut; never longer than the
+  input); the analysis embeds each clip `raw` and `trimmed`, builds both centroids and writes the
+  cells of D-6 into the aggregate report. Synthetic tones and a fake encoder in tests (no private
+  data). **Commit** `feat(scripts): compare trimmed and raw short clips`.
 
-## Task 4: Capture sessions (Pipec runs everything)
+## Task 5: Documentation truth (text only)
 
-- [ ] Pipec captures the classes of D-1 with `just speaker-calibration capture ...` in at least two
-  sessions and the four conditions, consenting impostors live, replay by Pipec. Record only counts per
-  class and condition in the execution record.
+- [ ] ADR 0021 decision 9: the retry (D-1) and its cost (D-2), dated. Operator manual: the retry, the
+  new log fields and how to read them, the short-class capture commands. `current-state.md`, the
+  roadmap row, the plan indexes; refresh the architecture diagram only if it shows the answer path.
+  `ruff format --check .`, `check_reserved_terms`, links; **commit** `docs: record plan 0068 code`.
+  Open the PR; merge with Pipec's go-ahead.
 
-## Task 5: Analysis, report, recommendation, cleanup
+## Task 6: Hardware counts (Pipec runs everything)
 
-- [ ] `just speaker-calibration validate`, `embed`, `analyze`; Pipec reads the report. The execution
-  record states the cells of D-3, the sample sizes and bounds, and the D-4 recommendation. After
-  Pipec's acceptance, `discard`/`cleanup` with his typed `delete`. `just gate` green; docs touched
-  (operator manual: what the new log fields mean; the plan indexes); commit `docs: close plan 0068`;
-  PR; merge with Pipec's go-ahead.
+With `MEMORY_CANDIDATES_ENABLED=true`, counts only:
+
+- [ ] Plan 0067 leftovers: two «no acepto», two «sí, guárdala», three offers left unanswered for
+  15 s (back to normal listening?), one unrelated question as the reply (answered normally?).
+- [ ] Plan 0066 leftovers: two answers with the old full phrase; three casual «autorizo» or «sí,
+  guarda» with no open offer (nothing saved, ordinary reply).
+- [ ] The retry: how many short answers got the retry phrase; after it, how many longer answers
+  promoted.
+
+## Task 7: Capture sessions (Pipec runs everything)
+
+- [ ] The classes of D-5 with `just speaker-calibration capture ...`, at least two sessions and the
+  four conditions; consenting impostors live; replay by Pipec. Counts per class and condition only.
+
+## Task 8: Analysis, report, recommendation, cleanup
+
+- [ ] `validate`, `embed`, `analyze`; Pipec reads the report. The execution record states the cells
+  of D-6, sample sizes, bounds and the D-7 recommendation. After Pipec's acceptance, `discard` and
+  `cleanup` with his typed `delete`. `just gate`; docs; commit `docs: close plan 0068`; PR.
 
 ## Completion criteria
 
-1. The `Speaker verdict` log carries the clip seconds, the distance and the gate.
-2. The report answers the goal with numbers, bounds and the D-4 recommendation; no threshold changed.
-3. The private corpus is deleted after Pipec's acceptance; `just gate` green.
+1. A face-only owner whose short answer failed only by voice hears the retry and the robot listens
+   again in reply mode; nothing else in the firewall changed.
+2. The verdict log carries the clip seconds, the distance and the gate.
+3. The hardware counts of Task 6 are recorded.
+4. The report answers Part B with numbers and the D-7 recommendation; no threshold changed; the
+   private corpus is deleted after acceptance; `just gate` green.
 
 ## Not here, and why
 
-- Any runtime change to embedding, enrollment or thresholds: the recommendation of Task 5 decides the
-  next plan.
-- A face-only fallback (removed by Pipec) and a bare «sí» (Plan 0066 decision).
+- Any runtime change to the embedding, the enrollment or the thresholds: Task 8 recommends the next plan.
+- A face-only fallback that *writes* (removed by Pipec) and a bare «sí» (Plan 0066 decision).
+- Putting the spoken offer into the model's history: the retry removes the case that needed it; if a
+  fall-through after an offer still confuses the model, it is a follow-up.
 
 ## Execution record
 

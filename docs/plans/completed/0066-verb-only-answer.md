@@ -1,6 +1,6 @@
 # 0066 — The answer to a memory offer: a closed verb alone is enough
 
-> **Status:** `Closed` 2026-10-19 (PR #196, `ec4de64`). Its Task 6 (hardware counts) was folded by Pipec into [Plan 0067](../open/0067-reply-listening-mode.md) Task 8 the same day.
+> **Status:** `Closed` 2026-10-19 (PR #196, `ec4de64`). Its Task 6 (hardware counts) was folded by Pipec into [Plan 0067](0067-reply-listening-mode.md) Task 8 the same day.
 > Before: `Ready` and `NOW` — promoted by Pipec on 2026-10-19, who confirmed D-1 to D-7 (D-1 is
 > his decision of that day, after the Plan 0064 hardware session; D-2 to D-7 he confirmed after an
 > example of each, and that a bare «sí» stays out). Written the same day. **Not rehearsed** in a

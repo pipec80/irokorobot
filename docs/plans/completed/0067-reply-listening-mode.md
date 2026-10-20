@@ -1,11 +1,13 @@
 # 0067 — The reply to a memory offer: a dedicated listening mode, better words
 
-> **Status:** `Ready` and `NOW` — promoted by Pipec on 2026-10-19 and executed in the same session
+> **Status:** `Closed` 2026-10-19 (PR #199). Its Task 8 (hardware counts) was folded by Pipec into
+> [Plan 0068](../open/0068-short-clip-speaker-measurement.md) Task 6 the same day.
+> Before: `Ready` and `NOW` — promoted by Pipec on 2026-10-19 and executed in the same session
 > (his choice: «todo tiene relación»), after Plan 0066 merged (PR #196). Written 2026-10-19 after Pipec's first hardware session with Plan 0066 (the
 > short answer promoted 1 of 2 times; the other fell to ordinary conversation). Pipec chose the
 > order: (1) a dedicated listening mode, (2) wider words and hotwords only in that mode, (3) measure
 > silence trimming and short voice references for the speaker check (that third item is the
-> separate [Plan 0068](0068-short-clip-speaker-measurement.md); this plan does not touch the voice
+> separate [Plan 0068](../open/0068-short-clip-speaker-measurement.md); this plan does not touch the voice
 > thresholds). The face-only fallback was **removed from scope** by Pipec. Task 8 also records the
 > hardware counts Plan 0066 left open (its Task 6). **Not rehearsed** in a scratch copy:
 > the tasks below are specifications (files, rules, tests to write first), not rehearsed diffs.
@@ -377,7 +379,7 @@ differently and no migration is added.
 
 ## Not here, and why
 
-- Voice thresholds, voice references, silence trimming for the speaker check: [Plan 0068](0068-short-clip-speaker-measurement.md).
+- Voice thresholds, voice references, silence trimming for the speaker check: [Plan 0068](../open/0068-short-clip-speaker-measurement.md).
 - A face-only fallback: removed by Pipec.
 - A bare «sí» as a valid answer: decided against in Plan 0066; it may be reopened after Plan 0068.
 - Reply mode on the classic route and the robot's classic path.
@@ -386,8 +388,11 @@ differently and no migration is added.
 ## Execution record
 
 Executed 2026-10-19 on `feat/0067-reply-listening-mode` (base `b1dbe3f`), tasks 0 to 7, in the same
-session that closed Plan 0066 (Pipec's choice). **Task 8 (hardware) is pending: Pipec runs it**, and
-the plan stays `NOW` until its counts (and Plan 0066's) are recorded here.
+session that closed Plan 0066 (Pipec's choice). **Task 8 (hardware)** had one session the same day: three offers answered «Sí, autorizo.»; reply
+mode and the words worked on all three (one turn each, `hotwords=7`), the speaker check said
+`verified` once and `unknown` twice on the same 2.5 s clip, and the two fall-throughs made the
+model invent a context. Pipec moved on to Plan 0068 (a retry when only the voice failed, and the
+speaker measurement), whose Task 6 records the remaining counts. Merged as PR #199.
 
 - **Baseline:** not re-run locally; `main` differed from Plan 0066's local gate (3398 passed) only by
   documentation (PR #198), and CI passed on it.
