@@ -95,7 +95,7 @@ problem can be localized without running the whole loop.
 
 | Tool | Command | Isolates | Needs server? | Needs `.env`? |
 |---|---|---|:---:|:---:|
-| `mic_test.py` | `uv run python scripts/mic_test.py` | Mic capture → Whisper STT only | No | No |
+| `mic_test.py` | `uv run python scripts/mic_test.py --model small` | Mic capture → Whisper STT only. **Its defaults are stale** (model `tiny`, the old «…Omnibot» prompt, a fixed-length recording instead of the robot's Silero capture), so a result here does not represent the robot; pass `--model small` and the current prompt. Plan 0069 Task 4 rewrites it as the capture auditor | No | No |
 | `piper_test.py` | `uv run python scripts/piper_test.py --text ...` | Text → Piper TTS → speaker only | No | No |
 | `pipeline_test.py` | `just test-pipeline` | Smoke test of the three model seams, `mic → STT → LLM → TTS → speaker` (the mic is optional with `--text`); real model code, but no controller, identity, memory or HTTP | No | Yes (Ollama) |
 | `client_test.py` | `just test-client` | Full HTTP round trip through the real running server | Yes | No |

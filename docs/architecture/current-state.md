@@ -1,6 +1,9 @@
 # Current cognitive implementation
 
-> **Observed:** implementation and plan status aligned 2026-10-16 (Plan 0063, CM-3a closed:
+> **Observed:** documentation audited 2026-10-20 at the promotion of Plan 0069 (Plans 0064, 0066 and
+> 0067 closed on 2026-10-19 and Plan 0068's code merged, `just gate` 3654 at `917deec`; the STT row
+> below now states the verified Whisper configuration and the two findings Plan 0069 owns);
+> implementation and plan status aligned 2026-10-16 (Plan 0063, CM-3a closed:
 > the spoken offer and the explicit spoken answer, accepted on real hardware, behind the
 > default-off kill-switch, 3217 tests passing; see the memory-candidates row below),
 > 2026-10-15 (Plan 0062, CM-3a first cut: memory candidates and the canonical writer, 2972
@@ -194,7 +197,7 @@ or answer.
 
 | Capability | State | Boundary |
 |---|---|---|
-| STT | Implemented | Faster Whisper, CPU/int8 path. |
+| STT | Implemented | Faster Whisper (`small`, `int8`, CPU by default), beam 5, language forced to `es`, an `initial_prompt` naming Iroko, hotwords only from memory names and, in reply mode, `SHORT_REPLY_HOTWORDS`; Whisper's own silence filter runs (`min_silence_duration_ms` 500) after the robot's Silero cut, so two silence filters are in series; the temperature fallback and every other decoding value are faster-whisper 1.2.1 defaults; a prompt-echo guard (Plan 0056). Each segment's confidence (`avg_logprob`, `no_speech_prob`) reaches only a DEBUG log and `transcribe` returns text alone. **Never measured with a human voice** (only synthetic Piper speech, Plan 0056); that is [Plan 0069](../plans/open/0069-stt-owner-voice-audit.md) (`NOW`). Findings it owns: `WHISPER_HALLUCINATION_SILENCE_THRESHOLD` has no effect because word timestamps are off, and the taste gate refuses any transcript containing «?» or «¿». |
 | TTS | Implemented | Piper local synthesis. |
 | LLM | Implemented/local only | Ollama is the only accepted runtime provider. |
 | Text, audio, and streaming paths | Implemented/policy parity worktree | Classic and streaming audio enter the controller; generic stream output keeps its existing NDJSON/TTS path. P0-C6 (Plan 0022) closed the silent-success gap: `done` is architecturally guarded behind at least one prior audio chunk, confirmed by 641 tests and a 2026-08-20 real microphone run. Plan 0041 (ADR-0012) added a privacy-safe terminal `error` event: every started `/transcribe/stream` now ends in exactly one `done` or `error`, never a silent truncation after headers are sent. Since Plan 0063 a stream turn that offers a memory candidate sends one more `audio` event with an empty `text` just before `done` (classic `/transcribe` folds the offer into the same WAV and keeps `llm_response` to the reply). Since Plan 0067 the stream's `done` event carries an additive `expects_short_reply: bool = False`, true only when that offer's audio event was actually emitted (not when the offer was committed and its synthesis failed); an older robot ignores it. The request side has one additive form field, `short_reply` (default false), on `/transcribe/stream` only: its sole effect is the fixed hotwords `SHORT_REPLY_HOTWORDS` (`sí`, `no`, `acepto`, `autorizo`, `apruebo`, `guárdalo`, `guárdala`; `stt.py`) for the speech-to-text, and it changes no identity, lookup or grammar. No new event type, route or renamed field; classic `/transcribe` is unchanged. |

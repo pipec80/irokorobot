@@ -1,5 +1,10 @@
 # 0068 — Short answers and the speaker check: a retry when only the voice failed, and a measurement
 
+> **Paused 2026-10-20 (Pipec):** Tasks 0 to 5 are merged (PR #201, `917deec`); Tasks 6 to 8 wait
+> until [Plan 0069](0069-stt-owner-voice-audit.md) (speech-to-text on the owner's real voice) closes,
+> because measuring the voice on short answers is worth little while the transcript itself is
+> unmeasured. Nothing here is cancelled; the plan returns to `NOW` when 0069 closes.
+
 > **Status:** `Ready` and `NOW` — promoted by Pipec on 2026-10-19 and executed in the same session
 > (his choice: «a final estamos en lo mismo, así vamos sumando mejoras»), after Plan 0067 merged
 > (PR #199). Written 2026-10-19 as a measurement-only draft; **rewritten the same day** after the
