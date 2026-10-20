@@ -75,8 +75,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 CONDITIONS = ("c60", "c15", "c30", "c60-noenh", "c60-wasapi", "c60-noise", "c60-fast")
-_SETTLE_S = 0.5
-_COUNTDOWN = (3, 2, 1)
 _TAIL_S = 0.1
 
 type Recorder = Callable[[float, str], np.ndarray]
@@ -298,9 +296,8 @@ def capture_session(
 def record_window(window_s: float, api: str) -> np.ndarray:
     """Record one take from the microphone: settle, count down, cue, then the window.
 
-    The stream is open and running before anything is shown, and samples are kept from
-    the start of the countdown, so opening the device never costs an onset (D-3). The
-    cue is visual only. Hardware path: Pipec runs it, never an agent.
+    The sequence lives in ``mic_test.record`` (D-3): samples are kept from the start of
+    the countdown and the cue is visual only. Hardware path: Pipec runs it, never an agent.
 
     Args:
         window_s: Seconds recorded after the cue.
@@ -309,17 +306,9 @@ def record_window(window_s: float, api: str) -> np.ndarray:
     Returns:
         Int16 samples, 16 000 Hz, mono.
     """
-    from scripts.mic_test import as_contract, open_input  # noqa: PLC0415 -- microphone only here
+    from scripts.mic_test import record  # noqa: PLC0415 -- microphone only here
 
-    with open_input(api) as (stream, rate):
-        stream.read(int(_SETTLE_S * rate))  # discarded: the device settles
-        parts = []
-        for count in _COUNTDOWN:
-            _show(f"   {count} ...")
-            parts.append(stream.read(rate)[0])
-        _show("   >>> HABLA <<<")
-        parts.append(stream.read(int(window_s * rate))[0])
-    return as_contract(np.concatenate(parts), api, rate)
+    return record(api, window_s)[0]
 
 
 def free_session(
@@ -374,7 +363,7 @@ def _play(path: Path) -> None:
 
 
 def annotate(root: Path, session: str, ask: Ask, play: Callable[[Path], None] = _play) -> int:
-    """Play each spontaneous clip to Pipec and keep the reference he types (D-4).
+    """Play each spontaneous clip to Pipec and keep the reference Pipec types (D-4).
 
     Args:
         root: The corpus root.

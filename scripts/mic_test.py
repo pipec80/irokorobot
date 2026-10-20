@@ -1,19 +1,24 @@
 """mic_test.py - capture auditor for the robot's microphone (Plan 0069 Task 4).
 
-Lists the input devices, records one fixed-length take the way the robot opens the
+Lists the input devices, records one take the way the robot opens the
 microphone (``--api mme``: the default device at 16 kHz, mono, int16, no ``device=``) or
 through WASAPI at the device's native rate (``--api wasapi``: one channel, resampled to
-16 kHz with ``soxr``), and reports its levels against Plan 0069's targets. Optionally
+16 kHz with ``soxr``), and reports its levels against Plan 0069's targets. Before the take
+it shows the phrase to read; the stream settles, a countdown runs and the visual cue
+``>>> HABLA <<<`` opens the window (the same sequence as the corpus tool). Optionally
 transcribes it with the server's production decode options, through
 ``server.stt.run_whisper``. Run it with the server stopped when transcribing.
 
 A saved take goes to ``project-history/calibration/stt/mic/`` (ignored by git), never
-elsewhere. Nothing here is played back.
+elsewhere; a name already there is refused before the microphone opens, unless
+``--replace`` asks to record it again. Nothing here is played back.
 
 Usage:
     just mic-test devices
     just mic-test devices --save
     just mic-test record --seconds 6 --api mme --save lv-c60-mme
+    just mic-test record --seconds 6 --api mme --save lv-c60-mme --replace
+    just mic-test record --phrase Hola Iroko
     just mic-test record --seconds 6 --api wasapi --transcribe
     just mic-test record --transcribe --model medium --beam-size 1 --prompt Conversación con Iroko
 
@@ -62,8 +67,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+LEVEL_PHRASE = "Me gusta el helado de chocolate."
+
 _TAKE_NAME = re.compile(r"[A-Za-z0-9_-]+")
 _MIC_DIR = "mic"
+_SETTLE_S = 0.5
+_COUNTDOWN = (3, 2, 1)
 
 
 @dataclass(frozen=True)
@@ -159,18 +168,30 @@ def as_contract(data: np.ndarray, api: str, opened_rate: int) -> np.ndarray:
 
 
 def record(api: str, seconds: float) -> tuple[np.ndarray, int]:
-    """Record one fixed-length take.
+    """Record one take: settle, count down, cue, then the window.
+
+    The stream is open and running before anything is shown, and samples are kept from
+    the start of the countdown, so opening the device never costs an onset (D-3). The
+    cue is visual only. Hardware path: Pipec runs it, never an agent.
 
     Args:
         api: ``mme`` or ``wasapi`` (see ``open_input``).
-        seconds: Length of the take.
+        seconds: Seconds recorded after the cue.
 
     Returns:
-        Int16 samples, 16 000 Hz, mono, and the rate the stream actually opened at.
+        Int16 samples, 16 000 Hz, mono, from the countdown on, and the rate the stream
+        actually opened at.
     """
     with open_input(api) as (stream, rate):
-        data, _ = stream.read(int(seconds * rate))
-    return as_contract(data, api, rate), rate
+        stream.read(int(_SETTLE_S * rate))  # discarded: the device settles
+        parts = []
+        for count in _COUNTDOWN:
+            logger.info("   %d ...", count)
+            parts.append(stream.read(rate)[0])
+        logger.info("   >>> HABLA <<<")
+        parts.append(stream.read(int(seconds * rate))[0])
+    logger.info("   listo")
+    return as_contract(np.concatenate(parts), api, rate), rate
 
 
 def _wav(samples: np.ndarray) -> bytes:
@@ -261,10 +282,16 @@ def _devices(save: bool) -> int:
 
 def _record_take(args: argparse.Namespace) -> int:
     target = _take_path(args.save) if args.save else None
+    if target is not None and target.exists() and not args.replace:
+        raise SystemExit(f"{target.name} already exists; add --replace to record it again")
+    phrase = " ".join(args.phrase) if args.phrase else LEVEL_PHRASE
+    logger.info("Lee en voz alta cuando aparezca >>> HABLA <<<: %s", phrase)
     samples, opened_rate = record(args.api, args.seconds)
     _print_report(level_report(samples), opened_rate, len(samples) / CONTRACT_RATE)
     if target is not None:
         target.parent.mkdir(parents=True, exist_ok=True)
+        if args.replace:
+            target.unlink(missing_ok=True)
         write_new_file_atomic(target, _wav(samples))
         logger.info("take saved under the private corpus root")
     if args.transcribe:
@@ -286,9 +313,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     devices = commands.add_parser("devices", help="list the capture devices")
     devices.add_argument("--save", action="store_true", help="save the list as JSON")
     take = commands.add_parser("record", help="record one take and report its levels")
-    take.add_argument("--seconds", type=float, default=6.0)
+    take.add_argument("--seconds", type=float, default=6.0, help="window after the cue")
     take.add_argument("--api", choices=("mme", "wasapi"), default="mme")
     take.add_argument("--save", default=None, help="plain name of the take to keep")
+    take.add_argument("--replace", action="store_true", help="record a saved name again")
+    take.add_argument("--phrase", nargs="+", default=None, help="what to read aloud")
     take.add_argument("--transcribe", action="store_true")
     take.add_argument("--model", default=None, help="Whisper model (default: the server's)")
     take.add_argument("--beam-size", type=int, default=None)

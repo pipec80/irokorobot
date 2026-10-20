@@ -4,7 +4,10 @@ A fake sounddevice and a fake recorder stand in for the microphone; nothing is r
 Audio contract: WAV · 16000 Hz · mono · int16.
 """
 
+from collections.abc import Generator
+from contextlib import contextmanager
 import json
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 import wave
@@ -42,6 +45,36 @@ def _fake_sd() -> SimpleNamespace:
     )
 
 
+def _never(*_args: object) -> tuple[np.ndarray, int]:
+    raise AssertionError("nothing may be recorded")
+
+
+def _silence(_api: str, seconds: float) -> tuple[np.ndarray, int]:
+    return np.zeros(int(seconds * 16_000), dtype=np.int16), 16_000
+
+
+class _Events(logging.Handler):
+    """Keeps what the operator is shown, in order, beside what the stream reads."""
+
+    def __init__(self, events: list[str]) -> None:
+        super().__init__(logging.INFO)
+        self.events = events
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.events.append(record.getMessage().strip())
+
+
+class _FakeStream:
+    """A started stream that returns silence and notes every read."""
+
+    def __init__(self, events: list[str]) -> None:
+        self.events = events
+
+    def read(self, frames: int) -> tuple[np.ndarray, bool]:
+        self.events.append(f"read {frames}")
+        return np.zeros((frames, 1), dtype=np.int16), False
+
+
 @pytest.fixture
 def corpus_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root = tmp_path / "stt"
@@ -73,14 +106,86 @@ def test_devices_save_writes_the_dump_under_the_corpus_root(corpus_root: Path) -
 def test_a_save_name_that_escapes_the_corpus_root_is_refused_before_recording(
     corpus_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def _never(*_args: object) -> tuple[np.ndarray, int]:
-        raise AssertionError("nothing may be recorded")
-
     monkeypatch.setattr(mic_test, "record", _never)
 
     with pytest.raises(SystemExit):
         mic_test.main(["record", "--save", "../escape"])
     assert not corpus_root.exists() or not any(corpus_root.rglob("*"))
+
+
+@pytest.mark.unit
+def test_an_existing_take_is_refused_before_recording_unless_replaced(
+    corpus_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = corpus_root / "mic" / "take1.wav"
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"old take")
+    monkeypatch.setattr(mic_test, "record", _never)
+
+    with pytest.raises(SystemExit, match="--replace"):
+        mic_test.main(["record", "--save", "take1"])
+    assert target.read_bytes() == b"old take"
+
+    monkeypatch.setattr(mic_test, "record", _silence)
+    assert mic_test.main(["record", "--seconds", "1", "--save", "take1", "--replace"]) == 0
+    with wave.open(str(target), "rb") as handle:
+        assert handle.getnframes() == 16_000
+
+
+@pytest.mark.unit
+def test_record_shows_the_phrase_to_read_before_the_take(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    shown: list[str] = []
+
+    def _record(api: str, seconds: float) -> tuple[np.ndarray, int]:
+        shown.append(caplog.text)
+        return _silence(api, seconds)
+
+    monkeypatch.setattr(mic_test, "record", _record)
+    caplog.set_level(logging.INFO, logger=mic_test.logger.name)
+
+    mic_test.main(["record", "--seconds", "1"])
+    mic_test.main(["record", "--seconds", "1", "--phrase", "Hola", "Iroko"])
+
+    assert mic_test.LEVEL_PHRASE == "Me gusta el helado de chocolate."
+    assert mic_test.LEVEL_PHRASE in shown[0]
+    assert "Hola Iroko" in shown[1]
+    assert ">>> HABLA <<<" in shown[0]
+
+
+@pytest.mark.unit
+def test_record_settles_counts_down_and_cues_before_the_window(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    events: list[str] = []
+
+    @contextmanager
+    def _open(_api: str) -> Generator[tuple[_FakeStream, int]]:
+        yield _FakeStream(events), 16_000
+
+    monkeypatch.setattr(mic_test, "open_input", _open)
+    caplog.set_level(logging.INFO, logger=mic_test.logger.name)
+    handler = _Events(events)
+    mic_test.logger.addHandler(handler)
+    try:
+        samples, rate = mic_test.record("mme", 2.0)
+    finally:
+        mic_test.logger.removeHandler(handler)
+
+    assert events == [
+        "read 8000",  # the device settles; nothing is shown and nothing is kept
+        "3 ...",
+        "read 16000",
+        "2 ...",
+        "read 16000",
+        "1 ...",
+        "read 16000",
+        ">>> HABLA <<<",
+        "read 32000",
+        "listo",
+    ]
+    assert (len(samples), rate) == (3 * 16_000 + 2 * 16_000, 16_000)
 
 
 @pytest.mark.unit
