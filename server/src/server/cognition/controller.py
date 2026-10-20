@@ -39,6 +39,7 @@ from server.cognition.response_plan import (
     SceneDescriptionRequest,
     TextTurnPayload,
     ToolResult,
+    unclear_speech_plan,
 )
 
 if TYPE_CHECKING:
@@ -222,6 +223,10 @@ class CognitiveController:
                 decision = SceneDescriptionRequest()
             case InformationNeed.MEMORY_ANSWER:
                 decision = await self._memory_answer_plan(event)
+            case InformationNeed.UNCLEAR_SPEECH:
+                # The voice routes answer it before the controller (Plan 0069 D-11); no text
+                # resolves to it, but if one ever did, it is the fixed phrase, never generation.
+                decision = unclear_speech_plan(expects_short_reply=False)
             case InformationNeed.GENERIC_CONVERSATION:
                 decision = None
         return decision

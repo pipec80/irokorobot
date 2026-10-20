@@ -510,6 +510,26 @@ async def test_controller_rejects_non_iso_age_without_legacy_delegate() -> None:
 
 
 @pytest.mark.asyncio
+async def test_an_unclear_need_gets_the_fixed_phrase_never_generation() -> None:
+    """Plan 0069: the routes answer unclear speech first; the controller covers it anyway."""
+    legacy_turn = AsyncMock()
+    resolver = Mock(
+        return_value=IntentResolution(
+            need=InformationNeed.UNCLEAR_SPEECH, match=IntentMatch.EXACT, rule_id="test.unclear"
+        )
+    )
+    controller = CognitiveController(
+        today=lambda: date(2026, 8, 12), legacy_turn=legacy_turn, intent_resolver=resolver
+    )
+
+    plan = await controller.handle(_event("cualquier texto de prueba"))
+
+    assert plan.response == "No te entendí bien. ¿Me lo repites?"
+    assert plan.need is InformationNeed.UNCLEAR_SPEECH
+    legacy_turn.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_controller_decide_returns_scene_capability_without_legacy_or_policy() -> None:
     """C7: a scene request is a capability, never a closed plan or legacy delegate."""
     legacy_turn = AsyncMock()
