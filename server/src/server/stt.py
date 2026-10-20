@@ -3,20 +3,24 @@
 Audio contract: WAV · 16000 Hz · mono · int16.
 """
 
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from functools import partial
 import io
 import logging
 import math
 import re
 import unicodedata
+import wave
 
 from faster_whisper import WhisperModel
-from faster_whisper.transcribe import VadOptions
+from faster_whisper.transcribe import Segment, VadOptions
+import numpy as np
 
 from server.exceptions import TranscriptionError
 from server.request_context import run_in_executor_with_context
-from server.settings import settings
+from server.settings import Settings, settings
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +44,205 @@ SHORT_REPLY_HOTWORDS: tuple[str, ...] = (
 
 _executor = ThreadPoolExecutor(max_workers=2)
 _model: WhisperModel | None = None
+
+_SAMPLE_RATE = 16_000
+_INT16_FULL_SCALE = 32768.0
+
+
+@dataclass(frozen=True)
+class WhisperDecodeOptions:
+    """Every argument of one Whisper decode (Plan 0069 D-14 and Task 1).
+
+    The first five fields come from today's settings; the rest are fixed in code with the
+    values production uses today, so the bench can vary one field at a time on the
+    production code path. A field becomes a setting only when evidence moves it (Task 12).
+    Three values stay out on purpose: ``condition_on_previous_text`` is always ``False`` (a
+    robot clip is one 30 s window, so there is no previous text), ``patience`` keeps its
+    library default (no evidence) and ``num_workers`` stays 1 (one robot, one request).
+    """
+
+    language: str
+    beam_size: int
+    initial_prompt: str | None
+    vad_min_silence_ms: int
+    hallucination_silence_threshold: float | None
+    best_of: int = 5
+    temperatures: tuple[float, ...] = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
+    compression_ratio_threshold: float | None = 2.4
+    log_prob_threshold: float | None = -1.0
+    no_speech_threshold: float | None = 0.6
+    vad_filter: bool = True
+    vad_threshold: float = 0.5
+    vad_min_speech_ms: int = 0
+    vad_speech_pad_ms: int = 400
+    word_timestamps: bool = False
+    input_peak_dbfs: float | None = None
+
+
+@dataclass(frozen=True)
+class TranscriptConfidence:
+    """How sure Whisper was about one clip (Plan 0069 D-11).
+
+    ``avg_logprob`` is the token-weighted mean of the segments' mean log-probability per
+    token: one coherent figure for the clip, not a calibrated probability of being right.
+    The other three are the highest values over the segments, for diagnosis only.
+    """
+
+    avg_logprob: float
+    no_speech_prob: float
+    compression_ratio: float
+    temperature: float
+    segments: int
+
+
+@dataclass(frozen=True)
+class Transcript:
+    """What Whisper heard in one clip, with its confidence and durations.
+
+    ``confidence`` is ``None`` when Whisper returned no segment at all.
+    """
+
+    text: str
+    confidence: TranscriptConfidence | None
+    clip_s: float
+    after_vad_s: float
+
+
+def decode_options(source: Settings) -> WhisperDecodeOptions:
+    """Build the production decode options from the settings that exist today.
+
+    Args:
+        source: The server settings.
+
+    Returns:
+        Options whose code-fixed fields keep today's production values.
+    """
+    return WhisperDecodeOptions(
+        language=source.whisper_language,
+        beam_size=source.whisper_beam_size,
+        initial_prompt=source.whisper_initial_prompt,
+        vad_min_silence_ms=source.whisper_vad_min_silence_ms,
+        hallucination_silence_threshold=source.whisper_hallucination_silence_threshold,
+    )
+
+
+def normalize_peak(samples: np.ndarray, target_dbfs: float) -> np.ndarray:
+    """Scale float samples so their peak sits at *target_dbfs*.
+
+    Args:
+        samples: Float32 samples in [-1, 1] (16 kHz mono, decoded from an int16 WAV).
+        target_dbfs: The peak level wanted, in dBFS (for example -3.0).
+
+    Returns:
+        Float32 samples, same rate and length; an all-zero input comes back unchanged.
+    """
+    peak = float(np.max(np.abs(samples))) if samples.size else 0.0
+    if peak == 0.0:
+        return samples
+    gain = 10 ** (target_dbfs / 20) / peak
+    return (samples * gain).astype(np.float32)
+
+
+def _wav_floats(audio: bytes) -> np.ndarray:
+    """Decode WAV bytes (16 kHz, mono, int16) to float32 samples in [-1, 1].
+
+    Raises:
+        ValueError: If the WAV is not 16 kHz, mono, int16.
+    """
+    with wave.open(io.BytesIO(audio), "rb") as handle:
+        if (handle.getframerate(), handle.getnchannels(), handle.getsampwidth()) != (
+            _SAMPLE_RATE,
+            1,
+            2,
+        ):
+            raise ValueError("Audio must be WAV 16 kHz, mono, int16")
+        frames = handle.readframes(handle.getnframes())
+    return np.frombuffer(frames, dtype=np.int16).astype(np.float32) / _INT16_FULL_SCALE
+
+
+def _clip_confidence(segments: Sequence[Segment]) -> TranscriptConfidence | None:
+    """Fold the segments' confidence into one figure for the clip (D-11)."""
+    if not segments:
+        return None
+    weights = [max(len(seg.tokens), 1) for seg in segments]
+    weighted = sum(w * seg.avg_logprob for w, seg in zip(weights, segments, strict=True))
+    return TranscriptConfidence(
+        avg_logprob=weighted / sum(weights),
+        no_speech_prob=max(seg.no_speech_prob for seg in segments),
+        compression_ratio=max(seg.compression_ratio for seg in segments),
+        temperature=max(seg.temperature or 0.0 for seg in segments),
+        segments=len(segments),
+    )
+
+
+def run_whisper(
+    model: WhisperModel, audio: bytes, options: WhisperDecodeOptions, hotwords: str | None
+) -> Transcript:
+    """Run one Whisper decode — the only place that calls ``model.transcribe``.
+
+    Args:
+        model: A loaded Whisper model.
+        audio: Raw WAV bytes at 16kHz mono int16. With ``options.input_peak_dbfs`` set they
+            are decoded to float32 at 16 kHz and peak-normalized before Whisper sees them;
+            otherwise the bytes go to Whisper unchanged.
+        options: The decode arguments.
+        hotwords: Merged hotwords string, or ``None``.
+
+    Returns:
+        The joined text, the clip's confidence and its durations before and after Whisper's
+        own silence filter.
+    """
+    source: io.BytesIO | np.ndarray = (
+        io.BytesIO(audio)
+        if options.input_peak_dbfs is None
+        else normalize_peak(_wav_floats(audio), options.input_peak_dbfs)
+    )
+    segments, info = model.transcribe(
+        source,
+        language=options.language,
+        beam_size=options.beam_size,
+        best_of=options.best_of,
+        temperature=options.temperatures,
+        compression_ratio_threshold=options.compression_ratio_threshold,
+        log_prob_threshold=options.log_prob_threshold,
+        no_speech_threshold=options.no_speech_threshold,
+        initial_prompt=options.initial_prompt,
+        hotwords=hotwords,
+        condition_on_previous_text=False,
+        word_timestamps=options.word_timestamps,
+        hallucination_silence_threshold=options.hallucination_silence_threshold,
+        vad_filter=options.vad_filter,
+        vad_parameters=VadOptions(
+            threshold=options.vad_threshold,
+            min_speech_duration_ms=options.vad_min_speech_ms,
+            min_silence_duration_ms=options.vad_min_silence_ms,
+            speech_pad_ms=options.vad_speech_pad_ms,
+        ),
+    )
+    logger.info(
+        "Language detected: %s (%.0f%%) — audio duration: %.1fs → %.1fs after VAD",
+        info.language,
+        info.language_probability * 100,
+        info.duration,
+        info.duration_after_vad,
+    )
+    decoded = list(segments)
+    for seg in decoded:
+        logger.debug(
+            "Segment [%.1fs→%.1fs] logprob=%.2f no_speech=%.2f temp=%.1f (%d chars)",
+            seg.start,
+            seg.end,
+            seg.avg_logprob,
+            seg.no_speech_prob,
+            seg.temperature or 0.0,
+            len(seg.text.strip()),
+        )
+    return Transcript(
+        text=" ".join(seg.text.strip() for seg in decoded),
+        confidence=_clip_confidence(decoded),
+        clip_s=info.duration,
+        after_vad_s=info.duration_after_vad,
+    )
 
 
 def _get_model() -> WhisperModel:
@@ -166,39 +369,7 @@ def _whisper_text(audio: bytes, hotwords: str | None) -> str:
     if not audio:
         raise ValueError("Audio bytes are empty")
     try:
-        model = _get_model()
-        vad_params = VadOptions(min_silence_duration_ms=settings.whisper_vad_min_silence_ms)
-        segments, info = model.transcribe(
-            io.BytesIO(audio),
-            language=settings.whisper_language,
-            beam_size=settings.whisper_beam_size,
-            initial_prompt=settings.whisper_initial_prompt,
-            hotwords=hotwords,
-            condition_on_previous_text=False,
-            hallucination_silence_threshold=settings.whisper_hallucination_silence_threshold,
-            vad_filter=True,
-            vad_parameters=vad_params,
-        )
-        logger.info(
-            "Language detected: %s (%.0f%%) — audio duration: %.1fs → %.1fs after VAD",
-            info.language,
-            info.language_probability * 100,
-            info.duration,
-            info.duration_after_vad,
-        )
-        parts: list[str] = []
-        for seg in segments:
-            logger.debug(
-                "Segment [%.1fs→%.1fs] logprob=%.2f no_speech=%.2f temp=%.1f (%d chars)",
-                seg.start,
-                seg.end,
-                seg.avg_logprob,
-                seg.no_speech_prob,
-                seg.temperature or 0.0,
-                len(seg.text.strip()),
-            )
-            parts.append(seg.text.strip())
-        return " ".join(parts)
+        return run_whisper(_get_model(), audio, decode_options(settings), hotwords).text
     except Exception as exc:
         raise TranscriptionError("Whisper inference failed") from exc
 

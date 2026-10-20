@@ -78,6 +78,9 @@ class _Segment:
         self.avg_logprob = -0.5
         self.no_speech_prob = 0.1
         self.temperature = 0.0
+        # The fields of faster-whisper's Segment that the clip confidence reads (Plan 0069).
+        self.tokens = [0]
+        self.compression_ratio = 1.0
 
 
 class _Info:
