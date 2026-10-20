@@ -1,7 +1,7 @@
 # 0069 — Speech-to-text on the owner's real voice: capture, corpus, a deterministic bench and changes backed by evidence
 
 > **Status:** `Ready` and `NOW` — written and **promoted by Pipec on 2026-10-20**, with decisions
-> D-1 to D-20 as written (the thresholds of D-9 and D-11 included) and his standing rule kept as is:
+> D-1 to D-20 as written (the thresholds of D-9 and D-11 included) and Pipec's standing rule kept as is:
 > every finding met while executing is fixed. Two outside reviews Pipec brought the same day were
 > folded in before the promotion (the pilot gate, the near reference, critical-term errors, the
 > pause test, dev/test selection, a coherent confidence figure, D-12 left to Pipec). This plan goes
@@ -229,9 +229,9 @@ and `.claude/rules/` (not tracked; read them from the working copy).
    bytes on the same chunks.
 4. **D-4 — Reading and spontaneous speech stay apart (design question c).** Read takes have
    `mode=read`, an `item_id`, and the script text as reference unless Pipec answers «n» to «¿Leíste
-   exactamente la frase?» and types what he said (`deviated=true`). The spontaneous session is one
+   exactamente la frase?» and types what was actually said (`deviated=true`). The spontaneous session is one
    continuous raw recording of about 10 minutes, `mode=free`, no item; the robot's segmentation cuts
-   it into clips and Pipec types each reference later (`annotate`, which plays each clip to him,
+   it into clips and Pipec types each reference later (`annotate`, which plays each clip back to Pipec,
    accepts «inaudible» and asks «¿La frase seguía en el clip siguiente? [s/N]», which marks a split
    turn). Every table reports read and spontaneous separately; the bench's adoption
    rules use read speech only, and spontaneous speech is the reality check.
@@ -383,7 +383,7 @@ and `.claude/rules/` (not tracked; read them from the working copy).
     `just eval-chat --mode stream --runs 20` keeps Ollama generating in another terminal. Both figures go in the
     record; this measures the laptop, and the homelab stays PC-5's.
 20. **D-20 — An outside reference, optional (Pipec's choice).** Pipec may read the 24 block items
-    into the dictation tool he already uses and save its text output in a private file; the bench
+    into the dictation tool Pipec already uses and save its text output in a private file; the bench
     scores it like any configuration (`--external`). It is a ceiling for «what this room and this
     voice allow», not a candidate: no cloud service enters the runtime path (ADR-0004), and the record
     names the tool and the microphone it used, which may differ from the robot's.
@@ -730,7 +730,7 @@ expected outcome) or `both`, judged on the expectation fields the item has (`nee
 The agent gives the exact commands, one session at a time, and never runs them.
 
 - [ ] **Before the first session:** Pipec reads Appendix A in `tests/evals/stt_reading_script.yaml`,
-  edits what he would not say, and reviews the `expect` list from Task 5; dictation off; Chrome
+  edits what Pipec would not say, and reviews the `expect` list from Task 5; dictation off; Chrome
   closed; the server and the robot stopped.
 - [ ] **Devices and levels:** `just mic-test devices --save`; then at 15, 30 and 60 cm with MME, and at
   60 cm with enhancements off and with WASAPI: `just mic-test record --seconds 6 --api mme --save lv-c60-mme`
@@ -746,13 +746,13 @@ The agent gives the exact commands, one session at a time, and never runs them.
   session (25–30 minutes).
 - [ ] **Condition block** (one day): `just stt-corpus capture --session s3 --condition C --block` for
   each `C` of D-6, in the order Pipec finds practical, noting the fan or TV setting for `c60-noise`.
-- [ ] **Spontaneous:** `just stt-corpus free --session s4 --minutes 10` (Pipec talks as he would to the
+- [ ] **Spontaneous:** `just stt-corpus free --session s4 --minutes 10` (Pipec talks as if to the
   robot); then `just stt-corpus annotate --session s4`.
 - [ ] `just stt-corpus validate` passes. Counts per class and condition only in the chat.
 - [ ] **Manual chat arm:** `just chat-test` (interactive) with each `chat: true` item typed as written;
   Pipec counts the replies that understood the request.
 - [ ] **Outside reference (optional, D-20):** `just stt-bench external-template`, Pipec dictates the 24
-  block items at 60 cm into his usual dictation tool, pastes each result into the template's second
+  block items at 60 cm into the usual dictation tool, pastes each result into the template's second
   column and notes the tool and the microphone.
 
 ## Task 11: Bench runs and the evaluation record (agent; server stopped)
@@ -789,8 +789,8 @@ The agent gives the exact commands, one session at a time, and never runs them.
   (D-16), the unclear phrase and how to read `stt.confidence`, a model download on first start if the
   model changed. Run `just gate`. **Commit** `feat: adopt the measured stt defaults`.
 - [ ] Pipec's `.env` copies `.env.example` (for example `WHISPER_MODEL=small`), so a new default does
-  not reach his runtime by itself: the agent lists every variable to change or delete, and Pipec edits
-  his `.env` (the agent never reads it).
+  not reach Pipec's runtime by itself: the agent lists every variable to change or delete, and Pipec
+  edits that `.env` (the agent never reads it).
 
 ## Task 13: The gate stops reading Whisper's marks (only if Pipec chooses it under D-12)
 
@@ -802,7 +802,7 @@ The agent gives the exact commands, one session at a time, and never runs them.
   existing gate test still passes. RED: today's punctuation refusal.
 - [ ] Implement the word rule of D-12; ADR 0021 gets a dated amendment line naming the cost. **Commit**
   `fix(server): a taste is not refused for whisper's question marks`.
-- [ ] If Pipec keeps the gate: the record states both measured shares and his choice, the gate is
+- [ ] If Pipec keeps the gate: the record states both measured shares and Pipec's choice, the gate is
   untouched, and intonation is named as the fix in the roadmap.
 
 ## Task 14: GPU dependency (only if D-15 adopts it)
@@ -862,7 +862,7 @@ The agent gives the exact commands, one session at a time, and never runs them.
 3. Adopted defaults are in place with tests; findings (the dead setting, the gate's marks, the stale
    `mic_test.py`) are fixed or explicitly kept with the measured reason.
 4. ADR 0023 is `Accepted`; `just gate` green; Pipec's hardware acceptance recorded; the private corpus
-   deleted after his typed `delete`.
+   deleted after Pipec's typed `delete`.
 
 ## Not here, and why
 

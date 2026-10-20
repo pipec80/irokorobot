@@ -95,7 +95,7 @@ problem can be localized without running the whole loop.
 
 | Tool | Command | Isolates | Needs server? | Needs `.env`? |
 |---|---|---|:---:|:---:|
-| `mic_test.py` | `just mic-test devices` / `just mic-test record --seconds 6 --api mme` | Capture auditor (Plan 0069): lists the inputs with their host API and native rate; records one fixed-length take the way the robot opens the microphone (`mme`) or through WASAPI at the native rate (`wasapi`, resampled with `soxr`); reports peak, speech level, floor, SNR and clipping against the plan's targets; `--transcribe` runs the server's production Whisper options (stop the server first); `--save NAME` keeps the take under `project-history/calibration/stt/mic/` only | No | Yes |
+| `mic_test.py` | `just mic-test devices` / `just mic-test record --seconds 6 --api mme` | Capture auditor (Plan 0069): lists the inputs with their host API and native rate; shows the phrase to read (`--phrase` changes it), counts down and cues `>>> HABLA <<<`, then records the window the way the robot opens the microphone (`mme`) or through WASAPI at the native rate (`wasapi`, resampled with `soxr`); reports peak, speech level, floor, SNR and clipping against the plan's targets; `--transcribe` runs the server's production Whisper options (stop the server first); `--save NAME` keeps the take under `project-history/calibration/stt/mic/` only, and an existing name is refused before recording unless `--replace` | No | Yes |
 | `piper_test.py` | `uv run python scripts/piper_test.py --text ...` | Text → Piper TTS → speaker only | No | No |
 | `pipeline_test.py` | `just test-pipeline` | Smoke test of the three model seams, `mic → STT → LLM → TTS → speaker` (the mic is optional with `--text`); real model code, but no controller, identity, memory or HTTP | No | Yes (Ollama) |
 | `client_test.py` | `just test-client` | Full HTTP round trip through the real running server | Yes | No |
@@ -333,7 +333,7 @@ face that matches another enrolled person is also a hard denial, even when a PIN
 token is presented, and it does not consume that token.
 
 Validated live 2026-08-27: `just onboard` enrolled Pipec's face, then
-`just run-robot` correctly identified him on a real streaming turn
+`just run-robot` correctly identified Pipec on a real streaming turn
 (`Turn actor: status=identified role=owner ... evidence=1`) and answered
 "Tus hijos son nala y martina." with no PIN. **This is one successful run
 on one person's hardware, not a calibrated study** — no threshold tuning,
