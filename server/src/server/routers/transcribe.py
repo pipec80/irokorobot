@@ -43,10 +43,12 @@ from server.cognition.response_plan import (
     SceneDescriptionRequest,
     TextTurnPayload,
     scene_unavailable_plan,
+    unclear_speech_plan,
 )
 from server.dependencies import IdentityTokenDep, OwnerUnlockServiceDep, ResourcesDep
 from server.exceptions import (
     AudioContractError,
+    UnclearSpeechError,
     UploadTooLargeError,
 )
 from server.memory.candidate_dialogue import (
@@ -406,6 +408,110 @@ async def _synthesize_reply(plan: ResponsePlan) -> tuple[str, int, int]:
         return await _run_tts(plan.response)
 
 
+async def _transcribe_turn(audio_bytes: bytes, hotwords: list[str]) -> tuple[str, int, bool]:
+    """Run the speech-to-text; a transcript Whisper doubted comes back flagged, not raised.
+
+    Args:
+        audio_bytes: Raw WAV bytes — 16kHz, mono, int16.
+        hotwords: Extra hotwords for this request.
+
+    Returns:
+        The transcript, the STT milliseconds and whether it is unclear (Plan 0069 D-11). An
+        unclear transcript must never reach the controller.
+    """
+    start = time.perf_counter()
+    try:
+        text, stt_ms = await _run_stt(audio_bytes, hotwords)
+    except UnclearSpeechError as exc:
+        logger.info(
+            "STT unclear (%d chars) — asking to repeat",
+            len(exc.text),
+            extra={"event": "stt.unclear", "chars": len(exc.text)},
+        )
+        return exc.text, _elapsed_ms(start), True
+    return text, stt_ms, False
+
+
+async def _classic_reply(
+    plan: ResponsePlan,
+    *,
+    text_heard: str,
+    stt_ms: int,
+    request_start: float,
+    request_identity: _RequestIdentity,
+) -> TranscribeResponse:
+    """Speak one plan on the classic route and build its response.
+
+    Args:
+        plan: The turn's plan.
+        text_heard: What the speech-to-text heard.
+        stt_ms: Speech-to-text milliseconds.
+        request_start: ``time.perf_counter()`` at the start of the request.
+        request_identity: This request's identity resolver.
+
+    Returns:
+        The classic response, its WAV 16 kHz, mono, int16 carried as base64.
+    """
+    turn_log.log_decision("voice", plan)
+    # One WAV carries the reply and the memory offer; `llm_response` and the spoken-text log
+    # carry the reply only (ADR 0021 decision 9).
+    audio_base64, duration_ms, tts_ms = await _synthesize_reply(plan)
+
+    total_ms = _elapsed_ms(request_start)
+    _log_pipeline_timing(f"voice.{plan.source.value}", stt_ms, plan.duration_ms, tts_ms, total_ms)
+    return TranscribeResponse(
+        text_heard=text_heard,
+        llm_response=plan.response,
+        audio_base64=audio_base64,
+        duration_ms=duration_ms,
+        emotion=plan.emotion,
+        stt_ms=stt_ms,
+        llm_ms=plan.duration_ms,
+        tts_ms=tts_ms,
+        total_ms=total_ms,
+        authentication_consumed=request_identity.consumed,
+        # A generic reply never reports identity (ADR 0020), including an answer-shaped message
+        # that fell through after its actor was resolved: the wire is the ordinary one.
+        identity_source=None
+        if plan.need is InformationNeed.GENERIC_CONVERSATION
+        else request_identity.identity_source,
+    )
+
+
+def _stream_plan(
+    plan: ResponsePlan,
+    *,
+    text_heard: str,
+    stt_ms: int,
+    request_start: float,
+    request_identity: _RequestIdentity,
+) -> NDJSONStreamingResponse:
+    """Stream one deterministic plan (its WAV chunks 16 kHz, mono, int16) and its `done`.
+
+    Args:
+        plan: The turn's plan.
+        text_heard: What the speech-to-text heard.
+        stt_ms: Speech-to-text milliseconds.
+        request_start: ``time.perf_counter()`` at the start of the request.
+        request_identity: This request's identity resolver.
+
+    Returns:
+        The NDJSON response, guaranteed to end in one terminal event.
+    """
+    return NDJSONStreamingResponse(
+        guarantee_terminal_event(
+            stream_response_plan(
+                text_heard=text_heard,
+                plan=plan,
+                stt_ms=stt_ms,
+                request_start=request_start,
+                authentication_consumed=request_identity.consumed,
+                identity_source=request_identity.identity_source,
+            )
+        )
+    )
+
+
 async def _read_audio_upload(audio: UploadFile) -> bytes:
     """Read and validate WAV 16kHz, mono, int16 upload bytes."""
     try:
@@ -477,11 +583,19 @@ async def transcribe(
         owner_unlock_service, x_iroko_identity_token, frame_bytes, audio_bytes
     )
 
-    text_heard, stt_ms = await _run_stt(audio_bytes, [])
+    text_heard, stt_ms, unclear = await _transcribe_turn(audio_bytes, [])
 
     if not text_heard.strip():
         logger.warning("STT returned empty transcript — audio was silence or too short")
         raise HTTPException(status_code=422, detail="No speech detected in audio")
+    if unclear:
+        return await _classic_reply(
+            unclear_speech_plan(expects_short_reply=False),
+            text_heard=text_heard,
+            stt_ms=stt_ms,
+            request_start=request_start,
+            request_identity=request_identity,
+        )
 
     event = _voice_event_from_transcript(text_heard)
     controller = _voice_controller(
@@ -541,29 +655,12 @@ async def transcribe(
     else:
         plan = decision
 
-    turn_log.log_decision("voice", plan)
-    # One WAV carries the reply and the memory offer; `llm_response` and the spoken-text log
-    # carry the reply only (ADR 0021 decision 9).
-    audio_base64, duration_ms, tts_ms = await _synthesize_reply(plan)
-
-    total_ms = _elapsed_ms(request_start)
-    _log_pipeline_timing(f"voice.{plan.source.value}", stt_ms, plan.duration_ms, tts_ms, total_ms)
-    return TranscribeResponse(
+    return await _classic_reply(
+        plan,
         text_heard=text_heard,
-        llm_response=plan.response,
-        audio_base64=audio_base64,
-        duration_ms=duration_ms,
-        emotion=plan.emotion,
         stt_ms=stt_ms,
-        llm_ms=plan.duration_ms,
-        tts_ms=tts_ms,
-        total_ms=total_ms,
-        authentication_consumed=request_identity.consumed,
-        # A generic reply never reports identity (ADR 0020), including an answer-shaped message
-        # that fell through after its actor was resolved: the wire is the ordinary one.
-        identity_source=None
-        if plan.need is InformationNeed.GENERIC_CONVERSATION
-        else request_identity.identity_source,
+        request_start=request_start,
+        request_identity=request_identity,
     )
 
 
@@ -631,13 +728,23 @@ async def transcribe_stream(
         owner_unlock_service, x_iroko_identity_token, frame_bytes, audio_bytes
     )
 
-    text_heard, stt_ms = await _run_stt(
+    text_heard, stt_ms, unclear = await _transcribe_turn(
         audio_bytes, list(SHORT_REPLY_HOTWORDS) if short_reply else []
     )
 
     if not text_heard.strip():
         logger.warning("STT returned empty transcript — audio was silence or too short")
         raise HTTPException(status_code=422, detail="No speech detected in audio")
+    if unclear:
+        unclear_plan = unclear_speech_plan(expects_short_reply=short_reply)
+        turn_log.log_decision("stream", unclear_plan)
+        return _stream_plan(
+            unclear_plan,
+            text_heard=text_heard,
+            stt_ms=stt_ms,
+            request_start=request_start,
+            request_identity=request_identity,
+        )
 
     event = _voice_event_from_transcript(text_heard)
     decision = await _voice_controller(
@@ -652,17 +759,12 @@ async def transcribe_stream(
     )
     turn_log.log_decision("stream", plan)
     if plan is not None:
-        return NDJSONStreamingResponse(
-            guarantee_terminal_event(
-                stream_response_plan(
-                    text_heard=event.payload.message,
-                    plan=plan,
-                    stt_ms=stt_ms,
-                    request_start=request_start,
-                    authentication_consumed=request_identity.consumed,
-                    identity_source=request_identity.identity_source,
-                )
-            )
+        return _stream_plan(
+            plan,
+            text_heard=event.payload.message,
+            stt_ms=stt_ms,
+            request_start=request_start,
+            request_identity=request_identity,
         )
 
     speaker = await identify_generic_speaker(

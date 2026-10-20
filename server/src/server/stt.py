@@ -18,7 +18,7 @@ from faster_whisper import WhisperModel
 from faster_whisper.transcribe import Segment, VadOptions
 import numpy as np
 
-from server.exceptions import TranscriptionError
+from server.exceptions import TranscriptionError, UnclearSpeechError
 from server.request_context import run_in_executor_with_context
 from server.settings import Settings, settings
 
@@ -330,8 +330,54 @@ def is_prompt_echo(transcript: str, prompt: str | None) -> bool:
     return reference in heard and not heard.replace(reference, " ").strip()
 
 
+def is_unclear(confidence: TranscriptConfidence | None, threshold: float | None) -> bool:
+    """Return whether a transcript is too doubtful to act on (Plan 0069 D-11).
+
+    Args:
+        confidence: The clip's confidence, or ``None`` when Whisper returned no segment.
+        threshold: ``settings.whisper_unclear_logprob``; ``None`` switches the gate off.
+
+    Returns:
+        True only when a threshold is set and the clip's mean log-probability per token is
+        strictly below it.
+    """
+    if threshold is None or confidence is None:
+        return False
+    return confidence.avg_logprob < threshold
+
+
+def _log_confidence(transcript: Transcript, unclear: bool) -> None:
+    """Log the clip's confidence numbers and the gate's verdict — never the text."""
+    confidence = transcript.confidence
+    if confidence is None:
+        return
+    logger.info(
+        "STT confidence: logprob=%.3f no_speech=%.2f compression=%.2f temp=%.1f "
+        "segments=%d clip=%.1fs after_vad=%.1fs unclear=%s",
+        confidence.avg_logprob,
+        confidence.no_speech_prob,
+        confidence.compression_ratio,
+        confidence.temperature,
+        confidence.segments,
+        transcript.clip_s,
+        transcript.after_vad_s,
+        unclear,
+        extra={
+            "event": "stt.confidence",
+            "avg_logprob": round(confidence.avg_logprob, 3),
+            "no_speech_prob": round(confidence.no_speech_prob, 3),
+            "compression_ratio": round(confidence.compression_ratio, 3),
+            "temperature": confidence.temperature,
+            "segments": confidence.segments,
+            "clip_s": round(transcript.clip_s, 2),
+            "after_vad_s": round(transcript.after_vad_s, 2),
+            "unclear": unclear,
+        },
+    )
+
+
 def _transcribe_sync(audio: bytes, hotwords: str | None) -> str:
-    """Run Whisper inference and discard a transcript that is the prompt itself.
+    """Run Whisper, discard a prompt echo and refuse a transcript Whisper doubted.
 
     Args:
         audio: Raw WAV bytes at 16kHz mono int16.
@@ -342,13 +388,21 @@ def _transcribe_sync(audio: bytes, hotwords: str | None) -> str:
 
     Raises:
         TranscriptionError: If audio cannot be processed.
+        UnclearSpeechError: If the transcript is not empty and its confidence is below
+            ``settings.whisper_unclear_logprob`` (off by default).
         ValueError: If audio is empty.
     """
-    text = _whisper_text(audio, hotwords)
-    if is_prompt_echo(text, settings.whisper_initial_prompt):
+    transcript = _whisper_transcript(audio, hotwords)
+    if is_prompt_echo(transcript.text, settings.whisper_initial_prompt):
         logger.warning("Whisper returned its own initial prompt — transcript discarded")
         return ""
-    return text
+    unclear = bool(transcript.text.strip()) and is_unclear(
+        transcript.confidence, settings.whisper_unclear_logprob
+    )
+    _log_confidence(transcript, unclear)
+    if unclear:
+        raise UnclearSpeechError(transcript.text)
+    return transcript.text
 
 
 def _whisper_text(audio: bytes, hotwords: str | None) -> str:
@@ -366,10 +420,27 @@ def _whisper_text(audio: bytes, hotwords: str | None) -> str:
         TranscriptionError: If audio cannot be processed.
         ValueError: If audio is empty.
     """
+    return _whisper_transcript(audio, hotwords).text
+
+
+def _whisper_transcript(audio: bytes, hotwords: str | None) -> Transcript:
+    """Run Whisper inference synchronously (blocking) with the production options.
+
+    Args:
+        audio: Raw WAV bytes at 16kHz mono int16.
+        hotwords: Merged hotwords string, or ``None``.
+
+    Returns:
+        The transcript, its confidence and its durations.
+
+    Raises:
+        TranscriptionError: If audio cannot be processed.
+        ValueError: If audio is empty.
+    """
     if not audio:
         raise ValueError("Audio bytes are empty")
     try:
-        return run_whisper(_get_model(), audio, decode_options(settings), hotwords).text
+        return run_whisper(_get_model(), audio, decode_options(settings), hotwords)
     except Exception as exc:
         raise TranscriptionError("Whisper inference failed") from exc
 
@@ -405,6 +476,7 @@ async def transcribe(audio: bytes, *, extra_hotwords: list[str] | None = None) -
 
     Raises:
         TranscriptionError: If audio cannot be processed.
+        UnclearSpeechError: If Whisper doubted a non-empty transcript (off by default).
         ValueError: If audio is empty.
     """
     hotwords = _merge_hotwords(settings.whisper_hotwords, extra_hotwords)

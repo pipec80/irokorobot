@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     whisper_hotwords: str | None = None
     whisper_hallucination_silence_threshold: float = 2.0
     whisper_vad_min_silence_ms: int = 500
+    # Plan 0069 D-11: a non-empty transcript whose clip mean log-probability per token is below
+    # this is answered «No te entendí bien. ¿Me lo repites?» instead of reaching the controller.
+    # Off (None) until a measurement on the owner's voice proves a threshold.
+    whisper_unclear_logprob: float | None = None
     piper_voice: str = "es_MX-ald-medium"
     piper_speed: float = 1.4
     piper_noise_scale: float = 0.8

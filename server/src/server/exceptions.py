@@ -5,6 +5,23 @@ class TranscriptionError(Exception):
     """Raised when faster-whisper cannot process the audio."""
 
 
+class UnclearSpeechError(Exception):
+    """Raised when Whisper's confidence in a non-empty transcript is below the threshold.
+
+    Not a ``TranscriptionError``: the audio was processed, but the text is too doubtful to act
+    on (Plan 0069 D-11). The message is fixed; the doubtful text travels only in ``text``.
+    """
+
+    def __init__(self, text: str) -> None:
+        """Keep the doubtful transcript out of the message.
+
+        Args:
+            text: What Whisper heard, for the reply's ``text_heard`` only.
+        """
+        super().__init__("Transcript below the confidence threshold")
+        self.text = text
+
+
 class AudioContractError(Exception):
     """Raised when uploaded audio violates the WAV 16kHz/mono/int16 contract."""
 
