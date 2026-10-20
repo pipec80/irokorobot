@@ -198,6 +198,10 @@ ANSWER_FAILED_PHRASE = "No pude guardarlo ahora. Dímelo de nuevo en un rato."
 ANSWER_RETRY_PHRASE = (
     "No reconocí bien tu voz. Dímelo un poco más largo: sí, autorizo que lo guardes."
 )
+#: The same retry for a refusal: it dictates the refusal, never an acceptance.
+ANSWER_RETRY_REJECT_PHRASE = (
+    "No reconocí bien tu voz. Dímelo un poco más largo: no autorizo que lo guardes."
+)
 
 #: Closed set of topics a taste may belong to; the extractor must place the object in one.
 CANDIDATE_TOPICS = frozenset(

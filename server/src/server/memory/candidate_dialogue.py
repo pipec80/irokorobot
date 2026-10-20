@@ -56,6 +56,7 @@ from server.memory.lexicon import (
     ANSWER_FAILED_PHRASE,
     ANSWER_REJECTED_PHRASE,
     ANSWER_RETRY_PHRASE,
+    ANSWER_RETRY_REJECT_PHRASE,
     ANSWER_SAVED_PHRASE,
     OFFER_QUESTION,
     OFFER_STATEMENTS,
@@ -84,6 +85,7 @@ __all__ = [
     "ANSWER_FAILED_PHRASE",
     "ANSWER_REJECTED_PHRASE",
     "ANSWER_RETRY_PHRASE",
+    "ANSWER_RETRY_REJECT_PHRASE",
     "ANSWER_SAVED_PHRASE",
     "OfferPreparer",
     "PendingOffer",
@@ -279,7 +281,8 @@ async def answer_offer(
         which may be told apart. Once the verified owner's own open offer is found, a refusal
         or a failure says ``ANSWER_FAILED_PHRASE`` instead, so the model never improvises
         «listo». When only the voice failed (a face actor that is not the composite, whose
-        own open offer the answer names) the reply is ``ANSWER_RETRY_PHRASE`` with
+        own open offer the answer names) the reply is ``ANSWER_RETRY_PHRASE`` (for a refusal
+        ``ANSWER_RETRY_REJECT_PHRASE``) with
         ``expects_short_reply``: nothing is written, audited or moved, and the answer window
         keeps running from the offer (Plan 0068, D-1). Never raises (a cancellation excepted).
     """
@@ -291,7 +294,8 @@ async def answer_offer(
         if not await _voice_could_verify(person_id, correlation_id):
             return None  # without voice consent asking again would only loop
         _log("candidate.answer", "voice_retry", candidate_id, correlation_id)
-        return MemoryAnswerReply(ANSWER_RETRY_PHRASE, expects_short_reply=True)
+        retry = ANSWER_RETRY_PHRASE if answer.accept else ANSWER_RETRY_REJECT_PHRASE
+        return MemoryAnswerReply(retry, expects_short_reply=True)
     try:
         if answer.accept:
             spoken = await _accept(candidate_id, actor, correlation_id, now, policy, audit)
@@ -306,7 +310,13 @@ async def answer_offer(
 
 
 async def _voice_could_verify(person_id: int, correlation_id: UUID) -> bool:
-    """Whether the person's voice may verify at all (active voice consent); fails closed."""
+    """Whether the person's voice may verify at all; fails closed.
+
+    It needs the speaker check switched on and the person's active voice consent; otherwise
+    asking again would only loop.
+    """
+    if not settings.speaker_authentication_enabled:
+        return False
     try:
         return await has_active_voice_consent(person_id)
     except Exception as exc:  # fail closed: no retry, the turn falls through

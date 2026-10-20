@@ -41,6 +41,7 @@ from server.memory.candidate_dialogue import (
     ANSWER_FAILED_PHRASE,
     ANSWER_REJECTED_PHRASE,
     ANSWER_RETRY_PHRASE,
+    ANSWER_RETRY_REJECT_PHRASE,
     ANSWER_SAVED_PHRASE,
     PendingOffer,
     answer_offer,
@@ -119,6 +120,7 @@ def _event() -> CognitiveEvent[TextTurnPayload]:
 async def owner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[int]:
     monkeypatch.setattr(settings, "brain_db_path", tmp_path / "dialogue.db")
     monkeypatch.setattr(settings, "memory_candidates_enabled", True)
+    monkeypatch.setattr(settings, "speaker_authentication_enabled", True)
     db._conn = None
     await db.open_db()
     await db.run_migrations()
@@ -869,6 +871,7 @@ async def test_a_weaker_or_token_actor_cannot_answer(
 # --- the retry: only the voice failed (Plan 0068, D-1 and D-2) ----------------------------------
 
 _RETRY = MemoryAnswerReply(ANSWER_RETRY_PHRASE, expects_short_reply=True)
+_RETRY_NO = MemoryAnswerReply(ANSWER_RETRY_REJECT_PHRASE, expects_short_reply=True)
 
 
 def test_the_retry_reply_asks_to_listen_again_and_the_plain_reply_does_not() -> None:
@@ -902,11 +905,56 @@ async def test_a_face_only_owner_answering_their_open_offer_hears_the_retry_and_
         audit=audit,
     )
 
-    assert reply == _RETRY
+    # A refusal is asked again as a refusal, never as an acceptance (final review of Plan 0068).
+    assert reply == (_RETRY if answer.accept else _RETRY_NO)
     assert await candidates.get_candidate(candidate_id) == before
     assert await _status(candidate_id) is CandidateStatus.OFFERED
     assert await _likes(owner) == []
     audit.assert_not_awaited()
+
+
+def test_the_reject_retry_dictates_a_refusal() -> None:
+    dictated = parse_memory_answer(ANSWER_RETRY_REJECT_PHRASE.rsplit(":", 1)[1])
+    assert dictated == MemoryAnswer(accept=False, phrase="")
+
+
+async def test_no_retry_when_the_speaker_check_is_switched_off(
+    owner: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With the speaker check off the voice can never verify: no retry, it falls through."""
+    await _candidate(owner, offered=True)
+    monkeypatch.setattr(settings, "speaker_authentication_enabled", False)
+
+    reply = await answer_offer(
+        MemoryAnswer(accept=True, phrase=""),
+        actor=_actor(owner),
+        correlation_id=_TURN,
+        now=_NOW + timedelta(seconds=10),
+        audit=AsyncMock(),
+    )
+
+    assert reply is None
+
+
+async def test_a_failing_consent_lookup_gives_no_retry(
+    owner: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await _candidate(owner, offered=True)
+    monkeypatch.setattr(
+        candidate_dialogue,
+        "has_active_voice_consent",
+        AsyncMock(side_effect=RuntimeError("store down")),
+    )
+
+    reply = await answer_offer(
+        MemoryAnswer(accept=True, phrase=""),
+        actor=_actor(owner),
+        correlation_id=_TURN,
+        now=_NOW + timedelta(seconds=10),
+        audit=AsyncMock(),
+    )
+
+    assert reply is None
 
 
 async def test_no_retry_once_the_voice_consent_is_revoked(owner: int) -> None:
