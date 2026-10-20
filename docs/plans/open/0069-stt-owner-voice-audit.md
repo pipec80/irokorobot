@@ -248,8 +248,8 @@ and `.claude/rules/` (not tracked; read them from the working copy).
    condition block of 24 items (marked in Appendix A), each once per condition in one session:
    `c60`, `c15` (10–15 cm, the near reference: if Whisper still fails there, the cause is the model
    or the pronunciation, not the distance), `c30` (a realistic closer placement), `c60-noenh`
-   (Windows audio enhancements and Voice Clarity off), `c60-wasapi` (WASAPI shared at the device's
-   native rate, one channel, resampled by `soxr`), `c60-noise` (a fan or a TV at a fixed volume and
+   (Windows audio enhancements and Voice Clarity off), `c60-wasapi` (WASAPI shared in the device's
+   native format, its channels averaged and resampled by `soxr`), `c60-noise` (a fan or a TV at a fixed volume and
    place, noted), `c60-fast` (relaxed, fast speech): 168 takes. Plus the spontaneous session `s4`.
    Order within a condition is shuffled with a seed derived from the session id. **A pilot is a
    go/no-go gate:** the 24 block items once at `c60` (session `s0`), benched with `P0` and `T0` end to
@@ -356,8 +356,8 @@ and `.claude/rules/` (not tracked; read them from the working copy).
 16. **D-16 — Capture changes.** If `c60-noenh` beats `c60` under D-9 (paired by item on the block),
     the operator manual tells Pipec to switch the enhancements off (no code). If `c60-wasapi` beats
     `c60`, Task 15 adds WASAPI capture to the robot. WASAPI shared still passes through the Windows
-    audio engine and its effects (`auto_convert` is used only for the mixdown and guarantees no raw
-    signal), so `c60-wasapi` compares **resamplers** (Windows' MME conversion against `soxr`), and
+    audio engine and its effects (the tool opens the device's own format, so Windows converts nothing,
+    but the signal is not raw), so `c60-wasapi` compares **resamplers** (Windows' MME conversion against `soxr`), and
     `c60-noenh` compares **processing**. If `c30` beats `c60` by a wide margin, the manual states the
     distance; it is a placement fact for the Pi's microphone (electronics track 1).
 17. **D-17 — Segmentation.** A pause closes the turn when it is longer than the closing silence,
@@ -566,8 +566,9 @@ int16).
 - [ ] **Implement:** `just mic-test devices [--save]` and `just mic-test record --seconds 6 [--api mme|wasapi]
   [--save NAME] [--transcribe] [--model M] [--beam-size N] [--prompt WORDS...] [--hotwords WORDS...]`.
   `record --api mme` opens the default device exactly like the robot; `--api wasapi` opens the WASAPI
-  device of the same name at its native rate with one channel (`sd.WasapiSettings(auto_convert=True)`
-  only for the mixdown) and converts with `to_contract`; the opened rate is checked and printed.
+  device of the same name in its native format (its rate, every channel, float32, no `auto_convert`;
+  amended 2026-10-20: one channel through `auto_convert` came back garbled and half as long) and
+  converts with `to_contract`; an overflow, or a take that took longer than its audio, is logged; the opened rate is checked and printed.
   `--transcribe` uses `server.stt.run_whisper` with `decode_options(settings)` and the overrides
   given. Logging, not `print`, except the final report table (`# noqa: T201` with the reason).
 - [ ] Tests; `uv run ruff check scripts/mic_test.py scripts/stt_audio_levels.py tests/unit/test_stt_audio_levels.py tests/unit/test_mic_test.py`.
@@ -822,8 +823,8 @@ The agent gives the exact commands, one session at a time, and never runs them.
 **Files:** `robot/src/robot/audio_capture.py`, `robot/src/robot/settings.py`, `robot/pyproject.toml`
 (through `uv add soxr`), `uv.lock`, `.env.example`; test `tests/unit/test_audio_capture.py`.
 
-- [ ] **Failing tests:** with `audio_host_api="wasapi"`, the stream opens at the device's native rate
-  with one channel; a stateful `soxr.ResampleStream` converts continuously (never block by block from
+- [ ] **Failing tests:** with `audio_host_api="wasapi"`, the stream opens in the device's native format
+  (rate and channels, averaged to mono first); a stateful `soxr.ResampleStream` converts continuously (never block by block from
   scratch) and a re-chunker hands the VAD exactly `CHUNK_FRAMES` int16 samples at 16 kHz, carrying the
   remainder; 1 s of 44.1 kHz and of 48 kHz input yields 16,000 samples in 512-sample chunks with no
   discontinuity at the chunk joins (a 1 kHz tone keeps its level within 0.5 dB); the default `"mme"`

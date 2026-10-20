@@ -34,14 +34,37 @@ _DEVICES = [
         "default_samplerate": 48_000.0,
     },
 ]
-_HOST_APIS = [{"name": "MME"}, {"name": "Windows WASAPI"}]
+_HOST_APIS = [
+    {"name": "MME", "default_input_device": 1},
+    {"name": "Windows WASAPI", "default_input_device": 2},
+]
 
 
-def _fake_sd() -> SimpleNamespace:
+class _OpenedStream:
+    """Stands in for ``sd.InputStream`` once opened: only its rate is read."""
+
+    def __init__(self, samplerate: float) -> None:
+        self.samplerate = samplerate
+
+    def __enter__(self) -> "_OpenedStream":
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        return None
+
+
+def _fake_sd(opened: list[dict[str, object]] | None = None) -> SimpleNamespace:
+    def _input_stream(**kwargs: object) -> _OpenedStream:
+        if opened is not None:
+            opened.append(kwargs)
+        return _OpenedStream(float(str(kwargs["samplerate"])))
+
     return SimpleNamespace(
         query_devices=lambda: _DEVICES,
-        query_hostapis=lambda index: _HOST_APIS[index],
+        query_hostapis=lambda index=None: _HOST_APIS if index is None else _HOST_APIS[index],
         default=SimpleNamespace(device=(1, 0)),
+        InputStream=_input_stream,
+        WasapiSettings=lambda **settings: settings,
     )
 
 
@@ -65,14 +88,18 @@ class _Events(logging.Handler):
 
 
 class _FakeStream:
-    """A started stream that returns silence and notes every read."""
+    """A started mono stream that returns silence, notes every read and can overflow."""
 
-    def __init__(self, events: list[str]) -> None:
+    channels = 1
+
+    def __init__(self, events: list[str], overflowing_reads: frozenset[int] = frozenset()) -> None:
         self.events = events
+        self.overflowing_reads = overflowing_reads
 
     def read(self, frames: int) -> tuple[np.ndarray, bool]:
         self.events.append(f"read {frames}")
-        return np.zeros((frames, 1), dtype=np.int16), False
+        overflowed = len(self.events) in self.overflowing_reads
+        return np.zeros((frames, 1), dtype=np.int16), overflowed
 
 
 @pytest.fixture
@@ -186,6 +213,52 @@ def test_record_settles_counts_down_and_cues_before_the_window(
         "listo",
     ]
     assert (len(samples), rate) == (3 * 16_000 + 2 * 16_000, 16_000)
+
+
+@pytest.mark.unit
+def test_record_warns_when_the_stream_lost_audio(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    ticks = iter([0.0, 30.0])
+
+    @contextmanager
+    def _open(_api: str) -> Generator[tuple[_FakeStream, int]]:
+        yield _FakeStream([], overflowing_reads=frozenset({2})), 16_000
+
+    monkeypatch.setattr(mic_test, "open_input", _open)
+    monkeypatch.setattr(mic_test, "_clock", lambda: next(ticks))
+    caplog.set_level(logging.INFO, logger=mic_test.logger.name)
+
+    mic_test.record("mme", 2.0)
+
+    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert "1 overflow" in warnings[0]
+    assert "5.0 s of audio took 30.0 s" in warnings[0]
+
+
+@pytest.mark.unit
+def test_wasapi_opens_the_device_in_its_native_format(monkeypatch: pytest.MonkeyPatch) -> None:
+    opened: list[dict[str, object]] = []
+    monkeypatch.setattr(mic_test, "sd", _fake_sd(opened))
+
+    with mic_test.open_input("wasapi") as (_stream, rate):
+        pass
+
+    assert rate == 48_000
+    assert opened == [{"device": 2, "samplerate": 48_000, "channels": 4, "dtype": "float32"}]
+
+
+@pytest.mark.unit
+def test_a_native_multichannel_capture_becomes_the_contract() -> None:
+    seconds = np.arange(48_000) / 48_000
+    tone = (0.25 * np.sin(2 * np.pi * 440 * seconds)).astype(np.float32)
+
+    samples = mic_test.as_contract(np.stack([tone, tone], axis=1), "wasapi", 48_000, 2)
+
+    assert samples.dtype == np.int16
+    assert len(samples) == 16_000
+    assert abs(20 * np.log10(np.abs(samples).max() / 32768) - 20 * np.log10(0.25)) < 0.5
 
 
 @pytest.mark.unit

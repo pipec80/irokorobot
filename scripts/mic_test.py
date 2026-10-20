@@ -2,10 +2,12 @@
 
 Lists the input devices, records one take the way the robot opens the
 microphone (``--api mme``: the default device at 16 kHz, mono, int16, no ``device=``) or
-through WASAPI at the device's native rate (``--api wasapi``: one channel, resampled to
-16 kHz with ``soxr``), and reports its levels against Plan 0069's targets. Before the take
+through WASAPI in the device's native format (``--api wasapi``: its rate and all its
+channels, float32, no Windows conversion; averaged to mono and resampled to 16 kHz with
+``soxr`` here), and reports its levels against Plan 0069's targets. Before the take
 it shows the phrase to read; the stream settles, a countdown runs and the visual cue
-``>>> HABLA <<<`` opens the window (the same sequence as the corpus tool). Optionally
+``>>> HABLA <<<`` opens the window (the same sequence as the corpus tool); a stream that
+overflowed, or took longer than the audio it returned, is reported as lost audio. Optionally
 transcribes it with the server's production decode options, through
 ``server.stt.run_whisper``. Run it with the server stopped when transcribing.
 
@@ -42,6 +44,7 @@ import io
 import json
 import logging
 import re
+import time
 from typing import TYPE_CHECKING
 import wave
 
@@ -73,6 +76,8 @@ _TAKE_NAME = re.compile(r"[A-Za-z0-9_-]+")
 _MIC_DIR = "mic"
 _SETTLE_S = 0.5
 _COUNTDOWN = (3, 2, 1)
+_LATE_S = 0.5  # wall time beyond the audio's own length that means samples were dropped
+_clock = time.monotonic
 
 
 @dataclass(frozen=True)
@@ -126,7 +131,8 @@ def open_input(api: str) -> Generator[tuple[sd.InputStream, int]]:
 
     Args:
         api: ``mme`` (the robot's way: default device, 16 kHz, mono, int16) or ``wasapi``
-            (the WASAPI default input at its native rate, one float32 channel).
+            (the WASAPI default input in its native format: its rate, all its channels,
+            float32; Windows converts nothing, ``as_contract`` does).
 
     Yields:
         The started stream and the rate it actually opened at.
@@ -138,33 +144,37 @@ def open_input(api: str) -> Generator[tuple[sd.InputStream, int]]:
     else:
         device = _wasapi_input()
         logger.info(
-            "WASAPI input: [%d] %s at %d Hz", device.index, device.name, device.default_rate
+            "WASAPI input: [%d] %s at %d Hz, %d channels",
+            device.index,
+            device.name,
+            device.default_rate,
+            device.channels,
         )
         stream = sd.InputStream(
             device=device.index,
             samplerate=device.default_rate,
-            channels=1,
+            channels=device.channels,
             dtype="float32",
-            extra_settings=sd.WasapiSettings(auto_convert=True),  # only for the mixdown
         )
     with stream:
         yield stream, int(stream.samplerate)
 
 
-def as_contract(data: np.ndarray, api: str, opened_rate: int) -> np.ndarray:
+def as_contract(data: np.ndarray, api: str, opened_rate: int, channels: int) -> np.ndarray:
     """Turn what ``open_input`` read into int16, 16 000 Hz, mono samples.
 
     Args:
         data: The samples read from the stream.
         api: The API the stream was opened with.
         opened_rate: The rate it opened at.
+        channels: The channel count it opened with.
 
     Returns:
         Int16 samples, 16 000 Hz, mono.
     """
     if api == "mme":
         return np.asarray(data, dtype=np.int16).reshape(-1)
-    return to_contract(np.asarray(data), opened_rate, channels=1)
+    return to_contract(np.asarray(data), opened_rate, channels=channels)
 
 
 def record(api: str, seconds: float) -> tuple[np.ndarray, int]:
@@ -172,7 +182,8 @@ def record(api: str, seconds: float) -> tuple[np.ndarray, int]:
 
     The stream is open and running before anything is shown, and samples are kept from
     the start of the countdown, so opening the device never costs an onset (D-3). The
-    cue is visual only. Hardware path: Pipec runs it, never an agent.
+    cue is visual only. An overflow, or a take that took longer than its own audio, is
+    logged as lost audio. Hardware path: Pipec runs it, never an agent.
 
     Args:
         api: ``mme`` or ``wasapi`` (see ``open_input``).
@@ -184,14 +195,30 @@ def record(api: str, seconds: float) -> tuple[np.ndarray, int]:
     """
     with open_input(api) as (stream, rate):
         stream.read(int(_SETTLE_S * rate))  # discarded: the device settles
-        parts = []
+        started = _clock()
+        reads = []
         for count in _COUNTDOWN:
             logger.info("   %d ...", count)
-            parts.append(stream.read(rate)[0])
+            reads.append(stream.read(rate))
         logger.info("   >>> HABLA <<<")
-        parts.append(stream.read(int(seconds * rate))[0])
+        reads.append(stream.read(int(seconds * rate)))
+        elapsed = _clock() - started
+        channels = int(stream.channels)
     logger.info("   listo")
-    return as_contract(np.concatenate(parts), api, rate), rate
+    data = np.concatenate([chunk for chunk, _ in reads])
+    _warn_if_lost(sum(bool(overflowed) for _, overflowed in reads), len(data) / rate, elapsed)
+    return as_contract(data, api, rate, channels), rate
+
+
+def _warn_if_lost(overflows: int, audio_s: float, elapsed_s: float) -> None:
+    """Log lost audio: PortAudio's overflow flags, or more wall time than audio."""
+    if overflows or elapsed_s > audio_s + _LATE_S:
+        logger.warning(
+            "audio was lost: %d overflow(s); %.1f s of audio took %.1f s",
+            overflows,
+            audio_s,
+            elapsed_s,
+        )
 
 
 def _wav(samples: np.ndarray) -> bytes:
