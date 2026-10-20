@@ -957,6 +957,7 @@ async def test_after_the_retry_the_face_and_voice_owner_answers_inside_the_windo
     candidate_id = await _candidate(owner, offered=True)
     audit = AsyncMock()
     dictated = parse_memory_answer(ANSWER_RETRY_PHRASE.rsplit(":", 1)[1])
+    assert dictated is not None
     assert dictated == MemoryAnswer(accept=True, phrase="")
 
     retry = await answer_offer(
