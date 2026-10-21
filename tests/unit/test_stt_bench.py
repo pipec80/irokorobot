@@ -6,6 +6,7 @@ Audio contract: WAV · 16000 Hz · mono · int16.
 
 import json
 from pathlib import Path
+import sys
 
 import numpy as np
 import pytest
@@ -135,6 +136,15 @@ def test_the_free_half_runs_only_the_free_takes(corpus: tuple[Path, FakeTranscri
     rows = _lines(paths[0])
     assert rows
     assert {row["mode"] for row in rows} == {"free"}
+
+
+@pytest.mark.unit
+@pytest.mark.skipif(sys.platform != "win32", reason="the peak working set is read on Windows")
+def test_the_peak_working_set_is_read_for_this_process() -> None:
+    peak = stt_bench.peak_working_set_mb()
+
+    assert peak is not None
+    assert peak > 20  # a Python process with numpy loaded holds far more than 20 MB
 
 
 @pytest.mark.unit

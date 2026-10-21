@@ -138,6 +138,13 @@ def peak_working_set_mb() -> float | None:
 
     counters = _Counters()
     counters.cb = ctypes.sizeof(_Counters)
+    # Without these types ctypes passes the process handle as a 32-bit int and the call fails.
+    ctypes.windll.kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+    ctypes.windll.psapi.GetProcessMemoryInfo.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(_Counters),
+        ctypes.c_ulong,
+    ]
     process = ctypes.windll.kernel32.GetCurrentProcess()
     if not ctypes.windll.psapi.GetProcessMemoryInfo(process, ctypes.byref(counters), counters.cb):
         return None
