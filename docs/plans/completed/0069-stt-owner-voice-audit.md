@@ -1107,7 +1107,7 @@ The tables are in [the record](../../evals/0069-stt-owner-voice.md); the outcome
   at the end, `pillow` 13.0.0 and `virtualenv`.
 - **Independent review.** One sonnet reviewer over the whole branch; every finding was fixed (Pipec's
   standing rule), each with a test that failed first except one guard test on a path that already worked.
-- **Gate.** `just gate` on the final tree: see the PR. The corpus was deleted by Pipec (`just
+- **Gate.** `just gate` on the final tree (2026-10-21, `MEMORY_ENABLED=false`): 3807 passed (baseline 3654), lint, types and `pip-audit` clean. The corpus was deleted by Pipec (`just
   stt-corpus cleanup`) and the agent verified the folder is gone and the speaker corpus intact.
 
 Deviations from the plan, each ruled at the time (the ledger holds the wording): the bench is three
