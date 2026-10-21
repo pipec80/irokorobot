@@ -114,7 +114,7 @@ def register_cuda_dlls(directory: Path) -> None:
     """
     if sys.platform == "win32":
         _DLL_HANDLES.append(os.add_dll_directory(str(directory.resolve())))
-        os.environ["PATH"] = f"{directory.resolve()}{os.pathsep}{os.environ['PATH']}"
+        os.environ["PATH"] = f"{directory.resolve()}{os.pathsep}{os.environ.get('PATH', '')}"
 
 
 def peak_working_set_mb() -> float | None:
@@ -162,11 +162,22 @@ def vram_sampler(device: str) -> Generator[list[float]]:
     if device != "cuda":
         yield peak
         return
-    child = subprocess.Popen(
-        ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits", "-lms", "100"],  # noqa: S607
-        stdout=subprocess.PIPE,
-        text=True,
-    )
+    try:
+        child = subprocess.Popen(
+            [  # noqa: S607 -- the driver's own tool, found on PATH
+                "nvidia-smi",
+                "--query-gpu=memory.used",
+                "--format=csv,noheader,nounits",
+                "-lms",
+                "100",
+            ],
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+    except OSError:
+        logger.warning("nvidia-smi is not available: no VRAM figure for this run")
+        yield peak
+        return
     try:
         yield peak
     finally:
@@ -188,6 +199,7 @@ def load_whisper(config: BenchConfig) -> object:
     """
     from faster_whisper import WhisperModel  # noqa: PLC0415 -- loaded only when benching
 
+    stt.register_cuda_dlls(config.device)  # the server's own wheels, as in production
     arguments = {
         "device": config.device,
         "compute_type": config.compute_type,
@@ -195,9 +207,14 @@ def load_whisper(config: BenchConfig) -> object:
     }
     try:
         return WhisperModel(config.model, local_files_only=True, **arguments)
-    except Exception:
+    except Exception as exc:
         size = _DOWNLOAD_GB.get(config.model)
-        logger.info("downloading %s once%s", config.model, f" (about {size} GB)" if size else "")
+        logger.info(
+            "cached load of %s failed (%s): downloading once%s",
+            config.model,
+            type(exc).__name__,
+            f" (about {size} GB)" if size else "",
+        )
         return WhisperModel(config.model, local_files_only=False, **arguments)
 
 

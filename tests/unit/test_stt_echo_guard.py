@@ -160,3 +160,21 @@ def test_ordinary_speech_that_shares_words_with_the_hallucination_is_kept(
     monkeypatch.setattr(stt.settings, "whisper_initial_prompt", _PROMPT)
 
     assert stt._transcribe_sync(b"\x00" * 64, None) == heard
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "heard",
+    [
+        "La cámara organiza la fiesta",
+        "Enciende la cámara. Organiza mis tareas",
+        "Amara organiza la mesa",
+    ],
+)
+def test_the_hallucination_guard_matches_whole_words_only(
+    monkeypatch: pytest.MonkeyPatch, heard: str
+) -> None:
+    monkeypatch.setattr(stt, "_get_model", lambda: _FakeModel(heard))
+    monkeypatch.setattr(stt.settings, "whisper_initial_prompt", _PROMPT)
+
+    assert stt._transcribe_sync(b"\x00" * 64, None) == heard

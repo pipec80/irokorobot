@@ -353,3 +353,27 @@ def test_whisper_options_start_from_production_and_apply_only_the_overrides() ->
     assert options.initial_prompt == "Hola Iroko"
     assert options.vad_min_silence_ms == base.vad_min_silence_ms
     assert mic_test.whisper_options(mic_test.parse_args(["record"]), base) == base
+
+
+@pytest.mark.unit
+def test_transcribe_registers_the_cuda_libraries_before_it_loads_the_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    order: list[str] = []
+
+    class _Model:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            order.append("load")
+
+    monkeypatch.setattr(mic_test, "WhisperModel", _Model)
+    monkeypatch.setattr(mic_test.stt, "register_cuda_dlls", order.append)
+    monkeypatch.setattr(mic_test.settings, "whisper_device", "cuda")
+    monkeypatch.setattr(
+        mic_test.stt,
+        "run_whisper",
+        lambda *_a: SimpleNamespace(text="", confidence=None, after_vad_s=0.0),
+    )
+
+    mic_test._transcribe(np.zeros(16_000, dtype=np.int16), mic_test.parse_args(["record"]))
+
+    assert order == ["cuda", "load"]

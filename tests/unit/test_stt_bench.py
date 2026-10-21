@@ -11,9 +11,12 @@ import sys
 import numpy as np
 import pytest
 from robot.audio_capture import SegmentationPolicy
+from server.settings import Settings
 
 from scripts import stt_bench
+from scripts.stt_bench_configs import configs
 from scripts.stt_corpus_models import load_script
+from server import stt
 from tests.unit.stt_bench_fixtures import FakeTranscriber, build_corpus
 
 
@@ -212,3 +215,35 @@ def test_segment_writes_the_clips_of_a_policy_and_their_index(
     }
     assert all(entry["clips"] == [] for entry in index["close800"].values())  # silent raw takes
     assert (root / "results" / "segments" / "close800.json").exists()
+
+
+@pytest.mark.unit
+def test_a_missing_nvidia_smi_does_not_fail_the_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _missing(*_args: object, **_kwargs: object) -> object:
+        raise FileNotFoundError("nvidia-smi")
+
+    monkeypatch.setattr(stt_bench.subprocess, "Popen", _missing)
+
+    with stt_bench.vram_sampler("cuda") as peak:
+        pass
+
+    assert peak == []  # no figure, but the configuration still runs
+
+
+@pytest.mark.unit
+def test_the_bench_registers_the_servers_cuda_libraries_before_a_gpu_load(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    order: list[str] = []
+
+    class _Model:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            order.append("load")
+
+    monkeypatch.setattr("faster_whisper.WhisperModel", _Model)
+    monkeypatch.setattr(stt_bench.stt, "register_cuda_dlls", order.append)
+    config = configs(stt.decode_options(Settings(_env_file=None)))["G-small"]  # type: ignore[call-arg]  # code defaults
+
+    stt_bench.load_whisper(config)
+
+    assert order == ["cuda", "load"]

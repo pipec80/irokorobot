@@ -257,7 +257,7 @@ _dll_handles: list[object] = []
 _CUDA_WHEELS = ("nvidia.cublas", "nvidia.cuda_nvrtc")
 
 
-def _register_cuda_dlls(device: str) -> None:
+def register_cuda_dlls(device: str) -> None:
     """Make the CUDA libraries of the optional ``cuda`` extra visible to CTranslate2.
 
     On Windows the cuBLAS and NVRTC wheels put their DLLs in ``<package>/bin``, which is not on
@@ -276,7 +276,9 @@ def _register_cuda_dlls(device: str) -> None:
         spec = importlib.util.find_spec(wheel)
         for location in (spec.submodule_search_locations or []) if spec else []:
             directory = Path(location) / "bin"
-            if directory.is_dir():
+            if directory.is_dir() and str(directory) not in os.environ.get("PATH", "").split(
+                os.pathsep
+            ):
                 _dll_handles.append(os.add_dll_directory(str(directory)))
                 os.environ["PATH"] = os.pathsep.join([str(directory), os.environ.get("PATH", "")])
 
@@ -286,7 +288,7 @@ def _get_model() -> WhisperModel:
     global _model  # noqa: PLW0603
     if _model is None:
         logger.info("Loading Whisper model: %s", settings.whisper_model)
-        _register_cuda_dlls(settings.whisper_device)
+        register_cuda_dlls(settings.whisper_device)
         # local_files_only=True avoids a HuggingFace version-check HTTP request on every
         # server startup. This is a local-first homelab — no guaranteed internet access.
         # To update the model: delete the HF cache (~/.cache/huggingface/hub/) and restart
@@ -298,8 +300,13 @@ def _get_model() -> WhisperModel:
                 compute_type=settings.whisper_compute_type,
                 local_files_only=True,
             )
-        except Exception:
-            logger.info("Model not in cache — downloading from HuggingFace (one-time)")
+        except Exception as exc:
+            # The cached-only load can also fail for a reason that is not a missing model (a CUDA
+            # library, VRAM): name it, or the log would only say the model is not cached.
+            logger.warning(
+                "Cached Whisper load failed (%s) — trying a download from HuggingFace (one-time)",
+                type(exc).__name__,
+            )
             _model = WhisperModel(
                 settings.whisper_model,
                 device=settings.whisper_device,
@@ -349,9 +356,10 @@ def is_known_hallucination(transcript: str) -> bool:
         transcript: Text Whisper returned.
 
     Returns:
-        True when the transcript names the ``amara.org`` subtitle credit.
+        True when the transcript names the ``amara.org`` subtitle credit as whole words («la
+        cámara organiza…» is ordinary speech and is kept).
     """
-    return _SUBTITLE_HALLUCINATION in _normalize_words(transcript)
+    return f" {_SUBTITLE_HALLUCINATION} " in f" {_normalize_words(transcript)} "
 
 
 def is_prompt_echo(transcript: str, prompt: str | None) -> bool:

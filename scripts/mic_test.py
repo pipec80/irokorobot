@@ -347,6 +347,7 @@ def _print_report(report: LevelReport, opened_rate: int, seconds: float) -> None
 
 
 def _transcribe(samples: np.ndarray, args: argparse.Namespace) -> None:
+    stt.register_cuda_dlls(settings.whisper_device)  # the GPU profile needs the cuBLAS folders
     model = WhisperModel(
         args.model or settings.whisper_model,
         device=settings.whisper_device,

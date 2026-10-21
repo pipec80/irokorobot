@@ -228,7 +228,7 @@ def test_cuda_registers_the_wheels_dll_directories_before_the_model_loads(
     monkeypatch.setattr(stt, "_dll_handles", [])
     monkeypatch.setenv("PATH", "C:/somewhere")
 
-    stt._register_cuda_dlls("cuda")
+    stt.register_cuda_dlls("cuda")
 
     names = [Path(directory).parent.name for directory in registry.directories]
     assert names == ["cublas", "cuda_nvrtc"]
@@ -249,7 +249,7 @@ def test_no_dll_directory_is_registered_off_windows_cuda(
     monkeypatch.setattr(stt.sys, "platform", platform)
     monkeypatch.setattr(stt, "_dll_handles", [])
 
-    stt._register_cuda_dlls(device)
+    stt.register_cuda_dlls(device)
 
     assert registry.directories == []
 
@@ -264,6 +264,54 @@ def test_cuda_without_the_wheel_registers_nothing_and_leaves_the_error_to_the_lo
     monkeypatch.setattr(stt.sys, "platform", "win32")
     monkeypatch.setattr(stt, "_dll_handles", [])
 
-    stt._register_cuda_dlls("cuda")  # the missing library is reported by CTranslate2 on load
+    stt.register_cuda_dlls("cuda")  # the missing library is reported by CTranslate2 on load
 
     assert registry.directories == []
+
+
+@pytest.mark.unit
+def test_registering_the_cuda_dlls_twice_adds_each_folder_once(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    wheels = {"nvidia.cublas": _wheel(tmp_path, "cublas")}
+    registry = _DllRegistry()
+    monkeypatch.setattr(stt.importlib.util, "find_spec", wheels.get)
+    monkeypatch.setattr(stt.os, "add_dll_directory", registry, raising=False)
+    monkeypatch.setattr(stt.sys, "platform", "win32")
+    monkeypatch.setattr(stt, "_dll_handles", [])
+    monkeypatch.setenv("PATH", "C:/somewhere")
+
+    stt.register_cuda_dlls("cuda")
+    stt.register_cuda_dlls("cuda")
+
+    assert len(registry.directories) == 1
+    assert os.environ["PATH"].split(os.pathsep).count(registry.directories[0]) == 1
+
+
+class _FailsOnceThenLoads:
+    """Stands in for ``WhisperModel``: the cached-only load fails, the online one works."""
+
+    calls: list[bool] = []
+
+    def __init__(self, *_args: object, local_files_only: bool = False, **_kwargs: object) -> None:
+        self.calls.append(local_files_only)
+        if local_files_only:
+            raise RuntimeError("Library cublas64_12.dll is not found or cannot be loaded")
+
+
+@pytest.mark.unit
+def test_a_failed_cached_load_names_its_cause_before_the_online_retry(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    _FailsOnceThenLoads.calls = []
+    monkeypatch.setattr(stt, "WhisperModel", _FailsOnceThenLoads)
+    monkeypatch.setattr(stt, "_model", None)
+
+    with caplog.at_level("INFO", logger="server.stt"):
+        stt._get_model()
+
+    assert _FailsOnceThenLoads.calls == [True, False]
+    assert any(
+        r.levelname == "WARNING" and "RuntimeError" in r.getMessage() for r in caplog.records
+    )
+    monkeypatch.setattr(stt, "_model", None)  # the double must not stay cached for other tests
