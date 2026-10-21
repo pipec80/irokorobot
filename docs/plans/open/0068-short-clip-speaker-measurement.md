@@ -1,9 +1,11 @@
 # 0068 — Short answers and the speaker check: a retry when only the voice failed, and a measurement
 
-> **Paused 2026-10-20 (Pipec):** Tasks 0 to 5 are merged (PR #201, `917deec`); Tasks 6 to 8 wait
-> until [Plan 0069](0069-stt-owner-voice-audit.md) (speech-to-text on the owner's real voice) closes,
-> because measuring the voice on short answers is worth little while the transcript itself is
-> unmeasured. Nothing here is cancelled; the plan returns to `NOW` when 0069 closes.
+> **Back in `NOW` since 2026-10-21:** it was paused on 2026-10-20 while
+> [Plan 0069](../completed/0069-stt-owner-voice-audit.md) measured the speech-to-text itself, and that plan
+> is closed ([ADR 0023](../../adr/0023-speech-to-text-model-and-decoding.md)). Tasks 0 to 5 are merged
+> (PR #201, `917deec`); Tasks 6 to 8 are Pipec's. Take their counts with the adopted profile in the
+> runtime `.env` (`medium` on the GPU, a 1200 ms closing silence, a 300 ms upload tail), and say so in
+> the report.
 
 > **Status:** `Ready` and `NOW` — promoted by Pipec on 2026-10-19 and executed in the same session
 > (Pipec's choice: «a final estamos en lo mismo, así vamos sumando mejoras»), after Plan 0067 merged

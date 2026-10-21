@@ -1,6 +1,10 @@
 # 0069 — Speech-to-text on the owner's real voice: capture, corpus, a deterministic bench and changes backed by evidence
 
-> **Status:** `Ready` and `NOW` — written and **promoted by Pipec on 2026-10-20**, with decisions
+> **Closed 2026-10-21.** ADR 0023 is `Accepted`; the measurements are in
+> [the record](../../evals/0069-stt-owner-voice.md) and the execution record at the end of this file;
+> the private corpus was deleted after Pipec typed `delete`; Plan 0068 is `NOW` again.
+>
+> **Status:** `Closed` (it was `Ready` and `NOW` from 2026-10-20) — written and **promoted by Pipec on 2026-10-20**, with decisions
 > D-1 to D-20 as written (the thresholds of D-9 and D-11 included) and Pipec's standing rule kept as is:
 > every finding met while executing is fixed. Two outside reviews Pipec brought the same day were
 > folded in before the promotion (the pilot gate, the near reference, critical-term errors, the
@@ -410,7 +414,7 @@ and `.claude/rules/` (not tracked; read them from the working copy).
 - ADR-0002, ADR-0004, ADR 0021 (decision 9 and its amendments); `docs/architecture/current-state.md`
   (the STT row and the streaming row); [Plan 0056](../completed/0056-voice-pipeline-reliability-and-diagnostics.md)
   (the probes and their rules), [Plan 0067](../completed/0067-reply-listening-mode.md) (reply mode),
-  [Plan 0068](0068-short-clip-speaker-measurement.md) (the retry and the short-clip study).
+  [Plan 0068](../open/0068-short-clip-speaker-measurement.md) (the retry and the short-clip study).
 - `server/src/server/{stt,settings,pipeline,exceptions}.py`, `server/src/server/routers/transcribe.py`,
   `server/src/server/streaming.py`, `server/src/server/cognition/response_plan.py`,
   `server/src/server/memory/preference_gate.py`, `server/src/server/cognition/intent_resolution.py`
@@ -1068,3 +1072,47 @@ Rulings:
   makes the text repeatable) unless the test half shows a loss.
 - **Ruling — D-15 follows.** `C1` holds a GPU component, so adopting it brings Task 14 (the optional
   `cuda` extra) back into scope, which the trim of 2026-10-21 had left out.
+
+### Stage 2, speed, spontaneous session, acceptance and close (2026-10-21)
+
+The tables are in [the record](../../evals/0069-stt-owner-voice.md); the outcomes:
+
+- **Stage 2 (test half, 57 takes).** `P0` 15.4 %, `C1` 15.8 % (+0.5 [−2.6, +3.0]), `C2` 6.8 % (−8.6
+  [−15.2, −1.8]); layer B 25.7 %, 28.6 % and 2.9 %; wrong numbers 4, 4 and 0. D-9 passes for both
+  candidates. Pipec chose `C2`.
+- **Speed (D-9 c, D-19).** `P0` median 2.65 s idle and 8.67 s with Ollama busy (budget missed under
+  load); `C1` 0.88 and 1.38 s; `C2` 2.54 and 2.99 s (at the edge of the 3.0 s budget), 1.25 GB of VRAM
+  (1.81 GB with Ollama).
+- **Spontaneous session.** `P0` 10.3 % (a floor: annotated by confirming a `P0` draft); 93 pauses inside
+  the speech, 48 clips at a closing silence of 800 ms and 29 at 1200 ms; random retries made the slowest
+  clips and temperature 0 removed them.
+- **Live acceptance (Pipec, GPU `medium`, Ollama up).** 31 turns, no error line, transcription median
+  2.6 s and p90 4.1 s; the offer, the answer and the promotion worked; two murmured clips: one invented
+  sentence (answered by the robot) and the subtitle credit (answered by the robot, now discarded).
+- **Decisions D-9 to D-17.** `C2` adopted as the recommended GPU profile with the CPU profile left as the
+  code default; D-10 unchanged; D-11 off by default (Pipec runs `-0.9`); D-12 the gate is kept (Task 13
+  not done, by agreement); D-13 the dead setting removed; D-15 the optional `cuda` extra (Task 14 done);
+  D-16 no capture change, WASAPI not adopted (Task 15 not done); D-17 closing silence 1200 ms and a
+  300 ms tail; D-20 not done.
+- **Findings fixed while executing.** The controller's exhaustive `match` lacked the unclear need; the
+  capture tool gave no cue and judged levels on the raw take; PortAudio's blocking read on WASAPI
+  dropped half of the buffers; the pilot counted against the main reps; the report scored replayed
+  free clips against the captured references; the peak-memory call failed on 64-bit Windows; the
+  vocabulary prompt held a scripted sentence; `eval-chat` caps `--runs` at 10 (the plan said 20);
+  `os.add_dll_directory` alone does not let CTranslate2 find cuBLAS (`PATH` is needed); the
+  `amara.org` credit was answered as speech; and the independent review's items (a substring
+  guard that discarded «la cámara organiza…», the GPU profile in the tools, the 288 ms tail, the
+  calibration unit, the anchored corpus root, an empty annotation draft, the strength of several
+  statements). Two advisories appeared during the work and were fixed by upgrading: `certifi` and,
+  at the end, `pillow` 13.0.0 and `virtualenv`.
+- **Independent review.** One sonnet reviewer over the whole branch; every finding was fixed (Pipec's
+  standing rule), each with a test that failed first except one guard test on a path that already worked.
+- **Gate.** `just gate` on the final tree: see the PR. The corpus was deleted by Pipec (`just
+  stt-corpus cleanup`) and the agent verified the folder is gone and the speaker corpus intact.
+
+Deviations from the plan, each ruled at the time (the ledger holds the wording): the bench is three
+modules; `STT_CORPUS_ROOT` is the root's name; `Take` gained per-clip records and a block flag; the
+upload tail is an integer that defaults to 300 (the first ruling made it optional, which the review
+showed unreachable); the code defaults keep the CPU profile; `P0` in the bench is production as it was
+measured (with retries) and `T0` is the new default; Tasks 12 and 14 share one commit; the scope was
+trimmed by Pipec after the pilot; `C2` was added after `C1`'s test run, disclosed as a second look.
