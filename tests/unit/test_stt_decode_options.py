@@ -224,9 +224,9 @@ def test_cuda_registers_the_wheels_dll_directories_before_the_model_loads(
     registry = _DllRegistry()
     monkeypatch.setattr(stt.importlib.util, "find_spec", wheels.get)
     monkeypatch.setattr(stt.os, "add_dll_directory", registry, raising=False)
-    monkeypatch.setattr(stt.sys, "platform", "win32")
+    monkeypatch.setattr(stt, "_is_windows", lambda: True)
     monkeypatch.setattr(stt, "_dll_handles", [])
-    monkeypatch.setenv("PATH", "C:/somewhere")
+    monkeypatch.setenv("PATH", "somewhere")
 
     stt.register_cuda_dlls("cuda")
 
@@ -236,17 +236,17 @@ def test_cuda_registers_the_wheels_dll_directories_before_the_model_loads(
     # CTranslate2 loads cuBLAS with a plain LoadLibrary, which only searches PATH.
     on_path = os.environ["PATH"].split(os.pathsep)
     assert all(directory in on_path for directory in registry.directories)
-    assert on_path[-1] == "C:/somewhere"
+    assert on_path[-1] == "somewhere"
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("device, platform", [("cpu", "win32"), ("cuda", "linux")])
+@pytest.mark.parametrize("device, windows", [("cpu", True), ("cuda", False)])
 def test_no_dll_directory_is_registered_off_windows_cuda(
-    monkeypatch: pytest.MonkeyPatch, device: str, platform: str
+    monkeypatch: pytest.MonkeyPatch, device: str, windows: bool
 ) -> None:
     registry = _DllRegistry()
     monkeypatch.setattr(stt.os, "add_dll_directory", registry, raising=False)
-    monkeypatch.setattr(stt.sys, "platform", platform)
+    monkeypatch.setattr(stt, "_is_windows", lambda: windows)
     monkeypatch.setattr(stt, "_dll_handles", [])
 
     stt.register_cuda_dlls(device)
@@ -261,7 +261,7 @@ def test_cuda_without_the_wheel_registers_nothing_and_leaves_the_error_to_the_lo
     registry = _DllRegistry()
     monkeypatch.setattr(stt.importlib.util, "find_spec", lambda _name: None)
     monkeypatch.setattr(stt.os, "add_dll_directory", registry, raising=False)
-    monkeypatch.setattr(stt.sys, "platform", "win32")
+    monkeypatch.setattr(stt, "_is_windows", lambda: True)
     monkeypatch.setattr(stt, "_dll_handles", [])
 
     stt.register_cuda_dlls("cuda")  # the missing library is reported by CTranslate2 on load
@@ -277,9 +277,9 @@ def test_registering_the_cuda_dlls_twice_adds_each_folder_once(
     registry = _DllRegistry()
     monkeypatch.setattr(stt.importlib.util, "find_spec", wheels.get)
     monkeypatch.setattr(stt.os, "add_dll_directory", registry, raising=False)
-    monkeypatch.setattr(stt.sys, "platform", "win32")
+    monkeypatch.setattr(stt, "_is_windows", lambda: True)
     monkeypatch.setattr(stt, "_dll_handles", [])
-    monkeypatch.setenv("PATH", "C:/somewhere")
+    monkeypatch.setenv("PATH", "somewhere")
 
     stt.register_cuda_dlls("cuda")
     stt.register_cuda_dlls("cuda")

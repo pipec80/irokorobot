@@ -257,6 +257,11 @@ _dll_handles: list[object] = []
 _CUDA_WHEELS = ("nvidia.cublas", "nvidia.cuda_nvrtc")
 
 
+def _is_windows() -> bool:
+    """Tell whether this is Windows (a function, so a type checker cannot fold it to a constant)."""
+    return sys.platform == "win32"
+
+
 def register_cuda_dlls(device: str) -> None:
     """Make the CUDA libraries of the optional ``cuda`` extra visible to CTranslate2.
 
@@ -270,7 +275,7 @@ def register_cuda_dlls(device: str) -> None:
     Args:
         device: ``settings.whisper_device``.
     """
-    if device != "cuda" or sys.platform != "win32":
+    if device != "cuda" or not _is_windows():
         return
     for wheel in _CUDA_WHEELS:
         spec = importlib.util.find_spec(wheel)
@@ -279,7 +284,9 @@ def register_cuda_dlls(device: str) -> None:
             if directory.is_dir() and str(directory) not in os.environ.get("PATH", "").split(
                 os.pathsep
             ):
-                _dll_handles.append(os.add_dll_directory(str(directory)))
+                # Windows only (_is_windows() guards the call): Linux typing has no such attribute.
+                handle = os.add_dll_directory(str(directory))  # type: ignore[attr-defined,unused-ignore]
+                _dll_handles.append(handle)
                 os.environ["PATH"] = os.pathsep.join([str(directory), os.environ.get("PATH", "")])
 
 
