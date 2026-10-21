@@ -32,6 +32,8 @@ _EXPECTED_CHANGES = {
     "M-medium": {"model"},
     "M-turbo": {"model"},
     "G-small": {"device", "compute_type"},
+    "G-medium": {"model", "device", "compute_type"},
+    "C2": {"model", "device", "compute_type", "temperatures"},
     "G-turbo": {"model", "device", "compute_type"},
 }
 

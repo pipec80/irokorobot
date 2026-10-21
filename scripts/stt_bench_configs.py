@@ -88,6 +88,15 @@ def configs(base: WhisperDecodeOptions) -> dict[str, BenchConfig]:
         replace(p0, name="M-medium", model="medium"),
         replace(p0, name="M-turbo", model="large-v3-turbo"),
         replace(p0, name="G-small", device="cuda", compute_type=_GPU_COMPUTE),
+        replace(p0, name="G-medium", model="medium", device="cuda", compute_type=_GPU_COMPUTE),
+        replace(
+            p0,
+            name="C2",
+            model="medium",
+            device="cuda",
+            compute_type=_GPU_COMPUTE,
+            options=replace(base, temperatures=(0.0,)),
+        ),
         replace(
             p0, name="G-turbo", model="large-v3-turbo", device="cuda", compute_type=_GPU_COMPUTE
         ),

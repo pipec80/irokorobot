@@ -1052,5 +1052,16 @@ Rulings:
   accuracy it would add is not taken.
 - **Ruling — nothing else enters.** `PR-vocab`, `HW`, `V-off` and `PR-none` have intervals that include
   zero on 47 takes: with one session they cannot be told from noise, so by D-8 they are not added.
+- **Ruling — `medium` and a fixed temperature found after `C1` was fixed.** After `C1` was written, `G-medium`
+  on the dev half (7.0 %, paired −6.5 [−11.9, −1.7], median 2.39 s, p90 3.23 s, 1.25 GB) showed that the
+  budget of D-9 (c) is met by a larger model on this card, and the spontaneous session showed a latency
+  tail from Whisper's random temperature retries (clips of 2-3 s taking 14 s, 24 s and 48 s; with
+  `temperatures=(0.0,)` the slowest clip falls from 24.2 s to 9.8 s, no retry happens and the WER is
+  10.6 % against 10.3 %, a one-word difference). `C2` = `medium`, CUDA `int8_float16`,
+  `temperatures=(0.0,)`, `close1200-tail300`, chosen on dev and the spontaneous clips, is therefore fixed
+  here and run once on the test half beside `C1`. The test half was already seen for `C1`, so this is a
+  second look at it, disclosed; the choice between `C1` and `C2` is Pipec's from D-9's rules and the
+  loaded latency of D-19. The fixed temperature is adopted with either (it removes a measured tail and
+  makes the text repeatable) unless the test half shows a loss.
 - **Ruling — D-15 follows.** `C1` holds a GPU component, so adopting it brings Task 14 (the optional
   `cuda` extra) back into scope, which the trim of 2026-10-21 had left out.
