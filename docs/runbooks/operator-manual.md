@@ -573,7 +573,7 @@ speaks, in this order:
    say it back: «sí, autorizo.» is enough (Plan 0066; until then the offer asked to repeat the
    value, and that long answer still works).
 2. To accept, a closed verb **alone** is enough: `autorizo`, `autoriza`, `apruebo`, `aprueba`,
-   alone or followed by `guardar`, `a guardar` or `que guardes` («autorizo», «sí, autorizo.»,
+   alone or followed by `guardar`, `a guardar`, `guardarlo`, `a guardarlo` or `que guardes` («autorizo», «sí, autorizo.»,
    «apruebo, gracias», «autorizo guardar»). `guarda` and `guárdalo` also work alone, but **only
    after a leading «sí»** («sí, guarda», «sí po, guárdalo»), because «guarda» is an ordinary
    imperative. The value stays optional: «autorizo guardar el mate», «autorizo a guardar …» and
