@@ -346,7 +346,8 @@ async def test_a_silent_source_gives_no_clip_after_the_wait() -> None:
 
 
 @pytest.mark.unit
-def test_the_upload_tail_defaults_to_the_closing_silence_and_refuses_under_300_ms() -> None:
-    assert Settings(_env_file=None).vad_upload_tail_ms is None  # type: ignore[call-arg]  # code default
+def test_the_adopted_closing_silence_and_upload_tail_and_the_300_ms_floor() -> None:
+    defaults = Settings(_env_file=None)  # type: ignore[call-arg]  # code defaults
+    assert (defaults.vad_silence_ms, defaults.vad_upload_tail_ms) == (1200, 300)  # Plan 0069 C1
     with pytest.raises(ValidationError):
         Settings(_env_file=None, vad_upload_tail_ms=200)  # type: ignore[call-arg]  # init kwargs

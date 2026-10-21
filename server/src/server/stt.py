@@ -7,10 +7,14 @@ from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import partial
+import importlib.util
 import io
 import logging
 import math
+import os
+from pathlib import Path
 import re
+import sys
 import unicodedata
 import wave
 
@@ -53,9 +57,10 @@ _INT16_FULL_SCALE = 32768.0
 class WhisperDecodeOptions:
     """Every argument of one Whisper decode (Plan 0069 D-14 and Task 1).
 
-    The first five fields come from today's settings; the rest are fixed in code with the
-    values production uses today, so the bench can vary one field at a time on the
-    production code path. A field becomes a setting only when evidence moves it (Task 12).
+    The first four fields and ``temperatures`` come from settings; the rest are fixed in code,
+    so the bench can vary one field at a time on the production code path. A field becomes a
+    setting only when evidence moves it (Plan 0069 Task 12: the retry temperatures).
+    ``hallucination_silence_threshold`` only acts with ``word_timestamps``, which stays off.
     Three values stay out on purpose: ``condition_on_previous_text`` is always ``False`` (a
     robot clip is one 30 s window, so there is no previous text), ``patience`` keeps its
     library default (no evidence) and ``num_workers`` stays 1 (one robot, one request).
@@ -65,9 +70,9 @@ class WhisperDecodeOptions:
     beam_size: int
     initial_prompt: str | None
     vad_min_silence_ms: int
-    hallucination_silence_threshold: float | None
+    temperatures: tuple[float, ...]
+    hallucination_silence_threshold: float | None = 2.0
     best_of: int = 5
-    temperatures: tuple[float, ...] = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
     compression_ratio_threshold: float | None = 2.4
     log_prob_threshold: float | None = -1.0
     no_speech_threshold: float | None = 0.6
@@ -122,7 +127,7 @@ def decode_options(source: Settings) -> WhisperDecodeOptions:
         beam_size=source.whisper_beam_size,
         initial_prompt=source.whisper_initial_prompt,
         vad_min_silence_ms=source.whisper_vad_min_silence_ms,
-        hallucination_silence_threshold=source.whisper_hallucination_silence_threshold,
+        temperatures=source.whisper_temperatures,
     )
 
 
@@ -245,11 +250,38 @@ def run_whisper(
     )
 
 
+#: Handles of the registered CUDA library directories; they must outlive the model, so they
+#: are kept for the whole process (Plan 0069 D-15).
+_dll_handles: list[object] = []
+_CUDA_WHEELS = ("nvidia.cublas", "nvidia.cuda_nvrtc")
+
+
+def _register_cuda_dlls(device: str) -> None:
+    """Make the CUDA libraries of the optional ``cuda`` extra visible to CTranslate2.
+
+    On Windows the cuBLAS and NVRTC wheels put their DLLs in ``<package>/bin``, which is not on
+    the search path; each directory is registered before the model loads. Nothing happens on
+    CPU or off Windows, and a missing wheel is left for CTranslate2 to report when it loads.
+
+    Args:
+        device: ``settings.whisper_device``.
+    """
+    if device != "cuda" or sys.platform != "win32":
+        return
+    for wheel in _CUDA_WHEELS:
+        spec = importlib.util.find_spec(wheel)
+        for location in (spec.submodule_search_locations or []) if spec else []:
+            directory = Path(location) / "bin"
+            if directory.is_dir():
+                _dll_handles.append(os.add_dll_directory(str(directory)))
+
+
 def _get_model() -> WhisperModel:
     """Return the singleton WhisperModel, loading it on first call."""
     global _model  # noqa: PLW0603
     if _model is None:
         logger.info("Loading Whisper model: %s", settings.whisper_model)
+        _register_cuda_dlls(settings.whisper_device)
         # local_files_only=True avoids a HuggingFace version-check HTTP request on every
         # server startup. This is a local-first homelab — no guaranteed internet access.
         # To update the model: delete the HF cache (~/.cache/huggingface/hub/) and restart

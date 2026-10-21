@@ -6,6 +6,8 @@ the production code path. Audio contract: WAV · 16000 Hz · mono · int16.
 
 from dataclasses import dataclass, replace
 import io
+from pathlib import Path
+from types import SimpleNamespace
 import wave
 
 from faster_whisper.transcribe import VadOptions
@@ -85,7 +87,9 @@ def _options(**overrides: object) -> stt.WhisperDecodeOptions:
 
 
 @pytest.mark.unit
-def test_default_call_matches_todays_whisper_arguments(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_default_call_matches_the_adopted_whisper_arguments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     model = _RecordingModel([_segment("hola", 3, -0.3)])
     defaults = _defaults()
     monkeypatch.setattr(stt, "_get_model", lambda: model)
@@ -97,7 +101,7 @@ def test_default_call_matches_todays_whisper_arguments(monkeypatch: pytest.Monke
         "language": "es",
         "beam_size": 5,
         "best_of": 5,
-        "temperature": (0.0, 0.2, 0.4, 0.6, 0.8, 1.0),
+        "temperature": (0.0,),
         "compression_ratio_threshold": 2.4,
         "log_prob_threshold": -1.0,
         "no_speech_threshold": 0.6,
@@ -171,3 +175,91 @@ def test_peak_normalization_hands_whisper_a_float_array() -> None:
     assert isinstance(model.audio, np.ndarray)
     assert model.audio.dtype == np.float32
     assert 20 * np.log10(np.max(np.abs(model.audio))) == pytest.approx(-3.0, abs=0.1)
+
+
+@pytest.mark.unit
+def test_the_retry_temperatures_are_a_setting_and_the_default_is_fixed_at_zero() -> None:
+    assert stt.decode_options(_defaults()).temperatures == (0.0,)
+    retries = Settings(_env_file=None, whisper_temperatures=(0.0, 0.2, 0.4))  # type: ignore[call-arg]  # init kwargs
+
+    assert stt.decode_options(retries).temperatures == (0.0, 0.2, 0.4)
+
+
+@pytest.mark.unit
+def test_the_silence_hallucination_threshold_is_no_longer_a_setting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("WHISPER_HALLUCINATION_SILENCE_THRESHOLD", "9.5")
+
+    assert not hasattr(Settings(_env_file=None), "whisper_hallucination_silence_threshold")  # type: ignore[call-arg]  # code defaults
+    assert stt.decode_options(Settings(_env_file=None)).hallucination_silence_threshold == 2.0  # type: ignore[call-arg]  # code defaults
+
+
+class _DllRegistry:
+    """Stands in for ``os.add_dll_directory``: records the directories, hands back handles."""
+
+    def __init__(self) -> None:
+        self.directories: list[str] = []
+
+    def __call__(self, path: str) -> str:
+        self.directories.append(path)
+        return f"handle:{path}"
+
+
+def _wheel(tmp_path: Path, name: str) -> object:
+    folder = tmp_path / "nvidia" / name
+    (folder / "bin").mkdir(parents=True)
+    return SimpleNamespace(submodule_search_locations=[str(folder)])
+
+
+@pytest.mark.unit
+def test_cuda_registers_the_wheels_dll_directories_before_the_model_loads(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    wheels = {
+        "nvidia.cublas": _wheel(tmp_path, "cublas"),
+        "nvidia.cuda_nvrtc": _wheel(tmp_path, "cuda_nvrtc"),
+    }
+    registry = _DllRegistry()
+    monkeypatch.setattr(stt.importlib.util, "find_spec", wheels.get)
+    monkeypatch.setattr(stt.os, "add_dll_directory", registry, raising=False)
+    monkeypatch.setattr(stt.sys, "platform", "win32")
+    monkeypatch.setattr(stt, "_dll_handles", [])
+
+    stt._register_cuda_dlls("cuda")
+
+    assert [Path(directory).parent.name for directory in registry.directories] == [
+        "cublas",
+        "cuda_nvrtc",
+    ]
+    assert len(stt._dll_handles) == 2  # the handles stay alive for the whole process
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("device, platform", [("cpu", "win32"), ("cuda", "linux")])
+def test_no_dll_directory_is_registered_off_windows_cuda(
+    monkeypatch: pytest.MonkeyPatch, device: str, platform: str
+) -> None:
+    registry = _DllRegistry()
+    monkeypatch.setattr(stt.os, "add_dll_directory", registry, raising=False)
+    monkeypatch.setattr(stt.sys, "platform", platform)
+    monkeypatch.setattr(stt, "_dll_handles", [])
+
+    stt._register_cuda_dlls(device)
+
+    assert registry.directories == []
+
+
+@pytest.mark.unit
+def test_cuda_without_the_wheel_registers_nothing_and_leaves_the_error_to_the_loader(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _DllRegistry()
+    monkeypatch.setattr(stt.importlib.util, "find_spec", lambda _name: None)
+    monkeypatch.setattr(stt.os, "add_dll_directory", registry, raising=False)
+    monkeypatch.setattr(stt.sys, "platform", "win32")
+    monkeypatch.setattr(stt, "_dll_handles", [])
+
+    stt._register_cuda_dlls("cuda")  # the missing library is reported by CTranslate2 on load
+
+    assert registry.directories == []

@@ -1,6 +1,6 @@
 """The bench configurations of Plan 0069 Appendix B, one change each from P0 (Task 7)."""
 
-from dataclasses import fields
+from dataclasses import fields, replace
 
 import pytest
 from server.settings import Settings
@@ -54,7 +54,7 @@ def _changes(config: BenchConfig, p0: BenchConfig) -> set[str]:
 
 
 @pytest.mark.unit
-def test_p0_is_production_today() -> None:
+def test_p0_is_production_before_plan_0069() -> None:
     p0 = configs(_base())["P0"]
 
     assert (p0.model, p0.device, p0.compute_type, p0.cpu_threads, p0.hotwords) == (
@@ -64,7 +64,9 @@ def test_p0_is_production_today() -> None:
         0,
         None,
     )
-    assert p0.options == _base()
+    # Plan 0069 fixed the temperature at 0 afterwards; P0 keeps the retries it was measured with.
+    assert p0.options == replace(_base(), temperatures=(0.0, 0.2, 0.4, 0.6, 0.8, 1.0))
+    assert _base().temperatures == (0.0,)
 
 
 @pytest.mark.unit

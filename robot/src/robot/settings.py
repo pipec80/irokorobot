@@ -18,16 +18,18 @@ class Settings(BaseSettings):
     vad_engine: str = "silero"
     vad_silence_threshold_rms: int = 100
     vad_preroll_ms: int = 400
-    vad_silence_ms: int = 800
+    # Plan 0069 C1: a pause inside a sentence closes the turn only past 1.2 s (the spontaneous
+    # session split into 29 clips instead of 48); the clip still uploads a 300 ms tail.
+    vad_silence_ms: int = 1200
     # Plan 0067: reply mode (the one capture after a turn whose done event says
     # a short reply is expected). A longer end-of-speech silence keeps a pause
     # inside the reply in one clip; the clip is still trimmed to the normal
     # vad_silence_ms tail on upload.
     vad_reply_silence_ms: int = 1600
     # Plan 0069: the silent tail an uploaded clip keeps after the speech, in both modes. Unset,
-    # it is vad_silence_ms (the clip is exactly today's). It can only shorten the tail, and never
-    # below 300 ms (the onset and the last word need that margin).
-    vad_upload_tail_ms: int | None = Field(default=None, ge=300)
+    # it is vad_silence_ms. It can only shorten the tail, and never below 300 ms (the onset and
+    # the last word need that margin).
+    vad_upload_tail_ms: int | None = Field(default=300, ge=300)
     # Plan 0067: seconds to wait for a reply to start before listening normally.
     reply_wait_s: float = 15.0
     # Not vendored in git (see .gitignore *.onnx) — fetch with

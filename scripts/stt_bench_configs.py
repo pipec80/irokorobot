@@ -23,6 +23,7 @@ PR_VOCAB_PROMPT: Final = (
     "Conversación en español de Chile con Iroko, un robot doméstico: gustos, comidas, la hora "
     "y la casa. ¿Lo guardo? Sí. No. Autorizo."
 )
+_RETRIES: Final = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
 _CPU_THREADS_TODAY: Final = 0  # CTranslate2's own default (four threads)
 _GPU_COMPUTE: Final = "int8_float16"
 _PEAK_DBFS: Final = -3.0
@@ -60,10 +61,14 @@ def configs(base: WhisperDecodeOptions) -> dict[str, BenchConfig]:
     Returns:
         The configurations by name, ``P0`` first.
     """
-    p0 = BenchConfig("P0", "small", "cpu", "int8", _CPU_THREADS_TODAY, base)
+    # P0 is production as it was measured, with Whisper's random retries: Plan 0069 has since fixed
+    # the production temperature at 0, which is what T0 is.
+    p0 = BenchConfig(
+        "P0", "small", "cpu", "int8", _CPU_THREADS_TODAY, replace(base, temperatures=_RETRIES)
+    )
 
     def with_options(name: str, **changes: object) -> BenchConfig:
-        return replace(p0, name=name, options=replace(base, **changes))  # type: ignore[arg-type]  # dataclass fields
+        return replace(p0, name=name, options=replace(p0.options, **changes))  # type: ignore[arg-type]  # dataclass fields
 
     table = [
         p0,

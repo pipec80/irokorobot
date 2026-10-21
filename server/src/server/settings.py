@@ -39,8 +39,11 @@ class Settings(BaseSettings):
     whisper_beam_size: int = 5
     whisper_initial_prompt: str = "Conversación con un robot doméstico llamado Iroko."
     whisper_hotwords: str | None = None
-    whisper_hallucination_silence_threshold: float = 2.0
     whisper_vad_min_silence_ms: int = 500
+    # Plan 0069: fixed at 0 so Whisper never re-decodes a doubtful clip with random sampling (a
+    # 3 s clip took 48 s on the owner's session and the text was not repeatable). The old retry
+    # list is WHISPER_TEMPERATURES=[0.0,0.2,0.4,0.6,0.8,1.0].
+    whisper_temperatures: tuple[float, ...] = (0.0,)
     # Plan 0069 D-11: a non-empty transcript whose clip mean log-probability per token is below
     # this is answered «No te entendí bien. ¿Me lo repites?» instead of reaching the controller.
     # Off (None) until a measurement on the owner's voice proves a threshold.
