@@ -44,6 +44,8 @@ class InformationNeed(StrEnum):
     BIOMETRIC_ENROLLMENT = "biometric_enrollment"
     # A spoken answer to a memory offer: a closed verb and the offered value (ADR 0021 decision 9).
     MEMORY_ANSWER = "memory_answer"
+    # Whisper doubted the transcript; the turn never reached the controller (Plan 0069 D-11).
+    UNCLEAR_SPEECH = "unclear_speech"
 
 
 class ResponseSource(StrEnum):
@@ -155,6 +157,31 @@ def current_perception_plan(description: str) -> ResponsePlan:
         status=KnowledgeStatus.UNKNOWN,
         source=ResponseSource.CURRENT_PERCEPTION,
         response=description,
+    )
+
+
+#: Spoken when Whisper doubted what it heard (Plan 0069 D-11), in neutral tuteo.
+UNCLEAR_SPEECH_PHRASE = "No te entendí bien. ¿Me lo repites?"
+
+
+def unclear_speech_plan(*, expects_short_reply: bool) -> ResponsePlan:
+    """Build the fixed reply for a transcript Whisper doubted.
+
+    Nothing is decided from the doubtful text: no controller, no write, no grant.
+
+    Args:
+        expects_short_reply: The request was a short reply (reply mode); the stream then
+            listens in reply mode once more, so an answer heard badly is asked for again.
+
+    Returns:
+        A deterministic plan that asks the person to repeat.
+    """
+    return ResponsePlan(
+        need=InformationNeed.UNCLEAR_SPEECH,
+        status=KnowledgeStatus.UNKNOWN,
+        source=ResponseSource.DETERMINISTIC,
+        response=UNCLEAR_SPEECH_PHRASE,
+        expects_short_reply=expects_short_reply,
     )
 
 

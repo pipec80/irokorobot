@@ -32,7 +32,7 @@ in the installed packages, nothing guessed:**
 
 | Model | Auto? | How to get it |
 |---|---|---|
-| Whisper (STT) | Yes | Cached from HuggingFace on first call, offline after (`stt.py`) — nothing to run |
+| Whisper (STT) | Yes | Cached from HuggingFace on first call, offline after (`stt.py`) — nothing to run. Changing `WHISPER_MODEL` downloads the new model once on the next start (`medium` is about 1.5 GB), so start the server with internet that time |
 | InsightFace (face) | Yes | ~300 MB, downloaded on first face detection/enrollment call (`vision/faces.py`) — nothing to run |
 | Silero VAD | Bundled into `just setup` (2.3 MB) | Was previously a separate step — `just fetch-vad-model` still works standalone if you skipped `setup` |
 | **Piper (TTS voice)** | **No — one command, run once per voice** | `just fetch-piper-voice` — wraps the official `piper.download_voices` module already bundled in the `piper-tts` dependency this project uses; source is `huggingface.co/rhasspy/piper-voices` (verified from the installed package's own code, not guessed). Defaults to `.env`'s `PIPER_VOICE`; pass `--voice <name>` for a different one, `--force` to re-fetch |
@@ -95,7 +95,7 @@ problem can be localized without running the whole loop.
 
 | Tool | Command | Isolates | Needs server? | Needs `.env`? |
 |---|---|---|:---:|:---:|
-| `mic_test.py` | `uv run python scripts/mic_test.py` | Mic capture → Whisper STT only | No | No |
+| `mic_test.py` | `just mic-test devices` / `just mic-test record --seconds 6 --api mme` | Capture auditor (Plan 0069): lists the inputs with their host API and native rate; shows the phrase to read (`--phrase` changes it), counts down and cues `>>> HABLA <<<`, then records the window the way the robot opens the microphone (`mme`) or through WASAPI in the device's native format (`wasapi`: every channel averaged, resampled with `soxr`); warns when the stream lost audio; reports peak, speech level, floor, SNR and clipping against the plan's targets; `--transcribe` runs the server's production Whisper options (stop the server first); `--save NAME` keeps the take under `project-history/calibration/stt/mic/` only, and an existing name is refused before recording unless `--replace` | No | Yes |
 | `piper_test.py` | `uv run python scripts/piper_test.py --text ...` | Text → Piper TTS → speaker only | No | No |
 | `pipeline_test.py` | `just test-pipeline` | Smoke test of the three model seams, `mic → STT → LLM → TTS → speaker` (the mic is optional with `--text`); real model code, but no controller, identity, memory or HTTP | No | Yes (Ollama) |
 | `client_test.py` | `just test-client` | Full HTTP round trip through the real running server | Yes | No |
@@ -128,6 +128,51 @@ general reliability figure. `diagnose-stream` measures the generator for the con
 model, not the microphone → server → audio path, and its readings are exploratory
 signals read against rules fixed in advance (see the
 [Plan 0057 record](../evals/0057-stream-protocol-diagnosis.md)), never a cause.
+
+### Speech-to-text profiles — CPU and GPU (Plan 0069)
+
+The server ships with the CPU profile (`small`, `int8`, `cpu`), which needs nothing extra. Measured
+on the owner's voice with the laptop's microphone (a 2 GB MX450, Ollama running beside it):
+
+| Profile | Word errors (test half) | Median / p90 per clip, idle | Median / p90 with Ollama busy | VRAM |
+|---|---|---|---|---|
+| CPU `small` (default) | 15.4 % | 2.7 / 3.0 s | **8.7 / 15.3 s** | — |
+| GPU `small` | 15.8 % | 0.9 / 1.2 s | 1.4 / 1.9 s | 0.7 GB |
+| GPU `medium` (recommended) | **6.8 %** | 2.5 / 3.2 s | 3.0 / 4.0 s | 1.25 GB (1.8 GB used with Ollama) |
+
+On the short answers («sí», «no», «autorizo»…, 35 reference words on the test half) `medium` misread 1 word
+and the other two profiles 9 and 10: a small sample, but the intervals do not overlap. The CPU profile loses to Ollama because both fight for the same processor; the GPU does
+not. To switch (the agent never edits your `.env`):
+
+1. `uv sync --all-packages --all-groups --extra cuda` (adds the cuBLAS wheels; the code registers
+   their folders itself and puts them on the process's `PATH`, so there is nothing for you to set).
+2. In the server's `.env`: `WHISPER_MODEL=medium`, `WHISPER_DEVICE=cuda`,
+   `WHISPER_COMPUTE_TYPE=int8_float16`. Use `WHISPER_MODEL=small` for the fast profile. Restart the
+   server; the first start downloads the model if it is not cached.
+3. To go back, set the three variables to `small`, `cpu`, `int8`. A GPU load that fails reports
+   `cublas64_12.dll is not found` when the extra is missing.
+
+Other settings of this plan: `WHISPER_TEMPERATURES` (default `[0.0]`: Whisper no longer re-decodes a
+doubtful clip with random sampling, which took 14–48 s on some spontaneous clips and made the text
+unrepeatable; the old list is `[0.0,0.2,0.4,0.6,0.8,1.0]`), robot `VAD_SILENCE_MS=1200` (a pause
+inside a sentence closes the turn only past 1.2 s) and `VAD_UPLOAD_TAIL_MS=300`.
+`WHISPER_HALLUCINATION_SILENCE_THRESHOLD` was removed (it did nothing with word timestamps off); an
+old `.env` that still sets it keeps working.
+
+**The «no te entendí» reply is off by default** (`WHISPER_UNCLEAR_LOGPROB` unset; the owner tries
+`-0.9` in their own `.env`). Every clip logs one
+`stt.confidence` line (no text): `avg_logprob`, `no_speech_prob`, `compression_ratio`,
+`temperature`, `segments`, `clip_s`, `after_vad_s` and `unclear`. On 48 spontaneous clips the
+doubtful ones were wrong only about half the time and rejecting the 6 lowest would have dropped 3 correct clips, so
+no threshold met the plan's rule (at most 5 % of correct clips rejected, at least half of the errors
+caught). In the live runs `-0.9` flagged one of the two murmured clips and none of the 30 real turns, but
+it asks for a repeat on about one correct long clip in ten. Look at the logged figures after more real
+use before making it a default.
+
+**Microphone.** Speaking at 15, 30 or 60 cm from the laptop's array made no measurable difference
+(18.0 %, 18.4 % and 19.4 % word errors with GPU `small` on the same 24 phrases); leave the Windows audio
+enhancements as they are. Check the level of a new microphone with `just mic-test record`: target
+a peak between −12 and −3 dBFS and a floor at least 30 dB under the voice.
 
 ### Speaker calibration — `just speaker-calibration` (Plan 0047, PC-3A)
 
@@ -333,7 +378,7 @@ face that matches another enrolled person is also a hard denial, even when a PIN
 token is presented, and it does not consume that token.
 
 Validated live 2026-08-27: `just onboard` enrolled Pipec's face, then
-`just run-robot` correctly identified him on a real streaming turn
+`just run-robot` correctly identified Pipec on a real streaming turn
 (`Turn actor: status=identified role=owner ... evidence=1`) and answered
 "Tus hijos son nala y martina." with no PIN. **This is one successful run
 on one person's hardware, not a calibrated study** — no threshold tuning,
@@ -603,7 +648,7 @@ normal listening. Two robot settings (in the robot's `.env`, read at start-up; d
 
 | Variable | Default | Effect |
 |---|---|---|
-| `VAD_REPLY_SILENCE_MS` | `1600` | Silence that ends the reply (normal listening: `VAD_SILENCE_MS`, 800). Raise it if a pause inside the answer still cuts it in two; lower it if the robot waits too long after you finish. The clip that is uploaded is trimmed back to the normal tail, so a longer value does not make the voice check worse |
+| `VAD_REPLY_SILENCE_MS` | `1600` | Silence that ends the reply (normal listening: `VAD_SILENCE_MS`, 1200). Raise it if a pause inside the answer still cuts it in two; lower it if the robot waits too long after you finish. The clip that is uploaded is trimmed back to the normal tail, so a longer value does not make the voice check worse |
 | `REPLY_WAIT_S` | `15` | Seconds to wait for you to start the reply (normal listening: 30). If nothing is heard the robot returns to normal listening by itself and the offer stays open until its 60 s window ends |
 
 The reply is an ordinary request with one extra form field, `short_reply=true`, whose only effect

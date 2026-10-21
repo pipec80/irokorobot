@@ -27,12 +27,17 @@ dependencies = [
     "speechbrain==1.1.2",
     "torch>=2.14.0,<3.0.0",
     "torchaudio>=2.11.0,<3.0.0",
-    "pillow>=12.3.0,<13.0.0",
+    "pillow>=13.0.0,<14.0.0",
 ]
 
 [project.scripts]
 serve = "server.main:main"
 personal-setup = "server.personal_setup:main"
+
+[project.optional-dependencies]
+cuda = [
+    "nvidia-cublas-cu12>=12.9.2.10,<13.0.0.0",
+]
 
 [build-system]
 requires = ["uv_build>=0.12.3,<0.14.0"]
@@ -50,4 +55,5 @@ known_first_party = ["server"]
 DEP002 = [
     "python-multipart",  # required by FastAPI/Starlette for multipart form parsing, never imported by name
     "torchaudio",  # required by speechbrain's EncoderClassifier at runtime (Plan 0053), never imported by name
+    "nvidia-cublas-cu12",  # the optional cuda extra: stt.py registers its DLL folder, never imports it (Plan 0069)
 ]

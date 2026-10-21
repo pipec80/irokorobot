@@ -1,0 +1,1110 @@
+# Reading script of Plan 0069 (Appendix A): speech-to-text on the owner's real voice.
+# Invented sentences only: no household name, date or pet (scripts/check_reserved_terms.py).
+# Pipec reviews and edits it before the first capture; a changed item gets a new id.
+# Fields: layer A..H; kind; text (the reference); also (written alternatives, compared after
+# normalization); pair (two items that differ in one point); target/competitor (D: the word
+# that must be heard and the one it is confused with); reps (main-condition takes over the
+# two main sessions); relaxed (of those, how many are read relaxed); window_s (seconds the
+# take records after the cue); block (one of the 24 condition-block items); chat (typed in
+# the manual chat arm); expect (what today's code makes of the text itself: intent need,
+# taste gate, memory answer; computed on 2026-10-20, a wrong one is a «rest» finding).
+version: 1
+items:
+- id: A01
+  layer: A
+  kind: statement
+  text: Me gusta el helado de chocolate.
+  pair: A01-A02
+  reps: 2
+  window_s: 6
+  block: true
+  chat: true
+  expect:
+    need: generic_conversation
+    taste: 'yes'
+    answer: none
+- id: A02
+  layer: A
+  kind: question
+  text: ¿Me gusta el helado de chocolate?
+  pair: A01-A02
+  reps: 2
+  window_s: 6
+  block: true
+  chat: true
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: A03
+  layer: A
+  kind: statement
+  text: Me gustan las películas de ciencia ficción.
+  pair: A03-A04
+  reps: 2
+  window_s: 6
+  block: true
+  chat: true
+  expect:
+    need: generic_conversation
+    taste: 'yes'
+    answer: none
+- id: A04
+  layer: A
+  kind: question
+  text: ¿Me gustan las películas de ciencia ficción?
+  pair: A03-A04
+  reps: 2
+  window_s: 6
+  block: true
+  chat: true
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: A05
+  layer: A
+  kind: statement
+  text: No me gusta el café sin azúcar.
+  pair: A05-A06
+  reps: 2
+  window_s: 6
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'yes'
+    answer: none
+- id: A06
+  layer: A
+  kind: question
+  text: ¿No me gusta el café sin azúcar?
+  pair: A05-A06
+  reps: 2
+  window_s: 6
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: A07
+  layer: A
+  kind: statement
+  text: Prefiero el té con limón.
+  pair: A07-A08
+  reps: 2
+  window_s: 6
+  block: false
+  chat: true
+  expect:
+    need: generic_conversation
+    taste: 'yes'
+    answer: none
+- id: A08
+  layer: A
+  kind: question
+  text: ¿Prefiero el té con limón?
+  pair: A07-A08
+  reps: 2
+  window_s: 6
+  block: false
+  chat: true
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: A09
+  layer: A
+  kind: statement
+  text: Me encantan las empanadas de pino.
+  reps: 2
+  window_s: 6
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'yes'
+    answer: none
+- id: A10
+  layer: A
+  kind: statement
+  text: Me gustan los sabores ácidos.
+  reps: 2
+  window_s: 6
+  block: true
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'yes'
+    answer: none
+- id: A11
+  layer: A
+  kind: statement
+  text: Mi fruta favorita es la frutilla.
+  reps: 2
+  window_s: 6
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'yes'
+    answer: none
+- id: A12
+  layer: A
+  kind: statement
+  text: Me gusta caminar por el cerro en la mañana.
+  reps: 2
+  window_s: 6
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'yes'
+    answer: none
+- id: B01
+  layer: B
+  kind: answer
+  text: Sí.
+  reps: 5
+  window_s: 4
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: B02
+  layer: B
+  kind: answer
+  text: No.
+  reps: 5
+  window_s: 4
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: B03
+  layer: B
+  kind: answer
+  text: Acepto.
+  reps: 5
+  window_s: 4
+  block: true
+  chat: false
+  expect:
+    need: memory_answer
+    taste: 'no'
+    answer: accept
+- id: B04
+  layer: B
+  kind: answer
+  text: Autorizo.
+  reps: 5
+  window_s: 4
+  block: false
+  chat: false
+  expect:
+    need: memory_answer
+    taste: 'no'
+    answer: accept
+- id: B05
+  layer: B
+  kind: answer
+  text: Sí, autorizo.
+  reps: 5
+  window_s: 4
+  block: true
+  chat: false
+  expect:
+    need: memory_answer
+    taste: 'no'
+    answer: accept
+- id: B06
+  layer: B
+  kind: answer
+  text: No autorizo.
+  reps: 5
+  window_s: 4
+  block: true
+  chat: false
+  expect:
+    need: memory_answer
+    taste: 'no'
+    answer: reject
+- id: B07
+  layer: B
+  kind: answer
+  text: Guárdalo.
+  reps: 5
+  window_s: 4
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: B08
+  layer: B
+  kind: answer
+  text: Guárdala.
+  reps: 5
+  window_s: 4
+  block: true
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: B09
+  layer: B
+  kind: answer
+  text: Sí, guárdalo.
+  reps: 5
+  window_s: 4
+  block: false
+  chat: false
+  expect:
+    need: memory_answer
+    taste: 'no'
+    answer: accept
+- id: B10
+  layer: B
+  kind: answer
+  text: Sí, autorizo que lo guardes.
+  reps: 5
+  window_s: 4
+  block: true
+  chat: false
+  expect:
+    need: memory_answer
+    taste: 'no'
+    answer: accept
+- id: B11
+  layer: B
+  kind: answer
+  text: No autorizo que lo guardes.
+  reps: 5
+  window_s: 4
+  block: false
+  chat: false
+  expect:
+    need: memory_answer
+    taste: 'no'
+    answer: reject
+- id: B12
+  layer: B
+  kind: answer
+  text: Apruebo.
+  reps: 5
+  window_s: 4
+  block: false
+  chat: false
+  expect:
+    need: memory_answer
+    taste: 'no'
+    answer: accept
+- id: C01
+  layer: C
+  kind: question
+  text: ¿Qué hora es?
+  reps: 2
+  window_s: 6
+  block: true
+  chat: true
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: C02
+  layer: C
+  kind: question
+  text: ¿Qué día es hoy?
+  reps: 2
+  window_s: 6
+  block: false
+  chat: true
+  expect:
+    need: current_date
+    taste: 'no'
+    answer: none
+- id: C03
+  layer: C
+  kind: question
+  text: ¿Cómo te llamas?
+  reps: 2
+  window_s: 6
+  block: false
+  chat: true
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: C04
+  layer: C
+  kind: question
+  text: Iroko, ¿me escuchas?
+  reps: 2
+  window_s: 6
+  block: true
+  chat: true
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: C05
+  layer: C
+  kind: question
+  text: ¿Quién soy?
+  reps: 2
+  window_s: 6
+  block: true
+  chat: true
+  expect:
+    need: active_identity
+    taste: 'no'
+    answer: none
+- id: C06
+  layer: C
+  kind: question
+  text: ¿Cuántos hijos tengo?
+  reps: 2
+  window_s: 6
+  block: false
+  chat: false
+  expect:
+    need: own_children_count
+    taste: 'no'
+    answer: none
+- id: C07
+  layer: C
+  kind: question
+  text: ¿Cómo se llaman mis hijos?
+  reps: 2
+  window_s: 6
+  block: false
+  chat: true
+  expect:
+    need: own_children_list
+    taste: 'no'
+    answer: none
+- id: C08
+  layer: C
+  kind: command
+  text: Describe lo que ves.
+  reps: 2
+  window_s: 6
+  block: false
+  chat: false
+  expect:
+    need: scene_description
+    taste: 'no'
+    answer: none
+- id: C09
+  layer: C
+  kind: question
+  text: ¿Qué ves?
+  reps: 2
+  window_s: 6
+  block: false
+  chat: true
+  expect:
+    need: scene_description
+    taste: 'no'
+    answer: none
+- id: C10
+  layer: C
+  kind: command
+  text: Olvida lo que te dije del helado.
+  reps: 2
+  window_s: 6
+  block: true
+  chat: true
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: C11
+  layer: C
+  kind: command
+  text: Cuéntame un chiste corto.
+  reps: 2
+  window_s: 6
+  block: false
+  chat: true
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: C12
+  layer: C
+  kind: command
+  text: Enciende la luz de la sala, por favor.
+  reps: 2
+  window_s: 6
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: C13
+  layer: C
+  kind: command
+  text: No quiero que apagues la luz.
+  reps: 2
+  window_s: 6
+  block: true
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: C14
+  layer: C
+  kind: statement
+  text: No, todavía no he terminado.
+  reps: 2
+  window_s: 6
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: C15
+  layer: C
+  kind: command
+  text: Iroko, espera, todavía estoy hablando.
+  reps: 2
+  window_s: 6
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: D01
+  layer: D
+  kind: phrase
+  text: Dijo helado.
+  pair: D01-D02
+  target: helado
+  competitor: de lado
+  relaxed: 2
+  reps: 5
+  window_s: 4
+  block: true
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: D02
+  layer: D
+  kind: phrase
+  text: Dijo de lado.
+  pair: D01-D02
+  target: de lado
+  competitor: helado
+  relaxed: 2
+  reps: 5
+  window_s: 4
+  block: true
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: D03
+  layer: D
+  kind: phrase
+  text: Me gustan los sabores.
+  pair: D03-D04
+  target: sabores
+  competitor: sabore
+  relaxed: 2
+  reps: 5
+  window_s: 4
+  block: true
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'yes'
+    answer: none
+- id: D04
+  layer: D
+  kind: phrase
+  text: Me gusta el sabor.
+  pair: D03-D04
+  target: sabor
+  competitor: sabores
+  relaxed: 2
+  reps: 5
+  window_s: 4
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'yes'
+    answer: none
+- id: D05
+  layer: D
+  kind: phrase
+  text: Quiero que lo guardes.
+  pair: D05-D06
+  target: guardes
+  competitor: guarde
+  relaxed: 2
+  reps: 5
+  window_s: 4
+  block: true
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: D06
+  layer: D
+  kind: phrase
+  text: Quiero que lo guarde.
+  pair: D05-D06
+  target: guarde
+  competitor: guardes
+  relaxed: 2
+  reps: 5
+  window_s: 4
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: D07
+  layer: D
+  kind: phrase
+  text: Las casas grandes.
+  pair: D07-D08
+  target: casas
+  competitor: casa
+  relaxed: 2
+  reps: 5
+  window_s: 4
+  block: true
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: D08
+  layer: D
+  kind: phrase
+  text: La casa grande.
+  pair: D07-D08
+  target: casa
+  competitor: casas
+  relaxed: 2
+  reps: 5
+  window_s: 4
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: D09
+  layer: D
+  kind: phrase
+  text: Los amigos llegan tarde.
+  pair: D09-D10
+  target: amigos
+  competitor: amigo
+  relaxed: 2
+  reps: 5
+  window_s: 4
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: D10
+  layer: D
+  kind: phrase
+  text: El amigo llega tarde.
+  pair: D09-D10
+  target: amigo
+  competitor: amigos
+  relaxed: 2
+  reps: 5
+  window_s: 4
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: D11
+  layer: D
+  kind: phrase
+  text: Estoy cansado.
+  target: cansado
+  competitor: cansao
+  relaxed: 2
+  reps: 5
+  window_s: 4
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: D12
+  layer: D
+  kind: phrase
+  text: El pescado está rico.
+  target: pescado
+  competitor: pescao
+  relaxed: 2
+  reps: 5
+  window_s: 4
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: D13
+  layer: D
+  kind: phrase
+  text: Ya está mojado.
+  target: mojado
+  competitor: mojao
+  relaxed: 2
+  reps: 5
+  window_s: 4
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: D14
+  layer: D
+  kind: phrase
+  text: Lo dejé guardado.
+  target: guardado
+  competitor: guardao
+  relaxed: 2
+  reps: 5
+  window_s: 4
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: E01
+  layer: E
+  kind: phrase
+  text: Son las tres y media.
+  also:
+  - son las 3 y media
+  - son las 3 30
+  reps: 2
+  window_s: 6
+  block: true
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: E02
+  layer: E
+  kind: phrase
+  text: Despiértame a las siete y cuarto.
+  also:
+  - despiértame a las 7 y cuarto
+  - despiértame a las 7 15
+  reps: 2
+  window_s: 6
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: E03
+  layer: E
+  kind: phrase
+  text: Quedan quince minutos.
+  also:
+  - quedan 15 minutos
+  reps: 2
+  window_s: 6
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: E04
+  layer: E
+  kind: phrase
+  text: Es el piso veintitrés.
+  also:
+  - es el piso 23
+  reps: 2
+  window_s: 6
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: E05
+  layer: E
+  kind: phrase
+  text: Cuesta tres mil quinientos pesos.
+  also:
+  - cuesta 3500 pesos
+  - cuesta 3 500 pesos
+  reps: 2
+  window_s: 6
+  block: true
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: E06
+  layer: E
+  kind: phrase
+  text: El veintiuno de octubre.
+  also:
+  - el 21 de octubre
+  reps: 2
+  window_s: 6
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: E07
+  layer: E
+  kind: phrase
+  text: El código es cinco, nueve, cero, siete.
+  also:
+  - el código es 5 9 0 7
+  - el código es 5907
+  reps: 2
+  window_s: 6
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: F01
+  layer: F
+  kind: phrase
+  text: Ya po, dale.
+  reps: 2
+  window_s: 6
+  block: false
+  chat: true
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: F02
+  layer: F
+  kind: phrase
+  text: Sí po, guárdalo.
+  reps: 2
+  window_s: 6
+  block: true
+  chat: false
+  expect:
+    need: memory_answer
+    taste: 'no'
+    answer: accept
+- id: F03
+  layer: F
+  kind: phrase
+  text: ¿Cachai lo que te digo?
+  reps: 2
+  window_s: 6
+  block: false
+  chat: true
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: F04
+  layer: F
+  kind: phrase
+  text: Está bacán.
+  reps: 2
+  window_s: 6
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: F05
+  layer: F
+  kind: phrase
+  text: Voy al tiro.
+  reps: 2
+  window_s: 6
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: F06
+  layer: F
+  kind: phrase
+  text: Oye, ¿y qué más?
+  reps: 2
+  window_s: 6
+  block: false
+  chat: true
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: G01
+  layer: G
+  kind: phrase
+  text: Me gusta el helado… sobre todo el de limón.
+  reps: 2
+  window_s: 12
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'yes'
+    answer: none
+- id: G02
+  layer: G
+  kind: phrase
+  text: Sí, autorizo… que lo guardes.
+  reps: 2
+  window_s: 12
+  block: false
+  chat: false
+  expect:
+    need: memory_answer
+    taste: 'no'
+    answer: accept
+- id: G03
+  layer: G
+  kind: phrase
+  text: Iroko… ¿qué hora es?
+  reps: 2
+  window_s: 12
+  block: false
+  chat: true
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: G04
+  layer: G
+  kind: phrase
+  text: Prefiero el té… pero sin azúcar.
+  reps: 2
+  window_s: 12
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'yes'
+    answer: none
+- id: H01
+  layer: H
+  kind: phrase
+  text: El perro corre rápido por la carretera.
+  reps: 2
+  window_s: 6
+  block: true
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: H02
+  layer: H
+  kind: phrase
+  text: Jugamos ajedrez en junio.
+  reps: 2
+  window_s: 6
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: H03
+  layer: H
+  kind: phrase
+  text: La llave está debajo de la silla amarilla.
+  reps: 2
+  window_s: 6
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: H04
+  layer: H
+  kind: phrase
+  text: El niño pequeño soñó con una araña.
+  reps: 2
+  window_s: 6
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: H05
+  layer: H
+  kind: phrase
+  text: Compré choclo, porotos y charqui.
+  reps: 2
+  window_s: 6
+  block: false
+  chat: true
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: H06
+  layer: H
+  kind: phrase
+  text: Fuimos a la feria a comprar frutas frescas.
+  reps: 2
+  window_s: 6
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: H07
+  layer: H
+  kind: phrase
+  text: El tren llegó atrasado a la estación.
+  reps: 2
+  window_s: 6
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: H08
+  layer: H
+  kind: phrase
+  text: Hace mucho frío en el invierno.
+  reps: 2
+  window_s: 6
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: H09
+  layer: H
+  kind: phrase
+  text: Los zapatos azules están en el clóset.
+  reps: 2
+  window_s: 6
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: H10
+  layer: H
+  kind: phrase
+  text: Mañana vamos a almorzar temprano.
+  reps: 2
+  window_s: 6
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: H11
+  layer: H
+  kind: phrase
+  text: El bus pasa cada diez minutos por la esquina.
+  reps: 2
+  window_s: 6
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: H12
+  layer: H
+  kind: phrase
+  text: Las hojas secas cubren el patio.
+  reps: 2
+  window_s: 6
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: H13
+  layer: H
+  kind: phrase
+  text: Mi tío tenía una idea increíble.
+  reps: 2
+  window_s: 6
+  block: false
+  chat: false
+  expect:
+    need: protected_household
+    taste: 'no'
+    answer: none
+- id: H14
+  layer: H
+  kind: phrase
+  text: Quiero agua fría y un café.
+  reps: 2
+  window_s: 6
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none
+- id: H15
+  layer: H
+  kind: phrase
+  text: Déjalo de lado, quiero el helado.
+  reps: 2
+  window_s: 6
+  block: false
+  chat: false
+  expect:
+    need: generic_conversation
+    taste: 'no'
+    answer: none

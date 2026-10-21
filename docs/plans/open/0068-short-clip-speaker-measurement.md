@@ -1,7 +1,14 @@
 # 0068 — Short answers and the speaker check: a retry when only the voice failed, and a measurement
 
+> **Back in `NOW` since 2026-10-21:** it was paused on 2026-10-20 while
+> [Plan 0069](../completed/0069-stt-owner-voice-audit.md) measured the speech-to-text itself, and that plan
+> is closed ([ADR 0023](../../adr/0023-speech-to-text-model-and-decoding.md)). Tasks 0 to 5 are merged
+> (PR #201, `917deec`); Tasks 6 to 8 are Pipec's. Take their counts with the adopted profile in the
+> runtime `.env` (`medium` on the GPU, a 1200 ms closing silence, a 300 ms upload tail), and say so in
+> the report.
+
 > **Status:** `Ready` and `NOW` — promoted by Pipec on 2026-10-19 and executed in the same session
-> (his choice: «a final estamos en lo mismo, así vamos sumando mejoras»), after Plan 0067 merged
+> (Pipec's choice: «a final estamos en lo mismo, así vamos sumando mejoras»), after Plan 0067 merged
 > (PR #199). Written 2026-10-19 as a measurement-only draft; **rewritten the same day** after the
 > first hardware session of Plan 0067, when Pipec added the retry of Part A. Part A changes runtime
 > behavior (one fixed phrase); Part B is a measurement that changes no threshold and no enrollment.
@@ -14,7 +21,7 @@
 > `superpowers:verification-before-completion`, `superpowers:finishing-a-development-branch`. Pipec's
 > rules win: one plain branch from `main`, never a git worktree, subagents only if Pipec asks. An
 > agent never records, imitates or replays a voice and never reads the private corpus aloud; Pipec
-> runs every capture and deletes the corpus when he accepts the report. Record counts and distances
+> runs every capture and deletes the corpus once the report is accepted. Record counts and distances
 > only, never a sentence. Create and edit files with the Write and Edit tools. Run the suite with
 > `MEMORY_ENABLED=false`. Every finding met while executing is fixed (Pipec's standing policy).
 
@@ -241,7 +248,7 @@ With `MEMORY_CANDIDATES_ENABLED=true`, counts only:
 
 - [ ] `validate`, `embed`, `analyze`; Pipec reads the report. The execution record states the cells
   of D-6, sample sizes, bounds and the D-7 recommendation. After Pipec's acceptance, `discard` and
-  `cleanup` with his typed `delete`. `just gate`; docs; commit `docs: close plan 0068`; PR.
+  `cleanup` with Pipec's typed `delete`. `just gate`; docs; commit `docs: close plan 0068`; PR.
 
 ## Completion criteria
 
