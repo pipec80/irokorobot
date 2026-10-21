@@ -264,7 +264,7 @@ def _today_timings(monkeypatch: pytest.MonkeyPatch) -> None:
     """The shipped defaults, whatever a local .env says."""
     monkeypatch.setattr(settings, "vad_preroll_ms", 400)
     monkeypatch.setattr(settings, "vad_silence_ms", 800)
-    monkeypatch.setattr(settings, "vad_upload_tail_ms", None)
+    monkeypatch.setattr(settings, "vad_upload_tail_ms", 800)  # today's tail: the whole 800 ms close
 
 
 def _silent_tail_chunks(wav: bytes) -> int:
@@ -317,7 +317,22 @@ async def test_a_short_upload_tail_keeps_only_that_much_silence(close_ms: int) -
 
     clip = await audio_capture.segment_utterance(_ListSource(pattern), _LoudVad(), policy)
 
-    assert _silent_tail_chunks(clip) == round(0.3 / 0.032)
+    kept = _silent_tail_chunks(clip)
+    assert kept * 32 >= 300  # never under the 300 ms the onset and last word need
+    assert kept == 10  # 9 chunks would be 288 ms
+
+
+@pytest.mark.unit
+def test_the_tail_the_policy_is_built_with_never_exceeds_the_closing_silence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "vad_silence_ms", 1200)
+    monkeypatch.setattr(settings, "vad_upload_tail_ms", 300)
+    assert audio_capture.SegmentationPolicy.from_settings().upload_tail_ms == 300
+
+    monkeypatch.setattr(settings, "vad_silence_ms", 400)
+    monkeypatch.setattr(settings, "vad_upload_tail_ms", 500)
+    assert audio_capture.SegmentationPolicy.from_settings().upload_tail_ms == 400
 
 
 @pytest.mark.unit

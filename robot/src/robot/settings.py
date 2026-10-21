@@ -26,10 +26,10 @@ class Settings(BaseSettings):
     # inside the reply in one clip; the clip is still trimmed to the normal
     # vad_silence_ms tail on upload.
     vad_reply_silence_ms: int = 1600
-    # Plan 0069: the silent tail an uploaded clip keeps after the speech, in both modes. Unset,
-    # it is vad_silence_ms. It can only shorten the tail, and never below 300 ms (the onset and
-    # the last word need that margin).
-    vad_upload_tail_ms: int | None = Field(default=300, ge=300)
+    # Plan 0069: the silent tail an uploaded clip keeps after the speech, in both modes. It can
+    # only shorten the clip (never longer than vad_silence_ms) and never goes below 300 ms (the
+    # onset and the last word need that margin); it is rounded up to the 32 ms chunk.
+    vad_upload_tail_ms: int = Field(default=300, ge=300)
     # Plan 0067: seconds to wait for a reply to start before listening normally.
     reply_wait_s: float = 15.0
     # Not vendored in git (see .gitignore *.onnx) — fetch with

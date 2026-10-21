@@ -26,6 +26,7 @@ _DTYPE = "int16"
 #: Samples per chunk: 32 ms at 16 kHz, the chunk size Silero VAD requires.
 CHUNK_FRAMES: Final = 512
 _CHUNK_DURATION_S = CHUNK_FRAMES / _SAMPLE_RATE
+_CHUNK_MS = CHUNK_FRAMES * 1000 // _SAMPLE_RATE  # 32 ms, exact (512 frames at 16 kHz)
 
 
 @dataclass(frozen=True)
@@ -73,18 +74,15 @@ class SegmentationPolicy:
                 ``None`` keeps the normal close.
 
         Returns:
-            The policy. The tail is ``vad_upload_tail_ms`` when set, never longer than the
-            normal ``vad_silence_ms``; unset, it is ``vad_silence_ms`` (today's clips).
+            The policy. The tail is ``vad_upload_tail_ms``, never longer than the normal
+            ``vad_silence_ms``.
         """
-        tail = settings.vad_upload_tail_ms
         return cls(
             preroll_ms=settings.vad_preroll_ms,
             close_silence_ms=settings.vad_silence_ms
             if close_silence_ms is None
             else close_silence_ms,
-            upload_tail_ms=settings.vad_silence_ms
-            if tail is None
-            else min(tail, settings.vad_silence_ms),
+            upload_tail_ms=min(settings.vad_upload_tail_ms, settings.vad_silence_ms),
         )
 
 
@@ -144,7 +142,10 @@ def _trim_trailing_silence(
     Returns:
         The frames, same format, with at most the upload tail.
     """
-    surplus = closed_after_chunks - _ms_to_chunks(upload_tail_ms)
+    # Rounded up: a 300 ms tail is 10 chunks (320 ms), never 9 (288 ms), because the clip must keep
+    # at least the silence the onset and the last word need.
+    kept_chunks = max(1, -(-upload_tail_ms // _CHUNK_MS))
+    surplus = closed_after_chunks - kept_chunks
     return frames[:-surplus] if surplus > 0 else frames
 
 
@@ -155,7 +156,10 @@ async def _capture_loop(
     preroll_chunks: int,
     max_wait_chunks: int,
 ) -> list[np.ndarray]:
-    """Read chunks until an utterance closes, or return [] on onset timeout."""
+    """Read chunks until an utterance closes, or return [] on onset timeout.
+
+    Audio contract: the chunks are int16 samples, 16 000 Hz, mono.
+    """
     preroll: deque[np.ndarray] = deque(maxlen=preroll_chunks)
     frames: list[np.ndarray] = []
     silence_count = 0
