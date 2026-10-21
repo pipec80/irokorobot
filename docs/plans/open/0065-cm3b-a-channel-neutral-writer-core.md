@@ -5,8 +5,9 @@
 > same day after an independent review** that found six blockers (see *Review record*). **Blocked**
 > only by the queue: Pipec confirmed on 2026-10-16 (by taking the recommendations) the three
 > decisions ADR 0022 marked *Pipec to confirm* (migration 010 for the asserter and channel, the
-> personal provenance scenario, the homonym rule); it waits for Plan 0064 to close and for Pipec to
-> mark it `Ready` and `NOW`; to be executed in a **new session**. **Not rehearsed** in a scratch copy: the tasks below
+> personal provenance scenario, the homonym rule); Plan 0064 closed on 2026-10-19, so it now waits
+> only for Pipec to mark it `Ready` and `NOW`; to be executed in a **new session**. **Revalidated
+> against `main` on 2026-10-21** (see *Revalidation record*): nothing it edits has changed. **Not rehearsed** in a scratch copy: the tasks below
 > are specifications (files, rules, tests to write first), not rehearsed diffs. It does not require
 > Plan 0064.
 
@@ -47,7 +48,7 @@ object, owner, channel)` with the classification table, the invariants and the v
 **Spec:** [ADR 0022](../../adr/0022-household-rules-and-third-party-memory.md) (all of it),
 [ADR 0019](../../adr/0019-personal-memory-capabilities.md) §2, §3 and §6,
 [ADR 0021](../../adr/0021-memory-candidates-and-the-canonical-writer.md) decisions 5 to 8 and 13,
-`docs/evals/longitudinal-conversational-memory-evaluation.md` (the frozen gates).
+`docs/architecture/longitudinal-conversational-memory-evaluation.md` (the frozen gates).
 
 ## Task overview
 
@@ -171,8 +172,8 @@ not edited.
 - [ ] **Step 0b:** the Plan 0063 code and the documents of this plan are in `main`
   (`git fetch && git merge-base --is-ancestor <0063 squash commit> origin/main`). Otherwise stop.
 - [ ] **Step 1:** `git checkout main && git pull`, clean tree, `git checkout -b feat/0065-cm3b-a-writer-core`.
-- [ ] **Step 2:** `just gate`; record the outcome and count (the baseline of Plan 0064, if it closed
-  first, else 3217).
+- [ ] **Step 2:** `just gate`; record the outcome and count (3807 after Plan 0069, if nothing else
+  merged first; otherwise the count of `main` at that moment).
 - [ ] **Step 3: Re-audit** (each must find what the plan names): `rg -n "def assert_entity_relation"
   server/src`, `rg -n "def promote" server/src`, `rg -n "PredicateDefinition\(" server/src/server/memory/predicate_registry.py`,
   `rg -n "class AuthorizationAction" server/src`, `rg -n "_MIGRATIONS" server/src/server/db.py`,
@@ -444,6 +445,43 @@ older code), so the rollback is to leave them. Facts already written stay.
   the "are you with someone?" escalation and homonymous third parties**: Step 0.
 - **A `current_age` helper**: no consumer before CM-5.
 - **`correct` and `forget`**: CM-6.
+
+## Revalidation record (2026-10-21)
+
+Made against `main` at `68a348c` (Plan 0069 merged), five days after the plan was written, by reading
+the code and the history; nothing was executed or rehearsed in a scratch copy.
+
+- **Files.** Every file the plan names exists, except one path in the *Spec* line, which pointed to
+  `docs/evals/longitudinal-conversational-memory-evaluation.md`; the document is
+  `docs/architecture/longitudinal-conversational-memory-evaluation.md` (corrected above).
+- **What changed since 2026-10-16.** `git log` shows no commit on `relational_v4.py`,
+  `predicate_registry.py`, `memory_writer.py`, `declarative.py`, `db.py`, `cognition/authorization.py`,
+  `cognition/models.py`, `tests/integration/test_memory_writer.py`,
+  `tests/unit/test_architecture_guards.py`, `tests/evals/golden_longitudinal_memory.yaml` or
+  `scripts/longitudinal_eval_driver.py`. Only two files it touches moved: `memory/candidates.py`
+  (Plans 0066 and 0067: the offer's compare-and-set also refuses a second open offer of the same
+  person, and the open offer can be looked up without a value) and `exceptions.py` (Plan 0069 added
+  `UnclearSpeechError`). Neither collides with a task: Task 6c leaves `promote` and its callers as they
+  are, and `exceptions.py` only gains `AmbiguousEntityError` in Task 4.
+- **Anchors that still hold.** `assert_literal_fact` (`relational_v4.py:297`),
+  `assert_entity_relation` (`:459`), `get_active_literal_facts` (`:238`), `get_active_role`
+  (`household_authorization.py:76`), `AuthorizationAction` (`cognition/models.py:59`, fourteen
+  members), `LiteralFormat` with only `TEXT` and `ISO_DATE` (`predicate_registry.py:39`),
+  `_MAY_IMPORT_RAW_V4_READERS` (`test_architecture_guards.py:24`), `_MIGRATIONS` ending at version 9 so
+  **010 is the next free migration** (`db.py:36`), the channel values `voice_classic` and
+  `voice_stream` as `CandidateChannel` (`memory/candidate_types.py:59-60`, also the CHECK of migration
+  009), `AuthorizationRequest` (`cognition/authorization.py:77`), and the two tests that
+  monkeypatch `memory_writer.assert_literal_fact` and `get_active_literal_facts`
+  (`tests/integration/test_memory_writer.py`, lines 582 and 607, inside the "about lines 563 to 617" the
+  plan declares).
+- **Corrected in this revalidation.** The wrong spec path; the stale line that said the plan waits for
+  Plan 0064; the gate baseline of Task 0.
+- **Checked afterwards.** The dataset `golden_longitudinal_memory.yaml` is at version 2, which Task 7a
+  bumps to 3; no test counts the members of `AuthorizationAction` (a search for `len(` over it finds
+  none), so Task 5 adding two does not break a pin.
+- **Not checked, left to Task 0.** The matrix tests of the architecture guard that enumerate modules;
+  the cost of the third face-and-voice resolution per turn, which the roadmap keeps for the homelab.
+  The plan stays `Draft`: it is promoted to `Ready` only by Pipec.
 
 ## Review record
 
