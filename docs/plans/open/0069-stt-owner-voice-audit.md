@@ -316,8 +316,10 @@ and `.claude/rules/` (not tracked; read them from the working copy).
    holds the CPU, so a GPU configuration is judged on both the idle and the loaded figures. Capture
    conditions (D-16) are judged apart, on the block, paired by item, with the same interval.
 10. **D-10 — The prompt variant is fixed now.** `PR-vocab` = «Conversación en español de Chile con
-    Iroko, un robot doméstico: gustos, comidas, la hora y la casa. ¿Lo guardo? Sí, autorizo que lo
-    guardes.» It names no scripted value; it exists to test vocabulary and «¿?» style. `PR-none` has
+    Iroko, un robot doméstico: gustos, comidas, la hora y la casa. ¿Lo guardo? Sí. No. Autorizo.»
+    (amended 2026-10-21: the first draft held the sentence of items B10 and G02, which inflated its
+    own score; a test now fails if the prompt holds any scripted sentence of three words or more.)
+    It names no scripted sentence; it exists to test vocabulary and «¿?» style. `PR-none` has
     no prompt. `HW` passes `SHORT_REPLY_HOTWORDS` on every clip.
 11. **D-11 — The «unclear» reply (proposal; instrumentation now, rejection only on proof).**
     `avg_logprob` is a mean log-probability per token, not a calibrated probability of being right.

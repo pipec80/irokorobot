@@ -12,6 +12,8 @@ from scripts.stt_bench_configs import (
     configs,
     split_items,
 )
+from scripts.stt_corpus_models import load_script
+from scripts.stt_metrics import normalize
 from server import stt
 
 _EXPECTED_CHANGES = {
@@ -82,6 +84,19 @@ def test_every_other_configuration_changes_only_what_appendix_b_names() -> None:
 def test_the_vocabulary_prompt_names_no_scripted_value() -> None:
     assert "helado" not in PR_VOCAB_PROMPT
     assert "sabores" not in PR_VOCAB_PROMPT
+
+
+@pytest.mark.unit
+def test_the_vocabulary_prompt_holds_no_sentence_of_the_reading_script() -> None:
+    prompt = normalize(PR_VOCAB_PROMPT)
+
+    leaked = [
+        item.id
+        for item in load_script()
+        if len(item.text.split()) >= 3 and normalize(item.text) in prompt
+    ]
+
+    assert leaked == []  # a prompt that holds a scripted sentence inflates its own score
 
 
 @pytest.mark.unit

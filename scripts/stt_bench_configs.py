@@ -18,10 +18,10 @@ from server.stt import SHORT_REPLY_HOTWORDS, WhisperDecodeOptions
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-#: D-10: vocabulary and «¿?» style, fixed before measuring; it names no scripted value.
+#: D-10: vocabulary and «¿?» style, fixed before measuring; it holds no scripted sentence.
 PR_VOCAB_PROMPT: Final = (
     "Conversación en español de Chile con Iroko, un robot doméstico: gustos, comidas, la hora "
-    "y la casa. ¿Lo guardo? Sí, autorizo que lo guardes."
+    "y la casa. ¿Lo guardo? Sí. No. Autorizo."
 )
 _CPU_THREADS_TODAY: Final = 0  # CTranslate2's own default (four threads)
 _GPU_COMPUTE: Final = "int8_float16"
