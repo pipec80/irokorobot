@@ -309,7 +309,8 @@ def run_bench(
     Args:
         names: Appendix B names.
         root: The corpus root.
-        half: ``dev``, ``test`` or ``all`` (D-8; free takes are always included).
+        half: ``dev``, ``test`` or ``all`` (D-8; free takes are always included), or ``free``
+            for the spontaneous clips alone (the annotation draft).
         repeat: Passes over every clip (repeatability).
         segmentation: A replayed policy name (see ``segment_policies``), or ``None``.
         conditions: Machine conditions, recorded on every row.
@@ -322,7 +323,7 @@ def run_bench(
     """
     table = configs(stt.decode_options(settings))
     dev, test = split_items([item.id for item in load_script()])
-    keep = {"dev": dev, "test": test}.get(half)
+    keep = {"dev": dev, "test": test, "free": frozenset[str]()}.get(half)
     jobs = clip_jobs(root, load_takes(root / MANIFEST_NAME, root), keep, segmentation)
     suffix = run_id or datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
     models: dict[tuple[str, str, str, int], object] = {}
@@ -536,7 +537,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     commands = parser.add_subparsers(dest="command", required=True)
     run = commands.add_parser("run")
     run.add_argument("--configs", nargs="+", required=True)
-    run.add_argument("--half", choices=("dev", "test", "all"), default="dev")
+    run.add_argument("--half", choices=("dev", "test", "all", "free"), default="dev")
     run.add_argument("--repeat", type=int, default=2)
     run.add_argument("--segmentation", default=None)
     run.add_argument("--conditions", nargs="+", default=[])

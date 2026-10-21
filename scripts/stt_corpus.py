@@ -16,6 +16,7 @@ Usage:
     just stt-corpus capture --session s1 --condition c60 --layers ABCDE --once
     just stt-corpus free --session s4 --minutes 10
     just stt-corpus annotate --session s4
+    just stt-corpus annotate --session s4 --draft-run P0-free-STAMP
     just stt-corpus validate
     just stt-corpus expect
     just stt-corpus cleanup
@@ -38,6 +39,7 @@ import asyncio
 from collections import Counter
 from dataclasses import replace
 import io
+import json
 import logging
 import random
 import shutil
@@ -69,7 +71,7 @@ from scripts.stt_corpus_models import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
     from robot.vad import VoiceActivityDetector
 
@@ -388,14 +390,45 @@ def _play(path: Path) -> None:
     sd.wait()
 
 
-def annotate(root: Path, session: str, ask: Ask, play: Callable[[Path], None] = _play) -> int:
+def _reference_for(
+    clip_path: Path, draft: str | None, ask: Ask, play: Callable[[Path], None]
+) -> str:
+    """Play one clip until Pipec answers; with a draft, Enter confirms it and ``r`` replays."""
+    while True:
+        play(clip_path)
+        if draft is None:
+            answer = ask("Lo que dijiste (vacío repite, «inaudible» lo salta): ").strip()
+            if answer:
+                return answer
+            continue
+        answer = ask(
+            f"Whisper entendió: «{draft}»\n"
+            "Enter si es exacto · escribe lo que dijiste · r repite · inaudible lo salta: "
+        ).strip()
+        if answer.lower() == "r":
+            continue
+        return answer or draft
+
+
+def annotate(
+    root: Path,
+    session: str,
+    ask: Ask,
+    play: Callable[[Path], None] = _play,
+    drafts: Mapping[tuple[str, int], str] | None = None,
+) -> int:
     """Play each spontaneous clip to Pipec and keep the reference Pipec types (D-4).
+
+    With *drafts* (what a baseline run heard, per take and clip) Pipec confirms with Enter or
+    types a correction instead of typing every clip; the draft anchors the reference, so the
+    baseline's own errors read as fewer than they are and a candidate is never favoured by it.
 
     Args:
         root: The corpus root.
         session: The spontaneous session.
         ask: Asks Pipec a question and returns the typed answer.
         play: Plays one clip (Pipec's own voice, to Pipec).
+        drafts: What the baseline heard, keyed by (take id, clip index); ``None`` types all.
 
     Returns:
         How many clips were annotated in this run.
@@ -410,10 +443,8 @@ def annotate(root: Path, session: str, ask: Ask, play: Callable[[Path], None] = 
         for number, clip in enumerate(clips):
             if clip.reference is not None or clip.inaudible:
                 continue
-            answer = ""
-            while not answer:
-                play(resolve_corpus_path(root, clip.path))
-                answer = ask("Lo que dijiste (vacío repite, «inaudible» lo salta): ").strip()
+            draft = (drafts or {}).get((take.take_id, number))
+            answer = _reference_for(resolve_corpus_path(root, clip.path), draft, ask, play)
             continued = ask("¿La frase seguía en el clip siguiente? [s/N] ").strip().lower() == "s"
             inaudible = answer.lower() == "inaudible"
             clips[number] = Clip(
@@ -427,6 +458,25 @@ def annotate(root: Path, session: str, ask: Ask, play: Callable[[Path], None] = 
             replace_takes(manifest, root, takes)
             done += 1
     return done
+
+
+def load_drafts(root: Path, run_id: str) -> dict[tuple[str, int], str]:
+    """Read what a bench run heard on the spontaneous clips, to use as annotation drafts.
+
+    Args:
+        root: The corpus root.
+        run_id: A bench run file stem (the first repeat of each clip is used).
+
+    Returns:
+        The text per (take id, clip index), only for the free takes.
+    """
+    path = resolve_corpus_path(root, f"results/runs/{run_id}.jsonl")
+    drafts: dict[tuple[str, int], str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        row = json.loads(line) if line else {}
+        if row.get("mode") == "free" and row.get("repeat") == 1:
+            drafts[str(row["take_id"]), int(row["clip_index"])] = str(row["text"]).strip()
+    return drafts
 
 
 def validate(root: Path, items: Sequence[ScriptItem]) -> int:
@@ -535,6 +585,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     free.add_argument("--minutes", type=float, default=10.0)
     notes = commands.add_parser("annotate")
     notes.add_argument("--session", required=True)
+    notes.add_argument(
+        "--draft-run", default=None, help="a bench run whose text is the draft to confirm"
+    )
     commands.add_parser("validate")
     commands.add_parser("expect")
     commands.add_parser("cleanup")
@@ -573,7 +626,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             free_session(root, args.session, args.minutes, record_window)
             return 0
         case "annotate":
-            annotate(root, args.session, input)
+            drafts = load_drafts(root, args.draft_run) if args.draft_run else None
+            annotate(root, args.session, input, drafts=drafts)
             return 0
         case "validate":
             return validate(root, items)

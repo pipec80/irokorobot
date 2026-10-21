@@ -6,6 +6,7 @@ Audio contract: WAV · 16000 Hz · mono · int16.
 
 from dataclasses import replace
 import io
+import json
 import logging
 from pathlib import Path
 import wave
@@ -384,6 +385,72 @@ def test_annotate_keeps_the_typed_reference_the_continuation_and_inaudible(
     assert len(played) == 3  # an empty answer plays the clip again
     assert (clips[0].reference, clips[0].continued, clips[0].inaudible) == ("me gusta", True, False)
     assert (clips[1].reference, clips[1].continued, clips[1].inaudible) == (None, False, True)
+
+
+@pytest.mark.unit
+def test_annotate_with_a_draft_confirms_with_enter_and_keeps_a_correction(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "stt"
+    raw = _take((1.0, 0), (0.8, _LOUD), (2.0, 0), (0.8, _LOUD), (2.0, 0))
+    stt_corpus.free_session(root, "s4", 1.0, lambda _s, _a: raw, vad_factory=_LoudVad)
+    take_id = load_takes(root / "manifest.jsonl", root)[0].take_id
+    drafts = {(take_id, 0): "me gusta el helado", (take_id, 1): "dijo de lado"}
+    answers = _Answers("", "n", "dijo helado", "n")
+    played: list[Path] = []
+
+    done = stt_corpus.annotate(root, "s4", answers, play=played.append, drafts=drafts)
+
+    clips = load_takes(root / "manifest.jsonl", root)[0].clips
+    assert done == 2
+    assert [clip.reference for clip in clips] == ["me gusta el helado", "dijo helado"]
+    assert len(played) == 2  # Enter confirms; it never replays
+    assert "me gusta el helado" in answers.questions[0]  # the draft is what Pipec reads
+
+
+@pytest.mark.unit
+def test_annotate_with_a_draft_replays_on_r_and_skips_inaudible(tmp_path: Path) -> None:
+    root = tmp_path / "stt"
+    raw = _take((1.0, 0), (0.8, _LOUD), (2.0, 0), (0.8, _LOUD), (2.0, 0))
+    stt_corpus.free_session(root, "s4", 1.0, lambda _s, _a: raw, vad_factory=_LoudVad)
+    take_id = load_takes(root / "manifest.jsonl", root)[0].take_id
+    drafts = {(take_id, 0): "uno", (take_id, 1): "dos"}
+    played: list[Path] = []
+
+    stt_corpus.annotate(
+        root, "s4", _Answers("r", "", "n", "inaudible", "n"), play=played.append, drafts=drafts
+    )
+
+    clips = load_takes(root / "manifest.jsonl", root)[0].clips
+    assert len(played) == 3
+    assert (clips[0].reference, clips[0].inaudible) == ("uno", False)
+    assert (clips[1].reference, clips[1].inaudible) == (None, True)
+
+
+@pytest.mark.unit
+def test_drafts_are_the_first_repeat_text_of_the_free_clips_only(tmp_path: Path) -> None:
+    root = tmp_path / "stt"
+    runs = root / "results" / "runs"
+    runs.mkdir(parents=True)
+    rows = [
+        {"mode": "free", "take_id": "s4-free", "clip_index": 0, "repeat": 1, "text": " uno "},
+        {"mode": "free", "take_id": "s4-free", "clip_index": 0, "repeat": 2, "text": "otro"},
+        {"mode": "read", "take_id": "s1-x", "clip_index": 0, "repeat": 1, "text": "leido"},
+    ]
+    (runs / "R.jsonl").write_text(chr(10).join(json.dumps(row) for row in rows), encoding="utf-8")
+
+    assert stt_corpus.load_drafts(root, "R") == {("s4-free", 0): "uno"}
+
+
+@pytest.mark.unit
+def test_a_clip_without_a_draft_is_annotated_by_typing(tmp_path: Path) -> None:
+    root = tmp_path / "stt"
+    raw = _take((1.0, 0), (0.8, _LOUD), (2.0, 0))
+    stt_corpus.free_session(root, "s4", 1.0, lambda _s, _a: raw, vad_factory=_LoudVad)
+
+    stt_corpus.annotate(root, "s4", _Answers("me gusta", "n"), play=lambda _p: None, drafts={})
+
+    assert load_takes(root / "manifest.jsonl", root)[0].clips[0].reference == "me gusta"
 
 
 @pytest.mark.unit

@@ -117,6 +117,27 @@ def test_a_half_keeps_only_its_items_and_the_free_takes(
 
 
 @pytest.mark.unit
+def test_the_free_half_runs_only_the_free_takes(corpus: tuple[Path, FakeTranscriber]) -> None:
+    root, transcriber = corpus
+
+    paths = stt_bench.run_bench(
+        ["P0"],
+        root=root,
+        half="free",
+        repeat=1,
+        segmentation=None,
+        conditions=[],
+        load_model=_Loader(),
+        transcribe=transcriber,
+        run_id="f",
+    )
+
+    rows = _lines(paths[0])
+    assert rows
+    assert {row["mode"] for row in rows} == {"free"}
+
+
+@pytest.mark.unit
 def test_probe_times_a_synthetic_clip_four_times() -> None:
     transcriber = FakeTranscriber({})
 
