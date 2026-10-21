@@ -13,6 +13,7 @@ Usage:
     just stt-corpus capture --session s0 --condition c60 --block
     just stt-corpus capture --session s1 --condition c60 --style careful --max-takes 124
     just stt-corpus capture --session s1 --condition c60 --style relaxed --layers D
+    just stt-corpus capture --session s1 --condition c60 --layers ABCDE --once
     just stt-corpus free --session s4 --minutes 10
     just stt-corpus annotate --session s4
     just stt-corpus validate
@@ -157,6 +158,7 @@ def pending_items(
     condition: str,
     style: str,
     block: bool,
+    once: bool = False,
 ) -> list[ScriptItem]:
     """List what is still to read, one entry per missing take, in a session-seeded order.
 
@@ -171,6 +173,7 @@ def pending_items(
         condition: This condition (D-6).
         style: ``careful`` or ``relaxed``.
         block: Whether this is the condition block.
+        once: A single pass: each item at most once over every main take, whatever its reps.
 
     Returns:
         The items to read, repeated once per missing take, shuffled reproducibly.
@@ -184,7 +187,9 @@ def pending_items(
         and take.block == block
     )
     pending = [
-        item for item in items for _ in range(max(0, _target(item, style, block) - done[item.id]))
+        item
+        for item in items
+        for _ in range(max(0, (1 if once else _target(item, style, block)) - done[item.id]))
     ]
     seed = zlib.crc32(f"{session}:{condition}:{style}".encode())
     random.Random(seed).shuffle(pending)  # noqa: S311 -- a reproducible reading order, not security
@@ -249,6 +254,7 @@ def capture_session(
     recorder: Recorder,
     ask: Ask,
     vad_factory: Callable[[], VoiceActivityDetector] | None = None,
+    once: bool = False,
 ) -> int:
     """Read the pending items aloud, one take each, and keep them.
 
@@ -263,6 +269,7 @@ def capture_session(
         recorder: Records one take: (window seconds, api) to int16 16 kHz mono samples.
         ask: Asks Pipec a question and returns the typed answer.
         vad_factory: Builds a fresh VAD per utterance (``None``: the robot's engine).
+        once: A single pass: each item once, whatever its reps (see ``pending_items``).
 
     Returns:
         How many takes were kept.
@@ -270,7 +277,7 @@ def capture_session(
     policy = SegmentationPolicy.from_settings()
     takes = load_takes(root / MANIFEST_NAME, root)
     pending = pending_items(
-        items, takes, session=session, condition=condition, style=style, block=block
+        items, takes, session=session, condition=condition, style=style, block=block, once=once
     )
     kept = 0
     for item in pending[:max_takes]:
@@ -522,6 +529,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     capture.add_argument("--layers", default="ABCDEFGH")
     capture.add_argument("--block", action="store_true")
     capture.add_argument("--max-takes", type=int, default=None)
+    capture.add_argument("--once", action="store_true", help="read each item once, not its reps")
     free = commands.add_parser("free")
     free.add_argument("--session", required=True)
     free.add_argument("--minutes", type=float, default=10.0)
@@ -556,6 +564,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 style=args.style,
                 block=args.block,
                 max_takes=args.max_takes,
+                once=args.once,
                 recorder=record_window,
                 ask=input,
             )

@@ -9,6 +9,20 @@
 > Pipec authorized an isolated GPU virtual environment in the scratchpad (D-15) and prepares the
 > laptop for every timed run (charger, the Windows maximum-performance power plan, Chrome closed,
 > server stopped). **Not rehearsed.**
+>
+> **Scope trimmed by Pipec on 2026-10-21, after the pilot** (the plan allows it once an effect is
+> obvious; the pilot showed the misses on short answers, the «helado»/«de lado» pair and numbers).
+> The goal is a small `small`-sized model that works well on a shared 2 GB laptop and enrols one
+> user, not a statistical study. **Kept:** the pilot (as the block's `c60` cell), one session `s1`
+> with layers A to E once each (`capture --layers ABCDE --once`, 60 takes), the block at `c15` and
+> `c30` (the distance that matters for the Pi's microphone), a 5-minute spontaneous session `s4`,
+> and a bench limited to the large levers (model, prompt and hotwords, silence filter, the unclear
+> threshold of D-11). **Dropped:** session `s2`, the conditions `c60-noenh`, `c60-wasapi`,
+> `c60-noise` and `c60-fast` (their hardware does not carry to the Pi), layers F, G and H, and the
+> other bench configurations. With one session and a lighter bench the intervals are wide: D-9
+> still decides adoption, but a difference it cannot separate from noise is reported as such, never
+> adopted. Task 14 (`cuda` extra) and Task 15 (WASAPI on the robot) stay out unless the evidence
+> asks for them.
 
 > **For agentic workers:** if the status above does not say `Ready`, stop. REQUIRED SUB-SKILLS:
 > `superpowers:executing-plans`, `superpowers:test-driven-development`,

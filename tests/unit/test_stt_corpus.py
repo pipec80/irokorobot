@@ -304,6 +304,20 @@ def test_block_takes_do_not_count_toward_the_main_reps() -> None:
 
 
 @pytest.mark.unit
+def test_a_single_pass_wants_each_item_once_and_resumes() -> None:
+    items = [_item(reps=5), _item("A02", reps=2), _item("A03", reps=1)]
+
+    def pending(takes: list[Take]) -> list[str]:
+        found = stt_corpus.pending_items(
+            items, takes, session="s1", condition="c60", style="careful", block=False, once=True
+        )
+        return sorted(item.id for item in found)
+
+    assert pending([]) == ["A01", "A02", "A03"]  # not 5 + 2 + 1
+    assert pending([_read_take("A01", session="s1", block=False)]) == ["A02", "A03"]
+
+
+@pytest.mark.unit
 def test_the_block_wants_each_item_once_per_condition_over_every_session() -> None:
     items = [_item(block=True), _item("A02", block=True), _item("A03")]
     takes = [
