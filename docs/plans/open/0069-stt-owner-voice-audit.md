@@ -396,7 +396,7 @@ and `.claude/rules/` (not tracked; read them from the working copy).
 19. **D-19 — Latency under load.** The logs show STT medians of 2.0 s one day and 6.3 s the next on
     the same machine; the suspected cause, contention with the model's background work, is unproven.
     Task 11 times `P0` (and the best GPU configuration, if any) on the dev half twice: idle, and while
-    `just eval-chat --mode stream --runs 20` keeps Ollama generating in another terminal. Both figures go in the
+    `just eval-chat --mode stream --runs 10` keeps Ollama generating in another terminal. Both figures go in the
     record; this measures the laptop, and the homelab stays PC-5's.
 20. **D-20 — An outside reference, optional (Pipec's choice).** Pipec may read the 24 block items
     into the dictation tool Pipec already uses and save its text output in a private file; the bench
@@ -783,7 +783,7 @@ The agent gives the exact commands, one session at a time, and never runs them.
   stage 2: `C1` and `P0` once on the test half. `calibrate` on the configuration that will be
   adopted. `just stt-text-arm` on `P0` and `C1`. `just probe-stt noise --clips 100` with the
   `C1` settings in a temporary `.env` override (Pipec sets the variables; the agent never reads
-  `.env`). Latency under load (D-19): Pipec starts `just eval-chat --mode stream --runs 20` in another
+  `.env`). Latency under load (D-19): Pipec starts `just eval-chat --mode stream --runs 10` in another
   terminal (Ollama up; restarted if it ends before the timing does), and the agent times `P0` and the best GPU configuration on the dev half with
   `--conditions loaded`. If D-20 was done, `report --external` adds the outside reference.
 - [ ] Write `docs/evals/0069-stt-owner-voice.md`: machine conditions, n per table, `P0` per layer and
