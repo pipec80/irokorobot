@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import re
 import sys
+from typing import Final
 import unicodedata
 import wave
 
@@ -334,6 +335,25 @@ def _normalize_words(text: str) -> str:
     return " ".join(re.sub(r"[\W_]+", " ", unaccented).split())
 
 
+#: The domain Whisper writes on audio with no speech in it (its training data ends many videos
+#: with «Subtítulos por la comunidad de Amara.org»). Observed on the owner's laptop on a clip of
+#: low murmurs (Plan 0069): the robot answered it as if it had been said. Nobody says a web
+#: domain to a robot, so a transcript that holds it is treated as silence.
+_SUBTITLE_HALLUCINATION: Final = "amara org"
+
+
+def is_known_hallucination(transcript: str) -> bool:
+    """Return whether Whisper wrote its well-known subtitle credit instead of speech.
+
+    Args:
+        transcript: Text Whisper returned.
+
+    Returns:
+        True when the transcript names the ``amara.org`` subtitle credit.
+    """
+    return _SUBTITLE_HALLUCINATION in _normalize_words(transcript)
+
+
 def is_prompt_echo(transcript: str, prompt: str | None) -> bool:
     """Return whether Whisper merely repeated its own initial prompt.
 
@@ -420,7 +440,8 @@ def _transcribe_sync(audio: bytes, hotwords: str | None) -> str:
         hotwords: Merged hotwords string, or ``None``.
 
     Returns:
-        Transcribed text, or ``""`` when Whisper only echoed its initial prompt.
+        Transcribed text, or ``""`` when Whisper only echoed its initial prompt or wrote its
+        known subtitle credit.
 
     Raises:
         TranscriptionError: If audio cannot be processed.
@@ -431,6 +452,9 @@ def _transcribe_sync(audio: bytes, hotwords: str | None) -> str:
     transcript = _whisper_transcript(audio, hotwords)
     if is_prompt_echo(transcript.text, settings.whisper_initial_prompt):
         logger.warning("Whisper returned its own initial prompt — transcript discarded")
+        return ""
+    if is_known_hallucination(transcript.text):
+        logger.warning("Whisper returned a known Whisper hallucination — transcript discarded")
         return ""
     unclear = bool(transcript.text.strip()) and is_unclear(
         transcript.confidence, settings.whisper_unclear_logprob

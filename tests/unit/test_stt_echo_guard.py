@@ -124,3 +124,39 @@ def test_the_discard_is_logged_without_the_transcript(
 
     assert "discarded" in caplog.text
     assert "robot" not in caplog.text
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "heard",
+    [
+        "Subtítulos por la comunidad de Amara.org",
+        "subtítulos realizados por la comunidad de amara.org.",
+        "  ¡Subtítulos por la comunidad de Amara.org! ",
+    ],
+)
+def test_a_known_subtitle_hallucination_is_discarded_as_silence(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, heard: str
+) -> None:
+    monkeypatch.setattr(stt, "_get_model", lambda: _FakeModel(heard))
+    monkeypatch.setattr(stt.settings, "whisper_initial_prompt", _PROMPT)
+
+    with caplog.at_level("WARNING", logger="server.stt"):
+        assert stt._transcribe_sync(b"\x00" * 64, None) == ""
+
+    assert "known Whisper hallucination" in caplog.text
+    assert "Amara" not in caplog.text  # the transcript itself is never logged
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "heard",
+    ["Pon los subtítulos en la tele", "Amara me llamó ayer", "Quiero ver una comunidad de vecinos"],
+)
+def test_ordinary_speech_that_shares_words_with_the_hallucination_is_kept(
+    monkeypatch: pytest.MonkeyPatch, heard: str
+) -> None:
+    monkeypatch.setattr(stt, "_get_model", lambda: _FakeModel(heard))
+    monkeypatch.setattr(stt.settings, "whisper_initial_prompt", _PROMPT)
+
+    assert stt._transcribe_sync(b"\x00" * 64, None) == heard
