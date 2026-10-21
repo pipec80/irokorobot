@@ -40,14 +40,12 @@ if __package__ in (None, ""):
 import argparse  # after the sys.path bootstrap, by design
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, replace
-import io
 import json
 import logging
 import queue
 import re
 import time
 from typing import TYPE_CHECKING, Protocol
-import wave
 
 from faster_whisper import WhisperModel
 import numpy as np
@@ -62,6 +60,7 @@ from scripts.stt_audio_levels import (
     level_report,
     level_verdicts,
     to_contract,
+    wav_bytes,
 )
 from scripts.stt_corpus_models import STT_CORPUS_ROOT
 from server import stt
@@ -291,17 +290,6 @@ def _warn_if_lost(overflows: int, audio_s: float, elapsed_s: float) -> None:
         )
 
 
-def _wav(samples: np.ndarray) -> bytes:
-    """Encode int16 samples as WAV bytes — 16 kHz, mono, int16."""
-    buffer = io.BytesIO()
-    with wave.open(buffer, "wb") as handle:
-        handle.setnchannels(1)
-        handle.setsampwidth(2)
-        handle.setframerate(CONTRACT_RATE)
-        handle.writeframes(samples.astype(np.int16).tobytes())
-    return buffer.getvalue()
-
-
 def _take_path(name: str) -> Path:
     """Return the saved take's path; a name that is not plain is refused."""
     if not _TAKE_NAME.fullmatch(name):
@@ -355,7 +343,7 @@ def _transcribe(samples: np.ndarray, args: argparse.Namespace) -> None:
     )
     options = whisper_options(args, stt.decode_options(settings))
     hotwords = " ".join(args.hotwords) if args.hotwords else None
-    transcript = stt.run_whisper(model, _wav(samples), options, hotwords)
+    transcript = stt.run_whisper(model, wav_bytes(samples), options, hotwords)
     confidence = transcript.confidence
     logprob = "none" if confidence is None else f"{confidence.avg_logprob:.3f}"
     print(f"heard: {transcript.text or '(nothing)'}")  # noqa: T201 -- the operator's own take
@@ -390,7 +378,7 @@ def _record_take(args: argparse.Namespace) -> int:
         target.parent.mkdir(parents=True, exist_ok=True)
         if args.replace:
             target.unlink(missing_ok=True)
-        write_new_file_atomic(target, _wav(samples))
+        write_new_file_atomic(target, wav_bytes(samples))
         logger.info("take saved under the private corpus root")
     if args.transcribe:
         _transcribe(samples, args)

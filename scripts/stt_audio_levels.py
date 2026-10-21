@@ -11,7 +11,9 @@ Audio contract of every array returned: 16 000 Hz, mono, int16.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import io
 import math
+import wave
 
 import numpy as np
 import soxr
@@ -123,3 +125,21 @@ def to_contract(samples: np.ndarray, source_rate: int, channels: int) -> np.ndar
     if source_rate != CONTRACT_RATE:
         mono = soxr.resample(mono, source_rate, CONTRACT_RATE, quality="HQ")
     return np.round(np.clip(mono, -1.0, 1.0) * 32767).astype(np.int16)
+
+
+def wav_bytes(samples: np.ndarray) -> bytes:
+    """Encode int16 samples as WAV bytes — 16 000 Hz, mono, int16.
+
+    Args:
+        samples: Int16 mono samples at 16 kHz.
+
+    Returns:
+        The WAV file's bytes in the audio contract's format.
+    """
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(CONTRACT_RATE)
+        handle.writeframes(samples.astype(np.int16).tobytes())
+    return buffer.getvalue()

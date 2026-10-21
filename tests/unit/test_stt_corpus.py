@@ -485,3 +485,34 @@ def test_cleanup_deletes_the_corpus_on_the_exact_word(tmp_path: Path) -> None:
 
     assert stt_corpus.cleanup(root, ask=lambda _q: "delete") == 0
     assert not root.exists()
+
+
+@pytest.mark.unit
+def test_the_corpus_root_is_anchored_to_the_repository_not_to_the_working_directory() -> None:
+    from scripts.stt_corpus_models import STT_CORPUS_ROOT  # noqa: PLC0415 -- the constant itself
+
+    repository = Path(__file__).resolve().parents[2]
+
+    assert repository / "project-history" / "calibration" / "stt" == STT_CORPUS_ROOT
+
+
+@pytest.mark.unit
+def test_an_empty_draft_is_annotated_by_typing_not_stored_as_an_empty_reference(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "stt"
+    raw = _take((1.0, 0), (0.8, _LOUD), (2.0, 0))
+    stt_corpus.free_session(root, "s4", 1.0, lambda _s, _a: raw, vad_factory=_LoudVad)
+    take_id = load_takes(root / "manifest.jsonl", root)[0].take_id
+    played: list[Path] = []
+
+    stt_corpus.annotate(
+        root,
+        "s4",
+        _Answers("", "me gusta", "n"),  # Enter on an empty draft plays again; then the typed line
+        play=played.append,
+        drafts={(take_id, 0): ""},
+    )
+
+    assert load_takes(root / "manifest.jsonl", root)[0].clips[0].reference == "me gusta"
+    assert len(played) == 2

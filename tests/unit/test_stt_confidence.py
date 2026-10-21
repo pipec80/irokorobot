@@ -141,3 +141,15 @@ def test_the_confidence_record_has_numbers_and_no_text(
     assert record.after_vad_s == pytest.approx(1.0)  # type: ignore[attr-defined]  # log extra
     assert record.unclear is False  # type: ignore[attr-defined]  # log extra
     assert _SENTINEL not in caplog.text
+
+
+@pytest.mark.unit
+async def test_the_unclear_error_crosses_the_executor_to_the_caller(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _use(monkeypatch, f"me gusta el {_SENTINEL}", -1.5, -1.0)
+
+    with pytest.raises(UnclearSpeechError) as raised:
+        await stt.transcribe(b"\x00" * 64)  # the real coroutine and thread pool, a fake model
+
+    assert raised.value.text == f"me gusta el {_SENTINEL}"

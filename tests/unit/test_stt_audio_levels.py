@@ -3,10 +3,19 @@
 Synthetic signals only. Audio contract: WAV · 16000 Hz · mono · int16.
 """
 
+import io
+import wave
+
 import numpy as np
 import pytest
 
-from scripts.stt_audio_levels import LevelReport, level_report, level_verdicts, to_contract
+from scripts.stt_audio_levels import (
+    LevelReport,
+    level_report,
+    level_verdicts,
+    to_contract,
+    wav_bytes,
+)
 
 _RATE = 16_000
 _FULL_SCALE = 32768.0
@@ -104,3 +113,16 @@ def test_to_contract_downsamples_stereo_and_keeps_the_tone(source_rate: int) -> 
 def test_to_contract_rejects_a_mismatched_channel_count() -> None:
     with pytest.raises(ValueError, match="channels"):
         to_contract(np.zeros((480, 3), dtype=np.float32), 48_000, channels=2)
+
+
+@pytest.mark.unit
+def test_wav_bytes_encode_the_contract_format() -> None:
+    samples = (1000 * np.sin(2 * np.pi * 440 * np.arange(1600) / 16_000)).astype(np.int16)
+
+    with wave.open(io.BytesIO(wav_bytes(samples)), "rb") as handle:
+        assert (handle.getframerate(), handle.getnchannels(), handle.getsampwidth()) == (
+            16_000,
+            1,
+            2,
+        )
+        assert np.array_equal(np.frombuffer(handle.readframes(1600), dtype=np.int16), samples)

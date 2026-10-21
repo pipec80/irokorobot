@@ -131,3 +131,16 @@ def test_the_unclear_reply_stays_off_without_enough_errors(
 
     assert "stays off" in text
     assert "fewer than 30" in text
+
+
+@pytest.mark.unit
+def test_calibration_pairs_leave_out_split_takes(corpus: tuple[Path, dict[int, str]]) -> None:
+    root, heard = corpus
+    run = stt_bench_report.score_run(root, _run(root, "P0", FakeTranscriber(heard)))
+
+    pairs = stt_bench_report.calibration_pairs(run)
+
+    split = {take.take_id for take in run.takes if take.split}
+    assert split  # the fixture holds one take that came in two clips
+    assert {take.take_id for take, _pair in pairs}.isdisjoint(split)
+    assert len(pairs) == len([t for t in run.takes if not t.split and t.logprob is not None])

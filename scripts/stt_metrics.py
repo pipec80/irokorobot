@@ -388,7 +388,12 @@ def calibrate_threshold(
         The threshold, the test false-reject and catch rates and the test counts.
     """
     candidates = sorted({score for score, _ in dev} | {-math.inf})
-    threshold = max(t for t in candidates if not _reject_rates(dev, t)[0] > max_false_reject)
+    if not any(ok for _, ok in dev):
+        threshold = (
+            -math.inf
+        )  # no correct dev clip, so no false-reject rate to budget: reject nothing
+    else:
+        threshold = max(t for t in candidates if not _reject_rates(dev, t)[0] > max_false_reject)
     false_reject, catch = _reject_rates(test, threshold)
     return CalibrationResult(
         threshold=threshold,

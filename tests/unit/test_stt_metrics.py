@@ -154,3 +154,14 @@ def test_calibration_picks_the_highest_threshold_within_the_false_reject_budget(
     assert result.false_reject == pytest.approx(1 / 20)
     assert result.catch == pytest.approx(2 / 3)
     assert (result.n_correct, result.n_wrong) == (20, 3)
+
+
+@pytest.mark.unit
+def test_calibration_without_a_correct_dev_clip_rejects_nothing() -> None:
+    dev = [(-0.2, False), (-0.9, False)]  # no correct clip: no false-reject rate to budget
+    test = [(-0.3, True), (-0.8, False)]
+
+    result = calibrate_threshold(dev, test)
+
+    assert result.threshold == float("-inf")
+    assert (result.false_reject, result.catch) == (0.0, 0.0)

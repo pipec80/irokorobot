@@ -57,7 +57,7 @@ from scripts.speaker_calibration_corpus import (
     sha256_of_file,
     write_new_file_atomic,
 )
-from scripts.stt_audio_levels import CONTRACT_RATE, level_report, level_verdicts
+from scripts.stt_audio_levels import CONTRACT_RATE, level_report, level_verdicts, wav_bytes
 from scripts.stt_corpus_models import (
     MANIFEST_NAME,
     STT_CORPUS_ROOT,
@@ -126,17 +126,6 @@ def segment_take(
     return clips
 
 
-def _wav(samples: np.ndarray) -> bytes:
-    """Encode int16 samples as WAV bytes — 16 kHz, mono, int16."""
-    buffer = io.BytesIO()
-    with wave.open(buffer, "wb") as handle:
-        handle.setnchannels(1)
-        handle.setsampwidth(2)
-        handle.setframerate(CONTRACT_RATE)
-        handle.writeframes(samples.astype(np.int16).tobytes())
-    return buffer.getvalue()
-
-
 def _samples(wav_bytes: bytes) -> np.ndarray:
     with wave.open(io.BytesIO(wav_bytes), "rb") as handle:
         return np.frombuffer(handle.readframes(handle.getnframes()), dtype=np.int16)
@@ -202,7 +191,7 @@ def _save(root: Path, take: Take, raw: np.ndarray, clips: list[bytes]) -> Take:
     """Write the raw take and its clips, then append the manifest line."""
     raw_path = resolve_corpus_path(root, take.raw_path)
     raw_path.parent.mkdir(parents=True, exist_ok=True)
-    write_new_file_atomic(raw_path, _wav(raw))
+    write_new_file_atomic(raw_path, wav_bytes(raw))
     saved: list[Clip] = []
     for number, clip in enumerate(clips, 1):
         relative = f"clips/{take.take_id}-{number}.wav"
@@ -443,7 +432,7 @@ def annotate(
         for number, clip in enumerate(clips):
             if clip.reference is not None or clip.inaudible:
                 continue
-            draft = (drafts or {}).get((take.take_id, number))
+            draft = (drafts or {}).get((take.take_id, number)) or None  # an empty draft is no draft
             answer = _reference_for(resolve_corpus_path(root, clip.path), draft, ask, play)
             continued = ask("¿La frase seguía en el clip siguiente? [s/N] ").strip().lower() == "s"
             inaudible = answer.lower() == "inaudible"

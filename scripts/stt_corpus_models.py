@@ -17,7 +17,11 @@ import yaml
 
 from scripts.speaker_calibration_corpus import resolve_corpus_path, swap_into_place
 
-STT_CORPUS_ROOT: Final = Path("project-history/calibration/stt")
+# Anchored to the repository, not to the working directory: a tool run from another folder must
+# not write the private corpus (or delete a folder) under that folder.
+STT_CORPUS_ROOT: Final = (
+    Path(__file__).resolve().parents[1] / "project-history" / "calibration" / "stt"
+)
 SCRIPT_PATH: Final = Path("tests/evals/stt_reading_script.yaml")
 MANIFEST_NAME: Final = "manifest.jsonl"
 LAYERS: Final = frozenset("ABCDEFGH")

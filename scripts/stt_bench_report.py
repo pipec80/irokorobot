@@ -372,6 +372,27 @@ def _rejected(scored: Sequence[tuple[float, bool]], threshold: float) -> float:
     return sum(score < threshold for score in correct) / len(correct) if correct else math.nan
 
 
+def calibration_pairs(run: RunScores) -> list[tuple[TakeScore, tuple[float, bool]]]:
+    """Pair each take's confidence with whether it was fully correct, on the gate's own unit.
+
+    The server's gate acts on one clip, so only takes that came in one clip qualify: a split
+    take's clips are scored jointly and the first clip's confidence says nothing about the
+    others.
+
+    Args:
+        run: A scored run.
+
+    Returns:
+        (take, (the clip's mean log-probability, fully correct)) for each unsplit take with a
+        confidence.
+    """
+    return [
+        (take, (take.logprob, take.errors == 0))
+        for take in run.takes
+        if take.logprob is not None and not take.split
+    ]
+
+
 def render_calibration(root: Path, run_id: str) -> str:
     """Calibrate the unclear-speech threshold on dev and judge it on test (D-11).
 
@@ -384,7 +405,7 @@ def render_calibration(root: Path, run_id: str) -> str:
     """
     run = score_run(root, run_id)
     dev_ids, _test_ids = split_items([item.id for item in load_script()])
-    scored = [(t, (t.logprob, t.errors == 0)) for t in run.takes if t.logprob is not None]
+    scored = calibration_pairs(run)
     dev = [pair for t, pair in scored if t.item_id in dev_ids]
     test = [pair for t, pair in scored if t.item_id not in dev_ids]
     test_b = [pair for t, pair in scored if t.item_id not in dev_ids and t.layer == "B"]
