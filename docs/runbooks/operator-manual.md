@@ -134,18 +134,18 @@ signals read against rules fixed in advance (see the
 The server ships with the CPU profile (`small`, `int8`, `cpu`), which needs nothing extra. Measured
 on the owner's voice with the laptop's microphone (a 2 GB MX450, Ollama running beside it):
 
-| Profile | Word errors (held-out half) | Median / p90 per clip, idle | Median / p90 with Ollama busy | VRAM |
+| Profile | Word errors (test half) | Median / p90 per clip, idle | Median / p90 with Ollama busy | VRAM |
 |---|---|---|---|---|
 | CPU `small` (default) | 15.4 % | 2.7 / 3.0 s | **8.7 / 15.3 s** | — |
 | GPU `small` | 15.8 % | 0.9 / 1.2 s | 1.4 / 1.9 s | 0.7 GB |
 | GPU `medium` (recommended) | **6.8 %** | 2.5 / 3.2 s | 3.0 / 4.0 s | 1.25 GB (1.8 GB used with Ollama) |
 
-On the short answers («sí», «no», «autorizo»…) `medium` misreads 3 in 100 and the other two profiles
-26 to 29 in 100. The CPU profile loses to Ollama because both fight for the same processor; the GPU does
+On the short answers («sí», «no», «autorizo»…, 35 reference words on the test half) `medium` misread 1 word
+and the other two profiles 9 and 10: a small sample, but the intervals do not overlap. The CPU profile loses to Ollama because both fight for the same processor; the GPU does
 not. To switch (the agent never edits your `.env`):
 
 1. `uv sync --all-packages --all-groups --extra cuda` (adds the cuBLAS wheels; the code registers
-   their folders itself, nothing goes on `PATH`).
+   their folders itself and puts them on the process's `PATH`, so there is nothing for you to set).
 2. In the server's `.env`: `WHISPER_MODEL=medium`, `WHISPER_DEVICE=cuda`,
    `WHISPER_COMPUTE_TYPE=int8_float16`. Use `WHISPER_MODEL=small` for the fast profile. Restart the
    server; the first start downloads the model if it is not cached.
@@ -165,7 +165,7 @@ old `.env` that still sets it keeps working.
 `temperature`, `segments`, `clip_s`, `after_vad_s` and `unclear`. On 48 spontaneous clips the
 doubtful ones were wrong only about half the time and rejecting the 6 lowest would have dropped 3 correct clips, so
 no threshold met the plan's rule (at most 5 % of correct clips rejected, at least half of the errors
-caught). In the live runs `-0.9` flagged the one murmured turn of 31 and none of the 30 real ones, but
+caught). In the live runs `-0.9` flagged one of the two murmured clips and none of the 30 real turns, but
 it asks for a repeat on about one correct long clip in ten. Look at the logged figures after more real
 use before making it a default.
 

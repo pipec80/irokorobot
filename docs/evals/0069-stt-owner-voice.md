@@ -74,6 +74,11 @@ items and its first score (13 %) was void; the prompt now holds single words onl
 
 ## Stage 2 — test half (D-9)
 
+The test half includes the 24 pilot takes at 60 cm and the 15 and 30 cm block takes of its items as well as the
+main-session takes, while stage 1's dev half was recorded before the block and holds 60 cm takes only, so the
+dev `P0` (12.6 %) and the test `P0` (15.4 %) are not comparable with each other; each is compared with its own
+candidates.
+
 57 read takes, 221 reference words, once each. `C1` = `G-small` with a 1200 ms closing silence and a
 300 ms upload tail. `C2` = `medium`, CUDA int8_float16, retry temperature fixed at 0, same segmentation.
 `C2` was fixed after `C1` and the test half was already seen for `C1`: a second look, disclosed in the
@@ -82,11 +87,11 @@ plan.
 | | `P0` | `C1` | `C2` |
 |---|---|---|---|
 | WER | 15.4 % | 15.8 % | **6.8 %** |
-| Difference against `P0` | — | +0.5 [−2.6, +3.0] | **−8.6 [−15.2, −1.8]** (MAPSSWE p 0.011) |
+| Difference against `P0` | — | +0.5 [−2.6, +3.0] | **−8.6 [−15.2, −1.8]** (MAPSSWE p 0.011; a paired z on clips that ignores item clustering, so the bootstrap interval is the figure to trust) |
 | Exact takes | 36 of 57 | 36 of 57 | 47 of 57 |
 | Wrong takes, difference | — | +0.0 [−5.1, +5.0] | −19.3 [−34.9, −7.5] |
 | Critical-term takes, difference | — | 0 [0, 0] | −7.0 [−22.2, 0.0] |
-| Layer B (short answers) WER | 25.7 % | 28.6 % | **2.9 %** |
+| Layer B (short answers) WER | 25.7 % | 28.6 % | **2.9 %** (1 of 35 words; Wilson about 0.5–15 %, against 9 of 35, about 14–42 %) |
 | Minimal pairs right | 10 of 14 | 11 of 14 | 13 of 14 |
 | Wrong numbers / first word lost | 4 / 2 | 4 / 2 | 0 / 0 |
 | Empty transcripts | 0 | 0 | 0 |
@@ -160,14 +165,15 @@ silence.
 Built, logged (`stt.confidence`) and off by default. The plan's rule (at most 5 % of correct clips rejected,
 at least half of the errors caught, at least 30 errors on the test half) is not met: no threshold separates
 the errors on the spontaneous clips, and the test half holds fewer than 30 wrong clips. In the live runs,
-31 turns had a median confidence of −0.36 and only the murmur fell under −0.6, so `-0.9` flags that turn
-and none of the 30 real ones, while on the 48 spontaneous clips it flags 6 (3 correct, about 9 % of the
-correct ones). Pipec set `WHISPER_UNCLEAR_LOGPROB=-0.9` in the runtime `.env` to try it; the code default
+31 turns had a median confidence of −0.36 and one murmured clip fell under −0.6 (the other murmured clip, the
+subtitle credit, scored −0.33, as high as real speech), so `-0.9` flags one of the two murmurs and none of
+the 30 real turns, while on the 48 spontaneous clips (`small`'s, draft-anchored; there is no `medium` data on
+long clips) it flags 6 (3 correct, about 9 % of the correct ones). Pipec set `WHISPER_UNCLEAR_LOGPROB=-0.9` in the runtime `.env` to try it; the code default
 stays off.
 
 ## Whisper's marks and the taste gate (D-12)
 
-Statement takes of layer A written with «?» or «¿»: 0 of 17 with `medium`, 0 of 13 with `small`. Question
+Statement takes of layer A written with «?» or «¿»: 0 of 17 with `medium`, 0 of 13 with `small` (rule of three: a 95 % upper bound of about 18 % and 23 %; the plan's *Why* records one such statement in the 2026-10-19 session, so the risk is small, not nil). Question
 takes written without them: 3 of 10 and 4 of 6. The direction that would cost a taste did not occur, so
 the gate stays as it is (Task 13 not done, Pipec agreed) and the intonation work remains out of scope (D-1).
 

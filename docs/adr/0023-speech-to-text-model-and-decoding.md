@@ -21,14 +21,16 @@ with Pipec's own voice through the robot's capture chain: a reading script, a pr
 continuous raw takes, a deterministic bench that runs the production decode function, and a text arm
 that separates «Whisper misheard» from «the rest misread».
 
-What the measurements showed (held-out half, `small` on the CPU as it was): 15.4 % of the words wrong and
-25.7 % on the short answers («sí», «no», «autorizo»); under load from Ollama a median 8.7 s per clip
+What the measurements showed (test half, 57 takes, `small` on the CPU as it was): 15.4 % of the words wrong and
+25.7 % (9 of 35 reference words) on the short answers («sí», «no», «autorizo»); under load from Ollama a median 8.7 s per clip
 (worst 90 s). The model was the only link whose change separated from noise.
 
 ## Decisions
 
-1. **The recommended profile is `medium`, CUDA, `int8_float16`.** On the held-out half it has 6.8 % WER
-   (against 15.4 %), 2.9 % on the short answers (against 25.7 %), no wrong number and no lost first word,
+1. **The recommended profile is `medium`, CUDA, `int8_float16`.** On the test half it has 6.8 % WER
+   (against 15.4 %; the half had already been scored for the first candidate, so this is a second look at
+   it, disclosed in the plan), 2.9 % on the short answers (1 of 35 words, about 0.5–15 %, against 9 of 35,
+   about 14–42 %: a small sample whose intervals do not overlap), no wrong number and no lost first word,
    at a median 2.99 s and p90 4.0 s per clip with Ollama busy, and 1.25 GB of VRAM. `small` on the GPU
    (same accuracy as today, 1.4 s median under load) is the fast alternative. **The code's default stays
    `small`, `int8`, CPU**: the GPU needs the optional `cuda` extra of `server` and not every host has
@@ -50,15 +52,19 @@ What the measurements showed (held-out half, `small` on the CPU as it was): 15.4
    Silero detector closed turns correctly through synthetic steady noise up to −25 dBFS; it was not
    tested with speech-like noise.
 5. **The «No te entendí bien. ¿Me lo repites?» reply exists and is off by default**
-   (`WHISPER_UNCLEAR_LOGPROB`). Whisper's mean log-probability separates a murmur from speech in the live
-   runs (−0.98 against −0.5 or better on 30 turns) but not on the 48 long spontaneous clips, so the plan's
-   rule (at most 5 % of correct clips rejected, at least half of the errors caught) is not met. Pipec
-   runs `-0.9` to try it. Every clip logs one `stt.confidence` line, without text, to calibrate it later.
+   (`WHISPER_UNCLEAR_LOGPROB`). Of the two murmured clips of the live runs, Whisper's mean log-probability
+   marked one (−0.98 against −0.5 or better on 30 real turns) and missed the other (the subtitle credit of
+   decision 6, at −0.33, as confident as real speech); it does not separate the errors on the 48 long
+   spontaneous clips either, so the plan's rule (at most 5 % of correct clips rejected, at least half of
+   the errors caught) is not met. The figures come from `small`'s clips and 31 live `medium` turns; there
+   is no `medium` data on long clips. Pipec runs `-0.9` to try it. Every clip logs one `stt.confidence` line, without text, to calibrate it later.
 6. **A transcript that names `amara.org` is discarded as silence**, like a prompt echo. It is the credit
    Whisper writes on audio without speech; the robot answered it as if it had been said.
 7. **The taste gate keeps refusing a text with «?» or «¿»** (ADR 0021, decision 4). Measured both ways on
-   the A pairs: 0 of 17 statements were written with a question mark; 3 of 10 questions were written
-   without one, so a word rule could turn a question into a taste. Intonation stays out of scope.
+   the A pairs: 0 of 17 statements were written with a question mark (a 95 % upper bound of about 18 %, and
+   the plan's own *Why* records one such statement on 2026-10-19, so the risk is not zero); 3 of 10
+   questions were written without one, so a word rule could turn a question into a taste. Intonation stays
+   out of scope.
 8. **Capture:** speaking at 15, 30 or 60 cm made no measurable difference with the laptop's array, and the
    Windows enhancements are left as they are. WASAPI is not adopted. PortAudio's blocking read on WASAPI
    dropped about half of the buffers without a flag, so any WASAPI capture must read through the stream
@@ -80,8 +86,9 @@ real use that fills the `stt.confidence` log with enough errors to set the uncle
 ## Consequences
 
 - The robot's turn is 0.4 s longer to close and the transcription is about 3 times faster under load; the
-  total from the end of speech to the transcript is about the same as before at 3.5 s, with half the errors
-  (and with `small` on the GPU 1.7 s faster).
+  total from the end of speech to the transcript (closing silence plus transcription) is about 4.2 s with
+  `medium` and Ollama busy (3.7 s idle), against 9.5 s (3.5 s idle) for the CPU profile, with half the errors;
+  with `small` on the GPU it is about 2.6 s busy (2.1 s idle).
 - A host with a GPU gains a 1.25 GB resident model that competes for VRAM with Ollama's partial offload;
   `small` on the GPU leaves more room.
 - The instruments (reading script, corpus recorder, bench, threshold calibration) stay in `scripts/` and
