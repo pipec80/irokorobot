@@ -88,7 +88,7 @@
       "id": "stt",
       "type": "backend",
       "label": "Faster Whisper",
-      "sublabel": "STT · CPU/int8",
+      "sublabel": "STT · CPU or GPU",
       "pos": [
         460,
         300

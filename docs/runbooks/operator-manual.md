@@ -159,12 +159,15 @@ inside a sentence closes the turn only past 1.2 s) and `VAD_UPLOAD_TAIL_MS=300`.
 `WHISPER_HALLUCINATION_SILENCE_THRESHOLD` was removed (it did nothing with word timestamps off); an
 old `.env` that still sets it keeps working.
 
-**The «no te entendí» reply stays off** (`WHISPER_UNCLEAR_LOGPROB` unset). Every clip logs one
+**The «no te entendí» reply is off by default** (`WHISPER_UNCLEAR_LOGPROB` unset; the owner tries
+`-0.9` in their own `.env`). Every clip logs one
 `stt.confidence` line (no text): `avg_logprob`, `no_speech_prob`, `compression_ratio`,
 `temperature`, `segments`, `clip_s`, `after_vad_s` and `unclear`. On 48 spontaneous clips the
 doubtful ones were wrong only about half the time and rejecting the 6 lowest would have dropped 3 correct clips, so
 no threshold met the plan's rule (at most 5 % of correct clips rejected, at least half of the errors
-caught). Look at the logged figures again after more real use before setting one.
+caught). In the live runs `-0.9` flagged the one murmured turn of 31 and none of the 30 real ones, but
+it asks for a repeat on about one correct long clip in ten. Look at the logged figures after more real
+use before making it a default.
 
 **Microphone.** Speaking at 15, 30 or 60 cm from the laptop's array made no measurable difference
 (18.0 %, 18.4 % and 19.4 % word errors with GPU `small` on the same 24 phrases); leave the Windows audio
