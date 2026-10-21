@@ -1007,4 +1007,50 @@ Segmentation policies (D-17), replayed offline with `P0`: `close800-tail800-pre4
 
 ## Execution record
 
-Not executed.
+Counts and rates only; no sentence of the spontaneous session, no household name.
+
+### Stage 1 on the dev half (2026-10-21, laptop not prepared: timings are provisional)
+
+47 read takes, 199 reference words, `--repeat 2` for `P0`, `--repeat 1` for the rest. Differences are
+`candidate - P0`, paired by item (negative favours the candidate), 95 % block-bootstrap interval.
+
+| Configuration | WER | Difference | Median s per clip |
+|---|---|---|---|
+| `P0` (production today, `small` int8 CPU) | 12.6 % | — | 3.04 |
+| `PR-vocab` | 11.6 % | −1.0 [−3.9, +1.6] | 2.90 |
+| `HW` (hotwords) | 12.1 % | −0.5 [−3.4, +2.6] | 2.97 |
+| `V-off` (Whisper's silence filter off) | 12.1 % | −0.5 [−5.0, +4.8] | 3.46 |
+| `PR-none` | 13.6 % | +1.0 [−4.3, +7.5] | 2.79 |
+| `G-small` (`small` int8_float16, MX450) | 10.6 % | −2.0 [−7.7, +2.4] | 0.88 |
+| `G-turbo` (`large-v3-turbo`, MX450) | 5.0 % | **−7.5 [−13.9, −2.1]** | 3.52 |
+| `P0` with `close1200-tail300` replayed | — | −1.0 [−6.6, +3.1] (shared takes) | 2.26 |
+
+Spontaneous session `s4` (5 minutes, 48 clips at today's 800 ms close, annotated by confirming a `P0`
+draft, so `P0`'s WER of 10.3 % is a floor): the closing silence turns the same speech into 48 clips at
+800 ms, 29 at 1200 ms and 20 at 1600 ms; 93 pauses inside the speech, median 0.70 s, p90 2.53 s.
+
+### `C1`, fixed before the test half is run (D-8)
+
+`C1` = `P0` plus **two** components, and nothing else:
+
+1. **`G-small`**: `small`, `int8_float16`, CUDA (a speed change: dev WER −2.0 points, median 0.88 s
+   against 3.04 s per clip, 477 MB of VRAM at the sampled peak).
+2. **`close1200-tail300`**: close the turn after 1200 ms of silence and upload a 300 ms tail (dev WER
+   −1.0 [−6.6, +3.1], so no loss; median 2.26 s against 3.04 s per clip; the spontaneous speech splits
+   into 29 clips instead of 48).
+
+Rulings:
+
+- **Ruling — what a speed change needs to enter `C1`.** D-8 says «within ±1 point with a faster
+  median». The point differences of both components are better than zero but their intervals include
+  it, so they are read as «not worse than +1 point with a faster median». Cost if wrong: the test
+  half rejects `C1` and `P0` stays.
+- **Ruling — `G-turbo` is left out although its interval excludes zero.** It misses the latency
+  budget of D-9 (c) on its own numbers (median 3.52 s against 3.0 s), it takes 1.3 GB of the 2 GB card
+  that Ollama also uses, and Pipec's decision is a small model that works well on this laptop. It is
+  kept as the measured ceiling and the model to revisit when more VRAM exists. Cost if wrong: the
+  accuracy it would add is not taken.
+- **Ruling — nothing else enters.** `PR-vocab`, `HW`, `V-off` and `PR-none` have intervals that include
+  zero on 47 takes: with one session they cannot be told from noise, so by D-8 they are not added.
+- **Ruling — D-15 follows.** `C1` holds a GPU component, so adopting it brings Task 14 (the optional
+  `cuda` extra) back into scope, which the trim of 2026-10-21 had left out.

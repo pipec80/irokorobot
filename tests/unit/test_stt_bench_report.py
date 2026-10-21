@@ -3,6 +3,7 @@
 Built from the synthetic corpus and fake transcribers; no private text may leak.
 """
 
+import json
 from pathlib import Path
 
 import pytest
@@ -47,6 +48,30 @@ def test_the_report_states_sizes_and_rates_and_never_free_text(
     assert "free clips: 1" in text
     assert FREE_SENTINEL not in text
     assert "me dijiste" not in text
+
+
+@pytest.mark.unit
+def test_replayed_free_clips_are_counted_but_not_scored_against_the_captured_references(
+    corpus: tuple[Path, dict[int, str]],
+) -> None:
+    root, heard = corpus
+    run = _run(root, "P0", FakeTranscriber(heard))
+    runs = root / "results" / "runs"
+    meta_path = runs / f"{run}.meta.json"
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    meta["segmentation"] = "close1200-tail300"
+    meta_path.write_text(json.dumps(meta), encoding="utf-8")
+    rows = [json.loads(line) for line in (runs / f"{run}.jsonl").read_text("utf-8").splitlines()]
+    extra = {**next(row for row in rows if row["mode"] == "free"), "clip_index": 5}
+    rows.append(extra)  # a replayed cut can have more clips than the captured one
+    (runs / f"{run}.jsonl").write_text(
+        chr(10).join(json.dumps(row) for row in rows), encoding="utf-8"
+    )
+
+    scores = stt_bench_report.score_run(root, run)
+
+    assert scores.free_clips == 2
+    assert (scores.free_errors, scores.free_words) == (0, 0)  # nothing to score the new cut against
 
 
 @pytest.mark.unit

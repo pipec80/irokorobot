@@ -163,8 +163,10 @@ def score_run(root: Path, run_id: str) -> RunScores:
             scored.append(_score_take(take, items[take.item_id], clip_rows))
             continue
         for row in clip_rows:
-            clip = take.clips[int(row["clip_index"])]  # type: ignore[call-overload]  # JSON int
             free[2] += 1
+            if meta["segmentation"]:
+                continue  # a replayed cut has no per-clip references: Pipec typed them on the captured cut
+            clip = take.clips[int(row["clip_index"])]  # type: ignore[call-overload]  # JSON int
             if clip.inaudible:
                 free[3] += 1
             elif clip.reference:
