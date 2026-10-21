@@ -832,7 +832,10 @@ The agent gives the exact commands, one session at a time, and never runs them.
 
 - [ ] **Failing test:** with `whisper_device="cuda"` on Windows, `_get_model` registers the cuBLAS
   `bin` directory of the installed wheel (found with `importlib.util.find_spec("nvidia.cublas")`)
-  through `os.add_dll_directory` before `WhisperModel`; on CPU it does nothing. RED.
+  through `os.add_dll_directory` **and prepends it to `PATH`** before `WhisperModel` (amended
+  2026-10-21: the registration alone loaded the model and failed on the first real clip with
+  `cublas64_12.dll is not found`; CTranslate2 loads it with a plain `LoadLibrary`); on CPU it does
+  nothing. RED.
 - [ ] `cd server && uv add --optional cuda nvidia-cublas-cu12` (plus cuDNN only if Task 9 needed it);
   implement; `.env.example` documents `WHISPER_DEVICE=cuda` with `uv sync --all-packages --all-groups
   --extra cuda`. **Commit** `feat(server): optional cuda extra for whisper`.

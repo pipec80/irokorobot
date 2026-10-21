@@ -260,8 +260,11 @@ def _register_cuda_dlls(device: str) -> None:
     """Make the CUDA libraries of the optional ``cuda`` extra visible to CTranslate2.
 
     On Windows the cuBLAS and NVRTC wheels put their DLLs in ``<package>/bin``, which is not on
-    the search path; each directory is registered before the model loads. Nothing happens on
-    CPU or off Windows, and a missing wheel is left for CTranslate2 to report when it loads.
+    the search path. Each directory is registered with ``os.add_dll_directory`` and also added
+    to ``PATH``: CTranslate2 loads cuBLAS with a plain ``LoadLibrary``, which finds it only
+    through ``PATH`` (the registration alone loaded the model but failed on the first real
+    clip). Nothing happens on CPU or off Windows, and a missing wheel is left for CTranslate2
+    to report when it loads.
 
     Args:
         device: ``settings.whisper_device``.
@@ -274,6 +277,7 @@ def _register_cuda_dlls(device: str) -> None:
             directory = Path(location) / "bin"
             if directory.is_dir():
                 _dll_handles.append(os.add_dll_directory(str(directory)))
+                os.environ["PATH"] = os.pathsep.join([str(directory), os.environ.get("PATH", "")])
 
 
 def _get_model() -> WhisperModel:

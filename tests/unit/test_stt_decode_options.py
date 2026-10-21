@@ -6,6 +6,7 @@ the production code path. Audio contract: WAV · 16000 Hz · mono · int16.
 
 from dataclasses import dataclass, replace
 import io
+import os
 from pathlib import Path
 from types import SimpleNamespace
 import wave
@@ -225,14 +226,17 @@ def test_cuda_registers_the_wheels_dll_directories_before_the_model_loads(
     monkeypatch.setattr(stt.os, "add_dll_directory", registry, raising=False)
     monkeypatch.setattr(stt.sys, "platform", "win32")
     monkeypatch.setattr(stt, "_dll_handles", [])
+    monkeypatch.setenv("PATH", "C:/somewhere")
 
     stt._register_cuda_dlls("cuda")
 
-    assert [Path(directory).parent.name for directory in registry.directories] == [
-        "cublas",
-        "cuda_nvrtc",
-    ]
+    names = [Path(directory).parent.name for directory in registry.directories]
+    assert names == ["cublas", "cuda_nvrtc"]
     assert len(stt._dll_handles) == 2  # the handles stay alive for the whole process
+    # CTranslate2 loads cuBLAS with a plain LoadLibrary, which only searches PATH.
+    on_path = os.environ["PATH"].split(os.pathsep)
+    assert all(directory in on_path for directory in registry.directories)
+    assert on_path[-1] == "C:/somewhere"
 
 
 @pytest.mark.unit
