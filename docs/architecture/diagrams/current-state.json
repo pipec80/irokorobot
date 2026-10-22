@@ -50,7 +50,7 @@
           "consolidation",
           "memory"
         ],
-        "note": "Off by default: a taste is proposed, offered and promoted only with the same person's face and voice on that turn's clip."
+        "note": "Off by default: needs the same person's face and voice on that clip. One canonical writer stores it, setting class, asserter and channel."
       }
     ]
   },
@@ -348,7 +348,8 @@
         "Safe plans never reach the LLM, legacy memory, or a candidate proposal",
    "A memory offer or answer needs the face and the voice of the same person on that turn's own clip, never a token; otherwise the turn is the ordinary one",
         "Ollama is the only accepted LLM/VLM runtime (ADR-0004), reached only through one transport module",
-        "A generic turn names its speaker by face or an observed token (never voice); the identified person gets one in-process session, an unknown speaker suspends it"
+        "A generic turn names its speaker by face or an observed token (never voice); the identified person gets one in-process session, an unknown speaker suspends it",
+        "One canonical writer stores household facts for every channel and refuses a SECURITY value until Step 0"
       ]
     },
     {
@@ -356,8 +357,8 @@
       "title": "Known gaps",
       "items": [
         "No liveness or replay defense: a photo identifies at basic; photo + recording would reach strong",
-        "Reserved data needs strong assurance but no reserved capability is wired: propose, read and confirm each have one spoken consumer (the candidate dialogue) and correct and forget none; replay is measured, not defended; a PIN grant is bound to one operation but still proves the PIN, not the speaker (ADR-0015)",
-        "Conversational memory is partial: short-term continuity (CM-2) and a default-off candidate dialogue (CM-3a, Plans 0062 and 0063: a taste is proposed, offered and promoted by voice); no retrieval (CM-5) or correction (CM-6); CM-0 baseline RED"
+        "Reserved data needs strong assurance but no reserved capability is wired: propose, read and confirm each have one spoken consumer (the candidate dialogue) and correct and forget none; replay is measured, not defended; a PIN grant is bound to one operation but still proves the PIN, not the speaker (ADR-0015); the household pair is policy only",
+        "Conversational memory is partial: short-term continuity (CM-2) and a default-off candidate dialogue (CM-3a, Plans 0062 and 0063: a taste is proposed, offered and promoted by voice); the CM-3b tranche A write core (children, partner, pets, places) exists; spoken third-party capture, retrieval (CM-5) and correction (CM-6) do not; CM-0 baseline RED"
       ]
     }
   ]

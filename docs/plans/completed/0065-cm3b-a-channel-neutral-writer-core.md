@@ -1,16 +1,17 @@
 # 0065 — CM-3b, tranche A: the channel-neutral writer core
 
-> **Status:** `Ready` and `NOW` — promoted by Pipec on 2026-10-22, **not rehearsed** in a scratch copy
-> (Pipec's choice). Written 2026-10-16 from the CM-3b audit of the same day and from
-> [ADR 0022](../../adr/0022-household-rules-and-third-party-memory.md) (`Proposed`; it becomes
-> `Accepted` when this plan closes, Task 8); **rewritten the same day after an independent review** that
-> found six blockers (see *Review record*). Pipec confirmed on 2026-10-16 (by taking the
-> recommendations) the three decisions ADR 0022 marked *Pipec to confirm* (migration 010 for the
-> asserter and channel, the personal provenance scenario, the homonym rule). **Revalidated against
-> `main` on 2026-10-21** and **amended on 2026-10-22** after a review of the Phase 0 draft Pipec
-> brought (see *Revalidation record*): two additions, the meaning of «child» and one atomicity test.
-> The tasks below are specifications (files, rules, tests to write first), not rehearsed diffs; to be
-> executed in a **new session**. It does not require Plan 0064.
+> **Status:** `Closed` on 2026-10-22 (executed on the branch `feat/0065-cm3b-a-writer-core`; see the
+> *Execution record* at the end). It was promoted `Ready` and `NOW` by Pipec on 2026-10-22, **not
+> rehearsed** in a scratch copy (Pipec's choice). Written 2026-10-16 from the CM-3b audit of the same
+> day and from [ADR 0022](../../adr/0022-household-rules-and-third-party-memory.md) (`Accepted` when
+> this plan closed, Task 8); **rewritten the same day after an independent review** that found six
+> blockers (see *Review record*). Pipec confirmed on 2026-10-16 (by taking the recommendations) the
+> three decisions ADR 0022 marked *Pipec to confirm* (migration 010 for the asserter and channel, the
+> personal provenance scenario, the homonym rule). **Revalidated against `main` on 2026-10-21** and
+> **amended on 2026-10-22** after a review of the Phase 0 draft Pipec brought (see *Revalidation
+> record*): two additions, the meaning of «child» and one atomicity test. The tasks below are the
+> specifications the execution followed (files, rules, tests written first), not rehearsed diffs.
+> It did not require Plan 0064.
 
 > **For agentic workers:** if the status above does not say `Ready`, stop (ADR 0022 records that
 > its three open decisions were confirmed on 2026-10-16). REQUIRED SUB-SKILLS: `superpowers:executing-plans`,
@@ -527,6 +528,80 @@ repository's refusal (a Spanish alias could have routed a legacy fact into it); 
 table now covers the reader's equality rule; the closed-list tests that change; the version is
 pinned in five places; Tasks 5 and 6 were split; the channel vocabulary matches the candidates'.
 
-## Execution record
+## Execution record (2026-10-22)
 
-*(Filled in when the plan is executed.)*
+Executed in one session on the branch `feat/0065-cm3b-a-writer-core`, from `main` at `252da1f`, with
+the `executing-plans` skill (inline, a ledger, one commit per task) and read-only sonnet agents in
+parallel for the disjoint tasks and the reviews. **No worktree.** Every code test was observed RED
+for its stated reason before the code existed.
+
+**Commits (one per task):** Task 1 `80b4604`, Task 2 `95fe06f`, Task 4 `c6e6264`, Task 5 `51e369a`,
+Task 7a `3fe1814`, Task 3 `9d292a0`, Task 6a `09caa32`, Task 6b `54ae72c`, Task 6c `ba26258`, Task 7b
+`2375fbb`. The review fix pass, one commit per concern: `0ef256e` (legacy migration), `ab78016` (migration 010 atomic), `5abc3b2` (policy), `c9c0214` (eval helper), `bb2d8e2` (writer, repository and tests), `f3f8da2` (dependency). Task 8 is the documentation commit.
+
+**Verification.** `just gate`: **4179 passed** (baseline 3839 on `main`); lint, `mypy`, `pyright` and
+the security audit clean. `scripts/check_reserved_terms.py` clean, `ruff format --check .` clean and every
+relative link of the changed documents resolves. The three untracked drafts of `docs/history/` are
+byte-identical to what they were at the start. **Not run here:** the offline benchmark with Pipec's
+Ollama (Task 7b step 3). The CLI tests generate the report offline from the golden dataset with fixed
+observations, so the report path is exercised; the counts of a real run are the open item.
+
+**Rulings made while executing** (the spec, ADR 0022, was the authority; each costs one small edit if
+wrong):
+
+1. `provenance_attribution` was `scope: personal` in the YAML; «stays family» in the plan means it is
+   placed in the family stage, with a personal replacement.
+2. The schema has no scenario-level «pending»; the SECURITY scenario carries the tag
+   `status:pending-step0` and the driver reports its steps unsupported. Nothing reads the tag yet.
+3. The run metadata reads the dataset version from the file; the rule lives in
+   `longitudinal_eval_models.require_supported_version`.
+4. **Pipec confirmed:** the request carries a second closed field, `fact_shape`, so the policy can deny a
+   literal about the partner and allow a relation to the partner.
+5. `create_third_party` takes `manage_transaction`; `EntityRelationV4` gained `confirmed_*` (the columns
+   existed); `assert_literal_fact` takes the asserter and channel (Task 2, not only Task 3).
+6. `write_literal` has no `valid_from`/`valid_to`: no literal predicate is temporal and the repository
+   has no literal validity.
+7. The writer does not require an owner role row (the `promote` fixtures stub the role), and a
+   membership relation needs only the owner at its owning end.
+8. The guard on who calls the repository's `assert_*` listed `memory_writer.py` until Task 6c removed it.
+9. The exception is `SecurityStorageUndecidedError` (ruff N818); three commit titles were shortened to
+   72 characters; the four schema tests that pinned version 9 follow the latest migration.
+10. The recorded baseline (`docs/evals/0046-…`) is a dataset-**version-1** measurement, not version 2;
+    the YAML header declares the comparability cut (9 scenarios / 25 steps become 11 / 30; personal
+    7 / 18 become 8 / 21; family 2 / 7 become 3 / 9; unsupported steps 24 become 29).
+
+**Independent review (three read-only agents, sonnet: whole branch, silent failures and leaks, test
+quality).** No Critical finding. Every Important and most Minor ones were fixed with a failing test
+first (tests in `test_canonical_writer_hardening.py`, `test_legacy_migration_subject_types.py` and the
+migration, authorization and repository tests):
+
+| Finding | Disposition |
+|---|---|
+| A caller's label could downgrade `access_code` | Fixed: the predicate decides; a caller cannot label another predicate `security` either |
+| The writer logged and raised a different error before the SECURITY refusal | Fixed: refused first, before classification, reads and logs |
+| An existing row labelled differently was reported as written; a repeat skipped the confidence check | Fixed: `classification_conflict`; confidence validated first |
+| `""` as a date became a history row | Fixed: an empty date is an error |
+| A backdated move left `valid_to` before `valid_from` | Fixed: the older row closes at its own start |
+| `private_topic` about a child was stored wider than its registry default | Fixed: `owner_only_predicate` |
+| The partner (or an adult-role holder) could be declared a child to unlock their facts | Fixed: refused as a second role |
+| The new alias `especie` (and `birth_date` on a pet) aborted `migrate_memory_v4.py --apply` | Fixed in `legacy_v4_migration._classify` (a scope exception **Pipec approved**): deferred as `subject_type_mismatch`, and `security_storage_undecided` for a security predicate |
+| Migration 010 was four autocommitted statements | Fixed: one transaction with the version; `run_migrations` rolls back a failed script |
+| «Written»/«created» logs before the commit | Fixed: `info` after the owned commit, `debug` «staged» when joined |
+| The household pair allowed `security` data at strong with consent | Fixed: not covered by the pair |
+| `create_third_party` assumed the stored attributes are an object | Fixed |
+| `require_supported_version` lived in the CLI module | Moved to the models module |
+| Weak tests: vacuous log checks, fixtures that could leave a connection open, an unbounded batch test, membership never varied, no writer-level concurrency, no re-read after commit | Fixed |
+
+**Deferred (ledger «minor (deferred)»; nothing is silently open):** the writer trusts
+`owner_entity_id` and `import_file` has no per-channel assurance (Step 0); folded duplicates across
+channels (Step 0); nothing reads the `status:pending-step0` tag; no reentrancy guard in
+`db.transaction()` (a `db.py` design change); homonym matching ignores aliases; the cross-check between
+the household policy table and the writer table waits for the policy's first consumer; a test that runs
+v3 through the staged verdicts. Also in the *Implementation notes* of ADR 0022.
+
+**Not done, on purpose (as the plan says):** spoken capture of third parties, reference resolution,
+reported facts, the behaviour of the disclosure rule, perceptual candidates, the import itself, storing a
+`security` value and the adult-child rule.
+
+**Out of scope but done:** `uv.lock` bumps `opentelemetry-api` 1.45.0 to 1.45.1 (a transitive of FastAPI)
+because `pip-audit` began to report CVE-2026-114603 after the baseline gate, in its own commit.

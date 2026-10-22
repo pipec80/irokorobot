@@ -273,6 +273,23 @@ second face in frame is refused before the policy is asked, and the turn is then
 one, byte for byte, so nothing reveals that a candidate exists. `correct` and `forget` are
 still not connected (CM-6).
 
+**The household pair (Plan 0065, [ADR 0022](../adr/0022-household-rules-and-third-party-memory.md)
+decisions 3 and 4).** What the owner says about their own children, partner and pets has its own
+pair of capabilities, `propose_household_memory` and `confirm_household_memory`, apart from the
+five personal ones (whose rule, own data only, did not move). The pair is the owner only, on
+`household` data, at `strong` (face and verified voice, never a token: any `local_unlock` item
+denies it, so it has no PIN route) and needs granted consent only for the sensitive categories
+other than `child_data`, because the owner speaks for a child as guardian. Because the policy is
+pure, the request carries two closed fields the **caller classifies before any read**
+(`subject_relation`: `owner`, `child`, `partner`, `pet`; `fact_shape`: `literal`, `relation`),
+never from stored rows: literals are allowed for a `child` or a `pet`, relations for a `child`,
+a `partner` or a `pet`, and everything else, the partner's own facts included, is denied
+(`cm3b.household-memory.*`). Other adults get their name and relationship and nothing more until
+the `family` profile enrols them. **Nothing consumes the pair yet** (an architecture guard pins
+it); the first consumer is the Step 0 import. The writer that stores such facts
+(`memory/canonical_writer.py`) assigns the classification itself and records the owner as asserter
+and confirmer, with the channel; see [memory-and-world-state](memory-and-world-state.md).
+
 The PIN is optional and administrative: an optional `strong` factor — consulted only on a
 turn the owner's face did not resolve, never once the face matched — and the credential of
 local administration. When face or voice fail, recovery is local administration on the
@@ -405,6 +422,7 @@ The matrix is a starting policy and must remain configurable:
 | Read, propose, correct own personal memory (ADR 0019) | Yes, own data only; `strong` for `biometric`, `medical`, `location` | No | No | No |
 | Confirm own personal memory (ADR 0019); spoken answer to an offer (ADR 0021) | Yes, `strong` (face and verified voice of that turn, never a token) | No | No | No |
 | Forget own personal memory (ADR 0019) | Yes, `strong` and a PIN grant spent for `personal_memory_forget` | No | No | No |
+| Propose, confirm household memory about own children, partner (name and relationship only) and pets (ADR 0022; policy only) | Yes, `strong` (face and verified voice, never a token) | No | No | No |
 | Enroll biometrics | Yes with subject consent | Configurable with consent | No direct administration | No |
 | Export/delete household memory | Yes | No | No | No |
 | Execute physical actions | Policy + local safety | Policy + local safety | Restricted | No by default |

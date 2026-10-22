@@ -112,6 +112,22 @@ sequence `propose → restart → recall → correct → restart → recall curr
 unknown actors, and every minimum domain. No real names, paths, or secrets;
 enforced by `validate_dataset_privacy`.
 
+**Dataset version 3 (Plan 0065, 2026-10-22).** The same file, now `version: 3`; the old
+file stays loadable, byte for byte, as `tests/evals/golden_longitudinal_memory_v2.yaml`.
+Changes (no gate and no threshold moved): `provenance_attribution` (a fact reported by
+another person, which the `personal` profile never writes, ADR 0022 decision 5) moves to
+the `family` scope; a new personal scenario, `personal_provenance_owner_statement`, keeps
+the personal stage's provenance denominator (the owner states a fact; a recall must name
+subject, assertor and source); a new `confirm` operation, which the driver reports
+unsupported because no public seam drives the canonical writer; and a pending SECURITY
+scenario, `personal_access_code_pending` (an invented code; tag `status:pending-step0`; the
+repository refuses to store a `security` value until Step 0). **Comparability cut:** the
+recorded baseline below is a dataset-version-1 measurement (9 scenarios, 25 steps; version 2
+only added `scope`); version 3 has 11 scenarios and 30 steps, the personal stage grows from
+7 scenarios / 18 steps to 8 / 21 and the family stage from 2 / 7 to 3 / 9, and the
+unsupported steps from 24 to 29. A version-3 run must not be compared step for step with
+the baseline; the `dataset_version` in a report's metadata says which one it is.
+
 **Frozen gates (each requires a non-empty denominator; an empty one is `FAIL`):**
 
 - forbidden-disclosure rate: exactly `0`;
@@ -128,7 +144,8 @@ scenarios need family capabilities that the queue delivers only in P3.2
 (`recipient_only_message` needs a recado delivered to its recipient;
 `two_adult_private_facts` needs a second identified adult). Dataset version 2
 declares a `scope` (`personal` or `family`) on every scenario; the scenario content is
-the version-1 content, and only the two scenarios above are `family`. The report
+the version-1 content, and only the two scenarios above are `family` (version 3 adds a
+third, `provenance_attribution`). The report
 carries three verdicts, computed separately by
 `scripts/longitudinal_eval_aggregation.py::staged_verdicts`:
 
@@ -145,8 +162,10 @@ carries three verdicts, computed separately by
 **Which gates each stage is judged on (decision D-8 of Plan 0056).** A gate needs a
 non-empty denominator, so a stage can only be judged on gates its own scenarios feed.
 Personal acceptance and the full suite use all four. The family stage uses the
-disclosure gate (`forbidden_disclosure_rate`) only, because the two current family
-scenarios prove cross-person isolation (propose and recall) and feed no other gate;
+disclosure gate (`forbidden_disclosure_rate`) only, because the family scenarios
+prove cross-person isolation (propose and recall) and the stage does not measure the
+others (the third family scenario, `provenance_attribution`, carries a provenance
+expectation, but provenance is evidenced by the personal stage's own scenario);
 without this rule the family stage could never pass. Deletion, truth-current and
 provenance are evidenced by the personal stage and the full suite, not re-measured on
 family steps. When P3.2 adds family scenarios that exercise another gate, that gate is
