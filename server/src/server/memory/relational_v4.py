@@ -103,21 +103,24 @@ _SECURITY_SENSITIVITY = "security"
 _MONTH_ONLY_LENGTH = len("YYYY-MM")
 
 
-def _refuse_security_value(definition: PredicateDefinition, sensitivity: str | None) -> None:
-    """Refuse to store a value whose effective sensitivity is ``security`` (ADR 0022 decision 9).
+def refuse_security_value(definition: PredicateDefinition, sensitivity: str | None = None) -> None:
+    """Refuse to store a ``security`` value (ADR 0022 decision 9).
 
     Storage at rest (plain SQLite, per-value encryption or reference only) is decided by the
     Step 0 ADR, so no writer may bypass this: it runs before any query, write or log, and the
-    message names neither the value nor the subject.
+    message names neither the value nor the subject. The predicate decides: a security
+    predicate is refused whatever label the caller asks for, and a caller may not label
+    another predicate ``security`` either.
 
     Args:
         definition: The resolved predicate whose default sensitivity applies.
         sensitivity: The caller's explicit sensitivity, if any.
 
     Raises:
-        SecurityStorageUndecidedError: If the effective sensitivity is ``security``.
+        SecurityStorageUndecidedError: If the predicate defaults to ``security`` or the caller
+            asks for it.
     """
-    if (sensitivity or definition.default_sensitivity) == _SECURITY_SENSITIVITY:
+    if _SECURITY_SENSITIVITY in {definition.default_sensitivity, sensitivity}:
         raise SecurityStorageUndecidedError(
             "a security value cannot be stored until storage at rest is decided"
         )
@@ -396,7 +399,7 @@ async def assert_literal_fact(
             of range.
         RuntimeError: If the stored row cannot be read back.
     """
-    _refuse_security_value(definition, sensitivity)
+    refuse_security_value(definition, sensitivity)
     await _validate_literal_subject(subject_entity_id, definition)
     normalized_value = normalize_literal(definition, value)
     if normalized_value is None:
@@ -581,7 +584,7 @@ async def assert_entity_relation(
             real ``YYYY-MM-DD`` / ``YYYY-MM`` date or ``valid_to`` precedes ``valid_from``.
         RuntimeError: If the stored row cannot be read back.
     """
-    _refuse_security_value(definition, sensitivity)
+    refuse_security_value(definition, sensitivity)
     await _validate_relation_endpoints(source_entity_id, target_entity_id, definition)
     if not 0.0 <= confidence <= 1.0:
         raise ValueError("confidence must be between 0 and 1")
@@ -666,8 +669,8 @@ def _validity_bound(name: str, value: str, *, end: bool) -> date:
 
 def _validate_validity(valid_from: str | None, valid_to: str | None) -> None:
     """Reject a validity date that is not a real ISO date, or a range that runs backwards."""
-    start = _validity_bound("valid_from", valid_from, end=False) if valid_from else None
-    stop = _validity_bound("valid_to", valid_to, end=True) if valid_to else None
+    start = _validity_bound("valid_from", valid_from, end=False) if valid_from is not None else None
+    stop = _validity_bound("valid_to", valid_to, end=True) if valid_to is not None else None
     if start is not None and stop is not None and stop < start:
         raise ValueError("valid_to must not be before valid_from")
 
@@ -744,13 +747,65 @@ async def _upsert_entity_relation(
     relation_id = int(cursor.lastrowid)
     await cursor.close()
     if stamp.valid_to is None and definition.cardinality is PredicateCardinality.TEMPORAL:
-        # The previous relation ends where the new one begins, not at the moment of the write.
+        await _close_previous(
+            conn,
+            new_id=relation_id,
+            source_entity_id=source_entity_id,
+            predicate=definition.canonical_id,
+        )
+    return relation_id
+
+
+_STORED_DAY = re.compile(r"([0-9]{4})-([0-9]{2})(?:-([0-9]{2}))?")
+
+
+def _stored_day(value: str) -> date | None:
+    """The calendar day of a stored validity value: a date, a month or a timestamp."""
+    match = _STORED_DAY.match(value)
+    if match is None:
+        return None
+    year, month, day = match.groups()
+    try:
+        return date(int(year), int(month), int(day) if day else 1)
+    except ValueError:
+        return None
+
+
+def _closing_value(previous_from: str | None, new_from: str | None) -> str | None:
+    """Where the previous relation ends: at the new ``valid_from``, never before its own start.
+
+    A move dated before the relation it replaces cannot end that relation earlier than it began,
+    so the older row is closed at its own start (a zero-length range) rather than inverted.
+    """
+    if previous_from is None or new_from is None:
+        return new_from
+    previous_day, new_day = _stored_day(previous_from), _stored_day(new_from)
+    if previous_day is not None and new_day is not None and new_day < previous_day:
+        return previous_from
+    return new_from
+
+
+async def _close_previous(
+    conn: aiosqlite.Connection, *, new_id: int, source_entity_id: int, predicate: str
+) -> None:
+    """Supersede the active rows of one source and predicate, each at the new row's start."""
+    cursor = await conn.execute(
+        "SELECT id, valid_from FROM entity_relations_v4 "
+        "WHERE source_entity_id = ? AND predicate = ? AND lifecycle = 'active' AND id != ?",
+        (source_entity_id, predicate, new_id),
+    )
+    previous = [(int(row[0]), _optional_text(row[1])) for row in await cursor.fetchall()]
+    await cursor.close()
+    cursor = await conn.execute(
+        "SELECT valid_from FROM entity_relations_v4 WHERE id = ?", (new_id,)
+    )
+    new_row = await cursor.fetchone()
+    await cursor.close()
+    new_from = _optional_text(new_row[0]) if new_row is not None else None
+    for previous_id, previous_from in previous:
         await conn.execute(
             "UPDATE entity_relations_v4 "
             "SET lifecycle = 'superseded', superseded_at = datetime('now'), "
-            "superseded_by = ?, "
-            "valid_to = (SELECT valid_from FROM entity_relations_v4 WHERE id = ?) "
-            "WHERE source_entity_id = ? AND predicate = ? AND lifecycle = 'active' AND id != ?",
-            (relation_id, relation_id, source_entity_id, definition.canonical_id, relation_id),
+            "superseded_by = ?, valid_to = ? WHERE id = ?",
+            (new_id, _closing_value(previous_from, new_from), previous_id),
         )
-    return relation_id

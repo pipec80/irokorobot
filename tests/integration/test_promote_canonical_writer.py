@@ -74,9 +74,9 @@ async def owner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterato
     monkeypatch.setattr(settings, "brain_db_path", tmp_path / "promote-writer.db")
     monkeypatch.setattr(settings, "memory_candidates_enabled", True)
     db._conn = None
-    await db.open_db()
-    await db.run_migrations()
     try:
+        await db.open_db()
+        await db.run_migrations()
         owner_id = await upsert_entity(name="Canary Owner", type="person")
         await grant_face_consent(owner_id)
         yield owner_id

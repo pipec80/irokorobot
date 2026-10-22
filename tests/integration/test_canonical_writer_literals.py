@@ -63,9 +63,9 @@ async def household(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIte
     """A migrated database with an owner, a child, a pet, a partner and an unrelated person."""
     monkeypatch.setattr(settings, "brain_db_path", tmp_path / "canonical-writer.db")
     db._conn = None
-    await db.open_db()
-    await db.run_migrations()
     try:
+        await db.open_db()
+        await db.run_migrations()
         owner = await upsert_entity(name="Canary Owner", type="person")
         await bootstrap_initial_owner(person_entity_id=owner, confirmed_person_entity_id=owner)
         child = await upsert_entity(name="Canary Child", type="person")
@@ -194,7 +194,7 @@ async def test_nobody_but_the_subject_writes_into_the_subjects_personal_memory(
 
     for subject in (household.child, household.pet):
         fact = await _write(household, subject, "likes", "el sol")
-        assert fact.visibility != "personal"
+        assert fact.visibility == "household"
     stored = await get_active_literal_facts(
         subject_entity_id=household.owner, definition=_definition("likes")
     )
@@ -205,8 +205,11 @@ async def test_nobody_but_the_subject_writes_into_the_subjects_personal_memory(
 async def test_a_security_value_is_refused_without_a_trace(
     household: _Household, caplog: pytest.LogCaptureFixture
 ) -> None:
-    with caplog.at_level(logging.DEBUG), pytest.raises(SecurityStorageUndecidedError) as refusal:
-        await _write(household, household.owner, "access_code", _CODE_CANARY)
+    with caplog.at_level(logging.DEBUG):
+        logging.getLogger("server.memory.canonical_writer").debug("control record")
+        with pytest.raises(SecurityStorageUndecidedError) as refusal:
+            await _write(household, household.owner, "access_code", _CODE_CANARY)
+    assert any(record.getMessage() == "control record" for record in caplog.records)
 
     assert await _count_literals() == 0
     assert _CODE_CANARY not in str(refusal.value) + repr(refusal.value)

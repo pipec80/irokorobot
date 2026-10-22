@@ -30,11 +30,13 @@ async def third_party_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Asy
     """Open a fresh migrated SQLite database for one test."""
     monkeypatch.setattr(settings, "brain_db_path", tmp_path / "third-parties.db")
     db._conn = None
-    await db.open_db()
-    await db.run_migrations()
-    yield
-    await db.close_db()
-    db._conn = None
+    try:
+        await db.open_db()
+        await db.run_migrations()
+        yield
+    finally:
+        await db.close_db()
+        db._conn = None
 
 
 async def _entity_rows() -> list[tuple[int, str, str, str, str, str, str]]:

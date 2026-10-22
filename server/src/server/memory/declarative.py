@@ -141,6 +141,19 @@ async def upsert_entity(
     return entity_id
 
 
+def _stored_import_key(attributes_json: str) -> object:
+    """Read the import key out of an entity's stored attributes, tolerating any other shape.
+
+    Entities made by ``upsert_entity`` or by older code may hold attributes that are not an
+    object (or not JSON at all); they simply carry no key.
+    """
+    try:
+        attributes = json.loads(attributes_json)
+    except json.JSONDecodeError:
+        return None
+    return attributes.get(_IMPORT_KEY_ATTRIBUTE) if isinstance(attributes, dict) else None
+
+
 async def _insert_or_reuse_third_party(
     conn: aiosqlite.Connection,
     *,
@@ -170,8 +183,7 @@ async def _insert_or_reuse_third_party(
     existing = await _find_entity_folded(name, type)
     if existing is not None:
         existing_id, _name, existing_attrs, _aliases = existing
-        stored_key = json.loads(existing_attrs).get(_IMPORT_KEY_ATTRIBUTE)
-        if import_key is not None and stored_key == import_key:
+        if import_key is not None and _stored_import_key(existing_attrs) == import_key:
             return existing_id, False
         logger.warning(
             "Third party refused, an entity of that name exists: type=%s id=%d",
@@ -246,9 +258,12 @@ async def create_third_party(
         )
 
     event = "entity.third_party_created" if created else "entity.third_party_reused"
-    logger.info(
+    # A creation joined to the caller's transaction may still be rolled back by the caller, so it
+    # is only staged (debug); one that owned its transaction is committed by now (info).
+    logger.log(
+        logging.INFO if manage_transaction else logging.DEBUG,
         "Third party %s: type=%s id=%d",
-        "created" if created else "reused",
+        ("created" if manage_transaction else "staged") if created else "reused",
         type,
         entity_id,
         extra={"event": event, "entity_type": type, "entity_id": entity_id},

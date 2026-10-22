@@ -41,11 +41,13 @@ async def relation_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type:
     """Open a fresh, fully migrated database."""
     monkeypatch.setattr(settings, "brain_db_path", tmp_path / "relation-classification.db")
     db._conn = None
-    await db.open_db()
-    await db.run_migrations()
-    yield
-    await db.close_db()
-    db._conn = None
+    try:
+        await db.open_db()
+        await db.run_migrations()
+        yield
+    finally:
+        await db.close_db()
+        db._conn = None
 
 
 def _predicate(alias: str) -> PredicateDefinition:

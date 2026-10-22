@@ -38,11 +38,13 @@ async def household_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type
     db_path = tmp_path / "memory-v4-repository.db"
     monkeypatch.setattr(settings, "brain_db_path", db_path)
     db._conn = None
-    await db.open_db()
-    await db.run_migrations()
-    yield
-    await db.close_db()
-    db._conn = None
+    try:
+        await db.open_db()
+        await db.run_migrations()
+        yield
+    finally:
+        await db.close_db()
+        db._conn = None
 
 
 def _predicate(alias: str) -> PredicateDefinition:
@@ -324,11 +326,16 @@ async def test_a_security_literal_is_refused_and_leaves_no_trace(
     """Storage at rest is undecided (Step 0): refuse before any write, any log, any message."""
     owner_id = await upsert_entity(name="Canary Owner", type="person")
 
-    with caplog.at_level(logging.DEBUG), pytest.raises(SecurityStorageUndecidedError) as refusal:
-        await assert_literal_fact(
-            subject_entity_id=owner_id, definition=_predicate("access_code"), value=_CODE_CANARY
-        )
+    with caplog.at_level(logging.DEBUG):
+        logging.getLogger("server.memory.relational_v4").debug("control record")
+        with pytest.raises(SecurityStorageUndecidedError) as refusal:
+            await assert_literal_fact(
+                subject_entity_id=owner_id,
+                definition=_predicate("access_code"),
+                value=_CODE_CANARY,
+            )
 
+    assert any(record.getMessage() == "control record" for record in caplog.records)
     assert await _row_counts() == (0, 0)
     assert _CODE_CANARY not in str(refusal.value)
     assert _CODE_CANARY not in repr(refusal.value)

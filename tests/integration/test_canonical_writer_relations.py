@@ -8,6 +8,7 @@ all-or-nothing and a preview with no new API.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 import logging
 from typing import TYPE_CHECKING, cast
@@ -21,9 +22,11 @@ from server.memory.predicate_registry import PredicateDefinition, resolve_predic
 from server.memory.relational_v4 import (
     AssertionLifecycle,
     EntityRelationV4,
+    LiteralFactV4,
     assert_entity_relation,
     get_active_entity_relations,
     get_entity_relation,
+    get_literal_fact,
 )
 from server.settings import settings
 
@@ -36,6 +39,7 @@ if TYPE_CHECKING:
 _CONFIRMED_AT = "2026-10-22T12:00:00.000000+00:00"
 _ASSERTED_AT = "2026-10-22T11:59:00.000000+00:00"
 _VALUE_CANARY = "canary-value-for-the-log-check"
+_BOUND_S = 10
 
 
 @dataclass(frozen=True)
@@ -56,9 +60,9 @@ async def household(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIte
     """A migrated database with an owner, a child, a pet, a partner, a stranger and two places."""
     monkeypatch.setattr(settings, "brain_db_path", tmp_path / "canonical-relations.db")
     db._conn = None
-    await db.open_db()
-    await db.run_migrations()
     try:
+        await db.open_db()
+        await db.run_migrations()
         owner = await upsert_entity(name="Canary Owner", type="person")
         await bootstrap_initial_owner(person_entity_id=owner, confirmed_person_entity_id=owner)
         child = await upsert_entity(name="Canary Child", type="person")
@@ -250,17 +254,17 @@ async def test_a_relation_to_a_third_party_created_by_the_importer_is_accepted(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "predicate, channel",
-    [("likes", WriteChannel.IMPORT_FILE), ("inventado", WriteChannel.IMPORT_FILE)],
-)
+@pytest.mark.parametrize("predicate", ["likes", "inventado"])
 async def test_a_literal_or_unknown_predicate_is_not_a_relation(
-    household: _Household, predicate: str, channel: WriteChannel
+    household: _Household, predicate: str
 ) -> None:
-    with pytest.raises(ValueError, match=r"."):
-        await _relate(household, household.child, predicate, household.owner, channel)
+    with pytest.raises(ValueError, match="registered relation predicate"):
+        await _relate(household, household.child, predicate, household.owner)
 
-    with pytest.raises(ValueError, match=r"."):
+
+@pytest.mark.integration
+async def test_a_channel_outside_the_closed_list_is_refused(household: _Household) -> None:
+    with pytest.raises(ValueError, match="telepathy"):
         await write_relation(
             owner_entity_id=household.owner,
             source_entity_id=household.child,
@@ -319,9 +323,12 @@ async def test_a_batch_is_atomic_inside_a_transaction_the_caller_owns(
                 manage_transaction=False,
             )
 
-    with caplog.at_level(logging.DEBUG), pytest.raises(WriteRefusedError) as refusal:
-        await importer()
+    with caplog.at_level(logging.DEBUG):
+        logging.getLogger("server.memory.canonical_writer").debug("control record")
+        with pytest.raises(WriteRefusedError) as refusal:
+            await asyncio.wait_for(importer(), _BOUND_S)
 
+    assert any(record.getMessage() == "control record" for record in caplog.records)
     assert refusal.value.reason == "not_household_member"
     assert await _counts() == before
     assert all(
@@ -332,31 +339,37 @@ async def test_a_batch_is_atomic_inside_a_transaction_the_caller_owns(
 
 @pytest.mark.integration
 async def test_the_same_batch_commits_when_nothing_is_refused(household: _Household) -> None:
-    async with db.transaction():
-        new_child = await create_third_party(
-            name="Canary Grandchild", type="person", import_key="g1", manage_transaction=False
-        )
-        await write_relation(
-            owner_entity_id=household.owner,
-            source_entity_id=new_child,
-            predicate="child_of",
-            target_entity_id=household.owner,
-            channel=WriteChannel.IMPORT_FILE,
-            confirmed_at=_CONFIRMED_AT,
-            manage_transaction=False,
-        )
-        fact = await write_literal(
-            owner_entity_id=household.owner,
-            subject_entity_id=new_child,
-            predicate="stated_age",
-            value="2",
-            channel=WriteChannel.IMPORT_FILE,
-            confirmed_at=_CONFIRMED_AT,
-            manage_transaction=False,
-        )
+    async def importer() -> tuple[int, LiteralFactV4]:
+        async with db.transaction():
+            new_child = await create_third_party(
+                name="Canary Grandchild", type="person", import_key="g1", manage_transaction=False
+            )
+            await write_relation(
+                owner_entity_id=household.owner,
+                source_entity_id=new_child,
+                predicate="child_of",
+                target_entity_id=household.owner,
+                channel=WriteChannel.IMPORT_FILE,
+                confirmed_at=_CONFIRMED_AT,
+                manage_transaction=False,
+            )
+            fact = await write_literal(
+                owner_entity_id=household.owner,
+                subject_entity_id=new_child,
+                predicate="stated_age",
+                value="2",
+                channel=WriteChannel.IMPORT_FILE,
+                confirmed_at=_CONFIRMED_AT,
+                manage_transaction=False,
+            )
+        return new_child, fact
+
+    new_child, fact = await asyncio.wait_for(importer(), _BOUND_S)
 
     assert (fact.visibility, fact.sensitivity) == ("household", "child_data")
     assert fact.subject_entity_id == new_child
+    # Read back after the commit: a regression that skipped it would still return `fact` above.
+    assert await get_literal_fact(fact.id) == fact
 
 
 @pytest.mark.integration
