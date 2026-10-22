@@ -24,11 +24,15 @@ from typing import TYPE_CHECKING
 from urllib.parse import urlsplit, urlunsplit
 
 from server.settings import settings
+import yaml
 
+from scripts.eval_longitudinal_memory import require_supported_version
 from scripts.longitudinal_eval_models import RunMetadata
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Sequence
+
+    from scripts.longitudinal_eval_models import DatasetVersion
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _GIT_TIMEOUT_S = 10.0
@@ -63,7 +67,7 @@ def collect_run_metadata(
         worktree_dirty=bool(status),
         worktree_status=status,
         dataset_path=_relative_dataset_path(dataset_path),
-        dataset_version=2,
+        dataset_version=_dataset_version(dataset_path),
         dataset_sha256=hashlib.sha256(Path(dataset_path).read_bytes()).hexdigest(),
         python_version=platform.python_version(),
         provider="ollama",
@@ -76,6 +80,26 @@ def collect_run_metadata(
         temporary_database_name=settings.brain_db_path.name,
         service_preflight="pass",
     )
+
+
+def _dataset_version(dataset_path: Path) -> DatasetVersion:
+    """Return the ``version`` the dataset file declares, validated like the loader does.
+
+    The metadata never sees the parsed suite (its only caller passes the path), so it
+    reads the key from the file itself. That keeps the frozen version-2 copy reporting
+    2 and the live dataset reporting 3, instead of a constant that is right for one.
+
+    Args:
+        dataset_path: The dataset file the run loaded.
+
+    Returns:
+        The declared version, one of the supported dataset versions.
+
+    Raises:
+        ValueError: If the file does not declare a supported integer ``version``.
+    """
+    raw = yaml.safe_load(dataset_path.read_text(encoding="utf-8"))
+    return require_supported_version(raw)
 
 
 def _relative_dataset_path(dataset_path: Path) -> str:

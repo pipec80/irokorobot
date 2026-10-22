@@ -139,7 +139,7 @@ def test_the_frozen_dataset_declares_a_scope_for_every_scenario() -> None:
 
     scopes = {scenario.scenario_id: scenario.scope for scenario in suite.scenarios}
 
-    assert suite.version == 2
+    assert suite.version == 3
     assert {sid for sid, scope in scopes.items() if scope == "family"} == {
         "two_adult_private_facts",
         "recipient_only_message",

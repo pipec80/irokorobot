@@ -25,12 +25,13 @@ import argparse  # after the sys.path bootstrap, by design
 import asyncio
 import logging
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from pydantic import ValidationError
 import yaml
 
 from scripts.longitudinal_eval_models import (
+    SUPPORTED_DATASET_VERSIONS,
     CliOptions,
     ExpectedObservation,
     LongitudinalCategory,
@@ -40,7 +41,7 @@ from scripts.longitudinal_eval_models import (
 if TYPE_CHECKING:
     from collections.abc import Collection, Sequence
 
-    from scripts.longitudinal_eval_models import LongitudinalStep
+    from scripts.longitudinal_eval_models import DatasetVersion, LongitudinalStep
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,6 @@ _DEFAULT_DATASET = _REPO_ROOT / "tests" / "evals" / "golden_longitudinal_memory.
 _DEFAULT_OUTPUT = _REPO_ROOT / "docs" / "evals" / "longitudinal-memory-cm0.md"
 
 _ALL_CATEGORIES: frozenset[LongitudinalCategory] = frozenset(LongitudinalCategory)
-_SUITE_VERSION = 2  # Plan 0056: version 1 plus a ``scope`` per scenario
 
 _EMAIL_RE = re.compile(r"[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}", re.IGNORECASE)
 _WINDOWS_PATH_RE = re.compile(r"[a-z]:\\users\\|\\users\\", re.IGNORECASE)
@@ -80,18 +80,18 @@ def load_suite(path: Path) -> LongitudinalSuite:
     """Load and semantically validate one versioned longitudinal suite.
 
     Args:
-        path: Path to a version-2 YAML suite.
+        path: Path to a YAML suite of a supported version (2, the frozen copy, or 3).
 
     Returns:
         The parsed, structurally and semantically valid suite.
 
     Raises:
-        ValueError: On a non-version-2 mapping, a schema violation, or a failed
-            semantic rule (unique ids, actor refs, sessions, expectations,
-            category coverage).
+        ValueError: On a mapping whose version is not a supported one, a schema
+            violation, or a failed semantic rule (unique ids, actor refs,
+            sessions, expectations, category coverage).
     """
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    _require_supported_version(raw)
+    require_supported_version(raw)
     try:
         suite = LongitudinalSuite.model_validate(raw)
     except ValidationError as exc:
@@ -105,9 +105,36 @@ def load_suite(path: Path) -> LongitudinalSuite:
     return suite
 
 
-def _require_supported_version(raw: object) -> None:
-    if not isinstance(raw, dict) or raw.get("version") != _SUITE_VERSION:
-        raise ValueError(f'longitudinal suite "version" must be exactly {_SUITE_VERSION}')
+def require_supported_version(raw: object) -> DatasetVersion:
+    """Return the version a parsed dataset declares, or reject an unsupported one.
+
+    Shared by :func:`load_suite` and the run metadata so both read the same
+    ``version`` key under the same rule. A float, a string, a boolean, a missing
+    key and a document that is not a mapping are all rejected: only an ``int``
+    among :data:`SUPPORTED_DATASET_VERSIONS` passes.
+
+    Args:
+        raw: The parsed YAML document (any shape).
+
+    Returns:
+        The declared version, one of :data:`SUPPORTED_DATASET_VERSIONS`.
+
+    Raises:
+        ValueError: If ``raw`` is not a mapping or its ``version`` is not a
+            supported integer.
+    """
+    version = raw.get("version") if isinstance(raw, dict) else None
+    if (
+        not isinstance(version, int)
+        or isinstance(version, bool)
+        or version not in SUPPORTED_DATASET_VERSIONS
+    ):
+        supported = ", ".join(str(item) for item in SUPPORTED_DATASET_VERSIONS)
+        msg = f'longitudinal suite "version" must be one of the supported versions: {supported}'
+        raise ValueError(msg)
+    # The membership test above proves ``version`` is one of the literals; mypy and
+    # pyright cannot narrow an ``int`` to a ``Literal`` through ``in``, hence the cast.
+    return cast("DatasetVersion", version)
 
 
 def _check_unique_ids(suite: LongitudinalSuite) -> None:

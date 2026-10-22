@@ -1,5 +1,9 @@
-# Longitudinal-memory evaluation suite - version 2 (Plan 0056: version 1 plus a
-# `scope` per scenario; scenario content unchanged).
+# Longitudinal-memory evaluation suite - version 3 (Plan 0065: the schema accepts
+# versions 2 and 3; this file declares 3). Version 2 (Plan 0056: version 1 plus a
+# `scope` per scenario) is frozen, unchanged, in golden_longitudinal_memory_v2.yaml
+# and still loads. Task 7b of Plan 0065 lists the scenario changes and the
+# comparability cut with the version-2 baseline; until it lands the scenarios here
+# are the version-2 ones.
 #
 # Purpose: a deterministic, synthetic benchmark that lives OUTSIDE the runtime.
 # Every identity, place and fact below is invented. No household names, no real
@@ -16,7 +20,7 @@
 # abstention, provenance, cross_person_privacy, complete_deletion,
 # false_memory_resistance.
 
-version: 2
+version: 3
 
 scenarios:
   # -------------------------------------------------------------------------

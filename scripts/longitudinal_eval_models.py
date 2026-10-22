@@ -16,9 +16,15 @@ from dataclasses import dataclass
 from datetime import datetime  # noqa: TC003  # pydantic resolves this annotation at runtime
 import enum
 from pathlib import Path  # noqa: TC003  # pydantic/dataclass resolve this annotation at runtime
-from typing import Literal, Protocol
+from typing import Literal, Protocol, get_args
 
 from pydantic import BaseModel, ConfigDict
+
+# Dataset versions the loader and the run metadata accept (Plan 0065, Task 7a). Version 2
+# is the frozen copy of Plan 0056, version 3 the live dataset. The tuple is derived from
+# the literal so the two can never disagree; a new version is added in this one place.
+DatasetVersion = Literal[2, 3]
+SUPPORTED_DATASET_VERSIONS: tuple[DatasetVersion, ...] = get_args(DatasetVersion)
 
 
 class LongitudinalCategory(enum.StrEnum):
@@ -139,7 +145,7 @@ class LongitudinalSuite(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    version: Literal[2]
+    version: DatasetVersion
     scenarios: list[LongitudinalScenario]
 
 
@@ -266,7 +272,7 @@ class RunMetadata(BaseModel):
     worktree_dirty: bool
     worktree_status: list[str]
     dataset_path: str
-    dataset_version: Literal[2]
+    dataset_version: DatasetVersion
     dataset_sha256: str
     python_version: str
     provider: Literal["ollama"]

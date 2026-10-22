@@ -3,7 +3,8 @@
 These tests never reach Ollama, the network or a real database. They pin the
 frozen schema, the semantic rules enforced by ``load_suite``, the privacy
 rules enforced by ``validate_dataset_privacy``, a coverage check on the
-committed version-1 YAML suite, and (Task 3) the deterministic scoring layer
+committed YAML suite (version 3; the frozen version 2 sits beside it), and the
+deterministic scoring layer
 in ``scripts.longitudinal_eval_scoring`` /
 ``scripts.longitudinal_eval_aggregation``.
 """
@@ -124,10 +125,12 @@ def _scenario(**over: object) -> dict[str, object]:
     return scenario
 
 
-def _suite_doc(scenarios: list[dict[str, object]] | None = None) -> dict[str, object]:
-    """Return a suite document, defaulting to a single extraction scenario."""
+def _suite_doc(
+    scenarios: list[dict[str, object]] | None = None, *, version: object = 2
+) -> dict[str, object]:
+    """Return a suite document, defaulting to a single extraction scenario at version 2."""
     chosen = scenarios if scenarios is not None else [_scenario()]
-    return {"version": 2, "scenarios": chosen}
+    return {"version": version, "scenarios": chosen}
 
 
 def _write(tmp_path: Path, text: str) -> Path:
@@ -147,12 +150,39 @@ def _write_suite(tmp_path: Path, doc: object) -> Path:
 # ---------------------------------------------------------------------------
 
 
+_NO_VERSION = object()
+
+
 @pytest.mark.unit
-def test_load_suite_rejects_a_document_that_is_not_version_two(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "version",
+    [
+        pytest.param(1, id="one"),
+        pytest.param(4, id="four"),
+        pytest.param(0, id="zero"),
+        pytest.param("3", id="text"),
+        pytest.param(2.0, id="float"),
+        pytest.param(True, id="bool"),
+        pytest.param(None, id="null"),
+        pytest.param(_NO_VERSION, id="missing"),
+    ],
+)
+def test_load_suite_rejects_an_unsupported_or_malformed_version(
+    tmp_path: Path, version: object
+) -> None:
     doc = _suite_doc()
-    doc["version"] = 1
-    with pytest.raises(ValueError, match="version"):
+    if version is _NO_VERSION:
+        del doc["version"]
+    else:
+        doc["version"] = version
+    with pytest.raises(ValueError, match=r'"version" must be one of the supported versions: 2, 3'):
         load_suite(_write_suite(tmp_path, doc))
+
+
+@pytest.mark.unit
+def test_load_suite_rejects_a_document_that_is_not_a_mapping(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="version"):
+        load_suite(_write(tmp_path, "- not\n- a\n- mapping\n"))
 
 
 @pytest.mark.unit
@@ -218,13 +248,15 @@ def test_load_suite_rejects_missing_category_coverage(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_load_suite_accepts_a_minimal_fully_covering_suite(tmp_path: Path) -> None:
+@pytest.mark.parametrize("version", [2, 3])
+def test_load_suite_accepts_a_minimal_fully_covering_suite(tmp_path: Path, version: int) -> None:
     steps = [
         _step(step_id=f"s{index}", category=category.value)
         for index, category in enumerate(LongitudinalCategory)
     ]
-    suite = load_suite(_write_suite(tmp_path, _suite_doc([_scenario(steps=steps)])))
-    assert suite.version == 2
+    doc = _suite_doc([_scenario(steps=steps)], version=version)
+    suite = load_suite(_write_suite(tmp_path, doc))
+    assert suite.version == version
     assert len(suite.scenarios[0].steps) == len(list(LongitudinalCategory))
 
 
@@ -291,7 +323,7 @@ def test_dataset_privacy_accepts_a_clean_synthetic_dataset(tmp_path: Path) -> No
 
 
 # ---------------------------------------------------------------------------
-# Committed version-1 suite coverage
+# Committed suite coverage (version 3)
 # ---------------------------------------------------------------------------
 
 
@@ -1272,7 +1304,7 @@ def test_metadata_is_complete_and_the_dataset_hash_is_deterministic(
     second = collect_run_metadata(_GOLDEN, [], [])
     assert first.dataset_sha256 == second.dataset_sha256
     assert first.dataset_sha256 == hashlib.sha256(_GOLDEN.read_bytes()).hexdigest()
-    assert first.dataset_version == 2
+    assert first.dataset_version == 3
     assert first.provider == "ollama"
     assert first.branch == "feat/0046-longitudinal-memory-baseline"
     assert first.temporary_database_name == "brain.db"
