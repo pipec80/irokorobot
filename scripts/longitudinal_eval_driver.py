@@ -7,11 +7,13 @@ only audited public seams:
   (``scripts.eval_consolidation.extract_case_items``) with the run-owned HTTP
   client. The assistant turn is a fixed neutral acknowledgement -- context only,
   never a fact source.
-* every other longitudinal operation (``PROPOSE`` / ``RESTART`` / ``RECALL`` /
-  ``CORRECT`` / ``FORGET`` / ``INSPECT_DERIVATIVES``) has no safe public seam
-  yet, so it is recorded ``UNSUPPORTED`` with the exact missing capability. It
-  is never imitated with an injected context, a legacy ``assert_fact()`` write
-  relabelled as a candidate, or a database reconnect relabelled as a restart.
+* every other longitudinal operation (``PROPOSE`` / ``CONFIRM`` / ``RESTART`` /
+  ``RECALL`` / ``CORRECT`` / ``FORGET`` / ``INSPECT_DERIVATIVES``) has no safe
+  public seam yet, so it is recorded ``UNSUPPORTED`` with the exact missing
+  capability. The canonical writer exists (Plan 0065) but nothing public drives
+  it from the harness. An operation is never imitated with an injected context,
+  a direct repository write relabelled as a candidate or a confirmation, or a
+  database reconnect relabelled as a restart.
 
 Provider/network failure during ``EXTRACT`` is a harness error (``status=ERROR``,
 no household content in ``reason``); the runner turns that into exit ``2``.
@@ -42,8 +44,13 @@ _NEUTRAL_ACK = "Entendido."
 # The exact missing seam for every operation the current runtime cannot support
 # safely. These strings are the load-bearing output of a RED baseline.
 _UNSUPPORTED_REASON: dict[LongitudinalOperation, str] = {
-    LongitudinalOperation.PROPOSE: (
-        "no public candidate-lifecycle seam: memory writes go through legacy assert_fact()"
+    LongitudinalOperation.PROPOSE: "no public candidate-lifecycle seam drives the canonical writer",
+    # Nothing runs ``confirm``: it is the write itself. A value whose sensitivity is
+    # ``security`` is also refused by the repository until the Step 0 ADR decides
+    # storage at rest, which is why the pending access-code scenario stays unsupported.
+    LongitudinalOperation.CONFIRM: (
+        "no public seam drives the canonical writer; the repository also refuses a "
+        "security-sensitivity value until the Step 0 ADR decides storage at rest"
     ),
     LongitudinalOperation.RESTART: (
         "no process-restart seam: only a DB reconnect is available and that is not a restart"
@@ -53,7 +60,7 @@ _UNSUPPORTED_REASON: dict[LongitudinalOperation, str] = {
         "resolved actor"
     ),
     LongitudinalOperation.CORRECT: (
-        "no candidate-correction seam: legacy assert_fact() cannot supersede a prior fact by policy"
+        "no candidate-correction seam: CM-6 owns supersession by policy"
     ),
     LongitudinalOperation.FORGET: (
         "no cascade-forget seam: no public call deletes a fact plus its "

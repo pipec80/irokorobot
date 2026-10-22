@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 from enum import StrEnum
+import re
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -41,6 +42,7 @@ class LiteralFormat(StrEnum):
 
     TEXT = "text"
     ISO_DATE = "iso_date"
+    INTEGER = "integer"
 
 
 class PredicateDefinition(BaseModel):
@@ -65,6 +67,11 @@ class PredicateDefinition(BaseModel):
 _PERSON: frozenset[EntityTypeName] = frozenset[EntityTypeName](("person",))
 _PLACE: frozenset[EntityTypeName] = frozenset[EntityTypeName](("place",))
 _PET: frozenset[EntityTypeName] = frozenset[EntityTypeName](("other",))
+
+# A whole number as people say it: ASCII digits only (never `str.isdigit`, which accepts
+# superscripts and other scripts' digits), no leading zero except "0", at most this age.
+_INTEGER_PATTERN = re.compile(r"(0|[1-9][0-9]{0,2})")
+_MAX_STATED_AGE = 130
 
 _PREDICATES: tuple[PredicateDefinition, ...] = (
     PredicateDefinition(
@@ -157,6 +164,48 @@ _PREDICATES: tuple[PredicateDefinition, ...] = (
         target_types=_PLACE,
         temporal=True,
     ),
+    # Plan 0065 (ADR 0022): what the household writer stores beyond tastes and relations.
+    PredicateDefinition(
+        canonical_id="species",
+        aliases=frozenset({"species", "especie"}),
+        kind=PredicateKind.LITERAL,
+        cardinality=PredicateCardinality.SINGLE_CURRENT,
+        subject_types=_PET,
+        literal_format=LiteralFormat.TEXT,
+    ),
+    # The age as stated; the row's `asserted_at` is its as-of date. Child data for any subject
+    # because the household reader requires the stored sensitivity to equal this default.
+    PredicateDefinition(
+        canonical_id="stated_age",
+        aliases=frozenset({"stated_age", "edad_dicha"}),
+        kind=PredicateKind.LITERAL,
+        cardinality=PredicateCardinality.SINGLE_CURRENT,
+        subject_types=_PERSON | _PET,
+        literal_format=LiteralFormat.INTEGER,
+        default_sensitivity="child_data",
+    ),
+    # «No menciones X delante de visitas»: the predicate only; nothing consumes it before CM-5.
+    PredicateDefinition(
+        canonical_id="private_topic",
+        aliases=frozenset({"private_topic", "tema_privado"}),
+        kind=PredicateKind.LITERAL,
+        cardinality=PredicateCardinality.MULTI_VALUE,
+        subject_types=_PERSON,
+        literal_format=LiteralFormat.TEXT,
+        default_visibility="personal",
+    ),
+    # The first SECURITY datum. No Spanish alias, so the legacy migration cannot route a legacy
+    # fact into it; the repository refuses to store it until Step 0 decides storage at rest.
+    PredicateDefinition(
+        canonical_id="access_code",
+        aliases=frozenset({"access_code"}),
+        kind=PredicateKind.LITERAL,
+        cardinality=PredicateCardinality.SINGLE_CURRENT,
+        subject_types=_PERSON,
+        literal_format=LiteralFormat.TEXT,
+        default_visibility="personal",
+        default_sensitivity="security",
+    ),
 )
 
 _BY_ALIAS = {
@@ -191,12 +240,28 @@ def normalize_literal(definition: PredicateDefinition, value: str) -> str | None
     cleaned = value.strip()
     if not cleaned:
         return None
-    if definition.literal_format is LiteralFormat.TEXT:
-        return cleaned
-    if definition.literal_format is LiteralFormat.ISO_DATE:
-        try:
-            parsed = date.fromisoformat(cleaned)
-        except ValueError:
+    match definition.literal_format:
+        case LiteralFormat.TEXT:
+            return cleaned
+        case LiteralFormat.ISO_DATE:
+            return _normalize_iso_date(cleaned)
+        case LiteralFormat.INTEGER:
+            return _normalize_integer(cleaned)
+        case _:
             return None
-        return cleaned if parsed.isoformat() == cleaned else None
-    return None
+
+
+def _normalize_iso_date(cleaned: str) -> str | None:
+    """Return *cleaned* when it is a calendar date written exactly as ``YYYY-MM-DD``."""
+    try:
+        parsed = date.fromisoformat(cleaned)
+    except ValueError:
+        return None
+    return cleaned if parsed.isoformat() == cleaned else None
+
+
+def _normalize_integer(cleaned: str) -> str | None:
+    """Return *cleaned* when it is a plain whole number from 0 to ``_MAX_STATED_AGE``."""
+    if _INTEGER_PATTERN.fullmatch(cleaned) is None or int(cleaned) > _MAX_STATED_AGE:
+        return None
+    return cleaned

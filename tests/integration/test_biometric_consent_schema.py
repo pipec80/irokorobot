@@ -82,7 +82,7 @@ async def test_migration_seven_creates_face_consent_grants_table(memory_db: Path
     """Migration 7 must create face_consent_grants with the expected columns."""
     conn = db.get_conn()
     version_cursor = await conn.execute("PRAGMA user_version")
-    assert await version_cursor.fetchone() == (9,)
+    assert await version_cursor.fetchone() == (db._MIGRATIONS[-1][0],)
     await version_cursor.close()
 
     tables_cursor = await conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")

@@ -91,6 +91,14 @@ writer can store under the owner's name. Adults, children, guests and unknown ac
 for these five actions the answer is `denied`, never `requires_confirmation`. Family-profile rules
 (an adult's own memory, household memory by consent) are later work and need their own ADR.
 
+*Amended by [ADR 0022](0022-household-rules-and-third-party-memory.md) decision 3 (Plan 0065,
+2026-10-22).* The rule above is unchanged for these five capabilities. A **separate pair**,
+`propose_household_memory` and `confirm_household_memory`, covers what the owner says about their
+own children, partner and pets (the owner only, the `household` visibility, `strong` assurance,
+no PIN route); the request carries a closed `subject_relation` and `fact_shape` that the caller
+classifies before any read (§6.2). The pair is policy only, like these five were at Plan 0060:
+nothing consumes it yet.
+
 ### 3. Assurance, consent and grant are declared per capability
 
 | Capability | Minimum assurance | Consent for sensitive categories | PIN route |

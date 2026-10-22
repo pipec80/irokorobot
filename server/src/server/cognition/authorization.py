@@ -37,6 +37,8 @@ __all__ = [
     "ConsentStatus",
     "DataSensitivity",
     "DataVisibility",
+    "HouseholdFactShape",
+    "HouseholdSubject",
     "PersonalMemoryCapability",
     "evaluate_authorization",
 ]
@@ -74,14 +76,42 @@ class ConsentStatus(StrEnum):
     REVOKED = "revoked"
 
 
+class HouseholdSubject(StrEnum):
+    """Closed relation between a household fact's subject and the owner (ADR 0022 decision 3)."""
+
+    OWNER = "owner"
+    CHILD = "child"
+    PARTNER = "partner"
+    PET = "pet"
+
+
+class HouseholdFactShape(StrEnum):
+    """Whether a household fact is a literal about its subject or a relation to another entity.
+
+    The household pair treats the two differently: the partner may be the subject of a relation
+    (name and relationship) but never of a literal (ADR 0022 decision 4).
+    """
+
+    LITERAL = "literal"
+    RELATION = "relation"
+
+
 class AuthorizationRequest(BaseModel):
-    """Minimum immutable inputs for one local policy decision."""
+    """Minimum immutable inputs for one local policy decision.
+
+    `subject_relation` and `fact_shape` classify a household write for the household pair of
+    actions. Both are the caller's, made from the intent before any read (ADR 0019 §6.2), never
+    derived from stored rows; the policy is pure. Every other action ignores them, and `None`
+    means "not classified", which the household pair denies.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     actor: ActivePersonContext
     action: AuthorizationAction
     target_person_id: _StrictInteger | None = None
+    subject_relation: HouseholdSubject | None = None
+    fact_shape: HouseholdFactShape | None = None
     visibility: frozenset[DataVisibility] = Field(min_length=1)
     sensitivity: frozenset[DataSensitivity] = Field(min_length=1)
     consent: ConsentStatus
@@ -106,7 +136,7 @@ HIGH_ASSURANCE_CATEGORIES = frozenset({DataSensitivity.SECURITY})
 # ADR 0019 §3: data of these categories raises the minimum assurance of EVERY personal-memory
 # capability to `strong`, so a photograph of the owner cannot reach it. `security` is held by
 # the generic gate above (HIGH_ASSURANCE_CATEGORIES, which must not change: it also governs the
-# eleven older actions); `child_data` stays at the capability minimum because ADR 0016 already
+# nine older actions); `child_data` stays at the capability minimum because ADR 0016 already
 # accepts the owner's face for the child read.
 PERSONAL_MEMORY_STRONG_CATEGORIES = frozenset(
     {DataSensitivity.BIOMETRIC, DataSensitivity.MEDICAL, DataSensitivity.LOCATION}
@@ -529,6 +559,133 @@ def _evaluate_personal_memory(
     )
 
 
+# ADR 0022 decisions 3 and 4: the household pair is evaluated apart from the personal table above.
+# It is not about the actor's own data, and its consent rule depends on the category, so it does
+# not fit `PersonalMemoryCapability`.
+_HOUSEHOLD_MEMORY_ACTIONS = frozenset(
+    {AuthorizationAction.PROPOSE_HOUSEHOLD_MEMORY, AuthorizationAction.CONFIRM_HOUSEHOLD_MEMORY}
+)
+_HOUSEHOLD_ONLY = frozenset({DataVisibility.HOUSEHOLD})
+# Who the owner may write about, by the shape of the fact. A literal about the partner (birth
+# date, tastes, health) waits for the `family` profile, where that adult enrolls and decides;
+# a relation (name and relationship) is allowed. The owner's own facts are `personal`.
+_HOUSEHOLD_SUBJECTS: Mapping[HouseholdFactShape, frozenset[HouseholdSubject]] = MappingProxyType(
+    {
+        HouseholdFactShape.LITERAL: frozenset({HouseholdSubject.CHILD, HouseholdSubject.PET}),
+        HouseholdFactShape.RELATION: frozenset(
+            {HouseholdSubject.CHILD, HouseholdSubject.PARTNER, HouseholdSubject.PET}
+        ),
+    }
+)
+# `security` data is not covered at all: the repository refuses to store it until the Step 0 ADR
+# decides storage at rest (ADR 0022 decision 9), so the pair must not authorize what cannot be kept.
+_HOUSEHOLD_UNCOVERED = frozenset({DataSensitivity.SECURITY})
+# Every other sensitive category but `child_data` needs granted consent: the owner speaks for a
+# child as guardian, so the child's own data needs none (ADR 0022 decision 3).
+_HOUSEHOLD_CONSENT_CATEGORIES = (
+    _SENSITIVE_CATEGORIES - frozenset({DataSensitivity.CHILD_DATA}) - _HOUSEHOLD_UNCOVERED
+)
+
+
+def _household_memory_decision(
+    request: AuthorizationRequest, status: AuthorizationStatus, outcome: str, reason: str
+) -> AuthorizationDecision:
+    """Build a household-memory decision whose reason never carries a protected value."""
+    return _decision(request, status, f"cm3b.household-memory.{outcome}", reason)
+
+
+def _is_allowed_household_subject(request: AuthorizationRequest) -> bool:
+    """Return whether the request is household data about a subject the owner may write about.
+
+    The visibility must be exactly `household`, the data must not be `security`, and the caller
+    must have classified both the subject and the shape of the fact; a missing classification is
+    never guessed.
+    """
+    if (
+        not request.visibility
+        or not request.visibility <= _HOUSEHOLD_ONLY
+        or request.sensitivity & _HOUSEHOLD_UNCOVERED
+        or request.subject_relation is None
+        or request.fact_shape is None
+    ):
+        return False
+    return request.subject_relation in _HOUSEHOLD_SUBJECTS[request.fact_shape]
+
+
+def _lacks_strong_assurance(request: AuthorizationRequest) -> bool:
+    """Return whether the actor's assurance ranks below `strong` (face and voice together)."""
+    return ASSURANCE_RANK[request.actor.assurance] < ASSURANCE_RANK[IdentityAssurance.STRONG]
+
+
+def _holds_pin_grant(request: AuthorizationRequest) -> bool:
+    """Return whether the actor carries any owner PIN grant, spent or not.
+
+    The pair has no PIN route, like a personal capability with no unlock scope: a bearer
+    token proves the PIN, not the speaker, and the household pair writes on the speaker's word.
+    """
+    return any(
+        item.source is IdentityEvidenceSource.LOCAL_UNLOCK for item in request.actor.evidence
+    )
+
+
+def _lacks_household_consent(request: AuthorizationRequest) -> bool:
+    """Return whether a category that needs consent is requested without it granted."""
+    return (
+        bool(request.sensitivity & _HOUSEHOLD_CONSENT_CATEGORIES)
+        and request.consent is not ConsentStatus.GRANTED
+    )
+
+
+def _evaluate_household_memory(request: AuthorizationRequest) -> AuthorizationDecision:
+    """Evaluate one household-memory action in the fixed order of ADR 0019 §5.
+
+    The generic gates (identity resolved; `security` data needs `strong`) have already run.
+    Owner only, then the subject, the assurance, the PIN route and the consent. Every outcome
+    is closed and the result is never `REQUIRES_CONFIRMATION`.
+    """
+    if request.actor.role is not HouseholdRole.OWNER:
+        return _household_memory_decision(
+            request,
+            AuthorizationStatus.DENIED,
+            "owner-only",
+            "Household memory is reserved for the household owner.",
+        )
+    if not _is_allowed_household_subject(request):
+        return _household_memory_decision(
+            request,
+            AuthorizationStatus.DENIED,
+            "subject-not-allowed",
+            "This household memory request names data the policy does not cover.",
+        )
+    if _lacks_strong_assurance(request):
+        return _household_memory_decision(
+            request,
+            AuthorizationStatus.DENIED,
+            "assurance-required",
+            "This household memory request needs face and voice agreement.",
+        )
+    if _holds_pin_grant(request):
+        return _household_memory_decision(
+            request,
+            AuthorizationStatus.DENIED,
+            "grant-scope",
+            "An owner unlock does not authorize household memory.",
+        )
+    if _lacks_household_consent(request):
+        return _household_memory_decision(
+            request,
+            AuthorizationStatus.DENIED,
+            "consent-required",
+            "Required consent is absent or revoked.",
+        )
+    return _household_memory_decision(
+        request,
+        AuthorizationStatus.ALLOWED,
+        "allowed",
+        "Policy permits this request on the owner's household memory.",
+    )
+
+
 def _evaluate_legacy_request(request: AuthorizationRequest) -> AuthorizationDecision:
     """Evaluate one of the pre-existing actions; anything unlisted is denied."""
     if request.action in {
@@ -560,12 +717,14 @@ def _evaluate_legacy_request(request: AuthorizationRequest) -> AuthorizationDeci
 def _evaluate_resolved_request(request: AuthorizationRequest) -> AuthorizationDecision:
     """Evaluate a request after the caller has established a trusted actor.
 
-    An action absent from `PERSONAL_MEMORY_CAPABILITIES` falls through to the legacy
-    evaluation, whose last branch is the default deny.
+    An action absent from `PERSONAL_MEMORY_CAPABILITIES` and from the household pair falls
+    through to the legacy evaluation, whose last branch is the default deny.
     """
     capability = PERSONAL_MEMORY_CAPABILITIES.get(request.action)
     if capability is not None:
         return _evaluate_personal_memory(request, capability)
+    if request.action in _HOUSEHOLD_MEMORY_ACTIONS:
+        return _evaluate_household_memory(request)
     return _evaluate_legacy_request(request)
 
 

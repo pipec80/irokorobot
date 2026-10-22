@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import pytest
 from server.memory.declarative import assert_fact, upsert_entity
 from server.memory.predicate_registry import resolve_predicate
-from server.memory.relational_v4 import assert_literal_fact
+from server.memory.relational_v4 import assert_literal_fact, get_literal_fact
 from server.settings import settings
 
 from server import db
@@ -36,7 +36,7 @@ async def test_v4_schema_is_additive_and_preserves_legacy_facts(v4_db: None) -> 
     version_cursor = await conn.execute("PRAGMA user_version")
     version_row = await version_cursor.fetchone()
     await version_cursor.close()
-    assert version_row == (9,)
+    assert version_row == (10,)
 
     tables_cursor = await conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
     tables = {str(row[0]) for row in await tables_cursor.fetchall()}
@@ -65,3 +65,112 @@ async def test_v4_schema_is_additive_and_preserves_legacy_facts(v4_db: None) -> 
     foreign_key_cursor = await conn.execute("PRAGMA foreign_key_check")
     assert await foreign_key_cursor.fetchall() == []
     await foreign_key_cursor.close()
+
+
+# --- Plan 0065 (ADR 0022 decision 2): who asserted a fact and through which channel ------------
+
+_V4_TABLES = ("literal_facts_v4", "entity_relations_v4")
+
+
+async def _columns(table: str) -> dict[str, tuple[str, int]]:
+    """Map each column of *table* to its declared type and NOT NULL flag."""
+    cursor = await db.get_conn().execute(f"PRAGMA table_info({table})")
+    rows = await cursor.fetchall()
+    await cursor.close()
+    return {str(row[1]): (str(row[2]), int(row[3])) for row in rows}
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("table", _V4_TABLES)
+async def test_both_v4_tables_gain_a_nullable_asserter_and_channel(v4_db: None, table: str) -> None:
+    columns = await _columns(table)
+
+    assert columns["asserted_by_entity_id"] == ("INTEGER", 0)
+    assert columns["channel"] == ("TEXT", 0)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("table", _V4_TABLES)
+async def test_the_asserter_references_entities_and_is_cleared_when_it_is_deleted(
+    v4_db: None, table: str
+) -> None:
+    cursor = await db.get_conn().execute(f"PRAGMA foreign_key_list({table})")
+    keys = {str(row[3]): (str(row[2]), str(row[6])) for row in await cursor.fetchall()}
+    await cursor.close()
+
+    assert keys["asserted_by_entity_id"] == ("entities", "SET NULL")
+
+
+@pytest.mark.integration
+async def test_deleting_the_asserter_keeps_the_fact_and_clears_the_link(v4_db: None) -> None:
+    subject_id = await upsert_entity(name="Canary Child", type="person")
+    asserter_id = await upsert_entity(name="Canary Owner", type="person")
+    conn = db.get_conn()
+    await conn.execute(
+        "INSERT INTO literal_facts_v4 "
+        "(subject_entity_id, predicate, value_text, asserted_by_entity_id, channel) "
+        "VALUES (?, 'likes', 'el mate', ?, 'import_file')",
+        (subject_id, asserter_id),
+    )
+    await conn.commit()
+
+    await conn.execute("DELETE FROM entities WHERE id = ?", (asserter_id,))
+    await conn.commit()
+
+    cursor = await conn.execute("SELECT asserted_by_entity_id, channel FROM literal_facts_v4")
+    assert await cursor.fetchall() == [(None, "import_file")]
+    await cursor.close()
+
+
+@pytest.mark.integration
+async def test_a_fact_written_without_an_asserter_reads_none_in_both(v4_db: None) -> None:
+    """An existing row (or any writer that does not state them) is untouched: both read None."""
+    owner_id = await upsert_entity(name="Canary Owner", type="person")
+    likes = resolve_predicate("likes")
+    assert likes is not None
+
+    fact = await assert_literal_fact(subject_entity_id=owner_id, definition=likes, value="cafe")
+
+    assert (fact.asserted_by_entity_id, fact.channel) == (None, None)
+
+
+@pytest.mark.integration
+async def test_a_literal_stores_the_asserter_and_channel_it_is_given(v4_db: None) -> None:
+    owner_id = await upsert_entity(name="Canary Owner", type="person")
+    child_id = await upsert_entity(name="Canary Child", type="person")
+    likes = resolve_predicate("likes")
+    assert likes is not None
+
+    fact = await assert_literal_fact(
+        subject_entity_id=child_id,
+        definition=likes,
+        value="el tren",
+        asserted_by_entity_id=owner_id,
+        channel="import_file",
+    )
+
+    assert (fact.asserted_by_entity_id, fact.channel) == (owner_id, "import_file")
+    stored = await get_literal_fact(fact.id)
+    assert stored == fact
+
+
+@pytest.mark.integration
+async def test_deleting_the_asserter_keeps_the_relation_and_clears_the_link(v4_db: None) -> None:
+    child_id = await upsert_entity(name="Canary Child", type="person")
+    parent_id = await upsert_entity(name="Canary Parent", type="person")
+    asserter_id = await upsert_entity(name="Canary Owner", type="person")
+    conn = db.get_conn()
+    await conn.execute(
+        "INSERT INTO entity_relations_v4 "
+        "(source_entity_id, predicate, target_entity_id, asserted_by_entity_id, channel) "
+        "VALUES (?, 'child_of', ?, ?, 'voice_stream')",
+        (child_id, parent_id, asserter_id),
+    )
+    await conn.commit()
+
+    await conn.execute("DELETE FROM entities WHERE id = ?", (asserter_id,))
+    await conn.commit()
+
+    cursor = await conn.execute("SELECT asserted_by_entity_id, channel FROM entity_relations_v4")
+    assert await cursor.fetchall() == [(None, "voice_stream")]
+    await cursor.close()

@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 from typing import TYPE_CHECKING
 
 import pytest
+from server.exceptions import SecurityStorageUndecidedError
 from server.memory.declarative import upsert_entity
-from server.memory.predicate_registry import PredicateDefinition, resolve_predicate
+from server.memory.predicate_registry import (
+    PredicateCardinality,
+    PredicateDefinition,
+    PredicateKind,
+    resolve_predicate,
+)
 from server.memory.relational_v4 import (
     AssertionLifecycle,
     assert_entity_relation,
@@ -31,11 +38,13 @@ async def household_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type
     db_path = tmp_path / "memory-v4-repository.db"
     monkeypatch.setattr(settings, "brain_db_path", db_path)
     db._conn = None
-    await db.open_db()
-    await db.run_migrations()
-    yield
-    await db.close_db()
-    db._conn = None
+    try:
+        await db.open_db()
+        await db.run_migrations()
+        yield
+    finally:
+        await db.close_db()
+        db._conn = None
 
 
 def _predicate(alias: str) -> PredicateDefinition:
@@ -290,3 +299,160 @@ async def test_a_caller_owned_transaction_neither_opens_nor_commits_its_own(
         await _write_inside_a_failing_transaction(owner_id, likes)
 
     assert await get_active_literal_facts(subject_entity_id=owner_id, definition=likes) == []
+
+
+# --- Plan 0065 (ADR 0022 decision 9): the repository stores no SECURITY value yet --------------
+
+_CODE_CANARY = "canary-gate-code-5150"
+
+
+async def _row_counts() -> tuple[int, int]:
+    """Count every literal and relation row, whatever its lifecycle."""
+    conn = db.get_conn()
+    counts: list[int] = []
+    for table in ("literal_facts_v4", "entity_relations_v4"):
+        cursor = await conn.execute(f"SELECT COUNT(*) FROM {table}")  # noqa: S608
+        row = await cursor.fetchone()
+        await cursor.close()
+        assert row is not None
+        counts.append(int(row[0]))
+    return counts[0], counts[1]
+
+
+@pytest.mark.integration
+async def test_a_security_literal_is_refused_and_leaves_no_trace(
+    household_db: None, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Storage at rest is undecided (Step 0): refuse before any write, any log, any message."""
+    owner_id = await upsert_entity(name="Canary Owner", type="person")
+
+    with caplog.at_level(logging.DEBUG):
+        logging.getLogger("server.memory.relational_v4").debug("control record")
+        with pytest.raises(SecurityStorageUndecidedError) as refusal:
+            await assert_literal_fact(
+                subject_entity_id=owner_id,
+                definition=_predicate("access_code"),
+                value=_CODE_CANARY,
+            )
+
+    assert any(record.getMessage() == "control record" for record in caplog.records)
+    assert await _row_counts() == (0, 0)
+    assert _CODE_CANARY not in str(refusal.value)
+    assert _CODE_CANARY not in repr(refusal.value)
+    assert _CODE_CANARY not in repr(refusal.value.args)
+    assert all(
+        _CODE_CANARY not in record.getMessage() and _CODE_CANARY not in repr(vars(record))
+        for record in caplog.records
+    )
+
+
+@pytest.mark.integration
+async def test_a_security_sensitivity_chosen_by_the_caller_is_refused_too(
+    household_db: None,
+) -> None:
+    """The refusal covers the effective sensitivity, not only the registry default."""
+    owner_id = await upsert_entity(name="Canary Owner", type="person")
+
+    with pytest.raises(SecurityStorageUndecidedError):
+        await assert_literal_fact(
+            subject_entity_id=owner_id,
+            definition=_predicate("likes"),
+            value=_CODE_CANARY,
+            sensitivity="security",
+        )
+
+    assert await _row_counts() == (0, 0)
+
+
+@pytest.mark.integration
+async def test_a_relation_whose_predicate_defaults_to_security_is_refused(
+    household_db: None,
+) -> None:
+    """No relation predicate is SECURITY today; the repository still refuses the shape."""
+    owner_id = await upsert_entity(name="Canary Owner", type="person")
+    other_id = await upsert_entity(name="Canary Neighbour", type="person")
+    security_relation = PredicateDefinition(
+        canonical_id="shares_code_with",
+        aliases=frozenset({"shares_code_with"}),
+        kind=PredicateKind.RELATION,
+        cardinality=PredicateCardinality.RELATION,
+        subject_types=frozenset({"person"}),
+        target_types=frozenset({"person"}),
+        default_sensitivity="security",
+    )
+
+    with pytest.raises(SecurityStorageUndecidedError):
+        await assert_entity_relation(
+            source_entity_id=owner_id, target_entity_id=other_id, definition=security_relation
+        )
+
+    assert await _row_counts() == (0, 0)
+
+
+@pytest.mark.integration
+async def test_the_new_household_literals_store_with_their_registry_classification(
+    household_db: None,
+) -> None:
+    owner_id = await upsert_entity(name="Canary Owner", type="person")
+    pet_id = await upsert_entity(name="Canary Pet", type="other")
+
+    species = await assert_literal_fact(
+        subject_entity_id=pet_id, definition=_predicate("species"), value="gato"
+    )
+    pet_age = await assert_literal_fact(
+        subject_entity_id=pet_id, definition=_predicate("stated_age"), value="3"
+    )
+    owner_age = await assert_literal_fact(
+        subject_entity_id=owner_id, definition=_predicate("stated_age"), value="41"
+    )
+    topic = await assert_literal_fact(
+        subject_entity_id=owner_id, definition=_predicate("private_topic"), value="salud"
+    )
+
+    assert (species.visibility, species.sensitivity) == ("household", "normal")
+    assert (pet_age.visibility, pet_age.sensitivity, pet_age.value_text) == (
+        "household",
+        "child_data",
+        "3",
+    )
+    assert (owner_age.visibility, owner_age.sensitivity) == ("household", "child_data")
+    assert (topic.visibility, topic.sensitivity) == ("personal", "normal")
+    with pytest.raises(ValueError, match="subject type"):
+        await assert_literal_fact(
+            subject_entity_id=owner_id, definition=_predicate("species"), value="gato"
+        )
+    with pytest.raises(ValueError, match="subject type"):
+        await assert_literal_fact(
+            subject_entity_id=pet_id, definition=_predicate("private_topic"), value="salud"
+        )
+    with pytest.raises(ValueError, match="canonical literal"):
+        await assert_literal_fact(
+            subject_entity_id=pet_id, definition=_predicate("stated_age"), value="ocho"
+        )
+
+
+@pytest.mark.integration
+async def test_a_stated_age_supersedes_the_previous_one(household_db: None) -> None:
+    """Single current: «tiene 7» then «tiene 8» keeps one active age (as-of = asserted_at)."""
+    child_id = await upsert_entity(name="Canary Child", type="person")
+    stated_age = _predicate("stated_age")
+
+    first = await assert_literal_fact(
+        subject_entity_id=child_id,
+        definition=stated_age,
+        value="7",
+        asserted_at="2026-01-10T09:00:00.000000+00:00",
+    )
+    second = await assert_literal_fact(
+        subject_entity_id=child_id,
+        definition=stated_age,
+        value="8",
+        asserted_at="2027-02-11T09:00:00.000000+00:00",
+    )
+
+    active = await get_active_literal_facts(subject_entity_id=child_id, definition=stated_age)
+    assert [fact.value_text for fact in active] == ["8"]
+    assert active[0].asserted_at == second.asserted_at == "2027-02-11T09:00:00.000000+00:00"
+    superseded = await get_literal_fact(first.id)
+    assert superseded is not None
+    assert superseded.lifecycle is AssertionLifecycle.SUPERSEDED

@@ -52,10 +52,10 @@ async def _insert(owner: int, value: str | None, key: str | None, status: str) -
     await conn.commit()
 
 
-async def test_the_schema_is_at_version_nine_with_the_candidate_table(candidate_db: Path) -> None:
+async def test_the_schema_has_the_candidate_table_at_the_latest_version(candidate_db: Path) -> None:
     conn = db.get_conn()
     cursor = await conn.execute("PRAGMA user_version")
-    assert await cursor.fetchone() == (9,)
+    assert await cursor.fetchone() == (db._MIGRATIONS[-1][0],)
     await cursor.close()
 
     cursor = await conn.execute("PRAGMA table_info(memory_candidates)")

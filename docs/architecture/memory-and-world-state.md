@@ -31,7 +31,11 @@ The current runtime still has limits that later plans must handle explicitly:
   behind the default-off kill-switch `MEMORY_CANDIDATES_ENABLED`; with it off no
   conversation writes durable memory. Reading a stored taste back is CM-5, and
   correcting or forgetting one is CM-6
-  ([ADR 0021](../adr/0021-memory-candidates-and-the-canonical-writer.md));
+  ([ADR 0021](../adr/0021-memory-candidates-and-the-canonical-writer.md)).
+  Since Plan 0065 (CM-3b tranche A, [ADR 0022](../adr/0022-household-rules-and-third-party-memory.md))
+  the store itself is one channel-neutral writer, `memory/canonical_writer.py`
+  (`write_literal`, `write_relation`), and `promote` is its first caller; see
+  *The canonical writer* below;
 - semantic retrieval returns the nearest items without a relevance threshold;
 - retrieval is not yet filtered by the active person's authorization;
 - provenance, validity periods, verification state, and sensitivity are not
@@ -101,11 +105,51 @@ automatic replacement or counting.
 | Multiple values | `likes`, `dislikes`, `allergic_to` | Values coexist; one insertion must not erase siblings. |
 | Entity relationship | `parent_of`, `sibling_of`, `partner_of` | Target is an entity ID and inverse queries are defined. |
 | Temporal relationship | `lives_in`, `works_at` | Preserve validity intervals and history. |
-| Derived value | `age`, household counts | Calculate at query time; do not persist as a fact. |
+| Stated value | `stated_age` | A single current whole number (0 to 130) with its as-of date (the row's `asserted_at`); it is what the owner said, **not** today's age. A `birth_date`, when known, always supersedes it. |
+| Derived value | today's `age`, household counts | Calculate at query time; do not persist as a fact. |
 
 Dates are stored in ISO format when known. Age is calculated deterministically
 from `birth_date` and the current date, including whether the birthday has
 occurred this year. A language model must not guess or perform this arithmetic.
+When only a **stated** age exists («mi hija tiene 7 años», Plan 0065), the age shown later is
+the stated value plus the whole years elapsed since its as-of date, and is approximate by up to
+a year because the birthday is unknown. Today's age is never persisted, and the helper that
+derives it has no consumer before CM-5, so it is not written yet.
+
+## The canonical writer (Plan 0065, ADR 0022)
+
+There is **one** place that stores a household fact, whatever the channel: the spoken
+confirmation of CM-3a (`voice_classic`, `voice_stream`) and the initial import of Step 0
+(`import_file`) call the same `write_literal` and `write_relation`. The speaker never assigns
+the classification; the writer looks it up from the predicate and the subject in one table:
+
+| Subject | Stored as |
+|---|---|
+| The owner | `personal`, with the registry's sensitivity; the owner's `birth_date` is `personal`/`private` |
+| A child or a pet of the owner | `household`, with the registry's sensitivity (so the household reader still serves it) |
+| The partner, or anyone else | Refused with the closed reason `not_household_member`; for the partner only the name and the relationship (`partner_of`) are stored |
+| Anyone but the owner, for a predicate whose registry default is `personal` (`private_topic`) | Refused with `owner_only_predicate` |
+
+Membership relations (`child_of`, `partner_of`, `pet_of`) are `household` data; `lives_in` and
+`works_at` follow their source like a literal. «Child» means a child the owner is guardian of;
+the writer cannot tell a minor from an adult child, so it classifies both alike, and how an
+adult child is treated is a Step 0 decision. The asserter and the confirmer are the owner, and
+each row records them and the channel (`asserted_by_entity_id`, `channel`, migration 010; older
+rows and the local setup read `NULL`). A repeat of an active value with the same classification is
+idempotent; a stored row labelled otherwise is refused as `classification_conflict`. Nobody who is
+already the partner, or holds an adult role, can be declared a child to unlock their facts. A temporal
+relation closes the previous one at the new `valid_from`, an explicit `valid_to` stores history
+(lifecycle `expired`, never closing the current row), and dates are `YYYY-MM-DD` or `YYYY-MM`.
+A third party is created apart, once: `create_third_party` refuses a second entity with the same
+folded name and type (`AmbiguousEntityError`), and the import key makes a re-run return the same
+entity. Several writes can join a transaction the caller owns, so an importer gets
+all-or-nothing with no new API.
+
+The registry also knows `species` (pets), `stated_age`, `private_topic` («no menciones X delante
+de visitas»: only the predicate exists, its behaviour needs CM-5 and Step 0) and `access_code`
+(the first `security` datum, with no Spanish alias). **The repository refuses to store any value
+whose sensitivity is `security`** (`SecurityStorageUndecidedError`, before any write or log) until
+the Step 0 ADR decides storage at rest; reading it is CM-5.
 
 ## Provenance, confidence, and truth status
 
@@ -376,7 +420,8 @@ without duplicating the household or erasing unrelated multi-value facts.
    `parent_of` relationships, count deterministically, and explain unknown or
    contradictory data without guessing.
 2. **Calculate age:** read the person's confirmed birth date and calculate age
-   from the current date; never read a stored `age` string.
+   from the current date; never read a stored `age` string. When only a stated age
+   exists, derive the approximate age from it and its as-of date.
 3. **Multiple preferences:** adding a second preference does not supersede the
    first because the predicate is multi-value.
 4. **Moved home:** the old residence keeps a closed validity interval and the

@@ -192,6 +192,9 @@ a stranger: it says nothing about it, and the reply is the ordinary one.
   that falls outside the set, is dropped (`sensitive_topic`). **On doubt, drop**; the deny-list is
   only a second layer, because a miss there is unsafe. "Me gusta vivir en la costa", "odio mi
   medicación", "amo a mi hijo" and "no hablar de mi divorcio" never become a candidate.
+  *Note (ADR 0022, Plan 0065).* What stays out of the gate is now named: third parties and the
+  disclosure rule are CM-3b's spoken capture (tranche B, after Step 0); the registry already holds
+  the `private_topic` predicate, but nothing in this gate proposes it.
 - **Extractor.** The model receives **only the user's text**. Its output is at most three
   `{predicate, object, topic}` triples with `predicate` in `{likes, dislikes, prefers}` and `topic`
   in the closed set, no free-form field;
@@ -218,6 +221,12 @@ a stranger: it says nothing about it, and the reply is the ordinary one.
 - visibility `personal` and sensitivity `normal` are passed **explicitly to the V4 writer**. The
   registry defaults do not change (Context fact 3: they are the read contract of the household
   reader). CM-5 decides how the reader asks for personal rows.
+- *Amended by [ADR 0022](0022-household-rules-and-third-party-memory.md) decision 2 (Plan 0065).*
+  The classifier still assigns nothing the speaker said, and the stored classification is no
+  longer passed by `promote`: it is looked up by `canonical_writer.write_literal`, from the
+  predicate and the subject, in one table that every channel shares. For the owner's own taste
+  the table gives the same `personal`/`normal`, so nothing the candidate policy authorizes
+  changes (a test pins the equivalence).
 
 ### 6. The candidate store
 
@@ -562,6 +571,16 @@ never the message. These are memory-layer reasons, separate from ADR 0016
 | `/chat` as a channel | No audio, so no `strong` | Pipec's decision, unscheduled | the cross-cutting "wiring" row |
 | CPU contention of extraction on the homelab; offer cadence; a short explicit answer failing verification | Judged only with a real person and clip | **Plan 0063** acceptance | measured and recorded |
 | Seed load as a second input channel | It follows the writer; household members are third parties | After CM-3a (own data) and CM-3b (members) | its own row |
+
+*Update (ADR 0022, Plan 0065, 2026-10-22).* The write core of the CM-3b rows above now exists:
+one channel-neutral writer for literals and relations of the owner's household, `lives_in` and
+`works_at` with validity, `species`, the **stated** age (stored with its as-of date; today's age is
+still never persisted, so the derived-age row of `memory-and-world-state.md` now covers only the
+derived value), the `private_topic` and `access_code` predicates (the repository refuses to store the
+SECURITY one until Step 0 decides storage at rest), the household capability pair as policy, and
+dataset v3 with an honest `confirm` operation. **Still open, tranche B after Step 0:** the spoken
+capture of third parties, reported facts, the behaviour of the disclosure rule and perceptual
+candidates.
 
 **Ordering.** CM-3b is **required before CM-7**, unplanned, written when CM-3a closes. CM-6's correct
 and forget steps of `sensitive_preference_lifecycle` need its write step; CM-5 may open earlier but

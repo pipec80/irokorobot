@@ -145,6 +145,8 @@ def _event_values() -> dict[str, object]:
                 "confirm_personal_memory",
                 "correct_personal_memory",
                 "forget_personal_memory",
+                "propose_household_memory",
+                "confirm_household_memory",
             ],
         ),
         (ObservationModality, ["text", "audio", "visual", "sensor", "system"]),

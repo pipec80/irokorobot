@@ -1,16 +1,16 @@
 # 0022 — Household rules: whose data a third party's fact is, and one writer for every channel
 
-- **Status:** Proposed (2026-10-16), **revised the same day after an independent review** (see
-  *Review record*). Written from the audit of CM-3b (nine pieces, of which only the channel-neutral
+- **Status:** Accepted (2026-10-22), when
+  [Plan 0065](../plans/completed/0065-cm3b-a-channel-neutral-writer-core.md) closed. Proposed
+  2026-10-16, **revised the same day after an independent review** (see *Review record*). Written from the audit of CM-3b (nine pieces, of which only the channel-neutral
   writer is needed before Step 0) and from the Plan 0063 hardware acceptance. Every decision below
-  carries the recommendation of that audit; **Pipec confirms each when he accepts this ADR** (they
-  are his to make): decisions 0 to 14 of the audit table were confirmed by him on 2026-10-16
+  carries the recommendation of that audit; **Pipec confirmed each** (they
+  were his to make): decisions 0 to 14 of the audit table were confirmed by him on 2026-10-16
   («estan correctas todas»), with the changes of that day (decision 0, the stated age of decision 6);
   the three decisions the review added (marked *Confirmed by Pipec* below) he **confirmed the same day
   by taking the recommendations** (migration 010 for the asserter and channel; the personal
-  provenance scenario; no homonymous third parties until Step 0). Accepted when
-  [Plan 0065](../plans/open/0065-cm3b-a-channel-neutral-writer-core.md) closes; that plan may start
-  while this ADR is `Proposed`, now that those three are confirmed.
+  provenance scenario; no homonymous third parties until Step 0). It became `Accepted` when Plan 0065 closed; what its
+  execution settled is under *Implementation notes*, after the *Review record*.
 - **Date:** 2026-10-16
 - **Builds on:** [ADR 0006](0006-personal-and-family-companion-profiles.md),
   [ADR 0009](0009-locked-posture-and-scoped-capabilities.md),
@@ -25,8 +25,8 @@
   the gate may extract (decisions 1, 9 and 10 say what stays out) and its decision 13 and
   `docs/architecture/memory-and-world-state.md`'s derived-age row (decision 6: a stated age with
   its as-of date **is** stored; today's age never is).
-- **Implemented by:** [Plan 0065](../plans/open/0065-cm3b-a-channel-neutral-writer-core.md) (the
-  writer core, tranche A of CM-3b). Tranche B (spoken capture of third parties, reported facts, the
+- **Implemented by:** [Plan 0065](../plans/completed/0065-cm3b-a-channel-neutral-writer-core.md) (the
+  writer core, tranche A of CM-3b; closed 2026-10-22). Tranche B (spoken capture of third parties, reported facts, the
   behaviour of the disclosure rule, perceptual candidates) is planned after Step 0.
 
 ## Context
@@ -276,9 +276,58 @@ parties are impossible without a migration (decision 7); moving `provenance_attr
 would have made the personal stage unpassable (decision 5); the policy cannot know a subject is the
 owner's child (decision 3's `subject_relation`); missing consequences are now stated.
 
+## Implementation notes (Plan 0065, 2026-10-22)
+
+What the execution settled where this ADR was silent or had to be made precise. None of it changes
+a decision above; each item is covered by a test.
+
+- **Decision 3, the request.** The policy is pure, and `subject_relation` alone cannot tell a
+  literal about the partner (denied) from a relation to the partner (allowed), so the request also
+  carries a closed `fact_shape` (`literal` or `relation`), classified by the caller before any
+  read like `subject_relation`. `security` data is not covered by the pair at all: the repository
+  cannot keep it before Step 0, so the policy does not authorize it.
+- **Decision 2, the classification.** Membership relations (`child_of`, `partner_of`, `pet_of`) are
+  the act that creates membership, so they need only the owner at their owning end; nobody who is
+  already the partner or holds an adult household role can be declared a child or a pet, and a child
+  or a pet cannot be declared the partner. A predicate whose registry default is `personal`
+  (`private_topic`, `access_code`) is only about the owner: widening it to `household` would
+  contradict the registry and storing it as `personal` would put the owner's word in someone else's
+  personal memory (`owner_only_predicate`). An exact repeat is idempotent only for the same text and
+  the same classification; a stored row labelled otherwise (the local setup and the legacy migration
+  store the registry defaults) is refused as `classification_conflict` instead of being reported as
+  written.
+- **Decision 6, validity.** Dates are validated (`YYYY-MM-DD` or `YYYY-MM`, a real calendar date,
+  `valid_to` not before `valid_from`; an empty string is an error, not an absent date). A move dated
+  before the relation it replaces closes that relation at its own start (a zero-length range) rather
+  than inverting it. A repeat of an active triple returns the row already stored with its first dates.
+  A `valid_from` in the future supersedes the current relation at once: planned moves wait for CM-5.
+- **Decision 9, SECURITY.** The refusal is checked first in the writer and in both repository
+  writers, by the predicate (a caller cannot downgrade the label of `access_code`), before anything
+  is classified, read or logged; the legacy migration defers such a fact instead of stopping the run.
+  The migration that adds the provenance columns is atomic (`BEGIN`, four `ALTER TABLE`, the version,
+  `COMMIT`) and `run_migrations` rolls back a script that failed.
+- **Logs.** The writer and `create_third_party` announce a stored row at `info` only after the commit
+  they own; a write joined to the caller's transaction is only *staged* (`debug`).
+
+**Open obligations, carried to the Step 0 ADR and the plans after it** (found by the independent
+reviews and left on purpose):
+
+1. How an adult child is treated, and who may claim the owner's identity on each channel
+   (`import_file` included): the writer trusts `owner_entity_id`; the policy and the caller decide.
+2. Folded duplicates across channels: `promote` compares folded keys (case and article), the writer
+   compares text exactly, so a spoken «Pizza» and an imported «pizza» are two rows.
+3. The dataset's `status:pending-step0` tag marks the SECURITY scenario but nothing in the
+   aggregation reads it: today every step of it is unsupported; when the seams exist it will run and
+   join the personal disclosure denominator.
+4. `db.transaction()` is not reentrant: a caller already inside one that forgets
+   `manage_transaction=False` waits forever. A guard belongs in `db.py`, not in this plan.
+5. `create_third_party` matches the folded canonical name only, not aliases, and a household policy
+   for planned (future-dated) moves.
+
 ## Follow-up
 
-- [Plan 0065](../plans/open/0065-cm3b-a-channel-neutral-writer-core.md) — tranche A, the writer core.
+- [Plan 0065](../plans/completed/0065-cm3b-a-channel-neutral-writer-core.md) — tranche A, the writer
+  core (closed 2026-10-22).
 - Tranche B of CM-3b — after Step 0 (spoken capture, reported facts, disclosure behaviour,
   perceptual candidates, benchmark restart seam).
-- The next free ADR number is 0023.
+- The next free ADR number is 0024.

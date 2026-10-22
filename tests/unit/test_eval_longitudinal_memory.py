@@ -3,7 +3,8 @@
 These tests never reach Ollama, the network or a real database. They pin the
 frozen schema, the semantic rules enforced by ``load_suite``, the privacy
 rules enforced by ``validate_dataset_privacy``, a coverage check on the
-committed version-1 YAML suite, and (Task 3) the deterministic scoring layer
+committed YAML suite (version 3; the frozen version 2 sits beside it), and the
+deterministic scoring layer
 in ``scripts.longitudinal_eval_scoring`` /
 ``scripts.longitudinal_eval_aggregation``.
 """
@@ -124,10 +125,12 @@ def _scenario(**over: object) -> dict[str, object]:
     return scenario
 
 
-def _suite_doc(scenarios: list[dict[str, object]] | None = None) -> dict[str, object]:
-    """Return a suite document, defaulting to a single extraction scenario."""
+def _suite_doc(
+    scenarios: list[dict[str, object]] | None = None, *, version: object = 2
+) -> dict[str, object]:
+    """Return a suite document, defaulting to a single extraction scenario at version 2."""
     chosen = scenarios if scenarios is not None else [_scenario()]
-    return {"version": 2, "scenarios": chosen}
+    return {"version": version, "scenarios": chosen}
 
 
 def _write(tmp_path: Path, text: str) -> Path:
@@ -147,12 +150,39 @@ def _write_suite(tmp_path: Path, doc: object) -> Path:
 # ---------------------------------------------------------------------------
 
 
+_NO_VERSION = object()
+
+
 @pytest.mark.unit
-def test_load_suite_rejects_a_document_that_is_not_version_two(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "version",
+    [
+        pytest.param(1, id="one"),
+        pytest.param(4, id="four"),
+        pytest.param(0, id="zero"),
+        pytest.param("3", id="text"),
+        pytest.param(2.0, id="float"),
+        pytest.param(True, id="bool"),
+        pytest.param(None, id="null"),
+        pytest.param(_NO_VERSION, id="missing"),
+    ],
+)
+def test_load_suite_rejects_an_unsupported_or_malformed_version(
+    tmp_path: Path, version: object
+) -> None:
     doc = _suite_doc()
-    doc["version"] = 1
-    with pytest.raises(ValueError, match="version"):
+    if version is _NO_VERSION:
+        del doc["version"]
+    else:
+        doc["version"] = version
+    with pytest.raises(ValueError, match=r'"version" must be one of the supported versions: 2, 3'):
         load_suite(_write_suite(tmp_path, doc))
+
+
+@pytest.mark.unit
+def test_load_suite_rejects_a_document_that_is_not_a_mapping(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="version"):
+        load_suite(_write(tmp_path, "- not\n- a\n- mapping\n"))
 
 
 @pytest.mark.unit
@@ -218,13 +248,15 @@ def test_load_suite_rejects_missing_category_coverage(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_load_suite_accepts_a_minimal_fully_covering_suite(tmp_path: Path) -> None:
+@pytest.mark.parametrize("version", [2, 3])
+def test_load_suite_accepts_a_minimal_fully_covering_suite(tmp_path: Path, version: int) -> None:
     steps = [
         _step(step_id=f"s{index}", category=category.value)
         for index, category in enumerate(LongitudinalCategory)
     ]
-    suite = load_suite(_write_suite(tmp_path, _suite_doc([_scenario(steps=steps)])))
-    assert suite.version == 2
+    doc = _suite_doc([_scenario(steps=steps)], version=version)
+    suite = load_suite(_write_suite(tmp_path, doc))
+    assert suite.version == version
     assert len(suite.scenarios[0].steps) == len(list(LongitudinalCategory))
 
 
@@ -291,7 +323,7 @@ def test_dataset_privacy_accepts_a_clean_synthetic_dataset(tmp_path: Path) -> No
 
 
 # ---------------------------------------------------------------------------
-# Committed version-1 suite coverage
+# Committed suite coverage (version 3)
 # ---------------------------------------------------------------------------
 
 
@@ -384,6 +416,70 @@ def test_golden_suite_tests_recipient_only_with_authorized_and_unauthorized() ->
         assert recall_roles & {"subject", "other"}
         return
     pytest.fail("no scenario tagged domain:recipient-only")
+
+
+_SECURITY_SCENARIO_ID = "personal_access_code_pending"
+_PENDING_TAG = "status:pending-step0"
+# Invented alarm code: four digits, no run of seven, nothing phone-like (Plan 0065).
+_INVENTED_ACCESS_CODE = "7391"
+
+
+def _golden_scenarios() -> dict[str, LongitudinalScenario]:
+    """The committed dataset's scenarios, keyed by id."""
+    return {scenario.scenario_id: scenario for scenario in load_suite(_GOLDEN).scenarios}
+
+
+@pytest.mark.unit
+def test_golden_suite_has_a_pending_personal_security_scenario() -> None:
+    """The owner tells the robot an access code; the write cannot be confirmed until Step 0."""
+    scenario = _golden_scenarios()[_SECURITY_SCENARIO_ID]
+
+    assert scenario.scope == "personal"
+    assert _PENDING_TAG in scenario.tags
+    assert [step.operation.value for step in scenario.steps] == ["propose", "confirm", "recall"]
+    assert _INVENTED_ACCESS_CODE in scenario.steps[0].message
+
+
+@pytest.mark.unit
+def test_the_pending_security_scenario_forbids_the_code_in_every_response() -> None:
+    """A security value never reaches an answer, whatever Step 0 decides about storage."""
+    scenario = _golden_scenarios()[_SECURITY_SCENARIO_ID]
+
+    for step in scenario.steps:
+        assert _INVENTED_ACCESS_CODE in step.expected.forbidden, step.step_id
+    recall = scenario.steps[-1]
+    assert scenario.actors[recall.actor_id].role == "unknown"
+
+
+@pytest.mark.unit
+def test_only_the_security_scenario_is_marked_pending() -> None:
+    pending = [s.scenario_id for s in _golden_scenarios().values() if _PENDING_TAG in s.tags]
+
+    assert pending == [_SECURITY_SCENARIO_ID]
+
+
+@pytest.mark.unit
+def test_the_pending_security_scenario_passes_the_privacy_scan_on_its_own(tmp_path: Path) -> None:
+    scenario = _golden_scenarios()[_SECURITY_SCENARIO_ID]
+    document = {"version": 3, "scenarios": [scenario.model_dump(mode="json")]}
+    dataset = _write_suite(tmp_path, document)
+
+    validate_dataset_privacy(
+        dataset, ["pipec", "felipe", "iroko", "omnibot", *load_reserved_terms()]
+    )
+
+
+@pytest.mark.unit
+async def test_the_pending_security_scenario_is_reported_unsupported_step_by_step() -> None:
+    """Pending means visible and never a pass: the driver records the missing seam per step."""
+    scenario = _golden_scenarios()[_SECURITY_SCENARIO_ID]
+    driver = CurrentRuntimeDriver(_fake_client())
+
+    for step in scenario.steps:
+        observation = await driver.execute_step(scenario, step)
+        assert observation.status is CapabilityStatus.UNSUPPORTED, step.step_id
+        assert observation.reason is not None
+        assert "seam" in observation.reason
 
 
 @pytest.mark.unit
@@ -1024,6 +1120,7 @@ def test_determine_exit_code_zero_for_non_gating_smoke_without_failures() -> Non
 
 _OPERATIONS_WITHOUT_A_SEAM = (
     LongitudinalOperation.PROPOSE,
+    LongitudinalOperation.CONFIRM,
     LongitudinalOperation.RESTART,
     LongitudinalOperation.RECALL,
     LongitudinalOperation.CORRECT,
@@ -1215,10 +1312,46 @@ def _unsupported_reason(operation: LongitudinalOperation) -> str:
 
 @pytest.mark.unit
 def test_driver_unsupported_reasons_name_the_exact_missing_capability() -> None:
-    assert "assert_fact()" in _unsupported_reason(LongitudinalOperation.PROPOSE)
+    assert "no public candidate-lifecycle seam drives the canonical writer" in _unsupported_reason(
+        LongitudinalOperation.PROPOSE
+    )
     assert "not a restart" in _unsupported_reason(LongitudinalOperation.RESTART)
     assert "resolved actor" in _unsupported_reason(LongitudinalOperation.RECALL)
+    assert "CM-6" in _unsupported_reason(LongitudinalOperation.CORRECT)
     assert "episode/embedding/summary/cache" in _unsupported_reason(LongitudinalOperation.FORGET)
+
+
+@pytest.mark.unit
+def test_confirm_is_an_operation_of_the_schema() -> None:
+    assert LongitudinalOperation("confirm") is LongitudinalOperation.CONFIRM
+    step = _lstep(operation="confirm", category="cross_person_privacy")
+    assert step.operation is LongitudinalOperation.CONFIRM
+
+
+@pytest.mark.unit
+def test_confirm_is_unsupported_and_says_why_a_security_value_cannot_be_written() -> None:
+    """Nothing drives the canonical writer, so ``confirm`` is never reported as supported."""
+    reason = _unsupported_reason(LongitudinalOperation.CONFIRM)
+
+    assert "no public seam drives the canonical writer" in reason
+    assert "security" in reason
+    assert "Step 0" in reason
+
+
+@pytest.mark.unit
+def test_driver_reasons_no_longer_claim_writes_go_through_the_legacy_assert_fact() -> None:
+    """The canonical writer exists (Plan 0065); the harness just has no public seam to it."""
+    for operation in _OPERATIONS_WITHOUT_A_SEAM:
+        assert "assert_fact" not in _unsupported_reason(operation), operation
+    assert "assert_fact" not in inspect.getsource(driver_mod)
+
+
+@pytest.mark.unit
+def test_every_operation_but_extract_is_recorded_unsupported_by_the_driver() -> None:
+    """A new operation must come with its honest reason: none can be forgotten."""
+    assert set(_OPERATIONS_WITHOUT_A_SEAM) == set(LongitudinalOperation) - {
+        LongitudinalOperation.EXTRACT
+    }
 
 
 @pytest.mark.unit
@@ -1272,7 +1405,7 @@ def test_metadata_is_complete_and_the_dataset_hash_is_deterministic(
     second = collect_run_metadata(_GOLDEN, [], [])
     assert first.dataset_sha256 == second.dataset_sha256
     assert first.dataset_sha256 == hashlib.sha256(_GOLDEN.read_bytes()).hexdigest()
-    assert first.dataset_version == 2
+    assert first.dataset_version == 3
     assert first.provider == "ollama"
     assert first.branch == "feat/0046-longitudinal-memory-baseline"
     assert first.temporary_database_name == "brain.db"

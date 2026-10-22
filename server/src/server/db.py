@@ -34,6 +34,7 @@ _MIGRATIONS: tuple[tuple[int, str], ...] = (
     (7, "migration_007_biometric_consent.sql"),
     (8, "migration_008_voice_consent.sql"),
     (9, "migration_009_memory_candidates.sql"),
+    (10, "migration_010_asserter_and_channel.sql"),
 )
 _conn: aiosqlite.Connection | None = None
 
@@ -212,6 +213,9 @@ async def run_migrations() -> None:
             await conn.execute(f"PRAGMA user_version = {version}")
             await conn.commit()
         except Exception as exc:
+            # A script that opened its own transaction and failed leaves it open: close it, so
+            # nothing it half-applied survives and the next start retries it from the same version.
+            await conn.rollback()
             raise BrainMemoryError(f"Migration {version} ({filename}) failed") from exc
 
     logger.info("Schema up-to-date (version %d)", _MIGRATIONS[-1][0])
