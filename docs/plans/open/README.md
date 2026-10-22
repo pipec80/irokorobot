@@ -46,7 +46,7 @@ siguen siendo los del [roadmap](../../roadmap/cognitive-roadmap.md); esta lista 
 **Bloquea el plan del Paso 0 (la carga de datos):**
 
 1. ~~Ejecutar el Plan 0065~~ **Hecho el 2026-10-22.** Entregó el escritor neutral al canal que el importador
-   del Paso 0 usa. Queda abierta la corrida del benchmark v3 con el Ollama de Pipec (solo conteos).
+   del Paso 0 usa. La corrida del benchmark v3 con el Ollama de Pipec (2026-10-22) dio 90 pasos: 0 pasan, 3 fallan (la extracción, igual que antes) y 87 no soportados.
 2. ~~ADR 0022~~ **`Accepted` el 2026-10-22.** El Paso 0 depende de sus reglas y debe decidir lo que el ADR
    deja abierto: dónde se guarda un valor `security` en reposo, la regla del hijo adulto, y si un
    representante o un segundo adulto puede afirmar o confirmar en nombre del dueño.

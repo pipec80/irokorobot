@@ -542,9 +542,15 @@ Task 7a `3fe1814`, Task 3 `9d292a0`, Task 6a `09caa32`, Task 6b `54ae72c`, Task 
 **Verification.** `just gate`: **4179 passed** (baseline 3839 on `main`); lint, `mypy`, `pyright` and
 the security audit clean. `scripts/check_reserved_terms.py` clean, `ruff format --check .` clean and every
 relative link of the changed documents resolves. The three untracked drafts of `docs/history/` are
-byte-identical to what they were at the start. **Not run here:** the offline benchmark with Pipec's
-Ollama (Task 7b step 3). The CLI tests generate the report offline from the golden dataset with fixed
-observations, so the report path is exercised; the counts of a real run are the open item.
+byte-identical to what they were at the start. **Offline benchmark (Task 7b step 3), run by Pipec
+on 2026-10-22 with his Ollama** (`just eval-longitudinal --runs 3`, dataset version 3, `qwen2.5:3b` and
+`qwen3:4b-instruct-2507-q4_K_M`, source commit `4ef24b8`; counts only): 90 steps scored (30 x 3 runs),
+**0 passed, 3 failed, 87 unsupported, 0 errors**; the report generated and exit code 1, as expected.
+The 3 failures are the single extraction step of each run, with precision and recall 0.25, the same as
+the recorded baseline: extraction was not touched. The 87 unsupported are the 29 non-extraction steps of
+the new dataset, three times. Personal and full-suite acceptance stay FAIL, family PENDING, and the
+four frozen gates have no passing denominator, exactly the state the plan promised not to hide. This is
+not comparable step for step with the baseline (75 steps: 3 failed, 72 unsupported; dataset version 1).
 
 **Rulings made while executing** (the spec, ADR 0022, was the authority; each costs one small edit if
 wrong):
