@@ -60,6 +60,10 @@ class LiteralFactV4(BaseModel):
     # every fact that was never a candidate. Defaulted so older constructions keep working.
     confirmed_by_entity_id: int | None = None
     confirmed_at: str | None = None
+    # Who asserted the fact and through which channel (migration 010, ADR 0022 decision 2):
+    # NULL for every row written before it or by a writer that does not state them.
+    asserted_by_entity_id: int | None = None
+    channel: str | None = None
 
 
 class EntityRelationV4(BaseModel):
@@ -81,6 +85,8 @@ class EntityRelationV4(BaseModel):
     sensitivity: str
     superseded_at: str | None
     superseded_by: int | None
+    asserted_by_entity_id: int | None = None
+    channel: str | None = None
 
 
 type SqlValue = int | float | str | None
@@ -200,6 +206,8 @@ def _literal_from_row(row: SqlRow) -> LiteralFactV4:
         superseded_by=_optional_int(row[13]),
         confirmed_by_entity_id=_optional_int(row[14]),
         confirmed_at=_optional_text(row[15]),
+        asserted_by_entity_id=_optional_int(row[16]),
+        channel=_optional_text(row[17]),
     )
 
 
@@ -220,17 +228,20 @@ def _relation_from_row(row: SqlRow) -> EntityRelationV4:
         sensitivity=_required_text(row[11]),
         superseded_at=_optional_text(row[12]),
         superseded_by=_optional_int(row[13]),
+        asserted_by_entity_id=_optional_int(row[14]),
+        channel=_optional_text(row[15]),
     )
 
 
 _LITERAL_COLUMNS = """
     id, subject_entity_id, predicate, value_text, confidence, source_memory_id, asserted_at,
     valid_from, valid_to, lifecycle, visibility, sensitivity, superseded_at, superseded_by,
-    confirmed_by_entity_id, confirmed_at
+    confirmed_by_entity_id, confirmed_at, asserted_by_entity_id, channel
 """
 _RELATION_COLUMNS = """
     id, source_entity_id, predicate, target_entity_id, confidence, source_memory_id, asserted_at,
-    valid_from, valid_to, lifecycle, visibility, sensitivity, superseded_at, superseded_by
+    valid_from, valid_to, lifecycle, visibility, sensitivity, superseded_at, superseded_by,
+    asserted_by_entity_id, channel
 """
 
 
@@ -329,6 +340,8 @@ async def assert_literal_fact(
     sensitivity: str | None = None,
     confirmed_by_entity_id: int | None = None,
     confirmed_at: str | None = None,
+    asserted_by_entity_id: int | None = None,
+    channel: str | None = None,
     manage_transaction: bool = True,
 ) -> LiteralFactV4:
     """Persist a typed literal while applying its registry lifecycle rule.
@@ -340,7 +353,8 @@ async def assert_literal_fact(
     household reader's read contract; a caller that stores something else (the candidate
     writer stores the owner's own ``personal`` data) states it explicitly and the registry
     does not move. ``confirmed_by_entity_id`` and ``confirmed_at`` record who confirmed the
-    fact and when.
+    fact and when; ``asserted_by_entity_id`` and ``channel`` record who said it and through
+    which channel (the canonical writer states both; older writers leave them ``None``).
 
     ``manage_transaction=False`` joins a transaction the caller already owns (the legacy
     migration, which commits a record with its ledger entry, and the candidate writer, which
@@ -358,6 +372,8 @@ async def assert_literal_fact(
         sensitivity: Overrides the registry's default sensitivity.
         confirmed_by_entity_id: The entity that confirmed the fact, if any.
         confirmed_at: When it was confirmed, if it was.
+        asserted_by_entity_id: The entity that asserted the fact, if stated.
+        channel: The channel the assertion arrived through, if stated.
         manage_transaction: ``False`` joins the caller's open transaction.
 
     Returns:
@@ -383,6 +399,8 @@ async def assert_literal_fact(
         sensitivity=sensitivity or definition.default_sensitivity,
         confirmed_by_entity_id=confirmed_by_entity_id,
         confirmed_at=confirmed_at,
+        asserted_by_entity_id=asserted_by_entity_id,
+        channel=channel,
     )
     if manage_transaction:
         async with db.transaction() as conn:
@@ -417,12 +435,14 @@ async def assert_literal_fact(
 
 @dataclass(frozen=True)
 class _LiteralStamp:
-    """The classification and confirmation one literal is stored with."""
+    """The classification, confirmation and provenance one literal is stored with."""
 
     visibility: str
     sensitivity: str
     confirmed_by_entity_id: int | None
     confirmed_at: str | None
+    asserted_by_entity_id: int | None
+    channel: str | None
 
 
 async def _insert_literal_fact(
@@ -440,9 +460,10 @@ async def _insert_literal_fact(
     cursor = await conn.execute(
         "INSERT INTO literal_facts_v4 "
         "(subject_entity_id, predicate, value_text, confidence, source_memory_id, asserted_at, "
-        "visibility, sensitivity, valid_from, confirmed_by_entity_id, confirmed_at) "
+        "visibility, sensitivity, valid_from, confirmed_by_entity_id, confirmed_at, "
+        "asserted_by_entity_id, channel) "
         "VALUES (?, ?, ?, ?, ?, COALESCE(?, datetime('now')), ?, ?, "
-        "CASE WHEN ? THEN COALESCE(?, datetime('now')) ELSE NULL END, ?, ?)",
+        "CASE WHEN ? THEN COALESCE(?, datetime('now')) ELSE NULL END, ?, ?, ?, ?)",
         (
             subject_entity_id,
             definition.canonical_id,
@@ -456,6 +477,8 @@ async def _insert_literal_fact(
             asserted_at,
             stamp.confirmed_by_entity_id,
             stamp.confirmed_at,
+            stamp.asserted_by_entity_id,
+            stamp.channel,
         ),
     )
     if cursor.lastrowid is None:

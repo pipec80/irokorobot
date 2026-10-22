@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import pytest
 from server.memory.declarative import assert_fact, upsert_entity
 from server.memory.legacy_v4_migration import migrate_active_legacy_facts
+from server.memory.relational_v4 import AssertionLifecycle, EntityRelationV4, LiteralFactV4
 from server.settings import settings
 
 from server import db
@@ -188,3 +189,96 @@ async def test_legacy_migration_is_dry_run_first_and_idempotent(
     await relation_cursor.close()
     assert (legacy_v4_db["maximo_id"], "child_of", legacy_v4_db["felipe_id"]) in relations
     assert (legacy_v4_db["felipe_id"], "lives_in", legacy_v4_db["santiago_id"]) in relations
+
+
+# --- Plan 0065: migration 010 upgrades a version-9 database in place ---------------------------
+
+
+@pytest.fixture
+async def v9_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[misc]
+    """A database migrated only to version 9; yields the full migration list for the upgrade."""
+    monkeypatch.setattr(settings, "brain_db_path", tmp_path / "upgrade-v9.db")
+    db._conn = None
+    await db.open_db()
+    try:
+        full_list = db._MIGRATIONS
+        monkeypatch.setattr(db, "_MIGRATIONS", tuple(m for m in full_list if m[0] <= 9))
+        await db.run_migrations()
+        yield full_list
+    finally:
+        await db.close_db()
+        db._conn = None
+
+
+@pytest.mark.integration
+async def test_migration_ten_upgrades_a_version_nine_database_without_losing_rows(
+    v9_db: tuple[tuple[int, str], ...], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    subject_id = await upsert_entity(name="Canary Child", type="person")
+    target_id = await upsert_entity(name="Canary Owner", type="person")
+    conn = db.get_conn()
+    await conn.execute(
+        "INSERT INTO literal_facts_v4 (subject_entity_id, predicate, value_text) "
+        "VALUES (?, 'likes', 'el tren')",
+        (subject_id,),
+    )
+    await conn.execute(
+        "INSERT INTO entity_relations_v4 (source_entity_id, predicate, target_entity_id) "
+        "VALUES (?, 'child_of', ?)",
+        (subject_id, target_id),
+    )
+    await conn.commit()
+    cursor = await conn.execute("PRAGMA table_info(literal_facts_v4)")
+    assert "asserted_by_entity_id" not in {str(row[1]) for row in await cursor.fetchall()}
+    await cursor.close()
+
+    monkeypatch.setattr(db, "_MIGRATIONS", v9_db)
+    await db.run_migrations()
+
+    cursor = await conn.execute("PRAGMA user_version")
+    assert await cursor.fetchone() == (10,)
+    await cursor.close()
+    for table in ("literal_facts_v4", "entity_relations_v4"):
+        cursor = await conn.execute(
+            f"SELECT COUNT(*), COUNT(asserted_by_entity_id), COUNT(channel) FROM {table}"  # noqa: S608
+        )
+        assert await cursor.fetchone() == (1, 0, 0)
+        await cursor.close()
+
+
+def test_the_v4_models_expose_the_asserter_and_channel_with_none_defaults() -> None:
+    literal = LiteralFactV4(
+        id=1,
+        subject_entity_id=2,
+        predicate="likes",
+        value_text="cafe",
+        confidence=0.9,
+        source_memory_id=None,
+        asserted_at="2026-10-22T10:00:00.000000+00:00",
+        valid_from=None,
+        valid_to=None,
+        lifecycle=AssertionLifecycle.ACTIVE,
+        visibility="household",
+        sensitivity="normal",
+        superseded_at=None,
+        superseded_by=None,
+    )
+    relation = EntityRelationV4(
+        id=1,
+        source_entity_id=2,
+        predicate="child_of",
+        target_entity_id=3,
+        confidence=0.9,
+        source_memory_id=None,
+        asserted_at="2026-10-22T10:00:00.000000+00:00",
+        valid_from=None,
+        valid_to=None,
+        lifecycle=AssertionLifecycle.ACTIVE,
+        visibility="household",
+        sensitivity="child_data",
+        superseded_at=None,
+        superseded_by=None,
+    )
+
+    for model in (literal, relation):
+        assert (model.asserted_by_entity_id, model.channel) == (None, None)
