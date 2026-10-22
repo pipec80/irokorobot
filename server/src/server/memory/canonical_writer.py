@@ -37,13 +37,15 @@ from server.memory.predicate_registry import (
     resolve_predicate,
 )
 from server.memory.relational_v4 import (
+    EntityRelationV4,
     LiteralFactV4,
+    assert_entity_relation,
     assert_literal_fact,
     get_active_entity_relations,
     get_active_literal_facts,
 )
 
-__all__ = ["WriteChannel", "WriteRefusal", "write_literal"]
+__all__ = ["WriteChannel", "WriteRefusal", "write_literal", "write_relation"]
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +86,7 @@ def _required_predicate(alias: str) -> PredicateDefinition:
 
 _CHILD_OF = _required_predicate("child_of")
 _PET_OF = _required_predicate("pet_of")
+_MEMBERSHIP_PREDICATES = frozenset({"child_of", "partner_of", "pet_of"})
 
 
 async def _is_member_of_owner(owner_entity_id: int, subject_entity_id: int) -> bool:
@@ -120,13 +123,13 @@ def _refusal(
     return WriteRefusedError(reason.value)
 
 
-async def _classify_literal(
+async def _classify_subject(
     owner_entity_id: int,
     subject_entity_id: int,
     definition: PredicateDefinition,
     channel: WriteChannel,
 ) -> tuple[str, str]:
-    """Return the ``(visibility, sensitivity)`` a literal about this subject is stored with.
+    """Return the ``(visibility, sensitivity)`` a fact about this subject is stored with.
 
     Raises:
         WriteRefusedError: With ``not_household_member`` for the partner or anyone else outside
@@ -136,6 +139,36 @@ async def _classify_literal(
         private = definition.canonical_id in _OWNER_PRIVATE_LITERALS
         return _PERSONAL, _PRIVATE if private else definition.default_sensitivity
     if await _is_member_of_owner(owner_entity_id, subject_entity_id):
+        return _HOUSEHOLD, definition.default_sensitivity
+    raise _refusal(WriteRefusal.NOT_HOUSEHOLD_MEMBER, definition, channel)
+
+
+async def _classify_relation(
+    owner_entity_id: int,
+    source_entity_id: int,
+    target_entity_id: int,
+    definition: PredicateDefinition,
+    channel: WriteChannel,
+) -> tuple[str, str]:
+    """Return the ``(visibility, sensitivity)`` a relation is stored with.
+
+    A membership relation (``child_of``, ``partner_of``, ``pet_of``) is the act that says who
+    belongs to the owner's household, so it only needs the owner at its owning end: the child
+    or the pet points to the owner, and the partner may be on either end (the relation is
+    symmetric). It is ``household`` with the registry's sensitivity. Any other relation
+    (``lives_in``, ``works_at``) is classified by its source like a literal about that subject.
+
+    Raises:
+        WriteRefusedError: With ``not_household_member`` when the owner is not at the owning end
+            of a membership relation, or the source of another relation is the partner or an
+            outsider.
+    """
+    if definition.canonical_id not in _MEMBERSHIP_PREDICATES:
+        return await _classify_subject(owner_entity_id, source_entity_id, definition, channel)
+    owner_ends = {target_entity_id}
+    if definition.symmetric:
+        owner_ends.add(source_entity_id)
+    if owner_entity_id in owner_ends and source_entity_id != target_entity_id:
         return _HOUSEHOLD, definition.default_sensitivity
     raise _refusal(WriteRefusal.NOT_HOUSEHOLD_MEMBER, definition, channel)
 
@@ -228,7 +261,7 @@ async def _write_literal(
     asserted_at: str | None,
 ) -> LiteralFactV4:
     """Classify, de-duplicate and store one literal inside the caller's transaction."""
-    visibility, sensitivity = await _classify_literal(
+    visibility, sensitivity = await _classify_subject(
         owner_entity_id, subject_entity_id, definition, channel
     )
     normalized = normalize_literal(definition, value)
@@ -264,3 +297,136 @@ async def _write_literal(
         },
     )
     return fact
+
+
+def _relation_definition(predicate: str) -> PredicateDefinition:
+    """Resolve a closed relation predicate or reject the alias."""
+    definition = resolve_predicate(predicate)
+    if definition is None or definition.kind is not PredicateKind.RELATION:
+        raise ValueError("write_relation needs a registered relation predicate")
+    return definition
+
+
+async def write_relation(
+    *,
+    owner_entity_id: int,
+    source_entity_id: int,
+    predicate: str,
+    target_entity_id: int,
+    channel: WriteChannel,
+    confirmed_at: str,
+    confidence: float = 0.9,
+    asserted_at: str | None = None,
+    valid_from: str | None = None,
+    valid_to: str | None = None,
+    manage_transaction: bool = True,
+) -> EntityRelationV4:
+    """Store one relation of the owner's household, whatever the channel.
+
+    Membership relations (``child_of``, ``partner_of``, ``pet_of``) say who belongs to the
+    household and are ``household`` data; ``lives_in`` and ``works_at`` follow their source like
+    a literal about that subject. The classification is the writer's, as for ``write_literal``;
+    the owner is the asserter and the confirmer. Validity follows ADR 0022 decision 6: a spoken
+    ``valid_from`` closes the previous relation of a temporal predicate at that date, and an
+    explicit ``valid_to`` stores history without touching the current row. An exact repeat of an
+    active triple returns the row already stored. The targets (a third party made by
+    ``create_third_party``, a place) are not classified: only the source's membership counts.
+
+    Args:
+        owner_entity_id: The household owner, who asserts and confirms.
+        source_entity_id: The entity the relation starts from (the child, the pet, the owner).
+        predicate: A registered relation predicate or its alias.
+        target_entity_id: The entity it points to.
+        channel: The channel the relation arrived through.
+        confirmed_at: When the owner confirmed it, as UTC ISO 8601.
+        confidence: Confidence in the relation, between 0 and 1.
+        asserted_at: Assertion timestamp; now when ``None``.
+        valid_from: When it began, as ``YYYY-MM-DD`` or ``YYYY-MM``.
+        valid_to: When it ended; makes the row history.
+        manage_transaction: ``False`` joins a transaction the caller already owns, so several
+            writes commit or roll back together; ``db.transaction()`` is not reentrant.
+
+    Returns:
+        The stored relation, or the active one already stored for the same triple.
+
+    Raises:
+        WriteRefusedError: With ``not_household_member`` when the relation is outside the
+            owner's household (the partner's own facts, an outsider).
+        SecurityStorageUndecidedError: For a SECURITY relation; nothing is stored or logged.
+        ValueError: For an unregistered or non-relation predicate, an unlisted channel, an
+            invalid endpoint, date or confidence.
+    """
+    definition = _relation_definition(predicate)
+    write_channel = WriteChannel(channel)
+    if not manage_transaction:
+        return await _write_relation(
+            owner_entity_id=owner_entity_id,
+            source_entity_id=source_entity_id,
+            target_entity_id=target_entity_id,
+            definition=definition,
+            channel=write_channel,
+            confirmed_at=confirmed_at,
+            confidence=confidence,
+            asserted_at=asserted_at,
+            valid_from=valid_from,
+            valid_to=valid_to,
+        )
+    async with db.transaction():
+        return await _write_relation(
+            owner_entity_id=owner_entity_id,
+            source_entity_id=source_entity_id,
+            target_entity_id=target_entity_id,
+            definition=definition,
+            channel=write_channel,
+            confirmed_at=confirmed_at,
+            confidence=confidence,
+            asserted_at=asserted_at,
+            valid_from=valid_from,
+            valid_to=valid_to,
+        )
+
+
+async def _write_relation(
+    *,
+    owner_entity_id: int,
+    source_entity_id: int,
+    target_entity_id: int,
+    definition: PredicateDefinition,
+    channel: WriteChannel,
+    confirmed_at: str,
+    confidence: float,
+    asserted_at: str | None,
+    valid_from: str | None,
+    valid_to: str | None,
+) -> EntityRelationV4:
+    """Classify and store one relation inside the caller's transaction."""
+    visibility, sensitivity = await _classify_relation(
+        owner_entity_id, source_entity_id, target_entity_id, definition, channel
+    )
+    relation = await assert_entity_relation(
+        source_entity_id=source_entity_id,
+        target_entity_id=target_entity_id,
+        definition=definition,
+        confidence=confidence,
+        asserted_at=asserted_at,
+        visibility=visibility,
+        sensitivity=sensitivity,
+        confirmed_by_entity_id=owner_entity_id,
+        confirmed_at=confirmed_at,
+        valid_from=valid_from,
+        valid_to=valid_to,
+        asserted_by_entity_id=owner_entity_id,
+        channel=channel.value,
+        manage_transaction=False,
+    )
+    logger.info(
+        "Canonical relation written",
+        extra={
+            "event": _WRITE_EVENT,
+            "kind": "relation",
+            "predicate": definition.canonical_id,
+            "channel": channel.value,
+            "relation_id": relation.id,
+        },
+    )
+    return relation
