@@ -213,6 +213,9 @@ async def run_migrations() -> None:
             await conn.execute(f"PRAGMA user_version = {version}")
             await conn.commit()
         except Exception as exc:
+            # A script that opened its own transaction and failed leaves it open: close it, so
+            # nothing it half-applied survives and the next start retries it from the same version.
+            await conn.rollback()
             raise BrainMemoryError(f"Migration {version} ({filename}) failed") from exc
 
     logger.info("Schema up-to-date (version %d)", _MIGRATIONS[-1][0])

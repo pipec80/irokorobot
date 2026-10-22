@@ -5,9 +5,17 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
+from server.exceptions import BrainMemoryError
 from server.memory.declarative import assert_fact, upsert_entity
 from server.memory.legacy_v4_migration import migrate_active_legacy_facts
-from server.memory.relational_v4 import AssertionLifecycle, EntityRelationV4, LiteralFactV4
+from server.memory.predicate_registry import resolve_predicate
+from server.memory.relational_v4 import (
+    AssertionLifecycle,
+    EntityRelationV4,
+    LiteralFactV4,
+    get_active_entity_relations,
+    get_active_literal_facts,
+)
 from server.settings import settings
 
 from server import db
@@ -199,8 +207,8 @@ async def v9_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignor
     """A database migrated only to version 9; yields the full migration list for the upgrade."""
     monkeypatch.setattr(settings, "brain_db_path", tmp_path / "upgrade-v9.db")
     db._conn = None
-    await db.open_db()
     try:
+        await db.open_db()
         full_list = db._MIGRATIONS
         monkeypatch.setattr(db, "_MIGRATIONS", tuple(m for m in full_list if m[0] <= 9))
         await db.run_migrations()
@@ -236,7 +244,7 @@ async def test_migration_ten_upgrades_a_version_nine_database_without_losing_row
     await db.run_migrations()
 
     cursor = await conn.execute("PRAGMA user_version")
-    assert await cursor.fetchone() == (10,)
+    assert await cursor.fetchone() == (v9_db[-1][0],)
     await cursor.close()
     for table in ("literal_facts_v4", "entity_relations_v4"):
         cursor = await conn.execute(
@@ -244,6 +252,40 @@ async def test_migration_ten_upgrades_a_version_nine_database_without_losing_row
         )
         assert await cursor.fetchone() == (1, 0, 0)
         await cursor.close()
+    # The repository reads the rows written before the migration through its new column lists.
+    likes = resolve_predicate("likes")
+    child_of = resolve_predicate("child_of")
+    assert likes is not None
+    assert child_of is not None
+    (old_fact,) = await get_active_literal_facts(subject_entity_id=subject_id, definition=likes)
+    (old_relation,) = await get_active_entity_relations(definition=child_of)
+    for old_row in (old_fact, old_relation):
+        assert (old_row.asserted_by_entity_id, old_row.channel) == (None, None)
+    assert (old_fact.value_text, old_relation.source_entity_id) == ("el tren", subject_id)
+
+
+@pytest.mark.integration
+async def test_a_migration_that_fails_halfway_leaves_the_database_at_version_nine(
+    v9_db: tuple[tuple[int, str], ...], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Migration 010 is four ALTER TABLEs: all of them or none, and the version stays 9."""
+    conn = db.get_conn()
+    # Poison its last statement: the column it adds to the relations table already exists.
+    await conn.execute("ALTER TABLE entity_relations_v4 ADD COLUMN channel TEXT")
+    await conn.commit()
+    monkeypatch.setattr(db, "_MIGRATIONS", v9_db)
+
+    with pytest.raises(BrainMemoryError):
+        await db.run_migrations()
+
+    cursor = await conn.execute("PRAGMA user_version")
+    assert await cursor.fetchone() == (9,)
+    await cursor.close()
+    for table in ("literal_facts_v4", "entity_relations_v4"):
+        cursor = await conn.execute(f"PRAGMA table_info({table})")
+        columns = {str(row[1]) for row in await cursor.fetchall()}
+        await cursor.close()
+        assert "asserted_by_entity_id" not in columns
 
 
 def test_the_v4_models_expose_the_asserter_and_channel_with_none_defaults() -> None:

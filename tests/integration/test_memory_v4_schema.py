@@ -152,3 +152,25 @@ async def test_a_literal_stores_the_asserter_and_channel_it_is_given(v4_db: None
     assert (fact.asserted_by_entity_id, fact.channel) == (owner_id, "import_file")
     stored = await get_literal_fact(fact.id)
     assert stored == fact
+
+
+@pytest.mark.integration
+async def test_deleting_the_asserter_keeps_the_relation_and_clears_the_link(v4_db: None) -> None:
+    child_id = await upsert_entity(name="Canary Child", type="person")
+    parent_id = await upsert_entity(name="Canary Parent", type="person")
+    asserter_id = await upsert_entity(name="Canary Owner", type="person")
+    conn = db.get_conn()
+    await conn.execute(
+        "INSERT INTO entity_relations_v4 "
+        "(source_entity_id, predicate, target_entity_id, asserted_by_entity_id, channel) "
+        "VALUES (?, 'child_of', ?, ?, 'voice_stream')",
+        (child_id, parent_id, asserter_id),
+    )
+    await conn.commit()
+
+    await conn.execute("DELETE FROM entities WHERE id = ?", (asserter_id,))
+    await conn.commit()
+
+    cursor = await conn.execute("SELECT asserted_by_entity_id, channel FROM entity_relations_v4")
+    assert await cursor.fetchall() == [(None, "voice_stream")]
+    await cursor.close()
