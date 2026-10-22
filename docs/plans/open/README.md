@@ -39,6 +39,36 @@ Ningún plan ocupa `NOW`. El [Plan 0068 — respuestas cortas y la verificación
 
 Borrador, **no ejecutable todavía**: [0065 — CM-3b, tramo A: el núcleo escritor neutral al canal](0065-cm3b-a-channel-neutral-writer-core.md), que espera la promoción de Pipec; el [ADR 0022](../../adr/0022-household-rules-and-third-party-memory.md) (`Proposed`) tiene confirmadas todas sus decisiones. Orden: 0065, luego el Paso 0 (las tareas 7 y 8 del 0068 quedaron diferidas).
 
+### Lo que queda antes de escribir el plan del Paso 0
+
+Estado al 2026-10-21, con `NOW` vacío y `main` en `ff23dd0` sin PR abiertos. El orden y las compuertas
+siguen siendo los del [roadmap](../../roadmap/cognitive-roadmap.md); esta lista solo dice qué falta.
+
+**Bloquea el plan del Paso 0 (la carga de datos):**
+
+1. **Promoción del Plan 0065** a `Ready` y `NOW`, que solo hace Pipec. Antes conviene ensayarlo en una
+   copia scratch (está revalidado contra `main`, pero nunca se ensayó) y ejecutarlo en una sesión
+   nueva. Entrega el escritor neutral al canal que el importador del Paso 0 usa.
+2. **ADR 0022** (`Proposed`, reglas del hogar y memoria de terceros): pasa a `Accepted` cuando el 0065
+   lo cumple; el Paso 0 depende de sus reglas.
+
+**El plan del Paso 0 debe incluir** (decisiones ya tomadas, aún sin plan): el importador (archivo o
+formulario), enrolar cara y voz como primer paso, niveles por canal, la escalada «¿estás con alguien?»,
+el ADR de privacidad de los sentidos y la **calibración de voz al enrolar un usuario**
+(fila «Voice calibration when a user is enrolled» del roadmap).
+
+**No bloquea, pero queda abierto** (cada uno con su fila en el roadmap):
+
+- **Latencia del modelo de lenguaje** junto a la extracción de memoria: turnos de 20 a 40 s que, además,
+  se comen la ventana de 60 s de una oferta. Pipec la mira en la aceptación; el plan chico, si hace
+  falta, va después del 0065.
+- **Respuesta dicha junto a otra frase** («no acepto» y luego una oración): hoy va al modelo; Pipec decide
+  si un verbo cerrado que abre un enunciado más largo debe contar.
+- **Tareas 7 y 8 del Plan 0068** (clips cortos de la verificación de voz, con tres adultos que consientan
+  o con la Pi): fila «Remaining biometric measurements».
+- **Micrófono de la Pi**, ruido con voces y GPU frente a la VRAM de Ollama: se vuelven a medir con el
+  cuerpo definitivo.
+
 El `NOW` anterior a ese fue [0062 — candidatos de memoria y escritor canónico, primer corte (CM-3a)](../completed/0062-cm3a-memory-candidates-and-writer.md), que **cerró el 2026-10-15** (PR #183) y vive en `completed/`: la tabla de candidatos (migración 009), el escritor canónico `promote`, la puerta de preferencias, el extractor que solo ve las palabras del usuario, el clasificador, la política auditada antes del efecto y la propuesta en segundo plano que exige la cara **y** la voz de la misma persona en el propio clip, detrás de `MEMORY_CANDIDATES_ENABLED=false`. Retiró `consolidate_turn`, `PROPOSE_MEMORY` y `COMMIT_MEMORY`. `just gate` 2972 tests (filtro de CI 2955; línea base 2597 / 2580).
 
 El `NOW` anterior a ese fue [0061 — continuidad de corto plazo para la persona identificada (CM-2)](../completed/0061-cm2-generic-turn-continuity.md), que **cerró el 2026-10-13** y vive en `completed/`: la ranura de continuidad (3000 caracteres, 180 s, una sola persona, generación), la identificación de los turnos genéricos sin voz y sin gastar el grant, su cableado en las tres rutas, una frase del prompt con compuerta medida (fallback 0,00 % en `history` en dos corridas), las guardas, `just chat-test` con el token del dueño y la aceptación en hardware de Pipec. El [ADR 0020](../../adr/0020-authorized-actor-in-the-conversation.md) quedó `Accepted`; no abre memoria durable ni cambia el cable.
