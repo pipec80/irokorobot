@@ -1,6 +1,7 @@
 """Frozen typed models for the longitudinal-memory evaluation suite (Plan 0046).
 
-Types only, no behavior. Task 2 defined the strict suite schema (enums, actors,
+Types, plus the one rule that reads a dataset's version (shared by the loader and the run
+metadata). Task 2 defined the strict suite schema (enums, actors,
 steps, expectations); Task 3 adds the probe/result/summary models plus
 ``ScoredStep`` (``score_step`` output). Semantic validation lives in
 ``scripts.eval_longitudinal_memory``; the pure scoring functions live in
@@ -16,7 +17,7 @@ from dataclasses import dataclass
 from datetime import datetime  # noqa: TC003  # pydantic resolves this annotation at runtime
 import enum
 from pathlib import Path  # noqa: TC003  # pydantic/dataclass resolve this annotation at runtime
-from typing import Literal, Protocol, get_args
+from typing import Literal, Protocol, cast, get_args
 
 from pydantic import BaseModel, ConfigDict
 
@@ -25,6 +26,38 @@ from pydantic import BaseModel, ConfigDict
 # the literal so the two can never disagree; a new version is added in this one place.
 DatasetVersion = Literal[2, 3]
 SUPPORTED_DATASET_VERSIONS: tuple[DatasetVersion, ...] = get_args(DatasetVersion)
+
+
+def require_supported_version(raw: object) -> DatasetVersion:
+    """Return the version a parsed dataset declares, or reject an unsupported one.
+
+    Shared by ``load_suite`` and the run metadata so both read the same
+    ``version`` key under the same rule. A float, a string, a boolean, a missing
+    key and a document that is not a mapping are all rejected: only an ``int``
+    among :data:`SUPPORTED_DATASET_VERSIONS` passes.
+
+    Args:
+        raw: The parsed YAML document (any shape).
+
+    Returns:
+        The declared version, one of :data:`SUPPORTED_DATASET_VERSIONS`.
+
+    Raises:
+        ValueError: If ``raw`` is not a mapping or its ``version`` is not a
+            supported integer.
+    """
+    version = raw.get("version") if isinstance(raw, dict) else None
+    if (
+        not isinstance(version, int)
+        or isinstance(version, bool)
+        or version not in SUPPORTED_DATASET_VERSIONS
+    ):
+        supported = ", ".join(str(item) for item in SUPPORTED_DATASET_VERSIONS)
+        msg = f'longitudinal suite "version" must be one of the supported versions: {supported}'
+        raise ValueError(msg)
+    # The membership test above proves ``version`` is one of the literals; mypy and
+    # pyright cannot narrow an ``int`` to a ``Literal`` through ``in``, hence the cast.
+    return cast("DatasetVersion", version)
 
 
 class LongitudinalCategory(enum.StrEnum):

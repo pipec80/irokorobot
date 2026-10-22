@@ -26,8 +26,7 @@ from urllib.parse import urlsplit, urlunsplit
 from server.settings import settings
 import yaml
 
-from scripts.eval_longitudinal_memory import require_supported_version
-from scripts.longitudinal_eval_models import RunMetadata
+from scripts.longitudinal_eval_models import RunMetadata, require_supported_version
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Sequence

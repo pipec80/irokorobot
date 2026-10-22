@@ -25,23 +25,23 @@ import argparse  # after the sys.path bootstrap, by design
 import asyncio
 import logging
 import re
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 import yaml
 
 from scripts.longitudinal_eval_models import (
-    SUPPORTED_DATASET_VERSIONS,
     CliOptions,
     ExpectedObservation,
     LongitudinalCategory,
     LongitudinalSuite,
+    require_supported_version,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Sequence
 
-    from scripts.longitudinal_eval_models import DatasetVersion, LongitudinalStep
+    from scripts.longitudinal_eval_models import LongitudinalStep
 
 logger = logging.getLogger(__name__)
 
@@ -103,38 +103,6 @@ def load_suite(path: Path) -> LongitudinalSuite:
     _check_expectations(suite)
     _check_category_coverage(suite)
     return suite
-
-
-def require_supported_version(raw: object) -> DatasetVersion:
-    """Return the version a parsed dataset declares, or reject an unsupported one.
-
-    Shared by :func:`load_suite` and the run metadata so both read the same
-    ``version`` key under the same rule. A float, a string, a boolean, a missing
-    key and a document that is not a mapping are all rejected: only an ``int``
-    among :data:`SUPPORTED_DATASET_VERSIONS` passes.
-
-    Args:
-        raw: The parsed YAML document (any shape).
-
-    Returns:
-        The declared version, one of :data:`SUPPORTED_DATASET_VERSIONS`.
-
-    Raises:
-        ValueError: If ``raw`` is not a mapping or its ``version`` is not a
-            supported integer.
-    """
-    version = raw.get("version") if isinstance(raw, dict) else None
-    if (
-        not isinstance(version, int)
-        or isinstance(version, bool)
-        or version not in SUPPORTED_DATASET_VERSIONS
-    ):
-        supported = ", ".join(str(item) for item in SUPPORTED_DATASET_VERSIONS)
-        msg = f'longitudinal suite "version" must be one of the supported versions: {supported}'
-        raise ValueError(msg)
-    # The membership test above proves ``version`` is one of the literals; mypy and
-    # pyright cannot narrow an ``int`` to a ``Literal`` through ``in``, hence the cast.
-    return cast("DatasetVersion", version)
 
 
 def _check_unique_ids(suite: LongitudinalSuite) -> None:
