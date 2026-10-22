@@ -19,10 +19,17 @@ _RAW_V4_READERS = frozenset(
         "get_entity_relation",
     }
 )
-# The policy gate, the local setup that re-reads what it just wrote, and the one canonical
-# writer, which compares the active rows' folded keys inside its own transaction (Plan 0062).
+# The policy gate, the local setup that re-reads what it just wrote, the candidate writer, which
+# compares the active rows' folded keys inside its own transaction (Plan 0062), and the
+# canonical writer, which reads the owner's relations to classify a subject and the active rows
+# to make a repeat idempotent (Plan 0065).
 _MAY_IMPORT_RAW_V4_READERS = frozenset(
-    {"memory/policy_gated_v4_reader.py", "personal_setup.py", "memory/memory_writer.py"}
+    {
+        "memory/policy_gated_v4_reader.py",
+        "personal_setup.py",
+        "memory/memory_writer.py",
+        "memory/canonical_writer.py",
+    }
 )
 # The repository itself, and the setup status that counts child links.
 _MAY_QUERY_V4_TABLES = frozenset({"memory/relational_v4.py", "personal_setup.py"})
@@ -658,3 +665,41 @@ def test_the_candidate_caller_guards_detect_a_violation() -> None:
     ]
     assert _outside(leak, _CANDIDATE_MOVE_HOMES, _CANDIDATE_MOVES) == ["routers/leak.py"]
     assert _outside(leak, _WRITER_HOMES, frozenset({"promote"})) == ["memory/other.py"]
+
+
+# --- who may call the repository's writers (Plan 0065, ADR 0022 decision 2) ------------------
+# One canonical writer stores a household fact whatever the channel. The local setup and the
+# legacy migration are the two documented exceptions the Step 0 ADR decides; a third caller of
+# the repository's `assert_*` must be a decision, not an accident.
+_REPOSITORY_WRITERS = frozenset({"assert_literal_fact", "assert_entity_relation"})
+_REPOSITORY_WRITER_HOMES = frozenset(
+    {
+        "memory/relational_v4.py",
+        "memory/canonical_writer.py",
+        "personal_setup.py",
+        "memory/legacy_v4_migration.py",
+        # Until Plan 0065 Task 6c moves `promote` onto the canonical writer.
+        "memory/memory_writer.py",
+    }
+)
+
+
+@pytest.mark.unit
+def test_only_the_canonical_writer_and_the_documented_setups_call_the_repository_writers() -> None:
+    assert _outside(_sources(), _REPOSITORY_WRITER_HOMES, _REPOSITORY_WRITERS) == []
+
+
+@pytest.mark.unit
+def test_the_repository_writer_guard_detects_a_violation() -> None:
+    leak = {
+        "routers/leak.py": "await assert_literal_fact(subject_entity_id=1)\n",
+        "memory/other.py": "await relational_v4.assert_entity_relation(source_entity_id=1)\n",
+        "memory/canonical_writer.py": "await assert_literal_fact(subject_entity_id=1)\n",
+        "personal_setup.py": "await assert_entity_relation(source_entity_id=1)\n",
+        "memory/prose.py": '"""assert_literal_fact is only named in prose here."""\n',
+    }
+
+    assert _outside(leak, _REPOSITORY_WRITER_HOMES, _REPOSITORY_WRITERS) == [
+        "memory/other.py",
+        "routers/leak.py",
+    ]
