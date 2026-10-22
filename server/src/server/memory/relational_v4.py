@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict
 
 from server import db
 from server.db import get_conn
+from server.exceptions import SecurityStorageUndecidedError
 from server.memory.predicate_registry import (
     PredicateCardinality,
     PredicateDefinition,
@@ -84,6 +85,28 @@ class EntityRelationV4(BaseModel):
 
 type SqlValue = int | float | str | None
 type SqlRow = tuple[SqlValue, ...]
+
+_SECURITY_SENSITIVITY = "security"
+
+
+def _refuse_security_value(definition: PredicateDefinition, sensitivity: str | None) -> None:
+    """Refuse to store a value whose effective sensitivity is ``security`` (ADR 0022 decision 9).
+
+    Storage at rest (plain SQLite, per-value encryption or reference only) is decided by the
+    Step 0 ADR, so no writer may bypass this: it runs before any query, write or log, and the
+    message names neither the value nor the subject.
+
+    Args:
+        definition: The resolved predicate whose default sensitivity applies.
+        sensitivity: The caller's explicit sensitivity, if any.
+
+    Raises:
+        SecurityStorageUndecidedError: If the effective sensitivity is ``security``.
+    """
+    if (sensitivity or definition.default_sensitivity) == _SECURITY_SENSITIVITY:
+        raise SecurityStorageUndecidedError(
+            "a security value cannot be stored until storage at rest is decided"
+        )
 
 
 def _required_int(value: SqlValue) -> int:
@@ -341,10 +364,13 @@ async def assert_literal_fact(
         The stored literal fact.
 
     Raises:
+        SecurityStorageUndecidedError: If the effective sensitivity is ``security``; nothing
+            is written or logged.
         ValueError: If the value is not a valid canonical literal or the confidence is out
             of range.
         RuntimeError: If the stored row cannot be read back.
     """
+    _refuse_security_value(definition, sensitivity)
     await _validate_literal_subject(subject_entity_id, definition)
     normalized_value = normalize_literal(definition, value)
     if normalized_value is None:
@@ -470,7 +496,11 @@ async def assert_entity_relation(
 
     ``manage_transaction=False`` is reserved for the local legacy migration,
     which owns one transaction for a record and its migration ledger entry.
+
+    Raises:
+        SecurityStorageUndecidedError: If the predicate's sensitivity is ``security``.
     """
+    _refuse_security_value(definition, None)
     await _validate_relation_endpoints(source_entity_id, target_entity_id, definition)
     if not 0.0 <= confidence <= 1.0:
         raise ValueError("confidence must be between 0 and 1")
