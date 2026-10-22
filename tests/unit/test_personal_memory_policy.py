@@ -56,6 +56,9 @@ _LEGACY_ACTIONS = frozenset(
         "propose_physical_action",
     }
 )
+# The household pair (ADR 0022 decision 3) is a separate evaluation path, tested in
+# `test_authorization_household_memory.py`; it is not part of the ADR 0019 table.
+_HOUSEHOLD_ACTIONS = frozenset({"propose_household_memory", "confirm_household_memory"})
 _READ = AuthorizationAction.READ_PERSONAL_CONVERSATION_MEMORY
 _PROPOSE = AuthorizationAction.PROPOSE_PERSONAL_MEMORY
 _CONFIRM = AuthorizationAction.CONFIRM_PERSONAL_MEMORY
@@ -127,12 +130,13 @@ def test_the_capability_table_is_exactly_the_one_in_adr_0019() -> None:
         assert capability.visibilities
 
 
-def test_every_action_is_either_legacy_or_a_personal_memory_capability() -> None:
+def test_every_action_is_legacy_a_personal_memory_capability_or_a_household_one() -> None:
     all_values = {action.value for action in AuthorizationAction}
     new_values = {action.value for action in PERSONAL_MEMORY_CAPABILITIES}
 
-    assert all_values == _LEGACY_ACTIONS | new_values
+    assert all_values == _LEGACY_ACTIONS | new_values | _HOUSEHOLD_ACTIONS
     assert not _LEGACY_ACTIONS & new_values
+    assert not _HOUSEHOLD_ACTIONS & (_LEGACY_ACTIONS | new_values)
 
 
 def test_requiring_an_unlock_implies_naming_the_scope_it_must_carry() -> None:

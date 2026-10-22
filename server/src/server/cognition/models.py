@@ -73,6 +73,8 @@ class AuthorizationAction(str, _Enum):  # noqa: UP042
     CONFIRM_PERSONAL_MEMORY = "confirm_personal_memory"
     CORRECT_PERSONAL_MEMORY = "correct_personal_memory"
     FORGET_PERSONAL_MEMORY = "forget_personal_memory"
+    PROPOSE_HOUSEHOLD_MEMORY = "propose_household_memory"
+    CONFIRM_HOUSEHOLD_MEMORY = "confirm_household_memory"
 
 
 class ObservationModality(str, _Enum):  # noqa: UP042

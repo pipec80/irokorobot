@@ -322,6 +322,59 @@ def test_the_personal_memory_guards_detect_a_violation() -> None:
     assert _issued_as_manual(leak) == ["routers/leak.py"]
 
 
+# --- Plan 0065: the household pair of capabilities is policy only (ADR 0022 decision 3) ----
+
+# Nothing consumes the pair yet. Its homes are the model and the policy only, and are NOT
+# `_ACTION_HOMES`: `memory/candidate_policy.py` asks the policy about the five personal actions
+# and must not reach the household ones. The first consumer (the import of Step 0, or tranche B)
+# extends this guard.
+_HOUSEHOLD_ACTION_NAMES = frozenset(
+    {
+        "PROPOSE_HOUSEHOLD_MEMORY",
+        "CONFIRM_HOUSEHOLD_MEMORY",
+        "propose_household_memory",
+        "confirm_household_memory",
+    }
+)
+_HOUSEHOLD_ACTION_HOMES = frozenset({"cognition/models.py", "cognition/authorization.py"})
+
+
+@pytest.mark.unit
+def test_the_household_memory_actions_exist_only_in_the_model_and_the_policy() -> None:
+    """No route, store, prompt or candidate step names a household-memory action yet."""
+    assert _outside(_sources(), _HOUSEHOLD_ACTION_HOMES, _HOUSEHOLD_ACTION_NAMES) == []
+
+
+@pytest.mark.unit
+def test_the_household_memory_guard_detects_a_violation() -> None:
+    """A synthetic offender is flagged, the two homes and a prose mention are spared."""
+    leak = {
+        "routers/leak.py": (
+            "from server.cognition.models import AuthorizationAction\n"
+            "a = AuthorizationAction.PROPOSE_HOUSEHOLD_MEMORY\n"
+        ),
+        "routers/value.py": 'x = "confirm_household_memory"\n',
+        "routers/subscript.py": 'x = AuthorizationAction["CONFIRM_HOUSEHOLD_MEMORY"]\n',
+        "routers/getattr.py": 'x = getattr(AuthorizationAction, "PROPOSE_HOUSEHOLD_MEMORY")\n',
+        # A home of the five personal actions, but not of the household pair.
+        "memory/candidate_policy.py": "x = AuthorizationAction.CONFIRM_HOUSEHOLD_MEMORY\n",
+        "cognition/authorization.py": "x = AuthorizationAction.PROPOSE_HOUSEHOLD_MEMORY\ny = 1\n",
+        "cognition/models.py": 'PROPOSE_HOUSEHOLD_MEMORY = "propose_household_memory"\n',
+        "prose.py": '"""The pair propose_household_memory is policy only: prose, not a reference."""\n',
+    }
+
+    assert _outside(leak, _HOUSEHOLD_ACTION_HOMES, _HOUSEHOLD_ACTION_NAMES) == [
+        "memory/candidate_policy.py",
+        "routers/getattr.py",
+        "routers/leak.py",
+        "routers/subscript.py",
+        "routers/value.py",
+    ]
+    assert not _HOUSEHOLD_ACTION_NAMES & _NEW_ACTION_NAMES
+    assert "memory/candidate_policy.py" in _ACTION_HOMES
+    assert "memory/candidate_policy.py" not in _HOUSEHOLD_ACTION_HOMES
+
+
 # --- the short-term continuity session (Plan 0061, ADR 0020) ----------------------------
 _SESSION_HOME = "memory/continuity.py"
 _SESSION_CALLERS = frozenset({_SESSION_HOME, "text_turn.py"})
