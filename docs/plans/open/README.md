@@ -22,7 +22,7 @@ single-WIP [operational board](../README.md#operational-board) — **CM-0
 (Plan 0046) closed 2026-09-08, PC-3A (Plan 0047) closed 2026-09-25 with a
 provisional PASS, and PC-3B ([Plan 0053](../completed/0053-consented-speaker-runtime-evidence.md))
 closed 2026-09-29, and PC-4 ([Plan 0054](../completed/0054-face-default-identity-fusion.md))
-closed 2026-09-30, Plan 0061 (CM-2) closed 2026-10-13, [Plan 0062](../completed/0062-cm3a-memory-candidates-and-writer.md) (CM-3a, primer corte) closed 2026-10-15, [Plan 0063](../completed/0063-cm3a-memory-dialogue.md) (CM-3a, segundo corte) closed 2026-10-16, and Plans 0064, 0066 and 0067 closed 2026-10-19, and [Plan 0069](../completed/0069-stt-owner-voice-audit.md) closed 2026-10-21; [Plan 0068](../completed/0068-short-clip-speaker-measurement.md) closed 2026-10-21 with Tasks 7 and 8 deferred; `NOW` is empty.** Use the
+closed 2026-09-30, Plan 0061 (CM-2) closed 2026-10-13, [Plan 0062](../completed/0062-cm3a-memory-candidates-and-writer.md) (CM-3a, primer corte) closed 2026-10-15, [Plan 0063](../completed/0063-cm3a-memory-dialogue.md) (CM-3a, segundo corte) closed 2026-10-16, and Plans 0064, 0066 and 0067 closed 2026-10-19, and [Plan 0069](../completed/0069-stt-owner-voice-audit.md) closed 2026-10-21; [Plan 0068](../completed/0068-short-clip-speaker-measurement.md) closed 2026-10-21 with Tasks 7 and 8 deferred; `NOW` is [Plan 0065](0065-cm3b-a-channel-neutral-writer-core.md), promoted 2026-10-22.** Use the
 [personal-companion delivery map](../../roadmap/personal-companion-delivery-map.md)
 and [conversational-memory delivery map](../../roadmap/conversational-memory-delivery-map.md)
 to see the code, tests, verified gaps, and future delivery sequence.
@@ -33,24 +33,22 @@ to see the code, tests, verified gaps, and future delivery sequence.
 
 ## Plan en curso (`NOW`)
 
-Ningún plan ocupa `NOW`. El [Plan 0068 — respuestas cortas y la verificación de voz](../completed/0068-short-clip-speaker-measurement.md) **cerró el 2026-10-21**: el código está mergeado (PR #201, `917deec`; la corrección de «a guardarlo» es el PR #203) y los conteos de hardware de la tarea 6 se tomaron ese día con el perfil adoptado ([ADR 0023](../../adr/0023-speech-to-text-model-and-decoding.md)): 7 ofertas, 1 promovida, 1 rechazada, 1 reintento y ninguna promoción equivocada. **Las tareas 7 y 8** (grabaciones de clips cortos e informe, que necesitan al menos tres adultos que consientan, o la Pi) **quedaron diferidas por Pipec** y siguen nombradas en la fila «Remaining biometric measurements» del roadmap.
+`NOW` es el [Plan 0065 — CM-3b, tramo A: el núcleo escritor neutral al canal](0065-cm3b-a-channel-neutral-writer-core.md), **promovido a `Ready` por Pipec el 2026-10-22** sin ensayo previo; se ejecuta en una sesión nueva y, al cerrar, el [ADR 0022](../../adr/0022-household-rules-and-third-party-memory.md) pasa a `Accepted`. Orden: 0065, luego el Paso 0. El [Plan 0068 — respuestas cortas y la verificación de voz](../completed/0068-short-clip-speaker-measurement.md) **cerró el 2026-10-21**: el código está mergeado (PR #201, `917deec`; la corrección de «a guardarlo» es el PR #203) y los conteos de hardware de la tarea 6 se tomaron ese día con el perfil adoptado ([ADR 0023](../../adr/0023-speech-to-text-model-and-decoding.md)): 7 ofertas, 1 promovida, 1 rechazada, 1 reintento y ninguna promoción equivocada. **Las tareas 7 y 8** (grabaciones de clips cortos e informe, que necesitan al menos tres adultos que consientan, o la Pi) **quedaron diferidas por Pipec** y siguen nombradas en la fila «Remaining biometric measurements» del roadmap.
 
 **Cerrado:** el [Plan 0069 — el reconocimiento de voz con la voz real del dueño](../completed/0069-stt-owner-voice-audit.md), el 2026-10-21 (PR #202): el STT se midió por primera vez con la voz de Pipec, `medium` en GPU es el perfil recomendado (WER 15,4 % a 6,8 % en la mitad de prueba) y el corpus privado se borró. Antes ocupó `NOW` el [Plan 0067](../completed/0067-reply-listening-mode.md), que **cerró el 2026-10-19** (PR #199).
 
-Borrador, **no ejecutable todavía**: [0065 — CM-3b, tramo A: el núcleo escritor neutral al canal](0065-cm3b-a-channel-neutral-writer-core.md), que espera la promoción de Pipec; el [ADR 0022](../../adr/0022-household-rules-and-third-party-memory.md) (`Proposed`) tiene confirmadas todas sus decisiones. Orden: 0065, luego el Paso 0 (las tareas 7 y 8 del 0068 quedaron diferidas).
 
 ### Lo que queda antes de escribir el plan del Paso 0
 
-Estado al 2026-10-21, con `NOW` vacío y `main` en `ff23dd0` sin PR abiertos. El orden y las compuertas
+Estado al 2026-10-22, con el Plan 0065 en `NOW` (promovido ese día). El orden y las compuertas
 siguen siendo los del [roadmap](../../roadmap/cognitive-roadmap.md); esta lista solo dice qué falta.
 
 **Bloquea el plan del Paso 0 (la carga de datos):**
 
-1. **Promoción del Plan 0065** a `Ready` y `NOW`, que solo hace Pipec. Antes conviene ensayarlo en una
-   copia scratch (está revalidado contra `main`, pero nunca se ensayó) y ejecutarlo en una sesión
-   nueva. Entrega el escritor neutral al canal que el importador del Paso 0 usa.
-2. **ADR 0022** (`Proposed`, reglas del hogar y memoria de terceros): pasa a `Accepted` cuando el 0065
-   lo cumple; el Paso 0 depende de sus reglas.
+1. **Ejecutar el Plan 0065** (ya promovido a `Ready` y `NOW`, sin ensayo) en una sesión nueva.
+   Entrega el escritor neutral al canal que el importador del Paso 0 usa.
+2. **ADR 0022** (`Proposed`, reglas del hogar y memoria de terceros): pasa a `Accepted` al cerrar el 0065
+   (su tarea 8); el Paso 0 depende de sus reglas.
 
 **El plan del Paso 0 debe incluir** (decisiones ya tomadas, aún sin plan): el importador (archivo o
 formulario), enrolar cara y voz como primer paso, niveles por canal, la escalada «¿estás con alguien?»,
@@ -199,7 +197,7 @@ the benchmark harness is GREEN and the measured baseline is a reproducible
 cognitive RED (`ac43c58`, exit 1); it changed no runtime memory. See
 [completed/0046](../completed/0046-reproducible-longitudinal-memory-baseline.md).
 
-Canonical execution order: **`NOW` is empty: [Plan 0068](../completed/0068-short-clip-speaker-measurement.md) closed 2026-10-21 (Tasks 7 and 8 deferred) and [Plan 0069](../completed/0069-stt-owner-voice-audit.md) closed the same day; [Plan 0067](../completed/0067-reply-listening-mode.md) closed 2026-10-19, [Plan 0066](../completed/0066-verb-only-answer.md) closed 2026-10-19, [Plan 0064](../completed/0064-speech-and-dialogue-quality.md) closed 2026-10-19, [Plan 0063](../completed/0063-cm3a-memory-dialogue.md) closed 2026-10-16, [Plan 0062](../completed/0062-cm3a-memory-candidates-and-writer.md) closed 2026-10-15, Plan 0061 closed 2026-10-13 and Plan 0054 (PC-4) closed 2026-09-30.** Plan 0053 (PC-3B)
+Canonical execution order: **`NOW` is [Plan 0065](0065-cm3b-a-channel-neutral-writer-core.md) (promoted 2026-10-22); [Plan 0068](../completed/0068-short-clip-speaker-measurement.md) closed 2026-10-21 (Tasks 7 and 8 deferred) and [Plan 0069](../completed/0069-stt-owner-voice-audit.md) closed the same day; [Plan 0067](../completed/0067-reply-listening-mode.md) closed 2026-10-19, [Plan 0066](../completed/0066-verb-only-answer.md) closed 2026-10-19, [Plan 0064](../completed/0064-speech-and-dialogue-quality.md) closed 2026-10-19, [Plan 0063](../completed/0063-cm3a-memory-dialogue.md) closed 2026-10-16, [Plan 0062](../completed/0062-cm3a-memory-candidates-and-writer.md) closed 2026-10-15, Plan 0061 closed 2026-10-13 and Plan 0054 (PC-4) closed 2026-09-30.** Plan 0053 (PC-3B)
 closed 2026-09-29, and Plan 0047 (PC-3A) closed 2026-09-25 with a provisional PASS
 (see [completed/0047](../completed/0047-speaker-evidence-calibration-study.md)); the
 queue-rule-4 re-audit of the next row ran the same day, produced Plan 0053, and

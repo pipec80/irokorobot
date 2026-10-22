@@ -1,15 +1,16 @@
 # 0065 — CM-3b, tranche A: the channel-neutral writer core
 
-> **Status:** `Draft` — written 2026-10-16 from the CM-3b audit of the same day and from
-> [ADR 0022](../../adr/0022-household-rules-and-third-party-memory.md) (`Proposed`); **rewritten the
-> same day after an independent review** that found six blockers (see *Review record*). **Blocked**
-> only by the queue: Pipec confirmed on 2026-10-16 (by taking the recommendations) the three
-> decisions ADR 0022 marked *Pipec to confirm* (migration 010 for the asserter and channel, the
-> personal provenance scenario, the homonym rule); Plan 0064 closed on 2026-10-19, so it now waits
-> only for Pipec to mark it `Ready` and `NOW`; to be executed in a **new session**. **Revalidated
-> against `main` on 2026-10-21** (see *Revalidation record*): nothing it edits has changed. **Not rehearsed** in a scratch copy: the tasks below
-> are specifications (files, rules, tests to write first), not rehearsed diffs. It does not require
-> Plan 0064.
+> **Status:** `Ready` and `NOW` — promoted by Pipec on 2026-10-22, **not rehearsed** in a scratch copy
+> (Pipec's choice). Written 2026-10-16 from the CM-3b audit of the same day and from
+> [ADR 0022](../../adr/0022-household-rules-and-third-party-memory.md) (`Proposed`; it becomes
+> `Accepted` when this plan closes, Task 8); **rewritten the same day after an independent review** that
+> found six blockers (see *Review record*). Pipec confirmed on 2026-10-16 (by taking the
+> recommendations) the three decisions ADR 0022 marked *Pipec to confirm* (migration 010 for the
+> asserter and channel, the personal provenance scenario, the homonym rule). **Revalidated against
+> `main` on 2026-10-21** and **amended on 2026-10-22** after a review of the Phase 0 draft Pipec
+> brought (see *Revalidation record*): two additions, the meaning of «child» and one atomicity test.
+> The tasks below are specifications (files, rules, tests to write first), not rehearsed diffs; to be
+> executed in a **new session**. It does not require Plan 0064.
 
 > **For agentic workers:** if the status above does not say `Ready`, stop (ADR 0022 records that
 > its three open decisions were confirmed on 2026-10-16). REQUIRED SUB-SKILLS: `superpowers:executing-plans`,
@@ -75,7 +76,9 @@ reader still returns the facts the new writer stores (they must equal the regist
 `promote` writes the same rows as before, including `confidence 1.0`, the `asserted_at` of the
 turn and the audit order; (4) a homonym never creates a second entity and never merges silently;
 (5) a `security` value leaves no trace (row, log, exception message); (6) the personal stage of the
-benchmark still has a provenance denominator; (7) `Joaquín` and `Joaquin` collide.
+benchmark still has a provenance denominator; (7) `Joaquín` and `Joaquin` collide; (8) several writes made inside one caller-owned transaction, one
+of them refused, leaves nothing once the caller rolls back; (9) a child of the owner who is an adult
+is **not** treated specially here (see D-2): the writer cannot tell, and Step 0 decides.
 
 ## Global Constraints
 
@@ -109,7 +112,12 @@ benchmark still has a provenance denominator; (7) `Joaquín` and `Joaquin` colli
    `personal` with the registry sensitivity, except the owner's `birth_date`, which is
    `personal`/`private`. A literal whose subject is a **child** or a **pet** of the owner is
    `household` with the registry sensitivity. A literal whose subject is the **partner**, or anyone
-   outside the closed set, is refused with the closed reason `not_household_member`. How the writer
+   outside the closed set, is refused with the closed reason `not_household_member`. **«Child» means a
+child the owner is guardian of** (ADR 0022 decision 3). The writer cannot tell a minor from an adult
+child (no age is required to write `child_of`), so it classifies both the same way; how an **adult**
+child is treated (for example an owner who lives alone and whose children are grown: ADR 0022 decision
+4 says other adults are name and relationship only) is the open gap the ADR already names, and the
+Step 0 ADR decides it. Nothing here pretends to solve it. How the writer
    knows the role: the owner is the `owner_entity_id` argument; membership is read through
    `get_active_role` and the owner's active `child_of`/`partner_of`/`pet_of` relations, so
    `canonical_writer.py` joins `_MAY_IMPORT_RAW_V4_READERS` in the architecture guard.
@@ -335,7 +343,11 @@ valid_to=None, manage_transaction=True) -> EntityRelationV4`.
   row at that date; `lives_in` given as past (explicit `valid_to`) is stored as history; a relation
   whose target is a third party created by `create_third_party` is accepted; `partner_of` is
   symmetric, so the owner/partner order of ids does not change the stored classification; asserter
-  and channel are stored. Expected RED: `AttributeError: module … has no attribute write_relation`.
+  and channel are stored; **a batch is atomic:** inside one transaction the **caller** owns
+  (`manage_transaction=False`), a `write_literal` and a `write_relation` succeed and a third write is
+  refused (`not_household_member`); the caller rolls back and no literal row, no relation row and no
+  entity row remain, and the refusal logged nothing that contains the value (this is what an importer
+  needs for all-or-nothing and for a preview, with no new API). Expected RED: `AttributeError: module … has no attribute write_relation`.
 - [ ] **Step 2: Implement.** **Step 3:** lint and types. **Step 4: Commit**
   `feat(server): add relations and validity to the canonical writer (plan 0065)`.
 
@@ -444,6 +456,15 @@ older code), so the rollback is to leave them. Facts already written stay.
 - **The initial import itself, the per-channel assurance levels, enrolment as the first setup step,
   the "are you with someone?" escalation and homonymous third parties**: Step 0.
 - **A `current_age` helper**: no consumer before CM-5.
+- **Adult children, a representative who confirms for the owner, and an interviewer who is not the
+  asserter**: the writer fixes the asserter and the confirmer to the owner (ADR 0022 decision 0), the
+  safe default; whether a representative or a second adult can assert or confirm, and how an adult
+  child is classified, are Step 0 decisions. The nullable asserter column of migration 010 does not
+  block either.
+- **A SQL `CHECK` on the channel**: the closed list lives in `WriteChannel` and its test, so adding a
+  channel later (the perceptual one of P2.1) is not a migration.
+- **A public preview or classification API**: the classification table stays in one place so a later
+  importer can wrap it; exposing it now would be code with no caller.
 - **`correct` and `forget`**: CM-6.
 
 ## Revalidation record (2026-10-21)
@@ -482,6 +503,17 @@ the code and the history; nothing was executed or rehearsed in a scratch copy.
 - **Not checked, left to Task 0.** The matrix tests of the architecture guard that enumerate modules;
   the cost of the third face-and-voice resolution per turn, which the roadmap keeps for the homelab.
   The plan stays `Draft`: it is promoted to `Ready` only by Pipec.
+
+## Amendment record (2026-10-22)
+
+Made before the promotion, from a read of an external Phase 0 draft Pipec brought (untracked; no plan
+may require it). Two additions, both text or test-only, none touching the code design: (1) D-2 and the
+*Not here* list now say what «child» means and name the adult-child gap, because that draft's model
+case is an older adult who lives alone, whose children are adults; (2) Task 6b gained the
+atomic-batch test and Review Focus (8) and (9). Looked at and left unchanged: the channel stays
+closed in Python only; no preview API; the asserter stays the owner. Everything else in that draft
+(the interview record, the answer states, the activation gates, decisions D1 to D12) belongs to Step 0
+and is not used here.
 
 ## Review record
 
