@@ -10,14 +10,21 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 import unicodedata
 
 from server import db
 from server.db import get_conn
+from server.exceptions import AmbiguousEntityError
 from server.schemas import EntityType, EntityWithFacts, FactRecord
 
+if TYPE_CHECKING:
+    import aiosqlite
+
 logger = logging.getLogger(__name__)
+
+# Key of ``entities.attributes`` that records which import created a third party.
+_IMPORT_KEY_ATTRIBUTE = "import_key"
 
 
 def _fold_name(name: str) -> str:
@@ -131,6 +138,121 @@ async def upsert_entity(
             entity_id,
             extra={"event": "entity.merged", "entity_type": type, "entity_id": entity_id},
         )
+    return entity_id
+
+
+async def _insert_or_reuse_third_party(
+    conn: aiosqlite.Connection,
+    *,
+    name: str,
+    type: EntityType,
+    import_key: str | None,
+) -> tuple[int, bool]:
+    """Insert a third party, or return the one this import key already created.
+
+    Runs on *conn*, inside a transaction the caller owns. It only ever reads or inserts:
+    an existing entity is never updated, aliased or merged.
+
+    Args:
+        conn: The open connection, mid-transaction.
+        name: Name of the third party.
+        type: Entity category.
+        import_key: Idempotency key of the import, or ``None``.
+
+    Returns:
+        ``(entity_id, created)``; ``created`` is ``False`` for an idempotent re-run.
+
+    Raises:
+        AmbiguousEntityError: If an entity of that folded name and type exists and the key
+            does not prove it is the same import.
+        RuntimeError: If the INSERT returns no row id.
+    """
+    existing = await _find_entity_folded(name, type)
+    if existing is not None:
+        existing_id, _name, existing_attrs, _aliases = existing
+        stored_key = json.loads(existing_attrs).get(_IMPORT_KEY_ATTRIBUTE)
+        if import_key is not None and stored_key == import_key:
+            return existing_id, False
+        logger.warning(
+            "Third party refused, an entity of that name exists: type=%s id=%d",
+            type,
+            existing_id,
+            extra={
+                "event": "entity.third_party_ambiguous",
+                "entity_type": type,
+                "entity_id": existing_id,
+            },
+        )
+        raise AmbiguousEntityError(f"A third party of type {type!r} with that name already exists")
+
+    attributes = {_IMPORT_KEY_ATTRIBUTE: import_key} if import_key is not None else {}
+    cur = await conn.execute(
+        "INSERT INTO entities (name, type, attributes, aliases) VALUES (?, ?, ?, ?)",
+        (name, type, json.dumps(attributes), json.dumps([])),
+    )
+    if cur.lastrowid is None:
+        raise RuntimeError("INSERT into entities returned no lastrowid for a third party")
+    entity_id: int = cur.lastrowid
+    await cur.close()
+    return entity_id, True
+
+
+async def create_third_party(
+    *,
+    name: str,
+    type: EntityType,
+    import_key: str | None = None,
+    manage_transaction: bool = True,
+) -> int:
+    """Create a third party exactly once; never merge it by name (ADR 0022 decision 7).
+
+    The folded ``(name, type)`` (accent and case insensitive, as ``upsert_entity`` folds it)
+    is looked up before the INSERT. The same *import_key* on the same entity is an idempotent
+    re-run and returns the existing id without touching the row. Any other collision, with
+    another key or with none, raises ``AmbiguousEntityError``: two homonymous third parties
+    are impossible until the Step 0 ADR decides a migration. The table's own
+    ``UNIQUE(name, type)`` remains the last line of defence. A pet is typed ``other``.
+
+    ``manage_transaction=False`` joins a transaction the caller already owns (an atomic
+    batch): the call then neither opens, commits nor rolls back one, and ``db.transaction()``
+    is not reentrant, so the caller must not nest. A refusal leaves the caller's
+    transaction untouched.
+
+    Args:
+        name: Name of the third party, as it will be stored.
+        type: Entity category (``"person"``, or ``"other"`` for a pet).
+        import_key: Idempotency key of the import; stored in ``attributes["import_key"]``.
+        manage_transaction: ``False`` joins the caller's open transaction.
+
+    Returns:
+        Row id of the new entity, or of the entity this key already created.
+
+    Raises:
+        AmbiguousEntityError: If an entity of that folded name and type exists and
+            *import_key* does not identify it. The message never carries the name or the key.
+        RuntimeError: If the INSERT returns no row id.
+    """
+    # The lookup shares a transaction with the INSERT that follows it: two concurrent
+    # creations of one folded name must not both see "not found".
+    if manage_transaction:
+        async with db.transaction() as conn:
+            entity_id, created = await _insert_or_reuse_third_party(
+                conn, name=name, type=type, import_key=import_key
+            )
+    else:
+        # The caller owns the transaction: no BEGIN, COMMIT or ROLLBACK from here.
+        entity_id, created = await _insert_or_reuse_third_party(
+            get_conn(), name=name, type=type, import_key=import_key
+        )
+
+    event = "entity.third_party_created" if created else "entity.third_party_reused"
+    logger.info(
+        "Third party %s: type=%s id=%d",
+        "created" if created else "reused",
+        type,
+        entity_id,
+        extra={"event": event, "entity_type": type, "entity_id": entity_id},
+    )
     return entity_id
 
 

@@ -89,3 +89,7 @@ class EnrollmentRejectedError(VisionError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
         self.code = code
+
+
+class AmbiguousEntityError(Exception):
+    """Raised when a third party's folded name and type already exist and are not re-claimed."""
