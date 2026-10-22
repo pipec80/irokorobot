@@ -7,6 +7,7 @@ import pytest
 from scripts.eval_longitudinal_memory import load_suite
 from scripts.longitudinal_eval_aggregation import STAGE_GATES, staged_verdicts
 from scripts.longitudinal_eval_models import (
+    LongitudinalCategory,
     LongitudinalOperation,
     LongitudinalScenario,
     LongitudinalStep,
@@ -143,8 +144,62 @@ def test_the_frozen_dataset_declares_a_scope_for_every_scenario() -> None:
     assert {sid for sid, scope in scopes.items() if scope == "family"} == {
         "two_adult_private_facts",
         "recipient_only_message",
+        "provenance_attribution",
     }
     assert set(scopes.values()) == {"personal", "family"}
+
+
+def _dataset_scenarios() -> dict[str, LongitudinalScenario]:
+    """The committed dataset's scenarios, keyed by id."""
+    suite = load_suite(Path("tests/evals/golden_longitudinal_memory.yaml"))
+    return {scenario.scenario_id: scenario for scenario in suite.scenarios}
+
+
+@pytest.mark.unit
+def test_a_fact_reported_by_another_person_is_a_family_scenario() -> None:
+    """ADR 0022 decision 5: a reported fact is never written in the personal profile."""
+    scenario = _dataset_scenarios()["provenance_attribution"]
+
+    assert scenario.scope == "family"
+    assert {actor.actor_id for actor in scenario.actors.values()} == {"aria", "bruno"}
+    reporter = [s for s in scenario.steps if s.operation is LongitudinalOperation.PROPOSE]
+    assert [s.actor_id for s in reporter] == ["bruno"]
+    assert reporter[0].expected.expected_provenance == {
+        "subject": "aria",
+        "assertor": "bruno",
+        "source": "conversation",
+    }
+
+
+@pytest.mark.unit
+def test_the_personal_stage_has_an_owner_statement_provenance_scenario() -> None:
+    """The owner is subject and assertor; conversation is the source (ADR 0022 decision 5)."""
+    scenario = _dataset_scenarios()["personal_provenance_owner_statement"]
+
+    assert scenario.scope == "personal"
+    assert list(scenario.actors) == ["aria"]
+    assert {step.category for step in scenario.steps} == {LongitudinalCategory.PROVENANCE}
+    assert [step.operation for step in scenario.steps] == [
+        LongitudinalOperation.PROPOSE,
+        LongitudinalOperation.RECALL,
+    ]
+    owner_statement = {"subject": "aria", "assertor": "aria", "source": "conversation"}
+    assert [step.expected.expected_provenance for step in scenario.steps] == [
+        owner_statement,
+        owner_statement,
+    ]
+
+
+@pytest.mark.unit
+def test_only_the_personal_provenance_scenarios_feed_the_personal_provenance_gate() -> None:
+    """Moving the reported-fact scenario out must leave a denominator in the personal stage."""
+    feeding = {
+        scenario_id
+        for scenario_id, scenario in _dataset_scenarios().items()
+        if scenario.scope == "personal" and _feeds("provenance_accuracy", scenario)
+    }
+
+    assert feeding == {"personal_provenance_owner_statement"}
 
 
 def _step(

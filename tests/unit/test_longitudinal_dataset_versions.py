@@ -1,10 +1,11 @@
-"""Dataset version 3 and the frozen version-2 copy (Plan 0065, Task 7a).
+"""Dataset version 3 and the frozen version-2 copy (Plan 0065, Tasks 7a and 7b).
 
-Version 3 changes only the plumbing in this task: the loader, the models and the
-run metadata accept versions 2 and 3, the live dataset declares 3, and the
-version-2 dataset stays loadable as a frozen copy beside it. Scenario content is
-Task 7b, so the comparison with the frozen copy below is a conscious edit there.
-Nothing here reaches Ollama, the network or a database.
+Task 7a made the loader, the models and the run metadata accept versions 2 and 3,
+and kept the version-2 dataset loadable as a frozen copy beside the live one.
+Task 7b changed the scenarios: version 3 is version 2 plus two personal-scope
+scenarios, with ``provenance_attribution`` moved from the personal to the family
+stage; the tests below pin that delta and the comparability cut the dataset header
+declares. Nothing here reaches Ollama, the network or a database.
 """
 
 from __future__ import annotations
@@ -66,16 +67,87 @@ def test_the_frozen_v2_copy_is_byte_for_byte_the_plan_0056_dataset() -> None:
     assert hashlib.sha256(_FROZEN_V2.read_bytes()).hexdigest() == _FROZEN_V2_SHA256
 
 
-@pytest.mark.unit
-def test_version_three_changes_no_scenario_until_task_7b() -> None:
-    """Task 7a only bumps the version; 7b edits this test when it changes the scenarios."""
-    frozen = load_suite(_FROZEN_V2)
-    live = load_suite(_LIVE)
+# The two scenarios version 3 adds to the version-2 set (Plan 0065, Task 7b).
+_NEW_IN_V3 = ("personal_provenance_owner_statement", "personal_access_code_pending")
+# What the live dataset's header declares about the cut with the version-2 baseline,
+# per dataset: (whole suite, personal stage, family stage), each as scenarios / steps.
+_HEADER_SIZES = {
+    _FROZEN_V2: ("9 scenarios / 25 steps", "7 scenarios / 18 steps", "2 scenarios / 7 steps"),
+    _LIVE: ("11 scenarios / 30 steps", "8 scenarios / 21 steps", "3 scenarios / 9 steps"),
+}
+# Unsupported steps per dataset: every step but the single extraction one.
+_HEADER_UNSUPPORTED = {_FROZEN_V2: 24, _LIVE: 29}
 
-    assert [(s.scenario_id, s.scope) for s in live.scenarios] == [
-        (s.scenario_id, s.scope) for s in frozen.scenarios
+
+def _by_id(path: Path) -> dict[str, models.LongitudinalScenario]:
+    """One dataset's scenarios keyed by id, in file order."""
+    return {scenario.scenario_id: scenario for scenario in load_suite(path).scenarios}
+
+
+def _size(scenarios: list[models.LongitudinalScenario]) -> str:
+    """``N scenarios / M steps``, the wording the dataset header uses."""
+    return f"{len(scenarios)} scenarios / {sum(len(s.steps) for s in scenarios)} steps"
+
+
+@pytest.mark.unit
+def test_version_three_is_version_two_plus_exactly_the_two_new_scenarios() -> None:
+    frozen = _by_id(_FROZEN_V2)
+    live = _by_id(_LIVE)
+
+    assert set(live) - set(frozen) == set(_NEW_IN_V3)
+    assert set(frozen) <= set(live)
+    assert len(live) == len(frozen) + len(_NEW_IN_V3)
+    # The shared scenarios keep their relative order.
+    assert [sid for sid in live if sid not in _NEW_IN_V3] == list(frozen)
+
+
+@pytest.mark.unit
+def test_the_only_change_to_a_version_two_scenario_is_the_scope_of_provenance_attribution() -> None:
+    """ADR 0022 decision 5: a fact reported by another person leaves the personal stage."""
+    frozen = _by_id(_FROZEN_V2)
+    live = _by_id(_LIVE)
+
+    changed = [
+        scenario_id for scenario_id, scenario in frozen.items() if live[scenario_id] != scenario
     ]
-    assert live.scenarios == frozen.scenarios
+
+    assert changed == ["provenance_attribution"]
+    before = frozen["provenance_attribution"]
+    assert (before.scope, live["provenance_attribution"].scope) == ("personal", "family")
+    assert live["provenance_attribution"] == before.model_copy(update={"scope": "family"})
+
+
+@pytest.mark.unit
+def test_the_new_scenarios_are_personal_and_the_family_stage_only_gains_the_moved_one() -> None:
+    frozen = _by_id(_FROZEN_V2)
+    live = _by_id(_LIVE)
+
+    assert {live[scenario_id].scope for scenario_id in _NEW_IN_V3} == {"personal"}
+    family = {sid for sid, scenario in live.items() if scenario.scope == "family"}
+    frozen_family = {sid for sid, scenario in frozen.items() if scenario.scope == "family"}
+    assert family == {*frozen_family, "provenance_attribution"}
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("dataset", [_FROZEN_V2, _LIVE], ids=["frozen-v2", "live-v3"])
+def test_the_header_declares_the_comparability_cut_with_the_sizes_the_files_really_have(
+    dataset: Path,
+) -> None:
+    """The cut is written where the dataset is read; its numbers are the real ones."""
+    scenarios = list(_by_id(dataset).values())
+    personal = [s for s in scenarios if s.scope == "personal"]
+    family = [s for s in scenarios if s.scope == "family"]
+    header = _LIVE.read_text(encoding="utf-8").split("\nversion:", maxsplit=1)[0]
+
+    assert "COMPARABILITY CUT" in header
+    declared = _HEADER_SIZES[dataset]
+    assert (_size(scenarios), _size(personal), _size(family)) == declared
+    for size in declared:
+        assert size in header
+    steps = [step for scenario in scenarios for step in scenario.steps]
+    unsupported = [s for s in steps if s.operation is not models.LongitudinalOperation.EXTRACT]
+    assert len(unsupported) == _HEADER_UNSUPPORTED[dataset]
+    assert f"{_HEADER_UNSUPPORTED[dataset]} unsupported steps" in header
 
 
 @pytest.mark.unit

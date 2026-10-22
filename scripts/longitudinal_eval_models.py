@@ -55,6 +55,7 @@ class LongitudinalOperation(enum.StrEnum):
 
     EXTRACT = "extract"
     PROPOSE = "propose"
+    CONFIRM = "confirm"
     RESTART = "restart"
     RECALL = "recall"
     CORRECT = "correct"

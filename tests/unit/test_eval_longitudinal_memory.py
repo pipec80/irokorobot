@@ -418,6 +418,70 @@ def test_golden_suite_tests_recipient_only_with_authorized_and_unauthorized() ->
     pytest.fail("no scenario tagged domain:recipient-only")
 
 
+_SECURITY_SCENARIO_ID = "personal_access_code_pending"
+_PENDING_TAG = "status:pending-step0"
+# Invented alarm code: four digits, no run of seven, nothing phone-like (Plan 0065).
+_INVENTED_ACCESS_CODE = "7391"
+
+
+def _golden_scenarios() -> dict[str, LongitudinalScenario]:
+    """The committed dataset's scenarios, keyed by id."""
+    return {scenario.scenario_id: scenario for scenario in load_suite(_GOLDEN).scenarios}
+
+
+@pytest.mark.unit
+def test_golden_suite_has_a_pending_personal_security_scenario() -> None:
+    """The owner tells the robot an access code; the write cannot be confirmed until Step 0."""
+    scenario = _golden_scenarios()[_SECURITY_SCENARIO_ID]
+
+    assert scenario.scope == "personal"
+    assert _PENDING_TAG in scenario.tags
+    assert [step.operation.value for step in scenario.steps] == ["propose", "confirm", "recall"]
+    assert _INVENTED_ACCESS_CODE in scenario.steps[0].message
+
+
+@pytest.mark.unit
+def test_the_pending_security_scenario_forbids_the_code_in_every_response() -> None:
+    """A security value never reaches an answer, whatever Step 0 decides about storage."""
+    scenario = _golden_scenarios()[_SECURITY_SCENARIO_ID]
+
+    for step in scenario.steps:
+        assert _INVENTED_ACCESS_CODE in step.expected.forbidden, step.step_id
+    recall = scenario.steps[-1]
+    assert scenario.actors[recall.actor_id].role == "unknown"
+
+
+@pytest.mark.unit
+def test_only_the_security_scenario_is_marked_pending() -> None:
+    pending = [s.scenario_id for s in _golden_scenarios().values() if _PENDING_TAG in s.tags]
+
+    assert pending == [_SECURITY_SCENARIO_ID]
+
+
+@pytest.mark.unit
+def test_the_pending_security_scenario_passes_the_privacy_scan_on_its_own(tmp_path: Path) -> None:
+    scenario = _golden_scenarios()[_SECURITY_SCENARIO_ID]
+    document = {"version": 3, "scenarios": [scenario.model_dump(mode="json")]}
+    dataset = _write_suite(tmp_path, document)
+
+    validate_dataset_privacy(
+        dataset, ["pipec", "felipe", "iroko", "omnibot", *load_reserved_terms()]
+    )
+
+
+@pytest.mark.unit
+async def test_the_pending_security_scenario_is_reported_unsupported_step_by_step() -> None:
+    """Pending means visible and never a pass: the driver records the missing seam per step."""
+    scenario = _golden_scenarios()[_SECURITY_SCENARIO_ID]
+    driver = CurrentRuntimeDriver(_fake_client())
+
+    for step in scenario.steps:
+        observation = await driver.execute_step(scenario, step)
+        assert observation.status is CapabilityStatus.UNSUPPORTED, step.step_id
+        assert observation.reason is not None
+        assert "seam" in observation.reason
+
+
 @pytest.mark.unit
 def test_golden_dataset_excludes_reserved_household_names() -> None:
     """Real household terms come only from the gitignored local list."""
@@ -1056,6 +1120,7 @@ def test_determine_exit_code_zero_for_non_gating_smoke_without_failures() -> Non
 
 _OPERATIONS_WITHOUT_A_SEAM = (
     LongitudinalOperation.PROPOSE,
+    LongitudinalOperation.CONFIRM,
     LongitudinalOperation.RESTART,
     LongitudinalOperation.RECALL,
     LongitudinalOperation.CORRECT,
@@ -1247,10 +1312,46 @@ def _unsupported_reason(operation: LongitudinalOperation) -> str:
 
 @pytest.mark.unit
 def test_driver_unsupported_reasons_name_the_exact_missing_capability() -> None:
-    assert "assert_fact()" in _unsupported_reason(LongitudinalOperation.PROPOSE)
+    assert "no public candidate-lifecycle seam drives the canonical writer" in _unsupported_reason(
+        LongitudinalOperation.PROPOSE
+    )
     assert "not a restart" in _unsupported_reason(LongitudinalOperation.RESTART)
     assert "resolved actor" in _unsupported_reason(LongitudinalOperation.RECALL)
+    assert "CM-6" in _unsupported_reason(LongitudinalOperation.CORRECT)
     assert "episode/embedding/summary/cache" in _unsupported_reason(LongitudinalOperation.FORGET)
+
+
+@pytest.mark.unit
+def test_confirm_is_an_operation_of_the_schema() -> None:
+    assert LongitudinalOperation("confirm") is LongitudinalOperation.CONFIRM
+    step = _lstep(operation="confirm", category="cross_person_privacy")
+    assert step.operation is LongitudinalOperation.CONFIRM
+
+
+@pytest.mark.unit
+def test_confirm_is_unsupported_and_says_why_a_security_value_cannot_be_written() -> None:
+    """Nothing drives the canonical writer, so ``confirm`` is never reported as supported."""
+    reason = _unsupported_reason(LongitudinalOperation.CONFIRM)
+
+    assert "no public seam drives the canonical writer" in reason
+    assert "security" in reason
+    assert "Step 0" in reason
+
+
+@pytest.mark.unit
+def test_driver_reasons_no_longer_claim_writes_go_through_the_legacy_assert_fact() -> None:
+    """The canonical writer exists (Plan 0065); the harness just has no public seam to it."""
+    for operation in _OPERATIONS_WITHOUT_A_SEAM:
+        assert "assert_fact" not in _unsupported_reason(operation), operation
+    assert "assert_fact" not in inspect.getsource(driver_mod)
+
+
+@pytest.mark.unit
+def test_every_operation_but_extract_is_recorded_unsupported_by_the_driver() -> None:
+    """A new operation must come with its honest reason: none can be forgotten."""
+    assert set(_OPERATIONS_WITHOUT_A_SEAM) == set(LongitudinalOperation) - {
+        LongitudinalOperation.EXTRACT
+    }
 
 
 @pytest.mark.unit
