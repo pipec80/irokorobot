@@ -510,3 +510,36 @@ def test_the_parser_admits_every_value_the_classifier_can_offer(verb: str) -> No
     answer = parse_memory_answer(f"{verb} {value}")
 
     assert answer == MemoryAnswer(accept=True, phrase=value)
+
+
+@pytest.mark.parametrize("verb", _LONG_VERBS)
+@pytest.mark.parametrize("save", ["a guardarlo", "a guardarla", "guardarlo", "guardarla"])
+def test_a_long_verb_followed_by_a_guardarlo_is_a_verb_alone(verb: str, save: str) -> None:
+    """Pipec said «Sí, autorizo a guardarlo» with an offer open (2026-10-21) and the robot took
+    «a guardarlo» for the value, so the answer matched no offer and fell to the model."""
+    for message in (f"{verb} {save}", f"Sí,{verb} {save}.", f"Sí, {verb} {save}, gracias"):
+        assert parse_memory_answer(message) == MemoryAnswer(accept=True, phrase="")
+        assert resolve_information_need(message).need is InformationNeed.MEMORY_ANSWER
+    assert parse_memory_answer(f"No {verb} {save}") == MemoryAnswer(accept=False, phrase="")
+
+
+@pytest.mark.parametrize(
+    "message, accept, phrase",
+    [
+        ("Autorizo a guardarlo el mate", True, "el mate"),
+        ("Sí, apruebo guardarla la sopa", True, "la sopa"),
+        ("No acepto a guardarlo el mate", False, "el mate"),
+    ],
+)
+def test_a_value_after_a_guardarlo_is_still_read_as_the_value(
+    message: str, accept: bool, phrase: str
+) -> None:
+    assert parse_memory_answer(message) == MemoryAnswer(accept=accept, phrase=phrase)
+
+
+@pytest.mark.parametrize(
+    "message",
+    ["A guardarlo", "Sí, a guardarlo", "Guardarlo", "Guarda a guardarlo"],
+)
+def test_a_guardarlo_does_not_widen_what_is_refused(message: str) -> None:
+    assert parse_memory_answer(message) is None

@@ -360,7 +360,9 @@ One function, **one `db.transaction()`**, never relying on an `IntegrityError`:
   speech-to-text inserted inside the value. Fewer words, fewer chances to garble them, so **a
   closed verb alone resolves the person's one open offer** and the value is optional:
   - *Which verbs stand alone (D-2).* The long verbs `autorizo`, `autoriza`, `apruebo`, `aprueba`,
-    alone or followed by `guardar`, `a guardar` or `que guardes` («sí, autorizo.»). The short verbs
+    alone or followed by `guardar`, `a guardar`, `guardarlo`/`guardarla`, `a guardarlo`/`a guardarla`
+    (Plan 0068 follow-up, 2026-10-21: Pipec said «sí, autorizo a guardarlo» and it was read as the
+    value) or `que guardes` («sí, autorizo.»). The short verbs
     `guarda` and `guárdalo` stand alone only after a leading «sí», because they are ordinary
     imperatives («guarda silencio»).
   - *Rejections alone (D-3).* `no autorizo`, `no apruebo` (and the third-person forms), `no lo

@@ -198,6 +198,9 @@ _ANSWER_POSSESSIVES = frozenset({"mi", "mis"})
 _MAX_ANSWER_PHRASE_WORDS = 6
 # Words that continue the verb rather than start the value («autorizo guardar», «que guardes»).
 _ANSWER_CONNECTORS = frozenset({"guardar", "que"})
+# «a guardar», «a guardarlo», «a guardarla»: the verb's infinitive after «a», never a value.
+_ANSWER_SAVE_PRONOUN_FORMS = frozenset({"guardarlo", "guardarla"})
+_ANSWER_SAVE_FORMS = frozenset({"guardar"}) | _ANSWER_SAVE_PRONOUN_FORMS
 
 _POSSESSIVES = frozenset(
     {"mi", "mis", "tu", "tus", "su", "sus", "nuestro", "nuestra", "nuestros", "nuestras"}
@@ -552,9 +555,14 @@ def _answer(prefix: str, phrase: list[str], *, accept: bool, affirmed: bool) -> 
         while phrase and phrase[0] in _ANSWER_LONG_VERB_LEADERS:
             phrase = phrase[1:]
     # «a guardar» continues the verb («guarda a guardar …» is not a value): drop it, then one
-    # possessive, as before. «autorizo a guardar» alone matches its own long prefix instead.
-    if phrase[:2] == ["a", "guardar"]:
+    # possessive, as before. «autorizo a guardar» alone matches its own long prefix instead. The
+    # same goes for the forms with the object pronoun, «a guardarlo»/«a guardarla» and the bare
+    # «guardarlo»/«guardarla» (Pipec said «sí, autorizo a guardarlo» on 2026-10-21 and the words
+    # were read as the value, which matched no offer).
+    if phrase[:1] == ["a"] and phrase[1:2] and phrase[1] in _ANSWER_SAVE_FORMS:
         phrase = phrase[2:]
+    elif phrase[:1] and phrase[0] in _ANSWER_SAVE_PRONOUN_FORMS:
+        phrase = phrase[1:]
     possessive = bool(phrase) and phrase[0] in _ANSWER_POSSESSIVES
     if possessive:
         phrase = phrase[1:]

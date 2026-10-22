@@ -2,7 +2,7 @@
 
 > **Closed 2026-10-21.** ADR 0023 is `Accepted`; the measurements are in
 > [the record](../../evals/0069-stt-owner-voice.md) and the execution record at the end of this file;
-> the private corpus was deleted after Pipec typed `delete`; Plan 0068 is `NOW` again.
+> the private corpus was deleted after Pipec typed `delete`; Plan 0068 went back to `NOW` and closed the same day.
 >
 > **Status:** `Closed` (it was `Ready` and `NOW` from 2026-10-20) — written and **promoted by Pipec on 2026-10-20**, with decisions
 > D-1 to D-20 as written (the thresholds of D-9 and D-11 included) and Pipec's standing rule kept as is:
@@ -414,7 +414,7 @@ and `.claude/rules/` (not tracked; read them from the working copy).
 - ADR-0002, ADR-0004, ADR 0021 (decision 9 and its amendments); `docs/architecture/current-state.md`
   (the STT row and the streaming row); [Plan 0056](../completed/0056-voice-pipeline-reliability-and-diagnostics.md)
   (the probes and their rules), [Plan 0067](../completed/0067-reply-listening-mode.md) (reply mode),
-  [Plan 0068](../open/0068-short-clip-speaker-measurement.md) (the retry and the short-clip study).
+  [Plan 0068](0068-short-clip-speaker-measurement.md) (the retry and the short-clip study).
 - `server/src/server/{stt,settings,pipeline,exceptions}.py`, `server/src/server/routers/transcribe.py`,
   `server/src/server/streaming.py`, `server/src/server/cognition/response_plan.py`,
   `server/src/server/memory/preference_gate.py`, `server/src/server/cognition/intent_resolution.py`

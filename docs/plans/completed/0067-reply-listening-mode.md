@@ -1,13 +1,13 @@
 # 0067 — The reply to a memory offer: a dedicated listening mode, better words
 
 > **Status:** `Closed` 2026-10-19 (PR #199). Its Task 8 (hardware counts) was folded by Pipec into
-> [Plan 0068](../open/0068-short-clip-speaker-measurement.md) Task 6 the same day.
+> [Plan 0068](0068-short-clip-speaker-measurement.md) Task 6 the same day.
 > Before: `Ready` and `NOW` — promoted by Pipec on 2026-10-19 and executed in the same session
 > (his choice: «todo tiene relación»), after Plan 0066 merged (PR #196). Written 2026-10-19 after Pipec's first hardware session with Plan 0066 (the
 > short answer promoted 1 of 2 times; the other fell to ordinary conversation). Pipec chose the
 > order: (1) a dedicated listening mode, (2) wider words and hotwords only in that mode, (3) measure
 > silence trimming and short voice references for the speaker check (that third item is the
-> separate [Plan 0068](../open/0068-short-clip-speaker-measurement.md); this plan does not touch the voice
+> separate [Plan 0068](0068-short-clip-speaker-measurement.md); this plan does not touch the voice
 > thresholds). The face-only fallback was **removed from scope** by Pipec. Task 8 also records the
 > hardware counts Plan 0066 left open (its Task 6). **Not rehearsed** in a scratch copy:
 > the tasks below are specifications (files, rules, tests to write first), not rehearsed diffs.
@@ -379,7 +379,7 @@ differently and no migration is added.
 
 ## Not here, and why
 
-- Voice thresholds, voice references, silence trimming for the speaker check: [Plan 0068](../open/0068-short-clip-speaker-measurement.md).
+- Voice thresholds, voice references, silence trimming for the speaker check: [Plan 0068](0068-short-clip-speaker-measurement.md).
 - A face-only fallback: removed by Pipec.
 - A bare «sí» as a valid answer: decided against in Plan 0066; it may be reopened after Plan 0068.
 - Reply mode on the classic route and the robot's classic path.
