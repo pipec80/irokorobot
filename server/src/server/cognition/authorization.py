@@ -577,9 +577,14 @@ _HOUSEHOLD_SUBJECTS: Mapping[HouseholdFactShape, frozenset[HouseholdSubject]] = 
         ),
     }
 )
-# Every sensitive category but `child_data` needs granted consent: the owner speaks for a child
-# as guardian, so the child's own data needs none (ADR 0022 decision 3).
-_HOUSEHOLD_CONSENT_CATEGORIES = _SENSITIVE_CATEGORIES - frozenset({DataSensitivity.CHILD_DATA})
+# `security` data is not covered at all: the repository refuses to store it until the Step 0 ADR
+# decides storage at rest (ADR 0022 decision 9), so the pair must not authorize what cannot be kept.
+_HOUSEHOLD_UNCOVERED = frozenset({DataSensitivity.SECURITY})
+# Every other sensitive category but `child_data` needs granted consent: the owner speaks for a
+# child as guardian, so the child's own data needs none (ADR 0022 decision 3).
+_HOUSEHOLD_CONSENT_CATEGORIES = (
+    _SENSITIVE_CATEGORIES - frozenset({DataSensitivity.CHILD_DATA}) - _HOUSEHOLD_UNCOVERED
+)
 
 
 def _household_memory_decision(
@@ -592,12 +597,14 @@ def _household_memory_decision(
 def _is_allowed_household_subject(request: AuthorizationRequest) -> bool:
     """Return whether the request is household data about a subject the owner may write about.
 
-    The visibility must be exactly `household`, and the caller must have classified both the
-    subject and the shape of the fact; a missing classification is never guessed.
+    The visibility must be exactly `household`, the data must not be `security`, and the caller
+    must have classified both the subject and the shape of the fact; a missing classification is
+    never guessed.
     """
     if (
         not request.visibility
         or not request.visibility <= _HOUSEHOLD_ONLY
+        or request.sensitivity & _HOUSEHOLD_UNCOVERED
         or request.subject_relation is None
         or request.fact_shape is None
     ):

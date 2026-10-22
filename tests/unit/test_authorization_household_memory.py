@@ -110,7 +110,9 @@ _ALLOWED_SUBJECTS = {
 }
 _ALL_COMBINATIONS = list(product(HouseholdFactShape, HouseholdSubject))
 # Categories that need granted consent even for the guardian; `child_data` is the guardian's own.
-_CONSENT_CATEGORIES = frozenset({"biometric", "medical", "location", "security"})
+_CONSENT_CATEGORIES = frozenset({"biometric", "medical", "location"})
+# Not covered by the pair at all (the repository refuses to store it until Step 0).
+_UNCOVERED_CATEGORIES = frozenset({"security"})
 _SENSITIVITY_VALUES = (
     "normal",
     "private",
@@ -535,20 +537,23 @@ def test_the_consent_categories_and_the_ordinary_ones_cover_every_sensitivity() 
     """Adding a `DataSensitivity` member fails here until it is classified."""
     ordinary = {"normal", "private", "child_data"}
 
-    assert ordinary | _CONSENT_CATEGORIES == {item.value for item in DataSensitivity}
-    assert not ordinary & _CONSENT_CATEGORIES
+    classified = ordinary | _CONSENT_CATEGORIES | _UNCOVERED_CATEGORIES
+    assert classified == {item.value for item in DataSensitivity}
+    assert len(classified) == len(ordinary) + len(_CONSENT_CATEGORIES) + len(_UNCOVERED_CATEGORIES)
 
 
 @pytest.mark.parametrize("action", _PAIR)
 def test_consent_is_required_exactly_for_the_non_child_sensitive_categories(
     action: AuthorizationAction,
 ) -> None:
-    """All 127 sensitivity sets x 4 consents: only biometric/medical/location/security need it."""
+    """All 127 sensitivity sets x 4 consents: biometric/medical/location need it, security is out."""
     for values, consent in product(_SENSITIVITY_SUBSETS, _ALL_CONSENTS):
         decision = _decide(action, sensitivity=_sensitivity(values), consent=consent)
 
         needs_consent = bool(_CONSENT_CATEGORIES & set(values))
-        if needs_consent and consent is not ConsentStatus.GRANTED:
+        if _UNCOVERED_CATEGORIES & set(values):
+            _assert_outcome(decision, _DENIED, _SUBJECT_ID)
+        elif needs_consent and consent is not ConsentStatus.GRANTED:
             _assert_outcome(decision, _DENIED, _CONSENT_ID)
         else:
             _assert_outcome(decision, _ALLOWED, _ALLOWED_ID)
