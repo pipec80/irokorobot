@@ -1,11 +1,14 @@
 # 0068 — Short answers and the speaker check: a retry when only the voice failed, and a measurement
 
-> **Back in `NOW` since 2026-10-21:** it was paused on 2026-10-20 while
-> [Plan 0069](../completed/0069-stt-owner-voice-audit.md) measured the speech-to-text itself, and that plan
-> is closed ([ADR 0023](../../adr/0023-speech-to-text-model-and-decoding.md)). Tasks 0 to 5 are merged
-> (PR #201, `917deec`); Tasks 6 to 8 are Pipec's. Take their counts with the adopted profile in the
-> runtime `.env` (`medium` on the GPU, a 1200 ms closing silence, a 300 ms upload tail), and say so in
-> the report.
+> **Closed 2026-10-21 with Tasks 7 and 8 deferred (Pipec's decision).** Tasks 0 to 5 are merged
+> (PR #201, `917deec`); the fix «a guardarlo» that Pipec's own session exposed is PR #203. Task 6
+> (the hardware counts) was taken on 2026-10-21 with the adopted speech-to-text profile
+> ([ADR 0023](../../adr/0023-speech-to-text-model-and-decoding.md)): the counts are in the
+> *Execution record* below. **Tasks 7 and 8 (the short-clip capture sessions and the report) are not
+> done**: they need at least three consenting adults, or the Pi's own microphone, and Pipec chose to
+> close the plan and keep them as a named pending item of the roadmap («Remaining biometric
+> measurements»). Nothing in the runtime depends on them: no threshold, enrollment or speaker setting
+> was changed.
 
 > **Status:** `Ready` and `NOW` — promoted by Pipec on 2026-10-19 and executed in the same session
 > (Pipec's choice: «a final estamos en lo mismo, así vamos sumando mejoras»), after Plan 0067 merged
@@ -232,21 +235,23 @@ phrase becomes `MemoryAnswerReply(phrase)`.
 
 With `MEMORY_CANDIDATES_ENABLED=true`, counts only:
 
-- [ ] Plan 0067 leftovers: two «no acepto», two «sí, guárdala», three offers left unanswered for
+- [x] Plan 0067 leftovers: two «no acepto», two «sí, guárdala», three offers left unanswered for
   15 s (back to normal listening?), one unrelated question as the reply (answered normally?).
-- [ ] Plan 0066 leftovers: two answers with the old full phrase; three casual «autorizo» or «sí,
-  guarda» with no open offer (nothing saved, ordinary reply).
-- [ ] The retry: how many short answers got the retry phrase; after it, how many longer answers
-  promoted.
+  *Taken 2026-10-21 in two sessions; counts in the Execution record. The plan's bar of 4 of 5
+  promoted was **not** reached on the counts (1 promoted); Pipec closed it anyway.*
+- [x] Plan 0066 leftovers: two answers with the old full phrase; three casual «autorizo» or «sí,
+  guarda» with no open offer (nothing saved, ordinary reply). *Counted; one clean casual case.*
+- [x] The retry: how many short answers got the retry phrase; after it, how many longer answers
+  promoted. *One retry observed; no longer answer followed it.*
 
 ## Task 7: Capture sessions (Pipec runs everything)
 
-- [ ] The classes of D-5 with `just speaker-calibration capture ...`, at least two sessions and the
+- [ ] **Deferred (2026-10-21).** The classes of D-5 with `just speaker-calibration capture ...`, at least two sessions and the
   four conditions; consenting impostors live; replay by Pipec. Counts per class and condition only.
 
 ## Task 8: Analysis, report, recommendation, cleanup
 
-- [ ] `validate`, `embed`, `analyze`; Pipec reads the report. The execution record states the cells
+- [ ] **Deferred (2026-10-21), it needs Task 7.** `validate`, `embed`, `analyze`; Pipec reads the report. The execution record states the cells
   of D-6, sample sizes, bounds and the D-7 recommendation. After Pipec's acceptance, `discard` and
   `cleanup` with Pipec's typed `delete`. `just gate`; docs; commit `docs: close plan 0068`; PR.
 
@@ -255,8 +260,8 @@ With `MEMORY_CANDIDATES_ENABLED=true`, counts only:
 1. A face-only owner whose short answer failed only by voice hears the retry and the robot listens
    again in reply mode; nothing else in the firewall changed.
 2. The verdict log carries the clip seconds, the distance and the gate.
-3. The hardware counts of Task 6 are recorded.
-4. The report answers Part B with numbers and the D-7 recommendation; no threshold changed; the
+3. The hardware counts of Task 6 are recorded. *Met 2026-10-21.*
+4. *Deferred with Tasks 7 and 8:* The report answers Part B with numbers and the D-7 recommendation; no threshold changed; the
    private corpus is deleted after acceptance; `just gate` green.
 
 ## Not here, and why
@@ -292,3 +297,48 @@ plan stays `NOW` until they are recorded here.
   defeats the trim and that production refuses clips under 1.5 s; one speech floor shared by the
   trim and the capture guard, and a drift guard on the threshold. Written into the ADR: the same
   person can confirm a guessed value through the retry, a value already spoken aloud in the offer.
+
+### Close (2026-10-21): Task 6 counts, Tasks 7 and 8 deferred
+
+Taken by Pipec on the laptop (face and microphone of the body, `medium` on the GPU, 1200 ms closing
+silence, 300 ms tail) on the branch that carries the «a guardarlo» fix (PR #203, `78a43f1`). **Counts
+only, read from `logs/server.log`; no sentence is recorded here.** Two sessions, 20:48 to 20:57 and 21:10 to
+21:18, 13 turns with speech each.
+
+| Event | Session 1 | Session 2 | Total |
+|---|---:|---:|---:|
+| Offers made (`Candidate offer: offered`) | 5 | 2 | 7 |
+| A taste said but no offer, voice not verified (`voice_unverified`) | 2 | 1 | 3 |
+| Answer promoted (`Candidate answer: promoted`) | 1 | 0 | 1 |
+| Answer rejected (`rejected`) | 0 | 1 | 1 |
+| Retry phrase (`voice_retry`) | 0 | 1 | 1 |
+| Answer wrongly promoted or rejected | 0 | 0 | 0 |
+
+What the other offers show, from the transcripts Pipec pasted and the log:
+
+- **An answer said in the same breath as another sentence** («no acepto» followed by a clause, or
+  after a question) was an ordinary turn for the model: 3 times (2 and 1). This is the grammar working
+  as designed, the words after a closed verb are read as a value, and it is the main reason the bar
+  was missed.
+- **A late answer:** one «sí, autorizo que lo guardes» came about 68 s after its offer, past the 60 s
+  window; it was an ordinary turn. The turn in between had cost 27 s of model time, so latency eats the
+  window (see the roadmap row on the language-model latency).
+- **Casual use with no open offer:** one («sí, guarda») got an ordinary reply and nothing was saved.
+  The other casual cases of the plan were not isolated in the log.
+- **A bare «no» with an open offer** got an ordinary reply: it is not a closed verb, like a bare «sí».
+- **The retry:** one short «autorizo» (1.5 s, voice `unknown`, face recognized) heard the retry phrase
+  40 s after its offer and the robot listened again; the next utterance was a bare «no», not a longer
+  answer, so 0 longer answers promoted after a retry (1 observed).
+- **Ordinary replies:** the model took 2 to 42 s. In session 2 the three slow turns (20, 26 and 20 s)
+  came right after a taste statement, while the candidate extraction of the previous turn ran on the
+  same Ollama (it coincides in time; not proven to be the cause).
+- **Speech-to-text:** two clips of 2.0 s and 0.7 s without speech were dropped by the filter (422 and
+  «listening again»); one proper name was heard wrongly; the rest were heard as spoken.
+
+Rulings. (6) Pipec closed the plan without Tasks 7 and 8: they need at least three consenting adults
+or the Pi's own microphone, and no runtime decision waits for them. They stay a named item of the
+roadmap («Remaining biometric measurements»), where the Pi recalibration will take them. (7) The
+plan's bar for Plan 0066 (at least 4 of 5 promoted) was not reached on the counts; Pipec judged the
+dialogue good enough for the laptop and the causes above are recorded as follow-ups, not as a
+failure of the grammar. (8) The «a guardarlo» fix (PR #203) came from Pipec's own session and was
+fixed test-first before these counts were taken. `just gate` for the close: documentation only.
