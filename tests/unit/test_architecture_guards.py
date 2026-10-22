@@ -678,8 +678,6 @@ _REPOSITORY_WRITER_HOMES = frozenset(
         "memory/canonical_writer.py",
         "personal_setup.py",
         "memory/legacy_v4_migration.py",
-        # Until Plan 0065 Task 6c moves `promote` onto the canonical writer.
-        "memory/memory_writer.py",
     }
 )
 

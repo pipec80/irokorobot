@@ -7,8 +7,10 @@ One function, ``promote`` (ADR 0021 decision 8), in **one** ``db.transaction()``
    closes the candidate ``rejected`` and writes nothing;
 3. a **duplicate** (the same folded key among the active facts of that predicate) is the
    result, idempotently: the candidate is confirmed against the fact already there;
-4. otherwise the fact is inserted through ``assert_literal_fact(manage_transaction=False)``
-   with visibility ``personal``, sensitivity ``normal``, who confirmed it and when;
+4. otherwise the fact is stored through the canonical writer's ``write_literal``
+   (``manage_transaction=False``, Plan 0065): the writer assigns the classification (an owner's
+   taste is ``personal``/``normal``) and records the owner as asserter and confirmer, the
+   candidate's channel and the confirmation time;
 5. the candidate is marked ``confirmed`` with its ``promoted_fact_id`` and its value is erased.
 
 The duplicate and the contradiction are decided by comparing folded keys, never by relying on
@@ -29,11 +31,7 @@ from typing import TYPE_CHECKING
 
 from server import db
 from server.cognition.authorization import evaluate_authorization
-from server.memory.candidate_classifier import (
-    CANDIDATE_SENSITIVITY,
-    CANDIDATE_VISIBILITY,
-    comparison_key,
-)
+from server.memory.candidate_classifier import comparison_key
 from server.memory.candidate_policy import CandidateStep, authorize_step
 from server.memory.candidate_types import CandidateReason, CandidateStatus
 from server.memory.candidates import (
@@ -43,9 +41,10 @@ from server.memory.candidates import (
     resolve_candidate_in_transaction,
     run_housekeeping,
 )
+from server.memory.canonical_writer import WriteChannel, write_literal
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.predicate_registry import resolve_predicate
-from server.memory.relational_v4 import assert_literal_fact, get_active_literal_facts
+from server.memory.relational_v4 import get_active_literal_facts
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -120,7 +119,7 @@ async def promote(
     Raises:
         RuntimeError: If the candidate's compare-and-set lost inside the transaction (another
             writer resolved it between the read and the write). The transaction is rolled back.
-        ValueError: If ``assert_literal_fact`` rejects the value or confidence. Rolled back.
+        ValueError: If the canonical writer rejects the value or confidence. Rolled back.
         BrainMemoryError: If the database is not open. Rolled back.
     """
     person_id = actor.person_id
@@ -229,17 +228,15 @@ async def _promote_in_transaction(
         )
         return PromotionResult(PromotionOutcome.ALREADY_PRESENT, present.id)
 
-    fact = await assert_literal_fact(
+    fact = await write_literal(
+        owner_entity_id=person_id,
         subject_entity_id=person_id,
-        definition=definition,
+        predicate=definition.canonical_id,
         value=candidate.value_text,
-        confidence=1.0,
-        source_memory_id=None,
-        asserted_at=candidate.proposed_at,
-        visibility=CANDIDATE_VISIBILITY.value,
-        sensitivity=CANDIDATE_SENSITIVITY.value,
-        confirmed_by_entity_id=person_id,
+        channel=WriteChannel(candidate.channel.value),
         confirmed_at=iso_utc(now),
+        confidence=1.0,
+        asserted_at=candidate.proposed_at,
         manage_transaction=False,
     )
     await _resolve(

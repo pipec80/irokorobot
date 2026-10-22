@@ -20,7 +20,7 @@ from server.cognition.identity import (
 )
 from server.cognition.models import Confidence, ConfidenceBasis
 from server.exceptions import BrainMemoryError
-from server.memory import candidates, memory_writer
+from server.memory import candidates, canonical_writer, memory_writer
 from server.memory.biometric_consent import grant_face_consent
 from server.memory.candidate_policy import CandidateStep
 from server.memory.candidate_types import (
@@ -579,7 +579,9 @@ async def test_the_failures_that_escape_roll_the_transaction_back(
             raise raised
         return False  # the compare-and-set lost inside the transaction
 
-    monkeypatch.setattr(memory_writer, seam, failing)
+    # `promote` now reaches the repository through the canonical writer (Plan 0065 Task 6c).
+    target = canonical_writer if seam == "assert_literal_fact" else memory_writer
+    monkeypatch.setattr(target, seam, failing)
 
     expected = type(raised) if raised is not None else RuntimeError
     with pytest.raises(expected):
@@ -596,7 +598,7 @@ async def test_a_failure_inside_the_transaction_rolls_back_fact_and_resolution(
     owner: int, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     candidate_id = await _offered(owner)
-    real = memory_writer.assert_literal_fact
+    real = canonical_writer.assert_literal_fact
     calls: list[bool] = []
 
     async def failing(**kwargs: object) -> object:
@@ -604,7 +606,7 @@ async def test_a_failure_inside_the_transaction_rolls_back_fact_and_resolution(
         await real(**kwargs)  # type: ignore[arg-type]  # the wrapper forwards typed keywords as `object`
         raise RuntimeError("boom after the insert")
 
-    monkeypatch.setattr(memory_writer, "assert_literal_fact", failing)
+    monkeypatch.setattr(canonical_writer, "assert_literal_fact", failing)
 
     with pytest.raises(RuntimeError, match="boom"):
         await _promote(candidate_id, _actor(owner))
