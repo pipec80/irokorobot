@@ -22,6 +22,9 @@ from server.memory.predicate_registry import (
 )
 from server.memory.relational_v4 import assert_entity_relation, assert_literal_fact
 
+# The sensitivity the repository refuses to store until the Step 0 ADR decides (ADR 0022).
+_SECURITY_SENSITIVITY = "security"
+
 
 class MigrationOutcome(StrEnum):
     """Persisted decision for one active legacy fact."""
@@ -136,6 +139,29 @@ async def _matching_target_ids(name: str, definition: PredicateDefinition) -> tu
     return tuple(sorted(matches))
 
 
+async def _entity_type(entity_id: int) -> str | None:
+    """Return the persisted type of a legacy fact's entity, or ``None`` if it is gone."""
+    cursor = await get_conn().execute("SELECT type FROM entities WHERE id = ?", (entity_id,))
+    row = await cursor.fetchone()
+    await cursor.close()
+    return str(row[0]) if row is not None else None
+
+
+async def _refused_by_the_repository(
+    fact: _LegacyFact, definition: PredicateDefinition
+) -> _Decision | None:
+    """Defer a fact whose write the repository would refuse.
+
+    Such a write must be deferred here, not raised there: it would stop the whole apply at this
+    fact, and the dry run would have counted it as migrated.
+    """
+    if definition.default_sensitivity == _SECURITY_SENSITIVITY:
+        return _Decision(outcome=MigrationOutcome.DEFERRED, reason="security_storage_undecided")
+    if await _entity_type(fact.entity_id) not in definition.subject_types:
+        return _Decision(outcome=MigrationOutcome.DEFERRED, reason="subject_type_mismatch")
+    return None
+
+
 async def _classify(fact: _LegacyFact) -> _Decision:
     """Classify one legacy fact without writing v4 storage or a ledger row."""
     definition = resolve_predicate(fact.predicate)
@@ -143,6 +169,9 @@ async def _classify(fact: _LegacyFact) -> _Decision:
         if _fold_name(fact.predicate) in {"age", "edad"}:
             return _Decision(outcome=MigrationOutcome.REJECTED, reason="derived_predicate")
         return _Decision(outcome=MigrationOutcome.REJECTED, reason="unsupported_predicate")
+    refused = await _refused_by_the_repository(fact, definition)
+    if refused is not None:
+        return refused
 
     if definition.kind is PredicateKind.LITERAL:
         normalized = normalize_literal(definition, fact.object_value)
