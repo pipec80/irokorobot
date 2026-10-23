@@ -471,12 +471,13 @@ async def write_literal(
             ``owner_only_predicate`` for a personal-default predicate about someone else,
             ``classification_conflict`` for a stored row labelled otherwise, or
             ``value_conflict`` under ``REFUSE`` for a different single value.
-        ValueError: For an unregistered or non-literal predicate, an unlisted channel, an
-            invalid value or a confidence out of range.
+        ValueError: For an unregistered or non-literal predicate, an unlisted channel or
+            conflict policy, an invalid value or a confidence out of range.
     """
     definition = _literal_definition(predicate)
     refuse_unstorable_value(definition)
     write_channel = WriteChannel(channel)
+    policy = ConflictPolicy(on_conflict)
     _validate_confidence(confidence)
     async with _transaction(manage_transaction):
         fact, created = await _write_literal(
@@ -488,7 +489,7 @@ async def write_literal(
             confirmed_at=confirmed_at,
             confidence=confidence,
             asserted_at=asserted_at,
-            on_conflict=on_conflict,
+            on_conflict=policy,
             confirmed_by_owner=confirmed_by_owner,
         )
     if created:
@@ -616,12 +617,13 @@ async def write_relation(
             owner's household (the partner's own facts, an outsider, a second role),
             ``owner_only_predicate`` or ``classification_conflict`` as for ``write_literal``;
             ``value_conflict`` under ``REFUSE`` for a second partner or a second home.
-        ValueError: For an unregistered or non-relation predicate, an unlisted channel, an
-            invalid endpoint, date or confidence.
+        ValueError: For an unregistered or non-relation predicate, an unlisted channel or
+            conflict policy, an invalid endpoint, date or confidence.
     """
     definition = _relation_definition(predicate)
     refuse_unstorable_value(definition)
     write_channel = WriteChannel(channel)
+    policy = ConflictPolicy(on_conflict)
     _validate_confidence(confidence)
     async with _transaction(manage_transaction):
         relation = await _write_relation(
@@ -635,7 +637,7 @@ async def write_relation(
             asserted_at=asserted_at,
             valid_from=valid_from,
             valid_to=valid_to,
-            on_conflict=on_conflict,
+            on_conflict=policy,
             confirmed_by_owner=confirmed_by_owner,
         )
     _announce("relation", definition, write_channel, relation.id, committed=manage_transaction)

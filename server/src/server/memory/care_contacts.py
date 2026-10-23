@@ -342,16 +342,18 @@ async def write_contact(
 
     Raises:
         ValueError: For a phone not in international format (the message holds no digit), an
-            order below 1, a label outside 1 to 40 characters, an unlisted channel or a contact
-            that does not exist.
+            order below 1, a label outside 1 to 40 characters, an unlisted channel, role or
+            conflict policy, or a contact that does not exist.
         WriteRefusedError: With ``contact_is_owner``, ``not_a_person``, ``order_taken`` or
             ``value_conflict``.
     """
     canonical, canonical_alt, label = _validated(phone, phone_alt, call_order, relationship)
     write_channel = WriteChannel(channel)
+    contact_role = ContactRole(role)
+    policy = ConflictPolicy(on_conflict)
     async with _transaction(manage_transaction):
         await _require_a_person(owner_entity_id, contact_entity_id, write_channel)
-        current = await _active_row(owner_entity_id, contact_entity_id, role)
+        current = await _active_row(owner_entity_id, contact_entity_id, contact_role)
         wanted = _Terms(
             canonical,
             canonical_alt,
@@ -363,7 +365,7 @@ async def write_contact(
         )
         if current is not None and _Terms.of(current) == wanted:
             return current
-        if current is not None and on_conflict is ConflictPolicy.REFUSE:
+        if current is not None and policy is ConflictPolicy.REFUSE:
             raise refusal_error(WriteRefusal.VALUE_CONFLICT, what=_WHAT, channel=write_channel)
         await _require_a_free_order(
             owner_entity_id, call_order, None if current is None else current.id, write_channel
@@ -375,7 +377,7 @@ async def write_contact(
         stored = await _insert(
             owner_entity_id,
             contact_entity_id,
-            role,
+            contact_role,
             wanted,
             channel=write_channel,
             confirmed_at=confirmed_at,

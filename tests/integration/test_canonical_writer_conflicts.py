@@ -300,3 +300,45 @@ async def test_the_policy_gated_reader_still_serves_what_nobody_confirmed(home: 
     assert literals.status is KnowledgeStatus.KNOWN
     assert [fact.value_text for fact in literals.facts] == ["el tren"]
     assert relations.status is KnowledgeStatus.KNOWN
+
+
+# --- the policy is coerced like the channel (review of Plan 0070) --------------------------------
+
+
+async def test_the_policy_given_as_its_plain_string_still_refuses_a_literal(home: _Home) -> None:
+    first = await _literal(home, "birth_date", "1950-01-02")
+
+    with pytest.raises(WriteRefusedError) as refusal:
+        await _literal(home, "birth_date", "1951-01-02", on_conflict="refuse")  # type: ignore[arg-type]  # the plain string is the test
+
+    assert refusal.value.reason == "value_conflict"
+    active = await get_active_literal_facts(
+        subject_entity_id=home.owner, definition=_definition("birth_date")
+    )
+    assert [fact.id for fact in active] == [first.id]
+
+
+async def test_the_policy_given_as_its_plain_string_still_refuses_a_relation(home: _Home) -> None:
+    await _relate(home, home.owner, "lives_in", home.town)
+
+    with pytest.raises(WriteRefusedError) as refusal:
+        await _relate(home, home.owner, "lives_in", home.city, on_conflict="refuse")  # type: ignore[arg-type]  # the plain string is the test
+
+    assert refusal.value.reason == "value_conflict"
+
+
+@pytest.mark.parametrize("policy", ["bogus", "", None])
+async def test_an_unknown_policy_is_a_value_error_and_writes_nothing(
+    home: _Home, policy: object
+) -> None:
+    with pytest.raises(ValueError, match="ConflictPolicy"):
+        await _literal(home, "birth_date", "1950-01-02", on_conflict=policy)  # type: ignore[arg-type]  # the bad values are the test
+    with pytest.raises(ValueError, match="ConflictPolicy"):
+        await _relate(home, home.owner, "lives_in", home.town, on_conflict=policy)  # type: ignore[arg-type]  # the bad values are the test
+
+    assert (
+        await get_active_literal_facts(
+            subject_entity_id=home.owner, definition=_definition("birth_date")
+        )
+        == []
+    )

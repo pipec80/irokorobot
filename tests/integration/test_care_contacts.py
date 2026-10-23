@@ -396,3 +396,26 @@ async def test_no_log_error_or_repr_holds_a_phone(
     assert caplog.records
     for secret in ("56900000001", "56900000002", "56220000003", "vecina"):
         assert not any(secret in trace for trace in traces), secret
+
+
+# --- the policy and the role are coerced like the channel (review of Plan 0070) ------------------
+
+
+async def test_the_policy_and_the_role_given_as_plain_strings_still_work(home: _Home) -> None:
+    first = await _contact(home, home.neighbour, role="caregiver")
+
+    with pytest.raises(WriteRefusedError) as refusal:
+        await _contact(home, home.neighbour, role="caregiver", phone=_PHONE_2, on_conflict="refuse")
+
+    assert refusal.value.reason == "value_conflict"
+    assert [row.id for row in await list_active_contacts(home.owner)] == [first.id]
+
+
+@pytest.mark.parametrize("overrides", [{"on_conflict": "bogus"}, {"role": "boss"}])
+async def test_an_unknown_policy_or_role_is_a_value_error_and_writes_nothing(
+    home: _Home, overrides: dict[str, object]
+) -> None:
+    with pytest.raises(ValueError, match="is not a valid"):
+        await _contact(home, home.neighbour, **overrides)
+
+    assert await _count() == 0
