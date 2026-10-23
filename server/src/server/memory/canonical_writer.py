@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING
 
 from server import db
 from server.cognition.identity import HouseholdRole
+from server.memory.care_contacts import has_active_contact
 from server.memory.declarative import is_adult_dependent
 from server.memory.household_authorization import get_active_role
 from server.memory.predicate_registry import (
@@ -170,7 +171,12 @@ async def _classify_subject(
 
 
 async def _holds_relative_role(owner_entity_id: int, entity_id: int) -> bool:
-    """Return whether the entity is already a relative of the owner (not a person to keep out)."""
+    """Return whether the entity is a relative or a contact (not merely a person to keep out).
+
+    Either role would be unlocked by relabeling the person a child, a pet or the partner.
+    """
+    if await has_active_contact(entity_id):
+        return True
     for definition in _RELATIVE_DEFINITIONS:
         ends = [(owner_entity_id, entity_id)]
         if definition.symmetric:

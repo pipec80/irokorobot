@@ -701,3 +701,36 @@ def test_the_repository_writer_guard_detects_a_violation() -> None:
         "memory/other.py",
         "routers/leak.py",
     ]
+
+
+# --- care contacts (Plan 0070, ADR 0024 decision 5) -----------------------------------------
+# One module writes and reads the contacts table, so the classification, the phone format and the
+# order rule cannot be bypassed by a second writer.
+_CARE_CONTACT_SQL = re.compile(r"\b(?:FROM|JOIN|INTO|UPDATE|DELETE\s+FROM)\s+care_contacts\b")
+_MAY_QUERY_CARE_CONTACTS = frozenset({"memory/care_contacts.py"})
+
+
+def _care_contact_queriers(sources: Mapping[str, str]) -> list[str]:
+    """Modules, besides the contacts writer, that put SQL on `care_contacts`."""
+    return [
+        name
+        for name, text in sources.items()
+        if name not in _MAY_QUERY_CARE_CONTACTS and _CARE_CONTACT_SQL.search(text)
+    ]
+
+
+@pytest.mark.unit
+def test_the_contacts_table_is_queried_only_by_the_contacts_writer() -> None:
+    assert _care_contact_queriers(_sources()) == []
+
+
+@pytest.mark.unit
+def test_the_contacts_guard_detects_a_violation() -> None:
+    leak = {
+        "memory/leak.py": 'SQL = "UPDATE care_contacts SET phone = ?"\n',
+        "routers/leak.py": 'SQL = "SELECT phone FROM care_contacts"\n',
+        "memory/care_contacts.py": 'SQL = "SELECT 1 FROM care_contacts"\n',
+        "prose.py": '"""The care_contacts table is described here."""\n',
+    }
+
+    assert _care_contact_queriers(leak) == ["memory/leak.py", "routers/leak.py"]
