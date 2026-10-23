@@ -62,6 +62,9 @@ specific conflict instead of redesigning the project implicitly.
   (semantic `max_length`, the streaming one-terminal-event guarantee, the
   NDJSON 200 OpenAPI contract, `/health` wording + injectable `create_app`).
   Only Uvicorn concurrency calibration remains; since 2026-09-30 it is measured on the homelab server inside PC-5 (portfolio row 12), not in a separate `perf(...)` plan.
+- [`seed-data-pool.md`](seed-data-pool.md): what the commissioning (Step 0) captures, where each
+  datum lives, its sensitivity and the capability it will feed. *Proposed* with
+  [ADR 0024](../adr/0024-seed-load-senses-secrets-and-channels.md).
 - [`../roadmap/personal-companion-delivery-map.md`](../roadmap/personal-companion-delivery-map.md):
   canonical mapping from the personal-companion outcome to existing code,
   tests, verified gaps, and the one accountable executable plan.

@@ -31,5 +31,7 @@ supersedes it and update the old one's status.
 | [0021](0021-memory-candidates-and-the-canonical-writer.md) | Keep what the owner says as a candidate, and let one deterministic writer promote it | Accepted (2026-10-16; proposed 2026-10-14, amended 2026-10-15); implemented by Plan 0062 (closed 2026-10-15) and Plan 0063 (closed 2026-10-16); refines 0019 §6 and §1 |
 | [0022](0022-household-rules-and-third-party-memory.md) | Household rules: whose data a third party's fact is, and one writer for every channel | Accepted (2026-10-22; proposed 2026-10-16); implemented by Plan 0065 (tranche A of CM-3b, closed 2026-10-22) |
 | [0023](0023-speech-to-text-model-and-decoding.md) | Speech-to-text: the model, the decoding and the turn closing, measured on the owner's voice | Accepted (2026-10-21); implemented by Plan 0069 |
+| [0024](0024-seed-load-senses-secrets-and-channels.md) | The seed load: the data pool, secrets at rest, contacts, the confirmation of an assisted interview, identity modalities and the order of the commissioning | Proposed (2026-10-22, revised 2026-10-23); to be implemented by Plans 0070 and 0071 (`Draft`) and 0072 (`Draft`, an outline); amends 0022 decisions 1, 2 and 9 |
+| [0025](0025-remote-administration-backup-updates-and-telemetry.md) | Administering a local-first robot: the surfaces, support sessions, backup, updates and telemetry | Proposed (2026-10-23); the local half is Plan 0073 (`Draft`, an outline: a command-line tool over SSH first); amends 0013 |
 
 New ADRs start from [`0000-adr-template.md`](0000-adr-template.md).

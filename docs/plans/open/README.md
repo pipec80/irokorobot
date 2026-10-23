@@ -51,10 +51,20 @@ siguen siendo los del [roadmap](../../roadmap/cognitive-roadmap.md); esta lista 
    deja abierto: dónde se guarda un valor `security` en reposo, la regla del hijo adulto, y si un
    representante o un segundo adulto puede afirmar o confirmar en nombre del dueño.
 
-**El plan del Paso 0 debe incluir** (decisiones ya tomadas, aún sin plan): el importador (archivo o
-formulario), enrolar cara y voz como primer paso, niveles por canal, la escalada «¿estás con alguien?»,
-el ADR de privacidad de los sentidos y la **calibración de voz al enrolar un usuario**
-(fila «Voice calibration when a user is enrolled» del roadmap).
+**Estado del Paso 0 (2026-10-23):** el [ADR 0024](../../adr/0024-seed-load-senses-secrets-and-channels.md)
+(`Proposed`, revisado tras dos revisiones independientes) decide el pozo de datos, el secreto guardado por
+referencia, los contactos con teléfono, la confirmación de una entrevista asistida y el orden de la puesta en
+marcha; el catálogo de campos está en [`seed-data-pool.md`](../../architecture/seed-data-pool.md). El
+[Plan 0070](0070-seed-load-data-pool-storage.md) (`Draft`) es el almacenamiento y la procedencia; el
+[Plan 0071](0071-seed-load-file-importer.md) (`Draft`, después del 0070) es el importador por archivo, y el
+[Plan 0072](0072-commissioning-session.md) (`Draft`, un esquema) es la sesión de puesta en marcha: enrolar cara y
+voz en un solo flujo, la sesión de voz (la calibración de voz al enrolar), el informe de preparación por capacidad,
+el cierre de la ventana y el acta; el reinicio de la base real espera a ese plan. El
+[Plan 0073](0073-local-admin-crud.md) (`Draft`, un esquema) es la administración local (un CRUD por línea de comandos
+sobre SSH, sin servicio web nuevo) que cierra la fase 0 y es la vía de enmienda de contactos y medicamentos tras el cierre; su mitad remota (VPN, sesión de soporte, respaldo,
+actualizaciones, telemetría) es el [ADR 0025](../../adr/0025-remote-administration-backup-updates-and-telemetry.md)
+(`Proposed`), sin plan. Ninguno está `Ready`: los promueve Pipec. **Siguen sin plan:** la lectura estructurada del perfil
+por voz (primera porción de CM-5) y la escalada «¿estás con alguien?» (CM-5, necesita la audiencia del turno).
 
 **No bloquea, pero queda abierto** (cada uno con su fila en el roadmap):
 
