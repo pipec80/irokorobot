@@ -113,3 +113,26 @@ class WriteRefusedError(Exception):
         """
         super().__init__(f"memory write refused: {reason}")
         self.reason = reason
+
+
+class CommissioningError(ValueError):
+    """Raised when the commissioning record is in the wrong state for the call.
+
+    The messages are fixed and never carry the interviewer's label or any household value.
+    """
+
+
+class CommissioningOpenError(CommissioningError):
+    """Raised when a commissioning is opened while another one is still open."""
+
+    def __init__(self) -> None:
+        """Say only that one is open."""
+        super().__init__("a commissioning is already open")
+
+
+class CommissioningClosedError(CommissioningError):
+    """Raised when a commissioning is written after it was closed, or opened after one closed."""
+
+    def __init__(self) -> None:
+        """Say only that a commissioning is closed."""
+        super().__init__("the commissioning is closed")
