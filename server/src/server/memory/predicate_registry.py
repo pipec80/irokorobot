@@ -6,6 +6,7 @@ from datetime import date
 from enum import StrEnum
 import re
 from typing import Literal
+import unicodedata
 
 from pydantic import BaseModel, ConfigDict
 
@@ -45,6 +46,8 @@ class LiteralFormat(StrEnum):
     INTEGER = "integer"
     # A pointer to where something is or who knows it, never the thing itself (ADR 0024 decision 4).
     REFERENCE = "reference"
+    # One code of a closed set, written the way a person says it (ADR 0024 decision 2).
+    CHOICE = "choice"
 
 
 class PredicateDefinition(BaseModel):
@@ -67,6 +70,8 @@ class PredicateDefinition(BaseModel):
     # ``False`` for a value that must never be written, whoever asks and whatever label it
     # carries (ADR 0024 decision 4).
     storable: bool = True
+    # The canonical codes a ``CHOICE`` literal accepts; ``None`` for every other format.
+    choices: frozenset[str] | None = None
 
 
 _PERSON: frozenset[EntityTypeName] = frozenset[EntityTypeName](("person",))
@@ -80,6 +85,105 @@ _MAX_STATED_AGE = 130
 # A reference is a short sentence; four digits anywhere would be a code, so it is refused.
 _REFERENCE_LENGTH = range(2, 121)
 _MAX_REFERENCE_DIGITS = 3
+
+
+def _pool_literal(
+    canonical_id: str,
+    alias: str,
+    literal_format: LiteralFormat,
+    sensitivity: str,
+    *,
+    multi: bool = False,
+    choices: str | None = None,
+) -> PredicateDefinition:
+    """Build a literal of the commissioning data pool: personal, about a person (Plan 0070).
+
+    ``choices`` is the space-separated canonical codes of a ``CHOICE`` literal.
+    """
+    return PredicateDefinition(
+        canonical_id=canonical_id,
+        aliases=frozenset({canonical_id, alias}),
+        kind=PredicateKind.LITERAL,
+        cardinality=(
+            PredicateCardinality.MULTI_VALUE if multi else PredicateCardinality.SINGLE_CURRENT
+        ),
+        subject_types=_PERSON,
+        literal_format=literal_format,
+        default_visibility="personal",
+        default_sensitivity=sensitivity,
+        choices=frozenset(choices.split()) if choices is not None else None,
+    )
+
+
+def _pool_relation(
+    canonical_id: str, alias: str, *, sensitivity: str = "normal", symmetric: bool = False
+) -> PredicateDefinition:
+    """Build a relation between two people of the owner's circle: personal (Plan 0070)."""
+    return PredicateDefinition(
+        canonical_id=canonical_id,
+        aliases=frozenset({canonical_id, alias}),
+        kind=PredicateKind.RELATION,
+        cardinality=PredicateCardinality.RELATION,
+        subject_types=_PERSON,
+        target_types=_PERSON,
+        symmetric=symmetric,
+        default_visibility="personal",
+        default_sensitivity=sensitivity,
+    )
+
+
+_T, _C, _I, _R = (
+    LiteralFormat.TEXT,
+    LiteralFormat.CHOICE,
+    LiteralFormat.INTEGER,
+    LiteralFormat.REFERENCE,
+)
+
+# What a commissioning captures about the owner (ADR 0024 decision 2, seed-data-pool.md).
+_POOL_PREDICATES: tuple[PredicateDefinition, ...] = (
+    _pool_literal("preferred_name", "nombre_preferido", _T, "normal"),
+    _pool_literal("address_form", "trato", _C, "normal", choices="tu usted"),
+    _pool_literal("health_coverage", "prevision", _T, "private"),
+    _pool_literal("health_condition", "condicion_de_salud", _T, "medical", multi=True),
+    _pool_literal("medication", "medicamento", _T, "medical", multi=True),
+    _pool_literal(
+        "takes_anticoagulant", "toma_anticoagulante", _C, "medical", choices="si no no_se"
+    ),
+    _pool_literal("rescue_medication", "medicamento_de_rescate", _T, "medical", multi=True),
+    _pool_literal("implanted_device", "dispositivo_implantado", _T, "medical", multi=True),
+    _pool_literal(
+        "blood_type",
+        "grupo_sanguineo",
+        _C,
+        "medical",
+        choices="A+ A- B+ B- AB+ AB- O+ O-",
+    ),
+    _pool_literal(
+        "mobility", "movilidad", _C, "medical", choices="solo baston andador silla_de_ruedas"
+    ),
+    _pool_literal("hearing", "audicion", _C, "medical", choices="normal audifonos dificultad"),
+    _pool_literal("vision", "vision", _C, "medical", choices="normal lentes dificultad"),
+    _pool_literal("document_location", "ubicacion_de_documento", _R, "security", multi=True),
+    _pool_literal("preferred_emergency_facility", "urgencia_preferida", _T, "location"),
+    _pool_literal("home_address", "direccion", _T, "location"),
+    _pool_literal("dwelling_type", "tipo_de_vivienda", _C, "location", choices="casa departamento"),
+    _pool_literal("floor", "piso", _I, "location"),
+    _pool_literal("has_lift", "tiene_ascensor", _C, "location", choices="si no"),
+    _pool_literal("home_access_note", "acceso_a_la_casa", _R, "location"),
+    _pool_literal("lives_alone", "vive_solo", _C, "location", choices="si no"),
+    _pool_relation("has_parent", "tiene_padre_o_madre"),
+    _pool_relation("has_grandparent", "tiene_abuelo_o_abuela"),
+    _pool_relation("has_grandchild", "tiene_nieto_o_nieta"),
+    _pool_relation("has_sibling", "tiene_hermano_o_hermana", symmetric=True),
+    _pool_relation("withhold_from", "no_informar_a", sensitivity="private"),
+    # Who knows a secret (ADR 0024 decision 4): free text written by the owner, never the secret.
+    _pool_literal("secret_holder", "quien_conoce_el_secreto", _R, "security", multi=True),
+)
+
+# The legacy migration never writes these: the pool is loaded through the canonical writer only.
+POOL_PREDICATE_IDS: frozenset[str] = frozenset(
+    definition.canonical_id for definition in _POOL_PREDICATES
+)
 
 _PREDICATES: tuple[PredicateDefinition, ...] = (
     PredicateDefinition(
@@ -215,17 +319,7 @@ _PREDICATES: tuple[PredicateDefinition, ...] = (
         default_sensitivity="security",
         storable=False,
     ),
-    # Plan 0070: who knows a secret (ADR 0024 decision 4). Free text written by the owner.
-    PredicateDefinition(
-        canonical_id="secret_holder",
-        aliases=frozenset({"secret_holder", "quien_conoce_el_secreto"}),
-        kind=PredicateKind.LITERAL,
-        cardinality=PredicateCardinality.MULTI_VALUE,
-        subject_types=_PERSON,
-        literal_format=LiteralFormat.REFERENCE,
-        default_visibility="personal",
-        default_sensitivity="security",
-    ),
+    *_POOL_PREDICATES,
 )
 
 _BY_ALIAS = {
@@ -270,6 +364,8 @@ def normalize_literal(definition: PredicateDefinition, value: str) -> str | None
             normalized = _normalize_integer(cleaned)
         case LiteralFormat.REFERENCE:
             normalized = _normalize_reference(cleaned)
+        case LiteralFormat.CHOICE:
+            normalized = _normalize_choice(definition, cleaned)
         case _:
             normalized = None
     return normalized
@@ -303,3 +399,16 @@ def _normalize_reference(cleaned: str) -> str | None:
     if sum(character.isdigit() for character in collapsed) > _MAX_REFERENCE_DIGITS:
         return None
     return collapsed
+
+
+def _fold_code(value: str) -> str:
+    """Fold case and accents and join words with ``_``: ``"No sé"`` becomes ``"no_se"``."""
+    decomposed = unicodedata.normalize("NFKD", value.casefold())
+    unaccented = "".join(c for c in decomposed if not unicodedata.combining(c))
+    return "_".join(unaccented.split())
+
+
+def _normalize_choice(definition: PredicateDefinition, cleaned: str) -> str | None:
+    """Return the canonical code of *cleaned*, or ``None`` when it is outside the set."""
+    folded = _fold_code(cleaned)
+    return next((code for code in definition.choices or () if _fold_code(code) == folded), None)
