@@ -361,6 +361,7 @@ def test_the_channels_are_a_closed_list_that_covers_the_candidates() -> None:
         "voice_classic",
         "voice_stream",
         "import_file",
+        "import_assisted",
     }
     assert {channel.value for channel in CandidateChannel} <= {c.value for c in WriteChannel}
 

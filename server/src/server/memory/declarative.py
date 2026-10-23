@@ -8,6 +8,7 @@ fact supersedes (but does not delete) prior active facts for the same
 
 from __future__ import annotations
 
+from enum import StrEnum
 import json
 import logging
 from typing import TYPE_CHECKING, Any
@@ -19,12 +20,24 @@ from server.exceptions import AmbiguousEntityError
 from server.schemas import EntityType, EntityWithFacts, FactRecord
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     import aiosqlite
 
 logger = logging.getLogger(__name__)
 
 # Key of ``entities.attributes`` that records which import created a third party.
 _IMPORT_KEY_ATTRIBUTE = "import_key"
+# Key of ``entities.attributes`` that marks whether a child is a minor or an adult (ADR 0024
+# decision 9). The canonical writer reads it, so the rule holds on every channel.
+_GUARDIANSHIP_ATTRIBUTE = "guardianship"
+
+
+class Guardianship(StrEnum):
+    """Whether a child of the owner is still a minor; an adult child gets the partner's rule."""
+
+    MINOR = "minor"
+    ADULT = "adult"
 
 
 def _fold_name(name: str) -> str:
@@ -160,6 +173,7 @@ async def _insert_or_reuse_third_party(
     name: str,
     type: EntityType,
     import_key: str | None,
+    attributes: Mapping[str, str] | None,
 ) -> tuple[int, bool]:
     """Insert a third party, or return the one this import key already created.
 
@@ -171,6 +185,7 @@ async def _insert_or_reuse_third_party(
         name: Name of the third party.
         type: Entity category.
         import_key: Idempotency key of the import, or ``None``.
+        attributes: Attributes stored with a new entity; an existing one keeps its own.
 
     Returns:
         ``(entity_id, created)``; ``created`` is ``False`` for an idempotent re-run.
@@ -197,10 +212,12 @@ async def _insert_or_reuse_third_party(
         )
         raise AmbiguousEntityError(f"A third party of type {type!r} with that name already exists")
 
-    attributes = {_IMPORT_KEY_ATTRIBUTE: import_key} if import_key is not None else {}
+    stored = dict(attributes or {})
+    if import_key is not None:
+        stored[_IMPORT_KEY_ATTRIBUTE] = import_key
     cur = await conn.execute(
         "INSERT INTO entities (name, type, attributes, aliases) VALUES (?, ?, ?, ?)",
-        (name, type, json.dumps(attributes), json.dumps([])),
+        (name, type, json.dumps(stored), json.dumps([])),
     )
     if cur.lastrowid is None:
         raise RuntimeError("INSERT into entities returned no lastrowid for a third party")
@@ -214,6 +231,7 @@ async def create_third_party(
     name: str,
     type: EntityType,
     import_key: str | None = None,
+    attributes: Mapping[str, str] | None = None,
     manage_transaction: bool = True,
 ) -> int:
     """Create a third party exactly once; never merge it by name (ADR 0022 decision 7).
@@ -234,6 +252,8 @@ async def create_third_party(
         name: Name of the third party, as it will be stored.
         type: Entity category (``"person"``, or ``"other"`` for a pet).
         import_key: Idempotency key of the import; stored in ``attributes["import_key"]``.
+        attributes: Extra attributes of a new entity (the guardianship marker of a child). An
+            entity found again keeps whatever it has: a correction is not a creation's job.
         manage_transaction: ``False`` joins the caller's open transaction.
 
     Returns:
@@ -242,19 +262,22 @@ async def create_third_party(
     Raises:
         AmbiguousEntityError: If an entity of that folded name and type exists and
             *import_key* does not identify it. The message never carries the name or the key.
+        ValueError: If *attributes* names ``import_key``, which only *import_key* may set.
         RuntimeError: If the INSERT returns no row id.
     """
+    if attributes is not None and _IMPORT_KEY_ATTRIBUTE in attributes:
+        raise ValueError(f"{_IMPORT_KEY_ATTRIBUTE} is set by the import_key argument")
     # The lookup shares a transaction with the INSERT that follows it: two concurrent
     # creations of one folded name must not both see "not found".
     if manage_transaction:
         async with db.transaction() as conn:
             entity_id, created = await _insert_or_reuse_third_party(
-                conn, name=name, type=type, import_key=import_key
+                conn, name=name, type=type, import_key=import_key, attributes=attributes
             )
     else:
         # The caller owns the transaction: no BEGIN, COMMIT or ROLLBACK from here.
         entity_id, created = await _insert_or_reuse_third_party(
-            get_conn(), name=name, type=type, import_key=import_key
+            get_conn(), name=name, type=type, import_key=import_key, attributes=attributes
         )
 
     event = "entity.third_party_created" if created else "entity.third_party_reused"
@@ -269,6 +292,33 @@ async def create_third_party(
         extra={"event": event, "entity_type": type, "entity_id": entity_id},
     )
     return entity_id
+
+
+async def is_adult_dependent(entity_id: int) -> bool:
+    """Return whether an entity carries the ``adult`` guardianship marker.
+
+    Anything else is ``False``: no marker, ``minor``, attributes that are not a JSON object,
+    and an entity that does not exist (fail-open for a child made by the local setup, which
+    has no marker; ADR 0024 decision 9).
+
+    Args:
+        entity_id: Row id of the entity.
+
+    Returns:
+        ``True`` only for the marker ``adult``.
+    """
+    cursor = await get_conn().execute("SELECT attributes FROM entities WHERE id = ?", (entity_id,))
+    row = await cursor.fetchone()
+    await cursor.close()
+    if row is None:
+        return False
+    try:
+        attributes = json.loads(str(row[0]))
+    except json.JSONDecodeError:
+        return False
+    return isinstance(attributes, dict) and attributes.get(_GUARDIANSHIP_ATTRIBUTE) == (
+        Guardianship.ADULT
+    )
 
 
 async def assert_fact(
