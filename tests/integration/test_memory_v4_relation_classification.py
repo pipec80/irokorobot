@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
-from server.exceptions import SecurityStorageUndecidedError
+from server.exceptions import UnstorableValueError
 from server.memory.declarative import upsert_entity
 from server.memory.predicate_registry import (
     PredicateCardinality,
@@ -327,7 +327,7 @@ async def test_a_relation_chosen_as_security_is_refused_without_a_trace(
 ) -> None:
     owner, child, _town, _city = await _people_and_places()
 
-    with pytest.raises(SecurityStorageUndecidedError):
+    with pytest.raises(UnstorableValueError):
         await assert_entity_relation(
             source_entity_id=child,
             target_entity_id=owner,

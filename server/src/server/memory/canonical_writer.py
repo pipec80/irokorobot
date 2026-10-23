@@ -53,7 +53,7 @@ from server.memory.relational_v4 import (
     assert_literal_fact,
     get_active_entity_relations,
     get_active_literal_facts,
-    refuse_security_value,
+    refuse_unstorable_value,
 )
 
 __all__ = ["WriteChannel", "WriteRefusal", "write_literal", "write_relation"]
@@ -335,7 +335,7 @@ async def write_literal(
         The stored fact, or the active one already stored for the same value.
 
     Raises:
-        SecurityStorageUndecidedError: For a SECURITY predicate; raised first, nothing is read,
+        UnstorableValueError: For a SECURITY predicate; raised first, nothing is read,
             stored or logged.
         WriteRefusedError: With ``not_household_member`` for the partner or an outsider,
             ``owner_only_predicate`` for a personal-default predicate about someone else, or
@@ -344,7 +344,7 @@ async def write_literal(
             invalid value or a confidence out of range.
     """
     definition = _literal_definition(predicate)
-    refuse_security_value(definition)
+    refuse_unstorable_value(definition)
     write_channel = WriteChannel(channel)
     _validate_confidence(confidence)
     async with _transaction(manage_transaction):
@@ -466,7 +466,7 @@ async def write_relation(
         The stored relation, or the active one already stored for the same triple.
 
     Raises:
-        SecurityStorageUndecidedError: For a SECURITY relation; raised first.
+        UnstorableValueError: For a SECURITY relation; raised first.
         WriteRefusedError: With ``not_household_member`` when the relation is outside the
             owner's household (the partner's own facts, an outsider, a second role),
             ``owner_only_predicate`` or ``classification_conflict`` as for ``write_literal``.
@@ -474,7 +474,7 @@ async def write_relation(
             invalid endpoint, date or confidence.
     """
     definition = _relation_definition(predicate)
-    refuse_security_value(definition)
+    refuse_unstorable_value(definition)
     write_channel = WriteChannel(channel)
     _validate_confidence(confidence)
     async with _transaction(manage_transaction):

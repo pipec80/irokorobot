@@ -7,7 +7,7 @@ import sqlite3
 from typing import TYPE_CHECKING
 
 import pytest
-from server.exceptions import SecurityStorageUndecidedError
+from server.exceptions import UnstorableValueError
 from server.memory.declarative import upsert_entity
 from server.memory.predicate_registry import (
     PredicateCardinality,
@@ -328,7 +328,7 @@ async def test_a_security_literal_is_refused_and_leaves_no_trace(
 
     with caplog.at_level(logging.DEBUG):
         logging.getLogger("server.memory.relational_v4").debug("control record")
-        with pytest.raises(SecurityStorageUndecidedError) as refusal:
+        with pytest.raises(UnstorableValueError) as refusal:
             await assert_literal_fact(
                 subject_entity_id=owner_id,
                 definition=_predicate("access_code"),
@@ -353,7 +353,7 @@ async def test_a_security_sensitivity_chosen_by_the_caller_is_refused_too(
     """The refusal covers the effective sensitivity, not only the registry default."""
     owner_id = await upsert_entity(name="Canary Owner", type="person")
 
-    with pytest.raises(SecurityStorageUndecidedError):
+    with pytest.raises(UnstorableValueError):
         await assert_literal_fact(
             subject_entity_id=owner_id,
             definition=_predicate("likes"),
@@ -381,7 +381,7 @@ async def test_a_relation_whose_predicate_defaults_to_security_is_refused(
         default_sensitivity="security",
     )
 
-    with pytest.raises(SecurityStorageUndecidedError):
+    with pytest.raises(UnstorableValueError):
         await assert_entity_relation(
             source_entity_id=owner_id, target_entity_id=other_id, definition=security_relation
         )

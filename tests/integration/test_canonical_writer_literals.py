@@ -19,7 +19,7 @@ import pytest
 from server.cognition.authorization import ConsentStatus
 from server.cognition.identity import ActivePersonContext, ActivePersonStatus, HouseholdRole
 from server.cognition.models import Confidence, ConfidenceBasis, KnowledgeStatus
-from server.exceptions import SecurityStorageUndecidedError, WriteRefusedError
+from server.exceptions import UnstorableValueError, WriteRefusedError
 from server.memory.candidate_types import CandidateChannel
 from server.memory.canonical_writer import WriteChannel, write_literal
 from server.memory.declarative import upsert_entity
@@ -207,7 +207,7 @@ async def test_a_security_value_is_refused_without_a_trace(
 ) -> None:
     with caplog.at_level(logging.DEBUG):
         logging.getLogger("server.memory.canonical_writer").debug("control record")
-        with pytest.raises(SecurityStorageUndecidedError) as refusal:
+        with pytest.raises(UnstorableValueError) as refusal:
             await _write(household, household.owner, "access_code", _CODE_CANARY)
     assert any(record.getMessage() == "control record" for record in caplog.records)
 

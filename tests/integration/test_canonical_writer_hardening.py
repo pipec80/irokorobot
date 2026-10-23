@@ -20,7 +20,7 @@ import pytest
 from server.cognition.authorization import ConsentStatus
 from server.cognition.identity import ActivePersonContext, ActivePersonStatus, HouseholdRole
 from server.cognition.models import Confidence, ConfidenceBasis, KnowledgeStatus
-from server.exceptions import AmbiguousEntityError, SecurityStorageUndecidedError, WriteRefusedError
+from server.exceptions import AmbiguousEntityError, UnstorableValueError, WriteRefusedError
 from server.memory.canonical_writer import WriteChannel, write_literal, write_relation
 from server.memory.declarative import create_third_party, upsert_entity
 from server.memory.household_authorization import (
@@ -208,7 +208,7 @@ async def test_a_security_value_raises_the_security_error_before_anything_else_i
     """Even about an outsider: no classification, no refusal log, no read of the stored rows."""
     with caplog.at_level(logging.DEBUG):
         logging.getLogger("server.memory.canonical_writer").debug("control record")
-        with pytest.raises(SecurityStorageUndecidedError):
+        with pytest.raises(UnstorableValueError):
             await _literal(home, getattr(home, who), "access_code", _CODE_CANARY)
 
     assert any(record.getMessage() == "control record" for record in caplog.records)
@@ -222,7 +222,7 @@ async def test_the_repository_refuses_a_security_predicate_whatever_sensitivity_
 ) -> None:
     """A caller cannot downgrade the label: the predicate is what decides."""
     for sensitivity in ("normal", "private", None):
-        with pytest.raises(SecurityStorageUndecidedError):
+        with pytest.raises(UnstorableValueError):
             await assert_literal_fact(
                 subject_entity_id=home.owner,
                 definition=_definition("access_code"),
@@ -238,7 +238,7 @@ async def test_the_repository_refuses_a_security_predicate_whatever_sensitivity_
         target_types=frozenset({"person"}),
         default_sensitivity="security",
     )
-    with pytest.raises(SecurityStorageUndecidedError):
+    with pytest.raises(UnstorableValueError):
         await assert_entity_relation(
             source_entity_id=home.owner,
             target_entity_id=home.visitor,

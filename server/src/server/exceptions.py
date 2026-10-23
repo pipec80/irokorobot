@@ -38,8 +38,8 @@ class BrainMemoryError(Exception):
     """Raised when the brain memory layer fails (DB, embeddings, etc)."""
 
 
-class SecurityStorageUndecidedError(Exception):
-    """Raised when a SECURITY value would be stored before storage at rest is decided.
+class UnstorableValueError(Exception):
+    """Raised when a value that must never be stored is offered to the repository.
 
     The message is fixed and never carries the value, the subject or the predicate's content
     (ADR 0022 decision 9): a refused value leaves no trace.
