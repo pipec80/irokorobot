@@ -5596,7 +5596,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <li>&bull; A memory offer or answer needs the face and the voice of the same person on that turn&#39;s own clip, never a token; otherwise the turn is the ordinary one</li>
           <li>&bull; Ollama is the only accepted LLM/VLM runtime (ADR-0004), reached only through one transport module</li>
           <li>&bull; A generic turn names its speaker by face or an observed token (never voice); the identified person gets one in-process session, an unknown speaker suspends it</li>
-          <li>&bull; One canonical writer stores household facts for every channel and refuses a SECURITY value until Step 0</li>
+          <li>&bull; One canonical writer stores household facts for every channel; a secret is stored by reference only (who knows it), never its value</li>
         </ul>
       </div>
 

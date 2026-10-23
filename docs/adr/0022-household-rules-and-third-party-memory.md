@@ -185,6 +185,10 @@ to `security`** (the refusal is in `assert_literal_fact` and `assert_entity_rela
 can bypass it) until the Step 0 ADR decides storage at rest (plain SQLite, per-value encryption or
 reference only; backups, `secure_delete`, `reset-db`). Reading it is CM-5.
 
+*Decided by [ADR 0024](0024-seed-load-senses-secrets-and-channels.md) decision 4 and implemented by Plan 0070:*
+the value of a secret is never stored; `access_code` is permanently refused (`storable = False`),
+and the sensitivity a caller states must match the predicate's, in both directions.
+
 ### 10. Negations and the spoken capture of third parties
 
 A negation («no tenemos gato») is never persisted. The spoken capture of a third party (names by
@@ -314,6 +318,9 @@ reviews and left on purpose):
 
 1. How an adult child is treated, and who may claim the owner's identity on each channel
    (`import_file` included): the writer trusts `owner_entity_id`; the policy and the caller decide.
+   *Decided by [ADR 0024](0024-seed-load-senses-secrets-and-channels.md) decisions 6, 7 and 9 and
+   implemented by Plan 0070: the adult child is a marker the writer reads; the import channels are local
+   administration; the confirmer is the owner only when the owner confirmed.*
 2. Folded duplicates across channels: `promote` compares folded keys (case and article), the writer
    compares text exactly, so a spoken «Pizza» and an imported «pizza» are two rows.
 3. The dataset's `status:pending-step0` tag marks the SECURITY scenario but nothing in the

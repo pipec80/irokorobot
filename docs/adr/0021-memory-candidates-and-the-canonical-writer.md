@@ -563,7 +563,7 @@ never the message. These are memory-layer reasons, separate from ADR 0016
 | A disclosure rule ("no menciones X delante de visitas") | No predicate fits and CM-3a refuses it. **Pipec decides:** a new predicate or a dataset version bump | **CM-3b** | `sensitive_preference_lifecycle` propose step |
 | Perceptual candidates | The vision path does not call the store; source `perception` needs a policy | **CM-3b**, with P2.1 | `perceptual_evidence_stays_proposed` |
 | `nombre`, `edad`, `especie` | No V4 predicate: the name is the entity, the age is derived, species belongs to pets | **CM-3b** | decided with the relation predicates |
-| The first `SECURITY` datum | No `strong`-only category is written by CM-3a | **CM-3b**, read by CM-5 | one datum chosen and its gates specified |
+| The first `SECURITY` datum | No `strong`-only category is written by CM-3a | **CM-3b**, read by CM-5 | one datum chosen and its gates specified (*[ADR 0024](0024-seed-load-senses-secrets-and-channels.md) decision 4, Plan 0070:* the value is never stored; `secret_holder` stores who knows it) |
 | A `confirm` step in the benchmark; a process-restart seam | The dataset expects a same-turn acknowledgement and has no confirm operation or restart | **CM-3b** / **CM-7** preparation (dataset version bump, driver seam) | the benchmark can exercise decision 9 |
 | Resolving a contradiction; removing live candidates | A contradiction is a correction; candidate rows hold values while live | **CM-6** (its reach includes `memory_candidates`) | roadmap row updated |
 | Reading what was stored | Recall is a different slice | **CM-5** | row 9 |
@@ -577,7 +577,8 @@ one channel-neutral writer for literals and relations of the owner's household, 
 `works_at` with validity, `species`, the **stated** age (stored with its as-of date; today's age is
 still never persisted, so the derived-age row of `memory-and-world-state.md` now covers only the
 derived value), the `private_topic` and `access_code` predicates (the repository refuses to store the
-SECURITY one until Step 0 decides storage at rest), the household capability pair as policy, and
+SECURITY one; [ADR 0024](0024-seed-load-senses-secrets-and-channels.md) decision 4 settles it:
+the value is never stored, only who knows it), the household capability pair as policy, and
 dataset v3 with an honest `confirm` operation. **Still open, tranche B after Step 0:** the spoken
 capture of third parties, reported facts, the behaviour of the disclosure rule and perceptual
 candidates.

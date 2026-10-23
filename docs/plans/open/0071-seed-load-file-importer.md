@@ -1,8 +1,8 @@
 # 0071 — Step 0, second plan: the file importer of the commissioning
 
 > **Status:** `Draft` (written 2026-10-23, revised the same day after the second review). **Not `Ready`
-> and not `NOW`**, and it **cannot start before [Plan 0070](0070-seed-load-data-pool-storage.md)
-> closes**: Pipec promotes it, after confirming the decisions below, and Task 0 re-audits it against
+> and not `NOW`**, and it **could not start before [Plan 0070](../completed/0070-seed-load-data-pool-storage.md)
+> closed (it did on 2026-10-23)**: Pipec promotes it, after confirming the decisions below, and Task 0 re-audits it against
 > the code Plan 0070 merged. It implements [ADR 0024](../../adr/0024-seed-load-senses-secrets-and-channels.md)
 > (`Proposed`) decisions 6 to 8, 11, 12 and 13; the ADR becomes `Accepted` when [Plan 0072](0072-commissioning-session.md)
 > closes. Written for an executor who has not seen this repository.
@@ -36,7 +36,7 @@ command, an example file that is also the questionnaire, a guard, and a reset sc
 used synchronously in the command), pytest. **No new dependency, no migration, no new setting.**
 
 **Spec:** ADR 0024 decisions 6 to 8 and 11 to 13, [`seed-data-pool.md`](../../architecture/seed-data-pool.md),
-[Plan 0070](0070-seed-load-data-pool-storage.md) (the interfaces it produced).
+[Plan 0070](../completed/0070-seed-load-data-pool-storage.md) (the interfaces it produced).
 
 ## Decisions
 
@@ -180,7 +180,7 @@ The inputs the tasks' main tests would miss; each line has its test in the task 
 - **The plan of operations is the one contract** for entering and changing data (ADR 0025 decision 11): the file, the
   command-line CRUD of Plan 0073, a future form and a future inbox of changes all produce `SeedOperation`s and the same applier
   writes them; no front end writes SQL or calls a writer by itself.
-- The constraints of [Plan 0070](0070-seed-load-data-pool-storage.md) apply unchanged (rules, canaries, the writer
+- The constraints of [Plan 0070](../completed/0070-seed-load-data-pool-storage.md) apply unchanged (rules, canaries, the writer
   assigns the classification, commit titles, ruff and types). Invented phones such as `+56900000001`.
 - Pydantic errors keep the failing input in `__cause__`: re-raise `SeedFileError` **`from None`** with only the field
   path and the error type. Sensitive fields use `Field(repr=False)`. No traceback is printed.

@@ -1,7 +1,7 @@
 # 0072 — Step 0, third plan: the commissioning session (the alta of the robot)
 
 > **Status:** `Draft`, **an outline** (written 2026-10-23). It is not executable and not `Ready`: its tasks
-> are named but not detailed, because they depend on what [Plan 0070](0070-seed-load-data-pool-storage.md) and
+> are named but not detailed, because they depend on what [Plan 0070](../completed/0070-seed-load-data-pool-storage.md) and
 > [Plan 0071](0071-seed-load-file-importer.md) leave in the code, on hardware sessions and on decisions Pipec has
 > not made (below). Queue rule 4 applies: when Plan 0071 closes, this plan is re-audited against the merged code and
 > rewritten in the format of Plan 0070 before Pipec can promote it. It implements the rest of

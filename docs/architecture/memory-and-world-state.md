@@ -120,7 +120,7 @@ derives it has no consumer before CM-5, so it is not written yet.
 
 There is **one** place that stores a household fact, whatever the channel: the spoken
 confirmation of CM-3a (`voice_classic`, `voice_stream`) and the initial import of Step 0
-(`import_file`) call the same `write_literal` and `write_relation`. The speaker never assigns
+(`import_file`, `import_assisted`) call the same `write_literal` and `write_relation`. The speaker never assigns
 the classification; the writer looks it up from the predicate and the subject in one table:
 
 | Subject | Stored as |
@@ -132,10 +132,19 @@ the classification; the writer looks it up from the predicate and the subject in
 
 Membership relations (`child_of`, `partner_of`, `pet_of`) are `household` data; `lives_in` and
 `works_at` follow their source like a literal. «Child» means a child the owner is guardian of;
-the writer cannot tell a minor from an adult child, so it classifies both alike, and how an
-adult child is treated is a Step 0 decision. The asserter and the confirmer are the owner, and
+the entity's `guardianship` attribute says whether they are a minor or an adult (ADR 0024
+decision 9): an **adult child** gets the partner's rule, name and relationship only, on every
+channel, and may still be a contact; a child with no marker is treated as a minor. The owner's
+**relatives** (`has_parent`, `has_grandparent`, `has_grandchild`, symmetric `has_sibling`, owner at
+the source end) get the same rule, and so do the people to keep out (`withhold_from`, which may
+point at anyone). A relative or a contact can never be relabeled a child, a pet or the partner
+(`role_conflict`), nor a member a relative; an exact repeat of an active relation is always
+accepted. The asserter is the owner and so is the confirmer, unless the owner did not confirm
+(`confirmed_by_owner=False`, an assisted interview in `representative` mode: `confirmed_by`
+stays `NULL`, `confirmed_at` is kept, ADR 0024 decision 6), and
 each row records them and the channel (`asserted_by_entity_id`, `channel`, migration 010; older
-rows and the local setup read `NULL`). A repeat of an active value with the same classification is
+rows and the local setup read `NULL`). A load made while commissioning can ask the writer to
+refuse a different single value instead of superseding it (`on_conflict=REFUSE`: `value_conflict`). A repeat of an active value with the same classification is
 idempotent; a stored row labelled otherwise is refused as `classification_conflict`. Nobody who is
 already the partner, or holds an adult role, can be declared a child to unlock their facts. A temporal
 relation closes the previous one at the new `valid_from`, an explicit `valid_to` stores history
@@ -147,9 +156,22 @@ all-or-nothing with no new API.
 
 The registry also knows `species` (pets), `stated_age`, `private_topic` («no menciones X delante
 de visitas»: only the predicate exists, its behaviour needs CM-5 and Step 0) and `access_code`
-(the first `security` datum, with no Spanish alias). **The repository refuses to store any value
-whose sensitivity is `security`** (`SecurityStorageUndecidedError`, before any write or log) until
-the Step 0 ADR decides storage at rest; reading it is CM-5.
+(the first `security` datum, with no Spanish alias). **A secret is never stored (ADR 0024
+decision 4, Plan 0070):** `access_code` is registered but not `storable`, so the repository refuses
+it whatever label a caller asks for (`UnstorableValueError`, before any write or log); what is
+stored is *who knows* it (`secret_holder`) and *where a document is* (`document_location`), free
+text of 2 to 120 characters that refuses four digits in any script, `personal`/`security`, read at
+`strong` (reading is CM-5). The repository also refuses a stated sensitivity that disagrees with the
+predicate's, in both directions.
+
+**The data pool and the contacts.** The commissioning's pool (`seed-data-pool.md`) adds the
+predicates for the owner's health, function and home (all `personal`, about people only; choices
+are Spanish codes) and two tables outside the V4 facts: `care_contacts` (a person with a phone
+the owner wants called or told; written only by `memory/care_contacts.py`, which assigns
+`personal`/`private`, or `location` for a key holder; being a contact opens no fact about the
+person) and the `commissioning_records` / `commissioning_sections` of the acta (who interviewed,
+how the owner confirmed, the hash and counts of each import, one status per section; no household
+value; written only by `memory/commissioning.py`). Nothing reads them by voice before CM-5.
 
 ## Provenance, confidence, and truth status
 

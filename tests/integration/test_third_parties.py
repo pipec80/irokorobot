@@ -13,7 +13,13 @@ from typing import TYPE_CHECKING
 
 import pytest
 from server.exceptions import AmbiguousEntityError
-from server.memory.declarative import create_third_party, find_entities_by_name, upsert_entity
+from server.memory.declarative import (
+    Guardianship,
+    create_third_party,
+    find_entities_by_name,
+    is_adult_dependent,
+    upsert_entity,
+)
 from server.settings import settings
 
 from server import db
@@ -306,3 +312,112 @@ async def test_a_refusal_never_names_the_third_party_or_the_key(
         rendered = f"{record.getMessage()} {vars(record)}"
         for secret in (name, key, other_key):
             assert secret not in rendered
+
+
+# --- Plan 0070 Task 4a (ADR 0024 decision 9): the adult-child marker ----------------------------
+
+
+@pytest.mark.integration
+async def test_a_third_party_stores_the_attributes_it_is_created_with(third_party_db: None) -> None:
+    """The guardianship marker is stored with the key, in one insert."""
+    entity_id = await create_third_party(
+        name="Canary Child",
+        type="person",
+        import_key="c1",
+        attributes={"guardianship": Guardianship.ADULT},
+    )
+
+    rows = await _entity_rows()
+    assert [row[0] for row in rows] == [entity_id]
+    assert json.loads(rows[0][3]) == {"import_key": "c1", "guardianship": "adult"}
+
+
+@pytest.mark.integration
+async def test_the_same_key_leaves_the_attributes_untouched(third_party_db: None) -> None:
+    """A re-run with another marker changes nothing: a correction is not an import's job."""
+    first = await create_third_party(
+        name="Canary Child",
+        type="person",
+        import_key="c1",
+        attributes={"guardianship": Guardianship.MINOR},
+    )
+    before = await _entity_rows()
+
+    again = await create_third_party(
+        name="Canary Child",
+        type="person",
+        import_key="c1",
+        attributes={"guardianship": Guardianship.ADULT},
+    )
+
+    assert again == first
+    assert await _entity_rows() == before
+
+
+@pytest.mark.integration
+async def test_an_attribute_named_import_key_is_refused_before_anything_is_written(
+    third_party_db: None,
+) -> None:
+    with pytest.raises(ValueError, match="import_key"):
+        await create_third_party(
+            name="Canary Child", type="person", import_key="c1", attributes={"import_key": "x"}
+        )
+
+    assert await _entity_rows() == []
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "attributes_json,expected",
+    [
+        ('{"guardianship": "adult"}', True),
+        ('{"guardianship": "minor"}', False),
+        ('{"import_key": "c1"}', False),
+        ("{}", False),
+        ('["guardianship", "adult"]', False),
+        ('"adult"', False),
+        ("not json at all", False),
+    ],
+)
+async def test_only_the_adult_marker_makes_an_adult_dependent(
+    third_party_db: None, attributes_json: str, expected: bool
+) -> None:
+    entity_id = await upsert_entity(name="Canary Child", type="person")
+    async with db.transaction() as conn:
+        await conn.execute(
+            "UPDATE entities SET attributes = ? WHERE id = ?", (attributes_json, entity_id)
+        )
+
+    assert await is_adult_dependent(entity_id) is expected
+
+
+@pytest.mark.integration
+async def test_a_missing_entity_is_not_an_adult_dependent(third_party_db: None) -> None:
+    assert await is_adult_dependent(9999) is False
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("marker", ["Adult", "adulto", "", "ADULT", " adult"])
+async def test_a_guardianship_marker_outside_the_list_is_refused_and_not_echoed(
+    third_party_db: None, marker: str
+) -> None:
+    """A typo must not turn an adult child into a minor by failing open."""
+    with pytest.raises(ValueError, match="guardianship") as refusal:
+        await create_third_party(
+            name="Canary Child", type="person", attributes={"guardianship": marker}
+        )
+
+    assert marker.strip() == "" or marker not in str(refusal.value)
+    assert await _entity_rows() == []
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("marker", ["minor", "adult"])
+async def test_a_guardianship_marker_on_the_list_is_stored(
+    third_party_db: None, marker: str
+) -> None:
+    await create_third_party(
+        name="Canary Child", type="person", attributes={"guardianship": marker}
+    )
+
+    assert json.loads((await _entity_rows())[0][3]) == {"guardianship": marker}

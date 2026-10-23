@@ -26,8 +26,8 @@
   owner or the builder who is the owner confirmed; decision 6 here), decision 9 (the repository
   refuses a value by its predicate) and its open obligations 1 and 2. The roadmap's *Privacy contract
   of the senses* row is satisfied by decision 3.
-- **Implemented by:** [Plan 0070](../plans/open/0070-seed-load-data-pool-storage.md) (`Draft`: the
-  storage and the provenance), [Plan 0071](../plans/open/0071-seed-load-file-importer.md) (`Draft`: the
+- **Implemented by:** [Plan 0070](../plans/completed/0070-seed-load-data-pool-storage.md) (closed
+  2026-10-23: the storage and the provenance), [Plan 0071](../plans/open/0071-seed-load-file-importer.md) (`Draft`: the
   importer) and [Plan 0072](../plans/open/0072-commissioning-session.md) (`Draft`, an outline: the
   session itself, with enrolment, the voice session, the readiness report, the closing and the acta) and
   [Plan 0073](../plans/open/0073-local-admin-crud.md) (`Draft`, an outline: the local administration that
@@ -467,7 +467,7 @@ baseline backup and the readiness report; contacts have no write path after the 
 
 ## Follow-up
 
-- [Plan 0070](../plans/open/0070-seed-load-data-pool-storage.md) — the storage and the provenance (`Draft`).
+- [Plan 0070](../plans/completed/0070-seed-load-data-pool-storage.md) — the storage and the provenance (closed 2026-10-23).
 - [Plan 0071](../plans/open/0071-seed-load-file-importer.md) — the importer (`Draft`).
 - [Plan 0072](../plans/open/0072-commissioning-session.md) — the commissioning session (`Draft`, an outline).
 - The next free ADR number is 0025.

@@ -18,7 +18,7 @@ from pydantic import BaseModel, ConfigDict
 
 from server import db
 from server.db import get_conn
-from server.exceptions import SecurityStorageUndecidedError
+from server.exceptions import UnstorableValueError
 from server.memory.predicate_registry import (
     PredicateCardinality,
     PredicateDefinition,
@@ -103,27 +103,32 @@ _SECURITY_SENSITIVITY = "security"
 _MONTH_ONLY_LENGTH = len("YYYY-MM")
 
 
-def refuse_security_value(definition: PredicateDefinition, sensitivity: str | None = None) -> None:
-    """Refuse to store a ``security`` value (ADR 0022 decision 9).
+def refuse_unstorable_value(
+    definition: PredicateDefinition, sensitivity: str | None = None
+) -> None:
+    """Refuse to store a value that must not be stored (ADR 0022 decision 9, ADR 0024 decision 4).
 
-    Storage at rest (plain SQLite, per-value encryption or reference only) is decided by the
-    Step 0 ADR, so no writer may bypass this: it runs before any query, write or log, and the
-    message names neither the value nor the subject. The predicate decides: a security
-    predicate is refused whatever label the caller asks for, and a caller may not label
-    another predicate ``security`` either.
+    No writer may bypass this: it runs before any query, write or log, and the message names
+    neither the value nor the subject. The predicate decides: a predicate that is not
+    ``storable`` is refused whatever label the caller asks for, a ``security`` predicate keeps
+    its label (nobody downgrades ``secret_holder``), and nobody labels another predicate
+    ``security`` either.
 
     Args:
         definition: The resolved predicate whose default sensitivity applies.
         sensitivity: The caller's explicit sensitivity, if any.
 
     Raises:
-        SecurityStorageUndecidedError: If the predicate defaults to ``security`` or the caller
-            asks for it.
+        UnstorableValueError: If the predicate is not storable, or the caller states a
+            sensitivity that is ``security`` for a predicate that is not, or is not
+            ``security`` for one that is.
     """
-    if _SECURITY_SENSITIVITY in {definition.default_sensitivity, sensitivity}:
-        raise SecurityStorageUndecidedError(
-            "a security value cannot be stored until storage at rest is decided"
-        )
+    secret_predicate = definition.default_sensitivity == _SECURITY_SENSITIVITY
+    mislabeled = (
+        sensitivity is not None and (sensitivity == _SECURITY_SENSITIVITY) != secret_predicate
+    )
+    if not definition.storable or mislabeled:
+        raise UnstorableValueError("this value cannot be stored")
 
 
 def _required_int(value: SqlValue) -> int:
@@ -393,13 +398,13 @@ async def assert_literal_fact(
         The stored literal fact.
 
     Raises:
-        SecurityStorageUndecidedError: If the effective sensitivity is ``security``; nothing
+        UnstorableValueError: If the effective sensitivity is ``security``; nothing
             is written or logged.
         ValueError: If the value is not a valid canonical literal or the confidence is out
             of range.
         RuntimeError: If the stored row cannot be read back.
     """
-    refuse_security_value(definition, sensitivity)
+    refuse_unstorable_value(definition, sensitivity)
     await _validate_literal_subject(subject_entity_id, definition)
     normalized_value = normalize_literal(definition, value)
     if normalized_value is None:
@@ -579,12 +584,12 @@ async def assert_entity_relation(
         The stored relation, or the active one already stored for the same triple.
 
     Raises:
-        SecurityStorageUndecidedError: If the effective sensitivity is ``security``.
+        UnstorableValueError: If the effective sensitivity is ``security``.
         ValueError: If an endpoint or the confidence is invalid, or a validity date is not a
             real ``YYYY-MM-DD`` / ``YYYY-MM`` date or ``valid_to`` precedes ``valid_from``.
         RuntimeError: If the stored row cannot be read back.
     """
-    refuse_security_value(definition, sensitivity)
+    refuse_unstorable_value(definition, sensitivity)
     await _validate_relation_endpoints(source_entity_id, target_entity_id, definition)
     if not 0.0 <= confidence <= 1.0:
         raise ValueError("confidence must be between 0 and 1")

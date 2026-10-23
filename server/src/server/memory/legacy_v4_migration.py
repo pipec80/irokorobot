@@ -15,15 +15,13 @@ from pydantic import BaseModel, ConfigDict
 
 from server.db import get_conn
 from server.memory.predicate_registry import (
+    POOL_PREDICATE_IDS,
     PredicateDefinition,
     PredicateKind,
     normalize_literal,
     resolve_predicate,
 )
 from server.memory.relational_v4 import assert_entity_relation, assert_literal_fact
-
-# The sensitivity the repository refuses to store until the Step 0 ADR decides (ADR 0022).
-_SECURITY_SENSITIVITY = "security"
 
 
 class MigrationOutcome(StrEnum):
@@ -155,7 +153,9 @@ async def _refused_by_the_repository(
     Such a write must be deferred here, not raised there: it would stop the whole apply at this
     fact, and the dry run would have counted it as migrated.
     """
-    if definition.default_sensitivity == _SECURITY_SENSITIVITY:
+    if definition.canonical_id in POOL_PREDICATE_IDS:
+        return _Decision(outcome=MigrationOutcome.DEFERRED, reason="pool_predicate_not_migrated")
+    if not definition.storable:
         return _Decision(outcome=MigrationOutcome.DEFERRED, reason="security_storage_undecided")
     if await _entity_type(fact.entity_id) not in definition.subject_types:
         return _Decision(outcome=MigrationOutcome.DEFERRED, reason="subject_type_mismatch")

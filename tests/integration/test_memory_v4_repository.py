@@ -7,7 +7,7 @@ import sqlite3
 from typing import TYPE_CHECKING
 
 import pytest
-from server.exceptions import SecurityStorageUndecidedError
+from server.exceptions import UnstorableValueError
 from server.memory.declarative import upsert_entity
 from server.memory.predicate_registry import (
     PredicateCardinality,
@@ -328,7 +328,7 @@ async def test_a_security_literal_is_refused_and_leaves_no_trace(
 
     with caplog.at_level(logging.DEBUG):
         logging.getLogger("server.memory.relational_v4").debug("control record")
-        with pytest.raises(SecurityStorageUndecidedError) as refusal:
+        with pytest.raises(UnstorableValueError) as refusal:
             await assert_literal_fact(
                 subject_entity_id=owner_id,
                 definition=_predicate("access_code"),
@@ -353,7 +353,7 @@ async def test_a_security_sensitivity_chosen_by_the_caller_is_refused_too(
     """The refusal covers the effective sensitivity, not only the registry default."""
     owner_id = await upsert_entity(name="Canary Owner", type="person")
 
-    with pytest.raises(SecurityStorageUndecidedError):
+    with pytest.raises(UnstorableValueError):
         await assert_literal_fact(
             subject_entity_id=owner_id,
             definition=_predicate("likes"),
@@ -362,6 +362,64 @@ async def test_a_security_sensitivity_chosen_by_the_caller_is_refused_too(
         )
 
     assert await _row_counts() == (0, 0)
+
+
+@pytest.mark.integration
+async def test_a_secret_holder_is_stored_as_a_security_reference(household_db: None) -> None:
+    """Who knows a secret is stored; leaving the label out or stating `security` both work."""
+    owner_id = await upsert_entity(name="Canary Owner", type="person")
+    holder = _predicate("secret_holder")
+
+    unstated = await assert_literal_fact(
+        subject_entity_id=owner_id, definition=holder, value="mi hija Ana"
+    )
+    stated = await assert_literal_fact(
+        subject_entity_id=owner_id, definition=holder, value="la vecina", sensitivity="security"
+    )
+
+    assert (unstated.sensitivity, stated.sensitivity) == ("security", "security")
+    assert unstated.visibility == stated.visibility == "personal"
+    assert await _row_counts() == (2, 0)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "alias,sensitivity",
+    [
+        ("access_code", None),
+        ("access_code", "security"),
+        ("access_code", "normal"),
+        ("secret_holder", "normal"),
+        ("secret_holder", "private"),
+        ("likes", "security"),
+    ],
+)
+async def test_an_unstorable_value_or_a_relabel_leaves_no_trace(
+    household_db: None,
+    caplog: pytest.LogCaptureFixture,
+    alias: str,
+    sensitivity: str | None,
+) -> None:
+    """Neither direction of the label works, and the refusal never carries the value."""
+    owner_id = await upsert_entity(name="Canary Owner", type="person")
+
+    with caplog.at_level(logging.DEBUG):
+        logging.getLogger("server.memory.relational_v4").debug("control record")
+        with pytest.raises(UnstorableValueError) as refusal:
+            await assert_literal_fact(
+                subject_entity_id=owner_id,
+                definition=_predicate(alias),
+                value=_CODE_CANARY,
+                sensitivity=sensitivity,
+            )
+
+    assert any(record.getMessage() == "control record" for record in caplog.records)
+    assert await _row_counts() == (0, 0)
+    assert _CODE_CANARY not in str(refusal.value) + repr(refusal.value) + repr(refusal.value.args)
+    assert all(
+        _CODE_CANARY not in record.getMessage() and _CODE_CANARY not in repr(vars(record))
+        for record in caplog.records
+    )
 
 
 @pytest.mark.integration
@@ -379,9 +437,10 @@ async def test_a_relation_whose_predicate_defaults_to_security_is_refused(
         subject_types=frozenset({"person"}),
         target_types=frozenset({"person"}),
         default_sensitivity="security",
+        storable=False,
     )
 
-    with pytest.raises(SecurityStorageUndecidedError):
+    with pytest.raises(UnstorableValueError):
         await assert_entity_relation(
             source_entity_id=owner_id, target_entity_id=other_id, definition=security_relation
         )

@@ -19,7 +19,7 @@ import pytest
 from server.cognition.authorization import ConsentStatus
 from server.cognition.identity import ActivePersonContext, ActivePersonStatus, HouseholdRole
 from server.cognition.models import Confidence, ConfidenceBasis, KnowledgeStatus
-from server.exceptions import SecurityStorageUndecidedError, WriteRefusedError
+from server.exceptions import UnstorableValueError, WriteRefusedError
 from server.memory.candidate_types import CandidateChannel
 from server.memory.canonical_writer import WriteChannel, write_literal
 from server.memory.declarative import upsert_entity
@@ -207,7 +207,7 @@ async def test_a_security_value_is_refused_without_a_trace(
 ) -> None:
     with caplog.at_level(logging.DEBUG):
         logging.getLogger("server.memory.canonical_writer").debug("control record")
-        with pytest.raises(SecurityStorageUndecidedError) as refusal:
+        with pytest.raises(UnstorableValueError) as refusal:
             await _write(household, household.owner, "access_code", _CODE_CANARY)
     assert any(record.getMessage() == "control record" for record in caplog.records)
 
@@ -217,6 +217,19 @@ async def test_a_security_value_is_refused_without_a_trace(
         _CODE_CANARY not in record.getMessage() and _CODE_CANARY not in repr(vars(record))
         for record in caplog.records
     )
+
+
+@pytest.mark.integration
+async def test_the_owner_secret_holder_is_personal_security_and_a_childs_is_refused(
+    household: _Household,
+) -> None:
+    """Who knows a secret belongs to the owner alone: a child's would sit in the wrong memory."""
+    fact = await _write(household, household.owner, "secret_holder", "mi hija Ana")
+
+    assert (fact.visibility, fact.sensitivity) == ("personal", "security")
+    with pytest.raises(WriteRefusedError) as refusal:
+        await _write(household, household.child, "secret_holder", "mi hija Ana")
+    assert refusal.value.reason == "owner_only_predicate"
 
 
 @pytest.mark.integration
@@ -348,6 +361,7 @@ def test_the_channels_are_a_closed_list_that_covers_the_candidates() -> None:
         "voice_classic",
         "voice_stream",
         "import_file",
+        "import_assisted",
     }
     assert {channel.value for channel in CandidateChannel} <= {c.value for c in WriteChannel}
 
