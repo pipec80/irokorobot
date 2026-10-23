@@ -1,8 +1,8 @@
 # 0070 — Step 0, first plan: the storage of the data pool and the provenance of an assisted interview
 
-> **Status:** `Draft` (written 2026-10-22, rewritten 2026-10-23 after two rounds of independent review).
-> **Not `Ready` and not `NOW`**: only Pipec promotes it, after confirming the decisions below, and Task 0
-> re-audits it against `main`. It implements the storage half of
+> **Status:** `Ready` and `NOW`. Written 2026-10-22 and rewritten 2026-10-23 after three rounds of independent
+> review; **promoted by Pipec on 2026-10-23 with D-1 to D-11 confirmed** (D-1 to D-6 chosen by him, D-7 to D-11
+> confirmed as written the same day). Task 0 still re-audits it against `main` before any code. It implements the storage half of
 > [ADR 0024](../../adr/0024-seed-load-senses-secrets-and-channels.md) (`Proposed`; it becomes `Accepted`
 > when Plans 0071 and 0072 close). The importer is [Plan 0071](0071-seed-load-file-importer.md), which
 > cannot start before this plan closes; the session itself is [Plan 0072](0072-commissioning-session.md).
