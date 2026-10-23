@@ -4,6 +4,11 @@
 > It becomes canonical when that ADR is `Accepted`. Until a field below is implemented by the plan
 > named in its *Plan* column, this document describes intent, not code
 > ([`current-state.md`](current-state.md) says what runs).
+>
+> **Plan 0070 (the storage) closed on 2026-10-23.** Every field the *Plan* column marks `0070` is now
+> registered, validated and writable: through the canonical writer for a V4 fact, through the contacts
+> writer for a contact and through the commissioning module for the acta. **Nothing loads them yet
+> (Plan 0071) and nothing reads them by voice (CM-5).**
 
 ## Why this list exists
 
@@ -43,7 +48,7 @@ again. So the rule of the phase is **capture now, build later**:
 
 ## The catalogue
 
-*Plan* is the plan that implements the destination (0070 storage, 0071 importer); *Phase 0* says
+*Plan* is the plan that implements the destination (0070 storage, **shipped**; 0071 importer, not yet); *Phase 0* says
 whether the field is captured in this phase; *Section* is the section whose status covers it (a
 blank means the field has no status). «Sensitivity» is the `DataSensitivity` value the writer stores.
 
@@ -78,7 +83,7 @@ blank means the field has no status). «Sensitivity» is the `DataSensitivity` v
 | Who knows an alarm code, a safe, a bank card | `secret_holder` (new, a reference) | security | secrets | CM-5, CM-7 | 0070 | yes |
 | Tastes (likes, dislikes, prefers) | `likes`, `dislikes`, `prefers` | normal | | conversation | exists | yes |
 | Topics not to touch | `private_topic` | normal (its content may be health or grief: revisit its default with CM-5) | | CM-5 | exists | yes |
-| Who interviewed, the owner's confirmation, the file, the counts, the backup, the consents (biometric, telemetry, remote support, backup and its destination label), a random installation id | `commissioning_records` | n/a | | provenance, audits, the operations plane of ADR 0025 | 0070 (the table), 0072 (the values) | yes |
+| Who interviewed, the owner's confirmation, the file, the counts, the backup, the consents (biometric, telemetry, remote support, backup and its destination label), a random installation id | `commissioning_records` | n/a | | provenance, audits, the operations plane of ADR 0025 | 0070 (the table, shipped), 0072 (the values) | yes |
 | Each section's status | `commissioning_sections` | n/a | | knowing what was never asked | 0070 | yes |
 
 A phone is written in international format (`+56912345678`); the writer rejects anything else so a

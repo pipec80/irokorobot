@@ -1,11 +1,12 @@
 # 0070 — Step 0, first plan: the storage of the data pool and the provenance of an assisted interview
 
-> **Status:** `Ready` and `NOW`. Written 2026-10-22 and rewritten 2026-10-23 after three rounds of independent
+> **Status:** `Closed` on 2026-10-23 (executed on the branch `feat/0070-seed-data-pool-storage`; see the *Execution
+> record* at the end). Written 2026-10-22 and rewritten 2026-10-23 after three rounds of independent
 > review; **promoted by Pipec on 2026-10-23 with D-1 to D-11 confirmed** (D-1 to D-6 chosen by him, D-7 to D-11
-> confirmed as written the same day). Task 0 still re-audits it against `main` before any code. It implements the storage half of
+> confirmed as written the same day). Task 0 re-audited it against `main` before any code. It implements the storage half of
 > [ADR 0024](../../adr/0024-seed-load-senses-secrets-and-channels.md) (`Proposed`; it becomes `Accepted`
-> when Plans 0071 and 0072 close). The importer is [Plan 0071](0071-seed-load-file-importer.md), which
-> cannot start before this plan closes; the session itself is [Plan 0072](0072-commissioning-session.md).
+> when Plans 0071 and 0072 close). The importer is [Plan 0071](../open/0071-seed-load-file-importer.md), which
+> cannot start before this plan closes; the session itself is [Plan 0072](../open/0072-commissioning-session.md).
 > Written for an executor who has not seen this repository: what it needs is here, in the ADR or in
 > [`seed-data-pool.md`](../../architecture/seed-data-pool.md), not in the chat that produced them.
 
@@ -475,3 +476,49 @@ Task 3.
 - **Removing a contact at the contact's request, forgetting by CM-6, the amendment path after the closing:** CM-6 and a later plan.
 - **A structured medication schedule, places, a `beliefs` classification, sleep and meals routine:** later.
 - **Two third parties with one name:** unchanged (a conflict).
+
+## Execution record (2026-10-23)
+
+Executed in one session on the branch `feat/0070-seed-data-pool-storage`, from `main` at `749752e`, with the
+`executing-plans` skill (inline, a ledger, one commit per task) and no worktree. Every code test was observed RED
+for its stated reason before the code existed (Tasks 1 and 8 declared none). Baseline `just gate` on `main`:
+**4179 passed**.
+
+**Commits (one per task):** Task 1 `0379570`, Task 2 `c3f16c4`, Task 3 `50d3c6b`, Task 4a `8c18e3f`, Task 4b
+`497ed51`, Task 5 `001c2fa`, Task 6 `1f89189`, Task 7 `5d6cea4`. Task 8 is the documentation commit. The review fix pass, one commit per concern: `d5ce8f0` (the conflict policy and the contact role are coerced) and `782b31a` (a guardianship marker outside the list is refused).
+
+**Verification.** `just gate`: **4511 passed**; lint, `mypy`, `pyright` and the security audit clean.
+`scripts/check_reserved_terms.py` clean, `ruff format --check .` clean and every relative link of the changed
+documents resolves. The Archify diagram of the current state was validated at the showcase level (9 of 9 checks)
+and delivered. The three untracked drafts of `docs/history/` and the untracked `docs/evals/longitudinal-memory-v3.md`
+are byte-identical to what they were at the start.
+
+**Rulings made while executing** (the spec, ADR 0024, was the authority; each costs one small edit if wrong):
+
+1. Task 2: the synthetic security-default **relation** in the Plan 0065 repository test gets `storable=False`; under
+   the new rule a security-default predicate with no stated label is storable, and the test pins that the repository
+   refuses the shape.
+2. Task 3: `secret_holder` (Task 2) is part of `POOL_PREDICATE_IDS`, so a legacy fact so named is deferred as
+   `pool_predicate_not_migrated`; the legacy `security_storage_undecided` deferral now keys on `not definition.storable`
+   (same ledger string, same `access_code` case).
+3. Task 4a: the Plan 0065 test that pins the channel list gains `import_assisted`; the fence helpers stay in
+   `canonical_writer.py` (the permitted-files list names no new module for them) although the file is over the size
+   guideline; `withhold_from` keeps person-only targets, so a pet cannot be its target.
+4. Task 4b: the "reader still serves it" test uses a child (household-labelled rows), because the household reader
+   never serves the owner's `personal` rows.
+5. Task 6: the call-order and relationship `ValueError`s carry no digits, so the no-digit property holds for every bad
+   input.
+6. Task 7: the keys of `counts` must be plain lowercase words and the file hash 64 lowercase hex digits (the plan says
+   only that counts are integers; "no household value can reach the row" needs the keys closed too);
+   `list_section_statuses` returns all eleven sections with `not_asked` for an unrecorded one; a later `record_import`
+   replaces the hash and counts (the acta keeps the last import). Plan 0071 must name its counts with plain words.
+7. Task 8: `docs/evals/longitudinal-memory-v3.md` is **untracked** on `main` (it is Pipec's generated report of the
+   2026-10-22 benchmark run, a measurement). It was **not edited**: the plan's instruction to update it cannot apply
+   to an untracked, generated measurement. The evaluation document says the pending SECURITY scenario now names a
+   datum that cannot exist and that replacing it is a dataset bump (CM-7 preparation).
+8. Two inline `pragma: allowlist secret` comments on the enum members `SECRETS` and `TOKEN` of `commissioning.py`
+   (the Detect Secrets hook flagged a section name and a modality name).
+
+**Acceptance on a database kept apart.** With `BRAIN_DB_PATH` pointing at a scratch file, `just setup-personal status` printed `schema_version=11` and `sqlite3` listed `care_contacts`, `commissioning_records` and `commissioning_sections` (run by the executor; the scratch file was deleted). **Pipec's own run is still pending.** No behaviour reaches the voice, so there is no hardware case.
+
+**Independent review.** One read-only reviewer (sonnet, whole branch, asked by Pipec through the review skills), no Critical finding. Two Important findings, both fixed with a failing test first: (1) a conflict policy given as the plain string `"refuse"` (or an invalid one) silently disabled `REFUSE` because it was compared with `is` and never coerced, in `write_literal`, `write_relation` and `write_contact` (the contact role is coerced too); (2) a `guardianship` marker with a typo (`"Adult"`) was stored and failed open, treating an adult child as a minor. **Deferred minors** (no fix pass): a person with two contact roles can put the call order on only one of them (matches the plan and ADR 0024; note for Plan 0071); an `interviewer_label` of only spaces or with Unicode separators and bidi controls passes the check (cosmetic); a revoked contact can still be relabeled a member (the plan and tests say revoked rows do not block; `entity_has_contact_rows` exists if Pipec wants the stricter rule); the architecture guards are regex-on-literal like the others; `canonical_writer.py` is about 690 lines and the fence (about 150 lines) is a clean extraction for a later split; the ledger reason `security_storage_undecided` is stale wording kept as a stored value. **For Plan 0071:** no getter separates the marker `minor` from no marker, which its "changed guardianship" conflict rule needs, and a later `record_import` replaces the hash and counts.

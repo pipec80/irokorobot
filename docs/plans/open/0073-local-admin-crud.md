@@ -2,7 +2,7 @@
 
 > **Status:** `Draft`, **an outline** (written and rewritten 2026-10-23). Not executable and not
 > `Ready`: queue rule 4 applies, so when Plan 0072 closes this plan is re-audited against the merged code and
-> rewritten in the format of [Plan 0070](0070-seed-load-data-pool-storage.md) before Pipec can promote it. It
+> rewritten in the format of [Plan 0070](../completed/0070-seed-load-data-pool-storage.md) before Pipec can promote it. It
 > implements the local half of [ADR 0025](../../adr/0025-remote-administration-backup-updates-and-telemetry.md)
 > (decisions 2 and 4) and is the **amendment path** that [ADR 0024](../../adr/0024-seed-load-senses-secrets-and-channels.md)
 > decision 8 says is missing after the closing.

@@ -290,6 +290,19 @@ it); the first consumer is the Step 0 import. The writer that stores such facts
 (`memory/canonical_writer.py`) assigns the classification itself and records the owner as asserter
 and confirmer, with the channel; see [memory-and-world-state](memory-and-world-state.md).
 
+**The assisted channel and the fence (Plan 0070, [ADR 0024](../adr/0024-seed-load-senses-secrets-and-channels.md)
+decisions 6, 9, 10 and 15).** A second import channel, `import_assisted`, records a commissioning
+interview in which the interviewer may not be the owner: the asserter is the owner's entity, the
+confirmer is the owner's entity only when the owner (or a builder who is the owner) confirmed, and the
+`commissioning_records` row keeps the interviewer's label and role, the confirmation mode and the
+disk-encryption declaration (a declaration, never verified). The import channels authorize by local
+administration, not by face and voice, and they change nothing about who may *read*. The writer fences
+the household: an adult child, a relative and a contact hold a role that no relabeling can turn into
+membership. The record also keeps a closed inventory of identity modalities, `pin`, `face`, `voice`
+(enrollable today) and `fingerprint`, `iris`, `token` (reserved: a new modality is an adapter, its own
+enrolment and consent, and an ADR that sets its assurance). Face and voice remain evidence, never
+authorization.
+
 The PIN is optional and administrative: an optional `strong` factor — consulted only on a
 turn the owner's face did not resolve, never once the face matched — and the credential of
 local administration. When face or voice fail, recovery is local administration on the

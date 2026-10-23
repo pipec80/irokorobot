@@ -121,7 +121,7 @@ the personal stage's provenance denominator (the owner states a fact; a recall m
 subject, assertor and source); a new `confirm` operation, which the driver reports
 unsupported because no public seam drives the canonical writer; and a pending SECURITY
 scenario, `personal_access_code_pending` (an invented code; tag `status:pending-step0`; the
-repository refuses to store a `security` value until Step 0). **Comparability cut:** the
+repository refuses to store a `security` value until Step 0; **since Plan 0070 `access_code` is never stored at all**, so the scenario names a datum that cannot exist: replacing it with a `secret_holder` reference is a dataset version bump, CM-7 preparation, and the committed copy of the run report is not edited). **Comparability cut:** the
 recorded baseline below is a dataset-version-1 measurement (9 scenarios, 25 steps; version 2
 only added `scope`); version 3 has 11 scenarios and 30 steps, the personal stage grows from
 7 scenarios / 18 steps to 8 / 21 and the family stage from 2 / 7 to 3 / 9, and the
