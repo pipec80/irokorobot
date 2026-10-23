@@ -262,11 +262,17 @@ async def create_third_party(
     Raises:
         AmbiguousEntityError: If an entity of that folded name and type exists and
             *import_key* does not identify it. The message never carries the name or the key.
-        ValueError: If *attributes* names ``import_key``, which only *import_key* may set.
+        ValueError: If *attributes* names ``import_key``, which only *import_key* may set,
+            or holds a ``guardianship`` that is neither ``minor`` nor ``adult`` (never echoed).
         RuntimeError: If the INSERT returns no row id.
     """
     if attributes is not None and _IMPORT_KEY_ATTRIBUTE in attributes:
         raise ValueError(f"{_IMPORT_KEY_ATTRIBUTE} is set by the import_key argument")
+    if attributes is not None and attributes.get(
+        _GUARDIANSHIP_ATTRIBUTE, Guardianship.MINOR
+    ) not in set(Guardianship):
+        # A typo must not fail open: an adult child would be stored as a minor.
+        raise ValueError(f"{_GUARDIANSHIP_ATTRIBUTE} must be one of the Guardianship values")
     # The lookup shares a transaction with the INSERT that follows it: two concurrent
     # creations of one folded name must not both see "not found".
     if manage_transaction:

@@ -394,3 +394,30 @@ async def test_only_the_adult_marker_makes_an_adult_dependent(
 @pytest.mark.integration
 async def test_a_missing_entity_is_not_an_adult_dependent(third_party_db: None) -> None:
     assert await is_adult_dependent(9999) is False
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("marker", ["Adult", "adulto", "", "ADULT", " adult"])
+async def test_a_guardianship_marker_outside_the_list_is_refused_and_not_echoed(
+    third_party_db: None, marker: str
+) -> None:
+    """A typo must not turn an adult child into a minor by failing open."""
+    with pytest.raises(ValueError, match="guardianship") as refusal:
+        await create_third_party(
+            name="Canary Child", type="person", attributes={"guardianship": marker}
+        )
+
+    assert marker.strip() == "" or marker not in str(refusal.value)
+    assert await _entity_rows() == []
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("marker", ["minor", "adult"])
+async def test_a_guardianship_marker_on_the_list_is_stored(
+    third_party_db: None, marker: str
+) -> None:
+    await create_third_party(
+        name="Canary Child", type="person", attributes={"guardianship": marker}
+    )
+
+    assert json.loads((await _entity_rows())[0][3]) == {"guardianship": marker}
