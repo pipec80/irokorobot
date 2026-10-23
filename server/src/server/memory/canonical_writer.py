@@ -21,9 +21,10 @@ treated, and who may claim the owner's identity on a channel, are the Step 0 ADR
 (ADR 0022 *Negative consequences*). It does guard the obvious misuse: nobody who is already the
 partner, or who holds an adult role, can be declared a child to unlock their facts.
 
-The asserter and the confirmer are the owner (ADR 0022 decision 0). A SECURITY value is refused
-first, before anything is classified, read or logged, with the repository's closed error; no
-value ever reaches a log or an exception message. An exact repeat of an active value is
+The asserter and the confirmer are the owner (ADR 0022 decision 0). A value that is never stored
+(the access code) or a mislabeled security reference is refused first, before anything is
+classified, read or logged, with the repository's closed error; no value ever reaches a log or
+an exception message. An exact repeat of an active value is
 idempotent only for the **same text and the same classification**: a stored row labelled
 otherwise (the local setup and the legacy migration store the registry defaults) is refused as
 ``classification_conflict`` instead of being reported as written. Equal text is compared exactly;
@@ -335,7 +336,7 @@ async def write_literal(
         The stored fact, or the active one already stored for the same value.
 
     Raises:
-        UnstorableValueError: For a SECURITY predicate; raised first, nothing is read,
+        UnstorableValueError: For an unstorable predicate; raised first, nothing is read,
             stored or logged.
         WriteRefusedError: With ``not_household_member`` for the partner or an outsider,
             ``owner_only_predicate`` for a personal-default predicate about someone else, or
@@ -466,7 +467,7 @@ async def write_relation(
         The stored relation, or the active one already stored for the same triple.
 
     Raises:
-        UnstorableValueError: For a SECURITY relation; raised first.
+        UnstorableValueError: For an unstorable relation; raised first.
         WriteRefusedError: With ``not_household_member`` when the relation is outside the
             owner's household (the partner's own facts, an outsider, a second role),
             ``owner_only_predicate`` or ``classification_conflict`` as for ``write_literal``.

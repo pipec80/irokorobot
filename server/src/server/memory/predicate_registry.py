@@ -43,6 +43,8 @@ class LiteralFormat(StrEnum):
     TEXT = "text"
     ISO_DATE = "iso_date"
     INTEGER = "integer"
+    # A pointer to where something is or who knows it, never the thing itself (ADR 0024 decision 4).
+    REFERENCE = "reference"
 
 
 class PredicateDefinition(BaseModel):
@@ -62,6 +64,9 @@ class PredicateDefinition(BaseModel):
     literal_format: LiteralFormat | None = None
     default_visibility: str = "household"
     default_sensitivity: str = "normal"
+    # ``False`` for a value that must never be written, whoever asks and whatever label it
+    # carries (ADR 0024 decision 4).
+    storable: bool = True
 
 
 _PERSON: frozenset[EntityTypeName] = frozenset[EntityTypeName](("person",))
@@ -72,6 +77,9 @@ _PET: frozenset[EntityTypeName] = frozenset[EntityTypeName](("other",))
 # superscripts and other scripts' digits), no leading zero except "0", at most this age.
 _INTEGER_PATTERN = re.compile(r"(0|[1-9][0-9]{0,2})")
 _MAX_STATED_AGE = 130
+# A reference is a short sentence; four digits anywhere would be a code, so it is refused.
+_REFERENCE_LENGTH = range(2, 121)
+_MAX_REFERENCE_DIGITS = 3
 
 _PREDICATES: tuple[PredicateDefinition, ...] = (
     PredicateDefinition(
@@ -195,7 +203,7 @@ _PREDICATES: tuple[PredicateDefinition, ...] = (
         default_visibility="personal",
     ),
     # The first SECURITY datum. No Spanish alias, so the legacy migration cannot route a legacy
-    # fact into it; the repository refuses to store it until Step 0 decides storage at rest.
+    # fact into it; its value is never stored (ADR 0024 decision 4), only who knows it below.
     PredicateDefinition(
         canonical_id="access_code",
         aliases=frozenset({"access_code"}),
@@ -203,6 +211,18 @@ _PREDICATES: tuple[PredicateDefinition, ...] = (
         cardinality=PredicateCardinality.SINGLE_CURRENT,
         subject_types=_PERSON,
         literal_format=LiteralFormat.TEXT,
+        default_visibility="personal",
+        default_sensitivity="security",
+        storable=False,
+    ),
+    # Plan 0070: who knows a secret (ADR 0024 decision 4). Free text written by the owner.
+    PredicateDefinition(
+        canonical_id="secret_holder",
+        aliases=frozenset({"secret_holder", "quien_conoce_el_secreto"}),
+        kind=PredicateKind.LITERAL,
+        cardinality=PredicateCardinality.MULTI_VALUE,
+        subject_types=_PERSON,
+        literal_format=LiteralFormat.REFERENCE,
         default_visibility="personal",
         default_sensitivity="security",
     ),
@@ -240,15 +260,19 @@ def normalize_literal(definition: PredicateDefinition, value: str) -> str | None
     cleaned = value.strip()
     if not cleaned:
         return None
+    normalized: str | None
     match definition.literal_format:
         case LiteralFormat.TEXT:
-            return cleaned
+            normalized = cleaned
         case LiteralFormat.ISO_DATE:
-            return _normalize_iso_date(cleaned)
+            normalized = _normalize_iso_date(cleaned)
         case LiteralFormat.INTEGER:
-            return _normalize_integer(cleaned)
+            normalized = _normalize_integer(cleaned)
+        case LiteralFormat.REFERENCE:
+            normalized = _normalize_reference(cleaned)
         case _:
-            return None
+            normalized = None
+    return normalized
 
 
 def _normalize_iso_date(cleaned: str) -> str | None:
@@ -265,3 +289,17 @@ def _normalize_integer(cleaned: str) -> str | None:
     if _INTEGER_PATTERN.fullmatch(cleaned) is None or int(cleaned) > _MAX_STATED_AGE:
         return None
     return cleaned
+
+
+def _normalize_reference(cleaned: str) -> str | None:
+    """Return *cleaned* with its spaces collapsed when it is a short sentence without a code.
+
+    ``str.isdigit`` is used on purpose: it also counts the digits of other scripts, which a code
+    can be written in. It is a defence in depth, not a guarantee (a code spelled in words passes).
+    """
+    collapsed = " ".join(cleaned.split())
+    if len(collapsed) not in _REFERENCE_LENGTH:
+        return None
+    if sum(character.isdigit() for character in collapsed) > _MAX_REFERENCE_DIGITS:
+        return None
+    return collapsed

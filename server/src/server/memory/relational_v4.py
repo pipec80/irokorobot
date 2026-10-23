@@ -109,8 +109,9 @@ def refuse_unstorable_value(
     """Refuse to store a value that must not be stored (ADR 0022 decision 9, ADR 0024 decision 4).
 
     No writer may bypass this: it runs before any query, write or log, and the message names
-    neither the value nor the subject. The predicate decides: a security predicate is refused
-    whatever label the caller asks for, and a caller may not label another predicate
+    neither the value nor the subject. The predicate decides: a predicate that is not
+    ``storable`` is refused whatever label the caller asks for, a ``security`` predicate keeps
+    its label (nobody downgrades ``secret_holder``), and nobody labels another predicate
     ``security`` either.
 
     Args:
@@ -118,10 +119,15 @@ def refuse_unstorable_value(
         sensitivity: The caller's explicit sensitivity, if any.
 
     Raises:
-        UnstorableValueError: If the predicate defaults to ``security`` or the caller
-            asks for it.
+        UnstorableValueError: If the predicate is not storable, or the caller states a
+            sensitivity that is ``security`` for a predicate that is not, or is not
+            ``security`` for one that is.
     """
-    if _SECURITY_SENSITIVITY in {definition.default_sensitivity, sensitivity}:
+    secret_predicate = definition.default_sensitivity == _SECURITY_SENSITIVITY
+    mislabeled = (
+        sensitivity is not None and (sensitivity == _SECURITY_SENSITIVITY) != secret_predicate
+    )
+    if not definition.storable or mislabeled:
         raise UnstorableValueError("this value cannot be stored")
 
 

@@ -162,3 +162,91 @@ def test_a_pet_is_not_a_subject_of_a_private_topic_or_an_access_code() -> None:
         definition = resolve_predicate(alias)
         assert definition is not None
         assert "other" not in definition.subject_types
+
+
+# --- Plan 0070 Task 2 (ADR 0024 decision 4): a secret is stored by reference --------------------
+
+_STORABLE_IDS = (
+    "birth_date",
+    "likes",
+    "dislikes",
+    "prefers",
+    "allergic_to",
+    "child_of",
+    "partner_of",
+    "pet_of",
+    "lives_in",
+    "works_at",
+    "species",
+    "stated_age",
+    "private_topic",
+    "secret_holder",
+)
+
+
+def test_only_the_access_code_is_never_storable() -> None:
+    definition = resolve_predicate("access_code")
+
+    assert definition is not None
+    assert definition.storable is False
+    for canonical_id in _STORABLE_IDS:
+        other = resolve_predicate(canonical_id)
+        assert other is not None
+        assert other.storable is True, canonical_id
+
+
+def test_secret_holder_is_a_personal_security_reference_for_people() -> None:
+    """Who knows a secret, never the secret: a multi-value reference on a person."""
+    definition = resolve_predicate("quien_conoce_el_secreto")
+
+    assert definition is not None
+    assert definition.canonical_id == "secret_holder"
+    assert resolve_predicate("secret_holder") is definition
+    assert definition.kind is PredicateKind.LITERAL
+    assert definition.cardinality is PredicateCardinality.MULTI_VALUE
+    assert definition.literal_format is LiteralFormat.REFERENCE
+    assert definition.subject_types == frozenset({"person"})
+    assert (definition.default_visibility, definition.default_sensitivity) == (
+        "personal",
+        "security",
+    )
+
+
+@pytest.mark.parametrize(
+    "raw,canonical",
+    [
+        ("  mi hija   Ana ", "mi hija Ana"),
+        ("la vecina", "la vecina"),
+        ("ab", "ab"),
+        ("x" * 120, "x" * 120),
+        ("clave 123", "clave 123"),
+        ("depto 12", "depto 12"),
+    ],
+)
+def test_a_reference_is_stripped_and_collapsed(raw: str, canonical: str) -> None:
+    definition = resolve_predicate("secret_holder")
+    assert definition is not None
+
+    assert normalize_literal(definition, raw) == canonical
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "",
+        "   ",
+        "a",
+        "x" * 121,
+        "clave 1234",
+        "1 2 3 4",
+        "1-2-3-4",
+        "١٢٣٤",
+        "código ०१२३",
+        "casa 12 y 34",
+    ],
+)
+def test_a_reference_refuses_the_wrong_length_and_four_digits_in_any_script(raw: str) -> None:
+    definition = resolve_predicate("secret_holder")
+    assert definition is not None
+
+    assert normalize_literal(definition, raw) is None

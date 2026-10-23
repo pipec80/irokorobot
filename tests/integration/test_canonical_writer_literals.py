@@ -220,6 +220,19 @@ async def test_a_security_value_is_refused_without_a_trace(
 
 
 @pytest.mark.integration
+async def test_the_owner_secret_holder_is_personal_security_and_a_childs_is_refused(
+    household: _Household,
+) -> None:
+    """Who knows a secret belongs to the owner alone: a child's would sit in the wrong memory."""
+    fact = await _write(household, household.owner, "secret_holder", "mi hija Ana")
+
+    assert (fact.visibility, fact.sensitivity) == ("personal", "security")
+    with pytest.raises(WriteRefusedError) as refusal:
+        await _write(household, household.child, "secret_holder", "mi hija Ana")
+    assert refusal.value.reason == "owner_only_predicate"
+
+
+@pytest.mark.integration
 async def test_the_stored_row_records_who_asserted_it_and_through_which_channel(
     household: _Household,
 ) -> None:
