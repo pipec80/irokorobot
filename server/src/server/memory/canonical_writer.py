@@ -44,6 +44,7 @@ from server.cognition.identity import HouseholdRole
 from server.memory.declarative import is_adult_dependent
 from server.memory.household_authorization import get_active_role
 from server.memory.predicate_registry import (
+    PredicateCardinality,
     PredicateDefinition,
     PredicateKind,
     normalize_literal,
@@ -58,7 +59,7 @@ from server.memory.relational_v4 import (
     get_active_literal_facts,
     refuse_unstorable_value,
 )
-from server.memory.write_types import WriteChannel, WriteRefusal, refusal_error
+from server.memory.write_types import ConflictPolicy, WriteChannel, WriteRefusal, refusal_error
 
 if TYPE_CHECKING:
     from server.exceptions import WriteRefusedError
@@ -292,6 +293,61 @@ async def _classify_relation(
     return await _classify_subject(owner_entity_id, source_entity_id, definition, channel)
 
 
+def _refuse_a_different_single_value(
+    definition: PredicateDefinition, channel: WriteChannel
+) -> None:
+    """Refuse a value that differs from the active one of a single-value predicate.
+
+    Raises:
+        WriteRefusedError: With ``value_conflict`` for a single-value predicate; multi-value
+            predicates never conflict and are not asked.
+    """
+    if definition.cardinality is PredicateCardinality.SINGLE_CURRENT:
+        raise _refusal(WriteRefusal.VALUE_CONFLICT, definition, channel)
+
+
+async def _refuse_a_conflicting_relation(
+    owner_entity_id: int,
+    source_entity_id: int,
+    target_entity_id: int,
+    definition: PredicateDefinition,
+    channel: WriteChannel,
+) -> None:
+    """Refuse a second partner (from either end) or a second place of a temporal relation.
+
+    The same partner or place again is not a conflict (the repository returns the row there).
+
+    Raises:
+        WriteRefusedError: With ``value_conflict`` when an active row points somewhere else.
+    """
+    if definition.canonical_id == "partner_of":
+        other = target_entity_id if source_entity_id == owner_entity_id else source_entity_id
+        rows = [
+            *await get_active_entity_relations(
+                definition=definition, source_entity_id=owner_entity_id
+            ),
+            *await get_active_entity_relations(
+                definition=definition, target_entity_id=owner_entity_id
+            ),
+        ]
+        known = {
+            row.target_entity_id
+            if row.source_entity_id == owner_entity_id
+            else row.source_entity_id
+            for row in rows
+        }
+    elif definition.cardinality is PredicateCardinality.TEMPORAL:
+        rows = await get_active_entity_relations(
+            definition=definition, source_entity_id=source_entity_id
+        )
+        other = target_entity_id
+        known = {row.target_entity_id for row in rows}
+    else:
+        return
+    if known - {other}:
+        raise _refusal(WriteRefusal.VALUE_CONFLICT, definition, channel)
+
+
 def _require_same_classification(
     stored_visibility: str,
     stored_sensitivity: str,
@@ -366,6 +422,8 @@ async def write_literal(
     confirmed_at: str,
     confidence: float = 0.9,
     asserted_at: str | None = None,
+    on_conflict: ConflictPolicy = ConflictPolicy.SUPERSEDE,
+    confirmed_by_owner: bool = True,
     manage_transaction: bool = True,
 ) -> LiteralFactV4:
     """Store one literal fact about the owner, a child or a pet, whatever the channel.
@@ -387,6 +445,12 @@ async def write_literal(
         confirmed_at: When the owner confirmed it, as UTC ISO 8601.
         confidence: Confidence in the fact, between 0 and 1.
         asserted_at: Assertion timestamp (the as-of date of a stated age); now when ``None``.
+        on_conflict: ``SUPERSEDE`` (the default) replaces a different single value; ``REFUSE``
+            raises ``value_conflict`` instead and changes nothing (a load made while the robot
+            is being commissioned, ADR 0024 decision 8).
+        confirmed_by_owner: ``False`` stores no confirmer (``confirmed_by_entity_id`` is ``NULL``,
+            ``confirmed_at`` is kept) because the owner did not confirm it themselves
+            (ADR 0024 decision 6); the asserter is still the owner.
         manage_transaction: ``False`` joins a transaction the caller already owns, so several
             writes commit or roll back together; ``db.transaction()`` is not reentrant, so a
             caller already inside one **must** pass ``False``.
@@ -398,8 +462,9 @@ async def write_literal(
         UnstorableValueError: For an unstorable predicate; raised first, nothing is read,
             stored or logged.
         WriteRefusedError: With ``not_household_member`` for the partner or an outsider,
-            ``owner_only_predicate`` for a personal-default predicate about someone else, or
-            ``classification_conflict`` for a stored row labelled otherwise.
+            ``owner_only_predicate`` for a personal-default predicate about someone else,
+            ``classification_conflict`` for a stored row labelled otherwise, or
+            ``value_conflict`` under ``REFUSE`` for a different single value.
         ValueError: For an unregistered or non-literal predicate, an unlisted channel, an
             invalid value or a confidence out of range.
     """
@@ -417,6 +482,8 @@ async def write_literal(
             confirmed_at=confirmed_at,
             confidence=confidence,
             asserted_at=asserted_at,
+            on_conflict=on_conflict,
+            confirmed_by_owner=confirmed_by_owner,
         )
     if created:
         _announce("literal", definition, write_channel, fact.id, committed=manage_transaction)
@@ -433,6 +500,8 @@ async def _write_literal(
     confirmed_at: str,
     confidence: float,
     asserted_at: str | None,
+    on_conflict: ConflictPolicy,
+    confirmed_by_owner: bool,
 ) -> tuple[LiteralFactV4, bool]:
     """Classify, de-duplicate and store one literal inside the caller's transaction."""
     visibility, sensitivity = await _classify_subject(
@@ -453,6 +522,8 @@ async def _write_literal(
                 channel,
             )
             return present, False
+        if on_conflict is ConflictPolicy.REFUSE and active:
+            _refuse_a_different_single_value(definition, channel)
     fact = await assert_literal_fact(
         subject_entity_id=subject_entity_id,
         definition=definition,
@@ -461,7 +532,7 @@ async def _write_literal(
         asserted_at=asserted_at,
         visibility=visibility,
         sensitivity=sensitivity,
-        confirmed_by_entity_id=owner_entity_id,
+        confirmed_by_entity_id=owner_entity_id if confirmed_by_owner else None,
         confirmed_at=confirmed_at,
         asserted_by_entity_id=owner_entity_id,
         channel=channel.value,
@@ -490,6 +561,8 @@ async def write_relation(
     asserted_at: str | None = None,
     valid_from: str | None = None,
     valid_to: str | None = None,
+    on_conflict: ConflictPolicy = ConflictPolicy.SUPERSEDE,
+    confirmed_by_owner: bool = True,
     manage_transaction: bool = True,
 ) -> EntityRelationV4:
     """Store one relation of the owner's household, whatever the channel.
@@ -518,6 +591,12 @@ async def write_relation(
         asserted_at: Assertion timestamp; now when ``None``.
         valid_from: When it began, as ``YYYY-MM-DD`` or ``YYYY-MM``.
         valid_to: When it ended; makes the row history.
+        on_conflict: ``SUPERSEDE`` (the default) replaces a different single value; ``REFUSE``
+            raises ``value_conflict`` instead and changes nothing (a load made while the robot
+            is being commissioned, ADR 0024 decision 8).
+        confirmed_by_owner: ``False`` stores no confirmer (``confirmed_by_entity_id`` is ``NULL``,
+            ``confirmed_at`` is kept) because the owner did not confirm it themselves
+            (ADR 0024 decision 6); the asserter is still the owner.
         manage_transaction: ``False`` joins a transaction the caller already owns, so several
             writes commit or roll back together; ``db.transaction()`` is not reentrant, so a
             caller already inside one **must** pass ``False``.
@@ -529,7 +608,8 @@ async def write_relation(
         UnstorableValueError: For an unstorable relation; raised first.
         WriteRefusedError: With ``not_household_member`` when the relation is outside the
             owner's household (the partner's own facts, an outsider, a second role),
-            ``owner_only_predicate`` or ``classification_conflict`` as for ``write_literal``.
+            ``owner_only_predicate`` or ``classification_conflict`` as for ``write_literal``;
+            ``value_conflict`` under ``REFUSE`` for a second partner or a second home.
         ValueError: For an unregistered or non-relation predicate, an unlisted channel, an
             invalid endpoint, date or confidence.
     """
@@ -549,6 +629,8 @@ async def write_relation(
             asserted_at=asserted_at,
             valid_from=valid_from,
             valid_to=valid_to,
+            on_conflict=on_conflict,
+            confirmed_by_owner=confirmed_by_owner,
         )
     _announce("relation", definition, write_channel, relation.id, committed=manage_transaction)
     return relation
@@ -566,11 +648,17 @@ async def _write_relation(
     asserted_at: str | None,
     valid_from: str | None,
     valid_to: str | None,
+    on_conflict: ConflictPolicy,
+    confirmed_by_owner: bool,
 ) -> EntityRelationV4:
     """Classify and store one relation inside the caller's transaction."""
     visibility, sensitivity = await _classify_relation(
         owner_entity_id, source_entity_id, target_entity_id, definition, channel
     )
+    if on_conflict is ConflictPolicy.REFUSE and valid_to is None:
+        await _refuse_a_conflicting_relation(
+            owner_entity_id, source_entity_id, target_entity_id, definition, channel
+        )
     relation = await assert_entity_relation(
         source_entity_id=source_entity_id,
         target_entity_id=target_entity_id,
@@ -579,7 +667,7 @@ async def _write_relation(
         asserted_at=asserted_at,
         visibility=visibility,
         sensitivity=sensitivity,
-        confirmed_by_entity_id=owner_entity_id,
+        confirmed_by_entity_id=owner_entity_id if confirmed_by_owner else None,
         confirmed_at=confirmed_at,
         valid_from=valid_from,
         valid_to=valid_to,
