@@ -45,6 +45,7 @@ from server.memory.entity_labels import get_person_label
 from server.memory.owner_credentials import get_active_owner_pin_credential
 from server.memory.relational_v4 import count_v4_rows
 from server.memory.seed_plan import OWNER_REF, OperationKind
+from server.memory.seed_replace import assert_no_voice_memory, retract_earlier_import
 from server.memory.write_types import ConflictPolicy, WriteChannel
 from server.personal_setup import read_personal_setup_status
 from server.settings import settings
@@ -405,6 +406,9 @@ async def _transaction_body(
 ) -> SeedReport:
     """Everything one run does inside its transaction; raises ``_RollbackError`` to undo it."""
     before = await count_rows()
+    if request.replace:
+        await assert_no_voice_memory()
+        await retract_earlier_import()
     outcomes = await run_operations(
         plan,
         owner_entity_id=request.owner,
@@ -425,6 +429,7 @@ class _Request:
     now: str
     commit: bool
     confirmed: bool
+    replace: bool
     details: CommissioningInput | None = field(repr=False)
 
 
@@ -476,7 +481,8 @@ async def run_seed(
         commit: ``False`` for a dry run.
         approved: The interviewer answered ``SI`` to the owner's review question.
         commissioning: The interviewer's declaration; required only when no record is open.
-        replace: Retract what an earlier import wrote first (Task 5b).
+        replace: First retract what earlier imports wrote (``seed_replace``), inside the same
+            transaction; refused once the robot learned anything by voice.
         now: UTC ISO 8601 with microseconds; every row and the record share it.
 
     Returns:
@@ -485,6 +491,7 @@ async def run_seed(
     Raises:
         CommissioningClosedError: If a commissioning was closed; raised before anything else.
         CommissioningMissingError: For a first apply without ``commissioning``.
+        ReplaceRefusedError: For ``replace`` once a voice row or a live candidate exists.
         ValueError: For an apply that was not approved, or a declaration the record refuses.
     """
     if not await importer_window_open():
@@ -494,8 +501,6 @@ async def run_seed(
     opened = await get_open_commissioning()
     if commit and opened is None and commissioning is None:
         raise CommissioningMissingError
-    if replace:
-        raise NotImplementedError("the replacement arrives with Task 5b")
     declared = opened or commissioning
     mode = declared.confirmation_mode if declared is not None else None
     request = _Request(
@@ -503,6 +508,7 @@ async def run_seed(
         now=now,
         commit=commit,
         confirmed=mode is not ConfirmationMode.REPRESENTATIVE,
+        replace=replace,
         details=commissioning,
     )
     try:

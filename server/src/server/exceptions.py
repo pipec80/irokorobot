@@ -152,6 +152,18 @@ class SeedOwnerError(ValueError):
         self.reason = reason
 
 
+class ReplaceRefusedError(ValueError):
+    """Raised when a seed replacement is asked for after the robot learned something by voice.
+
+    Corrections of what was said aloud are CM-6, and an old file must never resurrect what the
+    owner asked to forget (ADR 0024 decision 8). The message is fixed.
+    """
+
+    def __init__(self) -> None:
+        """Say only why."""
+        super().__init__("the robot already learned something by voice: no replacement")
+
+
 class CommissioningError(ValueError):
     """Raised when the commissioning record is in the wrong state for the call.
 
