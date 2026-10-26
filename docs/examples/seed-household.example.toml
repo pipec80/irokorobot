@@ -1,0 +1,88 @@
+# Expediente del hogar (Plan 0071): plantilla y cuestionario de la entrevista de alta.
+#
+# Cómo se usa:
+#   1. Copia este archivo a data/seed/ (esa carpeta no se sube a git) y complétalo en esta máquina.
+#   2. Lee cada pregunta a la persona titular y escribe su respuesta; borra lo que no aplique.
+#   3. Prueba en seco:  just seed-import data/seed/<archivo>.toml
+#   4. Aplica tras la revisión:  just seed-import data/seed/<archivo>.toml --apply ...
+# Todos los nombres y teléfonos de esta plantilla son inventados.
+
+schema_version = 1   # versión del formato del archivo; no la cambies
+pool_version = 1     # versión del catálogo de datos; no la cambies
+
+[owner]
+name = "Canary Owner"            # ¿Cuál es tu nombre completo? (el mismo de just setup-personal)
+preferred_name = "Canary"        # ¿Cómo quieres que te llamen?
+address_form = "tu"              # ¿Prefieres que te traten de tú o de usted? "tu" o "usted"
+birth_date = "1950-05-17"        # ¿Cuál es tu fecha de nacimiento? Año, mes y día completos
+health_coverage = "Canary Plan"  # ¿Cuál es tu previsión o seguro de salud?
+conditions = ["Canary condition"]    # ¿Tienes alguna enfermedad crónica? Una por línea
+allergies = ["Canary allergy, ronchas"]   # ¿Tienes alergias? ¿Qué te pasa cuando te expones?
+medications = ["Canary pill, 10 mg, 8:00 y 20:00, con comida"]   # ¿Qué medicamentos tomas? Dosis, horario y si van con comida
+takes_anticoagulant = "no"       # ¿Tomas algún anticoagulante? "si", "no" o "no_se"
+rescue_medication = ["Canary inhaler, en el velador"]   # ¿Tienes un medicamento de rescate? ¿Dónde lo guardas?
+devices = []                     # ¿Tienes algún marcapasos, implante o dispositivo? (vacío: mira [status])
+blood_type = "O+"                # ¿Sabes tu grupo sanguíneo? Por ejemplo "O+" (borra la línea si no lo sabes)
+mobility = "solo"                # ¿Cómo te desplazas? solo, baston, andador o silla_de_ruedas
+hearing = "normal"               # ¿Cómo escuchas? normal, audifonos o dificultad
+vision = "lentes"                # ¿Cómo ves? normal, lentes o dificultad
+documents = ["el testamento está en el cajón del escritorio"]   # ¿Dónde guardas tus documentos importantes? Solo dónde están, nunca su número
+emergency_facility = "Canary Clinic"   # ¿A qué clínica u hospital prefieres ir en una urgencia?
+address = "Canary Street 100, Canary Town"   # ¿Cuál es tu dirección? Aquí sí van los números
+dwelling_type = "departamento"   # ¿Vives en una casa o en un departamento? "casa" o "departamento"
+floor = 20                       # ¿En qué piso vives? Un número entero
+has_lift = "si"                  # ¿Hay ascensor? "si" o "no"
+access_note = "conserje en recepción"   # ¿Cómo se entra a tu casa? Nunca escribas un código ni una clave
+lives_alone = "si"               # ¿Vives sola o solo? "si" o "no"
+likes = ["té verde"]             # ¿Qué cosas te gustan?
+dislikes = []                    # ¿Qué cosas no te gustan?
+prefers = []                     # ¿Qué prefieres, cuando hay que elegir?
+private_topics = []              # ¿De qué temas prefieres que no se hable delante de otras personas?
+secrets = ["la alarma la tiene Canary Friend"]   # ¿Quién sabe la clave de la alarma o de la caja fuerte? Nunca escribas el código, solo quién lo sabe
+
+[status]                         # Para una sección sin respuestas: "none" (no tiene), "unknown" (no se sabe) o "declined" (prefiere no decir); si falta, queda "no preguntada"
+devices = "none"                 # ¿Ningún dispositivo? Entonces "none"
+
+[partner]                        # ¿Tienes pareja? Solo el nombre (borra la sección si no aplica)
+name = "Canary Partner"          # ¿Cómo se llama tu pareja?
+
+[[children]]                     # ¿Tienes hijas o hijos? Un bloque por cada una o cada uno
+name = "Canary Child"            # ¿Cómo se llama?
+guardianship = "minor"           # ¿Es menor de edad? "minor" o "adult"; de una hija o un hijo adulto va solo el nombre
+birth_date = "2015-03-02"        # ¿Cuándo nació? (o stated_age = 10 si no sabes la fecha, nunca ambos)
+likes = ["dibujar"]              # ¿Qué le gusta?
+
+[[children]]
+name = "Canary Daughter"         # ¿Cómo se llama?
+guardianship = "adult"           # ¿Es menor de edad? "minor" o "adult"
+
+[[pets]]                         # ¿Tienes mascotas? Un bloque por cada una
+name = "Canary Pet"              # ¿Cómo se llama?
+species = "gato"                 # ¿Qué animal es?
+stated_age = 3                   # ¿Qué edad tiene? Un número entero
+
+[[parents]]                      # ¿Viven tu madre o tu padre? Solo el nombre
+name = "Canary Parent"           # ¿Cómo se llama?
+
+[[siblings]]                     # ¿Tienes hermanas o hermanos? Solo el nombre (también hay [[grandparents]] y [[grandchildren]])
+name = "Canary Sibling"          # ¿Cómo se llama?
+
+[[withhold]]                     # ¿Hay alguien que no debe recibir información tuya? Puede ser alguien ya nombrado arriba
+name = "Canary Sibling"          # ¿Cómo se llama?
+
+[[contacts]]                     # ¿A quién se debe llamar o avisar? Un bloque por persona y papel
+name = "Canary Daughter"         # ¿Cómo se llama? Si ya la nombraste arriba, es esa misma persona
+role = "caregiver"               # ¿Qué papel tiene? emergency, caregiver, doctor, key_holder, neighbor, trusted u other
+relationship = "hija"            # ¿Qué es de ti? Una palabra corta
+phone = "+56900000001"           # ¿Cuál es su teléfono? En formato internacional, con +56
+phone_alt = "+56200000002"       # ¿Tiene otro teléfono? (borra la línea si no)
+call_order = 1                   # ¿En qué orden se le llama? Sin orden, una alerta nunca la llama
+has_key = true                   # ¿Tiene llaves de tu casa? true o false
+may_receive_health_info = true   # ¿Puede recibir información de tu salud? true o false
+may_view_activity = false        # ¿Podrá ver más adelante tus eventos de actividad? (todavía no habilita nada)
+
+[[contacts]]
+name = "Canary Doctor"           # ¿Cómo se llama?
+role = "doctor"                  # ¿Qué papel tiene?
+phone = "+56900000003"           # ¿Cuál es su teléfono? En formato internacional
+call_order = 2                   # ¿En qué orden se le llama?
