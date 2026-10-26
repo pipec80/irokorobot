@@ -1,11 +1,11 @@
 # 0072 — Step 0, third plan: the commissioning session (the alta of the robot)
 
-> **Status:** `Draft` (rewritten 2026-10-26 from the 2026-10-23 outline). **Not executable and not
-> `Ready`.** [Plan 0071](../completed/0071-seed-load-file-importer.md) closed on 2026-10-26 (PR #214,
-> `dcde265`), so queue rule 4 was applied: this plan was re-audited against the merged code of
-> [Plan 0070](../completed/0070-seed-load-data-pool-storage.md) and Plan 0071 and rewritten in their
-> format. **Pipec confirmed the eight decisions D-1 to D-8 and the five implementation decisions
-> D-9 to D-13 on 2026-10-26** (the decision table below). It implements the rest of
+> **Status:** `Ready` / `NOW` (rewritten 2026-10-26 from the 2026-10-23 outline; **promoted by Pipec on
+> 2026-10-26** after confirming D-1 to D-13 below). [Plan 0071](../completed/0071-seed-load-file-importer.md)
+> closed on 2026-10-26 (PR #214, `dcde265`), so nothing blocks it and queue rule 4 was applied: this plan
+> was re-audited against the merged code of [Plan 0070](../completed/0070-seed-load-data-pool-storage.md)
+> and Plan 0071 and rewritten in their format before any code. Task 0 re-audits it again against `main`.
+> It is executed in a new session from `main`. It implements the rest of
 > [ADR 0024](../../adr/0024-seed-load-senses-secrets-and-channels.md) (decisions 3, 13, 14 and 15) and
 > the consents half of [ADR 0025](../../adr/0025-remote-administration-backup-updates-and-telemetry.md)
 > decision 10; **when it closes, ADR 0024 becomes `Accepted`** (its three plans done). ADR 0025 stays
