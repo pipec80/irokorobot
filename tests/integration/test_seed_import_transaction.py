@@ -27,8 +27,9 @@ from server.memory.commissioning import (
 )
 from server.memory.declarative import create_third_party
 from server.memory.seed_file import LoadedSeed, parse_seed_text
-from server.memory.seed_import import OperationStatus, SeedReport, run_seed
+from server.memory.seed_import import OperationStatus, SeedReport
 from server.memory.seed_plan import build_plan
+from server.memory.seed_run import run_seed
 from server.settings import settings
 
 from tests.integration.seed_household import NOW, owner, scalar, seed_db
@@ -296,12 +297,12 @@ async def test_the_switch_of_the_memory_does_not_stop_an_import(
 async def test_the_last_log_line_holds_only_the_record_the_hash_the_counts_and_the_path(
     owner: int, seed_db: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    caplog.set_level(logging.INFO, logger="server.memory.seed_import")
+    caplog.set_level(logging.INFO, logger="server.memory.seed_run")
     loaded = _loaded(full_seed())
 
     report = await _run(owner, commissioning=_details())
 
-    (line,) = [r for r in caplog.records if r.name == "server.memory.seed_import"]
+    (line,) = [r for r in caplog.records if r.name == "server.memory.seed_run"]
     message = line.getMessage()
     assert str(report.record_id) in message
     assert loaded.sha256[:12] in message

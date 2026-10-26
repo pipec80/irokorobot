@@ -45,9 +45,9 @@ from server.memory.seed_import import (
     OperationStatus,
     SeedReport,
     resolve_ready_owner,
-    run_seed,
 )
 from server.memory.seed_plan import OWNER_REF, OperationKind, SeedPlan, SeedRef, build_plan
+from server.memory.seed_run import run_seed
 from server.personal_setup import check_db_available
 from server.settings import settings
 

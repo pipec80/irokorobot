@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 import hashlib
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
@@ -31,13 +32,16 @@ from server.memory.commissioning import (
 )
 from server.memory.declarative import create_third_party
 from server.memory.seed_file import LoadedSeed, parse_seed_text
-from server.memory.seed_import import SeedReport, run_seed
 from server.memory.seed_plan import build_plan
+from server.memory.seed_run import run_seed
 from server.memory.write_types import WriteChannel
 from server.settings import settings
 
 from tests.integration.seed_household import NOW, owner, scalar, seed_db
 from tests.unit.seed_data import Toml, full_seed, to_toml
+
+if TYPE_CHECKING:
+    from server.memory.seed_import import SeedReport
 
 __all__ = ["owner", "seed_db"]
 

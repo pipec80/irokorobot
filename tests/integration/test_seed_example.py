@@ -13,8 +13,9 @@ import re
 import pytest
 from server.memory.commissioning import Section, SectionStatus
 from server.memory.seed_file import load_seed_file
-from server.memory.seed_import import resolve_ready_owner, run_seed
+from server.memory.seed_import import resolve_ready_owner
 from server.memory.seed_plan import build_plan
+from server.memory.seed_run import run_seed
 
 from tests.integration.seed_household import NOW, owner, seed_db
 
