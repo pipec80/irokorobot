@@ -12,14 +12,18 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from server.memory.commissioning import Consents
+from server.settings import settings
 
 __all__ = [
     "BIOMETRIC_NOTICE_PATH",
     "BIOMETRIC_NOTICE_VERSION",
+    "READING_SCRIPT",
     "CommissionError",
+    "SpeakerAuthDisabledError",
     "load_biometric_notice",
     "read_consents",
     "run_face_session",
+    "run_voice_session",
 ]
 
 type ReadText = Callable[[str], str]
@@ -27,6 +31,9 @@ type WriteText = Callable[[str], None]
 type Unlock = Callable[[], Awaitable[str]]
 type CaptureFrame = Callable[[], bytes]
 type EnrollFrame = Callable[[str, bytes], Awaitable[str]]
+type RecordClip = Callable[[], bytes]
+type LevelCheck = Callable[[bytes], bool]
+type EnrollClip = Callable[[str, bytes], Awaitable[str]]
 
 # The five face poses of ADR 0024 decision 15 / Plan 0030 (distance, glasses, lighting).
 _FACE_POSES = (
@@ -47,6 +54,23 @@ _YES = frozenset({"si", "sí"})
 
 class CommissionError(ValueError):
     """A commissioning session cannot proceed; its message is safe to print."""
+
+
+class SpeakerAuthDisabledError(CommissionError):
+    """Voice enrolment returned 503: ``SPEAKER_AUTHENTICATION_ENABLED`` is off (Plan 0053)."""
+
+
+# A short Spanish text (tuteo) the owner reads aloud so the recognizer learns their voice; it holds
+# no household value. The audio is embedded and discarded by the endpoint, never stored.
+READING_SCRIPT = (
+    "Hola, soy la persona dueña de este robot y estoy leyendo este texto en voz alta. "
+    "Lo hago para que aprendas a reconocer mi voz cuando converse contigo. "
+    "Hoy es un buen día y tengo ganas de probar cómo me escuchas. "
+    "Cuando termine de leer, ya podrás distinguir mi voz de la de otras personas."
+)
+
+# How many extra capture attempts the voice session tolerates before it gives up.
+_VOICE_ATTEMPT_SLACK = 5
 
 
 def load_biometric_notice() -> str:
@@ -138,4 +162,66 @@ async def run_face_session(
             break
         enrolled += 1
     write_text(f"Cara: {enrolled} de {frames} tomas enroladas.")
+    return enrolled
+
+
+async def run_voice_session(
+    *,
+    unlock: Unlock,
+    record: RecordClip,
+    level_check: LevelCheck,
+    enroll: EnrollClip,
+    write_text: WriteText,
+    references: int | None = None,
+) -> int:
+    """Enrol the owner's voice from several short reads, one unlock each (ADR 0024 decision 15).
+
+    Reads the owner :data:`READING_SCRIPT`, captures clips one at a time, re-captures a clip that
+    fails the level and distance check (no reference consumed), unlocks once per reference (each
+    token is one-use), and reports the voice modality as not enrolled when the endpoint returns 503
+    (``SPEAKER_AUTHENTICATION_ENABLED`` off). An ``unlock`` that fails propagates. Audio is embedded
+    and discarded by the endpoint; nothing is stored here.
+
+    Args:
+        unlock: Returns a fresh one-use owner-unlock token for ``biometric_admin``.
+        record: Returns one contract WAV clip (16 kHz mono int16) from the microphone.
+        level_check: Returns whether a clip's level and distance are acceptable.
+        enroll: Posts one clip to ``/auth/owner/voice/enroll``; raises
+            :class:`SpeakerAuthDisabledError` on 503 and :class:`CommissionError` on a rejected clip.
+        write_text: Writes one line of guidance to the terminal.
+        references: How many references to enrol (default
+            ``settings.speaker_min_reference_count``).
+
+    Returns:
+        How many references were enrolled (0 when speaker authentication is off).
+    """
+    target = references if references is not None else settings.speaker_min_reference_count
+    write_text("Enrolamiento de la voz. Lee este texto en voz alta:")
+    write_text(READING_SCRIPT)
+    enrolled = 0
+    attempts = 0
+    while enrolled < target:
+        attempts += 1
+        if attempts > target + _VOICE_ATTEMPT_SLACK:
+            write_text("Demasiados intentos; se detiene la sesión de voz.")
+            break
+        clip = record()
+        if not level_check(clip):
+            write_text("El nivel o la distancia no son buenos. Repite y acércate al micrófono.")
+            continue
+        token = await unlock()
+        try:
+            await enroll(token, clip)
+        except SpeakerAuthDisabledError:
+            write_text(
+                "La voz no está habilitada (SPEAKER_AUTHENTICATION_ENABLED=false): "
+                "no se enroló la voz."
+            )
+            return 0
+        except CommissionError as exc:
+            write_text(f"Referencia rechazada ({exc}). Repite.")
+            continue
+        enrolled += 1
+        write_text(f"Referencia {enrolled} de {target} lista.")
+    write_text(f"Voz: {enrolled} de {target} referencias enroladas.")
     return enrolled
