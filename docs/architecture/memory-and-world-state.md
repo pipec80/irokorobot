@@ -158,7 +158,7 @@ entity. Several writes can join a transaction the caller owns, so an importer ge
 all-or-nothing with no new API. **The importer (Plan 0071)** is that caller: `memory/seed_import.py`
 writes a plan of operations (`memory/seed_plan.py`, built from a validated seed file) through these
 writers with the channel `import_assisted` and the refuse policy, in one transaction with the
-commissioning record; while no commissioning is closed and nothing was learned by voice,
+commissioning record (`memory/seed_run.py`); while no commissioning is closed and nothing was learned by voice,
 `memory/seed_replace.py` retracts what earlier imports wrote (rows and contacts of the import
 channels, the statuses, the seed entities nothing refers to) before writing again. See
 [current-state](current-state.md).

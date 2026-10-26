@@ -9,7 +9,7 @@
 > registered, validated and writable: through the canonical writer for a V4 fact, through the contacts
 > writer for a contact and through the commissioning module for the acta.
 >
-> **Plan 0071 (the importer) was executed on 2026-10-26** (Pipec's acceptance pending): every field
+> **Plan 0071 (the importer) closed on 2026-10-26** (accepted by Pipec on a database kept apart): every field
 > of the catalogue below except the commissioning's consents and backups (Plan 0072) is loaded from
 > the seed file by `just seed-import`; the file's keys, its template and questionnaire are in
 > [`docs/examples/seed-household.example.toml`](../examples/seed-household.example.toml) and its

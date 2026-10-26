@@ -2,7 +2,7 @@
 
 > **Status:** run by Pipec on 2026-10-26 on a database kept apart (`data/scratch-0071.db`, gitignored,
 > deleted afterwards), on branch `feat/0071-seed-file-importer`; outcomes checked read-only against the
-> database by Claude Code after each step. [Plan 0071](../plans/open/0071-seed-load-file-importer.md).
+> database by Claude Code after each step. [Plan 0071](../plans/completed/0071-seed-load-file-importer.md).
 > **Outcomes only:** no name, phone, value or file content is recorded here.
 
 ## Procedure and outcomes
@@ -30,12 +30,19 @@ Every step ran from the repository root in PowerShell, with the server stopped.
    base de datos no está en la última versión…», migrating and writing nothing (the schema stayed at
    9). Opening and closing it still let SQLite checkpoint the pending write-ahead log (committed
    transactions of 2026-10-21) into the main file, so the file's bytes changed; its contents did not.
-   A read-only version check before opening would avoid touching the file at all. Open, not fixed yet.
+   **Fixed** in `0ed2302`: the command now validates the file before touching the database and reads
+   the schema version through a read-only connection, which never checkpoints; a test reproduces the
+   case with a pending write-ahead log and checks the main file and the log byte for byte.
 2. **The `-wal`/`-shm` copy of `just reset-db` was not exercised:** no sidecar existed at step 10
    (`scripts/scrub_candidates.py` runs first and removes them), so only the main file was backed up.
+   **Covered** in `ec97762`: the copy moved into `Copy-DbWithSidecars`, and a test parses the script,
+   defines only that function and `Resolve-DbPath`, and runs them on temporary files (the backup holds
+   the `-wal` and `-shm` when they exist; the environment wins over `.env`; the default is
+   `data/omnibot.db`).
 3. `data/omnibot.db` was not changed by any step run with the variable set (same hash before and
    after steps 4 to 11).
 
 ## Result
 
-Steps 1 to 8, 10 and 11 pass; step 9 not run. Two findings stay open (1 and 2 above).
+Steps 1 to 8, 10 and 11 pass; step 9 (optional) was not run. Both findings are closed (1 fixed,
+2 covered by an automated test); the review's minor findings were fixed in `ed0713c` and `fee6d92`.

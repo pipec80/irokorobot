@@ -745,7 +745,7 @@ gate's economics.
   occasional replies in French; whether the closed answer should admit the speech-to-text's common
   mis-hearings; short turns cannot carry an offer; case 9 (replay) and a homelab measurement.
 - Phase 0 — enrolment first, access levels, escalation with company (decision 13).
-  Its import half is [Plan 0071](../plans/open/0071-seed-load-file-importer.md) (executed
+  Its import half is [Plan 0071](../plans/completed/0071-seed-load-file-importer.md) (closed
   2026-10-26): a seed import writes through the same canonical writer, and a spoken taste and the
   same imported taste are one row; a replacement is refused once a candidate is live.
 - CM-3b, CM-4, CM-5, CM-6.

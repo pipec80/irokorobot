@@ -5,7 +5,7 @@
 > review; **promoted by Pipec on 2026-10-23 with D-1 to D-11 confirmed** (D-1 to D-6 chosen by him, D-7 to D-11
 > confirmed as written the same day). Task 0 re-audited it against `main` before any code. It implements the storage half of
 > [ADR 0024](../../adr/0024-seed-load-senses-secrets-and-channels.md) (`Proposed`; it becomes `Accepted`
-> when Plans 0071 and 0072 close). The importer is [Plan 0071](../open/0071-seed-load-file-importer.md), which
+> when Plans 0071 and 0072 close). The importer is [Plan 0071](0071-seed-load-file-importer.md), which
 > cannot start before this plan closes; the session itself is [Plan 0072](../open/0072-commissioning-session.md).
 > Written for an executor who has not seen this repository: what it needs is here, in the ADR or in
 > [`seed-data-pool.md`](../../architecture/seed-data-pool.md), not in the chat that produced them.
