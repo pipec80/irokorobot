@@ -1,9 +1,9 @@
 # 0071 — Step 0, second plan: the file importer of the commissioning
 
-> **Status:** `Draft` (written 2026-10-23, revised the same day after the second review). **Not `Ready`
-> and not `NOW`**, and it **could not start before [Plan 0070](../completed/0070-seed-load-data-pool-storage.md)
-> closed (it did on 2026-10-23)**: Pipec promotes it, after confirming the decisions below, and Task 0 re-audits it against
-> the code Plan 0070 merged. It implements [ADR 0024](../../adr/0024-seed-load-senses-secrets-and-channels.md)
+> **Status:** `Ready` / `NOW` (written 2026-10-23, revised the same day after the second review; promoted by
+> Pipec on 2026-10-26 after confirming D-1 to D-8 below). [Plan 0070](../completed/0070-seed-load-data-pool-storage.md)
+> **closed on 2026-10-23**, so nothing blocks it; Task 0 re-audits it against the code Plan 0070 merged before
+> any other work. It implements [ADR 0024](../../adr/0024-seed-load-senses-secrets-and-channels.md)
 > (`Proposed`) decisions 6 to 8, 11, 12 and 13; the ADR becomes `Accepted` when [Plan 0072](0072-commissioning-session.md)
 > closes. Written for an executor who has not seen this repository.
 
@@ -40,7 +40,8 @@ used synchronously in the command), pytest. **No new dependency, no migration, n
 
 ## Decisions
 
-Pipec confirms D-1 to D-8 before promoting; D-1 to D-3 he already chose.
+Pipec confirmed D-1 to D-8 on 2026-10-26, which promoted this plan: D-1 to D-3 he had already chosen, and
+D-4 to D-8 he accepted as the author proposed them.
 
 1. **D-1 — A file, a dry run by default, the owner's review.** (ADR 0024 decisions 6 and 11.)
 2. **D-2 — Replacement while commissioning, none after.** `--replace` is allowed only while
