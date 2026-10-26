@@ -1,38 +1,41 @@
-# Plan 0071 — acceptance of the seed importer (pending)
+# Plan 0071 — acceptance of the seed importer
 
-> **Status:** pending Pipec's run. Prepared 2026-10-26 with the execution of
-> [Plan 0071](../plans/open/0071-seed-load-file-importer.md). Record **outcomes only** (an exit
-> code, a count, «unchanged», «refused»): never a name, a phone, a value or the file's content.
+> **Status:** run by Pipec on 2026-10-26 on a database kept apart (`data/scratch-0071.db`, gitignored,
+> deleted afterwards), on branch `feat/0071-seed-file-importer`; outcomes checked read-only against the
+> database by Claude Code after each step. [Plan 0071](../plans/open/0071-seed-load-file-importer.md).
+> **Outcomes only:** no name, phone, value or file content is recorded here.
 
-## Procedure (on a database kept apart)
+## Procedure and outcomes
 
-Run every step from the repository root in PowerShell, with the server stopped unless a step says
-otherwise. `<scratch>` is a file under `data/` (gitignored), for example `data/scratch-0071.db`.
+Every step ran from the repository root in PowerShell, with the server stopped.
 
 | # | Step | Expected | Outcome |
 |---|---|---|---|
-| 1 | `$env:BRAIN_DB_PATH = "<scratch>"` | — | |
-| 2 | `just setup-personal` with the owner and a PIN, **no children** | `personal_security_ready=True` | |
-| 3 | Copy `docs/examples/seed-household.example.toml` to `data/seed/` and set `[owner] name` to the owner's name of step 2 (invented data are fine) | — | |
-| 4 | `just seed-import data/seed/<file>.toml` | First line is the scratch database; a report; «0 problemas»; exit 0; nothing written | |
-| 5 | `just seed-import data/seed/<file>.toml --apply --interviewer <label> --role builder --mode builder_is_owner --disk-encryption yes`, answer `SI` | The review question, then «Carga aplicada (acta 1).» | |
-| 6 | The same command again, answer `SI` | Every operation «sin cambios»; the acta reused | |
-| 7 | Change one birth date in the file; dry run without `--replace` | A `value_conflict`, «no se escribió nada», exit 1 | |
-| 8 | The same with `--replace` (dry run, then `--apply` and `SI`) | Applied; the new date replaces the old one | |
-| 9 | Start the server (`just run-server`) and ask Iroko how many children the owner has | The count of the file's children | |
-| 10 | Stop the server; `just reset-db` with `BRAIN_DB_PATH` still set | It prints the scratch path, backs it up and deletes **only** the scratch file; `data/omnibot.db` untouched | |
-| 11 | `Remove-Item Env:BRAIN_DB_PATH`, destroy the scratch backup and `data/seed/<file>.toml` | — | |
+| 1 | `$env:BRAIN_DB_PATH = "data/scratch-0071.db"` | — | Done |
+| 2 | `just setup-personal` | `personal_security_ready=True` | `True`. Pipec entered the owner **and two children** (the plan recommends none); the file's children have other names, so no conflict |
+| 3 | Copy the example to `data/seed/` | — | Done. The first dry run, with the template's owner name, was refused: «El nombre de la persona titular del archivo no coincide con el registrado.», exit 1, nothing written. With the owner's name set in the file it passed |
+| 4 | Dry run | First line the scratch database; «0 problemas»; nothing written | As expected: 43 to write, 0 problems, no location warning (the file was under `data/`) |
+| 5 | `--apply` with the declaration, answer `SI` | «Carga aplicada (acta 1).» | As expected. The database then held 43 new rows (7 entities, 7 relations, 27 literals, 2 contacts), every literal on `import_assisted` with the owner as asserter and confirmer; record 1 open with the hash, the counts and 11 section statuses; `secret_holder` stored `personal`/`security`. An earlier answer `si` (lower case) printed «Carga cancelada.», exit 1, nothing written |
+| 6 | The same command again, `SI` | Every operation «sin cambios» | As expected: 0 to write, 43 unchanged; counts identical; the same record, its counts now `written: 0` |
+| 7 | One birth date changed, dry run without `--replace` | `value_conflict`, nothing written, exit 1 | As expected: one `value_conflict` on the owner's birth date, 42 unchanged, exit 1 |
+| 8 | `--replace` (dry run, then `--apply` and `SI`) | Applied; the new date replaces the old one | As expected: the dry run showed 43 to write and wrote nothing; the apply left one active birth-date row (the new one), the 7 imported entities re-created, the same counts, the same record (`written: 43`), the setup's owner, children and their two `child_of` rows untouched |
+| 9 | Ask Iroko by voice for the number of children | The count | **Not run** (optional; the scratch database had no face enrolled) |
+| 10 | `just reset-db` with `BRAIN_DB_PATH` still set | Prints the scratch path, backs it up, deletes only it | As expected: printed the scratch path, voided 0 candidates, printed the backup note, «DB reset OK»; the scratch file was gone afterwards |
+| 11 | Unset the variable, delete the backup and the seed file | — | Done and verified: no scratch file, backup or seed file left |
 
-Everything else the file holds cannot be asked by voice until CM-5 (only the children's list and
-count are served today); that is expected, not a failure.
+## Findings
 
-## Known gap to check by hand
-
-The `-wal` and `-shm` copy of `just reset-db` could not be exercised during the execution:
-`scripts/scrub_candidates.py` runs first and removes the sidecars, so a sidecar survives only while
-another process holds the database, which the scrub refuses. Step 10 records whether a sidecar was
-present.
+1. **The importer opens the database before it refuses an outdated schema.** In a terminal where the
+   variable had been lost, the command pointed at `data/omnibot.db` (schema 9) and refused with «La
+   base de datos no está en la última versión…», migrating and writing nothing (the schema stayed at
+   9). Opening and closing it still let SQLite checkpoint the pending write-ahead log (committed
+   transactions of 2026-10-21) into the main file, so the file's bytes changed; its contents did not.
+   A read-only version check before opening would avoid touching the file at all. Open, not fixed yet.
+2. **The `-wal`/`-shm` copy of `just reset-db` was not exercised:** no sidecar existed at step 10
+   (`scripts/scrub_candidates.py` runs first and removes them), so only the main file was backed up.
+3. `data/omnibot.db` was not changed by any step run with the variable set (same hash before and
+   after steps 4 to 11).
 
 ## Result
 
-Pending.
+Steps 1 to 8, 10 and 11 pass; step 9 not run. Two findings stay open (1 and 2 above).
