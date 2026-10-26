@@ -8,6 +8,7 @@ plan owns any production reader or writer cutover.
 from __future__ import annotations
 
 from calendar import monthrange
+from contextlib import AbstractAsyncContextManager, nullcontext
 from dataclasses import dataclass
 from datetime import date
 from enum import StrEnum
@@ -27,6 +28,8 @@ from server.memory.predicate_registry import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Collection
+
     import aiosqlite
 
 
@@ -841,3 +844,88 @@ async def count_v4_rows() -> V4Counts:
         await cursor.close()
         counts.append(0 if row is None else int(row[0]))
     return V4Counts(literals=counts[0], relations=counts[1])
+
+
+_V4_TABLES = ("literal_facts_v4", "entity_relations_v4")
+
+
+def _owned(manage_transaction: bool) -> AbstractAsyncContextManager[object]:
+    """Own a transaction, or join the one the caller owns (``db.transaction`` is not reentrant)."""
+    return db.transaction() if manage_transaction else nullcontext()
+
+
+def _channel_filter(channels: Collection[str]) -> tuple[str, tuple[str, ...]]:
+    """The ``IN`` clause of a set of channels and its parameters (never an empty ``IN ()``)."""
+    values = tuple(sorted(str(channel) for channel in channels))
+    return ", ".join("?" for _ in values) or "NULL", values
+
+
+async def count_rows_by_channel(channels: Collection[str]) -> int:
+    """Count the V4 rows, literal and relation, written through any of these channels.
+
+    Args:
+        channels: The channels to count (``IMPORT_CHANNELS``, ``VOICE_CHANNELS``).
+
+    Returns:
+        The number of rows of any lifecycle; a row with no channel is never counted.
+    """
+    placeholders, values = _channel_filter(channels)
+    total = 0
+    for table in _V4_TABLES:
+        cursor = await get_conn().execute(
+            f"SELECT COUNT(*) FROM {table} WHERE channel IN ({placeholders})",  # noqa: S608
+            values,
+        )
+        row = await cursor.fetchone()
+        await cursor.close()
+        total += 0 if row is None else int(row[0])
+    return total
+
+
+async def delete_rows_by_channel(
+    channels: Collection[str], *, manage_transaction: bool = True
+) -> int:
+    """Delete every V4 row written through these channels (the retraction of an import).
+
+    A row of another channel, or with none (the local setup, the legacy migration), is never
+    touched. Plan 0071 uses it only while the robot is being commissioned and nothing was learned
+    by voice (ADR 0024 decision 8).
+
+    Args:
+        channels: The channels whose rows are deleted (``IMPORT_CHANNELS``).
+        manage_transaction: ``False`` joins the caller's open transaction.
+
+    Returns:
+        How many rows were deleted.
+    """
+    placeholders, values = _channel_filter(channels)
+    deleted = 0
+    async with _owned(manage_transaction):
+        for table in _V4_TABLES:
+            cursor = await get_conn().execute(
+                f"DELETE FROM {table} WHERE channel IN ({placeholders})",  # noqa: S608
+                values,
+            )
+            deleted += max(cursor.rowcount, 0)
+            await cursor.close()
+    return deleted
+
+
+async def entity_has_rows(entity_id: int) -> bool:
+    """Return whether any V4 row, of any lifecycle, is about the entity or points at it.
+
+    Args:
+        entity_id: The entity a cleanup would delete.
+
+    Returns:
+        ``True`` for a literal about it or a relation with it at either end.
+    """
+    cursor = await get_conn().execute(
+        "SELECT EXISTS (SELECT 1 FROM literal_facts_v4 WHERE subject_entity_id = ?) "
+        "OR EXISTS (SELECT 1 FROM entity_relations_v4 "
+        "WHERE source_entity_id = ? OR target_entity_id = ?)",
+        (entity_id, entity_id, entity_id),
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    return row is not None and bool(row[0])

@@ -18,15 +18,20 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 import logging
 import re
+from typing import TYPE_CHECKING
 
 from server import db
 from server.db import get_conn
 from server.memory.write_types import ConflictPolicy, WriteChannel, WriteRefusal, refusal_error
 
+if TYPE_CHECKING:
+    from collections.abc import Collection
+
 __all__ = [
     "CareContact",
     "ContactRole",
     "count_active_contacts",
+    "delete_contacts_by_channel",
     "entity_has_contact_rows",
     "has_active_contact",
     "list_active_contacts",
@@ -450,3 +455,32 @@ async def count_active_contacts() -> int:
     """Return how many contacts are active, for every owner (the seed applier's count)."""
     found = await _scalar("SELECT COUNT(*) FROM care_contacts WHERE revoked_at IS NULL")
     return 0 if found is None else int(str(found))
+
+
+async def delete_contacts_by_channel(
+    channels: Collection[str], *, manage_transaction: bool = True
+) -> int:
+    """Delete every contact row, active or revoked, written through these channels.
+
+    The retraction of an import (Plan 0071, ADR 0024 decision 8); a row of another channel is
+    never touched.
+
+    Args:
+        channels: The channels whose rows are deleted (``IMPORT_CHANNELS``).
+        manage_transaction: ``False`` joins the caller's open transaction.
+
+    Returns:
+        How many rows were deleted.
+    """
+    values = tuple(sorted(str(channel) for channel in channels))
+    if not values:
+        return 0
+    placeholders = ", ".join("?" for _ in values)
+    async with _transaction(manage_transaction):
+        cursor = await get_conn().execute(
+            f"DELETE FROM care_contacts WHERE channel IN ({placeholders})",  # noqa: S608
+            values,
+        )
+        deleted = max(cursor.rowcount, 0)
+        await cursor.close()
+    return deleted

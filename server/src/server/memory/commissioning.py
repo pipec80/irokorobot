@@ -41,6 +41,7 @@ __all__ = [
     "Modality",
     "Section",
     "SectionStatus",
+    "clear_section_statuses",
     "close_commissioning",
     "get_open_commissioning",
     "importer_window_open",
@@ -378,6 +379,25 @@ async def set_section_status(
             (record_id, valid_section.value, valid_status.value, recorded_at),
         )
     _announce("section_set", record_id, committed=manage_transaction)
+
+
+async def clear_section_statuses(record_id: int, *, manage_transaction: bool = True) -> None:
+    """Forget every section status of an open record (a replacement records them again).
+
+    Args:
+        record_id: The open commissioning.
+        manage_transaction: ``False`` joins the caller's open transaction.
+
+    Raises:
+        ValueError: If the record does not exist.
+        CommissioningClosedError: If the commissioning is closed.
+    """
+    async with _transaction(manage_transaction):
+        await _read_open(record_id)
+        await get_conn().execute(
+            "DELETE FROM commissioning_sections WHERE commissioning_id = ?", (record_id,)
+        )
+    _announce("sections_cleared", record_id, committed=manage_transaction)
 
 
 async def list_section_statuses(record_id: int) -> Mapping[Section, SectionStatus]:

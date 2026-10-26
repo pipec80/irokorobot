@@ -17,6 +17,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from server.memory.commissioning import Section, SectionStatus
+from server.memory.declarative import SEED_IMPORT_KEY_PREFIX
 from server.memory.seed_file import sections_with_items
 from server.memory.seed_members import OWNER_PREDICATES
 from server.text_keys import fold_name
@@ -28,7 +29,6 @@ if TYPE_CHECKING:
     from server.memory.seed_members import SeedChild, SeedOwner, SeedPet
 
 __all__ = [
-    "IMPORT_KEY_PREFIX",
     "OperationKind",
     "SeedOperation",
     "SeedPlan",
@@ -37,8 +37,6 @@ __all__ = [
     "build_plan",
 ]
 
-#: Every entity an import creates carries a key that starts with this (schema version 1).
-IMPORT_KEY_PREFIX = "seed-v1:"
 _PERSON = "person"
 _PET = "other"
 # The literal keys of a child and a pet: their own predicate names.
@@ -141,7 +139,7 @@ class _People:
                 subject=ref,
                 entity_name=name,
                 entity_type=kind,
-                import_key=f"{IMPORT_KEY_PREFIX}{role.value}:{folded}",
+                import_key=f"{SEED_IMPORT_KEY_PREFIX}{role.value}:{folded}",
                 attributes=MappingProxyType(
                     {} if guardianship is None else {"guardianship": guardianship}
                 ),

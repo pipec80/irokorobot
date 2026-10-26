@@ -8,6 +8,7 @@ fact supersedes (but does not delete) prior active facts for the same
 
 from __future__ import annotations
 
+from contextlib import AbstractAsyncContextManager, nullcontext
 from enum import StrEnum
 import json
 import logging
@@ -20,7 +21,7 @@ from server.schemas import EntityType, EntityWithFacts, FactRecord
 from server.text_keys import fold_name
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Awaitable, Callable, Mapping
 
     import aiosqlite
 
@@ -28,9 +29,16 @@ logger = logging.getLogger(__name__)
 
 # Key of ``entities.attributes`` that records which import created a third party.
 _IMPORT_KEY_ATTRIBUTE = "import_key"
+#: The prefix of every import key a seed file of schema version 1 gives (Plan 0071).
+SEED_IMPORT_KEY_PREFIX = "seed-v1:"
 # Key of ``entities.attributes`` that marks whether a child is a minor or an adult (ADR 0024
 # decision 9). The canonical writer reads it, so the rule holds on every channel.
 _GUARDIANSHIP_ATTRIBUTE = "guardianship"
+
+
+def _transaction(manage_transaction: bool) -> AbstractAsyncContextManager[object]:
+    """Own a transaction, or join the one the caller owns (``db.transaction`` is not reentrant)."""
+    return db.transaction() if manage_transaction else nullcontext()
 
 
 class Guardianship(StrEnum):
@@ -478,3 +486,44 @@ async def count_entities() -> int:
     row = await cursor.fetchone()
     await cursor.close()
     return 0 if row is None else int(row[0])
+
+
+async def delete_orphan_import_entities(
+    has_rows: Callable[[int], Awaitable[bool]],
+    has_contacts: Callable[[int], Awaitable[bool]],
+    *,
+    manage_transaction: bool = True,
+) -> int:
+    """Delete every entity a seed import created that nothing refers to any more.
+
+    An entity qualifies only when its ``import_key`` starts with ``seed-v1:`` and both callbacks
+    say nothing refers to it; the decision never relies on ``ON DELETE CASCADE`` (a table that
+    restricts the delete still fails loudly). The callbacks are the repositories' own checks.
+
+    Args:
+        has_rows: Whether a V4 row is about the entity or points at it.
+        has_contacts: Whether a contact row names the entity.
+        manage_transaction: ``False`` joins the caller's open transaction.
+
+    Returns:
+        How many entities were deleted.
+    """
+    deleted = 0
+    async with _transaction(manage_transaction):
+        cursor = await get_conn().execute("SELECT id, attributes FROM entities")
+        rows = [(int(row[0]), str(row[1])) for row in await cursor.fetchall()]
+        await cursor.close()
+        for entity_id, attributes in rows:
+            key = _stored_import_key(attributes)
+            if not (isinstance(key, str) and key.startswith(SEED_IMPORT_KEY_PREFIX)):
+                continue
+            if await has_rows(entity_id) or await has_contacts(entity_id):
+                continue
+            await get_conn().execute("DELETE FROM entities WHERE id = ?", (entity_id,))
+            deleted += 1
+    logger.debug(
+        "Orphan import entities deleted: %d",
+        deleted,
+        extra={"event": "entity.import_orphans_deleted", "count": deleted},
+    )
+    return deleted

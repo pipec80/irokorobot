@@ -51,6 +51,7 @@ __all__ = [
     "InsertResult",
     "InsertStatus",
     "checkpoint_after_scrub",
+    "count_live_candidates",
     "expire_lapsed_in_transaction",
     "find_offered",
     "get_candidate",
@@ -718,3 +719,17 @@ async def reset_for_startup(now: datetime, *, enabled: bool) -> None:
         logger.info("Candidates reconciled at start-up: %d expired", scrubbed)
     # `max(..., 1)`: truncate even when this start-up erased nothing (see the docstring).
     await checkpoint_after_scrub(max(scrubbed, 1))
+
+
+async def count_live_candidates() -> int:
+    """Return how many candidates still hold a value (``proposed`` or ``offered``).
+
+    A resolved candidate has been erased (ADR 0021), so only a live one means the robot learned
+    something by voice that a replacement could contradict (Plan 0071).
+    """
+    cursor = await db.get_conn().execute(
+        "SELECT COUNT(*) FROM memory_candidates WHERE status IN ('proposed', 'offered')"
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    return 0 if row is None else int(row[0])
