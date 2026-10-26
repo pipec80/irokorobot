@@ -769,3 +769,33 @@ def test_the_commissioning_guard_detects_a_violation() -> None:
     }
 
     assert _commissioning_queriers(leak) == ["memory/leak.py", "routers/leak.py"]
+
+
+# --- the import channels (Plan 0071, ADR 0024 decision 7) -----------------------------------
+# The import bypasses the policy on purpose, so only the vocabulary and the applier may name its
+# channels: a route or a store that wrote as an import would skip the face-and-voice rule. The
+# retraction speaks of `IMPORT_CHANNELS`, never of one channel.
+_IMPORT_CHANNEL_NAMES = frozenset(
+    {"IMPORT_FILE", "IMPORT_ASSISTED", "import_file", "import_assisted"}
+)
+_IMPORT_CHANNEL_HOMES = frozenset({"memory/write_types.py", "memory/seed_import.py"})
+
+
+@pytest.mark.unit
+def test_only_the_vocabulary_and_the_applier_name_an_import_channel() -> None:
+    assert _outside(_sources(), _IMPORT_CHANNEL_HOMES, _IMPORT_CHANNEL_NAMES) == []
+
+
+@pytest.mark.unit
+def test_the_import_channel_guard_detects_a_violation() -> None:
+    leak = {
+        "routers/leak.py": "x = WriteChannel.IMPORT_ASSISTED\n",
+        "memory/other.py": 'x = WriteChannel("import_file")\n',
+        "memory/seed_import.py": "x = WriteChannel.IMPORT_ASSISTED\n",
+        "memory/prose.py": '"""The importer writes with import_assisted, in prose."""\n',
+    }
+
+    assert _outside(leak, _IMPORT_CHANNEL_HOMES, _IMPORT_CHANNEL_NAMES) == [
+        "memory/other.py",
+        "routers/leak.py",
+    ]

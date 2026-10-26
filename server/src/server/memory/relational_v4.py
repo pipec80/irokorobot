@@ -814,3 +814,30 @@ async def _close_previous(
             "superseded_by = ?, valid_to = ? WHERE id = ?",
             (new_id, _closing_value(previous_from, new_from), previous_id),
         )
+
+
+@dataclass(frozen=True)
+class V4Counts:
+    """How many rows the two V4 tables hold, whatever their lifecycle."""
+
+    literals: int
+    relations: int
+
+
+async def count_v4_rows() -> V4Counts:
+    """Count every row of the two V4 tables; a new row of either changes the count.
+
+    The seed applier compares the counts before and after each operation to tell a write from a
+    repeat (Plan 0071). The writers never delete, so a count only grows.
+
+    Returns:
+        The number of literal and relation rows.
+    """
+    conn = get_conn()
+    counts = []
+    for table in ("literal_facts_v4", "entity_relations_v4"):
+        cursor = await conn.execute(f"SELECT COUNT(*) FROM {table}")  # noqa: S608
+        row = await cursor.fetchone()
+        await cursor.close()
+        counts.append(0 if row is None else int(row[0]))
+    return V4Counts(literals=counts[0], relations=counts[1])

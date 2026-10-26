@@ -470,3 +470,11 @@ async def load_entity_with_facts(name: str) -> EntityWithFacts | None:
     e = matches[0]
     facts = await get_active_facts(e["id"])
     return EntityWithFacts(id=e["id"], name=e["name"], type=e["type"], facts=facts)
+
+
+async def count_entities() -> int:
+    """Return how many entities exist, of any type (the seed applier's before-and-after count)."""
+    cursor = await get_conn().execute("SELECT COUNT(*) FROM entities")
+    row = await cursor.fetchone()
+    await cursor.close()
+    return 0 if row is None else int(row[0])

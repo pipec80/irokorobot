@@ -26,6 +26,7 @@ from server.memory.write_types import ConflictPolicy, WriteChannel, WriteRefusal
 __all__ = [
     "CareContact",
     "ContactRole",
+    "count_active_contacts",
     "entity_has_contact_rows",
     "has_active_contact",
     "list_active_contacts",
@@ -443,3 +444,9 @@ def _announce(row: CareContact, *, committed: bool) -> None:
             "channel": row.channel,
         },
     )
+
+
+async def count_active_contacts() -> int:
+    """Return how many contacts are active, for every owner (the seed applier's count)."""
+    found = await _scalar("SELECT COUNT(*) FROM care_contacts WHERE revoked_at IS NULL")
+    return 0 if found is None else int(str(found))
