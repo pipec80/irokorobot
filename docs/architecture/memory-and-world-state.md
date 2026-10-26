@@ -145,14 +145,23 @@ stays `NULL`, `confirmed_at` is kept, ADR 0024 decision 6), and
 each row records them and the channel (`asserted_by_entity_id`, `channel`, migration 010; older
 rows and the local setup read `NULL`). A load made while commissioning can ask the writer to
 refuse a different single value instead of superseding it (`on_conflict=REFUSE`: `value_conflict`). A repeat of an active value with the same classification is
-idempotent; a stored row labelled otherwise is refused as `classification_conflict`. Nobody who is
+idempotent; a stored row labelled otherwise is refused as `classification_conflict`. Since Plan 0071
+a `text` value is compared by its key (`server/text_keys.py`: folded, without a leading article;
+ADR 0024 decision 12), so a spoken «El Café» and an imported «café» are one row; a date, a number,
+a reference, and a text whose key is empty compare exactly. Nobody who is
 already the partner, or holds an adult role, can be declared a child to unlock their facts. A temporal
 relation closes the previous one at the new `valid_from`, an explicit `valid_to` stores history
 (lifecycle `expired`, never closing the current row), and dates are `YYYY-MM-DD` or `YYYY-MM`.
 A third party is created apart, once: `create_third_party` refuses a second entity with the same
 folded name and type (`AmbiguousEntityError`), and the import key makes a re-run return the same
 entity. Several writes can join a transaction the caller owns, so an importer gets
-all-or-nothing with no new API.
+all-or-nothing with no new API. **The importer (Plan 0071)** is that caller: `memory/seed_import.py`
+writes a plan of operations (`memory/seed_plan.py`, built from a validated seed file) through these
+writers with the channel `import_assisted` and the refuse policy, in one transaction with the
+commissioning record; while no commissioning is closed and nothing was learned by voice,
+`memory/seed_replace.py` retracts what earlier imports wrote (rows and contacts of the import
+channels, the statuses, the seed entities nothing refers to) before writing again. See
+[current-state](current-state.md).
 
 The registry also knows `species` (pets), `stated_age`, `private_topic` («no menciones X delante
 de visitas»: only the predicate exists, its behaviour needs CM-5 and Step 0) and `access_code`

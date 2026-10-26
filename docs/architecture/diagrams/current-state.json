@@ -51,6 +51,15 @@
           "memory"
         ],
         "note": "Off by default: needs the same person's face and voice on that clip. One canonical writer stores it, setting class, asserter and channel."
+      },
+      {
+        "id": "seed-load",
+        "label": "Seed load",
+        "focus": [
+          "seed",
+          "memory"
+        ],
+        "note": "Server stopped: a dry run, the owner's review and SI, then one transaction through the canonical writer and the commissioning record."
       }
     ]
   },
@@ -213,6 +222,21 @@
         140,
         64
       ]
+    },
+    {
+      "id": "seed",
+      "type": "backend",
+      "label": "Seed importer",
+      "sublabel": "just seed-import · server stopped",
+      "pos": [
+        670,
+        620
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "tag": "dry run by default"
     }
   ],
   "boundaries": [
@@ -328,6 +352,14 @@
       "variant": "emphasis",
       "fromSide": "left",
       "toSide": "bottom"
+    },
+    {
+      "id": "seed-to-memory",
+      "from": "seed",
+      "to": "memory",
+      "label": "one transaction · import_assisted",
+      "fromSide": "top",
+      "toSide": "bottom"
     }
   ],
   "cards": [
@@ -346,10 +378,11 @@
       "items": [
         "Controller returns an immutable response plan before any generation",
         "Safe plans never reach the LLM, legacy memory, or a candidate proposal",
-   "A memory offer or answer needs the face and the voice of the same person on that turn's own clip, never a token; otherwise the turn is the ordinary one",
+        "A memory offer or answer needs the face and the voice of the same person on that turn's own clip, never a token; otherwise the turn is the ordinary one",
         "Ollama is the only accepted LLM/VLM runtime (ADR-0004), reached only through one transport module",
         "A generic turn names its speaker by face or an observed token (never voice); the identified person gets one in-process session, an unknown speaker suspends it",
-        "One canonical writer stores household facts for every channel; a secret is stored by reference only (who knows it), never its value"
+        "One canonical writer stores household facts for every channel; a secret is stored by reference only (who knows it), never its value",
+        "The seed file loads offline (Plan 0071): dry run by default, the owner's review and SI, one transaction, a replacement only while commissioning and before anything is learned by voice"
       ]
     },
     {

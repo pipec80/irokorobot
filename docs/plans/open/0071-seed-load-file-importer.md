@@ -523,3 +523,45 @@ after that, correcting and forgetting are CM-6. Task 1 touches several files: re
 - **Adopting an existing entity as a child, or two entities with one name:** a conflict; the interviewer loads the children with the file.
 - **Places and `lives_in`, a structured medication schedule, a `beliefs` classification:** later.
 - **A representative importing for the owner:** the `family` profile and legal advice.
+
+## Execution record (2026-10-26)
+
+Executed by Claude Code on branch `feat/0071-seed-file-importer` from `main` at `8992039`, one commit
+per task: Task 1 `2f4df39`, Task 2 `cad2eab`, Task 3 `0ae85df`, Task 4a `dc1d0b1`, Task 4b `fb29f71`,
+Task 5a `57769a0`, Task 5b `5b78f51`, Task 6a `b2b8562`, Task 6b `f43113d`, Task 7 `d953dfa`, a late Task 1 fix `ed1606f`
+(the import-graph guard of Plan 0050 now lets the cognitive core import the stdlib-only
+`server.text_keys`, as ADR 0024 decision 12 decides; the first full gate caught it) and the
+documentation of Task 8. Every code test was observed RED first (a missing module or name; Task 1's
+writer test also on «two rows»); the architecture guards of Tasks 4a and 5a pass on first run by
+nature and their detection tests prove they bite. Baseline `just gate` 4511 passed; branch
+`just gate` 4709 passed (lint, mypy, pyright, tests, audit), run with `MEMORY_ENABLED=false`. `uv.lock` did not change.
+
+**Status is unchanged on purpose:** this plan stays `Ready`/`NOW` in `open/` until Pipec's acceptance
+on a database kept apart ([record](../../evals/0071-seed-import-acceptance.md), pending) and his
+go-ahead to merge; ADR 0024 stays `Proposed` until Plan 0072 closes.
+
+**Decisions taken while executing** (each with what it costs if wrong, in the PR description):
+
+- Task 1: the Plan 0065 test that pinned «idempotence is exact text» was inverted to the folding
+  ADR 0024 decision 12 asks for (completion criterion 2 yields to the ADR here).
+- Task 2: the member models live in `memory/seed_members.py`; `pool_version` is required; an explicit
+  `provided` for a section with no items is refused; children carry `birth_date` or `stated_age` and
+  tastes, pets `species`, `stated_age` and tastes (no allergies for either); a pet's name may not
+  repeat a person's; validators raise closed `ValueError` words (no `pydantic_core` import, which
+  would be a new direct dependency).
+- Task 4a/4b: the acta's counts are the rows of each kind the file holds plus `written`; a first apply
+  without the declaration raises `CommissioningMissingError`; import rows keep the writer's default
+  confidence 0.9.
+- Task 6a: the first apply needs all four declaration options; «Carga cancelada.» exits 1; the probe
+  targets `127.0.0.1:<SERVER_PORT>`.
+- Task 6b: the caregiver contact of the example is an adult child.
+
+**Open:**
+
+- Task 7's `-wal`/`-shm` copy in `just reset-db` could not be exercised: `scripts/scrub_candidates.py`
+  runs first and removes the sidecars. The rest of Task 7 was verified by hand (the scratch database
+  deleted, `data/omnibot.db` unchanged by hash, the default and the `.env` resolution).
+- Deferred minors of the self-review: `memory/seed_import.py` imports `personal_setup` (a command
+  module); `seed_file.py` and `seed_import.py` exceed the 200-line guideline; a lapsed candidate not yet
+  housekept refuses a replacement (fails closed); the report shows the first phone only; an orphan
+  seed entity a face or voice profile refers to stops the cleanup with an `IntegrityError` traceback.
