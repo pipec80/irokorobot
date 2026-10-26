@@ -238,3 +238,23 @@ async def test_a_surviving_entity_with_another_guardianship_is_a_conflict(owner:
         (o.operation.label, o.reason) for o in report.problems
     ]
     assert report.applied is False
+
+
+async def test_a_lapsed_candidate_does_not_refuse_the_replacement(
+    owner: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A candidate past its expiry is no longer live, even before the housekeeping scrubs it."""
+    await _run(owner, full_seed(), replace=False, first=True)
+    monkeypatch.setattr(settings, "memory_candidates_enabled", True)
+    await candidates.insert_candidate(
+        ProposedCandidate(predicate="likes", value_text="el mate", value_key="mate"),
+        subject_person_id=owner,
+        asserted_by_person_id=owner,
+        channel=CandidateChannel.VOICE_CLASSIC,
+        correlation_id=uuid4(),
+        now=datetime(2026, 10, 1, 12, 0, tzinfo=UTC),
+    )
+
+    report = await _run(owner, _changed(), replace=True)
+
+    assert report.applied is True

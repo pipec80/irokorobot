@@ -42,12 +42,11 @@ from server.memory.declarative import (
     is_adult_dependent,
 )
 from server.memory.entity_labels import get_person_label
-from server.memory.owner_credentials import get_active_owner_pin_credential
+from server.memory.owner_credentials import get_ready_owner
 from server.memory.relational_v4 import count_v4_rows
 from server.memory.seed_plan import OWNER_REF, OperationKind
 from server.memory.seed_replace import assert_no_voice_memory, retract_earlier_import
 from server.memory.write_types import ConflictPolicy, WriteChannel
-from server.personal_setup import read_personal_setup_status
 from server.settings import settings
 from server.text_keys import fold_name
 
@@ -168,14 +167,13 @@ async def resolve_ready_owner(expected_name: str) -> int:
         SeedOwnerError: ``owner_not_ready`` when there is no ready owner holding the active PIN,
             ``owner_name_mismatch`` when the stored owner's folded name differs.
     """
-    status = await read_personal_setup_status()
-    credential = await get_active_owner_pin_credential()
-    if not status.personal_security_ready or credential is None:
+    owner = await get_ready_owner()
+    if owner is None:
         raise SeedOwnerError("owner_not_ready")
-    label = await get_person_label(entity_id=credential.person_entity_id)
+    label = await get_person_label(entity_id=owner)
     if label is None or _folded(label.display_name) != _folded(expected_name):
         raise SeedOwnerError("owner_name_mismatch")
-    return credential.person_entity_id
+    return owner
 
 
 def _folded(name: str) -> str:
@@ -407,7 +405,7 @@ async def _transaction_body(
     """Everything one run does inside its transaction; raises ``_RollbackError`` to undo it."""
     before = await count_rows()
     if request.replace:
-        await assert_no_voice_memory()
+        await assert_no_voice_memory(request.now)
         await retract_earlier_import()
     outcomes = await run_operations(
         plan,

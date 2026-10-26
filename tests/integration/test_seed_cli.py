@@ -154,6 +154,7 @@ async def test_a_dry_run_prints_the_database_first_and_writes_nothing(
     assert terminal.lines[0] == f"Base de datos: {prepared.resolve()}"
     assert "Canary Child" in terminal.text
     assert "+56900000001" in terminal.text
+    assert "+56200000002" in terminal.text
     assert terminal.prompts == []
     assert await _count("literal_facts_v4") == 0
     assert await _count("commissioning_records") == 0
@@ -590,3 +591,39 @@ def test_main_joins_a_path_split_by_spaces(
     assert caught.value.code == 0
     assert seen == [path]
     capsys.readouterr()
+
+
+async def test_a_replacement_blocked_by_another_table_is_a_closed_refusal(
+    prepared: Path, tmp_path: Path
+) -> None:
+    """An imported person that another table refers to (here a role) stops the cleanup loudly."""
+    del prepared
+    await _command(
+        _file(tmp_path, full_seed()), _Terminal("SI"), apply=True, commissioning=_details()
+    )
+
+    async def give_a_role() -> None:
+        cursor = await db.get_conn().execute(
+            "SELECT id FROM entities WHERE name = 'Canary Partner'"
+        )
+        row = await cursor.fetchone()
+        await cursor.close()
+        assert row is not None
+        async with db.transaction() as conn:
+            await conn.execute(
+                "INSERT INTO household_role_assignments (person_entity_id, role, reason) "
+                "VALUES (?, 'guest', 'canary')",
+                (int(row[0]),),
+            )
+
+    await _with_db(give_a_role)
+    data = full_seed()
+    del data["partner"]
+    before = await _count("entities")
+    terminal = _Terminal()
+
+    code = await _command(_file(tmp_path, data), terminal, replace=True)
+
+    assert code == 1
+    assert "otra tabla" in terminal.text
+    assert await _count("entities") == before

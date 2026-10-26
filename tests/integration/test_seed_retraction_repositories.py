@@ -164,11 +164,11 @@ async def test_only_live_candidates_are_counted(
     )
     assert stored.candidate_id is not None
 
-    assert await candidates.count_live_candidates() == 1
+    assert await candidates.count_live_candidates(NOW) == 1
 
     await candidates.void_live_candidates(now)
 
-    assert await candidates.count_live_candidates() == 0
+    assert await candidates.count_live_candidates(NOW) == 0
 
 
 async def test_the_section_statuses_of_a_record_are_cleared(owner: int) -> None:

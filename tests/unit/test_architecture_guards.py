@@ -799,3 +799,42 @@ def test_the_import_channel_guard_detects_a_violation() -> None:
         "memory/other.py",
         "routers/leak.py",
     ]
+
+
+# --- memory does not depend on a command (Plan 0071) -----------------------------------------
+# `personal_setup` and `seed_cli` are command-line adapters over memory; the dependency points one
+# way only.
+_COMMAND_MODULES = frozenset({"server.personal_setup", "server.seed_cli"})
+
+
+def _memory_modules_importing_a_command(sources: Mapping[str, str]) -> list[str]:
+    """Modules under `memory/` that import a command module."""
+    return sorted(
+        name
+        for name, text in sources.items()
+        if name.startswith("memory/")
+        and any(
+            (isinstance(node, ast.ImportFrom) and node.module in _COMMAND_MODULES)
+            or (
+                isinstance(node, ast.Import)
+                and any(alias.name in _COMMAND_MODULES for alias in node.names)
+            )
+            for node in ast.walk(ast.parse(text))
+        )
+    )
+
+
+@pytest.mark.unit
+def test_no_memory_module_imports_a_command() -> None:
+    assert _memory_modules_importing_a_command(_sources()) == []
+
+
+@pytest.mark.unit
+def test_the_command_guard_detects_a_violation() -> None:
+    leak = {
+        "memory/leak.py": "from server.personal_setup import read_personal_setup_status\n",
+        "memory/other.py": "import server.seed_cli\n",
+        "personal_setup.py": "from server.memory.declarative import upsert_entity\n",
+    }
+
+    assert _memory_modules_importing_a_command(leak) == ["memory/leak.py", "memory/other.py"]

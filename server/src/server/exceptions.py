@@ -164,6 +164,18 @@ class ReplaceRefusedError(ValueError):
         super().__init__("the robot already learned something by voice: no replacement")
 
 
+class ReplaceBlockedError(ValueError):
+    """Raised when a seed replacement cannot delete an imported person another table refers to.
+
+    A role, a face, a voice or a consent restricts the delete (a table the cleanup does not check
+    on purpose: it fails loudly instead of cascading). The message is fixed.
+    """
+
+    def __init__(self) -> None:
+        """Say only why."""
+        super().__init__("an imported person is referred to by another table: no replacement")
+
+
 class CommissioningError(ValueError):
     """Raised when the commissioning record is in the wrong state for the call.
 

@@ -26,6 +26,7 @@ from server.memory.household_authorization import bootstrap_initial_owner, get_a
 from server.memory.meta import get_flag
 from server.memory.owner_credentials import (
     get_active_owner_pin_credential,
+    get_ready_owner,
     save_owner_pin_credential,
 )
 from server.memory.predicate_registry import PredicateDefinition, resolve_predicate
@@ -152,10 +153,7 @@ async def _confirm_credential(*, owner_entity_id: int, pin: SecretStr) -> None:
 
 async def _owner_security_ready(owner_entity_id: int) -> bool:
     """Reread that this entity is the active owner and holds the active credential."""
-    if await get_active_role(owner_entity_id) is not HouseholdRole.OWNER:
-        return False
-    credential = await get_active_owner_pin_credential()
-    return credential is not None and credential.person_entity_id == owner_entity_id
+    return await get_ready_owner() == owner_entity_id
 
 
 async def _derive_readiness(*, owner_entity_id: int, child_names: tuple[str, ...]) -> bool:

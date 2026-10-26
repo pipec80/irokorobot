@@ -24,6 +24,7 @@ from server.exceptions import (
     BrainMemoryError,
     CommissioningClosedError,
     CommissioningMissingError,
+    ReplaceBlockedError,
     ReplaceRefusedError,
     SeedFileError,
     SeedOwnerError,
@@ -112,7 +113,8 @@ def _describe(outcome: OperationOutcome, names: dict[SeedRef, str]) -> str:
             what = operation.value or ""
         case _:
             terms = operation.attributes
-            what = f"{subject} ({terms.get('role')}) {terms.get('phone')}"
+            phones = " / ".join(str(terms[k]) for k in ("phone", "phone_alt") if terms.get(k))
+            what = f"{subject} ({terms.get('role')}) {phones}"
     reason = f" [{outcome.reason}]" if outcome.reason else ""
     return f"  {_STATUS_WORDS[outcome.status]}{reason}  {operation.label}: {what}"
 
@@ -251,6 +253,10 @@ _REFUSALS: dict[type[Exception], str] = {
         "La primera carga necesita --interviewer, --role, --mode y --disk-encryption."
     ),
     ReplaceRefusedError: "El robot ya aprendió algo por voz: --replace ya no está disponible.",
+    ReplaceBlockedError: (
+        "Una persona importada antes tiene datos en otra tabla (un rol, una cara, una voz o un "
+        "consentimiento): el reemplazo no la puede borrar. No se escribió nada."
+    ),
 }
 _OWNER_REFUSALS = {
     "owner_name_mismatch": (

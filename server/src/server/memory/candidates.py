@@ -721,14 +721,20 @@ async def reset_for_startup(now: datetime, *, enabled: bool) -> None:
     await checkpoint_after_scrub(max(scrubbed, 1))
 
 
-async def count_live_candidates() -> int:
-    """Return how many candidates still hold a value (``proposed`` or ``offered``).
+async def count_live_candidates(now: str) -> int:
+    """Return how many candidates are live: ``proposed`` or ``offered`` and not yet lapsed.
 
-    A resolved candidate has been erased (ADR 0021), so only a live one means the robot learned
-    something by voice that a replacement could contradict (Plan 0071).
+    A resolved candidate has been erased (ADR 0021), and a lapsed one is expired even before the
+    housekeeping scrubs it, so only a live one means the robot learned something by voice that a
+    replacement could contradict (Plan 0071).
+
+    Args:
+        now: The instant to compare with, as fixed-width UTC ISO 8601 (``iso_utc``).
     """
     cursor = await db.get_conn().execute(
-        "SELECT COUNT(*) FROM memory_candidates WHERE status IN ('proposed', 'offered')"
+        "SELECT COUNT(*) FROM memory_candidates "
+        "WHERE status IN ('proposed', 'offered') AND expires_at > ?",
+        (now,),
     )
     row = await cursor.fetchone()
     await cursor.close()
