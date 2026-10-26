@@ -167,6 +167,14 @@ class CommissioningOpenError(CommissioningError):
         super().__init__("a commissioning is already open")
 
 
+class CommissioningMissingError(CommissioningError):
+    """Raised when the first import is applied without the interviewer's declaration."""
+
+    def __init__(self) -> None:
+        """Say only what is missing."""
+        super().__init__("the first import needs the interviewer, the role and the mode")
+
+
 class CommissioningClosedError(CommissioningError):
     """Raised when a commissioning is written after it was closed, or opened after one closed."""
 

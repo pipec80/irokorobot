@@ -5,7 +5,7 @@ The owner has a PIN and no children. Every name is an invented canary.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pydantic import SecretStr
 import pytest
@@ -56,7 +56,8 @@ def plan_of(data: Toml) -> SeedPlan:
     return build_plan(parse_seed_text(to_toml(data)))
 
 
-async def scalar(sql: str, *params: object) -> object:
+# Any: a test query's column is whatever SQLite stored there.
+async def scalar(sql: str, *params: object) -> Any:
     """Return the first column of the first row of a test query."""
     cursor = await db.get_conn().execute(sql, params)
     row = await cursor.fetchone()
