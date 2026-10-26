@@ -7,7 +7,9 @@ is answered with exactly ``SI``. Every name, phone and value is an invented cana
 
 from __future__ import annotations
 
+import hashlib
 import sqlite3
+import subprocess
 import sys
 from typing import TYPE_CHECKING
 
@@ -339,6 +341,62 @@ async def test_an_old_schema_is_refused_and_not_migrated(prepared: Path, tmp_pat
     assert "just setup-personal status" in terminal.text
     with sqlite3.connect(prepared) as raw:
         assert raw.execute("PRAGMA user_version").fetchone()[0] == 10
+
+
+# A process that writes in WAL mode and exits without closing leaves its committed frames in the
+# -wal file; the next read-write connection to close would fold them into the main file.
+_CRASHED_WRITER = """
+import os, sqlite3, sys
+connection = sqlite3.connect(sys.argv[1])
+connection.execute("PRAGMA wal_autocheckpoint = 0")
+connection.execute("PRAGMA user_version = 10")
+connection.execute("CREATE TABLE IF NOT EXISTS canary_pending (x INTEGER)")
+connection.execute("INSERT INTO canary_pending VALUES (1)")
+connection.commit()
+os._exit(0)
+"""
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+async def test_an_outdated_database_is_refused_without_touching_its_file(
+    prepared: Path, tmp_path: Path
+) -> None:
+    """The refusal reads the version read-only: the main file and its log stay byte for byte."""
+    subprocess.run(  # noqa: S603 — this interpreter and a literal script, no outside input
+        [sys.executable, "-c", _CRASHED_WRITER, str(prepared)], check=True, timeout=60
+    )
+    wal = prepared.with_name(prepared.name + "-wal")
+    assert wal.stat().st_size > 0
+    before = (_sha256(prepared), _sha256(wal))
+    terminal = _Terminal()
+
+    code = await _command(_file(tmp_path, full_seed()), terminal)
+
+    assert code == 1
+    assert "just setup-personal status" in terminal.text
+    assert (_sha256(prepared), _sha256(wal)) == before
+
+
+async def test_a_file_with_errors_is_refused_before_the_database_is_opened(
+    prepared: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    del prepared
+
+    async def never() -> None:
+        raise AssertionError("the database was opened")
+
+    monkeypatch.setattr(db, "open_db", never)
+    data = full_seed()
+    data["owner"]["blood_type"] = "Z"
+    terminal = _Terminal()
+
+    code = await _command(_file(tmp_path, data), terminal)
+
+    assert code == 1
+    assert "owner.blood_type: invalid_value" in terminal.text
 
 
 async def test_a_database_without_an_owner_is_refused(

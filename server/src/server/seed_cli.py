@@ -14,6 +14,7 @@ import asyncio
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+import sqlite3
 import sys
 
 import httpx
@@ -37,7 +38,7 @@ from server.memory.commissioning import (
     SectionStatus,
     get_open_commissioning,
 )
-from server.memory.seed_file import json_schema_text, load_seed_file
+from server.memory.seed_file import LoadedSeed, json_schema_text, load_seed_file
 from server.memory.seed_import import (
     OperationOutcome,
     OperationStatus,
@@ -131,11 +132,30 @@ def _print_report(report: SeedReport, names: dict[SeedRef, str], write_text: Wri
     )
 
 
-async def _schema_is_current() -> bool:
-    cursor = await db.get_conn().execute("PRAGMA user_version")
-    row = await cursor.fetchone()
-    await cursor.close()
-    return row is not None and int(row[0]) == db.latest_schema_version()
+def _schema_version(database: Path) -> int:
+    """Read ``PRAGMA user_version`` through a read-only connection.
+
+    A read-only connection never checkpoints the write-ahead log, so a refusal leaves the file
+    byte for byte as it was (a read-write open and close would fold the log into it).
+    """
+    connection = sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True)
+    try:
+        row = connection.execute("PRAGMA user_version").fetchone()
+    finally:
+        connection.close()
+    return 0 if row is None else int(row[0])
+
+
+async def _check_schema(database: Path) -> None:
+    """Refuse a database behind the latest schema before it is opened for writing."""
+    try:
+        version = await asyncio.to_thread(_schema_version, database)
+    except sqlite3.Error as exc:
+        raise _RefusedError("No se pudo leer la base de datos.") from exc
+    if version != db.latest_schema_version():
+        raise _RefusedError(
+            "La base de datos no está en la última versión: revisa `just setup-personal status`."
+        )
 
 
 def _check_request(path: Path, *, apply: bool, commissioning: CommissioningInput | None) -> None:
@@ -172,7 +192,7 @@ async def _review_mode(commissioning: CommissioningInput | None) -> Confirmation
 
 
 async def _load_session(
-    path: Path,
+    loaded: LoadedSeed,
     *,
     apply: bool,
     replace: bool,
@@ -182,12 +202,7 @@ async def _load_session(
     now: str,
 ) -> int:
     """Everything the command does once the database is open."""
-    if not await _schema_is_current():
-        raise _RefusedError(
-            "La base de datos no está en la última versión: revisa `just setup-personal status`."
-        )
     await check_db_available()
-    loaded = load_seed_file(path)
     owner = await resolve_ready_owner(loaded.seed.owner.name)
     mode = await _review_mode(commissioning) if apply else None
     plan = build_plan(loaded.seed)
@@ -285,10 +300,12 @@ async def run_seed_command(
         if not database.is_file():
             raise _RefusedError("No existe la base de datos: créala con `just setup-personal`.")
         _warn_about_the_place(path, write_text)
+        loaded = load_seed_file(path)
+        await _check_schema(database)
         await db.open_db()
         try:
             code = await _load_session(
-                path,
+                loaded,
                 apply=apply,
                 replace=replace,
                 commissioning=commissioning,
