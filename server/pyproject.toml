@@ -33,6 +33,7 @@ dependencies = [
 [project.scripts]
 serve = "server.main:main"
 personal-setup = "server.personal_setup:main"
+seed-import = "server.seed_cli:main"
 
 [project.optional-dependencies]
 cuda = [

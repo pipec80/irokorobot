@@ -122,6 +122,12 @@ probe-stt *ARGS:
 setup-personal *ARGS:
     uv run --env-file .env --package server personal-setup {{ARGS}}
 
+# Carga el expediente del hogar (Plan 0071): prueba en seco por defecto, --apply tras la
+# revision de la persona titular. Requiere run-server detenido y una base ya creada.
+seed-import *ARGS:
+    @echo "seed-import: dry run unless --apply; the server must be stopped"
+    uv run --env-file .env --package server seed-import {{ARGS}}
+
 # Onboarding unificado: identidad+hijos+PIN, despues la cara (Plan 0029). Re-ejecutable.
 onboard *ARGS:
     uv run --env-file .env python scripts/onboard.py {{ARGS}}

@@ -176,6 +176,15 @@ def get_conn() -> aiosqlite.Connection:
     return _conn
 
 
+def latest_schema_version() -> int:
+    """Return the schema version the last migration brings a database to.
+
+    A tool that must not migrate (the seed importer, Plan 0071) compares it with the database's
+    ``PRAGMA user_version`` and refuses a database that is behind.
+    """
+    return _MIGRATIONS[-1][0]
+
+
 def is_open() -> bool:
     """Return whether the database connection is currently open (Plan 0040).
 
