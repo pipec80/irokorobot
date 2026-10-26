@@ -17,7 +17,6 @@ import unicodedata
 
 from server.cognition.authorization import DataSensitivity, DataVisibility
 from server.cognition.identity import ActivePersonContext, ActivePersonStatus
-from server.cognition.intent_resolution import normalize_spanish
 from server.memory.candidate_types import (
     CandidateReason,
     GateMatch,
@@ -26,12 +25,12 @@ from server.memory.candidate_types import (
 )
 from server.memory.lexicon import (
     ALLOWED_INFINITIVES,
-    ARTICLES,
     CANDIDATE_TOPICS,
     candidate_denied_words,
 )
 from server.memory.predicate_registry import PredicateDefinition, resolve_predicate
 from server.settings import settings
+from server.text_keys import ARTICLES, comparison_key, normalize_spanish
 
 __all__ = ["CANDIDATE_SENSITIVITY", "CANDIDATE_VISIBILITY", "classify", "comparison_key"]
 
@@ -54,21 +53,6 @@ _POSSESSIVES = frozenset(
 _COORDINATORS = frozenset({"y", "e", "ni", "o", "u"})
 _URL_WORDS = frozenset({"www", "http", "https", "com", "net", "org"})
 _DENIED = candidate_denied_words() | _POSSESSIVES | _URL_WORDS
-
-
-def comparison_key(phrase: str) -> str:
-    """Return the key two spoken phrases are compared by: folded, without a leading article.
-
-    Args:
-        phrase: A spoken object ("El Café").
-
-    Returns:
-        The folded words without leading articles ("cafe"); empty when nothing remains.
-    """
-    words = normalize_spanish(phrase).split()
-    while words and words[0] in ARTICLES:
-        words.pop(0)
-    return " ".join(words)
 
 
 def _shape_refusal(phrase: str, words: list[str]) -> CandidateReason | None:

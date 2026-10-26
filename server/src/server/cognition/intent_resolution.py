@@ -9,12 +9,11 @@ controller remains the sole owner of policy, tools, audit, and generation.
 from collections.abc import Callable
 from enum import StrEnum
 from itertools import pairwise
-import re
-import unicodedata
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from server.cognition.response_plan import InformationNeed
+from server.text_keys import normalize_spanish
 
 __all__ = [
     "IntentMatch",
@@ -59,8 +58,6 @@ class MemoryAnswer(BaseModel):
     accept: bool
     phrase: str = Field(repr=False)  # a value: never printed by a stray ``%r``
 
-
-_NON_WORD_RUN = re.compile(r"[^\w]+", re.UNICODE)
 
 # The closed answer grammar (ADR 0021 decision 9, Plan 0066): a closed verb, with or without the
 # value. It is closed on purpose, so a bare «sí» promotes nothing. A long verb («autorizo»,
@@ -608,25 +605,3 @@ _RULES: tuple[Callable[[str], IntentResolution | None], ...] = (
     _scene_description_rule,
     _memory_answer_rule,
 )
-
-
-def normalize_spanish(message: str) -> str:
-    """Fold accents/case and collapse punctuation for closed Spanish matching.
-
-    NFD-decomposes, strips combining accents, casefolds, replaces each
-    non-word run with one space, then trims — so surrounding punctuation and
-    inconsistent whitespace never affect classification. Public because the
-    memory layer's closed grammars (ADR 0021) fold text the same way; it is the one
-    folding function they share rather than another copy.
-
-    Args:
-        message: Raw transcript or chat text.
-
-    Returns:
-        The folded text: lower case, no accents, words separated by single spaces.
-    """
-    decomposed = unicodedata.normalize("NFD", message)
-    stripped = "".join(
-        character for character in decomposed if not unicodedata.combining(character)
-    ).casefold()
-    return _NON_WORD_RUN.sub(" ", stripped).strip()

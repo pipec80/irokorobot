@@ -29,8 +29,9 @@ classified, read or logged, with the repository's closed error; no value ever re
 an exception message. An exact repeat of an active value is
 idempotent only for the **same text and the same classification**: a stored row labelled
 otherwise (the local setup and the legacy migration store the registry defaults) is refused as
-``classification_conflict`` instead of being reported as written. Equal text is compared exactly;
-folding case and articles, as ``promote`` does, is a Step 0 decision.
+``classification_conflict`` instead of being reported as written. A ``text`` value is compared by
+its key (folded, without a leading article; ADR 0024 decision 12), so a spoken taste and the same
+imported taste are one row; any other format, and a text whose key is empty, compares exactly.
 """
 
 from __future__ import annotations
@@ -45,6 +46,7 @@ from server.memory.care_contacts import has_active_contact
 from server.memory.declarative import is_adult_dependent
 from server.memory.household_authorization import get_active_role
 from server.memory.predicate_registry import (
+    LiteralFormat,
     PredicateCardinality,
     PredicateDefinition,
     PredicateKind,
@@ -61,6 +63,7 @@ from server.memory.relational_v4 import (
     refuse_unstorable_value,
 )
 from server.memory.write_types import ConflictPolicy, WriteChannel, WriteRefusal, refusal_error
+from server.text_keys import comparison_key
 
 if TYPE_CHECKING:
     from server.exceptions import WriteRefusedError
@@ -497,6 +500,19 @@ async def write_literal(
     return fact
 
 
+def _same_value(definition: PredicateDefinition, stored: str, offered: str) -> bool:
+    """Return whether two normalized values of one predicate are the same value.
+
+    A ``text`` value is compared by its key, so «El Café» and «café» are one; a key that comes out
+    empty (an article or punctuation alone) and every other format compare exactly.
+    """
+    if definition.literal_format is LiteralFormat.TEXT:
+        stored_key, offered_key = comparison_key(stored), comparison_key(offered)
+        if stored_key and offered_key:
+            return stored_key == offered_key
+    return stored == offered
+
+
 async def _write_literal(
     *,
     owner_entity_id: int,
@@ -519,7 +535,9 @@ async def _write_literal(
         active = await get_active_literal_facts(
             subject_entity_id=subject_entity_id, definition=definition
         )
-        present = next((fact for fact in active if fact.value_text == normalized), None)
+        present = next(
+            (fact for fact in active if _same_value(definition, fact.value_text, normalized)), None
+        )
         if present is not None:
             _require_same_classification(
                 present.visibility,

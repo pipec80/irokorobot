@@ -14,6 +14,8 @@ from __future__ import annotations
 import re
 import unicodedata
 
+from server import text_keys
+
 # Common Spanish conversation words (4+ chars) that are never entity names.
 # Without this filter every greeting fires LIKE queries against `entities`.
 STOPWORDS_ES = frozenset(
@@ -239,8 +241,8 @@ NEGATORS = frozenset({"no", "ya", "nunca", "jamas", "tampoco", "ni"})
 #: A word that opens a clause instead of naming a thing ("me gusta que ...", "prefiero que ...").
 CLAUSE_OPENERS = frozenset({"que", "cuando", "si", "como", "donde", "porque", "aunque", "para"})
 
-#: Articles a spoken object may begin with; the comparison key drops them.
-ARTICLES = frozenset({"el", "la", "los", "las", "un", "una", "unos", "unas", "lo"})
+#: Articles a spoken object may begin with; the comparison key drops them (``text_keys``).
+ARTICLES = text_keys.ARTICLES
 
 #: A bare infinitive object ("me gusta cantar") is accepted only from this list; "vivir",
 #: "hablar" or "mudarme" describe a life, not a taste.

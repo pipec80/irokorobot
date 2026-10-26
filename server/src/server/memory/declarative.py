@@ -12,12 +12,12 @@ from enum import StrEnum
 import json
 import logging
 from typing import TYPE_CHECKING, Any
-import unicodedata
 
 from server import db
 from server.db import get_conn
 from server.exceptions import AmbiguousEntityError
 from server.schemas import EntityType, EntityWithFacts, FactRecord
+from server.text_keys import fold_name
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -40,17 +40,6 @@ class Guardianship(StrEnum):
     ADULT = "adult"
 
 
-def _fold_name(name: str) -> str:
-    """Return an accent- and case-insensitive form of *name* for dedup.
-
-    Whisper drops accents unpredictably ("Joaquín" → "Joaquin"); without
-    folding, each variant becomes a separate entity and the dynamic
-    hotwords then reinforce the misspelled one.
-    """
-    decomposed = unicodedata.normalize("NFKD", name)
-    return "".join(c for c in decomposed if not unicodedata.combining(c)).casefold()
-
-
 async def _find_entity_folded(name: str, type: EntityType) -> tuple[int, str, str, str] | None:
     """Find an entity of *type* whose folded name matches *name*.
 
@@ -71,9 +60,9 @@ async def _find_entity_folded(name: str, type: EntityType) -> tuple[int, str, st
     )
     rows = await cur.fetchall()
     await cur.close()
-    target = _fold_name(name)
+    target = fold_name(name)
     for r in rows:
-        if _fold_name(str(r[1])) == target:
+        if fold_name(str(r[1])) == target:
             return (int(r[0]), str(r[1]), str(r[2]), str(r[3]))
     return None
 

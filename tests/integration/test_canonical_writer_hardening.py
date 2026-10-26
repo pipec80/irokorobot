@@ -499,15 +499,15 @@ async def test_the_household_reader_serves_a_childs_and_a_pets_stated_age(home: 
     assert (await read(home.owner, 3))[0] is not KnowledgeStatus.KNOWN
 
 
-# --- idempotence is exact text, by design -----------------------------------------------------
+# --- idempotence compares a text by its key (ADR 0024 decision 12, Plan 0071) ------------------
 
 
-async def test_idempotence_is_exact_text_not_folded(home: _Home) -> None:
-    """A spoken and an imported spelling differing by case are two rows: folding is not the writer's."""
+async def test_idempotence_folds_a_text_by_its_key(home: _Home) -> None:
+    """A spoken and an imported spelling differing by case are one row: the writer folds text."""
     spoken = await _literal(home, home.child, "likes", "el tren", WriteChannel.VOICE_STREAM)
     imported = await _literal(home, home.child, "likes", "El tren")
 
-    assert spoken.id != imported.id
+    assert spoken.id == imported.id
 
 
 # --- logs: ids and closed fields only, and "written" waits for the commit ---------------------
