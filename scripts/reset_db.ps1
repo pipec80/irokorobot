@@ -73,6 +73,27 @@ function Resolve-DbPath {
     return [System.IO.Path]::GetFullPath($combined)
 }
 
+function Copy-DbWithSidecars {
+    <#
+    .SYNOPSIS
+        Copies the database and, when they exist, its -wal and -shm sidecars.
+    .DESCRIPTION
+        The write-ahead log may hold committed pages the main file does not have yet,
+        and the sidecars are deleted after the backup, so they travel with it. After
+        scripts/scrub_candidates.py the log is normally folded and gone already; the
+        copy is the defence for the case it is not.
+    #>
+    param(
+        [string]$DbPath,
+        [string]$BackupPath
+    )
+    Copy-Item $DbPath $BackupPath
+    foreach ($suffix in @("-wal", "-shm")) {
+        $sidecar = "$DbPath$suffix"
+        if (Test-Path $sidecar) { Copy-Item $sidecar "$BackupPath$suffix" }
+    }
+}
+
 $resolvedPort = Resolve-ServerPort -ParamPort $Port -EnvFilePath $envFilePath
 $healthUrl = "http://localhost:$resolvedPort/health"
 
@@ -115,13 +136,7 @@ New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
 $stamp = Get-Date -Format "yyyy-MM-dd_HHmmss"
 $stem = [System.IO.Path]::GetFileNameWithoutExtension($dbPath)
 $backupPath = Join-Path $backupDir "${stem}_${stamp}_pre-reset.db"
-Copy-Item $dbPath $backupPath
-# The write-ahead log may hold committed pages the main file does not have yet: copy the
-# sidecars with it, because they are deleted below.
-foreach ($suffix in @("-wal", "-shm")) {
-    $sidecar = "$dbPath$suffix"
-    if (Test-Path $sidecar) { Copy-Item $sidecar "$backupPath$suffix" }
-}
+Copy-DbWithSidecars -DbPath $dbPath -BackupPath $backupPath
 Write-Host "Esta copia contiene datos biometricos y de salud. El sistema no la borra: anota su ruta y la fecha en que la destruiras."
 
 # 3. Delete the DB and its WAL/SHM sidecars.
