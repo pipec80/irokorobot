@@ -12,7 +12,6 @@ from collections.abc import Callable
 import getpass
 import logging
 import sys
-import unicodedata
 
 from pydantic import BaseModel, ConfigDict, SecretStr
 
@@ -27,10 +26,12 @@ from server.memory.household_authorization import bootstrap_initial_owner, get_a
 from server.memory.meta import get_flag
 from server.memory.owner_credentials import (
     get_active_owner_pin_credential,
+    get_ready_owner,
     save_owner_pin_credential,
 )
 from server.memory.predicate_registry import PredicateDefinition, resolve_predicate
 from server.memory.relational_v4 import assert_entity_relation, get_active_entity_relations
+from server.text_keys import fold_name
 
 __all__ = [
     "PersonalSetupInput",
@@ -61,12 +62,6 @@ def _required_predicate(alias: str) -> PredicateDefinition:
 
 
 _CHILD_OF = _required_predicate("child_of")
-
-
-def _fold_name(name: str) -> str:
-    """Fold a name to accent- and case-insensitive form for comparison."""
-    decomposed = unicodedata.normalize("NFKD", name)
-    return "".join(c for c in decomposed if not unicodedata.combining(c)).casefold()
 
 
 class PersonalSetupInput(BaseModel):
@@ -102,7 +97,7 @@ def _validate_input(data: PersonalSetupInput) -> None:
     if any(not name.strip() for name in data.child_names):
         raise ValueError("child_names must not contain a blank name")
 
-    folded_names = [_fold_name(name) for name in data.child_names]
+    folded_names = [fold_name(name) for name in data.child_names]
     if len(set(folded_names)) != len(folded_names):
         raise ValueError("child_names must not contain a duplicate child name")
 
@@ -158,10 +153,7 @@ async def _confirm_credential(*, owner_entity_id: int, pin: SecretStr) -> None:
 
 async def _owner_security_ready(owner_entity_id: int) -> bool:
     """Reread that this entity is the active owner and holds the active credential."""
-    if await get_active_role(owner_entity_id) is not HouseholdRole.OWNER:
-        return False
-    credential = await get_active_owner_pin_credential()
-    return credential is not None and credential.person_entity_id == owner_entity_id
+    return await get_ready_owner() == owner_entity_id
 
 
 async def _derive_readiness(*, owner_entity_id: int, child_names: tuple[str, ...]) -> bool:
@@ -178,13 +170,13 @@ async def _derive_readiness(*, owner_entity_id: int, child_names: tuple[str, ...
     relations = await get_active_entity_relations(
         definition=_CHILD_OF, target_entity_id=owner_entity_id
     )
-    expected_names = {_fold_name(name) for name in child_names}
+    expected_names = {fold_name(name) for name in child_names}
     active_labels: set[str] = set()
     for relation in relations:
         label = await get_person_label(entity_id=relation.source_entity_id)
         if label is None:
             return False
-        active_labels.add(_fold_name(label.display_name))
+        active_labels.add(fold_name(label.display_name))
     return expected_names <= active_labels
 
 

@@ -1,10 +1,12 @@
 # 0071 — Step 0, second plan: the file importer of the commissioning
 
-> **Status:** `Ready` / `NOW` (written 2026-10-23, revised the same day after the second review; promoted by
-> Pipec on 2026-10-26 after confirming D-1 to D-8 below). [Plan 0070](../completed/0070-seed-load-data-pool-storage.md)
+> **Status:** `Closed` 2026-10-26: executed, accepted by Pipec on a database kept apart
+> ([record](../../evals/0071-seed-import-acceptance.md)) and closed with nothing open (see the execution
+> record at the end). Written 2026-10-23, revised the same day after the second review; promoted by
+> Pipec on 2026-10-26 after confirming D-1 to D-8 below. [Plan 0070](0070-seed-load-data-pool-storage.md)
 > **closed on 2026-10-23**, so nothing blocks it; Task 0 re-audits it against the code Plan 0070 merged before
 > any other work. It implements [ADR 0024](../../adr/0024-seed-load-senses-secrets-and-channels.md)
-> (`Proposed`) decisions 6 to 8, 11, 12 and 13; the ADR becomes `Accepted` when [Plan 0072](0072-commissioning-session.md)
+> (`Proposed`) decisions 6 to 8, 11, 12 and 13; the ADR becomes `Accepted` when [Plan 0072](../open/0072-commissioning-session.md)
 > closes. Written for an executor who has not seen this repository.
 
 > **For agentic workers:** if the status above does not say `Ready`, stop. REQUIRED SUB-SKILLS:
@@ -36,7 +38,7 @@ command, an example file that is also the questionnaire, a guard, and a reset sc
 used synchronously in the command), pytest. **No new dependency, no migration, no new setting.**
 
 **Spec:** ADR 0024 decisions 6 to 8 and 11 to 13, [`seed-data-pool.md`](../../architecture/seed-data-pool.md),
-[Plan 0070](../completed/0070-seed-load-data-pool-storage.md) (the interfaces it produced).
+[Plan 0070](0070-seed-load-data-pool-storage.md) (the interfaces it produced).
 
 ## Decisions
 
@@ -181,7 +183,7 @@ The inputs the tasks' main tests would miss; each line has its test in the task 
 - **The plan of operations is the one contract** for entering and changing data (ADR 0025 decision 11): the file, the
   command-line CRUD of Plan 0073, a future form and a future inbox of changes all produce `SeedOperation`s and the same applier
   writes them; no front end writes SQL or calls a writer by itself.
-- The constraints of [Plan 0070](../completed/0070-seed-load-data-pool-storage.md) apply unchanged (rules, canaries, the writer
+- The constraints of [Plan 0070](0070-seed-load-data-pool-storage.md) apply unchanged (rules, canaries, the writer
   assigns the classification, commit titles, ruff and types). Invented phones such as `+56900000001`.
 - Pydantic errors keep the failing input in `__cause__`: re-raise `SeedFileError` **`from None`** with only the field
   path and the error type. Sensitive fields use `Field(repr=False)`. No traceback is printed.
@@ -516,10 +518,59 @@ after that, correcting and forgetting are CM-6. Task 1 touches several files: re
 ## Not here, and why
 
 - **Closing the commissioning from a command, enrolling face and voice in one flow, the voice session, the readiness report, the acta file, the baseline
-  backup:** [Plan 0072](0072-commissioning-session.md). Until then the window stays open and `--replace` stays available.
+  backup:** [Plan 0072](../open/0072-commissioning-session.md). Until then the window stays open and `--replace` stays available.
 - **Reading the loaded data by voice or by an alert:** CM-5 and the care ADR.
 - **The amendment path for contacts and medications after the closing:** a plan before the care capabilities (ADR 0024 decision 8).
 - **The interview's interface and the 107-question catalogue:** a later Step 0 plan.
 - **Adopting an existing entity as a child, or two entities with one name:** a conflict; the interviewer loads the children with the file.
 - **Places and `lives_in`, a structured medication schedule, a `beliefs` classification:** later.
 - **A representative importing for the owner:** the `family` profile and legal advice.
+
+## Execution record (2026-10-26)
+
+Executed by Claude Code on branch `feat/0071-seed-file-importer` from `main` at `8992039`, one commit
+per task: Task 1 `2f4df39`, Task 2 `cad2eab`, Task 3 `0ae85df`, Task 4a `dc1d0b1`, Task 4b `fb29f71`,
+Task 5a `57769a0`, Task 5b `5b78f51`, Task 6a `b2b8562`, Task 6b `f43113d`, Task 7 `d953dfa`, a late Task 1 fix `ed1606f`
+(the import-graph guard of Plan 0050 now lets the cognitive core import the stdlib-only
+`server.text_keys`, as ADR 0024 decision 12 decides; the first full gate caught it) and the
+documentation of Task 8. Every code test was observed RED first (a missing module or name; Task 1's
+writer test also on «two rows»); the architecture guards of Tasks 4a and 5a pass on first run by
+nature and their detection tests prove they bite. Baseline `just gate` 4511 passed; branch
+`just gate` 4709 passed (lint, mypy, pyright, tests, audit), run with `MEMORY_ENABLED=false`. `uv.lock` did not change.
+
+**Accepted** by Pipec on 2026-10-26 on a database kept apart ([record](../../evals/0071-seed-import-acceptance.md)):
+steps 1 to 8, 10 and 11 pass, the optional voice question was not run. Pipec asked that nothing stay
+open, so the two findings of the run and every minor of the self-review were fixed on the branch
+(below) before the plan was moved to `completed/`. ADR 0024 stays `Proposed` until Plan 0072 closes.
+
+**Decisions taken while executing** (each with what it costs if wrong, in the PR description):
+
+- Task 1: the Plan 0065 test that pinned «idempotence is exact text» was inverted to the folding
+  ADR 0024 decision 12 asks for (completion criterion 2 yields to the ADR here).
+- Task 2: the member models live in `memory/seed_members.py`; `pool_version` is required; an explicit
+  `provided` for a section with no items is refused; children carry `birth_date` or `stated_age` and
+  tastes, pets `species`, `stated_age` and tastes (no allergies for either); a pet's name may not
+  repeat a person's; validators raise closed `ValueError` words (no `pydantic_core` import, which
+  would be a new direct dependency).
+- Task 4a/4b: the acta's counts are the rows of each kind the file holds plus `written`; a first apply
+  without the declaration raises `CommissioningMissingError`; import rows keep the writer's default
+  confidence 0.9.
+- Task 6a: the first apply needs all four declaration options; «Carga cancelada.» exits 1; the probe
+  targets `127.0.0.1:<SERVER_PORT>`.
+- Task 6b: the caregiver contact of the example is an adult child.
+
+**Closed after the acceptance (2026-10-26), each RED first:**
+
+- `0ed2302`: an outdated database is refused through a read-only connection and the file is validated
+  first, so a refusal never checkpoints the write-ahead log into the file (the acceptance run's
+  finding 1; a test keeps the main file and the log byte for byte).
+- `ed0713c`: the report shows a contact's second phone; a replacement blocked by another table is a
+  closed `ReplaceBlockedError`, rolled back, instead of an `IntegrityError` traceback; a lapsed
+  candidate is not live; the rule "the personal setup is ready" lives once in
+  `owner_credentials.get_ready_owner` and no memory module imports a command (a guard).
+- `ec97762`: the database resolution and the sidecar copy of `reset_db.ps1` are tested by parsing the
+  script and running only those two functions (the acceptance run's finding 2).
+- `fee6d92`: `run_seed` moved to `memory/seed_run.py` (a second responsibility), so `seed_import.py`
+  keeps the applier. `seed_file.py` stays at about 320 lines: one responsibility, reading and
+  validating the file, and the repository's rule is not to split for size alone.
+- Final `just gate`: 4720 passed, run with `MEMORY_ENABLED=false`.

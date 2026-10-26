@@ -335,6 +335,10 @@ reviews and left on purpose):
 
 - [Plan 0065](../plans/completed/0065-cm3b-a-channel-neutral-writer-core.md) — tranche A, the writer
   core (closed 2026-10-22).
+- [Plan 0071](../plans/completed/0071-seed-load-file-importer.md) — the Step 0 import, the writer's
+  second caller (`import_assisted`, closed 2026-10-26); since it, the writer compares a `text`
+  value by its key (ADR 0024 decision 12). Obligation 4 above (`db.transaction()` is not reentrant)
+  still stands: the importer passes `manage_transaction=False` everywhere.
 - Tranche B of CM-3b — after Step 0 (spoken capture, reported facts, disclosure behaviour,
   perceptual candidates, benchmark restart seam).
 - The next free ADR number is 0024.

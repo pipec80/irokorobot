@@ -303,6 +303,22 @@ membership. The record also keeps a closed inventory of identity modalities, `pi
 enrolment and consent, and an ADR that sets its assurance). Face and voice remain evidence, never
 authorization.
 
+**The level of each channel and the importer's bypass (Plan 0071, ADR 0024 decisions 7 and 11).**
+The voice channels authorize by the face **and** the voice of the same person on the turn's own
+clip, never a token, through a spoken offer and an explicit spoken answer. The import channels
+authorize by local administration: whoever runs `just seed-import` on the server's machine with the
+server stopped (the command probes `/health` once and refuses a server that answers, and refuses a
+locked database), after a dry run, the owner's review and the typed word `SI`. The importer
+**bypasses the policy, the audit-before-effect rule and the `memory_enabled` switch on purpose**:
+it is an administration act, not a conversation, and what replaces them is the commissioning record
+(who interviewed, the confirmation mode, the file's hash, the counts, each section's status) and one
+log line with counts only. It never creates the owner (the owner and the PIN must exist and the
+owner's name in the file must fold to the stored one). Only `memory/write_types.py` and
+`memory/seed_import.py` may name an import channel (an architecture guard). The classification and
+the reads do not change with the channel. Whoever can run commands on the server can write as the
+owner; that was already true, and the alternatives (the PIN, the PIN plus the face) are revisited
+when a second adult is enrolled or the server is shared.
+
 The PIN is optional and administrative: an optional `strong` factor — consulted only on a
 turn the owner's face did not resolve, never once the face matched — and the credential of
 local administration. When face or voice fail, recovery is local administration on the

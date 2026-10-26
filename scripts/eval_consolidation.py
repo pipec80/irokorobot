@@ -40,9 +40,9 @@ from typing import TYPE_CHECKING, Any
 import httpx
 from server.exceptions import LLMError
 from server.memory.consolidation import _extract_via_ollama
-from server.memory.declarative import _fold_name
 from server.memory.normalize import normalize_extraction
 from server.settings import settings
+from server.text_keys import fold_name
 import yaml
 
 if TYPE_CHECKING:
@@ -71,9 +71,9 @@ def _value_matches(predicted: str, expected: str | list[str]) -> bool:
     Folded (case/accent-insensitive) equality or containment either way,
     so "el 12 de marzo de 1980" matches expected "12 de marzo de 1980".
     """
-    folded = _fold_name(str(predicted))
+    folded = fold_name(str(predicted))
     for alt in _as_list(expected):
-        folded_alt = _fold_name(str(alt))
+        folded_alt = fold_name(str(alt))
         if folded == folded_alt or folded_alt in folded or folded in folded_alt:
             return True
     return False
@@ -82,7 +82,7 @@ def _value_matches(predicted: str, expected: str | list[str]) -> bool:
 def _fact_matches(predicted: ExtractedFact, expected: dict[str, Any]) -> bool:
     """True when a predicted ExtractedFact satisfies an expected triple."""
     return (
-        _fold_name(predicted.predicate) == _fold_name(str(expected["predicate"]))
+        fold_name(predicted.predicate) == fold_name(str(expected["predicate"]))
         and _value_matches(predicted.subject, expected["subject"])
         and _value_matches(predicted.object, expected["object"])
     )
@@ -160,10 +160,10 @@ async def extract_case_items(
     raw = await _extract_via_ollama(client, user_text, assistant_text)
     extraction = normalize_extraction(raw, user_text=user_text)
     entity_keys = [
-        f"entity|{_fold_name(entity.name)}|{entity.type}" for entity in extraction.entities
+        f"entity|{fold_name(entity.name)}|{entity.type}" for entity in extraction.entities
     ]
     fact_keys = [
-        f"fact|{_fold_name(fact.subject)}|{fact.predicate}|{_fold_name(fact.object)}"
+        f"fact|{fold_name(fact.subject)}|{fact.predicate}|{fold_name(fact.object)}"
         for fact in extraction.facts
     ]
     return (*entity_keys, *fact_keys)

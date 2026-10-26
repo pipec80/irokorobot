@@ -7,8 +7,14 @@
 >
 > **Plan 0070 (the storage) closed on 2026-10-23.** Every field the *Plan* column marks `0070` is now
 > registered, validated and writable: through the canonical writer for a V4 fact, through the contacts
-> writer for a contact and through the commissioning module for the acta. **Nothing loads them yet
-> (Plan 0071) and nothing reads them by voice (CM-5).**
+> writer for a contact and through the commissioning module for the acta.
+>
+> **Plan 0071 (the importer) closed on 2026-10-26** (accepted by Pipec on a database kept apart): every field
+> of the catalogue below except the commissioning's consents and backups (Plan 0072) is loaded from
+> the seed file by `just seed-import`; the file's keys, its template and questionnaire are in
+> [`docs/examples/seed-household.example.toml`](../examples/seed-household.example.toml) and its
+> schema in [`seed-household.schema.json`](../examples/seed-household.schema.json). **Nothing reads
+> them by voice (CM-5)**, except the children's list and count.
 
 ## Why this list exists
 
@@ -48,7 +54,7 @@ again. So the rule of the phase is **capture now, build later**:
 
 ## The catalogue
 
-*Plan* is the plan that implements the destination (0070 storage, **shipped**; 0071 importer, not yet); *Phase 0* says
+*Plan* is the plan that implements the destination (0070 storage, **shipped**; every field marked `0070` or `exists` is loaded by the 0071 importer); *Phase 0* says
 whether the field is captured in this phase; *Section* is the section whose status covers it (a
 blank means the field has no status). «Sensitivity» is the `DataSensitivity` value the writer stores.
 

@@ -11,6 +11,7 @@ from server.memory.household_authorization import get_active_role
 __all__ = [
     "OwnerPinCredential",
     "get_active_owner_pin_credential",
+    "get_ready_owner",
     "revoke_owner_pin_credential",
     "save_owner_pin_credential",
 ]
@@ -49,6 +50,30 @@ async def get_active_owner_pin_credential() -> OwnerPinCredential | None:
             verifier=row[5],
         ),
     )
+
+
+async def get_ready_owner() -> int | None:
+    """Return the entity that holds the one active PIN and the active owner role.
+
+    It is what "the personal setup is ready" means (``just setup-personal``): exactly one active
+    credential, belonging to the active owner. The local setup and the seed importer share it.
+
+    Returns:
+        The owner's entity id, or ``None`` when no owner is ready.
+    """
+    cursor = await get_conn().execute(
+        "SELECT COUNT(*) FROM owner_pin_credentials WHERE revoked_at IS NULL"
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    if row is None or int(row[0]) != 1:
+        return None
+    credential = await get_active_owner_pin_credential()
+    if credential is None:
+        return None
+    if await get_active_role(credential.person_entity_id) is not HouseholdRole.OWNER:
+        return None
+    return credential.person_entity_id
 
 
 async def save_owner_pin_credential(

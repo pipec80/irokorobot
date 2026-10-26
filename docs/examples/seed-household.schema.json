@@ -1,0 +1,872 @@
+{
+  "$defs": {
+    "ContactRole": {
+      "description": "Closed list of the roles a contact can have (ADR 0024 decision 5).",
+      "enum": [
+        "emergency",
+        "caregiver",
+        "doctor",
+        "key_holder",
+        "neighbor",
+        "trusted",
+        "other"
+      ],
+      "title": "ContactRole",
+      "type": "string"
+    },
+    "Guardianship": {
+      "description": "Whether a child of the owner is still a minor; an adult child gets the partner's rule.",
+      "enum": [
+        "minor",
+        "adult"
+      ],
+      "title": "Guardianship",
+      "type": "string"
+    },
+    "SectionStatus": {
+      "description": "What silence means in a section of the pool (ADR 0024 decision 2).",
+      "enum": [
+        "provided",
+        "none",
+        "unknown",
+        "declined",
+        "not_asked"
+      ],
+      "title": "SectionStatus",
+      "type": "string"
+    },
+    "SeedChild": {
+      "additionalProperties": false,
+      "description": "A child of the owner; an adult child is the name and the guardianship only.",
+      "properties": {
+        "likes": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Likes",
+          "type": "array"
+        },
+        "dislikes": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Dislikes",
+          "type": "array"
+        },
+        "prefers": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Prefers",
+          "type": "array"
+        },
+        "name": {
+          "maxLength": 80,
+          "title": "Name",
+          "type": "string"
+        },
+        "guardianship": {
+          "$ref": "#/$defs/Guardianship"
+        },
+        "birth_date": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Birth Date"
+        },
+        "stated_age": {
+          "anyOf": [
+            {
+              "maximum": 130,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stated Age"
+        }
+      },
+      "required": [
+        "name",
+        "guardianship"
+      ],
+      "title": "SeedChild",
+      "type": "object"
+    },
+    "SeedContact": {
+      "additionalProperties": false,
+      "description": "A person the owner wants called or told; repeating a person's name is that person.",
+      "properties": {
+        "name": {
+          "maxLength": 80,
+          "title": "Name",
+          "type": "string"
+        },
+        "role": {
+          "$ref": "#/$defs/ContactRole"
+        },
+        "relationship": {
+          "anyOf": [
+            {
+              "maxLength": 40,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Relationship"
+        },
+        "phone": {
+          "title": "Phone",
+          "type": "string"
+        },
+        "phone_alt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Phone Alt"
+        },
+        "call_order": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Call Order"
+        },
+        "has_key": {
+          "default": false,
+          "title": "Has Key",
+          "type": "boolean"
+        },
+        "may_receive_health_info": {
+          "default": false,
+          "title": "May Receive Health Info",
+          "type": "boolean"
+        },
+        "may_view_activity": {
+          "default": false,
+          "title": "May View Activity",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "role",
+        "phone"
+      ],
+      "title": "SeedContact",
+      "type": "object"
+    },
+    "SeedOwner": {
+      "additionalProperties": false,
+      "description": "What the owner says about themselves; the name must equal the one already set up.",
+      "properties": {
+        "likes": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Likes",
+          "type": "array"
+        },
+        "dislikes": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Dislikes",
+          "type": "array"
+        },
+        "prefers": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Prefers",
+          "type": "array"
+        },
+        "name": {
+          "maxLength": 80,
+          "title": "Name",
+          "type": "string"
+        },
+        "preferred_name": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Preferred Name"
+        },
+        "address_form": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Address Form"
+        },
+        "birth_date": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Birth Date"
+        },
+        "health_coverage": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Health Coverage"
+        },
+        "conditions": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Conditions",
+          "type": "array"
+        },
+        "allergies": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Allergies",
+          "type": "array"
+        },
+        "medications": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Medications",
+          "type": "array"
+        },
+        "takes_anticoagulant": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Takes Anticoagulant"
+        },
+        "rescue_medication": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Rescue Medication",
+          "type": "array"
+        },
+        "devices": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Devices",
+          "type": "array"
+        },
+        "blood_type": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Blood Type"
+        },
+        "mobility": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mobility"
+        },
+        "hearing": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hearing"
+        },
+        "vision": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Vision"
+        },
+        "documents": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Documents",
+          "type": "array"
+        },
+        "emergency_facility": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Emergency Facility"
+        },
+        "address": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Address"
+        },
+        "dwelling_type": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dwelling Type"
+        },
+        "floor": {
+          "anyOf": [
+            {
+              "maximum": 130,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Floor"
+        },
+        "has_lift": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Has Lift"
+        },
+        "access_note": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Access Note"
+        },
+        "lives_alone": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lives Alone"
+        },
+        "private_topics": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Private Topics",
+          "type": "array"
+        },
+        "secrets": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Secrets",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "SeedOwner",
+      "type": "object"
+    },
+    "SeedPerson": {
+      "additionalProperties": false,
+      "description": "The partner, a relative or a person to keep out: the name and nothing else.",
+      "properties": {
+        "name": {
+          "maxLength": 80,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "SeedPerson",
+      "type": "object"
+    },
+    "SeedPet": {
+      "additionalProperties": false,
+      "description": "A pet of the owner.",
+      "properties": {
+        "likes": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Likes",
+          "type": "array"
+        },
+        "dislikes": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Dislikes",
+          "type": "array"
+        },
+        "prefers": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Prefers",
+          "type": "array"
+        },
+        "name": {
+          "maxLength": 80,
+          "title": "Name",
+          "type": "string"
+        },
+        "species": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Species"
+        },
+        "stated_age": {
+          "anyOf": [
+            {
+              "maximum": 130,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stated Age"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "SeedPet",
+      "type": "object"
+    },
+    "SeedStatus": {
+      "additionalProperties": false,
+      "description": "The explicit status of a section that has no items (D-5); a missing one is ``not_asked``.",
+      "properties": {
+        "conditions": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SectionStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "allergies": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SectionStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "medications": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SectionStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "devices": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SectionStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "contacts": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SectionStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "withhold": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SectionStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "secrets": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SectionStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "documents": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SectionStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "household": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SectionStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "home": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SectionStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "function": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SectionStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "SeedStatus",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One seed file, schema version 1.",
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "pool_version": {
+      "maximum": 1,
+      "minimum": 1,
+      "title": "Pool Version",
+      "type": "integer"
+    },
+    "owner": {
+      "$ref": "#/$defs/SeedOwner"
+    },
+    "status": {
+      "$ref": "#/$defs/SeedStatus",
+      "default": {
+        "conditions": null,
+        "allergies": null,
+        "medications": null,
+        "devices": null,
+        "contacts": null,
+        "withhold": null,
+        "secrets": null,
+        "documents": null,
+        "household": null,
+        "home": null,
+        "function": null
+      }
+    },
+    "partner": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SeedPerson"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "children": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/SeedChild"
+      },
+      "maxItems": 20,
+      "title": "Children",
+      "type": "array"
+    },
+    "pets": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/SeedPet"
+      },
+      "maxItems": 20,
+      "title": "Pets",
+      "type": "array"
+    },
+    "parents": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/SeedPerson"
+      },
+      "maxItems": 20,
+      "title": "Parents",
+      "type": "array"
+    },
+    "grandparents": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/SeedPerson"
+      },
+      "maxItems": 20,
+      "title": "Grandparents",
+      "type": "array"
+    },
+    "siblings": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/SeedPerson"
+      },
+      "maxItems": 20,
+      "title": "Siblings",
+      "type": "array"
+    },
+    "grandchildren": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/SeedPerson"
+      },
+      "maxItems": 20,
+      "title": "Grandchildren",
+      "type": "array"
+    },
+    "withhold": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/SeedPerson"
+      },
+      "maxItems": 20,
+      "title": "Withhold",
+      "type": "array"
+    },
+    "contacts": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/SeedContact"
+      },
+      "maxItems": 20,
+      "title": "Contacts",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "pool_version",
+    "owner"
+  ],
+  "title": "SeedFile",
+  "type": "object"
+}

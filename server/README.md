@@ -35,6 +35,19 @@ recognized variable and its default. Never hardcode a model name, path, or
 port; every one of them is a `Settings` field (`server/src/server/settings.py`,
 `pydantic-settings`, `BaseSettings`).
 
+**Loading the household's seed file (Plan 0071, ADR 0024).** With the server stopped, the
+commissioning order is: `just reset-db` (it honours `BRAIN_DB_PATH`), `just setup-personal` (the owner
+and a PIN, no children), the face and voice enrolment with the server running, then, with it stopped
+again, a dry run `just seed-import data/seed/<file>.toml` (it prints the database first and writes
+nothing), and the apply after the owner reviews the report: `just seed-import data/seed/<file>.toml
+--apply --interviewer <label> --role builder --mode builder_is_owner --disk-encryption yes` and the
+answer `SI` (the four declaration options are needed only for the first apply, which opens the
+commissioning record). The same file twice changes nothing; a different value is a conflict that
+writes nothing unless `--replace` is given, which only works while the commissioning is open and
+nothing was learned by voice. The template and questionnaire is
+`docs/examples/seed-household.example.toml` (copy it to `data/seed/`); `just seed-import --print-schema`
+prints the file's JSON Schema.
+
 ## Configuration
 
 Selected settings that shape runtime behavior — the full list lives in

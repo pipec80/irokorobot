@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from enum import StrEnum
 import json
-import unicodedata
 
 from pydantic import BaseModel, ConfigDict
 
@@ -22,6 +21,7 @@ from server.memory.predicate_registry import (
     resolve_predicate,
 )
 from server.memory.relational_v4 import assert_entity_relation, assert_literal_fact
+from server.text_keys import fold_name
 
 
 class MigrationOutcome(StrEnum):
@@ -68,12 +68,6 @@ class _Decision(BaseModel):
     definition: PredicateDefinition | None = None
     normalized_literal: str | None = None
     target_entity_id: int | None = None
-
-
-def _fold_name(value: str) -> str:
-    """Fold accents and case for conservative canonical-name/alias matching."""
-    decomposed = unicodedata.normalize("NFKD", value)
-    return "".join(char for char in decomposed if not unicodedata.combining(char)).casefold()
 
 
 def _aliases(raw_aliases: object) -> tuple[str, ...]:
@@ -127,12 +121,12 @@ async def _matching_target_ids(name: str, definition: PredicateDefinition) -> tu
     )
     rows = await cursor.fetchall()
     await cursor.close()
-    folded_name = _fold_name(name.strip())
+    folded_name = fold_name(name.strip())
     matches: set[int] = set()
     for row in rows:
         entity_id = int(row[0])
         variants = (str(row[1]), *_aliases(row[2]))
-        if any(_fold_name(variant) == folded_name for variant in variants):
+        if any(fold_name(variant) == folded_name for variant in variants):
             matches.add(entity_id)
     return tuple(sorted(matches))
 
@@ -166,7 +160,7 @@ async def _classify(fact: _LegacyFact) -> _Decision:
     """Classify one legacy fact without writing v4 storage or a ledger row."""
     definition = resolve_predicate(fact.predicate)
     if definition is None:
-        if _fold_name(fact.predicate) in {"age", "edad"}:
+        if fold_name(fact.predicate) in {"age", "edad"}:
             return _Decision(outcome=MigrationOutcome.REJECTED, reason="derived_predicate")
         return _Decision(outcome=MigrationOutcome.REJECTED, reason="unsupported_predicate")
     refused = await _refused_by_the_repository(fact, definition)

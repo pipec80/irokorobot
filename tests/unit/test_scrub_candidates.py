@@ -98,8 +98,9 @@ def test_main_fails_when_the_file_is_not_a_database(
 def test_reset_db_scrubs_before_it_copies_and_refuses_to_copy_when_it_fails() -> None:
     text = _RESET_SCRIPT.read_text(encoding="utf-8")
 
-    scrub_at = text.index("scrub_candidates.py")
-    copy_at = text.index("Copy-Item $dbPath")
+    # The calls, not the definitions: the copy lives in `Copy-DbWithSidecars` since Plan 0071.
+    scrub_at = text.index("uv run python scripts/scrub_candidates.py $dbPath")
+    copy_at = text.index("Copy-DbWithSidecars -DbPath $dbPath")
     assert scrub_at < copy_at
     assert "$LASTEXITCODE" in text[scrub_at:copy_at]
 

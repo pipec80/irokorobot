@@ -40,8 +40,15 @@ _PURE_CORE_PROBE = textwrap.dedent(
     import server.cognition
     import server.cognition.controller
 
+    # The neutral text keys (ADR 0024 decision 12) are shared by the core and memory on purpose:
+    # a leaf of the standard library only, which a unit test pins.
+    shared = {"server.text_keys"}
     for name in sorted(sys.modules):
-        outside_core = name.startswith("server.") and not name.startswith("server.cognition")
+        outside_core = (
+            name.startswith("server.")
+            and not name.startswith("server.cognition")
+            and name not in shared
+        )
         if outside_core or name in {"aiosqlite", "fastapi", "httpx"}:
             print(name)
     """

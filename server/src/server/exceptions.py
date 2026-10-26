@@ -115,6 +115,67 @@ class WriteRefusedError(Exception):
         self.reason = reason
 
 
+class SeedFileError(ValueError):
+    """Raised when a seed file cannot be read or is not valid (Plan 0071).
+
+    The message is the list of ``field.path: reason`` pairs, with closed reasons only: no value,
+    name or phone of the file ever reaches it, its ``repr``, its cause or its context.
+
+    Attributes:
+        problems: Every ``field.path: reason`` pair found, in file order.
+    """
+
+    def __init__(self, problems: tuple[str, ...]) -> None:
+        """Keep only the field paths and the closed reasons.
+
+        Args:
+            problems: The ``field.path: reason`` pairs.
+        """
+        super().__init__("seed file refused: " + "; ".join(problems))
+        self.problems = problems
+
+
+class SeedOwnerError(ValueError):
+    """Raised when the database has no ready owner, or one whose name differs from the file's.
+
+    Attributes:
+        reason: ``owner_not_ready`` or ``owner_name_mismatch``; the message never holds a name.
+    """
+
+    def __init__(self, reason: str) -> None:
+        """Keep only the closed reason.
+
+        Args:
+            reason: The closed reason.
+        """
+        super().__init__(f"seed owner refused: {reason}")
+        self.reason = reason
+
+
+class ReplaceRefusedError(ValueError):
+    """Raised when a seed replacement is asked for after the robot learned something by voice.
+
+    Corrections of what was said aloud are CM-6, and an old file must never resurrect what the
+    owner asked to forget (ADR 0024 decision 8). The message is fixed.
+    """
+
+    def __init__(self) -> None:
+        """Say only why."""
+        super().__init__("the robot already learned something by voice: no replacement")
+
+
+class ReplaceBlockedError(ValueError):
+    """Raised when a seed replacement cannot delete an imported person another table refers to.
+
+    A role, a face, a voice or a consent restricts the delete (a table the cleanup does not check
+    on purpose: it fails loudly instead of cascading). The message is fixed.
+    """
+
+    def __init__(self) -> None:
+        """Say only why."""
+        super().__init__("an imported person is referred to by another table: no replacement")
+
+
 class CommissioningError(ValueError):
     """Raised when the commissioning record is in the wrong state for the call.
 
@@ -128,6 +189,14 @@ class CommissioningOpenError(CommissioningError):
     def __init__(self) -> None:
         """Say only that one is open."""
         super().__init__("a commissioning is already open")
+
+
+class CommissioningMissingError(CommissioningError):
+    """Raised when the first import is applied without the interviewer's declaration."""
+
+    def __init__(self) -> None:
+        """Say only what is missing."""
+        super().__init__("the first import needs the interviewer, the role and the mode")
 
 
 class CommissioningClosedError(CommissioningError):

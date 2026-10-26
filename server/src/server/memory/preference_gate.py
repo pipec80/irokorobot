@@ -25,7 +25,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 import re
 
-from server.cognition.intent_resolution import normalize_spanish
 from server.memory.candidate_types import CandidateReason, GateMatch
 from server.memory.lexicon import (
     CLAUSE_OPENERS,
@@ -37,6 +36,7 @@ from server.memory.lexicon import (
     PREFERENCE_TRIGGERS,
     candidate_denied_words,
 )
+from server.text_keys import normalize_spanish
 
 __all__ = ["GateMatch", "GateResult", "match_preference"]
 
