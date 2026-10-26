@@ -7,6 +7,8 @@
 #
 # Usage: just reset-db
 #        powershell.exe -File scripts/reset_db.ps1 -Port 9000
+# The database is the one the server would open: BRAIN_DB_PATH (environment, then
+# .env), else data/omnibot.db (Plan 0071). Its -wal and -shm go into the backup too.
 param(
     # Server port to health-check. 0 means "not provided" (ports are never 0);
     # falls back to SERVER_PORT in .env, then to 8000. See Resolve-ServerPort.
@@ -15,7 +17,6 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$dbPath = "data/omnibot.db"
 $backupDir = "data/backups"
 $envFilePath = ".env"
 
@@ -45,10 +46,38 @@ function Resolve-ServerPort {
     return 8000
 }
 
+function Resolve-DbPath {
+    <#
+    .SYNOPSIS
+        Resolves the database the server would open (Plan 0071).
+    .DESCRIPTION
+        Order: BRAIN_DB_PATH in the environment > BRAIN_DB_PATH read from a .env
+        file at the repo root (if present) > data/omnibot.db. The same order the
+        server's settings follow, so a scratch database set with BRAIN_DB_PATH is
+        the one reset, never data/omnibot.db by accident. Returns a full path.
+    #>
+    param(
+        [string]$EnvFilePath
+    )
+    $configured = $env:BRAIN_DB_PATH
+    if (-not $configured -and (Test-Path $EnvFilePath)) {
+        $match = Select-String -Path $EnvFilePath -Pattern '^\s*BRAIN_DB_PATH\s*=\s*(.+?)\s*$'
+        if ($match) {
+            $configured = $match[0].Matches[0].Groups[1].Value.Trim('"', "'")
+        }
+    }
+    if (-not $configured) {
+        $configured = "data/omnibot.db"
+    }
+    $combined = [System.IO.Path]::Combine((Get-Location).Path, $configured)
+    return [System.IO.Path]::GetFullPath($combined)
+}
+
 $resolvedPort = Resolve-ServerPort -ParamPort $Port -EnvFilePath $envFilePath
 $healthUrl = "http://localhost:$resolvedPort/health"
 
-$dbFullPath = Join-Path (Get-Location).Path $dbPath
+$dbPath = Resolve-DbPath -EnvFilePath $envFilePath
+$dbFullPath = $dbPath
 $backupDirFullPath = Join-Path (Get-Location).Path $backupDir
 
 Write-Host "DB path:      $dbFullPath"
@@ -84,8 +113,16 @@ if ($LASTEXITCODE -ne 0) {
 # 2. Backup with timestamp before touching anything.
 New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
 $stamp = Get-Date -Format "yyyy-MM-dd_HHmmss"
-$backupPath = Join-Path $backupDir "omnibot_${stamp}_pre-reset.db"
+$stem = [System.IO.Path]::GetFileNameWithoutExtension($dbPath)
+$backupPath = Join-Path $backupDir "${stem}_${stamp}_pre-reset.db"
 Copy-Item $dbPath $backupPath
+# The write-ahead log may hold committed pages the main file does not have yet: copy the
+# sidecars with it, because they are deleted below.
+foreach ($suffix in @("-wal", "-shm")) {
+    $sidecar = "$dbPath$suffix"
+    if (Test-Path $sidecar) { Copy-Item $sidecar "$backupPath$suffix" }
+}
+Write-Host "Esta copia contiene datos biometricos y de salud. El sistema no la borra: anota su ruta y la fecha en que la destruiras."
 
 # 3. Delete the DB and its WAL/SHM sidecars.
 Remove-Item $dbPath -Force
