@@ -38,6 +38,9 @@ link-mode = "hardlink"
 add-bounds = "major"
 prerelease = "disallow"
 default-groups = ["dev"]
+# faster-whisper 1.2.1 calls av.open(..., metadata_errors=...), which av 19 removed: STT fails
+# with a TypeError on every clip. Lift this once faster-whisper supports av 19.
+constraint-dependencies = ["av<19"]
 
 [tool.uv.sources]
 # pytorch-cpu index avoids shm.dll issues on Windows and keeps the wheel CPU-only
