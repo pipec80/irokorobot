@@ -42,6 +42,7 @@ _FAIL_LOUDLY_OR_HARMLESS = {
     "household_role_assignments": "RESTRICT (grantor SET NULL)",
     "owner_pin_credentials": "RESTRICT",
     "authorization_audit_events": "SET NULL: the audit keeps its row without the person",
+    "admin_audit": "SET NULL: the admin audit keeps its row without the person (Plan 0073)",
 }
 _SAFE_ACTIONS = frozenset({"RESTRICT", "NO ACTION", "SET NULL"})
 
