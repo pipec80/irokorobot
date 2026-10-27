@@ -771,6 +771,39 @@ def test_the_commissioning_guard_detects_a_violation() -> None:
     assert _commissioning_queriers(leak) == ["memory/leak.py", "routers/leak.py"]
 
 
+# --- the admin audit (Plan 0073, ADR 0025 decision 4) ---------------------------------------
+# One module writes and reads the admin audit, so the "one row per operation, no value" rule
+# cannot be bypassed by a second writer.
+_ADMIN_AUDIT_SQL = re.compile(r"\b(?:FROM|JOIN|INTO|UPDATE|DELETE\s+FROM)\s+admin_audit\b")
+_MAY_QUERY_ADMIN_AUDIT = frozenset({"memory/admin_audit.py"})
+
+
+def _admin_audit_queriers(sources: Mapping[str, str]) -> list[str]:
+    """Modules, besides the audit repository, that put SQL on `admin_audit`."""
+    return [
+        name
+        for name, text in sources.items()
+        if name not in _MAY_QUERY_ADMIN_AUDIT and _ADMIN_AUDIT_SQL.search(text)
+    ]
+
+
+@pytest.mark.unit
+def test_the_admin_audit_table_is_queried_only_by_its_repository() -> None:
+    assert _admin_audit_queriers(_sources()) == []
+
+
+@pytest.mark.unit
+def test_the_admin_audit_guard_detects_a_violation() -> None:
+    leak = {
+        "memory/leak.py": 'SQL = "INSERT INTO admin_audit (operation) VALUES (?)"\n',
+        "routers/leak.py": 'SQL = "SELECT operation FROM admin_audit"\n',
+        "memory/admin_audit.py": 'SQL = "SELECT 1 FROM admin_audit"\n',
+        "prose.py": '"""The admin_audit table is described here."""\n',
+    }
+
+    assert _admin_audit_queriers(leak) == ["memory/leak.py", "routers/leak.py"]
+
+
 # --- the import channels (Plan 0071, ADR 0024 decision 7) -----------------------------------
 # The import bypasses the policy on purpose, so only the vocabulary and the applier may name its
 # channels: a route or a store that wrote as an import would skip the face-and-voice rule. The

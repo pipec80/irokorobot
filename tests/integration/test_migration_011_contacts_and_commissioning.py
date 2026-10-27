@@ -32,6 +32,9 @@ async def v11_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterat
     db._conn = None
     try:
         await db.open_db()
+        # Scope this migration-011 suite to migrations up to 11, so a later migration does not
+        # change the version this file pins (Plan 0073 added 012).
+        monkeypatch.setattr(db, "_MIGRATIONS", tuple(m for m in db._MIGRATIONS if m[0] <= 11))
         await db.run_migrations()
         yield
     finally:
@@ -48,10 +51,11 @@ async def v10_db(
     db._conn = None
     try:
         await db.open_db()
-        full_list = db._MIGRATIONS
-        monkeypatch.setattr(db, "_MIGRATIONS", tuple(m for m in full_list if m[0] <= 10))
+        # Scope this migration-011 suite to migrations up to 11: start at 10, upgrade to 11.
+        up_to_eleven = tuple(m for m in db._MIGRATIONS if m[0] <= 11)
+        monkeypatch.setattr(db, "_MIGRATIONS", tuple(m for m in up_to_eleven if m[0] <= 10))
         await db.run_migrations()
-        yield full_list
+        yield up_to_eleven
     finally:
         await db.close_db()
         db._conn = None
