@@ -132,6 +132,10 @@ seed-import *ARGS:
 onboard *ARGS:
     uv run --env-file .env python scripts/onboard.py {{ARGS}}
 
+# Alta guiada del robot (Plan 0072): maquina de estados que enrola cara y voz y cierra el acta
+commission *ARGS:
+    uv run --env-file .env python scripts/commission.py {{ARGS}}
+
 # Prueba el cliente HTTP contra el servidor en ejecucion
 test-client *ARGS:
     uv run --env-file .env python scripts/client_test.py {{ARGS}}
