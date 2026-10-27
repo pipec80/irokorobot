@@ -303,6 +303,25 @@ membership. The record also keeps a closed inventory of identity modalities, `pi
 enrolment and consent, and an ADR that sets its assurance). Face and voice remain evidence, never
 authorization.
 
+**The commissioning session (Plan 0072, ADR 0024 decisions 13 to 15).** `just commission` is a state
+machine read from the database and from the server's state (one `/health` probe): it tells the
+interviewer the next step, never asks for the server to be both on and off, and delegates the three
+server-stopped steps (`reset-db`, `setup-personal`, `seed-import`) by naming their command. With the
+server running it shows the biometric notice (`docs/legal/biometric-notice-v1.md`, version `v1`; a legal
+review is pending before it is used with anyone but the builder-owner), enrols the face in five frames and
+the voice in three references. **Each enrolment spends one one-use owner-unlock token for
+`biometric_admin`, so every frame and every reference asks for the PIN again** (a mistyped PIN is asked
+again up to three times). The enrolment endpoints are the existing ones and did not change: the biometric
+consent is granted by the enrolment itself, and the frames and the audio are embedded and discarded. At
+the closing, with the server stopped, the interviewer records the pre-reset and the baseline backups (path
+and destruction date), the three consents of the operations plane (telemetry, remote support, backup with
+a label, [ADR 0025](../adr/0025-remote-administration-backup-updates-and-telemetry.md) decision 10) and
+attests, for each capability that exists today, whether it is supported, configured and verified. The
+modalities enrolled are **derived** from the database (an active PIN credential, a face consent, voice
+references at or above `SPEAKER_MIN_REFERENCE_COUNT`), never typed. The acta is written under
+`data/commissioning/` (ignored by git, no household value) and the window is closed for good on that
+database; a recorded consent builds and enables nothing.
+
 **The level of each channel and the importer's bypass (Plan 0071, ADR 0024 decisions 7 and 11).**
 The voice channels authorize by the face **and** the voice of the same person on the turn's own
 clip, never a token, through a spoken offer and an explicit spoken answer. The import channels

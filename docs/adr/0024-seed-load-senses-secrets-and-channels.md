@@ -1,6 +1,7 @@
 # 0024 — The seed load: the data pool, secrets at rest, contacts, the confirmation of an assisted interview, identity modalities and the order of the commissioning
 
-- **Status:** Proposed (2026-10-22, **revised 2026-10-23** after two rounds of independent review and
+- **Status:** Accepted (2026-10-27, when Plan 0072 closed; proposed 2026-10-22 and **revised
+  2026-10-23** after two rounds of independent review and
   Pipec's second and third briefs; see *Review record*). Every decision below is the author's
   recommendation. Pipec has confirmed, on 2026-10-22 and 2026-10-23: the importer by file as the
   first tool; a secret stored by reference only; the adult child declared in the file; access to the
@@ -8,7 +9,8 @@
   names; the contacts in their own table; two plans for the storage and the importer; the assisted
   channel with a commissioning record; a replacement window while the robot is being commissioned;
   resetting the database and loading everything through Step 0; and the purpose of the phase as
-  stated in decision 1. It becomes `Accepted` when the plans that implement it close.
+  stated in decision 1. It became `Accepted` when the plans that implement it closed (Plans 0070,
+  0071 and 0072). The first real alta on Pipec's own data is a later operational step, not a condition.
 - **Date:** 2026-10-22 (revised 2026-10-23)
 - **Builds on:** [ADR 0004](0004-local-first-cognitive-policy.md),
   [ADR 0006](0006-personal-and-family-companion-profiles.md),
@@ -28,8 +30,9 @@
   of the senses* row is satisfied by decision 3.
 - **Implemented by:** [Plan 0070](../plans/completed/0070-seed-load-data-pool-storage.md) (closed
   2026-10-23: the storage and the provenance), [Plan 0071](../plans/completed/0071-seed-load-file-importer.md) (closed 2026-10-26: the
-  importer) and [Plan 0072](../plans/open/0072-commissioning-session.md) (`Draft`, an outline: the
-  session itself, with enrolment, the voice session, the readiness report, the closing and the acta) and
+  importer), [Plan 0072](../plans/completed/0072-commissioning-session.md) (closed 2026-10-27: the
+  session itself, with the notice and the consents, the face and voice sessions, the readiness report,
+  the closing and the acta, as `just commission`) and
   [Plan 0073](../plans/open/0073-local-admin-crud.md) (`Draft`, an outline: the local administration that
   is the amendment path of decision 8; its remote half is [ADR 0025](0025-remote-administration-backup-updates-and-telemetry.md)).
 - **Companion document:** [`seed-data-pool.md`](../architecture/seed-data-pool.md), the catalogue of
@@ -469,5 +472,5 @@ baseline backup and the readiness report; contacts have no write path after the 
 
 - [Plan 0070](../plans/completed/0070-seed-load-data-pool-storage.md) — the storage and the provenance (closed 2026-10-23).
 - [Plan 0071](../plans/completed/0071-seed-load-file-importer.md) — the importer (closed 2026-10-26).
-- [Plan 0072](../plans/open/0072-commissioning-session.md) — the commissioning session (`Draft`, an outline).
+- [Plan 0072](../plans/completed/0072-commissioning-session.md) — the commissioning session (closed 2026-10-27).
 - The next free ADR number is 0025.

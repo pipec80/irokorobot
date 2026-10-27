@@ -360,7 +360,7 @@ FACE_AUTHENTICATION_MATCH_THRESHOLD=0.5815  # measured by Plan 0030
 ROBOT_FACE_AUTH_ENABLED=true              # robot
 ```
 
-Enroll with `just onboard` (§6 covers the full identity+PIN+face flow) — it
+Enroll with `just onboard` (§6 covers the full identity+PIN+face flow; `just commission` is the guided alta that also enrols the voice and closes the commissioning, see `server/README.md`) — it
 prompts for the owner PIN, warns before capturing ("Mira a la camara..."),
 and calls the same endpoint `just face-auth-demo --enroll` uses directly if
 you need the standalone tool. Revoke with `just face-auth-demo --revoke`,

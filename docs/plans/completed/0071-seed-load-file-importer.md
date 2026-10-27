@@ -6,7 +6,7 @@
 > Pipec on 2026-10-26 after confirming D-1 to D-8 below. [Plan 0070](0070-seed-load-data-pool-storage.md)
 > **closed on 2026-10-23**, so nothing blocks it; Task 0 re-audits it against the code Plan 0070 merged before
 > any other work. It implements [ADR 0024](../../adr/0024-seed-load-senses-secrets-and-channels.md)
-> (`Proposed`) decisions 6 to 8, 11, 12 and 13; the ADR becomes `Accepted` when [Plan 0072](../open/0072-commissioning-session.md)
+> (`Proposed`) decisions 6 to 8, 11, 12 and 13; the ADR becomes `Accepted` when [Plan 0072](0072-commissioning-session.md)
 > closes. Written for an executor who has not seen this repository.
 
 > **For agentic workers:** if the status above does not say `Ready`, stop. REQUIRED SUB-SKILLS:
@@ -518,7 +518,7 @@ after that, correcting and forgetting are CM-6. Task 1 touches several files: re
 ## Not here, and why
 
 - **Closing the commissioning from a command, enrolling face and voice in one flow, the voice session, the readiness report, the acta file, the baseline
-  backup:** [Plan 0072](../open/0072-commissioning-session.md). Until then the window stays open and `--replace` stays available.
+  backup:** [Plan 0072](0072-commissioning-session.md). Until then the window stays open and `--replace` stays available.
 - **Reading the loaded data by voice or by an alert:** CM-5 and the care ADR.
 - **The amendment path for contacts and medications after the closing:** a plan before the care capabilities (ADR 0024 decision 8).
 - **The interview's interface and the 107-question catalogue:** a later Step 0 plan.

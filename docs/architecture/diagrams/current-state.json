@@ -53,13 +53,14 @@
         "note": "Off by default: needs the same person's face and voice on that clip. One canonical writer stores it, setting class, asserter and channel."
       },
       {
-        "id": "seed-load",
-        "label": "Seed load",
+        "id": "commissioning",
+        "label": "Commissioning (the alta)",
         "focus": [
+          "commission",
           "seed",
           "memory"
         ],
-        "note": "Server stopped: a dry run, the owner's review and SI, then one transaction through the canonical writer and the commissioning record."
+        "note": "One command names each step: face and voice with the server on; the load is a dry run, the owner's SI, one transaction; then the acta."
       }
     ]
   },
@@ -237,6 +238,21 @@
         64
       ],
       "tag": "dry run by default"
+    },
+    {
+      "id": "commission",
+      "type": "backend",
+      "label": "Commissioning session",
+      "sublabel": "just commission · state machine",
+      "pos": [
+        670,
+        780
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "tag": "acta, no household value"
     }
   ],
   "boundaries": [
@@ -360,6 +376,14 @@
       "label": "one transaction · import_assisted",
       "fromSide": "top",
       "toSide": "bottom"
+    },
+    {
+      "id": "commission-to-seed",
+      "from": "commission",
+      "to": "seed",
+      "label": "names the next command",
+      "fromSide": "top",
+      "toSide": "bottom"
     }
   ],
   "cards": [
@@ -382,7 +406,8 @@
         "Ollama is the only accepted LLM/VLM runtime (ADR-0004), reached only through one transport module",
         "A generic turn names its speaker by face or an observed token (never voice); the identified person gets one in-process session, an unknown speaker suspends it",
         "One canonical writer stores household facts for every channel; a secret is stored by reference only (who knows it), never its value",
-        "The seed file loads offline (Plan 0071): dry run by default, the owner's review and SI, one transaction, a replacement only while commissioning and before anything is learned by voice"
+        "The seed file loads offline (Plan 0071): dry run by default, the owner's review and SI, one transaction, a replacement only while commissioning and before anything is learned by voice",
+        "The alta is one guided command (Plan 0072): it enrols face and voice asking the PIN before each, records backups and consents, attests the readiness of what exists and closes the window with an acta that holds no household value"
       ]
     },
     {
