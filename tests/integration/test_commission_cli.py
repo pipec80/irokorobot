@@ -571,3 +571,16 @@ async def test_the_prompts_say_what_each_backup_is(
     text = "\n".join(lines)
     assert "reset-db" in text  # what the pre-reset backup is
     assert "paso 7" in text  # what the baseline backup is
+
+
+async def test_a_listed_file_name_typed_as_is_is_stored_with_its_folder(
+    owner_db: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _two_backups(tmp_path, monkeypatch)
+    record_id = await _open_alta()
+
+    await _close_with(["older.db", "", "newer.db", "", "no", "no", "no", *_HARDWARE_ANSWERS], [])
+
+    details = await read_session_details(record_id)
+    assert details.pre_reset_backup == Backup("data/backups/older.db", _default_day())
+    assert details.baseline_backup == Backup("data/backups/newer.db", _default_day())

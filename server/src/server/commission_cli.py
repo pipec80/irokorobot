@@ -249,7 +249,8 @@ def _ask_backup(
         if not answer:
             write_text("Este dato es obligatorio.")
         elif not answer.isdigit():
-            return answer
+            # A listed file name typed as is keeps its folder, so the acta names a real path.
+            return f"{_BACKUPS_LABEL}/{answer}" if answer in names else answer
         elif 1 <= int(answer) <= len(names):
             return f"{_BACKUPS_LABEL}/{names[int(answer) - 1]}"
         else:
