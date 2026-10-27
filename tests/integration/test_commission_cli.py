@@ -8,6 +8,8 @@ delegates the three server-stopped steps by printing the exact command.
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+import os
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
@@ -491,3 +493,81 @@ def test_a_very_long_reason_is_cut() -> None:
         commission_cli._enroll_result(response)
 
     assert len(str(raised.value)) < 200
+
+
+# --- the backups are chosen from a list, with a suggested destruction date ----------------------
+
+_RETENTION_DAYS = 90
+
+
+def _two_backups(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A backups folder with ``newer.db`` listed first and ``older.db`` second."""
+    folder = tmp_path / "backups"
+    folder.mkdir()
+    for name, age_s in (("older.db", 1000), ("newer.db", 0)):
+        path = folder / name
+        path.write_bytes(b"x")
+        os.utime(path, (1_800_000_000 - age_s, 1_800_000_000 - age_s))
+    monkeypatch.setattr(commission_cli, "_BACKUPS_DIR", folder)
+    monkeypatch.setattr(commission_cli, "_ACTA_DIR", tmp_path / "actas")
+
+
+def _default_day() -> str:
+    return (datetime.fromisoformat(_NOW) + timedelta(days=_RETENTION_DAYS)).date().isoformat()
+
+
+async def test_the_backups_are_picked_by_number_with_a_default_date(
+    owner_db: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _two_backups(tmp_path, monkeypatch)
+    record_id = await _open_alta()
+    lines: list[str] = []
+
+    await _close_with(["2", "", "1", "", "no", "no", "no", *_HARDWARE_ANSWERS], lines)
+
+    details = await read_session_details(record_id)
+    assert details.pre_reset_backup == Backup("data/backups/older.db", _default_day())
+    assert details.baseline_backup == Backup("data/backups/newer.db", _default_day())
+    assert any("1) newer.db" in line for line in lines)  # the list was shown, newest first
+    assert any("2) older.db" in line for line in lines)
+
+
+async def test_an_empty_baseline_is_asked_again_instead_of_aborting(
+    owner_db: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _two_backups(tmp_path, monkeypatch)
+    record_id = await _open_alta()
+    lines: list[str] = []
+
+    await _close_with(["", "", "1", "", "no", "no", "no", *_HARDWARE_ANSWERS], lines)
+
+    assert (await read_session_details(record_id)).baseline_backup is not None
+    assert any("obligatorio" in line for line in lines)
+
+
+async def test_a_number_outside_the_list_is_asked_again(
+    owner_db: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _two_backups(tmp_path, monkeypatch)
+    record_id = await _open_alta()
+    lines: list[str] = []
+
+    await _close_with(["", "9", "1", "", "no", "no", "no", *_HARDWARE_ANSWERS], lines)
+
+    details = await read_session_details(record_id)
+    assert details.baseline_backup == Backup("data/backups/newer.db", _default_day())
+    assert any("respaldo con ese" in line for line in lines)
+
+
+async def test_the_prompts_say_what_each_backup_is(
+    owner_db: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _two_backups(tmp_path, monkeypatch)
+    await _open_alta()
+    lines: list[str] = []
+
+    await _close_with(["", "1", "", "no", "no", "no", *_HARDWARE_ANSWERS], lines)
+
+    text = "\n".join(lines)
+    assert "reset-db" in text  # what the pre-reset backup is
+    assert "paso 7" in text  # what the baseline backup is

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from datetime import datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
 
@@ -76,6 +77,13 @@ type RecordClip = Callable[[], bytes]
 type ReadPin = Callable[[str], str]
 
 _PROBE_TIMEOUT_S = 2.0
+# The backups the closing offers to pick from (reset-db writes them under data/backups), how many
+# are listed, the retention suggested when Enter is pressed, and how often an answer is re-asked.
+_BACKUPS_DIR = Path(__file__).resolve().parents[3] / "data" / "backups"
+_BACKUPS_LABEL = "data/backups"
+_BACKUPS_SHOWN = 5
+_RETENTION_DAYS = 90
+_PROMPT_ATTEMPTS = 3
 # Seconds the owner gets between the PIN (or the prompt) and the capture, to face the camera or
 # start reading; the camera and microphone sessions would otherwise fire as Enter is pressed.
 _COUNTDOWN_S = 3.0
@@ -215,26 +223,89 @@ def _read_hardware(read_text: ReadText, write_text: WriteText) -> dict[Capabilit
     return hardware
 
 
-async def _record_backups(record_id: int, read_text: ReadText) -> tuple[str, str]:
-    """Ask for both backups and record them now, so a typo fails before the long questionnaire.
+def _recent_backups() -> list[str]:
+    """The names of the newest database copies in the backups folder, newest first."""
+    if not _BACKUPS_DIR.is_dir():
+        return []
+    copies = sorted(_BACKUPS_DIR.glob("*.db"), key=lambda p: p.stat().st_mtime, reverse=True)
+    return [copy.name for copy in copies[:_BACKUPS_SHOWN]]
 
-    The pre-reset backup is optional (Enter when there was none); the baseline one is not.
+
+def _ask_backup(
+    read_text: ReadText, write_text: WriteText, question: str, names: list[str], *, optional: bool
+) -> str | None:
+    """Ask for a backup as a number of the list or a path; ask again on an empty or bad answer.
 
     Returns:
-        The baseline backup's path and destruction date, for the closing.
+        The backup's reference, or ``None`` when it is optional and the answer was empty.
+
+    Raises:
+        CommissionError: If no usable answer comes after :data:`_PROMPT_ATTEMPTS` tries.
     """
-    pre_reset = read_text("Ruta del respaldo previo al reset (Enter si no hubo): ").strip()
-    if pre_reset:
-        destroy_by = read_text("Fecha para destruirlo (YYYY-MM-DD): ").strip()
-        await record_backup(
-            record_id, which=BackupKind.PRE_RESET, reference=pre_reset, destroy_by=destroy_by
-        )
-    baseline = read_text("Ruta de la copia del respaldo base (offline): ").strip()
-    baseline_destroy_by = read_text("Fecha para destruir esa copia (YYYY-MM-DD): ").strip()
-    await record_backup(
-        record_id, which=BackupKind.BASELINE, reference=baseline, destroy_by=baseline_destroy_by
+    for _ in range(_PROMPT_ATTEMPTS):
+        answer = read_text(question).strip()
+        if not answer and optional:
+            return None
+        if not answer:
+            write_text("Este dato es obligatorio.")
+        elif not answer.isdigit():
+            return answer
+        elif 1 <= int(answer) <= len(names):
+            return f"{_BACKUPS_LABEL}/{names[int(answer) - 1]}"
+        else:
+            write_text("No hay un respaldo con ese número en la lista.")
+    raise CommissionError("No se indicó el respaldo.")
+
+
+def _ask_destroy_by(read_text: ReadText, default: str) -> str:
+    """Ask the day a backup must be destroyed; Enter accepts the suggested ``default``."""
+    answer = read_text(f"Fecha para destruirlo, YYYY-MM-DD (Enter = {default}): ").strip()
+    return answer or default
+
+
+async def _record_backups(
+    record_id: int, read_text: ReadText, write_text: WriteText, now: str
+) -> tuple[str, str]:
+    """Ask for both backups and record them now, so a typo fails before the long questionnaire.
+
+    Shows the newest copies of the backups folder to pick from by number, says what each of the
+    two backups is, and suggests a destruction date (:data:`_RETENTION_DAYS` days from ``now``)
+    that Enter accepts. The pre-reset backup is optional; the baseline one is not.
+
+    Returns:
+        The baseline backup's reference and destruction date, for the closing.
+    """
+    names = _recent_backups()
+    default_day = (datetime.fromisoformat(now) + timedelta(days=_RETENTION_DAYS)).date().isoformat()
+    write_text("Respaldos. Estas son las copias más recientes de data/backups:")
+    for number, name in enumerate(names, start=1):
+        write_text(f"  {number}) {name}")
+    write_text("- Previo al reset: la copia que hizo `just reset-db` de tu base anterior.")
+    write_text("- Base: la copia de la base ya cargada que hiciste en el paso 7.")
+    write_text(
+        "Escribe el número de la lista o una ruta. Cada copia guarda datos biométricos y de salud."
     )
-    return baseline, baseline_destroy_by
+    pre_reset = _ask_backup(
+        read_text, write_text, "Respaldo previo al reset (Enter si no hubo): ", names, optional=True
+    )
+    if pre_reset:
+        await record_backup(
+            record_id,
+            which=BackupKind.PRE_RESET,
+            reference=pre_reset,
+            destroy_by=_ask_destroy_by(read_text, default_day),
+        )
+    baseline = _ask_backup(
+        read_text, write_text, "Copia del respaldo base: ", names, optional=False
+    )
+    baseline_destroy_by = _ask_destroy_by(read_text, default_day)
+    await record_backup(
+        record_id,
+        which=BackupKind.BASELINE,
+        reference=str(baseline),
+        destroy_by=baseline_destroy_by,
+    )
+    return str(baseline), baseline_destroy_by
 
 
 async def _run_close(read_text: ReadText, write_text: WriteText, now: str) -> int:
@@ -246,7 +317,9 @@ async def _run_close(read_text: ReadText, write_text: WriteText, now: str) -> in
         "Cierre del alta (servidor detenido). Antes debiste verificar un turno real por cara y "
         "voz con el servidor encendido, y hacer una copia del respaldo base de la base de datos."
     )
-    baseline_reference, baseline_destroy_by = await _record_backups(record.id, read_text)
+    baseline_reference, baseline_destroy_by = await _record_backups(
+        record.id, read_text, write_text, now
+    )
     consents = read_consents(read_text=read_text, write_text=write_text)
     hardware = _read_hardware(read_text, write_text)
     statuses = await list_section_statuses(record.id)
