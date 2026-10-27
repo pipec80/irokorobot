@@ -127,3 +127,16 @@ async def test_the_camera_waits_for_the_countdown_after_the_pin() -> None:
     )
 
     assert events == ["unlock", "sleep:3.0", "capture"]
+
+
+async def test_each_take_says_to_get_ready_before_typing_the_pin() -> None:
+    unlock, capture, enroll, _ = _adapters()
+    lines: list[str] = []
+
+    await run_face_session(
+        unlock=unlock, capture=capture, enroll=enroll, write_text=lines.append, frames=2
+    )
+
+    takes = [line for line in lines if line.startswith("Toma ")]
+    assert len(takes) == 2
+    assert all("PIN" in line for line in takes)

@@ -173,3 +173,30 @@ async def test_the_microphone_waits_for_the_countdown_before_recording() -> None
     )
 
     assert events == ["sleep:3.0", "record", "unlock"]
+
+
+async def test_the_recording_is_announced_before_and_confirmed_after() -> None:
+    events: list[str] = []
+
+    async def unlock() -> str:
+        return _TOKEN
+
+    def record() -> bytes:
+        events.append("record")
+        return _CLIP
+
+    async def enroll(token: str, clip: bytes) -> str:
+        return "voiceprint"
+
+    await run_voice_session(
+        unlock=unlock,
+        record=record,
+        level_check=lambda _: True,
+        enroll=enroll,
+        write_text=lambda text: events.append(f"say:{text}"),
+        references=1,
+    )
+
+    announced = next(i for i, event in enumerate(events) if "Grabando ahora" in event)
+    done = next(i for i, event in enumerate(events) if "Grabaci" in event and "lista" in event)
+    assert announced < events.index("record") < done

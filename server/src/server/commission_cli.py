@@ -14,6 +14,7 @@ loopback HTTP to the server, never the robot.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from enum import StrEnum
 from pathlib import Path
@@ -78,6 +79,14 @@ _PROBE_TIMEOUT_S = 2.0
 # Seconds the owner gets between the PIN (or the prompt) and the capture, to face the camera or
 # start reading; the camera and microphone sessions would otherwise fire as Enter is pressed.
 _COUNTDOWN_S = 3.0
+# A malformed (422) or wrong (401) PIN is asked again this many times; a throttled unlock is not.
+_PIN_ATTEMPTS = 3
+_PIN_HINTS = {
+    422: "El PIN debe tener de 6 a 12 dígitos.",
+    401: "PIN incorrecto.",
+}
+# The server's reason for a refused enrolment is shown up to this many characters.
+_MAX_REASON = 120
 _UNLOCK_SCOPE = "biometric_admin"
 _YES = frozenset({"si", "sí"})
 # The acta goes under data/commissioning/, which git ignores (ADR 0024 decision 5).
@@ -314,28 +323,51 @@ def _server_answers() -> bool:
     return True
 
 
-async def _unlock(client: httpx.AsyncClient, read_pin: ReadPin) -> str:
-    """Verify the local PIN and return one fresh one-use token for ``biometric_admin``."""
-    import asyncio  # noqa: PLC0415 — only this hardware path needs the thread offload
+async def _unlock(client: httpx.AsyncClient, read_pin: ReadPin, write_text: WriteText) -> str:
+    """Verify the local PIN and return one fresh one-use token for ``biometric_admin``.
 
-    pin = await asyncio.to_thread(read_pin, "Owner PIN: ")
-    response = await client.post(
-        f"{_server_url()}/auth/owner/unlock", json={"pin": pin, "scope": _UNLOCK_SCOPE}
-    )
-    if response.is_error:
-        raise CommissionError(f"PIN rechazado: {response.status_code}")
-    return str(response.json()["token"])
+    A PIN the server rejects as malformed (422, for instance an empty Enter) or as wrong (401) is
+    asked again, up to :data:`_PIN_ATTEMPTS` times; any other refusal (a throttled unlock, a
+    server error) stops at once.
+
+    Raises:
+        CommissionError: If the PIN is rejected for good.
+    """
+    for attempt in range(1, _PIN_ATTEMPTS + 1):
+        pin = await asyncio.to_thread(read_pin, "Owner PIN: ")
+        response = await client.post(
+            f"{_server_url()}/auth/owner/unlock", json={"pin": pin, "scope": _UNLOCK_SCOPE}
+        )
+        if not response.is_error:
+            return str(response.json()["token"])
+        hint = _PIN_HINTS.get(response.status_code)
+        if hint is None or attempt == _PIN_ATTEMPTS:
+            raise CommissionError(f"PIN rechazado ({response.status_code}). {hint or ''}".strip())
+        write_text(f"{hint} Intenta de nuevo.")
+    raise CommissionError("PIN rechazado.")  # pragma: no cover - the loop always returns or raises
+
+
+def _reason(response: httpx.Response) -> str:
+    """The server's short reason for a refusal (its ``detail``), cut to a printable length."""
+    try:
+        detail = response.json().get("detail")
+    except (ValueError, AttributeError):
+        return ""
+    return f" {detail}"[: _MAX_REASON + 1] if isinstance(detail, str) else ""
 
 
 def _enroll_result(response: httpx.Response) -> str:
-    """Return the profile id of a successful enrol, or raise a closed error."""
+    """Return the profile id of a successful enrol, or raise a closed error with the reason."""
     if response.is_error:
-        raise CommissionError(f"Enrolamiento rechazado: {response.status_code}")
+        raise CommissionError(f"Enrolamiento rechazado: {response.status_code}{_reason(response)}")
     return str(response.json().get("profile_id", ""))
 
 
 def build_face_session(
-    client: httpx.AsyncClient, read_pin: ReadPin, capture: CaptureFrame
+    client: httpx.AsyncClient,
+    read_pin: ReadPin,
+    capture: CaptureFrame,
+    write_text: WriteText = print,
 ) -> Session:
     """Wire :func:`run_face_session` to the unlock and enroll endpoints and an injected camera.
 
@@ -343,13 +375,14 @@ def build_face_session(
         client: A loopback HTTP client.
         read_pin: Prompts for the owner PIN (one-use per frame).
         capture: Returns one JPEG frame; injected by the robot-aware entry point.
+        write_text: Prints one line (guidance and PIN retries).
 
     Returns:
         A no-argument coroutine that runs the whole face session.
     """
 
     async def unlock() -> str:
-        return await _unlock(client, read_pin)
+        return await _unlock(client, read_pin, write_text)
 
     async def enroll(token: str, frame: bytes) -> str:
         response = await client.post(
@@ -364,7 +397,7 @@ def build_face_session(
             unlock=unlock,
             capture=capture,
             enroll=enroll,
-            write_text=print,
+            write_text=write_text,
             countdown_s=_COUNTDOWN_S,
         )
 
@@ -372,7 +405,10 @@ def build_face_session(
 
 
 def build_voice_session(
-    client: httpx.AsyncClient, read_pin: ReadPin, record: RecordClip
+    client: httpx.AsyncClient,
+    read_pin: ReadPin,
+    record: RecordClip,
+    write_text: WriteText = print,
 ) -> Session:
     """Wire :func:`run_voice_session` to the unlock and enroll endpoints and an injected microphone.
 
@@ -380,13 +416,14 @@ def build_voice_session(
         client: A loopback HTTP client.
         read_pin: Prompts for the owner PIN (one-use per reference).
         record: Returns one contract WAV clip; injected by the robot-aware entry point.
+        write_text: Prints one line (guidance and PIN retries).
 
     Returns:
         A no-argument coroutine that runs the whole voice session.
     """
 
     async def unlock() -> str:
-        return await _unlock(client, read_pin)
+        return await _unlock(client, read_pin, write_text)
 
     async def enroll(token: str, clip: bytes) -> str:
         response = await client.post(
@@ -404,7 +441,7 @@ def build_voice_session(
             record=record,
             level_check=lambda _: True,
             enroll=enroll,
-            write_text=print,
+            write_text=write_text,
             countdown_s=_COUNTDOWN_S,
         )
 

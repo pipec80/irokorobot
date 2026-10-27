@@ -159,7 +159,10 @@ async def run_face_session(
     enrolled = 0
     for index in range(frames):
         pose = _FACE_POSES[index] if index < len(_FACE_POSES) else "otra toma"
-        write_text(f"Toma {index + 1} de {frames}: mira a la cámara, {pose}.")
+        write_text(
+            f"Toma {index + 1} de {frames}: mira a la cámara, {pose}. Prepárate y, cuando "
+            "estés listo, escribe tu PIN (la foto se toma justo después)."
+        )
         token = await unlock()
         if countdown_s > 0:
             write_text(f"Capturando en {countdown_s:g} s: mira a la cámara.")
@@ -221,10 +224,13 @@ async def run_voice_session(
             break
         if countdown_s > 0:
             write_text(
-                f"Grabando en {countdown_s:g} s: lee la primera frase del texto en voz alta."
+                f"Prepárate: se graba en {countdown_s:g} s; cuando empiece, lee la primera "
+                "frase del texto en voz alta."
             )
             await sleep(countdown_s)
+        write_text("¡Grabando ahora! Habla.")
         clip = record()
+        write_text("Grabación lista.")
         if not level_check(clip):
             write_text("El nivel o la distancia no son buenos. Repite y acércate al micrófono.")
             continue

@@ -404,3 +404,90 @@ async def test_drive_without_a_database_points_at_setup_personal(
     assert code == 0
     assert any("just setup-personal" in line for line in lines)
     assert not (tmp_path / "missing.db").exists()  # nothing was created
+
+
+# --- the unlock retries a mistyped PIN and the enrol errors say why -----------------------------
+
+
+def _unlock_client(statuses: list[int]) -> httpx.AsyncClient:
+    """A client whose unlock endpoint answers the given statuses in order (200 gives a token)."""
+    queue = iter(statuses)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        status = next(queue)
+        if status == 200:
+            return httpx.Response(200, json={"token": "fake-token"})
+        return httpx.Response(status, json={"detail": "rejected"})
+
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+
+async def test_a_mistyped_pin_is_asked_again_instead_of_aborting() -> None:
+    pins = iter(["", "123456"])
+    lines: list[str] = []
+
+    async with _unlock_client([422, 200]) as client:
+        unlocked = await commission_cli._unlock(client, lambda _: next(pins), lines.append)
+
+    assert unlocked == "fake-token"
+    assert any("6 a 12" in line for line in lines)  # a 422 says what a PIN looks like
+
+
+async def test_a_wrong_pin_says_so_and_is_asked_again() -> None:
+    pins = iter(["000000", "123456"])
+    lines: list[str] = []
+
+    async with _unlock_client([401, 200]) as client:
+        unlocked = await commission_cli._unlock(client, lambda _: next(pins), lines.append)
+
+    assert unlocked == "fake-token"
+    assert any("incorrecto" in line for line in lines)
+
+
+async def test_three_rejected_pins_give_up() -> None:
+    asked: list[str] = []
+
+    def read_pin(prompt: str) -> str:
+        asked.append(prompt)
+        return "000000"
+
+    async with _unlock_client([401, 401, 401]) as client:
+        with pytest.raises(CommissionError, match="PIN"):
+            await commission_cli._unlock(client, read_pin, lambda _: None)
+
+    assert len(asked) == 3
+
+
+async def test_a_throttled_unlock_is_not_retried() -> None:
+    asked: list[str] = []
+
+    def read_pin(prompt: str) -> str:
+        asked.append(prompt)
+        return "123456"
+
+    async with _unlock_client([429, 200]) as client:
+        with pytest.raises(CommissionError, match="429"):
+            await commission_cli._unlock(client, read_pin, lambda _: None)
+
+    assert len(asked) == 1
+
+
+def test_an_enrol_rejection_surfaces_the_servers_reason() -> None:
+    response = httpx.Response(422, json={"detail": "no_face: no face found in the frame"})
+
+    with pytest.raises(CommissionError, match="no_face"):
+        commission_cli._enroll_result(response)
+
+
+def test_an_enrol_rejection_without_a_reason_still_names_the_status() -> None:
+    with pytest.raises(CommissionError, match="500"):
+        commission_cli._enroll_result(httpx.Response(500, text="boom"))
+
+
+def test_a_very_long_reason_is_cut() -> None:
+    response = httpx.Response(422, json={"detail": "x" * 400})
+
+    with pytest.raises(CommissionError) as raised:
+        commission_cli._enroll_result(response)
+
+    assert len(str(raised.value)) < 200
