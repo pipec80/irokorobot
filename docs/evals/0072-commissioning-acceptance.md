@@ -11,7 +11,7 @@
 - Branch `feat/0072-commissioning-session`, code of Tasks 1 to 7 plus the fixes below.
 - The rehearsal used the configured database path (`data/omnibot.db`), reset first with a backup
   (`just reset-db`). It did **not** use a scratch file, so that database is now a closed canary
-  commissioning; Pipec's real alta needs another `just reset-db`.
+  commissioning, so Pipec's real alta started with another `just reset-db` (below).
 - `.env`: `FACE_AUTHENTICATION_ENABLED=true`, `SPEAKER_AUTHENTICATION_ENABLED=true`,
   `MEMORY_CANDIDATES_ENABLED=false`.
 
@@ -53,9 +53,33 @@ person (ADR 0024 decision 14); the rehearsal answered it without checking.
 | `df5e923` | the closing's three backup questions gave no example and an empty answer aborted |
 | `d61c617` | a backup typed by its file name was stored without its folder |
 
+## The real alta (Pipec, 2026-10-27, outcomes only)
+
+Run the same day after the merge, from `main` with the `pre-step0` tag in place: `just reset-db` (with a
+backup), `just setup-personal` with **no children** and his own PIN, his own seed file under `data/seed/`,
+then the same steps. Counts and outcomes only; the file held his household data and was destroyed after the
+closing.
+
+| Step | Result |
+|---|---|
+| face session | 5 of 5 frames |
+| voice session | 3 of 3 references |
+| seed load | dry run 43 to write, 0 problems; applied (record 1) |
+| verification turn | the children's count and list answered by the deterministic tools; speaker verdict `verified` and fusion `face_and_voice` on two clips of about 2 s |
+| second dry run | 0 to write, 43 unchanged |
+| baseline copy | made with the server stopped; its hash equals the database's |
+| closing | acta written; modalities `face`, `pin`, `voice`; disk encryption declared `no` (BitLocker is in fact active on `C:`, seen afterwards in the control panel; the closed record keeps the wrong declaration); readiness: voice ready, remembering a taste and describing a scene blocked by hardware |
+| after the closing | `seed-import` refused and `commission` reported it closed |
+
+Two things cost a re-run and are kept here: `setup-personal` goes **without children** (the importer never
+adopts an existing person, `entity_exists`), and a section status such as `allergies = "none"` goes under
+`[status]`, not under `[owner]`. The acta kept three cosmetic slips from the closing prompts (an empty
+pre-reset backup, two files typed on one line of the baseline backup, and «si» as the destination label); a
+closed record cannot be edited and the information is still there.
+
 ## What this does not show
 
-- The real alta on Pipec's own data has not been run; it is his own later step.
+- Whether the household data in the real alta is complete or right: this record holds counts only.
 - The voice verdict on a clip shorter than a few seconds is the known limit measured in Plans 0066 to
   0068; this rehearsal neither widens nor narrows it.
 - The fifth face frame was not enrolled (`just face-auth-demo` adds frames); a face counts as enrolled
