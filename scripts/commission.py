@@ -7,10 +7,13 @@ drives the flow. It runs in the full workspace environment.
 
 Usage:
     just commission
+    just commission --device 1
+    just commission --mic 2
 """
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 from datetime import UTC, datetime
 import getpass
@@ -26,11 +29,17 @@ _SAMPLE_RATE = 16_000
 _SECONDS = 5
 
 
-def _record_clip() -> bytes:
+def _record_clip(device: int | None) -> bytes:
     """Record a few seconds from the microphone as contract WAV bytes (16 kHz mono int16)."""
     import sounddevice as sd  # noqa: PLC0415 — optional, demo-only dependency
 
-    frames = sd.rec(_SECONDS * _SAMPLE_RATE, samplerate=_SAMPLE_RATE, channels=1, dtype="int16")
+    frames = sd.rec(
+        _SECONDS * _SAMPLE_RATE,
+        samplerate=_SAMPLE_RATE,
+        channels=1,
+        dtype="int16",
+        device=device,
+    )
     sd.wait()
     buffer = io.BytesIO()
     with wave.open(buffer, "wb") as handle:
@@ -41,11 +50,11 @@ def _record_clip() -> bytes:
     return buffer.getvalue()
 
 
-async def _main() -> int:
+async def _main(camera: int, microphone: int | None) -> int:
     """Wire the camera and microphone adapters and drive the alta."""
     async with httpx.AsyncClient(timeout=30) as client:
-        face = build_face_session(client, getpass.getpass, lambda: capture_frame(0))
-        voice = build_voice_session(client, getpass.getpass, _record_clip)
+        face = build_face_session(client, getpass.getpass, lambda: capture_frame(camera))
+        voice = build_voice_session(client, getpass.getpass, lambda: _record_clip(microphone))
         return await drive(
             read_text=input,
             write_text=print,
@@ -57,7 +66,17 @@ async def _main() -> int:
 
 def main() -> None:
     """CLI entrypoint for the guided alta."""
-    raise SystemExit(asyncio.run(_main()))
+    parser = argparse.ArgumentParser(description="Alta guiada del robot (Plan 0072).")
+    parser.add_argument("--device", type=int, default=0, help="Indice de camara (default: 0)")
+    parser.add_argument(
+        "--mic", type=int, default=None, help="Indice del microfono (default: el del sistema)"
+    )
+    args = parser.parse_args()
+    try:
+        raise SystemExit(asyncio.run(_main(args.device, args.mic)))
+    except KeyboardInterrupt:
+        print("Cancelado. Puedes volver a correr just commission: retoma donde quedo.")  # noqa: T201
+        raise SystemExit(130) from None
 
 
 if __name__ == "__main__":

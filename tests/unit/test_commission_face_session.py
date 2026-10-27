@@ -97,3 +97,33 @@ async def test_no_frame_or_token_reaches_a_log(caplog: pytest.LogCaptureFixture)
         _TOKEN not in record.getMessage() and "jpeg-bytes-canary" not in record.getMessage()
         for record in caplog.records
     )
+
+
+async def test_the_camera_waits_for_the_countdown_after_the_pin() -> None:
+    events: list[str] = []
+
+    async def unlock() -> str:
+        events.append("unlock")
+        return _TOKEN
+
+    def capture() -> bytes:
+        events.append("capture")
+        return _FRAME
+
+    async def enroll(token: str, frame: bytes) -> str:
+        return "profile"
+
+    async def sleep(seconds: float) -> None:
+        events.append(f"sleep:{seconds}")
+
+    await run_face_session(
+        unlock=unlock,
+        capture=capture,
+        enroll=enroll,
+        write_text=lambda _: None,
+        frames=1,
+        countdown_s=3.0,
+        sleep=sleep,
+    )
+
+    assert events == ["unlock", "sleep:3.0", "capture"]

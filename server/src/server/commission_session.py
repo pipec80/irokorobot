@@ -8,6 +8,7 @@ the enrolment endpoints embed and discard the media.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
@@ -34,6 +35,7 @@ type EnrollFrame = Callable[[str, bytes], Awaitable[str]]
 type RecordClip = Callable[[], bytes]
 type LevelCheck = Callable[[bytes], bool]
 type EnrollClip = Callable[[str, bytes], Awaitable[str]]
+type Sleep = Callable[[float], Awaitable[None]]
 
 # The five face poses of ADR 0024 decision 15 / Plan 0030 (distance, glasses, lighting).
 _FACE_POSES = (
@@ -131,12 +133,15 @@ async def run_face_session(
     enroll: EnrollFrame,
     write_text: WriteText,
     frames: int = 5,
+    countdown_s: float = 0.0,
+    sleep: Sleep = asyncio.sleep,
 ) -> int:
     """Enrol the owner's face in several frames, one unlock each (ADR 0024 decision 15).
 
-    Guides the poses of :data:`_FACE_POSES`, unlocks once per frame (each token is one-use), and
-    stops cleanly if a frame is rejected (``no_face``, ``multiple_faces``, ``low_quality``,
-    ``face_too_small``). An ``unlock`` that fails propagates; a rejected frame only stops the session.
+    Guides the poses of :data:`_FACE_POSES`, unlocks once per frame (each token is one-use), waits
+    ``countdown_s`` after the PIN so the owner can look at the camera, and stops cleanly if a frame
+    is rejected (``no_face``, ``multiple_faces``, ``low_quality``, ``face_too_small``). An
+    ``unlock`` that fails propagates; a rejected frame only stops the session.
 
     Args:
         unlock: Returns a fresh one-use owner-unlock token for ``biometric_admin``.
@@ -144,6 +149,8 @@ async def run_face_session(
         enroll: Posts one frame to ``/auth/owner/face/enroll``; raises for a rejected frame.
         write_text: Writes one line of guidance to the terminal.
         frames: How many frames to try (default five).
+        countdown_s: Seconds to wait between the PIN and the capture (0 for none).
+        sleep: Awaits the countdown; injected so tests do not really wait.
 
     Returns:
         How many frames were enrolled before the session ended.
@@ -154,6 +161,9 @@ async def run_face_session(
         pose = _FACE_POSES[index] if index < len(_FACE_POSES) else "otra toma"
         write_text(f"Toma {index + 1} de {frames}: mira a la cámara, {pose}.")
         token = await unlock()
+        if countdown_s > 0:
+            write_text(f"Capturando en {countdown_s:g} s: mira a la cámara.")
+            await sleep(countdown_s)
         frame = capture()
         try:
             await enroll(token, frame)
@@ -173,6 +183,8 @@ async def run_voice_session(
     enroll: EnrollClip,
     write_text: WriteText,
     references: int | None = None,
+    countdown_s: float = 0.0,
+    sleep: Sleep = asyncio.sleep,
 ) -> int:
     """Enrol the owner's voice from several short reads, one unlock each (ADR 0024 decision 15).
 
@@ -191,6 +203,8 @@ async def run_voice_session(
         write_text: Writes one line of guidance to the terminal.
         references: How many references to enrol (default
             ``settings.speaker_min_reference_count``).
+        countdown_s: Seconds to wait before each recording so the owner can start reading.
+        sleep: Awaits the countdown; injected so tests do not really wait.
 
     Returns:
         How many references were enrolled (0 when speaker authentication is off).
@@ -205,6 +219,11 @@ async def run_voice_session(
         if attempts > target + _VOICE_ATTEMPT_SLACK:
             write_text("Demasiados intentos; se detiene la sesión de voz.")
             break
+        if countdown_s > 0:
+            write_text(
+                f"Grabando en {countdown_s:g} s: lee la primera frase del texto en voz alta."
+            )
+            await sleep(countdown_s)
         clip = record()
         if not level_check(clip):
             write_text("El nivel o la distancia no son buenos. Repite y acércate al micrófono.")

@@ -142,3 +142,34 @@ async def test_no_clip_or_token_reaches_a_log(caplog: pytest.LogCaptureFixture) 
         _TOKEN not in entry.getMessage() and "wav-bytes-canary" not in entry.getMessage()
         for entry in caplog.records
     )
+
+
+async def test_the_microphone_waits_for_the_countdown_before_recording() -> None:
+    events: list[str] = []
+
+    async def unlock() -> str:
+        events.append("unlock")
+        return _TOKEN
+
+    def record() -> bytes:
+        events.append("record")
+        return _CLIP
+
+    async def enroll(token: str, clip: bytes) -> str:
+        return "voiceprint"
+
+    async def sleep(seconds: float) -> None:
+        events.append(f"sleep:{seconds}")
+
+    await run_voice_session(
+        unlock=unlock,
+        record=record,
+        level_check=lambda _: True,
+        enroll=enroll,
+        write_text=lambda _: None,
+        references=1,
+        countdown_s=3.0,
+        sleep=sleep,
+    )
+
+    assert events == ["sleep:3.0", "record", "unlock"]

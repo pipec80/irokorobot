@@ -11,19 +11,35 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
+import httpx
 import numpy as np
 from pydantic import SecretStr
 import pytest
 from server.commission_cli import (
     CommissioningStep,
+    build_face_session,
+    build_voice_session,
     decide_step,
     derive_modalities,
+    drive,
     run_commission,
     step_guidance,
 )
 from server.commission_session import CommissionError
 from server.memory.biometric_consent import grant_face_consent
-from server.memory.commissioning import Modality
+from server.memory.commissioning import (
+    Backup,
+    CommissioningInput,
+    ConfirmationMode,
+    Consents,
+    DiskEncryption,
+    InterviewerRole,
+    Modality,
+    get_open_commissioning,
+    importer_window_open,
+    open_commissioning,
+    read_session_details,
+)
 from server.personal_setup import PersonalSetupInput, apply_personal_setup
 from server.settings import settings
 from server.voice.speaker_embedding import model_id
@@ -119,7 +135,22 @@ def test_the_delegated_steps_print_the_exact_command() -> None:
     assert any("just seed-import" in line for line in step_guidance(CommissioningStep.LOAD))
 
 
-async def test_the_enrol_step_shows_the_notice_and_runs_both_sessions() -> None:
+async def _unused() -> int:
+    raise AssertionError("this session must not run in this step")
+
+
+@pytest.mark.parametrize(
+    "enrolled, expected",
+    [
+        (frozenset({Modality.PIN}), ["face", "voice"]),
+        (frozenset({Modality.PIN, Modality.FACE}), ["voice"]),
+        (frozenset({Modality.PIN, Modality.VOICE}), ["face"]),
+    ],
+)
+async def test_the_enrol_step_runs_only_the_missing_sessions(
+    monkeypatch: pytest.MonkeyPatch, enrolled: frozenset[Modality], expected: list[str]
+) -> None:
+    _state(monkeypatch, modalities=enrolled)
     calls: list[str] = []
     lines: list[str] = []
 
@@ -141,8 +172,50 @@ async def test_the_enrol_step_shows_the_notice_and_runs_both_sessions() -> None:
     )
 
     assert code == 0
-    assert calls == ["face", "voice"]
+    assert calls == expected
     assert any("cara" in line.lower() for line in lines)  # the notice was shown
+
+
+async def test_the_enrol_step_names_the_env_flags_it_needs(monkeypatch: pytest.MonkeyPatch) -> None:
+    _state(monkeypatch, modalities=frozenset({Modality.PIN}))
+    lines: list[str] = []
+
+    async def session() -> int:
+        return 1
+
+    await run_commission(
+        CommissioningStep.ENROL,
+        read_text=lambda _: "si",
+        write_text=lines.append,
+        face_session=session,
+        voice_session=session,
+        now=_NOW,
+    )
+
+    text = "\n".join(lines)
+    assert "FACE_AUTHENTICATION_ENABLED" in text
+    assert "SPEAKER_AUTHENTICATION_ENABLED" in text
+
+
+async def test_the_wired_sessions_give_a_real_countdown(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, dict[str, object]] = {}
+
+    async def fake_face(**kwargs: object) -> int:
+        seen["face"] = kwargs
+        return 0
+
+    async def fake_voice(**kwargs: object) -> int:
+        seen["voice"] = kwargs
+        return 0
+
+    monkeypatch.setattr(commission_cli, "run_face_session", fake_face)
+    monkeypatch.setattr(commission_cli, "run_voice_session", fake_voice)
+    async with httpx.AsyncClient() as client:
+        await build_face_session(client, lambda _: "", lambda: b"")()
+        await build_voice_session(client, lambda _: "", lambda: b"")()
+
+    assert float(str(seen["face"]["countdown_s"])) > 0
+    assert float(str(seen["voice"]["countdown_s"])) > 0
 
 
 # --- derive_modalities against a real database --------------------------------------------------
@@ -174,3 +247,160 @@ async def test_derive_modalities_reports_pin_then_face_then_voice(owner_db: int)
     for _ in range(settings.speaker_min_reference_count):
         await enroll_voiceprint(owner_db, vector, "Canary Owner", model_id())
     assert await derive_modalities() == frozenset({Modality.PIN, Modality.FACE, Modality.VOICE})
+
+
+# --- the close step and the driver, against a real database -------------------------------------
+
+_HARDWARE_ANSWERS = ["si"] * 18  # six capabilities, three questions each
+
+
+async def _open_alta() -> int:
+    record = await open_commissioning(
+        CommissioningInput(
+            interviewer_label="Canary Interviewer",
+            interviewer_role=InterviewerRole.BUILDER,
+            confirmation_mode=ConfirmationMode.BUILDER_IS_OWNER,
+            disk_encryption=DiskEncryption.DECLARED_YES,
+        ),
+        started_at=_NOW,
+    )
+    return record.id
+
+
+async def _close_with(answers: list[str], lines: list[str]) -> int:
+    queue = iter(answers)
+    return await run_commission(
+        CommissioningStep.CLOSE,
+        read_text=lambda _: next(queue),
+        write_text=lines.append,
+        face_session=_unused,
+        voice_session=_unused,
+        now=_NOW,
+    )
+
+
+async def test_the_close_step_records_everything_and_closes(
+    owner_db: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(commission_cli, "_ACTA_DIR", tmp_path / "actas")
+    record_id = await _open_alta()
+    answers = [
+        "data/backups/pre.db",
+        "2027-01-31",
+        "data/backups/base.db",
+        "2027-02-28",
+        "si",
+        "no",
+        "si",
+        "Canary Homelab",
+        *_HARDWARE_ANSWERS,
+    ]
+    lines: list[str] = []
+
+    code = await _close_with(answers, lines)
+
+    details = await read_session_details(record_id)
+    assert code == 0
+    assert details.pre_reset_backup == Backup("data/backups/pre.db", "2027-01-31")
+    assert details.baseline_backup == Backup("data/backups/base.db", "2027-02-28")
+    assert details.consents == Consents(True, False, True, "Canary Homelab")
+    assert details.biometric_notice_version == "v1"
+    assert details.modalities == frozenset({Modality.PIN})
+    assert details.readiness_json is not None
+    assert await importer_window_open() is False
+    (acta,) = (tmp_path / "actas").glob("acta-*.md")
+    assert "Canary Owner" not in acta.read_text(encoding="utf-8")  # no household value
+
+
+async def test_no_pre_reset_backup_is_recorded_when_there_was_none(
+    owner_db: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(commission_cli, "_ACTA_DIR", tmp_path / "actas")
+    record_id = await _open_alta()
+    answers = ["", "data/backups/base.db", "2027-02-28", "no", "no", "no", *_HARDWARE_ANSWERS]
+
+    await _close_with(answers, [])
+
+    details = await read_session_details(record_id)
+    assert details.pre_reset_backup is None
+    assert details.baseline_backup == Backup("data/backups/base.db", "2027-02-28")
+
+
+async def test_a_bad_backup_date_fails_before_the_long_questionnaire(
+    owner_db: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(commission_cli, "_ACTA_DIR", tmp_path / "actas")
+    record_id = await _open_alta()
+
+    with pytest.raises(ValueError, match="date"):
+        await _close_with(["data/backups/pre.db", "31-01-2027"], [])
+
+    assert (await read_session_details(record_id)).consents is None
+    assert await get_open_commissioning() is not None  # still open: nothing half-closed
+
+
+async def test_the_close_step_tells_you_to_copy_the_database_first(
+    owner_db: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(commission_cli, "_ACTA_DIR", tmp_path / "actas")
+    await _open_alta()
+    lines: list[str] = []
+
+    await _close_with(
+        ["", "data/backups/base.db", "2027-02-28", "no", "no", "no", *_HARDWARE_ANSWERS], lines
+    )
+
+    assert any("copia" in line.lower() and "respaldo" in line.lower() for line in lines)
+
+
+@pytest.fixture
+async def owner_db_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A database with a ready owner, closed again so ``drive`` opens it itself."""
+    path = tmp_path / "commission.db"
+    monkeypatch.setattr(settings, "brain_db_path", path)
+    db._conn = None
+    await db.open_db()
+    await db.run_migrations()
+    await apply_personal_setup(
+        PersonalSetupInput(owner_name="Canary Owner", child_names=(), pin=SecretStr("123456"))
+    )
+    await db.close_db()
+    db._conn = None
+    return path
+
+
+async def test_drive_prints_a_wrong_server_state_instead_of_a_traceback(
+    owner_db_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(commission_cli, "_server_answers", lambda: False)
+    lines: list[str] = []
+
+    code = await drive(
+        read_text=lambda _: "",
+        write_text=lines.append,
+        face_session=_unused,
+        voice_session=_unused,
+        now=_NOW,
+    )
+
+    assert code == 1
+    assert any("run-server" in line for line in lines)
+
+
+async def test_drive_without_a_database_points_at_setup_personal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "brain_db_path", tmp_path / "missing.db")
+    lines: list[str] = []
+
+    code = await drive(
+        read_text=lambda _: "",
+        write_text=lines.append,
+        face_session=_unused,
+        voice_session=_unused,
+        now=_NOW,
+    )
+
+    assert code == 0
+    assert any("just setup-personal" in line for line in lines)
+    assert not (tmp_path / "missing.db").exists()  # nothing was created

@@ -30,12 +30,15 @@ from server.commission_session import (
     run_face_session,
     run_voice_session,
 )
+from server.exceptions import BrainMemoryError
 from server.memory.biometric_consent import has_active_face_consent
 from server.memory.commissioning import (
+    BackupKind,
     Modality,
     get_open_commissioning,
     importer_window_open,
     list_section_statuses,
+    record_backup,
     record_biometric_notice,
     record_consents,
     record_readiness,
@@ -72,6 +75,9 @@ type RecordClip = Callable[[], bytes]
 type ReadPin = Callable[[str], str]
 
 _PROBE_TIMEOUT_S = 2.0
+# Seconds the owner gets between the PIN (or the prompt) and the capture, to face the camera or
+# start reading; the camera and microphone sessions would otherwise fire as Enter is pressed.
+_COUNTDOWN_S = 3.0
 _UNLOCK_SCOPE = "biometric_admin"
 _YES = frozenset({"si", "sí"})
 # The acta goes under data/commissioning/, which git ignores (ADR 0024 decision 5).
@@ -105,6 +111,8 @@ _GUIDANCE: dict[CommissioningStep, list[str]] = {
     ],
     CommissioningStep.ENROL: [
         "Paso: lee el aviso biométrico y enrola la cara y la voz (servidor encendido).",
+        "Requiere FACE_AUTHENTICATION_ENABLED=true y SPEAKER_AUTHENTICATION_ENABLED=true en "
+        ".env, con el servidor reiniciado después de cambiarlos.",
     ],
     CommissioningStep.LOAD: [
         "Paso: carga el expediente del hogar (servidor detenido).",
@@ -198,12 +206,38 @@ def _read_hardware(read_text: ReadText, write_text: WriteText) -> dict[Capabilit
     return hardware
 
 
+async def _record_backups(record_id: int, read_text: ReadText) -> tuple[str, str]:
+    """Ask for both backups and record them now, so a typo fails before the long questionnaire.
+
+    The pre-reset backup is optional (Enter when there was none); the baseline one is not.
+
+    Returns:
+        The baseline backup's path and destruction date, for the closing.
+    """
+    pre_reset = read_text("Ruta del respaldo previo al reset (Enter si no hubo): ").strip()
+    if pre_reset:
+        destroy_by = read_text("Fecha para destruirlo (YYYY-MM-DD): ").strip()
+        await record_backup(
+            record_id, which=BackupKind.PRE_RESET, reference=pre_reset, destroy_by=destroy_by
+        )
+    baseline = read_text("Ruta de la copia del respaldo base (offline): ").strip()
+    baseline_destroy_by = read_text("Fecha para destruir esa copia (YYYY-MM-DD): ").strip()
+    await record_backup(
+        record_id, which=BackupKind.BASELINE, reference=baseline, destroy_by=baseline_destroy_by
+    )
+    return baseline, baseline_destroy_by
+
+
 async def _run_close(read_text: ReadText, write_text: WriteText, now: str) -> int:
-    """Collect consents and hardware, record the readiness, back up and close the alta."""
+    """Collect backups, consents and hardware, record the readiness and close the alta."""
     record = await get_open_commissioning()
     if record is None:
         raise CommissionError("No hay un alta abierta que cerrar.")
-    write_text("Antes de cerrar, verifica un turno real por cara y voz (servidor encendido).")
+    write_text(
+        "Cierre del alta (servidor detenido). Antes debiste verificar un turno real por cara y "
+        "voz con el servidor encendido, y hacer una copia del respaldo base de la base de datos."
+    )
+    baseline_reference, baseline_destroy_by = await _record_backups(record.id, read_text)
     consents = read_consents(read_text=read_text, write_text=write_text)
     hardware = _read_hardware(read_text, write_text)
     statuses = await list_section_statuses(record.id)
@@ -212,8 +246,6 @@ async def _run_close(read_text: ReadText, write_text: WriteText, now: str) -> in
     await record_consents(record.id, consents)
     await record_readiness(record.id, readiness_to_json(readiness))
     modalities = await derive_modalities()
-    baseline_reference = read_text("Ruta del respaldo base (offline): ").strip()
-    baseline_destroy_by = read_text("Fecha para destruir el respaldo (YYYY-MM-DD): ").strip()
     acta = await close_session(
         record.id,
         baseline_reference=baseline_reference,
@@ -250,9 +282,14 @@ async def run_commission(
     """
     match step:
         case CommissioningStep.ENROL:
+            for line in step_guidance(step):
+                write_text(line)
             write_text(load_biometric_notice())
-            await face_session()
-            await voice_session()
+            enrolled = await derive_modalities()
+            if Modality.FACE not in enrolled:
+                await face_session()
+            if Modality.VOICE not in enrolled:
+                await voice_session()
             return 0
         case CommissioningStep.CLOSE:
             return await _run_close(read_text, write_text, now)
@@ -324,7 +361,11 @@ def build_face_session(
 
     async def session() -> int:
         return await run_face_session(
-            unlock=unlock, capture=capture, enroll=enroll, write_text=print
+            unlock=unlock,
+            capture=capture,
+            enroll=enroll,
+            write_text=print,
+            countdown_s=_COUNTDOWN_S,
         )
 
     return session
@@ -364,6 +405,7 @@ def build_voice_session(
             level_check=lambda _: True,
             enroll=enroll,
             write_text=print,
+            countdown_s=_COUNTDOWN_S,
         )
 
     return session
@@ -408,5 +450,10 @@ async def drive(
             voice_session=voice_session,
             now=now,
         )
+    except (BrainMemoryError, ValueError) as exc:
+        # A closed, printable message (a wrong server state, a bad date, a closed alta), the way
+        # scripts/onboard.py reports it, instead of a traceback.
+        write_text(str(exc))
+        return 1
     finally:
         await db.close_db()
