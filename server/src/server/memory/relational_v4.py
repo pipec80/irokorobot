@@ -349,6 +349,51 @@ async def get_active_entity_relations(
     return [_relation_from_row(tuple(row)) for row in rows]
 
 
+async def list_active_facts(subject_entity_id: int) -> list[LiteralFactV4]:
+    """Return every active literal fact of a subject, across predicates (Plan 0073, admin reads).
+
+    For the local administration to show the pool; it applies no runtime authorization.
+
+    Args:
+        subject_entity_id: The entity whose active facts are listed.
+
+    Returns:
+        The active rows, by id.
+    """
+    conn = get_conn()
+    cursor = await conn.execute(
+        f"SELECT {_LITERAL_COLUMNS} FROM literal_facts_v4 "  # noqa: S608
+        "WHERE subject_entity_id = ? AND lifecycle = 'active' ORDER BY id",
+        (subject_entity_id,),
+    )
+    rows = await cursor.fetchall()
+    await cursor.close()
+    return [_literal_from_row(tuple(row)) for row in rows]
+
+
+async def list_active_relations(owner_entity_id: int) -> list[EntityRelationV4]:
+    """Return every active relation the owner is an endpoint of (Plan 0073, admin reads).
+
+    Membership relations point to the owner; relative relations start from the owner. It applies
+    no runtime authorization.
+
+    Args:
+        owner_entity_id: The owner whose relations are listed.
+
+    Returns:
+        The active rows, by id.
+    """
+    conn = get_conn()
+    cursor = await conn.execute(
+        f"SELECT {_RELATION_COLUMNS} FROM entity_relations_v4 "  # noqa: S608
+        "WHERE (source_entity_id = ? OR target_entity_id = ?) AND lifecycle = 'active' ORDER BY id",
+        (owner_entity_id, owner_entity_id),
+    )
+    rows = await cursor.fetchall()
+    await cursor.close()
+    return [_relation_from_row(tuple(row)) for row in rows]
+
+
 async def assert_literal_fact(
     *,
     subject_entity_id: int,
