@@ -10,11 +10,16 @@
 > writer for a contact and through the commissioning module for the acta.
 >
 > **Plan 0071 (the importer) closed on 2026-10-26** (accepted by Pipec on a database kept apart): every field
-> of the catalogue below except the commissioning's consents and backups (Plan 0072) is loaded from
+> of the catalogue below except the commissioning's consents and backups is loaded from
 > the seed file by `just seed-import`; the file's keys, its template and questionnaire are in
 > [`docs/examples/seed-household.example.toml`](../examples/seed-household.example.toml) and its
 > schema in [`seed-household.schema.json`](../examples/seed-household.schema.json). **Nothing reads
 > them by voice (CM-5)**, except the children's list and count.
+>
+> **Plan 0072 (the session) closed on 2026-10-27** (rehearsed end to end by Pipec on real hardware): the
+> consents and the backups of the commissioning are recorded by `just commission` in the acta, together
+> with the notice version, the modalities enrolled (derived from the database) and the readiness report
+> of the capabilities that exist today; this document is now canonical (ADR 0024 is `Accepted`).
 
 ## Why this list exists
 
@@ -89,7 +94,7 @@ blank means the field has no status). «Sensitivity» is the `DataSensitivity` v
 | Who knows an alarm code, a safe, a bank card | `secret_holder` (new, a reference) | security | secrets | CM-5, CM-7 | 0070 | yes |
 | Tastes (likes, dislikes, prefers) | `likes`, `dislikes`, `prefers` | normal | | conversation | exists | yes |
 | Topics not to touch | `private_topic` | normal (its content may be health or grief: revisit its default with CM-5) | | CM-5 | exists | yes |
-| Who interviewed, the owner's confirmation, the file, the counts, the backup, the consents (biometric, telemetry, remote support, backup and its destination label), a random installation id | `commissioning_records` | n/a | | provenance, audits, the operations plane of ADR 0025 | 0070 (the table, shipped), 0072 (the values) | yes |
+| Who interviewed, the owner's confirmation, the file, the counts, the backup, the consents (biometric, telemetry, remote support, backup and its destination label), a random installation id | `commissioning_records` | n/a | | provenance, audits, the operations plane of ADR 0025 | 0070 (the table, shipped), 0072 (the values, shipped) | yes |
 | Each section's status | `commissioning_sections` | n/a | | knowing what was never asked | 0070 | yes |
 
 A phone is written in international format (`+56912345678`); the writer rejects anything else so a

@@ -1,14 +1,15 @@
 # 0072 — Step 0, third plan: the commissioning session (the alta of the robot)
 
-> **Status:** `Ready` / `NOW` (rewritten 2026-10-26 from the 2026-10-23 outline; **promoted by Pipec on
-> 2026-10-26** after confirming D-1 to D-13 below). [Plan 0071](../completed/0071-seed-load-file-importer.md)
-> closed on 2026-10-26 (PR #214, `dcde265`), so nothing blocks it and queue rule 4 was applied: this plan
-> was re-audited against the merged code of [Plan 0070](../completed/0070-seed-load-data-pool-storage.md)
-> and Plan 0071 and rewritten in their format before any code. Task 0 re-audits it again against `main`.
-> It is executed in a new session from `main`. It implements the rest of
+> **Status:** `Closed` 2026-10-27: executed on the branch `feat/0072-commissioning-session`, rehearsed end
+> to end by Pipec on real hardware and closed with **plan A** (see the amended criterion 4 and the
+> *Execution record* at the end). Rewritten 2026-10-26 from the 2026-10-23 outline and **promoted by Pipec
+> on 2026-10-26** after confirming D-1 to D-13 below. [Plan 0071](0071-seed-load-file-importer.md)
+> had closed on 2026-10-26 (PR #214, `dcde265`), so queue rule 4 was applied: this plan was re-audited
+> against the merged code of [Plan 0070](0070-seed-load-data-pool-storage.md) and Plan 0071 and
+> rewritten in their format before any code. It implements the rest of
 > [ADR 0024](../../adr/0024-seed-load-senses-secrets-and-channels.md) (decisions 3, 13, 14 and 15) and
 > the consents half of [ADR 0025](../../adr/0025-remote-administration-backup-updates-and-telemetry.md)
-> decision 10; **when it closes, ADR 0024 becomes `Accepted`** (its three plans done). ADR 0025 stays
+> decision 10; **with this close ADR 0024 is `Accepted`** (its three plans done). ADR 0025 stays
 > `Proposed` until Plan 0073 closes. Written for an executor who has not seen this repository: what it
 > needs is here, in the ADR or in [`seed-data-pool.md`](../../architecture/seed-data-pool.md).
 
@@ -59,8 +60,8 @@ already has every column). No new route, status code or response field.** One ne
 **Spec:** [ADR 0024](../../adr/0024-seed-load-senses-secrets-and-channels.md) decisions 3, 13, 14 and 15
 (and the consents of decision 6/13), [ADR 0025](../../adr/0025-remote-administration-backup-updates-and-telemetry.md)
 decision 10, [`seed-data-pool.md`](../../architecture/seed-data-pool.md) (*Capabilities and what they
-need*), [Plan 0070](../completed/0070-seed-load-data-pool-storage.md) and
-[Plan 0071](../completed/0071-seed-load-file-importer.md) (the interfaces they produced).
+need*), [Plan 0070](0070-seed-load-data-pool-storage.md) and
+[Plan 0071](0071-seed-load-file-importer.md) (the interfaces they produced).
 
 ## Decisions
 
@@ -471,7 +472,12 @@ before `asyncio.run` (the `seed_cli` pattern), so the command knows the server s
 3. The acta carries no household value; a closed commissioning refuses every session-details write; the
    readiness report is derived for data and typed for hardware and turns nothing on; the voice session
    survives the speaker-auth-off 503; the state machine never asks for the server to be both on and off.
-4. ADR 0024 is `Accepted`; the real commissioning is accepted on Pipec's machine with outcomes recorded.
+4. ADR 0024 is `Accepted`; the commissioning was rehearsed end to end on Pipec's machine with the real
+   camera, microphone and server, and the outcomes are recorded. *Amended 2026-10-27 (plan A, chosen by
+   Pipec):* the plan contradicted itself, because D-7 puts the real alta **after** the merge while this
+   criterion asked for it **before** the close. The plan closes with the rehearsal as the acceptance of
+   the code, since the real alta runs the same code with other data; the real alta is Pipec's own later
+   step (a reset of the database, his name, his file) and is tracked in his local table, not in this plan.
 
 ## Rollback boundary
 
@@ -481,7 +487,7 @@ additive. Task 8 is documentation and an acceptance run.
 
 ## Not here, and why
 
-- **The amendment path for contacts and medications after the closing:** [Plan 0073](0073-local-admin-crud.md)
+- **The amendment path for contacts and medications after the closing:** [Plan 0073](../open/0073-local-admin-crud.md)
   (ADR 0024 decision 8); this plan enables no alert or reminder.
 - **Per-person voice settings and a pronunciation field:** out of scope (D-2); added when a measurement
   asks for it.
@@ -491,3 +497,76 @@ additive. Task 8 is documentation and an acceptance run.
 - **The Excel/CSV to TOML converter and the 107-question interview interface:** a later Step 0 plan.
 - **The remote operations plane (telemetry, backup, updates, support session):** [ADR 0025](../../adr/0025-remote-administration-backup-updates-and-telemetry.md);
   this plan only records the consents.
+
+## Execution record (2026-10-27)
+
+Executed in the planning session itself (Pipec asked to continue there) on the branch
+`feat/0072-commissioning-session`, from `main` at `73d9bc9`, with the `executing-plans` skill (inline, a
+ledger, one commit per task), the `test-driven-development` skill and no worktree or subagent. Every code
+test was observed RED for its stated reason before the code existed. Baseline `just gate` on `main`:
+**4720 passed**; the branch: **4814 passed** (lint, `mypy`, `pyright` and the security audit clean), run
+with `MEMORY_ENABLED=false`. `uv.lock` did not change and there is no migration.
+
+**Commits (one per task):** Task 1 `5a6b3a1`, Task 2 `3d0f053`, Task 3 `3970d03`, Task 4 `da3d9cd`,
+Task 5 `dbe7b5e`, Task 7 `4da67a5` (before Task 6, which calls it), Task 6 `6104ac3`. The fix pass found by
+walking Task 8 and by Pipec's rehearsal, each test first: `56a9af9`, `135d25d`, `df5e923`, `d61c617`.
+The documentation of Task 8 is the closing commit.
+
+**The rehearsal (Pipec, 2026-10-27, outcomes only; [record](../../evals/0072-commissioning-acceptance.md)).** All eight steps of Task 8 ran with the real camera,
+microphone and server, against the owner `Canary Owner` and the example seed file. It ran on the
+configured database path (`data/omnibot.db`, reset first with a backup), **not on a scratch file**, so
+that database is now a closed canary commissioning and the real alta needs another `just reset-db`.
+
+| Step | Result |
+|---|---|
+| reset, owner, PIN | passed |
+| face session | 4 of 5 frames (the fifth was skipped: an empty PIN, now asked again) |
+| voice session | 3 of 3 references |
+| seed load | dry run 43 to write, 0 problems; applied (record 1) |
+| verification turn | «Tienes 2 hijos.» (deterministic); the owner identified by face; voice verdict `unknown` on a 2.1 s clip, the known short-clip limit of Plans 0066 to 0068 |
+| second dry run | 0 to write, 43 unchanged |
+| closing | backups, consents, readiness and acta written; the acta holds no household value |
+| after the closing | `seed-import` refused («el alta ya se cerró»); `commission` reports it closed |
+
+**Defects found live and fixed on the branch** (each with a failing test first): the camera captured the
+instant the PIN was entered and the microphone recorded with no warning (a countdown and a printed and
+audible «grabando ahora» now); the enrol step re-ran a modality that was done (it runs only the missing
+one and names the two env flags it needs); the closing recorded no pre-reset backup, asked for backups
+after a 21-question form, had no test and said the server must be on while it needs it off; a wrong
+server state escaped as a traceback (it prints the closed message); an empty or wrong PIN aborted the
+whole command (asked again up to three times with a hint); a refused enrolment showed only a status code
+(it shows the server's short reason); the backup questions gave no example (the newest copies are listed
+to pick by number, each is explained, Enter accepts a suggested date 90 days out, an empty answer is asked
+again, and a listed file name keeps its folder). The shell script `scripts/commission.py` also accepts
+`--device` and `--mic`.
+
+**Rulings made while executing** (the spec, ADR 0024, was the authority; each costs one small edit if wrong):
+
+1. Task 1: `read_session_details` uses its own `SELECT`, so `CommissioningRecord` and every caller are untouched.
+2. Task 2: `evaluate_readiness` takes only the statuses and the typed hardware (the plan's contact and V4
+   counts matter only for `planned` and `idea` capabilities, which are not reported, D-4); the catalogue
+   entry dropped a redundant flag.
+3. Task 3: `CommissionError` lives in `commission_session.py`, not `exceptions.py` (not a permitted file).
+4. Task 6: the camera and the microphone are wired by `scripts/commission.py`, **not** by the server
+   package, because CLAUDE.md forbids the server knowing the robot; `commission_cli.py` is server-only with
+   injected adapters, and there is no console script in `pyproject.toml` (the entry is the `just` recipe).
+5. Tasks 6 and 7: `derive_modalities` lives in `commission_cli.py`; `close_session` takes the modalities as
+   a parameter; the readiness is recorded by the command, which owns the typed hardware.
+6. Plan A (Pipec, 2026-10-27): criterion 4 amended as above.
+
+**Deliberate decisions, not defects** (nothing is left open, each is named):
+
+- The voice level check of the real wiring accepts every clip: the endpoint refuses audio that is too quiet
+  and the reason is now printed. A measured threshold would be a calibration, not this plan.
+- `drive()` runs the migrations, as `scripts/onboard.py` does; the importer itself never does.
+- Face counts as enrolled once one frame was accepted (the consent is granted by the first one), so a
+  session that stopped at 4 of 5 is not offered again; `just face-auth-demo` adds frames.
+- The hardware answers of the readiness report are typed by a person, so an owner who answers yes to
+  everything gets six `ready` (as the rehearsal did). That is the design of ADR 0024 decision 14: the data
+  side is derived, the hardware side is attested.
+- The review was a self-review by the author (Pipec's rule: no subagent).
+
+**Left to Pipec, outside this plan:** the real alta (a `just reset-db`, his name, his real file; the
+rehearsal database and its copies hold his face and voice and must be destroyed by the dates in their
+acta), the `pre-step0` tag the ADR asks for before it, and the destruction of
+`data/backups/base-ensayo.db`, `data/seed/ensayo.toml` and the rehearsal acta.

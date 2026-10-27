@@ -16,19 +16,29 @@ from server.exceptions import CommissioningClosedError, CommissioningError, Comm
 from server.memory.commissioning import (
     ENROLLABLE_MODALITIES,
     POOL_VERSION,
+    Backup,
+    BackupKind,
     CommissioningInput,
     ConfirmationMode,
+    Consents,
     DiskEncryption,
     InterviewerRole,
     Modality,
     Section,
     SectionStatus,
+    SessionDetails,
     close_commissioning,
     get_open_commissioning,
     importer_window_open,
     list_section_statuses,
     open_commissioning,
+    read_session_details,
+    record_backup,
+    record_biometric_notice,
+    record_consents,
     record_import,
+    record_modalities,
+    record_readiness,
     set_section_status,
 )
 from server.settings import settings
@@ -425,3 +435,194 @@ async def test_the_repr_of_a_record_and_of_its_input_omits_the_label(
     record = await open_commissioning(_details(), started_at=_STARTED_AT)
 
     assert _LABEL not in repr(record) + repr(_details())
+
+
+# --- session details: the acta columns filled by the session (Plan 0072) ------------------------
+
+_NOTICE_VERSION = "v1"
+_DESTROY_BY = "2027-01-31"
+_BASELINE_DESTROY_BY = "2027-02-28"
+_DEST = "Canary Homelab"
+_PRE_RESET_REF = "data/backups/commissioning_2026-10-26_pre-reset.db"
+_BASELINE_REF = "data/backups/commissioning_2026-10-26_baseline.db"
+_READINESS_JSON = '{"speak_reply": "ready", "describe_scene": "blocked_by_data"}'
+
+
+async def test_the_session_details_are_written_and_read_back(commissioning_db: None) -> None:
+    record_id = await _open()
+    consents = Consents(telemetry=True, remote_support=False, backup=True, backup_destination=_DEST)
+
+    await record_biometric_notice(record_id, _NOTICE_VERSION)
+    await record_consents(record_id, consents)
+    await record_modalities(record_id, frozenset({Modality.PIN, Modality.FACE}))
+    await record_backup(
+        record_id, which=BackupKind.PRE_RESET, reference=_PRE_RESET_REF, destroy_by=_DESTROY_BY
+    )
+    await record_backup(
+        record_id,
+        which=BackupKind.BASELINE,
+        reference=_BASELINE_REF,
+        destroy_by=_BASELINE_DESTROY_BY,
+    )
+    await record_readiness(record_id, _READINESS_JSON)
+
+    details = await read_session_details(record_id)
+
+    assert details == SessionDetails(
+        biometric_notice_version=_NOTICE_VERSION,
+        consents=consents,
+        modalities=frozenset({Modality.PIN, Modality.FACE}),
+        pre_reset_backup=Backup(reference=_PRE_RESET_REF, destroy_by=_DESTROY_BY),
+        baseline_backup=Backup(reference=_BASELINE_REF, destroy_by=_BASELINE_DESTROY_BY),
+        readiness_json=_READINESS_JSON,
+    )
+
+
+async def test_read_session_details_is_empty_before_anything_is_written(
+    commissioning_db: None,
+) -> None:
+    details = await read_session_details(await _open())
+
+    assert details == SessionDetails(
+        biometric_notice_version=None,
+        consents=None,
+        modalities=frozenset(),
+        pre_reset_backup=None,
+        baseline_backup=None,
+        readiness_json=None,
+    )
+
+
+async def test_a_second_write_of_a_detail_overwrites(commissioning_db: None) -> None:
+    record_id = await _open()
+    await record_biometric_notice(record_id, "v1")
+
+    await record_biometric_notice(record_id, "v2")
+
+    assert (await read_session_details(record_id)).biometric_notice_version == "v2"
+
+
+@pytest.mark.parametrize("version", ["1", "draft", "", "V1", "v", "v1a"])
+async def test_the_biometric_notice_version_must_be_v_then_digits(
+    commissioning_db: None, version: str
+) -> None:
+    record_id = await _open()
+
+    with pytest.raises(ValueError, match="notice version"):
+        await record_biometric_notice(record_id, version)
+
+    assert (await read_session_details(record_id)).biometric_notice_version is None
+
+
+async def test_a_consent_destination_with_a_control_character_is_refused(
+    commissioning_db: None,
+) -> None:
+    record_id = await _open()
+
+    with pytest.raises(ValueError, match="destination"):
+        await record_consents(
+            record_id,
+            Consents(
+                telemetry=False, remote_support=False, backup=True, backup_destination="a\x00"
+            ),
+        )
+
+    assert (await read_session_details(record_id)).consents is None
+
+
+async def test_a_consent_without_a_destination_stores_none(commissioning_db: None) -> None:
+    record_id = await _open()
+
+    await record_consents(record_id, Consents(telemetry=True, remote_support=True, backup=False))
+
+    details = await read_session_details(record_id)
+    assert details.consents == Consents(
+        telemetry=True, remote_support=True, backup=False, backup_destination=None
+    )
+
+
+async def test_a_modality_outside_the_enrollable_set_is_refused(commissioning_db: None) -> None:
+    record_id = await _open()
+
+    with pytest.raises(ValueError, match="modal"):
+        await record_modalities(record_id, frozenset({Modality.PIN, Modality.FINGERPRINT}))
+
+    assert (await read_session_details(record_id)).modalities == frozenset()
+
+
+@pytest.mark.parametrize(
+    "destroy_by", ["", "2027-1-1", "31-01-2027", "someday", "2027-01-31T00:00"]
+)
+async def test_a_backup_date_must_be_an_iso_day(commissioning_db: None, destroy_by: str) -> None:
+    record_id = await _open()
+
+    with pytest.raises(ValueError, match="date"):
+        await record_backup(
+            record_id, which=BackupKind.PRE_RESET, reference=_PRE_RESET_REF, destroy_by=destroy_by
+        )
+
+    assert (await read_session_details(record_id)).pre_reset_backup is None
+
+
+async def test_each_backup_kind_writes_its_own_columns(commissioning_db: None) -> None:
+    record_id = await _open()
+
+    await record_backup(
+        record_id, which=BackupKind.PRE_RESET, reference=_PRE_RESET_REF, destroy_by=_DESTROY_BY
+    )
+
+    details = await read_session_details(record_id)
+    assert details.pre_reset_backup == Backup(reference=_PRE_RESET_REF, destroy_by=_DESTROY_BY)
+    assert details.baseline_backup is None
+
+
+async def test_readiness_must_be_json(commissioning_db: None) -> None:
+    record_id = await _open()
+
+    with pytest.raises(ValueError, match="JSON"):
+        await record_readiness(record_id, "not json {")
+
+    assert (await read_session_details(record_id)).readiness_json is None
+
+
+async def test_every_session_detail_write_is_refused_on_a_closed_record(
+    commissioning_db: None,
+) -> None:
+    record_id = await _open()
+    await close_commissioning(record_id, _CLOSED_AT)
+
+    with pytest.raises(CommissioningClosedError):
+        await record_biometric_notice(record_id, _NOTICE_VERSION)
+    with pytest.raises(CommissioningClosedError):
+        await record_consents(record_id, Consents(True, True, True, _DEST))
+    with pytest.raises(CommissioningClosedError):
+        await record_modalities(record_id, frozenset({Modality.PIN}))
+    with pytest.raises(CommissioningClosedError):
+        await record_backup(
+            record_id, which=BackupKind.BASELINE, reference=_BASELINE_REF, destroy_by=_DESTROY_BY
+        )
+    with pytest.raises(CommissioningClosedError):
+        await record_readiness(record_id, _READINESS_JSON)
+
+    assert await read_session_details(record_id) == SessionDetails(
+        biometric_notice_version=None,
+        consents=None,
+        modalities=frozenset(),
+        pre_reset_backup=None,
+        baseline_backup=None,
+        readiness_json=None,
+    )
+
+
+async def test_no_log_record_holds_a_consent_destination(
+    commissioning_db: None, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.DEBUG):
+        record_id = await _open()
+        await record_consents(
+            record_id, Consents(True, False, True, _DEST), manage_transaction=True
+        )
+        await record_biometric_notice(record_id, _NOTICE_VERSION)
+
+    assert caplog.records
+    assert all(_DEST not in record.getMessage() + repr(vars(record)) for record in caplog.records)

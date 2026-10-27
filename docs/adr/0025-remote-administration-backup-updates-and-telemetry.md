@@ -183,6 +183,8 @@ The commissioning record (ADR 0024) holds a random **installation id** (generate
 nothing about the house or the hardware) and the owner's consents for the operations plane: telemetry,
 remote support and backup (with a label for its destination). This is captured now so the owner is never
 interviewed again when the agent is built; recording a consent builds nothing and enables nothing.
+Plan 0072 (closed 2026-10-27) records the three consents and the destination label in the acta
+(`just commission`), and they stay fixed once the commissioning closes.
 
 ### 11. One contract, many doors
 

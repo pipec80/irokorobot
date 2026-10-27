@@ -48,6 +48,15 @@ nothing was learned by voice. The template and questionnaire is
 `docs/examples/seed-household.example.toml` (copy it to `data/seed/`); `just seed-import --print-schema`
 prints the file's JSON Schema.
 
+**The guided alta (Plan 0072, ADR 0024).** `just commission` walks that order for you: run it after
+every step and it tells you the next one and whether the server must be on or off, so it never asks for
+both. With the server running it shows the biometric notice and enrols the face (five frames) and the
+voice (three references), asking the PIN before each; with the server stopped, after the load and a
+verification turn, it records the backups (pick them from the list; Enter accepts a destruction date 90
+days out), the three consents, the readiness of each capability and writes the acta under
+`data/commissioning/`, closing the window. It needs `FACE_AUTHENTICATION_ENABLED=true` and
+`SPEAKER_AUTHENTICATION_ENABLED=true` in `.env`; `--device` and `--mic` choose the camera and the microphone.
+
 ## Configuration
 
 Selected settings that shape runtime behavior — the full list lives in
