@@ -573,4 +573,6 @@ children and his own seed file: 5 of 5 face frames, 3 of 3 voice references, 43 
 verification turn with the speaker verdict `verified`, and the acta closed. The rehearsal copies were
 destroyed, and so was his seed file after the closing. **Still his, outside this plan:** keep
 `data/backups/base-alta.db` and `data/backups/omnibot_2026-10-27_105613_pre-reset.db` until 2027-01-25 and
-then destroy them; decide the disk encryption he declared `no`; and decide `MEMORY_CANDIDATES_ENABLED`.
+then destroy them (a calendar reminder holds the date). His disk was in fact encrypted (BitLocker active on
+`C:`, seen afterwards in the control panel) although he declared `no` at the closing, and the closed acta
+keeps that declaration. `MEMORY_CANDIDATES_ENABLED` is local configuration, not part of this plan.

@@ -68,7 +68,7 @@ closing.
 | verification turn | the children's count and list answered by the deterministic tools; speaker verdict `verified` and fusion `face_and_voice` on two clips of about 2 s |
 | second dry run | 0 to write, 43 unchanged |
 | baseline copy | made with the server stopped; its hash equals the database's |
-| closing | acta written; modalities `face`, `pin`, `voice`; disk encryption declared `no`; readiness: voice ready, remembering a taste and describing a scene blocked by hardware |
+| closing | acta written; modalities `face`, `pin`, `voice`; disk encryption declared `no` (BitLocker is in fact active on `C:`, seen afterwards in the control panel; the closed record keeps the wrong declaration); readiness: voice ready, remembering a taste and describing a scene blocked by hardware |
 | after the closing | `seed-import` refused and `commission` reported it closed |
 
 Two things cost a re-run and are kept here: `setup-personal` goes **without children** (the importer never
