@@ -16,6 +16,7 @@ import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+import getpass
 import sqlite3
 import sys
 from typing import TYPE_CHECKING
@@ -40,8 +41,14 @@ from server.memory.admin_ops import (
     requires_owner_verification,
 )
 from server.memory.admin_pin import verify_owner_pin
+from server.memory.admin_readiness import derive_section_presence, recompute_readiness
 from server.memory.care_contacts import list_active_contacts
-from server.memory.commissioning import Section, list_section_statuses
+from server.memory.commissioning import (
+    Section,
+    SectionStatus,
+    get_latest_commissioning,
+    list_section_statuses,
+)
 from server.memory.owner_credentials import get_ready_owner
 from server.memory.relational_v4 import list_active_facts, list_active_relations
 from server.personal_setup import check_db_available
@@ -104,17 +111,18 @@ async def _owner() -> int:
 
 
 async def _grant_pin_if_needed(
-    *, required: bool, read_text: ReadText, write_text: WriteText
+    *, required: bool, read_secret: ReadText, write_text: WriteText
 ) -> bool:
     """Prompt and verify the owner PIN when the operation needs it; return whether it is verified.
 
-    A write that does not need the PIN returns ``True`` without prompting.
+    The PIN is read through ``read_secret`` (``getpass`` in ``main``), so it never echoes to the
+    terminal or the shell history. A write that does not need the PIN returns ``True`` at once.
     """
     if not required:
         return True
     for attempt in range(_MAX_PIN_TRIES):
         try:
-            await verify_owner_pin(read_text("PIN de la persona titular: "))
+            await verify_owner_pin(read_secret("PIN de la persona titular: "))
         except AdminPinError:
             left = _MAX_PIN_TRIES - attempt - 1
             write_text(
@@ -172,7 +180,12 @@ async def _audit(limit: int, write_text: WriteText) -> int:
 
 
 async def _edit_literal(
-    request: AdminRequest, owner: int, read_text: ReadText, write_text: WriteText, now: str
+    request: AdminRequest,
+    owner: int,
+    read_text: ReadText,
+    read_secret: ReadText,
+    write_text: WriteText,
+    now: str,
 ) -> int:
     """Add or change one owner pool literal; the value is read from standard input."""
     field_id = request.field or ""
@@ -186,7 +199,7 @@ async def _edit_literal(
         target_kind=TargetKind.POOL_LITERAL, predicate=field_id, subject_is_owner=True
     )
     if not await _grant_pin_if_needed(
-        required=required, read_text=read_text, write_text=write_text
+        required=required, read_secret=read_secret, write_text=write_text
     ):
         write_text("Sin verificación de la persona titular: no se escribió nada.")
         return 1
@@ -204,7 +217,11 @@ async def _edit_literal(
 
 
 async def _revoke(
-    request: AdminRequest, read_text: ReadText, write_text: WriteText, now: str
+    request: AdminRequest,
+    read_text: ReadText,
+    read_secret: ReadText,
+    write_text: WriteText,
+    now: str,
 ) -> int:
     """Revoke a row by kind and id (the id comes from `list`)."""
     target_kind = _KINDS.get(request.kind or "")
@@ -218,7 +235,7 @@ async def _revoke(
     # always asks and a literal asks unless it is a plain owner field (conservative: always ask).
     required = target_kind is not TargetKind.POOL_LITERAL or True
     if not await _grant_pin_if_needed(
-        required=required, read_text=read_text, write_text=write_text
+        required=required, read_secret=read_secret, write_text=write_text
     ):
         write_text("Sin verificación de la persona titular: no se revocó nada.")
         return 1
@@ -235,7 +252,12 @@ async def _revoke(
 
 
 async def _change_contact(
-    request: AdminRequest, owner: int, read_text: ReadText, write_text: WriteText, now: str
+    request: AdminRequest,
+    owner: int,
+    read_text: ReadText,
+    read_secret: ReadText,
+    write_text: WriteText,
+    now: str,
 ) -> int:
     """Change an existing contact's phone (by its id from `list`); role and flags are kept."""
     if request.row_id is None:
@@ -249,7 +271,9 @@ async def _change_contact(
     write_text(f"change-contact [{request.row_id}] nuevo teléfono")
     if not _confirm(request, read_text, write_text):
         return 1
-    if not await _grant_pin_if_needed(required=True, read_text=read_text, write_text=write_text):
+    if not await _grant_pin_if_needed(
+        required=True, read_secret=read_secret, write_text=write_text
+    ):
         write_text("Sin verificación de la persona titular: no se cambió nada.")
         return 1
     terms = ContactTerms(
@@ -285,37 +309,43 @@ def _confirm(request: AdminRequest, read_text: ReadText, write_text: WriteText) 
     return True
 
 
-# --- status (frozen statuses now; the recomputed readiness is Plan 0073 Task 7) -------------------
+# --- status: the frozen acta beside the read-only recompute (Plan 0073 Task 7, C-2) --------------
 
 
-async def _status(write_text: WriteText) -> int:
-    """Print the acta's frozen section statuses (the recomputed readiness is added in Task 7)."""
-    record_id = await _open_or_last_record()
-    write_text("Estado de las secciones (acta):")
-    if record_id is None:
-        write_text("  (no hay acta todavía)")
-        return 0
-    statuses = await list_section_statuses(record_id)
+async def _status(owner: int, write_text: WriteText) -> int:
+    """Print the frozen section statuses beside the rows now, then the recomputed readiness.
+
+    It edits nothing: `recompute_readiness` reads the active rows and the acta's frozen hardware.
+    """
+    record = await get_latest_commissioning()
+    frozen = None if record is None else await list_section_statuses(record.id)
+    presence = await derive_section_presence(owner)
+    write_text("Secciones (acta vs. filas actuales):")
     for section in Section:
-        write_text(f"  {section.value}: {statuses[section].value}")
+        acta = "-" if frozen is None else frozen[section].value
+        now_has = "con datos" if presence[section] else "sin datos"
+        diverges = (
+            frozen is not None
+            and (frozen[section] is SectionStatus.PROVIDED) != (presence[section])
+        )
+        write_text(
+            f"  {section.value}: acta={acta} ahora={now_has}{'  <- difiere' if diverges else ''}"
+        )
+    write_text("Preparación de capacidades (recomputada):")
+    for item in await recompute_readiness(owner):
+        write_text(f"  {item.capability.value}: {item.verdict.value}")
     return 0
-
-
-async def _open_or_last_record() -> int | None:
-    """Return the current commissioning record id, open or the last closed one, or None."""
-    cursor = await db.get_conn().execute(
-        "SELECT id FROM commissioning_records ORDER BY id DESC LIMIT 1"
-    )
-    row = await cursor.fetchone()
-    await cursor.close()
-    return None if row is None else int(row[0])
 
 
 # --- the dispatcher and the entry point -----------------------------------------------------------
 
 
 async def _dispatch(
-    request: AdminRequest, read_text: ReadText, write_text: WriteText, now: str
+    request: AdminRequest,
+    read_text: ReadText,
+    read_secret: ReadText,
+    write_text: WriteText,
+    now: str,
 ) -> int:
     await check_db_available()
     owner = await _owner()
@@ -323,15 +353,15 @@ async def _dispatch(
         case "list":
             return await _list(owner, write_text)
         case "status":
-            return await _status(write_text)
+            return await _status(owner, write_text)
         case "audit":
             return await _audit(request.limit, write_text)
         case "add" | "change":
-            return await _edit_literal(request, owner, read_text, write_text, now)
+            return await _edit_literal(request, owner, read_text, read_secret, write_text, now)
         case "revoke":
-            return await _revoke(request, read_text, write_text, now)
+            return await _revoke(request, read_text, read_secret, write_text, now)
         case "change-contact":
-            return await _change_contact(request, owner, read_text, write_text, now)
+            return await _change_contact(request, owner, read_text, read_secret, write_text, now)
     raise _RefusedError(f"Subcomando desconocido: {request.command}.")
 
 
@@ -358,13 +388,19 @@ def _schema_version(database: Path) -> int:
 
 
 async def run_admin_command(
-    request: AdminRequest, *, read_text: ReadText, write_text: WriteText, now: str
+    request: AdminRequest,
+    *,
+    read_text: ReadText,
+    read_secret: ReadText,
+    write_text: WriteText,
+    now: str,
 ) -> int:
     """Run the command against the configured database and return its exit code.
 
     Args:
         request: The parsed invocation.
-        read_text: Prompts for and returns one line (values come through it, never an argument).
+        read_text: Prompts for and returns one visible line (values, never an argument).
+        read_secret: Prompts for and returns the PIN without echo (``getpass`` in ``main``).
         write_text: Prints one line (this terminal only).
         now: UTC ISO 8601 with microseconds, shared by the operation and its audit row.
 
@@ -379,7 +415,7 @@ async def run_admin_command(
         await _check_schema(database)
         await db.open_db()
         try:
-            return await _dispatch(request, read_text, write_text, now)
+            return await _dispatch(request, read_text, read_secret, write_text, now)
         finally:
             await db.close_db()
     except (_RefusedError, BrainMemoryError, ValueError) as exc:
@@ -446,6 +482,7 @@ def main() -> None:
         run_admin_command(
             _request(args),
             read_text=input,
+            read_secret=getpass.getpass,
             write_text=print,
             now=datetime.now(UTC).isoformat(timespec="microseconds"),
         )

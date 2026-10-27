@@ -47,6 +47,7 @@ __all__ = [
     "SessionDetails",
     "clear_section_statuses",
     "close_commissioning",
+    "get_latest_commissioning",
     "get_open_commissioning",
     "importer_window_open",
     "list_section_statuses",
@@ -284,6 +285,23 @@ async def get_open_commissioning() -> CommissioningRecord | None:
     """Return the open commissioning, or ``None`` when none is open."""
     cursor = await get_conn().execute(
         f"SELECT {_COLUMNS} FROM commissioning_records WHERE closed_at IS NULL"  # noqa: S608
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    return None if row is None else _record(tuple(row))
+
+
+async def get_latest_commissioning() -> CommissioningRecord | None:
+    """Return the most recent commissioning record, open or the last closed one (Plan 0073).
+
+    The local administration reads it to recompute the readiness; after the alta closes there is
+    no open record, so the amendment path needs the last closed one.
+
+    Returns:
+        The latest record, or ``None`` when none exists.
+    """
+    cursor = await get_conn().execute(
+        f"SELECT {_COLUMNS} FROM commissioning_records ORDER BY id DESC LIMIT 1"  # noqa: S608
     )
     row = await cursor.fetchone()
     await cursor.close()

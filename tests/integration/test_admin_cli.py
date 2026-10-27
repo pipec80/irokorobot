@@ -70,6 +70,7 @@ async def _run(request: AdminRequest, read_text: _Script, write_text: object) ->
     return await run_admin_command(
         request,
         read_text=read_text,
+        read_secret=read_text,  # same scripted queue; getpass is used only in main()
         write_text=write_text,
         now=_NOW,  # type: ignore[arg-type]
     )
