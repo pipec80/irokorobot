@@ -23,8 +23,9 @@ from server.memory.admin_audit import (
     record_admin_operation,
 )
 from server.memory.canonical_writer import write_literal
-from server.memory.care_contacts import ContactRole, write_contact
+from server.memory.care_contacts import ContactRole, revoke_contact, write_contact
 from server.memory.predicate_registry import resolve_predicate
+from server.memory.relational_v4 import revoke_entity_relation, revoke_literal_fact
 from server.memory.write_types import ConflictPolicy, WriteChannel
 
 __all__ = [
@@ -33,6 +34,7 @@ __all__ = [
     "ContactTerms",
     "apply_contact_edit",
     "apply_literal_edit",
+    "apply_revoke",
     "requires_owner_verification",
 ]
 
@@ -299,6 +301,69 @@ async def _attempt_contact(
     except ValueError:
         return AdminOutcomeStatus.REFUSED, _INVALID
     return AdminOutcomeStatus.APPLIED, None
+
+
+async def apply_revoke(
+    *,
+    actor: AdminActor,
+    target_kind: TargetKind,
+    target_id: int,
+    subject_is_owner: bool,
+    predicate: str | None,
+    now: str,
+    owner_verified: bool,
+    manage_transaction: bool = True,
+) -> AdminOutcome:
+    """Revoke one datum to inactive (never a hard delete) and audit it.
+
+    Args:
+        actor: Who runs it (for the audit).
+        target_kind: Which repository the row lives in.
+        target_id: The row id (a fact, relation or contact id — not an entity id).
+        subject_is_owner: Whether the affected subject is the owner (for the PIN rule).
+        predicate: The predicate id for a pool row, or ``None`` for a contact.
+        now: UTC ISO 8601; shared by the revoke and the audit row.
+        owner_verified: Whether the owner's PIN was verified (required for a contact, a
+            non-owner subject or a sensitive predicate).
+        manage_transaction: ``False`` joins the caller's open transaction.
+
+    Returns:
+        The outcome; a second revoke of the same id is still ``applied`` (a no-op).
+    """
+    async with _transaction(manage_transaction):
+        if (
+            requires_owner_verification(
+                target_kind=target_kind, predicate=predicate, subject_is_owner=subject_is_owner
+            )
+            and not owner_verified
+        ):
+            return await _refused(
+                actor,
+                AdminOperationKind.REVOKE,
+                target_kind,
+                predicate,
+                None,
+                _OWNER_NOT_VERIFIED,
+                now,
+            )
+        match target_kind:
+            case TargetKind.POOL_LITERAL:
+                await revoke_literal_fact(target_id, revoked_at=now, manage_transaction=False)
+            case TargetKind.POOL_RELATION:
+                await revoke_entity_relation(target_id, revoked_at=now, manage_transaction=False)
+            case TargetKind.CARE_CONTACT:
+                await revoke_contact(target_id, revoked_at=now, manage_transaction=False)
+        await _audit(
+            actor,
+            operation=AdminOperationKind.REVOKE,
+            target_kind=target_kind,
+            field_id=predicate,
+            target_entity_id=None,
+            status=AdminOutcomeStatus.APPLIED,
+            reason=None,
+            now=now,
+        )
+        return AdminOutcome(AdminOperationKind.REVOKE, AdminOutcomeStatus.APPLIED, None)
 
 
 async def _refused(

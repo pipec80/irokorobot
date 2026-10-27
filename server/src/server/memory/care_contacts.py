@@ -36,6 +36,7 @@ __all__ = [
     "has_active_contact",
     "list_active_contacts",
     "normalize_phone",
+    "revoke_contact",
     "write_contact",
 ]
 
@@ -455,6 +456,32 @@ async def count_active_contacts() -> int:
     """Return how many contacts are active, for every owner (the seed applier's count)."""
     found = await _scalar("SELECT COUNT(*) FROM care_contacts WHERE revoked_at IS NULL")
     return 0 if found is None else int(str(found))
+
+
+async def revoke_contact(
+    contact_id: int, *, revoked_at: str, manage_transaction: bool = True
+) -> bool:
+    """Revoke an active contact — history, never a hard delete (Plan 0073, ADR 0025 decision 4).
+
+    The row stays with ``revoked_at`` set and ``list_active_contacts`` stops serving it. Forgetting
+    the row is CM-6.
+
+    Args:
+        contact_id: The contact row to revoke.
+        revoked_at: When it was revoked, as UTC ISO 8601.
+        manage_transaction: ``False`` joins the caller's open transaction.
+
+    Returns:
+        ``True`` when an active row changed, ``False`` when none did (a no-op second revoke).
+    """
+    async with _transaction(manage_transaction):
+        cursor = await get_conn().execute(
+            "UPDATE care_contacts SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL",
+            (revoked_at, contact_id),
+        )
+        changed = cursor.rowcount
+        await cursor.close()
+    return changed > 0
 
 
 async def delete_contacts_by_channel(

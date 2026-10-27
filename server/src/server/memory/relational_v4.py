@@ -394,6 +394,57 @@ async def list_active_relations(owner_entity_id: int) -> list[EntityRelationV4]:
     return [_relation_from_row(tuple(row)) for row in rows]
 
 
+async def revoke_literal_fact(
+    fact_id: int, *, revoked_at: str, manage_transaction: bool = True
+) -> bool:
+    """Revoke an active literal fact to inactive — history, never a hard delete (Plan 0073).
+
+    The row stays with lifecycle ``revoked`` and ``valid_to`` set; the active readers stop serving
+    it. Forgetting the row is CM-6.
+
+    Args:
+        fact_id: The fact to revoke.
+        revoked_at: When it was revoked, as UTC ISO 8601.
+        manage_transaction: ``False`` joins the caller's open transaction.
+
+    Returns:
+        ``True`` when an active row changed, ``False`` when none did (a no-op second revoke).
+    """
+    async with _owned(manage_transaction):
+        cursor = await get_conn().execute(
+            "UPDATE literal_facts_v4 SET lifecycle = 'revoked', valid_to = ?, superseded_at = ? "
+            "WHERE id = ? AND lifecycle = 'active'",
+            (revoked_at, revoked_at, fact_id),
+        )
+        changed = cursor.rowcount
+        await cursor.close()
+    return changed > 0
+
+
+async def revoke_entity_relation(
+    relation_id: int, *, revoked_at: str, manage_transaction: bool = True
+) -> bool:
+    """Revoke an active relation to inactive — history, never a hard delete (Plan 0073).
+
+    Args:
+        relation_id: The relation to revoke.
+        revoked_at: When it was revoked, as UTC ISO 8601.
+        manage_transaction: ``False`` joins the caller's open transaction.
+
+    Returns:
+        ``True`` when an active row changed, ``False`` when none did.
+    """
+    async with _owned(manage_transaction):
+        cursor = await get_conn().execute(
+            "UPDATE entity_relations_v4 SET lifecycle = 'revoked', valid_to = ?, superseded_at = ? "
+            "WHERE id = ? AND lifecycle = 'active'",
+            (revoked_at, revoked_at, relation_id),
+        )
+        changed = cursor.rowcount
+        await cursor.close()
+    return changed > 0
+
+
 async def assert_literal_fact(
     *,
     subject_entity_id: int,
