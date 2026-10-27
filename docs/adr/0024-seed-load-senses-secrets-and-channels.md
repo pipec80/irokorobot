@@ -10,7 +10,7 @@
   channel with a commissioning record; a replacement window while the robot is being commissioned;
   resetting the database and loading everything through Step 0; and the purpose of the phase as
   stated in decision 1. It became `Accepted` when the plans that implement it closed (Plans 0070,
-  0071 and 0072). The first real alta on Pipec's own data is a later operational step, not a condition.
+  0071 and 0072). Pipec's own real alta ran on 2026-10-27, after the plans closed.
 - **Date:** 2026-10-22 (revised 2026-10-23)
 - **Builds on:** [ADR 0004](0004-local-first-cognitive-policy.md),
   [ADR 0006](0006-personal-and-family-companion-profiles.md),

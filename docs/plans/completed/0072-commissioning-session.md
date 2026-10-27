@@ -478,6 +478,7 @@ before `asyncio.run` (the `seed_cli` pattern), so the command knows the server s
    criterion asked for it **before** the close. The plan closes with the rehearsal as the acceptance of
    the code, since the real alta runs the same code with other data; the real alta is Pipec's own later
    step (a reset of the database, his name, his file) and is tracked in his local table, not in this plan.
+   *It ran later the same day (2026-10-27); see the acceptance record.*
 
 ## Rollback boundary
 
@@ -515,7 +516,7 @@ The documentation of Task 8 is the closing commit.
 **The rehearsal (Pipec, 2026-10-27, outcomes only; [record](../../evals/0072-commissioning-acceptance.md)).** All eight steps of Task 8 ran with the real camera,
 microphone and server, against the owner `Canary Owner` and the example seed file. It ran on the
 configured database path (`data/omnibot.db`, reset first with a backup), **not on a scratch file**, so
-that database is now a closed canary commissioning and the real alta needs another `just reset-db`.
+that database was a closed canary commissioning and the real alta started with another `just reset-db`.
 
 | Step | Result |
 |---|---|
@@ -566,7 +567,10 @@ again, and a listed file name keeps its folder). The shell script `scripts/commi
   side is derived, the hardware side is attested.
 - The review was a self-review by the author (Pipec's rule: no subagent).
 
-**Left to Pipec, outside this plan:** the real alta (a `just reset-db`, his name, his real file; the
-rehearsal database and its copies hold his face and voice and must be destroyed by the dates in their
-acta), the `pre-step0` tag the ADR asks for before it, and the destruction of
-`data/backups/base-ensayo.db`, `data/seed/ensayo.toml` and the rehearsal acta.
+**The real alta (Pipec, 2026-10-27, after the merge; outcomes in the [record](../../evals/0072-commissioning-acceptance.md)).**
+It ran from `main` with the `pre-step0` tag in place, after `just reset-db`, `just setup-personal` with no
+children and his own seed file: 5 of 5 face frames, 3 of 3 voice references, 43 operations loaded, a
+verification turn with the speaker verdict `verified`, and the acta closed. The rehearsal copies were
+destroyed, and so was his seed file after the closing. **Still his, outside this plan:** keep
+`data/backups/base-alta.db` and `data/backups/omnibot_2026-10-27_105613_pre-reset.db` until 2027-01-25 and
+then destroy them; decide the disk encryption he declared `no`; and decide `MEMORY_CANDIDATES_ENABLED`.
