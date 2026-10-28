@@ -13,12 +13,16 @@ bound to one named operation (ADR-0015, Plan 0051).
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+import logging
 from pathlib import Path
 from unittest.mock import AsyncMock
 
+import cv2
 from httpx import ASGITransport, AsyncClient
+import numpy as np
 from pydantic import SecretStr
 import pytest
+from server.cognition import face_authentication as face_auth_module
 from server.cognition.identity import PersonRecord
 from server.cognition.identity_sessions import IdentitySessionRegistry
 from server.cognition.owner_authentication import (
@@ -28,14 +32,19 @@ from server.cognition.owner_authentication import (
 )
 from server.dependencies import get_owner_unlock_service
 from server.main import app
+from server.memory.biometric_consent import grant_face_consent, revoke_face_consent
 from server.memory.declarative import assert_fact
 from server.memory.entity_labels import get_person_label
 from server.memory.household_authorization import get_active_role
 from server.memory.owner_credentials import get_active_owner_pin_credential
 from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
+from server.memory.predicate_registry import resolve_predicate
+from server.memory.relational_v4 import assert_literal_fact
+from server.memory.voice_consent import grant_voice_consent, revoke_voice_consent
 from server.personal_setup import PersonalSetupInput, apply_personal_setup
 from server.resources import AppResources
 from server.settings import settings
+from server.vision.faces import DetectedFace, enroll_face
 
 from server import db, llm, stt, tts
 
@@ -46,6 +55,17 @@ _CHILD_ANSWER = "Tus hijos son Zephyra y Quorvax."
 _CHILD_QUESTION = "¿Quiénes son mis hijos?"
 _DENIAL = "No puedo acceder a información familiar privada sin una autorización comprobada."
 _LLM_REPLY = "Respuesta de prueba."
+# The profile card (Plan 0074): invented values the owner's card holds, and what it must never leak.
+_CARD_NAME = "Zeta"
+_CARD_TASTE = "mate"
+_CARD_SUMMARY = (
+    f"Esto es lo que sé de ti. Te llamo {_CARD_NAME}. Me has dicho que te gusta: {_CARD_TASTE}."
+)
+_CARD_UNKNOWN = "Todavía no puedo confirmar quién eres para contarte lo que sé de ti."
+_SUMMARY_QUESTION = "¿Qué sabes de mí?"
+_FRAME = cv2.imencode(".jpg", np.zeros((10, 10, 3), dtype=np.uint8))[1].tobytes()
+_OWNER_FACE = np.eye(512, dtype=np.float32)[0]
+_OTHER_FACE = np.eye(512, dtype=np.float32)[1]
 
 
 @pytest.fixture
@@ -121,15 +141,16 @@ class _Voice:
         )
         return response.status_code
 
-    async def speak(self, text: str, *, token: str | None = None) -> dict[str, object]:
-        """Speak *text* (optionally presenting a grant) and return the JSON body."""
+    async def speak(
+        self, text: str, *, token: str | None = None, frame: bool = False
+    ) -> dict[str, object]:
+        """Speak *text* (optionally presenting a grant or a camera frame) and return the body."""
         self._stt.return_value = text
         headers = {"X-Iroko-Identity-Token": token} if token else {}
-        response = await self._client.post(
-            "/transcribe",
-            headers=headers,
-            files={"audio": ("a.wav", self._wav, "audio/wav")},
-        )
+        files = {"audio": ("a.wav", self._wav, "audio/wav")}
+        if frame:
+            files["frame"] = ("frame.jpg", _FRAME, "image/jpeg")
+        response = await self._client.post("/transcribe", headers=headers, files=files)
         assert response.status_code == 200
         body: dict[str, object] = response.json()
         return body
@@ -174,6 +195,17 @@ def proposal(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
 async def _count(table: str) -> int:
     """Count the rows of one table."""
     cursor = await db.get_conn().execute(f"SELECT COUNT(*) FROM {table}")  # noqa: S608
+    row = await cursor.fetchone()
+    await cursor.close()
+    assert row is not None
+    return int(row[0])
+
+
+async def _audit_rows(action: str) -> int:
+    """Count the audit rows of one action."""
+    cursor = await db.get_conn().execute(
+        "SELECT COUNT(*) FROM authorization_audit_events WHERE action = ?", (action,)
+    )
     row = await cursor.fetchone()
     await cursor.close()
     assert row is not None
@@ -413,3 +445,149 @@ async def test_what_the_owner_said_is_never_given_to_a_turn_with_no_token(
         "Mi clave temporal es zqx-session-5",
         _LLM_REPLY,
     ]
+
+
+# --- the profile card (Plan 0074, ADR 0026): the owner receives it, anyone else learns nothing ----
+
+
+@pytest.fixture
+async def card_owner(matrix_db: None, monkeypatch: pytest.MonkeyPatch) -> int:
+    """The matrix owner, face-enrolled and consented, with a card (a name and a taste)."""
+    del matrix_db  # requested only so the database exists
+    monkeypatch.setattr(settings, "face_authentication_enabled", True)
+    monkeypatch.setattr(settings, "memory_enabled", True)
+    monkeypatch.setattr(settings, "profile_card_enabled", True)
+    cursor = await db.get_conn().execute("SELECT id FROM entities WHERE name = 'Owner'")
+    row = await cursor.fetchone()
+    await cursor.close()
+    assert row is not None
+    owner_id = int(row[0])
+    await grant_face_consent(owner_id)
+    await enroll_face(owner_id, _OWNER_FACE, label="Owner")
+    for alias, value in (("preferred_name", _CARD_NAME), ("likes", _CARD_TASTE)):
+        definition = resolve_predicate(alias)
+        assert definition is not None
+        await assert_literal_fact(
+            subject_entity_id=owner_id,
+            definition=definition,
+            value=value,
+            visibility="personal",
+            sensitivity="normal",
+        )
+    return owner_id
+
+
+def _see(monkeypatch: pytest.MonkeyPatch, *faces: np.ndarray) -> None:
+    detected = [DetectedFace(embedding=face, score=0.9, width=200.0) for face in faces]
+    monkeypatch.setattr(face_auth_module, "_detect_faces_default", AsyncMock(return_value=detected))
+
+
+def _card_of(call: dict[str, object]) -> str | None:
+    card = call["profile_card"]
+    assert card is None or isinstance(card, str)
+    return card
+
+
+@pytest.mark.integration
+async def test_the_owner_hears_the_card_and_the_summary(
+    voice: _Voice,
+    llm_calls: list[dict[str, object]],
+    card_owner: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del card_owner
+    _see(monkeypatch, _OWNER_FACE)
+
+    generic = await voice.speak("Hola, ¿cómo estás?", frame=True)
+    summary = await voice.speak(_SUMMARY_QUESTION, frame=True)
+
+    assert generic["llm_response"] == _LLM_REPLY
+    card = _card_of(llm_calls[0])
+    assert card is not None
+    assert f'Nombre: "{_CARD_NAME}"' in card
+    assert f'"{_CARD_TASTE}"' in card
+    assert summary["llm_response"] == _CARD_SUMMARY
+    assert len(llm_calls) == 1  # the question never reached the model
+
+
+@pytest.mark.integration
+async def test_a_stranger_learns_nothing_from_the_card_or_the_summary(
+    voice: _Voice,
+    llm_calls: list[dict[str, object]],
+    card_owner: int,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    del card_owner
+    with caplog.at_level(logging.DEBUG):
+        generic = await voice.speak("Hola, ¿cómo estás?")
+        summary = await voice.speak(_SUMMARY_QUESTION)
+
+    assert _card_of(llm_calls[0]) is None
+    assert summary["llm_response"] == _CARD_UNKNOWN
+    for body in (generic, summary):
+        assert _CARD_NAME not in str(body["llm_response"])
+        assert _CARD_TASTE not in str(body["llm_response"])
+    assert _CARD_TASTE not in caplog.text
+    assert _CARD_NAME not in caplog.text
+    assert await _audit_rows("read_personal_conversation_memory") == 0
+
+
+@pytest.mark.integration
+async def test_no_log_record_carries_the_owners_card_values(
+    voice: _Voice,
+    llm_calls: list[dict[str, object]],
+    card_owner: int,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    del card_owner
+    _see(monkeypatch, _OWNER_FACE)
+
+    with caplog.at_level(logging.DEBUG):
+        await voice.speak("Hola, ¿cómo estás?", frame=True)
+        await voice.speak(_SUMMARY_QUESTION, frame=True)
+
+    assert _card_of(llm_calls[0]) is not None
+    assert _CARD_TASTE not in caplog.text
+    assert _CARD_NAME not in caplog.text
+
+
+@pytest.mark.integration
+async def test_a_second_face_suspends_the_card(
+    voice: _Voice,
+    llm_calls: list[dict[str, object]],
+    card_owner: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del card_owner
+    _see(monkeypatch, _OWNER_FACE, _OTHER_FACE)
+
+    generic = await voice.speak("Hola, ¿cómo estás?", frame=True)
+    summary = await voice.speak(_SUMMARY_QUESTION, frame=True)
+
+    assert generic["llm_response"] == _LLM_REPLY
+    assert _card_of(llm_calls[0]) is None
+    assert summary["llm_response"] == _CARD_UNKNOWN
+    assert await _audit_rows("read_personal_conversation_memory") == 0
+
+
+@pytest.mark.integration
+async def test_a_revoked_voice_consent_changes_nothing_and_a_revoked_face_consent_removes_the_card(
+    voice: _Voice,
+    llm_calls: list[dict[str, object]],
+    card_owner: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The card needs only the face at `basic`: the voice never takes part in it."""
+    _see(monkeypatch, _OWNER_FACE)
+    await grant_voice_consent(card_owner)
+    await revoke_voice_consent(card_owner)
+
+    await voice.speak("Hola, ¿cómo estás?", frame=True)
+    await revoke_face_consent(card_owner)
+    await voice.speak("Hola otra vez", frame=True)
+    summary = await voice.speak(_SUMMARY_QUESTION, frame=True)
+
+    assert _card_of(llm_calls[0]) is not None  # a revoked voice consent changes nothing
+    assert _card_of(llm_calls[1]) is None  # a revoked face consent removes the card
+    assert summary["llm_response"] == _CARD_UNKNOWN
