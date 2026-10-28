@@ -1,12 +1,13 @@
 # 0074 — CM-5a: the profile card and the explicit «what do you know about me»
 
-> **Status:** `Draft` — detailed on 2026-10-28 from the outline, **not promoted**. It becomes
-> executable only when Pipec sets it `Ready`/`NOW`. [ADR 0026](../../adr/0026-owner-profile-card-and-the-read-side-of-memory.md)
+> **Status:** `Ready` — `NOW`. Detailed on 2026-10-28 and **promoted by Pipec the same day** (D-1 to D-8
+> below confirmed). [ADR 0026](../../adr/0026-owner-profile-card-and-the-read-side-of-memory.md)
 > (`Proposed`, merged in PR #220 and #221) is its design; this plan moves it to `Accepted` when it
 > closes. Detailed against `main` at `dbb384f` by three read-only audits of the prompt path, the
-> controller and the V4 repository (2026-10-28); queue rule 4 still applies at promotion: Task 0
-> re-verifies every claim below before any code. Written for an executor who has not seen this
-> repository.
+> controller and the V4 repository and approved with changes by an independent architecture review
+> (2026-10-28); queue rule 4 applies at execution: Task 0 re-verifies every claim below against the
+> merged code before any code, and **stops and reports** if one is false. Written for an executor who
+> has not seen this repository.
 
 > **For agentic workers:** if the status above does not say `Ready`, stop. REQUIRED SUB-SKILLS:
 > `superpowers:executing-plans`, `superpowers:test-driven-development`,
@@ -22,6 +23,25 @@
 > `uv sync --all-packages --all-groups` (it removes the optional `cuda` extra). **Do not run
 > `just gate` in the background while Pipec rehearses** (about 3.5 GB of RAM). **The server and the
 > robot are started by Pipec**, never by the agent.
+
+## Decisions confirmed by Pipec on promotion (2026-10-28)
+
+Items marked *(author's call)* were proposed by the author and are confirmed by the promotion.
+
+- **D-1** The card is a closed list: `preferred_name`, `address_form`, `likes`, `dislikes`, `prefers`;
+  600 characters, 12 tastes, newest first, grouped by predicate (ADR 0026 decision 2).
+- **D-2** The card is read on classic and streaming voice turns only; `/chat` and `/vision/respond` read
+  no card (ADR 0026 decision 3, amended).
+- **D-3** `PROFILE_CARD_POSITION` is configurable (`with_memory` default, `before_language`); the language
+  rule stays the last block of the master prompt.
+- **D-4** `usted` is one line of the card; fixed controller strings stay in tuteo.
+- **D-5** One audit row per read.
+- **D-6** The switch is off in the code and on in a delivered robot; the person who commissions turns it on
+  and verifies it by asking (no automated test turn).
+- **D-7** *(author's call)* The summary lists only what the card holds, with the fixed wording of Task 1;
+  readiness gets its own capability row `answer_profile`.
+- **D-8** *(author's call)* An identified non-owner and a stranger hear the same phrase; the spoken
+  summary is kept out of the opt-in text log.
 
 **Goal.** The robot reads back what it holds about the person it is talking to. A small **card**
 (preferred name, form of address, tastes; ADR 0026 decision 2) goes into the prompt on every
