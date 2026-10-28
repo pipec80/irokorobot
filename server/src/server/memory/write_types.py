@@ -32,13 +32,16 @@ class WriteChannel(StrEnum):
 
     The first two are the values a memory candidate already carries; ``import_file`` is a load
     made by the owner alone and ``import_assisted`` an interview with an interviewer (ADR 0024
-    decision 6). A perceptual channel is added when that source exists.
+    decision 6). ``admin_local`` is an edit made through the local command-line administration
+    after the commissioning closed (ADR 0025 decision 4); it is **not** an import channel. A
+    perceptual channel is added when that source exists.
     """
 
     VOICE_CLASSIC = "voice_classic"
     VOICE_STREAM = "voice_stream"
     IMPORT_FILE = "import_file"
     IMPORT_ASSISTED = "import_assisted"
+    ADMIN_LOCAL = "admin_local"
 
 
 IMPORT_CHANNELS = frozenset({WriteChannel.IMPORT_FILE, WriteChannel.IMPORT_ASSISTED})

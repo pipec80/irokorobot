@@ -349,6 +349,102 @@ async def get_active_entity_relations(
     return [_relation_from_row(tuple(row)) for row in rows]
 
 
+async def list_active_facts(subject_entity_id: int) -> list[LiteralFactV4]:
+    """Return every active literal fact of a subject, across predicates (Plan 0073, admin reads).
+
+    For the local administration to show the pool; it applies no runtime authorization.
+
+    Args:
+        subject_entity_id: The entity whose active facts are listed.
+
+    Returns:
+        The active rows, by id.
+    """
+    conn = get_conn()
+    cursor = await conn.execute(
+        f"SELECT {_LITERAL_COLUMNS} FROM literal_facts_v4 "  # noqa: S608
+        "WHERE subject_entity_id = ? AND lifecycle = 'active' ORDER BY id",
+        (subject_entity_id,),
+    )
+    rows = await cursor.fetchall()
+    await cursor.close()
+    return [_literal_from_row(tuple(row)) for row in rows]
+
+
+async def list_active_relations(owner_entity_id: int) -> list[EntityRelationV4]:
+    """Return every active relation the owner is an endpoint of (Plan 0073, admin reads).
+
+    Membership relations point to the owner; relative relations start from the owner. It applies
+    no runtime authorization.
+
+    Args:
+        owner_entity_id: The owner whose relations are listed.
+
+    Returns:
+        The active rows, by id.
+    """
+    conn = get_conn()
+    cursor = await conn.execute(
+        f"SELECT {_RELATION_COLUMNS} FROM entity_relations_v4 "  # noqa: S608
+        "WHERE (source_entity_id = ? OR target_entity_id = ?) AND lifecycle = 'active' ORDER BY id",
+        (owner_entity_id, owner_entity_id),
+    )
+    rows = await cursor.fetchall()
+    await cursor.close()
+    return [_relation_from_row(tuple(row)) for row in rows]
+
+
+async def revoke_literal_fact(
+    fact_id: int, *, revoked_at: str, manage_transaction: bool = True
+) -> bool:
+    """Revoke an active literal fact to inactive — history, never a hard delete (Plan 0073).
+
+    The row stays with lifecycle ``revoked`` and ``valid_to`` set; the active readers stop serving
+    it. Forgetting the row is CM-6.
+
+    Args:
+        fact_id: The fact to revoke.
+        revoked_at: When it was revoked, as UTC ISO 8601.
+        manage_transaction: ``False`` joins the caller's open transaction.
+
+    Returns:
+        ``True`` when an active row changed, ``False`` when none did (a no-op second revoke).
+    """
+    async with _owned(manage_transaction):
+        cursor = await get_conn().execute(
+            "UPDATE literal_facts_v4 SET lifecycle = 'revoked', valid_to = ?, superseded_at = ? "
+            "WHERE id = ? AND lifecycle = 'active'",
+            (revoked_at, revoked_at, fact_id),
+        )
+        changed = cursor.rowcount
+        await cursor.close()
+    return changed > 0
+
+
+async def revoke_entity_relation(
+    relation_id: int, *, revoked_at: str, manage_transaction: bool = True
+) -> bool:
+    """Revoke an active relation to inactive — history, never a hard delete (Plan 0073).
+
+    Args:
+        relation_id: The relation to revoke.
+        revoked_at: When it was revoked, as UTC ISO 8601.
+        manage_transaction: ``False`` joins the caller's open transaction.
+
+    Returns:
+        ``True`` when an active row changed, ``False`` when none did.
+    """
+    async with _owned(manage_transaction):
+        cursor = await get_conn().execute(
+            "UPDATE entity_relations_v4 SET lifecycle = 'revoked', valid_to = ?, superseded_at = ? "
+            "WHERE id = ? AND lifecycle = 'active'",
+            (revoked_at, revoked_at, relation_id),
+        )
+        changed = cursor.rowcount
+        await cursor.close()
+    return changed > 0
+
+
 async def assert_literal_fact(
     *,
     subject_entity_id: int,

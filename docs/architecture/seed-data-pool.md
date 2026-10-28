@@ -20,6 +20,13 @@
 > consents and the backups of the commissioning are recorded by `just commission` in the acta, together
 > with the notice version, the modalities enrolled (derived from the database) and the readiness report
 > of the capabilities that exist today; this document is now canonical (ADR 0024 is `Accepted`).
+>
+> **Plan 0073 (the local admin CRUD) closed on 2026-10-28.** After the alta closes, `iroko-admin`
+> (run on the machine over SSH, server stopped) is the **amendment path**: it lists, adds, changes and
+> revokes the loaded pool and contacts through the same canonical writers (channel `admin_local`), with
+> the owner's PIN for sensitive data and an audit that holds no value. A datum now changes without a
+> re-interview ([ADR 0025](../adr/0025-remote-administration-backup-updates-and-telemetry.md) `Accepted`,
+> local half; `revoke` is history, a hard delete is CM-6).
 
 ## Why this list exists
 

@@ -58,9 +58,10 @@
         "focus": [
           "commission",
           "seed",
-          "memory"
+          "memory",
+          "admin"
         ],
-        "note": "One command names each step: face and voice with the server on; the load is a dry run, the owner's SI, one transaction; then the acta."
+        "note": "Face and voice with the server on; the load is a dry run, the owner's SI, one transaction. After the close, iroko-admin amends it."
       }
     ]
   },
@@ -253,6 +254,21 @@
         64
       ],
       "tag": "acta, no household value"
+    },
+    {
+      "id": "admin",
+      "type": "backend",
+      "label": "Local admin CRUD",
+      "sublabel": "iroko-admin · server stopped",
+      "pos": [
+        420,
+        620
+      ],
+      "size": [
+        190,
+        64
+      ],
+      "tag": "amendment path, PIN + audit"
     }
   ],
   "boundaries": [
@@ -384,6 +400,14 @@
       "label": "names the next command",
       "fromSide": "top",
       "toSide": "bottom"
+    },
+    {
+      "id": "admin-to-memory",
+      "from": "admin",
+      "to": "memory",
+      "label": "admin_local · one audit row",
+      "fromSide": "right",
+      "toSide": "left"
     }
   ],
   "cards": [
@@ -407,7 +431,8 @@
         "A generic turn names its speaker by face or an observed token (never voice); the identified person gets one in-process session, an unknown speaker suspends it",
         "One canonical writer stores household facts for every channel; a secret is stored by reference only (who knows it), never its value",
         "The seed file loads offline (Plan 0071): dry run by default, the owner's review and SI, one transaction, a replacement only while commissioning and before anything is learned by voice",
-        "The alta is one guided command (Plan 0072): it enrols face and voice asking the PIN before each, records backups and consents, attests the readiness of what exists and closes the window with an acta that holds no household value"
+        "The alta is one guided command (Plan 0072): it enrols face and voice asking the PIN before each, records backups and consents, attests the readiness of what exists and closes the window with an acta that holds no household value",
+        "After the alta closes, iroko-admin is the amendment path (Plan 0073): it edits the pool and contacts through the canonical writers (channel admin_local) with the owner PIN for sensitive data and an audit that holds no value; a revoke is history, not a hard delete"
       ]
     },
     {

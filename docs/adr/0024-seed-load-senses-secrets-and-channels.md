@@ -33,8 +33,8 @@
   importer), [Plan 0072](../plans/completed/0072-commissioning-session.md) (closed 2026-10-27: the
   session itself, with the notice and the consents, the face and voice sessions, the readiness report,
   the closing and the acta, as `just commission`) and
-  [Plan 0073](../plans/open/0073-local-admin-crud.md) (`Draft`, an outline: the local administration that
-  is the amendment path of decision 8; its remote half is [ADR 0025](0025-remote-administration-backup-updates-and-telemetry.md)).
+  [Plan 0073](../plans/completed/0073-local-admin-crud.md) (closed 2026-10-28: the local administration
+  that is the amendment path of decision 8; its remote half is [ADR 0025](0025-remote-administration-backup-updates-and-telemetry.md)).
 - **Companion document:** [`seed-data-pool.md`](../architecture/seed-data-pool.md), the catalogue of
   what is captured, where it lives and which capability needs it.
 
@@ -258,10 +258,11 @@ turn and a reader, so they are CM-5.
 - **A gap, stated:** after the closing, contacts, medications and conditions have **no write path**:
   the voice writes only tastes. A caregiver's phone changes within months. Before the robot is trusted
   with any capability that depends on them (an alert, a reminder) there must be an **amendment** path.
-  It is [Plan 0073](../plans/open/0073-local-admin-crud.md), the local CRUD that closes Phase 0 (every
-  edit through the canonical writers, with an audit that holds no value); administering from afar is
-  [ADR 0025](0025-remote-administration-backup-updates-and-telemetry.md). Until Plan 0073 closes it is a
-  blocker for the care capabilities, not for this phase.
+  It is [Plan 0073](../plans/completed/0073-local-admin-crud.md), the local CRUD `iroko-admin` that
+  closed Phase 0 on 2026-10-28 (every edit through the canonical writers, with an audit that holds no
+  value; the machine's access plus the owner's PIN for sensitive data authorize it); administering
+  from afar is [ADR 0025](0025-remote-administration-backup-updates-and-telemetry.md). The amendment
+  path now exists, so the care capabilities are no longer blocked on it.
 - Loading the same file twice changes nothing in either case.
 
 ### 9. The adult child

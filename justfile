@@ -128,6 +128,11 @@ seed-import *ARGS:
     @echo "seed-import: dry run unless --apply; the server must be stopped"
     uv run --env-file .env --package server seed-import {{ARGS}}
 
+# Administracion local tras el cierre del alta (Plan 0073): ver y enmendar el pozo. Servidor detenido.
+admin *ARGS:
+    @echo "iroko-admin: local amendment path; the server must be stopped"
+    uv run --env-file .env --package server iroko-admin {{ARGS}}
+
 # Onboarding unificado: identidad+hijos+PIN, despues la cara (Plan 0029). Re-ejecutable.
 onboard *ARGS:
     uv run --env-file .env python scripts/onboard.py {{ARGS}}

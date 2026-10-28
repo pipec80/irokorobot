@@ -57,6 +57,15 @@ days out), the three consents, the readiness of each capability and writes the a
 `data/commissioning/`, closing the window. It needs `FACE_AUTHENTICATION_ENABLED=true` and
 `SPEAKER_AUTHENTICATION_ENABLED=true` in `.env`; `--device` and `--mic` choose the camera and the microphone.
 
+**The amendment path after the closing (Plan 0073, ADR 0025).** Once the alta closes the importer no
+longer runs, so `just admin` (`iroko-admin`, run on the machine over SSH with the server stopped) edits
+the loaded data: `list`, `status`, `add`, `change`, `revoke`, `change-contact`, `audit`. A value is
+typed at a prompt (never an argument, so it stays out of the shell history); a change to sensitive data
+(medical, location, security) or a contact asks for the owner's PIN (read without echo); every edit goes
+through the canonical writers (channel `admin_local`) and writes one audit row that holds no household
+value. A `revoke` sets the row inactive (history; a hard delete is CM-6). It refuses a running server and
+a database behind the schema, and never creates or migrates one.
+
 ## Configuration
 
 Selected settings that shape runtime behavior — the full list lives in

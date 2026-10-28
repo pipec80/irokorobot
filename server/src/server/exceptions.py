@@ -176,6 +176,18 @@ class ReplaceBlockedError(ValueError):
         super().__init__("an imported person is referred to by another table: no replacement")
 
 
+class AdminPinError(ValueError):
+    """Raised when the local admin's owner-PIN check fails (Plan 0073, ADR 0025 decision 4).
+
+    There is no active owner credential, or the PIN does not match, or it is malformed. The
+    message is fixed and never carries the PIN.
+    """
+
+    def __init__(self) -> None:
+        """Say only that the PIN check failed."""
+        super().__init__("owner PIN verification failed")
+
+
 class CommissioningError(ValueError):
     """Raised when the commissioning record is in the wrong state for the call.
 
