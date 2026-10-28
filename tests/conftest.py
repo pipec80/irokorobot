@@ -86,6 +86,16 @@ def _memory_candidates_off(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _profile_card_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Start every test with the profile card off (ADR 0026), like the candidate switch.
+
+    A developer's `.env` may switch the card on; without this pin a test that never asked for it
+    would read the card. A test that wants it sets the flag itself.
+    """
+    monkeypatch.setattr(settings, "profile_card_enabled", False)
+
+
+@pytest.fixture(autouse=True)
 def _ollama_probe_offline(monkeypatch: pytest.MonkeyPatch) -> None:
     """Start every test with the start-up Ollama probe stubbed out (Plan 0064).
 

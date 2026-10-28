@@ -141,6 +141,9 @@ class Settings(BaseSettings):
     # Where the profile card sits in the system prompt (Plan 0074, ADR 0026): next to the
     # memory block, or just before the language rule (the last block of every prompt).
     profile_card_position: ProfileCardPosition = "with_memory"
+    # Kill-switch of the profile card and of «¿qué sabes de mí?» (Plan 0074, ADR 0026): off in
+    # the code, on in a delivered robot (the commissioning turns it on). Needs MEMORY_ENABLED.
+    profile_card_enabled: bool = False
     robot_character: str = "iroko"
     # Re-read character markdown profiles from disk on every request when
     # they change (prompt-engineering aid). OFF by default: production loads

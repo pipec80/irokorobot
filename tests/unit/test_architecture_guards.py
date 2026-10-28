@@ -548,8 +548,20 @@ def test_the_proposal_guards_detect_a_violation() -> None:
 # The offer and the answer need the voice of the turn's own clip: only the voice routes bind
 # them, and the text turn, the stream and the controller carry the seams. `/chat` and
 # `/vision/respond` have no audio, so they never offer and never answer.
+#
+# Plan 0074: the profile card is read by the same two routes (the provider names), and the access
+# module, which never names the provider, is not a home.
 _DIALOGUE_NAMES = frozenset(
-    {"prepare_offer", "OfferPreparer", "answer_offer", "MemoryAnswerer", "memory_answerer"}
+    {
+        "prepare_offer",
+        "OfferPreparer",
+        "answer_offer",
+        "MemoryAnswerer",
+        "memory_answerer",
+        "profile_card_provider",
+        "ProfileCardProvider",
+        "_profile_card_provider",
+    }
 )
 _DIALOGUE_HOMES = frozenset(
     {
@@ -573,11 +585,20 @@ def test_the_dialogue_guard_detects_a_violation() -> None:
         "routers/chat.py": "controller = CognitiveController(memory_answerer=a)\n",
         "routers/vision.py": "x = prepare_offer(actor)\n",
         "routers/transcribe.py": "x = prepare_offer(actor)\n",
+        # The profile card (Plan 0074) is read by the voice routes only.
+        "routers/chat_card.py": "x = await process_text_turn(c, m, i, profile_card_provider=p)\n",
+        "routers/vision_card.py": "x = _profile_card_provider(correlation_id)\n",
+        "routers/typed.py": "def f(p: ProfileCardProvider) -> None: ...\n",
+        "memory/profile_card_access.py": "x = profile_card_provider\n",
     }
 
     assert _outside(leak, _DIALOGUE_HOMES, _DIALOGUE_NAMES) == [
+        "memory/profile_card_access.py",
         "routers/chat.py",
+        "routers/chat_card.py",
+        "routers/typed.py",
         "routers/vision.py",
+        "routers/vision_card.py",
     ]
 
 

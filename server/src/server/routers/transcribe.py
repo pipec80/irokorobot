@@ -10,7 +10,7 @@ from functools import partial
 import logging
 import time
 from typing import Annotated
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
@@ -61,6 +61,7 @@ from server.memory.candidate_proposal import propose_candidates
 from server.memory.candidate_types import CandidateChannel
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
+from server.memory.profile_card_access import prompt_card_text
 from server.pipeline import (
     _elapsed_ms,
     _log_pipeline_timing,
@@ -74,6 +75,7 @@ from server.settings import settings
 from server.streaming import guarantee_terminal_event, stream_pipeline, stream_response_plan
 from server.stt import SHORT_REPLY_HOTWORDS
 from server.text_turn import (
+    ProfileCardProvider,
     ProposalScheduler,
     TextTurnResult,
     new_interaction_scope,
@@ -241,6 +243,7 @@ def _voice_controller(
     schedule_proposal: ProposalScheduler | None = None,
     prepare_offer: OfferPreparer | None = None,
     memory_answerer: MemoryAnswerer | None = None,
+    profile_card_provider: ProfileCardProvider | None = None,
 ) -> CognitiveController:
     """Compose the bounded controller used by a public voice turn.
 
@@ -259,6 +262,8 @@ def _voice_controller(
         memory_answerer: Answers a memory offer (ADR 0021 decision 9). Only used together
             with ``request_identity``, the resolver it needs; when omitted an answer-shaped
             message is ordinary conversation.
+        profile_card_provider: Renders the speaker's profile card for the prompt of a generic
+            turn (Plan 0074); when omitted the turn reads no card.
     """
 
     async def legacy_turn(message: str, conversation_id: str) -> TextTurnResult:
@@ -278,6 +283,7 @@ def _voice_controller(
             suspend_cause=speaker.cause,
             schedule_proposal=schedule_proposal,
             prepare_offer=prepare_offer,
+            profile_card_provider=profile_card_provider,
         )
 
     if request_identity is None:
@@ -378,6 +384,24 @@ def _memory_answerer() -> MemoryAnswerer | None:
         )
 
     return answer
+
+
+def _profile_card_provider(correlation_id: UUID) -> ProfileCardProvider | None:
+    """Return the profile card seam of a voice turn, or ``None`` with a switch off (ADR 0026).
+
+    With ``MEMORY_ENABLED`` or ``PROFILE_CARD_ENABLED`` off the turn reads no card and writes no
+    audit row. Only the two voice routes bind it; ``/chat`` and ``/vision/respond`` never do.
+
+    Args:
+        correlation_id: The turn's id, so the audit row of the read joins to the rest of the turn.
+    """
+    if not (settings.memory_enabled and settings.profile_card_enabled):
+        return None
+
+    async def provide(actor: ActivePersonContext) -> str | None:
+        return await prompt_card_text(actor, correlation_id=correlation_id, now=utc_now())
+
+    return provide
 
 
 async def _synthesize_reply(plan: ResponsePlan) -> tuple[str, int, int]:
@@ -617,6 +641,7 @@ async def transcribe(
         ),
         prepare_offer=_offer_preparer(event=event, wav_bytes=audio_bytes),
         memory_answerer=_memory_answerer(),
+        profile_card_provider=_profile_card_provider(event.correlation_id),
     )
     decision = await controller.decide(event)
 
@@ -781,6 +806,7 @@ async def transcribe_stream(
         event.payload.conversation_id,
         active_person=speaker.actor,
         suspend_cause=speaker.cause,
+        profile_card_provider=_profile_card_provider(event.correlation_id),
     )
 
     return NDJSONStreamingResponse(
