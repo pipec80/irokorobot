@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 import inspect
 import logging
@@ -24,7 +25,7 @@ from server.memory.continuity import SuspendCause, Transition
 from server.schemas import MemoryContext
 from server.settings import settings
 
-from server import text_turn
+from server import llm_streaming, streaming, text_turn
 
 _DEFAULT_SESSION_ID = UUID("11111111-1111-1111-1111-111111111111")
 _OWNER = 7
@@ -947,3 +948,161 @@ def test_the_offer_never_shows_in_the_repr_of_a_turn_result() -> None:
     )
 
     assert "quokka" not in repr(result)
+
+
+# --- the profile card (Plan 0074, ADR 0026 decision 3) ---------------------------------------
+
+_CARD_TEXT = "CARD-CANARY"
+
+
+def _face_owner() -> ActivePersonContext:
+    return _person(IdentityEvidenceSource.FACE, assurance=IdentityAssurance.BASIC)
+
+
+async def test_the_provider_is_awaited_once_with_the_face_identified_person(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "memory_enabled", True)
+    provider = AsyncMock(return_value=_CARD_TEXT)
+    person = _face_owner()
+
+    prepared = await text_turn.prepare_text_turn(
+        http_client, "hola", "web", active_person=person, profile_card_provider=provider
+    )
+
+    provider.assert_awaited_once_with(person)
+    assert prepared.profile_card == _CARD_TEXT
+
+
+@pytest.mark.parametrize(
+    "status",
+    [ActivePersonStatus.UNKNOWN, ActivePersonStatus.PROBABLE, ActivePersonStatus.AMBIGUOUS],
+)
+async def test_a_suspended_speaker_never_reaches_the_provider(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, status: ActivePersonStatus
+) -> None:
+    monkeypatch.setattr(settings, "memory_enabled", True)
+    provider = AsyncMock(return_value=_CARD_TEXT)
+
+    prepared = await text_turn.prepare_text_turn(
+        http_client,
+        "hola",
+        "web",
+        active_person=_unidentified_person(status),
+        profile_card_provider=provider,
+    )
+
+    provider.assert_not_awaited()
+    assert prepared.profile_card is None
+
+
+async def test_a_speaker_below_basic_never_reaches_the_provider(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "memory_enabled", True)
+    provider = AsyncMock(return_value=_CARD_TEXT)
+    person = _person(IdentityEvidenceSource.FACE, assurance=IdentityAssurance.NONE)
+
+    prepared = await text_turn.prepare_text_turn(
+        http_client, "hola", "web", active_person=person, profile_card_provider=provider
+    )
+
+    provider.assert_not_awaited()
+    assert prepared.profile_card is None
+
+
+async def test_with_memory_off_the_provider_is_never_awaited(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "memory_enabled", False)
+    provider = AsyncMock(return_value=_CARD_TEXT)
+
+    prepared = await text_turn.prepare_text_turn(
+        http_client,
+        "hola",
+        "web",
+        active_person=_face_owner(),
+        profile_card_provider=provider,
+    )
+
+    provider.assert_not_awaited()
+    assert prepared.profile_card is None
+
+
+async def test_without_a_provider_the_card_is_none(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "memory_enabled", True)
+
+    prepared = await text_turn.prepare_text_turn(
+        http_client, "hola", "web", active_person=_face_owner()
+    )
+
+    assert prepared.profile_card is None
+
+
+async def test_a_provider_that_raises_leaves_no_card_and_the_turn_goes_on(
+    http_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(settings, "memory_enabled", True)
+    provider = AsyncMock(side_effect=RuntimeError("zumo de pomelo"))
+    generate = _generate(monkeypatch, ("Hola", "neutral"))
+
+    with caplog.at_level(logging.DEBUG):
+        result = await text_turn.process_text_turn(
+            http_client,
+            "hola",
+            "web",
+            active_person=_face_owner(),
+            profile_card_provider=provider,
+        )
+
+    assert result.response == "Hola"
+    assert generate.await_args_list[0].kwargs["profile_card"] is None
+    assert "pomelo" not in caplog.text
+    assert "RuntimeError" in caplog.text
+
+
+async def test_the_card_reaches_the_model_call(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "memory_enabled", True)
+    generate = _generate(monkeypatch, ("Hola", "neutral"))
+
+    await text_turn.process_text_turn(
+        http_client,
+        "hola",
+        "web",
+        active_person=_face_owner(),
+        profile_card_provider=AsyncMock(return_value=_CARD_TEXT),
+    )
+
+    assert generate.await_args_list[0].kwargs["profile_card"] == _CARD_TEXT
+
+
+async def test_the_card_reaches_the_stream_call(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict[str, object] = {}
+
+    async def fake_stream(*_args: object, **kwargs: object) -> AsyncIterator[str]:
+        captured.update(kwargs)
+        yield "Hola."
+
+    monkeypatch.setattr(llm_streaming, "generate_response_stream", fake_stream)
+    prepared = text_turn.PreparedTextTurn(
+        "hola", "web", None, None, False, None, None, None, profile_card=_CARD_TEXT
+    )
+
+    assert [delta async for delta in streaming._text_deltas(http_client, prepared)] == ["Hola."]
+    assert captured["profile_card"] == _CARD_TEXT
+
+
+def test_the_card_never_shows_in_the_repr_of_a_prepared_turn() -> None:
+    prepared = text_turn.PreparedTextTurn(
+        "hola", "web", None, None, False, None, None, None, profile_card="CARD-CANARY quokka"
+    )
+
+    assert "quokka" not in repr(prepared)

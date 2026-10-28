@@ -38,12 +38,12 @@ to see the code, tests, verified gaps, and future delivery sequence.
 **Cerrado:** el [Plan 0069 — el reconocimiento de voz con la voz real del dueño](../completed/0069-stt-owner-voice-audit.md), el 2026-10-21 (PR #202): el STT se midió por primera vez con la voz de Pipec, `medium` en GPU es el perfil recomendado (WER 15,4 % a 6,8 % en la mitad de prueba) y el corpus privado se borró. Antes ocupó `NOW` el [Plan 0067](../completed/0067-reply-listening-mode.md), que **cerró el 2026-10-19** (PR #199).
 
 
-**`NOW` (2026-10-28):** el [Plan 0074](0074-cm5a-profile-card.md) (`Ready`, promovido por Pipec el
-mismo día, decisiones D-1 a D-8 confirmadas). Es la primera mitad de CM-5 que decide el
-[ADR 0026](../../adr/0026-owner-profile-card-and-the-read-side-of-memory.md) (`Proposed`): la **ficha**,
+**Cerrado el 2026-10-28:** el [Plan 0074](../completed/0074-cm5a-profile-card.md) (aceptado por Pipec en
+hardware, `NOW` vuelve a quedar vacío). Es la primera mitad de CM-5 que decide el
+[ADR 0026](../../adr/0026-owner-profile-card-and-the-read-side-of-memory.md) (`Accepted`): la **ficha**,
 con la que el robot lee de vuelta tus gustos y cómo llamarte en cada turno identificado, sin datos
 sensibles, y responde «¿qué sabes de mí?» con una frase fija. Ocho tareas, sin migración y sin cambio de
-cable. Se ejecuta en una sesión nueva.
+cable.
 
 ### El Paso 0 (cerrado el 2026-10-28) y lo que queda abierto
 

@@ -33,6 +33,7 @@ from server.cognition.models import (
 from server.cognition.response_plan import (
     InformationNeed,
     MemoryAnswerReply,
+    ProfileSummaryReply,
     ResponseClaim,
     ResponsePlan,
     ResponseSource,
@@ -67,12 +68,25 @@ type MemoryAnswerer = Callable[
     [MemoryAnswer, ActivePersonContext, CognitiveEvent[TextTurnPayload]],
     Awaitable[MemoryAnswerReply | None],
 ]
+#: Reads the speaker's own profile card for «¿qué sabes de mí?» (Plan 0074, ADR 0026 decision 5).
+#: Only the voice routes inject one; it owns the policy and the audit row and never raises.
+type ProfileSummarizer = Callable[
+    [ActivePersonContext, CognitiveEvent[TextTurnPayload]], Awaitable[ProfileSummaryReply]
+]
 type ControllerDecision = ResponsePlan | SceneDescriptionRequest | None
 
 _BIOMETRIC_ENROLLMENT_RESPONSE = (
     "Todavía no puedo registrar rostros: hace falta administración local y consentimiento."
 )
 _ACTIVE_IDENTITY_UNKNOWN_RESPONSE = "Todavía no puedo confirmar quién eres."
+# One phrase for a stranger and for an identified person the policy refused: no oracle (ADR 0026).
+_PROFILE_SUMMARY_UNKNOWN_RESPONSE = (
+    "Todavía no puedo confirmar quién eres para contarte lo que sé de ti."
+)
+# Reserved for an audit or database failure, which is not a refusal.
+_PROFILE_SUMMARY_UNAVAILABLE_RESPONSE = (
+    "Ahora no puedo revisar lo que sé de ti. Inténtalo de nuevo en un rato."
+)
 
 _ISO_DATE_PATTERN = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 _TWO_ITEMS = 2
@@ -127,6 +141,7 @@ class CognitiveController:
         consent_resolver: ConsentResolver = _not_required_consent,
         intent_resolver: IntentResolver = resolve_information_need,
         memory_answerer: MemoryAnswerer | None = None,
+        profile_summarizer: ProfileSummarizer | None = None,
     ) -> None:
         """Create a controller with injected calendar and legacy-generation seams.
 
@@ -146,6 +161,9 @@ class CognitiveController:
             memory_answerer: The answer to a memory offer (ADR 0021 decision 9); injected
                 only by the voice routes with the candidate kill-switch on. When absent an
                 answer-shaped message is ordinary conversation.
+            profile_summarizer: Reads the speaker's profile card for «¿qué sabes de mí?»
+                (Plan 0074); injected only by the voice routes with the card switch on. When
+                absent the question is ordinary conversation, byte for byte.
         """
         self._today = today
         self._legacy_turn = legacy_turn
@@ -157,6 +175,7 @@ class CognitiveController:
         self._consent_resolver = consent_resolver
         self._intent_resolver = intent_resolver
         self._memory_answerer = memory_answerer
+        self._profile_summarizer = profile_summarizer
         # The classic route calls decide() twice on a turn that falls through (decide, then
         # handle), with the same event: keyed by event_id, an answer is attempted once per
         # event, so no audit row is written twice. The controller is built per request and
@@ -221,8 +240,8 @@ class CognitiveController:
                 decision = await self._active_identity_plan(event)
             case InformationNeed.SCENE_DESCRIPTION:
                 decision = SceneDescriptionRequest()
-            case InformationNeed.MEMORY_ANSWER:
-                decision = await self._memory_answer_plan(event)
+            case InformationNeed.MEMORY_ANSWER | InformationNeed.PROFILE_SUMMARY:
+                decision = await self._voice_dialogue_plan(event, need)
             case InformationNeed.UNCLEAR_SPEECH:
                 # The voice routes answer it before the controller (Plan 0069 D-11); no text
                 # resolves to it, but if one ever did, it is the fixed phrase, never generation.
@@ -324,6 +343,48 @@ class CognitiveController:
         )
         self._answers[event.event_id] = plan
         return plan
+
+    async def _voice_dialogue_plan(
+        self,
+        event: CognitiveEvent[TextTurnPayload],
+        need: InformationNeed,
+    ) -> ResponsePlan | None:
+        """Answer one of the two needs only a voice route wires, or fall through (``None``).
+
+        Both stay inert, byte for byte, until their collaborator is injected.
+        """
+        if need is InformationNeed.MEMORY_ANSWER:
+            return await self._memory_answer_plan(event)
+        return await self._profile_summary_plan(event)
+
+    async def _profile_summary_plan(
+        self,
+        event: CognitiveEvent[TextTurnPayload],
+    ) -> ResponsePlan | None:
+        """Read back the speaker's own profile card, or fall through (``None``) without a seam.
+
+        The actor is only observed (never spends a grant). A stranger and an identified person
+        the policy refused hear the same phrase, so a refusal is no oracle (ADR 0026 decision 5);
+        a failed audit or read is told apart because it is not a refusal.
+        """
+        if self._profile_summarizer is None:
+            return None
+        actor = await self._observed_person_resolver(event)
+        if actor.status is not ActivePersonStatus.IDENTIFIED:
+            return _unknown_plan(InformationNeed.PROFILE_SUMMARY, _PROFILE_SUMMARY_UNKNOWN_RESPONSE)
+        reply = await self._profile_summarizer(actor, event)
+        if reply.denied:
+            return _unknown_plan(InformationNeed.PROFILE_SUMMARY, _PROFILE_SUMMARY_UNKNOWN_RESPONSE)
+        if reply.text is None:
+            return _unknown_plan(
+                InformationNeed.PROFILE_SUMMARY, _PROFILE_SUMMARY_UNAVAILABLE_RESPONSE
+            )
+        return ResponsePlan(
+            need=InformationNeed.PROFILE_SUMMARY,
+            status=KnowledgeStatus.KNOWN,
+            source=ResponseSource.DETERMINISTIC,
+            response=reply.text,
+        )
 
     async def _own_children_plan(
         self,

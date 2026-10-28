@@ -439,6 +439,7 @@ _PREEMPTING_BODIES = [
         "la cara aprende mi cara",
     ),
     ("identity.active.v1", InformationNeed.ACTIVE_IDENTITY, "la pregunta quien soy"),
+    ("profile.summary.v1", InformationNeed.PROFILE_SUMMARY, "lo que te he contado"),
     ("date.current.v1", InformationNeed.CURRENT_DATE, "el que dia es hoy"),
     ("age.explicit.v1", InformationNeed.EXPLICIT_BIRTH_DATE_AGE, "la edad que tengo"),
     ("relationship.profile.v1", InformationNeed.RELATIONSHIP_OR_PROFILE, "la relacion"),

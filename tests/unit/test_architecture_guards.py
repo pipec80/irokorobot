@@ -17,6 +17,7 @@ _RAW_V4_READERS = frozenset(
         "get_active_entity_relations",
         "get_literal_fact",
         "get_entity_relation",
+        "list_card_literals",
     }
 )
 # The policy gate, the local setup that re-reads what it just wrote, the candidate writer, which
@@ -29,6 +30,7 @@ _MAY_IMPORT_RAW_V4_READERS = frozenset(
         "personal_setup.py",
         "memory/memory_writer.py",
         "memory/canonical_writer.py",
+        "memory/profile_card_access.py",
     }
 )
 # The repository itself, and the setup status that counts child links.
@@ -163,9 +165,15 @@ _RETIRED_ACTION_NAMES = frozenset(
     {"PROPOSE_MEMORY", "COMMIT_MEMORY", "propose_memory", "commit_memory"}
 )
 # The model and the policy, plus the one module that asks the policy about a candidate step
-# (Plan 0062): every other module reaches the actions through it.
+# (Plan 0062) and the one that asks it about the profile card (Plan 0074): every other module
+# reaches the actions through them.
 _ACTION_HOMES = frozenset(
-    {"cognition/models.py", "cognition/authorization.py", "memory/candidate_policy.py"}
+    {
+        "cognition/models.py",
+        "cognition/authorization.py",
+        "memory/candidate_policy.py",
+        "memory/profile_card_access.py",
+    }
 )
 _MEMORY_SCOPE_MEMBER_NAMES = frozenset({"PERSONAL_MEMORY_READ", "PERSONAL_MEMORY_FORGET"})
 _MEMORY_SCOPE_VALUES = frozenset({"personal_memory_read", "personal_memory_forget"})
@@ -540,8 +548,23 @@ def test_the_proposal_guards_detect_a_violation() -> None:
 # The offer and the answer need the voice of the turn's own clip: only the voice routes bind
 # them, and the text turn, the stream and the controller carry the seams. `/chat` and
 # `/vision/respond` have no audio, so they never offer and never answer.
+#
+# Plan 0074: the profile card is read by the same two routes (the provider names), and the access
+# module, which never names the provider, is not a home.
 _DIALOGUE_NAMES = frozenset(
-    {"prepare_offer", "OfferPreparer", "answer_offer", "MemoryAnswerer", "memory_answerer"}
+    {
+        "prepare_offer",
+        "OfferPreparer",
+        "answer_offer",
+        "MemoryAnswerer",
+        "memory_answerer",
+        "profile_card_provider",
+        "ProfileCardProvider",
+        "_profile_card_provider",
+        "profile_summarizer",
+        "ProfileSummarizer",
+        "_profile_summarizer",
+    }
 )
 _DIALOGUE_HOMES = frozenset(
     {
@@ -565,11 +588,27 @@ def test_the_dialogue_guard_detects_a_violation() -> None:
         "routers/chat.py": "controller = CognitiveController(memory_answerer=a)\n",
         "routers/vision.py": "x = prepare_offer(actor)\n",
         "routers/transcribe.py": "x = prepare_offer(actor)\n",
+        # The profile card (Plan 0074) is read by the voice routes only.
+        "routers/chat_card.py": "x = await process_text_turn(c, m, i, profile_card_provider=p)\n",
+        "routers/vision_card.py": "x = _profile_card_provider(correlation_id)\n",
+        "routers/typed.py": "def f(p: ProfileCardProvider) -> None: ...\n",
+        "memory/profile_card_access.py": "x = profile_card_provider\n",
+        # So is the explicit «¿qué sabes de mí?» (Plan 0074).
+        "routers/chat_summary.py": "c = CognitiveController(profile_summarizer=s)\n",
+        "routers/vision_summary.py": "s = _profile_summarizer()\n",
+        "routers/typed_summary.py": "def f(s: ProfileSummarizer) -> None: ...\n",
     }
 
     assert _outside(leak, _DIALOGUE_HOMES, _DIALOGUE_NAMES) == [
+        "memory/profile_card_access.py",
         "routers/chat.py",
+        "routers/chat_card.py",
+        "routers/chat_summary.py",
+        "routers/typed.py",
+        "routers/typed_summary.py",
         "routers/vision.py",
+        "routers/vision_card.py",
+        "routers/vision_summary.py",
     ]
 
 

@@ -78,6 +78,7 @@ def _build_streaming_base_prompt(
     onboarding_slot: OnboardingSlot | None,
     user_emotion: str | None,
     active_person: ActivePersonContext | None,
+    profile_card: str | None = None,
 ) -> str:
     """Build the format-neutral base prompt for the streaming path.
 
@@ -90,6 +91,7 @@ def _build_streaming_base_prompt(
         onboarding_slot: Next onboarding checklist slot, if any.
         user_emotion: Dominant recent user emotion, if any.
         active_person: Internally resolved person context for this turn, if any.
+        profile_card: The speaker's rendered, already authorized profile card, if any.
 
     Returns:
         Format-neutral system prompt string.
@@ -102,6 +104,8 @@ def _build_streaming_base_prompt(
         onboarding_slot=onboarding_slot,
         user_emotion=user_emotion,
         active_person=active_person,
+        profile_card=profile_card,
+        profile_card_position=settings.profile_card_position,
     )
 
 
@@ -142,6 +146,7 @@ async def generate_response_stream(
     onboarding_slot: OnboardingSlot | None = None,
     user_emotion: str | None = None,
     active_person: ActivePersonContext | None = None,
+    profile_card: str | None = None,
 ) -> AsyncIterator[str]:
     """Stream a robot response token-by-token via Ollama.
 
@@ -154,6 +159,7 @@ async def generate_response_stream(
         onboarding_slot: Next onboarding checklist slot, if any.
         user_emotion: Dominant recent user emotion, if any.
         active_person: Internally resolved person context for this turn, if any.
+        profile_card: The speaker's rendered, already authorized profile card, if any (Plan 0074).
 
     Yields:
         Raw plain-text deltas as Ollama generates them. The reply carries no
@@ -172,6 +178,7 @@ async def generate_response_stream(
         onboarding_slot=onboarding_slot,
         user_emotion=user_emotion,
         active_person=active_person,
+        profile_card=profile_card,
     )
     system_prompt = _streaming_system_prompt(base_prompt)
     messages = _build_messages(text, history)

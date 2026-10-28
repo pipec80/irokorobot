@@ -18,6 +18,9 @@ def _coerce_to_int(value: object) -> object:
     return int(value) if isinstance(value, str) else value
 
 
+type ProfileCardPosition = Literal["with_memory", "before_language"]
+
+
 class Settings(BaseSettings):
     """Application settings from environment variables."""
 
@@ -135,6 +138,12 @@ class Settings(BaseSettings):
     # Extraction is one local-model call (about 41 s on the shared laptop): at most one is in
     # flight and at most this many start in any rolling hour.
     memory_candidate_extractions_per_hour: PositiveInt = 12
+    # Where the profile card sits in the system prompt (Plan 0074, ADR 0026): next to the
+    # memory block, or just before the language rule (the last block of every prompt).
+    profile_card_position: ProfileCardPosition = "with_memory"
+    # Kill-switch of the profile card and of «¿qué sabes de mí?» (Plan 0074, ADR 0026): off in
+    # the code, on in a delivered robot (the commissioning turns it on). Needs MEMORY_ENABLED.
+    profile_card_enabled: bool = False
     robot_character: str = "iroko"
     # Re-read character markdown profiles from disk on every request when
     # they change (prompt-engineering aid). OFF by default: production loads

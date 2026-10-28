@@ -382,5 +382,59 @@
     "need": "protected_household",
     "match": "exact",
     "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "¿Qué sabes de mí?",
+    "need": "profile_summary",
+    "match": "exact",
+    "rule_id": "profile.summary.v1"
+  },
+  {
+    "text": "Iroko, ¿qué te he contado?",
+    "need": "profile_summary",
+    "match": "exact",
+    "rule_id": "profile.summary.v1"
+  },
+  {
+    "text": "Dime qué recuerdas de mí",
+    "need": "profile_summary",
+    "match": "exact",
+    "rule_id": "profile.summary.v1"
+  },
+  {
+    "text": "¿Qué sabes de mi perro?",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "¿Qué sabes de mi familia?",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "¿Qué sabe de mí?",
+    "need": "profile_summary",
+    "match": "exact",
+    "rule_id": "profile.summary.v1"
+  },
+  {
+    "text": "¿Qué sabe sobre mí?",
+    "need": "profile_summary",
+    "match": "exact",
+    "rule_id": "profile.summary.v1"
+  },
+  {
+    "text": "¿Qué sabe de mi perro?",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "¿Qué sabes de física?",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
   }
 ]

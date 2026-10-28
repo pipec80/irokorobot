@@ -273,6 +273,19 @@ second face in frame is refused before the policy is asked, and the turn is then
 one, byte for byte, so nothing reveals that a candidate exists. `correct` and `forget` are
 still not connected (CM-6).
 
+**The profile card (Plan 0074, CM-5a, [ADR 0026](../adr/0026-owner-profile-card-and-the-read-side-of-memory.md)).**
+`read` has a second caller, `profile_card_access`, behind the default-off `PROFILE_CARD_ENABLED`:
+it is the one place that reads the owner's **own** `personal` / `normal` data for the prompt and for
+«¿qué sabes de mí?». Its minimum is `basic` (ADR 0019 §3; ADR 0026 decision 4 settles it for
+`normal` data): the face alone, no voice and no grant, on classic and streaming `/transcribe` only.
+A token speaker, a second face, an unknown or ambiguous speaker is refused **before** the policy is
+asked, so no denial row is written per turn; an identified non-owner is audited as denied. The audit
+row is written before the read and a failing audit or read means no card. An unidentified speaker and
+a refused one hear the same phrase on the explicit question (no oracle). Anything above `normal`
+needs `strong`, is never in the card and is not read by voice yet (ADR 0026 decision 6); a photograph
+of the owner obtains at most the preferred name, the form of address and the tastes (an accepted
+risk, ADR 0016 §9).
+
 **The household pair (Plan 0065, [ADR 0022](../adr/0022-household-rules-and-third-party-memory.md)
 decisions 3 and 4).** What the owner says about their own children, partner and pets has its own
 pair of capabilities, `propose_household_memory` and `confirm_household_memory`, apart from the

@@ -1,7 +1,7 @@
 """Channel-agnostic text turn orchestration."""
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 import logging
@@ -38,6 +38,12 @@ logger = logging.getLogger(__name__)
 #: and the turn's correlation id binds them. It never receives the assistant's reply.
 ProposalScheduler = Callable[[str, ActivePersonContext], None]
 
+#: Channel-owned seam that renders the speaker's profile card for the prompt (Plan 0074, ADR 0026
+#: decision 3), or ``None`` when there is none to show. Only the two voice routes pass one; it owns
+#: the policy and the audit row, never raises into the turn and is awaited only for a speaker the
+#: continuity session already accepts.
+ProfileCardProvider = Callable[[ActivePersonContext], Awaitable[str | None]]
+
 
 @dataclass(frozen=True)
 class PreparedTextTurn:
@@ -53,6 +59,8 @@ class PreparedTextTurn:
     perception: str | None
     active_person: ActivePersonContext | None = None
     continuity: ContinuityTurn | None = None
+    # The rendered profile card carries the person's own data: hidden from ``repr``.
+    profile_card: str | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True)
@@ -142,6 +150,17 @@ async def _memory_prompt_state(
         return None, False, None
 
 
+async def _load_profile_card(
+    provider: ProfileCardProvider, person: ActivePersonContext
+) -> str | None:
+    """Ask the provider for the card; any failure means no card and never fails the turn."""
+    try:
+        return await provider(person)
+    except Exception as exc:  # the card is an extra: the turn is answered without it
+        logger.warning("Profile card unavailable (%s)", type(exc).__name__)
+        return None
+
+
 async def prepare_text_turn(
     client: httpx.AsyncClient,
     message: str,
@@ -150,6 +169,7 @@ async def prepare_text_turn(
     perception: str | None = None,
     active_person: ActivePersonContext | None = None,
     suspend_cause: SuspendCause | None = None,
+    profile_card_provider: ProfileCardProvider | None = None,
 ) -> PreparedTextTurn:
     """Resolve shared prompt inputs for one conversation.
 
@@ -166,6 +186,9 @@ async def prepare_text_turn(
         perception: Optional textual visual perception for this turn.
         active_person: Internally resolved evidence for this turn only.
         suspend_cause: Why the speaker could not be identified, for the transition log.
+        profile_card_provider: Optional channel-owned seam that renders the speaker's profile
+            card (Plan 0074). It is awaited only for a speaker the continuity session accepts
+            (identified, at least ``basic``) with ``MEMORY_ENABLED`` on; a failure leaves no card.
 
     Returns:
         Immutable inputs for one LLM generation.
@@ -192,6 +215,11 @@ async def prepare_text_turn(
     person_id = _continuity_person_id(resolved_person)
     turn = continuity.open_turn(person_id, None if person_id is not None else suspend_cause)
     history = list(turn.history) if turn.writable else None
+    profile_card = (
+        await _load_profile_card(profile_card_provider, resolved_person)
+        if profile_card_provider is not None and person_id is not None and turn.writable
+        else None
+    )
     context: MemoryContext | None = None
     onboarding = False
     slot: OnboardingSlot | None = None
@@ -214,6 +242,7 @@ async def prepare_text_turn(
         perception=perception,
         active_person=resolved_person,
         continuity=turn,
+        profile_card=profile_card,
     )
 
 
@@ -230,6 +259,7 @@ async def _generate(client: httpx.AsyncClient, prepared: PreparedTextTurn) -> tu
             user_emotion=prepared.user_emotion,
             active_person=prepared.active_person,
             perception=prepared.perception,
+            profile_card=prepared.profile_card,
         )
         # The model stores nothing (Plan 0064): a claim of saving is false, and the history
         # must never keep it, so the guard runs before the reply is logged or recorded.
@@ -362,6 +392,7 @@ async def process_text_turn(
     suspend_cause: SuspendCause | None = None,
     schedule_proposal: ProposalScheduler | None = None,
     prepare_offer: OfferPreparer | None = None,
+    profile_card_provider: ProfileCardProvider | None = None,
 ) -> TextTurnResult:
     """Generate and record one channel-agnostic text turn.
 
@@ -375,6 +406,8 @@ async def process_text_turn(
         schedule_proposal: Optional channel-owned proposal scheduling callback.
         prepare_offer: Optional channel-owned memory-offer preparation (ADR 0021 decision 9); it runs
             concurrently with generation.
+        profile_card_provider: Optional channel-owned profile card seam (Plan 0074); see
+            ``prepare_text_turn``.
 
     Returns:
         Text, emotion, elapsed time, fallback status and the optional offer for the turn.
@@ -387,6 +420,7 @@ async def process_text_turn(
         perception=perception,
         active_person=active_person,
         suspend_cause=suspend_cause,
+        profile_card_provider=profile_card_provider,
     )
     offer_task = start_offer(prepare_offer, prepared.active_person)
     try:

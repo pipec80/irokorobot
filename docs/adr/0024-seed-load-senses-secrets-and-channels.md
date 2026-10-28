@@ -239,6 +239,11 @@ when, which file by hash, how many rows) and a log line with counts only. Whethe
 data should also move to `strong`, and the question «are you with someone?», need the audience of the
 turn and a reader, so they are CM-5.
 
+*Settled for `normal` data by [ADR 0026](0026-owner-profile-card-and-the-read-side-of-memory.md)
+decision 4 (Plan 0074, 2026-10-28):* reads of ordinary private data stay at `basic`; the profile card
+holds only tastes and two ways of addressing the person. The question «are you with someone?» and
+every read above `normal` stay with the plan that opens a sensitive read (ADR 0026 decision 6).
+
 ### 8. Replacement while commissioning, none after
 
 - **While the robot is being commissioned** (no commissioning record is closed), loading again with

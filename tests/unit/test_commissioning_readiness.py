@@ -33,7 +33,7 @@ def _verdict(
     return one
 
 
-def test_the_catalogue_is_exactly_the_six_capabilities_that_exist_today() -> None:
+def test_the_catalogue_is_exactly_the_seven_capabilities_that_exist_today() -> None:
     assert {entry.capability for entry in CATALOGUE} == set(Capability)
     assert {capability.value for capability in Capability} == {
         "speak_reply",
@@ -41,8 +41,18 @@ def test_the_catalogue_is_exactly_the_six_capabilities_that_exist_today() -> Non
         "recognize_face",
         "recognize_voice",
         "remember_taste",
+        "answer_profile",
         "describe_scene",
     }
+
+
+def test_answering_the_profile_needs_no_pool_data_but_its_own_hardware_check() -> None:
+    """Plan 0074: the card reads what the import loaded, so no section is required here."""
+    report = evaluate_readiness({}, {})
+
+    one = _verdict(report, Capability.ANSWER_PROFILE)
+    assert one.data_present is True
+    assert one.verdict is Verdict.BLOCKED_BY_HARDWARE
 
 
 def test_a_capability_that_needs_no_pool_data_is_always_data_present() -> None:

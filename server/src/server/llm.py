@@ -181,6 +181,7 @@ def _build_classic_base_prompt(
     user_emotion: str | None,
     active_person: ActivePersonContext | None,
     perception: str | None,
+    profile_card: str | None,
 ) -> str:
     """Build the format-neutral base prompt for the classic /transcribe path.
 
@@ -199,6 +200,8 @@ def _build_classic_base_prompt(
         user_emotion=user_emotion,
         active_person=active_person,
         perception=perception,
+        profile_card=profile_card,
+        profile_card_position=settings.profile_card_position,
     )
 
 
@@ -213,6 +216,7 @@ async def generate_response(
     user_emotion: str | None = None,
     active_person: ActivePersonContext | None = None,
     perception: str | None = None,
+    profile_card: str | None = None,
 ) -> tuple[str, str]:
     """Generate a robot response and detect the user's emotion in one local Ollama call.
 
@@ -226,6 +230,8 @@ async def generate_response(
         user_emotion: Dominant recent user emotion; adds a tone-adaptation directive.
         active_person: Resolved person context; guides neutral presentation.
         perception: Camera VLM description this turn, injected as a perception block (V0.5).
+        profile_card: The speaker's rendered, already authorized profile card (Plan 0074);
+            only the voice routes pass it.
 
     Returns:
         Tuple of (response_text, emotion) — see ``VALID_EMOTIONS`` for valid values.
@@ -244,6 +250,7 @@ async def generate_response(
         user_emotion=user_emotion,
         active_person=active_person,
         perception=perception,
+        profile_card=profile_card,
     )
     system_prompt = _classic_system_prompt(base_prompt)
     messages = _build_messages(text, history)

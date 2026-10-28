@@ -15,7 +15,8 @@
 > the seed file by `just seed-import`; the file's keys, its template and questionnaire are in
 > [`docs/examples/seed-household.example.toml`](../examples/seed-household.example.toml) and its
 > schema in [`seed-household.schema.json`](../examples/seed-household.schema.json). **Nothing reads
-> them by voice (CM-5)**, except the children's list and count.
+> them by voice (CM-5)**, except the children's list and count and, since Plan 0074, the owner's
+> tastes and the two name datums (the profile card).
 >
 > **Plan 0072 (the session) closed on 2026-10-27** (rehearsed end to end by Pipec on real hardware): the
 > consents and the backups of the commissioning are recorded by `just commission` in the acta, together
@@ -41,7 +42,8 @@ again. So the rule of the phase is **capture now, build later**:
   medication reminds nobody. Each capability keeps its own gate (a policy, a test, a hardware
   check) and is planned on its own.
 - **Nothing in this pool can be read back by voice** before CM-5, except the list and the count of
-  the children, which the household reader already serves.
+  the children, which the household reader already serves, and the owner's tastes, preferred name and
+  form of address, which the profile card serves (Plan 0074, ADR 0026; the rest stays closed).
 - **A field earns its place by a purpose.** If nobody can say what it is for, it is not asked
   (Law 21.719 asks for purpose and proportionality; the legal reading is pending advice). Fields
   with no purpose today are listed under *Not stored*.
@@ -126,9 +128,10 @@ filling in the form never turns one on. *State* is today's: `exists`, `planned` 
 | Recognize the owner by voice | exists, flag off | the voice session (three or more references), consent | a microphone |
 | Remember a taste the owner states | exists, switch off | both biometrics enrolled | none beyond the above |
 | Describe a scene | exists | `function` (vision) | a camera, the vision model |
-| Answer the profile by voice (name, birth date, partner, parents, tastes) | planned (CM-5) | the profile sections | the structured reader of CM-5 |
+| Answer the profile by voice: the tastes and the two name datums (`preferred_name`, `address_form`) | exists, switch off (Plan 0074, CM-5a, ADR 0026) | the owner's own `likes`, `dislikes`, `prefers`, `preferred_name`, `address_form`; readiness capability `answer_profile` | the face at `basic`, `PROFILE_CARD_ENABLED` |
+| Answer the rest of the profile by voice (birth date, partner, parents, relatives, health, address) | planned (CM-5b and the plan after 0074) | the profile sections | the structured reader of CM-5; `strong` for sensitive data (ADR 0026 decision 6) |
 | The audience rule («don't say X in front of visitors») | planned (CM-5) | `withhold_from`, `private_topic`, `may_receive_health_info`, `household` | presence detection (a second face), the reader |
-| Address the owner as they like | planned | `preferred_name`, `address_form`, `hearing` | the prompt |
+| Address the owner as they like | exists, switch off (Plan 0074: the name and the form of address, in the card; `usted` reaches only the model's own sentences, never the fixed ones, and it degrades `qwen2.5:3b`: use `tu` until the language rule follows the form) | `preferred_name`, `address_form` (`hearing` is not read yet) | the prompt, `PROFILE_CARD_ENABLED` |
 | Call a contact, raise an alert | idea | `contacts` with a phone, an order and a role | **telephony or a VoIP/GSM line**, an audio path, a tested call |
 | Detect a fall and warn | idea | `contacts`, `takes_anticoagulant`, `function`, `lives_alone`, `conditions` | a detector that has been measured (camera or sensor), the alert above |
 | The sheet read to a paramedic | idea | `conditions`, `allergies`, `medications`, `devices`, `documents`, blood type, `home`, `contacts` | the care policy, a way to identify the paramedic |

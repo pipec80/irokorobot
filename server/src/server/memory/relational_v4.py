@@ -371,6 +371,39 @@ async def list_active_facts(subject_entity_id: int) -> list[LiteralFactV4]:
     return [_literal_from_row(tuple(row)) for row in rows]
 
 
+async def list_card_literals(
+    *, subject_entity_id: int, predicates: frozenset[str]
+) -> list[LiteralFactV4]:
+    """Return the subject's own rows the profile card may show (Plan 0074, ADR 0026 decision 2).
+
+    This is the card's only door to the store. It applies no runtime authorization: the caller
+    must already have evaluated, and audited, ``read_personal_conversation_memory``. It filters
+    by predicate **and** by label (visibility ``personal``, sensitivity ``normal``, lifecycle
+    ``active``), so a predicate added to the registry later, or a row stored under another
+    label, is never served by accident.
+
+    Args:
+        subject_entity_id: The person whose rows are read.
+        predicates: The allow-listed canonical predicate ids; empty returns nothing.
+
+    Returns:
+        The matching rows, newest first by ``id`` (``asserted_at`` mixes formats).
+    """
+    if not predicates:
+        return []
+    marks = ", ".join("?" for _ in predicates)
+    conn = get_conn()
+    cursor = await conn.execute(
+        f"SELECT {_LITERAL_COLUMNS} FROM literal_facts_v4 "  # noqa: S608
+        "WHERE subject_entity_id = ? AND lifecycle = 'active' AND visibility = 'personal' "
+        f"AND sensitivity = 'normal' AND predicate IN ({marks}) ORDER BY id DESC",
+        (subject_entity_id, *sorted(predicates)),
+    )
+    rows = await cursor.fetchall()
+    await cursor.close()
+    return [_literal_from_row(tuple(row)) for row in rows]
+
+
 async def list_active_relations(owner_entity_id: int) -> list[EntityRelationV4]:
     """Return every active relation the owner is an endpoint of (Plan 0073, admin reads).
 

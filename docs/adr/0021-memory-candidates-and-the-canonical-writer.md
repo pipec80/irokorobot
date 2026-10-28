@@ -566,7 +566,7 @@ never the message. These are memory-layer reasons, separate from ADR 0016
 | The first `SECURITY` datum | No `strong`-only category is written by CM-3a | **CM-3b**, read by CM-5 | one datum chosen and its gates specified (*[ADR 0024](0024-seed-load-senses-secrets-and-channels.md) decision 4, Plan 0070:* the value is never stored; `secret_holder` stores who knows it) |
 | A `confirm` step in the benchmark; a process-restart seam | The dataset expects a same-turn acknowledgement and has no confirm operation or restart | **CM-3b** / **CM-7** preparation (dataset version bump, driver seam) | the benchmark can exercise decision 9 |
 | Resolving a contradiction; removing live candidates | A contradiction is a correction; candidate rows hold values while live | **CM-6** (its reach includes `memory_candidates`) | roadmap row updated |
-| Reading what was stored | Recall is a different slice | **CM-5** | row 9 |
+| Reading what was stored | Recall is a different slice | **CM-5** (*[ADR 0026](0026-owner-profile-card-and-the-read-side-of-memory.md), Plan 0074: the structured read of tastes and two name datums is CM-5a, reads of ordinary `normal` data stay at `basic`; episodes and the archive are CM-5b*) | row 9 |
 | Episodes and `source_memory_id` of a candidate | Episodes declare owner and retention first | **CM-4** | row 8 |
 | `/chat` as a channel | No audio, so no `strong` | Pipec's decision, unscheduled | the cross-cutting "wiring" row |
 | CPU contention of extraction on the homelab; offer cadence; a short explicit answer failing verification | Judged only with a real person and clip | **Plan 0063** acceptance | measured and recorded |

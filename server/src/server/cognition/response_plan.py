@@ -1,6 +1,6 @@
 """Immutable response-planning contracts for the P0.3 chat pilot."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Literal
 
@@ -44,6 +44,8 @@ class InformationNeed(StrEnum):
     BIOMETRIC_ENROLLMENT = "biometric_enrollment"
     # A spoken answer to a memory offer: a closed verb and the offered value (ADR 0021 decision 9).
     MEMORY_ANSWER = "memory_answer"
+    # «¿Qué sabes de mí?»: the speaker's own profile card read back (Plan 0074, ADR 0026 decision 5).
+    PROFILE_SUMMARY = "profile_summary"
     # Whisper doubted the transcript; the turn never reached the controller (Plan 0069 D-11).
     UNCLEAR_SPEECH = "unclear_speech"
 
@@ -128,6 +130,43 @@ class MemoryAnswerReply:
 
     phrase: str
     expects_short_reply: bool = False
+
+
+@dataclass(frozen=True)
+class ProfileSummaryReply:
+    """What the profile summarizer says back to the controller (Plan 0074, ADR 0026 decision 5).
+
+    Lives in the cognitive core so the controller can map it without importing
+    ``server.memory``. Hidden from ``repr``: ``text`` carries stored values.
+
+    Attributes:
+        text: The spoken summary, or ``None`` when the read failed (the audit or the database).
+        denied: ``True`` when the policy or the pre-check refused; the controller then answers
+            exactly as it does for a stranger, so a refusal cannot be told apart from one.
+    """
+
+    text: str | None = field(repr=False)
+    denied: bool = False
+
+
+#: What the opt-in spoken-text log shows instead of a profile summary: the summary carries stored
+#: values, so it is spoken to the person and recorded nowhere (Plan 0074, decision D-8).
+PROFILE_SUMMARY_LOGGED_TEXT = "«resumen del perfil»"
+
+
+def spoken_log_text(plan: ResponsePlan) -> str | None:
+    """Return what the spoken-text log may show instead of the plan's response, if anything.
+
+    Args:
+        plan: The plan about to be spoken.
+
+    Returns:
+        A fixed marker for a known profile summary (its text carries stored values), or ``None``
+        when the response itself may be logged: every fixed phrase, a refusal included.
+    """
+    if plan.need is InformationNeed.PROFILE_SUMMARY and plan.status is KnowledgeStatus.KNOWN:
+        return PROFILE_SUMMARY_LOGGED_TEXT
+    return None
 
 
 class SceneDescriptionRequest(BaseModel):

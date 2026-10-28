@@ -1,9 +1,9 @@
 # 0026 — Read the owner's profile back: a small card in every identified turn, and nothing sensitive in it
 
-- **Status:** Proposed (2026-10-28). Written from the audit of `docs/` and the research of the same
+- **Status:** Accepted (2026-10-28, when Plan 0074 closed). Written from the audit of `docs/` and the research of the same
   day (kept in the ignored `project-history/`), after Pipec approved the seven decisions of the
   closing plan of conversational memory on 2026-10-28 (see *Pipec's decisions and where they
-  land*). It becomes `Accepted` when Plan 0074, the first plan that implements it, closes. Every
+  land*). It became `Accepted` when Plan 0074, the first plan that implements it, closed. Every
   decision below is the author's recommendation unless it says *Confirmed by Pipec*.
 - **Date:** 2026-10-28
 - **Builds on:** [ADR 0016](0016-face-and-voice-identity-fusion.md),
@@ -17,7 +17,8 @@
   [ADR 0021](0021-memory-candidates-and-the-canonical-writer.md) decision 13 and
   [ADR 0024](0024-seed-load-senses-secrets-and-channels.md) decision 7 on whether reads of
   ordinary private data move from `basic` to `strong` (decision 4: for `normal` data they do not).
-- **Implemented by:** [Plan 0074](../plans/open/0074-cm5a-profile-card.md) (outline, `Draft`).
+- **Implemented by:** [Plan 0074](../plans/completed/0074-cm5a-profile-card.md) (closed 2026-10-28,
+  accepted by Pipec on real hardware: [record](../evals/0074-profile-card-acceptance.md)).
 
 ## Context
 
@@ -245,8 +246,33 @@ Revisit when CM-4 or CM-5b land, when the first sensitive read is planned (decis
 card proves too small or too noisy in daily use, when `address_form = usted` is used for real, or
 when the electronics change what identifies a person.
 
+## Implementation notes (Plan 0074, 2026-10-28)
+
+What the code does where it differs from, or settles, the text above:
+
+- **Decision 7, the memory-discipline text, is not edited.** Changing `_MEMORY_DISCIPLINE` would make
+  every prompt differ from `main` with the switch off. The card carries its own authorizing sentence
+  («Es memoria autorizada: apóyate en ella solo si viene al caso y no inventes nada que no esté
+  aquí.»), so the byte-identity of the switch-off prompt, response and wire holds.
+- **Decision 3, «a test turn in the alta», becomes: the person who commissions the robot turns
+  `PROFILE_CARD_ENABLED` on and verifies it by asking «¿qué sabes de mí?».** There is no automated
+  test turn (YAGNI). The readiness report gets its own capability row, `answer_profile` (decision 14
+  of ADR 0024), checked by that person.
+- **Decision 3, where the card sits.** `PROFILE_CARD_POSITION` (`with_memory`, the default, or
+  `before_language`) is configurable because the acceptance measures which one the model follows
+  better; the language rule stays the last block either way.
+- **Decision 5, no oracle.** A speaker who is not identified and an identified person the policy
+  refused hear the same phrase; a failing audit or read has its own phrase because it is not a
+  refusal. The spoken summary is kept out of the opt-in spoken-text log (a marker is logged instead).
+- **Decision 2, the `tu` form is not rendered.** On the first hardware run the 3B model opened replies with «Tú, bien.» because of the line «Trato: tú.». The prompt block says nothing for `tu` (the language rule already demands tuteo) and «Trato: usted.» only for `usted`; the spoken summary still says the form.
+- **Decision 7, `usted` is a known limit with the 3B model.** With `usted` the card says «Trato: usted.» while the language rule of the same prompt demands tuteo, and the replies became incoherent on hardware (2 of 2 turns; coherent again with `tu`). `address_form = usted` is not to be used with `qwen2.5:3b` until the language rule follows the form (a separate plan, with an amendment to the dialect decision of Plan 0064 and a hardware measurement).
+- **Decision 3, the position.** Measured on hardware, `with_memory` (0 of 6 replies opened with «Tú, …», the name used every time) beat `before_language` (5 of 5 opened with «Tú, muy bien.», no name); `with_memory` stays the default. The extra time to the first audio was about 0.2 s.
+- **Access.** A speaker who is not face-identified at `basic` (a token speaker included) never
+  reaches the policy, so no denial row is written per turn; an identified non-owner is audited as
+  denied. One audit row per read (decision 3's volume note stands).
+
 ## Follow-up
 
-- [Plan 0074](../plans/open/0074-cm5a-profile-card.md) — the card and the explicit summary
-  (outline).
+- [Plan 0074](../plans/completed/0074-cm5a-profile-card.md) — the card and the explicit summary
+  (closed 2026-10-28).
 - The next free ADR number is 0027.

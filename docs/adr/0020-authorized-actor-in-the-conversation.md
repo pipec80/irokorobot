@@ -227,6 +227,12 @@ this same conversation may also be relied on, and nothing beyond the memory bloc
 conversation may be invented. Nothing else in the prompt, the streaming protocol or the emotion
 function changes.
 
+*Amended by [ADR 0026](0026-owner-profile-card-and-the-read-side-of-memory.md) decision 7 (Plan 0074,
+2026-10-28).* The prompt may carry exactly **two datums of the speaker**, `preferred_name` and
+`address_form`, as lines of the profile card the access module authorized (one audited read, the
+owner's own `personal` / `normal` rows, face at `basic`); nothing else about the person enters it, and
+the speaker's `display_name`, id and role still never do.
+
 Because the prompt and the messages change, the plan measures a history-bearing streamed turn
 before it closes: the fallback rate of `full` at or below 5 % (the streaming repair's rule) and
 replies in Spanish, with the evaluation instruments of Plans 0056 to 0059.

@@ -759,6 +759,60 @@ The connection runs with `PRAGMA secure_delete = ON`, so a resolved candidate's 
 overwritten, and a checkpoint that cannot finish is retried at the next store entry and
 hourly; a start-up always truncates the log.
 
+### The profile card and «¿qué sabes de mí?» (Plan 0074, CM-5a, ADR 0026): off by default
+
+With `PROFILE_CARD_ENABLED=true` (and `MEMORY_ENABLED=true`) the robot reads back what it holds
+about the person it is talking to, in two ways, on the classic and the streaming voice routes only
+(`/chat` and `/vision/respond` never read it):
+
+- **The card.** On every generic turn whose speaker was identified **by face** at `basic` or more
+  (no PIN token, the voice is not consulted), a block of at most 600 characters goes into the
+  system prompt: the preferred name, the form of address (only `usted` is said to the model: it
+  already demands tuteo, and a «Trato: tú.» line made the 3B model answer «Tú, bien.») and up to 12 tastes
+  (`likes`, `dislikes`, `prefers`), newest first. It holds only the owner's own `personal` rows of
+  `normal` sensitivity; nothing about relatives, partner, children, pets, health, location or
+  anything private. Each value is cleaned to one quoted line, so a stored taste cannot read as an
+  instruction. `PROFILE_CARD_POSITION` chooses where it sits: `with_memory` (default, next to the
+  memory block) or `before_language` (just before the language rule, which stays the last block).
+  A second face in frame, an unknown speaker or a token speaker gets no card.
+- **The question.** «¿Qué sabes de mí?» (and «sabe», as the speech-to-text sometimes writes it),
+  «¿qué te he contado?» and «dime qué recuerdas de mí» are
+  answered by the controller, not by the model, with a fixed template that lists what the card
+  holds («Esto es lo que sé de ti. Te llamo …. Te trato de tú. Me has dicho que te gusta: …»), or
+  «Todavía no me has contado cosas que pueda recordar.» when it holds nothing. An unknown speaker
+  and an identified person the policy refuses hear the same phrase («Todavía no puedo confirmar
+  quién eres para contarte lo que sé de ti.»), so the answer is no oracle; a failing audit or
+  database gets its own short phrase («Ahora no puedo revisar lo que sé de ti.»). The summary
+  reaches the wire's `llm_response` (it goes to the owner's own robot) but the opt-in spoken-text
+  log (`LOG_CONVERSATION_TEXT`) shows only the marker «resumen del perfil».
+
+Every read evaluates `read_personal_conversation_memory` for the person's own data and writes **one
+audit row before the read** (one per identified turn; a denial is audited too, except for a token
+speaker, who never reaches the policy). A failing audit, a denial or a database error means the turn
+is answered without a card, never a failed turn. The log carries closed reasons only (`not_asked`,
+`denied`, `audit_failed`, `unavailable`), never a value. To count the rows without reading a
+value: `uv run python scripts/inspect_candidates.py` (the `audit read_personal_conversation_memory:`
+line; the spoken offer's own read step writes rows under the same action and turn id).
+
+**Turning it on.** The card shows what the import (Step 0) or the spoken dialogue stored, so load
+the owner's `preferred_name`, `address_form` and tastes first (the alta, below, or `just admin add
+likes`). Then set `PROFILE_CARD_ENABLED=true` in `.env`, start the server yourself, and ask «¿qué
+sabes de mí?» with the owner's face in frame. A delivered robot has it on: the person who
+commissions the robot turns it on and verifies it by asking (the readiness capability
+`answer_profile`, below).
+
+**Known limit: `usted`.** With `address_form = usted` the card says «Trato: usted.» while the language rule of the
+same prompt demands tuteo, and `qwen2.5:3b` answered incoherently on Pipec's hardware (2 of 2 turns; coherent
+again with `tu`). Keep `tu` until the language rule follows the form (a separate plan). The spoken summary
+still says the stored form.
+
+**Measured on hardware (2026-10-28, [record](../evals/0074-profile-card-acceptance.md)).** The card adds about 0.2 s to
+the first audio; `PROFILE_CARD_POSITION=with_memory` (the default) beat `before_language`, which made the model open
+every reply with «Tú, …» and never use the name.
+
+**Rolling back.** `PROFILE_CARD_ENABLED=false` and a restart: every prompt, response and wire field
+is byte-identical to a build without the card, and the question is ordinary conversation again.
+
 ## 4. Feature-flag reference
 
 | Variable | Default | Effect |
@@ -788,6 +842,8 @@ hourly; a start-up always truncates the log.
 | `MEMORY_CANDIDATE_MAX_OFFERS` | `2` | Times a candidate may be offered before it lapses (Plan 0063) |
 | `MEMORY_CANDIDATE_ANSWER_SECONDS` | `60` | Seconds an offered candidate waits for an answer before it returns to `proposed` and can be offered again (Plan 0063) |
 | `MEMORY_CANDIDATE_EXTRACTIONS_PER_HOUR` | `12` | Extraction model calls that may start in any rolling hour; beyond it a turn is dropped as `budget` (one at a time besides: `busy`) |
+| `PROFILE_CARD_ENABLED` | `false` | Server: kill-switch of the profile card in the prompt and of «¿qué sabes de mí?» (Plan 0074, ADR 0026; off in the code, on in a delivered robot). Needs `MEMORY_ENABLED`. Off, every prompt, response and wire field is byte-identical to a build without it; on, it reads only for a face-identified speaker at `basic` or more, on the two voice routes, with one audit row per read |
+| `PROFILE_CARD_POSITION` | `with_memory` | Where the card sits in the system prompt: `with_memory` (next to the memory block) or `before_language` (right before the language rule, which stays last); any other value stops the server at start-up. Try both and keep the one the model follows better (acceptance 8 of Plan 0074) |
 | `VAD_REPLY_SILENCE_MS` / `REPLY_WAIT_S` | `1600` / `15` | Robot, streaming mode: end-of-speech silence and wait for speech when the robot listens once to the reply to a spoken memory offer (Plan 0067); first values to tune, see the memory dialogue above |
 | `UVICORN_WORKERS` | `1` | Must stay `1` — owner/face grants are process-local; the server refuses to start otherwise |
 
@@ -923,8 +979,9 @@ character prompt.
 ## 7. Commissioning and amending the household data (Plans 0070 to 0073)
 
 The household's data (health, contacts, home, relatives, tastes) is loaded once, in the *alta*, and
-amended afterwards with a different tool. **Nothing loaded is read back by voice yet** (CM-5), and a
-stored phone calls nobody. The catalogue of what is captured is
+amended afterwards with a different tool. **Only the owner's tastes and the two name datums**
+(`preferred_name`, `address_form`) **are read back by voice** (the profile card, Plan 0074); the
+rest waits for CM-5b and later, and a stored phone calls nobody. The catalogue of what is captured is
 [`seed-data-pool.md`](../architecture/seed-data-pool.md); the full order of the alta is in
 [`server/README.md`](../../server/README.md) and ADR 0024 decision 13.
 
@@ -937,6 +994,13 @@ fill it in: it holds real data, git ignores it and it is destroyed after the clo
 | Create the owner and the PIN, with no children | `just setup-personal` | stopped |
 | Guided alta: face and voice, consents, the closing and the acta (it names the next step) | `just commission` | on to enrol, off to close |
 | Dry run of the file, then apply it after the owner's review | `just seed-import data/seed/file.toml`, then the same with `--apply --interviewer <label> --role <role> --mode <mode> --disk-encryption <yes\|no\|unknown>` | stopped |
+
+**The profile card in the alta (step 0 of ADR 0024 decision 13).** Before the closing, after the
+import, set `PROFILE_CARD_ENABLED=true` in the robot's `.env`, start the server yourself and ask
+«¿qué sabes de mí?» with the owner's face in frame: the robot must list what was loaded. There is
+no automated test turn on purpose; the person who commissions the robot answers `si` to the
+readiness question of the `answer_profile` capability (supported, configured, verified) only after
+hearing the answer. A capability that is not verified keeps its verdict `blocked_by_hardware`.
 
 **Amending after the closing.** Once the alta is closed the importer refuses to run. Use
 `just admin` (the `iroko-admin` tool) with the server stopped:

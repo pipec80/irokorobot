@@ -66,3 +66,15 @@ def test_the_speakers_identity_never_enters_the_system_prompt() -> None:
 
     assert _SPEAKER_NAME not in identified
     assert identified == build_system_prompt(profile, None)
+
+
+def test_the_display_name_never_becomes_the_card() -> None:
+    """Plan 0074: only the card the access module authorized carries the person's own data."""
+    profile = get_character("iroko")
+    card = '--- Lo que sabes ---\n- Nombre: "Zeta".'
+
+    identified = build_system_prompt(profile, None, active_person=_identified(), profile_card=card)
+
+    assert _SPEAKER_NAME not in identified
+    assert card in identified
+    assert identified == build_system_prompt(profile, None, profile_card=card)
