@@ -22,7 +22,7 @@ pytestmark = pytest.mark.unit
 _OWNER_ENTITY_ID = 7
 _EXPECTED_PROMPT = (
     "--- Lo que sabes de la persona con quien hablas ---\n"
-    '- Nombre: "Canary". Trato: tú.\n'
+    '- Nombre: "Canary".\n'
     '- Le gusta: "el mate", "la lluvia".\n'
     '- No le gusta: "el ruido".\n'
     '- Prefiere: "el cafe".\n'
@@ -150,9 +150,10 @@ def test_render_prompt_card_exact() -> None:
     [
         (ProfileCard("Canary", "usted", ()), '- Nombre: "Canary". Trato: usted.'),
         (ProfileCard("Canary", None, ()), '- Nombre: "Canary".'),
-        (ProfileCard(None, "tu", ()), "- Trato: tú."),
+        (ProfileCard("Canary", "tu", ()), '- Nombre: "Canary".'),
+        (ProfileCard(None, "usted", ()), "- Trato: usted."),
     ],
-    ids=["usted", "name-only", "form-only"],
+    ids=["usted", "name-only", "tu-is-not-said", "usted-only"],
 )
 def test_render_prompt_card_name_and_form_line(card: ProfileCard, expected_line: str) -> None:
     rendered = render_prompt_card(card)
@@ -165,6 +166,24 @@ def test_render_prompt_card_name_and_form_line(card: ProfileCard, expected_line:
 
 def test_render_prompt_card_is_none_for_an_empty_card() -> None:
     assert render_prompt_card(ProfileCard(None, None, ())) is None
+
+
+def test_the_tu_form_alone_gives_no_prompt_card_but_is_still_in_the_summary() -> None:
+    """Hardware run 2026-10-28: a «Trato: tú.» line made the 3B model answer «Tú, bien.».
+
+    The prompt already demands tuteo, so only `usted` is said; the spoken summary still tells it.
+    """
+    card = ProfileCard(None, "tu", ())
+
+    assert render_prompt_card(card) is None
+    assert render_summary(card) == "Esto es lo que sé de ti. Te trato de tú."
+
+
+def test_the_prompt_never_says_the_tu_form() -> None:
+    rendered = render_prompt_card(_full_card())
+
+    assert rendered is not None
+    assert "Trato" not in rendered
 
 
 def test_the_card_never_exceeds_600_characters_dropping_the_oldest_taste() -> None:

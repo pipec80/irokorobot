@@ -682,6 +682,13 @@ the changed documents resolves.
   hardware acceptance. The documents say «executed, acceptance pending» instead, and ADR 0026 got its
   *Implementation notes*. The local task table `docs/roadmap/tabla-tareas.md` (never committed) is updated at
   the close.
+- **Found on Pipec's hardware run (2026-10-28): the `tu` line.** With the card on, `qwen2.5:3b` opened two of
+  three greetings with «Tú, bien.» / «Tú, muy bien.» (never without the card): it read the line «Trato: tú.» as
+  part of the conversation. Pipec chose to drop it: the prompt block says **nothing** for `tu` (the language
+  rule already demands tuteo) and says `Trato: usted.` only for `usted`; a card holding only `tu` renders no
+  prompt block, and the spoken summary still says «Te trato de tú». This **amends Task 1's rendering spec**
+  (the exact text above, the `Trato: tú.` examples and «form only → `- Trato: tú.`»), and
+  `tests/unit/test_profile_card.py` changed with it (RED first).
 - **Found on Pipec's hardware run (2026-10-28).** The speech-to-text wrote «¿Qué sabe de mí?» for the question,
   which the rule did not match, so an unknown speaker got an ordinary model answer (no card, no leak, no audit
   row) instead of the fixed phrase. The rule now also accepts «sabe de mí» and «sabe sobre mí»

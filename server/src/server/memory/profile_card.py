@@ -55,6 +55,7 @@ _CARD_FOOTER: Final = (
 _EMPTY_SUMMARY: Final = "Todavía no me has contado cosas que pueda recordar."
 _SUMMARY_OPENING: Final = "Esto es lo que sé de ti."
 _ADDRESS_FORMS: Final = {"tu": "tú", "usted": "usted"}
+_FORMAL_FORM: Final = "usted"
 # Zero width joiner: kept so a joined emoji sequence survives; every other format character
 # (bidirectional overrides among them) is dropped with the control characters.
 _ZERO_WIDTH_JOINER: Final = "‍"
@@ -154,12 +155,17 @@ def build_card(rows: Sequence[LiteralFactV4]) -> ProfileCard:
     return ProfileCard(name, form, tuple(tastes[:MAX_CARD_TASTES]))
 
 
+def _says_something_to_the_model(card: ProfileCard) -> bool:
+    """Whether the prompt block would carry any line: the ``tu`` form is not one of them."""
+    return bool(card.preferred_name or card.address_form == _FORMAL_FORM or card.tastes)
+
+
 def _render_prompt(card: ProfileCard, tastes: Sequence[CardTaste]) -> str:
     lines = [CARD_HEADER]
     identity: list[str] = []
     if card.preferred_name is not None:
         identity.append(f'Nombre: "{card.preferred_name}".')
-    if card.address_form is not None:
+    if card.address_form == _FORMAL_FORM:
         identity.append(f"Trato: {_ADDRESS_FORMS[card.address_form]}.")
     if identity:
         lines.append("- " + " ".join(identity))
@@ -179,9 +185,11 @@ def render_prompt_card(card: ProfileCard) -> str | None:
 
     Returns:
         The block, at most ``MAX_CARD_CHARS`` long (the oldest tastes are dropped until it
-        fits), or ``None`` when the card is empty.
+        fits), or ``None`` when the card has nothing to say to the model. The ``tu`` form is
+        never said: the prompt already demands tuteo, and a «Trato: tú.» line made the 3B model
+        answer «Tú, bien.» on Pipec's hardware run of 2026-10-28. Only ``usted`` is.
     """
-    if card.is_empty:
+    if not _says_something_to_the_model(card):
         return None
     tastes = list(card.tastes)
     rendered = _render_prompt(card, tastes)

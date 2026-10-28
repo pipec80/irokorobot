@@ -767,7 +767,8 @@ about the person it is talking to, in two ways, on the classic and the streaming
 
 - **The card.** On every generic turn whose speaker was identified **by face** at `basic` or more
   (no PIN token, the voice is not consulted), a block of at most 600 characters goes into the
-  system prompt: the preferred name, the form of address (`tu` or `usted`) and up to 12 tastes
+  system prompt: the preferred name, the form of address (only `usted` is said to the model: it
+  already demands tuteo, and a «Trato: tú.» line made the 3B model answer «Tú, bien.») and up to 12 tastes
   (`likes`, `dislikes`, `prefers`), newest first. It holds only the owner's own `personal` rows of
   `normal` sensitivity; nothing about relatives, partner, children, pets, health, location or
   anything private. Each value is cleaned to one quoted line, so a stored taste cannot read as an
