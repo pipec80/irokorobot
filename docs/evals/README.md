@@ -208,6 +208,7 @@ contact path were not run live (covered by the automated tests). Outcomes only: 
 
 ## Profile card acceptance (Plan 0074)
 
-[`0074-profile-card-acceptance.md`](0074-profile-card-acceptance.md) is the checklist of Pipec's hardware
-acceptance of the profile card and of «¿qué sabes de mí?» (eight cases, the latency and the better
-`PROFILE_CARD_POSITION`). Prepared 2026-10-28, filled in by Pipec. Outcomes only: no value, name or phone.
+[`0074-profile-card-acceptance.md`](0074-profile-card-acceptance.md) records Pipec's hardware acceptance of
+the profile card and of «¿qué sabes de mí?» (2026-10-28): the eight cases, the +0.2 s measured on the first
+audio, the position kept (`with_memory`) and the `usted` limit with the 3B model. Outcomes only: no value,
+name or phone.

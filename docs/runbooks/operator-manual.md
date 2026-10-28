@@ -801,6 +801,15 @@ sabes de mí?» with the owner's face in frame. A delivered robot has it on: the
 commissions the robot turns it on and verifies it by asking (the readiness capability
 `answer_profile`, below).
 
+**Known limit: `usted`.** With `address_form = usted` the card says «Trato: usted.» while the language rule of the
+same prompt demands tuteo, and `qwen2.5:3b` answered incoherently on Pipec's hardware (2 of 2 turns; coherent
+again with `tu`). Keep `tu` until the language rule follows the form (a separate plan). The spoken summary
+still says the stored form.
+
+**Measured on hardware (2026-10-28, [record](../evals/0074-profile-card-acceptance.md)).** The card adds about 0.2 s to
+the first audio; `PROFILE_CARD_POSITION=with_memory` (the default) beat `before_language`, which made the model open
+every reply with «Tú, …» and never use the name.
+
 **Rolling back.** `PROFILE_CARD_ENABLED=false` and a restart: every prompt, response and wire field
 is byte-identical to a build without the card, and the question is ordinary conversation again.
 

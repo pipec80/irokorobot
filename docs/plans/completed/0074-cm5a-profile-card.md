@@ -1,11 +1,11 @@
 # 0074 — CM-5a: the profile card and the explicit «what do you know about me»
 
-> **Status:** `Ready` — `NOW`; **executed 2026-10-28 (Tasks 0 to 8, see the execution record at the end):
-> Pipec's hardware acceptance (Task 8, Step 4) and the close (Step 5) are pending.** Detailed on
+> **Status:** `CLOSED` 2026-10-28. Executed (Tasks 0 to 8) and accepted by Pipec on real hardware (see the
+> execution record at the end and the [acceptance record](../../evals/0074-profile-card-acceptance.md)).
+> It was `Ready` and `NOW` when executed. Detailed on
 > 2026-10-28 and **promoted by Pipec the same day** (D-1 to D-8
 > below confirmed). [ADR 0026](../../adr/0026-owner-profile-card-and-the-read-side-of-memory.md)
-> (`Proposed`, merged in PR #220 and #221) is its design; this plan moves it to `Accepted` when it
-> closes. Detailed against `main` at `dbb384f` by three read-only audits of the prompt path, the
+> (merged in PR #220 and #221) is its design; it moved to `Accepted` when this plan closed. Detailed against `main` at `dbb384f` by three read-only audits of the prompt path, the
 > controller and the V4 repository and approved with changes by an independent architecture review
 > (2026-10-28); queue rule 4 applies at execution: Task 0 re-verifies every claim below against the
 > merged code before any code, and **stops and reports** if one is false. Written for an executor who
@@ -629,9 +629,14 @@ applied, on purpose: dropping `PROFILE_CARD_POSITION` (Pipec asked for it).
 ## Execution record (2026-10-28)
 
 Executed on `feat/0074-cm5a-profile-card`, one commit per task, every test seen RED for the stated reason
-first (the three exceptions are listed under *Rulings*). **Not pushed, no PR.** Pipec's hardware
-acceptance (Task 8, Step 4, [checklist](../../evals/0074-profile-card-acceptance.md)) and the close
-(Step 5: this plan to `completed/`, ADR 0026 `Accepted`, the indexes to `CLOSED`) are pending.
+first (the exceptions are listed under *Rulings*). Pipec ran the hardware acceptance (Task 8, Step 4,
+[record](../../evals/0074-profile-card-acceptance.md)): cases 1 to 6 and 8 pass, 7 partial. It produced
+two fixes after the task commits (`13e89aa`, `e16ef67`, below) and two decisions: `with_memory` stays the
+default position, and `usted` is a documented limit with the 3B model (option A). Step 5 followed: this
+plan moved to `completed/`, ADR 0026 `Accepted`, the indexes and the roadmap rows closed. **Not pushed, no
+PR** at the time of writing (that waits for Pipec's go-ahead), and `just gate` is to be re-run before the PR
+(4965 passed at `11f7a2a`; the later fixes were checked with the whole unit suite, 3459 passed, and the
+route and matrix suites).
 
 | Task | Commit | What |
 |---|---|---|
@@ -643,7 +648,10 @@ acceptance (Task 8, Step 4, [checklist](../../evals/0074-profile-card-acceptance
 | 5 | `671081a` | the two voice routes pass the provider behind `PROFILE_CARD_ENABLED` |
 | 6 | `8a99935` | `PROFILE_SUMMARY`, its rule, the controller branch, the spoken-text marker |
 | 7 | `ba71fc5` | the owner → stranger matrix covers the card |
-| 8 | the commit that carries this record | `answer_profile` readiness capability, the docs, the diagram, the acceptance checklist |
+| 8 | `11f7a2a` | `answer_profile` readiness capability, the docs, the diagram, the acceptance checklist |
+| fix | `13e89aa` | the rule also accepts «sabe de mí» / «sabe sobre mí» (found by the speech-to-text on hardware) |
+| fix | `e16ef67` | the prompt block never says the `tu` form (found on hardware) |
+| close | the commit that moves this plan | acceptance record, ADR 0026 `Accepted`, indexes, roadmap |
 
 Verification at the end of Task 8: `MEMORY_ENABLED=false just gate` → **4965 passed** (CI selection: 4948
 collected against a baseline of 4849, so +99); `ruff format --check .`, `ruff check .` (and `scripts/*.py`),
