@@ -23,7 +23,7 @@ from server.settings import settings
 from server import admin_cli, db
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Callable
     from pathlib import Path
 
 pytestmark = pytest.mark.integration
@@ -44,7 +44,7 @@ class _Script:
         return self.answers.pop(0)
 
 
-def _sink() -> tuple[list[str], object]:
+def _sink() -> tuple[list[str], Callable[[str], None]]:
     lines: list[str] = []
     return lines, lines.append
 
@@ -66,13 +66,13 @@ async def cli_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterat
         db._conn = None
 
 
-async def _run(request: AdminRequest, read_text: _Script, write_text: object) -> int:
+async def _run(request: AdminRequest, read_text: _Script, write_text: Callable[[str], None]) -> int:
     return await run_admin_command(
         request,
         read_text=read_text,
         read_secret=read_text,  # same scripted queue; getpass is used only in main()
         write_text=write_text,
-        now=_NOW,  # type: ignore[arg-type]
+        now=_NOW,
     )
 
 
