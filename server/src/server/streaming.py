@@ -22,7 +22,7 @@ import time
 import httpx
 
 from server import llm, llm_streaming, tts
-from server.cognition.response_plan import ResponsePlan
+from server.cognition.response_plan import ResponsePlan, spoken_log_text
 from server.conversation_log import log_spoken
 from server.exceptions import LLMError, TTSError
 from server.memory.candidate_dialogue import OfferPreparer
@@ -198,7 +198,7 @@ async def stream_response_plan(
     yield StreamTextHeardEvent(value=text_heard).model_dump_json() + "\n"
     yield StreamEmotionEvent(value=plan.emotion).model_dump_json() + "\n"
     audio_base64, duration_ms = await tts.synthesize(plan.response)
-    log_spoken(plan.response)
+    log_spoken(plan.response if (marker := spoken_log_text(plan)) is None else marker)
     audio_event = StreamAudioEvent(
         text=plan.response, audio_base64=audio_base64, duration_ms=duration_ms
     )

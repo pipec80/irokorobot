@@ -561,6 +561,9 @@ _DIALOGUE_NAMES = frozenset(
         "profile_card_provider",
         "ProfileCardProvider",
         "_profile_card_provider",
+        "profile_summarizer",
+        "ProfileSummarizer",
+        "_profile_summarizer",
     }
 )
 _DIALOGUE_HOMES = frozenset(
@@ -590,15 +593,22 @@ def test_the_dialogue_guard_detects_a_violation() -> None:
         "routers/vision_card.py": "x = _profile_card_provider(correlation_id)\n",
         "routers/typed.py": "def f(p: ProfileCardProvider) -> None: ...\n",
         "memory/profile_card_access.py": "x = profile_card_provider\n",
+        # So is the explicit «¿qué sabes de mí?» (Plan 0074).
+        "routers/chat_summary.py": "c = CognitiveController(profile_summarizer=s)\n",
+        "routers/vision_summary.py": "s = _profile_summarizer()\n",
+        "routers/typed_summary.py": "def f(s: ProfileSummarizer) -> None: ...\n",
     }
 
     assert _outside(leak, _DIALOGUE_HOMES, _DIALOGUE_NAMES) == [
         "memory/profile_card_access.py",
         "routers/chat.py",
         "routers/chat_card.py",
+        "routers/chat_summary.py",
         "routers/typed.py",
+        "routers/typed_summary.py",
         "routers/vision.py",
         "routers/vision_card.py",
+        "routers/vision_summary.py",
     ]
 
 

@@ -296,6 +296,15 @@ _ACTIVE_IDENTITY_PATTERNS = (
     "quien esta aqui",
     "quien esta frente",
 )
+# «¿Qué sabes de mí?» and its neighbours (Plan 0074). The message must END with the phrase, so
+# «¿qué sabes de mi perro?» (a taste or a pet, not the profile) is not captured.
+_PROFILE_SUMMARY_PATTERNS = (
+    "que sabes de mi",
+    "que sabes sobre mi",
+    "que te he contado",
+    "que te conte",
+    "que recuerdas de mi",
+)
 _SCENE_DESCRIPTION_PATTERNS = (
     "que ves",
     "que estas viendo",
@@ -419,6 +428,16 @@ def _active_identity_rule(normalized: str) -> IntentResolution | None:
     """Recognize a request to confirm who the current speaker is."""
     if any(_contains_word_phrase(normalized, pattern) for pattern in _ACTIVE_IDENTITY_PATTERNS):
         return _resolution(InformationNeed.ACTIVE_IDENTITY, IntentMatch.EXACT, "identity.active.v1")
+    return None
+
+
+def _profile_summary_rule(normalized: str) -> IntentResolution | None:
+    """Recognize a request to read back what the robot holds about the speaker."""
+    if any(
+        normalized == pattern or normalized.endswith(f" {pattern}")
+        for pattern in _PROFILE_SUMMARY_PATTERNS
+    ):
+        return _resolution(InformationNeed.PROFILE_SUMMARY, IntentMatch.EXACT, "profile.summary.v1")
     return None
 
 
@@ -597,6 +616,7 @@ _RULES: tuple[Callable[[str], IntentResolution | None], ...] = (
     _protected_household_rule,
     _biometric_enrollment_rule,
     _active_identity_rule,
+    _profile_summary_rule,
     _ambiguous_date_alias_rule,
     _current_date_stt_alias_rule,
     _current_date_rule,

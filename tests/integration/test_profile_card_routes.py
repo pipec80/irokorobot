@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 import io
 import json
+import logging
 from pathlib import Path
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -23,6 +24,8 @@ from server.cognition import face_authentication as face_auth_module
 from server.cognition.identity import PersonRecord
 from server.cognition.identity_sessions import IdentitySessionRegistry
 from server.cognition.owner_authentication import OwnerUnlockService, owner_unlock_service
+from server.cognition.response_plan import PROFILE_SUMMARY_LOGGED_TEXT
+from server.conversation_log import CONVERSATION_LOGGER_NAME, set_enabled
 from server.dependencies import get_owner_unlock_service
 from server.main import app
 from server.memory.biometric_consent import grant_face_consent
@@ -312,3 +315,126 @@ async def test_chat_and_the_visual_dialogue_never_read_the_card(
         assert CARD_HEADER not in prompt
         assert _TASTE not in prompt
     assert await _audit_rows() == 0
+
+
+# --- the explicit question «¿qué sabes de mí?» (Plan 0074 Task 6) ------------------------------
+
+_QUESTION = "¿Qué sabes de mí?"
+_SUMMARY = f"Esto es lo que sé de ti. Te llamo {_CARD_NAME}. Me has dicho que te gusta: {_TASTE}."
+_UNKNOWN = "Todavía no puedo confirmar quién eres para contarte lo que sé de ti."
+
+
+def _events(response: object) -> list[dict[str, object]]:
+    text = getattr(response, "text", "")
+    return [json.loads(line) for line in text.splitlines() if line]
+
+
+async def test_the_classic_owner_hears_the_summary_from_the_card_with_one_audit_row(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _see_the_owner(monkeypatch)
+    _hear(monkeypatch, _QUESTION)
+    prompts = _classic_prompts(monkeypatch)
+
+    async with _client() as client:
+        response = await client.post("/transcribe", files=_files())
+
+    assert response.status_code == 200
+    assert response.json()["llm_response"] == _SUMMARY
+    assert prompts == []  # the model was never asked
+    assert await _audit_rows() == 1  # one `decide`, one read: no cache is needed
+
+
+async def test_the_streaming_owner_hears_the_same_summary(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _see_the_owner(monkeypatch)
+    _hear(monkeypatch, _QUESTION)
+    prompts = _stream_prompts(monkeypatch)
+
+    async with _client() as client:
+        response = await client.post("/transcribe/stream", files=_files())
+
+    audio = [event for event in _events(response) if event["type"] == "audio"]
+    assert [event["text"] for event in audio] == [_SUMMARY]
+    assert prompts == []
+    assert await _audit_rows() == 1
+
+
+@pytest.mark.parametrize("route", ["/transcribe", "/transcribe/stream"])
+async def test_a_stranger_hears_the_unknown_phrase_and_never_the_list(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch, route: str
+) -> None:
+    _hear(monkeypatch, _QUESTION)
+    _classic_prompts(monkeypatch)
+
+    async with _client() as client:
+        response = await client.post(route, files=_files(with_frame=False))
+
+    assert response.status_code == 200
+    assert _UNKNOWN in response.text
+    assert _CARD_NAME not in response.text
+    assert _TASTE not in response.text
+    assert await _audit_rows() == 0
+
+
+async def test_with_the_switch_off_the_question_is_an_ordinary_turn(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "profile_card_enabled", False)
+    _see_the_owner(monkeypatch)
+    _hear(monkeypatch, _QUESTION)
+    prompts = _classic_prompts(monkeypatch)
+
+    async with _client() as client:
+        response = await client.post("/transcribe", files=_files())
+
+    assert response.json()["llm_response"] == "Hola."
+    assert len(prompts) == 1
+    assert await _audit_rows() == 0
+
+
+async def test_chat_never_answers_the_question_deterministically(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    prompts = _classic_prompts(monkeypatch)
+
+    async with _client() as client:
+        response = await client.post("/chat", json={"message": _QUESTION, "conversation_id": "web"})
+
+    assert response.status_code == 200
+    assert response.json()["response"] == "Hola."
+    assert len(prompts) == 1
+    assert _TASTE not in response.text
+    assert await _audit_rows() == 0
+
+
+@pytest.mark.parametrize("route", ["/transcribe", "/transcribe/stream"])
+async def test_the_summary_never_reaches_the_spoken_text_log(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch, route: str
+) -> None:
+    messages: list[str] = []
+
+    class Collector(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            messages.append(record.getMessage())
+
+    conversation = logging.getLogger(CONVERSATION_LOGGER_NAME)
+    collector = Collector(level=logging.DEBUG)
+    conversation.addHandler(collector)
+    was_disabled = conversation.disabled
+    set_enabled(True)
+    try:
+        _see_the_owner(monkeypatch)
+        _hear(monkeypatch, _QUESTION)
+        _classic_prompts(monkeypatch)
+        async with _client() as client:
+            response = await client.post(route, files=_files())
+    finally:
+        conversation.removeHandler(collector)
+        conversation.disabled = was_disabled
+
+    assert response.status_code == 200
+    spoken = [message for message in messages if message.startswith("Spoken")]
+    assert spoken == [f"Spoken: {PROFILE_SUMMARY_LOGGED_TEXT}"]
+    assert not any(_TASTE in message or _CARD_NAME in message for message in messages)

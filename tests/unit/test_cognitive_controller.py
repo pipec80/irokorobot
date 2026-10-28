@@ -27,6 +27,7 @@ from server.cognition.models import (
 from server.cognition.response_plan import (
     InformationNeed,
     MemoryAnswerReply,
+    ProfileSummaryReply,
     ResponsePlan,
     ResponseSource,
     SceneDescriptionRequest,
@@ -1034,3 +1035,124 @@ def test_the_typed_reply_is_frozen_and_defaults_to_no_hint() -> None:
     assert reply.expects_short_reply is False
     with pytest.raises(AttributeError):
         reply.phrase = "otra"  # type: ignore[misc]  # mutation is what this test refutes
+
+
+# --- the explicit question «¿qué sabes de mí?» (Plan 0074, ADR 0026 decision 5) ---------------
+
+_SUMMARY = "Esto es lo que sé de ti. Me has dicho que te gusta: el mate."
+_SUMMARY_UNKNOWN = "Todavía no puedo confirmar quién eres para contarte lo que sé de ti."
+_SUMMARY_UNAVAILABLE = "Ahora no puedo revisar lo que sé de ti. Inténtalo de nuevo en un rato."
+_SUMMARY_QUESTION = "¿Qué sabes de mí?"
+
+
+def _summary_controller(
+    *,
+    summarizer: AsyncMock | None,
+    actor: ActivePersonContext,
+    legacy_turn: AsyncMock | None = None,
+    active_person_resolver: AsyncMock | None = None,
+) -> CognitiveController:
+    extra = (
+        {} if active_person_resolver is None else {"active_person_resolver": active_person_resolver}
+    )
+    return CognitiveController(
+        today=lambda: date(2026, 8, 12),
+        legacy_turn=legacy_turn or _legacy(),
+        observed_person_resolver=_resolver(actor),
+        profile_summarizer=summarizer,
+        **extra,
+    )
+
+
+@pytest.mark.asyncio
+async def test_profile_summary_speaks_the_summarizer_text_and_never_the_model() -> None:
+    legacy_turn = _legacy()
+    owner = _actor(HouseholdRole.OWNER, 7)
+    summarizer = AsyncMock(return_value=ProfileSummaryReply(text=_SUMMARY))
+    controller = _summary_controller(summarizer=summarizer, actor=owner, legacy_turn=legacy_turn)
+
+    event = _event(_SUMMARY_QUESTION)
+    plan = await controller.handle(event)
+
+    assert plan.need is InformationNeed.PROFILE_SUMMARY
+    assert plan.status is KnowledgeStatus.KNOWN
+    assert plan.source is ResponseSource.DETERMINISTIC
+    assert plan.response == _SUMMARY
+    summarizer.assert_awaited_once_with(owner, event)
+    legacy_turn.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_unidentified_speaker_gets_the_fixed_phrase_and_the_summarizer_is_not_awaited() -> (
+    None
+):
+    summarizer = AsyncMock(return_value=ProfileSummaryReply(text=_SUMMARY))
+    controller = _summary_controller(
+        summarizer=summarizer, actor=_actor(HouseholdRole.UNKNOWN, None)
+    )
+
+    plan = await controller.handle(_event(_SUMMARY_QUESTION))
+
+    assert plan.need is InformationNeed.PROFILE_SUMMARY
+    assert plan.status is KnowledgeStatus.UNKNOWN
+    assert plan.response == _SUMMARY_UNKNOWN
+    summarizer.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_denied_reply_gets_the_same_phrase_as_a_stranger() -> None:
+    """No oracle: an identified non-owner cannot be told apart from an unknown speaker."""
+    denied = AsyncMock(return_value=ProfileSummaryReply(text=None, denied=True))
+    non_owner = _summary_controller(summarizer=denied, actor=_actor(HouseholdRole.ADULT, 8))
+    stranger = _summary_controller(
+        summarizer=AsyncMock(), actor=_actor(HouseholdRole.UNKNOWN, None)
+    )
+
+    from_non_owner = await non_owner.handle(_event(_SUMMARY_QUESTION))
+    from_stranger = await stranger.handle(_event(_SUMMARY_QUESTION))
+
+    assert from_non_owner == from_stranger
+    assert from_non_owner.response == _SUMMARY_UNKNOWN
+    denied.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_read_gets_the_unavailable_phrase() -> None:
+    summarizer = AsyncMock(return_value=ProfileSummaryReply(text=None))
+    controller = _summary_controller(summarizer=summarizer, actor=_actor(HouseholdRole.OWNER, 7))
+
+    plan = await controller.handle(_event(_SUMMARY_QUESTION))
+
+    assert plan.need is InformationNeed.PROFILE_SUMMARY
+    assert plan.status is KnowledgeStatus.UNKNOWN
+    assert plan.response == _SUMMARY_UNAVAILABLE
+
+
+@pytest.mark.asyncio
+async def test_a_channel_without_the_summarizer_falls_through() -> None:
+    observe = AsyncMock(return_value=_actor(HouseholdRole.OWNER, 7))
+    controller = CognitiveController(
+        today=lambda: date(2026, 8, 12), legacy_turn=_legacy(), observed_person_resolver=observe
+    )
+
+    assert await controller.decide(_event(_SUMMARY_QUESTION)) is None
+    observe.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_summary_never_spends_a_grant() -> None:
+    owner = _actor(HouseholdRole.OWNER, 7)
+    spending = AsyncMock(return_value=owner)
+    controller = _summary_controller(
+        summarizer=AsyncMock(return_value=ProfileSummaryReply(text=_SUMMARY)),
+        actor=owner,
+        active_person_resolver=spending,
+    )
+
+    await controller.handle(_event(_SUMMARY_QUESTION))
+
+    spending.assert_not_awaited()
+
+
+def test_a_profile_summary_reply_never_shows_its_text_in_the_repr() -> None:
+    assert "quokka" not in repr(ProfileSummaryReply(text="Te gusta el quokka."))

@@ -25,6 +25,7 @@ from server.cognition.controller import (
     CognitiveController,
     ConsentResolver,
     MemoryAnswerer,
+    ProfileSummarizer,
 )
 from server.cognition.generic_identity import (
     GenericIdentification,
@@ -39,10 +40,12 @@ from server.cognition.owner_authentication import OwnerUnlockService
 from server.cognition.response_plan import (
     InformationNeed,
     MemoryAnswerReply,
+    ProfileSummaryReply,
     ResponsePlan,
     SceneDescriptionRequest,
     TextTurnPayload,
     scene_unavailable_plan,
+    spoken_log_text,
     unclear_speech_plan,
 )
 from server.dependencies import IdentityTokenDep, OwnerUnlockServiceDep, ResourcesDep
@@ -61,7 +64,7 @@ from server.memory.candidate_proposal import propose_candidates
 from server.memory.candidate_types import CandidateChannel
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
-from server.memory.profile_card_access import prompt_card_text
+from server.memory.profile_card_access import profile_summary_text, prompt_card_text
 from server.pipeline import (
     _elapsed_ms,
     _log_pipeline_timing,
@@ -244,6 +247,7 @@ def _voice_controller(
     prepare_offer: OfferPreparer | None = None,
     memory_answerer: MemoryAnswerer | None = None,
     profile_card_provider: ProfileCardProvider | None = None,
+    profile_summarizer: ProfileSummarizer | None = None,
 ) -> CognitiveController:
     """Compose the bounded controller used by a public voice turn.
 
@@ -264,6 +268,9 @@ def _voice_controller(
             message is ordinary conversation.
         profile_card_provider: Renders the speaker's profile card for the prompt of a generic
             turn (Plan 0074); when omitted the turn reads no card.
+        profile_summarizer: Answers «¿qué sabes de mí?» from the same card. Only used together
+            with ``request_identity``, like ``memory_answerer``; when omitted the question is
+            ordinary conversation.
     """
 
     async def legacy_turn(message: str, conversation_id: str) -> TextTurnResult:
@@ -304,6 +311,7 @@ def _voice_controller(
         household_tools=HouseholdKnowledgeTools(reader=PolicyGatedV4Reader()),
         consent_resolver=request_identity.resolve_consent,
         memory_answerer=memory_answerer,
+        profile_summarizer=profile_summarizer,
     )
 
 
@@ -404,6 +412,23 @@ def _profile_card_provider(correlation_id: UUID) -> ProfileCardProvider | None:
     return provide
 
 
+def _profile_summarizer() -> ProfileSummarizer | None:
+    """Return the answer to «¿qué sabes de mí?» for a voice route, or ``None`` with a switch off.
+
+    With ``MEMORY_ENABLED`` or ``PROFILE_CARD_ENABLED`` off the question is ordinary conversation
+    and the actor is not even resolved for it.
+    """
+    if not (settings.memory_enabled and settings.profile_card_enabled):
+        return None
+
+    async def summarize(
+        actor: ActivePersonContext, event: CognitiveEvent[TextTurnPayload]
+    ) -> ProfileSummaryReply:
+        return await profile_summary_text(actor, correlation_id=event.correlation_id, now=utc_now())
+
+    return summarize
+
+
 async def _synthesize_reply(plan: ResponsePlan) -> tuple[str, int, int]:
     """Synthesize the response and the memory offer as one WAV; the offer never costs the reply.
 
@@ -423,13 +448,17 @@ async def _synthesize_reply(plan: ResponsePlan) -> tuple[str, int, int]:
     Raises:
         HTTPException: 500 when even the response alone cannot be synthesized.
     """
+    # A profile summary carries stored values: the opt-in spoken-text log shows a marker instead.
+    logged_text = spoken_log_text(plan)
     if plan.offer is None:
-        return await _run_tts(plan.response)
+        return await _run_tts(plan.response, logged_text=logged_text)
     try:
-        return await _run_tts(f"{plan.response} {plan.offer}", logged_text=plan.response)
+        return await _run_tts(
+            f"{plan.response} {plan.offer}", logged_text=logged_text or plan.response
+        )
     except HTTPException:
         logger.warning("Memory offer not synthesized; speaking the reply alone")
-        return await _run_tts(plan.response)
+        return await _run_tts(plan.response, logged_text=logged_text)
 
 
 async def _transcribe_turn(audio_bytes: bytes, hotwords: list[str]) -> tuple[str, int, bool]:
@@ -642,6 +671,7 @@ async def transcribe(
         prepare_offer=_offer_preparer(event=event, wav_bytes=audio_bytes),
         memory_answerer=_memory_answerer(),
         profile_card_provider=_profile_card_provider(event.correlation_id),
+        profile_summarizer=_profile_summarizer(),
     )
     decision = await controller.decide(event)
 
@@ -776,6 +806,7 @@ async def transcribe_stream(
         resources.http_client,
         request_identity=request_identity,
         memory_answerer=_memory_answerer(),
+        profile_summarizer=_profile_summarizer(),
     ).decide(event)
     # Streaming has no second-round frame upload — a scene request always
     # gets the fixed unavailable plan, regardless of VISION_ENABLED.

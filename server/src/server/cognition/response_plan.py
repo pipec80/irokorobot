@@ -44,6 +44,8 @@ class InformationNeed(StrEnum):
     BIOMETRIC_ENROLLMENT = "biometric_enrollment"
     # A spoken answer to a memory offer: a closed verb and the offered value (ADR 0021 decision 9).
     MEMORY_ANSWER = "memory_answer"
+    # «¿Qué sabes de mí?»: the speaker's own profile card read back (Plan 0074, ADR 0026 decision 5).
+    PROFILE_SUMMARY = "profile_summary"
     # Whisper doubted the transcript; the turn never reached the controller (Plan 0069 D-11).
     UNCLEAR_SPEECH = "unclear_speech"
 
@@ -145,6 +147,26 @@ class ProfileSummaryReply:
 
     text: str | None = field(repr=False)
     denied: bool = False
+
+
+#: What the opt-in spoken-text log shows instead of a profile summary: the summary carries stored
+#: values, so it is spoken to the person and recorded nowhere (Plan 0074, decision D-8).
+PROFILE_SUMMARY_LOGGED_TEXT = "«resumen del perfil»"
+
+
+def spoken_log_text(plan: ResponsePlan) -> str | None:
+    """Return what the spoken-text log may show instead of the plan's response, if anything.
+
+    Args:
+        plan: The plan about to be spoken.
+
+    Returns:
+        A fixed marker for a known profile summary (its text carries stored values), or ``None``
+        when the response itself may be logged: every fixed phrase, a refusal included.
+    """
+    if plan.need is InformationNeed.PROFILE_SUMMARY and plan.status is KnowledgeStatus.KNOWN:
+        return PROFILE_SUMMARY_LOGGED_TEXT
+    return None
 
 
 class SceneDescriptionRequest(BaseModel):
