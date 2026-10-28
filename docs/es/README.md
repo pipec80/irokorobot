@@ -16,6 +16,7 @@
 | ¿Cómo se entrega la memoria conversacional longitudinal? | [Mapa de entrega de memoria conversacional](../roadmap/conversational-memory-delivery-map.md) |
 | ¿Cómo se evalúa la memoria longitudinal? | [Evaluación de memoria conversacional longitudinal](../architecture/longitudinal-conversational-memory-evaluation.md) |
 | ¿Qué se puede ejecutar? | [Índice de planes](../plans/README.md) |
+| ¿Qué captura la puesta en marcha (el alta) y cómo se enmienda después? | [Catálogo de datos de la puesta en marcha](../architecture/seed-data-pool.md) · [Manual del operador §7](../runbooks/operator-manual.md) |
 | ¿Cómo se acepta el runtime? | [Runbook](../runbooks/p0-runtime-acceptance.md) |
 | ¿Dónde está la historia? | [Índice histórico](../history/README.md) |
 

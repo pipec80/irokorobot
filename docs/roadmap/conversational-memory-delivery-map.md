@@ -6,8 +6,8 @@ CM-2 closed (Plan 0061, 2026-10-13: short-term continuity for the identified per
 in [ADR 0021](../adr/0021-memory-candidates-and-the-canonical-writer.md) (`Accepted`, 2026-10-16) and split into CM-3a and CM-3b;
 CM-3a closed (corte 1 [Plan 0062](../plans/completed/0062-cm3a-memory-candidates-and-writer.md), 2026-10-15: candidate store,
 canonical writer, background proposal; corte 2 [Plan 0063](../plans/completed/0063-cm3a-memory-dialogue.md), 2026-10-16: spoken
-offer, explicit answer, hardware acceptance); CM-3b tranche A closed ([Plan 0065](../plans/completed/0065-cm3b-a-channel-neutral-writer-core.md), 2026-10-22: the channel-neutral writer, [ADR 0022](../adr/0022-household-rules-and-third-party-memory.md) `Accepted`); CM-3b tranche B (spoken capture of third parties, reported facts, the disclosure rule, perceptual candidates) comes after Step 0 and is required before CM-7
-**Last reviewed:** 2026-10-22
+offer, explicit answer, hardware acceptance); CM-3b tranche A closed ([Plan 0065](../plans/completed/0065-cm3b-a-channel-neutral-writer-core.md), 2026-10-22: the channel-neutral writer, [ADR 0022](../adr/0022-household-rules-and-third-party-memory.md) `Accepted`); CM-3b tranche B (spoken capture of third parties, reported facts, the disclosure rule, perceptual candidates) comes after Step 0 (closed 2026-10-28 in Plans 0070 to 0073: the data pool, the importer, the commissioning session and the local administration) and is required before CM-7
+**Last reviewed:** 2026-10-28
 
 ## Objective
 

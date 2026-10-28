@@ -1,8 +1,9 @@
 # The seed data pool: what Step 0 captures, and where each datum lives
 
-> **Status:** Proposed (2026-10-23), with [ADR 0024](../adr/0024-seed-load-senses-secrets-and-channels.md).
-> It becomes canonical when that ADR is `Accepted`. Until a field below is implemented by the plan
-> named in its *Plan* column, this document describes intent, not code
+> **Status:** Canonical (2026-10-27, when [ADR 0024](../adr/0024-seed-load-senses-secrets-and-channels.md)
+> became `Accepted`; proposed 2026-10-23). Every field of the catalogue below is implemented by the
+> plan named in its *Plan* column (Plans 0070 to 0072, and Plan 0073 for amending it); the
+> capabilities table at the end is the part that is still intent
 > ([`current-state.md`](current-state.md) says what runs).
 >
 > **Plan 0070 (the storage) closed on 2026-10-23.** Every field the *Plan* column marks `0070` is now

@@ -162,3 +162,46 @@ acceptance of ADR 0021: accept, reject, another voice, a missing or second face,
 between the offer and the answer, an answer with no offer or another value, the measurements of
 the shared laptop and the follow-ups it found. Outcomes only: no name, transcript, preference
 value, PIN or token.
+
+## Streaming reply repair and the user's emotion (Plans 0058 and 0059)
+
+[`0058-stream-protocol-repair.md`](0058-stream-protocol-repair.md) and
+[`0058-stream-repair-seed57.md`](0058-stream-repair-seed57.md) are the measurement of Plan 0058, which
+closed without meeting its gate (35.00 % of context turns fell back in seed 57 against a 5 % gate).
+[`0059-user-emotion-apart.md`](0059-user-emotion-apart.md) is the measurement that met the gate
+(0 of 60 context and 0 of 60 public fallbacks in seeds 57 and 59). The per-seed reports of the
+diagnostic tool behind them are
+[`0059-user-emotion-seed57.md`](0059-user-emotion-seed57.md),
+[`0059-user-emotion-seed59.md`](0059-user-emotion-seed59.md) and the earlier
+[`0059-user-emotion-seed57-preliminary-9739ea7.md`](0059-user-emotion-seed57-preliminary-9739ea7.md)
+(the per-seed files keep the diagnostic tool's own heading). The gate and the reading rules were
+fixed before each run. Counts only: no reply, no transcript and no household name.
+
+## Speech-to-text on the owner's voice (Plan 0069)
+
+[`0069-stt-owner-voice.md`](0069-stt-owner-voice.md) records the first measurement of the transcript
+with Pipec's own voice: the capture levels, the error rate of the dev and test halves by model and
+device, the speed with Ollama busy, decoding determinism, the voice-activity detector under noise
+and hallucination on noise, behind
+[ADR 0023](../adr/0023-speech-to-text-model-and-decoding.md). Counts and rates only; the reading
+script is invented and tracked, and the private corpus was deleted.
+
+## Seed importer acceptance (Plan 0071)
+
+[`0071-seed-import-acceptance.md`](0071-seed-import-acceptance.md) records Pipec's acceptance of
+`just seed-import` on a database kept apart: the dry run, the apply, the idempotent repeat, a
+conflict and the replacement, and the two findings the run produced. Outcomes only: no value, name or
+phone.
+
+## Commissioning acceptance (Plan 0072)
+
+[`0072-commissioning-acceptance.md`](0072-commissioning-acceptance.md) records the rehearsal of
+`just commission` on real hardware and Pipec's real alta: the face and voice sessions, the load, the
+verification turn, the closing and the acta. Outcomes only, never a household value.
+
+## Local administration acceptance (Plan 0073)
+
+[`0073-admin-acceptance.md`](0073-admin-acceptance.md) records Pipec's acceptance of `iroko-admin` on
+a database kept apart: list, status, add with and without the PIN, revoke, the audit with no value,
+and the refusal of a running server and of a database behind the schema. The wrong-PIN refusal and the
+contact path were not run live (covered by the automated tests). Outcomes only: no value, name or phone.

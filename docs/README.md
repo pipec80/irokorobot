@@ -16,6 +16,7 @@
 | How is longitudinal conversational memory delivered? | [Conversational-memory delivery map](roadmap/conversational-memory-delivery-map.md) |
 | How is longitudinal memory evaluated? | [Evaluation spec](architecture/longitudinal-conversational-memory-evaluation.md) · [eval reports](evals/README.md) |
 | Which plan may be executed? | [Plans index](plans/README.md) |
+| What does the commissioning (the alta) capture, and how is it amended later? | [Seed data pool](architecture/seed-data-pool.md) · [Operator manual §7](runbooks/operator-manual.md) |
 | How is real behavior accepted? | [Runtime runbook](runbooks/p0-runtime-acceptance.md) |
 | How do I run/test Iroko day to day, and what does each security tier unlock? | [Operator manual](runbooks/operator-manual.md) |
 | Where is superseded context? | [Historical index](history/README.md) |

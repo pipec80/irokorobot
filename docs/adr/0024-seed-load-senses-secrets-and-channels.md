@@ -378,7 +378,7 @@ day of the emergency.
 | The Excel and CSV converter to the TOML | Pipec's choice for filling the form; it runs on the interviewer's machine, so it needs a spreadsheet library (`openpyxl`) in an optional group that the server never installs, and its own plan | A later Step 0 plan |
 | Where the voice's per-person settings and pronunciations are stored | Measured data, not interview answers | The commissioning plan |
 | A fingerprint, iris or chip adapter | No hardware; an ADR with the adapter | The electronics track |
-| The amendment path for contacts and medications after the closing | See decision 8 | Plan 0073 (local), ADR 0025 (remote) |
+| The amendment path for contacts and medications after the closing | See decision 8 | Plan 0073 (local, done 2026-10-28), ADR 0025 (remote, no plan yet) |
 | The structured read of the profile and contacts by voice | Reading is CM-5; nothing reads them yet | The first slice of CM-5 |
 | The eight disclosure blocks and the audience axis («who is listening») | They need the reader and the audience of the turn | CM-5 |
 | The emergency sheet and break-glass access, durable consent records and grants, the alert and the call | The `care` responsibility profile and legal and clinical advice (Law 21.719) | A future ADR of that profile |
@@ -474,4 +474,4 @@ baseline backup and the readiness report; contacts have no write path after the 
 - [Plan 0070](../plans/completed/0070-seed-load-data-pool-storage.md) — the storage and the provenance (closed 2026-10-23).
 - [Plan 0071](../plans/completed/0071-seed-load-file-importer.md) — the importer (closed 2026-10-26).
 - [Plan 0072](../plans/completed/0072-commissioning-session.md) — the commissioning session (closed 2026-10-27).
-- The next free ADR number is 0025.
+- The next free ADR number is 0026 (0025 is [the administration ADR](0025-remote-administration-backup-updates-and-telemetry.md)).

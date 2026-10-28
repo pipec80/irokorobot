@@ -272,6 +272,9 @@ audited; a backup restores to an identical database; an update that fails its he
 With **Accepted**: ADR 0013 (the amendment), `identity-and-access.md` (the roles and the support session),
 `server-production-baseline.md` (the admin surface), the roadmap (a cross-cutting row), `current-state.md`,
 and ADR 0024 and the data-pool document (the installation id and the consents, already recorded there).
+**Done for the local half with Plan 0073 (2026-10-28):** the ADR 0013 pointer, `identity-and-access.md`,
+`server-production-baseline.md`, the roadmap, `current-state.md`, ADR 0024 and the data-pool document.
+The roles table and the support session of decision 3 are not built, so they are not documented as code.
 
 ## Review
 

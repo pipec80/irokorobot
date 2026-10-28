@@ -811,6 +811,12 @@ combination above is safe to mix.
 - Plan 0063 hardware acceptance (the spoken offer, the explicit answer and the firewall around
   them, outcomes only):
   [`0063-memory-dialogue-acceptance.md`](../evals/0063-memory-dialogue-acceptance.md).
+- Plan 0071 acceptance (the seed importer on a database kept apart, outcomes only):
+  [`0071-seed-import-acceptance.md`](../evals/0071-seed-import-acceptance.md).
+- Plan 0072 acceptance (the guided alta on real hardware and Pipec's real alta, outcomes only):
+  [`0072-commissioning-acceptance.md`](../evals/0072-commissioning-acceptance.md).
+- Plan 0073 acceptance (the local administration `iroko-admin` on a database kept apart,
+  outcomes only): [`0073-admin-acceptance.md`](../evals/0073-admin-acceptance.md).
 - What's actually implemented right now, including open gaps:
   [`current-state.md`](../architecture/current-state.md).
 - What's authorized to build next: [`docs/plans/README.md`](../plans/README.md).
@@ -913,3 +919,45 @@ never touching the LLM), which is what Plans 0021/0025–0028 already built and 
 plan's Tier 1/Tier 2 sections describe. If this symptom reappears, the fault is
 almost always an unrecognized phrasing in `cognition/intent_resolution.py`, not the
 character prompt.
+
+## 7. Commissioning and amending the household data (Plans 0070 to 0073)
+
+The household's data (health, contacts, home, relatives, tastes) is loaded once, in the *alta*, and
+amended afterwards with a different tool. **Nothing loaded is read back by voice yet** (CM-5), and a
+stored phone calls nobody. The catalogue of what is captured is
+[`seed-data-pool.md`](../architecture/seed-data-pool.md); the full order of the alta is in
+[`server/README.md`](../../server/README.md) and ADR 0024 decision 13.
+
+**The alta (once per robot).** Copy `docs/examples/seed-household.example.toml` to `data/seed/` and
+fill it in: it holds real data, git ignores it and it is destroyed after the closing.
+
+| Step | Command | Server |
+|---|---|---|
+| Reset the database (it backs up first and honours `BRAIN_DB_PATH`) | `just reset-db` | stopped |
+| Create the owner and the PIN, with no children | `just setup-personal` | stopped |
+| Guided alta: face and voice, consents, the closing and the acta (it names the next step) | `just commission` | on to enrol, off to close |
+| Dry run of the file, then apply it after the owner's review | `just seed-import data/seed/file.toml`, then the same with `--apply --interviewer <label> --role <role> --mode <mode> --disk-encryption <yes\|no\|unknown>` | stopped |
+
+**Amending after the closing.** Once the alta is closed the importer refuses to run. Use
+`just admin` (the `iroko-admin` tool) with the server stopped:
+
+```powershell
+just admin list                 # the pool, the relations and the contacts, with their row ids
+just admin status               # the acta's frozen sections beside the rows now, and the recomputed readiness
+just admin add likes            # the value is typed at the prompt, never as an argument
+just admin change preferred_name
+just admin revoke literal 7     # a row id from `list`; kinds: literal, relation, contact
+just admin change-contact 2     # a new phone for contact 2 (typed at the prompt)
+just admin audit                # every operation, with no value, name or phone
+```
+
+- A write to medical, location or security data, or to a contact, asks the owner's PIN (typed
+  without echo); a `revoke` always asks it. Every write asks `SI` to confirm, and `--dry-run` writes
+  nothing.
+- A revoke is history, not a deletion: the row stays and nothing serves it. Forgetting is CM-6.
+- `add` and `change` edit the owner's own fields. **Adding a new contact, child or pet after the
+  closing has no path yet** (roadmap, cross-cutting table).
+- It refuses to run if the server answers `/health`, the database is missing or the schema is behind
+  (`just setup-personal status` shows the version), and it never creates or migrates a database.
+- `$env:BRAIN_DB_PATH` lives in one terminal. Read the first line of the output (`Base de datos: ...`)
+  before you write: it names the database the command is about to use.

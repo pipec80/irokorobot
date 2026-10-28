@@ -22,7 +22,7 @@ single-WIP [operational board](../README.md#operational-board) — **CM-0
 (Plan 0046) closed 2026-09-08, PC-3A (Plan 0047) closed 2026-09-25 with a
 provisional PASS, and PC-3B ([Plan 0053](../completed/0053-consented-speaker-runtime-evidence.md))
 closed 2026-09-29, and PC-4 ([Plan 0054](../completed/0054-face-default-identity-fusion.md))
-closed 2026-09-30, Plan 0061 (CM-2) closed 2026-10-13, [Plan 0062](../completed/0062-cm3a-memory-candidates-and-writer.md) (CM-3a, primer corte) closed 2026-10-15, [Plan 0063](../completed/0063-cm3a-memory-dialogue.md) (CM-3a, segundo corte) closed 2026-10-16, [Plan 0065](../completed/0065-cm3b-a-channel-neutral-writer-core.md) (CM-3b, tramo A) closed 2026-10-22, and Plans 0064, 0066 and 0067 closed 2026-10-19, and [Plan 0069](../completed/0069-stt-owner-voice-audit.md) closed 2026-10-21; [Plan 0068](../completed/0068-short-clip-speaker-measurement.md) closed 2026-10-21 with Tasks 7 and 8 deferred; `NOW` is empty and [Plan 0065](../completed/0065-cm3b-a-channel-neutral-writer-core.md) closed 2026-10-22.** Use the
+closed 2026-09-30, Plan 0061 (CM-2) closed 2026-10-13, [Plan 0062](../completed/0062-cm3a-memory-candidates-and-writer.md) (CM-3a, primer corte) closed 2026-10-15, [Plan 0063](../completed/0063-cm3a-memory-dialogue.md) (CM-3a, segundo corte) closed 2026-10-16, [Plan 0065](../completed/0065-cm3b-a-channel-neutral-writer-core.md) (CM-3b, tramo A) closed 2026-10-22, and Plans 0064, 0066 and 0067 closed 2026-10-19, and [Plan 0069](../completed/0069-stt-owner-voice-audit.md) closed 2026-10-21; [Plan 0068](../completed/0068-short-clip-speaker-measurement.md) closed 2026-10-21 with Tasks 7 and 8 deferred; `NOW` is empty; [Plan 0065](../completed/0065-cm3b-a-channel-neutral-writer-core.md) closed 2026-10-22 and the Step 0 seed load closed with [Plan 0073](../completed/0073-local-admin-crud.md) on 2026-10-28.** Use the
 [personal-companion delivery map](../../roadmap/personal-companion-delivery-map.md)
 and [conversational-memory delivery map](../../roadmap/conversational-memory-delivery-map.md)
 to see the code, tests, verified gaps, and future delivery sequence.
@@ -38,39 +38,38 @@ to see the code, tests, verified gaps, and future delivery sequence.
 **Cerrado:** el [Plan 0069 — el reconocimiento de voz con la voz real del dueño](../completed/0069-stt-owner-voice-audit.md), el 2026-10-21 (PR #202): el STT se midió por primera vez con la voz de Pipec, `medium` en GPU es el perfil recomendado (WER 15,4 % a 6,8 % en la mitad de prueba) y el corpus privado se borró. Antes ocupó `NOW` el [Plan 0067](../completed/0067-reply-listening-mode.md), que **cerró el 2026-10-19** (PR #199).
 
 
-### Lo que queda antes de escribir el plan del Paso 0
+### El Paso 0 (cerrado el 2026-10-28) y lo que queda abierto
 
-Estado al 2026-10-22, con el Plan 0065 cerrado y `NOW` vacío. El orden y las compuertas
-siguen siendo los del [roadmap](../../roadmap/cognitive-roadmap.md); esta lista solo dice qué falta.
+Estado al 2026-10-28, con `NOW` vacío. El orden y las compuertas siguen siendo los del
+[roadmap](../../roadmap/cognitive-roadmap.md); esta lista solo dice qué falta.
 
-**Bloquea el plan del Paso 0 (la carga de datos):**
+**El Paso 0 (la carga de datos) está completo.** Lo que lo bloqueaba cerró antes: el Plan 0065
+(2026-10-22, el escritor neutral al canal; el benchmark v3 corrido por Pipec dio 90 pasos: 0 pasan,
+3 fallan —la extracción, igual que antes— y 87 no soportados) y el
+[ADR 0022](../../adr/0022-household-rules-and-third-party-memory.md) (`Accepted`). Después vinieron
+cuatro planes, y el [ADR 0024](../../adr/0024-seed-load-senses-secrets-and-channels.md) quedó `Accepted`:
 
-1. ~~Ejecutar el Plan 0065~~ **Hecho el 2026-10-22.** Entregó el escritor neutral al canal que el importador
-   del Paso 0 usa. La corrida del benchmark v3 con el Ollama de Pipec (2026-10-22) dio 90 pasos: 0 pasan, 3 fallan (la extracción, igual que antes) y 87 no soportados.
-2. ~~ADR 0022~~ **`Accepted` el 2026-10-22.** El Paso 0 depende de sus reglas y debe decidir lo que el ADR
-   deja abierto: dónde se guarda un valor `security` en reposo, la regla del hijo adulto, y si un
-   representante o un segundo adulto puede afirmar o confirmar en nombre del dueño.
+- [Plan 0070](../completed/0070-seed-load-data-pool-storage.md) (2026-10-23): el almacenamiento del pozo de datos y la procedencia.
+- [Plan 0071](../completed/0071-seed-load-file-importer.md) (2026-10-26): el importador por archivo.
+- [Plan 0072](../completed/0072-commissioning-session.md) (2026-10-27): la sesión de puesta en marcha
+  (`just commission`); la alta real de Pipec se hizo ese día.
+- [Plan 0073](../completed/0073-local-admin-crud.md) (2026-10-28): la administración local
+  (`iroko-admin`), la vía de enmienda de contactos y medicamentos tras el cierre. El
+  [ADR 0025](../../adr/0025-remote-administration-backup-updates-and-telemetry.md) quedó `Accepted`
+  en su mitad local; la mitad remota (VPN, sesión de soporte, respaldo, actualizaciones, telemetría)
+  sigue sin plan.
 
-**Estado del Paso 0 (2026-10-23):** el [ADR 0024](../../adr/0024-seed-load-senses-secrets-and-channels.md)
-(`Proposed`, revisado tras dos revisiones independientes) decide el pozo de datos, el secreto guardado por
-referencia, los contactos con teléfono, la confirmación de una entrevista asistida y el orden de la puesta en
-marcha; el catálogo de campos está en [`seed-data-pool.md`](../../architecture/seed-data-pool.md). El
-[Plan 0070](../completed/0070-seed-load-data-pool-storage.md) (cerrado el 2026-10-23) es el almacenamiento y la procedencia; el
-[Plan 0071](../completed/0071-seed-load-file-importer.md) (cerrado el 2026-10-26) es el importador por archivo, y el
-[Plan 0072](../completed/0072-commissioning-session.md) (cerrado el 2026-10-27) es la sesión de puesta en marcha: enrolar cara y
-voz en un solo flujo (`just commission`), la sesión de voz (tres referencias; los ajustes de voz por persona quedaron fuera), el informe de preparación por capacidad,
-el cierre de la ventana y el acta; la alta real de Pipec se hizo el 2026-10-27. El
-[Plan 0073](0073-local-admin-crud.md) (`Draft`, un esquema) es la administración local (un CRUD por línea de comandos
-sobre SSH, sin servicio web nuevo) que cierra la fase 0 y es la vía de enmienda de contactos y medicamentos tras el cierre; su mitad remota (VPN, sesión de soporte, respaldo,
-actualizaciones, telemetría) es el [ADR 0025](../../adr/0025-remote-administration-backup-updates-and-telemetry.md)
-(`Proposed`), sin plan. Ninguno está `Ready`: los promueve Pipec. **Siguen sin plan:** la lectura estructurada del perfil
-por voz (primera porción de CM-5) y la escalada «¿estás con alguien?» (CM-5, necesita la audiencia del turno).
+El catálogo de campos está en [`seed-data-pool.md`](../../architecture/seed-data-pool.md). **Siguen
+sin plan** (cada uno con su fila en el roadmap): la lectura estructurada del perfil por voz y la
+escalada «¿estás con alguien?» (CM-5); CM-3b tramo B y CM-4 a CM-7; dar de alta un contacto, un hijo
+o una mascota nuevos después del cierre; el convertidor Excel/CSV, el `export` a TOML y la interfaz
+de entrevista; la mitad remota del ADR 0025.
 
 **No bloquea, pero queda abierto** (cada uno con su fila en el roadmap):
 
 - **Latencia del modelo de lenguaje** junto a la extracción de memoria: turnos de 20 a 40 s que, además,
-  se comen la ventana de 60 s de una oferta. Pipec la mira en la aceptación; el plan chico, si hace
-  falta, puede ir ya (el 0065 cerró).
+  se comen la ventana de 60 s de una oferta. Pipec la mira en la aceptación; un plan chico, si hace
+  falta, puede ir ya.
 - **Respuesta dicha junto a otra frase** («no acepto» y luego una oración): hoy va al modelo; Pipec decide
   si un verbo cerrado que abre un enunciado más largo debe contar.
 - **Tareas 7 y 8 del Plan 0068** (clips cortos de la verificación de voz, con tres adultos que consientan
@@ -208,7 +207,7 @@ the benchmark harness is GREEN and the measured baseline is a reproducible
 cognitive RED (`ac43c58`, exit 1); it changed no runtime memory. See
 [completed/0046](../completed/0046-reproducible-longitudinal-memory-baseline.md).
 
-Canonical execution order: **`NOW` is empty; [Plan 0065](../completed/0065-cm3b-a-channel-neutral-writer-core.md) closed 2026-10-22 (CM-3b tranche A); [Plan 0068](../completed/0068-short-clip-speaker-measurement.md) closed 2026-10-21 (Tasks 7 and 8 deferred) and [Plan 0069](../completed/0069-stt-owner-voice-audit.md) closed the same day; [Plan 0067](../completed/0067-reply-listening-mode.md) closed 2026-10-19, [Plan 0066](../completed/0066-verb-only-answer.md) closed 2026-10-19, [Plan 0064](../completed/0064-speech-and-dialogue-quality.md) closed 2026-10-19, [Plan 0063](../completed/0063-cm3a-memory-dialogue.md) closed 2026-10-16, [Plan 0062](../completed/0062-cm3a-memory-candidates-and-writer.md) closed 2026-10-15, Plan 0061 closed 2026-10-13 and Plan 0054 (PC-4) closed 2026-09-30.** Plan 0053 (PC-3B)
+Canonical execution order: **`NOW` is empty; [Plan 0073](../completed/0073-local-admin-crud.md) closed 2026-10-28 (the local administration, which completes Step 0); [Plan 0065](../completed/0065-cm3b-a-channel-neutral-writer-core.md) closed 2026-10-22 (CM-3b tranche A); [Plan 0068](../completed/0068-short-clip-speaker-measurement.md) closed 2026-10-21 (Tasks 7 and 8 deferred) and [Plan 0069](../completed/0069-stt-owner-voice-audit.md) closed the same day; [Plan 0067](../completed/0067-reply-listening-mode.md) closed 2026-10-19, [Plan 0066](../completed/0066-verb-only-answer.md) closed 2026-10-19, [Plan 0064](../completed/0064-speech-and-dialogue-quality.md) closed 2026-10-19, [Plan 0063](../completed/0063-cm3a-memory-dialogue.md) closed 2026-10-16, [Plan 0062](../completed/0062-cm3a-memory-candidates-and-writer.md) closed 2026-10-15, Plan 0061 closed 2026-10-13 and Plan 0054 (PC-4) closed 2026-09-30.** Plan 0053 (PC-3B)
 closed 2026-09-29, and Plan 0047 (PC-3A) closed 2026-09-25 with a provisional PASS
 (see [completed/0047](../completed/0047-speaker-evidence-calibration-study.md)); the
 queue-rule-4 re-audit of the next row ran the same day, produced Plan 0053, and

@@ -3,6 +3,10 @@
 - **Status:** Accepted
 - **Date:** 2026-08-31
 - **Accepted:** 2026-09-02
+- **Amended by:** [ADR 0025](0025-remote-administration-backup-updates-and-telemetry.md) decision 2
+  (2026-10-28): remote access, if it is ever built, goes only through a private VPN and only for an
+  admin router; the voice and chat routes keep this loopback default. Nothing of that is built: the
+  only administration surface today is a command-line tool run on the machine (Plan 0073).
 
 ## Context
 
