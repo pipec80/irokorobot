@@ -414,6 +414,24 @@
     "rule_id": "household.protected.v1"
   },
   {
+    "text": "¿Qué sabe de mí?",
+    "need": "profile_summary",
+    "match": "exact",
+    "rule_id": "profile.summary.v1"
+  },
+  {
+    "text": "¿Qué sabe sobre mí?",
+    "need": "profile_summary",
+    "match": "exact",
+    "rule_id": "profile.summary.v1"
+  },
+  {
+    "text": "¿Qué sabe de mi perro?",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
     "text": "¿Qué sabes de física?",
     "need": "generic_conversation",
     "match": "none",

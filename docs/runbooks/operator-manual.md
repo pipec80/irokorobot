@@ -774,7 +774,8 @@ about the person it is talking to, in two ways, on the classic and the streaming
   instruction. `PROFILE_CARD_POSITION` chooses where it sits: `with_memory` (default, next to the
   memory block) or `before_language` (just before the language rule, which stays the last block).
   A second face in frame, an unknown speaker or a token speaker gets no card.
-- **The question.** «¿Qué sabes de mí?», «¿qué te he contado?» and «dime qué recuerdas de mí» are
+- **The question.** «¿Qué sabes de mí?» (and «sabe», as the speech-to-text sometimes writes it),
+  «¿qué te he contado?» and «dime qué recuerdas de mí» are
   answered by the controller, not by the model, with a fixed template that lists what the card
   holds («Esto es lo que sé de ti. Te llamo …. Te trato de tú. Me has dicho que te gusta: …»), or
   «Todavía no me has contado cosas que pueda recordar.» when it holds nothing. An unknown speaker

@@ -298,9 +298,12 @@ _ACTIVE_IDENTITY_PATTERNS = (
 )
 # «¿Qué sabes de mí?» and its neighbours (Plan 0074). The message must END with the phrase, so
 # «¿qué sabes de mi perro?» (a taste or a pet, not the profile) is not captured.
+# «sabe» is what the speech-to-text wrote for «sabes» on Pipec's hardware run of 2026-10-28.
 _PROFILE_SUMMARY_PATTERNS = (
     "que sabes de mi",
     "que sabes sobre mi",
+    "que sabe de mi",
+    "que sabe sobre mi",
     "que te he contado",
     "que te conte",
     "que recuerdas de mi",

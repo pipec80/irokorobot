@@ -682,3 +682,7 @@ the changed documents resolves.
   hardware acceptance. The documents say «executed, acceptance pending» instead, and ADR 0026 got its
   *Implementation notes*. The local task table `docs/roadmap/tabla-tareas.md` (never committed) is updated at
   the close.
+- **Found on Pipec's hardware run (2026-10-28).** The speech-to-text wrote «¿Qué sabe de mí?» for the question,
+  which the rule did not match, so an unknown speaker got an ordinary model answer (no card, no leak, no audit
+  row) instead of the fixed phrase. The rule now also accepts «sabe de mí» and «sabe sobre mí»
+  (`tests/fixtures/intent_resolution_es.json`: two positive rows and the «mi perro» negative, RED first).
