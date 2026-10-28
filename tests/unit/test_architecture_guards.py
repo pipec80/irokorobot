@@ -17,6 +17,7 @@ _RAW_V4_READERS = frozenset(
         "get_active_entity_relations",
         "get_literal_fact",
         "get_entity_relation",
+        "list_card_literals",
     }
 )
 # The policy gate, the local setup that re-reads what it just wrote, the candidate writer, which
@@ -29,6 +30,7 @@ _MAY_IMPORT_RAW_V4_READERS = frozenset(
         "personal_setup.py",
         "memory/memory_writer.py",
         "memory/canonical_writer.py",
+        "memory/profile_card_access.py",
     }
 )
 # The repository itself, and the setup status that counts child links.
@@ -163,9 +165,15 @@ _RETIRED_ACTION_NAMES = frozenset(
     {"PROPOSE_MEMORY", "COMMIT_MEMORY", "propose_memory", "commit_memory"}
 )
 # The model and the policy, plus the one module that asks the policy about a candidate step
-# (Plan 0062): every other module reaches the actions through it.
+# (Plan 0062) and the one that asks it about the profile card (Plan 0074): every other module
+# reaches the actions through them.
 _ACTION_HOMES = frozenset(
-    {"cognition/models.py", "cognition/authorization.py", "memory/candidate_policy.py"}
+    {
+        "cognition/models.py",
+        "cognition/authorization.py",
+        "memory/candidate_policy.py",
+        "memory/profile_card_access.py",
+    }
 )
 _MEMORY_SCOPE_MEMBER_NAMES = frozenset({"PERSONAL_MEMORY_READ", "PERSONAL_MEMORY_FORGET"})
 _MEMORY_SCOPE_VALUES = frozenset({"personal_memory_read", "personal_memory_forget"})

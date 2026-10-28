@@ -1,6 +1,6 @@
 """Immutable response-planning contracts for the P0.3 chat pilot."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Literal
 
@@ -128,6 +128,23 @@ class MemoryAnswerReply:
 
     phrase: str
     expects_short_reply: bool = False
+
+
+@dataclass(frozen=True)
+class ProfileSummaryReply:
+    """What the profile summarizer says back to the controller (Plan 0074, ADR 0026 decision 5).
+
+    Lives in the cognitive core so the controller can map it without importing
+    ``server.memory``. Hidden from ``repr``: ``text`` carries stored values.
+
+    Attributes:
+        text: The spoken summary, or ``None`` when the read failed (the audit or the database).
+        denied: ``True`` when the policy or the pre-check refused; the controller then answers
+            exactly as it does for a stranger, so a refusal cannot be told apart from one.
+    """
+
+    text: str | None = field(repr=False)
+    denied: bool = False
 
 
 class SceneDescriptionRequest(BaseModel):
