@@ -37,9 +37,10 @@
           "controller",
           "face",
           "continuity",
+          "profile",
           "ollama"
         ],
-        "note": "A generic turn names its speaker by face or an observed token, never voice; the identified person's last turns reach the next one."
+        "note": "A generic turn names its speaker by face or a token, never voice; their last turns and a small profile card (off by default) reach the next."
       },
       {
         "id": "memory-write",
@@ -269,6 +270,21 @@
         64
       ],
       "tag": "amendment path, PIN + audit"
+    },
+    {
+      "id": "profile",
+      "type": "backend",
+      "label": "Profile card",
+      "sublabel": "name · form · tastes",
+      "pos": [
+        900,
+        620
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "tag": "off by default"
     }
   ],
   "boundaries": [
@@ -408,6 +424,14 @@
       "label": "admin_local · one audit row",
       "fromSide": "right",
       "toSide": "left"
+    },
+    {
+      "id": "profile-to-memory",
+      "from": "profile",
+      "to": "memory",
+      "label": "one audit row, then personal · normal rows",
+      "fromSide": "left",
+      "toSide": "bottom"
     }
   ],
   "cards": [
@@ -432,7 +456,8 @@
         "One canonical writer stores household facts for every channel; a secret is stored by reference only (who knows it), never its value",
         "The seed file loads offline (Plan 0071): dry run by default, the owner's review and SI, one transaction, a replacement only while commissioning and before anything is learned by voice",
         "The alta is one guided command (Plan 0072): it enrols face and voice asking the PIN before each, records backups and consents, attests the readiness of what exists and closes the window with an acta that holds no household value",
-        "After the alta closes, iroko-admin is the amendment path (Plan 0073): it edits the pool and contacts through the canonical writers (channel admin_local) with the owner PIN for sensitive data and an audit that holds no value; a revoke is history, not a hard delete"
+        "After the alta closes, iroko-admin is the amendment path (Plan 0073): it edits the pool and contacts through the canonical writers (channel admin_local) with the owner PIN for sensitive data and an audit that holds no value; a revoke is history, not a hard delete",
+        "The profile card (Plan 0074): a face-identified owner's name, form and tastes enter the prompt behind PROFILE_CARD_ENABLED; one audit row precedes every read, nothing sensitive"
       ]
     },
     {

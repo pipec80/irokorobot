@@ -253,7 +253,7 @@ async def test_derive_modalities_reports_pin_then_face_then_voice(owner_db: int)
 
 # --- the close step and the driver, against a real database -------------------------------------
 
-_HARDWARE_ANSWERS = ["si"] * 18  # six capabilities, three questions each
+_HARDWARE_ANSWERS = ["si"] * 21  # seven capabilities, three questions each
 
 
 async def _open_alta() -> int:

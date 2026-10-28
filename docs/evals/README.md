@@ -205,3 +205,9 @@ verification turn, the closing and the acta. Outcomes only, never a household va
 a database kept apart: list, status, add with and without the PIN, revoke, the audit with no value,
 and the refusal of a running server and of a database behind the schema. The wrong-PIN refusal and the
 contact path were not run live (covered by the automated tests). Outcomes only: no value, name or phone.
+
+## Profile card acceptance (Plan 0074)
+
+[`0074-profile-card-acceptance.md`](0074-profile-card-acceptance.md) is the checklist of Pipec's hardware
+acceptance of the profile card and of «¿qué sabes de mí?» (eight cases, the latency and the better
+`PROFILE_CARD_POSITION`). Prepared 2026-10-28, filled in by Pipec. Outcomes only: no value, name or phone.

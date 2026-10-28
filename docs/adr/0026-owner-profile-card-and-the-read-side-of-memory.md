@@ -17,7 +17,8 @@
   [ADR 0021](0021-memory-candidates-and-the-canonical-writer.md) decision 13 and
   [ADR 0024](0024-seed-load-senses-secrets-and-channels.md) decision 7 on whether reads of
   ordinary private data move from `basic` to `strong` (decision 4: for `normal` data they do not).
-- **Implemented by:** [Plan 0074](../plans/open/0074-cm5a-profile-card.md) (outline, `Draft`).
+- **Implemented by:** [Plan 0074](../plans/open/0074-cm5a-profile-card.md) (executed 2026-10-28;
+  Pipec's hardware acceptance pending, the status moves to `Accepted` when the plan closes).
 
 ## Context
 
@@ -245,8 +246,30 @@ Revisit when CM-4 or CM-5b land, when the first sensitive read is planned (decis
 card proves too small or too noisy in daily use, when `address_form = usted` is used for real, or
 when the electronics change what identifies a person.
 
+## Implementation notes (Plan 0074, 2026-10-28)
+
+What the code does where it differs from, or settles, the text above:
+
+- **Decision 7, the memory-discipline text, is not edited.** Changing `_MEMORY_DISCIPLINE` would make
+  every prompt differ from `main` with the switch off. The card carries its own authorizing sentence
+  («Es memoria autorizada: apóyate en ella solo si viene al caso y no inventes nada que no esté
+  aquí.»), so the byte-identity of the switch-off prompt, response and wire holds.
+- **Decision 3, «a test turn in the alta», becomes: the person who commissions the robot turns
+  `PROFILE_CARD_ENABLED` on and verifies it by asking «¿qué sabes de mí?».** There is no automated
+  test turn (YAGNI). The readiness report gets its own capability row, `answer_profile` (decision 14
+  of ADR 0024), checked by that person.
+- **Decision 3, where the card sits.** `PROFILE_CARD_POSITION` (`with_memory`, the default, or
+  `before_language`) is configurable because the acceptance measures which one the model follows
+  better; the language rule stays the last block either way.
+- **Decision 5, no oracle.** A speaker who is not identified and an identified person the policy
+  refused hear the same phrase; a failing audit or read has its own phrase because it is not a
+  refusal. The spoken summary is kept out of the opt-in spoken-text log (a marker is logged instead).
+- **Access.** A speaker who is not face-identified at `basic` (a token speaker included) never
+  reaches the policy, so no denial row is written per turn; an identified non-owner is audited as
+  denied. One audit row per read (decision 3's volume note stands).
+
 ## Follow-up
 
 - [Plan 0074](../plans/open/0074-cm5a-profile-card.md) — the card and the explicit summary
-  (outline).
+  (executed; acceptance pending).
 - The next free ADR number is 0027.

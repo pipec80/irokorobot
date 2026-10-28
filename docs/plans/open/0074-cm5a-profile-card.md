@@ -1,6 +1,8 @@
 # 0074 — CM-5a: the profile card and the explicit «what do you know about me»
 
-> **Status:** `Ready` — `NOW`. Detailed on 2026-10-28 and **promoted by Pipec the same day** (D-1 to D-8
+> **Status:** `Ready` — `NOW`; **executed 2026-10-28 (Tasks 0 to 8, see the execution record at the end):
+> Pipec's hardware acceptance (Task 8, Step 4) and the close (Step 5) are pending.** Detailed on
+> 2026-10-28 and **promoted by Pipec the same day** (D-1 to D-8
 > below confirmed). [ADR 0026](../../adr/0026-owner-profile-card-and-the-read-side-of-memory.md)
 > (`Proposed`, merged in PR #220 and #221) is its design; this plan moves it to `Accepted` when it
 > closes. Detailed against `main` at `dbb384f` by three read-only audits of the prompt path, the
@@ -623,3 +625,60 @@ new one, and the homes of the dialogue guard (Tasks 3 and 5); the `_voice_contro
 `repr=False` (Task 4); neutral wording (Task 1); the spoken-text log of the summary (Task 6); the
 aliases not copied a sixth time (Task 3); the docs omitted (Task 8); the per-event cache removed. Not
 applied, on purpose: dropping `PROFILE_CARD_POSITION` (Pipec asked for it).
+
+## Execution record (2026-10-28)
+
+Executed on `feat/0074-cm5a-profile-card`, one commit per task, every test seen RED for the stated reason
+first (the three exceptions are listed under *Rulings*). **Not pushed, no PR.** Pipec's hardware
+acceptance (Task 8, Step 4, [checklist](../../evals/0074-profile-card-acceptance.md)) and the close
+(Step 5: this plan to `completed/`, ADR 0026 `Accepted`, the indexes to `CLOSED`) are pending.
+
+| Task | Commit | What |
+|---|---|---|
+| 0 | none | Re-audit: every claim of Step 2 verified against `main` at `c44f820`; baseline `MEMORY_ENABLED=false`, CI selection: **4849 passed** |
+| 1 | `f8df9d5` | `memory/profile_card.py` (pure) + 17 tests |
+| 2 | `4324b17` | `relational_v4.list_card_literals` + 5 integration tests |
+| 3 | `ea213a3` | `memory/profile_card_access.py`, `ProfileSummaryReply`, the guard homes |
+| 4 | `b27b9bc` | the card in the prompt, `ProfileCardProvider`, `PROFILE_CARD_POSITION` |
+| 5 | `671081a` | the two voice routes pass the provider behind `PROFILE_CARD_ENABLED` |
+| 6 | `8a99935` | `PROFILE_SUMMARY`, its rule, the controller branch, the spoken-text marker |
+| 7 | `ba71fc5` | the owner → stranger matrix covers the card |
+| 8 | the commit that carries this record | `answer_profile` readiness capability, the docs, the diagram, the acceptance checklist |
+
+Verification at the end of Task 8: `MEMORY_ENABLED=false just gate` → **4965 passed** (CI selection: 4948
+collected against a baseline of 4849, so +99); `ruff format --check .`, `ruff check .` (and `scripts/*.py`),
+`mypy server/src robot/src`, `pyright` and `scripts/check_reserved_terms.py` clean; every relative link of
+the changed documents resolves.
+
+### Rulings
+
+- **Task 4.** `ProfileCardProvider` is a plain alias like its neighbour `ProposalScheduler`, and
+  `ProfileCardPosition` is imported at run time in `characters/__init__.py` (the module has no
+  `from __future__ import annotations`, so a `TYPE_CHECKING` import would need quoting). No behaviour
+  differs.
+- **Task 4.** `llm_streaming._build_streaming_base_prompt` takes `profile_card` with a default of `None`:
+  `scripts/stream_diagnosis_variants.py`, outside this plan's scope, calls that private helper and must keep
+  building the card-free prompt (`tests/unit/test_stream_diagnosis_variants.py` failed without it).
+- **Task 5/6, found by the full suites.** `tests/integration/test_transcribe_pipeline.py` has a fake of
+  `process_text_turn` with explicit keywords, so it gained `profile_card_provider`; and
+  `tests/unit/test_memory_answer_grammar.py::_PREEMPTING_BODIES` (a guard that every rule before the answer
+  rule has a case it wins) gained `profile.summary.v1`.
+- **Task 6, spoken-text log.** The plan names only the classic helper, but its own integration test requires
+  that no stored value reaches the log on **either** route, and `streaming.stream_response_plan` has its own
+  `log_spoken`. Both now go through one function, `response_plan.spoken_log_text(plan)`, which returns the
+  marker «resumen del perfil» for a known profile summary and `None` otherwise.
+- **Task 6, no cache.** With a summarizer present `decide` always returns a plan, so the classic route does not
+  run it twice: the integration test shows exactly one audit row (the plan's condition for adding a cache is
+  not met).
+- **Task 6, branches.** `ruff` allows 12 branches (`max-branches`) and the exhaustive `match` in
+  `CognitiveController.decide` reached 13, so `MEMORY_ANSWER` and `PROFILE_SUMMARY` share one `case` that
+  calls `_voice_dialogue_plan`; no lint configuration was touched.
+- **RED that was not a failing test.** Task 6's «a channel without the summarizer falls through» and the
+  negative fixture rows already held before the code (they pin behaviour that must not change). Task 7's tests
+  were green by construction; with `_profile_card_provider` forced to return `None` three of the five fail (the
+  owner's positive cases). Task 8's `_HARDWARE_ANSWERS = ["si"] * 21` passes before the code (extra answers are
+  unused); with 18 answers eight tests fail after it.
+- **Task 8, close.** Step 2 lists `Accepted` for ADR 0026 and `CLOSED` for the indexes, but those follow the
+  hardware acceptance. The documents say «executed, acceptance pending» instead, and ADR 0026 got its
+  *Implementation notes*. The local task table `docs/roadmap/tabla-tareas.md` (never committed) is updated at
+  the close.

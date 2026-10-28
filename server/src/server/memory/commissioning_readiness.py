@@ -7,7 +7,7 @@ section statuses (never typed by hand) and combines it with a typed hardware sta
 ``planned`` or an ``idea`` in the catalogue is not reported here: it is "not supported" by absence.
 
 The catalogue mirrors the *Capabilities and what they need* table of
-``docs/architecture/seed-data-pool.md``; the six entries are its ``exists`` rows.
+``docs/architecture/seed-data-pool.md``; the seven entries are its ``exists`` rows.
 """
 
 from __future__ import annotations
@@ -43,6 +43,7 @@ class Capability(StrEnum):
     RECOGNIZE_FACE = "recognize_face"
     RECOGNIZE_VOICE = "recognize_voice"
     REMEMBER_TASTE = "remember_taste"
+    ANSWER_PROFILE = "answer_profile"
     DESCRIBE_SCENE = "describe_scene"
 
 
@@ -82,13 +83,17 @@ class CapabilityReadiness:
     verdict: Verdict
 
 
-# The six capabilities that exist today, with the pool sections each needs (decision 14).
+# The seven capabilities that exist today, with the pool sections each needs (decision 14).
+# ``answer_profile`` (Plan 0074, ADR 0026) reads back what the import loaded, so it needs no section
+# of its own; the person who commissions turns ``PROFILE_CARD_ENABLED`` on and verifies it by asking
+# «¿qué sabes de mí?».
 CATALOGUE: tuple[CatalogueEntry, ...] = (
     CatalogueEntry(Capability.SPEAK_REPLY, frozenset()),
     CatalogueEntry(Capability.UNDERSTAND_SPEECH, frozenset()),
     CatalogueEntry(Capability.RECOGNIZE_FACE, frozenset()),
     CatalogueEntry(Capability.RECOGNIZE_VOICE, frozenset()),
     CatalogueEntry(Capability.REMEMBER_TASTE, frozenset()),
+    CatalogueEntry(Capability.ANSWER_PROFILE, frozenset()),
     CatalogueEntry(Capability.DESCRIBE_SCENE, frozenset({Section.FUNCTION})),
 )
 

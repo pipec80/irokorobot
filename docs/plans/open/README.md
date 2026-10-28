@@ -39,11 +39,12 @@ to see the code, tests, verified gaps, and future delivery sequence.
 
 
 **`NOW` (2026-10-28):** el [Plan 0074](0074-cm5a-profile-card.md) (`Ready`, promovido por Pipec el
-mismo día, decisiones D-1 a D-8 confirmadas). Es la primera mitad de CM-5 que decide el
+mismo día, decisiones D-1 a D-8 confirmadas; **ejecutado el 2026-10-28, falta la aceptación en
+hardware de Pipec y el cierre**). Es la primera mitad de CM-5 que decide el
 [ADR 0026](../../adr/0026-owner-profile-card-and-the-read-side-of-memory.md) (`Proposed`): la **ficha**,
 con la que el robot lee de vuelta tus gustos y cómo llamarte en cada turno identificado, sin datos
 sensibles, y responde «¿qué sabes de mí?» con una frase fija. Ocho tareas, sin migración y sin cambio de
-cable. Se ejecuta en una sesión nueva.
+cable.
 
 ### El Paso 0 (cerrado el 2026-10-28) y lo que queda abierto
 
