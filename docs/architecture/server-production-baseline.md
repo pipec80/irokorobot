@@ -358,6 +358,13 @@ raw request-body budget
 - Maximum-request recycling is disabled without a verified supervisor.
 - Concurrency reflects measured STT/TTS/LLM/DB capacity, not HTTP's theoretical
   maximum.
+- There is no administration surface on the network. The only administration
+  tool is `iroko-admin` ([Plan 0073](../plans/completed/0073-local-admin-crud.md),
+  [ADR 0025](../adr/0025-remote-administration-backup-updates-and-telemetry.md)),
+  a command-line tool run on the machine with the server stopped; it probes
+  `/health` once and refuses to run if the server answers. The admin web router
+  and any VPN access (ADR 0025 levels B and C) are not built, and the voice and
+  chat routes keep the loopback default of ADR 0013.
 
 ### Official FastAPI guidance
 
