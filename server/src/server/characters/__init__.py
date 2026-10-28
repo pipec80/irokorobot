@@ -18,7 +18,7 @@ from server.cognition.identity import (
 )
 from server.onboarding import OnboardingSlot
 from server.schemas import MemoryContext
-from server.settings import settings
+from server.settings import ProfileCardPosition, settings
 
 logger = logging.getLogger(__name__)
 
@@ -251,6 +251,8 @@ def build_system_prompt(
     user_emotion: str | None = None,
     active_person: ActivePersonContext | None = None,
     perception: str | None = None,
+    profile_card: str | None = None,
+    profile_card_position: ProfileCardPosition = "with_memory",
 ) -> str:
     """Assemble the full system prompt for a character.
 
@@ -268,6 +270,12 @@ def build_system_prompt(
         perception: What the camera sees this turn (VLM description). When
             provided, appended as a visual-perception block so the
             character reacts to it in its own voice.
+        profile_card: The rendered, already authorized profile card of the speaker (Plan 0074).
+            It is the only place the person's own data enters the prompt; ``None`` changes
+            nothing. The caller owns the authorization; this function only places the text.
+        profile_card_position: ``with_memory`` puts the card right before the memory block,
+            ``before_language`` right before the language rule. The language rule stays the
+            last block either way.
 
     Returns:
         Complete system prompt string ready for the LLM.
@@ -290,10 +298,14 @@ def build_system_prompt(
         adaptation = _emotion_adaptation(user_emotion)
         if adaptation:
             parts.append(adaptation)
+    if profile_card and profile_card_position == "with_memory":
+        parts.append("\n" + profile_card)
     if context and (context.entities or context.memories):
         parts.append(_format_memory_block(context))
     if perception:
         parts.append(_PERCEPTION_TEMPLATE.format(description=perception))
+    if profile_card and profile_card_position == "before_language":
+        parts.append("\n" + profile_card)
     parts.append(_LANGUAGE_RULE)
     return "\n".join(parts)
 

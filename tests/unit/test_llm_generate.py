@@ -23,6 +23,7 @@ from server.schemas import (
     MemoryContext,
     MemoryHit,
 )
+from server.settings import settings
 
 from server import llm
 
@@ -241,6 +242,41 @@ async def test_generate_response_uses_manual_context_for_neutral_display_guidanc
     assert "OWNER IDENTITY" not in system_prompt
     assert "your owner" not in system_prompt.lower()
     assert "Do not infer relationships, personal facts, or authorization" in system_prompt
+
+
+@pytest.mark.unit
+async def test_generate_response_puts_the_profile_card_in_the_system_prompt(
+    http_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Plan 0074: the classic route forwards the authorized card to the prompt."""
+    mock = AsyncMock(return_value=("hola", "neutral"))
+    monkeypatch.setattr(llm, "_generate_ollama", mock)
+
+    await llm.generate_response(http_client, "hola", profile_card="CARD-CANARY")
+    await llm.generate_response(http_client, "hola")
+
+    assert "CARD-CANARY" in mock.call_args_list[0][0][1]
+    assert "CARD-CANARY" not in mock.call_args_list[1][0][1]
+
+
+@pytest.mark.unit
+async def test_generate_response_honours_the_profile_card_position(
+    http_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mock = AsyncMock(return_value=("hola", "neutral"))
+    monkeypatch.setattr(llm, "_generate_ollama", mock)
+
+    for position in ("with_memory", "before_language"):
+        monkeypatch.setattr(settings, "profile_card_position", position)
+        await llm.generate_response(
+            http_client, "hola", perception="Una mesa.", profile_card="CARD-CANARY"
+        )
+
+    with_memory, before_language = (call[0][1] for call in mock.call_args_list)
+    assert with_memory.index("CARD-CANARY") < with_memory.index("Percepción visual")
+    assert before_language.index("Percepción visual") < before_language.index("CARD-CANARY")
 
 
 # ---------------------------------------------------------------------------

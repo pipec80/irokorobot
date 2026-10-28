@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 from server.characters.base import CharacterProfile, PersonalityProfile
+from server.schemas import MemoryContext, MemoryHit
+from server.settings import settings
 
 from server import llm_streaming
 
@@ -95,6 +97,69 @@ async def test_generate_response_stream_dynamic_profile_has_single_contract(
     assert '"response"' not in system_prompt
     assert '"emotion"' not in system_prompt
     assert "vendedor carismático" in system_prompt
+
+
+@pytest.mark.unit
+async def test_generate_response_stream_puts_the_profile_card_in_the_system_prompt(
+    http_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Plan 0074: the streaming route forwards the authorized card, in the configured position."""
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(llm_streaming, "ollama_chat_stream", _capturing_stream_factory(captured))
+
+    async for _ in llm_streaming.generate_response_stream(
+        http_client, "hola", profile_card="CARD-CANARY"
+    ):
+        pass
+    messages = captured["messages"]
+    assert isinstance(messages, list)
+    with_card = messages[0]["content"]
+    async for _ in llm_streaming.generate_response_stream(http_client, "hola"):
+        pass
+    messages = captured["messages"]
+    assert isinstance(messages, list)
+    without_card = messages[0]["content"]
+
+    assert "CARD-CANARY" in with_card
+    assert "CARD-CANARY" not in without_card
+    assert with_card.index("CARD-CANARY") < with_card.index("IDIOMA")
+
+
+@pytest.mark.unit
+async def test_generate_response_stream_honours_the_profile_card_position(
+    http_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(llm_streaming, "ollama_chat_stream", _capturing_stream_factory(captured))
+    memory = MemoryContext(
+        memories=[
+            MemoryHit(
+                id=1,
+                kind="semantic",
+                content="Un dato.",
+                summary=None,
+                importance=0.5,
+                distance=0.1,
+            )
+        ]
+    )
+    prompts = []
+    for position in ("with_memory", "before_language"):
+        monkeypatch.setattr(settings, "profile_card_position", position)
+        async for _ in llm_streaming.generate_response_stream(
+            http_client, "hola", context=memory, profile_card="CARD-CANARY"
+        ):
+            pass
+        messages = captured["messages"]
+        assert isinstance(messages, list)
+        prompts.append(messages[0]["content"])
+
+    with_memory, before_language = prompts
+    assert with_memory.index("CARD-CANARY") < with_memory.index("--- Memoria activa")
+    assert before_language.index("--- Memoria activa") < before_language.index("CARD-CANARY")
+    assert before_language.index("CARD-CANARY") < before_language.index("IDIOMA")
 
 
 @pytest.mark.unit

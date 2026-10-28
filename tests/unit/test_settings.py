@@ -44,6 +44,27 @@ def test_server_settings_rejects_nonlocal_llm_provider(
 
 
 @pytest.mark.unit
+def test_profile_card_position_defaults_to_with_memory_and_reads_the_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert ServerSettings(_env_file=None).profile_card_position == "with_memory"  # type: ignore[call-arg]
+
+    monkeypatch.setenv("PROFILE_CARD_POSITION", "before_language")
+
+    assert ServerSettings(_env_file=None).profile_card_position == "before_language"  # type: ignore[call-arg]
+
+
+@pytest.mark.unit
+def test_profile_card_position_rejects_a_value_outside_the_two(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PROFILE_CARD_POSITION", "after_everything")
+
+    with pytest.raises(ValidationError, match="profile_card_position"):
+        ServerSettings(_env_file=None)  # type: ignore[call-arg]
+
+
+@pytest.mark.unit
 def test_server_settings_reads_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
     lan_host = ".".join(("0", "0", "0", "0"))
     monkeypatch.setenv("WHISPER_MODEL", "tiny")
