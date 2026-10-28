@@ -338,6 +338,17 @@ the reads do not change with the channel. Whoever can run commands on the server
 owner; that was already true, and the alternatives (the PIN, the PIN plus the face) are revisited
 when a second adult is enrolled or the server is shared.
 
+**The local admin CRUD after the closing (Plan 0073, [ADR 0025](../adr/0025-remote-administration-backup-updates-and-telemetry.md)
+decisions 2 level A, 4, 11).** Once the alta closes the importer no longer runs; `iroko-admin` (run on
+the machine over SSH, server stopped) is the amendment path. It writes through the same canonical
+writers with a new channel `admin_local` (not an import channel) and never touches SQL itself. The
+authority is access to the machine, **plus the owner's PIN for a change to sensitive data (`medical`,
+`location`, `security`), a contact, or anyone but the owner** — verified offline against the stored
+credential and read without echo. A second adult or a `representative` is refused until the support
+session exists (decision 3). Every mutating operation writes one audit event (actor, role, channel,
+operation, field or section id, outcome, time; **never a value**); a `revoke` is a supersede to
+inactive, never a hard delete (CM-6).
+
 The PIN is optional and administrative: an optional `strong` factor — consulted only on a
 turn the owner's face did not resolve, never once the face matched — and the credential of
 local administration. When face or voice fail, recovery is local administration on the

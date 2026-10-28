@@ -1,9 +1,11 @@
 # 0073 — Step 0, fourth plan: the local administration, a command-line CRUD (the amendment path)
 
-> **Status:** `Ready`/`NOW` — detailed on 2026-10-27 from the 2026-10-23 outline and **promoted by
-> Pipec on 2026-10-27** (D-1 to D-9 and C-1 to C-3 confirmed), who chose inline same-session execution
-> on the branch `docs/0073-detail-plan` (which carries this plan and its implementation).
-> [Plan 0072](../completed/0072-commissioning-session.md) closed on
+> **Status:** `Closed` 2026-10-28 — detailed on 2026-10-27 from the 2026-10-23 outline, **promoted by
+> Pipec on 2026-10-27** (D-1 to D-9 and C-1 to C-3 confirmed) and executed inline the same session on
+> the branch `docs/0073-detail-plan` (which carries this plan and its implementation), with Pipec's
+> acceptance on a database kept apart on 2026-10-28 ([record](../../evals/0073-admin-acceptance.md));
+> see the *Execution record* at the end. [ADR 0025](../../adr/0025-remote-administration-backup-updates-and-telemetry.md)
+> is `Accepted` with this close. [Plan 0072](0072-commissioning-session.md) closed on
 > 2026-10-27 (PR #216, `c5a5dc9`, and the docs PR #217), so queue rule 4 was applied: this plan was
 > re-audited against the merged code of [Plan 0070](../completed/0070-seed-load-data-pool-storage.md),
 > [Plan 0071](../completed/0071-seed-load-file-importer.md) and Plan 0072 and rewritten in their
@@ -569,3 +571,54 @@ by older code, so the rollback is to leave it. Tasks 4 and 5 need Tasks 1, 2 and
 - **Reading the pool by voice (CM-5), the audience rule, the alert, the call:** CM-5 and the care ADR.
 - **A second adult or a `representative` actor:** refused until the support session and the `family`
   profile exist (ADR 0025 decision 3, ADR 0006).
+
+## Execution record (2026-10-28)
+
+Executed inline in the planning session (Pipec asked to continue there) on the branch
+`docs/0073-detail-plan`, from `main` at `2f067d8`, with the `executing-plans`, `test-driven-development`
+and `verification-before-completion` skills and no worktree or subagent (Pipec's rules). Every code
+test was observed RED for its stated reason before the code existed.
+
+**Commits (one per task):** plan `62fa278`; Task 1 `31ae9a0`, Task 2 `c0845f2`, Task 3 `ad70a59`,
+Task 4 `f325776`, Task 5 `54c68e1`, Task 6 `6f3bdd8`, Task 7 `db84a00`; a full-suite regression fix
+`5afc62d`. The documentation of Task 8 is the closing commit.
+
+**Verification.** Per-task targeted tests RED→GREEN; `ruff`, `mypy` and `pyright` clean on every
+touched module. The CI-selection suite (`-m "not slow and not hardware and not eval"`, with
+`MEMORY_ENABLED=false`) ran **4846 passed** after the regression fix (the run first surfaced three
+closed-list assertions the new channel, table and migration outdated — `WriteChannel`, the
+entity-reference allowlist and the v4 schema `user_version` — fixed in `5afc62d`).
+
+**Rulings made while executing** (each with what it costs if wrong):
+
+1. Branch: executed on `docs/0073-detail-plan` (plan + implementation, Pipec's name), not the plan's
+   `feat/0073-local-admin-crud`, because the plan lived only on this branch. Cost: a rename.
+2. V4 deactivation is the `lifecycle` column (`AssertionLifecycle.REVOKED`), not a `revoked_at`
+   column (that is `care_contacts`); `revoke_*` on V4 sets `lifecycle = 'revoked'` and `valid_to`.
+3. The offline PIN check is a new `memory/admin_pin.py` over `verify_pin` (the single hash check),
+   not `cognition.owner_authentication.unlock`, which is coupled to the HTTP token registry.
+4. `private` is excluded from the PIN gate: ADR 0025 decision 4 names only `medical`, `location` and
+   `security` (plus contacts and non-owner subjects).
+5. `revoke` audits with `target_entity_id = NULL` (the CLI passes a row id, not an entity id).
+6. Permitted files expanded to `commissioning.py` (a new `get_latest_commissioning` reader), because
+   the commissioning SQL guard forbids the record lookup anywhere else.
+7. Contacts: `change-contact` (phone) and `revoke contact` are wired and tested; the CLI verb to
+   **create** a new contact entity is deferred (`apply_contact_edit` is complete and tested).
+
+**Fixes folded in during execution.** The Task 6 commit left the commissioning SQL guard red
+(`admin_cli` had SQL on `commissioning_records`; the full guard suite had not been run before that
+commit); fixed in Task 7 by moving the lookup into `commissioning.get_latest_commissioning`. The
+automated security review flagged (MEDIUM) that the PIN was read through the echoing `read_text`; it
+is now read through an injected `read_secret` (`getpass.getpass` in `main`), never echoed.
+
+**Self-review.** Author self-review of the whole branch (no subagent, Pipec's rule): the five Review
+Focus items are each covered by a test; no Critical or Important finding. Deferred minors: the CLI
+`revoke` always asks the PIN (conservative); a literal revoke's audit `field_id` is `NULL`
+(id-only, no value); the create-a-contact CLI verb is deferred.
+
+**Acceptance (Pipec, 2026-10-28, [record](../../evals/0073-admin-acceptance.md), outcomes only).**
+On a database kept apart: `list`, `status`, `add` (no PIN for `likes`, PIN for `medication`),
+`revoke` (PIN, and gone from the active list), `audit` (no household value), the running-server
+refusal and the behind-schema refusal of the real database all passed. The wrong-PIN refusal and the
+contact path were not exercised live (covered by the automated tests). No behaviour reaches the
+voice, so there is no hardware case.

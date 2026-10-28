@@ -120,7 +120,10 @@ derives it has no consumer before CM-5, so it is not written yet.
 
 There is **one** place that stores a household fact, whatever the channel: the spoken
 confirmation of CM-3a (`voice_classic`, `voice_stream`) and the initial import of Step 0
-(`import_file`, `import_assisted`) call the same `write_literal` and `write_relation`. The speaker never assigns
+(`import_file`, `import_assisted`) call the same `write_literal` and `write_relation`; after the alta
+closes the local admin CRUD (`admin_local`, Plan 0073, ADR 0025 decision 4) is a further caller for the
+amendment path, and a `revoke` sets the row inactive (V4 `lifecycle='revoked'`, a contact's `revoked_at`)
+with one audit row that holds no value — a hard delete is CM-6. The speaker never assigns
 the classification; the writer looks it up from the predicate and the subject in one table:
 
 | Subject | Stored as |

@@ -1,6 +1,8 @@
 # 0025 — Administering a local-first robot: the surfaces, support sessions, backup, updates and telemetry
 
-- **Status:** Proposed (2026-10-23). Written from Pipec's brief of the same day and his answers to four
+- **Status:** Accepted (2026-10-28, when [Plan 0073](../plans/completed/0073-local-admin-crud.md),
+  the first plan that implements it, closed — the local half, decisions 2 level A, 4, 10 and 11;
+  the remote half, decisions 5 to 8, has no plan yet). Proposed 2026-10-23. Written from Pipec's brief of the same day and his answers to four
   questions (the robot as the only source of truth; a support session opened by the owner; a periodic
   job that only proposes; the local CRUD closing Phase 0 and the remote part apart) and to three more
   the same day (**no SaaS for now**; a remote chat test in public mode; the installation id and the
@@ -23,8 +25,10 @@
 - **Amends:** [ADR 0013](0013-local-http-network-posture.md): remote access exists, only through a
   private VPN, and only for the admin router (decision 2); the voice and chat routes keep their
   loopback default.
-- **Implemented by:** [Plan 0073](../plans/open/0073-local-admin-crud.md) (`Draft`, an outline: the
-  local CRUD that closes Phase 0). The remote part (decisions 3 and 5 to 8) has no plan yet.
+- **Implemented by:** [Plan 0073](../plans/completed/0073-local-admin-crud.md) (closed 2026-10-28:
+  the local CRUD `iroko-admin` that closes Phase 0 — migration 012 and the admin audit, the
+  `admin_local` channel, the offline owner PIN, add/change/revoke through the canonical writers, and
+  the read-only readiness recompute). The remote part (decisions 3 and 5 to 8) has no plan yet.
 
 ## Context
 
@@ -276,6 +280,6 @@ when conversations are stored, or when a connection to the Internet becomes part
 
 ## Follow-up
 
-- [Plan 0073](../plans/open/0073-local-admin-crud.md) — the local admin (`Draft`, an outline).
+- [Plan 0073](../plans/completed/0073-local-admin-crud.md) — the local admin (closed 2026-10-28).
 - The backup, update, telemetry, remote-access and support-session plans: not written.
 - The next free ADR number is 0026.
