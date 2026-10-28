@@ -47,8 +47,9 @@ pattern *evaluate, audit, then act*); `text_turn.prepare_text_turn`; `characters
   from `candidate_policy`). Tests: allowed, denied, audit failure, switch off.
 - **Task 4 — The prompt.** `PreparedTextTurn` carries the rendered card; both prompt builders
   (`llm.py`, `llm_streaming.py`) place it; `_MEMORY_DISCIPLINE` names it as a source; with the
-  switch off the prompt is byte-identical to today's. Tests: classic/stream parity, a suspended
-  session gets no card, the language rule is still the last block.
+  switch off the prompt is byte-identical to today's. `PROFILE_CARD_POSITION` (`with_memory` or
+  `before_language`) chooses where it sits. Tests: classic/stream parity, a suspended session
+  gets no card, `/chat` gets no card, both positions, the language rule is still the last block.
 - **Task 5 — The explicit question.** `InformationNeed.PROFILE_SUMMARY`, a pure rule for «¿qué
   sabes de mí?» / «¿qué te he contado?», a controller branch with an injected collaborator
   (present only on the routes that resolve a speaker), a fixed template, a fixed empty-card
@@ -57,8 +58,12 @@ pattern *evaluate, audit, then act*); `text_turn.prepare_text_turn`; `characters
 - **Task 6 — Guards and the matrix.** The owner → stranger matrix gains the card; architecture
   guards: the card module is the only caller of the reader, nothing outside it names the allow-list,
   no prompt builder interpolates `entity.name`.
-- **Task 7 — Truth, settings and acceptance.** `PROFILE_CARD_ENABLED` in `settings.py` and
-  `.env.example`, the operator manual, `current-state.md` and its diagram, the roadmap rows, the
+- **Task 7 — Truth, settings, the alta and acceptance.** `PROFILE_CARD_ENABLED` and
+  `PROFILE_CARD_POSITION` in `settings.py` and `.env.example`; the commissioning session turns the
+  card on and runs a test turn, and the readiness report's «Answer the profile by voice» row
+  becomes `exists` (`seed-data-pool.md`, `commissioning_readiness.py`); the acceptance uses data
+  **loaded by the import** (preferred name, form of address, tastes), so the card works from the
+  first day of a delivered robot, not only with what was learned by voice; the operator manual, `current-state.md` and its diagram, the roadmap rows, the
   plan indexes. `just gate`. **Acceptance by Pipec on real hardware** (outcomes only, never the
   values): (1) after a confirmed taste, «¿qué sabes de mí?» lists it; (2) a reply uses the
   preferred name; (3) a second face in frame gets no card; (4) an unknown speaker gets the denial,
@@ -86,9 +91,27 @@ The card is read on identified turns with the switch on and never otherwise; not
 explicit question is answered deterministically and a stranger gets the denial; the acceptance of
 Task 7 is recorded; ADR 0026 moves to `Accepted`.
 
-## Open points for the rewrite
+## Settled with Pipec (2026-10-28)
 
-Where the card sits in the prompt relative to the persona and the language rule; whether the audit
-row per turn should become one per session if it grows; how `address_form = usted` is worded to the
-model; whether `/chat` should read the card for a token-bearing speaker (ADR 0026 decision 3 says
-yes; confirm against the bearer limit of ADR 0008 when detailing).
+1. **Position in the prompt is configurable.** Default: after the persona and the emotion
+   adaptation, next to where the memory block sits and **before** the perception and the language
+   rule, which stays the last block (Plan 0064 measured that a small model weighs the end of its
+   prompt). A closed setting, `PROFILE_CARD_POSITION`, with two values: `with_memory` (default) and
+   `before_language` (right before the language rule). Both are tested; the choice is a measurement
+   for the acceptance, not a rewrite.
+2. **`usted` is one line of the card and nothing more.** No extra prompt machinery; fixed controller
+   strings stay in tuteo (Plan 0064's guard). If the context is lost the form is read again on the
+   next turn, because the card is rebuilt every turn.
+3. **One audit row per read**, as the outline says.
+4. **`/chat` reads no card** (public diagnostic tool, ADR 0025 decision 9). ADR 0026 decision 3 was
+   amended to say so. `/vision/respond` passes nothing, as before.
+5. **Recency:** tastes newest first, grouped by predicate, no model processing; what is over the
+   cap stays stored (ADR 0026 decision 2).
+6. **The switch is on in a delivered robot.** The alta turns it on and checks it (Task 7).
+
+## Still open for the rewrite
+
+What the explicit summary says when more tastes exist than the card shows (my proposal: it lists the
+card's items and nothing else, so the answer never claims to be complete); the exact wording of the
+fixed phrases; whether the readiness report lists the card as its own capability or inside the
+existing «Answer the profile by voice» row (my proposal: that row, which becomes `exists`).

@@ -80,9 +80,12 @@ lifecycle active:
   relatives, partner, children and pets (answered on an explicit question, decision 5),
   `birth_date`, `stated_age`, and everything `private`, `medical`, `location`, `child_data` or
   `security`, including `secret_holder` and `document_location`.
-- **Size:** at most 600 characters and 12 tastes. Order: `preferred_name`, `address_form`, then
-  tastes newest first. What does not fit is dropped silently; the log carries the count, never a
-  value.
+- **Size and recency:** at most 600 characters and 12 tastes. Order: `preferred_name`,
+  `address_form`, then tastes **newest first**, grouped by predicate in one line each. No model
+  processes them: the writer already deduplicates by key. What does not fit stays stored and is
+  dropped from the card without a message; the log carries the count, never a value. Older tastes
+  are reachable when the archive search exists (CM-5b). *Confirmed by Pipec, 2026-10-28
+  («procesarla y recuperar lo más reciente»).*
 - **Rendering:** a new renderer, not `_format_memory_block`. It carries no entity name, id or role,
   one datum per line, values as quoted data. The values passed the preference grammar or the
   import validator, so they are short noun phrases, not free text.
@@ -90,14 +93,20 @@ lifecycle active:
 ### 3. When the card is read, and what audits it
 
 - On every generic turn whose speaker the continuity session already accepts (an identified person
-  at `basic` or more): classic `/transcribe`, `/transcribe/stream` and `/chat`. `/vision/respond`
-  passes nothing. A suspended session (unknown, ambiguous, vetoed) gets **no card**. The voice is
-  not consulted, so the card costs one local read and no latency.
+  at `basic` or more): classic `/transcribe` and `/transcribe/stream`. **`/chat` and
+  `/vision/respond` read no card.** `/chat` is the operator's diagnostic tool, controlled and not
+  public (ADR 0025 decision 9: public mode, no household data), rarely used by the owner; it keeps
+  its behaviour. *Confirmed by Pipec, 2026-10-28.* A suspended session (unknown, ambiguous,
+  vetoed) gets **no card**. The voice is not consulted, so the card costs one local read and no
+  latency.
 - Each read evaluates `read_personal_conversation_memory` for the person's own `personal`/`normal`
   data and writes **one audit row before the effect**; a failing audit or a denial means no card
   (ADR 0019 §6.3). The volume is one small row per identified turn; revisit if it grows.
-- A kill-switch, `PROFILE_CARD_ENABLED`, off by default like `MEMORY_CANDIDATES_ENABLED`; it needs
-  `MEMORY_ENABLED`. Pipec turns it on after the acceptance.
+- A kill-switch, `PROFILE_CARD_ENABLED`, off by default in the code like
+  `MEMORY_CANDIDATES_ENABLED`; it needs `MEMORY_ENABLED`. **A delivered robot has it on.** Iroko is
+  made to order: Pipec interviews the client, loads the pool and sets the unit up (the alta), and the
+  client only uses it at home; so the commissioning turns the card on and checks it with a test
+  turn, as a capability of the readiness report (ADR 0024 decision 14), not the client.
 
 ### 4. The level of a read: `basic` for ordinary data, `strong` for anything above
 
