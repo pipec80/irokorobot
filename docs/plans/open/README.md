@@ -45,6 +45,18 @@ con la que el robot lee de vuelta tus gustos y cómo llamarte en cada turno iden
 sensibles, y responde «¿qué sabes de mí?» con una frase fija. Ocho tareas, sin migración y sin cambio de
 cable.
 
+### Borradores en diseño (no ejecutables)
+
+- [Plan 0075 — la medición previa a CM-4](0075-cm4-pre-measurement.md) (`Draft`, 2026-10-29). **Solo
+  medición**, no toca `server/src` ni `robot/src`, sin migración ni dependencias nuevas. Instrumentos y
+  procedimiento para medir, con conversaciones reales de Pipec, (1) la tasa de turnos con la voz del
+  dueño verificada —por duración de clip (`<1,5 s / 1,5–3 s / >3 s`) y por tipo de frase, por turno y por
+  conversación— y (2) si `nomic-embed-text` separa paráfrasis en español de frases sin relación, con
+  algunos multilingües de referencia. Propone la regla de elegibilidad del
+  [ADR 0027](../../adr/0027-conversation-record-and-the-diary.md) con cifras y la deja como decisión de
+  Pipec; el ADR 0027 sigue `Proposed`. El siguiente plan es la implementación de CM-4 (el registro, los
+  jobs, la migración 013). **Siguiente número de plan libre: 0076.**
+
 ### El Paso 0 (cerrado el 2026-10-28) y lo que queda abierto
 
 Estado al 2026-10-28, con `NOW` vacío. El orden y las compuertas siguen siendo los del
