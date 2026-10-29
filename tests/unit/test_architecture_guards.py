@@ -966,3 +966,87 @@ def test_the_command_guard_detects_a_violation() -> None:
     }
 
     assert _memory_modules_importing_a_command(leak) == ["memory/leak.py", "memory/other.py"]
+
+
+# --- the conversation record (Plan 0076, ADR 0027) -------------------------------------------------
+# Each table has one store; no prompt, route, controller or voice answer reads the record, so
+# its text can never reach a reply; only the voice routes and the text service name the recorder.
+_CONVERSATION_TABLE_HOMES = {
+    "conversation_records": "memory/conversation_record.py",
+    "conversation_episodes": "memory/conversation_episodes.py",
+    "conversation_consent_grants": "memory/conversation_consent.py",
+}
+_RECORD_READER_MODULES = frozenset(
+    {
+        "server.memory.conversation_record",
+        "server.memory.conversation_episodes",
+        "server.memory.conversation_summary",
+    }
+)
+_NO_RECORD_READS = ("characters/", "cognition/", "routers/", "llm", "streaming", "text_turn.py")
+_RECORDER_NAMES = frozenset({"TurnRecorder", "record_turn", "_turn_recorder", "capture_turn"})
+_RECORDER_HOMES = frozenset(
+    {
+        "text_turn.py",
+        "streaming.py",
+        "routers/transcribe.py",
+        "memory/conversation_capture.py",
+    }
+)
+
+
+def _conversation_table_queriers(sources: Mapping[str, str]) -> list[str]:
+    """Modules that put SQL on a conversation table they do not own."""
+    found = []
+    for table, home in _CONVERSATION_TABLE_HOMES.items():
+        sql = re.compile(rf"\b(?:FROM|JOIN|INTO|UPDATE|DELETE\s+FROM)\s+{table}\b")
+        found += [name for name, text in sources.items() if name != home and sql.search(text)]
+    return sorted(found)
+
+
+def _record_readers(sources: Mapping[str, str]) -> list[str]:
+    """Prompt, route and voice modules that import the record, the diary or the summary."""
+    return sorted(
+        name
+        for name, text in sources.items()
+        if name.startswith(_NO_RECORD_READS)
+        and any(
+            (isinstance(node, ast.ImportFrom) and node.module in _RECORD_READER_MODULES)
+            or (
+                isinstance(node, ast.Import)
+                and any(alias.name in _RECORD_READER_MODULES for alias in node.names)
+            )
+            for node in ast.walk(ast.parse(text))
+        )
+    )
+
+
+@pytest.mark.unit
+def test_each_conversation_table_is_queried_only_by_its_store() -> None:
+    assert _conversation_table_queriers(_sources()) == []
+
+
+@pytest.mark.unit
+def test_no_prompt_or_route_reads_the_record() -> None:
+    assert _record_readers(_sources()) == []
+
+
+@pytest.mark.unit
+def test_only_the_voice_routes_and_the_text_service_name_the_recorder() -> None:
+    assert _outside(_sources(), _RECORDER_HOMES, _RECORDER_NAMES) == []
+
+
+@pytest.mark.unit
+def test_the_conversation_guards_detect_a_violation() -> None:
+    sources = {
+        "memory/leak.py": 'SQL = "SELECT turns FROM conversation_records"\n',
+        "memory/conversation_record.py": 'SQL = "SELECT 1 FROM conversation_records"\n',
+        "routers/chat.py": (
+            "from server.memory.conversation_record import read_record\nrecord_turn = None\n"
+        ),
+        "characters/__init__.py": "import server.memory.conversation_summary\n",
+    }
+
+    assert _conversation_table_queriers(sources) == ["memory/leak.py"]
+    assert _record_readers(sources) == ["characters/__init__.py", "routers/chat.py"]
+    assert _outside(sources, _RECORDER_HOMES, _RECORDER_NAMES) == ["routers/chat.py"]

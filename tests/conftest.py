@@ -96,6 +96,16 @@ def _profile_card_off(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _conversation_record_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Start every test with the conversation record and the diary off (ADR 0027).
+
+    A developer's `.env` may switch them on; without this pin a test that never asked for them
+    would schedule captures. A test that wants them sets the flags itself.
+    """
+    monkeypatch.setattr(settings, "conversation_record_enabled", False)
+
+
+@pytest.fixture(autouse=True)
 def _ollama_probe_offline(monkeypatch: pytest.MonkeyPatch) -> None:
     """Start every test with the start-up Ollama probe stubbed out (Plan 0064).
 

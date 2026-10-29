@@ -29,6 +29,7 @@ from server.commission_session import (
     SpeakerAuthDisabledError,
     load_biometric_notice,
     read_consents,
+    read_conversation_consent,
     run_face_session,
     run_voice_session,
 )
@@ -51,6 +52,11 @@ from server.memory.commissioning_readiness import (
     HardwareStatus,
     evaluate_readiness,
     readiness_to_json,
+)
+from server.memory.conversation_consent import (
+    CONVERSATION_NOTICE_VERSION,
+    grant_conversation_consent,
+    load_conversation_notice,
 )
 from server.memory.owner_credentials import get_active_owner_pin_credential, get_ready_owner
 from server.personal_setup import read_personal_setup_status
@@ -309,6 +315,25 @@ async def _record_backups(
     return str(baseline), baseline_destroy_by
 
 
+async def _record_conversation_consent(
+    read_text: ReadText, write_text: WriteText, now: str
+) -> None:
+    """Read the conversation notice and grant the storage consent on a yes (ADR 0027 dec. 7)."""
+    owner = await get_ready_owner()
+    if owner is None:
+        return
+    notice = load_conversation_notice()
+    if read_conversation_consent(notice, read_text=read_text, write_text=write_text):
+        await grant_conversation_consent(
+            owner,
+            notice_version=CONVERSATION_NOTICE_VERSION,
+            now=datetime.fromisoformat(now),
+        )
+        write_text("Registro de conversaciones autorizado.")
+    else:
+        write_text("Registro de conversaciones no autorizado: el robot no guardará texto.")
+
+
 async def _run_close(read_text: ReadText, write_text: WriteText, now: str) -> int:
     """Collect backups, consents and hardware, record the readiness and close the alta."""
     record = await get_open_commissioning()
@@ -323,6 +348,7 @@ async def _run_close(read_text: ReadText, write_text: WriteText, now: str) -> in
     )
     consents = read_consents(read_text=read_text, write_text=write_text)
     hardware = _read_hardware(read_text, write_text)
+    await _record_conversation_consent(read_text, write_text, now)
     statuses = await list_section_statuses(record.id)
     readiness = evaluate_readiness(statuses, hardware)
     await record_biometric_notice(record.id, BIOMETRIC_NOTICE_VERSION)
