@@ -369,36 +369,50 @@ def is_known_hallucination(transcript: str) -> bool:
     return f" {_SUBTITLE_HALLUCINATION} " in f" {_normalize_words(transcript)} "
 
 
-def is_prompt_echo(transcript: str, prompt: str | None) -> bool:
-    """Return whether Whisper merely repeated its own initial prompt.
+def _echoes(heard: str, reference: str) -> bool:
+    """Return whether *heard* is a long enough contiguous part of *reference*, or repeats it.
 
-    On a noise clip Whisper can return the ``initial_prompt`` as if it were speech.
-    This is a heuristic with a known false positive: a user who says, verbatim, at
-    least 60 % of the prompt's words in a row (five of the default prompt's seven)
-    is discarded too. Shorter phrases ("Iroko", "un robot doméstico") and any prompt
-    of fewer than three words never trigger it.
-
-    Args:
-        transcript: Text Whisper returned.
-        prompt: The ``initial_prompt`` it was given, if any.
-
-    Returns:
-        True when the transcript is a contiguous part of the prompt covering at
-        least 60 % of its words, or the prompt repeated and nothing else.
+    Both arguments are already normalized with :func:`_normalize_words`.
     """
-    if not prompt:
-        return False
-    reference = _normalize_words(prompt)
     reference_words = reference.split()
     if len(reference_words) < _MIN_PROMPT_WORDS:
         return False
-    heard = _normalize_words(transcript)
     needed = max(_MIN_PROMPT_WORDS, math.ceil(_MIN_ECHO_SHARE * len(reference_words)))
     if len(heard.split()) < needed:
         return False
     if f" {heard} " in f" {reference} ":
         return True
     return reference in heard and not heard.replace(reference, " ").strip()
+
+
+def is_prompt_echo(transcript: str, prompt: str | None, hotwords: str | None = None) -> bool:
+    """Return whether Whisper merely repeated its own initial prompt.
+
+    On a noise clip Whisper can return the ``initial_prompt`` as if it were speech.
+    faster-whisper hands the decoder the hotwords *before* the initial prompt, so the
+    echo can also be «hotwords prompt»; that combined text is checked as well. This is
+    a heuristic with a known false positive: a user who says, verbatim, at least 60 % of
+    the prompt's words in a row (five of the default prompt's seven) is discarded too.
+    Shorter phrases ("Iroko", "un robot doméstico", the hotwords alone) and any prompt
+    of fewer than three words never trigger it.
+
+    Args:
+        transcript: Text Whisper returned.
+        prompt: The ``initial_prompt`` it was given, if any.
+        hotwords: The merged hotwords it was given on the same call, if any.
+
+    Returns:
+        True when the transcript is a contiguous part of the prompt (or of the hotwords
+        followed by the prompt) covering at least 60 % of those words, or that text
+        repeated and nothing else.
+    """
+    if not prompt:
+        return False
+    heard = _normalize_words(transcript)
+    reference = _normalize_words(prompt)
+    if _echoes(heard, reference):
+        return True
+    return bool(hotwords) and _echoes(heard, _normalize_words(f"{hotwords} {prompt}"))
 
 
 def is_unclear(confidence: TranscriptConfidence | None, threshold: float | None) -> bool:
@@ -465,7 +479,7 @@ def _transcribe_sync(audio: bytes, hotwords: str | None) -> str:
         ValueError: If audio is empty.
     """
     transcript = _whisper_transcript(audio, hotwords)
-    if is_prompt_echo(transcript.text, settings.whisper_initial_prompt):
+    if is_prompt_echo(transcript.text, settings.whisper_initial_prompt, hotwords):
         logger.warning("Whisper returned its own initial prompt — transcript discarded")
         return ""
     if is_known_hallucination(transcript.text):
