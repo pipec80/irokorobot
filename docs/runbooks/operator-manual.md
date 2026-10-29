@@ -261,6 +261,39 @@ length (1 to 1.5, 1.5 to 2 and 2 to 2.5 s) and the share of silence in the raw c
 Privacy is as above: counts and ranges only, no sample ids, names or per-sample scores in chat or
 docs. Use letter pseudonyms for impostors.
 
+### CM-4 pre-measurement — `just cm4-corpus` / `cm4-voice-rate` / `cm4-embed` (Plan 0075)
+
+The measurement before CM-4 is built: how often the owner's voice verifies, and whether the embedding
+model separates Spanish. Offline, local, not part of the runtime; Pipec runs every capture. It changes
+no setting, no threshold and no enrolment, and nothing under `server/src` or `robot/src`.
+
+- `just cm4-corpus capture-conversation --session s1 --minutes 5` records one continuous raw take the
+  way the robot opens the microphone (16 kHz, mono, int16); `segment` cuts it offline into the clips the
+  robot would upload (the adopted 1200 / 300 / 400 policy); `annotate` plays each clip so you type one of
+  five coarse phrase types (`short_answer`, `taste_statement`, `question`, `command`, `other`); `validate`
+  checks the files and hashes; `cleanup` erases everything after you type `delete`. An agent never runs
+  capture or annotate.
+- `just cm4-voice-rate report --owner-id N` scores every clip against **your real enrolled voiceprint**
+  and reports the verified rate by clip duration (`<1.5 s` / `1.5–3 s` / `>3 s`) and phrase type, per turn
+  and per conversation, with a sub-1.5 s no-floor diagnostic (what would match if the 1.5 s floor did not
+  exist — a measurement, not a proposal). Run it **with the server stopped**, and point `BRAIN_DB_PATH`
+  at a **read-only copy** of `data/omnibot.db` placed under `project-history/calibration/cm4/`; the tool
+  refuses any database path outside that folder, so the live database is never opened.
+- `just cm4-embed report --model nomic-embed-text --model embeddinggemma:300m` embeds an invented,
+  tracked Spanish fixture and reports within-group vs across-group cosine, the difference and the ROC-AUC
+  per model. Run it **with Ollama up**; `ollama pull` only the models your RAM allows (each is measured in
+  isolation). A 768-d model is a drop-in; a 1024-d model (bge-m3, qwen3-embedding) would need a migration
+  to adopt, so it is a reference only.
+
+Privacy: the corpus lives only under `project-history/calibration/cm4/` (gitignored); tracked records
+carry counts, rates and the embedding fixture (invented canaries) — never a transcript, a phrase type
+tied to text, a per-clip distance or any household datum. Delete the corpus and the database copy when
+the record is accepted (`cleanup`, then confirm `git status` is clean under `project-history/`).
+
+Scope: this only measures. Building CM-4 — the conversation record, the episode and candidate jobs and
+migration 013 — is the **next** plan; [ADR 0027](../adr/0027-conversation-record-and-the-diary.md) stays
+`Proposed` until it closes.
+
 ### Longitudinal-memory baseline — `just eval-longitudinal` (Plan 0046, CM-0)
 
 An offline capability probe, not a `pytest` test. It runs the synthetic suite in
