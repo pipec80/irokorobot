@@ -93,7 +93,8 @@ on the GPU).
    what the owner states, not one-word replies. A **per-conversation "majority verified"** rule is
    fragile here (s1 50 %, s2 18 %); "at least one verified turn" is only the record-retention flag
    (decision 2), not what feeds memory. **Recommendation: per turn**, noting that voice confirmation of
-   short answers is unreliable (a standing CM-3 finding). Pipec's call, with these numbers.
+   short answers is unreliable (a standing CM-3 finding). **Confirmed by Pipec (2026-10-29): per turn;**
+   the CM-4 implementation plan cements it.
 2. **The 1.5 s floor.** 0 of 12 sub-1.5 s clips would match even without the floor → lowering it is not
    worth a plan. Closed.
 3. **The embedding model.** `nomic-embed-text` is adequate (ROC-AUC 0.98). If a future plan wants better
