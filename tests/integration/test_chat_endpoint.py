@@ -204,7 +204,6 @@ async def test_chat_without_internal_evidence_is_one_turn_and_stateless(
             )
             assert response.status_code == 200
 
-    assert [item.kwargs["context"] for item in generate.await_args_list] == [None, None, None]
     assert [item.kwargs["history"] for item in generate.await_args_list] == [None, None, None]
     assert continuity.open_turn(7).history == ()
 

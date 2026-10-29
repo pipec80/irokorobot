@@ -6,8 +6,9 @@ from unittest.mock import Mock
 
 import httpx
 import pytest
-from server.schemas import ConversationTurn, MemoryContext
+from server.schemas import ConversationTurn
 
+from scripts.eval_memory_block import EvalMemoryContext, render_memory_block
 from scripts.eval_stream_protocol import StreamTurn
 from scripts.stream_diagnosis_variants import (
     VARIANT_DESCRIPTIONS,
@@ -38,7 +39,7 @@ def _turn(
         label=label,
         source=source,
         text="hola",
-        context=MemoryContext() if source == "context" else None,
+        context=EvalMemoryContext() if source == "context" else None,
         history=[ConversationTurn(role="user", content="antes")] if history else None,
         active_person=cast("ActivePersonContext", Mock()) if person else None,
     )
@@ -191,9 +192,9 @@ async def _captured_messages(
     async for _delta in generate(
         _client(),
         turn.text,
-        context=turn.context,
         history=turn.history,
         active_person=turn.active_person,
+        profile_card=render_memory_block(turn.context),
     ):
         pass
     return captured[0]

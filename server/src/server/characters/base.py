@@ -80,13 +80,11 @@ class CharacterProfile:
     Attributes:
         name: Identifier used in ROBOT_CHARACTER env var.
         base_prompt: Core identity, backstory, ethical limits, and response format.
-        onboarding_prompt: Appended on first-run to guide introductory questions.
         personality: Numeric profile that generates concrete behavioral instructions.
     """
 
     name: str
     base_prompt: str
-    onboarding_prompt: str
     personality: PersonalityProfile = field(default_factory=PersonalityProfile)
 
     def __post_init__(self) -> None:

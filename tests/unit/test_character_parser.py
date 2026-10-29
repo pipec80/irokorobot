@@ -17,9 +17,6 @@ social_energy: "moderate"
 ---
 # BASE PROMPT
 Sos un personaje de prueba.
-
-# ONBOARDING PROMPT
-Presentate brevemente.
 """
 
 
@@ -69,18 +66,16 @@ def test_parse_valid_profile() -> None:
     assert profile.name == "prueba"
     assert profile.base_prompt.startswith("Sos un personaje de prueba.")
     assert "# BASE PROMPT" not in profile.base_prompt
-    assert profile.onboarding_prompt == "Presentate brevemente."
     assert profile.personality.curiosity == 0.8
 
 
 @pytest.mark.unit
-def test_parse_without_onboarding_header() -> None:
-    text = _VALID.split("# ONBOARDING PROMPT", 1)[0]
+def test_a_body_with_an_onboarding_header_is_rejected() -> None:
+    """The first-run interview is retired (Plan 0076): its text must never merge into the base."""
+    text = _VALID + "\n# ONBOARDING PROMPT\nPresentate brevemente.\n"
 
-    profile = parse_character(text, "prueba")
-
-    assert profile.onboarding_prompt == ""
-    assert "personaje de prueba" in profile.base_prompt
+    with pytest.raises(ValueError, match="onboarding section"):
+        parse_character(text, "prueba")
 
 
 @pytest.mark.unit
@@ -125,13 +120,12 @@ def test_character_profile_rejects_both_legacy_json_markers() -> None:
         CharacterProfile(
             name="x",
             base_prompt='Respondé con {"response": "...", "emotion": "..."}.',
-            onboarding_prompt="",
         )
 
 
 @pytest.mark.unit
 def test_parse_empty_base_prompt_raises() -> None:
-    text = '---\ncuriosity: 0.5\n---\n# BASE PROMPT\n\n# ONBOARDING PROMPT\n{"response","emotion"}'
+    text = "---\ncuriosity: 0.5\n---\n# BASE PROMPT\n\n"
 
     with pytest.raises(ValueError, match="base prompt is empty"):
         parse_character(text, "x")

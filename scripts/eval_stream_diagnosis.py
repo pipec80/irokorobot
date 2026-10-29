@@ -14,6 +14,7 @@ import logging
 import time
 from typing import TYPE_CHECKING
 
+from scripts.eval_memory_block import render_memory_block
 from scripts.eval_stream_protocol import StreamOutcome, _StreamClassifier, classify_deltas
 from scripts.stream_diagnosis_variants import (
     DiagnosisUnit,
@@ -133,8 +134,8 @@ async def observe_once(
     stream = generate(
         client,
         turn.text,
-        context=turn.context,
         history=turn.history,
+        profile_card=render_memory_block(turn.context),
         active_person=turn.active_person,
     )
     failed = False

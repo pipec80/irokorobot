@@ -35,9 +35,6 @@ social_energy: "extrovert"
 ---
 # BASE PROMPT
 Sos {who}.
-
-# ONBOARDING PROMPT
-Saludá.
 """
 
 

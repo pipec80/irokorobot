@@ -20,6 +20,7 @@ from server.llm_streaming import (
     _streaming_system_prompt,
 )
 
+from scripts.eval_memory_block import render_memory_block
 from server import llm_streaming
 
 if TYPE_CHECKING:
@@ -27,7 +28,7 @@ if TYPE_CHECKING:
 
     import httpx
     from server.cognition.identity import ActivePersonContext
-    from server.schemas import ConversationTurn, MemoryContext
+    from server.schemas import ConversationTurn
 
     from scripts.eval_stream_protocol import StreamTurn
 
@@ -161,19 +162,17 @@ async def generate_contract_first(
     client: httpx.AsyncClient,
     text: str,
     *,
-    context: MemoryContext | None = None,
     history: list[ConversationTurn] | None = None,
     active_person: ActivePersonContext | None = None,
+    profile_card: str | None = None,
 ) -> AsyncIterator[str]:
     """Stream like production does, with the contract at the start of the system prompt."""
     if not text:
         raise ValueError("Input text is empty")
     base_prompt = _build_streaming_base_prompt(
-        context,
-        onboarding=False,
-        onboarding_slot=None,
         user_emotion=None,
         active_person=active_person,
+        profile_card=profile_card,
     )
     system_prompt = contract_first_system_prompt(base_prompt)
     messages = _build_messages(text, history)
@@ -194,11 +193,9 @@ def prompt_chars(unit: DiagnosisUnit) -> int:
     """Return the characters sent to the model for one unit (system plus messages)."""
     turn = unit.turn
     base_prompt = _build_streaming_base_prompt(
-        turn.context,
-        onboarding=False,
-        onboarding_slot=None,
         user_emotion=None,
         active_person=turn.active_person,
+        profile_card=render_memory_block(turn.context),
     )
     if unit.variant is StreamVariant.CONTRACT_FIRST:
         system_prompt = contract_first_system_prompt(base_prompt)

@@ -18,7 +18,7 @@ def test_current_date_es_formats_spanish_prose() -> None:
 def test_system_prompt_contains_todays_date() -> None:
     """Observed live 2026-07-14: without the date the model invented
     'tu cumpleaños es justo hoy'. The prompt must state the real date."""
-    prompt = build_system_prompt(get_character("iroko"), None)
+    prompt = build_system_prompt(get_character("iroko"))
 
     assert "FECHA ACTUAL" in prompt
     assert current_date_es() in prompt

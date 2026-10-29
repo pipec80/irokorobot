@@ -16,8 +16,6 @@ from server.cognition.identity import (
     ActivePersonStatus,
     IdentityEvidenceSource,
 )
-from server.onboarding import OnboardingSlot
-from server.schemas import MemoryContext
 from server.settings import ProfileCardPosition, settings
 
 logger = logging.getLogger(__name__)
@@ -102,15 +100,6 @@ PRESENTATION GUIDANCE:
 - You may use neutral second-person phrasing only when natural.
 - Do not state that the name identifies the speaker.
 - Do not infer relationships, personal facts, or authorization from it."""
-
-# D2/D3: the checklist decides WHAT to ask; the character decides HOW.
-# The echo provokes correction — if the robot repeats a garbled name, the
-# user fixes it next turn and fact versioning does the rest.
-_ONBOARDING_GOAL_TEMPLATE = """
-PRÓXIMO OBJETIVO de la entrevista: pregúntale {question_hint}. UNA sola \
-pregunta. Cuando el usuario te dé un dato importante (nombre, fecha, \
-lugar), repítelo naturalmente en tu respuesta para confirmar que lo \
-entendiste bien."""
 
 # V0.5: what the camera sees THIS turn enters the prompt like memory does —
 # the VLM provides the raw description, the character reacts in its own voice.
@@ -244,10 +233,7 @@ def _has_manual_presentation_context(
 
 def build_system_prompt(
     profile: CharacterProfile,
-    context: MemoryContext | None,
     *,
-    onboarding: bool = False,
-    onboarding_slot: OnboardingSlot | None = None,
     user_emotion: str | None = None,
     active_person: ActivePersonContext | None = None,
     perception: str | None = None,
@@ -258,10 +244,6 @@ def build_system_prompt(
 
     Args:
         profile: The active character profile.
-        context: Memory context with entities and semantic memories, or None.
-        onboarding: If True, appends first-run meeting instructions.
-        onboarding_slot: Next missing checklist slot. When provided during
-            onboarding, the prompt names the ONE datum to ask for this turn.
         user_emotion: Most frequent non-neutral emotion detected in recent turns.
             When provided, appends a behavioral adaptation directive.
         active_person: Internally resolved person context for this turn. An
@@ -273,7 +255,8 @@ def build_system_prompt(
         profile_card: The rendered, already authorized profile card of the speaker (Plan 0074).
             It is the only place the person's own data enters the prompt; ``None`` changes
             nothing. The caller owns the authorization; this function only places the text.
-        profile_card_position: ``with_memory`` puts the card right before the memory block,
+        profile_card_position: ``with_memory`` puts the card right after the emotion
+            adaptation, where the retired memory block used to follow it (Plan 0076);
             ``before_language`` right before the language rule. The language rule stays the
             last block either way.
 
@@ -288,20 +271,12 @@ def build_system_prompt(
     ]
     if _has_manual_presentation_context(active_person):
         parts.append(_PRESENTATION_GUIDANCE)
-    if onboarding:
-        parts.append(profile.onboarding_prompt)
-        if onboarding_slot is not None:
-            parts.append(
-                _ONBOARDING_GOAL_TEMPLATE.format(question_hint=onboarding_slot.question_hint)
-            )
     if user_emotion:
         adaptation = _emotion_adaptation(user_emotion)
         if adaptation:
             parts.append(adaptation)
     if profile_card and profile_card_position == "with_memory":
         parts.append("\n" + profile_card)
-    if context and (context.entities or context.memories):
-        parts.append(_format_memory_block(context))
     if perception:
         parts.append(_PERCEPTION_TEMPLATE.format(description=perception))
     if profile_card and profile_card_position == "before_language":
@@ -361,16 +336,3 @@ def _emotion_adaptation(emotion: str) -> str:
     if not directive:
         return ""
     return f"\nEMOTION ADAPTATION — user's current mood:\n{directive}"
-
-
-def _format_memory_block(ctx: MemoryContext) -> str:
-    """Format active memory as a block appended to the system prompt."""
-    lines = ["\n--- Memoria activa autorizada ---"]
-    for entity in ctx.entities:
-        facts = ", ".join(f"{f.predicate}: {f.object_value}" for f in entity.facts)
-        label = f"- {entity.name} ({entity.type})"
-        lines.append(f"{label}: {facts}" if facts else label)
-    for mem in ctx.memories:
-        summary = mem.summary or mem.content[:120]
-        lines.append(f"- [recuerdo] {summary}")
-    return "\n".join(lines)

@@ -72,16 +72,7 @@ def _face_owner() -> ActivePersonContext:
 
 def _prepared() -> PreparedTextTurn:
     return PreparedTextTurn(
-        "hola",
-        "interaction:canary",
-        None,
-        [],
-        False,
-        None,
-        None,
-        None,
-        _face_owner(),
-        ContinuityTurn((), 7, 0),
+        "hola", "interaction:canary", [], None, None, _face_owner(), ContinuityTurn((), 7, 0)
     )
 
 

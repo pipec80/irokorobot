@@ -540,6 +540,15 @@ _RETIRED_LEGACY_MEMORY_NAMES = frozenset(
         "load_entity_with_facts",
         "_memory_prompt_state",
         "_manual_evidence",
+        # The prompt surface only that path fed (Plan 0076 Task 2).
+        "MemoryContext",
+        "MemoryHit",
+        "EntityWithFacts",
+        "OnboardingSlot",
+        "onboarding_slot",
+        "onboarding_prompt",
+        "next_missing_slot",
+        "_format_memory_block",
     }
 )
 

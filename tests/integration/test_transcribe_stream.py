@@ -244,16 +244,7 @@ def test_stream_prepares_shared_voice_turn(
 ) -> None:
     """Streaming keeps one fresh internal scope for preparation and recording."""
     scope = "interaction:stream-request"
-    prepared = PreparedTextTurn(
-        "hola robot",
-        scope,
-        None,
-        None,
-        False,
-        None,
-        None,
-        None,
-    )
+    prepared = PreparedTextTurn("hola robot", scope, None, None, None)
     prepare = AsyncMock(return_value=prepared)
     record = Mock()
     new_scope = Mock(return_value=scope)
@@ -278,9 +269,7 @@ def test_stream_answers_current_date_without_legacy_generation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A deterministic stream response must bypass prompt preparation and LLM output."""
-    prepared = PreparedTextTurn(
-        "¿Qué fecha es hoy?", "interaction:date", None, None, False, None, None, None
-    )
+    prepared = PreparedTextTurn("¿Qué fecha es hoy?", "interaction:date", None, None, None)
     prepare = AsyncMock(return_value=prepared)
     record = Mock()
 
@@ -444,7 +433,7 @@ def test_stream_denies_private_household_request_before_legacy_generation(
 ) -> None:
     """A public stream must audit and deny protected data before generation."""
     prepared = PreparedTextTurn(
-        "¿Cómo se llaman mis hijos?", "interaction:private", None, None, False, None, None, None
+        "¿Cómo se llaman mis hijos?", "interaction:private", None, None, None
     )
     prepare = AsyncMock(return_value=prepared)
     record = Mock()
@@ -658,7 +647,7 @@ async def test_stream_uses_local_deltas_after_invalid_runtime_provider_mutation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Streaming must stay local even when a caller corrupts the provider field."""
-    prepared = PreparedTextTurn("hola", "public-turn", None, None, False, None, None, None)
+    prepared = PreparedTextTurn("hola", "public-turn", None, None, None)
 
     async def local_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
         yield "Hola."
@@ -823,9 +812,7 @@ async def test_stream_partial_llm_failure_preserves_audio_then_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A provider failure after one spoken sentence must preserve it, not re-announce emotion."""
-    prepared = PreparedTextTurn(
-        "hola robot", "interaction:partial", None, None, False, None, None, None
-    )
+    prepared = PreparedTextTurn("hola robot", "interaction:partial", None, None, None)
     record = Mock()
     monkeypatch.setattr(streaming, "record_text_turn", record)
 
@@ -867,9 +854,7 @@ async def test_stream_protocol_fallback_tts_failure_has_no_done(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A TTS failure while speaking the fallback must never yield a `done` line."""
-    prepared = PreparedTextTurn(
-        "hola robot", "interaction:tts-fail", None, None, False, None, None, None
-    )
+    prepared = PreparedTextTurn("hola robot", "interaction:tts-fail", None, None, None)
 
     async def not_plain_text(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
         yield '{"response": "hola"}'
@@ -899,9 +884,7 @@ async def test_stream_tts_failure_logs_tts_error_outcome(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """A TTS failure must log outcome=tts_error before the exception propagates."""
-    prepared = PreparedTextTurn(
-        "hola robot", "interaction:tts-fail-log", None, None, False, None, None, None
-    )
+    prepared = PreparedTextTurn("hola robot", "interaction:tts-fail-log", None, None, None)
 
     async def plain_text(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
         yield "Hola sin problemas."
@@ -1207,16 +1190,7 @@ async def test_streaming_propagates_prepared_identity_history_and_recording_scop
     active_person = _manual_active_person()
     history = [ConversationTurn(role="user", content="previous question")]
     prepared = PreparedTextTurn(
-        "hola robot",
-        "public-id",
-        None,
-        history,
-        False,
-        None,
-        None,
-        None,
-        active_person,
-        ContinuityTurn((), 7, 0),
+        "hola robot", "public-id", history, None, None, active_person, ContinuityTurn((), 7, 0)
     )
     streamed_kwargs: dict[str, object] = {}
 
@@ -1261,16 +1235,7 @@ async def test_streaming_schedules_the_proposal_for_a_face_identified_speaker(
     """Streaming hands the proposal callback the user's words and the actor, never the reply."""
     active_person = _face_active_person()
     prepared = PreparedTextTurn(
-        "me gusta el mate",
-        "public-id",
-        None,
-        [],
-        False,
-        None,
-        None,
-        None,
-        active_person,
-        ContinuityTurn((), 7, 0),
+        "me gusta el mate", "public-id", [], None, None, active_person, ContinuityTurn((), 7, 0)
     )
     scheduler = Mock()
     monkeypatch.setattr(settings, "memory_enabled", True)

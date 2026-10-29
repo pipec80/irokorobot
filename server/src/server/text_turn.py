@@ -24,8 +24,7 @@ from server.exceptions import LLMError
 from server.memory import continuity
 from server.memory.candidate_dialogue import OfferPreparer, PendingOffer, commit_offer
 from server.memory.continuity import ContinuityTurn, SuspendCause
-from server.onboarding import OnboardingSlot
-from server.schemas import ConversationTurn, MemoryContext
+from server.schemas import ConversationTurn
 from server.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -48,10 +47,7 @@ class PreparedTextTurn:
 
     message: str
     conversation_id: str
-    context: MemoryContext | None
     history: list[ConversationTurn] | None
-    onboarding: bool
-    onboarding_slot: OnboardingSlot | None
     user_emotion: str | None
     perception: str | None
     active_person: ActivePersonContext | None = None
@@ -171,10 +167,7 @@ async def prepare_text_turn(
         return PreparedTextTurn(
             message=message,
             conversation_id=conversation_id,
-            context=None,
             history=None,
-            onboarding=False,
-            onboarding_slot=None,
             user_emotion=None,
             perception=perception,
             active_person=resolved_person,
@@ -194,10 +187,7 @@ async def prepare_text_turn(
     return PreparedTextTurn(
         message=message,
         conversation_id=conversation_id,
-        context=None,
         history=history,
-        onboarding=False,
-        onboarding_slot=None,
         user_emotion=None,
         perception=perception,
         active_person=resolved_person,
@@ -212,10 +202,7 @@ async def _generate(client: httpx.AsyncClient, prepared: PreparedTextTurn) -> tu
         response, emotion = await llm.generate_response(
             client,
             prepared.message,
-            context=prepared.context,
             history=prepared.history,
-            onboarding=prepared.onboarding,
-            onboarding_slot=prepared.onboarding_slot,
             user_emotion=prepared.user_emotion,
             active_person=prepared.active_person,
             perception=prepared.perception,

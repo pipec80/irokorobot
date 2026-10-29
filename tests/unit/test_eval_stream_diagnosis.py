@@ -9,8 +9,9 @@ from unittest.mock import Mock
 import httpx
 import pytest
 from server.exceptions import LLMError
-from server.schemas import ConversationTurn, MemoryContext
+from server.schemas import ConversationTurn
 
+from scripts.eval_memory_block import EvalMemoryContext
 from scripts.eval_stream_diagnosis import Observation, observe_once, run_diagnosis
 from scripts.eval_stream_protocol import StreamOutcome, StreamTurn
 from scripts.stream_diagnosis_variants import DiagnosisUnit, StreamVariant
@@ -35,7 +36,7 @@ def _turn(
         label=label,
         source=source,
         text="hola",
-        context=MemoryContext() if source == "context" else None,
+        context=EvalMemoryContext() if source == "context" else None,
         history=[ConversationTurn(role="user", content="antes")] if history else None,
         active_person=cast("ActivePersonContext", Mock()) if person else None,
     )

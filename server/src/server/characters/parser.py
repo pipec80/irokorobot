@@ -8,9 +8,10 @@ Format (industry-standard frontmatter):
     ...
     ---
     # BASE PROMPT
-    <identity, backstory, limits, and the JSON response contract>
-    # ONBOARDING PROMPT
-    <first-run interview guidance>
+    <identity, backstory and limits>
+
+A ``# ONBOARDING PROMPT`` section is refused: the first-run interview went away with the legacy
+memory path (Plan 0076), and silently keeping its text would merge it into the base prompt.
 
 The parser is strict on purpose: a hand-edited profile that drops the base
 prompt, embeds a legacy output-format contract, or uses an out-of-range
@@ -45,27 +46,24 @@ _ONBOARDING_HEADER = "# ONBOARDING PROMPT"
 _PERSONALITY_KEYS = ("curiosity", "verbosity", "empathy", "humor", "social_energy")
 
 
-def _split_body(body: str) -> tuple[str, str]:
-    """Split the markdown body into (base_prompt, onboarding_prompt).
+def _base_prompt(body: str) -> str:
+    """Return the trimmed base prompt of the markdown body.
 
     Args:
         body: Everything after the frontmatter.
 
     Returns:
-        The base prompt and onboarding prompt, both trimmed. Onboarding is
-        empty when its header is absent.
+        The base prompt.
 
     Raises:
-        ValueError: If the base prompt is empty after parsing.
+        ValueError: If the body still has an onboarding section, or the base prompt is empty.
     """
     if _ONBOARDING_HEADER in body:
-        base_part, onboarding_part = body.split(_ONBOARDING_HEADER, 1)
-    else:
-        base_part, onboarding_part = body, ""
-    base_prompt = base_part.replace(_BASE_HEADER, "", 1).strip()
+        raise ValueError("Character profiles no longer take an onboarding section")
+    base_prompt = body.replace(_BASE_HEADER, "", 1).strip()
     if not base_prompt:
         raise ValueError("Character base prompt is empty")
-    return base_prompt, onboarding_part.strip()
+    return base_prompt
 
 
 def _build_personality(meta: dict[str, Any]) -> PersonalityProfile:
@@ -124,19 +122,17 @@ def parse_character(content: str, name: str) -> CharacterProfile:
         A parsed, validated ``CharacterProfile``.
 
     Raises:
-        ValueError: If the frontmatter is missing, not a mapping, the base
-            prompt is empty, the base prompt embeds a legacy output-format
+        ValueError: If the frontmatter is missing, not a mapping, the body has an
+            onboarding section, the base prompt is empty, the base prompt embeds a legacy output-format
             contract (see ``CharacterProfile.__post_init__``), or a
             personality value is invalid.
         yaml.YAMLError: If the frontmatter is not valid YAML.
     """
     meta, body = _parse_frontmatter(content, name)
-    base_prompt, onboarding_prompt = _split_body(body)
 
     return CharacterProfile(
         name=name.lower(),
-        base_prompt=base_prompt,
-        onboarding_prompt=onboarding_prompt,
+        base_prompt=_base_prompt(body),
         personality=_build_personality(meta),
     )
 

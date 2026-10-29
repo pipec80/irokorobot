@@ -263,7 +263,8 @@ async def test_a_public_turn_reaches_the_model_with_no_private_context(
     body = await voice.speak(utterance)
 
     assert len(llm_calls) == 1
-    assert llm_calls[0]["context"] is None
+    assert "context" not in llm_calls[0]
+    assert llm_calls[0]["profile_card"] is None
     assert llm_calls[0]["history"] is None
     assert not _leaks(body)
 

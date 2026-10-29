@@ -67,10 +67,7 @@ async def _text_deltas(client: httpx.AsyncClient, inputs: PreparedTextTurn) -> A
     async for delta in llm_streaming.generate_response_stream(
         client,
         inputs.message,
-        context=inputs.context,
         history=inputs.history,
-        onboarding=inputs.onboarding,
-        onboarding_slot=inputs.onboarding_slot,
         user_emotion=inputs.user_emotion,
         active_person=inputs.active_person,
         profile_card=inputs.profile_card,

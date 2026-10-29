@@ -26,6 +26,7 @@ from server.streaming_render import (
     classify_stream_end,
 )
 
+from scripts.eval_memory_block import EvalMemoryContext, render_memory_block
 from scripts.reply_language import judge_language
 from server import llm_streaming
 
@@ -34,7 +35,6 @@ if TYPE_CHECKING:
 
     import httpx
     from server.cognition.identity import ActivePersonContext
-    from server.schemas import MemoryContext
 
     type StreamGenerator = Callable[..., AsyncIterator[str]]
 
@@ -221,7 +221,7 @@ class StreamTurn:
     label: str
     source: str
     text: str
-    context: MemoryContext | None
+    context: EvalMemoryContext | None
     history: list[ConversationTurn] | None
     active_person: ActivePersonContext | None
 
@@ -317,8 +317,8 @@ async def _stream_once(
     stream = generate(
         client,
         turn.text,
-        context=turn.context,
         history=turn.history,
+        profile_card=render_memory_block(turn.context),
         active_person=turn.active_person,
     )
     try:

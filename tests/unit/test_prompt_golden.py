@@ -76,7 +76,6 @@ def golden_prompts(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
         digests[f"system|{key}"] = _digest(
             build_system_prompt(
                 get_character(name),
-                None,
                 user_emotion=emotion,
                 active_person=actor,
                 perception=perception,
@@ -87,9 +86,6 @@ def golden_prompts(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
         digests[f"classic|{key}"] = _digest(
             llm._classic_system_prompt(
                 llm._build_classic_base_prompt(
-                    None,
-                    onboarding=False,
-                    onboarding_slot=None,
                     user_emotion=emotion,
                     active_person=actor,
                     perception=perception,
@@ -100,9 +96,6 @@ def golden_prompts(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
         digests[f"stream|{key}"] = _digest(
             llm_streaming._streaming_system_prompt(
                 llm_streaming._build_streaming_base_prompt(
-                    None,
-                    onboarding=False,
-                    onboarding_slot=None,
                     user_emotion=emotion,
                     active_person=actor,
                     profile_card=card,

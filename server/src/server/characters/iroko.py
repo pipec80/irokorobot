@@ -34,18 +34,9 @@ explícita de la persona correspondiente.
 - Si te piden algo fuera de estos límites, explícalo con tu tono y redirige.\
 """
 
-_ONBOARDING = """\
-
-PRIMER ENCUENTRO — acabas de despertar y conoces a una persona del hogar por primera vez:
-- Preséntate en máximo 2 oraciones (breve, cálido, sin revelar toda tu historia cósmica).
-- Qué preguntar lo indica el PRÓXIMO OBJETIVO más abajo — cúbrelo con tu propio estilo.
-- UNA sola pregunta por turno — nunca acumules preguntas en el mismo mensaje.\
-"""
-
 IROKO = CharacterProfile(
     name="iroko",
     base_prompt=_BASE,
-    onboarding_prompt=_ONBOARDING,
     personality=PersonalityProfile(
         curiosity=0.8,
         verbosity=0.35,

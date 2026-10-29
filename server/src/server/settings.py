@@ -123,7 +123,6 @@ class Settings(BaseSettings):
     working_memory_size: int = 20
     working_memory_max_chars: PositiveInt = 3000
     working_memory_idle_seconds: PositiveInt = 180
-    semantic_top_k: int = 6
 
     memory_enabled: bool = True
     # Memory candidates (ADR 0021, CM-3a): what the identified owner says about their own

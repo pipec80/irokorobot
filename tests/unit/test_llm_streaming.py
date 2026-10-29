@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING
 
 import pytest
 from server.characters.base import CharacterProfile, PersonalityProfile
-from server.schemas import MemoryContext, MemoryHit
 from server.settings import settings
 
 from server import llm_streaming
@@ -79,7 +78,6 @@ async def test_generate_response_stream_dynamic_profile_has_single_contract(
     dynamic = CharacterProfile(
         name="vendedor",
         base_prompt="Sos un vendedor carismático.",
-        onboarding_prompt="",
         personality=PersonalityProfile(),
     )
     monkeypatch.setattr(llm_streaming, "get_character", lambda _name: dynamic)
@@ -131,25 +129,15 @@ async def test_generate_response_stream_honours_the_profile_card_position(
     http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """The streaming prompt has no perception block, so both positions place the card last
+    before the language rule since the memory block was retired (Plan 0076)."""
     captured: dict[str, object] = {}
     monkeypatch.setattr(llm_streaming, "ollama_chat_stream", _capturing_stream_factory(captured))
-    memory = MemoryContext(
-        memories=[
-            MemoryHit(
-                id=1,
-                kind="semantic",
-                content="Un dato.",
-                summary=None,
-                importance=0.5,
-                distance=0.1,
-            )
-        ]
-    )
     prompts = []
     for position in ("with_memory", "before_language"):
         monkeypatch.setattr(settings, "profile_card_position", position)
         async for _ in llm_streaming.generate_response_stream(
-            http_client, "hola", context=memory, profile_card="CARD-CANARY"
+            http_client, "hola", profile_card="CARD-CANARY"
         ):
             pass
         messages = captured["messages"]
@@ -157,8 +145,8 @@ async def test_generate_response_stream_honours_the_profile_card_position(
         prompts.append(messages[0]["content"])
 
     with_memory, before_language = prompts
-    assert with_memory.index("CARD-CANARY") < with_memory.index("--- Memoria activa")
-    assert before_language.index("--- Memoria activa") < before_language.index("CARD-CANARY")
+    assert with_memory == before_language
+    assert before_language.count("CARD-CANARY") == 1
     assert before_language.index("CARD-CANARY") < before_language.index("IDIOMA")
 
 

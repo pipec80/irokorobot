@@ -457,8 +457,7 @@ async def test_a_face_or_token_identified_turn_has_history_and_nothing_durable(
 
     assert _histories(generate) == [[], ["primero", "Uno"]]
     for call in generate.await_args_list:
-        assert call.kwargs["context"] is None
-        assert call.kwargs["onboarding"] is False
+        assert "context" not in call.kwargs
         assert call.kwargs["user_emotion"] is None
     scheduler.assert_not_called()
 
@@ -1036,9 +1035,7 @@ async def test_the_card_reaches_the_stream_call(
         yield "Hola."
 
     monkeypatch.setattr(llm_streaming, "generate_response_stream", fake_stream)
-    prepared = text_turn.PreparedTextTurn(
-        "hola", "web", None, None, False, None, None, None, profile_card=_CARD_TEXT
-    )
+    prepared = text_turn.PreparedTextTurn("hola", "web", None, None, None, profile_card=_CARD_TEXT)
 
     assert [delta async for delta in streaming._text_deltas(http_client, prepared)] == ["Hola."]
     assert captured["profile_card"] == _CARD_TEXT
@@ -1046,7 +1043,7 @@ async def test_the_card_reaches_the_stream_call(
 
 def test_the_card_never_shows_in_the_repr_of_a_prepared_turn() -> None:
     prepared = text_turn.PreparedTextTurn(
-        "hola", "web", None, None, False, None, None, None, profile_card="CARD-CANARY quokka"
+        "hola", "web", None, None, None, profile_card="CARD-CANARY quokka"
     )
 
     assert "quokka" not in repr(prepared)

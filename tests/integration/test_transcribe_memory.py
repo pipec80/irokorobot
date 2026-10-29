@@ -160,7 +160,6 @@ def test_presentation_guidance_omits_dynamic_display_name(display_name: str) -> 
     """Manual identity adds static guidance but never display-name prompt text."""
     prompt = build_system_prompt(
         get_character("iroko"),
-        None,
         active_person=_identified_person(display_name),
     )
 
@@ -174,7 +173,6 @@ def test_presentation_guidance_is_static_for_manual_context() -> None:
     """A safe name must not enter static manual-context guidance either."""
     prompt = build_system_prompt(
         get_character("iroko"),
-        None,
         active_person=_identified_person("Paula del Mar"),
     )
 
@@ -187,7 +185,6 @@ def test_presentation_guidance_requires_manual_evidence() -> None:
     """Identified non-manual evidence must not enable presentation guidance."""
     prompt = build_system_prompt(
         get_character("iroko"),
-        None,
         active_person=_identified_person("Paula", source=IdentityEvidenceSource.SESSION),
     )
 
