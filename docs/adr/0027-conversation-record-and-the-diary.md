@@ -72,7 +72,12 @@ A turn is the owner's when the voice of its own clip verifies against the owner 
 candidate path already runs in the background, with the clip held only in memory). The fraction of
 real turns that pass is **measured first**, in the implementing plan, with Pipec's own conversations. If
 it is too low to be useful, the plan proposes a rule per conversation (for example, most clips) before
-anything is built on the per-turn rule. Face alone never makes a turn the owner's for memory, because a
+anything is built on the per-turn rule. *Measured on 2026-10-29 by [Plan 0075](../plans/completed/0075-cm4-pre-measurement.md)
+([record](../evals/0075-cm4-pre-measurement.md)): 22 of 62 real turns verified (35.5 %), driven by clip
+duration (over 3 s 58 %, under 1.5 s 0 %; short answers 7 %, questions 0 %). A per-conversation
+«most clips» rule is fragile (50 % in one conversation, 18 % in the other); **Confirmed by Pipec
+(2026-10-29): the rule is per turn.** Lowering the 1.5 s floor recovers nothing (0 of 12 would match).*
+Face alone never makes a turn the owner's for memory, because a
 photograph would then write into the owner's diary.
 
 ### 4. A conversation ends by silence, and a long one is cut into segments
@@ -138,7 +143,11 @@ exclude it is a setting decided in the backup plan. A redaction filter is out of
 ### 11. Embeddings
 
 Whether the current embedding model suits Spanish is measured with Pipec's phrases before any episode is
-indexed (Pipec's decision 6). It changes the index, not the record.
+indexed (Pipec's decision 6). It changes the index, not the record. *Measured on 2026-10-29 by
+[Plan 0075](../plans/completed/0075-cm4-pre-measurement.md) on invented Spanish phrases: `nomic-embed-text`
+separates paraphrases from unrelated phrases (ROC-AUC 0.98) and is adequate for the first episodes; two
+768-d multilingual drop-ins, `granite-embedding:278m` (185 MB) and `embeddinggemma:300m` (1.1 GB), reach
+1.00. A swap re-embeds the whole index, so it is a follow-up in the roadmap, not part of this ADR.*
 
 ## Pipec's decisions and where they land
 
@@ -218,6 +227,7 @@ speakers are in scope (P3), or when the backup plan decides what a backup carrie
 
 ## Follow-up
 
-- The implementing plan (the record, the jobs, migration 013) is not written. Its first task is the
-  measurement of verified turns and of the embedding model.
+- The measurement of verified turns and of the embedding model is done
+  ([Plan 0075](../plans/completed/0075-cm4-pre-measurement.md), 2026-10-29). The implementing plan (the
+  record, the jobs, migration 013) is not written; it starts from the per-turn rule confirmed above.
 - The next free ADR number is 0028.
