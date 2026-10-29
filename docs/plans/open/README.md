@@ -45,17 +45,17 @@ con la que el robot lee de vuelta tus gustos y cómo llamarte en cada turno iden
 sensibles, y responde «¿qué sabes de mí?» con una frase fija. Ocho tareas, sin migración y sin cambio de
 cable.
 
-### Borradores en diseño (no ejecutables)
-
-- [Plan 0075 — la medición previa a CM-4](0075-cm4-pre-measurement.md) (`Draft`, 2026-10-29). **Solo
-  medición**, no toca `server/src` ni `robot/src`, sin migración ni dependencias nuevas. Instrumentos y
-  procedimiento para medir, con conversaciones reales de Pipec, (1) la tasa de turnos con la voz del
-  dueño verificada —por duración de clip (`<1,5 s / 1,5–3 s / >3 s`) y por tipo de frase, por turno y por
-  conversación— y (2) si `nomic-embed-text` separa paráfrasis en español de frases sin relación, con
-  algunos multilingües de referencia. Propone la regla de elegibilidad del
-  [ADR 0027](../../adr/0027-conversation-record-and-the-diary.md) con cifras y la deja como decisión de
-  Pipec; el ADR 0027 sigue `Proposed`. El siguiente plan es la implementación de CM-4 (el registro, los
-  jobs, la migración 013). **Siguiente número de plan libre: 0076.**
+**Cerrado el 2026-10-29:** el [Plan 0075 — la medición previa a CM-4](../completed/0075-cm4-pre-measurement.md)
+(`NOW` sigue vacío). Solo medición, sin tocar `server/src` ni `robot/src`: tres instrumentos fuera de
+línea (`cm4-corpus`, `cm4-voice-rate`, `cm4-embed`) y un fixture de frases inventadas. Con dos
+conversaciones reales de Pipec (62 clips) la voz del dueño se verifica en el 35,5 % de los turnos,
+gobernada por la duración (más de 3 s: 58 %; menos de 1,5 s: 0 %; respuestas cortas 7 %, preguntas 0 %);
+bajar el piso de 1,5 s no recupera nada (0 de 12). Pipec aceptó la medición y confirmó la regla **por
+turno** para CM-4 ([registro](../../evals/0075-cm4-pre-measurement.md)). El modelo de embeddings
+`nomic-embed-text` separa el español (ROC-AUC 0,98) y dos reemplazos de 768 dimensiones llegan a 1,00; el
+seguimiento está en la tabla transversal del roadmap. El [ADR 0027](../../adr/0027-conversation-record-and-the-diary.md)
+sigue `Proposed`; el siguiente plan es la implementación de CM-4 (el registro, los jobs, la migración
+013). **Siguiente número de plan libre: 0076.**
 
 ### El Paso 0 (cerrado el 2026-10-28) y lo que queda abierto
 

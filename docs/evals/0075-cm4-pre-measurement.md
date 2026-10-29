@@ -2,7 +2,7 @@
 
 > **Aggregates only.** No transcript, no phrase text, no per-clip distance and no household datum. The
 > private corpus (Pipec's real voice) lived only under `project-history/calibration/cm4/` and was
-> deleted at the close of [Plan 0075](../plans/open/0075-cm4-pre-measurement.md). Measured by Pipec on
+> deleted at the close of [Plan 0075](../plans/completed/0075-cm4-pre-measurement.md). Measured by Pipec on
 > 2026-10-29; the instruments are deterministic and reusable.
 
 ## What was measured, and why

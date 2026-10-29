@@ -1,7 +1,17 @@
 # 0075 — The measurement before CM-4: how often the owner's voice verifies, and whether the embedding model separates Spanish
 
-> **For agentic workers:** if the status line below does not say `Ready`, stop — this plan is `Draft`
-> and no one authorized its execution. When it is promoted, REQUIRED SUB-SKILLS:
+> **Closed 2026-10-29.** Executed in one session (native, TDD). The instruments (`cm4-corpus`,
+> `cm4-voice-rate`, `cm4-embed`) and the Spanish fixture are merged; Pipec recorded two real
+> conversations (62 clips) and ran the measurement. Results and the accepted decisions are in
+> [the record](../../evals/0075-cm4-pre-measurement.md): owner-voice verified 35.5 % per turn
+> (duration-driven; short answers 7 %, questions 0 %), the 1.5 s floor closed (0/12 no-floor matches),
+> `nomic-embed-text` separates Spanish at ROC-AUC 0.98 with two 768-d multilingual drop-ins at 1.00
+> (follow-up tracked in the roadmap). Pipec accepted the measurement and confirmed the **per-turn**
+> eligibility rule. The private corpus was deleted and verified. ADR 0027 stays `Proposed`; the CM-4
+> implementation is the next plan.
+>
+> **For agentic workers (historical):** the plan was `Draft` when written and was executed after Pipec
+> authorized it. If you ever reuse it, REQUIRED SUB-SKILLS:
 > `superpowers:executing-plans`, `superpowers:test-driven-development`,
 > `superpowers:verification-before-completion`, `superpowers:finishing-a-development-branch`. Pipec's
 > rules win over any skill: one plain branch from `main`, never a git worktree; subagents only with
@@ -13,7 +23,7 @@
 > Run the suite with `MEMORY_ENABLED=false`. Never run `uv sync --all-packages --all-groups` (it drops
 > the optional `cuda` extra). Every finding met while executing is fixed (Pipec's standing policy).
 
-**Status:** `Draft` (2026-10-29). Written with `superpowers:writing-plans`. It is **measurement only**:
+**Status:** `Closed` (2026-10-29; was `Draft`). Written with `superpowers:writing-plans`. It is **measurement only**:
 it adds instruments under `scripts/` and a tracked fixture, and changes **nothing** under `server/src`
 or `robot/src`, no migration, no new runtime dependency, no new setting. It does **not** change the
 status of [ADR 0027](../../adr/0027-conversation-record-and-the-diary.md), which stays `Proposed`; the
@@ -64,7 +74,7 @@ on eligibility, and the embedding question), with
 alone never identifies) and [ADR 0020](../../adr/0020-authorized-actor-in-the-conversation.md) (the
 background voice check on a generic turn's own clip). Pipec's seven decisions of 2026-10-29 are D-1 to
 D-7 below. The molde for a private-corpus measurement plan is
-[Plan 0069](../completed/0069-stt-owner-voice-audit.md).
+[Plan 0069](0069-stt-owner-voice-audit.md).
 
 ## Evidence base (checked in code on `main`, 2026-10-29)
 
@@ -241,7 +251,7 @@ Sources: [bentoml 2026 open-source embeddings](https://www.bentoml.com/blog/a-gu
 - [ADR 0027](../../adr/0027-conversation-record-and-the-diary.md) (decisions 2, 3, 6, 11 and the
   follow-up), [ADR 0016](../../adr/0016-face-and-voice-identity-fusion.md),
   [ADR 0020](../../adr/0020-authorized-actor-in-the-conversation.md).
-- [Plan 0069](../completed/0069-stt-owner-voice-audit.md) (the private-corpus molde) and the operator
+- [Plan 0069](0069-stt-owner-voice-audit.md) (the private-corpus molde) and the operator
   manual's speaker-calibration and STT-bench sections (`docs/runbooks/operator-manual.md`).
 - `server/src/server/cognition/strong_actor.py`,
   `server/src/server/cognition/speaker_authentication.py`,
