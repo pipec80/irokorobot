@@ -30,6 +30,7 @@ from collections.abc import Awaitable, Callable, Sequence
 import json
 import logging
 import math
+from typing import Any
 
 import aiosqlite
 import numpy as np
@@ -230,9 +231,12 @@ def aggregate(verdicts: Sequence[ClipVerdict]) -> CountTable:
     )
 
 
-def build_report(
-    scored: Sequence[tuple[str, ClipVerdict]], *, centroid_source: str
-) -> dict[str, object]:
+# `Any`: the report is a JSON-ready tree of nested counts and rates whose shape the unit tests pin;
+# a closed type would only restate that tree key by key.
+type Report = dict[str, Any]
+
+
+def build_report(scored: Sequence[tuple[str, ClipVerdict]], *, centroid_source: str) -> Report:
     """Aggregate scored clips into the tracked report structure (counts and rates only).
 
     Args:
@@ -310,7 +314,7 @@ async def _score_corpus(root: Path, owner_id: int) -> list[tuple[str, ClipVerdic
     return scored
 
 
-async def _run_report(root: Path, owner_id: int, centroid_source: str) -> dict[str, object]:
+async def _run_report(root: Path, owner_id: int, centroid_source: str) -> Report:
     """Open the DB copy, score the corpus, close, and build the report."""
     from server.db import close_db, open_db  # noqa: PLC0415 -- CLI-only dep
 

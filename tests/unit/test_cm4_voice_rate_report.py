@@ -7,11 +7,11 @@ tested here; the DB-and-model scoring is Pipec's hardware run.
 import json
 
 from scripts import cm4_voice_rate
-from scripts.cm4_models import ClipVerdict
+from scripts.cm4_models import ClipVerdict, DurationBucket
 
 
 def _verdict(
-    bucket: str,
+    bucket: DurationBucket,
     verdict: str,
     phrase_type: str,
     *,
