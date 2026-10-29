@@ -38,6 +38,7 @@ from datetime import UTC, datetime
 import json
 import logging
 import shutil
+import time
 from typing import TYPE_CHECKING, Final
 import wave
 
@@ -66,6 +67,7 @@ __all__ = [
     "ClipRecord",
     "append_clip",
     "capture_conversation",
+    "capture_guidance",
     "cleanup",
     "load_clips",
     "segment_session_take",
@@ -96,6 +98,34 @@ class ClipRecord:
     duration_s: float
     phrase_type: str
     sha256: str
+
+
+def capture_guidance() -> str:
+    """Return the on-screen guide shown before a capture.
+
+    Two things in one place so a future reader knows what this tool expects: a
+    suggested script of phrases that covers the five types, and the legend of how
+    each clip is later annotated. Printed by the CLI; never used in tests of the
+    capture itself.
+
+    Returns:
+        A multi-line Spanish guide (suggested phrases, then the annotation legend).
+    """
+    return (
+        "Guion sugerido (di cada frase y PAUSA ~2 s para que sea su propio clip):\n"
+        "  Cortas:    Sí.  No.  Ya.  Acepto.  Autorizo.  Dale.\n"
+        "  Gustos:    Me gusta el pastel de choclo.  Prefiero el té antes que el café.\n"
+        "  Preguntas: ¿Qué hora es?  ¿Cómo está el clima hoy?  ¿Me recuerdas algo?\n"
+        "  Órdenes:   Apaga la luz.  Enciende la música.  Sube el volumen.\n"
+        "  Otras:     Hoy fui a comprar pan.  Estoy un poco cansado.\n"
+        "\n"
+        "Al anotar (annotate), cada clip se marca con UNO de estos tipos:\n"
+        "  short_answer     respuesta corta: sí, no, ya, acepto, autorizo\n"
+        "  taste_statement  un gusto o preferencia: me gusta..., prefiero...\n"
+        "  question         le preguntas algo al robot\n"
+        "  command          una orden: apaga..., enciende...\n"
+        "  other            cualquier otra cosa: narración, relleno, inaudible o ruido\n"
+    )
 
 
 def validate_phrase_type(value: str) -> str:
@@ -241,10 +271,17 @@ def _microphone_recorder(seconds: float) -> np.ndarray:
 
 def _cmd_capture(args: argparse.Namespace) -> None:
     minutes = args.minutes if args.subcommand == "capture-conversation" else args.seconds / 60.0
+    # Operator-facing console output (the point of the tool), not logging.
+    print(capture_guidance())  # noqa: T201
+    print(f"\nCaptura de {minutes:.1f} min. Prepárate...")  # noqa: T201
+    for remaining in (3, 2, 1):
+        print(f"  {remaining}...")  # noqa: T201
+        time.sleep(1)
+    print(">>> GRABANDO - HABLA AHORA <<<")  # noqa: T201
     path = capture_conversation(
         args.session, minutes, recorder=_microphone_recorder, root=DEFAULT_CM4_CORPUS_ROOT
     )
-    print(f"saved {path.name}")  # noqa: T201 -- the operator needs the file name
+    print(f">>> LISTO - grabación detenida. Guardado: {path.name}")  # noqa: T201
 
 
 def _cmd_segment(args: argparse.Namespace) -> None:

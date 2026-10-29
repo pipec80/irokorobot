@@ -35,6 +35,15 @@ def _raw(*parts: tuple[float, bool]) -> np.ndarray:
     return np.concatenate([_segment(seconds, loud=loud) for seconds, loud in parts])
 
 
+def test_capture_guidance_lists_the_types_and_examples() -> None:
+    text = cm4_corpus.capture_guidance()
+    for phrase_type in cm4_corpus.PHRASE_TYPES:
+        assert phrase_type in text
+    assert "Apaga la luz" in text
+    assert "¿Qué hora es?" in text
+    assert "Me gusta" in text
+
+
 def test_validate_phrase_type_accepts_the_five_and_rejects_others() -> None:
     for phrase_type in cm4_corpus.PHRASE_TYPES:
         assert cm4_corpus.validate_phrase_type(phrase_type) == phrase_type
