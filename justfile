@@ -114,6 +114,10 @@ cm4-corpus *ARGS:
 cm4-voice-rate *ARGS:
     uv run --env-file .env python scripts/cm4_voice_rate.py {{ARGS}}
 
+# Separacion de embeddings en espanol de CM-4 (Plan 0075): report --model M (con Ollama arriba)
+cm4-embed *ARGS:
+    uv run --env-file .env python scripts/cm4_embed_separation.py {{ARGS}}
+
 # Banco determinista del STT (Plan 0069): run | segment | report | calibrate | probe | external-template; con el servidor detenido
 stt-bench *ARGS:
     uv run --env-file .env python scripts/stt_bench.py {{ARGS}}
