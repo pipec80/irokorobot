@@ -212,3 +212,11 @@ contact path were not run live (covered by the automated tests). Outcomes only: 
 the profile card and of «¿qué sabes de mí?» (2026-10-28): the eight cases, the +0.2 s measured on the first
 audio, the position kept (`with_memory`) and the `usted` limit with the 3B model. Outcomes only: no value,
 name or phone.
+
+## CM-4 pre-measurement (Plan 0075)
+
+[`0075-cm4-pre-measurement.md`](0075-cm4-pre-measurement.md) records the measurement before CM-4
+(2026-10-29): how often the owner's voice verifies on real conversation clips (by duration and phrase type,
+per turn and per conversation, with a sub-1.5 s no-floor diagnostic) and how well three embedding models
+separate invented Spanish phrases. Aggregates only: the private corpus was deleted and nothing but counts,
+rates and model footprints is tracked.

@@ -155,7 +155,7 @@ PC-2 accepted (provisional calibration)
      `strong`, reserved data need `strong`; accepted on real hardware, replay not defended)
   -> hardening: Plan 0055 (PC-4 follow-ups) closed 2026-10-01; Plan 0050 (audit repairs) closed 2026-10-01;
      Plan 0056 (voice-pipeline reliability and diagnostics) closed 2026-10-02; the streaming-fallback repair it measured (29.17 %, a synthetic evaluation) closed with Plan 0059 on 2026-10-08 (diagnosis: Plan 0057, executed 2026-10-06)
-  -> CM-1..CM-7 longitudinal memory — in progress: CM-1 closed with Plans 0051 (2026-10-06) and 0060 (policy only, 2026-10-09); CM-2 Plan 0061 (2026-10-13); CM-3a Plans 0062 and 0063 (2026-10-15 and 2026-10-16); CM-3b tranche A Plan 0065 (2026-10-22); CM-3b tranche B and CM-4 to CM-7 unplanned
+  -> CM-1..CM-7 longitudinal memory — in progress: CM-1 closed with Plans 0051 (2026-10-06) and 0060 (policy only, 2026-10-09); CM-2 Plan 0061 (2026-10-13); CM-3a Plans 0062 and 0063 (2026-10-15 and 2026-10-16); CM-3b tranche A Plan 0065 (2026-10-22); CM-4 pre-measured by Plan 0075 (2026-10-29, per-turn rule); CM-3b tranche B and the CM-4 implementation to CM-7 unplanned
   -> Step 0 seed load (the commissioning, "alta") — Plans 0070 to 0073 closed 2026-10-23 to 2026-10-28: the data pool and its storage, the file importer, the guided commissioning session and `iroko-admin`, the amendment path after the closing; nothing loaded is read by voice until CM-5
   -> PC-5 integrated personal acceptance — unstarted
   -> continue at portfolio row 13; the cross-track tail is not duplicated here
