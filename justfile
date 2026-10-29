@@ -110,6 +110,10 @@ stt-corpus *ARGS:
 cm4-corpus *ARGS:
     uv run --env-file .env python scripts/cm4_corpus.py {{ARGS}}
 
+# Tasa de voz verificada de CM-4 (Plan 0075): report (servidor detenido, BRAIN_DB_PATH apuntando a una copia RO)
+cm4-voice-rate *ARGS:
+    uv run --env-file .env python scripts/cm4_voice_rate.py {{ARGS}}
+
 # Banco determinista del STT (Plan 0069): run | segment | report | calibrate | probe | external-template; con el servidor detenido
 stt-bench *ARGS:
     uv run --env-file .env python scripts/stt_bench.py {{ARGS}}
