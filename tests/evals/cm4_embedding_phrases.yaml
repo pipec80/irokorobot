@@ -1,0 +1,44 @@
+# Invented Chilean-neutral Spanish phrases for the CM-4 embedding-separation
+# measurement (Plan 0075, Task 4). Every phrase is a canary: no real household
+# data (no names, pets, birth dates or ages). Pipec may edit these before the run.
+#
+# Each group's anchor and paraphrases mean the same thing (they should embed
+# close together); phrases of different groups are unrelated (they should embed
+# far apart). The instrument measures whether the model keeps within-group pairs
+# closer than across-group pairs.
+groups:
+  - id: comida
+    anchor: Me gusta mucho el pastel de choclo
+    paraphrases:
+      - El pastel de choclo me encanta
+      - Disfruto harto un buen pastel de choclo
+  - id: musica
+    anchor: Prefiero escuchar cumbia los domingos
+    paraphrases:
+      - La cumbia es lo que más me gusta oír el domingo
+      - Los domingos siempre pongo cumbia
+  - id: casa
+    anchor: La cocina queda al fondo del pasillo
+    paraphrases:
+      - Al final del pasillo está la cocina
+      - Para llegar a la cocina hay que cruzar el pasillo
+  - id: rutina
+    anchor: Me levanto a las siete de la mañana
+    paraphrases:
+      - A las siete ya estoy despierto
+      - Temprano, como a las siete, me paro
+  - id: clima
+    anchor: Hoy hace mucho frío en la calle
+    paraphrases:
+      - Afuera está helado el día
+      - La calle está heladísima hoy
+  - id: bebida
+    anchor: Tomo té en vez de café
+    paraphrases:
+      - Prefiero el té antes que el café
+      - El café no, mejor un té
+  - id: transporte
+    anchor: Voy al trabajo en micro
+    paraphrases:
+      - Al trabajo me subo a la micro
+      - Uso la micro para ir a la pega
