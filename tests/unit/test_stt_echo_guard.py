@@ -70,6 +70,61 @@ def test_there_is_no_echo_without_a_prompt() -> None:
     assert is_prompt_echo("algo largo aquí", "") is False
 
 
+# faster-whisper hands the decoder the hotwords BEFORE the initial prompt, so on a noise clip
+# the echo can be "hotwords + prompt" (seen on the owner's laptop, Plan 0074 run).
+_HOTWORDS = "Iroko apagar encender"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "transcript",
+    [
+        f"{_HOTWORDS} {_PROMPT}",
+        "Iroko, apagar, encender. Conversación con un robot doméstico llamado Iroko.",
+        "iroko apagar encender conversacion con un robot domestico llamado iroko",
+        "Iroko apagar encender Conversación con un robot doméstico",
+        f"Iroko apagar encender Canario {_PROMPT}",
+    ],
+)
+def test_hotwords_followed_by_the_prompt_is_an_echo(transcript: str) -> None:
+    hotwords = "Iroko apagar encender Canario" if "Canario" in transcript else _HOTWORDS
+    assert is_prompt_echo(transcript, _PROMPT, hotwords) is True
+
+
+@pytest.mark.unit
+def test_the_hotwords_argument_is_what_catches_the_combined_echo() -> None:
+    """Without the hotwords the same text is not a part of the prompt, so it passes through."""
+    assert is_prompt_echo(f"{_HOTWORDS} {_PROMPT}", _PROMPT) is False
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "transcript",
+    [
+        "Iroko apagar encender",
+        "Iroko, apaga la luz",
+        "Enciende la luz, Iroko",
+        "Iroko apagar la luz de la sala",
+        f"{_HOTWORDS} y además apaga la luz de la sala",
+    ],
+)
+def test_ordinary_speech_is_not_an_echo_even_with_hotwords(transcript: str) -> None:
+    assert is_prompt_echo(transcript, _PROMPT, _HOTWORDS) is False
+
+
+@pytest.mark.unit
+def test_the_prompt_alone_is_still_an_echo_when_hotwords_are_set() -> None:
+    assert is_prompt_echo(_PROMPT, _PROMPT, _HOTWORDS) is True
+
+
+@pytest.mark.unit
+def test_transcribe_sync_discards_the_combined_echo(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(stt, "_get_model", lambda: _FakeModel(f"{_HOTWORDS} {_PROMPT}"))
+    monkeypatch.setattr(stt.settings, "whisper_initial_prompt", _PROMPT)
+
+    assert stt._transcribe_sync(b"\x00" * 64, _HOTWORDS) == ""
+
+
 class _Segment:
     def __init__(self, text: str) -> None:
         self.text = text
