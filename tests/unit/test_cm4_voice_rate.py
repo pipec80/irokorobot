@@ -11,6 +11,7 @@ import io
 import wave
 
 import numpy as np
+from server.exceptions import AudioContractError
 from server.voice.voiceprints import CentroidMatch
 
 from scripts import cm4_voice_rate
@@ -118,6 +119,25 @@ def test_too_few_references_is_reference_gated() -> None:
     verdict = _score(_wav(2.0, loud=True), "command", refs=2, distance=0.30)
     assert verdict.gate == "references"
     assert verdict.verdict == "unknown"
+
+
+def test_clip_the_backend_rejects_is_unavailable_not_a_crash() -> None:
+    async def rejecting_embed(_wav_bytes: bytes) -> np.ndarray:
+        raise AudioContractError("Audio is 30.5s - max 30.0s")
+
+    verdict = asyncio.run(
+        cm4_voice_rate.score_clip(
+            _wav(2.0, loud=True),
+            "other",
+            owner_person_id=1,
+            model_id="m@rev",
+            embed=rejecting_embed,
+            match=_fake_match(0.30),
+            count_refs=_fake_count(3),
+        )
+    )
+    assert verdict.verdict == "unavailable"
+    assert verdict.gate == "unavailable"
 
 
 def test_aggregate_counts_by_bucket_and_type_without_distances() -> None:

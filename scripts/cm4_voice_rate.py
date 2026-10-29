@@ -31,14 +31,17 @@ import json
 import logging
 import math
 
+import aiosqlite
 import numpy as np
 from server.cognition.identity import HouseholdRole
 from server.cognition.speaker_authentication import (
     SpeakerVerdict,
     evaluate_speaker_verification,
 )
+from server.exceptions import AudioContractError, BrainMemoryError
 from server.settings import settings
 from server.voice.speaker_embedding import (
+    SpeakerBackendError,
     clip_duration_s,
     has_voiced_energy,
     meets_verification_duration,
@@ -61,6 +64,10 @@ _SUB_FLOOR_BUCKET = "lt_1_5"
 _MID_BUCKET_MAX_S = 3.0
 _VERIFIED = SpeakerVerdict.VERIFIED.value
 _CENTROID_SOURCES = ("real_voiceprint", "in_session_references")
+# The production resolver (speaker_authentication._resolve) degrades a clip to
+# "unavailable" on any of these; a clip the contract rejects (for example one
+# longer than the 30 s cap, seen in a real conversation) must not crash the run.
+_BACKEND_FAILURES = (AudioContractError, BrainMemoryError, SpeakerBackendError, aiosqlite.Error)
 
 
 def duration_bucket(duration_s: float) -> DurationBucket:
@@ -91,6 +98,7 @@ def _distance_ok(distance: float | None) -> bool:
 
 def _first_failed_gate(
     *,
+    backend_available: bool,
     reference_count: int,
     energy_ok: bool,
     duration_ok: bool,
@@ -98,10 +106,12 @@ def _first_failed_gate(
 ) -> str:
     """Name the first gate that stopped a VERIFIED verdict, in the resolver's order.
 
-    Consent, role and the backend are forced for the measurement, so only the
-    reference, energy, duration and distance gates can fire here.
+    Consent and role are forced for the measurement; the backend gate fires when
+    embedding or the store failed (a clip the contract rejects, for example one
+    too long), mirroring the production resolver.
     """
     failures = (
+        (not backend_available, "unavailable"),
         (reference_count < settings.speaker_min_reference_count, "references"),
         (not energy_ok, "energy"),
         (not duration_ok, "duration"),
@@ -142,8 +152,13 @@ async def score_clip(
     energy_ok = has_voiced_energy(wav_bytes)
     duration_ok = energy_ok and meets_verification_duration(wav_bytes)
     distance: float | None = None
+    backend_available = True
     if enough and energy_ok and duration_ok:
-        result = await match(owner_person_id, await embed(wav_bytes), model_id)
+        try:
+            result = await match(owner_person_id, await embed(wav_bytes), model_id)
+        except _BACKEND_FAILURES:
+            backend_available = False
+            result = None
         if result is not None:
             distance = result.distance
             reference_count = result.reference_count
@@ -152,9 +167,10 @@ async def score_clip(
         distance=distance,
         consent_active=True,
         role=HouseholdRole.OWNER,
-        backend_available=True,
+        backend_available=backend_available,
     )
     gate = _first_failed_gate(
+        backend_available=backend_available,
         reference_count=reference_count,
         energy_ok=energy_ok,
         duration_ok=duration_ok,
@@ -163,7 +179,10 @@ async def score_clip(
     no_floor_distance: float | None = None
     no_floor_would_match: bool | None = None
     if bucket == _SUB_FLOOR_BUCKET and energy_ok and enough:
-        diagnostic = await match(owner_person_id, await embed(wav_bytes), model_id)
+        try:
+            diagnostic = await match(owner_person_id, await embed(wav_bytes), model_id)
+        except _BACKEND_FAILURES:
+            diagnostic = None
         if diagnostic is not None:
             no_floor_distance = diagnostic.distance
             no_floor_would_match = _distance_ok(diagnostic.distance)
