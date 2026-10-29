@@ -18,11 +18,10 @@ from server.cognition.identity import (
     IdentityEvidenceSource,
 )
 from server.cognition.models import Confidence, ConfidenceBasis
-from server.exceptions import BrainMemoryError, LLMError
+from server.exceptions import LLMError
 from server.memory import continuity
 from server.memory.candidate_dialogue import PendingOffer
 from server.memory.continuity import SuspendCause, Transition
-from server.schemas import MemoryContext
 from server.settings import settings
 
 from server import llm_streaming, streaming, text_turn
@@ -121,13 +120,6 @@ def _generate(monkeypatch: pytest.MonkeyPatch, *replies: tuple[str, str]) -> Asy
     return generate
 
 
-def _persistent_context(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
-    """Replace persistent-context retrieval with a spy returning an empty context."""
-    prompt_state = AsyncMock(return_value=(MemoryContext(), False, None))
-    monkeypatch.setattr(text_turn, "_memory_prompt_state", prompt_state)
-    return prompt_state
-
-
 def _histories(generate: AsyncMock) -> list[list[str] | None]:
     """Return, per model call, the contents of the history it received (None if none)."""
     return [
@@ -191,9 +183,6 @@ async def test_a_claim_is_never_recorded_in_the_session_history(
 ) -> None:
     """The history keeps what was actually said, so the model never reads its own false claim."""
     monkeypatch.setattr(settings, "memory_enabled", True)
-    monkeypatch.setattr(
-        text_turn, "_memory_prompt_state", AsyncMock(return_value=(None, False, None))
-    )
     _generate(monkeypatch, ("Lo guardé.", "neutral"))
 
     await text_turn.process_text_turn(
@@ -246,7 +235,6 @@ async def test_the_session_follows_the_person_and_not_the_public_conversation_id
 ) -> None:
     """A client-chosen conversation id is not identity (ADR 0020 §3)."""
     monkeypatch.setattr(settings, "memory_enabled", True)
-    _persistent_context(monkeypatch)
     generate = _generate(monkeypatch, ("A1", "joy"), ("B1", "sadness"), ("A2", "neutral"))
     person = _identified_person()
 
@@ -268,7 +256,6 @@ async def test_another_identified_person_starts_a_fresh_session(
     http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(settings, "memory_enabled", True)
-    _persistent_context(monkeypatch)
     generate = _generate(monkeypatch, ("A1", "neutral"), ("B1", "neutral"), ("A2", "neutral"))
     owner = _identified_person()
     visitor = _identified_person(person_id=_VISITOR, display_name="Mateo")
@@ -287,7 +274,6 @@ async def test_the_session_is_keyed_by_person_id_not_by_name_or_evidence_id(
 ) -> None:
     """Display names and evidence ids must not scope the session."""
     monkeypatch.setattr(settings, "memory_enabled", True)
-    _persistent_context(monkeypatch)
     generate = _generate(
         monkeypatch, ("Primera", "neutral"), ("Segunda", "neutral"), ("Tercera", "neutral")
     )
@@ -342,12 +328,11 @@ async def test_a_manual_identified_turn_keeps_its_history_but_proposes_nothing(
     http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The retired MANUAL gate no longer reaches a writer; the persistent context keeps it."""
+    """A MANUAL identity has continuity like any `basic` person, and proposes nothing."""
     generate = AsyncMock(return_value=("Veo una taza", "neutral"))
     scheduler = Mock()
     monkeypatch.setattr(settings, "memory_enabled", True)
     monkeypatch.setattr(settings, "memory_candidates_enabled", True)
-    _persistent_context(monkeypatch)
     monkeypatch.setattr(text_turn.llm, "generate_response", generate)
 
     person = _identified_person()
@@ -402,7 +387,6 @@ async def test_a_token_or_manual_turn_never_proposes(
     scheduler = Mock()
     monkeypatch.setattr(settings, "memory_enabled", True)
     monkeypatch.setattr(settings, "memory_candidates_enabled", True)
-    _persistent_context(monkeypatch)
     _generate(monkeypatch, ("Uno", "neutral"))
 
     await text_turn.process_text_turn(
@@ -456,12 +440,9 @@ async def test_a_face_or_token_identified_turn_has_history_and_nothing_durable(
     source: IdentityEvidenceSource,
     assurance: IdentityAssurance,
 ) -> None:
-    """ADR 0020 §2: continuity opens the history only; the MANUAL gate keeps the rest closed."""
+    """ADR 0020 §2: continuity opens the history only; nothing durable is read or written."""
     scheduler = Mock()
-    prompt_state = _persistent_context(monkeypatch)
-    build_context = AsyncMock()
     monkeypatch.setattr(settings, "memory_enabled", True)
-    monkeypatch.setattr(text_turn, "build_context", build_context)
     generate = _generate(monkeypatch, ("Uno", "neutral"), ("Dos", "neutral"))
     person = _person(source, assurance=assurance)
 
@@ -479,8 +460,6 @@ async def test_a_face_or_token_identified_turn_has_history_and_nothing_durable(
         assert call.kwargs["context"] is None
         assert call.kwargs["onboarding"] is False
         assert call.kwargs["user_emotion"] is None
-    prompt_state.assert_not_awaited()
-    build_context.assert_not_awaited()
     scheduler.assert_not_called()
 
 
@@ -516,11 +495,8 @@ async def test_a_suspended_turn_reads_nothing_writes_nothing_and_spares_the_sess
     status: ActivePersonStatus,
 ) -> None:
     """An uncertain person gets one stateless answer; the owner's session survives."""
-    build_context = AsyncMock()
     scheduler = Mock()
     monkeypatch.setattr(settings, "memory_enabled", True)
-    monkeypatch.setattr(text_turn, "build_context", build_context)
-    prompt_state = _persistent_context(monkeypatch)
     generate = _generate(
         monkeypatch, ("Owner reply", "neutral"), ("Stranger reply", "neutral"), ("Back", "neutral")
     )
@@ -541,8 +517,6 @@ async def test_a_suspended_turn_reads_nothing_writes_nothing_and_spares_the_sess
         None,
         ["owner says", "Owner reply"],
     ]
-    build_context.assert_not_awaited()
-    assert prompt_state.await_count == 2  # the two MANUAL owner turns, never the stranger
     scheduler.assert_not_called()
 
 
@@ -595,9 +569,6 @@ async def test_llm_fallback_does_not_contaminate_memory(
     """Expected provider failures should return a local fallback without recording."""
     scheduler = Mock()
     monkeypatch.setattr(settings, "memory_enabled", True)
-    monkeypatch.setattr(
-        text_turn, "_memory_prompt_state", AsyncMock(return_value=(None, False, None))
-    )
     monkeypatch.setattr(text_turn.llm, "generate_response", AsyncMock(side_effect=LLMError("down")))
 
     result = await text_turn.process_text_turn(
@@ -658,29 +629,6 @@ async def test_llm_unexpected_failure_still_logs_a_traceback(
     records = [r for r in caplog.records if r.name == "server.text_turn"]
     assert records, "expected a log record for the LLM failure"
     assert any(r.exc_info is not None for r in records), "must keep the traceback"
-
-
-@pytest.mark.unit
-@pytest.mark.asyncio
-async def test_memory_failure_degrades_to_generation_without_context(
-    http_client: httpx.AsyncClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Persistent memory failure should not prevent a text response."""
-    generate = AsyncMock(return_value=("Reply", "neutral"))
-    monkeypatch.setattr(settings, "memory_enabled", True)
-    monkeypatch.setattr(
-        text_turn, "build_context", AsyncMock(side_effect=BrainMemoryError("db down"))
-    )
-    monkeypatch.setattr(text_turn.llm, "generate_response", generate)
-
-    result = await text_turn.process_text_turn(
-        http_client, "Question", "web-a", active_person=_identified_person()
-    )
-
-    assert result.response == "Reply"
-    assert generate.await_args_list[-1].kwargs["context"] is None
-    assert generate.await_args_list[-1].kwargs["onboarding"] is False
 
 
 @pytest.mark.unit
@@ -967,7 +915,7 @@ async def test_the_provider_is_awaited_once_with_the_face_identified_person(
     person = _face_owner()
 
     prepared = await text_turn.prepare_text_turn(
-        http_client, "hola", "web", active_person=person, profile_card_provider=provider
+        "hola", "web", active_person=person, profile_card_provider=provider
     )
 
     provider.assert_awaited_once_with(person)
@@ -985,7 +933,6 @@ async def test_a_suspended_speaker_never_reaches_the_provider(
     provider = AsyncMock(return_value=_CARD_TEXT)
 
     prepared = await text_turn.prepare_text_turn(
-        http_client,
         "hola",
         "web",
         active_person=_unidentified_person(status),
@@ -1004,7 +951,7 @@ async def test_a_speaker_below_basic_never_reaches_the_provider(
     person = _person(IdentityEvidenceSource.FACE, assurance=IdentityAssurance.NONE)
 
     prepared = await text_turn.prepare_text_turn(
-        http_client, "hola", "web", active_person=person, profile_card_provider=provider
+        "hola", "web", active_person=person, profile_card_provider=provider
     )
 
     provider.assert_not_awaited()
@@ -1018,7 +965,6 @@ async def test_with_memory_off_the_provider_is_never_awaited(
     provider = AsyncMock(return_value=_CARD_TEXT)
 
     prepared = await text_turn.prepare_text_turn(
-        http_client,
         "hola",
         "web",
         active_person=_face_owner(),
@@ -1034,9 +980,7 @@ async def test_without_a_provider_the_card_is_none(
 ) -> None:
     monkeypatch.setattr(settings, "memory_enabled", True)
 
-    prepared = await text_turn.prepare_text_turn(
-        http_client, "hola", "web", active_person=_face_owner()
-    )
+    prepared = await text_turn.prepare_text_turn("hola", "web", active_person=_face_owner())
 
     assert prepared.profile_card is None
 

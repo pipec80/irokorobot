@@ -188,10 +188,8 @@ async def test_chat_without_internal_evidence_is_one_turn_and_stateless(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """An unidentified chat turn gets no history or persistent memory and leaves nothing."""
-    build_context = AsyncMock()
     generate = AsyncMock(side_effect=[("A1", "joy"), ("B1", "sadness"), ("A2", "neutral")])
     monkeypatch.setattr(settings, "memory_enabled", True)
-    monkeypatch.setattr(text_turn, "build_context", build_context)
     monkeypatch.setattr(text_turn.llm, "generate_response", generate)
 
     async with _client() as client:
@@ -206,7 +204,6 @@ async def test_chat_without_internal_evidence_is_one_turn_and_stateless(
             )
             assert response.status_code == 200
 
-    build_context.assert_not_awaited()
     assert [item.kwargs["context"] for item in generate.await_args_list] == [None, None, None]
     assert [item.kwargs["history"] for item in generate.await_args_list] == [None, None, None]
     assert continuity.open_turn(7).history == ()

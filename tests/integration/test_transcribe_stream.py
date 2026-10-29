@@ -266,7 +266,7 @@ def test_stream_prepares_shared_voice_turn(
     assert response.status_code == 200
     new_scope.assert_called_once_with()
     assert prepare.await_args is not None
-    assert prepare.await_args.args[1:] == ("hola robot", scope)
+    assert prepare.await_args.args == ("hola robot", scope)
     assert record.call_args.args == ("hola robot", "Hola. ¿Cómo estás?")
     assert callable(record.call_args.kwargs["schedule_proposal"])
 

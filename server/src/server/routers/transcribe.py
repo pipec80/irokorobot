@@ -832,7 +832,6 @@ async def transcribe_stream(
     if speaker.actor is not None:
         turn_log.log_actor("voice", speaker.actor)
     prepared = await prepare_text_turn(
-        resources.http_client,
         event.payload.message,
         event.payload.conversation_id,
         active_person=speaker.actor,

@@ -189,7 +189,6 @@ _MANUAL_HOMES = frozenset(
         "characters/__init__.py",
         "cognition/identity.py",
         "cognition/identity_sessions.py",
-        "text_turn.py",
     }
 )
 _GRANT_FIELD_NAMES = frozenset({"grant_spent", "grant_scope"})
@@ -526,6 +525,54 @@ def test_the_retired_consolidation_writer_has_no_reference_left() -> None:
 
     assert _outside(sources, frozenset(), frozenset({"consolidate_turn"})) == []
     assert _imports_name(sources, "consolidate_turn") == []
+
+
+# The legacy memory path retired by Plan 0076 (ADR 0027 decision 9): the `MANUAL`-gated
+# `build_context`, the vector store over `memories` and everything only it fed.
+_RETIRED_LEGACY_MEMORY_NAMES = frozenset(
+    {
+        "build_context",
+        "search_memories",
+        "store_memory",
+        "entities_for_relations",
+        "find_facts_by_predicate",
+        "load_entity_by_id",
+        "load_entity_with_facts",
+        "_memory_prompt_state",
+        "_manual_evidence",
+    }
+)
+
+
+def _definers(sources: Mapping[str, str], names: frozenset[str]) -> list[str]:
+    """Modules that define a function or class named in `names`."""
+    return sorted(
+        module
+        for module, text in sources.items()
+        if any(
+            isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
+            and node.name in names
+            for node in ast.walk(ast.parse(text))
+        )
+    )
+
+
+@pytest.mark.unit
+def test_the_legacy_memory_path_has_no_reference_left() -> None:
+    sources = _sources()
+
+    assert _outside(sources, frozenset(), _RETIRED_LEGACY_MEMORY_NAMES) == []
+    assert _definers(sources, _RETIRED_LEGACY_MEMORY_NAMES) == []
+    for name in _RETIRED_LEGACY_MEMORY_NAMES:
+        assert _imports_name(sources, name) == []
+
+
+@pytest.mark.unit
+def test_the_legacy_guard_detects_a_violation() -> None:
+    sources = {"memory/back.py": "async def build_context():\n    return await search_memories()\n"}
+
+    assert _outside(sources, frozenset(), _RETIRED_LEGACY_MEMORY_NAMES) == ["memory/back.py"]
+    assert _definers(sources, _RETIRED_LEGACY_MEMORY_NAMES) == ["memory/back.py"]
 
 
 @pytest.mark.unit

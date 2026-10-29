@@ -247,7 +247,7 @@ def _show_db(db_path: Path) -> None:
     print(f"  DB: {db_path}")  # noqa: T201
     print(_SEP)  # noqa: T201
 
-    for table in ("entities", "facts", "memories", "embeddings_cache", "outbox"):
+    for table in ("entities", "facts", "embeddings_cache", "outbox"):
         try:
             (n,) = cur.execute(f"SELECT count(*) FROM {table}").fetchone()  # noqa: S608
             print(f"  {table:<22} {n:>4} rows")  # noqa: T201
@@ -277,18 +277,6 @@ def _show_db(db_path: Path) -> None:
             )
             print(f"  [{ent['type']}] {ent['name']}")  # noqa: T201
             print(f"         {fact_str}")  # noqa: T201
-
-    memories = cur.execute(
-        "SELECT kind, content, summary, created_at FROM memories ORDER BY created_at DESC LIMIT 10"
-    ).fetchall()
-    if memories:
-        print(f"\n{_SEP2}")  # noqa: T201
-        print("  RECENT MEMORIES")  # noqa: T201
-        print(_SEP2)  # noqa: T201
-        for mem in memories:
-            text = mem["summary"] or mem["content"][:120]
-            print(f"  [{mem['kind']}] {mem['created_at'][:19]}")  # noqa: T201
-            print(f"         {text}")  # noqa: T201
 
     con.close()
     print(f"\n{_SEP}")  # noqa: T201

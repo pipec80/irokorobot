@@ -17,15 +17,12 @@ from server.cognition.identity import (
     ActivePersonContext,
     ActivePersonStatus,
     IdentityAssurance,
-    IdentityEvidence,
-    IdentityEvidenceSource,
     resolve_active_person,
 )
 from server.cognition.strong_actor import is_face_actor
-from server.exceptions import BrainMemoryError, LLMError
+from server.exceptions import LLMError
 from server.memory import continuity
 from server.memory.candidate_dialogue import OfferPreparer, PendingOffer, commit_offer
-from server.memory.context import build_context
 from server.memory.continuity import ContinuityTurn, SuspendCause
 from server.onboarding import OnboardingSlot
 from server.schemas import ConversationTurn, MemoryContext
@@ -99,21 +96,6 @@ def _resolve_turn_person(active_person: ActivePersonContext | None) -> ActivePer
     )
 
 
-def _manual_evidence(active_person: ActivePersonContext) -> IdentityEvidence | None:
-    """Return the verified manual evidence eligible for legacy compatibility."""
-    if active_person.status is not ActivePersonStatus.IDENTIFIED or active_person.person_id is None:
-        return None
-    return next(
-        (
-            evidence
-            for evidence in active_person.evidence
-            if evidence.source is IdentityEvidenceSource.MANUAL
-            and evidence.candidate_person_id == active_person.person_id
-        ),
-        None,
-    )
-
-
 def new_interaction_scope() -> str:
     """Create an opaque conversation identifier for one unresolved request.
 
@@ -137,19 +119,6 @@ def _continuity_person_id(active_person: ActivePersonContext) -> int | None:
     return active_person.person_id
 
 
-async def _memory_prompt_state(
-    client: httpx.AsyncClient,
-    message: str,
-) -> tuple[MemoryContext | None, bool, OnboardingSlot | None]:
-    """Resolve legacy-compatible persistent context without global onboarding."""
-    try:
-        context = await build_context(client, message)
-        return context, False, None
-    except BrainMemoryError as exc:
-        logger.warning("Memory unavailable — degrading to stateless turn: %s", exc)
-        return None, False, None
-
-
 async def _load_profile_card(
     provider: ProfileCardProvider, person: ActivePersonContext
 ) -> str | None:
@@ -162,7 +131,6 @@ async def _load_profile_card(
 
 
 async def prepare_text_turn(
-    client: httpx.AsyncClient,
     message: str,
     conversation_id: str,
     *,
@@ -175,12 +143,11 @@ async def prepare_text_turn(
 
     The speaker decides what the turn may read (ADR 0020): an identified person gets the
     short-term session's history; an unknown or ambiguous speaker suspends it and the turn
-    reads nothing. Persistent context stays behind the ``MANUAL`` gate, so durable memory is
-    still closed for every other speaker.
+    reads nothing. No persistent memory is read here: the profile card is the only durable
+    datum that reaches the prompt (Plan 0074), and the legacy ``MANUAL``-gated retrieval is
+    gone (Plan 0076).
 
     Args:
-        client: Shared, lifecycle-owned HTTP client (Plan 0039), forwarded
-            to memory retrieval when a manually verified identity has history.
         message: Current user message.
         conversation_id: Ephemeral conversation label; never identity, never selects history.
         perception: Optional textual visual perception for this turn.
@@ -220,24 +187,17 @@ async def prepare_text_turn(
         if profile_card_provider is not None and person_id is not None and turn.writable
         else None
     )
-    context: MemoryContext | None = None
-    onboarding = False
-    slot: OnboardingSlot | None = None
-    if _manual_evidence(resolved_person) is not None:
-        context, onboarding, slot = await _memory_prompt_state(client, message)
-        turn_log.log_memory("loaded", f"verified identity, history_turns={len(history or [])}")
-    else:
-        turn_log.log_memory(
-            "loaded" if turn.writable else "skipped",
-            f"history_turns={len(history or [])}, no retrieval, no vector search",
-        )
+    turn_log.log_memory(
+        "loaded" if turn.writable else "skipped",
+        f"history_turns={len(history or [])}, no retrieval, no vector search",
+    )
     return PreparedTextTurn(
         message=message,
         conversation_id=conversation_id,
-        context=context,
+        context=None,
         history=history,
-        onboarding=onboarding,
-        onboarding_slot=slot,
+        onboarding=False,
+        onboarding_slot=None,
         user_emotion=None,
         perception=perception,
         active_person=resolved_person,
@@ -414,7 +374,6 @@ async def process_text_turn(
     """
     started = time.perf_counter()
     prepared = await prepare_text_turn(
-        client,
         message,
         conversation_id,
         perception=perception,

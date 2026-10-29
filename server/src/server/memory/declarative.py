@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 from server import db
 from server.db import get_conn
 from server.exceptions import AmbiguousEntityError
-from server.schemas import EntityType, EntityWithFacts, FactRecord
+from server.schemas import EntityType, FactRecord
 from server.text_keys import fold_name
 
 if TYPE_CHECKING:
@@ -461,23 +461,6 @@ async def get_active_facts(entity_id: int) -> list[FactRecord]:
     rows = await cur.fetchall()
     await cur.close()
     return [FactRecord(predicate=r[0], object_value=r[1], confidence=r[2]) for r in rows]
-
-
-async def load_entity_with_facts(name: str) -> EntityWithFacts | None:
-    """Load the first entity matching *name* together with its active facts.
-
-    Args:
-        name: Entity name or alias to search.
-
-    Returns:
-        ``EntityWithFacts`` if found, ``None`` otherwise.
-    """
-    matches = await find_entities_by_name(name, limit=1)
-    if not matches:
-        return None
-    e = matches[0]
-    facts = await get_active_facts(e["id"])
-    return EntityWithFacts(id=e["id"], name=e["name"], type=e["type"], facts=facts)
 
 
 async def count_entities() -> int:
