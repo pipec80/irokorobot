@@ -62,6 +62,7 @@ from server.memory.candidate_dialogue import (
 )
 from server.memory.candidate_proposal import propose_candidates
 from server.memory.candidate_types import CandidateChannel
+from server.memory.conversation_capture import capture_turn
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
 from server.memory.profile_card_access import profile_summary_text, prompt_card_text
@@ -81,6 +82,7 @@ from server.text_turn import (
     ProfileCardProvider,
     ProposalScheduler,
     TextTurnResult,
+    TurnRecorder,
     new_interaction_scope,
     prepare_text_turn,
     process_text_turn,
@@ -248,6 +250,7 @@ def _voice_controller(
     memory_answerer: MemoryAnswerer | None = None,
     profile_card_provider: ProfileCardProvider | None = None,
     profile_summarizer: ProfileSummarizer | None = None,
+    record_turn: TurnRecorder | None = None,
 ) -> CognitiveController:
     """Compose the bounded controller used by a public voice turn.
 
@@ -271,6 +274,8 @@ def _voice_controller(
         profile_summarizer: Answers «¿qué sabes de mí?» from the same card. Only used together
             with ``request_identity``, like ``memory_answerer``; when omitted the question is
             ordinary conversation.
+        record_turn: Schedules the capture of the generic turn into the conversation record
+            (Plan 0076); when omitted nothing is recorded.
     """
 
     async def legacy_turn(message: str, conversation_id: str) -> TextTurnResult:
@@ -291,6 +296,7 @@ def _voice_controller(
             schedule_proposal=schedule_proposal,
             prepare_offer=prepare_offer,
             profile_card_provider=profile_card_provider,
+            record_turn=record_turn,
         )
 
     if request_identity is None:
@@ -348,6 +354,42 @@ def _proposal_scheduler(
         )
 
     return schedule
+
+
+def _turn_recorder(
+    background_tasks: BackgroundTasks,
+    *,
+    event: CognitiveEvent[TextTurnPayload],
+    wav_bytes: bytes,
+) -> TurnRecorder | None:
+    """Adapt FastAPI background tasks to the conversation-record callback (ADR 0027).
+
+    Args:
+        background_tasks: Queue used to run the capture after the response was sent.
+        event: The turn's event; its correlation id joins the exchange to the turn.
+        wav_bytes: The turn's own clip — WAV, 16 000 Hz, mono, int16 — held in memory only,
+            for the voice verdict; never stored.
+
+    Returns:
+        The callback, or ``None`` with ``MEMORY_ENABLED`` or ``CONVERSATION_RECORD_ENABLED``
+        off.
+    """
+    if not (settings.memory_enabled and settings.conversation_record_enabled):
+        return None
+    at = utc_now()
+
+    def record(heard: str, said: str, actor: ActivePersonContext | None) -> None:
+        background_tasks.add_task(
+            capture_turn, heard, said, actor, wav_bytes=wav_bytes, event=event, at=at
+        )
+
+    return record
+
+
+def _record_plan(record_turn: TurnRecorder | None, heard: str, plan: ResponsePlan) -> None:
+    """Record a deterministic reply: no speaker was resolved for it (``not_checked``)."""
+    if record_turn is not None:
+        record_turn(heard, plan.response, None)
 
 
 def _offer_preparer(
@@ -651,6 +693,7 @@ async def transcribe(
         )
 
     event = _voice_event_from_transcript(text_heard)
+    record_turn = _turn_recorder(background_tasks, event=event, wav_bytes=audio_bytes)
     controller = _voice_controller(
         resources.http_client,
         request_identity=request_identity,
@@ -672,6 +715,7 @@ async def transcribe(
         memory_answerer=_memory_answerer(),
         profile_card_provider=_profile_card_provider(event.correlation_id),
         profile_summarizer=_profile_summarizer(),
+        record_turn=record_turn,
     )
     decision = await controller.decide(event)
 
@@ -709,6 +753,10 @@ async def transcribe(
         plan = await controller.handle(event)
     else:
         plan = decision
+    if decision is not None:
+        # A deterministic reply (or the fixed scene-unavailable one); a generic turn was
+        # recorded by the text service, with its speaker.
+        _record_plan(record_turn, text_heard, plan)
 
     return await _classic_reply(
         plan,
@@ -814,7 +862,9 @@ async def transcribe_stream(
         scene_unavailable_plan() if isinstance(decision, SceneDescriptionRequest) else decision
     )
     turn_log.log_decision("stream", plan)
+    record_turn = _turn_recorder(background_tasks, event=event, wav_bytes=audio_bytes)
     if plan is not None:
+        _record_plan(record_turn, event.payload.message, plan)
         return _stream_plan(
             plan,
             text_heard=event.payload.message,
@@ -854,6 +904,7 @@ async def transcribe_stream(
                     channel=CandidateChannel.VOICE_STREAM,
                 ),
                 prepare_offer=_offer_preparer(event=event, wav_bytes=audio_bytes),
+                record_turn=record_turn,
             )
         )
     )

@@ -40,6 +40,12 @@ ProposalScheduler = Callable[[str, ActivePersonContext], None]
 #: continuity session already accepts.
 ProfileCardProvider = Callable[[ActivePersonContext], Awaitable[str | None]]
 
+#: Channel-owned callback that schedules the capture of one spoken exchange into the
+#: conversation record (ADR 0027, Plan 0076). It receives what was heard, what was said
+#: and the turn's speaker (``None`` for a deterministic reply); the route that owns the
+#: clip and the event binds them.
+TurnRecorder = Callable[[str, str, ActivePersonContext | None], None]
+
 
 @dataclass(frozen=True)
 class PreparedTextTurn:
@@ -340,6 +346,7 @@ async def process_text_turn(
     schedule_proposal: ProposalScheduler | None = None,
     prepare_offer: OfferPreparer | None = None,
     profile_card_provider: ProfileCardProvider | None = None,
+    record_turn: TurnRecorder | None = None,
 ) -> TextTurnResult:
     """Generate and record one channel-agnostic text turn.
 
@@ -355,6 +362,8 @@ async def process_text_turn(
             concurrently with generation.
         profile_card_provider: Optional channel-owned profile card seam (Plan 0074); see
             ``prepare_text_turn``.
+        record_turn: Optional channel-owned conversation-record callback (Plan 0076);
+            called once with what was said, the fallback phrase included.
 
     Returns:
         Text, emotion, elapsed time, fallback status and the optional offer for the turn.
@@ -371,6 +380,8 @@ async def process_text_turn(
     offer_task = start_offer(prepare_offer, prepared.active_person)
     try:
         response, emotion, llm_failed = await _generate(client, prepared)
+        if record_turn is not None:
+            record_turn(message, response, prepared.active_person)
         if not llm_failed:
             record_text_turn(
                 message,

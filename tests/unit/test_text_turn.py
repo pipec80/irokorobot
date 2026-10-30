@@ -1047,3 +1047,49 @@ def test_the_card_never_shows_in_the_repr_of_a_prepared_turn() -> None:
     )
 
     assert "quokka" not in repr(prepared)
+
+
+# --- the conversation record (Plan 0076, ADR 0027) ------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_the_recorder_gets_what_was_heard_said_and_the_speaker(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "memory_enabled", True)
+    _generate(monkeypatch, ("Hola, qué tal.", "joy"))
+    recorder = Mock()
+    person = _person(IdentityEvidenceSource.FACE)
+
+    await text_turn.process_text_turn(
+        http_client, "hola", "web", active_person=person, record_turn=recorder
+    )
+
+    recorder.assert_called_once_with("hola", "Hola, qué tal.", person)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_the_recorder_gets_the_fallback_phrase_when_the_model_fails(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(text_turn.llm, "generate_response", AsyncMock(side_effect=LLMError("down")))
+    recorder = Mock()
+
+    await text_turn.process_text_turn(http_client, "hola", "web", record_turn=recorder)
+
+    recorder.assert_called_once()
+    assert recorder.call_args.args[1] == settings.llm_fallback_phrase
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_no_recorder_records_nothing(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _generate(monkeypatch, ("Hola.", "neutral"))
+
+    result = await text_turn.process_text_turn(http_client, "hola", "web")
+
+    assert result.response == "Hola."
