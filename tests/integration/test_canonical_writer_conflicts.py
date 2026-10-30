@@ -224,7 +224,14 @@ async def test_the_refusal_logs_only_the_reason_the_predicate_and_the_channel(
         getattr(record, "channel", None),
     ) == ("value_conflict", "birth_date", "import_assisted")
     assert "1951" not in refusal.value.reason + str(refusal.value)
-    assert all("1951" not in r.getMessage() and "1951" not in repr(vars(r)) for r in caplog.records)
+    # Only the message and the extra fields can carry a value; the standard attributes hold
+    # timings and ids where «1951» may show up by chance (CI flake of 2026-10-30).
+    standard = set(vars(logging.LogRecord("x", logging.INFO, "x", 0, "x", None, None)))
+    assert all(
+        "1951" not in r.getMessage()
+        and "1951" not in repr({k: v for k, v in vars(r).items() if k not in standard})
+        for r in caplog.records
+    )
 
 
 # --- an honest confirmer ------------------------------------------------------------------------

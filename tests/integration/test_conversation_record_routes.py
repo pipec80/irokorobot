@@ -271,6 +271,7 @@ async def test_vision_respond_records_nothing_even_with_the_switch_on(
     """Plan 0076 D-7: the camera's second round is not part of the record."""
     monkeypatch.setattr(settings, "vision_enabled", True)
     _see_the_owner(monkeypatch)
+    _hear(monkeypatch)  # scripts the TTS too: CI has no Piper voice (CI failure of 2026-10-30)
     _classic_reply(monkeypatch)
 
     async with _client() as client:
