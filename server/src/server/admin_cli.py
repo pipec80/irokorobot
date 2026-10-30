@@ -17,19 +17,22 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import getpass
+from pathlib import Path
 import sqlite3
 import sys
-from typing import TYPE_CHECKING
 
 import httpx
 
 from server import db
+from server.conversation_admin import export_records, summary_line
 from server.exceptions import AdminPinError, BrainMemoryError
 from server.memory.admin_audit import (
     AdminActorRole,
     AdminOperationKind,
+    AdminOutcomeStatus,
     TargetKind,
     list_admin_operations,
+    record_admin_operation,
 )
 from server.memory.admin_ops import (
     AdminActor,
@@ -49,13 +52,17 @@ from server.memory.commissioning import (
     get_latest_commissioning,
     list_section_statuses,
 )
+from server.memory.conversation_consent import (
+    CONVERSATION_NOTICE_VERSION,
+    grant_conversation_consent,
+    load_conversation_notice,
+    revoke_conversation_consent,
+)
+from server.memory.conversation_record import delete_record, list_records
 from server.memory.owner_credentials import get_ready_owner
 from server.memory.relational_v4 import list_active_facts, list_active_relations
 from server.personal_setup import check_db_available
 from server.settings import settings
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 __all__ = ["main", "run_admin_command"]
 
@@ -94,6 +101,8 @@ class AdminRequest:
     limit: int = 50
     dry_run: bool = False
     actor_label: str = _DEFAULT_ACTOR
+    action: str | None = None
+    out: Path | None = None
 
 
 def _actor(request: AdminRequest) -> AdminActor:
@@ -337,7 +346,133 @@ async def _status(owner: int, write_text: WriteText) -> int:
     return 0
 
 
+# --- the conversation record (Plan 0076, ADR 0027) ------------------------------------------------
+
+_CONVERSATION_ACTIONS = ("list", "export", "delete", "consent-grant", "consent-revoke")
+_EXPORT_REMINDER = (
+    "Los archivos tienen texto de conversaciones: bórralos cuando termines de leerlos."
+)
+
+
+async def _audit_conversation(
+    request: AdminRequest,
+    operation: AdminOperationKind,
+    target: TargetKind,
+    *,
+    owner: int,
+    now: str,
+    refused: bool = False,
+) -> None:
+    """Write the one audit row of a conversation operation; it never holds a text."""
+    await record_admin_operation(
+        actor_label=request.actor_label,
+        actor_role=AdminActorRole.BUILDER,
+        operation=operation,
+        target_kind=target,
+        field_id=None if request.row_id is None else str(request.row_id),
+        target_entity_id=owner if target is TargetKind.CONVERSATION_CONSENT else None,
+        outcome=AdminOutcomeStatus.REFUSED if refused else AdminOutcomeStatus.APPLIED,
+        reason="pin" if refused else None,
+        recorded_at=now,
+    )
+
+
+def _conversation_operation(request: AdminRequest) -> tuple[AdminOperationKind, TargetKind, str]:
+    """Return the audited operation, its target and the line that describes it."""
+    match request.action:
+        case "export":
+            if request.out is None:
+                raise _RefusedError("export necesita --out con la carpeta de destino.")
+            which = "todas" if request.row_id is None else f"la {request.row_id}"
+            return (
+                AdminOperationKind.EXPORT,
+                TargetKind.CONVERSATION_RECORD,
+                f"exportar conversaciones ({which}) a {request.out}",
+            )
+        case "delete":
+            if request.row_id is None:
+                raise _RefusedError("delete necesita --id con el número de la conversación.")
+            return (
+                AdminOperationKind.DELETE,
+                TargetKind.CONVERSATION_RECORD,
+                f"borrar la conversación {request.row_id} y su resumen",
+            )
+        case "consent-grant":
+            return (
+                AdminOperationKind.GRANT,
+                TargetKind.CONVERSATION_CONSENT,
+                "autorizar el registro de conversaciones",
+            )
+        case "consent-revoke":
+            return (
+                AdminOperationKind.REVOKE,
+                TargetKind.CONVERSATION_CONSENT,
+                "revocar el registro y BORRAR todas las conversaciones y sus resúmenes",
+            )
+    raise _RefusedError(f"Acción desconocida: {request.action}.")
+
+
+async def _apply_conversation(request: AdminRequest, owner: int, now: str) -> str:
+    """Apply one confirmed, PIN-verified conversation operation and return its closing line."""
+    match request.action, request.out, request.row_id:
+        case "export", Path() as out, record_id:
+            written = await export_records(out, record_id=record_id)
+            return f"Exportadas {written} conversaciones a {out}. {_EXPORT_REMINDER}"
+        case "delete", _, int() as record_id:
+            deleted = await delete_record(record_id)
+            return "Conversación borrada." if deleted else "No hay una conversación con ese número."
+        case "consent-grant", _, _:
+            await grant_conversation_consent(
+                owner, notice_version=CONVERSATION_NOTICE_VERSION, now=datetime.fromisoformat(now)
+            )
+            return "Registro de conversaciones autorizado."
+    count = await revoke_conversation_consent(owner, now=datetime.fromisoformat(now))
+    return f"Consentimiento revocado: se borraron {count} conversaciones."
+
+
+async def _conversations(
+    request: AdminRequest,
+    owner: int,
+    read_text: ReadText,
+    read_secret: ReadText,
+    write_text: WriteText,
+    now: str,
+) -> int:
+    """List the record (no PIN, no text), or export, delete, grant or revoke under the PIN."""
+    if request.action == "list":
+        summaries = await list_records(limit=request.limit)
+        for summary in summaries:
+            write_text(summary_line(summary))
+        if not summaries:
+            write_text("No hay conversaciones guardadas.")
+        return 0
+    operation, target, description = _conversation_operation(request)
+    if request.action == "consent-grant":
+        write_text(load_conversation_notice())
+    write_text(f"conversations: {description}")
+    if not _confirm(request, read_text, write_text):
+        return 1
+    if not await _grant_pin_if_needed(
+        required=True, read_secret=read_secret, write_text=write_text
+    ):
+        await _audit_conversation(request, operation, target, owner=owner, now=now, refused=True)
+        write_text("Sin verificación de la persona titular: no se hizo nada.")
+        return 1
+    write_text(await _apply_conversation(request, owner, now))
+    await _audit_conversation(request, operation, target, owner=owner, now=now)
+    return 0
+
+
 # --- the dispatcher and the entry point -----------------------------------------------------------
+
+
+async def _read_command(request: AdminRequest, owner: int, write_text: WriteText) -> int:
+    """Run one of the read-only sub-commands (``list``, ``status``, ``audit``)."""
+    if request.command == "list":
+        return await _list(owner, write_text)
+    if request.command == "status":
+        return await _status(owner, write_text)
+    return await _audit(request.limit, write_text)
 
 
 async def _dispatch(
@@ -350,18 +485,16 @@ async def _dispatch(
     await check_db_available()
     owner = await _owner()
     match request.command:
-        case "list":
-            return await _list(owner, write_text)
-        case "status":
-            return await _status(owner, write_text)
-        case "audit":
-            return await _audit(request.limit, write_text)
+        case "list" | "status" | "audit":
+            return await _read_command(request, owner, write_text)
         case "add" | "change":
             return await _edit_literal(request, owner, read_text, read_secret, write_text, now)
         case "revoke":
             return await _revoke(request, read_text, read_secret, write_text, now)
         case "change-contact":
             return await _change_contact(request, owner, read_text, read_secret, write_text, now)
+        case "conversations":
+            return await _conversations(request, owner, read_text, read_secret, write_text, now)
     raise _RefusedError(f"Subcomando desconocido: {request.command}.")
 
 
@@ -456,6 +589,15 @@ def _parser() -> argparse.ArgumentParser:
     cc.add_argument("row_id", type=int)
     cc.add_argument("--dry-run", action="store_true")
     cc.add_argument("--actor", nargs="+")
+    conv = sub.add_parser(
+        "conversations", help="lista, exporta o borra el registro de conversaciones (PIN)"
+    )
+    conv.add_argument("action", choices=_CONVERSATION_ACTIONS)
+    conv.add_argument("--id", dest="row_id", type=int)
+    conv.add_argument("--out", type=Path)
+    conv.add_argument("--limit", type=int, default=50)
+    conv.add_argument("--dry-run", action="store_true")
+    conv.add_argument("--actor", nargs="+")
     return parser
 
 
@@ -469,6 +611,8 @@ def _request(args: argparse.Namespace) -> AdminRequest:
         limit=getattr(args, "limit", 50),
         dry_run=getattr(args, "dry_run", False),
         actor_label=actor,
+        action=getattr(args, "action", None),
+        out=getattr(args, "out", None),
     )
 
 
