@@ -13,6 +13,7 @@ bound to one named operation (ADR-0015, Plan 0051).
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from functools import partial
 import logging
 from pathlib import Path
 from unittest.mock import AsyncMock
@@ -33,6 +34,11 @@ from server.cognition.owner_authentication import (
 from server.dependencies import get_owner_unlock_service
 from server.main import app
 from server.memory.biometric_consent import grant_face_consent, revoke_face_consent
+from server.memory.conversation_capture import capture_turn
+from server.memory.conversation_consent import (
+    grant_conversation_consent,
+    revoke_conversation_consent,
+)
 from server.memory.declarative import assert_fact
 from server.memory.entity_labels import get_person_label
 from server.memory.household_authorization import get_active_role
@@ -592,3 +598,138 @@ async def test_a_revoked_voice_consent_changes_nothing_and_a_revoked_face_consen
     assert _card_of(llm_calls[0]) is not None  # a revoked voice consent changes nothing
     assert _card_of(llm_calls[1]) is None  # a revoked face consent removes the card
     assert summary["llm_response"] == _CARD_UNKNOWN
+
+
+# --- the conversation record (Plan 0076, ADR 0027): strangers are archived, never the diary ------
+
+_RECORD_CANARY = "Quorvax-registro"
+
+
+@pytest.fixture
+async def recording_owner(card_owner: int, monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    """The card owner with the record on and consented; yields the voice-check double."""
+    monkeypatch.setattr(settings, "conversation_record_enabled", True)
+    await grant_conversation_consent(card_owner, notice_version="v1", now=datetime.now(UTC))
+    verify = AsyncMock(return_value=None)
+    monkeypatch.setattr(
+        "server.routers.transcribe.capture_turn", partial(capture_turn, verify=verify)
+    )
+    return verify
+
+
+async def _records() -> list[tuple[int, str]]:
+    cursor = await db.get_conn().execute("SELECT eligible, turns FROM conversation_records")
+    rows = await cursor.fetchall()
+    await cursor.close()
+    return [(int(row[0]), str(row[1])) for row in rows]
+
+
+@pytest.mark.integration
+async def test_the_owner_with_face_and_voice_makes_an_eligible_record(
+    voice: _Voice,
+    llm_calls: list[dict[str, object]],
+    card_owner: int,
+    recording_owner: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del llm_calls
+    _see(monkeypatch, _OWNER_FACE)
+
+    async def verified(actor: object, **_kwargs: object) -> object:
+        return actor
+
+    recording_owner.side_effect = verified
+
+    await voice.speak(f"Me gusta {_RECORD_CANARY}", frame=True)
+
+    ((eligible, turns),) = await _records()
+    assert eligible == 1
+    assert '"voice":"verified"' in turns
+    assert card_owner > 0
+
+
+@pytest.mark.integration
+async def test_a_stranger_only_conversation_is_archived_and_not_eligible(
+    voice: _Voice,
+    llm_calls: list[dict[str, object]],
+    recording_owner: AsyncMock,
+) -> None:
+    del llm_calls
+
+    await voice.speak(f"Soy una visita, {_RECORD_CANARY}")
+
+    ((eligible, turns),) = await _records()
+    assert eligible == 0
+    assert '"voice":"not_owner"' in turns
+    recording_owner.assert_not_awaited()
+
+
+@pytest.mark.integration
+async def test_the_owner_off_camera_is_not_owner_even_with_a_matching_voice(
+    voice: _Voice,
+    llm_calls: list[dict[str, object]],
+    recording_owner: AsyncMock,
+) -> None:
+    """Plan 0076 D-1: voice alone never makes a turn the owner's."""
+    del llm_calls
+    recording_owner.side_effect = lambda actor, **_kwargs: actor
+
+    await voice.speak("Hola, soy yo pero sin cámara")
+
+    ((eligible, _turns),) = await _records()
+    assert eligible == 0
+    recording_owner.assert_not_awaited()
+
+
+@pytest.mark.integration
+async def test_a_second_face_in_frame_is_not_owner(
+    voice: _Voice,
+    llm_calls: list[dict[str, object]],
+    recording_owner: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del llm_calls
+    _see(monkeypatch, _OWNER_FACE, _OTHER_FACE)
+
+    await voice.speak("Hola a los dos", frame=True)
+
+    ((eligible, _turns),) = await _records()
+    assert eligible == 0
+    recording_owner.assert_not_awaited()
+
+
+@pytest.mark.integration
+async def test_no_record_without_the_consent(
+    voice: _Voice,
+    llm_calls: list[dict[str, object]],
+    card_owner: int,
+    recording_owner: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del llm_calls, recording_owner
+    await revoke_conversation_consent(card_owner, now=datetime.now(UTC))
+    _see(monkeypatch, _OWNER_FACE)
+
+    await voice.speak("Hola, ¿cómo estás?", frame=True)
+
+    assert await _records() == []
+
+
+@pytest.mark.integration
+async def test_no_record_line_reaches_any_log_or_response(
+    voice: _Voice,
+    llm_calls: list[dict[str, object]],
+    recording_owner: AsyncMock,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    del llm_calls, recording_owner
+    with caplog.at_level(logging.DEBUG):
+        body = await voice.speak(f"Mi secreto es {_RECORD_CANARY}")
+
+    assert len(await _records()) == 1
+    logged = [
+        record for record in caplog.records if record.name.startswith("server.memory.conversation")
+    ]
+    assert logged
+    assert all(_RECORD_CANARY not in record.getMessage() for record in logged)
+    assert _RECORD_CANARY not in str(body["llm_response"])
