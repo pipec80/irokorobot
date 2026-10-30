@@ -168,12 +168,16 @@ class _RequestIdentity:
         peek_actor: The same actor observed without spending any grant (ADR-0015).
         resolve_consent: The matching consent resolver.
         fused: The fusion resolver, the source of `.consumed` and `.identity_source`.
+        last_actor: The actor the controller last resolved or observed for this request, or
+            ``None`` when it resolved none; the conversation record uses it for a
+            deterministic reply (Plan 0076).
     """
 
     resolve_actor: ActivePersonResolver
     peek_actor: ActivePersonResolver
     resolve_consent: ConsentResolver
     fused: FusedIdentityResolver
+    last_actor: ActivePersonContext | None = None
 
     @property
     def consumed(self) -> bool:
@@ -221,6 +225,7 @@ def _logged_voice_actor_resolver(
 
     async def resolve_actor(event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
         actor = await request_identity.resolve_actor(event)
+        request_identity.last_actor = actor
         turn_log.log_actor("voice", actor)
         return actor
 
@@ -234,6 +239,7 @@ def _logged_voice_observer(
 
     async def observe_actor(event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
         actor = await request_identity.peek_actor(event)
+        request_identity.last_actor = actor
         turn_log.log_actor("voice", actor)
         return actor
 
@@ -386,10 +392,20 @@ def _turn_recorder(
     return record
 
 
-def _record_plan(record_turn: TurnRecorder | None, heard: str, plan: ResponsePlan) -> None:
-    """Record a deterministic reply: no speaker was resolved for it (``not_checked``)."""
+def _record_plan(
+    record_turn: TurnRecorder | None,
+    heard: str,
+    plan: ResponsePlan,
+    request_identity: _RequestIdentity,
+) -> None:
+    """Record a deterministic reply with the speaker the controller resolved for it, if any.
+
+    A reply the controller answered without resolving anyone (the date) is ``not_checked``;
+    one it answered for a resolved speaker (a protected household question) carries that
+    speaker, so the owner's verified words are not lost to the diary (Plan 0076 D-7).
+    """
     if record_turn is not None:
-        record_turn(heard, plan.response, None)
+        record_turn(heard, plan.response, request_identity.last_actor)
 
 
 def _offer_preparer(
@@ -756,7 +772,7 @@ async def transcribe(
     if decision is not None:
         # A deterministic reply (or the fixed scene-unavailable one); a generic turn was
         # recorded by the text service, with its speaker.
-        _record_plan(record_turn, text_heard, plan)
+        _record_plan(record_turn, text_heard, plan, request_identity)
 
     return await _classic_reply(
         plan,
@@ -864,7 +880,7 @@ async def transcribe_stream(
     turn_log.log_decision("stream", plan)
     record_turn = _turn_recorder(background_tasks, event=event, wav_bytes=audio_bytes)
     if plan is not None:
-        _record_plan(record_turn, event.payload.message, plan)
+        _record_plan(record_turn, event.payload.message, plan, request_identity)
         return _stream_plan(
             plan,
             text_heard=event.payload.message,

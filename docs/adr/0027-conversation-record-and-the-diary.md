@@ -240,7 +240,7 @@ Confirmed by Pipec before the plan was written, and how the code reads them:
 
 The author's calls the plan records (D-5 to D-12): one JSON entry per **exchange**
 `{at, heard, said, voice, cid}` written at the moment in a background task; the two voice routes are
-recorded (deterministic replies as `not_checked`), unclear speech, the camera cue, `/vision/respond`,
+recorded (a fixed reply with the speaker the controller resolved, `not_checked` when none), unclear speech, the camera cue, `/vision/respond`,
 `/chat` and the memory offer are not; a conversation ends after the session's idle time; caps of 60
 exchanges / 64 KiB per segment, 365 / 30 days, 200 MB; the diary is written only while nobody is
 talking, under the extraction limiter, and gives up after 3 failures; the consent is a grant row

@@ -1029,3 +1029,9 @@ pending: [checklist](../../evals/0076-conversation-record-acceptance.md).
   on the owner (whom the import cleanup never deletes), `conversation_consent_grants` is `RESTRICT`.
 - **The Archify diagram** of `current-state.md` is regenerated at the close, after the hardware
   acceptance, with the final state of ADR 0027.
+- **Found on Pipec's hardware run (2026-10-30), D-7 amended with his OK.** Two turns the protected
+  household rule answered with its fixed phrase had verified face **and** voice, yet were recorded
+  `not_checked`, so the owner's richest words never reached the diary. A fixed reply now carries the
+  speaker the controller resolved for it (`_RequestIdentity.last_actor`, set by the resolvers the
+  controller calls); `not_checked` stays only for a reply that resolved nobody (the date). Pinned by
+  `test_a_deterministic_turn_keeps_the_speaker_the_controller_resolved` (RED first).

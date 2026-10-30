@@ -183,6 +183,27 @@ async def test_a_stranger_turn_is_recorded_with_an_unidentified_speaker(
 
 
 @pytest.mark.parametrize("route", ["/transcribe", "/transcribe/stream"])
+async def test_a_deterministic_turn_keeps_the_speaker_the_controller_resolved(
+    household: PersonalSetupResult,
+    captured: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+) -> None:
+    """Found on hardware: the owner's verified words answered by a fixed reply reach the record."""
+    _see_the_owner(monkeypatch)
+    _hear(monkeypatch, "Hoy tengo que ir a buscar a mis hijos al colegio, Zeta.")
+
+    async with _client() as client:
+        response = await client.post(route, files=_files())
+
+    assert response.status_code == 200
+    _heard, _said, actor = captured.await_args_list[-1].args
+    assert actor is not None
+    assert actor.status is ActivePersonStatus.IDENTIFIED
+    assert actor.person_id == household.owner_entity_id
+
+
+@pytest.mark.parametrize("route", ["/transcribe", "/transcribe/stream"])
 async def test_a_deterministic_turn_records_its_plan_with_no_speaker(
     household: PersonalSetupResult,
     captured: AsyncMock,

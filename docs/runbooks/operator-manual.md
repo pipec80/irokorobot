@@ -856,8 +856,9 @@ keeps the record away from every route, prompt and controller.
 
 - **What is recorded.** Each spoken exchange of the classic and the streaming voice routes, as
   `{at, heard, said, voice, cid}`: what the speech-to-text heard, what the robot said (the fallback
-  phrase included) and the turn's voice verdict. A deterministic reply («¿qué fecha es hoy?») is
-  recorded with the verdict `not_checked`. Not recorded: the «repite, por favor» of unclear speech,
+  phrase included) and the turn's voice verdict. A fixed reply carries the speaker the controller
+  resolved for it (a protected household question keeps the owner), and `not_checked` only when
+  it resolved none («¿qué fecha es hoy?»). Not recorded: the «repite, por favor» of unclear speech,
   the camera cue and `/vision/respond`, `/chat`, and the memory offer phrase.
 - **Whose turn it is.** `verified` only when the owner's **face** is in frame **and** the voice of
   that turn's own clip verifies against the owner (the check of the memory candidates); `not_verified`
