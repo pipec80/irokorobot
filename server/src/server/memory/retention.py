@@ -11,6 +11,10 @@ Retention windows (all configurable via settings):
   - ``memory_candidates``:      past ``expires_at`` or out of offers (ADR 0021),
     whatever the candidate kill-switch says; the value is scrubbed and the
     write-ahead log truncated
+  - ``conversation_records``:   past ``expires_at`` (1 year with the owner's verified voice,
+    30 days without, both settings), then the oldest while over
+    ``CONVERSATION_RECORD_MAX_TOTAL_MB``; episodes go with their records (Plan 0076),
+    whatever the record switch says
 """
 
 from __future__ import annotations
@@ -21,6 +25,7 @@ import logging
 from server import db
 from server.cognition.clock import utc_now
 from server.memory.candidates import checkpoint_after_scrub, run_housekeeping
+from server.memory.conversation_record import purge_records
 from server.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -73,6 +78,14 @@ async def _reclaim_candidates() -> None:
         logger.warning("Candidate checkpoint failed after the scrub (%s)", type(exc).__name__)
 
 
+async def _purge_conversations() -> None:
+    """Purge expired and over-cap conversation records in their own transaction."""
+    try:
+        await purge_records(utc_now())
+    except Exception as exc:
+        logger.warning("Conversation purge failed (%s)", type(exc).__name__)
+
+
 async def _run_once() -> None:
     """Run the time-bounded purge and the candidate reclaim, each in its own transaction.
 
@@ -83,6 +96,7 @@ async def _run_once() -> None:
         await _purge_time_bounded_rows()
     except Exception as exc:
         logger.warning("Retention purge failed (%s)", type(exc).__name__)
+    await _purge_conversations()
     await _reclaim_candidates()
 
 
