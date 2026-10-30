@@ -103,6 +103,7 @@ def _conversation_record_off(monkeypatch: pytest.MonkeyPatch) -> None:
     would schedule captures. A test that wants them sets the flags itself.
     """
     monkeypatch.setattr(settings, "conversation_record_enabled", False)
+    monkeypatch.setattr(settings, "conversation_episodes_enabled", False)
 
 
 @pytest.fixture(autouse=True)

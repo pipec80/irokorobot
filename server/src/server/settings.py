@@ -148,6 +148,7 @@ class Settings(BaseSettings):
     # and the diary needs the record. A conversation ends after WORKING_MEMORY_IDLE_SECONDS of
     # silence; a segment holds at most this many exchanges and bytes.
     conversation_record_enabled: bool = False
+    conversation_episodes_enabled: bool = False
     conversation_segment_max_turns: PositiveInt = 60
     conversation_segment_max_bytes: PositiveInt = 65_536
     # How long a closed record is kept: with at least one turn of the owner's verified voice,
@@ -155,6 +156,9 @@ class Settings(BaseSettings):
     conversation_record_eligible_days: PositiveInt = 365
     conversation_record_ineligible_days: PositiveInt = 30
     conversation_record_max_total_mb: PositiveInt = 200
+    # The diary job: how often it runs, and how long one summary may be.
+    conversation_job_interval_s: PositiveInt = 120
+    conversation_episode_max_chars: PositiveInt = 600
     robot_character: str = "iroko"
     # Re-read character markdown profiles from disk on every request when
     # they change (prompt-engineering aid). OFF by default: production loads
