@@ -1041,3 +1041,20 @@ Step 2) on 2026-10-30: the 8 cases pass ([record](../../evals/0076-conversation-
   speaker the controller resolved for it (`_RequestIdentity.last_actor`, set by the resolvers the
   controller calls); `not_checked` stays only for a reply that resolved nobody (the date). Pinned by
   `test_a_deterministic_turn_keeps_the_speaker_the_controller_resolved` (RED first).
+
+### Re-audit after the close (2026-10-30, asked by Pipec)
+
+Every task, decision (D-1 to D-12), review-focus item and ADR 0027 test consequence was checked
+against the code and the tests. The code meets the plan, with the deviations already recorded above
+(`memories` kept empty, the eval adapted, grouped commits). Found and fixed in this pass:
+
+- **Documents the plan's Task 13 named but the close missed:** the ADR index (0027 still
+  `Proposed`), the architecture README and the personal-companion map (CM-4 «unplanned»), ADR 0025
+  decision 5 and ADR 0026 decision 8 (now pointing to the answer), the operator manual's flag
+  reference (the two switches) and `memory-and-world-state.md` (what is implemented).
+- **A test the plan named and the execution left out:** `/vision/respond` records nothing
+  (`test_vision_respond_records_nothing_even_with_the_switch_on`); it passed on the first run, since
+  the recorder guard already keeps the route from naming the recorder.
+
+Not part of this plan: the protected household rule that answers a mere mention of one's children
+or pet (found on hardware) is a row of the roadmap's cross-cutting table for its own plan.

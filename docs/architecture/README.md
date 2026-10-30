@@ -86,7 +86,7 @@ specific conflict instead of redesigning the project implicitly.
   2026-10-16, accepted on real hardware) adds the spoken offer and the explicit spoken answer
   that promote or reject it, all behind a default-off kill-switch
   ([ADR 0021](../adr/0021-memory-candidates-and-the-canonical-writer.md), `Accepted`
-  2026-10-16); CM-3b and CM-4…CM-7 remain unplanned. PC-3A ([Plan 0047](../plans/completed/0047-speaker-evidence-calibration-study.md)) closed 2026-09-25 with a provisional PASS, and PC-3B ([Plan 0053](../plans/completed/0053-consented-speaker-runtime-evidence.md)) closed 2026-09-29 with default-off `VOICE` evidence; PC-4 ([Plan 0054](../plans/completed/0054-face-default-identity-fusion.md)) closed 2026-09-30, accepted on real hardware.
+  2026-10-16); CM-3b tranche A closed with Plan 0065 (2026-10-22) and CM-4 with [Plan 0076](../plans/completed/0076-cm4-conversation-record-and-diary.md) (2026-10-30: the conversation record and the diary); CM-3b tranche B, CM-5b, CM-6 and CM-7 remain unplanned. PC-3A ([Plan 0047](../plans/completed/0047-speaker-evidence-calibration-study.md)) closed 2026-09-25 with a provisional PASS, and PC-3B ([Plan 0053](../plans/completed/0053-consented-speaker-runtime-evidence.md)) closed 2026-09-29 with default-off `VOICE` evidence; PC-4 ([Plan 0054](../plans/completed/0054-face-default-identity-fusion.md)) closed 2026-09-30, accepted on real hardware.
 - [`p0-runtime-policy-audit.md`](p0-runtime-policy-audit.md): current
   disposition of remaining public-route and operator-acceptance gaps.
 - [`implementation-guardrails.md`](implementation-guardrails.md): tracked

@@ -5,6 +5,8 @@
 > **Principle:** Storing data is not the same as remembering it, and observing
 > something is not sufficient reason to retain it permanently.
 
+> **Implemented so far (2026-10-30).** Conversation text is kept as a separate **record**, the archive, and **episodes** are derived from the owner's verified part of it ([ADR 0027](../adr/0027-conversation-record-and-the-diary.md), [Plan 0076](../plans/completed/0076-cm4-conversation-record-and-diary.md)): `conversation_records` (segments of exchanges, consent, two retention clocks, a space cap) and `conversation_episodes` (one `personal` summary per eligible segment, deleted with it). No index or retrieval reads the episodes yet (CM-5b). The legacy `memories` vector store is retired.
+
 The specialized [RAG, memory, and hybrid retrieval
 architecture](rag-and-memory-retrieval.md) defines document ingestion,
 chunking, embeddings, lexical/vector fusion, grounding, evaluation, and the

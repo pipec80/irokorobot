@@ -265,6 +265,25 @@ async def test_chat_records_nothing_even_with_the_switch_on(
     captured.assert_not_awaited()
 
 
+async def test_vision_respond_records_nothing_even_with_the_switch_on(
+    household: PersonalSetupResult, captured: AsyncMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Plan 0076 D-7: the camera's second round is not part of the record."""
+    monkeypatch.setattr(settings, "vision_enabled", True)
+    _see_the_owner(monkeypatch)
+    _classic_reply(monkeypatch)
+
+    async with _client() as client:
+        response = await client.post(
+            "/vision/respond",
+            files={"image": ("frame.jpg", _FRAME, "image/jpeg")},
+            data={"text": "Hola, Iroko"},
+        )
+
+    assert response.status_code == 200
+    captured.assert_not_awaited()
+
+
 async def test_with_the_switch_off_nothing_is_recorded(
     household: PersonalSetupResult, captured: AsyncMock, monkeypatch: pytest.MonkeyPatch
 ) -> None:

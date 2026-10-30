@@ -150,7 +150,9 @@ the model's own sentences, a known limit written in the plan.
 ### 8. The legacy path stays closed and untouched
 
 `build_context`, the `memories` table and the `MANUAL` gate are not changed by CM-5a. CM-4's ADR
-decides whether they are retired or replaced; nothing reads them in production today.
+decides whether they are retired or replaced; nothing reads them in production today. *Decided by
+[ADR 0027](0027-conversation-record-and-the-diary.md) decision 9 and done by [Plan 0076](../plans/completed/0076-cm4-conversation-record-and-diary.md):
+the path is retired; `memories` stays empty and refuses rows (foreign keys still name it).*
 
 ### 9. What CM-7 requires (Pipec's decision 2)
 
@@ -190,7 +192,7 @@ Approved by Pipec on 2026-10-28 («todo estoy de acuerdo»):
 | The diary, the archive search, the recall cues, spoken dates and the fixed «no me acuerdo» | CM-4 and CM-5b | Their own ADRs |
 | Structured and sensitive reads of the pool, «¿estás con alguien?» | Needs decision 6 | The plan after 0074 |
 | Correcting and forgetting by voice | CM-6 | Its ADR |
-| Whether `build_context` and `memories` are retired | CM-4 | Its ADR |
+| Whether `build_context` and `memories` are retired | CM-4 | ADR 0027: retired (Plan 0076) |
 | Greeting first and reminders | The `care` profile and P2.3 | A future ADR |
 
 ## Alternatives considered
