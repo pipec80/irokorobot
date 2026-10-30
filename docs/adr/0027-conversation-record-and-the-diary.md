@@ -1,6 +1,7 @@
 # 0027 — Keep the whole conversation as a record, and build the diary from the owner's part of it
 
-- **Status:** Proposed (2026-10-28). Written after Pipec reshaped the diary of CM-4 in the same day's
+- **Status:** **Accepted** (2026-10-30), when [Plan 0076](../plans/completed/0076-cm4-conversation-record-and-diary.md)
+  closed with its hardware acceptance. Proposed on 2026-10-28. Written after Pipec reshaped the diary of CM-4 in the same day's
   conversation (see *Pipec's decisions and where they land*). It becomes `Accepted` when the first plan
   that implements it closes. Every decision below is the author's recommendation unless it says
   *Confirmed by Pipec*.
@@ -16,7 +17,7 @@
   decision 5, whose open question («storing conversation text is a decision of its own, taken with CM-4»)
   it answers; [ADR 0026](0026-owner-profile-card-and-the-read-side-of-memory.md) decision 8 (the legacy
   `build_context` path is retired, decision 9).
-- **Implemented by:** [Plan 0076](../plans/open/0076-cm4-conversation-record-and-diary.md) (code on 2026-10-29; `Accepted` after its hardware acceptance). See *Implementation notes*.
+- **Implemented by:** [Plan 0076](../plans/completed/0076-cm4-conversation-record-and-diary.md) (code on 2026-10-29, accepted on hardware on 2026-10-30). See *Implementation notes*.
 
 ## Context
 
@@ -257,6 +258,6 @@ speakers are in scope (P3), or when the backup plan decides what a backup carrie
 
 - The measurement of verified turns and of the embedding model is done
   ([Plan 0075](../plans/completed/0075-cm4-pre-measurement.md), 2026-10-29). The implementing plan,
-  [Plan 0076](../plans/open/0076-cm4-conversation-record-and-diary.md), is coded (2026-10-29); its
-  hardware acceptance moves this ADR to `Accepted`.
+  [Plan 0076](../plans/completed/0076-cm4-conversation-record-and-diary.md), closed on 2026-10-30
+  ([acceptance](../evals/0076-conversation-record-acceptance.md)).
 - The next free ADR number is 0028.

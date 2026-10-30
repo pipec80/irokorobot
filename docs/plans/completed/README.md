@@ -125,3 +125,7 @@ The four plans of **Step 0** (the seed load, the "alta" of the robot) closed bet
 The measurement before CM-4 closed on 2026-10-29:
 
 - [Plan 0075](0075-cm4-pre-measurement.md) (PR #226, CI-selection suite 4983): three offline instruments (`cm4-corpus`, `cm4-voice-rate`, `cm4-embed`) and an invented Spanish fixture, with nothing under `server/src` or `robot/src`. The owner's voice verified on 35.5 % of 62 real turns, driven by duration; the eligibility rule for CM-4 is **per turn** (confirmed by Pipec); `nomic-embed-text` separates Spanish at ROC-AUC 0.98. [Record](../../evals/0075-cm4-pre-measurement.md).
+
+CM-4 closed on 2026-10-30:
+
+- [Plan 0076](0076-cm4-conversation-record-and-diary.md) (`just gate` 5442): the legacy memory path retired (the prompts kept their golden digests), migration 013, the segmented conversation record behind the owner's `conversation_storage` consent and two switches, the per-turn face + voice verdict, the diary job (only the owner's verified part) and `iroko-admin conversations` under the PIN. Accepted on real hardware, 8 of 8 cases; a fixed reply now keeps its speaker (found on hardware). ADR 0027 `Accepted`. [Record](../../evals/0076-conversation-record-acceptance.md).

@@ -1,7 +1,9 @@
 # 0076 — CM-4: the conversation record, the diary, and the retirement of the legacy memory path
 
-> **Status:** `Ready` and `NOW`. Written 2026-10-29 and **promoted by Pipec the same day** (D-1 to D-12
-> below confirmed); Pipec chose to execute it in the same session that wrote it. [ADR 0027](../../adr/0027-conversation-record-and-the-diary.md) (`Proposed`) is its design;
+> **Status:** `CLOSED` 2026-10-30. Executed (Tasks 0 to 13) and accepted by Pipec on real hardware
+> ([acceptance record](../../evals/0076-conversation-record-acceptance.md)); ADR 0027 moved to
+> `Accepted`. It was `Ready` and `NOW` when executed: written 2026-10-29 and **promoted by Pipec
+> the same day** (D-1 to D-12 below confirmed); Pipec chose to execute it in the same session. [ADR 0027](../../adr/0027-conversation-record-and-the-diary.md) (`Proposed`) is its design;
 > it moves to `Accepted` when this plan closes. The measurement it starts from is
 > [Plan 0075](../completed/0075-cm4-pre-measurement.md) ([record](../../evals/0075-cm4-pre-measurement.md)).
 > Detailed against `main` at `e42346a`; queue rule 4 applies at execution: Task 0 re-verifies every
@@ -979,8 +981,8 @@ export layout, which the spec fixes as exact copy.
 Executed by the session that wrote the plan (Pipec's choice) on `feat/0076-cm4-conversation-record`.
 Task 0 verified every claim of its Step 2 against `main` at `2123348`; Pipec's database had **0**
 rows in `memories` and **0** in `vec_memories` (read through `immutable=1`, counts only); the
-baseline of the CI selection was **4996 passed**. The hardware acceptance (Task 13, Step 2) is
-pending: [checklist](../../evals/0076-conversation-record-acceptance.md).
+baseline of the CI selection was **4996 passed**. Pipec ran the hardware acceptance (Task 13,
+Step 2) on 2026-10-30: the 8 cases pass ([record](../../evals/0076-conversation-record-acceptance.md)).
 
 | Task | Commit | What |
 |---|---|---|
@@ -1027,8 +1029,12 @@ pending: [checklist](../../evals/0076-conversation-record-acceptance.md).
 - **Found by the gate.** `tests/integration/test_entity_references.py` requires every table that
   refers to `entities` to be classified: `conversation_records` and `conversation_episodes` cascade
   on the owner (whom the import cleanup never deletes), `conversation_consent_grants` is `RESTRICT`.
-- **The Archify diagram** of `current-state.md` is regenerated at the close, after the hardware
-  acceptance, with the final state of ADR 0027.
+- **The Archify diagram** of `current-state.md` was regenerated at the close (the record node,
+  the memory node without the vector index, the cognitive-path card); `validate` and `deliver`
+  showcase pass, 0 errors, 0 warnings.
+- **The acceptance needed a migration first.** `iroko-admin` refuses a database behind the
+  latest schema, so the operator manual now says to start the server once (it migrates) before
+  the first `consent-grant` after an update.
 - **Found on Pipec's hardware run (2026-10-30), D-7 amended with his OK.** Two turns the protected
   household rule answered with its fixed phrase had verified face **and** voice, yet were recorded
   `not_checked`, so the owner's richest words never reached the diary. A fixed reply now carries the

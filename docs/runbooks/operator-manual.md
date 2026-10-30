@@ -885,7 +885,10 @@ keeps the record away from every route, prompt and controller.
 **The consent.** The alta's close step shows [the notice](../legal/conversation-notice-v1.md) and
 asks for it. On a robot whose alta is already closed (Pipec's), grant it with the server stopped:
 `just admin conversations consent-grant` (it shows the notice, asks `SI` and the owner's PIN).
-Revoking (`consent-revoke`, same PIN) stops the record and **deletes every segment and every summary**.
+`iroko-admin` never migrates a database: after an update that brings migration 013, **start the
+server once** (it migrates at start-up), stop it, and only then run `consent-grant`; otherwise it
+answers «La base de datos no está en la última versión». Copy `data/omnibot.db` (and its `-wal`, if
+present) to a backup before that first start. Revoking (`consent-revoke`, same PIN) stops the record and **deletes every segment and every summary**.
 
 **Reading it.** `just admin conversations list` prints one line per segment (number, start, end,
 exchanges, bytes, eligible, diary status), never a text, with no PIN. `export --out DIR [--id N]`
