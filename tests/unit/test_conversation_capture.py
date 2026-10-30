@@ -138,7 +138,7 @@ async def test_the_owner_face_with_a_verified_voice_is_verified() -> None:
     assert await _verdict(face, verify) is TurnVerdict.VERIFIED
     verify.assert_awaited_once()
     assert verify.await_args is not None
-    assert verify.await_args.kwargs["wav_bytes"] == _WAV
+    assert verify.await_args_list[-1].kwargs["wav_bytes"] == _WAV
 
 
 async def test_the_owner_face_with_an_unverified_voice_is_not_verified() -> None:
@@ -153,14 +153,14 @@ async def test_a_capture_appends_the_bounded_exchange_with_its_verdict(appended:
     outcome = await _capture(face, verify=AsyncMock(return_value=face))
 
     assert outcome is CaptureOutcome.RECORDED
-    turn: RecordedTurn = appended.await_args.args[0]
+    turn: RecordedTurn = appended.await_args_list[-1].args[0]
     assert (turn.heard, turn.said, turn.voice) == (
         _CANARY_HEARD,
         _CANARY_SAID,
         TurnVerdict.VERIFIED,
     )
     assert turn.correlation_id == UUID(int=76)
-    assert appended.await_args.kwargs["owner_entity_id"] == _OWNER
+    assert appended.await_args_list[-1].kwargs["owner_entity_id"] == _OWNER
 
 
 @pytest.mark.parametrize("switch", ["memory_enabled", "conversation_record_enabled"])

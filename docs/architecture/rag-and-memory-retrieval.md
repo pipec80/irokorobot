@@ -100,7 +100,7 @@ La implementación actual ya contiene una base semántica útil:
 | Modelo configurado | Implementado | `nomic-embed-text` por defecto en `settings.py`. |
 | Dimensión vectorial | Implementado/fija | 768 dimensiones en código y `schema.sql`. |
 | Caché de embeddings | Implementado | Hash de texto + modelo en SQLite. |
-| Memoria vectorial | Implementado | `memories` + tabla virtual `vec_memories`. |
+| Memoria vectorial | Retirada (Plan 0076) | `vec_memories` se borró en la migración 013; `memories` queda vacía y rechaza filas. El índice de episodios es CM-5b. |
 | Búsqueda semántica | Implementado/legacy | KNN `MATCH + k` de `sqlite-vec`. |
 | Tipos vectorizados | Implementado | `episodic`, `semantic`, `reflection`. |
 | Contexto mixto legacy | Implementado/restringido | Relaciones por palabras, entidades por tokens y búsqueda semántica. |

@@ -154,12 +154,12 @@ async def test_a_generic_turn_records_what_was_heard_said_and_the_speaker(
 
     assert response.status_code == 200
     captured.assert_awaited_once()
-    heard, said, actor = captured.await_args.args
+    heard, said, actor = captured.await_args_list[-1].args
     assert (heard, said) == (_HEARD, "Muy bien.")
     assert actor is not None
     assert actor.status is ActivePersonStatus.IDENTIFIED
     assert actor.person_id == household.owner_entity_id
-    assert captured.await_args.kwargs["wav_bytes"]
+    assert captured.await_args_list[-1].kwargs["wav_bytes"]
 
 
 @pytest.mark.parametrize("route", ["/transcribe", "/transcribe/stream"])
@@ -177,7 +177,7 @@ async def test_a_stranger_turn_is_recorded_with_an_unidentified_speaker(
         response = await client.post(route, files=_files(with_frame=False))
 
     assert response.status_code == 200
-    _heard, _said, actor = captured.await_args.args
+    _heard, _said, actor = captured.await_args_list[-1].args
     assert actor is not None
     assert actor.status is not ActivePersonStatus.IDENTIFIED
 
@@ -198,7 +198,7 @@ async def test_a_deterministic_turn_records_its_plan_with_no_speaker(
 
     assert response.status_code == 200
     model.assert_not_awaited()
-    heard, said, actor = captured.await_args.args
+    heard, said, actor = captured.await_args_list[-1].args
     assert heard == "¿Qué fecha es hoy?"
     assert "hoy" in said.lower()
     assert actor is None
@@ -214,7 +214,7 @@ async def test_the_fallback_phrase_is_recorded(
         response = await client.post("/transcribe", files=_files(with_frame=False))
 
     assert response.status_code == 200
-    assert captured.await_args.args[1] == settings.llm_fallback_phrase
+    assert captured.await_args_list[-1].args[1] == settings.llm_fallback_phrase
 
 
 async def test_an_unclear_clip_records_nothing(

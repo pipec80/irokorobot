@@ -81,7 +81,7 @@ async def test_summarize_validates_cleans_and_cuts_the_summary(
 
     assert draft.summary == "La persona contó que"
     assert draft.sensitivity == "normal"
-    sent: list[dict[str, Any]] = chat.await_args.args[1]
+    sent: list[dict[str, Any]] = chat.await_args_list[-1].args[1]
     assert "frase-1-not_owner" not in sent[1]["content"]
 
 

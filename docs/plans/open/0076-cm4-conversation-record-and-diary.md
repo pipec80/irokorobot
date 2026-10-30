@@ -973,3 +973,59 @@ and `owner_part` (Task 4) are what Tasks 6, 10 and 11 use; `RecordView` (Task 4)
 `EpisodeStatus` lives in the record store and `EpisodeOutcome` in the episode store. Proportion: fourteen
 tasks, signatures, schema and test names; the only bodies are the SQL, the notice, the prompt and the
 export layout, which the spec fixes as exact copy.
+
+## Execution record (2026-10-29)
+
+Executed by the session that wrote the plan (Pipec's choice) on `feat/0076-cm4-conversation-record`.
+Task 0 verified every claim of its Step 2 against `main` at `2123348`; Pipec's database had **0**
+rows in `memories` and **0** in `vec_memories` (read through `immutable=1`, counts only); the
+baseline of the CI selection was **4996 passed**. The hardware acceptance (Task 13, Step 2) is
+pending: [checklist](../../evals/0076-conversation-record-acceptance.md).
+
+| Task | Commit | What |
+|---|---|---|
+| 1 | `3f60efc` | The legacy runtime path out; golden prompt digests (`tests/fixtures/prompt_golden.json`) |
+| 2 | `7c481ad` | The legacy prompt surface out; golden digests unchanged |
+| 3 | `13a5b5b` | Migration 013 |
+| 4 to 6 | `104731e` | Types, record store, consent and notice, the alta step, the capture |
+| 7 | `6cad8e7` | The voice routes record every spoken reply |
+| 8 | `04cca1f` | The owner → stranger matrix covers the record |
+| 9 | `e9e8a3e` | The retention purge |
+| 10 | `6c21e86` | The diary job and its lifespan wiring |
+| 11 | `d86e4e6` | `iroko-admin conversations` |
+| 12, 13 | the docs commit | Whole-project checks (`MEMORY_ENABLED=false just gate`: **5442 passed**, +446 on the baseline; ruff, mypy, pyright and the reserved-terms guard clean), the documents |
+
+### Rulings
+
+- **`memories` is not dropped (evidence against the plan).** Migration 013 was to drop both legacy
+  tables. `facts`, `events`, `literal_facts_v4` and `entity_relations_v4` name `memories(id)` in a
+  nullable foreign key; with the table gone, any cascade through them failed («no such table:
+  main.memories»). Rebuilding four tables was out of proportion, so 013 drops `vec_memories` only and
+  a trigger makes `memories` refuse any row; it stays empty. Pinned by
+  `test_the_legacy_vector_index_is_gone_and_memories_takes_no_row` and
+  `test_deleting_an_entity_still_works_after_the_retirement`. Dropping it is left to a later
+  migration that rebuilds those tables.
+- **The chat evals (asked to Pipec during Task 2).** `just eval-chat` and the stream tools were built
+  on `MemoryContext`. Pipec chose to adapt them: `scripts/eval_memory_block.py` holds an
+  evaluation-only copy of the model and renders it through the profile card slot; the 12 golden
+  cases are unchanged.
+- **Task 1 cut `onboarding.py` down to `OnboardingSlot`** (its checklist was the last user of
+  `relations.py`); Task 2 deleted the rest.
+- **`prepare_text_turn` lost its `client` argument**, unused once the legacy retrieval went.
+- **`SEMANTIC_TOP_K` removed**: nothing read it after Task 1 (`test_settings_are_read`).
+- **Commits grouped.** Tasks 4 to 6 are one commit: their settings and the capture are read across
+  the three, and `test_settings_are_read` forbids a declared setting that nothing reads. The diary
+  settings came with Task 10.
+- **The streaming card position.** With the memory block gone, both `PROFILE_CARD_POSITION` values
+  give the same streaming prompt (it has no perception block); the test now pins that.
+- **The capture logs only the exception class**, not the place (no shared helper with
+  `candidate_proposal`).
+- **`iroko-admin` audits a wrong PIN as `refused`** for the conversation operations (the older verbs
+  write no row then); a dry run or a cancelled confirmation writes none.
+- **The whole suite ran per task only on the touched modules**; the full selection ran at the
+  baseline, after Task 2 and in `just gate` at Task 12 (about 18 minutes each on the laptop).
+- **Found by the gate.** `tests/integration/test_entity_references.py` requires every table that
+  refers to `entities` to be classified: `conversation_records` and `conversation_episodes` cascade
+  on the owner (whom the import cleanup never deletes), `conversation_consent_grants` is `RESTRICT`.
+- **The Archify diagram** of `current-state.md` is regenerated at the close, after the hardware
+  acceptance, with the final state of ADR 0027.

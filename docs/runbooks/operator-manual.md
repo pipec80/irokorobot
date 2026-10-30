@@ -846,6 +846,65 @@ every reply with «Tú, …» and never use the name.
 **Rolling back.** `PROFILE_CARD_ENABLED=false` and a restart: every prompt, response and wire field
 is byte-identical to a build without the card, and the question is ordinary conversation again.
 
+### The conversation record and the diary (Plan 0076, CM-4, ADR 0027): off by default
+
+With `CONVERSATION_RECORD_ENABLED=true` (and `MEMORY_ENABLED=true`) **and the owner's
+`conversation_storage` consent**, Iroko keeps the **text** of every voice conversation, never audio
+or frames, in the same SQLite file as the rest (so the disk encryption, the backup and the deletion
+are the database's). Nothing is ever read back by voice or put into a prompt: an architecture guard
+keeps the record away from every route, prompt and controller.
+
+- **What is recorded.** Each spoken exchange of the classic and the streaming voice routes, as
+  `{at, heard, said, voice, cid}`: what the speech-to-text heard, what the robot said (the fallback
+  phrase included) and the turn's voice verdict. A deterministic reply («¿qué fecha es hoy?») is
+  recorded with the verdict `not_checked`. Not recorded: the «repite, por favor» of unclear speech,
+  the camera cue and `/vision/respond`, `/chat`, and the memory offer phrase.
+- **Whose turn it is.** `verified` only when the owner's **face** is in frame **and** the voice of
+  that turn's own clip verifies against the owner (the check of the memory candidates); `not_verified`
+  for the owner's face with a voice that did not verify; `not_owner` for anyone else, a token, two
+  faces or no face (the voice is not even computed). A recording of the owner's voice alone never
+  makes a turn the owner's.
+- **Segments.** A conversation ends after `WORKING_MEMORY_IDLE_SECONDS` (180 s) of silence; a
+  segment holds at most `CONVERSATION_SEGMENT_MAX_TURNS` (60) exchanges and
+  `CONVERSATION_SEGMENT_MAX_BYTES` (64 KiB), and a longer conversation continues in a segment linked
+  to the previous one. A segment with at least one `verified` turn is **eligible**.
+- **Retention.** A closed eligible segment is kept `CONVERSATION_RECORD_ELIGIBLE_DAYS` (365), any other
+  `CONVERSATION_RECORD_INELIGIBLE_DAYS` (30). The hourly retention run deletes expired segments and,
+  while the record is over `CONVERSATION_RECORD_MAX_TOTAL_MB` (200), the oldest closed ones (not
+  eligible first); it runs whatever the switch says.
+- **The diary.** With `CONVERSATION_EPISODES_ENABLED=true` too, a background job (every
+  `CONVERSATION_JOB_INTERVAL_S`, 120 s; also at start-up, which closes a segment a stopped server
+  left open) writes, **only while nobody is talking**, one short summary (at most
+  `CONVERSATION_EPISODE_MAX_CHARS`, 600) of each closed eligible segment from the owner's verified
+  turns only. It shares the candidates' extraction limiter and gives up after 3 failed attempts. The
+  summary is `personal`, classified by the model (`normal`, `private`, `medical`, `location`,
+  `security`), expires and is deleted with its segment. Candidates still come only from the live
+  path. Nothing reads the diary yet (CM-5b).
+
+**The consent.** The alta's close step shows [the notice](../legal/conversation-notice-v1.md) and
+asks for it. On a robot whose alta is already closed (Pipec's), grant it with the server stopped:
+`just admin conversations consent-grant` (it shows the notice, asks `SI` and the owner's PIN).
+Revoking (`consent-revoke`, same PIN) stops the record and **deletes every segment and every summary**.
+
+**Reading it.** `just admin conversations list` prints one line per segment (number, start, end,
+exchanges, bytes, eligible, diary status), never a text, with no PIN. `export --out DIR [--id N]`
+writes one readable `conversacion-<N>.md` per segment under the PIN; **delete the files after
+reading them**. `delete --id N` removes one segment and its summary. Every operation but `list`
+writes one `admin_audit` row (`grant`/`revoke` on `conversation_consent`, `export`/`delete` on
+`conversation_record`), never a text; a wrong PIN is audited as `refused`.
+
+**Logs.** `conversation.capture` (outcome `recorded`, `disabled`, `no_owner`, `no_consent`, `failed`,
+the verdict and the turn id) and `conversation.episode` (`written`, `skipped`, `busy`, `retry`,
+`failed`, `gone`); never a text.
+
+**Rolling back.** `CONVERSATION_RECORD_ENABLED=false` and a restart: nothing new is recorded and every
+prompt, response and wire field is byte-identical. What was stored stays until it expires, is
+deleted, or the consent is revoked.
+
+**The legacy store.** Plan 0076 also retired the old `MANUAL`-gated memory path (`build_context`, the
+vector index and the onboarding interview). Migration 013 drops `vec_memories`; the `memories` table
+stays empty and refuses any row, because four tables still name it in a nullable foreign key.
+
 ## 4. Feature-flag reference
 
 | Variable | Default | Effect |
