@@ -795,8 +795,11 @@ Esta arquitectura no cambia la prioridad inmediata del compañero personal.
 en otra fila de la
 [cola única](../roadmap/cognitive-roadmap.md#canonical-pre-electronics-delivery-portfolio),
 así que no se planifican aparte: R0 es PC-1 (cerrado); R1 es CM-5; R5 es CM-3,
-CM-4 y CM-6; R6 depende de P2.1. Solo **R2** y **R3** son filas propias, después
-de CM-5 y CM-6; R4 es condicional. Cargar los datos del dueño y del hogar no es
+CM-4 y CM-6; R6 depende de P2.1. Desde el 2026-10-30 (decisión de Pipec,
+[camino de cierre](../roadmap/cognitive-roadmap.md#closing-path-of-conversational-memory))
+**R3** se entrega junto con CM-5b y va antes que R2, porque sin documentos es la
+búsqueda del diario; **R2** salió del camino de la memoria y es condicional, como
+R4. Cargar los datos del dueño y del hogar no es
 RAG: es la carga inicial estructurada en V4 («paso 0»).
 
 ### R0 — MVP personal autenticado
@@ -813,14 +816,16 @@ memoria semántica existente.
 
 ### R2 — Fuente documental mínima
 
-Agregar un único tipo de fuente prioritario, recomendado Markdown o texto antes
-de PDF complejo. Versionar fuente/chunks, recuperar evidencia y mostrar
-procedencia. No agregar todavía todos los formatos.
+Condicional: se abre solo si Pipec quiere documentos, después de CM-5b y CM-6, y
+reutiliza la búsqueda de R3. Agregar un único tipo de fuente prioritario,
+recomendado Markdown o texto antes de PDF complejo. Versionar fuente/chunks,
+recuperar evidencia y mostrar procedencia. No agregar todavía todos los formatos.
 
 ### R3 — Búsqueda lexical e híbrida
 
-Implementar lexical local, línea base vectorial y RRF. Evaluar consultas
-semánticas y términos exactos con el mismo corpus autorizado.
+Se entrega con CM-5b sobre el diario. Implementar lexical local, línea base
+vectorial y RRF. Evaluar consultas semánticas y términos exactos con el mismo
+corpus autorizado.
 
 ### R4 — PDF y calidad avanzada
 
