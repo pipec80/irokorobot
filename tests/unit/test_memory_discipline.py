@@ -47,14 +47,14 @@ def test_the_admission_rule_names_both_sources_and_still_forbids_inventing() -> 
 
 def test_the_model_is_told_it_stores_nothing_itself() -> None:
     """Plan 0064, D-2: support for the claim guard, which is the actual guarantee."""
-    prompt = build_system_prompt(get_character("iroko"), None)
+    prompt = build_system_prompt(get_character("iroko"))
 
     assert "You do NOT store anything yourself" in prompt
     assert "never say you saved, registered or noted" in prompt
 
 
 def test_the_block_is_always_in_the_system_prompt() -> None:
-    prompt = build_system_prompt(get_character("iroko"), None)
+    prompt = build_system_prompt(get_character("iroko"))
 
     assert _MEMORY_DISCIPLINE in prompt
 
@@ -62,10 +62,10 @@ def test_the_block_is_always_in_the_system_prompt() -> None:
 def test_the_speakers_identity_never_enters_the_system_prompt() -> None:
     profile = get_character("iroko")
 
-    identified = build_system_prompt(profile, None, active_person=_identified())
+    identified = build_system_prompt(profile, active_person=_identified())
 
     assert _SPEAKER_NAME not in identified
-    assert identified == build_system_prompt(profile, None)
+    assert identified == build_system_prompt(profile)
 
 
 def test_the_display_name_never_becomes_the_card() -> None:
@@ -73,8 +73,8 @@ def test_the_display_name_never_becomes_the_card() -> None:
     profile = get_character("iroko")
     card = '--- Lo que sabes ---\n- Nombre: "Zeta".'
 
-    identified = build_system_prompt(profile, None, active_person=_identified(), profile_card=card)
+    identified = build_system_prompt(profile, active_person=_identified(), profile_card=card)
 
     assert _SPEAKER_NAME not in identified
     assert card in identified
-    assert identified == build_system_prompt(profile, None, profile_card=card)
+    assert identified == build_system_prompt(profile, profile_card=card)

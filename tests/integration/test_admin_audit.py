@@ -93,8 +93,8 @@ async def _record(
 # --- the migration --------------------------------------------------------------------------------
 
 
-async def test_migrations_reach_version_twelve_with_the_table(admin_db: None) -> None:
-    assert await _scalar("PRAGMA user_version") == 12
+async def test_migrations_reach_the_latest_version_with_the_table(admin_db: None) -> None:
+    assert await _scalar("PRAGMA user_version") == db.latest_schema_version()
     assert "admin_audit" in await _tables()
 
 
@@ -114,7 +114,7 @@ async def test_a_version_eleven_database_upgrades_without_losing_a_row(
         monkeypatch.setattr(db, "_MIGRATIONS", full_list)
         await db.run_migrations()
 
-        assert await _scalar("PRAGMA user_version") == 12
+        assert await _scalar("PRAGMA user_version") == db.latest_schema_version()
         assert "admin_audit" in await _tables()
         assert await _scalar("SELECT COUNT(*) FROM entities") == 1
         assert owner > 0
@@ -126,7 +126,7 @@ async def test_a_version_eleven_database_upgrades_without_losing_a_row(
 async def test_running_the_migrations_twice_changes_nothing(admin_db: None) -> None:
     await _record()
     await db.run_migrations()
-    assert await _scalar("PRAGMA user_version") == 12
+    assert await _scalar("PRAGMA user_version") == db.latest_schema_version()
     assert await _scalar("SELECT COUNT(*) FROM admin_audit") == 1
 
 

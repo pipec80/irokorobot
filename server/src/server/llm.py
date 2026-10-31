@@ -11,8 +11,7 @@ from server.characters import build_system_prompt, get_character
 from server.cognition.identity import ActivePersonContext
 from server.exceptions import LLMError
 from server.llm_transport import ollama_chat, strip_json_fences
-from server.onboarding import OnboardingSlot
-from server.schemas import ConversationTurn, MemoryContext
+from server.schemas import ConversationTurn
 from server.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -145,7 +144,7 @@ async def _generate_ollama(
 
     Args:
         client: Shared, lifecycle-owned HTTP client (Plan 0039).
-        system_prompt: Full system prompt including any memory context.
+        system_prompt: Full system prompt, the profile card included when present.
         messages: Conversation messages (history + current turn).
 
     Returns:
@@ -174,10 +173,7 @@ def _build_messages(text: str, history: list[ConversationTurn] | None) -> list[d
 
 
 def _build_classic_base_prompt(
-    context: MemoryContext | None,
     *,
-    onboarding: bool,
-    onboarding_slot: OnboardingSlot | None,
     user_emotion: str | None,
     active_person: ActivePersonContext | None,
     perception: str | None,
@@ -194,9 +190,6 @@ def _build_classic_base_prompt(
     character = get_character(settings.robot_character)
     return build_system_prompt(
         character,
-        context,
-        onboarding=onboarding,
-        onboarding_slot=onboarding_slot,
         user_emotion=user_emotion,
         active_person=active_person,
         perception=perception,
@@ -209,10 +202,7 @@ async def generate_response(
     client: httpx.AsyncClient,
     text: str,
     *,
-    context: MemoryContext | None = None,
     history: list[ConversationTurn] | None = None,
-    onboarding: bool = False,
-    onboarding_slot: OnboardingSlot | None = None,
     user_emotion: str | None = None,
     active_person: ActivePersonContext | None = None,
     perception: str | None = None,
@@ -223,10 +213,7 @@ async def generate_response(
     Args:
         client: Shared, lifecycle-owned HTTP client (Plan 0039).
         text: Transcribed user speech.
-        context: Optional memory context for the system prompt (``None`` = no memory).
         history: Optional recent conversation turns (oldest first, already trimmed).
-        onboarding: If ``True``, asks first-run introductory questions.
-        onboarding_slot: Next onboarding checklist slot; names the ONE datum to ask.
         user_emotion: Dominant recent user emotion; adds a tone-adaptation directive.
         active_person: Resolved person context; guides neutral presentation.
         perception: Camera VLM description this turn, injected as a perception block (V0.5).
@@ -244,9 +231,6 @@ async def generate_response(
         raise ValueError("Input text is empty")
 
     base_prompt = _build_classic_base_prompt(
-        context,
-        onboarding=onboarding,
-        onboarding_slot=onboarding_slot,
         user_emotion=user_emotion,
         active_person=active_person,
         perception=perception,

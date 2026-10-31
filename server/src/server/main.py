@@ -20,7 +20,7 @@ from server.cognition.owner_authentication import owner_unlock_service
 from server.db import close_db, open_db, run_migrations
 from server.exceptions import VisionError
 from server.logging_setup import configure_logging
-from server.memory import candidates, retention
+from server.memory import candidates, conversation_jobs, retention
 from server.ollama_probe import probe_ollama
 from server.request_context import RequestContextMiddleware
 from server.resources import AppResources
@@ -131,6 +131,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             await candidates.reset_for_startup(utc_now(), enabled=cfg.memory_candidates_enabled)
             retention.start_background_job()
             stack.push_async_callback(retention.stop_background_job)
+            if cfg.conversation_record_enabled:
+                # Closes a segment a stopped server left open, then writes the diary while
+                # nobody is talking (Plan 0076).
+                conversation_jobs.start_background_job(http_client)
+                stack.push_async_callback(conversation_jobs.stop_background_job)
             logger.info("Brain memory enabled: %s", cfg.brain_db_path)
         else:
             logger.info("Memory disabled via MEMORY_ENABLED")

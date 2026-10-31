@@ -4,7 +4,7 @@ from uuid import UUID
 
 import httpx
 import pytest
-from server.characters import _format_memory_block, build_system_prompt
+from server.characters import build_system_prompt
 from server.characters.iroko import IROKO
 from server.cognition.identity import (
     ActivePersonContext,
@@ -15,14 +15,6 @@ from server.cognition.identity import (
 )
 from server.cognition.models import Confidence, ConfidenceBasis
 from server.exceptions import LLMError
-from server.onboarding import OnboardingSlot
-from server.schemas import (
-    ConversationTurn,
-    EntityWithFacts,
-    FactRecord,
-    MemoryContext,
-    MemoryHit,
-)
 from server.settings import settings
 
 from server import llm
@@ -174,53 +166,6 @@ async def test_generate_response_without_context_backward_compat(
 
 
 @pytest.mark.unit
-async def test_generate_response_with_context_and_history(
-    http_client: httpx.AsyncClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Context block appended to system prompt; history prepended to messages."""
-    mock = AsyncMock(return_value=("remembered", "joy"))
-    monkeypatch.setattr(llm, "_generate_ollama", mock)
-
-    ctx = MemoryContext(
-        entities=[
-            EntityWithFacts(
-                id=1,
-                name="María",
-                type="person",
-                facts=[FactRecord(predicate="vive_en", object_value="CDMX")],
-            ),
-        ],
-        memories=[
-            MemoryHit(
-                id=1,
-                kind="episodic",
-                content="Le gusta el café",
-                summary="Café preference",
-                importance=0.8,
-                distance=0.1,
-            ),
-        ],
-    )
-    history = [
-        ConversationTurn(role="user", content="hola"),
-        ConversationTurn(role="assistant", content="hola, soy OMNiBot"),
-    ]
-
-    await llm.generate_response(http_client, "qué sabes de María", context=ctx, history=history)
-
-    call_args = mock.call_args
-    system_prompt = call_args[0][1]
-    messages = call_args[0][2]
-
-    assert "Memoria activa" in system_prompt
-    assert "María" in system_prompt
-    assert "Café preference" in system_prompt
-    assert len(messages) == 3  # 2 history + 1 current
-    assert messages[-1] == {"role": "user", "content": "qué sabes de María"}
-
-
-@pytest.mark.unit
 async def test_generate_response_uses_manual_context_for_neutral_display_guidance(
     http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -285,71 +230,10 @@ async def test_generate_response_honours_the_profile_card_position(
 
 
 @pytest.mark.unit
-def test_build_system_prompt_empty_context_excludes_memory_block() -> None:
-    """Empty context must not add any memory block to the prompt."""
-    ctx = MemoryContext(entities=[], memories=[])
-    prompt = build_system_prompt(IROKO, ctx)
-    assert "Memoria activa" not in prompt
-
-
-@pytest.mark.unit
 def test_build_system_prompt_without_active_person_has_no_display_guidance() -> None:
     """No active person must leave the prompt without display guidance."""
-    prompt = build_system_prompt(IROKO, None)
+    prompt = build_system_prompt(IROKO)
     assert "PRESENTATION GUIDANCE" not in prompt
-
-
-@pytest.mark.unit
-def test_build_system_prompt_with_slot_names_the_goal() -> None:
-    """During onboarding the checklist injects the ONE datum to ask for."""
-    slot = OnboardingSlot(key="vive_en", question_hint="dónde vive")
-
-    prompt = build_system_prompt(IROKO, None, onboarding=True, onboarding_slot=slot)
-
-    assert "PRÓXIMO OBJETIVO de la entrevista" in prompt
-    assert "dónde vive" in prompt
-
-
-@pytest.mark.unit
-def test_build_system_prompt_onboarding_without_slot_has_no_goal() -> None:
-    """Degraded memory can leave onboarding on with no slot — no goal block.
-
-    The character prompt REFERENCES "PRÓXIMO OBJETIVO", so the assertion
-    targets the goal template's unique opening phrase.
-    """
-    prompt = build_system_prompt(IROKO, None, onboarding=True)
-
-    assert "PRIMER ENCUENTRO" in prompt
-    assert "PRÓXIMO OBJETIVO de la entrevista" not in prompt
-
-
-@pytest.mark.unit
-def test_build_system_prompt_slot_ignored_outside_onboarding() -> None:
-    """After onboarding the interview goal must never reappear."""
-    slot = OnboardingSlot(key="le_gusta", question_hint="qué le gusta hacer")
-
-    prompt = build_system_prompt(IROKO, None, onboarding=False, onboarding_slot=slot)
-
-    assert "PRÓXIMO OBJETIVO de la entrevista" not in prompt
-
-
-@pytest.mark.unit
-async def test_generate_response_forwards_onboarding_slot(
-    http_client: httpx.AsyncClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The slot's hint must reach the system prompt sent to the backend."""
-    mock = AsyncMock(return_value=("¿cuándo naciste?", "neutral"))
-    monkeypatch.setattr(llm, "_generate_ollama", mock)
-    slot = OnboardingSlot(key="fecha_nacimiento", question_hint="cuándo nació")
-
-    await llm.generate_response(
-        http_client, "me llamo Felipe", onboarding=True, onboarding_slot=slot
-    )
-
-    system_prompt = mock.call_args[0][1]
-    assert "PRÓXIMO OBJETIVO de la entrevista" in system_prompt
-    assert "cuándo nació" in system_prompt
 
 
 # ---------------------------------------------------------------------------
@@ -396,36 +280,6 @@ async def test_generate_ollama_uses_unchanged_response_schema(
     await llm._generate_ollama(http_client, "system prompt", [{"role": "user", "content": "hi"}])
 
     assert mock_chat.call_args.kwargs["format_schema"] == llm._OLLAMA_RESPONSE_SCHEMA
-
-
-@pytest.mark.unit
-def test_format_memory_block_with_data_includes_entity_and_memory() -> None:
-    """Non-empty context must include entity names and memory summaries."""
-    ctx = MemoryContext(
-        entities=[
-            EntityWithFacts(
-                id=1,
-                name="Carlos",
-                type="person",
-                facts=[FactRecord(predicate="trabajo", object_value="ingeniero")],
-            ),
-        ],
-        memories=[
-            MemoryHit(
-                id=1,
-                kind="semantic",
-                content="Carlos prefiere té verde",
-                summary="Té verde preference",
-                importance=0.6,
-                distance=0.2,
-            ),
-        ],
-    )
-    block = _format_memory_block(ctx)
-    assert "Carlos" in block
-    assert "ingeniero" in block
-    assert "Té verde preference" in block
-    assert "Memoria activa" in block
 
 
 @pytest.mark.unit

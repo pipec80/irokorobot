@@ -186,8 +186,8 @@
     {
       "id": "memory",
       "type": "database",
-      "label": "SQLite + sqlite-vec",
-      "sublabel": "episodic/vector v3 · v4",
+      "label": "SQLite",
+      "sublabel": "v4 · candidates · record",
       "pos": [
         670,
         460
@@ -285,6 +285,21 @@
         64
       ],
       "tag": "off by default"
+    },
+    {
+      "id": "record",
+      "type": "backend",
+      "label": "Conversation record",
+      "sublabel": "text only · diary of the owner",
+      "pos": [
+        40,
+        620
+      ],
+      "size": [
+        190,
+        64
+      ],
+      "tag": "consent + switch, off by default"
     }
   ],
   "boundaries": [
@@ -432,6 +447,14 @@
       "label": "one audit row, then personal · normal rows",
       "fromSide": "left",
       "toSide": "bottom"
+    },
+    {
+      "id": "record-to-memory",
+      "from": "record",
+      "to": "memory",
+      "label": "text · diary · purge",
+      "fromSide": "top",
+      "toSide": "bottom"
     }
   ],
   "cards": [
@@ -449,7 +472,7 @@
       "title": "Cognitive path",
       "items": [
         "Controller returns an immutable response plan before any generation",
-        "Safe plans never reach the LLM, legacy memory, or a candidate proposal",
+        "Safe plans never reach the LLM or a candidate proposal; the legacy vector memory is retired (Plan 0076)",
         "A memory offer or answer needs the face and the voice of the same person on that turn's own clip, never a token; otherwise the turn is the ordinary one",
         "Ollama is the only accepted LLM/VLM runtime (ADR-0004), reached only through one transport module",
         "A generic turn names its speaker by face or an observed token (never voice); the identified person gets one in-process session, an unknown speaker suspends it",
@@ -457,7 +480,8 @@
         "The seed file loads offline (Plan 0071): dry run by default, the owner's review and SI, one transaction, a replacement only while commissioning and before anything is learned by voice",
         "The alta is one guided command (Plan 0072): it enrols face and voice asking the PIN before each, records backups and consents, attests the readiness of what exists and closes the window with an acta that holds no household value",
         "After the alta closes, iroko-admin is the amendment path (Plan 0073): it edits the pool and contacts through the canonical writers (channel admin_local) with the owner PIN for sensitive data and an audit that holds no value; a revoke is history, not a hard delete",
-        "The profile card (Plan 0074): a face-identified owner's name, form and tastes enter the prompt behind PROFILE_CARD_ENABLED; one audit row precedes every read, nothing sensitive"
+        "The profile card (Plan 0074): a face-identified owner's name, form and tastes enter the prompt behind PROFILE_CARD_ENABLED; one audit row precedes every read, nothing sensitive",
+        "Every spoken exchange of the voice routes is kept as text (consent, switch); only the owner's turns with face and verified voice feed the diary, and no prompt reads it"
       ]
     },
     {

@@ -1,7 +1,9 @@
 # 0076 — CM-4: the conversation record, the diary, and the retirement of the legacy memory path
 
-> **Status:** `Ready` and `NOW`. Written 2026-10-29 and **promoted by Pipec the same day** (D-1 to D-12
-> below confirmed); Pipec chose to execute it in the same session that wrote it. [ADR 0027](../../adr/0027-conversation-record-and-the-diary.md) (`Proposed`) is its design;
+> **Status:** `CLOSED` 2026-10-30. Executed (Tasks 0 to 13) and accepted by Pipec on real hardware
+> ([acceptance record](../../evals/0076-conversation-record-acceptance.md)); ADR 0027 moved to
+> `Accepted`. It was `Ready` and `NOW` when executed: written 2026-10-29 and **promoted by Pipec
+> the same day** (D-1 to D-12 below confirmed); Pipec chose to execute it in the same session. [ADR 0027](../../adr/0027-conversation-record-and-the-diary.md) (`Proposed`) is its design;
 > it moves to `Accepted` when this plan closes. The measurement it starts from is
 > [Plan 0075](../completed/0075-cm4-pre-measurement.md) ([record](../../evals/0075-cm4-pre-measurement.md)).
 > Detailed against `main` at `e42346a`; queue rule 4 applies at execution: Task 0 re-verifies every
@@ -973,3 +975,86 @@ and `owner_part` (Task 4) are what Tasks 6, 10 and 11 use; `RecordView` (Task 4)
 `EpisodeStatus` lives in the record store and `EpisodeOutcome` in the episode store. Proportion: fourteen
 tasks, signatures, schema and test names; the only bodies are the SQL, the notice, the prompt and the
 export layout, which the spec fixes as exact copy.
+
+## Execution record (2026-10-29)
+
+Executed by the session that wrote the plan (Pipec's choice) on `feat/0076-cm4-conversation-record`.
+Task 0 verified every claim of its Step 2 against `main` at `2123348`; Pipec's database had **0**
+rows in `memories` and **0** in `vec_memories` (read through `immutable=1`, counts only); the
+baseline of the CI selection was **4996 passed**. Pipec ran the hardware acceptance (Task 13,
+Step 2) on 2026-10-30: the 8 cases pass ([record](../../evals/0076-conversation-record-acceptance.md)).
+
+| Task | Commit | What |
+|---|---|---|
+| 1 | `3f60efc` | The legacy runtime path out; golden prompt digests (`tests/fixtures/prompt_golden.json`) |
+| 2 | `7c481ad` | The legacy prompt surface out; golden digests unchanged |
+| 3 | `13a5b5b` | Migration 013 |
+| 4 to 6 | `104731e` | Types, record store, consent and notice, the alta step, the capture |
+| 7 | `6cad8e7` | The voice routes record every spoken reply |
+| 8 | `04cca1f` | The owner → stranger matrix covers the record |
+| 9 | `e9e8a3e` | The retention purge |
+| 10 | `6c21e86` | The diary job and its lifespan wiring |
+| 11 | `d86e4e6` | `iroko-admin conversations` |
+| 12, 13 | the docs commit | Whole-project checks (`MEMORY_ENABLED=false just gate`: **5442 passed**, +446 on the baseline; ruff, mypy, pyright and the reserved-terms guard clean), the documents |
+
+### Rulings
+
+- **`memories` is not dropped (evidence against the plan).** Migration 013 was to drop both legacy
+  tables. `facts`, `events`, `literal_facts_v4` and `entity_relations_v4` name `memories(id)` in a
+  nullable foreign key; with the table gone, any cascade through them failed («no such table:
+  main.memories»). Rebuilding four tables was out of proportion, so 013 drops `vec_memories` only and
+  a trigger makes `memories` refuse any row; it stays empty. Pinned by
+  `test_the_legacy_vector_index_is_gone_and_memories_takes_no_row` and
+  `test_deleting_an_entity_still_works_after_the_retirement`. Dropping it is left to a later
+  migration that rebuilds those tables.
+- **The chat evals (asked to Pipec during Task 2).** `just eval-chat` and the stream tools were built
+  on `MemoryContext`. Pipec chose to adapt them: `scripts/eval_memory_block.py` holds an
+  evaluation-only copy of the model and renders it through the profile card slot; the 12 golden
+  cases are unchanged.
+- **Task 1 cut `onboarding.py` down to `OnboardingSlot`** (its checklist was the last user of
+  `relations.py`); Task 2 deleted the rest.
+- **`prepare_text_turn` lost its `client` argument**, unused once the legacy retrieval went.
+- **`SEMANTIC_TOP_K` removed**: nothing read it after Task 1 (`test_settings_are_read`).
+- **Commits grouped.** Tasks 4 to 6 are one commit: their settings and the capture are read across
+  the three, and `test_settings_are_read` forbids a declared setting that nothing reads. The diary
+  settings came with Task 10.
+- **The streaming card position.** With the memory block gone, both `PROFILE_CARD_POSITION` values
+  give the same streaming prompt (it has no perception block); the test now pins that.
+- **The capture logs only the exception class**, not the place (no shared helper with
+  `candidate_proposal`).
+- **`iroko-admin` audits a wrong PIN as `refused`** for the conversation operations (the older verbs
+  write no row then); a dry run or a cancelled confirmation writes none.
+- **The whole suite ran per task only on the touched modules**; the full selection ran at the
+  baseline, after Task 2 and in `just gate` at Task 12 (about 18 minutes each on the laptop).
+- **Found by the gate.** `tests/integration/test_entity_references.py` requires every table that
+  refers to `entities` to be classified: `conversation_records` and `conversation_episodes` cascade
+  on the owner (whom the import cleanup never deletes), `conversation_consent_grants` is `RESTRICT`.
+- **The Archify diagram** of `current-state.md` was regenerated at the close (the record node,
+  the memory node without the vector index, the cognitive-path card); `validate` and `deliver`
+  showcase pass, 0 errors, 0 warnings.
+- **The acceptance needed a migration first.** `iroko-admin` refuses a database behind the
+  latest schema, so the operator manual now says to start the server once (it migrates) before
+  the first `consent-grant` after an update.
+- **Found on Pipec's hardware run (2026-10-30), D-7 amended with his OK.** Two turns the protected
+  household rule answered with its fixed phrase had verified face **and** voice, yet were recorded
+  `not_checked`, so the owner's richest words never reached the diary. A fixed reply now carries the
+  speaker the controller resolved for it (`_RequestIdentity.last_actor`, set by the resolvers the
+  controller calls); `not_checked` stays only for a reply that resolved nobody (the date). Pinned by
+  `test_a_deterministic_turn_keeps_the_speaker_the_controller_resolved` (RED first).
+
+### Re-audit after the close (2026-10-30, asked by Pipec)
+
+Every task, decision (D-1 to D-12), review-focus item and ADR 0027 test consequence was checked
+against the code and the tests. The code meets the plan, with the deviations already recorded above
+(`memories` kept empty, the eval adapted, grouped commits). Found and fixed in this pass:
+
+- **Documents the plan's Task 13 named but the close missed:** the ADR index (0027 still
+  `Proposed`), the architecture README and the personal-companion map (CM-4 «unplanned»), ADR 0025
+  decision 5 and ADR 0026 decision 8 (now pointing to the answer), the operator manual's flag
+  reference (the two switches) and `memory-and-world-state.md` (what is implemented).
+- **A test the plan named and the execution left out:** `/vision/respond` records nothing
+  (`test_vision_respond_records_nothing_even_with_the_switch_on`); it passed on the first run, since
+  the recorder guard already keeps the route from naming the recorder.
+
+Not part of this plan: the protected household rule that answers a mere mention of one's children
+or pet (found on hardware) is a row of the roadmap's cross-cutting table for its own plan.

@@ -23,6 +23,7 @@ __all__ = [
     "SpeakerAuthDisabledError",
     "load_biometric_notice",
     "read_consents",
+    "read_conversation_consent",
     "run_face_session",
     "run_voice_session",
 ]
@@ -124,6 +125,21 @@ def read_consents(*, read_text: ReadText, write_text: WriteText) -> Consents:
         backup=backup,
         backup_destination=destination,
     )
+
+
+def read_conversation_consent(notice: str, *, read_text: ReadText, write_text: WriteText) -> bool:
+    """Show the conversation notice and ask for the conversation storage consent (ADR 0027).
+
+    Args:
+        notice: The tracked notice text (``docs/legal/conversation-notice-v1.md``).
+        read_text: Adapter that prompts for and returns one line.
+        write_text: Adapter that writes one line of output.
+
+    Returns:
+        Whether the owner consented; only ``si`` is a yes.
+    """
+    write_text(notice)
+    return _ask_yes_no(read_text, "¿Autorizas que Iroko guarde el texto de las conversaciones?")
 
 
 async def run_face_session(

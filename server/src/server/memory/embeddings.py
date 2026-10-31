@@ -21,11 +21,10 @@ from server.settings import settings
 
 logger = logging.getLogger(__name__)
 
-# Fixed by design, NOT an environment setting (see docs/c-audit/
-# auditoria-forense-codigo-2026-07-21.md F-04). server/src/server/memory/
-# schema.sql hard-codes `vec_memories.embedding float[768]`, so changing
-# this value requires a deliberate migration of `vec_memories` and
-# invalidation of `embeddings_cache` — never a hot env-var change.
+# Fixed by design, NOT an environment setting. The legacy `vec_memories` index that used it went
+# away with migration 013 (Plan 0076); the episode index of CM-5b fixes the dimension again in its
+# own table, so changing this value means migrating that table and invalidating
+# `embeddings_cache` — never a hot env-var change.
 EMBEDDING_DIM: Final[int] = 768
 
 

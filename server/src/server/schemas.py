@@ -51,54 +51,6 @@ class FactRecord(BaseModel):
     confidence: float = Field(ge=0, le=1, default=1.0)
 
 
-class EntityWithFacts(BaseModel):
-    """An entity together with its active facts.
-
-    Attributes:
-        id: Database row id.
-        name: Canonical name of the entity.
-        type: Entity category.
-        facts: Active (non-superseded) fact records.
-    """
-
-    id: int
-    name: str
-    type: EntityType
-    facts: list[FactRecord] = Field(default_factory=list)
-
-
-class MemoryHit(BaseModel):
-    """A single result from a semantic memory search.
-
-    Attributes:
-        id: Database row id.
-        kind: Memory kind: episodic, semantic, or reflection.
-        content: Full content of the memory.
-        summary: Short summary used for embedding (optional).
-        importance: Importance score in ``[0, 1]``.
-        distance: Vector distance from query (lower = more similar).
-    """
-
-    id: int
-    kind: Literal["episodic", "semantic", "reflection"]
-    content: str
-    summary: str | None
-    importance: float
-    distance: float
-
-
-class MemoryContext(BaseModel):
-    """Assembled context injected into the LLM prompt.
-
-    Attributes:
-        entities: Relevant entities with their active facts.
-        memories: Top-K semantic memory hits for the current query.
-    """
-
-    entities: list[EntityWithFacts] = Field(default_factory=list)
-    memories: list[MemoryHit] = Field(default_factory=list)
-
-
 class ExtractedEntity(BaseModel):
     """An entity extracted from a conversation turn by the consolidation LLM.
 

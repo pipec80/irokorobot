@@ -52,6 +52,7 @@ from server.streaming_render import (
 from server.text_turn import (
     PreparedTextTurn,
     ProposalScheduler,
+    TurnRecorder,
     drop_offer,
     finish_offer,
     record_text_turn,
@@ -67,10 +68,7 @@ async def _text_deltas(client: httpx.AsyncClient, inputs: PreparedTextTurn) -> A
     async for delta in llm_streaming.generate_response_stream(
         client,
         inputs.message,
-        context=inputs.context,
         history=inputs.history,
-        onboarding=inputs.onboarding,
-        onboarding_slot=inputs.onboarding_slot,
         user_emotion=inputs.user_emotion,
         active_person=inputs.active_person,
         profile_card=inputs.profile_card,
@@ -227,6 +225,7 @@ async def stream_pipeline(
     request_start: float,
     schedule_proposal: ProposalScheduler,
     prepare_offer: OfferPreparer | None = None,
+    record_turn: TurnRecorder | None = None,
 ) -> AsyncIterator[str]:
     """Stream STT->LLM->TTS as NDJSON, synthesizing speech sentence by sentence.
 
@@ -249,6 +248,8 @@ async def stream_pipeline(
         schedule_proposal: Channel-owned background proposal scheduling callback.
         prepare_offer: Channel-owned memory-offer preparation (ADR 0021 decision 9); it runs while
             the model streams, and a prepared offer is spoken after the reply, before ``done``.
+        record_turn: Channel-owned conversation-record callback (Plan 0076); called once
+            with what was spoken (the fallback phrase included), never on a TTS failure.
 
     Yields:
         NDJSON lines (each ending in ``\\n``), see schemas_streaming.py.
@@ -282,6 +283,8 @@ async def stream_pipeline(
                 yield line
 
         _record_success(prepared, state, schedule_proposal)
+        if record_turn is not None and state.response_parts:
+            record_turn(prepared.message, " ".join(state.response_parts), prepared.active_person)
         offer_started = time.perf_counter()
         offer = await finish_offer(offer_task, reply_failed=not _succeeded(state))
         offer_line = await _offer_event(offer, state) if offer is not None else None

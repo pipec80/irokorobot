@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 import httpx
 import numpy as np
 import pytest
-from server.memory import context as memory_context, declarative, relations
+from server.memory import declarative
 from server.memory.normalize import normalize_extraction
 from server.schemas import ExtractedEntity, TurnExtraction
 from server.settings import settings
@@ -196,39 +196,6 @@ async def test_storing_an_entity_never_logs_its_name(
 
     assert entity_id > 0, "the entity must still be stored and its id returned"
     assert _PERSON not in caplog.text
-
-
-@pytest.mark.integration
-async def test_building_context_never_logs_the_users_words(
-    http_client: httpx.AsyncClient,
-    caplog: pytest.LogCaptureFixture,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """`context.py` logs the first 40 characters of what the user actually said."""
-    monkeypatch.setattr(memory_context, "entities_for_relations", AsyncMock(return_value=[]))
-    monkeypatch.setattr(memory_context, "load_entity_with_facts", AsyncMock(return_value=None))
-    monkeypatch.setattr(memory_context, "search_memories", AsyncMock(return_value=[]))
-
-    with caplog.at_level(logging.DEBUG):
-        await memory_context.build_context(http_client, _TRANSCRIPT)
-
-    assert _TRANSCRIPT not in caplog.text
-
-
-@pytest.mark.integration
-async def test_relational_lookup_never_logs_the_users_words(
-    caplog: pytest.LogCaptureFixture,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """`relations.py` logs the same 40 characters on the relational path."""
-    monkeypatch.setattr(relations, "find_facts_by_predicate", AsyncMock(return_value=[]))
-    # "mis hijos" triggers a predicate, so the logging branch is actually reached.
-    spoken = f"mis hijos {_TRANSCRIPT}"
-
-    with caplog.at_level(logging.DEBUG):
-        await relations.entities_for_relations(spoken)
-
-    assert _TRANSCRIPT not in caplog.text
 
 
 @pytest.mark.integration

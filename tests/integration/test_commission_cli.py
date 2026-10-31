@@ -42,6 +42,7 @@ from server.memory.commissioning import (
     open_commissioning,
     read_session_details,
 )
+from server.memory.conversation_consent import has_active_conversation_consent
 from server.personal_setup import PersonalSetupInput, apply_personal_setup
 from server.settings import settings
 from server.voice.speaker_embedding import model_id
@@ -254,6 +255,8 @@ async def test_derive_modalities_reports_pin_then_face_then_voice(owner_db: int)
 # --- the close step and the driver, against a real database -------------------------------------
 
 _HARDWARE_ANSWERS = ["si"] * 21  # seven capabilities, three questions each
+# The conversation storage consent is asked last (Plan 0076); most tests decline it.
+_NO_RECORD = "no"
 
 
 async def _open_alta() -> int:
@@ -296,6 +299,7 @@ async def test_the_close_step_records_everything_and_closes(
         "si",
         "Canary Homelab",
         *_HARDWARE_ANSWERS,
+        _NO_RECORD,
     ]
     lines: list[str] = []
 
@@ -314,12 +318,38 @@ async def test_the_close_step_records_everything_and_closes(
     assert "Canary Owner" not in acta.read_text(encoding="utf-8")  # no household value
 
 
+@pytest.mark.parametrize("answer, granted", [("si", True), ("no", False)])
+async def test_the_alta_close_grants_the_conversation_consent_only_on_si(
+    owner_db: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, answer: str, granted: bool
+) -> None:
+    """Plan 0076 Task 5: the notice is shown and only `si` grants `conversation_storage`."""
+    monkeypatch.setattr(commission_cli, "_ACTA_DIR", tmp_path / "actas")
+    await _open_alta()
+    answers = ["", "data/backups/base.db", "2027-02-28", "no", "no", "no"]
+    lines: list[str] = []
+
+    code = await _close_with([*answers, *_HARDWARE_ANSWERS, answer], lines)
+
+    assert code == 0
+    assert any("Aviso de registro de conversaciones" in line for line in lines)
+    assert await has_active_conversation_consent(owner_db) is granted
+
+
 async def test_no_pre_reset_backup_is_recorded_when_there_was_none(
     owner_db: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(commission_cli, "_ACTA_DIR", tmp_path / "actas")
     record_id = await _open_alta()
-    answers = ["", "data/backups/base.db", "2027-02-28", "no", "no", "no", *_HARDWARE_ANSWERS]
+    answers = [
+        "",
+        "data/backups/base.db",
+        "2027-02-28",
+        "no",
+        "no",
+        "no",
+        *_HARDWARE_ANSWERS,
+        _NO_RECORD,
+    ]
 
     await _close_with(answers, [])
 
@@ -349,7 +379,17 @@ async def test_the_close_step_tells_you_to_copy_the_database_first(
     lines: list[str] = []
 
     await _close_with(
-        ["", "data/backups/base.db", "2027-02-28", "no", "no", "no", *_HARDWARE_ANSWERS], lines
+        [
+            "",
+            "data/backups/base.db",
+            "2027-02-28",
+            "no",
+            "no",
+            "no",
+            *_HARDWARE_ANSWERS,
+            _NO_RECORD,
+        ],
+        lines,
     )
 
     assert any("copia" in line.lower() and "respaldo" in line.lower() for line in lines)
@@ -523,7 +563,7 @@ async def test_the_backups_are_picked_by_number_with_a_default_date(
     record_id = await _open_alta()
     lines: list[str] = []
 
-    await _close_with(["2", "", "1", "", "no", "no", "no", *_HARDWARE_ANSWERS], lines)
+    await _close_with(["2", "", "1", "", "no", "no", "no", *_HARDWARE_ANSWERS, _NO_RECORD], lines)
 
     details = await read_session_details(record_id)
     assert details.pre_reset_backup == Backup("data/backups/older.db", _default_day())
@@ -539,7 +579,7 @@ async def test_an_empty_baseline_is_asked_again_instead_of_aborting(
     record_id = await _open_alta()
     lines: list[str] = []
 
-    await _close_with(["", "", "1", "", "no", "no", "no", *_HARDWARE_ANSWERS], lines)
+    await _close_with(["", "", "1", "", "no", "no", "no", *_HARDWARE_ANSWERS, _NO_RECORD], lines)
 
     assert (await read_session_details(record_id)).baseline_backup is not None
     assert any("obligatorio" in line for line in lines)
@@ -552,7 +592,7 @@ async def test_a_number_outside_the_list_is_asked_again(
     record_id = await _open_alta()
     lines: list[str] = []
 
-    await _close_with(["", "9", "1", "", "no", "no", "no", *_HARDWARE_ANSWERS], lines)
+    await _close_with(["", "9", "1", "", "no", "no", "no", *_HARDWARE_ANSWERS, _NO_RECORD], lines)
 
     details = await read_session_details(record_id)
     assert details.baseline_backup == Backup("data/backups/newer.db", _default_day())
@@ -566,7 +606,7 @@ async def test_the_prompts_say_what_each_backup_is(
     await _open_alta()
     lines: list[str] = []
 
-    await _close_with(["", "1", "", "no", "no", "no", *_HARDWARE_ANSWERS], lines)
+    await _close_with(["", "1", "", "no", "no", "no", *_HARDWARE_ANSWERS, _NO_RECORD], lines)
 
     text = "\n".join(lines)
     assert "reset-db" in text  # what the pre-reset backup is
@@ -579,7 +619,9 @@ async def test_a_listed_file_name_typed_as_is_is_stored_with_its_folder(
     _two_backups(tmp_path, monkeypatch)
     record_id = await _open_alta()
 
-    await _close_with(["older.db", "", "newer.db", "", "no", "no", "no", *_HARDWARE_ANSWERS], [])
+    await _close_with(
+        ["older.db", "", "newer.db", "", "no", "no", "no", *_HARDWARE_ANSWERS, _NO_RECORD], []
+    )
 
     details = await read_session_details(record_id)
     assert details.pre_reset_backup == Backup("data/backups/older.db", _default_day())

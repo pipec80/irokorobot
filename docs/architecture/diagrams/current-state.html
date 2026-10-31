@@ -5173,10 +5173,11 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <path data-edge-from="api" data-edge-to="tts" data-edge-label="response text" data-edge-key="9" data-edge-id="api-to-tts" data-composition-points="313,364;313,460" d="M 313 364 L 313 460" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         <path data-edge-from="api" data-edge-to="continuity" data-edge-label="generic turn: speaker named" data-edge-key="10" data-edge-id="api-to-continuity" data-composition-points="327,364;327,412;540,412;540,460" d="M 327 364 L 327 404 Q 327 412 335 412 L 532 412 Q 540 412 540 420 L 540 460" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         <path data-edge-from="tts" data-edge-to="robot" data-edge-label="audio_base64" data-edge-key="11" data-edge-id="tts-to-robot" data-composition-points="250,492;110,492;110,364" d="M 250 492 L 118 492 Q 110 492 110 484 L 110 364" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="seed" data-edge-to="memory" data-edge-label="one transaction · import_assisted" data-edge-key="12" data-edge-id="seed-to-memory" data-composition-points="760,620;760,572;743,572;743,524" d="M 760 620 L 760 580 Q 760 572 752 572 L 751 572 Q 743 572 743 564 L 743 524" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="seed" data-edge-to="memory" data-edge-label="one transaction · import_assisted" data-edge-key="12" data-edge-id="seed-to-memory" data-composition-points="750,620;750,524" d="M 750 620 L 750 524" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         <path data-edge-from="commission" data-edge-to="seed" data-edge-label="names the next command" data-edge-key="13" data-edge-id="commission-to-seed" data-composition-points="760,780;760,684" d="M 760 780 L 760 684" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         <path data-edge-from="admin" data-edge-to="memory" data-edge-label="admin_local · one audit row" data-edge-key="14" data-edge-id="admin-to-memory" data-composition-points="610,652;640,652;640,492;670,492" d="M 610 652 L 632 652 Q 640 652 640 644 L 640 500 Q 640 492 648 492 L 670 492" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="profile" data-edge-to="memory" data-edge-label="one audit row, then personal · normal rows" data-edge-key="15" data-edge-id="profile-to-memory" data-composition-points="900,652;876,652;876,548;757,548;757,524" d="M 900 652 L 884 652 Q 876 652 876 644 L 876 556 Q 876 548 868 548 L 765 548 Q 757 548 757 540 L 757 524" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="profile" data-edge-to="memory" data-edge-label="one audit row, then personal · normal rows" data-edge-key="15" data-edge-id="profile-to-memory" data-composition-points="900,652;876,652;876,548;764,548;764,524" d="M 900 652 L 884 652 Q 876 652 876 644 L 876 556 Q 876 548 868 548 L 772 548 Q 764 548 764 540 L 764 524" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="record" data-edge-to="memory" data-edge-label="text · diary · purge" data-edge-key="16" data-edge-id="record-to-memory" data-composition-points="135,620;135,572;736,572;736,524" d="M 135 620 L 135 580 Q 135 572 143 572 L 728 572 Q 736 572 736 564 L 736 524" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
 
         <!-- Components -->
         <g id="node-robot" data-node-id="robot" data-node-label="Robot client" tabindex="0" role="button" aria-label="Focus Robot client, mic · webcam · speaker, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="mic · webcam · speaker" data-node-context="Architecture component">
@@ -5275,16 +5276,16 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="fine" x="980" y="516" class="t-backend" font-size="7" text-anchor="middle">off by default</text>
         </g>
 
-        <g id="node-memory" data-node-id="memory" data-node-label="SQLite + sqlite-vec" tabindex="0" role="button" aria-label="Focus SQLite + sqlite-vec, episodic/vector v3 · v4, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="episodic/vector v3 · v4" data-node-context="Architecture component">
-          <title>SQLite + sqlite-vec · episodic/vector v3 · v4 · Architecture component</title>
+        <g id="node-memory" data-node-id="memory" data-node-label="SQLite" tabindex="0" role="button" aria-label="Focus SQLite, v4 · candidates · record, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="v4 · candidates · record" data-node-context="Architecture component">
+          <title>SQLite · v4 · candidates · record · Architecture component</title>
           <rect x="670" y="460" width="160" height="64" rx="6" class="c-mask"/>
           <rect x="670" y="460" width="160" height="64" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(676 466) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="750" y="490" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">SQLite + sqlite-vec</text>
-        <text data-detail="context" x="750" y="506" class="t-muted" font-size="9" text-anchor="middle">episodic/vector v3 · v4</text>
+          <text data-node-label="" data-detail-anchor="" x="750" y="490" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">SQLite</text>
+        <text data-detail="context" x="750" y="506" class="t-muted" font-size="9" text-anchor="middle">v4 · candidates · record</text>
         </g>
 
         <g id="node-continuity" data-node-id="continuity" data-node-label="Continuity session" tabindex="0" role="button" aria-label="Focus Continuity session, 3000 chars · 180 s · in process, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="3000 chars · 180 s · in process" data-node-tag="identified person only" data-node-context="Architecture component">
@@ -5358,6 +5359,18 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="fine" x="980" y="676" class="t-backend" font-size="7" text-anchor="middle">off by default</text>
         </g>
 
+        <g id="node-record" data-node-id="record" data-node-label="Conversation record" tabindex="0" role="button" aria-label="Focus Conversation record, text only · diary of the owner, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="text only · diary of the owner" data-node-tag="consent + switch, off by default" data-node-context="Architecture component">
+          <title>Conversation record · text only · diary of the owner · Architecture component · consent + switch, off by default</title>
+          <rect x="40" y="620" width="190" height="64" rx="6" class="c-mask"/>
+          <rect x="40" y="620" width="190" height="64" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(46 626) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="135" y="650" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Conversation record</text>
+        <text data-detail="context" x="135" y="666" class="t-muted" font-size="9" text-anchor="middle">text only · diary of the owner</text>
+        <text data-detail="fine" x="135" y="676" class="t-backend" font-size="7" text-anchor="middle">consent + switch, off by default</text>
+        </g>
+
         <!-- Connection labels -->
         <g data-detail="context" data-edge-from="robot" data-edge-to="api" data-edge-label="POST /transcribe · WAV 16kHz mono int16" data-edge-key="0" data-edge-id="robot-to-api">
           <rect x="116.4" y="286" width="197.2" height="14" rx="3" class="c-mask"/>
@@ -5408,8 +5421,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <text x="110" y="418" class="t-backend" font-size="8" text-anchor="middle">audio_base64</text>
         </g>
         <g data-detail="context" data-edge-from="seed" data-edge-to="memory" data-edge-label="one transaction · import_assisted" data-edge-key="12" data-edge-id="seed-to-memory">
-          <rect x="667.3" y="552" width="168.4" height="14" rx="3" class="c-mask"/>
-          <text x="751.5" y="562" class="t-muted" font-size="8" text-anchor="middle">one transaction · import_assisted</text>
+          <rect x="665.8" y="600" width="168.4" height="14" rx="3" class="c-mask"/>
+          <text x="750" y="610" class="t-muted" font-size="8" text-anchor="middle">one transaction · import_assisted</text>
         </g>
         <g data-detail="context" data-edge-from="commission" data-edge-to="seed" data-edge-label="names the next command" data-edge-key="13" data-edge-id="commission-to-seed">
           <rect x="702.2" y="760" width="115.6" height="14" rx="3" class="c-mask"/>
@@ -5422,6 +5435,10 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <g data-detail="context" data-edge-from="profile" data-edge-to="memory" data-edge-label="one audit row, then personal · normal rows" data-edge-key="15" data-edge-id="profile-to-memory">
           <rect x="770.2" y="580" width="211.6" height="14" rx="3" class="c-mask"/>
           <text x="876" y="590" class="t-muted" font-size="8" text-anchor="middle">one audit row, then personal · normal rows</text>
+        </g>
+        <g data-detail="context" data-edge-from="record" data-edge-to="memory" data-edge-label="text · diary · purge" data-edge-key="16" data-edge-id="record-to-memory">
+          <rect x="382.5" y="552" width="106" height="14" rx="3" class="c-mask"/>
+          <text x="435.5" y="562" class="t-muted" font-size="8" text-anchor="middle">text · diary · purge</text>
         </g>
 
         <!-- Boundary labels (foreground masks keep routes out of titles) -->
@@ -5660,7 +5677,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         </div>
         <ul>
           <li>&bull; Controller returns an immutable response plan before any generation</li>
-          <li>&bull; Safe plans never reach the LLM, legacy memory, or a candidate proposal</li>
+          <li>&bull; Safe plans never reach the LLM or a candidate proposal; the legacy vector memory is retired (Plan 0076)</li>
           <li>&bull; A memory offer or answer needs the face and the voice of the same person on that turn&#39;s own clip, never a token; otherwise the turn is the ordinary one</li>
           <li>&bull; Ollama is the only accepted LLM/VLM runtime (ADR-0004), reached only through one transport module</li>
           <li>&bull; A generic turn names its speaker by face or an observed token (never voice); the identified person gets one in-process session, an unknown speaker suspends it</li>
@@ -5669,6 +5686,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <li>&bull; The alta is one guided command (Plan 0072): it enrols face and voice asking the PIN before each, records backups and consents, attests the readiness of what exists and closes the window with an acta that holds no household value</li>
           <li>&bull; After the alta closes, iroko-admin is the amendment path (Plan 0073): it edits the pool and contacts through the canonical writers (channel admin_local) with the owner PIN for sensitive data and an audit that holds no value; a revoke is history, not a hard delete</li>
           <li>&bull; The profile card (Plan 0074): a face-identified owner&#39;s name, form and tastes enter the prompt behind PROFILE_CARD_ENABLED; one audit row precedes every read, nothing sensitive</li>
+          <li>&bull; Every spoken exchange of the voice routes is kept as text (consent, switch); only the owner&#39;s turns with face and verified voice feed the diary, and no prompt reads it</li>
         </ul>
       </div>
 

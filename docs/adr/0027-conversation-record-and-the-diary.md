@@ -1,6 +1,7 @@
 # 0027 — Keep the whole conversation as a record, and build the diary from the owner's part of it
 
-- **Status:** Proposed (2026-10-28). Written after Pipec reshaped the diary of CM-4 in the same day's
+- **Status:** **Accepted** (2026-10-30), when [Plan 0076](../plans/completed/0076-cm4-conversation-record-and-diary.md)
+  closed with its hardware acceptance. Proposed on 2026-10-28. Written after Pipec reshaped the diary of CM-4 in the same day's
   conversation (see *Pipec's decisions and where they land*). It becomes `Accepted` when the first plan
   that implements it closes. Every decision below is the author's recommendation unless it says
   *Confirmed by Pipec*.
@@ -16,7 +17,7 @@
   decision 5, whose open question («storing conversation text is a decision of its own, taken with CM-4»)
   it answers; [ADR 0026](0026-owner-profile-card-and-the-read-side-of-memory.md) decision 8 (the legacy
   `build_context` path is retired, decision 9).
-- **Implemented by:** a plan after Plan 0074 (not written).
+- **Implemented by:** [Plan 0076](../plans/completed/0076-cm4-conversation-record-and-diary.md) (code on 2026-10-29, accepted on hardware on 2026-10-30). See *Implementation notes*.
 
 ## Context
 
@@ -219,6 +220,34 @@ With `Proposed`: the ADR index, the roadmap (the CM-4 row) and the memory map. W
 `current-state.md` and its diagram, the operator manual (the settings, the export, the retention),
 `seed-data-pool.md` (the new consent), ADR 0025 (decision 5 answered) and ADR 0026 (decision 8).
 
+## Implementation notes (Plan 0076, 2026-10-29)
+
+Confirmed by Pipec before the plan was written, and how the code reads them:
+
+- **Decision 3, «whose turn».** A turn is the owner's only when the **face** names the owner **and**
+  the voice of that clip verifies (the check of the memory candidates, `verify_face_and_voice`).
+  Voice alone does not count, so a recording of the owner cannot write into the diary.
+- **Decision 8, amended.** The job writes **only the episode**. Candidates keep coming from the live
+  path (ADR 0021); every recorded exchange keeps its `correlation_id`, which joins it to that turn's
+  candidates and audit rows for CM-6.
+- **Decision 7, revocation.** Revoking `conversation_storage` stops the record and deletes every
+  record and episode.
+- **Decision 9, the legacy path.** Retired completely, including the prompt surface it fed
+  (`MemoryContext`, the memory block, the onboarding interview). `vec_memories` is dropped; the
+  `memories` table stays **empty and refuses any row**, because four tables still name it in a
+  nullable foreign key and SQLite cannot drop such a parent without rebuilding every child. The chat
+  evaluations keep their synthetic memory in an evaluation-only model and pass it through the
+  profile card slot (Pipec's choice).
+
+The author's calls the plan records (D-5 to D-12): one JSON entry per **exchange**
+`{at, heard, said, voice, cid}` written at the moment in a background task; the two voice routes are
+recorded (a fixed reply with the speaker the controller resolved, `not_checked` when none), unclear speech, the camera cue, `/vision/respond`,
+`/chat` and the memory offer are not; a conversation ends after the session's idle time; caps of 60
+exchanges / 64 KiB per segment, 365 / 30 days, 200 MB; the diary is written only while nobody is
+talking, under the extraction limiter, and gives up after 3 failures; the consent is a grant row
+with the notice version (`docs/legal/conversation-notice-v1.md`), asked at the alta close or with
+`iroko-admin`; no policy row for an episode (a derived row); `iroko-admin` operations are audited.
+
 ## Review
 
 Revisit when the measurement of verified turns is known, when the first conversations show how large the
@@ -228,6 +257,7 @@ speakers are in scope (P3), or when the backup plan decides what a backup carrie
 ## Follow-up
 
 - The measurement of verified turns and of the embedding model is done
-  ([Plan 0075](../plans/completed/0075-cm4-pre-measurement.md), 2026-10-29). The implementing plan (the
-  record, the jobs, migration 013) is not written; it starts from the per-turn rule confirmed above.
+  ([Plan 0075](../plans/completed/0075-cm4-pre-measurement.md), 2026-10-29). The implementing plan,
+  [Plan 0076](../plans/completed/0076-cm4-conversation-record-and-diary.md), closed on 2026-10-30
+  ([acceptance](../evals/0076-conversation-record-acceptance.md)).
 - The next free ADR number is 0028.

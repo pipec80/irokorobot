@@ -8,15 +8,12 @@ embeddings) are mocked.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, patch
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import httpx
 
 import pytest
-from server.memory.context import build_context
 from server.memory.declarative import (
     assert_fact,
     find_entities_by_name,
@@ -24,7 +21,6 @@ from server.memory.declarative import (
     upsert_entity,
 )
 from server.memory.meta import get_flag, set_flag
-from server.schemas import MemoryContext
 from server.settings import settings
 
 from server import db
@@ -79,45 +75,6 @@ async def test_assert_fact_records_superseded_by(memory_db: Path) -> None:
 
     assert row is not None
     assert row[0] == new_id
-
-
-@pytest.mark.integration
-async def test_build_context_empty_db(memory_db: Path, http_client: httpx.AsyncClient) -> None:
-    """build_context on an empty DB must return empty MemoryContext."""
-    with patch(
-        "server.memory.context.search_memories",
-        new_callable=AsyncMock,
-        return_value=[],
-    ):
-        ctx = await build_context(http_client, "hola mundo")
-
-    assert isinstance(ctx, MemoryContext)
-    assert ctx.entities == []
-    assert ctx.memories == []
-
-
-@pytest.mark.integration
-async def test_build_context_finds_known_entity(
-    memory_db: Path, http_client: httpx.AsyncClient
-) -> None:
-    """build_context must find entities already in the DB."""
-    await upsert_entity(name="María", type="person")
-    await assert_fact(
-        entity_id=1,
-        predicate="vive_en",
-        object_value="CDMX",
-    )
-
-    with patch(
-        "server.memory.context.search_memories",
-        new_callable=AsyncMock,
-        return_value=[],
-    ):
-        ctx = await build_context(http_client, "Qué sabes de María")
-
-    assert len(ctx.entities) == 1
-    assert ctx.entities[0].name == "María"
-    assert ctx.entities[0].facts[0].object_value == "CDMX"
 
 
 @pytest.mark.integration

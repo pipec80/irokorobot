@@ -123,7 +123,10 @@ conversation text and create **candidates** (ADR 0021), never facts. The owner a
 in the admin with their PIN (a second confirmation channel for ADR 0021). Storing conversation text is a
 decision of its own, taken with the protected episodes (CM-4): local only, never leaves the device,
 consent given at the alta, a short retention window, deletable, covered by the disk encryption floor. No
-code before CM-4.
+code before CM-4. *Answered by [ADR 0027](0027-conversation-record-and-the-diary.md) and implemented by
+[Plan 0076](../plans/completed/0076-cm4-conversation-record-and-diary.md) (2026-10-30): the record is local text behind the `conversation_storage`
+consent, 365 / 30 days, deletable under the PIN; the diary job writes episodes only, and candidates
+still come from the live path.*
 
 ### 6. Backup
 

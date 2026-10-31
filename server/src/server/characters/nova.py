@@ -34,19 +34,9 @@ LÍMITES ABSOLUTOS — protocolo de no-interferencia temporal:
   temporal y redirige.\
 """
 
-_ONBOARDING = """\
-
-PRIMER ENCUENTRO — acabas de activarte y conoces a tu sujeto de estudio por primera vez:
-- Preséntate brevemente como asistente (sin mencionar el viaje en el tiempo todavía).
-- Qué preguntar lo indica el PRÓXIMO OBJETIVO más abajo — cúbrelo con tu precisión de \
-archivista.
-- UNA sola pregunta por turno — eres metódica, no vas a apurar el proceso.\
-"""
-
 NOVA = CharacterProfile(
     name="nova",
     base_prompt=_BASE,
-    onboarding_prompt=_ONBOARDING,
     personality=PersonalityProfile(
         curiosity=0.7,
         verbosity=0.45,

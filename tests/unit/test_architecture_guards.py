@@ -189,7 +189,6 @@ _MANUAL_HOMES = frozenset(
         "characters/__init__.py",
         "cognition/identity.py",
         "cognition/identity_sessions.py",
-        "text_turn.py",
     }
 )
 _GRANT_FIELD_NAMES = frozenset({"grant_spent", "grant_scope"})
@@ -526,6 +525,63 @@ def test_the_retired_consolidation_writer_has_no_reference_left() -> None:
 
     assert _outside(sources, frozenset(), frozenset({"consolidate_turn"})) == []
     assert _imports_name(sources, "consolidate_turn") == []
+
+
+# The legacy memory path retired by Plan 0076 (ADR 0027 decision 9): the `MANUAL`-gated
+# `build_context`, the vector store over `memories` and everything only it fed.
+_RETIRED_LEGACY_MEMORY_NAMES = frozenset(
+    {
+        "build_context",
+        "search_memories",
+        "store_memory",
+        "entities_for_relations",
+        "find_facts_by_predicate",
+        "load_entity_by_id",
+        "load_entity_with_facts",
+        "_memory_prompt_state",
+        "_manual_evidence",
+        # The prompt surface only that path fed (Plan 0076 Task 2).
+        "MemoryContext",
+        "MemoryHit",
+        "EntityWithFacts",
+        "OnboardingSlot",
+        "onboarding_slot",
+        "onboarding_prompt",
+        "next_missing_slot",
+        "_format_memory_block",
+    }
+)
+
+
+def _definers(sources: Mapping[str, str], names: frozenset[str]) -> list[str]:
+    """Modules that define a function or class named in `names`."""
+    return sorted(
+        module
+        for module, text in sources.items()
+        if any(
+            isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
+            and node.name in names
+            for node in ast.walk(ast.parse(text))
+        )
+    )
+
+
+@pytest.mark.unit
+def test_the_legacy_memory_path_has_no_reference_left() -> None:
+    sources = _sources()
+
+    assert _outside(sources, frozenset(), _RETIRED_LEGACY_MEMORY_NAMES) == []
+    assert _definers(sources, _RETIRED_LEGACY_MEMORY_NAMES) == []
+    for name in _RETIRED_LEGACY_MEMORY_NAMES:
+        assert _imports_name(sources, name) == []
+
+
+@pytest.mark.unit
+def test_the_legacy_guard_detects_a_violation() -> None:
+    sources = {"memory/back.py": "async def build_context():\n    return await search_memories()\n"}
+
+    assert _outside(sources, frozenset(), _RETIRED_LEGACY_MEMORY_NAMES) == ["memory/back.py"]
+    assert _definers(sources, _RETIRED_LEGACY_MEMORY_NAMES) == ["memory/back.py"]
 
 
 @pytest.mark.unit
@@ -910,3 +966,87 @@ def test_the_command_guard_detects_a_violation() -> None:
     }
 
     assert _memory_modules_importing_a_command(leak) == ["memory/leak.py", "memory/other.py"]
+
+
+# --- the conversation record (Plan 0076, ADR 0027) -------------------------------------------------
+# Each table has one store; no prompt, route, controller or voice answer reads the record, so
+# its text can never reach a reply; only the voice routes and the text service name the recorder.
+_CONVERSATION_TABLE_HOMES = {
+    "conversation_records": "memory/conversation_record.py",
+    "conversation_episodes": "memory/conversation_episodes.py",
+    "conversation_consent_grants": "memory/conversation_consent.py",
+}
+_RECORD_READER_MODULES = frozenset(
+    {
+        "server.memory.conversation_record",
+        "server.memory.conversation_episodes",
+        "server.memory.conversation_summary",
+    }
+)
+_NO_RECORD_READS = ("characters/", "cognition/", "routers/", "llm", "streaming", "text_turn.py")
+_RECORDER_NAMES = frozenset({"TurnRecorder", "record_turn", "_turn_recorder", "capture_turn"})
+_RECORDER_HOMES = frozenset(
+    {
+        "text_turn.py",
+        "streaming.py",
+        "routers/transcribe.py",
+        "memory/conversation_capture.py",
+    }
+)
+
+
+def _conversation_table_queriers(sources: Mapping[str, str]) -> list[str]:
+    """Modules that put SQL on a conversation table they do not own."""
+    found = []
+    for table, home in _CONVERSATION_TABLE_HOMES.items():
+        sql = re.compile(rf"\b(?:FROM|JOIN|INTO|UPDATE|DELETE\s+FROM)\s+{table}\b")
+        found += [name for name, text in sources.items() if name != home and sql.search(text)]
+    return sorted(found)
+
+
+def _record_readers(sources: Mapping[str, str]) -> list[str]:
+    """Prompt, route and voice modules that import the record, the diary or the summary."""
+    return sorted(
+        name
+        for name, text in sources.items()
+        if name.startswith(_NO_RECORD_READS)
+        and any(
+            (isinstance(node, ast.ImportFrom) and node.module in _RECORD_READER_MODULES)
+            or (
+                isinstance(node, ast.Import)
+                and any(alias.name in _RECORD_READER_MODULES for alias in node.names)
+            )
+            for node in ast.walk(ast.parse(text))
+        )
+    )
+
+
+@pytest.mark.unit
+def test_each_conversation_table_is_queried_only_by_its_store() -> None:
+    assert _conversation_table_queriers(_sources()) == []
+
+
+@pytest.mark.unit
+def test_no_prompt_or_route_reads_the_record() -> None:
+    assert _record_readers(_sources()) == []
+
+
+@pytest.mark.unit
+def test_only_the_voice_routes_and_the_text_service_name_the_recorder() -> None:
+    assert _outside(_sources(), _RECORDER_HOMES, _RECORDER_NAMES) == []
+
+
+@pytest.mark.unit
+def test_the_conversation_guards_detect_a_violation() -> None:
+    sources = {
+        "memory/leak.py": 'SQL = "SELECT turns FROM conversation_records"\n',
+        "memory/conversation_record.py": 'SQL = "SELECT 1 FROM conversation_records"\n',
+        "routers/chat.py": (
+            "from server.memory.conversation_record import read_record\nrecord_turn = None\n"
+        ),
+        "characters/__init__.py": "import server.memory.conversation_summary\n",
+    }
+
+    assert _conversation_table_queriers(sources) == ["memory/leak.py"]
+    assert _record_readers(sources) == ["characters/__init__.py", "routers/chat.py"]
+    assert _outside(sources, _RECORDER_HOMES, _RECORDER_NAMES) == ["routers/chat.py"]

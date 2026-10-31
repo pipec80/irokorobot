@@ -32,6 +32,9 @@ _CHECKED = {
 _CASCADE_COVERED_BY_THE_VOICE_REFUSAL = {
     "memory_candidates": "a live candidate refuses the replacement; resolved ones hold no value",
     "facts": "the legacy table: the importer never writes it and the voice path is retired",
+    # Plan 0076: they point only at the owner, whom the cleanup never deletes.
+    "conversation_records": "the owner of the record; the owner is never an orphan import entity",
+    "conversation_episodes": "the owner of the episode; deleted with its record anyway",
 }
 # (c) RESTRICT, NO ACTION or SET NULL: deleting a referred entity fails loudly or is harmless.
 _FAIL_LOUDLY_OR_HARMLESS = {
@@ -43,6 +46,7 @@ _FAIL_LOUDLY_OR_HARMLESS = {
     "owner_pin_credentials": "RESTRICT",
     "authorization_audit_events": "SET NULL: the audit keeps its row without the person",
     "admin_audit": "SET NULL: the admin audit keeps its row without the person (Plan 0073)",
+    "conversation_consent_grants": "RESTRICT (Plan 0076)",
 }
 _SAFE_ACTIONS = frozenset({"RESTRICT", "NO ACTION", "SET NULL"})
 

@@ -10,6 +10,7 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 import logging
 from pathlib import Path
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -231,3 +232,32 @@ async def test_a_failed_purge_logs_the_exception_class_never_its_message(
     assert "Retention purge failed" in caplog.text
     assert "OperationalError" in caplog.text
     assert "pomelo" not in caplog.text
+
+
+@pytest.mark.integration
+@pytest.mark.usefixtures("real_db")
+async def test_the_retention_run_purges_conversations_even_with_the_switch_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Plan 0076: old records still expire after the record is switched off."""
+    monkeypatch.setattr(settings, "conversation_record_enabled", False)
+    purge = AsyncMock(return_value=0)
+    monkeypatch.setattr(retention, "purge_records", purge)
+
+    await retention._run_once()
+
+    purge.assert_awaited_once()
+
+
+@pytest.mark.integration
+@pytest.mark.usefixtures("real_db")
+async def test_a_failing_conversation_purge_does_not_stop_the_other_purges(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(retention, "purge_records", AsyncMock(side_effect=RuntimeError("db")))
+    reclaim = AsyncMock()
+    monkeypatch.setattr(retention, "_reclaim_candidates", reclaim)
+
+    await retention._run_once()
+
+    reclaim.assert_awaited_once()

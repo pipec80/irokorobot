@@ -41,13 +41,14 @@ from server.cognition.identity import (
     IdentityEvidenceSource,
 )
 from server.cognition.models import Confidence, ConfidenceBasis
-from server.schemas import (  # noqa: TC002 — Pydantic resolves these fields at runtime
-    ConversationTurn,
-    MemoryContext,
-)
+from server.schemas import ConversationTurn  # noqa: TC002 — Pydantic resolves it at runtime
 from server.settings import settings
 import yaml
 
+from scripts.eval_memory_block import (
+    EvalMemoryContext,
+    render_memory_block,
+)
 from scripts.eval_stream_protocol import (
     StreamTurn,
     history_turns,
@@ -175,7 +176,7 @@ class GoldenCase(BaseModel):
     tags: list[str] = Field(min_length=1)
     active_person: EvaluationActivePerson | None = None
     question: str
-    context: MemoryContext
+    context: EvalMemoryContext
     history: list[ConversationTurn] = Field(default_factory=list)
     perception: str | None = None
     expected: ExpectedAssertions
@@ -697,10 +698,10 @@ async def _run_case(case: GoldenCase, repetition: int, client: httpx.AsyncClient
         response, emotion = await llm.generate_response(
             client,
             case.question,
-            context=case.context,
             history=case.history,
             active_person=case.active_person.to_context() if case.active_person else None,
             perception=case.perception,
+            profile_card=render_memory_block(case.context),
         )
         assertion = score_response(case, response)
         error = None

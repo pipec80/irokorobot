@@ -19,12 +19,12 @@ from server.cognition.identity import (
 from server.cognition.models import Confidence, ConfidenceBasis
 from server.exceptions import BrainMemoryError, LLMError
 from server.routers import transcribe as transcribe_module
-from server.schemas import MemoryContext, TurnExtraction
+from server.schemas import TurnExtraction
 from server.settings import settings
 from server.text_turn import TextTurnResult
 
 from scripts import eval_consolidation
-from server import llm, pipeline, stt, text_turn, tts
+from server import llm, pipeline, stt, tts
 
 
 def _identified_person(
@@ -88,9 +88,6 @@ def test_fallback_turn_is_not_recorded(
     monkeypatch.setattr(llm, "generate_response", AsyncMock(side_effect=LLMError("down")))
     monkeypatch.setattr(transcribe_module, "propose_candidates", propose)
     monkeypatch.setattr(pipeline, "list_entity_names", AsyncMock(return_value=[]))
-    monkeypatch.setattr(
-        text_turn, "_memory_prompt_state", AsyncMock(return_value=(None, False, None))
-    )
 
     response = client.post(
         "/transcribe",
@@ -99,27 +96,6 @@ def test_fallback_turn_is_not_recorded(
 
     assert response.status_code == 200
     propose.assert_not_awaited()
-
-
-@pytest.mark.integration
-@pytest.mark.usefixtures("memory_on")
-def test_memory_failure_degrades_to_stateless(
-    client: TestClient,
-    silence_wav_bytes: bytes,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """An unresolved voice turn must not attempt persistent retrieval."""
-    build_context = AsyncMock(side_effect=BrainMemoryError("embeddings down"))
-    monkeypatch.setattr(text_turn, "build_context", build_context)
-
-    response = client.post(
-        "/transcribe",
-        files={"audio": ("a.wav", silence_wav_bytes, "audio/wav")},
-    )
-
-    assert response.status_code == 200
-    assert response.json()["llm_response"] == "hola humano"
-    build_context.assert_not_awaited()
 
 
 @pytest.mark.integration
@@ -134,11 +110,6 @@ def test_unresolved_voice_turn_does_not_load_entity_hotwords(
     list_names = AsyncMock(return_value=["Martina", "Luna"])
     monkeypatch.setattr(stt, "transcribe", stt_mock)
     monkeypatch.setattr(pipeline, "list_entity_names", list_names)
-    monkeypatch.setattr(
-        text_turn,
-        "_memory_prompt_state",
-        AsyncMock(return_value=(MemoryContext(), False, None)),
-    )
 
     response = client.post(
         "/transcribe",
@@ -159,10 +130,8 @@ def test_unidentified_voice_turn_does_not_read_owner_metadata(
 ) -> None:
     """Legacy owner metadata must not identify the current voice speaker."""
     llm_mock = AsyncMock(return_value=("hola Felipe", "joy"))
-    memory_prompt_state = AsyncMock()
     monkeypatch.setattr(llm, "generate_response", llm_mock)
     monkeypatch.setattr(pipeline, "list_entity_names", AsyncMock(return_value=[]))
-    monkeypatch.setattr(text_turn, "_memory_prompt_state", memory_prompt_state)
 
     response = client.post(
         "/transcribe",
@@ -175,7 +144,6 @@ def test_unidentified_voice_turn_does_not_read_owner_metadata(
     active_person = generation_kwargs["active_person"]
     assert active_person.status is ActivePersonStatus.UNKNOWN
     assert active_person.display_name is None
-    memory_prompt_state.assert_not_awaited()
 
 
 @pytest.mark.integration
@@ -192,7 +160,6 @@ def test_presentation_guidance_omits_dynamic_display_name(display_name: str) -> 
     """Manual identity adds static guidance but never display-name prompt text."""
     prompt = build_system_prompt(
         get_character("iroko"),
-        None,
         active_person=_identified_person(display_name),
     )
 
@@ -206,7 +173,6 @@ def test_presentation_guidance_is_static_for_manual_context() -> None:
     """A safe name must not enter static manual-context guidance either."""
     prompt = build_system_prompt(
         get_character("iroko"),
-        None,
         active_person=_identified_person("Paula del Mar"),
     )
 
@@ -219,7 +185,6 @@ def test_presentation_guidance_requires_manual_evidence() -> None:
     """Identified non-manual evidence must not enable presentation guidance."""
     prompt = build_system_prompt(
         get_character("iroko"),
-        None,
         active_person=_identified_person("Paula", source=IdentityEvidenceSource.SESSION),
     )
 
@@ -287,11 +252,6 @@ def test_hotword_failure_degrades_gracefully(
     monkeypatch.setattr(
         pipeline,
         "list_entity_names",
-        AsyncMock(side_effect=BrainMemoryError("DB not open")),
-    )
-    monkeypatch.setattr(
-        text_turn,
-        "build_context",
         AsyncMock(side_effect=BrainMemoryError("DB not open")),
     )
 

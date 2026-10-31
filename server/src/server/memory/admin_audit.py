@@ -53,6 +53,10 @@ class AdminOperationKind(StrEnum):
     ADD = "add"
     CHANGE = "change"
     REVOKE = "revoke"
+    # The conversation record (Plan 0076): a consent granted, a record exported or deleted.
+    GRANT = "grant"
+    EXPORT = "export"
+    DELETE = "delete"
 
 
 class TargetKind(StrEnum):
@@ -61,6 +65,8 @@ class TargetKind(StrEnum):
     POOL_LITERAL = "pool_literal"
     POOL_RELATION = "pool_relation"
     CARE_CONTACT = "care_contact"
+    CONVERSATION_CONSENT = "conversation_consent"
+    CONVERSATION_RECORD = "conversation_record"
 
 
 class AdminOutcomeStatus(StrEnum):
@@ -147,7 +153,8 @@ async def record_admin_operation(
     Args:
         actor_label: The operator's free-text label (never logged or shown in a ``repr``).
         actor_role: ``owner`` or ``builder``.
-        operation: ``add``, ``change`` or ``revoke``.
+        operation: ``add``, ``change``, ``revoke``, or a conversation ``grant``, ``export`` or
+            ``delete`` (Plan 0076).
         target_kind: What the operation acted on.
         field_id: A catalogue id (``medication``) or a contact role; never a value.
         target_entity_id: The affected entity, or ``None``.

@@ -30,8 +30,7 @@ from server.characters import build_system_prompt, get_character
 from server.cognition.identity import ActivePersonContext
 from server.exceptions import LLMError
 from server.llm_transport import ollama_chat_stream
-from server.onboarding import OnboardingSlot
-from server.schemas import ConversationTurn, MemoryContext
+from server.schemas import ConversationTurn
 from server.settings import settings
 
 # Sole owner of the streaming /transcribe/stream output contract.
@@ -72,10 +71,7 @@ def _build_messages(text: str, history: list[ConversationTurn] | None) -> list[d
 
 
 def _build_streaming_base_prompt(
-    context: MemoryContext | None,
     *,
-    onboarding: bool,
-    onboarding_slot: OnboardingSlot | None,
     user_emotion: str | None,
     active_person: ActivePersonContext | None,
     profile_card: str | None = None,
@@ -86,9 +82,6 @@ def _build_streaming_base_prompt(
     ``_streaming_system_prompt``.
 
     Args:
-        context: Optional memory context, same as ``llm.generate_response``.
-        onboarding: Whether onboarding is in progress.
-        onboarding_slot: Next onboarding checklist slot, if any.
         user_emotion: Dominant recent user emotion, if any.
         active_person: Internally resolved person context for this turn, if any.
         profile_card: The speaker's rendered, already authorized profile card, if any.
@@ -99,9 +92,6 @@ def _build_streaming_base_prompt(
     character = get_character(settings.robot_character)
     return build_system_prompt(
         character,
-        context,
-        onboarding=onboarding,
-        onboarding_slot=onboarding_slot,
         user_emotion=user_emotion,
         active_person=active_person,
         profile_card=profile_card,
@@ -140,10 +130,7 @@ async def generate_response_stream(
     client: httpx.AsyncClient,
     text: str,
     *,
-    context: MemoryContext | None = None,
     history: list[ConversationTurn] | None = None,
-    onboarding: bool = False,
-    onboarding_slot: OnboardingSlot | None = None,
     user_emotion: str | None = None,
     active_person: ActivePersonContext | None = None,
     profile_card: str | None = None,
@@ -153,10 +140,7 @@ async def generate_response_stream(
     Args:
         client: Shared, lifecycle-owned HTTP client (Plan 0039).
         text: Transcribed user speech.
-        context: Optional memory context, same as ``llm.generate_response``.
         history: Optional recent conversation turns.
-        onboarding: Whether onboarding is in progress.
-        onboarding_slot: Next onboarding checklist slot, if any.
         user_emotion: Dominant recent user emotion, if any.
         active_person: Internally resolved person context for this turn, if any.
         profile_card: The speaker's rendered, already authorized profile card, if any (Plan 0074).
@@ -173,9 +157,6 @@ async def generate_response_stream(
         raise ValueError("Input text is empty")
 
     base_prompt = _build_streaming_base_prompt(
-        context,
-        onboarding=onboarding,
-        onboarding_slot=onboarding_slot,
         user_emotion=user_emotion,
         active_person=active_person,
         profile_card=profile_card,

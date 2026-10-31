@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, Mock, call, create_autospec
 
 import httpx
 import pytest
-from server.schemas import ConversationTurn, MemoryContext
+from server.schemas import ConversationTurn
 
 from scripts import eval_chat, eval_consolidation
 from scripts.eval_chat import (
@@ -31,6 +31,7 @@ from scripts.eval_chat import (
     select_cases,
     write_report,
 )
+from scripts.eval_memory_block import EvalMemoryContext, render_memory_block
 from scripts.eval_stream_protocol import StreamProtocolResult
 
 VALID_SUITE_YAML = """
@@ -233,7 +234,7 @@ def test_score_response_uses_word_boundaries_for_simple_tokens() -> None:
 def test_load_suite_constructs_productive_schema_types(tmp_path: Path) -> None:
     suite = load_suite(_write_suite(tmp_path))
 
-    assert isinstance(suite.cases[0].context, MemoryContext)
+    assert isinstance(suite.cases[0].context, EvalMemoryContext)
     assert isinstance(suite.cases[0].history[0], ConversationTurn)
     assert suite.cases[0].history[0].content == "Antes tenía 10."
     assert suite.cases[0].active_person is not None
@@ -331,10 +332,10 @@ async def test_run_evaluation_forwards_exact_case_inputs(
     mock_generate.assert_awaited_once_with(
         client,
         case.question,
-        context=case.context,
         history=case.history,
         active_person=case.active_person.to_context(),
         perception=case.perception,
+        profile_card=render_memory_block(case.context),
     )
     assert evaluation.provider == "ollama"
     assert evaluation.results[0].response == "La respuesta es 11."
@@ -404,34 +405,34 @@ async def test_run_evaluation_runs_each_repetition_sequentially(
         call(
             client,
             first.question,
-            context=first.context,
             history=first.history,
             active_person=first.active_person.to_context(),
             perception=first.perception,
+            profile_card=render_memory_block(first.context),
         ),
         call(
             client,
             first.question,
-            context=first.context,
             history=first.history,
             active_person=first.active_person.to_context(),
             perception=first.perception,
+            profile_card=render_memory_block(first.context),
         ),
         call(
             client,
             second.question,
-            context=second.context,
             history=second.history,
             active_person=second.active_person.to_context(),
             perception=second.perception,
+            profile_card=render_memory_block(second.context),
         ),
         call(
             client,
             second.question,
-            context=second.context,
             history=second.history,
             active_person=second.active_person.to_context(),
             perception=second.perception,
+            profile_card=render_memory_block(second.context),
         ),
     ]
 

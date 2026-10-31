@@ -59,8 +59,11 @@ def test_iroko_memory_language_is_authorized_and_nonpermanent() -> None:
     """Operational prompt language must not conflict with privacy policy."""
     iroko = _read_repository_file("server/src/server/characters/iroko.py")
     prompt_builder = _read_repository_file("server/src/server/characters/__init__.py")
+    # The only durable data the prompt carries is the profile card (the legacy memory block went
+    # away with Plan 0076); the card announces itself as authorized memory.
+    card = _read_repository_file("server/src/server/memory/profile_card.py")
 
     assert "tu dueño" not in iroko
     assert "memoria permanente" not in iroko
-    assert "Memoria activa autorizada" in prompt_builder
+    assert "Es memoria autorizada" in card
     assert "the owner's life" not in prompt_builder
