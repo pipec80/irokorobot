@@ -11,7 +11,8 @@
   memory candidates on for case 3. The conversation record had no active consent (revoked at the close
   of Plan 0076), so nothing was recorded and the diary half of case 11 is not measured.
 - The owner's face and voice enrolled; a relative and a pet stored with a name (case 8).
-- Streaming route; the classic route is still to run.
+- Streaming route only. The classic route is not run (Pipec, 2026-11-02): the robot uses streaming and
+  both routes take the same controller decision.
 - How to tell who answered: a fixed phrase is a rule; anything else is the model. On the server
   console, the `Turn decision` line of each turn says `need=protected_household` (or another need)
   for a fixed reply, and `outcome=no-plan-channel-generates` when the model answers; it holds no
@@ -46,8 +47,7 @@
 
 ## Round 2 (rule of D-22, commit `134eba9`, `just gate` 5635 passed)
 
-To run: cases 4, 7, 10 and 12 again, case 9's named request, case 6's «relación» and «¿cachai?», and one
-case of 1, 5 and 7 on the classic route.
+To run: cases 4, 7, 10 and 12 again, case 9's named request, and case 6's «relación» and «¿cachai?».
 
 | # | Case | Result |
 |---|---|---|
@@ -57,4 +57,3 @@ case of 1, 5 and 7 on the classic route.
 | 9 | Named request with no face | |
 | 10 | Five requests spoken normally | |
 | 12 | A family story, then no face | |
-| — | Classic route: one of 1, 5 and 7 | |

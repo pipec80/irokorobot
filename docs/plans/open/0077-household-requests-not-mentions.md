@@ -784,7 +784,9 @@ async def _asks_about_known_name(self, event: CognitiveEvent[TextTurnPayload]) -
 
 Outcomes only, never a sentence or a value, in `docs/evals/0077-household-requests-acceptance.md`. The
 agent starts nothing. With face and voice enrolled and `LOG_CONVERSATION_TEXT=true` on the console, on the
-streaming route (the robot's default), and then one case of 1, 5 and 7 on the classic route:
+streaming route (the robot's default). The classic route is **not** run: Pipec decided on 2026-11-02 that it
+adds nothing, because the robot uses streaming and both routes take the same controller decision (Task 4
+pins the classic one-read-per-event behaviour):
 
 | # | Who | Says | Expected |
 |---|---|---|---|
