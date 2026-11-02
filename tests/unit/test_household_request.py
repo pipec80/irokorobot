@@ -157,3 +157,72 @@ def test_a_story_with_a_question_tag_stays_protected() -> None:
 def test_an_empty_or_filler_message_is_no_request(message: str) -> None:
     assert _request(message) is False
     assert requests_data_of_a_name(message) is False
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "message",
+    [
+        "¿Qué fue lo que te conté de mi familia?",
+        "¿Qué está haciendo mi hijo?",
+        "¿Sabes qué come mi perrita?",
+    ],
+)
+def test_a_question_about_the_household_is_a_request_whatever_the_datum(message: str) -> None:
+    """D-22: the closed list of data words is not what makes a question about the family."""
+    assert _request(message) is True
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "message",
+    [
+        "¿Qué le puedo regalar a mi nieto?",
+        "¿Qué debería hacer con mi perro?",
+        "¿Cómo ayudo a mi hijo con las tareas?",
+        "¿Qué es bueno para la tos de mi hijo?",
+        "¿Te gusta mi perro?",
+    ],
+)
+def test_advice_for_the_speaker_or_a_question_to_the_robot_is_not_a_request(message: str) -> None:
+    assert _request(message) is False
+
+
+@pytest.mark.unit
+def test_a_first_person_past_is_no_advice() -> None:
+    """«compré», «conté» tell what happened: only the present asks what to do."""
+    assert _request("Ayer le compré comida a mi perrita, ¿sabes qué come?") is True
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Sabes qué, dime cuántos años tiene mi hijo",
+        "¿Me podría decir cómo se llama mi hermana?",
+        "Puedes decirme el nombre de mi perro",
+        "Tengo una duda, no me acuerdo cuándo cumple años mi hijo",
+        "Cuántos años tiene mi hijo, no me acuerdo",
+        "¿Qué animales tengo?",
+    ],
+)
+def test_requests_found_by_the_review_of_d22(message: str) -> None:
+    """The opening of a polite request is no advice, and «sabes qué» only sets it aside."""
+    assert _request(message) is True
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Sabes qué, mi vieja hacía sopaipillas.",
+        "Cuéntame un cuento para mi nieta.",
+        "Dime cómo se prepara un té para mi mamá.",
+        "Cómo extraño a mi mamá.",
+        "Cuánto quiero a mis nietos.",
+        "Mi hijo me dijo: oye papá, ¿cuándo vamos a la playa?",
+    ],
+)
+def test_conversation_found_by_the_review_of_d22(message: str) -> None:
+    """Something for the family, or a feeling of the speaker, asks nothing about it."""
+    assert _request(message) is False

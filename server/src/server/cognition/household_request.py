@@ -1,11 +1,13 @@
 """Does a message ask for data about the household? Pure and closed (Plan 0077).
 
-A sentence is a household request only when three things hold together: it names the household (a
-first-person possessive before a relative or a pet: «mi hijo», «mis dos perros»), it asks for a datum
-(an age, a name, a birthday, a taste, «qué sabes de…») and it has the form of a request (a question
-mark, an opening interrogative, «dime», or a phrase without a verb such as «la edad de mi hija»).
-Anything else is conversation: the model holds no household data, so a miss can invent and cannot
-reveal a stored value.
+A sentence is a household request when it names the household (a first-person possessive before a
+relative or a pet: «mi hijo», «mis dos perros») and has the form of a request (a question mark, an
+opening interrogative, «dime», or a phrase without a verb such as «la edad de mi hija»), unless it asks
+what the speaker should do («¿qué le regalo a mi hija?») or speaks to the robot («¿te gusta mi perro?»).
+A story is conversation. Since D-22 a question about the family needs no word from a list of data: on
+hardware «¿qué te conté de mi familia?» and «¿sabes qué come mi perrita?» slipped past such a list and
+the model invented the answer. The model holds no stored household value, so a miss can still invent
+and cannot reveal one; the remaining misses are pieces of advice said in an unusual way.
 
 A sentence that asks for a datum about someone it does not name as family («¿Cuándo nació Mozart?») is
 left to the controller, the only place that may compare it with the household's stored names. This
@@ -146,6 +148,8 @@ _MORE_RELATIVES = frozenset(
         "nene",
         "nena",
         "bebe",
+        "chiquitito",
+        "chiquitita",
         "chiquillo",
         "chiquilla",
         "cabro",
@@ -196,6 +200,8 @@ _PET_WORDS = frozenset(
         "caballo",
         "pollito",
         "chanchito",
+        "animal",
+        "animales",
     ]
 )
 _RELATIVE_OR_PET = (
@@ -269,6 +275,75 @@ _DATA_PHRASES = (
 _SOFT_DATA_WORDS = frozenset({"sabes", "sabe", "recuerdas", "acuerdas", "acuerda"})
 _SOFT_DATA_LINKS = frozenset({"de", "del", "sobre", "a"})
 _ARTICLES = frozenset({"el", "la", "los", "las"})
+# D-22: a question about the household asks for it, unless it asks what the speaker should do (a
+# verb in the first person present, never the past: «compré», «conté» tell what happened) or speaks
+# to the robot. «puedo» covers «¿qué le puedo regalar?», «debería» covers «¿a qué edad debería…?».
+# A feeling of the speaker («cómo extraño a mi mamá», «cuánto quiero a mis nietos») asks nothing
+# either. The words of an opening request («¿me podría decir…?») are not advice.
+_ADVICE_WORDS = frozenset(
+    [
+        "puedo",
+        "podria",
+        "podriamos",
+        "puedes",
+        "debo",
+        "deberia",
+        "debemos",
+        "deberiamos",
+        "regalo",
+        "regalamos",
+        "doy",
+        "damos",
+        "cocino",
+        "cocinamos",
+        "preparo",
+        "ayudo",
+        "ayudamos",
+        "compro",
+        "llevo",
+        "hago",
+        "hacemos",
+        "invito",
+        "celebro",
+        "organizo",
+        "cuido",
+        "enseno",
+        "explico",
+        "digo",
+        "pongo",
+        "juego",
+        "veo",
+        "vemos",
+        "salgo",
+        "salimos",
+        "recomiendas",
+        "recomiendo",
+        "sugieres",
+        "aconsejas",
+        "conviene",
+        "vamos",
+        "quiero",
+        "queremos",
+        "extrano",
+        "extranamos",
+        "amo",
+        "adoro",
+    ]
+)
+_ADVICE_PHRASES = ("es bueno", "es mejor", "es malo", "sirve para")
+_ROBOT_ADDRESS_PHRASES = ("te gusta", "te gustan", "te parece", "te cae", "te caen")
+# «Sabes qué, mi vieja hacía sopaipillas»: with no question mark this opens a story, not a request.
+_ASIDE_OPENINGS = frozenset({("sabes", "que"), ("sabe", "que")})
+_ASIDE_LENGTH = 2
+# «para mi nieta»: something for the household, not a question about it.
+_FOR_WORD = "para"
+# «Cuántos años tiene mi hijo, no me acuerdo»: the question is over, the person closes it.
+_CLOSING_ASIDES = (
+    ("no", "me", "acuerdo"),
+    ("no", "recuerdo"),
+    ("se", "me", "fue"),
+    ("se", "me", "olvido"),
+)
 _COUNT_WORDS = frozenset({"cuantos", "cuantas"})
 _INTERROGATIVES = frozenset(
     [
@@ -317,6 +392,7 @@ _REQUEST_PHRASES = (
     "se me olvido",
     "me olvide",
     "calcula",
+    "tengo una duda",
 )
 # Words that may come before the request itself, a call to the robot included.
 _LEADING_FILLERS = frozenset(
@@ -403,9 +479,18 @@ def _has_phrase(normalized: str, phrases: tuple[str, ...]) -> bool:
 
 
 def _body(words: list[str]) -> list[str]:
-    """Drop the leading call and fillers («oye Iroko, por favor…»); keep the words if all are."""
-    for index, word in enumerate(words):
-        if word not in _LEADING_FILLERS:
+    """Drop the leading call, the fillers and a «sabes qué» aside; keep the words if all are.
+
+    Without a question mark «Sabes qué, mi vieja hacía sopaipillas» is a story, and what follows the
+    aside decides: «Sabes qué, dime cuántos años tiene mi hijo» is still a request.
+    """
+    index = 0
+    while index < len(words):
+        if words[index] in _LEADING_FILLERS:
+            index += 1
+        elif tuple(words[index : index + _ASIDE_LENGTH]) in _ASIDE_OPENINGS:
+            index += _ASIDE_LENGTH
+        else:
             return words[index:]
     return words
 
@@ -474,20 +559,18 @@ def _names_the_household(words: list[str]) -> bool:
     )
 
 
-def _points_at(words: list[str], index: int, *, possessive_only: bool) -> bool:
-    """Whether the soft word at *index* points at someone: «sabes de mi hijo», «recuerdas a Zeta»."""
+def _points_at(words: list[str], index: int) -> bool:
+    """Whether the soft word at *index* points at someone: «sabes de Zeta», «recuerdas a Zeta»."""
     position = index + 1
-    linked = position < len(words) and words[position] in _SOFT_DATA_LINKS
-    if linked:
-        position += 1
+    if position >= len(words) or words[position] not in _SOFT_DATA_LINKS:
+        return False
+    position += 1
     if position < len(words) and words[position] in _ARTICLES:
         position += 1
-    if position >= len(words):
-        return False
-    return words[position] in _OWN_POSSESSIVES or (linked and not possessive_only)
+    return position < len(words)
 
 
-def _asks_for_a_datum(normalized: str, words: list[str], *, possessive_only: bool) -> bool:
+def _asks_for_a_datum(normalized: str, words: list[str]) -> bool:
     """Whether the words name a datum: an age, a name, a taste, «qué sabes de…»."""
     return (
         any(word in _DATA_WORDS for word in words)
@@ -497,7 +580,7 @@ def _asks_for_a_datum(normalized: str, words: list[str], *, possessive_only: boo
             for first, second in pairwise(words)
         )
         or any(
-            word in _SOFT_DATA_WORDS and _points_at(words, index, possessive_only=possessive_only)
+            word in _SOFT_DATA_WORDS and _points_at(words, index)
             for index, word in enumerate(words)
         )
     )
@@ -547,10 +630,13 @@ def states_a_request(normalized: str, *, marked: bool) -> bool:
 
 
 def _closes_on_the_household(words: list[str]) -> bool:
-    """Whether the sentence ends on the relative or the pet, closing fillers aside."""
-    return any(
-        word in _RELATIVE_OR_PET for word in _without_closing_fillers(words)[-_CLOSING_WORDS:]
-    )
+    """Whether the sentence ends on the relative or the pet, closing fillers and asides aside."""
+    words = _without_closing_fillers(words)
+    for aside in _CLOSING_ASIDES:
+        if tuple(words[-len(aside) :]) == aside:
+            words = words[: -len(aside)]
+            break
+    return any(word in _RELATIVE_OR_PET for word in words[-_CLOSING_WORDS:])
 
 
 def _household_request_form(words: list[str], *, marked: bool) -> bool:
@@ -589,8 +675,32 @@ def _asks_what_one_has(words: list[str], *, marked: bool) -> bool:
     return False
 
 
+def _after_the_request_opening(words: list[str]) -> list[str]:
+    """The body without its opening request phrase: «¿me podría decir cómo…?» keeps «cómo…»."""
+    body = _body(words)
+    opening = " ".join(body)
+    for phrase in _REQUEST_PHRASES:
+        if f"{opening} ".startswith(f"{phrase} "):
+            return body[len(phrase.split()) :]
+    return body
+
+
+def _asks_advice_or_speaks_to_the_robot(words: list[str]) -> bool:
+    """Whether a question asks what the speaker should do, is for the household, or asks the robot."""
+    rest = _after_the_request_opening(words)
+    joined = " ".join(rest)
+    return (
+        any(word in _ADVICE_WORDS for word in rest)
+        or _has_phrase(joined, _ADVICE_PHRASES)
+        or _has_phrase(joined, _ROBOT_ADDRESS_PHRASES)
+        or any(
+            first == _FOR_WORD and second in _OWN_POSSESSIVES for first, second in pairwise(rest)
+        )
+    )
+
+
 def _sentence_requests(sentence: str) -> bool:
-    """Apply the three conditions to one sentence."""
+    """Judge one sentence: a question about the household, not advice and not to the robot."""
     normalized = normalize_spanish(sentence)
     words = normalized.split()
     marked = has_question_mark(sentence)
@@ -598,14 +708,15 @@ def _sentence_requests(sentence: str) -> bool:
         return True
     if not _names_the_household(words):
         return False
-    return _is_verbless_request(words) or (
-        _asks_for_a_datum(normalized, words, possessive_only=True)
-        and _household_request_form(words, marked=marked)
-    )
+    if _is_verbless_request(words):
+        return True
+    return _household_request_form(
+        words, marked=marked
+    ) and not _asks_advice_or_speaks_to_the_robot(words)
 
 
 def requests_household_data(message: str) -> bool:
-    """Whether one sentence names the household, asks for a datum and has the form of a request.
+    """Whether one sentence is a question about the household that asks for no advice.
 
     Each sentence is judged alone, so a question and a story beside it never add up: «¿Sabes dónde
     queda la farmacia? Mi mamá necesita remedios.» is no request.
@@ -625,7 +736,7 @@ def _sentence_requests_a_name(sentence: str) -> bool:
     words = normalized.split()
     return (
         not _names_the_household(words)
-        and _asks_for_a_datum(normalized, words, possessive_only=False)
+        and _asks_for_a_datum(normalized, words)
         and states_a_request(normalized, marked=has_question_mark(sentence))
     )
 

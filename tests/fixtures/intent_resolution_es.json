@@ -811,9 +811,9 @@
   },
   {
     "text": "¿Te acuerdas de esa canción que cantaba mi mamá?",
-    "need": "generic_conversation",
-    "match": "none",
-    "rule_id": null
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
   },
   {
     "text": "¿Cómo se llama tu perro?",
@@ -940,5 +940,71 @@
     "need": "protected_household",
     "match": "exact",
     "rule_id": "birth.protected.v1"
+  },
+  {
+    "text": "¿Qué fue lo que te conté de mi familia?",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "Ayer le compré comida a mi perrita Zeta, ¿sabes qué come ella?",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "¿Qué está haciendo mi hijo?",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "¿Dónde está mi perro?",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "¿Mi hija ya llegó del colegio?",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "¿Qué le puedo regalar a mi nieto para su cumpleaños?",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "¿Qué puedo cocinarles a mis hijos?",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "¿Qué es bueno para la tos de mi hijo?",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "¿Te parece bien que mi hijo juegue fútbol?",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "Dime qué le regalo a mi nieta.",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "¿Qué hago con mi perro cuando llueve?",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
   }
 ]
