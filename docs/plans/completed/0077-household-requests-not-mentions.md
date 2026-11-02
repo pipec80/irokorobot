@@ -1,8 +1,10 @@
 # 0077 — The household protection answers requests, not mentions
 
-> **Status:** `Ready` and `NOW`, promoted by Pipec on 2026-11-02, who confirmed D-1 to D-21 (D-17
-> accepted as recommended); written 2026-10-30 against `main` at `d7ef78a`. Pipec chose to execute it in
-> the same session. The Chilean-idiom dictionary he raised is decided at the close (see *Not here*). Step 1 of the
+> **Status:** `CLOSED` 2026-11-02. Executed (Tasks 0 to 7, with amendment D-22) and accepted by Pipec on
+> real hardware in two rounds ([acceptance record](../../evals/0077-household-requests-acceptance.md)).
+> It was `Ready` and `NOW` when executed: promoted by Pipec on 2026-11-02, who confirmed D-1 to D-21
+> (D-17 accepted as recommended); written 2026-10-30 against `main` at `d7ef78a`, and executed in the
+> same session. The Chilean-idiom dictionary he raised is waiting for his decision (see *Not here*). Step 1 of the
 > [closing path of conversational memory](../../roadmap/cognitive-roadmap.md#closing-path-of-conversational-memory).
 > **Rehearsed** in a scratch copy of that commit and **reviewed** by three independent read-only
 > reviewers; the numbers are in *Rehearsal* and the findings in *Reviews*. The tasks are specifications
@@ -890,9 +892,9 @@ five Review focus items each have a named test. Names are consistent across Task
 
 ## Execution record
 
-Executed 2026-11-02 on `feat/0077-household-requests` (base `d7ef78a`), Tasks 0 to 6, in the session
-that wrote the plan, as Pipec chose. **Task 7 (hardware) is pending**, and with it the close (the plan
-to `completed/`, the roadmap row, the indices). Nothing is pushed.
+Executed 2026-11-02 on `feat/0077-household-requests` (base `d7ef78a`), Tasks 0 to 7, in the session
+that wrote the plan, as Pipec chose, and closed the same day. The push, the pull request and the merge
+wait for Pipec's go-ahead.
 
 - **Baseline (Task 0):** 5428 passed on the CI selection. The run also collected Task 1's new test file
   before its module existed and reported that one collection error; it is not a failure of `main`.
@@ -908,6 +910,21 @@ to `completed/`, the roadmap row, the indices). Nothing is pushed.
   first) and `134eba9` (the second adversarial review: 18 tests RED first, then 5 more for two regressions
   of mine, seven stories cut by a too loose relative-first rule). `just gate` **5635 passed** after both.
   The plan is `Ready` and Task 7 now runs on this rule (round 2, see the acceptance sheet).
+- **Hardware (Task 7), two rounds on 2026-11-02, streaming route only** (the classic route was dropped by
+  Pipec: the robot uses streaming and both routes share the controller decision). Round 1 met the stop
+  rule: two real requests reached the model, which invented a household value, and case 10 was under its
+  bar; that produced D-22 (`9bb4104`, `134eba9`). Round 2 on that rule: cases 4, 7, 9, 10 and 12 passed
+  (case 10: 6 of 6 reached the protected path) and the model invented no household value. One failure in
+  case 6: «cachai» spelled in a way the list did not know, inside a «¿…?» that Whisper wrapped around the
+  whole sentence; fixed in `8fc42d5` with the test RED first. The re-run reached the model, but Whisper wrote
+  that time without marks, so the wrapped-marks form is pinned by tests and was not seen again on hardware.
+  `just gate` **5640 passed** at the end. Commits after D-22: `3dcfd19`, `a24b657`, `a30e25b` (documents).
+- **Pet refusal (D-6):** the refusal Pipec heard before the plan did not recur in more than four pet turns
+  after the plan, and the rule never produced it on `main`; its origin stays unknown (the model or the
+  speech-to-text). Nothing to fix here.
+- **Open, outside this plan:** the 3B model states general facts wrongly (a birth month, a footballer's
+  brother), voices a profile-card taste as its own and once took «Kachai» for a name; a prompt or model
+  matter. The Chilean-idiom dictionary is Pipec's decision at the close.
 - **Rulings.** (1) The prompt guard of Task 4 passed at once: it pins a property that already holds, so
   it has no RED; its synthetic-violation test proves it can fail. (2) D-21's roadmap clause is one bullet
   under the closing path, which covers steps 2 to 5, instead of one clause in each row. (3) Two
