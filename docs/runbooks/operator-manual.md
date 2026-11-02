@@ -1074,9 +1074,10 @@ plan's Tier 1/Tier 2 sections describe. If this symptom reappears, the fault is
 almost always an unrecognized phrasing in `cognition/intent_resolution.py`, not the
 character prompt.
 
-Since Plan 0077 the opposite case is closed lists too: a sentence is protected only when it
-names the household with «mi»/«mis»/«nuestro», asks for a datum and has the form of a
-request (`cognition/household_request.py`). If the robot answers a story with «La
+Since Plan 0077 the opposite case is closed lists too: a sentence is protected when it names
+the household with «mi»/«mis»/«nuestro» and has the form of a request, unless it asks what
+the speaker should do, is for the household or speaks to the robot
+(`cognition/household_request.py`, amendment D-22). If the robot answers a story with «La
 información familiar autorizada…», or invents an answer to a real request, read the
 known limits of the plan first, then add the missing word to the right list with a corpus
 row in `tests/fixtures/intent_resolution_es.json`: a request word only if hardware showed

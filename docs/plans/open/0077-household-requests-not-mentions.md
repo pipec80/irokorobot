@@ -149,6 +149,37 @@ The author's calls, confirmed by Pipec on promotion (2026-11-02):
   guardrails: no household store in the generic prompt; a plan that adds one first makes this rule broad
   again. CM-3b, CM-5b and CM-7 are the ones that will meet it.
 
+## Amendment D-22 (Pipec, 2026-11-02, after the first hardware round)
+
+- **D-22 A question about the household is a request, whatever word names the datum.** In the first
+  round two real requests slipped past the closed list of data words and the model invented a household
+  value: «¿Qué fue lo que te conté de mi familia?» (a sister who does not exist) and «¿… sabes qué come
+  ella?» about the speaker's dog (a diet that would harm a dog). That met the stop rule of Task 7. Pipec
+  chose option B over widening the list: a sentence that names the household and has the form of a
+  request is protected **unless** it asks what the speaker should do (a verb in the first person present:
+  «¿qué le regalo?», «¿qué puedo cocinarles?»), is for the household («un cuento para mi nieta»), says a
+  feeling of the speaker («cómo extraño a mi mamá») or speaks to the robot («¿te gusta mi perro?»). A
+  story stays conversation. The datum test stays for the stored-name path only. The error that remains is
+  the safe one: a piece of advice said in an unusual way, or a question about the family's state («¿Cómo
+  está mi hijo?»), gets the fixed reply instead of an invented answer.
+- Measured on the 569 adversarial sentences of the review: requests that reach the model went from 15 to
+  8 (names with an article, cut words, one long Chilean filler); cuts are 25, mostly questions about the
+  family's state, which B protects on purpose. Not a real-use rate.
+- A second independent adversarial review (544 sentences, Chilean Spanish) found four leaks and about
+  55 cuts. Fixed in `134eba9`: a question that starts with the relative («mi nieto cómo se llama»), the
+  «puedes contar» forms, `apellido`/`raza`/`color`, `padrino`/`madrina`, more first-person verbs
+  (`calmo`, `leo`, `sirvo`, `voy`, `estoy`, `echo`…), questions to the robot («¿quieres conocer a mi
+  nieta?»), «¿por qué…?», «lo que hizo» and an exclamation with «¡». Measured on its 515 sentences: leaks
+  3 (two of them belong to the own-children rule), cuts 67 → 9. A first fix of mine (a loose «question
+  word anywhere» test for the relative-first form) cut seven stories such as «Mi hijo me preguntó cuántos
+  años tengo»; the question word must follow the relative right away (tests pin it). Not a real-use rate.
+- Remaining cuts, stated as limits: an exclamation with no «¡» («Qué lindo es mi nieto»), «¿Por qué
+  será?» as a tag, «Guarda el teléfono de mi hijo» (the save rule is another rule's), and
+  «Cómo se escribe el nombre de mi nieta en inglés».
+- The closed-value tables of Tasks 1 and 2 describe the first form of the rule; `household_request.py` is
+  the source of the lists since D-22.
+- Task 7 repeats cases 4, 7, 10 and 12 with this rule.
+
 ## Known limits, stated on purpose
 
 - **A stored name that is also a common word or a famous person.** With a pet called Luna, an owner's
@@ -156,14 +187,16 @@ The author's calls, confirmed by Pipec on promotion (2026-11-02):
   Bello?». Task 4 pins it.
 - **A story with a real question tag.** «Mi hijo nació en marzo, ¿de verdad?» stays protected. Task 1
   pins it.
-- **A datum loose inside advice.** «¿Qué le regalo a mi nieto para su cumpleaños?» and «¿Cómo se llama el
-  remedio que toma mi papá?» get the fixed reply. A proximity rule was tried and broke real requests.
+- **Since D-22, advice said in an unusual way.** «¿Cómo se llama el remedio que toma mi papá?», «Quiero
+  saber cuánto demora un viaje para ver a mi hijo» and questions about the family's state («¿Cuándo viene
+  mi hijo?», «¿Cómo está mi hijo?») get the fixed reply. «¿Qué le regalo a mi nieto para su cumpleaños?»
+  now reaches the model.
 - **A family word without a first-person possessive.** «¿Cómo se llaman los niños?» reaches the model.
 - **A name with no kinship.** «¿Cuántos años tiene la Martina?» takes the protected path only for an
   owner or adult whose question names a stored name; for anyone else the model holds nothing and may
   invent.
-- **An unknown datum or a cut word.** «¿Qué hace mi hijo?» and «como se llam mi hijo» reach the model. The
-  closed lists grow from what hardware shows, not from guessing.
+- **A cut word.** «como se llam mi hijo» reaches the model. The closed lists grow from what hardware
+  shows, not from guessing.
 - **Formal questions with no mark inside a sentence.** «mi hija me dice que…» is a story, so «me dice» is
   no request phrase.
 - **A weak timing channel (D-9).** A visitor's question with a stored name takes 3 to 4 s longer inside
@@ -868,6 +901,11 @@ to `completed/`, the roadmap row, the indices). Nothing is pushed.
   B (Task 3), and `TypeError` on `household_names` (Task 4).
 - **Task 5:** `ruff check .`, `ruff format --check .` (607 files), `mypy server/src robot/src` and the
   whole-project `pyright` clean, the reserved-term check clean, and `just gate` **5580 passed**.
+- **Amendment D-22 (2026-11-02, after hardware round 1):** `9bb4104` (a question about the household is a
+  request unless it asks advice, is for the household, says a feeling or speaks to the robot; 11 tests RED
+  first) and `134eba9` (the second adversarial review: 18 tests RED first, then 5 more for two regressions
+  of mine, seven stories cut by a too loose relative-first rule). `just gate` **5635 passed** after both.
+  The plan is `Ready` and Task 7 now runs on this rule (round 2, see the acceptance sheet).
 - **Rulings.** (1) The prompt guard of Task 4 passed at once: it pins a property that already holds, so
   it has no RED; its synthetic-violation test proves it can fail. (2) D-21's roadmap clause is one bullet
   under the closing path, which covers steps 2 to 5, instead of one clause in each row. (3) Two
