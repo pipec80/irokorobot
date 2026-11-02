@@ -4,7 +4,8 @@
 > real hardware in two rounds ([acceptance record](../../evals/0077-household-requests-acceptance.md)).
 > It was `Ready` and `NOW` when executed: promoted by Pipec on 2026-11-02, who confirmed D-1 to D-21
 > (D-17 accepted as recommended); written 2026-10-30 against `main` at `d7ef78a`, and executed in the
-> same session. The Chilean-idiom dictionary he raised is waiting for his decision (see *Not here*). Step 1 of the
+> same session. The Chilean-idiom dictionary he raised is kept as an unplanned roadmap row, measurement
+> first (Pipec, 2026-11-02; see *Not here*). Step 1 of the
 > [closing path of conversational memory](../../roadmap/cognitive-roadmap.md#closing-path-of-conversational-memory).
 > **Rehearsed** in a scratch copy of that commit and **reviewed** by three independent read-only
 > reviewers; the numbers are in *Rehearsal* and the findings in *Reviews*. The tasks are specifications
@@ -838,10 +839,10 @@ so a revert leaves nothing behind but the mentions already kept in the record, a
   profile is a later plan (`strong` assurance).
 - **The prompt line that names «family, pets»:** if case 2 points at it, it is a follow-up.
 - **Wider lists without evidence:** they grow from hardware, not from guessing.
-- **A dictionary of Chilean idioms:** Pipec raised it on 2026-10-31 and decides at the close. The
-  author's recommendation, which he will take if it is included: not inside these lists (every extra word
-  can cut a conversation again), but a short measurement case in Task 7 and a roadmap row, so that a real
-  failure tells whether the gap is the speech-to-text or the model before any glossary or RAG is built.
+- **A dictionary of Chilean idioms:** Pipec raised it on 2026-10-31 and decided on 2026-11-02 to keep it as a
+  future item. It is a row of the roadmap's cross-cutting table, unplanned and measurement first: not inside
+  these lists (every extra word can cut a conversation again), but a short real-speech case that tells
+  whether the gap is the speech-to-text or the model before any glossary or RAG is built.
 - **The date, identity, scene and own-children rules:** see *Known limits*.
 
 ## Rehearsal
@@ -924,7 +925,7 @@ wait for Pipec's go-ahead.
   speech-to-text). Nothing to fix here.
 - **Open, outside this plan:** the 3B model states general facts wrongly (a birth month, a footballer's
   brother), voices a profile-card taste as its own and once took «Kachai» for a name; a prompt or model
-  matter. The Chilean-idiom dictionary is Pipec's decision at the close.
+  matter, now a roadmap row. The Chilean-idiom dictionary is a roadmap row too, unplanned (Pipec, 2026-11-02).
 - **Rulings.** (1) The prompt guard of Task 4 passed at once: it pins a property that already holds, so
   it has no RED; its synthetic-violation test proves it can fail. (2) D-21's roadmap clause is one bullet
   under the closing path, which covers steps 2 to 5, instead of one clause in each row. (3) Two
