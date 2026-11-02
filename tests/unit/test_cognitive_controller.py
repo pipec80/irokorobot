@@ -178,7 +178,7 @@ async def test_controller_denies_private_household_request_before_legacy_delegat
     "message",
     [
         "¿Cómo se llama mi esposa?",
-        "¿Cuándo nació Joaquín?",
+        "¿Cuándo nació mi hijo?",
         "¿Quién es mi mamá?",
         "¿Qué preferencias tiene mi hija?",
     ],

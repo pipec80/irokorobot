@@ -19,9 +19,9 @@
   },
   {
     "text": "¿Cuándo nació Joaquín?",
-    "need": "protected_household",
-    "match": "exact",
-    "rule_id": "birth.protected.v1"
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
   },
   {
     "text": "fecha de nacimiento de mi hija",
@@ -367,21 +367,21 @@
   },
   {
     "text": "Mi papá es ingeniero.",
-    "need": "protected_household",
-    "match": "exact",
-    "rule_id": "household.protected.v1"
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
   },
   {
     "text": "Mis niños duermen.",
-    "need": "protected_household",
-    "match": "exact",
-    "rule_id": "household.protected.v1"
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
   },
   {
     "text": "Mi mujer cocina.",
-    "need": "protected_household",
-    "match": "exact",
-    "rule_id": "household.protected.v1"
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
   },
   {
     "text": "¿Qué sabes de mí?",
@@ -403,9 +403,9 @@
   },
   {
     "text": "¿Qué sabes de mi perro?",
-    "need": "generic_conversation",
-    "match": "none",
-    "rule_id": null
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
   },
   {
     "text": "¿Qué sabes de mi familia?",
@@ -427,14 +427,428 @@
   },
   {
     "text": "¿Qué sabe de mi perro?",
-    "need": "generic_conversation",
-    "match": "none",
-    "rule_id": null
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
   },
   {
     "text": "¿Qué sabes de física?",
     "need": "generic_conversation",
     "match": "none",
     "rule_id": null
+  },
+  {
+    "text": "Hoy voy a salir con mis hijos.",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "Quiero salir con mi mascota.",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "Me gusta el sushi y a mis hijos también.",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "Mis hijos van mañana al colegio.",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "A Martina le gusta el fútbol.",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "A mi hijo le gusta el fútbol.",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "Mi hijo nació en marzo.",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "Cuando mi hijo llega del colegio le doy once.",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "Como mi hija tiene clases, salgo tarde.",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "mi hijo tiene alergias",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "¿Qué le regalo a mi hija?",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "¿Qué película veo con mis hijos?",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "¿Cómo ayudo a mi hijo con las tareas?",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "Mi hijo está enfermo, ¿qué le doy?",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "¿Te gusta mi perro?",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "¿Qué comen los perros?",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "¿Qué le gusta comer a los perros?",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "¿Cuándo nació Mozart?",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "¿Cuándo nació el papá de Mozart?",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "¿Quién es el hermano de Messi?",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "Mozart nació en 1756.",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "¿Cuándo nació mi mamá?",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "birth.protected.v1"
+  },
+  {
+    "text": "cuándo nació mi papá",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "birth.protected.v1"
+  },
+  {
+    "text": "cuando nacio mi hijo",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "birth.protected.v1"
+  },
+  {
+    "text": "el cumpleaños de mi hijo",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "que edad tiene mi hija",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "cuantos años tiene mi hijo",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "¿Mi hijo tiene alergias?",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "dime el nombre de mi hijo",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "cómo se llama mi esposa",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "qué le gusta a mi hijo",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "cómo se llama mi perro",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "¿Cuántas mascotas tengo?",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "¿Dónde vive mi nieto?",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "¿Cómo se llaman mis dos perros?",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "Iroko, ¿sabes cuándo es el cumpleaños de mi mamá?",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "oye dime cuantos años tiene mi hermana",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "Conoce a mi hija.",
+    "need": "biometric_enrollment",
+    "match": "exact",
+    "rule_id": "enrollment.biometric.v1"
+  },
+  {
+    "text": "Aprende la cara de mi hijo.",
+    "need": "biometric_enrollment",
+    "match": "exact",
+    "rule_id": "enrollment.biometric.v1"
+  },
+  {
+    "text": "Mira lo que hizo mi hija.",
+    "need": "scene_description",
+    "match": "exact",
+    "rule_id": "scene.description.v1"
+  },
+  {
+    "text": "¿CUÁNDO NACIÓ MI HIJO?",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "birth.protected.v1"
+  },
+  {
+    "text": "Mi hijo vive en Temuco, ¿cachai?",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "Mi hija trabaja en un banco, ¿no?",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "Mi perro es muy bueno, ¿sabes?",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "¿Sabes dónde queda la farmacia? Mi mamá necesita remedios.",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "Cuando nació mi hija llovía mucho.",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "Sabes qué, mi vieja hacía sopaipillas.",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "¿Te acuerdas de esa canción que cantaba mi mamá?",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "¿Cómo se llama tu perro?",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "¿Cuándo nació su hijo?",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "¿Qué edad tiene mi vieja?",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "¿Cuántos años tiene mi señora?",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "¿Cómo se llama mi guagua?",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "¿Cuándo es el cumpleaños de mi mamita?",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "¿Cómo se llama mi quiltro?",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "me puede decir cuantos anos tiene mi hijo",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "Quiero que me digas cómo se llama mi hijo.",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "No me acuerdo cuántos años tiene mi hijo.",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "Se me olvidó cómo se llama mi nieto.",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "oye cachai cuantos años tiene mi hija",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "la edad de mi nieto po",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "¿Cuándo cumple mi hijo?",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "¿Cómo se llamaba mi papá?",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "¿Cuál es el apellido de mi nuera?",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "¿Cuál es la comida favorita de mi hijo?",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "¿Tengo hijos?",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "¿Cuántos hijos tiene mi hermano?",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "Ya, a ver, dime cómo se llama mi hijo.",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "household.protected.v1"
+  },
+  {
+    "text": "el año en que nació mi hijo",
+    "need": "protected_household",
+    "match": "exact",
+    "rule_id": "birth.protected.v1"
   }
 ]

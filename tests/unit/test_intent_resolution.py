@@ -57,7 +57,7 @@ def test_normalization_is_stable_across_case_spacing_and_punctuation(
 @pytest.mark.unit
 def test_rule_id_never_contains_the_utterance_or_a_name() -> None:
     """rule_id is closed operational metadata, never the raw message or a name."""
-    result = resolve_information_need("¿Cuándo nació Joaquín?")
+    result = resolve_information_need("¿Cuándo nació mi hijo Joaquín?")
 
     assert result.rule_id is not None
     assert "joaquin" not in result.rule_id.lower()

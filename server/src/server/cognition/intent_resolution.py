@@ -7,11 +7,16 @@ controller remains the sole owner of policy, tools, audit, and generation.
 """
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from enum import StrEnum
-from itertools import pairwise
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from server.cognition.household_request import (
+    BIRTH_WORDS,
+    mentions_the_household,
+    requests_household_data,
+)
 from server.cognition.response_plan import InformationNeed
 from server.text_keys import normalize_spanish
 
@@ -199,69 +204,6 @@ _ANSWER_CONNECTORS = frozenset({"guardar", "que"})
 _ANSWER_SAVE_PRONOUN_FORMS = frozenset({"guardarlo", "guardarla"})
 _ANSWER_SAVE_FORMS = frozenset({"guardar"}) | _ANSWER_SAVE_PRONOUN_FORMS
 
-_POSSESSIVES = frozenset(
-    {"mi", "mis", "tu", "tus", "su", "sus", "nuestro", "nuestra", "nuestros", "nuestras"}
-)
-# Words that name the household on their own, plural forms included.
-_HOUSEHOLD_WORDS = frozenset(
-    {
-        "hijo",
-        "hija",
-        "hijos",
-        "hijas",
-        "familia",
-        "familias",
-        "familiares",
-        "preferencia",
-        "preferencias",
-        "padre",
-        "madre",
-        "padres",
-        "madres",
-        "hermano",
-        "hermana",
-        "hermanos",
-        "hermanas",
-        "abuelo",
-        "abuela",
-        "abuelos",
-        "abuelas",
-        "esposo",
-        "esposa",
-        "esposos",
-        "esposas",
-        "marido",
-        "maridos",
-        "mama",
-        "mamas",
-        "tio",
-        "tia",
-        "tios",
-        "tias",
-        "primo",
-        "prima",
-        "primos",
-        "primas",
-    }
-)
-# Words that mean a relative only with a possessive ("mi mujer") and mean something
-# else alone ("papas fritas", "las mujeres astronautas", "la primavera").
-_HOUSEHOLD_WORDS_NEEDING_POSSESSIVE = frozenset(
-    {
-        "nino",
-        "nina",
-        "ninos",
-        "ninas",
-        "papa",
-        "papas",
-        "pareja",
-        "parejas",
-        "mujer",
-        "mujeres",
-    }
-)
-_HOUSEHOLD_PHRASES = ("le gusta", "les gusta")
-_BIRTH_WORDS = frozenset({"nacio", "nacimiento", "nacimientos"})
 _AGE_WORDS = frozenset({"edad", "edades", "anos"})
 _RELATIONSHIP_WORDS = frozenset({"relacion", "relaciones"})
 _OWN_CHILDREN_LIST_PATTERNS = ("como se llaman mis hijos", "quienes son mis hijos")
@@ -326,6 +268,19 @@ _SCENE_DESCRIPTION_PATTERNS = (
 )
 
 
+@dataclass(frozen=True)
+class _Utterance:
+    """One message as the rules read it.
+
+    Attributes:
+        message: The raw text, which keeps the marks and the sentences.
+        normalized: The folded text; every closed pattern matches on it.
+    """
+
+    message: str
+    normalized: str
+
+
 def resolve_information_need(message: str) -> IntentResolution:
     """Resolve one bounded information need from reviewed Spanish rules.
 
@@ -336,9 +291,9 @@ def resolve_information_need(message: str) -> IntentResolution:
         The closed, deterministic resolution — need, match kind, and a
         privacy-safe rule identifier (``None`` only for generic conversation).
     """
-    normalized = normalize_spanish(message)
+    utterance = _Utterance(message=message, normalized=normalize_spanish(message))
     for rule in _RULES:
-        resolution = rule(normalized)
+        resolution = rule(utterance)
         if resolution is not None:
             return resolution
     return _resolution(InformationNeed.GENERIC_CONVERSATION, IntentMatch.NONE, None)
@@ -349,8 +304,9 @@ def _resolution(need: InformationNeed, match: IntentMatch, rule_id: str | None) 
     return IntentResolution(need=need, match=match, rule_id=rule_id)
 
 
-def _own_children_list_rule(normalized: str) -> IntentResolution | None:
+def _own_children_list_rule(utterance: _Utterance) -> IntentResolution | None:
     """Recognize only the two reviewed self-child-list phrasings."""
+    normalized = utterance.normalized
     if any(_contains_word_phrase(normalized, pattern) for pattern in _OWN_CHILDREN_LIST_PATTERNS):
         return _resolution(
             InformationNeed.OWN_CHILDREN_LIST, IntentMatch.EXACT, "own_children.list.v1"
@@ -358,8 +314,9 @@ def _own_children_list_rule(normalized: str) -> IntentResolution | None:
     return None
 
 
-def _own_children_count_rule(normalized: str) -> IntentResolution | None:
+def _own_children_count_rule(utterance: _Utterance) -> IntentResolution | None:
     """Recognize the reviewed self-child-count phrasing."""
+    normalized = utterance.normalized
     if any(_contains_word_phrase(normalized, pattern) for pattern in _OWN_CHILDREN_COUNT_PATTERNS):
         return _resolution(
             InformationNeed.OWN_CHILDREN_COUNT, IntentMatch.EXACT, "own_children.count.v1"
@@ -367,39 +324,30 @@ def _own_children_count_rule(normalized: str) -> IntentResolution | None:
     return None
 
 
-def _names_a_relative(words: list[str]) -> bool:
-    """Whether the message names the household, whole words only.
+def _protected_household_rule(utterance: _Utterance) -> IntentResolution | None:
+    """Recognize a request for household data, or a family value shaped as a memory answer.
 
-    A kin word that is ambiguous alone counts only right after a possessive, so
-    "mi mujer" is protected and "las mujeres astronautas" is not.
+    An answer-shaped message keeps the broad test on purpose: «sí, autorizo guardar a mi hijo»
+    never reaches the answer grammar, whatever its form (ADR 0021 decision 9).
     """
-    if any(word in _HOUSEHOLD_WORDS for word in words):
-        return True
-    return any(
-        word in _HOUSEHOLD_WORDS_NEEDING_POSSESSIVE and previous in _POSSESSIVES
-        for previous, word in pairwise(words)
+    normalized = utterance.normalized
+    protected = (
+        mentions_the_household(normalized)
+        if parse_memory_answer(normalized) is not None
+        else requests_household_data(utterance.message)
     )
-
-
-def _protected_household_rule(normalized: str) -> IntentResolution | None:
-    """Recognize a protected household, family-relation, or birth request."""
-    words = normalized.split()
-    if _names_a_relative(words) or any(
-        _contains_word_phrase(normalized, phrase) for phrase in _HOUSEHOLD_PHRASES
-    ):
-        return _resolution(
-            InformationNeed.PROTECTED_HOUSEHOLD, IntentMatch.EXACT, _protected_rule_id(words)
-        )
-    if any(word in _BIRTH_WORDS for word in words):
-        return _resolution(
-            InformationNeed.PROTECTED_HOUSEHOLD, IntentMatch.EXACT, "birth.protected.v1"
-        )
-    return None
+    if not protected:
+        return None
+    return _resolution(
+        InformationNeed.PROTECTED_HOUSEHOLD,
+        IntentMatch.EXACT,
+        _protected_rule_id(normalized.split()),
+    )
 
 
 def _protected_rule_id(words: list[str]) -> str:
     """Distinguish a birth-specific protected request from a general one."""
-    if any(word in _BIRTH_WORDS for word in words):
+    if any(word in BIRTH_WORDS for word in words):
         return "birth.protected.v1"
     return "household.protected.v1"
 
@@ -416,8 +364,9 @@ def _contains_word_phrase(normalized: str, pattern: str) -> bool:
     return f" {pattern} " in f" {normalized} "
 
 
-def _biometric_enrollment_rule(normalized: str) -> IntentResolution | None:
+def _biometric_enrollment_rule(utterance: _Utterance) -> IntentResolution | None:
     """Recognize an unequivocal face-learning cue, with or without a name."""
+    normalized = utterance.normalized
     if any(
         _contains_word_phrase(normalized, pattern) for pattern in _BIOMETRIC_ENROLLMENT_PATTERNS
     ):
@@ -427,15 +376,17 @@ def _biometric_enrollment_rule(normalized: str) -> IntentResolution | None:
     return None
 
 
-def _active_identity_rule(normalized: str) -> IntentResolution | None:
+def _active_identity_rule(utterance: _Utterance) -> IntentResolution | None:
     """Recognize a request to confirm who the current speaker is."""
+    normalized = utterance.normalized
     if any(_contains_word_phrase(normalized, pattern) for pattern in _ACTIVE_IDENTITY_PATTERNS):
         return _resolution(InformationNeed.ACTIVE_IDENTITY, IntentMatch.EXACT, "identity.active.v1")
     return None
 
 
-def _profile_summary_rule(normalized: str) -> IntentResolution | None:
+def _profile_summary_rule(utterance: _Utterance) -> IntentResolution | None:
     """Recognize a request to read back what the robot holds about the speaker."""
+    normalized = utterance.normalized
     if any(
         normalized == pattern or normalized.endswith(f" {pattern}")
         for pattern in _PROFILE_SUMMARY_PATTERNS
@@ -444,8 +395,9 @@ def _profile_summary_rule(normalized: str) -> IntentResolution | None:
     return None
 
 
-def _scene_description_rule(normalized: str) -> IntentResolution | None:
+def _scene_description_rule(utterance: _Utterance) -> IntentResolution | None:
     """Recognize a request to describe the current camera scene."""
+    normalized = utterance.normalized
     if any(_contains_word_phrase(normalized, pattern) for pattern in _SCENE_DESCRIPTION_PATTERNS):
         return _resolution(
             InformationNeed.SCENE_DESCRIPTION, IntentMatch.EXACT, "scene.description.v1"
@@ -453,8 +405,9 @@ def _scene_description_rule(normalized: str) -> IntentResolution | None:
     return None
 
 
-def _ambiguous_date_alias_rule(normalized: str) -> IntentResolution | None:
+def _ambiguous_date_alias_rule(utterance: _Utterance) -> IntentResolution | None:
     """Recognize a supervised STT corruption of a date question."""
+    normalized = utterance.normalized
     if normalized in _AMBIGUOUS_DATE_ALIASES:
         return _resolution(
             InformationNeed.AMBIGUOUS_DATE_QUERY,
@@ -464,8 +417,9 @@ def _ambiguous_date_alias_rule(normalized: str) -> IntentResolution | None:
     return None
 
 
-def _current_date_stt_alias_rule(normalized: str) -> IntentResolution | None:
+def _current_date_stt_alias_rule(utterance: _Utterance) -> IntentResolution | None:
     """Recognize a supervised STT corruption of a current-date request."""
+    normalized = utterance.normalized
     if normalized in _CURRENT_DATE_STT_ALIASES:
         return _resolution(
             InformationNeed.CURRENT_DATE, IntentMatch.SUPERVISED_STT_ALIAS, "date.current.stt.v1"
@@ -473,8 +427,9 @@ def _current_date_stt_alias_rule(normalized: str) -> IntentResolution | None:
     return None
 
 
-def _current_date_rule(normalized: str) -> IntentResolution | None:
+def _current_date_rule(utterance: _Utterance) -> IntentResolution | None:
     """Recognize the reviewed unambiguous current-date phrasings."""
+    normalized = utterance.normalized
     words = normalized.split()
     matches = ("fecha" in words and "hoy" in words) or any(
         _contains_word_phrase(normalized, pattern) for pattern in _CURRENT_DATE_PATTERNS
@@ -484,8 +439,9 @@ def _current_date_rule(normalized: str) -> IntentResolution | None:
     return None
 
 
-def _explicit_age_rule(normalized: str) -> IntentResolution | None:
+def _explicit_age_rule(utterance: _Utterance) -> IntentResolution | None:
     """Recognize an explicit self-age request by its ISO-strict controller tool."""
+    normalized = utterance.normalized
     if any(word in _AGE_WORDS for word in normalized.split()):
         return _resolution(
             InformationNeed.EXPLICIT_BIRTH_DATE_AGE, IntentMatch.EXACT, "age.explicit.v1"
@@ -493,8 +449,9 @@ def _explicit_age_rule(normalized: str) -> IntentResolution | None:
     return None
 
 
-def _relationship_rule(normalized: str) -> IntentResolution | None:
+def _relationship_rule(utterance: _Utterance) -> IntentResolution | None:
     """Recognize a generic relationship/profile question."""
+    normalized = utterance.normalized
     if any(word in _RELATIONSHIP_WORDS for word in normalized.split()):
         return _resolution(
             InformationNeed.RELATIONSHIP_OR_PROFILE, IntentMatch.EXACT, "relationship.profile.v1"
@@ -604,8 +561,9 @@ def _answer_alone(prefix: str, *, accept: bool, affirmed: bool) -> MemoryAnswer 
     return None
 
 
-def _memory_answer_rule(normalized: str) -> IntentResolution | None:
+def _memory_answer_rule(utterance: _Utterance) -> IntentResolution | None:
     """Recognize the closed shape of an answer to a memory offer (value included)."""
+    normalized = utterance.normalized
     if parse_memory_answer(normalized) is not None:
         return _resolution(InformationNeed.MEMORY_ANSWER, IntentMatch.EXACT, "memory.answer.v1")
     return None
@@ -613,7 +571,7 @@ def _memory_answer_rule(normalized: str) -> IntentResolution | None:
 
 # Order matters: the answer shape is the last rule, so a message that also matches a protected,
 # dated or identity rule is classified by that rule and never treated as an answer.
-_RULES: tuple[Callable[[str], IntentResolution | None], ...] = (
+_RULES: tuple[Callable[[_Utterance], IntentResolution | None], ...] = (
     _own_children_list_rule,
     _own_children_count_rule,
     _protected_household_rule,

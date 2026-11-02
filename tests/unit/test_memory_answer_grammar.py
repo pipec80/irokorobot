@@ -12,6 +12,7 @@ from server.cognition.intent_resolution import (
     _RULES,
     MemoryAnswer,
     _memory_answer_rule,
+    _Utterance,
     normalize_spanish,
     parse_memory_answer,
     resolve_information_need,
@@ -488,7 +489,9 @@ def test_every_rule_before_the_answer_rule_has_a_case_that_it_wins() -> None:
     ] + [normalize_spanish(message) for _, _, message in _BARE_ALIASES]
 
     unexercised = [
-        rule.__name__ for rule in _RULES[:-1] if not any(rule(text) is not None for text in corpus)
+        rule.__name__
+        for rule in _RULES[:-1]
+        if not any(rule(_Utterance(text, text)) is not None for text in corpus)
     ]
 
     assert unexercised == []
