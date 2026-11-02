@@ -855,4 +855,22 @@ five Review focus items each have a named test. Names are consistent across Task
 
 ## Execution record
 
-Not executed.
+Executed 2026-11-02 on `feat/0077-household-requests` (base `d7ef78a`), Tasks 0 to 6, in the session
+that wrote the plan, as Pipec chose. **Task 7 (hardware) is pending**, and with it the close (the plan
+to `completed/`, the roadmap row, the indices). Nothing is pushed.
+
+- **Baseline (Task 0):** 5428 passed on the CI selection. The run also collected Task 1's new test file
+  before its module existed and reported that one collection error; it is not a failure of `main`.
+  Every claim of Task 0 was checked against `d7ef78a` while the plan was written.
+- **Commits:** `ec06003` the plan, `6b94f60` Task 1, `cacb6b9` Task 2, `b12ade1` Task 3, `974ef2a`
+  Task 4, `f7ca24b` Task 6. Each code test was seen RED for its stated reason first: a missing module
+  (Task 1), 45 corpus rows on the old rule (Task 2), exactly the 12 `generic_conversation` rows of group
+  B (Task 3), and `TypeError` on `household_names` (Task 4).
+- **Task 5:** `ruff check .`, `ruff format --check .` (607 files), `mypy server/src robot/src` and the
+  whole-project `pyright` clean, the reserved-term check clean, and `just gate` **5580 passed**.
+- **Rulings.** (1) The prompt guard of Task 4 passed at once: it pins a property that already holds, so
+  it has no RED; its synthetic-violation test proves it can fail. (2) D-21's roadmap clause is one bullet
+  under the closing path, which covers steps 2 to 5, instead of one clause in each row. (3) Two
+  docstrings said the model holds «no household data»; they now say «no stored household value», the
+  claim the plan makes. (4) Files copied from the rehearsal had Windows line endings; the hook fixed two
+  and the rest were normalized to LF before commit.
