@@ -378,6 +378,11 @@ addopts = [
     "--asyncio-mode=auto",
 ]
 
+# pytest-asyncio avisa si este valor no está fijado y, con `filterwarnings = error`,
+# pytest 9.2 convierte ese aviso en un error al configurar (el CI de Dependabot lo vio el
+# 2026-11-01). `function` es el comportamiento que ya tenían las fixtures async.
+asyncio_default_fixture_loop_scope = "function"
+
 # Organización de tests — cada marker describe el RECURSO real que usa el
 # test (Plan 0037), no la carpeta donde vive. La selección determinista de CI
 # es "not slow and not hardware and not eval": todo lo demás corre contra
