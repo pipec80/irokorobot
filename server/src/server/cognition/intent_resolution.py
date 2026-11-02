@@ -9,13 +9,17 @@ controller remains the sole owner of policy, tools, audit, and generation.
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
+import re
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from server.cognition.household_request import (
     BIRTH_WORDS,
+    has_question_mark,
     mentions_the_household,
+    opens_with,
     requests_household_data,
+    states_a_request,
 )
 from server.cognition.response_plan import InformationNeed
 from server.text_keys import normalize_spanish
@@ -205,7 +209,20 @@ _ANSWER_SAVE_PRONOUN_FORMS = frozenset({"guardarlo", "guardarla"})
 _ANSWER_SAVE_FORMS = frozenset({"guardar"}) | _ANSWER_SAVE_PRONOUN_FORMS
 
 _AGE_WORDS = frozenset({"edad", "edades", "anos"})
+# One's own age. «Hace dos años fui…» and «a mi edad…» are conversation (Plan 0077).
+_OWN_AGE_PATTERNS = ("que edad tengo", "cuantos anos tengo", "edad que tengo")
+_OWN_AGE_REQUEST = "mi edad"
+_ISO_DATE_WORDS = re.compile(r"\b\d{4} \d{2} \d{2}\b")
 _RELATIONSHIP_WORDS = frozenset({"relacion", "relaciones"})
+# The closed question. «¿Cuál es la relación entre la luna y las mareas?» is conversation.
+_RELATIONSHIP_PATTERNS = (
+    "que relacion existe",
+    "que relacion hay",
+    "que relacion tengo",
+    "que relacion tenemos",
+    "cual es mi relacion",
+    "cual es nuestra relacion",
+)
 _OWN_CHILDREN_LIST_PATTERNS = ("como se llaman mis hijos", "quienes son mis hijos")
 _OWN_CHILDREN_COUNT_PATTERNS = ("cuantos hijos tengo",)
 _CURRENT_DATE_PATTERNS = (
@@ -228,8 +245,9 @@ _BIOMETRIC_ENROLLMENT_PATTERNS = (
     "mirame bien",
     "mirala bien",
     "miralo bien",
-    "conoce a",
 )
+# Only as the opening words: «Mi mamá conoce a todos» is a story, not an enrolment (Plan 0077).
+_BIOMETRIC_OPENING_PATTERN = "conoce a"
 _ACTIVE_IDENTITY_PATTERNS = (
     "quien soy",
     "me reconoces",
@@ -367,7 +385,7 @@ def _contains_word_phrase(normalized: str, pattern: str) -> bool:
 def _biometric_enrollment_rule(utterance: _Utterance) -> IntentResolution | None:
     """Recognize an unequivocal face-learning cue, with or without a name."""
     normalized = utterance.normalized
-    if any(
+    if opens_with(normalized, _BIOMETRIC_OPENING_PATTERN) or any(
         _contains_word_phrase(normalized, pattern) for pattern in _BIOMETRIC_ENROLLMENT_PATTERNS
     ):
         return _resolution(
@@ -440,9 +458,20 @@ def _current_date_rule(utterance: _Utterance) -> IntentResolution | None:
 
 
 def _explicit_age_rule(utterance: _Utterance) -> IntentResolution | None:
-    """Recognize an explicit self-age request by its ISO-strict controller tool."""
+    """Recognize one's own age, or an age with a strict date; a story about years is not one."""
     normalized = utterance.normalized
-    if any(word in _AGE_WORDS for word in normalized.split()):
+    if not any(word in _AGE_WORDS for word in normalized.split()):
+        return None
+    asked = (
+        any(_contains_word_phrase(normalized, pattern) for pattern in _OWN_AGE_PATTERNS)
+        or _ISO_DATE_WORDS.search(normalized) is not None
+        or (
+            _contains_word_phrase(normalized, _OWN_AGE_REQUEST)
+            and states_a_request(normalized, marked=has_question_mark(utterance.message))
+        )
+        or parse_memory_answer(normalized) is not None
+    )
+    if asked:
         return _resolution(
             InformationNeed.EXPLICIT_BIRTH_DATE_AGE, IntentMatch.EXACT, "age.explicit.v1"
         )
@@ -450,9 +479,13 @@ def _explicit_age_rule(utterance: _Utterance) -> IntentResolution | None:
 
 
 def _relationship_rule(utterance: _Utterance) -> IntentResolution | None:
-    """Recognize a generic relationship/profile question."""
+    """Recognize the closed relationship question, not any sentence with the word."""
     normalized = utterance.normalized
-    if any(word in _RELATIONSHIP_WORDS for word in normalized.split()):
+    if not any(word in _RELATIONSHIP_WORDS for word in normalized.split()):
+        return None
+    if parse_memory_answer(normalized) is not None or any(
+        _contains_word_phrase(normalized, pattern) for pattern in _RELATIONSHIP_PATTERNS
+    ):
         return _resolution(
             InformationNeed.RELATIONSHIP_OR_PROFILE, IntentMatch.EXACT, "relationship.profile.v1"
         )

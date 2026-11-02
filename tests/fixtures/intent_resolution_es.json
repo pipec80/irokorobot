@@ -474,6 +474,18 @@
     "rule_id": null
   },
   {
+    "text": "Mi hijo cumple diez años.",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "Mi hija tiene ocho años.",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
     "text": "Mi hijo nació en marzo.",
     "need": "generic_conversation",
     "match": "none",
@@ -487,6 +499,18 @@
   },
   {
     "text": "Como mi hija tiene clases, salgo tarde.",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "Mi hermano tiene una relación nueva.",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "Mi mamá conoce a todos en el barrio.",
     "need": "generic_conversation",
     "match": "none",
     "rule_id": null
@@ -559,6 +583,48 @@
   },
   {
     "text": "Mozart nació en 1756.",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "¿Cuántos años tiene Joaquín?",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "Hace dos años fui a Valparaíso.",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "Llevamos diez años en esta casa.",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "Tengo una buena relación con el trabajo.",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "¿Cuál es la relación entre la luna y las mareas?",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "A mi edad ya no corro.",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "¿Qué edad tienes?",
     "need": "generic_conversation",
     "match": "none",
     "rule_id": null
@@ -660,6 +726,24 @@
     "rule_id": "household.protected.v1"
   },
   {
+    "text": "¿Cuántos años tengo?",
+    "need": "explicit_birth_date_age",
+    "match": "exact",
+    "rule_id": "age.explicit.v1"
+  },
+  {
+    "text": "¿Cuál es mi edad?",
+    "need": "explicit_birth_date_age",
+    "match": "exact",
+    "rule_id": "age.explicit.v1"
+  },
+  {
+    "text": "¿Qué relación tenemos?",
+    "need": "relationship_or_profile",
+    "match": "exact",
+    "rule_id": "relationship.profile.v1"
+  },
+  {
     "text": "Conoce a mi hija.",
     "need": "biometric_enrollment",
     "match": "exact",
@@ -709,6 +793,12 @@
   },
   {
     "text": "Cuando nació mi hija llovía mucho.",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
+  },
+  {
+    "text": "¿A qué edad debería mi hijo empezar el colegio?",
     "need": "generic_conversation",
     "match": "none",
     "rule_id": null
