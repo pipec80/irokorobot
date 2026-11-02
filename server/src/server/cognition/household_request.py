@@ -150,6 +150,8 @@ _MORE_RELATIVES = frozenset(
         "bebe",
         "chiquitito",
         "chiquitita",
+        "padrino",
+        "madrina",
         "chiquillo",
         "chiquilla",
         "cabro",
@@ -328,10 +330,70 @@ _ADVICE_WORDS = frozenset(
         "extranamos",
         "amo",
         "adoro",
+        "alimento",
+        "llamo",
+        "envio",
+        "mando",
+        "consuelo",
+        "calmo",
+        "bano",
+        "tranquilizo",
+        "animo",
+        "recibo",
+        "vivo",
+        "sigo",
+        "duermo",
+        "cuento",
+        "leo",
+        "sirvo",
+        "escribo",
+        "guardo",
+        "decimos",
+        "cantamos",
+        "ponemos",
+        "voy",
+        "iba",
+        "estoy",
+        "echo",
+        "sufro",
+        "lloro",
+        "idea",
+        "ideas",
+        "receta",
+        "consejo",
     ]
 )
-_ADVICE_PHRASES = ("es bueno", "es mejor", "es malo", "sirve para")
-_ROBOT_ADDRESS_PHRASES = ("te gusta", "te gustan", "te parece", "te cae", "te caen")
+_ADVICE_PHRASES = (
+    "es bueno",
+    "es mejor",
+    "es malo",
+    "sirve para",
+    "lo que hizo",
+    "ayudas con",
+    "ayudas a",
+)
+_ROBOT_ADDRESS_PHRASES = (
+    "te gusta",
+    "te gustan",
+    "te parece",
+    "te cae",
+    "te caen",
+    "quieres",
+    "te gustaria",
+    "te presente",
+    "te cuento",
+    "te muestro",
+)
+# «¿Por qué mi perro ladra tanto?» asks for an explanation, not for a datum.
+_WHY_OPENINGS = frozenset({("por", "que"), ("para", "que")})
+# Whisper without marks writes the person first: «mi nieto cómo se llama».
+_SUBJECT_FIRST_QUESTIONS = (
+    "como se llama",
+    "como se llaman",
+    "cuantos anos",
+    "que edad",
+    "donde vive",
+)
 # «Sabes qué, mi vieja hacía sopaipillas»: with no question mark this opens a story, not a request.
 _ASIDE_OPENINGS = frozenset({("sabes", "que"), ("sabe", "que")})
 _ASIDE_LENGTH = 2
@@ -393,6 +455,10 @@ _REQUEST_PHRASES = (
     "me olvide",
     "calcula",
     "tengo una duda",
+    "me puedes contar",
+    "puedes contarme",
+    "me podrias contar",
+    "me cuentas",
 )
 # Words that may come before the request itself, a call to the robot included.
 _LEADING_FILLERS = frozenset(
@@ -440,6 +506,10 @@ _VERBLESS_DATA_NOUNS = frozenset(
         "correo",
         "direccion",
         "gustos",
+        "apellido",
+        "apellidos",
+        "raza",
+        "color",
     ]
 )
 _VERBLESS_LINKS = frozenset({"de", "del", "nacimiento", "cumpleanos", "en", "que", "nacio"})
@@ -468,6 +538,7 @@ _TAGS = frozenset(
         "eh",
         "si",
         "entiendes",
+        "te das cuenta",
     ]
 ) | {"te conte", "o no", "me entiendes"}
 
@@ -655,6 +726,8 @@ def _is_verbless_request(words: list[str]) -> bool:
         body = body[1:]
     if len(body) < _VERBLESS_MIN_WORDS or body[0] not in _VERBLESS_DATA_NOUNS:
         return False
+    if body[-1] not in _RELATIVE_OR_PET and len(body) > _VERBLESS_MIN_WORDS:
+        body = body[:-1]  # the pet's or the person's name after it: «la edad de mi perro Zeta»
     return (
         body[-2] in _OWN_POSSESSIVES
         and body[-1] in _RELATIVE_OR_PET
@@ -685,18 +758,51 @@ def _after_the_request_opening(words: list[str]) -> list[str]:
     return body
 
 
+def _asks_why(words: list[str]) -> bool:
+    """Whether the sentence opens with «por qué» or «para qué», the call to the robot aside."""
+    for index, word in enumerate(words):
+        if tuple(words[index : index + _ASIDE_LENGTH]) in _WHY_OPENINGS:
+            return True
+        if word not in _LEADING_FILLERS:
+            return False
+    return False
+
+
 def _asks_advice_or_speaks_to_the_robot(words: list[str]) -> bool:
     """Whether a question asks what the speaker should do, is for the household, or asks the robot."""
     rest = _after_the_request_opening(words)
     joined = " ".join(rest)
+    # «¿qué me puedes contar de…?» asks for the household: a request phrase is never advice.
+    for phrase in _REQUEST_PHRASES:
+        joined = f" {joined} ".replace(f" {phrase} ", " ").strip()
+    rest = joined.split()
     return (
-        any(word in _ADVICE_WORDS for word in rest)
+        _asks_why(words)
+        or any(word in _ADVICE_WORDS for word in rest)
         or _has_phrase(joined, _ADVICE_PHRASES)
         or _has_phrase(joined, _ROBOT_ADDRESS_PHRASES)
         or any(
             first == _FOR_WORD and second in _OWN_POSSESSIVES for first, second in pairwise(rest)
         )
     )
+
+
+def _subject_first_question(words: list[str]) -> bool:
+    """Recognize «mi nieto cómo se llama»: the question word follows the relative right away.
+
+    «Mi nieta quiere saber cómo se llama el planeta» has the relative as the asker, so there the
+    words between them make it a story.
+    """
+    body = _body(words)
+    if not body or body[0] not in _OWN_POSSESSIVES:
+        return False
+    for position in range(1, _REFERENCE_REACH + 1):
+        if position < len(body) and body[position] in _RELATIVE_OR_PET:
+            rest = " ".join(body[position + 1 :])
+            return any(
+                f"{rest} ".startswith(f"{question} ") for question in _SUBJECT_FIRST_QUESTIONS
+            )
+    return False
 
 
 def _sentence_requests(sentence: str) -> bool:
@@ -710,9 +816,10 @@ def _sentence_requests(sentence: str) -> bool:
         return False
     if _is_verbless_request(words):
         return True
-    return _household_request_form(
-        words, marked=marked
-    ) and not _asks_advice_or_speaks_to_the_robot(words)
+    if "¡" in sentence and not marked:
+        return False  # «¡Qué orgullo de mi hijo!»: an exclamation asks nothing
+    form = _household_request_form(words, marked=marked) or _subject_first_question(words)
+    return form and not _asks_advice_or_speaks_to_the_robot(words)
 
 
 def requests_household_data(message: str) -> bool:

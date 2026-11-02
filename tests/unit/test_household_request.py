@@ -226,3 +226,62 @@ def test_requests_found_by_the_review_of_d22(message: str) -> None:
 def test_conversation_found_by_the_review_of_d22(message: str) -> None:
     """Something for the family, or a feeling of the speaker, asks nothing about it."""
     assert _request(message) is False
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "message",
+    [
+        "mi nieto cómo se llama",
+        "mi hijo cuántos años tiene",
+        "el apellido de mi yerno",
+        "la edad de mi perro Zeta",
+        "¿Qué me puedes contar de mi nieto?",
+        "¿Puedes contarme de mi nieta?",
+        "¿Quién es mi padrino?",
+    ],
+)
+def test_requests_found_by_the_second_review_of_d22(message: str) -> None:
+    assert _request(message) is True
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "message",
+    [
+        "¿Cómo calmo a mi perro?",
+        "¿Qué le leo a mi nieto?",
+        "Ay, mi nieta, ¿qué voy a hacer sin ella?",
+        "Cómo echo de menos a mi marido",
+        "¡Qué orgullo de mi hijo!",
+        "¿Por qué mi perro ladra tanto?",
+        "¿Quieres conocer a mi nieta?",
+        "¿Tienes una idea para el cumpleaños de mi hija?",
+        "¿Me ayudas con la tarea de mi nieto?",
+        "¿Sabes lo que hizo mi nieto?",
+        "Mi perro es muy regalón, ¿te das cuenta?",
+    ],
+)
+def test_conversation_found_by_the_second_review_of_d22(message: str) -> None:
+    assert _request(message) is False
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Mi hijo me preguntó cuántos años tengo.",
+        "Mi nieta quiere saber cómo se llama el planeta rojo.",
+        "Mis nietos me preguntan dónde vive el pulpo.",
+        "Mi hija me dice que cómo se llama la película.",
+    ],
+)
+def test_a_relative_asking_something_general_is_a_story(message: str) -> None:
+    """The question word must follow the relative right away: here the relative is the asker."""
+    assert _request(message) is False
+
+
+@pytest.mark.unit
+def test_asking_for_help_alone_does_not_hide_a_request() -> None:
+    assert _request("No me acuerdo cómo se llama mi nieta, ¿me ayudas?") is True
+    assert _request("¿Me ayudas a escribirle una carta a mi nieto?") is False
