@@ -285,3 +285,26 @@ def test_a_relative_asking_something_general_is_a_story(message: str) -> None:
 def test_asking_for_help_alone_does_not_hide_a_request() -> None:
     assert _request("No me acuerdo cómo se llama mi nieta, ¿me ayudas?") is True
     assert _request("¿Me ayudas a escribirle una carta a mi nieto?") is False
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "message",
+    [
+        "¿Mi hijo vive lejos,Kachain?",
+        "¿Mi hijo vive lejos, cachai?",
+        "¿Mi hija trabaja en un banco, cachay?",
+    ],
+)
+def test_whisper_wrapping_the_whole_sentence_in_marks_does_not_make_cachai_a_question(
+    message: str,
+) -> None:
+    """Hardware, round 2: «Mi hijo vive lejos, ¿cachai?» came back as «¿Mi hijo vive lejos,Kachain?»."""
+    assert has_question_mark(message) is False
+    assert _request(message) is False
+
+
+@pytest.mark.unit
+def test_a_real_question_before_a_cachai_keeps_its_mark() -> None:
+    assert has_question_mark("¿Cuántos años tiene mi hijo? Vive lejos, ¿cachai?") is True
+    assert _request("¿Cuántos años tiene mi hijo? Vive lejos, ¿cachai?") is True

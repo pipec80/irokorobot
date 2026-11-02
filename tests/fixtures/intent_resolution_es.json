@@ -1006,5 +1006,11 @@
     "need": "generic_conversation",
     "match": "none",
     "rule_id": null
+  },
+  {
+    "text": "¿Mi hijo vive lejos,Kachain?",
+    "need": "generic_conversation",
+    "match": "none",
+    "rule_id": null
   }
 ]

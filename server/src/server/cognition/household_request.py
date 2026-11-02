@@ -524,9 +524,11 @@ _VERBLESS_MIN_WORDS = 3
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
 # «…, ¿cachai?»: the words the mark really belongs to are in this group, and folded in _TAGS.
 _CLOSING_QUESTION = re.compile(r"(?:,\s*¿?|\s¿)\s*([^,¿?]+)\?\s*$")
+# «cachai» asks nothing, even when Whisper opens the «¿» at the start of the sentence and spells it
+# its own way: «Mi hijo vive lejos, ¿cachai?» came back as «¿Mi hijo vive lejos,Kachain?».
+_FILLER_TAGS = frozenset(["cachai", "cachay", "cachain", "cachais", "kachai", "kachay", "kachain"])
 _TAGS = frozenset(
     [
-        "cachai",
         "no",
         "cierto",
         "verdad",
@@ -589,8 +591,13 @@ def has_question_mark(message: str) -> bool:
         ``True`` when a mark remains once a closing tag is set aside.
     """
     closing = _CLOSING_QUESTION.search(message)
-    if closing is not None and normalize_spanish(closing.group(1)) in _TAGS:
-        message = message[: closing.start()]
+    if closing is not None:
+        tag = normalize_spanish(closing.group(1))
+        if tag in _FILLER_TAGS:
+            # The «¿» that wraps the sentence was opened for the tag: only an earlier «?» asks.
+            return "?" in message[: closing.start()]
+        if tag in _TAGS:
+            message = message[: closing.start()]
     return "?" in message or "¿" in message
 
 
