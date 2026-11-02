@@ -63,6 +63,7 @@ from server.memory.candidate_dialogue import (
 from server.memory.candidate_proposal import propose_candidates
 from server.memory.candidate_types import CandidateChannel
 from server.memory.conversation_capture import capture_turn
+from server.memory.entity_labels import read_household_names
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
 from server.memory.profile_card_access import profile_summary_text, prompt_card_text
@@ -324,6 +325,7 @@ def _voice_controller(
         consent_resolver=request_identity.resolve_consent,
         memory_answerer=memory_answerer,
         profile_summarizer=profile_summarizer,
+        household_names=read_household_names if settings.memory_enabled else None,
     )
 
 

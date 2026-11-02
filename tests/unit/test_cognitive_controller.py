@@ -1156,3 +1156,148 @@ async def test_the_summary_never_spends_a_grant() -> None:
 
 def test_a_profile_summary_reply_never_shows_its_text_in_the_repr() -> None:
     assert "quokka" not in repr(ProfileSummaryReply(text="Te gusta el quokka."))
+
+
+_NAMED_QUESTION = "¿Cuándo nació Zeta?"
+
+
+def _named_controller(
+    actor: ActivePersonContext, *, names: frozenset[str] = frozenset({"Zeta"})
+) -> tuple[CognitiveController, AsyncMock, AsyncMock, AsyncMock, AsyncMock]:
+    """Build a controller with the name seam; returns it with its four spies."""
+    legacy_turn = AsyncMock(return_value=TextTurnResult("legacy", "joy", 42, False))
+    observed = AsyncMock(return_value=actor)
+    spending = AsyncMock(return_value=actor)
+    reader = AsyncMock(return_value=names)
+    controller = CognitiveController(
+        today=lambda: date(2026, 8, 12),
+        legacy_turn=legacy_turn,
+        active_person_resolver=spending,
+        observed_person_resolver=observed,
+        household_names=reader,
+    )
+    return controller, legacy_turn, observed, spending, reader
+
+
+@pytest.mark.asyncio
+async def test_an_identified_person_asking_about_a_stored_name_takes_the_protected_path() -> None:
+    controller, legacy_turn, _, spending, _ = _named_controller(_actor(HouseholdRole.OWNER, 7))
+
+    plan = await controller.handle(_event(_NAMED_QUESTION))
+
+    assert plan.need is InformationNeed.PROTECTED_HOUSEHOLD
+    legacy_turn.assert_not_awaited()
+    spending.assert_not_awaited()  # observed only: no grant is spent
+
+
+@pytest.mark.asyncio
+async def test_a_name_the_household_does_not_know_stays_conversation() -> None:
+    controller, legacy_turn, *_ = _named_controller(_actor(HouseholdRole.OWNER, 7))
+
+    plan = await controller.handle(_event("¿Cuándo nació Mozart?"))
+
+    assert plan.need is InformationNeed.GENERIC_CONVERSATION
+    legacy_turn.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_visitor_asking_about_a_stored_name_stays_conversation() -> None:
+    """The reply is the model's, which holds no household data: it cannot reveal the name."""
+    controller, legacy_turn, observed, _, _ = _named_controller(_actor(HouseholdRole.UNKNOWN, None))
+
+    plan = await controller.handle(_event(_NAMED_QUESTION))
+
+    assert plan.need is InformationNeed.GENERIC_CONVERSATION
+    legacy_turn.assert_awaited_once()
+    observed.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role", [HouseholdRole.CHILD, HouseholdRole.UNKNOWN])
+async def test_an_identified_person_the_policy_refuses_cannot_confirm_a_stored_name(
+    role: HouseholdRole,
+) -> None:
+    """A refusal here would tell a stored name from any other: the reply stays the model's."""
+    controller, legacy_turn, *_ = _named_controller(_actor(role, 9))
+
+    plan = await controller.handle(_event(_NAMED_QUESTION))
+
+    assert plan.need is InformationNeed.GENERIC_CONVERSATION
+    legacy_turn.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_question_without_a_stored_name_never_judges_the_face_or_the_voice() -> None:
+    """«¿Sabes…?» and «¿Quién es…?» are everyday turns: they cost one read, not seconds."""
+    controller, _, observed, _, reader = _named_controller(_actor(HouseholdRole.OWNER, 7))
+
+    await controller.handle(_event("¿Quién es el presidente de Chile?"))
+
+    reader.assert_awaited_once()
+    observed.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_story_with_a_name_reads_nothing() -> None:
+    controller, legacy_turn, observed, _, reader = _named_controller(_actor(HouseholdRole.OWNER, 7))
+
+    await controller.handle(_event("Zeta llegó tarde."))
+
+    legacy_turn.assert_awaited_once()
+    observed.assert_not_awaited()
+    reader.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_classic_route_reads_the_names_once_per_event() -> None:
+    """The classic route calls decide() and then handle() with the same event."""
+    controller, _, _, _, reader = _named_controller(
+        _actor(HouseholdRole.OWNER, 7), names=frozenset({"Otro"})
+    )
+    event = _event(_NAMED_QUESTION)
+
+    assert await controller.decide(event) is None
+    await controller.handle(event)
+
+    reader.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_without_the_seam_a_named_question_is_conversation_and_observes_nobody() -> None:
+    legacy_turn = AsyncMock(return_value=TextTurnResult("legacy", "joy", 42, False))
+    observed = AsyncMock()
+    controller = CognitiveController(
+        today=lambda: date(2026, 8, 12),
+        legacy_turn=legacy_turn,
+        observed_person_resolver=observed,
+    )
+
+    plan = await controller.handle(_event(_NAMED_QUESTION))
+
+    assert plan.need is InformationNeed.GENERIC_CONVERSATION
+    observed.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_empty_store_answer_leaves_the_turn_as_conversation() -> None:
+    controller, legacy_turn, *_ = _named_controller(
+        _actor(HouseholdRole.OWNER, 7), names=frozenset()
+    )
+
+    plan = await controller.handle(_event(_NAMED_QUESTION))
+
+    assert plan.need is InformationNeed.GENERIC_CONVERSATION
+    legacy_turn.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_stored_common_word_gives_the_fixed_reply_to_an_identified_person() -> None:
+    """A stated limit: a pet called Luna and an everyday question about the moon."""
+    controller, legacy_turn, *_ = _named_controller(
+        _actor(HouseholdRole.OWNER, 7), names=frozenset({"Luna"})
+    )
+
+    plan = await controller.handle(_event("¿Qué sabes de la luna?"))
+
+    assert plan.need is InformationNeed.PROTECTED_HOUSEHOLD
+    legacy_turn.assert_not_awaited()

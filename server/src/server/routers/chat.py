@@ -18,9 +18,11 @@ from server.cognition.response_plan import (
     scene_unavailable_plan,
 )
 from server.dependencies import IdentityTokenDep, OwnerUnlockServiceDep, ResourcesDep
+from server.memory.entity_labels import read_household_names
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
 from server.schemas_chat import ChatRequest, ChatResponse
+from server.settings import settings
 from server.text_turn import TextTurnResult, process_text_turn
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
@@ -113,6 +115,7 @@ async def chat(
         audit_writer=record_authorization_decision,
         household_tools=HouseholdKnowledgeTools(reader=PolicyGatedV4Reader()),
         consent_resolver=request_identity.resolve_consent,
+        household_names=read_household_names if settings.memory_enabled else None,
     )
     decision = await controller.decide(event)
     # Chat has no camera round-trip at all — a scene request always gets the
