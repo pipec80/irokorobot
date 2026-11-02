@@ -481,7 +481,8 @@
         "The alta is one guided command (Plan 0072): it enrols face and voice asking the PIN before each, records backups and consents, attests the readiness of what exists and closes the window with an acta that holds no household value",
         "After the alta closes, iroko-admin is the amendment path (Plan 0073): it edits the pool and contacts through the canonical writers (channel admin_local) with the owner PIN for sensitive data and an audit that holds no value; a revoke is history, not a hard delete",
         "The profile card (Plan 0074): a face-identified owner's name, form and tastes enter the prompt behind PROFILE_CARD_ENABLED; one audit row precedes every read, nothing sensitive",
-        "Every spoken exchange of the voice routes is kept as text (consent, switch); only the owner's turns with face and verified voice feed the diary, and no prompt reads it"
+        "Every spoken exchange of the voice routes is kept as text (consent, switch); only the owner's turns with face and verified voice feed the diary, and no prompt reads it",
+        "A household request (Plan 0077) names a relative or pet with my/our, asks for a datum and has the form of a request; stories, advice and questions about others reach the model, whose generic prompt reads no household store"
       ]
     },
     {

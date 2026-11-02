@@ -125,6 +125,10 @@ working. Queue rule 6 applies: rows are combined, and no outcome is removed.
 - **R2 leaves the path.** Memory does not need documents, so R2 is now
   [conditional](#cross-cutting-gates-and-conditional-work) and reuses the search of step 2 if it
   opens.
+- **The generic prompt reads no household store** ([guardrails](../architecture/implementation-guardrails.md),
+  Plan 0077 D-21). Step 1 rests on it: a turn routed to the model by mistake can invent and
+  cannot reveal a stored value. Steps 2 to 5 that add household data to that prompt first make
+  the household rule broad again.
 
 After the path the queue goes on as before: P2.1, P2.3, P2.4, P3, and then P4.2.
 
