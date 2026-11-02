@@ -14,6 +14,7 @@ from server.cognition.authorization import (
     evaluate_authorization,
 )
 from server.cognition.calendar_tools import calculate_age, get_current_date
+from server.cognition.household_request import names_someone_known, requests_data_of_a_name
 from server.cognition.identity import ActivePersonContext, ActivePersonStatus, HouseholdRole
 from server.cognition.intent_resolution import (
     IntentResolution,
@@ -73,6 +74,9 @@ type MemoryAnswerer = Callable[
 type ProfileSummarizer = Callable[
     [ActivePersonContext, CognitiveEvent[TextTurnPayload]], Awaitable[ProfileSummaryReply]
 ]
+#: The household's stored names and aliases (Plan 0077). It never raises: a store failure is an
+#: empty set, and the turn stays conversation, where the model holds no stored household value.
+type HouseholdNameReader = Callable[[], Awaitable[frozenset[str]]]
 type ControllerDecision = ResponsePlan | SceneDescriptionRequest | None
 
 _BIOMETRIC_ENROLLMENT_RESPONSE = (
@@ -90,6 +94,12 @@ _PROFILE_SUMMARY_UNAVAILABLE_RESPONSE = (
 
 _ISO_DATE_PATTERN = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 _TWO_ITEMS = 2
+_HOUSEHOLD_READERS = frozenset({HouseholdRole.OWNER, HouseholdRole.ADULT})
+
+
+def _may_read_the_household(actor: ActivePersonContext) -> bool:
+    """Whether the policy could let this actor read household data (`_evaluate_public_read`)."""
+    return actor.status is ActivePersonStatus.IDENTIFIED and actor.role in _HOUSEHOLD_READERS
 
 
 async def _unknown_active_person(event: CognitiveEvent[TextTurnPayload]) -> ActivePersonContext:
@@ -142,6 +152,7 @@ class CognitiveController:
         intent_resolver: IntentResolver = resolve_information_need,
         memory_answerer: MemoryAnswerer | None = None,
         profile_summarizer: ProfileSummarizer | None = None,
+        household_names: HouseholdNameReader | None = None,
     ) -> None:
         """Create a controller with injected calendar and legacy-generation seams.
 
@@ -164,6 +175,9 @@ class CognitiveController:
             profile_summarizer: Reads the speaker's profile card for «¿qué sabes de mí?»
                 (Plan 0074); injected only by the voice routes with the card switch on. When
                 absent the question is ordinary conversation, byte for byte.
+            household_names: Reads the household's stored names, so that «¿Cuándo nació
+                <name>?» from the owner or an adult takes the protected path (Plan 0077). When
+                absent such a question is ordinary conversation.
         """
         self._today = today
         self._legacy_turn = legacy_turn
@@ -176,11 +190,14 @@ class CognitiveController:
         self._intent_resolver = intent_resolver
         self._memory_answerer = memory_answerer
         self._profile_summarizer = profile_summarizer
+        self._household_names = household_names
         # The classic route calls decide() twice on a turn that falls through (decide, then
         # handle), with the same event: keyed by event_id, an answer is attempted once per
         # event, so no audit row is written twice. The controller is built per request and
         # lives for one request, so the cache is never evicted.
         self._answers: dict[UUID, ResponsePlan | None] = {}
+        # The same two calls, the same event: the store is read once per event.
+        self._named_requests: dict[UUID, bool] = {}
 
     async def handle(self, event: CognitiveEvent[TextTurnPayload]) -> ResponsePlan:
         """Produce one bounded response plan for a typed text event.
@@ -217,7 +234,7 @@ class CognitiveController:
             that only a camera-capable adapter may fulfill, or ``None`` when
             the adapter may safely use its generic generation path.
         """
-        need = self._intent_resolver(event.payload.message).need
+        need = await self._resolved_need(event)
         decision: ControllerDecision
         match need:
             case InformationNeed.OWN_CHILDREN_LIST | InformationNeed.OWN_CHILDREN_COUNT:
@@ -249,6 +266,35 @@ class CognitiveController:
             case InformationNeed.GENERIC_CONVERSATION:
                 decision = None
         return decision
+
+    async def _resolved_need(self, event: CognitiveEvent[TextTurnPayload]) -> InformationNeed:
+        """Resolve the closed need, then let a stored name turn a question into a protected one."""
+        need = self._intent_resolver(event.payload.message).need
+        if need is InformationNeed.GENERIC_CONVERSATION and await self._asks_about_known_name(
+            event
+        ):
+            return InformationNeed.PROTECTED_HOUSEHOLD
+        return need
+
+    async def _asks_about_known_name(self, event: CognitiveEvent[TextTurnPayload]) -> bool:
+        """Tell whether the owner or an adult asks for a datum of someone the household knows.
+
+        The names are compared first: one read of the store, while judging the face and the voice
+        costs seconds, and «¿sabes…?» or «¿quién es…?» are everyday questions. A visitor never
+        reaches this path: their question stays conversation, where the model holds no stored
+        household value, so the reply cannot tell a stored name from any other. Neither does a child or a
+        guest: only the roles the policy lets read household data reach the protected path, or
+        the refusal would confirm the name. It never spends a grant.
+        """
+        message = event.payload.message
+        if self._household_names is None or not requests_data_of_a_name(message):
+            return False
+        if event.event_id not in self._named_requests:
+            names = await self._household_names()
+            self._named_requests[event.event_id] = names_someone_known(
+                message, names
+            ) and _may_read_the_household(await self._observed_person_resolver(event))
+        return self._named_requests[event.event_id]
 
     async def _legacy_plan(self, payload: TextTurnPayload) -> ResponsePlan:
         """Delegate only an unclassified safe request to the existing text path."""

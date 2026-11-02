@@ -1021,6 +1021,49 @@ def _record_readers(sources: Mapping[str, str]) -> list[str]:
     )
 
 
+_NO_HOUSEHOLD_READS = ("characters/", "llm", "streaming", "text_turn.py")
+_HOUSEHOLD_READER_MODULES = frozenset(
+    {
+        "server.cognition.household_tools",
+        "server.memory.declarative",
+        "server.memory.entity_labels",
+        "server.memory.policy_gated_v4_reader",
+    }
+)
+
+
+def _household_readers(sources: Mapping[str, str]) -> list[str]:
+    """Prompt-path modules that import a store of household data."""
+    return sorted(
+        name
+        for name, text in sources.items()
+        if name.startswith(_NO_HOUSEHOLD_READS)
+        and any(
+            isinstance(node, ast.ImportFrom) and node.module in _HOUSEHOLD_READER_MODULES
+            for node in ast.walk(ast.parse(text))
+        )
+    )
+
+
+@pytest.mark.unit
+def test_the_generic_prompt_reads_no_household_store() -> None:
+    """Plan 0077 rests on this: a turn routed to the model by mistake holds nothing to reveal.
+
+    Whoever needs household data in the prompt must first make the household rule broad again.
+    """
+    assert _household_readers(_sources()) == []
+
+
+@pytest.mark.unit
+def test_the_household_prompt_guard_detects_a_violation() -> None:
+    sources = {
+        "text_turn.py": "from server.memory.entity_labels import list_known_names\n",
+        "routers/chat.py": "from server.memory.entity_labels import read_household_names\n",
+    }
+
+    assert _household_readers(sources) == ["text_turn.py"]
+
+
 @pytest.mark.unit
 def test_each_conversation_table_is_queried_only_by_its_store() -> None:
     assert _conversation_table_queriers(_sources()) == []

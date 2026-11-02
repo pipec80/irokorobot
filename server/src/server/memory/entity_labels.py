@@ -7,6 +7,7 @@ so a person's or a pet's name is never kept as a taste.
 import json
 import logging
 
+import aiosqlite
 from pydantic import BaseModel, ConfigDict
 
 from server.db import get_conn
@@ -14,7 +15,7 @@ from server.exceptions import BrainMemoryError
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["EntityLabel", "get_person_label", "list_known_names"]
+__all__ = ["EntityLabel", "get_person_label", "list_known_names", "read_household_names"]
 
 
 class EntityLabel(BaseModel):
@@ -70,6 +71,26 @@ async def list_known_names() -> frozenset[str]:
         names.add(str(name))
         names.update(_decode_aliases(int(entity_id), aliases))
     return frozenset(names)
+
+
+async def read_household_names() -> frozenset[str]:
+    """Return the household's stored names, or nothing when the store fails (Plan 0077).
+
+    It fails towards conversation, unlike ``list_known_names``: the model holds no stored
+    household value, so a turn that cannot read the names can invent and cannot reveal one.
+
+    Returns:
+        The names and aliases, or an empty set on a store error (one class-only warning).
+    """
+    try:
+        return await list_known_names()
+    except (BrainMemoryError, aiosqlite.Error) as exc:
+        logger.warning(
+            "Household names unavailable: %s",
+            type(exc).__name__,
+            extra={"event": "entity_labels.names_unavailable"},
+        )
+        return frozenset()
 
 
 def _decode_aliases(entity_id: int, stored: object) -> list[str]:

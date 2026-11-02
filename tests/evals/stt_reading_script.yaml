@@ -1081,7 +1081,7 @@ items:
   block: false
   chat: false
   expect:
-    need: protected_household
+    need: generic_conversation
     taste: 'no'
     answer: none
 - id: H14

@@ -81,6 +81,10 @@ is a breaking change and requires explicit user approval plus a migration plan.
 - The LLM is one tool inside a small typed controller, not the owner of truth,
   memory policy, authorization, arithmetic, or physical safety.
 - Identity and authorization are evaluated before private retrieval.
+- The prompt of a generic turn reads no household store, so a turn routed to the
+  model by mistake can invent and cannot reveal a stored value (Plan 0077,
+  `test_the_generic_prompt_reads_no_household_store`). A plan that adds household
+  data to that prompt first makes the household rule broad again.
 - Missing authentication leaves protected capabilities locked, not the whole
   companion: bounded public conversation remains available, while private
   memory, persistent mutation, and protected actions remain unavailable.

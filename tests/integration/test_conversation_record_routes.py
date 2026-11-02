@@ -191,7 +191,7 @@ async def test_a_deterministic_turn_keeps_the_speaker_the_controller_resolved(
 ) -> None:
     """Found on hardware: the owner's verified words answered by a fixed reply reach the record."""
     _see_the_owner(monkeypatch)
-    _hear(monkeypatch, "Hoy tengo que ir a buscar a mis hijos al colegio, Zeta.")
+    _hear(monkeypatch, "¿Cómo se llama mi esposa?")
 
     async with _client() as client:
         response = await client.post(route, files=_files())
