@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from typing import Annotated, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field, PositiveInt, field_validator
 from pydantic_settings import BaseSettings
@@ -16,6 +17,15 @@ def _coerce_to_int(value: object) -> object:
     in `.env` fails validation against the literal `1` because `"1" != 1`.
     """
     return int(value) if isinstance(value, str) else value
+
+
+def _known_time_zone(value: str) -> str:
+    """Refuse a time zone the zone database does not know, at start-up rather than on a turn."""
+    try:
+        ZoneInfo(value)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise ValueError("HOUSEHOLD_TIMEZONE is not a known time zone") from exc
+    return value
 
 
 type ProfileCardPosition = Literal["with_memory", "before_language"]
@@ -114,7 +124,12 @@ class Settings(BaseSettings):
     # ---------------- Brain & Memory ----------------
     brain_db_path: Path = Path("data/omnibot.db")
 
-    embedding_model: str = "nomic-embed-text"
+    # The recall index embeds with this model (ADR 0028 decision 1, measured in Plan 0075);
+    # its vectors are 768-d, the size of the recall index.
+    embedding_model: str = "granite-embedding:278m"
+    # The household's time zone (ADR 0028 decision 7): timestamps stay UTC and a spoken day
+    # («ayer», «el martes») is cut at this zone's local midnight.
+    household_timezone: str = "America/Santiago"
 
     consolidation_model: str = "qwen2.5:3b"
 
@@ -280,6 +295,7 @@ class Settings(BaseSettings):
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
     _coerce_uvicorn_workers = field_validator("uvicorn_workers", mode="before")(_coerce_to_int)
+    _validate_household_timezone = field_validator("household_timezone")(_known_time_zone)
 
     @property
     def speaker_model_cache_dir(self) -> Path:
