@@ -1316,7 +1316,10 @@ def test_driver_unsupported_reasons_name_the_exact_missing_capability() -> None:
         LongitudinalOperation.PROPOSE
     )
     assert "not a restart" in _unsupported_reason(LongitudinalOperation.RESTART)
-    assert "resolved actor" in _unsupported_reason(LongitudinalOperation.RECALL)
+    recall = _unsupported_reason(LongitudinalOperation.RECALL)
+    assert "voice-verified capture and a restart" in recall
+    assert "ADR 0028" in recall
+    assert "CM-7" in recall
     assert "CM-6" in _unsupported_reason(LongitudinalOperation.CORRECT)
     assert "episode/embedding/summary/cache" in _unsupported_reason(LongitudinalOperation.FORGET)
 

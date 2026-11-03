@@ -1123,3 +1123,101 @@ def test_the_conversation_guards_detect_a_violation() -> None:
     assert _conversation_table_queriers(sources) == ["memory/leak.py"]
     assert _record_readers(sources) == ["characters/__init__.py", "routers/chat.py"]
     assert _outside(sources, _RECORDER_HOMES, _RECORDER_NAMES) == ["routers/chat.py"]
+
+
+# --- recall (Plan 0078) -----------------------------------------------------------------------
+
+# The modules that read the recall units or word them; no prompt module may import one, so the
+# generic prompt still reads no household store and a recall answer is a controller branch.
+_RECALL_READER_MODULES = frozenset(
+    {
+        "server.memory.recall_store",
+        "server.memory.recall_search",
+        "server.memory.recall_access",
+        "server.memory.recall_answer",
+        "server.memory.recall_index",
+    }
+)
+_RECALL_MODULES = tuple(f"memory/{name.rsplit('.', 1)[1]}.py" for name in _RECALL_READER_MODULES)
+_RECALL_TABLE_SQL = re.compile(
+    r"\b(?:FROM|JOIN|INTO|UPDATE|DELETE\s+FROM)\s+recall_units(?:_fts|_vec)?\b"
+)
+_RECALL_TABLE_HOME = "memory/recall_store.py"
+
+
+def _recall_prompt_readers(sources: Mapping[str, str]) -> list[str]:
+    """Prompt-path modules that import a recall module."""
+    return sorted(
+        name
+        for name, text in sources.items()
+        if name.startswith(_NO_HOUSEHOLD_READS)
+        and any(
+            (isinstance(node, ast.ImportFrom) and node.module in _RECALL_READER_MODULES)
+            or (
+                isinstance(node, ast.Import)
+                and any(alias.name in _RECALL_READER_MODULES for alias in node.names)
+            )
+            for node in ast.walk(ast.parse(text))
+        )
+    )
+
+
+def _recall_table_queriers(sources: Mapping[str, str]) -> list[str]:
+    """Modules other than the recall store that put SQL on a recall table."""
+    return sorted(
+        name
+        for name, text in sources.items()
+        if name != _RECALL_TABLE_HOME and _RECALL_TABLE_SQL.search(text)
+    )
+
+
+def _recall_record_readers(sources: Mapping[str, str]) -> list[str]:
+    """Recall modules that import the record, the diary or the summary (they read units)."""
+    return sorted(
+        name
+        for name, text in sources.items()
+        if name in _RECALL_MODULES
+        and any(
+            isinstance(node, ast.ImportFrom) and node.module in _RECORD_READER_MODULES
+            for node in ast.walk(ast.parse(text))
+        )
+    )
+
+
+@pytest.mark.unit
+def test_the_generic_prompt_still_reads_no_household_store() -> None:
+    """ADR 0028 decision 8: the recall answer is a controller branch, never in the prompt."""
+    sources = _sources()
+
+    assert _household_readers(sources) == []
+    assert _recall_prompt_readers(sources) == []
+
+
+@pytest.mark.unit
+def test_only_recall_store_touches_the_recall_tables() -> None:
+    assert _recall_table_queriers(_sources()) == []
+
+
+@pytest.mark.unit
+def test_the_record_is_still_read_by_no_route() -> None:
+    """The 0076 guard keeps passing, and recall reads units, not records."""
+    sources = _sources()
+
+    assert _record_readers(sources) == []
+    assert _recall_record_readers(sources) == []
+
+
+@pytest.mark.unit
+def test_the_recall_guards_detect_a_violation() -> None:
+    sources = {
+        "text_turn.py": "from server.memory.recall_search import search_recall\n",
+        "llm_streaming.py": "import server.memory.recall_store\n",
+        "routers/transcribe.py": "from server.memory.recall_access import recall_reply\n",
+        "memory/leak.py": 'SQL = "SELECT body FROM recall_units WHERE 1"\n',
+        "memory/recall_store.py": 'SQL = "SELECT body FROM recall_units_fts"\n',
+        "memory/recall_search.py": "from server.memory.conversation_record import read_record\n",
+    }
+
+    assert _recall_prompt_readers(sources) == ["llm_streaming.py", "text_turn.py"]
+    assert _recall_table_queriers(sources) == ["memory/leak.py"]
+    assert _recall_record_readers(sources) == ["memory/recall_search.py"]
