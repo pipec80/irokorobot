@@ -112,6 +112,12 @@ def test_each_spoken_form_gives_its_window(text: str, start: date, end: date) ->
     assert _window(f"¿qué te conté {text}?") == DayWindow(start=start, end=end)
 
 
+def test_hoy_dia_is_today_and_leaves_no_topic_word() -> None:
+    """Chilean «hoy día» (found on Pipec's hardware run, 2026-11-03): «día» is not a topic."""
+    assert _window("¿Qué hice hoy día?") == DayWindow(start=_WEDNESDAY, end=_WEDNESDAY)
+    assert strip_window_words(normalize_spanish("qué hice hoy día")) == "que hice"
+
+
 def test_el_martes_on_a_tuesday_is_last_week() -> None:
     tuesday = date(2026, 11, 3)
 

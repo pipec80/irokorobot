@@ -109,7 +109,8 @@ _PATTERNS: Final[
     (re.compile(r"\bel mes pasado\b"), _last_month),
     (re.compile(r"\b(?:anteayer|antes de ayer)\b"), _day(_ANTEAYER_DAYS)),
     (re.compile(r"\bayer\b"), _day(1)),
-    (re.compile(r"\bhoy\b"), _day(0)),
+    # «hoy día» is the Chilean «hoy»: «día» is part of the date, never a topic.
+    (re.compile(r"\bhoy(?: dia)?\b"), _day(0)),
     (
         re.compile(r"\b(?:el |este )?(?P<weekday>" + _WEEKDAY_ALTERNATION + r")(?: pasado)?\b"),
         _weekday,
