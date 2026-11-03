@@ -174,6 +174,10 @@ class Settings(BaseSettings):
     # The diary job: how often it runs, and how long one summary may be.
     conversation_job_interval_s: PositiveInt = 120
     conversation_episode_max_chars: PositiveInt = 600
+    # Recall (ADR 0028, Plan 0078): the owner's verified words and the diary are indexed and a
+    # recall question is answered from them. Kill-switch, off in the code and on in a delivered
+    # robot; it also needs MEMORY_ENABLED and the conversation record. Off: every turn as before.
+    recall_enabled: bool = False
     robot_character: str = "iroko"
     # Re-read character markdown profiles from disk on every request when
     # they change (prompt-engineering aid). OFF by default: production loads

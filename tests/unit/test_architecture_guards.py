@@ -976,6 +976,9 @@ _CONVERSATION_TABLE_HOMES = {
     "conversation_episodes": "memory/conversation_episodes.py",
     "conversation_consent_grants": "memory/conversation_consent.py",
 }
+# The recall store may JOIN a unit to its record, only to skip an expired one (Plan 0078): no
+# other statement on the table, and never the record's turns.
+_CONVERSATION_TABLE_JOINERS = {"conversation_records": frozenset({"memory/recall_store.py"})}
 _RECORD_READER_MODULES = frozenset(
     {
         "server.memory.conversation_record",
@@ -1000,7 +1003,15 @@ def _conversation_table_queriers(sources: Mapping[str, str]) -> list[str]:
     found = []
     for table, home in _CONVERSATION_TABLE_HOMES.items():
         sql = re.compile(rf"\b(?:FROM|JOIN|INTO|UPDATE|DELETE\s+FROM)\s+{table}\b")
-        found += [name for name, text in sources.items() if name != home and sql.search(text)]
+        beyond_a_join = re.compile(rf"\b(?:FROM|INTO|UPDATE)\s+{table}\b|\bturns\b")
+        joiners = _CONVERSATION_TABLE_JOINERS.get(table, frozenset())
+        found += [
+            name
+            for name, text in sources.items()
+            if name != home
+            and sql.search(text)
+            and (name not in joiners or beyond_a_join.search(text))
+        ]
     return sorted(found)
 
 
@@ -1067,6 +1078,24 @@ def test_the_household_prompt_guard_detects_a_violation() -> None:
 @pytest.mark.unit
 def test_each_conversation_table_is_queried_only_by_its_store() -> None:
     assert _conversation_table_queriers(_sources()) == []
+
+
+@pytest.mark.unit
+def test_the_recall_store_may_only_join_the_record_for_its_expiry() -> None:
+    joined = 'SQL = "SELECT u.id FROM recall_units u JOIN conversation_records r ON 1"\n'
+    sources = {
+        "memory/recall_store.py": joined,
+        "memory/other.py": joined,
+    }
+    assert _conversation_table_queriers(sources) == ["memory/other.py"]
+
+    for leak in (
+        'SQL = "SELECT r.turns FROM recall_units u JOIN conversation_records r ON 1"\n',
+        'SQL = "UPDATE conversation_records SET eligible = 0"\n',
+    ):
+        assert _conversation_table_queriers({"memory/recall_store.py": leak}) == [
+            "memory/recall_store.py"
+        ]
 
 
 @pytest.mark.unit

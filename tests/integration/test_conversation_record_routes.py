@@ -132,7 +132,9 @@ def test_turn_recorder_is_none_unless_both_switches_are_on(
     monkeypatch.setattr(settings, "conversation_record_enabled", record_enabled)
     event = transcribe_module._voice_event_from_transcript("hola")
 
-    recorder = transcribe_module._turn_recorder(AsyncMock(), event=event, wav_bytes=b"RIFF-canary")
+    recorder = transcribe_module._turn_recorder(
+        AsyncMock(), event=event, wav_bytes=b"RIFF-canary", client=AsyncMock()
+    )
 
     assert (recorder is not None) is expected
 

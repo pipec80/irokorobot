@@ -369,6 +369,7 @@ def _turn_recorder(
     *,
     event: CognitiveEvent[TextTurnPayload],
     wav_bytes: bytes,
+    client: httpx.AsyncClient,
 ) -> TurnRecorder | None:
     """Adapt FastAPI background tasks to the conversation-record callback (ADR 0027).
 
@@ -377,6 +378,8 @@ def _turn_recorder(
         event: The turn's event; its correlation id joins the exchange to the turn.
         wav_bytes: The turn's own clip — WAV, 16 000 Hz, mono, int16 — held in memory only,
             for the voice verdict; never stored.
+        client: Shared, lifecycle-owned HTTP client (Plan 0039), for the vector of the turn's
+            recall unit; passed only with ``RECALL_ENABLED`` (ADR 0028).
 
     Returns:
         The callback, or ``None`` with ``MEMORY_ENABLED`` or ``CONVERSATION_RECORD_ENABLED``
@@ -385,10 +388,11 @@ def _turn_recorder(
     if not (settings.memory_enabled and settings.conversation_record_enabled):
         return None
     at = utc_now()
+    capture = partial(capture_turn, client=client) if settings.recall_enabled else capture_turn
 
     def record(heard: str, said: str, actor: ActivePersonContext | None) -> None:
         background_tasks.add_task(
-            capture_turn, heard, said, actor, wav_bytes=wav_bytes, event=event, at=at
+            capture, heard, said, actor, wav_bytes=wav_bytes, event=event, at=at
         )
 
     return record
@@ -711,7 +715,9 @@ async def transcribe(
         )
 
     event = _voice_event_from_transcript(text_heard)
-    record_turn = _turn_recorder(background_tasks, event=event, wav_bytes=audio_bytes)
+    record_turn = _turn_recorder(
+        background_tasks, event=event, wav_bytes=audio_bytes, client=resources.http_client
+    )
     controller = _voice_controller(
         resources.http_client,
         request_identity=request_identity,
@@ -880,7 +886,9 @@ async def transcribe_stream(
         scene_unavailable_plan() if isinstance(decision, SceneDescriptionRequest) else decision
     )
     turn_log.log_decision("stream", plan)
-    record_turn = _turn_recorder(background_tasks, event=event, wav_bytes=audio_bytes)
+    record_turn = _turn_recorder(
+        background_tasks, event=event, wav_bytes=audio_bytes, client=resources.http_client
+    )
     if plan is not None:
         _record_plan(record_turn, event.payload.message, plan, request_identity)
         return _stream_plan(
