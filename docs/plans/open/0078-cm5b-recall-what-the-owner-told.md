@@ -1,9 +1,10 @@
 # 0078 — CM-5b + R3: recall what the owner told, and read the relatives of the alta
 
-> **Status:** `Draft` (2026-11-03). Written the same day as its design,
+> **Status:** `Ready` and `NOW` (2026-11-03). Written the same day as its design,
 > [ADR 0028](../../adr/0028-recall-what-the-owner-told.md) (`Proposed`), whose eleven decisions Pipec
-> confirmed in the design session. It becomes `Ready` and `NOW` only when Pipec promotes it and
-> confirms D-1 to D-11 below. Detailed against `main` at `fb32672`; queue rule 4 applies at
+> confirmed in the design session, and **promoted by Pipec the same day** (D-1 to D-11 below
+> confirmed as written). It is executed in a new session, on `feat/0078-recall`; ADR 0028 moves to
+> `Accepted` when it closes. Detailed against `main` at `fb32672`; queue rule 4 applies at
 > execution: Task 0 re-verifies every claim below against the merged code before any code, and
 > **stops and reports** if one is false. Written for an executor who has not seen this repository.
 
@@ -27,7 +28,7 @@
 ## Decisions
 
 Confirmed by Pipec on 2026-11-03, in ADR 0028: the eleven decisions of its *Pipec's decisions*
-table. The author's calls below are confirmed by the promotion:
+table. The author's calls below were confirmed by Pipec on promotion (2026-11-03), as written:
 
 - **D-1 The cue grammar.** A message is a recall question only when it is a question: it carries
   «?» or opens (after the fillers `_LEADING_FILLERS` of `household_request.py`) with an
