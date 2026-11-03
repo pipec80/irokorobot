@@ -181,6 +181,10 @@ class ProfileSummaryReply:
 #: What the opt-in spoken-text log shows instead of a profile summary: the summary carries stored
 #: values, so it is spoken to the person and recorded nowhere (Plan 0074, decision D-8).
 PROFILE_SUMMARY_LOGGED_TEXT = "«resumen del perfil»"
+#: The same for a recall answer and a relatives answer: they carry memories and names (Plan 0078
+#: D-11).
+RECALL_LOGGED_TEXT = "[recuerdo leído]"
+RELATIVES_LOGGED_TEXT = "[parientes leídos]"
 
 
 def spoken_log_text(plan: ResponsePlan) -> str | None:
@@ -190,12 +194,21 @@ def spoken_log_text(plan: ResponsePlan) -> str | None:
         plan: The plan about to be spoken.
 
     Returns:
-        A fixed marker for a known profile summary (its text carries stored values), or ``None``
-        when the response itself may be logged: every fixed phrase, a refusal included.
+        A fixed marker for a known profile summary, recall answer or relatives answer (their
+        text carries stored values), or ``None`` when the response itself may be logged: every
+        fixed phrase, a refusal included.
     """
-    if plan.need is InformationNeed.PROFILE_SUMMARY and plan.status is KnowledgeStatus.KNOWN:
-        return PROFILE_SUMMARY_LOGGED_TEXT
-    return None
+    if plan.status is not KnowledgeStatus.KNOWN:
+        return None
+    match plan.need:
+        case InformationNeed.PROFILE_SUMMARY:
+            return PROFILE_SUMMARY_LOGGED_TEXT
+        case InformationNeed.RECALL:
+            return RECALL_LOGGED_TEXT
+        case InformationNeed.RELATIVES_NAMES:
+            return RELATIVES_LOGGED_TEXT
+        case _:
+            return None
 
 
 class SceneDescriptionRequest(BaseModel):
