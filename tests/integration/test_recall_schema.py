@@ -117,6 +117,49 @@ async def test_deleting_a_record_deletes_its_units_fts_rows_and_vectors(v14_db: 
     assert await _scalar("SELECT COUNT(*) FROM recall_units_vec") == 0
 
 
+async def _shadow_blobs() -> list[bytes]:
+    """Every blob and text cell of the recall indexes' shadow tables."""
+    conn = db.get_conn()
+    cursor = await conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'recall_units_%'"
+    )
+    names = [str(row[0]) for row in await cursor.fetchall()]
+    await cursor.close()
+    cells: list[bytes] = []
+    for name in names:
+        cursor = await conn.execute(f'SELECT * FROM "{name}"')  # noqa: S608 - names from the schema
+        for row in await cursor.fetchall():
+            cells.extend(
+                value if isinstance(value, bytes) else str(value).encode()
+                for value in row
+                if value is not None
+            )
+        await cursor.close()
+    return cells
+
+
+async def test_a_deleted_unit_leaves_no_word_and_no_vector_in_the_indexes(v14_db: int) -> None:
+    """Forgetting reaches the indexes' storage, not only their answers (secure-delete)."""
+    record_id = await _record(v14_db)
+    gone = await _turn_unit(v14_db, record_id, "zzcanaryzz fue al cerro")
+    # A dense vector of one odd value: a sparse one would match a slice of its neighbour.
+    marker = struct.pack(f"{_DIMENSIONS}f", *([0.0361] * _DIMENSIONS))
+    await db.get_conn().execute(
+        "INSERT INTO recall_units_vec (rowid, owner_entity_id, sensitivity, embedding) "
+        "VALUES (?, ?, 'normal', ?)",
+        (gone, v14_db, marker),
+    )
+    kept = await _turn_unit(v14_db, record_id, "otra palabra cualquiera")
+    await _vector_row(v14_db, kept, 5)
+
+    await db.get_conn().execute("DELETE FROM recall_units WHERE id = ?", (gone,))
+    await db.get_conn().commit()
+
+    cells = await _shadow_blobs()
+    assert not any(b"zzcanaryzz" in cell for cell in cells)
+    assert not any(marker[:64] in cell for cell in cells)
+
+
 async def test_raising_sensitivity_moves_the_vector_out_of_a_normal_search(v14_db: int) -> None:
     record_id = await _record(v14_db)
     unit_id = await _turn_unit(v14_db, record_id, "me duele la rodilla")

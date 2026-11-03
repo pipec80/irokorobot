@@ -33,6 +33,9 @@ CREATE INDEX recall_units_unembedded_idx ON recall_units (id) WHERE embedding_mo
 CREATE VIRTUAL TABLE recall_units_fts USING fts5(
     body, content='recall_units', content_rowid='id', tokenize='unicode61 remove_diacritics 2'
 );
+-- A deleted unit's words leave the index's storage at once, not at the next merge, like the
+-- database's own `secure_delete` (ADR 0021 decision 6). A persistent option of this table.
+INSERT INTO recall_units_fts (recall_units_fts, rank) VALUES ('secure-delete', 1);
 
 CREATE VIRTUAL TABLE recall_units_vec USING vec0(
     owner_entity_id integer partition key, sensitivity text,
