@@ -56,6 +56,7 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "CardOutcome",
     "CardRead",
+    "may_read_own_memory",
     "profile_summary_text",
     "prompt_card_text",
     "read_card",
@@ -99,11 +100,17 @@ def _refused(outcome: CardOutcome, reason: _Reason) -> CardRead:
     return CardRead(outcome)
 
 
-def _may_be_asked(actor: ActivePersonContext) -> bool:
+def may_read_own_memory(actor: ActivePersonContext) -> bool:
     """Whether the policy is worth asking: the face-identified speaker at ``basic`` or more.
 
     The same test ``start_offer`` uses, so a token speaker never reaches the policy and never
-    writes a denial row per turn.
+    writes a denial row per turn. The card and recall (Plan 0078) share it.
+
+    Args:
+        actor: The turn's resolved speaker.
+
+    Returns:
+        ``True`` for a face-identified speaker at ``basic`` or more.
     """
     return (
         actor.status is ActivePersonStatus.IDENTIFIED
@@ -138,7 +145,7 @@ async def read_card(
         read failed. It never raises.
     """
     person_id = actor.person_id
-    if person_id is None or not _may_be_asked(actor):
+    if person_id is None or not may_read_own_memory(actor):
         return _refused(CardOutcome.DENIED, _Reason.NOT_ASKED)
     request = AuthorizationRequest(
         actor=actor,

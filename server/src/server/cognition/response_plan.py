@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Literal
+from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -134,6 +134,31 @@ class MemoryAnswerReply:
 
     phrase: str
     expects_short_reply: bool = False
+
+
+#: Spoken when a recall question finds nothing it may say (ADR 0028 decisions 4 and 8).
+NO_MEMORY: Final = "No me acuerdo de eso."
+#: Spoken when the alta loaded no relative of the kind asked about (ADR 0028 decision 9).
+NOT_REGISTERED: Final = "No tengo registrado eso."
+
+
+@dataclass(frozen=True)
+class RecallReply:
+    """What the recall answerer says back to the controller (Plan 0078, ADR 0028).
+
+    Lives in the cognitive core so the controller can map it without importing
+    ``server.memory``. Hidden from ``repr``: ``text`` carries the owner's memories.
+
+    Attributes:
+        text: The spoken answer; ``None`` when nothing qualified (the controller decides by the
+            cue's strength), or the fixed ``NO_MEMORY`` when the audit or the search failed.
+        denied: ``True`` when the pre-check or the policy refused; answered like a stranger.
+        found: ``True`` when *text* was worded from found memories.
+    """
+
+    text: str | None = field(repr=False)
+    denied: bool = False
+    found: bool = False
 
 
 @dataclass(frozen=True)

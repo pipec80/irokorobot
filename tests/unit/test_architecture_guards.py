@@ -165,14 +165,15 @@ _RETIRED_ACTION_NAMES = frozenset(
     {"PROPOSE_MEMORY", "COMMIT_MEMORY", "propose_memory", "commit_memory"}
 )
 # The model and the policy, plus the one module that asks the policy about a candidate step
-# (Plan 0062) and the one that asks it about the profile card (Plan 0074): every other module
-# reaches the actions through them.
+# (Plan 0062), the one that asks it about the profile card (Plan 0074) and the one that asks it
+# about a recall (Plan 0078): every other module reaches the actions through them.
 _ACTION_HOMES = frozenset(
     {
         "cognition/models.py",
         "cognition/authorization.py",
         "memory/candidate_policy.py",
         "memory/profile_card_access.py",
+        "memory/recall_access.py",
     }
 )
 _MEMORY_SCOPE_MEMBER_NAMES = frozenset({"PERSONAL_MEMORY_READ", "PERSONAL_MEMORY_FORGET"})
