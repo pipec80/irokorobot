@@ -38,6 +38,7 @@ _MIGRATIONS: tuple[tuple[int, str], ...] = (
     (11, "migration_011_contacts_and_commissioning.sql"),
     (12, "migration_012_admin_audit.sql"),
     (13, "migration_013_conversation_record.sql"),
+    (14, "migration_014_recall_units.sql"),
 )
 _conn: aiosqlite.Connection | None = None
 
@@ -158,10 +159,18 @@ async def _restore_busy_timeout(conn: aiosqlite.Connection) -> None:
 
 
 async def close_db() -> None:
-    """Close the global connection. Idempotent."""
+    """Close the global connection, after ``PRAGMA optimize``. Idempotent.
+
+    A failing optimize (a lock held by another connection, a connection no longer usable) is
+    logged by class and never keeps the connection open (Plan 0078).
+    """
     global _conn, _write_lock  # noqa: PLW0603
     if _conn is None:
         return
+    try:
+        await _conn.execute("PRAGMA optimize")
+    except (aiosqlite.Error, ValueError) as exc:
+        logger.warning("PRAGMA optimize skipped on close (%s)", type(exc).__name__)
     await _conn.close()
     _conn = None
     _write_lock = None
