@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING, Literal
 import sqlite_vec
 
 from server import db
+from server.cognition.intent_resolution import resolve_information_need
+from server.cognition.response_plan import InformationNeed
 from server.memory.conversation_types import TurnVerdict
 from server.memory.embeddings import EMBEDDING_DIM
 from server.memory.recall_sensitivity import (
@@ -38,6 +40,7 @@ __all__ = [
     "raise_record_sensitivity",
     "recent_units",
     "store_vector",
+    "tells_something",
     "units_by_id",
     "units_without_vector",
     "vector_hits",
@@ -74,6 +77,25 @@ def _unit(row: Sequence[object]) -> RecallUnit:
         body=str(row[3]),
         said_at=datetime.fromisoformat(str(row[4])),
     )
+
+
+def tells_something(text: str) -> bool:
+    """Whether the owner's words tell something to remember, rather than ask for something.
+
+    A recall question, a relatives or children question, «¿qué sabes de mí?» or a protected
+    request is answered by a closed rule and tells nothing; found on Pipec's hardware run
+    (2026-11-03), such questions were later read back as «me contaste…». Only words that resolve
+    to ordinary conversation become a unit.
+
+    Args:
+        text: What the owner said.
+
+    Returns:
+        ``True`` for non-blank words of an ordinary turn.
+    """
+    if not text.strip():
+        return False
+    return resolve_information_need(text, recall=True).need is InformationNeed.GENERIC_CONVERSATION
 
 
 async def _insert(

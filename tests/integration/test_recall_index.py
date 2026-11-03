@@ -334,6 +334,28 @@ async def test_the_episode_raises_the_sensitivity_of_its_turns(
     assert vectors == [("location",), ("medical",)]
 
 
+async def test_a_conversation_of_only_questions_gets_its_episode_but_no_unit(
+    owner: int, embedded: AsyncMock
+) -> None:
+    """Found on hardware (2026-11-03): the diary summary of a conversation where the owner only
+    asked («¿cómo se llama mi papá?») became a recall unit; it tells nothing to remember."""
+    await _capture(owner, TurnVerdict.VERIFIED, heard="¿Cómo se llama mi papá?")
+    await _capture(
+        owner, TurnVerdict.VERIFIED, heard="¿Qué te conté del cerro?", at=_T0 + timedelta(seconds=5)
+    )
+    view = await _closed(owner)
+
+    await write_episode(
+        view,
+        client=httpx.AsyncClient(),
+        now=_T0 + timedelta(minutes=11),
+        summarize=_summarizer("normal"),
+    )
+
+    assert await _rows("SELECT COUNT(*) FROM conversation_episodes") == [(1,)]
+    assert await _units() == []
+
+
 async def test_no_episode_unit_without_recall_enabled(
     owner: int, embedded: AsyncMock, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -21,15 +21,13 @@ import logging
 from typing import TYPE_CHECKING
 
 from server.cognition.clock import utc_now
-from server.cognition.intent_resolution import resolve_information_need
-from server.cognition.response_plan import InformationNeed
 from server.cognition.strong_actor import VoiceVerifier, is_face_actor, verify_face_and_voice
 from server.memory.conversation_consent import has_active_conversation_consent
 from server.memory.conversation_record import append_turn
 from server.memory.conversation_types import TurnVerdict, make_turn
 from server.memory.owner_credentials import get_ready_owner
 from server.memory.recall_index import embed_unit
-from server.memory.recall_store import insert_turn_unit
+from server.memory.recall_store import insert_turn_unit, tells_something
 from server.settings import settings
 
 if TYPE_CHECKING:
@@ -171,7 +169,7 @@ def _recall_indexer(turn: RecordedTurn, owner_id: int, units: list[int]) -> Turn
     """
     if not settings.recall_enabled or turn.voice is not TurnVerdict.VERIFIED:
         return None
-    if not turn.heard.strip() or _asks_something(turn.heard):
+    if not tells_something(turn.heard):
         return None
 
     async def index(conn: aiosqlite.Connection, record_id: int, recorded: RecordedTurn) -> int:
@@ -182,17 +180,6 @@ def _recall_indexer(turn: RecordedTurn, owner_id: int, units: list[int]) -> Turn
         return unit_id
 
     return index
-
-
-def _asks_something(heard: str) -> bool:
-    """Whether the turn asked for something the robot answers by a closed rule.
-
-    A recall question, a relatives or children question, «¿qué sabes de mí?» or a protected
-    request tells nothing to remember. Found on Pipec's hardware run (2026-11-03): indexed, such
-    questions were later read back as «me contaste…». Only an ordinary turn becomes a unit.
-    """
-    need = resolve_information_need(heard, recall=True).need
-    return need is not InformationNeed.GENERIC_CONVERSATION
 
 
 def _logged(
