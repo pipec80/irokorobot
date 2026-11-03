@@ -263,7 +263,13 @@ class CognitiveController:
                 # The voice routes answer it before the controller (Plan 0069 D-11); no text
                 # resolves to it, but if one ever did, it is the fixed phrase, never generation.
                 decision = unclear_speech_plan(expects_short_reply=False)
-            case InformationNeed.GENERIC_CONVERSATION:
+            # RECALL and RELATIVES_NAMES resolve only with recall on, which the controller does not
+            # ask for yet; Plan 0078 Tasks 9 and 10 give them their branches.
+            case (
+                InformationNeed.GENERIC_CONVERSATION
+                | InformationNeed.RECALL
+                | InformationNeed.RELATIVES_NAMES
+            ):
                 decision = None
         return decision
 

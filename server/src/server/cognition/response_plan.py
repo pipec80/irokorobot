@@ -48,6 +48,10 @@ class InformationNeed(StrEnum):
     PROFILE_SUMMARY = "profile_summary"
     # Whisper doubted the transcript; the turn never reached the controller (Plan 0069 D-11).
     UNCLEAR_SPEECH = "unclear_speech"
+    # «¿Qué te conté ayer?»: the owner's diary and own words searched (Plan 0078, ADR 0028).
+    RECALL = "recall"
+    # «¿Cómo se llaman mis papás?»: the relatives loaded at the alta (ADR 0028 decision 9).
+    RELATIVES_NAMES = "relatives_names"
 
 
 class ResponseSource(StrEnum):

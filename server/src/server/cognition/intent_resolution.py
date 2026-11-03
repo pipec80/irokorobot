@@ -8,6 +8,7 @@ controller remains the sole owner of policy, tools, audit, and generation.
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import date
 from enum import StrEnum
 import re
 
@@ -21,6 +22,7 @@ from server.cognition.household_request import (
     requests_household_data,
     states_a_request,
 )
+from server.cognition.recall_cues import CueStrength, classify_recall_cue, relation_of
 from server.cognition.response_plan import InformationNeed
 from server.text_keys import normalize_spanish
 
@@ -225,6 +227,12 @@ _RELATIONSHIP_PATTERNS = (
 )
 _OWN_CHILDREN_LIST_PATTERNS = ("como se llaman mis hijos", "quienes son mis hijos")
 _OWN_CHILDREN_COUNT_PATTERNS = ("cuantos hijos tengo",)
+_OWN_CHILD_NAME_PATTERNS = (
+    "como se llama mi hija",
+    "como se llama mi hijo",
+    "quien es mi hija",
+    "quien es mi hijo",
+)
 _CURRENT_DATE_PATTERNS = (
     "que dia es hoy",
     "dime la fecha actual",
@@ -299,18 +307,20 @@ class _Utterance:
     normalized: str
 
 
-def resolve_information_need(message: str) -> IntentResolution:
+def resolve_information_need(message: str, *, recall: bool = False) -> IntentResolution:
     """Resolve one bounded information need from reviewed Spanish rules.
 
     Args:
         message: Raw transcript or chat text in Spanish.
+        recall: Whether the recall and relatives rules run (Plan 0078). Off, every message
+            resolves exactly as before them.
 
     Returns:
         The closed, deterministic resolution — need, match kind, and a
         privacy-safe rule identifier (``None`` only for generic conversation).
     """
     utterance = _Utterance(message=message, normalized=normalize_spanish(message))
-    for rule in _RULES:
+    for rule in _RECALL_RULES if recall else _RULES:
         resolution = rule(utterance)
         if resolution is not None:
             return resolution
@@ -340,6 +350,43 @@ def _own_children_count_rule(utterance: _Utterance) -> IntentResolution | None:
             InformationNeed.OWN_CHILDREN_COUNT, IntentMatch.EXACT, "own_children.count.v1"
         )
     return None
+
+
+def _own_child_name_rule(utterance: _Utterance) -> IntentResolution | None:
+    """Recognize the singular «¿cómo se llama mi hija?», answered by the children list.
+
+    Pipec's amendment to Plan 0078 (2026-11-03), with recall on only. The alta does not tell a
+    daughter from a son, so the list answers it, as the parents' question names both parents.
+    """
+    if any(
+        _contains_word_phrase(utterance.normalized, pattern) for pattern in _OWN_CHILD_NAME_PATTERNS
+    ):
+        return _resolution(
+            InformationNeed.OWN_CHILDREN_LIST, IntentMatch.EXACT, "own_children.name.v1"
+        )
+    return None
+
+
+def _relatives_rule(utterance: _Utterance) -> IntentResolution | None:
+    """Recognize a question about the name of a relative or a pet loaded at the alta."""
+    if relation_of(utterance.message) is None:
+        return None
+    return _resolution(InformationNeed.RELATIVES_NAMES, IntentMatch.EXACT, "relatives.names.v1")
+
+
+def _recall_rule(utterance: _Utterance) -> IntentResolution | None:
+    """Recognize a recall question (ADR 0028 decision 4).
+
+    A weak cue about household data («¿te acuerdas qué comen mis hijos?») keeps the protected
+    route: only a strong cue about what the owner told goes to the diary before it. The date
+    only tells whether a window remains, so the machine's day is enough here.
+    """
+    cue = classify_recall_cue(utterance.message, today=date.today())
+    if cue is None:
+        return None
+    if cue.strength is CueStrength.WEAK and requests_household_data(utterance.message):
+        return None
+    return _resolution(InformationNeed.RECALL, IntentMatch.EXACT, f"recall.{cue.strength}.v1")
 
 
 def _protected_household_rule(utterance: _Utterance) -> IntentResolution | None:
@@ -618,4 +665,15 @@ _RULES: tuple[Callable[[_Utterance], IntentResolution | None], ...] = (
     _relationship_rule,
     _scene_description_rule,
     _memory_answer_rule,
+)
+# With recall on (Plan 0078 D-2): the relatives and recall rules come right before the protected
+# household rule; every other rule keeps its place. A recall cue with nothing after it returns
+# nothing, so «¿qué te conté?» still reaches the profile summary further down.
+_RECALL_RULES: tuple[Callable[[_Utterance], IntentResolution | None], ...] = (
+    _own_children_list_rule,
+    _own_children_count_rule,
+    _own_child_name_rule,
+    _relatives_rule,
+    _recall_rule,
+    *_RULES[2:],
 )
