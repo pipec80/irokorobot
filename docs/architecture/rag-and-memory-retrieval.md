@@ -825,7 +825,12 @@ recuperar evidencia y mostrar procedencia. No agregar todavía todos los formato
 
 Se entrega con CM-5b sobre el diario. Implementar lexical local, línea base
 vectorial y RRF. Evaluar consultas semánticas y términos exactos con el mismo
-corpus autorizado.
+corpus autorizado. Diseñado por el
+[ADR 0028](../adr/0028-recall-what-the-owner-told.md) (`Proposed`, 2026-11-03):
+unidades de recuerdo con FTS5 (`unicode61`, sin tildes) y `vec0` por dueño,
+umbral absoluto, RRF (`k = 60`), máximo tres resultados y cero resultados
+permitidos; las unidades llevan un tipo, así que una fuente documental futura
+reutiliza la misma búsqueda.
 
 ### R4 — PDF y calidad avanzada
 
@@ -849,8 +854,11 @@ implementan R1–R6 dentro del MVP R0.
 
 - contrato persistente de fuentes documentales y chunks;
 - política de retención y eliminación documental;
-- adopción/cambio de modelo o dimensión de embeddings;
-- búsqueda lexical y método de fusión;
+- adopción/cambio de modelo o dimensión de embeddings (para el diario: decidido
+  por el [ADR 0028](../adr/0028-recall-what-the-owner-told.md),
+  `granite-embedding:278m`, 768 dimensiones);
+- búsqueda lexical y método de fusión (para el diario: decididos por el ADR 0028,
+  FTS5 + `vec0` + RRF con umbral absoluto);
 - incorporación de reranker;
 - OCR y retención de archivos originales;
 - migración fuera de SQLite;
