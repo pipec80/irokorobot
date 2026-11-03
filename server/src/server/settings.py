@@ -178,6 +178,10 @@ class Settings(BaseSettings):
     # recall question is answered from them. Kill-switch, off in the code and on in a delivered
     # robot; it also needs MEMORY_ENABLED and the conversation record. Off: every turn as before.
     recall_enabled: bool = False
+    # The absolute gate of a recall search (ADR 0028 decision 6): a unit found only by its vector
+    # qualifies when its cosine distance is under this. 0.30 is the midpoint of the measured
+    # paraphrase (0.161) and unrelated (0.431) distances (Plan 0075); calibrated in Plan 0078.
+    recall_max_distance: float = Field(default=0.30, gt=0.0, lt=2.0)
     robot_character: str = "iroko"
     # Re-read character markdown profiles from disk on every request when
     # they change (prompt-engineering aid). OFF by default: production loads
