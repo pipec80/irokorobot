@@ -53,9 +53,11 @@ Reglas:
 - No inventes, no supongas y no agregues nada que no esté en el texto.
 - Si la persona no contó nada que valga la pena recordar, escribe exactamente: \
 «Conversación sin datos para recordar.»
-- Clasifica la sensibilidad del resumen: "normal", "private" (algo íntimo), "medical" (salud), \
-"location" (dónde vive o está) o "security" (claves, códigos o accesos). Si dudas, usa la más \
-protectora.
+- Clasifica la sensibilidad del resumen: "normal" (la vida diaria: la familia, los paseos, las \
+comidas, las actividades, los planes y los gustos), "private" (algo íntimo: la pareja, la \
+sexualidad, los conflictos, el dinero o los secretos), "medical" (salud), "location" (dónde \
+vive o está) o "security" (claves, códigos o accesos). Si dudas entre dos de las últimas cuatro, \
+usa la más protectora.
 Responde solo con JSON: {"summary": "...", "sensitivity": "..."}"""
 
 
