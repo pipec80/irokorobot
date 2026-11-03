@@ -25,11 +25,10 @@ from server.cognition.authorization import (
 )
 from server.cognition.models import AuthorizationAction, AuthorizationStatus
 from server.cognition.response_plan import NO_MEMORY, RecallReply
-from server.cognition.spoken_dates import household_zone
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.profile_card_access import may_read_own_memory
 from server.memory.recall_answer import word_recall
-from server.memory.recall_search import RecallHit, RecallSearch, search_recall
+from server.memory.recall_search import RecallHit, RecallSearch, household_zone, search_recall
 
 if TYPE_CHECKING:
     from datetime import date, datetime

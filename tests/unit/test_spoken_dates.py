@@ -11,11 +11,11 @@ import pytest
 from server.cognition.spoken_dates import (
     DayWindow,
     date_label,
-    household_zone,
     parse_spoken_window,
     strip_window_words,
     window_utc_bounds,
 )
+from server.memory.recall_search import household_zone
 from server.settings import Settings, settings
 from server.text_keys import normalize_spanish
 

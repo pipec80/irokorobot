@@ -3,7 +3,9 @@
 Pure functions on folded Spanish (``normalize_spanish``): a window is the local calendar days on
 which the owner **said** something, never when the story happened. «el verano de 2015» is no
 window; it is searched as words. A date the parser does not understand is no window, never a
-guess. Timestamps stay UTC; a day is cut at the household's local midnight.
+guess. Timestamps stay UTC; a day is cut at the household's local midnight. It reads no
+setting: the cognitive core stays free of configuration (import-graph guard); the caller passes
+the zone.
 """
 
 from __future__ import annotations
@@ -12,17 +14,14 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 import re
 from typing import TYPE_CHECKING, Final
-from zoneinfo import ZoneInfo
-
-from server.settings import settings
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from zoneinfo import ZoneInfo
 
 __all__ = [
     "DayWindow",
     "date_label",
-    "household_zone",
     "parse_spoken_window",
     "strip_window_words",
     "window_utc_bounds",
@@ -55,11 +54,6 @@ class DayWindow:
 
     start: date
     end: date
-
-
-def household_zone() -> ZoneInfo:
-    """Return the household time zone of ``HOUSEHOLD_TIMEZONE``."""
-    return ZoneInfo(settings.household_timezone)
 
 
 def _day(days_back: int) -> Callable[[re.Match[str], date], DayWindow | None]:
