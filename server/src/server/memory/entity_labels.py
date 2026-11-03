@@ -15,7 +15,13 @@ from server.exceptions import BrainMemoryError
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["EntityLabel", "get_person_label", "list_known_names", "read_household_names"]
+__all__ = [
+    "EntityLabel",
+    "get_person_label",
+    "get_pet_label",
+    "list_known_names",
+    "read_household_names",
+]
 
 
 class EntityLabel(BaseModel):
@@ -39,6 +45,26 @@ async def get_person_label(*, entity_id: int) -> EntityLabel | None:
     cursor = await get_conn().execute(
         "SELECT id, name FROM entities WHERE id = ? AND type = ?",
         (entity_id, "person"),
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    if row is None:
+        return None
+    return EntityLabel(entity_id=int(row[0]), display_name=str(row[1]))
+
+
+async def get_pet_label(*, entity_id: int) -> EntityLabel | None:
+    """Return one pet's name (an ``other`` entity, the registry's pet type; Plan 0078).
+
+    Args:
+        entity_id: Integer ID of the entity selected by an authorized ``pet_of`` relation.
+
+    Returns:
+        The exact label, or ``None`` when the ID is absent or not a pet-typed entity.
+    """
+    cursor = await get_conn().execute(
+        "SELECT id, name FROM entities WHERE id = ? AND type = ?",
+        (entity_id, "other"),
     )
     row = await cursor.fetchone()
     await cursor.close()

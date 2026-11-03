@@ -23,7 +23,7 @@ from server.cognition.models import (
     AuthorizationStatus,
     KnowledgeStatus,
 )
-from server.memory.entity_labels import EntityLabel, get_person_label
+from server.memory.entity_labels import EntityLabel, get_person_label, get_pet_label
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
 from server.memory.predicate_registry import PredicateDefinition, resolve_predicate
@@ -55,6 +55,7 @@ class HouseholdToolName(StrEnum):
     GET_PREFERENCES = "get_preferences"
     GET_PERSON_BIRTH_DATE = "get_person_birth_date"
     CALCULATE_PERSON_AGE = "calculate_person_age"
+    GET_RELATIVES = "get_relatives"
 
 
 class PreferencePredicate(StrEnum):
@@ -86,6 +87,13 @@ def _required_predicate(alias: str) -> PredicateDefinition:
 
 _CHILD_OF = _required_predicate("child_of")
 _BIRTH_DATE = _required_predicate("birth_date")
+# The relations «¿cómo se llaman mis papás?» reads (ADR 0028 decision 9), and which end of the
+# row the owner stands on: the relatives point from the owner, a pet to the owner, and the
+# partner may be on either end (the relation is symmetric).
+_FROM_THE_OWNER = frozenset({"has_parent", "has_sibling", "has_grandparent", "has_grandchild"})
+_TO_THE_OWNER = frozenset({"pet_of"})
+_EITHER_END = frozenset({"partner_of"})
+_PET = "pet_of"
 
 
 class HouseholdKnowledgeTools:
@@ -98,6 +106,7 @@ class HouseholdKnowledgeTools:
         policy_evaluator: PolicyEvaluator = evaluate_authorization,
         audit_writer: AuditWriter = record_authorization_decision,
         label_reader: PersonLabelReader = get_person_label,
+        pet_label_reader: PersonLabelReader = get_pet_label,
     ) -> None:
         """Create a tool service with explicit policy, reader, and label seams.
 
@@ -106,11 +115,13 @@ class HouseholdKnowledgeTools:
             policy_evaluator: Deterministic local tool-execution policy.
             audit_writer: Local safe audit sink for tool-execution decisions.
             label_reader: Exact person-label lookup used after relation approval.
+            pet_label_reader: The same for a pet, read only for ``pet_of``.
         """
         self._reader = reader
         self._policy_evaluator = policy_evaluator
         self._audit_writer = audit_writer
         self._label_reader = label_reader
+        self._pet_label_reader = pet_label_reader
 
     async def get_children(
         self,
@@ -270,6 +281,86 @@ class HouseholdKnowledgeTools:
             value=tuple(fact.value_text for fact in read.facts),
         )
 
+    async def get_relatives(
+        self,
+        *,
+        owner_entity_id: int,
+        predicate: str,
+        actor: ActivePersonContext,
+        consent: ConsentStatus,
+        correlation_id: UUID,
+        requested_at: datetime,
+    ) -> HouseholdToolResult:
+        """Return the names of the owner's relatives, partner or pets of one relation, sorted.
+
+        Args:
+            owner_entity_id: The owner, selected by a trusted internal seam.
+            predicate: ``has_parent``, ``has_sibling``, ``has_grandparent``, ``has_grandchild``,
+                ``partner_of`` or ``pet_of``.
+            actor: Trusted active household actor.
+            consent: Trusted scoped consent state.
+            correlation_id: Request-scoped audit correlation ID.
+            requested_at: Aware request timestamp.
+
+        Returns:
+            Known names, an explicit absence, or a non-disclosing denial.
+
+        Raises:
+            ValueError: If *predicate* is not one of the relatives relations.
+        """
+        if predicate not in _FROM_THE_OWNER | _TO_THE_OWNER | _EITHER_END:
+            raise ValueError("not one of the relatives relations")
+        definition = _required_predicate(predicate)
+        allowed = await self._authorize_tool(
+            actor=actor,
+            target_person_id=owner_entity_id,
+            definition=definition,
+            consent=consent,
+            correlation_id=correlation_id,
+            requested_at=requested_at,
+        )
+        if not allowed:
+            return _unauthorized(HouseholdToolName.GET_RELATIVES)
+        ids: list[int] = []
+        for owner_is_source in _owner_ends(predicate):
+            read = await self._reader.read_active_relations(
+                actor=actor,
+                predicate_alias=definition.canonical_id,
+                source_entity_id=owner_entity_id if owner_is_source else None,
+                target_entity_id=None if owner_is_source else owner_entity_id,
+                consent=consent,
+                correlation_id=correlation_id,
+                requested_at=requested_at,
+            )
+            if read.status is KnowledgeStatus.UNAUTHORIZED:
+                return _unauthorized(HouseholdToolName.GET_RELATIVES)
+            ids += [
+                relation.target_entity_id if owner_is_source else relation.source_entity_id
+                for relation in read.relations
+            ]
+        return await self._relatives_result(predicate, owner_entity_id, ids)
+
+    async def _relatives_result(
+        self, predicate: str, owner_entity_id: int, ids: list[int]
+    ) -> HouseholdToolResult:
+        """Label the related entities; nothing related is an explicit absence."""
+        read_label = self._pet_label_reader if predicate == _PET else self._label_reader
+        names: list[str] = []
+        for entity_id in dict.fromkeys(ids):
+            if entity_id == owner_entity_id:
+                continue
+            label = await read_label(entity_id=entity_id)
+            if label is None:
+                return _unknown(HouseholdToolName.GET_RELATIVES, "relative label is unavailable")
+            names.append(label.display_name)
+        if not names:
+            return _unknown(HouseholdToolName.GET_RELATIVES, "no active authorized record")
+        return HouseholdToolResult(
+            tool_name=HouseholdToolName.GET_RELATIVES,
+            status=KnowledgeStatus.KNOWN,
+            value=tuple(sorted(names)),
+        )
+
     async def get_person_birth_date(
         self,
         *,
@@ -410,6 +501,15 @@ class HouseholdKnowledgeTools:
         decision = self._policy_evaluator(request)
         await self._audit_writer(request, decision)
         return decision.decision is AuthorizationStatus.ALLOWED
+
+
+def _owner_ends(predicate: str) -> tuple[bool, ...]:
+    """Whether the owner is the source (``True``) or the target (``False``) of each read."""
+    if predicate in _FROM_THE_OWNER:
+        return (True,)
+    if predicate in _TO_THE_OWNER:
+        return (False,)
+    return (True, False)
 
 
 def _unauthorized(tool_name: HouseholdToolName) -> HouseholdToolResult:

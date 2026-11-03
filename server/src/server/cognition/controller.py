@@ -31,9 +31,15 @@ from server.cognition.models import (
     ConfidenceBasis,
     KnowledgeStatus,
 )
-from server.cognition.recall_cues import CueStrength, RecallCue, classify_recall_cue
+from server.cognition.recall_cues import (
+    CueStrength,
+    RecallCue,
+    classify_recall_cue,
+    relation_of,
+)
 from server.cognition.response_plan import (
     NO_MEMORY,
+    NOT_REGISTERED,
     InformationNeed,
     MemoryAnswerReply,
     ProfileSummaryReply,
@@ -277,14 +283,14 @@ class CognitiveController:
                 InformationNeed.MEMORY_ANSWER
                 | InformationNeed.PROFILE_SUMMARY
                 | InformationNeed.RECALL
+                | InformationNeed.RELATIVES_NAMES
             ):
                 decision = await self._voice_dialogue_plan(event, need)
             case InformationNeed.UNCLEAR_SPEECH:
                 # The voice routes answer it before the controller (Plan 0069 D-11); no text
                 # resolves to it, but if one ever did, it is the fixed phrase, never generation.
                 decision = unclear_speech_plan(expects_short_reply=False)
-            # RELATIVES_NAMES resolves only with recall on; Plan 0078 Task 10 gives it its branch.
-            case InformationNeed.GENERIC_CONVERSATION | InformationNeed.RELATIVES_NAMES:
+            case InformationNeed.GENERIC_CONVERSATION:
                 decision = None
         return decision
 
@@ -429,6 +435,8 @@ class CognitiveController:
             return await self._memory_answer_plan(event)
         if need is InformationNeed.RECALL:
             return await self._recall_plan(event)
+        if need is InformationNeed.RELATIVES_NAMES:
+            return await self._relatives_plan(event)
         return await self._profile_summary_plan(event)
 
     async def _recall_plan(self, event: CognitiveEvent[TextTurnPayload]) -> ResponsePlan | None:
@@ -446,6 +454,38 @@ class CognitiveController:
         if event.event_id not in self._recalls:
             self._recalls[event.event_id] = await self._recall_decision(event)
         return self._recalls[event.event_id]
+
+    async def _relatives_plan(self, event: CognitiveEvent[TextTurnPayload]) -> ResponsePlan:
+        """Read the owner's relatives loaded at the alta with a fixed template (ADR 0028 d. 9).
+
+        Resolved only with recall on. Without the household tools the question keeps today's
+        protected answer. The actor is only observed (never spends a grant); a stranger and a
+        refused speaker hear the profile refusal; nothing stored is «No tengo registrado eso.».
+        """
+        predicate = relation_of(event.payload.message)
+        if self._household_tools is None or predicate is None:
+            return await self._protected_household_plan(event, InformationNeed.PROTECTED_HOUSEHOLD)
+        actor = await self._observed_person_resolver(event)
+        if actor.status is not ActivePersonStatus.IDENTIFIED or actor.person_id is None:
+            return _unknown_plan(InformationNeed.RELATIVES_NAMES, _PROFILE_SUMMARY_UNKNOWN_RESPONSE)
+        result = await self._household_tools.get_relatives(
+            owner_entity_id=actor.person_id,
+            predicate=predicate,
+            actor=actor,
+            consent=await self._consent_resolver(event, actor),
+            correlation_id=event.correlation_id,
+            requested_at=event.recorded_at,
+        )
+        if result.status is KnowledgeStatus.UNAUTHORIZED:
+            return _unknown_plan(InformationNeed.RELATIVES_NAMES, _PROFILE_SUMMARY_UNKNOWN_RESPONSE)
+        if result.status is not KnowledgeStatus.KNOWN or not isinstance(result.value, tuple):
+            return _unknown_plan(InformationNeed.RELATIVES_NAMES, NOT_REGISTERED)
+        return ResponsePlan(
+            need=InformationNeed.RELATIVES_NAMES,
+            status=KnowledgeStatus.KNOWN,
+            source=ResponseSource.DETERMINISTIC,
+            response=_relatives_sentence(predicate, result.value),
+        )
 
     async def _recall_decision(self, event: CognitiveEvent[TextTurnPayload]) -> ResponsePlan | None:
         """Decide the recall plan of one event (cached by ``_recall_plan``)."""
@@ -684,6 +724,24 @@ def _household_tool_plan(
 def _response_tool_value(value: str | int | tuple[str, ...] | None) -> str | int | None:
     """Adapt a closed family-tool value to the narrower P0.3 response contract."""
     return ", ".join(value) if isinstance(value, tuple) else value
+
+
+# «Tu papá o tu mamá se llama A.» / «Tus papás se llaman A y B.» (Plan 0078 D-9). The alta does
+# not tell the mother from the father, nor a brother from a sister: one name says both words.
+_RELATIVES_TEMPLATES: dict[str, tuple[str, str]] = {
+    "has_parent": ("Tu papá o tu mamá se llama {}.", "Tus papás se llaman {}."),
+    "has_sibling": ("Tu hermano o hermana se llama {}.", "Tus hermanos se llaman {}."),
+    "has_grandparent": ("Tu abuelo o abuela se llama {}.", "Tus abuelos se llaman {}."),
+    "has_grandchild": ("Tu nieto o nieta se llama {}.", "Tus nietos se llaman {}."),
+    "partner_of": ("Tu pareja se llama {}.", "Tus parejas se llaman {}."),
+    "pet_of": ("Tu mascota se llama {}.", "Tus mascotas se llaman {}."),
+}
+
+
+def _relatives_sentence(predicate: str, names: tuple[str, ...]) -> str:
+    """Word the names of one relation with its fixed singular or plural template."""
+    one, several = _RELATIVES_TEMPLATES[predicate]
+    return (one if len(names) == 1 else several).format(_spanish_join(names))
 
 
 def _spanish_join(values: tuple[str, ...]) -> str:
