@@ -234,6 +234,38 @@ async def test_the_robot_reply_is_never_a_unit(owner: int, embedded: AsyncMock) 
     assert embedded.await_args.args[1] == _HEARD
 
 
+@pytest.mark.parametrize(
+    "question",
+    [
+        "¿Qué te conté del cerro?",
+        "¿Te acuerdas de Mozart?",
+        "¿Qué te conté hoy?",
+        "¿Cómo se llama mi perrita?",
+        "¿Cómo se llama mi hija?",
+        "¿Qué sabes de mí?",
+        "¿Cuándo nació mi hijo?",
+    ],
+)
+async def test_a_question_is_recorded_but_never_becomes_a_unit(
+    owner: int, embedded: AsyncMock, question: str
+) -> None:
+    """Found on hardware (2026-11-03): the owner's recall questions were indexed and a later
+    «¿qué te conté hoy?» answered from them. A turn that asks for something tells nothing."""
+    await _capture(owner, TurnVerdict.VERIFIED, heard=question)
+
+    assert await _rows("SELECT COUNT(*) FROM conversation_records") == [(1,)]
+    assert await _units() == []
+    embedded.assert_not_awaited()
+
+
+async def test_a_story_that_mentions_remembering_still_becomes_a_unit(
+    owner: int, embedded: AsyncMock
+) -> None:
+    await _capture(owner, TurnVerdict.VERIFIED, heard="Me acuerdo que de chico íbamos al cerro")
+
+    assert len(await _units()) == 1
+
+
 async def test_the_unit_is_embedded_with_the_setting_model(owner: int, embedded: AsyncMock) -> None:
     await _capture(owner, TurnVerdict.VERIFIED)
 
