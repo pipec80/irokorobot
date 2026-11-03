@@ -92,12 +92,30 @@ async def test_an_empty_answer_uses_the_template(chat: AsyncMock) -> None:
 @pytest.mark.parametrize(
     "said", ["No me acuerdo de eso.", "  «No me acuerdo de eso.»  ", "no me acuerdo de eso"]
 )
-async def test_the_model_saying_it_does_not_remember_gives_the_fixed_phrase(
+async def test_a_model_that_still_says_it_does_not_remember_gets_the_template(
     chat: AsyncMock, said: str
 ) -> None:
+    """Pipec's amendment (2026-11-03): with memories found, the robot always answers from them.
+
+    On hardware the 3B model wrote the fixed phrase 12 of 12 times for a topic question whose
+    two memories it had in front of it."""
     chat.return_value = said
 
-    assert await _word(chat) == NO_MEMORY
+    answer = await _word(chat)
+
+    assert answer != NO_MEMORY
+    assert answer == "Ayer me contaste esto: Fuimos al cerro con Zeta y llevamos mate."
+
+
+def test_the_prompt_offers_no_way_out_when_memories_were_found() -> None:
+    system = str(build_recall_messages(_QUESTION, _HITS, today=_TODAY, tz=_TZ)[0]["content"])
+
+    assert NO_MEMORY not in system
+    assert "me contaste que" in system
+    assert "oraciones cortas" in system
+    # The 3B model repeated the word «tuteo» of the generic prompt back to Pipec; this prompt
+    # asks for tú without naming it.
+    assert "tuteo" not in system.lower()
 
 
 async def test_a_claim_to_have_saved_is_neutralized(chat: AsyncMock) -> None:

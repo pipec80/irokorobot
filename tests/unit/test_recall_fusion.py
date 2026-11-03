@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 from server.memory.recall_search import RRF_K, fuse
+from server.settings import Settings
 
 pytestmark = pytest.mark.unit
 
@@ -41,3 +42,9 @@ def test_ties_go_to_the_newer_unit() -> None:
 
 def test_the_fusion_constant_is_sixty() -> None:
     assert RRF_K == 60
+
+
+def test_the_default_gate_is_the_calibrated_one() -> None:
+    """Calibrated on Pipec's hardware run (2026-11-03): his memories at 0.395 and 0.414, the
+    questions with no memory at 0.469 to 0.517 (Plan 0078 Task 12)."""
+    assert Settings.model_fields["recall_max_distance"].default == pytest.approx(0.43)

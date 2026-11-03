@@ -179,9 +179,10 @@ class Settings(BaseSettings):
     # robot; it also needs MEMORY_ENABLED and the conversation record. Off: every turn as before.
     recall_enabled: bool = False
     # The absolute gate of a recall search (ADR 0028 decision 6): a unit found only by its vector
-    # qualifies when its cosine distance is under this. 0.30 is the midpoint of the measured
-    # paraphrase (0.161) and unrelated (0.431) distances (Plan 0075); calibrated in Plan 0078.
-    recall_max_distance: float = Field(default=0.30, gt=0.0, lt=2.0)
+    # qualifies when its cosine distance is under this. Calibrated on Pipec's hardware run of
+    # 2026-11-03 (Plan 0078): his memories at 0.395 and 0.414, questions with no memory at 0.469
+    # to 0.517. A question is farther from a statement than a paraphrase, so it is above 0.30.
+    recall_max_distance: float = Field(default=0.43, gt=0.0, lt=2.0)
     robot_character: str = "iroko"
     # Re-read character markdown profiles from disk on every request when
     # they change (prompt-engineering aid). OFF by default: production loads
