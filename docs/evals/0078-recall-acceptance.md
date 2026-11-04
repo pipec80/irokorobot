@@ -90,5 +90,5 @@ summary on 2026-11-04. The diary rows stay; only their units went.
 ## Checks
 
 `MEMORY_ENABLED=false just gate`, `pyright`, `mypy server/src robot/src`, `ruff check .`,
-`ruff format --check .`, `ruff check scripts/*.py` and `scripts/check_reserved_terms.py` on the
-final commit: see the PR.
+`ruff format --check .`, `ruff check scripts/*.py` and `scripts/check_reserved_terms.py` all pass
+on the closing commit (2026-11-04): the gate ran 5993 tests, all passed (baseline 5623 on `main`).

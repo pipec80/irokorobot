@@ -1,7 +1,7 @@
 # Current cognitive implementation
 
 > **Observed:** the recall row below added 2026-11-04 at the close of Plan 0078 (CM-5b + R3;
-> calibrated and accepted by Pipec on real hardware, `just gate` 5986 passed, baseline 5623); the profile-card row below added 2026-10-28 at the close of Plan 0074 (CM-5a; accepted by Pipec on
+> calibrated and accepted by Pipec on real hardware, `just gate` 5993 passed, baseline 5623); the profile-card row below added 2026-10-28 at the close of Plan 0074 (CM-5a; accepted by Pipec on
 > real hardware, `just gate` 4965 passed at the last gate); the local-admin row below added 2026-10-28 at the close of Plan 0073 (Step 0, fourth plan,
 > accepted by Pipec on a database kept apart; CI-selection suite 4846 passed, baseline 4814); the
 > commissioning-session row below added 2026-10-27 at the close of Plan 0072 (Step 0,
