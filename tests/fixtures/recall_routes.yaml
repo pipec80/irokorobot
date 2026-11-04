@@ -104,3 +104,17 @@
 - phrase: "¿Qué te conté de dónde baila mi hija?"
   need: recall
   today: protected_household
+# What the speech-to-text wrote on Pipec's hardware run (2026-11-03): «te» heard as «se», and an
+# «a» inserted after «se llama». Both are ungrammatical, so tolerating them catches no story.
+- phrase: "¿Qué se conté de la plaza?"
+  need: recall
+  today: generic_conversation
+- phrase: "¿Qué se dije del parque?"
+  need: recall
+  today: generic_conversation
+- phrase: "¿Cómo se llama a mis papás?"
+  need: relatives_names
+  today: protected_household
+- phrase: "¿Cómo se llama mis hermanos?"
+  need: relatives_names
+  today: protected_household

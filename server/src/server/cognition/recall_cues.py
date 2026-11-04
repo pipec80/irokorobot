@@ -43,6 +43,10 @@ _STRONG_PHRASES: Final = (
     "que hice",
     "te conte",
     "te dije",
+    # What the speech-to-text wrote for «te conté» / «te dije» on Pipec's hardware run
+    # (2026-11-03). Ungrammatical in Spanish, so no story says them.
+    "se conte",
+    "se dije",
 )
 _WEAK_PHRASES: Final = ("te recuerdas", "te acuerdas", "te acordai", "recuerdas", "acuerdate")
 _INTERROGATIVES: Final = frozenset(
@@ -69,6 +73,12 @@ _RELATIVE_SHAPES: Final = (
     "como se llaman mis",
     "quien es mi",
     "quienes son mis",
+    # What the speech-to-text wrote on Pipec's hardware run (2026-11-03): an inserted «a», a
+    # dropped «n». Ungrammatical, so they catch no story.
+    "como se llama a mi",
+    "como se llama a mis",
+    "como se llaman a mis",
+    "como se llama mis",
 )
 _RELATION_WORDS: Final[dict[str, str]] = {
     **dict.fromkeys(("mama", "papa", "papas", "padres", "madre", "padre"), "has_parent"),
