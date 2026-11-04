@@ -939,10 +939,14 @@ from what it was told, and says «No me acuerdo de eso.» instead of inventing.
   baila mi hija?») keeps the protected route: ask «¿qué te conté de…?» instead. «Hoy día» counts as
   «hoy». A story («me acuerdo que…») is never a question and never searches.
 - **The answer.** With memories found, a short call to the local model words them («me contaste
-  que…»), only from those memories; if it fails or still says it does not remember, the robot reads
-  the first memory as a template («Hoy me contaste esto: …»). A visitor, an unknown face or two faces
-  hear the same refusal as the profile card. The answer does not enter short-term continuity, so
-  «¿y qué más?» needs the cue again.
+  que…»), only from those memories. The robot reads the first memory as a template instead («Ayer me
+  contaste esto: …», the owner's own words quoted) when the model fails or is off, says nothing,
+  still says it does not remember, speaks as the owner («fui», «yo», «mi», «mis») or says «hoy» of a
+  memory from another day. A relatives question with nothing loaded at the alta answers «No tengo
+  registrado eso.». A visitor, an unknown face or two faces hear the same refusal as the profile
+  card. The answer does not enter short-term continuity, so «¿y qué más?» needs the cue again. With
+  `LOG_CONVERSATION_TEXT` on, the console shows `[recuerdo leído]` or `[parientes leídos]` instead of
+  the answer.
 
 **The search and its threshold (`RECALL_MAX_DISTANCE`).** A recall question searches the owner's
 `normal` units two ways at once:
