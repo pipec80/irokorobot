@@ -1,9 +1,11 @@
 # 0028 — Recall what the owner told: search the diary on a recall cue, and answer only from what was found
 
-- **Status:** Proposed (2026-11-03). Every decision below was confirmed by Pipec in the design
-  session of 2026-11-03 (the eleven decisions of the step 2 freeze, all option A, with decision 3
-  changed to option B after the measurement in *Context*, item 6). It becomes `Accepted` when the
-  plan that implements it closes with its hardware acceptance.
+- **Status:** Accepted (2026-11-04), with the amendments of *Amendments at acceptance*, which
+  win over the decision text where they differ. Proposed on 2026-11-03; every decision below was
+  confirmed by Pipec in the design session of that day (the eleven decisions of the step 2 freeze,
+  all option A, with decision 3 changed to option B after the measurement in *Context*, item 6).
+  Implemented by [Plan 0078](../plans/completed/0078-cm5b-recall-what-the-owner-told.md); hardware
+  acceptance in [docs/evals/0078-recall-acceptance.md](../evals/0078-recall-acceptance.md).
 - **Date:** 2026-11-03
 - **Builds on:** [ADR 0016](0016-face-and-voice-identity-fusion.md),
   [ADR 0019](0019-personal-memory-capabilities.md),
@@ -231,6 +233,19 @@ Confirmed on 2026-11-03:
 
 Pipec also asked, during the design, that a list of words never again turn a story into a refusal:
 decision 4 lets only a question search and only a strong cue speak the fixed phrase.
+
+## Amendments at acceptance
+
+Decided by Pipec during Plan 0078's calibration and hardware runs (2026-11-03 and 2026-11-04),
+each from a finding on his hardware; the evaluation record lists the commits.
+
+| # | Amends | Amendment |
+|---|---|---|
+| A1 | Decision 1 | A `turn` unit is built only from the owner's words of an ordinary verified turn: a turn whose words resolve to any closed route (a recall or relatives question, «¿qué sabes de mí?», a protected request) is recorded but never becomes a unit. The owner's questions were being read back as «me contaste…» |
+| A2 | Decision 3 | The diary's sensitivity has written criteria: daily life (family, outings, meals, activities, plans, tastes) is `normal`; `private` is the couple, sexuality, conflicts, money and secrets; doubt chooses only among the four protective values. A summary of a conversation made only of questions gets its diary entry but no unit |
+| A3 | Decision 4 | Two speech-to-text slips are tolerated, one in a strong cue («se conté» for «te conté») and one in the relatives question («se llama a mis» for «se llaman mis»); both are ungrammatical, so they catch no story; «hoy día» is a day word, not a topic. With recall on, «¿cómo se llama mi hijo/hija?» and «¿quién es mi hijo/hija?» answer with the children list, as the parents' question names both parents |
+| A4 | Decision 8 | The recall prompt has **no** «no me acuerdo» exit: it runs only when something qualified, so the robot always answers from what was found (the 3B model took the exit 12 of 12 times with two hits in front of it). A model that still writes the fixed phrase, says nothing, fails, answers in the owner's first person («fui», «yo», «mi», «mis») or says «hoy» of an older memory gets the template that quotes the first memory. «No me acuerdo de eso.» is spoken only when nothing qualified. The prompt asks for tú without naming «tuteo» |
+| A5 | Decision 10 | `RECALL_MAX_DISTANCE = 0.43`, calibrated from Pipec's questions: true hits at 0.395 and 0.414, misses from 0.469. The data are thin; revisit with use |
 
 ## Not decided here
 

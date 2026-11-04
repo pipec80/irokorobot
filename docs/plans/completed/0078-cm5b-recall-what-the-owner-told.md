@@ -1,6 +1,14 @@
 # 0078 — CM-5b + R3: recall what the owner told, and read the relatives of the alta
 
-> **Status:** `Ready` and `NOW` (2026-11-03). Written the same day as its design,
+> **Status:** **Closed** (2026-11-04). Calibrated and accepted by Pipec on real hardware, 9 of 9
+> cases, streaming route ([record](../../evals/0078-recall-acceptance.md)); ADR 0028 `Accepted` with
+> amendments A1–A5, which win over this plan where they differ. Recorded at the close, as Pipec
+> asked: with recall on, «¿cómo se llama mi hijo/hija?» and «¿quién es mi hijo/hija?» answer with
+> the children list (rule `own_children.name.v1`, Task 6, ADR 0028 A3); D-3's threshold is 0.43
+> (A5); D-8's prompt has no «no me acuerdo» exit and asks for tú without naming «tuteo» (A4). The
+> classic route was not run on hardware (Pipec, 2026-11-04; the route tests cover both).
+>
+> **Status at promotion:** `Ready` and `NOW` (2026-11-03). Written the same day as its design,
 > [ADR 0028](../../adr/0028-recall-what-the-owner-told.md) (`Proposed`), whose eleven decisions Pipec
 > confirmed in the design session, and **promoted by Pipec the same day** (D-1 to D-11 below
 > confirmed as written). It is executed in a new session, on `feat/0078-recall`; ADR 0028 moves to

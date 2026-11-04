@@ -19,6 +19,9 @@
   ordinary private data move from `basic` to `strong` (decision 4: for `normal` data they do not).
 - **Implemented by:** [Plan 0074](../plans/completed/0074-cm5a-profile-card.md) (closed 2026-10-28,
   accepted by Pipec on real hardware: [record](../evals/0074-profile-card-acceptance.md)).
+- **Amended by:** [ADR 0028](0028-recall-what-the-owner-told.md) (`Accepted` 2026-11-04), decision 5:
+  the questions about the owner's `normal` relatives loaded at the alta («¿cómo se llaman mis papás?»)
+  are answered by a fixed template of the controller (ADR 0028 decision 9), not by a later plan.
 
 ## Context
 

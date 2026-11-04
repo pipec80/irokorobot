@@ -18,6 +18,11 @@
   it answers; [ADR 0026](0026-owner-profile-card-and-the-read-side-of-memory.md) decision 8 (the legacy
   `build_context` path is retired, decision 9).
 - **Implemented by:** [Plan 0076](../plans/completed/0076-cm4-conversation-record-and-diary.md) (code on 2026-10-29, accepted on hardware on 2026-10-30). See *Implementation notes*.
+- **Amended by:** [ADR 0028](0028-recall-what-the-owner-told.md) (`Accepted` 2026-11-04), decision 5:
+  the owner's verified words of an ordinary turn and the diary summaries are read back by voice
+  through the recall units, after an audited policy decision, and through nothing else; no voice path
+  or prompt reads a record itself. ADR 0028 amendment A2 also gives the diary's sensitivity written
+  criteria (daily life is `normal`).
 
 ## Context
 
