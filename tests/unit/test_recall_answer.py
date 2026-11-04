@@ -124,6 +124,49 @@ async def test_a_claim_to_have_saved_is_neutralized(chat: AsyncMock) -> None:
     assert await _word(chat) == REPLACEMENT
 
 
+@pytest.mark.parametrize(
+    "said",
+    [
+        "Me contaste que fui al cerro con Zeta.",
+        "Ayer me contaste que fuiste al cerro con mi amiga Zeta.",
+        "Me contaste que yo llevé mate.",
+        "Me contaste que fuiste con mis primos al cerro.",
+    ],
+)
+async def test_an_answer_that_speaks_as_the_owner_gets_the_template(
+    chat: AsyncMock, said: str
+) -> None:
+    """Hardware, 2026-11-04: the 3B model kept the owner's first person («fui con mi perrita»).
+
+    A recall answer is Iroko telling the owner what the owner said, so «fui», «yo», «mi» and «mis»
+    can only be the owner's words copied as Iroko's; the template quotes them instead."""
+    chat.return_value = said
+
+    assert await _word(chat) == "Ayer me contaste esto: Fuimos al cerro con Zeta y llevamos mate."
+
+
+async def test_a_today_that_no_memory_is_from_gets_the_template(chat: AsyncMock) -> None:
+    """The bodies say «hoy» on the day they were said; the answer must use the label instead."""
+    chat.return_value = "Me contaste que hoy fuiste al cerro con Zeta."
+
+    assert await _word(chat) == "Ayer me contaste esto: Fuimos al cerro con Zeta y llevamos mate."
+
+
+async def test_today_is_kept_when_a_memory_is_from_today(chat: AsyncMock) -> None:
+    today_hit = _hit(3, "Hoy fuimos al cerro con Zeta.", datetime(2026, 11, 4, 15, tzinfo=UTC))
+    chat.return_value = "Hoy me contaste que fuiste al cerro con Zeta."
+
+    assert await _word(chat, (today_hit,)) == "Hoy me contaste que fuiste al cerro con Zeta."
+
+
+def test_the_prompt_asks_for_the_second_person_and_the_label_day() -> None:
+    system = str(build_recall_messages(_QUESTION, _HITS, today=_TODAY, tz=_TZ)[0]["content"])
+
+    assert "«fui» por «fuiste»" in system
+    assert "«mi» por «tu»" in system
+    assert "entre paréntesis" in system
+
+
 async def test_the_answer_is_cut_at_two_sentences(chat: AsyncMock) -> None:
     chat.return_value = "Fuiste al cerro. Llevaste mate. Y también fue Zeta."
 
