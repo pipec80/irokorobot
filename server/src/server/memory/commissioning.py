@@ -49,6 +49,7 @@ __all__ = [
     "close_commissioning",
     "get_latest_commissioning",
     "get_open_commissioning",
+    "has_closed_commissioning",
     "importer_window_open",
     "list_section_statuses",
     "open_commissioning",
@@ -272,13 +273,22 @@ async def _scalar(sql: str, *params: object) -> object | None:
     return None if row is None else row[0]
 
 
+async def has_closed_commissioning() -> bool:
+    """Return whether a commissioning (an alta) has been closed.
+
+    One ``SELECT``, no cache. False before the first record exists and while the only record
+    is still open.
+    """
+    closed = await _scalar("SELECT COUNT(*) FROM commissioning_records WHERE closed_at IS NOT NULL")
+    return closed != 0
+
+
 async def importer_window_open() -> bool:
     """Return whether the importer may still run: true while **no** commissioning is closed.
 
     Before the first record exists the window is open too (the importer opens the record).
     """
-    closed = await _scalar("SELECT COUNT(*) FROM commissioning_records WHERE closed_at IS NOT NULL")
-    return closed == 0
+    return not await has_closed_commissioning()
 
 
 async def get_open_commissioning() -> CommissioningRecord | None:
