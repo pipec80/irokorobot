@@ -1,0 +1,119 @@
+# The sensitive-question grammar (Plan 0079 Task 3, D-3).
+# `questions`: every D-3 phrase in a full question, with «oye», «Iroko», «po» and «¿».
+# `slips`: two speech-to-text slips per topic (no accents, no marks, upper case, a misspelling).
+# `traps`: sentences that must resolve to no topic.
+# No line carries a household value: every name here is an invented canary (Zeta, Omega).
+questions:
+  medication:
+    - "Oye Iroko, ¿qué remedios tomo?"
+    - "¿Qué medicamentos tomo, po?"
+    - "Iroko, ¿qué pastillas tomo?"
+    - "Oye, ¿cuáles son mis remedios?"
+    - "¿Cuáles son mis medicamentos, po?"
+    - "Iroko, ¿qué remedio tomo?"
+  rescue_medication:
+    - "Oye Iroko, ¿cuál es mi remedio de rescate?"
+    - "¿Cuál es mi medicamento de rescate, po?"
+  health_condition:
+    - "Oye, ¿qué enfermedades tengo?"
+    - "¿Cuáles son mis enfermedades, po?"
+    - "Iroko, ¿cuáles son mis condiciones de salud?"
+    - "Oye Iroko, ¿qué condiciones de salud tengo?"
+  allergy:
+    - "Oye Iroko, ¿a qué soy alérgico?"
+    - "¿A qué soy alérgica, po?"
+    - "Iroko, ¿qué alergias tengo?"
+    - "Oye, ¿cuáles son mis alergias?"
+  blood_type:
+    - "Oye Iroko, ¿cuál es mi grupo sanguíneo?"
+    - "Iroko, ¿qué sangre tengo, po?"
+    - "¿Cuál es mi tipo de sangre?"
+  anticoagulant:
+    - "Oye Iroko, ¿tomo anticoagulante?"
+    - "¿Tomo anticoagulantes, po?"
+  address:
+    - "Oye Iroko, ¿cuál es mi dirección?"
+    - "¿Dónde vivo, po?"
+  emergency_facility:
+    - "Oye, ¿cuál es mi urgencia?"
+    - "Iroko, ¿a qué urgencia voy?"
+    - "¿A qué clínica me llevan, po?"
+  own_birthday:
+    - "Oye Iroko, ¿cuándo es mi cumpleaños?"
+    - "¿Cuándo nací, po?"
+    - "Iroko, ¿cuándo cumplo años?"
+    - "Oye, ¿cuál es mi fecha de nacimiento?"
+  child_birthday:
+    - "Oye Iroko, ¿cuándo es el cumpleaños de Zeta?"
+    - "¿Cuándo cumple Zeta, po?"
+    - "Iroko, ¿cuándo cumplen mis hijos?"
+    - "Oye, ¿cuándo nació Omega?"
+    - "¿Cuándo nacieron mis hijos, po?"
+  secret_holder:
+    - "Oye Iroko, ¿quién conoce la clave del banco?"
+    - "¿Quién sabe la contraseña del wifi, po?"
+    - "Iroko, ¿quién tiene la clave de la alarma?"
+    - "Oye, ¿quién conoce el código del portón?"
+    - "¿Quién sabe el pin de la tarjeta, po?"
+    - "Iroko, ¿quién tiene el código de la caja?"
+  document_location:
+    - "Oye Iroko, ¿dónde está mi pasaporte?"
+    - "¿Dónde están mis documentos, po?"
+    - "Iroko, ¿dónde guardo el carnet?"
+    - "Oye, ¿dónde dejo la escritura de la casa?"
+    - "¿Dónde está mi testamento?"
+slips:
+  medication:
+    - "que remedios tomo"
+    - "OYE IROKO QUE MEDICAMENTOS TOMO PO"
+  rescue_medication:
+    - "cual es mi remedio de rescate"
+    - "iroko cual es mi medicamento de rescate po"
+  health_condition:
+    - "que enfermedades tengo"
+    - "cuales son mis condiciones de salud po"
+  allergy:
+    - "a que soy alergico"
+    - "oye que alergias tengo"
+  blood_type:
+    - "cual es mi grupo sanguinio"
+    - "oye cual es mi grupo sanguineo"
+  anticoagulant:
+    - "¿tomo anticoagulante"
+    - "Tomo anticoagulantes?"
+  address:
+    - "cual es mi direccion"
+    - "donde vivo po"
+  emergency_facility:
+    - "a que urgencia voy"
+    - "cual es mi urgencia po"
+  own_birthday:
+    - "cuando es mi cumpleano"
+    - "cuando es mi cumpleanos po"
+  child_birthday:
+    - "cuando es el cumpleano de Zeta"
+    - "cuando cumple Omega"
+  secret_holder:
+    - "quien conoce la clave del banco"
+    - "quien sabe el codigo del porton"
+  document_location:
+    - "donde esta mi pasaporte"
+    - "donde estan mis papeles"
+traps:
+  - "¿Qué remedios toma?"
+  - "Ayer hablé de mis remedios con el doctor"
+  - "¿Cuál es la dirección del colegio?"
+  - "¿Dónde dejé las llaves?"
+  - "¿Quién conoce a Zeta?"
+  - "Te cuento que cambié mi dirección de correo"
+  - "¿Cuál es mi dirección de correo?"
+  - "Donde vivo hace frío"
+  - "Cuando cumplo años me regalan libros"
+  - "Tomo anticoagulante desde hace años"
+  - "Tomo anticoagulante"
+  - "¿Me mandas esto a mi dirección?"
+  - "¿Dónde está mi perro?"
+  - "¿Quién sabe la hora?"
+  - "¿Dónde guardo la bicicleta?"
+  - "¿Cuál es mi color favorito?"
+  - ""

@@ -27,6 +27,7 @@ __all__ = [
     "opens_with",
     "requests_data_of_a_name",
     "requests_household_data",
+    "sentence_body",
     "states_a_request",
     "without_leading_fillers",
 ]
@@ -691,6 +692,21 @@ def opens_with(normalized: str, phrase: str) -> bool:
         ``True`` when the body of the message starts with the phrase, as whole words.
     """
     return f"{' '.join(_body(normalized.split()))} ".startswith(f"{phrase} ")
+
+
+def sentence_body(message: str) -> tuple[str, ...]:
+    """Return the folded words of the whole message without its leading call and fillers.
+
+    Like ``opens_with`` it reads the entire message, and the fillers stay defined here once
+    («oye Iroko, …», a leading «a»: «a qué soy alérgico» comes back as «que soy alergico»).
+
+    Args:
+        message: Raw transcript or chat text.
+
+    Returns:
+        The words of the body, folded by ``normalize_spanish``; empty for an empty message.
+    """
+    return tuple(_body(normalize_spanish(message).split()))
 
 
 def without_leading_fillers(normalized: str) -> str:
