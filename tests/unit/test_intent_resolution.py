@@ -103,7 +103,11 @@ _CHILD_BIRTHDAY_QUESTION = "¿Cuándo es el cumpleaños de mi hijo?"
 @pytest.mark.unit
 @pytest.mark.parametrize("recall", [False, True])
 def test_with_every_flag_off_the_rules_are_unchanged(recall: bool) -> None:
-    """The reviewed corpus resolves byte for byte as before, also through the explicit keywords."""
+    """The defaults and the explicit ``False`` flags agree on the whole reviewed corpus.
+
+    With recall off, each corpus row also matches the fixture's need and rule id; with recall on,
+    only the agreement of the two calls is asserted (the recall rules change some rows on purpose).
+    """
     for row in _CORPUS:
         text = str(row["text"])
         by_default = resolve_information_need(text, recall=recall)
@@ -151,6 +155,23 @@ def test_the_secret_rule_ids_tell_stated_from_asked() -> None:
 
     assert stated.rule_id == "secret.stated.v1"
     assert asked.rule_id == "secret.asked.v1"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("recall", [False, True])
+def test_an_offered_secret_resolves_to_a_secret_value_only_with_the_flag(recall: bool) -> None:
+    """«Guarda mi contraseña» gives no value yet; it must not reach the model and invite one."""
+    message = "Iroko, recuerda mi clave del banco"
+
+    off = resolve_information_need(message, recall=recall, sensitive=True)
+    on = resolve_information_need(message, recall=recall, secrets=True)
+
+    assert off.need is not InformationNeed.SECRET_VALUE
+    assert on == IntentResolution(
+        need=InformationNeed.SECRET_VALUE,
+        match=IntentMatch.EXACT,
+        rule_id="secret.offered.v1",
+    )
 
 
 @pytest.mark.unit

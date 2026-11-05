@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 import io
 import json
+import logging
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, Mock
 import wave
@@ -19,12 +20,16 @@ from httpx import ASGITransport, AsyncClient
 import numpy as np
 from pydantic import SecretStr
 import pytest
-from server.cognition import face_authentication as face_auth_module
+from server.cognition import (
+    face_authentication as face_auth_module,
+    speaker_authentication as speaker_auth_module,
+)
 from server.cognition.owner_authentication import owner_unlock_service
 from server.cognition.response_plan import (
     NOT_ALONE,
     SECRET_RECORDED_TEXT,
     SECRET_REFUSAL,
+    SECURITY_VOICE_RETRY,
     SENSITIVE_RECORDED_TEXT,
     ResponsePlan,
 )
@@ -32,12 +37,23 @@ from server.main import app
 from server.memory import continuity
 from server.memory.biometric_consent import grant_face_consent
 from server.memory.canonical_writer import WriteChannel, write_literal
+from server.memory.commissioning import (
+    CommissioningInput,
+    ConfirmationMode,
+    DiskEncryption,
+    InterviewerRole,
+    close_commissioning,
+    open_commissioning,
+)
 from server.memory.conversation_consent import grant_conversation_consent
+from server.memory.voice_consent import grant_voice_consent
 from server.personal_setup import PersonalSetupInput, PersonalSetupResult, apply_personal_setup
 from server.resources import AppResources
 from server.routers import transcribe as transcribe_module
 from server.settings import settings
 from server.vision.faces import DetectedFace, enroll_face
+from server.voice.speaker_embedding import model_id
+from server.voice.voiceprints import enroll_voiceprint
 
 from server import db, llm, llm_streaming, stt, tts
 
@@ -86,11 +102,10 @@ def _files(*, with_frame: bool = True) -> dict[str, tuple[str, bytes, str]]:
     return files
 
 
-@pytest.fixture
-async def household(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> AsyncIterator[PersonalSetupResult]:
-    """A face-enrolled owner whose birthday is stored; every switch of Plan 0079 on."""
+async def _open_household(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, child_names: tuple[str, ...]
+) -> PersonalSetupResult:
+    """Migrate a database, set the switches of Plan 0079 on and enroll a face-identified owner."""
     monkeypatch.setattr(settings, "brain_db_path", tmp_path / "sensitive-routes.db")
     monkeypatch.setattr(settings, "face_authentication_enabled", True)
     monkeypatch.setattr(settings, "memory_enabled", True)
@@ -101,22 +116,52 @@ async def household(
     await db.open_db()
     await db.run_migrations()
     result = await apply_personal_setup(
-        PersonalSetupInput(owner_name="Canary", child_names=(), pin=SecretStr("482173"))
+        PersonalSetupInput(owner_name="Canary", child_names=child_names, pin=SecretStr("482173"))
     )
     await grant_face_consent(result.owner_entity_id)
     await enroll_face(result.owner_entity_id, _OWNER_FACE, label="Canary")
-    await write_literal(
-        owner_entity_id=result.owner_entity_id,
-        subject_entity_id=result.owner_entity_id,
-        predicate="birth_date",
-        value="1990-03-03",
-        channel=WriteChannel.IMPORT_FILE,
-        confirmed_at="2026-11-05T09:00:00.000000+00:00",
-    )
-    yield result
+    await _store(result.owner_entity_id, result.owner_entity_id, "birth_date", "1990-03-03")
+    return result
+
+
+async def _close_household() -> None:
     continuity.reset()
     await db.close_db()
     db._conn = None
+
+
+async def _store(owner: int, subject: int, predicate: str, value: str) -> None:
+    """Write one invented value with the canonical writer, as the importer does."""
+    await write_literal(
+        owner_entity_id=owner,
+        subject_entity_id=subject,
+        predicate=predicate,
+        value=value,
+        channel=WriteChannel.IMPORT_FILE,
+        confirmed_at="2026-11-05T09:00:00.000000+00:00",
+    )
+
+
+@pytest.fixture
+async def household(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> AsyncIterator[PersonalSetupResult]:
+    """A face-enrolled owner whose birthday is stored; every switch of Plan 0079 on."""
+    yield await _open_household(tmp_path, monkeypatch, ())
+    await _close_household()
+
+
+@pytest.fixture
+async def household_with_child(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> AsyncIterator[PersonalSetupResult]:
+    """The same household with two children, Zeta and Omega, whose birth dates are stored."""
+    result = await _open_household(tmp_path, monkeypatch, ("Zeta", "Omega"))
+    zeta, omega = result.child_entity_ids
+    await _store(result.owner_entity_id, zeta, "birth_date", "2020-07-09")
+    await _store(result.owner_entity_id, omega, "birth_date", "2018-03-03")
+    yield result
+    await _close_household()
 
 
 @pytest.fixture
@@ -194,6 +239,23 @@ class _Reply:
         return sorted(self.body)
 
 
+_NOT_COMPARED = ("text_heard", "duration", "_ms", "latency", "elapsed", "timing")
+
+
+def _comparable(reply: _Reply) -> list[dict[str, object]]:
+    """The wire of a reply without the words heard and the timing fields, which vary per turn."""
+    shapes = reply.events or [reply.body]
+    return [
+        {
+            key: value
+            for key, value in shape.items()
+            if not any(marker in key for marker in _NOT_COMPARED)
+        }
+        for shape in shapes
+        if shape.get("type") != "text_heard"  # the streamed echo of the words heard
+    ]
+
+
 async def _post(
     client: AsyncClient, route: str, message: str, *, with_frame: bool = True
 ) -> _Reply:
@@ -263,6 +325,7 @@ async def test_with_the_switch_off_every_read_route_is_byte_identical(
     assert asked.spoken == reference.spoken == "Hola."
     assert asked.shape == reference.shape
     assert len(prompts) == 2
+    assert prompts[0] == prompts[1]  # the model was given the same prompt for both turns
     untouchable.assert_not_called()
     assert await _count(_READ_AUDIT) == 0
 
@@ -274,15 +337,23 @@ async def test_with_memory_off_a_secret_is_byte_identical(
     """Memory off, a secret turn is an ordinary conversation: the model answers it."""
     monkeypatch.setattr(settings, "memory_enabled", False)
     _see(monkeypatch, _OWNER_FACE)
-    _hear_for(monkeypatch, route, _STATED)
+    if route in _VOICE_ROUTES:
+        _hear(monkeypatch, _STATED, _GENERIC)
+    else:
+        _hear(monkeypatch)
     prompts = _model(monkeypatch)
 
     async with _client() as client:
         reply = await _post(client, route, _STATED)
+        reference = await _post(client, route, _GENERIC)
 
     assert reply.status_code == 200
     assert reply.spoken == "Hola."
-    assert len(prompts) == 1
+    assert len(prompts) == 2
+    assert prompts[0] == prompts[1]
+    # The wire fields and their values are a generic reply's, but for the words heard and timing.
+    assert reply.shape == reference.shape
+    assert _comparable(reply) == _comparable(reference)
 
 
 @pytest.mark.parametrize("route", _ALL_ROUTES)
@@ -436,3 +507,224 @@ async def test_a_two_face_frame_hears_not_alone(
         assert sorted(done_alone) == sorted(done_generic)
     else:
         assert alone.shape == generic.shape
+
+
+# --- the real policy, the real alta check, the continuity session and the logs (final review) ----
+
+_DENIAL = "Todavía no puedo confirmar quién eres para contarte lo que sé de ti."
+_MEDICATION_QUESTION = "¿Qué remedios tomo?"
+_MEDICATION_ANSWER = "Tu medicamento es Remedio A 50 mg."
+_ADDRESS_QUESTION = "¿Cuál es mi dirección?"
+_ADDRESS_ANSWER = "Tu dirección es Calle Falsa 123 #4."
+_CHILD_QUESTION = "¿Cuándo cumple mi hijo Zeta?"
+_CHILD_ANSWER = "El cumpleaños de Zeta es el 9 de julio."
+_SECURITY_QUESTION = "¿Quién conoce la clave del banco?"
+_OFFERED = "Guarda mi contraseña"
+_CANARIES = (
+    "4821",
+    "Remedio A 50 mg",
+    "Calle Falsa 123 #4",
+    "9 de julio",
+    "2020-07-09",
+    "Zeta",
+    "Omega",
+)
+_ALTA_STARTED = "2026-10-23T10:00:00+00:00"
+_ALTA_CLOSED = "2026-10-23T11:00:00+00:00"
+_OTHER_VOICE = np.eye(192, dtype=np.float32)[10]
+
+
+async def _alta(state: str) -> None:
+    """Leave the commissioning ``none`` (no record), ``open`` or ``closed``, as a real alta would."""
+    if state == "none":
+        return
+    record = await open_commissioning(
+        CommissioningInput(
+            interviewer_label="Canary Interviewer",
+            interviewer_role=InterviewerRole.FAMILY,
+            confirmation_mode=ConfirmationMode.OWNER_IN_PERSON,
+            disk_encryption=DiskEncryption.UNKNOWN,
+        ),
+        started_at=_ALTA_STARTED,
+    )
+    if state == "closed":
+        await close_commissioning(record.id, _ALTA_CLOSED)
+
+
+@pytest.mark.parametrize("route", _VOICE_ROUTES)
+@pytest.mark.parametrize(
+    "question, predicate, value, answer",
+    [
+        (_MEDICATION_QUESTION, "medication", "Remedio A 50 mg", _MEDICATION_ANSWER),
+        (_ADDRESS_QUESTION, "home_address", "Calle Falsa 123 #4", _ADDRESS_ANSWER),
+    ],
+    ids=["medication", "address"],
+)
+@pytest.mark.parametrize("alta", ["closed", "open", "none"])
+async def test_medical_and_location_data_need_a_closed_alta_through_the_real_policy(
+    household: PersonalSetupResult,
+    captured: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+    question: str,
+    predicate: str,
+    value: str,
+    answer: str,
+    alta: str,
+) -> None:
+    """Real policy, real canonical writer, real `has_closed_commissioning`: no alta, no answer."""
+    owner = household.owner_entity_id
+    await _store(owner, owner, predicate, value)
+    await _alta(alta)
+    _see(monkeypatch, _OWNER_FACE)
+    _hear(monkeypatch, question)
+    prompts = _model(monkeypatch)
+
+    async with _client() as client:
+        reply = await _post(client, route, question)
+
+    assert reply.status_code == 200
+    assert reply.spoken == (answer if alta == "closed" else _DENIAL)
+    assert prompts == []
+    assert await _count(_READ_AUDIT) == 1  # the policy decision is audited either way
+
+
+@pytest.mark.parametrize("route", _VOICE_ROUTES)
+@pytest.mark.parametrize("speaker_on", [True, False], ids=["voice-on", "voice-off"])
+async def test_a_security_question_with_the_face_alone_retries_only_when_the_voice_exists(
+    household: PersonalSetupResult,
+    captured: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+    speaker_on: bool,
+) -> None:
+    """`voice_check` comes from the setting: with the voice off the owner hears the denial."""
+    owner = household.owner_entity_id
+    await _store(owner, owner, "secret_holder", "Banco: la sabe Omega")  # pragma: allowlist secret
+    await _alta("closed")
+    monkeypatch.setattr(settings, "speaker_authentication_enabled", speaker_on)
+    if speaker_on:
+        await grant_voice_consent(owner)
+        for axis in range(3):
+            await enroll_voiceprint(owner, np.eye(192, dtype=np.float32)[axis], "owner", model_id())
+        # Another voice: the face stays at `basic`, the fusion reason stays `face_only`.
+        monkeypatch.setattr(speaker_auth_module, "embed_wav", AsyncMock(return_value=_OTHER_VOICE))
+    _see(monkeypatch, _OWNER_FACE)
+    _hear(monkeypatch, _SECURITY_QUESTION)
+    prompts = _model(monkeypatch)
+
+    async with _client() as client:
+        reply = await _post(client, route, _SECURITY_QUESTION)
+
+    assert reply.spoken == (SECURITY_VOICE_RETRY if speaker_on else _DENIAL)
+    assert prompts == []
+    assert await _count(_READ_AUDIT) == 0  # below `strong`, nothing is read and nothing audited
+
+
+async def _seed_continuity(owner: int) -> list[tuple[str, str]]:
+    """Put one known exchange in the session and return how it must still read afterwards."""
+    turn = continuity.open_turn(owner)
+    assert continuity.record_pair(turn, "hola canary", "Hola.")
+    return [("user", "hola canary"), ("assistant", "Hola.")]
+
+
+def _session_of(owner: int) -> list[tuple[str, str]]:
+    """What the owner's continuity session holds now, as (role, content) pairs."""
+    return [(turn.role, turn.content) for turn in continuity.open_turn(owner).history]
+
+
+@pytest.mark.parametrize("route", _VOICE_ROUTES)
+@pytest.mark.parametrize("message", [_STATED, _ASKED, _OFFERED, _STATED_AND_ASKED])
+async def test_a_secret_turn_leaves_the_continuity_session_unchanged(
+    household: PersonalSetupResult,
+    captured: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+    message: str,
+) -> None:
+    owner = household.owner_entity_id
+    before = await _seed_continuity(owner)
+    _see(monkeypatch, _OWNER_FACE)
+    _hear(monkeypatch, message, _GENERIC)
+    _model(monkeypatch)
+
+    async with _client() as client:
+        secret = await _post(client, route, message)
+        assert secret.spoken == SECRET_REFUSAL
+        assert _session_of(owner) == before
+        # Control: a generic turn on the same route does write the session, so the check bites.
+        generic = await _post(client, route, _GENERIC)
+
+    assert generic.spoken == "Hola."
+    assert _session_of(owner) == [*before, ("user", _GENERIC), ("assistant", "Hola.")]
+
+
+@pytest.mark.parametrize("route", _VOICE_ROUTES)
+async def test_a_sensitive_answer_leaves_the_continuity_session_unchanged(
+    household: PersonalSetupResult,
+    captured: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+) -> None:
+    owner = household.owner_entity_id
+    before = await _seed_continuity(owner)
+    _see(monkeypatch, _OWNER_FACE)
+    _hear(monkeypatch, _BIRTHDAY_QUESTION, _GENERIC)
+    _model(monkeypatch)
+
+    async with _client() as client:
+        answered = await _post(client, route, _BIRTHDAY_QUESTION)
+        assert answered.spoken == _BIRTHDAY_ANSWER
+        assert _session_of(owner) == before
+        generic = await _post(client, route, _GENERIC)
+
+    assert generic.spoken == "Hola."
+    assert _session_of(owner) == [*before, ("user", _GENERIC), ("assistant", "Hola.")]
+
+
+@pytest.mark.parametrize("route", _VOICE_ROUTES)
+async def test_a_child_birthday_names_the_child_the_owner_asked_for(
+    household_with_child: PersonalSetupResult,
+    captured: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+) -> None:
+    """«¿Cuándo cumple mi hijo Zeta?»: the family word and the name answer that child."""
+    _see(monkeypatch, _OWNER_FACE)
+    _hear(monkeypatch, _CHILD_QUESTION)
+    prompts = _model(monkeypatch)
+
+    async with _client() as client:
+        reply = await _post(client, route, _CHILD_QUESTION)
+
+    assert reply.spoken == _CHILD_ANSWER
+    assert prompts == []
+
+
+@pytest.mark.parametrize("route", _VOICE_ROUTES)
+async def test_no_log_record_carries_a_stated_value_or_a_stored_answer(
+    household_with_child: PersonalSetupResult,
+    captured: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    route: str,
+) -> None:
+    """At DEBUG, a stated value, a medication, an address and a child's birthday reach no log."""
+    owner = household_with_child.owner_entity_id
+    await _store(owner, owner, "medication", "Remedio A 50 mg")
+    await _store(owner, owner, "home_address", "Calle Falsa 123 #4")
+    await _alta("closed")
+    questions = [_STATED, _MEDICATION_QUESTION, _ADDRESS_QUESTION, _CHILD_QUESTION]
+    _see(monkeypatch, _OWNER_FACE)
+    _hear(monkeypatch, *questions)
+    _model(monkeypatch)
+
+    with caplog.at_level(logging.DEBUG):
+        async with _client() as client:
+            spoken = [(await _post(client, route, question)).spoken for question in questions]
+
+    assert spoken == [SECRET_REFUSAL, _MEDICATION_ANSWER, _ADDRESS_ANSWER, _CHILD_ANSWER]
+    assert caplog.records
+    for record in caplog.records:
+        carried = f"{record.getMessage()} {record.__dict__}"
+        assert not [canary for canary in _CANARIES if canary in carried], record.getMessage()

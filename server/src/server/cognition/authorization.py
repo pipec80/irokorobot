@@ -142,10 +142,11 @@ HIGH_ASSURANCE_CATEGORIES = frozenset({DataSensitivity.SECURITY})
 PERSONAL_MEMORY_STRONG_CATEGORIES = frozenset(
     {DataSensitivity.BIOMETRIC, DataSensitivity.MEDICAL, DataSensitivity.LOCATION}
 )
-# ADR 0029 ("Where `basic` lives") and Plan 0079 D-10: the one exemption to the set above. Reading the actor's
-# OWN medical or location data needs the capability's own minimum (`basic`, the face) instead of
-# `strong`. The request keeps its true sensitivity; propose, correct, confirm and forget, and
-# `biometric` for every action, stay as above. `security` is unaffected (generic gate).
+# ADR 0029 ("Where `basic` lives") and Plan 0079 D-10: the one exemption to the set above.
+# Reading the actor's OWN medical or location data needs the capability's own minimum (`basic`,
+# the face) instead of `strong`. The request keeps its true sensitivity; propose, correct,
+# confirm and forget, and `biometric` for every action, stay as above. `security` is unaffected
+# (generic gate).
 OWN_READ_BASIC_CATEGORIES: Final = frozenset({DataSensitivity.MEDICAL, DataSensitivity.LOCATION})
 
 # `IdentityAssurance` is a str enum, so `<` on its members is alphabetical (`basic` < `none`).

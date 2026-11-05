@@ -116,4 +116,10 @@ traps:
   - "¿Quién sabe la hora?"
   - "¿Dónde guardo la bicicleta?"
   - "¿Cuál es mi color favorito?"
+  # A secret word that names something else: the postal code and the bar code are no secrets.
+  - "¿Quién sabe el código postal?"
+  - "¿Quién tiene el código de barras?"
+  # Mid-sentence mentions: the phrase must open the sentence body.
+  - "No sé qué remedios tomo"
+  - "Me pregunto cuándo cumple Zeta"
   - ""

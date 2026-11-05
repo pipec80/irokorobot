@@ -696,10 +696,18 @@ def _stated_secret_rule(utterance: _Utterance) -> IntentResolution | None:
 
 
 def _asked_secret_rule(utterance: _Utterance) -> IntentResolution | None:
-    """Recognize a message that asks for a secret value in the closed grammar (Plan 0079, D-2)."""
-    if secret_kind(utterance.message) is SecretKind.ASKED:
-        return _resolution(InformationNeed.SECRET_VALUE, IntentMatch.EXACT, "secret.asked.v1")
-    return None
+    """Recognize a message that asks for or offers a secret value (Plan 0079, D-2).
+
+    A request to keep a secret with no value yet («guarda mi contraseña») is refused like an ask,
+    so the model never invites the value in the next turn.
+    """
+    match secret_kind(utterance.message):
+        case SecretKind.ASKED:
+            return _resolution(InformationNeed.SECRET_VALUE, IntentMatch.EXACT, "secret.asked.v1")
+        case SecretKind.OFFERED:
+            return _resolution(InformationNeed.SECRET_VALUE, IntentMatch.EXACT, "secret.offered.v1")
+        case _:
+            return None
 
 
 def _sensitive_question_rule(utterance: _Utterance) -> IntentResolution | None:

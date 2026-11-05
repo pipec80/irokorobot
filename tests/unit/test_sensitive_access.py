@@ -64,18 +64,20 @@ def _evidence(source: IdentityEvidenceSource) -> IdentityEvidence:
     )
 
 
-def _actor(*sources: IdentityEvidenceSource) -> ActivePersonContext:
+def _actor(
+    *sources: IdentityEvidenceSource, role: HouseholdRole = HouseholdRole.OWNER
+) -> ActivePersonContext:
     person = PersonRecord(person_id=_OWNER, display_name="Canary", entity_type="person")
     return resolve_active_person(
         evidence=tuple(_evidence(source) for source in sources),
         lookup_person=lambda pid: person if pid == _OWNER else None,
-        lookup_role=lambda _pid: HouseholdRole.OWNER,
+        lookup_role=lambda _pid: role,
         clock=lambda: _NOW,
     )
 
 
-def _face() -> ActivePersonContext:
-    return _actor(IdentityEvidenceSource.FACE)
+def _face(role: HouseholdRole = HouseholdRole.OWNER) -> ActivePersonContext:
+    return _actor(IdentityEvidenceSource.FACE, role=role)
 
 
 def _strong() -> ActivePersonContext:
@@ -427,6 +429,25 @@ async def test_all_children_are_read() -> None:
     assert reply.text == "Omega cumple el 3 de marzo y Zeta cumple el 9 de julio."
 
 
+@pytest.mark.parametrize("family_word", ["hijo", "hija", "hijos", "hijas"])
+async def test_a_family_word_and_a_child_name_select_that_child_only(family_word: str) -> None:
+    """«¿Cuándo cumple mi hijo Zeta?» answers Zeta, not every child."""
+    seams = _Seams()
+
+    reply = await _reply(_query(SensitiveTopic.CHILD_BIRTHDAY, family_word, "zeta"), seams)
+
+    assert reply.outcome is SensitiveOutcome.ANSWERED
+    assert reply.text == "El cumpleaños de Zeta es el 9 de julio."
+
+
+async def test_a_family_word_and_a_name_that_is_no_child_select_every_child() -> None:
+    seams = _Seams()
+
+    reply = await _reply(_query(SensitiveTopic.CHILD_BIRTHDAY, "hijos", "mozart"), seams)
+
+    assert reply.text == "Omega cumple el 3 de marzo y Zeta cumple el 9 de julio."
+
+
 async def test_a_child_without_a_date_is_said_in_a_list() -> None:
     seams = _Seams()
     seams.tools = _tools(
@@ -501,6 +522,50 @@ async def test_a_stored_name_asked_by_a_visitor_is_not_a_household_question(
 
     assert reply.outcome is SensitiveOutcome.NOT_HOUSEHOLD
     seams.names.assert_not_awaited()
+    _nothing_touched(seams)
+
+
+@pytest.mark.parametrize(
+    "actor_role, faces",
+    [
+        (HouseholdRole.CHILD, FusionReason.FACE_ONLY),
+        (HouseholdRole.ADULT, FusionReason.FACE_ONLY),
+        (None, FusionReason.VETO_OTHER_PERSON),
+    ],
+    ids=["face-identified-child", "face-identified-adult", "veto-other-person"],
+)
+async def test_a_stored_name_asked_by_a_non_owner_is_not_a_household_question(
+    actor_role: HouseholdRole | None, faces: FusionReason
+) -> None:
+    """No name oracle (Plan 0077): only the face-identified OWNER's stored name is a question.
+
+    A face-identified child or adult would otherwise hear a denial for «Zeta» while «Mozart»
+    stays conversation, which confirms the name exists.
+    """
+    seams = _Seams()
+    actor = _stranger() if actor_role is None else _face(actor_role)
+
+    reply = await _reply(
+        _query(SensitiveTopic.CHILD_BIRTHDAY, "zeta"), seams, actor=actor, faces=faces
+    )
+
+    assert reply.outcome is SensitiveOutcome.NOT_HOUSEHOLD
+    seams.names.assert_not_awaited()
+    _nothing_touched(seams)
+
+
+async def test_two_faces_and_a_stranger_on_a_plain_topic_hear_not_alone() -> None:
+    """The audience step precedes the actor check: company is told, not a denial."""
+    seams = _Seams()
+
+    reply = await _reply(
+        _query(SensitiveTopic.MEDICATION),
+        seams,
+        actor=_stranger(),
+        faces=FusionReason.VETO_MULTIPLE_FACES,
+    )
+
+    assert reply.outcome is SensitiveOutcome.NOT_ALONE
     _nothing_touched(seams)
 
 
@@ -594,6 +659,8 @@ _SCENARIOS = [
     ("not_registered", SensitiveTopic.MEDICATION, {"values": ()}),
     ("unavailable", SensitiveTopic.MEDICATION, {"audit_fails": True}),
     ("not_household", SensitiveTopic.CHILD_BIRTHDAY, {"keywords": ("mozart",)}),
+    ("answered", SensitiveTopic.CHILD_BIRTHDAY, {"keywords": ("zeta",)}),
+    ("not_registered", SensitiveTopic.CHILD_BIRTHDAY, {"keywords": ("mama",)}),
 ]
 
 
@@ -631,6 +698,6 @@ async def test_no_value_reaches_a_log_line(
     assert len(lines) == 1
     assert lines[0].__dict__["topic"] == topic.value
     assert lines[0].__dict__["outcome"] == outcome
-    for secret in (_DOSE_CANARY, _ADDRESS_CANARY, "mozart"):
+    for secret in (_DOSE_CANARY, _ADDRESS_CANARY, "mozart", "Zeta", "Omega", "zeta", "2020-07-09"):
         assert secret not in caplog.text
         assert all(secret not in str(record.__dict__) for record in caplog.records)

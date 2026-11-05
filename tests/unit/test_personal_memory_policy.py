@@ -591,7 +591,7 @@ def test_proposing_medical_data_still_needs_strong(
 @pytest.mark.parametrize("sensitivity", [_MEDICAL, _LOCATION])
 def test_another_persons_medical_read_is_denied(sensitivity: frozenset[DataSensitivity]) -> None:
     """The exemption is for the actor's own data: foreign data is stopped before assurance."""
-    own_data = _decide(_READ, target=_OTHER_ID, sensitivity=sensitivity, consent=GRANTED)
+    foreign_target = _decide(_READ, target=_OTHER_ID, sensitivity=sensitivity, consent=GRANTED)
     adult = _decide(
         _READ,
         actor=_actor(role=HouseholdRole.ADULT, assurance=IdentityAssurance.STRONG),
@@ -599,7 +599,7 @@ def test_another_persons_medical_read_is_denied(sensitivity: frozenset[DataSensi
         consent=GRANTED,
     )
 
-    _assert_outcome(own_data, _DENIED, _OWN_DATA_ID)
+    _assert_outcome(foreign_target, _DENIED, _OWN_DATA_ID)
     _assert_outcome(adult, _DENIED, _OWNER_ONLY_ID)
 
 

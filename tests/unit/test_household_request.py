@@ -152,6 +152,7 @@ def test_sentence_body_drops_the_fillers() -> None:
     """The fillers are defined once, here; the sensitive grammar reads the body through this."""
     assert sentence_body("Oye Iroko, ¿qué remedios tomo?") == ("que", "remedios", "tomo")
     assert sentence_body("¿A qué soy alérgico?") == ("que", "soy", "alergico")
+    # A message made only of fillers keeps all its words: stripping them would leave nothing.
     assert sentence_body("Hola, oye, por favor") == ("hola", "oye", "por", "favor")
     assert sentence_body("") == ()
 

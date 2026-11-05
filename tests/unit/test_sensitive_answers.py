@@ -254,3 +254,21 @@ def test_no_child_with_a_date_raises_without_a_value(
 
     assert "Zeta" not in str(raised.value)
     assert "Omega" not in str(raised.value)
+
+
+def test_a_bad_date_error_keeps_no_chained_value() -> None:
+    """The ``ValueError`` of ``date.fromisoformat`` quotes the date; it must not ride in a traceback."""
+    with pytest.raises(ValueError) as raised:  # noqa: PT011  # the chaining is checked below
+        word_own_answer(SensitiveTopic.OWN_BIRTHDAY, ("2015-13-40",))
+
+    assert raised.value.__cause__ is None
+    assert raised.value.__suppress_context__
+
+
+def test_only_ascii_digits_make_an_iso_date() -> None:
+    """Arabic-Indic digits match the regex class ``d`` but are no ISO date; refused as a shape."""
+    arabic_indic = {ord(digit): 0x660 + int(digit) for digit in "0123456789"}
+    value = "2015-03-03".translate(arabic_indic)
+
+    with pytest.raises(ValueError, match="not an ISO date"):
+        word_own_answer(SensitiveTopic.OWN_BIRTHDAY, (value,))

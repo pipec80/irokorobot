@@ -149,3 +149,10 @@ def test_the_query_is_immutable() -> None:
 
     with pytest.raises(AttributeError):
         query.keywords = ("x",)  # type: ignore[misc]  # frozen on purpose
+
+
+def test_a_query_hides_its_keywords_from_repr() -> None:
+    """A keyword may be a stored name or a medication word; a stray ``%r`` must not print it."""
+    query = SensitiveQuery(topic=SensitiveTopic.CHILD_BIRTHDAY, keywords=("zeta",))
+
+    assert "zeta" not in repr(query)

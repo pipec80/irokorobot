@@ -21,6 +21,7 @@ from server.text_keys import normalize_spanish
 
 __all__ = [
     "BIRTH_WORDS",
+    "CHILD_WORDS",
     "has_question_mark",
     "mentions_the_household",
     "names_someone_known",
@@ -37,13 +38,12 @@ _POSSESSIVES = frozenset(
 )
 # «¿Cómo se llama tu perro?» asks the robot and «su hijo» is someone else's.
 _OWN_POSSESSIVES = frozenset({"mi", "mis", "nuestro", "nuestra", "nuestros", "nuestras"})
+#: Folded words that name the speaker's children («hijo», «hijas»).
+CHILD_WORDS = frozenset({"hijo", "hija", "hijos", "hijas"})
 # Words that name the household on their own, plural forms included.
 _HOUSEHOLD_WORDS = frozenset(
     {
-        "hijo",
-        "hija",
-        "hijos",
-        "hijas",
+        *CHILD_WORDS,
         "familia",
         "familias",
         "familiares",

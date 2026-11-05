@@ -22,6 +22,9 @@ def test_tells_something_follows_the_switches(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(settings, "sensitive_read_enabled", False)
     # Switch off: today's behaviour, an ordinary «¿cuál es mi dirección?» still becomes a unit.
     assert tells_something(_ADDRESS_QUESTION) is True
+    # Memory on, sensitive off: a stated secret still tells nothing (the secret guard follows
+    # memory only).
+    assert tells_something(_STATED_VALUE) is False
 
     monkeypatch.setattr(settings, "sensitive_read_enabled", True)
     assert tells_something(_ADDRESS_QUESTION) is False

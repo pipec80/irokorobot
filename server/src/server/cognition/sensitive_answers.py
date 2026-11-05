@@ -28,7 +28,7 @@ __all__ = [
 ]
 
 _TWO_ITEMS: Final = 2
-_ISO_DATE: Final = re.compile(r"\d{4}-\d{2}-\d{2}")
+_ISO_DATE: Final = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 _REFERENCE_SEPARATOR: Final = "; "
 
 _BLOOD_TYPES: Final[Mapping[str, str]] = MappingProxyType(
@@ -164,8 +164,9 @@ def _parse_iso_date(value: str) -> date:
         raise ValueError("birth date is not an ISO date")
     try:
         return date.fromisoformat(value)
-    except ValueError as exc:
-        raise ValueError("birth date is not a calendar date") from exc
+    except ValueError:
+        # `from None`: the chained error would ride in a traceback, and a stored value must not.
+        raise ValueError("birth date is not a calendar date") from None
 
 
 def word_children_birthdays(children: tuple[tuple[str, date | None], ...]) -> str:

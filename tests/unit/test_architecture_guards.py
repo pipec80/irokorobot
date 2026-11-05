@@ -1204,6 +1204,9 @@ def _recall_record_readers(sources: Mapping[str, str]) -> list[str]:
 def _prompt_path_importers(sources: Mapping[str, str], modules: frozenset[str]) -> list[str]:
     """Prompt-path modules that import any of `modules`, as `import a.b`, `from a.b import x`
     or `from a import b`.
+
+    A module is on the prompt path when its path starts with one of `_NO_HOUSEHOLD_READS`; the
+    `llm` entry is a prefix, so it covers every future `llm*` module without editing the list.
     """
     return sorted(
         name
@@ -1300,10 +1303,16 @@ _WORDS_HOME = "secret_values.py"
 _D2_SECRET_WORDS = frozenset(
     {"clave", "claves", "contrasena", "contrasenas", "codigo", "codigos", "pin"}
 )
-_SET_BUILDERS = frozenset({"set", "frozenset"})
+# A literal with at least this many of the seven words outside the home is a copy of them.
+_SECRET_WORDS_COPY_THRESHOLD = 4
+# `memory/lexicon.py` is the one exempt module: its `SENSITIVE_WORDS` is a broad vocabulary of
+# place, health, money, credential and life-event words (a taste is never stored with them) that
+# happens to hold four of the seven («clave», «contrasena», «pin», «codigo»); it is a different
+# list for a different purpose, not a second spelling of the secret words.
+_WORDS_EXEMPT = frozenset({"memory/lexicon.py"})
 
 
-def _string_elements(node: ast.expr) -> set[str]:
+def _string_elements(node: ast.AST) -> set[str]:
     """The string constants directly listed in a set, list or tuple display."""
     if not isinstance(node, ast.Set | ast.List | ast.Tuple):
         return set()
@@ -1315,26 +1324,21 @@ def _string_elements(node: ast.expr) -> set[str]:
 
 
 def _secret_word_set_builders(sources: Mapping[str, str]) -> list[str]:
-    """Modules, besides the home, that spell a set holding every D-2 secret word."""
+    """Modules, besides the home, with a literal holding several of the D-2 secret words.
+
+    Any set, list or tuple display counts, wrapped in `set(...)`/`frozenset(...)` or not (the
+    wrapped display is a node of its own), and so does a copy of only some of the words: four of
+    the seven is a copy that drifted, not a coincidence.
+    """
     found = []
     for name, text in sources.items():
-        if name == _WORDS_HOME:
+        if name == _WORDS_HOME or name in _WORDS_EXEMPT:
             continue
-        for node in ast.walk(ast.parse(text)):
-            if isinstance(node, ast.Set):
-                words = _string_elements(node)
-            elif (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Name)
-                and node.func.id in _SET_BUILDERS
-                and node.args
-            ):
-                words = _string_elements(node.args[0])
-            else:
-                continue
-            if words >= _D2_SECRET_WORDS:
-                found.append(name)
-                break
+        if any(
+            len(_string_elements(node) & _D2_SECRET_WORDS) >= _SECRET_WORDS_COPY_THRESHOLD
+            for node in ast.walk(ast.parse(text))
+        ):
+            found.append(name)
     return found
 
 
@@ -1371,6 +1375,10 @@ def test_the_secret_words_guard_detects_a_violation() -> None:
         "memory/set_copy.py": "W = {" + words + "}\n",
         "memory/frozen_copy.py": "W = frozenset({" + words + ', "alarma"})\n',
         "memory/list_copy.py": "W = frozenset([" + words + "])\n",
+        # A bare tuple or list, and a split copy of four of the words, are copies too.
+        "memory/tuple_copy.py": "W = (" + words + ")\n",
+        "memory/split_copy.py": 'W = {"clave", "claves", "contrasena", "contrasenas"}\n',
+        "memory/mixed_copy.py": 'W = ["pin", "codigo", "codigos", "clave", "alarma"]\n',
         # The home spells them, by definition.
         "secret_values.py": "SECRET_WORDS = frozenset({" + words + "})\n",
         # A derived set, a partial set and a prose mention are spared.
@@ -1383,6 +1391,9 @@ def test_the_secret_words_guard_detects_a_violation() -> None:
         "memory/set_copy.py",
         "memory/frozen_copy.py",
         "memory/list_copy.py",
+        "memory/tuple_copy.py",
+        "memory/split_copy.py",
+        "memory/mixed_copy.py",
     ]
     assert _imports_from_module(
         {"memory/recall_sensitivity.py": "from server.secret_values import SECRET_WORDS\n"},

@@ -38,7 +38,8 @@ from server.cognition.authorization import (
     DataVisibility,
     evaluate_authorization,
 )
-from server.cognition.identity import IdentityAssurance
+from server.cognition.household_request import CHILD_WORDS
+from server.cognition.identity import HouseholdRole, IdentityAssurance
 from server.cognition.identity_fusion import FusionReason
 from server.cognition.models import AuthorizationAction, AuthorizationStatus, KnowledgeStatus
 from server.cognition.recall_cues import RELATIVE_WORDS
@@ -113,7 +114,6 @@ class _Done:
     entries: int = 0
 
 
-_CHILD_WORDS: Final = frozenset({"hijo", "hija", "hijos", "hijas"})
 _REFERENCE_TOPICS: Final = frozenset(
     {SensitiveTopic.SECRET_HOLDER, SensitiveTopic.DOCUMENT_LOCATION}
 )
@@ -226,14 +226,17 @@ def _is_strong(call: _Call) -> bool:
 async def _child_scope(call: _Call) -> _ChildScope:
     """Decide whether a child's birthday question is a household question (D-5).
 
-    A stored name counts only for the face-identified owner alone: for anyone else a refusal
-    would confirm the name exists (Plan 0077), so it stays ordinary conversation.
+    A stored name counts only for the face-identified owner alone: for anyone else (a visitor, a
+    face-identified child or adult, two faces) a refusal would confirm the name exists (Plan
+    0077), so it stays ordinary conversation.
     """
     words = frozenset(call.query.keywords)
-    if words & _CHILD_WORDS:
+    if words & CHILD_WORDS:
         return _ChildScope.ALL
-    owner_alone = call.faces is not FusionReason.VETO_MULTIPLE_FACES and may_read_own_memory(
-        call.actor
+    owner_alone = (
+        call.faces is not FusionReason.VETO_MULTIPLE_FACES
+        and may_read_own_memory(call.actor)
+        and call.actor.role is HouseholdRole.OWNER
     )
     if owner_alone and words and _names_hit(words, await call.names()):
         return _ChildScope.NAMED
@@ -326,9 +329,13 @@ async def _read_children(call: _Call, scope: _ChildScope) -> _Done:
 def _chosen_children(
     result: ChildBirthdays, scope: _ChildScope, keywords: frozenset[str]
 ) -> tuple[tuple[str, str | None], ...]:
-    """All the children for a family word; for a name, the children whose label has the word."""
-    if scope is _ChildScope.ALL:
-        return result.children
-    return tuple(
+    """The children a keyword names; only when none is named, all of them for a family word.
+
+    A matching child label wins («mi hijo Zeta» is Zeta); a family word alone selects every child.
+    """
+    named = tuple(
         child for child in result.children if keywords & set(normalize_spanish(child[0]).split())
     )
+    if named or scope is not _ChildScope.ALL:
+        return named
+    return result.children

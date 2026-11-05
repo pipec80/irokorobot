@@ -11,7 +11,7 @@ a question about the home address.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
@@ -68,7 +68,7 @@ class SensitiveQuery:
     """
 
     topic: SensitiveTopic
-    keywords: tuple[str, ...]
+    keywords: tuple[str, ...] = field(repr=False)  # may hold a name or a medication word
 
 
 _SENSITIVE: Final = SensitiveLevel.SENSITIVE
@@ -226,6 +226,8 @@ _DOCUMENT_WORDS: Final[frozenset[str]] = frozenset(
         "poder",
     }
 )
+# What follows a secret word to make it something else («código postal», «código de barras»).
+_NOT_A_SECRET_AFTER: Final[tuple[tuple[str, ...], ...]] = (("postal",), ("de", "barras"))
 # A document word must sit within this many words after «donde esta mi», «donde guardo la».
 _DOCUMENT_REACH: Final[int] = 3
 # What a person adds after the question is over; «por favor» is two words, handled apart.
@@ -293,9 +295,13 @@ def _span_end(topic: SensitiveTopic, body: tuple[str, ...], phrase_end: int) -> 
     """Return where the matched span ends, or ``None`` when the word it needs is missing."""
     match topic:
         case SensitiveTopic.SECRET_HOLDER:
-            # «quien conoce la» + the secret word, which belongs to the span.
+            # «quien conoce la» + the secret word, which belongs to the span, unless the word
+            # names something else: «el código postal», «el código de barras».
             if phrase_end < len(body) and body[phrase_end] in SECRET_WORDS:
-                return phrase_end + 1
+                end = phrase_end + 1
+                if any(body[end : end + len(trap)] == trap for trap in _NOT_A_SECRET_AFTER):
+                    return None
+                return end
             return None
         case SensitiveTopic.DOCUMENT_LOCATION:
             # A document word within reach, which belongs to the span.

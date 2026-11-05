@@ -37,6 +37,7 @@ pytestmark = pytest.mark.unit
 _QUESTION = "¿Qué remedios tomo?"
 _STATED = "Mi clave es 1234"
 _ASKED = "¿Cuál es mi clave del banco?"
+_OFFERED = "Guarda mi contraseña"
 _ANSWER = "Tu medicamento es Remedio A."
 _DENIAL = "Todavía no puedo confirmar quién eres para contarte lo que sé de ti."
 _UNAVAILABLE = "Ahora no puedo revisar lo que sé de ti. Inténtalo de nuevo en un rato."
@@ -166,12 +167,14 @@ async def test_a_not_household_reply_is_ordinary_conversation() -> None:
 async def test_a_not_household_reply_keeps_todays_protected_household_path() -> None:
     """Ruling 10: «el cumpleaños de mi tía» is PROTECTED_HOUSEHOLD today, reader or not."""
     message = "¿Cuándo es el cumpleaños de mi tía?"
-    with_reader = _controller(_reply(SensitiveOutcome.NOT_HOUSEHOLD))
+    reader = _reply(SensitiveOutcome.NOT_HOUSEHOLD)
+    with_reader = _controller(reader)
     today = _controller(None)
 
     plan = await with_reader.handle(_event(message))
     expected = await today.handle(_event(message))
 
+    reader.assert_awaited_once()  # the reader really ran and fell through; no vacuous equality
     assert plan == expected
     assert plan.need is InformationNeed.PROTECTED_HOUSEHOLD
 
@@ -248,7 +251,20 @@ async def test_a_message_that_states_and_asks_takes_the_secret_branch() -> None:
     reader.assert_not_awaited()
 
 
-@pytest.mark.parametrize("message, kind", [(_STATED, "stated"), (_ASKED, "asked")])
+async def test_an_offered_secret_is_refused_without_a_model() -> None:
+    """«Guarda mi contraseña» gives no value; the model must not invite it in the next turn."""
+    legacy = _legacy()
+
+    plan = await _controller(None, guard=True, legacy=legacy).handle(_event(_OFFERED))
+
+    assert plan.need is InformationNeed.SECRET_VALUE
+    assert plan.response == SECRET_REFUSAL
+    legacy.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "message, kind", [(_STATED, "stated"), (_ASKED, "asked"), (_OFFERED, "offered")]
+)
 async def test_a_secret_turn_logs_its_kind_and_never_a_text(
     message: str, kind: str, caplog: pytest.LogCaptureFixture
 ) -> None:
