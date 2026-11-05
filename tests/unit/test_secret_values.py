@@ -69,7 +69,7 @@ def test_an_offer_must_open_the_sentence() -> None:
     assert secret_kind("Ayer hablamos de que guarda mi pin") is None
 
 
-@pytest.mark.parametrize("before", ["es", "lo", "muy", "super", "tan"])
+@pytest.mark.parametrize("before", ["es", "lo", "muy", "tan"])
 def test_clave_after_a_slang_word_is_no_secret_word(before: str) -> None:
     assert secret_kind(f"Eso {before} clave para el 5") is None
     assert secret_kind(f"Eso {before} claves, dime las 3") is None
