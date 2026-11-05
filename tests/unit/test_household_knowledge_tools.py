@@ -1,5 +1,6 @@
 """Unit tests for the closed P0.5-B2 household knowledge tools."""
 
+from collections.abc import Callable
 from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock
 from uuid import UUID
@@ -7,6 +8,7 @@ from uuid import UUID
 import pytest
 from server.cognition.authorization import AuthorizationRequest, ConsentStatus
 from server.cognition.household_tools import (
+    ChildBirthdays,
     HouseholdKnowledgeTools,
     HouseholdToolName,
     PreferencePredicate,
@@ -397,3 +399,116 @@ async def test_age_uses_one_birth_date_and_rejects_inconsistent_active_rows() ->
     assert known.value == 9
     assert contradictory.status is KnowledgeStatus.CONTRADICTORY
     assert contradictory.value is None
+
+
+def _birth_literal(child_id: int, value: str) -> LiteralFactV4:
+    """Build one child's active birth-date fixture."""
+    return _literal(value).model_copy(
+        update={
+            "predicate": "birth_date",
+            "subject_entity_id": child_id,
+            "sensitivity": "child_data",
+        }
+    )
+
+
+def _birthday_tools(
+    *,
+    dates: dict[int, list[LiteralFactV4]],
+    relations: list[EntityRelationV4] | None = None,
+    policy: Callable[[AuthorizationRequest], AuthorizationDecision] | None = None,
+) -> tuple[HouseholdKnowledgeTools, AsyncMock]:
+    """Build tools over doubles whose birth-date reader answers per child."""
+
+    async def literal_reader(*, subject_entity_id: int, **_kwargs: object) -> list[LiteralFactV4]:
+        return dates.get(subject_entity_id, [])
+
+    async def label_reader(*, entity_id: int) -> EntityLabel | None:
+        return EntityLabel(entity_id=entity_id, display_name={8: "Zeta", 9: "Omega"}[entity_id])
+
+    def allow(request: AuthorizationRequest) -> AuthorizationDecision:
+        return _decision(request, AuthorizationStatus.ALLOWED)
+
+    evaluator = policy or allow
+    audit = AsyncMock()
+    reader = PolicyGatedV4Reader(
+        policy_evaluator=evaluator,
+        audit_writer=audit,
+        literal_reader=literal_reader,
+        relation_reader=AsyncMock(
+            return_value=[_child_relation(9), _child_relation(8)]
+            if relations is None
+            else relations
+        ),
+    )
+    tools = HouseholdKnowledgeTools(
+        reader=reader,
+        policy_evaluator=evaluator,
+        audit_writer=audit,
+        label_reader=label_reader,
+    )
+    return tools, audit
+
+
+async def _birthdays(tools: HouseholdKnowledgeTools) -> ChildBirthdays:
+    return await tools.get_children_birthdays(
+        parent_entity_id=_OWNER_ID,
+        actor=_actor(HouseholdRole.OWNER, _OWNER_ID),
+        consent=ConsentStatus.GRANTED,
+        correlation_id=_CORRELATION_ID,
+        requested_at=_NOW,
+    )
+
+
+@pytest.mark.asyncio
+async def test_children_birthdays_are_sorted_by_label_and_a_missing_date_is_none() -> None:
+    """Compose the child_of read and the birth-date tool; a child without a date is not dropped."""
+    tools, audit = _birthday_tools(dates={8: [_birth_literal(8, "2020-07-09")]})
+
+    result = await _birthdays(tools)
+
+    assert result.status is KnowledgeStatus.KNOWN
+    assert result.children == (("Omega", None), ("Zeta", "2020-07-09"))
+    # One audit row for the child_of tool, then the reader's and one tool + reader pair per child.
+    assert audit.await_count >= 1 + 2
+
+
+@pytest.mark.asyncio
+async def test_a_contradictory_birth_date_is_said_as_no_date() -> None:
+    tools, _audit = _birthday_tools(
+        dates={8: [_birth_literal(8, "2020-07-09"), _birth_literal(8, "2021-07-09")]}
+    )
+
+    result = await _birthdays(tools)
+
+    assert result.children == (("Omega", None), ("Zeta", None))
+
+
+@pytest.mark.asyncio
+async def test_a_denied_policy_makes_the_whole_result_unauthorized() -> None:
+    def deny(request: AuthorizationRequest) -> AuthorizationDecision:
+        return _decision(request, AuthorizationStatus.DENIED)
+
+    tools, _audit = _birthday_tools(dates={}, policy=deny)
+
+    result = await _birthdays(tools)
+
+    assert result.status is KnowledgeStatus.UNAUTHORIZED
+    assert result.children == ()
+
+
+@pytest.mark.asyncio
+async def test_no_children_is_not_a_known_list() -> None:
+    tools, _audit = _birthday_tools(dates={}, relations=[])
+
+    result = await _birthdays(tools)
+
+    assert result.status is not KnowledgeStatus.UNAUTHORIZED
+    assert result.children == ()
+
+
+def test_the_children_stay_out_of_the_repr() -> None:
+    result = ChildBirthdays(KnowledgeStatus.KNOWN, (("Zeta", "2020-07-09"),))
+
+    assert "Zeta" not in repr(result)
+    assert "2020-07-09" not in repr(result)

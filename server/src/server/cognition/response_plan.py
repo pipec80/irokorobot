@@ -1,12 +1,17 @@
 """Immutable response-planning contracts for the P0.3 chat pilot."""
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Final, Literal
+from typing import TYPE_CHECKING, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from server.cognition.models import KnowledgeStatus
+from server.cognition.models import CognitiveEvent, KnowledgeStatus
+
+if TYPE_CHECKING:
+    from server.cognition.identity import ActivePersonContext
+    from server.cognition.sensitive_questions import SensitiveQuery
 
 # Semantic upper bound for one conversational turn's text — chat message,
 # transcribed voice turn, or visual question. Roughly 4x the longest
@@ -181,6 +186,48 @@ class ProfileSummaryReply:
     text: str | None = field(repr=False)
     denied: bool = False
 
+
+#: Spoken when a child's or relative's birth date is not registered (Plan 0079, D-6 and Ruling 15).
+NO_BIRTH_DATE: Final = "No tengo registrada su fecha."
+
+
+class SensitiveOutcome(StrEnum):
+    """How one sensitive read ended; also the ``outcome`` of its log line (Plan 0079, D-12)."""
+
+    ANSWERED = "answered"
+    NOT_ALONE = "not_alone"
+    RETRY_VOICE = "retry_voice"
+    DENIED = "denied"
+    NOT_REGISTERED = "not_registered"
+    UNAVAILABLE = "unavailable"
+    NOT_HOUSEHOLD = "not_household"
+
+
+@dataclass(frozen=True)
+class SensitiveReply:
+    """What the sensitive reader says back to the controller (Plan 0079, ADR 0029).
+
+    Lives in the cognitive core so the controller can map it without importing
+    ``server.memory``. Hidden from ``repr``: ``text`` carries the owner's stored values.
+
+    Attributes:
+        outcome: How the read ended; the controller picks the fixed phrase of every outcome but
+            ``ANSWERED``.
+        text: The spoken answer for ``ANSWERED``; ``NO_BIRTH_DATE`` for a not-registered birth
+            date; ``None`` otherwise.
+    """
+
+    outcome: SensitiveOutcome
+    text: str | None = field(default=None, repr=False)
+
+
+#: Reads the owner's own sensitive data for a recognized question (Plan 0079): it owns the audience
+#: check, the level, the consent, the policy, the audit row and the wording, and never raises.
+#: ``faces`` and the voice check are the route's business, so the route binds them.
+type SensitiveReader = Callable[
+    [ActivePersonContext, SensitiveQuery, CognitiveEvent[TextTurnPayload]],
+    Awaitable[SensitiveReply],
+]
 
 #: What the opt-in spoken-text log shows instead of a profile summary: the summary carries stored
 #: values, so it is spoken to the person and recorded nowhere (Plan 0074, decision D-8).

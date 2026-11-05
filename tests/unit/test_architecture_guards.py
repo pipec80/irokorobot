@@ -23,7 +23,8 @@ _RAW_V4_READERS = frozenset(
 # The policy gate, the local setup that re-reads what it just wrote, the candidate writer, which
 # compares the active rows' folded keys inside its own transaction (Plan 0062), and the
 # canonical writer, which reads the owner's relations to classify a subject and the active rows
-# to make a repeat idempotent (Plan 0065).
+# to make a repeat idempotent (Plan 0065), and the owner's sensitive read, which keeps the rows
+# stored with the labels of its topic (Plan 0079).
 _MAY_IMPORT_RAW_V4_READERS = frozenset(
     {
         "memory/policy_gated_v4_reader.py",
@@ -31,6 +32,7 @@ _MAY_IMPORT_RAW_V4_READERS = frozenset(
         "memory/memory_writer.py",
         "memory/canonical_writer.py",
         "memory/profile_card_access.py",
+        "memory/sensitive_store.py",
     }
 )
 # The repository itself, and the setup status that counts child links.
@@ -166,7 +168,8 @@ _RETIRED_ACTION_NAMES = frozenset(
 )
 # The model and the policy, plus the one module that asks the policy about a candidate step
 # (Plan 0062), the one that asks it about the profile card (Plan 0074) and the one that asks it
-# about a recall (Plan 0078): every other module reaches the actions through them.
+# about a recall (Plan 0078) and the one that asks it about the owner's sensitive data (Plan 0079):
+# every other module reaches the actions through them.
 _ACTION_HOMES = frozenset(
     {
         "cognition/models.py",
@@ -174,6 +177,7 @@ _ACTION_HOMES = frozenset(
         "memory/candidate_policy.py",
         "memory/profile_card_access.py",
         "memory/recall_access.py",
+        "memory/sensitive_access.py",
     }
 )
 _MEMORY_SCOPE_MEMBER_NAMES = frozenset({"PERSONAL_MEMORY_READ", "PERSONAL_MEMORY_FORGET"})
