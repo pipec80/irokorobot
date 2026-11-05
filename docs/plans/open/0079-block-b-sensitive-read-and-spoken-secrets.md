@@ -1,6 +1,8 @@
 # 0079 — Block B: read the owner's sensitive data by voice, and never keep a spoken secret's value
 
-> **Status:** `Draft` (2026-11-05), written the same day as the review amendments of its design,
+> **Status:** `Ready` and `NOW` — **promoted by Pipec on 2026-11-05** («el plan refleja lo que yo
+> quiero»), D-1 to D-12 confirmed as written; executed in a new session. Written as `Draft` the
+> same day as the review amendments of its design,
 > [ADR 0029](../../adr/0029-it-knows-who-is-listening.md) (`Proposed`, decisions 1 to 21 and the
 > author's calls, all confirmed by Pipec on 2026-11-05). It becomes `Ready` and `NOW` when Pipec
 > approves this plan; ADR 0029 moves to `Accepted` when it closes. Detailed against `main` at
