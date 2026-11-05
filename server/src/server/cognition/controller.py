@@ -52,6 +52,7 @@ from server.cognition.response_plan import (
     ToolResult,
     unclear_speech_plan,
 )
+from server.cognition.sensitive_answers import spanish_join
 
 if TYPE_CHECKING:
     from datetime import date
@@ -108,7 +109,6 @@ _PROFILE_SUMMARY_UNAVAILABLE_RESPONSE = (
 )
 
 _ISO_DATE_PATTERN = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
-_TWO_ITEMS = 2
 _HOUSEHOLD_READERS = frozenset({HouseholdRole.OWNER, HouseholdRole.ADULT})
 
 
@@ -697,7 +697,7 @@ def _household_tool_plan(
             tool_result,
         )
     if need is InformationNeed.OWN_CHILDREN_LIST and isinstance(result.value, tuple):
-        names = _spanish_join(result.value)
+        names = spanish_join(result.value)
         response = f"Tus hijos son {names}."
     elif need is InformationNeed.OWN_CHILDREN_COUNT and isinstance(result.value, int):
         response = f"Tienes {result.value} hijos."
@@ -741,13 +741,4 @@ _RELATIVES_TEMPLATES: dict[str, tuple[str, str]] = {
 def _relatives_sentence(predicate: str, names: tuple[str, ...]) -> str:
     """Word the names of one relation with its fixed singular or plural template."""
     one, several = _RELATIVES_TEMPLATES[predicate]
-    return (one if len(names) == 1 else several).format(_spanish_join(names))
-
-
-def _spanish_join(values: tuple[str, ...]) -> str:
-    """Join already-authorized labels with deterministic Spanish punctuation."""
-    if len(values) == 1:
-        return values[0]
-    if len(values) == _TWO_ITEMS:
-        return f"{values[0]} y {values[1]}"
-    return f"{', '.join(values[:-1])} y {values[-1]}"
+    return (one if len(names) == 1 else several).format(spanish_join(names))

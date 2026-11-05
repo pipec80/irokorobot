@@ -11,6 +11,7 @@ import pytest
 from server.cognition.spoken_dates import (
     DayWindow,
     date_label,
+    day_month_label,
     parse_spoken_window,
     strip_window_words,
     window_utc_bounds,
@@ -184,6 +185,19 @@ def test_strip_window_words_drops_only_the_window() -> None:
 )
 def test_labels(said: datetime, label: str) -> None:
     assert date_label(said, today=_WEDNESDAY, tz=_SANTIAGO) == label
+
+
+@pytest.mark.parametrize(
+    "day, label",
+    [
+        (date(2015, 3, 3), "el 3 de marzo"),
+        (date(1990, 9, 21), "el 21 de septiembre"),
+        (date(2024, 2, 29), "el 29 de febrero"),
+        (date(2026, 1, 1), "el 1 de enero"),
+    ],
+)
+def test_day_month_label_ignores_the_year(day: date, label: str) -> None:
+    assert day_month_label(day) == label
 
 
 def test_a_label_uses_the_local_day_not_the_utc_day() -> None:

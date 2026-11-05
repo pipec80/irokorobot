@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 __all__ = [
     "DayWindow",
     "date_label",
+    "day_month_label",
     "parse_spoken_window",
     "strip_window_words",
     "window_utc_bounds",
@@ -195,10 +196,21 @@ def date_label(said_at: datetime, *, today: date, tz: ZoneInfo) -> str:
         case _ if _ANTEAYER_DAYS < back <= _LAST_WEEKDAY_LABEL_DAYS:
             return f"el {_spoken_weekday(day)}"
         case _:
-            month = _MONTHS[day.month - 1]
             if day.year == today.year:
-                return f"el {day.day} de {month}"
-            return f"el {day.day} de {month} de {day.year}"
+                return day_month_label(day)
+            return f"{day_month_label(day)} de {day.year}"
+
+
+def day_month_label(day: date) -> str:
+    """Return the day and month as it is spoken, without the year.
+
+    Args:
+        day: The calendar day.
+
+    Returns:
+        «el 3 de marzo».
+    """
+    return f"el {day.day} de {_MONTHS[day.month - 1]}"
 
 
 def _spoken_weekday(day: date) -> str:
