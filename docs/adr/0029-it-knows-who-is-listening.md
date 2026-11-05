@@ -81,9 +81,11 @@ assurance; `biometric` stays at `strong`; reading anyone else's sensitive data i
 
 *Amended 2026-11-05.* The level of a datum is the table above, kept as an explicit closed map from
 predicate to level in one place; it is never derived from the stored sensitivity. The two do not
-line up: `birth_date` has the default sensitivity `child_data` whoever its subject is, so the
-owner's own birthday carries `child_data` too, and `implanted_device`, `mobility`, `hearing` and
-`vision` are `medical` without being in the closed list (decision 5 of *Pipec's decisions*).
+line up: `birth_date` has the registry default `child_data`, while the canonical writer stores the
+owner's own birthday as `personal`/`private` (a child's stays `household`/`child_data`), and
+`implanted_device`, `mobility`, `hearing` and `vision` are `medical` without being in the closed
+list (decision 5 of *Pipec's decisions*). *(Corrected in the plan review of 2026-11-05: the first
+version said the owner's birthday carries `child_data`; the request uses the stored labels.)*
 
 *Amended 2026-11-05 (consent).* Reading personal memory has `consent_applies` (ADR 0019 §3): a
 `medical` or `location` datum is read only with the consent `granted`, and today no read passes
@@ -228,7 +230,12 @@ value or **asks** for one:
   no value, and the recall classifier still marks it `security`, so it is never read back by voice.
 
 Accepted false positive: a secret word followed by a copula that does not state a secret («la clave
-es que llegues temprano»), and «mi código postal es …»; pinned in the trap corpus. The same rule,
+es que llegues temprano»), and «mi código postal es …»; pinned in the trap corpus. *(Plan review,
+2026-11-05, an author's call: the copula form applies to `clave` and `contraseña` only; `código` and
+`pin` state a value only with a digit or a spoken number, so a developer's «el código es un
+desastre» stays ordinary; and the asking form with «la»/«el» needs a named account — «¿cuál es la
+clave del banco?» — so «¿cuál es la clave del éxito?» stays ordinary. The plan's D-2 holds the closed
+lists.)* The same rule,
 and nothing wider, decides what the cleanup below finds.
 
 *Amended 2026-11-05 (what was kept before).* The record's text and the diary summaries can hold a
@@ -339,9 +346,11 @@ The author's calls from the independent builder check of 2026-11-05 (answers the
 - **The in-process session.** A sensitive or security answer, like the recall answer of Plan 0078,
   is never written to the continuity session, so a later generic turn cannot repeat it.
 - **Who the secret branch serves, and its order.** It serves every speaker (a stranger's «mi clave es
-  1234» is not kept either). Order in the controller: the sensitive and security grammar first, then
-  the secret branch, then every other branch, the memory-offer answer included («sí, mi clave es …»
-  is a secret, not an answer).
+  1234» is not kept either). Order in the controller: a **stated** value first, then the sensitive
+  and security grammar, then an **asked** value, then every other branch, the memory-offer answer
+  included («sí, mi clave es …» is a secret, not an answer). A stated value goes first so that a
+  message that says one and also asks something («mi clave es 1234, ¿cuál es mi dirección?») is
+  never kept as said; the security question of decision 8 states no value, so it is still read.
 - **The consent source.** One read of whether a closed commissioning record exists, made only when
   a question matches the grammar; no cache. A closed alta never reopens (its acta is frozen).
 - **Birthdays.** With the switch on, a birthday question about the owner or a child is answered by
