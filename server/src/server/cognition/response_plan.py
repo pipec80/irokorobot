@@ -189,6 +189,14 @@ class ProfileSummaryReply:
 
 #: Spoken when a child's or relative's birth date is not registered (Plan 0079, D-6 and Ruling 15).
 NO_BIRTH_DATE: Final = "No tengo registrada su fecha."
+#: Spoken to the owner when a second face is in view of a sensitive question (Plan 0079, D-6).
+NOT_ALONE: Final = "Te lo digo cuando estemos solos."
+#: Spoken when a security question reaches the owner by face alone and the voice is worth a retry.
+SECURITY_VOICE_RETRY: Final = (
+    "No reconocí bien tu voz. Pregúntamelo de nuevo con una frase completa."
+)
+#: Spoken for a stated or asked secret value: it is neither kept nor repeated (ADR 0029).
+SECRET_REFUSAL: Final = "Las claves y los códigos no los guardo ni los repito."  # noqa: S105  # pragma: allowlist secret - a spoken phrase
 
 
 class SensitiveOutcome(StrEnum):
@@ -236,6 +244,11 @@ PROFILE_SUMMARY_LOGGED_TEXT = "«resumen del perfil»"
 #: D-11).
 RECALL_LOGGED_TEXT = "[recuerdo leído]"
 RELATIVES_LOGGED_TEXT = "[parientes leídos]"
+#: Replaces the robot's answer to a sensitive read in the conversation record and the opt-in spoken
+#: log (Plan 0079, D-8): the answer carries the owner's stored values.
+SENSITIVE_RECORDED_TEXT: Final = "[dato sensible leído]"
+#: Replaces the heard words of a secret turn in the conversation record (Plan 0079, D-8).
+SECRET_RECORDED_TEXT: Final = "[dato de seguridad omitido]"  # noqa: S105  # pragma: allowlist secret - a marker
 
 
 def spoken_log_text(plan: ResponsePlan) -> str | None:
@@ -245,9 +258,9 @@ def spoken_log_text(plan: ResponsePlan) -> str | None:
         plan: The plan about to be spoken.
 
     Returns:
-        A fixed marker for a known profile summary, recall answer or relatives answer (their
-        text carries stored values), or ``None`` when the response itself may be logged: every
-        fixed phrase, a refusal included.
+        A fixed marker for a known profile summary, recall answer, relatives answer or sensitive
+        read (their text carries stored values), or ``None`` when the response itself may be
+        logged: every fixed phrase, a refusal included.
     """
     if plan.status is not KnowledgeStatus.KNOWN:
         return None
@@ -258,8 +271,31 @@ def spoken_log_text(plan: ResponsePlan) -> str | None:
             return RECALL_LOGGED_TEXT
         case InformationNeed.RELATIVES_NAMES:
             return RELATIVES_LOGGED_TEXT
+        case InformationNeed.SENSITIVE_READ:
+            return SENSITIVE_RECORDED_TEXT
         case _:
             return None
+
+
+def recorded_exchange(plan: ResponsePlan, heard: str) -> tuple[str, str]:
+    """Return the pair the conversation record keeps for one turn (Plan 0079, D-8).
+
+    A secret turn keeps a marker instead of the heard words, since the speaker may have said the
+    value; a known sensitive read keeps a marker instead of the answer, which carries stored
+    values. Every other turn is recorded as it happened.
+
+    Args:
+        plan: The plan the turn was answered with.
+        heard: What the speaker said, as transcribed.
+
+    Returns:
+        ``(heard, spoken)`` to record, with the markers applied.
+    """
+    if plan.need is InformationNeed.SECRET_VALUE:
+        return SECRET_RECORDED_TEXT, plan.response
+    if plan.need is InformationNeed.SENSITIVE_READ and plan.status is KnowledgeStatus.KNOWN:
+        return heard, SENSITIVE_RECORDED_TEXT
+    return heard, plan.response
 
 
 class SceneDescriptionRequest(BaseModel):
