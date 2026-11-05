@@ -52,6 +52,10 @@ class InformationNeed(StrEnum):
     RECALL = "recall"
     # «¿Cómo se llaman mis papás?»: the relatives loaded at the alta (ADR 0028 decision 9).
     RELATIVES_NAMES = "relatives_names"
+    # «¿Qué remedios tomo?»: the owner's own sensitive data read back by voice (Plan 0079, ADR 0029).
+    SENSITIVE_READ = "sensitive_read"
+    # A secret value said or asked for («mi clave es 1234»): never kept, never answered (ADR 0029).
+    SECRET_VALUE = "secret_value"  # noqa: S105  # pragma: allowlist secret - a need name
 
 
 class ResponseSource(StrEnum):

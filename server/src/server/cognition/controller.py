@@ -245,7 +245,9 @@ class CognitiveController:
             return decision
         return await self._legacy_plan(event.payload)
 
-    async def decide(self, event: CognitiveEvent[TextTurnPayload]) -> ControllerDecision:
+    async def decide(  # noqa: PLR0912  # one case per need; Task 7 of Plan 0079 splits the new two
+        self, event: CognitiveEvent[TextTurnPayload]
+    ) -> ControllerDecision:
         """Resolve closed policy and tool branches without generic generation.
 
         Args:
@@ -290,6 +292,11 @@ class CognitiveController:
                 # The voice routes answer it before the controller (Plan 0069 D-11); no text
                 # resolves to it, but if one ever did, it is the fixed phrase, never generation.
                 decision = unclear_speech_plan(expects_short_reply=False)
+            case InformationNeed.SENSITIVE_READ | InformationNeed.SECRET_VALUE:
+                # Plan 0079, Task 7 wires both branches. Until then no route asks the resolver
+                # for them, so reaching here is a wiring bug: fail closed, never to the model.
+                msg = "The sensitive and secret branches are not wired yet."
+                raise NotImplementedError(msg)
             case InformationNeed.GENERIC_CONVERSATION:
                 decision = None
         return decision
