@@ -6,8 +6,10 @@ from itertools import product
 from typing import get_args
 
 import pytest
+from server.memory import recall_sensitivity
 from server.memory.conversation_summary import EpisodeSensitivity
 from server.memory.recall_sensitivity import classify_turn_text, most_protective
+from server.secret_values import SECRET_WORDS
 
 pytestmark = pytest.mark.unit
 
@@ -52,6 +54,14 @@ def test_location_words_are_location(text: str) -> None:
 )
 def test_security_words_are_security(text: str) -> None:
     assert classify_turn_text(text) == "security"
+
+
+def test_the_recall_security_set_is_derived_from_the_secret_words() -> None:
+    security_terms = dict(recall_sensitivity._CATEGORY_TERMS)["security"]
+
+    assert security_terms == SECRET_WORDS | {"alarma", "llave", "llaves", "porton"}
+    assert classify_turn_text("Anota los códigos") == "security"
+    assert all(classify_turn_text(f"Hablemos de {word}") == "security" for word in SECRET_WORDS)
 
 
 def test_two_categories_keep_the_most_protective() -> None:
