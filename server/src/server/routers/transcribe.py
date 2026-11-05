@@ -46,11 +46,15 @@ from server.cognition.response_plan import (
     RecallReply,
     ResponsePlan,
     SceneDescriptionRequest,
+    SensitiveReader,
+    SensitiveReply,
     TextTurnPayload,
+    recorded_exchange,
     scene_unavailable_plan,
     spoken_log_text,
     unclear_speech_plan,
 )
+from server.cognition.sensitive_questions import SensitiveQuery
 from server.dependencies import IdentityTokenDep, OwnerUnlockServiceDep, ResourcesDep
 from server.exceptions import (
     AudioContractError,
@@ -71,6 +75,7 @@ from server.memory.household_authorization import record_authorization_decision
 from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
 from server.memory.profile_card_access import profile_summary_text, prompt_card_text
 from server.memory.recall_access import recall_reply
+from server.memory.sensitive_access import sensitive_reply
 from server.pipeline import (
     _elapsed_ms,
     _log_pipeline_timing,
@@ -314,13 +319,15 @@ def _voice_controller(
             record_turn=record_turn,
         )
 
+    household_tools = HouseholdKnowledgeTools(reader=PolicyGatedV4Reader())
     if request_identity is None:
         return CognitiveController(
             today=_today,
             legacy_turn=legacy_turn,
             policy_evaluator=evaluate_authorization,
             audit_writer=record_authorization_decision,
-            household_tools=HouseholdKnowledgeTools(reader=PolicyGatedV4Reader()),
+            household_tools=household_tools,
+            secret_guard=settings.memory_enabled,
         )
     return CognitiveController(
         today=_today,
@@ -329,12 +336,14 @@ def _voice_controller(
         observed_person_resolver=_logged_voice_observer(request_identity),
         policy_evaluator=evaluate_authorization,
         audit_writer=record_authorization_decision,
-        household_tools=HouseholdKnowledgeTools(reader=PolicyGatedV4Reader()),
+        household_tools=household_tools,
         consent_resolver=request_identity.resolve_consent,
         memory_answerer=memory_answerer,
         profile_summarizer=profile_summarizer,
         household_names=read_household_names if settings.memory_enabled else None,
         recall_answerer=recall_answerer,
+        sensitive_reader=_sensitive_reader(request_identity, household_tools),
+        secret_guard=settings.memory_enabled,
     )
 
 
@@ -417,10 +426,11 @@ def _record_plan(
 
     A reply the controller answered without resolving anyone (the date) is ``not_checked``;
     one it answered for a resolved speaker (a protected household question) carries that
-    speaker, so the owner's verified words are not lost to the diary (Plan 0076 D-7).
+    speaker, so the owner's verified words are not lost to the diary (Plan 0076 D-7). A secret
+    turn and a sensitive answer keep a marker instead of the words (Plan 0079 D-8).
     """
     if record_turn is not None:
-        record_turn(heard, plan.response, request_identity.last_actor)
+        record_turn(*recorded_exchange(plan, heard), request_identity.last_actor)
 
 
 def _offer_preparer(
@@ -528,6 +538,42 @@ def _recall_answerer(client: httpx.AsyncClient) -> RecallAnswerer | None:
         )
 
     return answer
+
+
+def _sensitive_reader(
+    request_identity: _RequestIdentity, household_tools: HouseholdKnowledgeTools
+) -> SensitiveReader | None:
+    """Return the owner's sensitive read for a voice route, or ``None`` with a switch off.
+
+    With ``MEMORY_ENABLED`` or ``SENSITIVE_READ_ENABLED`` off a sensitive question is ordinary
+    conversation, and the actor is not even resolved for it. The face fusion's reason and the
+    consent are read when the controller calls the reader, that is after it resolved the actor.
+
+    Args:
+        request_identity: This request's identity resolver (the fusion reason and the consent).
+        household_tools: The controller's own tools, for the children's birth dates.
+    """
+    if not (settings.memory_enabled and settings.sensitive_read_enabled):
+        return None
+
+    async def read(
+        actor: ActivePersonContext,
+        query: SensitiveQuery,
+        event: CognitiveEvent[TextTurnPayload],
+    ) -> SensitiveReply:
+        consent = await request_identity.resolve_consent(event, actor)
+        return await sensitive_reply(
+            actor,
+            query,
+            faces=request_identity.fused.last_reason,
+            face_consent=consent,
+            voice_check=settings.speaker_authentication_enabled,
+            correlation_id=event.correlation_id,
+            now=utc_now(),
+            household_tools=household_tools,
+        )
+
+    return read
 
 
 async def _synthesize_reply(plan: ResponsePlan) -> tuple[str, int, int]:

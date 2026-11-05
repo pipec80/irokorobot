@@ -116,6 +116,7 @@ async def chat(
         household_tools=HouseholdKnowledgeTools(reader=PolicyGatedV4Reader()),
         consent_resolver=request_identity.resolve_consent,
         household_names=read_household_names if settings.memory_enabled else None,
+        secret_guard=settings.memory_enabled,
     )
     decision = await controller.decide(event)
     # Chat has no camera round-trip at all — a scene request always gets the
