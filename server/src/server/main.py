@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import AsyncExitStack, asynccontextmanager
+from functools import partial
 import importlib.metadata
 import logging
 
@@ -20,7 +21,7 @@ from server.cognition.owner_authentication import owner_unlock_service
 from server.db import close_db, open_db, run_migrations
 from server.exceptions import VisionError
 from server.logging_setup import configure_logging
-from server.memory import candidates, conversation_jobs, retention
+from server.memory import candidates, conversation_jobs, recall_index, retention
 from server.ollama_probe import probe_ollama
 from server.request_context import RequestContextMiddleware
 from server.resources import AppResources
@@ -136,6 +137,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
                 # nobody is talking (Plan 0076).
                 conversation_jobs.start_background_job(http_client)
                 stack.push_async_callback(conversation_jobs.stop_background_job)
+            if cfg.recall_enabled:
+                # The first recall after a restart must not pay the cold load (ADR 0028 d. 10).
+                await _warm_up("Embedding model", partial(recall_index.warm_up, http_client))
             logger.info("Brain memory enabled: %s", cfg.brain_db_path)
         else:
             logger.info("Memory disabled via MEMORY_ENABLED")

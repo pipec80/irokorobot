@@ -104,6 +104,8 @@ def _conversation_record_off(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     monkeypatch.setattr(settings, "conversation_record_enabled", False)
     monkeypatch.setattr(settings, "conversation_episodes_enabled", False)
+    # Recall (ADR 0028) rides on the record: off with it, for the same reason.
+    monkeypatch.setattr(settings, "recall_enabled", False)
 
 
 @pytest.fixture(autouse=True)

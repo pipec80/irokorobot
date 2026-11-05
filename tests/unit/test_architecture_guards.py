@@ -165,14 +165,15 @@ _RETIRED_ACTION_NAMES = frozenset(
     {"PROPOSE_MEMORY", "COMMIT_MEMORY", "propose_memory", "commit_memory"}
 )
 # The model and the policy, plus the one module that asks the policy about a candidate step
-# (Plan 0062) and the one that asks it about the profile card (Plan 0074): every other module
-# reaches the actions through them.
+# (Plan 0062), the one that asks it about the profile card (Plan 0074) and the one that asks it
+# about a recall (Plan 0078): every other module reaches the actions through them.
 _ACTION_HOMES = frozenset(
     {
         "cognition/models.py",
         "cognition/authorization.py",
         "memory/candidate_policy.py",
         "memory/profile_card_access.py",
+        "memory/recall_access.py",
     }
 )
 _MEMORY_SCOPE_MEMBER_NAMES = frozenset({"PERSONAL_MEMORY_READ", "PERSONAL_MEMORY_FORGET"})
@@ -976,6 +977,9 @@ _CONVERSATION_TABLE_HOMES = {
     "conversation_episodes": "memory/conversation_episodes.py",
     "conversation_consent_grants": "memory/conversation_consent.py",
 }
+# The recall store may JOIN a unit to its record, only to skip an expired one (Plan 0078): no
+# other statement on the table, and never the record's turns.
+_CONVERSATION_TABLE_JOINERS = {"conversation_records": frozenset({"memory/recall_store.py"})}
 _RECORD_READER_MODULES = frozenset(
     {
         "server.memory.conversation_record",
@@ -1000,7 +1004,15 @@ def _conversation_table_queriers(sources: Mapping[str, str]) -> list[str]:
     found = []
     for table, home in _CONVERSATION_TABLE_HOMES.items():
         sql = re.compile(rf"\b(?:FROM|JOIN|INTO|UPDATE|DELETE\s+FROM)\s+{table}\b")
-        found += [name for name, text in sources.items() if name != home and sql.search(text)]
+        beyond_a_join = re.compile(rf"\b(?:FROM|INTO|UPDATE)\s+{table}\b|\bturns\b")
+        joiners = _CONVERSATION_TABLE_JOINERS.get(table, frozenset())
+        found += [
+            name
+            for name, text in sources.items()
+            if name != home
+            and sql.search(text)
+            and (name not in joiners or beyond_a_join.search(text))
+        ]
     return sorted(found)
 
 
@@ -1070,6 +1082,24 @@ def test_each_conversation_table_is_queried_only_by_its_store() -> None:
 
 
 @pytest.mark.unit
+def test_the_recall_store_may_only_join_the_record_for_its_expiry() -> None:
+    joined = 'SQL = "SELECT u.id FROM recall_units u JOIN conversation_records r ON 1"\n'
+    sources = {
+        "memory/recall_store.py": joined,
+        "memory/other.py": joined,
+    }
+    assert _conversation_table_queriers(sources) == ["memory/other.py"]
+
+    for leak in (
+        'SQL = "SELECT r.turns FROM recall_units u JOIN conversation_records r ON 1"\n',
+        'SQL = "UPDATE conversation_records SET eligible = 0"\n',
+    ):
+        assert _conversation_table_queriers({"memory/recall_store.py": leak}) == [
+            "memory/recall_store.py"
+        ]
+
+
+@pytest.mark.unit
 def test_no_prompt_or_route_reads_the_record() -> None:
     assert _record_readers(_sources()) == []
 
@@ -1093,3 +1123,101 @@ def test_the_conversation_guards_detect_a_violation() -> None:
     assert _conversation_table_queriers(sources) == ["memory/leak.py"]
     assert _record_readers(sources) == ["characters/__init__.py", "routers/chat.py"]
     assert _outside(sources, _RECORDER_HOMES, _RECORDER_NAMES) == ["routers/chat.py"]
+
+
+# --- recall (Plan 0078) -----------------------------------------------------------------------
+
+# The modules that read the recall units or word them; no prompt module may import one, so the
+# generic prompt still reads no household store and a recall answer is a controller branch.
+_RECALL_READER_MODULES = frozenset(
+    {
+        "server.memory.recall_store",
+        "server.memory.recall_search",
+        "server.memory.recall_access",
+        "server.memory.recall_answer",
+        "server.memory.recall_index",
+    }
+)
+_RECALL_MODULES = tuple(f"memory/{name.rsplit('.', 1)[1]}.py" for name in _RECALL_READER_MODULES)
+_RECALL_TABLE_SQL = re.compile(
+    r"\b(?:FROM|JOIN|INTO|UPDATE|DELETE\s+FROM)\s+recall_units(?:_fts|_vec)?\b"
+)
+_RECALL_TABLE_HOME = "memory/recall_store.py"
+
+
+def _recall_prompt_readers(sources: Mapping[str, str]) -> list[str]:
+    """Prompt-path modules that import a recall module."""
+    return sorted(
+        name
+        for name, text in sources.items()
+        if name.startswith(_NO_HOUSEHOLD_READS)
+        and any(
+            (isinstance(node, ast.ImportFrom) and node.module in _RECALL_READER_MODULES)
+            or (
+                isinstance(node, ast.Import)
+                and any(alias.name in _RECALL_READER_MODULES for alias in node.names)
+            )
+            for node in ast.walk(ast.parse(text))
+        )
+    )
+
+
+def _recall_table_queriers(sources: Mapping[str, str]) -> list[str]:
+    """Modules other than the recall store that put SQL on a recall table."""
+    return sorted(
+        name
+        for name, text in sources.items()
+        if name != _RECALL_TABLE_HOME and _RECALL_TABLE_SQL.search(text)
+    )
+
+
+def _recall_record_readers(sources: Mapping[str, str]) -> list[str]:
+    """Recall modules that import the record, the diary or the summary (they read units)."""
+    return sorted(
+        name
+        for name, text in sources.items()
+        if name in _RECALL_MODULES
+        and any(
+            isinstance(node, ast.ImportFrom) and node.module in _RECORD_READER_MODULES
+            for node in ast.walk(ast.parse(text))
+        )
+    )
+
+
+@pytest.mark.unit
+def test_the_generic_prompt_still_reads_no_household_store() -> None:
+    """ADR 0028 decision 8: the recall answer is a controller branch, never in the prompt."""
+    sources = _sources()
+
+    assert _household_readers(sources) == []
+    assert _recall_prompt_readers(sources) == []
+
+
+@pytest.mark.unit
+def test_only_recall_store_touches_the_recall_tables() -> None:
+    assert _recall_table_queriers(_sources()) == []
+
+
+@pytest.mark.unit
+def test_the_record_is_still_read_by_no_route() -> None:
+    """The 0076 guard keeps passing, and recall reads units, not records."""
+    sources = _sources()
+
+    assert _record_readers(sources) == []
+    assert _recall_record_readers(sources) == []
+
+
+@pytest.mark.unit
+def test_the_recall_guards_detect_a_violation() -> None:
+    sources = {
+        "text_turn.py": "from server.memory.recall_search import search_recall\n",
+        "llm_streaming.py": "import server.memory.recall_store\n",
+        "routers/transcribe.py": "from server.memory.recall_access import recall_reply\n",
+        "memory/leak.py": 'SQL = "SELECT body FROM recall_units WHERE 1"\n',
+        "memory/recall_store.py": 'SQL = "SELECT body FROM recall_units_fts"\n',
+        "memory/recall_search.py": "from server.memory.conversation_record import read_record\n",
+    }
+
+    assert _recall_prompt_readers(sources) == ["llm_streaming.py", "text_turn.py"]
+    assert _recall_table_queriers(sources) == ["memory/leak.py"]
+    assert _recall_record_readers(sources) == ["memory/recall_search.py"]

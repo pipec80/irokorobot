@@ -56,8 +56,8 @@ _UNSUPPORTED_REASON: dict[LongitudinalOperation, str] = {
         "no process-restart seam: only a DB reconnect is available and that is not a restart"
     ),
     LongitudinalOperation.RECALL: (
-        "no authorized-longitudinal-recall seam: generic conversation does not carry the "
-        "resolved actor"
+        "recall exists behind a voice-verified capture and a restart; the harness has neither "
+        "seam without imitating them (ADR 0028); CM-7 connects them"
     ),
     LongitudinalOperation.CORRECT: (
         "no candidate-correction seam: CM-6 owns supersession by policy"

@@ -104,3 +104,25 @@ async def test_an_invalid_answer_is_an_llm_error_without_the_output(
 
     assert "algo" not in str(raised.value)
     assert raised.value.__cause__ is None
+
+
+async def test_the_prompt_says_what_is_private_and_that_everyday_life_is_normal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Found on Pipec's hardware run (2026-11-03, Plan 0078): with «private (algo íntimo)» and
+    «si dudas, usa la más protectora», the 3B model marked an ordinary family conversation
+    private, and the recall of block A, which reads only `normal`, found nothing of it."""
+    chat = AsyncMock(
+        return_value=json.dumps({"summary": "La persona contó algo.", "sensitivity": "normal"})
+    )
+    monkeypatch.setattr(conversation_summary, "ollama_chat", chat)
+
+    await summarize_owner_part(httpx.AsyncClient(), [_turn(0, TurnVerdict.VERIFIED)])
+
+    assert chat.await_args is not None
+    system = chat.await_args.args[1][0]["content"]
+    for everyday in ("familia", "paseos", "comidas", "actividades", "gustos"):
+        assert everyday in system
+    for intimate in ("pareja", "sexualidad", "conflictos", "dinero", "secretos"):
+        assert intimate in system
+    assert "Si dudas, usa la más protectora" not in system

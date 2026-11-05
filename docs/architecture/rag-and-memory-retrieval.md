@@ -826,7 +826,8 @@ recuperar evidencia y mostrar procedencia. No agregar todavía todos los formato
 Se entrega con CM-5b sobre el diario. Implementar lexical local, línea base
 vectorial y RRF. Evaluar consultas semánticas y términos exactos con el mismo
 corpus autorizado. Diseñado por el
-[ADR 0028](../adr/0028-recall-what-the-owner-told.md) (`Proposed`, 2026-11-03):
+[ADR 0028](../adr/0028-recall-what-the-owner-told.md) (`Accepted` 2026-11-04, implementado por el
+Plan 0078 con umbral calibrado `RECALL_MAX_DISTANCE` 0,43):
 unidades de recuerdo con FTS5 (`unicode61`, sin tildes) y `vec0` por dueño,
 umbral absoluto, RRF (`k = 60`), máximo tres resultados y cero resultados
 permitidos; las unidades llevan un tipo, así que una fuente documental futura

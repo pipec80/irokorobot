@@ -878,9 +878,10 @@ keeps the record away from every route, prompt and controller.
   left open) writes, **only while nobody is talking**, one short summary (at most
   `CONVERSATION_EPISODE_MAX_CHARS`, 600) of each closed eligible segment from the owner's verified
   turns only. It shares the candidates' extraction limiter and gives up after 3 failed attempts. The
-  summary is `personal`, classified by the model (`normal`, `private`, `medical`, `location`,
-  `security`), expires and is deleted with its segment. Candidates still come only from the live
-  path. Nothing reads the diary yet (CM-5b).
+  summary is `personal`, classified by the model (`normal` for daily life: family, outings, meals,
+  activities, plans and tastes; `private` for the intimate: partner, sexuality, conflicts, money,
+  secrets; `medical`, `location`, `security`), expires and is deleted with its segment. Candidates
+  still come only from the live path. Recall (Plan 0078, below) reads the `normal` summaries.
 
 **The consent.** The alta's close step shows [the notice](../legal/conversation-notice-v1.md) and
 asks for it. On a robot whose alta is already closed (Pipec's), grant it with the server stopped:
@@ -908,6 +909,84 @@ deleted, or the consent is revoked.
 **The legacy store.** Plan 0076 also retired the old `MANUAL`-gated memory path (`build_context`, the
 vector index and the onboarding interview). Migration 013 drops `vec_memories`; the `memories` table
 stays empty and refuses any row, because four tables still name it in a nullable foreign key.
+
+### Recall: «¿qué te conté…?» and the relatives of the alta (Plan 0078, CM-5b, ADR 0028): off by default
+
+With `RECALL_ENABLED=true` (and `MEMORY_ENABLED=true`, the conversation record and the diary on, and
+the owner's `conversation_storage` consent) the robot answers a question about what the owner told
+from what it was told, and says «No me acuerdo de eso.» instead of inventing.
+
+- **What can be recalled.** Two kinds of *recall units* (migration 014, table `recall_units`): the
+  owner's own words of an ordinary turn whose face **and** voice verified (never the robot's reply,
+  never a question the robot answers by rule, never another person's turn), and the diary summary of
+  a conversation. Only units marked `normal` are read in this stage; health, address, keys and the
+  intimate stay stored for a later stage. A sensitivity only goes up: when the diary marks a
+  conversation, its turns take the more protective mark. A unit is deleted with its conversation.
+- **Telling.** No keyword: talk normally, facing the camera, in sentences **longer than about 3
+  seconds** (shorter clips rarely verify the voice, and then nothing is kept). Wait until the robot
+  has finished speaking before talking: it does not listen while it speaks.
+- **Asking.** The form matters (a closed rule, no model):
+
+  | Kind | Examples | What happens |
+  |---|---|---|
+  | Strong cue | «¿Qué te conté del ensayo?», «¿Qué te dije de…?», «¿Qué hice el sábado?» | Searches; nothing found → «No me acuerdo de eso.» |
+  | Weak cue | «¿Te acuerdas de Mozart?», «¿Recuerdas…?» | Searches; nothing found → ordinary conversation |
+  | Date only | «¿Qué te conté hoy?», «¿Qué hice ayer?», «el martes», «la semana pasada» | The summaries of that day, newest first |
+  | Relatives | «¿Cómo se llaman mis papás?», «¿Cómo se llama mi perrita?» | The names loaded at the alta, fixed template |
+  | One's child | «¿Cómo se llama mi hija?» | The children list («Tus hijos son …») |
+
+  «¿Qué te conté?» alone reads the profile card. A weak cue about family data («¿te acuerdas dónde
+  baila mi hija?») keeps the protected route: ask «¿qué te conté de…?» instead. «Hoy día» counts as
+  «hoy». A story («me acuerdo que…») is never a question and never searches.
+- **The answer.** With memories found, a short call to the local model words them («me contaste
+  que…»), only from those memories. The robot reads the first memory as a template instead («Ayer me
+  contaste esto: …», the owner's own words quoted) when the model fails or is off, says nothing,
+  still says it does not remember, speaks as the owner («fui», «yo», «mi», «mis») or says «hoy» of a
+  memory from another day. A relatives question with nothing loaded at the alta answers «No tengo
+  registrado eso.». A visitor, an unknown face or two faces hear the same refusal as the profile
+  card. The answer does not enter short-term continuity, so «¿y qué más?» needs the cue again. With
+  `LOG_CONVERSATION_TEXT` on, the console shows `[recuerdo leído]` or `[parientes leídos]` instead of
+  the answer.
+
+**The search and its threshold (`RECALL_MAX_DISTANCE`).** A recall question searches the owner's
+`normal` units two ways at once:
+
+- **By words** (SQLite FTS5, accents ignored): a unit that shares a content word with the question
+  («ensayo») always counts.
+- **By meaning** (vectors): the embedding model (`EMBEDDING_MODEL`, `granite-embedding:278m`) turns
+  each unit and the question into a list of 768 numbers; their **cosine distance** says how close the
+  meanings are (0 = the same meaning, about 0.5 = little to do with each other, 1 = unrelated). A unit
+  found only this way counts when its distance is **under `RECALL_MAX_DISTANCE`**. The threshold
+  applies only to this path.
+
+The two lists are merged (Reciprocal Rank Fusion) and at most three units are kept, at most two of one
+conversation.
+
+- **Where the value came from.** Calibrated on Pipec's hardware run of 2026-11-03: his real memories
+  were at 0.395 and 0.414 from the question, the questions with no memory had their nearest unit at
+  0.469 to 0.517; 0.43 lies between. The first value, 0.30, came from paraphrases (Plan 0075), and a
+  question is farther from a statement than a paraphrase is. Two real points make it provisional.
+- **How to tune it.** Every recall question logs one `recall.read` line in `logs/server*.log`:
+  `route` (`strong`/`weak`), `outcome` (`found`, `nothing_found`, `not_asked`, `denied`,
+  `audit_failed`, `search_failed`), `hits`, `best_distance` (the nearest unit, **even when it did not
+  pass the threshold**), `lexical_only` and `windowed`; never a text. Ask your questions, note for each
+  what you expected and what happened, and compare with `best_distance`: a memory you did tell that was
+  missed with a distance just above the threshold means **raise it**; an answer from an unrelated
+  memory means **lower it**. Change `RECALL_MAX_DISTANCE` in `.env` and restart the server; no code
+  changes.
+- **What it depends on.** Not the computer (the laptop, the homelab or the Pi give the same distances
+  for the same model; only the speed changes). It depends on the **embedding model**: changing
+  `EMBEDDING_MODEL` changes every distance, needs a fresh calibration and re-embedding the units.
+- **Tests.** A unit test pins the calibrated default and the gate (a near vector passes, a far one does
+  not); the calibration itself is done with real use, because it depends on the owner's own phrases.
+
+**Without the embedding model** (Ollama down or the model absent) the search runs by words only and the
+log says `lexical_only: true`; the conversation job fills the missing vectors later, while nobody is
+talking. The model is warmed at start-up. **Time zone:** «ayer» and «el martes» are cut at local
+midnight of `HOUSEHOLD_TIMEZONE` (`America/Santiago`).
+
+**Rolling back.** `RECALL_ENABLED=false` and a restart: every turn is byte-identical to a build without
+it and nothing is written to the recall tables.
 
 ## 4. Feature-flag reference
 
@@ -941,6 +1020,10 @@ stays empty and refuses any row, because four tables still name it in a nullable
 | `PROFILE_CARD_ENABLED` | `false` | Server: kill-switch of the profile card in the prompt and of «¿qué sabes de mí?» (Plan 0074, ADR 0026; off in the code, on in a delivered robot). Needs `MEMORY_ENABLED`. Off, every prompt, response and wire field is byte-identical to a build without it; on, it reads only for a face-identified speaker at `basic` or more, on the two voice routes, with one audit row per read |
 | `CONVERSATION_RECORD_ENABLED` | `false` | Server: kill-switch of the conversation record (Plan 0076, ADR 0027; off in the code, on in a delivered robot). Needs `MEMORY_ENABLED` and the owner's `conversation_storage` consent; off, nothing is recorded and every prompt, response and wire field is byte-identical |
 | `CONVERSATION_EPISODES_ENABLED` | `false` | Server: the diary job (needs the record). The segment caps, the two retention clocks, the space cap, the job interval and the summary length are the other `CONVERSATION_*` settings, see the record above |
+| `RECALL_ENABLED` | `false` | Server: kill-switch of recall and of the relatives reader (Plan 0078, ADR 0028; off in the code, on in a delivered robot). Needs `MEMORY_ENABLED` and the record; off, every turn is byte-identical and nothing is indexed |
+| `RECALL_MAX_DISTANCE` | `0.43` | Server: the cosine-distance gate of the search by meaning; see «The search and its threshold» above for what it means and how to tune it |
+| `EMBEDDING_MODEL` | `granite-embedding:278m` | Server: the model of the recall vectors (768 dimensions); changing it needs a new calibration of `RECALL_MAX_DISTANCE` |
+| `HOUSEHOLD_TIMEZONE` | `America/Santiago` | Server: where a spoken day («ayer», «el martes») is cut; an unknown zone stops the server at start-up |
 | `PROFILE_CARD_POSITION` | `with_memory` | Where the card sits in the system prompt: `with_memory` (right after the emotion adaptation) or `before_language` (right before the language rule, which stays last); any other value stops the server at start-up. Try both and keep the one the model follows better (acceptance 8 of Plan 0074) |
 | `VAD_REPLY_SILENCE_MS` / `REPLY_WAIT_S` | `1600` / `15` | Robot, streaming mode: end-of-speech silence and wait for speech when the robot listens once to the reply to a spoken memory offer (Plan 0067); first values to tune, see the memory dialogue above |
 | `UVICORN_WORKERS` | `1` | Must stay `1` — owner/face grants are process-local; the server refuses to start otherwise |

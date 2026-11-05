@@ -31,10 +31,19 @@ from server.cognition.models import (
     ConfidenceBasis,
     KnowledgeStatus,
 )
+from server.cognition.recall_cues import (
+    CueStrength,
+    RecallCue,
+    classify_recall_cue,
+    relation_of,
+)
 from server.cognition.response_plan import (
+    NO_MEMORY,
+    NOT_REGISTERED,
     InformationNeed,
     MemoryAnswerReply,
     ProfileSummaryReply,
+    RecallReply,
     ResponseClaim,
     ResponsePlan,
     ResponseSource,
@@ -60,7 +69,8 @@ type AuditWriter = Callable[[AuthorizationRequest, AuthorizationDecision], Await
 type ConsentResolver = Callable[
     [CognitiveEvent[TextTurnPayload], ActivePersonContext], Awaitable[ConsentStatus]
 ]
-type IntentResolver = Callable[[str], IntentResolution]
+#: Called with the message, and with ``recall=True`` only when a recall answerer is wired.
+type IntentResolver = Callable[..., IntentResolution]
 #: Resolves a spoken answer to a memory offer for an actor already resolved from face and voice
 #: (ADR 0021 decision 9). Only the voice routes inject one; it returns the fixed reply (a phrase
 #: and whether to listen again, Plan 0068), or ``None`` so the turn falls through to ordinary
@@ -73,6 +83,11 @@ type MemoryAnswerer = Callable[
 #: Only the voice routes inject one; it owns the policy and the audit row and never raises.
 type ProfileSummarizer = Callable[
     [ActivePersonContext, CognitiveEvent[TextTurnPayload]], Awaitable[ProfileSummaryReply]
+]
+#: Answers a recall question (Plan 0078, ADR 0028): it owns the policy, the audit row, the search
+#: and the wording, and never raises. Only the voice routes inject one, with RECALL_ENABLED on.
+type RecallAnswerer = Callable[
+    [ActivePersonContext, RecallCue, CognitiveEvent[TextTurnPayload]], Awaitable[RecallReply]
 ]
 #: The household's stored names and aliases (Plan 0077). It never raises: a store failure is an
 #: empty set, and the turn stays conversation, where the model holds no stored household value.
@@ -153,6 +168,7 @@ class CognitiveController:
         memory_answerer: MemoryAnswerer | None = None,
         profile_summarizer: ProfileSummarizer | None = None,
         household_names: HouseholdNameReader | None = None,
+        recall_answerer: RecallAnswerer | None = None,
     ) -> None:
         """Create a controller with injected calendar and legacy-generation seams.
 
@@ -178,6 +194,9 @@ class CognitiveController:
             household_names: Reads the household's stored names, so that «¿Cuándo nació
                 <name>?» from the owner or an adult takes the protected path (Plan 0077). When
                 absent such a question is ordinary conversation.
+            recall_answerer: Answers «¿qué te conté ayer?» from the owner's diary (Plan 0078);
+                injected only by the voice routes with the recall switch on. When absent the
+                recall and relatives rules never run, so every message resolves as before.
         """
         self._today = today
         self._legacy_turn = legacy_turn
@@ -191,6 +210,9 @@ class CognitiveController:
         self._memory_answerer = memory_answerer
         self._profile_summarizer = profile_summarizer
         self._household_names = household_names
+        self._recall_answerer = recall_answerer
+        # The classic route's two calls again: one search and one audit row per event.
+        self._recalls: dict[UUID, ResponsePlan | None] = {}
         # The classic route calls decide() twice on a turn that falls through (decide, then
         # handle), with the same event: keyed by event_id, an answer is attempted once per
         # event, so no audit row is written twice. The controller is built per request and
@@ -257,7 +279,12 @@ class CognitiveController:
                 decision = await self._active_identity_plan(event)
             case InformationNeed.SCENE_DESCRIPTION:
                 decision = SceneDescriptionRequest()
-            case InformationNeed.MEMORY_ANSWER | InformationNeed.PROFILE_SUMMARY:
+            case (
+                InformationNeed.MEMORY_ANSWER
+                | InformationNeed.PROFILE_SUMMARY
+                | InformationNeed.RECALL
+                | InformationNeed.RELATIVES_NAMES
+            ):
                 decision = await self._voice_dialogue_plan(event, need)
             case InformationNeed.UNCLEAR_SPEECH:
                 # The voice routes answer it before the controller (Plan 0069 D-11); no text
@@ -269,7 +296,12 @@ class CognitiveController:
 
     async def _resolved_need(self, event: CognitiveEvent[TextTurnPayload]) -> InformationNeed:
         """Resolve the closed need, then let a stored name turn a question into a protected one."""
-        need = self._intent_resolver(event.payload.message).need
+        message = event.payload.message
+        need = (
+            self._intent_resolver(message, recall=True)
+            if self._recall_answerer is not None
+            else self._intent_resolver(message)
+        ).need
         if need is InformationNeed.GENERIC_CONVERSATION and await self._asks_about_known_name(
             event
         ):
@@ -395,13 +427,90 @@ class CognitiveController:
         event: CognitiveEvent[TextTurnPayload],
         need: InformationNeed,
     ) -> ResponsePlan | None:
-        """Answer one of the two needs only a voice route wires, or fall through (``None``).
+        """Answer one of the needs only a voice route wires, or fall through (``None``).
 
-        Both stay inert, byte for byte, until their collaborator is injected.
+        Each stays inert, byte for byte, until its collaborator is injected.
         """
         if need is InformationNeed.MEMORY_ANSWER:
             return await self._memory_answer_plan(event)
+        if need is InformationNeed.RECALL:
+            return await self._recall_plan(event)
+        if need is InformationNeed.RELATIVES_NAMES:
+            return await self._relatives_plan(event)
         return await self._profile_summary_plan(event)
+
+    async def _recall_plan(self, event: CognitiveEvent[TextTurnPayload]) -> ResponsePlan | None:
+        """Answer a recall question from the owner's diary, or fall through (``None``).
+
+        ADR 0028 decisions 4 and 5. The actor is only observed (never spends a grant). A strong
+        cue answers: the worded memories, or the fixed «No me acuerdo de eso.» when nothing
+        qualified or the search failed; a stranger and a refused speaker hear the profile
+        refusal, so a refusal is no oracle. A weak cue answers only when something was found;
+        otherwise the turn is ordinary conversation. The answer never enters continuity: a
+        plan returned here is never written to it.
+        """
+        if self._recall_answerer is None:
+            return None
+        if event.event_id not in self._recalls:
+            self._recalls[event.event_id] = await self._recall_decision(event)
+        return self._recalls[event.event_id]
+
+    async def _relatives_plan(self, event: CognitiveEvent[TextTurnPayload]) -> ResponsePlan:
+        """Read the owner's relatives loaded at the alta with a fixed template (ADR 0028 d. 9).
+
+        Resolved only with recall on. Without the household tools the question keeps today's
+        protected answer. The actor is only observed (never spends a grant); a stranger and a
+        refused speaker hear the profile refusal; nothing stored is «No tengo registrado eso.».
+        """
+        predicate = relation_of(event.payload.message)
+        if self._household_tools is None or predicate is None:
+            return await self._protected_household_plan(event, InformationNeed.PROTECTED_HOUSEHOLD)
+        actor = await self._observed_person_resolver(event)
+        if actor.status is not ActivePersonStatus.IDENTIFIED or actor.person_id is None:
+            return _unknown_plan(InformationNeed.RELATIVES_NAMES, _PROFILE_SUMMARY_UNKNOWN_RESPONSE)
+        result = await self._household_tools.get_relatives(
+            owner_entity_id=actor.person_id,
+            predicate=predicate,
+            actor=actor,
+            consent=await self._consent_resolver(event, actor),
+            correlation_id=event.correlation_id,
+            requested_at=event.recorded_at,
+        )
+        if result.status is KnowledgeStatus.UNAUTHORIZED:
+            return _unknown_plan(InformationNeed.RELATIVES_NAMES, _PROFILE_SUMMARY_UNKNOWN_RESPONSE)
+        if result.status is not KnowledgeStatus.KNOWN or not isinstance(result.value, tuple):
+            return _unknown_plan(InformationNeed.RELATIVES_NAMES, NOT_REGISTERED)
+        return ResponsePlan(
+            need=InformationNeed.RELATIVES_NAMES,
+            status=KnowledgeStatus.KNOWN,
+            source=ResponseSource.DETERMINISTIC,
+            response=_relatives_sentence(predicate, result.value),
+        )
+
+    async def _recall_decision(self, event: CognitiveEvent[TextTurnPayload]) -> ResponsePlan | None:
+        """Decide the recall plan of one event (cached by ``_recall_plan``)."""
+        cue = classify_recall_cue(event.payload.message, today=self._today())
+        if cue is None or self._recall_answerer is None:
+            return None
+        strong = cue.strength is CueStrength.STRONG
+        actor = await self._observed_person_resolver(event)
+        reply = (
+            RecallReply(text=None, denied=True)
+            if actor.status is not ActivePersonStatus.IDENTIFIED
+            else await self._recall_answerer(actor, cue, event)
+        )
+        if reply.found and reply.text is not None:
+            return ResponsePlan(
+                need=InformationNeed.RECALL,
+                status=KnowledgeStatus.KNOWN,
+                source=ResponseSource.DETERMINISTIC,
+                response=reply.text,
+            )
+        if not strong:
+            return None
+        if reply.denied:
+            return _unknown_plan(InformationNeed.RECALL, _PROFILE_SUMMARY_UNKNOWN_RESPONSE)
+        return _unknown_plan(InformationNeed.RECALL, NO_MEMORY)
 
     async def _profile_summary_plan(
         self,
@@ -615,6 +724,24 @@ def _household_tool_plan(
 def _response_tool_value(value: str | int | tuple[str, ...] | None) -> str | int | None:
     """Adapt a closed family-tool value to the narrower P0.3 response contract."""
     return ", ".join(value) if isinstance(value, tuple) else value
+
+
+# «Tu papá o tu mamá se llama A.» / «Tus papás se llaman A y B.» (Plan 0078 D-9). The alta does
+# not tell the mother from the father, nor a brother from a sister: one name says both words.
+_RELATIVES_TEMPLATES: dict[str, tuple[str, str]] = {
+    "has_parent": ("Tu papá o tu mamá se llama {}.", "Tus papás se llaman {}."),
+    "has_sibling": ("Tu hermano o hermana se llama {}.", "Tus hermanos se llaman {}."),
+    "has_grandparent": ("Tu abuelo o abuela se llama {}.", "Tus abuelos se llaman {}."),
+    "has_grandchild": ("Tu nieto o nieta se llama {}.", "Tus nietos se llaman {}."),
+    "partner_of": ("Tu pareja se llama {}.", "Tus parejas se llaman {}."),
+    "pet_of": ("Tu mascota se llama {}.", "Tus mascotas se llaman {}."),
+}
+
+
+def _relatives_sentence(predicate: str, names: tuple[str, ...]) -> str:
+    """Word the names of one relation with its fixed singular or plural template."""
+    one, several = _RELATIVES_TEMPLATES[predicate]
+    return (one if len(names) == 1 else several).format(_spanish_join(names))
 
 
 def _spanish_join(values: tuple[str, ...]) -> str:

@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from typing import Annotated, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field, PositiveInt, field_validator
 from pydantic_settings import BaseSettings
@@ -16,6 +17,15 @@ def _coerce_to_int(value: object) -> object:
     in `.env` fails validation against the literal `1` because `"1" != 1`.
     """
     return int(value) if isinstance(value, str) else value
+
+
+def _known_time_zone(value: str) -> str:
+    """Refuse a time zone the zone database does not know, at start-up rather than on a turn."""
+    try:
+        ZoneInfo(value)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise ValueError("HOUSEHOLD_TIMEZONE is not a known time zone") from exc
+    return value
 
 
 type ProfileCardPosition = Literal["with_memory", "before_language"]
@@ -114,7 +124,12 @@ class Settings(BaseSettings):
     # ---------------- Brain & Memory ----------------
     brain_db_path: Path = Path("data/omnibot.db")
 
-    embedding_model: str = "nomic-embed-text"
+    # The recall index embeds with this model (ADR 0028 decision 1, measured in Plan 0075);
+    # its vectors are 768-d, the size of the recall index.
+    embedding_model: str = "granite-embedding:278m"
+    # The household's time zone (ADR 0028 decision 7): timestamps stay UTC and a spoken day
+    # («ayer», «el martes») is cut at this zone's local midnight.
+    household_timezone: str = "America/Santiago"
 
     consolidation_model: str = "qwen2.5:3b"
 
@@ -159,6 +174,15 @@ class Settings(BaseSettings):
     # The diary job: how often it runs, and how long one summary may be.
     conversation_job_interval_s: PositiveInt = 120
     conversation_episode_max_chars: PositiveInt = 600
+    # Recall (ADR 0028, Plan 0078): the owner's verified words and the diary are indexed and a
+    # recall question is answered from them. Kill-switch, off in the code and on in a delivered
+    # robot; it also needs MEMORY_ENABLED and the conversation record. Off: every turn as before.
+    recall_enabled: bool = False
+    # The absolute gate of a recall search (ADR 0028 decision 6): a unit found only by its vector
+    # qualifies when its cosine distance is under this. Calibrated on Pipec's hardware run of
+    # 2026-11-03 (Plan 0078): his memories at 0.395 and 0.414, questions with no memory at 0.469
+    # to 0.517. A question is farther from a statement than a paraphrase, so it is above 0.30.
+    recall_max_distance: float = Field(default=0.43, gt=0.0, lt=2.0)
     robot_character: str = "iroko"
     # Re-read character markdown profiles from disk on every request when
     # they change (prompt-engineering aid). OFF by default: production loads
@@ -280,6 +304,7 @@ class Settings(BaseSettings):
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
     _coerce_uvicorn_workers = field_validator("uvicorn_workers", mode="before")(_coerce_to_int)
+    _validate_household_timezone = field_validator("household_timezone")(_known_time_zone)
 
     @property
     def speaker_model_cache_dir(self) -> Path:

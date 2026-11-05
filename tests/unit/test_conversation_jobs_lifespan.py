@@ -45,3 +45,25 @@ async def test_the_lifespan_starts_the_job_only_with_the_record_switch_on(
         pass
 
     assert stubbed.called is record_on
+
+
+@pytest.mark.parametrize("recall_on", [True, False])
+async def test_the_lifespan_warms_the_embedding_model_only_with_recall_on(
+    stubbed: Mock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, recall_on: bool
+) -> None:
+    """Plan 0078: the first recall after a restart does not pay the cold load."""
+    warm = AsyncMock()
+    monkeypatch.setattr(main.recall_index, "warm_up", warm)
+    app = create_app(
+        Settings(
+            memory_enabled=True,
+            conversation_record_enabled=True,
+            recall_enabled=recall_on,
+            brain_db_path=tmp_path / "lifespan.db",
+        )
+    )
+
+    async with lifespan(app):
+        pass
+
+    assert warm.await_count == int(recall_on)

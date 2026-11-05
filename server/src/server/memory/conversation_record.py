@@ -13,6 +13,7 @@ reads this module (an architecture guard).
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -32,6 +33,7 @@ __all__ = [
     "EpisodeStatus",
     "RecordSummary",
     "RecordView",
+    "TurnIndexer",
     "append_turn",
     "close_idle_records",
     "count_failed_attempt",
@@ -46,6 +48,9 @@ __all__ = [
 ]
 
 logger = logging.getLogger(__name__)
+
+#: Writes what an appended exchange adds elsewhere, inside the append's transaction.
+type TurnIndexer = Callable[[aiosqlite.Connection, int, RecordedTurn], Awaitable[int]]
 
 _BYTES_PER_MB = 1_000_000
 _SUMMARY_COLUMNS = (
@@ -139,13 +144,21 @@ async def _close(
     )
 
 
-async def append_turn(turn: RecordedTurn, *, owner_entity_id: int, now: datetime) -> int:
+async def append_turn(
+    turn: RecordedTurn,
+    *,
+    owner_entity_id: int,
+    now: datetime,
+    index: TurnIndexer | None = None,
+) -> int:
     """Append one exchange to the open segment, closing and opening segments as needed.
 
     Args:
         turn: The exchange.
         owner_entity_id: The owner the record belongs to.
         now: The time a segment closed here is stamped with.
+        index: Called inside the append's transaction with the segment id, after the append;
+            a failure rolls the append back with it (the recall unit, Plan 0078).
 
     Returns:
         The id of the segment that received the exchange.
@@ -189,6 +202,8 @@ async def append_turn(turn: RecordedTurn, *, owner_entity_id: int, now: datetime
             "last_turn_at = max(last_turn_at, ?), eligible = max(eligible, ?) WHERE id = ?",
             (entry, size, at, int(turn.voice is TurnVerdict.VERIFIED), record_id),
         )
+        if index is not None:
+            await index(conn, record_id, turn)
     return record_id
 
 

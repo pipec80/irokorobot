@@ -26,6 +26,7 @@ from server.cognition.controller import (
     ConsentResolver,
     MemoryAnswerer,
     ProfileSummarizer,
+    RecallAnswerer,
 )
 from server.cognition.generic_identity import (
     GenericIdentification,
@@ -37,10 +38,12 @@ from server.cognition.identity_fusion import FusedIdentityResolver, build_fused_
 from server.cognition.intent_resolution import MemoryAnswer
 from server.cognition.models import CognitiveEvent
 from server.cognition.owner_authentication import OwnerUnlockService
+from server.cognition.recall_cues import RecallCue
 from server.cognition.response_plan import (
     InformationNeed,
     MemoryAnswerReply,
     ProfileSummaryReply,
+    RecallReply,
     ResponsePlan,
     SceneDescriptionRequest,
     TextTurnPayload,
@@ -67,6 +70,7 @@ from server.memory.entity_labels import read_household_names
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
 from server.memory.profile_card_access import profile_summary_text, prompt_card_text
+from server.memory.recall_access import recall_reply
 from server.pipeline import (
     _elapsed_ms,
     _log_pipeline_timing,
@@ -258,6 +262,7 @@ def _voice_controller(
     profile_card_provider: ProfileCardProvider | None = None,
     profile_summarizer: ProfileSummarizer | None = None,
     record_turn: TurnRecorder | None = None,
+    recall_answerer: RecallAnswerer | None = None,
 ) -> CognitiveController:
     """Compose the bounded controller used by a public voice turn.
 
@@ -283,6 +288,9 @@ def _voice_controller(
             ordinary conversation.
         record_turn: Schedules the capture of the generic turn into the conversation record
             (Plan 0076); when omitted nothing is recorded.
+        recall_answerer: Answers a recall question from the owner's diary (Plan 0078). Only
+            used together with ``request_identity``; when omitted the recall and relatives rules
+            never run.
     """
 
     async def legacy_turn(message: str, conversation_id: str) -> TextTurnResult:
@@ -326,6 +334,7 @@ def _voice_controller(
         memory_answerer=memory_answerer,
         profile_summarizer=profile_summarizer,
         household_names=read_household_names if settings.memory_enabled else None,
+        recall_answerer=recall_answerer,
     )
 
 
@@ -369,6 +378,7 @@ def _turn_recorder(
     *,
     event: CognitiveEvent[TextTurnPayload],
     wav_bytes: bytes,
+    client: httpx.AsyncClient,
 ) -> TurnRecorder | None:
     """Adapt FastAPI background tasks to the conversation-record callback (ADR 0027).
 
@@ -377,6 +387,8 @@ def _turn_recorder(
         event: The turn's event; its correlation id joins the exchange to the turn.
         wav_bytes: The turn's own clip — WAV, 16 000 Hz, mono, int16 — held in memory only,
             for the voice verdict; never stored.
+        client: Shared, lifecycle-owned HTTP client (Plan 0039), for the vector of the turn's
+            recall unit; passed only with ``RECALL_ENABLED`` (ADR 0028).
 
     Returns:
         The callback, or ``None`` with ``MEMORY_ENABLED`` or ``CONVERSATION_RECORD_ENABLED``
@@ -385,10 +397,11 @@ def _turn_recorder(
     if not (settings.memory_enabled and settings.conversation_record_enabled):
         return None
     at = utc_now()
+    capture = partial(capture_turn, client=client) if settings.recall_enabled else capture_turn
 
     def record(heard: str, said: str, actor: ActivePersonContext | None) -> None:
         background_tasks.add_task(
-            capture_turn, heard, said, actor, wav_bytes=wav_bytes, event=event, at=at
+            capture, heard, said, actor, wav_bytes=wav_bytes, event=event, at=at
         )
 
     return record
@@ -487,6 +500,34 @@ def _profile_summarizer() -> ProfileSummarizer | None:
         return await profile_summary_text(actor, correlation_id=event.correlation_id, now=utc_now())
 
     return summarize
+
+
+def _recall_answerer(client: httpx.AsyncClient) -> RecallAnswerer | None:
+    """Return the answer to a recall question for a voice route, or ``None`` with a switch off.
+
+    With ``MEMORY_ENABLED`` or ``RECALL_ENABLED`` off every message resolves as before Plan 0078
+    and nothing reads the diary.
+
+    Args:
+        client: Shared, lifecycle-owned HTTP client (Plan 0039), for the embedding and the
+            worded answer.
+    """
+    if not (settings.memory_enabled and settings.recall_enabled):
+        return None
+
+    async def answer(
+        actor: ActivePersonContext, cue: RecallCue, event: CognitiveEvent[TextTurnPayload]
+    ) -> RecallReply:
+        return await recall_reply(
+            actor,
+            cue,
+            question=event.payload.message,
+            correlation_id=event.correlation_id,
+            now=utc_now(),
+            client=client,
+        )
+
+    return answer
 
 
 async def _synthesize_reply(plan: ResponsePlan) -> tuple[str, int, int]:
@@ -711,7 +752,9 @@ async def transcribe(
         )
 
     event = _voice_event_from_transcript(text_heard)
-    record_turn = _turn_recorder(background_tasks, event=event, wav_bytes=audio_bytes)
+    record_turn = _turn_recorder(
+        background_tasks, event=event, wav_bytes=audio_bytes, client=resources.http_client
+    )
     controller = _voice_controller(
         resources.http_client,
         request_identity=request_identity,
@@ -734,6 +777,7 @@ async def transcribe(
         profile_card_provider=_profile_card_provider(event.correlation_id),
         profile_summarizer=_profile_summarizer(),
         record_turn=record_turn,
+        recall_answerer=_recall_answerer(resources.http_client),
     )
     decision = await controller.decide(event)
 
@@ -873,6 +917,7 @@ async def transcribe_stream(
         request_identity=request_identity,
         memory_answerer=_memory_answerer(),
         profile_summarizer=_profile_summarizer(),
+        recall_answerer=_recall_answerer(resources.http_client),
     ).decide(event)
     # Streaming has no second-round frame upload — a scene request always
     # gets the fixed unavailable plan, regardless of VISION_ENABLED.
@@ -880,7 +925,9 @@ async def transcribe_stream(
         scene_unavailable_plan() if isinstance(decision, SceneDescriptionRequest) else decision
     )
     turn_log.log_decision("stream", plan)
-    record_turn = _turn_recorder(background_tasks, event=event, wav_bytes=audio_bytes)
+    record_turn = _turn_recorder(
+        background_tasks, event=event, wav_bytes=audio_bytes, client=resources.http_client
+    )
     if plan is not None:
         _record_plan(record_turn, event.payload.message, plan, request_identity)
         return _stream_plan(

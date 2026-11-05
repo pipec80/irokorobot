@@ -66,8 +66,7 @@ async def _record(owner: int, *, closed: bool = False, previous: int | None = No
 
 
 async def test_migration_013_brings_the_schema_to_13(v13_db: int) -> None:
-    assert await _scalar("PRAGMA user_version") == 13
-    assert db.latest_schema_version() == 13
+    assert await _scalar("PRAGMA user_version") == db.latest_schema_version()
     assert {
         "conversation_consent_grants",
         "conversation_records",

@@ -1,9 +1,11 @@
-"""The conversation background loop: close idle segments, then write the diary (Plan 0076).
+"""The conversation background loop: close idle segments, write the diary, fill recall vectors.
 
 Runs once at start-up (closing a segment a stopped server left open) and then every
 ``CONVERSATION_JOB_INTERVAL_S``. The diary is written only with both switches on and **only
 while no conversation is open**, at most one episode per tick, so the local model never competes
-with a live conversation (Plan 0076 D-9). Every error is logged by class and swallowed.
+with a live conversation (Plan 0076 D-9). With ``RECALL_ENABLED``, under the same rule, it then
+embeds the few recall units that have no vector yet (Plan 0078). Every error is logged by class
+and swallowed.
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ from server.memory.conversation_record import (
     next_pending_record,
     set_episode_status,
 )
+from server.memory.recall_index import backfill_vectors
 from server.settings import settings
 
 if TYPE_CHECKING:
@@ -54,11 +57,13 @@ async def run_once(client: httpx.AsyncClient, now: datetime) -> None:
     """
     try:
         await close_idle_records(now)
-        if not (settings.conversation_record_enabled and settings.conversation_episodes_enabled):
+        if not settings.conversation_record_enabled or await has_open_record():
             return
-        if await has_open_record():
-            return
-        await _write_one_episode(client, now)
+        if settings.conversation_episodes_enabled:
+            await _write_one_episode(client, now)
+        if settings.recall_enabled:
+            # The recall vectors the live path could not compute (ADR 0028 decision 2).
+            await backfill_vectors(client)
     except Exception as exc:  # background loop: the next tick tries again
         logger.warning("Conversation job failed (%s)", type(exc).__name__)
 

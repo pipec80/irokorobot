@@ -28,6 +28,7 @@ __all__ = [
     "requests_data_of_a_name",
     "requests_household_data",
     "states_a_request",
+    "without_leading_fillers",
 ]
 
 _POSSESSIVES = frozenset(
@@ -690,6 +691,18 @@ def opens_with(normalized: str, phrase: str) -> bool:
         ``True`` when the body of the message starts with the phrase, as whole words.
     """
     return f"{' '.join(_body(normalized.split()))} ".startswith(f"{phrase} ")
+
+
+def without_leading_fillers(normalized: str) -> str:
+    """Return the message without its leading call, fillers and «sabes qué» aside.
+
+    Args:
+        normalized: Text folded by ``normalize_spanish``.
+
+    Returns:
+        The body of the message, as ``opens_with`` reads it.
+    """
+    return " ".join(_body(normalized.split()))
 
 
 def states_a_request(normalized: str, *, marked: bool) -> bool:

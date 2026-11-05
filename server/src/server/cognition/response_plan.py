@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Literal
+from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -48,6 +48,10 @@ class InformationNeed(StrEnum):
     PROFILE_SUMMARY = "profile_summary"
     # Whisper doubted the transcript; the turn never reached the controller (Plan 0069 D-11).
     UNCLEAR_SPEECH = "unclear_speech"
+    # «¿Qué te conté ayer?»: the owner's diary and own words searched (Plan 0078, ADR 0028).
+    RECALL = "recall"
+    # «¿Cómo se llaman mis papás?»: the relatives loaded at the alta (ADR 0028 decision 9).
+    RELATIVES_NAMES = "relatives_names"
 
 
 class ResponseSource(StrEnum):
@@ -132,6 +136,31 @@ class MemoryAnswerReply:
     expects_short_reply: bool = False
 
 
+#: Spoken when a recall question finds nothing it may say (ADR 0028 decisions 4 and 8).
+NO_MEMORY: Final = "No me acuerdo de eso."
+#: Spoken when the alta loaded no relative of the kind asked about (ADR 0028 decision 9).
+NOT_REGISTERED: Final = "No tengo registrado eso."
+
+
+@dataclass(frozen=True)
+class RecallReply:
+    """What the recall answerer says back to the controller (Plan 0078, ADR 0028).
+
+    Lives in the cognitive core so the controller can map it without importing
+    ``server.memory``. Hidden from ``repr``: ``text`` carries the owner's memories.
+
+    Attributes:
+        text: The spoken answer; ``None`` when nothing qualified (the controller decides by the
+            cue's strength), or the fixed ``NO_MEMORY`` when the audit or the search failed.
+        denied: ``True`` when the pre-check or the policy refused; answered like a stranger.
+        found: ``True`` when *text* was worded from found memories.
+    """
+
+    text: str | None = field(repr=False)
+    denied: bool = False
+    found: bool = False
+
+
 @dataclass(frozen=True)
 class ProfileSummaryReply:
     """What the profile summarizer says back to the controller (Plan 0074, ADR 0026 decision 5).
@@ -152,6 +181,10 @@ class ProfileSummaryReply:
 #: What the opt-in spoken-text log shows instead of a profile summary: the summary carries stored
 #: values, so it is spoken to the person and recorded nowhere (Plan 0074, decision D-8).
 PROFILE_SUMMARY_LOGGED_TEXT = "«resumen del perfil»"
+#: The same for a recall answer and a relatives answer: they carry memories and names (Plan 0078
+#: D-11).
+RECALL_LOGGED_TEXT = "[recuerdo leído]"
+RELATIVES_LOGGED_TEXT = "[parientes leídos]"
 
 
 def spoken_log_text(plan: ResponsePlan) -> str | None:
@@ -161,12 +194,21 @@ def spoken_log_text(plan: ResponsePlan) -> str | None:
         plan: The plan about to be spoken.
 
     Returns:
-        A fixed marker for a known profile summary (its text carries stored values), or ``None``
-        when the response itself may be logged: every fixed phrase, a refusal included.
+        A fixed marker for a known profile summary, recall answer or relatives answer (their
+        text carries stored values), or ``None`` when the response itself may be logged: every
+        fixed phrase, a refusal included.
     """
-    if plan.need is InformationNeed.PROFILE_SUMMARY and plan.status is KnowledgeStatus.KNOWN:
-        return PROFILE_SUMMARY_LOGGED_TEXT
-    return None
+    if plan.status is not KnowledgeStatus.KNOWN:
+        return None
+    match plan.need:
+        case InformationNeed.PROFILE_SUMMARY:
+            return PROFILE_SUMMARY_LOGGED_TEXT
+        case InformationNeed.RECALL:
+            return RECALL_LOGGED_TEXT
+        case InformationNeed.RELATIVES_NAMES:
+            return RELATIVES_LOGGED_TEXT
+        case _:
+            return None
 
 
 class SceneDescriptionRequest(BaseModel):

@@ -33,6 +33,12 @@ from server.memory.conversation_summary import (
     EpisodeSensitivity,
     summarize_owner_part,
 )
+from server.memory.conversation_types import owner_part
+from server.memory.recall_store import (
+    insert_episode_unit,
+    raise_record_sensitivity,
+    tells_something,
+)
 from server.settings import settings
 
 if TYPE_CHECKING:
@@ -127,6 +133,35 @@ async def _summarize(
         limiter.release()
 
 
+def _tells_something(record: RecordView) -> bool:
+    """Whether one of the owner's verified turns of the record told something (not only asked).
+
+    A conversation of questions alone still gets its diary entry, but its summary is no memory
+    (found on Pipec's hardware run, 2026-11-03).
+    """
+    return any(tells_something(turn.heard) for turn in owner_part(record.turns))
+
+
+async def _index_episode(
+    conn: aiosqlite.Connection, record: RecordView, episode_id: int, draft: EpisodeDraft
+) -> None:
+    """Write the episode's recall unit and raise the record's turn units to its sensitivity.
+
+    Inside the episode's own transaction (ADR 0028 decisions 1 and 3). The unit is dated when
+    the conversation started: a recall window is about when the owner said it.
+    """
+    await insert_episode_unit(
+        conn,
+        record_id=record.summary.id,
+        episode_id=episode_id,
+        owner_entity_id=record.owner_entity_id,
+        summary=draft.summary,
+        sensitivity=draft.sensitivity,
+        said_at=record.summary.started_at,
+    )
+    await raise_record_sensitivity(conn, record_id=record.summary.id, sensitivity=draft.sensitivity)
+
+
 async def write_episode(
     record: RecordView,
     *,
@@ -159,7 +194,7 @@ async def write_episode(
         return _logged(EpisodeOutcome.SKIPPED, record_id)
     try:
         async with db.transaction() as conn:
-            await conn.execute(
+            cursor = await conn.execute(
                 "INSERT INTO conversation_episodes (source_record_id, owner_entity_id, "
                 "visibility, sensitivity, summary, model, created_at, expires_at) "
                 "VALUES (?, ?, 'personal', ?, ?, ?, ?, ?)",
@@ -173,6 +208,10 @@ async def write_episode(
                     record.summary.expires_at,
                 ),
             )
+            episode_id = int(cursor.lastrowid or 0)
+            await cursor.close()
+            if settings.recall_enabled and _tells_something(record):
+                await _index_episode(conn, record, episode_id, draft)
             await set_episode_status(record_id, EpisodeStatus.DONE, conn=conn)
     except aiosqlite.IntegrityError:
         # The record was deleted (purge, `delete`, a revoked consent) while it was summarized.

@@ -1,0 +1,120 @@
+# The route corpus of recall (Plan 0078 Task 6, ADR 0028 decision 4).
+# Each phrase with the need it resolves to with recall on (`need`) and with it off (`today`, the
+# route on main before Plan 0078, recorded in Task 0). No line carries a household value: names
+# are the invented canaries Zeta and Omega.
+- phrase: "¿Qué te conté ayer?"
+  need: recall
+  today: generic_conversation
+- phrase: "¿Te acuerdas qué te conté del viaje?"
+  need: recall
+  today: generic_conversation
+- phrase: "¿Qué hice el sábado con mi hijo?"
+  need: recall
+  today: protected_household
+- phrase: "¿Te acuerdas de Mozart?"
+  need: recall
+  today: generic_conversation
+- phrase: "¿Te acuerdas?"
+  need: generic_conversation
+  today: generic_conversation
+- phrase: "Hoy vamos a cocinar sushi porque les gusta a mis hijos"
+  need: generic_conversation
+  today: generic_conversation
+- phrase: "Me acuerdo que de chico íbamos al cerro"
+  need: generic_conversation
+  today: generic_conversation
+- phrase: "No me acuerdo dónde dejé las llaves"
+  need: generic_conversation
+  today: generic_conversation
+- phrase: "¿Qué sabes de mí?"
+  need: profile_summary
+  today: profile_summary
+- phrase: "¿Qué te conté?"
+  need: profile_summary
+  today: profile_summary
+- phrase: "¿Cómo se llaman mis papás?"
+  need: relatives_names
+  today: protected_household
+- phrase: "¿Cómo se llama mi perro?"
+  need: relatives_names
+  today: protected_household
+- phrase: "¿Cómo se llaman mis hijos?"
+  need: own_children_list
+  today: own_children_list
+- phrase: "¿Te acuerdas qué comen mis hijos?"
+  need: protected_household
+  today: protected_household
+- phrase: "¿Cuándo nació mi hijo?"
+  need: protected_household
+  today: protected_household
+# The traps of ADR 0028 Test consequences and a few neighbours.
+- phrase: "¿Qué te conté de mis hijos?"
+  need: recall
+  today: protected_household
+- phrase: "que te conte ayer"
+  need: recall
+  today: generic_conversation
+- phrase: "Oye Iroko, ¿te dije algo del viaje a Zeta?"
+  need: recall
+  today: generic_conversation
+- phrase: "¿Cómo se llama mi mamá?"
+  need: relatives_names
+  today: protected_household
+- phrase: "¿Quiénes son mis hermanos?"
+  need: relatives_names
+  today: protected_household
+- phrase: "¿Cómo se llama mi señora?"
+  need: relatives_names
+  today: protected_household
+- phrase: "Mi mamá se llama Zeta y cocina rico"
+  need: generic_conversation
+  today: generic_conversation
+- phrase: "¿Recuerdas el mundial del 2010?"
+  need: recall
+  today: generic_conversation
+- phrase: "¿Qué hicimos la semana pasada?"
+  need: recall
+  today: generic_conversation
+# Pipec's own phrases (2026-11-03), routes only; their answers stay out of the repository.
+# The singular child question reads the children list with recall on (Pipec's amendment).
+- phrase: "¿Cómo se llama mi hija?"
+  need: own_children_list
+  today: protected_household
+- phrase: "¿Cómo se llama mi hijo?"
+  need: own_children_list
+  today: protected_household
+- phrase: "¿Te acuerdas la última vez que fuimos a la playa?"
+  need: recall
+  today: generic_conversation
+- phrase: "¿Cómo se llama mi perrita?"
+  need: relatives_names
+  today: protected_household
+- phrase: "¿Cuál es mi comida favorita?"
+  need: generic_conversation
+  today: generic_conversation
+- phrase: "Hoy vamos a comprar sushi para almorzar porque les gusta a mis hijos"
+  need: generic_conversation
+  today: generic_conversation
+- phrase: "¿Dónde baila mi hija?"
+  need: protected_household
+  today: protected_household
+- phrase: "¿Te acuerdas dónde baila mi hija?"
+  need: protected_household
+  today: protected_household
+- phrase: "¿Qué te conté de dónde baila mi hija?"
+  need: recall
+  today: protected_household
+# What the speech-to-text wrote on Pipec's hardware run (2026-11-03): «te» heard as «se», and an
+# «a» inserted after «se llama». Both are ungrammatical, so tolerating them catches no story.
+- phrase: "¿Qué se conté de la plaza?"
+  need: recall
+  today: generic_conversation
+- phrase: "¿Qué se dije del parque?"
+  need: recall
+  today: generic_conversation
+- phrase: "¿Cómo se llama a mis papás?"
+  need: relatives_names
+  today: protected_household
+- phrase: "¿Cómo se llama mis hermanos?"
+  need: relatives_names
+  today: protected_household
