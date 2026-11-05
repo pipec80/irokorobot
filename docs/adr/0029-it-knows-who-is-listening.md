@@ -1,8 +1,11 @@
 # 0029 — It knows who is listening: read the owner's sensitive data by voice, by levels, and never keep a spoken secret
 
-- **Status:** Proposed (2026-11-04). Every decision below was confirmed by Pipec in the design
-  session of 2026-11-04 (decisions 1 to 7 of *Pipec's decisions*). It becomes `Accepted` when the
-  plan that implements it closes with its hardware acceptance.
+- **Status:** Proposed (2026-11-04), amended 2026-11-05. Every decision below was confirmed by
+  Pipec in the design session of 2026-11-04 (decisions 1 to 7 of *Pipec's decisions*); the
+  pre-plan audit of 2026-11-05 found five gaps against the code on `main` (`443bbaf`) and Pipec
+  closed them (decisions 8 to 12, written into decisions 1, 4, 5 and 7 and marked *Amended
+  2026-11-05*). It becomes `Accepted` when the plan that implements it closes with its hardware
+  acceptance.
 - **Date:** 2026-11-04
 - **Builds on:** [ADR 0016](0016-face-and-voice-identity-fusion.md),
   [ADR 0019](0019-personal-memory-capabilities.md),
@@ -16,7 +19,7 @@
   [ADR 0026](0026-owner-profile-card-and-the-read-side-of-memory.md) decisions 6 and 9 (the replay
   choice is made, decision 2; CM-3b tranche B is emptied and the CM-7 scenarios move, decision 6);
   [ADR 0027](0027-conversation-record-and-the-diary.md) decision 1 (a turn that carries a secret is
-  kept as a marker, not as text, decision 5).
+  kept as a marker, not as text, decision 5; a sensitive answer is kept as a marker, decision 4).
 - **Delivers:** step 3 of the
   [closing path of conversational memory](../roadmap/cognitive-roadmap.md#closing-path-of-conversational-memory),
   **block B, «it knows who is listening»**, in one plan (the next free number, 0079).
@@ -74,6 +77,19 @@ This amends ADR 0019 §3 for one capability and one subject: **reading** the own
 assurance; `biometric` stays at `strong`; reading anyone else's sensitive data is not opened.
 `child_data` (the children's birth dates) stays at the face, as ADR 0016 §1 already accepts.
 
+*Amended 2026-11-05.* The level of a datum is the table above, kept as an explicit closed map from
+predicate to level in one place; it is never derived from the stored sensitivity. The two do not
+line up: `birth_date` has the default sensitivity `child_data` whoever its subject is, so the
+owner's own birthday carries `child_data` too, and `implanted_device`, `mobility`, `hearing` and
+`vision` are `medical` without being in the closed list (decision 5 of *Pipec's decisions*).
+
+*Amended 2026-11-05 (consent).* Reading personal memory has `consent_applies` (ADR 0019 §3): a
+`medical` or `location` datum is read only with the consent `granted`, and today no read passes
+one. For the owner's **own** data of this table, the consent is the alta: when the owner's
+commissioning record is closed (ADR 0024; the owner reviewed the load and answered `SI`), the read
+carries `granted`; with no closed alta it carries `missing` and the policy denies it. No new
+consent, no migration, and the policy itself does not change.
+
 When the voice fails on a security question and the owner's face is recognized, the robot says one
 fixed retry sentence asking for the question again in a full sentence (the pattern of ADR 0021
 decision 9, amended by Plan 0068) and evaluates the next turn; a second failure answers the
@@ -112,6 +128,13 @@ loaded answers «No tengo registrado eso.». The questions are a closed grammar 
 Anyone who is not the face-identified owner hears the existing generic denial, the same phrase
 whatever is stored. The opt-in text log shows a fixed marker instead of the answer.
 
+*Amended 2026-11-05.* The conversation record keeps the robot's reply as text (ADR 0027), so an
+answer of this decision would copy the value into the record for up to 365 days and into
+`iroko-admin conversations export`. The record keeps the owner's question as said and, in place
+of the robot's answer, the fixed marker «[dato sensible leído]»; the diary therefore knows the
+owner asked, never the value. The same holds for the security level. The audience question and
+its two fixed replies carry no value and are kept as said.
+
 Recall (ADR 0028) keeps reading only `normal` units: a conversation unit marked `medical`,
 `location` or `security` is never read back by voice. The security level is the alta's reference
 (`secret_holder`, `document_location`), never a recalled sentence, which could hold the number.
@@ -134,6 +157,28 @@ recall never reads it, but «dejé las llaves en la mesa» is no secret and keep
 A secret said without any secret word («el número del banco es…») is not caught; the classifier's
 wider list still keeps it unreadable by voice. Units already stored with a secret word are found
 by the same rule and deleted by the plan, with the owner's OK.
+
+*Amended 2026-11-05 (order).* A question of the security grammar of decision 4 («¿quién conoce la
+clave?», «¿quién sabe el código de la alarma?») carries a secret word and is a read, not a secret:
+the closed grammar of decision 4 is evaluated **first**, and only a turn it does not match goes to
+the secret branch. With `SENSITIVE_READ_ENABLED=false` that grammar does not exist, so the same
+question is a secret turn and hears the fixed phrase.
+
+*Amended 2026-11-05 (one list).* The secret words are defined once, in a module that both the
+cognitive core and the memory package may import (`cognition/` cannot import `server.memory`, an
+architecture guard). The security words of the recall classifier are that set plus `alarma`,
+`llave`, `llaves` and `portón`, derived from it rather than written twice. Known false positives,
+accepted and pinned in the trap corpus: «código postal», «eso es clave» (Chilean for «important»),
+«el pin de la chaqueta»; they hear the fixed phrase and leave a marker.
+
+*Amended 2026-11-05 (what was kept before).* The record's text and the diary summaries can hold a
+secret said before this rule existed, not only the recall units. One cleanup, run once with the
+owner's PIN through `iroko-admin` (server stopped, ADR 0025): every stored turn whose words carry a
+secret word has its words replaced by the fixed marker «[dato de seguridad omitido]», its recall
+unit is deleted, and every diary summary of an affected conversation is deleted and its record set
+back to pending, so the diary job writes it again from the redacted turns. It prints counts only (turns,
+units, summaries), never a text, and writes one audit row with no household value. A dry run shows
+the counts first; it applies only on the owner's `SI`.
 
 ### 6. What leaves block B
 
@@ -158,9 +203,13 @@ prepares CM-7 (ADR 0026 decision 9 already opened that bump):
 ### 7. Switch
 
 Everything above is behind one setting, `SENSITIVE_READ_ENABLED`, default `false` in code (like
-`RECALL_ENABLED`); with it off every turn is byte for byte today's, except decision 5. The secret
-rule protects data at rest and follows `CONVERSATION_RECORD_ENABLED`: whenever the record is on, a
-secret is never kept.
+`RECALL_ENABLED`); with it off every turn is byte for byte today's, except decision 5.
+
+*Amended 2026-11-05.* The secret rule does **not** follow `CONVERSATION_RECORD_ENABLED`, as first
+written: with the record off the model would still receive «mi clave es 1234», and the in-process
+session would hold it for minutes. The secret branch runs whenever `MEMORY_ENABLED` is on, whatever
+the other switches say. It is the one documented exception to «byte for byte today's with the
+switch off»: a turn that carries a secret word changes even with every new switch off.
 
 ## Pipec's decisions and where they land
 
@@ -176,9 +225,20 @@ Confirmed on 2026-11-04:
 | 6 | `lives_in` only through the alta and `iroko-admin` (option A) | Decision 6 |
 | 7 | «No menciones X» to the family stage, and the core CM-7 scenario rewritten with a taste (option 1) | Decision 6 |
 
+Confirmed on 2026-11-05, after the pre-plan audit:
+
+| # | Decision | Where it is written |
+|---|---|---|
+| 8 | The security grammar is evaluated before the secret branch | Decision 5, *order* |
+| 9 | The record keeps the question and «[dato sensible leído]» in place of the answer | Decision 4, amendment |
+| 10 | A closed alta is the consent for the owner's own sensitive reads | Decision 1, *consent* |
+| 11 | One cleanup redacts old secret turns, deletes their units and rewrites their diary | Decision 5, *what was kept before* |
+| 12 | The secret branch runs whenever `MEMORY_ENABLED` is on, record on or off | Decision 7, amendment |
+
 The author's calls, for Pipec's review of this ADR: the secret words are narrower than the recall
 classifier's security words (decision 5); the secret branch answers a fixed phrase so the model
-never holds the number; the setting name and its default.
+never holds the number; the setting name and its default; the explicit level map (decision 1,
+amendment); one module for the secret words (decision 5, *one list*).
 
 ## What Phase 0 already covers
 
@@ -234,7 +294,8 @@ a marker. Block B shrinks to one plan, and CM-7 keeps every category it needs.
 A photograph plus a recording, or a visitor off camera after the owner said «sí», can draw the
 owner's sensitive data (never a secret's value). A secret said without a secret word is kept as an
 ordinary turn, unreadable by voice. «No menciones X» waits for the family stage. Two CM-7
-scenarios change or move with dataset v4.
+scenarios change or move with dataset v4. A turn with a secret word changes even with every new
+switch off, and its false positives («código postal», «eso es clave») never reach the model.
 
 ## Test consequences
 
@@ -247,6 +308,13 @@ expiry; the security retry; every template with nothing loaded; the secret branc
 and the streaming route (no model call, the marker in the record, no unit, no candidate, no
 continuity entry, nothing in the diary); «dejé las llaves en la mesa» stays an ordinary turn; no log
 carries a text; with `SENSITIVE_READ_ENABLED=false` every read route is byte for byte today's.
+From the amendments of 2026-11-05: «¿quién conoce la clave?» is a read with the switch on and a
+secret turn with it off; the secret branch with the record off (no model call); the record keeps the
+question and «[dato sensible leído]», never the value; a read with no closed alta is denied, with a
+closed one granted; the level map against every predicate of the table (`birth_date` of the owner
+included); the secret words defined once and the recall classifier's list derived from them; the
+cleanup's dry run, its counts, the redacted turns, the deleted units, the summaries set back to
+pending and its audit row with no household value.
 Hardware acceptance by Pipec, outcomes only: a medication and an address asked with the face (the
 audience question once); a birthday; the security reference with face and voice, and its retry; a
 second face → no answer; a stranger → the denial; a spoken secret → the fixed reply and nothing
