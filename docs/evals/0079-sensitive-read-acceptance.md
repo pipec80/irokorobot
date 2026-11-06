@@ -62,8 +62,10 @@ Counted on a read-only copy of the database, counts only:
 | Memory candidates from these turns | 0 |
 
 The two turns that missed the grammar became ordinary recall units marked `location` and `security`
-by the word classifier, so voice recall never reads them. Audit rows: every one is `allowed`; the
-denied, not-alone and retry outcomes write none, by design (nothing is read).
+by the word classifier, so voice recall never reads them. Audit rows: every one is `allowed`. The
+not-alone, retry and denied outcomes of this run wrote none: they are decided before the policy is
+asked (the denial here had no identified owner). A read the policy refuses still writes its row
+before nothing is read.
 
 ## Found on hardware and fixed in this plan
 
