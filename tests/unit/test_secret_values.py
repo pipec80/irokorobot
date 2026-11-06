@@ -64,9 +64,11 @@ def test_the_spoken_openers_of_an_offer(opener: str) -> None:
     assert secret_kind(f"{opener} mi contraseña") is SecretKind.OFFERED
 
 
-def test_the_ask_grammar_is_unchanged_by_the_offer_rule() -> None:
-    """«mis» and a bare article without an account object ask nothing; only the offer is wider."""
-    assert secret_kind("Dime mis claves") is None
+def test_the_ask_grammar_takes_the_plural_possessive_too() -> None:
+    """«mis claves» asks like «mi clave» (more protective); a bare article still asks nothing."""
+    assert secret_kind("Dime mis claves") is SecretKind.ASKED
+    assert secret_kind("Me recuerdas mis claves") is SecretKind.ASKED
+    assert secret_kind("Dime mis contraseñas") is SecretKind.ASKED
     assert secret_kind("Dime la clave") is None
     assert secret_kind("Dime la clave del banco") is SecretKind.ASKED
 

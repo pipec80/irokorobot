@@ -120,9 +120,8 @@ _ASK_OPENERS: Final[tuple[tuple[str, ...], ...]] = (
     ("me", "recuerdas"),
     ("recuerdame",),
 )
-_ASK_OWN_DETERMINERS: Final[frozenset[str]] = frozenset({"mi"})
-# The offer also takes the plural: «guarda mis claves».
-_OFFER_OWN_DETERMINERS: Final[frozenset[str]] = frozenset({"mi", "mis"})
+# The own possessive, singular and plural, for asks and offers alike («mis claves»).
+_OWN_DETERMINERS: Final[frozenset[str]] = frozenset({"mi", "mis"})
 # The developer's words: an offer names them only through the object rule («anota mi codigo»).
 _DEVELOPER_WORDS: Final[frozenset[str]] = frozenset({"codigo", "codigos"})
 _OBJECT_DETERMINERS: Final[tuple[str, ...]] = ("la", "el")
@@ -219,23 +218,21 @@ def _offer_reaches_a_secret(body: tuple[str, ...], start: int) -> bool:
             continue
         if body[index] not in _DEVELOPER_WORDS:
             return True
-        if index > start and _names_a_secret(body, index - 1, _OFFER_OWN_DETERMINERS):
+        if index > start and _names_a_secret(body, index - 1):
             return True
     return False
 
 
-def _names_a_secret(
-    tokens: tuple[str, ...], determiner_index: int, own_determiners: frozenset[str]
-) -> bool:
+def _names_a_secret(tokens: tuple[str, ...], determiner_index: int) -> bool:
     """Whether a determiner and a secret word sit at *determiner_index* (the object rule).
 
-    An own determiner (``mi``) accepts any secret word; «la» and «el» only before an account
+    An own determiner (``mi``, ``mis``) accepts any secret word; «la» and «el» only before an account
     object («la clave del wifi»), so «el codigo del proyecto» stays a developer's ordinary turn.
     """
     if determiner_index + 1 >= len(tokens) or not _is_secret_word(tokens, determiner_index + 1):
         return False
     determiner = tokens[determiner_index]
-    if determiner in own_determiners:
+    if determiner in _OWN_DETERMINERS:
         return True
     return determiner in _OBJECT_DETERMINERS and _names_an_object(tokens, determiner_index + 2)
 
@@ -279,7 +276,7 @@ def _asks_at(tokens: tuple[str, ...], start: int) -> bool:
     for opener in _ASK_OPENERS:
         if not _starts_with(tokens, start, opener):
             continue
-        if _names_a_secret(tokens, start + len(opener), _ASK_OWN_DETERMINERS):
+        if _names_a_secret(tokens, start + len(opener)):
             return True
     return False
 
