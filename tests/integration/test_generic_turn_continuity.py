@@ -185,7 +185,12 @@ async def test_the_owner_face_gives_a_voice_turn_continuity_without_voice_or_gra
 async def test_a_second_face_suspends_the_session_and_the_owner_resumes_it(
     household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _speak(monkeypatch, "Mi clave es COBALTO", "¿Cuál es la clave?", "¿Cuál era mi clave?")
+    _speak(
+        monkeypatch,
+        "Mi color favorito es COBALTO",
+        "¿Cuál es el color?",
+        "¿Cuál era mi color favorito?",
+    )
     generate = _model(monkeypatch, "Anotado.", "No lo sé.", "COBALTO.")
 
     async with _client() as client:
@@ -200,7 +205,7 @@ async def test_a_second_face_suspends_the_session_and_the_owner_resumes_it(
     assert _histories(generate) == [
         [],
         None,
-        ["Mi clave es COBALTO", "Anotado."],
+        ["Mi color favorito es COBALTO", "Anotado."],
     ]
 
 
@@ -263,8 +268,8 @@ async def test_a_chat_token_gives_continuity_across_public_conversation_ids_and_
                 "/chat", headers=headers, json={"message": text, "conversation_id": conversation}
             )
             for text, conversation in (
-                ("Mi clave es COBALTO", "web-a"),
-                ("¿Cuál era mi clave?", "web-b"),
+                ("Mi color favorito es COBALTO", "web-a"),
+                ("¿Cuál era mi color favorito?", "web-b"),
                 ("¿Sigues ahí?", "web-c"),
             )
         ]
@@ -273,8 +278,8 @@ async def test_a_chat_token_gives_continuity_across_public_conversation_ids_and_
     assert [reply.json()["authentication_consumed"] for reply in replies] == [False] * 3
     assert _histories(generate) == [
         [],
-        ["Mi clave es COBALTO", "Anotado."],
-        ["Mi clave es COBALTO", "Anotado.", "¿Cuál era mi clave?", "COBALTO."],
+        ["Mi color favorito es COBALTO", "Anotado."],
+        ["Mi color favorito es COBALTO", "Anotado.", "¿Cuál era mi color favorito?", "COBALTO."],
     ]
 
 
@@ -292,7 +297,7 @@ async def test_a_protected_answer_spends_the_token_and_never_enters_the_session(
         await client.post(
             "/chat",
             headers={"X-Iroko-Identity-Token": first_unlock.token},
-            json={"message": "Mi clave es COBALTO", "conversation_id": "web"},
+            json={"message": "Mi color favorito es COBALTO", "conversation_id": "web"},
         )
         protected = await client.post(
             "/chat",
@@ -317,7 +322,7 @@ async def test_a_protected_answer_spends_the_token_and_never_enters_the_session(
     assert spent.status_code == resumed.status_code == 200
     # The spent token names nobody: that turn suspends. The new unlock resumes the same
     # session, which holds the first exchange and nothing of the protected answer.
-    assert _histories(generate) == [[], None, ["Mi clave es COBALTO", "Anotado."]]
+    assert _histories(generate) == [[], None, ["Mi color favorito es COBALTO", "Anotado."]]
 
 
 @pytest.mark.integration
@@ -327,7 +332,7 @@ async def test_a_visual_dialogue_turn_neither_reads_nor_writes_the_session(
     """ADR 0020 §1: `/vision/respond` keeps the public unknown, so it leaves the session alone."""
     monkeypatch.setattr(settings, "vision_enabled", True)
     _detect(monkeypatch, _OWNER_FACE)
-    _speak(monkeypatch, "Mi clave es COBALTO", "¿Qué decía mi clave?")
+    _speak(monkeypatch, "Mi color favorito es COBALTO", "¿Qué decía mi color favorito?")
     generate = _model(monkeypatch, "Anotado.", "Hola.", "COBALTO.")
 
     async with _client() as client:
@@ -342,7 +347,7 @@ async def test_a_visual_dialogue_turn_neither_reads_nor_writes_the_session(
     assert visual.status_code == resumed.status_code == 200
     # The visual turn received no history and wrote nothing: the owner's next turn still finds
     # exactly the first exchange, not the visual one.
-    assert _histories(generate) == [[], None, ["Mi clave es COBALTO", "Anotado."]]
+    assert _histories(generate) == [[], None, ["Mi color favorito es COBALTO", "Anotado."]]
 
 
 # --- candidate proposals through the real routes (Plan 0062, ADR 0021 §10) -------------------

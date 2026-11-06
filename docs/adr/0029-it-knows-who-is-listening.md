@@ -1,13 +1,18 @@
 # 0029 — It knows who is listening: read the owner's sensitive data by voice, by levels, and never keep a spoken secret
 
-- **Status:** Proposed (2026-11-04), amended 2026-11-05. Every decision below was confirmed by
+- **Status:** Accepted (2026-11-06). Implemented by
+  [Plan 0079](../plans/completed/0079-block-b-sensitive-read-and-spoken-secrets.md); hardware
+  acceptance, 10 of 10 cases, in
+  [docs/evals/0079-sensitive-read-acceptance.md](../evals/0079-sensitive-read-acceptance.md); the
+  builder's calls of *Implemented in Plan 0079* win over the decision text where they differ.
+  Proposed (2026-11-04), amended 2026-11-05. Every decision below was confirmed by
   Pipec in the design session of 2026-11-04 (decisions 1 to 7 of *Pipec's decisions*); the
   pre-plan audit of 2026-11-05 found five gaps against the code on `main` (`443bbaf`) and Pipec
   closed them (decisions 8 to 12, written into decisions 1, 4, 5 and 7 and marked *Amended
   2026-11-05*). In the same day's review of the plan Pipec simplified the audience check and the
   secret rule to cut friction, and settled the remaining details (decisions 13 to 21): decision 3
   is rewritten, and decisions 4, 5 and 6 carry notes marked *Amended 2026-11-05 (review)*. It
-  becomes `Accepted` when the plan that implements it closes with its hardware acceptance.
+  became `Accepted` when the plan that implements it closed with its hardware acceptance.
 - **Date:** 2026-11-04
 - **Builds on:** [ADR 0016](0016-face-and-voice-identity-fusion.md),
   [ADR 0019](0019-personal-memory-capabilities.md),
@@ -290,6 +295,37 @@ written: with the record off the model would still receive «mi clave es 1234»,
 session would hold it for minutes. The secret branch runs whenever `MEMORY_ENABLED` is on, whatever
 the other switches say. It is the one documented exception to «byte for byte today's with the
 switch off»: a turn that carries a secret word changes even with every new switch off.
+
+## Implemented in Plan 0079 — builder's calls
+
+Behaviour the plan's builder chose beyond the text above, each from a review finding or a hardware
+run; they win over the decision text where they differ. One line each, with the reason.
+
+- **An offered secret is a third kind** (decision 5). «Guarda / anota mi clave», with no value yet,
+  is refused like an ask, so the model never invites the value in the next turn. The opener must
+  open the sentence and a secret word must follow within two words, any determiner; «código» is
+  the developer's word and counts only through the object rule («anota mi código», «guarda el código
+  del wifi»), so a developer's «guarda el código» stays ordinary. Why: found in the final review;
+  protective; known false positive «anota que la clave cambió».
+- **Slang «clave» is no secret word** after `es`, `lo`, `muy` or `tan` (decision 5 already says
+  «eso es clave» is ordinary). `súper` is not in the list: «mi súper clave es 4821» is a credential.
+  «Es clave 4821» is an accepted miss, kept as an ordinary turn that recall marks `security`.
+- **The ask grammar takes «mis»** beside «mi» («¿cuáles son mis claves?»): more protective, one
+  shared set.
+- **`SECRET_HOLDER` ignores «código postal» and «código de barras»**: they name no secret.
+- **A birthday question that is not about the household falls back to today's path**, the 0077
+  protection and its stored-name check included (decision 4, birthdays): «¿cuándo nació Mozart?»
+  and «¿cuándo es el cumpleaños de mi tía?» keep the behaviour they had. Why: the reader must not
+  turn a general-knowledge question into a refusal or an answer.
+- **Only the face-identified owner alone triggers the stored-name check** that tells a stored name
+  from a stranger's: for anyone else a refusal would confirm that the name exists (Plan 0077).
+- **A named child is chosen before «mis hijos» selects all** («mi hijo Zeta» answers for Zeta).
+- **Request openers are stripped** from the sentence body, in `sensitive_questions.py` only («una
+  pregunta, …», «¿me puede decir …?», «quiero saber …», «dime …»): found on the hardware run,
+  where two real phrasings missed the grammar. The phrase must still open what remains, so a
+  mention stays ordinary, and the household grammars keep their bytes.
+- **Not built, as decided:** the cleanup of old secrets (the count of 2026-11-05 found none); the
+  retry keeps no state; replay stays accepted (decision 2).
 
 ## Pipec's decisions and where they land
 

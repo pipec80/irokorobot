@@ -10,6 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 from enum import StrEnum
+from functools import cache
 import re
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -24,6 +25,8 @@ from server.cognition.household_request import (
 )
 from server.cognition.recall_cues import CueStrength, classify_recall_cue, relation_of
 from server.cognition.response_plan import InformationNeed
+from server.cognition.sensitive_questions import classify_sensitive_question
+from server.secret_values import SecretKind, secret_kind
 from server.text_keys import normalize_spanish
 
 __all__ = [
@@ -307,20 +310,26 @@ class _Utterance:
     normalized: str
 
 
-def resolve_information_need(message: str, *, recall: bool = False) -> IntentResolution:
+def resolve_information_need(
+    message: str, *, recall: bool = False, sensitive: bool = False, secrets: bool = False
+) -> IntentResolution:
     """Resolve one bounded information need from reviewed Spanish rules.
 
     Args:
         message: Raw transcript or chat text in Spanish.
         recall: Whether the recall and relatives rules run (Plan 0078). Off, every message
             resolves exactly as before them.
+        sensitive: Whether the owner's sensitive questions resolve to ``SENSITIVE_READ``
+            (Plan 0079): the sensitive reader is wired.
+        secrets: Whether a secret value, stated or asked for, resolves to ``SECRET_VALUE``
+            (Plan 0079): the secret guard is on.
 
     Returns:
         The closed, deterministic resolution — need, match kind, and a
         privacy-safe rule identifier (``None`` only for generic conversation).
     """
     utterance = _Utterance(message=message, normalized=normalize_spanish(message))
-    for rule in _RECALL_RULES if recall else _RULES:
+    for rule in _rules_for(recall, sensitive, secrets):
         resolution = rule(utterance)
         if resolution is not None:
             return resolution
@@ -677,3 +686,62 @@ _RECALL_RULES: tuple[Callable[[_Utterance], IntentResolution | None], ...] = (
     _recall_rule,
     *_RULES[2:],
 )
+
+
+def _stated_secret_rule(utterance: _Utterance) -> IntentResolution | None:
+    """Recognize a message that states a secret value (Plan 0079, D-2)."""
+    if secret_kind(utterance.message) is SecretKind.STATED:
+        return _resolution(InformationNeed.SECRET_VALUE, IntentMatch.EXACT, "secret.stated.v1")
+    return None
+
+
+def _asked_secret_rule(utterance: _Utterance) -> IntentResolution | None:
+    """Recognize a message that asks for or offers a secret value (Plan 0079, D-2).
+
+    A request to keep a secret with no value yet («guarda mi contraseña») is refused like an ask,
+    so the model never invites the value in the next turn.
+    """
+    match secret_kind(utterance.message):
+        case SecretKind.ASKED:
+            return _resolution(InformationNeed.SECRET_VALUE, IntentMatch.EXACT, "secret.asked.v1")
+        case SecretKind.OFFERED:
+            return _resolution(InformationNeed.SECRET_VALUE, IntentMatch.EXACT, "secret.offered.v1")
+        case _:
+            return None
+
+
+def _sensitive_question_rule(utterance: _Utterance) -> IntentResolution | None:
+    """Recognize the owner's first-person sensitive question (Plan 0079, D-3)."""
+    query = classify_sensitive_question(utterance.message)
+    if query is None:
+        return None
+    return _resolution(
+        InformationNeed.SENSITIVE_READ, IntentMatch.EXACT, f"sensitive.{query.topic.value}.v1"
+    )
+
+
+@cache
+def _rules_for(
+    recall: bool, sensitive: bool, secrets: bool
+) -> tuple[Callable[[_Utterance], IntentResolution | None], ...]:
+    """Return the rule tuple of one flag set, built once (Plan 0079, D-1).
+
+    The new rules go first, in this order: a stated secret, a sensitive question, an asked secret;
+    then the rules of today for the ``recall`` flag. With the new flags off the tuple of today is
+    returned itself.
+
+    Args:
+        recall: Whether the recall and relatives rules run.
+        sensitive: Whether the sensitive question rule runs.
+        secrets: Whether the two secret value rules run.
+
+    Returns:
+        The ordered rules, a stable object per flag set.
+    """
+    base = _RECALL_RULES if recall else _RULES
+    if not (sensitive or secrets):
+        return base
+    stated = (_stated_secret_rule,) if secrets else ()
+    question = (_sensitive_question_rule,) if sensitive else ()
+    asked = (_asked_secret_rule,) if secrets else ()
+    return (*stated, *question, *asked, *base)

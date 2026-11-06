@@ -24,6 +24,7 @@ from server.memory.recall_sensitivity import (
     classify_turn_text,
     most_protective,
 )
+from server.settings import settings
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -85,7 +86,8 @@ def tells_something(text: str) -> bool:
     A recall question, a relatives or children question, «¿qué sabes de mí?» or a protected
     request is answered by a closed rule and tells nothing; found on Pipec's hardware run
     (2026-11-03), such questions were later read back as «me contaste…». Only words that resolve
-    to ordinary conversation become a unit.
+    to ordinary conversation become a unit. With the sensitive switch on, a sensitive question
+    tells nothing too; with memory on, a stated or asked secret value tells nothing (Plan 0079).
 
     Args:
         text: What the owner said.
@@ -95,7 +97,13 @@ def tells_something(text: str) -> bool:
     """
     if not text.strip():
         return False
-    return resolve_information_need(text, recall=True).need is InformationNeed.GENERIC_CONVERSATION
+    resolution = resolve_information_need(
+        text,
+        recall=True,
+        sensitive=settings.sensitive_read_enabled,
+        secrets=settings.memory_enabled,
+    )
+    return resolution.need is InformationNeed.GENERIC_CONVERSATION
 
 
 async def _insert(

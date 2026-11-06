@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 
 import pytest
+from server.secret_values import SECRET_WORDS
 
 import server
 
@@ -23,7 +24,8 @@ _RAW_V4_READERS = frozenset(
 # The policy gate, the local setup that re-reads what it just wrote, the candidate writer, which
 # compares the active rows' folded keys inside its own transaction (Plan 0062), and the
 # canonical writer, which reads the owner's relations to classify a subject and the active rows
-# to make a repeat idempotent (Plan 0065).
+# to make a repeat idempotent (Plan 0065), and the owner's sensitive read, which keeps the rows
+# stored with the labels of its topic (Plan 0079).
 _MAY_IMPORT_RAW_V4_READERS = frozenset(
     {
         "memory/policy_gated_v4_reader.py",
@@ -31,6 +33,7 @@ _MAY_IMPORT_RAW_V4_READERS = frozenset(
         "memory/memory_writer.py",
         "memory/canonical_writer.py",
         "memory/profile_card_access.py",
+        "memory/sensitive_store.py",
     }
 )
 # The repository itself, and the setup status that counts child links.
@@ -166,7 +169,8 @@ _RETIRED_ACTION_NAMES = frozenset(
 )
 # The model and the policy, plus the one module that asks the policy about a candidate step
 # (Plan 0062), the one that asks it about the profile card (Plan 0074) and the one that asks it
-# about a recall (Plan 0078): every other module reaches the actions through them.
+# about a recall (Plan 0078) and the one that asks it about the owner's sensitive data (Plan 0079):
+# every other module reaches the actions through them.
 _ACTION_HOMES = frozenset(
     {
         "cognition/models.py",
@@ -174,6 +178,7 @@ _ACTION_HOMES = frozenset(
         "memory/candidate_policy.py",
         "memory/profile_card_access.py",
         "memory/recall_access.py",
+        "memory/sensitive_access.py",
     }
 )
 _MEMORY_SCOPE_MEMBER_NAMES = frozenset({"PERSONAL_MEMORY_READ", "PERSONAL_MEMORY_FORGET"})
@@ -1144,6 +1149,18 @@ _RECALL_TABLE_SQL = re.compile(
 )
 _RECALL_TABLE_HOME = "memory/recall_store.py"
 
+# The modules that decide, word or read a sensitive question or a spoken secret (Plan 0079); no
+# prompt module may import one, so the model never receives a stored sensitive value.
+_SENSITIVE_READER_MODULES = frozenset(
+    {
+        "server.cognition.sensitive_questions",
+        "server.cognition.sensitive_answers",
+        "server.memory.sensitive_access",
+        "server.memory.sensitive_store",
+        "server.secret_values",
+    }
+)
+
 
 def _recall_prompt_readers(sources: Mapping[str, str]) -> list[str]:
     """Prompt-path modules that import a recall module."""
@@ -1184,13 +1201,42 @@ def _recall_record_readers(sources: Mapping[str, str]) -> list[str]:
     )
 
 
+def _prompt_path_importers(sources: Mapping[str, str], modules: frozenset[str]) -> list[str]:
+    """Prompt-path modules that import any of `modules`, as `import a.b`, `from a.b import x`
+    or `from a import b`.
+
+    A module is on the prompt path when its path starts with one of `_NO_HOUSEHOLD_READS`; the
+    `llm` entry is a prefix, so it covers every future `llm*` module without editing the list.
+    """
+    return sorted(
+        name
+        for name, text in sources.items()
+        if name.startswith(_NO_HOUSEHOLD_READS)
+        and any(
+            (
+                isinstance(node, ast.ImportFrom)
+                and node.module is not None
+                and (
+                    node.module in modules
+                    or any(f"{node.module}.{alias.name}" in modules for alias in node.names)
+                )
+            )
+            or (isinstance(node, ast.Import) and any(alias.name in modules for alias in node.names))
+            for node in ast.walk(ast.parse(text))
+        )
+    )
+
+
 @pytest.mark.unit
 def test_the_generic_prompt_still_reads_no_household_store() -> None:
-    """ADR 0028 decision 8: the recall answer is a controller branch, never in the prompt."""
+    """ADR 0028 decision 8 and ADR 0029: the recall and the sensitive answers are controller
+    branches, never in the prompt.
+    """
     sources = _sources()
 
     assert _household_readers(sources) == []
     assert _recall_prompt_readers(sources) == []
+    assert _prompt_path_importers(sources, _SENSITIVE_READER_MODULES) == []
 
 
 @pytest.mark.unit
@@ -1221,3 +1267,200 @@ def test_the_recall_guards_detect_a_violation() -> None:
     assert _recall_prompt_readers(sources) == ["llm_streaming.py", "text_turn.py"]
     assert _recall_table_queriers(sources) == ["memory/leak.py"]
     assert _recall_record_readers(sources) == ["memory/recall_search.py"]
+
+
+# --- the sensitive read and the secret rule (Plan 0079, ADR 0029) -----------------------------
+
+
+@pytest.mark.unit
+def test_the_sensitive_prompt_guard_detects_a_violation() -> None:
+    sources = {
+        "text_turn.py": "from server.cognition.sensitive_questions import match_sensitive\n",
+        "llm_streaming.py": "import server.secret_values\n",
+        "streaming.py": "from server.cognition import sensitive_answers\n",
+        "characters/__init__.py": "from server.memory.sensitive_access import SensitiveReader\n",
+        "llm.py": "from server.memory.sensitive_store import read_owner_literals\n",
+        # Not a prompt-path module: the controller and the routes are the readers.
+        "cognition/controller.py": "from server.cognition.sensitive_answers import spanish_join\n",
+        "routers/transcribe.py": "from server.memory.sensitive_access import SensitiveReader\n",
+        # A prompt-path module importing something else is spared.
+        "llm_other.py": "from server.cognition.sensitive_other import x\nimport server.config\n",
+    }
+
+    assert _prompt_path_importers(sources, _SENSITIVE_READER_MODULES) == [
+        "characters/__init__.py",
+        "llm.py",
+        "llm_streaming.py",
+        "streaming.py",
+        "text_turn.py",
+    ]
+
+
+# The secret words are decided once, in `server/secret_values.py` (D-2): the recall classifier and
+# the sensitive grammar import them. A second spelling would drift, and a drift here is a spoken
+# secret reaching the model or the disk.
+_WORDS_HOME = "secret_values.py"
+_D2_SECRET_WORDS = frozenset(
+    {"clave", "claves", "contrasena", "contrasenas", "codigo", "codigos", "pin"}
+)
+# A literal with at least this many of the seven words outside the home is a copy of them.
+_SECRET_WORDS_COPY_THRESHOLD = 4
+# `memory/lexicon.py` is the one exempt module: its `SENSITIVE_WORDS` is a broad vocabulary of
+# place, health, money, credential and life-event words (a taste is never stored with them) that
+# happens to hold four of the seven («clave», «contrasena», «pin», «codigo»); it is a different
+# list for a different purpose, not a second spelling of the secret words.
+_WORDS_EXEMPT = frozenset({"memory/lexicon.py"})
+
+
+def _string_elements(node: ast.AST) -> set[str]:
+    """The string constants directly listed in a set, list or tuple display."""
+    if not isinstance(node, ast.Set | ast.List | ast.Tuple):
+        return set()
+    return {
+        element.value
+        for element in node.elts
+        if isinstance(element, ast.Constant) and isinstance(element.value, str)
+    }
+
+
+def _secret_word_set_builders(sources: Mapping[str, str]) -> list[str]:
+    """Modules, besides the home, with a literal holding several of the D-2 secret words.
+
+    Any set, list or tuple display counts, wrapped in `set(...)`/`frozenset(...)` or not (the
+    wrapped display is a node of its own), and so does a copy of only some of the words: four of
+    the seven is a copy that drifted, not a coincidence.
+    """
+    found = []
+    for name, text in sources.items():
+        if name == _WORDS_HOME or name in _WORDS_EXEMPT:
+            continue
+        if any(
+            len(_string_elements(node) & _D2_SECRET_WORDS) >= _SECRET_WORDS_COPY_THRESHOLD
+            for node in ast.walk(ast.parse(text))
+        ):
+            found.append(name)
+    return found
+
+
+def _imports_from_module(sources: Mapping[str, str], module: str, name: str) -> list[str]:
+    """Modules that run `from <module> import <name>`."""
+    return [
+        source
+        for source, text in sources.items()
+        if any(
+            isinstance(node, ast.ImportFrom)
+            and node.module == module
+            and any(alias.name == name for alias in node.names)
+            for node in ast.walk(ast.parse(text))
+        )
+    ]
+
+
+@pytest.mark.unit
+def test_the_secret_words_are_defined_once() -> None:
+    """Only `secret_values.py` spells the D-2 set; the recall classifier imports it."""
+    sources = _sources()
+
+    assert SECRET_WORDS == _D2_SECRET_WORDS
+    assert _secret_word_set_builders(sources) == []
+    assert "memory/recall_sensitivity.py" in _imports_from_module(
+        sources, "server.secret_values", "SECRET_WORDS"
+    )
+
+
+@pytest.mark.unit
+def test_the_secret_words_guard_detects_a_violation() -> None:
+    words = '"clave", "claves", "contrasena", "contrasenas", "codigo", "codigos", "pin"'
+    leak = {
+        "memory/set_copy.py": "W = {" + words + "}\n",
+        "memory/frozen_copy.py": "W = frozenset({" + words + ', "alarma"})\n',
+        "memory/list_copy.py": "W = frozenset([" + words + "])\n",
+        # A bare tuple or list, and a split copy of four of the words, are copies too.
+        "memory/tuple_copy.py": "W = (" + words + ")\n",
+        "memory/split_copy.py": 'W = {"clave", "claves", "contrasena", "contrasenas"}\n',
+        "memory/mixed_copy.py": 'W = ["pin", "codigo", "codigos", "clave", "alarma"]\n',
+        # The home spells them, by definition.
+        "secret_values.py": "SECRET_WORDS = frozenset({" + words + "})\n",
+        # A derived set, a partial set and a prose mention are spared.
+        "memory/derived.py": 'W = SECRET_WORDS | {"alarma", "llave"}\n',
+        "memory/partial.py": 'W = {"clave", "pin", "codigo"}\n',
+        "memory/prose.py": f'"""The words {words} are in prose."""\n',
+    }
+
+    assert _secret_word_set_builders(leak) == [
+        "memory/set_copy.py",
+        "memory/frozen_copy.py",
+        "memory/list_copy.py",
+        "memory/tuple_copy.py",
+        "memory/split_copy.py",
+        "memory/mixed_copy.py",
+    ]
+    assert _imports_from_module(
+        {"memory/recall_sensitivity.py": "from server.secret_values import SECRET_WORDS\n"},
+        "server.secret_values",
+        "SECRET_WORDS",
+    ) == ["memory/recall_sensitivity.py"]
+    assert (
+        _imports_from_module(
+            {"memory/recall_sensitivity.py": 'SECRET_WORDS = frozenset({"clave"})\n'},
+            "server.secret_values",
+            "SECRET_WORDS",
+        )
+        == []
+    )
+
+
+# The owner's sensitive read keeps only the rows stored with the labels of its topic, so it may
+# read the pool of active literals; so do the writers that compare or make a repeat idempotent and
+# the policy gate. Any other caller reads the pool without those labels: a decision, not an
+# accident (Plan 0079). `_MAY_IMPORT_RAW_V4_READERS` covers all the raw readers; this is the
+# narrower list for `get_active_literal_facts` alone.
+_LITERAL_POOL_READER = "get_active_literal_facts"
+_LITERAL_POOL_DEFINER = "memory/relational_v4.py"
+_LITERAL_POOL_CALLERS = frozenset(
+    {
+        "memory/canonical_writer.py",
+        "memory/memory_writer.py",
+        "memory/policy_gated_v4_reader.py",
+        "memory/sensitive_store.py",
+    }
+)
+
+
+def _literal_pool_users(sources: Mapping[str, str]) -> set[str]:
+    """Modules, besides the definer, that import or name `get_active_literal_facts`."""
+    names = frozenset({_LITERAL_POOL_READER})
+    return (
+        set(_outside(sources, frozenset(), names))
+        | set(_imports_name(sources, _LITERAL_POOL_READER))
+    ) - {_LITERAL_POOL_DEFINER}
+
+
+@pytest.mark.unit
+def test_the_pool_literals_are_read_only_where_allowed() -> None:
+    """The pool of active literals is read by exactly the four allowed modules."""
+    assert _literal_pool_users(_sources()) == _LITERAL_POOL_CALLERS
+
+
+@pytest.mark.unit
+def test_the_pool_literals_guard_detects_a_violation() -> None:
+    leak = {
+        "routers/leak.py": "facts = await get_active_literal_facts(subject_entity_id=1)\n",
+        "cognition/import_only.py": "from server.memory.relational_v4 import get_active_literal_facts\n",
+        "memory/attr.py": "facts = await repo.get_active_literal_facts(definition=d)\n",
+        "memory/sensitive_store.py": "facts = await get_active_literal_facts(definition=d)\n",
+        "memory/relational_v4.py": "async def get_active_literal_facts(): ...\nx = get_active_literal_facts\n",
+        "memory/other_reader.py": "rows = await get_literal_fact(fact_id=1)\n",
+        "memory/prose.py": '"""get_active_literal_facts is only named in prose here."""\n',
+    }
+
+    users = _literal_pool_users(leak)
+
+    assert users - _LITERAL_POOL_CALLERS == {
+        "routers/leak.py",
+        "cognition/import_only.py",
+        "memory/attr.py",
+    }
+    assert "memory/sensitive_store.py" in users
+    assert "memory/relational_v4.py" not in users
+    assert "memory/other_reader.py" not in users

@@ -29,6 +29,7 @@ from server.memory.commissioning import (
     SessionDetails,
     close_commissioning,
     get_open_commissioning,
+    has_closed_commissioning,
     importer_window_open,
     list_section_statuses,
     open_commissioning,
@@ -201,6 +202,17 @@ async def test_the_importer_window_is_open_until_a_commissioning_is_closed(
     assert await importer_window_open() is True
 
     await close_commissioning(record_id, _CLOSED_AT)
+    assert await importer_window_open() is False
+
+
+async def test_has_closed_commissioning_tells_open_from_closed(commissioning_db: None) -> None:
+    assert await has_closed_commissioning() is False
+
+    record_id = await _open()
+    assert await has_closed_commissioning() is False
+
+    await close_commissioning(record_id, _CLOSED_AT)
+    assert await has_closed_commissioning() is True
     assert await importer_window_open() is False
 
 

@@ -137,6 +137,7 @@ def _vision_controller(client: httpx.AsyncClient) -> CognitiveController:
         policy_evaluator=evaluate_authorization,
         audit_writer=record_authorization_decision,
         household_tools=HouseholdKnowledgeTools(reader=PolicyGatedV4Reader()),
+        secret_guard=settings.memory_enabled,
     )
 
 

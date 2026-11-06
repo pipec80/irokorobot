@@ -12,6 +12,7 @@ from server.cognition.household_request import (
     opens_with,
     requests_data_of_a_name,
     requests_household_data,
+    sentence_body,
     states_a_request,
 )
 
@@ -144,6 +145,16 @@ def test_the_broad_mention_test_keeps_every_family_value_out_of_an_answer() -> N
 def test_opens_with_skips_the_call_to_the_robot() -> None:
     assert opens_with("iroko conoce a esta persona", "conoce a") is True
     assert opens_with("mi mama conoce a todos", "conoce a") is False
+
+
+@pytest.mark.unit
+def test_sentence_body_drops_the_fillers() -> None:
+    """The fillers are defined once, here; the sensitive grammar reads the body through this."""
+    assert sentence_body("Oye Iroko, ¿qué remedios tomo?") == ("que", "remedios", "tomo")
+    assert sentence_body("¿A qué soy alérgico?") == ("que", "soy", "alergico")
+    # A message made only of fillers keeps all its words: stripping them would leave nothing.
+    assert sentence_body("Hola, oye, por favor") == ("hola", "oye", "por", "favor")
+    assert sentence_body("") == ()
 
 
 @pytest.mark.unit

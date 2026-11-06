@@ -469,10 +469,13 @@ def test_enough_assurance_with_missing_consent_is_consent_required() -> None:
     _assert_outcome(decision, _DENIED, _CONSENT_ID)
 
 
+# Plan 0079 D-10: the owner's own READ of medical or location data is the single exemption and
+# needs only the capability's `basic` minimum; it has its own tests below.
 _STRONG_CATEGORY_CASES = [
     (action, category)
     for action in _BASIC_ACTIONS
     for category in (DataSensitivity.BIOMETRIC, DataSensitivity.MEDICAL, DataSensitivity.LOCATION)
+    if not (action is _READ and category is not DataSensitivity.BIOMETRIC)
 ]
 
 
@@ -502,16 +505,118 @@ def test_child_data_stays_at_the_capability_minimum(action: AuthorizationAction)
 
 
 def test_a_mixed_set_with_one_strong_category_needs_strong_assurance() -> None:
-    mixed = frozenset({DataSensitivity.NORMAL, DataSensitivity.MEDICAL})
+    mixed_biometric = frozenset({DataSensitivity.NORMAL, DataSensitivity.BIOMETRIC})
+    mixed_medical = frozenset({DataSensitivity.NORMAL, DataSensitivity.MEDICAL})
 
-    _assert_outcome(_decide(_READ, sensitivity=mixed, consent=GRANTED), _DENIED, _ASSURANCE_ID)
+    _assert_outcome(
+        _decide(_READ, sensitivity=mixed_biometric, consent=GRANTED), _DENIED, _ASSURANCE_ID
+    )
+    # Plan 0079: medical is no longer a strong category for the owner's own read, but still is
+    # for the writes.
+    _assert_outcome(
+        _decide(_PROPOSE, sensitivity=mixed_medical, consent=GRANTED), _DENIED, _ASSURANCE_ID
+    )
 
 
 def test_assurance_is_judged_before_consent_for_a_strong_category() -> None:
-    """A medical read at `basic` with missing consent is told about assurance first."""
-    decision = _decide(_READ, sensitivity=_MEDICAL, consent=ConsentStatus.MISSING)
+    """A biometric read, or a medical proposal, at `basic` with missing consent hears assurance."""
+    biometric = frozenset({DataSensitivity.BIOMETRIC})
+
+    read = _decide(_READ, sensitivity=biometric, consent=ConsentStatus.MISSING)
+    propose = _decide(_PROPOSE, sensitivity=_MEDICAL, consent=ConsentStatus.MISSING)
+
+    _assert_outcome(read, _DENIED, _ASSURANCE_ID)
+    _assert_outcome(propose, _DENIED, _ASSURANCE_ID)
+
+
+# --- the owner's own health and home are read at `basic` (plan 0079 D-10) ----------------------
+
+_LOCATION = frozenset({DataSensitivity.LOCATION})
+_BIOMETRIC = frozenset({DataSensitivity.BIOMETRIC})
+
+
+def test_the_owner_reads_own_medical_data_with_the_face() -> None:
+    decision = _decide(_READ, sensitivity=_MEDICAL, consent=GRANTED)
+
+    _assert_outcome(decision, _ALLOWED, _ALLOWED_ID)
+
+
+def test_the_owner_reads_own_location_data_with_the_face() -> None:
+    decision = _decide(_READ, sensitivity=_LOCATION, consent=GRANTED)
+
+    _assert_outcome(decision, _ALLOWED, _ALLOWED_ID)
+
+
+def test_the_owner_reads_medical_and_location_together_with_the_face() -> None:
+    both = frozenset({DataSensitivity.MEDICAL, DataSensitivity.LOCATION})
+
+    _assert_outcome(_decide(_READ, sensitivity=both, consent=GRANTED), _ALLOWED, _ALLOWED_ID)
+
+
+@pytest.mark.parametrize("sensitivity", [_MEDICAL, _LOCATION])
+@pytest.mark.parametrize(
+    "consent", [ConsentStatus.NOT_REQUIRED, ConsentStatus.MISSING, ConsentStatus.REVOKED]
+)
+def test_own_medical_read_without_consent_is_denied(
+    sensitivity: frozenset[DataSensitivity], consent: ConsentStatus
+) -> None:
+    """The exemption lowers the assurance, never the consent."""
+    decision = _decide(_READ, sensitivity=sensitivity, consent=consent)
+
+    _assert_outcome(decision, _DENIED, _CONSENT_ID)
+
+
+def test_own_biometric_read_still_needs_strong() -> None:
+    face_only = _decide(_READ, sensitivity=_BIOMETRIC, consent=GRANTED)
+    mixed = frozenset({DataSensitivity.BIOMETRIC, DataSensitivity.MEDICAL})
+    mixed_face_only = _decide(_READ, sensitivity=mixed, consent=GRANTED)
+    strong = _decide(_READ, actor=_strong_actor_for(_READ), sensitivity=_BIOMETRIC, consent=GRANTED)
+
+    _assert_outcome(face_only, _DENIED, _ASSURANCE_ID)
+    _assert_outcome(mixed_face_only, _DENIED, _ASSURANCE_ID)
+    _assert_outcome(strong, _ALLOWED, _ALLOWED_ID)
+
+
+@pytest.mark.parametrize("action", [_PROPOSE, _CORRECT])
+@pytest.mark.parametrize("sensitivity", [_MEDICAL, _LOCATION])
+def test_proposing_medical_data_still_needs_strong(
+    action: AuthorizationAction, sensitivity: frozenset[DataSensitivity]
+) -> None:
+    """Propose and correct keep `strong` for medical and location (the exemption is the read)."""
+    decision = _decide(action, sensitivity=sensitivity, consent=GRANTED)
 
     _assert_outcome(decision, _DENIED, _ASSURANCE_ID)
+
+
+@pytest.mark.parametrize("sensitivity", [_MEDICAL, _LOCATION])
+def test_another_persons_medical_read_is_denied(sensitivity: frozenset[DataSensitivity]) -> None:
+    """The exemption is for the actor's own data: foreign data is stopped before assurance."""
+    foreign_target = _decide(_READ, target=_OTHER_ID, sensitivity=sensitivity, consent=GRANTED)
+    adult = _decide(
+        _READ,
+        actor=_actor(role=HouseholdRole.ADULT, assurance=IdentityAssurance.STRONG),
+        sensitivity=sensitivity,
+        consent=GRANTED,
+    )
+
+    _assert_outcome(foreign_target, _DENIED, _OWN_DATA_ID)
+    _assert_outcome(adult, _DENIED, _OWNER_ONLY_ID)
+
+
+def test_a_security_read_with_the_face_alone_is_denied() -> None:
+    """`security` stays on the generic gate: `strong` for every action, the read included."""
+    for sensitivity in (_SECURITY, frozenset({DataSensitivity.SECURITY, DataSensitivity.MEDICAL})):
+        decision = _decide(_READ, sensitivity=sensitivity, consent=GRANTED)
+
+        _assert_outcome(decision, _DENIED, _GLOBAL_ASSURANCE_ID)
+
+
+def test_the_own_read_exemption_is_exactly_medical_and_location() -> None:
+    assert {
+        DataSensitivity.MEDICAL,
+        DataSensitivity.LOCATION,
+    } == authorization.OWN_READ_BASIC_CATEGORIES
+    assert authorization.OWN_READ_BASIC_CATEGORIES <= PERSONAL_MEMORY_STRONG_CATEGORIES
 
 
 def test_an_action_missing_from_the_table_falls_back_to_the_default_deny(
@@ -826,6 +931,8 @@ _ORACLE_MIN_RANK = {
 }
 _ORACLE_SENSITIVE = frozenset({"biometric", "medical", "location", "child_data", "security"})
 _ORACLE_STRONG_CATEGORIES = frozenset({"biometric", "medical", "location"})
+_READ_VALUE = "read_personal_conversation_memory"
+_ORACLE_OWN_READ_BASIC = frozenset({"medical", "location"})
 _ORACLE_PERSONAL = frozenset({"personal"})
 _ORACLE_VISIBILITIES = {
     "read_personal_conversation_memory": _ORACLE_PERSONAL,
@@ -980,11 +1087,15 @@ def _oracle(
     rank = _ORACLE_RANK[assurance]
     if "security" in sensitivity and rank < _ORACLE_RANK["strong"]:
         return "denied", "p0.5.assurance-required"
-    # Owner decision D-10: biometric, medical or location data needs `strong` whatever the action.
+    # Owner decision D-10: biometric, medical or location data needs `strong` whatever the action,
+    # except the owner's own READ of medical or location (plan 0079), which needs only `basic`.
+    strong_categories = (
+        _ORACLE_STRONG_CATEGORIES - _ORACLE_OWN_READ_BASIC
+        if action == _READ_VALUE
+        else _ORACLE_STRONG_CATEGORIES
+    )
     needed = (
-        _ORACLE_RANK["strong"]
-        if _ORACLE_STRONG_CATEGORIES & set(sensitivity)
-        else _ORACLE_MIN_RANK[action]
+        _ORACLE_RANK["strong"] if strong_categories & set(sensitivity) else _ORACLE_MIN_RANK[action]
     )
     if rank < needed:
         return "denied", "cm1.personal-memory.assurance-required"

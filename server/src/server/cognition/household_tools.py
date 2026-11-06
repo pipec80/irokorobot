@@ -1,6 +1,7 @@
 """Closed deterministic household tools over the policy-gated v4 reader."""
 
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from enum import StrEnum
 from typing import Protocol
@@ -29,6 +30,7 @@ from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
 from server.memory.predicate_registry import PredicateDefinition, resolve_predicate
 
 __all__ = [
+    "ChildBirthdays",
     "HouseholdKnowledgeTools",
     "HouseholdToolName",
     "HouseholdToolResult",
@@ -75,6 +77,22 @@ class HouseholdToolResult(BaseModel):
     status: KnowledgeStatus
     value: str | int | tuple[str, ...] | None = None
     reason: str | None = None
+
+
+@dataclass(frozen=True)
+class ChildBirthdays:
+    """The owner's children with their birth dates, for the spoken birthday question.
+
+    Attributes:
+        status: ``KNOWN`` when the children were read, ``UNAUTHORIZED`` when any policy step
+            refused, ``UNKNOWN`` when there is no authorized record.
+        children: ``(label, ISO date or None)`` per child, sorted by label; ``None`` when the
+            child has no date or more than one (the contradiction is not chosen between). Hidden
+            from ``repr``: it carries names and dates.
+    """
+
+    status: KnowledgeStatus
+    children: tuple[tuple[str, str | None], ...] = field(default=(), repr=False)
 
 
 def _required_predicate(alias: str) -> PredicateDefinition:
@@ -144,6 +162,97 @@ class HouseholdKnowledgeTools:
         Returns:
             Known complete labels, an explicit absence, or a non-disclosing denial.
         """
+        child_ids = await self._child_ids(
+            parent_entity_id=parent_entity_id,
+            actor=actor,
+            consent=consent,
+            correlation_id=correlation_id,
+            requested_at=requested_at,
+        )
+        if isinstance(child_ids, HouseholdToolResult):
+            return child_ids
+        labels: list[str] = []
+        for child_id in child_ids:
+            label = await self._label_reader(entity_id=child_id)
+            if label is None:
+                return _unknown(HouseholdToolName.GET_CHILDREN, "child label is unavailable")
+            labels.append(label.display_name)
+        return HouseholdToolResult(
+            tool_name=HouseholdToolName.GET_CHILDREN,
+            status=KnowledgeStatus.KNOWN,
+            value=tuple(labels),
+        )
+
+    async def get_children_birthdays(
+        self,
+        *,
+        parent_entity_id: int,
+        actor: ActivePersonContext,
+        consent: ConsentStatus,
+        correlation_id: UUID,
+        requested_at: datetime,
+    ) -> ChildBirthdays:
+        """Return each child's label and birth date for one authorized parent (Plan 0079 D-10).
+
+        It composes the paths that exist: the ``child_of`` read of ``get_children`` for the
+        children, then ``get_person_birth_date`` per child, so every step is authorized and
+        audited by the code that already does so and no new policy path exists.
+
+        Args:
+            parent_entity_id: Parent entity selected by a trusted internal seam.
+            actor: Trusted active household actor.
+            consent: Trusted scoped consent for child data.
+            correlation_id: Request-scoped audit correlation ID.
+            requested_at: Aware request timestamp.
+
+        Returns:
+            The children sorted by label, each with its ISO date or ``None``; ``UNAUTHORIZED``
+            as a whole when any step was refused; ``UNKNOWN`` without a known list of children.
+        """
+        child_ids = await self._child_ids(
+            parent_entity_id=parent_entity_id,
+            actor=actor,
+            consent=consent,
+            correlation_id=correlation_id,
+            requested_at=requested_at,
+        )
+        if isinstance(child_ids, HouseholdToolResult):
+            return ChildBirthdays(status=child_ids.status)
+        children: list[tuple[str, str | None]] = []
+        for child_id in child_ids:
+            label = await self._label_reader(entity_id=child_id)
+            if label is None:
+                return ChildBirthdays(status=KnowledgeStatus.UNKNOWN)
+            born = await self.get_person_birth_date(
+                person_entity_id=child_id,
+                actor=actor,
+                consent=consent,
+                correlation_id=correlation_id,
+                requested_at=requested_at,
+            )
+            if born.status is KnowledgeStatus.UNAUTHORIZED:
+                return ChildBirthdays(status=KnowledgeStatus.UNAUTHORIZED)
+            known = born.value if born.status is KnowledgeStatus.KNOWN else None
+            children.append((label.display_name, known if isinstance(known, str) else None))
+        return ChildBirthdays(
+            status=KnowledgeStatus.KNOWN,
+            children=tuple(sorted(children, key=lambda child: child[0])),
+        )
+
+    async def _child_ids(
+        self,
+        *,
+        parent_entity_id: int,
+        actor: ActivePersonContext,
+        consent: ConsentStatus,
+        correlation_id: UUID,
+        requested_at: datetime,
+    ) -> tuple[int, ...] | HouseholdToolResult:
+        """Authorize, audit and read the ``child_of`` relations: the child ids, or the refusal.
+
+        The refusal is the ``get_children`` result, which ``get_children_birthdays`` maps to its
+        own status.
+        """
         allowed = await self._authorize_tool(
             actor=actor,
             target_person_id=parent_entity_id,
@@ -166,19 +275,7 @@ class HouseholdKnowledgeTools:
             return _unauthorized(HouseholdToolName.GET_CHILDREN)
         if read.status is not KnowledgeStatus.KNOWN:
             return _unknown(HouseholdToolName.GET_CHILDREN, read.reason)
-
-        child_ids = tuple(dict.fromkeys(relation.source_entity_id for relation in read.relations))
-        labels: list[str] = []
-        for child_id in child_ids:
-            label = await self._label_reader(entity_id=child_id)
-            if label is None:
-                return _unknown(HouseholdToolName.GET_CHILDREN, "child label is unavailable")
-            labels.append(label.display_name)
-        return HouseholdToolResult(
-            tool_name=HouseholdToolName.GET_CHILDREN,
-            status=KnowledgeStatus.KNOWN,
-            value=tuple(labels),
-        )
+        return tuple(dict.fromkeys(relation.source_entity_id for relation in read.relations))
 
     async def count_children(
         self,

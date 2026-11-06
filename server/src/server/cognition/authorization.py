@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from types import MappingProxyType
-from typing import Annotated
+from typing import Annotated, Final
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -31,6 +31,7 @@ _StrictUUID = Annotated[UUID, Field(strict=True)]
 __all__ = [
     "ASSURANCE_RANK",
     "HIGH_ASSURANCE_CATEGORIES",
+    "OWN_READ_BASIC_CATEGORIES",
     "PERSONAL_MEMORY_CAPABILITIES",
     "PERSONAL_MEMORY_STRONG_CATEGORIES",
     "AuthorizationRequest",
@@ -141,6 +142,12 @@ HIGH_ASSURANCE_CATEGORIES = frozenset({DataSensitivity.SECURITY})
 PERSONAL_MEMORY_STRONG_CATEGORIES = frozenset(
     {DataSensitivity.BIOMETRIC, DataSensitivity.MEDICAL, DataSensitivity.LOCATION}
 )
+# ADR 0029 ("Where `basic` lives") and Plan 0079 D-10: the one exemption to the set above.
+# Reading the actor's OWN medical or location data needs the capability's own minimum (`basic`,
+# the face) instead of `strong`. The request keeps its true sensitivity; propose, correct,
+# confirm and forget, and `biometric` for every action, stay as above. `security` is unaffected
+# (generic gate).
+OWN_READ_BASIC_CATEGORIES: Final = frozenset({DataSensitivity.MEDICAL, DataSensitivity.LOCATION})
 
 # `IdentityAssurance` is a str enum, so `<` on its members is alphabetical (`basic` < `none`).
 # Compare assurance only through this rank (ADR 0019 §3).
@@ -454,11 +461,18 @@ def _lacks_assurance(request: AuthorizationRequest, capability: PersonalMemoryCa
     """Return whether the actor's assurance ranks below what this request needs.
 
     The need is `strong` when the data includes a category in
-    `PERSONAL_MEMORY_STRONG_CATEGORIES`, else the capability's own minimum.
+    `PERSONAL_MEMORY_STRONG_CATEGORIES`, else the capability's own minimum. The read of the
+    actor's own data (the caller has already checked the data is the actor's own) drops
+    `OWN_READ_BASIC_CATEGORIES` from that set.
     """
+    strong_categories = (
+        PERSONAL_MEMORY_STRONG_CATEGORIES - OWN_READ_BASIC_CATEGORIES
+        if request.action is AuthorizationAction.READ_PERSONAL_CONVERSATION_MEMORY
+        else PERSONAL_MEMORY_STRONG_CATEGORIES
+    )
     required = (
         IdentityAssurance.STRONG
-        if request.sensitivity & PERSONAL_MEMORY_STRONG_CATEGORIES
+        if request.sensitivity & strong_categories
         else capability.min_assurance
     )
     return ASSURANCE_RANK[request.actor.assurance] < ASSURANCE_RANK[required]

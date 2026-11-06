@@ -300,6 +300,21 @@
         64
       ],
       "tag": "consent + switch, off by default"
+    },
+    {
+      "id": "sensitive",
+      "type": "backend",
+      "label": "Sensitive reader",
+      "sublabel": "templates · secret guard",
+      "pos": [
+        1040,
+        110
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "tag": "reader off by default"
     }
   ],
   "boundaries": [
@@ -455,6 +470,15 @@
       "label": "text · diary · purge",
       "fromSide": "top",
       "toSide": "bottom"
+    },
+    {
+      "id": "sensitive-to-policy",
+      "from": "sensitive",
+      "to": "policy",
+      "label": "audience · level · consent",
+      "variant": "security",
+      "fromSide": "left",
+      "toSide": "right"
     }
   ],
   "cards": [
@@ -483,6 +507,7 @@
         "The profile card (Plan 0074): a face-identified owner's name, form and tastes enter the prompt behind PROFILE_CARD_ENABLED; one audit row precedes every read, nothing sensitive",
         "Every spoken exchange of the voice routes is kept as text (consent, switch); only the owner's turns with face and verified voice feed the diary, and no generic prompt reads it",
         "Recall (Plan 0078): «¿qué te conté…?» searches the owner's own normal recall units (verified words of ordinary turns and diary summaries; FTS5 + vector + RRF behind a calibrated gate) after one audit row, and answers only from what was found or «No me acuerdo de eso.»; the relatives of the alta are read by a fixed template; behind RECALL_ENABLED",
+        "Sensitive reads (Plan 0079): the owner's own health, home and birthdays are read behind SENSITIVE_READ_ENABLED by fixed templates, with the face alone in view (two faces: «Te lo digo cuando estemos solos.»); the security references also need a verified voice; the record keeps a marker instead of the answer. A stated, asked or offered secret value never reaches the model and is kept only as a marker (guard on with MEMORY_ENABLED)",
         "A household request (Plan 0077) names a relative or pet with my/our and has the form of a request, unless it asks advice or speaks to the robot; stories, advice and questions about others reach the model, whose generic prompt reads no household store"
       ]
     },
@@ -490,9 +515,9 @@
       "dot": "rose",
       "title": "Known gaps",
       "items": [
-        "No liveness or replay defense: a photo identifies at basic; photo + recording would reach strong",
+        "No liveness or replay defense, accepted for the home (ADR 0029): a photo identifies at basic; photo + recording would reach strong and draw the owner's sensitive data, never a secret's value",
         "Reserved data needs strong assurance but no reserved capability is wired: propose, read and confirm each have one spoken consumer (the candidate dialogue) and correct and forget none; replay is measured, not defended; a PIN grant is bound to one operation but still proves the PIN, not the speaker (ADR-0015); the household pair is policy only",
-        "Conversational memory is partial: short-term continuity (CM-2) and a default-off candidate dialogue (CM-3a, Plans 0062 and 0063: a taste is proposed, offered and promoted by voice); the CM-3b tranche A write core (children, partner, pets, places) exists; the card (CM-5a) and recall of normal memories (CM-5b, Plan 0078) read it back; spoken third-party capture, sensitive reads by voice (block B) and correction (CM-6) do not exist; CM-0 baseline RED"
+        "Conversational memory is partial: short-term continuity (CM-2) and a default-off candidate dialogue (CM-3a, Plans 0062 and 0063: a taste is proposed, offered and promoted by voice); the CM-3b tranche A write core (children, partner, pets, places) exists; the card (CM-5a) and recall of normal memories (CM-5b, Plan 0078) read it back, and since Plan 0079 the owner's own sensitive data (block B); spoken third-party capture, answering in company and correction or forgetting by voice (CM-6) do not exist; CM-0 baseline RED"
       ]
     }
   ]

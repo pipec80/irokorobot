@@ -23,6 +23,13 @@
   through the recall units, after an audited policy decision, and through nothing else; no voice path
   or prompt reads a record itself. ADR 0028 amendment A2 also gives the diary's sensitivity written
   criteria (daily life is `normal`).
+- **Amended by:** [ADR 0029](0029-it-knows-who-is-listening.md) (`Accepted` 2026-11-06, Plan 0079),
+  decisions 4 and 5, on decision 1: a turn that states, asks for or offers a secret value is kept as
+  the fixed marker «[dato de seguridad omitido]» in place of the heard words (no model call, no
+  recall unit, no candidate, nothing in the diary), and the robot's answer to a sensitive read is
+  kept as the marker «[dato sensible leído]» in place of the answer, so the record knows the owner
+  asked and never holds the value. The secret rule runs whenever `MEMORY_ENABLED` is on, whatever
+  the record switch says.
 
 ## Context
 

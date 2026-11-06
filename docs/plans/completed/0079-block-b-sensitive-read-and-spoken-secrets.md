@@ -1,6 +1,12 @@
 # 0079 — Block B: read the owner's sensitive data by voice, and never keep a spoken secret's value
 
-> **Status:** `Ready` and `NOW` — **promoted by Pipec on 2026-11-05** («el plan refleja lo que yo
+> **Status:** **Closed** (2026-11-06). Accepted by Pipec on real hardware, 10 of 10 cases,
+> streaming route ([record](../../evals/0079-sensitive-read-acceptance.md)); ADR 0029 `Accepted`.
+> The builder's calls that go beyond the text below (an offered secret, slang «clave», «mis», the
+> birthday fallback, request openers) are in ADR 0029, *Implemented in Plan 0079*, and win over this
+> plan where they differ. The classic route was not run on hardware (the route tests cover both).
+>
+> **Status at promotion:** `Ready` and `NOW` — **promoted by Pipec on 2026-11-05** («el plan refleja lo que yo
 > quiero»), D-1 to D-12 confirmed as written; executed in a new session. Written as `Draft` the
 > same day as the review amendments of its design,
 > [ADR 0029](../../adr/0029-it-knows-who-is-listening.md) (`Proposed`, decisions 1 to 21 and the

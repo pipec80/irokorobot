@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from datetime import date
 
 __all__ = [
+    "RELATIVE_WORDS",
     "CueStrength",
     "RecallCue",
     "classify_recall_cue",
@@ -102,6 +103,8 @@ _RELATION_WORDS: Final[dict[str, str]] = {
         "pet_of",
     ),
 }
+#: The folded words that name a relative, partner or pet; one list with ``relation_of``'s (Plan 0079).
+RELATIVE_WORDS: Final = frozenset(_RELATION_WORDS)
 
 
 class CueStrength(StrEnum):

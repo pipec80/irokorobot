@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+import logging
 import re
 from typing import TYPE_CHECKING
 
@@ -39,7 +40,10 @@ from server.cognition.recall_cues import (
 )
 from server.cognition.response_plan import (
     NO_MEMORY,
+    NOT_ALONE,
     NOT_REGISTERED,
+    SECRET_REFUSAL,
+    SECURITY_VOICE_RETRY,
     InformationNeed,
     MemoryAnswerReply,
     ProfileSummaryReply,
@@ -48,17 +52,25 @@ from server.cognition.response_plan import (
     ResponsePlan,
     ResponseSource,
     SceneDescriptionRequest,
+    SensitiveOutcome,
+    SensitiveReply,
     TextTurnPayload,
     ToolResult,
     unclear_speech_plan,
 )
+from server.cognition.sensitive_answers import spanish_join
+from server.cognition.sensitive_questions import classify_sensitive_question
+from server.secret_values import secret_kind
 
 if TYPE_CHECKING:
     from datetime import date
     from uuid import UUID
 
     from server.cognition.household_tools import HouseholdKnowledgeTools, HouseholdToolResult
+    from server.cognition.response_plan import SensitiveReader
     from server.text_turn import TextTurnResult
+
+logger = logging.getLogger(__name__)
 
 type LegacyTextTurn = Callable[[str, str], Awaitable[TextTurnResult]]
 type ActivePersonResolver = Callable[
@@ -69,7 +81,8 @@ type AuditWriter = Callable[[AuthorizationRequest, AuthorizationDecision], Await
 type ConsentResolver = Callable[
     [CognitiveEvent[TextTurnPayload], ActivePersonContext], Awaitable[ConsentStatus]
 ]
-#: Called with the message, and with ``recall=True`` only when a recall answerer is wired.
+#: Called with the message, and with each of ``recall=True``, ``sensitive=True`` and
+#: ``secrets=True`` only when its collaborator is wired (the bare call stays today's).
 type IntentResolver = Callable[..., IntentResolution]
 #: Resolves a spoken answer to a memory offer for an actor already resolved from face and voice
 #: (ADR 0021 decision 9). Only the voice routes inject one; it returns the fixed reply (a phrase
@@ -108,7 +121,6 @@ _PROFILE_SUMMARY_UNAVAILABLE_RESPONSE = (
 )
 
 _ISO_DATE_PATTERN = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
-_TWO_ITEMS = 2
 _HOUSEHOLD_READERS = frozenset({HouseholdRole.OWNER, HouseholdRole.ADULT})
 
 
@@ -169,6 +181,8 @@ class CognitiveController:
         profile_summarizer: ProfileSummarizer | None = None,
         household_names: HouseholdNameReader | None = None,
         recall_answerer: RecallAnswerer | None = None,
+        sensitive_reader: SensitiveReader | None = None,
+        secret_guard: bool = False,
     ) -> None:
         """Create a controller with injected calendar and legacy-generation seams.
 
@@ -197,6 +211,11 @@ class CognitiveController:
             recall_answerer: Answers «¿qué te conté ayer?» from the owner's diary (Plan 0078);
                 injected only by the voice routes with the recall switch on. When absent the
                 recall and relatives rules never run, so every message resolves as before.
+            sensitive_reader: Reads the owner's own sensitive data for a recognized question
+                (Plan 0079); injected only by the voice routes with the read switch on. When
+                absent such a question is ordinary conversation, byte for byte.
+            secret_guard: Whether a stated or asked secret value hears a fixed refusal, with no
+                model call and no actor (Plan 0079). Off, a secret is ordinary conversation.
         """
         self._today = today
         self._legacy_turn = legacy_turn
@@ -211,6 +230,10 @@ class CognitiveController:
         self._profile_summarizer = profile_summarizer
         self._household_names = household_names
         self._recall_answerer = recall_answerer
+        self._sensitive_reader = sensitive_reader
+        self._secret_guard = secret_guard
+        # The same cache for a sensitive read: one read and one audit row per event.
+        self._sensitive_reads: dict[UUID, ResponsePlan | None] = {}
         # The classic route's two calls again: one search and one audit row per event.
         self._recalls: dict[UUID, ResponsePlan | None] = {}
         # The classic route calls decide() twice on a turn that falls through (decide, then
@@ -257,6 +280,29 @@ class CognitiveController:
             the adapter may safely use its generic generation path.
         """
         need = await self._resolved_need(event)
+        decision = await self._decision_for(event, need)
+        if decision is None and need is InformationNeed.SENSITIVE_READ:
+            # The reader said the question is no sensitive one (a birthday of someone who is no
+            # child of the house): resolve it again as today, so «el cumpleaños de mi tía» keeps
+            # its protected path and «¿cuándo nació Mozart?» stays conversation (Plan 0079 D-5).
+            need = await self._resolved_need(event, sensitive=False)
+            decision = await self._decision_for(event, need)
+        return decision
+
+    async def _decision_for(
+        self, event: CognitiveEvent[TextTurnPayload], need: InformationNeed
+    ) -> ControllerDecision:
+        """Dispatch one resolved need: the secret guard, the sensitive read or a closed branch."""
+        if need is InformationNeed.SECRET_VALUE:
+            return _secret_plan(event.payload.message)
+        if need is InformationNeed.SENSITIVE_READ:
+            return await self._sensitive_plan(event)
+        return await self._closed_decision(event, need)
+
+    async def _closed_decision(
+        self, event: CognitiveEvent[TextTurnPayload], need: InformationNeed
+    ) -> ControllerDecision:
+        """Run the branch of every need that existed before Plan 0079."""
         decision: ControllerDecision
         match need:
             case InformationNeed.OWN_CHILDREN_LIST | InformationNeed.OWN_CHILDREN_COUNT:
@@ -290,23 +336,59 @@ class CognitiveController:
                 # The voice routes answer it before the controller (Plan 0069 D-11); no text
                 # resolves to it, but if one ever did, it is the fixed phrase, never generation.
                 decision = unclear_speech_plan(expects_short_reply=False)
-            case InformationNeed.GENERIC_CONVERSATION:
+            case (
+                InformationNeed.GENERIC_CONVERSATION
+                | InformationNeed.SENSITIVE_READ
+                | InformationNeed.SECRET_VALUE
+            ):
+                # The last two never get here: ``_decision_for`` routes them first.
                 decision = None
         return decision
 
-    async def _resolved_need(self, event: CognitiveEvent[TextTurnPayload]) -> InformationNeed:
-        """Resolve the closed need, then let a stored name turn a question into a protected one."""
+    async def _resolved_need(
+        self, event: CognitiveEvent[TextTurnPayload], *, sensitive: bool = True
+    ) -> InformationNeed:
+        """Resolve the closed need, then let a stored name turn a question into a protected one.
+
+        Each resolver flag is passed only when its collaborator is wired, so the bare call of
+        today stays exactly as it was. ``sensitive=False`` resolves a question as if the sensitive
+        reader were not wired.
+        """
         message = event.payload.message
-        need = (
-            self._intent_resolver(message, recall=True)
-            if self._recall_answerer is not None
-            else self._intent_resolver(message)
-        ).need
+        flags: dict[str, bool] = {}
+        if self._recall_answerer is not None:
+            flags["recall"] = True
+        if sensitive and self._sensitive_reader is not None:
+            flags["sensitive"] = True
+        if self._secret_guard:
+            flags["secrets"] = True
+        need = self._intent_resolver(message, **flags).need
         if need is InformationNeed.GENERIC_CONVERSATION and await self._asks_about_known_name(
             event
         ):
             return InformationNeed.PROTECTED_HOUSEHOLD
         return need
+
+    async def _sensitive_plan(self, event: CognitiveEvent[TextTurnPayload]) -> ResponsePlan | None:
+        """Answer a sensitive question through the reader, or fall through (``None``).
+
+        ADR 0029. The actor is only observed (never spends a grant) and is handed to the reader,
+        which owns the audience check, the level, the consent, the policy and the audit row. The
+        reader is called once per event, since the classic route decides twice on a turn that
+        falls through. A sensitive answer never enters continuity: only the legacy text turn
+        writes it, and this plan never reaches it.
+        """
+        if self._sensitive_reader is None:
+            return None
+        if event.event_id not in self._sensitive_reads:
+            query = classify_sensitive_question(event.payload.message)
+            if query is None:
+                self._sensitive_reads[event.event_id] = None
+            else:
+                actor = await self._observed_person_resolver(event)
+                reply = await self._sensitive_reader(actor, query, event)
+                self._sensitive_reads[event.event_id] = _sensitive_reply_plan(reply)
+        return self._sensitive_reads[event.event_id]
 
     async def _asks_about_known_name(self, event: CognitiveEvent[TextTurnPayload]) -> bool:
         """Tell whether the owner or an adult asks for a datum of someone the household knows.
@@ -649,6 +731,50 @@ def _unknown_plan(
     )
 
 
+#: The fixed phrase of every sensitive outcome that carries no text of its own.
+_SENSITIVE_PHRASES: dict[SensitiveOutcome, str] = {
+    SensitiveOutcome.NOT_ALONE: NOT_ALONE,
+    SensitiveOutcome.RETRY_VOICE: SECURITY_VOICE_RETRY,
+    SensitiveOutcome.DENIED: _PROFILE_SUMMARY_UNKNOWN_RESPONSE,
+    SensitiveOutcome.UNAVAILABLE: _PROFILE_SUMMARY_UNAVAILABLE_RESPONSE,
+}
+
+
+def _sensitive_reply_plan(reply: SensitiveReply) -> ResponsePlan | None:
+    """Map the reader's outcome to a plan; ``None`` is ordinary conversation (not a house topic)."""
+    need = InformationNeed.SENSITIVE_READ
+    match reply.outcome:
+        case SensitiveOutcome.NOT_HOUSEHOLD:
+            return None
+        case SensitiveOutcome.ANSWERED if reply.text is not None:
+            return ResponsePlan(
+                need=need,
+                status=KnowledgeStatus.KNOWN,
+                source=ResponseSource.DETERMINISTIC,
+                response=reply.text,
+            )
+        case SensitiveOutcome.NOT_REGISTERED:
+            return _unknown_plan(need, NOT_REGISTERED if reply.text is None else reply.text)
+        case _:
+            # An answer without a text is a reader bug: say it could not be read, never guess.
+            return _unknown_plan(
+                need, _SENSITIVE_PHRASES.get(reply.outcome, _PROFILE_SUMMARY_UNAVAILABLE_RESPONSE)
+            )
+
+
+def _secret_plan(message: str) -> ResponsePlan:
+    """Refuse a stated or asked secret value: no model, no actor, nothing stored (ADR 0029).
+
+    One log line per secret turn with its kind, never a text.
+    """
+    kind = secret_kind(message)
+    if kind is not None:
+        logger.info(
+            "Secret turn: %s", kind.value, extra={"event": "secret.turn", "kind": kind.value}
+        )
+    return _unknown_plan(InformationNeed.SECRET_VALUE, SECRET_REFUSAL)
+
+
 def _biometric_enrollment_plan() -> ResponsePlan:
     """Reject face enrollment without ever touching a camera or a model."""
     return ResponsePlan(
@@ -697,7 +823,7 @@ def _household_tool_plan(
             tool_result,
         )
     if need is InformationNeed.OWN_CHILDREN_LIST and isinstance(result.value, tuple):
-        names = _spanish_join(result.value)
+        names = spanish_join(result.value)
         response = f"Tus hijos son {names}."
     elif need is InformationNeed.OWN_CHILDREN_COUNT and isinstance(result.value, int):
         response = f"Tienes {result.value} hijos."
@@ -741,13 +867,4 @@ _RELATIVES_TEMPLATES: dict[str, tuple[str, str]] = {
 def _relatives_sentence(predicate: str, names: tuple[str, ...]) -> str:
     """Word the names of one relation with its fixed singular or plural template."""
     one, several = _RELATIVES_TEMPLATES[predicate]
-    return (one if len(names) == 1 else several).format(_spanish_join(names))
-
-
-def _spanish_join(values: tuple[str, ...]) -> str:
-    """Join already-authorized labels with deterministic Spanish punctuation."""
-    if len(values) == 1:
-        return values[0]
-    if len(values) == _TWO_ITEMS:
-        return f"{values[0]} y {values[1]}"
-    return f"{', '.join(values[:-1])} y {values[-1]}"
+    return (one if len(names) == 1 else several).format(spanish_join(names))

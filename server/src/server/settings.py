@@ -178,6 +178,10 @@ class Settings(BaseSettings):
     # recall question is answered from them. Kill-switch, off in the code and on in a delivered
     # robot; it also needs MEMORY_ENABLED and the conversation record. Off: every turn as before.
     recall_enabled: bool = False
+    # Reading the owner's sensitive data by voice (ADR 0029, Plan 0079): medications, conditions,
+    # allergies, address, birthdays and the security references. Kill-switch, off in the code; it
+    # also needs MEMORY_ENABLED. Off: every read question as before.
+    sensitive_read_enabled: bool = False
     # The absolute gate of a recall search (ADR 0028 decision 6): a unit found only by its vector
     # qualifies when its cosine distance is under this. Calibrated on Pipec's hardware run of
     # 2026-11-03 (Plan 0078): his memories at 0.395 and 0.414, questions with no memory at 0.469

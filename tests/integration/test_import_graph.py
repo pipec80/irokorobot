@@ -41,8 +41,9 @@ _PURE_CORE_PROBE = textwrap.dedent(
     import server.cognition.controller
 
     # The neutral text keys (ADR 0024 decision 12) are shared by the core and memory on purpose:
-    # a leaf of the standard library only, which a unit test pins.
-    shared = {"server.text_keys"}
+    # a leaf of the standard library only, which a unit test pins. The secret words (Plan 0079
+    # D-2) are shared by the core and the recall classifier: a leaf over the text keys only.
+    shared = {"server.text_keys", "server.secret_values"}
     for name in sorted(sys.modules):
         outside_core = (
             name.startswith("server.")

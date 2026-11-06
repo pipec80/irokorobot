@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Final
 
 from server.memory.conversation_summary import EpisodeSensitivity
+from server.secret_values import SECRET_WORDS
 from server.text_keys import normalize_spanish
 
 __all__ = ["RecallSensitivity", "classify_turn_text", "most_protective"]
@@ -28,10 +29,7 @@ _RANK: Final[dict[RecallSensitivity, int]] = {
 # Folded words and phrases (`normalize_spanish`), matched as whole words; checked from the most
 # protective category down, so the first category found is the answer.
 _CATEGORY_TERMS: Final[tuple[tuple[RecallSensitivity, frozenset[str]], ...]] = (
-    (
-        "security",
-        frozenset({"clave", "contrasena", "codigo", "pin", "alarma", "llave", "llaves", "porton"}),
-    ),
+    ("security", SECRET_WORDS | {"alarma", "llave", "llaves", "porton"}),
     (
         "medical",
         frozenset(

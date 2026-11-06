@@ -21,12 +21,14 @@ from server.text_keys import normalize_spanish
 
 __all__ = [
     "BIRTH_WORDS",
+    "CHILD_WORDS",
     "has_question_mark",
     "mentions_the_household",
     "names_someone_known",
     "opens_with",
     "requests_data_of_a_name",
     "requests_household_data",
+    "sentence_body",
     "states_a_request",
     "without_leading_fillers",
 ]
@@ -36,13 +38,12 @@ _POSSESSIVES = frozenset(
 )
 # «¿Cómo se llama tu perro?» asks the robot and «su hijo» is someone else's.
 _OWN_POSSESSIVES = frozenset({"mi", "mis", "nuestro", "nuestra", "nuestros", "nuestras"})
+#: Folded words that name the speaker's children («hijo», «hijas»).
+CHILD_WORDS = frozenset({"hijo", "hija", "hijos", "hijas"})
 # Words that name the household on their own, plural forms included.
 _HOUSEHOLD_WORDS = frozenset(
     {
-        "hijo",
-        "hija",
-        "hijos",
-        "hijas",
+        *CHILD_WORDS,
         "familia",
         "familias",
         "familiares",
@@ -691,6 +692,21 @@ def opens_with(normalized: str, phrase: str) -> bool:
         ``True`` when the body of the message starts with the phrase, as whole words.
     """
     return f"{' '.join(_body(normalized.split()))} ".startswith(f"{phrase} ")
+
+
+def sentence_body(message: str) -> tuple[str, ...]:
+    """Return the folded words of the whole message without its leading call and fillers.
+
+    Like ``opens_with`` it reads the entire message, and the fillers stay defined here once
+    («oye Iroko, …», a leading «a»: «a qué soy alérgico» comes back as «que soy alergico»).
+
+    Args:
+        message: Raw transcript or chat text.
+
+    Returns:
+        The words of the body, folded by ``normalize_spanish``; empty for an empty message.
+    """
+    return tuple(_body(normalize_spanish(message).split()))
 
 
 def without_leading_fillers(normalized: str) -> str:
