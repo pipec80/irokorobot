@@ -72,9 +72,9 @@ _BIRTHDAY_QUESTION = "¿Cuándo es mi cumpleaños?"
 _BIRTHDAY_ANSWER = "Tu cumpleaños es el 3 de marzo."
 _GENERIC = "Hola, ¿cómo estás?"
 _DATE_QUESTION = "¿Qué fecha es hoy?"
-_STATED = "Mi clave es 4821"
+_STATED = "Mi clave es perro4821"
 _ASKED = "¿Cuál es mi clave?"
-_STATED_AND_ASKED = "¿Cuándo es mi cumpleaños? Mi clave es 4821"
+_STATED_AND_ASKED = "¿Cuándo es mi cumpleaños? Mi clave es perro4821"
 _VOICE_ROUTES = ["/transcribe", "/transcribe/stream"]
 _ALL_ROUTES = [*_VOICE_ROUTES, "/chat", "/vision/respond"]
 _READ_AUDIT = (
@@ -400,7 +400,7 @@ async def test_a_secret_turn_is_recorded_with_the_marker_and_no_unit(
     await cursor.close()
     stored = json.dumps([row[0] for row in rows], ensure_ascii=False)
     assert SECRET_RECORDED_TEXT in stored
-    assert "4821" not in stored
+    assert "perro4821" not in stored
     assert await _count("SELECT COUNT(*) FROM recall_units") == 0
     assert await _count("SELECT COUNT(*) FROM memory_candidates") == 0
     cursor = await db.get_conn().execute(
@@ -521,7 +521,7 @@ _CHILD_ANSWER = "El cumpleaños de Zeta es el 9 de julio."
 _SECURITY_QUESTION = "¿Quién conoce la clave del banco?"
 _OFFERED = "Guarda mi contraseña"
 _CANARIES = (
-    "4821",
+    "perro4821",
     "Remedio A 50 mg",
     "Calle Falsa 123 #4",
     "9 de julio",
