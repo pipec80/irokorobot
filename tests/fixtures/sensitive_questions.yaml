@@ -11,6 +11,7 @@ questions:
     - "Oye, ¿cuáles son mis remedios?"
     - "¿Cuáles son mis medicamentos, po?"
     - "Iroko, ¿qué remedio tomo?"
+    - "Oye Iroko, ¿me puedes decir qué remedios tomo?"
   rescue_medication:
     - "Oye Iroko, ¿cuál es mi remedio de rescate?"
     - "¿Cuál es mi medicamento de rescate, po?"
@@ -24,6 +25,7 @@ questions:
     - "¿A qué soy alérgica, po?"
     - "Iroko, ¿qué alergias tengo?"
     - "Oye, ¿cuáles son mis alergias?"
+    - "Dime a qué soy alérgico"
   blood_type:
     - "Oye Iroko, ¿cuál es mi grupo sanguíneo?"
     - "Iroko, ¿qué sangre tengo, po?"
@@ -34,6 +36,7 @@ questions:
   address:
     - "Oye Iroko, ¿cuál es mi dirección?"
     - "¿Dónde vivo, po?"
+    - "Una pregunta, ¿cuál es mi dirección?"
   emergency_facility:
     - "Oye, ¿cuál es mi urgencia?"
     - "Iroko, ¿a qué urgencia voy?"
@@ -43,12 +46,14 @@ questions:
     - "¿Cuándo nací, po?"
     - "Iroko, ¿cuándo cumplo años?"
     - "Oye, ¿cuál es mi fecha de nacimiento?"
+    - "Quiero saber cuándo es mi cumpleaños"
   child_birthday:
     - "Oye Iroko, ¿cuándo es el cumpleaños de Zeta?"
     - "¿Cuándo cumple Zeta, po?"
     - "Iroko, ¿cuándo cumplen mis hijos?"
     - "Oye, ¿cuándo nació Omega?"
     - "¿Cuándo nacieron mis hijos, po?"
+    - "Una pregunta, ¿me puedes decir cuándo cumple Zeta?"
   secret_holder:
     - "Oye Iroko, ¿quién conoce la clave del banco?"
     - "¿Quién sabe la contraseña del wifi, po?"
@@ -56,6 +61,7 @@ questions:
     - "Oye, ¿quién conoce el código del portón?"
     - "¿Quién sabe el pin de la tarjeta, po?"
     - "Iroko, ¿quién tiene el código de la caja?"
+    - "¿Me puede decir quién conoce la clave del banco?"
   document_location:
     - "Oye Iroko, ¿dónde está mi pasaporte?"
     - "¿Dónde están mis documentos, po?"
@@ -100,6 +106,11 @@ slips:
     - "donde esta mi pasaporte"
     - "donde estan mis papeles"
 traps:
+  - "¿Me puedes decir si mi hijo ya comió?"
+  - "Una pregunta, ¿cuál es la dirección del colegio?"
+  - "Quiero saber dónde vivo hace frío"
+  - "Me pregunto qué remedios tomo"
+  - "Una pregunta sobre mis remedios"
   - "¿Qué remedios toma?"
   - "Ayer hablé de mis remedios con el doctor"
   - "¿Cuál es la dirección del colegio?"

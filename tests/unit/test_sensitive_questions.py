@@ -14,6 +14,7 @@ from server.cognition.sensitive_questions import (
     SensitiveTopic,
     classify_sensitive_question,
 )
+from server.secret_values import SecretKind, secret_kind
 import yaml
 
 pytestmark = pytest.mark.unit
@@ -116,6 +117,9 @@ def test_the_maps_are_read_only() -> None:
         ("¿Dónde está mi pasaporte?", ()),
         ("¿Cuándo cumplen mis hijos?", ("hijos",)),
         ("¿Qué remedios tomo, po?", ()),
+        ("¿Me puede decir quién conoce la clave del banco?", ("banco",)),
+        ("Una pregunta, ¿me puedes decir cuándo cumple Zeta?", ("zeta",)),
+        ("Una pregunta, oye Iroko, ¿me puedes decir cuándo cumple Zeta?", ("zeta",)),
     ],
 )
 def test_keywords_drop_the_phrase_and_the_stopwords(
@@ -124,6 +128,33 @@ def test_keywords_drop_the_phrase_and_the_stopwords(
     assert classify_sensitive_question(message) == SensitiveQuery(
         topic=_topic_of(message) or SensitiveTopic.MEDICATION, keywords=keywords
     )
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Una pregunta oye Iroko, ¿cuál es mi dirección?",
+        "Oye, quiero saber, por favor, ¿me puedes decir cuál es mi dirección?",
+        "Otra pregunta, una pregunta, ¿dónde vivo?",
+        "Quisiera saber, ¿me podría decir dónde vivo?",
+        "Necesito saber ¿puedes decirme dónde vivo?",
+        "Dígame cuál es mi dirección",
+        "Me gustaría saber cuál es mi dirección",
+    ],
+)
+def test_request_openers_and_fillers_strip_alternately(message: str) -> None:
+    assert _topic_of(message) is SensitiveTopic.ADDRESS
+
+
+def test_an_opener_alone_matches_nothing() -> None:
+    assert classify_sensitive_question("Dime") is None
+    assert classify_sensitive_question("Una pregunta") is None
+
+
+def test_the_polite_opener_does_not_change_the_secret_rule() -> None:
+    """``secret_kind`` is a separate grammar: the opener fix lives in the sensitive grammar only."""
+    assert secret_kind("Una pregunta, ¿cuál es mi clave del banco?") is SecretKind.ASKED
+    assert secret_kind("¿Me puede decir quién conoce la clave del banco?") is None
 
 
 def test_a_closed_topic_carries_no_keywords() -> None:

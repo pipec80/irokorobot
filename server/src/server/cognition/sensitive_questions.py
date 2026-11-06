@@ -16,7 +16,11 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
-from server.cognition.household_request import has_question_mark, sentence_body
+from server.cognition.household_request import (
+    has_question_mark,
+    sentence_body,
+    without_leading_fillers,
+)
 from server.secret_values import SECRET_WORDS
 
 if TYPE_CHECKING:
@@ -252,6 +256,39 @@ _STOPWORDS: Final[frozenset[str]] = frozenset(
 )
 _MIN_KEYWORD_LETTERS: Final[int] = 4
 
+# Request introducers that come before the question itself, longest first («una pregunta, ¿cuál es
+# mi dirección?», «¿me puede decir quién conoce la clave del banco?»). They are not fillers of
+# `household_request`: other grammars must keep reading these sentences as today.
+_OPENERS: Final[tuple[tuple[str, ...], ...]] = tuple(
+    sorted(
+        (
+            tuple(opener.split())
+            for opener in (
+                "una pregunta",
+                "otra pregunta",
+                "quiero saber",
+                "quisiera saber",
+                "necesito saber",
+                "me puedes decir",
+                "me puede decir",
+                "me podrias decir",
+                "me podria decir",
+                "me dices",
+                "me dice",
+                "dime",
+                "digame",
+                "puedes decirme",
+                "podrias decirme",
+                "puede decirme",
+                "podria decirme",
+                "me gustaria saber",
+            )
+        ),
+        key=len,
+        reverse=True,
+    )
+)
+
 # The folded phrases as word tuples, topic by topic, without a leading «a».
 _PATTERNS: Final[tuple[tuple[SensitiveTopic, tuple[str, ...]], ...]] = tuple(
     (topic, tuple(phrase.removeprefix("a ").split()))
@@ -263,7 +300,8 @@ _PATTERNS: Final[tuple[tuple[SensitiveTopic, tuple[str, ...]], ...]] = tuple(
 def classify_sensitive_question(message: str) -> SensitiveQuery | None:
     """Return the sensitive topic the message asks about, or ``None``.
 
-    Pure and deterministic; the phrase must open the sentence body and, for a closed topic, only
+    Pure and deterministic; the phrase must open the sentence body (once the fillers and the
+    request openers, «una pregunta», «me puede decir», are set aside) and, for a closed topic, only
     trailing fillers may follow it. ``ANTICOAGULANT`` also needs a question mark, since «tomo
     anticoagulante desde hace años» is a statement.
 
@@ -273,7 +311,7 @@ def classify_sensitive_question(message: str) -> SensitiveQuery | None:
     Returns:
         The topic and its keywords, or ``None`` for any other turn.
     """
-    body = sentence_body(message)
+    body = _without_openers(sentence_body(message))
     for topic, phrase in _PATTERNS:
         if body[: len(phrase)] != phrase:
             continue
@@ -289,6 +327,20 @@ def classify_sensitive_question(message: str) -> SensitiveQuery | None:
             return SensitiveQuery(topic=topic, keywords=())
         return SensitiveQuery(topic=topic, keywords=_keywords(tail))
     return None
+
+
+def _without_openers(body: tuple[str, ...]) -> tuple[str, ...]:
+    """Strip request openers and the fillers they uncover until nothing more comes off.
+
+    The fillers are those of ``household_request`` (``without_leading_fillers``); the openers are
+    this grammar's own, so no other grammar changes.
+    """
+    while True:
+        opener = next((o for o in _OPENERS if body[: len(o)] == o), None)
+        if opener is None:
+            return body
+        rest = body[len(opener) :]
+        body = tuple(without_leading_fillers(" ".join(rest)).split())
 
 
 def _span_end(topic: SensitiveTopic, body: tuple[str, ...], phrase_end: int) -> int | None:
