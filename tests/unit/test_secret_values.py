@@ -64,6 +64,13 @@ def test_the_spoken_openers_of_an_offer(opener: str) -> None:
     assert secret_kind(f"{opener} mi contraseña") is SecretKind.OFFERED
 
 
+def test_the_ask_grammar_is_unchanged_by_the_offer_rule() -> None:
+    """«mis» and a bare article without an account object ask nothing; only the offer is wider."""
+    assert secret_kind("Dime mis claves") is None
+    assert secret_kind("Dime la clave") is None
+    assert secret_kind("Dime la clave del banco") is SecretKind.ASKED
+
+
 def test_an_offer_must_open_the_sentence() -> None:
     """«ayer te digo mi clave» is a story, not the start of an offer; the opener must open."""
     assert secret_kind("Ayer hablamos de que guarda mi pin") is None

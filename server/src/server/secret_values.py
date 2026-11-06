@@ -92,8 +92,8 @@ _CLAVE_WORDS: Final[frozenset[str]] = frozenset({"clave", "claves"})
 _SLANG_BEFORE_CLAVE: Final[frozenset[str]] = frozenset({"es", "lo", "muy", "tan"})
 
 # «guarda mi clave», «te voy a decir mi pin»: a request to keep a secret with no value yet. The
-# opener must open the sentence body and be followed by a determiner and a secret word under the
-# object rule of the ask grammar. «recuerdame» and «me recuerdas» belong to the ask grammar.
+# opener must open the sentence body and a secret word must follow within two words («guarda mi
+# super clave»). «recuerdame» and «me recuerdas» belong to the ask grammar.
 _OFFER_OPENERS: Final[tuple[tuple[str, ...], ...]] = (
     ("guarda",),
     ("guardame",),
@@ -107,6 +107,8 @@ _OFFER_OPENERS: Final[tuple[tuple[str, ...], ...]] = (
     ("te", "voy", "a", "pasar"),
     ("te", "digo"),
 )
+# A secret word may follow the opener after up to two words: determiner and adjective.
+_OFFER_REACH: Final[int] = 3
 
 # «cual es mi clave»: openers with «mi» ask for any secret word; with «la»/«el» only when the
 # secret word names an object («la clave del banco»), so «¿cuál es la clave del éxito?» is ordinary.
@@ -118,7 +120,11 @@ _ASK_OPENERS: Final[tuple[tuple[str, ...], ...]] = (
     ("me", "recuerdas"),
     ("recuerdame",),
 )
-_OWN_DETERMINERS: Final[frozenset[str]] = frozenset({"mi", "mis"})
+_ASK_OWN_DETERMINERS: Final[frozenset[str]] = frozenset({"mi"})
+# The offer also takes the plural: «guarda mis claves».
+_OFFER_OWN_DETERMINERS: Final[frozenset[str]] = frozenset({"mi", "mis"})
+# The developer's words: an offer names them only through the object rule («anota mi codigo»).
+_DEVELOPER_WORDS: Final[frozenset[str]] = frozenset({"codigo", "codigos"})
 _OBJECT_DETERMINERS: Final[tuple[str, ...]] = ("la", "el")
 _OBJECT_LINKS: Final[tuple[tuple[str, ...], ...]] = (("del",), ("de", "la"))
 _OBJECT_WORDS: Final[frozenset[str]] = frozenset(
@@ -196,21 +202,40 @@ def _offers_a_secret(message: str) -> bool:
 
     body = sentence_body(message)
     return any(
-        _starts_with(body, 0, opener) and _names_a_secret(body, len(opener))
+        _starts_with(body, 0, opener) and _offer_reaches_a_secret(body, len(opener))
         for opener in _OFFER_OPENERS
     )
 
 
-def _names_a_secret(tokens: tuple[str, ...], determiner_index: int) -> bool:
-    """Whether a determiner and a secret word sit at *determiner_index*, as the ask grammar says.
+def _offer_reaches_a_secret(body: tuple[str, ...], start: int) -> bool:
+    """Whether a secret word sits within reach of an offer opener that ends before *start*.
 
-    «mi clave» and «mis claves» always; «la clave» and «el codigo» only with an account object
-    («la clave del wifi»), so «el codigo del proyecto» stays an ordinary turn of a developer.
+    Whatever the article or adjective («la clave», «el pin», «mi super clave»), except for the
+    developer's word «codigo»: that one needs the object rule of the ask grammar, so «guarda el
+    codigo del proyecto» stays an ordinary turn.
+    """
+    for index in range(start, min(start + _OFFER_REACH, len(body))):
+        if not _is_secret_word(body, index):
+            continue
+        if body[index] not in _DEVELOPER_WORDS:
+            return True
+        if index > start and _names_a_secret(body, index - 1, _OFFER_OWN_DETERMINERS):
+            return True
+    return False
+
+
+def _names_a_secret(
+    tokens: tuple[str, ...], determiner_index: int, own_determiners: frozenset[str]
+) -> bool:
+    """Whether a determiner and a secret word sit at *determiner_index* (the object rule).
+
+    An own determiner (``mi``) accepts any secret word; «la» and «el» only before an account
+    object («la clave del wifi»), so «el codigo del proyecto» stays a developer's ordinary turn.
     """
     if determiner_index + 1 >= len(tokens) or not _is_secret_word(tokens, determiner_index + 1):
         return False
     determiner = tokens[determiner_index]
-    if determiner in _OWN_DETERMINERS:
+    if determiner in own_determiners:
         return True
     return determiner in _OBJECT_DETERMINERS and _names_an_object(tokens, determiner_index + 2)
 
@@ -254,7 +279,7 @@ def _asks_at(tokens: tuple[str, ...], start: int) -> bool:
     for opener in _ASK_OPENERS:
         if not _starts_with(tokens, start, opener):
             continue
-        if _names_a_secret(tokens, start + len(opener)):
+        if _names_a_secret(tokens, start + len(opener), _ASK_OWN_DETERMINERS):
             return True
     return False
 
