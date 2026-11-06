@@ -17,6 +17,14 @@
   floor, and biometric, medical and location data raise it to `strong` for these capabilities).
   Nothing is superseded.
 - **Implemented by:** [Plan 0060](../plans/completed/0060-cm1-personal-memory-capabilities.md)
+- **Amended by:** [ADR 0029](0029-it-knows-who-is-listening.md) (`Accepted` 2026-11-06, Plan 0079),
+  decisions 1 and 3, on §3: **reading** the owner's **own** `medical` and `location` facts needs the
+  capability's own minimum (`basic`: the owner's face, with no other face in view) instead of
+  `strong`, and the consent of that read is the closed alta; `security` data stays at `strong`
+  (`secret_holder`, `document_location`: face **and** a verified voice). `biometric` stays at
+  `strong`, and `propose`, `confirm`, `correct` and `forget` keep their assurance; reading anyone
+  else's sensitive data is not opened. The request keeps its true sensitivity, so the audit row says
+  `medical` or `location`.
 
 ## Context
 

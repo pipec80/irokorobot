@@ -22,6 +22,12 @@
 - **Amended by:** [ADR 0028](0028-recall-what-the-owner-told.md) (`Accepted` 2026-11-04), decision 5:
   the questions about the owner's `normal` relatives loaded at the alta («¿cómo se llaman mis papás?»)
   are answered by a fixed template of the controller (ADR 0028 decision 9), not by a later plan.
+- **Amended by:** [ADR 0029](0029-it-knows-who-is-listening.md) (`Accepted` 2026-11-06, Plan 0079),
+  decisions 2 and 6: the replay choice of decision 6 is made (the residual risk of ADR 0016 §9 is
+  accepted for the personal stage in the home; a second factor joins later for the security level
+  only), and CM-3b tranche B is emptied (`lives_in` stays with the alta and `iroko-admin`, «no
+  menciones X» waits for the family stage); the CM-7 scenarios of decision 9 change with dataset v4,
+  in the plan that prepares CM-7.
 
 ## Context
 

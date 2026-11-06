@@ -85,7 +85,9 @@ print `Heard:` (the transcript) and `Spoken:` (each sentence sent to the voice,
 including deterministic answers such as your own children). It prints to the console only,
 never to `logs/server.log`, and startup logs a warning while it is on. Turn it
 off when you finish, and do not say a PIN aloud while it is on
-([Plan 0052](../plans/completed/0052-opt-in-conversation-text-log.md)).
+([Plan 0052](../plans/completed/0052-opt-in-conversation-text-log.md)). It prints what was
+heard as heard, **a spoken secret included** (the record and the model never get it, the console does):
+never on in a delivered robot ([Plan 0079](../plans/completed/0079-block-b-sensitive-read-and-spoken-secrets.md)).
 
 ## 2. QA tools, by what they isolate
 
@@ -988,6 +990,92 @@ midnight of `HOUSEHOLD_TIMEZONE` (`America/Santiago`).
 **Rolling back.** `RECALL_ENABLED=false` and a restart: every turn is byte-identical to a build without
 it and nothing is written to the recall tables.
 
+### Sensitive questions by voice and spoken secrets (Plan 0079, block B, ADR 0029): off by default
+
+With `SENSITIVE_READ_ENABLED=true` (needs `MEMORY_ENABLED=true`, the voice routes with
+`FACE_AUTHENTICATION_ENABLED`, and a **closed alta**, which is the consent for these reads) the owner
+hears their own health, home and birthdays, asked in the first person, answered by a fixed template
+and never by the model. The secret rule below does **not** need the switch.
+
+- **Who and how.** Only the face-identified owner, with **no other face in view**. The camera is
+  checked silently on every answer; nothing is asked back («¿estás solo?» does not exist). Anyone
+  else (a visitor, an unknown face, the camera covered or facing a wall, another enrolled person)
+  hears the same denial as the profile card: «Todavía no puedo confirmar quién eres para contarte lo
+  que sé de ti.». Two faces hear «Te lo digo cuando estemos solos.» whoever they are.
+- **Levels.** *Sensitive* (the face is enough): medications, rescue medication, conditions,
+  allergies, blood type, anticoagulant, address, emergency facility, the owner's birthday and the
+  children's. *Security* (the face **and** a verified voice): who knows a code (`secret_holder`) and
+  where a document is (`document_location`); these are references, the robot holds no value.
+  The security level needs `SPEAKER_AUTHENTICATION_ENABLED=true` and a **long, full sentence**
+  (short clips rarely verify the voice, Plan 0075).
+- **The retry.** A security question that the voice did not verify, with only the owner's face in
+  view and speaker authentication on, hears «No reconocí bien tu voz. Pregúntamelo de nuevo con una
+  frase completa.». Nothing is kept between turns: ask again in a longer sentence. With the speaker
+  authentication off, or its model failing, the owner hears the denial instead, never an endless
+  retry.
+- **What it understands** (a closed rule, no model; folded, so accents and case do not matter). The
+  question must **open** the sentence, after «oye Iroko» or a request introducer («una pregunta»,
+  «otra pregunta», «quiero / quisiera / necesito saber», «me puedes / puede / podrías / podría decir»,
+  «me dices / dice», «dime», «dígame», «puedes / podrías / puede decirme», «me gustaría saber»). A
+  story or a question about someone else («¿qué remedios toma?», «¿dónde dejé las llaves?») does not
+  match and reaches the model.
+
+  | Topic | Forms |
+  |---|---|
+  | Medications | «¿Qué remedios / medicamentos / pastillas tomo?», «¿Cuáles son mis remedios?» |
+  | Rescue medication | «¿Cuál es mi remedio de rescate?» |
+  | Conditions | «¿Qué enfermedades tengo?», «¿Cuáles son mis condiciones de salud?» |
+  | Allergies | «¿A qué soy alérgico/a?», «¿Qué alergias tengo?» |
+  | Blood type | «¿Cuál es mi grupo sanguíneo?», «¿Qué sangre tengo?», «¿Cuál es mi tipo de sangre?» |
+  | Anticoagulant | «¿Tomo anticoagulante?» (needs the question mark) |
+  | Address | «¿Cuál es mi dirección?», «¿Dónde vivo?» |
+  | Emergency facility | «¿Cuál es mi urgencia?», «¿A qué urgencia voy?», «¿A qué clínica me llevan?» |
+  | Own birthday | «¿Cuándo es mi cumpleaños?», «¿Cuándo nací?», «¿Cuál es mi fecha de nacimiento?» |
+  | Children's birthdays | «¿Cuándo es el cumpleaños de …?», «¿Cuándo cumple …?», with a child's name or «mis hijos» |
+  | Who knows a code | «¿Quién conoce / sabe / tiene la clave …?» (also «el código», «el pin») |
+  | Where a document is | «¿Dónde está mi pasaporte?», «¿Dónde guardo el testamento?» |
+
+  A reference question that names a word the stored entries contain («la clave del **banco**») reads
+  only those entries; if none matches, all of them. A child with only a stated age answers «No tengo
+  registrada su fecha.»; nothing loaded answers «No tengo registrado eso.»; a relative of the alta
+  has name and relationship only, so «¿cuándo cumple mi mamá?» also answers «No tengo registrada su
+  fecha.». «¿Cuándo nació Mozart?» stays ordinary conversation. A value is said the way a person says
+  it (the blood type `O+` is «O positivo»).
+- **What the record keeps.** The conversation record keeps the owner's question as said and, in place
+  of the answer, the marker **«[dato sensible leído]»**; the diary knows the owner asked, never the
+  value. With `LOG_CONVERSATION_TEXT` on, the console shows the same marker for the answer. The
+  not-alone, retry and stranger outcomes write no audit row (nothing is read); a read that reaches
+  the policy (answered, not registered, or refused by the policy) writes one before the read, with
+  no value.
+- **The secret rule.** A message that **states** a secret's value («mi clave es 1234», «la
+  contraseña es perro123», digits or number words after `clave`, `contraseña`, `código` or `pin`),
+  **asks** for one («¿cuál es mi clave?», «dime la contraseña del banco») or **offers** to give one
+  («guarda mi contraseña», «anota mi pin») never reaches the model: the robot says «Las claves y los
+  códigos no los guardo ni los repito.». The record keeps the turn as the marker **«[dato de
+  seguridad omitido]»** in place of the heard words; no recall unit, no candidate, no continuity
+  entry and nothing in the diary is made from it. The rule runs whenever `MEMORY_ENABLED` is on,
+  **whatever the other switches say**, and serves every speaker. A mention is an ordinary
+  conversation («hoy cambié la clave del wifi», «eso es clave», «dejé las llaves en la mesa»). Known
+  false positives (accepted): «la clave es que llegues temprano», «anota que la clave cambió»; a
+  known miss: «1234 es mi clave» (kept as an ordinary turn that recall marks `security`, never read
+  by voice). A developer's «el código es un desastre» stays ordinary.
+- **Debug log, never in production.** `LOG_CONVERSATION_TEXT=true` prints what the speech-to-text
+  heard, **a secret included**, to the console (that is what it is for). Never leave it on in a
+  delivered robot.
+- **Log lines** (no text, ever): `sensitive.read` (`topic`, `level`, `outcome` among `answered`,
+  `not_alone`, `retry_voice`, `denied`, `not_registered`, `unavailable`, `not_household`, and an
+  `entries` count) and `secret.turn` (`kind`: `stated`, `asked`, `offered`), beside `identity.fusion`
+  (the fusion reason of the turn). To tune a phrase that missed, read the `Turn decision` line
+  (`need=generic_conversation` where `need=sensitive_read` was expected) and add the phrasing to
+  `tests/fixtures/sensitive_questions.yaml` and the grammar.
+- **What it does not defend.** A photograph plus a recording of the question can draw the owner's
+  sensitive data (never a secret's value); someone off camera who asks in the first person while the
+  owner is in view is answered; a secret said without a secret word is kept as an ordinary turn.
+
+**Rolling back.** `SENSITIVE_READ_ENABLED=false` and a restart: every read question is byte-identical
+to a build without the reader. The secret rule follows `MEMORY_ENABLED` only; with it off, every turn
+is as before.
+
 ## 4. Feature-flag reference
 
 | Variable | Default | Effect |
@@ -1021,6 +1109,7 @@ it and nothing is written to the recall tables.
 | `CONVERSATION_RECORD_ENABLED` | `false` | Server: kill-switch of the conversation record (Plan 0076, ADR 0027; off in the code, on in a delivered robot). Needs `MEMORY_ENABLED` and the owner's `conversation_storage` consent; off, nothing is recorded and every prompt, response and wire field is byte-identical |
 | `CONVERSATION_EPISODES_ENABLED` | `false` | Server: the diary job (needs the record). The segment caps, the two retention clocks, the space cap, the job interval and the summary length are the other `CONVERSATION_*` settings, see the record above |
 | `RECALL_ENABLED` | `false` | Server: kill-switch of recall and of the relatives reader (Plan 0078, ADR 0028; off in the code, on in a delivered robot). Needs `MEMORY_ENABLED` and the record; off, every turn is byte-identical and nothing is indexed |
+| `SENSITIVE_READ_ENABLED` | `false` | Server: kill-switch of the owner's sensitive questions by voice (Plan 0079, ADR 0029; off in the code). Needs `MEMORY_ENABLED`, the face on the voice routes and a closed alta; the security level also needs `SPEAKER_AUTHENTICATION_ENABLED`. Off, every read question is byte-identical. The secret rule does not follow it: it runs whenever `MEMORY_ENABLED` is on |
 | `RECALL_MAX_DISTANCE` | `0.43` | Server: the cosine-distance gate of the search by meaning; see «The search and its threshold» above for what it means and how to tune it |
 | `EMBEDDING_MODEL` | `granite-embedding:278m` | Server: the model of the recall vectors (768 dimensions); changing it needs a new calibration of `RECALL_MAX_DISTANCE` |
 | `HOUSEHOLD_TIMEZONE` | `America/Santiago` | Server: where a spoken day («ayer», «el martes») is cut; an unknown zone stops the server at start-up |
