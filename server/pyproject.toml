@@ -40,7 +40,7 @@ iroko-admin = "server.admin_cli:main"
 cuda = [
     # 12.9.3.13 ships Linux wheels only: with it `uv sync --extra cuda` fails on Windows (found
     # 2026-11-03 in Dependabot #237). Lift the cap when a release has a win_amd64 wheel again.
-    "nvidia-cublas-cu12>=12.9.2.10,<12.9.3",
+    "nvidia-cublas-cu12>=12.9.2.10,<12.9.4",
 ]
 
 [build-system]
