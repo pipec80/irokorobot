@@ -589,8 +589,7 @@ class HouseholdKnowledgeTools:
         )
         if not allowed:
             return SidedNames(status=KnowledgeStatus.UNAUTHORIZED)
-        by_side: dict[Side | None, list[str]] = {}
-        seen: set[int] = set()
+        ids_by_side: dict[Side | None, list[int]] = {}
         for definition, side in _PARENT_READS:
             read = await self._reader.read_active_relations(
                 actor=actor,
@@ -602,17 +601,10 @@ class HouseholdKnowledgeTools:
             )
             if read.status is KnowledgeStatus.UNAUTHORIZED:
                 return SidedNames(status=KnowledgeStatus.UNAUTHORIZED)
-            # A person already labelled is not listed again as a parent of no recorded side.
-            ids = [
-                relation.target_entity_id
-                for relation in read.relations
-                if relation.target_entity_id not in seen
-            ]
-            names = await self._relative_names(self._label_reader, owner_entity_id, ids)
-            if names is None:
-                return SidedNames(status=KnowledgeStatus.UNKNOWN)
-            seen.update(ids)
-            by_side[side] = names
+            ids_by_side[side] = [relation.target_entity_id for relation in read.relations]
+        by_side = await self._parent_names_by_side(owner_entity_id, ids_by_side)
+        if by_side is None:
+            return SidedNames(status=KnowledgeStatus.UNKNOWN)
         if not any(by_side.values()):
             return SidedNames(status=KnowledgeStatus.UNKNOWN)
         return SidedNames(
@@ -621,6 +613,32 @@ class HouseholdKnowledgeTools:
             male=tuple(sorted(by_side[Side.MALE])),
             unlabelled=tuple(sorted(by_side[None])),
         )
+
+    async def _parent_names_by_side(
+        self, owner_entity_id: int, ids_by_side: dict[Side | None, list[int]]
+    ) -> dict[Side | None, list[str]] | None:
+        """Group the parents' names by side; ``None`` when a label is unavailable.
+
+        A person recorded on both sides has no recorded side, like a child with both markers, and
+        one already labelled is not listed again as a parent of no recorded side.
+        """
+        female, male = set(ids_by_side[Side.FEMALE]), set(ids_by_side[Side.MALE])
+        both = female & male
+        labelled = female | male
+        ids = {
+            Side.FEMALE: female - both,
+            Side.MALE: male - both,
+            None: both | {id_ for id_ in ids_by_side[None] if id_ not in labelled},
+        }
+        by_side: dict[Side | None, list[str]] = {}
+        for side, side_ids in ids.items():
+            names = await self._relative_names(
+                self._label_reader, owner_entity_id, sorted(side_ids)
+            )
+            if names is None:
+                return None
+            by_side[side] = names
+        return by_side
 
     async def _relative_names(
         self, read_label: PersonLabelReader, owner_entity_id: int, ids: list[int]

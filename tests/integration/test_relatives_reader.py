@@ -209,6 +209,21 @@ async def test_each_parent_is_read_in_its_own_group(owner: int) -> None:
     assert result.unlabelled == ("Canary Parent",)
 
 
+async def test_a_parent_with_both_sides_has_no_recorded_side(owner: int) -> None:
+    """The children reader does the same: neither read may win over the other."""
+    await _relative(owner, "has_mother", "Zeta")
+    await _relative(owner, "has_father", "Omega")
+    both = await _relative(owner, "has_mother", "Canary Both")
+    assert await _relative(owner, "has_father", "Canary Both") == both
+
+    result = await _read_parents(owner)
+
+    assert result.status is KnowledgeStatus.KNOWN
+    assert result.female == ("Zeta",)
+    assert result.male == ("Omega",)
+    assert result.unlabelled == ("Canary Both",)
+
+
 async def test_the_parents_of_a_side_are_sorted(owner: int) -> None:
     await _relative(owner, "has_mother", "Zeta")
     await _relative(owner, "has_mother", "Omega")
