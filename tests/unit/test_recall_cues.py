@@ -151,6 +151,8 @@ def test_content_words_drop_stop_words_and_repeats() -> None:
         ("¿Cómo se llama mi papá?", "has_father"),
         ("¿Quiénes son mis padres?", "has_parent"),
         ("Dime el nombre de mi mamá y de mi papá", "has_parent"),
+        ("¿Cuáles son los nombres de mi mamá y de mi papá?", "has_parent"),
+        ("¿Cuáles son los nombres de mi mamá?", "has_mother"),
         ("¿Cómo se llama mi papá y mi mamá?", "has_parent"),
     ],
 )

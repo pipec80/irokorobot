@@ -35,6 +35,7 @@ _ASKED_WORD: Final[dict[tuple[SideGroup, Side], str]] = {
 # The whole group, when its sides are not told apart: the unsided template of the relation.
 _WHOLE_GROUP: Final[dict[SideGroup, str]] = {SideGroup.PARENTS: "has_parent"}
 _UNCLEAR: Final = "No tengo claro cuál de ellos es {}. {}"
+_UNCLEAR_ONE: Final = "No tengo claro si es {}. {}"
 
 
 def relatives_sentence(predicate: str, names: tuple[str, ...]) -> str:
@@ -57,7 +58,8 @@ def sided_sentence(group: SideGroup, asked: Side | None, names: SidedNames) -> s
 
     Args:
         group: The relatives asked about.
-        asked: The side asked for, or ``None`` for the plural question about the whole group.
+        asked: The side asked for, or ``None`` for the plural question about the whole group
+            (a group of one member is told with that member's recorded side).
         names: The names read for the group, by recorded side.
 
     Returns:
@@ -71,11 +73,22 @@ def sided_sentence(group: SideGroup, asked: Side | None, names: SidedNames) -> s
         return None
     whole = relatives_sentence(_WHOLE_GROUP[group], everyone)
     if asked is None:
-        return whole
+        # One person keeps the side that is recorded for them; several are named together.
+        asked = _side_of_the_only_member(names) if len(everyone) == 1 else None
+        if asked is None:
+            return whole
     recorded = tuple(sorted(names.female if asked is Side.FEMALE else names.male))
     if recorded:
         one, several = _SIDED_TEMPLATES[(group, asked)]
         return (one if len(recorded) == 1 else several).format(spanish_join(recorded))
     if names.unlabelled:
-        return _UNCLEAR.format(_ASKED_WORD[(group, asked)], whole)
+        unclear = _UNCLEAR_ONE if len(everyone) == 1 else _UNCLEAR
+        return unclear.format(_ASKED_WORD[(group, asked)], whole)
     return None
+
+
+def _side_of_the_only_member(names: SidedNames) -> Side | None:
+    """The recorded side of a group of exactly one member, or ``None`` when it is not recorded."""
+    if names.female:
+        return Side.FEMALE
+    return Side.MALE if names.male else None

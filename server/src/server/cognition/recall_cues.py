@@ -86,6 +86,7 @@ _RELATIVE_SHAPES: Final = (
 # «No sé cuál es el nombre de mi tía» or «Mi mamá dijo cuál es el nombre de mi perro» is no query.
 _RELATIVE_REQUEST_SHAPES: Final = (
     "cual es el nombre de mi",
+    "cuales son los nombres de mi",
     "cuales son los nombres de mis",
     "dime el nombre de mi",
     "dime los nombres de mis",

@@ -140,6 +140,12 @@
 - phrase: "Oye Iroko, ¿cuál es el nombre de mi papá?"
   need: relatives_names
   today: protected_household
+- phrase: "¿Cuáles son los nombres de mi mamá?"
+  need: relatives_names
+  today: protected_household
+- phrase: "¿Cuáles son los nombres de mi mamá y de mi papá?"
+  need: relatives_names
+  today: protected_household
 # The child shapes read the children list with recall on, until the side of a child is asked.
 - phrase: "¿Cuál es el nombre de mi hijo?"
   need: own_children_list

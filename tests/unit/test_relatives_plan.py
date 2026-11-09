@@ -156,6 +156,14 @@ async def test_one_unlabelled_parent_asked_for_both_uses_the_singular() -> None:
     assert plan.response == "Tu papá o tu mamá se llama Zeta."
 
 
+async def test_one_recorded_mother_asked_for_both_keeps_her_side() -> None:
+    tools = _tools(KnowledgeStatus.KNOWN, parents=_parents(female=("Zeta",)))
+
+    plan = await _controller(tools, _actor(7)).handle(_event("¿Cómo se llaman mis papás?"))
+
+    assert plan.response == "Tu mamá se llama Zeta."
+
+
 async def test_the_absent_side_is_not_registered() -> None:
     tools = _tools(KnowledgeStatus.KNOWN, parents=_parents(female=("Zeta",)))
 

@@ -73,10 +73,16 @@ def test_the_plural_question_with_one_unlabelled_name_says_both_words() -> None:
     assert sided_sentence(SideGroup.PARENTS, None, names) == "Tu papá o tu mamá se llama Zeta."
 
 
-def test_the_plural_question_with_one_labelled_name_says_both_words() -> None:
+def test_the_plural_question_with_one_mother_keeps_her_side() -> None:
     names = _parents(female=("Zeta",))
 
-    assert sided_sentence(SideGroup.PARENTS, None, names) == "Tu papá o tu mamá se llama Zeta."
+    assert sided_sentence(SideGroup.PARENTS, None, names) == "Tu mamá se llama Zeta."
+
+
+def test_the_plural_question_with_one_father_keeps_his_side() -> None:
+    names = _parents(male=("Omega",))
+
+    assert sided_sentence(SideGroup.PARENTS, None, names) == "Tu papá se llama Omega."
 
 
 def test_the_mother_asked_when_the_parents_have_no_side_does_not_guess() -> None:
@@ -93,7 +99,16 @@ def test_the_father_asked_when_the_parents_have_no_side_does_not_guess() -> None
 
     assert (
         sided_sentence(SideGroup.PARENTS, Side.MALE, names)
-        == "No tengo claro cuál de ellos es tu papá. Tu papá o tu mamá se llama Zeta."
+        == "No tengo claro si es tu papá. Tu papá o tu mamá se llama Zeta."
+    )
+
+
+def test_the_mother_asked_of_one_parent_without_a_side_does_not_say_which_of_them() -> None:
+    names = _parents(unlabelled=("Zeta",))
+
+    assert (
+        sided_sentence(SideGroup.PARENTS, Side.FEMALE, names)
+        == "No tengo claro si es tu mamá. Tu papá o tu mamá se llama Zeta."
     )
 
 
