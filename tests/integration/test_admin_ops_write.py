@@ -487,6 +487,47 @@ async def test_a_parent_who_already_has_a_side_is_refused_and_nothing_changes(
     assert audit.field_id == _SIDE_PREDICATE[side]
 
 
+@pytest.mark.parametrize(
+    "held, side, wanted",
+    [("has_mother", "father", "has_father"), ("has_father", "mother", "has_mother")],
+)
+async def test_label_parent_switches_a_recorded_side_to_the_other(
+    ops_db: int, held: str, side: str, wanted: str
+) -> None:
+    owner = ops_db
+    row = await _relation(owner, held)
+    outcome = await _label(owner, row.id, side)
+    assert outcome.status is AdminOutcomeStatus.APPLIED
+    assert await _active(wanted) == [(owner, row.target_entity_id)]
+    assert await _active(held) == []
+    assert await _active("has_parent") == []
+    stored = await get_entity_relation(row.id)
+    assert stored is not None
+    assert stored.lifecycle is AssertionLifecycle.REVOKED
+    (audit,) = await list_admin_operations()
+    assert audit.operation is AdminOperationKind.CHANGE
+    assert audit.target_kind is TargetKind.POOL_RELATION
+    assert audit.field_id == wanted
+    assert audit.target_entity_id == row.target_entity_id
+    assert "Zeta" not in await _audit_dump()
+
+
+@pytest.mark.parametrize("held, side", [("has_mother", "mother"), ("has_father", "father")])
+async def test_label_parent_with_the_side_the_row_already_has_is_refused(
+    ops_db: int, held: str, side: str
+) -> None:
+    owner = ops_db
+    row = await _relation(owner, held)
+    before = await _all_relations()
+    outcome = await _label(owner, row.id, side)
+    assert outcome.status is AdminOutcomeStatus.REFUSED
+    assert outcome.reason == "already_labelled"
+    assert await _all_relations() == before
+    (audit,) = await list_admin_operations()
+    assert audit.reason == "already_labelled"
+    assert audit.field_id == held
+
+
 async def test_a_row_that_points_at_the_owner_from_somebody_else_is_not_labelled(
     ops_db: int,
 ) -> None:

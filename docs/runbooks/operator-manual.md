@@ -1333,20 +1333,25 @@ just admin audit                # every operation, with no value, name or phone
   guessing, and a child without a side is not told apart either. To record the side:
   1. Stop the server and **back the database up first**: copy the file named in the first line of
      the output (`Base de datos: ...`) together with its `-wal` and `-shm` files, the same copy
-     `just reset-db` makes before it resets. There is no `iroko-admin` verb to undo a label.
+     `just reset-db` makes before it resets.
   2. `just admin list`: it prints every relation with a row id and, beside it, the other person's
      name (that is how you tell the rows apart; the name appears only on your terminal).
   3. `just admin label-parent <relation_id> mother` (or `father`) on a `has_parent` row, or
      `just admin label-child <relation_id> daughter` (or `son`) on a `child_of` row. It asks the
      owner's PIN and `SI`, writes one audit row (`change`, `pool_relation`, the new relationship and
-     no name) and, for a parent, replaces the `has_parent` row by `has_mother` or `has_father`.
+     no name) and, for a parent, replaces the row by `has_mother` or `has_father`. `label-parent`
+     also takes a row that already says `has_mother` or `has_father` and switches it to the other
+     side (the same person, the old row revoked).
   4. It **refuses** (it prints a closed reason and writes nothing) a row that is not an active
      relation of the owner (unknown, revoked or another owner's: `not_an_active_relation`), a row of
      the wrong kind (`wrong_relation_kind`: a sibling row, or `label-child` on a parent) and a person
-     who already has a side (`already_labelled`).
-  A mistaken label is not edited in place: `just admin revoke relation <id>` makes the relative
-  unrecorded, and adding one again after the closing has no path yet (roadmap, cross-cutting
-  table), so check the row id and the name beside it before you confirm.
+     who already has a side, or a row already labelled with the side you ask for
+     (`already_labelled`).
+  A mistaken label is undone by labelling again: for a parent, run `just admin label-parent
+  <relation_id> <the other side>` on the `has_mother` / `has_father` row `list` shows; for a child,
+  `just admin revoke relation <marker id>` (the `daughter_of` / `son_of` row from `list`) and then
+  `label-child` again. Do not revoke a parent row: adding a relative after the closing has no path
+  yet (roadmap, cross-cutting table).
 - `add` and `change` edit the owner's own fields. **Adding a new contact, child or pet after the
   closing has no path yet** (roadmap, cross-cutting table).
 - It refuses to run if the server answers `/health`, the database is missing or the schema is behind

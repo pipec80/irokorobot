@@ -264,6 +264,17 @@ async def test_a_label_on_the_wrong_row_prints_the_closed_reason(cli_db: int) ->
     assert any("child_of" in line for line in await _listing())
 
 
+async def test_label_parent_switches_a_recorded_side_from_the_cli(cli_db: int) -> None:
+    row = await _seed_relation(cli_db, "has_mother", "Zeta Parent")
+    lines, write = _sink()
+    request = AdminRequest(command="label-parent", row_id=row, side="father")
+    assert await _run(request, _Script("SI", _PIN), write) == 0
+    assert any("aplicada" in line for line in lines)
+    seen = await _listing()
+    assert any("has_father" in line and "Zeta Parent" in line for line in seen)
+    assert not any("has_mother" in line for line in seen)
+
+
 async def test_labelling_a_parent_who_already_has_a_side_is_announced(cli_db: int) -> None:
     row = await _seed_relation(cli_db, "has_parent", "Zeta Parent")
     await db.open_db()

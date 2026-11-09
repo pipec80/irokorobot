@@ -71,6 +71,7 @@ _PARENT_ROW = "has_parent"
 _CHILD_ROW = "child_of"
 _CHILD_MARKERS = ("daughter_of", "son_of")
 _PARENT_SIDE_ROWS = ("has_mother", "has_father")
+_PARENT_ROWS = (_PARENT_ROW, *_PARENT_SIDE_ROWS)
 # An id that is not among the owner's active relations: unknown, revoked or somebody else's.
 _NOT_AN_ACTIVE_RELATION = "not_an_active_relation"
 _WRONG_RELATION_KIND = "wrong_relation_kind"
@@ -409,10 +410,10 @@ async def apply_side_label(
     """Say which side a relative or a child is, through the canonical writer, and audit it.
 
     Plan 0080 D-7. A parent side (``mother``, ``father``) takes an active ``has_parent`` row of
-    the owner, writes ``has_mother`` or ``has_father`` to the same person and revokes the
-    ``has_parent`` row, in one transaction. A child side (``daughter``, ``son``) takes an active
-    ``child_of`` row to the owner and writes the ``daughter_of`` or ``son_of`` marker for the
-    same child beside it; the ``child_of`` row stays active. Any other row, a row that is not
+    the owner, or a ``has_mother`` / ``has_father`` row to switch to the other side, writes the
+    new side to the same person and revokes the old row, in one transaction. A child side
+    (``daughter``, ``son``) takes an active ``child_of`` row to the owner and writes the
+    ``daughter_of`` or ``son_of`` marker for the same child beside it; the ``child_of`` row stays active. Any other row, a row that is not
     active, not the owner's or unknown, a child that already holds a marker, or a missing PIN is
     refused with a closed reason and writes nothing. The audit row holds the new predicate and
     the person's entity id, never a name.
@@ -444,7 +445,9 @@ async def apply_side_label(
             )
         active = await list_active_relations(owner_entity_id)
         relation = next((row for row in active if row.id == relation_id), None)
-        refusal = _side_refusal(relation, active, owner_entity_id, is_parent=is_parent)
+        refusal = _side_refusal(
+            relation, active, owner_entity_id, new_predicate, is_parent=is_parent
+        )
         status, reason = AdminOutcomeStatus.REFUSED, refusal
         if relation is not None and refusal is None:
             status, reason = await _attempt_side(
@@ -467,8 +470,7 @@ def _person_of(relation: EntityRelationV4 | None, *, is_parent: bool) -> int | N
     """Return the person a row names: the parent it points to, or the child it starts from."""
     if relation is None:
         return None
-    expected = _PARENT_ROW if is_parent else _CHILD_ROW
-    if relation.predicate != expected:
+    if relation.predicate not in (_PARENT_ROWS if is_parent else (_CHILD_ROW,)):
         return None
     return relation.target_entity_id if is_parent else relation.source_entity_id
 
@@ -477,18 +479,22 @@ def _side_refusal(
     relation: EntityRelationV4 | None,
     active: list[EntityRelationV4],
     owner_entity_id: int,
+    new_predicate: str,
     *,
     is_parent: bool,
 ) -> str | None:
     """Return why the row cannot take the label, or ``None`` when it can.
 
     ``relation`` was picked from ``active`` (the owner's active relations), so an id that is
-    unknown, revoked or another owner's is simply absent.
+    unknown, revoked or another owner's is simply absent. A parent row may be unlabelled
+    (``has_parent``) or already sided (``has_mother``, ``has_father``: switched to the other side).
     """
     if relation is None:
         return _NOT_AN_ACTIVE_RELATION
-    if relation.predicate != (_PARENT_ROW if is_parent else _CHILD_ROW):
+    if relation.predicate not in (_PARENT_ROWS if is_parent else (_CHILD_ROW,)):
         return _WRONG_RELATION_KIND
+    if relation.predicate == new_predicate:
+        return _ALREADY_LABELLED
     owned = relation.source_entity_id if is_parent else relation.target_entity_id
     if owned != owner_entity_id:
         return _NOT_AN_ACTIVE_RELATION
@@ -499,7 +505,8 @@ def _side_refusal(
         else (_CHILD_MARKERS, relation.source_entity_id)
     )
     if any(
-        row.predicate in markers
+        row.id != relation.id
+        and row.predicate in markers
         and row.source_entity_id == (owner_entity_id if is_parent else person)
         and row.target_entity_id == (person if is_parent else owner_entity_id)
         for row in active
