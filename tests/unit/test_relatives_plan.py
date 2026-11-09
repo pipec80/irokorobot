@@ -191,7 +191,10 @@ async def test_an_unauthorized_parent_read_sounds_like_a_stranger() -> None:
     assert plan.response == _REFUSAL
 
 
-@pytest.mark.parametrize("message", ["¿Cómo se llama mi mamá?", "¿Cómo se llaman mis papás?"])
+@pytest.mark.parametrize(
+    "message",
+    ["¿Cómo se llama mi mamá?", "¿Cómo se llaman mis papás?", "¿Cuál es el nombre de mi papá?"],
+)
 @pytest.mark.parametrize("status", [None, ActivePersonStatus.AMBIGUOUS])
 async def test_a_stranger_and_two_faces_never_reach_the_parents(
     message: str, status: ActivePersonStatus | None
@@ -269,7 +272,10 @@ async def test_an_unauthorized_child_read_sounds_like_a_stranger() -> None:
     assert plan.response == _REFUSAL
 
 
-@pytest.mark.parametrize("message", ["¿Cómo se llama mi hija?", "Dime el nombre de mi hijo"])
+@pytest.mark.parametrize(
+    "message",
+    ["¿Cómo se llama mi hija?", "Dime el nombre de mi hijo", "¿Cuál es el nombre de mi hija?"],
+)
 @pytest.mark.parametrize("status", [None, ActivePersonStatus.AMBIGUOUS])
 async def test_a_stranger_and_two_faces_never_reach_the_children(
     message: str, status: ActivePersonStatus | None

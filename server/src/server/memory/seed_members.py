@@ -159,7 +159,7 @@ class _Tastes(_Frozen):
 
 
 class SeedChild(_Tastes):
-    """A child of the owner; an adult child is the name and the guardianship only."""
+    """A child of the owner; an adult child is the name, the guardianship and the side only."""
 
     name: Name = Field(repr=False)
     guardianship: Guardianship
