@@ -293,14 +293,114 @@ def test_a_when_question_about_what_was_told_is_told(message: str) -> None:
     assert cue.when is WhenKind.TOLD
 
 
-def test_a_bare_when_with_a_past_verb_is_strong_and_a_weak_phrase_stays_weak() -> None:
+def test_a_bare_when_with_a_past_verb_is_strong_like_one_after_a_weak_phrase() -> None:
+    """A listed verb raises «¿te acuerdas cuándo fui…?» to strong, as the bare form (final review)."""
     bare = classify_recall_cue("¿Cuándo fui a la playa?", today=_WEDNESDAY)
     weak = classify_recall_cue("¿Te acuerdas cuándo fui a la playa?", today=_WEDNESDAY)
 
     assert bare is not None
     assert bare.strength is CueStrength.STRONG
     assert weak is not None
-    assert weak.strength is CueStrength.WEAK
+    assert weak.strength is CueStrength.STRONG
+    assert weak.when is WhenKind.HAPPENED
+
+
+def test_a_weak_phrase_before_when_without_a_listed_verb_stays_weak_with_no_kind() -> None:
+    cue = classify_recall_cue("¿Te acuerdas cuándo fue el mundial de 2010?", today=_WEDNESDAY)
+
+    assert cue is not None
+    assert cue.strength is CueStrength.WEAK
+    assert cue.when is None
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Cuando fui a la playa me quemé, ¿te acuerdas?",
+        "Cuando fuimos a la playa con Zeta lo pasamos bien, ¿te acuerdas?",
+    ],
+)
+def test_a_story_that_ends_in_a_weak_tag_keeps_the_weak_cue_without_a_kind(message: str) -> None:
+    """The weak phrase closes the story: it is today's weak cue, not a «when» question."""
+    cue = classify_recall_cue(message, today=_WEDNESDAY)
+
+    assert cue is not None
+    assert cue.strength is CueStrength.WEAK
+    assert cue.when is None
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "¿Cuándo salimos a pasear?",
+        "¿Cuándo jugamos a las cartas?",
+        "¿Cuándo compramos el regalo de Zeta?",
+        "¿Cuándo viajamos a Omega?",
+        "¿Cuándo visitamos a Zeta?",
+        "¿Cuándo hablamos con el doctor?",
+        "¿Cuándo hablamos?",
+    ],
+)
+def test_the_plural_forms_that_are_also_the_present_tense_are_no_cue(message: str) -> None:
+    assert classify_recall_cue(message, today=_WEDNESDAY) is None
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "¿Cuándo hablamos de la playa?",
+        "¿Te acuerdas cuándo hablamos de la playa?",
+    ],
+)
+def test_when_we_talked_about_something_is_a_strong_told_cue(message: str) -> None:
+    cue = classify_recall_cue(message, today=_WEDNESDAY)
+
+    assert cue is not None
+    assert cue.strength is CueStrength.STRONG
+    assert cue.when is WhenKind.TOLD
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "¿Cuándo fuimos al cerro?",
+        "¿Cuándo estuvimos en la plaza?",
+        "¿Cuándo hicimos la torta?",
+        "¿Cuándo vimos a Zeta?",
+        "¿Cuándo comimos en el cerro?",
+        "¿Cuándo conocimos a Omega?",
+        "¿Cuándo compré el regalo de Zeta?",
+        "¿Cuándo salí con Omega?",
+        "¿Cuándo jugué con Zeta?",
+        "¿Cuándo visité a Omega?",
+    ],
+)
+def test_the_unambiguous_past_forms_still_ask_when_it_happened(message: str) -> None:
+    cue = classify_recall_cue(message, today=_WEDNESDAY)
+
+    assert cue is not None
+    assert cue.when is WhenKind.HAPPENED
+
+
+@pytest.mark.parametrize(
+    "message",
+    ["Cuándo fui a la playa", "cuándo estuve en la playa", "Oye Iroko, cuándo fui a la playa"],
+)
+def test_an_accented_opening_when_asks_even_without_the_question_mark(message: str) -> None:
+    """Whisper writes the interrogative with the accent and the subordinate without it."""
+    cue = classify_recall_cue(message, today=_WEDNESDAY)
+
+    assert cue is not None
+    assert cue.strength is CueStrength.STRONG
+    assert cue.when is WhenKind.HAPPENED
+
+
+@pytest.mark.parametrize(
+    "message",
+    ["cuando fui a la playa me quemé", "Cuando fui a la playa me quemé", "cuando fui a la playa"],
+)
+def test_an_unaccented_when_without_the_question_mark_is_still_a_story(message: str) -> None:
+    assert classify_recall_cue(message, today=_WEDNESDAY) is None
 
 
 def test_the_past_verb_stays_in_the_query_but_is_not_a_content_word() -> None:

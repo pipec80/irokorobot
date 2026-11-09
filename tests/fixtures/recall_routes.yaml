@@ -206,3 +206,40 @@
 - phrase: "¿Qué te conté cuando fui a la playa?"
   need: recall
   today: generic_conversation
+# Final review of Plan 0080: a story that ends in a weak tag keeps today's weak cue with no kind.
+- phrase: "Cuando fui a la playa me quemé, ¿te acuerdas?"
+  need: recall
+  today: generic_conversation
+- phrase: "Cuando fuimos a la playa con Zeta lo pasamos bien, ¿te acuerdas?"
+  need: recall
+  today: generic_conversation
+# The plural forms that are also the present tense are plans, not memories.
+- phrase: "¿Cuándo salimos a pasear?"
+  need: generic_conversation
+  today: generic_conversation
+- phrase: "¿Cuándo jugamos a las cartas?"
+  need: generic_conversation
+  today: generic_conversation
+- phrase: "¿Cuándo compramos el regalo de Zeta?"
+  need: generic_conversation
+  today: generic_conversation
+- phrase: "¿Cuándo viajamos a Omega?"
+  need: generic_conversation
+  today: generic_conversation
+- phrase: "¿Cuándo hablamos con el doctor?"
+  need: generic_conversation
+  today: generic_conversation
+# A weak phrase before «cuándo» needs a listed verb for the kind; the verb makes it strong.
+- phrase: "¿Te acuerdas cuándo fui a Zeta?"
+  need: recall
+  today: generic_conversation
+- phrase: "¿Te acuerdas cuándo fue el mundial de 2010?"
+  need: recall
+  today: generic_conversation
+# Whisper writes the interrogative «cuándo» with the accent and the subordinate one without.
+- phrase: "Cuándo fui a la playa"
+  need: recall
+  today: generic_conversation
+- phrase: "cuando fui a la playa me quemé"
+  need: generic_conversation
+  today: generic_conversation

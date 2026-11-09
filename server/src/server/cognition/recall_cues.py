@@ -12,7 +12,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+import re
 from typing import TYPE_CHECKING, Final
+import unicodedata
 
 from server.cognition.household_request import (
     has_question_mark,
@@ -53,17 +55,22 @@ _STRONG_PHRASES: Final = (
 _WEAK_PHRASES: Final = ("te recuerdas", "te acuerdas", "te acordai", "recuerdas", "acuerdate")
 # «¿Cuándo fui a la playa?» (Plan 0080 D-8): a bare «cuándo» is a recall question only when the
 # word after it is one of these first-person past verbs; nobody asks general knowledge with «fui».
+# Only forms that are not also the present tense: «salimos», «jugamos», «compramos», «viajamos»,
+# «visitamos» and «hablamos» are plans in «¿cuándo salimos a pasear?» (final review of Plan 0080).
 _WHEN_VERBS: Final = frozenset(
     {
-        "fui", "fuimos", "estuve", "estuvimos", "hable", "hablamos", "hice", "hicimos", "vi",
-        "vimos", "visite", "visitamos", "viaje", "viajamos", "sali", "salimos", "comi",
-        "comimos", "compre", "compramos", "jugue", "jugamos", "conoci", "conocimos",
+        "fui", "fuimos", "estuve", "estuvimos", "hable", "hice", "hicimos", "vi", "vimos",
+        "visite", "viaje", "sali", "comi", "comimos", "compre", "jugue", "conoci", "conocimos",
     }
 )  # fmt: skip
 # Folded, «viajé» is also the noun «viaje»: it asks as a verb but must stay a searchable word.
 _NOUN_LIKE_VERBS: Final = frozenset({"viaje"})
 _WHEN_WORD: Final = "cuando"
-_TOLD_VERB: Final = "hablamos"  # the robot is part of «nosotros»
+# «¿Cuándo hablamos de la playa?»: the robot is part of «nosotros». A cue only in this shape, since
+# «¿cuándo hablamos con el doctor?» is a plan.
+_TOLD_SHAPE: Final = ("hablamos", "de")
+_ACCENTED_WHEN: Final = "cuándo"
+_WHEN_RAW: Final = re.compile(r"\bcu[aá]ndo\b")
 _INTERROGATIVES: Final = frozenset(
     {"que", "cual", "cuales", "quien", "quienes", "cuando", "como", "donde", "cuanto", "cuantos"}
 )
@@ -83,6 +90,7 @@ _STOP_WORDS: Final = frozenset(
         "iroko", "oye", "hola", "bueno", "po", "pues", "cachai", "ah", "eh",
         *_INTERROGATIVES,
         *(_WHEN_VERBS - _NOUN_LIKE_VERBS),
+        _TOLD_SHAPE[0],
     }
 )  # fmt: skip
 # The relatives question (Plan 0078 D-9): its shapes, and the words naming each relation.
@@ -199,21 +207,56 @@ def _is_question(message: str, normalized: str) -> bool:
     )
 
 
-def _after_when_word(normalized: str) -> list[str] | None:
-    """The words after a «cuando» that opens the question, one weak cue phrase allowed before it."""
+def _opens_with_accented_when(message: str) -> bool:
+    """Whether the first «cuando» of the raw text carries the interrogative accent.
+
+    Whisper writes «cuándo» in a question and «cuando» in a story, and the folding drops that.
+    """
+    found = _WHEN_RAW.search(unicodedata.normalize("NFC", message).lower())
+    return found is not None and found.group(0) == _ACCENTED_WHEN
+
+
+@dataclass(frozen=True)
+class _WhenOpening:
+    """A question opening with «cuando»: the words after it, and whether a weak phrase led it."""
+
+    after: tuple[str, ...]
+    weak_opened: bool
+
+    @property
+    def asks_about_the_past(self) -> bool:
+        """Whether a listed first-person past verb, or «hablamos de», follows the «cuando»."""
+        return self.told_shape or (bool(self.after) and self.after[0] in _WHEN_VERBS)
+
+    @property
+    def told_shape(self) -> bool:
+        """Whether «hablamos de» follows the «cuando»."""
+        return self.after[:2] == _TOLD_SHAPE
+
+
+def _when_opening(message: str, normalized: str) -> _WhenOpening | None:
+    """The «cuando» that opens a marked or accented question, one weak phrase allowed before it."""
+    if not (has_question_mark(message) or _opens_with_accented_when(message)):
+        return None
     body = without_leading_fillers(normalized)
+    weak_opened = False
     for phrase in _WEAK_PHRASES:
         if body.startswith(f"{phrase} "):
             body = body.removeprefix(phrase).lstrip()
+            weak_opened = True
             break
     words = body.split()
-    return words[1:] if words[:1] == [_WHEN_WORD] else None
+    return _WhenOpening(tuple(words[1:]), weak_opened) if words[:1] == [_WHEN_WORD] else None
 
 
-def _when_kind(normalized: str) -> WhenKind:
-    """Told when the message holds a strong phrase or «hablamos»; otherwise it happened."""
+def _weak_phrase_led(opening: _WhenOpening | None) -> bool:
+    return opening is not None and opening.weak_opened
+
+
+def _when_kind(normalized: str, opening: _WhenOpening) -> WhenKind:
+    """Told when the message holds a strong phrase or «hablamos de»; otherwise it happened."""
     padded = f" {normalized} "
-    if any(_has(padded, phrase) for phrase in (*_STRONG_PHRASES, _TOLD_VERB)):
+    if opening.told_shape or any(_has(padded, phrase) for phrase in _STRONG_PHRASES):
         return WhenKind.TOLD
     return WhenKind.HAPPENED
 
@@ -248,19 +291,30 @@ def classify_recall_cue(message: str, *, today: date) -> RecallCue | None:
     """
     normalized = normalize_spanish(message)
     strength = _strength(normalized)
-    # Without the mark «cuando te conté…» may be a story: it keeps today's cue and no kind.
-    after_when = _after_when_word(normalized) if has_question_mark(message) else None
+    # Without the mark or the accent «cuando te conté…» may be a story: it keeps today's cue and
+    # no kind.
+    opening = _when_opening(message, normalized)
+    asks_the_past = opening is not None and opening.asks_about_the_past
     if strength is None:
-        if not after_when or after_when[0] not in _WHEN_VERBS:
+        if not asks_the_past:
             return None
         strength = CueStrength.STRONG
     elif not _is_question(message, normalized):
         return None
+    elif strength is CueStrength.WEAK and asks_the_past and _weak_phrase_led(opening):
+        # «¿Te acuerdas cuándo fui…?» asks as the bare form does.
+        strength = CueStrength.STRONG
     window = parse_spoken_window(normalized, today)
     query = without_leading_fillers(strip_window_words(_without_cues(normalized)))
     if window is None and not content_words(query):
         return None
-    when = None if after_when is None else _when_kind(normalized)
+    # A weak cue has no kind: «Cuando fui a la playa me quemé, ¿te acuerdas?» is a story that ends
+    # in the weak phrase, and «¿te acuerdas cuándo fue el mundial?» names no verb of the owner's.
+    when = (
+        _when_kind(normalized, opening)
+        if opening is not None and strength is CueStrength.STRONG
+        else None
+    )
     return RecallCue(strength=strength, query=query, window=window, when=when)
 
 
