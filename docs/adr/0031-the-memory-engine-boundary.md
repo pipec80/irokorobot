@@ -93,7 +93,12 @@ firewall begins**. What holds today (verified on `main` at `cc8f1f1`, 2026-11-09
      embedding call to Ollama, and then reads the text with `units_by_id`, which does not
      re-check owner, sensitivity or expiry. A record raised to `medical` by the diary job
      (`raise_record_sensitivity`) during those seconds could still reach the answer. A race, not
-     an observed leak.
+     an observed leak. **Fixed by [Plan 0080](../plans/open/0080-mvp-recall-phrasings.md)
+     (2026-11-09):** `units_by_id(ids, *, owner_entity_id, now)` joins the record and re-applies
+     owner, `personal`, `normal` and the record's expiry in the statement that returns the text,
+     and the tests reclassify or expire a unit between the search and the read and pass another owner's ids. Residual:
+     text already read is not recalled while the model words the answer. The first bullet is **still
+     latent** (block C, C1).
 
 ## Decision
 
@@ -196,8 +201,12 @@ units already work; it becomes a rule for every new source.
 
 The semantics are fixed here; columns are added only when a use case needs them, by the plan of
 that use case. The engine never invents an occurred time it was not told, and an answer says which
-time it reports («me lo contaste el lunes» is not «fuiste el lunes»). Plan 0080 is proposed to decide the minimum
-for «¿cuándo fui a la playa?».
+time it reports («me lo contaste el lunes» is not «fuiste el lunes»). **The minimum for «¿cuándo
+fui a la playa?» is decided (Plan 0080, 2026-11-09):** the answer says the day it was **told**
+(`said_at`), never the date of the event; a `WhenKind` (`TOLD` or `HAPPENED`) on the recall cue
+selects a fixed table with no model, and `HAPPENED` opens «No tengo registrado cuándo fue. Sí
+recuerdo que {día} me contaste esto: …». No `occurred` column and no migration: the occurred time
+itself stays future, added by the plan of the use case that needs it.
 
 ### 6. Every record says where it came from and what was done to it
 
@@ -359,7 +368,7 @@ of tuning.
 | The deletion register (or crypto-shredding) that stops a restore from resurrecting what was forgotten | ADR 0032 with ADR 0033 |
 | Where the engine runs (a container on the home server), encryption at rest and of backups | ADR 0033 (deployment) |
 | The documentary source contract, chunking, the PDF library and its licence | ADR 0034 (R2) |
-| The minimum occurred-time for «¿cuándo fui…?» | Plan 0080 |
+| ~~The minimum occurred-time for «¿cuándo fui…?»~~ | Decided by Plan 0080: the day it was told, no `occurred` column (decision 5); the occurred time itself stays future |
 | The exact names and module layout of the port | The extraction plan, after CM-7 + PC-5 |
 | An export format (Open Memory Protocol Initiative or another) | When the protocol publishes a specification; not before the MVP |
 | Reflection (inferred opinions or summaries of summaries) | Not planned; it would need its own ADR |

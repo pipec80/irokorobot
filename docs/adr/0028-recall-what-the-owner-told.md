@@ -247,6 +247,38 @@ each from a finding on his hardware; the evaluation record lists the commits.
 | A4 | Decision 8 | The recall prompt has **no** «no me acuerdo» exit: it runs only when something qualified, so the robot always answers from what was found (the 3B model took the exit 12 of 12 times with two hits in front of it). A model that still writes the fixed phrase, says nothing, fails, answers in the owner's first person («fui», «yo», «mi», «mis») or says «hoy» of an older memory gets the template that quotes the first memory. «No me acuerdo de eso.» is spoken only when nothing qualified. The prompt asks for tú without naming «tuteo» |
 | A5 | Decision 10 | `RECALL_MAX_DISTANCE = 0.43`, calibrated from Pipec's questions: true hits at 0.395 and 0.414, misses from 0.469. The data are thin; revisit with use |
 
+## Implemented in Plan 0080
+
+[Plan 0080](../plans/open/0080-mvp-recall-phrasings.md) (2026-11-09) builds what the MVP questions
+needed. It changes no decision above except where this section says so; the status stays
+`Accepted`.
+
+- **Decision 9, the sides.** The mother and the father, the daughter and the son are told apart as
+  relationships, with no migration: `has_mother` and `has_father` from the owner (`has_parent` now
+  means a parent whose side is not recorded) and `daughter_of` and `son_of` from the child to the
+  owner, a marker beside the one `child_of` row. They are not a `sex` literal because the writer
+  keeps «name and relationship only» for parents, the partner and adult children (the marker is
+  stored for an adult child too, whose facts stay refused). A side that is not recorded is never
+  guessed: «No tengo claro cuál de ellos es tu mamá. Tus papás se llaman Zeta y Omega.». The seed
+  file and `iroko-admin label-parent` / `label-child` record the side
+  ([ADR 0024](0024-seed-load-senses-secrets-and-channels.md) decision 10).
+- **Amendment A3 is superseded for the singular child question.** «¿Cómo se llama mi hija?» and
+  «¿cómo se llama mi hijo?» now ask for one side: «Tu hija se llama Zeta.». The plural «mis hijos»
+  keeps the whole list, and so does a message naming both singular words.
+- **Request shapes.** «¿Cuál es el nombre de mi X?», «¿cuáles son los nombres de mi/mis X?», «dime
+  el nombre de mi X» and «dime los nombres de mis X» are relatives questions when they **open** the
+  sentence (after the fillers), so «no sé cuál es el nombre de mi tía» stays a story. They are
+  recall-only: with the flag off they keep today's route.
+- **The told-not-happened rule (decision 7).** «¿Cuándo …?» questions are answered by a fixed table
+  over the first hit, with no model, and say the day it was **told** (`said_at`), never the date of
+  the event: «¿cuándo fui…?» opens «No tengo registrado cuándo fue. Sí recuerdo que {día} me
+  contaste esto: …». A bare «cuándo» is a cue only before a first-person past verb of a closed list
+  and with a question mark or an opening accented «cuándo»; the time of the event itself stays
+  unstored ([ADR 0031](0031-the-memory-engine-boundary.md) decision 5).
+- **Delivery filters (decision 6, item 1).** The statement that returns a unit's text re-applies
+  owner, `personal`, `normal` and the record's expiry
+  ([ADR 0031](0031-the-memory-engine-boundary.md) Context item 8).
+
 ## Not decided here
 
 | Subject | Why not now | Owner |
@@ -254,7 +286,7 @@ each from a finding on his hardware; the evaluation record lists the commits.
 | Reading sensitive data by voice (health, address, birthdays, the `SECURITY` datum), the liveness defence, «¿estás con alguien?» | One concept, the audience, that needs its own decisions; CM-7 requires it | Block B (step 3 of the closing path, with CM-3b tranche B) |
 | Correcting and forgetting by voice | The cascade of decision 1 is ready; the commands are CM-6 | Block C |
 | Turning a spoken third-party fact into a structured one («mi tía se llama Zeta») | Large and fragile; the diary already lets it be recalled | After CM-7: a resting job may propose it from the diary (ADR 0025 decision 5) |
-| Telling the mother from the father in the alta | A seed-data change, not memory | A follow-up in the Phase 0 tools (`iroko-admin`) |
+| ~~Telling the mother from the father in the alta~~ | Done by Plan 0080 (*Implemented in Plan 0080*): the seed file and `iroko-admin` record the side | Closed |
 | «¿Y qué más?» without repeating the cue | Needs the recall answer inside continuity, which decision 8 keeps out | Revisit with real use |
 | A reranker | Not measured as needed | R4, only if the metrics ask for it |
 | Documents (laws, manuals, books) | Not memory | R2/R4, its own ADR; decision 1's units already carry a kind |

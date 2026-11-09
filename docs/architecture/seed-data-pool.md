@@ -97,15 +97,25 @@ blank means the field has no status). «Sensitivity» is the `DataSensitivity` v
 | How to get in (gate, concierge; never a code) | `home_access_note` (new, a reference) | location | home | an ambulance | 0070 | yes |
 | Lives alone | `lives_alone` (new, choice) | location | home | initiative, inactivity (with the address it is a burglar's map, so it is read at `strong`) | 0070 | yes |
 | Emergency contacts, caregiver, doctor, key holder, neighbour, trusted person: name, relationship, a phone and an optional second one, call order, key, whether they may be told health information, whether they may later see the owner's activity events | `care_contacts` | private (`location` when the contact holds a key) | contacts | fall alert, the sheet, evacuation, the audience rule | 0070 | yes |
-| Children (minor or adult), partner | `child_of`, `partner_of` | child_data, normal | household | contacts, family | exists | yes |
+| Children (minor or adult), partner; the child's side (daughter or son) | `child_of`, `partner_of`; `daughter_of` or `son_of` (a marker from the child to the owner, beside the one `child_of` row; also for an adult child) | child_data, normal | household | contacts, family, «¿cómo se llama mi hija?» | exists; the side 0080 | yes |
 | Pets and their species | `pet_of`, `species` | normal | household | rescuers | exists | yes |
-| Parents, grandparents, siblings, grandchildren | `has_parent`, `has_grandparent`, `has_sibling`, `has_grandchild` (new) | normal | | family conversation | 0070 | yes |
+| Mother and father; parents, grandparents, siblings, grandchildren | `has_mother`, `has_father` (side recorded); `has_parent` (a parent whose side is not recorded), `has_grandparent`, `has_sibling`, `has_grandchild` (new) | normal | | family conversation, «¿cómo se llama mi mamá?» | 0070; the two sides 0080 | yes |
 | People who must not receive information | `withhold_from` (new relation) | private | withhold | the audience rule of CM-5 | 0070 | yes |
 | Who knows an alarm code, a safe, a bank card | `secret_holder` (new, a reference) | security | secrets | CM-5, CM-7 | 0070 | yes |
 | Tastes (likes, dislikes, prefers) | `likes`, `dislikes`, `prefers` | normal | | conversation | exists | yes |
 | Topics not to touch | `private_topic` | normal (its content may be health or grief: revisit its default with CM-5) | | CM-5 | exists | yes |
 | Who interviewed, the owner's confirmation, the file, the counts, the backup, the consents (biometric, telemetry, remote support, backup and its destination label), a random installation id | `commissioning_records` | n/a | | provenance, audits, the operations plane of ADR 0025 | 0070 (the table, shipped), 0072 (the values, shipped) | yes |
 | Each section's status | `commissioning_sections` | n/a | | knowing what was never asked | 0070 | yes |
+
+**The side of a parent or a child is a relationship, not a `sex` field** (Plan 0080): the writer keeps
+«name and relationship only» for parents, the partner and adult children, so a literal about the
+person would break that rule. In the seed file the side is written with the optional `[mother]` and
+`[father]` tables (a name each) and with `side` (`"daughter"` or `"son"`) on a child, also on an
+adult one; `[[parents]]` stays for a parent whose side nobody knows and stores `has_parent`. These
+keys change no section. A relation loaded without a side is told afterwards with
+`iroko-admin label-parent` and `label-child` (see the
+[operator manual](../runbooks/operator-manual.md#7-commissioning-and-amending-the-household-data-plans-0070-to-0073)).
+The robot never guesses a side: while a parent has none it says so.
 
 A phone is written in international format (`+56912345678`); the writer rejects anything else so a
 later alert never has to guess a country code. A contact with no call order is **never called by

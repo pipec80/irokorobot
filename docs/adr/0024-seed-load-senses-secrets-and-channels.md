@@ -296,6 +296,18 @@ and a member can never become a relative: the fence looks at the four relative r
 contacts, **not** at `withhold_from`, and it never refuses an exact repeat of a relation that is
 already active (a load run twice changes nothing).
 
+*Note, Plan 0080 (2026-11-09; decisions 9 and 10 stand unchanged).* The **side** of a parent or a
+child is a relationship, not a `sex` literal, so that the rule above (name and relationship only)
+and the adult child of decision 9 (name and guardianship only) keep their meaning:
+`has_mother` and `has_father` (owner to parent, the same fences as `has_parent`, which now means a
+parent whose side is not recorded) and `daughter_of` and `son_of` (child to owner, a marker beside
+the one `child_of` row, accepted for an adult child too). The seed file gains the optional
+`[mother]` and `[father]` tables and `side = "daughter"` or `"son"` on a child; they join the one
+walk of the circle (`duplicate_name` covers every pair) and change no section.
+`iroko-admin label-parent` and `label-child` record the side afterwards (the owner's PIN, one audit
+row `change` / `pool_relation` with no name). The reading side is in
+[ADR 0028](0028-recall-what-the-owner-told.md) *Implemented in Plan 0080*.
+
 ### 11. Who may import
 
 Access to the machine is enough (Pipec's decision, 2026-10-22). The cost, stated: whoever can run
