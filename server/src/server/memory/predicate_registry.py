@@ -242,6 +242,27 @@ _PREDICATES: tuple[PredicateDefinition, ...] = (
         inverse_query_id="parent_of",
         default_sensitivity="child_data",
     ),
+    # The side of a child (Plan 0080 D-4) is a marker added beside the child's one ``child_of`` row,
+    # never a ``sex`` literal (an adult child keeps name and relationship only). The aliases
+    # avoid ``hijo_de``, which ``child_of`` owns; the inverse query stays with ``child_of``.
+    PredicateDefinition(
+        canonical_id="daughter_of",
+        aliases=frozenset({"daughter_of", "hija_de"}),
+        kind=PredicateKind.RELATION,
+        cardinality=PredicateCardinality.RELATION,
+        subject_types=_PERSON,
+        target_types=_PERSON,
+        default_sensitivity="child_data",
+    ),
+    PredicateDefinition(
+        canonical_id="son_of",
+        aliases=frozenset({"son_of", "hijo_varon_de"}),
+        kind=PredicateKind.RELATION,
+        cardinality=PredicateCardinality.RELATION,
+        subject_types=_PERSON,
+        target_types=_PERSON,
+        default_sensitivity="child_data",
+    ),
     PredicateDefinition(
         canonical_id="partner_of",
         aliases=frozenset({"partner_of", "pareja_de"}),

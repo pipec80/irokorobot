@@ -76,12 +76,16 @@
   need: recall
   today: generic_conversation
 # Pipec's own phrases (2026-11-03), routes only; their answers stay out of the repository.
-# The singular child question reads the children list with recall on (Pipec's amendment).
+# The singular child question asks for one side with recall on (Plan 0080 D-4, which supersedes
+# Pipec's amendment of 2026-11-03: the list answered it).
 - phrase: "¿Cómo se llama mi hija?"
-  need: own_children_list
+  need: relatives_names
   today: protected_household
 - phrase: "¿Cómo se llama mi hijo?"
-  need: own_children_list
+  need: relatives_names
+  today: protected_household
+- phrase: "¿Quién es mi hija?"
+  need: relatives_names
   today: protected_household
 - phrase: "¿Te acuerdas la última vez que fuimos a la playa?"
   need: recall
@@ -146,11 +150,14 @@
 - phrase: "¿Cuáles son los nombres de mi mamá y de mi papá?"
   need: relatives_names
   today: protected_household
-# The child shapes read the children list with recall on, until the side of a child is asked.
+# The singular child requests ask for a side; the plural keeps the whole list.
 - phrase: "¿Cuál es el nombre de mi hijo?"
-  need: own_children_list
+  need: relatives_names
   today: protected_household
 - phrase: "Dime el nombre de mi hija"
+  need: relatives_names
+  today: protected_household
+- phrase: "Dime los nombres de mis hijos"
   need: own_children_list
   today: protected_household
 - phrase: "¿Cuáles son los nombres de mis hijos?"

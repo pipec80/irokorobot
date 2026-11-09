@@ -170,7 +170,6 @@ def test_relation_of_names_the_predicate(message: str, predicate: str) -> None:
         "No sé cuál es el nombre de mi mamá",
         "Mi mamá dijo cuál es el nombre de mi perro",
         "¿Cuál es el nombre de la calle de mi papá?",
-        "¿Cuál es el nombre de mi hijo?",
     ],
 )
 def test_relation_of_is_none_for_anything_else(message: str) -> None:
@@ -180,3 +179,79 @@ def test_relation_of_is_none_for_anything_else(message: str) -> None:
 def test_the_relative_words_still_hold_every_word_of_the_split_parents() -> None:
     """Plan 0079 reads this set: splitting mother from father must not drop a word."""
     assert {"mama", "madre", "papa", "padre", "papas", "padres"} <= RELATIVE_WORDS
+
+
+@pytest.mark.parametrize(
+    "message, predicate",
+    [
+        ("¿Cómo se llama mi hija?", "daughter_of"),
+        ("¿Quién es mi hijo?", "son_of"),
+        ("¿Cuál es el nombre de mi hija?", "daughter_of"),
+        ("Dime el nombre de mi hijo", "son_of"),
+        ("Oye Iroko, ¿cómo se llama mi hija?", "daughter_of"),
+        ("¿Cómo se llama a mi hijo?", "son_of"),
+    ],
+)
+def test_relation_of_tells_the_daughter_from_the_son(message: str, predicate: str) -> None:
+    assert relation_of(message) == predicate
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "¿Cómo se llaman mis hijos?",
+        "¿Quiénes son mis hijos?",
+        "¿Cuáles son los nombres de mis hijos?",
+        "Dime los nombres de mis hijos",
+        "Mi hija se llama Zeta y baila",
+        "¿Dónde baila mi hija?",
+        "¿Cuál es el nombre de la calle de mi hijo?",
+        "No sé cuál es el nombre de mi hija",
+    ],
+)
+def test_relation_of_is_none_for_the_children_as_a_group_and_for_stories(message: str) -> None:
+    assert relation_of(message) is None
+
+
+def test_the_child_words_do_not_join_the_relative_words() -> None:
+    """Plan 0079 reads this set: the singular child words come from a separate table."""
+    assert not {"hijo", "hija", "hijos", "hijas"} & RELATIVE_WORDS
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "¿Cómo se llama mi hija?",
+        "¿Quién es mi hijo?",
+        "¿Cuál es el nombre de mi hija?",
+        "Dime el nombre de mi hijo",
+        "Oye Iroko, ¿cómo se llama mi hijo?",
+    ],
+)
+def test_the_intent_rule_and_relation_of_agree_on_the_singular_child_phrases(
+    message: str,
+) -> None:
+    """The controller calls ``relation_of`` again: a phrase the rule routes must name a side."""
+    resolution = resolve_information_need(message, recall=True)
+
+    assert resolution.need is InformationNeed.RELATIVES_NAMES
+    assert resolution.rule_id == "own_children.name.v1"
+    assert relation_of(message) in {"daughter_of", "son_of"}
+
+
+@pytest.mark.parametrize(
+    "message", ["¿Cuáles son los nombres de mis hijos?", "Dime los nombres de mis hijos"]
+)
+def test_the_plural_child_requests_keep_the_whole_list(message: str) -> None:
+    resolution = resolve_information_need(message, recall=True)
+
+    assert resolution.need is InformationNeed.OWN_CHILDREN_LIST
+    assert resolution.rule_id == "own_children.name.v1"
+    assert relation_of(message) is None
+
+
+@pytest.mark.parametrize(
+    "message", ["¿Cómo se llama mi hija?", "Dime el nombre de mi hijo", "¿Quién es mi hija?"]
+)
+def test_with_recall_off_the_singular_child_phrases_resolve_as_today(message: str) -> None:
+    assert resolve_information_need(message).need is InformationNeed.PROTECTED_HOUSEHOLD

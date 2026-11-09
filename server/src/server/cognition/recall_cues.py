@@ -121,6 +121,11 @@ _RELATION_WORDS: Final[dict[str, str]] = {
 }
 #: The folded words that name a relative, partner or pet; one list with ``relation_of``'s (Plan 0079).
 RELATIVE_WORDS: Final = frozenset(_RELATION_WORDS)
+# The side of a child (Plan 0080 D-4): only the singular words ask for one side, from a table of
+# their own so ``RELATIVE_WORDS`` stays the set Plan 0079 reads. «mis hijos» is the whole list and
+# keeps its own route.
+_CHILD_WORDS: Final[dict[str, str]] = {"hija": "daughter_of", "hijo": "son_of"}
+_ASKED_WORDS: Final = {**_RELATION_WORDS, **_CHILD_WORDS}
 
 
 class CueStrength(StrEnum):
@@ -215,11 +220,11 @@ def _names_both_parents(padded: str) -> bool:
 def _asked_predicate(normalized: str, padded: str) -> str | None:
     """Return the predicate of the first relative shape and relation word the message holds."""
     for shape in _RELATIVE_SHAPES:
-        for word, predicate in _RELATION_WORDS.items():
+        for word, predicate in _ASKED_WORDS.items():
             if f" {shape} {word} " in padded:
                 return predicate
     for shape in _RELATIVE_REQUEST_SHAPES:
-        for word, predicate in _RELATION_WORDS.items():
+        for word, predicate in _ASKED_WORDS.items():
             if opens_with(normalized, f"{shape} {word}"):
                 return predicate
     return None
@@ -233,9 +238,9 @@ def relation_of(message: str) -> str | None:
 
     Returns:
         ``has_mother`` or ``has_father`` for one parent, ``has_parent`` for the plural or a
-        message naming both, ``has_sibling``, ``has_grandparent``, ``has_grandchild``,
-        ``partner_of`` or ``pet_of``; ``None`` for anything else (the children keep their own
-        route).
+        message naming both, ``daughter_of`` or ``son_of`` for one child, ``has_sibling``,
+        ``has_grandparent``, ``has_grandchild``, ``partner_of`` or ``pet_of``; ``None`` for
+        anything else (the children as a group keep their own route).
     """
     normalized = normalize_spanish(message)
     padded = f" {normalized} "

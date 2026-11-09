@@ -296,3 +296,72 @@ def _definition(alias: str) -> PredicateDefinition:
     definition = resolve_predicate(alias)
     assert definition is not None
     return definition
+
+
+# --- the side of a child (Plan 0080 D-4, Review focus 6) ------------------------------------------
+
+
+@pytest.mark.parametrize("marker", ["daughter_of", "son_of"])
+@pytest.mark.parametrize("child", ["child", "adult_child"])
+async def test_the_side_of_a_child_is_stored_for_a_minor_and_for_an_adult_and_repeats(
+    home: _Home, marker: str, child: str
+) -> None:
+    """A marker is a relationship: an adult child may carry it, beside the one child_of row."""
+    entity = getattr(home, child)
+
+    first = await _relate(home, entity, marker, home.owner)
+    again = await _relate(home, entity, marker, home.owner, WriteChannel.IMPORT_FILE)
+
+    assert again.id == first.id
+    assert (first.visibility, first.sensitivity) == ("household", "child_data")
+    assert (first.source_entity_id, first.target_entity_id) == (entity, home.owner)
+    kept = await get_active_entity_relations(
+        definition=_definition("child_of"), source_entity_id=entity
+    )
+    assert len(kept) == 1
+
+
+@pytest.mark.parametrize("marker", ["daughter_of", "son_of"])
+async def test_the_side_is_refused_for_the_partner_as_child_of_is(home: _Home, marker: str) -> None:
+    assert await _refusal_of(_relate(home, home.partner, marker, home.owner)) == (
+        await _refusal_of(_relate(home, home.partner, "child_of", home.owner))
+    )
+    assert await _refusal_of(_relate(home, home.partner, marker, home.owner)) == (
+        "not_household_member"
+    )
+
+
+@pytest.mark.parametrize("marker", ["daughter_of", "son_of"])
+async def test_the_side_is_refused_for_a_relative_as_child_of_is(home: _Home, marker: str) -> None:
+    await _relate(home, home.owner, "has_parent", home.relative)
+
+    reason = await _refusal_of(_relate(home, home.relative, marker, home.owner))
+
+    assert reason == await _refusal_of(_relate(home, home.relative, "child_of", home.owner))
+    assert reason == "role_conflict"
+
+
+@pytest.mark.parametrize("marker", ["daughter_of", "son_of"])
+async def test_the_side_must_point_to_the_owner(home: _Home, marker: str) -> None:
+    reason = await _refusal_of(_relate(home, home.owner, marker, home.child))
+
+    assert reason == "not_household_member"
+
+
+async def test_a_fact_about_an_adult_child_is_still_refused_after_the_side_is_stored(
+    home: _Home,
+) -> None:
+    await _relate(home, home.adult_child, "daughter_of", home.owner)
+
+    reason = await _refusal_of(
+        write_literal(
+            owner_entity_id=home.owner,
+            subject_entity_id=home.adult_child,
+            predicate="likes",
+            value="el mate",
+            channel=WriteChannel.IMPORT_ASSISTED,
+            confirmed_at=_CONFIRMED_AT,
+        )
+    )
+
+    assert reason == "not_household_member"

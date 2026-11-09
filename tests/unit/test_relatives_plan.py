@@ -61,6 +61,7 @@ def _tools(
     status: KnowledgeStatus,
     value: tuple[str, ...] | None = None,
     parents: SidedNames | None = None,
+    children: SidedNames | None = None,
 ) -> Mock:
     tools = Mock()
     tools.get_relatives = AsyncMock(
@@ -69,6 +70,7 @@ def _tools(
         )
     )
     tools.get_parents = AsyncMock(return_value=parents or SidedNames(status=status))
+    tools.get_children_by_side = AsyncMock(return_value=children or SidedNames(status=status))
     return tools
 
 
@@ -203,6 +205,85 @@ async def test_a_stranger_and_two_faces_never_reach_the_parents(
     plan = await _controller(tools, actor).handle(_event(message))
 
     assert plan.response == _REFUSAL
+    tools.get_parents.assert_not_awaited()
+    tools.get_relatives.assert_not_awaited()
+
+
+# --- the daughter and the son (Plan 0080 Task 4) -----------------------------------------------
+
+
+async def test_the_daughter_question_speaks_the_daughter() -> None:
+    tools = _tools(KnowledgeStatus.KNOWN, children=_parents(female=("Zeta",), male=("Omega",)))
+
+    plan = await _controller(tools, _actor(7)).handle(_event("¿Cómo se llama mi hija?"))
+
+    assert plan.need is InformationNeed.RELATIVES_NAMES
+    assert plan.status is KnowledgeStatus.KNOWN
+    assert plan.source is ResponseSource.DETERMINISTIC
+    assert plan.response == "Tu hija se llama Zeta."
+    assert tools.get_children_by_side.await_args is not None
+    assert tools.get_children_by_side.await_args.kwargs["parent_entity_id"] == 7
+    tools.get_parents.assert_not_awaited()
+    tools.get_relatives.assert_not_awaited()
+
+
+async def test_the_son_question_speaks_the_son() -> None:
+    tools = _tools(KnowledgeStatus.KNOWN, children=_parents(female=("Zeta",), male=("Omega",)))
+
+    plan = await _controller(tools, _actor(7)).handle(_event("Dime el nombre de mi hijo"))
+
+    assert plan.need is InformationNeed.RELATIVES_NAMES
+    assert plan.response == "Tu hijo se llama Omega."
+
+
+async def test_children_without_a_side_are_not_labelled() -> None:
+    tools = _tools(KnowledgeStatus.KNOWN, children=_parents(unlabelled=("Omega", "Zeta")))
+
+    plan = await _controller(tools, _actor(7)).handle(_event("¿Cuál es el nombre de mi hija?"))
+
+    assert plan.response == "No tengo claro cuál de ellos es tu hija. Tus hijos son Omega y Zeta."
+
+
+async def test_the_absent_side_of_a_child_is_not_registered() -> None:
+    tools = _tools(KnowledgeStatus.KNOWN, children=_parents(male=("Omega",)))
+
+    plan = await _controller(tools, _actor(7)).handle(_event("¿Cómo se llama mi hija?"))
+
+    assert plan.need is InformationNeed.RELATIVES_NAMES
+    assert plan.response == NOT_REGISTERED
+
+
+async def test_no_child_stored_is_not_registered() -> None:
+    plan = await _controller(_tools(KnowledgeStatus.UNKNOWN), _actor(7)).handle(
+        _event("¿Quién es mi hijo?")
+    )
+
+    assert plan.response == NOT_REGISTERED
+
+
+async def test_an_unauthorized_child_read_sounds_like_a_stranger() -> None:
+    plan = await _controller(_tools(KnowledgeStatus.UNAUTHORIZED), _actor(8)).handle(
+        _event("¿Cómo se llama mi hija?")
+    )
+
+    assert plan.response == _REFUSAL
+
+
+@pytest.mark.parametrize("message", ["¿Cómo se llama mi hija?", "Dime el nombre de mi hijo"])
+@pytest.mark.parametrize("status", [None, ActivePersonStatus.AMBIGUOUS])
+async def test_a_stranger_and_two_faces_never_reach_the_children(
+    message: str, status: ActivePersonStatus | None
+) -> None:
+    tools = _tools(KnowledgeStatus.KNOWN, children=_parents(female=("Zeta",), male=("Omega",)))
+    # Two faces: a person id is present, but the status is not IDENTIFIED.
+    actor = _actor(None)
+    if status is not None:
+        actor = _actor(7).model_copy(update={"status": status})
+
+    plan = await _controller(tools, actor).handle(_event(message))
+
+    assert plan.response == _REFUSAL
+    tools.get_children_by_side.assert_not_awaited()
     tools.get_parents.assert_not_awaited()
     tools.get_relatives.assert_not_awaited()
 

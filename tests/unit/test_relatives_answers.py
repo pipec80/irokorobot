@@ -159,3 +159,97 @@ def test_the_other_relations_keep_their_templates(
     predicate: str, names: tuple[str, ...], said: str
 ) -> None:
     assert relatives_sentence(predicate, names) == said
+
+
+# --- the children (Plan 0080 D-5) ---------------------------------------------------------------
+
+
+def test_the_daughter_is_told_when_she_is_recorded() -> None:
+    names = _parents(female=("Zeta",), male=("Omega",))
+
+    assert sided_sentence(SideGroup.CHILDREN, Side.FEMALE, names) == "Tu hija se llama Zeta."
+
+
+def test_the_son_is_told_when_he_is_recorded() -> None:
+    names = _parents(male=("Omega",))
+
+    assert sided_sentence(SideGroup.CHILDREN, Side.MALE, names) == "Tu hijo se llama Omega."
+
+
+def test_two_daughters_use_the_plural() -> None:
+    names = _parents(female=("Zeta", "Omega"))
+
+    assert (
+        sided_sentence(SideGroup.CHILDREN, Side.FEMALE, names)
+        == "Tus hijas se llaman Omega y Zeta."
+    )
+
+
+def test_two_sons_use_the_plural_with_varones() -> None:
+    names = _parents(male=("Zeta", "Omega"))
+
+    assert (
+        sided_sentence(SideGroup.CHILDREN, Side.MALE, names)
+        == "Tus hijos varones se llaman Omega y Zeta."
+    )
+
+
+def test_the_daughter_asked_when_the_children_have_no_side_does_not_guess() -> None:
+    names = _parents(unlabelled=("Omega", "Zeta"))
+
+    assert (
+        sided_sentence(SideGroup.CHILDREN, Side.FEMALE, names)
+        == "No tengo claro cuál de ellos es tu hija. Tus hijos son Omega y Zeta."
+    )
+
+
+def test_the_unclear_answer_names_every_child_and_asks_for_the_son() -> None:
+    names = _parents(female=("Canary",), unlabelled=("Omega", "Zeta"))
+
+    assert (
+        sided_sentence(SideGroup.CHILDREN, Side.MALE, names)
+        == "No tengo claro cuál de ellos es tu hijo. Tus hijos son Canary, Omega y Zeta."
+    )
+
+
+def test_one_child_without_a_side_asked_for_a_side_uses_the_singular() -> None:
+    names = _parents(unlabelled=("Zeta",))
+
+    assert (
+        sided_sentence(SideGroup.CHILDREN, Side.FEMALE, names)
+        == "No tengo claro si es tu hija. Tu hijo o hija se llama Zeta."
+    )
+    assert (
+        sided_sentence(SideGroup.CHILDREN, Side.MALE, names)
+        == "No tengo claro si es tu hijo. Tu hijo o hija se llama Zeta."
+    )
+
+
+def test_the_asked_side_absent_while_the_other_is_complete_has_no_answer() -> None:
+    assert sided_sentence(SideGroup.CHILDREN, Side.FEMALE, _parents(male=("Omega",))) is None
+    assert sided_sentence(SideGroup.CHILDREN, Side.MALE, _parents(female=("Zeta",))) is None
+    assert sided_sentence(SideGroup.CHILDREN, Side.FEMALE, _parents()) is None
+
+
+def test_the_whole_group_of_children_is_named_together() -> None:
+    names = _parents(female=("Zeta",), male=("Omega",), unlabelled=("Canary",))
+
+    assert sided_sentence(SideGroup.CHILDREN, None, names) == "Tus hijos son Canary, Omega y Zeta."
+
+
+def test_the_only_child_without_a_side_is_named_by_the_whole_group_sentence() -> None:
+    assert (
+        sided_sentence(SideGroup.CHILDREN, None, _parents(unlabelled=("Zeta",)))
+        == "Tu hijo o hija se llama Zeta."
+    )
+
+
+def test_the_only_child_keeps_the_recorded_side_when_the_group_is_asked() -> None:
+    assert (
+        sided_sentence(SideGroup.CHILDREN, None, _parents(female=("Zeta",)))
+        == "Tu hija se llama Zeta."
+    )
+    assert (
+        sided_sentence(SideGroup.CHILDREN, None, _parents(male=("Omega",)))
+        == "Tu hijo se llama Omega."
+    )

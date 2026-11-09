@@ -15,6 +15,7 @@ __all__ = ["relatives_sentence", "sided_sentence"]
 # side is not told apart says both words for one name; a pet or a partner has one word.
 _RELATIVES_TEMPLATES: Final[dict[str, tuple[str, str]]] = {
     "has_parent": ("Tu papá o tu mamá se llama {}.", "Tus papás se llaman {}."),
+    "child_of": ("Tu hijo o hija se llama {}.", "Tus hijos son {}."),
     "has_sibling": ("Tu hermano o hermana se llama {}.", "Tus hermanos se llaman {}."),
     "has_grandparent": ("Tu abuelo o abuela se llama {}.", "Tus abuelos se llaman {}."),
     "has_grandchild": ("Tu nieto o nieta se llama {}.", "Tus nietos se llaman {}."),
@@ -27,13 +28,20 @@ _RELATIVES_TEMPLATES: Final[dict[str, tuple[str, str]]] = {
 _SIDED_TEMPLATES: Final[dict[tuple[SideGroup, Side], tuple[str, str]]] = {
     (SideGroup.PARENTS, Side.FEMALE): ("Tu mamá se llama {}.", "Tus mamás se llaman {}."),
     (SideGroup.PARENTS, Side.MALE): ("Tu papá se llama {}.", "Tus papás se llaman {}."),
+    (SideGroup.CHILDREN, Side.FEMALE): ("Tu hija se llama {}.", "Tus hijas se llaman {}."),
+    (SideGroup.CHILDREN, Side.MALE): ("Tu hijo se llama {}.", "Tus hijos varones se llaman {}."),
 }
 _ASKED_WORD: Final[dict[tuple[SideGroup, Side], str]] = {
     (SideGroup.PARENTS, Side.FEMALE): "tu mamá",
     (SideGroup.PARENTS, Side.MALE): "tu papá",
+    (SideGroup.CHILDREN, Side.FEMALE): "tu hija",
+    (SideGroup.CHILDREN, Side.MALE): "tu hijo",
 }
 # The whole group, when its sides are not told apart: the unsided template of the relation.
-_WHOLE_GROUP: Final[dict[SideGroup, str]] = {SideGroup.PARENTS: "has_parent"}
+_WHOLE_GROUP: Final[dict[SideGroup, str]] = {
+    SideGroup.PARENTS: "has_parent",
+    SideGroup.CHILDREN: "child_of",
+}
 _UNCLEAR: Final = "No tengo claro cuál de ellos es {}. {}"
 _UNCLEAR_ONE: Final = "No tengo claro si es {}. {}"
 
@@ -42,8 +50,8 @@ def relatives_sentence(predicate: str, names: tuple[str, ...]) -> str:
     """Word the names of one relation with its fixed singular or plural template.
 
     Args:
-        predicate: ``has_parent``, ``has_sibling``, ``has_grandparent``, ``has_grandchild``,
-            ``partner_of`` or ``pet_of``.
+        predicate: ``has_parent``, ``child_of`` (the whole group of children), ``has_sibling``,
+            ``has_grandparent``, ``has_grandchild``, ``partner_of`` or ``pet_of``.
         names: The names, sorted.
 
     Returns:

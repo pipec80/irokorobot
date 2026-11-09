@@ -237,12 +237,14 @@ _OWN_CHILD_NAME_PATTERNS = (
     "quien es mi hijo",
 )
 # Plan 0080 D-3: «el nombre de mi hijo». Requests, not mentions: they must open the sentence.
-# Until the side of a child is asked, the singular answers the list like the shapes above.
+# The singular asks for one side (``relation_of`` words it); the plural answers the whole list.
 _OWN_CHILD_NAME_REQUESTS = (
     "cual es el nombre de mi hija",
     "cual es el nombre de mi hijo",
     "dime el nombre de mi hija",
     "dime el nombre de mi hijo",
+)
+_OWN_CHILDREN_NAME_REQUESTS = (
     "cuales son los nombres de mis hijos",
     "dime los nombres de mis hijos",
 )
@@ -372,17 +374,23 @@ def _own_children_count_rule(utterance: _Utterance) -> IntentResolution | None:
 
 
 def _own_child_name_rule(utterance: _Utterance) -> IntentResolution | None:
-    """Recognize the singular «¿cómo se llama mi hija?», answered by the children list.
+    """Recognize the question about a child's name, with recall on only.
 
-    Pipec's amendment to Plan 0078 (2026-11-03), with recall on only. The alta does not tell a
-    daughter from a son, so the list answers it, as the parents' question names both parents.
-    Plan 0080 D-3 adds «el nombre de mi hijo» and «los nombres de mis hijos», which must open
-    the sentence.
+    The singular «¿cómo se llama mi hija?» / «¿cuál es el nombre de mi hijo?» asks for one side:
+    it resolves to ``RELATIVES_NAMES`` and the controller reads the side marker through
+    ``relation_of`` (Plan 0080 D-4, which supersedes Plan 0078 amendment A3, where the whole list
+    answered it because the alta did not tell a daughter from a son). The plural «¿cuáles son los
+    nombres de mis hijos?» still answers the whole list. The requests of D-3 must open the
+    sentence.
     """
     normalized = utterance.normalized
     if any(
         _contains_word_phrase(normalized, pattern) for pattern in _OWN_CHILD_NAME_PATTERNS
     ) or any(opens_with(normalized, request) for request in _OWN_CHILD_NAME_REQUESTS):
+        return _resolution(
+            InformationNeed.RELATIVES_NAMES, IntentMatch.EXACT, "own_children.name.v1"
+        )
+    if any(opens_with(normalized, request) for request in _OWN_CHILDREN_NAME_REQUESTS):
         return _resolution(
             InformationNeed.OWN_CHILDREN_LIST, IntentMatch.EXACT, "own_children.name.v1"
         )

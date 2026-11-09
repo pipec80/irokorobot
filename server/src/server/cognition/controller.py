@@ -553,15 +553,9 @@ class CognitiveController:
         if actor.status is not ActivePersonStatus.IDENTIFIED or actor.person_id is None:
             return _unknown_plan(InformationNeed.RELATIVES_NAMES, _PROFILE_SUMMARY_UNKNOWN_RESPONSE)
         consent = await self._consent_resolver(event, actor)
-        if predicate in _PARENT_SIDES:
-            parents = await self._household_tools.get_parents(
-                owner_entity_id=actor.person_id,
-                actor=actor,
-                consent=consent,
-                correlation_id=event.correlation_id,
-                requested_at=event.recorded_at,
-            )
-            return _parents_plan(parents, _PARENT_SIDES[predicate])
+        sided = await self._sided_relatives_plan(event, actor, consent, predicate)
+        if sided is not None:
+            return sided
         result = await self._household_tools.get_relatives(
             owner_entity_id=actor.person_id,
             predicate=predicate,
@@ -575,6 +569,41 @@ class CognitiveController:
         if result.status is not KnowledgeStatus.KNOWN or not isinstance(result.value, tuple):
             return _unknown_plan(InformationNeed.RELATIVES_NAMES, NOT_REGISTERED)
         return _relatives_plan_of(relatives_sentence(predicate, result.value))
+
+    async def _sided_relatives_plan(
+        self,
+        event: CognitiveEvent[TextTurnPayload],
+        actor: ActivePersonContext,
+        consent: ConsentStatus,
+        predicate: str,
+    ) -> ResponsePlan | None:
+        """Read the parents or one child by recorded side; ``None`` for any other relation.
+
+        The consent is the one the children list uses (``_consent_resolver``); the actor is the
+        observed one, so nothing here spends a grant.
+        """
+        tools = self._household_tools
+        if tools is None or actor.person_id is None:
+            return None
+        if predicate in _PARENT_SIDES:
+            parents = await tools.get_parents(
+                owner_entity_id=actor.person_id,
+                actor=actor,
+                consent=consent,
+                correlation_id=event.correlation_id,
+                requested_at=event.recorded_at,
+            )
+            return _sided_plan(SideGroup.PARENTS, parents, _PARENT_SIDES[predicate])
+        if predicate in _CHILD_SIDES:
+            children = await tools.get_children_by_side(
+                parent_entity_id=actor.person_id,
+                actor=actor,
+                consent=consent,
+                correlation_id=event.correlation_id,
+                requested_at=event.recorded_at,
+            )
+            return _sided_plan(SideGroup.CHILDREN, children, _CHILD_SIDES[predicate])
+        return None
 
     async def _recall_decision(self, event: CognitiveEvent[TextTurnPayload]) -> ResponsePlan | None:
         """Decide the recall plan of one event (cached by ``_recall_plan``)."""
@@ -866,6 +895,8 @@ _PARENT_SIDES: dict[str, Side | None] = {
     "has_father": Side.MALE,
     "has_parent": None,
 }
+# One child asked for by side: the marker the question stands for (Plan 0080 D-4).
+_CHILD_SIDES: dict[str, Side] = {"daughter_of": Side.FEMALE, "son_of": Side.MALE}
 
 
 def _relatives_plan_of(sentence: str) -> ResponsePlan:
@@ -878,14 +909,12 @@ def _relatives_plan_of(sentence: str) -> ResponsePlan:
     )
 
 
-def _parents_plan(parents: SidedNames, asked: Side | None) -> ResponsePlan:
-    """Word the parents read by side: the refusal, «No tengo registrado eso.» or the sentence."""
-    if parents.status is KnowledgeStatus.UNAUTHORIZED:
+def _sided_plan(group: SideGroup, names: SidedNames, asked: Side | None) -> ResponsePlan:
+    """Word a group read by side: the refusal, «No tengo registrado eso.» or the sentence."""
+    if names.status is KnowledgeStatus.UNAUTHORIZED:
         return _unknown_plan(InformationNeed.RELATIVES_NAMES, _PROFILE_SUMMARY_UNKNOWN_RESPONSE)
     sentence = (
-        sided_sentence(SideGroup.PARENTS, asked, parents)
-        if parents.status is KnowledgeStatus.KNOWN
-        else None
+        sided_sentence(group, asked, names) if names.status is KnowledgeStatus.KNOWN else None
     )
     if sentence is None:
         return _unknown_plan(InformationNeed.RELATIVES_NAMES, NOT_REGISTERED)

@@ -155,6 +155,12 @@ _PARENT_READS = (
     (_required_predicate("has_father"), Side.MALE),
     (_HAS_PARENT, None),
 )
+# The side of a child is a marker row beside its ``child_of`` row (Plan 0080 D-4), pointing from
+# the child to the owner, like ``child_of``.
+_CHILD_SIDE_READS = (
+    (_required_predicate("daughter_of"), Side.FEMALE),
+    (_required_predicate("son_of"), Side.MALE),
+)
 
 
 class HouseholdKnowledgeTools:
@@ -280,6 +286,73 @@ class HouseholdKnowledgeTools:
         return ChildBirthdays(
             status=KnowledgeStatus.KNOWN,
             children=tuple(sorted(children, key=lambda child: child[0])),
+        )
+
+    async def get_children_by_side(
+        self,
+        *,
+        parent_entity_id: int,
+        actor: ActivePersonContext,
+        consent: ConsentStatus,
+        correlation_id: UUID,
+        requested_at: datetime,
+    ) -> SidedNames:
+        """Return the owner's children by recorded side (Plan 0080 D-4).
+
+        It composes the paths that exist, as ``get_children_birthdays`` does: the ``child_of``
+        read of ``get_children`` for the children, then the ``daughter_of`` and ``son_of`` marker
+        reads through the same policy-gated reader, so every step is authorized and audited by
+        the code that already does so and no new policy path exists. A child with neither marker
+        or with both has no recorded side.
+
+        Args:
+            parent_entity_id: Parent entity selected by a trusted internal seam.
+            actor: Trusted active household actor.
+            consent: Trusted scoped consent for child data.
+            correlation_id: Request-scoped audit correlation ID.
+            requested_at: Aware request timestamp.
+
+        Returns:
+            The labels sorted by side (daughters, sons, side not recorded); ``UNAUTHORIZED`` when
+            any step was refused (no names); ``UNKNOWN`` without a known list of children or when
+            a child's label is unavailable.
+        """
+        child_ids = await self._child_ids(
+            parent_entity_id=parent_entity_id,
+            actor=actor,
+            consent=consent,
+            correlation_id=correlation_id,
+            requested_at=requested_at,
+        )
+        if isinstance(child_ids, HouseholdToolResult):
+            return SidedNames(status=child_ids.status)
+        if not child_ids:
+            return SidedNames(status=KnowledgeStatus.UNKNOWN)
+        marked: dict[Side, set[int]] = {}
+        for definition, side in _CHILD_SIDE_READS:
+            read = await self._reader.read_active_relations(
+                actor=actor,
+                predicate_alias=definition.canonical_id,
+                target_entity_id=parent_entity_id,
+                consent=consent,
+                correlation_id=correlation_id,
+                requested_at=requested_at,
+            )
+            if read.status is KnowledgeStatus.UNAUTHORIZED:
+                return SidedNames(status=KnowledgeStatus.UNAUTHORIZED)
+            marked[side] = {relation.source_entity_id for relation in read.relations}
+        by_side: dict[Side | None, list[str]] = {Side.FEMALE: [], Side.MALE: [], None: []}
+        for child_id in child_ids:
+            label = await self._label_reader(entity_id=child_id)
+            if label is None:
+                return SidedNames(status=KnowledgeStatus.UNKNOWN)
+            sides = [side for side, ids in marked.items() if child_id in ids]
+            by_side[sides[0] if len(sides) == 1 else None].append(label.display_name)
+        return SidedNames(
+            status=KnowledgeStatus.KNOWN,
+            female=tuple(sorted(by_side[Side.FEMALE])),
+            male=tuple(sorted(by_side[Side.MALE])),
+            unlabelled=tuple(sorted(by_side[None])),
         )
 
     async def _child_ids(
