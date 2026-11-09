@@ -16,7 +16,7 @@ from server.memory.relational_v4 import list_active_facts, list_active_relations
 from server.memory.write_types import WriteChannel
 from server.settings import settings
 
-from server import db
+from server import admin_cli, db
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -81,6 +81,38 @@ async def test_list_active_facts_returns_active_rows_and_hides_a_superseded_one(
     values = [fact.value_text for fact in facts]
     assert "Canary New" in values
     assert "Canary Old" not in values
+
+
+async def test_list_prints_the_other_persons_name_beside_every_relation(reads_db: int) -> None:
+    owner = reads_db
+    child = await create_third_party(name="Omega Child", type="person")
+    parent = await create_third_party(name="Zeta Parent", type="person")
+    for source, predicate, target in (
+        (child, "child_of", owner),
+        (child, "daughter_of", owner),
+        (owner, "has_mother", parent),
+        (owner, "has_parent", parent),
+    ):
+        await write_relation(
+            owner_entity_id=owner,
+            source_entity_id=source,
+            predicate=predicate,
+            target_entity_id=target,
+            channel=WriteChannel.ADMIN_LOCAL,
+            confirmed_at=_NOW,
+        )
+    lines: list[str] = []
+    assert await admin_cli._list(owner, lines.append) == 0
+    relation_lines = {
+        predicate: line
+        for line in lines
+        for predicate in ("child_of", "daughter_of", "has_mother", "has_parent")
+        if f"] {predicate} " in line
+    }
+    assert "Omega Child" in relation_lines["child_of"]
+    assert "Omega Child" in relation_lines["daughter_of"]
+    assert "Zeta Parent" in relation_lines["has_mother"]
+    assert "Zeta Parent" in relation_lines["has_parent"]
 
 
 async def test_list_active_relations_returns_the_owner_rows(reads_db: int) -> None:

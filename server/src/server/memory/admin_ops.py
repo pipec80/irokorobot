@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from contextlib import AbstractAsyncContextManager, nullcontext
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Literal
 
 from server import db
 from server.exceptions import UnstorableValueError, WriteRefusedError
@@ -22,29 +23,57 @@ from server.memory.admin_audit import (
     TargetKind,
     record_admin_operation,
 )
-from server.memory.canonical_writer import write_literal
+from server.memory.canonical_writer import write_literal, write_relation
 from server.memory.care_contacts import ContactRole, revoke_contact, write_contact
 from server.memory.predicate_registry import resolve_predicate
-from server.memory.relational_v4 import revoke_entity_relation, revoke_literal_fact
+from server.memory.relational_v4 import (
+    list_active_relations,
+    revoke_entity_relation,
+    revoke_literal_fact,
+)
 from server.memory.write_types import ConflictPolicy, WriteChannel
+
+if TYPE_CHECKING:
+    from server.memory.relational_v4 import EntityRelationV4
 
 __all__ = [
     "AdminActor",
     "AdminOutcome",
     "ContactTerms",
+    "SideLabel",
     "apply_contact_edit",
     "apply_literal_edit",
     "apply_revoke",
+    "apply_side_label",
     "requires_owner_verification",
 ]
 
+type SideLabel = Literal["mother", "father", "daughter", "son"]
+
 _CHANNEL: WriteChannel = WriteChannel.ADMIN_LOCAL
 _POLICY: ConflictPolicy = ConflictPolicy.SUPERSEDE
+_CHANGE = AdminOperationKind.CHANGE
 # The sensitivities ADR 0025 decision 4 names for the owner's own data (``private`` is excluded).
 _SENSITIVE = frozenset({"medical", "location", "security"})
 _OWNER_NOT_VERIFIED = "owner_not_verified"
 _UNSTORABLE = "unstorable_value"
 _INVALID = "invalid_value"
+# The sides of a relative or a child (Plan 0080 D-4, D-7): the predicate each side is stored as,
+# the unlabelled row each kind of side starts from, and the markers a child may hold (one).
+_SIDE_PREDICATES: dict[SideLabel, str] = {
+    "mother": "has_mother",
+    "father": "has_father",
+    "daughter": "daughter_of",
+    "son": "son_of",
+}
+_PARENT_SIDES = frozenset({"mother", "father"})
+_PARENT_ROW = "has_parent"
+_CHILD_ROW = "child_of"
+_CHILD_MARKERS = ("daughter_of", "son_of")
+# An id that is not among the owner's active relations: unknown, revoked or somebody else's.
+_NOT_AN_ACTIVE_RELATION = "not_an_active_relation"
+_WRONG_RELATION_KIND = "wrong_relation_kind"
+_ALREADY_LABELLED = "already_labelled"
 
 
 @dataclass(frozen=True)
@@ -364,6 +393,148 @@ async def apply_revoke(
             now=now,
         )
         return AdminOutcome(AdminOperationKind.REVOKE, AdminOutcomeStatus.APPLIED, None)
+
+
+async def apply_side_label(
+    *,
+    actor: AdminActor,
+    owner_entity_id: int,
+    relation_id: int,
+    side: SideLabel,
+    now: str,
+    owner_verified: bool,
+    manage_transaction: bool = True,
+) -> AdminOutcome:
+    """Say which side a relative or a child is, through the canonical writer, and audit it.
+
+    Plan 0080 D-7. A parent side (``mother``, ``father``) takes an active ``has_parent`` row of
+    the owner, writes ``has_mother`` or ``has_father`` to the same person and revokes the
+    ``has_parent`` row, in one transaction. A child side (``daughter``, ``son``) takes an active
+    ``child_of`` row to the owner and writes the ``daughter_of`` or ``son_of`` marker for the
+    same child beside it; the ``child_of`` row stays active. Any other row, a row that is not
+    active, not the owner's or unknown, a child that already holds a marker, or a missing PIN is
+    refused with a closed reason and writes nothing. The audit row holds the new predicate and
+    the person's entity id, never a name.
+
+    Args:
+        actor: Who runs it (for the audit).
+        owner_entity_id: The household owner (asserter and confirmer).
+        relation_id: The id of the row to label (from ``list``).
+        side: Which side the person is.
+        now: UTC ISO 8601; shared by the write, the revoke and the audit row.
+        owner_verified: Whether the owner's PIN was verified (always required: a third party).
+        manage_transaction: ``False`` joins the caller's open transaction.
+
+    Returns:
+        The outcome; a closed refusal is reported and audited, never raised.
+    """
+    new_predicate = _SIDE_PREDICATES[side]
+    is_parent = side in _PARENT_SIDES
+    async with _transaction(manage_transaction):
+        if not owner_verified:
+            return await _refused(
+                actor,
+                _CHANGE,
+                TargetKind.POOL_RELATION,
+                new_predicate,
+                None,
+                _OWNER_NOT_VERIFIED,
+                now,
+            )
+        active = await list_active_relations(owner_entity_id)
+        relation = next((row for row in active if row.id == relation_id), None)
+        refusal = _side_refusal(relation, active, owner_entity_id, is_parent=is_parent)
+        status, reason = AdminOutcomeStatus.REFUSED, refusal
+        if relation is not None and refusal is None:
+            status, reason = await _attempt_side(
+                owner_entity_id, relation, new_predicate, is_parent=is_parent, now=now
+            )
+        await _audit(
+            actor,
+            operation=_CHANGE,
+            target_kind=TargetKind.POOL_RELATION,
+            field_id=new_predicate,
+            target_entity_id=_person_of(relation, is_parent=is_parent),
+            status=status,
+            reason=reason,
+            now=now,
+        )
+        return AdminOutcome(_CHANGE, status, reason)
+
+
+def _person_of(relation: EntityRelationV4 | None, *, is_parent: bool) -> int | None:
+    """Return the person a row names: the parent it points to, or the child it starts from."""
+    if relation is None:
+        return None
+    expected = _PARENT_ROW if is_parent else _CHILD_ROW
+    if relation.predicate != expected:
+        return None
+    return relation.target_entity_id if is_parent else relation.source_entity_id
+
+
+def _side_refusal(
+    relation: EntityRelationV4 | None,
+    active: list[EntityRelationV4],
+    owner_entity_id: int,
+    *,
+    is_parent: bool,
+) -> str | None:
+    """Return why the row cannot take the label, or ``None`` when it can.
+
+    ``relation`` was picked from ``active`` (the owner's active relations), so an id that is
+    unknown, revoked or another owner's is simply absent.
+    """
+    if relation is None:
+        return _NOT_AN_ACTIVE_RELATION
+    if relation.predicate != (_PARENT_ROW if is_parent else _CHILD_ROW):
+        return _WRONG_RELATION_KIND
+    owned = relation.source_entity_id if is_parent else relation.target_entity_id
+    if owned != owner_entity_id:
+        return _NOT_AN_ACTIVE_RELATION
+    if not is_parent and any(
+        row.predicate in _CHILD_MARKERS
+        and row.source_entity_id == relation.source_entity_id
+        and row.target_entity_id == owner_entity_id
+        for row in active
+    ):
+        return _ALREADY_LABELLED
+    return None
+
+
+async def _attempt_side(
+    owner_entity_id: int,
+    relation: EntityRelationV4,
+    new_predicate: str,
+    *,
+    is_parent: bool,
+    now: str,
+) -> tuple[AdminOutcomeStatus, str | None]:
+    """Write the sided relation (and retire the unlabelled parent row), mapping a closed refusal.
+
+    An unexpected failure propagates so the caller's transaction rolls the write back.
+    """
+    person = relation.target_entity_id if is_parent else relation.source_entity_id
+    try:
+        await write_relation(
+            owner_entity_id=owner_entity_id,
+            source_entity_id=owner_entity_id if is_parent else person,
+            predicate=new_predicate,
+            target_entity_id=person if is_parent else owner_entity_id,
+            channel=_CHANNEL,
+            confirmed_at=now,
+            asserted_at=now,
+            on_conflict=_POLICY,
+            manage_transaction=False,
+        )
+    except WriteRefusedError as exc:
+        return AdminOutcomeStatus.REFUSED, exc.reason
+    except UnstorableValueError:
+        return AdminOutcomeStatus.REFUSED, _UNSTORABLE
+    except ValueError:
+        return AdminOutcomeStatus.REFUSED, _INVALID
+    if is_parent:
+        await revoke_entity_relation(relation.id, revoked_at=now, manage_transaction=False)
+    return AdminOutcomeStatus.APPLIED, None
 
 
 async def _refused(

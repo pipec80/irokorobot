@@ -38,9 +38,11 @@ from server.memory.admin_ops import (
     AdminActor,
     AdminOutcome,
     ContactTerms,
+    SideLabel,
     apply_contact_edit,
     apply_literal_edit,
     apply_revoke,
+    apply_side_label,
     requires_owner_verification,
 )
 from server.memory.admin_pin import verify_owner_pin
@@ -59,8 +61,13 @@ from server.memory.conversation_consent import (
     revoke_conversation_consent,
 )
 from server.memory.conversation_record import delete_record, list_records
+from server.memory.entity_labels import get_person_label
 from server.memory.owner_credentials import get_ready_owner
-from server.memory.relational_v4 import list_active_facts, list_active_relations
+from server.memory.relational_v4 import (
+    EntityRelationV4,
+    list_active_facts,
+    list_active_relations,
+)
 from server.personal_setup import check_db_available
 from server.settings import settings
 
@@ -81,6 +88,15 @@ _KINDS = {
 _REMINDER = (
     "Este informe queda en el historial de la terminal: limpia la pantalla al terminar (cls)."
 )
+# The sides each labelling verb accepts (Plan 0080 D-7); the parser offers the same words.
+_LABEL_SIDES: dict[str, tuple[SideLabel, SideLabel]] = {
+    "label-parent": ("mother", "father"),
+    "label-child": ("daughter", "son"),
+}
+# Each side word as the typed literal the writer takes (a plain ``str`` is not one).
+_SIDE_BY_WORD: dict[str, SideLabel] = {
+    side: side for sides in _LABEL_SIDES.values() for side in sides
+}
 
 
 class _RefusedError(Exception):
@@ -103,6 +119,7 @@ class AdminRequest:
     actor_label: str = _DEFAULT_ACTOR
     action: str | None = None
     out: Path | None = None
+    side: str | None = None
 
 
 def _actor(request: AdminRequest) -> AdminActor:
@@ -154,14 +171,32 @@ def _announce_outcome(outcome: AdminOutcome, write_text: WriteText) -> int:
 # --- the read sub-commands ------------------------------------------------------------------------
 
 
+async def _other_person(owner: int, relation: EntityRelationV4) -> str:
+    """Return `` (name)`` of the person at the end of the relation that is not the owner."""
+    other = (
+        relation.target_entity_id
+        if relation.source_entity_id == owner
+        else relation.source_entity_id
+    )
+    label = await get_person_label(entity_id=other)
+    return "" if label is None else f" ({label.display_name})"
+
+
 async def _list(owner: int, write_text: WriteText) -> int:
-    """Print the owner's pool literals, relations and contacts (values, this terminal only)."""
+    """Print the owner's pool literals, relations and contacts (values, this terminal only).
+
+    Every relation carries the other person's name, so the ids of the relatives and the children
+    can be told apart before ``label-parent`` or ``label-child``.
+    """
     write_text("Datos del pozo (hechos):")
     for fact in await list_active_facts(owner):
         write_text(f"  [{fact.id}] {fact.predicate}: {fact.value_text}")
     write_text("Relaciones:")
     for relation in await list_active_relations(owner):
-        write_text(f"  [{relation.id}] {relation.predicate} -> {relation.target_entity_id}")
+        write_text(
+            f"  [{relation.id}] {relation.predicate} -> {relation.target_entity_id}"
+            f"{await _other_person(owner, relation)}"
+        )
     write_text("Contactos:")
     for contact in await list_active_contacts(owner):
         order = "-" if contact.call_order is None else contact.call_order
@@ -301,6 +336,44 @@ async def _change_contact(
         role=current.role,
         terms=terms,
         kind=AdminOperationKind.CHANGE,
+        now=now,
+        owner_verified=True,
+    )
+    return _announce_outcome(outcome, write_text)
+
+
+async def _label_side(
+    request: AdminRequest,
+    owner: int,
+    read_text: ReadText,
+    read_secret: ReadText,
+    write_text: WriteText,
+    now: str,
+) -> int:
+    """Say which side an unlabelled relative or child is (`label-parent`, `label-child`).
+
+    The row id comes from `list`; the owner's PIN is always asked (a third party). The command
+    prints no name.
+    """
+    sides = _LABEL_SIDES.get(request.command, ())
+    side = _SIDE_BY_WORD.get(request.side or "")
+    if request.row_id is None or side is None or side not in sides:
+        raise _RefusedError(
+            f"{request.command} necesita el id de la fila (de `list`) y uno de: {', '.join(sides)}."
+        )
+    write_text(f"{request.command} [{request.row_id}] {side}")
+    if not _confirm(request, read_text, write_text):
+        return 1
+    if not await _grant_pin_if_needed(
+        required=True, read_secret=read_secret, write_text=write_text
+    ):
+        write_text("Sin verificación de la persona titular: no se cambió nada.")
+        return 1
+    outcome = await apply_side_label(
+        actor=_actor(request),
+        owner_entity_id=owner,
+        relation_id=request.row_id,
+        side=side,
         now=now,
         owner_verified=True,
     )
@@ -493,6 +566,8 @@ async def _dispatch(
             return await _revoke(request, read_text, read_secret, write_text, now)
         case "change-contact":
             return await _change_contact(request, owner, read_text, read_secret, write_text, now)
+        case "label-parent" | "label-child":
+            return await _label_side(request, owner, read_text, read_secret, write_text, now)
         case "conversations":
             return await _conversations(request, owner, read_text, read_secret, write_text, now)
     raise _RefusedError(f"Subcomando desconocido: {request.command}.")
@@ -589,6 +664,19 @@ def _parser() -> argparse.ArgumentParser:
     cc.add_argument("row_id", type=int)
     cc.add_argument("--dry-run", action="store_true")
     cc.add_argument("--actor", nargs="+")
+    for verb, sides, text in (
+        (
+            "label-parent",
+            _LABEL_SIDES["label-parent"],
+            "dice si una relación sin lado es la mamá o el papá",
+        ),
+        ("label-child", _LABEL_SIDES["label-child"], "dice si un hijo o hija es hija o hijo varón"),
+    ):
+        label = sub.add_parser(verb, help=f"{text} (id de `list`, PIN)")
+        label.add_argument("row_id", type=int)
+        label.add_argument("side", choices=sides)
+        label.add_argument("--dry-run", action="store_true")
+        label.add_argument("--actor", nargs="+", help="etiqueta de quien administra")
     conv = sub.add_parser(
         "conversations", help="lista, exporta o borra el registro de conversaciones (PIN)"
     )
@@ -613,6 +701,7 @@ def _request(args: argparse.Namespace) -> AdminRequest:
         actor_label=actor,
         action=getattr(args, "action", None),
         out=getattr(args, "out", None),
+        side=getattr(args, "side", None),
     )
 
 
