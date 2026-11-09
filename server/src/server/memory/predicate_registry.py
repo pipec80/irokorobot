@@ -172,6 +172,10 @@ _POOL_PREDICATES: tuple[PredicateDefinition, ...] = (
     _pool_literal("home_access_note", "acceso_a_la_casa", _R, "location"),
     _pool_literal("lives_alone", "vive_solo", _C, "location", choices="si no"),
     _pool_relation("has_parent", "tiene_padre_o_madre"),
+    # The side of a parent is a relationship, not an attribute (Plan 0080 D-4); ``has_parent``
+    # stays for a parent whose side is not recorded.
+    _pool_relation("has_mother", "tiene_madre"),
+    _pool_relation("has_father", "tiene_padre"),
     _pool_relation("has_grandparent", "tiene_abuelo_o_abuela"),
     _pool_relation("has_grandchild", "tiene_nieto_o_nieta"),
     _pool_relation("has_sibling", "tiene_hermano_o_hermana", symmetric=True),

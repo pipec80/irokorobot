@@ -16,6 +16,7 @@ from server.cognition.authorization import (
 )
 from server.cognition.calendar_tools import calculate_age, get_current_date
 from server.cognition.household_request import names_someone_known, requests_data_of_a_name
+from server.cognition.household_tools import Side, SidedNames, SideGroup
 from server.cognition.identity import ActivePersonContext, ActivePersonStatus, HouseholdRole
 from server.cognition.intent_resolution import (
     IntentResolution,
@@ -38,6 +39,7 @@ from server.cognition.recall_cues import (
     classify_recall_cue,
     relation_of,
 )
+from server.cognition.relatives_answers import relatives_sentence, sided_sentence
 from server.cognition.response_plan import (
     NO_MEMORY,
     NOT_ALONE,
@@ -550,11 +552,21 @@ class CognitiveController:
         actor = await self._observed_person_resolver(event)
         if actor.status is not ActivePersonStatus.IDENTIFIED or actor.person_id is None:
             return _unknown_plan(InformationNeed.RELATIVES_NAMES, _PROFILE_SUMMARY_UNKNOWN_RESPONSE)
+        consent = await self._consent_resolver(event, actor)
+        if predicate in _PARENT_SIDES:
+            parents = await self._household_tools.get_parents(
+                owner_entity_id=actor.person_id,
+                actor=actor,
+                consent=consent,
+                correlation_id=event.correlation_id,
+                requested_at=event.recorded_at,
+            )
+            return _parents_plan(parents, _PARENT_SIDES[predicate])
         result = await self._household_tools.get_relatives(
             owner_entity_id=actor.person_id,
             predicate=predicate,
             actor=actor,
-            consent=await self._consent_resolver(event, actor),
+            consent=consent,
             correlation_id=event.correlation_id,
             requested_at=event.recorded_at,
         )
@@ -562,12 +574,7 @@ class CognitiveController:
             return _unknown_plan(InformationNeed.RELATIVES_NAMES, _PROFILE_SUMMARY_UNKNOWN_RESPONSE)
         if result.status is not KnowledgeStatus.KNOWN or not isinstance(result.value, tuple):
             return _unknown_plan(InformationNeed.RELATIVES_NAMES, NOT_REGISTERED)
-        return ResponsePlan(
-            need=InformationNeed.RELATIVES_NAMES,
-            status=KnowledgeStatus.KNOWN,
-            source=ResponseSource.DETERMINISTIC,
-            response=_relatives_sentence(predicate, result.value),
-        )
+        return _relatives_plan_of(relatives_sentence(predicate, result.value))
 
     async def _recall_decision(self, event: CognitiveEvent[TextTurnPayload]) -> ResponsePlan | None:
         """Decide the recall plan of one event (cached by ``_recall_plan``)."""
@@ -852,19 +859,34 @@ def _response_tool_value(value: str | int | tuple[str, ...] | None) -> str | int
     return ", ".join(value) if isinstance(value, tuple) else value
 
 
-# «Tu papá o tu mamá se llama A.» / «Tus papás se llaman A y B.» (Plan 0078 D-9). The alta does
-# not tell the mother from the father, nor a brother from a sister: one name says both words.
-_RELATIVES_TEMPLATES: dict[str, tuple[str, str]] = {
-    "has_parent": ("Tu papá o tu mamá se llama {}.", "Tus papás se llaman {}."),
-    "has_sibling": ("Tu hermano o hermana se llama {}.", "Tus hermanos se llaman {}."),
-    "has_grandparent": ("Tu abuelo o abuela se llama {}.", "Tus abuelos se llaman {}."),
-    "has_grandchild": ("Tu nieto o nieta se llama {}.", "Tus nietos se llaman {}."),
-    "partner_of": ("Tu pareja se llama {}.", "Tus parejas se llaman {}."),
-    "pet_of": ("Tu mascota se llama {}.", "Tus mascotas se llaman {}."),
+# The relations whose side is recorded, and the side each question asks for (Plan 0080 D-4):
+# ``None`` is the plural question, which asks for every member of the group.
+_PARENT_SIDES: dict[str, Side | None] = {
+    "has_mother": Side.FEMALE,
+    "has_father": Side.MALE,
+    "has_parent": None,
 }
 
 
-def _relatives_sentence(predicate: str, names: tuple[str, ...]) -> str:
-    """Word the names of one relation with its fixed singular or plural template."""
-    one, several = _RELATIVES_TEMPLATES[predicate]
-    return (one if len(names) == 1 else several).format(spanish_join(names))
+def _relatives_plan_of(sentence: str) -> ResponsePlan:
+    """The deterministic plan of a relatives sentence; it never enters continuity."""
+    return ResponsePlan(
+        need=InformationNeed.RELATIVES_NAMES,
+        status=KnowledgeStatus.KNOWN,
+        source=ResponseSource.DETERMINISTIC,
+        response=sentence,
+    )
+
+
+def _parents_plan(parents: SidedNames, asked: Side | None) -> ResponsePlan:
+    """Word the parents read by side: the refusal, «No tengo registrado eso.» or the sentence."""
+    if parents.status is KnowledgeStatus.UNAUTHORIZED:
+        return _unknown_plan(InformationNeed.RELATIVES_NAMES, _PROFILE_SUMMARY_UNKNOWN_RESPONSE)
+    sentence = (
+        sided_sentence(SideGroup.PARENTS, asked, parents)
+        if parents.status is KnowledgeStatus.KNOWN
+        else None
+    )
+    if sentence is None:
+        return _unknown_plan(InformationNeed.RELATIVES_NAMES, NOT_REGISTERED)
+    return _relatives_plan_of(sentence)

@@ -16,6 +16,7 @@ from server.cognition.household_tools import (
     HouseholdKnowledgeTools,
     HouseholdToolName,
     HouseholdToolResult,
+    SidedNames,
 )
 from server.cognition.identity import (
     ActivePersonContext,
@@ -37,6 +38,7 @@ from server import db
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
     from pathlib import Path
+    from uuid import UUID
 
     from server.schemas import EntityType
 
@@ -170,3 +172,117 @@ async def test_another_person_is_not_authorized(owner: int) -> None:
 async def test_an_unknown_predicate_is_refused(owner: int) -> None:
     with pytest.raises(ValueError, match="relatives"):
         await _read(owner, "child_of")
+
+
+async def _read_parents(owner: int, actor: ActivePersonContext | None = None) -> SidedNames:
+    tools = HouseholdKnowledgeTools(reader=PolicyGatedV4Reader())
+    return await tools.get_parents(
+        owner_entity_id=owner,
+        actor=actor or _face(owner),
+        consent=ConsentStatus.NOT_REQUIRED,
+        correlation_id=uuid4(),
+        requested_at=_NOW,
+    )
+
+
+async def _audit_shapes(correlation_id: UUID) -> set[tuple[str, str, str, str, str]]:
+    cursor = await db.get_conn().execute(
+        "SELECT action, decision, data_categories, policy_id, reason "
+        "FROM authorization_audit_events WHERE correlation_id = ?",
+        (str(correlation_id),),
+    )
+    rows = await cursor.fetchall()
+    await cursor.close()
+    return {(row[0], row[1], row[2], row[3], row[4]) for row in rows}
+
+
+async def test_each_parent_is_read_in_its_own_group(owner: int) -> None:
+    await _relative(owner, "has_mother", "Zeta")
+    await _relative(owner, "has_father", "Omega")
+    await _relative(owner, "has_parent", "Canary Parent")
+
+    result = await _read_parents(owner)
+
+    assert result.status is KnowledgeStatus.KNOWN
+    assert result.female == ("Zeta",)
+    assert result.male == ("Omega",)
+    assert result.unlabelled == ("Canary Parent",)
+
+
+async def test_the_parents_of_a_side_are_sorted(owner: int) -> None:
+    await _relative(owner, "has_mother", "Zeta")
+    await _relative(owner, "has_mother", "Omega")
+
+    result = await _read_parents(owner)
+
+    assert result.female == ("Omega", "Zeta")
+    assert result.male == ()
+    assert result.unlabelled == ()
+
+
+async def test_the_names_of_the_parents_stay_out_of_the_representation(owner: int) -> None:
+    await _relative(owner, "has_mother", "Zeta")
+
+    assert "Zeta" not in repr(await _read_parents(owner))
+
+
+async def test_an_owner_without_a_parent_is_unknown(owner: int) -> None:
+    result = await _read_parents(owner)
+
+    assert result.status is KnowledgeStatus.UNKNOWN
+    assert (result.female, result.male, result.unlabelled) == ((), (), ())
+
+
+async def test_a_denied_actor_is_unauthorized_and_learns_nothing(owner: int) -> None:
+    await _relative(owner, "has_mother", "Zeta")
+    other = await upsert_entity(name="Omega Visit", type="person")
+
+    result = await _read_parents(owner, _face(other, HouseholdRole.ADULT))
+
+    assert result.status is KnowledgeStatus.UNAUTHORIZED
+    assert (result.female, result.male, result.unlabelled) == ((), (), ())
+
+
+async def test_a_revoked_parent_is_not_read(owner: int) -> None:
+    await _relative(owner, "has_father", "Zeta")
+    async with db.transaction() as conn:
+        await conn.execute("UPDATE entity_relations_v4 SET lifecycle = 'revoked'")
+
+    assert (await _read_parents(owner)).status is KnowledgeStatus.UNKNOWN
+
+
+async def test_get_parents_audits_like_get_relatives_does_for_has_parent(owner: int) -> None:
+    await _relative(owner, "has_parent", "Zeta")
+    tools = HouseholdKnowledgeTools(reader=PolicyGatedV4Reader())
+    actor = _face(owner)
+    relatives_id, parents_id = uuid4(), uuid4()
+
+    await tools.get_relatives(
+        owner_entity_id=owner,
+        predicate="has_parent",
+        actor=actor,
+        consent=ConsentStatus.NOT_REQUIRED,
+        correlation_id=relatives_id,
+        requested_at=_NOW,
+    )
+    await tools.get_parents(
+        owner_entity_id=owner,
+        actor=actor,
+        consent=ConsentStatus.NOT_REQUIRED,
+        correlation_id=parents_id,
+        requested_at=_NOW,
+    )
+
+    relatives_audit = await _audit_shapes(relatives_id)
+    parents_audit = await _audit_shapes(parents_id)
+    assert relatives_audit
+    assert parents_audit == relatives_audit
+    tool_rows = await db.get_conn().execute(
+        "SELECT COUNT(*) FROM authorization_audit_events "
+        "WHERE correlation_id = ? AND action = 'execute_household_tool'",
+        (str(parents_id),),
+    )
+    row = await tool_rows.fetchone()
+    await tool_rows.close()
+    assert row is not None
+    assert row[0] == 1

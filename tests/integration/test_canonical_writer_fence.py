@@ -33,7 +33,14 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.integration
 
 _CONFIRMED_AT = "2026-10-22T12:00:00.000000+00:00"
-_RELATIVE_PREDICATES = ("has_parent", "has_grandparent", "has_grandchild", "has_sibling")
+_RELATIVE_PREDICATES = (
+    "has_parent",
+    "has_mother",
+    "has_father",
+    "has_grandparent",
+    "has_grandchild",
+    "has_sibling",
+)
 
 
 @dataclass(frozen=True)
@@ -164,7 +171,9 @@ async def test_an_adult_child_cannot_be_declared_the_partner(home: _Home) -> Non
 # --- the owner's relatives ----------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("predicate", ["has_parent", "has_grandparent", "has_grandchild"])
+@pytest.mark.parametrize(
+    "predicate", ["has_parent", "has_mother", "has_father", "has_grandparent", "has_grandchild"]
+)
 async def test_a_relative_is_stored_as_the_owners_personal_normal_row_and_repeats(
     home: _Home, predicate: str
 ) -> None:

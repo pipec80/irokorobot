@@ -35,6 +35,9 @@ __all__ = [
     "HouseholdToolName",
     "HouseholdToolResult",
     "PreferencePredicate",
+    "Side",
+    "SideGroup",
+    "SidedNames",
 ]
 
 type PolicyEvaluator = Callable[[AuthorizationRequest], AuthorizationDecision]
@@ -95,6 +98,38 @@ class ChildBirthdays:
     children: tuple[tuple[str, str | None], ...] = field(default=(), repr=False)
 
 
+class Side(StrEnum):
+    """Which side of the family a relative is on: a mother or a daughter, a father or a son."""
+
+    FEMALE = "female"
+    MALE = "male"
+
+
+class SideGroup(StrEnum):
+    """The relatives a side is told apart in (Plan 0080 D-4)."""
+
+    PARENTS = "parents"
+    CHILDREN = "children"
+
+
+@dataclass(frozen=True)
+class SidedNames:
+    """The names of one group of relatives, grouped by the side that is recorded for each.
+
+    Attributes:
+        status: ``KNOWN`` when at least one was read, ``UNAUTHORIZED`` when any policy step
+            refused, ``UNKNOWN`` when there is no authorized record of any side.
+        female: The mothers or daughters, sorted. Hidden from ``repr``: it carries names.
+        male: The fathers or sons, sorted. Hidden from ``repr``.
+        unlabelled: Members whose side is not recorded, sorted. Hidden from ``repr``.
+    """
+
+    status: KnowledgeStatus
+    female: tuple[str, ...] = field(default=(), repr=False)
+    male: tuple[str, ...] = field(default=(), repr=False)
+    unlabelled: tuple[str, ...] = field(default=(), repr=False)
+
+
 def _required_predicate(alias: str) -> PredicateDefinition:
     """Resolve a registered predicate required by this closed module."""
     definition = resolve_predicate(alias)
@@ -112,6 +147,14 @@ _FROM_THE_OWNER = frozenset({"has_parent", "has_sibling", "has_grandparent", "ha
 _TO_THE_OWNER = frozenset({"pet_of"})
 _EITHER_END = frozenset({"partner_of"})
 _PET = "pet_of"
+# The parents are read as three relations (Plan 0080 D-4): the side is the relation itself, and
+# ``has_parent`` holds a parent whose side is not recorded. All three share one policy shape.
+_HAS_PARENT = _required_predicate("has_parent")
+_PARENT_READS = (
+    (_required_predicate("has_mother"), Side.FEMALE),
+    (_required_predicate("has_father"), Side.MALE),
+    (_HAS_PARENT, None),
+)
 
 
 class HouseholdKnowledgeTools:
@@ -437,19 +480,97 @@ class HouseholdKnowledgeTools:
             ]
         return await self._relatives_result(predicate, owner_entity_id, ids)
 
-    async def _relatives_result(
-        self, predicate: str, owner_entity_id: int, ids: list[int]
-    ) -> HouseholdToolResult:
-        """Label the related entities; nothing related is an explicit absence."""
-        read_label = self._pet_label_reader if predicate == _PET else self._label_reader
+    async def get_parents(
+        self,
+        *,
+        owner_entity_id: int,
+        actor: ActivePersonContext,
+        consent: ConsentStatus,
+        correlation_id: UUID,
+        requested_at: datetime,
+    ) -> SidedNames:
+        """Return the names of the owner's parents by recorded side (Plan 0080 D-4).
+
+        It authorizes and audits exactly as ``get_relatives`` does for ``has_parent`` (one tool
+        decision, then the policy-gated reader audits each relation it reads), then reads
+        ``has_mother`` (female), ``has_father`` (male) and ``has_parent`` (side not recorded).
+
+        Args:
+            owner_entity_id: The owner, selected by a trusted internal seam.
+            actor: Trusted active household actor.
+            consent: Trusted scoped consent state.
+            correlation_id: Request-scoped audit correlation ID.
+            requested_at: Aware request timestamp.
+
+        Returns:
+            The names sorted by side; ``UNAUTHORIZED`` when any policy step refused (no names);
+            ``UNKNOWN`` without a parent of any kind or when a parent's label is unavailable.
+        """
+        allowed = await self._authorize_tool(
+            actor=actor,
+            target_person_id=owner_entity_id,
+            definition=_HAS_PARENT,
+            consent=consent,
+            correlation_id=correlation_id,
+            requested_at=requested_at,
+        )
+        if not allowed:
+            return SidedNames(status=KnowledgeStatus.UNAUTHORIZED)
+        by_side: dict[Side | None, list[str]] = {}
+        seen: set[int] = set()
+        for definition, side in _PARENT_READS:
+            read = await self._reader.read_active_relations(
+                actor=actor,
+                predicate_alias=definition.canonical_id,
+                source_entity_id=owner_entity_id,
+                consent=consent,
+                correlation_id=correlation_id,
+                requested_at=requested_at,
+            )
+            if read.status is KnowledgeStatus.UNAUTHORIZED:
+                return SidedNames(status=KnowledgeStatus.UNAUTHORIZED)
+            # A person already labelled is not listed again as a parent of no recorded side.
+            ids = [
+                relation.target_entity_id
+                for relation in read.relations
+                if relation.target_entity_id not in seen
+            ]
+            names = await self._relative_names(self._label_reader, owner_entity_id, ids)
+            if names is None:
+                return SidedNames(status=KnowledgeStatus.UNKNOWN)
+            seen.update(ids)
+            by_side[side] = names
+        if not any(by_side.values()):
+            return SidedNames(status=KnowledgeStatus.UNKNOWN)
+        return SidedNames(
+            status=KnowledgeStatus.KNOWN,
+            female=tuple(sorted(by_side[Side.FEMALE])),
+            male=tuple(sorted(by_side[Side.MALE])),
+            unlabelled=tuple(sorted(by_side[None])),
+        )
+
+    async def _relative_names(
+        self, read_label: PersonLabelReader, owner_entity_id: int, ids: list[int]
+    ) -> list[str] | None:
+        """Label the related entities (never the owner); ``None`` when one has no label."""
         names: list[str] = []
         for entity_id in dict.fromkeys(ids):
             if entity_id == owner_entity_id:
                 continue
             label = await read_label(entity_id=entity_id)
             if label is None:
-                return _unknown(HouseholdToolName.GET_RELATIVES, "relative label is unavailable")
+                return None
             names.append(label.display_name)
+        return names
+
+    async def _relatives_result(
+        self, predicate: str, owner_entity_id: int, ids: list[int]
+    ) -> HouseholdToolResult:
+        """Label the related entities; nothing related is an explicit absence."""
+        read_label = self._pet_label_reader if predicate == _PET else self._label_reader
+        names = await self._relative_names(read_label, owner_entity_id, ids)
+        if names is None:
+            return _unknown(HouseholdToolName.GET_RELATIVES, "relative label is unavailable")
         if not names:
             return _unknown(HouseholdToolName.GET_RELATIVES, "no active authorized record")
         return HouseholdToolResult(

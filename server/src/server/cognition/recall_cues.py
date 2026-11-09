@@ -90,8 +90,14 @@ _RELATIVE_REQUEST_SHAPES: Final = (
     "dime el nombre de mi",
     "dime los nombres de mis",
 )
+# The side of a parent is told apart (Plan 0080 D-4): the plural words and a message naming both
+# sides keep the whole list, which is ``has_parent``.
+_MOTHER_WORDS: Final = ("mama", "madre")
+_FATHER_WORDS: Final = ("papa", "padre")
 _RELATION_WORDS: Final[dict[str, str]] = {
-    **dict.fromkeys(("mama", "papa", "papas", "padres", "madre", "padre"), "has_parent"),
+    **dict.fromkeys(_MOTHER_WORDS, "has_mother"),
+    **dict.fromkeys(_FATHER_WORDS, "has_father"),
+    **dict.fromkeys(("papas", "padres"), "has_parent"),
     **dict.fromkeys(("hermano", "hermana", "hermanos", "hermanas"), "has_sibling"),
     **dict.fromkeys(("abuelo", "abuela", "abuelos"), "has_grandparent"),
     **dict.fromkeys(("nieto", "nieta", "nietos", "nietas"), "has_grandchild"),
@@ -198,19 +204,15 @@ def classify_recall_cue(message: str, *, today: date) -> RecallCue | None:
     return RecallCue(strength=strength, query=query, window=window)
 
 
-def relation_of(message: str) -> str | None:
-    """Return the predicate a «¿cómo se llama mi mamá?» question asks about, or ``None``.
+def _names_both_parents(padded: str) -> bool:
+    """Whether the message names a mother word and a father word."""
+    return any(f" {word} " in padded for word in _MOTHER_WORDS) and any(
+        f" {word} " in padded for word in _FATHER_WORDS
+    )
 
-    Args:
-        message: Raw transcript or chat text in Spanish.
 
-    Returns:
-        ``has_parent``, ``has_sibling``, ``has_grandparent``, ``has_grandchild``,
-        ``partner_of`` or ``pet_of``; ``None`` for anything else (the children keep their own
-        route).
-    """
-    normalized = normalize_spanish(message)
-    padded = f" {normalized} "
+def _asked_predicate(normalized: str, padded: str) -> str | None:
+    """Return the predicate of the first relative shape and relation word the message holds."""
     for shape in _RELATIVE_SHAPES:
         for word, predicate in _RELATION_WORDS.items():
             if f" {shape} {word} " in padded:
@@ -220,3 +222,23 @@ def relation_of(message: str) -> str | None:
             if opens_with(normalized, f"{shape} {word}"):
                 return predicate
     return None
+
+
+def relation_of(message: str) -> str | None:
+    """Return the predicate a «¿cómo se llama mi mamá?» question asks about, or ``None``.
+
+    Args:
+        message: Raw transcript or chat text in Spanish.
+
+    Returns:
+        ``has_mother`` or ``has_father`` for one parent, ``has_parent`` for the plural or a
+        message naming both, ``has_sibling``, ``has_grandparent``, ``has_grandchild``,
+        ``partner_of`` or ``pet_of``; ``None`` for anything else (the children keep their own
+        route).
+    """
+    normalized = normalize_spanish(message)
+    padded = f" {normalized} "
+    asked = _asked_predicate(normalized, padded)
+    if asked in {"has_mother", "has_father"} and _names_both_parents(padded):
+        return "has_parent"
+    return asked

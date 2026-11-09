@@ -95,7 +95,9 @@ _PET_OF = _required_predicate("pet_of")
 _PARTNER_OF = _required_predicate("partner_of")
 _MEMBERSHIP_PREDICATES = frozenset({"child_of", "partner_of", "pet_of"})
 # The owner's relatives (ADR 0024 decision 10): the partner's rule, name and relationship only.
-_RELATIVE_PREDICATES = frozenset({"has_parent", "has_grandparent", "has_grandchild", "has_sibling"})
+_RELATIVE_PREDICATES = frozenset(
+    {"has_parent", "has_mother", "has_father", "has_grandparent", "has_grandchild", "has_sibling"}
+)
 _RELATIVE_DEFINITIONS = tuple(
     _required_predicate(predicate) for predicate in sorted(_RELATIVE_PREDICATES)
 )

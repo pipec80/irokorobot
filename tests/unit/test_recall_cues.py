@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from server.cognition.intent_resolution import resolve_information_need
 from server.cognition.recall_cues import (
+    RELATIVE_WORDS,
     CueStrength,
     classify_recall_cue,
     content_words,
@@ -132,8 +133,8 @@ def test_content_words_drop_stop_words_and_repeats() -> None:
     "message, predicate",
     [
         ("¿Cómo se llaman mis papás?", "has_parent"),
-        ("¿Cómo se llama mi mamá?", "has_parent"),
-        ("¿Cómo se llama mi padre?", "has_parent"),
+        ("¿Cómo se llama mi mamá?", "has_mother"),
+        ("¿Cómo se llama mi padre?", "has_father"),
         ("¿Quiénes son mis hermanas?", "has_sibling"),
         ("¿Cómo se llaman mis abuelos?", "has_grandparent"),
         ("¿Quién es mi nieta?", "has_grandchild"),
@@ -141,11 +142,16 @@ def test_content_words_drop_stop_words_and_repeats() -> None:
         ("¿Cómo se llama mi señora?", "partner_of"),
         ("¿Cómo se llama mi perrita?", "pet_of"),
         ("¿Cómo se llaman mis mascotas?", "pet_of"),
-        ("¿Cuál es el nombre de mi papá?", "has_parent"),
-        ("Dime el nombre de mi mamá", "has_parent"),
+        ("¿Cuál es el nombre de mi papá?", "has_father"),
+        ("Dime el nombre de mi mamá", "has_mother"),
         ("¿Cuáles son los nombres de mis hermanos?", "has_sibling"),
         ("Dime los nombres de mis papás", "has_parent"),
         ("Oye Iroko, ¿cuál es el nombre de mi perro?", "pet_of"),
+        ("¿Cuál es el nombre de mi madre?", "has_mother"),
+        ("¿Cómo se llama mi papá?", "has_father"),
+        ("¿Quiénes son mis padres?", "has_parent"),
+        ("Dime el nombre de mi mamá y de mi papá", "has_parent"),
+        ("¿Cómo se llama mi papá y mi mamá?", "has_parent"),
     ],
 )
 def test_relation_of_names_the_predicate(message: str, predicate: str) -> None:
@@ -167,3 +173,8 @@ def test_relation_of_names_the_predicate(message: str, predicate: str) -> None:
 )
 def test_relation_of_is_none_for_anything_else(message: str) -> None:
     assert relation_of(message) is None
+
+
+def test_the_relative_words_still_hold_every_word_of_the_split_parents() -> None:
+    """Plan 0079 reads this set: splitting mother from father must not drop a word."""
+    assert {"mama", "madre", "papa", "padre", "papas", "padres"} <= RELATIVE_WORDS

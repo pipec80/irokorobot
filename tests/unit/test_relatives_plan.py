@@ -8,7 +8,7 @@ from uuid import UUID
 
 import pytest
 from server.cognition.controller import CognitiveController
-from server.cognition.household_tools import HouseholdToolName, HouseholdToolResult
+from server.cognition.household_tools import HouseholdToolName, HouseholdToolResult, SidedNames
 from server.cognition.identity import ActivePersonContext, ActivePersonStatus, HouseholdRole
 from server.cognition.models import CognitiveEvent, Confidence, ConfidenceBasis, KnowledgeStatus
 from server.cognition.response_plan import (
@@ -57,14 +57,29 @@ def _actor(person_id: int | None) -> ActivePersonContext:
     )
 
 
-def _tools(status: KnowledgeStatus, value: tuple[str, ...] | None = None) -> Mock:
+def _tools(
+    status: KnowledgeStatus,
+    value: tuple[str, ...] | None = None,
+    parents: SidedNames | None = None,
+) -> Mock:
     tools = Mock()
     tools.get_relatives = AsyncMock(
         return_value=HouseholdToolResult(
             tool_name=HouseholdToolName.GET_RELATIVES, status=status, value=value
         )
     )
+    tools.get_parents = AsyncMock(return_value=parents or SidedNames(status=status))
     return tools
+
+
+def _parents(
+    *,
+    female: tuple[str, ...] = (),
+    male: tuple[str, ...] = (),
+    unlabelled: tuple[str, ...] = (),
+    status: KnowledgeStatus = KnowledgeStatus.KNOWN,
+) -> SidedNames:
+    return SidedNames(status=status, female=female, male=male, unlabelled=unlabelled)
 
 
 def _controller(
@@ -90,7 +105,7 @@ def _controller(
 
 
 async def test_parents_are_read_together() -> None:
-    tools = _tools(KnowledgeStatus.KNOWN, ("Omega", "Zeta"))
+    tools = _tools(KnowledgeStatus.KNOWN, parents=_parents(female=("Zeta",), male=("Omega",)))
 
     plan = await _controller(tools, _actor(7)).handle(_event("¿Cómo se llaman mis papás?"))
 
@@ -98,17 +113,100 @@ async def test_parents_are_read_together() -> None:
     assert plan.status is KnowledgeStatus.KNOWN
     assert plan.source is ResponseSource.DETERMINISTIC
     assert plan.response == "Tus papás se llaman Omega y Zeta."
-    assert tools.get_relatives.await_args is not None
-    assert tools.get_relatives.await_args.kwargs["predicate"] == "has_parent"
-    assert tools.get_relatives.await_args.kwargs["owner_entity_id"] == 7
+    assert tools.get_parents.await_args is not None
+    assert tools.get_parents.await_args.kwargs["owner_entity_id"] == 7
+    tools.get_relatives.assert_not_awaited()
 
 
-async def test_one_parent_uses_the_singular() -> None:
-    plan = await _controller(_tools(KnowledgeStatus.KNOWN, ("Zeta",)), _actor(7)).handle(
-        _event("¿Cómo se llama mi mamá?")
+async def test_the_mother_question_speaks_the_mother() -> None:
+    tools = _tools(KnowledgeStatus.KNOWN, parents=_parents(female=("Zeta",), male=("Omega",)))
+
+    plan = await _controller(tools, _actor(7)).handle(_event("¿Cómo se llama mi mamá?"))
+
+    assert plan.need is InformationNeed.RELATIVES_NAMES
+    assert plan.status is KnowledgeStatus.KNOWN
+    assert plan.response == "Tu mamá se llama Zeta."
+    tools.get_relatives.assert_not_awaited()
+
+
+async def test_the_father_question_speaks_the_father() -> None:
+    tools = _tools(KnowledgeStatus.KNOWN, parents=_parents(female=("Zeta",), male=("Omega",)))
+
+    plan = await _controller(tools, _actor(7)).handle(_event("¿Cuál es el nombre de mi padre?"))
+
+    assert plan.response == "Tu papá se llama Omega."
+
+
+async def test_a_parent_without_a_side_is_not_labelled() -> None:
+    tools = _tools(KnowledgeStatus.KNOWN, parents=_parents(unlabelled=("Omega", "Zeta")))
+
+    plan = await _controller(tools, _actor(7)).handle(_event("¿Cómo se llama mi mamá?"))
+
+    assert (
+        plan.response
+        == "No tengo claro cuál de ellos es tu mamá. Tus papás se llaman Omega y Zeta."
     )
 
+
+async def test_one_unlabelled_parent_asked_for_both_uses_the_singular() -> None:
+    tools = _tools(KnowledgeStatus.KNOWN, parents=_parents(unlabelled=("Zeta",)))
+
+    plan = await _controller(tools, _actor(7)).handle(_event("¿Cómo se llaman mis papás?"))
+
     assert plan.response == "Tu papá o tu mamá se llama Zeta."
+
+
+async def test_the_absent_side_is_not_registered() -> None:
+    tools = _tools(KnowledgeStatus.KNOWN, parents=_parents(female=("Zeta",)))
+
+    plan = await _controller(tools, _actor(7)).handle(_event("¿Cómo se llama mi papá?"))
+
+    assert plan.need is InformationNeed.RELATIVES_NAMES
+    assert plan.response == NOT_REGISTERED
+
+
+async def test_no_parent_stored_is_not_registered() -> None:
+    tools = _tools(KnowledgeStatus.UNKNOWN)
+
+    plan = await _controller(tools, _actor(7)).handle(_event("¿Cómo se llaman mis papás?"))
+
+    assert plan.response == NOT_REGISTERED
+
+
+async def test_an_unauthorized_parent_read_sounds_like_a_stranger() -> None:
+    tools = _tools(KnowledgeStatus.UNAUTHORIZED)
+
+    plan = await _controller(tools, _actor(8)).handle(_event("¿Cómo se llama mi mamá?"))
+
+    assert plan.response == _REFUSAL
+
+
+@pytest.mark.parametrize("message", ["¿Cómo se llama mi mamá?", "¿Cómo se llaman mis papás?"])
+@pytest.mark.parametrize("status", [None, ActivePersonStatus.AMBIGUOUS])
+async def test_a_stranger_and_two_faces_never_reach_the_parents(
+    message: str, status: ActivePersonStatus | None
+) -> None:
+    tools = _tools(KnowledgeStatus.KNOWN, parents=_parents(female=("Zeta",), male=("Omega",)))
+    # Two faces: a person id is present, but the status is not IDENTIFIED.
+    actor = _actor(None)
+    if status is not None:
+        actor = _actor(7).model_copy(update={"status": status})
+
+    plan = await _controller(tools, actor).handle(_event(message))
+
+    assert plan.response == _REFUSAL
+    tools.get_parents.assert_not_awaited()
+    tools.get_relatives.assert_not_awaited()
+
+
+async def test_a_sibling_still_goes_through_get_relatives() -> None:
+    tools = _tools(KnowledgeStatus.KNOWN, ("Zeta",))
+
+    await _controller(tools, _actor(7)).handle(_event("¿Quién es mi hermana?"))
+
+    tools.get_parents.assert_not_awaited()
+    assert tools.get_relatives.await_args is not None
+    assert tools.get_relatives.await_args.kwargs["predicate"] == "has_sibling"
 
 
 @pytest.mark.parametrize(

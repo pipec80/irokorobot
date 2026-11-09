@@ -338,6 +338,8 @@ def test_a_pool_literal_resolves_by_id_and_alias_for_people_only(
 # (id, Spanish alias, symmetric, sensitivity)
 _POOL_RELATIONS = [
     ("has_parent", "tiene_padre_o_madre", False, "normal"),
+    ("has_mother", "tiene_madre", False, "normal"),
+    ("has_father", "tiene_padre", False, "normal"),
     ("has_grandparent", "tiene_abuelo_o_abuela", False, "normal"),
     ("has_grandchild", "tiene_nieto_o_nieta", False, "normal"),
     ("has_sibling", "tiene_hermano_o_hermana", True, "normal"),
@@ -375,6 +377,10 @@ def test_the_pool_predicate_ids_are_exported_for_the_legacy_migration() -> None:
     assert frozenset(expected | {"secret_holder"}) == POOL_PREDICATE_IDS
     assert "access_code" not in POOL_PREDICATE_IDS
     assert "likes" not in POOL_PREDICATE_IDS
+
+
+def test_the_mother_and_the_father_are_pool_relations_beside_has_parent() -> None:
+    assert {"has_parent", "has_mother", "has_father"} <= POOL_PREDICATE_IDS
 
 
 def test_no_alias_of_the_pool_belongs_to_two_predicates() -> None:
