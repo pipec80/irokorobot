@@ -113,7 +113,7 @@ async def test_a_turn_unit_holds_only_the_heard_text(owners: tuple[int, int]) ->
 
     unit_id = await _turn_unit(owner, record_id, "fuimos al cerro con Zeta")
 
-    units = await recall_store.units_by_id([unit_id])
+    units = await recall_store.units_by_id([unit_id], owner_entity_id=owner, now=_NOW)
     assert [(unit.kind, unit.body, unit.record_id) for unit in units] == [
         ("turn", "fuimos al cerro con Zeta", record_id)
     ]

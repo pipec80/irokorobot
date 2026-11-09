@@ -213,6 +213,94 @@ async def test_a_record_deleted_mid_search_drops_its_units(
     assert _ids(found) == [kept_unit]
 
 
+async def _run(statement: str, **values: object) -> None:
+    async with db.transaction() as conn:
+        await conn.execute(statement, values)
+
+
+_RECLASSIFY = "UPDATE recall_units SET sensitivity = 'medical' WHERE id = :unit"
+_EXPIRE = (
+    "UPDATE conversation_records SET expires_at = '2026-11-01T00:00:00.000000+00:00' "
+    "WHERE id = :record"
+)
+
+
+async def test_a_unit_reclassified_mid_search_is_not_delivered(
+    owners: tuple[int, int], embed: AsyncMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Decision 2: the read that returns the text re-applies the class (Plan 0080 D-10)."""
+    owner, _ = owners
+    record_id = await _record(owner)
+    first = await _unit(owner, record_id, "el cerro")
+    second = await _unit(owner, record_id, "otra vez el cerro")
+
+    async def reclassify_while_embedding(*args: object, **kwargs: object) -> list[float]:
+        await _run(_RECLASSIFY, unit=first)
+        return _axis(0)
+
+    monkeypatch.setattr(recall_search, "ollama_embed", reclassify_while_embedding)
+
+    found = await _search(owner, _cue("cerro"))
+
+    assert _ids(found) == [second]
+
+
+async def test_a_unit_whose_record_expired_mid_search_is_not_delivered(
+    owners: tuple[int, int], embed: AsyncMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owner, _ = owners
+    expiring, kept = await _record(owner), await _record(owner)
+    await _unit(owner, expiring, "el cerro")
+    kept_unit = await _unit(owner, kept, "otra vez el cerro")
+
+    async def expire_while_embedding(*args: object, **kwargs: object) -> list[float]:
+        await _run(_EXPIRE, record=expiring)
+        return _axis(0)
+
+    monkeypatch.setattr(recall_search, "ollama_embed", expire_while_embedding)
+
+    found = await _search(owner, _cue("cerro"))
+
+    assert _ids(found) == [kept_unit]
+
+
+async def test_the_same_holds_when_only_the_words_found_it(
+    owners: tuple[int, int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owner, _ = owners
+    monkeypatch.setattr(
+        recall_search, "ollama_embed", AsyncMock(side_effect=httpx.ConnectError("offline"))
+    )
+    record_id = await _record(owner)
+    first = await _unit(owner, record_id, "el cerro")
+    second = await _unit(owner, record_id, "otra vez el cerro")
+    original = recall_store.lexical_hits
+
+    async def then_reclassify(**kwargs: object) -> Sequence[int]:
+        ids = await original(**kwargs)  # type: ignore[arg-type]  # the store's own keywords
+        await _run(_RECLASSIFY, unit=first)
+        return ids
+
+    monkeypatch.setattr(recall_search, "lexical_hits", then_reclassify)
+
+    found = await _search(owner, _cue("cerro"))
+
+    assert found.lexical_only
+    assert _ids(found) == [second]
+
+
+async def test_another_owners_unit_ids_are_never_returned(owners: tuple[int, int]) -> None:
+    """The read has its own owner filter, whatever ids it is handed."""
+    owner, other = owners
+    mine = await _unit(owner, await _record(owner), "el cerro")
+    theirs = await _unit(other, await _record(other), "el cerro")
+    now = _NOW.isoformat(timespec="microseconds")
+
+    for who, expected in ((owner, mine), (other, theirs)):
+        units = await recall_store.units_by_id([mine, theirs], owner_entity_id=who, now=now)
+        assert [unit.id for unit in units] == [expected]
+
+
 async def test_another_owner_is_never_returned(owners: tuple[int, int], embed: AsyncMock) -> None:
     owner, other = owners
     await _unit(other, await _record(other), "el cerro", axis=0)
