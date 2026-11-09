@@ -70,6 +70,7 @@ _PARENT_SIDES = frozenset({"mother", "father"})
 _PARENT_ROW = "has_parent"
 _CHILD_ROW = "child_of"
 _CHILD_MARKERS = ("daughter_of", "son_of")
+_PARENT_SIDE_ROWS = ("has_mother", "has_father")
 # An id that is not among the owner's active relations: unknown, revoked or somebody else's.
 _NOT_AN_ACTIVE_RELATION = "not_an_active_relation"
 _WRONG_RELATION_KIND = "wrong_relation_kind"
@@ -491,10 +492,16 @@ def _side_refusal(
     owned = relation.source_entity_id if is_parent else relation.target_entity_id
     if owned != owner_entity_id:
         return _NOT_AN_ACTIVE_RELATION
-    if not is_parent and any(
-        row.predicate in _CHILD_MARKERS
-        and row.source_entity_id == relation.source_entity_id
-        and row.target_entity_id == owner_entity_id
+    # One person holds at most one side: a child one marker, a parent one of mother or father.
+    markers, person = (
+        (_PARENT_SIDE_ROWS, relation.target_entity_id)
+        if is_parent
+        else (_CHILD_MARKERS, relation.source_entity_id)
+    )
+    if any(
+        row.predicate in markers
+        and row.source_entity_id == (owner_entity_id if is_parent else person)
+        and row.target_entity_id == (person if is_parent else owner_entity_id)
         for row in active
     ):
         return _ALREADY_LABELLED

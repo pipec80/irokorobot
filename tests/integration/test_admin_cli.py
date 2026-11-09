@@ -17,6 +17,7 @@ from server.memory.canonical_writer import write_literal, write_relation
 from server.memory.declarative import create_third_party, upsert_entity
 from server.memory.household_authorization import bootstrap_initial_owner
 from server.memory.owner_credentials import save_owner_pin_credential
+from server.memory.relational_v4 import list_active_relations
 from server.memory.write_types import WriteChannel
 from server.settings import settings
 
@@ -261,6 +262,29 @@ async def test_a_label_on_the_wrong_row_prints_the_closed_reason(cli_db: int) ->
     assert await _run(request, read, write) == 1
     assert any("rechazada" in line and "wrong_relation_kind" in line for line in lines)
     assert any("child_of" in line for line in await _listing())
+
+
+async def test_labelling_a_parent_who_already_has_a_side_is_announced(cli_db: int) -> None:
+    row = await _seed_relation(cli_db, "has_parent", "Zeta Parent")
+    await db.open_db()
+    try:
+        current = next(r for r in await list_active_relations(cli_db) if r.id == row)
+        await write_relation(
+            owner_entity_id=cli_db,
+            source_entity_id=cli_db,
+            predicate="has_father",
+            target_entity_id=current.target_entity_id,
+            channel=WriteChannel.ADMIN_LOCAL,
+            confirmed_at=_NOW,
+        )
+    finally:
+        await db.close_db()
+        db._conn = None
+    lines, write = _sink()
+    request = AdminRequest(command="label-parent", row_id=row, side="mother")
+    assert await _run(request, _Script("SI", _PIN), write) == 1
+    assert any("rechazada" in line and "already_labelled" in line for line in lines)
+    assert any("has_parent" in line for line in await _listing())
 
 
 def test_the_parser_takes_the_two_verbs_with_a_closed_side(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -250,6 +250,7 @@ async def test_an_unexpected_failure_rolls_back_the_write_and_the_audit(
 _PARENT_SIDES = [("mother", "has_mother"), ("father", "has_father")]
 _CHILD_SIDES = [("daughter", "daughter_of"), ("son", "son_of")]
 _ALL_SIDES = [*_PARENT_SIDES, *_CHILD_SIDES]
+_SIDE_PREDICATE = dict(_ALL_SIDES)
 _PERSON = "Zeta Relative"
 
 
@@ -458,6 +459,32 @@ async def test_the_wrong_row_is_refused_audited_and_writes_nothing(
     assert audit.operation is AdminOperationKind.CHANGE
     assert audit.target_kind is TargetKind.POOL_RELATION
     assert "Zeta" not in await _audit_dump()
+
+
+@pytest.mark.parametrize(
+    "held, side",
+    [
+        ("has_father", "mother"),
+        ("has_mother", "father"),
+        ("has_mother", "mother"),
+        ("has_father", "father"),
+    ],
+)
+async def test_a_parent_who_already_has_a_side_is_refused_and_nothing_changes(
+    ops_db: int, held: str, side: str
+) -> None:
+    owner = ops_db
+    row = await _relation(owner, "has_parent")
+    await _relation(owner, held, target=row.target_entity_id)
+    before = await _all_relations()
+    outcome = await _label(owner, row.id, side)
+    assert outcome.status is AdminOutcomeStatus.REFUSED
+    assert outcome.reason == "already_labelled"
+    assert await _all_relations() == before
+    assert await _active("has_parent") == [(owner, row.target_entity_id)]
+    (audit,) = await list_admin_operations()
+    assert audit.reason == "already_labelled"
+    assert audit.field_id == _SIDE_PREDICATE[side]
 
 
 async def test_a_row_that_points_at_the_owner_from_somebody_else_is_not_labelled(
