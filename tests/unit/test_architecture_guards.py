@@ -1,11 +1,14 @@
 """Static architecture guards (Plan 0050): the controls the audit found are permanent."""
 
 import ast
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+import inspect
 from pathlib import Path
 import re
+import unicodedata
 
 import pytest
+from server.memory import recall_store
 from server.secret_values import SECRET_WORDS
 
 import server
@@ -1464,3 +1467,269 @@ def test_the_pool_literals_guard_detects_a_violation() -> None:
     assert "memory/sensitive_store.py" in users
     assert "memory/relational_v4.py" not in users
     assert "memory/other_reader.py" not in users
+
+
+# --- the MVP recall phrasings (Plan 0080) -----------------------------------------------------
+
+# The words that name a mother, a father, a daughter or a son are decided once, in
+# `cognition/recall_cues.py` (`_RELATION_WORDS`, `_CHILD_WORDS`, `RELATIVE_WORDS`): the classifier,
+# the sensitive grammar and the relatives route import them through `RELATIVE_WORDS` and
+# `relation_of`. A second spelling would drift, and a drift here is a question that reaches the
+# model or the wrong side of the family.
+_RELATIVE_WORDS_HOME = "cognition/recall_cues.py"
+_RELATIVE_SINGULAR_WORDS = frozenset({"mama", "papa", "madre", "padre", "hija", "hijo"})
+# A literal with at least this many of the six words outside the home is a copy of them.
+_RELATIVE_COPY_THRESHOLD = 2
+# Three existing lists of a different purpose that happen to hold several of the six words; they
+# are not a second spelling of the recall words and are allowed on purpose:
+# - `cognition/household_request.py`: `CHILD_WORDS` and the household vocabulary that decides
+#   whether a message is a household request at all (relatives, partners, pets, kin).
+# - `memory/lexicon.py`: `PERSON_WORDS` (a taste never names a person) and the predicate triggers.
+# - `memory/normalize.py`: the aliases of the legacy extractor's predicate drift ("hijo", "hija").
+_RELATIVE_WORDS_EXEMPT = frozenset(
+    {"cognition/household_request.py", "memory/lexicon.py", "memory/normalize.py"}
+)
+
+
+def _folded(text: str) -> str:
+    """Lowercase *text* and strip its accents, as the spoken-text folding of the grammars does."""
+    decomposed = unicodedata.normalize("NFKD", text.lower())
+    return "".join(char for char in decomposed if not unicodedata.combining(char))
+
+
+def _folded_words(node: ast.AST) -> set[str]:
+    """The folded string constants listed in a set, list or tuple display or as dict keys."""
+    if isinstance(node, ast.Dict):
+        elements: list[ast.expr | None] = list(node.keys)
+    elif isinstance(node, ast.Set | ast.List | ast.Tuple):
+        elements = list(node.elts)
+    else:
+        return set()
+    return {
+        _folded(element.value)
+        for element in elements
+        if isinstance(element, ast.Constant) and isinstance(element.value, str)
+    }
+
+
+def _spells_relative_words(text: str) -> bool:
+    """Whether *text* has a literal holding several of the relative words."""
+    return any(
+        len(_folded_words(node) & _RELATIVE_SINGULAR_WORDS) >= _RELATIVE_COPY_THRESHOLD
+        for node in ast.walk(ast.parse(text))
+    )
+
+
+def _relative_word_set_builders(sources: Mapping[str, str]) -> list[str]:
+    """Modules, besides the home and the exempt lists, spelling several relative words.
+
+    A set, list or tuple display (wrapped in `set(...)`/`frozenset(...)`/`dict.fromkeys(...)` or
+    not) and a dict display both count, and so does a copy of only two of the words with an
+    accent or not: «mamá» and «papá» are a copy that drifted, not a coincidence.
+    """
+    return [
+        name
+        for name, text in sources.items()
+        if name != _RELATIVE_WORDS_HOME
+        and name not in _RELATIVE_WORDS_EXEMPT
+        and _spells_relative_words(text)
+    ]
+
+
+@pytest.mark.unit
+def test_the_relative_words_are_defined_once() -> None:
+    """Only `recall_cues` spells the mother/father/parent/child words; the rest import them."""
+    sources = _sources()
+
+    assert _relative_word_set_builders(sources) == []
+    # The home does spell them, and the grammars of Plans 0079 and 0080 import them from it.
+    assert _spells_relative_words(sources[_RELATIVE_WORDS_HOME])
+    assert "memory/sensitive_access.py" in _imports_from_module(
+        sources, "server.cognition.recall_cues", "RELATIVE_WORDS"
+    )
+    assert "cognition/intent_resolution.py" in _imports_from_module(
+        sources, "server.cognition.recall_cues", "relation_of"
+    )
+
+
+@pytest.mark.unit
+def test_the_relative_words_guard_detects_a_violation() -> None:
+    leak = {
+        "memory/set_copy.py": 'W = {"mama", "papa", "perro"}\n',
+        "memory/frozen_copy.py": 'W = frozenset({"madre", "padre"})\n',
+        "memory/dict_copy.py": 'W = {"hija": "daughter_of", "hijo": "son_of"}\n',
+        "memory/fromkeys_copy.py": 'W = dict.fromkeys(("mama", "madre"), "has_mother")\n',
+        # A copy with accents, as it would be written in a spoken template, is a copy too.
+        "memory/accent_copy.py": 'W = ["Mamá", "Papá"]\n',
+        # The home spells them, by definition; the exempt lists are other vocabularies.
+        "cognition/recall_cues.py": 'W = {"mama", "papa", "madre", "padre"}\n',
+        "memory/lexicon.py": 'W = {"mama", "papa", "madre", "padre"}\n',
+        # One word, a derived set, a spread of the shared set and prose are spared.
+        "memory/single.py": 'W = {"mama", "perro", "gato"}\n',
+        "memory/derived.py": 'W = RELATIVE_WORDS | {"tio"}\n',
+        "memory/spread.py": 'W = frozenset({*RELATIVE_WORDS, "tio"})\n',
+        "memory/prose.py": '"""The words "mama", "papa" and "madre" are in prose."""\n',
+    }
+
+    assert _relative_word_set_builders(leak) == [
+        "memory/set_copy.py",
+        "memory/frozen_copy.py",
+        "memory/dict_copy.py",
+        "memory/fromkeys_copy.py",
+        "memory/accent_copy.py",
+    ]
+
+
+# The spoken sentences of the relatives answers (ADR 0028 decision 9, Plan 0080 D-5) are fixed
+# templates in one module: the controller words nothing about the mother, the father or a child.
+_TEMPLATES_HOME = "cognition/relatives_answers.py"
+_TEMPLATE_TABLE_NAMES = frozenset({"_RELATIVES_TEMPLATES", "_SIDED_TEMPLATES"})
+# «Tu mamá se llama {}.», «Tus papás se llaman {}.», «Tu papá o tu mamá se llama {}.»: a spoken
+# string that opens with «Tu(s)» and says «se llama(n)» before any placeholder. The «cómo se
+# llama» patterns and the prose of a docstring do not open that way.
+_RELATIVES_SENTENCE = re.compile(r"^Tus? [^{}]*\bse llam(?:a|an)\b")
+
+
+def _defines_relatives_templates(text: str) -> bool:
+    """Whether *text* assigns a relatives template table or holds one of its sentences."""
+    for node in ast.walk(ast.parse(text)):
+        if isinstance(node, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id in _TEMPLATE_TABLE_NAMES
+            for target in node.targets
+        ):
+            return True
+        if (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id in _TEMPLATE_TABLE_NAMES
+        ):
+            return True
+        if (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and _RELATIVES_SENTENCE.match(node.value)
+        ):
+            return True
+    return False
+
+
+def _relatives_template_definers(sources: Mapping[str, str]) -> list[str]:
+    """Modules, besides the answers module, that define a relatives template or its sentence."""
+    return [
+        name
+        for name, text in sources.items()
+        if name != _TEMPLATES_HOME and _defines_relatives_templates(text)
+    ]
+
+
+@pytest.mark.unit
+def test_the_relatives_templates_live_in_one_module() -> None:
+    """`relatives_answers.py` owns the spoken sentences; the controller defines none."""
+    sources = _sources()
+
+    assert _defines_relatives_templates(sources[_TEMPLATES_HOME])
+    assert _relatives_template_definers(sources) == []
+
+
+@pytest.mark.unit
+def test_the_relatives_templates_guard_detects_a_violation() -> None:
+    leak = {
+        "cognition/controller.py": (
+            '_RELATIVES_TEMPLATES = {"has_parent": ("Tu papá o tu mamá se llama {}.", "x")}\n'
+        ),
+        "cognition/sided_copy.py": "_SIDED_TEMPLATES: dict[str, str] = {}\n",
+        "cognition/sentence_copy.py": 'reply = "Tu mamá se llama {}.".format(name)\n',
+        "cognition/fstring_copy.py": 'reply = f"Tus papás se llaman {names}."\n',
+        # The home defines them, by definition.
+        "cognition/relatives_answers.py": (
+            '_SIDED_TEMPLATES = {"a": ("Tu mamá se llama {}.", "b")}\n'
+        ),
+        # A pattern, a docstring and another sentence of the controller are spared.
+        "cognition/patterns.py": 'P = ("como se llama mi hija", "Tu mamá es buena")\n',
+        "cognition/prose.py": '"""Says «Tu mamá se llama» only in prose, after the opening."""\n',
+        "cognition/other.py": 'reply = f"Tienes {count} hijos."\n',
+    }
+
+    assert _relatives_template_definers(leak) == [
+        "cognition/controller.py",
+        "cognition/sided_copy.py",
+        "cognition/sentence_copy.py",
+        "cognition/fstring_copy.py",
+    ]
+
+
+# The recall units are read through one filtered statement (ADR 0031 decision 2, Plan 0080 D-10):
+# `units_by_id` re-checks owner, visibility, sensitivity and expiry at delivery time. Only the
+# search that fused the ids may call it, and its signature keeps the two filters keyword-only so a
+# later refactor cannot drop them without a test saying so.
+_UNITS_READER = "units_by_id"
+_UNITS_READER_HOME = "memory/recall_store.py"
+_MAY_READ_UNITS = frozenset({"memory/recall_search.py"})
+_UNITS_DELIVERY_FILTERS = frozenset({"owner_entity_id", "now"})
+
+
+def _units_readers(sources: Mapping[str, str]) -> set[str]:
+    """Modules, besides the store, that call, import or name `units_by_id`."""
+    return (
+        set(_outside(sources, frozenset(), frozenset({_UNITS_READER})))
+        | set(_calls(sources, _UNITS_READER))
+        | set(_imports_name(sources, _UNITS_READER))
+    ) - {_UNITS_READER_HOME}
+
+
+def _not_keyword_only(function: Callable[..., object], names: frozenset[str]) -> list[str]:
+    """The names in *names* that *function* does not take as a keyword-only parameter."""
+    parameters = inspect.signature(function).parameters
+    return sorted(
+        name
+        for name in names
+        if name not in parameters or parameters[name].kind is not inspect.Parameter.KEYWORD_ONLY
+    )
+
+
+@pytest.mark.unit
+def test_recall_units_are_read_only_through_the_filtered_store() -> None:
+    """Only `recall_search` reads units by id; only `recall_store` defines the reader."""
+    sources = _sources()
+
+    assert _units_readers(sources) == _MAY_READ_UNITS
+    assert _definers(sources, frozenset({_UNITS_READER})) == [_UNITS_READER_HOME]
+    assert _not_keyword_only(recall_store.units_by_id, _UNITS_DELIVERY_FILTERS) == []
+
+
+@pytest.mark.unit
+def test_the_recall_units_guard_detects_a_violation() -> None:
+    leak = {
+        "memory/recall_search.py": "units = await units_by_id(ids, owner_entity_id=1, now=n)\n",
+        "memory/recall_store.py": "async def units_by_id(ids, *, owner_entity_id, now): ...\n",
+        "memory/attr_call.py": "units = await recall_store.units_by_id(ids)\n",
+        "routers/import_only.py": "from server.memory.recall_store import units_by_id\n",
+        "cognition/alias.py": "reader = recall_store.units_by_id\n",
+        "memory/redefined.py": "async def units_by_id(ids): ...\n",
+        "memory/prose.py": '"""units_by_id is only named in prose here."""\n',
+    }
+
+    assert _units_readers(leak) == {
+        "memory/recall_search.py",
+        "memory/attr_call.py",
+        "routers/import_only.py",
+        "cognition/alias.py",
+    }
+    # A second definition is not a reader; the definers check is what catches it.
+    assert _definers(leak, frozenset({_UNITS_READER})) == [
+        "memory/recall_store.py",
+        "memory/redefined.py",
+    ]
+
+
+@pytest.mark.unit
+def test_the_delivery_filters_guard_detects_a_dropped_filter() -> None:
+    def positional(ids: list[int], owner_entity_id: int, now: str) -> None: ...
+
+    def without_now(ids: list[int], *, owner_entity_id: int) -> None: ...
+
+    def keyword_only(ids: list[int], *, owner_entity_id: int, now: str) -> None: ...
+
+    assert _not_keyword_only(positional, _UNITS_DELIVERY_FILTERS) == ["now", "owner_entity_id"]
+    assert _not_keyword_only(without_now, _UNITS_DELIVERY_FILTERS) == ["now"]
+    assert _not_keyword_only(keyword_only, _UNITS_DELIVERY_FILTERS) == []
