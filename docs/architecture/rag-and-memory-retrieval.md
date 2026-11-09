@@ -816,10 +816,14 @@ memoria semántica existente.
 
 ### R2 — Fuente documental mínima
 
-Condicional: se abre solo si Pipec quiere documentos, después de CM-5b y CM-6, y
-reutiliza la búsqueda de R3. Agregar un único tipo de fuente prioritario,
-recomendado Markdown o texto antes de PDF complejo. Versionar fuente/chunks,
-recuperar evidencia y mostrar procedencia. No agregar todavía todos los formatos.
+Decidido por Pipec el 2026-11-06 (antes era condicional y solo Markdown o texto, con el PDF en R4): se quiere, y se abre después de CM-7 + PC-5 con
+su propio ADR (0034). Es una fuente más del motor de memoria
+([ADR 0031](../adr/0031-the-memory-engine-boundary.md) decisión 13), separada de lo
+que una persona contó, y reutiliza la búsqueda de R3. La primera fuente es
+Markdown, texto plano y **PDF con capa de texto** (con un banco de extracción en
+español y la licencia de la biblioteca leída antes de usarla). Versionar
+fuente/chunks, recuperar evidencia y mostrar procedencia; una instrucción dentro de
+un documento es dato, nunca orden.
 
 ### R3 — Búsqueda lexical e híbrida
 
@@ -833,10 +837,10 @@ umbral absoluto, RRF (`k = 60`), máximo tres resultados y cero resultados
 permitidos; las unidades llevan un tipo, así que una fuente documental futura
 reutiliza la misma búsqueda.
 
-### R4 — PDF y calidad avanzada
+### R4 — OCR y calidad avanzada
 
-Agregar PDF de texto, tablas/OCR solo si se necesitan, mejores estrategias de
-chunking y reranking únicamente cuando la medición demuestre valor.
+PDF escaneado con OCR, tablas, mejores estrategias de chunking y reranking,
+únicamente cuando la medición demuestre valor (el PDF con texto ya entra en R2).
 
 ### R5 — Memoria Manager y documentos conversacionales
 
