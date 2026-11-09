@@ -173,3 +173,36 @@
 - phrase: "¿Cuál es el nombre de la calle de mi hijo?"
   need: protected_household
   today: protected_household
+# Plan 0080 D-8: «cuándo». A bare «cuándo» is a cue only with a first-person past verb.
+- phrase: "¿Cuándo fui a la playa?"
+  need: recall
+  today: generic_conversation
+- phrase: "¿Cuándo estuve en la playa?"
+  need: recall
+  today: generic_conversation
+- phrase: "¿Cuándo hablamos de la playa?"
+  need: recall
+  today: generic_conversation
+- phrase: "¿Cuándo te conté de la playa?"
+  need: recall
+  today: generic_conversation
+- phrase: "¿Te acuerdas cuándo fui a la playa?"
+  need: recall
+  today: generic_conversation
+- phrase: "¿Y cuándo fuimos al cerro con Zeta?"
+  need: recall
+  today: generic_conversation
+# Traps: no first-person verb, a statement, a verb with nothing after it.
+- phrase: "¿Cuándo fue el mundial de 2010?"
+  need: generic_conversation
+  today: generic_conversation
+- phrase: "Cuando fui a la playa me quemé"
+  need: generic_conversation
+  today: generic_conversation
+- phrase: "¿Cuándo fui?"
+  need: generic_conversation
+  today: generic_conversation
+# A «what» question that only contains «cuando» is the ordinary recall question.
+- phrase: "¿Qué te conté cuando fui a la playa?"
+  need: recall
+  today: generic_conversation

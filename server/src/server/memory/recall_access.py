@@ -27,7 +27,7 @@ from server.cognition.models import AuthorizationAction, AuthorizationStatus
 from server.cognition.response_plan import NO_MEMORY, RecallReply
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.profile_card_access import may_read_own_memory
-from server.memory.recall_answer import word_recall
+from server.memory.recall_answer import word_recall, word_when
 from server.memory.recall_search import RecallHit, RecallSearch, household_zone, search_recall
 
 if TYPE_CHECKING:
@@ -72,6 +72,7 @@ def _logged(
             "best_distance": None if best is None else round(best, _DISTANCE_DECIMALS),
             "lexical_only": bool(search and search.lexical_only),
             "windowed": cue.window is not None,
+            "when": None if cue.when is None else cue.when.value,
         },
     )
 
@@ -147,7 +148,10 @@ async def _search_and_word(
     search: Searcher,
     answer: Answerer,
 ) -> RecallReply:
-    """Search, then word what was found; a failure is the fixed phrase."""
+    """Search, then word what was found; a failure is the fixed phrase.
+
+    A «cuándo» cue is worded by ``word_when``, a fixed table, and the model is not asked.
+    """
     tz: ZoneInfo = household_zone()
     today: date = now.astimezone(tz).date()
     try:
@@ -159,6 +163,9 @@ async def _search_and_word(
     if not found.hits:
         _logged(cue, "nothing_found", search=found)
         return RecallReply(text=None)
-    text = await answer(client, question, found.hits, today=today, tz=tz)
+    if cue.when is None:
+        text = await answer(client, question, found.hits, today=today, tz=tz)
+    else:
+        text = word_when(found.hits, cue.when, today=today, tz=tz)  # a table: no model (D-9)
     _logged(cue, "found", hits=found.hits, search=found)
     return RecallReply(text=text, found=True)

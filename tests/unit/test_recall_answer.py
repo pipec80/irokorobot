@@ -11,11 +11,17 @@ from zoneinfo import ZoneInfo
 import httpx
 import pytest
 from server.claim_guard import REPLACEMENT
+from server.cognition.recall_cues import WhenKind
 from server.exceptions import LLMError
 from server.memory import recall_answer
-from server.memory.recall_answer import NO_MEMORY, build_recall_messages, word_recall
+from server.memory.recall_answer import (
+    NO_MEMORY,
+    build_recall_messages,
+    word_recall,
+    word_when,
+)
 from server.memory.recall_search import RecallHit
-from server.memory.recall_store import RecallUnit
+from server.memory.recall_store import RecallUnit, UnitKind
 
 pytestmark = pytest.mark.unit
 
@@ -25,8 +31,8 @@ _GOLDEN = Path(__file__).resolve().parents[1] / "fixtures" / "recall_prompt_gold
 _QUESTION = "¿Qué te conté del cerro?"
 
 
-def _hit(unit_id: int, body: str, said: datetime) -> RecallHit:
-    unit = RecallUnit(id=unit_id, record_id=unit_id, kind="turn", body=body, said_at=said)
+def _hit(unit_id: int, body: str, said: datetime, kind: UnitKind = "turn") -> RecallHit:
+    unit = RecallUnit(id=unit_id, record_id=unit_id, kind=kind, body=body, said_at=said)
     return RecallHit(unit=unit, distance=None)
 
 
@@ -171,3 +177,78 @@ async def test_the_answer_is_cut_at_two_sentences(chat: AsyncMock) -> None:
     chat.return_value = "Fuiste al cerro. Llevaste mate. Y también fue Zeta."
 
     assert await _word(chat) == "Fuiste al cerro. Llevaste mate."
+
+
+_FRIDAY = date(2026, 11, 6)
+_BEACH = "Fui a la playa con Zeta y me quemé."
+_NOT_RECORDED = "No tengo registrado cuándo fue."
+_TUESDAY_HIT = _hit(4, _BEACH, datetime(2026, 11, 3, 15, tzinfo=UTC), "episode")
+
+
+def _when(kind: WhenKind, hits: tuple[RecallHit, ...], today: date = _TODAY) -> str:
+    return word_when(hits, kind, today=today, tz=_TZ)
+
+
+def test_told_with_a_turn_said_yesterday_says_the_day_it_was_told() -> None:
+    assert _when(WhenKind.TOLD, _HITS) == (
+        "Ayer me contaste esto: Fuimos al cerro con Zeta y llevamos mate."
+    )
+
+
+def test_happened_with_a_turn_says_the_date_is_not_recorded_first() -> None:
+    assert _when(WhenKind.HAPPENED, _HITS) == (
+        f"{_NOT_RECORDED} Sí recuerdo que ayer me contaste esto: "
+        "Fuimos al cerro con Zeta y llevamos mate."
+    )
+
+
+def test_told_with_an_episode_on_a_weekday() -> None:
+    assert _when(WhenKind.TOLD, (_TUESDAY_HIT,), _FRIDAY) == "El martes hablamos de eso."
+
+
+def test_happened_with_an_episode_on_a_weekday() -> None:
+    assert _when(WhenKind.HAPPENED, (_TUESDAY_HIT,), _FRIDAY) == (
+        f"{_NOT_RECORDED} Sí recuerdo que el martes hablamos de eso."
+    )
+
+
+def test_a_day_of_the_current_year_is_spoken_as_day_and_month() -> None:
+    march = _hit(5, _BEACH, datetime(2026, 3, 3, 15, tzinfo=UTC))
+
+    assert _when(WhenKind.TOLD, (march,)).startswith("El 3 de marzo me contaste esto:")
+    assert "el 3 de marzo me contaste esto:" in _when(WhenKind.HAPPENED, (march,))
+
+
+@pytest.mark.parametrize("kind", list(WhenKind))
+def test_only_the_first_hit_is_reported(kind: WhenKind) -> None:
+    answer = _when(kind, _HITS)
+
+    assert "Zeta" in answer
+    assert "Omega" not in answer
+    assert "30 de octubre" not in answer
+
+
+@pytest.mark.parametrize("kind", list(WhenKind))
+@pytest.mark.parametrize("hits", [_HITS, (_TUESDAY_HIT,)])
+def test_no_when_answer_turns_the_story_into_the_owner_second_person(
+    kind: WhenKind, hits: tuple[RecallHit, ...]
+) -> None:
+    answer = _when(kind, hits, _FRIDAY)
+
+    assert "fuiste" not in answer
+    assert "fue el" not in answer
+
+
+def test_a_happened_answer_never_states_a_date_as_the_day_of_the_event() -> None:
+    answer = _when(WhenKind.HAPPENED, (_TUESDAY_HIT,), _FRIDAY)
+
+    assert answer.startswith(_NOT_RECORDED)
+    assert "el martes hablamos" in answer  # the day it was told, not the day of the trip
+    assert "fue el" not in answer
+
+
+def test_word_when_asks_no_model(chat: AsyncMock) -> None:
+    _when(WhenKind.TOLD, _HITS)
+    _when(WhenKind.HAPPENED, _HITS)
+
+    chat.assert_not_awaited()

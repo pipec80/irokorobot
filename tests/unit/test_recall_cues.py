@@ -10,6 +10,7 @@ from server.cognition.intent_resolution import resolve_information_need
 from server.cognition.recall_cues import (
     RELATIVE_WORDS,
     CueStrength,
+    WhenKind,
     classify_recall_cue,
     content_words,
     relation_of,
@@ -255,3 +256,97 @@ def test_the_plural_child_requests_keep_the_whole_list(message: str) -> None:
 )
 def test_with_recall_off_the_singular_child_phrases_resolve_as_today(message: str) -> None:
     assert resolve_information_need(message).need is InformationNeed.PROTECTED_HOUSEHOLD
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "¿Cuándo fui a la playa?",
+        "¿Cuándo estuve en la playa?",
+        "¿Te acuerdas cuándo fui a la playa?",
+        "¿Y cuándo fuimos al cerro con Zeta?",
+        "Oye Iroko, ¿cuándo fui a la playa?",
+    ],
+)
+def test_a_when_question_about_what_happened_is_happened(message: str) -> None:
+    cue = classify_recall_cue(message, today=_WEDNESDAY)
+
+    assert cue is not None
+    assert cue.when is WhenKind.HAPPENED
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "¿Cuándo te conté de la playa?",
+        "¿Cuándo te dije lo de la playa?",
+        "¿Cuándo te comenté de la playa?",
+        "¿Cuándo hablamos de la playa?",
+        "¿Te acuerdas cuándo te conté de la playa?",
+        "¿Cuándo se conté de la playa?",
+    ],
+)
+def test_a_when_question_about_what_was_told_is_told(message: str) -> None:
+    cue = classify_recall_cue(message, today=_WEDNESDAY)
+
+    assert cue is not None
+    assert cue.when is WhenKind.TOLD
+
+
+def test_a_bare_when_with_a_past_verb_is_strong_and_a_weak_phrase_stays_weak() -> None:
+    bare = classify_recall_cue("¿Cuándo fui a la playa?", today=_WEDNESDAY)
+    weak = classify_recall_cue("¿Te acuerdas cuándo fui a la playa?", today=_WEDNESDAY)
+
+    assert bare is not None
+    assert bare.strength is CueStrength.STRONG
+    assert weak is not None
+    assert weak.strength is CueStrength.WEAK
+
+
+def test_the_past_verb_stays_in_the_query_but_is_not_a_content_word() -> None:
+    cue = classify_recall_cue("¿Cuándo fui a la playa?", today=_WEDNESDAY)
+
+    assert cue is not None
+    assert "fui" in cue.query.split()
+    assert content_words(cue.query) == ("playa",)
+
+
+@pytest.mark.parametrize(
+    "message",
+    ["¿Qué te conté cuando fui a la playa?", "¿Qué te conté ayer?", "¿Te acuerdas de Mozart?"],
+)
+def test_a_question_that_only_contains_when_has_no_when_kind(message: str) -> None:
+    cue = classify_recall_cue(message, today=_WEDNESDAY)
+
+    assert cue is not None
+    assert cue.when is None
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "¿Cuándo fue el mundial de 2010?",
+        "Cuando fui a la playa me quemé",
+        "¿Cuándo fui?",
+        "¿Cuándo es el cumpleaños de Zeta?",
+    ],
+)
+def test_a_bare_when_without_a_past_verb_or_a_question_is_no_cue(message: str) -> None:
+    assert classify_recall_cue(message, today=_WEDNESDAY) is None
+
+
+def test_a_when_cue_without_a_question_mark_keeps_the_cue_but_not_the_kind() -> None:
+    """Without the mark «cuando te conté…» may be a story: it stays today's recall cue."""
+    cue = classify_recall_cue("cuando te conte de la playa", today=_WEDNESDAY)
+
+    assert cue is not None
+    assert cue.when is None
+
+
+def test_the_past_verbs_are_not_content_words() -> None:
+    assert content_words("cuando fui a la playa") == ("playa",)
+    assert content_words("cuando hablamos del cerro") == ("cerro",)
+
+
+def test_viaje_stays_a_content_word_because_it_is_also_the_noun() -> None:
+    assert content_words("del viaje a la playa") == ("viaje", "playa")

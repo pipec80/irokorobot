@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Final
 import httpx
 
 from server.claim_guard import neutralize_memory_claims
+from server.cognition.recall_cues import WhenKind
 from server.cognition.response_plan import NO_MEMORY, NOT_REGISTERED
 from server.cognition.spoken_dates import date_label
 from server.exceptions import LLMError
@@ -35,7 +36,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["NOT_REGISTERED", "NO_MEMORY", "build_recall_messages", "word_recall"]
+__all__ = ["NOT_REGISTERED", "NO_MEMORY", "build_recall_messages", "word_recall", "word_when"]
 
 # Pipec's amendment of decision 8 (2026-11-03): there is no «no me acuerdo» exit here. This prompt
 # runs only when the search found memories, and on hardware the 3B model took that exit 12 of 12
@@ -54,6 +55,7 @@ _SYSTEM: Final = (
 # Hardware, 2026-11-04: the 3B model still copied the owner's first person («fui con mi
 # perrita»). In this answer Iroko only reports what the owner said, so these words are the
 # owner's speaking as Iroko; the answer then falls back to the template, which quotes them.
+_DATE_NOT_RECORDED: Final = "No tengo registrado cuándo fue."
 _OWNER_FIRST_PERSON: Final = frozenset({"fui", "yo", "mi", "mis"})
 _TODAY: Final = "hoy"
 #: Characters of memory bodies at most in one prompt.
@@ -96,10 +98,43 @@ def build_recall_messages(
     return [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": user}]
 
 
+def _capitalised(label: str) -> str:
+    return f"{label[:1].upper()}{label[1:]}"
+
+
 def _template(hit: RecallHit, *, today: date, tz: ZoneInfo) -> str:
     """«Ayer me contaste esto: …» with the first memory, when the model cannot word it."""
     label = date_label(hit.unit.said_at, today=today, tz=tz)
-    return f"{label[:1].upper()}{label[1:]} me contaste esto: {hit.unit.body}"
+    return f"{_capitalised(label)} me contaste esto: {hit.unit.body}"
+
+
+def word_when(hits: Sequence[RecallHit], kind: WhenKind, *, today: date, tz: ZoneInfo) -> str:
+    """Say the day the first found unit was told, never a date of the event (Plan 0080 D-9).
+
+    The unit stores only when it was said, so «¿cuándo te conté…?» is answered by that day and
+    «¿cuándo fui…?» says first that the date is not recorded. No model is asked, so «me lo
+    contaste» can never become «fuiste».
+
+    Args:
+        hits: At least one found unit, best first; only the first is reported.
+        kind: Whether the question asked when it was told or when it happened.
+        today: The household's local date, for the label.
+        tz: The household time zone.
+
+    Returns:
+        The fixed sentence of the table in D-9, with the owner's own words for a ``turn`` unit.
+    """
+    hit = hits[0]
+    label = date_label(hit.unit.said_at, today=today, tz=tz)
+    episode = hit.unit.kind == "episode"
+    if kind is WhenKind.TOLD:
+        return (
+            f"{_capitalised(label)} hablamos de eso."
+            if episode
+            else _template(hit, today=today, tz=tz)
+        )
+    told = f"{label} hablamos de eso." if episode else f"{label} me contaste esto: {hit.unit.body}"
+    return f"{_DATE_NOT_RECORDED} Sí recuerdo que {told}"
 
 
 def _first_sentences(text: str) -> str:
