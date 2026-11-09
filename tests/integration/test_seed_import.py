@@ -24,6 +24,7 @@ from server.memory.seed_import import (
     run_operations,
 )
 from server.memory.seed_plan import OperationKind
+from server.memory.seed_replace import retract_earlier_import
 from server.memory.write_types import WriteChannel
 from server.personal_setup import PersonalSetupInput, apply_personal_setup
 
@@ -204,6 +205,103 @@ async def test_the_same_plan_twice_changes_nothing(owner: int) -> None:
     assert {outcome.status for outcome in outcomes} == {OperationStatus.UNCHANGED}
     (caregiver,) = [o for o in outcomes if o.operation.kind is OperationKind.WRITE_CONTACT][:1]
     assert caregiver.status is OperationStatus.UNCHANGED
+
+
+# --- the sides of the family (Plan 0080 Task 5, D-4 and D-6) ----------------------------------
+
+
+def _sided() -> Toml:
+    data = full_seed()
+    data["parents"] = []
+    data["mother"] = {"name": "Canary Zeta"}
+    data["father"] = {"name": "Canary Omega"}
+    data["children"] = [
+        {"name": "Canary Daughter", "guardianship": "minor", "side": "daughter"},
+        {"name": "Canary Grown Son", "guardianship": "adult", "side": "son"},
+        {"name": "Canary Plain", "guardianship": "minor"},
+    ]
+    data["contacts"] = [
+        {"name": "canary zeta", "role": "trusted", "phone": "+56900000009"},
+    ]
+    data["withhold"] = []
+    return data
+
+
+async def _relations_of(predicate: str) -> list[tuple[str, str, str, str, str]]:
+    cursor = await db.get_conn().execute(
+        "SELECT s.name, t.name, r.visibility, r.sensitivity, r.channel "
+        "FROM entity_relations_v4 r JOIN entities s ON s.id = r.source_entity_id "
+        "JOIN entities t ON t.id = r.target_entity_id "
+        "WHERE r.predicate = ? AND r.lifecycle = 'active' ORDER BY s.name",
+        (predicate,),
+    )
+    rows = await cursor.fetchall()
+    await cursor.close()
+    return [tuple(row) for row in rows]
+
+
+async def test_the_sides_are_stored_through_the_writer_with_the_import_channel(owner: int) -> None:
+    channel = WriteChannel.IMPORT_ASSISTED.value
+    owner_name = OWNER_NAME
+
+    outcomes = await _apply(plan_of(_sided()), owner)
+
+    assert _problems(outcomes) == []
+    assert await _relations_of("has_mother") == [
+        (owner_name, "Canary Zeta", "personal", "normal", channel)
+    ]
+    assert await _relations_of("has_father") == [
+        (owner_name, "Canary Omega", "personal", "normal", channel)
+    ]
+    assert await _relations_of("has_parent") == []
+    daughter = await _relations_of("daughter_of")
+    son = await _relations_of("son_of")
+    assert [(row[0], row[1], row[2], row[4]) for row in daughter] == [
+        ("Canary Daughter", owner_name, "household", channel)
+    ]
+    assert [(row[0], row[1], row[2], row[4]) for row in son] == [
+        ("Canary Grown Son", owner_name, "household", channel)
+    ]
+    assert len(await _relations_of("child_of")) == 3
+
+
+async def test_the_sides_import_twice_changes_nothing(owner: int) -> None:
+    plan = plan_of(_sided())
+    await _apply(plan, owner)
+    after_first = await _snapshot()
+
+    outcomes = await _apply(plan, owner)
+
+    assert await _snapshot() == after_first
+    assert {outcome.status for outcome in outcomes} == {OperationStatus.UNCHANGED}
+    keys = await scalar(
+        "SELECT COUNT(*) FROM entities WHERE attributes LIKE ? OR attributes LIKE ?",
+        "%seed-v1:mother:canary zeta%",
+        "%seed-v1:father:canary omega%",
+    )
+    assert keys == 2
+
+
+async def test_a_contact_with_the_mothers_name_is_the_mother_entity(owner: int) -> None:
+    await _apply(plan_of(_sided()), owner)
+
+    assert await scalar("SELECT COUNT(*) FROM entities WHERE lower(name) = 'canary zeta'") == 1
+    assert await count_active_contacts() == 1
+
+
+async def test_the_sides_are_retracted_by_a_replacement_and_written_again(owner: int) -> None:
+    plan = plan_of(_sided())
+    await _apply(plan, owner)
+    async with db.transaction():
+        await retract_earlier_import()
+    assert await _relations_of("has_mother") == []
+    assert await _relations_of("son_of") == []
+
+    outcomes = await _apply(plan, owner)
+
+    assert _problems(outcomes) == []
+    assert len(await _relations_of("has_mother")) == 1
+    assert len(await _relations_of("daughter_of")) == 1
 
 
 # --- conflicts --------------------------------------------------------------------------------

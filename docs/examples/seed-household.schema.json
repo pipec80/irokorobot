@@ -77,6 +77,22 @@
         "guardianship": {
           "$ref": "#/$defs/Guardianship"
         },
+        "side": {
+          "anyOf": [
+            {
+              "enum": [
+                "daughter",
+                "son"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Side"
+        },
         "birth_date": {
           "anyOf": [
             {
@@ -779,6 +795,28 @@
       }
     },
     "partner": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SeedPerson"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "mother": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SeedPerson"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "father": {
       "anyOf": [
         {
           "$ref": "#/$defs/SeedPerson"

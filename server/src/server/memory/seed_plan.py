@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from server.memory.seed_file import SeedFile
-    from server.memory.seed_members import SeedChild, SeedOwner, SeedPet
+    from server.memory.seed_members import SeedChild, SeedOwner, SeedPerson, SeedPet
 
 __all__ = [
     "OperationKind",
@@ -61,14 +61,22 @@ class SeedRole(StrEnum):
     CHILD = "child"
     PET = "pet"
     PARENT = "parent"
+    MOTHER = "mother"
+    FATHER = "father"
     GRANDPARENT = "grandparent"
     SIBLING = "sibling"
     GRANDCHILD = "grandchild"
     THIRD_PARTY = "third_party"
 
 
-# The relative lists of the file: their role and the relation from the owner to them (D-4).
+# The marker a child's ``side`` is stored as, beside its ``child_of`` row (Plan 0080 D-4).
+_CHILD_SIDES = {"daughter": "daughter_of", "son": "son_of"}
+
+# The relatives of the file: their key, role and the relation from the owner to them (D-4). The
+# mother and the father are one person each; ``parents`` holds a parent whose side is not known.
 _RELATIVES = (
+    ("mother", SeedRole.MOTHER, "has_mother"),
+    ("father", SeedRole.FATHER, "has_father"),
     ("parents", SeedRole.PARENT, "has_parent"),
     ("grandparents", SeedRole.GRANDPARENT, "has_grandparent"),
     ("siblings", SeedRole.SIBLING, "has_sibling"),
@@ -179,6 +187,20 @@ def _literals(
     return operations
 
 
+def _members(seed: SeedFile, key: str) -> tuple[SeedPerson, ...]:
+    """The people under one relative key: a list gives its items, a single table its one person."""
+    raw = getattr(seed, key)
+    return raw if isinstance(raw, tuple) else () if raw is None else (raw,)
+
+
+def _child_relations(ref: SeedRef, child: SeedChild) -> list[SeedOperation]:
+    """The child's ``child_of`` row, then its side marker when the file says one."""
+    relations = [_relation("children", ref, "child_of", OWNER_REF)]
+    if child.side is not None:
+        relations.append(_relation("children.side", ref, _CHILD_SIDES[child.side], OWNER_REF))
+    return relations
+
+
 def _statuses(seed: SeedFile) -> Mapping[Section, SectionStatus]:
     """A section with items is ``provided``; one without takes its entry, or ``not_asked`` (D-5)."""
     items = sections_with_items(seed)
@@ -211,7 +233,7 @@ def build_plan(seed: SeedFile) -> SeedPlan:
     relatives = [
         (key, predicate, people.add(member.name, role))
         for key, role, predicate in _RELATIVES
-        for member in getattr(seed, key)
+        for member in _members(seed, key)
     ]
     pets = [(people.add(pet.name, SeedRole.PET, kind=_PET), pet) for pet in seed.pets]
     withheld = [people.add(member.name, SeedRole.THIRD_PARTY) for member in seed.withhold]
@@ -219,7 +241,7 @@ def build_plan(seed: SeedFile) -> SeedPlan:
         (people.add(contact.name, SeedRole.THIRD_PARTY), contact) for contact in seed.contacts
     ]
 
-    relations = [_relation("children", ref, "child_of", OWNER_REF) for ref, _ in children]
+    relations = [op for ref, child in children for op in _child_relations(ref, child)]
     if partner is not None:
         relations.append(_relation("partner", partner, "partner_of", OWNER_REF))
     relations += [_relation("pets", ref, "pet_of", OWNER_REF) for ref, _ in pets]
