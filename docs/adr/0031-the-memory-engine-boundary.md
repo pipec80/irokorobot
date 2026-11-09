@@ -1,9 +1,10 @@
 # 0031 — The memory engine: one boundary, swappable policies
 
-- **Status:** Proposed (2026-11-09; amended the same day with a second external review, decision
-  6 of *Pipec's decisions*). Direction confirmed by Pipec in the planning sessions of 2026-11-06
-  and 2026-11-09; the contracts below wait for his review of this text. Nothing in the code changes with this ADR: it fixes the boundary that later plans build
-  against, and the code moves only after CM-7 + PC-5 (decision 12).
+- **Status:** Proposed (2026-11-09; amended the same day with two external reviews, decisions 6
+  and 7 of *Pipec's decisions*; the final review gave its architectural approval). Direction
+  confirmed by Pipec in the planning sessions of 2026-11-06 and 2026-11-09. Nothing in the code
+  changes with this ADR: it fixes the boundary that later plans build against, and the engine is
+  extracted only after CM-7 + PC-5 (decision 11).
 - **Date:** 2026-11-09
 - **Builds on:** [ADR 0002](0002-server-robot-separation.md),
   [ADR 0004](0004-local-first-cognitive-policy.md),
@@ -77,16 +78,19 @@ firewall begins**. What holds today (verified on `main` at `cc8f1f1`, 2026-11-09
    is the reference vocabulary: working, episodic, semantic and procedural memory, retrieval and
    learning actions, a decision procedure. The Open Memory Protocol Initiative is pre-1.0 with no
    reference implementation.
-8. **Two defects of the recall path break invariants this ADR states** (found by an external
-   review of 2026-11-09 and confirmed in `memory/recall_store.py` and `memory/recall_search.py`):
-   - *Mixed vector spaces.* `units_without_vector` selects only units whose `embedding_model IS
+8. **Two gaps of the recall path against invariants this ADR states**, of different kinds (found
+   by an external review of 2026-11-09 and read in `memory/recall_store.py` and
+   `memory/recall_search.py`):
+   - *Mixed vector spaces* — an invariant the code does not hold, latent until the model changes.
+     `units_without_vector` selects only units whose `embedding_model IS
      NULL`, and `vector_hits` never compares the stored model with the query's. Changing
      `EMBEDDING_MODEL` to another 768-dimension model would compare vectors of two spaces and
      never re-embed the old units. Latent: the model has not changed.
-   - *Filters not re-applied at delivery.* `recall_search` filters the ids, awaits the HTTP
+   - *Filters not re-applied at delivery* — a risk found by static reading, pending
+     reproduction. `recall_search` filters the ids, awaits the HTTP
      embedding call to Ollama, and then reads the text with `units_by_id`, which does not
      re-check owner, sensitivity or expiry. A record raised to `medical` by the diary job
-     (`raise_record_sensitivity`) during those seconds can still reach the answer. A race, not
+     (`raise_record_sensitivity`) during those seconds could still reach the answer. A race, not
      an observed leak.
 
 ## Decision
@@ -121,7 +125,8 @@ confirm, promote), **index** (embed, backfill), **read and retrieve**, **correct
 ranking; nothing protected is fetched to be filtered later. **The filters must still hold when
 the content is handed over** (to the model, a template or an export): the read that returns the
 text re-applies owner, classification and validity, so a unit revoked or reclassified during a
-search is not delivered (*Context* item 8; fixed by Plan 0080).
+search is not delivered (*Context* item 8; proposed for Plan 0080, subject to Pipec approving
+that plan's scope).
 
 **Background jobs** (episodes, vectors, retention, backfill) have no person in front of the
 camera. They act as a **system actor** with a closed list of operations (derive, index, expire,
@@ -189,7 +194,7 @@ units already work; it becomes a rule for every new source.
 
 The semantics are fixed here; columns are added only when a use case needs them, by the plan of
 that use case. The engine never invents an occurred time it was not told, and an answer says which
-time it reports («me lo contaste el lunes» is not «fuiste el lunes»). Plan 0080 decides the minimum
+time it reports («me lo contaste el lunes» is not «fuiste el lunes»). Plan 0080 is proposed to decide the minimum
 for «¿cuándo fui a la playa?».
 
 ### 6. Every record says where it came from and what was done to it
@@ -249,7 +254,7 @@ searchable by its words), never outlive it, and can be rebuilt from it.
 vectors of the model that embedded the query. When the configured model changes, the engine
 refuses the cross-model comparison (vector search off, lexical search on) and re-embeds every unit
 in a verifiable re-index before it turns vector search back on. Today's code does not hold this
-(*Context* item 8); Block C's first plan (C1) fixes it.
+(*Context* item 8); it is proposed for Block C's first plan (C1).
 
 ### 9. The engine measures its own health
 
@@ -265,7 +270,9 @@ counts, never values:
 | Staleness | How long does a unit stay without its vector or its episode? |
 | Performance | p50 and p95 of capture, indexing and retrieval, and the resources they use |
 
-Block C's first plan (C1) builds the integrity and staleness checks; CM-7 reports all six.
+Retrievability is measured against a set of questions with known expected answers (the
+longitudinal benchmark and its dataset v4), not by operational counters alone. Block C's first
+plan (C1) builds the integrity and staleness checks; CM-7 reports all six.
 
 ### 10. What «learning» means here
 
@@ -321,8 +328,8 @@ own provenance (file, hash, version, position) and kept apart from what a person
 is not the owner's experience, and an instruction inside a document is data, never a command.
 Its first source is Markdown, plain text and PDF with a text layer; scanned PDF and OCR stay in
 R4. **This changes R2's earlier scope** (Markdown or text only, PDF in R4; roadmap of 2026-10-30)
-by Pipec's decision of 2026-11-06, recorded in the roadmap. ADR 0034 decides it, after CM-7 +
-PC-5.
+by Pipec's decision of 2026-11-06; the roadmap and RAG §25 record the change in the same
+documentation change as this ADR, and ADR 0034 decides it, after CM-7 + PC-5.
 
 ## Pipec's decisions and where they land
 
@@ -334,6 +341,7 @@ PC-5.
 | 4 | Documents (R2) after CM-7 + PC-5, with Markdown, text and PDF with text; OCR later | 2026-11-06 | Decision 13 |
 | 5 | Numbering: 0030 stays reserved (ADR 0029 decision 15); engine 0031, block C 0032, deployment 0033, documents 0034 | 2026-11-06 | *Amends*, roadmap |
 | 6 | Take in the second external review: origin and transformation as two dimensions, the lifecycle split into states, operations and physical results, embedding compatibility, the system actor of background jobs, filters re-applied at delivery, the restore reconciliation as a goal, one database per installation, L0 as context. The delivery race is fixed by Plan 0080, the embedding guard by C1 | 2026-11-09 | Decisions 2, 3, 6, 7, 8, 10, 11, 13; *Context* item 8 |
+| 7 | Take in the final review: the Plan 0080 and C1 assignments are proposals tied to those plans' scopes; the two recall gaps classified apart (an invariant not held, a race pending reproduction); retrievability measured on questions with expected answers; complete forgetting not declared while a restore can bring a memory back | 2026-11-09 | *Context* item 8; decisions 2, 5, 8, 9, 13; *Test consequences* |
 
 The author's calls, for Pipec's review: the four meanings of time and the names of origins and
 transformations; the shape of the port and of the two policies (from two external reviews of
@@ -392,7 +400,8 @@ of tuning.
 
 ## Test consequences
 
-- Plan 0080: a RED test where a unit is reclassified (`medical`) or its record deleted between
+- Plan 0080 (proposed, subject to its scope): a RED test that reproduces the delivery race first,
+  where a unit is reclassified (`medical`) or its record deleted between
   the search and the read, and is not delivered.
 - C1: the architecture guard over `memory/` imports (the list may only shrink); integrity and
   staleness checks with counts only; a RED test where the configured embedding model changes and
@@ -400,8 +409,10 @@ of tuning.
 - The extraction plan: the two policies cannot read each other's data; Iroko cannot compose the
   open policy; every boundary of decision 2 asks the policy before its effect.
 - CM-7: the six health measures reported with the benchmark; a restart and a backup restore are
-  separate cases, and the restore case forgets something after the backup and proves it does not
-  come back (or records the guarantee as not yet met).
+  separate cases, and the restore case forgets something after the backup and checks that it does
+  not come back. CM-7 may run it and record a failure, but it **may not declare complete
+  forgetting met** until that case passes or an accepted ADR explicitly limits the guarantee;
+  until then Iroko does not claim that a forgotten memory cannot return from a backup.
 
 ## Docs to update
 
