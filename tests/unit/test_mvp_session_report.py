@@ -60,6 +60,7 @@ def _full_turn(request_id: str, ts: str, *, msg: str = "log text") -> list[str]:
             best_distance=0.395,
             lexical_only=False,
             windowed=False,
+            when="happened",
         ),
     ]
 
@@ -80,8 +81,68 @@ def test_a_turn_is_one_row_of_closed_values() -> None:
             recall_outcome="found",
             recall_hits=2,
             best_distance=0.395,
+            recall_route="strong",
+            when="happened",
         )
     ]
+
+
+def test_a_recall_read_without_a_when_has_no_kind() -> None:
+    """The log writes a null ``when`` for every question that does not open with «cuándo»."""
+    ts = "2026-11-09T10:05:30.000-03:00"
+    lines = [
+        _line(ts, _REQUEST, "stt.transcribed", chars=21, hotwords=0),
+        _line(ts, _REQUEST, "recall.read", route="weak", outcome="no-hit", hits=0, when=None),
+    ]
+
+    (row,) = summarize_turns(lines, since=_SINCE)
+
+    assert row.recall_route == "weak"
+    assert row.when is None
+
+
+def test_the_route_and_the_when_are_closed_values_only() -> None:
+    ts = "2026-11-09T10:05:40.000-03:00"
+    lines = [
+        _line(ts, _REQUEST, "stt.transcribed", chars=21, hotwords=0),
+        _line(ts, _REQUEST, "recall.read", route=_CANARY, outcome="found", when=_CANARY),
+    ]
+
+    (row,) = summarize_turns(lines, since=_SINCE)
+
+    assert row.recall_route is None
+    assert row.when is None
+    assert _CANARY not in repr(row)
+
+
+def test_the_report_prints_the_route_and_the_when_columns(tmp_path: Path) -> None:
+    log = tmp_path / "server.log"
+    log.write_text(
+        "\n".join(_full_turn(_REQUEST, "2026-11-09T10:05:00.100-03:00")) + "\n", encoding="utf-8"
+    )
+    written: list[str] = []
+
+    assert (
+        mvp_session_report.main(["--log", str(log), "--since", _SINCE], write_text=written.append)
+        == 0
+    )
+
+    header, row = "".join(written).splitlines()
+    assert {"route", "when"} <= set(header.split())
+    assert {"strong", "happened"} <= set(row.split())
+
+
+def test_an_invalid_since_is_one_message_and_exit_one(tmp_path: Path) -> None:
+    log = tmp_path / "server.log"
+    log.write_text("\n".join(_full_turn(_REQUEST, "2026-11-09T10:05:00.100-03:00")) + "\n")
+    written: list[str] = []
+
+    exit_code = mvp_session_report.main(
+        ["--log", str(log), "--since", "yesterday-ish"], write_text=written.append
+    )
+
+    assert exit_code == 1
+    assert written == []
 
 
 def test_a_turn_without_a_plan_is_generic() -> None:

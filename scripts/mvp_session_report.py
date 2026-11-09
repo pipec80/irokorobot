@@ -3,7 +3,7 @@
 Reads ``logs/server.log`` (JSON lines) and groups the events of each request:
 ``stt.transcribed`` (characters heard), ``turn.decision`` (need, status, source;
 a turn the controller left to the channel is ``generic_conversation``) and
-``recall.read`` (outcome, hits, best distance). Only closed values are kept:
+``recall.read`` (route, when, outcome, hits, best distance). Only closed values are kept:
 the ``msg`` field and every other free-text field are never read, so the report
 cannot carry what anybody said.
 
@@ -58,6 +58,8 @@ class TurnRow:
     recall_outcome: str | None
     recall_hits: int | None
     best_distance: float | None
+    recall_route: str | None = None
+    when: str | None = None
 
 
 def _closed(value: object) -> str | None:
@@ -127,6 +129,8 @@ def _row(request_id: str, ts: str, events: dict[str, dict[str, object]]) -> Turn
         recall_outcome=_closed(recall.get("outcome")),
         recall_hits=_count(recall.get("hits")),
         best_distance=_distance(recall.get("best_distance")),
+        recall_route=_closed(recall.get("route")),
+        when=_closed(recall.get("when")),
     )
 
 
@@ -174,7 +178,10 @@ def _cell(value: object) -> str:
 
 def _render(rows: Sequence[TurnRow]) -> list[str]:
     """Render *rows* as aligned text lines, header first."""
-    header = ("ts", "request", "chars", "need", "status", "source", "recall", "hits", "best")
+    header = (
+        "ts", "request", "chars", "need", "status", "source", "route", "when", "recall", "hits",
+        "best",
+    )  # fmt: skip
     table = [header] + [
         (
             row.ts,
@@ -183,6 +190,8 @@ def _render(rows: Sequence[TurnRow]) -> list[str]:
             row.need,
             _cell(row.status),
             _cell(row.source),
+            _cell(row.recall_route),
+            _cell(row.when),
             _cell(row.recall_outcome),
             _cell(row.recall_hits),
             _cell(row.best_distance),
@@ -208,13 +217,19 @@ def main(
         write_text: Sink for the report text; ``None`` writes to standard output.
 
     Returns:
-        The process exit status: 0, or 1 when the log cannot be read.
+        The process exit status: 0, or 1 when the log cannot be read or ``--since`` is not an
+        ISO time.
     """
     parser = argparse.ArgumentParser(description="One row of closed values per turn (Plan 0080).")
     parser.add_argument("--log", type=Path, default=_DEFAULT_LOG, help="server log (JSON lines)")
     parser.add_argument("--since", required=True, help="ISO time; earlier log lines are ignored")
     args = parser.parse_args(argv)
     write = write_text if write_text is not None else sys.stdout.write
+    try:
+        _parse_time(args.since)
+    except ValueError:
+        logger.error("--since must be an ISO time such as 2026-11-09T10:00:00")
+        return 1
     try:
         text = args.log.read_text(encoding="utf-8")
     except OSError as exc:
