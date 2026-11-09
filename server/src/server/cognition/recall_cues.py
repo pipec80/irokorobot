@@ -81,6 +81,15 @@ _RELATIVE_SHAPES: Final = (
     "como se llaman a mis",
     "como se llama mis",
 )
+# «¿Cuál es el nombre de mi papá?» (Plan 0080 D-3). Unlike the shapes above these are requests,
+# not mentions: the sentence must OPEN with shape and relation once its fillers are dropped, so
+# «No sé cuál es el nombre de mi tía» or «Mi mamá dijo cuál es el nombre de mi perro» is no query.
+_RELATIVE_REQUEST_SHAPES: Final = (
+    "cual es el nombre de mi",
+    "cuales son los nombres de mis",
+    "dime el nombre de mi",
+    "dime los nombres de mis",
+)
 _RELATION_WORDS: Final[dict[str, str]] = {
     **dict.fromkeys(("mama", "papa", "papas", "padres", "madre", "padre"), "has_parent"),
     **dict.fromkeys(("hermano", "hermana", "hermanos", "hermanas"), "has_sibling"),
@@ -200,9 +209,14 @@ def relation_of(message: str) -> str | None:
         ``partner_of`` or ``pet_of``; ``None`` for anything else (the children keep their own
         route).
     """
-    padded = f" {normalize_spanish(message)} "
+    normalized = normalize_spanish(message)
+    padded = f" {normalized} "
     for shape in _RELATIVE_SHAPES:
         for word, predicate in _RELATION_WORDS.items():
             if f" {shape} {word} " in padded:
+                return predicate
+    for shape in _RELATIVE_REQUEST_SHAPES:
+        for word, predicate in _RELATION_WORDS.items():
+            if opens_with(normalized, f"{shape} {word}"):
                 return predicate
     return None

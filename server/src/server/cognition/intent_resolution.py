@@ -236,6 +236,16 @@ _OWN_CHILD_NAME_PATTERNS = (
     "quien es mi hija",
     "quien es mi hijo",
 )
+# Plan 0080 D-3: «el nombre de mi hijo». Requests, not mentions: they must open the sentence.
+# Until the side of a child is asked, the singular answers the list like the shapes above.
+_OWN_CHILD_NAME_REQUESTS = (
+    "cual es el nombre de mi hija",
+    "cual es el nombre de mi hijo",
+    "dime el nombre de mi hija",
+    "dime el nombre de mi hijo",
+    "cuales son los nombres de mis hijos",
+    "dime los nombres de mis hijos",
+)
 _CURRENT_DATE_PATTERNS = (
     "que dia es hoy",
     "dime la fecha actual",
@@ -366,10 +376,13 @@ def _own_child_name_rule(utterance: _Utterance) -> IntentResolution | None:
 
     Pipec's amendment to Plan 0078 (2026-11-03), with recall on only. The alta does not tell a
     daughter from a son, so the list answers it, as the parents' question names both parents.
+    Plan 0080 D-3 adds «el nombre de mi hijo» and «los nombres de mis hijos», which must open
+    the sentence.
     """
+    normalized = utterance.normalized
     if any(
-        _contains_word_phrase(utterance.normalized, pattern) for pattern in _OWN_CHILD_NAME_PATTERNS
-    ):
+        _contains_word_phrase(normalized, pattern) for pattern in _OWN_CHILD_NAME_PATTERNS
+    ) or any(opens_with(normalized, request) for request in _OWN_CHILD_NAME_REQUESTS):
         return _resolution(
             InformationNeed.OWN_CHILDREN_LIST, IntentMatch.EXACT, "own_children.name.v1"
         )

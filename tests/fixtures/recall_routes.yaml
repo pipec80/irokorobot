@@ -118,3 +118,45 @@
 - phrase: "¿Cómo se llama mis hermanos?"
   need: relatives_names
   today: protected_household
+# Plan 0080 D-3: «el nombre de mi X». They are requests: the shape opens the sentence.
+- phrase: "¿Cuál es el nombre de mi papá?"
+  need: relatives_names
+  today: protected_household
+- phrase: "¿Cuál es el nombre de mi mamá?"
+  need: relatives_names
+  today: protected_household
+- phrase: "Dime el nombre de mi mamá"
+  need: relatives_names
+  today: protected_household
+- phrase: "¿Cuáles son los nombres de mis hermanos?"
+  need: relatives_names
+  today: protected_household
+- phrase: "Dime los nombres de mis papás"
+  need: relatives_names
+  today: protected_household
+- phrase: "¿Cuál es el nombre de mi perro?"
+  need: relatives_names
+  today: protected_household
+- phrase: "Oye Iroko, ¿cuál es el nombre de mi papá?"
+  need: relatives_names
+  today: protected_household
+# The child shapes read the children list with recall on, until the side of a child is asked.
+- phrase: "¿Cuál es el nombre de mi hijo?"
+  need: own_children_list
+  today: protected_household
+- phrase: "Dime el nombre de mi hija"
+  need: own_children_list
+  today: protected_household
+- phrase: "¿Cuáles son los nombres de mis hijos?"
+  need: own_children_list
+  today: protected_household
+# Traps: a story or a mention never opens with the shape.
+- phrase: "No sé cuál es el nombre de mi tía"
+  need: generic_conversation
+  today: generic_conversation
+- phrase: "No sé cuál es el nombre de mi mamá"
+  need: generic_conversation
+  today: generic_conversation
+- phrase: "¿Cuál es el nombre de la calle de mi hijo?"
+  need: protected_household
+  today: protected_household

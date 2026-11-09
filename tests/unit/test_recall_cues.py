@@ -141,6 +141,11 @@ def test_content_words_drop_stop_words_and_repeats() -> None:
         ("¿Cómo se llama mi señora?", "partner_of"),
         ("¿Cómo se llama mi perrita?", "pet_of"),
         ("¿Cómo se llaman mis mascotas?", "pet_of"),
+        ("¿Cuál es el nombre de mi papá?", "has_parent"),
+        ("Dime el nombre de mi mamá", "has_parent"),
+        ("¿Cuáles son los nombres de mis hermanos?", "has_sibling"),
+        ("Dime los nombres de mis papás", "has_parent"),
+        ("Oye Iroko, ¿cuál es el nombre de mi perro?", "pet_of"),
     ],
 )
 def test_relation_of_names_the_predicate(message: str, predicate: str) -> None:
@@ -154,6 +159,10 @@ def test_relation_of_names_the_predicate(message: str, predicate: str) -> None:
         "Mi mamá se llama Zeta",
         "¿Cómo se llama la mamá de Zeta?",
         "¿Cómo se llama tu perro?",
+        "No sé cuál es el nombre de mi mamá",
+        "Mi mamá dijo cuál es el nombre de mi perro",
+        "¿Cuál es el nombre de la calle de mi papá?",
+        "¿Cuál es el nombre de mi hijo?",
     ],
 )
 def test_relation_of_is_none_for_anything_else(message: str) -> None:
