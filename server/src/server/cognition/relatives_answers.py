@@ -9,13 +9,17 @@ from typing import Final
 from server.cognition.household_tools import Side, SidedNames, SideGroup
 from server.cognition.sensitive_answers import spanish_join
 
-__all__ = ["relatives_sentence", "sided_sentence"]
+__all__ = ["CHILDREN_LIST_SENTENCE", "relatives_sentence", "sided_sentence"]
+
+#: The whole list of the owner's children, the one spelling (Plan 0080): the relatives route and
+#: the household children-list answer of the controller both say it with this template.
+CHILDREN_LIST_SENTENCE: Final = "Tus hijos son {}."
 
 # «Tu papá o tu mamá se llama A.» / «Tus papás se llaman A y B.» (Plan 0078 D-9). A relation whose
 # side is not told apart says both words for one name; a pet or a partner has one word.
 _RELATIVES_TEMPLATES: Final[dict[str, tuple[str, str]]] = {
     "has_parent": ("Tu papá o tu mamá se llama {}.", "Tus papás se llaman {}."),
-    "child_of": ("Tu hijo o hija se llama {}.", "Tus hijos son {}."),
+    "child_of": ("Tu hijo o hija se llama {}.", CHILDREN_LIST_SENTENCE),
     "has_sibling": ("Tu hermano o hermana se llama {}.", "Tus hermanos se llaman {}."),
     "has_grandparent": ("Tu abuelo o abuela se llama {}.", "Tus abuelos se llaman {}."),
     "has_grandchild": ("Tu nieto o nieta se llama {}.", "Tus nietos se llaman {}."),

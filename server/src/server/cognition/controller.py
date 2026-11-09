@@ -39,7 +39,11 @@ from server.cognition.recall_cues import (
     classify_recall_cue,
     relation_of,
 )
-from server.cognition.relatives_answers import relatives_sentence, sided_sentence
+from server.cognition.relatives_answers import (
+    CHILDREN_LIST_SENTENCE,
+    relatives_sentence,
+    sided_sentence,
+)
 from server.cognition.response_plan import (
     NO_MEMORY,
     NOT_ALONE,
@@ -860,7 +864,7 @@ def _household_tool_plan(
         )
     if need is InformationNeed.OWN_CHILDREN_LIST and isinstance(result.value, tuple):
         names = spanish_join(result.value)
-        response = f"Tus hijos son {names}."
+        response = CHILDREN_LIST_SENTENCE.format(names)
     elif need is InformationNeed.OWN_CHILDREN_COUNT and isinstance(result.value, int):
         response = f"Tienes {result.value} hijos."
     else:

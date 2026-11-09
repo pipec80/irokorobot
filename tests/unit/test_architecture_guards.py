@@ -1585,9 +1585,10 @@ def test_the_relative_words_guard_detects_a_violation() -> None:
 _TEMPLATES_HOME = "cognition/relatives_answers.py"
 _TEMPLATE_TABLE_NAMES = frozenset({"_RELATIVES_TEMPLATES", "_SIDED_TEMPLATES"})
 # «Tu mamá se llama {}.», «Tus papás se llaman {}.», «Tu papá o tu mamá se llama {}.»: a spoken
-# string that opens with «Tu(s)» and says «se llama(n)» before any placeholder. The «cómo se
-# llama» patterns and the prose of a docstring do not open that way.
-_RELATIVES_SENTENCE = re.compile(r"^Tus? [^{}]*\bse llam(?:a|an)\b")
+# string that opens with «Tu(s)» and says «se llama(n)» before any placeholder, and the whole
+# list of children «Tus hijos son {}.» (Plan 0080 fix round 1). The «cómo se llama» patterns and
+# the prose of a docstring do not open that way.
+_RELATIVES_SENTENCE = re.compile(r"^(?:Tus? [^{}]*\bse llam(?:a|an)\b|Tus hijos son\b)")
 
 
 def _defines_relatives_templates(text: str) -> bool:
@@ -1640,6 +1641,7 @@ def test_the_relatives_templates_guard_detects_a_violation() -> None:
         "cognition/sided_copy.py": "_SIDED_TEMPLATES: dict[str, str] = {}\n",
         "cognition/sentence_copy.py": 'reply = "Tu mamá se llama {}.".format(name)\n',
         "cognition/fstring_copy.py": 'reply = f"Tus papás se llaman {names}."\n',
+        "cognition/children_copy.py": 'reply = f"Tus hijos son {names}."\n',
         # The home defines them, by definition.
         "cognition/relatives_answers.py": (
             '_SIDED_TEMPLATES = {"a": ("Tu mamá se llama {}.", "b")}\n'
@@ -1655,6 +1657,7 @@ def test_the_relatives_templates_guard_detects_a_violation() -> None:
         "cognition/sided_copy.py",
         "cognition/sentence_copy.py",
         "cognition/fstring_copy.py",
+        "cognition/children_copy.py",
     ]
 
 
