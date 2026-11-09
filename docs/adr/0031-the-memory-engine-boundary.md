@@ -1,7 +1,9 @@
 # 0031 — The memory engine: one boundary, swappable policies
 
-- **Status:** Proposed (2026-11-09; amended the same day with two external reviews, decisions 6
-  and 7 of *Pipec's decisions*; the final review gave its architectural approval). Direction
+- **Status:** Accepted (2026-11-09, on Pipec's review; it has no implementing plan of its own:
+  it is the contract later plans build against). Proposed and amended the same day with two
+  external reviews, decisions 6 and 7 of *Pipec's decisions*; the final review gave its
+  architectural approval. Direction
   confirmed by Pipec in the planning sessions of 2026-11-06 and 2026-11-09. Nothing in the code
   changes with this ADR: it fixes the boundary that later plans build against, and the engine is
   extracted only after CM-7 + PC-5 (decision 11).
@@ -342,6 +344,7 @@ documentation change as this ADR, and ADR 0034 decides it, after CM-7 + PC-5.
 | 5 | Numbering: 0030 stays reserved (ADR 0029 decision 15); engine 0031, block C 0032, deployment 0033, documents 0034 | 2026-11-06 | *Amends*, roadmap |
 | 6 | Take in the second external review: origin and transformation as two dimensions, the lifecycle split into states, operations and physical results, embedding compatibility, the system actor of background jobs, filters re-applied at delivery, the restore reconciliation as a goal, one database per installation, L0 as context. The delivery race is fixed by Plan 0080, the embedding guard by C1 | 2026-11-09 | Decisions 2, 3, 6, 7, 8, 10, 11, 13; *Context* item 8 |
 | 7 | Take in the final review: the Plan 0080 and C1 assignments are proposals tied to those plans' scopes; the two recall gaps classified apart (an invariant not held, a race pending reproduction); retrievability measured on questions with expected answers; complete forgetting not declared while a restore can bring a memory back | 2026-11-09 | *Context* item 8; decisions 2, 5, 8, 9, 13; *Test consequences* |
+| 8 | Accept this ADR on review, before any plan implements it | 2026-11-09 | *Status* |
 
 The author's calls, for Pipec's review: the four meanings of time and the names of origins and
 transformations; the shape of the port and of the two policies (from two external reviews of
