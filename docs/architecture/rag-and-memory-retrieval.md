@@ -816,7 +816,7 @@ memoria semántica existente.
 
 ### R2 — Fuente documental mínima
 
-Decidido por Pipec el 2026-11-06: se quiere, y se abre después de CM-7 + PC-5 con
+Decidido por Pipec el 2026-11-06 (antes era condicional y solo Markdown o texto, con el PDF en R4): se quiere, y se abre después de CM-7 + PC-5 con
 su propio ADR (0034). Es una fuente más del motor de memoria
 ([ADR 0031](../adr/0031-the-memory-engine-boundary.md) decisión 13), separada de lo
 que una persona contó, y reutiliza la búsqueda de R3. La primera fuente es
