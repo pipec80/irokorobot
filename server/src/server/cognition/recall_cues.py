@@ -28,12 +28,14 @@ if TYPE_CHECKING:
     from datetime import date
 
 __all__ = [
+    "CHILD_SIDE_PREDICATES",
     "RELATIVE_WORDS",
     "CueStrength",
     "RecallCue",
     "WhenKind",
     "classify_recall_cue",
     "content_words",
+    "names_both_children",
     "relation_of",
 ]
 
@@ -151,6 +153,8 @@ RELATIVE_WORDS: Final = frozenset(_RELATION_WORDS)
 # keeps its own route.
 _CHILD_WORDS: Final[dict[str, str]] = {"hija": "daughter_of", "hijo": "son_of"}
 _ASKED_WORDS: Final = {**_RELATION_WORDS, **_CHILD_WORDS}
+#: The predicates ``relation_of`` answers for one child; the intent rule resolves them (Plan 0080).
+CHILD_SIDE_PREDICATES: Final = frozenset(_CHILD_WORDS.values())
 
 
 class CueStrength(StrEnum):
@@ -325,6 +329,11 @@ def _names_both_parents(padded: str) -> bool:
     )
 
 
+def _names_both_children(padded: str) -> bool:
+    """Whether the message names the daughter word and the son word."""
+    return all(f" {word} " in padded for word in _CHILD_WORDS)
+
+
 def _asked_predicate(normalized: str, padded: str) -> str | None:
     """Return the predicate of the first relative shape and relation word the message holds."""
     for shape in _RELATIVE_SHAPES:
@@ -355,4 +364,25 @@ def relation_of(message: str) -> str | None:
     asked = _asked_predicate(normalized, padded)
     if asked in {"has_mother", "has_father"} and _names_both_parents(padded):
         return "has_parent"
+    if asked in CHILD_SIDE_PREDICATES and _names_both_children(padded):
+        return None
     return asked
+
+
+def names_both_children(message: str) -> bool:
+    """Whether a child name question names the daughter and the son together.
+
+    «¿Cómo se llama mi hijo y mi hija?» asks for the whole list, as the parents' both-words rule
+    does: ``relation_of`` gives it no side.
+
+    Args:
+        message: Raw transcript or chat text in Spanish.
+
+    Returns:
+        ``True`` when the message asks for the name of a child and holds both singular child words.
+    """
+    normalized = normalize_spanish(message)
+    padded = f" {normalized} "
+    return _asked_predicate(normalized, padded) in CHILD_SIDE_PREDICATES and _names_both_children(
+        padded
+    )

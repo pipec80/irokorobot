@@ -23,7 +23,13 @@ from server.cognition.household_request import (
     requests_household_data,
     states_a_request,
 )
-from server.cognition.recall_cues import CueStrength, classify_recall_cue, relation_of
+from server.cognition.recall_cues import (
+    CHILD_SIDE_PREDICATES,
+    CueStrength,
+    classify_recall_cue,
+    names_both_children,
+    relation_of,
+)
 from server.cognition.response_plan import InformationNeed
 from server.cognition.sensitive_questions import classify_sensitive_question
 from server.secret_values import SecretKind, secret_kind
@@ -230,20 +236,9 @@ _RELATIONSHIP_PATTERNS = (
 )
 _OWN_CHILDREN_LIST_PATTERNS = ("como se llaman mis hijos", "quienes son mis hijos")
 _OWN_CHILDREN_COUNT_PATTERNS = ("cuantos hijos tengo",)
-_OWN_CHILD_NAME_PATTERNS = (
-    "como se llama mi hija",
-    "como se llama mi hijo",
-    "quien es mi hija",
-    "quien es mi hijo",
-)
-# Plan 0080 D-3: «el nombre de mi hijo». Requests, not mentions: they must open the sentence.
-# The singular asks for one side (``relation_of`` words it); the plural answers the whole list.
-_OWN_CHILD_NAME_REQUESTS = (
-    "cual es el nombre de mi hija",
-    "cual es el nombre de mi hijo",
-    "dime el nombre de mi hija",
-    "dime el nombre de mi hijo",
-)
+# Plan 0080 D-3: «los nombres de mis hijos». Requests, not mentions: they must open the sentence.
+# The singular child question is ``relation_of``'s alone (one grammar, never written twice); the
+# plural answers the whole list.
 _OWN_CHILDREN_NAME_REQUESTS = (
     "cuales son los nombres de mis hijos",
     "dime los nombres de mis hijos",
@@ -380,17 +375,18 @@ def _own_child_name_rule(utterance: _Utterance) -> IntentResolution | None:
     it resolves to ``RELATIVES_NAMES`` and the controller reads the side marker through
     ``relation_of`` (Plan 0080 D-4, which supersedes Plan 0078 amendment A3, where the whole list
     answered it because the alta did not tell a daughter from a son). The plural «¿cuáles son los
-    nombres de mis hijos?» still answers the whole list. The requests of D-3 must open the
-    sentence.
+    nombres de mis hijos?» still answers the whole list, and so does a question naming both
+    singular words («¿cómo se llama mi hijo y mi hija?»). The singular is decided by
+    ``relation_of`` alone, so the need and the predicate the controller reads cannot drift.
     """
-    normalized = utterance.normalized
-    if any(
-        _contains_word_phrase(normalized, pattern) for pattern in _OWN_CHILD_NAME_PATTERNS
-    ) or any(opens_with(normalized, request) for request in _OWN_CHILD_NAME_REQUESTS):
+    if relation_of(utterance.message) in CHILD_SIDE_PREDICATES:
         return _resolution(
             InformationNeed.RELATIVES_NAMES, IntentMatch.EXACT, "own_children.name.v1"
         )
-    if any(opens_with(normalized, request) for request in _OWN_CHILDREN_NAME_REQUESTS):
+    normalized = utterance.normalized
+    if names_both_children(utterance.message) or any(
+        opens_with(normalized, request) for request in _OWN_CHILDREN_NAME_REQUESTS
+    ):
         return _resolution(
             InformationNeed.OWN_CHILDREN_LIST, IntentMatch.EXACT, "own_children.name.v1"
         )

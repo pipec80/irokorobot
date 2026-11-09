@@ -214,6 +214,33 @@ def test_relation_of_is_none_for_the_children_as_a_group_and_for_stories(message
     assert relation_of(message) is None
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        "¿Cómo se llama mi hijo y mi hija?",
+        "¿Cómo se llama mi hija y mi hijo?",
+        "Dime el nombre de mi hijo y mi hija",
+        "¿Quién es mi hijo y mi hija?",
+    ],
+)
+def test_a_message_naming_both_child_words_asks_for_the_whole_list(message: str) -> None:
+    """Like the parents' both-words rule: no single side, so ``relation_of`` has none."""
+    resolution = resolve_information_need(message, recall=True)
+
+    assert relation_of(message) is None
+    assert resolution.need is InformationNeed.OWN_CHILDREN_LIST
+    assert resolution.rule_id == "own_children.name.v1"
+
+
+def test_with_recall_off_the_both_child_words_resolve_as_today() -> None:
+    message = "¿Cómo se llama mi hijo y mi hija?"
+
+    assert resolve_information_need(message).need is InformationNeed.PROTECTED_HOUSEHOLD
+    assert resolve_information_need(message, recall=False).need is (
+        InformationNeed.PROTECTED_HOUSEHOLD
+    )
+
+
 def test_the_child_words_do_not_join_the_relative_words() -> None:
     """Plan 0079 reads this set: the singular child words come from a separate table."""
     assert not {"hijo", "hija", "hijos", "hijas"} & RELATIVE_WORDS
@@ -227,6 +254,8 @@ def test_the_child_words_do_not_join_the_relative_words() -> None:
         "¿Cuál es el nombre de mi hija?",
         "Dime el nombre de mi hijo",
         "Oye Iroko, ¿cómo se llama mi hijo?",
+        "¿Cómo se llama a mi hija?",
+        "¿Cómo se llama mis hijo?",
     ],
 )
 def test_the_intent_rule_and_relation_of_agree_on_the_singular_child_phrases(

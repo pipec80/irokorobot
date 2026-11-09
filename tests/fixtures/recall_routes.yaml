@@ -243,3 +243,13 @@
 - phrase: "cuando fui a la playa me quemé"
   need: generic_conversation
   today: generic_conversation
+# A message naming both singular child words asks for the whole list, like the parents' both-words rule.
+- phrase: "¿Cómo se llama mi hijo y mi hija?"
+  need: own_children_list
+  today: protected_household
+- phrase: "¿Cómo se llama mi hija y mi hijo?"
+  need: own_children_list
+  today: protected_household
+- phrase: "Dime el nombre de mi hijo y mi hija"
+  need: own_children_list
+  today: protected_household
