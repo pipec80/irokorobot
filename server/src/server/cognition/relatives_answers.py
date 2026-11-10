@@ -6,7 +6,7 @@ and every sentence is a template, so the 3B model never words a name.
 
 from typing import Final
 
-from server.cognition.household_tools import Side, SidedNames, SideGroup
+from server.cognition.family_sides import Side, SidedNames, SideGroup
 from server.cognition.sensitive_answers import spanish_join
 
 __all__ = ["CHILDREN_LIST_SENTENCE", "relatives_sentence", "sided_sentence"]

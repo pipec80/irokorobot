@@ -15,8 +15,8 @@ from server.cognition.authorization import (
     evaluate_authorization,
 )
 from server.cognition.calendar_tools import calculate_age, get_current_date
+from server.cognition.family_sides import Side, SidedNames, SideGroup
 from server.cognition.household_request import names_someone_known, requests_data_of_a_name
-from server.cognition.household_tools import Side, SidedNames, SideGroup
 from server.cognition.identity import ActivePersonContext, ActivePersonStatus, HouseholdRole
 from server.cognition.intent_resolution import (
     IntentResolution,
