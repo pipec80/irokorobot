@@ -37,7 +37,7 @@
     },
     "SeedChild": {
       "additionalProperties": false,
-      "description": "A child of the owner; an adult child is the name and the guardianship only.",
+      "description": "A child of the owner; an adult child is the name, the guardianship and the side only.",
       "properties": {
         "likes": {
           "default": [],
