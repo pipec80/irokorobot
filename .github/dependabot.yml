@@ -7,6 +7,11 @@ updates:
     commit-message:
       prefix: "chore(deps)"
     open-pull-requests-limit: 5
+    # nvidia-cublas-cu12 (the optional `cuda` extra of server/pyproject.toml) is capped on
+    # purpose: 12.9.3.13 ships Linux wheels only, so `uv sync --extra cuda` fails on Windows
+    # (Dependabot #237 and #247). Remove this ignore when a release has a win_amd64 wheel again.
+    ignore:
+      - dependency-name: "nvidia-cublas-cu12"
     # Bundle safe (minor/patch) Python version updates and security updates
     # separately. Major version bumps stay individual for deliberate review.
     groups:
