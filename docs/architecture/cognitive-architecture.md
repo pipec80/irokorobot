@@ -109,7 +109,7 @@ flowchart TB
     subgraph PERCEPTION["Perception layer"]
         STT["STT"]
         FACE["Face evidence"]
-        VOICE["Speaker evidence (future)"]
+        VOICE["Speaker evidence"]
         SCENE["Structured scene perception"]
         NORMALIZE["Typed observations"]
     end
@@ -231,6 +231,15 @@ Apply person, household, visibility, sensitivity, freshness, and relevance
 filters before constructing prompt context. Relational facts are preferred for
 exact household questions; vector retrieval supplements them rather than
 overriding them.
+
+**Pipeline rule: memory first, the model second.** The memory engine and the controller decide
+what the turn is before any model runs. A question about the owner's data or about what was told
+before (recall, the relatives, the sensitive and security levels) is answered from what memory
+found, as a fixed template or as wording of the found items only; finding nothing is a fixed «No me
+acuerdo de eso.», never a guess. The LLM generates freely only when the turn is not a memory
+question (ordinary chat, which sees the profile card and the short-term session and no household
+store), and it words, never decides, what memory found
+([ADR 0031](../adr/0031-the-memory-engine-boundary.md) decision 1; ADR 0028).
 
 ### Stage 7 — Assemble active context
 
