@@ -286,7 +286,7 @@ async def _run() -> None:
 
 
 def main() -> None:
-    """Entry point for the robot script."""
+    """Entry point for the robot script; Ctrl+C stops it cleanly (exit code 0)."""
     log_format = "%(asctime)s %(levelname)-8s %(name)s — %(message)s"
     log_datefmt = "%Y-%m-%d %H:%M:%S"
     handlers: list[logging.Handler] = [logging.StreamHandler()]
@@ -308,4 +308,8 @@ def main() -> None:
             "LOG_CONVERSATION_TEXT is on: transcripts and spoken text are printed to the "
             "console (never to the log file). Debug use only; do not say a PIN aloud."
         )
-    asyncio.run(_run())
+    try:
+        asyncio.run(_run())
+    except KeyboardInterrupt:
+        # Ctrl+C is how the operator stops the robot: _run's finally already closed the client.
+        logger.info("Robot client stopped by the operator")
