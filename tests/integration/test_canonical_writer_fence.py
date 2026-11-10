@@ -14,10 +14,15 @@ from typing import TYPE_CHECKING
 import pytest
 from server.exceptions import WriteRefusedError
 from server.memory.canonical_writer import write_literal, write_relation
+from server.memory.care_contacts import ContactRole, write_contact
 from server.memory.declarative import Guardianship, create_third_party, upsert_entity
 from server.memory.household_authorization import bootstrap_initial_owner
 from server.memory.predicate_registry import resolve_predicate
-from server.memory.relational_v4 import assert_entity_relation, get_active_entity_relations
+from server.memory.relational_v4 import (
+    assert_entity_relation,
+    get_active_entity_relations,
+    revoke_entity_relation,
+)
 from server.memory.write_types import WriteChannel
 from server.settings import settings
 
@@ -33,6 +38,7 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.integration
 
 _CONFIRMED_AT = "2026-10-22T12:00:00.000000+00:00"
+_PHONE = "+56900000001"
 _RELATIVE_PREDICATES = (
     "has_parent",
     "has_mother",
@@ -332,18 +338,62 @@ async def test_the_side_is_refused_for_the_partner_as_child_of_is(home: _Home, m
 
 
 @pytest.mark.parametrize("marker", ["daughter_of", "son_of"])
-async def test_the_side_is_refused_for_a_relative_as_child_of_is(home: _Home, marker: str) -> None:
+async def test_the_side_is_refused_for_a_relative_who_is_not_a_child(
+    home: _Home, marker: str
+) -> None:
     await _relate(home, home.owner, "has_parent", home.relative)
 
     reason = await _refusal_of(_relate(home, home.relative, marker, home.owner))
 
-    assert reason == await _refusal_of(_relate(home, home.relative, "child_of", home.owner))
-    assert reason == "role_conflict"
+    assert reason == "not_household_member"
 
 
 @pytest.mark.parametrize("marker", ["daughter_of", "son_of"])
 async def test_the_side_must_point_to_the_owner(home: _Home, marker: str) -> None:
     reason = await _refusal_of(_relate(home, home.owner, marker, home.child))
+
+    assert reason == "not_household_member"
+
+
+@pytest.mark.parametrize("marker", ["daughter_of", "son_of"])
+@pytest.mark.parametrize("child", ["child", "adult_child"])
+async def test_the_side_of_a_child_who_is_also_a_care_contact_is_stored(
+    home: _Home, marker: str, child: str
+) -> None:
+    """An adult daughter is often the emergency contact: the marker unlocks nothing for her."""
+    entity = getattr(home, child)
+    await write_contact(
+        owner_entity_id=home.owner,
+        contact_entity_id=entity,
+        role=ContactRole.EMERGENCY,
+        phone=_PHONE,
+        channel=WriteChannel.IMPORT_ASSISTED,
+        confirmed_at=_CONFIRMED_AT,
+    )
+
+    row = await _relate(home, entity, marker, home.owner)
+
+    assert (row.visibility, row.sensitivity) == ("household", "child_data")
+    assert (row.source_entity_id, row.target_entity_id) == (entity, home.owner)
+
+
+@pytest.mark.parametrize("marker", ["daughter_of", "son_of"])
+async def test_the_side_of_an_entity_with_no_child_row_is_refused(home: _Home, marker: str) -> None:
+    reason = await _refusal_of(_relate(home, home.stranger, marker, home.owner))
+
+    assert reason == "not_household_member"
+
+
+@pytest.mark.parametrize("marker", ["daughter_of", "son_of"])
+async def test_the_side_of_a_child_whose_child_row_ended_is_refused(
+    home: _Home, marker: str
+) -> None:
+    (row,) = await get_active_entity_relations(
+        definition=_definition("child_of"), source_entity_id=home.child
+    )
+    await revoke_entity_relation(row.id, revoked_at=_CONFIRMED_AT)
+
+    reason = await _refusal_of(_relate(home, home.child, marker, home.owner))
 
     assert reason == "not_household_member"
 

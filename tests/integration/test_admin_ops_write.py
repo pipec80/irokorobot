@@ -29,7 +29,7 @@ from server.memory.admin_ops import (
     requires_owner_verification,
 )
 from server.memory.canonical_writer import write_relation
-from server.memory.care_contacts import ContactRole, list_active_contacts
+from server.memory.care_contacts import ContactRole, list_active_contacts, write_contact
 from server.memory.declarative import create_third_party, upsert_entity
 from server.memory.relational_v4 import (
     AssertionLifecycle,
@@ -348,6 +348,28 @@ async def test_label_a_child_adds_the_marker_beside_the_child_row(
     assert audit.field_id == predicate
     assert audit.target_entity_id == row.source_entity_id
     assert "Zeta" not in await _audit_dump()
+
+
+@pytest.mark.parametrize("side, predicate", _CHILD_SIDES)
+async def test_label_a_child_who_is_also_a_care_contact_applies(
+    ops_db: int, side: str, predicate: str
+) -> None:
+    owner = ops_db
+    row = await _relation(owner, "child_of")
+    await write_contact(
+        owner_entity_id=owner,
+        contact_entity_id=row.source_entity_id,
+        role=ContactRole.EMERGENCY,
+        phone=_PHONE,
+        channel=WriteChannel.ADMIN_LOCAL,
+        confirmed_at=_NOW,
+    )
+    outcome = await _label(owner, row.id, side)
+    assert outcome.status is AdminOutcomeStatus.APPLIED
+    assert await _active(predicate) == [(row.source_entity_id, owner)]
+    (audit,) = await list_admin_operations()
+    assert audit.outcome is AdminOutcomeStatus.APPLIED
+    assert audit.field_id == predicate
 
 
 @pytest.mark.parametrize("side, other", [("daughter", "son_of"), ("son", "daughter_of")])
