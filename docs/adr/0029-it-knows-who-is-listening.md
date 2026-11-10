@@ -513,3 +513,10 @@ found kept without a secret word.
 - The implementing plan is the next free plan number, 0079.
 - The next free ADR number is 0030; it is reserved for decision 15 (a household secret kept with
   authorization, answering in company), written after Plan 0079 closes.
+
+## Notes added after acceptance
+
+- *2026-11-10.* The levels of decision 1, and who may hear each of them, are tabulated once in
+  [`identity-and-access.md`](../architecture/identity-and-access.md#levels-and-audiences). ADR 0030
+  (decision 15: a household secret kept with authorization, answering in company) is written
+  **after CM-7 + PC-5**, not after Plan 0079 as the lines above say.

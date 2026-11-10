@@ -11,7 +11,7 @@ supersedes it and update the old one's status.
 | [0001](0001-use-uv-workspace.md) | Use uv with a workspace | Accepted |
 | [0002](0002-server-robot-separation.md) | Separate server (brain) and robot (senses) | Accepted |
 | [0003](0003-python-312-minimum.md) | Require Python 3.12+ | Accepted |
-| [0004](0004-local-first-cognitive-policy.md) | Adopt a local-first cognitive policy | Accepted |
+| [0004](0004-local-first-cognitive-policy.md) | Adopt a local-first cognitive policy | Accepted; escalation clause under review by [0036](0036-model-providers-local-first.md) (Proposed) |
 | [0005](0005-small-typed-cognitive-controller.md) | Evolve a small typed cognitive controller | Accepted |
 | [0006](0006-personal-and-family-companion-profiles.md) | Support personal and family companion profiles | Accepted |
 | [0007](0007-first-boot-and-default-posture.md) | First boot and local-channel default posture | Accepted; local-owner presumption superseded by 0008 |
@@ -39,5 +39,10 @@ supersedes it and update the old one's status.
 | [0029](0029-it-knows-who-is-listening.md) | It knows who is listening: read the owner's sensitive data by voice, by levels, and never keep a spoken secret | **Accepted** (2026-11-06, Plan 0079 closed, accepted on hardware 10 of 10; proposed 2026-11-04, amended 2026-11-05, decisions 8 to 21); block B of the closing path, one plan (0079); amends 0019 §3, 0026 decisions 6 and 9, 0027 decision 1 |
 | 0030 | *Reserved* — keeping a household secret with authorization and answering in company (ADR 0029 decision 15) | Not written; after CM-7 + PC-5 |
 | [0031](0031-the-memory-engine-boundary.md) | The memory engine: one boundary, swappable policies | **Accepted** (2026-11-09, on Pipec's review after two external reviews); the engine is extracted only after CM-7 + PC-5; constrains ADRs 0032 (block C), 0033 (deployment) and 0034 (documents) |
+| 0032 | *Reserved* — block C, «it corrects and forgets»: database hygiene (C1), then correct and forget (C2, CM-6) | Not written; roadmap step 4 |
+| 0033 | *Reserved* — the home-server deployment (the server in Docker on the laptop, LAN binding, off-host unlock and enrolment, data volume, backups) | Not written; before block D |
+| 0034 | *Reserved* — documents in the memory engine (R2: Markdown, text, text-layer PDF) | Not written; after CM-7 + PC-5 |
+| [0035](0035-deployment-worlds.md) | Deployment worlds: the ESP32 body, the server board, the remote dashboard | **Accepted** (2026-11-10, decided by Pipec); amends in wording ADRs 0001, 0002, 0003, 0023, 0024 and 0025 (a note each, no decision changes) |
+| [0036](0036-model-providers-local-first.md) | Model providers: local by default, a cloud provider only as an explicit opt-in | **Proposed** (2026-11-10); open questions for Pipec; would amend the escalation clause of 0004, which stays Accepted until then |
 
 New ADRs start from [`0000-adr-template.md`](0000-adr-template.md).

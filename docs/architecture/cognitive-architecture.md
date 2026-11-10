@@ -11,8 +11,16 @@
 
 Iroko is a local, open-source household companion with voice, vision, memory,
 personality, and eventually a physical body. The same brain is exercised first
-through the PC microphone, camera, speakers, and local web interface. Hardware
-later replaces adapters; it does not redefine cognition.
+through the PC microphone, camera, and speakers. Hardware later replaces
+adapters; it does not redefine cognition.
+
+Three deployment worlds ([ADR 0035](../adr/0035-deployment-worlds.md)) place the
+same two halves: the **body** (an ESP32 board with the microphone, speaker,
+camera and sensors; today the PC), the **server** (this laptop as home server,
+later a Raspberry Pi or Jetson class board that can run the LLM) and a **remote
+dashboard** (later; the remote half of
+[ADR 0025](../adr/0025-remote-administration-backup-updates-and-telemetry.md)).
+There is no local web interface today.
 
 The same brain is configured along two independent product axes defined by
 [ADR 0014](../adr/0014-orthogonal-social-and-responsibility-profiles.md): social
@@ -92,8 +100,8 @@ human brain.
 12. **Incremental architecture:** implement one verified vertical slice at a
     time; do not build future infrastructure early.
 
-ADR-0004 governs local/cloud and uncertainty. ADR-0005 governs the controller
-shape.
+ADR-0004 governs local-first operation and uncertainty; ADR-0036 (Proposed)
+governs model providers. ADR-0005 governs the controller shape.
 
 ## System layers
 
@@ -109,7 +117,7 @@ flowchart TB
     subgraph PERCEPTION["Perception layer"]
         STT["STT"]
         FACE["Face evidence"]
-        VOICE["Speaker evidence (future)"]
+        VOICE["Speaker evidence"]
         SCENE["Structured scene perception"]
         NORMALIZE["Typed observations"]
     end
@@ -125,7 +133,7 @@ flowchart TB
     end
 
     subgraph GENERATION["Expression"]
-        LLM["Local LLM / approved escalation"]
+        LLM["Local LLM (Ollama)"]
         TTS["TTS"]
         ACTION["Authorized action request (future)"]
     end
@@ -232,6 +240,15 @@ filters before constructing prompt context. Relational facts are preferred for
 exact household questions; vector retrieval supplements them rather than
 overriding them.
 
+**Pipeline rule: memory first, the model second.** The memory engine and the controller decide
+what the turn is before any model runs. A question about the owner's data or about what was told
+before (recall, the relatives, the sensitive and security levels) is answered from what memory
+found, as a fixed template or as wording of the found items only; finding nothing is a fixed «No me
+acuerdo de eso.», never a guess. The LLM generates freely only when the turn is not a memory
+question (ordinary chat, which sees the profile card and the short-term session and no household
+store), and it words, never decides, what memory found
+([ADR 0031](../adr/0031-the-memory-engine-boundary.md) decision 1; ADR 0028).
+
 ### Stage 7 — Assemble active context
 
 Combine only the facts, episodes, current observations, identity evidence, and
@@ -241,9 +258,9 @@ history; it is not identity or permission.
 ### Stage 8 — Generate language when needed
 
 The LLM receives a bounded response task, evidence-backed structured results,
-personality directives, and allowed context. Local generation is the default.
-Cloud escalation follows ADR-0004 and never occurs merely because confidence is
-low.
+personality directives, and allowed context. Generation is local by default; a
+cloud provider only through ADR-0036 (Proposed), never merely because
+confidence is low.
 
 ### Stage 9 — Validate the response plan
 
@@ -295,12 +312,12 @@ Perception adapters translate vendor-specific output into typed payloads:
 ```text
 webcam / CSI / security camera -> VisualObservation
 microphone / audio file        -> AudioObservation
-ESP32 / simulator              -> SensorObservation
+body (ESP32) / simulator       -> SensorObservation
 web / voice / CLI              -> TextObservation
 ```
 
 The shared brain does not know whether an image came from OpenCV, OAK-D,
-Jetson, a USB webcam, or future electronics. Concrete payloads are introduced
+a USB webcam, an ESP32 camera, or future electronics. Concrete payloads are introduced
 only when their feature plan is ready.
 
 Structured visual perception should eventually express:
@@ -339,12 +356,14 @@ energy. It never changes knowledge status, invents memories, expands access,
 overrides consent, or bypasses physical safety. See
 [`personality-and-interaction.md`](personality-and-interaction.md).
 
-## Cloud escalation boundary
+## Model providers: local by default
 
-Cloud is an optional capability used only after local processing and policy.
-Appropriate candidates include resolving unusually ambiguous language,
-verifying a contradictory extraction, generating a difficult explanation, or
-analyzing a scene a local VLM could not interpret.
+Everything runs locally (Ollama) unless an accepted decision says otherwise. A
+cloud provider may enter the runtime path only through
+[ADR 0036](../adr/0036-model-providers-local-first.md), which is Proposed: it
+would be an explicit opt-in chosen at composition for a named capability, never
+a fallback that appears by accident. Which data may ever leave the house is
+open. Until it is decided, the rule below holds.
 
 By default, do not send facial embeddings, voice samples, family profiles,
 children's images, medical information, location history, full conversations,

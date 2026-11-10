@@ -289,3 +289,5 @@ when conversations are stored, or when a connection to the Internet becomes part
 - [Plan 0073](../plans/completed/0073-local-admin-crud.md) — the local admin (closed 2026-10-28).
 - The backup, update, telemetry, remote-access and support-session plans: not written.
 - The next free ADR number is 0026.
+
+*Note (2026-11-10): the mentions of the Raspberry Pi as the body are superseded in wording by [ADR 0035](0035-deployment-worlds.md); the decisions above stand, and this ADR remains the authority of the remote half (the third world).*

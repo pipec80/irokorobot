@@ -4,7 +4,8 @@
 > became `Accepted`; proposed 2026-10-23). Every field of the catalogue below is implemented by the
 > plan named in its *Plan* column (Plans 0070 to 0072, and Plan 0073 for amending it); the
 > capabilities table at the end is the part that is still intent
-> ([`current-state.md`](current-state.md) says what runs).
+> ([`current-state.md`](current-state.md) says what runs). Which level each datum belongs to, and who may
+> hear it, is tabulated in [`identity-and-access.md`](identity-and-access.md#levels-and-audiences).
 >
 > **Plan 0070 (the storage) closed on 2026-10-23.** Every field the *Plan* column marks `0070` is now
 > registered, validated and writable: through the canonical writer for a V4 fact, through the contacts

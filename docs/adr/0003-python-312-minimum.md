@@ -26,3 +26,5 @@ Require `>=3.12` across the workspace (`requires-python`), pin `3.12` via
 ## Review
 Revisit when 3.13 has stable wheels for the full ML stack, or if a target
 platform cannot provide 3.12.
+
+*Note (2026-11-10): superseded in wording by [ADR 0035](0035-deployment-worlds.md); the decision above stands. The body is an ESP32 board, the server is the laptop and later a Pi/Jetson-class board.*

@@ -24,6 +24,12 @@ until its remaining active plans close.
   scaffolding notes. Use root `AGENTS.md`, `justfile`, `pyproject.toml`, and the
   current documentation portal instead.
 
+## Archived plan indexes
+
+- [`plans-open-readme-archive.md`](plans-open-readme-archive.md): the former body of the
+  open-plan index as of 2026-11-10 (per-plan closing paragraphs, the Step 0 status of 2026-10-28,
+  the 0049 audit note and the server-capsule notes).
+
 ## Evaluation runs kept for the record
 
 - [`evals/2026-10-21-192351-chat-stream-ollama.md`](evals/2026-10-21-192351-chat-stream-ollama.md):

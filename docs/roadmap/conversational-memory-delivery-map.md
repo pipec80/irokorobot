@@ -6,8 +6,8 @@ CM-2 closed (Plan 0061, 2026-10-13: short-term continuity for the identified per
 in [ADR 0021](../adr/0021-memory-candidates-and-the-canonical-writer.md) (`Accepted`, 2026-10-16) and split into CM-3a and CM-3b;
 CM-3a closed (corte 1 [Plan 0062](../plans/completed/0062-cm3a-memory-candidates-and-writer.md), 2026-10-15: candidate store,
 canonical writer, background proposal; corte 2 [Plan 0063](../plans/completed/0063-cm3a-memory-dialogue.md), 2026-10-16: spoken
-offer, explicit answer, hardware acceptance); CM-3b tranche A closed ([Plan 0065](../plans/completed/0065-cm3b-a-channel-neutral-writer-core.md), 2026-10-22: the channel-neutral writer, [ADR 0022](../adr/0022-household-rules-and-third-party-memory.md) `Accepted`); CM-3b tranche B (spoken capture of third parties, reported facts, the disclosure rule, perceptual candidates) comes after Step 0 (closed 2026-10-28 in Plans 0070 to 0073: the data pool, the importer, the commissioning session and the local administration) and is required before CM-7
-**Last reviewed:** 2026-10-28
+offer, explicit answer, hardware acceptance); CM-3b tranche A closed ([Plan 0065](../plans/completed/0065-cm3b-a-channel-neutral-writer-core.md), 2026-10-22: the channel-neutral writer, [ADR 0022](../adr/0022-household-rules-and-third-party-memory.md) `Accepted`); Step 0 closed (Plans 0070 to 0073, 2026-10-23 to 2026-10-28: the data pool, the importer, the commissioning session and the local administration); CM-4 closed ([Plan 0076](../plans/completed/0076-cm4-conversation-record-and-diary.md), 2026-10-30: the conversation record and the diary); CM-5a closed ([Plan 0074](../plans/completed/0074-cm5a-profile-card.md), 2026-10-28); the household protection answers requests, not mentions ([Plan 0077](../plans/completed/0077-household-requests-not-mentions.md), 2026-11-02); CM-5b + R3 closed ([Plan 0078](../plans/completed/0078-cm5b-recall-what-the-owner-told.md), 2026-11-04: recall over the diary); block B closed ([Plan 0079](../plans/completed/0079-block-b-sensitive-read-and-spoken-secrets.md), 2026-11-06: the owner's sensitive data by voice and spoken secrets); the MVP recall phrasings and the sides of the family closed ([Plan 0080](../plans/completed/0080-mvp-recall-phrasings.md), 2026-11-10). **Open:** block C (database hygiene, then CM-6 correct and forget, ADR 0032, written against [ADR 0031](../adr/0031-the-memory-engine-boundary.md)), the home-server deployment (ADR 0033), and block D (CM-7 + PC-5, the final acceptance). CM-3b tranche B was emptied by ADR 0029 and its remaining items (third-party spoken capture, reported facts, perceptual candidates) are required before CM-7 or move to the family stage.
+**Last reviewed:** 2026-11-10 (`main` at `3954405`, Plan 0080 closed)
 
 ## Objective
 
@@ -46,73 +46,36 @@ explain whose it is, who asserted it, what its source was, when it was valid,
 what its truth state is, who may see it, whether it is sensitive, what it
 corrects, and what must be removed when it is forgotten.
 
-## Current fracture
+## How the fracture closed (history)
 
-The repository contains valuable pieces, but protected household queries and
-generic conversation travel different paths:
+Until Plan 0061 the protected household queries and the generic conversation travelled different
+paths: a protected query went identity -> authorization -> V4 memory -> a deterministic response,
+while generic conversation went through a legacy text turn with legacy and semantic memory, and
+the controller did not carry the resolved actor into it. That legacy memory path (`build_context`,
+`memory/semantic.py`, the `MANUAL` gate, the consolidation writer) was retired in steps, and no
+runtime path reads or writes it now:
 
-```text
-protected household query
-  -> identity -> authorization -> V4 memory -> deterministic response
+- Plan 0061 (CM-2, 2026-10-13) carried the identified actor into the generic turn for short-term
+  continuity: the person's last exchanges reach the next turn for 180 s of silence and 3000
+  characters, in process only.
+- Plan 0062 (CM-3a corte 1, 2026-10-15) retired `consolidate_turn`, `PROPOSE_MEMORY` and
+  `COMMIT_MEMORY`; a face-identified voice turn can leave a stored memory candidate behind the
+  default-off `MEMORY_CANDIDATES_ENABLED`, and `memory_writer.promote` is the one place a candidate
+  becomes a V4 literal fact. Plan 0063 (2026-10-16) added the spoken offer and the explicit spoken
+  answer on the two voice routes; `/chat` has no audio and cannot create or confirm a candidate.
+- Plan 0074 (CM-5a, 2026-10-28) reads the owner's tastes and two name datums back through the
+  profile card.
+- Plan 0076 (CM-4, 2026-10-30) retired the legacy memory path completely (the `MANUAL` gate, the
+  prompt's memory block, `vec_memories`) and records every spoken exchange of the two voice routes;
+  no prompt reads the record.
+- Plans 0078 to 0080 (2026-11-04 to 2026-11-10) read back what the owner told (recall), the
+  relatives of the alta with their sides, and the owner's sensitive data by voice, from the
+  controller, authorized and audited, before any model runs.
 
-generic conversation
-  -> legacy text_turn -> legacy/semantic memory -> LLM
-```
-
-Evidence current at the time this map was written:
-
-- `cognition/controller.py` invokes the legacy turn with the message and the
-  conversation, without carrying the resolved actor;
-- `text_turn.py` enables persistent legacy memory only with `MANUAL` evidence;
-  face and local unlock do not by themselves enable that access;
-- `memory/consolidation.py` wrote episodes and facts through the legacy APIs,
-  not through literal facts or V4 relations. *Since Plan 0062 (CM-3a corte 1,
-  2026-10-15) `consolidate_turn`, `PROPOSE_MEMORY` and `COMMIT_MEMORY` are gone;*
-  the module keeps only the extraction seam the benchmark and `just eval-memory`
-  call;
-- `memory/semantic.py` retrieves by file, optional type, and distance, with no
-  prior filters by person, visibility, sensitivity, or authorization, and no
-  minimum relevance threshold.
-- the production conversational routes never emit `MANUAL` evidence:
-  `IdentitySessionRegistry.select_person` has test callers only, and only the
-  tests and the offline `scripts/eval_chat.py` build that evidence directly
-  (verified 2026-09-30). Reusable history and vector retrieval are
-  therefore off for every speaker, the face-identified owner included (the
-  legacy consolidation write has since been retired, see below);
-  "¿te acuerdas de…?" does not work for anyone yet. *Since Plan 0061 (CM-2,
-  2026-10-13) the previous turn is no longer lost:* the identified person's
-  last exchanges reach the next turn for 180 s of silence and 3000 characters,
-  in process only, so "estoy arreglando una bicicleta" followed by "¿qué
-  herramienta necesito?" reaches the LLM with the first sentence. Persistent
-  history and retrieval stay off;
-- only the children list and count are connected: every other authorized
-  household question answers that the information "todavía no está conectada",
-  and no controller branch confirms, corrects or forgets a memory;
-- channels differ: no voice route passes a consolidation scheduler any more
-  (Plan 0062). A face-identified generic classic or streaming voice turn
-  schedules a background candidate proposal (default-off
-  `MEMORY_CANDIDATES_ENABLED`) that also needs the voice of the same person on
-  the turn's own clip; `memory_writer.promote` is the only place a candidate
-  becomes a V4 literal fact. *Since Plan 0063 (CM-3a corte 2, 2026-10-16) the classic
-  and streaming voice routes call it:* a later generic turn speaks an offer
-  for a `proposed` candidate and only an explicit spoken answer that repeats the
-  value (face and voice of the same person on that turn's own clip) promotes or
-  rejects it, still behind the default-off `MEMORY_CANDIDATES_ENABLED`. `/chat` has
-  no audio, so it cannot create or confirm a candidate, and fixing one channel does
-  not fix the others.
-
-The current conversational route neither persists nor retrieves memories. That
-blocks this disclosure path, but it does not yet prove that secrets are protected
-once memory is enabled, nor that the database holds no earlier content, nor that
-every output is confidential (for example, the opt-in console transcript of Plan
-0052 is independent of memory). The barrier is a limitation, not a policy.
-Connecting the actor (CM-2) does not lift it: `memory/context.py::build_context`
-receives no actor or authorization, so each legacy read stays blocked until the
-slice that implements its guarantees (CM-4 episodes, CM-5 retrieval); the legacy
-write path was retired by Plan 0062 and the new write path proposes candidates
-and, since Plan 0063, promotes one only after an explicit spoken answer; since
-Plan 0074 (CM-5a) the owner's tastes and two name datums are read back by the
-profile card, and nothing else can be read back until CM-5b.
+What still cannot be done: no controller branch corrects or forgets a memory (CM-6), every other
+authorized household question answers that the information "todavía no está conectada", and the
+family stage is not built. The pre-Plan-0061 evidence (for example, that production routes never
+emitted `MANUAL` evidence) is kept in git history and in the plans, not here.
 
 ## Reusable capabilities
 
@@ -130,9 +93,10 @@ What already exists must not be rebuilt:
 - the candidate store (`memory_candidates`, migration 009), the canonical writer
   (`memory_writer.promote`, Plan 0062) and the spoken offer and explicit answer that
   call it (`memory/candidate_dialogue.py`, Plan 0063);
-- episodic storage and SQLite/sqlite-vec vector search;
-- isolation tests that prevent legacy memory when the currently required
-  evidence is missing.
+- the conversation record, the diary and the recall index with its hybrid search
+  (`recall_units_fts`, `recall_units_vec`), over SQLite and sqlite-vec;
+- the profile card, the recall and relatives answers, and the sensitive read, all behind
+  default-off switches and decided before the model runs.
 
 ## Delivery sequence
 
@@ -212,7 +176,7 @@ will keep only the minimum permitted evidence and not the forgotten content.
 - automatically expanding current tokens or permissions;
 - copying whole conversations as durable truth;
 - implementing `care` or `education`;
-- using the cloud in the runtime path.
+- using a cloud provider in the runtime path ([ADR 0036](../adr/0036-model-providers-local-first.md), Proposed).
 
 ## Criteria for opening plans
 

@@ -424,7 +424,7 @@ human role. Do not model a device as a family member.
 Role alone is insufficient. Stored knowledge needs both visibility and
 sensitivity metadata.
 
-Suggested visibility:
+Visibility (`DataVisibility` in `cognition/authorization.py`):
 
 - `household`: visible to authorized household members;
 - `adults`: restricted to owner/adults allowed by policy;
@@ -433,7 +433,7 @@ Suggested visibility:
 - `public`: safe for guests;
 - `temporary`: available only inside an active context and TTL.
 
-Suggested sensitivity:
+Sensitivity (`DataSensitivity` in the same module):
 
 - `normal`;
 - `private`;
@@ -443,8 +443,51 @@ Suggested sensitivity:
 - `child_data`;
 - `security`.
 
-These categories drive retrieval, logging, backup, cloud eligibility, and
-retention. They are not adjectives inserted into an LLM prompt after retrieval.
+These categories drive retrieval, logging, backup, whether data may leave the
+house at all ([ADR 0036](../adr/0036-model-providers-local-first.md), not decided),
+and retention. They are not adjectives inserted into an LLM prompt after retrieval.
+
+## Levels and audiences
+
+This is the one place that says, in the owner's words, what each level of data is, who may hear
+it and what that takes. The decisions live in [ADR 0019](../adr/0019-personal-memory-capabilities.md)
+(capabilities, assurance and consent), [ADR 0028](../adr/0028-recall-what-the-owner-told.md)
+(recall and relatives) and [ADR 0029](../adr/0029-it-knows-who-is-listening.md) (the sensitive
+and the security levels, and who is listening); the data of each level is loaded at the
+commissioning ([seed data pool](seed-data-pool.md), [ADR 0024](../adr/0024-seed-load-senses-secrets-and-channels.md)).
+The levels are a reading of the two code enums above, not a third classification: ADR 0029
+keeps an explicit closed map from predicate to level and never derives a level from the stored
+sensitivity alone.
+
+| Level | Example data | Code classes (visibility / sensitivity) | Evidence and assurance | Decided in |
+|---|---|---|---|---|
+| **Public** | General conversation, the date, a scene description, what a guest may hear | `public` / `normal` | None (`none`) | ADR 0004, 0006 |
+| **Normal** | The owner's tastes and name data (the profile card), what the owner told (the diary and recall units), the names of the relatives recorded at the alta | `personal` or `household` / `normal` | The owner's face (`basic`); a recalled memory stays `normal` | ADR 0019 §3, 0026, 0028 |
+| **Private** | The children list and count, a datum labelled `private` or `child_data` | `household` or `personal` / `private`, `child_data` | The owner's face (`basic`) or an owner PIN grant of the right scope; the read is authorized and audited before storage | ADR 0016 §1, 0009, 0015 |
+| **Sensitive** | Health (`medical`: conditions, medication, allergies, blood type), home (`location`: address, preferred emergency facility) and birthdays (the owner's and the children's) | `personal` or `household` / `medical`, `location`, `private`, `child_data` | The owner's face (`basic`), the consent that the closed alta carries, and no other face in view; two faces in view answer «Te lo digo cuando estemos solos.» | ADR 0029 decisions 1 and 3; ADR 0019 §3 |
+| **Security** | The references only: who knows a code (`secret_holder`), where a document is kept (`document_location`) | `personal` / `security` | The owner's face and a verified voice on that turn (`strong`) and no other face in view; a voice that fails hears one fixed retry sentence | ADR 0029 decisions 1 and 3; ADR 0016 §3 |
+| **A secret's VALUE** (a PIN, a password, a bank key, an access code) | Never stored and never read back; a value said in conversation is refused with a fixed sentence and a marker, and never reaches the model | Not storable (`access_code` is refused by the seed load) | Not applicable: there is nothing to authorize | ADR 0029 decision 5; ADR 0024 |
+
+"Security data is never stored" therefore means the VALUE only: the references are stored and read
+at `strong`.
+
+Who may hear each level, in the **personal stage** (the one built today):
+
+| Level | The owner alone | The owner with a second face in view | An enrolled person the owner authorized | An unknown third party |
+|---|---|---|---|---|
+| Public | Answered | Answered | Answered | Answered |
+| Normal | Answered at `basic` | Not identified (two faces veto the match, ADR 0016): the public answer | Family stage, not built | The public answer |
+| Private | Answered at `basic`, authorized and audited | Not identified: the non-disclosing refusal | Family stage, not built | The non-disclosing refusal (`unauthorized`, never "I don't know") |
+| Sensitive | Answered | «Te lo digo cuando estemos solos.» | Family stage, not built | The generic denial |
+| Security (references) | Answered with a verified voice | «Te lo digo cuando estemos solos.» | Family stage, not built | The generic denial |
+| A secret's VALUE | Refused: never kept, never repeated | Refused | Refused | Refused |
+
+In the personal stage an unknown third party gets nothing private, and an enrolled person the owner
+authorized is **not** a personal-stage case: it belongs to the family stage, whose mechanics (a
+grant or consent for another enrolled person, answering in company) are
+[ADR 0030](../adr/README.md) (reserved, after CM-7 + PC-5) and P3.1/P3.2 of the roadmap. Until
+then another enrolled person is treated as unknown. Identity evidence (face, voice) never
+authorizes by itself: the policy decides from the evidence, its assurance and consent.
 
 ## Authorization decision
 
@@ -495,10 +538,13 @@ The matrix is a starting policy and must remain configurable:
 | Confirm own personal memory (ADR 0019); spoken answer to an offer (ADR 0021) | Yes, `strong` (face and verified voice of that turn, never a token) | No | No | No |
 | Forget own personal memory (ADR 0019) | Yes, `strong` and a PIN grant spent for `personal_memory_forget` | No | No | No |
 | Propose, confirm household memory about own children, partner (name and relationship only) and pets (ADR 0022; policy only) | Yes, `strong` (face and verified voice, never a token) | No | No | No |
+| Recall what the owner told, and the relatives of the alta (ADR 0028; Plans 0078 and 0080): the owner's own `normal` recall units and `normal` relatives, voice routes | Yes, own data only, `basic` | No | No | No |
+| Read the owner's own sensitive data by voice: health, home, birthdays (ADR 0029; Plan 0079) | Yes, `basic`, the alta's consent and no second face in view; two faces hear «Te lo digo cuando estemos solos.» | No | No | No |
+| Read the security references by voice: who knows a code, where a document is (ADR 0029; Plan 0079) | Yes, `strong` (face and verified voice) and no second face in view; a secret's VALUE is never stored or read | No | No | No |
 | Enroll biometrics | Yes with subject consent | Configurable with consent | No direct administration | No |
 | Export/delete household memory | Yes | No | No | No |
 | Execute physical actions | Policy + local safety | Policy + local safety | Restricted | No by default |
-| Approve cloud use of sensitive data | Explicit policy | Usually no | No | No |
+| Approve sending data to a cloud provider | Not decided ([ADR 0036](../adr/0036-model-providers-local-first.md), Proposed); sensitive and security levels presumably never | No | No | No |
 
 ## Biometric consent
 

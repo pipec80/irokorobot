@@ -46,9 +46,9 @@ the same canonical sources rather than duplicate technical contracts.
 ## Scope boundary
 
 The current supported body is the development PC microphone, webcam, and
-speakers. Raspberry Pi, homelab deployment, OMNiBot 2000 electronics, physical
-action, and cloud escalation remain future work unless current state and an
-active plan explicitly say otherwise. Generated coverage stays under
+speakers. The ESP32 body, the home-server deployment, the remote dashboard, OMNiBot
+2000 electronics, physical action, and a cloud provider remain future work unless
+current state and an active plan explicitly say otherwise. Generated coverage stays under
 `docs/coverage_report/` by project convention but is not documentation
 authority. Local research and journals are preserved outside this tree under
 the ignored `project-history/` directory.

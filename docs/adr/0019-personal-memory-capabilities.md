@@ -317,3 +317,9 @@ caller needs a PIN for `propose`, `confirm` or `correct`.
 - CM-2 — [ADR 0020](0020-authorized-actor-in-the-conversation.md), implemented by
   [Plan 0061](../plans/completed/0061-cm2-generic-turn-continuity.md) (closed 2026-10-13).
 - CM-3, CM-5, CM-6 — writer and confirmation, retrieval, and the real reach of forgetting.
+
+## Notes added after acceptance
+
+- *2026-11-10.* The levels of data (public, normal, private, sensitive, security) and who may hear
+  each are tabulated once in
+  [`identity-and-access.md`](../architecture/identity-and-access.md#levels-and-audiences).

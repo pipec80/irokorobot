@@ -438,3 +438,18 @@ diagram.
 Revisit when the second project starts to use the engine, when the extraction plan is written,
 when the robot first stores an `observed` record (P2.1), or when the Open Memory Protocol
 Initiative publishes a version 1 specification.
+
+## Notes added after acceptance
+
+- *Fixed by Plan 0080 (2026-11-10).* The delivery filter that decision 2 and *Context* item 8
+  call "proposed for Plan 0080" (the line at decision 2, and the first line of *Test
+  consequences*) is built: `recall_store.units_by_id` re-applies owner, classification and
+  validity in the statement that returns the text
+  ([Plan 0080](../plans/completed/0080-mvp-recall-phrasings.md), PR #252). The first bullet of
+  item 8 (vectors of two models after a change of `EMBEDDING_MODEL`, decision 8's "proposed for
+  Block C's first plan") stays open for block C, C1. The decisions above are unchanged.
+- *Pipeline rule (2026-11-10).* Decision 1 draws the engine's boundary; the rule that follows from
+  it is **memory first, the model second**: a turn that asks about stored knowledge is answered from
+  what the engine found (a template or wording of the found items; nothing found is a fixed «No me
+  acuerdo de eso.»), and the LLM chats freely only when the turn is not a memory question. See
+  [`cognitive-architecture.md`](../architecture/cognitive-architecture.md) Stage 6.

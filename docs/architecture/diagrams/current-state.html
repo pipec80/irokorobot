@@ -5158,7 +5158,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <!-- Boundaries (behind everything) -->
         <rect data-graph-role="structural-frame" data-composition-frame-kind="security-group" data-composition-frame-id="0" data-composition-frame-label="P0.5 authorization — fail-closed" x="430" y="80" width="420" height="114" rx="8" class="c-security-group" stroke-width="1"/>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="1" data-composition-frame-label="Local-only runtime (ADR-0004 — no cloud LLM/VLM)" x="845.7999856" y="270" width="248.40002879999997" height="114" rx="12" class="c-region" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="1" data-composition-frame-label="Local-only runtime (Ollama only; ADR-0036 Proposed)" x="838.5999847" y="270" width="262.8000306" height="114" rx="12" class="c-region" stroke-width="1"/>
 
         <!-- Connection paths (before components for correct z-order) -->
         <path data-edge-from="robot" data-edge-to="api" data-edge-label="POST /transcribe · WAV 16kHz mono int16" data-edge-key="0" data-edge-id="robot-to-api" data-composition-points="180,332;250,332" d="M 180 332 L 250 332" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
@@ -5253,8 +5253,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="fine" x="535" y="166" class="t-security" font-size="7" text-anchor="middle">photo = basic</text>
         </g>
 
-        <g id="node-ollama" data-node-id="ollama" data-node-label="Ollama" tabindex="0" role="button" aria-label="Focus Ollama, local LLM / VLM, Local-only runtime (ADR-0004 — no cloud LLM/VLM)" aria-pressed="false" data-node-kind="external" data-node-sublabel="local LLM / VLM" data-node-context="Local-only runtime (ADR-0004 — no cloud LLM/VLM)">
-          <title>Ollama · local LLM / VLM · Local-only runtime (ADR-0004 — no cloud LLM/VLM)</title>
+        <g id="node-ollama" data-node-id="ollama" data-node-label="Ollama" tabindex="0" role="button" aria-label="Focus Ollama, local LLM / VLM, Local-only runtime (Ollama only; ADR-0036 Proposed)" aria-pressed="false" data-node-kind="external" data-node-sublabel="local LLM / VLM" data-node-context="Local-only runtime (Ollama only; ADR-0036 Proposed)">
+          <title>Ollama · local LLM / VLM · Local-only runtime (Ollama only; ADR-0036 Proposed)</title>
           <rect x="900" y="300" width="140" height="64" rx="6" class="c-mask"/>
           <rect x="900" y="300" width="140" height="64" rx="6" class="c-external" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(906 306) scale(0.6875)">
@@ -5464,9 +5464,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <text data-boundary-label="" x="438" y="103" class="t-security" font-size="9" font-weight="600">P0.5 authorization — fail-closed</text>
         </g>
 
-        <g data-graph-role="structural-frame-label" data-composition-frame-id="1" data-composition-frame-kind="region" data-composition-frame-label="Local-only runtime (ADR-0004 — no cloud LLM/VLM)">
-          <rect data-graph-role="structural-frame-label-mask" x="849.7999856" y="280" width="240.40002879999997" height="16" rx="3" class="c-mask"/>
-          <text data-boundary-label="" x="853.7999856" y="292.000001" class="t-cloud" font-size="8.000001" font-weight="600">Local-only runtime (ADR-0004 — no cloud LLM/VLM)</text>
+        <g data-graph-role="structural-frame-label" data-composition-frame-id="1" data-composition-frame-kind="region" data-composition-frame-label="Local-only runtime (Ollama only; ADR-0036 Proposed)">
+          <rect data-graph-role="structural-frame-label-mask" x="842.5999847" y="280" width="254.8000306" height="16" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="846.5999847" y="292.000001" class="t-cloud" font-size="8.000001000000001" font-weight="600">Local-only runtime (Ollama only; ADR-0036 Proposed)</text>
         </g>
 
         <!-- Legend -->
@@ -5695,6 +5695,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <ul>
           <li>&bull; Controller returns an immutable response plan before any generation</li>
           <li>&bull; Safe plans never reach the LLM or a candidate proposal; the legacy vector memory is retired (Plan 0076)</li>
+          <li>&bull; Memory first, the model second: a question about stored knowledge is answered by the controller from what memory found (a template, or wording of the found items only); the LLM chats freely only when the turn is not a memory question, and then it sees the profile card and the session, never a household store</li>
           <li>&bull; A memory offer or answer needs the face and the voice of the same person on that turn&#39;s own clip, never a token; otherwise the turn is the ordinary one</li>
           <li>&bull; Ollama is the only accepted LLM/VLM runtime (ADR-0004), reached only through one transport module</li>
           <li>&bull; A generic turn names its speaker by face or an observed token (never voice); the identified person gets one in-process session, an unknown speaker suspends it</li>
@@ -5717,7 +5718,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         </div>
         <ul>
           <li>&bull; No liveness or replay defense, accepted for the home (ADR 0029): a photo identifies at basic; photo + recording would reach strong and draw the owner&#39;s sensitive data, never a secret&#39;s value</li>
-          <li>&bull; Reserved data needs strong assurance but no reserved capability is wired: propose, read and confirm each have one spoken consumer (the candidate dialogue) and correct and forget none; replay is measured, not defended; a PIN grant is bound to one operation but still proves the PIN, not the speaker (ADR-0015); the household pair is policy only</li>
+          <li>&bull; Reserved data needs strong assurance: since Plan 0079 the security references (who knows a code, where a document is) are read by voice at strong, and a secret&#39;s value is never stored; propose, read and confirm each have one spoken consumer (the candidate dialogue) and correct and forget none; replay is measured, not defended; a PIN grant is bound to one operation but still proves the PIN, not the speaker (ADR-0015); the household pair is policy only</li>
           <li>&bull; Conversational memory is partial: short-term continuity (CM-2) and a default-off candidate dialogue (CM-3a, Plans 0062 and 0063: a taste is proposed, offered and promoted by voice); the CM-3b tranche A write core (children, partner, pets, places) exists; the card (CM-5a) and recall of normal memories (CM-5b, Plan 0078) read it back, and since Plan 0079 the owner&#39;s own sensitive data (block B); spoken third-party capture, answering in company and correction or forgetting by voice (CM-6) do not exist; CM-0 baseline RED</li>
         </ul>
       </div>

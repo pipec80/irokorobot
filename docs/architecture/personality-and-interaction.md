@@ -154,7 +154,8 @@ personality/expression plan
 ```
 
 This preserves the existing generic server/robot boundary and keeps Iroko
-portable across simulation, Raspberry Pi, Jetson, and future electronics.
+portable across simulation, the ESP32 body, a Raspberry Pi or Jetson class
+server, and future electronics.
 
 ## Implementation guidance
 

@@ -97,15 +97,18 @@ pasted into an issue, a chat, a plan or an evaluation record: to share what a si
 
 ## 2. QA tools, by what they isolate
 
-Iroko's turn is `mic → STT → LLM → TTS → speaker`, plus an HTTP boundary
-between the robot and the server. Each tool below isolates one slice so a
-problem can be localized without running the whole loop.
+Iroko's real turn is `mic → STT → identity and controller → memory engine → LLM when the turn needs one → TTS → speaker`,
+plus an HTTP boundary between the robot and the server. The controller decides before any model runs: a
+question about the owner's data or about what was told before is answered from memory (a template, or wording
+of what was found), and the LLM answers freely only in ordinary chat. Each tool below isolates one slice so a
+problem can be localized without running the whole loop. The bare `mic → STT → LLM → TTS → speaker` chain is
+only what `just test-pipeline` exercises as a smoke test of the three model seams.
 
 | Tool | Command | Isolates | Needs server? | Needs `.env`? |
 |---|---|---|:---:|:---:|
 | `mic_test.py` | `just mic-test devices` / `just mic-test record --seconds 6 --api mme` | Capture auditor (Plan 0069): lists the inputs with their host API and native rate; shows the phrase to read (`--phrase` changes it), counts down and cues `>>> HABLA <<<`, then records the window the way the robot opens the microphone (`mme`) or through WASAPI in the device's native format (`wasapi`: every channel averaged, resampled with `soxr`); warns when the stream lost audio; reports peak, speech level, floor, SNR and clipping against the plan's targets; `--transcribe` runs the server's production Whisper options (stop the server first); `--save NAME` keeps the take under `project-history/calibration/stt/mic/` only, and an existing name is refused before recording unless `--replace` | No | Yes |
 | `piper_test.py` | `uv run python scripts/piper_test.py --text ...` | Text → Piper TTS → speaker only | No | No |
-| `pipeline_test.py` | `just test-pipeline` | Smoke test of the three model seams, `mic → STT → LLM → TTS → speaker` (the mic is optional with `--text`); real model code, but no controller, identity, memory or HTTP | No | Yes (Ollama) |
+| `pipeline_test.py` | `just test-pipeline` | Smoke test of the three model seams only, `mic → STT → LLM → TTS → speaker` (the mic is optional with `--text`); real model code, but no controller, identity, memory engine or HTTP, so it is not the real turn | No | Yes (Ollama) |
 | `client_test.py` | `just test-client` | Full HTTP round trip through the real running server | Yes | No |
 | `chat_test.py` | `just chat-test` | `/chat` text-only: contract, A/B isolation and, with the owner PIN (hidden prompt; Enter skips it), the continuity of the identified owner; interactive mode | Yes | No |
 | `memory_test.py` | `just memory-test --session` / `--show-db` | Public voice channel + raw SQLite memory state | Yes (except `--show-db`) | No |
@@ -997,7 +1000,7 @@ conversation.
   missed with a distance just above the threshold means **raise it**; an answer from an unrelated
   memory means **lower it**. Change `RECALL_MAX_DISTANCE` in `.env` and restart the server; no code
   changes.
-- **What it depends on.** Not the computer (the laptop, the homelab or the Pi give the same distances
+- **What it depends on.** Not the computer (the laptop, the server board or any other host give the same distances
   for the same model; only the speed changes). It depends on the **embedding model**: changing
   `EMBEDDING_MODEL` changes every distance, needs a fresh calibration and re-embedding the units.
 - **Tests.** A unit test pins the calibrated default and the gate (a near vector passes, a far one does
