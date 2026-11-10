@@ -76,12 +76,16 @@
   need: recall
   today: generic_conversation
 # Pipec's own phrases (2026-11-03), routes only; their answers stay out of the repository.
-# The singular child question reads the children list with recall on (Pipec's amendment).
+# The singular child question asks for one side with recall on (Plan 0080 D-4, which supersedes
+# Pipec's amendment of 2026-11-03: the list answered it).
 - phrase: "¿Cómo se llama mi hija?"
-  need: own_children_list
+  need: relatives_names
   today: protected_household
 - phrase: "¿Cómo se llama mi hijo?"
-  need: own_children_list
+  need: relatives_names
+  today: protected_household
+- phrase: "¿Quién es mi hija?"
+  need: relatives_names
   today: protected_household
 - phrase: "¿Te acuerdas la última vez que fuimos a la playa?"
   need: recall
@@ -117,4 +121,152 @@
   today: protected_household
 - phrase: "¿Cómo se llama mis hermanos?"
   need: relatives_names
+  today: protected_household
+# Plan 0080 D-3: «el nombre de mi X». They are requests: the shape opens the sentence.
+- phrase: "¿Cuál es el nombre de mi papá?"
+  need: relatives_names
+  today: protected_household
+- phrase: "¿Cuál es el nombre de mi mamá?"
+  need: relatives_names
+  today: protected_household
+- phrase: "Dime el nombre de mi mamá"
+  need: relatives_names
+  today: protected_household
+- phrase: "¿Cuáles son los nombres de mis hermanos?"
+  need: relatives_names
+  today: protected_household
+- phrase: "Dime los nombres de mis papás"
+  need: relatives_names
+  today: protected_household
+- phrase: "¿Cuál es el nombre de mi perro?"
+  need: relatives_names
+  today: protected_household
+- phrase: "Oye Iroko, ¿cuál es el nombre de mi papá?"
+  need: relatives_names
+  today: protected_household
+- phrase: "¿Cuáles son los nombres de mi mamá?"
+  need: relatives_names
+  today: protected_household
+- phrase: "¿Cuáles son los nombres de mi mamá y de mi papá?"
+  need: relatives_names
+  today: protected_household
+# The singular child requests ask for a side; the plural keeps the whole list.
+- phrase: "¿Cuál es el nombre de mi hijo?"
+  need: relatives_names
+  today: protected_household
+- phrase: "Dime el nombre de mi hija"
+  need: relatives_names
+  today: protected_household
+- phrase: "Dime los nombres de mis hijos"
+  need: own_children_list
+  today: protected_household
+- phrase: "¿Cuáles son los nombres de mis hijos?"
+  need: own_children_list
+  today: protected_household
+# Traps: a story or a mention never opens with the shape.
+- phrase: "No sé cuál es el nombre de mi tía"
+  need: generic_conversation
+  today: generic_conversation
+- phrase: "No sé cuál es el nombre de mi mamá"
+  need: generic_conversation
+  today: generic_conversation
+- phrase: "¿Cuál es el nombre de la calle de mi hijo?"
+  need: protected_household
+  today: protected_household
+# Plan 0080 D-8: «cuándo». A bare «cuándo» is a cue only with a first-person past verb.
+- phrase: "¿Cuándo fui a la playa?"
+  need: recall
+  today: generic_conversation
+- phrase: "¿Cuándo estuve en la playa?"
+  need: recall
+  today: generic_conversation
+- phrase: "¿Cuándo hablamos de la playa?"
+  need: recall
+  today: generic_conversation
+- phrase: "¿Cuándo te conté de la playa?"
+  need: recall
+  today: generic_conversation
+- phrase: "¿Te acuerdas cuándo fui a la playa?"
+  need: recall
+  today: generic_conversation
+- phrase: "¿Y cuándo fuimos al cerro con Zeta?"
+  need: recall
+  today: generic_conversation
+# Traps: no first-person verb, a statement, a verb with nothing after it.
+- phrase: "¿Cuándo fue el mundial de 2010?"
+  need: generic_conversation
+  today: generic_conversation
+- phrase: "Cuando fui a la playa me quemé"
+  need: generic_conversation
+  today: generic_conversation
+- phrase: "¿Cuándo fui?"
+  need: generic_conversation
+  today: generic_conversation
+# A «what» question that only contains «cuando» is the ordinary recall question.
+- phrase: "¿Qué te conté cuando fui a la playa?"
+  need: recall
+  today: generic_conversation
+# Final review of Plan 0080: a story that ends in a weak tag keeps today's weak cue with no kind.
+- phrase: "Cuando fui a la playa me quemé, ¿te acuerdas?"
+  need: recall
+  today: generic_conversation
+- phrase: "Cuando fuimos a la playa con Zeta lo pasamos bien, ¿te acuerdas?"
+  need: recall
+  today: generic_conversation
+# The plural forms that are also the present tense are plans, not memories.
+- phrase: "¿Cuándo salimos a pasear?"
+  need: generic_conversation
+  today: generic_conversation
+- phrase: "¿Cuándo jugamos a las cartas?"
+  need: generic_conversation
+  today: generic_conversation
+- phrase: "¿Cuándo compramos el regalo de Zeta?"
+  need: generic_conversation
+  today: generic_conversation
+- phrase: "¿Cuándo viajamos a Omega?"
+  need: generic_conversation
+  today: generic_conversation
+- phrase: "¿Cuándo hablamos con el doctor?"
+  need: generic_conversation
+  today: generic_conversation
+# A weak phrase before «cuándo» needs a listed verb for the kind; the verb makes it strong.
+- phrase: "¿Te acuerdas cuándo fui a Zeta?"
+  need: recall
+  today: generic_conversation
+- phrase: "¿Te acuerdas cuándo fue el mundial de 2010?"
+  need: recall
+  today: generic_conversation
+# Whisper writes the interrogative «cuándo» with the accent and the subordinate one without.
+- phrase: "Cuándo fui a la playa"
+  need: recall
+  today: generic_conversation
+- phrase: "cuando fui a la playa me quemé"
+  need: generic_conversation
+  today: generic_conversation
+# A request opener may stand before «cuando» of a when-question; an imperative carries no mark or accent.
+- phrase: "Cuéntame cuando fui a la playa."
+  need: recall
+  today: generic_conversation
+- phrase: "¿Sabes cuándo fui a la playa?"
+  need: recall
+  today: generic_conversation
+- phrase: "Dime cuándo estuve en el cerro"
+  need: recall
+  today: generic_conversation
+# Without a listed past verb after «cuando» the opener changes nothing.
+- phrase: "Dime cuándo es el partido"
+  need: generic_conversation
+  today: generic_conversation
+- phrase: "Cuéntame cuando puedas"
+  need: generic_conversation
+  today: generic_conversation
+# A message naming both singular child words asks for the whole list, like the parents' both-words rule.
+- phrase: "¿Cómo se llama mi hijo y mi hija?"
+  need: own_children_list
+  today: protected_household
+- phrase: "¿Cómo se llama mi hija y mi hijo?"
+  need: own_children_list
+  today: protected_household
+- phrase: "Dime el nombre de mi hijo y mi hija"
+  need: own_children_list
   today: protected_household

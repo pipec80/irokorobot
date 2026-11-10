@@ -18,6 +18,7 @@ import unicodedata
 
 from server.cognition.authorization import DataSensitivity, DataVisibility
 from server.memory.relational_v4 import AssertionLifecycle
+from server.text_keys import comparison_key
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -46,6 +47,7 @@ CARD_PREDICATES: Final = frozenset({_PREFERRED_NAME, _ADDRESS_FORM, *_TASTE_PRED
 MAX_CARD_CHARS: Final = 600
 MAX_CARD_TASTES: Final = 12
 MAX_VALUE_CHARS: Final = 80
+_ITEM_SEPARATOR: Final = ","
 CARD_HEADER: Final = "--- Lo que sabes de la persona con quien hablas ---"
 
 _CARD_FOOTER: Final = (
@@ -132,27 +134,33 @@ def build_card(rows: Sequence[LiteralFactV4]) -> ProfileCard:
             ignored even if handed in.
 
     Returns:
-        The card: for a single-valued predicate the newest value wins; the tastes keep their
-        order and stop at ``MAX_CARD_TASTES``.
+        The card: for a single-valued predicate the newest value wins (it is never split); a
+        taste value is split on commas into items, and the items keep their order, one per
+        predicate and folded item («la comida china» and «comida china» are one, the newest
+        kept), and stop at ``MAX_CARD_TASTES`` items.
     """
     name: str | None = None
     form: Literal["tu", "usted"] | None = None
-    tastes: list[CardTaste] = []
+    tastes: dict[tuple[str, str], CardTaste] = {}
     for row in filter(_is_card_row, rows):
-        value = _clean(row.value_text)
-        if not value:
-            continue
         match row.predicate:
             case "preferred_name":
-                name = name or value
+                name = name or _clean(row.value_text) or None
             case "address_form":
+                value = _clean(row.value_text)
                 if form is None and value in _ADDRESS_FORMS:
                     form = "usted" if value == "usted" else "tu"
             case "likes" | "dislikes" | "prefers" as predicate:
-                tastes.append(CardTaste(predicate, value))
-    if len(tastes) > MAX_CARD_TASTES:
-        logger.debug("Profile card: %d tastes over the cap left out", len(tastes) - MAX_CARD_TASTES)
-    return ProfileCard(name, form, tuple(tastes[:MAX_CARD_TASTES]))
+                # One stored value may list several tastes: each item stands on its own.
+                for item in filter(None, map(_clean, row.value_text.split(_ITEM_SEPARATOR))):
+                    # An empty key (nothing but articles) compares the exact item instead.
+                    tastes.setdefault(
+                        (predicate, comparison_key(item) or item), CardTaste(predicate, item)
+                    )
+    kept = tuple(tastes.values())
+    if len(kept) > MAX_CARD_TASTES:
+        logger.debug("Profile card: %d tastes over the cap left out", len(kept) - MAX_CARD_TASTES)
+    return ProfileCard(name, form, kept[:MAX_CARD_TASTES])
 
 
 def _says_something_to_the_model(card: ProfileCard) -> bool:

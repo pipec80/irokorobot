@@ -50,6 +50,7 @@ MAX_SEED_BYTES = 262144
 _TOML_LINE = re.compile(r"at line (\d+)")
 _PLAIN_KEY = re.compile(r"[a-z_][a-z0-9_]{0,39}")
 _MEMBER_LISTS = ("children", "parents", "grandparents", "siblings", "grandchildren")
+_SIDE_PARENTS = ("mother", "father")
 
 
 class _Frozen(BaseModel):
@@ -80,6 +81,8 @@ class SeedFile(_Frozen):
     owner: SeedOwner
     status: SeedStatus = SeedStatus()
     partner: SeedPerson | None = None
+    mother: SeedPerson | None = None
+    father: SeedPerson | None = None
     children: tuple[SeedChild, ...] = Field(default=(), max_length=MAX_MEMBERS)
     pets: tuple[SeedPet, ...] = Field(default=(), max_length=MAX_MEMBERS)
     parents: tuple[SeedPerson, ...] = Field(default=(), max_length=MAX_MEMBERS)
@@ -149,13 +152,21 @@ def _filled(*values: object) -> bool:
 
 
 def _people(seed: SeedFile) -> Iterator[tuple[str, str]]:
-    """Every person of the owner's circle by path: the owner, the partner, children, relatives."""
+    """Every person of the owner's circle by path: the owner, the partner, children, relatives.
+
+    The mother and the father come last, so a name they share with anyone else is refused at
+    their own path (Plan 0080 D-6).
+    """
     yield "owner.name", seed.owner.name
     if seed.partner is not None:
         yield "partner.name", seed.partner.name
     for key in _MEMBER_LISTS:
         for index, member in enumerate(getattr(seed, key)):
             yield f"{key}.{index}.name", member.name
+    for key in _SIDE_PARENTS:
+        side_parent: SeedPerson | None = getattr(seed, key)
+        if side_parent is not None:
+            yield f"{key}.name", side_parent.name
 
 
 def _name_problems(seed: SeedFile) -> list[str]:

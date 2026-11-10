@@ -89,6 +89,12 @@ off when you finish, and do not say a PIN aloud while it is on
 heard as heard, **a spoken secret included** (the record and the model never get it, the console does):
 never on in a delivered robot ([Plan 0079](../plans/completed/0079-block-b-sensitive-read-and-spoken-secrets.md)).
 
+**`LOG_CONVERSATION_TEXT=true` is a local, consented debug exception** (Plan 0080). Turn it on only
+on your own machine, for a sitting in which the people who speak know the console prints their
+words; set it back to `false` (and restart) when the sitting ends. Its console output is never
+pasted into an issue, a chat, a plan or an evaluation record: to share what a sitting showed, use
+`scripts/mvp_session_report.py` (closed values only) or write the outcome in words.
+
 ## 2. QA tools, by what they isolate
 
 Iroko's turn is `mic → STT → LLM → TTS → speaker`, plus an HTTP boundary
@@ -113,6 +119,7 @@ problem can be localized without running the whole loop.
 | `stt_probes.py` | `just probe-stt noise` / `just probe-stt first-turn` | Whisper on synthetic noise (empty, prompt echo or other text, read before the echo guard) and first-utterance accuracy over fresh processes (Plan 0056); loads the real models, so run it with the server stopped | No | Yes |
 | `speaker_calibration.py` | `just speaker-calibration <action>` | Speaker-embedding calibration corpus and analysis (Plan 0047, PC-3A) — capture, embed, analyze, discard, cleanup; local only, never in the runtime | No (mic only for `capture`) | Yes for the recipe |
 | `eval_longitudinal_memory.py` | `just eval-longitudinal` | Longitudinal-memory capability probe (multi-session recall, correction, cross-person privacy, deletion, provenance) against real Ollama + a temp DB — not `pytest` | Needs `just services` | Yes |
+| `mvp_session_report.py` | `uv run python scripts/mvp_session_report.py --since 2026-11-09T10:00:00` | What a sitting did, one row per turn, read from `logs/server.log` (Plan 0080): time, request, characters heard, `need`, `status`, `source`, recall `route`, `when` (`told`, `happened` or `-`), recall outcome, hits and best distance. Closed values only: the log's message text is never read, so the table holds nothing anybody said. `--log` points at another log file; `--since` (ISO time, local time without an offset) is required and an invalid one exits 1. Use it after a hardware sitting to see which turns resolved to which route without opening the log | No (reads the log) | No |
 
 Rule of thumb: audio sounds wrong → `mic_test.py`/`piper_test.py` first (they
 need nothing else running). The answer is wrong but audio is fine →
@@ -934,12 +941,26 @@ from what it was told, and says «No me acuerdo de eso.» instead of inventing.
   | Strong cue | «¿Qué te conté del ensayo?», «¿Qué te dije de…?», «¿Qué hice el sábado?» | Searches; nothing found → «No me acuerdo de eso.» |
   | Weak cue | «¿Te acuerdas de Mozart?», «¿Recuerdas…?» | Searches; nothing found → ordinary conversation |
   | Date only | «¿Qué te conté hoy?», «¿Qué hice ayer?», «el martes», «la semana pasada» | The summaries of that day, newest first |
-  | Relatives | «¿Cómo se llaman mis papás?», «¿Cómo se llama mi perrita?» | The names loaded at the alta, fixed template |
-  | One's child | «¿Cómo se llama mi hija?» | The children list («Tus hijos son …») |
+  | Relatives | «¿Cómo se llaman mis papás?», «¿Cómo se llama mi mamá?», «¿Cómo se llama mi perrita?» | The names loaded at the alta, fixed template; the mother and the father are told apart when their side was recorded |
+  | The name of my X (Plan 0080) | «¿Cuál es el nombre de mi papá?», «¿Cuáles son los nombres de mis hermanos?», «Dime el nombre de mi mamá», «Dime los nombres de mis hijos» | The same answer as the relatives question. The phrase must **open** the sentence (after fillers such as «oye Iroko»): «no sé cuál es el nombre de mi tía» is a story |
+  | One's child | «¿Cómo se llama mi hija?», «¿Cómo se llama mi hijo?» | One side, from the recorded side: «Tu hija se llama X.»; «¿Cómo se llaman mis hijos?» (plural) keeps the whole list («Tus hijos son …») |
+  | When (Plan 0080) | «¿Cuándo te conté de la playa?», «¿Cuándo fui a la playa?», «¿Te acuerdas cuándo fui a Zeta?» | The day it was **told**, never the date of the event, from a fixed table with no model. «¿Cuándo fui…?» opens «No tengo registrado cuándo fue. Sí recuerdo que el martes me contaste esto: …» |
 
   «¿Qué te conté?» alone reads the profile card. A weak cue about family data («¿te acuerdas dónde
   baila mi hija?») keeps the protected route: ask «¿qué te conté de…?» instead. «Hoy día» counts as
   «hoy». A story («me acuerdo que…») is never a question and never searches.
+  **The «cuándo» rules.** A bare «cuándo» asks only before a first-person past verb from a closed list
+  («fui», «estuve», «hice», «vi», «comí», «conocí»…) and needs a question mark, or an opening
+  accented «cuándo» (Whisper accents it): «cuando fui a la playa me quemé» is a story and is never
+  searched. The present-tense plurals («salimos», «jugamos», «compramos»…) are not on the list, and
+  «¿cuándo hablamos del cerro?» is not a cue (only «cuándo hablamos de …» is). Other phrasings
+  («¿sabes cuándo fui…?», «¿me puedes decir cuándo…?») reach the model until a real-speech session
+  measures them.
+  **The sides.** With the mother and the father recorded, «¿cómo se llama mi mamá?» answers «Tu mamá
+  se llama Zeta.». A parent loaded **without** a side is never guessed: the robot says «No tengo
+  claro cuál de ellos es tu mamá. Tus papás se llaman Zeta y Omega.» (with one name: «No tengo claro
+  si es tu mamá. Tu papá o tu mamá se llama Zeta.»), and a person recorded under both sides counts as
+  without one. To fix it, see «Telling the mother from the father» in section 7.
 - **The answer.** With memories found, a short call to the local model words them («me contaste
   que…»), only from those memories. The robot reads the first memory as a template instead («Ayer me
   contaste esto: …», the owner's own words quoted) when the model fails or is off, says nothing,
@@ -1086,6 +1107,7 @@ is as before.
 | `FACE_AUTHENTICATION_ENABLED` | `false` | Server: attempt face resolution when a frame is attached to a protected turn |
 | `FACE_AUTHENTICATION_MATCH_THRESHOLD` | `0.5815` | Stricter, separate match bound for authentication (layered on top of `FACE_MATCH_THRESHOLD`); measured by Plan 0030, provisional |
 | `ROBOT_FACE_AUTH_ENABLED` | `false` | Robot: capture and attach one webcam frame per turn |
+| `MAX_UTTERANCE_S` | `28` | Robot (its `.env`): the longest clip one turn sends, in seconds (Plan 0080). Keep it below the server's `MAX_AUDIO_DURATION_S` (30), which refuses a longer clip whole before Whisper. At the cap the robot closes the utterance and sends it as it is, so **a story longer than 28 s is cut into turns**. A non-«no speech» 422 from the server is logged apart on the robot as a closed warning |
 | `FACE_MATCH_THRESHOLD` | `0.4` | Generic conversational face-recognition threshold (unrelated to authentication) |
 | `SPEAKER_AUTHENTICATION_ENABLED` | `false` | Server: after the owner's face matched, consult the speaker resolver once per protected turn and raise the assurance to `strong` on a verified voice; enrolment returns 503 while off, revocation always works |
 | `SPEAKER_AUTHENTICATION_MATCH_THRESHOLD` | `0.4834` | Cosine distance to the reference centroid; provisional and in-sample (Plan 0047) |
@@ -1266,6 +1288,13 @@ rest waits for CM-5b and later, and a stored phone calls nobody. The catalogue o
 
 **The alta (once per robot).** Copy `docs/examples/seed-household.example.toml` to `data/seed/` and
 fill it in: it holds real data, git ignores it and it is destroyed after the closing.
+Since Plan 0080 the file can tell the mother from the father and the daughter from the son: the
+optional tables `[mother]` and `[father]` (a name each), and `side = "daughter"` or `side = "son"`
+on a `[[children]]` block (also on an adult child, whose name, guardianship and side are all that is
+kept). `[[parents]]` stays for a parent whose side nobody knows; the robot then says it does not
+know which of the two it is. These keys change no section status; the same name in two family
+tables (the mother and a sibling, say) is refused as `duplicate_name`; a contact may repeat it. The template and its questionnaire are in
+[`seed-household.example.toml`](../examples/seed-household.example.toml).
 
 | Step | Command | Server |
 |---|---|---|
@@ -1291,6 +1320,8 @@ just admin add likes            # the value is typed at the prompt, never as an 
 just admin change preferred_name
 just admin revoke literal 7     # a row id from `list`; kinds: literal, relation, contact
 just admin change-contact 2     # a new phone for contact 2 (typed at the prompt)
+just admin label-parent 3 mother   # the side of a parent, from the row id `list` shows (Plan 0080)
+just admin label-child 5 daughter  # the side of a child
 just admin audit                # every operation, with no value, name or phone
 ```
 
@@ -1298,6 +1329,33 @@ just admin audit                # every operation, with no value, name or phone
   without echo); a `revoke` always asks it. Every write asks `SI` to confirm, and `--dry-run` writes
   nothing.
 - A revoke is history, not a deletion: the row stays and nothing serves it. Forgetting is CM-6.
+- **Telling the mother from the father, the daughter from the son** (Plan 0080). A parent loaded
+  under `[[parents]]` (or by an older file) has no recorded side, and the robot says so instead of
+  guessing, and a child without a side is not told apart either. To record the side:
+  1. Stop the server and **back the database up first**: copy the file named in the first line of
+     the output (`Base de datos: ...`) together with its `-wal` and `-shm` files, the same copy
+     `just reset-db` makes before it resets.
+  2. `just admin list`: it prints every relation with a row id and, beside it, the other person's
+     name (that is how you tell the rows apart; the name appears only on your terminal).
+  3. `just admin label-parent <relation_id> mother` (or `father`) on a `has_parent` row, or
+     `just admin label-child <relation_id> daughter` (or `son`) on a `child_of` row. It asks the
+     owner's PIN and `SI`, writes one audit row (`change`, `pool_relation`, the new relationship and
+     no name) and, for a parent, replaces the row by `has_mother` or `has_father`. `label-parent`
+     also takes a row that already says `has_mother` or `has_father` and switches it to the other
+     side (the same person, the old row revoked).
+     A child who is **also a care contact** can be labelled too: `label-child` accepts the child's
+     `child_of` row whether or not the person is on the contact list (a first run refused it with
+     `role_conflict` and was fixed in `71945d3`).
+  4. It **refuses** (it prints a closed reason and writes nothing) a row that is not an active
+     relation of the owner (unknown, revoked or another owner's: `not_an_active_relation`), a row of
+     the wrong kind (`wrong_relation_kind`: a sibling row, or `label-child` on a parent) and a person
+     who already has a side, or a row already labelled with the side you ask for
+     (`already_labelled`).
+  A mistaken label is undone by labelling again: for a parent, run `just admin label-parent
+  <relation_id> <the other side>` on the `has_mother` / `has_father` row `list` shows; for a child,
+  `just admin revoke relation <marker id>` (the `daughter_of` / `son_of` row from `list`) and then
+  `label-child` again. Do not revoke a parent row: adding a relative after the closing has no path
+  yet (roadmap, cross-cutting table).
 - `add` and `change` edit the owner's own fields. **Adding a new contact, child or pet after the
   closing has no path yet** (roadmap, cross-cutting table).
 - It refuses to run if the server answers `/health`, the database is missing or the schema is behind

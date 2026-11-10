@@ -14,10 +14,15 @@ from typing import TYPE_CHECKING
 import pytest
 from server.exceptions import WriteRefusedError
 from server.memory.canonical_writer import write_literal, write_relation
+from server.memory.care_contacts import ContactRole, write_contact
 from server.memory.declarative import Guardianship, create_third_party, upsert_entity
 from server.memory.household_authorization import bootstrap_initial_owner
 from server.memory.predicate_registry import resolve_predicate
-from server.memory.relational_v4 import assert_entity_relation, get_active_entity_relations
+from server.memory.relational_v4 import (
+    assert_entity_relation,
+    get_active_entity_relations,
+    revoke_entity_relation,
+)
 from server.memory.write_types import WriteChannel
 from server.settings import settings
 
@@ -33,7 +38,15 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.integration
 
 _CONFIRMED_AT = "2026-10-22T12:00:00.000000+00:00"
-_RELATIVE_PREDICATES = ("has_parent", "has_grandparent", "has_grandchild", "has_sibling")
+_PHONE = "+56900000001"
+_RELATIVE_PREDICATES = (
+    "has_parent",
+    "has_mother",
+    "has_father",
+    "has_grandparent",
+    "has_grandchild",
+    "has_sibling",
+)
 
 
 @dataclass(frozen=True)
@@ -164,7 +177,9 @@ async def test_an_adult_child_cannot_be_declared_the_partner(home: _Home) -> Non
 # --- the owner's relatives ----------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("predicate", ["has_parent", "has_grandparent", "has_grandchild"])
+@pytest.mark.parametrize(
+    "predicate", ["has_parent", "has_mother", "has_father", "has_grandparent", "has_grandchild"]
+)
 async def test_a_relative_is_stored_as_the_owners_personal_normal_row_and_repeats(
     home: _Home, predicate: str
 ) -> None:
@@ -287,3 +302,116 @@ def _definition(alias: str) -> PredicateDefinition:
     definition = resolve_predicate(alias)
     assert definition is not None
     return definition
+
+
+# --- the side of a child (Plan 0080 D-4, Review focus 6) ------------------------------------------
+
+
+@pytest.mark.parametrize("marker", ["daughter_of", "son_of"])
+@pytest.mark.parametrize("child", ["child", "adult_child"])
+async def test_the_side_of_a_child_is_stored_for_a_minor_and_for_an_adult_and_repeats(
+    home: _Home, marker: str, child: str
+) -> None:
+    """A marker is a relationship: an adult child may carry it, beside the one child_of row."""
+    entity = getattr(home, child)
+
+    first = await _relate(home, entity, marker, home.owner)
+    again = await _relate(home, entity, marker, home.owner, WriteChannel.IMPORT_FILE)
+
+    assert again.id == first.id
+    assert (first.visibility, first.sensitivity) == ("household", "child_data")
+    assert (first.source_entity_id, first.target_entity_id) == (entity, home.owner)
+    kept = await get_active_entity_relations(
+        definition=_definition("child_of"), source_entity_id=entity
+    )
+    assert len(kept) == 1
+
+
+@pytest.mark.parametrize("marker", ["daughter_of", "son_of"])
+async def test_the_side_is_refused_for_the_partner_as_child_of_is(home: _Home, marker: str) -> None:
+    assert await _refusal_of(_relate(home, home.partner, marker, home.owner)) == (
+        await _refusal_of(_relate(home, home.partner, "child_of", home.owner))
+    )
+    assert await _refusal_of(_relate(home, home.partner, marker, home.owner)) == (
+        "not_household_member"
+    )
+
+
+@pytest.mark.parametrize("marker", ["daughter_of", "son_of"])
+async def test_the_side_is_refused_for_a_relative_who_is_not_a_child(
+    home: _Home, marker: str
+) -> None:
+    await _relate(home, home.owner, "has_parent", home.relative)
+
+    reason = await _refusal_of(_relate(home, home.relative, marker, home.owner))
+
+    assert reason == "not_household_member"
+
+
+@pytest.mark.parametrize("marker", ["daughter_of", "son_of"])
+async def test_the_side_must_point_to_the_owner(home: _Home, marker: str) -> None:
+    reason = await _refusal_of(_relate(home, home.owner, marker, home.child))
+
+    assert reason == "not_household_member"
+
+
+@pytest.mark.parametrize("marker", ["daughter_of", "son_of"])
+@pytest.mark.parametrize("child", ["child", "adult_child"])
+async def test_the_side_of_a_child_who_is_also_a_care_contact_is_stored(
+    home: _Home, marker: str, child: str
+) -> None:
+    """An adult daughter is often the emergency contact: the marker unlocks nothing for her."""
+    entity = getattr(home, child)
+    await write_contact(
+        owner_entity_id=home.owner,
+        contact_entity_id=entity,
+        role=ContactRole.EMERGENCY,
+        phone=_PHONE,
+        channel=WriteChannel.IMPORT_ASSISTED,
+        confirmed_at=_CONFIRMED_AT,
+    )
+
+    row = await _relate(home, entity, marker, home.owner)
+
+    assert (row.visibility, row.sensitivity) == ("household", "child_data")
+    assert (row.source_entity_id, row.target_entity_id) == (entity, home.owner)
+
+
+@pytest.mark.parametrize("marker", ["daughter_of", "son_of"])
+async def test_the_side_of_an_entity_with_no_child_row_is_refused(home: _Home, marker: str) -> None:
+    reason = await _refusal_of(_relate(home, home.stranger, marker, home.owner))
+
+    assert reason == "not_household_member"
+
+
+@pytest.mark.parametrize("marker", ["daughter_of", "son_of"])
+async def test_the_side_of_a_child_whose_child_row_ended_is_refused(
+    home: _Home, marker: str
+) -> None:
+    (row,) = await get_active_entity_relations(
+        definition=_definition("child_of"), source_entity_id=home.child
+    )
+    await revoke_entity_relation(row.id, revoked_at=_CONFIRMED_AT)
+
+    reason = await _refusal_of(_relate(home, home.child, marker, home.owner))
+
+    assert reason == "not_household_member"
+
+
+async def test_a_fact_about_an_adult_child_is_still_refused_after_the_side_is_stored(
+    home: _Home,
+) -> None:
+    await _relate(home, home.adult_child, "daughter_of", home.owner)
+
+    reason = await _refusal_of(
+        write_literal(
+            owner_entity_id=home.owner,
+            subject_entity_id=home.adult_child,
+            predicate="likes",
+            value="el mate",
+            channel=WriteChannel.IMPORT_ASSISTED,
+            confirmed_at=_CONFIRMED_AT,
+        )
+    )
+
+    assert reason == "not_household_member"

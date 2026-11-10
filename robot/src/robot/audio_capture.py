@@ -59,11 +59,15 @@ class SegmentationPolicy:
         close_silence_ms: Silence after speech that closes the utterance.
         upload_tail_ms: Silence the returned clip keeps after the speech; never more than
             was collected.
+        max_utterance_ms: Longest clip, pre-roll included (Plan 0080). Once speech has
+            started and the collected audio reaches it, the utterance closes right there
+            and is sent as it is. ``None`` means no cap (offline callers).
     """
 
     preroll_ms: int
     close_silence_ms: int
     upload_tail_ms: int
+    max_utterance_ms: int | None = None
 
     @classmethod
     def from_settings(cls, close_silence_ms: int | None = None) -> "SegmentationPolicy":
@@ -75,7 +79,8 @@ class SegmentationPolicy:
 
         Returns:
             The policy. The tail is ``vad_upload_tail_ms``, never longer than the normal
-            ``vad_silence_ms``.
+            ``vad_silence_ms``; the length cap is ``max_utterance_s`` (below the server's
+            audio limit).
         """
         return cls(
             preroll_ms=settings.vad_preroll_ms,
@@ -83,6 +88,7 @@ class SegmentationPolicy:
             if close_silence_ms is None
             else close_silence_ms,
             upload_tail_ms=min(settings.vad_upload_tail_ms, settings.vad_silence_ms),
+            max_utterance_ms=round(settings.max_utterance_s * 1000),
         )
 
 
@@ -126,17 +132,25 @@ def _policy_chunks(policy: SegmentationPolicy, max_wait_s: float) -> tuple[int, 
     return silence_close_chunks, preroll_chunks, max_wait_chunks
 
 
+def _max_utterance_chunks(policy: SegmentationPolicy) -> int | None:
+    """Convert the policy's length cap into a chunk count (at least one), or ``None``."""
+    if policy.max_utterance_ms is None:
+        return None
+    return max(1, round(policy.max_utterance_ms / 1000 / _CHUNK_DURATION_S))
+
+
 def _trim_trailing_silence(
-    frames: list[np.ndarray], closed_after_chunks: int, upload_tail_ms: int
+    frames: list[np.ndarray], trailing_silent_chunks: int, upload_tail_ms: int
 ) -> list[np.ndarray]:
     """Cut a closed utterance back to the upload tail.
 
-    The capture loop ends exactly after ``closed_after_chunks`` trailing silent
-    chunks, so removing the surplus over the tail leaves that much silence.
+    Removing the surplus of the trailing silent chunks over the tail leaves that much
+    silence. A normal close has collected exactly the closing threshold of them; a close
+    at the length cap has collected few or none, and must lose no speech.
 
     Args:
         frames: Int16 chunks (16 kHz mono) of a closed utterance.
-        closed_after_chunks: Trailing silent chunks the loop waited for.
+        trailing_silent_chunks: Silent chunks really collected at the end of *frames*.
         upload_tail_ms: Silence to keep; a tail longer than what was collected cuts nothing.
 
     Returns:
@@ -145,7 +159,7 @@ def _trim_trailing_silence(
     # Rounded up: a 300 ms tail is 10 chunks (320 ms), never 9 (288 ms), because the clip must keep
     # at least the silence the onset and the last word need.
     kept_chunks = max(1, -(-upload_tail_ms // _CHUNK_MS))
-    surplus = closed_after_chunks - kept_chunks
+    surplus = trailing_silent_chunks - kept_chunks
     return frames[:-surplus] if surplus > 0 else frames
 
 
@@ -155,10 +169,17 @@ async def _capture_loop(
     silence_close_chunks: int,
     preroll_chunks: int,
     max_wait_chunks: int,
-) -> list[np.ndarray]:
-    """Read chunks until an utterance closes, or return [] on onset timeout.
+    max_utterance_chunks: int | None = None,
+) -> tuple[list[np.ndarray], int]:
+    """Read chunks until an utterance closes, or return ``([], 0)`` on onset timeout.
+
+    The utterance closes on the closing silence, or, once speech has started, as soon as
+    the collected chunks (pre-roll included) reach *max_utterance_chunks* (Plan 0080).
 
     Audio contract: the chunks are int16 samples, 16 000 Hz, mono.
+
+    Returns:
+        The collected int16 chunks (16 kHz mono) and how many silent chunks really end them.
     """
     preroll: deque[np.ndarray] = deque(maxlen=preroll_chunks)
     frames: list[np.ndarray] = []
@@ -186,10 +207,13 @@ async def _capture_loop(
             waited_chunks += 1
             if waited_chunks >= max_wait_chunks:
                 logger.debug("No speech onset within timeout — giving up")
-                return []
+                return [], 0
+        if speaking and max_utterance_chunks is not None and len(frames) >= max_utterance_chunks:
+            logger.info("Utterance reached the length cap — sending it")
+            break
         await asyncio.sleep(0)
 
-    return frames
+    return frames, silence_count
 
 
 async def segment_utterance(
@@ -204,18 +228,25 @@ async def segment_utterance(
     Args:
         source: Int16 chunks, 16 kHz, mono (the microphone, or a recorded take).
         vad: A fresh voice-activity detector for this utterance.
-        policy: Pre-roll, closing silence and upload tail.
-        max_wait_s: Maximum seconds to wait for speech onset.
+        policy: Pre-roll, closing silence, upload tail and the length cap.
+        max_wait_s: Maximum seconds to wait for speech onset (the cap does not change it).
 
     Returns:
-        WAV bytes at 16kHz mono int16, or ``b""`` if no speech started within
-        *max_wait_s*.
+        WAV bytes at 16kHz mono int16, never longer than the policy's length cap, or
+        ``b""`` if no speech started within *max_wait_s*.
     """
     silence_close_chunks, preroll_chunks, max_wait_chunks = _policy_chunks(policy, max_wait_s)
-    frames = await _capture_loop(source, vad, silence_close_chunks, preroll_chunks, max_wait_chunks)
+    frames, trailing_silent = await _capture_loop(
+        source,
+        vad,
+        silence_close_chunks,
+        preroll_chunks,
+        max_wait_chunks,
+        _max_utterance_chunks(policy),
+    )
     if not frames:
         return b""
-    kept = _trim_trailing_silence(frames, silence_close_chunks, policy.upload_tail_ms)
+    kept = _trim_trailing_silence(frames, trailing_silent, policy.upload_tail_ms)
     return _encode_wav(kept, AudioConfig())
 
 
@@ -226,7 +257,9 @@ async def capture_utterance(
 
     Waits for speech onset (VAD engine from ``settings.vad_engine``), prepends
     a pre-roll buffer so the onset chunk isn't clipped, and records until
-    silence returns for ``settings.vad_silence_ms``.
+    silence returns for ``settings.vad_silence_ms``, or until the clip reaches
+    ``settings.max_utterance_s`` (kept below the server's audio limit), whichever
+    comes first.
 
     Args:
         max_wait_s: Maximum seconds to wait for speech onset. If nobody

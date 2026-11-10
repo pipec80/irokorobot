@@ -21,7 +21,9 @@ attributes says whether they are still a minor, and a child marked ``adult`` get
 rule on every channel (one with no marker is a minor: fail-open for the local setup). It guards
 the obvious misuse: nobody who is already the partner, a relative or an adult can be declared
 a child to unlock their facts (``role_conflict`` for a relative), while an exact repeat of a
-relation that is already active is accepted so a load run twice changes nothing.
+relation that is already active is accepted so a load run twice changes nothing. The side of a
+child (``daughter_of``, ``son_of``) is no membership: it needs only the active ``child_of`` row
+beside it, so a child who is also a care contact may carry one (Plan 0080).
 
 The asserter and the confirmer are the owner (ADR 0022 decision 0). A value that is never stored
 (the access code) or a mislabeled security reference is refused first, before anything is
@@ -94,8 +96,12 @@ _CHILD_OF = _required_predicate("child_of")
 _PET_OF = _required_predicate("pet_of")
 _PARTNER_OF = _required_predicate("partner_of")
 _MEMBERSHIP_PREDICATES = frozenset({"child_of", "partner_of", "pet_of"})
+# The side of a child (Plan 0080 D-4): a marker beside the ``child_of`` row, never a membership.
+_SIDE_MARKERS = frozenset({"daughter_of", "son_of"})
 # The owner's relatives (ADR 0024 decision 10): the partner's rule, name and relationship only.
-_RELATIVE_PREDICATES = frozenset({"has_parent", "has_grandparent", "has_grandchild", "has_sibling"})
+_RELATIVE_PREDICATES = frozenset(
+    {"has_parent", "has_mother", "has_father", "has_grandparent", "has_grandchild", "has_sibling"}
+)
 _RELATIVE_DEFINITIONS = tuple(
     _required_predicate(predicate) for predicate in sorted(_RELATIVE_PREDICATES)
 )
@@ -244,6 +250,30 @@ async def _membership_refusal(
     return WriteRefusal.NOT_HOUSEHOLD_MEMBER if has_two_roles else None
 
 
+async def _side_marker_refusal(
+    owner_entity_id: int,
+    source_entity_id: int,
+    target_entity_id: int,
+    definition: PredicateDefinition,
+) -> WriteRefusal | None:
+    """Return why a child's side marker is refused, or ``None`` when it may be stored.
+
+    A marker (``daughter_of``, ``son_of``) unlocks nothing: it only says which side a child the
+    owner already has is. So it is its own rule, not the membership rule: the owner must be the
+    target, an exact repeat is a no-op, and the source must hold an active ``child_of`` row to the
+    owner (``not_household_member`` otherwise). A child who is also a care contact, an adult or
+    not, may carry one; the relative, contact and partner checks do not apply.
+    """
+    if owner_entity_id != target_entity_id or source_entity_id == target_entity_id:
+        return WriteRefusal.NOT_HOUSEHOLD_MEMBER
+    if await _is_active_repeat(definition, source_entity_id, target_entity_id):
+        return None
+    child_rows = await get_active_entity_relations(
+        definition=_CHILD_OF, source_entity_id=source_entity_id, target_entity_id=owner_entity_id
+    )
+    return None if child_rows else WriteRefusal.NOT_HOUSEHOLD_MEMBER
+
+
 async def _classify_relative(
     owner_entity_id: int,
     source_entity_id: int,
@@ -278,7 +308,9 @@ async def _classify_relation(
     A membership relation (``child_of``, ``partner_of``, ``pet_of``) is the act that says who
     belongs to the owner's household, so it only needs the owner at its owning end: the child
     or the pet points to the owner, and the partner may be on either end (the relation is
-    symmetric). It is ``household`` with the registry's sensitivity. A relation to a relative or
+    symmetric). It is ``household`` with the registry's sensitivity. A child's side marker
+    (``daughter_of``, ``son_of``) is ``household`` too but follows its own rule: the child must
+    already hold an active ``child_of`` row to the owner. A relation to a relative or
     to a person to keep out is ``personal``, from the owner. Any other relation (``lives_in``,
     ``works_at``) is classified by its source like a literal about that subject.
 
@@ -288,10 +320,13 @@ async def _classify_relation(
             source of another relation is the partner or an outsider; with ``role_conflict``
             when a relative would become a member or a member a relative.
     """
-    if definition.canonical_id in _MEMBERSHIP_PREDICATES:
-        refusal = await _membership_refusal(
-            owner_entity_id, source_entity_id, target_entity_id, definition
+    if definition.canonical_id in _MEMBERSHIP_PREDICATES | _SIDE_MARKERS:
+        check = (
+            _side_marker_refusal
+            if definition.canonical_id in _SIDE_MARKERS
+            else _membership_refusal
         )
+        refusal = await check(owner_entity_id, source_entity_id, target_entity_id, definition)
         if refusal is not None:
             raise _refusal(refusal, definition, channel)
         return _HOUSEHOLD, definition.default_sensitivity

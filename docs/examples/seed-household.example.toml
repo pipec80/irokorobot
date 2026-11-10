@@ -49,19 +49,27 @@ name = "Canary Partner"          # ¿Cómo se llama tu pareja?
 [[children]]                     # ¿Tienes hijas o hijos? Un bloque por cada una o cada uno
 name = "Canary Child"            # ¿Cómo se llama?
 guardianship = "minor"           # ¿Es menor de edad? "minor" o "adult"; de una hija o un hijo adulto va solo el nombre
+side = "son"                     # ¿Es hijo o hija? "son" o "daughter" (borra la línea si no quieres decirlo)
 birth_date = "2015-03-02"        # ¿Cuándo nació? (o stated_age = 10 si no sabes la fecha, nunca ambos)
 likes = ["dibujar"]              # ¿Qué le gusta?
 
 [[children]]
 name = "Canary Daughter"         # ¿Cómo se llama?
 guardianship = "adult"           # ¿Es menor de edad? "minor" o "adult"
+side = "daughter"                # ¿Es hijo o hija? También vale para una hija o un hijo adulto
 
 [[pets]]                         # ¿Tienes mascotas? Un bloque por cada una
 name = "Canary Pet"              # ¿Cómo se llama?
 species = "gato"                 # ¿Qué animal es?
 stated_age = 3                   # ¿Qué edad tiene? Un número entero
 
-[[parents]]                      # ¿Viven tu madre o tu padre? Solo el nombre
+[mother]                         # ¿Cómo se llama tu madre? Solo el nombre (borra la sección si no aplica)
+name = "Canary Mother"           # ¿Cómo se llama?
+
+[father]                         # ¿Cómo se llama tu padre? Solo el nombre (borra la sección si no aplica)
+name = "Canary Father"           # ¿Cómo se llama?
+
+[[parents]]                      # ¿Hay una madre o un padre de quien no sabes cuál de los dos es? Solo el nombre (si lo sabes, usa [mother] o [father])
 name = "Canary Parent"           # ¿Cómo se llama?
 
 [[siblings]]                     # ¿Tienes hermanas o hermanos? Solo el nombre (también hay [[grandparents]] y [[grandchildren]])

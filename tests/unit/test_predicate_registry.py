@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 from server.memory.predicate_registry import (
+    _PREDICATES,
     POOL_PREDICATE_IDS,
     LiteralFormat,
     PredicateCardinality,
@@ -338,6 +339,8 @@ def test_a_pool_literal_resolves_by_id_and_alias_for_people_only(
 # (id, Spanish alias, symmetric, sensitivity)
 _POOL_RELATIONS = [
     ("has_parent", "tiene_padre_o_madre", False, "normal"),
+    ("has_mother", "tiene_madre", False, "normal"),
+    ("has_father", "tiene_padre", False, "normal"),
     ("has_grandparent", "tiene_abuelo_o_abuela", False, "normal"),
     ("has_grandchild", "tiene_nieto_o_nieta", False, "normal"),
     ("has_sibling", "tiene_hermano_o_hermana", True, "normal"),
@@ -375,6 +378,10 @@ def test_the_pool_predicate_ids_are_exported_for_the_legacy_migration() -> None:
     assert frozenset(expected | {"secret_holder"}) == POOL_PREDICATE_IDS
     assert "access_code" not in POOL_PREDICATE_IDS
     assert "likes" not in POOL_PREDICATE_IDS
+
+
+def test_the_mother_and_the_father_are_pool_relations_beside_has_parent() -> None:
+    assert {"has_parent", "has_mother", "has_father"} <= POOL_PREDICATE_IDS
 
 
 def test_no_alias_of_the_pool_belongs_to_two_predicates() -> None:
@@ -452,3 +459,48 @@ def test_a_pet_is_not_a_subject_of_a_pool_literal(canonical_id: str) -> None:
     assert definition is not None
 
     assert "other" not in definition.subject_types
+
+
+# --- Plan 0080 Task 4 (D-4): the side of a child is a marker beside ``child_of`` ----------------
+
+
+@pytest.mark.parametrize(
+    "alias, canonical_id", [("hija_de", "daughter_of"), ("hijo_varon_de", "son_of")]
+)
+def test_the_side_of_a_child_is_a_membership_marker_with_the_definition_of_child_of(
+    alias: str, canonical_id: str
+) -> None:
+    marker = resolve_predicate(alias)
+    child = resolve_predicate("child_of")
+
+    assert marker is not None
+    assert child is not None
+    assert resolve_predicate(canonical_id) is marker
+    assert marker.canonical_id == canonical_id
+    assert marker.kind is child.kind is PredicateKind.RELATION
+    assert marker.cardinality is child.cardinality
+    assert marker.symmetric is child.symmetric is False
+    assert marker.subject_types == child.subject_types == frozenset({"person"})
+    assert marker.target_types == child.target_types == frozenset({"person"})
+    assert (marker.default_visibility, marker.default_sensitivity) == (
+        child.default_visibility,
+        child.default_sensitivity,
+    )
+    assert marker.default_sensitivity == "child_data"
+    # The inverse query «parent_of» belongs to ``child_of`` alone.
+    assert marker.inverse_query_id is None
+
+
+def test_the_alias_of_child_of_is_not_taken_by_the_markers() -> None:
+    child = resolve_predicate("hijo_de")
+
+    assert child is not None
+    assert child.canonical_id == "child_of"
+    assert resolve_predicate("son_of") is not child
+    assert resolve_predicate("daughter_of") is not child
+
+
+def test_no_alias_belongs_to_two_predicates() -> None:
+    names = [alias.casefold() for definition in _PREDICATES for alias in definition.aliases]
+
+    assert [name for name in set(names) if names.count(name) > 1] == []

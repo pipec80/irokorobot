@@ -172,6 +172,10 @@ _POOL_PREDICATES: tuple[PredicateDefinition, ...] = (
     _pool_literal("home_access_note", "acceso_a_la_casa", _R, "location"),
     _pool_literal("lives_alone", "vive_solo", _C, "location", choices="si no"),
     _pool_relation("has_parent", "tiene_padre_o_madre"),
+    # The side of a parent is a relationship, not an attribute (Plan 0080 D-4); ``has_parent``
+    # stays for a parent whose side is not recorded.
+    _pool_relation("has_mother", "tiene_madre"),
+    _pool_relation("has_father", "tiene_padre"),
     _pool_relation("has_grandparent", "tiene_abuelo_o_abuela"),
     _pool_relation("has_grandchild", "tiene_nieto_o_nieta"),
     _pool_relation("has_sibling", "tiene_hermano_o_hermana", symmetric=True),
@@ -236,6 +240,27 @@ _PREDICATES: tuple[PredicateDefinition, ...] = (
         subject_types=_PERSON,
         target_types=_PERSON,
         inverse_query_id="parent_of",
+        default_sensitivity="child_data",
+    ),
+    # The side of a child (Plan 0080 D-4) is a marker added beside the child's one ``child_of`` row,
+    # never a ``sex`` literal (an adult child keeps name and relationship only). The aliases
+    # avoid ``hijo_de``, which ``child_of`` owns; the inverse query stays with ``child_of``.
+    PredicateDefinition(
+        canonical_id="daughter_of",
+        aliases=frozenset({"daughter_of", "hija_de"}),
+        kind=PredicateKind.RELATION,
+        cardinality=PredicateCardinality.RELATION,
+        subject_types=_PERSON,
+        target_types=_PERSON,
+        default_sensitivity="child_data",
+    ),
+    PredicateDefinition(
+        canonical_id="son_of",
+        aliases=frozenset({"son_of", "hijo_varon_de"}),
+        kind=PredicateKind.RELATION,
+        cardinality=PredicateCardinality.RELATION,
+        subject_types=_PERSON,
+        target_types=_PERSON,
         default_sensitivity="child_data",
     ),
     PredicateDefinition(

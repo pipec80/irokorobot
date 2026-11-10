@@ -204,7 +204,7 @@ async def search_recall(
     vector = await _vector_side(client, cue.query, window)
     distances = dict(vector or [])
     fused = fuse(lexical, vector or [], max_distance=settings.recall_max_distance)
-    units = _capped(await units_by_id(fused))
+    units = _capped(await units_by_id(fused, owner_entity_id=owner_entity_id, now=now_iso))
     return RecallSearch(
         hits=tuple(RecallHit(unit=unit, distance=distances.get(unit.id)) for unit in units),
         best_distance=min(distances.values()) if distances else None,

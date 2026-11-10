@@ -1,7 +1,7 @@
 """Unit tests for the robot FSM (robot.app) — all I/O mocked."""
 
 import base64
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Coroutine
 from dataclasses import replace
 from datetime import UTC, datetime
 import logging
@@ -836,3 +836,30 @@ async def test_playback_failure_after_a_flagged_done_leaves_the_next_listening_n
     capture_mock.assert_awaited_once_with()
     assert ctx.short_reply is False
     assert ctx.short_reply_next is False
+
+
+@pytest.mark.unit
+def test_main_returns_normally_and_logs_one_line_on_ctrl_c(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Ctrl+C while the robot speaks ends the process cleanly, with no traceback."""
+    monkeypatch.setattr(app.settings, "log_to_file", False)
+    monkeypatch.setattr(app.settings, "log_conversation_text", False)
+
+    def interrupted(coroutine: Coroutine[None, None, None]) -> None:
+        coroutine.close()  # the stub is handed the unawaited _run() coroutine
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(app.asyncio, "run", interrupted)
+
+    with caplog.at_level(logging.INFO, logger="robot.app"):
+        try:
+            app.main()
+        except KeyboardInterrupt:
+            pytest.fail("main() let the KeyboardInterrupt escape")
+
+    stopped = [
+        r for r in caplog.records if r.getMessage() == "Robot client stopped by the operator"
+    ]
+    assert len(stopped) == 1
+    assert stopped[0].levelno == logging.INFO

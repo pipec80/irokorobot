@@ -9,7 +9,7 @@ a phone is left out of the ``repr``.
 from __future__ import annotations
 
 import re
-from typing import Annotated, Any, Self
+from typing import Annotated, Any, Literal, Self
 
 from pydantic import (
     AfterValidator,
@@ -159,10 +159,13 @@ class _Tastes(_Frozen):
 
 
 class SeedChild(_Tastes):
-    """A child of the owner; an adult child is the name and the guardianship only."""
+    """A child of the owner; an adult child is the name, the guardianship and the side only."""
 
     name: Name = Field(repr=False)
     guardianship: Guardianship
+    # A relationship (a marker row beside ``child_of``, Plan 0080 D-4), not a fact about the
+    # child: an adult child may carry it, and one key means a child never holds both markers.
+    side: Literal["daughter", "son"] | None = Field(default=None, repr=False)
     birth_date: Single | None = _hidden()
     stated_age: int | None = Field(default=None, ge=0, le=_MAX_AGE, repr=False)
 

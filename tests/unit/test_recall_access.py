@@ -20,7 +20,7 @@ from server.cognition.identity import (
     resolve_active_person,
 )
 from server.cognition.models import AuthorizationAction, Confidence, ConfidenceBasis
-from server.cognition.recall_cues import CueStrength, RecallCue
+from server.cognition.recall_cues import CueStrength, RecallCue, WhenKind
 from server.memory.recall_access import recall_reply
 from server.memory.recall_answer import NO_MEMORY
 from server.memory.recall_search import RecallHit, RecallSearch
@@ -76,6 +76,7 @@ def _found(*hits: RecallHit, best: float | None = 0.1) -> AsyncMock:
 async def _reply(
     actor: ActivePersonContext | None = None,
     *,
+    cue: RecallCue = _CUE,
     search: AsyncMock | None = None,
     answer: AsyncMock | None = None,
     policy: Mock | None = None,
@@ -83,7 +84,7 @@ async def _reply(
 ) -> RecallReply:
     return await recall_reply(
         actor or _actor(),
-        _CUE,
+        cue,
         question="¿Qué te conté del cerro?",
         correlation_id=UUID(int=78),
         now=_NOW,
@@ -178,3 +179,60 @@ async def test_no_log_line_carries_a_body(caplog: pytest.LogCaptureFixture) -> N
     assert logged[0].best_distance == 0.123  # type: ignore[attr-defined]  # a log extra
     assert logged[0].hits == 1  # type: ignore[attr-defined]  # a log extra
     assert logged[0].route == "strong"  # type: ignore[attr-defined]  # a log extra
+
+
+def _when_cue(kind: WhenKind, strength: CueStrength = CueStrength.STRONG) -> RecallCue:
+    return RecallCue(strength=strength, query="cuando fui a la playa", window=None, when=kind)
+
+
+@pytest.mark.parametrize(
+    "kind, expected",
+    [
+        (WhenKind.TOLD, "Ayer me contaste esto: zzcanaryzz fuimos al cerro con Zeta"),
+        (
+            WhenKind.HAPPENED,
+            "No tengo registrado cuándo fue. Sí recuerdo que ayer me contaste esto: "
+            "zzcanaryzz fuimos al cerro con Zeta",
+        ),
+    ],
+)
+async def test_a_when_cue_is_worded_without_the_model(kind: WhenKind, expected: str) -> None:
+    answer = AsyncMock(return_value="the model must not be asked")
+
+    reply = await _reply(cue=_when_cue(kind), answer=answer)
+
+    answer.assert_not_awaited()
+    assert reply.text == expected
+    assert reply.found
+
+
+@pytest.mark.parametrize("strength", list(CueStrength))
+async def test_a_when_cue_that_finds_nothing_keeps_the_nothing_found_rule(
+    strength: CueStrength,
+) -> None:
+    answer = AsyncMock()
+
+    reply = await _reply(
+        cue=_when_cue(WhenKind.HAPPENED, strength), search=_found(best=0.7), answer=answer
+    )
+
+    assert reply.text is None
+    assert not reply.found
+    answer.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "kind, logged", [(None, None), (WhenKind.TOLD, "told"), (WhenKind.HAPPENED, "happened")]
+)
+async def test_the_log_line_carries_the_closed_when_value(
+    caplog: pytest.LogCaptureFixture, kind: WhenKind | None, logged: str | None
+) -> None:
+    cue = RecallCue(strength=CueStrength.STRONG, query="que del cerro", window=None, when=kind)
+
+    with caplog.at_level(logging.DEBUG):
+        await _reply(cue=cue)
+
+    lines = [r for r in caplog.records if getattr(r, "event", "") == "recall.read"]
+    assert len(lines) == 1
+    assert lines[0].when == logged  # type: ignore[attr-defined]  # a log extra
+    assert all("zzcanaryzz" not in record.getMessage() for record in caplog.records)

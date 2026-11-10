@@ -37,7 +37,7 @@
     },
     "SeedChild": {
       "additionalProperties": false,
-      "description": "A child of the owner; an adult child is the name and the guardianship only.",
+      "description": "A child of the owner; an adult child is the name, the guardianship and the side only.",
       "properties": {
         "likes": {
           "default": [],
@@ -76,6 +76,22 @@
         },
         "guardianship": {
           "$ref": "#/$defs/Guardianship"
+        },
+        "side": {
+          "anyOf": [
+            {
+              "enum": [
+                "daughter",
+                "son"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Side"
         },
         "birth_date": {
           "anyOf": [
@@ -779,6 +795,28 @@
       }
     },
     "partner": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SeedPerson"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "mother": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SeedPerson"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "father": {
       "anyOf": [
         {
           "$ref": "#/$defs/SeedPerson"

@@ -340,3 +340,68 @@ async def test_the_opt_in_log_shows_the_marker(
     spoken = [message for message in messages if message.startswith("Spoken")]
     assert spoken == [f"Spoken: {RECALL_LOGGED_TEXT}"]
     assert not any("Zeta" in message for message in messages)
+
+
+_BEACH_STORY = "fui a la playa con Zeta"
+_NOT_RECORDED = "No tengo registrado cuándo fue."
+
+
+@pytest.mark.parametrize("route", _ROUTES)
+async def test_a_when_question_answers_with_the_day_it_was_told_and_asks_no_model(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch, route: str
+) -> None:
+    """Plan 0080 D-8 and D-9: «¿cuándo fui…?» is not the told day, «¿cuándo te conté…?» is."""
+    await _remember(household.owner_entity_id, _BEACH_STORY)
+    _see_the_owner(monkeypatch)
+    _hear(monkeypatch, "¿Cuándo fui a la playa?", "¿Cuándo te conté de la playa?")
+    prompts, wording = _models(monkeypatch)
+
+    async with _client() as client:
+        happened = await client.post(route, files=_files())
+        told = await client.post(route, files=_files())
+
+    assert _spoken(happened, route) == (
+        f"{_NOT_RECORDED} Sí recuerdo que ayer me contaste esto: {_BEACH_STORY}"
+    )
+    assert _spoken(told, route) == f"Ayer me contaste esto: {_BEACH_STORY}"
+    assert prompts == []  # the generic model was never asked
+    wording.assert_not_awaited()  # nor the recall wording: the answer is a table
+    assert await _audit_rows() == 2
+
+
+@pytest.mark.parametrize("route", _ROUTES)
+@pytest.mark.parametrize("question", ["¿Cuándo fui a la playa?", "¿Cuándo te conté de la playa?"])
+async def test_a_when_question_with_nothing_told_says_it_does_not_remember(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch, route: str, question: str
+) -> None:
+    _see_the_owner(monkeypatch)
+    _hear(monkeypatch, question)
+    prompts, wording = _models(monkeypatch)
+
+    async with _client() as client:
+        response = await client.post(route, files=_files())
+
+    assert _spoken(response, route) == NO_MEMORY
+    assert prompts == []
+    wording.assert_not_awaited()
+
+
+@pytest.mark.parametrize("route", _ROUTES)
+@pytest.mark.parametrize(
+    "question", ["¿Cuándo fue el mundial de 2010?", "Cuando fui a la playa me quemé"]
+)
+async def test_a_trap_is_ordinary_conversation_and_reads_no_diary(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch, route: str, question: str
+) -> None:
+    await _remember(household.owner_entity_id, _BEACH_STORY)
+    _see_the_owner(monkeypatch)
+    _hear(monkeypatch, question)
+    prompts, wording = _models(monkeypatch)
+
+    async with _client() as client:
+        response = await client.post(route, files=_files())
+
+    assert _spoken(response, route) == "Hola."
+    assert len(prompts) == 1
+    wording.assert_not_awaited()
+    assert await _audit_rows() == 0

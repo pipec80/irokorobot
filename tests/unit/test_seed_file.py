@@ -408,6 +408,169 @@ def test_the_models_repr_holds_no_value() -> None:
         assert secret not in rendered
 
 
+# --- the sides of the family (Plan 0080 Task 5, D-4 and D-6) ---------------------------------
+
+
+def _with_parents(mother: str | None = "Canary Zeta", father: str | None = "Canary Omega") -> Toml:
+    data = full_seed()
+    if mother is not None:
+        data["mother"] = {"name": mother}
+    if father is not None:
+        data["father"] = {"name": father}
+    return data
+
+
+def test_a_file_with_a_mother_and_a_father_loads() -> None:
+    seed = parse_seed_text(to_toml(_with_parents()))
+
+    assert seed.mother is not None
+    assert seed.father is not None
+    assert (seed.mother.name, seed.father.name) == ("Canary Zeta", "Canary Omega")
+    assert [p.name for p in seed.parents] == ["Canary Parent"]
+
+
+def test_a_file_without_the_two_tables_still_loads() -> None:
+    seed = parse_seed_text(to_toml(full_seed()))
+
+    assert seed.mother is None
+    assert seed.father is None
+
+
+# The same folded name (case and accent) as someone else of the file.
+_SAME_AS = [
+    ("the owner", "CANARY ÓWNER"),
+    ("the partner", "canary pártner"),
+    ("a child", "CANARY CHÍLD"),
+    ("a parent", "Canary  Parent"),
+    ("a grandparent", "CANARY GRÁNDPARENT"),
+    ("a sibling", "canary síbling"),
+    ("a grandchild", "Canary Grandchíld"),
+]
+
+
+@pytest.mark.parametrize("key", ["mother", "father"])
+@pytest.mark.parametrize("name", [pytest.param(n, id=i) for i, n in _SAME_AS])
+def test_a_side_named_like_anyone_else_is_a_duplicate_name(key: str, name: str) -> None:
+    data = _with_parents(mother=None, father=None)
+    data[key] = {"name": name}
+    problems = _problems(data)
+
+    assert f"{key}.name: duplicate_name" in problems
+    assert not any("Canary" in problem or "canary" in problem for problem in problems)
+
+
+def test_the_father_named_like_the_mother_is_a_duplicate_name() -> None:
+    problems = _problems(_with_parents(mother="Canary Zeta", father="CANARY ZÉTA"))
+
+    assert problems == ("father.name: duplicate_name",)
+
+
+def test_a_duplicate_side_carries_no_name_in_the_message_the_repr_or_the_cause() -> None:
+    data = _with_parents(mother="Canary Child")
+
+    with pytest.raises(SeedFileError) as caught:
+        parse_seed_text(to_toml(data))
+
+    error = caught.value
+    rendered = "".join(traceback.format_exception(error))
+    for text in (str(error), repr(error), rendered):
+        assert "Canary Child" not in text
+        assert "Canary Zeta" not in text
+    assert error.__cause__ is None
+    assert error.__context__ is None
+
+
+@pytest.mark.parametrize("key", ["mother", "father"])
+def test_a_pet_named_like_a_side_is_refused_at_the_pet(key: str) -> None:
+    data = _with_parents(mother=None, father=None)
+    data[key] = {"name": "Canary Zeta"}
+    _member(data, "pets")["name"] = "canary zeta"
+
+    assert "pets.0.name: duplicate_name" in _problems(data)
+
+
+def test_a_contact_may_be_the_mother() -> None:
+    data = _with_parents()
+    _member(data, "contacts", 1)["name"] = "canary zeta"
+
+    seed = parse_seed_text(to_toml(data))
+
+    assert seed.contacts[1].name == "canary zeta"
+
+
+def test_a_file_with_only_a_mother_adds_no_household_section() -> None:
+    data = minimal_seed()
+    data["mother"] = {"name": "Canary Zeta"}
+
+    seed = parse_seed_text(to_toml(data))
+
+    assert seed.mother is not None
+    assert Section.HOUSEHOLD not in sections_with_items(seed)
+    assert sections_with_items(seed) == frozenset()
+
+
+def test_provided_household_with_only_a_mother_is_refused() -> None:
+    data = minimal_seed()
+    data["mother"] = {"name": "Canary Zeta"}
+    data["status"] = {"household": "provided"}
+
+    assert "status.household: status_without_items" in _problems(data)
+
+
+def test_a_side_table_takes_the_name_and_nothing_else() -> None:
+    data = _with_parents()
+    data["mother"] = {"name": "Canary Zeta", "likes": ["x"]}
+
+    assert "mother.likes: extra_forbidden" in _problems(data)
+
+
+@pytest.mark.parametrize("side", ["daughter", "son"])
+def test_a_child_may_carry_its_side(side: str) -> None:
+    data = full_seed()
+    _member(data, "children")["side"] = side
+
+    assert parse_seed_text(to_toml(data)).children[0].side == side
+
+
+def test_a_child_has_no_side_unless_it_is_given() -> None:
+    assert parse_seed_text(to_toml(full_seed())).children[0].side is None
+
+
+def test_a_side_outside_the_two_is_refused_with_a_closed_reason_and_no_value() -> None:
+    data = full_seed()
+    _member(data, "children")["side"] = "Canaryleak"
+
+    problems = _problems(data)
+
+    assert problems == ("children.0.side: literal_error",)
+    assert _LEAK not in "".join(problems)
+
+
+def test_an_adult_child_may_carry_its_side_because_it_is_a_relationship() -> None:
+    data = full_seed()
+    _member(data, "children", 1)["side"] = "son"
+
+    seed = parse_seed_text(to_toml(data))
+
+    assert seed.children[1].guardianship is Guardianship.ADULT
+    assert seed.children[1].side == "son"
+
+
+def test_an_adult_child_with_a_side_still_refuses_every_other_fact() -> None:
+    data = full_seed()
+    _member(data, "children", 1)["side"] = "son"
+    _member(data, "children", 1)["likes"] = ["leer"]
+
+    assert "children.1: adult_child_facts" in _problems(data)
+
+
+def test_the_side_of_a_child_never_changes_the_sections_with_items() -> None:
+    data = minimal_seed()
+    data["children"] = [{"name": "Canary Child", "guardianship": "minor", "side": "son"}]
+
+    assert sections_with_items(parse_seed_text(to_toml(data))) == {Section.HOUSEHOLD}
+
+
 def test_the_schema_carries_its_versions() -> None:
     schema = SeedFile.model_json_schema()
 

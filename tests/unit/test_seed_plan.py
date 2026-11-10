@@ -242,6 +242,113 @@ def test_the_counts_are_by_kind() -> None:
     assert counts[OperationKind.WRITE_CONTACT] == 2
 
 
+# --- the sides of the family (Plan 0080 Task 5, D-4 and D-6) ---------------------------------
+
+_ZETA = SeedRef(SeedRole.MOTHER, "canary zeta")
+_OMEGA = SeedRef(SeedRole.FATHER, "canary omega")
+
+
+def _sided() -> Toml:
+    data = minimal_seed()
+    data["mother"] = {"name": "Canary Zeta"}
+    data["father"] = {"name": "Canary Omega"}
+    data["children"] = [
+        {"name": "Canary Daughter", "guardianship": "minor", "side": "daughter"},
+        {"name": "Canary Plain", "guardianship": "minor"},
+        {"name": "Canary Grown Son", "guardianship": "adult", "side": "son"},
+    ]
+    return data
+
+
+def _triples(plan: SeedPlan) -> list[tuple[str | None, SeedRef | None, SeedRef | None, str]]:
+    return [
+        (op.predicate, op.subject, op.target, op.label)
+        for op in _of(plan, OperationKind.WRITE_RELATION)
+    ]
+
+
+def test_the_mother_and_the_father_are_created_with_their_role() -> None:
+    created = _of(_plan(_sided()), OperationKind.CREATE_ENTITY)
+
+    by_key = {op.import_key: op for op in created}
+    assert by_key["seed-v1:mother:canary zeta"].subject == _ZETA
+    assert by_key["seed-v1:father:canary omega"].subject == _OMEGA
+    assert by_key["seed-v1:mother:canary zeta"].entity_type == "person"
+    assert by_key["seed-v1:mother:canary zeta"].entity_name == "Canary Zeta"
+    assert [op.subject.role for op in created if op.subject].count(SeedRole.MOTHER) == 1
+
+
+def test_the_owner_has_a_mother_and_a_father_and_no_unsided_parent() -> None:
+    triples = _triples(_plan(_sided()))
+
+    assert ("has_mother", _OWNER, _ZETA, "mother") in triples
+    assert ("has_father", _OWNER, _OMEGA, "father") in triples
+    assert "has_parent" not in {predicate for predicate, *_ in triples}
+
+
+def test_parents_keeps_writing_has_parent_beside_the_two_sides() -> None:
+    data = _sided()
+    data["parents"] = [{"name": "Canary Parent"}]
+
+    triples = _triples(_plan(data))
+
+    assert ("has_parent", _OWNER, SeedRef(SeedRole.PARENT, "canary parent"), "parents") in triples
+    assert sum(predicate == "has_parent" for predicate, *_ in triples) == 1
+
+
+def test_a_child_marker_follows_that_childs_child_of_row() -> None:
+    triples = _triples(_plan(_sided()))
+    daughter = SeedRef(SeedRole.CHILD, "canary daughter")
+    grown = SeedRef(SeedRole.CHILD, "canary grown son")
+    plain = SeedRef(SeedRole.CHILD, "canary plain")
+
+    child_rows = [t for t in triples if t[1] in {daughter, grown, plain}]
+
+    assert child_rows == [
+        ("child_of", daughter, _OWNER, "children"),
+        ("daughter_of", daughter, _OWNER, "children.side"),
+        ("child_of", plain, _OWNER, "children"),
+        ("child_of", grown, _OWNER, "children"),
+        ("son_of", grown, _OWNER, "children.side"),
+    ]
+
+
+def test_a_child_with_no_side_gets_no_marker() -> None:
+    plan = _plan(full_seed())
+
+    assert {op.predicate for op in _of(plan, OperationKind.WRITE_RELATION)} & {
+        "daughter_of",
+        "son_of",
+        "has_mother",
+        "has_father",
+    } == set()
+
+
+def test_the_side_tables_make_no_literal_and_no_contact() -> None:
+    plan = _plan(_sided())
+
+    assert _of(plan, OperationKind.WRITE_LITERAL) == []
+    assert _of(plan, OperationKind.WRITE_CONTACT) == []
+
+
+def test_a_contact_named_like_the_mother_is_the_mother() -> None:
+    data = _sided()
+    data["contacts"] = [{"name": "canary zeta", "role": "trusted", "phone": "+56900000009"}]
+
+    plan = _plan(data)
+
+    (contact,) = _of(plan, OperationKind.WRITE_CONTACT)
+    assert contact.subject == _ZETA
+    assert sum(op.subject == _ZETA for op in _of(plan, OperationKind.CREATE_ENTITY)) == 1
+
+
+def test_the_sections_ignore_the_two_sides_but_not_the_children() -> None:
+    data = minimal_seed()
+    data["mother"] = {"name": "Canary Zeta"}
+
+    assert _plan(data).section_statuses == dict.fromkeys(Section, SectionStatus.NOT_ASKED)
+
+
 def test_an_operations_repr_holds_no_value_or_name() -> None:
     rendered = repr(_plan(full_seed()))
 

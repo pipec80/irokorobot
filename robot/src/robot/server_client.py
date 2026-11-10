@@ -16,7 +16,35 @@ logger = logging.getLogger(__name__)
 
 # The server answers 422 when Whisper finds no speech in the audio.
 _HTTP_NO_SPEECH = 422
+# The `detail` of that answer; any other 422 is a refusal of the audio itself (Plan 0080).
+_NO_SPEECH_DETAIL = "No speech detected in audio"
 _client: httpx.AsyncClient | None = None
+
+
+def _no_speech_error(response: httpx.Response) -> NoSpeechError:
+    """Build the error for a 422 and warn when it is not the server's no-speech answer.
+
+    The loop still listens again on any 422, so the owner sees no change; but a 422 that
+    is not the no-speech answer (e.g. the server refused the clip) must not read as silence
+    in the log. The response body is never logged. The body must already be read.
+
+    Args:
+        response: The 422 response; its ``detail`` is read defensively (a body that is not
+            JSON, or not an object, counts as not-no-speech).
+
+    Returns:
+        The NoSpeechError to raise.
+    """
+    try:
+        body = response.json()
+    except ValueError:
+        body = None
+    detail = body.get("detail") if isinstance(body, dict) else None
+    if detail != _NO_SPEECH_DETAIL:
+        logger.warning(
+            "Server refused the audio (%d): not a speech-detection result", response.status_code
+        )
+    return NoSpeechError("Server heard no speech in the audio")
 
 
 def _get_client() -> httpx.AsyncClient:
@@ -120,7 +148,7 @@ async def transcribe(
         response.raise_for_status()
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code == _HTTP_NO_SPEECH:
-            raise NoSpeechError("Server heard no speech in the audio") from exc
+            raise _no_speech_error(exc.response) from exc
         raise ServerError(f"Server returned {exc.response.status_code}") from exc
     except httpx.RequestError as exc:
         raise ServerError("Could not reach server") from exc
@@ -280,6 +308,8 @@ async def transcribe_stream(
             data=form,
             headers=headers,
         ) as response:
+            if response.status_code == _HTTP_NO_SPEECH:
+                await response.aread()  # so the error path can read `detail`
             response.raise_for_status()
             async for line in response.aiter_lines():
                 if not line.strip():
@@ -290,7 +320,7 @@ async def transcribe_stream(
                     raise ServerError(f"Malformed stream event: {exc}") from exc
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code == _HTTP_NO_SPEECH:
-            raise NoSpeechError("Server heard no speech in the audio") from exc
+            raise _no_speech_error(exc.response) from exc
         raise ServerError(f"Server returned {exc.response.status_code}") from exc
     except httpx.RequestError as exc:
         raise ServerError("Could not reach server") from exc

@@ -355,14 +355,36 @@ async def vector_hits(
     return [(int(row[0]), float(row[1])) for row in rows]
 
 
-async def units_by_id(ids: Sequence[int]) -> list[RecallUnit]:
-    """Return the units that still exist among *ids*, in the order given."""
+async def units_by_id(ids: Sequence[int], *, owner_entity_id: int, now: str) -> list[RecallUnit]:
+    """Return the units still readable among *ids*, in the order given.
+
+    The statement that returns the text applies the same filters as every other read (owner,
+    visibility ``personal``, sensitivity ``normal``, the record's expiry; no window), so a unit
+    reclassified, expired or deleted after its id was found is not delivered (ADR 0031 decision 2,
+    Plan 0080 D-10). Residual: text already read is not recalled while the model words the answer.
+
+    Args:
+        ids: Unit ids found by a search, in ranking order.
+        owner_entity_id: The owner whose units may be read.
+        now: The current time; expired records are skipped.
+
+    Returns:
+        The readable units among *ids*, in the order of *ids*.
+    """
     if not ids:
         return []
-    marks = ", ".join("?" for _ in ids)
+    marks = ", ".join(f":id{index}" for index in range(len(ids)))
     cursor = await db.get_conn().execute(
-        f"SELECT {_UNIT_COLUMNS} FROM recall_units u WHERE u.id IN ({marks})",  # noqa: S608
-        tuple(ids),
+        f"SELECT {_UNIT_COLUMNS} FROM recall_units u "  # noqa: S608
+        "JOIN conversation_records r ON r.id = u.source_record_id "
+        f"WHERE u.id IN ({marks}) AND {_READABLE}",
+        {
+            **{f"id{index}": unit_id for index, unit_id in enumerate(ids)},
+            "owner": owner_entity_id,
+            "now": now,
+            "since": None,
+            "until": None,
+        },
     )
     rows = await cursor.fetchall()
     await cursor.close()

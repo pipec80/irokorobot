@@ -11,11 +11,17 @@ from zoneinfo import ZoneInfo
 import httpx
 import pytest
 from server.claim_guard import REPLACEMENT
+from server.cognition.recall_cues import WhenKind
 from server.exceptions import LLMError
 from server.memory import recall_answer
-from server.memory.recall_answer import NO_MEMORY, build_recall_messages, word_recall
+from server.memory.recall_answer import (
+    NO_MEMORY,
+    build_recall_messages,
+    word_recall,
+    word_when,
+)
 from server.memory.recall_search import RecallHit
-from server.memory.recall_store import RecallUnit
+from server.memory.recall_store import RecallUnit, UnitKind
 
 pytestmark = pytest.mark.unit
 
@@ -25,8 +31,8 @@ _GOLDEN = Path(__file__).resolve().parents[1] / "fixtures" / "recall_prompt_gold
 _QUESTION = "¿Qué te conté del cerro?"
 
 
-def _hit(unit_id: int, body: str, said: datetime) -> RecallHit:
-    unit = RecallUnit(id=unit_id, record_id=unit_id, kind="turn", body=body, said_at=said)
+def _hit(unit_id: int, body: str, said: datetime, kind: UnitKind = "turn") -> RecallHit:
+    unit = RecallUnit(id=unit_id, record_id=unit_id, kind=kind, body=body, said_at=said)
     return RecallHit(unit=unit, distance=None)
 
 
@@ -81,6 +87,39 @@ async def test_a_model_failure_uses_the_template(chat: AsyncMock, error: Excepti
     chat.side_effect = error
 
     assert await _word(chat) == "Ayer me contaste esto: Fuimos al cerro con Zeta y llevamos mate."
+
+
+_DIARY = "La persona contó que fue a la playa con Zeta."
+_EPISODE_HITS = (_hit(6, _DIARY, datetime(2026, 11, 3, 15, tzinfo=UTC), "episode"),)
+
+
+@pytest.mark.parametrize("error", [LLMError("x"), httpx.ConnectError("x"), TimeoutError()])
+async def test_a_diary_summary_is_never_quoted_as_what_the_owner_said(
+    chat: AsyncMock, error: Exception
+) -> None:
+    """ADR 0031 decision 6: an episode is a summary, so the template says «hablamos de esto»."""
+    chat.side_effect = error
+
+    answer = await _word(chat, _EPISODE_HITS)
+
+    assert answer == f"Ayer hablamos de esto: {_DIARY}"
+    assert "me contaste" not in answer
+
+
+async def test_an_empty_answer_about_a_diary_summary_uses_the_episode_template(
+    chat: AsyncMock,
+) -> None:
+    chat.return_value = "   "
+
+    assert await _word(chat, _EPISODE_HITS) == f"Ayer hablamos de esto: {_DIARY}"
+
+
+async def test_the_template_follows_only_the_first_hit_kind(chat: AsyncMock) -> None:
+    chat.side_effect = LLMError("x")
+
+    answer = await _word(chat, (*_HITS[:1], *_EPISODE_HITS))
+
+    assert answer == "Ayer me contaste esto: Fuimos al cerro con Zeta y llevamos mate."
 
 
 async def test_an_empty_answer_uses_the_template(chat: AsyncMock) -> None:
@@ -171,3 +210,119 @@ async def test_the_answer_is_cut_at_two_sentences(chat: AsyncMock) -> None:
     chat.return_value = "Fuiste al cerro. Llevaste mate. Y también fue Zeta."
 
     assert await _word(chat) == "Fuiste al cerro. Llevaste mate."
+
+
+_FRIDAY = date(2026, 11, 6)
+_BEACH = "Fui a la playa con Zeta y me quemé."
+_NOT_RECORDED = "No tengo registrado cuándo fue."
+_TUESDAY_HIT = _hit(4, _BEACH, datetime(2026, 11, 3, 15, tzinfo=UTC), "episode")
+
+
+def _when(kind: WhenKind, hits: tuple[RecallHit, ...], today: date = _TODAY) -> str:
+    return word_when(hits, kind, today=today, tz=_TZ)
+
+
+def test_told_with_a_turn_said_yesterday_says_the_day_it_was_told() -> None:
+    assert _when(WhenKind.TOLD, _HITS) == (
+        "Ayer me contaste esto: Fuimos al cerro con Zeta y llevamos mate."
+    )
+
+
+def test_happened_with_a_turn_says_the_date_is_not_recorded_first() -> None:
+    assert _when(WhenKind.HAPPENED, _HITS) == (
+        f"{_NOT_RECORDED} Sí recuerdo que ayer me contaste esto: "
+        "Fuimos al cerro con Zeta y llevamos mate."
+    )
+
+
+def test_told_with_an_episode_on_a_weekday() -> None:
+    assert _when(WhenKind.TOLD, (_TUESDAY_HIT,), _FRIDAY) == "El martes hablamos de eso."
+
+
+def test_happened_with_an_episode_on_a_weekday() -> None:
+    assert _when(WhenKind.HAPPENED, (_TUESDAY_HIT,), _FRIDAY) == (
+        f"{_NOT_RECORDED} Sí recuerdo que el martes hablamos de eso."
+    )
+
+
+def test_a_day_of_the_current_year_is_spoken_as_day_and_month() -> None:
+    march = _hit(5, _BEACH, datetime(2026, 3, 3, 15, tzinfo=UTC))
+
+    assert _when(WhenKind.TOLD, (march,)).startswith("El 3 de marzo me contaste esto:")
+    assert "el 3 de marzo me contaste esto:" in _when(WhenKind.HAPPENED, (march,))
+
+
+@pytest.mark.parametrize("kind", list(WhenKind))
+def test_only_the_first_hit_is_reported(kind: WhenKind) -> None:
+    answer = _when(kind, _HITS)
+
+    assert "Zeta" in answer
+    assert "Omega" not in answer
+    assert "30 de octubre" not in answer
+
+
+@pytest.mark.parametrize("kind", list(WhenKind))
+@pytest.mark.parametrize("hits", [_HITS, (_TUESDAY_HIT,)])
+def test_no_when_answer_turns_the_story_into_the_owner_second_person(
+    kind: WhenKind, hits: tuple[RecallHit, ...]
+) -> None:
+    answer = _when(kind, hits, _FRIDAY)
+
+    assert "fuiste" not in answer
+    assert "fue el" not in answer
+
+
+def test_a_happened_answer_never_states_a_date_as_the_day_of_the_event() -> None:
+    answer = _when(WhenKind.HAPPENED, (_TUESDAY_HIT,), _FRIDAY)
+
+    assert answer.startswith(_NOT_RECORDED)
+    assert "el martes hablamos" in answer  # the day it was told, not the day of the trip
+    assert "fue el" not in answer
+
+
+def test_word_when_asks_no_model(chat: AsyncMock) -> None:
+    _when(WhenKind.TOLD, _HITS)
+    _when(WhenKind.HAPPENED, _HITS)
+
+    chat.assert_not_awaited()
+
+
+_LONG_STORY = (
+    "Fui a la playa con Zeta. Nos metimos al agua y jugamos un rato. "
+    "Después comimos sandía en la arena. Al final nos quedamos hasta tarde."
+)
+_FIRST_TWO = "Fui a la playa con Zeta. Nos metimos al agua y jugamos un rato."
+_MAX_QUOTE = 200
+
+
+def _story_hit(body: str) -> RecallHit:
+    return _hit(6, body, datetime(2026, 11, 3, 15, tzinfo=UTC))
+
+
+@pytest.mark.parametrize("kind", list(WhenKind))
+def test_a_when_answer_quotes_at_most_two_sentences_of_the_story(kind: WhenKind) -> None:
+    answer = _when(kind, (_story_hit(_LONG_STORY),))
+
+    assert answer.endswith(f"me contaste esto: {_FIRST_TWO}")
+    assert "sandía" not in answer
+
+
+def test_a_single_long_sentence_is_cut_at_a_word_boundary_under_200() -> None:
+    sentence = " ".join(["palabra"] * 40) + "."  # one sentence of about 320 characters
+    answer = _when(WhenKind.TOLD, (_story_hit(sentence),))
+    quote = answer.removeprefix("Ayer me contaste esto: ")
+
+    assert len(quote) <= _MAX_QUOTE
+    assert quote.endswith("…")
+    assert quote.removesuffix("…").split(" ")[-1] == "palabra"  # no word cut in half
+
+
+async def test_the_fallback_template_quotes_the_story_like_the_when_answer(
+    chat: AsyncMock,
+) -> None:
+    chat.side_effect = LLMError("down")
+    hits = (_story_hit(_LONG_STORY),)
+
+    answer = await _word(chat, hits)
+
+    assert answer == f"Ayer me contaste esto: {_FIRST_TWO}"

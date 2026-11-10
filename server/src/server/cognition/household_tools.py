@@ -17,6 +17,7 @@ from server.cognition.authorization import (
     evaluate_authorization,
 )
 from server.cognition.calendar_tools import calculate_age
+from server.cognition.family_sides import Side, SidedNames, SideGroup
 from server.cognition.identity import ActivePersonContext
 from server.cognition.models import (
     AuthorizationAction,
@@ -35,6 +36,9 @@ __all__ = [
     "HouseholdToolName",
     "HouseholdToolResult",
     "PreferencePredicate",
+    "Side",
+    "SideGroup",
+    "SidedNames",
 ]
 
 type PolicyEvaluator = Callable[[AuthorizationRequest], AuthorizationDecision]
@@ -112,6 +116,20 @@ _FROM_THE_OWNER = frozenset({"has_parent", "has_sibling", "has_grandparent", "ha
 _TO_THE_OWNER = frozenset({"pet_of"})
 _EITHER_END = frozenset({"partner_of"})
 _PET = "pet_of"
+# The parents are read as three relations (Plan 0080 D-4): the side is the relation itself, and
+# ``has_parent`` holds a parent whose side is not recorded. All three share one policy shape.
+_HAS_PARENT = _required_predicate("has_parent")
+_PARENT_READS = (
+    (_required_predicate("has_mother"), Side.FEMALE),
+    (_required_predicate("has_father"), Side.MALE),
+    (_HAS_PARENT, None),
+)
+# The side of a child is a marker row beside its ``child_of`` row (Plan 0080 D-4), pointing from
+# the child to the owner, like ``child_of``.
+_CHILD_SIDE_READS = (
+    (_required_predicate("daughter_of"), Side.FEMALE),
+    (_required_predicate("son_of"), Side.MALE),
+)
 
 
 class HouseholdKnowledgeTools:
@@ -237,6 +255,73 @@ class HouseholdKnowledgeTools:
         return ChildBirthdays(
             status=KnowledgeStatus.KNOWN,
             children=tuple(sorted(children, key=lambda child: child[0])),
+        )
+
+    async def get_children_by_side(
+        self,
+        *,
+        parent_entity_id: int,
+        actor: ActivePersonContext,
+        consent: ConsentStatus,
+        correlation_id: UUID,
+        requested_at: datetime,
+    ) -> SidedNames:
+        """Return the owner's children by recorded side (Plan 0080 D-4).
+
+        It composes the paths that exist, as ``get_children_birthdays`` does: the ``child_of``
+        read of ``get_children`` for the children, then the ``daughter_of`` and ``son_of`` marker
+        reads through the same policy-gated reader, so every step is authorized and audited by
+        the code that already does so and no new policy path exists. A child with neither marker
+        or with both has no recorded side.
+
+        Args:
+            parent_entity_id: Parent entity selected by a trusted internal seam.
+            actor: Trusted active household actor.
+            consent: Trusted scoped consent for child data.
+            correlation_id: Request-scoped audit correlation ID.
+            requested_at: Aware request timestamp.
+
+        Returns:
+            The labels sorted by side (daughters, sons, side not recorded); ``UNAUTHORIZED`` when
+            any step was refused (no names); ``UNKNOWN`` without a known list of children or when
+            a child's label is unavailable.
+        """
+        child_ids = await self._child_ids(
+            parent_entity_id=parent_entity_id,
+            actor=actor,
+            consent=consent,
+            correlation_id=correlation_id,
+            requested_at=requested_at,
+        )
+        if isinstance(child_ids, HouseholdToolResult):
+            return SidedNames(status=child_ids.status)
+        if not child_ids:
+            return SidedNames(status=KnowledgeStatus.UNKNOWN)
+        marked: dict[Side, set[int]] = {}
+        for definition, side in _CHILD_SIDE_READS:
+            read = await self._reader.read_active_relations(
+                actor=actor,
+                predicate_alias=definition.canonical_id,
+                target_entity_id=parent_entity_id,
+                consent=consent,
+                correlation_id=correlation_id,
+                requested_at=requested_at,
+            )
+            if read.status is KnowledgeStatus.UNAUTHORIZED:
+                return SidedNames(status=KnowledgeStatus.UNAUTHORIZED)
+            marked[side] = {relation.source_entity_id for relation in read.relations}
+        by_side: dict[Side | None, list[str]] = {Side.FEMALE: [], Side.MALE: [], None: []}
+        for child_id in child_ids:
+            label = await self._label_reader(entity_id=child_id)
+            if label is None:
+                return SidedNames(status=KnowledgeStatus.UNKNOWN)
+            sides = [side for side, ids in marked.items() if child_id in ids]
+            by_side[sides[0] if len(sides) == 1 else None].append(label.display_name)
+        return SidedNames(
+            status=KnowledgeStatus.KNOWN,
+            female=tuple(sorted(by_side[Side.FEMALE])),
+            male=tuple(sorted(by_side[Side.MALE])),
+            unlabelled=tuple(sorted(by_side[None])),
         )
 
     async def _child_ids(
@@ -437,19 +522,115 @@ class HouseholdKnowledgeTools:
             ]
         return await self._relatives_result(predicate, owner_entity_id, ids)
 
-    async def _relatives_result(
-        self, predicate: str, owner_entity_id: int, ids: list[int]
-    ) -> HouseholdToolResult:
-        """Label the related entities; nothing related is an explicit absence."""
-        read_label = self._pet_label_reader if predicate == _PET else self._label_reader
+    async def get_parents(
+        self,
+        *,
+        owner_entity_id: int,
+        actor: ActivePersonContext,
+        consent: ConsentStatus,
+        correlation_id: UUID,
+        requested_at: datetime,
+    ) -> SidedNames:
+        """Return the names of the owner's parents by recorded side (Plan 0080 D-4).
+
+        It authorizes and audits exactly as ``get_relatives`` does for ``has_parent`` (one tool
+        decision, then the policy-gated reader audits each relation it reads), then reads
+        ``has_mother`` (female), ``has_father`` (male) and ``has_parent`` (side not recorded).
+
+        Args:
+            owner_entity_id: The owner, selected by a trusted internal seam.
+            actor: Trusted active household actor.
+            consent: Trusted scoped consent state.
+            correlation_id: Request-scoped audit correlation ID.
+            requested_at: Aware request timestamp.
+
+        Returns:
+            The names sorted by side; ``UNAUTHORIZED`` when any policy step refused (no names);
+            ``UNKNOWN`` without a parent of any kind or when a parent's label is unavailable.
+        """
+        allowed = await self._authorize_tool(
+            actor=actor,
+            target_person_id=owner_entity_id,
+            definition=_HAS_PARENT,
+            consent=consent,
+            correlation_id=correlation_id,
+            requested_at=requested_at,
+        )
+        if not allowed:
+            return SidedNames(status=KnowledgeStatus.UNAUTHORIZED)
+        ids_by_side: dict[Side | None, list[int]] = {}
+        for definition, side in _PARENT_READS:
+            read = await self._reader.read_active_relations(
+                actor=actor,
+                predicate_alias=definition.canonical_id,
+                source_entity_id=owner_entity_id,
+                consent=consent,
+                correlation_id=correlation_id,
+                requested_at=requested_at,
+            )
+            if read.status is KnowledgeStatus.UNAUTHORIZED:
+                return SidedNames(status=KnowledgeStatus.UNAUTHORIZED)
+            ids_by_side[side] = [relation.target_entity_id for relation in read.relations]
+        by_side = await self._parent_names_by_side(owner_entity_id, ids_by_side)
+        if by_side is None:
+            return SidedNames(status=KnowledgeStatus.UNKNOWN)
+        if not any(by_side.values()):
+            return SidedNames(status=KnowledgeStatus.UNKNOWN)
+        return SidedNames(
+            status=KnowledgeStatus.KNOWN,
+            female=tuple(sorted(by_side[Side.FEMALE])),
+            male=tuple(sorted(by_side[Side.MALE])),
+            unlabelled=tuple(sorted(by_side[None])),
+        )
+
+    async def _parent_names_by_side(
+        self, owner_entity_id: int, ids_by_side: dict[Side | None, list[int]]
+    ) -> dict[Side | None, list[str]] | None:
+        """Group the parents' names by side; ``None`` when a label is unavailable.
+
+        A person recorded on both sides has no recorded side, like a child with both markers, and
+        one already labelled is not listed again as a parent of no recorded side.
+        """
+        female, male = set(ids_by_side[Side.FEMALE]), set(ids_by_side[Side.MALE])
+        both = female & male
+        labelled = female | male
+        ids = {
+            Side.FEMALE: female - both,
+            Side.MALE: male - both,
+            None: both | {id_ for id_ in ids_by_side[None] if id_ not in labelled},
+        }
+        by_side: dict[Side | None, list[str]] = {}
+        for side, side_ids in ids.items():
+            names = await self._relative_names(
+                self._label_reader, owner_entity_id, sorted(side_ids)
+            )
+            if names is None:
+                return None
+            by_side[side] = names
+        return by_side
+
+    async def _relative_names(
+        self, read_label: PersonLabelReader, owner_entity_id: int, ids: list[int]
+    ) -> list[str] | None:
+        """Label the related entities (never the owner); ``None`` when one has no label."""
         names: list[str] = []
         for entity_id in dict.fromkeys(ids):
             if entity_id == owner_entity_id:
                 continue
             label = await read_label(entity_id=entity_id)
             if label is None:
-                return _unknown(HouseholdToolName.GET_RELATIVES, "relative label is unavailable")
+                return None
             names.append(label.display_name)
+        return names
+
+    async def _relatives_result(
+        self, predicate: str, owner_entity_id: int, ids: list[int]
+    ) -> HouseholdToolResult:
+        """Label the related entities; nothing related is an explicit absence."""
+        read_label = self._pet_label_reader if predicate == _PET else self._label_reader
+        names = await self._relative_names(read_label, owner_entity_id, ids)
+        if names is None:
+            return _unknown(HouseholdToolName.GET_RELATIVES, "relative label is unavailable")
         if not names:
             return _unknown(HouseholdToolName.GET_RELATIVES, "no active authorized record")
         return HouseholdToolResult(
