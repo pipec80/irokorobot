@@ -75,8 +75,10 @@ prompt, fact value, raw media, or biometric template.
 
 The first authorization action vocabulary is closed: general conversation,
 household-data read, household-tool execution, memory proposal/commit, role
-administration, biometric enrollment, export/delete, cloud consideration, and
-physical-action proposal. Visibility is `public`, `household`, `adults`,
+administration, biometric enrollment, export/delete, cloud consideration (a name
+kept in the vocabulary; whether any data may go to a provider is open,
+[ADR 0036](../adr/0036-model-providers-local-first.md)), and physical-action
+proposal. Visibility is `public`, `household`, `adults`,
 `personal`, `private`, or `temporary`; sensitivity is `normal`, `private`,
 `biometric`, `medical`, `location`, `child_data`, or `security`. Consent is
 `not_required`, `granted`, `missing`, or `revoked`.
@@ -202,7 +204,8 @@ Sensor simulator ────> Observation[SensorPayload]
                      authorization boundary
 ```
 
-Cloud escalation is deliberately absent from these models. A later policy
+Provider selection, cloud included, is deliberately absent from these models (a
+cloud provider only through [ADR 0036](../adr/0036-model-providers-local-first.md), Proposed). A later policy
 service may consume a cognitive result and an authorization decision, but model
 validation itself never selects or invokes a provider.
 

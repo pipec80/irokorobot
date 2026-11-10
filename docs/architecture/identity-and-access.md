@@ -443,8 +443,9 @@ Sensitivity (`DataSensitivity` in the same module):
 - `child_data`;
 - `security`.
 
-These categories drive retrieval, logging, backup, cloud eligibility, and
-retention. They are not adjectives inserted into an LLM prompt after retrieval.
+These categories drive retrieval, logging, backup, whether data may leave the
+house at all ([ADR 0036](../adr/0036-model-providers-local-first.md), not decided),
+and retention. They are not adjectives inserted into an LLM prompt after retrieval.
 
 ## Levels and audiences
 
@@ -543,7 +544,7 @@ The matrix is a starting policy and must remain configurable:
 | Enroll biometrics | Yes with subject consent | Configurable with consent | No direct administration | No |
 | Export/delete household memory | Yes | No | No | No |
 | Execute physical actions | Policy + local safety | Policy + local safety | Restricted | No by default |
-| Approve cloud use of sensitive data | Explicit policy | Usually no | No | No |
+| Approve sending data to a cloud provider | Not decided ([ADR 0036](../adr/0036-model-providers-local-first.md), Proposed); sensitive and security levels presumably never | No | No | No |
 
 ## Biometric consent
 

@@ -317,7 +317,8 @@ or answer.
   and the relatives of the alta are read back (Plans 0078 and 0080, `RECALL_ENABLED`) and the
   owner's sensitive data by voice (Plan 0079, `SENSITIVE_READ_ENABLED`); nothing is corrected or
   forgotten;
-- cloud escalation gateway, ROS2, motors, and physical actions.
+- a cloud provider (Ollama only today; [ADR 0036](../adr/0036-model-providers-local-first.md) is
+  Proposed), ROS2, motors, and physical actions.
 
 The personal Iroko-and-Pipec companion defined in
 [ADR 0006](../adr/0006-personal-and-family-companion-profiles.md) is largely built (identity,

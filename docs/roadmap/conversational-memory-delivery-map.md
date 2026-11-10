@@ -176,7 +176,7 @@ will keep only the minimum permitted evidence and not the forgotten content.
 - automatically expanding current tokens or permissions;
 - copying whole conversations as durable truth;
 - implementing `care` or `education`;
-- using the cloud in the runtime path.
+- using a cloud provider in the runtime path ([ADR 0036](../adr/0036-model-providers-local-first.md), Proposed).
 
 ## Criteria for opening plans
 

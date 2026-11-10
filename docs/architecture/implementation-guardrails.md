@@ -14,8 +14,11 @@ implicit.
 
 - Iroko modernizes an OMNiBot 2000 as a local-first household companion.
 - The development workspace is Windows, Python 3.12, and a root `uv` workspace.
-- The robot target is Raspberry Pi 5; heavier local AI processing may run on a
-  homelab server. CPU operation and simple replaceable adapters are preferred.
+- The body is an ESP32 board (today the PC's microphone, webcam and speakers); the
+  server is this laptop, later a board that can run the LLM (Raspberry Pi or
+  Jetson class); a remote dashboard is later work
+  ([ADR 0035](../adr/0035-deployment-worlds.md)). CPU operation and simple
+  replaceable adapters are preferred.
 - Use the root `justfile` for standard workflows. Relevant commands are
   `just lint`, `just typecheck`, `just test`, `just check`, and `just audit`.
 - Tool configuration belongs in the root `pyproject.toml`, not duplicated in
@@ -91,8 +94,9 @@ is a breaking change and requires explicit user approval plus a migration plan.
 - Authentication grants only its named, expiring capability. It is never a
   master session for unrelated memory, home, computer, or physical actions.
 - `unknown`, `ambiguous`, `contradictory`, and `unauthorized` are valid results.
-- Local operation is the default; cloud use requires the explicit escalation
-  policy and never becomes a hidden provider fallback.
+- Local operation is the default; a cloud provider only through an accepted
+  [ADR 0036](../adr/0036-model-providers-local-first.md) (Proposed), and it never
+  becomes a hidden provider fallback.
 - SQLite and `sqlite-vec` remain the persistence baseline unless measurements
   and an accepted ADR justify a change.
 - Telemetry, current world state, events, and long-term memory remain separate.

@@ -328,7 +328,7 @@
     },
     {
       "kind": "region",
-      "label": "Local-only runtime (ADR-0004 — no cloud LLM/VLM)",
+      "label": "Local-only runtime (Ollama only; ADR-0036 Proposed)",
       "wraps": [
         "ollama"
       ]
