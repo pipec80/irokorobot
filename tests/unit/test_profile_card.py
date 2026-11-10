@@ -140,6 +140,33 @@ def test_tastes_are_newest_first_and_capped_at_twelve() -> None:
     assert [taste.value for taste in card.tastes] == [f"taste {index}" for index in range(12)]
 
 
+def test_two_rows_that_differ_only_by_a_leading_article_are_one_taste() -> None:
+    card = build_card([_row(3, "likes", "la comida china"), _row(2, "likes", "comida china")])
+
+    assert [taste.value for taste in card.tastes] == ["la comida china"]  # the newest one
+
+
+def test_the_same_value_under_likes_and_dislikes_stays_two_entries() -> None:
+    card = build_card([_row(2, "likes", "la comida china"), _row(1, "dislikes", "comida china")])
+
+    assert [(taste.predicate, taste.value) for taste in card.tastes] == [
+        ("likes", "la comida china"),
+        ("dislikes", "comida china"),
+    ]
+
+
+def test_the_taste_cap_counts_unique_tastes() -> None:
+    rows = [
+        _row(40 - index, "likes", f"{'la ' if index % 2 else ''}taste {index // 2}")
+        for index in range(26)
+    ]
+
+    card = build_card(rows)
+
+    assert len(card.tastes) == MAX_CARD_TASTES
+    assert [taste.value for taste in card.tastes] == [f"taste {n}" for n in range(12)]
+
+
 def test_render_prompt_card_exact() -> None:
     assert render_prompt_card(_full_card()) == _EXPECTED_PROMPT
     assert _EXPECTED_PROMPT.startswith(CARD_HEADER)

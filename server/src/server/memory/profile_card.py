@@ -18,6 +18,7 @@ import unicodedata
 
 from server.cognition.authorization import DataSensitivity, DataVisibility
 from server.memory.relational_v4 import AssertionLifecycle
+from server.text_keys import comparison_key
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -133,11 +134,12 @@ def build_card(rows: Sequence[LiteralFactV4]) -> ProfileCard:
 
     Returns:
         The card: for a single-valued predicate the newest value wins; the tastes keep their
-        order and stop at ``MAX_CARD_TASTES``.
+        order, one per predicate and folded value («la comida china» and «comida china» are
+        one, the newest kept), and stop at ``MAX_CARD_TASTES``.
     """
     name: str | None = None
     form: Literal["tu", "usted"] | None = None
-    tastes: list[CardTaste] = []
+    tastes: dict[tuple[str, str], CardTaste] = {}
     for row in filter(_is_card_row, rows):
         value = _clean(row.value_text)
         if not value:
@@ -149,10 +151,14 @@ def build_card(rows: Sequence[LiteralFactV4]) -> ProfileCard:
                 if form is None and value in _ADDRESS_FORMS:
                     form = "usted" if value == "usted" else "tu"
             case "likes" | "dislikes" | "prefers" as predicate:
-                tastes.append(CardTaste(predicate, value))
-    if len(tastes) > MAX_CARD_TASTES:
-        logger.debug("Profile card: %d tastes over the cap left out", len(tastes) - MAX_CARD_TASTES)
-    return ProfileCard(name, form, tuple(tastes[:MAX_CARD_TASTES]))
+                # An empty key (nothing but articles) compares the exact value instead.
+                tastes.setdefault(
+                    (predicate, comparison_key(value) or value), CardTaste(predicate, value)
+                )
+    kept = tuple(tastes.values())
+    if len(kept) > MAX_CARD_TASTES:
+        logger.debug("Profile card: %d tastes over the cap left out", len(kept) - MAX_CARD_TASTES)
+    return ProfileCard(name, form, kept[:MAX_CARD_TASTES])
 
 
 def _says_something_to_the_model(card: ProfileCard) -> bool:
