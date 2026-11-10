@@ -5695,6 +5695,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <ul>
           <li>&bull; Controller returns an immutable response plan before any generation</li>
           <li>&bull; Safe plans never reach the LLM or a candidate proposal; the legacy vector memory is retired (Plan 0076)</li>
+          <li>&bull; Memory first, the model second: a question about stored knowledge is answered by the controller from what memory found (a template, or wording of the found items only); the LLM chats freely only when the turn is not a memory question, and then it sees the profile card and the session, never a household store</li>
           <li>&bull; A memory offer or answer needs the face and the voice of the same person on that turn&#39;s own clip, never a token; otherwise the turn is the ordinary one</li>
           <li>&bull; Ollama is the only accepted LLM/VLM runtime (ADR-0004), reached only through one transport module</li>
           <li>&bull; A generic turn names its speaker by face or an observed token (never voice); the identified person gets one in-process session, an unknown speaker suspends it</li>
@@ -5717,7 +5718,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         </div>
         <ul>
           <li>&bull; No liveness or replay defense, accepted for the home (ADR 0029): a photo identifies at basic; photo + recording would reach strong and draw the owner&#39;s sensitive data, never a secret&#39;s value</li>
-          <li>&bull; Reserved data needs strong assurance but no reserved capability is wired: propose, read and confirm each have one spoken consumer (the candidate dialogue) and correct and forget none; replay is measured, not defended; a PIN grant is bound to one operation but still proves the PIN, not the speaker (ADR-0015); the household pair is policy only</li>
+          <li>&bull; Reserved data needs strong assurance: since Plan 0079 the security references (who knows a code, where a document is) are read by voice at strong, and a secret&#39;s value is never stored; propose, read and confirm each have one spoken consumer (the candidate dialogue) and correct and forget none; replay is measured, not defended; a PIN grant is bound to one operation but still proves the PIN, not the speaker (ADR-0015); the household pair is policy only</li>
           <li>&bull; Conversational memory is partial: short-term continuity (CM-2) and a default-off candidate dialogue (CM-3a, Plans 0062 and 0063: a taste is proposed, offered and promoted by voice); the CM-3b tranche A write core (children, partner, pets, places) exists; the card (CM-5a) and recall of normal memories (CM-5b, Plan 0078) read it back, and since Plan 0079 the owner&#39;s own sensitive data (block B); spoken third-party capture, answering in company and correction or forgetting by voice (CM-6) do not exist; CM-0 baseline RED</li>
         </ul>
       </div>
