@@ -95,3 +95,5 @@ real use that fills the `stt.confidence` log with enough errors to set the uncle
   are the base of a voice calibration when a new user is enrolled; that product feature is not built here.
 - The evidence is one speaker, one session per condition and one microphone in a quiet room, with wide
   intervals; the record lists what was not measured.
+
+*Note (2026-11-10): superseded in wording by [ADR 0035](0035-deployment-worlds.md); the decision above stands. The body is an ESP32 board, the server is the laptop and later a Pi/Jetson-class board.*

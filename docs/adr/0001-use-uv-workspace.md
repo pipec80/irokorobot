@@ -32,3 +32,5 @@ dependency groups live in the root `pyproject.toml`; `uv.lock` is committed.
 ## Review
 Revisit if uv's workspace or build-backend support regresses, or if a component
 must be published to PyPI with a different toolchain.
+
+*Note (2026-11-10): superseded in wording by [ADR 0035](0035-deployment-worlds.md); the decision above stands. The body is an ESP32 board, the server is the laptop and later a Pi/Jetson-class board.*

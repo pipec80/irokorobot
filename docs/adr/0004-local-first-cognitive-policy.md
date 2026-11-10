@@ -86,3 +86,5 @@ Revisit this decision if local hardware capability changes substantially, legal
 or privacy requirements change, or measured evaluations show that an approved
 cloud path is required for a defined feature. Any broader remote-data policy
 must supersede this ADR rather than silently weakening it.
+
+*Note (2026-11-10): the escalation clause is under review by [ADR 0036](0036-model-providers-local-first.md) (Proposed: local by default, a cloud provider only as an explicit opt-in). This ADR stays Accepted, and in force, until 0036 is accepted.*

@@ -33,3 +33,5 @@ Neither side may reach across this boundary except through the API contract
 ## Review
 Revisit if the robot gains enough compute to run the brain locally, or if a
 transport other than local HTTP (e.g. WebRTC) is adopted.
+
+*Note (2026-11-10): superseded in wording by [ADR 0035](0035-deployment-worlds.md); the decision above stands. The body is an ESP32 board, the server is the laptop and later a Pi/Jetson-class board.*

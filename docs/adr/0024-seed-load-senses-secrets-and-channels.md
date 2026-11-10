@@ -492,3 +492,5 @@ baseline backup and the readiness report; contacts have no write path after the 
 - [Plan 0071](../plans/completed/0071-seed-load-file-importer.md) — the importer (closed 2026-10-26).
 - [Plan 0072](../plans/completed/0072-commissioning-session.md) — the commissioning session (closed 2026-10-27).
 - The next free ADR number is 0026 (0025 is [the administration ADR](0025-remote-administration-backup-updates-and-telemetry.md)).
+
+*Note (2026-11-10): superseded in wording by [ADR 0035](0035-deployment-worlds.md); the decision above stands. The body is an ESP32 board, the server is the laptop and later a Pi/Jetson-class board.*
