@@ -252,3 +252,44 @@ def test_word_when_asks_no_model(chat: AsyncMock) -> None:
     _when(WhenKind.HAPPENED, _HITS)
 
     chat.assert_not_awaited()
+
+
+_LONG_STORY = (
+    "Fui a la playa con Zeta. Nos metimos al agua y jugamos un rato. "
+    "Después comimos sandía en la arena. Al final nos quedamos hasta tarde."
+)
+_FIRST_TWO = "Fui a la playa con Zeta. Nos metimos al agua y jugamos un rato."
+_MAX_QUOTE = 200
+
+
+def _story_hit(body: str) -> RecallHit:
+    return _hit(6, body, datetime(2026, 11, 3, 15, tzinfo=UTC))
+
+
+@pytest.mark.parametrize("kind", list(WhenKind))
+def test_a_when_answer_quotes_at_most_two_sentences_of_the_story(kind: WhenKind) -> None:
+    answer = _when(kind, (_story_hit(_LONG_STORY),))
+
+    assert answer.endswith(f"me contaste esto: {_FIRST_TWO}")
+    assert "sandía" not in answer
+
+
+def test_a_single_long_sentence_is_cut_at_a_word_boundary_under_200() -> None:
+    sentence = " ".join(["palabra"] * 40) + "."  # one sentence of about 320 characters
+    answer = _when(WhenKind.TOLD, (_story_hit(sentence),))
+    quote = answer.removeprefix("Ayer me contaste esto: ")
+
+    assert len(quote) <= _MAX_QUOTE
+    assert quote.endswith("…")
+    assert quote.removesuffix("…").split(" ")[-1] == "palabra"  # no word cut in half
+
+
+async def test_the_fallback_template_quotes_the_story_like_the_when_answer(
+    chat: AsyncMock,
+) -> None:
+    chat.side_effect = LLMError("down")
+    hits = (_story_hit(_LONG_STORY),)
+
+    answer = await _word(chat, hits)
+
+    assert answer == f"Ayer me contaste esto: {_FIRST_TWO}"

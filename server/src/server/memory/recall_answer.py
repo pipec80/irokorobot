@@ -61,6 +61,9 @@ _TODAY: Final = "hoy"
 #: Characters of memory bodies at most in one prompt.
 _MAX_BODY_CHARS: Final = 1200
 _MAX_SENTENCES: Final = 2
+#: Characters of a story quoted back at most (about ten seconds of speech).
+_MAX_QUOTE_CHARS: Final = 200
+_ELLIPSIS: Final = "…"
 _TEMPERATURE: Final = 0.1
 _QUOTES: Final = "«»\"' "
 
@@ -105,7 +108,7 @@ def _capitalised(label: str) -> str:
 def _template(hit: RecallHit, *, today: date, tz: ZoneInfo) -> str:
     """«Ayer me contaste esto: …» with the first memory, when the model cannot word it."""
     label = date_label(hit.unit.said_at, today=today, tz=tz)
-    return f"{_capitalised(label)} me contaste esto: {hit.unit.body}"
+    return f"{_capitalised(label)} me contaste esto: {_quote(hit.unit.body)}"
 
 
 def word_when(hits: Sequence[RecallHit], kind: WhenKind, *, today: date, tz: ZoneInfo) -> str:
@@ -133,7 +136,11 @@ def word_when(hits: Sequence[RecallHit], kind: WhenKind, *, today: date, tz: Zon
             if episode
             else _template(hit, today=today, tz=tz)
         )
-    told = f"{label} hablamos de eso." if episode else f"{label} me contaste esto: {hit.unit.body}"
+    told = (
+        f"{label} hablamos de eso."
+        if episode
+        else f"{label} me contaste esto: {_quote(hit.unit.body)}"
+    )
     return f"{_DATE_NOT_RECORDED} Sí recuerdo que {told}"
 
 
@@ -150,6 +157,16 @@ def _first_sentences(text: str) -> str:
         sentence, remainder = split
         kept.append(sentence.strip())
     return " ".join(kept)
+
+
+def _quote(body: str) -> str:
+    """The first two sentences of *body*, cut at a word boundary under 200 characters."""
+    text = _first_sentences(body)
+    if len(text) <= _MAX_QUOTE_CHARS:
+        return text
+    room = text[: _MAX_QUOTE_CHARS - len(_ELLIPSIS) + 1]
+    cut = room.rsplit(" ", 1)[0] if " " in room else room[:-1]
+    return f"{cut.rstrip(' ,;:.')}{_ELLIPSIS}"
 
 
 def _is_no_memory(text: str) -> bool:
