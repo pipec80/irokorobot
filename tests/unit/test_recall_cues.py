@@ -479,3 +479,48 @@ def test_the_past_verbs_are_not_content_words() -> None:
 
 def test_viaje_stays_a_content_word_because_it_is_also_the_noun() -> None:
     assert content_words("del viaje a la playa") == ("viaje", "playa")
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Cuéntame cuando fui a la playa.",
+        "Cuentame cuando fui a la playa",
+        "¿Sabes cuándo fui a la playa?",
+        "Dime cuándo fui a la playa",
+        "Me puedes decir cuando fui a la playa",
+        "Me dices cuándo fui a la playa",
+        "Recuérdame cuando fui a la playa",
+        "Oye Iroko, cuéntame cuando fui a la playa",
+    ],
+)
+def test_a_request_opener_before_when_asks_when_it_happened(message: str) -> None:
+    """An imperative carries no question mark and Whisper may drop the accent."""
+    cue = classify_recall_cue(message, today=_WEDNESDAY)
+
+    assert cue is not None
+    assert cue.strength is CueStrength.STRONG
+    assert cue.when is WhenKind.HAPPENED
+    assert content_words(cue.query) == ("playa",)
+
+
+def test_a_request_opener_before_a_listed_verb_drops_out_of_the_query() -> None:
+    cue = classify_recall_cue("Dime cuándo estuve en el cerro", today=_WEDNESDAY)
+
+    assert cue is not None
+    assert cue.when is WhenKind.HAPPENED
+    assert content_words(cue.query) == ("cerro",)
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Dime cuándo es el partido",
+        "Cuéntame cuando puedas",
+        "¿Sabes cuándo es el cumpleaños de Zeta?",
+        "Dime cuando hablamos con el doctor",
+        "Cuéntame cuando fui",
+    ],
+)
+def test_a_request_opener_without_a_listed_past_verb_changes_nothing(message: str) -> None:
+    assert classify_recall_cue(message, today=_WEDNESDAY) is None

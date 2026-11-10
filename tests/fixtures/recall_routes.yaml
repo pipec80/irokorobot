@@ -243,6 +243,23 @@
 - phrase: "cuando fui a la playa me quemé"
   need: generic_conversation
   today: generic_conversation
+# A request opener may stand before «cuando» of a when-question; an imperative carries no mark or accent.
+- phrase: "Cuéntame cuando fui a la playa."
+  need: recall
+  today: generic_conversation
+- phrase: "¿Sabes cuándo fui a la playa?"
+  need: recall
+  today: generic_conversation
+- phrase: "Dime cuándo estuve en el cerro"
+  need: recall
+  today: generic_conversation
+# Without a listed past verb after «cuando» the opener changes nothing.
+- phrase: "Dime cuándo es el partido"
+  need: generic_conversation
+  today: generic_conversation
+- phrase: "Cuéntame cuando puedas"
+  need: generic_conversation
+  today: generic_conversation
 # A message naming both singular child words asks for the whole list, like the parents' both-words rule.
 - phrase: "¿Cómo se llama mi hijo y mi hija?"
   need: own_children_list
