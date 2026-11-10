@@ -5,7 +5,7 @@
 > **Principle:** Storing data is not the same as remembering it, and observing
 > something is not sufficient reason to retain it permanently.
 
-> **Implemented so far (2026-10-30).** Conversation text is kept as a separate **record**, the archive, and **episodes** are derived from the owner's verified part of it ([ADR 0027](../adr/0027-conversation-record-and-the-diary.md), [Plan 0076](../plans/completed/0076-cm4-conversation-record-and-diary.md)): `conversation_records` (segments of exchanges, consent, two retention clocks, a space cap) and `conversation_episodes` (one `personal` summary per eligible segment, deleted with it). No index or retrieval reads the episodes yet (CM-5b). The legacy `memories` vector store is retired.
+> **Implemented so far (2026-11-10, Plans 0076 to 0080).** Conversation text is kept as a separate **record**, the archive, and **episodes** are derived from the owner's verified part of it ([ADR 0027](../adr/0027-conversation-record-and-the-diary.md), [Plan 0076](../plans/completed/0076-cm4-conversation-record-and-diary.md)): `conversation_records` (segments of exchanges, consent, two retention clocks, a space cap) and `conversation_episodes` (one `personal` summary per eligible segment, deleted with it). Since Plan 0078 (CM-5b + R3, [ADR 0028](../adr/0028-recall-what-the-owner-told.md)) an index (`recall_units_fts`, `recall_units_vec`) and a hybrid search over the owner's recall units answer «qué te conté…» behind `RECALL_ENABLED`; since Plan 0079 the owner's sensitive data are read by voice by levels ([ADR 0029](../adr/0029-it-knows-who-is-listening.md)); since Plan 0080 the relatives carry a recorded side and «cuándo» answers the day it was told. The legacy `memories` vector store is retired. The engine's boundary is [ADR 0031](../adr/0031-the-memory-engine-boundary.md); correcting and forgetting (CM-6) are still missing.
 
 The specialized [RAG, memory, and hybrid retrieval
 architecture](rag-and-memory-retrieval.md) defines document ingestion,
@@ -15,10 +15,10 @@ semantics, truth lifecycle, relationships, onboarding, and WorldState.
 
 ## Current baseline
 
-Iroko already has useful foundations: working conversation history, entities,
-literal facts, episodic memories, embeddings, semantic search, events, sensor
-tables, inverse relationship queries, and legacy owner-onboarding code that is
-not a public trusted flow. SQLite and `sqlite-vec` are sufficient for the next
+Iroko already has useful foundations: a short-term session per identified person, entities,
+relational V4 facts, the conversation record and its diary, recall units with hybrid
+retrieval, embeddings, events, sensor tables, inverse relationship queries, and the
+commissioning load (Plans 0070 to 0073). SQLite and `sqlite-vec` are sufficient for the next
 stages; a new database or vector service is not justified.
 
 The current runtime still has limits that later plans must handle explicitly:
@@ -31,15 +31,17 @@ The current runtime still has limits that later plans must handle explicitly:
   0063 (closed 2026-10-16) it is reached by a spoken offer and an explicit spoken
   answer, so the one conversational write path exists end to end, but only
   behind the default-off kill-switch `MEMORY_CANDIDATES_ENABLED`; with it off no
-  conversation writes durable memory. Reading a stored taste back is CM-5, and
-  correcting or forgetting one is CM-6
+  conversation writes durable memory. A stored taste is read back by the profile card
+  (Plan 0074) and the recall search (Plan 0078), and correcting or forgetting one is CM-6
   ([ADR 0021](../adr/0021-memory-candidates-and-the-canonical-writer.md)).
   Since Plan 0065 (CM-3b tranche A, [ADR 0022](../adr/0022-household-rules-and-third-party-memory.md))
   the store itself is one channel-neutral writer, `memory/canonical_writer.py`
   (`write_literal`, `write_relation`), and `promote` is its first caller; see
   *The canonical writer* below;
-- semantic retrieval returns the nearest items without a relevance threshold;
-- retrieval is not yet filtered by the active person's authorization;
+- the recall search filters by owner, classification and validity before ranking and again
+  when it hands the text over, with an absolute relevance gate (Plans 0078 and 0080); the
+  remaining retrieval gap is the one of ADR 0031 block C1: a change of the embedding model
+  is not yet guarded, and vectors of two models could be compared until it is;
 - provenance, validity periods, verification state, and sensitivity are not
   uniformly represented;
 - onboarding is owner-centric rather than a complete household workflow;

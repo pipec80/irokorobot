@@ -2,7 +2,9 @@
 
 > **Status:** Arquitectura canónica objetivo; no es un plan ejecutable.
 >
-> **Observed baseline:** 2026-08-21, `main` en `5ba9f4f`.
+> **Observed baseline:** 2026-08-21, `main` en `5ba9f4f`; las secciones 4, 10.2 y 26 se
+> actualizaron el 2026-11-10 (`main` en `3954405`, Plan 0080 cerrado). La frontera del motor de
+> memoria la fija el [ADR 0031](../adr/0031-the-memory-engine-boundary.md).
 >
 > **Principio rector:** Iroko tiene un sistema de memoria. RAG es uno de sus
 > mecanismos de recuperación, no el cerebro completo ni una autoridad sobre la
@@ -92,32 +94,34 @@ verdad almacenada.
 
 ## 4. Estado real observado
 
-La implementación actual ya contiene una base semántica útil:
+La implementación actual tiene una base semántica y, desde el Plan 0078 (CM-5b + R3, cerrado
+2026-11-04), una búsqueda híbrida sobre el diario de la conversación, decidida en el
+[ADR 0028](../adr/0028-recall-what-the-owner-told.md). Estado a 2026-11-10:
 
 | Capacidad | Estado observado | Evidencia de código |
 |---|---|---|
 | Embeddings locales | Implementado | Ollama mediante `memory/embeddings.py`. |
-| Modelo configurado | Implementado | `nomic-embed-text` por defecto en `settings.py`. |
-| Dimensión vectorial | Implementado/fija | 768 dimensiones en código y `schema.sql`. |
+| Modelo configurado | Implementado | `granite-embedding:278m` por defecto en `settings.py` y `.env.example` (ADR 0028; antes `nomic-embed-text`). |
+| Dimensión vectorial | Implementado/fija | 768 dimensiones en código (`EMBEDDING_DIM`) y en las tablas vectoriales. |
 | Caché de embeddings | Implementado | Hash de texto + modelo en SQLite. |
-| Memoria vectorial | Retirada (Plan 0076) | `vec_memories` se borró en la migración 013; `memories` queda vacía y rechaza filas. El índice de episodios es CM-5b. |
-| Búsqueda semántica | Implementado/legacy | KNN `MATCH + k` de `sqlite-vec`. |
-| Tipos vectorizados | Implementado | `episodic`, `semantic`, `reflection`. |
-| Contexto mixto legacy | Implementado/restringido | Relaciones por palabras, entidades por tokens y búsqueda semántica. |
-| Memoria relacional v4 | Implementado/aislado | Entidades, relaciones tipadas y herramientas protegidas. |
-| Autorización previa | Implementada para herramientas v4 | No integrada todavía en el retriever semántico legacy. |
-| Umbral mínimo semántico | Ausente | Devuelve vecinos por `top_k`, aunque sean débiles. |
-| Ingestión PDF/MD/TXT | Ausente | No existe pipeline documental de producción. |
-| Búsqueda lexical/FTS | Ausente | No existe índice lexical documental/memoria. |
-| Fusión híbrida | Ausente | No existe RRF ni combinación equivalente. |
+| Memoria vectorial legacy | Retirada (Plan 0076) | `vec_memories` se borró en la migración 013; `memories` queda vacía y rechaza filas. |
+| Índice de recuerdos del diario | Implementado (Plan 0078, migración 014) | `recall_units_fts` (FTS5) y `recall_units_vec` (`vec0`, coseno, 768 dimensiones); detrás de `RECALL_ENABLED` (apagado por defecto). |
+| Contexto mixto legacy | Retirado (Plan 0076) | El bloque de memoria del prompt y la recuperación `MANUAL` ya no existen; el prompt genérico lee solo la ficha del perfil y la continuidad de la sesión. |
+| Memoria relacional v4 | Implementado | Entidades, relaciones tipadas y herramientas protegidas; los parientes del alta se leen por voz desde el Plan 0078 (lados desde el Plan 0080). |
+| Autorización previa | Implementada | Filtra por dueño, clasificación y vigencia antes de ordenar y otra vez al entregar el texto (`recall_store.units_by_id`, Plan 0080). |
+| Umbral mínimo semántico | Implementado (Plan 0078) | Umbral absoluto de distancia coseno; sin resultados responde «No me acuerdo de eso.». |
+| Ingestión PDF/MD/TXT | Ausente | No existe pipeline documental de producción (R2, ADR 0034 reservado). |
+| Búsqueda lexical/FTS | Implementado (Plan 0078) | FTS5 sobre las unidades del diario; no hay índice lexical documental. |
+| Fusión híbrida | Implementado (Plan 0078) | RRF con `RRF_K = 60` sobre los dos rankings, máximo 3 resultados y 2 por conversación (`recall_search.py`). |
 | Reranking | Ausente | No existe reranker de producción. |
 | Citación documental | Ausente | No existe contrato de evidencia documental. |
 | Recuperación multimodal | Ausente | Cara usa vectores biométricos separados; no es memoria/RAG. |
 
-`memory/semantic.py` declara que el KNN actual realiza un escaneo de fuerza
-bruta adecuado para el volumen esperado menor a 100.000 recuerdos. Por tanto,
-no se justifica migrar ahora a PostgreSQL, Qdrant, Milvus o Weaviate. Primero
-deben existir un problema medido, un conjunto de evaluación y un ADR.
+El KNN de `sqlite-vec` es un escaneo de fuerza bruta adecuado para el volumen esperado menor
+a 100.000 recuerdos. Por tanto, no se justifica migrar ahora a PostgreSQL, Qdrant, Milvus o
+Weaviate. Primero deben existir un problema medido, un conjunto de evaluación y un ADR.
+Queda abierto el bloque C (C1): un vector nombra su modelo, y al cambiar `EMBEDDING_MODEL` hay
+que rechazar la comparación entre modelos y reindexar de forma verificable (ADR 0031).
 
 ## 5. Lugar de RAG dentro del cerebro
 
@@ -344,7 +348,8 @@ un cambio en caliente de una variable de entorno sobre la tabla actual.
 
 ### 10.2 Política local-first
 
-El baseline usa Ollama y `nomic-embed-text` con 768 dimensiones. Se mantiene
+El baseline usa Ollama y `granite-embedding:278m` con 768 dimensiones (decidido por el
+ADR 0028 tras comparar candidatos sobre consultas reales). Se mantiene
 mientras cumpla las evaluaciones en español y el hardware local. Otro modelo
 solo se adopta mediante comparación con un conjunto de consultas reales de
 Iroko. “Más dimensiones” o “modelo más nuevo” no prueban mejor recuperación.
@@ -859,11 +864,11 @@ implementan R1–R6 dentro del MVP R0.
 
 - contrato persistente de fuentes documentales y chunks;
 - política de retención y eliminación documental;
-- adopción/cambio de modelo o dimensión de embeddings (para el diario: decidido
-  por el [ADR 0028](../adr/0028-recall-what-the-owner-told.md),
-  `granite-embedding:278m`, 768 dimensiones);
-- búsqueda lexical y método de fusión (para el diario: decididos por el ADR 0028,
-  FTS5 + `vec0` + RRF con umbral absoluto);
+- cambio futuro del modelo o la dimensión de embeddings (el modelo del diario ya está decidido
+  por el [ADR 0028](../adr/0028-recall-what-the-owner-told.md): `granite-embedding:278m`, 768
+  dimensiones; queda la guarda de compatibilidad y la reindexación, bloque C1);
+- búsqueda lexical y método de fusión **para documentos** (para el diario ya están decididos y
+  construidos: FTS5 + `vec0` + RRF con umbral absoluto, ADR 0028);
 - incorporación de reranker;
 - OCR y retención de archivos originales;
 - migración fuera de SQLite;

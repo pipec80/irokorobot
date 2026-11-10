@@ -1,7 +1,7 @@
 # Canonical architecture index
 
 This directory is the versioned source of truth for Iroko's cognitive
-architecture. Future Codex tasks must use this index instead of inferring the
+architecture. Every future task, by an agent or an implementer, must use this index instead of inferring the
 design from chat history or from ignored local documents.
 
 ## Authority order
@@ -38,8 +38,8 @@ decision is not silently changed by implementation; replace it with a new ADR.
 | Server/FastAPI hardening | `server-production-baseline.md`, `implementation-guardrails.md`, the named server-baseline child plan, and every ADR that child lists |
 | Domain models/controller | ADR-0004, ADR-0005, `cognitive-contracts.md`, `cognitive-architecture.md` |
 | Identity or permissions | `identity-and-access.md`, ADR-0004, ADR-0006, ADR-0008, ADR-0009, `cognitive-contracts.md` |
-| Memory or onboarding | `memory-and-world-state.md`, `longitudinal-conversational-memory-evaluation.md`, `rag-and-memory-retrieval.md`, `identity-and-access.md`, `../roadmap/conversational-memory-delivery-map.md` |
-| RAG, embeddings, documents, or retrieval | `rag-and-memory-retrieval.md`, `memory-and-world-state.md`, `identity-and-access.md`, current-state baseline |
+| Memory or onboarding | [`ADR 0031`](../adr/0031-the-memory-engine-boundary.md) (the engine's boundary), `memory-and-world-state.md`, `longitudinal-conversational-memory-evaluation.md`, `rag-and-memory-retrieval.md`, `identity-and-access.md`, `../roadmap/conversational-memory-delivery-map.md` |
+| RAG, embeddings, documents, or retrieval | `rag-and-memory-retrieval.md`, [`ADR 0031`](../adr/0031-the-memory-engine-boundary.md), [`ADR 0028`](../adr/0028-recall-what-the-owner-told.md), `memory-and-world-state.md`, `identity-and-access.md`, current-state baseline |
 | Personality or prompts | `personality-and-interaction.md`, `identity-and-access.md` |
 | Sensors, vision, or world state | `memory-and-world-state.md`, `cognitive-contracts.md`, media contracts in `implementation-guardrails.md` |
 | Prioritization | `current-state.md`, `../roadmap/cognitive-roadmap.md`, `../roadmap/personal-companion-delivery-map.md`, `../roadmap/conversational-memory-delivery-map.md` |
@@ -66,7 +66,8 @@ specific conflict instead of redesigning the project implicitly.
   datum lives, its sensitivity and the capability it will feed. *Canonical* since
   [ADR 0024](../adr/0024-seed-load-senses-secrets-and-channels.md) became `Accepted` (2026-10-27);
   the Step 0 seed load closed 2026-10-28 in Plans 0070 to 0073 (the data is loaded and amendable
-  with `iroko-admin`, and nothing reads it by voice until CM-5).
+  with `iroko-admin`; since Plans 0074 to 0080 the owner's tastes, recall, the relatives and the
+  sensitive data are read back by voice, behind default-off switches).
 - [`../roadmap/personal-companion-delivery-map.md`](../roadmap/personal-companion-delivery-map.md):
   canonical mapping from the personal-companion outcome to existing code,
   tests, verified gaps, and the one accountable executable plan.
@@ -86,11 +87,11 @@ specific conflict instead of redesigning the project implicitly.
   2026-10-16, accepted on real hardware) adds the spoken offer and the explicit spoken answer
   that promote or reject it, all behind a default-off kill-switch
   ([ADR 0021](../adr/0021-memory-candidates-and-the-canonical-writer.md), `Accepted`
-  2026-10-16); CM-3b tranche A closed with Plan 0065 (2026-10-22) and CM-4 with [Plan 0076](../plans/completed/0076-cm4-conversation-record-and-diary.md) (2026-10-30: the conversation record and the diary); the household protection answers requests, not mentions, with [Plan 0077](../plans/completed/0077-household-requests-not-mentions.md) (2026-11-02, step 1 of the closing path); CM-3b tranche B, CM-5b, CM-6 and CM-7 remain unplanned. PC-3A ([Plan 0047](../plans/completed/0047-speaker-evidence-calibration-study.md)) closed 2026-09-25 with a provisional PASS, and PC-3B ([Plan 0053](../plans/completed/0053-consented-speaker-runtime-evidence.md)) closed 2026-09-29 with default-off `VOICE` evidence; PC-4 ([Plan 0054](../plans/completed/0054-face-default-identity-fusion.md)) closed 2026-09-30, accepted on real hardware.
+  2026-10-16); CM-3b tranche A closed with Plan 0065 (2026-10-22) and CM-4 with [Plan 0076](../plans/completed/0076-cm4-conversation-record-and-diary.md) (2026-10-30: the conversation record and the diary); the household protection answers requests, not mentions, with [Plan 0077](../plans/completed/0077-household-requests-not-mentions.md) (2026-11-02, step 1 of the closing path); CM-5a ([Plan 0074](../plans/completed/0074-cm5a-profile-card.md)), recall (CM-5b + R3, [Plan 0078](../plans/completed/0078-cm5b-recall-what-the-owner-told.md)), the owner's sensitive read by voice (block B, [Plan 0079](../plans/completed/0079-block-b-sensitive-read-and-spoken-secrets.md)) and the MVP recall phrasings ([Plan 0080](../plans/completed/0080-mvp-recall-phrasings.md), 2026-11-10) are closed; block C (correct and forget, CM-6) and block D (CM-7 + PC-5) remain. PC-3A ([Plan 0047](../plans/completed/0047-speaker-evidence-calibration-study.md)) closed 2026-09-25 with a provisional PASS, and PC-3B ([Plan 0053](../plans/completed/0053-consented-speaker-runtime-evidence.md)) closed 2026-09-29 with default-off `VOICE` evidence; PC-4 ([Plan 0054](../plans/completed/0054-face-default-identity-fusion.md)) closed 2026-09-30, accepted on real hardware.
 - [`p0-runtime-policy-audit.md`](p0-runtime-policy-audit.md): current
   disposition of remaining public-route and operator-acceptance gaps.
 - [`implementation-guardrails.md`](implementation-guardrails.md): tracked
-  repository boundaries and instructions for bounded Codex execution.
+  repository boundaries and instructions for bounded agent execution.
 - [`cognitive-architecture.md`](cognitive-architecture.md): complete conceptual
   architecture and controller flow.
 - [`cognitive-contracts.md`](cognitive-contracts.md): typed cross-layer domain
@@ -108,6 +109,8 @@ specific conflict instead of redesigning the project implicitly.
   [0027](../plans/completed/0027-one-use-owner-streaming-parity.md) (merged) →
   [0028](../plans/completed/0028-owner-authenticated-memory-runtime-acceptance.md)
   (executed, PASS). PC-1 is complete.
+- [ADR 0031](../adr/0031-the-memory-engine-boundary.md): the memory engine's boundary, the
+  authority for what the engine owns and how a policy port guards every read and write.
 - [`memory-and-world-state.md`](memory-and-world-state.md): relational knowledge,
   memory lifecycle, onboarding, retrieval, and present-time state.
 - [`longitudinal-conversational-memory-evaluation.md`](longitudinal-conversational-memory-evaluation.md):

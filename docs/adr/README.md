@@ -39,5 +39,10 @@ supersedes it and update the old one's status.
 | [0029](0029-it-knows-who-is-listening.md) | It knows who is listening: read the owner's sensitive data by voice, by levels, and never keep a spoken secret | **Accepted** (2026-11-06, Plan 0079 closed, accepted on hardware 10 of 10; proposed 2026-11-04, amended 2026-11-05, decisions 8 to 21); block B of the closing path, one plan (0079); amends 0019 §3, 0026 decisions 6 and 9, 0027 decision 1 |
 | 0030 | *Reserved* — keeping a household secret with authorization and answering in company (ADR 0029 decision 15) | Not written; after CM-7 + PC-5 |
 | [0031](0031-the-memory-engine-boundary.md) | The memory engine: one boundary, swappable policies | **Accepted** (2026-11-09, on Pipec's review after two external reviews); the engine is extracted only after CM-7 + PC-5; constrains ADRs 0032 (block C), 0033 (deployment) and 0034 (documents) |
+| 0032 | *Reserved* — block C, «it corrects and forgets»: database hygiene (C1), then correct and forget (C2, CM-6) | Not written; roadmap step 4 |
+| 0033 | *Reserved* — the home-server deployment (the server in Docker on the laptop, LAN binding, off-host unlock and enrolment, data volume, backups) | Not written; before block D |
+| 0034 | *Reserved* — documents in the memory engine (R2: Markdown, text, text-layer PDF) | Not written; after CM-7 + PC-5 |
+| 0035 | *Being written* — deployment worlds: the ESP32 body, the server board, the remote dashboard | Being written |
+| 0036 | *Being written* — model providers: local by default, a cloud provider only as an explicit opt-in | Being written |
 
 New ADRs start from [`0000-adr-template.md`](0000-adr-template.md).
