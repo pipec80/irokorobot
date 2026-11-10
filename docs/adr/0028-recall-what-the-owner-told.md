@@ -249,7 +249,7 @@ each from a finding on his hardware; the evaluation record lists the commits.
 
 ## Implemented in Plan 0080
 
-[Plan 0080](../plans/open/0080-mvp-recall-phrasings.md) (2026-11-09) builds what the MVP questions
+[Plan 0080](../plans/completed/0080-mvp-recall-phrasings.md) (2026-11-09) builds what the MVP questions
 needed. It changes no decision above except where this section says so; the status stays
 `Accepted`.
 

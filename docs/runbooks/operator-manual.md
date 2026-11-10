@@ -1107,6 +1107,7 @@ is as before.
 | `FACE_AUTHENTICATION_ENABLED` | `false` | Server: attempt face resolution when a frame is attached to a protected turn |
 | `FACE_AUTHENTICATION_MATCH_THRESHOLD` | `0.5815` | Stricter, separate match bound for authentication (layered on top of `FACE_MATCH_THRESHOLD`); measured by Plan 0030, provisional |
 | `ROBOT_FACE_AUTH_ENABLED` | `false` | Robot: capture and attach one webcam frame per turn |
+| `MAX_UTTERANCE_S` | `28` | Robot (its `.env`): the longest clip one turn sends, in seconds (Plan 0080). Keep it below the server's `MAX_AUDIO_DURATION_S` (30), which refuses a longer clip whole before Whisper. At the cap the robot closes the utterance and sends it as it is, so **a story longer than 28 s is cut into turns**. A non-«no speech» 422 from the server is logged apart on the robot as a closed warning |
 | `FACE_MATCH_THRESHOLD` | `0.4` | Generic conversational face-recognition threshold (unrelated to authentication) |
 | `SPEAKER_AUTHENTICATION_ENABLED` | `false` | Server: after the owner's face matched, consult the speaker resolver once per protected turn and raise the assurance to `strong` on a verified voice; enrolment returns 503 while off, revocation always works |
 | `SPEAKER_AUTHENTICATION_MATCH_THRESHOLD` | `0.4834` | Cosine distance to the reference centroid; provisional and in-sample (Plan 0047) |
@@ -1342,6 +1343,9 @@ just admin audit                # every operation, with no value, name or phone
      no name) and, for a parent, replaces the row by `has_mother` or `has_father`. `label-parent`
      also takes a row that already says `has_mother` or `has_father` and switches it to the other
      side (the same person, the old row revoked).
+     A child who is **also a care contact** can be labelled too: `label-child` accepts the child's
+     `child_of` row whether or not the person is on the contact list (a first run refused it with
+     `role_conflict` and was fixed in `71945d3`).
   4. It **refuses** (it prints a closed reason and writes nothing) a row that is not an active
      relation of the owner (unknown, revoked or another owner's: `not_an_active_relation`), a row of
      the wrong kind (`wrong_relation_kind`: a sibling row, or `label-child` on a parent) and a person

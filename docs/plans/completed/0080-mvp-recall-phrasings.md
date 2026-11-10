@@ -1,6 +1,34 @@
 # 0080 — The memory MVP: the owner's own phrasings, the sides of the family (mother and father, daughter and son), and the delivery filters
 
-> **Status:** `Ready` and `NOW` — **promoted by Pipec on 2026-11-09** («pásalo, está todo ok»),
+> **Status:** **Closed** (2026-11-10). Accepted by Pipec on real hardware, streaming route, in two
+> rounds ([acceptance record](../../evals/0080-mvp-recall-acceptance.md); the earlier real-speech
+> session, [its record](../../evals/0080-mvp-recall-session.md)). The builder's rulings that go
+> beyond the text below win over it where they differ:
+>
+> - `son_of` takes the alias `hijo_varon_de` (`hijo_de` already belongs to `child_of`) and
+>   `daughter_of` takes `hija_de`.
+> - The «cuándo» cue: the verb list is narrowed (`hablamos` only inside «hablamos de»; `visitamos`,
+>   `viajamos`, `compramos`, `jugamos` and `salimos` are out, as present-tense plurals); a bare
+>   «cuando» and the when kind need a real question mark or `¿`, or an opening accented «cuándo»,
+>   which Whisper writes for a question; a weak phrase gets a when kind only with a listed verb.
+> - `label-parent` also switches a recorded side (a mistaken label was unrecoverable after the
+>   close); an id that is unknown, revoked or another owner's gives one closed reason,
+>   `not_an_active_relation`.
+> - The side marker is one label per child: the seed key `side` is one key and `label-child` refuses
+>   the other marker; a child who is also a care contact may carry it (`71945d3`).
+> - The quote cap: a recalled story is quoted in at most two sentences under 200 characters, and a
+>   diary summary is never quoted as the owner's words (`b2ec8a8`, `fe3da94`).
+> - The robot caps a turn at `MAX_UTTERANCE_S` = 28 s, below the server's 30 s, despite the plan's
+>   non-goal «robot untouched», at Pipec's explicit request; no server or wire change (`6a68f0f`).
+> - The debug-log discipline: new log fields are closed values, never text; `LOG_CONVERSATION_TEXT`
+>   is on only in Pipec's consented sittings, back to `false` afterwards, and no console capture is
+>   shared.
+>
+> Not done here and left to other plans: the prompt that voices the owner's tastes as the robot's
+> own and the greeting (step 4 of the path), the date of the event, deletion by voice (CM-6) and the
+> speech-to-text slips. Next free numbers: plan **0081**, ADR **0032**.
+>
+> **Status at promotion:** `Ready` and `NOW` — **promoted by Pipec on 2026-11-09** («pásalo, está todo ok»),
 > decisions D-1 to D-11 confirmed as written, including the four builder's calls (the fallback
 > wording, `label-parent` / `label-child`, the verb list of the «cuándo» cue and the one-hit,
 > no-model answer) and the daughter and the son added at his request; executed in a new session.

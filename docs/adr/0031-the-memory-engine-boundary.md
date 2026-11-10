@@ -93,7 +93,7 @@ firewall begins**. What holds today (verified on `main` at `cc8f1f1`, 2026-11-09
      embedding call to Ollama, and then reads the text with `units_by_id`, which does not
      re-check owner, sensitivity or expiry. A record raised to `medical` by the diary job
      (`raise_record_sensitivity`) during those seconds could still reach the answer. A race, not
-     an observed leak. **Fixed by [Plan 0080](../plans/open/0080-mvp-recall-phrasings.md)
+     an observed leak. **Fixed by [Plan 0080](../plans/completed/0080-mvp-recall-phrasings.md)
      (2026-11-09):** `units_by_id(ids, *, owner_entity_id, now)` joins the record and re-applies
      owner, `personal`, `normal` and the record's expiry in the statement that returns the text,
      and the tests reclassify or expire a unit between the search and the read and pass another owner's ids. Residual:
