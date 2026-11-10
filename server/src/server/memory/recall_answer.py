@@ -106,9 +106,15 @@ def _capitalised(label: str) -> str:
 
 
 def _template(hit: RecallHit, *, today: date, tz: ZoneInfo) -> str:
-    """«Ayer me contaste esto: …» with the first memory, when the model cannot word it."""
+    """Quote the first memory when the model cannot word it.
+
+    A ``turn`` is the owner's own words: «Ayer me contaste esto: …». An ``episode`` is a diary
+    summary, a transformation, which is never presented as the person's words (ADR 0031
+    decision 6): «Ayer hablamos de esto: …».
+    """
     label = date_label(hit.unit.said_at, today=today, tz=tz)
-    return f"{_capitalised(label)} me contaste esto: {_quote(hit.unit.body)}"
+    verb = "hablamos de esto" if hit.unit.kind == "episode" else "me contaste esto"
+    return f"{_capitalised(label)} {verb}: {_quote(hit.unit.body)}"
 
 
 def word_when(hits: Sequence[RecallHit], kind: WhenKind, *, today: date, tz: ZoneInfo) -> str:

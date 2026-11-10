@@ -89,6 +89,39 @@ async def test_a_model_failure_uses_the_template(chat: AsyncMock, error: Excepti
     assert await _word(chat) == "Ayer me contaste esto: Fuimos al cerro con Zeta y llevamos mate."
 
 
+_DIARY = "La persona contó que fue a la playa con Zeta."
+_EPISODE_HITS = (_hit(6, _DIARY, datetime(2026, 11, 3, 15, tzinfo=UTC), "episode"),)
+
+
+@pytest.mark.parametrize("error", [LLMError("x"), httpx.ConnectError("x"), TimeoutError()])
+async def test_a_diary_summary_is_never_quoted_as_what_the_owner_said(
+    chat: AsyncMock, error: Exception
+) -> None:
+    """ADR 0031 decision 6: an episode is a summary, so the template says «hablamos de esto»."""
+    chat.side_effect = error
+
+    answer = await _word(chat, _EPISODE_HITS)
+
+    assert answer == f"Ayer hablamos de esto: {_DIARY}"
+    assert "me contaste" not in answer
+
+
+async def test_an_empty_answer_about_a_diary_summary_uses_the_episode_template(
+    chat: AsyncMock,
+) -> None:
+    chat.return_value = "   "
+
+    assert await _word(chat, _EPISODE_HITS) == f"Ayer hablamos de esto: {_DIARY}"
+
+
+async def test_the_template_follows_only_the_first_hit_kind(chat: AsyncMock) -> None:
+    chat.side_effect = LLMError("x")
+
+    answer = await _word(chat, (*_HITS[:1], *_EPISODE_HITS))
+
+    assert answer == "Ayer me contaste esto: Fuimos al cerro con Zeta y llevamos mate."
+
+
 async def test_an_empty_answer_uses_the_template(chat: AsyncMock) -> None:
     chat.return_value = "   "
 
