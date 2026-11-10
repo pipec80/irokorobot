@@ -41,7 +41,8 @@ decision is not silently changed by implementation; replace it with a new ADR.
 | Memory or onboarding | [`ADR 0031`](../adr/0031-the-memory-engine-boundary.md) (the engine's boundary), `memory-and-world-state.md`, `longitudinal-conversational-memory-evaluation.md`, `rag-and-memory-retrieval.md`, `identity-and-access.md`, `../roadmap/conversational-memory-delivery-map.md` |
 | RAG, embeddings, documents, or retrieval | `rag-and-memory-retrieval.md`, [`ADR 0031`](../adr/0031-the-memory-engine-boundary.md), [`ADR 0028`](../adr/0028-recall-what-the-owner-told.md), `memory-and-world-state.md`, `identity-and-access.md`, current-state baseline |
 | Personality or prompts | `personality-and-interaction.md`, `identity-and-access.md` |
-| Sensors, vision, or world state | `memory-and-world-state.md`, `cognitive-contracts.md`, media contracts in `implementation-guardrails.md` |
+| Sensors, vision, or world state | `memory-and-world-state.md`, `cognitive-contracts.md`, media contracts in `implementation-guardrails.md`, [`ADR 0035`](../adr/0035-deployment-worlds.md) (the body is an ESP32) |
+| Model providers, a second model, or any cloud use | [`ADR 0004`](../adr/0004-local-first-cognitive-policy.md), [`ADR 0036`](../adr/0036-model-providers-local-first.md) (Proposed), `cognitive-architecture.md`, `identity-and-access.md` |
 | Prioritization | `current-state.md`, `../roadmap/cognitive-roadmap.md`, `../roadmap/personal-companion-delivery-map.md`, `../roadmap/conversational-memory-delivery-map.md` |
 
 Do not scan the whole repository when a ready plan supplies narrower required
@@ -61,7 +62,7 @@ specific conflict instead of redesigning the project implicitly.
   [Plan 0048](../plans/completed/0048-fastapi-baseline-final-hardening.md)
   (semantic `max_length`, the streaming one-terminal-event guarantee, the
   NDJSON 200 OpenAPI contract, `/health` wording + injectable `create_app`).
-  Only Uvicorn concurrency calibration remains; since 2026-09-30 it is measured on the homelab server inside PC-5 (portfolio row 12), not in a separate `perf(...)` plan.
+  Only Uvicorn concurrency calibration remains; since 2026-09-30 it is measured on the home server inside PC-5 (portfolio row 12), not in a separate `perf(...)` plan.
 - [`seed-data-pool.md`](seed-data-pool.md): what the commissioning (Step 0) captures, where each
   datum lives, its sensitivity and the capability it will feed. *Canonical* since
   [ADR 0024](../adr/0024-seed-load-senses-secrets-and-channels.md) became `Accepted` (2026-10-27);
@@ -111,6 +112,9 @@ specific conflict instead of redesigning the project implicitly.
   (executed, PASS). PC-1 is complete.
 - [ADR 0031](../adr/0031-the-memory-engine-boundary.md): the memory engine's boundary, the
   authority for what the engine owns and how a policy port guards every read and write.
+- [ADR 0035](../adr/0035-deployment-worlds.md): the three deployment worlds (the ESP32 body, the
+  server board, the remote dashboard) and [ADR 0036](../adr/0036-model-providers-local-first.md)
+  (Proposed): local by default, a cloud provider only as an explicit opt-in.
 - [`memory-and-world-state.md`](memory-and-world-state.md): relational knowledge,
   memory lifecycle, onboarding, retrieval, and present-time state.
 - [`longitudinal-conversational-memory-evaluation.md`](longitudinal-conversational-memory-evaluation.md):

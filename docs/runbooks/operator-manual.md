@@ -1000,7 +1000,7 @@ conversation.
   missed with a distance just above the threshold means **raise it**; an answer from an unrelated
   memory means **lower it**. Change `RECALL_MAX_DISTANCE` in `.env` and restart the server; no code
   changes.
-- **What it depends on.** Not the computer (the laptop, the homelab or the Pi give the same distances
+- **What it depends on.** Not the computer (the laptop, the server board or any other host give the same distances
   for the same model; only the speed changes). It depends on the **embedding model**: changing
   `EMBEDDING_MODEL` changes every distance, needs a fresh calibration and re-embedding the units.
 - **Tests.** A unit test pins the calibrated default and the gate (a near vector passes, a far one does

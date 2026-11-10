@@ -1,7 +1,7 @@
 [project]
 name = "robot"
 version = "0.1.0"
-description = "OMNiBot 2000 — Raspberry Pi 5 audio client"
+description = "OMNiBot 2000 — audio client of the provisional body; the target body is an ESP32 board"
 readme = "README.md"
 authors = [
     { name = "Felipe Castro", email = "pipec800@gmail.com" }
