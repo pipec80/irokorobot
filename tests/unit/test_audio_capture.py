@@ -2,6 +2,7 @@
 
 import hashlib
 import io
+import logging
 from types import TracebackType
 import wave
 
@@ -366,3 +367,126 @@ def test_the_adopted_closing_silence_and_upload_tail_and_the_300_ms_floor() -> N
     assert (defaults.vad_silence_ms, defaults.vad_upload_tail_ms) == (1200, 300)  # Plan 0069 C1
     with pytest.raises(ValidationError):
         Settings(_env_file=None, vad_upload_tail_ms=200)  # type: ignore[call-arg]  # init kwargs
+
+
+# Plan 0080: a spoken turn is capped below the server's audio limit (30 s), so a long story is
+# sent in pieces instead of being refused whole with a 422.
+_CAP_MS = 640  # 20 chunks of 32 ms
+_CAP_CHUNKS = 20
+
+
+class _RampSource:
+    """Continuous speech whose chunk value grows, so each chunk is identifiable."""
+
+    def __init__(self) -> None:
+        self.reads = 0
+
+    def read(self, frames: int) -> tuple[np.ndarray, bool]:
+        self.reads += 1
+        return np.full((frames, 1), 1_000 + self.reads, dtype=np.int16), False
+
+
+def _capped_policy(
+    *, preroll_ms: int = 0, close_ms: int = 800, tail_ms: int = 300, cap_ms: int | None = _CAP_MS
+) -> audio_capture.SegmentationPolicy:
+    return audio_capture.SegmentationPolicy(
+        preroll_ms=preroll_ms,
+        close_silence_ms=close_ms,
+        upload_tail_ms=tail_ms,
+        max_utterance_ms=cap_ms,
+    )
+
+
+@pytest.mark.unit
+async def test_continuous_speech_longer_than_the_cap_closes_at_the_cap() -> None:
+    source = _RampSource()
+
+    clip = await audio_capture.segment_utterance(source, _LoudVad(), _capped_policy())
+
+    assert clip != b""
+    samples = _wav_samples(clip)
+    assert len(samples) == _CAP_CHUNKS * audio_capture.CHUNK_FRAMES  # 640 ms, never more
+    assert len(samples) / 16_000 <= _CAP_MS / 1000
+    assert source.reads == _CAP_CHUNKS  # it stopped reading at the cap
+
+
+@pytest.mark.unit
+async def test_the_preroll_counts_toward_the_cap() -> None:
+    pattern = [0] * 20 + [30_000] * 100
+    policy = _capped_policy(preroll_ms=320)  # 10 chunks of pre-roll
+
+    clip = await audio_capture.segment_utterance(_ListSource(pattern), _LoudVad(), policy)
+
+    chunks = _wav_samples(clip).reshape(-1, audio_capture.CHUNK_FRAMES)
+    assert len(chunks) == _CAP_CHUNKS
+    assert (chunks.max(axis=1) == 0).sum() == 10  # the pre-roll
+    assert (chunks.max(axis=1) == 30_000).sum() == 10  # the speech that fits under the cap
+
+
+@pytest.mark.unit
+async def test_a_cap_close_keeps_the_last_speech_chunk() -> None:
+    clip = await audio_capture.segment_utterance(_RampSource(), _LoudVad(), _capped_policy())
+
+    chunks = _wav_samples(clip).reshape(-1, audio_capture.CHUNK_FRAMES)
+    assert chunks[0, 0] == 1_001  # nothing cut at the start
+    assert chunks[-1, 0] == 1_000 + _CAP_CHUNKS  # nor at the end: the cap-th chunk is there
+
+
+@pytest.mark.unit
+async def test_a_cap_close_in_the_trailing_silence_trims_only_what_was_collected() -> None:
+    # 5 speech chunks, then silence: the cap (20 chunks) falls inside the silence, long before
+    # the 800 ms close (25 chunks). Only the 15 silent chunks really collected can be trimmed,
+    # never the 25 the closing threshold would suggest (that would cut the speech off).
+    pattern = [30_000] * 5 + [0] * 100
+    policy = _capped_policy(close_ms=800, tail_ms=300)
+
+    clip = await audio_capture.segment_utterance(_ListSource(pattern), _LoudVad(), policy)
+
+    chunks = _wav_samples(clip).reshape(-1, audio_capture.CHUNK_FRAMES)
+    assert (chunks.max(axis=1) == 30_000).sum() == 5  # every speech chunk survives
+    assert _silent_tail_chunks(clip) == 10  # the 300 ms tail (10 chunks) of the 15 collected
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("_today_timings")
+@pytest.mark.parametrize("close_ms", [None, 1600], ids=["normal", "reply"])
+async def test_speech_that_ends_before_the_cap_is_unchanged(close_ms: int | None) -> None:
+    uncapped = audio_capture.SegmentationPolicy.from_settings(close_ms)
+    assert uncapped.max_utterance_ms == round(settings.max_utterance_s * 1000)
+
+    clip = await audio_capture.segment_utterance(_ListSource(_PIN_PATTERN), _LoudVad(), uncapped)
+
+    expected = _PIN_NORMAL_SHA256 if close_ms is None else _PIN_REPLY_SHA256
+    assert hashlib.sha256(clip).hexdigest() == expected  # 28 s cap, ~4 s of speech: same bytes
+
+
+@pytest.mark.unit
+async def test_the_cap_is_logged_as_a_closed_text(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.INFO, logger="robot.audio_capture"):
+        await audio_capture.segment_utterance(_RampSource(), _LoudVad(), _capped_policy())
+
+    messages = [record.getMessage() for record in caplog.records if record.levelno == logging.INFO]
+    assert "Utterance reached the length cap — sending it" in messages
+
+
+@pytest.mark.unit
+async def test_a_normal_close_does_not_log_the_cap(caplog: pytest.LogCaptureFixture) -> None:
+    pattern = [30_000] * 5 + [0] * 100
+    with caplog.at_level(logging.DEBUG, logger="robot.audio_capture"):
+        await audio_capture.segment_utterance(
+            _ListSource(pattern), _LoudVad(), _capped_policy(cap_ms=10_000)
+        )
+
+    assert not any("length cap" in record.getMessage() for record in caplog.records)
+
+
+@pytest.mark.unit
+def test_the_cap_comes_from_settings_and_stays_below_the_servers_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    defaults = Settings(_env_file=None)  # type: ignore[call-arg]  # code defaults
+    assert defaults.max_utterance_s == 28.0  # under the server's 30 s MAX_AUDIO_DURATION_S
+
+    monkeypatch.setattr(settings, "max_utterance_s", 12.5)
+    assert audio_capture.SegmentationPolicy.from_settings().max_utterance_ms == 12_500
+    assert audio_capture.SegmentationPolicy.from_settings(1600).max_utterance_ms == 12_500

@@ -145,6 +145,76 @@ async def test_transcribe_422_raises_no_speech_error(
         await server_client.transcribe(b"noise-only-wav")
 
 
+async def _send_audio(path: str) -> None:
+    """Send one clip through the classic ("classic") or the streaming ("stream") client path."""
+    if path == "classic":
+        await server_client.transcribe(b"wav")
+    else:
+        async for _event in server_client.transcribe_stream(b"wav"):
+            pass
+
+
+_NOT_SPEECH_WARNING = "Server refused the audio (422): not a speech-detection result"
+_BODY_MARKER = "VALIDATION-BODY-MARKER"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("path", ["classic", "stream"])
+async def test_the_servers_no_speech_422_is_silence_and_not_a_warning(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, path: str
+) -> None:
+    _patch_transport(
+        monkeypatch,
+        lambda _request: httpx.Response(422, json={"detail": "No speech detected in audio"}),
+    )
+
+    with caplog.at_level(logging.DEBUG), pytest.raises(NoSpeechError):
+        await _send_audio(path)
+
+    assert not [record for record in caplog.records if record.levelno >= logging.WARNING]
+
+
+def _other_422_responses() -> list[httpx.Response]:
+    return [
+        httpx.Response(422, json={"detail": f"Audio too long: {_BODY_MARKER}"}),
+        httpx.Response(422, json={"detail": [{"msg": _BODY_MARKER}]}),  # FastAPI validation list
+        httpx.Response(422, json=[_BODY_MARKER]),  # JSON, but not a dict
+        httpx.Response(422, json={"other": _BODY_MARKER}),  # a dict without a detail
+        httpx.Response(422, text=_BODY_MARKER),  # no JSON at all
+        httpx.Response(422, content=b""),  # empty body
+    ]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("path", ["classic", "stream"])
+@pytest.mark.parametrize("index", range(6))
+async def test_a_422_that_is_not_the_no_speech_answer_still_listens_again_but_warns(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, path: str, index: int
+) -> None:
+    response = _other_422_responses()[index]
+    _patch_transport(monkeypatch, lambda _request: response)
+
+    with caplog.at_level(logging.DEBUG), pytest.raises(NoSpeechError):
+        await _send_audio(path)
+
+    warnings = [record for record in caplog.records if record.levelno == logging.WARNING]
+    assert [record.getMessage() for record in warnings] == [_NOT_SPEECH_WARNING]
+    assert _BODY_MARKER not in "\n".join(record.getMessage() for record in caplog.records)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("path", ["classic", "stream"])
+async def test_a_non_422_error_is_still_a_server_error_without_the_warning(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, path: str
+) -> None:
+    _patch_transport(monkeypatch, lambda _request: httpx.Response(500, json={"detail": "boom"}))
+
+    with caplog.at_level(logging.DEBUG), pytest.raises(ServerError, match="500"):
+        await _send_audio(path)
+
+    assert _NOT_SPEECH_WARNING not in [record.getMessage() for record in caplog.records]
+
+
 @pytest.mark.unit
 async def test_transcribe_network_error_raises_server_error(
     monkeypatch: pytest.MonkeyPatch,

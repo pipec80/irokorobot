@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     # only shorten the clip (never longer than vad_silence_ms) and never goes below 300 ms (the
     # onset and the last word need that margin); it is rounded up to the 32 ms chunk.
     vad_upload_tail_ms: int = Field(default=300, ge=300)
+    # Plan 0080: longest clip one turn sends, in seconds. It must stay below the server's own
+    # MAX_AUDIO_DURATION_S (30 s by default), which refuses a longer clip whole with HTTP 422; at
+    # the cap the utterance closes and goes as it is, so a long story arrives in pieces.
+    max_utterance_s: float = Field(default=28.0, gt=0)
     # Plan 0067: seconds to wait for a reply to start before listening normally.
     reply_wait_s: float = 15.0
     # Not vendored in git (see .gitignore *.onnx) — fetch with
