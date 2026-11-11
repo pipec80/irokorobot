@@ -13,8 +13,8 @@
 > **For agentic workers:** if the status above does not say `Ready`, stop. REQUIRED SUB-SKILL:
 > `superpowers:subagent-driven-development` or `superpowers:executing-plans` (Pipec chooses), with
 > `superpowers:test-driven-development` and `superpowers:verification-before-completion`.
-> **Pipec's rules win over the skills:** one plain branch, `feat/0081-what-the-robot-says`, never a
-> git worktree (rebase it onto `main` once PR #256 is merged). One commit per task; every new test
+> **Pipec's rules win over the skills:** one plain branch, `feat/0081-what-the-robot-says`, created
+> from an up-to-date `main` when the execution starts, never a git worktree. One commit per task; every new test
 > seen RED for the stated reason first (paste the RED output in the PR). The Bash tool of this
 > environment loses backslashes and non-ASCII characters in heredocs and arguments: use Write/Edit,
 > put Spanish phrases in files, keep commit titles ASCII and **72 characters at most**; check
@@ -43,6 +43,16 @@ Every voice and chat prompt is pinned by SHA-256 in `tests/fixtures/prompt_golde
 × actor). The recall prompt has its own fixture (`recall_prompt_golden.json`) and does not use the
 language rule: it does not move.
 
+**Model or code? (Pipec, 2026-11-11).** `qwen2.5:3b` is the model this laptop can run, not the
+final one (ADR 0036, P4.1). So the plan fixes only what is a defect of our code or our prompt and
+would reach any model: two contradictory orders in one prompt (row 3), a word of our own rule
+(row 2), the owner's data put in every prompt and left for the model to filter (row 1), a taste
+line that does not say whose taste it is (row 1). What is only a weakness of the 3B model gets the
+least effort: one line of the memory discipline (row 4) and no more. A guard that would clean the
+model's replies (strip «Tuteo» and the card's quotes) was considered and **left out**: once the word
+leaves the prompt the audible case has no source, and the quotes are not spoken. A later model is
+checked by re-running the hardware cases of Task 5, not by new code.
+
 ## Decisions
 
 Confirmed when Pipec promotes the plan; each is the author's recommendation until then.
@@ -64,7 +74,7 @@ Confirmed when Pipec promotes the plan; each is the author's recommendation unti
 - **D-3 The form reaches the prompt as a value, not as a card line.** The card no longer renders
   «Trato: usted.» (it fought the language rule); the form travels as `address_form` beside the card
   text, from the card read to `build_system_prompt`. A speaker with no card read (unknown, refused,
-  a failed read, `/chat`, `/vision/respond`) is `tu`. This amends ADR 0026 decisions 2 and 7 (Task 6
+  a failed read, `/chat`, `/vision/respond`) is `tu`. This amends ADR 0026 decisions 2 and 7 (Task 5
   writes the amendment).
 - **D-4 Tastes enter the prompt only when the message is about tastes.** A deterministic, pure gate
   decides it; the model is not trusted to judge relevance (it ignored the footer on hardware). The
@@ -93,21 +103,13 @@ Confirmed when Pipec promotes the plan; each is the author's recommendation unti
   «- If neither the memory block nor this conversation holds it, you know nothing about this
   person: never say you saw, noticed or remember anything about them.» It is the same block on
   every turn (no conditional variant).
-- **D-7 A reply never carries the prompt's words.** A pure guard, `prompt_echo.strip_prompt_echo`,
-  runs on **model text only** (like `claim_guard`), before the claim guard: it removes the word
-  «tuteo» (any case) with its following comma, colon, semicolon or period when it **opens a
-  sentence** (the shape seen: «Tuteo, tu nombre es…»; a mid-sentence «tuteo» is kept), capitalizes
-  what then opens the sentence, and removes the quotation marks `"`, `“`, `”`, `«`, `»` (the card's
-  quotes; a spoken reply loses nothing). A classic reply left empty becomes the fallback phrase; a
-  stream sentence left empty is not spoken, and a stream that speaks nothing ends in the fallback.
-  The deterministic replies and the fallback phrase reach the wire byte for byte.
-- **D-8 Closed log values for the acceptance.** On an allowed card read, one INFO line
+- **D-7 Closed log values for the acceptance.** On an allowed card read, one INFO line
   `event="card.prompt"` with `tastes` ∈ {`none`, `included`, `withheld`} and `address_form` ∈
-  {`tu`, `usted`}; when the guard changed a reply, one INFO line `event="reply.prompt_echo"` with no
-  other field. Never a value, a message or a reply text.
-- **D-9 Stop rule for `usted`.** If on hardware `usted` is still incoherent in 2 or more of 5 turns,
-  the `tu` half closes, `usted` stays a documented limit of the 3B model (ADR 0026 note kept), and
-  Pipec decides whether the plan closes that way.
+  {`tu`, `usted`}. Never a value, a message or a reply text.
+- **D-8 Stop rule for `usted`, a check of the model, not a target.** If on hardware `usted` is
+  still incoherent in 2 or more of 5 turns, the `tu` half closes, `usted` stays a documented limit
+  of the 3B model (ADR 0026 note kept) and nothing more is built for it; Pipec decides whether the
+  plan closes that way.
 
 ## Global constraints
 
@@ -118,7 +120,9 @@ Confirmed when Pipec promotes the plan; each is the author's recommendation unti
 - The generic prompt reads no household store (`test_the_generic_prompt_reads_no_household_store`);
   the card stays the only durable datum of the person in the prompt, read with its audit row first
   (ADR 0026 decision 3).
-- **No text in any log line** (D-8).
+- **No text in any log line** (D-7).
+- Model replies are not post-processed by this plan: `claim_guard` stays the only guard on model
+  text.
 - No real household data in any tracked file: canaries only (`Canary`, `Zeta`, `Omega`, «el
   mate», «la lluvia»).
 - `LOG_CONVERSATION_TEXT=true` only in a consented sitting of Pipec's, back to `false` in `.env`
@@ -134,10 +138,11 @@ Inputs no task title names; each has its test in the task that owns it.
    still says «de usted» (Task 3).
 3. A card read that is denied, unavailable or raises: no card and the `tu` rule, the turn answered
    (Task 3).
-4. A reply that is only «Tuteo.» or only quotes: the fallback phrase on the classic route, and on
-   the stream the fallback instead of a `done` with no audio (Task 5).
-5. «el tuteo es común en Chile» in the middle of a sentence is kept, and a deterministic reply that
-   holds quotes reaches the wire unchanged (Task 5).
+4. A turn with no card read at all (unknown speaker, `MEMORY_ENABLED` or `PROFILE_CARD_ENABLED`
+   off, `/chat`): the `tu` rule and no «tuteo» anywhere in the prompt (Tasks 1 and 3).
+5. A message that names a taste of 4 letters or more inside a longer sentence («ayer tomé mate con
+   pan») includes the tastes; one that only shares a stopword or an article with a taste does not
+   (Task 2).
 
 ## File structure
 
@@ -147,9 +152,8 @@ Inputs no task title names; each has its test in the task that owns it.
 | `memory/card_relevance.py` (new) | The taste gate (D-4) | 2 |
 | `memory/profile_card.py`, `memory/profile_card_access.py`, `routers/transcribe.py`, `text_turn.py` | `PromptCard`, labels and footer, no «Trato» line, the message reaches the provider, `card.prompt` log | 3 |
 | `characters/__init__.py` | The memory-discipline bullet (D-6) | 4 |
-| `prompt_echo.py` (new), `text_turn.py`, `streaming_render.py` | The echo guard (D-7) | 5 |
 | `tests/fixtures/prompt_golden.json`, `tests/unit/test_prompt_golden.py` | The matrix gains the form; regenerated in Tasks 1, 3 and 4 | 1, 3, 4 |
-| `docs/…` | ADR 0026 amendment, truth, acceptance, close | 6 |
+| `docs/…` | ADR 0026 amendment, truth, acceptance, close | 5 |
 
 Paths under `server/src/server/` unless they start with `tests/` or `docs/`.
 
@@ -169,16 +173,15 @@ does not touch that prompt is a bug: stop and find it.
   `build_system_prompt` appends the rule last; `render_prompt_card` renders `Le gusta`, «Trato:
   usted.» and the footer quoted above; `ProfileCardProvider` is
   `Callable[[ActivePersonContext], Awaitable[str | None]]` with one production binding
-  (`routers/transcribe.py:_profile_card_provider`); `streaming_render.synthesize_model_sentence` and
-  `text_turn._generate` are the only places model text meets `claim_guard`; the recall prompt does
-  not use `_LANGUAGE_RULE`; `server/characters` may import `server.memory.profile_card` under
+  (`routers/transcribe.py:_profile_card_provider`); the recall prompt does not use
+  `_LANGUAGE_RULE`; `server/characters` may import `server.memory.profile_card` under
   `TYPE_CHECKING` without an architecture guard failing; `iroko-admin change address_form` changes
   the owner's form (the hardware case 6 depends on it).
 - [ ] **Step 2:** Baseline:
   `MEMORY_ENABLED=false uv run pytest -m "not slow and not hardware and not eval" -q -n auto`; write
   the count in the PR.
 - [ ] **Step 3: The phrase script** (scratchpad, not committed; phrases in a UTF-8 file). For each
-  hardware phrase of Task 6 it prints `resolve_information_need`'s need with recall, sensitive read
+  hardware phrase of Task 5 it prints `resolve_information_need`'s need with recall, sensitive read
   and the card on (it must be generic conversation, except «¿qué sabes de mí?») and, once Task 2
   exists, `tastes_are_relevant` against the canary tastes «el mate», «la lluvia», «comida china».
   Attach its output to the PR before the hardware sitting; a phrase that resolves elsewhere is
@@ -205,7 +208,9 @@ str` in `characters`; keyword `address_form: AddressForm = "tu"` on `build_syste
   `"de tú" not in` it); `test_the_prompt_ends_with_the_rule_of_its_form` (parametrized over both
   forms and the existing perception/emotion/card cases: `prompt.endswith(language_rule(form))`,
   counted once); the classic and stream base prompts with `address_form="usted"` end with the
-  `usted` rule. Replace `test_the_rule_asks_for_spanish_with_tuteo` and keep the `español` check.
+  `usted` rule; `test_a_prompt_without_a_card_names_no_register_word` (every character, no card,
+  no actor: `"tuteo" not in prompt.casefold()` and it ends with the `tu` rule). Replace
+  `test_the_rule_asks_for_spanish_with_tuteo` and keep the `español` check.
 - [ ] **Step 2:** Run → FAIL (`language_rule` missing).
 - [ ] **Step 3: Implement** D-2's two strings and the keyword through the builders above.
 - [ ] **Step 4:** Run → PASS. Extend the golden matrix with the form (`("tu", "usted")`, the key
@@ -226,7 +231,9 @@ str` in `characters`; keyword `address_form: AddressForm = "tu"` on `build_syste
   `test_a_cue_word_carries_the_tastes` («¿qué me recomiendas comer?», «¿qué música te gusta?»,
   «pon una canción», «¿qué película vemos?» → `True`); `test_a_taste_word_carries_the_tastes`
   («hoy tomé mate» → `True`, «¿va a haber lluvia?» → `True`, «quiero algo chino» → `False`: the
-  folded words must be equal, and «chino» is not «china»); `test_a_short_taste_matches_only_by_cue`
+  folded words must be equal, and «chino» is not «china»; «ayer tomé mate con pan» → `True`);
+  `test_a_shared_article_or_stopword_is_not_a_match` («la casa está fría» against «la lluvia» →
+  `False`); `test_a_short_taste_matches_only_by_cue`
   (taste «el té»: «¿te acuerdas de mí?» → `False`, «¿qué me gusta tomar?» → `True`);
   `test_no_tastes_is_never_relevant_by_word` (empty tastes, «hola» → `False`); `test_the_cues_are_folded`
   (every word of `TASTE_CUE_WORDS` equals `normalize_spanish(word)`).
@@ -267,7 +274,7 @@ correlation_id: UUID, now: datetime) -> PromptCard | None` (replaces `prompt_car
   `address_form == "tu"`; the routes test asserts the classic and stream prompts end with the
   `usted` rule for a formal canary owner.
 - [ ] **Step 2:** Run → FAIL for the stated reasons.
-- [ ] **Step 3: Implement** D-3, D-5 and D-8's `card.prompt` line (logged in
+- [ ] **Step 3: Implement** D-3, D-5 and D-7's `card.prompt` line (logged in
   `prompt_card_for_turn`, only on an allowed read); `_says_something_to_the_model` counts the name
   and the **included** tastes only.
 - [ ] **Step 4:** Run → PASS; regenerate the golden fixture (only the card keys move: the canary
@@ -286,34 +293,7 @@ correlation_id: UUID, now: datetime) -> PromptCard | None` (replaces `prompt_car
 - [ ] **Step 4:** Run → PASS; regenerate the golden fixture (every key moves).
 - [ ] **Step 5: Commit** `feat(server): no claimed observation without a source (plan 0081)`.
 
-### Task 5: The echo guard
-
-**Files:** Create `prompt_echo.py`; Modify `text_turn.py` (`_generate`), `streaming_render.py`
-(`synthesize_model_sentence`, `_finalize_model_output`); Test `tests/unit/test_prompt_echo.py`,
-`tests/unit/test_text_turn.py`, `tests/unit/test_streaming_render_decisions.py`.
-
-**Interfaces:** Produces `strip_prompt_echo(text: str) -> str` (one sentence or a whole reply).
-
-- [ ] **Step 1: Write the failing tests:** `test_an_opening_register_word_goes` («Tuteo, tu nombre
-  es Canary.» → «Tu nombre es Canary.»; «tuteo: hola.» → «Hola.»; «Hola. Tuteo, ¿cómo estás?» →
-  «Hola. ¿Cómo estás?»); `test_a_mid_sentence_register_word_stays` («El tuteo es común en Chile.»
-  unchanged); `test_quotes_go` («Te llamas "Canary".», «“Canary”», ««Canary»» → no quote left);
-  `test_a_reply_of_echo_only_is_empty` («Tuteo.» → «»); `test_a_clean_reply_is_unchanged`.
-  In `test_text_turn`: a model reply «Tuteo.» → the fallback phrase with `llm_failed` true, and one
-  `reply.prompt_echo` record. In `test_streaming_render_decisions`: a stream whose only text is
-  «Tuteo.» speaks the fallback phrase; a stream «Tuteo, hola. Te llamas "Canary".» speaks «Hola.»
-  and «Te llamas Canary.»; the fallback phrase and a deterministic reply holding quotes reach the
-  wire unchanged.
-- [ ] **Step 2:** Run → FAIL (module missing).
-- [ ] **Step 3: Implement** D-7: the guard runs before `neutralize_memory_claims` /
-  `replace_if_claim`; an empty classic reply raises `ValueError` inside `_generate`'s `try` (the
-  fallback path); an empty stream sentence returns `None`; `_finalize_model_output` emits the
-  fallback (`StreamFallbackReason.EMPTY_STREAM`) when the turn spoke nothing. The caller logs
-  `reply.prompt_echo` (the guard stays pure).
-- [ ] **Step 4:** Run → PASS. The prompt does not move here.
-- [ ] **Step 5: Commit** `feat(server): strip prompt words from model replies (plan 0081)`.
-
-### Task 6: Truth, acceptance and close
+### Task 5: Truth, acceptance and close
 
 **Files:** ADR 0026 (an *Amended by Plan 0081* note on decisions 2 and 7, and its implementation
 notes on `usted` and the «Trato» line updated); `docs/architecture/current-state.md` and its Archify
@@ -334,8 +314,8 @@ did not touch: wrong general facts, «Kachai» taken for a name, a larger model 
 - [ ] **Step 2: Hardware acceptance by Pipec** (streaming route; a copy of the database first;
   `.env`: memory, card, record, recall and sensitive read on, face and speaker on,
   `LOG_CONVERSATION_TEXT=true` for the sitting only). Only phrases that passed the Task 0 script.
-  The agent confirms each case in `logs/server.log` (`card.prompt`, `reply.prompt_echo`, the
-  turn's need) and writes the outcome; Pipec judges what he hears.
+  The agent confirms each case in `logs/server.log` (`card.prompt` and the turn's need) and
+  writes the outcome; Pipec judges what he hears.
   1. **Greetings, a new session** (server just started, or 180 s of silence): «hola», «hola Iroko,
      ¿cómo estás?», «buenos días» with the face in view → no taste in the reply; log
      `tastes=withheld` 3 of 3.
@@ -346,12 +326,13 @@ did not touch: wrong general facts, «Kachai» taken for a name, a larger model 
   4. **No face** (camera covered): «hola» and «¿qué me gusta comer?» → no card read (no
      `card.prompt` line), and the reply says it does not know; nothing seen or remembered is
      claimed (gate: 0 invented tastes).
-  5. **The prompt's words:** across every turn of the sitting, «tuteo» and the card's quotes heard 0
-     times; each `reply.prompt_echo` line is counted in the record.
+  5. **The prompt's words:** across every turn of the sitting, «tuteo» heard 0 times (the word is no
+     longer in the prompt). A reply that still echoes the prompt is counted in the record and left
+     to the model evaluation of P4.1, not patched here.
   6. **`usted`:** `iroko-admin change address_form` to `usted` (server stopped), five ordinary
      turns («¿cómo estás?», «cuéntame un chiste», «¿qué hora es?», «¿qué me recomiendas comer?»,
      «gracias») → coherent and in `usted` in at least 4 of 5, log `address_form=usted`; then back to
-     `tu` and one turn to confirm. D-9 applies.
+     `tu` and one turn to confirm. D-8 applies.
   7. **«¿qué sabes de mí?»** → the fixed summary, unchanged.
 
   `LOG_CONVERSATION_TEXT` back to `false` when the sitting ends. A real phrasing that fails becomes
@@ -371,23 +352,27 @@ that picks up anything at all; the recall prompt and its fixture; the fixed cont
 their tuteo; Chilean modismos; a model-based relevance judge or a second model call; the model's
 wrong general facts and a larger model (ADR 0036, P4.1); the card's predicates, cap and audit
 (ADR 0026 decisions 2 and 3 otherwise unchanged); STT; the wire, the robot, `/chat` and
-`/vision/respond`.
+`/vision/respond`; **any guard that rewrites the model's replies** (stripping «Tuteo» or quotes):
+a weakness of the 3B model, left out by Pipec on 2026-11-11.
 
 ## Self-review (2026-11-11)
 
 - **Scope coverage.** Item 1 (tastes only when relevant, never in a greeting, never as the robot's
   own) → D-4, D-5, Tasks 2 and 3, hardware cases 1 to 3. Item 2 («Tuteo» and the card's quotes) →
-  D-2, D-7, Tasks 1 and 5, case 5. Item 3 (`usted` with the 3B model) → D-2, D-3, D-9, Tasks 1 and
-  3, case 6. Item 4 (nothing invented with an empty session) → D-4 (no taste on a cold greeting),
+  D-2 and Task 1 remove the word from the prompt, case 5 checks it; the quotes stay (anti-injection,
+  not spoken) and no reply guard is built (*Non-goals*). Item 3 (`usted` with the 3B model) → D-2,
+  D-3, D-8, Tasks 1 and 3, case 6. Item 4 (nothing invented with an empty session) → D-4 (no taste on a cold greeting),
   D-6, Task 4, cases 1 and 4. Row 7 is out (*Non-goals*). The golden digests move in Tasks 1, 3 and
   4, each regenerated and counted in the PR.
 - **Type consistency.** `AddressForm`, `language_rule`, `TASTE_CUE_WORDS`, `tastes_are_relevant`,
   `PromptCard`, `render_prompt_card(…, include_tastes=…)`, `prompt_card_for_turn`,
-  `ProfileCardProvider`, `PreparedTextTurn.address_form` and `strip_prompt_echo` are each defined
-  once, in the task that produces them, and named the same afterwards.
-- **Size.** Small: five working tasks, two new pure modules, no migration, setting, route or wire
-  change. Tasks 2 and 5 are independent of the others; Tasks 1, 3 and 4 touch the same prompt and
-  the same fixture and go in order.
+  `ProfileCardProvider` and `PreparedTextTurn.address_form` are each defined once, in the task that
+  produces them, and named the same afterwards.
+- **Size.** Small: four working tasks, one new pure module, no migration, setting, route or wire
+  change. Task 2 is independent of the others; Tasks 1, 3 and 4 touch the same prompt and the same
+  fixture and go in order.
+- **Model or code.** Every task changes our code or our prompt, not the model's output; nothing is
+  tied to `qwen2.5:3b`, and a later model is measured by re-running Task 5's hardware cases.
 - **Open for Pipec at promotion:** D-2's two sentences, D-4's cue list and its 4-letter floor,
-  D-5's labels and footer, D-6's bullet and D-9's stop rule. The design choice to confirm is D-4:
+  D-5's labels and footer, D-6's bullet and D-8's stop rule. The design choice to confirm is D-4:
   a deterministic gate instead of trusting the prompt alone.
