@@ -1,7 +1,12 @@
 # 0081 — What the robot says: the owner's tastes only when they apply, no prompt words in the reply, `usted` with the 3B model, nothing invented on an empty session
 
-> **Status:** `Draft` (2026-11-11), **not promoted**. Written against `docs/finish-line-path`
-> at `6629b77` (PR #256, which writes row 6 of the path; `main` is `dd793b9`) and the code read
+> **Status:** `Ready` and `NOW` — **promoted by Pipec on 2026-11-11** («Sí, promuévelo»), decisions
+> D-1 to D-8 confirmed as written, after he removed the reply guard (the plan fixes our code and
+> prompt, not the 3B model's output). To be executed in a new session. GitHub is on stand-by that
+> day (the CI cannot install its apt packages; PR #256 and #255 are open): the branch is local,
+> `feat/0081-what-the-robot-says` from the local `docs/finish-line-path` (which holds this plan;
+> its code is identical to `main` at `dd793b9`), and the merge with `main` waits for GitHub.
+> Written as `Draft` the same day against `docs/finish-line-path` at `6629b77` and the code read
 > that day. Queue rule 4: Task 0 re-verifies every claim below against the merged code before any
 > change, and **stops and reports** if one is false. Written for an executor who has not seen this
 > repository. Row 6 of the
@@ -13,8 +18,8 @@
 > **For agentic workers:** if the status above does not say `Ready`, stop. REQUIRED SUB-SKILL:
 > `superpowers:subagent-driven-development` or `superpowers:executing-plans` (Pipec chooses), with
 > `superpowers:test-driven-development` and `superpowers:verification-before-completion`.
-> **Pipec's rules win over the skills:** one plain branch, `feat/0081-what-the-robot-says`, created
-> from an up-to-date `main` when the execution starts, never a git worktree. One commit per task; every new test
+> **Pipec's rules win over the skills:** one plain branch, `feat/0081-what-the-robot-says` (local,
+> see the status above), never a git worktree; no push while GitHub is on stand-by. One commit per task; every new test
 > seen RED for the stated reason first (paste the RED output in the PR). The Bash tool of this
 > environment loses backslashes and non-ASCII characters in heredocs and arguments: use Write/Edit,
 > put Spanish phrases in files, keep commit titles ASCII and **72 characters at most**; check
@@ -55,7 +60,7 @@ checked by re-running the hardware cases of Task 5, not by new code.
 
 ## Decisions
 
-Confirmed when Pipec promotes the plan; each is the author's recommendation until then.
+Confirmed by Pipec as written when he promoted the plan (2026-11-11).
 
 - **D-1 One change for every turn, no new switch.** The language rule and the memory discipline
   change for every route (with `PROFILE_CARD_ENABLED` off too), so every golden digest moves. No
