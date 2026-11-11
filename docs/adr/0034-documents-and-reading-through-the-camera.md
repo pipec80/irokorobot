@@ -10,7 +10,9 @@
   [ADR 0029](0029-it-knows-who-is-listening.md) (levels and the camera check),
   [ADR 0031](0031-the-memory-engine-boundary.md) (decisions 6 and 13: documents are one more source),
   [ADR 0032](0032-block-c-hygiene-correct-forget-and-years.md) (forgetting).
-- **Amends:** [ADR 0031](0031-the-memory-engine-boundary.md) decision 13 («after CM-7 + PC-5» becomes
+- **Amends:** [ADR 0024](0024-seed-load-senses-secrets-and-channels.md) (the commissioning loads a
+  reviewed `documents/` folder beside the seed file, decision 1);
+  [ADR 0031](0031-the-memory-engine-boundary.md) decision 13 («after CM-7 + PC-5» becomes
   row 9 of the path, before the home server; Pipec, 2026-11-11) and adds the camera as a source.
 - **Delivers:** R2 and the reading through the camera, row 9 of the
   [path to the finish line](../roadmap/cognitive-roadmap.md#closing-path-of-conversational-memory).
@@ -33,9 +35,17 @@
 
 ## Decision
 
-### 1. A document is loaded with `iroko-admin`, reviewed and confirmed (*Pipec, 2026-11-11*)
+### 1. Documents are loaded at the alta as a folder, and later one by one with `iroko-admin` (*Pipec, 2026-11-11*)
 
-`iroko-admin docs add <file>` (server stopped, like every `iroko-admin` amendment) extracts the
+**At the alta (the main path).** Most documents arrive once, with the household's data: the
+builder and the owner prepare a `documents/` folder beside the seed file, with a small manifest
+that names each file and its level (decision 2; `normal` when not said). The commissioning loads
+it like the seed file (ADR 0024): a dry run that lists every document, its sections and its level,
+the owner's review and `SI`, one transaction with the commissioning record, `--replace` only
+while commissioning. A builder may preload documents the owner will want (the robot's own
+manual, the household's appliances, a care guide); they are the owner's documents like any other.
+
+**Afterwards (the occasional path).** `iroko-admin docs add <file>` (server stopped, like every `iroko-admin` amendment) extracts the
 text, shows the owner how many sections and characters it found and the first lines, asks the
 level (decision 2) and an `SI`, then stores it in one transaction with one audit row that holds no
 content. `docs list` and `docs remove` complete it. Accepted: `.md`, `.txt` and `.pdf` with a text
@@ -102,7 +112,7 @@ section and index row, physically, with a line in the deletion register).
 | # | Decision | Date | Where |
 |---|---|---|---|
 | 1 | Close the RAG before the electronics: R2 and the camera at row 9, before the home server | 2026-11-11 | *Amends*, *Delivers* |
-| 2 | Load with `iroko-admin docs`, reviewed and confirmed | 2026-11-11 | Decision 1 |
+| 2 | Load mostly at the alta as a reviewed folder with a manifest; later one by one with `iroko-admin docs` | 2026-11-11 | Decision 1 |
 | 3 | A level chosen at load: `normal` by default or `sensitive` | 2026-11-11 | Decision 2 |
 | 4 | Documents searched only on an explicit cue, naming the source | 2026-11-11 | Decision 3 |
 | 5 | The camera reads aloud and keeps only on the owner's confirmation | 2026-11-11 | Decision 5 |
@@ -117,12 +127,14 @@ documents; the permissive-licence rule for the PDF library; the threat table of 
 | Scanned PDF with a dedicated OCR, tables, a reranker | R4, only by measurement |
 | Searching images or video (multimodal) | R6, after P2.1 |
 | Loading documents remotely or by voice | The remote dashboard (ADR 0025), after the line |
+| A `public` level (a document anyone in the home may hear, such as the robot's manual) | The family stage (P3), if a household asks for it |
 | Documents of other household members | The family stage (P3) |
 | The exact caps, the section size, the PDF library and the cue word list | The implementing plan |
 
 ## Alternatives considered
 
-- **A watched folder that indexes by itself.** Rejected by Pipec: nothing reviews what enters.
+- **A watched folder that indexes by itself.** Rejected: nothing reviews what enters. The folder
+  idea stays, as the alta's reviewed `documents/` folder (decision 1).
 - **Documents as recall units.** Rejected: a unit needs a conversation record, and mixing a manual
   with what the owner told breaks ADR 0031 decision 6.
 - **Searching documents with every recall question.** Rejected by Pipec: the answer would mix the

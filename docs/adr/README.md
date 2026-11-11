@@ -44,6 +44,6 @@ supersedes it and update the old one's status.
 | [0034](0034-documents-and-reading-through-the-camera.md) | Documents in the memory engine, and reading through the camera | **Proposed** (2026-11-11); row 9 of the path to the finish line; would amend ADR 0031 decision 13 |
 | [0035](0035-deployment-worlds.md) | Deployment worlds: the ESP32 body, the server board, the remote dashboard | **Accepted** (2026-11-10, decided by Pipec); amends in wording ADRs 0001, 0002, 0003, 0023, 0024 and 0025 (a note each, no decision changes) |
 | [0036](0036-model-providers-local-first.md) | Model providers: local by default, a cloud provider only as an explicit opt-in | **Proposed** (2026-11-10); open questions for Pipec; would amend the escalation clause of 0004, which stays Accepted until then |
-| [0037](0037-the-time-of-memories-and-a-contacts-phone.md) | The time of memories: when it happened, what is pending, and a contact's phone by voice | **Proposed** (2026-11-11); row 7 of the path to the finish line; would amend ADR 0024 decision 5, ADR 0029 decision 1 and ADR 0031 decision 5 |
+| [0037](0037-the-time-of-memories-and-a-contacts-phone.md) | The time of memories and the alta by voice: when it happened, what is pending, and every loaded datum reachable | **Proposed** (2026-11-11); row 7 of the path to the finish line; would amend ADR 0024 decision 5, ADR 0029 decision 1 and ADR 0031 decision 5 |
 
 New ADRs start from [`0000-adr-template.md`](0000-adr-template.md).

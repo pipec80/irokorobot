@@ -1,4 +1,4 @@
-# 0037 — The time of memories: when it happened, what is pending, and a contact's phone by voice
+# 0037 — The time of memories and the alta by voice: when it happened, what is pending, and every loaded datum reachable
 
 - **Status:** Proposed (2026-11-11). Written from the research of the memory engine (kept in the
   ignored `project-history/`), the code read that day and Pipec's four decisions of 2026-11-11 (see
@@ -13,7 +13,8 @@
   meanings of time).
 - **Amends:** [ADR 0024](0024-seed-load-senses-secrets-and-channels.md) decision 5 («nothing reads
   the table by voice»: the owner may now hear a contact's phone, decision 1);
-  [ADR 0029](0029-it-knows-who-is-listening.md) decision 1 (one more datum at the sensitive level);
+  [ADR 0029](0029-it-knows-who-is-listening.md) decision 1 (the contacts and the rest of the profile join the closed
+  map of levels, decision 5);
   [ADR 0031](0031-the-memory-engine-boundary.md) decision 5 (the occurred time is now stored when
   the owner says it, decision 3).
 - **Delivers:** row 7 of the
@@ -44,14 +45,23 @@
    model by mistake can invent and cannot reveal. Anything here that speaks a stored value goes
    through the controller and its fixed templates, never through the generic prompt.
 
+6. **More of the alta is stored and never read.** The seed data pool marks «the rest of the profile»
+   (partner, devices, mobility, hearing, vision, dwelling, access note, lives alone, health coverage)
+   as planned with no plan. Pipec (2026-11-11): what the alta loads must stay available to his
+   questions, the way «¿qué sabes de mí?» is, never disconnected.
+
 ## Decision
 
 ### 1. A contact's phone is read by voice at the sensitive level, to the owner only
 
 - The owner's own question about **their own** contacts («¿tienes el teléfono de mi hijo?», «¿cuál
   es el número de mi doctor?», «dame el teléfono de mi vecina») is a closed controller branch, like
-  the sensitive read of ADR 0029. It matches the contact by relationship label or role, and by name
-  when the owner says one.
+  the sensitive read of ADR 0029. It matches the contact by relationship label, by role («mi
+  contacto de emergencia», «mi doctor»), by call order («mi contacto 1», «mi primer contacto») and
+  by name when the owner says one; «¿quién tiene llave de mi casa?» reads the key holders.
+- «Llama a mi contacto 1» is answered honestly: the robot cannot call yet (no telephony, ADR 0024)
+  and says so with the fixed sentence, followed by the contact's name and phone at the same level,
+  so the owner can call. The call itself is a later capability (an alert, a telephony line).
 - **Level: sensitive** (*Pipec, 2026-11-11*): the owner's face (`basic`) and no other face in
   view, the camera check of ADR 0029 decision 3 unchanged: two faces hear «Te lo digo cuando
   estemos solos.»; anyone else, or no face, the generic denial. The datum joins the closed map of
@@ -107,12 +117,35 @@ day and time zone (`HOUSEHOLD_TIMEZONE`). Every consumer (recall windows, the oc
 pending topics) uses it; no second date parser is written. It stays pure and closed: a phrase it
 does not know is no time, never a guess.
 
-### 5. Switches and order
+### 5. Nothing loaded at the alta is unreachable by voice (*Pipec, 2026-11-11*)
+
+Pipec's rule: a datum loaded at the alta must be available to the owner's questions, never stored
+and disconnected. Each field of the [seed data pool](../architecture/seed-data-pool.md) gets a
+voice read by a fixed template at its level, or is listed with the reason it is not read:
+
+| Fields | Read by | Level |
+|---|---|---|
+| Name, form, tastes | The card and «¿qué sabes de mí?» (exists, ADR 0026) | Face |
+| Relatives, children with their side, pets | The relatives templates (exists, ADR 0028, Plan 0080) | Face |
+| Health, address, emergency facility, birthdays; who knows a code, where a document is | The sensitive read (exists, ADR 0029) | Sensitive; security |
+| Contacts: phone, role, call order, key holders | Decision 1 | Sensitive (`location` for a key) |
+| Partner | The relatives templates, extended | Face |
+| Devices and implants, mobility, hearing, vision, health coverage | The sensitive read, extended | Sensitive |
+| Dwelling, floor, lift, how to get in | The sensitive read, extended | Sensitive |
+| Lives alone | The sensitive read, extended | Security (with the address it is a burglar's map, ADR 0024) |
+| `withhold_from`, `private_topic`, a contact's `may_receive_health_info` and `may_view_activity` | Not read aloud: they are rules the robot obeys, not answers (the family stage, ADR 0029 decision 6) | — |
+| The commissioning record and section statuses | Not read by voice: `iroko-admin status` | PIN |
+
+A test walks the registry of pool predicates and fails when a field has neither a read nor a
+listed reason, so a field added later cannot be stored disconnected.
+
+### 6. Switches and order
 
 Each part sits behind its own default-off switch that needs `MEMORY_ENABLED` (the names are the
 plan's); off, every route, prompt and reply is byte-identical. The parts are independent and may be
-delivered by separate plans in this order: the shared reader and the occurred time (it changes
-recall), the contact's phone (small, read-only), the pending topics (a new table and the greeting).
+delivered by separate plans in this order: the alta's data reachable (decisions 1 and 5: read-only,
+templates), the shared reader and the occurred time (it changes recall), the pending topics (a new
+table and the greeting).
 
 ## Pipec's decisions and where they land
 
@@ -122,6 +155,7 @@ recall), the contact's phone (small, read-only), the pending topics (a new table
 | 2 | A pending topic is picked up by a fixed sentence plus a topic the local model names at capture | 2026-11-11 | Decision 2 |
 | 3 | A health topic is kept as sensitive and picked up only when the owner is alone in view | 2026-11-11 | Decision 2 |
 | 4 | The occurred time enters this ADR, with the same reader as the future | 2026-11-11 | Decisions 3 and 4 |
+| 5 | Nothing loaded at the alta stays disconnected: every datum is reachable by voice or listed with a reason; «mi contacto 1» works | 2026-11-11 | Decisions 1 and 5 |
 
 The author's calls, for Pipec's review: one follow-up per new session, an open offer winning over
 it; two days of grace after the due day; the topic deleted with its record; the occurred time as a
