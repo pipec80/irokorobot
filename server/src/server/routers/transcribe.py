@@ -73,7 +73,8 @@ from server.memory.conversation_capture import capture_turn
 from server.memory.entity_labels import read_household_names
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
-from server.memory.profile_card_access import profile_summary_text, prompt_card_text
+from server.memory.profile_card import PromptCard
+from server.memory.profile_card_access import profile_summary_text, prompt_card_for_turn
 from server.memory.recall_access import recall_reply
 from server.memory.sensitive_access import sensitive_reply
 from server.pipeline import (
@@ -489,8 +490,10 @@ def _profile_card_provider(correlation_id: UUID) -> ProfileCardProvider | None:
     if not (settings.memory_enabled and settings.profile_card_enabled):
         return None
 
-    async def provide(actor: ActivePersonContext) -> str | None:
-        return await prompt_card_text(actor, correlation_id=correlation_id, now=utc_now())
+    async def provide(actor: ActivePersonContext, message: str) -> PromptCard | None:
+        return await prompt_card_for_turn(
+            actor, message, correlation_id=correlation_id, now=utc_now()
+        )
 
     return provide
 

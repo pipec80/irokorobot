@@ -32,10 +32,12 @@ from server.cognition.identity import ActivePersonStatus, IdentityAssurance
 from server.cognition.models import AuthorizationAction, AuthorizationStatus
 from server.cognition.response_plan import ProfileSummaryReply
 from server.cognition.strong_actor import is_face_actor
+from server.memory.card_relevance import tastes_are_relevant
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.profile_card import (
     CARD_PREDICATES,
     ProfileCard,
+    PromptCard,
     build_card,
     render_prompt_card,
     render_summary,
@@ -58,7 +60,7 @@ __all__ = [
     "CardRead",
     "may_read_own_memory",
     "profile_summary_text",
-    "prompt_card_text",
+    "prompt_card_for_turn",
     "read_card",
 ]
 
@@ -173,23 +175,36 @@ async def read_card(
         return _refused(CardOutcome.UNAVAILABLE, _Reason.UNAVAILABLE)
 
 
-async def prompt_card_text(
-    actor: ActivePersonContext, *, correlation_id: UUID, now: datetime
-) -> str | None:
-    """Return the prompt block for the speaker, or ``None`` when there is no card to show.
+async def prompt_card_for_turn(
+    actor: ActivePersonContext, message: str, *, correlation_id: UUID, now: datetime
+) -> PromptCard | None:
+    """Return what the turn's prompt receives from the speaker's card (Plan 0081).
 
     Args:
         actor: The turn's resolved speaker.
+        message: What the speaker said this turn; the tastes enter only on taste talk.
         correlation_id: The turn's id for the audit row.
         now: The caller's clock reading.
 
     Returns:
-        The rendered block when the read was allowed and the card is not empty, else ``None``.
+        ``None`` when the read was denied or unavailable; otherwise the card's form and its
+        rendered block (``None`` text when the block would be empty). One ``card.prompt`` line
+        logs closed values only.
     """
     read = await read_card(actor, correlation_id=correlation_id, now=now)
     if read.outcome is not CardOutcome.ALLOWED or read.card is None:
         return None
-    return render_prompt_card(read.card)
+    card = read.card
+    relevant = bool(card.tastes) and tastes_are_relevant(message, card.tastes)
+    form = card.address_form or "tu"
+    tastes = "none" if not card.tastes else ("included" if relevant else "withheld")
+    logger.info(
+        "Profile card for the prompt: tastes=%s address_form=%s",
+        tastes,
+        form,
+        extra={"event": "card.prompt", "tastes": tastes, "address_form": form},
+    )
+    return PromptCard(form, render_prompt_card(card, include_tastes=relevant))
 
 
 async def profile_summary_text(

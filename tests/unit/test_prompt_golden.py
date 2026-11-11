@@ -28,6 +28,7 @@ from server.cognition.identity import (
     resolve_active_person,
 )
 from server.cognition.models import Confidence, ConfidenceBasis
+from server.memory.profile_card import CardTaste, ProfileCard, render_prompt_card
 from server.settings import ProfileCardPosition, settings
 
 from server import characters, llm, llm_streaming
@@ -41,7 +42,10 @@ _FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "prompt_golden.jso
 _NOW = datetime(2026, 10, 29, 10, 0, tzinfo=UTC)
 _DATE = "jueves 29 de octubre de 2026"
 _CHARACTERS = ("iroko", "nova", "ejemplo_vendedor")
-_CARD = '--- Lo que sabes de la persona con quien hablas ---\n- Le gusta: "el mate".'
+# The card as the renderer writes it (Plan 0081): a canary taste, the tastes included.
+_CARD = render_prompt_card(
+    ProfileCard(None, None, (CardTaste("likes", "el mate"),)), include_tastes=True
+)
 _POSITIONS: tuple[ProfileCardPosition, ...] = ("with_memory", "before_language")
 _FORMS: tuple[AddressForm, ...] = ("tu", "usted")
 
