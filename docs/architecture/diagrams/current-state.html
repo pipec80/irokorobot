@@ -5693,21 +5693,12 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <h3>Cognitive path</h3>
         </div>
         <ul>
-          <li>&bull; Controller returns an immutable response plan before any generation</li>
-          <li>&bull; Safe plans never reach the LLM or a candidate proposal; the legacy vector memory is retired (Plan 0076)</li>
-          <li>&bull; Memory first, the model second: a question about stored knowledge is answered by the controller from what memory found (a template, or wording of the found items only); the LLM chats freely only when the turn is not a memory question, and then it sees the profile card and the session, never a household store</li>
-          <li>&bull; A memory offer or answer needs the face and the voice of the same person on that turn&#39;s own clip, never a token; otherwise the turn is the ordinary one</li>
-          <li>&bull; Ollama is the only accepted LLM/VLM runtime (ADR-0004), reached only through one transport module</li>
-          <li>&bull; A generic turn names its speaker by face or an observed token (never voice); the identified person gets one in-process session, an unknown speaker suspends it</li>
-          <li>&bull; One canonical writer stores household facts for every channel; a secret is stored by reference only (who knows it), never its value</li>
-          <li>&bull; The seed file loads offline (Plan 0071): dry run by default, the owner&#39;s review and SI, one transaction, a replacement only while commissioning and before anything is learned by voice</li>
-          <li>&bull; The alta is one guided command (Plan 0072): it enrols face and voice asking the PIN before each, records backups and consents, attests the readiness of what exists and closes the window with an acta that holds no household value</li>
-          <li>&bull; After the alta closes, iroko-admin is the amendment path (Plan 0073): it edits the pool and contacts through the canonical writers (channel admin_local) with the owner PIN for sensitive data and an audit that holds no value; a revoke is history, not a hard delete</li>
-          <li>&bull; The profile card (Plans 0074, 0081): a face-identified owner&#39;s name enters the prompt behind PROFILE_CARD_ENABLED, the tastes only on taste talk, the form through the language rule; one audit row precedes every read, nothing sensitive</li>
-          <li>&bull; Every spoken exchange of the voice routes is kept as text (consent, switch); only the owner&#39;s turns with face and verified voice feed the diary, and no generic prompt reads it</li>
-          <li>&bull; Recall (Plan 0078): «¿qué te conté…?» searches the owner&#39;s own normal recall units (verified words of ordinary turns and diary summaries; FTS5 + vector + RRF behind a calibrated gate) after one audit row, and answers only from what was found or «No me acuerdo de eso.»; the relatives of the alta are read by a fixed template, parents and children by their recorded side (Plan 0080); «¿cuándo…?» says the day it was told, never the date of the event; behind RECALL_ENABLED</li>
-          <li>&bull; Sensitive reads (Plan 0079): the owner&#39;s own health, home and birthdays are read behind SENSITIVE_READ_ENABLED by fixed templates, with the face alone in view (two faces: «Te lo digo cuando estemos solos.»); the security references also need a verified voice; the record keeps a marker instead of the answer. A stated, asked or offered secret value never reaches the model and is kept only as a marker (guard on with MEMORY_ENABLED)</li>
-          <li>&bull; A household request (Plan 0077) names a relative or pet with my/our and has the form of a request, unless it asks advice or speaks to the robot; stories, advice and questions about others reach the model, whose generic prompt reads no household store</li>
+          <li>&bull; The controller returns an immutable plan first: a memory question is answered from what memory found, never invented</li>
+          <li>&bull; The LLM (Ollama only, one transport) chats only on generic turns: it sees the session and the profile card, never a household store</li>
+          <li>&bull; A generic speaker is named by face or a token; a memory offer, answer or security read also needs the same person&#39;s verified voice</li>
+          <li>&bull; One canonical writer for every channel; a secret is kept by reference, never its value; the alta loads it and iroko-admin amends it, audited</li>
+          <li>&bull; Profile card: the name always, the tastes only on taste talk, the form through the language rule (Plans 0074, 0081)</li>
+          <li>&bull; Recall, relatives and sensitive reads answer by template or found text only, behind their switches; the record keeps markers (Plans 0077 to 0080)</li>
         </ul>
       </div>
 
@@ -5717,9 +5708,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <h3>Known gaps</h3>
         </div>
         <ul>
-          <li>&bull; No liveness or replay defense, accepted for the home (ADR 0029): a photo identifies at basic; photo + recording would reach strong and draw the owner&#39;s sensitive data, never a secret&#39;s value</li>
-          <li>&bull; Reserved data needs strong assurance: since Plan 0079 the security references (who knows a code, where a document is) are read by voice at strong, and a secret&#39;s value is never stored; propose, read and confirm each have one spoken consumer (the candidate dialogue) and correct and forget none; replay is measured, not defended; a PIN grant is bound to one operation but still proves the PIN, not the speaker (ADR-0015); the household pair is policy only</li>
-          <li>&bull; Conversational memory is partial: short-term continuity (CM-2) and a default-off candidate dialogue (CM-3a, Plans 0062 and 0063: a taste is proposed, offered and promoted by voice); the CM-3b tranche A write core (children, partner, pets, places) exists; the card (CM-5a) and recall of normal memories (CM-5b, Plan 0078) read it back, and since Plan 0079 the owner&#39;s own sensitive data (block B); spoken third-party capture, answering in company and correction or forgetting by voice (CM-6) do not exist; CM-0 baseline RED</li>
+          <li>&bull; No liveness or replay defense, accepted for the home (ADR 0029)</li>
+          <li>&bull; No correcting or forgetting by voice (CM-6), no spoken third-party capture, no answering in company</li>
+          <li>&bull; A PIN grant proves the PIN, not the speaker (ADR-0015); the 3B model&#39;s own answers are a limit (P4.1)</li>
         </ul>
       </div>
     </div>
