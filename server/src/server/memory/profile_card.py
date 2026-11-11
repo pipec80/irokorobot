@@ -55,8 +55,10 @@ MAX_VALUE_CHARS: Final = 80
 _ITEM_SEPARATOR: Final = ","
 CARD_HEADER: Final = "--- Lo que sabes de la persona con quien hablas ---"
 
-# Plan 0081 (D-5): the 3B model voiced a taste as its own and said it had noticed one.
+# Plan 0081 (D-5): the 3B model voiced a taste as its own and said it had noticed one. The card
+# still opens its footer as authorized memory, the «authorized memory block» of the discipline.
 _CARD_FOOTER: Final = (
+    "Es memoria autorizada. "
     "Son gustos de la persona, no tuyos: nunca digas que a ti te gustan. La persona te los "
     "contó: no digas que los viste ni que los notaste. Úsalos solo si viene al caso y no "
     "inventes nada que no esté aquí."

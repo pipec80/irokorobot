@@ -21,7 +21,9 @@ from server.memory.relational_v4 import AssertionLifecycle, LiteralFactV4
 pytestmark = pytest.mark.unit
 
 _OWNER_ENTITY_ID = 7
+# «Es memoria autorizada» ties the card to the discipline's «authorized memory block» (ADR 0026).
 _FOOTER = (
+    "Es memoria autorizada. "
     "Son gustos de la persona, no tuyos: nunca digas que a ti te gustan. La persona te los "
     "contó: no digas que los viste ni que los notaste. Úsalos solo si viene al caso y no "
     "inventes nada que no esté aquí."

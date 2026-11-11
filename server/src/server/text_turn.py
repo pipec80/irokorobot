@@ -36,9 +36,10 @@ logger = logging.getLogger(__name__)
 ProposalScheduler = Callable[[str, ActivePersonContext], None]
 
 #: Channel-owned seam that renders the speaker's profile card for the prompt (Plan 0074, ADR 0026
-#: decision 3), or ``None`` when there is none to show. Only the two voice routes pass one; it owns
-#: the policy and the audit row, never raises into the turn and is awaited only for a speaker the
-#: continuity session already accepts.
+#: decision 3). It receives the speaker and this turn's message (the tastes enter only on taste
+#: talk, Plan 0081) and returns the card's form and text, or ``None`` when the read was refused.
+#: Only the two voice routes pass one; it owns the policy and the audit row, never raises into the
+#: turn and is awaited only for a speaker the continuity session already accepts.
 ProfileCardProvider = Callable[[ActivePersonContext, str], Awaitable[PromptCard | None]]
 
 #: Channel-owned callback that schedules the capture of one spoken exchange into the

@@ -512,7 +512,8 @@ async def test_the_owner_hears_the_card_and_the_summary(
     card = _card_of(llm_calls[0])
     assert card is not None
     assert f'Nombre: "{_CARD_NAME}"' in card
-    assert f'"{_CARD_TASTE}"' in card
+    # Plan 0081 (D-4): a greeting carries the name, never a taste.
+    assert f'"{_CARD_TASTE}"' not in card
     assert summary["llm_response"] == _CARD_SUMMARY
     assert len(llm_calls) == 1  # the question never reached the model
 
