@@ -803,8 +803,8 @@ así que no se planifican aparte: R0 es PC-1 (cerrado); R1 es CM-5; R5 es CM-3,
 CM-4 y CM-6; R6 depende de P2.1. Desde el 2026-10-30 (decisión de Pipec,
 [camino de cierre](../roadmap/cognitive-roadmap.md#closing-path-of-conversational-memory))
 **R3** se entrega junto con CM-5b y va antes que R2, porque sin documentos es la
-búsqueda del diario; **R2** salió del camino de la memoria y es condicional, como
-R4. Cargar los datos del dueño y del hogar no es
+búsqueda del diario. **R2** volvió al camino el 2026-11-11 (Pipec quiere el RAG cerrado
+antes de la electrónica): es la fila 9, con la lectura por la cámara; R4 sigue condicional. Cargar los datos del dueño y del hogar no es
 RAG: es la carga inicial estructurada en V4 («paso 0»).
 
 ### R0 — MVP personal autenticado
@@ -821,8 +821,11 @@ memoria semántica existente.
 
 ### R2 — Fuente documental mínima
 
-Decidido por Pipec el 2026-11-06 (antes era condicional y solo Markdown o texto, con el PDF en R4): se quiere, y se abre después de CM-7 + PC-5 con
-su propio ADR (0034). Es una fuente más del motor de memoria
+Decidido por Pipec el 2026-11-06 (antes era condicional y solo Markdown o texto, con el PDF en R4) y adelantado el 2026-11-11: va **antes de la meta**, fila 9 del camino, con
+su propio ADR (0034). Incluye la **lectura por la cámara** («Iroko, lee esto»): un cuadro leído por el modelo de
+visión local (`qwen3-vl:2b`), guardado como documento solo cuando el dueño lo confirma; sirve
+para textos cortos y grandes (una receta, una nota, una etiqueta), no para una página de letra
+chica, y se recalibra en el cuerpo. Es una fuente más del motor de memoria
 ([ADR 0031](../adr/0031-the-memory-engine-boundary.md) decisión 13), separada de lo
 que una persona contó, y reutiliza la búsqueda de R3. La primera fuente es
 Markdown, texto plano y **PDF con capa de texto** (con un banco de extracción en
