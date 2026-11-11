@@ -16,7 +16,9 @@ permissions:
 jobs:
   analyze:
     name: Analyze (Python)
-    runs-on: ubuntu-latest
+    # Pinned (2026-11-11): on ubuntu-26.04, the new ubuntu-latest, apt cannot resolve the
+    # Ubuntu mirrors. Back to ubuntu-latest once that image installs packages.
+    runs-on: ubuntu-24.04
     permissions:
       security-events: write # upload results to the Security tab
       contents: read
