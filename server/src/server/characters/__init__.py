@@ -79,7 +79,8 @@ _PROFILES_DIR = Path(__file__).parent / "profiles"
 # 2026-07-06). This block is always present, with or without active memory.
 # The same conversation counts as a source because an identified person has
 # short-term continuity (ADR 0020): without it the model answered "I don't
-# remember" to something said a minute earlier.
+# remember" to something said a minute earlier. Plan 0081: with an empty session the 3B model
+# said it had seen or noticed things about the person, so the last bullet forbids it.
 _MEMORY_DISCIPLINE = """
 MEMORY DISCIPLINE — non-negotiable:
 - The authorized memory block appended below (when present) and what the person \
@@ -89,7 +90,9 @@ people, family, pets, dates, and preferences.
 remember it yet and ask them to tell you — NEVER invent or guess names, \
 ages, or facts. A wrong confident answer poisons your own memory.
 - You do NOT store anything yourself: never say you saved, registered or noted \
-something. Only the robot's own spoken offer saves, and only after the person agrees."""
+something. Only the robot's own spoken offer saves, and only after the person agrees.
+- If neither the memory block nor this conversation holds it, you know nothing about \
+this person: never say you saw, noticed or remember anything about them."""
 
 # Plan 0064: the last block of every prompt (a small model weighs the end of its prompt). The
 # streaming route sometimes answered in another language (a reply in French was observed).

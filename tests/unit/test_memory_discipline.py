@@ -78,3 +78,14 @@ def test_the_display_name_never_becomes_the_card() -> None:
     assert _SPEAKER_NAME not in identified
     assert card in identified
     assert identified == build_system_prompt(profile, profile_card=card)
+
+
+def test_the_discipline_forbids_claiming_an_observation() -> None:
+    """Plan 0081 (D-6): with an empty session the 3B model said it had seen or noticed things."""
+    last_line = _MEMORY_DISCIPLINE.splitlines()[-1]
+
+    assert last_line == (
+        "- If neither the memory block nor this conversation holds it, you know nothing about "
+        "this person: never say you saw, noticed or remember anything about them."
+    )
+    assert _SPEAKER_NAME not in _MEMORY_DISCIPLINE
