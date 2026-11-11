@@ -1,5 +1,7 @@
 # Current cognitive implementation
 
+> **Diagrams:** [the voice turn](diagrams/current-state-voice-turn.html) and [memory and administration](diagrams/current-state-memory.html) (Archify; split on 2026-11-11 so each fits one desktop screen). Regenerate them when this page changes.
+
 > **Observed:** the Plan 0081 row below added 2026-11-11 at its close (what the robot says: the
 > card's tastes only on taste talk, the language rule follows the address form and names no
 > register word; accepted by Pipec on real hardware, CI selection 7005 passed, baseline 6957); the

@@ -2,8 +2,8 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "Iroko cognitive runtime — current state",
-    "output": "iroko-architecture.html",
+    "title": "Iroko current state — the voice turn",
+    "output": "iroko-voice-turn.html",
     "quality_profile": "showcase",
     "views": [
       {
@@ -37,36 +37,57 @@
           "controller",
           "face",
           "continuity",
-          "profile",
           "ollama"
         ],
         "note": "A generic turn names its speaker by face or a token, never voice; their last turns and a small profile card (off by default) reach the next."
-      },
-      {
-        "id": "memory-write",
-        "label": "Memory candidates",
-        "focus": [
-          "controller",
-          "ollama",
-          "consolidation",
-          "memory"
-        ],
-        "note": "Off by default: needs the same person's face and voice on that clip. One canonical writer stores it, setting class, asserter and channel."
-      },
-      {
-        "id": "commissioning",
-        "label": "Commissioning (the alta)",
-        "focus": [
-          "commission",
-          "seed",
-          "memory",
-          "admin"
-        ],
-        "note": "Face and voice with the server on; the load is a dry run, the owner's SI, one transaction. After the close, iroko-admin amends it."
       }
     ]
   },
   "components": [
+    {
+      "id": "face",
+      "type": "security",
+      "label": "Face + voice fusion",
+      "sublabel": "PC-4 · consent-gated",
+      "pos": [
+        460,
+        60
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "tag": "photo = basic"
+    },
+    {
+      "id": "policy",
+      "type": "security",
+      "label": "Household Policy",
+      "sublabel": "P0.5 fail-closed",
+      "pos": [
+        670,
+        60
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "sensitive",
+      "type": "backend",
+      "label": "Sensitive reader",
+      "sublabel": "templates · secret guard",
+      "pos": [
+        1040,
+        60
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "tag": "reader off by default"
+    },
     {
       "id": "robot",
       "type": "external",
@@ -74,7 +95,7 @@
       "sublabel": "mic · webcam · speaker",
       "pos": [
         40,
-        300
+        240
       ],
       "size": [
         140,
@@ -88,7 +109,7 @@
       "sublabel": "FastAPI :8000",
       "pos": [
         250,
-        300
+        240
       ],
       "size": [
         140,
@@ -103,7 +124,7 @@
       "sublabel": "STT · CPU or GPU",
       "pos": [
         460,
-        300
+        240
       ],
       "size": [
         140,
@@ -117,7 +138,7 @@
       "sublabel": "P0.3 decide()",
       "pos": [
         670,
-        300
+        240
       ],
       "size": [
         150,
@@ -126,42 +147,13 @@
       "tag": "immutable plan"
     },
     {
-      "id": "policy",
-      "type": "security",
-      "label": "Household Policy",
-      "sublabel": "P0.5 fail-closed",
-      "pos": [
-        670,
-        110
-      ],
-      "size": [
-        150,
-        64
-      ]
-    },
-    {
-      "id": "face",
-      "type": "security",
-      "label": "Face + voice fusion",
-      "sublabel": "PC-4 · consent-gated",
-      "pos": [
-        460,
-        110
-      ],
-      "size": [
-        150,
-        64
-      ],
-      "tag": "photo = basic"
-    },
-    {
       "id": "ollama",
       "type": "external",
       "label": "Ollama",
       "sublabel": "local LLM / VLM",
       "pos": [
-        900,
-        300
+        980,
+        240
       ],
       "size": [
         140,
@@ -169,31 +161,16 @@
       ]
     },
     {
-      "id": "consolidation",
+      "id": "tts",
       "type": "backend",
-      "label": "Candidate dialogue",
-      "sublabel": "propose · offer · answer",
+      "label": "Piper",
+      "sublabel": "local TTS",
       "pos": [
-        900,
-        460
+        250,
+        400
       ],
       "size": [
-        160,
-        64
-      ],
-      "tag": "off by default"
-    },
-    {
-      "id": "memory",
-      "type": "database",
-      "label": "SQLite",
-      "sublabel": "v4 · candidates · record",
-      "pos": [
-        670,
-        460
-      ],
-      "size": [
-        160,
+        140,
         64
       ]
     },
@@ -204,7 +181,7 @@
       "sublabel": "3000 chars · 180 s · in process",
       "pos": [
         460,
-        460
+        400
       ],
       "size": [
         160,
@@ -213,108 +190,18 @@
       "tag": "identified person only"
     },
     {
-      "id": "tts",
-      "type": "backend",
-      "label": "Piper",
-      "sublabel": "local TTS",
+      "id": "memory",
+      "type": "database",
+      "label": "SQLite",
+      "sublabel": "v4 · candidates · record",
       "pos": [
-        250,
-        460
+        670,
+        400
       ],
       "size": [
-        140,
+        160,
         64
       ]
-    },
-    {
-      "id": "seed",
-      "type": "backend",
-      "label": "Seed importer",
-      "sublabel": "just seed-import · server stopped",
-      "pos": [
-        670,
-        620
-      ],
-      "size": [
-        180,
-        64
-      ],
-      "tag": "dry run by default"
-    },
-    {
-      "id": "commission",
-      "type": "backend",
-      "label": "Commissioning session",
-      "sublabel": "just commission · state machine",
-      "pos": [
-        670,
-        780
-      ],
-      "size": [
-        180,
-        64
-      ],
-      "tag": "acta, no household value"
-    },
-    {
-      "id": "admin",
-      "type": "backend",
-      "label": "Local admin CRUD",
-      "sublabel": "iroko-admin · server stopped",
-      "pos": [
-        420,
-        620
-      ],
-      "size": [
-        190,
-        64
-      ],
-      "tag": "amendment path, PIN + audit"
-    },
-    {
-      "id": "profile",
-      "type": "backend",
-      "label": "Profile card",
-      "sublabel": "name · gated tastes",
-      "pos": [
-        900,
-        620
-      ],
-      "size": [
-        160,
-        64
-      ],
-      "tag": "off by default"
-    },
-    {
-      "id": "record",
-      "type": "backend",
-      "label": "Conversation record",
-      "sublabel": "text · diary · recall units",
-      "pos": [
-        40,
-        620
-      ],
-      "size": [
-        190,
-        64
-      ],
-      "tag": "consent + switch, off by default"
-    },
-    {
-      "id": "sensitive",
-      "type": "backend",
-      "label": "Sensitive reader",
-      "sublabel": "templates · secret guard",
-      "pos": [
-        1040,
-        110
-      ],
-      "size": [
-        160,
-        64
-      ],
-      "tag": "reader off by default"
     }
   ],
   "boundaries": [
@@ -392,26 +279,12 @@
       "toSide": "top"
     },
     {
-      "id": "ollama-to-consolidation",
-      "from": "ollama",
-      "to": "consolidation",
-      "label": "extraction (user words only)",
-      "fromSide": "bottom",
-      "toSide": "top"
-    },
-    {
-      "id": "consolidation-to-memory",
-      "from": "consolidation",
-      "to": "memory",
-      "label": "candidates, then one fact",
-      "labelDy": -33
-    },
-    {
       "id": "api-to-tts",
       "from": "api",
       "to": "tts",
       "label": "response text",
-      "labelDy": -58
+      "labelDy": 24,
+      "labelDx": -50
     },
     {
       "id": "api-to-continuity",
@@ -429,46 +302,6 @@
       "label": "audio_base64",
       "variant": "emphasis",
       "fromSide": "left",
-      "toSide": "bottom"
-    },
-    {
-      "id": "seed-to-memory",
-      "from": "seed",
-      "to": "memory",
-      "label": "one transaction · import_assisted",
-      "fromSide": "top",
-      "toSide": "bottom"
-    },
-    {
-      "id": "commission-to-seed",
-      "from": "commission",
-      "to": "seed",
-      "label": "names the next command",
-      "fromSide": "top",
-      "toSide": "bottom"
-    },
-    {
-      "id": "admin-to-memory",
-      "from": "admin",
-      "to": "memory",
-      "label": "admin_local · one audit row",
-      "fromSide": "right",
-      "toSide": "left"
-    },
-    {
-      "id": "profile-to-memory",
-      "from": "profile",
-      "to": "memory",
-      "label": "one audit row, then personal · normal rows",
-      "fromSide": "left",
-      "toSide": "bottom"
-    },
-    {
-      "id": "record-to-memory",
-      "from": "record",
-      "to": "memory",
-      "label": "text · diary · purge",
-      "fromSide": "top",
       "toSide": "bottom"
     },
     {
@@ -497,10 +330,7 @@
       "items": [
         "The controller returns an immutable plan first: a memory question is answered from what memory found, never invented",
         "The LLM (Ollama only, one transport) chats only on generic turns: it sees the session and the profile card, never a household store",
-        "A generic speaker is named by face or a token; a memory offer, answer or security read also needs the same person's verified voice",
-        "One canonical writer for every channel; a secret is kept by reference, never its value; the alta loads it and iroko-admin amends it, audited",
-        "Profile card: the name always, the tastes only on taste talk, the form through the language rule (Plans 0074, 0081)",
-        "Recall, relatives and sensitive reads answer by template or found text only, behind their switches; the record keeps markers (Plans 0077 to 0080)"
+        "A generic speaker is named by face or a token; a memory offer, answer or security read also needs the same person's verified voice"
       ]
     },
     {
@@ -508,7 +338,6 @@
       "title": "Known gaps",
       "items": [
         "No liveness or replay defense, accepted for the home (ADR 0029)",
-        "No correcting or forgetting by voice (CM-6), no spoken third-party capture, no answering in company",
         "A PIN grant proves the PIN, not the speaker (ADR-0015); the 3B model's own answers are a limit (P4.1)"
       ]
     }
