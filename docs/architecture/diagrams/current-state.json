@@ -275,7 +275,7 @@
       "id": "profile",
       "type": "backend",
       "label": "Profile card",
-      "sublabel": "name · form · tastes",
+      "sublabel": "name · gated tastes",
       "pos": [
         900,
         620
@@ -504,7 +504,7 @@
         "The seed file loads offline (Plan 0071): dry run by default, the owner's review and SI, one transaction, a replacement only while commissioning and before anything is learned by voice",
         "The alta is one guided command (Plan 0072): it enrols face and voice asking the PIN before each, records backups and consents, attests the readiness of what exists and closes the window with an acta that holds no household value",
         "After the alta closes, iroko-admin is the amendment path (Plan 0073): it edits the pool and contacts through the canonical writers (channel admin_local) with the owner PIN for sensitive data and an audit that holds no value; a revoke is history, not a hard delete",
-        "The profile card (Plan 0074): a face-identified owner's name, form and tastes enter the prompt behind PROFILE_CARD_ENABLED; one audit row precedes every read, nothing sensitive",
+        "The profile card (Plans 0074, 0081): a face-identified owner's name enters the prompt behind PROFILE_CARD_ENABLED, the tastes only on taste talk, the form through the language rule; one audit row precedes every read, nothing sensitive",
         "Every spoken exchange of the voice routes is kept as text (consent, switch); only the owner's turns with face and verified voice feed the diary, and no generic prompt reads it",
         "Recall (Plan 0078): «¿qué te conté…?» searches the owner's own normal recall units (verified words of ordinary turns and diary summaries; FTS5 + vector + RRF behind a calibrated gate) after one audit row, and answers only from what was found or «No me acuerdo de eso.»; the relatives of the alta are read by a fixed template, parents and children by their recorded side (Plan 0080); «¿cuándo…?» says the day it was told, never the date of the event; behind RECALL_ENABLED",
         "Sensitive reads (Plan 0079): the owner's own health, home and birthdays are read behind SENSITIVE_READ_ENABLED by fixed templates, with the face alone in view (two faces: «Te lo digo cuando estemos solos.»); the security references also need a verified voice; the record keeps a marker instead of the answer. A stated, asked or offered secret value never reaches the model and is kept only as a marker (guard on with MEMORY_ENABLED)",

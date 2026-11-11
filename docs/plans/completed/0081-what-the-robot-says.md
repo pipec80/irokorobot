@@ -1,6 +1,20 @@
 # 0081 — What the robot says: the owner's tastes only when they apply, no prompt words in the reply, `usted` with the 3B model, nothing invented on an empty session
 
-> **Status:** `Ready` and `NOW` — **promoted by Pipec on 2026-11-11** («Sí, promuévelo»), decisions
+> **Status:** **Closed** (2026-11-11). Accepted by Pipec on real hardware, streaming route, in two
+> sittings ([acceptance record](../../evals/0081-what-the-robot-says-acceptance.md)); CI selection
+> 7005 passed (baseline 6957). The builder's rulings that go beyond the text below win over it
+> where they differ:
+>
+> - The card footer opens «Es memoria autorizada.» before D-5's text, so the card stays the
+>   discipline's «authorized memory block» (ADR 0026; `test_desktop_hardening`).
+> - An allowed but empty card read gives `PromptCard("tu", None)` and logs `tastes=none`.
+> - The golden fixture keeps its one-space indent; its canary card is built by the renderer.
+>
+> Hardware: cases 1, 2b, 4a, 4c, 5 and 7 pass; 4b partial; case 3 fails and case 6 misses its gate
+> (D-8): limits of `qwen2.5:3b` (it mirrors the owner's just-said tastes, it ignores `usted`),
+> recorded for P4.1, not patched. Next free numbers: plan **0082**, ADR **0038**.
+>
+> **Status at promotion:** `Ready` and `NOW` — **promoted by Pipec on 2026-11-11** («Sí, promuévelo»), decisions
 > D-1 to D-8 confirmed as written, after he removed the reply guard (the plan fixes our code and
 > prompt, not the 3B model's output). To be executed in a new session. GitHub is on stand-by that
 > day (the CI cannot install its apt packages; PR #256 and #255 are open): the branch is local,
