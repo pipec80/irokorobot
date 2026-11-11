@@ -20,9 +20,7 @@ jobs:
   commit-lint:
     name: 📝 PR Title (Conventional Commits)
     if: github.event_name == 'pull_request'
-    # Pinned (2026-11-11): on ubuntu-26.04, the new ubuntu-latest, apt cannot resolve the
-    # Ubuntu mirrors. Back to ubuntu-latest once that image installs packages.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -41,9 +39,7 @@ jobs:
 
   quality-gate:
     name: 🛡️ Quality & Security
-    # Pinned (2026-11-11): on ubuntu-26.04, the new ubuntu-latest, apt cannot resolve the
-    # Ubuntu mirrors. Back to ubuntu-latest once that image installs packages.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -100,9 +96,7 @@ jobs:
 
   tests:
     name: 🧪 Automated Tests
-    # Pinned (2026-11-11): on ubuntu-26.04, the new ubuntu-latest, apt cannot resolve the
-    # Ubuntu mirrors. Back to ubuntu-latest once that image installs packages.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     needs: quality-gate
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
