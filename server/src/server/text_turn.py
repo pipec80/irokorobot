@@ -24,6 +24,7 @@ from server.exceptions import LLMError
 from server.memory import continuity
 from server.memory.candidate_dialogue import OfferPreparer, PendingOffer, commit_offer
 from server.memory.continuity import ContinuityTurn, SuspendCause
+from server.memory.profile_card import AddressForm
 from server.schemas import ConversationTurn
 from server.settings import settings
 
@@ -60,6 +61,8 @@ class PreparedTextTurn:
     continuity: ContinuityTurn | None = None
     # The rendered profile card carries the person's own data: hidden from ``repr``.
     profile_card: str | None = field(default=None, repr=False)
+    # The speaker's form from the card read (Plan 0081); the language rule follows it.
+    address_form: AddressForm = "tu"
 
 
 @dataclass(frozen=True)
@@ -213,6 +216,7 @@ async def _generate(client: httpx.AsyncClient, prepared: PreparedTextTurn) -> tu
             active_person=prepared.active_person,
             perception=prepared.perception,
             profile_card=prepared.profile_card,
+            address_form=prepared.address_form,
         )
         # The model stores nothing (Plan 0064): a claim of saving is false, and the history
         # must never keep it, so the guard runs before the reply is logged or recorded.

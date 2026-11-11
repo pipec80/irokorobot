@@ -27,12 +27,16 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+#: The register the person asked for: «tú» or «usted» (ADR 0026 decision 2).
+type AddressForm = Literal["tu", "usted"]
+
 __all__ = [
     "CARD_HEADER",
     "CARD_PREDICATES",
     "MAX_CARD_CHARS",
     "MAX_CARD_TASTES",
     "MAX_VALUE_CHARS",
+    "AddressForm",
     "CardTaste",
     "ProfileCard",
     "build_card",
@@ -91,7 +95,7 @@ class ProfileCard:
     """
 
     preferred_name: str | None
-    address_form: Literal["tu", "usted"] | None
+    address_form: AddressForm | None
     tastes: tuple[CardTaste, ...]
 
     @property
@@ -140,7 +144,7 @@ def build_card(rows: Sequence[LiteralFactV4]) -> ProfileCard:
         kept), and stop at ``MAX_CARD_TASTES`` items.
     """
     name: str | None = None
-    form: Literal["tu", "usted"] | None = None
+    form: AddressForm | None = None
     tastes: dict[tuple[str, str], CardTaste] = {}
     for row in filter(_is_card_row, rows):
         match row.predicate:
