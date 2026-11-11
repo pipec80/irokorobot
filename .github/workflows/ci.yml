@@ -20,7 +20,10 @@ jobs:
   commit-lint:
     name: 📝 PR Title (Conventional Commits)
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    # Pinned (2026-11-11): on ubuntu-26.04, the new ubuntu-latest, PortAudio 19.7 fails to
+    # initialize without a PulseAudio server, so importing sounddevice errors in 14 test files.
+    # Back to ubuntu-latest once that image runs the suite.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -39,7 +42,10 @@ jobs:
 
   quality-gate:
     name: 🛡️ Quality & Security
-    runs-on: ubuntu-latest
+    # Pinned (2026-11-11): on ubuntu-26.04, the new ubuntu-latest, PortAudio 19.7 fails to
+    # initialize without a PulseAudio server, so importing sounddevice errors in 14 test files.
+    # Back to ubuntu-latest once that image runs the suite.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -96,7 +102,10 @@ jobs:
 
   tests:
     name: 🧪 Automated Tests
-    runs-on: ubuntu-latest
+    # Pinned (2026-11-11): on ubuntu-26.04, the new ubuntu-latest, PortAudio 19.7 fails to
+    # initialize without a PulseAudio server, so importing sounddevice errors in 14 test files.
+    # Back to ubuntu-latest once that image runs the suite.
+    runs-on: ubuntu-24.04
     needs: quality-gate
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

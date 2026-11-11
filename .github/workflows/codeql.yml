@@ -16,7 +16,10 @@ permissions:
 jobs:
   analyze:
     name: Analyze (Python)
-    runs-on: ubuntu-latest
+    # Pinned (2026-11-11): on ubuntu-26.04, the new ubuntu-latest, PortAudio 19.7 fails to
+    # initialize without a PulseAudio server, so importing sounddevice errors in 14 test files.
+    # Back to ubuntu-latest once that image runs the suite.
+    runs-on: ubuntu-24.04
     permissions:
       security-events: write # upload results to the Security tab
       contents: read

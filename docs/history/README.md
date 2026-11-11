@@ -23,6 +23,9 @@ until its remaining active plans close.
 - [`bootstrap/`](bootstrap/) preserves initial setup, tooling, and repository
   scaffolding notes. Use root `AGENTS.md`, `justfile`, `pyproject.toml`, and the
   current documentation portal instead.
+- [`closing-path-tables-2026-11-10.md`](roadmaps/closing-path-tables-2026-11-10.md): the closing
+  path of conversational memory and the path to the MVP as they stood on 2026-11-10, merged on
+  2026-11-11 into the roadmap's one path to the finish line.
 
 ## Archived plan indexes
 

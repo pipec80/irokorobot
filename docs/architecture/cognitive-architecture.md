@@ -240,6 +240,12 @@ filters before constructing prompt context. Relational facts are preferred for
 exact household questions; vector retrieval supplements them rather than
 overriding them.
 
+**The core is the memory engine (Pipec, 2026-11-11).** Speech-to-text, the language model and the voice are
+replaceable modules behind their ports, already studied and limited by the machine rather than by the
+design; the memory engine is what turns answering into remembering. The work before the electronics
+closes the engine, and its finish line is the laptop as a server only, with the body as a client of
+the API contract ([roadmap](../roadmap/cognitive-roadmap.md#closing-path-of-conversational-memory)).
+
 **Pipeline rule: memory first, the model second.** The memory engine and the controller decide
 what the turn is before any model runs. A question about the owner's data or about what was told
 before (recall, the relatives, the sensitive and security levels) is answered from what memory
