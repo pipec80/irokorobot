@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
-from server.text_keys import normalize_spanish
+from server.text_keys import ARTICLES, normalize_spanish
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -66,12 +66,9 @@ _FUNCTION_WORDS: Final = frozenset(
         *_OWN_WORDS,
         *_CONTACT_WORDS,
         _NUMBER_WORD,
+        *ARTICLES,
         "de",
         "del",
-        "el",
-        "la",
-        "los",
-        "las",
         "a",
         "al",
         "telefono",

@@ -1,10 +1,10 @@
-"""Read the owner's own contacts by voice after the checks (Plan 0082, ADR 0037 decision 1).
+"""Read and say the owner's own contacts by voice (Plan 0082, ADR 0037 decision 1).
 
-``sensitive_reply`` runs the audience and level checks of every sensitive question; for a contact
-question it then hands over to ``contact_reply``, which makes the one policy request of D-8
-(visibility ``personal``, sensitivity ``private`` and ``location``, the two the table holds), writes
-its audit row **before** the read, reads the active contacts through ``list_active_contacts``,
-selects what the question named (``contact_questions``) and words it with ``contact_answers``.
+``sensitive_reply`` runs the audience and level checks of every sensitive question and the one
+policy request of D-8 (visibility ``personal``, sensitivity ``CONTACT_SENSITIVITIES``, the two the
+table holds), with its audit row **before** the read. Only then it hands over to
+``contact_reply``, which reads the active contacts through ``list_active_contacts``, selects what
+the question named (``contact_questions``) and words it with ``contact_answers``.
 
 It reads only: nothing here writes a contact, calls a phone or raises an alert. A question that
 names no own contact is never read (``is_own_contact_question``, decided before any check). No
@@ -15,11 +15,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Final
 
-from server.cognition.authorization import (
-    AuthorizationRequest,
-    DataSensitivity,
-    DataVisibility,
-)
 from server.cognition.contact_answers import (
     CANNOT_CALL,
     MAX_SPOKEN_CONTACTS,
@@ -29,24 +24,19 @@ from server.cognition.contact_answers import (
     word_key_holders,
 )
 from server.cognition.contact_questions import contact_selector, match_score
-from server.cognition.models import AuthorizationAction, AuthorizationStatus
 from server.cognition.response_plan import SensitiveOutcome, SensitiveReply
 from server.cognition.sensitive_questions import SensitiveTopic
 from server.memory.care_contacts import list_active_contacts
 from server.memory.entity_labels import get_person_label
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-    from datetime import datetime
-    from uuid import UUID
+    from collections.abc import Awaitable, Callable, Hashable, Mapping
 
-    from server.cognition.authorization import ConsentStatus
-    from server.cognition.identity import ActivePersonContext
     from server.cognition.sensitive_questions import SensitiveQuery
-    from server.memory.candidate_policy import AuditWriter, PolicyEvaluator
     from server.memory.care_contacts import CareContact
 
 __all__ = [
+    "CONTACT_SENSITIVITIES",
     "ContactsReader",
     "NameReader",
     "contact_reply",
@@ -58,7 +48,7 @@ type ContactsReader = Callable[[int], Awaitable[tuple[CareContact, ...]]]
 type NameReader = Callable[[int], Awaitable[str | None]]
 
 #: The two sensitivities a contact row can hold (migration 011): one request names both (D-8).
-_CONTACT_SENSITIVITIES: Final = frozenset({DataSensitivity.PRIVATE, DataSensitivity.LOCATION})
+CONTACT_SENSITIVITIES: Final[frozenset[str]] = frozenset({"private", "location"})
 
 
 def is_own_contact_question(query: SensitiveQuery) -> bool:
@@ -90,63 +80,39 @@ async def stored_name(entity_id: int) -> str | None:
 
 
 async def contact_reply(
-    actor: ActivePersonContext,
     query: SensitiveQuery,
     *,
-    consent: ConsentStatus,
-    correlation_id: UUID,
-    now: datetime,
-    policy: PolicyEvaluator,
-    audit: AuditWriter,
+    owner_entity_id: int,
     contacts: ContactsReader = list_active_contacts,
     names: NameReader = stored_name,
 ) -> tuple[SensitiveReply, int]:
-    """Answer one contact question once the audience and level checks passed.
+    """Answer one contact question; the caller already authorized and audited the read.
 
     Args:
-        actor: The face-identified owner (the caller checked it).
         query: A question of ``CONTACT_PHONE``, ``CONTACT_CALL`` or ``KEY_HOLDERS``.
-        consent: The consent of a ``location`` read (Plan 0079 D-9).
-        correlation_id: The turn's id, so the audit row joins the rest of the turn.
-        now: The caller's clock reading.
-        policy: The pure evaluator.
-        audit: The audit writer; a failure propagates, so nothing is read.
+        owner_entity_id: The face-identified owner whose contacts are read.
         contacts: The owner's active contacts, by call order; tests inject doubles.
-        names: A contact's stored name; tests inject doubles.
+        names: A contact's stored name, read once per person; tests inject doubles.
 
     Returns:
         The reply and how many people it concerned (a count for the log).
     """
-    person_id = actor.person_id
-    if person_id is None:  # unreachable after the caller's pre-check; the type narrows here
-        return SensitiveReply(SensitiveOutcome.DENIED), 0
-    request = AuthorizationRequest(
-        actor=actor,
-        action=AuthorizationAction.READ_PERSONAL_CONVERSATION_MEMORY,
-        target_person_id=person_id,
-        visibility=frozenset({DataVisibility.PERSONAL}),
-        sensitivity=_CONTACT_SENSITIVITIES,
-        consent=consent,
-        correlation_id=correlation_id,
-        requested_at=now,
-    )
-    decision = policy(request)
-    await audit(request, decision)
-    if decision.decision is not AuthorizationStatus.ALLOWED:
-        return SensitiveReply(SensitiveOutcome.DENIED), 0
-    people = await _chosen(query, await contacts(person_id), names)
+    rows = await contacts(owner_entity_id)
+    named: dict[int, str | None] = {}
+    for row in rows:
+        if row.contact_entity_id not in named:
+            named[row.contact_entity_id] = await names(row.contact_entity_id)
+    people = _spoken(_chosen(query, rows, named), named)
     return _worded(query.topic, people), len(people)
 
 
-async def _chosen(
-    query: SensitiveQuery, rows: tuple[CareContact, ...], names: NameReader
-) -> tuple[SpokenContact, ...]:
+def _chosen(
+    query: SensitiveQuery, rows: tuple[CareContact, ...], named: Mapping[int, str | None]
+) -> tuple[CareContact, ...]:
     """Select the rows the question named, best match first, one per person and phone (D-7)."""
     if query.topic is SensitiveTopic.KEY_HOLDERS:
-        picked = tuple(row for row in rows if row.has_key)
-        return await _spoken(_one_per_person(picked, by_phone=False), names)
+        return _first_of_each(tuple(row for row in rows if row.has_key), _person)
     selector = contact_selector(query.keywords)
-    named = {row.contact_entity_id: await names(row.contact_entity_id) for row in rows}
     scores = tuple(
         match_score(
             selector,
@@ -159,35 +125,39 @@ async def _chosen(
     )
     best = max(scores, default=0)
     picked = tuple(row for row, score in zip(rows, scores, strict=True) if best and score == best)
-    unique = _one_per_person(picked, by_phone=True)[:MAX_SPOKEN_CONTACTS]
-    return await _spoken(unique, names)
+    return _first_of_each(picked, _person_and_phones)[:MAX_SPOKEN_CONTACTS]
 
 
-def _one_per_person(rows: tuple[CareContact, ...], *, by_phone: bool) -> tuple[CareContact, ...]:
-    """Keep the first row of each person (and, for a phone question, each pair of phones)."""
-    seen: set[tuple[int, str, str | None] | int] = set()
-    kept: list[CareContact] = []
+def _person(row: CareContact) -> Hashable:
+    return row.contact_entity_id
+
+
+def _person_and_phones(row: CareContact) -> Hashable:
+    return (row.contact_entity_id, row.phone, row.phone_alt)
+
+
+def _first_of_each(
+    rows: tuple[CareContact, ...], key: Callable[[CareContact], Hashable]
+) -> tuple[CareContact, ...]:
+    """Keep the first row of each key, in the given order (call order first)."""
+    kept: dict[Hashable, CareContact] = {}
     for row in rows:
-        key = (
-            (row.contact_entity_id, row.phone, row.phone_alt) if by_phone else row.contact_entity_id
-        )
-        if key not in seen:
-            seen.add(key)
-            kept.append(row)
-    return tuple(kept)
+        kept.setdefault(key(row), row)
+    return tuple(kept.values())
 
 
-async def _spoken(rows: tuple[CareContact, ...], names: NameReader) -> tuple[SpokenContact, ...]:
+def _spoken(
+    rows: tuple[CareContact, ...], named: Mapping[int, str | None]
+) -> tuple[SpokenContact, ...]:
+    """Turn the selected rows into what the templates say, the label or the role's words."""
     return tuple(
-        [
-            SpokenContact(
-                name=await names(row.contact_entity_id),
-                descriptor=row.relationship or role_descriptor(row.role.value),
-                phone=row.phone,
-                phone_alt=row.phone_alt,
-            )
-            for row in rows
-        ]
+        SpokenContact(
+            name=named[row.contact_entity_id],
+            descriptor=row.relationship or role_descriptor(row.role.value),
+            phone=row.phone,
+            phone_alt=row.phone_alt,
+        )
+        for row in rows
     )
 
 

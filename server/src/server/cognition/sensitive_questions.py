@@ -476,10 +476,14 @@ class _Pattern:
 
 
 # The folded phrases as word tuples, topic by topic, without a leading «a».
-_PATTERNS: Final[tuple[_Pattern, ...]] = tuple(
+_ALL_PATTERNS: Final[tuple[_Pattern, ...]] = tuple(
     _Pattern(topic, tuple(phrase.removeprefix("a ").split()), phrase in _NEEDS_QUESTION_MARK)
     for topic, phrases in _PHRASES.items()
     for phrase in phrases
+)
+# Plan 0079's grammar alone, the one used while the alta read is off.
+_BASE_PATTERNS: Final[tuple[_Pattern, ...]] = tuple(
+    pattern for pattern in _ALL_PATTERNS if pattern.topic not in ALTA_TOPICS
 )
 
 
@@ -501,9 +505,9 @@ def classify_sensitive_question(message: str, *, alta: bool = False) -> Sensitiv
         whole folded tail (D-5) and needs one.
     """
     body = _without_openers(sentence_body(message))
-    for pattern in _PATTERNS:
+    for pattern in _ALL_PATTERNS if alta else _BASE_PATTERNS:
         topic = pattern.topic
-        if (topic in ALTA_TOPICS and not alta) or body[: len(pattern.words)] != pattern.words:
+        if body[: len(pattern.words)] != pattern.words:
             continue
         span_end = _span_end(topic, body, len(pattern.words))
         if span_end is None:

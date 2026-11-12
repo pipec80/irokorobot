@@ -17,6 +17,7 @@ from server.cognition.contact_answers import (
     word_contacts,
     word_key_holders,
 )
+from server.memory.care_contacts import ContactRole
 
 pytestmark = pytest.mark.unit
 
@@ -133,3 +134,7 @@ def test_the_repr_holds_no_value() -> None:
     assert "Canary" not in shown
     assert "hija" not in shown
     assert "569" not in shown
+
+
+def test_every_contact_role_of_the_table_has_a_descriptor() -> None:
+    assert set(_ROLES) == {role.value for role in ContactRole}

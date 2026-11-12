@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
-from server.cognition.sensitive_answers import spanish_join
+from server.cognition.sensitive_answers import capitalized, spanish_join
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -156,6 +156,5 @@ def word_key_holders(contacts: tuple[SpokenContact, ...]) -> str:
         return NO_KEY_HOLDER
     names = tuple(contact.name or f"tu {contact.descriptor}" for contact in contacts)
     if len(names) == 1:
-        holder = names[0]
-        return f"{holder[0].upper()}{holder[1:]} tiene llave de tu casa."
+        return capitalized(f"{names[0]} tiene llave de tu casa.")
     return f"Tienen llave de tu casa: {spanish_join(names)}."

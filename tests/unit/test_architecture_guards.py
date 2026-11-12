@@ -182,8 +182,6 @@ _ACTION_HOMES = frozenset(
         "memory/profile_card_access.py",
         "memory/recall_access.py",
         "memory/sensitive_access.py",
-        # Plan 0082: the contacts' one policy request, made after sensitive_access's checks.
-        "memory/contact_access.py",
     }
 )
 _MEMORY_SCOPE_MEMBER_NAMES = frozenset({"PERSONAL_MEMORY_READ", "PERSONAL_MEMORY_FORGET"})

@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 __all__ = [
+    "capitalized",
     "spanish_join",
     "spoken_blood_type",
     "word_children_birthdays",
@@ -145,6 +146,18 @@ def spanish_join(values: tuple[str, ...]) -> str:
     return f"{', '.join(values[:-1])} y {values[-1]}"
 
 
+def capitalized(sentence: str) -> str:
+    """Return a sentence with its first letter in upper case and the rest as written.
+
+    Args:
+        sentence: A non-empty sentence built from already-authorized values.
+
+    Returns:
+        «De Zeta no tengo la fecha…» from «de Zeta no tengo la fecha…».
+    """
+    return sentence[:1].upper() + sentence[1:]
+
+
 def spoken_blood_type(value: str) -> str:
     """Return a blood type as it is spoken: ``A+`` is «A positivo».
 
@@ -253,5 +266,4 @@ def word_children_birthdays(children: tuple[tuple[str, date | None], ...]) -> st
         else f"de {name} no tengo la fecha"
         for name, day in children
     )
-    sentence = f"{spanish_join(parts)}."
-    return sentence[0].upper() + sentence[1:]
+    return capitalized(f"{spanish_join(parts)}.")

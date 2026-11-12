@@ -55,7 +55,12 @@ from server.cognition.sensitive_questions import (
 )
 from server.memory.care_contacts import list_active_contacts
 from server.memory.commissioning import has_closed_commissioning
-from server.memory.contact_access import contact_reply, is_own_contact_question, stored_name
+from server.memory.contact_access import (
+    CONTACT_SENSITIVITIES,
+    contact_reply,
+    is_own_contact_question,
+    stored_name,
+)
 from server.memory.entity_labels import read_household_names
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.profile_card_access import may_read_own_memory
@@ -242,16 +247,13 @@ async def _read(call: _Call, scope: _ChildScope) -> _Done:
 
 async def _read_contacts(call: _Call) -> _Done:
     """The contacts' one policy request, its audit row, then the read (Plan 0082, D-8)."""
+    person_id = call.actor.person_id
+    if person_id is None:  # unreachable after the pre-check; the type narrows here
+        return _done(SensitiveOutcome.DENIED)
+    if not await _authorized(call, person_id, CONTACT_SENSITIVITIES):
+        return _done(SensitiveOutcome.DENIED)
     reply, entries = await contact_reply(
-        call.actor,
-        call.query,
-        consent=await _consent(call, DataSensitivity.LOCATION.value),
-        correlation_id=call.correlation_id,
-        now=call.now,
-        policy=call.policy,
-        audit=call.audit,
-        contacts=call.contacts,
-        names=call.contact_names,
+        call.query, owner_entity_id=person_id, contacts=call.contacts, names=call.contact_names
     )
     return _Done(reply, entries)
 
@@ -300,26 +302,40 @@ async def _consent(call: _Call, sensitivity: str) -> ConsentStatus:
     return ConsentStatus.MISSING
 
 
+async def _authorized(call: _Call, person_id: int, sensitivities: frozenset[str]) -> bool:
+    """One policy request over the owner's own data, and its audit row **before** any read.
+
+    The one place an own read is authorized (D-10, Plan 0082 D-8): the consent is the face's grant
+    and a closed alta whenever one of the sensitivities needs it. A failing audit propagates, so
+    nothing is read at all.
+    """
+    consent = ConsentStatus.NOT_REQUIRED
+    if sensitivities & _CONSENT_SENSITIVITIES:
+        consent = await _consent(call, next(iter(sensitivities & _CONSENT_SENSITIVITIES)))
+    visibility, _sensitivity = TOPIC_LABEL[call.query.topic]
+    request = AuthorizationRequest(
+        actor=call.actor,
+        action=AuthorizationAction.READ_PERSONAL_CONVERSATION_MEMORY,
+        target_person_id=person_id,
+        visibility=frozenset({DataVisibility(visibility)}),
+        sensitivity=frozenset(DataSensitivity(item) for item in sensitivities),
+        consent=consent,
+        correlation_id=call.correlation_id,
+        requested_at=call.now,
+    )
+    decision = call.policy(request)
+    await call.audit(request, decision)
+    return decision.decision is AuthorizationStatus.ALLOWED
+
+
 async def _read_own(call: _Call) -> _Done:
     """Policy, the audit row, then the read of the owner's own values (D-10)."""
     topic = call.query.topic
     person_id = call.actor.person_id
     if person_id is None:  # unreachable after the pre-check; the type narrows here
         return _done(SensitiveOutcome.DENIED)
-    visibility, sensitivity = TOPIC_LABEL[topic]
-    request = AuthorizationRequest(
-        actor=call.actor,
-        action=AuthorizationAction.READ_PERSONAL_CONVERSATION_MEMORY,
-        target_person_id=person_id,
-        visibility=frozenset({DataVisibility(visibility)}),
-        sensitivity=frozenset({DataSensitivity(sensitivity)}),
-        consent=await _consent(call, sensitivity),
-        correlation_id=call.correlation_id,
-        requested_at=call.now,
-    )
-    decision = call.policy(request)
-    await call.audit(request, decision)  # a failing audit propagates: no read at all
-    if decision.decision is not AuthorizationStatus.ALLOWED:
+    _visibility, sensitivity = TOPIC_LABEL[topic]
+    if not await _authorized(call, person_id, frozenset({sensitivity})):
         return _done(SensitiveOutcome.DENIED)
     values = await call.reader(person_id, TOPIC_PREDICATE[topic], sensitivity)
     if not values:

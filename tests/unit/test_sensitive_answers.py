@@ -15,7 +15,8 @@ from server.cognition.sensitive_answers import (
     word_children_birthdays,
     word_own_answer,
 )
-from server.cognition.sensitive_questions import SensitiveTopic
+from server.cognition.sensitive_questions import TOPIC_PREDICATE, SensitiveTopic
+from server.memory.predicate_registry import resolve_predicate
 
 pytestmark = pytest.mark.unit
 
@@ -349,3 +350,23 @@ def test_an_unknown_choice_raises_without_the_value(topic: SensitiveTopic) -> No
 def test_a_contact_topic_is_not_worded_here(topic: SensitiveTopic) -> None:
     with pytest.raises(ValueError, match="no own template"):
         word_own_answer(topic, ("+56900000001",))
+
+
+@pytest.mark.parametrize(
+    "topic",
+    [
+        SensitiveTopic.MOBILITY,
+        SensitiveTopic.HEARING,
+        SensitiveTopic.VISION,
+        SensitiveTopic.DWELLING_TYPE,
+        SensitiveTopic.LIFT,
+        SensitiveTopic.LIVES_ALONE,
+    ],
+)
+def test_every_stored_choice_has_its_sentence(topic: SensitiveTopic) -> None:
+    """A choice the registry accepts can always be said: a new code fails here, not on air."""
+    definition = resolve_predicate(TOPIC_PREDICATE[topic])
+    assert definition is not None
+    assert definition.choices is not None
+    for choice in definition.choices:
+        assert word_own_answer(topic, (choice,))

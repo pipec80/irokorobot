@@ -242,7 +242,7 @@ class CognitiveController:
         self._recall_answerer = recall_answerer
         self._sensitive_reader = sensitive_reader
         self._secret_guard = secret_guard
-        self._alta_read = alta_read and sensitive_reader is not None
+        self._alta_read = alta_read
         # The same cache for a sensitive read: one read and one audit row per event.
         self._sensitive_reads: dict[UUID, ResponsePlan | None] = {}
         # The classic route's two calls again: one search and one audit row per event.
