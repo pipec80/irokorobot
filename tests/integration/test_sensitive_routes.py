@@ -34,9 +34,10 @@ from server.cognition.response_plan import (
     ResponsePlan,
 )
 from server.main import app
-from server.memory import continuity
+from server.memory import continuity, sensitive_access as sensitive_access_module
 from server.memory.biometric_consent import grant_face_consent
 from server.memory.canonical_writer import WriteChannel, write_literal
+from server.memory.care_contacts import ContactRole, write_contact
 from server.memory.commissioning import (
     CommissioningInput,
     ConfirmationMode,
@@ -46,6 +47,7 @@ from server.memory.commissioning import (
     open_commissioning,
 )
 from server.memory.conversation_consent import grant_conversation_consent
+from server.memory.declarative import create_third_party
 from server.memory.voice_consent import grant_voice_consent
 from server.personal_setup import PersonalSetupInput, PersonalSetupResult, apply_personal_setup
 from server.resources import AppResources
@@ -728,3 +730,112 @@ async def test_no_log_record_carries_a_stated_value_or_a_stored_answer(
     for record in caplog.records:
         carried = f"{record.getMessage()} {record.__dict__}"
         assert not [canary for canary in _CANARIES if canary in carried], record.getMessage()
+
+
+# --- Plan 0082 Task 7: the alta read switch on the voice routes (D-2, ADR 0037 decision 1) ------
+
+_CONTACT_QUESTION = "¿Tienes el teléfono de mi hija?"
+_MOBILITY_QUESTION = "¿Cómo me desplazo?"
+_DAUGHTER_PHONE = "+56900000001"
+_CONTACT_ANSWER = (
+    "El teléfono de Canary Daughter, tu hija, es "
+    "más cinco seis nueve, cero cero cero cero, cero cero cero uno."
+)
+
+
+async def _store_daughter(owner: int) -> None:
+    """One invented contact, as the importer writes it: the daughter, with a key and order 1."""
+    daughter = await create_third_party(name="Canary Daughter", type="person")
+    await write_contact(
+        owner_entity_id=owner,
+        contact_entity_id=daughter,
+        role=ContactRole.CAREGIVER,
+        phone=_DAUGHTER_PHONE,
+        channel=WriteChannel.IMPORT_FILE,
+        confirmed_at="2026-11-11T09:00:00.000000+00:00",
+        relationship="hija",
+        call_order=1,
+        has_key=True,
+    )
+
+
+@pytest.mark.parametrize("route", _VOICE_ROUTES)
+@pytest.mark.parametrize("message", [_CONTACT_QUESTION, _MOBILITY_QUESTION, _GENERIC])
+@pytest.mark.parametrize(
+    "sensitive_on, alta_on", [(True, False), (False, True)], ids=["alta-off", "sensitive-off"]
+)
+async def test_with_the_alta_switch_off_every_route_is_byte_identical(
+    household: PersonalSetupResult,
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+    message: str,
+    *,
+    sensitive_on: bool,
+    alta_on: bool,
+) -> None:
+    """Without both switches an alta question is answered as on main: the same wire, no read."""
+    await _store_daughter(household.owner_entity_id)
+    await _alta("closed")
+    untouchable = AsyncMock(side_effect=AssertionError("contact code ran with the switch off"))
+    monkeypatch.setattr(sensitive_access_module, "contact_reply", untouchable)
+    _see(monkeypatch, _OWNER_FACE)
+    _hear(monkeypatch, message, message)
+    _model(monkeypatch)
+
+    async with _client() as client:
+        monkeypatch.setattr(settings, "sensitive_read_enabled", False)
+        monkeypatch.setattr(settings, "alta_read_enabled", False)
+        reference = await _post(client, route, message)
+        monkeypatch.setattr(settings, "sensitive_read_enabled", sensitive_on)
+        monkeypatch.setattr(settings, "alta_read_enabled", alta_on)
+        asked = await _post(client, route, message)
+
+    assert asked.status_code == reference.status_code == 200
+    assert asked.spoken == reference.spoken
+    assert _comparable(asked) == _comparable(reference)
+    untouchable.assert_not_awaited()
+    assert await _count(_READ_AUDIT) == 0
+
+
+@pytest.mark.parametrize("route", _VOICE_ROUTES)
+async def test_a_contact_phone_on_each_voice_route(
+    household: PersonalSetupResult,
+    captured: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+) -> None:
+    monkeypatch.setattr(settings, "alta_read_enabled", True)
+    await _store_daughter(household.owner_entity_id)
+    await _alta("closed")
+    _see(monkeypatch, _OWNER_FACE)
+    _hear(monkeypatch, _CONTACT_QUESTION, _BIRTHDAY_QUESTION)
+    prompts = _model(monkeypatch)
+
+    async with _client() as client:
+        reply = await _post(client, route, _CONTACT_QUESTION)
+        birthday = await _post(client, route, _BIRTHDAY_QUESTION)
+
+    assert reply.spoken == _CONTACT_ANSWER
+    assert prompts == []
+    heard, said, _actor = captured.await_args_list[0].args
+    assert (heard, said) == (_CONTACT_QUESTION, SENSITIVE_RECORDED_TEXT)
+    assert await _count(_READ_AUDIT) == 1 + 1  # the contact read and the birthday read
+    assert reply.shape == birthday.shape  # no new wire field
+
+
+@pytest.mark.parametrize("route", _VOICE_ROUTES)
+async def test_a_two_face_frame_hears_not_alone_for_a_contact(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch, route: str
+) -> None:
+    monkeypatch.setattr(settings, "alta_read_enabled", True)
+    await _store_daughter(household.owner_entity_id)
+    await _alta("closed")
+    _see(monkeypatch, _OWNER_FACE, _STRANGER_FACE)
+    _hear(monkeypatch, _CONTACT_QUESTION)
+    _model(monkeypatch)
+
+    async with _client() as client:
+        reply = await _post(client, route, _CONTACT_QUESTION)
+
+    assert reply.spoken == NOT_ALONE
+    assert await _count(_READ_AUDIT) == 0

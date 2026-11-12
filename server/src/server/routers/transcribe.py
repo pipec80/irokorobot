@@ -345,6 +345,8 @@ def _voice_controller(
         recall_answerer=recall_answerer,
         sensitive_reader=_sensitive_reader(request_identity, household_tools),
         secret_guard=settings.memory_enabled,
+        # Plan 0082: the rest of the alta joins the sensitive read; inert without the reader.
+        alta_read=settings.alta_read_enabled,
     )
 
 
