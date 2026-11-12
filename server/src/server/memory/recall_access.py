@@ -29,6 +29,7 @@ from server.memory.household_authorization import record_authorization_decision
 from server.memory.profile_card_access import may_read_own_memory
 from server.memory.recall_answer import word_recall, word_when
 from server.memory.recall_search import RecallHit, RecallSearch, household_zone, search_recall
+from server.memory.recall_store import occurred_time_on
 
 if TYPE_CHECKING:
     from datetime import date, datetime
@@ -73,8 +74,16 @@ def _logged(
             "lexical_only": bool(search and search.lexical_only),
             "windowed": cue.window is not None,
             "when": None if cue.when is None else cue.when.value,
+            **_occurred_field(hits),
         },
     )
+
+
+def _occurred_field(hits: Sequence[RecallHit]) -> dict[str, bool]:
+    """Whether the first hit knew when its event happened; only with the switch on (D-14)."""
+    if not occurred_time_on():
+        return {}
+    return {"occurred_first": bool(hits) and hits[0].unit.occurred is not None}
 
 
 async def recall_reply(

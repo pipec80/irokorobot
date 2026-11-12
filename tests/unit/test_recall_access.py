@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 import logging
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, Mock
@@ -21,10 +21,12 @@ from server.cognition.identity import (
 )
 from server.cognition.models import AuthorizationAction, Confidence, ConfidenceBasis
 from server.cognition.recall_cues import CueStrength, RecallCue, WhenKind
+from server.cognition.spoken_dates import DayWindow
 from server.memory.recall_access import recall_reply
 from server.memory.recall_answer import NO_MEMORY
 from server.memory.recall_search import RecallHit, RecallSearch
 from server.memory.recall_store import RecallUnit
+from server.settings import settings
 
 if TYPE_CHECKING:
     from server.cognition.response_plan import RecallReply
@@ -236,3 +238,30 @@ async def test_the_log_line_carries_the_closed_when_value(
     assert len(lines) == 1
     assert lines[0].when == logged  # type: ignore[attr-defined]  # a log extra
     assert all("zzcanaryzz" not in record.getMessage() for record in caplog.records)
+
+
+@pytest.mark.parametrize("switch", [False, True])
+async def test_the_log_line_says_whether_the_first_hit_knew_when(
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch, *, switch: bool
+) -> None:
+    """Plan 0083 D-14: ``occurred_first`` only with the switch on, and never a date."""
+    monkeypatch.setattr(settings, "memory_enabled", True)
+    monkeypatch.setattr(settings, "recall_enabled", True)
+    monkeypatch.setattr(settings, "occurred_time_enabled", switch)
+    unit = RecallUnit(
+        id=1,
+        record_id=1,
+        kind="turn",
+        body=_CANARY,
+        said_at=_NOW - timedelta(days=1),
+        occurred=DayWindow(start=date(2025, 1, 1), end=date(2025, 12, 31)),
+    )
+
+    with caplog.at_level(logging.DEBUG):
+        await _reply(search=_found(RecallHit(unit=unit, distance=0.1)))
+
+    [line] = [r for r in caplog.records if getattr(r, "event", "") == "recall.read"]
+    assert hasattr(line, "occurred_first") is switch
+    if switch:
+        assert line.occurred_first is True  # type: ignore[attr-defined]  # a log extra
+    assert all("2025" not in record.getMessage() for record in caplog.records)
