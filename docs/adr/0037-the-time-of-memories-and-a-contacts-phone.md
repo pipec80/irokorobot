@@ -3,7 +3,8 @@
 - **Status:** Proposed (2026-11-11). Written from the research of the memory engine (kept in the
   ignored `project-history/`), the code read that day and Pipec's four decisions of 2026-11-11 (see
   *Pipec's decisions and where they land*). It becomes `Accepted` when the plan that implements it
-  closes (plan 0082 or the plans it is split into).
+  closes (plan 0082 or the plans it is split into). Decisions 1 and 5 implemented by Plan 0082 on
+  2026-11-12, hardware acceptance pending (*Implemented in Plan 0082* below).
 - **Date:** 2026-11-11
 - **Builds on:** [ADR 0024](0024-seed-load-senses-secrets-and-channels.md) (the contacts table),
   [ADR 0027](0027-conversation-record-and-the-diary.md) (the record and the diary),
@@ -135,6 +136,7 @@ voice read by a fixed template at its level, or is listed with the reason it is 
 | Lives alone | The sensitive read, extended | Security (with the address it is a burglar's map, ADR 0024) |
 | `withhold_from`, `private_topic`, a contact's `may_receive_health_info` and `may_view_activity` | Not read aloud: they are rules the robot obeys, not answers (the family stage, ADR 0029 decision 6) | — |
 | The commissioning record and section statuses | Not read by voice: `iroko-admin status` | PIN |
+| A child's `stated_age` and tastes; a pet's `species`, `stated_age` and tastes | Not read yet: a household member's own data, read in the family stage (P3) (*Pipec, 2026-11-12, Plan 0082 D-13*) | — |
 
 A test walks the registry of pool predicates and fails when a field has neither a read nor a
 listed reason, so a field added later cannot be stored disconnected.
@@ -211,6 +213,28 @@ day interval; the order of decision 5.
   expires two days after its due day and is deleted with its record.
 - The occurred time: «¿cuándo fui…?» says the occurred interval when it exists and the told day
   otherwise; «¿qué hice ayer?» no longer returns a story about last year told yesterday.
+
+## Implemented in Plan 0082 (decisions 1 and 5)
+
+Implemented on 2026-11-12 behind the default-off `ALTA_READ_ENABLED` (needs `MEMORY_ENABLED` and
+`SENSITIVE_READ_ENABLED`); hardware acceptance pending, so the ADR stays `Proposed` (decisions 2 to
+4 are Plans 0083 and 0084). The builder's calls, recorded in
+[Plan 0082](../plans/open/0082-the-whole-alta-by-voice.md):
+
+- **One reader.** The contacts and the rest of the profile join the sensitive read of ADR 0029: same
+  order, same camera check, same marker; one own-read authorization (`_authorized`) serves the
+  predicates and the contacts (sensitivity `private` and `location`, the two the table holds).
+- **Own contacts only.** A contact question is the owner's when the words after the phrase open
+  with «mi» or «mis» or name a call order; a name alone («llama a Canary») and someone else's
+  phone («los bomberos») stay ordinary conversation, decided before any check and with nothing
+  read (a refusal would confirm the name, Plan 0077).
+- **Selection.** By call order («contacto 1», «contacto uno», «primer contacto»), role words,
+  relationship label or name; the best match wins (people who share a surname are not all
+  selected); «mis contactos» reads them all; at most three people, one sentence each.
+- **The phone** is said in digit words, grouped by four from the right, after «más»; «llama a…»
+  opens with «Todavía no puedo hacer llamadas.».
+- **Reach.** `memory/alta_reach.py` and `tests/unit/test_alta_reach.py` implement the last paragraph
+  of decision 5 over the fields the importer can load and the fields of a contact row.
 
 ## Docs to update
 

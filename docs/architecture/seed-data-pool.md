@@ -15,9 +15,10 @@
 > of the catalogue below except the commissioning's consents and backups is loaded from
 > the seed file by `just seed-import`; the file's keys, its template and questionnaire are in
 > [`docs/examples/seed-household.example.toml`](../examples/seed-household.example.toml) and its
-> schema in [`seed-household.schema.json`](../examples/seed-household.schema.json). **Nothing reads
-> them by voice (CM-5)**, except the children's list and count and, since Plan 0074, the owner's
-> tastes and the two name datums (the profile card).
+> schema in [`seed-household.schema.json`](../examples/seed-household.schema.json). At the
+> importer's close nothing read them by voice; since then the profile card (Plan 0074), the relatives
+> (Plans 0078 and 0080), the sensitive read (Plan 0079) and the rest of the alta (Plan 0082) do,
+> each behind its switch (the capabilities table at the end).
 >
 > **Plan 0072 (the session) closed on 2026-10-27** (rehearsed end to end by Pipec on real hardware): the
 > consents and the backups of the commissioning are recorded by `just commission` in the acta, together
@@ -42,9 +43,10 @@ again. So the rule of the phase is **capture now, build later**:
 - **Capturing a datum is not building a capability.** A stored phone number calls nobody; a stored
   medication reminds nobody. Each capability keeps its own gate (a policy, a test, a hardware
   check) and is planned on its own.
-- **Nothing in this pool can be read back by voice** before CM-5, except the list and the count of
-  the children, which the household reader already serves, and the owner's tastes, preferred name and
-  form of address, which the profile card serves (Plan 0074, ADR 0026; the rest stays closed).
+- **Every datum in this pool is reachable by voice, or listed with the reason it is not** (Pipec,
+  2026-11-11, ADR 0037 decision 5): a fixed template at its level reads it, and a test
+  (`tests/unit/test_alta_reach.py` over `memory/alta_reach.py`) fails when a field the importer can
+  load has neither. Reading is not acting: a phone read aloud calls nobody.
 - **A field earns its place by a purpose.** If nobody can say what it is for, it is not asked
   (Law 21.719 asks for purpose and proportionality; the legal reading is pending advice). Fields
   with no purpose today are listed under *Not stored*.
@@ -142,7 +144,7 @@ filling in the form never turns one on. *State* is today's: `exists`, `planned` 
 | Describe a scene | exists | `function` (vision) | a camera, the vision model |
 | Answer the profile by voice: the tastes and the two name datums (`preferred_name`, `address_form`) | exists, switch off (Plan 0074, CM-5a, ADR 0026) | the owner's own `likes`, `dislikes`, `prefers`, `preferred_name`, `address_form`; readiness capability `answer_profile` | the face at `basic`, `PROFILE_CARD_ENABLED` |
 | Answer the owner's own health, home and birthdays by voice, and the two references | exists, switch off (Plan 0079, ADR 0029; accepted on hardware 2026-11-06; needs `MEMORY_ENABLED`, `SENSITIVE_READ_ENABLED`, a closed alta). **Sensitive level, the owner's face alone in view (`basic`):** `medication`, `rescue_medication`, `health_condition`, `allergic_to`, `blood_type`, `takes_anticoagulant` (medical), `home_address`, `preferred_emergency_facility` (location), `birth_date` of the owner (private) and of the children (child data). **Security level, the face and a verified voice (`strong`):** `secret_holder`, `document_location` (references, never a value). Read by fixed templates; the record keeps the question and the marker «[dato sensible leído]» | the fields above, the alta closed (it is the consent) | a camera, and for the security level a microphone with the speaker authentication on |
-| Answer the rest of the profile by voice (partner, devices, mobility, hearing, vision, dwelling, access note, lives alone, health coverage) and the contacts (phone, role, call order, key holders) | planned: [ADR 0037](../adr/0037-the-time-of-memories-and-a-contacts-phone.md) decisions 1 and 5 (Proposed 2026-11-11; nothing loaded stays disconnected); the relatives of the alta are read since Plan 0078 | the profile sections | the structured reader of CM-5; `strong` for sensitive data (ADR 0026 decision 6) |
+| Answer the rest of the profile by voice (devices, mobility, hearing, vision, dwelling, floor, lift, access note, lives alone, health coverage) and the contacts (phone, role, call order, key holders) | exists, switch off ([Plan 0082](../plans/open/0082-the-whole-alta-by-voice.md), ADR 0037 decisions 1 and 5; needs `MEMORY_ENABLED`, `SENSITIVE_READ_ENABLED`, `ALTA_READ_ENABLED`, a closed alta). **Sensitive level (the owner's face alone in view):** the contacts' phones by relationship, role, call order or name with «mi», the key holders, «llama a mi contacto 1» (it cannot call: it says so, then the name and the phone), `implanted_device`, `mobility`, `hearing`, `vision`, `health_coverage`, `dwelling_type`, `floor`, `has_lift`, `home_access_note`. **Security level (face and a verified voice):** `lives_alone`. The partner is read since Plan 0078. A test (`tests/unit/test_alta_reach.py`) fails when a field the importer can load has neither a voice read nor a listed reason (`memory/alta_reach.py`); a child's or a pet's own literals wait for the family stage | the profile and contacts sections, the alta closed | a camera; for «vive solo» a microphone with the speaker authentication on |
 | The audience rule («don't say X in front of visitors») | partly exists (Plan 0079: a second face in view answers «Te lo digo cuando estemos solos.» to a sensitive question); `withhold_from` and `private_topic` planned (the family stage, ADR 0029 decision 6) | `withhold_from`, `private_topic`, `may_receive_health_info`, `household` | presence detection (a second face), the reader |
 | Address the owner as they like | exists, switch off (Plan 0074: the name and the form of address, in the card; `usted` reaches only the model's own sentences, never the fixed ones, and it degrades `qwen2.5:3b`: use `tu` until the language rule follows the form) | `preferred_name`, `address_form` (`hearing` is not read yet) | the prompt, `PROFILE_CARD_ENABLED` |
 | Call a contact, raise an alert | idea | `contacts` with a phone, an order and a role | **telephony or a VoIP/GSM line**, an audio path, a tested call |

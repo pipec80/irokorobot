@@ -188,6 +188,10 @@ written only by one function of the canonical writing family:
   person who holds a contact row cannot be declared a child, a pet or the partner to unlock facts;
 - nothing reads the table by voice and no alert is built: a future care ADR decides who reads it (a
   system purpose is not an authorized actor) and how a contact may ask to be removed;
+  *Amended by [ADR 0037](0037-the-time-of-memories-and-a-contacts-phone.md) decision 1 (Proposed;
+  implemented by Plan 0082 behind `ALTA_READ_ENABLED`): the owner may hear their own contacts'
+  phones and key holders by voice, at the sensitive level. Still no alert, no call and no other
+  reader;*
 - forgetting (CM-6) covers the table; until then a row is revoked, never edited.
 
 Alternative considered: V4 facts `phone_number` and `call_order` on a contact entity. It reuses the

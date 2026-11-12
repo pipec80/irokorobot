@@ -77,7 +77,7 @@
       "id": "sensitive",
       "type": "backend",
       "label": "Sensitive reader",
-      "sublabel": "templates · secret guard",
+      "sublabel": "templates · contacts · secrets",
       "pos": [
         1040,
         60
