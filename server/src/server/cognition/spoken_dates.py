@@ -170,11 +170,6 @@ def _word_of(match: re.Match[str], words: tuple[str, ...] | dict[str, tuple[int,
     return next(word for word in match.group(0).split() if word in words)
 
 
-def _year_of(match: re.Match[str], today: date) -> int | None:
-    year = int(match.group("year"))
-    return year if _FIRST_YEAR <= year <= today.year + _YEARS_AHEAD else None
-
-
 def _days(offset: int) -> _Resolver:
     def window(_: re.Match[str], today: date, __: Toward) -> DayWindow | None:
         return _one_day(today + timedelta(days=offset))
@@ -257,10 +252,19 @@ def _next_season(match: re.Match[str], today: date, _: Toward) -> DayWindow | No
     return next(window for window in windows if window.start > today)
 
 
-def _dated_day(match: re.Match[str], today: date, _: Toward) -> DayWindow | None:
-    year = _year_of(match, today)
-    if year is None:
-        return None
+def _dated(build: Callable[[re.Match[str], int], DayWindow | None]) -> _Resolver:
+    """A resolver for a phrase with its own year; a year out of bounds is no time."""
+
+    def window(match: re.Match[str], today: date, _: Toward) -> DayWindow | None:
+        year = int(match.group("year"))
+        if not _FIRST_YEAR <= year <= today.year + _YEARS_AHEAD:
+            return None
+        return build(match, year)
+
+    return window
+
+
+def _day_of_year(match: re.Match[str], year: int) -> DayWindow | None:
     try:
         day = date(year, _MONTHS.index(match.group("month")) + 1, int(match.group("day")))
     except ValueError:
@@ -268,19 +272,16 @@ def _dated_day(match: re.Match[str], today: date, _: Toward) -> DayWindow | None
     return _one_day(day)
 
 
-def _dated_month(match: re.Match[str], today: date, _: Toward) -> DayWindow | None:
-    year = _year_of(match, today)
-    return None if year is None else _month_window(year, _MONTHS.index(match.group("month")) + 1)
+def _month_of_year(match: re.Match[str], year: int) -> DayWindow | None:
+    return _month_window(year, _MONTHS.index(match.group("month")) + 1)
 
 
-def _dated_season(match: re.Match[str], today: date, _: Toward) -> DayWindow | None:
-    year = _year_of(match, today)
-    return None if year is None else _season_window(_word_of(match, _SEASON_MONTHS), year)
+def _season_of_year(match: re.Match[str], year: int) -> DayWindow | None:
+    return _season_window(_word_of(match, _SEASON_MONTHS), year)
 
 
-def _dated_year(match: re.Match[str], today: date, _: Toward) -> DayWindow | None:
-    year = _year_of(match, today)
-    return None if year is None else _year_window(year)
+def _whole_year(_: re.Match[str], year: int) -> DayWindow | None:
+    return _year_window(year)
 
 
 _WEEKDAY: Final = "(?:" + "|".join(_WEEKDAYS) + ")"
@@ -302,17 +303,19 @@ _LEG, _FULL, _BOTH = _Walk.LEGACY, _Walk.FULL, _Walk.BOTH
 # the shorter one inside it. The legacy walk reads, in order, the day of a month, «la semana
 # pasada», «el mes pasado», «anteayer», «ayer», «hoy» and the weekday, exactly as Plan 0078 did.
 _TABLE: Final[tuple[_Entry, ...]] = (
-    _entry(rf"(?:el )?(?P<day>\d{{1,2}}) de {_MONTH} del? {_YEAR}", _dated_day, _D, _FULL),
+    _entry(
+        rf"(?:el )?(?P<day>\d{{1,2}}) de {_MONTH} del? {_YEAR}", _dated(_day_of_year), _D, _FULL
+    ),
     _entry(rf"(?:el )?(?P<day>\d{{1,2}}) de {_MONTH}", _day_of_month, _E, _BOTH),
-    _entry(rf"(?:en )?{_MONTH} del? {_YEAR}", _dated_month, _D, _FULL),
-    _entry(rf"{_SEASON_PLAIN} del? {_YEAR}", _dated_season, _D, _FULL),
+    _entry(rf"(?:en )?{_MONTH} del? {_YEAR}", _dated(_month_of_year), _D, _FULL),
+    _entry(rf"{_SEASON_PLAIN} del? {_YEAR}", _dated(_season_of_year), _D, _FULL),
     _entry("la semana pasada", _week(-1), _P, _BOTH),
     _entry("la proxima semana|la semana que viene", _week(1), _F, _FULL),
     _entry("el mes pasado", _month(-1), _P, _BOTH),
     _entry("el proximo mes|el mes que viene", _month(1), _F, _FULL),
     _entry("el ano pasado", _relative_year(-1), _P, _FULL),
     _entry("el proximo ano|el ano que viene", _relative_year(1), _F, _FULL),
-    _entry(rf"(?:en el ano|el ano|en el|en|el) {_YEAR}", _dated_year, _D, _FULL),
+    _entry(rf"(?:en el ano|el ano|en el|en|el) {_YEAR}", _dated(_whole_year), _D, _FULL),
     _entry("el (?:verano|otono|invierno) pasado|la primavera pasada", _last_season, _P, _FULL),
     _entry(
         rf"el proximo (?:verano|otono|invierno)|la proxima primavera|{_SEASON} que viene",
@@ -474,6 +477,16 @@ def date_label(said_at: datetime, *, today: date, tz: ZoneInfo) -> str:
     """
     day = said_at.astimezone(tz).date()
     back = (today - day).days
+    near = _near_label(back)
+    if near is not None:
+        return near
+    if _ANTEAYER_DAYS < back <= _LAST_WEEKDAY_LABEL_DAYS:
+        return f"el {_SPOKEN_WEEKDAYS[day.weekday()]}"
+    return day_month_label(day) + _other_year(day.year, today)
+
+
+def _near_label(back: int) -> str | None:
+    """«hoy», «ayer» or «anteayer» for a day that many days back, else ``None``."""
     match back:
         case 0:
             return "hoy"
@@ -481,12 +494,8 @@ def date_label(said_at: datetime, *, today: date, tz: ZoneInfo) -> str:
             return "ayer"
         case 2:
             return "anteayer"
-        case _ if _ANTEAYER_DAYS < back <= _LAST_WEEKDAY_LABEL_DAYS:
-            return f"el {_SPOKEN_WEEKDAYS[day.weekday()]}"
         case _:
-            if day.year == today.year:
-                return day_month_label(day)
-            return f"{day_month_label(day)} de {day.year}"
+            return None
 
 
 def day_month_label(day: date) -> str:
@@ -506,17 +515,12 @@ def _other_year(year: int, today: date) -> str:
 
 
 def _day_label(day: date, today: date) -> str:
-    match (today - day).days:
-        case 0:
-            return "hoy"
-        case 1:
-            return "ayer"
-        case 2:
-            return "anteayer"
-        case _ if day.year == today.year:
-            return f"el {_SPOKEN_WEEKDAYS[day.weekday()]} {day.day} de {_MONTHS[day.month - 1]}"
-        case _:
-            return f"{day_month_label(day)} de {day.year}"
+    near = _near_label((today - day).days)
+    if near is not None:
+        return near
+    if day.year == today.year:
+        return f"el {_SPOKEN_WEEKDAYS[day.weekday()]} {day.day} de {_MONTHS[day.month - 1]}"
+    return f"{day_month_label(day)} de {day.year}"
 
 
 def _season_of(window: DayWindow) -> str | None:
@@ -542,7 +546,6 @@ def occurred_label(window: DayWindow, *, today: date) -> str:
         ValueError: If no spoken span describes the window; the message holds no date.
     """
     start, end = window.start, window.end
-    season = _season_of(window)
     if start == end:
         return _day_label(start, today)
     if start.weekday() == 0 and (end - start).days == _DAYS_IN_WEEK - 1:
@@ -551,6 +554,7 @@ def occurred_label(window: DayWindow, *, today: date) -> str:
         )
     if window == _month_window(start.year, start.month):
         return f"en {_MONTHS[start.month - 1]}" + _other_year(start.year, today)
+    season = _season_of(window)
     if season is not None:
         return f"en {_SPOKEN_SEASONS[season]} de {end.year}"
     if window == _year_window(start.year):

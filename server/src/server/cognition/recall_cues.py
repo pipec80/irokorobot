@@ -201,33 +201,31 @@ class _Grammar:
         strong: Strong phrases, anywhere in the message.
         weak: Weak phrases, anywhere in the message.
         openers: Request openers before a «cuando» (longest first).
-        marked_strong: Strong phrases that count only in a marked question.
-        marked_weak: Weak phrases that count only in a marked question.
     """
 
     strong: tuple[str, ...]
     weak: tuple[str, ...]
     openers: tuple[str, ...]
-    marked_strong: tuple[str, ...] = ()
-    marked_weak: tuple[str, ...] = ()
-
-    def strongs(self, *, marked: bool) -> tuple[str, ...]:
-        """The strong phrases that count for a message marked or not."""
-        return (*self.strong, *self.marked_strong) if marked else self.strong
-
-    def weaks(self, *, marked: bool) -> tuple[str, ...]:
-        """The weak phrases that count for a message marked or not."""
-        return (*self.weak, *self.marked_weak) if marked else self.weak
 
 
 _TODAY_GRAMMAR: Final = _Grammar(_STRONG_PHRASES, _WEAK_PHRASES, _REQUEST_OPENERS)
-_OCCURRED_GRAMMAR: Final = _Grammar(
-    _STRONG_PHRASES,
-    _WEAK_PHRASES,
-    tuple(sorted((*_REQUEST_OPENERS, *_USTED_OPENERS), key=len, reverse=True)),
-    _MARKED_STRONG_PHRASES,
-    _MARKED_WEAK_PHRASES,
+_OCCURRED_OPENERS: Final = tuple(
+    sorted((*_REQUEST_OPENERS, *_USTED_OPENERS), key=len, reverse=True)
 )
+# With the occurred time on, an unmarked message reads the usted openers only; a marked one
+# («?» or an accented «cuándo») also reads the usted phrases (Plan 0083 D-13).
+_OCCURRED_GRAMMAR: Final = _Grammar(_STRONG_PHRASES, _WEAK_PHRASES, _OCCURRED_OPENERS)
+_OCCURRED_MARKED_GRAMMAR: Final = _Grammar(
+    (*_STRONG_PHRASES, *_MARKED_STRONG_PHRASES),
+    (*_WEAK_PHRASES, *_MARKED_WEAK_PHRASES),
+    _OCCURRED_OPENERS,
+)
+
+
+def _grammar_for(*, occurred: bool, marked: bool) -> _Grammar:
+    if not occurred:
+        return _TODAY_GRAMMAR
+    return _OCCURRED_MARKED_GRAMMAR if marked else _OCCURRED_GRAMMAR
 
 
 class CueStrength(StrEnum):
@@ -266,11 +264,11 @@ def _has(padded: str, phrase: str) -> bool:
     return f" {phrase} " in padded
 
 
-def _strength(normalized: str, grammar: _Grammar, *, marked: bool) -> CueStrength | None:
+def _strength(normalized: str, grammar: _Grammar) -> CueStrength | None:
     padded = f" {normalized} "
-    if any(_has(padded, phrase) for phrase in grammar.strongs(marked=marked)):
+    if any(_has(padded, phrase) for phrase in grammar.strong):
         return CueStrength.STRONG
-    if any(_has(padded, phrase) for phrase in grammar.weaks(marked=marked)):
+    if any(_has(padded, phrase) for phrase in grammar.weak):
         return CueStrength.WEAK
     return None
 
@@ -338,7 +336,7 @@ def _when_opening(normalized: str, grammar: _Grammar, *, marked: bool) -> _WhenO
     if not marked:
         return None
     weak_opened = False
-    for phrase in grammar.weaks(marked=marked):
+    for phrase in grammar.weak:
         if body.startswith(f"{phrase} "):
             body = body.removeprefix(phrase).lstrip()
             weak_opened = True
@@ -355,24 +353,19 @@ def _weak_phrase_led(opening: _WhenOpening | None) -> bool:
     return opening is not None and opening.weak_opened
 
 
-def _when_kind(
-    normalized: str, opening: _WhenOpening, grammar: _Grammar, *, marked: bool
-) -> WhenKind:
+def _when_kind(normalized: str, opening: _WhenOpening, grammar: _Grammar) -> WhenKind:
     """Told when the message holds a strong phrase or «hablamos de»; otherwise it happened."""
     padded = f" {normalized} "
-    strong = grammar.strongs(marked=marked)
-    if opening.told_shape or any(_has(padded, phrase) for phrase in strong):
+    if opening.told_shape or any(_has(padded, phrase) for phrase in grammar.strong):
         return WhenKind.TOLD
     return WhenKind.HAPPENED
 
 
-def _without_cues(
-    normalized: str, grammar: _Grammar, opening: _WhenOpening | None, *, marked: bool
-) -> str:
+def _without_cues(normalized: str, grammar: _Grammar, opening: _WhenOpening | None) -> str:
     padded = f" {normalized} "
     if opening is not None and opening.opener is not None:
         padded = padded.replace(f" {opening.opener} ", " ", 1)
-    for phrase in (*grammar.strongs(marked=marked), *grammar.weaks(marked=marked)):
+    for phrase in (*grammar.strong, *grammar.weak):
         padded = padded.replace(f" {phrase} ", " ")
     return " ".join(padded.split())
 
@@ -410,10 +403,10 @@ def classify_recall_cue(message: str, *, today: date, occurred: bool = False) ->
         date nor a content word after it. A bare «¿cuándo…?» is a cue only when a first-person
         past verb follows (Plan 0080 D-8).
     """
-    grammar = _OCCURRED_GRAMMAR if occurred else _TODAY_GRAMMAR
     normalized = normalize_spanish(message)
     marked = has_question_mark(message) or _opens_with_accented_when(message)
-    strength = _strength(normalized, grammar, marked=marked)
+    grammar = _grammar_for(occurred=occurred, marked=marked)
+    strength = _strength(normalized, grammar)
     # Without the mark or the accent «cuando te conté…» may be a story: it keeps today's cue and
     # no kind.
     opening = _when_opening(normalized, grammar, marked=marked)
@@ -427,7 +420,7 @@ def classify_recall_cue(message: str, *, today: date, occurred: bool = False) ->
     elif strength is CueStrength.WEAK and asks_the_past and _weak_phrase_led(opening):
         # «¿Te acuerdas cuándo fui…?» asks as the bare form does.
         strength = CueStrength.STRONG
-    without_cues = _without_cues(normalized, grammar, opening, marked=marked)
+    without_cues = _without_cues(normalized, grammar, opening)
     window, stripped = _window_and_query(normalized, without_cues, today, occurred=occurred)
     query = without_leading_fillers(stripped)
     if window is None and not content_words(query):
@@ -435,7 +428,7 @@ def classify_recall_cue(message: str, *, today: date, occurred: bool = False) ->
     # A weak cue has no kind: «Cuando fui a la playa me quemé, ¿te acuerdas?» is a story that ends
     # in the weak phrase, and «¿te acuerdas cuándo fue el mundial?» names no verb of the owner's.
     when = (
-        _when_kind(normalized, opening, grammar, marked=marked)
+        _when_kind(normalized, opening, grammar)
         if opening is not None and strength is CueStrength.STRONG
         else None
     )

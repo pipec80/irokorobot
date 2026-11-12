@@ -63,9 +63,9 @@ _UNIT_COLUMNS = "u.id, u.source_record_id, u.kind, u.body, u.said_at"
 # left out when its record has a turn with an interval and no turn of the record matches the
 # window, so yesterday's diary entry of a story about last year is not «what you did yesterday».
 _IN_WINDOW = (
-    "(CASE WHEN {t}.occurred_start IS NOT NULL "
-    "THEN {t}.occurred_start <= :last_day AND {t}.occurred_end >= :first_day "
-    "ELSE {t}.said_at >= :since AND {t}.said_at < :until END)"
+    "(({t}.occurred_start IS NOT NULL "
+    "AND {t}.occurred_start <= :last_day AND {t}.occurred_end >= :first_day) "
+    "OR ({t}.occurred_start IS NULL AND {t}.said_at >= :since AND {t}.said_at < :until))"
 )
 _RECORD_TURNS = (
     "SELECT 1 FROM recall_units t WHERE t.source_record_id = u.source_record_id "

@@ -161,9 +161,8 @@ async def capture_turn(
             extra={"event": "conversation.capture_error", "error_type": type(exc).__name__},
         )
         return _logged(CaptureOutcome.FAILED, verdict, event)
-    return _logged(
-        CaptureOutcome.RECORDED, verdict, event, occurred=bool(units) and occurred is not None
-    )
+    logged_occurred = (bool(units) and occurred is not None) if occurred_time_on() else None
+    return _logged(CaptureOutcome.RECORDED, verdict, event, occurred=logged_occurred)
 
 
 def _occurred_days(turn: RecordedTurn) -> DayWindow | None:
@@ -177,7 +176,7 @@ def _occurred_days(turn: RecordedTurn) -> DayWindow | None:
 
 
 def _recall_indexer(
-    turn: RecordedTurn, owner_id: int, units: list[int], occurred: DayWindow | None = None
+    turn: RecordedTurn, owner_id: int, units: list[int], occurred: DayWindow | None
 ) -> TurnIndexer | None:
     """Return the indexer that writes the turn's recall unit, or ``None`` when it gets none.
 
@@ -209,8 +208,8 @@ def _logged(
 ) -> CaptureOutcome:
     """Log one capture with its closed outcome and verdict; never a text nor a date.
 
-    With the occurred time on, a recorded capture also says whether its unit got an interval
-    (Plan 0083 D-14).
+    With the occurred time on, the caller passes whether a recorded capture's unit got an
+    interval (Plan 0083 D-14); off, it passes ``None`` and the line is today's.
     """
     logger.info(
         "Conversation capture: %s",
@@ -220,7 +219,7 @@ def _logged(
             "outcome": outcome,
             "verdict": verdict,
             "correlation_id": str(event.correlation_id),
-            **({} if occurred is None or not occurred_time_on() else {"occurred": occurred}),
+            **({} if occurred is None else {"occurred": occurred}),
         },
     )
     return outcome

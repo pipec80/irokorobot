@@ -215,7 +215,7 @@ async def test_with_the_switch_off_every_route_is_byte_identical(
         response = await client.post(route, files=_files())
 
     assert response.status_code == 200
-    assert all("occurred" not in kwargs for kwargs in seen)
+    assert all(kwargs.get("occurred") is not True for kwargs in seen)
     stores.assert_not_called()
     assert not _spoken(response, route).startswith("Fue ")
 

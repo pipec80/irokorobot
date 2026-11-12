@@ -625,11 +625,8 @@ class CognitiveController:
 
     async def _recall_decision(self, event: CognitiveEvent[TextTurnPayload]) -> ResponsePlan | None:
         """Decide the recall plan of one event (cached by ``_recall_plan``)."""
-        message, today = event.payload.message, self._today()
-        cue = (
-            classify_recall_cue(message, today=today, occurred=True)
-            if self._occurred_time
-            else classify_recall_cue(message, today=today)
+        cue = classify_recall_cue(
+            event.payload.message, today=self._today(), occurred=self._occurred_time
         )
         if cue is None or self._recall_answerer is None:
             return None

@@ -28,9 +28,10 @@ from server.text_keys import normalize_spanish
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from datetime import date
+    from datetime import date, datetime
     from zoneinfo import ZoneInfo
 
+    from server.cognition.spoken_dates import DayWindow
     from server.llm_transport import ChatMessage
     from server.memory.recall_search import RecallHit
 
@@ -139,9 +140,13 @@ def word_when(hits: Sequence[RecallHit], kind: WhenKind, *, today: date, tz: Zon
     label = date_label(hit.unit.said_at, today=today, tz=tz)
     episode = hit.unit.kind == "episode"
     if kind is WhenKind.HAPPENED and hit.unit.occurred is not None:
-        happened = _when_it_happened(hit, told=label, today=today, tz=tz)
-        if happened is not None:
-            return happened
+        try:
+            return _when_it_happened(
+                hit.unit.occurred, said_at=hit.unit.said_at, told=label, today=today, tz=tz
+            )
+        except ValueError:
+            # No date reaches the log: the window has no spoken span, the told day is said.
+            logger.warning("Recall when-answer from the told day (ValueError)")
     if kind is WhenKind.TOLD:
         return (
             f"{_capitalised(label)} hablamos de eso."
@@ -156,19 +161,16 @@ def word_when(hits: Sequence[RecallHit], kind: WhenKind, *, today: date, tz: Zon
     return f"{_DATE_NOT_RECORDED} Sí recuerdo que {told}"
 
 
-def _when_it_happened(hit: RecallHit, *, told: str, today: date, tz: ZoneInfo) -> str | None:
-    """The D-10 sentence for a unit with an occurred interval, or ``None`` when it cannot be said."""
-    window = hit.unit.occurred
-    if window is None:
-        return None
-    try:
-        happened = occurred_label(window, today=today)
-    except ValueError:
-        # Only the class: the message names no date, and nothing here logs a text.
-        logger.warning("Recall when-answer from the told day (%s)", ValueError.__name__)
-        return None
-    said_day = hit.unit.said_at.astimezone(tz).date()
-    if window.start == window.end == said_day:
+def _when_it_happened(
+    window: DayWindow, *, said_at: datetime, told: str, today: date, tz: ZoneInfo
+) -> str:
+    """The D-10 sentence for a unit with an occurred interval (Plan 0083).
+
+    Raises:
+        ValueError: If no spoken span describes *window* (``occurred_label``).
+    """
+    happened = occurred_label(window, today=today)
+    if window.start == window.end == said_at.astimezone(tz).date():
         return f"Fue {happened}, el mismo día que me lo contaste."
     return f"Fue {happened}. Me lo contaste {told}."
 
