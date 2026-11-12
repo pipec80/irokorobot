@@ -21,13 +21,15 @@ import logging
 from typing import TYPE_CHECKING
 
 from server.cognition.clock import utc_now
+from server.cognition.occurred_time import occurred_window
 from server.cognition.strong_actor import VoiceVerifier, is_face_actor, verify_face_and_voice
 from server.memory.conversation_consent import has_active_conversation_consent
 from server.memory.conversation_record import append_turn
 from server.memory.conversation_types import TurnVerdict, make_turn
 from server.memory.owner_credentials import get_ready_owner
 from server.memory.recall_index import embed_unit
-from server.memory.recall_store import insert_turn_unit, tells_something
+from server.memory.recall_search import household_zone
+from server.memory.recall_store import insert_turn_unit, occurred_time_on, tells_something
 from server.settings import settings
 
 if TYPE_CHECKING:
@@ -39,6 +41,7 @@ if TYPE_CHECKING:
     from server.cognition.identity import ActivePersonContext
     from server.cognition.models import CognitiveEvent
     from server.cognition.response_plan import TextTurnPayload
+    from server.cognition.spoken_dates import DayWindow
     from server.memory.conversation_record import TurnIndexer
     from server.memory.conversation_types import RecordedTurn
 
@@ -140,12 +143,13 @@ async def capture_turn(
             actor, owner_id=owner_id, wav_bytes=wav_bytes, event=event, verify=verify
         )
         turn = make_turn(heard, said, voice=verdict, correlation_id=event.correlation_id, at=at)
+        occurred = _occurred_days(turn)
         units: list[int] = []
         await append_turn(
             turn,
             owner_entity_id=owner_id,
             now=clock(),
-            index=_recall_indexer(turn, owner_id, units),
+            index=_recall_indexer(turn, owner_id, units, occurred),
         )
         if client is not None and units:
             await embed_unit(client, units[0], turn.heard)
@@ -157,15 +161,29 @@ async def capture_turn(
             extra={"event": "conversation.capture_error", "error_type": type(exc).__name__},
         )
         return _logged(CaptureOutcome.FAILED, verdict, event)
-    return _logged(CaptureOutcome.RECORDED, verdict, event)
+    return _logged(
+        CaptureOutcome.RECORDED, verdict, event, occurred=bool(units) and occurred is not None
+    )
 
 
-def _recall_indexer(turn: RecordedTurn, owner_id: int, units: list[int]) -> TurnIndexer | None:
+def _occurred_days(turn: RecordedTurn) -> DayWindow | None:
+    """When the told event of a verified turn happened, with the switch on (Plan 0083 D-7).
+
+    Read against the household day of the turn's own time, never the clock of this job.
+    """
+    if not occurred_time_on() or turn.voice is not TurnVerdict.VERIFIED:
+        return None
+    return occurred_window(turn.heard, said_day=turn.at.astimezone(household_zone()).date())
+
+
+def _recall_indexer(
+    turn: RecordedTurn, owner_id: int, units: list[int], occurred: DayWindow | None = None
+) -> TurnIndexer | None:
     """Return the indexer that writes the turn's recall unit, or ``None`` when it gets none.
 
     Only a ``VERIFIED`` turn with words that tells something, and only with ``RECALL_ENABLED``
     (ADR 0028 decision 1). The new unit's id is appended to *units*, so the caller can embed it
-    after the commit.
+    after the commit; *occurred* is when its told event happened (Plan 0083), or ``None``.
     """
     if not settings.recall_enabled or turn.voice is not TurnVerdict.VERIFIED:
         return None
@@ -174,7 +192,7 @@ def _recall_indexer(turn: RecordedTurn, owner_id: int, units: list[int]) -> Turn
 
     async def index(conn: aiosqlite.Connection, record_id: int, recorded: RecordedTurn) -> int:
         unit_id = await insert_turn_unit(
-            conn, record_id=record_id, owner_entity_id=owner_id, turn=recorded
+            conn, record_id=record_id, owner_entity_id=owner_id, turn=recorded, occurred=occurred
         )
         units.append(unit_id)
         return unit_id
@@ -183,9 +201,17 @@ def _recall_indexer(turn: RecordedTurn, owner_id: int, units: list[int]) -> Turn
 
 
 def _logged(
-    outcome: CaptureOutcome, verdict: TurnVerdict | None, event: CognitiveEvent[TextTurnPayload]
+    outcome: CaptureOutcome,
+    verdict: TurnVerdict | None,
+    event: CognitiveEvent[TextTurnPayload],
+    *,
+    occurred: bool | None = None,
 ) -> CaptureOutcome:
-    """Log one capture with its closed outcome and verdict; never a text."""
+    """Log one capture with its closed outcome and verdict; never a text nor a date.
+
+    With the occurred time on, a recorded capture also says whether its unit got an interval
+    (Plan 0083 D-14).
+    """
     logger.info(
         "Conversation capture: %s",
         outcome.value,
@@ -194,6 +220,7 @@ def _logged(
             "outcome": outcome,
             "verdict": verdict,
             "correlation_id": str(event.correlation_id),
+            **({} if occurred is None or not occurred_time_on() else {"occurred": occurred}),
         },
     )
     return outcome
