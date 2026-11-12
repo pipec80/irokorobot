@@ -13,6 +13,7 @@ code, tests, verified gaps and the delivery sequence.
 
 | Plan | Implementation reality | Reuse | Remaining closure |
 |---|---|---|---|
+| [0084](0084-pending-topics-and-the-greeting.md) | **Draft** (2026-11-12), not executable: ADR 0037 decision 2 (pending topics kept from the owner's verified words and picked up once by a greeting; migration 016) behind `PENDING_TOPICS_ENABLED`; nothing implemented | The one reader of spoken time (Plan 0083), the memory offer's slot (ADR 0021 decision 9), the conversation job, the recall sensitivity classifier | Pipec's review of D-1 to D-16, then `Ready`, execution and a two-day hardware acceptance; next free plan number **0085** |
 | [0015](0015-personal-companion-design.md) | Approved product design; PC-1 to PC-4 are closed (PC-2 and PC-3A with provisional calibrations); reference only, never an executable batch | Controller, policy/audit, V4 household tools, identity/session seam, short-term continuity, the conversation record and recall index, STT/TTS, face engine | CM-6 and CM-7 (block C, then block D), PC-5 integrated personal acceptance and PC-6 family remain open |
 
 Existing components named under **Reuse** must not be rebuilt by a later plan.
