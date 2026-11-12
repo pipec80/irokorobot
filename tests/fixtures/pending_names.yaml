@@ -1,0 +1,23 @@
+# Plan 0084 Task 2: the topic the local model names (D-6). `answer` is the model's raw answer,
+# `kept` the topic kept, or null when it is dropped. Invented canaries only.
+- {heard: Mañana voy al banco a pagar una cuenta., answer: '{"topic": "el banco"}', kept: el banco}
+- {heard: El jueves tengo hora con el médico., answer: '{"topic": "el médico"}', kept: el médico}
+# A leading article is the model's to choose («una reunión» is said «la reunión»); every other
+# word is copied from the turn.
+- {heard: Mañana tengo una reunión con unos amigos., answer: '{"topic": "la reunión"}', kept: la reunión}
+- {heard: Hoy voy al banco a pagar una cuenta., answer: '{"topic": "el banco"}', kept: el banco}
+- {heard: Hoy voy al banco., answer: '{"topic": "el"}', kept: null}
+- {heard: Mañana tenemos la reunión del trabajo., answer: '{"topic": "La Reunión"}', kept: La Reunión}
+- {heard: Mañana voy al banco., answer: '{"topic": "  el   banco. "}', kept: el banco}
+- {heard: Mañana voy al banco., answer: "```json\n{\"topic\": \"el banco\"}\n```", kept: el banco}
+# Review focus 4: words that are not the owner's are never kept.
+- {heard: Hoy voy al cine con unos amigos., answer: '{"topic": "el teatro"}', kept: null}
+- {heard: Mañana voy al banco a pagar una cuenta., answer: '{"topic": "la cuenta del banco"}', kept: null}
+# Too long, empty or not the schema.
+- {heard: Mañana voy al banco a pagar una cuenta., answer: '{"topic": "el banco a pagar una"}', kept: null}
+- {heard: El jueves tengo la reunión interdepartamental extraordinariamente importante., answer: '{"topic": "la reunión interdepartamental extraordinariamente"}', kept: null}
+- {heard: Mañana voy al banco., answer: '{"topic": ""}', kept: null}
+- {heard: Mañana voy al banco., answer: '{"topic": "..."}', kept: null}
+- {heard: Mañana voy al banco., answer: no sé, kept: null}
+- {heard: Mañana voy al banco., answer: '{"tema": "el banco"}', kept: null}
+- {heard: Mañana voy al banco., answer: '{"topic": 3}', kept: null}
