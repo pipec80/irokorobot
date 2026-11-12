@@ -1,10 +1,12 @@
 # 0084 — Pending topics: what the owner said they would do, picked up by a greeting
 
-> **Status:** **Draft** (2026-11-12), for Pipec's review. Written from
+> **Status:** `Ready` and `NOW` — **promoted by Pipec on 2026-11-12**: D-1 to D-16 confirmed as
+> written, the departures from the ADR included (D-4, D-8, D-9, D-12); finer points of grammar and
+> wording are tuned later from longer real sessions (D-16 of Plan 0083). Written as `Draft` the
+> same day from
 > [ADR 0037](../../adr/0037-the-time-of-memories-and-a-contacts-phone.md) (`Proposed`), decision 2
-> only, plus decision 6 for the switch, and the code of `main` at `8973b5c` (Plan 0083 merged). Not
-> executable until Pipec confirms or changes the decisions D-1 to D-16 below and marks it `Ready`;
-> it is executed in a new Claude Code session, inline (as Plan 0083 was), with the whole-branch
+> only, plus decision 6 for the switch, and the code of `main` at `8973b5c` (Plan 0083 merged). It
+> is executed in a new Claude Code session, inline (as Plan 0083 was), with the whole-branch
 > reviews of Task 8. Queue rule 4 applies at execution: Task 0 re-verifies every claim below
 > against the merged code before any code, and **stops and reports** if one is false. ADR 0037
 > becomes `Accepted` when this plan closes (its decisions 1, 3, 4 and 5 are closed by Plans 0082
@@ -39,8 +41,8 @@ sentence plus a topic the local model names; a health topic only when the owner 
 and decision 16 of Plan 0083 (the grammars serve an ordinary speaker). The calls below fill in what
 the ADR leaves to the builder (*Not decided here*: «the exact templates, the grammar's word lists
 and the switch names»), and its *author's calls* (one follow-up per new session, an open offer
-winning, two days of grace, the topic deleted with its record); they are confirmed or changed when
-Pipec promotes the plan. **D-4, D-8, D-9, D-11 and D-13 are the ones most worth his eye.**
+winning, two days of grace, the topic deleted with its record). **Pipec confirmed all of them as
+written on 2026-11-12**; the *For Pipec* notes below record what he was asked.
 
 - **D-1 The switch.** `PENDING_TOPICS_ENABLED` (`pending_topics_enabled: bool = False`). It works
   only with `MEMORY_ENABLED` **and** `CONVERSATION_RECORD_ENABLED` (a topic references the record
@@ -513,5 +515,5 @@ the topic in any prompt; any wire, robot or dependency change.
 - **Type consistency.** `ANNOUNCING_VERBS`, `Announcement`, `AnnouncementOutcome`, `PendingTopic`,
   `PendingFollowUp`, `FollowUpPreparer`, `pending_topics_on` and `near_day_label` are each defined
   once and named the same in every later task.
-- **Open for Pipec.** D-3 (the verb list), D-4, D-8, D-9, D-11 (the offer wins), D-12, D-13; every
-  other decision is the builder's call to confirm as written.
+- **Closed by Pipec (2026-11-12).** D-3 (the verb list), D-4, D-8, D-9, D-11 (the offer wins),
+  D-12 and D-13 were confirmed as written, with every other decision.
