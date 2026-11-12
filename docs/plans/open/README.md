@@ -13,6 +13,7 @@ code, tests, verified gaps and the delivery sequence.
 
 | Plan | Implementation reality | Reuse | Remaining closure |
 |---|---|---|---|
+| [0083](0083-spoken-time-and-when-it-happened.md) | **Draft** (2026-11-12), not executable: ADR 0037 decisions 3 and 4 (one reader of spoken time, the occurred interval on recall units, migration 015) behind `OCCURRED_TIME_ENABLED`; nothing implemented | `spoken_dates`, `recall_cues`, the recall store, search and when-answer of Plans 0078 and 0080 | Pipec's review of D-1 to D-15, then `Ready`, execution and hardware acceptance; next free plan number **0084** |
 | [0015](0015-personal-companion-design.md) | Approved product design; PC-1 to PC-4 are closed (PC-2 and PC-3A with provisional calibrations); reference only, never an executable batch | Controller, policy/audit, V4 household tools, identity/session seam, short-term continuity, the conversation record and recall index, STT/TTS, face engine | CM-6 and CM-7 (block C, then block D), PC-5 integrated personal acceptance and PC-6 family remain open |
 
 Existing components named under **Reuse** must not be rebuilt by a later plan.
