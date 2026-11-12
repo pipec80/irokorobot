@@ -1,20 +1,26 @@
 # 0083 — One reader of spoken time, and when a told event happened
 
-> **Status:** **Draft** (2026-11-12), for Pipec's review. Written from
+> **Status:** `Ready` and `NOW` — **promoted by Pipec on 2026-11-12**: D-1 to D-15 confirmed as
+> written, and D-16 added from his review (the speaker the grammars are written for). Written as
+> `Draft` the same day from
 > [ADR 0037](../../adr/0037-the-time-of-memories-and-a-contacts-phone.md) (`Proposed`), decisions
 > 3 and 4 only, plus decision 6 for the switch, and the code of `main` at `4cca2a7` (Plan 0082
-> merged). Not executable until Pipec confirms or changes the decisions D-1 to D-15 below and marks
-> it `Ready`; the execution method (subagent-driven or inline) is chosen at promotion. Queue rule 4
-> applies at execution: Task 0 re-verifies every claim below against the merged code before any
-> code, and **stops and reports** if one is false. ADR 0037 stays `Proposed` until Plan 0084 (the
-> pending topics, decision 2) closes too. Written for an executor who has not seen this repository.
+> merged). Executed **inline** in a new Claude Code session (the builder's choice, which Pipec
+> left to it: the tasks share interfaces end to end, from the reader to the store to the answer,
+> and one executor holding them all is the cheaper path; independent reviewers check the whole
+> branch in Task 8). Queue rule 4 applies at execution: Task 0 re-verifies every claim below
+> against the merged code before any code, and **stops and reports** if one is false. ADR 0037
+> stays `Proposed` until Plan 0084 (the pending topics, decision 2) closes too. Written for an
+> executor who has not seen this repository.
 
-> **For agentic workers:** if the status above does not say `Ready`, stop. REQUIRED SUB-SKILL:
-> `superpowers:executing-plans` or `superpowers:subagent-driven-development` (Pipec chooses at
-> promotion), with `superpowers:test-driven-development`,
-> `superpowers:verification-before-completion` and `superpowers:finishing-a-development-branch`.
-> Every subagent runs on the `sonnet` model and reads `.claude/` (CLAUDE.md and `.claude/rules/`)
-> in full before touching code. **Pipec's rules win over the skills:** one plain branch from `main`
+> **For agentic workers:** if the status above does not say `Ready`, stop. Read `CLAUDE.md` and
+> every file of `.claude/rules/` in full first. REQUIRED SUB-SKILLS: `superpowers:executing-plans`
+> (inline), `superpowers:test-driven-development` for every task,
+> `superpowers:verification-before-completion` before any claim of done,
+> `superpowers:requesting-code-review` and `superpowers:receiving-code-review` for Task 8, and
+> `superpowers:finishing-a-development-branch` for Task 9. The review agents of Task 8 and any
+> other subagent run on the `sonnet` model and read `.claude/` (CLAUDE.md and `.claude/rules/`) in
+> full before reading code. **Pipec's rules win over the skills:** one plain branch from `main`
 > (`feat/0083-when-it-happened`), never a git worktree, this plan lives under `docs/plans/`. One
 > commit per task; every test seen RED for the stated reason first. If evidence contradicts the
 > plan, stop and report instead of redesigning. The Bash tool loses backslashes and non-ASCII
@@ -174,6 +180,15 @@ are the ones most worth his eye** (the list under *Self-review*, *Open for Pipec
   nieve», the question «¿qué hice ayer?»: found with the switch off (today's behaviour, the
   before), not found with it on (the after); both outcomes are written in the PR. On hardware the
   same is measured within a day with «¿qué hice hoy?» (Task 9).
+- **D-16 The speaker the grammars are written for** (*Pipec, 2026-11-12*). Spanish says time with
+  its tenses and many idioms, and people do not all conjugate well: some drop the ends of words,
+  some say «s» for «c» or «z», and sometimes Whisper simply does not understand. The reader and the
+  grammars are written for an ordinary adult speaker of Chilean Spanish in the usual forms (the
+  phrases of D-3, the verbs of D-7, the question forms of D-13), not for every way of speaking. A
+  form outside them is no time and no cue: the robot says the told day or answers as ordinary
+  conversation, and never guesses (decision 4). Edge cases are not chased in the abstract: a form
+  that a real hardware session shows to be common (Task 9) joins the YAML fixture and the closed
+  list in a fix commit, recorded as counts only, as Plans 0079 to 0082 did.
 
 **Goal.** With `OCCURRED_TIME_ENABLED` on, a story the owner tells with a time («el sábado fui a la
 playa», «en 2015 viví en el norte», «el verano pasado») keeps when it happened next to when it was
@@ -548,6 +563,18 @@ byte-identity tests), `tests/integration/test_recall_routes.py`.
   `uv run python scripts/check_reserved_terms.py`, `just gate` (not in the background if Pipec is
   rehearsing) — all pass. Write the count in the PR.
 - [ ] **Step 4:** commit `test: one reader of spoken time (plan 0083)`.
+- [ ] **Step 5: Simplify, then review the whole branch** (`git diff main...HEAD`), each agent on
+  `sonnet`, reading `.claude/` first, read-only, briefed with this plan and the review focus:
+  the `simplify` skill (reuse, altitude, dead code); then, in parallel,
+  `architect-reviewer` (the cognitive core stays pure, one reader, the store the only SQL, SOLID
+  and the layering), `pr-review-toolkit:code-reviewer` (the rules of `.claude/rules/`, docstrings,
+  no magic strings), `pr-review-toolkit:silent-failure-hunter` (the capture's background boundary,
+  the fallbacks of D-10 and D-11), `pr-review-toolkit:type-design-analyzer` (`SpokenTime`,
+  `Toward`, `RecallUnit.occurred`), `pr-review-toolkit:pr-test-analyzer` (the review focus and
+  D-15 pinned) and the `security-review` skill (migration 015, no date in a log, the window SQL is
+  parameterized). Each finding is verified against the code with
+  `superpowers:receiving-code-review` before it is fixed; everything found is fixed (Pipec's
+  standing rule), each fix with its RED test, in commits `fix: … (plan 0083)`; then Step 3 again.
 
 ---
 
@@ -620,3 +647,9 @@ at a time of day; any wire, robot, prompt or dependency change.
 - **Open for Pipec.** D-6 (phrases left out), D-7 (the verb list), D-8 (no backfill), D-9 (overlap
   and the episode rule), D-12 (the prompt unchanged), D-13 (the usted forms behind the switch); every
   other decision is the builder's call to confirm as written.
+- **Pipec's review (2026-11-12).** D-1 to D-15 confirmed as written, the six above included. D-16
+  added from his review: the grammars serve an ordinary speaker, and an edge form joins a fixture
+  only when a real session shows it. Execution inline with the Task 8 reviews, chosen by the
+  builder at his request. A search of the skills registry and of the account's skills found
+  nothing to add for this plan (date parsing in Spanish, SQLite migrations, pytest): the installed
+  superpowers, review agents and `simplify` / `security-review` cover it. Nothing is left open.
