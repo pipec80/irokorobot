@@ -346,6 +346,11 @@ _PHRASES: Final[Mapping[SensitiveTopic, tuple[str, ...]]] = MappingProxyType(
                 "me das el",
                 "me puedes dar el",
                 "me podrias dar el",
+                # The usted forms, and «tienes» as Whisper often writes it (hardware 2026-11-12).
+                "tiene el",
+                "me da el",
+                "me puede dar el",
+                "me podria dar el",
                 # Only after a request opener («dime», «me puedes decir»): see `_NEEDS_OPENER`.
                 "el",
             )
@@ -361,6 +366,10 @@ _PHRASES: Final[Mapping[SensitiveTopic, tuple[str, ...]]] = MappingProxyType(
                 "podrias llamar",
                 "quiero llamar",
                 "necesito llamar",
+                "llame",
+                "llamele",
+                "puede llamar",
+                "podria llamar",
             )
             for joint in ("a", "al")
         ),

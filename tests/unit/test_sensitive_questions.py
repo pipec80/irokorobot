@@ -313,3 +313,10 @@ def test_whispers_order_forms_reach_the_selector(message: str, order: int) -> No
     query = classify_sensitive_question(message, alta=True)
     assert query is not None
     assert contact_selector(query.keywords).order == order
+
+
+def test_a_longer_lives_alone_question_still_matches() -> None:
+    """Hardware 2026-11-12: a short «¿vivo solo?» rarely verifies the voice; a longer form must match."""
+    assert _topic_of("Oye Iroko, una pregunta, ¿vivo solo?", alta=True) is (
+        SensitiveTopic.LIVES_ALONE
+    )
