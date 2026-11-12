@@ -1,0 +1,134 @@
+# The rest of the alta's questions (Plan 0082 Task 3, D-4): matched only with the alta flag on.
+# `questions`: every D-4 phrase in a full question, with «oye», «Iroko», «po» and «¿».
+# `slips`: two speech-to-text slips per topic (no accents, no marks, upper case).
+# `traps`: sentences that must resolve to no topic, with the flag on.
+# Canaries only: Canary is an invented name.
+questions:
+  implanted_device:
+    - "Oye Iroko, ¿qué dispositivos tengo?"
+    - "¿Qué implantes tengo, po?"
+    - "Iroko, ¿cuáles son mis dispositivos?"
+    - "¿Cuáles son mis implantes?"
+    - "Oye, ¿tengo algún dispositivo?"
+    - "¿Tengo algún implante?"
+  mobility:
+    - "Oye Iroko, ¿cuál es mi movilidad?"
+    - "¿Cómo es mi movilidad, po?"
+    - "Iroko, ¿cómo me desplazo?"
+    - "¿Cómo me muevo?"
+  hearing:
+    - "Oye Iroko, ¿cuál es mi audición?"
+    - "¿Cómo es mi audición, po?"
+    - "Iroko, ¿cómo escucho?"
+    - "¿Uso audífonos?"
+  vision:
+    - "Oye Iroko, ¿cuál es mi visión?"
+    - "¿Cómo es mi visión, po?"
+    - "Iroko, ¿cómo veo?"
+    - "¿Uso lentes?"
+  health_coverage:
+    - "Oye Iroko, ¿cuál es mi previsión?"
+    - "¿Cuál es mi previsión de salud, po?"
+    - "Iroko, ¿qué previsión tengo?"
+    - "¿Cuál es mi seguro de salud?"
+    - "¿Qué seguro de salud tengo?"
+  dwelling_type:
+    - "Oye Iroko, ¿vivo en casa o departamento?"
+    - "¿Vivo en casa o en departamento, po?"
+    - "Iroko, ¿en qué tipo de vivienda vivo?"
+    - "¿Qué tipo de vivienda tengo?"
+  floor:
+    - "Oye Iroko, ¿en qué piso vivo?"
+    - "¿En qué piso está mi departamento, po?"
+    - "Iroko, ¿cuál es mi piso?"
+  lift:
+    - "Oye Iroko, ¿tengo ascensor?"
+    - "¿Mi edificio tiene ascensor, po?"
+  home_access:
+    - "Oye Iroko, ¿cómo se entra a mi casa?"
+    - "¿Cómo se entra a mi departamento, po?"
+    - "Iroko, ¿cómo entran a mi casa?"
+    - "¿Cómo entra la ambulancia?"
+  lives_alone:
+    - "Oye Iroko, ¿vivo solo?"
+    - "¿Vivo sola, po?"
+  key_holders:
+    - "Oye Iroko, ¿quién tiene llave?"
+    - "¿Quién tiene llaves de mi casa, po?"
+    - "Iroko, ¿quién tiene la llave de mi casa?"
+    - "¿Quién tiene las llaves de la casa?"
+    - "¿Quién tiene llave de mi departamento?"
+  contact_phone:
+    - "Oye Iroko, ¿tienes el teléfono de mi hija?"
+    - "¿Tienes el número de mi doctor, po?"
+    - "Iroko, ¿tienes el celular de mi vecina?"
+    - "¿Cuál es el teléfono de mi contacto 1?"
+    - "¿Cuál es el número de mi contacto de emergencia?"
+    - "¿Cuál es el celular de mi tío?"
+    - "Dame el teléfono de mi hija"
+    - "Dame el número de mi primer contacto"
+    - "¿Me das el teléfono de mi doctora Canary?"
+    - "¿Me das el número de mi vecino?"
+  contact_call:
+    - "Oye Iroko, llama a mi contacto 1"
+    - "Llámale a mi hija, po"
+    - "¿Puedes llamar a mi doctor?"
+    - "¿Podrías llamar a mi vecina?"
+    - "Quiero llamar a mi primer contacto"
+    - "Necesito llamar a mi hija"
+slips:
+  implanted_device:
+    - "que dispositivos tengo"
+    - "QUE IMPLANTES TENGO"
+  mobility:
+    - "cual es mi movilidad"
+    - "COMO ME MUEVO"
+  hearing:
+    - "como es mi audicion"
+    - "CUAL ES MI AUDICION"
+  vision:
+    - "como es mi vision"
+    - "CUAL ES MI VISION"
+  health_coverage:
+    - "cual es mi prevision"
+    - "QUE PREVISION TENGO"
+  dwelling_type:
+    - "vivo en casa o departamento?"
+    - "EN QUE TIPO DE VIVIENDA VIVO"
+  floor:
+    - "en que piso vivo"
+    - "CUAL ES MI PISO"
+  lift:
+    - "tengo ascensor?"
+    - "MI EDIFICIO TIENE ASCENSOR?"
+  home_access:
+    - "como se entra a mi casa"
+    - "COMO ENTRA LA AMBULANCIA"
+  lives_alone:
+    - "vivo solo?"
+    - "VIVO SOLA?"
+  key_holders:
+    - "quien tiene llave de mi casa"
+    - "QUIEN TIENE LAS LLAVES"
+  contact_phone:
+    - "tienes el telefono de mi hija"
+    - "CUAL ES EL NUMERO DE MI CONTACTO UNO"
+  contact_call:
+    - "llama a mi contacto uno"
+    - "LLAMALE A MI HIJA"
+traps:
+  - "Uso lentes desde chico"
+  - "Uso audífonos para la música"
+  - "Vivo solo desde 2010"
+  - "Tengo ascensor en la pega"
+  - "Tengo ascensor"
+  - "Vivo sola"
+  - "¿Cómo veo esta foto?"
+  - "¿Cómo escucho música en el auto?"
+  - "¿Cómo se entra a la página?"
+  - "¿Quién tiene la razón?"
+  - "Ayer hablé de mis implantes con el doctor"
+  - "¿Qué dispositivos tiene mi hija?"
+  - "El teléfono de mi hija es nuevo"
+  - "Mi hija me llamó ayer"
+  - "Me llamo Canary"
