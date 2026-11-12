@@ -3,8 +3,8 @@
 - **Status:** Proposed (2026-11-11). Written from the research of the memory engine (kept in the
   ignored `project-history/`), the code read that day and Pipec's four decisions of 2026-11-11 (see
   *Pipec's decisions and where they land*). It becomes `Accepted` when the plan that implements it
-  closes (plan 0082 or the plans it is split into). Decisions 1 and 5 implemented by Plan 0082 on
-  2026-11-12, hardware acceptance pending (*Implemented in Plan 0082* below).
+  closes (plan 0082 or the plans it is split into). Decisions 1 and 5 implemented by Plan 0082 and
+  accepted on real hardware on 2026-11-12, 9 of 9 cases (*Implemented in Plan 0082* below).
 - **Date:** 2026-11-11
 - **Builds on:** [ADR 0024](0024-seed-load-senses-secrets-and-channels.md) (the contacts table),
   [ADR 0027](0027-conversation-record-and-the-diary.md) (the record and the diary),
@@ -217,9 +217,10 @@ day interval; the order of decision 5.
 ## Implemented in Plan 0082 (decisions 1 and 5)
 
 Implemented on 2026-11-12 behind the default-off `ALTA_READ_ENABLED` (needs `MEMORY_ENABLED` and
-`SENSITIVE_READ_ENABLED`); hardware acceptance pending, so the ADR stays `Proposed` (decisions 2 to
-4 are Plans 0083 and 0084). The builder's calls, recorded in
-[Plan 0082](../plans/open/0082-the-whole-alta-by-voice.md):
+`SENSITIVE_READ_ENABLED`); accepted on real hardware the same day, 9 of 9 cases
+([record](../evals/0082-alta-by-voice-acceptance.md)); the ADR stays `Proposed` until decisions 2 to
+4 close (Plans 0083 and 0084). The builder's calls, recorded in
+[Plan 0082](../plans/completed/0082-the-whole-alta-by-voice.md):
 
 - **One reader.** The contacts and the rest of the profile join the sensitive read of ADR 0029: same
   order, same camera check, same marker; one own-read authorization (`_authorized`) serves the

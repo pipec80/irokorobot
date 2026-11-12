@@ -1,6 +1,13 @@
 # 0082 — The whole alta by voice: every loaded datum reachable, and a contact's phone
 
-> **Status:** `Ready` and `NOW` — **promoted by Pipec on 2026-11-11** (D-1 to D-12 confirmed as
+> **Status:** **Closed** (2026-11-12). Accepted by Pipec on real hardware, 9 of 9 cases in two
+> sittings, streaming route ([record](../../evals/0082-alta-by-voice-acceptance.md)); CI selection
+> 7481 passed (baseline 7005). Executed inline in the session that wrote it (Pipec's call); the
+> executor's rulings are in ADR 0037, *Implemented in Plan 0082*, and win over this plan where they
+> differ (best-match selection, one sentence per person, own only when the tail opens with «mi», the
+> usted forms found on hardware). ADR 0037 stays `Proposed` until Plans 0083 and 0084 close.
+>
+> **Status at promotion:** `Ready` and `NOW` — **promoted by Pipec on 2026-11-11** (D-1 to D-12 confirmed as
 > written; D-13 decided the same day: listed with a reason). Written as `Draft` the same day from
 > [ADR 0037](../../adr/0037-the-time-of-memories-and-a-contacts-phone.md) (`Proposed`), decisions
 > 1 and 5 only, and the code of `main` at `92c348f` (Plan 0081 merged). Executed in a
