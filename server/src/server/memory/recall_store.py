@@ -79,6 +79,19 @@ _READABLE_OCCURRED = (
     f"AND NOT EXISTS ({_RECORD_TURNS}{_IN_WINDOW.format(t='t')}))))"
 )
 _UNIT_COLUMNS_OCCURRED = f"{_UNIT_COLUMNS}, u.occurred_start, u.occurred_end"
+# What a date-only question reads, group by group; the first group with units answers. Today:
+# the window's episodes, else its turn units. With the occurred time on (hardware, 2026-11-12), a
+# turn unit whose occurred interval falls in the window but that was told on another day is held
+# by no episode of the window: it comes first, beside the episodes.
+_KIND = "u.kind = :kind"
+_TOLD_ELSEWHERE = (
+    "u.occurred_start IS NOT NULL AND NOT (u.said_at >= :since AND u.said_at < :until)"
+)
+_RECENT_GROUPS: Final = (((_KIND, "episode"),), ((_KIND, "turn"),))
+_RECENT_GROUPS_OCCURRED: Final = (
+    ((f"{_KIND} AND {_TOLD_ELSEWHERE}", "turn"), (_KIND, "episode")),
+    ((_KIND, "turn"),),
+)
 # The two occurred columns come right after ``_UNIT_COLUMNS`` in ``_UNIT_COLUMNS_OCCURRED``.
 _OCCURRED_START: Final = len(_UNIT_COLUMNS.split(","))
 _OCCURRED_END: Final = _OCCURRED_START + 1
@@ -528,18 +541,20 @@ async def recent_units(
         The readable units.
     """
     window = _window(since, until, first_day, last_day, occurred=occurred)
-    for kind in ("episode", "turn"):
-        cursor = await db.get_conn().execute(
-            f"SELECT {_columns(occurred=occurred)} FROM recall_units u "  # noqa: S608
-            "JOIN conversation_records r ON r.id = u.source_record_id "
-            f"WHERE u.kind = :kind AND {_readable(occurred=occurred)} "
-            "ORDER BY u.said_at DESC, u.id DESC LIMIT :limit",
-            {"kind": kind, "owner": owner_entity_id, "now": now, "limit": limit, **window},
-        )
-        rows = list(await cursor.fetchall())
-        await cursor.close()
-        if rows:
-            return [_unit(tuple(row), occurred=occurred) for row in rows]
+    for group in _RECENT_GROUPS_OCCURRED if occurred else _RECENT_GROUPS:
+        units: list[RecallUnit] = []
+        for kind_clause, kind in group:
+            cursor = await db.get_conn().execute(
+                f"SELECT {_columns(occurred=occurred)} FROM recall_units u "  # noqa: S608
+                "JOIN conversation_records r ON r.id = u.source_record_id "
+                f"WHERE {kind_clause} AND {_readable(occurred=occurred)} "
+                "ORDER BY u.said_at DESC, u.id DESC LIMIT :limit",
+                {"kind": kind, "owner": owner_entity_id, "now": now, "limit": limit, **window},
+            )
+            units += [_unit(tuple(row), occurred=occurred) for row in await cursor.fetchall()]
+            await cursor.close()
+        if units:
+            return units[:limit]
     return []
 
 

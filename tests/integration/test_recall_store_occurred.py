@@ -227,6 +227,22 @@ async def test_a_mixed_record_keeps_its_episode(owner: int) -> None:
     assert kept_a in await _lexical(owner, "nieve", _one(yesterday), occurred=True)
 
 
+async def test_a_story_about_that_day_is_not_hidden_by_its_episodes(owner: int) -> None:
+    """Hardware, 2026-11-12: «¿qué hice hace tres días?» read that day's diary only.
+
+    A turn whose occurred interval falls in the window was told on another day, so no episode of
+    the window holds it: it comes first, then the window's episodes.
+    """
+    monday = _TODAY - timedelta(days=3)
+    that_day = await _record(owner)
+    episode = await _episode(owner, that_day, "hablamos de la playa", monday)
+    today = await _record(owner)
+    story = await _turn(owner, today, "hace tres dias fui al parque", _TODAY, _one(monday))
+
+    assert await _recent(owner, _one(monday), occurred=True) == [story, episode]
+    assert await _recent(owner, _one(monday), occurred=False) == [episode]
+
+
 async def test_the_switch_off_sql_names_no_occurred_column(owner: int) -> None:
     """Off, every read sends today's SQL: no statement names an occurred column."""
     record_id = await _record(owner)
