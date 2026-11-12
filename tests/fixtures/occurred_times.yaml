@@ -24,5 +24,8 @@
 - {heard: El sábado tengo un viaje., start: null, end: null}
 - {heard: El sábado paso a verte., start: null, end: null}
 - {heard: Cuando llegue el sábado te cuento., start: null, end: null}
-- {heard: Hace dos años fui al sur., start: null, end: null}
+- {heard: Hace dos años fui al sur., start: 2024-01-01, end: 2024-12-31}
+- {heard: Hace 3 días fui al cine con mis amigos., start: 2026-11-09, end: 2026-11-09}
+- {heard: El 3 de noviembre del año pasado me cambié de casa., start: 2025-11-03, end: 2025-11-03}
+- {heard: En 3 días más voy a comer con mi mamá., start: null, end: null}
 - {heard: Ayer fui al cine., said_day: 2026-01-01, start: 2025-12-31, end: 2025-12-31}

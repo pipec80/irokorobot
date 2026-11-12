@@ -196,12 +196,55 @@ def _week(offset: int) -> _Resolver:
     return window
 
 
+def _shifted_month(today: date, offset: int) -> DayWindow:
+    """The month *offset* months from today's month."""
+    year, index = divmod(today.year * _MONTHS_IN_YEAR + today.month - 1 + offset, 12)
+    return _month_window(year, index + 1)
+
+
 def _month(offset: int) -> _Resolver:
     def window(_: re.Match[str], today: date, __: Toward) -> DayWindow | None:
-        year, index = divmod(today.year * _MONTHS_IN_YEAR + today.month - 1 + offset, 12)
-        return _month_window(year, index + 1)
+        return _shifted_month(today, offset)
 
     return window
+
+
+def _count(match: re.Match[str]) -> int:
+    word = match.group("count")
+    return int(word) if word.isdigit() else _COUNT_WORDS[word]
+
+
+def _ago(match: re.Match[str], today: date, _: Toward) -> DayWindow | None:
+    """«hace N días» is that day, «semanas» that week, «meses» that month, «años» that year."""
+    count = _count(match)
+    match match.group("unit"):
+        case "dia" | "dias":
+            return _one_day(today - timedelta(days=count))
+        case "semana" | "semanas":
+            day = today - timedelta(weeks=count)
+            monday = day - timedelta(days=day.weekday())
+            return DayWindow(start=monday, end=monday + timedelta(days=_DAYS_IN_WEEK - 1))
+        case "mes" | "meses":
+            return _shifted_month(today, -count)
+        case _:
+            return _year_window(today.year - count)
+
+
+def _in_days(match: re.Match[str], today: date, _: Toward) -> DayWindow | None:
+    """«en N días (más)», «dentro de N días»: that day ahead."""
+    return _one_day(today + timedelta(days=_count(match)))
+
+
+def _last_year_day(match: re.Match[str], today: date, _: Toward) -> DayWindow | None:
+    return _day_of_year(match, today.year - 1)
+
+
+def _last_year_month(match: re.Match[str], today: date, _: Toward) -> DayWindow | None:
+    return _month_of_year(match, today.year - 1)
+
+
+def _last_year_season(match: re.Match[str], today: date, _: Toward) -> DayWindow | None:
+    return _season_of_year(match, today.year - 1)
 
 
 def _relative_year(offset: int) -> _Resolver:
@@ -288,6 +331,22 @@ def _whole_year(_: re.Match[str], year: int) -> DayWindow | None:
 _WEEKDAY: Final = "(?:" + "|".join(_WEEKDAYS) + ")"
 _MONTH: Final = "(?P<month>" + "|".join(_MONTHS) + ")"
 _YEAR: Final = r"(?P<year>\d{4})"
+# «hace tres días», «en 3 días más» (Pipec, 2026-11-12, hardware): a count in digits or words.
+_COUNT_WORDS: Final[dict[str, int]] = {
+    "un": 1,
+    "una": 1,
+    "uno": 1,
+    "dos": 2,
+    "tres": 3,
+    "cuatro": 4,
+    "cinco": 5,
+    "seis": 6,
+    "siete": 7,
+    "ocho": 8,
+    "nueve": 9,
+    "diez": 10,
+}
+_COUNT: Final = r"(?P<count>\d{1,2}|" + "|".join(_COUNT_WORDS) + ")"
 # A season with its article: «el verano», «la primavera».
 _SEASON: Final = "(?:el (?:verano|otono|invierno)|la primavera)"
 _SEASON_WORD: Final = "(?:verano|otono|invierno|primavera)"
@@ -306,6 +365,12 @@ _LEG, _FULL, _BOTH = _Walk.LEGACY, _Walk.FULL, _Walk.BOTH
 # the shorter one inside it. The legacy walk reads, in order, the day of a month, «la semana
 # pasada», «el mes pasado», «anteayer», «ayer», «hoy» and the weekday, exactly as Plan 0078 did.
 _TABLE: Final[tuple[_Entry, ...]] = (
+    # «… del año pasado» names the year of a day, a month or a season (Pipec, 2026-11-12).
+    _entry(rf"(?:el )?(?P<day>\d{{1,2}}) de {_MONTH} del ano pasado", _last_year_day, _P, _FULL),
+    _entry(rf"(?:en )?{_MONTH} del ano pasado", _last_year_month, _P, _FULL),
+    _entry(rf"{_SEASON_LEAD}?{_SEASON_WORD} del ano pasado", _last_year_season, _P, _FULL),
+    _entry(rf"hace {_COUNT} (?P<unit>dias?|semanas?|mes|meses|anos?)", _ago, _P, _FULL),
+    _entry(rf"(?:en|dentro de) {_COUNT} dias?(?: mas)?", _in_days, _F, _FULL),
     _entry(
         rf"(?:el )?(?P<day>\d{{1,2}}) de {_MONTH} del? {_YEAR}", _dated(_day_of_year), _D, _FULL
     ),

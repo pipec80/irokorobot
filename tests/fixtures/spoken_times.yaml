@@ -172,9 +172,9 @@ times:
   - phrase: pagué 2015 pesos
     past: null
     future: null
-  # D-6: phrases the reader does not know.
+  # D-6: phrases the reader does not know («hace N …» joined on 2026-11-12, Pipec).
   - phrase: hace dos años fui al sur
-    past: null
+    past: {start: 2024-01-01, end: 2024-12-31, ambiguous: false}
     future: null
   - phrase: este año
     past: null
@@ -213,6 +213,58 @@ times:
   # «sábado pasado» without «el» is the past, as the legacy walk read it.
   - phrase: sábado pasado fui al cine
     past: {start: 2026-11-07, end: 2026-11-07, ambiguous: false}
+    future: null
+  # Pipec, 2026-11-12 (hardware): «… del año pasado», «hace N …» and «en / dentro de N días».
+  - phrase: el 3 de noviembre del año pasado
+    past: {start: 2025-11-03, end: 2025-11-03, ambiguous: false}
+    future: null
+  - phrase: el 14 de noviembre del año pasado
+    past: {start: 2025-11-14, end: 2025-11-14, ambiguous: false}
+    future: null
+  - phrase: en marzo del año pasado
+    past: {start: 2025-03-01, end: 2025-03-31, ambiguous: false}
+    future: null
+  - phrase: en el verano del año pasado
+    past: {start: 2024-12-01, end: 2025-02-28, ambiguous: false}
+    future: null
+  - phrase: hace 3 días fui al cine
+    past: {start: 2026-11-09, end: 2026-11-09, ambiguous: false}
+    future: null
+  - phrase: hace tres días
+    past: {start: 2026-11-09, end: 2026-11-09, ambiguous: false}
+    future: null
+  - phrase: hace un día
+    past: {start: 2026-11-11, end: 2026-11-11, ambiguous: false}
+    future: null
+  - phrase: hace una semana
+    past: {start: 2026-11-02, end: 2026-11-08, ambiguous: false}
+    future: null
+  - phrase: hace 2 semanas
+    past: {start: 2026-10-26, end: 2026-11-01, ambiguous: false}
+    future: null
+  - phrase: hace un mes
+    past: {start: 2026-10-01, end: 2026-10-31, ambiguous: false}
+    future: null
+  - phrase: hace dos meses
+    past: {start: 2026-09-01, end: 2026-09-30, ambiguous: false}
+    future: null
+  - phrase: hace un año
+    past: {start: 2025-01-01, end: 2025-12-31, ambiguous: false}
+    future: null
+  - phrase: hace 10 años viví en el norte
+    past: {start: 2016-01-01, end: 2016-12-31, ambiguous: false}
+    future: null
+  - phrase: en 3 días más voy a comer con mi mamá
+    past: null
+    future: {start: 2026-11-15, end: 2026-11-15, ambiguous: false}
+  - phrase: dentro de tres días
+    past: null
+    future: {start: 2026-11-15, end: 2026-11-15, ambiguous: false}
+  - phrase: en 3 días
+    past: null
+    future: {start: 2026-11-15, end: 2026-11-15, ambiguous: false}
+  - phrase: hace un rato
+    past: null
     future: null
   # Review focus 2: the year turns and February ends.
   - phrase: el próximo mes

@@ -58,3 +58,7 @@
 - message: ¿Qué voy a hacer mañana?
   with_flag: null
   without_flag: null
+# Pipec, 2026-11-12 (hardware): «hace N días» as a recall window.
+- message: ¿Qué hice hace 3 días?
+  with_flag: {strength: strong, when: null, query: '', start: 2026-11-09, end: 2026-11-09}
+  without_flag: {strength: strong, when: null, query: 'hace 3 dias', start: null, end: null}
