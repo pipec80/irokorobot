@@ -13,6 +13,7 @@ code, tests, verified gaps and the delivery sequence.
 
 | Plan | Implementation reality | Reuse | Remaining closure |
 |---|---|---|---|
+| [0082](0082-the-whole-alta-by-voice.md) | `Draft` (2026-11-11): design only, nothing implemented; ADR 0037 decisions 1 and 5 | The sensitive read of Plan 0079, `care_contacts.list_active_contacts`, `entity_labels.get_person_label` | Pipec's review and D-1 to D-13; then execution, hardware acceptance and close |
 | [0015](0015-personal-companion-design.md) | Approved product design; PC-1 to PC-4 are closed (PC-2 and PC-3A with provisional calibrations); reference only, never an executable batch | Controller, policy/audit, V4 household tools, identity/session seam, short-term continuity, the conversation record and recall index, STT/TTS, face engine | CM-6 and CM-7 (block C, then block D), PC-5 integrated personal acceptance and PC-6 family remain open |
 
 Existing components named under **Reuse** must not be rebuilt by a later plan.
