@@ -4,6 +4,7 @@ from datetime import date
 import logging
 from pathlib import Path
 import re
+from typing import TYPE_CHECKING
 
 import yaml
 
@@ -17,6 +18,9 @@ from server.cognition.identity import (
     IdentityEvidenceSource,
 )
 from server.settings import ProfileCardPosition, settings
+
+if TYPE_CHECKING:
+    from server.memory.profile_card import AddressForm
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +79,8 @@ _PROFILES_DIR = Path(__file__).parent / "profiles"
 # 2026-07-06). This block is always present, with or without active memory.
 # The same conversation counts as a source because an identified person has
 # short-term continuity (ADR 0020): without it the model answered "I don't
-# remember" to something said a minute earlier.
+# remember" to something said a minute earlier. Plan 0081: with an empty session the 3B model
+# said it had seen or noticed things about the person, so the last bullet forbids it.
 _MEMORY_DISCIPLINE = """
 MEMORY DISCIPLINE — non-negotiable:
 - The authorized memory block appended below (when present) and what the person \
@@ -85,14 +90,34 @@ people, family, pets, dates, and preferences.
 remember it yet and ask them to tell you — NEVER invent or guess names, \
 ages, or facts. A wrong confident answer poisons your own memory.
 - You do NOT store anything yourself: never say you saved, registered or noted \
-something. Only the robot's own spoken offer saves, and only after the person agrees."""
+something. Only the robot's own spoken offer saves, and only after the person agrees.
+- If neither the memory block nor this conversation holds it, you know nothing about \
+this person: never say you saw, noticed or remember anything about them."""
 
 # Plan 0064: the last block of every prompt (a small model weighs the end of its prompt). The
 # streaming route sometimes answered in another language (a reply in French was observed).
-_LANGUAGE_RULE = (
-    "\nIDIOMA — Responde siempre en español neutro, con tuteo (tú). "
+# Plan 0081: it follows the person's form and names no register word («tuteo» was spoken back).
+_LANGUAGE_RULE_TEMPLATE = (
+    "\nIDIOMA — Responde siempre en español neutro y {form}. "
     "No uses otro idioma ni mezcles palabras de otro idioma, aunque la persona lo haga."
 )
+_FORM_INSTRUCTIONS: dict[str, str] = {
+    "tu": "háblale de tú a la persona",
+    "usted": "trata de usted a la persona",
+}
+
+
+def language_rule(address_form: "AddressForm") -> str:
+    """Return the language rule that closes every prompt, in the person's address form.
+
+    Args:
+        address_form: ``tu`` or ``usted``; a speaker with no card read is ``tu``.
+
+    Returns:
+        The rule, starting with a newline. It never names the register («tuteo»).
+    """
+    return _LANGUAGE_RULE_TEMPLATE.format(form=_FORM_INSTRUCTIONS[address_form])
+
 
 _PRESENTATION_GUIDANCE = """
 PRESENTATION GUIDANCE:
@@ -239,6 +264,7 @@ def build_system_prompt(
     perception: str | None = None,
     profile_card: str | None = None,
     profile_card_position: ProfileCardPosition = "with_memory",
+    address_form: "AddressForm" = "tu",
 ) -> str:
     """Assemble the full system prompt for a character.
 
@@ -259,6 +285,8 @@ def build_system_prompt(
             adaptation, where the retired memory block used to follow it (Plan 0076);
             ``before_language`` right before the language rule. The language rule stays the
             last block either way.
+        address_form: The speaker's form from the card read (Plan 0081); the language rule
+            follows it. ``tu`` when no card was read.
 
     Returns:
         Complete system prompt string ready for the LLM.
@@ -281,7 +309,7 @@ def build_system_prompt(
         parts.append(_PERCEPTION_TEMPLATE.format(description=perception))
     if profile_card and profile_card_position == "before_language":
         parts.append("\n" + profile_card)
-    parts.append(_LANGUAGE_RULE)
+    parts.append(language_rule(address_form))
     return "\n".join(parts)
 
 

@@ -1,6 +1,7 @@
 """Unit tests for the profile card's access: policy, audit before the read, never a raise (Plan 0074)."""
 
 from datetime import UTC, datetime, timedelta
+import logging
 from unittest.mock import AsyncMock, Mock
 from uuid import UUID, uuid4
 
@@ -24,12 +25,12 @@ from server.cognition.models import (
 )
 from server.cognition.response_plan import ProfileSummaryReply
 from server.exceptions import BrainMemoryError
-from server.memory.profile_card import CARD_PREDICATES, CardTaste, ProfileCard
+from server.memory.profile_card import CARD_PREDICATES, CardTaste, ProfileCard, PromptCard
 from server.memory.profile_card_access import (
     CardOutcome,
     CardRead,
     profile_summary_text,
-    prompt_card_text,
+    prompt_card_for_turn,
     read_card,
 )
 from server.memory.relational_v4 import AssertionLifecycle, LiteralFactV4
@@ -233,26 +234,82 @@ async def test_a_token_speaker_is_not_asked_and_writes_no_row() -> None:
     reader.assert_not_awaited()
 
 
-async def test_prompt_card_text_renders_only_when_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
-    allowed = AsyncMock(return_value=CardRead(CardOutcome.ALLOWED, _CANARY_CARD))
+def _allow(monkeypatch: pytest.MonkeyPatch, card: ProfileCard) -> None:
+    allowed = AsyncMock(return_value=CardRead(CardOutcome.ALLOWED, card))
     monkeypatch.setattr("server.memory.profile_card_access.read_card", allowed)
 
-    text = await prompt_card_text(_face(), correlation_id=_CORRELATION, now=_NOW)
 
-    assert text is not None
-    assert '- Le gusta: "el mate".' in text
-
-    for outcome in (CardOutcome.DENIED, CardOutcome.UNAVAILABLE):
-        refused = AsyncMock(return_value=CardRead(outcome, None))
-        monkeypatch.setattr("server.memory.profile_card_access.read_card", refused)
-        assert await prompt_card_text(_face(), correlation_id=_CORRELATION, now=_NOW) is None
+async def _prompt_card(message: str) -> PromptCard | None:
+    return await prompt_card_for_turn(_face(), message, correlation_id=_CORRELATION, now=_NOW)
 
 
-async def test_prompt_card_text_is_none_for_an_empty_card(monkeypatch: pytest.MonkeyPatch) -> None:
-    empty = AsyncMock(return_value=CardRead(CardOutcome.ALLOWED, ProfileCard(None, None, ())))
-    monkeypatch.setattr("server.memory.profile_card_access.read_card", empty)
+async def test_the_prompt_card_includes_tastes_on_taste_talk(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _allow(monkeypatch, _CANARY_CARD)
 
-    assert await prompt_card_text(_face(), correlation_id=_CORRELATION, now=_NOW) is None
+    card = await _prompt_card("¿qué me recomiendas comer?")
+
+    assert card is not None
+    assert card.address_form == "tu"
+    assert card.text is not None
+    assert '- A la persona le gusta: "el mate".' in card.text
+
+
+async def test_the_prompt_card_withholds_tastes_on_a_greeting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _allow(monkeypatch, ProfileCard("Canary", None, (CardTaste("likes", "el mate"),)))
+
+    card = await _prompt_card("hola")
+
+    assert card is not None
+    assert card.address_form == "tu"
+    assert card.text is not None
+    assert "le gusta" not in card.text
+    assert "mate" not in card.text
+
+
+async def test_the_prompt_card_carries_usted(monkeypatch: pytest.MonkeyPatch) -> None:
+    _allow(monkeypatch, ProfileCard(None, "usted", ()))
+
+    assert await _prompt_card("hola") == PromptCard("usted", None)
+
+
+async def test_an_empty_allowed_card_is_tu_with_no_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    _allow(monkeypatch, ProfileCard(None, None, ()))
+
+    assert await _prompt_card("hola") == PromptCard("tu", None)
+
+
+@pytest.mark.parametrize("outcome", [CardOutcome.DENIED, CardOutcome.UNAVAILABLE])
+async def test_a_refused_read_has_no_prompt_card(
+    monkeypatch: pytest.MonkeyPatch, outcome: CardOutcome
+) -> None:
+    refused = AsyncMock(return_value=CardRead(outcome, None))
+    monkeypatch.setattr("server.memory.profile_card_access.read_card", refused)
+
+    assert await _prompt_card("¿qué me gusta comer?") is None
+
+
+async def test_the_prompt_card_logs_closed_values(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    _allow(monkeypatch, ProfileCard("Canary", None, (CardTaste("likes", "el mate"),)))
+
+    with caplog.at_level(logging.DEBUG, logger="server.memory.profile_card_access"):
+        await _prompt_card("hola")
+
+    (record,) = [r for r in caplog.records if getattr(r, "event", None) == "card.prompt"]
+    assert record.levelno == logging.INFO
+    assert record.__dict__["tastes"] == "withheld"
+    assert record.__dict__["address_form"] == "tu"
+    assert "mate" not in caplog.text
+    assert "Canary" not in caplog.text
+
+
+def test_a_prompt_card_hides_its_text_from_repr() -> None:
+    assert "mate" not in repr(PromptCard("tu", "CARD el mate"))
 
 
 async def test_profile_summary_text_maps_the_three_outcomes(

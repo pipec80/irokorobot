@@ -1,0 +1,345 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Iroko current state — the voice turn",
+    "output": "iroko-voice-turn.html",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "classic-turn",
+        "label": "Classic voice turn",
+        "focus": [
+          "robot",
+          "api",
+          "stt",
+          "controller",
+          "ollama",
+          "tts"
+        ],
+        "note": "The audio contract path: robot captures audio, server transcribes, decides, and speaks back."
+      },
+      {
+        "id": "identity-and-policy",
+        "label": "Identity and policy",
+        "focus": [
+          "controller",
+          "policy",
+          "face",
+          "memory"
+        ],
+        "note": "Protected household branches are fail-closed and audited before any memory read; a face-store error degrades to unknown."
+      },
+      {
+        "id": "short-term-continuity",
+        "label": "Short-term continuity",
+        "focus": [
+          "controller",
+          "face",
+          "continuity",
+          "ollama"
+        ],
+        "note": "A generic turn names its speaker by face or a token, never voice; their last turns and a small profile card (off by default) reach the next."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "face",
+      "type": "security",
+      "label": "Face + voice fusion",
+      "sublabel": "PC-4 · consent-gated",
+      "pos": [
+        460,
+        60
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "tag": "photo = basic"
+    },
+    {
+      "id": "policy",
+      "type": "security",
+      "label": "Household Policy",
+      "sublabel": "P0.5 fail-closed",
+      "pos": [
+        670,
+        60
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "sensitive",
+      "type": "backend",
+      "label": "Sensitive reader",
+      "sublabel": "templates · secret guard",
+      "pos": [
+        1040,
+        60
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "tag": "reader off by default"
+    },
+    {
+      "id": "robot",
+      "type": "external",
+      "label": "Robot client",
+      "sublabel": "mic · webcam · speaker",
+      "pos": [
+        40,
+        240
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "Server API",
+      "sublabel": "FastAPI :8000",
+      "pos": [
+        250,
+        240
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "tag": "audio-only contract"
+    },
+    {
+      "id": "stt",
+      "type": "backend",
+      "label": "Faster Whisper",
+      "sublabel": "STT · CPU or GPU",
+      "pos": [
+        460,
+        240
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "controller",
+      "type": "backend",
+      "label": "Cognitive Controller",
+      "sublabel": "P0.3 decide()",
+      "pos": [
+        670,
+        240
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "tag": "immutable plan"
+    },
+    {
+      "id": "ollama",
+      "type": "external",
+      "label": "Ollama",
+      "sublabel": "local LLM / VLM",
+      "pos": [
+        980,
+        240
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "tts",
+      "type": "backend",
+      "label": "Piper",
+      "sublabel": "local TTS",
+      "pos": [
+        250,
+        400
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "continuity",
+      "type": "backend",
+      "label": "Continuity session",
+      "sublabel": "3000 chars · 180 s · in process",
+      "pos": [
+        460,
+        400
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "tag": "identified person only"
+    },
+    {
+      "id": "memory",
+      "type": "database",
+      "label": "SQLite",
+      "sublabel": "v4 · candidates · record",
+      "pos": [
+        670,
+        400
+      ],
+      "size": [
+        160,
+        64
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "security-group",
+      "label": "P0.5 authorization — fail-closed",
+      "wraps": [
+        "policy",
+        "face"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Local-only runtime (Ollama only; ADR-0036 Proposed)",
+      "wraps": [
+        "ollama"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "robot-to-api",
+      "from": "robot",
+      "to": "api",
+      "label": "POST /transcribe · WAV 16kHz mono int16",
+      "variant": "emphasis",
+      "labelDy": -26
+    },
+    {
+      "id": "api-to-stt",
+      "from": "api",
+      "to": "stt",
+      "label": "audio → text",
+      "labelDy": -26
+    },
+    {
+      "id": "stt-to-controller",
+      "from": "stt",
+      "to": "controller",
+      "label": "transcript → typed event",
+      "labelDy": 75
+    },
+    {
+      "id": "controller-to-policy",
+      "from": "controller",
+      "to": "policy",
+      "label": "protected branch check",
+      "variant": "security",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "controller-to-face",
+      "from": "controller",
+      "to": "face",
+      "label": "face + voice evidence",
+      "variant": "security",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "controller-to-ollama",
+      "from": "controller",
+      "to": "ollama",
+      "label": "generic turn / grounded scene",
+      "variant": "emphasis",
+      "labelDy": 56
+    },
+    {
+      "id": "controller-to-memory",
+      "from": "controller",
+      "to": "memory",
+      "label": "v4 authorized read",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "api-to-tts",
+      "from": "api",
+      "to": "tts",
+      "label": "response text",
+      "labelDy": 24,
+      "labelDx": -50
+    },
+    {
+      "id": "api-to-continuity",
+      "from": "api",
+      "to": "continuity",
+      "label": "generic turn: speaker named",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 30
+    },
+    {
+      "id": "tts-to-robot",
+      "from": "tts",
+      "to": "robot",
+      "label": "audio_base64",
+      "variant": "emphasis",
+      "fromSide": "left",
+      "toSide": "bottom"
+    },
+    {
+      "id": "sensitive-to-policy",
+      "from": "sensitive",
+      "to": "policy",
+      "label": "audience · level · consent",
+      "variant": "security",
+      "fromSide": "left",
+      "toSide": "right"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Hard boundary",
+      "items": [
+        "Server is a generic audio API — it does not know the robot exists",
+        "Robot is a generic audio client — it does not know STT/LLM/TTS exist",
+        "Only the audio contract is shared: WAV · 16kHz · mono · int16"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Cognitive path",
+      "items": [
+        "The controller returns an immutable plan first: a memory question is answered from what memory found, never invented",
+        "The LLM (Ollama only, one transport) chats only on generic turns: it sees the session and the profile card, never a household store",
+        "A generic speaker is named by face or a token; a memory offer, answer or security read also needs the same person's verified voice"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Known gaps",
+      "items": [
+        "No liveness or replay defense, accepted for the home (ADR 0029)",
+        "A PIN grant proves the PIN, not the speaker (ADR-0015); the 3B model's own answers are a limit (P4.1)"
+      ]
+    }
+  ]
+}

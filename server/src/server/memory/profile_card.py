@@ -11,7 +11,7 @@ read as an instruction.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 from typing import TYPE_CHECKING, Final, Literal
 import unicodedata
@@ -27,14 +27,19 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+#: The register the person asked for: «tú» or «usted» (ADR 0026 decision 2).
+type AddressForm = Literal["tu", "usted"]
+
 __all__ = [
     "CARD_HEADER",
     "CARD_PREDICATES",
     "MAX_CARD_CHARS",
     "MAX_CARD_TASTES",
     "MAX_VALUE_CHARS",
+    "AddressForm",
     "CardTaste",
     "ProfileCard",
+    "PromptCard",
     "build_card",
     "render_prompt_card",
     "render_summary",
@@ -50,21 +55,28 @@ MAX_VALUE_CHARS: Final = 80
 _ITEM_SEPARATOR: Final = ","
 CARD_HEADER: Final = "--- Lo que sabes de la persona con quien hablas ---"
 
+# Plan 0081 (D-5): the 3B model voiced a taste as its own and said it had noticed one. The card
+# still opens its footer as authorized memory, the «authorized memory block» of the discipline.
 _CARD_FOOTER: Final = (
-    "Es memoria autorizada: apóyate en ella solo si viene al caso y no inventes nada "
-    "que no esté aquí."
+    "Es memoria autorizada. "
+    "Son gustos de la persona, no tuyos: nunca digas que a ti te gustan. La persona te los "
+    "contó: no digas que los viste ni que los notaste. Úsalos solo si viene al caso y no "
+    "inventes nada que no esté aquí."
 )
 _EMPTY_SUMMARY: Final = "Todavía no me has contado cosas que pueda recordar."
 _SUMMARY_OPENING: Final = "Esto es lo que sé de ti."
 _ADDRESS_FORMS: Final = {"tu": "tú", "usted": "usted"}
-_FORMAL_FORM: Final = "usted"
 # Zero width joiner: kept so a joined emoji sequence survives; every other format character
 # (bidirectional overrides among them) is dropped with the control characters.
 _ZERO_WIDTH_JOINER: Final = "‍"
 _DROPPED_CATEGORIES: Final = frozenset({"Cc", "Cf", "Cs", "Co", "Cn"})
 
 # Prompt line label and spoken label per taste predicate.
-_PROMPT_LABELS: Final = {"likes": "Le gusta", "dislikes": "No le gusta", "prefers": "Prefiere"}
+_PROMPT_LABELS: Final = {
+    "likes": "A la persona le gusta",
+    "dislikes": "A la persona no le gusta",
+    "prefers": "La persona prefiere",
+}
 _SPOKEN_PREFIXES: Final = {
     "likes": "Me has dicho que te gusta",
     "dislikes": "Me has dicho que no te gusta",
@@ -81,6 +93,20 @@ class CardTaste:
 
 
 @dataclass(frozen=True)
+class PromptCard:
+    """What a turn's prompt receives from the card read (Plan 0081, D-3).
+
+    Attributes:
+        address_form: The person's form; the language rule follows it.
+        text: The rendered block, or ``None`` when it has nothing to say. Hidden from ``repr``:
+            it carries the person's own data.
+    """
+
+    address_form: AddressForm
+    text: str | None = field(default=None, repr=False)
+
+
+@dataclass(frozen=True)
 class ProfileCard:
     """What the robot has at hand about the person it is talking to.
 
@@ -91,7 +117,7 @@ class ProfileCard:
     """
 
     preferred_name: str | None
-    address_form: Literal["tu", "usted"] | None
+    address_form: AddressForm | None
     tastes: tuple[CardTaste, ...]
 
     @property
@@ -140,7 +166,7 @@ def build_card(rows: Sequence[LiteralFactV4]) -> ProfileCard:
         kept), and stop at ``MAX_CARD_TASTES`` items.
     """
     name: str | None = None
-    form: Literal["tu", "usted"] | None = None
+    form: AddressForm | None = None
     tastes: dict[tuple[str, str], CardTaste] = {}
     for row in filter(_is_card_row, rows):
         match row.predicate:
@@ -163,20 +189,10 @@ def build_card(rows: Sequence[LiteralFactV4]) -> ProfileCard:
     return ProfileCard(name, form, kept[:MAX_CARD_TASTES])
 
 
-def _says_something_to_the_model(card: ProfileCard) -> bool:
-    """Whether the prompt block would carry any line: the ``tu`` form is not one of them."""
-    return bool(card.preferred_name or card.address_form == _FORMAL_FORM or card.tastes)
-
-
 def _render_prompt(card: ProfileCard, tastes: Sequence[CardTaste]) -> str:
     lines = [CARD_HEADER]
-    identity: list[str] = []
     if card.preferred_name is not None:
-        identity.append(f'Nombre: "{card.preferred_name}".')
-    if card.address_form == _FORMAL_FORM:
-        identity.append(f"Trato: {_ADDRESS_FORMS[card.address_form]}.")
-    if identity:
-        lines.append("- " + " ".join(identity))
+        lines.append(f'- Nombre: "{card.preferred_name}".')
     for predicate in _TASTE_PREDICATES:
         quoted = ", ".join(f'"{taste.value}"' for taste in tastes if taste.predicate == predicate)
         if quoted:
@@ -185,26 +201,28 @@ def _render_prompt(card: ProfileCard, tastes: Sequence[CardTaste]) -> str:
     return "\n".join(lines)
 
 
-def render_prompt_card(card: ProfileCard) -> str | None:
+def render_prompt_card(card: ProfileCard, *, include_tastes: bool) -> str | None:
     """Render the card as the block that enters the system prompt.
 
     Args:
         card: The card to render.
+        include_tastes: Whether this turn's message is about tastes (Plan 0081, D-4); otherwise
+            only the name line is rendered.
 
     Returns:
         The block, at most ``MAX_CARD_CHARS`` long (the oldest tastes are dropped until it
-        fits), or ``None`` when the card has nothing to say to the model. The ``tu`` form is
-        never said: the prompt already demands tuteo, and a «Trato: tú.» line made the 3B model
-        answer «Tú, bien.» on Pipec's hardware run of 2026-10-28. Only ``usted`` is.
+        fits), or ``None`` when it would carry no name and no taste. The form is never a line
+        (Plan 0081, D-3): it travels to the language rule as a value, because «Trato: tú.» made
+        the 3B model answer «Tú, bien.» and «Trato: usted.» fought the rule's tuteo.
     """
-    if not _says_something_to_the_model(card):
+    tastes = list(card.tastes) if include_tastes else []
+    if card.preferred_name is None and not tastes:
         return None
-    tastes = list(card.tastes)
     rendered = _render_prompt(card, tastes)
     while len(rendered) > MAX_CARD_CHARS and tastes:
         tastes.pop()
         rendered = _render_prompt(card, tastes)
-    if len(tastes) < len(card.tastes):
+    if include_tastes and len(tastes) < len(card.tastes):
         logger.debug(
             "Profile card: %d tastes left out by the size cap", len(card.tastes) - len(tastes)
         )

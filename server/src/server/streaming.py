@@ -72,6 +72,7 @@ async def _text_deltas(client: httpx.AsyncClient, inputs: PreparedTextTurn) -> A
         user_emotion=inputs.user_emotion,
         active_person=inputs.active_person,
         profile_card=inputs.profile_card,
+        address_form=inputs.address_form,
     ):
         yield delta
 

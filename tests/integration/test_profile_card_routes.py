@@ -20,6 +20,7 @@ from httpx import ASGITransport, AsyncClient
 import numpy as np
 from pydantic import SecretStr
 import pytest
+from server.characters import language_rule
 from server.cognition import face_authentication as face_auth_module
 from server.cognition.identity import PersonRecord
 from server.cognition.identity_sessions import IdentitySessionRegistry
@@ -191,19 +192,43 @@ async def test_the_classic_route_puts_the_owners_card_in_the_prompt_with_one_aud
     household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _see_the_owner(monkeypatch)
-    _hear(monkeypatch, "Hola, ¿cómo estás?")
+    _hear(monkeypatch, "Hola, ¿cómo estás?", "¿Qué me recomiendas comer?")
     prompts = _classic_prompts(monkeypatch)
 
     async with _client() as client:
-        response = await client.post("/transcribe", files=_files())
+        greeting = await client.post("/transcribe", files=_files())
+        taste_talk = await client.post("/transcribe", files=_files())
 
-    assert response.status_code == 200
-    (prompt,) = prompts
-    assert CARD_HEADER in prompt
-    assert f'Nombre: "{_CARD_NAME}"' in prompt
-    assert f'"{_TASTE}"' in prompt
-    assert _OWNER_NAME not in prompt  # the display name is not the card
-    assert await _audit_rows() == 1
+    assert greeting.status_code == taste_talk.status_code == 200
+    greeting_prompt, taste_prompt = prompts
+    for prompt in prompts:
+        assert CARD_HEADER in prompt
+        assert f'Nombre: "{_CARD_NAME}"' in prompt
+        assert _OWNER_NAME not in prompt  # the display name is not the card
+    # Plan 0081 (D-4): a greeting carries no taste; taste talk does.
+    assert f'"{_TASTE}"' not in greeting_prompt
+    assert f'"{_TASTE}"' in taste_prompt
+    assert await _audit_rows() == 2
+
+
+async def test_a_formal_owner_gets_the_usted_rule_on_both_routes(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await _own(household.owner_entity_id, "address_form", "usted")
+    _see_the_owner(monkeypatch)
+    _hear(monkeypatch, "Hola, ¿cómo estás?", "Hola, ¿cómo estás?")
+    classic = _classic_prompts(monkeypatch)
+    stream = _stream_prompts(monkeypatch)
+
+    async with _client() as client:
+        await client.post("/transcribe", files=_files())
+        await client.post("/transcribe/stream", files=_files())
+
+    (classic_prompt,) = classic
+    (stream_prompt,) = stream
+    assert language_rule("usted") in classic_prompt
+    assert language_rule("usted") in stream_prompt
+    assert "Trato" not in classic_prompt + stream_prompt
 
 
 async def test_with_the_card_switch_off_the_prompt_is_the_one_of_a_stranger(

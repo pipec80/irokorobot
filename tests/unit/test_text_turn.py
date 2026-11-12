@@ -22,6 +22,7 @@ from server.exceptions import LLMError
 from server.memory import continuity
 from server.memory.candidate_dialogue import PendingOffer
 from server.memory.continuity import SuspendCause, Transition
+from server.memory.profile_card import PromptCard
 from server.settings import settings
 
 from server import llm_streaming, streaming, text_turn
@@ -900,6 +901,7 @@ def test_the_offer_never_shows_in_the_repr_of_a_turn_result() -> None:
 # --- the profile card (Plan 0074, ADR 0026 decision 3) ---------------------------------------
 
 _CARD_TEXT = "CARD-CANARY"
+_PROMPT_CARD = PromptCard("tu", _CARD_TEXT)
 
 
 def _face_owner() -> ActivePersonContext:
@@ -910,14 +912,14 @@ async def test_the_provider_is_awaited_once_with_the_face_identified_person(
     http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(settings, "memory_enabled", True)
-    provider = AsyncMock(return_value=_CARD_TEXT)
+    provider = AsyncMock(return_value=_PROMPT_CARD)
     person = _face_owner()
 
     prepared = await text_turn.prepare_text_turn(
         "hola", "web", active_person=person, profile_card_provider=provider
     )
 
-    provider.assert_awaited_once_with(person)
+    provider.assert_awaited_once_with(person, "hola")
     assert prepared.profile_card == _CARD_TEXT
 
 
@@ -929,7 +931,7 @@ async def test_a_suspended_speaker_never_reaches_the_provider(
     http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, status: ActivePersonStatus
 ) -> None:
     monkeypatch.setattr(settings, "memory_enabled", True)
-    provider = AsyncMock(return_value=_CARD_TEXT)
+    provider = AsyncMock(return_value=_PROMPT_CARD)
 
     prepared = await text_turn.prepare_text_turn(
         "hola",
@@ -946,7 +948,7 @@ async def test_a_speaker_below_basic_never_reaches_the_provider(
     http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(settings, "memory_enabled", True)
-    provider = AsyncMock(return_value=_CARD_TEXT)
+    provider = AsyncMock(return_value=_PROMPT_CARD)
     person = _person(IdentityEvidenceSource.FACE, assurance=IdentityAssurance.NONE)
 
     prepared = await text_turn.prepare_text_turn(
@@ -961,7 +963,7 @@ async def test_with_memory_off_the_provider_is_never_awaited(
     http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(settings, "memory_enabled", False)
-    provider = AsyncMock(return_value=_CARD_TEXT)
+    provider = AsyncMock(return_value=_PROMPT_CARD)
 
     prepared = await text_turn.prepare_text_turn(
         "hola",
@@ -1004,6 +1006,7 @@ async def test_a_provider_that_raises_leaves_no_card_and_the_turn_goes_on(
 
     assert result.response == "Hola"
     assert generate.await_args_list[0].kwargs["profile_card"] is None
+    assert generate.await_args_list[0].kwargs["address_form"] == "tu"
     assert "pomelo" not in caplog.text
     assert "RuntimeError" in caplog.text
 
@@ -1019,7 +1022,7 @@ async def test_the_card_reaches_the_model_call(
         "hola",
         "web",
         active_person=_face_owner(),
-        profile_card_provider=AsyncMock(return_value=_CARD_TEXT),
+        profile_card_provider=AsyncMock(return_value=_PROMPT_CARD),
     )
 
     assert generate.await_args_list[0].kwargs["profile_card"] == _CARD_TEXT
@@ -1039,6 +1042,63 @@ async def test_the_card_reaches_the_stream_call(
 
     assert [delta async for delta in streaming._text_deltas(http_client, prepared)] == ["Hola."]
     assert captured["profile_card"] == _CARD_TEXT
+
+
+async def test_the_form_reaches_the_prepared_turn(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "memory_enabled", True)
+    provider = AsyncMock(return_value=PromptCard("usted", None))
+
+    prepared = await text_turn.prepare_text_turn(
+        "hola", "web", active_person=_face_owner(), profile_card_provider=provider
+    )
+
+    assert prepared.address_form == "usted"
+    assert prepared.profile_card is None
+
+
+async def test_a_refused_card_read_is_tu(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "memory_enabled", True)
+
+    prepared = await text_turn.prepare_text_turn(
+        "hola",
+        "web",
+        active_person=_face_owner(),
+        profile_card_provider=AsyncMock(return_value=None),
+    )
+
+    assert prepared.address_form == "tu"
+    assert prepared.profile_card is None
+
+
+async def test_the_form_reaches_the_model_and_the_stream_calls(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "memory_enabled", True)
+    generate = _generate(monkeypatch, ("Hola", "neutral"))
+    captured: dict[str, object] = {}
+
+    async def fake_stream(*_args: object, **kwargs: object) -> AsyncIterator[str]:
+        captured.update(kwargs)
+        yield "Hola."
+
+    monkeypatch.setattr(llm_streaming, "generate_response_stream", fake_stream)
+
+    await text_turn.process_text_turn(
+        http_client,
+        "hola",
+        "web",
+        active_person=_face_owner(),
+        profile_card_provider=AsyncMock(return_value=PromptCard("usted", None)),
+    )
+    prepared = text_turn.PreparedTextTurn("hola", "web", None, None, None, address_form="usted")
+    _ = [delta async for delta in streaming._text_deltas(http_client, prepared)]
+
+    assert generate.await_args_list[0].kwargs["address_form"] == "usted"
+    assert captured["address_form"] == "usted"
 
 
 def test_the_card_never_shows_in_the_repr_of_a_prepared_turn() -> None:

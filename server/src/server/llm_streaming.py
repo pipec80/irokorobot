@@ -30,6 +30,7 @@ from server.characters import build_system_prompt, get_character
 from server.cognition.identity import ActivePersonContext
 from server.exceptions import LLMError
 from server.llm_transport import ollama_chat_stream
+from server.memory.profile_card import AddressForm
 from server.schemas import ConversationTurn
 from server.settings import settings
 
@@ -75,6 +76,7 @@ def _build_streaming_base_prompt(
     user_emotion: str | None,
     active_person: ActivePersonContext | None,
     profile_card: str | None = None,
+    address_form: AddressForm = "tu",
 ) -> str:
     """Build the format-neutral base prompt for the streaming path.
 
@@ -85,6 +87,7 @@ def _build_streaming_base_prompt(
         user_emotion: Dominant recent user emotion, if any.
         active_person: Internally resolved person context for this turn, if any.
         profile_card: The speaker's rendered, already authorized profile card, if any.
+        address_form: The speaker's form from the card read (Plan 0081); ``tu`` by default.
 
     Returns:
         Format-neutral system prompt string.
@@ -96,6 +99,7 @@ def _build_streaming_base_prompt(
         active_person=active_person,
         profile_card=profile_card,
         profile_card_position=settings.profile_card_position,
+        address_form=address_form,
     )
 
 
@@ -134,6 +138,7 @@ async def generate_response_stream(
     user_emotion: str | None = None,
     active_person: ActivePersonContext | None = None,
     profile_card: str | None = None,
+    address_form: AddressForm = "tu",
 ) -> AsyncIterator[str]:
     """Stream a robot response token-by-token via Ollama.
 
@@ -144,6 +149,7 @@ async def generate_response_stream(
         user_emotion: Dominant recent user emotion, if any.
         active_person: Internally resolved person context for this turn, if any.
         profile_card: The speaker's rendered, already authorized profile card, if any (Plan 0074).
+        address_form: The speaker's form from the card read (Plan 0081); ``tu`` by default.
 
     Yields:
         Raw plain-text deltas as Ollama generates them. The reply carries no
@@ -160,6 +166,7 @@ async def generate_response_stream(
         user_emotion=user_emotion,
         active_person=active_person,
         profile_card=profile_card,
+        address_form=address_form,
     )
     system_prompt = _streaming_system_prompt(base_prompt)
     messages = _build_messages(text, history)

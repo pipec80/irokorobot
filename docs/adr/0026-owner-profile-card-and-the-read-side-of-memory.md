@@ -22,6 +22,8 @@
 - **Amended by:** [ADR 0028](0028-recall-what-the-owner-told.md) (`Accepted` 2026-11-04), decision 5:
   the questions about the owner's `normal` relatives loaded at the alta («¿cómo se llaman mis papás?»)
   are answered by a fixed template of the controller (ADR 0028 decision 9), not by a later plan.
+- **Amended by:** [Plan 0081](../plans/completed/0081-what-the-robot-says.md) (Pipec, 2026-11-11),
+  decisions 2 and 7: see *Amendment by Plan 0081* below.
 - **Amended by:** [ADR 0029](0029-it-knows-who-is-listening.md) (`Accepted` 2026-11-06, Plan 0079),
   decisions 2 and 6: the replay choice of decision 6 is made (the residual risk of ADR 0016 §9 is
   accepted for the personal stage in the home; a second factor joins later for the security level
@@ -281,6 +283,22 @@ What the code does where it differs from, or settles, the text above:
 - **Access.** A speaker who is not face-identified at `basic` (a token speaker included) never
   reaches the policy, so no denial row is written per turn; an identified non-owner is audited as
   denied. One audit row per read (decision 3's volume note stands).
+
+## Amendment by Plan 0081 (2026-11-11)
+
+Confirmed by Pipec when he promoted [Plan 0081](../plans/completed/0081-what-the-robot-says.md);
+accepted on real hardware ([record](../evals/0081-what-the-robot-says-acceptance.md)).
+
+- **Decision 2, the tastes enter only on taste talk.** The card is still read and audited on every
+  identified voice turn, but its tastes enter the prompt only when the message holds a taste cue
+  word or a content word of a stored taste (`memory/card_relevance.py`); a greeting never carries
+  one. The lines say whose tastes they are («A la persona le gusta…»), and the footer says they
+  are not the robot's and were told, not observed, and still opens «Es memoria autorizada.».
+- **Decisions 2 and 7, the form is a value, not a line.** The card renders no «Trato» line; the
+  `address_form` travels beside the card text to `build_system_prompt`, whose closing language rule
+  follows it («háblale de tú» / «trata de usted») and no longer names the register. The fixed
+  controller strings stay in tuteo. On `qwen2.5:3b` `usted` is now coherent but not obeyed (0 of
+  3 on hardware): it stays a limit of that model, to be measured again with the next one (P4.1).
 
 ## Follow-up
 

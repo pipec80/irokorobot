@@ -9,6 +9,7 @@ from server.memory.profile_card import (
     MAX_CARD_CHARS,
     MAX_CARD_TASTES,
     MAX_VALUE_CHARS,
+    AddressForm,
     CardTaste,
     ProfileCard,
     build_card,
@@ -20,14 +21,19 @@ from server.memory.relational_v4 import AssertionLifecycle, LiteralFactV4
 pytestmark = pytest.mark.unit
 
 _OWNER_ENTITY_ID = 7
+# «Es memoria autorizada» ties the card to the discipline's «authorized memory block» (ADR 0026).
+_FOOTER = (
+    "Es memoria autorizada. "
+    "Son gustos de la persona, no tuyos: nunca digas que a ti te gustan. La persona te los "
+    "contó: no digas que los viste ni que los notaste. Úsalos solo si viene al caso y no "
+    "inventes nada que no esté aquí."
+)
 _EXPECTED_PROMPT = (
     "--- Lo que sabes de la persona con quien hablas ---\n"
     '- Nombre: "Canary".\n'
-    '- Le gusta: "el mate", "la lluvia".\n'
-    '- No le gusta: "el ruido".\n'
-    '- Prefiere: "el cafe".\n'
-    "Es memoria autorizada: apóyate en ella solo si viene al caso y no inventes nada "
-    "que no esté aquí."
+    '- A la persona le gusta: "el mate", "la lluvia".\n'
+    '- A la persona no le gusta: "el ruido".\n'
+    '- La persona prefiere: "el cafe".\n' + _FOOTER
 )
 _EXPECTED_SUMMARY = (
     "Esto es lo que sé de ti. Te llamo Canary. Te trato de tú. "
@@ -229,31 +235,55 @@ def test_the_taste_cap_counts_unique_tastes() -> None:
 
 
 def test_render_prompt_card_exact() -> None:
-    assert render_prompt_card(_full_card()) == _EXPECTED_PROMPT
+    assert render_prompt_card(_full_card(), include_tastes=True) == _EXPECTED_PROMPT
     assert _EXPECTED_PROMPT.startswith(CARD_HEADER)
 
 
-@pytest.mark.parametrize(
-    "card, expected_line",
-    [
-        (ProfileCard("Canary", "usted", ()), '- Nombre: "Canary". Trato: usted.'),
-        (ProfileCard("Canary", None, ()), '- Nombre: "Canary".'),
-        (ProfileCard("Canary", "tu", ()), '- Nombre: "Canary".'),
-        (ProfileCard(None, "usted", ()), "- Trato: usted."),
-    ],
-    ids=["usted", "name-only", "tu-is-not-said", "usted-only"],
-)
-def test_render_prompt_card_name_and_form_line(card: ProfileCard, expected_line: str) -> None:
-    rendered = render_prompt_card(card)
+@pytest.mark.parametrize("form", [None, "tu", "usted"])
+def test_the_card_never_renders_the_form(form: AddressForm | None) -> None:
+    """The form travels as a value to the language rule (Plan 0081, D-3), never as a line."""
+    rendered = render_prompt_card(ProfileCard("Canary", form, ()), include_tastes=True)
 
     assert rendered is not None
-    assert rendered.splitlines()[1] == expected_line
-    assert "Le gusta" not in rendered
-    assert "Prefiere" not in rendered
+    assert rendered.splitlines()[1] == '- Nombre: "Canary".'
+    assert "Trato" not in rendered
+    assert "le gusta" not in rendered
+
+
+def test_the_lines_say_the_taste_is_the_persons() -> None:
+    rendered = render_prompt_card(_full_card(), include_tastes=True)
+
+    assert rendered is not None
+    assert '- A la persona le gusta: "el mate", "la lluvia".' in rendered.splitlines()
+    assert '- A la persona no le gusta: "el ruido".' in rendered.splitlines()
+    assert '- La persona prefiere: "el cafe".' in rendered.splitlines()
+
+
+def test_the_footer_says_the_tastes_are_not_the_robots() -> None:
+    rendered = render_prompt_card(_full_card(), include_tastes=True)
+
+    assert rendered is not None
+    assert rendered.endswith("\n" + _FOOTER)
+
+
+def test_withheld_tastes_leave_the_name_only() -> None:
+    rendered = render_prompt_card(_full_card(), include_tastes=False)
+
+    assert rendered == f'{CARD_HEADER}\n- Nombre: "Canary".\n{_FOOTER}'
+
+
+def test_withheld_tastes_and_no_name_give_no_text() -> None:
+    card = ProfileCard(None, None, (CardTaste("likes", "el mate"),))
+
+    assert render_prompt_card(card, include_tastes=False) is None
+
+
+def test_a_formal_card_with_nothing_else_has_no_text() -> None:
+    assert render_prompt_card(ProfileCard(None, "usted", ()), include_tastes=True) is None
 
 
 def test_render_prompt_card_is_none_for_an_empty_card() -> None:
-    assert render_prompt_card(ProfileCard(None, None, ())) is None
+    assert render_prompt_card(ProfileCard(None, None, ()), include_tastes=True) is None
 
 
 def test_the_tu_form_alone_gives_no_prompt_card_but_is_still_in_the_summary() -> None:
@@ -263,12 +293,12 @@ def test_the_tu_form_alone_gives_no_prompt_card_but_is_still_in_the_summary() ->
     """
     card = ProfileCard(None, "tu", ())
 
-    assert render_prompt_card(card) is None
+    assert render_prompt_card(card, include_tastes=True) is None
     assert render_summary(card) == "Esto es lo que sé de ti. Te trato de tú."
 
 
 def test_the_prompt_never_says_the_tu_form() -> None:
-    rendered = render_prompt_card(_full_card())
+    rendered = render_prompt_card(_full_card(), include_tastes=True)
 
     assert rendered is not None
     assert "Trato" not in rendered
@@ -282,7 +312,7 @@ def test_the_card_never_exceeds_600_characters_dropping_the_oldest_taste() -> No
         tuple(CardTaste("likes", value) for value in values),
     )
 
-    rendered = render_prompt_card(card)
+    rendered = render_prompt_card(card, include_tastes=True)
 
     assert rendered is not None
     assert len(rendered) <= MAX_CARD_CHARS == 600
@@ -303,7 +333,7 @@ def test_values_become_one_quoted_line() -> None:
         ]
     )
 
-    rendered = render_prompt_card(card)
+    rendered = render_prompt_card(card, include_tastes=True)
 
     assert rendered is not None
     assert [taste.value for taste in card.tastes] == [

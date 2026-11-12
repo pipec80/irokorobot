@@ -1,0 +1,253 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Iroko current state — memory and administration",
+    "output": "iroko-memory.html",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "memory-write",
+        "label": "Memory candidates",
+        "focus": [
+          "controller",
+          "ollama",
+          "consolidation",
+          "memory"
+        ],
+        "note": "Off by default: needs the same person's face and voice on that clip. One canonical writer stores it, setting class, asserter and channel."
+      },
+      {
+        "id": "commissioning",
+        "label": "Commissioning (the alta)",
+        "focus": [
+          "commission",
+          "seed",
+          "memory",
+          "admin"
+        ],
+        "note": "Face and voice with the server on; the load is a dry run, the owner's SI, one transaction. After the close, iroko-admin amends it."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "controller",
+      "type": "backend",
+      "label": "Cognitive Controller",
+      "sublabel": "P0.3 decide()",
+      "pos": [
+        670,
+        80
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "tag": "immutable plan"
+    },
+    {
+      "id": "ollama",
+      "type": "external",
+      "label": "Ollama",
+      "sublabel": "local LLM / VLM",
+      "pos": [
+        1010,
+        80
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "profile",
+      "type": "backend",
+      "label": "Profile card",
+      "sublabel": "name · gated tastes",
+      "pos": [
+        250,
+        270
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "tag": "off by default"
+    },
+    {
+      "id": "memory",
+      "type": "database",
+      "label": "SQLite",
+      "sublabel": "v4 · candidates · record",
+      "pos": [
+        670,
+        270
+      ],
+      "size": [
+        160,
+        64
+      ]
+    },
+    {
+      "id": "consolidation",
+      "type": "backend",
+      "label": "Candidate dialogue",
+      "sublabel": "propose · offer · answer",
+      "pos": [
+        1010,
+        270
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "tag": "off by default"
+    },
+    {
+      "id": "record",
+      "type": "backend",
+      "label": "Conversation record",
+      "sublabel": "text · diary · recall units",
+      "pos": [
+        40,
+        450
+      ],
+      "size": [
+        190,
+        64
+      ],
+      "tag": "consent + switch, off by default"
+    },
+    {
+      "id": "admin",
+      "type": "backend",
+      "label": "Local admin CRUD",
+      "sublabel": "iroko-admin · server stopped",
+      "pos": [
+        330,
+        450
+      ],
+      "size": [
+        190,
+        64
+      ],
+      "tag": "amendment path, PIN + audit"
+    },
+    {
+      "id": "seed",
+      "type": "backend",
+      "label": "Seed importer",
+      "sublabel": "just seed-import · server stopped",
+      "pos": [
+        670,
+        450
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "tag": "dry run by default"
+    },
+    {
+      "id": "commission",
+      "type": "backend",
+      "label": "Commissioning session",
+      "sublabel": "just commission · state machine",
+      "pos": [
+        1010,
+        450
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "tag": "acta, no household value"
+    }
+  ],
+  "boundaries": [],
+  "connections": [
+    {
+      "id": "controller-to-memory",
+      "from": "controller",
+      "to": "memory",
+      "label": "v4 authorized read",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "ollama-to-consolidation",
+      "from": "ollama",
+      "to": "consolidation",
+      "label": "extraction (user words only)",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "consolidation-to-memory",
+      "from": "consolidation",
+      "to": "memory",
+      "label": "candidates, then one fact",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "profile-to-memory",
+      "from": "profile",
+      "to": "memory",
+      "label": "one audit row, then personal · normal rows",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "record-to-memory",
+      "from": "record",
+      "to": "memory",
+      "label": "text · diary · purge",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "admin-to-memory",
+      "from": "admin",
+      "to": "memory",
+      "label": "admin_local · one audit row",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "seed-to-memory",
+      "from": "seed",
+      "to": "memory",
+      "label": "one transaction · import_assisted",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "commission-to-seed",
+      "from": "commission",
+      "to": "seed",
+      "label": "names the next command",
+      "fromSide": "left",
+      "toSide": "right"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Memory path",
+      "items": [
+        "One canonical writer for every channel; a secret is kept by reference, never its value; the alta loads it and iroko-admin amends it, audited",
+        "Profile card: the name always, the tastes only on taste talk, the form through the language rule (Plans 0074, 0081)",
+        "Recall, relatives and sensitive reads answer by template or found text only, behind their switches; the record keeps markers (Plans 0077 to 0080)"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Known gaps",
+      "items": [
+        "No correcting or forgetting by voice (CM-6), no spoken third-party capture, no answering in company"
+      ]
+    }
+  ]
+}

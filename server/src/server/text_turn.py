@@ -24,6 +24,7 @@ from server.exceptions import LLMError
 from server.memory import continuity
 from server.memory.candidate_dialogue import OfferPreparer, PendingOffer, commit_offer
 from server.memory.continuity import ContinuityTurn, SuspendCause
+from server.memory.profile_card import AddressForm, PromptCard
 from server.schemas import ConversationTurn
 from server.settings import settings
 
@@ -35,10 +36,11 @@ logger = logging.getLogger(__name__)
 ProposalScheduler = Callable[[str, ActivePersonContext], None]
 
 #: Channel-owned seam that renders the speaker's profile card for the prompt (Plan 0074, ADR 0026
-#: decision 3), or ``None`` when there is none to show. Only the two voice routes pass one; it owns
-#: the policy and the audit row, never raises into the turn and is awaited only for a speaker the
-#: continuity session already accepts.
-ProfileCardProvider = Callable[[ActivePersonContext], Awaitable[str | None]]
+#: decision 3). It receives the speaker and this turn's message (the tastes enter only on taste
+#: talk, Plan 0081) and returns the card's form and text, or ``None`` when the read was refused.
+#: Only the two voice routes pass one; it owns the policy and the audit row, never raises into the
+#: turn and is awaited only for a speaker the continuity session already accepts.
+ProfileCardProvider = Callable[[ActivePersonContext, str], Awaitable[PromptCard | None]]
 
 #: Channel-owned callback that schedules the capture of one spoken exchange into the
 #: conversation record (ADR 0027, Plan 0076). It receives what was heard, what was said
@@ -60,6 +62,8 @@ class PreparedTextTurn:
     continuity: ContinuityTurn | None = None
     # The rendered profile card carries the person's own data: hidden from ``repr``.
     profile_card: str | None = field(default=None, repr=False)
+    # The speaker's form from the card read (Plan 0081); the language rule follows it.
+    address_form: AddressForm = "tu"
 
 
 @dataclass(frozen=True)
@@ -122,11 +126,11 @@ def _continuity_person_id(active_person: ActivePersonContext) -> int | None:
 
 
 async def _load_profile_card(
-    provider: ProfileCardProvider, person: ActivePersonContext
-) -> str | None:
+    provider: ProfileCardProvider, person: ActivePersonContext, message: str
+) -> PromptCard | None:
     """Ask the provider for the card; any failure means no card and never fails the turn."""
     try:
-        return await provider(person)
+        return await provider(person, message)
     except Exception as exc:  # the card is an extra: the turn is answered without it
         logger.warning("Profile card unavailable (%s)", type(exc).__name__)
         return None
@@ -181,8 +185,8 @@ async def prepare_text_turn(
     person_id = _continuity_person_id(resolved_person)
     turn = continuity.open_turn(person_id, None if person_id is not None else suspend_cause)
     history = list(turn.history) if turn.writable else None
-    profile_card = (
-        await _load_profile_card(profile_card_provider, resolved_person)
+    card = (
+        await _load_profile_card(profile_card_provider, resolved_person, message)
         if profile_card_provider is not None and person_id is not None and turn.writable
         else None
     )
@@ -198,7 +202,8 @@ async def prepare_text_turn(
         perception=perception,
         active_person=resolved_person,
         continuity=turn,
-        profile_card=profile_card,
+        profile_card=None if card is None else card.text,
+        address_form="tu" if card is None else card.address_form,
     )
 
 
@@ -213,6 +218,7 @@ async def _generate(client: httpx.AsyncClient, prepared: PreparedTextTurn) -> tu
             active_person=prepared.active_person,
             perception=prepared.perception,
             profile_card=prepared.profile_card,
+            address_form=prepared.address_form,
         )
         # The model stores nothing (Plan 0064): a claim of saving is false, and the history
         # must never keep it, so the guard runs before the reply is logged or recorded.

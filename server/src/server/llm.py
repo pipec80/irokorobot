@@ -11,6 +11,7 @@ from server.characters import build_system_prompt, get_character
 from server.cognition.identity import ActivePersonContext
 from server.exceptions import LLMError
 from server.llm_transport import ollama_chat, strip_json_fences
+from server.memory.profile_card import AddressForm
 from server.schemas import ConversationTurn
 from server.settings import settings
 
@@ -178,6 +179,7 @@ def _build_classic_base_prompt(
     active_person: ActivePersonContext | None,
     perception: str | None,
     profile_card: str | None,
+    address_form: AddressForm = "tu",
 ) -> str:
     """Build the format-neutral base prompt for the classic /transcribe path.
 
@@ -195,6 +197,7 @@ def _build_classic_base_prompt(
         perception=perception,
         profile_card=profile_card,
         profile_card_position=settings.profile_card_position,
+        address_form=address_form,
     )
 
 
@@ -207,6 +210,7 @@ async def generate_response(
     active_person: ActivePersonContext | None = None,
     perception: str | None = None,
     profile_card: str | None = None,
+    address_form: AddressForm = "tu",
 ) -> tuple[str, str]:
     """Generate a robot response and detect the user's emotion in one local Ollama call.
 
@@ -219,6 +223,7 @@ async def generate_response(
         perception: Camera VLM description this turn, injected as a perception block (V0.5).
         profile_card: The speaker's rendered, already authorized profile card (Plan 0074);
             only the voice routes pass it.
+        address_form: The speaker's form from the card read (Plan 0081); ``tu`` by default.
 
     Returns:
         Tuple of (response_text, emotion) — see ``VALID_EMOTIONS`` for valid values.
@@ -235,6 +240,7 @@ async def generate_response(
         active_person=active_person,
         perception=perception,
         profile_card=profile_card,
+        address_form=address_form,
     )
     system_prompt = _classic_system_prompt(base_prompt)
     messages = _build_messages(text, history)
