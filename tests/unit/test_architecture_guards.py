@@ -1161,6 +1161,11 @@ _SENSITIVE_READER_MODULES = frozenset(
         "server.memory.sensitive_access",
         "server.memory.sensitive_store",
         "server.secret_values",
+        # Plan 0082: the contacts and the rest of the alta, read and said the same way.
+        "server.cognition.contact_answers",
+        "server.cognition.contact_questions",
+        "server.memory.contact_access",
+        "server.memory.alta_reach",
     }
 )
 
@@ -1736,3 +1741,46 @@ def test_the_delivery_filters_guard_detects_a_dropped_filter() -> None:
     assert _not_keyword_only(positional, _UNITS_DELIVERY_FILTERS) == ["now", "owner_entity_id"]
     assert _not_keyword_only(without_now, _UNITS_DELIVERY_FILTERS) == ["now"]
     assert _not_keyword_only(keyword_only, _UNITS_DELIVERY_FILTERS) == []
+
+
+# --- Plan 0082: the alta read only reads (ADR 0037 decisions 1 and 5) ---------------------------
+
+_ALTA_READ_MODULES = (
+    "cognition/contact_answers.py",
+    "cognition/contact_questions.py",
+    "memory/contact_access.py",
+    "memory/alta_reach.py",
+)
+_WRITER_MODULES = frozenset({"server.memory.canonical_writer", "server.memory.memory_writer"})
+_WRITER_NAMES = frozenset({"write_contact", "revoke_contact", "delete_contacts_by_channel"})
+
+
+def _writes_imported(text: str) -> list[str]:
+    """The writer modules or writer functions one source imports."""
+    found: list[str] = []
+    for node in ast.walk(ast.parse(text)):
+        if isinstance(node, ast.ImportFrom) and node.module is not None:
+            if node.module in _WRITER_MODULES:
+                found.append(node.module)
+            found += [alias.name for alias in node.names if alias.name in _WRITER_NAMES]
+        elif isinstance(node, ast.Import):
+            found += [alias.name for alias in node.names if alias.name in _WRITER_MODULES]
+    return found
+
+
+@pytest.mark.unit
+def test_the_alta_read_writes_nothing() -> None:
+    sources = _sources()
+    offenders = {name: _writes_imported(sources[name]) for name in _ALTA_READ_MODULES}
+    assert {name: found for name, found in offenders.items() if found} == {}
+
+
+@pytest.mark.unit
+def test_the_alta_write_guard_detects_a_violation() -> None:
+    assert _writes_imported("from server.memory.care_contacts import write_contact\n") == [
+        "write_contact"
+    ]
+    assert _writes_imported("import server.memory.canonical_writer\n") == [
+        "server.memory.canonical_writer"
+    ]
+    assert _writes_imported("from server.memory.care_contacts import list_active_contacts\n") == []

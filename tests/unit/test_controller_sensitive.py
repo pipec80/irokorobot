@@ -363,3 +363,73 @@ def test_the_spoken_log_shows_the_marker() -> None:
 
     assert spoken_log_text(read) == SENSITIVE_RECORDED_TEXT
     assert spoken_log_text(refused) is None
+
+
+# --- Plan 0082 Task 6: the alta flag reaches the resolver and the grammar ---
+
+
+async def test_the_controller_passes_the_alta_flag_only_when_set() -> None:
+    off = _resolver()
+    await CognitiveController(
+        today=lambda: date(2026, 11, 5),
+        legacy_turn=_legacy(),
+        intent_resolver=off,
+        sensitive_reader=_reply(SensitiveOutcome.ANSWERED),
+    ).handle(_event("hola"))
+    on = _resolver()
+    await CognitiveController(
+        today=lambda: date(2026, 11, 5),
+        legacy_turn=_legacy(),
+        intent_resolver=on,
+        sensitive_reader=_reply(SensitiveOutcome.ANSWERED),
+        alta_read=True,
+    ).handle(_event("hola"))
+    without_reader = _resolver()
+    await CognitiveController(
+        today=lambda: date(2026, 11, 5),
+        legacy_turn=_legacy(),
+        intent_resolver=without_reader,
+        alta_read=True,
+    ).handle(_event("hola"))
+
+    off.assert_called_once_with("hola", sensitive=True)
+    on.assert_called_once_with("hola", sensitive=True, alta=True)
+    without_reader.assert_called_once_with("hola")
+
+
+async def test_an_alta_question_reaches_the_reader_only_with_the_flag() -> None:
+    contact = "¿Tienes el teléfono de mi hija?"
+    reader = _reply(SensitiveOutcome.ANSWERED, "El teléfono de Canary, tu hija, es más uno.")
+    legacy = _legacy()
+    plan = await CognitiveController(
+        today=lambda: date(2026, 11, 5),
+        legacy_turn=legacy,
+        observed_person_resolver=AsyncMock(return_value=_actor()),
+        active_person_resolver=AsyncMock(return_value=_actor()),
+        sensitive_reader=reader,
+        alta_read=True,
+    ).handle(_event(contact))
+    assert plan.need is InformationNeed.SENSITIVE_READ
+    query = reader.await_args.args[1] if reader.await_args else None
+    assert query is not None
+    assert query.keywords == ("mi", "hija")
+    legacy.assert_not_awaited()
+
+    off_reader = _reply(SensitiveOutcome.ANSWERED)
+    off_plan = await _controller(off_reader).handle(_event(contact))
+    off_reader.assert_not_awaited()
+    assert off_plan.need is not InformationNeed.SENSITIVE_READ
+
+
+async def test_a_contact_answer_is_not_written_to_continuity() -> None:
+    legacy = _legacy()
+    plan = await CognitiveController(
+        today=lambda: date(2026, 11, 5),
+        legacy_turn=legacy,
+        observed_person_resolver=AsyncMock(return_value=_actor()),
+        active_person_resolver=AsyncMock(return_value=_actor()),
+        sensitive_reader=_reply(SensitiveOutcome.ANSWERED, "El teléfono de tu hija es más uno."),
+        alta_read=True,
+    ).handle(_event("Llama a mi contacto 1"))
+    assert plan.response == "El teléfono de tu hija es más uno."
+    legacy.assert_not_awaited()  # only the legacy text turn writes continuity

@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "CHILD_SIDE_PREDICATES",
+    "RELATION_PREDICATES",
     "RELATIVE_WORDS",
     "CueStrength",
     "RecallCue",
@@ -159,6 +160,8 @@ _CHILD_WORDS: Final[dict[str, str]] = {"hija": "daughter_of", "hijo": "son_of"}
 _ASKED_WORDS: Final = {**_RELATION_WORDS, **_CHILD_WORDS}
 #: The predicates ``relation_of`` answers for one child; the intent rule resolves them (Plan 0080).
 CHILD_SIDE_PREDICATES: Final = frozenset(_CHILD_WORDS.values())
+#: Every relation ``relation_of`` can answer; the alta's reach map checks its claims against it.
+RELATION_PREDICATES: Final = frozenset(_ASKED_WORDS.values())
 
 
 class CueStrength(StrEnum):

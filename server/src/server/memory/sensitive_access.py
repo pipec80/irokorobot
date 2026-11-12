@@ -46,13 +46,21 @@ from server.cognition.recall_cues import RELATIVE_WORDS
 from server.cognition.response_plan import NO_BIRTH_DATE, SensitiveOutcome, SensitiveReply
 from server.cognition.sensitive_answers import word_children_birthdays, word_own_answer
 from server.cognition.sensitive_questions import (
+    CONTACT_TOPICS,
     TOPIC_LABEL,
     TOPIC_LEVEL,
     TOPIC_PREDICATE,
     SensitiveLevel,
     SensitiveTopic,
 )
+from server.memory.care_contacts import list_active_contacts
 from server.memory.commissioning import has_closed_commissioning
+from server.memory.contact_access import (
+    CONTACT_SENSITIVITIES,
+    contact_reply,
+    is_own_contact_question,
+    stored_name,
+)
 from server.memory.entity_labels import read_household_names
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.profile_card_access import may_read_own_memory
@@ -68,6 +76,7 @@ if TYPE_CHECKING:
     from server.cognition.identity import ActivePersonContext
     from server.cognition.sensitive_questions import SensitiveQuery
     from server.memory.candidate_policy import AuditWriter, PolicyEvaluator
+    from server.memory.contact_access import ContactsReader, NameReader
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +113,8 @@ class _Call:
     alta_closed: AltaChecker
     names: NamesReader
     reader: OwnValuesReader
+    contacts: ContactsReader
+    contact_names: NameReader
 
 
 @dataclass(frozen=True)
@@ -141,6 +152,8 @@ async def sensitive_reply(
     alta_closed: AltaChecker = has_closed_commissioning,
     names: NamesReader = read_household_names,
     reader: OwnValuesReader = read_own_values,
+    contacts: ContactsReader = list_active_contacts,
+    contact_names: NameReader = stored_name,
 ) -> SensitiveReply:
     """Answer one sensitive question after the audience, level, consent and policy checks.
 
@@ -159,6 +172,8 @@ async def sensitive_reply(
         alta_closed: Whether a commissioning is closed (one ``SELECT``, no cache).
         names: The household's stored names, for the child's birthday decision.
         reader: The owner's values query; tests inject doubles.
+        contacts: The owner's active contacts (Plan 0082); tests inject doubles.
+        contact_names: A contact's stored name (Plan 0082); tests inject doubles.
 
     Returns:
         The reply; ``text`` carries the answer only for ``ANSWERED`` and, for a birth date not
@@ -178,6 +193,8 @@ async def sensitive_reply(
         alta_closed,
         names,
         reader,
+        contacts,
+        contact_names,
     )
     try:
         result = await _decide(call)
@@ -203,6 +220,8 @@ async def sensitive_reply(
 async def _decide(call: _Call) -> _Done:
     """Run the fixed order; each early return is a refusal that reads nothing."""
     scope = _ChildScope.NONE
+    if call.query.topic in CONTACT_TOPICS and not is_own_contact_question(call.query):
+        return _done(SensitiveOutcome.NOT_HOUSEHOLD)  # nobody's own contact: nothing read (D-6)
     if call.query.topic is SensitiveTopic.CHILD_BIRTHDAY:
         scope = await _child_scope(call)
         if scope is _ChildScope.NONE:
@@ -214,9 +233,29 @@ async def _decide(call: _Call) -> _Done:
     if TOPIC_LEVEL[call.query.topic] is SensitiveLevel.SECURITY and not _is_strong(call):
         retry = call.voice_check and call.faces is FusionReason.FACE_ONLY
         return _done(SensitiveOutcome.RETRY_VOICE if retry else SensitiveOutcome.DENIED)
+    return await _read(call, scope)
+
+
+async def _read(call: _Call, scope: _ChildScope) -> _Done:
+    """Once every check passed, read the store the topic lives in."""
     if call.query.topic is SensitiveTopic.CHILD_BIRTHDAY:
         return await _read_children(call, scope)
+    if call.query.topic in CONTACT_TOPICS:
+        return await _read_contacts(call)
     return await _read_own(call)
+
+
+async def _read_contacts(call: _Call) -> _Done:
+    """The contacts' one policy request, its audit row, then the read (Plan 0082, D-8)."""
+    person_id = call.actor.person_id
+    if person_id is None:  # unreachable after the pre-check; the type narrows here
+        return _done(SensitiveOutcome.DENIED)
+    if not await _authorized(call, person_id, CONTACT_SENSITIVITIES):
+        return _done(SensitiveOutcome.DENIED)
+    reply, entries = await contact_reply(
+        call.query, owner_entity_id=person_id, contacts=call.contacts, names=call.contact_names
+    )
+    return _Done(reply, entries)
 
 
 def _is_strong(call: _Call) -> bool:
@@ -254,13 +293,37 @@ def _names_hit(words: frozenset[str], stored: frozenset[str]) -> bool:
     return False
 
 
-async def _consent(call: _Call, sensitivity: str) -> ConsentStatus:
+async def _consent(call: _Call, sensitivities: frozenset[str]) -> ConsentStatus:
     """The consent of an own read (D-9): the face's grant and a closed alta, or none."""
-    if sensitivity not in _CONSENT_SENSITIVITIES:
+    if not sensitivities & _CONSENT_SENSITIVITIES:
         return ConsentStatus.NOT_REQUIRED
     if call.face_consent is ConsentStatus.GRANTED and await call.alta_closed():
         return ConsentStatus.GRANTED
     return ConsentStatus.MISSING
+
+
+async def _authorized(call: _Call, person_id: int, sensitivities: frozenset[str]) -> bool:
+    """One policy request over the owner's own data, and its audit row **before** any read.
+
+    The one place an own read is authorized (D-10, Plan 0082 D-8): the consent is the face's grant
+    and a closed alta whenever one of the sensitivities needs it. A failing audit propagates, so
+    nothing is read at all.
+    """
+    consent = await _consent(call, sensitivities)
+    visibility, _sensitivity = TOPIC_LABEL[call.query.topic]
+    request = AuthorizationRequest(
+        actor=call.actor,
+        action=AuthorizationAction.READ_PERSONAL_CONVERSATION_MEMORY,
+        target_person_id=person_id,
+        visibility=frozenset({DataVisibility(visibility)}),
+        sensitivity=frozenset(DataSensitivity(item) for item in sensitivities),
+        consent=consent,
+        correlation_id=call.correlation_id,
+        requested_at=call.now,
+    )
+    decision = call.policy(request)
+    await call.audit(request, decision)
+    return decision.decision is AuthorizationStatus.ALLOWED
 
 
 async def _read_own(call: _Call) -> _Done:
@@ -269,20 +332,8 @@ async def _read_own(call: _Call) -> _Done:
     person_id = call.actor.person_id
     if person_id is None:  # unreachable after the pre-check; the type narrows here
         return _done(SensitiveOutcome.DENIED)
-    visibility, sensitivity = TOPIC_LABEL[topic]
-    request = AuthorizationRequest(
-        actor=call.actor,
-        action=AuthorizationAction.READ_PERSONAL_CONVERSATION_MEMORY,
-        target_person_id=person_id,
-        visibility=frozenset({DataVisibility(visibility)}),
-        sensitivity=frozenset({DataSensitivity(sensitivity)}),
-        consent=await _consent(call, sensitivity),
-        correlation_id=call.correlation_id,
-        requested_at=call.now,
-    )
-    decision = call.policy(request)
-    await call.audit(request, decision)  # a failing audit propagates: no read at all
-    if decision.decision is not AuthorizationStatus.ALLOWED:
+    _visibility, sensitivity = TOPIC_LABEL[topic]
+    if not await _authorized(call, person_id, frozenset({sensitivity})):
         return _done(SensitiveOutcome.DENIED)
     values = await call.reader(person_id, TOPIC_PREDICATE[topic], sensitivity)
     if not values:

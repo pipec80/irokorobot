@@ -27,6 +27,8 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 __all__ = [
+    "ALTA_TOPICS",
+    "CONTACT_TOPICS",
     "TOPIC_LABEL",
     "TOPIC_LEVEL",
     "TOPIC_PREDICATE",
@@ -52,6 +54,20 @@ class SensitiveTopic(StrEnum):
     CHILD_BIRTHDAY = "child_birthday"
     SECRET_HOLDER = "secret_holder"  # noqa: S105  # pragma: allowlist secret - a topic name
     DOCUMENT_LOCATION = "document_location"
+    # The rest of the alta (Plan 0082, ADR 0037 decisions 1 and 5), matched only with the flag on.
+    IMPLANTED_DEVICE = "implanted_device"
+    MOBILITY = "mobility"
+    HEARING = "hearing"
+    VISION = "vision"
+    HEALTH_COVERAGE = "health_coverage"
+    DWELLING_TYPE = "dwelling_type"
+    FLOOR = "floor"
+    LIFT = "lift"
+    HOME_ACCESS = "home_access"
+    LIVES_ALONE = "lives_alone"
+    CONTACT_PHONE = "contact_phone"
+    CONTACT_CALL = "contact_call"
+    KEY_HOLDERS = "key_holders"
 
 
 class SensitiveLevel(StrEnum):
@@ -68,7 +84,8 @@ class SensitiveQuery:
     Attributes:
         topic: What is asked about.
         keywords: Folded words after the matched phrase, with at least four letters and not a
-            stopword; empty for a closed topic.
+            stopword; empty for a closed topic; for a contact topic, the whole folded tail as is
+            (short words and digits included, Plan 0082 D-5).
     """
 
     topic: SensitiveTopic
@@ -78,7 +95,28 @@ class SensitiveQuery:
 _SENSITIVE: Final = SensitiveLevel.SENSITIVE
 _SECURITY: Final = SensitiveLevel.SECURITY
 
-#: The predicate each topic reads.
+#: The topics read from the ``care_contacts`` table, not from a V4 literal: no predicate (D-3).
+CONTACT_TOPICS: Final[frozenset[SensitiveTopic]] = frozenset(
+    {SensitiveTopic.CONTACT_PHONE, SensitiveTopic.CONTACT_CALL, SensitiveTopic.KEY_HOLDERS}
+)
+#: The topics Plan 0082 adds; ``classify_sensitive_question`` matches them only with ``alta``.
+ALTA_TOPICS: Final[frozenset[SensitiveTopic]] = frozenset(
+    {
+        SensitiveTopic.IMPLANTED_DEVICE,
+        SensitiveTopic.MOBILITY,
+        SensitiveTopic.HEARING,
+        SensitiveTopic.VISION,
+        SensitiveTopic.HEALTH_COVERAGE,
+        SensitiveTopic.DWELLING_TYPE,
+        SensitiveTopic.FLOOR,
+        SensitiveTopic.LIFT,
+        SensitiveTopic.HOME_ACCESS,
+        SensitiveTopic.LIVES_ALONE,
+        *CONTACT_TOPICS,
+    }
+)
+
+#: The predicate each topic reads; the contact topics have none.
 TOPIC_PREDICATE: Final[Mapping[SensitiveTopic, str]] = MappingProxyType(
     {
         SensitiveTopic.MEDICATION: "medication",
@@ -93,6 +131,16 @@ TOPIC_PREDICATE: Final[Mapping[SensitiveTopic, str]] = MappingProxyType(
         SensitiveTopic.CHILD_BIRTHDAY: "birth_date",
         SensitiveTopic.SECRET_HOLDER: "secret_holder",  # pragma: allowlist secret
         SensitiveTopic.DOCUMENT_LOCATION: "document_location",
+        SensitiveTopic.IMPLANTED_DEVICE: "implanted_device",
+        SensitiveTopic.MOBILITY: "mobility",
+        SensitiveTopic.HEARING: "hearing",
+        SensitiveTopic.VISION: "vision",
+        SensitiveTopic.HEALTH_COVERAGE: "health_coverage",
+        SensitiveTopic.DWELLING_TYPE: "dwelling_type",
+        SensitiveTopic.FLOOR: "floor",
+        SensitiveTopic.LIFT: "has_lift",
+        SensitiveTopic.HOME_ACCESS: "home_access_note",
+        SensitiveTopic.LIVES_ALONE: "lives_alone",
     }
 )
 
@@ -111,6 +159,20 @@ TOPIC_LEVEL: Final[Mapping[SensitiveTopic, SensitiveLevel]] = MappingProxyType(
         SensitiveTopic.CHILD_BIRTHDAY: _SENSITIVE,
         SensitiveTopic.SECRET_HOLDER: _SECURITY,
         SensitiveTopic.DOCUMENT_LOCATION: _SECURITY,
+        SensitiveTopic.IMPLANTED_DEVICE: _SENSITIVE,
+        SensitiveTopic.MOBILITY: _SENSITIVE,
+        SensitiveTopic.HEARING: _SENSITIVE,
+        SensitiveTopic.VISION: _SENSITIVE,
+        SensitiveTopic.HEALTH_COVERAGE: _SENSITIVE,
+        SensitiveTopic.DWELLING_TYPE: _SENSITIVE,
+        SensitiveTopic.FLOOR: _SENSITIVE,
+        SensitiveTopic.LIFT: _SENSITIVE,
+        SensitiveTopic.HOME_ACCESS: _SENSITIVE,
+        # With the address it is a burglar's map (ADR 0024): the face and a verified voice.
+        SensitiveTopic.LIVES_ALONE: _SECURITY,
+        SensitiveTopic.CONTACT_PHONE: _SENSITIVE,
+        SensitiveTopic.CONTACT_CALL: _SENSITIVE,
+        SensitiveTopic.KEY_HOLDERS: _SENSITIVE,
     }
 )
 
@@ -130,6 +192,20 @@ TOPIC_LABEL: Final[Mapping[SensitiveTopic, tuple[str, str]]] = MappingProxyType(
         SensitiveTopic.CHILD_BIRTHDAY: ("household", "child_data"),
         SensitiveTopic.SECRET_HOLDER: ("personal", "security"),
         SensitiveTopic.DOCUMENT_LOCATION: ("personal", "security"),
+        SensitiveTopic.IMPLANTED_DEVICE: ("personal", "medical"),
+        SensitiveTopic.MOBILITY: ("personal", "medical"),
+        SensitiveTopic.HEARING: ("personal", "medical"),
+        SensitiveTopic.VISION: ("personal", "medical"),
+        SensitiveTopic.HEALTH_COVERAGE: ("personal", "private"),
+        SensitiveTopic.DWELLING_TYPE: ("personal", "location"),
+        SensitiveTopic.FLOOR: ("personal", "location"),
+        SensitiveTopic.LIFT: ("personal", "location"),
+        SensitiveTopic.HOME_ACCESS: ("personal", "location"),
+        SensitiveTopic.LIVES_ALONE: ("personal", "location"),
+        # The strictest label the contacts table holds; the policy request names both (D-8).
+        SensitiveTopic.CONTACT_PHONE: ("personal", "location"),
+        SensitiveTopic.CONTACT_CALL: ("personal", "location"),
+        SensitiveTopic.KEY_HOLDERS: ("personal", "location"),
     }
 )
 
@@ -204,6 +280,124 @@ _PHRASES: Final[Mapping[SensitiveTopic, tuple[str, ...]]] = MappingProxyType(
             "donde guardo",
             "donde dejo",
         ),
+        SensitiveTopic.IMPLANTED_DEVICE: (
+            "que dispositivos tengo",
+            "que implantes tengo",
+            "cuales son mis dispositivos",
+            "cuales son mis implantes",
+            "tengo algun dispositivo",
+            "tengo algun implante",
+        ),
+        SensitiveTopic.MOBILITY: (
+            "cual es mi movilidad",
+            "como es mi movilidad",
+            "como me desplazo",
+            "como me muevo",
+        ),
+        SensitiveTopic.HEARING: (
+            "cual es mi audicion",
+            "como es mi audicion",
+            "como escucho",
+            "uso audifonos",
+        ),
+        SensitiveTopic.VISION: ("cual es mi vision", "como es mi vision", "como veo", "uso lentes"),
+        SensitiveTopic.HEALTH_COVERAGE: (
+            "cual es mi prevision",
+            "cual es mi prevision de salud",
+            "que prevision tengo",
+            "cual es mi seguro de salud",
+            "que seguro de salud tengo",
+        ),
+        SensitiveTopic.DWELLING_TYPE: (
+            "vivo en casa o departamento",
+            "vivo en casa o en departamento",
+            "en que tipo de vivienda vivo",
+            "que tipo de vivienda tengo",
+        ),
+        SensitiveTopic.FLOOR: (
+            "en que piso vivo",
+            "en que piso esta mi departamento",
+            "cual es mi piso",
+        ),
+        SensitiveTopic.LIFT: ("tengo ascensor", "mi edificio tiene ascensor"),
+        SensitiveTopic.HOME_ACCESS: (
+            "como se entra a mi casa",
+            "como se entra a mi departamento",
+            "como entran a mi casa",
+            "como entra la ambulancia",
+        ),
+        SensitiveTopic.LIVES_ALONE: ("vivo solo", "vivo sola"),
+        SensitiveTopic.KEY_HOLDERS: tuple(
+            f"{holder}{place}"
+            for holder in (
+                "quien tiene llave",
+                "quien tiene llaves",
+                "quien tiene la llave",
+                "quien tiene las llaves",
+            )
+            for place in ("", " de mi casa", " de la casa", " de mi departamento")
+        ),
+        SensitiveTopic.CONTACT_PHONE: tuple(
+            f"{asking} {number} {joint}"
+            for asking in (
+                "tienes el",
+                "cual es el",
+                "dame el",
+                "me das el",
+                "me puedes dar el",
+                "me podrias dar el",
+                # The usted forms, and «tienes» as Whisper often writes it (hardware 2026-11-12).
+                "tiene el",
+                "me da el",
+                "me puede dar el",
+                "me podria dar el",
+                # Only after a request opener («dime», «me puedes decir»): see `_NEEDS_OPENER`.
+                "el",
+            )
+            for number in ("telefono", "numero", "celular")
+            for joint in ("de", "del")
+        ),
+        SensitiveTopic.CONTACT_CALL: tuple(
+            f"{calling} {joint}"
+            for calling in (
+                "llama",
+                "llamale",
+                "puedes llamar",
+                "podrias llamar",
+                "quiero llamar",
+                "necesito llamar",
+                "llame",
+                "llamele",
+                "puede llamar",
+                "podria llamar",
+            )
+            for joint in ("a", "al")
+        ),
+    }
+)
+
+# Contact phrases that are a question only after a request opener: «dime el teléfono de mi hija»
+# is one, «el teléfono de mi hija es nuevo» is a statement.
+_NEEDS_OPENER: Final[frozenset[str]] = frozenset(
+    f"el {number} {joint}"
+    for number in ("telefono", "numero", "celular")
+    for joint in ("de", "del")
+)
+
+# Phrases with the form of a statement: they need a question mark («tomo anticoagulante desde
+# hace años», «uso lentes desde chico», «vivo solo desde 2010» are statements).
+_NEEDS_QUESTION_MARK: Final[frozenset[str]] = frozenset(
+    {
+        "tomo anticoagulante",
+        "tomo anticoagulantes",
+        "tengo algun dispositivo",
+        "tengo algun implante",
+        "uso audifonos",
+        "uso lentes",
+        "tengo ascensor",
+        "mi edificio tiene ascensor",
+        "vivo solo",
+        "vivo sola",
     }
 )
 
@@ -214,7 +408,14 @@ _OPEN_TOPICS: Final[frozenset[SensitiveTopic]] = frozenset(
         SensitiveTopic.CHILD_BIRTHDAY,
         SensitiveTopic.SECRET_HOLDER,
         SensitiveTopic.DOCUMENT_LOCATION,
+        SensitiveTopic.CONTACT_PHONE,
+        SensitiveTopic.CONTACT_CALL,
     }
+)
+# Open topics whose whole tail is kept as is, short words and digits included («mi tio», «mi
+# contacto 1»): ``contact_questions`` reads it (D-5).
+_RAW_TAIL_TOPICS: Final[frozenset[SensitiveTopic]] = frozenset(
+    {SensitiveTopic.CONTACT_PHONE, SensitiveTopic.CONTACT_CALL}
 )
 _DOCUMENT_WORDS: Final[frozenset[str]] = frozenset(
     {
@@ -289,40 +490,68 @@ _OPENERS: Final[tuple[tuple[str, ...], ...]] = tuple(
     )
 )
 
+
+@dataclass(frozen=True)
+class _Pattern:
+    """One folded phrase as words, its topic, and what else it needs to be a question."""
+
+    topic: SensitiveTopic
+    words: tuple[str, ...]
+    needs_mark: bool
+    needs_opener: bool = False
+
+
 # The folded phrases as word tuples, topic by topic, without a leading «a».
-_PATTERNS: Final[tuple[tuple[SensitiveTopic, tuple[str, ...]], ...]] = tuple(
-    (topic, tuple(phrase.removeprefix("a ").split()))
+_ALL_PATTERNS: Final[tuple[_Pattern, ...]] = tuple(
+    _Pattern(
+        topic,
+        tuple(phrase.removeprefix("a ").split()),
+        phrase in _NEEDS_QUESTION_MARK,
+        phrase in _NEEDS_OPENER,
+    )
     for topic, phrases in _PHRASES.items()
     for phrase in phrases
 )
+# Plan 0079's grammar alone, the one used while the alta read is off.
+_BASE_PATTERNS: Final[tuple[_Pattern, ...]] = tuple(
+    pattern for pattern in _ALL_PATTERNS if pattern.topic not in ALTA_TOPICS
+)
 
 
-def classify_sensitive_question(message: str) -> SensitiveQuery | None:
+def classify_sensitive_question(message: str, *, alta: bool = False) -> SensitiveQuery | None:
     """Return the sensitive topic the message asks about, or ``None``.
 
     Pure and deterministic; the phrase must open the sentence body (once the fillers and the
     request openers, «una pregunta», «me puede decir», are set aside) and, for a closed topic, only
-    trailing fillers may follow it. ``ANTICOAGULANT`` also needs a question mark, since «tomo
-    anticoagulante desde hace años» is a statement.
+    trailing fillers may follow it. A phrase with the form of a statement («tomo anticoagulante»,
+    «vivo solo») also needs a question mark.
 
     Args:
         message: Raw transcript or chat text.
+        alta: Whether the rest of the alta's topics (``ALTA_TOPICS``, Plan 0082) may match; off,
+            the grammar is exactly Plan 0079's.
 
     Returns:
-        The topic and its keywords, or ``None`` for any other turn.
+        The topic and its keywords, or ``None`` for any other turn. A contact topic carries its
+        whole folded tail (D-5) and needs one.
     """
-    body = _without_openers(sentence_body(message))
-    for topic, phrase in _PATTERNS:
-        if body[: len(phrase)] != phrase:
+    whole = sentence_body(message)
+    body = _without_openers(whole)
+    opened = body != whole
+    for pattern in _ALL_PATTERNS if alta else _BASE_PATTERNS:
+        topic = pattern.topic
+        if body[: len(pattern.words)] != pattern.words or (pattern.needs_opener and not opened):
             continue
-        span_end = _span_end(topic, body, len(phrase))
+        span_end = _span_end(topic, body, len(pattern.words))
         if span_end is None:
             continue
         tail = _without_trailing_fillers(body[span_end:])
-        if topic not in _OPEN_TOPICS:
+        if topic in _RAW_TAIL_TOPICS:
             if tail:
-                continue
-            if topic is SensitiveTopic.ANTICOAGULANT and not has_question_mark(message):
+                return SensitiveQuery(topic=topic, keywords=tail)
+            continue
+        if topic not in _OPEN_TOPICS:
+            if tail or (pattern.needs_mark and not has_question_mark(message)):
                 continue
             return SensitiveQuery(topic=topic, keywords=())
         return SensitiveQuery(topic=topic, keywords=_keywords(tail))

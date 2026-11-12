@@ -189,6 +189,7 @@ class CognitiveController:
         recall_answerer: RecallAnswerer | None = None,
         sensitive_reader: SensitiveReader | None = None,
         secret_guard: bool = False,
+        alta_read: bool = False,
     ) -> None:
         """Create a controller with injected calendar and legacy-generation seams.
 
@@ -222,6 +223,9 @@ class CognitiveController:
                 absent such a question is ordinary conversation, byte for byte.
             secret_guard: Whether a stated or asked secret value hears a fixed refusal, with no
                 model call and no actor (Plan 0079). Off, a secret is ordinary conversation.
+            alta_read: Whether the sensitive reader also answers the rest of the alta (Plan
+                0082): the contacts, devices, mobility, hearing, vision, coverage, dwelling and
+                «vive solo». It does nothing without ``sensitive_reader``.
         """
         self._today = today
         self._legacy_turn = legacy_turn
@@ -238,6 +242,7 @@ class CognitiveController:
         self._recall_answerer = recall_answerer
         self._sensitive_reader = sensitive_reader
         self._secret_guard = secret_guard
+        self._alta_read = alta_read
         # The same cache for a sensitive read: one read and one audit row per event.
         self._sensitive_reads: dict[UUID, ResponsePlan | None] = {}
         # The classic route's two calls again: one search and one audit row per event.
@@ -366,6 +371,8 @@ class CognitiveController:
             flags["recall"] = True
         if sensitive and self._sensitive_reader is not None:
             flags["sensitive"] = True
+            if self._alta_read:
+                flags["alta"] = True
         if self._secret_guard:
             flags["secrets"] = True
         need = self._intent_resolver(message, **flags).need
@@ -387,7 +394,7 @@ class CognitiveController:
         if self._sensitive_reader is None:
             return None
         if event.event_id not in self._sensitive_reads:
-            query = classify_sensitive_question(event.payload.message)
+            query = classify_sensitive_question(event.payload.message, alta=self._alta_read)
             if query is None:
                 self._sensitive_reads[event.event_id] = None
             else:

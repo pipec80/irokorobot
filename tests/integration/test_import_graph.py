@@ -39,6 +39,8 @@ _PURE_CORE_PROBE = textwrap.dedent(
 
     import server.cognition
     import server.cognition.controller
+    import server.cognition.contact_answers
+    import server.cognition.contact_questions
 
     # The neutral text keys (ADR 0024 decision 12) are shared by the core and memory on purpose:
     # a leaf of the standard library only, which a unit test pins. The secret words (Plan 0079

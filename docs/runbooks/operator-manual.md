@@ -1100,6 +1100,39 @@ and never by the model. The secret rule below does **not** need the switch.
 to a build without the reader. The secret rule follows `MEMORY_ENABLED` only; with it off, every turn
 is as before.
 
+### The rest of the alta by voice: contacts and profile (Plan 0082, ADR 0037): off by default
+
+With `ALTA_READ_ENABLED=true` (needs `MEMORY_ENABLED=true` **and** `SENSITIVE_READ_ENABLED=true`: it
+extends the sensitive read above, with the same audience, levels, camera check, closed alta and
+record marker) the owner also hears what the alta loaded and nothing read before:
+
+- **A contact's phone** (sensitive level): «¿tienes el teléfono de mi hija?», «¿cuál es el número
+  de mi doctor?», «dame el teléfono de mi contacto 1», «dime el teléfono del primer contacto». The
+  contact is found by its relationship label, its role («mi contacto de emergencia», «mi doctor»),
+  its call order («contacto 1», «contacto uno», «primer contacto») or its name said with «mi». The
+  answer says the name, «tu» and the label (or the role), and the phone digit by digit in words
+  («más cinco seis nueve, cero cero…»), and the second phone if there is one; «mis contactos»
+  reads them all; at most three people per answer. Nothing found: «No tengo ese teléfono
+  guardado.».
+- **«Llama a mi contacto 1»** (also «llámale a mi hija», «llama al contacto 1»): the robot cannot
+  call yet and says so first, «Todavía no puedo hacer llamadas.», then the name and the phone.
+- **Who holds a key**: «¿quién tiene llave de mi casa?» → the names, or «No tengo registrado que
+  alguien tenga llave de tu casa.».
+- **The rest of the profile** (sensitive level): devices («¿qué dispositivos tengo?»), mobility
+  («¿cómo me desplazo?»), hearing («¿uso audífonos?»), vision («¿uso lentes?»), health coverage
+  («¿cuál es mi previsión?»), dwelling («¿vivo en casa o departamento?»), floor («¿en qué piso
+  vivo?»), lift («¿tengo ascensor?») and how to get in («¿cómo se entra a mi casa?»), each by a
+  fixed sentence. **«¿Vivo solo?»** is at the *security* level (face and a verified voice): with the
+  address it is a burglar's map.
+- **Not the owner's to answer.** A question that names nobody of the owner's («¿cuál es el teléfono
+  de los bomberos?», «llama a Canary» without «mi») is ordinary conversation: nothing is read and
+  the model answers as on any turn. The partner is read since Plan 0078 («¿cómo se llama mi
+  pareja?»). Nothing calls a phone and no alert exists.
+- **The record** keeps «[dato sensible leído]» instead of every answer above, as in Plan 0079.
+
+**Rolling back.** `ALTA_READ_ENABLED=false` and a restart: every route is byte-identical to a build
+without Plan 0082; the Plan 0079 questions keep working with `SENSITIVE_READ_ENABLED` alone.
+
 ## 4. Feature-flag reference
 
 | Variable | Default | Effect |
@@ -1135,6 +1168,7 @@ is as before.
 | `CONVERSATION_EPISODES_ENABLED` | `false` | Server: the diary job (needs the record). The segment caps, the two retention clocks, the space cap, the job interval and the summary length are the other `CONVERSATION_*` settings, see the record above |
 | `RECALL_ENABLED` | `false` | Server: kill-switch of recall and of the relatives reader (Plan 0078, ADR 0028; off in the code, on in a delivered robot). Needs `MEMORY_ENABLED` and the record; off, every turn is byte-identical and nothing is indexed |
 | `SENSITIVE_READ_ENABLED` | `false` | Server: kill-switch of the owner's sensitive questions by voice (Plan 0079, ADR 0029; off in the code). Needs `MEMORY_ENABLED`, the face on the voice routes and a closed alta; the security level also needs `SPEAKER_AUTHENTICATION_ENABLED`. Off, every read question is byte-identical. The secret rule does not follow it: it runs whenever `MEMORY_ENABLED` is on |
+| `ALTA_READ_ENABLED` | `false` | Server: kill-switch of the rest of the alta by voice (Plan 0082, ADR 0037): the contacts' phones, the key holders, «llama a mi contacto 1» (it cannot call; it says so and gives the phone) and devices, mobility, hearing, vision, coverage, dwelling, floor, lift, access and «vive solo» (security level). Needs `MEMORY_ENABLED` and `SENSITIVE_READ_ENABLED`; off, every route is byte-identical |
 | `RECALL_MAX_DISTANCE` | `0.43` | Server: the cosine-distance gate of the search by meaning; see «The search and its threshold» above for what it means and how to tune it |
 | `EMBEDDING_MODEL` | `granite-embedding:278m` | Server: the model of the recall vectors (768 dimensions); changing it needs a new calibration of `RECALL_MAX_DISTANCE` |
 | `HOUSEHOLD_TIMEZONE` | `America/Santiago` | Server: where a spoken day («ayer», «el martes») is cut; an unknown zone stops the server at start-up |

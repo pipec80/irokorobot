@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 __all__ = [
+    "capitalized",
     "spanish_join",
     "spoken_blood_type",
     "word_children_birthdays",
@@ -56,6 +57,10 @@ _COUNTED_TEMPLATES: Final[Mapping[SensitiveTopic, tuple[str, str]]] = MappingPro
             "Tu condición de salud registrada es {}.",
             "Tus condiciones de salud registradas son {}.",
         ),
+        SensitiveTopic.IMPLANTED_DEVICE: (
+            "Tu dispositivo registrado es {}.",
+            "Tus dispositivos registrados son {}.",
+        ),
     }
 )
 #: One template for any number of values; ``{}`` takes the values joined with ``spanish_join``.
@@ -65,6 +70,8 @@ _SPANISH_JOIN_TEMPLATES: Final[Mapping[SensitiveTopic, str]] = MappingProxyType(
         SensitiveTopic.BLOOD_TYPE: "Tu grupo sanguíneo es {}.",
         SensitiveTopic.ADDRESS: "Tu dirección es {}.",
         SensitiveTopic.EMERGENCY_FACILITY: "Tu urgencia preferida es {}.",
+        SensitiveTopic.HEALTH_COVERAGE: "Tu previsión de salud es {}.",
+        SensitiveTopic.FLOOR: "Vives en el piso {}.",
     }
 )
 #: Reference topics: the entries are joined with «; », since an entry may hold commas or «y».
@@ -72,6 +79,46 @@ _REFERENCE_TEMPLATES: Final[Mapping[SensitiveTopic, str]] = MappingProxyType(
     {
         SensitiveTopic.SECRET_HOLDER: "Sobre las claves tengo anotado: {}.",  # pragma: allowlist secret
         SensitiveTopic.DOCUMENT_LOCATION: "Sobre tus documentos tengo anotado: {}.",
+        SensitiveTopic.HOME_ACCESS: "Sobre cómo entrar a tu casa tengo anotado: {}.",
+    }
+)
+#: The topics stored as one closed choice: the sentence each choice says (D-11).
+_CHOICE_ANSWERS: Final[Mapping[SensitiveTopic, Mapping[str, str]]] = MappingProxyType(
+    {
+        SensitiveTopic.MOBILITY: MappingProxyType(
+            {
+                "solo": "Te desplazas sin ayuda.",
+                "baston": "Te desplazas con bastón.",
+                "andador": "Te desplazas con andador.",
+                "silla_de_ruedas": "Te desplazas en silla de ruedas.",
+            }
+        ),
+        SensitiveTopic.HEARING: MappingProxyType(
+            {
+                "normal": "Tienes registrada una audición normal.",
+                "audifonos": "Usas audífonos.",
+                "dificultad": "Tienes dificultad para escuchar.",
+            }
+        ),
+        SensitiveTopic.VISION: MappingProxyType(
+            {
+                "normal": "Tienes registrada una visión normal.",
+                "lentes": "Usas lentes.",
+                "dificultad": "Tienes dificultad para ver.",
+            }
+        ),
+        SensitiveTopic.DWELLING_TYPE: MappingProxyType(
+            {"casa": "Vives en una casa.", "departamento": "Vives en un departamento."}
+        ),
+        SensitiveTopic.LIFT: MappingProxyType(
+            {"si": "Sí, tu edificio tiene ascensor.", "no": "Tu edificio no tiene ascensor."}
+        ),
+        SensitiveTopic.LIVES_ALONE: MappingProxyType(
+            {
+                "si": "Tengo registrado que vives sin nadie más en casa.",
+                "no": "Tengo registrado que vives con alguien más.",
+            }
+        ),
     }
 )
 _ANTICOAGULANT_ANSWERS: Final[Mapping[str, str]] = MappingProxyType(
@@ -97,6 +144,18 @@ def spanish_join(values: tuple[str, ...]) -> str:
     if len(values) == _TWO_ITEMS:
         return f"{values[0]} y {values[1]}"
     return f"{', '.join(values[:-1])} y {values[-1]}"
+
+
+def capitalized(sentence: str) -> str:
+    """Return a sentence with its first letter in upper case and the rest as written.
+
+    Args:
+        sentence: A non-empty sentence built from already-authorized values.
+
+    Returns:
+        «De Zeta no tengo la fecha…» from «de Zeta no tengo la fecha…».
+    """
+    return sentence[:1].upper() + sentence[1:]
 
 
 def spoken_blood_type(value: str) -> str:
@@ -140,7 +199,19 @@ def word_own_answer(topic: SensitiveTopic, values: tuple[str, ...]) -> str:
         return _SPANISH_JOIN_TEMPLATES[topic].format(spanish_join(values))
     if topic in _REFERENCE_TEMPLATES:
         return _REFERENCE_TEMPLATES[topic].format(_REFERENCE_SEPARATOR.join(values))
+    if topic in _CHOICE_ANSWERS:
+        return _word_choice(topic, values)
     return _word_single_value(topic, values)
+
+
+def _word_choice(topic: SensitiveTopic, values: tuple[str, ...]) -> str:
+    """Word a topic stored as one closed choice; raise for several values or an unknown choice."""
+    if len(values) != 1:
+        raise ValueError(f"{topic.value} needs one value and got {len(values)}")
+    answer = _CHOICE_ANSWERS[topic].get(values[0])
+    if answer is None:
+        raise ValueError(f"{topic.value} value outside its closed choices")
+    return answer
 
 
 def _word_single_value(topic: SensitiveTopic, values: tuple[str, ...]) -> str:
@@ -195,5 +266,4 @@ def word_children_birthdays(children: tuple[tuple[str, date | None], ...]) -> st
         else f"de {name} no tengo la fecha"
         for name, day in children
     )
-    sentence = f"{spanish_join(parts)}."
-    return sentence[0].upper() + sentence[1:]
+    return capitalized(f"{spanish_join(parts)}.")
