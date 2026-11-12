@@ -9,7 +9,12 @@ from pathlib import Path
 from typing import TypedDict
 
 import pytest
-from server.cognition.contact_questions import ContactSelector, contact_selector, selects
+from server.cognition.contact_questions import (
+    ContactSelector,
+    contact_selector,
+    match_score,
+    selects,
+)
 import yaml
 
 pytestmark = pytest.mark.unit
@@ -73,3 +78,19 @@ def test_a_relationship_word_is_matched_folded() -> None:
 
 def test_the_repr_holds_no_word() -> None:
     assert "canary" not in repr(contact_selector(("mi", "doctora", "canary")))
+
+
+def test_the_best_match_wins_when_people_share_a_surname() -> None:
+    selector = contact_selector(("mi", "amiga", "canary"))
+    friend = match_score(
+        selector, call_order=None, role="trusted", relationship="amiga", name="Canary Friend"
+    )
+    daughter = match_score(
+        selector, call_order=1, role="caregiver", relationship="hija", name="Canary Daughter"
+    )
+    assert friend > daughter > 0
+
+
+def test_an_empty_selector_scores_every_contact_alike() -> None:
+    selector = contact_selector(("mis", "contactos"))
+    assert match_score(selector, call_order=None, role="other", relationship=None, name=None) == 1

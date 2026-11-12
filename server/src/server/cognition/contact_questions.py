@@ -18,7 +18,7 @@ from server.text_keys import normalize_spanish
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-__all__ = ["ContactSelector", "contact_selector", "selects"]
+__all__ = ["ContactSelector", "contact_selector", "match_score", "selects"]
 
 _OWN_WORDS: Final = frozenset({"mi", "mis"})
 _CONTACT_WORDS: Final = frozenset({"contacto", "contactos"})
@@ -168,13 +168,43 @@ def selects(
         ``True`` when the order, a role or a word (also without a final «s») matches. An empty
         selector selects every contact.
     """
+    return (
+        match_score(
+            selector, call_order=call_order, role=role, relationship=relationship, name=name
+        )
+        > 0
+    )
+
+
+def match_score(
+    selector: ContactSelector,
+    *,
+    call_order: int | None,
+    role: str,
+    relationship: str | None,
+    name: str | None,
+) -> int:
+    """Count how much of a selector one stored contact matches, so the best match wins.
+
+    One point for the call order, one for the role, one per word found in the relationship or the
+    name (also without a final «s»). Two people who share a surname both match «canary»; «mi amiga
+    canary» then selects the one who is also the friend.
+
+    Args:
+        selector: What the question named.
+        call_order: The contact's call order, or ``None``.
+        role: The contact's ``ContactRole`` value.
+        relationship: The contact's relationship label as stored, or ``None``.
+        name: The contact's stored name, or ``None``.
+
+    Returns:
+        ``0`` for no match; ``1`` for every contact when the selector is empty.
+    """
     if selector.is_empty:
-        return True
-    if selector.order is not None and selector.order == call_order:
-        return True
-    if role in selector.roles:
-        return True
+        return 1
     stored = set(normalize_spanish(relationship or "").split()) | set(
         normalize_spanish(name or "").split()
     )
-    return any(word in stored or word.removesuffix("s") in stored for word in selector.words)
+    words = sum(1 for word in selector.words if word in stored or word.removesuffix("s") in stored)
+    ordered = int(selector.order is not None and selector.order == call_order)
+    return ordered + int(role in selector.roles) + words

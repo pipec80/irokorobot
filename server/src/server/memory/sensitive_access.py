@@ -46,13 +46,16 @@ from server.cognition.recall_cues import RELATIVE_WORDS
 from server.cognition.response_plan import NO_BIRTH_DATE, SensitiveOutcome, SensitiveReply
 from server.cognition.sensitive_answers import word_children_birthdays, word_own_answer
 from server.cognition.sensitive_questions import (
+    CONTACT_TOPICS,
     TOPIC_LABEL,
     TOPIC_LEVEL,
     TOPIC_PREDICATE,
     SensitiveLevel,
     SensitiveTopic,
 )
+from server.memory.care_contacts import list_active_contacts
 from server.memory.commissioning import has_closed_commissioning
+from server.memory.contact_access import contact_reply, is_own_contact_question, stored_name
 from server.memory.entity_labels import read_household_names
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.profile_card_access import may_read_own_memory
@@ -68,6 +71,7 @@ if TYPE_CHECKING:
     from server.cognition.identity import ActivePersonContext
     from server.cognition.sensitive_questions import SensitiveQuery
     from server.memory.candidate_policy import AuditWriter, PolicyEvaluator
+    from server.memory.contact_access import ContactsReader, NameReader
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +108,8 @@ class _Call:
     alta_closed: AltaChecker
     names: NamesReader
     reader: OwnValuesReader
+    contacts: ContactsReader
+    contact_names: NameReader
 
 
 @dataclass(frozen=True)
@@ -141,6 +147,8 @@ async def sensitive_reply(
     alta_closed: AltaChecker = has_closed_commissioning,
     names: NamesReader = read_household_names,
     reader: OwnValuesReader = read_own_values,
+    contacts: ContactsReader = list_active_contacts,
+    contact_names: NameReader = stored_name,
 ) -> SensitiveReply:
     """Answer one sensitive question after the audience, level, consent and policy checks.
 
@@ -159,6 +167,8 @@ async def sensitive_reply(
         alta_closed: Whether a commissioning is closed (one ``SELECT``, no cache).
         names: The household's stored names, for the child's birthday decision.
         reader: The owner's values query; tests inject doubles.
+        contacts: The owner's active contacts (Plan 0082); tests inject doubles.
+        contact_names: A contact's stored name (Plan 0082); tests inject doubles.
 
     Returns:
         The reply; ``text`` carries the answer only for ``ANSWERED`` and, for a birth date not
@@ -178,6 +188,8 @@ async def sensitive_reply(
         alta_closed,
         names,
         reader,
+        contacts,
+        contact_names,
     )
     try:
         result = await _decide(call)
@@ -203,6 +215,8 @@ async def sensitive_reply(
 async def _decide(call: _Call) -> _Done:
     """Run the fixed order; each early return is a refusal that reads nothing."""
     scope = _ChildScope.NONE
+    if call.query.topic in CONTACT_TOPICS and not is_own_contact_question(call.query):
+        return _done(SensitiveOutcome.NOT_HOUSEHOLD)  # nobody's own contact: nothing read (D-6)
     if call.query.topic is SensitiveTopic.CHILD_BIRTHDAY:
         scope = await _child_scope(call)
         if scope is _ChildScope.NONE:
@@ -214,9 +228,32 @@ async def _decide(call: _Call) -> _Done:
     if TOPIC_LEVEL[call.query.topic] is SensitiveLevel.SECURITY and not _is_strong(call):
         retry = call.voice_check and call.faces is FusionReason.FACE_ONLY
         return _done(SensitiveOutcome.RETRY_VOICE if retry else SensitiveOutcome.DENIED)
+    return await _read(call, scope)
+
+
+async def _read(call: _Call, scope: _ChildScope) -> _Done:
+    """Once every check passed, read the store the topic lives in."""
     if call.query.topic is SensitiveTopic.CHILD_BIRTHDAY:
         return await _read_children(call, scope)
+    if call.query.topic in CONTACT_TOPICS:
+        return await _read_contacts(call)
     return await _read_own(call)
+
+
+async def _read_contacts(call: _Call) -> _Done:
+    """The contacts' one policy request, its audit row, then the read (Plan 0082, D-8)."""
+    reply, entries = await contact_reply(
+        call.actor,
+        call.query,
+        consent=await _consent(call, DataSensitivity.LOCATION.value),
+        correlation_id=call.correlation_id,
+        now=call.now,
+        policy=call.policy,
+        audit=call.audit,
+        contacts=call.contacts,
+        names=call.contact_names,
+    )
+    return _Done(reply, entries)
 
 
 def _is_strong(call: _Call) -> bool:
