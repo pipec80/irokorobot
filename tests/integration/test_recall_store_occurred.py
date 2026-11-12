@@ -208,6 +208,46 @@ async def test_an_episode_follows_its_turns(owner: int) -> None:
     assert sorted(await _recent(owner, _one(yesterday), occurred=True)) == sorted([kept, alone])
 
 
+async def test_a_mixed_record_keeps_its_episode(owner: int) -> None:
+    """A record with one turn about last year and one about yesterday keeps yesterday's episode.
+
+    Whole-branch review: the EXISTS / NOT EXISTS pair is pinned on mixed records too.
+    """
+    yesterday = _TODAY - timedelta(days=1)
+    no_interval = await _record(owner)
+    await _turn(owner, no_interval, "el ano pasado fui a la nieve", yesterday, _LAST_YEAR)
+    await _turn(owner, no_interval, "fui al cine con mi hermana", yesterday)
+    kept_a = await _episode(owner, no_interval, "hablamos de la nieve y del cine", yesterday)
+    with_interval = await _record(owner)
+    await _turn(owner, with_interval, "el ano pasado fui a la nieve", yesterday, _LAST_YEAR)
+    await _turn(owner, with_interval, "hoy fui al cine", yesterday, _one(yesterday))
+    kept_b = await _episode(owner, with_interval, "hablamos del lago y del cine", yesterday)
+
+    assert sorted(await _recent(owner, _one(yesterday), occurred=True)) == sorted([kept_a, kept_b])
+    assert kept_a in await _lexical(owner, "nieve", _one(yesterday), occurred=True)
+
+
+async def test_the_switch_off_sql_names_no_occurred_column(owner: int) -> None:
+    """Off, every read sends today's SQL: no statement names an occurred column."""
+    record_id = await _record(owner)
+    await _turn(owner, record_id, "el sabado fui a la playa", _TODAY, occurred=_SATURDAY)
+    statements: list[str] = []
+    await db.get_conn().set_trace_callback(statements.append)
+    try:
+        await _recent(owner, _one(_TODAY), occurred=False)
+        await _lexical(owner, "playa", _one(_TODAY), occurred=False)
+        await recall_store.units_by_id([1], owner_entity_id=owner, now=_NOW)
+        await recall_store.vector_hits(
+            owner_entity_id=owner, vector=_axis(0), since=None, until=None, now=_NOW, k=3
+        )
+    finally:
+        # A no-op, not None: the typed signature takes a callable (the connection closes after).
+        await db.get_conn().set_trace_callback(lambda _sql: None)
+    reads = [sql for sql in statements if "recall_units" in sql]
+    assert len(reads) >= 4
+    assert all("occurred_" not in sql for sql in reads)
+
+
 async def test_the_last_year_story_told_yesterday(owner: int) -> None:
     """D-15: found for «¿qué hice ayer?» with the switch off (before), not with it on (after)."""
     yesterday = _TODAY - timedelta(days=1)

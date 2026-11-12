@@ -15,7 +15,8 @@ ALTER TABLE recall_units ADD COLUMN occurred_end TEXT
                     AND date(occurred_end) IS occurred_end
                     AND occurred_start <= occurred_end)));
 
-CREATE INDEX recall_units_owner_occurred_idx ON recall_units (owner_entity_id, occurred_start);
+CREATE INDEX recall_units_owner_occurred_idx ON recall_units (owner_entity_id, occurred_start)
+    WHERE occurred_start IS NOT NULL;
 
 PRAGMA user_version = 15;
 COMMIT;

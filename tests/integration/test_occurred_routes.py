@@ -30,6 +30,7 @@ import yaml
 from server import db
 from tests.integration.test_recall_routes import (
     _ANSWER,
+    _GENERIC,
     _OWNER_FACE,
     _ROUTES,
     _client,
@@ -54,7 +55,6 @@ _SATURDAY_STORY = str(_STORIES[0]["heard"])  # «El sábado fui a la playa con m
 _LAST_YEAR_STORY = str(_STORIES[5]["heard"])  # «El año pasado fui a la nieve.»
 _WHEN_BEACH = str(_QUESTIONS[4]["message"])  # «¿Se acuerda cuándo fui a la playa?»
 _WHAT_YESTERDAY = str(_QUESTIONS[3]["message"])  # «¿Qué hice ayer?»
-_GENERIC = "Hola, ¿cómo estás?"
 
 
 @pytest.fixture
@@ -217,7 +217,10 @@ async def test_with_the_switch_off_every_route_is_byte_identical(
     assert response.status_code == 200
     assert all(kwargs.get("occurred") is not True for kwargs in seen)
     stores.assert_not_called()
-    assert not _spoken(response, route).startswith("Fue ")
+    # Today's spoken reply, exactly: only «¿qué hice ayer?» with recall on finds the story (by
+    # the day it was told); everything else is the generic model's reply.
+    expected = _ANSWER if recall and message == _WHAT_YESTERDAY else "Hola."
+    assert _spoken(response, route) == expected
 
 
 @pytest.mark.parametrize("route", _ROUTES)

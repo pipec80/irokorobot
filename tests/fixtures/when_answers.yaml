@@ -21,11 +21,12 @@
   said: 2026-11-11T15:00:00+00:00
   occurred: null
   answer: 'No tengo registrado cuándo fue. Sí recuerdo que ayer me contaste esto: Fui al cine.'
-# A window no span describes: the told-day sentence.
+# A window no span describes: the told-day sentence, never «no tengo registrado» (the date is
+# stored, it just cannot be said).
 - body: Fui al cine.
   said: 2026-11-11T15:00:00+00:00
   occurred: {start: 2026-11-03, end: 2026-11-05}
-  answer: 'No tengo registrado cuándo fue. Sí recuerdo que ayer me contaste esto: Fui al cine.'
+  answer: 'Ayer me contaste esto: Fui al cine.'
 # «¿Cuándo te conté…?» keeps the told day.
 - body: Fui al cine.
   said: 2026-11-11T15:00:00+00:00

@@ -79,8 +79,9 @@ _READABLE_OCCURRED = (
     f"AND NOT EXISTS ({_RECORD_TURNS}{_IN_WINDOW.format(t='t')}))))"
 )
 _UNIT_COLUMNS_OCCURRED = f"{_UNIT_COLUMNS}, u.occurred_start, u.occurred_end"
-_OCCURRED_START: Final = 5
-_OCCURRED_END: Final = 6
+# The two occurred columns come right after ``_UNIT_COLUMNS`` in ``_UNIT_COLUMNS_OCCURRED``.
+_OCCURRED_START: Final = len(_UNIT_COLUMNS.split(","))
+_OCCURRED_END: Final = _OCCURRED_START + 1
 
 
 @dataclass(frozen=True)
@@ -96,14 +97,15 @@ class RecallUnit:
     occurred: DayWindow | None = field(default=None, repr=False)
 
 
-def _unit(row: Sequence[object]) -> RecallUnit:
+def _unit(row: Sequence[object], *, occurred: bool) -> RecallUnit:
+    """A unit from a row; with *occurred* the row holds the two occurred columns too."""
     kind: UnitKind = "episode" if str(row[2]) == "episode" else "turn"
-    occurred = (
+    days = (
         DayWindow(
             start=date.fromisoformat(str(row[_OCCURRED_START])),
             end=date.fromisoformat(str(row[_OCCURRED_END])),
         )
-        if len(row) > _OCCURRED_END and row[_OCCURRED_START] is not None
+        if occurred and row[_OCCURRED_START] is not None
         else None
     )
     return RecallUnit(
@@ -112,7 +114,7 @@ def _unit(row: Sequence[object]) -> RecallUnit:
         kind=kind,
         body=str(row[3]),
         said_at=datetime.fromisoformat(str(row[4])),
-        occurred=occurred,
+        occurred=days,
     )
 
 
@@ -494,7 +496,7 @@ async def units_by_id(
     )
     rows = await cursor.fetchall()
     await cursor.close()
-    found = {unit.id: unit for unit in (_unit(tuple(row)) for row in rows)}
+    found = {unit.id: unit for unit in (_unit(tuple(row), occurred=occurred) for row in rows)}
     return [found[unit_id] for unit_id in ids if unit_id in found]
 
 
@@ -537,7 +539,7 @@ async def recent_units(
         rows = list(await cursor.fetchall())
         await cursor.close()
         if rows:
-            return [_unit(tuple(row)) for row in rows]
+            return [_unit(tuple(row), occurred=occurred) for row in rows]
     return []
 
 

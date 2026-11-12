@@ -38,6 +38,11 @@ _FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "occurred_times.ya
 _CASES = cast("list[dict[str, object]]", yaml.safe_load(_FIXTURE.read_text(encoding="utf-8")))
 _SATURDAY_STORY = str(_CASES[0]["heard"])  # «El sábado fui a la playa con mi hermana.»
 _YESTERDAY_STORY = "Ayer fui al cine."
+_QUESTIONS = cast(
+    "list[dict[str, object]]",
+    yaml.safe_load((_FIXTURE.parent / "recall_cues_occurred.yaml").read_text(encoding="utf-8")),
+)
+_WHAT_YESTERDAY = str(_QUESTIONS[3]["message"])  # «¿Qué hice ayer?»
 _NOW = datetime(2026, 11, 12, 15, tzinfo=UTC)
 _OWNER = 7
 
@@ -141,14 +146,35 @@ async def test_the_household_day_not_utc(
     assert _occurred(inserted) == DayWindow(start=date(2026, 11, 11), end=date(2026, 11, 11))
 
 
-async def test_an_error_in_the_reader_is_the_capture_boundary(
-    inserted: AsyncMock, monkeypatch: pytest.MonkeyPatch
+async def test_an_error_in_the_reader_keeps_the_turn_without_an_interval(
+    inserted: AsyncMock, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
+    """A reader bug never costs the record its turn (ADR 0027): the unit is kept with no days."""
     monkeypatch.setattr(settings, "occurred_time_enabled", True)
     monkeypatch.setattr(
-        conversation_capture, "occurred_window", Mock(side_effect=RuntimeError("boom"))
+        conversation_capture, "occurred_window", Mock(side_effect=RuntimeError("zzboomzz"))
     )
-    assert await _capture(_SATURDAY_STORY) is CaptureOutcome.FAILED
+    with caplog.at_level(logging.INFO):
+        assert await _capture(_SATURDAY_STORY) is CaptureOutcome.RECORDED
+    assert _occurred(inserted) is None
+    [warning] = [
+        r for r in caplog.records if getattr(r, "event", "") == "conversation.occurred_error"
+    ]
+    assert warning.levelno == logging.WARNING
+    assert all(
+        "zzboomzz" not in r.getMessage() and "playa" not in r.getMessage() for r in caplog.records
+    )
+
+
+async def test_a_question_turn_reads_no_time(
+    inserted: AsyncMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The interval is read only for a turn that becomes a unit, never for a recall question."""
+    monkeypatch.setattr(settings, "occurred_time_enabled", True)
+    reader = Mock(return_value=None)
+    monkeypatch.setattr(conversation_capture, "occurred_window", reader)
+    assert await _capture(_WHAT_YESTERDAY) is CaptureOutcome.RECORDED
+    reader.assert_not_called()
     inserted.assert_not_awaited()
 
 

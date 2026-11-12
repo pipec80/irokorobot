@@ -24,6 +24,10 @@ pytestmark = pytest.mark.unit
 _FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "when_answers.yaml"
 _TZ = ZoneInfo("America/Santiago")
 _TODAY = date(2026, 11, 12)
+_QUESTIONS = cast(
+    "list[dict[str, object]]",
+    yaml.safe_load((_FIXTURE.parent / "recall_cues_occurred.yaml").read_text(encoding="utf-8")),
+)
 
 
 class _Window(TypedDict):
@@ -86,7 +90,7 @@ def test_a_bad_window_falls_back_without_a_date(caplog: pytest.LogCaptureFixture
 def test_the_recall_prompt_is_unchanged() -> None:
     with_interval = tuple(_hit(case) for case in _cases()[:3])
     without = tuple(_hit({**case, "occurred": None}) for case in _cases()[:3])
-    question = "¿Qué hice?"
+    question = str(_QUESTIONS[3]["message"])  # «¿Qué hice ayer?»
     assert build_recall_messages(
         question, with_interval, today=_TODAY, tz=_TZ
     ) == build_recall_messages(question, without, today=_TODAY, tz=_TZ)

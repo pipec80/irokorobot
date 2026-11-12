@@ -1831,8 +1831,9 @@ def _impure_time_modules(sources: Mapping[str, str]) -> list[str]:
     found: list[str] = []
     for name in sorted(_PURE_TIME_MODULES & sources.keys()):
         for node in ast.walk(ast.parse(sources[name])):
+            # ``from server import db`` names its module through the alias: check both.
             modules = (
-                [node.module or ""]
+                [node.module or "", *(f"{node.module}.{alias.name}" for alias in node.names)]
                 if isinstance(node, ast.ImportFrom)
                 else [alias.name for alias in node.names]
                 if isinstance(node, ast.Import)
@@ -1841,6 +1842,31 @@ def _impure_time_modules(sources: Mapping[str, str]) -> list[str]:
             if any(module.startswith(_IMPURE_PREFIXES) for module in modules):
                 found.append(name)
                 break
+    return found
+
+
+_MONTH_NAMES = frozenset(
+    {"enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre"}
+    | {"octubre", "noviembre", "diciembre"}
+)
+_MONTH_LIST_LIMIT = 6
+_MONTH_LIST_HOMES = frozenset(
+    {"cognition/spoken_dates.py", "characters/__init__.py", "memory/normalize.py"}
+)
+
+
+def _month_list_holders(sources: Mapping[str, str]) -> list[str]:
+    """Modules outside the homes whose string literals name six or more months."""
+    found: list[str] = []
+    for name, text in sorted(sources.items()):
+        words = {
+            word
+            for node in ast.walk(ast.parse(text))
+            if isinstance(node, ast.Constant) and isinstance(node.value, str)
+            for word in re.findall(r"[a-z]+", node.value)
+        }
+        if name not in _MONTH_LIST_HOMES and len(words & _MONTH_NAMES) >= _MONTH_LIST_LIMIT:
+            found.append(name)
     return found
 
 
@@ -1870,14 +1896,29 @@ def test_only_the_store_touches_the_occurred_columns() -> None:
 @pytest.mark.unit
 def test_the_spoken_time_guards_detect_a_violation() -> None:
     leak = {
-        "cognition/spoken_dates.py": 'P = re.compile(r"el sabado")\n',
+        # ``from server import db`` is the repository's own idiom: it must be caught too.
+        "cognition/spoken_dates.py": 'from server import db\nP = re.compile(r"el sabado")\n',
         "cognition/second_parser.py": 'P = re.compile(r"(?:enero|marzo) de [0-9]{4}")\n',
         "cognition/tomorrow.py": 'P = re.compile("pasado manana")\n',
         "cognition/formatting.py": 'DAYS = ("lunes", "martes")\n',
         "cognition/occurred_time.py": "from server.settings import settings\n",
         "memory/peek.py": 'SQL = "SELECT occurred_start FROM recall_units"\n',
+        "memory/months.py": 'M = "enero|febrero|marzo|abril|mayo|junio"\n',
     }
 
     assert _date_parsers(leak) == ["cognition/second_parser.py", "cognition/tomorrow.py"]
-    assert _impure_time_modules(leak) == ["cognition/occurred_time.py"]
+    assert _impure_time_modules(leak) == ["cognition/occurred_time.py", "cognition/spoken_dates.py"]
     assert _occurred_column_users(leak) == ["memory/peek.py"]
+    assert _month_list_holders(leak) == ["memory/months.py"]
+
+
+@pytest.mark.unit
+def test_month_word_lists_live_only_where_they_are_needed() -> None:
+    """A list of months is a date reader in waiting: only the reader and two formatters hold one.
+
+    ``characters`` formats today's date for the prompt and ``memory/normalize.py`` refuses a date
+    as an entity name (both older than Plan 0083); any other module reads spoken time through
+    ``spoken_dates``. A pattern built from an f-string escapes ``test_one_reader_of_spoken_time``,
+    so this guard watches the word lists themselves.
+    """
+    assert _month_list_holders(_sources()) == []

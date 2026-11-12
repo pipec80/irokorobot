@@ -87,7 +87,7 @@ _SEASON_YEARS_AROUND: Final = 2
 
 @dataclass(frozen=True)
 class DayWindow:
-    """Inclusive local calendar days."""
+    """Inclusive local calendar days, ``start <= end`` (every producer builds it so)."""
 
     start: date
     end: date
@@ -115,6 +115,7 @@ class SpokenTime:
 
 
 class _Direction(StrEnum):
+    # PAST and FUTURE mirror ``Toward``: a phrase of one direction is skipped toward the other.
     PAST = "past"
     FUTURE = "future"
     EITHER = "either"
@@ -289,8 +290,10 @@ _MONTH: Final = "(?P<month>" + "|".join(_MONTHS) + ")"
 _YEAR: Final = r"(?P<year>\d{4})"
 # A season with its article: «el verano», «la primavera».
 _SEASON: Final = "(?:el (?:verano|otono|invierno)|la primavera)"
-# «en verano», «en el verano», «el verano», «en la primavera», «la primavera», «en primavera».
-_SEASON_PLAIN: Final = "(?:en (?:el |la )?|el |la )?(?:verano|otono|invierno|primavera)"
+_SEASON_WORD: Final = "(?:verano|otono|invierno|primavera)"
+# «en verano», «en el verano», «el verano», «en la primavera», «la primavera». A bare season word
+# is no time («este verano», «las vacaciones de verano», D-6); with a year it is («verano de 2015»).
+_SEASON_LEAD: Final = "(?:en (?:el |la )?|el |la )"
 
 
 def _entry(regex: str, resolve: _Resolver, direction: _Direction, walk: _Walk) -> _Entry:
@@ -308,7 +311,7 @@ _TABLE: Final[tuple[_Entry, ...]] = (
     ),
     _entry(rf"(?:el )?(?P<day>\d{{1,2}}) de {_MONTH}", _day_of_month, _E, _BOTH),
     _entry(rf"(?:en )?{_MONTH} del? {_YEAR}", _dated(_month_of_year), _D, _FULL),
-    _entry(rf"{_SEASON_PLAIN} del? {_YEAR}", _dated(_season_of_year), _D, _FULL),
+    _entry(rf"{_SEASON_LEAD}?{_SEASON_WORD} del? {_YEAR}", _dated(_season_of_year), _D, _FULL),
     _entry("la semana pasada", _week(-1), _P, _BOTH),
     _entry("la proxima semana|la semana que viene", _week(1), _F, _FULL),
     _entry("el mes pasado", _month(-1), _P, _BOTH),
@@ -331,13 +334,13 @@ _TABLE: Final[tuple[_Entry, ...]] = (
     _entry("ayer", _days(-1), _P, _BOTH),
     # «hoy día» is the Chilean «hoy»: «día» is part of the date, never a topic.
     _entry("hoy(?: dia)?", _days(0), _E, _BOTH),
-    _entry(rf"el {_WEEKDAY} pasado", _weekday, _P, _FULL),
+    _entry(rf"(?:el )?{_WEEKDAY} pasado", _weekday, _P, _FULL),
     _entry(rf"el proximo {_WEEKDAY}|(?:el |este ){_WEEKDAY} que viene", _weekday, _F, _FULL),
     _entry(rf"(?:el |este )?{_WEEKDAY}(?: pasado)?", _weekday, _P, _LEG),
     # A plural weekday («los lunes») is a habit, no time (D-6).
     _entry(rf"(?:(?:el|este) )?(?<!\blos ){_WEEKDAY}", _weekday, _E, _FULL),
     _entry(rf"en {_MONTH}", _named_month, _E, _FULL),
-    _entry(_SEASON_PLAIN, _named_season, _E, _FULL),
+    _entry(f"{_SEASON_LEAD}{_SEASON_WORD}", _named_season, _E, _FULL),
 )
 _LEGACY_WALK: Final = tuple(entry for entry in _TABLE if entry.walk is not _Walk.FULL)
 _FULL_WALK: Final = tuple(entry for entry in _TABLE if entry.walk is not _Walk.LEGACY)

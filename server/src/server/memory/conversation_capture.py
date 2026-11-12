@@ -16,6 +16,7 @@ never stored. Logs carry the outcome, the verdict and the correlation id — nev
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 from enum import StrEnum
 import logging
 from typing import TYPE_CHECKING
@@ -143,16 +144,15 @@ async def capture_turn(
             actor, owner_id=owner_id, wav_bytes=wav_bytes, event=event, verify=verify
         )
         turn = make_turn(heard, said, voice=verdict, correlation_id=event.correlation_id, at=at)
-        occurred = _occurred_days(turn)
-        units: list[int] = []
+        indexed = _Indexed()
         await append_turn(
             turn,
             owner_entity_id=owner_id,
             now=clock(),
-            index=_recall_indexer(turn, owner_id, units, occurred),
+            index=_recall_indexer(turn, owner_id, indexed),
         )
-        if client is not None and units:
-            await embed_unit(client, units[0], turn.heard)
+        if client is not None and indexed.units:
+            await embed_unit(client, indexed.units[0], turn.heard)
     except Exception as exc:  # background boundary: nothing may reach the user's request
         # Only the class is logged: the message of a failure could carry a text.
         logger.warning(
@@ -161,39 +161,57 @@ async def capture_turn(
             extra={"event": "conversation.capture_error", "error_type": type(exc).__name__},
         )
         return _logged(CaptureOutcome.FAILED, verdict, event)
-    logged_occurred = (bool(units) and occurred is not None) if occurred_time_on() else None
+    logged_occurred = indexed.occurred if occurred_time_on() else None
     return _logged(CaptureOutcome.RECORDED, verdict, event, occurred=logged_occurred)
 
 
+@dataclass
+class _Indexed:
+    """What the indexer wrote: the new unit's id, and whether it got an occurred interval."""
+
+    units: list[int] = field(default_factory=list)
+    occurred: bool = False
+
+
 def _occurred_days(turn: RecordedTurn) -> DayWindow | None:
-    """When the told event of a verified turn happened, with the switch on (Plan 0083 D-7).
+    """When the told event of a turn happened, with the switch on (Plan 0083 D-7).
 
-    Read against the household day of the turn's own time, never the clock of this job.
+    Read against the household day of the turn's own time, never the clock of this job. A reader
+    error is its own narrow boundary: the unit is kept without days and the record keeps its turn
+    (ADR 0027); only the class is logged.
     """
-    if not occurred_time_on() or turn.voice is not TurnVerdict.VERIFIED:
+    if not occurred_time_on():
         return None
-    return occurred_window(turn.heard, said_day=turn.at.astimezone(household_zone()).date())
+    try:
+        return occurred_window(turn.heard, said_day=turn.at.astimezone(household_zone()).date())
+    except Exception as exc:  # degradation boundary: a reader bug must not lose the turn
+        logger.warning(
+            "Occurred time not read (%s)",
+            type(exc).__name__,
+            extra={"event": "conversation.occurred_error", "error_type": type(exc).__name__},
+        )
+        return None
 
 
-def _recall_indexer(
-    turn: RecordedTurn, owner_id: int, units: list[int], occurred: DayWindow | None
-) -> TurnIndexer | None:
+def _recall_indexer(turn: RecordedTurn, owner_id: int, indexed: _Indexed) -> TurnIndexer | None:
     """Return the indexer that writes the turn's recall unit, or ``None`` when it gets none.
 
     Only a ``VERIFIED`` turn with words that tells something, and only with ``RECALL_ENABLED``
-    (ADR 0028 decision 1). The new unit's id is appended to *units*, so the caller can embed it
-    after the commit; *occurred* is when its told event happened (Plan 0083), or ``None``.
+    (ADR 0028 decision 1). The new unit's id goes to *indexed*, so the caller can embed it after
+    the commit; only such a turn has its occurred interval read (Plan 0083).
     """
     if not settings.recall_enabled or turn.voice is not TurnVerdict.VERIFIED:
         return None
     if not tells_something(turn.heard):
         return None
+    occurred = _occurred_days(turn)
 
     async def index(conn: aiosqlite.Connection, record_id: int, recorded: RecordedTurn) -> int:
         unit_id = await insert_turn_unit(
             conn, record_id=record_id, owner_entity_id=owner_id, turn=recorded, occurred=occurred
         )
-        units.append(unit_id)
+        indexed.units.append(unit_id)
+        indexed.occurred = occurred is not None
         return unit_id
 
     return index

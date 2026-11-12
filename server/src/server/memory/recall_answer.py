@@ -139,15 +139,18 @@ def word_when(hits: Sequence[RecallHit], kind: WhenKind, *, today: date, tz: Zon
     hit = hits[0]
     label = date_label(hit.unit.said_at, today=today, tz=tz)
     episode = hit.unit.kind == "episode"
+    asked = kind
     if kind is WhenKind.HAPPENED and hit.unit.occurred is not None:
         try:
             return _when_it_happened(
                 hit.unit.occurred, said_at=hit.unit.said_at, told=label, today=today, tz=tz
             )
         except ValueError:
-            # No date reaches the log: the window has no spoken span, the told day is said.
+            # The date is stored but no spoken span says it: the told day is said instead, never
+            # «no tengo registrado» (Plan 0083 D-11). No date reaches the log.
             logger.warning("Recall when-answer from the told day (ValueError)")
-    if kind is WhenKind.TOLD:
+            asked = WhenKind.TOLD
+    if asked is WhenKind.TOLD:
         return (
             f"{_capitalised(label)} hablamos de eso."
             if episode

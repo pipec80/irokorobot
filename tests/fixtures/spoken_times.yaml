@@ -197,6 +197,23 @@ times:
   - phrase: cuando era chico
     past: null
     future: null
+  # A bare season word is no time (D-6); with its year it is. Found by the whole-branch review.
+  - phrase: este verano fui a la playa
+    past: null
+    future: null
+  - phrase: esta primavera
+    past: null
+    future: null
+  - phrase: las vacaciones de verano
+    past: null
+    future: null
+  - phrase: verano de 2015
+    past: {start: 2014-12-01, end: 2015-02-28, ambiguous: false}
+    future: null
+  # «sábado pasado» without «el» is the past, as the legacy walk read it.
+  - phrase: sábado pasado fui al cine
+    past: {start: 2026-11-07, end: 2026-11-07, ambiguous: false}
+    future: null
   # Review focus 2: the year turns and February ends.
   - phrase: el próximo mes
     today: 2026-12-30
