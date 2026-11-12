@@ -76,6 +76,7 @@ from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
 from server.memory.profile_card import PromptCard
 from server.memory.profile_card_access import profile_summary_text, prompt_card_for_turn
 from server.memory.recall_access import recall_reply
+from server.memory.recall_store import occurred_time_on
 from server.memory.sensitive_access import sensitive_reply
 from server.pipeline import (
     _elapsed_ms,
@@ -347,6 +348,8 @@ def _voice_controller(
         secret_guard=settings.memory_enabled,
         # Plan 0082: the rest of the alta joins the sensitive read; inert without the reader.
         alta_read=settings.alta_read_enabled,
+        # Plan 0083: when a told event happened; inert without the recall answerer.
+        occurred_time=occurred_time_on(),
     )
 
 

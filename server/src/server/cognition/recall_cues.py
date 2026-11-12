@@ -21,7 +21,14 @@ from server.cognition.household_request import (
     opens_with,
     without_leading_fillers,
 )
-from server.cognition.spoken_dates import DayWindow, parse_spoken_window, strip_window_words
+from server.cognition.spoken_dates import (
+    DayWindow,
+    Toward,
+    parse_spoken_window,
+    read_spoken_time,
+    strip_time_words,
+    strip_window_words,
+)
 from server.text_keys import normalize_spanish
 
 if TYPE_CHECKING:
@@ -76,6 +83,28 @@ _TOLD_SHAPE: Final = ("hablamos", "de")
 # «cuando» of a when-question. An imperative carries no question mark and the speech-to-text drops
 # the accent, so opener, «cuando» and a listed past verb are enough. Folded, longest first.
 _REQUEST_OPENERS: Final = ("me puedes decir", "cuentame", "recuerdame", "me dices", "sabes", "dime")
+# The usted forms and Whisper's «tiene» for «tienes», found on Plan 0082's hardware (Plan 0083
+# D-13), read only with the occurred time on. The phrases count only in a marked question (a
+# «?» or an accented «cuándo»): «le conté a mi hermana…» is a story about telling someone else and
+# «recuerda que mañana…» an imperative. A bare «le dije» is never a cue.
+_MARKED_STRONG_PHRASES: Final = (
+    "le habia contado",
+    "le habia dicho",
+    "como le dije",
+    "le comente",
+    "le conte",
+)
+_MARKED_WEAK_PHRASES: Final = ("se acuerda", "recuerda")
+_USTED_OPENERS: Final = (
+    "me puede decir",
+    "tienes registrado",
+    "tiene registrado",
+    "recuerdeme",
+    "cuenteme",
+    "me dice",
+    "digame",
+    "sabe",
+)
 _ACCENTED_WHEN: Final = "cuándo"
 _WHEN_RAW: Final = re.compile(r"\bcu[aá]ndo\b")
 _INTERROGATIVES: Final = frozenset(
@@ -164,6 +193,41 @@ CHILD_SIDE_PREDICATES: Final = frozenset(_CHILD_WORDS.values())
 RELATION_PREDICATES: Final = frozenset(_ASKED_WORDS.values())
 
 
+@dataclass(frozen=True)
+class _Grammar:
+    """The phrase lists one reading of a recall question uses.
+
+    Attributes:
+        strong: Strong phrases, anywhere in the message.
+        weak: Weak phrases, anywhere in the message.
+        openers: Request openers before a «cuando» (longest first).
+    """
+
+    strong: tuple[str, ...]
+    weak: tuple[str, ...]
+    openers: tuple[str, ...]
+
+
+_TODAY_GRAMMAR: Final = _Grammar(_STRONG_PHRASES, _WEAK_PHRASES, _REQUEST_OPENERS)
+_OCCURRED_OPENERS: Final = tuple(
+    sorted((*_REQUEST_OPENERS, *_USTED_OPENERS), key=len, reverse=True)
+)
+# With the occurred time on, an unmarked message reads the usted openers only; a marked one
+# («?» or an accented «cuándo») also reads the usted phrases (Plan 0083 D-13).
+_OCCURRED_GRAMMAR: Final = _Grammar(_STRONG_PHRASES, _WEAK_PHRASES, _OCCURRED_OPENERS)
+_OCCURRED_MARKED_GRAMMAR: Final = _Grammar(
+    (*_STRONG_PHRASES, *_MARKED_STRONG_PHRASES),
+    (*_WEAK_PHRASES, *_MARKED_WEAK_PHRASES),
+    _OCCURRED_OPENERS,
+)
+
+
+def _grammar_for(*, occurred: bool, marked: bool) -> _Grammar:
+    if not occurred:
+        return _TODAY_GRAMMAR
+    return _OCCURRED_MARKED_GRAMMAR if marked else _OCCURRED_GRAMMAR
+
+
 class CueStrength(StrEnum):
     """How surely a recall cue asks about what the owner told."""
 
@@ -200,11 +264,11 @@ def _has(padded: str, phrase: str) -> bool:
     return f" {phrase} " in padded
 
 
-def _strength(normalized: str) -> CueStrength | None:
+def _strength(normalized: str, grammar: _Grammar) -> CueStrength | None:
     padded = f" {normalized} "
-    if any(_has(padded, phrase) for phrase in _STRONG_PHRASES):
+    if any(_has(padded, phrase) for phrase in grammar.strong):
         return CueStrength.STRONG
-    if any(_has(padded, phrase) for phrase in _WEAK_PHRASES):
+    if any(_has(padded, phrase) for phrase in grammar.weak):
         return CueStrength.WEAK
     return None
 
@@ -252,9 +316,9 @@ class _WhenOpening:
         return self.after[:2] == _TOLD_SHAPE
 
 
-def _requested_opening(body: str) -> _WhenOpening | None:
+def _requested_opening(body: str, grammar: _Grammar) -> _WhenOpening | None:
     """An opener, «cuando» and a listed past verb, which need neither a mark nor an accent."""
-    for opener in _REQUEST_OPENERS:
+    for opener in grammar.openers:
         if body.startswith(f"{opener} "):
             words = body.removeprefix(opener).split()
             if words[:1] == [_WHEN_WORD] and words[1:2] and words[1] in _WHEN_VERBS:
@@ -263,16 +327,16 @@ def _requested_opening(body: str) -> _WhenOpening | None:
     return None
 
 
-def _when_opening(message: str, normalized: str) -> _WhenOpening | None:
+def _when_opening(normalized: str, grammar: _Grammar, *, marked: bool) -> _WhenOpening | None:
     """The «cuando» that opens a marked or accented question, one weak phrase allowed before it."""
     body = without_leading_fillers(normalized)
-    requested = _requested_opening(body)
+    requested = _requested_opening(body, grammar)
     if requested is not None:
         return requested
-    if not (has_question_mark(message) or _opens_with_accented_when(message)):
+    if not marked:
         return None
     weak_opened = False
-    for phrase in _WEAK_PHRASES:
+    for phrase in grammar.weak:
         if body.startswith(f"{phrase} "):
             body = body.removeprefix(phrase).lstrip()
             weak_opened = True
@@ -289,19 +353,19 @@ def _weak_phrase_led(opening: _WhenOpening | None) -> bool:
     return opening is not None and opening.weak_opened
 
 
-def _when_kind(normalized: str, opening: _WhenOpening) -> WhenKind:
+def _when_kind(normalized: str, opening: _WhenOpening, grammar: _Grammar) -> WhenKind:
     """Told when the message holds a strong phrase or «hablamos de»; otherwise it happened."""
     padded = f" {normalized} "
-    if opening.told_shape or any(_has(padded, phrase) for phrase in _STRONG_PHRASES):
+    if opening.told_shape or any(_has(padded, phrase) for phrase in grammar.strong):
         return WhenKind.TOLD
     return WhenKind.HAPPENED
 
 
-def _without_cues(normalized: str, opening: _WhenOpening | None = None) -> str:
+def _without_cues(normalized: str, grammar: _Grammar, opening: _WhenOpening | None) -> str:
     padded = f" {normalized} "
     if opening is not None and opening.opener is not None:
         padded = padded.replace(f" {opening.opener} ", " ", 1)
-    for phrase in (*_STRONG_PHRASES, *_WEAK_PHRASES):
+    for phrase in (*grammar.strong, *grammar.weak):
         padded = padded.replace(f" {phrase} ", " ")
     return " ".join(padded.split())
 
@@ -315,12 +379,24 @@ def content_words(query: str) -> tuple[str, ...]:
     return tuple(seen)
 
 
-def classify_recall_cue(message: str, *, today: date) -> RecallCue | None:
+def _window_and_query(
+    normalized: str, without_cues: str, today: date, *, occurred: bool
+) -> tuple[DayWindow | None, str]:
+    """The cue's days and its query: the full reader with the occurred time on (Plan 0083)."""
+    if not occurred:
+        return parse_spoken_window(normalized, today), strip_window_words(without_cues)
+    spoken = read_spoken_time(normalized, today, toward=Toward.PAST)
+    return (None if spoken is None else spoken.window), strip_time_words(without_cues)
+
+
+def classify_recall_cue(message: str, *, today: date, occurred: bool = False) -> RecallCue | None:
     """Return the recall question *message* asks, or ``None`` when it asks none.
 
     Args:
         message: Raw transcript or chat text in Spanish.
         today: The household's local date, for the date window.
+        occurred: Whether the occurred time is on (Plan 0083 D-13): the window comes from the
+            full reader (years and seasons too) and the usted forms are cues.
 
     Returns:
         The cue, or ``None`` for a statement, a message without a cue, or a cue with neither a
@@ -328,10 +404,12 @@ def classify_recall_cue(message: str, *, today: date) -> RecallCue | None:
         past verb follows (Plan 0080 D-8).
     """
     normalized = normalize_spanish(message)
-    strength = _strength(normalized)
+    marked = has_question_mark(message) or _opens_with_accented_when(message)
+    grammar = _grammar_for(occurred=occurred, marked=marked)
+    strength = _strength(normalized, grammar)
     # Without the mark or the accent «cuando te conté…» may be a story: it keeps today's cue and
     # no kind.
-    opening = _when_opening(message, normalized)
+    opening = _when_opening(normalized, grammar, marked=marked)
     asks_the_past = opening is not None and opening.asks_about_the_past
     if strength is None:
         if not asks_the_past:
@@ -342,14 +420,15 @@ def classify_recall_cue(message: str, *, today: date) -> RecallCue | None:
     elif strength is CueStrength.WEAK and asks_the_past and _weak_phrase_led(opening):
         # «¿Te acuerdas cuándo fui…?» asks as the bare form does.
         strength = CueStrength.STRONG
-    window = parse_spoken_window(normalized, today)
-    query = without_leading_fillers(strip_window_words(_without_cues(normalized, opening)))
+    without_cues = _without_cues(normalized, grammar, opening)
+    window, stripped = _window_and_query(normalized, without_cues, today, occurred=occurred)
+    query = without_leading_fillers(stripped)
     if window is None and not content_words(query):
         return None
     # A weak cue has no kind: «Cuando fui a la playa me quemé, ¿te acuerdas?» is a story that ends
     # in the weak phrase, and «¿te acuerdas cuándo fue el mundial?» names no verb of the owner's.
     when = (
-        _when_kind(normalized, opening)
+        _when_kind(normalized, opening, grammar)
         if opening is not None and strength is CueStrength.STRONG
         else None
     )

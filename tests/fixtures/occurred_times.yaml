@@ -1,0 +1,31 @@
+# Plan 0083 Task 2: when a told event happened (D-7). `said_day` defaults to 2026-11-12, a
+# Thursday. `start` and `end` are the occurred interval, or null when the words give none.
+- {heard: El sábado fui a la playa con mi hermana., start: 2026-11-07, end: 2026-11-07}
+- {heard: Ayer estuve en el hospital., start: 2026-11-11, end: 2026-11-11}
+- {heard: Anteayer nos juntamos a almorzar., start: 2026-11-10, end: 2026-11-10}
+- {heard: En 2015 viví en el norte., start: 2015-01-01, end: 2015-12-31}
+- {heard: El verano pasado fuimos al lago., start: 2025-12-01, end: 2026-02-28}
+- {heard: El año pasado fui a la nieve., start: 2025-01-01, end: 2025-12-31}
+- {heard: La semana pasada me dolió la espalda., start: 2026-11-02, end: 2026-11-08}
+- {heard: Hoy fui al cine., start: 2026-11-12, end: 2026-11-12}
+- {heard: Esta mañana fui al médico., start: 2026-11-12, end: 2026-11-12}
+- {heard: El 3 de marzo de 2015 me casé., start: 2015-03-03, end: 2015-03-03}
+- {heard: En marzo conocí a un vecino nuevo., start: 2026-03-01, end: 2026-03-31}
+- {heard: El jueves vimos una película., start: 2026-11-05, end: 2026-11-05}
+- {heard: Mi abuela nació en 1950., start: 1950-01-01, end: 1950-12-31}
+# No interval: present, future, habit, two time phrases, no time, a noun that looks like a verb.
+- {heard: Hoy estoy cansado., start: null, end: null}
+- {heard: El sábado salimos a pasear., start: null, end: null}
+- {heard: El jueves voy al médico., start: null, end: null}
+- {heard: Mañana voy al cine., start: null, end: null}
+- {heard: Los lunes juego fútbol., start: null, end: null}
+- {heard: Ayer fui al médico y mañana voy al cine., start: null, end: null}
+- {heard: Fui al cine con mi hermana., start: null, end: null}
+- {heard: El sábado tengo un viaje., start: null, end: null}
+- {heard: El sábado paso a verte., start: null, end: null}
+- {heard: Cuando llegue el sábado te cuento., start: null, end: null}
+- {heard: Hace dos años fui al sur., start: 2024-01-01, end: 2024-12-31}
+- {heard: Hace 3 días fui al cine con mis amigos., start: 2026-11-09, end: 2026-11-09}
+- {heard: El 3 de noviembre del año pasado me cambié de casa., start: 2025-11-03, end: 2025-11-03}
+- {heard: En 3 días más voy a comer con mi mamá., start: null, end: null}
+- {heard: Ayer fui al cine., said_day: 2026-01-01, start: 2025-12-31, end: 2025-12-31}

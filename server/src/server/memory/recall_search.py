@@ -22,6 +22,7 @@ from server.llm_transport import ollama_embed
 from server.memory.recall_store import (
     RecallUnit,
     lexical_hits,
+    occurred_time_on,
     recent_units,
     units_by_id,
     vector_hits,
@@ -97,6 +98,9 @@ class _Window:
     since: str | None
     until: str | None
     now: str
+    first_day: str | None = None
+    last_day: str | None = None
+    occurred: bool = False
 
 
 def fuse(
@@ -151,6 +155,9 @@ async def _vector_side(
         until=window.until,
         now=window.now,
         k=RECALL_VECTOR_K,
+        first_day=window.first_day,
+        last_day=window.last_day,
+        occurred=window.occurred,
     )
 
 
@@ -167,7 +174,8 @@ async def search_recall(
 
     Returns:
         The qualifying hits, the best vector distance and whether only words were searched.
-        A question with only a date returns that window's episodes, newest first.
+        A question with only a date returns that window's episodes, newest first. With the
+        occurred time on (Plan 0083 D-9) the window matches a unit by when its event happened.
 
     Raises:
         aiosqlite.Error: If the database fails; the caller answers that it does not remember.
@@ -176,6 +184,16 @@ async def search_recall(
         window_utc_bounds(cue.window, household_zone()) if cue.window is not None else (None, None)
     )
     now_iso = now.astimezone(UTC).isoformat(timespec="microseconds")
+    occurred = occurred_time_on()
+    window = _Window(
+        owner=owner_entity_id,
+        since=since,
+        until=until,
+        now=now_iso,
+        first_day=None if cue.window is None else cue.window.start.isoformat(),
+        last_day=None if cue.window is None else cue.window.end.isoformat(),
+        occurred=occurred,
+    )
     terms = content_words(cue.query)[:RECALL_MAX_TERMS]
     if not terms:
         if since is None or until is None:
@@ -186,13 +204,15 @@ async def search_recall(
             until=until,
             now=now_iso,
             limit=RECALL_MAX_RESULTS,
+            first_day=window.first_day,
+            last_day=window.last_day,
+            occurred=occurred,
         )
         return RecallSearch(
             hits=tuple(RecallHit(unit=unit, distance=None) for unit in recent),
             best_distance=None,
             lexical_only=False,
         )
-    window = _Window(owner=owner_entity_id, since=since, until=until, now=now_iso)
     lexical = await lexical_hits(
         owner_entity_id=owner_entity_id,
         terms=terms,
@@ -200,11 +220,16 @@ async def search_recall(
         until=until,
         now=now_iso,
         limit=RECALL_VECTOR_K,
+        first_day=window.first_day,
+        last_day=window.last_day,
+        occurred=occurred,
     )
     vector = await _vector_side(client, cue.query, window)
     distances = dict(vector or [])
     fused = fuse(lexical, vector or [], max_distance=settings.recall_max_distance)
-    units = _capped(await units_by_id(fused, owner_entity_id=owner_entity_id, now=now_iso))
+    units = _capped(
+        await units_by_id(fused, owner_entity_id=owner_entity_id, now=now_iso, occurred=occurred)
+    )
     return RecallSearch(
         hits=tuple(RecallHit(unit=unit, distance=distances.get(unit.id)) for unit in units),
         best_distance=min(distances.values()) if distances else None,

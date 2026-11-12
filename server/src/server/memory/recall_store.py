@@ -9,14 +9,15 @@ with microseconds, comparable as text. Nothing here logs a text.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Literal
+from datetime import UTC, date, datetime
+from typing import TYPE_CHECKING, Final, Literal
 
 import sqlite_vec
 
 from server import db
 from server.cognition.intent_resolution import resolve_information_need
 from server.cognition.response_plan import InformationNeed
+from server.cognition.spoken_dates import DayWindow
 from server.memory.conversation_types import TurnVerdict
 from server.memory.embeddings import EMBEDDING_DIM
 from server.memory.recall_sensitivity import (
@@ -38,6 +39,7 @@ __all__ = [
     "insert_episode_unit",
     "insert_turn_unit",
     "lexical_hits",
+    "occurred_time_on",
     "raise_record_sensitivity",
     "recent_units",
     "store_vector",
@@ -56,6 +58,43 @@ _READABLE = (
     "AND (:since IS NULL OR u.said_at >= :since) AND (:until IS NULL OR u.said_at < :until)"
 )
 _UNIT_COLUMNS = "u.id, u.source_record_id, u.kind, u.body, u.said_at"
+# With the occurred time on (Plan 0083 D-9): a unit with an occurred interval matches a window by
+# the overlap of its local days, one without by ``said_at``. An episode said in the window is
+# left out when its record has a turn with an interval and no turn of the record matches the
+# window, so yesterday's diary entry of a story about last year is not «what you did yesterday».
+_IN_WINDOW = (
+    "(({t}.occurred_start IS NOT NULL "
+    "AND {t}.occurred_start <= :last_day AND {t}.occurred_end >= :first_day) "
+    "OR ({t}.occurred_start IS NULL AND {t}.said_at >= :since AND {t}.said_at < :until))"
+)
+_RECORD_TURNS = (
+    "SELECT 1 FROM recall_units t WHERE t.source_record_id = u.source_record_id "
+    "AND t.kind = 'turn' AND "
+)
+_READABLE_OCCURRED = (
+    "u.owner_entity_id = :owner AND u.visibility = 'personal' AND u.sensitivity = 'normal' "
+    "AND (r.expires_at IS NULL OR r.expires_at > :now) "
+    f"AND (:since IS NULL OR ({_IN_WINDOW.format(t='u')} AND NOT (u.kind = 'episode' "
+    f"AND EXISTS ({_RECORD_TURNS}t.occurred_start IS NOT NULL) "
+    f"AND NOT EXISTS ({_RECORD_TURNS}{_IN_WINDOW.format(t='t')}))))"
+)
+_UNIT_COLUMNS_OCCURRED = f"{_UNIT_COLUMNS}, u.occurred_start, u.occurred_end"
+# What a date-only question reads, group by group; the first group with units answers. Today:
+# the window's episodes, else its turn units. With the occurred time on (hardware, 2026-11-12), a
+# turn unit whose occurred interval falls in the window but that was told on another day is held
+# by no episode of the window: it comes first, beside the episodes.
+_KIND = "u.kind = :kind"
+_TOLD_ELSEWHERE = (
+    "u.occurred_start IS NOT NULL AND NOT (u.said_at >= :since AND u.said_at < :until)"
+)
+_RECENT_GROUPS: Final = (((_KIND, "episode"),), ((_KIND, "turn"),))
+_RECENT_GROUPS_OCCURRED: Final = (
+    ((f"{_KIND} AND {_TOLD_ELSEWHERE}", "turn"), (_KIND, "episode")),
+    ((_KIND, "turn"),),
+)
+# The two occurred columns come right after ``_UNIT_COLUMNS`` in ``_UNIT_COLUMNS_OCCURRED``.
+_OCCURRED_START: Final = len(_UNIT_COLUMNS.split(","))
+_OCCURRED_END: Final = _OCCURRED_START + 1
 
 
 @dataclass(frozen=True)
@@ -67,17 +106,67 @@ class RecallUnit:
     kind: UnitKind
     body: str = field(repr=False)
     said_at: datetime
+    # When the told event happened (Plan 0083): filled only by a read with ``occurred=True``.
+    occurred: DayWindow | None = field(default=None, repr=False)
 
 
-def _unit(row: Sequence[object]) -> RecallUnit:
+def _unit(row: Sequence[object], *, occurred: bool) -> RecallUnit:
+    """A unit from a row; with *occurred* the row holds the two occurred columns too."""
     kind: UnitKind = "episode" if str(row[2]) == "episode" else "turn"
+    days = (
+        DayWindow(
+            start=date.fromisoformat(str(row[_OCCURRED_START])),
+            end=date.fromisoformat(str(row[_OCCURRED_END])),
+        )
+        if occurred and row[_OCCURRED_START] is not None
+        else None
+    )
     return RecallUnit(
         id=int(str(row[0])),
         record_id=int(str(row[1])),
         kind=kind,
         body=str(row[3]),
         said_at=datetime.fromisoformat(str(row[4])),
+        occurred=days,
     )
+
+
+def _readable(*, occurred: bool) -> str:
+    return _READABLE_OCCURRED if occurred else _READABLE
+
+
+def _columns(*, occurred: bool) -> str:
+    return _UNIT_COLUMNS_OCCURRED if occurred else _UNIT_COLUMNS
+
+
+def _window(
+    since: str | None,
+    until: str | None,
+    first_day: str | None,
+    last_day: str | None,
+    *,
+    occurred: bool,
+) -> dict[str, str | None]:
+    """The window's parameters; with the occurred time on, a window carries its local days too.
+
+    Raises:
+        ValueError: If a window read by the occurred time lacks its local days.
+    """
+    window: dict[str, str | None] = {"since": since, "until": until}
+    if not occurred:
+        return window
+    if since is not None and (first_day is None or last_day is None):
+        raise ValueError("a window read by the occurred time needs its local days")
+    return window | {"first_day": first_day, "last_day": last_day}
+
+
+def occurred_time_on() -> bool:
+    """Whether a turn unit keeps when its told event happened (Plan 0083 D-1).
+
+    The one place the three switches meet: ``OCCURRED_TIME_ENABLED`` works only with
+    ``MEMORY_ENABLED`` and ``RECALL_ENABLED``.
+    """
+    return settings.memory_enabled and settings.recall_enabled and settings.occurred_time_enabled
 
 
 def tells_something(text: str) -> bool:
@@ -103,6 +192,7 @@ def tells_something(text: str) -> bool:
         sensitive=settings.sensitive_read_enabled,
         secrets=settings.memory_enabled,
         alta=settings.sensitive_read_enabled and settings.alta_read_enabled,
+        occurred=occurred_time_on(),
     )
     return resolution.need is InformationNeed.GENERIC_CONVERSATION
 
@@ -118,12 +208,25 @@ async def _insert(
     said_at: str,
     sensitivity: RecallSensitivity,
     correlation_id: str | None,
+    occurred: DayWindow | None = None,
 ) -> int:
+    start, end = (None, None) if occurred is None else (occurred.start, occurred.end)
     cursor = await conn.execute(
         "INSERT INTO recall_units (owner_entity_id, source_record_id, episode_id, kind, body, "
-        "said_at, visibility, sensitivity, correlation_id) "
-        "VALUES (?, ?, ?, ?, ?, ?, 'personal', ?, ?)",
-        (owner_entity_id, record_id, episode_id, kind, body, said_at, sensitivity, correlation_id),
+        "said_at, visibility, sensitivity, correlation_id, occurred_start, occurred_end) "
+        "VALUES (?, ?, ?, ?, ?, ?, 'personal', ?, ?, ?, ?)",
+        (
+            owner_entity_id,
+            record_id,
+            episode_id,
+            kind,
+            body,
+            said_at,
+            sensitivity,
+            correlation_id,
+            None if start is None else start.isoformat(),
+            None if end is None else end.isoformat(),
+        ),
     )
     unit_id = int(cursor.lastrowid or 0)
     await cursor.close()
@@ -131,7 +234,12 @@ async def _insert(
 
 
 async def insert_turn_unit(
-    conn: aiosqlite.Connection, *, record_id: int, owner_entity_id: int, turn: RecordedTurn
+    conn: aiosqlite.Connection,
+    *,
+    record_id: int,
+    owner_entity_id: int,
+    turn: RecordedTurn,
+    occurred: DayWindow | None = None,
 ) -> int:
     """Write the unit of one verified turn, inside the caller's open transaction.
 
@@ -140,6 +248,7 @@ async def insert_turn_unit(
         record_id: The record the turn was appended to.
         owner_entity_id: The owner of the record.
         turn: The exchange; only its ``heard`` text becomes the unit, never ``said``.
+        occurred: When the told event happened, as local days (Plan 0083), or ``None``.
 
     Returns:
         The new unit's id.
@@ -161,6 +270,7 @@ async def insert_turn_unit(
         said_at=_iso(turn.at),
         sensitivity=classify_turn_text(turn.heard),
         correlation_id=str(turn.correlation_id),
+        occurred=occurred,
     )
 
 
@@ -285,6 +395,9 @@ async def lexical_hits(
     until: str | None,
     now: str,
     limit: int,
+    first_day: str | None = None,
+    last_day: str | None = None,
+    occurred: bool = False,
 ) -> list[int]:
     """Return the readable units whose words match any term, best ``bm25`` first.
 
@@ -295,6 +408,9 @@ async def lexical_hits(
         until: Exclusive upper bound of ``said_at``, or ``None``.
         now: The current time; expired records are skipped.
         limit: How many ids at most.
+        first_day: The window's first local day (ISO), needed with ``occurred``.
+        last_day: The window's last local day (ISO), needed with ``occurred``.
+        occurred: Whether the window matches by the occurred interval (Plan 0083 D-9).
 
     Returns:
         The unit ids.
@@ -305,15 +421,14 @@ async def lexical_hits(
     cursor = await db.get_conn().execute(
         "SELECT u.id FROM recall_units_fts f JOIN recall_units u ON u.id = f.rowid "  # noqa: S608
         "JOIN conversation_records r ON r.id = u.source_record_id "
-        f"WHERE recall_units_fts MATCH :match AND {_READABLE} "
+        f"WHERE recall_units_fts MATCH :match AND {_readable(occurred=occurred)} "
         "ORDER BY bm25(recall_units_fts), u.id DESC LIMIT :limit",
         {
             "match": expression,
             "owner": owner_entity_id,
             "now": now,
-            "since": since,
-            "until": until,
             "limit": limit,
+            **_window(since, until, first_day, last_day, occurred=occurred),
         },
     )
     rows = await cursor.fetchall()
@@ -329,11 +444,15 @@ async def vector_hits(
     until: str | None,
     now: str,
     k: int,
+    first_day: str | None = None,
+    last_day: str | None = None,
+    occurred: bool = False,
 ) -> list[tuple[int, float]]:
     """Return the nearest readable units as ``(unit_id, cosine distance)``, nearest first.
 
     The KNN query itself filters by owner (the partition key) and sensitivity ``normal``; the
-    window and the expiry are applied to its *k* neighbours.
+    window and the expiry are applied to its *k* neighbours, by the occurred interval when
+    *occurred* (Plan 0083 D-9; *first_day* and *last_day* as in ``lexical_hits``).
     """
     cursor = await db.get_conn().execute(
         "WITH knn AS (SELECT rowid AS id, distance FROM recall_units_vec "  # noqa: S608
@@ -341,14 +460,13 @@ async def vector_hits(
         "AND sensitivity = 'normal') "
         "SELECT u.id, knn.distance FROM knn JOIN recall_units u ON u.id = knn.id "
         "JOIN conversation_records r ON r.id = u.source_record_id "
-        f"WHERE {_READABLE} ORDER BY knn.distance, u.id DESC",
+        f"WHERE {_readable(occurred=occurred)} ORDER BY knn.distance, u.id DESC",
         {
             "vector": sqlite_vec.serialize_float32(vector),
             "k": k,
             "owner": owner_entity_id,
             "now": now,
-            "since": since,
-            "until": until,
+            **_window(since, until, first_day, last_day, occurred=occurred),
         },
     )
     rows = await cursor.fetchall()
@@ -356,7 +474,9 @@ async def vector_hits(
     return [(int(row[0]), float(row[1])) for row in rows]
 
 
-async def units_by_id(ids: Sequence[int], *, owner_entity_id: int, now: str) -> list[RecallUnit]:
+async def units_by_id(
+    ids: Sequence[int], *, owner_entity_id: int, now: str, occurred: bool = False
+) -> list[RecallUnit]:
     """Return the units still readable among *ids*, in the order given.
 
     The statement that returns the text applies the same filters as every other read (owner,
@@ -368,6 +488,7 @@ async def units_by_id(ids: Sequence[int], *, owner_entity_id: int, now: str) -> 
         ids: Unit ids found by a search, in ranking order.
         owner_entity_id: The owner whose units may be read.
         now: The current time; expired records are skipped.
+        occurred: Whether each unit carries its occurred interval (Plan 0083).
 
     Returns:
         The readable units among *ids*, in the order of *ids*.
@@ -376,25 +497,32 @@ async def units_by_id(ids: Sequence[int], *, owner_entity_id: int, now: str) -> 
         return []
     marks = ", ".join(f":id{index}" for index in range(len(ids)))
     cursor = await db.get_conn().execute(
-        f"SELECT {_UNIT_COLUMNS} FROM recall_units u "  # noqa: S608
+        f"SELECT {_columns(occurred=occurred)} FROM recall_units u "  # noqa: S608
         "JOIN conversation_records r ON r.id = u.source_record_id "
-        f"WHERE u.id IN ({marks}) AND {_READABLE}",
+        f"WHERE u.id IN ({marks}) AND {_readable(occurred=occurred)}",
         {
             **{f"id{index}": unit_id for index, unit_id in enumerate(ids)},
             "owner": owner_entity_id,
             "now": now,
-            "since": None,
-            "until": None,
+            **_window(None, None, None, None, occurred=occurred),
         },
     )
     rows = await cursor.fetchall()
     await cursor.close()
-    found = {unit.id: unit for unit in (_unit(tuple(row)) for row in rows)}
+    found = {unit.id: unit for unit in (_unit(tuple(row), occurred=occurred) for row in rows)}
     return [found[unit_id] for unit_id in ids if unit_id in found]
 
 
 async def recent_units(
-    *, owner_entity_id: int, since: str, until: str, now: str, limit: int
+    *,
+    owner_entity_id: int,
+    since: str,
+    until: str,
+    now: str,
+    limit: int,
+    first_day: str | None = None,
+    last_day: str | None = None,
+    occurred: bool = False,
 ) -> list[RecallUnit]:
     """Return the episodes said in the window, newest first; its turn units when it has none.
 
@@ -404,29 +532,29 @@ async def recent_units(
         until: Exclusive upper bound of ``said_at``.
         now: The current time; expired records are skipped.
         limit: How many units at most.
+        first_day: The window's first local day (ISO), needed with ``occurred``.
+        last_day: The window's last local day (ISO), needed with ``occurred``.
+        occurred: Whether the window matches by the occurred interval and an episode follows the
+            turn units of its record (Plan 0083 D-9).
 
     Returns:
         The readable units.
     """
-    for kind in ("episode", "turn"):
-        cursor = await db.get_conn().execute(
-            f"SELECT {_UNIT_COLUMNS} FROM recall_units u "  # noqa: S608
-            "JOIN conversation_records r ON r.id = u.source_record_id "
-            f"WHERE u.kind = :kind AND {_READABLE} ORDER BY u.said_at DESC, u.id DESC "
-            "LIMIT :limit",
-            {
-                "kind": kind,
-                "owner": owner_entity_id,
-                "now": now,
-                "since": since,
-                "until": until,
-                "limit": limit,
-            },
-        )
-        rows = list(await cursor.fetchall())
-        await cursor.close()
-        if rows:
-            return [_unit(tuple(row)) for row in rows]
+    window = _window(since, until, first_day, last_day, occurred=occurred)
+    for group in _RECENT_GROUPS_OCCURRED if occurred else _RECENT_GROUPS:
+        units: list[RecallUnit] = []
+        for kind_clause, kind in group:
+            cursor = await db.get_conn().execute(
+                f"SELECT {_columns(occurred=occurred)} FROM recall_units u "  # noqa: S608
+                "JOIN conversation_records r ON r.id = u.source_record_id "
+                f"WHERE {kind_clause} AND {_readable(occurred=occurred)} "
+                "ORDER BY u.said_at DESC, u.id DESC LIMIT :limit",
+                {"kind": kind, "owner": owner_entity_id, "now": now, "limit": limit, **window},
+            )
+            units += [_unit(tuple(row), occurred=occurred) for row in await cursor.fetchall()]
+            await cursor.close()
+        if units:
+            return units[:limit]
     return []
 
 

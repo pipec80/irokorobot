@@ -366,12 +366,25 @@ async def test_the_new_profile_topics_read_their_predicate(
     seams.contacts.assert_not_awaited()
 
 
+# The attributes every log record has; what is left are the ``extra`` fields a call adds.
+_RECORD_KEYS = frozenset(logging.LogRecord("n", logging.INFO, "p", 1, "m", None, None).__dict__) | {
+    "message",
+    "asctime",
+}
+
+
 async def test_no_value_reaches_a_log_line(caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.DEBUG)
     for words in (("mi", "hija"), ("mi", "tio"), ("los", "bomberos"), ("mis", "contactos")):
         await _reply(_phone(*words), _Seams())
     await _reply(SensitiveQuery(topic=SensitiveTopic.KEY_HOLDERS, keywords=()), _Seams())
-    logged = " ".join(record.getMessage() + str(record.__dict__) for record in caplog.records)
+    # The message and the ``extra`` fields only: a record's own attributes (its time in
+    # milliseconds, the process id) can hold «569» by chance (flaky, found on 2026-11-12).
+    logged = " ".join(
+        record.getMessage()
+        + str({key: value for key, value in record.__dict__.items() if key not in _RECORD_KEYS})
+        for record in caplog.records
+    )
     assert "Canary" not in logged
     assert "569" not in logged
     assert "hija" not in logged

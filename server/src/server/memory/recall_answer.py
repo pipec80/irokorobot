@@ -19,7 +19,7 @@ import httpx
 from server.claim_guard import neutralize_memory_claims
 from server.cognition.recall_cues import WhenKind
 from server.cognition.response_plan import NO_MEMORY, NOT_REGISTERED
-from server.cognition.spoken_dates import date_label
+from server.cognition.spoken_dates import date_label, occurred_label
 from server.exceptions import LLMError
 from server.llm_transport import ollama_chat
 from server.sentences import split_first_sentence
@@ -118,11 +118,13 @@ def _template(hit: RecallHit, *, today: date, tz: ZoneInfo) -> str:
 
 
 def word_when(hits: Sequence[RecallHit], kind: WhenKind, *, today: date, tz: ZoneInfo) -> str:
-    """Say the day the first found unit was told, never a date of the event (Plan 0080 D-9).
+    """Say when the first found unit's event happened, or the day it was told (Plan 0080 D-9).
 
-    The unit stores only when it was said, so «¿cuándo te conté…?» is answered by that day and
-    «¿cuándo fui…?» says first that the date is not recorded. No model is asked, so «me lo
-    contaste» can never become «fuiste».
+    «¿Cuándo fui…?» says when it happened when the unit carries an occurred interval (Plan 0083
+    D-10: «Fue el sábado 7 de noviembre. Me lo contaste ayer.»); otherwise the date is not
+    recorded and the told day is said. «¿Cuándo te conté…?» is answered by the told day. Every
+    answer names which time it reports. No model is asked, so «me lo contaste» can never become
+    «fuiste».
 
     Args:
         hits: At least one found unit, best first; only the first is reported.
@@ -136,7 +138,16 @@ def word_when(hits: Sequence[RecallHit], kind: WhenKind, *, today: date, tz: Zon
     hit = hits[0]
     label = date_label(hit.unit.said_at, today=today, tz=tz)
     episode = hit.unit.kind == "episode"
-    if kind is WhenKind.TOLD:
+    asked = kind
+    if kind is WhenKind.HAPPENED and hit.unit.occurred is not None:
+        try:
+            return _when_it_happened(hit, told=label, today=today, tz=tz)
+        except ValueError:
+            # The date is stored but no spoken span says it: the told day is said instead, never
+            # «no tengo registrado» (Plan 0083 D-11). No date reaches the log.
+            logger.warning("Recall when-answer from the told day (ValueError)")
+            asked = WhenKind.TOLD
+    if asked is WhenKind.TOLD:
         return (
             f"{_capitalised(label)} hablamos de eso."
             if episode
@@ -148,6 +159,25 @@ def word_when(hits: Sequence[RecallHit], kind: WhenKind, *, today: date, tz: Zon
         else f"{label} me contaste esto: {_quote(hit.unit.body)}"
     )
     return f"{_DATE_NOT_RECORDED} Sí recuerdo que {told}"
+
+
+def _when_it_happened(hit: RecallHit, *, told: str, today: date, tz: ZoneInfo) -> str:
+    """The D-10 sentence for a unit with an occurred interval (Plan 0083).
+
+    It quotes the memory, as the told-day answer does (Pipec, 2026-11-12, hardware): when the
+    search found a similar story instead of the one asked about, the owner hears which one.
+
+    Raises:
+        ValueError: If no spoken span describes the unit's window (``occurred_label``).
+    """
+    window = hit.unit.occurred
+    if window is None:
+        raise ValueError("the unit has no occurred interval")
+    happened = occurred_label(window, today=today)
+    quote = _quote(hit.unit.body)
+    if window.start == window.end == hit.unit.said_at.astimezone(tz).date():
+        return f"Fue {happened}, el mismo día que me lo contaste: {quote}"
+    return f"Fue {happened}. {_capitalised(told)} me contaste esto: {quote}"
 
 
 def _first_sentences(text: str) -> str:

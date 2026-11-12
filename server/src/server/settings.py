@@ -178,6 +178,11 @@ class Settings(BaseSettings):
     # recall question is answered from them. Kill-switch, off in the code and on in a delivered
     # robot; it also needs MEMORY_ENABLED and the conversation record. Off: every turn as before.
     recall_enabled: bool = False
+    # When a told event happened (ADR 0037 decisions 3 and 4, Plan 0083): a verified turn that
+    # tells a past event with a spoken time («el sábado fui a la playa») keeps its occurred days,
+    # «¿cuándo fui…?» says them and a recall window matches by them. Kill-switch, off in the code;
+    # it also needs MEMORY_ENABLED and RECALL_ENABLED. Off: every recall as before.
+    occurred_time_enabled: bool = False
     # Reading the owner's sensitive data by voice (ADR 0029, Plan 0079): medications, conditions,
     # allergies, address, birthdays and the security references. Kill-switch, off in the code; it
     # also needs MEMORY_ENABLED. Off: every read question as before.

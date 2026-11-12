@@ -301,12 +301,11 @@ async def test_recent_units_prefer_episodes(owners: tuple[int, int]) -> None:
     owner, _ = owners
     first = await _record(owner)
     turn_id = await _turn_unit(owner, first, "el cerro")
-    window = {
-        "since": "2026-11-03T03:00:00.000000+00:00",
-        "until": "2026-11-04T03:00:00.000000+00:00",
-    }
+    since, until = "2026-11-03T03:00:00.000000+00:00", "2026-11-04T03:00:00.000000+00:00"
 
-    turns_only = await recall_store.recent_units(owner_entity_id=owner, now=_NOW, limit=3, **window)
+    turns_only = await recall_store.recent_units(
+        owner_entity_id=owner, now=_NOW, limit=3, since=since, until=until
+    )
     assert [unit.id for unit in turns_only] == [turn_id]
 
     older = await _episode_unit(
@@ -314,7 +313,7 @@ async def test_recent_units_prefer_episodes(owners: tuple[int, int]) -> None:
     )
     newer = await _episode_unit(owner, await _record(owner), "La persona habló del mate.")
     with_episodes = await recall_store.recent_units(
-        owner_entity_id=owner, now=_NOW, limit=3, **window
+        owner_entity_id=owner, now=_NOW, limit=3, since=since, until=until
     )
 
     assert [unit.id for unit in with_episodes] == [newer, older]

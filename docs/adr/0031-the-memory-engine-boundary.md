@@ -196,7 +196,7 @@ units already work; it becomes a rule for every new source.
 |---|---|
 | **Said** — when the person told it | `said_at` on recall units; the record's turns |
 | **Recorded** — when the engine wrote it | `created_at` columns |
-| **Occurred** — when the told event happened, possibly an interval or imprecise («en 2015», «el verano pasado») | Not stored |
+| **Occurred** — when the told event happened, possibly an interval or imprecise («en 2015», «el verano pasado») | `occurred_start` / `occurred_end` on turn recall units, when the owner said it (*Amended by ADR 0037*, Plan 0083) |
 | **Valid** — while a fact holds («trabajé en Santiago entre 2018 y 2021») | `valid_from`, `valid_to` on V4 |
 
 The semantics are fixed here; columns are added only when a use case needs them, by the plan of
@@ -207,6 +207,11 @@ fui a la playa?» is decided (Plan 0080, 2026-11-09):** the answer says the day 
 selects a fixed table with no model, and `HAPPENED` opens «No tengo registrado cuándo fue. Sí
 recuerdo que {día} me contaste esto: …». No `occurred` column and no migration: the occurred time
 itself stays future, added by the plan of the use case that needs it.
+
+> **Amended by [ADR 0037](0037-the-time-of-memories-and-a-contacts-phone.md) decision 3** (Plan
+> 0083, 2026-11-12): the occurred time is stored when the owner says it, as an interval of local
+> days on the turn recall unit (migration 015), and «¿cuándo fui…?» says it, naming which time it
+> reports; a unit without one keeps the told-day answer above. Still never inferred.
 
 ### 6. Every record says where it came from and what was done to it
 

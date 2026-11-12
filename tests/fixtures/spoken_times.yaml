@@ -1,0 +1,729 @@
+# Plan 0083 Task 1: the one reader of spoken time (D-3 to D-6). `today` defaults to 2026-11-12, a
+# Thursday. Each `times` case gives the window toward the past and toward the future, or null.
+# `legacy` is filled by .superpowers/sdd/0083-spoken-time-and-when-it-happened/record_legacy.py
+# from the code of `main` before the reader changed: what parse_spoken_window and
+# strip_window_words give for each phrase, so the legacy walk is proved unchanged.
+times:
+  - phrase: el sábado fui a la playa
+    past: {start: 2026-11-07, end: 2026-11-07, ambiguous: true}
+    future: {start: 2026-11-14, end: 2026-11-14, ambiguous: true}
+  - phrase: el jueves
+    past: {start: 2026-11-05, end: 2026-11-05, ambiguous: true}
+    future: {start: 2026-11-19, end: 2026-11-19, ambiguous: true}
+  - phrase: este sábado
+    past: {start: 2026-11-07, end: 2026-11-07, ambiguous: true}
+    future: {start: 2026-11-14, end: 2026-11-14, ambiguous: true}
+  - phrase: el sábado pasado
+    past: {start: 2026-11-07, end: 2026-11-07, ambiguous: false}
+    future: null
+  - phrase: el próximo sábado
+    past: null
+    future: {start: 2026-11-14, end: 2026-11-14, ambiguous: false}
+  - phrase: el sábado que viene
+    past: null
+    future: {start: 2026-11-14, end: 2026-11-14, ambiguous: false}
+  - phrase: la semana pasada
+    past: {start: 2026-11-02, end: 2026-11-08, ambiguous: false}
+    future: null
+  - phrase: la próxima semana
+    past: null
+    future: {start: 2026-11-16, end: 2026-11-22, ambiguous: false}
+  - phrase: la semana que viene
+    past: null
+    future: {start: 2026-11-16, end: 2026-11-22, ambiguous: false}
+  - phrase: el mes pasado
+    past: {start: 2026-10-01, end: 2026-10-31, ambiguous: false}
+    future: null
+  - phrase: el próximo mes
+    past: null
+    future: {start: 2026-12-01, end: 2026-12-31, ambiguous: false}
+  - phrase: el mes que viene
+    past: null
+    future: {start: 2026-12-01, end: 2026-12-31, ambiguous: false}
+  - phrase: el año pasado fui a la nieve
+    past: {start: 2025-01-01, end: 2025-12-31, ambiguous: false}
+    future: null
+  - phrase: el próximo año
+    past: null
+    future: {start: 2027-01-01, end: 2027-12-31, ambiguous: false}
+  - phrase: el año que viene
+    past: null
+    future: {start: 2027-01-01, end: 2027-12-31, ambiguous: false}
+  - phrase: el verano pasado
+    past: {start: 2025-12-01, end: 2026-02-28, ambiguous: false}
+    future: null
+  - phrase: la primavera pasada
+    past: {start: 2025-09-01, end: 2025-11-30, ambiguous: false}
+    future: null
+  - phrase: el próximo verano
+    past: null
+    future: {start: 2026-12-01, end: 2027-02-28, ambiguous: false}
+  - phrase: el invierno que viene
+    past: null
+    future: {start: 2027-06-01, end: 2027-08-31, ambiguous: false}
+  - phrase: el verano de 2015
+    past: {start: 2014-12-01, end: 2015-02-28, ambiguous: false}
+    future: null
+  - phrase: en el invierno de 2020
+    past: {start: 2020-06-01, end: 2020-08-31, ambiguous: false}
+    future: null
+  - phrase: en verano
+    past: {start: 2025-12-01, end: 2026-02-28, ambiguous: true}
+    future: {start: 2026-12-01, end: 2027-02-28, ambiguous: true}
+  - phrase: en la primavera
+    past: {start: 2026-09-01, end: 2026-11-30, ambiguous: true}
+    future: {start: 2026-09-01, end: 2026-11-30, ambiguous: true}
+  - phrase: en marzo
+    past: {start: 2026-03-01, end: 2026-03-31, ambiguous: true}
+    future: {start: 2027-03-01, end: 2027-03-31, ambiguous: true}
+  - phrase: en noviembre
+    past: {start: 2026-11-01, end: 2026-11-30, ambiguous: true}
+    future: {start: 2026-11-01, end: 2026-11-30, ambiguous: true}
+  - phrase: en marzo de 2015
+    past: {start: 2015-03-01, end: 2015-03-31, ambiguous: false}
+    future: null
+  - phrase: en marzo del 2015
+    past: {start: 2015-03-01, end: 2015-03-31, ambiguous: false}
+    future: null
+  - phrase: el 3 de marzo
+    past: {start: 2026-03-03, end: 2026-03-03, ambiguous: true}
+    future: {start: 2027-03-03, end: 2027-03-03, ambiguous: true}
+  - phrase: el 12 de noviembre
+    past: {start: 2026-11-12, end: 2026-11-12, ambiguous: true}
+    future: {start: 2026-11-12, end: 2026-11-12, ambiguous: true}
+  - phrase: el 3 de marzo de 2015
+    past: {start: 2015-03-03, end: 2015-03-03, ambiguous: false}
+    future: null
+  - phrase: el 31 de febrero
+    past: null
+    future: null
+  - phrase: en 2015 viví en el norte
+    past: {start: 2015-01-01, end: 2015-12-31, ambiguous: false}
+    future: null
+  - phrase: el año 2015
+    past: {start: 2015-01-01, end: 2015-12-31, ambiguous: false}
+    future: null
+  - phrase: en el año 2015
+    past: {start: 2015-01-01, end: 2015-12-31, ambiguous: false}
+    future: null
+  - phrase: el 2015
+    past: {start: 2015-01-01, end: 2015-12-31, ambiguous: false}
+    future: null
+  - phrase: en 2026
+    past: {start: 2026-01-01, end: 2026-12-31, ambiguous: true}
+    future: {start: 2026-01-01, end: 2026-12-31, ambiguous: true}
+  - phrase: en 2031
+    past: null
+    future: {start: 2031-01-01, end: 2031-12-31, ambiguous: false}
+  - phrase: en 2032
+    past: null
+    future: null
+  - phrase: en 1899
+    past: null
+    future: null
+  # A dated phrase out of bounds takes its words along: «marzo» alone is never read instead.
+  - phrase: en marzo de 2040
+    past: null
+    future: null
+  - phrase: ayer fui al cine
+    past: {start: 2026-11-11, end: 2026-11-11, ambiguous: false}
+    future: null
+  - phrase: anteayer
+    past: {start: 2026-11-10, end: 2026-11-10, ambiguous: false}
+    future: null
+  - phrase: antes de ayer
+    past: {start: 2026-11-10, end: 2026-11-10, ambiguous: false}
+    future: null
+  - phrase: hoy
+    past: {start: 2026-11-12, end: 2026-11-12, ambiguous: true}
+    future: {start: 2026-11-12, end: 2026-11-12, ambiguous: true}
+  - phrase: hoy día
+    past: {start: 2026-11-12, end: 2026-11-12, ambiguous: true}
+    future: {start: 2026-11-12, end: 2026-11-12, ambiguous: true}
+  - phrase: esta mañana fui al médico
+    past: {start: 2026-11-12, end: 2026-11-12, ambiguous: true}
+    future: {start: 2026-11-12, end: 2026-11-12, ambiguous: true}
+  - phrase: esta noche
+    past: {start: 2026-11-12, end: 2026-11-12, ambiguous: true}
+    future: {start: 2026-11-12, end: 2026-11-12, ambiguous: true}
+  - phrase: mañana voy al cine
+    past: null
+    future: {start: 2026-11-13, end: 2026-11-13, ambiguous: false}
+  - phrase: pasado mañana
+    past: null
+    future: {start: 2026-11-14, end: 2026-11-14, ambiguous: false}
+  - phrase: mañana en la mañana voy al médico
+    past: null
+    future: {start: 2026-11-13, end: 2026-11-13, ambiguous: false}
+  - phrase: hola mañana
+    past: null
+    future: {start: 2026-11-13, end: 2026-11-13, ambiguous: false}
+  # Review focus 1: the morning is no time.
+  - phrase: en la mañana fui al médico
+    past: null
+    future: null
+  - phrase: por la mañana camino
+    past: null
+    future: null
+  - phrase: a las ocho de la mañana
+    past: null
+    future: null
+  # A year needs its lead word.
+  - phrase: pagué 2015 pesos
+    past: null
+    future: null
+  # D-6: phrases the reader does not know («hace N …» joined on 2026-11-12, Pipec).
+  - phrase: hace dos años fui al sur
+    past: {start: 2024-01-01, end: 2024-12-31, ambiguous: false}
+    future: null
+  - phrase: este año
+    past: null
+    future: null
+  - phrase: en dos mil quince
+    past: null
+    future: null
+  - phrase: el fin de semana
+    past: null
+    future: null
+  - phrase: los lunes juego fútbol
+    past: null
+    future: null
+  - phrase: antier
+    past: null
+    future: null
+  - phrase: del 3 al 5
+    past: null
+    future: null
+  - phrase: cuando era chico
+    past: null
+    future: null
+  # A bare season word is no time (D-6); with its year it is. Found by the whole-branch review.
+  - phrase: este verano fui a la playa
+    past: null
+    future: null
+  - phrase: esta primavera
+    past: null
+    future: null
+  - phrase: las vacaciones de verano
+    past: null
+    future: null
+  - phrase: verano de 2015
+    past: {start: 2014-12-01, end: 2015-02-28, ambiguous: false}
+    future: null
+  # «sábado pasado» without «el» is the past, as the legacy walk read it.
+  - phrase: sábado pasado fui al cine
+    past: {start: 2026-11-07, end: 2026-11-07, ambiguous: false}
+    future: null
+  # Pipec, 2026-11-12 (hardware): «… del año pasado», «hace N …» and «en / dentro de N días».
+  - phrase: el 3 de noviembre del año pasado
+    past: {start: 2025-11-03, end: 2025-11-03, ambiguous: false}
+    future: null
+  - phrase: el 14 de noviembre del año pasado
+    past: {start: 2025-11-14, end: 2025-11-14, ambiguous: false}
+    future: null
+  - phrase: en marzo del año pasado
+    past: {start: 2025-03-01, end: 2025-03-31, ambiguous: false}
+    future: null
+  - phrase: en el verano del año pasado
+    past: {start: 2024-12-01, end: 2025-02-28, ambiguous: false}
+    future: null
+  - phrase: hace 3 días fui al cine
+    past: {start: 2026-11-09, end: 2026-11-09, ambiguous: false}
+    future: null
+  - phrase: hace tres días
+    past: {start: 2026-11-09, end: 2026-11-09, ambiguous: false}
+    future: null
+  - phrase: hace un día
+    past: {start: 2026-11-11, end: 2026-11-11, ambiguous: false}
+    future: null
+  - phrase: hace una semana
+    past: {start: 2026-11-02, end: 2026-11-08, ambiguous: false}
+    future: null
+  - phrase: hace 2 semanas
+    past: {start: 2026-10-26, end: 2026-11-01, ambiguous: false}
+    future: null
+  - phrase: hace un mes
+    past: {start: 2026-10-01, end: 2026-10-31, ambiguous: false}
+    future: null
+  - phrase: hace dos meses
+    past: {start: 2026-09-01, end: 2026-09-30, ambiguous: false}
+    future: null
+  - phrase: hace un año
+    past: {start: 2025-01-01, end: 2025-12-31, ambiguous: false}
+    future: null
+  - phrase: hace 10 años viví en el norte
+    past: {start: 2016-01-01, end: 2016-12-31, ambiguous: false}
+    future: null
+  - phrase: en 3 días más voy a comer con mi mamá
+    past: null
+    future: {start: 2026-11-15, end: 2026-11-15, ambiguous: false}
+  - phrase: dentro de tres días
+    past: null
+    future: {start: 2026-11-15, end: 2026-11-15, ambiguous: false}
+  - phrase: en 3 días
+    past: null
+    future: {start: 2026-11-15, end: 2026-11-15, ambiguous: false}
+  - phrase: hace un rato
+    past: null
+    future: null
+  # Review focus 2: the year turns and February ends.
+  - phrase: el próximo mes
+    today: 2026-12-30
+    past: null
+    future: {start: 2027-01-01, end: 2027-01-31, ambiguous: false}
+  - phrase: pasado mañana
+    today: 2026-12-30
+    past: null
+    future: {start: 2027-01-01, end: 2027-01-01, ambiguous: false}
+  - phrase: la próxima semana
+    today: 2026-12-30
+    past: null
+    future: {start: 2027-01-04, end: 2027-01-10, ambiguous: false}
+  - phrase: el verano pasado
+    today: 2027-01-15
+    past: {start: 2025-12-01, end: 2026-02-28, ambiguous: false}
+    future: null
+  - phrase: en verano
+    today: 2027-01-15
+    past: {start: 2026-12-01, end: 2027-02-28, ambiguous: true}
+    future: {start: 2026-12-01, end: 2027-02-28, ambiguous: true}
+  - phrase: el verano de 2028
+    today: 2026-11-12
+    past: null
+    future: {start: 2027-12-01, end: 2028-02-29, ambiguous: false}
+
+# How many time phrases a sentence holds; a longer phrase wins over a shorter one inside it.
+counts:
+  - {text: fui al cine con mi hermana, count: 0}
+  - {text: ayer fui al cine, count: 1}
+  - {text: pasado mañana voy al médico, count: 1}
+  - {text: el sábado pasado fui a la playa, count: 1}
+  - {text: el 3 de marzo de 2015 me casé, count: 1}
+  - {text: ayer fui al médico y mañana voy al cine, count: 2}
+  - {text: el verano de 2015 y el año pasado, count: 2}
+
+# What is left once every time phrase is removed.
+strips:
+  - {text: qué hice el año pasado, stripped: que hice}
+  - {text: qué hice en 2015, stripped: que hice}
+  - {text: qué hice el verano pasado en la playa, stripped: que hice en la playa}
+  - {text: pasado mañana voy al médico, stripped: voy al medico}
+  - {text: en la mañana fui al médico, stripped: en la manana fui al medico}
+
+# How an occurred window is said (D-11), with `today` 2026-11-12.
+labels:
+  - {start: 2026-11-12, end: 2026-11-12, label: hoy}
+  - {start: 2026-11-11, end: 2026-11-11, label: ayer}
+  - {start: 2026-11-10, end: 2026-11-10, label: anteayer}
+  - {start: 2026-11-07, end: 2026-11-07, label: el sábado 7 de noviembre}
+  - {start: 2025-11-08, end: 2025-11-08, label: el 8 de noviembre de 2025}
+  - {start: 2026-11-02, end: 2026-11-08, label: la semana del lunes 2 de noviembre}
+  - {start: 2025-11-03, end: 2025-11-09, label: la semana del lunes 3 de noviembre de 2025}
+  - {start: 2026-03-01, end: 2026-03-31, label: en marzo}
+  - {start: 2015-03-01, end: 2015-03-31, label: en marzo de 2015}
+  - {start: 2014-12-01, end: 2015-02-28, label: en el verano de 2015}
+  - {start: 2020-03-01, end: 2020-05-31, label: en el otoño de 2020}
+  - {start: 2025-09-01, end: 2025-11-30, label: en la primavera de 2025}
+  - {start: 2015-01-01, end: 2015-12-31, label: en 2015}
+
+legacy:
+- text: el sábado fui a la playa
+  today: '2026-11-12'
+  start: '2026-11-07'
+  end: '2026-11-07'
+  stripped: fui a la playa
+- text: el jueves
+  today: '2026-11-12'
+  start: '2026-11-05'
+  end: '2026-11-05'
+  stripped: ''
+- text: este sábado
+  today: '2026-11-12'
+  start: '2026-11-07'
+  end: '2026-11-07'
+  stripped: ''
+- text: el sábado pasado
+  today: '2026-11-12'
+  start: '2026-11-07'
+  end: '2026-11-07'
+  stripped: ''
+- text: el próximo sábado
+  today: '2026-11-12'
+  start: '2026-11-07'
+  end: '2026-11-07'
+  stripped: el proximo
+- text: el sábado que viene
+  today: '2026-11-12'
+  start: '2026-11-07'
+  end: '2026-11-07'
+  stripped: que viene
+- text: la semana pasada
+  today: '2026-11-12'
+  start: '2026-11-02'
+  end: '2026-11-08'
+  stripped: ''
+- text: la próxima semana
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: la proxima semana
+- text: la semana que viene
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: la semana que viene
+- text: el mes pasado
+  today: '2026-11-12'
+  start: '2026-10-01'
+  end: '2026-10-31'
+  stripped: ''
+- text: el próximo mes
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: el proximo mes
+- text: el mes que viene
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: el mes que viene
+- text: el año pasado fui a la nieve
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: el ano pasado fui a la nieve
+- text: el próximo año
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: el proximo ano
+- text: el año que viene
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: el ano que viene
+- text: el verano pasado
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: el verano pasado
+- text: la primavera pasada
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: la primavera pasada
+- text: el próximo verano
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: el proximo verano
+- text: el invierno que viene
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: el invierno que viene
+- text: el verano de 2015
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: el verano de 2015
+- text: en el invierno de 2020
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: en el invierno de 2020
+- text: en verano
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: en verano
+- text: en la primavera
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: en la primavera
+- text: en marzo
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: en marzo
+- text: en noviembre
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: en noviembre
+- text: en marzo de 2015
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: en marzo de 2015
+- text: en marzo del 2015
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: en marzo del 2015
+- text: el 3 de marzo
+  today: '2026-11-12'
+  start: '2026-03-03'
+  end: '2026-03-03'
+  stripped: ''
+- text: el 12 de noviembre
+  today: '2026-11-12'
+  start: '2026-11-12'
+  end: '2026-11-12'
+  stripped: ''
+- text: el 3 de marzo de 2015
+  today: '2026-11-12'
+  start: '2026-03-03'
+  end: '2026-03-03'
+  stripped: de 2015
+- text: el 31 de febrero
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: ''
+- text: en 2015 viví en el norte
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: en 2015 vivi en el norte
+- text: el año 2015
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: el ano 2015
+- text: en el año 2015
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: en el ano 2015
+- text: el 2015
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: el 2015
+- text: en 2026
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: en 2026
+- text: en 2031
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: en 2031
+- text: en 2032
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: en 2032
+- text: en 1899
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: en 1899
+- text: ayer fui al cine
+  today: '2026-11-12'
+  start: '2026-11-11'
+  end: '2026-11-11'
+  stripped: fui al cine
+- text: anteayer
+  today: '2026-11-12'
+  start: '2026-11-10'
+  end: '2026-11-10'
+  stripped: ''
+- text: antes de ayer
+  today: '2026-11-12'
+  start: '2026-11-10'
+  end: '2026-11-10'
+  stripped: ''
+- text: hoy
+  today: '2026-11-12'
+  start: '2026-11-12'
+  end: '2026-11-12'
+  stripped: ''
+- text: hoy día
+  today: '2026-11-12'
+  start: '2026-11-12'
+  end: '2026-11-12'
+  stripped: ''
+- text: esta mañana fui al médico
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: esta manana fui al medico
+- text: esta noche
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: esta noche
+- text: mañana voy al cine
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: manana voy al cine
+- text: pasado mañana
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: pasado manana
+- text: mañana en la mañana voy al médico
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: manana en la manana voy al medico
+- text: hola mañana
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: hola manana
+- text: en la mañana fui al médico
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: en la manana fui al medico
+- text: por la mañana camino
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: por la manana camino
+- text: a las ocho de la mañana
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: a las ocho de la manana
+- text: pagué 2015 pesos
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: pague 2015 pesos
+- text: hace dos años fui al sur
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: hace dos anos fui al sur
+- text: este año
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: este ano
+- text: en dos mil quince
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: en dos mil quince
+- text: el fin de semana
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: el fin de semana
+- text: los lunes juego fútbol
+  today: '2026-11-12'
+  start: '2026-11-09'
+  end: '2026-11-09'
+  stripped: los juego futbol
+- text: antier
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: antier
+- text: del 3 al 5
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: del 3 al 5
+- text: cuando era chico
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: cuando era chico
+- text: el próximo mes
+  today: '2026-12-30'
+  start: null
+  end: null
+  stripped: el proximo mes
+- text: pasado mañana
+  today: '2026-12-30'
+  start: null
+  end: null
+  stripped: pasado manana
+- text: la próxima semana
+  today: '2026-12-30'
+  start: null
+  end: null
+  stripped: la proxima semana
+- text: el verano pasado
+  today: '2027-01-15'
+  start: null
+  end: null
+  stripped: el verano pasado
+- text: en verano
+  today: '2027-01-15'
+  start: null
+  end: null
+  stripped: en verano
+- text: el verano de 2028
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: el verano de 2028
+- text: fui al cine con mi hermana
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: fui al cine con mi hermana
+- text: ayer fui al cine
+  today: '2026-11-12'
+  start: '2026-11-11'
+  end: '2026-11-11'
+  stripped: fui al cine
+- text: pasado mañana voy al médico
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: pasado manana voy al medico
+- text: el sábado pasado fui a la playa
+  today: '2026-11-12'
+  start: '2026-11-07'
+  end: '2026-11-07'
+  stripped: fui a la playa
+- text: el 3 de marzo de 2015 me casé
+  today: '2026-11-12'
+  start: '2026-03-03'
+  end: '2026-03-03'
+  stripped: de 2015 me case
+- text: ayer fui al médico y mañana voy al cine
+  today: '2026-11-12'
+  start: '2026-11-11'
+  end: '2026-11-11'
+  stripped: fui al medico y manana voy al cine
+- text: el verano de 2015 y el año pasado
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: el verano de 2015 y el ano pasado
+- text: qué hice el año pasado
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: que hice el ano pasado
+- text: qué hice en 2015
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: que hice en 2015
+- text: qué hice el verano pasado en la playa
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: que hice el verano pasado en la playa
+- text: pasado mañana voy al médico
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: pasado manana voy al medico
+- text: en la mañana fui al médico
+  today: '2026-11-12'
+  start: null
+  end: null
+  stripped: en la manana fui al medico
