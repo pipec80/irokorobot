@@ -33,6 +33,7 @@ __all__ = [
     "count_spoken_times",
     "date_label",
     "day_month_label",
+    "near_day_label",
     "occurred_label",
     "parse_spoken_window",
     "read_spoken_time",
@@ -545,7 +546,7 @@ def date_label(said_at: datetime, *, today: date, tz: ZoneInfo) -> str:
     """
     day = said_at.astimezone(tz).date()
     back = (today - day).days
-    near = _near_label(back)
+    near = near_day_label(back)
     if near is not None:
         return near
     if _ANTEAYER_DAYS < back <= _LAST_WEEKDAY_LABEL_DAYS:
@@ -553,8 +554,15 @@ def date_label(said_at: datetime, *, today: date, tz: ZoneInfo) -> str:
     return day_month_label(day) + _other_year(day.year, today)
 
 
-def _near_label(back: int) -> str | None:
-    """«hoy», «ayer» or «anteayer» for a day that many days back, else ``None``."""
+def near_day_label(back: int) -> str | None:
+    """Return how a near day is said.
+
+    Args:
+        back: How many days before today the day is.
+
+    Returns:
+        «hoy», «ayer» or «anteayer» for 0, 1 or 2 days back; ``None`` for any other distance.
+    """
     match back:
         case 0:
             return "hoy"
@@ -583,7 +591,7 @@ def _other_year(year: int, today: date) -> str:
 
 
 def _day_label(day: date, today: date) -> str:
-    near = _near_label((today - day).days)
+    near = near_day_label((today - day).days)
     if near is not None:
         return near
     if day.year == today.year:
