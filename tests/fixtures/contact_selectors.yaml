@@ -1,0 +1,77 @@
+# Plan 0082 Task 2: folded tails of a contact question and the selector each one gives (D-5).
+# Canaries only. `order` is null when no call order is named.
+- tail: mi hija
+  own: true
+  order: null
+  roles: []
+  words: [hija]
+- tail: mi contacto 1
+  own: true
+  order: 1
+  roles: []
+  words: []
+- tail: mi contacto uno
+  own: true
+  order: 1
+  roles: []
+  words: []
+- tail: mi primer contacto
+  own: true
+  order: 1
+  roles: []
+  words: []
+- tail: mi contacto numero uno
+  own: true
+  order: 1
+  roles: []
+  words: []
+- tail: el primero contacto
+  own: true
+  order: 1
+  roles: []
+  words: []
+- tail: mi segundo contacto
+  own: true
+  order: 2
+  roles: []
+  words: []
+- tail: contacto 3
+  own: true
+  order: 3
+  roles: []
+  words: []
+- tail: mi contacto de emergencia
+  own: true
+  order: null
+  roles: [emergency]
+  words: [emergencia]
+- tail: mi doctora canary
+  own: true
+  order: null
+  roles: [doctor]
+  words: [doctora, canary]
+- tail: mi vecina por favor
+  own: true
+  order: null
+  roles: [neighbor]
+  words: [vecina]
+- tail: mis contactos
+  own: true
+  order: null
+  roles: []
+  words: []
+- tail: mi tio
+  own: true
+  order: null
+  roles: []
+  words: [tio]
+- tail: los bomberos
+  own: false
+  order: null
+  roles: []
+  words: [bomberos]
+- tail: canary
+  own: false
+  order: null
+  roles: []
+  words: [canary]
