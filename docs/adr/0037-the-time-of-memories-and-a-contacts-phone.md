@@ -5,6 +5,8 @@
   *Pipec's decisions and where they land*). It becomes `Accepted` when the plan that implements it
   closes (plan 0082 or the plans it is split into). Decisions 1 and 5 implemented by Plan 0082 and
   accepted on real hardware on 2026-11-12, 9 of 9 cases (*Implemented in Plan 0082* below).
+  Decisions 3 and 4 implemented by Plan 0083 and accepted on real hardware the same day, 13 of 13
+  cases after three fixes found there (*Implemented in Plan 0083* below). Decision 2 is Plan 0084.
 - **Date:** 2026-11-11
 - **Builds on:** [ADR 0024](0024-seed-load-senses-secrets-and-channels.md) (the contacts table),
   [ADR 0027](0027-conversation-record-and-the-diary.md) (the record and the diary),
@@ -236,6 +238,34 @@ Implemented on 2026-11-12 behind the default-off `ALTA_READ_ENABLED` (needs `MEM
   opens with «Todavía no puedo hacer llamadas.».
 - **Reach.** `memory/alta_reach.py` and `tests/unit/test_alta_reach.py` implement the last paragraph
   of decision 5 over the fields the importer can load and the fields of a contact row.
+
+## Implemented in Plan 0083 (decisions 3 and 4)
+
+Implemented on 2026-11-12 behind the default-off `OCCURRED_TIME_ENABLED` (needs `MEMORY_ENABLED`
+and `RECALL_ENABLED`); accepted on real hardware the same day
+([record](../evals/0083-when-it-happened-acceptance.md)). The builder's calls are in
+[Plan 0083](../plans/completed/0083-spoken-time-and-when-it-happened.md) (D-1 to D-16) and its
+executor rulings; what the hardware changed, by Pipec's decision:
+
+- **One reader.** `cognition/spoken_dates.py` holds one ordered table of phrases, each with its
+  direction (past, future, either, dated); the legacy walk of Plan 0078 is kept exactly, and
+  `read_spoken_time(…, toward=)` reads the future, years and seasons (the household's, Chile:
+  «el verano de 2015» is December 2014 to February 2015). Since the hardware run it also reads
+  «hace N días / semanas / meses / años», «en / dentro de N días (más)» and «… del año pasado»
+  (D-6 amended). A bare season word («este verano») and a plural weekday («los lunes») are no time.
+- **The occurred interval.** Migration 015 adds two local-day columns to `recall_units`, both NULL
+  or both set (a CHECK), with a partial index; no backfill. Only a turn unit gets one: its words
+  hold exactly one time phrase, read toward the past against the household day of the turn, and a
+  phrase that names no direction needs a told-past verb of a closed list (`TOLD_PAST_VERBS`).
+- **The answer** says when it happened and **quotes the memory** («Fue el sábado 7 de noviembre.
+  Hoy me contaste esto: …»; Pipec, hardware: a similar story found instead of the one asked about
+  must be heard), and the told-day answer when the unit has no interval.
+- **The window** matches a unit by the overlap of its interval, else by `said_at`; an episode
+  follows its turns (left out when every dated turn of its record falls outside the window), and a
+  turn dated in the window but told on another day comes first, beside the window's episodes
+  (hardware: that day's diary hid it).
+- **The recall grammar** reads the usted forms and Whisper's «tiene» behind the switch, the
+  phrases only in a marked question.
 
 ## Docs to update
 

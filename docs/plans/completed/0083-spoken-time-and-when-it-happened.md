@@ -1,6 +1,16 @@
 # 0083 — One reader of spoken time, and when a told event happened
 
-> **Status:** `Ready` and `NOW` — **promoted by Pipec on 2026-11-12**: D-1 to D-15 confirmed as
+> **Status:** **Closed** (2026-11-12). Accepted by Pipec on real hardware, 13 of 13 cases after
+> three fixes found there, in three sittings, streaming route
+> ([record](../../evals/0083-when-it-happened-acceptance.md)); `just gate` 7880 passed before the
+> hardware fixes (baseline 7499). Executed inline in the session that wrote it, at Pipec's request.
+> Pipec's decisions on hardware amend this plan and win where they differ: the when-answer quotes
+> the memory (D-10), the reader reads «hace N…», «en / dentro de N días (más)» and «… del año
+> pasado» (D-6), and a turn dated in a window but told elsewhere comes first beside the window's
+> episodes (D-9). The executor's rulings are below (*Rulings made in execution*); ADR 0037 has the
+> summary (*Implemented in Plan 0083*) and stays `Proposed` until Plan 0084 closes.
+>
+> **Status at promotion:** `Ready` and `NOW` — **promoted by Pipec on 2026-11-12**: D-1 to D-15 confirmed as
 > written, and D-16 added from his review (the speaker the grammars are written for). Written as
 > `Draft` the same day from
 > [ADR 0037](../../adr/0037-the-time-of-memories-and-a-contacts-phone.md) (`Proposed`), decisions
@@ -647,6 +657,22 @@ at a time of day; any wire, robot, prompt or dependency change.
 - **Open for Pipec.** D-6 (phrases left out), D-7 (the verb list), D-8 (no backfill), D-9 (overlap
   and the episode rule), D-12 (the prompt unchanged), D-13 (the usted forms behind the switch); every
   other decision is the builder's call to confirm as written.
+- **Rulings made in execution** (the ledger, kept in the ignored plan workspace):
+  - The reader: a phrase that matches and does not resolve takes its words along, so a shorter
+    phrase inside it is never read instead; «primavera» takes the feminine forms; a bare season
+    word is no time and «sábado pasado» without «el» is the past (review).
+  - The usted strong and weak phrases count only in a marked question, never opening a statement.
+  - The capture: a reader error is a narrow boundary (the turn and its unit are kept without days,
+    `conversation.occurred_error`), and only a turn that becomes a unit has its time read (review).
+  - The when-answer falls back to the told-day sentence, never «no tengo registrado», when the
+    stored window has no spoken span (review).
+  - The store keeps `first_day` / `last_day` / `occurred` keyword arguments (no value object) and
+    the episode rule as SQL subqueries (no envelope on the episode); the window SQL is an `OR` the
+    planner can bound, and the occurred index is partial.
+  - Accepted, not changed: an ambiguous phrase that holds today stores the whole month or year;
+    the past-verb check reads the whole utterance (D-16).
+  - Tests: the new behaviour has focused files; ASCII canary phrases stay inline, accented ones
+    are in fixtures; a flaky log test of Plan 0082 was fixed (`c6e009d`).
 - **Pipec's review (2026-11-12).** D-1 to D-15 confirmed as written, the six above included. D-16
   added from his review: the grammars serve an ordinary speaker, and an edge form joins a fixture
   only when a real session shows it. Execution inline with the Task 8 reviews, chosen by the

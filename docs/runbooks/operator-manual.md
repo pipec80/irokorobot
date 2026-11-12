@@ -1133,6 +1133,30 @@ record marker) the owner also hears what the alta loaded and nothing read before
 **Rolling back.** `ALTA_READ_ENABLED=false` and a restart: every route is byte-identical to a build
 without Plan 0082; the Plan 0079 questions keep working with `SENSITIVE_READ_ENABLED` alone.
 
+### When a told event happened (Plan 0083, ADR 0037): off by default
+
+With `OCCURRED_TIME_ENABLED=true` (needs `MEMORY_ENABLED=true` **and** `RECALL_ENABLED=true`, with
+the record and the diary on) a story the owner tells with a time keeps when it happened, beside
+the day it was told:
+
+- **Telling.** «El sábado fui al supermercado.», «El año pasado fui a la nieve.», «En 2015 viví en
+  el norte.», «Hace tres días fui al parque.», «El 3 de noviembre del año pasado me cambié de
+  casa.». Only a turn with the owner's verified voice (as for every recall unit) and exactly one
+  time phrase gets the days; «Ayer fui a la feria y mañana voy al banco.» (two phrases) and a
+  plan or a habit («el sábado salimos a pasear», «los lunes juego fútbol») get none.
+- **Asking.** «¿Cuándo fui al supermercado?» → «Fue el sábado 7 de noviembre. Hoy me contaste
+  esto: …»; without days, the told-day answer of Plan 0080. «¿Qué hice el año pasado?», «¿Qué
+  hice hace tres días?», «¿Qué hice el verano pasado?» search by when it happened. The usted forms
+  work too: «¿Se acuerda cuándo fui…?», «¿Tiene registrado cuándo fui…?», «Cuénteme cuándo
+  fui…».
+- **A health word hides a conversation's stories**: the diary marks the whole conversation
+  `medical` (Plan 0078) and recall reads only `normal` memories.
+- **Migration 015** runs at the first start of this build, whatever the switch says: two empty
+  columns on the recall units; back up the database first.
+
+**Rolling back.** `OCCURRED_TIME_ENABLED=false` and a restart: every route is byte-identical to a
+build without Plan 0083; the stored days stay and are not read.
+
 ## 4. Feature-flag reference
 
 | Variable | Default | Effect |
@@ -1166,6 +1190,7 @@ without Plan 0082; the Plan 0079 questions keep working with `SENSITIVE_READ_ENA
 | `PROFILE_CARD_ENABLED` | `false` | Server: kill-switch of the profile card in the prompt and of «¿qué sabes de mí?» (Plan 0074, ADR 0026; off in the code, on in a delivered robot). Needs `MEMORY_ENABLED`. Off, every prompt, response and wire field is byte-identical to a build without it; on, it reads only for a face-identified speaker at `basic` or more, on the two voice routes, with one audit row per read |
 | `CONVERSATION_RECORD_ENABLED` | `false` | Server: kill-switch of the conversation record (Plan 0076, ADR 0027; off in the code, on in a delivered robot). Needs `MEMORY_ENABLED` and the owner's `conversation_storage` consent; off, nothing is recorded and every prompt, response and wire field is byte-identical |
 | `CONVERSATION_EPISODES_ENABLED` | `false` | Server: the diary job (needs the record). The segment caps, the two retention clocks, the space cap, the job interval and the summary length are the other `CONVERSATION_*` settings, see the record above |
+| `OCCURRED_TIME_ENABLED` | `false` | Server: when a told event happened (Plan 0083, ADR 0037 decisions 3 and 4); needs `MEMORY_ENABLED` and `RECALL_ENABLED`. Off: every recall as before |
 | `RECALL_ENABLED` | `false` | Server: kill-switch of recall and of the relatives reader (Plan 0078, ADR 0028; off in the code, on in a delivered robot). Needs `MEMORY_ENABLED` and the record; off, every turn is byte-identical and nothing is indexed |
 | `SENSITIVE_READ_ENABLED` | `false` | Server: kill-switch of the owner's sensitive questions by voice (Plan 0079, ADR 0029; off in the code). Needs `MEMORY_ENABLED`, the face on the voice routes and a closed alta; the security level also needs `SPEAKER_AUTHENTICATION_ENABLED`. Off, every read question is byte-identical. The secret rule does not follow it: it runs whenever `MEMORY_ENABLED` is on |
 | `ALTA_READ_ENABLED` | `false` | Server: kill-switch of the rest of the alta by voice (Plan 0082, ADR 0037): the contacts' phones, the key holders, «llama a mi contacto 1» (it cannot call; it says so and gives the phone) and devices, mobility, hearing, vision, coverage, dwelling, floor, lift, access and «vive solo» (security level). Needs `MEMORY_ENABLED` and `SENSITIVE_READ_ENABLED`; off, every route is byte-identical |

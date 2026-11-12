@@ -168,6 +168,11 @@ de 2015», «cuando era chico») is not a window: it is searched as words in the
 parser does not understand filters nothing; it is never guessed. The same parser is reused by
 step 3 of the closing path (`lives_in` with its spoken start).
 
+> **Since [ADR 0037](0037-the-time-of-memories-and-a-contacts-phone.md) decisions 3 and 4** (Plan
+> 0083, behind `OCCURRED_TIME_ENABLED`): the parser is the one reader of spoken time, past and
+> future, years and seasons included; a time inside the story is stored as the unit's occurred
+> interval, and a window matches a unit by it when it has one, else by when it was said.
+
 ### 8. The answer: the model words it, only from what was found; the fixed phrase when nothing was
 
 With one to three results, one short call to the local model with its **own** prompt — one line of
