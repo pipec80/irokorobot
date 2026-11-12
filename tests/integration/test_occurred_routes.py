@@ -144,10 +144,9 @@ async def test_when_on_each_voice_route(
 
     assert response.status_code == 200
     told = date_label(_yesterday(), today=today, tz=zone)
-    assert (
-        _spoken(response, route)
-        == f"Fue {occurred_label(occurred, today=today)}. Me lo contaste {told}."
-    )
+    happened = occurred_label(occurred, today=today)
+    quoted = f"{told[:1].upper()}{told[1:]} me contaste esto: {_SATURDAY_STORY}"
+    assert _spoken(response, route) == f"Fue {happened}. {quoted}"
     assert prompts == []
     wording.assert_not_awaited()
     if route == "/transcribe/stream":

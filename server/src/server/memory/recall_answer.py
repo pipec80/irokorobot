@@ -28,10 +28,9 @@ from server.text_keys import normalize_spanish
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from datetime import date, datetime
+    from datetime import date
     from zoneinfo import ZoneInfo
 
-    from server.cognition.spoken_dates import DayWindow
     from server.llm_transport import ChatMessage
     from server.memory.recall_search import RecallHit
 
@@ -142,9 +141,7 @@ def word_when(hits: Sequence[RecallHit], kind: WhenKind, *, today: date, tz: Zon
     asked = kind
     if kind is WhenKind.HAPPENED and hit.unit.occurred is not None:
         try:
-            return _when_it_happened(
-                hit.unit.occurred, said_at=hit.unit.said_at, told=label, today=today, tz=tz
-            )
+            return _when_it_happened(hit, told=label, today=today, tz=tz)
         except ValueError:
             # The date is stored but no spoken span says it: the told day is said instead, never
             # «no tengo registrado» (Plan 0083 D-11). No date reaches the log.
@@ -164,18 +161,23 @@ def word_when(hits: Sequence[RecallHit], kind: WhenKind, *, today: date, tz: Zon
     return f"{_DATE_NOT_RECORDED} Sí recuerdo que {told}"
 
 
-def _when_it_happened(
-    window: DayWindow, *, said_at: datetime, told: str, today: date, tz: ZoneInfo
-) -> str:
+def _when_it_happened(hit: RecallHit, *, told: str, today: date, tz: ZoneInfo) -> str:
     """The D-10 sentence for a unit with an occurred interval (Plan 0083).
 
+    It quotes the memory, as the told-day answer does (Pipec, 2026-11-12, hardware): when the
+    search found a similar story instead of the one asked about, the owner hears which one.
+
     Raises:
-        ValueError: If no spoken span describes *window* (``occurred_label``).
+        ValueError: If no spoken span describes the unit's window (``occurred_label``).
     """
+    window = hit.unit.occurred
+    if window is None:
+        raise ValueError("the unit has no occurred interval")
     happened = occurred_label(window, today=today)
-    if window.start == window.end == said_at.astimezone(tz).date():
-        return f"Fue {happened}, el mismo día que me lo contaste."
-    return f"Fue {happened}. Me lo contaste {told}."
+    quote = _quote(hit.unit.body)
+    if window.start == window.end == hit.unit.said_at.astimezone(tz).date():
+        return f"Fue {happened}, el mismo día que me lo contaste: {quote}"
+    return f"Fue {happened}. {_capitalised(told)} me contaste esto: {quote}"
 
 
 def _first_sentences(text: str) -> str:
