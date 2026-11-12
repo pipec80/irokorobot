@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from server.cognition.contact_questions import contact_selector
 from server.cognition.sensitive_questions import (
     ALTA_TOPICS,
     CONTACT_TOPICS,
@@ -293,3 +294,22 @@ def test_contact_topics_have_no_predicate() -> None:
         assert topic not in TOPIC_PREDICATE
         assert TOPIC_LEVEL[topic] is SensitiveLevel.SENSITIVE
         assert TOPIC_LABEL[topic] == ("personal", "location")
+
+
+@pytest.mark.parametrize(
+    "message, order",
+    [
+        ("Llama a mi contacto número uno.", 1),
+        ("Llama a mi contacto 1.", 1),
+        ("¿Tienes el teléfono de mi tercer contacto?", 3),
+        ("Dame el número de mi cuarto contacto", 4),
+        ("Llama a mi quinto contacto", 5),
+        ("¿Cuál es el teléfono de mi contacto 9?", 9),
+        ("¿Cuál es el teléfono de mi contacto seis?", 6),
+        ("Llama al contacto nueve", 9),
+    ],
+)
+def test_whispers_order_forms_reach_the_selector(message: str, order: int) -> None:
+    query = classify_sensitive_question(message, alta=True)
+    assert query is not None
+    assert contact_selector(query.keywords).order == order

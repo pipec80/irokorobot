@@ -69,6 +69,12 @@ questions:
     - "Dame el número de mi primer contacto"
     - "¿Me das el teléfono de mi doctora Canary?"
     - "¿Me das el número de mi vecino?"
+    - "¿Cuál es el teléfono del contacto uno?"
+    - "¿Tienes el número del primer contacto?"
+    - "¿Me puedes decir el teléfono de mi hija?"
+    - "Dime el teléfono de mi hija"
+    - "¿Me podrías decir el número del contacto 2?"
+    - "¿Me puedes dar el número de mi doctor?"
   contact_call:
     - "Oye Iroko, llama a mi contacto 1"
     - "Llámale a mi hija, po"
@@ -76,6 +82,9 @@ questions:
     - "¿Podrías llamar a mi vecina?"
     - "Quiero llamar a mi primer contacto"
     - "Necesito llamar a mi hija"
+    - "Llama al contacto 1"
+    - "Llámale al primer contacto, po"
+    - "¿Puedes llamar al contacto número uno?"
 slips:
   implanted_device:
     - "que dispositivos tengo"
@@ -132,3 +141,4 @@ traps:
   - "El teléfono de mi hija es nuevo"
   - "Mi hija me llamó ayer"
   - "Me llamo Canary"
+  - "El número de la suerte es siete"

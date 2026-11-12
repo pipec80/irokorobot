@@ -22,6 +22,7 @@ __all__ = ["ContactSelector", "contact_selector", "match_score", "selects"]
 
 _OWN_WORDS: Final = frozenset({"mi", "mis"})
 _CONTACT_WORDS: Final = frozenset({"contacto", "contactos"})
+_PLURAL_CONTACT: Final = "contactos"
 _NUMBER_WORD: Final = "numero"
 _ORDER_VALUES: Final[Mapping[str, int]] = MappingProxyType(
     {
@@ -90,21 +91,25 @@ class ContactSelector:
     """What a contact question named.
 
     Attributes:
-        own: The question is about the owner's own contacts («mi», «mis» or a call order).
+        own: The question is about the owner's own contacts: the tail opens with «mi» or «mis»,
+            or names a call order («la tienda de mi barrio» is not own).
         order: The call order named («contacto 1», «primer contacto»), or ``None``.
         roles: The ``ContactRole`` values a role word named («emergencia» → ``emergency``).
         words: The folded content words left, role words included (a label «doctora» may sit on
             any role), matched against a contact's relationship and name.
+        everyone: The tail says «contactos»: every contact is meant, whatever else is said («mis
+            contactos por si pasa algo»), unless an order or a role narrows it.
     """
 
     own: bool
     order: int | None
     roles: frozenset[str]
     words: frozenset[str] = field(repr=False)  # may hold a name
+    everyone: bool = False
 
     @property
     def is_empty(self) -> bool:
-        """Whether nothing narrows the selection, so every contact is meant («mis contactos»)."""
+        """Whether nothing narrows the selection: no order, no role and no word."""
         return self.order is None and not self.roles and not self.words
 
 
@@ -124,8 +129,9 @@ def contact_selector(tail: tuple[str, ...]) -> ContactSelector:
         for index, word in enumerate(tail)
         if index not in order_positions and word not in _FUNCTION_WORDS
     )
-    own = order is not None or bool(_OWN_WORDS.intersection(tail))
-    return ContactSelector(own=own, order=order, roles=roles, words=words)
+    own = order is not None or (bool(tail) and tail[0] in _OWN_WORDS)
+    everyone = _PLURAL_CONTACT in tail
+    return ContactSelector(own=own, order=order, roles=roles, words=words, everyone=everyone)
 
 
 def _order_of(tail: tuple[str, ...]) -> tuple[int | None, frozenset[int]]:
@@ -162,8 +168,8 @@ def selects(
         name: The contact's stored name, or ``None``.
 
     Returns:
-        ``True`` when the order, a role or a word (also without a final «s») matches. An empty
-        selector selects every contact.
+        ``True`` when the order, a role or a word (also without a final «s») matches, or when
+        «contactos» names them all.
     """
     return (
         match_score(
@@ -195,10 +201,13 @@ def match_score(
         name: The contact's stored name, or ``None``.
 
     Returns:
-        ``0`` for no match; ``1`` for every contact when the selector is empty.
+        ``0`` for no match; ``1`` for every contact when «contactos» is said and no order or
+        role narrows it; ``0`` for every contact when nothing at all is named (a bare «mi»).
     """
-    if selector.is_empty:
+    if selector.everyone and selector.order is None and not selector.roles:
         return 1
+    if selector.is_empty:
+        return 0
     stored = set(normalize_spanish(relationship or "").split()) | set(
         normalize_spanish(name or "").split()
     )

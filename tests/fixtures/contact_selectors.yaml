@@ -60,6 +60,7 @@
   order: null
   roles: []
   words: []
+  everyone: true
 - tail: mi tio
   own: true
   order: null

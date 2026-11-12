@@ -109,11 +109,13 @@ def test_no_contact_says_no_phone() -> None:
 
 def test_key_holders_one_several_and_none() -> None:
     neighbor = _contact("Canary Neighbor", "vecina", "+56900000004")
-    nameless = _contact(None, "contacto con llave", "+56900000005")
+    nameless = _contact(None, "", "+56900000005")
+    labelled = _contact(None, "vecina", "+56900000006")
     assert word_key_holders((_contact(),)) == "Canary Daughter tiene llave de tu casa."
-    assert word_key_holders((nameless,)) == "Tu contacto con llave tiene llave de tu casa."
+    assert word_key_holders((nameless,)) == "Una persona de tus contactos tiene llave de tu casa."
+    assert word_key_holders((labelled,)) == "Tu vecina tiene llave de tu casa."
     assert word_key_holders((_contact(), neighbor, nameless)) == (
-        "Tienen llave de tu casa: Canary Daughter, Canary Neighbor y tu contacto con llave."
+        "Tienen llave de tu casa: Canary Daughter, Canary Neighbor y una persona de tus contactos."
     )
     assert word_key_holders(()) == NO_KEY_HOLDER
 
@@ -138,3 +140,8 @@ def test_the_repr_holds_no_value() -> None:
 
 def test_every_contact_role_of_the_table_has_a_descriptor() -> None:
     assert set(_ROLES) == {role.value for role in ContactRole}
+
+
+def test_a_second_phone_equal_to_the_first_is_said_once() -> None:
+    sentence = word_contacts((_contact(phone_alt=_DAUGHTER_PHONE),))
+    assert sentence == f"El teléfono de Canary Daughter, tu hija, es {_SPOKEN_DAUGHTER_PHONE}."

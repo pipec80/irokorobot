@@ -292,9 +292,22 @@ def test_an_alta_question_needs_both_flags(message: str, topic: str) -> None:
     assert alta_alone == resolve_information_need(message, recall=True, secrets=True)
 
 
+_SENSITIVE_CORPUS = yaml.safe_load(
+    (Path(__file__).resolve().parents[1] / "fixtures" / "sensitive_questions.yaml").read_text(
+        encoding="utf-8"
+    )
+)
+_EVERY_PLAN_0079_PHRASE = [
+    *(phrase for phrases in _SENSITIVE_CORPUS["questions"].values() for phrase in phrases),
+    *(phrase for phrases in _SENSITIVE_CORPUS["slips"].values() for phrase in phrases),
+    *_SENSITIVE_CORPUS["traps"],
+    "hola",
+]
+
+
 @pytest.mark.parametrize("recall", [False, True])
 def test_with_the_alta_flag_off_resolutions_are_unchanged(recall: bool) -> None:
-    for message in (_ADDRESS_QUESTION, _SECURITY_QUESTION, _CHILD_BIRTHDAY_QUESTION, "hola"):
+    for message in _EVERY_PLAN_0079_PHRASE:
         assert resolve_information_need(
             message, recall=recall, sensitive=True, secrets=True, alta=False
         ) == resolve_information_need(message, recall=recall, sensitive=True, secrets=True)

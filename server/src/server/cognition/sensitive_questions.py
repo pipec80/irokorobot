@@ -84,7 +84,8 @@ class SensitiveQuery:
     Attributes:
         topic: What is asked about.
         keywords: Folded words after the matched phrase, with at least four letters and not a
-            stopword; empty for a closed topic.
+            stopword; empty for a closed topic; for a contact topic, the whole folded tail as is
+            (short words and digits included, Plan 0082 D-5).
     """
 
     topic: SensitiveTopic
@@ -336,27 +337,42 @@ _PHRASES: Final[Mapping[SensitiveTopic, tuple[str, ...]]] = MappingProxyType(
             )
             for place in ("", " de mi casa", " de la casa", " de mi departamento")
         ),
-        SensitiveTopic.CONTACT_PHONE: (
-            "tienes el telefono de",
-            "tienes el numero de",
-            "tienes el celular de",
-            "cual es el telefono de",
-            "cual es el numero de",
-            "cual es el celular de",
-            "dame el telefono de",
-            "dame el numero de",
-            "me das el telefono de",
-            "me das el numero de",
+        SensitiveTopic.CONTACT_PHONE: tuple(
+            f"{asking} {number} {joint}"
+            for asking in (
+                "tienes el",
+                "cual es el",
+                "dame el",
+                "me das el",
+                "me puedes dar el",
+                "me podrias dar el",
+                # Only after a request opener («dime», «me puedes decir»): see `_NEEDS_OPENER`.
+                "el",
+            )
+            for number in ("telefono", "numero", "celular")
+            for joint in ("de", "del")
         ),
-        SensitiveTopic.CONTACT_CALL: (
-            "llama a",
-            "llamale a",
-            "puedes llamar a",
-            "podrias llamar a",
-            "quiero llamar a",
-            "necesito llamar a",
+        SensitiveTopic.CONTACT_CALL: tuple(
+            f"{calling} {joint}"
+            for calling in (
+                "llama",
+                "llamale",
+                "puedes llamar",
+                "podrias llamar",
+                "quiero llamar",
+                "necesito llamar",
+            )
+            for joint in ("a", "al")
         ),
     }
+)
+
+# Contact phrases that are a question only after a request opener: «dime el teléfono de mi hija»
+# is one, «el teléfono de mi hija es nuevo» is a statement.
+_NEEDS_OPENER: Final[frozenset[str]] = frozenset(
+    f"el {number} {joint}"
+    for number in ("telefono", "numero", "celular")
+    for joint in ("de", "del")
 )
 
 # Phrases with the form of a statement: they need a question mark («tomo anticoagulante desde
@@ -468,16 +484,22 @@ _OPENERS: Final[tuple[tuple[str, ...], ...]] = tuple(
 
 @dataclass(frozen=True)
 class _Pattern:
-    """One folded phrase as words, its topic, and whether it needs a question mark."""
+    """One folded phrase as words, its topic, and what else it needs to be a question."""
 
     topic: SensitiveTopic
     words: tuple[str, ...]
     needs_mark: bool
+    needs_opener: bool = False
 
 
 # The folded phrases as word tuples, topic by topic, without a leading «a».
 _ALL_PATTERNS: Final[tuple[_Pattern, ...]] = tuple(
-    _Pattern(topic, tuple(phrase.removeprefix("a ").split()), phrase in _NEEDS_QUESTION_MARK)
+    _Pattern(
+        topic,
+        tuple(phrase.removeprefix("a ").split()),
+        phrase in _NEEDS_QUESTION_MARK,
+        phrase in _NEEDS_OPENER,
+    )
     for topic, phrases in _PHRASES.items()
     for phrase in phrases
 )
@@ -504,10 +526,12 @@ def classify_sensitive_question(message: str, *, alta: bool = False) -> Sensitiv
         The topic and its keywords, or ``None`` for any other turn. A contact topic carries its
         whole folded tail (D-5) and needs one.
     """
-    body = _without_openers(sentence_body(message))
+    whole = sentence_body(message)
+    body = _without_openers(whole)
+    opened = body != whole
     for pattern in _ALL_PATTERNS if alta else _BASE_PATTERNS:
         topic = pattern.topic
-        if body[: len(pattern.words)] != pattern.words:
+        if body[: len(pattern.words)] != pattern.words or (pattern.needs_opener and not opened):
             continue
         span_end = _span_end(topic, body, len(pattern.words))
         if span_end is None:

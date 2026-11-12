@@ -293,9 +293,9 @@ def _names_hit(words: frozenset[str], stored: frozenset[str]) -> bool:
     return False
 
 
-async def _consent(call: _Call, sensitivity: str) -> ConsentStatus:
+async def _consent(call: _Call, sensitivities: frozenset[str]) -> ConsentStatus:
     """The consent of an own read (D-9): the face's grant and a closed alta, or none."""
-    if sensitivity not in _CONSENT_SENSITIVITIES:
+    if not sensitivities & _CONSENT_SENSITIVITIES:
         return ConsentStatus.NOT_REQUIRED
     if call.face_consent is ConsentStatus.GRANTED and await call.alta_closed():
         return ConsentStatus.GRANTED
@@ -309,9 +309,7 @@ async def _authorized(call: _Call, person_id: int, sensitivities: frozenset[str]
     and a closed alta whenever one of the sensitivities needs it. A failing audit propagates, so
     nothing is read at all.
     """
-    consent = ConsentStatus.NOT_REQUIRED
-    if sensitivities & _CONSENT_SENSITIVITIES:
-        consent = await _consent(call, next(iter(sensitivities & _CONSENT_SENSITIVITIES)))
+    consent = await _consent(call, sensitivities)
     visibility, _sensitivity = TOPIC_LABEL[call.query.topic]
     request = AuthorizationRequest(
         actor=call.actor,

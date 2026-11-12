@@ -109,12 +109,14 @@ def _evidence(source: IdentityEvidenceSource) -> IdentityEvidence:
     )
 
 
-def _actor(*sources: IdentityEvidenceSource) -> ActivePersonContext:
+def _actor(
+    *sources: IdentityEvidenceSource, role: HouseholdRole = HouseholdRole.OWNER
+) -> ActivePersonContext:
     person = PersonRecord(person_id=_OWNER, display_name="Canary", entity_type="person")
     return resolve_active_person(
         evidence=tuple(_evidence(source) for source in sources),
         lookup_person=lambda pid: person if pid == _OWNER else None,
-        lookup_role=lambda _: HouseholdRole.OWNER,
+        lookup_role=lambda _: role,
         clock=lambda: _NOW,
     )
 
@@ -142,12 +144,13 @@ async def _reply(
     actor: ActivePersonContext | None = None,
     faces: FusionReason | None = FusionReason.FACE_ONLY,
     voice_check: bool = False,
+    face_consent: ConsentStatus = ConsentStatus.GRANTED,
 ) -> SensitiveReply:
     return await sensitive_reply(
         actor or _actor(IdentityEvidenceSource.FACE),
         query,
         faces=faces,
-        face_consent=ConsentStatus.GRANTED,
+        face_consent=face_consent,
         voice_check=voice_check,
         correlation_id=_CORRELATION,
         now=_NOW,
@@ -373,3 +376,98 @@ async def test_no_value_reaches_a_log_line(caplog: pytest.LogCaptureFixture) -> 
     assert "569" not in logged
     assert "hija" not in logged
     assert "cero" not in logged
+
+
+# --- Final review fixes (Plan 0082) ---
+
+
+@pytest.mark.parametrize("consent", [ConsentStatus.MISSING, ConsentStatus.REVOKED])
+@pytest.mark.parametrize(
+    "query", [_phone("mi", "hija"), SensitiveQuery(topic=SensitiveTopic.KEY_HOLDERS, keywords=())]
+)
+async def test_without_the_face_consent_nothing_is_read(
+    query: SensitiveQuery, consent: ConsentStatus
+) -> None:
+    seams = _Seams()
+    reply = await _reply(query, seams, face_consent=consent)
+    assert reply == SensitiveReply(SensitiveOutcome.DENIED)
+    seams.audit.assert_awaited_once()
+    seams.contacts.assert_not_awaited()
+
+
+async def test_a_face_identified_guest_never_hears_the_owners_contacts() -> None:
+    seams = _Seams()
+    guest = _actor(IdentityEvidenceSource.FACE, role=HouseholdRole.GUEST)
+    reply = await _reply(_phone("mi", "hija"), seams, actor=guest)
+    assert reply.text is None or "Canary Daughter" not in reply.text
+    assert reply.outcome is not SensitiveOutcome.ANSWERED
+
+
+async def test_key_holders_are_capped_at_three() -> None:
+    rows = tuple(
+        _row(index, 20 + index, ContactRole.KEY_HOLDER, f"+5690000001{index}", has_key=True)
+        for index in range(1, 5)
+    )
+    seams = _Seams(rows)
+    seams.contact_names.side_effect = lambda entity_id: f"Canary Holder {entity_id}"
+    keys = await _reply(SensitiveQuery(topic=SensitiveTopic.KEY_HOLDERS, keywords=()), seams)
+    assert keys.text == (
+        "Tienen llave de tu casa: Canary Holder 21, Canary Holder 22 y Canary Holder 23."
+    )
+
+
+async def test_one_person_with_two_phones_in_two_rows_is_said_once() -> None:
+    rows = (
+        _row(
+            1, _DAUGHTER, ContactRole.CAREGIVER, _DAUGHTER_PHONE, relationship="hija", call_order=1
+        ),
+        _row(6, _DAUGHTER, ContactRole.EMERGENCY, "+56900000009", relationship="hija"),
+    )
+    reply = await _reply(_phone("mi", "hija"), _Seams(rows))
+    assert reply.text == f"El teléfono de Canary Daughter, tu hija, es {_SPOKEN_DAUGHTER}."
+
+
+async def test_a_nameless_key_holder_is_said_without_a_role_echo() -> None:
+    rows = (_row(7, 99, ContactRole.KEY_HOLDER, "+56900000007", has_key=True),)
+    keys = await _reply(SensitiveQuery(topic=SensitiveTopic.KEY_HOLDERS, keywords=()), _Seams(rows))
+    assert keys.text == "Una persona de tus contactos tiene llave de tu casa."
+
+
+async def test_my_contacts_with_extra_words_reads_them_all() -> None:
+    reply = await _reply(_phone("mis", "contactos", "por", "si", "pasa", "algo"), _Seams())
+    assert reply.outcome is SensitiveOutcome.ANSWERED
+    assert reply.text is not None
+    assert reply.text.count("El teléfono de") == 3
+
+
+async def test_a_bare_mi_reads_nobody() -> None:
+    reply = await _reply(
+        SensitiveQuery(topic=SensitiveTopic.CONTACT_CALL, keywords=("mi",)), _Seams()
+    )
+    assert reply == SensitiveReply(SensitiveOutcome.NOT_REGISTERED, f"{CANNOT_CALL} {NO_PHONE}")
+
+
+async def test_a_malformed_stored_phone_is_unavailable_and_logs_no_digit(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    bad = CareContact(**{**_ROWS[0].__dict__, "phone": "56900000001"})
+    reply = await _reply(_phone("mi", "hija"), _Seams((bad,)))
+    assert reply == SensitiveReply(SensitiveOutcome.UNAVAILABLE)
+    logged = " ".join(record.getMessage() + str(record.__dict__) for record in caplog.records)
+    assert "56900000001" not in logged
+
+
+async def test_no_phone_of_any_length_or_second_phone_reaches_a_log(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    rows = (
+        CareContact(**{**_ROWS[0].__dict__, "phone": "+12345678", "phone_alt": "+56200000002"}),
+        _row(8, _DOCTOR, ContactRole.DOCTOR, "+123456789012345", call_order=2),
+    )
+    reply = await _reply(_phone("mis", "contactos"), _Seams(rows))
+    assert reply.outcome is SensitiveOutcome.ANSWERED
+    logged = " ".join(record.getMessage() + str(record.__dict__) for record in caplog.records)
+    for digits in ("12345678", "56200000002", "123456789012345"):
+        assert digits not in logged

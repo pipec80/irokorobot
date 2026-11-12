@@ -6,7 +6,7 @@ The tails are folded words, as ``classify_sensitive_question`` hands them over; 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 import pytest
 from server.cognition.contact_questions import (
@@ -28,6 +28,7 @@ class _Case(TypedDict):
     order: int | None
     roles: list[str]
     words: list[str]
+    everyone: NotRequired[bool]
 
 
 def _cases() -> list[_Case]:
@@ -44,6 +45,7 @@ def test_each_tail_gives_its_selector(case: _Case) -> None:
         order=case["order"],
         roles=frozenset(case["roles"]),
         words=frozenset(case["words"]),
+        everyone=case.get("everyone", False),
     )
 
 
@@ -94,3 +96,35 @@ def test_the_best_match_wins_when_people_share_a_surname() -> None:
 def test_an_empty_selector_scores_every_contact_alike() -> None:
     selector = contact_selector(("mis", "contactos"))
     assert match_score(selector, call_order=None, role="other", relationship=None, name=None) == 1
+
+
+# --- Final review fixes (Plan 0082) ---
+
+
+def test_mi_counts_only_at_the_head_of_the_tail() -> None:
+    assert not contact_selector(("la", "tienda", "de", "mi", "barrio")).own
+    assert contact_selector(("mi", "hija")).own
+    assert contact_selector(("contacto", "1")).own
+
+
+def test_my_contacts_means_everyone_whatever_else_is_said() -> None:
+    selector = contact_selector(("mis", "contactos", "por", "si", "pasa", "algo"))
+    assert selector.everyone
+    assert match_score(selector, call_order=None, role="other", relationship="hija", name=None) == 1
+
+
+def test_a_bare_mi_selects_nobody() -> None:
+    selector = contact_selector(("mi",))
+    assert selector.is_empty
+    assert not selector.everyone
+    assert (
+        match_score(selector, call_order=1, role="caregiver", relationship="hija", name=None) == 0
+    )
+
+
+def test_my_emergency_contacts_still_filter_by_role() -> None:
+    selector = contact_selector(("mis", "contactos", "de", "emergencia"))
+    assert (
+        match_score(selector, call_order=None, role="emergency", relationship=None, name=None) > 0
+    )
+    assert match_score(selector, call_order=None, role="doctor", relationship=None, name=None) == 0

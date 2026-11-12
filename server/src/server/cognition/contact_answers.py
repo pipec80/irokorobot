@@ -36,6 +36,7 @@ NO_KEY_HOLDER: Final = "No tengo registrado que alguien tenga llave de tu casa."
 MAX_SPOKEN_CONTACTS: Final = 3
 
 _GROUP: Final = 4
+_SOMEONE: Final = "una persona de tus contactos"
 _DIGIT_WORDS: Final = (
     "cero",
     "uno",
@@ -138,7 +139,7 @@ def _contact_sentence(contact: SpokenContact) -> str:
         else f"de tu {contact.descriptor}"
     )
     sentence = f"El teléfono {who} es {spoken_phone(contact.phone)}."
-    if contact.phone_alt is not None:
+    if contact.phone_alt is not None and contact.phone_alt != contact.phone:
         sentence += f" También tiene el {spoken_phone(contact.phone_alt)}."
     return sentence
 
@@ -154,7 +155,14 @@ def word_key_holders(contacts: tuple[SpokenContact, ...]) -> str:
     """
     if not contacts:
         return NO_KEY_HOLDER
-    names = tuple(contact.name or f"tu {contact.descriptor}" for contact in contacts)
+    names = tuple(_holder(contact) for contact in contacts)
     if len(names) == 1:
         return capitalized(f"{names[0]} tiene llave de tu casa.")
     return f"Tienen llave de tu casa: {spanish_join(names)}."
+
+
+def _holder(contact: SpokenContact) -> str:
+    """Who holds a key: the name, else «tu» and the label, else «una persona de tus contactos»."""
+    if contact.name:
+        return contact.name
+    return f"tu {contact.descriptor}" if contact.descriptor else _SOMEONE

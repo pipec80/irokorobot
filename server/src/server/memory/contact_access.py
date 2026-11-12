@@ -30,7 +30,7 @@ from server.memory.care_contacts import list_active_contacts
 from server.memory.entity_labels import get_person_label
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Hashable, Mapping
+    from collections.abc import Awaitable, Callable, Mapping
 
     from server.cognition.sensitive_questions import SensitiveQuery
     from server.memory.care_contacts import CareContact
@@ -102,16 +102,18 @@ async def contact_reply(
     for row in rows:
         if row.contact_entity_id not in named:
             named[row.contact_entity_id] = await names(row.contact_entity_id)
-    people = _spoken(_chosen(query, rows, named), named)
+    people = _spoken(
+        _chosen(query, rows, named), named, keys=query.topic is SensitiveTopic.KEY_HOLDERS
+    )
     return _worded(query.topic, people), len(people)
 
 
 def _chosen(
     query: SensitiveQuery, rows: tuple[CareContact, ...], named: Mapping[int, str | None]
 ) -> tuple[CareContact, ...]:
-    """Select the rows the question named, best match first, one per person and phone (D-7)."""
+    """Select the rows the question named, best match first, one per person, at most three (D-7)."""
     if query.topic is SensitiveTopic.KEY_HOLDERS:
-        return _first_of_each(tuple(row for row in rows if row.has_key), _person)
+        return _first_of_each(tuple(row for row in rows if row.has_key))[:MAX_SPOKEN_CONTACTS]
     selector = contact_selector(query.keywords)
     scores = tuple(
         match_score(
@@ -125,35 +127,29 @@ def _chosen(
     )
     best = max(scores, default=0)
     picked = tuple(row for row, score in zip(rows, scores, strict=True) if best and score == best)
-    return _first_of_each(picked, _person_and_phones)[:MAX_SPOKEN_CONTACTS]
+    return _first_of_each(picked)[:MAX_SPOKEN_CONTACTS]
 
 
-def _person(row: CareContact) -> Hashable:
-    return row.contact_entity_id
-
-
-def _person_and_phones(row: CareContact) -> Hashable:
-    return (row.contact_entity_id, row.phone, row.phone_alt)
-
-
-def _first_of_each(
-    rows: tuple[CareContact, ...], key: Callable[[CareContact], Hashable]
-) -> tuple[CareContact, ...]:
-    """Keep the first row of each key, in the given order (call order first)."""
-    kept: dict[Hashable, CareContact] = {}
+def _first_of_each(rows: tuple[CareContact, ...]) -> tuple[CareContact, ...]:
+    """Keep the first row of each person, in the given order (call order first): one sentence."""
+    kept: dict[int, CareContact] = {}
     for row in rows:
-        kept.setdefault(key(row), row)
+        kept.setdefault(row.contact_entity_id, row)
     return tuple(kept.values())
 
 
 def _spoken(
-    rows: tuple[CareContact, ...], named: Mapping[int, str | None]
+    rows: tuple[CareContact, ...], named: Mapping[int, str | None], *, keys: bool
 ) -> tuple[SpokenContact, ...]:
-    """Turn the selected rows into what the templates say, the label or the role's words."""
+    """Turn the selected rows into what the templates say: the label, else the role's words.
+
+    A key holder is never described by its role («tu contacto con llave tiene llave»): with no
+    name and no label it is «una persona de tus contactos».
+    """
     return tuple(
         SpokenContact(
             name=named[row.contact_entity_id],
-            descriptor=row.relationship or role_descriptor(row.role.value),
+            descriptor=row.relationship or ("" if keys else role_descriptor(row.role.value)),
             phone=row.phone,
             phone_alt=row.phone_alt,
         )

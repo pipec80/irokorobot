@@ -839,3 +839,85 @@ async def test_a_two_face_frame_hears_not_alone_for_a_contact(
 
     assert reply.spoken == NOT_ALONE
     assert await _count(_READ_AUDIT) == 0
+
+
+@pytest.mark.parametrize("route", _VOICE_ROUTES)
+async def test_a_stranger_face_never_hears_a_contact(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch, route: str
+) -> None:
+    monkeypatch.setattr(settings, "alta_read_enabled", True)
+    await _store_daughter(household.owner_entity_id)
+    await _alta("closed")
+    _see(monkeypatch, _STRANGER_FACE)
+    _hear(monkeypatch, _CONTACT_QUESTION)
+    _model(monkeypatch)
+
+    async with _client() as client:
+        reply = await _post(client, route, _CONTACT_QUESTION)
+
+    assert "cinco seis nueve" not in reply.spoken
+    assert "Canary Daughter" not in reply.spoken
+    assert await _count(_READ_AUDIT) == 0
+
+
+@pytest.mark.parametrize("route", _VOICE_ROUTES)
+@pytest.mark.parametrize("two_faces", [False, True], ids=["owner-alone", "two-faces"])
+@pytest.mark.parametrize(
+    "message", ["¿Cuál es el teléfono de los bomberos?", "Llama a Canary Daughter"]
+)
+async def test_a_question_with_no_own_contact_is_ordinary_on_the_routes(
+    household: PersonalSetupResult,
+    captured: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+    message: str,
+    *,
+    two_faces: bool,
+) -> None:
+    monkeypatch.setattr(settings, "alta_read_enabled", True)
+    await _store_daughter(household.owner_entity_id)
+    await _alta("closed")
+    _see(monkeypatch, *((_OWNER_FACE, _STRANGER_FACE) if two_faces else (_OWNER_FACE,)))
+    _hear(monkeypatch, message)
+    prompts = _model(monkeypatch)
+
+    async with _client() as client:
+        reply = await _post(client, route, message)
+
+    assert reply.spoken == "Hola."
+    assert len(prompts) == 1
+    assert await _count(_READ_AUDIT) == 0
+    _heard, said, _actor = captured.await_args_list[-1].args
+    assert said != SENSITIVE_RECORDED_TEXT
+
+
+@pytest.mark.parametrize("route", _VOICE_ROUTES)
+@pytest.mark.parametrize(
+    "message, opening",
+    [
+        ("Llama a mi contacto 1", "Todavía no puedo hacer llamadas."),
+        ("¿Quién tiene llave de mi casa?", "Canary Daughter tiene llave de tu casa."),
+    ],
+)
+async def test_a_call_and_the_key_holders_are_recorded_with_the_marker(
+    household: PersonalSetupResult,
+    captured: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+    message: str,
+    opening: str,
+) -> None:
+    monkeypatch.setattr(settings, "alta_read_enabled", True)
+    await _store_daughter(household.owner_entity_id)
+    await _alta("closed")
+    _see(monkeypatch, _OWNER_FACE)
+    _hear(monkeypatch, message)
+    prompts = _model(monkeypatch)
+
+    async with _client() as client:
+        reply = await _post(client, route, message)
+
+    assert reply.spoken.startswith(opening)
+    assert prompts == []
+    heard, said, _actor = captured.await_args_list[-1].args
+    assert (heard, said) == (message, SENSITIVE_RECORDED_TEXT)

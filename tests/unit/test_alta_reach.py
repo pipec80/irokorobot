@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 from server.cognition.recall_cues import RELATION_PREDICATES
 from server.cognition.sensitive_questions import TOPIC_PREDICATE
-from server.memory import contact_access
+from server.memory import contact_access, seed_plan
 from server.memory.alta_reach import ALTA_REACH, CONTACT_FIELD_REACH, Reach, ReachEntry
 from server.memory.care_contacts import CareContact
 from server.memory.predicate_registry import POOL_PREDICATE_IDS
@@ -98,3 +98,25 @@ def test_a_read_entry_refuses_a_reason_and_an_unread_one_needs_it() -> None:
 def test_the_household_members_own_literals_wait_for_the_family_stage() -> None:
     for field in (("child", "stated_age"), ("child", "likes"), ("pet", "species")):
         assert ALTA_REACH[field].reach is Reach.FAMILY_STAGE
+
+
+def _relations_written_by_hand() -> set[str]:
+    """The predicates ``seed_plan`` passes as a literal to ``_relation`` (its third argument)."""
+    tree = ast.parse(Path(seed_plan.__file__).read_text(encoding="utf-8"))
+    return {
+        node.args[2].value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_relation"
+        and len(node.args) > 2
+        and isinstance(node.args[2], ast.Constant)
+        and isinstance(node.args[2].value, str)
+    }
+
+
+def test_a_relation_written_by_hand_is_an_alta_field() -> None:
+    """A predicate hard-coded in the builder, not only its key tables, must have a reach."""
+    by_hand = _relations_written_by_hand()
+    assert by_hand >= {"child_of", "partner_of", "pet_of", "withhold_from"}
+    assert by_hand <= {predicate for _, predicate in ALTA_FIELDS}
