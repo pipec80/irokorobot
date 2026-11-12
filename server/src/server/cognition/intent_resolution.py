@@ -324,6 +324,7 @@ def resolve_information_need(
     sensitive: bool = False,
     secrets: bool = False,
     alta: bool = False,
+    occurred: bool = False,
 ) -> IntentResolution:
     """Resolve one bounded information need from reviewed Spanish rules.
 
@@ -337,13 +338,15 @@ def resolve_information_need(
             (Plan 0079): the secret guard is on.
         alta: Whether the rest of the alta's questions (Plan 0082) join the sensitive ones; it
             changes nothing without ``sensitive``.
+        occurred: Whether the recall rule reads with the occurred time on (Plan 0083 D-13): the
+            usted forms, years and seasons; it changes nothing without ``recall``.
 
     Returns:
         The closed, deterministic resolution — need, match kind, and a
         privacy-safe rule identifier (``None`` only for generic conversation).
     """
     utterance = _Utterance(message=message, normalized=normalize_spanish(message))
-    for rule in _rules_for(recall, sensitive, secrets, alta):
+    for rule in _rules_for(recall, sensitive, secrets, alta, occurred):
         resolution = rule(utterance)
         if resolution is not None:
             return resolution
@@ -414,7 +417,16 @@ def _recall_rule(utterance: _Utterance) -> IntentResolution | None:
     route: only a strong cue about what the owner told goes to the diary before it. The date
     only tells whether a window remains, so the machine's day is enough here.
     """
-    cue = classify_recall_cue(utterance.message, today=date.today())
+    return _recall_resolution(utterance, occurred=False)
+
+
+def _occurred_recall_rule(utterance: _Utterance) -> IntentResolution | None:
+    """Recognize a recall question with the occurred time on (Plan 0083 D-13)."""
+    return _recall_resolution(utterance, occurred=True)
+
+
+def _recall_resolution(utterance: _Utterance, *, occurred: bool) -> IntentResolution | None:
+    cue = classify_recall_cue(utterance.message, today=date.today(), occurred=occurred)
     if cue is None:
         return None
     if cue.strength is CueStrength.WEAK and requests_household_data(utterance.message):
@@ -710,6 +722,10 @@ _RECALL_RULES: tuple[Callable[[_Utterance], IntentResolution | None], ...] = (
     _recall_rule,
     *_RULES[2:],
 )
+# The same rules with the occurred time on (Plan 0083): only the recall rule reads differently.
+_OCCURRED_RECALL_RULES: tuple[Callable[[_Utterance], IntentResolution | None], ...] = tuple(
+    _occurred_recall_rule if rule is _recall_rule else rule for rule in _RECALL_RULES
+)
 
 
 def _stated_secret_rule(utterance: _Utterance) -> IntentResolution | None:
@@ -755,7 +771,7 @@ def _alta_question_rule(utterance: _Utterance) -> IntentResolution | None:
 
 @cache
 def _rules_for(
-    recall: bool, sensitive: bool, secrets: bool, alta: bool = False
+    recall: bool, sensitive: bool, secrets: bool, alta: bool = False, occurred: bool = False
 ) -> tuple[Callable[[_Utterance], IntentResolution | None], ...]:
     """Return the rule tuple of one flag set, built once (Plan 0079, D-1).
 
@@ -769,11 +785,13 @@ def _rules_for(
         secrets: Whether the two secret value rules run.
         alta: Whether the sensitive rule also knows the rest of the alta (Plan 0082); only with
             ``sensitive``.
+        occurred: Whether the recall rule reads with the occurred time on (Plan 0083); only with
+            ``recall``.
 
     Returns:
         The ordered rules, a stable object per flag set.
     """
-    base = _RECALL_RULES if recall else _RULES
+    base = (_OCCURRED_RECALL_RULES if occurred else _RECALL_RULES) if recall else _RULES
     if not (sensitive or secrets):
         return base
     stated = (_stated_secret_rule,) if secrets else ()

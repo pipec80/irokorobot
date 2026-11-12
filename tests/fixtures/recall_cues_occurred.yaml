@@ -1,0 +1,60 @@
+# Plan 0083 Task 5: recall questions with the occurred time on (D-13, Review focus 4 and 5).
+# `today` is 2026-11-12. `with_flag` is the cue with occurred=True, or null; `without_flag` was recorded from
+# the code of `main` before the grammar changed (record_cues.py in the plan's workspace), so the
+# switch-off path is pinned.
+- message: ¿Qué hice el año pasado?
+  with_flag: {strength: strong, when: null, query: '', start: 2025-01-01, end: 2025-12-31}
+  without_flag: {strength: strong, when: null, query: 'el ano pasado', start: null, end: null}
+- message: ¿Qué hice en 2015?
+  with_flag: {strength: strong, when: null, query: '', start: 2015-01-01, end: 2015-12-31}
+  without_flag: {strength: strong, when: null, query: 'en 2015', start: null, end: null}
+- message: ¿Qué hice el verano pasado?
+  with_flag: {strength: strong, when: null, query: '', start: 2025-12-01, end: 2026-02-28}
+  without_flag: {strength: strong, when: null, query: 'el verano pasado', start: null, end: null}
+- message: ¿Qué hice ayer?
+  with_flag: {strength: strong, when: null, query: '', start: 2026-11-11, end: 2026-11-11}
+  without_flag: {strength: strong, when: null, query: '', start: 2026-11-11, end: 2026-11-11}
+- message: ¿Se acuerda cuándo fui a la playa?
+  with_flag: {strength: strong, when: happened, query: cuando fui a la playa, start: null, end: null}
+  without_flag: null
+- message: ¿Tiene registrado cuándo fui al cine?
+  with_flag: {strength: strong, when: happened, query: cuando fui al cine, start: null, end: null}
+  without_flag: null
+- message: ¿Tienes registrado cuándo fui al cine?
+  with_flag: {strength: strong, when: happened, query: cuando fui al cine, start: null, end: null}
+  without_flag: null
+- message: Cuénteme cuándo fui al lago.
+  with_flag: {strength: strong, when: happened, query: cuando fui al lago, start: null, end: null}
+  without_flag: null
+- message: Dígame cuándo fui a la nieve.
+  with_flag: {strength: strong, when: happened, query: cuando fui a la nieve, start: null, end: null}
+  without_flag: null
+- message: ¿Me puede decir cuándo fui al médico?
+  with_flag: {strength: strong, when: happened, query: cuando fui al medico, start: null, end: null}
+  without_flag: null
+- message: ¿Le conté que fui a la playa?
+  with_flag: {strength: strong, when: null, query: que fui a la playa, start: null, end: null}
+  without_flag: null
+- message: ¿Se acuerda de la playa?
+  with_flag: {strength: weak, when: null, query: de la playa, start: null, end: null}
+  without_flag: null
+# Not a recall question: a story about telling someone else, an imperative «recuerda», a short
+# question with no topic, a plan.
+- message: Le dije a mi hija que fuera a la playa.
+  with_flag: null
+  without_flag: null
+- message: Le conté a mi hermana que fui a la playa.
+  with_flag: null
+  without_flag: null
+- message: Recuerda que mañana voy al médico.
+  with_flag: null
+  without_flag: null
+- message: ¿Cuándo fui?
+  with_flag: null
+  without_flag: null
+- message: ¿Cuándo fue eso?
+  with_flag: null
+  without_flag: null
+- message: ¿Qué voy a hacer mañana?
+  with_flag: null
+  without_flag: null

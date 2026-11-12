@@ -190,6 +190,7 @@ class CognitiveController:
         sensitive_reader: SensitiveReader | None = None,
         secret_guard: bool = False,
         alta_read: bool = False,
+        occurred_time: bool = False,
     ) -> None:
         """Create a controller with injected calendar and legacy-generation seams.
 
@@ -226,6 +227,9 @@ class CognitiveController:
             alta_read: Whether the sensitive reader also answers the rest of the alta (Plan
                 0082): the contacts, devices, mobility, hearing, vision, coverage, dwelling and
                 «vive solo». It does nothing without ``sensitive_reader``.
+            occurred_time: Whether a recall question reads with the occurred time on (Plan 0083):
+                years and seasons as windows, the usted forms as cues. It does nothing without
+                ``recall_answerer``.
         """
         self._today = today
         self._legacy_turn = legacy_turn
@@ -243,6 +247,7 @@ class CognitiveController:
         self._sensitive_reader = sensitive_reader
         self._secret_guard = secret_guard
         self._alta_read = alta_read
+        self._occurred_time = occurred_time
         # The same cache for a sensitive read: one read and one audit row per event.
         self._sensitive_reads: dict[UUID, ResponsePlan | None] = {}
         # The classic route's two calls again: one search and one audit row per event.
@@ -369,6 +374,8 @@ class CognitiveController:
         flags: dict[str, bool] = {}
         if self._recall_answerer is not None:
             flags["recall"] = True
+            if self._occurred_time:
+                flags["occurred"] = True
         if sensitive and self._sensitive_reader is not None:
             flags["sensitive"] = True
             if self._alta_read:
@@ -618,7 +625,12 @@ class CognitiveController:
 
     async def _recall_decision(self, event: CognitiveEvent[TextTurnPayload]) -> ResponsePlan | None:
         """Decide the recall plan of one event (cached by ``_recall_plan``)."""
-        cue = classify_recall_cue(event.payload.message, today=self._today())
+        message, today = event.payload.message, self._today()
+        cue = (
+            classify_recall_cue(message, today=today, occurred=True)
+            if self._occurred_time
+            else classify_recall_cue(message, today=today)
+        )
         if cue is None or self._recall_answerer is None:
             return None
         strong = cue.strength is CueStrength.STRONG
