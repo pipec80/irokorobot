@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from server.memory.seed_members import SeedChild, SeedOwner, SeedPerson, SeedPet
 
 __all__ = [
+    "ALTA_FIELDS",
     "OperationKind",
     "SeedOperation",
     "SeedPlan",
@@ -81,6 +82,23 @@ _RELATIVES = (
     ("grandparents", SeedRole.GRANDPARENT, "has_grandparent"),
     ("siblings", SeedRole.SIBLING, "has_sibling"),
     ("grandchildren", SeedRole.GRANDCHILD, "has_grandchild"),
+)
+
+
+#: Every ``(subject role, predicate)`` a seed load can write, derived from the builder's own keys
+#: (Plan 0082, ADR 0037 decision 5): the reach map must give each one a voice read or a reason.
+ALTA_FIELDS: frozenset[tuple[str, str]] = frozenset(
+    {
+        *((SeedRole.OWNER.value, predicate) for predicate in OWNER_PREDICATES.values()),
+        *((SeedRole.CHILD.value, key) for key in _CHILD_KEYS),
+        *((SeedRole.PET.value, key) for key in _PET_KEYS),
+        (SeedRole.CHILD.value, "child_of"),
+        *((SeedRole.CHILD.value, marker) for marker in _CHILD_SIDES.values()),
+        (SeedRole.PARTNER.value, "partner_of"),
+        (SeedRole.PET.value, "pet_of"),
+        *((SeedRole.OWNER.value, predicate) for _key, _role, predicate in _RELATIVES),
+        (SeedRole.OWNER.value, "withhold_from"),
+    }
 )
 
 
