@@ -519,8 +519,8 @@ async def recent_units(
         limit: How many units at most.
         first_day: The window's first local day (ISO), needed with ``occurred``.
         last_day: The window's last local day (ISO), needed with ``occurred``.
-        occurred: Whether the window matches by the occurred interval and an episode follows its
-            turns (Plan 0083 D-9).
+        occurred: Whether the window matches by the occurred interval and an episode follows the
+            turn units of its record (Plan 0083 D-9).
 
     Returns:
         The readable units.
