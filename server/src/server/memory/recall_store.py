@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 
     import aiosqlite
 
+    from server.cognition.spoken_dates import DayWindow
     from server.memory.conversation_types import RecordedTurn
 
 __all__ = [
@@ -38,6 +39,7 @@ __all__ = [
     "insert_episode_unit",
     "insert_turn_unit",
     "lexical_hits",
+    "occurred_time_on",
     "raise_record_sensitivity",
     "recent_units",
     "store_vector",
@@ -67,6 +69,8 @@ class RecallUnit:
     kind: UnitKind
     body: str = field(repr=False)
     said_at: datetime
+    # When the told event happened (Plan 0083): filled only by a read with ``occurred=True``.
+    occurred: DayWindow | None = field(default=None, repr=False)
 
 
 def _unit(row: Sequence[object]) -> RecallUnit:
@@ -78,6 +82,15 @@ def _unit(row: Sequence[object]) -> RecallUnit:
         body=str(row[3]),
         said_at=datetime.fromisoformat(str(row[4])),
     )
+
+
+def occurred_time_on() -> bool:
+    """Whether a turn unit keeps when its told event happened (Plan 0083 D-1).
+
+    The one place the three switches meet: ``OCCURRED_TIME_ENABLED`` works only with
+    ``MEMORY_ENABLED`` and ``RECALL_ENABLED``.
+    """
+    return settings.memory_enabled and settings.recall_enabled and settings.occurred_time_enabled
 
 
 def tells_something(text: str) -> bool:
@@ -118,12 +131,25 @@ async def _insert(
     said_at: str,
     sensitivity: RecallSensitivity,
     correlation_id: str | None,
+    occurred: DayWindow | None = None,
 ) -> int:
+    start, end = (None, None) if occurred is None else (occurred.start, occurred.end)
     cursor = await conn.execute(
         "INSERT INTO recall_units (owner_entity_id, source_record_id, episode_id, kind, body, "
-        "said_at, visibility, sensitivity, correlation_id) "
-        "VALUES (?, ?, ?, ?, ?, ?, 'personal', ?, ?)",
-        (owner_entity_id, record_id, episode_id, kind, body, said_at, sensitivity, correlation_id),
+        "said_at, visibility, sensitivity, correlation_id, occurred_start, occurred_end) "
+        "VALUES (?, ?, ?, ?, ?, ?, 'personal', ?, ?, ?, ?)",
+        (
+            owner_entity_id,
+            record_id,
+            episode_id,
+            kind,
+            body,
+            said_at,
+            sensitivity,
+            correlation_id,
+            None if start is None else start.isoformat(),
+            None if end is None else end.isoformat(),
+        ),
     )
     unit_id = int(cursor.lastrowid or 0)
     await cursor.close()
@@ -131,7 +157,12 @@ async def _insert(
 
 
 async def insert_turn_unit(
-    conn: aiosqlite.Connection, *, record_id: int, owner_entity_id: int, turn: RecordedTurn
+    conn: aiosqlite.Connection,
+    *,
+    record_id: int,
+    owner_entity_id: int,
+    turn: RecordedTurn,
+    occurred: DayWindow | None = None,
 ) -> int:
     """Write the unit of one verified turn, inside the caller's open transaction.
 
@@ -140,6 +171,7 @@ async def insert_turn_unit(
         record_id: The record the turn was appended to.
         owner_entity_id: The owner of the record.
         turn: The exchange; only its ``heard`` text becomes the unit, never ``said``.
+        occurred: When the told event happened, as local days (Plan 0083), or ``None``.
 
     Returns:
         The new unit's id.
@@ -161,6 +193,7 @@ async def insert_turn_unit(
         said_at=_iso(turn.at),
         sensitivity=classify_turn_text(turn.heard),
         correlation_id=str(turn.correlation_id),
+        occurred=occurred,
     )
 
 

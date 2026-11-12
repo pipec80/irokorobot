@@ -29,6 +29,8 @@ _DIMENSIONS = 768
 @pytest.fixture
 async def v14_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[int]:
     monkeypatch.setattr(settings, "brain_db_path", tmp_path / "v14.db")
+    # The schema as migration 014 left it; migration 015 has its own test (Plan 0083).
+    monkeypatch.setattr(db, "_MIGRATIONS", tuple(m for m in db._MIGRATIONS if m[0] <= 14))
     db._conn = None
     try:
         await db.open_db()
