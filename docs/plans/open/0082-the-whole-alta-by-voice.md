@@ -1,10 +1,11 @@
 # 0082 — The whole alta by voice: every loaded datum reachable, and a contact's phone
 
-> **Status:** `Draft` (2026-11-11). Written for Pipec's review from
+> **Status:** `Ready` and `NOW` — **promoted by Pipec on 2026-11-11** (D-1 to D-12 confirmed as
+> written; D-13 decided the same day: listed with a reason). Written as `Draft` the same day from
 > [ADR 0037](../../adr/0037-the-time-of-memories-and-a-contacts-phone.md) (`Proposed`), decisions
-> 1 and 5 only, and the code of the branch `docs/memory-engine-adrs` at `65ea877`. It becomes
-> `Ready` and `NOW` when Pipec approves it and confirms D-1 to D-12 (D-13 decided 2026-11-11); ADR 0037 stays `Proposed`
-> until plans 0083 and 0084 close too (or Pipec accepts it in parts). Queue rule 4 applies at
+> 1 and 5 only, and the code of the branch `docs/memory-engine-adrs` at `65ea877`. Executed in a
+> new session; the execution method (subagent-driven or inline) is chosen at its start. ADR 0037
+> stays `Proposed` until plans 0083 and 0084 close too (or Pipec accepts it in parts). Queue rule 4 applies at
 > execution: Task 0 re-verifies every claim below against the merged code before any code, and
 > **stops and reports** if one is false. Written for an executor who has not seen this repository.
 
@@ -549,6 +550,6 @@ forgetting by voice (ADR 0032); any migration, write, wire, robot or prompt chan
   each defined once and named the same in every later task; `classify_sensitive_question(…, alta=)`,
   `resolve_information_need(…, alta=)` and `CognitiveController(…, alta_read=)` are the only new
   parameters.
-- **Open for Pipec.** D-13 is decided (listed with a reason, 2026-11-11). Still to confirm at
-  promotion: the switch's two prerequisites (D-2); the three-person cap (D-7); the phone said in
-  words (D-9).
+- **Pipec's review (2026-11-11).** D-13 decided (listed with a reason); D-1 to D-12 confirmed as
+  written, the switch's two prerequisites (D-2), the three-person cap (D-7) and the phone said in
+  words (D-9) included. Nothing is left open.
