@@ -3,7 +3,7 @@
 > **Status:** `Draft` (2026-11-11). Written for Pipec's review from
 > [ADR 0037](../../adr/0037-the-time-of-memories-and-a-contacts-phone.md) (`Proposed`), decisions
 > 1 and 5 only, and the code of the branch `docs/memory-engine-adrs` at `65ea877`. It becomes
-> `Ready` and `NOW` when Pipec approves it and confirms D-1 to D-13; ADR 0037 stays `Proposed`
+> `Ready` and `NOW` when Pipec approves it and confirms D-1 to D-12 (D-13 decided 2026-11-11); ADR 0037 stays `Proposed`
 > until plans 0083 and 0084 close too (or Pipec accepts it in parts). Queue rule 4 applies at
 > execution: Task 0 re-verifies every claim below against the merged code before any code, and
 > **stops and reports** if one is false. Written for an executor who has not seen this repository.
@@ -165,12 +165,11 @@ promotes the plan.
   no entry, and checks each claim against the reader that makes it: `CARD` ⊆ `CARD_PREDICATES`,
   `SENSITIVE` ⊆ the predicates of `TOPIC_PREDICATE`, `RELATIVES` ⊆ what `relation_of` and the
   children routes answer, `CONTACTS` ⊆ the `CareContact` fields `contact_access` reads.
-- **D-13 Not in ADR 0037's table (needs Pipec).** The alta also loads a child's `stated_age` and
-  tastes, and a pet's `species`, `stated_age` and tastes; the ADR's table names neither, and no
-  reader serves them today (Task 0 confirms). The plan lists them as `Reach.FAMILY_STAGE` («a
-  household member's own data, read in the family stage, P3») and amends ADR 0037's table with that
-  row at the close. If Pipec wants them read now, the plan adds one task (a relatives-style template
-  each) before promotion; it does not decide that alone.
+- **D-13 Not in ADR 0037's table (*Pipec, 2026-11-11: listed with a reason*).** The alta also
+  loads a child's `stated_age` and tastes, and a pet's `species`, `stated_age` and tastes; the ADR's
+  table names neither, and no reader serves them today (Task 0 confirms). They are listed as
+  `Reach.FAMILY_STAGE` («a household member's own data, read in the family stage, P3»), not read
+  by this plan, and ADR 0037's table gains that row at the close.
 
 **Goal.** With `ALTA_READ_ENABLED` on, the face-identified owner alone in view hears every datum the
 alta loaded that ADR 0037 decision 5 marks readable: devices, mobility, hearing, vision, coverage,
@@ -532,7 +531,7 @@ Plan 0082* note for decisions 1 and 5, and the D-13 row in its table), ADR 0024 
 The spoken-time reader, the occurred time and «¿cuándo ocurrió?» (Plan 0083); pending topics and the
 greeting that picks one up (Plan 0084); calling a phone, an alert or telephony; anyone but the
 owner reading the contacts (the future care ADR); a name-only contact question (D-6); reading a
-child's or a pet's own literals (D-13, unless Pipec decides otherwise); `withhold_from`,
+child's or a pet's own literals (D-13); `withhold_from`,
 `private_topic` and the contact's permissions as answers (rules, the family stage); correcting or
 forgetting by voice (ADR 0032); any migration, write, wire, robot or prompt change.
 
@@ -550,5 +549,6 @@ forgetting by voice (ADR 0032); any migration, write, wire, robot or prompt chan
   each defined once and named the same in every later task; `classify_sensitive_question(…, alta=)`,
   `resolve_information_need(…, alta=)` and `CognitiveController(…, alta_read=)` are the only new
   parameters.
-- **Open for Pipec.** D-13 (the household members' own literals); the switch's two prerequisites
-  (D-2); the three-person cap (D-7); the phone said in words (D-9).
+- **Open for Pipec.** D-13 is decided (listed with a reason, 2026-11-11). Still to confirm at
+  promotion: the switch's two prerequisites (D-2); the three-person cap (D-7); the phone said in
+  words (D-9).
