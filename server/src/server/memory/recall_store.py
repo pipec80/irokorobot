@@ -102,6 +102,7 @@ def tells_something(text: str) -> bool:
         recall=True,
         sensitive=settings.sensitive_read_enabled,
         secrets=settings.memory_enabled,
+        alta=settings.sensitive_read_enabled and settings.alta_read_enabled,
     )
     return resolution.need is InformationNeed.GENERIC_CONVERSATION
 

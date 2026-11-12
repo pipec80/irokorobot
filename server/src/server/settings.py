@@ -182,6 +182,11 @@ class Settings(BaseSettings):
     # allergies, address, birthdays and the security references. Kill-switch, off in the code; it
     # also needs MEMORY_ENABLED. Off: every read question as before.
     sensitive_read_enabled: bool = False
+    # The rest of the alta by voice (ADR 0037 decisions 1 and 5, Plan 0082): the contacts' phones,
+    # the key holders, devices, mobility, hearing, vision, coverage, dwelling and «vive solo».
+    # Kill-switch, off in the code; it extends the sensitive read, so it also needs MEMORY_ENABLED
+    # and SENSITIVE_READ_ENABLED. Off: every alta question as before.
+    alta_read_enabled: bool = False
     # The absolute gate of a recall search (ADR 0028 decision 6): a unit found only by its vector
     # qualifies when its cosine distance is under this. Calibrated on Pipec's hardware run of
     # 2026-11-03 (Plan 0078): his memories at 0.395 and 0.414, questions with no memory at 0.469

@@ -18,6 +18,7 @@ from server.cognition.intent_resolution import (
     resolve_information_need,
 )
 from server.cognition.response_plan import InformationNeed
+import yaml
 
 _FIXTURE_PATH = Path(__file__).parents[1] / "fixtures" / "intent_resolution_es.json"
 _CORPUS: list[dict[str, object]] = json.loads(_FIXTURE_PATH.read_text(encoding="utf-8"))
@@ -266,3 +267,42 @@ def test_resolution_rejects_unknown_fields() -> None:
             rule_id=None,
             confidence=0.9,  # type: ignore[call-arg]  # deliberately unsupported field
         )
+
+
+# --- Plan 0082 Task 6: the alta flag (D-2) ---
+
+_ALTA_CORPUS = yaml.safe_load(
+    (Path(__file__).resolve().parents[1] / "fixtures" / "alta_questions.yaml").read_text(
+        encoding="utf-8"
+    )
+)
+_ALTA_PHRASES = [
+    (phrase, key) for key, phrases in _ALTA_CORPUS["questions"].items() for phrase in phrases
+]
+
+
+@pytest.mark.parametrize("message, topic", _ALTA_PHRASES)
+def test_an_alta_question_needs_both_flags(message: str, topic: str) -> None:
+    on = resolve_information_need(message, recall=True, sensitive=True, secrets=True, alta=True)
+    assert on.need is InformationNeed.SENSITIVE_READ
+    assert on.rule_id == f"sensitive.{topic}.v1"
+    without_alta = resolve_information_need(message, recall=True, sensitive=True, secrets=True)
+    assert without_alta.rule_id != f"sensitive.{topic}.v1"
+    alta_alone = resolve_information_need(message, recall=True, secrets=True, alta=True)
+    assert alta_alone == resolve_information_need(message, recall=True, secrets=True)
+
+
+@pytest.mark.parametrize("recall", [False, True])
+def test_with_the_alta_flag_off_resolutions_are_unchanged(recall: bool) -> None:
+    for message in (_ADDRESS_QUESTION, _SECURITY_QUESTION, _CHILD_BIRTHDAY_QUESTION, "hola"):
+        assert resolve_information_need(
+            message, recall=recall, sensitive=True, secrets=True, alta=False
+        ) == resolve_information_need(message, recall=recall, sensitive=True, secrets=True)
+
+
+def test_a_call_request_is_a_sensitive_read() -> None:
+    result = resolve_information_need(
+        "Llama a mi contacto 1", recall=True, sensitive=True, secrets=True, alta=True
+    )
+    assert result.need is InformationNeed.SENSITIVE_READ
+    assert result.rule_id == "sensitive.contact_call.v1"

@@ -41,3 +41,18 @@ def test_a_blank_text_tells_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "sensitive_read_enabled", True)
 
     assert tells_something("   ") is False
+
+
+def test_tells_something_follows_the_alta_switch(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An alta question tells nothing only with both the sensitive and the alta switches on."""
+    # «¿tienes el teléfono de mi hija?» already tells nothing today (a household question), so
+    # the switch is pinned on a question that is ordinary conversation without it.
+    contact = "¿Cómo me desplazo?"
+    monkeypatch.setattr(settings, "memory_enabled", True)
+    monkeypatch.setattr(settings, "sensitive_read_enabled", True)
+    monkeypatch.setattr(settings, "alta_read_enabled", False)
+    assert tells_something(contact) is True
+    monkeypatch.setattr(settings, "alta_read_enabled", True)
+    assert tells_something(contact) is False
+    monkeypatch.setattr(settings, "sensitive_read_enabled", False)
+    assert tells_something(contact) is True

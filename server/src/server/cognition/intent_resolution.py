@@ -318,7 +318,12 @@ class _Utterance:
 
 
 def resolve_information_need(
-    message: str, *, recall: bool = False, sensitive: bool = False, secrets: bool = False
+    message: str,
+    *,
+    recall: bool = False,
+    sensitive: bool = False,
+    secrets: bool = False,
+    alta: bool = False,
 ) -> IntentResolution:
     """Resolve one bounded information need from reviewed Spanish rules.
 
@@ -330,13 +335,15 @@ def resolve_information_need(
             (Plan 0079): the sensitive reader is wired.
         secrets: Whether a secret value, stated or asked for, resolves to ``SECRET_VALUE``
             (Plan 0079): the secret guard is on.
+        alta: Whether the rest of the alta's questions (Plan 0082) join the sensitive ones; it
+            changes nothing without ``sensitive``.
 
     Returns:
         The closed, deterministic resolution — need, match kind, and a
         privacy-safe rule identifier (``None`` only for generic conversation).
     """
     utterance = _Utterance(message=message, normalized=normalize_spanish(message))
-    for rule in _rules_for(recall, sensitive, secrets):
+    for rule in _rules_for(recall, sensitive, secrets, alta):
         resolution = rule(utterance)
         if resolution is not None:
             return resolution
@@ -727,9 +734,8 @@ def _asked_secret_rule(utterance: _Utterance) -> IntentResolution | None:
             return None
 
 
-def _sensitive_question_rule(utterance: _Utterance) -> IntentResolution | None:
-    """Recognize the owner's first-person sensitive question (Plan 0079, D-3)."""
-    query = classify_sensitive_question(utterance.message)
+def _sensitive_resolution(utterance: _Utterance, *, alta: bool) -> IntentResolution | None:
+    query = classify_sensitive_question(utterance.message, alta=alta)
     if query is None:
         return None
     return _resolution(
@@ -737,9 +743,19 @@ def _sensitive_question_rule(utterance: _Utterance) -> IntentResolution | None:
     )
 
 
+def _sensitive_question_rule(utterance: _Utterance) -> IntentResolution | None:
+    """Recognize the owner's first-person sensitive question (Plan 0079, D-3)."""
+    return _sensitive_resolution(utterance, alta=False)
+
+
+def _alta_question_rule(utterance: _Utterance) -> IntentResolution | None:
+    """Recognize a sensitive question or one about the rest of the alta (Plan 0082, D-4)."""
+    return _sensitive_resolution(utterance, alta=True)
+
+
 @cache
 def _rules_for(
-    recall: bool, sensitive: bool, secrets: bool
+    recall: bool, sensitive: bool, secrets: bool, alta: bool = False
 ) -> tuple[Callable[[_Utterance], IntentResolution | None], ...]:
     """Return the rule tuple of one flag set, built once (Plan 0079, D-1).
 
@@ -751,6 +767,8 @@ def _rules_for(
         recall: Whether the recall and relatives rules run.
         sensitive: Whether the sensitive question rule runs.
         secrets: Whether the two secret value rules run.
+        alta: Whether the sensitive rule also knows the rest of the alta (Plan 0082); only with
+            ``sensitive``.
 
     Returns:
         The ordered rules, a stable object per flag set.
@@ -759,6 +777,7 @@ def _rules_for(
     if not (sensitive or secrets):
         return base
     stated = (_stated_secret_rule,) if secrets else ()
-    question = (_sensitive_question_rule,) if sensitive else ()
+    sensitive_rule = _alta_question_rule if alta else _sensitive_question_rule
+    question = (sensitive_rule,) if sensitive else ()
     asked = (_asked_secret_rule,) if secrets else ()
     return (*stated, *question, *asked, *base)
