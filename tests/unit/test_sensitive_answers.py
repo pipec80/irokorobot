@@ -272,3 +272,80 @@ def test_only_ascii_digits_make_an_iso_date() -> None:
 
     with pytest.raises(ValueError, match="not an ISO date"):
         word_own_answer(SensitiveTopic.OWN_BIRTHDAY, (value,))
+
+
+# --- Plan 0082 Task 4: the rest of the owner's profile (D-11) ---
+
+
+@pytest.mark.parametrize(
+    "topic, values, expected",
+    [
+        (
+            SensitiveTopic.IMPLANTED_DEVICE,
+            ("Marcapasos A",),
+            "Tu dispositivo registrado es Marcapasos A.",
+        ),
+        (
+            SensitiveTopic.IMPLANTED_DEVICE,
+            ("Marcapasos A", "Audífono B"),
+            "Tus dispositivos registrados son Marcapasos A y Audífono B.",
+        ),
+        (SensitiveTopic.MOBILITY, ("solo",), "Te desplazas sin ayuda."),
+        (SensitiveTopic.MOBILITY, ("baston",), "Te desplazas con bastón."),
+        (SensitiveTopic.MOBILITY, ("andador",), "Te desplazas con andador."),
+        (SensitiveTopic.MOBILITY, ("silla_de_ruedas",), "Te desplazas en silla de ruedas."),
+        (SensitiveTopic.HEARING, ("normal",), "Tienes registrada una audición normal."),
+        (SensitiveTopic.HEARING, ("audifonos",), "Usas audífonos."),
+        (SensitiveTopic.HEARING, ("dificultad",), "Tienes dificultad para escuchar."),
+        (SensitiveTopic.VISION, ("normal",), "Tienes registrada una visión normal."),
+        (SensitiveTopic.VISION, ("lentes",), "Usas lentes."),
+        (SensitiveTopic.VISION, ("dificultad",), "Tienes dificultad para ver."),
+        (
+            SensitiveTopic.HEALTH_COVERAGE,
+            ("Previsión Canary",),
+            "Tu previsión de salud es Previsión Canary.",
+        ),
+        (SensitiveTopic.DWELLING_TYPE, ("casa",), "Vives en una casa."),
+        (SensitiveTopic.DWELLING_TYPE, ("departamento",), "Vives en un departamento."),
+        (SensitiveTopic.FLOOR, ("4",), "Vives en el piso 4."),
+        (SensitiveTopic.LIFT, ("si",), "Sí, tu edificio tiene ascensor."),
+        (SensitiveTopic.LIFT, ("no",), "Tu edificio no tiene ascensor."),
+        (
+            SensitiveTopic.HOME_ACCESS,
+            ("Portón azul, conserjería",),
+            "Sobre cómo entrar a tu casa tengo anotado: Portón azul, conserjería.",
+        ),
+        (SensitiveTopic.LIVES_ALONE, ("si",), "Tengo registrado que vives sin nadie más en casa."),
+        (SensitiveTopic.LIVES_ALONE, ("no",), "Tengo registrado que vives con alguien más."),
+    ],
+)
+def test_each_profile_template(
+    topic: SensitiveTopic, values: tuple[str, ...], expected: str
+) -> None:
+    assert word_own_answer(topic, values) == expected
+
+
+@pytest.mark.parametrize(
+    "topic",
+    [
+        SensitiveTopic.MOBILITY,
+        SensitiveTopic.HEARING,
+        SensitiveTopic.VISION,
+        SensitiveTopic.DWELLING_TYPE,
+        SensitiveTopic.LIFT,
+        SensitiveTopic.LIVES_ALONE,
+    ],
+)
+def test_an_unknown_choice_raises_without_the_value(topic: SensitiveTopic) -> None:
+    with pytest.raises(ValueError, match="outside its closed choices") as raised:
+        word_own_answer(topic, ("Canaryvalue",))
+    assert "Canaryvalue" not in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    "topic",
+    [SensitiveTopic.CONTACT_PHONE, SensitiveTopic.CONTACT_CALL, SensitiveTopic.KEY_HOLDERS],
+)
+def test_a_contact_topic_is_not_worded_here(topic: SensitiveTopic) -> None:
+    with pytest.raises(ValueError, match="no own template"):
+        word_own_answer(topic, ("+56900000001",))
