@@ -130,3 +130,23 @@ CM-4 closed on 2026-10-30:
 
 - [Plan 0076](0076-cm4-conversation-record-and-diary.md) (`just gate` 5442): the legacy memory path retired (the prompts kept their golden digests), migration 013, the segmented conversation record behind the owner's `conversation_storage` consent and two switches, the per-turn face + voice verdict, the diary job (only the owner's verified part) and `iroko-admin conversations` under the PIN. Accepted on real hardware, 8 of 8 cases; a fixed reply now keeps its speaker (found on hardware). ADR 0027 `Accepted`. [Record](../../evals/0076-conversation-record-acceptance.md).
 - [Plan 0077](0077-household-requests-not-mentions.md) (`just gate` 5640): the household protection answers requests, not mentions. A sentence is a household request when it names the household with «mi»/«mis»/«nuestro» and has the form of a request, unless it asks what the speaker should do, is for the household, says a feeling or speaks to the robot (amendment D-22, after hardware round 1 showed two requests slipping past a list of data words); stories, advice and questions about someone else reach the model, and an owner's or adult's question about a stored name keeps the protected path. The age and relationship rules and «conoce a» stop firing on a loose word, and an architecture guard pins that the generic prompt reads no household store. Accepted on real hardware in two rounds. [Record](../../evals/0077-household-requests-acceptance.md).
+
+The memory MVP and the path to the finish line, 2026-11-04 to 2026-11-12 (each closed on real
+hardware; the [operational board](../README.md#operational-board) has the full closing rows):
+
+- [Plan 0078](0078-cm5b-recall-what-the-owner-told.md) (`just gate` 5993): CM-5b + R3, recall of
+  what the owner told; migration 014, the recall units with FTS5, vectors and RRF, behind
+  `RECALL_ENABLED`; ADR 0028 `Accepted`.
+- [Plan 0079](0079-block-b-sensitive-read-and-spoken-secrets.md) (CI selection 6438): block B, the
+  owner's sensitive data by voice at its level and no spoken secret ever kept, behind
+  `SENSITIVE_READ_ENABLED`; ADR 0029 `Accepted`.
+- [Plan 0080](0080-mvp-recall-phrasings.md) (CI selection 6958): the owner's own recall phrasings,
+  the sides of the family and the delivery filter; «¿cuándo fui…?» answered with the day it was told.
+- [Plan 0081](0081-what-the-robot-says.md) (CI selection 7005): the owner's tastes in the prompt only
+  on taste talk, the language rule follows the address form.
+- [Plan 0082](0082-the-whole-alta-by-voice.md) (CI selection 7481): every datum the alta loads is
+  reachable by voice or listed with a reason, and a contact's phone; behind `ALTA_READ_ENABLED`; ADR
+  0037 decisions 1 and 5.
+- [Plan 0083](0083-spoken-time-and-when-it-happened.md) (`just gate` 7904): one reader of spoken
+  time, past and future, and when a told event happened; migration 015, behind
+  `OCCURRED_TIME_ENABLED`; ADR 0037 decisions 3 and 4.
