@@ -36,12 +36,12 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.unit
 
-_FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "pending_announcements.yaml"
+_FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "pending_capture_cases.yaml"
 _CASES = cast("list[dict[str, object]]", yaml.safe_load(_FIXTURE.read_text(encoding="utf-8")))
-_BANK = str(_CASES[0]["heard"])  # «Mañana voy al banco a pagar una cuenta.»
-_DOCTOR = "El jueves tengo hora con el médico."
-_GATE = "Mañana tengo que cambiar la llave del portón."
-_QUESTION = next(str(case["heard"]) for case in _CASES if case["outcome"] == "question")
+_KEPT = [case for case in _CASES if case["outcome"] == "kept"]
+_NOT_KEPT = [case for case in _CASES if case["outcome"] != "kept"]
+_BANK = str(_KEPT[0]["heard"])
+_DOCTOR = str(_KEPT[1]["heard"])
 # Thursday 2026-11-12, noon in Santiago.
 _NOW = datetime(2026, 11, 12, 15, tzinfo=UTC)
 _OWNER = 7
@@ -169,31 +169,20 @@ async def test_a_health_announcement_is_kept_as_medical(inserted: AsyncMock) -> 
     assert inserted.await_args.kwargs["due_day"] == date(2026, 11, 19)
 
 
-@pytest.mark.parametrize(
-    "heard, verified, outcome",
-    [
-        (_BANK, False, "not_verified"),
-        (_QUESTION, True, "question"),
-        (_GATE, True, "sensitive"),
-        ("Mañana viene mi hija.", True, "no_verb"),
-        ("La próxima semana voy al sur.", True, "not_single_day"),
-        ("Hoy estoy cansado.", True, "no_verb"),
-        ("Me gusta el mate.", True, "no_phrase"),
-    ],
-)
+@pytest.mark.parametrize("case", _NOT_KEPT, ids=lambda case: f"{case['heard']}|{case['verified']}")
 async def test_a_turn_that_is_not_an_announcement_keeps_none(
     inserted: AsyncMock,
     caplog: pytest.LogCaptureFixture,
-    heard: str,
-    verified: bool,
-    outcome: str,
+    case: dict[str, object],
 ) -> None:
     caplog.set_level(logging.INFO)
 
-    assert await _capture(heard, verified=verified) is CaptureOutcome.RECORDED
+    assert await _capture(str(case["heard"]), verified=bool(case["verified"])) is (
+        CaptureOutcome.RECORDED
+    )
 
     inserted.assert_not_awaited()
-    assert _outcomes(caplog) == [outcome]
+    assert _outcomes(caplog) == [case["outcome"]]
     _assert_no_text(caplog)
 
 

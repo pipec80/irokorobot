@@ -7,7 +7,7 @@ the identity store and the routes are real. A topic is stored due yesterday. Can
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from datetime import timedelta
+from datetime import UTC, date, datetime, timedelta
 import io
 import json
 from typing import TYPE_CHECKING
@@ -21,13 +21,11 @@ import numpy as np
 from pydantic import SecretStr
 import pytest
 from server.cognition import face_authentication as face_auth_module
-from server.cognition.clock import utc_now
 from server.cognition.owner_authentication import owner_unlock_service
 from server.main import app
 from server.memory import pending_store
 from server.memory.biometric_consent import grant_face_consent
 from server.memory.candidate_dialogue import PendingOffer
-from server.memory.recall_search import household_zone
 from server.personal_setup import PersonalSetupInput, PersonalSetupResult, apply_personal_setup
 from server.resources import AppResources
 from server.routers import transcribe as transcribe_module
@@ -40,6 +38,8 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
     from pathlib import Path
 
+    from server.memory.pending_store import PendingSensitivity
+
 pytestmark = pytest.mark.integration
 
 _FRAME = cv2.imencode(".jpg", np.zeros((10, 10, 3), dtype=np.uint8))[1].tobytes()
@@ -49,6 +49,9 @@ _REPLY = "Hola, qué gusto verte."
 _SENTENCE = "¿Cómo te fue ayer con el banco?"
 _OFFER = "Antes me dijiste que te gusta el mate."
 _T = "2026-11-03T10:00:00.000000+00:00"
+# Thursday 2026-11-12, noon in Santiago.
+_NOW = datetime(2026, 11, 12, 15, tzinfo=UTC)
+_TODAY = date(2026, 11, 12)
 _DONE_KEYS = {
     "type",
     "stt_ms",
@@ -101,13 +104,17 @@ async def household(
     )
     await grant_face_consent(result.owner_entity_id)
     await enroll_face(result.owner_entity_id, _OWNER_FACE, label="Canary")
+    # One instant for the whole test, so a run across local midnight never flaps (Task 8 review).
+    monkeypatch.setattr(transcribe_module, "utc_now", lambda: _NOW)
     yield result
     await db.close_db()
     db._conn = None
 
 
-async def _topic_due_yesterday(owner_id: int, topic: str = "el banco") -> int:
-    today = utc_now().astimezone(household_zone()).date()
+async def _topic_due_yesterday(
+    owner_id: int, topic: str = "el banco", *, sensitivity: PendingSensitivity = "normal"
+) -> int:
+    today = _TODAY
     cursor = await db.get_conn().execute(
         "INSERT INTO conversation_records (owner_entity_id, started_at, last_turn_at, closed_at, "
         "expires_at) VALUES (?, ?, ?, ?, ?)",
@@ -125,8 +132,8 @@ async def _topic_due_yesterday(owner_id: int, topic: str = "el banco") -> int:
             said_day=today - timedelta(days=2),
             due_day=today - timedelta(days=1),
             heard="zzheardzz",
-            sensitivity="normal",
-            now=utc_now(),
+            sensitivity=sensitivity,
+            now=_NOW - timedelta(days=2),
         )
     assert await pending_store.set_topic(topic_id, topic)
     return topic_id
@@ -295,3 +302,71 @@ async def test_with_the_switch_off_every_route_is_byte_identical(
     for spy in reads.values():
         spy.assert_not_awaited()
     assert await _state(topic_id) == "open"
+
+
+async def _close_the_alta() -> None:
+    await db.get_conn().execute(
+        "INSERT INTO commissioning_records (installation_id, started_at, interviewer_label, "
+        "interviewer_role, confirmation_mode, disk_encryption, pool_version, closed_at) "
+        "VALUES (?, ?, 'Canary Builder', 'builder', 'builder_is_owner', 'unknown', 1, ?)",
+        ("00000000-0000-0000-0000-000000000084", _T, _T),
+    )
+    await db.get_conn().commit()
+
+
+@pytest.mark.parametrize("closed", [True, False], ids=["alta-closed", "alta-open"])
+async def test_a_health_topic_needs_the_closed_alta_on_the_route(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch, closed: bool
+) -> None:
+    topic_id = await _topic_due_yesterday(
+        household.owner_entity_id, "el médico", sensitivity="medical"
+    )
+    if closed:
+        await _close_the_alta()
+    _faces(monkeypatch, _OWNER_FACE)
+    synthesize = _doubles(monkeypatch, turns=1)
+
+    async with _client() as client:
+        assert (await client.post("/transcribe", files=_files())).status_code == 200
+
+    if closed:
+        assert _said(synthesize) == [f"{_REPLY} ¿Cómo te fue ayer con el médico?"]
+        assert await _state(topic_id) == "asked"
+    else:
+        assert _said(synthesize) == [_REPLY]
+        assert await _state(topic_id) == "open"
+
+
+async def test_a_health_topic_is_never_said_with_a_guest_in_view(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    topic_id = await _topic_due_yesterday(
+        household.owner_entity_id, "el médico", sensitivity="medical"
+    )
+    await _close_the_alta()
+    _faces(monkeypatch, _OWNER_FACE, _STRANGER_FACE)
+    synthesize = _doubles(monkeypatch, turns=1)
+
+    async with _client() as client:
+        await _stream(client)
+
+    assert _said(synthesize) == [_REPLY]
+    assert await _state(topic_id) == "open"
+
+
+async def test_the_next_model_turn_hears_the_question_and_this_one_never_reads_it(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D-12 and the prompt guard on the real route: the model reads no topic when it speaks."""
+    await _topic_due_yesterday(household.owner_entity_id)
+    _faces(monkeypatch, _OWNER_FACE)
+    _doubles(monkeypatch)
+
+    async with _client() as client:
+        await client.post("/transcribe", files=_files())
+        await client.post("/transcribe", files=_files())
+
+    first, second = llm.generate_response.await_args_list  # type: ignore[attr-defined]  # an AsyncMock
+    assert "banco" not in repr(first.args) + repr(first.kwargs)
+    history = [turn.content for turn in second.kwargs["history"]]
+    assert history == ["Hola.", f"{_REPLY} {_SENTENCE}"]
