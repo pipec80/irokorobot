@@ -6,7 +6,9 @@
   closes (plan 0082 or the plans it is split into). Decisions 1 and 5 implemented by Plan 0082 and
   accepted on real hardware on 2026-11-12, 9 of 9 cases (*Implemented in Plan 0082* below).
   Decisions 3 and 4 implemented by Plan 0083 and accepted on real hardware the same day, 13 of 13
-  cases after three fixes found there (*Implemented in Plan 0083* below). Decision 2 is Plan 0084.
+  cases after three fixes found there (*Implemented in Plan 0083* below). Decision 2 implemented
+  by Plan 0084, merged 2026-11-13 (*Implemented in Plan 0084* below); it becomes `Accepted` once
+  the greeting passes on hardware (2026-11-16 to 2026-11-19).
 - **Date:** 2026-11-11
 - **Builds on:** [ADR 0024](0024-seed-load-senses-secrets-and-channels.md) (the contacts table),
   [ADR 0027](0027-conversation-record-and-the-diary.md) (the record and the diary),
@@ -272,3 +274,25 @@ executor rulings; what the hardware changed, by Pipec's decision:
 The ADR index; the roadmap (row 7); `current-state.md` and the architecture diagrams when the plan
 closes; ADR 0024 decision 5, ADR 0029 decision 1 and ADR 0031 decision 5 (an *Amended by ADR 0037*
 note each, when this ADR is accepted).
+
+## Implemented in Plan 0084
+
+Decision 2 and decision 6 for its switch, behind the default-off `PENDING_TOPICS_ENABLED` (needs
+`MEMORY_ENABLED` and `CONVERSATION_RECORD_ENABLED`), with migration 016 and no wire or robot change
+([Plan 0084](../plans/open/0084-pending-topics-and-the-greeting.md)). The calls the decision left
+to the builder, confirmed by Pipec on 2026-11-12, and what the review and the first hardware day
+added:
+
+- **The window drops «today»** (D-4): a topic is asked from the day after its due day to two days
+  after, never before it happened.
+- **One follow-up per household day**, not per session (D-8); atomic, so two sessions racing never
+  ask two topics.
+- **A `normal` topic also waits with a guest in view** (D-9): two faces suspend the identity.
+- **The sentence joins the short-term session, not the record** (D-12), so the next model turn
+  hears the owner's answer with the question.
+- **Expiry is a deletion** (D-5), two days after the due day, asked or not.
+- **Review and hardware (2026-11-12/13):** a negated verb is no plan («mañana no voy»); the
+  model names one or two copied words (it said «la hora con el médico»); a model failure keeps the
+  topic for three tries; a health topic without the closed alta never blocks a normal one; the
+  recall classifier gained health words and a `private` category, which yields no topic; the
+  routes' «today» is the household's day.

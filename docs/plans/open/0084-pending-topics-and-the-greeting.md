@@ -1,6 +1,11 @@
 # 0084 — Pending topics: what the owner said they would do, picked up by a greeting
 
-> **Status:** `Ready` and `NOW` — **promoted by Pipec on 2026-11-12**: D-1 to D-16 confirmed as
+> **Status:** **Implemented, acceptance in progress** — merged 2026-11-13 (`6a17e38`, PR #264),
+> `just gate` 8118 passed (baseline 7887); day 1 of the hardware acceptance passed and the greeting
+> days run 2026-11-16 to 2026-11-19 ([record](../../evals/0084-pending-topics-acceptance.md)); the
+> plan moves to `completed/` and ADR 0037 becomes `Accepted` then.
+>
+> **Was:** `Ready` and `NOW` — **promoted by Pipec on 2026-11-12**: D-1 to D-16 confirmed as
 > written, the departures from the ADR included (D-4, D-8, D-9, D-12); finer points of grammar and
 > wording are tuned later from longer real sessions (D-16 of Plan 0083). Written as `Draft` the
 > same day from

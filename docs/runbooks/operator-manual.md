@@ -1157,6 +1157,31 @@ the day it was told:
 **Rolling back.** `OCCURRED_TIME_ENABLED=false` and a restart: every route is byte-identical to a
 build without Plan 0083; the stored days stay and are not read.
 
+### Pending topics and the greeting (Plan 0084, ADR 0037): off by default
+
+With `PENDING_TOPICS_ENABLED=true` (needs `MEMORY_ENABLED=true` **and**
+`CONVERSATION_RECORD_ENABLED=true`, with the diary job on so the local model names the topics)
+what the owner says they will do on one day is picked up by the first greeting of a later day:
+
+- **Telling.** «El lunes voy al banco a pagar una cuenta.», «Mañana tengo una reunión con unos
+  amigos.», «El miércoles tengo hora con el médico.». Only a turn with the owner's verified voice,
+  exactly one day ahead (not a week, a month or a year) and a first-person verb («voy», «tengo»,
+  «salgo», «viajo», «juego», «me toca», «te cuento», «le aviso»…) keeps a topic. «Mañana no voy
+  al gimnasio» (a negation), «mañana viene mi hija» (someone else) and «¿voy mañana al banco?»
+  (a question) keep none; a plan about a key, an address or a lawyer is never kept.
+- **The name.** With no conversation open the job asks the model for one or two of the owner's
+  own words («el banco», «la reunión», «el médico»); an invented name deletes the topic.
+- **The greeting.** On the day after the due day (or two days after), the first «Hola» of a new
+  conversation hears the reply and «¿Cómo te fue ayer con el banco?». Once a day at most, never on
+  the due day, never with a second face in view; a health topic needs the closed alta. A pending
+  memory offer is said first and the topic waits. The question is never written to the record.
+- **Expiry.** A topic is deleted two days after its due day, asked or not.
+- **Migration 016** runs at the first start of this build, whatever the switch says: one empty
+  table; back up the database first.
+
+**Rolling back.** `PENDING_TOPICS_ENABLED=false` and a restart: every route is byte-identical to a
+build without Plan 0084; the stored topics still expire.
+
 ## 4. Feature-flag reference
 
 | Variable | Default | Effect |
@@ -1190,6 +1215,7 @@ build without Plan 0083; the stored days stay and are not read.
 | `PROFILE_CARD_ENABLED` | `false` | Server: kill-switch of the profile card in the prompt and of «¿qué sabes de mí?» (Plan 0074, ADR 0026; off in the code, on in a delivered robot). Needs `MEMORY_ENABLED`. Off, every prompt, response and wire field is byte-identical to a build without it; on, it reads only for a face-identified speaker at `basic` or more, on the two voice routes, with one audit row per read |
 | `CONVERSATION_RECORD_ENABLED` | `false` | Server: kill-switch of the conversation record (Plan 0076, ADR 0027; off in the code, on in a delivered robot). Needs `MEMORY_ENABLED` and the owner's `conversation_storage` consent; off, nothing is recorded and every prompt, response and wire field is byte-identical |
 | `CONVERSATION_EPISODES_ENABLED` | `false` | Server: the diary job (needs the record). The segment caps, the two retention clocks, the space cap, the job interval and the summary length are the other `CONVERSATION_*` settings, see the record above |
+| `PENDING_TOPICS_ENABLED` | `false` | Server: pending topics and the greeting (Plan 0084, ADR 0037 decisions 2 and 6); needs `MEMORY_ENABLED` and `CONVERSATION_RECORD_ENABLED`. Off: every turn as before |
 | `OCCURRED_TIME_ENABLED` | `false` | Server: when a told event happened (Plan 0083, ADR 0037 decisions 3 and 4); needs `MEMORY_ENABLED` and `RECALL_ENABLED`. Off: every recall as before |
 | `RECALL_ENABLED` | `false` | Server: kill-switch of recall and of the relatives reader (Plan 0078, ADR 0028; off in the code, on in a delivered robot). Needs `MEMORY_ENABLED` and the record; off, every turn is byte-identical and nothing is indexed |
 | `SENSITIVE_READ_ENABLED` | `false` | Server: kill-switch of the owner's sensitive questions by voice (Plan 0079, ADR 0029; off in the code). Needs `MEMORY_ENABLED`, the face on the voice routes and a closed alta; the security level also needs `SPEAKER_AUTHENTICATION_ENABLED`. Off, every read question is byte-identical. The secret rule does not follow it: it runs whenever `MEMORY_ENABLED` is on |

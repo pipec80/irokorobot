@@ -340,6 +340,9 @@ One function, **one `db.transaction()`**, never relying on an `IntegrityError`:
   `log_spoken`, neither enters the continuity history or the `llm_ms` accounting, and there is
   never an offer on a fallback reply. The candidate becomes `offered` once the response has been
   built; no claim is made that it was heard.
+- **The slot is shared** (Plan 0084, ADR 0037 decision 2): when no offer is spoken, the
+  pending-topic greeting («¿Cómo te fue ayer con el banco?») uses the same place after the
+  reply; an open offer always wins and the topic waits for a later session.
 - **Phrases** (fixed templates in `memory/lexicon.py`, neutral Spanish with **tuteo** — Pipec
   lives in Santiago de Chile, amended 2026-10-15 — filled with the stored value, which already
   passed decision 4): «Antes me dijiste que te gusta {x}. ¿Quieres que lo guarde? Dime: sí,
