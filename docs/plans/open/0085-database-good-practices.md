@@ -7,7 +7,8 @@
 > draft of this plan (three incremental migrations) was reviewed twice and then replaced: Pipec
 > named the storage the core of the product, and a deeper research round (ADR 0038 *Context*)
 > led to a v2 schema designed from zero with the data carried by one tested upgrade. It becomes
-> executable only when Pipec promotes it to `Ready` with the *For Pipec* notes answered.
+> executable only when Pipec promotes it to `Ready` with the *For Pipec* notes answered. Then
+> completed from Pipec's own studies of the memory engine (*Self-review*, last but one bullet).
 >
 > **Two parts, two branches, two PRs.** **Part A** (`feat/0085a-storage-runtime`) changes no
 > table: the runtime and its checks, the pragmas, the transaction, one time format in the writers,
@@ -24,7 +25,7 @@
 > (inline), `superpowers:test-driven-development` for every task,
 > `superpowers:verification-before-completion` before any claim of done,
 > `superpowers:requesting-code-review` and `superpowers:receiving-code-review` for Tasks A6 and
-> B10, and `superpowers:finishing-a-development-branch` at the end of each part. Review agents
+> B11, and `superpowers:finishing-a-development-branch` at the end of each part. Review agents
 > and any other subagent run on the `sonnet` model and read `.claude/` (CLAUDE.md and
 > `.claude/rules/`) in full before reading code. **Pipec's rules win over the skills:** one plain
 > branch per part from `main`, never a git worktree, this plan lives under `docs/plans/`. One
@@ -36,7 +37,7 @@
 > `git commit`; `git add` with explicit paths. Run the suite with `MEMORY_ENABLED=false` as CI
 > does. Never run `uv sync` without `--extra cuda`. Do not run `just gate` or the full suite in
 > the background while Pipec rehearses (about 3.5 GB of RAM). The server and the robot are
-> started by Pipec, never by the agent. **The real database is touched only in Task B11**, after
+> started by Pipec, never by the agent. **The real database is touched only in Task B12**, after
 > its backup, and only by the server Pipec starts. Throwaway scripts go to
 > `.superpowers/sdd/0085-database-good-practices/`; a copy of the real database goes under
 > `data/rehearsal-0085/` (ignored by the tracked `.gitignore`) and is deleted the same day.
@@ -142,7 +143,9 @@ in what they leave to the plan; the *For Pipec* notes say what he is asked.
   script: `PRAGMA foreign_keys=OFF` when the entry says `rebuild=True` (set before the
   transaction), `BEGIN IMMEDIATE`, the script (which holds no `BEGIN`, `COMMIT` or
   `user_version`), `PRAGMA user_version`, `pragma_foreign_key_check` (any row aborts), `COMMIT`,
-  then `foreign_keys=ON` whatever happened, then `checkpoint_wal()` and `PRAGMA optimize`.
+  then `foreign_keys=ON` whatever happened, then `checkpoint_wal()` and `PRAGMA optimize`; after
+  a `rebuild=True` migration it also runs `VACUUM` (outside the transaction), which compacts the
+  rebuilt tables and leaves no free page behind (6 MB today: instant).
   `_MIGRATIONS` entries become a small frozen dataclass (`version`, `filename`, `rebuild`).
   A rebuilt table copies its ids, sets `sqlite_sequence` back to its old counter (captured before
   the `DROP`), and creates its triggers after the copy.
@@ -177,7 +180,11 @@ in what they leave to the plan; the *For Pipec* notes say what he is asked.
   on facts, relations, episodes and units with their CHECKs; the upgrade sets alta facts and
   relations `reported`/`original`, promoted facts `reported`/`extracted` with their candidate,
   episodes and episode units `reported`/`summary`, turn units `reported`/`original`. A trigger
-  refuses an `UPDATE` of `recall_units.body`.
+  refuses an `UPDATE` of `recall_units.body`. **Idempotency is a schema rule, not only a job
+  rule** (ADR 0031 decision 8): `recall_units.turn_id` and `recall_units.episode_id` are each
+  `UNIQUE` (one unit per turn, one per episode), `episode_sources` has the pair as its key and
+  `conversation_episodes.record_id` stays `UNIQUE`, so a background job retried after a crash
+  cannot duplicate a unit, an episode or a link even if its own check is wrong.
 - **D-12 Two times on every edge** (ADR 0038 decision 6). In both V4 tables `asserted_at` becomes
   `recorded_at` and `superseded_at` becomes `retracted_at` (set whenever a row leaves `active`);
   `valid_from` and `valid_to` keep world time as ISO dates at day or month precision. The two
@@ -237,17 +244,38 @@ in what they leave to the plan; the *For Pipec* notes say what he is asked.
   by name; `memory/db_health.py` and `iroko-admin health` (no PIN, server stopped, counts only:
   integrity, foreign keys, FTS5 integrity, orphans of every projection, staleness with named
   constants, rows outside the formats, unknown channels, `page_count`, `freelist_count`, versions;
-  exit 1 on any fault; `just db-health` its alias).
+  exit 1 on any fault; `just db-health` its alias). It also prints the **storage fingerprint**:
+  `user_version`, a SHA-256 of the normalized schema (the golden schema's normalization),
+  `application_id`, `page_size`, the SQLite and `sqlite-vec` versions and the active embedding
+  space's tag and digest; every benchmark and the freeze record it, so a before-and-after
+  comparison always names the storage it measured (ADR 0038 decision 10).
 - **D-20 Rehearsal, backup and timing:** merge after Plan 0084 closes; with the server stopped,
-  back up to `data/backups/pre-0085-<YYYYMMDD-HHMMSS>/`; rehearse on a copy (health and per-table
-  counts at 16, the upgrade, the same at 17, turn rows equal to the JSON turns, units, episodes
-  and facts equal, 0 rows outside the formats); Pipec starts the server; the backup is deleted
+  back up to `data/backups/pre-0085-<YYYYMMDD-HHMMSS>/`; **prove the rollback first** (restore
+  the backup into `data/rehearsal-0085/` and open it with the current `main`: version 16,
+  `integrity_check` ok, the same counts); rehearse on a copy (health and per-table counts at 16,
+  the upgrade, the same at 17, turn rows equal to the JSON turns, units, episodes and facts
+  equal, 0 rows outside the formats); a reset, a restart and a restore are three different
+  tests, and this plan runs the last two; Pipec starts the server; the backup is deleted
   once Pipec accepts (it would hold what a later deletion removes). The rollback is that backup
   with the previous `main`.
 - **D-21 Tuning only listed** (ADR 0038 decision 11): a read pool, `synchronous=FULL` everywhere,
   `cache_size`, `mmap_size`, `int8` or binary vectors, FTS5 `trigram` or stemming, a second
   embedding model, `vec1` or `sqlite-vector`, backups by `VACUUM INTO`, encryption: each waits for
-  its measurement or its ADR.
+  its measurement (D-22) or its ADR. `page_size` stays SQLite's 4096. Optional extensions listed
+  for later, each needing its own measurement, pin and ARM64 check: Sqlean's `fuzzy` and
+  `unicode` (matching a spoken name through transcription errors) and R-Tree (already compiled
+  in; sensors and places, P2.1). Not adopted: `sqlite-zstd` (its author does not trust it with
+  production data), ZIPVFS, CEROD and SEE (paid).
+- **D-22 A storage benchmark, so tuning has a baseline** (ADR 0031 decision 12 step 4, ADR 0038
+  decision 11). `scripts/bench_storage.py` (`just db-bench`) builds a throwaway v2 database in
+  `data/bench-0085/` with **synthetic** data only (invented Spanish sentences, random unit
+  vectors): one owner, 10 000, 50 000 and 100 000 recall units with their turns and their FTS5
+  and `vec0` rows. Per size it measures the insert rate, p50 and p95 of the lexical, vector and
+  hybrid search through `recall_search` (window filter on and off), the file and WAL sizes, and
+  the projected file size per year at a given turns-per-day rate. It changes no setting and
+  tunes nothing: its record (`docs/evals/0085-storage-benchmark.md`, with the storage
+  fingerprint and the host) is the baseline every later tuning step must beat, on the laptop now
+  and on the Pi when it arrives.
 
 **Goal.** The memory engine's store becomes the v2 foundation of ADR 0038 on a pinned, checked
 SQLite: one time format, keys and typed derivation that make «everything derived from this turn»
@@ -318,7 +346,8 @@ Only these change (paths under `server/src/server/` unless they start with `test
 | Part | Files |
 |---|---|
 | A | `timestamps.py` (new), `db.py`, the writers of D-4 (`memory/candidates.py`, `conversation_consent.py`, `conversation_record.py`, `conversation_episodes.py`, `recall_store.py`, `household_authorization.py`, `biometric_consent.py`, `voice_consent.py`, `owner_credentials.py`, `declarative.py`, `meta.py`, `relational_v4.py`, `retention.py`, `cognition/spoken_dates.py`, `admin_cli.py`), `vision/faces.py`, `voice/voiceprints.py`, `personal_setup.py`, `server/pyproject.toml`, `uv.lock`, `.python-version`; their tests, `tests/unit/test_timestamps.py`, `tests/integration/test_physical_deletion.py`, `tests/integration/test_db_runtime.py`, `tests/unit/test_architecture_guards.py` |
-| B | `ids.py` (new), `db.py`, `llm_transport.py` (the digest read), `memory/schema_v2.sql` and `memory/upgrade_v16.sql` (new; the development migrations 017 to 022 live only on the branch), every store named in *Required reading*, `memory/embeddings.py`, `memory/db_health.py` (new), `vision/perception.py`, `admin_cli.py`, `scripts/memory_test.py`, `justfile`; deleted: `memory/schema.sql`, `memory/migration_*.sql`, `memory/legacy_v4_migration.py`, `scripts/migrate_memory_v4.py`; tests: every schema and store test that builds or reads a table, `tests/fixtures/migration_canaries.py`, `tests/fixtures/schema_v2.json`, `tests/unit/test_schema_guards.py`, `tests/integration/test_upgrade_v16.py`, `tests/integration/test_db_health.py`; docs: `docs/architecture/data-dictionary.md` (new) and the documents of Task B11 |
+| B | `ids.py` (new), `db.py`, `llm_transport.py` (the digest read), `memory/schema_v2.sql` and `memory/upgrade_v16.sql` (new; the development migrations 017 to 022 live only on the branch), every store named in *Required reading*, `memory/embeddings.py`, `memory/db_health.py` (new), `vision/perception.py`, `admin_cli.py`, `scripts/memory_test.py`, `scripts/bench_storage.py` (new), `justfile`; deleted: `memory/schema.sql`, `memory/migration_*.sql`, `memory/legacy_v4_migration.py`, `scripts/migrate_memory_v4.py`; tests: every schema and store test that builds or reads a table, `tests/fixtures/migration_canaries.py`, `tests/fixtures/schema_v2.json`, `tests/unit/test_schema_guards.py`, `tests/integration/test_upgrade_v16.py`, `tests/integration/test_db_health.py`,
+`tests/unit/test_bench_storage.py`; docs: `docs/evals/0085-storage-benchmark.md` (new), `docs/architecture/data-dictionary.md` (new) and the documents of Task B12 |
 
 **Rollback boundary.** Each part is its own branch and PR; before the merge, the rollback is the
 branch. Part A changes no table: after the merge its rollback is a revert (and the previous Python
@@ -519,7 +548,9 @@ rebuild.
   stays); a candidate without a record keeps a `NULL` turn (Review focus 5); a promoted fact names
   its candidate, and the candidate's deletion leaves the fact; the migration maps every unit,
   candidate and topic to its turn by the old correlation id (none left unmapped); origins and
-  transformations as D-11; an `UPDATE` of a unit's body is refused.
+  transformations as D-11; an `UPDATE` of a unit's body is refused; the indexing and episode
+  jobs run twice over the same turns (a simulated retry) leave one unit per turn, one episode per
+  record and one link per pair.
 - [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** PASS.
 - [ ] **Step 5:** commit `feat: typed derivation from turns to memories (plan 0085)`.
 
@@ -589,8 +620,8 @@ says.
   upgraded equal `schema_v2.json` (the golden schema, regenerated only on purpose by a documented
   helper); every table's rows carried with the expected counts and values; a third time format
   aborts and leaves 16 (Review focus 1); a non-empty database below 16 is refused; FTS5 indexes
-  every unit once and the counters never go back (Review focus 3); the deletion test of Task A5
-  passes on v2.
+  every unit once and the counters never go back (Review focus 3); after the upgrade
+  `freelist_count` is 0 (the `VACUUM` of D-8); the deletion test of Task A5 passes on v2.
 - [ ] **Step 2:** FAIL. **Step 3:** write the two scripts from the development migrations and
   remove the old files. **Step 4:** PASS, with the whole suite.
 - [ ] **Step 5:** commit `feat: the v2 schema as one baseline and one upgrade (plan 0085)`.
@@ -608,17 +639,37 @@ aiosqlite.Connection, *, now: datetime) -> HealthReport` (changes no row);
 
 - [ ] **Step 1: Write the failing tests:** each health measure sees its planted fault and a clean
   database passes; `check_health` changes no table's content; no canary reaches the printed
-  report; the schema guards with their leak tests; the dictionary covers every table and column
-  both ways.
+  report; the report prints the storage fingerprint, whose schema hash changes when the schema
+  changes and not otherwise; the schema guards with their leak tests; the dictionary covers every
+  table and column both ways.
 - [ ] **Step 2:** FAIL. **Step 3:** implement and write the dictionary from the v2 schema and the
   code. **Step 4:** PASS; `scripts/check_reserved_terms.py` passes.
 - [ ] **Step 5:** commit `docs: the data dictionary, schema guards and health check (plan 0085)`.
 
-### Task B10: Verification and review of Part B
+### Task B10: The storage benchmark
+
+**Files:** `scripts/bench_storage.py` (new), `justfile` (`db-bench`),
+`docs/evals/0085-storage-benchmark.md` (new), `tests/unit/test_bench_storage.py` (new).
+
+**Interfaces:** D-22; `def build_fixture(path: Path, *, units: int, seed: int) -> None`;
+`async def measure(path: Path, *, queries: int) -> BenchResult` (a frozen dataclass of rates,
+latencies in milliseconds, sizes in bytes and the storage fingerprint); the script prints the
+table of D-22 and refuses any path outside `data/bench-0085/`, so it never touches a real
+database.
+
+- [ ] **Step 1: Write the failing tests:** the fixture holds exactly the requested counts and only
+  invented text (the reserved-terms check passes on a generated sample); `measure` returns every
+  field on a 200-unit fixture; a path outside the bench folder is refused.
+- [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** PASS; run `just db-bench` on the laptop
+  (not in the background if Pipec is rehearsing) and write the record, numbers only, with the
+  fingerprint and the host (CPU, RAM, disk); delete the bench folder.
+- [ ] **Step 5:** commit `test: a reproducible storage benchmark (plan 0085)`.
+
+### Task B11: Verification and review of Part B
 
 As Task A6, plus `pr-review-toolkit:pr-test-analyzer` and `pr-review-toolkit:type-design-analyzer`.
 
-### Task B11: Rehearsal, the real upgrade and close
+### Task B12: Rehearsal, the real upgrade and close
 
 **Files:** `docs/architecture/current-state.md` and the Archify memory diagram (validate → deliver
 → visual-check), `docs/runbooks/operator-manual.md` (`iroko-admin health`, the runtime floor, the
@@ -629,7 +680,8 @@ board, `docs/plans/open/README.md`, `docs/plans/completed/README.md`, the roadma
 *Database hygiene*), both delivery maps, and Pipec's local `docs/roadmap/tabla-tareas.md`.
 
 - [ ] **Step 1:** confirm on `main` that no migration was added since Task B0 (else rebase and
-  re-run B8 and B10). With the server stopped: the backup of D-20; the rehearsal on
+  re-run B8 and B11). With the server stopped: the backup of D-20; the rollback proof of D-20
+  (the backup restored and opened at version 16); the rehearsal on
   `data/rehearsal-0085/` (health and per-table counts at 16, the upgrade, the same at 17, turn
   rows equal to the JSON turns); the copy deleted. Any difference stops the plan.
 - [ ] **Step 2:** merge (push, PR, squash-merge with green CI); Pipec starts the server (the
@@ -652,9 +704,10 @@ board, `docs/plans/open/README.md`, `docs/plans/completed/README.md`, the roadma
    audits) and the dead tables gone with 0 rows.
 3. `iroko-admin health` exits 0 on the real database: 0 integrity errors, 0 foreign key
    violations, 0 orphans, 0 rows outside the formats, one `active` embedding space.
-4. The golden schema, the schema guards, the dictionary coverage and the deletion test pass.
-5. The spoken scripts of Tasks A7 and B11 answered as before.
-6. The `pre-0085` backup deleted after Pipec's acceptance; the documents of Task B11 updated; the
+4. The golden schema, the schema guards, the dictionary coverage and the deletion test pass;
+   the storage benchmark's baseline is recorded with its fingerprint.
+5. The spoken scripts of Tasks A7 and B12 answered as before.
+6. The `pre-0085` backup deleted after Pipec's acceptance; the documents of Task B12 updated; the
    plan in `completed/`.
 
 ## Non-goals
@@ -691,5 +744,14 @@ replay at start-up); Plan 0086 implements it, on the `uid` keys of this plan.
   `check_runtime`, `PRAGMAS`, `Migration`, `new_uid`, `model_digest`, `active_space`,
   `ensure_space`, `units_to_reindex`, `HealthReport`, `check_health` and `health_failed` are each
   defined once and named the same in later tasks.
+- **Revision from Pipec's engine studies (2026-11-13).** Pipec's own studies of the memory
+  engine (29 October to 6 November, kept locally) were read against this plan. Added from them:
+  idempotency as a schema rule (D-11), the storage fingerprint for every before-and-after
+  comparison (D-19), the rollback proven before the upgrade, with reset, restart and restore as
+  three tests (D-20), the storage benchmark as the baseline for tuning (D-22, Task B10), the
+  `VACUUM` after a rebuild (D-8), and `page_size`, Sqlean and R-Tree listed and `sqlite-zstd` not
+  adopted (D-21). Already covered and not repeated: hybrid recall exists (Plan 0078), `PRAGMA
+  optimize` already ran on close, no new database or framework, origins and transformations
+  (D-11), the said, occurred and recorded times.
 - **Proportion.** No SQL body is written here; each migration is fixed by its decisions and its
   tests, and the squash is proven by the golden schema.

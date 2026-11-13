@@ -6,7 +6,9 @@
   the MVP). It rests on seven independent read-only reviews of 2026-11-13: two of Plan 0085's
   first draft, then two research rounds (*Context*), and on the code of `main` at `8b37846`. It becomes `Accepted` when the plan that
   implements it closes. **Pipec confirmed all nine recommendations of *Pipec's decisions* the same
-  day**; Plan 0085 is rewritten on them, in two parts.
+  day**; Plan 0085 is rewritten on them, in two parts. Completed the same day from Pipec's own
+  studies of the memory engine (*Context* item 13): schema-level idempotency, the rollback proven
+  before an upgrade, the storage fingerprint and the storage benchmark.
 - **Date:** 2026-11-13
 - **Builds on:** [ADR 0011](0011-sqlite-transaction-ownership.md) (one transaction owner),
   [ADR 0021](0021-memory-candidates-and-the-canonical-writer.md) (decision 6, `secure_delete`),
@@ -92,6 +94,17 @@ source) and ran small tests on throwaway databases. The facts that decide someth
     profiles, the dated consents, the audit evidence, the facts confirmed by dialogue, the
     candidates, or the diary's model-written episodes and their raised sensitivity. Data must be
     carried.
+13. **Pipec's own studies of the memory engine** (29 October to 6 November 2026: the engine's
+    audit, the COALA, RAG and learning study, the RAG and memory audit, the milestone draft, and a
+    study of SQLite tuning and extensions; kept locally) agree with everything above (SQLite as
+    the source of truth, hybrid recall already built by Plan 0078, no new database or framework,
+    learning as persistent state and not as model weights, tuning only against a benchmark). They
+    add what a storage foundation must also hold: a **comparison contract** (every before-and-after
+    measurement names the code, the schema, the SQLite and `sqlite-vec` versions and the model
+    digests it ran on); **idempotent background jobs** (a retried job never duplicates an episode
+    or a unit); **reset, restart and restore as three different tests**; a measured scale
+    question (tens of thousands of episodes over years) rather than a promise; and a list of
+    optional extensions (Sqlean, R-Tree, `sqlite-zstd`, SEE, ZIPVFS, CEROD) and of `page_size`.
 
 The research notes themselves are working files of the session and are not required reading; this
 *Context* is what any plan may cite.
@@ -169,15 +182,18 @@ order.
   when a measured query asks.
 - **The record.** **The turns become rows** (`conversation_turns`: the record, a `uid`, the
   correlation id, unique, `said_at`, the speaker's verdict, the words heard and said, the
-  sensitivity, `redacted_at`); the record keeps its segment fields and counters. A deletion,
-  redaction or sensitivity then applies to one turn by key, not by rewriting a JSON array.
+  sensitivity, `redacted_at`); the record keeps its segment fields, and its counters become
+  queries over its turns. A deletion, redaction or sensitivity then applies to one turn by key,
+  not by rewriting a JSON array.
 - **Derivation is typed.** A recall unit points at its turn **or** its episode by foreign key; an
   episode lists its turns in `episode_sources` (a link row goes with its turn, the episode does
   not, so C2 can let an episode outlive its record, ADR 0032 decision 5, by changing only the
   episode's own key to its record); a candidate and a pending topic point at their turn; a fact
   points at the candidate it was promoted from. Facts, units and episodes carry ADR 0031 decision
   6's **origin** and **transformation**. An index or projection is reached by key, so «everything
-  derived from this turn» is one query.
+  derived from this turn» is one query. **Idempotency is a schema rule**: one unit per turn, one
+  unit per episode, one episode per record and one link per pair are `UNIQUE` keys, so a
+  background job retried after a crash cannot duplicate them even if its own check fails.
 - **Archive.** `archived_at` on facts, relations, episodes and recall units (ADR 0032 decision 3);
   archived rows are filtered by every reader and come back by clearing the column.
 - **Full text.** FTS5 external content, `unicode61 remove_diacritics 2`, `secure-delete=1` on
@@ -188,10 +204,10 @@ order.
   dimension, the metric, normalised or not, and a state: `building`, `active`, `retired`). One
   `vec0` table per dimension holds the vectors with **the owner and the space as partition keys**
   and the sensitivity and the told day as metadata, so a query compares only the active space's
-  vectors and filters the window inside the KNN. A model change builds the new space beside the
-  old one, verifies the count, flips `active` and deletes the old space's rows; vector search is
-  off for the owner while no space is active (lexical search keeps working). A recall unit records
-  `recorded_at` and `embedded_at`.
+  vectors and filters the window inside the KNN. A model change opens a `building` space and
+  re-embeds the units into it one by one (a unit holds one vector); vector search is off for the
+  owner until every unit is in the new space, which then becomes `active` while the old one is
+  `retired` (lexical search never stops). A recall unit records `recorded_at` and `embedded_at`.
 - **Documents.** JSON stays for attribute bags (an entity's attributes, the acta's snapshots), as
   text, never JSONB (an export must read it outside SQLite); a field filtered twice gets a
   `VIRTUAL` generated column and an index. Anything searched, deleted or access-checked one by one
@@ -215,8 +231,13 @@ inserts of `vision/faces.py` and `voice/voiceprints.py` move behind the consent 
 
 - The runner owns atomicity: `BEGIN IMMEDIATE`, the script, `PRAGMA user_version`,
   `foreign_key_check`, `COMMIT`; a rebuild runs with `PRAGMA foreign_keys=OFF` set outside the
-  transaction and turned back on whatever happens. Forward only; a golden-schema test compares a
-  fresh install with an upgraded database.
+  transaction and turned back on whatever happens, followed by a `VACUUM` that compacts the
+  rebuilt tables and leaves no free page. Forward only; a golden-schema test compares a fresh
+  install with an upgraded database.
+- **Reset, restart and restore are three tests.** A reset rehearses an alta on a throwaway
+  database; a restart must keep every confirmed memory; a restore must bring back a whole,
+  consistent database. Before any upgrade the rollback is proven: the backup is restored into a
+  rehearsal folder and opens, at its old version, with its integrity and counts intact.
 - **The v2 schema is designed from zero, and the data is carried, not re-typed.** Fresh installs
   start from one baseline script (`schema_v2.sql`); the one real database reaches it through one
   tested upgrade migration from version 16, rehearsed on a copy with per-table counts and the
@@ -233,9 +254,22 @@ inserts of `vision/faces.py` and `voice/voiceprints.py` move behind the consent 
 `integrity-check`, orphans of every projection, staleness, rows outside the formats, `page_count`
 and `freelist_count`, and the versions of decision 2. `open_db` runs `quick_check` once.
 
+The report ends with the **storage fingerprint**: `user_version`, a hash of the normalized schema,
+`application_id`, `page_size`, the SQLite and `sqlite-vec` versions and the active embedding
+space's tag and digest. It is the comparison contract of the storage: every benchmark, every
+tuning trial and the memory freeze record it, so a before-and-after always names what it
+measured.
+
 ### 11. Measured later, never by default
 
-A read-only connection pool (retrieval p95 under writes); `synchronous=FULL` for everything (its
+Tuning starts from a **storage benchmark**: a throwaway database of synthetic data (10 000 to
+100 000 recall units for one owner) that records the insert rate, p50 and p95 of lexical, vector
+and hybrid search, the file and WAL sizes and the projected size per year, with the storage
+fingerprint and the host. Its first record is taken on the laptop by the plan that builds this
+foundation and taken again on the Pi; a tuning step is adopted only if it beats that record
+without changing what is found or who may read it. `page_size` stays SQLite's 4096.
+
+Waiting for that measure: a read-only connection pool (retrieval p95 under writes); `synchronous=FULL` for everything (its
 cost measured on the Pi); `cache_size` and `mmap_size`; `int8` or binary vectors with re-ranking
 (a 100k-vector benchmark on the Pi first, then a new gate calibration); FTS5 `trigram` or stemming;
 a second embedding model (Granite R2 with Matryoshka is a candidate); `vec1` or `sqlite-vector`
@@ -243,7 +277,11 @@ when they mature. Backups by `VACUUM INTO` or the backup API, and encryption (LU
 or SQLite3MultipleCiphers tested with FTS5 and `sqlite-vec` before any choice) belong to
 [ADR 0033](0033-the-home-server-in-a-container.md). Not adopted: Litestream (it replicates old
 pages a deletion must remove), `secure_delete=FAST`, `synchronous=OFF`, `WITHOUT ROWID` on these
-tables, JSONB for exported data, a raw second copy of every vector.
+tables, JSONB for exported data, a raw second copy of every vector, `sqlite-zstd` (its author does
+not trust it with production data), and the paid SEE, ZIPVFS and CEROD. Optional extensions for
+later, each with its own measurement, version pin and ARM64 check: Sqlean's `fuzzy` and `unicode`
+functions (matching a spoken name through transcription errors) and R-Tree, already compiled into
+uv's CPython (sensors and places, P2.1).
 
 ## Pipec's decisions (2026-11-13)
 
@@ -266,7 +304,8 @@ Pipec confirmed every recommendation as written («Confirm all 9»).
 | Subject | Owner |
 |---|---|
 | Correcting, archiving and deleting by voice or PIN, the register's file format, the diary's retention | ADR 0032, Plan 0086 |
-| The export's format and scope | ADR 0032 decision 8, Plan 0087 |
+| The export's format and scope (with the Open Memory Protocol draft and W3C PROV-O as checklists, not as schemas) | ADR 0032 decision 8, Plan 0087 |
+| A disclosure rule («no menciones X»): a rule about what may be said, not a fact, so its own rows when a plan builds it | CM-3b block B |
 | An «erase a person» order across the `RESTRICT` keys, and the retention of the two audits | Plan 0086, then Plan 0087 |
 | Backups, restore, encryption at rest | ADR 0033 |
 | Documents as a source | ADR 0034, with these rules |
@@ -313,7 +352,9 @@ The byte-level deletion test (decision 9); the start-up assertions and the pragm
 foreign keys on and the version unchanged; the upgrade from a version-16 canary database keeps
 every count and equals a fresh install (golden schema); the guards of decisions 5 and 8; a model
 change never compares two spaces and leaves lexical search on; an `UPDATE` of an indexed body is
-refused.
+refused; a background job run twice duplicates nothing; the backup restores and opens before the
+upgrade runs; the fingerprint's schema hash changes only with the schema; the storage benchmark's
+first record exists with its fingerprint.
 
 ## Docs to update
 
