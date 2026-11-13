@@ -49,8 +49,9 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-#: Writes what an appended exchange adds elsewhere, inside the append's transaction.
-type TurnIndexer = Callable[[aiosqlite.Connection, int, RecordedTurn], Awaitable[int]]
+#: Writes what an appended exchange adds elsewhere, inside the append's transaction (the recall
+#: unit, Plan 0078; the pending topic, Plan 0084). Its result is not used.
+type TurnIndexer = Callable[[aiosqlite.Connection, int, RecordedTurn], Awaitable[object]]
 
 _BYTES_PER_MB = 1_000_000
 _SUMMARY_COLUMNS = (
@@ -158,7 +159,8 @@ async def append_turn(
         owner_entity_id: The owner the record belongs to.
         now: The time a segment closed here is stamped with.
         index: Called inside the append's transaction with the segment id, after the append;
-            a failure rolls the append back with it (the recall unit, Plan 0078).
+            a failure rolls the append back with it (the recall unit, Plan 0078, and the
+            pending topic, Plan 0084).
 
     Returns:
         The id of the segment that received the exchange.

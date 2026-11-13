@@ -28,6 +28,7 @@ from server.memory.conversation_consent import has_active_conversation_consent
 from server.memory.conversation_record import append_turn
 from server.memory.conversation_types import TurnVerdict, make_turn
 from server.memory.owner_credentials import get_ready_owner
+from server.memory.pending_capture import decide_pending, log_pending, pending_hook
 from server.memory.recall_index import embed_unit
 from server.memory.recall_search import household_zone
 from server.memory.recall_store import insert_turn_unit, occurred_time_on, tells_something
@@ -144,13 +145,21 @@ async def capture_turn(
             actor, owner_id=owner_id, wav_bytes=wav_bytes, event=event, verify=verify
         )
         turn = make_turn(heard, said, voice=verdict, correlation_id=event.correlation_id, at=at)
+        pending = decide_pending(turn)
         indexed = _Indexed()
+        now = clock()
         await append_turn(
             turn,
             owner_entity_id=owner_id,
-            now=clock(),
-            index=_recall_indexer(turn, owner_id, indexed),
+            now=now,
+            index=_hooks(
+                _recall_indexer(turn, owner_id, indexed),
+                pending_hook(
+                    pending, owner_id=owner_id, correlation_id=event.correlation_id, now=now
+                ),
+            ),
         )
+        log_pending(pending, event.correlation_id)
         if client is not None and indexed.units:
             await embed_unit(client, indexed.units[0], turn.heard)
     except Exception as exc:  # background boundary: nothing may reach the user's request
@@ -215,6 +224,19 @@ def _recall_indexer(turn: RecordedTurn, owner_id: int, indexed: _Indexed) -> Tur
         return unit_id
 
     return index
+
+
+def _hooks(*hooks: TurnIndexer | None) -> TurnIndexer | None:
+    """Run the given hooks in order inside the append, or ``None`` when there is none."""
+    present = [hook for hook in hooks if hook is not None]
+    if not present:
+        return None
+
+    async def run(conn: aiosqlite.Connection, record_id: int, recorded: RecordedTurn) -> None:
+        for hook in present:
+            await hook(conn, record_id, recorded)
+
+    return run
 
 
 def _logged(

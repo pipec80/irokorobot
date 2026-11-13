@@ -4,8 +4,9 @@ Runs once at start-up (closing a segment a stopped server left open) and then ev
 ``CONVERSATION_JOB_INTERVAL_S``. The diary is written only with both switches on and **only
 while no conversation is open**, at most one episode per tick, so the local model never competes
 with a live conversation (Plan 0076 D-9). With ``RECALL_ENABLED``, under the same rule, it then
-embeds the few recall units that have no vector yet (Plan 0078). Every error is logged by class
-and swallowed.
+embeds the few recall units that have no vector yet (Plan 0078). With the pending topics on, it
+deletes the expired ones and names at most one (Plan 0084). Every error is logged by class and
+swallowed.
 """
 
 from __future__ import annotations
@@ -13,6 +14,8 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import TYPE_CHECKING
+
+import httpx
 
 from server.cognition.clock import utc_now
 from server.memory.conversation_episodes import write_episode
@@ -23,13 +26,20 @@ from server.memory.conversation_record import (
     next_pending_record,
     set_episode_status,
 )
+from server.memory.pending_naming import name_topic
+from server.memory.pending_store import (
+    delete_expired,
+    drop,
+    next_unnamed,
+    pending_topics_on,
+    set_topic,
+)
 from server.memory.recall_index import backfill_vectors
+from server.memory.recall_search import household_zone
 from server.settings import settings
 
 if TYPE_CHECKING:
     from datetime import datetime
-
-    import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -64,8 +74,53 @@ async def run_once(client: httpx.AsyncClient, now: datetime) -> None:
         if settings.recall_enabled:
             # The recall vectors the live path could not compute (ADR 0028 decision 2).
             await backfill_vectors(client)
+        if pending_topics_on():
+            await _tend_pending_topics(client, now)
     except Exception as exc:  # background loop: the next tick tries again
         logger.warning("Conversation job failed (%s)", type(exc).__name__)
+
+
+async def _tend_pending_topics(client: httpx.AsyncClient, now: datetime) -> None:
+    """Delete the expired topics, then name at most one unnamed topic (Plan 0084 D-5, D-6).
+
+    A model the job cannot reach keeps the topic unnamed for a later tick; an answer that is not
+    the owner's words deletes it. Logs carry a closed outcome or a count, never a text.
+    """
+    expired = await delete_expired(today=now.astimezone(household_zone()).date())
+    if expired:
+        logger.info(
+            "Pending topics expired: %d",
+            expired,
+            extra={"event": "pending.expired", "count": expired},
+        )
+    unnamed = await next_unnamed()
+    if unnamed is None:
+        return
+    topic_id, heard = unnamed
+    try:
+        topic = await name_topic(client, heard)
+    except (httpx.HTTPError, TimeoutError) as exc:
+        _log_named("model_failed", topic_id, error_type=type(exc).__name__)
+        return
+    if topic is None:
+        await drop(topic_id)
+        _log_named("unnamed_dropped", topic_id)
+    elif await set_topic(topic_id, topic):
+        _log_named("named", topic_id)
+
+
+def _log_named(outcome: str, topic_id: int, *, error_type: str | None = None) -> None:
+    """Log one naming step: a closed outcome and the row id, never the topic."""
+    logger.info(
+        "Pending topic naming: %s",
+        outcome,
+        extra={
+            "event": "pending.named",
+            "outcome": outcome,
+            "topic_id": topic_id,
+            **({} if error_type is None else {"error_type": error_type}),
+        },
+    )
 
 
 async def _loop(client: httpx.AsyncClient) -> None:
