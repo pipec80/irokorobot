@@ -38,8 +38,10 @@ responsibilities with no product claim.
 - **P2 — situated cognition and memory quality:** conversational memory (P2.2,
   CM-1…CM-7): rows 1 to 5 of the [path to the finish line](#closing-path-of-conversational-memory)
   are done (the household protection, block A «it remembers», block B «it knows who is listening»,
-  the memory MVP of Plan 0080, ADR 0031); what the robot says (the prompt), the memory the MVP still
-  lacks (a contact's phone, pending topics), block C (correct and forget), documents and reading through the camera
+  the memory MVP of Plan 0080, ADR 0031), and so are rows 6 and 7: what the robot says (Plan 0081)
+  and the memory the MVP lacked (Plans 0082 to 0084: a contact's phone, the rest of the alta, when
+  a told event happened and the pending topics, whose greeting is under hardware acceptance until
+  2026-11-19); block C (correct and forget), documents and reading through the camera
   (R2), the home server and
   block D (CM-7 + PC-5) remain before the line «ready for the electronics»; perception (P2.1),
   adaptation (P2.3) and outcomes (P2.4) follow.
