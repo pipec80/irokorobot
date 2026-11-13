@@ -36,9 +36,9 @@ from server.cognition.pending_topics import follow_up_sentence
 from server.memory.commissioning import has_closed_commissioning
 from server.memory.failure_log import failure_level, failure_site
 from server.memory.household_authorization import record_authorization_decision
+from server.memory.own_read_consent import own_read_consent
 from server.memory.pending_store import asked_today, due_topic, mark_asked
 from server.memory.profile_card_access import may_read_own_memory
-from server.memory.sensitive_access import own_read_consent
 
 if TYPE_CHECKING:
     from datetime import date, datetime
@@ -47,8 +47,8 @@ if TYPE_CHECKING:
     from server.cognition.identity import ActivePersonContext
     from server.memory.candidate_policy import AuditWriter, PolicyEvaluator
     from server.memory.continuity import ContinuityTurn
+    from server.memory.own_read_consent import AltaChecker
     from server.memory.pending_store import PendingSensitivity
-    from server.memory.sensitive_access import AltaChecker
 
 logger = logging.getLogger(__name__)
 

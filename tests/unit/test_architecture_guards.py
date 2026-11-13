@@ -1949,7 +1949,11 @@ _PENDING_MODULES = frozenset(
 )
 _PROMPT_BUILDERS = ("characters/", "llm")
 _PENDING_SEAM_USERS = ("streaming", "text_turn.py")
-_PENDING_SEAM = frozenset({"server.memory.pending_follow_up"})
+# The names of the follow-up seam the text turn and the stream may import: a type, the commit and
+# the note that an offer won; never a store read, a log helper or an outcome (Task 8 review).
+_PENDING_SEAM_NAMES = frozenset(
+    {"FollowUpPreparer", "PendingFollowUp", "commit_follow_up", "yield_to_offer"}
+)
 _PENDING_STORE_SWITCH = frozenset({"pending_topics_on"})
 _PENDING_TABLE_SQL = re.compile(r"\b(?:FROM|JOIN|INTO|UPDATE|DELETE\s+FROM)\s+pending_topics\b")
 _PENDING_TABLE_HOME = "memory/pending_store.py"
@@ -1981,7 +1985,7 @@ def _pending_seam_overreach(sources: Mapping[str, str]) -> list[str]:
             names = {alias.name for alias in node.names}
             if node.module == "server.memory.pending_store" and names <= _PENDING_STORE_SWITCH:
                 continue
-            if node.module in _PENDING_SEAM:
+            if node.module == "server.memory.pending_follow_up" and names <= _PENDING_SEAM_NAMES:
                 continue
             found.append(name)
             break
@@ -2011,6 +2015,7 @@ def test_the_pending_topics_guards_detect_a_violation() -> None:
         "text_turn.py": "from server.memory.pending_store import due_topic, pending_topics_on\n",
         "streaming.py": "from server.memory.pending_follow_up import FollowUpPreparer\n",
         "streaming_render.py": "from server.memory.pending_store import pending_topics_on\n",
+        "streaming_protocol.py": "from server.memory.pending_follow_up import log_follow_up\n",
         "cognition/pending_topics.py": "from server.memory.recall_search import household_zone\n",
     }
 
@@ -2019,5 +2024,5 @@ def test_the_pending_topics_guards_detect_a_violation() -> None:
         "characters/__init__.py",
         "llm.py",
     ]
-    assert _pending_seam_overreach(leak) == ["text_turn.py"]
+    assert _pending_seam_overreach(leak) == ["streaming_protocol.py", "text_turn.py"]
     assert _impure_time_modules(leak) == ["cognition/pending_topics.py"]

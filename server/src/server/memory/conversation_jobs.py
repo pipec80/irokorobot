@@ -28,6 +28,7 @@ from server.memory.conversation_record import (
     next_pending_record,
     set_episode_status,
 )
+from server.memory.household_time import household_day
 from server.memory.pending_naming import name_topic
 from server.memory.pending_store import (
     count_naming_failure,
@@ -38,7 +39,6 @@ from server.memory.pending_store import (
     set_topic,
 )
 from server.memory.recall_index import backfill_vectors
-from server.memory.recall_search import household_day
 from server.settings import settings
 
 if TYPE_CHECKING:

@@ -16,7 +16,7 @@ from server import db
 from server.cognition.pending_topics import follow_up_due_days
 from server.cognition.spoken_dates import DayWindow, window_utc_bounds
 from server.memory.candidates import iso_utc
-from server.memory.recall_search import household_day, household_zone
+from server.memory.household_time import household_day, household_zone
 from server.settings import settings
 
 if TYPE_CHECKING:

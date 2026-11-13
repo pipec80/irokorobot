@@ -73,6 +73,7 @@ from server.memory.continuity import ContinuityTurn
 from server.memory.conversation_capture import capture_turn
 from server.memory.entity_labels import read_household_names
 from server.memory.household_authorization import record_authorization_decision
+from server.memory.household_time import household_day
 from server.memory.pending_follow_up import (
     FollowUpPreparer,
     PendingFollowUp,
@@ -83,7 +84,6 @@ from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
 from server.memory.profile_card import PromptCard
 from server.memory.profile_card_access import profile_summary_text, prompt_card_for_turn
 from server.memory.recall_access import recall_reply
-from server.memory.recall_search import household_day
 from server.memory.recall_store import occurred_time_on
 from server.memory.sensitive_access import sensitive_reply
 from server.pipeline import (

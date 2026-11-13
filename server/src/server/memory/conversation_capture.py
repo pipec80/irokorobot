@@ -27,10 +27,10 @@ from server.cognition.strong_actor import VoiceVerifier, is_face_actor, verify_f
 from server.memory.conversation_consent import has_active_conversation_consent
 from server.memory.conversation_record import append_turn, chain_indexers
 from server.memory.conversation_types import TurnVerdict, make_turn
+from server.memory.household_time import household_day
 from server.memory.owner_credentials import get_ready_owner
 from server.memory.pending_capture import decide_pending, log_pending, pending_hook
 from server.memory.recall_index import embed_unit
-from server.memory.recall_search import household_day
 from server.memory.recall_store import insert_turn_unit, occurred_time_on, tells_something
 from server.settings import settings
 

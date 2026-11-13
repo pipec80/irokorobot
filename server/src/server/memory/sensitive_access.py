@@ -63,6 +63,7 @@ from server.memory.contact_access import (
 )
 from server.memory.entity_labels import read_household_names
 from server.memory.household_authorization import record_authorization_decision
+from server.memory.own_read_consent import AltaChecker, own_read_consent
 from server.memory.profile_card_access import may_read_own_memory
 from server.memory.sensitive_store import read_own_values
 from server.text_keys import normalize_spanish
@@ -80,11 +81,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["AltaChecker", "own_read_consent", "sensitive_reply"]
+__all__ = ["sensitive_reply"]
 
 type OwnValuesReader = Callable[[int, str, str], Awaitable[tuple[str, ...]]]
 type NamesReader = Callable[[], Awaitable[frozenset[str]]]
-type AltaChecker = Callable[[], Awaitable[bool]]
 
 
 class _ChildScope(StrEnum):
@@ -128,8 +128,6 @@ class _Done:
 _REFERENCE_TOPICS: Final = frozenset(
     {SensitiveTopic.SECRET_HOLDER, SensitiveTopic.DOCUMENT_LOCATION}
 )
-# Sensitivities whose read needs the person's consent and a closed alta (D-9).
-_CONSENT_SENSITIVITIES: Final = frozenset({"medical", "location", "security"})
 _NOT_REGISTERED_BIRTH_DATE: Final = SensitiveReply(SensitiveOutcome.NOT_REGISTERED, NO_BIRTH_DATE)
 
 
@@ -291,29 +289,6 @@ def _names_hit(words: frozenset[str], stored: frozenset[str]) -> bool:
         if folded in words or words & set(folded.split()):
             return True
     return False
-
-
-async def own_read_consent(
-    sensitivities: frozenset[str], *, face_consent: ConsentStatus, alta_closed: AltaChecker
-) -> ConsentStatus:
-    """Return the consent of a read of the owner's own data (Plan 0079 D-9).
-
-    The one rule both the sensitive read and the pending-topic follow-up (Plan 0084 D-9) use.
-
-    Args:
-        sensitivities: The sensitivities of the data read.
-        face_consent: The consent the face path resolved for the speaker.
-        alta_closed: Whether a commissioning is closed; asked only when consent is needed.
-
-    Returns:
-        ``NOT_REQUIRED`` unless a sensitivity needs consent; then ``GRANTED`` for the face's grant
-        and a closed alta, else ``MISSING``.
-    """
-    if not sensitivities & _CONSENT_SENSITIVITIES:
-        return ConsentStatus.NOT_REQUIRED
-    if face_consent is ConsentStatus.GRANTED and await alta_closed():
-        return ConsentStatus.GRANTED
-    return ConsentStatus.MISSING
 
 
 async def _authorized(call: _Call, person_id: int, sensitivities: frozenset[str]) -> bool:

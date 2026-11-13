@@ -16,8 +16,8 @@ from typing import TYPE_CHECKING
 
 from server.cognition.pending_topics import AnnouncementOutcome, read_announcement
 from server.memory.conversation_types import TurnVerdict
+from server.memory.household_time import household_day
 from server.memory.pending_store import insert_unnamed, pending_topics_on
-from server.memory.recall_search import household_day
 from server.memory.recall_sensitivity import classify_turn_text
 from server.memory.recall_store import tells_something
 
