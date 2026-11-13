@@ -1,5 +1,12 @@
 # 0085 — Block C1: the database with good practices
 
+> **Waiting for [ADR 0038](../../adr/0038-the-memory-engines-storage-foundation.md)** (Proposed,
+> 2026-11-13): after Pipec named the storage the core of the product, a deeper research round
+> recommends designing a v2 schema from zero and carrying the data with one tested upgrade,
+> instead of the three incremental migrations below. **Do not promote this text**: it is
+> rewritten on ADR 0038 once Pipec answers its questions; its audit and decisions remain
+> input to that rewrite.
+>
 > **Status:** **Draft** (2026-11-13) — written for Pipec's review; it becomes executable only when
 > Pipec promotes it to `Ready` with the decisions marked *For Pipec* answered. Written from
 > [ADR 0032](../../adr/0032-block-c-hygiene-correct-forget-and-years.md) (`Proposed`, amended by
