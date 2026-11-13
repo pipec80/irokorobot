@@ -27,6 +27,17 @@
           "admin"
         ],
         "note": "Face and voice with the server on; the load is a dry run, the owner's SI, one transaction. After the close, iroko-admin amends it."
+      },
+      {
+        "id": "pending-topics",
+        "label": "Pending topics",
+        "focus": [
+          "record",
+          "memory",
+          "ollama",
+          "controller"
+        ],
+        "note": "Off by default: a verified plan for one day is named by the local model and asked once by a later day's first greeting."
       }
     ]
   },
@@ -108,7 +119,7 @@
       "id": "record",
       "type": "backend",
       "label": "Conversation record",
-      "sublabel": "text · diary · recall units",
+      "sublabel": "text · diary · recall · topics",
       "pos": [
         40,
         450
@@ -239,7 +250,7 @@
       "items": [
         "One canonical writer for every channel; a secret is kept by reference, never its value; the alta loads it and iroko-admin amends it, audited",
         "Profile card: the name always, the tastes only on taste talk, the form through the language rule (Plans 0074, 0081)",
-        "Recall, relatives, sensitive reads and the alta's contacts answer by template or found text only, behind their switches; recall knows when a told event happened (Plans 0077 to 0083)"
+        "Recall, relatives, sensitive reads and the alta's contacts answer by template or found text only; recall knows when a told event happened, and a greeting asks about a plan once (Plans 0077 to 0084)"
       ]
     },
     {
