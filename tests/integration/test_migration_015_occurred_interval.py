@@ -97,7 +97,7 @@ async def test_migration_015_adds_two_empty_columns(
         await db.get_conn().commit()
         await db.close_db()
         monkeypatch.undo()
-        await _open(monkeypatch, path)
+        await _open(monkeypatch, path, up_to=15)
 
         assert await _scalar("PRAGMA user_version") == 15
         assert db.latest_schema_version() == 15

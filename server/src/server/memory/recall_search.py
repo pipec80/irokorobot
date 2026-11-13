@@ -14,11 +14,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 import logging
 from typing import TYPE_CHECKING, Final
-from zoneinfo import ZoneInfo
 
 from server.cognition.recall_cues import content_words
 from server.cognition.spoken_dates import window_utc_bounds
 from server.llm_transport import ollama_embed
+from server.memory.household_time import household_day, household_zone
 from server.memory.recall_store import (
     RecallUnit,
     lexical_hits,
@@ -47,6 +47,7 @@ __all__ = [
     "RecallHit",
     "RecallSearch",
     "fuse",
+    "household_day",
     "household_zone",
     "search_recall",
 ]
@@ -60,11 +61,6 @@ RECALL_MAX_RESULTS: Final = 3
 RECALL_MAX_PER_RECORD: Final = 2
 #: Content words sent to the word index.
 RECALL_MAX_TERMS: Final = 8
-
-
-def household_zone() -> ZoneInfo:
-    """Return the household time zone of ``HOUSEHOLD_TIMEZONE`` (ADR 0028 decision 7)."""
-    return ZoneInfo(settings.household_timezone)
 
 
 @dataclass(frozen=True)

@@ -35,6 +35,7 @@ __all__ = [
     "RecordView",
     "TurnIndexer",
     "append_turn",
+    "chain_indexers",
     "close_idle_records",
     "count_failed_attempt",
     "delete_all_records",
@@ -49,8 +50,9 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-#: Writes what an appended exchange adds elsewhere, inside the append's transaction.
-type TurnIndexer = Callable[[aiosqlite.Connection, int, RecordedTurn], Awaitable[int]]
+#: Writes what an appended exchange adds elsewhere, inside the append's transaction (the recall
+#: unit, Plan 0078; the pending topic, Plan 0084). Its result is not used.
+type TurnIndexer = Callable[[aiosqlite.Connection, int, RecordedTurn], Awaitable[object]]
 
 _BYTES_PER_MB = 1_000_000
 _SUMMARY_COLUMNS = (
@@ -144,6 +146,23 @@ async def _close(
     )
 
 
+def chain_indexers(*hooks: TurnIndexer | None) -> TurnIndexer | None:
+    """Return one indexer that runs the given ones in order, or ``None`` when there is none.
+
+    Args:
+        hooks: The writers an append runs inside its transaction; ``None`` entries are skipped.
+    """
+    present = [hook for hook in hooks if hook is not None]
+    if not present:
+        return None
+
+    async def run(conn: aiosqlite.Connection, record_id: int, recorded: RecordedTurn) -> None:
+        for hook in present:
+            await hook(conn, record_id, recorded)
+
+    return run
+
+
 async def append_turn(
     turn: RecordedTurn,
     *,
@@ -158,7 +177,8 @@ async def append_turn(
         owner_entity_id: The owner the record belongs to.
         now: The time a segment closed here is stamped with.
         index: Called inside the append's transaction with the segment id, after the append;
-            a failure rolls the append back with it (the recall unit, Plan 0078).
+            a failure rolls the append back with it (the recall unit, Plan 0078, and the
+            pending topic, Plan 0084).
 
     Returns:
         The id of the segment that received the exchange.

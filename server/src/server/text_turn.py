@@ -13,6 +13,7 @@ import httpx
 from server import llm, turn_log
 from server.claim_guard import neutralize_memory_claims
 from server.cognition.authorization import ASSURANCE_RANK
+from server.cognition.clock import utc_now
 from server.cognition.identity import (
     ActivePersonContext,
     ActivePersonStatus,
@@ -24,6 +25,13 @@ from server.exceptions import LLMError
 from server.memory import continuity
 from server.memory.candidate_dialogue import OfferPreparer, PendingOffer, commit_offer
 from server.memory.continuity import ContinuityTurn, SuspendCause
+from server.memory.pending_follow_up import (
+    FollowUpPreparer,
+    PendingFollowUp,
+    commit_follow_up,
+    yield_to_offer,
+)
+from server.memory.pending_store import pending_topics_on
 from server.memory.profile_card import AddressForm, PromptCard
 from server.schemas import ConversationTurn
 from server.settings import settings
@@ -78,6 +86,10 @@ class TextTurnResult:
         offer: The spoken phrase of a memory offer, said after the reply. It is never part of
             the reply's text, the session history, the wire's ``llm_response`` or
             ``duration_ms`` (ADR 0021 decision 9). Hidden from ``repr``: it carries a value.
+        follow_up: The pending-topic greeting, said after the reply in the offer's slot when no
+            offer is spoken (Plan 0084 D-11). It joins the session's assistant side but never
+            the record, ``llm_response`` or ``duration_ms``. Hidden from ``repr``: it names a
+            topic.
     """
 
     response: str
@@ -85,6 +97,34 @@ class TextTurnResult:
     duration_ms: int
     llm_failed: bool
     offer: str | None = field(default=None, repr=False)
+    follow_up: str | None = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        """Refuse both phrases at once: only one is said after the reply (D-11)."""
+        AfterReply(self.offer, self.follow_up)
+
+    @property
+    def spoken_after(self) -> str | None:
+        """The one phrase said after the reply: the offer, else the follow-up, or ``None``."""
+        return AfterReply(self.offer, self.follow_up).spoken
+
+
+@dataclass(frozen=True)
+class AfterReply:
+    """What is said after a built reply: at most one of the two (the offer wins, D-11)."""
+
+    offer: str | None = field(default=None, repr=False)
+    follow_up: str | None = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        """Refuse both phrases at once: only one is said after the reply."""
+        if self.offer is not None and self.follow_up is not None:
+            raise ValueError("only one phrase is said after the reply")
+
+    @property
+    def spoken(self) -> str | None:
+        """The one phrase to speak: the offer, else the follow-up, or ``None``."""
+        return self.offer if self.offer is not None else self.follow_up
 
 
 def _missing_person(_: int) -> None:
@@ -319,9 +359,7 @@ async def finish_offer(
     if task is None:
         return None
     if reply_failed:
-        task.cancel()
-        # Waits for the cancelled preparation without swallowing a cancellation of the caller.
-        await asyncio.gather(task, return_exceptions=True)
+        await _cancelled(task)
         return None
     try:
         pending = await task
@@ -331,14 +369,105 @@ async def finish_offer(
     return None if pending is None else await commit_offer(pending)
 
 
-def drop_offer(task: asyncio.Future[PendingOffer | None] | None) -> None:
+async def _cancelled[T](task: asyncio.Future[T]) -> None:
+    """Cancel a preparation and wait for it, without swallowing a cancellation of the caller."""
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
+
+
+def drop_offer[T](task: asyncio.Future[T] | None) -> None:
     """Cancel a preparation the turn will never finish (it was cancelled or it raised).
 
     Args:
-        task: What ``start_offer`` returned; a finished one is left alone.
+        task: What ``start_offer`` or ``start_follow_up`` returned; a finished one is left alone.
     """
     if task is not None and not task.done():
         task.cancel()
+
+
+def start_follow_up(
+    prepare_follow_up: FollowUpPreparer | None,
+    active_person: ActivePersonContext | None,
+    session: ContinuityTurn | None,
+) -> asyncio.Future[PendingFollowUp | None] | None:
+    """Start preparing a pending-topic follow-up concurrently with generation (Plan 0084 D-11).
+
+    Args:
+        prepare_follow_up: The route-bound preparation, or ``None``.
+        active_person: The turn's resolved speaker.
+        session: The turn's view of the short-term session.
+
+    Returns:
+        The running preparation, or ``None`` with the switch off or nothing to prepare from.
+    """
+    if (
+        prepare_follow_up is None
+        or active_person is None
+        or session is None
+        or not pending_topics_on()
+    ):
+        return None
+    return asyncio.ensure_future(prepare_follow_up(active_person, session))
+
+
+async def _settled(task: asyncio.Future[PendingFollowUp | None]) -> PendingFollowUp | None:
+    """The finished preparation; a broken one prepares nothing and costs the reply nothing."""
+    try:
+        return await task
+    except Exception as exc:  # the reply is built: a broken preparation must not cost it
+        logger.warning("Pending topic follow-up preparation failed (%s)", type(exc).__name__)
+        return None
+
+
+async def finish_after_reply(
+    offer_task: asyncio.Future[PendingOffer | None] | None,
+    follow_up_task: asyncio.Future[PendingFollowUp | None] | None,
+    *,
+    reply_failed: bool,
+) -> AfterReply:
+    """Commit what is said after the reply: the memory offer, else the follow-up (D-11).
+
+    Args:
+        offer_task: What ``start_offer`` returned.
+        follow_up_task: What ``start_follow_up`` returned.
+        reply_failed: Whether the reply is the fallback phrase; a fallback carries neither.
+
+    Returns:
+        At most one phrase. With an offer spoken the follow-up is never committed and its topic
+        stays ``open`` for a later session.
+    """
+    offer = await finish_offer(offer_task, reply_failed=reply_failed)
+    if follow_up_task is None:
+        return AfterReply(offer=offer)
+    if reply_failed:
+        await _cancelled(follow_up_task)
+        return AfterReply()
+    pending = await _settled(follow_up_task)
+    if pending is None or offer is not None:
+        if pending is not None:  # the offer won: the topic stays open for a later session
+            yield_to_offer(pending)
+        return AfterReply(offer=offer)
+    return AfterReply(follow_up=await commit_follow_up(pending, now=utc_now()))
+
+
+def session_reply(message: str, response: str, follow_up: str | None) -> str:
+    """Return the assistant side the session keeps: the reply, and the question it asked.
+
+    Args:
+        message: What the person said; with the reply it must fit the session's cap.
+        response: The reply.
+        follow_up: The pending-topic follow-up said after it, or ``None`` (Plan 0084 D-12).
+
+    Returns:
+        The reply and the follow-up, or the reply alone when the follow-up would make the
+        exchange larger than ``WORKING_MEMORY_MAX_CHARS`` (the pair would be dropped whole).
+    """
+    if follow_up is None:
+        return response
+    with_follow_up = f"{response} {follow_up}"
+    if len(message) + len(with_follow_up) > settings.working_memory_max_chars:
+        return response
+    return with_follow_up
 
 
 async def process_text_turn(
@@ -353,6 +482,7 @@ async def process_text_turn(
     prepare_offer: OfferPreparer | None = None,
     profile_card_provider: ProfileCardProvider | None = None,
     record_turn: TurnRecorder | None = None,
+    prepare_follow_up: FollowUpPreparer | None = None,
 ) -> TextTurnResult:
     """Generate and record one channel-agnostic text turn.
 
@@ -370,9 +500,11 @@ async def process_text_turn(
             ``prepare_text_turn``.
         record_turn: Optional channel-owned conversation-record callback (Plan 0076);
             called once with what was said, the fallback phrase included.
+        prepare_follow_up: Optional channel-owned pending-topic preparation (Plan 0084); it runs
+            concurrently with generation, only with ``pending_topics_on()``.
 
     Returns:
-        Text, emotion, elapsed time, fallback status and the optional offer for the turn.
+        Text, emotion, elapsed time, fallback status and the optional offer or follow-up.
     """
     started = time.perf_counter()
     prepared = await prepare_text_turn(
@@ -384,21 +516,29 @@ async def process_text_turn(
         profile_card_provider=profile_card_provider,
     )
     offer_task = start_offer(prepare_offer, prepared.active_person)
+    follow_up_task = start_follow_up(prepare_follow_up, prepared.active_person, prepared.continuity)
     try:
         response, emotion, llm_failed = await _generate(client, prepared)
         if record_turn is not None:
             record_turn(message, response, prepared.active_person)
-        if not llm_failed:
+
+        def remember(said: str) -> None:
             record_text_turn(
                 message,
-                response,
+                said,
                 active_person=prepared.active_person,
                 continuity_turn=prepared.continuity,
                 schedule_proposal=schedule_proposal,
             )
+
+        if not llm_failed and follow_up_task is None:
+            remember(response)  # today's order: the session before the offer
         # Measured before the offer is committed: the offer never counts as generation time.
         duration_ms = round((time.perf_counter() - started) * 1000)
-        offer = await finish_offer(offer_task, reply_failed=llm_failed)
+        after = await finish_after_reply(offer_task, follow_up_task, reply_failed=llm_failed)
+        if not llm_failed and follow_up_task is not None:
+            remember(session_reply(message, response, after.follow_up))
     finally:
         drop_offer(offer_task)
-    return TextTurnResult(response, emotion, duration_ms, llm_failed, offer)
+        drop_offer(follow_up_task)
+    return TextTurnResult(response, emotion, duration_ms, llm_failed, after.offer, after.follow_up)

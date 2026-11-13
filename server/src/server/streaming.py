@@ -26,6 +26,7 @@ from server.cognition.response_plan import ResponsePlan, spoken_log_text
 from server.conversation_log import log_spoken
 from server.exceptions import LLMError, TTSError
 from server.memory.candidate_dialogue import OfferPreparer
+from server.memory.pending_follow_up import FollowUpPreparer
 from server.pipeline import _elapsed_ms, _log_pipeline_timing
 from server.schemas import IdentitySource
 from server.schemas_streaming import (
@@ -54,8 +55,10 @@ from server.text_turn import (
     ProposalScheduler,
     TurnRecorder,
     drop_offer,
-    finish_offer,
+    finish_after_reply,
     record_text_turn,
+    session_reply,
+    start_follow_up,
     start_offer,
 )
 from server.user_emotion import classify_user_emotion
@@ -119,13 +122,18 @@ def _record_success(
     prepared: PreparedTextTurn,
     state: StreamState,
     scheduler: ProposalScheduler,
+    follow_up: str | None = None,
 ) -> None:
-    """Persist a turn — only ever called for a fully successful stream."""
+    """Persist a turn — only ever called for a fully successful stream.
+
+    The session's assistant side keeps the pending-topic follow-up after the reply (Plan 0084
+    D-12), so the next model turn hears the answer with the question it answers.
+    """
     if not _succeeded(state):
         return
     record_text_turn(
         prepared.message,
-        " ".join(state.response_parts),
+        session_reply(prepared.message, " ".join(state.response_parts), follow_up),
         active_person=prepared.active_person,
         continuity_turn=prepared.continuity,
         schedule_proposal=scheduler,
@@ -139,7 +147,9 @@ def _note_offer_overhead(state: StreamState, started: float) -> None:
 
 
 async def _offer_event(offer: str, state: StreamState) -> str | None:
-    """Synthesize the memory offer as one more audio event with empty text (ADR 0021 decision 9).
+    """Synthesize the offer (or the follow-up) as one more audio event with empty text.
+
+    ADR 0021 decision 9; the pending-topic follow-up shares the slot (Plan 0084 D-11).
 
     The text stays empty, so the robot prints nothing, and the offer never reaches
     ``log_spoken``: it carries a value. Its synthesis counts as TTS time, so ``llm_ms`` stays
@@ -227,6 +237,7 @@ async def stream_pipeline(
     schedule_proposal: ProposalScheduler,
     prepare_offer: OfferPreparer | None = None,
     record_turn: TurnRecorder | None = None,
+    prepare_follow_up: FollowUpPreparer | None = None,
 ) -> AsyncIterator[str]:
     """Stream STT->LLM->TTS as NDJSON, synthesizing speech sentence by sentence.
 
@@ -251,6 +262,9 @@ async def stream_pipeline(
             the model streams, and a prepared offer is spoken after the reply, before ``done``.
         record_turn: Channel-owned conversation-record callback (Plan 0076); called once
             with what was spoken (the fallback phrase included), never on a TTS failure.
+        prepare_follow_up: Channel-owned pending-topic preparation (Plan 0084); it runs while
+            the model streams, and a committed follow-up is spoken in the offer's slot when no
+            offer is.
 
     Yields:
         NDJSON lines (each ending in ``\\n``), see schemas_streaming.py.
@@ -259,6 +273,7 @@ async def stream_pipeline(
 
     state = StreamState(request_start=request_start)
     offer_task = start_offer(prepare_offer, prepared.active_person)
+    follow_up_task = start_follow_up(prepare_follow_up, prepared.active_person, prepared.continuity)
     try:
         try:
             async for line in _consume_llm_stream(client, prepared, state):
@@ -268,7 +283,7 @@ async def stream_pipeline(
             _log_stream_metrics(state, _elapsed_ms(request_start))
             # Let the cancelled preparation finish before the error propagates, so no
             # background task outlives the turn.
-            await finish_offer(offer_task, reply_failed=True)
+            await finish_after_reply(offer_task, follow_up_task, reply_failed=True)
             raise
         except (LLMError, ValueError) as exc:
             if llm.is_connectivity_failure(exc):
@@ -283,18 +298,27 @@ async def stream_pipeline(
             async for line in emit_fallback(state, reason=StreamFallbackReason.LLM_ERROR):
                 yield line
 
-        _record_success(prepared, state, schedule_proposal)
+        if follow_up_task is None:
+            _record_success(prepared, state, schedule_proposal)  # today's order
         if record_turn is not None and state.response_parts:
             record_turn(prepared.message, " ".join(state.response_parts), prepared.active_person)
         offer_started = time.perf_counter()
-        offer = await finish_offer(offer_task, reply_failed=not _succeeded(state))
-        offer_line = await _offer_event(offer, state) if offer is not None else None
+        after = await finish_after_reply(
+            offer_task, follow_up_task, reply_failed=not _succeeded(state)
+        )
+        if follow_up_task is not None:
+            _record_success(prepared, state, schedule_proposal, after.follow_up)
+        phrase = after.spoken
+        offer_line = await _offer_event(phrase, state) if phrase is not None else None
         if offer_line is not None:
-            state.offer_spoken = True
+            # Only a memory offer expects a short reply; the follow-up is an open question
+            # (Plan 0084, Task 8 review).
+            state.offer_spoken = after.offer is not None
             yield offer_line
     finally:
-        # A client that hangs up mid-stream must not leave the preparation running.
+        # A client that hangs up mid-stream must not leave a preparation running.
         drop_offer(offer_task)
+        drop_offer(follow_up_task)
     _note_offer_overhead(state, offer_started)
 
     total_ms = _elapsed_ms(request_start)

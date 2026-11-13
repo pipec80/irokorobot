@@ -63,6 +63,7 @@ from server.memory.contact_access import (
 )
 from server.memory.entity_labels import read_household_names
 from server.memory.household_authorization import record_authorization_decision
+from server.memory.own_read_consent import AltaChecker, own_read_consent
 from server.memory.profile_card_access import may_read_own_memory
 from server.memory.sensitive_store import read_own_values
 from server.text_keys import normalize_spanish
@@ -84,7 +85,6 @@ __all__ = ["sensitive_reply"]
 
 type OwnValuesReader = Callable[[int, str, str], Awaitable[tuple[str, ...]]]
 type NamesReader = Callable[[], Awaitable[frozenset[str]]]
-type AltaChecker = Callable[[], Awaitable[bool]]
 
 
 class _ChildScope(StrEnum):
@@ -128,8 +128,6 @@ class _Done:
 _REFERENCE_TOPICS: Final = frozenset(
     {SensitiveTopic.SECRET_HOLDER, SensitiveTopic.DOCUMENT_LOCATION}
 )
-# Sensitivities whose read needs the person's consent and a closed alta (D-9).
-_CONSENT_SENSITIVITIES: Final = frozenset({"medical", "location", "security"})
 _NOT_REGISTERED_BIRTH_DATE: Final = SensitiveReply(SensitiveOutcome.NOT_REGISTERED, NO_BIRTH_DATE)
 
 
@@ -293,15 +291,6 @@ def _names_hit(words: frozenset[str], stored: frozenset[str]) -> bool:
     return False
 
 
-async def _consent(call: _Call, sensitivities: frozenset[str]) -> ConsentStatus:
-    """The consent of an own read (D-9): the face's grant and a closed alta, or none."""
-    if not sensitivities & _CONSENT_SENSITIVITIES:
-        return ConsentStatus.NOT_REQUIRED
-    if call.face_consent is ConsentStatus.GRANTED and await call.alta_closed():
-        return ConsentStatus.GRANTED
-    return ConsentStatus.MISSING
-
-
 async def _authorized(call: _Call, person_id: int, sensitivities: frozenset[str]) -> bool:
     """One policy request over the owner's own data, and its audit row **before** any read.
 
@@ -309,7 +298,9 @@ async def _authorized(call: _Call, person_id: int, sensitivities: frozenset[str]
     and a closed alta whenever one of the sensitivities needs it. A failing audit propagates, so
     nothing is read at all.
     """
-    consent = await _consent(call, sensitivities)
+    consent = await own_read_consent(
+        sensitivities, face_consent=call.face_consent, alta_closed=call.alta_closed
+    )
     visibility, _sensitivity = TOPIC_LABEL[call.query.topic]
     request = AuthorizationRequest(
         actor=call.actor,

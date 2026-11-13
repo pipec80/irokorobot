@@ -25,9 +25,6 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 import logging
-from pathlib import Path
-import sqlite3
-import traceback
 from typing import TYPE_CHECKING
 
 from server.cognition.authorization import evaluate_authorization
@@ -39,7 +36,6 @@ from server.cognition.strong_actor import (
     is_face_and_voice_actor,
     verify_face_and_voice,
 )
-from server.exceptions import BrainMemoryError
 from server.memory.candidate_classifier import comparison_key
 from server.memory.candidate_policy import CandidateStep, authorize_step
 from server.memory.candidate_types import CandidateStatus
@@ -50,6 +46,7 @@ from server.memory.candidates import (
     resolve_candidate,
     still_offerable,
 )
+from server.memory.failure_log import failure_level, failure_site
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.lexicon import (
     ANSWER_CONTRADICTION_PHRASE,
@@ -424,26 +421,6 @@ def _log(event: str, outcome: str, candidate_id: int, correlation_id: UUID) -> N
     )
 
 
-#: Failures a bad moment explains (database, disk, a lost race); any other class is a bug.
-_OPERATIONAL_FAILURES = (
-    BrainMemoryError,
-    sqlite3.Error,
-    OSError,
-    TimeoutError,
-    RuntimeError,
-    ValueError,
-)
-
-
-def _failure_site(exc: Exception) -> str:
-    """Return ``file:line:function`` of the innermost frame; it never carries a message."""
-    frames = traceback.extract_tb(exc.__traceback__)
-    if not frames:
-        return "unknown"
-    frame = frames[-1]
-    return f"{Path(frame.filename).name}:{frame.lineno}:{frame.name}"
-
-
 def _log_failure(
     event: str, exc: Exception, correlation_id: UUID, candidate_id: int | None = None
 ) -> None:
@@ -452,11 +429,10 @@ def _log_failure(
     A class a bad moment explains is a warning; any other (a ``TypeError`` from signature drift)
     is a bug and an error, with the site to find it.
     """
-    operational = isinstance(exc, _OPERATIONAL_FAILURES)
     name = type(exc).__name__
-    site = _failure_site(exc)
+    site = failure_site(exc)
     logger.log(
-        logging.WARNING if operational else logging.ERROR,
+        failure_level(exc),
         "Candidate %s failed (%s at %s)",
         event.removeprefix("candidate."),
         name,

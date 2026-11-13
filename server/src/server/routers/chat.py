@@ -20,6 +20,7 @@ from server.cognition.response_plan import (
 from server.dependencies import IdentityTokenDep, OwnerUnlockServiceDep, ResourcesDep
 from server.memory.entity_labels import read_household_names
 from server.memory.household_authorization import record_authorization_decision
+from server.memory.household_time import household_today
 from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
 from server.schemas_chat import ChatRequest, ChatResponse
 from server.settings import settings
@@ -29,8 +30,9 @@ router = APIRouter(prefix="/chat", tags=["Chat"])
 
 
 def _today() -> date:
-    """Return the adapter-owned local date for deterministic P0.3 tools."""
-    return date.today()
+    """Return the household's day for deterministic P0.3 tools (``HOUSEHOLD_TIMEZONE``, never the
+    machine's own zone: a server in UTC disagrees with a household in Chile for hours a night)."""
+    return household_today()
 
 
 def _event_from_request(request: ChatRequest) -> CognitiveEvent[TextTurnPayload]:

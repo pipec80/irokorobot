@@ -1,0 +1,35 @@
+# Plan 0084 Task 1: what the owner says they will do on one day (D-3). `said_day` defaults to
+# 2026-11-12, a Thursday. `due_day` is the day the plan names, or null when it yields no topic;
+# `outcome` is the closed outcome of the grammar. Invented canaries only.
+- {heard: Mañana voy al banco a pagar una cuenta., due_day: 2026-11-13, outcome: kept}
+- {heard: El jueves tengo médico., due_day: 2026-11-19, outcome: kept}
+- {heard: Hoy voy al cine con unos amigos., due_day: 2026-11-12, outcome: kept}
+- {heard: En 3 días más viajo al sur., due_day: 2026-11-15, outcome: kept}
+- {heard: Pasado mañana te cuento cómo me fue., due_day: 2026-11-14, outcome: kept}
+- {heard: El jueves le cuento., due_day: 2026-11-19, outcome: kept}
+- {heard: El próximo jueves juego fútbol con unos amigos., due_day: 2026-11-19, outcome: kept}
+- {heard: El 20 de noviembre tenemos una reunión., due_day: 2026-11-20, outcome: kept}
+- {heard: Mañana me toca la reunión del trabajo., due_day: 2026-11-13, outcome: kept}
+- {heard: Mañana voy al banco., said_day: 2026-12-31, due_day: 2027-01-01, outcome: kept}
+- {heard: El jueves le aviso cómo me fue., due_day: 2026-11-19, outcome: kept}
+- {heard: Mañana iremos al cine con unos amigos., due_day: 2026-11-13, outcome: kept}
+- {heard: Pasado mañana salgo de viaje., due_day: 2026-11-14, outcome: kept}
+- {heard: Mañana voy al banco pero no sé a qué hora., due_day: 2026-11-13, outcome: kept}
+# A negated verb is no plan (Task 8 review): the owner will not go.
+- {heard: Mañana no voy al banco., due_day: null, outcome: no_verb}
+- {heard: Mañana no voy a ir al banco., due_day: null, outcome: no_verb}
+- {heard: Mañana no tengo nada que hacer., due_day: null, outcome: no_verb}
+- {heard: El jueves nunca juego fútbol., due_day: null, outcome: no_verb}
+- {heard: Mañana tampoco voy al banco., due_day: null, outcome: no_verb}
+- {heard: Mañana ya no me toca la reunión., due_day: null, outcome: no_verb}
+# Review focus 1: not the owner's plan, not a plan, too wide, or two phrases.
+- {heard: Mañana viene mi hija., due_day: null, outcome: no_verb}
+- {heard: Los lunes juego fútbol., due_day: null, outcome: no_phrase}
+- {heard: "¿Voy mañana al banco?", due_day: null, outcome: question}
+- {heard: La próxima semana voy al sur., due_day: null, outcome: not_single_day}
+- {heard: Ayer fui al banco y mañana voy al cine., due_day: null, outcome: no_phrase}
+- {heard: Mañana., due_day: null, outcome: no_verb}
+- {heard: En marzo voy a la playa., due_day: null, outcome: not_single_day}
+- {heard: Ayer fui al banco., due_day: null, outcome: no_phrase}
+- {heard: Voy al banco., due_day: null, outcome: no_phrase}
+- {heard: "Mañana voy al banco?", due_day: null, outcome: question}

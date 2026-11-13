@@ -440,7 +440,8 @@ class CognitiveController:
             response=result.response,
             emotion=result.emotion,
             duration_ms=result.duration_ms,
-            offer=result.offer,
+            # The memory offer, else the pending-topic follow-up: one phrase after the reply.
+            offer=result.spoken_after,
         )
 
     async def _protected_household_plan(

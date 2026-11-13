@@ -3,17 +3,33 @@
 from __future__ import annotations
 
 from itertools import product
-from typing import get_args
+from pathlib import Path
+from typing import cast, get_args
 
 import pytest
 from server.memory import recall_sensitivity
 from server.memory.conversation_summary import EpisodeSensitivity
 from server.memory.recall_sensitivity import classify_turn_text, most_protective
 from server.secret_values import SECRET_WORDS
+import yaml
 
 pytestmark = pytest.mark.unit
 
 _ORDER = ("normal", "private", "location", "medical", "security")
+_PLANS = cast(
+    "list[dict[str, str]]",
+    yaml.safe_load(
+        (Path(__file__).resolve().parents[1] / "fixtures" / "sensitive_plans.yaml").read_text(
+            encoding="utf-8"
+        )
+    ),
+)
+
+
+@pytest.mark.parametrize("case", _PLANS, ids=lambda case: case["heard"])
+def test_a_plan_has_the_sensitivity_of_its_words(case: dict[str, str]) -> None:
+    """Health and legal plans are not said in a greeting as if they were normal (Plan 0084)."""
+    assert classify_turn_text(case["heard"]) == case["sensitivity"]
 
 
 @pytest.mark.parametrize(

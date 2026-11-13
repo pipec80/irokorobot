@@ -183,6 +183,11 @@ class Settings(BaseSettings):
     # «¿cuándo fui…?» says them and a recall window matches by them. Kill-switch, off in the code;
     # it also needs MEMORY_ENABLED and RECALL_ENABLED. Off: every recall as before.
     occurred_time_enabled: bool = False
+    # Pending topics (ADR 0037 decisions 2 and 6, Plan 0084): what the verified owner says they
+    # will do on one day («mañana voy al banco») is kept, named by the local model, and the first
+    # greeting of a later day asks about it once. Kill-switch, off in the code; it also needs
+    # MEMORY_ENABLED and CONVERSATION_RECORD_ENABLED. Off: every turn as before.
+    pending_topics_enabled: bool = False
     # Reading the owner's sensitive data by voice (ADR 0029, Plan 0079): medications, conditions,
     # allergies, address, birthdays and the security references. Kill-switch, off in the code; it
     # also needs MEMORY_ENABLED. Off: every read question as before.

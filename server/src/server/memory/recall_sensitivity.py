@@ -60,6 +60,30 @@ _CATEGORY_TERMS: Final[tuple[tuple[RecallSensitivity, frozenset[str]], ...]] = (
                 "tratamiento",
                 "depresion",
                 "ansiedad",
+                # Plan 0084 review: the health plans a greeting must not say as normal.
+                "psicologo",
+                "psicologa",
+                "psiquiatra",
+                "terapia",
+                "dentista",
+                "ecografia",
+                "radiografia",
+                "resonancia",
+                "kinesiologo",
+                "kinesiologa",
+                "kine",
+                "quimioterapia",
+                "quimio",
+                "vacuna",
+                "consultorio",
+                "cesfam",
+                "urgencia",
+                "urgencias",
+                "cardiologo",
+                "cardiologa",
+                "ginecologo",
+                "ginecologa",
+                "matrona",
             }
         ),
     ),
@@ -79,6 +103,8 @@ _CATEGORY_TERMS: Final[tuple[tuple[RecallSensitivity, frozenset[str]], ...]] = (
             }
         ),
     ),
+    # Plan 0084 review: a legal or family-law matter is not said aloud in a greeting.
+    ("private", frozenset({"abogado", "abogada", "juicio", "divorcio", "demanda"})),
 )
 
 
@@ -89,8 +115,8 @@ def classify_turn_text(text: str) -> RecallSensitivity:
         text: What the owner said.
 
     Returns:
-        ``security``, ``medical`` or ``location`` when a word of that category appears (the
-        most protective when several do), ``normal`` otherwise.
+        ``security``, ``medical``, ``location`` or ``private`` when a word of that category
+        appears (the most protective when several do), ``normal`` otherwise.
     """
     padded = f" {normalize_spanish(text)} "
     for category, terms in _CATEGORY_TERMS:

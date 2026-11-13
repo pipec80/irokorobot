@@ -182,6 +182,8 @@ _ACTION_HOMES = frozenset(
         "memory/profile_card_access.py",
         "memory/recall_access.py",
         "memory/sensitive_access.py",
+        # Plan 0084: the pending-topic follow-up asks the policy for the owner's own topic.
+        "memory/pending_follow_up.py",
     }
 )
 _MEMORY_SCOPE_MEMBER_NAMES = frozenset({"PERSONAL_MEMORY_READ", "PERSONAL_MEMORY_FORGET"})
@@ -1209,17 +1211,22 @@ def _recall_record_readers(sources: Mapping[str, str]) -> list[str]:
     )
 
 
-def _prompt_path_importers(sources: Mapping[str, str], modules: frozenset[str]) -> list[str]:
+def _prompt_path_importers(
+    sources: Mapping[str, str],
+    modules: frozenset[str],
+    prefixes: tuple[str, ...] = _NO_HOUSEHOLD_READS,
+) -> list[str]:
     """Prompt-path modules that import any of `modules`, as `import a.b`, `from a.b import x`
     or `from a import b`.
 
-    A module is on the prompt path when its path starts with one of `_NO_HOUSEHOLD_READS`; the
-    `llm` entry is a prefix, so it covers every future `llm*` module without editing the list.
+    A module is on the prompt path when its path starts with one of `prefixes` (by default
+    `_NO_HOUSEHOLD_READS`); the `llm` entry is a prefix, so it covers every future `llm*` module
+    without editing the list.
     """
     return sorted(
         name
         for name, text in sources.items()
-        if name.startswith(_NO_HOUSEHOLD_READS)
+        if name.startswith(prefixes)
         and any(
             (
                 isinstance(node, ast.ImportFrom)
@@ -1793,7 +1800,10 @@ _TIME_WORDS = re.compile(
     r"\b(?:lunes|martes|miercoles|jueves|viernes|sabado|domingo|enero|febrero|marzo|abril|mayo"
     r"|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|pasado manana)\b"
 )
-_PURE_TIME_MODULES = frozenset({"cognition/spoken_dates.py", "cognition/occurred_time.py"})
+_PURE_TIME_MODULES = frozenset(
+    # Plan 0084: the announcement grammar and the follow-up sentence are pure too.
+    {"cognition/spoken_dates.py", "cognition/occurred_time.py", "cognition/pending_topics.py"}
+)
 _IMPURE_PREFIXES = ("server.settings", "server.db", "server.memory", "aiosqlite", "httpx")
 _OCCURRED_COLUMNS = re.compile(r"\boccurred_(?:start|end)\b")
 _OCCURRED_COLUMN_HOME = "memory/recall_store.py"
@@ -1922,3 +1932,97 @@ def test_month_word_lists_live_only_where_they_are_needed() -> None:
     so this guard watches the word lists themselves.
     """
     assert _month_list_holders(_sources()) == []
+
+
+# --- pending topics (Plan 0084) ------------------------------------------------------------------
+
+# The modules that keep, name, read or pick up a pending topic. The prompt builders import none, so
+# the generic prompt reads no topic (Plan 0077 guard); the text turn and the stream may import only
+# the follow-up seam and the switch, never a read of the store.
+_PENDING_MODULES = frozenset(
+    {
+        "server.memory.pending_store",
+        "server.memory.pending_follow_up",
+        "server.memory.pending_naming",
+        "server.memory.pending_capture",
+    }
+)
+_PROMPT_BUILDERS = ("characters/", "llm")
+_PENDING_SEAM_USERS = ("streaming", "text_turn.py")
+# The names of the follow-up seam the text turn and the stream may import: a type, the commit and
+# the note that an offer won; never a store read, a log helper or an outcome (Task 8 review).
+_PENDING_SEAM_NAMES = frozenset(
+    {"FollowUpPreparer", "PendingFollowUp", "commit_follow_up", "yield_to_offer"}
+)
+_PENDING_STORE_SWITCH = frozenset({"pending_topics_on"})
+_PENDING_TABLE_SQL = re.compile(r"\b(?:FROM|JOIN|INTO|UPDATE|DELETE\s+FROM)\s+pending_topics\b")
+_PENDING_TABLE_HOME = "memory/pending_store.py"
+
+
+def _pending_table_queriers(sources: Mapping[str, str]) -> list[str]:
+    """Modules other than the pending store that put SQL on ``pending_topics``."""
+    return sorted(
+        name
+        for name, text in sources.items()
+        if name != _PENDING_TABLE_HOME and _PENDING_TABLE_SQL.search(text)
+    )
+
+
+def _pending_seam_overreach(sources: Mapping[str, str]) -> list[str]:
+    """Text-turn and stream modules that import more of the pending topics than the seam."""
+    found: list[str] = []
+    for name, text in sorted(sources.items()):
+        if not name.startswith(_PENDING_SEAM_USERS):
+            continue
+        for node in ast.walk(ast.parse(text)):
+            if isinstance(node, ast.Import) and any(
+                alias.name in _PENDING_MODULES for alias in node.names
+            ):
+                found.append(name)
+                break
+            if not isinstance(node, ast.ImportFrom) or node.module not in _PENDING_MODULES:
+                continue
+            names = {alias.name for alias in node.names}
+            if node.module == "server.memory.pending_store" and names <= _PENDING_STORE_SWITCH:
+                continue
+            if node.module == "server.memory.pending_follow_up" and names <= _PENDING_SEAM_NAMES:
+                continue
+            found.append(name)
+            break
+    return found
+
+
+@pytest.mark.unit
+def test_only_the_store_touches_pending_topics() -> None:
+    assert _pending_table_queriers(_sources()) == []
+
+
+@pytest.mark.unit
+def test_the_generic_prompt_reads_no_pending_topic() -> None:
+    sources = _sources()
+
+    assert _prompt_path_importers(sources, _PENDING_MODULES, _PROMPT_BUILDERS) == []
+    assert _pending_seam_overreach(sources) == []
+
+
+@pytest.mark.unit
+def test_the_pending_topics_guards_detect_a_violation() -> None:
+    leak = {
+        "memory/peek.py": 'SQL = "SELECT topic FROM pending_topics WHERE 1"\n',
+        "memory/pending_store.py": 'SQL = "DELETE FROM pending_topics"\n',
+        "llm.py": "from server.memory.pending_store import due_topic\n",
+        "characters/__init__.py": "import server.memory.pending_follow_up\n",
+        "text_turn.py": "from server.memory.pending_store import due_topic, pending_topics_on\n",
+        "streaming.py": "from server.memory.pending_follow_up import FollowUpPreparer\n",
+        "streaming_render.py": "from server.memory.pending_store import pending_topics_on\n",
+        "streaming_protocol.py": "from server.memory.pending_follow_up import log_follow_up\n",
+        "cognition/pending_topics.py": "from server.memory.recall_search import household_zone\n",
+    }
+
+    assert _pending_table_queriers(leak) == ["memory/peek.py"]
+    assert _prompt_path_importers(leak, _PENDING_MODULES, _PROMPT_BUILDERS) == [
+        "characters/__init__.py",
+        "llm.py",
+    ]
+    assert _pending_seam_overreach(leak) == ["streaming_protocol.py", "text_turn.py"]
+    assert _impure_time_modules(leak) == ["cognition/pending_topics.py"]

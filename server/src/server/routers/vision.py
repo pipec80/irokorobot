@@ -28,6 +28,7 @@ from server.cognition.response_plan import (
 )
 from server.exceptions import VisionError
 from server.memory.household_authorization import record_authorization_decision
+from server.memory.household_time import household_today
 from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
 from server.pipeline import _run_tts
 from server.resources import ResourcesDep
@@ -56,8 +57,9 @@ _BIOMETRIC_ENROLLMENT_UNAVAILABLE = (
 
 
 def _today() -> date:
-    """Return the adapter-owned local date for deterministic visual tools."""
-    return date.today()
+    """Return the household's day for deterministic visual tools (``HOUSEHOLD_TIMEZONE``, never the
+    machine's own zone: a server in UTC disagrees with a household in Chile for hours a night)."""
+    return household_today()
 
 
 def _vision_event_from_question(message: str) -> CognitiveEvent[TextTurnPayload]:

@@ -1,0 +1,14 @@
+# Plan 0084 Task 4 (moved to a fixture in the Task 8 review): what the capture keeps from a turn.
+# `verified` is the turn's voice verdict; `outcome` the closed `pending.capture` value; a kept
+# turn names its `sensitivity`. Invented canaries only.
+- {heard: Mañana voy al banco a pagar una cuenta., verified: true, outcome: kept, sensitivity: normal}
+- {heard: El jueves tengo hora con el médico., verified: true, outcome: kept, sensitivity: medical}
+- {heard: Mañana voy al banco a pagar una cuenta., verified: false, outcome: not_verified}
+- {heard: "¿Voy mañana al banco?", verified: true, outcome: question}
+- {heard: Mañana tengo que cambiar la llave del portón., verified: true, outcome: sensitive}
+- {heard: Mañana voy al abogado., verified: true, outcome: sensitive}
+- {heard: Mañana viene mi hija., verified: true, outcome: no_verb}
+- {heard: Mañana no voy al banco., verified: true, outcome: no_verb}
+- {heard: La próxima semana voy al sur., verified: true, outcome: not_single_day}
+- {heard: Hoy estoy cansado., verified: true, outcome: no_verb}
+- {heard: Me gusta el mate., verified: true, outcome: no_phrase}

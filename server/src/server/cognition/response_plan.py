@@ -105,7 +105,8 @@ class ResponsePlan(BaseModel):
     duration_ms: int = Field(default=0, ge=0)
     tool_results: tuple[ToolResult, ...] = ()
     claims: tuple[ResponseClaim, ...] = ()
-    # A memory offer spoken after the response (ADR 0021 decision 9). Only the classic voice
+    # The phrase spoken after the response: a memory offer (ADR 0021 decision 9) or, when no
+    # offer is spoken, the pending-topic follow-up (Plan 0084 D-11). Only the classic voice
     # route speaks it, synthesized with the response and never returned in `llm_response`;
     # `stream_response_plan` and chat ignore it.
     offer: str | None = Field(default=None, min_length=1, repr=False)  # carries a value
