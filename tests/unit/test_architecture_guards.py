@@ -182,6 +182,8 @@ _ACTION_HOMES = frozenset(
         "memory/profile_card_access.py",
         "memory/recall_access.py",
         "memory/sensitive_access.py",
+        # Plan 0084: the pending-topic follow-up asks the policy for the owner's own topic.
+        "memory/pending_follow_up.py",
     }
 )
 _MEMORY_SCOPE_MEMBER_NAMES = frozenset({"PERSONAL_MEMORY_READ", "PERSONAL_MEMORY_FORGET"})
