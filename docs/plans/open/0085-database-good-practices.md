@@ -8,7 +8,8 @@
 > named the storage the core of the product, and a deeper research round (ADR 0038 *Context*)
 > led to a v2 schema designed from zero with the data carried by one tested upgrade. It becomes
 > executable only when Pipec promotes it to `Ready` with the *For Pipec* notes answered. Then
-> completed from Pipec's own studies of the memory engine (*Self-review*, last but one bullet).
+> completed from Pipec's own studies of the memory engine and corrected from an external audit of
+> this plan (*Self-review*, the two revision bullets).
 >
 > **Two parts, two branches, two PRs.** **Part A** (`feat/0085a-storage-runtime`) changes no
 > table: the runtime and its checks, the pragmas, the transaction, one time format in the writers,
@@ -90,7 +91,9 @@ in what they leave to the plan; the *For Pipec* notes say what he is asked.
 - **D-1 The runtime** (ADR 0038 decision 2). Upgrade uv to a release that offers the 3.12 patch
   built with SQLite 3.53.1 (any `python-build-standalone` build from 20260602; 3.12.16 is the
   latest today), then `uv python install` it, recreate the `.venv` and
-  `uv sync --all-packages --all-groups --extra cuda`. Before switching, the Dependabot rule for
+  `uv sync --all-packages --all-groups --extra cuda`; `.python-version` names that exact patch
+  (`3.12.16`), not `3.12`, so the runtime is reproducible and a later patch is a change of its own.
+  Before switching, the Dependabot rule for
   runtimes applies: in a separate environment with the new Python, the voice and face embeddings
   of the fixed test clips and frames must be identical and the `slow` tests must pass. Pin
   `sqlite-vec==0.1.9` in `server/pyproject.toml`. `open_db` asserts `sqlite_version >= 3.51.3`,
@@ -107,7 +110,12 @@ in what they leave to the plan; the *For Pipec* notes say what he is asked.
   values live in one constant in `db.py`, not in settings (YAGNI; ADR 0031 decision 12).
 - **D-3 The transaction** (ADR 0038 decision 3): `transaction()` opens `BEGIN IMMEDIATE` inside
   its `try`, so a cancellation after the `BEGIN` reached the database rolls back.
-  `run_migrations` turns `foreign_keys` back on after every script, passed or failed.
+  `run_migrations` turns `foreign_keys` back on after every script, passed or failed. A failed
+  start leaves nothing behind (ADR 0038 decision 2): today `open_db` sets the module's connection
+  before it loads the extension and the pragmas, so when a later step fails the connection stays
+  set and the next `open_db` returns early with a half-configured connection (confirmed in
+  `db.py`). Any failure after `connect` closes the connection and resets the connection and the
+  lock to `None` before raising.
 - **D-4 One time format in the writers** (ADR 0038 decision 5). A new module
   `server/timestamps.py` formats an instant (`instant_text`: 32 characters, UTC, microseconds,
   `+00:00`; a naive datetime raises), parses one (`parse_instant`), formats a day (`day_text`)
@@ -116,19 +124,25 @@ in what they leave to the plan; the *For Pipec* notes say what he is asked.
   `isoformat(timespec="microseconds")` calls go. A temporal V4 fact or relation opens and closes
   on a household **day** (validity bounds are ISO dates at day or month precision). Existing rows
   are converted in Part B.
-- **D-5 One writer per table, SQL only in `server/memory/`** (ADR 0038 decision 8). The face and
+- **D-5 One writer per table, ownership kept apart from domain** (ADR 0038 decision 8). The face and
   voice profile statements move from `vision/faces.py` and `voice/voiceprints.py` behind the
   consent stores (`memory/biometric_consent.py`, `memory/voice_consent.py`), which then own every
   statement on `face_profiles`, `vec_faces` and `voice_profiles`; `owner_pin_credentials` gets one
   writer (`memory/owner_credentials.py`), which `household_authorization` calls; `personal_setup`
-  reads roles, relations and PINs through their stores. A guard lists the owner module of
-  **every** table and fails on any other module's SQL on it, and on any SQL outside
-  `server/memory/` (with a leak test).
+  reads roles, relations and PINs through their stores. A guard lists the owner module **and the
+  domain** (`memory`, `identity`, `administration`) of **every** table and fails on any other
+  module's SQL on it, and on SQL in a module that owns no table (with leak tests). `db.py` is the
+  one exception: it runs infrastructure statements (pragmas, migrations, checkpoints) on no
+  table's behalf. The guard protects ownership and access; it does not make identity or
+  administration tables part of the memory engine, so ADR 0031 decision 11's extraction can move
+  their owners later without changing the rule.
 - **D-6 The byte-level deletion test** (ADR 0038 decision 9), on today's schema: a unique canary
   is written to a plain table row and to `recall_units` (so FTS5 and `vec0` get it), deleted
-  through the owning store, then `checkpoint_wal()`; neither `omnibot.db` nor its `-wal` holds the
-  canary text or the canary vector's bytes. It runs in CI (`integration`) and again in Part B on
-  the v2 schema.
+  through the owning store, then `checkpoint_wal()`, which must return `True` (a checkpoint
+  postponed by a reader is a failed test, not a pass); neither `omnibot.db` nor its `-wal` holds
+  the canary text or the canary vector's bytes. It proves the SQLite files, not the storage medium
+  (flash and SSD blocks set aside are ADR 0033's encryption). It runs in CI (`integration`) and
+  again in Part B on the v2 schema.
 
 ### Part B — the v2 schema
 
@@ -140,10 +154,16 @@ in what they leave to the plan; the *For Pipec* notes say what he is asked.
   refused with a closed error. The golden schema proves the squash: a fresh install and a
   version-16 canary database upgraded are identical.
 - **D-8 The migration runner** (ADR 0038 decision 9). The runner owns atomicity for every v2
-  script: `PRAGMA foreign_keys=OFF` when the entry says `rebuild=True` (set before the
-  transaction), `BEGIN IMMEDIATE`, the script (which holds no `BEGIN`, `COMMIT` or
-  `user_version`), `PRAGMA user_version`, `pragma_foreign_key_check` (any row aborts), `COMMIT`,
-  then `foreign_keys=ON` whatever happened, then `checkpoint_wal()` and `PRAGMA optimize`; after
+  script, and it cannot get it by opening `BEGIN IMMEDIATE` and then calling `executescript()`:
+  Python's `executescript()` commits any open transaction before it runs (the audit reproduced it:
+  a later `rollback()` kept the inserts). So a v2 file holds no `BEGIN`, `COMMIT` or
+  `user_version`, and the runner builds **one** script text around it — `BEGIN IMMEDIATE;`, the
+  file, `PRAGMA user_version = N;`, the foreign-key guard (a temporary `CHECK (n = 0)` table filled
+  from `pragma_foreign_key_check`, so any violation aborts), `COMMIT;` — and runs it with a single
+  `executescript()`; on any error it calls `rollback()` (the transaction is still open when the
+  script stops). Around it: `PRAGMA foreign_keys=OFF` before the call when the entry says
+  `rebuild=True`, `foreign_keys=ON` after it whatever happened, then `checkpoint_wal()` and
+  `PRAGMA optimize`; after
   a `rebuild=True` migration it also runs `VACUUM` (outside the transaction), which compacts the
   rebuilt tables and leaves no free page behind (6 MB today: instant).
   `_MIGRATIONS` entries become a small frozen dataclass (`version`, `filename`, `rebuild`).
@@ -155,14 +175,20 @@ in what they leave to the plan; the *For Pipec* notes say what he is asked.
   `entity_relations_v4`, `conversation_records`, `conversation_turns`, `conversation_episodes`,
   `recall_units`, `memory_candidates`, `pending_topics`, `care_contacts`, `face_profiles` and
   `voice_profiles`. New rows get a UUIDv7 from `server/ids.py` (`new_uid()`, RFC 9562, written
-  here: Python 3.12 has no `uuid7` and no dependency is added); the upgrade gives existing rows a
-  random UUIDv4 built in SQL (a `uid` must be unique and stable, not ordered).
+  here: Python 3.12 has no `uuid7` and no dependency is added). A row the upgrade carries gets a
+  **deterministic UUIDv8** (RFC 9562's custom version) built in SQL from a fixed two-byte code of
+  its table and its old integer id (`printf('%08x-0000-8%03x-8000-%012x', <table code>, 0, id)`),
+  never a random one: upgrading the same version-16 backup twice gives every row the same `uid`, so
+  a deletion register written after the first upgrade still names the right rows after a restore
+  and a second upgrade. The table codes are fixed once in `ids.py` and in the data dictionary.
 - **D-10 Turns as rows** (ADR 0038 decision 6). `conversation_turns`: `id`, `uid`, `record_id`
   (→ `conversation_records`, `CASCADE`), `correlation_id` (`UNIQUE`), `said_at`, `verdict` (the
   `TurnVerdict` values), `heard` and `said` (as today's limits), `sensitivity` (`NULL` until a job
   sets it), `redacted_at`. `conversation_records` loses `turns`, `turn_count` and `byte_count`
-  (counts become queries over the turns: one source of truth); the segment rule and the 200 MB cap
-  use `COUNT` and `SUM(length(heard) + length(said))`. `conversation_record.py` keeps its public
+  (counts become queries over the turns: one source of truth); the segment rule uses `COUNT`, and
+  the 200 MB cap counts **bytes** as it does today (`len(entry.encode("utf-8"))` in
+  `conversation_record.py`), with `SUM(octet_length(heard) + octet_length(said))` (SQLite 3.43+),
+  never `length()`, which counts characters. `conversation_record.py` keeps its public
   functions and returns the same `RecordedTurn` tuple, ordered by `said_at` then `id`; it appends
   with one `INSERT`. The upgrade copies each JSON turn (`at`, `cid`, `heard`, `said`, `voice`) to
   a row with `json_each`, in order.
@@ -175,7 +201,12 @@ in what they leave to the plan; the *For Pipec* notes say what he is asked.
   `source_turn_id` (nullable: no turn exists when the record is off; `CASCADE`) and keeps
   `source_correlation_id`. `pending_topics` replaces `source_record_id` and `correlation_id` with
   `source_turn_id` (`UNIQUE`, `CASCADE`). `literal_facts_v4` gains `origin_candidate_id`
-  (→ candidates, `SET NULL`); `source_memory_id` leaves both V4 tables. `origin` (`reported`,
+  (→ candidates, `SET NULL`) **and** `source_turn_id` (→ turns, `SET NULL`), so a confirmed fact
+  keeps its link to the story even after its candidate is cleaned up; `source_memory_id` leaves
+  both V4 tables. **Forgetting a story does not forget a fact the owner confirmed from it** (ADR
+  0038 *Pipec's decisions* row 10): the turn's deletion sets the fact's link to `NULL` and keeps
+  the fact; before it, «everything derived from this turn» lists the fact, so Plan 0086's deletion
+  can name it. `origin` (`reported`,
   `observed`, `document`) and `transformation` (`original`, `summary`, `extracted`, `inferred`) go
   on facts, relations, episodes and units with their CHECKs; the upgrade sets alta facts and
   relations `reported`/`original`, promoted facts `reported`/`extracted` with their candidate,
@@ -197,8 +228,9 @@ in what they leave to the plan; the *For Pipec* notes say what he is asked.
   `digest` (from Ollama `/api/tags`), `dimension`, `metric`, `normalized`, `state` (`building`,
   `active`, `retired`; at most one `active`), `created_at`, `activated_at`. `recall_units` replaces
   `embedding_model` with `embedding_space_id` (nullable: no vector yet) and `embedded_at`. A new
-  `recall_vectors_768` (`vec0`: `owner_entity_id` and `space_id` partition keys, `sensitivity` and
-  `said_day` metadata, `embedding float[768] distance_metric=cosine`) replaces
+  `recall_vectors_768` (`vec0`: `owner_entity_id` the only partition key; `space_id`,
+  `sensitivity` and `said_day` metadata, all filtered inside the KNN; `embedding float[768]
+  distance_metric=cosine`) replaces
   `recall_units_vec`; its rowid is the unit id. At warm-up `recall_index` reads the configured
   tag's digest; a tag or digest unlike the active space's opens a `building` space; units are
   re-embedded one by one into it (their old vector replaced); vector search is off for the owner
@@ -210,10 +242,14 @@ in what they leave to the plan; the *For Pipec* notes say what he is asked.
   space through this same path (65 units, a few seconds), which proves the re-index on the real
   data.
 - **D-15 The uniform table rules** (ADR 0038 decision 5): every ordinary table `STRICT`; every
-  instant column the exact CHECK (`length(x) = 32`, six explicit fraction digits, and
-  `strftime('%Y-%m-%dT%H:%M:%S', substr(x, 1, 19)) IS substr(x, 1, 19)`), every day column
-  `date(x) IS x`, validity bounds day or month; defaults `strftime('%Y-%m-%dT%H:%M:%f000+00:00',
-  'now')`; `NOT NULL` and CHECK on states, sensitivities, visibilities, kinds, origins and
+  instant column this exact CHECK (written once in the dictionary and copied, never paraphrased):
+  `x IS NULL OR (length(x) = 32 AND x GLOB
+  '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9][0-9][0-9][0-9]+00:00'
+  AND strftime('%Y-%m-%dT%H:%M:%S', substr(x, 1, 19)) IS substr(x, 1, 19))` (every digit position
+  explicit, the literal `+00:00`, a real calendar instant), and every day column `date(x) IS x`,
+  validity bounds day or month; **no instant column has an SQL `DEFAULT`**: Python
+  (`timestamps.instant_text`) is the one source of time, and a writer that forgets a column fails
+  on `NOT NULL` in its tests; `NOT NULL` and CHECK on states, sensitivities, visibilities, kinds, origins and
   transformations; the write channel and the policy audit's action and policy stay closed lists
   in Python; `json_valid` on every JSON column; the naming convention (tables plural `snake_case`;
   `<role>_entity_id`; instants `_at`, days `_day` or a named bound; indexes
@@ -255,9 +291,13 @@ in what they leave to the plan; the *For Pipec* notes say what he is asked.
   `integrity_check` ok, the same counts); rehearse on a copy (health and per-table counts at 16,
   the upgrade, the same at 17, turn rows equal to the JSON turns, units, episodes and facts
   equal, 0 rows outside the formats); a reset, a restart and a restore are three different
-  tests, and this plan runs the last two; Pipec starts the server; the backup is deleted
-  once Pipec accepts (it would hold what a later deletion removes). The rollback is that backup
-  with the previous `main`.
+  tests, and this plan runs the last two; Pipec starts the server. The `pre-0085` backup is kept
+  until a backup of the upgraded database (`data/backups/post-0085-<YYYYMMDD-HHMMSS>/`) exists and
+  has been restored into the rehearsal folder and opened at version 17 with `iroko-admin health`
+  exiting 0; only then, and after Pipec accepts, is the `pre-0085` copy deleted (it would hold
+  what a later deletion removes). Keeping one copy is a privacy risk; destroying the only good
+  copy is a data-loss risk; this order takes neither. The rollback is the `pre-0085` backup with
+  the previous `main` until then.
 - **D-21 Tuning only listed** (ADR 0038 decision 11): a read pool, `synchronous=FULL` everywhere,
   `cache_size`, `mmap_size`, `int8` or binary vectors, FTS5 `trigram` or stemming, a second
   embedding model, `vec1` or `sqlite-vector`, backups by `VACUUM INTO`, encryption: each waits for
@@ -272,7 +312,10 @@ in what they leave to the plan; the *For Pipec* notes say what he is asked.
   vectors): one owner, 10 000, 50 000 and 100 000 recall units with their turns and their FTS5
   and `vec0` rows. Per size it measures the insert rate, p50 and p95 of the lexical, vector and
   hybrid search through `recall_search` (window filter on and off), the file and WAL sizes, and
-  the projected file size per year at a given turns-per-day rate. It changes no setting and
+  the projected file size per year at a given turns-per-day rate. It also covers the cases a
+  single large owner hides: several owners with few units each (small `vec0` partitions) and a
+  re-index interrupted halfway and resumed. It measures speed and size, **not** recall quality in
+  Spanish, which stays with the calibrated question corpus (ADR 0028). It changes no setting and
   tunes nothing: its record (`docs/evals/0085-storage-benchmark.md`, with the storage
   fingerprint and the host) is the baseline every later tuning step must beat, on the laptop now
   and on the Pi when it arrives.
@@ -402,7 +445,10 @@ the `try`; `run_migrations` restores `foreign_keys`.
   read-back) refuses to start; a failing `quick_check` refuses; the retention pass calls
   `optimize`; `test_a_cancelled_transaction_after_begin_rolls_back` (the task is cancelled right
   after the `BEGIN` runs; the next `transaction()` succeeds and nothing was committed);
-  `test_a_failed_migration_leaves_foreign_keys_on`.
+  `test_a_failed_migration_leaves_foreign_keys_on`;
+  `test_a_failed_start_leaves_nothing_behind` (the extension load or a pragma made to fail: the
+  connection is closed and the module state is `None`; a second `open_db` succeeds and a
+  `transaction()` commits).
 - [ ] **Step 2:** Run → FAIL. **Step 3:** implement. **Step 4:** Run → PASS.
 - [ ] **Step 5:** commit `fix: read pragmas back and close the transaction window (plan 0085)`.
 
@@ -436,13 +482,15 @@ database or FastAPI.
 to `voice_consent` (`store_voiceprint`, `voiceprint_rows`); `owner_credentials.revoke_for(
 person_entity_id, *, conn)` is called by `household_authorization`; each reader `personal_setup`
 needs lives in its store. `TABLE_OWNERS: Final[Mapping[str, str]]` in the guard test, one module
-per table.
+per table, with its domain (`TABLE_OWNERS: Final[Mapping[str, TableOwner]]`, a frozen dataclass
+of the module and the domain).
 
 - [ ] **Step 1: Write the failing guards:** every table of a fresh database is in `TABLE_OWNERS`;
-  no other module's SQL names it; no SQL outside `server/memory/`; leak tests.
+  no other module's SQL names it; no module that owns no table issues SQL (`db.py` excepted for
+  its infrastructure statements); leak tests.
 - [ ] **Step 2:** Run → FAIL. **Step 3:** move the statements; behaviour unchanged (the face,
   voice, enrolment, revocation and setup suites pass unchanged). **Step 4:** Run → PASS.
-- [ ] **Step 5:** commit `refactor: one writer per table, SQL only in memory (plan 0085)`.
+- [ ] **Step 5:** commit `refactor: one writer per table (plan 0085)`.
 
 ### Task A5: The byte-level deletion test
 
@@ -450,7 +498,8 @@ per table.
 
 - [ ] **Step 1:** write the test of D-6 (a temporary database through `open_db`): the canary text
   and the canary vector's bytes are present in the file or the WAL after the write and absent
-  after the store's delete and `checkpoint_wal()`, for a plain row (a candidate's value scrub), an
+  after the store's delete and a `checkpoint_wal()` that returned `True`, for a plain row (a
+  candidate's value scrub), an
   FTS5 row and a `vec0` row (a recall unit deleted with its record). If a canary survives, **stop
   and report**: it is a finding for ADR 0038, not something to patch here.
 - [ ] **Step 2:** Run → PASS (the expected outcome on SQLite 3.53.1 and `sqlite-vec` 0.1.9).
@@ -497,8 +546,11 @@ bool = False`; `_MIGRATIONS: tuple[Migration, ...]`; `run_migrations` per D-8;
 `def new_uid() -> str` (UUIDv7, 36 characters, version nibble 7, variant bits `10`, ordered within
 a millisecond by a monotonic counter).
 
-- [ ] **Step 1: Write the failing tests:** a v2 script holding `COMMIT` is refused; a failing
-  script leaves the version and every table as before and foreign keys on; a `rebuild=True`
+- [ ] **Step 1: Write the failing tests:** a v2 script holding `BEGIN`, `COMMIT` or
+  `user_version` is refused; `test_a_migration_failing_halfway_leaves_nothing` (a script that
+  creates a table and an index, inserts rows, then hits an error: afterwards no table, index, row
+  or `user_version` change survives, and foreign keys are on); a test that would have passed with
+  the naive `BEGIN` then `executescript()` order fails on it (the RED of the audit's reproduction); a `rebuild=True`
   script runs with foreign keys off and a violation aborts it; `new_uid` format, uniqueness over
   100 000 calls and ordering.
 - [ ] **Step 2:** Run → FAIL. **Step 3:** implement (scripts 001 to 016 keep their own
@@ -530,7 +582,8 @@ rebuild.
 - [ ] **Step 1: Write the failing tests:** a record's JSON turns become rows in order with the same
   fields; reading a record returns the same `RecordedTurn` tuple as before (Review focus 2,
   including 0 turns and equal instants); the segment's turn limit and the 200 MB cap compute from
-  rows; appending is one `INSERT`; a turn's `correlation_id` is unique.
+  rows, the cap in **bytes** (a canary of accented letters and an emoji counts more bytes than
+  characters, and the cap trips at the byte total); appending is one `INSERT`; a turn's `correlation_id` is unique.
 - [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** PASS; every record, capture, episode,
   admin and recall suite unchanged.
 - [ ] **Step 5:** commit `feat: keep a conversation's turns as rows (plan 0085)`.
@@ -546,7 +599,9 @@ rebuild.
 - [ ] **Step 1: Write the failing tests:** deleting one turn removes its unit, its FTS row and its
   vector, its candidate and its pending topic, and only the link of its episode (the episode
   stays); a candidate without a record keeps a `NULL` turn (Review focus 5); a promoted fact names
-  its candidate, and the candidate's deletion leaves the fact; the migration maps every unit,
+  its candidate and its turn; the candidate's deletion leaves the fact and its turn link; the
+  turn's deletion leaves the fact with a `NULL` link, and before it the derivation query lists the
+  fact; the migration maps every unit,
   candidate and topic to its turn by the old correlation id (none left unmapped); origins and
   transformations as D-11; an `UPDATE` of a unit's body is refused; the indexing and episode
   jobs run twice over the same turns (a simulated retry) leave one unit per turn, one episode per
@@ -584,8 +639,9 @@ list[tuple[int, str]]`.
   the re-index moves every unit to B, then vector search is on and B is `active`; half re-indexed,
   nothing compares across spaces (Review focus 4); another dimension is refused, logged by class,
   and leaves vector search off; a one-day window finds a match outside the global top 20; units
-  with no space at start are embedded into a new `active` space (D-14's first start); no text in
-  the log.
+  with no space at start are embedded into a new `active` space (D-14's first start); the space
+  filter is a metadata condition inside the KNN (two spaces' vectors in one partition, only the
+  active one returned); no text in the log.
 - [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** PASS; the calibrated recall gate tests
   unchanged.
 - [ ] **Step 5:** commit `feat: embedding spaces that never mix (plan 0085)`.
@@ -599,7 +655,10 @@ list[tuple[int, str]]`.
 says.
 
 - [ ] **Step 1: Write the failing tests** (behaviour, one parametrized case per table): an old
-  format, an impossible instant (`2026-13-45T99:99:99.0abcde+00:00`, `2026-02-31T…`), a bad day,
+  format, an impossible instant (`2026-13-45T99:99:99.0abcde+00:00`, `2026-02-31T…`), non-digit
+  fractions (`2026-11-03T10:00:00.ABCDEF+00:00`, 32 characters), another suffix
+  (`…000000-03:00`, `…000000Z`), an `INSERT` that omits an instant column (refused by `NOT NULL`:
+  there is no default), a bad day,
   invalid JSON and a text in an `INTEGER` column are refused; every new row has a `uid`; the two
   profiles refuse their person's deletion; a deleted top id is never reused; each child lookup of a
   `DELETE FROM entities` uses an index (`EXPLAIN QUERY PLAN`).
@@ -621,7 +680,9 @@ says.
   helper); every table's rows carried with the expected counts and values; a third time format
   aborts and leaves 16 (Review focus 1); a non-empty database below 16 is refused; FTS5 indexes
   every unit once and the counters never go back (Review focus 3); after the upgrade
-  `freelist_count` is 0 (the `VACUUM` of D-8); the deletion test of Task A5 passes on v2.
+  `freelist_count` is 0 (the `VACUUM` of D-8); `test_upgrading_the_same_backup_twice_gives_the_same_uids`
+  (two copies of the version-16 canary database upgraded apart: every carried row has the same
+  `uid` in both); the deletion test of Task A5 passes on v2.
 - [ ] **Step 2:** FAIL. **Step 3:** write the two scripts from the development migrations and
   remove the old files. **Step 4:** PASS, with the whole suite.
 - [ ] **Step 5:** commit `feat: the v2 schema as one baseline and one upgrade (plan 0085)`.
@@ -659,7 +720,8 @@ database.
 
 - [ ] **Step 1: Write the failing tests:** the fixture holds exactly the requested counts and only
   invented text (the reserved-terms check passes on a generated sample); `measure` returns every
-  field on a 200-unit fixture; a path outside the bench folder is refused.
+  field on a 200-unit fixture; the several-small-owners fixture and an interrupted-and-resumed
+  re-index produce their rows; a path outside the bench folder is refused.
 - [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** PASS; run `just db-bench` on the laptop
   (not in the background if Pipec is rehearsing) and write the record, numbers only, with the
   fingerprint and the host (CPU, RAM, disk); delete the bench folder.
@@ -687,8 +749,10 @@ board, `docs/plans/open/README.md`, `docs/plans/completed/README.md`, the roadma
 - [ ] **Step 2:** merge (push, PR, squash-merge with green CI); Pipec starts the server (the
   upgrade runs, then the 65 units are re-embedded, D-14) and the robot and speaks the script of
   Task A7 plus one sensitive read of the owner's own data; each answers as before; with the server
-  stopped, `iroko-admin health` exits 0.
-- [ ] **Step 3:** when Pipec accepts, delete the `pre-0085` backup and record it; update the
+  stopped, `iroko-admin health` exits 0; the agent makes the `post-0085` backup and proves it
+  (restored into the rehearsal folder, opened at 17, health 0), then deletes the rehearsal copy.
+- [ ] **Step 3:** when Pipec accepts, and only after the `post-0085` backup is proven, delete the
+  `pre-0085` backup and record it; update the
   documents above; move the plan to `completed/`; commit `docs: close plan 0085, the storage
   foundation`, push, PR, squash-merge, delete the branch, return to `main`.
 
@@ -707,8 +771,8 @@ board, `docs/plans/open/README.md`, `docs/plans/completed/README.md`, the roadma
 4. The golden schema, the schema guards, the dictionary coverage and the deletion test pass;
    the storage benchmark's baseline is recorded with its fingerprint.
 5. The spoken scripts of Tasks A7 and B12 answered as before.
-6. The `pre-0085` backup deleted after Pipec's acceptance; the documents of Task B12 updated; the
-   plan in `completed/`.
+6. A proven `post-0085` backup exists; the `pre-0085` backup deleted after it and after Pipec's
+   acceptance; the documents of Task B12 updated; the plan in `completed/`.
 
 ## Non-goals
 
@@ -753,5 +817,16 @@ replay at start-up); Plan 0086 implements it, on the `uid` keys of this plan.
   adopted (D-21). Already covered and not repeated: hybrid recall exists (Plan 0078), `PRAGMA
   optimize` already ran on close, no new database or framework, origins and transformations
   (D-11), the said, occurred and recorded times.
+- **Revision from the external audit (2026-11-13),** applied by Pipec («Yes, apply them»). Fixed:
+  the runner's atomicity, which `executescript()` broke (D-8, Task B1 with a halfway-failure test);
+  the instant check written out in full with no SQL defaults (D-15, Task B7); the 200 MB cap in
+  bytes (D-10, Task B3); a clean failed start (D-3, Task A2); deterministic UUIDv8 for carried rows
+  so a re-upgraded backup keeps its ids (D-9, Task B8); a confirmed fact's own link to its story
+  and the rule that forgetting a story keeps it (D-11, Task B4; ADR 0038 row 10); ownership kept
+  apart from domain, with `db.py`'s infrastructure excepted (D-5, Task A4); the owner as the only
+  `vec0` partition key, the space as metadata (D-14, Task B6); the checkpoint required to complete
+  and the deletion test's limit to the SQLite files (D-6, Task A5); the backup order (D-20, Task
+  B12); the exact Python patch pinned (D-1); the benchmark's small owners, interrupted re-index and
+  its limit to speed (D-22, Task B10).
 - **Proportion.** No SQL body is written here; each migration is fixed by its decisions and its
   tests, and the squash is proven by the golden schema.
