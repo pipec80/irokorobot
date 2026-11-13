@@ -6,7 +6,13 @@
 > Pipec on 2026-11-13), **decision 1 only** — decisions 2 to 7 are Plan 0086 (C2) and decision 8 is
 > Plan 0087 (the export) — plus [ADR 0031](../../adr/0031-the-memory-engine-boundary.md) decisions 4,
 > 8, 9, 11 and 12, the code of `main` at `72b8711` and an audit of the real database's structure
-> and counts (see *The audit*). It is executed in a new Claude Code session, inline, with the
+> and counts (see *The audit*). **Revised the same day** after two independent read-only reviews
+> (a SQLite review that tested the rebuild, the CHECKs and physical deletion on throwaway
+> databases with SQLite 3.49.1 and sqlite-vec 0.1.9, and an architecture review against the ADRs):
+> `STRICT` tables, an exact instant CHECK, `valid_from` written as a day, no `channel` CHECK, a
+> per-table matrix, a golden schema test, the checkpoint and `optimize` after the rebuild, a
+> trimmed health check, the full list of affected tests and the plan-contract headings. It is
+> executed in a new Claude Code session, inline, with the
 > whole-branch reviews of Task 8. Queue rule 4 applies at execution: Task 0 re-verifies every
 > claim below against the merged code before any code, and **stops and reports** if one is false.
 > ADR 0032 stays `Proposed` when this plan closes (it becomes `Accepted` with Plan 0087). Written
@@ -31,7 +37,9 @@
 > background while Pipec rehearses (about 3.5 GB of RAM). The server and the robot are started by
 > Pipec, never by the agent. **The real database is touched only in Task 9**, after its backup, and
 > only by the server Pipec starts; every other task works on temporary databases. Throwaway scripts
-> go to `.superpowers/sdd/0085-database-good-practices/`, never to `%TEMP%`. Before pushing, run
+> go to `.superpowers/sdd/0085-database-good-practices/`, never to `%TEMP%`; a copy of the real
+> database goes under `data/rehearsal-0085/` (ignored by the tracked `.gitignore`, whereas
+> `.superpowers/` is ignored only locally) and is deleted the same day. Before pushing, run
 > `pyright`, `ruff` and `mypy` over the **whole** project, lint `scripts/` with explicit paths and
 > `uv run ruff format --check .` (CI also checks python blocks in `docs/*.md`).
 
@@ -63,7 +71,9 @@ stopped) was opened with `immutable=1` and compared with a clean database built 
    `relational_v4` for `asserted_at`, `superseded_at`, `valid_from` and `valid_to`).
 4. **The validity bounds mix three things.** `valid_from`/`valid_to` hold a day or a month
    (`YYYY-MM-DD`, `YYYY-MM`, accepted by `relational_v4._validity_bound` from the seed) **or** an
-   instant written by `datetime('now')` when a temporal fact or relation is superseded (2 rows of
+   instant: a temporal fact or relation gets `valid_from = COALESCE(asserted_at,
+   datetime('now'))` when it is asserted without a bound (`_insert_literal_fact` and
+   `_upsert_entity_relation`), and `valid_to = datetime('now')` when it is superseded (2 rows of
    `entity_relations_v4.valid_to` today; every other bound is NULL).
 5. **32 foreign keys have no index a cascade can use** (a partial index does not serve a cascade):
    26 on live tables (`admin_audit`, `authorization_audit_events`, `care_contacts`,
@@ -102,10 +112,13 @@ confirmed yet**; the *For Pipec* notes say what he is asked.
 
 - **D-1 Three migrations, in this order, each atomic and each with a before-and-after count
   test.** 017 `migration_017_retire_dead_tables.sql` (D-4); 018
-  `migration_018_one_time_format_and_keys.sql`, the table rebuild (D-2, D-3, D-5, D-6, D-8, D-10),
-  which also drops `memories` once no table names it; 019 `migration_019_indexes.sql` (D-7: an
-  index needs no rebuild). Three small steps are reviewed and rolled back by version more easily
-  than one large script. *For Pipec:* three, or one migration 017 with everything.
+  `migration_018_one_time_format_and_keys.sql`, the rebuild of the 21 live tables of *The
+  table matrix* (D-2, D-3, D-5, D-6, D-10, D-19), which also drops `memories` once no table names
+  it and renames every index to D-10; 019 `migration_019_indexes.sql` (D-7: an index needs no
+  rebuild). Three small steps are reviewed and rolled back by version more easily than one large
+  script. At Task 9 the agent re-verifies that 017 to 019 are still the next free numbers on
+  `main` (Plan 0084's fixes may add a migration). *For Pipec:* three, or one migration 017 with
+  everything.
 - **D-2 One time format.** An **instant** is ISO 8601 in UTC with microseconds and the offset,
   32 characters (`2026-11-03T10:00:00.000000+00:00`); a **day** is an ISO date (`2026-11-03`), a
   local household day where it is a day the owner lives (`HOUSEHOLD_TIMEZONE`), as migrations 015
@@ -120,19 +133,25 @@ confirmed yet**; the *For Pipec* notes say what he is asked.
   - every `DEFAULT (datetime('now'))` becomes `DEFAULT (strftime('%Y-%m-%dT%H:%M:%f000+00:00',
     'now'))` (32 characters, milliseconds padded), so a writer that omits the column still stores
     the format;
-  - every instant column gets `CHECK (x IS NULL OR (length(x) = 32 AND x GLOB
-    '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9]*+00:00'))`
-    and every day column `CHECK (date(x) IS x)`, so an old format cannot enter even through a bug;
+  - every instant column gets an exact CHECK: `x IS NULL OR (length(x) = 32 AND x GLOB
+    '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9][0-9][0-9][0-9]+00:00'
+    AND strftime('%Y-%m-%dT%H:%M:%S', substr(x, 1, 19)) IS substr(x, 1, 19))` — six explicit
+    digits and a real calendar instant (a bare `[0-9]*` would accept `2026-13-45T99:99:99.0abcde`,
+    seen in the SQLite review); every day column `CHECK (date(x) IS x)` (airtight, tested). So an
+    old or impossible format cannot enter even through a bug;
   - migration 018 rewrites a 19-character value to `replace(x, ' ', 'T') || '.000000+00:00'` and a
     25-character ISO value without fraction to `substr(x, 1, 19) || '.000000+00:00'`; **any other
     format makes the CHECK fail and the migration abort** (version stays 017), never a truncation
     (`strftime('%f')` keeps milliseconds only and is never used to convert).
   *For Pipec:* confirm the CHECK on every instant column (the ADR asks it for days, states and
-  kinds; this extends it to instants because the rebuild touches those tables anyway).
+  kinds; this extends it to instants, which costs nothing once D-19 rebuilds every live table).
 - **D-3 The validity bounds are ISO calendar dates, never instants.** `valid_from` and `valid_to`
   hold a day (`2018-03-15`) or a month (`2018-03`, ISO 8601's reduced precision, as the seed
-  states it and `_validity_bound` already reads it); an automatic close at a supersede writes the
-  **household day** of the supersede instead of `datetime('now')`. CHECK: `x IS NULL OR date(x) IS
+  states it and `_validity_bound` already reads it); a temporal fact or relation asserted without
+  a bound opens on the **household day** of its assertion (`valid_from`, today an instant from
+  `COALESCE(asserted_at, datetime('now'))`), and an automatic close at a supersede writes the
+  household day of the supersede (`valid_to`, today `datetime('now')`). Without both changes the
+  day CHECK would refuse every temporal assertion. CHECK: `x IS NULL OR date(x) IS
   x OR (length(x) = 7 AND date(x || '-01') IS x || '-01')`. Migration 018 is plain SQL and knows
   no household zone, so it rewrites the 2 existing instants to their **UTC day**
   (`substr(x, 1, 10)`): a bound closed between local midnight and UTC midnight moves one day, which
@@ -188,17 +207,25 @@ confirmed yet**; the *For Pipec* notes say what he is asked.
     predicate)` and `(target_entity_id, predicate)`; the partial **unique** ones stay (they are
     rules, not speed);
   - `entities_name_idx` is dropped (the unique `(name, type)` index already leads with `name`);
-    `entities_type_idx` stays only if Task 0 finds the query that filters by type, else it goes.
+    `entities_type_idx` stays only if Task 0 finds the query that filters by type, else it goes;
+  - the frequent filters and orders already have their index, and Task 0 confirms each against
+    its query: the record's expiry and pending episode (`retention`, `conversation_jobs`:
+    `conversation_records_expiry_idx`, `_pending_idx`), live candidates by expiry and by subject
+    (`candidates`: `memory_candidates_live_expiry_idx`, `_subject_status_idx`), the due pending
+    topic (`pending_store.due_topic`: `pending_topics_owner_state_due_idx`), recall by told and by
+    occurred day (`recall_store`: `recall_units_owner_time_idx`, `_owner_occurred_idx`), the
+    admin audit listing (`admin_audit_recorded_at_idx`) and the policy audit by correlation; a
+    frequent query Task 0 finds without an index gets one in 019, named in the dictionary;
   *For Pipec:* 21 indexes on tables of tens of rows cost nothing measurable and the ADR asks for
   them; confirm.
-- **D-8 Constraints.** New in 018: the instant and day CHECKs (D-2, D-3); `CHECK (channel IN
-  (…))` on `literal_facts_v4`, `entity_relations_v4` and `care_contacts` with the values of
-  `WriteChannel` (nullable in V4, as migration 010 left it for writers that state none; a test
-  pins the list to the enum, so a new channel is a migration from now on); `json_valid` on
-  `entities.attributes` and `.aliases` and on the acta's four `*_json` columns. No CHECK on the
-  policy audit's `action`, `policy_id` or `reason`: their vocabulary grows with each policy and an
-  audit row must never fail the decision it records. *For Pipec:* the channel CHECK reverses
-  migration 010's comment («a closed list kept in Python, not a CHECK»); confirm.
+- **D-8 Constraints.** New in 018: the instant and day CHECKs (D-2, D-3); `json_valid` on
+  `entities.attributes` and `.aliases` and on the acta's four `*_json` columns; every existing
+  CHECK on a state, sensitivity, visibility or kind kept as it is. Two vocabularies stay in Python
+  on purpose, because SQLite cannot alter a CHECK and each new value would cost a table rebuild:
+  the write `channel` (`WriteChannel` has grown with the importer and the admin; migration 010
+  chose this) and the policy audit's `action`, `policy_id` and `reason` (they grow with each
+  policy, and an audit row must never fail the decision it records). `db_health` counts stored
+  channels outside `WriteChannel` instead (D-12).
 - **D-9 Normalization: no schema change.** The deliberate denormalizations are kept and justified
   in the dictionary: the turns of a record as one JSON array, with `turn_count` and `byte_count`
   beside it (the retention cap reads them without parsing); `owner_entity_id` repeated on
@@ -229,31 +256,42 @@ confirmed yet**; the *For Pipec* notes say what he is asked.
   every column** against it. *For Pipec:* the place.
 - **D-12 The health check** is `server/memory/db_health.py` (SQL counts only, never a value) and
   `iroko-admin health` (no PIN: it shows no value; server stopped, like every `iroko-admin`
-  command; `just db-health` is its alias). It reports: `integrity_check` ok or not;
+  command; `just db-health` is its alias). It measures what ADR 0031 decision 9 gives C1,
+  integrity and staleness, and nothing of product policy: `integrity_check` ok or not;
   `foreign_key_check` violations by table; rows per table; FTS5 `integrity-check` of
-  `recall_units_fts`; orphans (vector rows without a unit, units without an FTS row, `vec_faces`
-  rows without a profile and profiles without a vector, biometric profiles without an active
-  consent); staleness (units without a vector for more than an hour, units of another embedding
-  model, closed records whose episode is `pending` for more than a day, live candidates past
-  their expiry, pending topics `unnamed` for more than a day); and the format counts of D-2 (rows
-  outside the format). Exit code 1 when integrity fails or any violation, orphan or bad format is
-  counted. *For Pipec:* `iroko-admin health` (recommended) or a `just` script only; and whether
-  the server also logs these counts at start-up (not recommended now: YAGNI).
+  `recall_units_fts` (an `INSERT` command that takes the write lock and changes no row);
+  orphans (vector rows without a unit, units without an FTS row, `vec_faces` rows without a
+  profile and profiles without a vector, biometric profiles without an active consent);
+  staleness (units without a vector older than `STALE_VECTOR_AFTER`, units of another embedding
+  model, closed records whose episode is `pending` older than `STALE_EPISODE_AFTER`, both named
+  constants of the module); rows outside the formats of D-2 and D-3; stored channels outside
+  `WriteChannel` (D-8). Exit code 1 when integrity fails or any violation, orphan, bad format or
+  unknown channel is counted. *For Pipec:* `iroko-admin health` (recommended) or a `just` script
+  only; and whether the server also logs these counts at start-up (not recommended now: YAGNI).
 - **D-13 The guard tests** (`tests/unit/test_schema_guards.py` and `test_architecture_guards.py`),
   each with a leak test that proves it fails: every table has a primary key; every foreign key
   has an explicit `ON DELETE` and a full index whose first column is that key; every table and
   column is in the dictionary and the dictionary names no table that does not exist; every index
-  and trigger follows D-10; every instant column has the D-2 CHECK and every day column the day
-  CHECK; no `datetime('now')` in `server/src` Python; and the ADR 0031 decision 11 guard, the
-  modules of `memory/` that import `server.cognition`, **frozen at today's 26** (the list may
-  shrink, never grow). *For Pipec:* freeze at 26, knowing ADR 0031 wrote 20.
-- **D-14 The embedding-model guard** (ADR 0031 decision 8), for recall only:
+  and trigger follows D-10; every live table is `STRICT` (D-19); every instant and day column
+  **refuses a bad value when one is inserted** (a behaviour test per column, not a parse of the
+  DDL text); no `datetime\(\s*'now'` in any `.py` under `server/src` (the regex also catches
+  `datetime('now', ?)`; `.sql` files are out of scope, their comments name it); the **golden
+  schema**: a committed snapshot of the normalized `sqlite_master`, `table_xinfo`,
+  `foreign_key_list` and `index_list` at version 19, equal both for a fresh install (0 to 19) and
+  for a version-16 canary database migrated up, so no drift between upgrade and install can pass;
+  and the ADR 0031 decision 11 guard, the modules of `memory/` that import `server.cognition`,
+  **frozen as today's 26 explicit names** (the list may shrink, never grow). *For Pipec:* freeze
+  at 26, knowing ADR 0031 wrote 20.
+- **D-14 The embedding-model guard** (ADR 0031 decision 8), for recall only. Already true and
+  kept: `store_vector` deletes and re-inserts the `vec0` row and sets the unit's
+  `embedding_model` in one transaction. The changes:
   `recall_store.vector_search_ready(model)` is true when no unit holds a vector of another model;
   `recall_search` skips the vector arm while it is false (lexical search keeps working; one log
   line `recall.vector off reason=model_changed remaining=N`, a count); `units_without_vector`
-  selects units with no vector **or** a vector of another model, and `store_vector` replaces the
-  `vec0` row and the unit's `embedding_model` in one transaction; `vector_hits` also joins
-  `recall_units.embedding_model = ?` (defence in depth); the re-index is verifiable because
+  selects units with no vector **or** a vector of another model (the partial index
+  `recall_units_unembedded_idx` then serves only half of that predicate, harmless at this size;
+  it stays); `vector_hits` also joins `recall_units.embedding_model = ?` (defence in depth); the
+  re-index is verifiable because
   `db_health` counts the units left and `recall_index` logs the count after each pass. A model of
   another dimension fails its insert into `float[768]`, is logged by class and leaves vector
   search off. Face vectors (`vec_faces`) name no model and stay out of this plan: the dictionary
@@ -264,7 +302,7 @@ confirmed yet**; the *For Pipec* notes say what he is asked.
   count before and after, every converted value is the expected one, the foreign keys and the FTS
   index are intact, `sqlite_sequence` keeps each `AUTOINCREMENT` counter (a rebuilt table never
   reuses an id), and an ordering test sorts a mixed set wrongly at 016 and rightly at 019. On the
-  real data (Task 9): the agent copies the backup to the throwaway folder, runs `db_health` and
+  real data (Task 9): the agent copies the backup to `data/rehearsal-0085/`, runs `db_health` and
   per-table counts at 016, migrates the copy with `run_migrations`, runs them again, compares
   (equal except the dropped tables, all 0 rows; 0 rows outside the format), then deletes the copy.
 - **D-16 The backup and the timing.** The real migration runs at the first server start after the
@@ -273,30 +311,96 @@ confirmed yet**; the *For Pipec* notes say what he is asked.
   server stopped, the agent copies `data/omnibot.db` (and any sidecar) to
   `data/backups/pre-0085-<YYYYMMDD-HHMMSS>/` and rehearses on a copy (D-15); Pipec starts the
   server and the robot; the agent runs `iroko-admin health` after Pipec stops it again. The
-  rollback is restoring that backup (no migration has a down-step). *For Pipec:* confirm the
-  wait for 0084.
+  rollback is restoring that backup (no migration has a down-step). That backup is a plain copy
+  that would still hold anything a later deletion with the PIN removes (ADR 0032 decision 6), so
+  it is **deleted when Pipec accepts this plan** and the operator manual says so for every
+  pre-upgrade backup until ADR 0033 owns backups. *For Pipec:* confirm the wait for 0084 and the
+  deletion of the backup at acceptance.
 - **D-17 `run_migrations` and foreign keys.** A rebuild needs `PRAGMA foreign_keys = OFF`, which
   SQLite ignores inside a transaction: 018 starts with it before `BEGIN`, ends with `PRAGMA
   foreign_keys = ON` after `COMMIT`, and checks `pragma_foreign_key_check` inside its transaction
   (a temporary `CHECK (n = 0)` table, so a violation aborts it). `db.run_migrations` turns foreign
   keys back on after every script, whether it passed or failed, so a failed rebuild never leaves
-  the connection without them.
+  the connection without them. The rebuild of each table follows SQLite's own procedure with two
+  rules the SQLite review found by test: **capture each rebuilt table's `sqlite_sequence` value
+  before the `DROP`** and set it back after the rename (copying rows resets it to `max(id)`, and a
+  deleted top id would be reused), and **create the triggers after the copy** (created before,
+  the FTS5 insert trigger indexes every row twice). After the last migration of a start,
+  `run_migrations` calls `db.checkpoint_wal()` (the write-ahead log still holds the old frames of
+  every rebuilt row) and `PRAGMA optimize=0x10002` (a `DROP TABLE` removes that table's
+  statistics, and the server is long-lived); `open_db` also runs `PRAGMA optimize=0x10002`, as
+  SQLite recommends for a long-lived connection.
 - **D-18 Tuning is only listed** (ADR 0031 decision 12, step 2 is this plan's hygiene): the FTS5
   `trigram` comparison on a Spanish corpus, the per-connection pragmas in settings rather than in
   `db.py`, `int8` vectors and durability pragmas wait for a measure that asks for them; the
-  dictionary names them under *Not tuned yet*.
+  dictionary names them under *Not tuned yet*. Reviewed and **not adopted**: `WITHOUT ROWID`
+  (the tables use `AUTOINCREMENT` and FTS5 external content needs the rowid), `auto_vacuum`
+  (freed pages are already zeroed by `secure_delete`; 6 MB), JSONB (text JSON stays exportable
+  and readable by older SQLite), `cell_size_check` and `trusted_schema=OFF` (no hostile file in
+  this threat model); `quick_check` at start-up and `VACUUM INTO` backups belong to ADR 0033.
+- **D-19 `STRICT` tables, and all 21 live tables rebuilt.** Every table 018 rebuilds is declared
+  `STRICT`, so SQLite itself refuses a text in an `INTEGER` column or a float in a `TEXT` one,
+  under every CHECK (every declared type today is `INTEGER`, `TEXT`, `REAL` or `BLOB`, so the
+  DDL needs no type change). Rebuilding all 21 live tables, not only the 12 that need it (the 11
+  with a `datetime('now')` default, which hold every old-format row, `source_memory_id` and the
+  two implicit rules, plus `commissioning_records` for its day CHECKs), is what makes
+  `STRICT` and the CHECKs uniform; the risk of rebuilding `recall_units` (FTS5 external content,
+  three triggers, `AUTOINCREMENT`) was tested by the SQLite review on the installed versions and
+  is pinned by Task 3 and the golden schema (D-13). `STRICT` needs SQLite 3.37 or later to open
+  the file: Raspberry Pi OS Bookworm (3.40) and Ubuntu 22.04 / JetPack 6 (3.37.2) can, JetPack 5
+  (3.31) cannot; the dictionary says it, and `iroko-admin health` prints the library version.
+  `PRAGMA application_id` is set to one fixed number in 018 and checked by `open_db`, which
+  refuses a file that is not Iroko's (the «two databases» confusion `db.py` already guards
+  against by path). *For Pipec:* all 21 with `STRICT` (recommended; the architecture review
+  preferred rebuilding only the 12 to touch less), and `application_id` (optional, low value).
+
+### The table matrix (migration 018)
+
+Every row is rebuilt `STRICT` (D-19) with its indexes renamed to D-10 and its triggers recreated
+after the copy. **Instants** get the D-2 CHECK and **days** the day CHECK (D-3 for validity
+bounds); «default» marks a `DEFAULT (datetime('now'))` replaced by the D-2 expression; «old rows»
+marks columns whose values 018 converts (*The audit* item 3).
+
+| Table | Instants | Days | Beyond `STRICT` and the time CHECKs |
+|---|---|---|---|
+| `entities` | `created_at`, `updated_at` (default, old rows) | — | `json_valid` on `attributes`, `aliases` |
+| `meta` | `updated_at` (default) | — | — |
+| `literal_facts_v4` | `asserted_at` (default), `confirmed_at`, `superseded_at` (old rows) | `valid_from`, `valid_to` | `source_memory_id` dropped (D-5) |
+| `entity_relations_v4` | `asserted_at` (default), `confirmed_at`, `superseded_at` | `valid_from`, `valid_to` (2 instants → day) | `source_memory_id` dropped (D-5) |
+| `household_role_assignments` | `granted_at` (default, old rows), `revoked_at` | — | — |
+| `owner_pin_credentials` | `created_at`, `updated_at` (default, old rows), `revoked_at` | — | — |
+| `face_consent_grants` | `granted_at` (default, old rows), `revoked_at` | — | — |
+| `voice_consent_grants` | `granted_at` (default, old rows), `revoked_at` | — | — |
+| `face_profiles` | `created_at` (default, old rows) | — | `entity_id` `RESTRICT` (D-6); index renamed |
+| `voice_profiles` | `created_at` (default, old rows) | — | `entity_id` `RESTRICT` (D-6); index renamed |
+| `care_contacts` | `confirmed_at`, `created_at` (default, old rows), `revoked_at` | — | — |
+| `commissioning_records` | `started_at`, `closed_at` | `backup_destroy_by`, `baseline_destroy_by` | `json_valid` on the four `*_json` |
+| `commissioning_sections` | `recorded_at` | — | — |
+| `memory_candidates` | `proposed_at`, `offered_at`, `resolved_at`, `expires_at` | — | — |
+| `admin_audit` | `recorded_at` | — | — |
+| `authorization_audit_events` | `evaluated_at`, `expires_at` | — | — |
+| `conversation_consent_grants` | `granted_at`, `revoked_at` | — | index renamed |
+| `conversation_records` | `started_at`, `last_turn_at`, `closed_at`, `expires_at` | — | — |
+| `conversation_episodes` | `created_at`, `expires_at` | — | — |
+| `recall_units` | `said_at` | `occurred_start`, `occurred_end` | FTS5 content kept; triggers `recall_units_ai`, `_ad`, `_au_sensitivity` after the copy |
+| `pending_topics` | `created_at`, `asked_at` | `said_day`, `due_day` | — |
+
+The JSON turns of `conversation_records` keep their `at` instants as they are (197 of 197 already
+in the D-2 format); `db_health` counts any that is not.
 
 **Goal.** The database follows one time format, keys, explicit delete rules, indexes,
-constraints and one naming convention; dead tables are gone with the code that named them; a
+constraints, `STRICT` types and one naming convention; dead tables are gone with the code that
+named them; a
 dictionary documents every table and column; a health check counts integrity, orphans and
 staleness; guard tests keep all of it true; and a change of embedding model can no longer compare
 vectors of two spaces.
 
 **Architecture.** One time module (`server/timestamps.py`) used by every writer; three migrations
-(017 retire, 018 rebuild, 019 indexes) with `run_migrations` restoring foreign keys; a counts-only
-health module behind `iroko-admin health`; the embedding guard inside `recall_store`,
-`recall_search` and `recall_index`; schema guards that read `sqlite_master` of a fresh database and
-the dictionary.
+(017 retire, 018 rebuild of every live table as `STRICT`, 019 indexes) with `run_migrations`
+restoring foreign keys, checkpointing the log and refreshing the planner's statistics; a
+counts-only health module behind `iroko-admin health`; the embedding guard inside
+`recall_store`, `recall_search` and `recall_index`; schema guards and a golden schema snapshot
+read from both a fresh and an upgraded database, and the dictionary.
 
 **Tech stack.** Python 3.12, aiosqlite, SQLite 3.49 (FTS5, `sqlite-vec`), pytest. No new
 dependency, no setting, no wire, route, prompt or robot change.
@@ -339,23 +443,32 @@ the schema tests under `tests/integration/`.
 3. **Foreign keys left off** after a failed migration (Task 3, a script made to fail).
 4. **A model change in the middle of a re-index**: half the units on the new model, a query
    arrives; nothing compares across models and the lexical answer still comes (Task 5).
-5. **A table or column added later** without a key, an index, a CHECK or a dictionary entry: the
-   guards fail with its name (Task 7 leak tests).
+5. **A reader of a converted column**: code that parsed `YYYY-MM-DD HH:MM:SS` got a naive
+   datetime and now gets an aware one; a comparison with a naive value would raise. Every reader
+   Task 0 lists keeps working on converted rows (Tasks 1 and 3).
 
 ---
 
-## File structure
+## Permitted files
+
+Only these files change (paths under `server/src/server/` unless they start with `tests/`,
+`scripts/`, `docs/` or the root); a need outside the list stops the plan for Pipec.
 
 | File | Responsibility | Task |
 |---|---|---|
-| `server/timestamps.py` (new); the writers named in D-2 | One instant and day format; no `datetime('now')` | 1 |
-| `memory/migration_017_retire_dead_tables.sql` (new), `db.py`, `retention.py`, `embeddings.py`, `declarative.py`, `vision/perception.py`, `scripts/memory_test.py`, `justfile`; delete `legacy_v4_migration.py`, `scripts/migrate_memory_v4.py` | Dead tables and their code | 2 |
-| `memory/migration_018_one_time_format_and_keys.sql` (new), `db.py`, `relational_v4.py` | The rebuild; foreign keys restored | 3 |
-| `memory/migration_019_indexes.sql` (new), `db.py` | Indexes | 4 |
-| `memory/recall_store.py`, `recall_search.py`, `recall_index.py` | The embedding-model guard | 5 |
-| `memory/db_health.py` (new), `admin_cli.py`, `justfile` | The health check | 6 |
-| `docs/architecture/data-dictionary.md` (new), `tests/unit/test_schema_guards.py` (new), `tests/unit/test_architecture_guards.py` | Dictionary and guards | 7 |
-| `docs/…` | Truth, rehearsal, close | 9 |
+| `timestamps.py` (new); the writers named in D-2 and D-3 (`memory/candidates.py`, `conversation_consent.py`, `conversation_record.py`, `conversation_episodes.py`, `recall_store.py`, `household_authorization.py`, `biometric_consent.py`, `voice_consent.py`, `owner_credentials.py`, `declarative.py`, `meta.py`, `relational_v4.py`, `cognition/spoken_dates.py`, `admin_cli.py`); `tests/unit/test_timestamps.py` (new), the tests of those writers | One instant and day format; no `datetime('now')` | 1 |
+| `memory/migration_017_retire_dead_tables.sql` (new), `db.py`, `memory/retention.py`, `memory/embeddings.py`, `memory/declarative.py`, `vision/perception.py`, `scripts/memory_test.py`, `justfile`; delete `memory/legacy_v4_migration.py`, `scripts/migrate_memory_v4.py`; the tests listed in Task 2 | Dead tables and their code | 2 |
+| `memory/migration_018_one_time_format_and_keys.sql` (new), `db.py`, `memory/relational_v4.py`, `tests/fixtures/migration_canaries.py` (new), `tests/integration/test_migration_018_rebuild.py` (new), the schema tests under `tests/integration/` | The rebuild; foreign keys, checkpoint, `optimize`, `application_id` | 3 |
+| `memory/migration_019_indexes.sql` (new), `db.py`, `tests/integration/test_migration_019_indexes.py` (new) | Indexes | 4 |
+| `memory/recall_store.py`, `memory/recall_search.py`, `memory/recall_index.py`, `tests/integration/test_recall_embedding_model_guard.py` (new), the recall tests | The embedding-model guard | 5 |
+| `memory/db_health.py` (new), `admin_cli.py`, `justfile`, `scripts/memory_test.py`, `tests/integration/test_db_health.py` (new) | The health check | 6 |
+| `docs/architecture/data-dictionary.md` (new), `tests/unit/test_schema_guards.py` (new), `tests/fixtures/schema_v19.json` (new), `tests/unit/test_architecture_guards.py` | Dictionary, guards, golden schema | 7 |
+| The documents of Task 9 | Truth, rehearsal, close | 9 |
+
+**Rollback boundary.** Before Task 9 every change lives on the branch and touches no real data:
+the rollback is the branch. After the merge, the real database's rollback is the backup of D-16,
+restored with the server stopped, together with the previous `main` (no migration has a
+down-step).
 
 ---
 
@@ -372,10 +485,16 @@ the schema tests under `tests/integration/`.
     `server/src`; `legacy_v4_migration` is imported only by `scripts/migrate_memory_v4.py`;
     `events` is written only by `perception._record_unknown_face` and read by nothing;
     `meta.get_flag` is read by `personal_setup`;
-  - which query, if any, filters `entities` by `type` (D-7);
-  - every V4 and contact writer states a `channel` from `WriteChannel` or none (D-8);
-  - the `datetime('now')` writers of item 3 and the `_iso` helpers of D-2;
-  - the 26 modules of item 8.
+  - which query, if any, filters `entities` by `type`, and each frequent query of D-7 with the
+    index it uses (`EXPLAIN QUERY PLAN` on a clean database);
+  - the `datetime\(\s*'now'` writers of item 3 (including `retention`'s `datetime('now', ?)`,
+    which Task 2 removes with the dead tables), the `_iso` helpers of D-2 and the two
+    `valid_from` writers of item 4;
+  - every **reader** of a column with old-format rows (*The audit* item 3) and how it parses it
+    (Review focus 5);
+  - the installed SQLite is 3.37 or later (`STRICT`, D-19) and the vec0 extension loads in a
+    `STRICT` database;
+  - the 26 modules of item 8, by name.
 - [ ] **Step 3:** Baseline (not in the background if Pipec is rehearsing), the count in the PR:
   `MEMORY_ENABLED=false uv run pytest -m "not slow and not hardware and not eval" -q -n auto`.
 
@@ -399,15 +518,18 @@ writers of D-2 (`memory/candidates.py`, `conversation_consent.py`, `conversation
 - [ ] **Step 1: Write the failing tests:** `instant_text` of a `+03:00` moment is its UTC
   instant in 32 characters; a naive moment raises; `parse_instant(instant_text(m)) == m`; ordering
   of `instant_text` equals ordering of the moments (a microsecond apart, across a day);
-  `validity_close_day` at 02:30 UTC is the previous day in `America/Santiago`;
-  `test_no_server_module_writes_datetime_now` (the SQL text `datetime('now')` appears in no
-  `server/src` `.py`, with a leak test); `test_the_instant_format_is_defined_once` (no other
-  module calls `isoformat(timespec="microseconds")`).
+  `validity_close_day` at 02:30 UTC is the previous day in `America/Santiago`; a temporal V4 fact
+  and a temporal relation asserted without a bound store a household **day** in `valid_from`,
+  and a supersede stores one in `valid_to` (D-3); `test_no_server_module_writes_datetime_now`
+  (the regex `datetime\(\s*'now'` matches no `.py` under `server/src`, except `retention`'s dead
+  deletes, which Task 2 removes and then the exception goes; with a leak test);
+  `test_the_instant_format_is_defined_once` (no other module calls
+  `isoformat(timespec="microseconds")`).
 - [ ] **Step 2:** Run → FAIL. **Step 3:** implement and move every writer to it (a revocation,
-  `updated_at`, `superseded_at`, the V4 `asserted_at` fallback and the validity close take the
-  time from `cognition.clock.utc_now()` through `instant_text`, or `validity_close_day` with
-  `settings.household_timezone`). **Step 4:** Run → PASS; every existing test of those writers
-  passes unchanged in what it asserts.
+  `updated_at`, `superseded_at` and the V4 `asserted_at` fallback take the time from
+  `cognition.clock.utc_now()` through `instant_text`; the V4 `valid_from` opening and `valid_to`
+  close take `validity_close_day` with `settings.household_timezone`). **Step 4:** Run → PASS;
+  every existing test of those writers passes unchanged in what it asserts.
 - [ ] **Step 5:** commit `refactor: write every time in one format (plan 0085)`.
 
 ---
@@ -418,9 +540,17 @@ writers of D-2 (`memory/candidates.py`, `conversation_consent.py`, `conversation
 `tests/integration/test_migration_017_dead_tables.py`; modify `db.py`, `memory/retention.py`,
 `memory/embeddings.py`, `memory/declarative.py`, `vision/perception.py`,
 `scripts/memory_test.py`, `justfile` (only if a task named a removed script); delete
-`memory/legacy_v4_migration.py`, `scripts/migrate_memory_v4.py` and the tests that exercise only
-them (`test_memory_v4_migration.py`, `test_legacy_migration_*.py`); adjust the schema tests that
-insert into a dropped table.
+`memory/legacy_v4_migration.py` and `scripts/migrate_memory_v4.py`. The tests, found by the
+architecture review and re-listed by Task 0:
+- **deleted** (they test only removed code): `tests/integration/test_memory_v4_migration.py`,
+  `test_legacy_migration_pool_predicates.py`, `test_legacy_migration_subject_types.py`, and the
+  `embed` cases of `tests/unit/test_embeddings.py` (the `EMBEDDING_DIM` case stays);
+- **reseeded through `relational_v4`** (they used `assert_fact`/`get_active_facts` or a dead
+  table only to set up a scenario): `test_household_authorization_schema.py`,
+  `test_memory_v4_schema.py`, `test_memory_relational.py`, `test_owner_stranger_matrix.py`,
+  `test_memory_integration.py`, `test_conversation_schema.py` (its `memories` trigger case moves
+  to Task 3, where `memories` goes), `test_retention.py` (its sensor cases go);
+- **updated**: `tests/unit/test_architecture_guards.py`, which names `legacy_v4_migration`.
 
 **Interfaces:**
 - Produces: version 17 without the eight tables of D-4; the code of D-4 removed; `EMBEDDING_DIM`
@@ -447,23 +577,31 @@ invented rows); modify `db.py` (`run_migrations`, D-17), `memory/relational_v4.p
 
 **Interfaces:**
 - Consumes: Task 1's format; Task 2's version 17.
-- Produces: version 18. Every live table rebuilt by the procedure of SQLite's *ALTER TABLE*
-  page (create `<t>_new`, copy with the conversion of D-2/D-3, drop, rename, recreate indexes and
-  triggers), with the DDL of D-2, D-3, D-5, D-6, D-8 and D-10, `sqlite_sequence` set back to each
-  table's old counter, `memories` dropped last, `pragma_foreign_key_check` empty or abort.
-  `run_migrations` restores `PRAGMA foreign_keys = ON` after every script.
+- Produces: version 18. The 21 tables of *The table matrix* rebuilt `STRICT` by the procedure of
+  SQLite's *ALTER TABLE* page (create `<t>_new`, copy with the conversion of D-2/D-3, capture the
+  old `sqlite_sequence` value, drop, rename, set the counter back, recreate the indexes with D-10
+  names and **then** the triggers), with the DDL of D-2, D-3, D-5, D-6, D-8 and D-19, `memories`
+  dropped last, `pragma_foreign_key_check` empty or abort, `PRAGMA application_id` set if Pipec
+  keeps it (D-19). `run_migrations` restores `PRAGMA foreign_keys = ON` after every script and,
+  after the last one, calls `checkpoint_wal()` and `PRAGMA optimize=0x10002`; `open_db` runs
+  `PRAGMA optimize=0x10002` and checks `application_id` (D-17, D-19).
 
 - [ ] **Step 1: Write the failing tests** (on a database built to 17 and filled from the canary
   fixture, old and new formats mixed): every table's count equal after 018; each 19- and
   25-character instant converted exactly; the 2 kinds of validity bound kept and an instant bound
   turned to its UTC day; `test_ordering_across_formats` (a mixed set ordered by `asserted_at`/
   `superseded_at` is wrong at 17 and right at 18); a value in a third format aborts 018 and keeps
-  17 (Review focus 1); an insert of an old format, a bad day, an unknown channel or invalid JSON
-  is refused after 18; `face_profiles` and `voice_profiles` refuse the deletion of their person;
-  after 18 recall finds a canary unit by its words and its vector, the three triggers exist, the
-  FTS `integrity-check` passes and a new unit gets the next id after the old counter (Review
-  focus 2); `test_a_failed_migration_leaves_foreign_keys_on` (Review focus 3); `relational_v4`
-  works without `source_memory_id`.
+  17 (Review focus 1); after 18 an insert is refused for an old format, an impossible instant
+  (`2026-13-45T99:99:99.0abcde+00:00`, `2026-02-31T…`), a bad day, invalid JSON, and a text in
+  an `INTEGER` column (`STRICT`), one parametrized case per table of the matrix;
+  `face_profiles` and `voice_profiles` refuse the deletion of their person; after 18 recall
+  finds a canary unit by its words and its vector, the three triggers exist, every unit is
+  indexed **once** in FTS5, the FTS `integrity-check` passes and a new unit gets the id after the
+  old counter even when the top id had been deleted (Review focus 2);
+  `test_a_failed_migration_leaves_foreign_keys_on` (Review focus 3); after the start the log is
+  truncated (`checkpoint_wal` called) and `sqlite_stat1` is refreshed; a file with another
+  `application_id` is refused by `open_db`; every reader Task 0 listed parses a converted row
+  (Review focus 5); `relational_v4` works without `source_memory_id`.
 - [ ] **Step 2:** Run → FAIL. **Step 3:** implement. **Step 4:** Run → PASS; the whole V4,
   contact, candidate, record, recall and pending suites unchanged.
 - [ ] **Step 5:** commit `feat: one time format and explicit keys in the schema (plan 0085)`.
@@ -476,7 +614,8 @@ invented rows); modify `db.py` (`run_migrations`, D-17), `memory/relational_v4.p
 `tests/integration/test_migration_019_indexes.py`; modify `db.py`.
 
 **Interfaces:**
-- Produces: version 19 with D-7's indexes (and the D-10 names).
+- Produces: version 19 with D-7's indexes, named per D-10 (the renames of existing indexes
+  happen in 018, which recreates them).
 
 - [ ] **Step 1: Write the failing tests:** each new index exists and is not partial;
   `EXPLAIN QUERY PLAN` of the child lookup SQLite runs for a `DELETE FROM entities WHERE id = ?`
@@ -521,18 +660,22 @@ modify `admin_cli.py` (`health`), `justfile` (`db-health`), `scripts/memory_test
 
 **Interfaces:**
 - Produces: `@dataclass(frozen=True) class HealthReport` (only `int`/`bool` fields and a
-  `dict[str, int]` of rows per table; no text from the database); `async def check_health(
-  conn: aiosqlite.Connection, *, now: datetime, embedding_model: str) -> HealthReport` (D-12,
-  read-only); `def health_failed(report: HealthReport) -> bool`; `iroko-admin health` prints the
-  report as Spanish labels and numbers and exits 1 when `health_failed`.
+  `dict[str, int]` of rows per table; no text from the database); `STALE_VECTOR_AFTER:
+  Final[timedelta]` and `STALE_EPISODE_AFTER: Final[timedelta]`; `async def check_health(conn:
+  aiosqlite.Connection, *, now: datetime, embedding_model: str) -> HealthReport` (D-12; it
+  changes no row: the FTS5 `integrity-check` command takes the write lock and writes nothing);
+  `def health_failed(report: HealthReport) -> bool`; `iroko-admin health` prints the report as
+  Spanish labels and numbers, plus the SQLite library version (D-19), and exits 1 when
+  `health_failed`.
 
 - [ ] **Step 1: Write the failing tests:** a clean database reports zeros and passes; one test per
   measure plants its fault in a temporary database (a vector row without a unit, a unit without an
   FTS row, a face profile without a vector, a profile without consent, a stale unit, a unit of
-  another model, a stuck episode, a lapsed live candidate, an old `unnamed` topic, a foreign key
-  violation with foreign keys off, an old-format instant with the CHECK bypassed by a writable
-  schema copy) and sees its count; `check_health` writes nothing (`total_changes` unchanged);
-  `test_no_value_reaches_the_output` (canary values absent from the printed report).
+  another model, a stuck episode, a foreign key violation with foreign keys off, an impossible
+  instant and an unknown channel written through a schema without the CHECK) and sees its count;
+  `check_health` changes no row (every table's content hash is the same before and after; a
+  `total_changes` count alone would not see the FTS command); `test_no_value_reaches_the_output`
+  (canary values absent from the printed report).
 - [ ] **Step 2:** Run → FAIL. **Step 3:** implement. **Step 4:** Run → PASS.
 - [ ] **Step 5:** commit `feat: a counts-only health check of the database (plan 0085)`.
 
@@ -540,18 +683,22 @@ modify `admin_cli.py` (`health`), `justfile` (`db-health`), `scripts/memory_test
 
 ### Task 7: The dictionary and the guards
 
-**Files:** Create `docs/architecture/data-dictionary.md`, `tests/unit/test_schema_guards.py`;
-modify `tests/unit/test_architecture_guards.py`.
+**Files:** Create `docs/architecture/data-dictionary.md`, `tests/unit/test_schema_guards.py`,
+`tests/fixtures/schema_v19.json`; modify `tests/unit/test_architecture_guards.py`.
 
 **Interfaces:**
-- Produces: the dictionary of D-11 for version 19; the guards of D-13, which build a clean
-  database at the latest version in a temporary file and read `sqlite_master` and the `PRAGMA`
-  lists (SQLite's own tables and the FTS5/vec0 shadow tables excluded by name).
+- Produces: the dictionary of D-11 for version 19 (with the SQLite floor of D-19 and *Not tuned
+  yet* of D-18); the guards of D-13, which build a clean database at the latest version in a
+  temporary file and read `sqlite_master` and the `PRAGMA` lists (SQLite's own tables and the
+  FTS5/vec0 shadow tables excluded by name); `schema_v19.json`, the normalized golden schema.
 
 - [ ] **Step 1: Write the failing guards** (each with its leak test on a planted schema or
-  dictionary): primary key, explicit `ON DELETE`, full index per foreign key, dictionary coverage
-  of tables and columns (both ways), names per D-10, instant and day CHECKs, the frozen list of 26
-  `memory/` modules importing `server.cognition`.
+  dictionary): primary key, explicit `ON DELETE`, full index per foreign key, `STRICT`,
+  dictionary coverage of tables and columns (both ways), names per D-10, the frozen 26 names of
+  `memory/` modules importing `server.cognition`; and `test_the_schema_matches_the_golden_file`,
+  run for a fresh install and for the version-16 canary database of Task 3 migrated up (a
+  snapshot regenerated only on purpose, by a documented helper in the test module). The instant
+  and day CHECKs are proven by behaviour in Task 3, not parsed here.
 - [ ] **Step 2:** Run → FAIL (no dictionary). **Step 3:** write the dictionary from the schema at
   19 and the code (owner module from the store guards, each index with its query, classification
   and retention from the ADRs and settings). **Step 4:** Run → PASS;
@@ -586,19 +733,50 @@ item 8's first bullet fixed, the guard of decision 11 at 26), the ADR index, the
 `docs/plans/open/README.md`, `docs/plans/completed/README.md`, the roadmap (row 8 and *Database
 hygiene*), both delivery maps, and Pipec's local `docs/roadmap/tabla-tareas.md`.
 
-- [ ] **Step 1: Wait for Plan 0084's close** (D-16). Then, with the server stopped, the agent backs
-  up the real database to `data/backups/pre-0085-<YYYYMMDD-HHMMSS>/`, copies the backup to the
-  throwaway folder, and rehearses on the copy (D-15): `db_health` and per-table counts at 16, the
-  migrations, the same at 19, the comparison; the copy is deleted. Any difference stops the plan.
+- [ ] **Step 1: Wait for Plan 0084's close** (D-16). Rebase on `main` and confirm that 017 to 019
+  are still the next migration numbers (D-1); if `main` gained one, renumber and re-run Task 8's
+  Step 1 first. Then, with the server stopped, the agent backs up the real database to
+  `data/backups/pre-0085-<YYYYMMDD-HHMMSS>/`, copies the backup to `data/rehearsal-0085/`, and
+  rehearses on the copy (D-15): `db_health` and per-table counts at 16, the migrations, the same
+  at 19, the comparison; the copy is deleted the same day. Any difference stops the plan.
 - [ ] **Step 2: Merge** (push, PR, squash-merge with green CI; GitHub is delegated), then Pipec
   starts the server (the migrations run) and the robot, and speaks a short script the agent
   gives: a greeting, «¿qué sabes de mí?», one recall question about something told before, one
   sensitive read of the owner's own data; each answers as before. The agent reads
   `logs/server.log` (closed values only) and, with the server stopped again, runs
   `iroko-admin health` (exit 0, counts recorded).
-- [ ] **Step 3:** Update the documents above; move the plan to `completed/`; commit
+- [ ] **Step 3:** When Pipec accepts, delete the `pre-0085` backup (D-16) and record that it was
+  deleted. Update the documents above; move the plan to `completed/`; commit
   `docs: close plan 0085, the database with good practices`, push, PR, squash-merge, delete the
   branch, return to `main`.
+
+---
+
+## Completion criteria
+
+The plan is complete when all of these hold, each with its evidence in the PR or the acceptance
+record (counts only):
+
+1. Tasks 1 to 7 merged, each with its RED-then-GREEN tests; Task 8's commands all pass and its
+   review findings are fixed.
+2. The real database is at version 19: `iroko-admin health` exits 0, with 0 integrity errors,
+   0 foreign key violations, 0 orphans, 0 rows outside the formats and 0 units of another model.
+3. The rehearsal of D-15 showed equal per-table counts at 16 and at 19 (except the dropped
+   tables, all 0 rows), and its copy is deleted.
+4. The four spoken cases of Task 9 Step 2 answered as before.
+5. The data dictionary exists and the schema guards and golden schema pass.
+6. The `pre-0085` backup is deleted after Pipec's acceptance.
+7. The documents of Task 9 are updated and the plan sits in `completed/`.
+
+## Found for Plan 0086 (C2), not done here
+
+The SQLite review tested physical deletion on the installed versions: a vec0 (sqlite-vec 0.1.9)
+`DELETE` zeroes the vector bytes, and FTS5 `secure-delete` with `secure_delete=ON` removes both
+token and text, once the write-ahead log is checkpointed. One risk it found belongs to C2: with
+`synchronous=NORMAL`, a power cut can undo the last commit, including a deletion with the PIN,
+which would bring a forgotten memory back. ADR 0032 decision 7 accepts losing a turn, not a
+deletion. So C2's deletion should commit, then `checkpoint_wal()` (which syncs), then append the
+register line. Plan 0086 decides it.
 
 ---
 
@@ -620,19 +798,34 @@ any wire, route, prompt, robot or dependency change.
   normalization → D-9 and Task 7; naming → D-10 and Tasks 3, 7; dead tables with proof → D-4 and
   Task 2; the dictionary → D-11 and Task 7; the health check → D-12 and Task 6; the guard test →
   D-13 and Task 7; the engine's guards (the architecture guard, integrity and staleness, the
-  embedding model) → D-12, D-13, D-14 and Tasks 5 to 7; tuning by measurement → D-18. Its *Test
+  embedding model) → D-12, D-13, D-14 and Tasks 5 to 7; tuning by measurement → D-18; types
+  enforced by SQLite itself → D-19 and Tasks 3, 7. Its *Test
   consequences* (C1): ordering → Task 3; cascade query plans → Task 4; no code reads a dropped
   table → Task 2; the guard test → Task 7; counts-only health → Task 6; a model change disables
   vector search → Task 5. ADR 0031's *Test consequences* (C1) → Tasks 5 to 7.
 - **Where the plan goes beyond or departs from the ADR, for Pipec:** instants get a format CHECK
-  too (D-2); validity bounds keep month precision (D-3); `embeddings_cache` and `events` are added
-  to the dead tables, and `events` loses its writer (D-4); `source_memory_id` is dropped (D-5);
-  the two biometric profiles become `RESTRICT` (D-6); the channel gets a CHECK against migration
-  010's comment (D-8); only indexes are renamed (D-10); faces stay out of the model guard (D-14);
-  the boundary guard freezes 26, not 20 (D-13); the real migration waits for Plan 0084 (D-16).
+  too (D-2); validity bounds keep month precision and open and close on a household day (D-3);
+  `embeddings_cache` and `events` are added to the dead tables, and `events` loses its writer
+  (D-4); `source_memory_id` is dropped (D-5); the two biometric profiles become `RESTRICT` (D-6);
+  the channel stays without a CHECK, as migration 010 chose (D-8); only indexes are renamed
+  (D-10); faces stay out of the model guard (D-14); the boundary guard freezes 26, not 20
+  (D-13); the real migration waits for Plan 0084 and its backup is deleted at acceptance (D-16);
+  all 21 live tables become `STRICT`, with an optional `application_id` (D-19).
+- **Revision after the reviews (2026-11-13).** Applied: the exact instant CHECK (D-2), the
+  `valid_from` writers (audit item 4, D-3, Task 1), no `channel` CHECK (D-8), the frequent-query
+  list (D-7), the trimmed health check with named constants (D-12), behaviour tests for CHECKs,
+  the wider `datetime('now')` regex and the golden schema (D-13), what `store_vector` already
+  does (D-14), the rebuild rules found by test, the checkpoint and `optimize` (D-17), the
+  reviewed and rejected features (D-18), `STRICT` (D-19), the table matrix, the full list of
+  affected tests (Task 2), the migration-number check and the rehearsal folder under `data/`
+  (Task 9), and the *Permitted files*, *Rollback boundary* and *Completion criteria* sections.
+  Left to Pipec: rebuilding all 21 tables (the SQLite review) or only the 12 that need it (the
+  architecture review), D-19.
 - **Type consistency.** `instant_text`, `parse_instant`, `day_text`, `validity_close_day`,
   `INSTANT_LENGTH`, `vector_search_ready`, `count_units_to_reindex`, `HealthReport`,
   `check_health` and `health_failed` are each defined once and named the same in every later
-  task; migration file names match D-1 and the file structure.
+  task; migration file names match D-1 and *Permitted files*; `STALE_VECTOR_AFTER` and
+  `STALE_EPISODE_AFTER` live only in `db_health`.
 - **Proportion.** No SQL body is written here: each migration is fixed by its rules (D-2 to D-10,
-  D-17) and its tests; the executor writes the DDL from the schema at 016 and those rules.
+  D-17, D-19), *The table matrix* and its tests; the executor writes the DDL from the schema at
+  016 and those rules.
