@@ -275,3 +275,16 @@ def test_the_offer_and_the_follow_up_are_never_both_said() -> None:
         text_turn.AfterReply(offer=_OFFER, follow_up=_SENTENCE)
     with pytest.raises(ValueError, match="one"):
         text_turn.TextTurnResult("Hola.", "neutral", 1, False, _OFFER, _SENTENCE)
+
+
+async def test_a_sentence_that_does_not_fit_the_session_keeps_the_reply(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, commit: AsyncMock
+) -> None:
+    """Over WORKING_MEMORY_MAX_CHARS the pair would be dropped whole: keep the reply alone."""
+    reply = "x" * (settings.working_memory_max_chars - len("hola") - 5)
+    _generate(monkeypatch, reply)
+
+    result = await _turn(http_client, AsyncMock(return_value=_follow_up()))
+
+    assert result.follow_up == _SENTENCE
+    assert _session() == ["hola", reply]

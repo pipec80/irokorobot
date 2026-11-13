@@ -133,7 +133,7 @@ def _record_success(
         return
     record_text_turn(
         prepared.message,
-        session_reply(" ".join(state.response_parts), follow_up),
+        session_reply(prepared.message, " ".join(state.response_parts), follow_up),
         active_person=prepared.active_person,
         continuity_turn=prepared.continuity,
         schedule_proposal=scheduler,
@@ -311,7 +311,9 @@ async def stream_pipeline(
         phrase = after.spoken
         offer_line = await _offer_event(phrase, state) if phrase is not None else None
         if offer_line is not None:
-            state.offer_spoken = True
+            # Only a memory offer expects a short reply; the follow-up is an open question
+            # (Plan 0084, Task 8 review).
+            state.offer_spoken = after.offer is not None
             yield offer_line
     finally:
         # A client that hangs up mid-stream must not leave a preparation running.

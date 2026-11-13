@@ -34,6 +34,7 @@ from server.cognition.identity import HouseholdRole
 from server.cognition.models import AuthorizationAction, AuthorizationStatus
 from server.cognition.pending_topics import follow_up_sentence
 from server.memory.commissioning import has_closed_commissioning
+from server.memory.failure_log import failure_level, failure_site
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.pending_store import asked_today, due_topic, mark_asked
 from server.memory.profile_card_access import may_read_own_memory
@@ -58,6 +59,7 @@ __all__ = [
     "commit_follow_up",
     "log_follow_up",
     "prepare_follow_up",
+    "yield_to_offer",
 ]
 
 
@@ -137,6 +139,9 @@ async def prepare_follow_up(
             return None
         # Most days nothing is due: one query then, the second only when a topic waits.
         topic = await due_topic(owner_id, today=today)
+        if topic is not None and topic.sensitivity == "medical" and not await alta_closed():
+            # The policy would deny it: it must not block a normal topic (Task 8 review).
+            topic = await due_topic(owner_id, today=today, normal_only=True)
         if topic is None:
             log_follow_up(FollowUpOutcome.NONE_DUE, correlation_id)
             return None
@@ -194,9 +199,12 @@ async def commit_follow_up(
         decision = policy(request)
         try:
             await audit(request, decision)
-        except Exception:  # no audit row, no use of the topic
+        except Exception as exc:  # no audit row, no use of the topic
             log_follow_up(
-                FollowUpOutcome.AUDIT_FAILED, follow_up.correlation_id, follow_up.topic_id
+                FollowUpOutcome.AUDIT_FAILED,
+                follow_up.correlation_id,
+                follow_up.topic_id,
+                error=exc,
             )
             return None
         if decision.decision is not AuthorizationStatus.ALLOWED:
@@ -214,11 +222,25 @@ async def commit_follow_up(
         return None
 
 
+def yield_to_offer(follow_up: PendingFollowUp) -> None:
+    """Note that a memory offer is spoken instead: the topic stays ``open`` (D-11).
+
+    Args:
+        follow_up: The prepared follow-up that is not committed.
+    """
+    log_follow_up(FollowUpOutcome.OFFER_WON, follow_up.correlation_id, follow_up.topic_id)
+
+
 def log_follow_up(
-    outcome: FollowUpOutcome, correlation_id: UUID, topic_id: int | None = None
+    outcome: FollowUpOutcome,
+    correlation_id: UUID,
+    topic_id: int | None = None,
+    *,
+    error: Exception | None = None,
 ) -> None:
-    """Log one follow-up step: a closed outcome and ids, never a topic or a day."""
-    logger.info(
+    """Log one follow-up step: a closed outcome, ids and an error's class, never a topic or day."""
+    logger.log(
+        logging.INFO if error is None else failure_level(error),
         "Pending topic follow-up: %s",
         outcome.value,
         extra={
@@ -226,18 +248,23 @@ def log_follow_up(
             "outcome": outcome.value,
             "topic_id": topic_id,
             "correlation_id": str(correlation_id),
+            "error_type": None if error is None else type(error).__name__,
         },
     )
 
 
 def _log_failure(exc: Exception, correlation_id: UUID) -> None:
-    """Log a failure by class only: a database error's message can carry a value."""
-    logger.warning(
-        "Pending topic follow-up failed (%s)",
-        type(exc).__name__,
+    """Log a failure by class and site: a database error's message can carry a value."""
+    name, site = type(exc).__name__, failure_site(exc)
+    logger.log(
+        failure_level(exc),
+        "Pending topic follow-up failed (%s at %s)",
+        name,
+        site,
         extra={
             "event": "pending.follow_up_error",
-            "error_type": type(exc).__name__,
+            "error_type": name,
+            "site": site,
             "correlation_id": str(correlation_id),
         },
     )

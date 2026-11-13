@@ -26,11 +26,10 @@ from server.memory import continuity
 from server.memory.candidate_dialogue import OfferPreparer, PendingOffer, commit_offer
 from server.memory.continuity import ContinuityTurn, SuspendCause
 from server.memory.pending_follow_up import (
-    FollowUpOutcome,
     FollowUpPreparer,
     PendingFollowUp,
     commit_follow_up,
-    log_follow_up,
+    yield_to_offer,
 )
 from server.memory.pending_store import pending_topics_on
 from server.memory.profile_card import AddressForm, PromptCard
@@ -446,19 +445,29 @@ async def finish_after_reply(
     pending = await _settled(follow_up_task)
     if pending is None or offer is not None:
         if pending is not None:  # the offer won: the topic stays open for a later session
-            log_follow_up(FollowUpOutcome.OFFER_WON, pending.correlation_id, pending.topic_id)
+            yield_to_offer(pending)
         return AfterReply(offer=offer)
     return AfterReply(follow_up=await commit_follow_up(pending, now=utc_now()))
 
 
-def session_reply(response: str, follow_up: str | None) -> str:
+def session_reply(message: str, response: str, follow_up: str | None) -> str:
     """Return the assistant side the session keeps: the reply, and the question it asked.
 
     Args:
+        message: What the person said; with the reply it must fit the session's cap.
         response: The reply.
         follow_up: The pending-topic follow-up said after it, or ``None`` (Plan 0084 D-12).
+
+    Returns:
+        The reply and the follow-up, or the reply alone when the follow-up would make the
+        exchange larger than ``WORKING_MEMORY_MAX_CHARS`` (the pair would be dropped whole).
     """
-    return response if follow_up is None else f"{response} {follow_up}"
+    if follow_up is None:
+        return response
+    with_follow_up = f"{response} {follow_up}"
+    if len(message) + len(with_follow_up) > settings.working_memory_max_chars:
+        return response
+    return with_follow_up
 
 
 async def process_text_turn(
@@ -528,7 +537,7 @@ async def process_text_turn(
         duration_ms = round((time.perf_counter() - started) * 1000)
         after = await finish_after_reply(offer_task, follow_up_task, reply_failed=llm_failed)
         if not llm_failed and follow_up_task is not None:
-            remember(session_reply(response, after.follow_up))
+            remember(session_reply(message, response, after.follow_up))
     finally:
         drop_offer(offer_task)
         drop_offer(follow_up_task)

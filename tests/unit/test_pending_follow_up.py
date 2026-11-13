@@ -279,3 +279,61 @@ async def test_a_failing_store_read_prepares_nothing_and_never_raises(
 
     assert await _prepare() is None
     assert "zzstorezz" not in caplog.text
+
+
+async def test_a_health_topic_without_the_closed_alta_lets_a_normal_one_through(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A medical topic the policy would deny never blocks the others (Task 8 review)."""
+    store = _Store(monkeypatch, due=_DOCTOR)
+    store.due_topic.side_effect = [_DOCTOR, _BANK]
+
+    prepared = await _prepare(alta=False)
+
+    assert prepared is not None
+    assert prepared.topic_id == _BANK.id
+    assert prepared.consent is ConsentStatus.NOT_REQUIRED
+    assert store.due_topic.await_args_list[1].kwargs == {"today": _TODAY, "normal_only": True}
+
+
+async def test_a_failed_audit_logs_its_class(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.INFO)
+    _Store(monkeypatch)
+    prepared = await _prepare()
+    assert prepared is not None
+
+    await commit_follow_up(prepared, now=_NOW, audit=AsyncMock(side_effect=OSError("zz")))
+
+    failed = [r for r in caplog.records if r.__dict__.get("outcome") == "audit_failed"]
+    assert [r.__dict__.get("error_type") for r in failed] == ["OSError"]
+    assert [r.levelno for r in failed] == [logging.WARNING]
+
+
+async def test_a_bug_in_the_preparation_is_an_error_with_its_site(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    store = _Store(monkeypatch)
+    store.due_topic.side_effect = TypeError("zz")
+
+    assert await _prepare() is None
+
+    errors = [r for r in caplog.records if r.__dict__.get("event") == "pending.follow_up_error"]
+    assert [r.levelno for r in errors] == [logging.ERROR]
+    assert ":" in str(errors[0].__dict__.get("site"))
+
+
+async def test_yielding_to_the_offer_logs_offer_won(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO)
+    pending_follow_up.yield_to_offer(
+        PendingFollowUp(
+            3,
+            "zz",
+            _actor(IdentityEvidenceSource.FACE),
+            _CORRELATION,
+            "normal",
+            ConsentStatus.NOT_REQUIRED,
+        )
+    )
+    assert _outcomes(caplog) == ["offer_won"]

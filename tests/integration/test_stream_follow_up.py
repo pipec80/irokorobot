@@ -206,3 +206,23 @@ async def test_a_failed_stream_carries_no_follow_up(
     assert [event["type"] for event in events].count("audio") == 1
     stream_on["commit"].assert_not_awaited()
     stream_on["record"].assert_not_called()
+
+
+async def test_the_follow_up_does_not_ask_for_a_short_reply(
+    http_client: httpx.AsyncClient, stream_on: dict[str, Mock | AsyncMock]
+) -> None:
+    """«¿Cómo te fue…?» is an open question: the robot must not arm its yes/no mode (Task 8)."""
+    events = await _events(http_client, follow_up=_follow_up())
+
+    assert events[-1]["expects_short_reply"] is False
+
+
+async def test_a_follow_up_whose_audio_fails_is_skipped_and_done_still_ends(
+    http_client: httpx.AsyncClient, stream_on: dict[str, Mock | AsyncMock]
+) -> None:
+    stream_on["synthesize"].side_effect = [("UkVQTFk=", 30), RuntimeError("zz")]
+
+    events = await _events(http_client, follow_up=_follow_up())
+
+    assert [event["type"] for event in events] == ["text_heard", "emotion", "audio", "done"]
+    assert events[-1]["expects_short_reply"] is False

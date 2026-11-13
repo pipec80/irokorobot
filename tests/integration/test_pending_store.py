@@ -309,3 +309,30 @@ async def test_a_failed_naming_is_counted_and_goes_to_the_back(owner: int) -> No
     assert (await pending_store.next_unnamed() or (0,))[0] == second
     assert await pending_store.set_topic(second, "el banco")
     assert await pending_store.count_naming_failure(second) == 0  # no longer unnamed
+
+
+async def test_only_one_topic_is_asked_per_household_day(owner: int) -> None:
+    first = await _open_topic(owner, due_day=_TODAY - timedelta(days=1))
+    second = await _open_topic(owner, due_day=_TODAY - timedelta(days=2), topic="la reunión")
+
+    assert await pending_store.mark_asked(first, now=_NOON)
+    assert not await pending_store.mark_asked(second, now=_NOON + timedelta(hours=1))
+    assert await pending_store.mark_asked(second, now=_NOON + timedelta(days=1))
+
+
+async def test_due_topic_can_leave_the_health_topics_out(owner: int) -> None:
+    doctor = await _unnamed(owner, due_day=_TODAY - timedelta(days=2))
+    await db.get_conn().execute(
+        "UPDATE pending_topics SET sensitivity = 'medical' WHERE id = ?", (doctor,)
+    )
+    await db.get_conn().commit()
+    assert await pending_store.set_topic(doctor, "el médico")
+    bank = await _open_topic(owner, due_day=_TODAY - timedelta(days=1))
+
+    assert (await pending_store.due_topic(owner, today=_TODAY) or _never()).id == doctor
+    picked = await pending_store.due_topic(owner, today=_TODAY, normal_only=True)
+    assert (picked or _never()).id == bank
+
+
+def _never() -> PendingTopic:
+    raise AssertionError("no topic")

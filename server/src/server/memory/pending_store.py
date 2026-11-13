@@ -16,7 +16,7 @@ from server import db
 from server.cognition.pending_topics import follow_up_due_days
 from server.cognition.spoken_dates import DayWindow, window_utc_bounds
 from server.memory.candidates import iso_utc
-from server.memory.recall_search import household_zone
+from server.memory.recall_search import household_day, household_zone
 from server.settings import settings
 
 if TYPE_CHECKING:
@@ -177,12 +177,15 @@ async def drop(topic_id: int) -> None:
     await _write("DELETE FROM pending_topics WHERE id = ?", (topic_id,))
 
 
-async def due_topic(owner_entity_id: int, *, today: date) -> PendingTopic | None:
+async def due_topic(
+    owner_entity_id: int, *, today: date, normal_only: bool = False
+) -> PendingTopic | None:
     """Return the owner's oldest open topic a greeting of *today* may ask about (D-4, D-8).
 
     Args:
         owner_entity_id: The owner.
         today: The household's local day.
+        normal_only: Leave the ``medical`` topics out (their consent is missing).
 
     Returns:
         The open topic due one or two days before today with the oldest due day, or ``None``.
@@ -191,8 +194,8 @@ async def due_topic(owner_entity_id: int, *, today: date) -> PendingTopic | None
     row = await _one(
         "SELECT id, topic, due_day, sensitivity FROM pending_topics "
         "WHERE owner_entity_id = ? AND state = 'open' AND due_day BETWEEN ? AND ? "
-        "ORDER BY due_day, id LIMIT 1",
-        (owner_entity_id, oldest.isoformat(), newest.isoformat()),
+        "AND (? = 0 OR sensitivity = 'normal') ORDER BY due_day, id LIMIT 1",
+        (owner_entity_id, oldest.isoformat(), newest.isoformat(), int(normal_only)),
     )
     if row is None:
         return None
@@ -204,9 +207,14 @@ async def due_topic(owner_entity_id: int, *, today: date) -> PendingTopic | None
     )
 
 
+def _day_bounds(today: date) -> tuple[str, str]:
+    """The UTC bounds of one household day, comparable as text with ``asked_at``."""
+    return window_utc_bounds(DayWindow(start=today, end=today), household_zone())
+
+
 async def asked_today(owner_entity_id: int, *, today: date) -> bool:
     """Whether a topic of the owner was already asked on the household's *today* (D-8)."""
-    start, end = window_utc_bounds(DayWindow(start=today, end=today), household_zone())
+    start, end = _day_bounds(today)
     row = await _one(
         "SELECT 1 FROM pending_topics WHERE owner_entity_id = ? AND state = 'asked' "
         "AND asked_at >= ? AND asked_at < ? LIMIT 1",
@@ -216,12 +224,21 @@ async def asked_today(owner_entity_id: int, *, today: date) -> bool:
 
 
 async def mark_asked(topic_id: int, *, now: datetime) -> bool:
-    """Move an open topic to ``asked``; ``False`` when it was not open (compare-and-set)."""
+    """Move an open topic to ``asked``, once per household day and owner (compare-and-set).
+
+    Returns:
+        ``False`` when the topic was not open, or another topic of the same owner was already
+        asked on this household day (two sessions racing never ask two topics, D-8).
+    """
+    start, end = _day_bounds(household_day(now))
     return (
         await _write(
             "UPDATE pending_topics SET state = 'asked', asked_at = ? "
-            "WHERE id = ? AND state = 'open'",
-            (iso_utc(now), topic_id),
+            "WHERE id = ? AND state = 'open' AND NOT EXISTS ("
+            "SELECT 1 FROM pending_topics AS other "
+            "WHERE other.owner_entity_id = pending_topics.owner_entity_id "
+            "AND other.state = 'asked' AND other.asked_at >= ? AND other.asked_at < ?)",
+            (iso_utc(now), topic_id, start, end),
         )
         == 1
     )
