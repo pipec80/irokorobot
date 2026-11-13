@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 from server.cognition.pending_topics import AnnouncementOutcome, read_announcement
 from server.memory.conversation_types import TurnVerdict
 from server.memory.pending_store import insert_unnamed, pending_topics_on
-from server.memory.recall_search import household_zone
+from server.memory.recall_search import household_day
 from server.memory.recall_sensitivity import classify_turn_text
 from server.memory.recall_store import tells_something
 
@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "KeptTopic",
     "PendingCapture",
     "PendingCaptureOutcome",
     "decide_pending",
@@ -56,13 +57,20 @@ class PendingCaptureOutcome(StrEnum):
 
 
 @dataclass(frozen=True)
+class KeptTopic:
+    """What a kept announcement writes: its days and its sensitivity."""
+
+    said_day: date
+    due_day: date
+    sensitivity: PendingSensitivity
+
+
+@dataclass(frozen=True)
 class PendingCapture:
-    """The decision on one turn; the days are set only when it is kept."""
+    """The decision on one turn; ``kept`` is set exactly when the outcome is ``KEPT``."""
 
     outcome: PendingCaptureOutcome
-    said_day: date | None = None
-    due_day: date | None = None
-    sensitivity: PendingSensitivity | None = None
+    kept: KeptTopic | None = None
 
 
 def _sensitivity(heard: str) -> PendingSensitivity | None:
@@ -105,7 +113,7 @@ def decide_pending(turn: RecordedTurn) -> PendingCapture | None:
         return PendingCapture(PendingCaptureOutcome.NOT_VERIFIED)
     if not tells_something(turn.heard):  # a question or a closed request (D-2)
         return PendingCapture(PendingCaptureOutcome.QUESTION)
-    said_day = turn.at.astimezone(household_zone()).date()
+    said_day = household_day(turn.at)
     announcement = _read(turn.heard, said_day)
     if announcement is None:
         return None
@@ -121,9 +129,7 @@ def _kept_or_not(announcement: Announcement, heard: str, said_day: date) -> Pend
         return PendingCapture(PendingCaptureOutcome.SENSITIVE)
     return PendingCapture(
         PendingCaptureOutcome.KEPT,
-        said_day=said_day,
-        due_day=announcement.due_day,
-        sensitivity=sensitivity,
+        KeptTopic(said_day=said_day, due_day=announcement.due_day, sensitivity=sensitivity),
     )
 
 
@@ -138,10 +144,8 @@ def pending_hook(
         correlation_id: The turn's id; one topic per turn.
         now: The creation instant.
     """
-    if decision is None or decision.outcome is not PendingCaptureOutcome.KEPT:
-        return None
-    said_day, due_day, sensitivity = decision.said_day, decision.due_day, decision.sensitivity
-    if said_day is None or due_day is None or sensitivity is None:  # unreachable once kept
+    kept = None if decision is None else decision.kept
+    if kept is None:
         return None
 
     async def write(conn: aiosqlite.Connection, record_id: int, recorded: RecordedTurn) -> None:
@@ -150,10 +154,10 @@ def pending_hook(
             owner_entity_id=owner_id,
             record_id=record_id,
             correlation_id=correlation_id,
-            said_day=said_day,
-            due_day=due_day,
+            said_day=kept.said_day,
+            due_day=kept.due_day,
             heard=recorded.heard,
-            sensitivity=sensitivity,
+            sensitivity=kept.sensitivity,
             now=now,
         )
 

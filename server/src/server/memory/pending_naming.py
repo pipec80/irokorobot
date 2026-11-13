@@ -16,7 +16,7 @@ from pydantic import BaseModel, ValidationError
 
 from server.llm_transport import ollama_chat, strip_json_fences
 from server.settings import settings
-from server.text_keys import normalize_spanish
+from server.text_keys import ARTICLES, normalize_spanish
 
 if TYPE_CHECKING:
     import httpx
@@ -27,8 +27,6 @@ __all__ = ["MAX_TOPIC_CHARS", "MAX_TOPIC_WORDS", "is_copied_topic", "name_topic"
 
 MAX_TOPIC_WORDS: Final = 4
 MAX_TOPIC_CHARS: Final = 40
-# The model may choose the article («una reunión» is said «la reunión»), never another word.
-_ARTICLES: Final = frozenset({"el", "la", "los", "las", "un", "una", "unos", "unas"})
 _EDGE_PUNCTUATION: Final = " .,;:!?¡¿\"'«»"
 
 _SYSTEM = """\
@@ -74,7 +72,8 @@ def is_copied_topic(topic: str, heard: str) -> bool:
     if not all(word.isalpha() for word in words):
         return False
     folded = normalize_spanish(topic).split()
-    if folded[0] in _ARTICLES:
+    # The model may choose the article («una reunión» is said «la reunión»), never another word.
+    if folded[0] in ARTICLES:
         folded = folded[1:]
     return bool(folded) and set(folded) <= set(normalize_spanish(heard).split())
 

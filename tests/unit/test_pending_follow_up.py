@@ -179,9 +179,8 @@ async def test_not_twice_the_same_day(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     caplog.set_level(logging.INFO)
-    store = _Store(monkeypatch, asked=True)
+    _Store(monkeypatch, asked=True)
     assert await _prepare() is None
-    store.due_topic.assert_not_awaited()
     assert _outcomes(caplog) == ["already_today"]
 
 

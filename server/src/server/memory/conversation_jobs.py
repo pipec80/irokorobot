@@ -35,7 +35,7 @@ from server.memory.pending_store import (
     set_topic,
 )
 from server.memory.recall_index import backfill_vectors
-from server.memory.recall_search import household_zone
+from server.memory.recall_search import household_day
 from server.settings import settings
 
 if TYPE_CHECKING:
@@ -86,7 +86,7 @@ async def _tend_pending_topics(client: httpx.AsyncClient, now: datetime) -> None
     A model the job cannot reach keeps the topic unnamed for a later tick; an answer that is not
     the owner's words deletes it. Logs carry a closed outcome or a count, never a text.
     """
-    expired = await delete_expired(today=now.astimezone(household_zone()).date())
+    expired = await delete_expired(today=household_day(now))
     if expired:
         logger.info(
             "Pending topics expired: %d",
@@ -118,7 +118,7 @@ def _log_named(outcome: str, topic_id: int, *, error_type: str | None = None) ->
             "event": "pending.named",
             "outcome": outcome,
             "topic_id": topic_id,
-            **({} if error_type is None else {"error_type": error_type}),
+            "error_type": error_type,
         },
     )
 

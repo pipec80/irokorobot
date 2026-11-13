@@ -35,6 +35,7 @@ __all__ = [
     "RecordView",
     "TurnIndexer",
     "append_turn",
+    "chain_indexers",
     "close_idle_records",
     "count_failed_attempt",
     "delete_all_records",
@@ -143,6 +144,23 @@ async def _close(
         "UPDATE conversation_records SET closed_at = ?, expires_at = ? WHERE id = ?",
         (_iso(now), _expiry(now, eligible=eligible), record_id),
     )
+
+
+def chain_indexers(*hooks: TurnIndexer | None) -> TurnIndexer | None:
+    """Return one indexer that runs the given ones in order, or ``None`` when there is none.
+
+    Args:
+        hooks: The writers an append runs inside its transaction; ``None`` entries are skipped.
+    """
+    present = [hook for hook in hooks if hook is not None]
+    if not present:
+        return None
+
+    async def run(conn: aiosqlite.Connection, record_id: int, recorded: RecordedTurn) -> None:
+        for hook in present:
+            await hook(conn, record_id, recorded)
+
+    return run
 
 
 async def append_turn(

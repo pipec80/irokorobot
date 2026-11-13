@@ -80,7 +80,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["sensitive_reply"]
+__all__ = ["AltaChecker", "own_read_consent", "sensitive_reply"]
 
 type OwnValuesReader = Callable[[int, str, str], Awaitable[tuple[str, ...]]]
 type NamesReader = Callable[[], Awaitable[frozenset[str]]]
@@ -293,11 +293,25 @@ def _names_hit(words: frozenset[str], stored: frozenset[str]) -> bool:
     return False
 
 
-async def _consent(call: _Call, sensitivities: frozenset[str]) -> ConsentStatus:
-    """The consent of an own read (D-9): the face's grant and a closed alta, or none."""
+async def own_read_consent(
+    sensitivities: frozenset[str], *, face_consent: ConsentStatus, alta_closed: AltaChecker
+) -> ConsentStatus:
+    """Return the consent of a read of the owner's own data (Plan 0079 D-9).
+
+    The one rule both the sensitive read and the pending-topic follow-up (Plan 0084 D-9) use.
+
+    Args:
+        sensitivities: The sensitivities of the data read.
+        face_consent: The consent the face path resolved for the speaker.
+        alta_closed: Whether a commissioning is closed; asked only when consent is needed.
+
+    Returns:
+        ``NOT_REQUIRED`` unless a sensitivity needs consent; then ``GRANTED`` for the face's grant
+        and a closed alta, else ``MISSING``.
+    """
     if not sensitivities & _CONSENT_SENSITIVITIES:
         return ConsentStatus.NOT_REQUIRED
-    if call.face_consent is ConsentStatus.GRANTED and await call.alta_closed():
+    if face_consent is ConsentStatus.GRANTED and await alta_closed():
         return ConsentStatus.GRANTED
     return ConsentStatus.MISSING
 
@@ -309,7 +323,9 @@ async def _authorized(call: _Call, person_id: int, sensitivities: frozenset[str]
     and a closed alta whenever one of the sensitivities needs it. A failing audit propagates, so
     nothing is read at all.
     """
-    consent = await _consent(call, sensitivities)
+    consent = await own_read_consent(
+        sensitivities, face_consent=call.face_consent, alta_closed=call.alta_closed
+    )
     visibility, _sensitivity = TOPIC_LABEL[call.query.topic]
     request = AuthorizationRequest(
         actor=call.actor,

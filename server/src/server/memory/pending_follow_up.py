@@ -33,10 +33,11 @@ from server.cognition.authorization import (
 from server.cognition.identity import HouseholdRole
 from server.cognition.models import AuthorizationAction, AuthorizationStatus
 from server.cognition.pending_topics import follow_up_sentence
-from server.cognition.strong_actor import is_face_actor
 from server.memory.commissioning import has_closed_commissioning
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.pending_store import asked_today, due_topic, mark_asked
+from server.memory.profile_card_access import may_read_own_memory
+from server.memory.sensitive_access import own_read_consent
 
 if TYPE_CHECKING:
     from datetime import date, datetime
@@ -46,6 +47,7 @@ if TYPE_CHECKING:
     from server.memory.candidate_policy import AuditWriter, PolicyEvaluator
     from server.memory.continuity import ContinuityTurn
     from server.memory.pending_store import PendingSensitivity
+    from server.memory.sensitive_access import AltaChecker
 
 logger = logging.getLogger(__name__)
 
@@ -57,8 +59,6 @@ __all__ = [
     "log_follow_up",
     "prepare_follow_up",
 ]
-
-type AltaChecker = Callable[[], Awaitable[bool]]
 
 
 class FollowUpOutcome(StrEnum):
@@ -101,19 +101,13 @@ type FollowUpPreparer = Callable[
 
 
 def _owner_on_a_new_session(actor: ActivePersonContext, session: ContinuityTurn) -> int | None:
-    """The owner's id when the face named them and the session has no history yet (D-8)."""
+    """The owner's id when their face named them at ``basic`` or more on a new session (D-8)."""
     person_id = actor.person_id
-    if not is_face_actor(actor) or actor.role is not HouseholdRole.OWNER or person_id is None:
+    if not may_read_own_memory(actor) or actor.role is not HouseholdRole.OWNER:
         return None
-    if session.person_id != person_id or session.history:
+    if person_id is None or session.person_id != person_id or session.history:
         return None
     return person_id
-
-
-async def _consent(sensitivity: PendingSensitivity, alta_closed: AltaChecker) -> ConsentStatus:
-    if sensitivity == "normal":
-        return ConsentStatus.NOT_REQUIRED
-    return ConsentStatus.GRANTED if await alta_closed() else ConsentStatus.MISSING
 
 
 async def prepare_follow_up(
@@ -141,12 +135,13 @@ async def prepare_follow_up(
         owner_id = _owner_on_a_new_session(actor, session)
         if owner_id is None:
             return None
-        if await asked_today(owner_id, today=today):
-            log_follow_up(FollowUpOutcome.ALREADY_TODAY, correlation_id)
-            return None
+        # Most days nothing is due: one query then, the second only when a topic waits.
         topic = await due_topic(owner_id, today=today)
         if topic is None:
             log_follow_up(FollowUpOutcome.NONE_DUE, correlation_id)
+            return None
+        if await asked_today(owner_id, today=today):
+            log_follow_up(FollowUpOutcome.ALREADY_TODAY, correlation_id)
             return None
         return PendingFollowUp(
             topic_id=topic.id,
@@ -154,7 +149,12 @@ async def prepare_follow_up(
             actor=actor,
             correlation_id=correlation_id,
             sensitivity=topic.sensitivity,
-            consent=await _consent(topic.sensitivity, alta_closed),
+            # The face only identifies an owner with an active consent: its grant is given.
+            consent=await own_read_consent(
+                frozenset({topic.sensitivity}),
+                face_consent=ConsentStatus.GRANTED,
+                alta_closed=alta_closed,
+            ),
         )
     except Exception as exc:  # background seam of a turn: never reaches the user's reply
         _log_failure(exc, correlation_id)

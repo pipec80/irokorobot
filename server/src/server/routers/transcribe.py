@@ -83,7 +83,7 @@ from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
 from server.memory.profile_card import PromptCard
 from server.memory.profile_card_access import profile_summary_text, prompt_card_for_turn
 from server.memory.recall_access import recall_reply
-from server.memory.recall_search import household_zone
+from server.memory.recall_search import household_day
 from server.memory.recall_store import occurred_time_on
 from server.memory.sensitive_access import sensitive_reply
 from server.pipeline import (
@@ -486,6 +486,7 @@ def _follow_up_preparer(event: CognitiveEvent[TextTurnPayload]) -> FollowUpPrepa
     """
     if not pending_topics_on():
         return None
+    correlation_id = event.correlation_id
 
     async def prepare(
         actor: ActivePersonContext, session: ContinuityTurn
@@ -493,8 +494,8 @@ def _follow_up_preparer(event: CognitiveEvent[TextTurnPayload]) -> FollowUpPrepa
         return await prepare_follow_up(
             actor,
             session,
-            today=utc_now().astimezone(household_zone()).date(),
-            correlation_id=event.correlation_id,
+            today=household_day(utc_now()),
+            correlation_id=correlation_id,
         )
 
     return prepare

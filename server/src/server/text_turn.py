@@ -103,7 +103,7 @@ class TextTurnResult:
     @property
     def spoken_after(self) -> str | None:
         """The one phrase said after the reply: the offer, else the follow-up, or ``None``."""
-        return self.offer if self.offer is not None else self.follow_up
+        return AfterReply(self.offer, self.follow_up).spoken
 
 
 @dataclass(frozen=True)
@@ -112,6 +112,11 @@ class AfterReply:
 
     offer: str | None = field(default=None, repr=False)
     follow_up: str | None = field(default=None, repr=False)
+
+    @property
+    def spoken(self) -> str | None:
+        """The one phrase to speak: the offer, else the follow-up, or ``None``."""
+        return self.offer if self.offer is not None else self.follow_up
 
 
 def _missing_person(_: int) -> None:
@@ -346,9 +351,7 @@ async def finish_offer(
     if task is None:
         return None
     if reply_failed:
-        task.cancel()
-        # Waits for the cancelled preparation without swallowing a cancellation of the caller.
-        await asyncio.gather(task, return_exceptions=True)
+        await _cancelled(task)
         return None
     try:
         pending = await task
@@ -356,6 +359,12 @@ async def finish_offer(
         logger.warning("Memory offer preparation failed (%s)", type(exc).__name__)
         return None
     return None if pending is None else await commit_offer(pending)
+
+
+async def _cancelled[T](task: asyncio.Future[T]) -> None:
+    """Cancel a preparation and wait for it, without swallowing a cancellation of the caller."""
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
 
 
 def drop_offer[T](task: asyncio.Future[T] | None) -> None:
@@ -423,15 +432,12 @@ async def finish_after_reply(
     if follow_up_task is None:
         return AfterReply(offer=offer)
     if reply_failed:
-        follow_up_task.cancel()
-        # Waits for the cancelled preparation without swallowing a cancellation of the caller.
-        await asyncio.gather(follow_up_task, return_exceptions=True)
+        await _cancelled(follow_up_task)
         return AfterReply()
     pending = await _settled(follow_up_task)
-    if pending is None:
-        return AfterReply(offer=offer)
-    if offer is not None:
-        log_follow_up(FollowUpOutcome.OFFER_WON, pending.correlation_id, pending.topic_id)
+    if pending is None or offer is not None:
+        if pending is not None:  # the offer won: the topic stays open for a later session
+            log_follow_up(FollowUpOutcome.OFFER_WON, pending.correlation_id, pending.topic_id)
         return AfterReply(offer=offer)
     return AfterReply(follow_up=await commit_follow_up(pending, now=utc_now()))
 

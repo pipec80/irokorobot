@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 import logging
 from typing import TYPE_CHECKING, Final
 from zoneinfo import ZoneInfo
@@ -47,6 +47,7 @@ __all__ = [
     "RecallHit",
     "RecallSearch",
     "fuse",
+    "household_day",
     "household_zone",
     "search_recall",
 ]
@@ -65,6 +66,18 @@ RECALL_MAX_TERMS: Final = 8
 def household_zone() -> ZoneInfo:
     """Return the household time zone of ``HOUSEHOLD_TIMEZONE`` (ADR 0028 decision 7)."""
     return ZoneInfo(settings.household_timezone)
+
+
+def household_day(moment: datetime) -> date:
+    """Return the household's local day of an aware instant (ADR 0028 decision 7).
+
+    Args:
+        moment: A timezone-aware instant.
+
+    Returns:
+        The calendar day in ``HOUSEHOLD_TIMEZONE``.
+    """
+    return moment.astimezone(household_zone()).date()
 
 
 @dataclass(frozen=True)

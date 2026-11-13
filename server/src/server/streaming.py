@@ -308,7 +308,7 @@ async def stream_pipeline(
         )
         if follow_up_task is not None:
             _record_success(prepared, state, schedule_proposal, after.follow_up)
-        phrase = after.offer if after.offer is not None else after.follow_up
+        phrase = after.spoken
         offer_line = await _offer_event(phrase, state) if phrase is not None else None
         if offer_line is not None:
             state.offer_spoken = True
