@@ -1,0 +1,19 @@
+# Plan 0084 Task 8 review: a plan's sensitivity from its words. A health plan is `medical` (said
+# only with the owner alone and the alta closed); a legal or family-law plan is `private` (never a
+# topic, D-7). Invented canaries only.
+- {heard: El jueves tengo terapia., sensitivity: medical}
+- {heard: Mañana voy al psicólogo., sensitivity: medical}
+- {heard: Pasado mañana tengo hora con la psiquiatra., sensitivity: medical}
+- {heard: Mañana voy al dentista a las diez., sensitivity: medical}
+- {heard: El jueves me hacen una ecografía., sensitivity: medical}
+- {heard: Mañana tengo kinesiólogo., sensitivity: medical}
+- {heard: Mañana voy al kine por la rodilla., sensitivity: medical}
+- {heard: El jueves me toca la quimioterapia., sensitivity: medical}
+- {heard: Mañana voy al consultorio a buscar la vacuna., sensitivity: medical}
+- {heard: Mañana tengo hora en el cesfam., sensitivity: medical}
+- {heard: El jueves tengo control con el cardiólogo., sensitivity: medical}
+- {heard: Mañana voy al abogado., sensitivity: private}
+- {heard: El jueves tengo el juicio., sensitivity: private}
+- {heard: Mañana firmamos el divorcio., sensitivity: private}
+- {heard: Mañana voy al banco a pagar una cuenta., sensitivity: normal}
+- {heard: El jueves tengo una reunión con unos amigos., sensitivity: normal}
