@@ -23,9 +23,11 @@ from server.cognition.identity import (
     resolve_active_person,
 )
 from server.cognition.models import CognitiveEvent, Confidence, ConfidenceBasis
+from server.cognition.pending_topics import AnnouncementOutcome
 from server.cognition.response_plan import TextTurnPayload
 from server.memory import conversation_capture, pending_capture
 from server.memory.conversation_capture import CaptureOutcome, capture_turn
+from server.memory.pending_capture import KeptTopic, PendingCapture, PendingCaptureOutcome
 from server.settings import settings
 import yaml
 
@@ -269,3 +271,18 @@ async def test_the_capture_line_is_todays_with_the_switch_on(
         if r.__dict__.get("event") == "conversation.capture"
     ]
     assert on == off == [CaptureOutcome.RECORDED]
+
+
+def test_every_grammar_outcome_is_a_capture_outcome() -> None:
+    assert {item.value for item in AnnouncementOutcome} <= {
+        item.value for item in PendingCaptureOutcome
+    }
+
+
+def test_a_kept_decision_hides_its_days_and_comes_with_them() -> None:
+    kept = KeptTopic(said_day=date(2026, 11, 12), due_day=date(2026, 11, 13), sensitivity="normal")
+    assert "2026" not in repr(PendingCapture(PendingCaptureOutcome.KEPT, kept))
+    with pytest.raises(ValueError, match="kept"):
+        PendingCapture(PendingCaptureOutcome.KEPT)
+    with pytest.raises(ValueError, match="kept"):
+        PendingCapture(PendingCaptureOutcome.SENSITIVE, kept)

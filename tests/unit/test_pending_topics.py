@@ -54,6 +54,24 @@ def test_the_announcement_of_a_turn(case: _Case) -> None:
     )
 
 
+def test_a_day_never_shows_in_a_repr() -> None:
+    announcement = read_announcement("Mañana voy al banco.", said_day=_SAID_DAY)
+    assert announcement.due_day is not None
+    assert "2026" not in repr(announcement)
+    assert "datetime" not in repr(announcement)
+
+
+@pytest.mark.parametrize(
+    "due_day, outcome",
+    [(None, AnnouncementOutcome.KEPT), (_SAID_DAY, AnnouncementOutcome.NO_VERB)],
+)
+def test_a_due_day_comes_exactly_with_kept(
+    due_day: date | None, outcome: AnnouncementOutcome
+) -> None:
+    with pytest.raises(ValueError, match="kept"):
+        Announcement(due_day=due_day, outcome=outcome)
+
+
 def test_blank_words_are_no_announcement() -> None:
     assert read_announcement("   ", said_day=_SAID_DAY).outcome is AnnouncementOutcome.NO_PHRASE
 

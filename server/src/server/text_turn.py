@@ -100,6 +100,10 @@ class TextTurnResult:
     offer: str | None = field(default=None, repr=False)
     follow_up: str | None = field(default=None, repr=False)
 
+    def __post_init__(self) -> None:
+        """Refuse both phrases at once: only one is said after the reply (D-11)."""
+        AfterReply(self.offer, self.follow_up)
+
     @property
     def spoken_after(self) -> str | None:
         """The one phrase said after the reply: the offer, else the follow-up, or ``None``."""
@@ -112,6 +116,11 @@ class AfterReply:
 
     offer: str | None = field(default=None, repr=False)
     follow_up: str | None = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        """Refuse both phrases at once: only one is said after the reply."""
+        if self.offer is not None and self.follow_up is not None:
+            raise ValueError("only one phrase is said after the reply")
 
     @property
     def spoken(self) -> str | None:

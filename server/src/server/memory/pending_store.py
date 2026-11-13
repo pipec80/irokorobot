@@ -55,7 +55,7 @@ class PendingTopic:
 
     id: int
     topic: str = field(repr=False)
-    due_day: date
+    due_day: date = field(repr=False)
     sensitivity: PendingSensitivity
 
 

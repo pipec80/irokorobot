@@ -9,7 +9,7 @@ without a topic. Logs carry a closed outcome or an exception class, never a text
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 import logging
 from typing import TYPE_CHECKING
@@ -58,10 +58,10 @@ class PendingCaptureOutcome(StrEnum):
 
 @dataclass(frozen=True)
 class KeptTopic:
-    """What a kept announcement writes: its days and its sensitivity."""
+    """What a kept announcement writes: its days (never in a repr) and its sensitivity."""
 
-    said_day: date
-    due_day: date
+    said_day: date = field(repr=False)
+    due_day: date = field(repr=False)
     sensitivity: PendingSensitivity
 
 
@@ -71,6 +71,11 @@ class PendingCapture:
 
     outcome: PendingCaptureOutcome
     kept: KeptTopic | None = None
+
+    def __post_init__(self) -> None:
+        """Refuse a kept topic without ``KEPT``, or ``KEPT`` without one."""
+        if (self.outcome is PendingCaptureOutcome.KEPT) != (self.kept is not None):
+            raise ValueError("a topic comes exactly with a kept decision")
 
 
 def _sensitivity(heard: str) -> PendingSensitivity | None:

@@ -268,3 +268,10 @@ async def test_a_cancelled_turn_cancels_the_follow_up_it_was_preparing(
 def test_the_follow_up_never_shows_in_the_repr_of_a_turn_result() -> None:
     result = text_turn.TextTurnResult("Hola.", "neutral", 1, False, None, _SENTENCE)
     assert "banco" not in repr(result)
+
+
+def test_the_offer_and_the_follow_up_are_never_both_said() -> None:
+    with pytest.raises(ValueError, match="one"):
+        text_turn.AfterReply(offer=_OFFER, follow_up=_SENTENCE)
+    with pytest.raises(ValueError, match="one"):
+        text_turn.TextTurnResult("Hola.", "neutral", 1, False, _OFFER, _SENTENCE)

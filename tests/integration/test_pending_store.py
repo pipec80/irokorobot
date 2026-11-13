@@ -237,6 +237,7 @@ async def test_due_topic_picks_the_oldest_in_the_window(owner: int) -> None:
         id=anteayer, topic="anteayer", due_day=_TODAY - timedelta(days=2), sensitivity="normal"
     )
     assert "anteayer" not in repr(picked)
+    assert "2026" not in repr(picked)
     assert await pending_store.mark_asked(anteayer, now=_NOON)
     picked = await pending_store.due_topic(owner, today=_TODAY)
     assert picked is not None

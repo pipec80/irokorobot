@@ -9,7 +9,7 @@ asked and the fixed sentence. It reads no setting and logs nothing.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 from enum import StrEnum
 from typing import TYPE_CHECKING, Final
@@ -50,6 +50,8 @@ ANNOUNCING_VERBS: Final[frozenset[str]] = frozenset(
 _FIRST_DAY_AFTER: Final = 1
 _LAST_DAY_AFTER: Final = 2
 _QUESTION_MARKS: Final = ("?", "¿")
+# A verb right after one of these is not a plan: «mañana no voy al banco» (Task 8 review).
+_NEGATIONS: Final = frozenset({"no", "nunca", "tampoco"})
 
 
 class AnnouncementOutcome(StrEnum):
@@ -71,8 +73,14 @@ class Announcement:
         outcome: Why the words are, or are not, an announcement.
     """
 
-    due_day: date | None
+    # A day is never shown in a repr (D-15).
+    due_day: date | None = field(repr=False)
     outcome: AnnouncementOutcome
+
+    def __post_init__(self) -> None:
+        """Refuse a due day without ``KEPT``, or ``KEPT`` without one."""
+        if (self.outcome is AnnouncementOutcome.KEPT) != (self.due_day is not None):
+            raise ValueError("a due day comes exactly with a kept announcement")
 
 
 def _no(outcome: AnnouncementOutcome) -> Announcement:
@@ -80,8 +88,16 @@ def _no(outcome: AnnouncementOutcome) -> Announcement:
 
 
 def _has_announcing_verb(normalized: str) -> bool:
-    padded = f" {normalized} "
-    return any(f" {verb} " in padded for verb in ANNOUNCING_VERBS)
+    """Whether a verb of ``ANNOUNCING_VERBS`` appears, not right after a negation."""
+    words = normalized.split()
+    for verb in ANNOUNCING_VERBS:
+        size = len(verb.split())
+        for start in range(len(words) - size + 1):
+            if " ".join(words[start : start + size]) == verb and (
+                start == 0 or words[start - 1] not in _NEGATIONS
+            ):
+                return True
+    return False
 
 
 def read_announcement(heard: str, *, said_day: date) -> Announcement:
@@ -95,7 +111,8 @@ def read_announcement(heard: str, *, said_day: date) -> Announcement:
         ``KEPT`` with the due day; else ``QUESTION`` for a question mark, ``NO_PHRASE`` when the
         words do not hold exactly one time phrase toward the future, ``NOT_SINGLE_DAY`` for a
         week, a month, a season or a year, and ``NO_VERB`` without a verb of
-        ``ANNOUNCING_VERBS``.
+        ``ANNOUNCING_VERBS`` (one right after «no», «nunca» or
+        «tampoco» does not count).
     """
     if any(mark in heard for mark in _QUESTION_MARKS):
         return _no(AnnouncementOutcome.QUESTION)
