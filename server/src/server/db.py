@@ -18,7 +18,7 @@ from server.exceptions import BrainMemoryError
 from server.settings import settings
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -245,7 +245,7 @@ async def run_migrations() -> None:
 
 
 @asynccontextmanager
-async def transaction() -> AsyncIterator[aiosqlite.Connection]:
+async def transaction() -> AsyncGenerator[aiosqlite.Connection]:
     """Own one complete runtime write transaction under the module lock.
 
     Serializes writes at the coroutine level so a multi-`await` transaction

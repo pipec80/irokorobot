@@ -35,7 +35,7 @@ from server.vision.faces import DetectedFace, enroll_face
 from server import db, llm, llm_streaming, stt, text_turn, tts
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator, AsyncIterator
     from pathlib import Path
 
     from server.memory.pending_store import PendingSensitivity
@@ -150,7 +150,7 @@ async def _state(topic_id: int) -> str:
 
 
 @asynccontextmanager
-async def _client() -> AsyncIterator[AsyncClient]:
+async def _client() -> AsyncGenerator[AsyncClient]:
     async with AsyncClient() as http_client:
         app.state.resources = AppResources(
             http_client=http_client, owner_unlock_service=owner_unlock_service
