@@ -145,3 +145,11 @@ def test_the_limits() -> None:
 )
 def test_is_copied_topic(topic: str, expected: bool) -> None:
     assert is_copied_topic(topic, _HEARD) is expected
+
+
+def test_the_prompt_asks_for_the_short_name() -> None:
+    """Found on hardware: «la hora con el médico» is five words and was dropped (2026-11-13)."""
+    system = pending_naming._SYSTEM
+    assert "una o dos palabras" in system
+    assert "«el médico»" in system
+    assert "Nunca «la hora»" in system

@@ -34,8 +34,11 @@ algo que va a hacer.
 Responde SOLO JSON conforme al esquema: {"topic": "..."}.
 
 Reglas:
-- topic: de una a cuatro palabras, con su artículo, COPIADAS de la frase: el lugar, la cita o la \
-actividad («el banco», «el médico», «la reunión»).
+- topic: lo más corto posible, una o dos palabras con su artículo, COPIADAS de la frase: el \
+lugar, la persona o la actividad. Nunca «la hora», «la cita» ni el día.
+- Ejemplos: «voy al banco a pagar una cuenta» → «el banco»; «tengo hora con el médico» → «el \
+médico»; «tengo una reunión con unos amigos» → «la reunión»; «juego fútbol con mi primo» → «el \
+fútbol».
 - No inventes, no completes, no traduzcas: toda palabra del tema está en la frase.
 - Si no hay un tema claro, responde {"topic": ""}.\
 """
