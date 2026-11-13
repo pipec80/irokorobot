@@ -17,6 +17,7 @@ from server.cognition.identity import (
     ActivePersonStatus,
     IdentityEvidenceSource,
 )
+from server.memory.household_time import household_today
 from server.settings import ProfileCardPosition, settings
 
 if TYPE_CHECKING:
@@ -56,9 +57,9 @@ def current_date_es(today: date | None = None) -> str:
     """Return *today* in Spanish prose, e.g. ``"martes 14 de julio de 2026"``.
 
     Args:
-        today: Date to format; defaults to the system date.
+        today: Date to format; defaults to the household's day (``HOUSEHOLD_TIMEZONE``).
     """
-    today = today or date.today()
+    today = today or household_today()
     return (
         f"{_DAYS_ES[today.weekday()]} {today.day} de {_MONTHS_ES[today.month - 1]} de {today.year}"
     )

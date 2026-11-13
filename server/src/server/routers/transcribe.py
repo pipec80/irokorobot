@@ -73,7 +73,7 @@ from server.memory.continuity import ContinuityTurn
 from server.memory.conversation_capture import capture_turn
 from server.memory.entity_labels import read_household_names
 from server.memory.household_authorization import record_authorization_decision
-from server.memory.household_time import household_day
+from server.memory.household_time import household_day, household_today
 from server.memory.pending_follow_up import (
     FollowUpPreparer,
     PendingFollowUp,
@@ -155,8 +155,9 @@ _STREAM_413_RESPONSE = {
 
 
 def _today() -> date:
-    """Return the adapter-owned local date for deterministic P0 tools."""
-    return date.today()
+    """Return the household's day for deterministic P0 tools (``HOUSEHOLD_TIMEZONE``, never the
+    machine's own zone: a server in UTC disagrees with a household in Chile for hours a night)."""
+    return household_today()
 
 
 def _voice_event_from_transcript(message: str) -> CognitiveEvent[TextTurnPayload]:
