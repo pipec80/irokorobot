@@ -36,6 +36,7 @@ _CASCADE_COVERED_BY_THE_VOICE_REFUSAL = {
     "conversation_records": "the owner of the record; the owner is never an orphan import entity",
     "conversation_episodes": "the owner of the episode; deleted with its record anyway",
     "recall_units": "the owner of the unit; deleted with its record anyway (Plan 0078)",
+    "pending_topics": "the owner of the topic; deleted with its record anyway (Plan 0084)",
 }
 # (c) RESTRICT, NO ACTION or SET NULL: deleting a referred entity fails loudly or is harmless.
 _FAIL_LOUDLY_OR_HARMLESS = {

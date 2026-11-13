@@ -10,6 +10,7 @@ asked and the fixed sentence. It reads no setting and logs nothing.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 from enum import StrEnum
 from typing import TYPE_CHECKING, Final
 
@@ -28,6 +29,7 @@ __all__ = [
     "ANNOUNCING_VERBS",
     "Announcement",
     "AnnouncementOutcome",
+    "follow_up_due_days",
     "follow_up_sentence",
     "may_follow_up",
     "read_announcement",
@@ -110,6 +112,18 @@ def read_announcement(heard: str, *, said_day: date) -> Announcement:
     return Announcement(due_day=spoken.window.start, outcome=AnnouncementOutcome.KEPT)
 
 
+def follow_up_due_days(today: date) -> tuple[date, date]:
+    """Return the oldest and the newest due day a greeting of *today* may ask about (D-4).
+
+    Args:
+        today: The household's local day of the greeting.
+
+    Returns:
+        Two days before today and the day before today, inclusive.
+    """
+    return today - timedelta(days=_LAST_DAY_AFTER), today - timedelta(days=_FIRST_DAY_AFTER)
+
+
 def may_follow_up(due_day: date, *, today: date) -> bool:
     """Return whether a topic due on *due_day* may be asked about today (D-4).
 
@@ -121,7 +135,8 @@ def may_follow_up(due_day: date, *, today: date) -> bool:
         ``True`` from the day after the due day to two days after it; never on the due day,
         which would ask before it happened.
     """
-    return _FIRST_DAY_AFTER <= (today - due_day).days <= _LAST_DAY_AFTER
+    oldest, newest = follow_up_due_days(today)
+    return oldest <= due_day <= newest
 
 
 def follow_up_sentence(topic: str, *, due_day: date, today: date) -> str:

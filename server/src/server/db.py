@@ -40,6 +40,7 @@ _MIGRATIONS: tuple[tuple[int, str], ...] = (
     (13, "migration_013_conversation_record.sql"),
     (14, "migration_014_recall_units.sql"),
     (15, "migration_015_occurred_interval.sql"),
+    (16, "migration_016_pending_topics.sql"),
 )
 _conn: aiosqlite.Connection | None = None
 
