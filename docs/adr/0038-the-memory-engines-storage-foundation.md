@@ -5,8 +5,8 @@
   text, graph and document memory all on SQLite; starting the schema from zero is acceptable in
   the MVP). It rests on seven independent read-only reviews of 2026-11-13: two of Plan 0085's
   first draft, then two research rounds (*Context*), and on the code of `main` at `8b37846`. It becomes `Accepted` when the plan that
-  implements it closes. No decision below is Pipec's yet; every one is a recommendation, and the
-  ones that change the shape of the data are listed in *For Pipec*.
+  implements it closes. **Pipec confirmed all nine recommendations of *Pipec's decisions* the same
+  day**; Plan 0085 is rewritten on them, in two parts.
 - **Date:** 2026-11-13
 - **Builds on:** [ADR 0011](0011-sqlite-transaction-ownership.md) (one transaction owner),
   [ADR 0021](0021-memory-candidates-and-the-canonical-writer.md) (decision 6, `secure_delete`),
@@ -22,7 +22,8 @@
 - **Delivers:** the foundation under row 8 of the
   [path to the finish line](../roadmap/cognitive-roadmap.md#closing-path-of-conversational-memory):
   Plan 0085 (C1) is rewritten on it, and Plans 0086 (C2) and 0087 (the export) build on the same
-  schema with no second rebuild.
+  schema; C2 changes at most the key of the small episodes table, never the recall or record
+  tables again.
 
 ## Context
 
@@ -171,8 +172,9 @@ order.
   sensitivity, `redacted_at`); the record keeps its segment fields and counters. A deletion,
   redaction or sensitivity then applies to one turn by key, not by rewriting a JSON array.
 - **Derivation is typed.** A recall unit points at its turn **or** its episode by foreign key; an
-  episode lists its turns in `episode_sources` (the turn side `SET NULL`, so an episode can outlive
-  its record, ADR 0032 decision 5); a candidate and a pending topic point at their turn; a fact
+  episode lists its turns in `episode_sources` (a link row goes with its turn, the episode does
+  not, so C2 can let an episode outlive its record, ADR 0032 decision 5, by changing only the
+  episode's own key to its record); a candidate and a pending topic point at their turn; a fact
   points at the candidate it was promoted from. Facts, units and episodes carry ADR 0031 decision
   6's **origin** and **transformation**. An index or projection is reached by key, so «everything
   derived from this turn» is one query.
@@ -243,19 +245,21 @@ or SQLite3MultipleCiphers tested with FTS5 and `sqlite-vec` before any choice) b
 pages a deletion must remove), `secure_delete=FAST`, `synchronous=OFF`, `WITHOUT ROWID` on these
 tables, JSONB for exported data, a raw second copy of every vector.
 
-## For Pipec
+## Pipec's decisions (2026-11-13)
 
-| # | Question | Recommendation |
+Pipec confirmed every recommendation as written («Confirm all 9»).
+
+| # | Decision | Where |
 |---|---|---|
-| 1 | Turns become rows (`conversation_turns`) instead of one JSON array per record | Yes: per-turn deletion, redaction, sensitivity and typed derivation need it, and C2 would otherwise rebuild again |
-| 2 | Design the v2 schema from zero and carry the data with one tested upgrade from version 16, instead of Plan 0085's three incremental migrations | Yes: one rebuild instead of two (C1 and C2), a baseline for fresh installs |
-| 3 | A `uid` (UUIDv7) beside the integer key on every durable personal row; the register and the export key on it | Yes |
-| 4 | Record time (`recorded_at`, `retracted_at`) on facts and relations, beside world time | Yes |
-| 5 | `embedding_spaces` with the Ollama digest, and `vec0` partitioned by owner and space | Yes |
-| 6 | SQLite only from uv's CPython, floor 3.51.3, target 3.53.1 (a uv upgrade and `uv python upgrade` on the laptop now, and the same on the Pi) | Yes |
-| 7 | The deletion protocol of decision 4 (register first, `FULL`, checkpoint, replay at start-up) | Yes |
-| 8 | `trusted_schema` stays ON for the `vec0` trigger, against SQLite's general advice | Yes, with the reason written; the alternative is moving the vector delete out of the trigger into the store |
-| 9 | Delivery: Plan 0085 rewritten on this ADR, possibly in two parts (the runtime, runner, pragmas and guards first; the v2 schema and the upgrade second) | Pipec's call |
+| 1 | Turns become rows (`conversation_turns`) instead of one JSON array per record | Decision 6 |
+| 2 | The v2 schema is designed from zero and the data is carried by one tested upgrade from version 16, instead of Plan 0085's three incremental migrations | Decision 9 |
+| 3 | A `uid` (UUIDv7) beside the integer key on every durable personal row; the register and the export key on it | Decision 5 |
+| 4 | Record time (`recorded_at`, `retracted_at`) on facts and relations, beside world time | Decision 6 |
+| 5 | `embedding_spaces` with the Ollama digest, and `vec0` partitioned by owner and space | Decision 6 |
+| 6 | SQLite only from uv's CPython, floor 3.51.3, target 3.53.1 (a uv upgrade and `uv python upgrade` on the laptop, and the same on the Pi) | Decision 2 |
+| 7 | The deletion protocol: register first, `FULL`, checkpoint, replay at start-up | Decision 4 |
+| 8 | `trusted_schema` stays ON for the `vec0` trigger, with the reason written | Decision 3 |
+| 9 | Delivery: Plan 0085 rewritten on this ADR in two parts, A (the runtime, the pragmas, the transaction, one writer per table, the deletion test) and B (the v2 schema and the upgrade), each its own branch and PR | Plan 0085 |
 
 ## Not decided here
 
