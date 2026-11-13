@@ -298,3 +298,14 @@ def test_pending_topics_on_needs_all_three_switches(
     monkeypatch.setattr(settings, "conversation_record_enabled", record)
     monkeypatch.setattr(settings, "pending_topics_enabled", pending)
     assert pending_store.pending_topics_on() is (memory and record and pending)
+
+
+async def test_a_failed_naming_is_counted_and_goes_to_the_back(owner: int) -> None:
+    first = await _unnamed(owner, due_day=_TODAY)
+    second = await _unnamed(owner, due_day=_TODAY)
+
+    assert await pending_store.count_naming_failure(first) == 1
+    assert await pending_store.count_naming_failure(first) == 2
+    assert (await pending_store.next_unnamed() or (0,))[0] == second
+    assert await pending_store.set_topic(second, "el banco")
+    assert await pending_store.count_naming_failure(second) == 0  # no longer unnamed

@@ -9,19 +9,17 @@ and no exception message carries the model's output.
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, Final
 
 from pydantic import BaseModel, ValidationError
 
+from server.exceptions import LLMError
 from server.llm_transport import ollama_chat, strip_json_fences
 from server.settings import settings
 from server.text_keys import ARTICLES, normalize_spanish
 
 if TYPE_CHECKING:
     import httpx
-
-logger = logging.getLogger(__name__)
 
 __all__ = ["MAX_TOPIC_CHARS", "MAX_TOPIC_WORDS", "is_copied_topic", "name_topic"]
 
@@ -86,13 +84,15 @@ async def name_topic(client: httpx.AsyncClient, heard: str) -> str | None:
         heard: The owner's words of the turn. Nothing else is sent.
 
     Returns:
-        The cleaned topic, or ``None`` for an empty, invalid or invented answer (the caller drops
-        the topic: one it cannot name is not kept).
+        The cleaned topic, or ``None`` for an empty or invented answer (the caller drops the
+        topic: one it cannot name is not kept).
 
     Raises:
         httpx.HTTPError: If Ollama is unreachable or answers with an error status; the caller
             keeps the topic unnamed for a later tick.
         TimeoutError: If the call times out, likewise.
+        LLMError: If the answer is empty or not the schema (a model failure, kept for a later
+            tick too). The message never carries the model's output.
     """
     raw = await ollama_chat(
         client,
@@ -105,7 +105,7 @@ async def name_topic(client: httpx.AsyncClient, heard: str) -> str | None:
     try:
         topic = _cleaned(_Naming.model_validate_json(strip_json_fences(raw)).topic)
     except (ValidationError, ValueError):
-        # Only the class: a pydantic error quotes the model's own output.
-        logger.debug("Pending topic answer was not the schema")
-        return None
+        # `from None`: a pydantic error quotes the model's own output, which must not travel in an
+        # exception chain into a log line.
+        raise LLMError("Pending topic naming returned an answer that is not the schema") from None
     return topic if is_copied_topic(topic, heard) else None

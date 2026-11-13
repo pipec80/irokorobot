@@ -13,11 +13,8 @@
 # Review focus 4: words that are not the owner's are never kept.
 - {heard: Hoy voy al cine con unos amigos., answer: '{"topic": "el teatro"}', kept: null}
 - {heard: Mañana voy al banco a pagar una cuenta., answer: '{"topic": "la cuenta del banco"}', kept: null}
-# Too long, empty or not the schema.
+# Too long or empty (an answer that is not the schema is a model failure, not a drop).
 - {heard: Mañana voy al banco a pagar una cuenta., answer: '{"topic": "el banco a pagar una"}', kept: null}
 - {heard: El jueves tengo la reunión interdepartamental extraordinariamente importante., answer: '{"topic": "la reunión interdepartamental extraordinariamente"}', kept: null}
 - {heard: Mañana voy al banco., answer: '{"topic": ""}', kept: null}
 - {heard: Mañana voy al banco., answer: '{"topic": "..."}', kept: null}
-- {heard: Mañana voy al banco., answer: no sé, kept: null}
-- {heard: Mañana voy al banco., answer: '{"tema": "el banco"}', kept: null}
-- {heard: Mañana voy al banco., answer: '{"topic": 3}', kept: null}

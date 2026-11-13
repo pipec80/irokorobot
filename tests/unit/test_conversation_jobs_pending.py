@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock
 
 import httpx
 import pytest
+from server.exceptions import LLMError
 from server.memory import conversation_jobs
 from server.settings import settings
 
@@ -30,7 +31,8 @@ class _Store:
         self.next_unnamed = AsyncMock(return_value=unnamed)
         self.set_topic = AsyncMock(return_value=True)
         self.drop = AsyncMock()
-        for name in ("delete_expired", "next_unnamed", "set_topic", "drop"):
+        self.count_naming_failure = AsyncMock(return_value=1)
+        for name in ("delete_expired", "next_unnamed", "set_topic", "drop", "count_naming_failure"):
             monkeypatch.setattr(conversation_jobs, name, getattr(self, name))
 
 
@@ -101,7 +103,9 @@ async def test_an_invented_name_drops_the_topic(
     assert _outcomes(caplog, "pending.named") == ["unnamed_dropped"]
 
 
-@pytest.mark.parametrize("error", [httpx.ConnectError("zzdownzz banco"), TimeoutError()])
+@pytest.mark.parametrize(
+    "error", [httpx.ConnectError("zzdownzz banco"), TimeoutError(), LLMError("zzdownzz banco")]
+)
 async def test_a_model_failure_keeps_the_topic_for_a_later_tick(
     monkeypatch: pytest.MonkeyPatch,
     http_client: httpx.AsyncClient,
@@ -116,8 +120,26 @@ async def test_a_model_failure_keeps_the_topic_for_a_later_tick(
 
     store.drop.assert_not_awaited()
     store.set_topic.assert_not_awaited()
+    store.count_naming_failure.assert_awaited_once_with(5)
     assert _outcomes(caplog, "pending.named") == ["model_failed"]
     assert "zzdownzz" not in caplog.text
+
+
+async def test_the_third_model_failure_drops_the_topic(
+    monkeypatch: pytest.MonkeyPatch,
+    http_client: httpx.AsyncClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A row the model keeps failing on is not retried until it expires (Task 8 review)."""
+    caplog.set_level(logging.INFO)
+    store = _Store(monkeypatch, unnamed=(5, _HEARD))
+    store.count_naming_failure.return_value = 3
+    _namer(monkeypatch, LLMError("zz"))
+
+    await conversation_jobs.run_once(http_client, _NOW)
+
+    store.drop.assert_awaited_once_with(5)
+    assert _outcomes(caplog, "pending.named") == ["unnamed_dropped"]
 
 
 async def test_nothing_unnamed_calls_no_model(
@@ -145,8 +167,23 @@ async def test_an_open_record_does_nothing(
     namer.assert_not_awaited()
 
 
-@pytest.mark.parametrize("switch", ["pending_topics_enabled", "memory_enabled"])
-async def test_the_switch_off_does_nothing(
+async def test_the_switch_off_still_expires_but_names_nothing(
+    monkeypatch: pytest.MonkeyPatch, http_client: httpx.AsyncClient
+) -> None:
+    """Rows kept while the switch was on still expire after it is turned off (Task 8 review)."""
+    monkeypatch.setattr(settings, "pending_topics_enabled", False)
+    store = _Store(monkeypatch, unnamed=(5, _HEARD))
+    namer = _namer(monkeypatch, "el banco")
+
+    await conversation_jobs.run_once(http_client, _NOW)
+
+    store.delete_expired.assert_awaited_once_with(today=_TODAY)
+    store.next_unnamed.assert_not_awaited()
+    namer.assert_not_awaited()
+
+
+@pytest.mark.parametrize("switch", ["memory_enabled", "conversation_record_enabled"])
+async def test_without_memory_or_the_record_the_job_touches_no_topic(
     monkeypatch: pytest.MonkeyPatch,
     http_client: httpx.AsyncClient,
     caplog: pytest.LogCaptureFixture,

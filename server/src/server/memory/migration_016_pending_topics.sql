@@ -5,7 +5,8 @@
 -- deletes it; the follow-up moves it to 'asked'. said_day and due_day are LOCAL household days as
 -- ISO dates, never UTC instants. A row is deleted with its owner and with the record of the turn
 -- that said it, and by the job two days after its due day: there is no 'expired' state. One row
--- per turn at most (its correlation id). `heard` is bounded like the record's turn (2000). Atomic
+-- per turn at most (its correlation id). `heard` is bounded like the record's turn (2000).
+-- naming_attempts counts the model calls that failed; the job gives up after a few. Atomic
 -- like 011 to 015; no down-step. secure_delete is already on (db.open_db).
 BEGIN;
 
@@ -22,6 +23,7 @@ CREATE TABLE pending_topics (
     sensitivity       TEXT NOT NULL CHECK (sensitivity IN ('normal', 'medical')),
     created_at        TEXT NOT NULL,
     asked_at          TEXT,
+    naming_attempts   INTEGER NOT NULL DEFAULT 0 CHECK (naming_attempts >= 0),
     CHECK ((state = 'unnamed') = (topic IS NULL)),
     CHECK ((topic IS NULL) = (heard IS NOT NULL)),
     CHECK ((state = 'asked') = (asked_at IS NOT NULL))

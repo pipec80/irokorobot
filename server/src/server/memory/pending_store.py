@@ -29,6 +29,7 @@ __all__ = [
     "PendingSensitivity",
     "PendingTopic",
     "asked_today",
+    "count_naming_failure",
     "delete_expired",
     "drop",
     "due_topic",
@@ -137,11 +138,26 @@ async def _write(sql: str, params: tuple[object, ...]) -> int:
 
 
 async def next_unnamed() -> tuple[int, str] | None:
-    """Return the oldest unnamed topic's id and words, or ``None``."""
+    """Return the unnamed topic to name next (fewest failed tries, then oldest), or ``None``."""
     row = await _one(
-        "SELECT id, heard FROM pending_topics WHERE state = 'unnamed' ORDER BY id LIMIT 1", ()
+        "SELECT id, heard FROM pending_topics WHERE state = 'unnamed' "
+        "ORDER BY naming_attempts, id LIMIT 1",
+        (),
     )
     return None if row is None else (int(row[0]), str(row[1]))
+
+
+async def count_naming_failure(topic_id: int) -> int:
+    """Count one failed naming of an unnamed topic; return its failures, or 0 if it is named."""
+    async with db.transaction() as conn:
+        cursor = await conn.execute(
+            "UPDATE pending_topics SET naming_attempts = naming_attempts + 1 "
+            "WHERE id = ? AND state = 'unnamed' RETURNING naming_attempts",
+            (topic_id,),
+        )
+        row = await cursor.fetchone()
+        await cursor.close()
+    return 0 if row is None else int(row[0])
 
 
 async def set_topic(topic_id: int, topic: str) -> bool:

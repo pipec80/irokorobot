@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock
 
 import httpx
 import pytest
+from server.exceptions import LLMError
 from server.memory import pending_naming
 from server.memory.pending_naming import (
     MAX_TOPIC_CHARS,
@@ -87,13 +88,35 @@ async def test_a_model_failure_propagates_so_the_job_keeps_the_row(
         await name_topic(http_client, _HEARD)
 
 
+@pytest.mark.parametrize("answer", ["zzno-jsonzz", '{"tema": "x"}', '{"topic": 3}'])
+async def test_an_answer_that_is_not_the_schema_is_a_model_failure(
+    answer: str, http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A model regression keeps the topic for a later try instead of deleting it (Task 8)."""
+    _chat(monkeypatch, answer)
+
+    with pytest.raises(LLMError) as raised:
+        await name_topic(http_client, _HEARD)
+    assert answer not in str(raised.value)
+    assert raised.value.__cause__ is None
+
+
+async def test_an_empty_model_answer_propagates(
+    http_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _chat(monkeypatch, LLMError("Ollama response carries no text message content"))
+
+    with pytest.raises(LLMError):
+        await name_topic(http_client, _HEARD)
+
+
 async def test_no_text_reaches_a_log_line(
     http_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     caplog.set_level(logging.DEBUG)
-    for answer in ('{"topic": "el teatro"}', "no sé", '{"topic": "el banco"}'):
+    for answer in ('{"topic": "el teatro"}', '{"topic": ""}', '{"topic": "el banco"}'):
         _chat(monkeypatch, answer)
         await name_topic(http_client, _HEARD)
 

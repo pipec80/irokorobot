@@ -12,12 +12,14 @@ swallowed.
 from __future__ import annotations
 
 import asyncio
+from enum import StrEnum
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 import httpx
 
 from server.cognition.clock import utc_now
+from server.exceptions import LLMError
 from server.memory.conversation_episodes import write_episode
 from server.memory.conversation_record import (
     EpisodeStatus,
@@ -28,6 +30,7 @@ from server.memory.conversation_record import (
 )
 from server.memory.pending_naming import name_topic
 from server.memory.pending_store import (
+    count_naming_failure,
     delete_expired,
     drop,
     next_unnamed,
@@ -46,6 +49,16 @@ logger = logging.getLogger(__name__)
 __all__ = ["run_once", "start_background_job", "stop_background_job"]
 
 _task: asyncio.Task[None] | None = None
+# A topic whose naming failed this many times is deleted, so one broken row never blocks the rest.
+_MAX_NAMING_ATTEMPTS: Final = 3
+
+
+class NamingOutcome(StrEnum):
+    """What one naming step did, in closed terms (Plan 0084 D-15)."""
+
+    NAMED = "named"
+    UNNAMED_DROPPED = "unnamed_dropped"
+    MODEL_FAILED = "model_failed"
 
 
 async def _write_one_episode(client: httpx.AsyncClient, now: datetime) -> None:
@@ -74,18 +87,17 @@ async def run_once(client: httpx.AsyncClient, now: datetime) -> None:
         if settings.recall_enabled:
             # The recall vectors the live path could not compute (ADR 0028 decision 2).
             await backfill_vectors(client)
+        if settings.memory_enabled:
+            # Rows kept while the switch was on expire even after it is turned off.
+            await _expire_pending_topics(now)
         if pending_topics_on():
-            await _tend_pending_topics(client, now)
+            await _name_one_pending_topic(client)
     except Exception as exc:  # background loop: the next tick tries again
         logger.warning("Conversation job failed (%s)", type(exc).__name__)
 
 
-async def _tend_pending_topics(client: httpx.AsyncClient, now: datetime) -> None:
-    """Delete the expired topics, then name at most one unnamed topic (Plan 0084 D-5, D-6).
-
-    A model the job cannot reach keeps the topic unnamed for a later tick; an answer that is not
-    the owner's words deletes it. Logs carry a closed outcome or a count, never a text.
-    """
+async def _expire_pending_topics(now: datetime) -> None:
+    """Delete the topics more than two days past their due day (Plan 0084 D-5); log a count."""
     expired = await delete_expired(today=household_day(now))
     if expired:
         logger.info(
@@ -93,30 +105,45 @@ async def _tend_pending_topics(client: httpx.AsyncClient, now: datetime) -> None
             expired,
             extra={"event": "pending.expired", "count": expired},
         )
+
+
+async def _name_one_pending_topic(client: httpx.AsyncClient) -> None:
+    """Name at most one unnamed topic with the local model (Plan 0084 D-6).
+
+    An answer that is not the owner's words deletes the topic. A model failure keeps it for a
+    later tick, behind the topics not yet tried, and the third failure deletes it. Logs carry a
+    closed outcome, the row id and an exception class, never a text.
+    """
     unnamed = await next_unnamed()
     if unnamed is None:
         return
     topic_id, heard = unnamed
     try:
         topic = await name_topic(client, heard)
-    except (httpx.HTTPError, TimeoutError) as exc:
-        _log_named("model_failed", topic_id, error_type=type(exc).__name__)
+    except (httpx.HTTPError, TimeoutError, LLMError) as exc:
+        if await count_naming_failure(topic_id) < _MAX_NAMING_ATTEMPTS:
+            _log_named(NamingOutcome.MODEL_FAILED, topic_id, error_type=type(exc).__name__)
+            return
+        await drop(topic_id)
+        _log_named(NamingOutcome.UNNAMED_DROPPED, topic_id, error_type=type(exc).__name__)
         return
     if topic is None:
         await drop(topic_id)
-        _log_named("unnamed_dropped", topic_id)
+        _log_named(NamingOutcome.UNNAMED_DROPPED, topic_id)
     elif await set_topic(topic_id, topic):
-        _log_named("named", topic_id)
+        _log_named(NamingOutcome.NAMED, topic_id)
 
 
-def _log_named(outcome: str, topic_id: int, *, error_type: str | None = None) -> None:
+def _log_named(outcome: NamingOutcome, topic_id: int, *, error_type: str | None = None) -> None:
     """Log one naming step: a closed outcome and the row id, never the topic."""
-    logger.info(
+    logger.log(
+        # A model failure is a warning; a name kept or an answer that is not the owner's is not.
+        logging.INFO if error_type is None else logging.WARNING,
         "Pending topic naming: %s",
-        outcome,
+        outcome.value,
         extra={
             "event": "pending.named",
-            "outcome": outcome,
+            "outcome": outcome.value,
             "topic_id": topic_id,
             "error_type": error_type,
         },
