@@ -69,13 +69,21 @@ from server.memory.candidate_dialogue import (
 )
 from server.memory.candidate_proposal import propose_candidates
 from server.memory.candidate_types import CandidateChannel
+from server.memory.continuity import ContinuityTurn
 from server.memory.conversation_capture import capture_turn
 from server.memory.entity_labels import read_household_names
 from server.memory.household_authorization import record_authorization_decision
+from server.memory.pending_follow_up import (
+    FollowUpPreparer,
+    PendingFollowUp,
+    prepare_follow_up,
+)
+from server.memory.pending_store import pending_topics_on
 from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
 from server.memory.profile_card import PromptCard
 from server.memory.profile_card_access import profile_summary_text, prompt_card_for_turn
 from server.memory.recall_access import recall_reply
+from server.memory.recall_search import household_zone
 from server.memory.recall_store import occurred_time_on
 from server.memory.sensitive_access import sensitive_reply
 from server.pipeline import (
@@ -270,6 +278,7 @@ def _voice_controller(
     profile_summarizer: ProfileSummarizer | None = None,
     record_turn: TurnRecorder | None = None,
     recall_answerer: RecallAnswerer | None = None,
+    follow_up_preparer: FollowUpPreparer | None = None,
 ) -> CognitiveController:
     """Compose the bounded controller used by a public voice turn.
 
@@ -298,6 +307,8 @@ def _voice_controller(
         recall_answerer: Answers a recall question from the owner's diary (Plan 0078). Only
             used together with ``request_identity``; when omitted the recall and relatives rules
             never run.
+        follow_up_preparer: Prepares the pending-topic follow-up spoken after a generic reply
+            (Plan 0084); when omitted no topic is picked up.
     """
 
     async def legacy_turn(message: str, conversation_id: str) -> TextTurnResult:
@@ -319,6 +330,7 @@ def _voice_controller(
             prepare_offer=prepare_offer,
             profile_card_provider=profile_card_provider,
             record_turn=record_turn,
+            prepare_follow_up=follow_up_preparer,
         )
 
     household_tools = HouseholdKnowledgeTools(reader=PolicyGatedV4Reader())
@@ -458,6 +470,32 @@ def _offer_preparer(
 
     async def prepare(actor: ActivePersonContext) -> PendingOffer | None:
         return await prepare_offer(actor, wav_bytes=wav_bytes, event=event)
+
+    return prepare
+
+
+def _follow_up_preparer(event: CognitiveEvent[TextTurnPayload]) -> FollowUpPreparer | None:
+    """Bind the turn's id and the household day to the pending-topic follow-up (Plan 0084).
+
+    Args:
+        event: The turn's event; its correlation id stamps the audit row.
+
+    Returns:
+        The preparation, or ``None`` unless ``pending_topics_on()`` (the switch, memory and the
+        record). Only the two voice routes bind it; ``/chat`` and ``/vision/respond`` never do.
+    """
+    if not pending_topics_on():
+        return None
+
+    async def prepare(
+        actor: ActivePersonContext, session: ContinuityTurn
+    ) -> PendingFollowUp | None:
+        return await prepare_follow_up(
+            actor,
+            session,
+            today=utc_now().astimezone(household_zone()).date(),
+            correlation_id=event.correlation_id,
+        )
 
     return prepare
 
@@ -832,6 +870,7 @@ async def transcribe(
         profile_summarizer=_profile_summarizer(),
         record_turn=record_turn,
         recall_answerer=_recall_answerer(resources.http_client),
+        follow_up_preparer=_follow_up_preparer(event),
     )
     decision = await controller.decide(event)
 
@@ -1024,6 +1063,7 @@ async def transcribe_stream(
                 ),
                 prepare_offer=_offer_preparer(event=event, wav_bytes=audio_bytes),
                 record_turn=record_turn,
+                prepare_follow_up=_follow_up_preparer(event),
             )
         )
     )
