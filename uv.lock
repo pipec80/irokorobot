@@ -2767,7 +2767,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0.3,<7.0.0" },
     { name = "soxr", specifier = ">=1.1.0,<2.0.0" },
     { name = "speechbrain", specifier = "==1.1.2" },
-    { name = "sqlite-vec", specifier = ">=0.1.6" },
+    { name = "sqlite-vec", specifier = "==0.1.9" },
     { name = "starlette", specifier = ">=1.6.0,<2.0.0" },
     { name = "torch", specifier = ">=2.14.0,<3.0.0", index = "https://download.pytorch.org/whl/cpu" },
     { name = "torchaudio", specifier = ">=2.11.0,<3.0.0", index = "https://download.pytorch.org/whl/cpu" },

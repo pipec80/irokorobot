@@ -2026,3 +2026,60 @@ def test_the_pending_topics_guards_detect_a_violation() -> None:
     ]
     assert _pending_seam_overreach(leak) == ["streaming_protocol.py", "text_turn.py"]
     assert _impure_time_modules(leak) == ["cognition/pending_topics.py"]
+
+
+# The writers state every time themselves through ``server.timestamps`` (Plan 0085, D-3); none
+# asks SQLite for its own clock. ``retention.py`` compares dead tables (sensor_readings,
+# sensor_aggregates_hourly, embeddings_cache, outbox) and goes with those tables in migration 017
+# (Task B2), which has to empty this list.
+_DATETIME_NOW = re.compile(r"""datetime\(\s*['"]now['"]""")
+_MAY_READ_THE_SQLITE_CLOCK = frozenset({"memory/retention.py"})
+
+
+def _sqlite_clock_users(sources: Mapping[str, str]) -> list[str]:
+    """``file:line`` of every use of SQLite's ``datetime('now')`` outside the allow-list."""
+    return [
+        f"{name}:{number}"
+        for name, text in sorted(sources.items())
+        if name not in _MAY_READ_THE_SQLITE_CLOCK
+        for number, line in enumerate(text.splitlines(), start=1)
+        if _DATETIME_NOW.search(line)
+    ]
+
+
+def _stale_sqlite_clock_allowances(sources: Mapping[str, str]) -> list[str]:
+    """Allow-listed files that no longer use the clock: the exception must then be removed."""
+    return sorted(
+        name
+        for name in _MAY_READ_THE_SQLITE_CLOCK
+        if _DATETIME_NOW.search(sources.get(name, "")) is None
+    )
+
+
+@pytest.mark.unit
+def test_no_server_module_writes_datetime_now() -> None:
+    sources = _sources()
+
+    assert _sqlite_clock_users(sources) == []
+    assert _stale_sqlite_clock_allowances(sources) == []
+
+
+@pytest.mark.unit
+def test_the_sqlite_clock_guard_detects_a_violation() -> None:
+    leak = {
+        "memory/writer.py": "SQL = \"UPDATE t SET at = datetime('now')\"\n",
+        "memory/spaced.py": "SQL = \"SET at = datetime( 'now' )\"\n",
+        "memory/double.py": "x = 1\nSQL = 'SET at = datetime(\"now\")'\n",
+        "memory/clean.py": 'SQL = "SET at = ?"\n',
+        "memory/retention.py": "SQL = \"DELETE FROM t WHERE c < datetime('now', ?)\"\n",
+    }
+
+    assert _sqlite_clock_users(leak) == [
+        "memory/double.py:2",
+        "memory/spaced.py:1",
+        "memory/writer.py:1",
+    ]
+    assert _stale_sqlite_clock_allowances(leak) == []
+    assert _stale_sqlite_clock_allowances({"memory/retention.py": "SQL = 1\n"}) == [
+        "memory/retention.py"
+    ]

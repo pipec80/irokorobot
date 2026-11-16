@@ -1,14 +1,16 @@
 # 0085 — Block C1: the storage foundation, minimum version
 
-> **Status:** **Draft** (trimmed 2026-11-16). Rewritten on Pipec's scope rule of 2026-11-16
+> **Status:** **Ready (promoted by Pipec on 2026-11-16)**; executed in two parts, Part A on
+> `feat/0085a-storage-safety`, Part B on `feat/0085b-storage-schema`, both merged after Plan 0084's
+> acceptance closes. Trimmed 2026-11-16. Rewritten on Pipec's scope rule of 2026-11-16
 > («Yes, trim it»): **every piece must show which behaviour it enables, which defect it fixes or
 > which concrete risk it reduces**; the schema carries only what Plan 0086 (C2: correct, archive
 > and delete), Plan 0087 (the export) and today's recall need. Everything else of the earlier
 > version is deferred with its trigger in [ADR 0038](../../adr/0038-the-memory-engines-storage-foundation.md)
 > (*Amendment of 2026-11-16*) and listed in *Deferred, with their triggers* below; nothing was
 > dropped silently. Source: ADR 0038 as amended and
-> [ADR 0032](../../adr/0032-block-c-hygiene-correct-forget-and-years.md) decision 1. It becomes
-> executable only when Pipec promotes it to `Ready`.
+> [ADR 0032](../../adr/0032-block-c-hygiene-correct-forget-and-years.md) decision 1. Pipec promoted
+> it to `Ready` on 2026-11-16.
 >
 > **Two parts, two PRs, both merged after Plan 0084's acceptance closes.** **Part A**
 > (`feat/0085a-storage-safety`) changes no table: it fixes the defects found in the code (the
@@ -242,7 +244,7 @@ a need outside the list stops the plan for Pipec.
 
 | Part | Files |
 |---|---|
-| A | `db.py`, `timestamps.py` (new), the writers of D-3 (`memory/candidates.py`, `conversation_consent.py`, `conversation_record.py`, `conversation_episodes.py`, `recall_store.py`, `household_authorization.py`, `biometric_consent.py`, `voice_consent.py`, `owner_credentials.py`, `declarative.py`, `meta.py`, `relational_v4.py`, `cognition/spoken_dates.py`, `admin_cli.py`), `server/pyproject.toml`, `uv.lock`; their tests, `tests/unit/test_timestamps.py`, `tests/integration/test_db_runtime.py`, `tests/integration/test_physical_deletion.py`, `tests/unit/test_architecture_guards.py` |
+| A | `db.py`, `timestamps.py` (new), the writers of D-3 (`memory/candidates.py`, `conversation_consent.py`, `conversation_record.py`, `conversation_episodes.py`, `recall_store.py`, `household_authorization.py`, `biometric_consent.py`, `voice_consent.py`, `owner_credentials.py`, `declarative.py`, `meta.py`, `relational_v4.py`, `cognition/spoken_dates.py`, `admin_cli.py`; and `memory/care_contacts.py`, added by Pipec on 2026-11-16 after Task A0 found its `created_at` default still firing), `server/pyproject.toml`, `uv.lock`; their tests, `tests/unit/test_timestamps.py`, `tests/integration/test_db_runtime.py`, `tests/integration/test_physical_deletion.py`, `tests/unit/test_architecture_guards.py` |
 | B | `db.py`, `memory/migration_017_retire_dead_tables.sql` to `memory/migration_020_times_and_profiles.sql` (new), `conversation_record.py`, `recall_store.py`, `recall_search.py`, `recall_index.py`, `candidates.py`, `pending_store.py`, `pending_capture.py`, `conversation_capture.py`, `retention.py`, `embeddings.py`, `declarative.py`, `biometric_consent.py`, `voice_consent.py`, `vision/faces.py`, `voice/voiceprints.py`, `vision/perception.py`, `admin_cli.py`, `justfile`, `scripts/memory_test.py`, `memory/db_health.py` (new); deleted: `memory/legacy_v4_migration.py`, `scripts/migrate_memory_v4.py`; the schema and store tests they touch, `tests/integration/test_migrations_017_020.py`, `tests/integration/test_db_health.py`, `tests/unit/test_schema_guards.py`; `docs/architecture/data-dictionary.md` (new) and the documents of Task B8 |
 
 **Rollback boundary.** Before a merge, the branch. After Part A's merge, a revert (no table

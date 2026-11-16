@@ -8,13 +8,16 @@ text share one lifecycle, like a face or a voice and its prints.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 import logging
 from pathlib import Path
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from server import db
 from server.memory.conversation_record import delete_all_records
+from server.timestamps import instant_text
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -34,10 +37,6 @@ CONVERSATION_NOTICE_VERSION: Final = "v1"
 CONVERSATION_NOTICE_PATH: Final = (
     Path(__file__).resolve().parents[4] / "docs" / "legal" / "conversation-notice-v1.md"
 )
-
-
-def _iso(moment: datetime) -> str:
-    return moment.astimezone(UTC).isoformat(timespec="microseconds")
 
 
 def load_conversation_notice() -> str:
@@ -86,7 +85,7 @@ async def grant_conversation_consent(
         cursor = await conn.execute(
             "INSERT INTO conversation_consent_grants "
             "(person_entity_id, purpose, notice_version, granted_at) VALUES (?, ?, ?, ?)",
-            (person_entity_id, _PURPOSE, notice_version, _iso(now)),
+            (person_entity_id, _PURPOSE, notice_version, instant_text(now)),
         )
         grant_id = cursor.lastrowid
         await cursor.close()
@@ -113,7 +112,7 @@ async def revoke_conversation_consent(person_entity_id: int, *, now: datetime) -
         await conn.execute(
             "UPDATE conversation_consent_grants SET revoked_at = ? "
             "WHERE person_entity_id = ? AND revoked_at IS NULL",
-            (_iso(now), person_entity_id),
+            (instant_text(now), person_entity_id),
         )
         deleted = await delete_all_records(conn)
     # secure_delete is on: the checkpoint folds the overwritten pages out of the write-ahead log.

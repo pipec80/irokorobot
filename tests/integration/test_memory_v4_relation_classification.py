@@ -173,11 +173,12 @@ async def test_without_a_spoken_date_a_temporal_relation_begins_at_its_assertion
         asserted_at=_ASSERTED_AT,
     )
 
-    assert previous.valid_from == "2020-01-05T08:00:00.000000+00:00"
-    assert current.valid_from == _ASSERTED_AT
+    # Validity is a household day (Plan 0085): the assertion's day in America/Santiago.
+    assert previous.valid_from == "2020-01-05"
+    assert current.valid_from == "2026-10-20"
     closed = await get_entity_relation(previous.id)
     assert closed is not None
-    assert closed.valid_to == _ASSERTED_AT
+    assert closed.valid_to == "2026-10-20"
 
 
 @pytest.mark.integration

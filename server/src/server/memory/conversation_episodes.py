@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from enum import StrEnum
 import logging
 from typing import TYPE_CHECKING, Final
@@ -40,8 +39,11 @@ from server.memory.recall_store import (
     tells_something,
 )
 from server.settings import settings
+from server.timestamps import instant_text
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from server.memory.conversation_types import RecordedTurn
 
 logger = logging.getLogger(__name__)
@@ -204,7 +206,7 @@ async def write_episode(
                     draft.sensitivity,
                     draft.summary,
                     settings.consolidation_model or settings.ollama_model,
-                    now.astimezone(UTC).isoformat(timespec="microseconds"),
+                    instant_text(now),
                     record.summary.expires_at,
                 ),
             )

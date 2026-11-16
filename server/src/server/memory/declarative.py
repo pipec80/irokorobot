@@ -15,10 +15,12 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from server import db
+from server.cognition.clock import utc_now
 from server.db import get_conn
 from server.exceptions import AmbiguousEntityError
 from server.schemas import EntityType, FactRecord
 from server.text_keys import fold_name
+from server.timestamps import instant_text
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
@@ -107,9 +109,11 @@ async def upsert_entity(
         existing = await _find_entity_folded(name, type)
 
         if existing is None:
+            stamp = instant_text(utc_now())
             cur = await conn.execute(
-                "INSERT INTO entities (name, type, attributes, aliases) VALUES (?, ?, ?, ?)",
-                (name, type, attrs_json, aliases_json),
+                "INSERT INTO entities (name, type, attributes, aliases, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (name, type, attrs_json, aliases_json, stamp, stamp),
             )
             if cur.lastrowid is None:
                 raise RuntimeError(f"INSERT into entities returned no lastrowid for {name!r}")
@@ -128,9 +132,13 @@ async def upsert_entity(
                 set(json.loads(existing_aliases)) | set(aliases or []) | name_variants
             )
             await conn.execute(
-                "UPDATE entities SET attributes = ?, aliases = ?, updated_at = datetime('now') "
-                "WHERE id = ?",
-                (json.dumps(merged_attrs), json.dumps(merged_aliases), entity_id),
+                "UPDATE entities SET attributes = ?, aliases = ?, updated_at = ? WHERE id = ?",
+                (
+                    json.dumps(merged_attrs),
+                    json.dumps(merged_aliases),
+                    instant_text(utc_now()),
+                    entity_id,
+                ),
             )
             inserted = False
 
@@ -212,9 +220,11 @@ async def _insert_or_reuse_third_party(
     stored = dict(attributes or {})
     if import_key is not None:
         stored[_IMPORT_KEY_ATTRIBUTE] = import_key
+    stamp = instant_text(utc_now())
     cur = await conn.execute(
-        "INSERT INTO entities (name, type, attributes, aliases) VALUES (?, ?, ?, ?)",
-        (name, type, json.dumps(stored), json.dumps([])),
+        "INSERT INTO entities (name, type, attributes, aliases, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (name, type, json.dumps(stored), json.dumps([]), stamp, stamp),
     )
     if cur.lastrowid is None:
         raise RuntimeError("INSERT into entities returned no lastrowid for a third party")
@@ -350,12 +360,13 @@ async def assert_fact(
     Returns:
         Row id of the newly inserted fact.
     """
+    stamp = instant_text(utc_now())
     async with db.transaction() as conn:
         cur = await conn.execute(
             "INSERT INTO facts "
-            "(entity_id, predicate, object_value, confidence, source_memory_id) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (entity_id, predicate, object_value, confidence, source_memory_id),
+            "(entity_id, predicate, object_value, confidence, source_memory_id, asserted_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (entity_id, predicate, object_value, confidence, source_memory_id, stamp),
         )
         if cur.lastrowid is None:
             raise RuntimeError("INSERT into facts returned no lastrowid")
@@ -365,9 +376,9 @@ async def assert_fact(
             # The new fact is inserted first so superseded rows can record WHO
             # replaced them (superseded_by) — full versioning, not just a tombstone.
             await conn.execute(
-                "UPDATE facts SET superseded_at = datetime('now'), superseded_by = ? "
+                "UPDATE facts SET superseded_at = ?, superseded_by = ? "
                 "WHERE entity_id = ? AND predicate = ? AND superseded_at IS NULL AND id != ?",
-                (fact_id, entity_id, predicate, fact_id),
+                (stamp, fact_id, entity_id, predicate, fact_id),
             )
     logger.info(
         "Fact asserted: entity=%d predicate=%s (%d chars)",

@@ -15,7 +15,7 @@ import argparse
 import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 import getpass
 from pathlib import Path
 import sqlite3
@@ -24,6 +24,7 @@ import sys
 import httpx
 
 from server import db
+from server.cognition.clock import utc_now
 from server.conversation_admin import export_records, summary_line
 from server.exceptions import AdminPinError, BrainMemoryError
 from server.memory.admin_audit import (
@@ -70,6 +71,7 @@ from server.memory.relational_v4 import (
 )
 from server.personal_setup import check_db_available
 from server.settings import settings
+from server.timestamps import instant_text
 
 __all__ = ["main", "run_admin_command"]
 
@@ -717,7 +719,7 @@ def main() -> None:
             read_text=input,
             read_secret=getpass.getpass,
             write_text=print,
-            now=datetime.now(UTC).isoformat(timespec="microseconds"),
+            now=instant_text(utc_now()),
         )
     )
     sys.exit(code)

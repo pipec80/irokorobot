@@ -283,7 +283,8 @@ async def test_a_single_current_literal_supersedes_the_previous_value(
         subject_entity_id=household.child, definition=_definition("stated_age")
     )
     assert [fact.value_text for fact in active] == ["8"]
-    assert active[0].asserted_at == second.asserted_at == "2027-02-11T09:00:00+00:00"
+    # Stored as the one 32-character UTC instant (Plan 0085, D-3).
+    assert active[0].asserted_at == second.asserted_at == "2027-02-11T09:00:00.000000+00:00"
     superseded = await get_literal_fact(first.id)
     assert superseded is not None
     assert superseded.lifecycle is AssertionLifecycle.SUPERSEDED

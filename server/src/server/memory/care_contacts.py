@@ -21,8 +21,10 @@ import re
 from typing import TYPE_CHECKING
 
 from server import db
+from server.cognition.clock import utc_now
 from server.db import get_conn
 from server.memory.write_types import ConflictPolicy, WriteChannel, WriteRefusal, refusal_error
+from server.timestamps import instant_text
 
 if TYPE_CHECKING:
     from collections.abc import Collection
@@ -409,7 +411,7 @@ async def _insert(
         "INSERT INTO care_contacts (owner_entity_id, contact_entity_id, role, phone, phone_alt, "
         "relationship, call_order, has_key, may_receive_health_info, may_view_activity, "
         "visibility, sensitivity, asserted_by_entity_id, channel, confirmed_by_entity_id, "
-        "confirmed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "confirmed_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             owner_entity_id,
             contact_entity_id,
@@ -427,6 +429,8 @@ async def _insert(
             channel.value,
             owner_entity_id if confirmed_by_owner else None,
             confirmed_at,
+            # Passed explicitly in the one time format, so the SQL default never fires (Plan 0085).
+            instant_text(utc_now()),
         ),
     )
     row_id = cursor.lastrowid
