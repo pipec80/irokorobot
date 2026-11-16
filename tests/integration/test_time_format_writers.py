@@ -21,6 +21,7 @@ from server.cognition.pin_credentials import EncodedPinCredential
 from server.memory import candidates, conversation_record as record, recall_store, relational_v4
 from server.memory.biometric_consent import grant_face_consent, revoke_face_consent
 from server.memory.candidate_types import CandidateChannel, ProposedCandidate
+from server.memory.care_contacts import ContactRole, revoke_contact, write_contact
 from server.memory.conversation_consent import (
     grant_conversation_consent,
     revoke_conversation_consent,
@@ -46,6 +47,7 @@ from server.memory.relational_v4 import (
     revoke_literal_fact,
 )
 from server.memory.voice_consent import grant_voice_consent, revoke_voice_consent
+from server.memory.write_types import WriteChannel
 from server.settings import settings
 from server.timestamps import instant_text
 
@@ -122,6 +124,32 @@ async def test_entities_and_legacy_facts_write_their_times() -> None:
 
     await _assert_instants("entities", "created_at", "updated_at")
     await _assert_instants("facts", "asserted_at", "superseded_at")
+
+
+@pytest.mark.usefixtures("store")
+async def test_care_contacts_write_their_times() -> None:
+    owner = await _person("Canary Owner")
+    contact = await create_third_party(name="Canary Neighbour", type="person")
+    stamp = instant_text(_T0)
+    row = await write_contact(
+        owner_entity_id=owner,
+        contact_entity_id=contact,
+        role=ContactRole.NEIGHBOR,
+        phone="+56900000001",
+        channel=WriteChannel.ADMIN_LOCAL,
+        confirmed_at=stamp,
+    )
+    await write_contact(
+        owner_entity_id=owner,
+        contact_entity_id=contact,
+        role=ContactRole.NEIGHBOR,
+        phone="+56900000002",
+        channel=WriteChannel.ADMIN_LOCAL,
+        confirmed_at=stamp,
+    )
+    assert await revoke_contact(row.id, revoked_at=stamp) is False
+
+    await _assert_instants("care_contacts", "created_at", "confirmed_at", "revoked_at")
 
 
 @pytest.mark.usefixtures("store")
