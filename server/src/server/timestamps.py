@@ -69,5 +69,10 @@ def validity_day(moment: datetime, zone: ZoneInfo) -> str:
 
     Returns:
         The local day of ``moment`` in ``zone``.
+
+    Raises:
+        ValueError: If ``moment`` is naive (it would silently read in the operating-system zone).
     """
+    if moment.tzinfo is None or moment.utcoffset() is None:
+        raise ValueError("a naive datetime has no validity day: it must be timezone-aware")
     return day_text(moment.astimezone(zone).date())

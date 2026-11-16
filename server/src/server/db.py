@@ -198,9 +198,12 @@ async def open_db() -> None:
         await _conn.execute(f"PRAGMA busy_timeout = {_BUSY_TIMEOUT_MS}")
         await _conn.commit()
         await _optimize(_conn, _OPTIMIZE_ON_OPEN, "open")
-    except Exception as exc:
+    except BaseException as exc:
+        # BaseException on purpose, like `transaction()`: a cancellation is not an `Exception`
+        # and would otherwise leave a half-set connection that makes the next `open_db()` return
+        # early. Nothing is swallowed: `_abandon_start()` cleans up and the error is re-raised.
         await _abandon_start()
-        if isinstance(exc, BrainMemoryError):
+        if isinstance(exc, BrainMemoryError) or not isinstance(exc, Exception):
             raise
         raise BrainMemoryError("Failed to open SQLite") from exc
     logger.info(
@@ -263,7 +266,9 @@ async def _restore_busy_timeout(conn: aiosqlite.Connection) -> None:
     try:
         await conn.execute(f"PRAGMA busy_timeout = {_BUSY_TIMEOUT_MS}")
     except (aiosqlite.Error, ValueError) as exc:
-        logger.warning("Busy timeout not restored after a checkpoint (%s)", type(exc).__name__)
+        logger.warning(
+            "Busy timeout not restored after a checkpoint or optimize (%s)", type(exc).__name__
+        )
 
 
 async def close_db() -> None:
@@ -347,6 +352,19 @@ async def run_migrations() -> None:
     logger.info("Schema up-to-date (version %d)", _MIGRATIONS[-1][0])
 
 
+async def _rollback_after_failed_commit(conn: aiosqlite.Connection) -> None:
+    """Roll back after a COMMIT that raised; never raises.
+
+    A rollback that itself fails must not hide the commit's error, so it is logged by class and
+    swallowed.
+    """
+    try:
+        await conn.rollback()
+    except (aiosqlite.Error, ValueError) as exc:
+        # ValueError: aiosqlite raises it for a connection that is no longer active.
+        logger.warning("Rollback after a failed COMMIT failed (%s)", type(exc).__name__)
+
+
 @asynccontextmanager
 async def transaction() -> AsyncGenerator[aiosqlite.Connection]:
     """Own one complete runtime write transaction under the module lock.
@@ -387,4 +405,11 @@ async def transaction() -> AsyncGenerator[aiosqlite.Connection]:
             await conn.rollback()
             raise
         else:
-            await conn.commit()
+            try:
+                await conn.commit()
+            except BaseException:
+                # A COMMIT that raises (disk full, I/O error) leaves the shared connection inside
+                # the transaction: close it so the next BEGIN IMMEDIATE works. The commit's own
+                # error is the one that propagates, unchanged.
+                await _rollback_after_failed_commit(conn)
+                raise

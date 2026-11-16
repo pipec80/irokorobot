@@ -18,7 +18,7 @@ import httpx
 import pytest
 from server.cognition.identity import HouseholdRole
 from server.cognition.pin_credentials import EncodedPinCredential
-from server.memory import candidates, conversation_record as record, recall_store
+from server.memory import candidates, conversation_record as record, recall_store, relational_v4
 from server.memory.biometric_consent import grant_face_consent, revoke_face_consent
 from server.memory.candidate_types import CandidateChannel, ProposedCandidate
 from server.memory.conversation_consent import (
@@ -41,11 +41,13 @@ from server.memory.relational_v4 import (
     assert_entity_relation,
     assert_literal_fact,
     get_entity_relation,
+    get_literal_fact,
     revoke_entity_relation,
     revoke_literal_fact,
 )
 from server.memory.voice_consent import grant_voice_consent, revoke_voice_consent
 from server.settings import settings
+from server.timestamps import instant_text
 
 from server import db
 
@@ -217,6 +219,30 @@ async def test_a_temporal_relation_opens_and_closes_on_household_days() -> None:
 
 
 @pytest.mark.usefixtures("store")
+async def test_a_superseded_temporal_fact_closes_on_today_not_on_the_new_assertion_day(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(relational_v4, "utc_now", lambda: _T0)
+    # No literal predicate is temporal in the registry: borrow a single-current one.
+    temporal = _definition("preferred_name").model_copy(update={"temporal": True})
+    owner = await _person("Canary Owner")
+    old = await assert_literal_fact(subject_entity_id=owner, definition=temporal, value="Canary")
+    await assert_literal_fact(
+        subject_entity_id=owner,
+        definition=temporal,
+        value="Canario",
+        asserted_at=instant_text(_T0 - timedelta(days=5)),
+    )
+
+    closed = await get_literal_fact(old.id)
+
+    assert closed is not None
+    assert closed.valid_from == "2026-10-29"
+    # Closed on the day it was superseded (today), never before its own opening day.
+    assert closed.valid_to == "2026-10-29"
+
+
+@pytest.mark.usefixtures("store")
 @pytest.mark.parametrize(
     "given, stored",
     [
@@ -244,6 +270,30 @@ async def test_an_old_format_asserted_at_is_stored_as_the_utc_instant(
 
     assert await _days("literal_facts_v4", "asserted_at") == [stored]
     assert await _days("entity_relations_v4", "asserted_at") == [stored]
+
+
+@pytest.mark.usefixtures("store")
+@pytest.mark.parametrize("given", ["2026-11-16", "2026-11-16T10", "junk-7Q2X", ""])
+async def test_a_stored_moment_that_is_not_an_instant_is_refused_without_echoing_it(
+    given: str,
+) -> None:
+    owner = await _person("Canary Owner")
+    fact = await assert_literal_fact(
+        subject_entity_id=owner, definition=_definition("preferred_name"), value="Canary"
+    )
+
+    with pytest.raises(ValueError, match="not a stored instant") as refused:
+        await revoke_literal_fact(fact.id, revoked_at=given)
+    with pytest.raises(ValueError, match="not a stored instant"):
+        await assert_literal_fact(
+            subject_entity_id=owner,
+            definition=_definition("preferred_name"),
+            value="Canario",
+            asserted_at=given,
+        )
+
+    assert "7Q2X" not in str(refused.value)
+    assert await _days("literal_facts_v4", "asserted_at") != []  # the first fact is untouched
 
 
 @pytest.mark.usefixtures("store")

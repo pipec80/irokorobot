@@ -35,6 +35,9 @@ pytestmark = pytest.mark.integration
 _NOW = datetime(2026, 11, 16, 10, 0, tzinfo=UTC)
 _CANDIDATE_CANARY = "canario-candidato-7Q2X"
 _TURN_CANARY = "canario-borrado-7Q2X"
+# FTS5 (unicode61) stores lowercased tokens, so the verbatim canary never appears in its shadow
+# tables: a leak there is only visible through the lowercased distinctive token.
+_TURN_TOKEN_LOWER = b"7q2x"
 _MODEL = "canary-model"
 _CID = UUID("00000000-0000-0000-0000-0000000000bb")
 _VECTOR = [0.123456789 + index / 10_000 for index in range(EMBEDDING_DIM)]
@@ -107,7 +110,7 @@ async def test_a_rejected_candidate_value_leaves_no_byte_in_the_file_or_the_log(
 async def test_a_deleted_record_leaves_no_text_or_vector_byte_in_the_file_or_the_log(
     store: Path,
 ) -> None:
-    """Deleting a record erases its turn, recall unit, FTS5 entry and vector from the bytes."""
+    """Deleting a record erases its turn, recall unit, FTS5 tokens and vector from the bytes."""
     owner = await upsert_entity(name="Canary Owner", type="person")
     turn = RecordedTurn(
         at=_NOW,
@@ -127,6 +130,7 @@ async def test_a_deleted_record_leaves_no_text_or_vector_byte_in_the_file_or_the
     # Sanity: the canary text and the vector bytes ARE in the files before the deletion.
     live = _file_bytes(store)
     assert _TURN_CANARY.encode() in live
+    assert _TURN_TOKEN_LOWER in live
     assert _VECTOR_BYTES in live
     assert _VECTOR_SLICE in live
 
@@ -135,5 +139,6 @@ async def test_a_deleted_record_leaves_no_text_or_vector_byte_in_the_file_or_the
     assert await db.checkpoint_wal() is True
     after = _file_bytes(store)
     assert _TURN_CANARY.encode() not in after
+    assert _TURN_TOKEN_LOWER not in after
     assert _VECTOR_BYTES not in after
     assert _VECTOR_SLICE not in after

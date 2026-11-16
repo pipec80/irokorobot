@@ -4,6 +4,7 @@ Plan 0085, decisions D-1 and D-2: the runtime is checked (SQLite floor, FTS5, sq
 version) and a failed start leaves no connection or lock behind.
 """
 
+import asyncio
 from collections.abc import AsyncIterator
 import dataclasses
 import logging
@@ -128,6 +129,27 @@ async def test_a_failed_start_leaves_nothing_behind(
     await cursor.close()
     assert row is not None
     assert row[0] == "ok"
+
+
+@pytest.mark.integration
+async def test_a_cancelled_start_leaves_nothing_behind(
+    clean_conn_state: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A cancellation is not an `Exception`, yet it must not leave a half-set connection."""
+
+    async def cancelled(conn: aiosqlite.Connection) -> db.RuntimeReport:
+        raise asyncio.CancelledError
+
+    with monkeypatch.context() as broken:
+        broken.setattr(db, "check_runtime", cancelled)
+        with pytest.raises(asyncio.CancelledError):
+            await db.open_db()
+
+    assert db.is_open() is False
+    assert db._write_lock is None
+
+    await db.open_db()
+    assert db.is_open() is True
 
 
 @pytest.mark.integration

@@ -81,5 +81,11 @@ def test_the_validity_day_is_the_household_day() -> None:
 
 
 @pytest.mark.unit
+def test_a_naive_moment_has_no_validity_day() -> None:
+    with pytest.raises(ValueError, match="naive"):
+        validity_day(datetime(2026, 11, 16, 10, 0, 0), ZoneInfo("America/Santiago"))
+
+
+@pytest.mark.unit
 def test_day_text() -> None:
     assert day_text(date(2026, 1, 5)) == "2026-01-05"

@@ -430,14 +430,29 @@ async def list_active_relations(owner_entity_id: int) -> list[EntityRelationV4]:
     return [_relation_from_row(tuple(row)) for row in rows]
 
 
-def _stored_moment(text: str) -> datetime:
-    """The instant of a stored timestamp; a text without an offset is UTC.
+_NOT_A_STORED_INSTANT = "not a stored instant"
+_LEGACY_INSTANT = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}")
 
-    The offset-less form exists for the legacy-format producers (removed with the dead tables in
-    Part B of Plan 0085).
+
+def _stored_moment(text: str) -> datetime:
+    """The instant of a stored timestamp: aware ISO 8601 text, or the legacy naive UTC form.
+
+    The legacy form is exactly ``YYYY-MM-DD HH:MM:SS`` read as UTC; its producers are removed with
+    the dead tables in Part B of Plan 0085. Any other text (a date alone, an hour without an
+    offset, junk) is refused, and the message never carries the value.
+
+    Raises:
+        ValueError: If ``text`` is neither aware ISO 8601 nor the legacy form.
     """
-    moment = datetime.fromisoformat(text)
-    return moment if moment.tzinfo is not None else moment.replace(tzinfo=UTC)
+    try:
+        moment = datetime.fromisoformat(text)
+    except ValueError:
+        raise ValueError(_NOT_A_STORED_INSTANT) from None
+    if moment.tzinfo is not None:
+        return moment
+    if _LEGACY_INSTANT.fullmatch(text) is None:
+        raise ValueError(_NOT_A_STORED_INSTANT)
+    return moment.replace(tzinfo=UTC)
 
 
 def _opening_day(asserted: str) -> str:
@@ -676,7 +691,9 @@ async def _insert_literal_fact(
                 now_text,
                 literal_fact_id,
                 definition.temporal,
-                opening_day,
+                # Closed on the day it was superseded (today), not on the new row's assertion
+                # day: a backdated assertion must not close the old row before its own opening.
+                validity_day(now, household_zone()),
                 subject_entity_id,
                 definition.canonical_id,
                 literal_fact_id,
