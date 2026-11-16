@@ -185,7 +185,7 @@ the operator's, and the operator manual says so.
 |---|---|
 | Where backups live, their encryption and the restore procedure | ADR 0033 (deployment) |
 | Forgetting a document | ADR 0034 (documents), with this ADR's rules |
-| Forgetting a pending topic or an occurred time by voice | C2's plan, with decision 2 here ([Plan 0084](../plans/open/0084-pending-topics-and-the-greeting.md) left it out, 2026-11-13); a pending topic already expires two days after its due day and goes with its record |
+| Forgetting a pending topic or an occurred time by voice | C2's plan, with decision 2 here ([Plan 0084](../plans/completed/0084-pending-topics-and-the-greeting.md) left it out, 2026-11-13); a pending topic already expires two days after its due day and goes with its record |
 | Consolidating memories into new facts or reflections | Not planned (ADR 0031 *Not decided here*) |
 | Third parties' text and Chile's Law 21.719 | Legal advice, pending (ADR 0027) |
 | A web administration (the CRUD, the export and the deletion from a browser) | The remote dashboard, the remote half of ADR 0025, after the finish line (Pipec, 2026-11-13) |
