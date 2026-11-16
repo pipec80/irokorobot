@@ -1,14 +1,16 @@
 # 0037 — The time of memories and the alta by voice: when it happened, what is pending, and every loaded datum reachable
 
-- **Status:** Proposed (2026-11-11). Written from the research of the memory engine (kept in the
-  ignored `project-history/`), the code read that day and Pipec's four decisions of 2026-11-11 (see
-  *Pipec's decisions and where they land*). It becomes `Accepted` when the plan that implements it
-  closes (plan 0082 or the plans it is split into). Decisions 1 and 5 implemented by Plan 0082 and
-  accepted on real hardware on 2026-11-12, 9 of 9 cases (*Implemented in Plan 0082* below).
-  Decisions 3 and 4 implemented by Plan 0083 and accepted on real hardware the same day, 13 of 13
-  cases after three fixes found there (*Implemented in Plan 0083* below). Decision 2 implemented
-  by Plan 0084, merged 2026-11-13 (*Implemented in Plan 0084* below); it becomes `Accepted` once
-  the greeting passes on hardware (2026-11-16 to 2026-11-19).
+- **Status:** Accepted (2026-11-16). Proposed 2026-11-11. Written from the research of the memory
+  engine (kept in the ignored `project-history/`), the code read that day and Pipec's four
+  decisions of 2026-11-11 (see *Pipec's decisions and where they land*). Decisions 1 and 5
+  implemented by Plan 0082 and accepted on real hardware on 2026-11-12, 9 of 9 cases
+  (*Implemented in Plan 0082* below). Decisions 3 and 4 implemented by Plan 0083 and accepted on
+  real hardware the same day, 13 of 13 cases after three fixes found there (*Implemented in Plan
+  0083* below). Decision 2, and decision 6 for its switch, implemented by Plan 0084 (merged
+  2026-11-13) and accepted on 2026-11-16 by Pipec's decision: the telling passed on hardware, 9 of
+  9 cases, and so did the greeting with nothing due; the later greeting days were not run on
+  hardware and are covered by automated tests, and become observation in normal use
+  (*Implemented in Plan 0084* below).
 - **Date:** 2026-11-11
 - **Builds on:** [ADR 0024](0024-seed-load-senses-secrets-and-channels.md) (the contacts table),
   [ADR 0027](0027-conversation-record-and-the-diary.md) (the record and the diary),
@@ -222,8 +224,8 @@ day interval; the order of decision 5.
 
 Implemented on 2026-11-12 behind the default-off `ALTA_READ_ENABLED` (needs `MEMORY_ENABLED` and
 `SENSITIVE_READ_ENABLED`); accepted on real hardware the same day, 9 of 9 cases
-([record](../evals/0082-alta-by-voice-acceptance.md)); the ADR stays `Proposed` until decisions 2 to
-4 close (Plans 0083 and 0084). The builder's calls, recorded in
+([record](../evals/0082-alta-by-voice-acceptance.md)); the ADR stayed `Proposed` until decisions 2
+to 4 closed (Plans 0083 and 0084). The builder's calls, recorded in
 [Plan 0082](../plans/completed/0082-the-whole-alta-by-voice.md):
 
 - **One reader.** The contacts and the rest of the profile join the sensitive read of ADR 0029: same
@@ -273,15 +275,18 @@ executor rulings; what the hardware changed, by Pipec's decision:
 
 The ADR index; the roadmap (row 7); `current-state.md` and the architecture diagrams when the plan
 closes; ADR 0024 decision 5, ADR 0029 decision 1 and ADR 0031 decision 5 (an *Amended by ADR 0037*
-note each, when this ADR is accepted).
+note each, when this ADR is accepted). All done on 2026-11-16, with Plan 0084's close.
 
 ## Implemented in Plan 0084
 
 Decision 2 and decision 6 for its switch, behind the default-off `PENDING_TOPICS_ENABLED` (needs
 `MEMORY_ENABLED` and `CONVERSATION_RECORD_ENABLED`), with migration 016 and no wire or robot change
-([Plan 0084](../plans/open/0084-pending-topics-and-the-greeting.md)). The calls the decision left
-to the builder, confirmed by Pipec on 2026-11-12, and what the review and the first hardware day
-added:
+([Plan 0084](../plans/completed/0084-pending-topics-and-the-greeting.md)); accepted on 2026-11-16
+by Pipec's decision ([record](../evals/0084-pending-topics-acceptance.md)): day 1, the telling,
+passed on hardware 9 of 9 and so did the greeting with nothing due; the cases of the later greeting
+days were not run on hardware and are covered by named automated tests (the record lists them),
+and the greeting is watched in normal use, non-blocking. The calls the decision left to the
+builder, confirmed by Pipec on 2026-11-12, and what the review and the first hardware day added:
 
 - **The window drops «today»** (D-4): a topic is asked from the day after its due day to two days
   after, never before it happened.

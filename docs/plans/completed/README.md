@@ -150,3 +150,8 @@ hardware; the [operational board](../README.md#operational-board) has the full c
 - [Plan 0083](0083-spoken-time-and-when-it-happened.md) (`just gate` 7904): one reader of spoken
   time, past and future, and when a told event happened; migration 015, behind
   `OCCURRED_TIME_ENABLED`; ADR 0037 decisions 3 and 4.
+- [Plan 0084](0084-pending-topics-and-the-greeting.md) (`just gate` 8118): what the owner says they
+  will do on one future day is kept as a pending topic, named by the local model, and picked up
+  once by a later day's first greeting; migration 016, behind `PENDING_TOPICS_ENABLED`; ADR 0037
+  decision 2, which is `Accepted` with it. Closed 2026-11-16 by Pipec's decision: the telling and
+  the greeting with nothing due passed on hardware, the later greeting days are covered by tests.

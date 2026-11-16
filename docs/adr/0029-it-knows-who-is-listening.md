@@ -106,6 +106,13 @@ decision 9, amended by Plan 0068) and evaluates the next turn. *(Review: no stat
 security question whose voice fails, with the owner's face alone in view, hears the retry sentence;
 the next turn is evaluated afresh, and no count of failures exists.)*
 
+> **Amended by [ADR 0037](0037-the-time-of-memories-and-a-contacts-phone.md) decisions 1 and 5**
+> (Plan 0082, 2026-11-12; ADR `Accepted` 2026-11-16): behind `ALTA_READ_ENABLED` the same read, with
+> the same order, camera check and consent, also answers the owner's own contacts (a phone, the key
+> holders) and the rest of the profile the alta loads (devices, mobility, hearing, vision, coverage,
+> dwelling, floor, lift, access), «vive solo» at the security level. The table above is unchanged
+> for the data it lists.
+
 ### 2. Replay: accepted for the home, and a second factor later only for security
 
 The residual risk of ADR 0016 §9 (a photograph plus a recording) is **accepted for the personal
