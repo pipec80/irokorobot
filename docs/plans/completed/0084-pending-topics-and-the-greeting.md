@@ -1,9 +1,13 @@
 # 0084 — Pending topics: what the owner said they would do, picked up by a greeting
 
-> **Status:** **Implemented, acceptance in progress** — merged 2026-11-13 (`6a17e38`, PR #264),
-> `just gate` 8118 passed (baseline 7887); day 1 of the hardware acceptance passed and the greeting
-> days run 2026-11-16 to 2026-11-19 ([record](../../evals/0084-pending-topics-acceptance.md)); the
-> plan moves to `completed/` and ADR 0037 becomes `Accepted` then.
+> **Status:** **Closed** (2026-11-16, by Pipec's decision). Merged 2026-11-13 (`6a17e38`, PR #264),
+> `just gate` 8118 passed (baseline 7887). Hardware evidence: day 1 (2026-11-13, the telling)
+> passed, 9 of 9 cases; on 2026-11-16 the greeting with nothing due passed (case 10: no question,
+> `pending.follow_up none_due`). Pipec closed the acceptance on 2026-11-16 instead of running the
+> greeting days of 17 to 19 November on hardware, so that the other work stops waiting: cases 11
+> to 17 were **not run on hardware** and are covered by automated tests, and the greeting becomes
+> observation in normal use, non-blocking; a defect found there is fixed then
+> ([record](../../evals/0084-pending-topics-acceptance.md)). ADR 0037 is `Accepted`.
 >
 > **Was:** `Ready` and `NOW` — **promoted by Pipec on 2026-11-12**: D-1 to D-16 confirmed as
 > written, the departures from the ADR included (D-4, D-8, D-9, D-12); finer points of grammar and
@@ -168,7 +172,7 @@ and its *Test consequences*; [ADR 0021](../../adr/0021-memory-candidates-and-the
 decision 9 (the offer's slot, prepared and committed); [ADR 0027](../../adr/0027-conversation-record-and-the-diary.md)
 (only verified turns feed the diary); [ADR 0029](../../adr/0029-it-knows-who-is-listening.md)
 (levels and the camera check); [ADR 0020](../../adr/0020-authorized-actor-in-the-conversation.md)
-(the short-term session); [Plan 0083](../completed/0083-spoken-time-and-when-it-happened.md) (the
+(the short-term session); [Plan 0083](0083-spoken-time-and-when-it-happened.md) (the
 one reader and D-16); [current state](../../architecture/current-state.md);
 [guardrails](../../architecture/implementation-guardrails.md).
 
@@ -467,7 +471,10 @@ Plan 0084* and `Accepted`), ADR 0021 decision 9 (a note: the follow-up shares th
 the ADR index, the plan board, `docs/plans/open/README.md`, `docs/plans/completed/README.md`, the
 roadmap row 7 and both delivery maps, and Pipec's local `docs/roadmap/tabla-tareas.md`.
 
-- [ ] **Step 1: Hardware acceptance by Pipec over two or three days** (streaming; `MEMORY_ENABLED`,
+- [x] **Step 1: Hardware acceptance by Pipec over two or three days — closed by Pipec's decision
+  on 2026-11-16** (day 1 and the greeting with nothing due ran on hardware; the cases of days 2 and
+  3 and the Thursday were not run and are covered by automated tests, see the
+  [record](../../evals/0084-pending-topics-acceptance.md)) (streaming; `MEMORY_ENABLED`,
   the record, the diary and `PENDING_TOPICS_ENABLED` on; his face alone unless the case says). The
   agent backs up the database with the server stopped (migration 016 runs at the next start),
   reads `logs/server.log` (closed values only) and gives a numbered script; stories invented, **no
@@ -486,7 +493,9 @@ roadmap row 7 and both delivery maps, and Pipec's local `docs/roadmap/tabla-tare
   - The day after the Thursday: (11) alone → «¿Cómo te fue ayer con el médico?»
   - `iroko-admin conversations` shows no follow-up sentence in the record.
   Phrasings that missed the grammar go into the Task 1 fixture in a fix commit, counts only.
-- [ ] **Step 2:** Update the documents above; move the plan to `completed/`.
+  *Closed 2026-11-16 (Pipec): the greeting days of 17 to 19 November are observation in normal use,
+  not a gate; the automated tests that cover each case are named in the record.*
+- [x] **Step 2:** Update the documents above; move the plan to `completed/`.
 - [ ] **Step 3:** commit `docs: close plan 0084, pending topics`, push, open the PR, squash-merge
   with green CI (GitHub is delegated), delete the branch, return to `main`.
 
