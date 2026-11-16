@@ -1,6 +1,9 @@
 # 0038 — The memory engine's storage foundation: one SQLite file for every kind of memory, built to last years
 
-- **Status:** Proposed (2026-11-13). Written at Pipec's request after he named the storage the core
+- **Status:** Proposed (2026-11-13), **amended by Pipec on 2026-11-16** (*Amendment of
+  2026-11-16* below governs: the scope of what is built now is trimmed by Pipec's rule; the
+  decisions below stay as the target and each deferred piece has its trigger). Written at Pipec's
+  request after he named the storage the core
   of the product («estamos montando un motor de memoria sobre SQLite»: relational, vector, full
   text, graph and document memory all on SQLite; starting the schema from zero is acceptable in
   the MVP). It rests on seven independent read-only reviews of 2026-11-13: two of Plan 0085's
@@ -358,6 +361,54 @@ Pipec confirmed every recommendation as written («Confirm all 9»).
 | 8 | `trusted_schema` stays ON for the `vec0` trigger, with the reason written | Decision 3 |
 | 9 | Delivery: Plan 0085 rewritten on this ADR in two parts, A (the runtime, the pragmas, the transaction, one writer per table, the deletion test) and B (the v2 schema and the upgrade), each its own branch and PR | Plan 0085 |
 | 10 | Forgetting a story does not forget a fact the owner confirmed from it; the fact keeps its own link to the turn, and the deletion can name it (applied with the audit's corrections, «Yes, apply them») | Decision 6 |
+| 11 | **Scope rule** (2026-11-16, «Yes, trim it»): every piece must show which behaviour it enables, which defect it fixes or which concrete risk it reduces; the storage carries only what C2, the export and today's recall need; the rest waits for its trigger | *Amendment of 2026-11-16* |
+
+## Amendment of 2026-11-16: what is built now, and what waits for its trigger
+
+Pipec's own analysis of 2026-11-16 found the risk of this ADR in its **scope, not its concept**:
+each review round had added a reasonable piece, and together they turned the storage foundation
+into a precondition larger than the problem C2 must solve. The decisions above stay as the target
+shape. What is built now, by Plan 0085, is only what fixes a defect found in the code, what C2
+(correct, archive, delete) and the export need, and what ADR 0032 decision 1 asks for. The cheapest
+form is chosen: `ALTER TABLE ADD COLUMN` and `CREATE INDEX` instead of table rebuilds wherever
+SQLite allows; ordinary, atomic migrations instead of a squashed v2 baseline.
+
+**Built now (Plan 0085).** The runtime checked at start (SQLite ≥ 3.42 for the FTS5 index already in
+use, FTS5, extensions, `sqlite-vec` pinned to 0.1.9); `transaction()` and a failed `open_db` fixed;
+`PRAGMA optimize=0x10002` on open; one time format written by Python and the old values converted;
+the byte-level deletion test; an atomic migration runner; the dead tables out (except `memories`);
+the turns as rows, with the record's cap counted in bytes; each turn linked by foreign key to its
+recall unit, candidate and pending topic, with unique keys against retried jobs and a trigger that
+refuses an edited unit body; an index on every foreign key; the two biometric profile tables fixed
+(no reused id, explicit `RESTRICT`); the simple embedding-model guard (no comparison across models,
+re-index, lexical search meanwhile); the data dictionary with each table's domain, the guards and a
+minimal health check.
+
+**Deferred, each with its trigger.**
+
+| Piece (decision) | Trigger | Owner |
+|---|---|---|
+| `uid` keys, deterministic UUIDv8 for carried rows (5) | The deletion register needs a stable key | Plan 0086, by `ADD COLUMN` |
+| `archived_at` (6) | Archiving by voice | Plan 0086, by `ADD COLUMN` |
+| A fact's own link to its turn; row 10's rule (6) | The deletion has to name the fact | Plan 0086, by `ADD COLUMN` |
+| `episode_sources`; the episode's key to its record (6) | The diary outlives the record (ADR 0032 decision 5) | Plan 0086 |
+| The deletion durability protocol (4) | Physical deletion with the PIN | Plan 0086 |
+| The Python patch with SQLite 3.53.1 and the 3.51.3 floor (2) | The move to the Pi, or a second process writing while the server runs | The Pi move |
+| `STRICT` and exact checks on every table (5) | A table is rebuilt for another reason | That plan |
+| Record time renamed `recorded_at`/`retracted_at` (6) | A query that needs it; `asserted_at` and `superseded_at` already carry it | — |
+| `embedding_spaces`, the digest, a `vec0` with space and told day as metadata (6) | A second embedding model is actually trialled | Its plan |
+| The recall window filtered inside the KNN (6) | A real recall miss caused by it | Its plan |
+| Origin and transformation columns (6) | A second origin is stored (ADR 0031 decision 6) | That plan |
+| `memories` and `source_memory_id` dropped (*Context* item 6) | A V4 rebuild for another reason | That plan |
+| One-owner-per-table guard; biometric statements behind the consent stores (8) | The engine's extraction (ADR 0031 decision 11) | The extraction plan |
+| Pragmas read back and the extra pragmas (3) | A measured problem | — |
+| The storage benchmark and the storage fingerprint (10, 11) | The first tuning question, or the Pi move | Its plan |
+| A v2 baseline with a squashed upgrade (9) | Not needed while ordinary migrations stay small | — |
+
+**What does not change.** One SQLite file for every kind of memory (1); `trusted_schema` ON for
+the `vec0` trigger (3); a turn may be lost, a deletion may not (4); what is primary and what is a
+projection (7); ownership kept apart from domain (8), now written in the dictionary; reset, restart
+and restore as three tests, the rollback proven before an upgrade, and the backup order (9).
 
 ## Not decided here
 
