@@ -185,3 +185,31 @@ async def test_nested_transaction_calls_deadlock_by_design(real_db: Path) -> Non
         with pytest.raises(TimeoutError):
             async with asyncio.timeout(0.2), db.transaction():
                 pass
+
+
+@pytest.mark.integration
+async def test_a_cancelled_transaction_after_begin_rolls_back(real_db: Path) -> None:
+    """A cancellation that lands while `BEGIN IMMEDIATE` is pending must not leave it open.
+
+    The statement is already queued on the connection thread when the cancel arrives, so the
+    BEGIN still runs. The rollback has to cover it: the connection must not stay in a
+    transaction and the write lock must be free for the next writer.
+    """
+
+    async def enter_and_write() -> None:
+        async with db.transaction() as conn:
+            await conn.execute("INSERT INTO meta (key, value) VALUES (?, ?)", ("t7", "leaked"))
+
+    task = asyncio.create_task(enter_and_write())
+    await asyncio.sleep(0)  # the task is now suspended on the BEGIN IMMEDIATE await
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    cursor = await db.get_conn().execute("SELECT 1")  # drains the connection's queue
+    await cursor.close()
+    assert db.get_conn().in_transaction is False
+    assert await _meta_value("t7") is None
+    async with asyncio.timeout(_GUARD_TIMEOUT_S), db.transaction() as conn:
+        await conn.execute("INSERT INTO meta (key, value) VALUES (?, ?)", ("t7b", "ok"))
+    assert await _meta_value("t7b") == "ok"
