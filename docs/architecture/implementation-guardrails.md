@@ -120,6 +120,31 @@ No plan implicitly authorizes a commit, push, pull request, deployment,
 dependency update, database mutation outside tests, cloud request, or hardware
 action. These require the user's request or an explicit plan scope.
 
+## Scope rule: no piece without a reason (Pipec, 2026-11-16)
+
+Architecture discoveries must not keep pushing the product goal away. Until the memory MVP closes
+(block D: CM-7 + PC-5), and for every plan or ADR after it:
+
+1. **Every new piece shows its reason**: the behaviour of Iroko it enables, the defect it fixes
+   (found in the code or by a test) or the concrete risk it reduces. A piece with none of the three
+   is not built; it is recorded with the trigger that would bring it back.
+2. **Three kinds of work, kept apart.** *Required before the MVP*: integrity of the data,
+   authorization, correct recall, correction and forgetting, surviving a restart, and never
+   inventing a memory. *Conditioned on a measurement*: indexes beyond those a query needs, RAM,
+   new embedding models, more concurrency, compression, SQLite tuning. *Later evolution*: spatial
+   memory, learned procedures, richer graphs, the engine as its own package, multimodal robot
+   functions.
+3. **A discovery that the plan's goal does not need is recorded, not built.** A real defect is
+   fixed; an interesting improvement goes to the roadmap or to its ADR with its trigger.
+4. **Once a behaviour passes its acceptance, it is not redesigned** only because a more elegant
+   architecture appears; it changes when a defect, a measurement or a new behaviour asks for it.
+5. **The cheapest form that holds the guarantee wins** (for SQLite, `ALTER TABLE ADD COLUMN` and
+   `CREATE INDEX` before a table rebuild), and a reviewer who adds a piece names which of the three
+   reasons it serves.
+
+The memory engine's storage foundation was trimmed by this rule
+([ADR 0038](../adr/0038-the-memory-engines-storage-foundation.md), *Amendment of 2026-11-16*).
+
 ## Real household data never enters the repository
 
 No tracked file, test fixture, prompt example, document or commit message may
