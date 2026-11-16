@@ -48,13 +48,14 @@ _conn: aiosqlite.Connection | None = None
 # The runtime is checked, not upgraded (Plan 0085, D-1). The floor is what the FTS5
 # `secure-delete` index this database already uses needs; sqlite-vec is pinned to one version.
 SQLITE_FLOOR: Final = (3, 42, 0)
+_SQLITE_TOO_OLD: Final = f"SQLite runtime older than {'.'.join(map(str, SQLITE_FLOOR))}"
 SQLITE_VEC_VERSION: Final = "v0.1.9"
 
 # SQLite's advice for a long-lived connection: analyze on open what changed.
 _OPTIMIZE_ON_OPEN = "PRAGMA optimize=0x10002"
 
-# How long a statement waits for a lock held by another connection. A checkpoint waits less:
-# it holds the write lock while it waits, and giving up only postpones the scrub.
+# How long a statement waits for a lock held by another connection. A checkpoint or an optimize
+# waits less: giving up only postpones the scrub or the statistics.
 _BUSY_TIMEOUT_MS = 5000
 _CHECKPOINT_BUSY_MS = 500
 
@@ -100,7 +101,7 @@ async def _read_runtime(conn: aiosqlite.Connection) -> RuntimeReport:
 def _require_supported(report: RuntimeReport) -> None:
     """Judge a report; raise a closed ``BrainMemoryError`` for the first failed check."""
     if report.sqlite_version < SQLITE_FLOOR:
-        raise BrainMemoryError("SQLite runtime older than 3.42")
+        raise BrainMemoryError(_SQLITE_TOO_OLD)
     if not report.fts5:
         raise BrainMemoryError("SQLite built without FTS5")
     if report.vec_version != SQLITE_VEC_VERSION:
@@ -138,16 +139,20 @@ async def _abandon_start() -> None:
         logger.warning("SQLite connection not closed after a failed start (%s)", type(exc).__name__)
 
 
-async def _optimize_on_open(conn: aiosqlite.Connection) -> None:
-    """Run SQLite's advised ``PRAGMA optimize`` for a long-lived connection; never raises.
+async def _optimize(conn: aiosqlite.Connection, pragma: str, when: str) -> None:
+    """Run an ``optimize`` pragma with a short lock wait; never raises.
 
     It may write statistics, so a lock held by another process (an operator's shell, the seed
-    importer's own lock check) only postpones it, exactly like the optimize in ``close_db``.
+    importer's own lock check) only postpones it; waiting the full busy timeout for that would
+    delay the open or the close. A failure is logged by class and swallowed.
     """
     try:
-        await conn.execute(_OPTIMIZE_ON_OPEN)
+        await conn.execute(f"PRAGMA busy_timeout = {_CHECKPOINT_BUSY_MS}")
+        await conn.execute(pragma)
     except (aiosqlite.Error, ValueError) as exc:
-        logger.warning("PRAGMA optimize skipped on open (%s)", type(exc).__name__)
+        logger.warning("PRAGMA optimize skipped on %s (%s)", when, type(exc).__name__)
+    finally:
+        await _restore_busy_timeout(conn)
 
 
 async def open_db() -> None:
@@ -192,7 +197,7 @@ async def open_db() -> None:
         # is a decision made here, not an implicit stdlib default.
         await _conn.execute(f"PRAGMA busy_timeout = {_BUSY_TIMEOUT_MS}")
         await _conn.commit()
-        await _optimize_on_open(_conn)
+        await _optimize(_conn, _OPTIMIZE_ON_OPEN, "open")
     except Exception as exc:
         await _abandon_start()
         if isinstance(exc, BrainMemoryError):
@@ -250,9 +255,9 @@ async def checkpoint_wal() -> bool:
 
 
 async def _restore_busy_timeout(conn: aiosqlite.Connection) -> None:
-    """Put the normal busy timeout back after a checkpoint; never raises.
+    """Put the normal busy timeout back after a checkpoint or an optimize; never raises.
 
-    A restore that fails (the connection closed under us) must not replace the checkpoint's own
+    A restore that fails (the connection closed under us) must not replace the caller's own
     outcome, so it is logged by class and swallowed.
     """
     try:
@@ -270,10 +275,7 @@ async def close_db() -> None:
     global _conn, _write_lock  # noqa: PLW0603
     if _conn is None:
         return
-    try:
-        await _conn.execute("PRAGMA optimize")
-    except (aiosqlite.Error, ValueError) as exc:
-        logger.warning("PRAGMA optimize skipped on close (%s)", type(exc).__name__)
+    await _optimize(_conn, "PRAGMA optimize", "close")
     await _conn.close()
     _conn = None
     _write_lock = None

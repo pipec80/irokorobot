@@ -8,6 +8,7 @@ from collections.abc import AsyncIterator
 import dataclasses
 import logging
 from pathlib import Path
+import sqlite3
 
 import aiosqlite
 import pytest
@@ -140,3 +141,32 @@ async def test_the_versions_are_logged_once_on_open(
     records = [r for r in caplog.records if r.getMessage().startswith("SQLite runtime")]
     assert len(records) == 1
     assert records[0].levelno == logging.INFO
+
+
+@pytest.mark.integration
+async def test_a_failed_optimize_on_open_waits_briefly_and_restores_the_busy_timeout(
+    clean_conn_state: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The optimize step only postpones: short wait, a WARNING, the 5 s timeout back, open succeeds.
+
+    (SQLite's optimize on a locked database fails at once here, so the wait cannot be timed;
+    the short timeout is asserted from the statements the connection ran.)
+    """
+    statements: list[str] = []
+    real_execute = aiosqlite.Connection.execute
+
+    async def spy(self: aiosqlite.Connection, sql: str, *args: object) -> aiosqlite.Cursor:
+        statements.append(sql)
+        if sql.startswith("PRAGMA optimize"):
+            raise sqlite3.OperationalError("database is locked")
+        return await real_execute(self, sql, *args)
+
+    monkeypatch.setattr(aiosqlite.Connection, "execute", spy)
+    with caplog.at_level(logging.WARNING, logger="server.db"):
+        await db.open_db()
+
+    assert db.is_open()
+    assert any("skipped on open" in r.getMessage() for r in caplog.records)
+    optimize = statements.index(db._OPTIMIZE_ON_OPEN)
+    assert statements[optimize - 1] == "PRAGMA busy_timeout = 500"
+    assert statements[optimize + 1] == "PRAGMA busy_timeout = 5000"

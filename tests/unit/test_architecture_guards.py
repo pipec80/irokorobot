@@ -2058,8 +2058,10 @@ def _stale_sqlite_clock_allowances(sources: Mapping[str, str]) -> list[str]:
 
 @pytest.mark.unit
 def test_no_server_module_writes_datetime_now() -> None:
-    assert _sqlite_clock_users(_sources()) == []
-    assert _stale_sqlite_clock_allowances(_sources()) == []
+    sources = _sources()
+
+    assert _sqlite_clock_users(sources) == []
+    assert _stale_sqlite_clock_allowances(sources) == []
 
 
 @pytest.mark.unit

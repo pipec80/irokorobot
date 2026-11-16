@@ -46,7 +46,6 @@ from server.memory.relational_v4 import (
 )
 from server.memory.voice_consent import grant_voice_consent, revoke_voice_consent
 from server.settings import settings
-from server.timestamps import INSTANT_LENGTH
 
 from server import db
 
@@ -68,7 +67,6 @@ async def store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterato
     monkeypatch.setattr(settings, "memory_candidates_enabled", True)
     monkeypatch.setattr(settings, "conversation_record_enabled", True)
     monkeypatch.setattr(settings, "conversation_episodes_enabled", True)
-    monkeypatch.setattr(candidates, "_checkpoint_pending", False)
     db._conn = None
     await db.open_db()
     await db.run_migrations()
@@ -77,21 +75,10 @@ async def store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterato
     db._conn = None
 
 
-async def _values(table: str, column: str) -> list[str]:
-    """Every non-NULL value of one column, with its SQL length checked on the way."""
-    cursor = await db.get_conn().execute(
-        f"SELECT {column}, length({column}) FROM {table} WHERE {column} IS NOT NULL"  # noqa: S608
-    )
-    rows = list(await cursor.fetchall())
-    await cursor.close()
-    assert all(int(row[1]) == INSTANT_LENGTH for row in rows), (table, column)
-    return [str(row[0]) for row in rows]
-
-
 async def _assert_instants(table: str, *columns: str) -> None:
     """Each column holds at least one value and every value is a 32-character instant."""
     for column in columns:
-        values = await _values(table, column)
+        values = await _days(table, column)
         assert values, f"{table}.{column} was never written"
         assert all(_INSTANT.fullmatch(value) for value in values), (table, column, values)
 
@@ -191,6 +178,7 @@ async def test_literal_facts_write_instants_and_close_on_a_day() -> None:
 
 
 async def _days(table: str, column: str) -> list[str]:
+    """Every non-NULL value of one column, as text."""
     cursor = await db.get_conn().execute(
         f"SELECT {column} FROM {table} WHERE {column} IS NOT NULL"  # noqa: S608
     )
@@ -226,6 +214,36 @@ async def test_a_temporal_relation_opens_and_closes_on_household_days() -> None:
     # 02:30 UTC is still the 28th in the household's America/Santiago.
     assert revoked.valid_to == "2026-10-28"
     await _assert_instants("entity_relations_v4", "asserted_at", "superseded_at")
+
+
+@pytest.mark.usefixtures("store")
+@pytest.mark.parametrize(
+    "given, stored",
+    [
+        ("2026-01-02 03:04:05", "2026-01-02T03:04:05.000000+00:00"),
+        ("2026-01-02T03:04:05+03:00", "2026-01-02T00:04:05.000000+00:00"),
+    ],
+)
+async def test_an_old_format_asserted_at_is_stored_as_the_utc_instant(
+    given: str, stored: str
+) -> None:
+    owner = await _person("Canary Owner")
+    town = await upsert_entity(name="Canary Town", type="place")
+    await assert_literal_fact(
+        subject_entity_id=owner,
+        definition=_definition("preferred_name"),
+        value="Canary",
+        asserted_at=given,
+    )
+    await assert_entity_relation(
+        source_entity_id=owner,
+        target_entity_id=town,
+        definition=_definition("lives_in"),
+        asserted_at=given,
+    )
+
+    assert await _days("literal_facts_v4", "asserted_at") == [stored]
+    assert await _days("entity_relations_v4", "asserted_at") == [stored]
 
 
 @pytest.mark.usefixtures("store")

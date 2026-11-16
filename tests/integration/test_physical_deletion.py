@@ -48,7 +48,6 @@ async def store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterato
     db_path = tmp_path / "physical-deletion.db"
     monkeypatch.setattr(settings, "brain_db_path", db_path)
     monkeypatch.setattr(settings, "memory_candidates_enabled", True)
-    monkeypatch.setattr(candidates, "_checkpoint_pending", False)
     db._conn = None
     await db.open_db()
     await db.run_migrations()

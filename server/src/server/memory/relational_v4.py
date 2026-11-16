@@ -431,15 +431,18 @@ async def list_active_relations(owner_entity_id: int) -> list[EntityRelationV4]:
 
 
 def _stored_moment(text: str) -> datetime:
-    """The instant of a stored timestamp; a text without an offset is UTC (the legacy format)."""
+    """The instant of a stored timestamp; a text without an offset is UTC.
+
+    The offset-less form exists for the legacy-format producers (removed with the dead tables in
+    Part B of Plan 0085).
+    """
     moment = datetime.fromisoformat(text)
     return moment if moment.tzinfo is not None else moment.replace(tzinfo=UTC)
 
 
-def _opening_day(asserted_at: str | None, now: datetime) -> str:
-    """The household day a temporal row opens on: its assertion's day, or today."""
-    moment = now if asserted_at is None else _stored_moment(asserted_at)
-    return validity_day(moment, household_zone())
+def _opening_day(asserted: str) -> str:
+    """The household day a temporal row opens on: the day of its normalised assertion instant."""
+    return validity_day(_stored_moment(asserted), household_zone())
 
 
 def _revocation(revoked_at: str) -> tuple[str, str]:
@@ -631,7 +634,9 @@ async def _insert_literal_fact(
 ) -> int:
     """Issue the INSERT (and same-predicate supersede) on an active connection."""
     now = utc_now()
-    opening_day = _opening_day(asserted_at, now)
+    now_text = instant_text(now)
+    asserted = now_text if asserted_at is None else instant_text(_stored_moment(asserted_at))
+    opening_day = _opening_day(asserted) if definition.temporal else None
     cursor = await conn.execute(
         "INSERT INTO literal_facts_v4 "
         "(subject_entity_id, predicate, value_text, confidence, source_memory_id, asserted_at, "
@@ -644,10 +649,10 @@ async def _insert_literal_fact(
             normalized_value,
             confidence,
             source_memory_id,
-            instant_text(now) if asserted_at is None else asserted_at,
+            asserted,
             stamp.visibility,
             stamp.sensitivity,
-            opening_day if definition.temporal else None,
+            opening_day,
             stamp.confirmed_by_entity_id,
             stamp.confirmed_at,
             stamp.asserted_by_entity_id,
@@ -668,7 +673,7 @@ async def _insert_literal_fact(
             "superseded_by = ?, valid_to = CASE WHEN ? THEN ? ELSE valid_to END "
             "WHERE subject_entity_id = ? AND predicate = ? AND lifecycle = 'active' AND id != ?",
             (
-                instant_text(now),
+                now_text,
                 literal_fact_id,
                 definition.temporal,
                 opening_day,
@@ -876,9 +881,11 @@ async def _upsert_entity_relation(
         return _relation_from_row(tuple(existing_row))
 
     now = utc_now()
+    now_text = instant_text(now)
+    asserted = now_text if asserted_at is None else instant_text(_stored_moment(asserted_at))
     valid_from = stamp.valid_from
     if valid_from is None and definition.temporal and stamp.valid_to is None:
-        valid_from = _opening_day(asserted_at, now)
+        valid_from = _opening_day(asserted)
     cursor = await conn.execute(
         "INSERT INTO entity_relations_v4 "
         "(source_entity_id, predicate, target_entity_id, confidence, source_memory_id, "
@@ -891,7 +898,7 @@ async def _upsert_entity_relation(
             target_entity_id,
             confidence,
             source_memory_id,
-            instant_text(now) if asserted_at is None else asserted_at,
+            asserted,
             stamp.visibility,
             stamp.sensitivity,
             valid_from,
@@ -913,7 +920,7 @@ async def _upsert_entity_relation(
             new_id=relation_id,
             source_entity_id=source_entity_id,
             predicate=definition.canonical_id,
-            now=now,
+            now_text=now_text,
         )
     return relation_id
 
@@ -948,7 +955,7 @@ def _closing_value(previous_from: str | None, new_from: str | None) -> str | Non
 
 
 async def _close_previous(
-    conn: aiosqlite.Connection, *, new_id: int, source_entity_id: int, predicate: str, now: datetime
+    conn: aiosqlite.Connection, *, new_id: int, source_entity_id: int, predicate: str, now_text: str
 ) -> None:
     """Supersede the active rows of one source and predicate, each at the new row's start."""
     cursor = await conn.execute(
@@ -969,7 +976,7 @@ async def _close_previous(
             "UPDATE entity_relations_v4 "
             "SET lifecycle = 'superseded', superseded_at = ?, "
             "superseded_by = ?, valid_to = ? WHERE id = ?",
-            (instant_text(now), new_id, _closing_value(previous_from, new_from), previous_id),
+            (now_text, new_id, _closing_value(previous_from, new_from), previous_id),
         )
 
 
