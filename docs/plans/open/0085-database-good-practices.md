@@ -1,14 +1,16 @@
 # 0085 — Block C1: the storage foundation, minimum version
 
-> **Status:** **Draft** (trimmed 2026-11-16). Rewritten on Pipec's scope rule of 2026-11-16
+> **Status:** **Ready (promoted by Pipec on 2026-11-16)**; executed in two parts, Part A on
+> `feat/0085a-storage-safety`, Part B on `feat/0085b-storage-schema`, both merged after Plan 0084's
+> acceptance closes. Trimmed 2026-11-16. Rewritten on Pipec's scope rule of 2026-11-16
 > («Yes, trim it»): **every piece must show which behaviour it enables, which defect it fixes or
 > which concrete risk it reduces**; the schema carries only what Plan 0086 (C2: correct, archive
 > and delete), Plan 0087 (the export) and today's recall need. Everything else of the earlier
 > version is deferred with its trigger in [ADR 0038](../../adr/0038-the-memory-engines-storage-foundation.md)
 > (*Amendment of 2026-11-16*) and listed in *Deferred, with their triggers* below; nothing was
 > dropped silently. Source: ADR 0038 as amended and
-> [ADR 0032](../../adr/0032-block-c-hygiene-correct-forget-and-years.md) decision 1. It becomes
-> executable only when Pipec promotes it to `Ready`.
+> [ADR 0032](../../adr/0032-block-c-hygiene-correct-forget-and-years.md) decision 1. Pipec promoted
+> it to `Ready` on 2026-11-16.
 >
 > **Two parts, two PRs, both merged after Plan 0084's acceptance closes.** **Part A**
 > (`feat/0085a-storage-safety`) changes no table: it fixes the defects found in the code (the
