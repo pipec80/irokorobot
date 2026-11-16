@@ -1,14 +1,15 @@
 """Local repositories for household roles and safe authorization audit events."""
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from uuid import uuid4
 
 from server import db
 from server.cognition.authorization import AuthorizationRequest
+from server.cognition.clock import utc_now
 from server.cognition.identity import HouseholdRole
 from server.cognition.models import AuthorizationAction, AuthorizationDecision, AuthorizationStatus
 from server.db import get_conn
+from server.timestamps import instant_text
 
 __all__ = [
     "HouseholdRoleAssignment",
@@ -134,8 +135,10 @@ async def record_authorization_decision(
             policy_id=decision.policy_id,
             reason=decision.reason,
             correlation_id=str(decision.correlation_id),
-            evaluated_at=decision.evaluated_at.isoformat(),
-            expires_at=decision.expires_at.isoformat() if decision.expires_at is not None else None,
+            evaluated_at=instant_text(decision.evaluated_at),
+            expires_at=(
+                instant_text(decision.expires_at) if decision.expires_at is not None else None
+            ),
         )
 
 
@@ -163,11 +166,13 @@ async def bootstrap_initial_owner(
     if await _active_owner_exists():
         raise ValueError("an active owner already exists")
 
+    now = utc_now()
     async with db.transaction() as conn:
         cursor = await conn.execute(
             "INSERT INTO household_role_assignments "
-            "(person_entity_id, role, grantor_entity_id, reason) VALUES (?, 'owner', NULL, ?)",
-            (person_entity_id, "Explicit local initial-owner bootstrap"),
+            "(person_entity_id, role, grantor_entity_id, reason, granted_at) "
+            "VALUES (?, 'owner', NULL, ?, ?)",
+            (person_entity_id, "Explicit local initial-owner bootstrap", instant_text(now)),
         )
         if cursor.lastrowid is None:
             raise RuntimeError("INSERT into household_role_assignments returned no lastrowid")
@@ -182,7 +187,7 @@ async def bootstrap_initial_owner(
             policy_id="p0.5.local-owner-bootstrap",
             reason="Initial owner established by explicit local entity-ID confirmation.",
             correlation_id=str(uuid4()),
-            evaluated_at=datetime.now(UTC).isoformat(),
+            evaluated_at=instant_text(now),
             expires_at=None,
         )
 
@@ -220,15 +225,18 @@ async def assign_household_role(
     if await get_active_role(person_entity_id) is not HouseholdRole.UNKNOWN:
         raise ValueError("person already has an active household role")
 
+    now = utc_now()
     async with db.transaction() as conn:
         cursor = await conn.execute(
             "INSERT INTO household_role_assignments "
-            "(person_entity_id, role, grantor_entity_id, reason) VALUES (?, ?, ?, ?)",
+            "(person_entity_id, role, grantor_entity_id, reason, granted_at) "
+            "VALUES (?, ?, ?, ?, ?)",
             (
                 person_entity_id,
                 role.value,
                 grantor_entity_id,
                 "Internal local household role assignment",
+                instant_text(now),
             ),
         )
         if cursor.lastrowid is None:
@@ -244,7 +252,7 @@ async def assign_household_role(
             policy_id="p0.5.internal-role-assignment",
             reason="Active owner assigned a local household role.",
             correlation_id=str(uuid4()),
-            evaluated_at=datetime.now(UTC).isoformat(),
+            evaluated_at=instant_text(now),
             expires_at=None,
         )
 
@@ -257,20 +265,21 @@ async def revoke_active_role(*, person_entity_id: int) -> None:
     The person's active PIN credential is revoked in the same transaction: a
     credential outliving its owner role would be a dormant unlock secret.
     """
+    now = utc_now()
     async with db.transaction() as conn:
         cursor = await conn.execute(
-            "UPDATE household_role_assignments SET revoked_at = datetime('now') "
+            "UPDATE household_role_assignments SET revoked_at = ? "
             "WHERE person_entity_id = ? AND revoked_at IS NULL",
-            (person_entity_id,),
+            (instant_text(now), person_entity_id),
         )
         updated = cursor.rowcount
         await cursor.close()
         if updated != 1:
             raise ValueError("no active household role exists for this person")
         await conn.execute(
-            "UPDATE owner_pin_credentials SET revoked_at = datetime('now') "
+            "UPDATE owner_pin_credentials SET revoked_at = ? "
             "WHERE person_entity_id = ? AND revoked_at IS NULL",
-            (person_entity_id,),
+            (instant_text(now), person_entity_id),
         )
         await _record_event(
             actor_entity_id=None,
@@ -281,6 +290,6 @@ async def revoke_active_role(*, person_entity_id: int) -> None:
             policy_id="p0.5.local-role-revocation",
             reason="Local role assignment was revoked.",
             correlation_id=str(uuid4()),
-            evaluated_at=datetime.now(UTC).isoformat(),
+            evaluated_at=instant_text(now),
             expires_at=None,
         )

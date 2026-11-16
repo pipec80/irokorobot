@@ -10,7 +10,7 @@ from __future__ import annotations
 from calendar import monthrange
 from contextlib import AbstractAsyncContextManager, nullcontext
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
 from enum import StrEnum
 import re
 from typing import TYPE_CHECKING
@@ -18,14 +18,17 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, ConfigDict
 
 from server import db
+from server.cognition.clock import utc_now
 from server.db import get_conn
 from server.exceptions import UnstorableValueError
+from server.memory.household_time import household_zone
 from server.memory.predicate_registry import (
     PredicateCardinality,
     PredicateDefinition,
     PredicateKind,
     normalize_literal,
 )
+from server.timestamps import instant_text, validity_day
 
 if TYPE_CHECKING:
     from collections.abc import Collection
@@ -427,6 +430,24 @@ async def list_active_relations(owner_entity_id: int) -> list[EntityRelationV4]:
     return [_relation_from_row(tuple(row)) for row in rows]
 
 
+def _stored_moment(text: str) -> datetime:
+    """The instant of a stored timestamp; a text without an offset is UTC (the legacy format)."""
+    moment = datetime.fromisoformat(text)
+    return moment if moment.tzinfo is not None else moment.replace(tzinfo=UTC)
+
+
+def _opening_day(asserted_at: str | None, now: datetime) -> str:
+    """The household day a temporal row opens on: its assertion's day, or today."""
+    moment = now if asserted_at is None else _stored_moment(asserted_at)
+    return validity_day(moment, household_zone())
+
+
+def _revocation(revoked_at: str) -> tuple[str, str]:
+    """The instant a row was revoked at, and the household day its validity closes on."""
+    moment = _stored_moment(revoked_at)
+    return instant_text(moment), validity_day(moment, household_zone())
+
+
 async def revoke_literal_fact(
     fact_id: int, *, revoked_at: str, manage_transaction: bool = True
 ) -> bool:
@@ -437,17 +458,18 @@ async def revoke_literal_fact(
 
     Args:
         fact_id: The fact to revoke.
-        revoked_at: When it was revoked, as UTC ISO 8601.
+        revoked_at: When it was revoked, as UTC ISO 8601; its household day closes the validity.
         manage_transaction: ``False`` joins the caller's open transaction.
 
     Returns:
         ``True`` when an active row changed, ``False`` when none did (a no-op second revoke).
     """
+    instant, day = _revocation(revoked_at)
     async with _owned(manage_transaction):
         cursor = await get_conn().execute(
             "UPDATE literal_facts_v4 SET lifecycle = 'revoked', valid_to = ?, superseded_at = ? "
             "WHERE id = ? AND lifecycle = 'active'",
-            (revoked_at, revoked_at, fact_id),
+            (day, instant, fact_id),
         )
         changed = cursor.rowcount
         await cursor.close()
@@ -461,17 +483,18 @@ async def revoke_entity_relation(
 
     Args:
         relation_id: The relation to revoke.
-        revoked_at: When it was revoked, as UTC ISO 8601.
+        revoked_at: When it was revoked, as UTC ISO 8601; its household day closes the validity.
         manage_transaction: ``False`` joins the caller's open transaction.
 
     Returns:
         ``True`` when an active row changed, ``False`` when none did.
     """
+    instant, day = _revocation(revoked_at)
     async with _owned(manage_transaction):
         cursor = await get_conn().execute(
             "UPDATE entity_relations_v4 SET lifecycle = 'revoked', valid_to = ?, superseded_at = ? "
             "WHERE id = ? AND lifecycle = 'active'",
-            (revoked_at, revoked_at, relation_id),
+            (day, instant, relation_id),
         )
         changed = cursor.rowcount
         await cursor.close()
@@ -517,7 +540,7 @@ async def assert_literal_fact(
         value: The raw literal; normalized by the registry rule.
         confidence: Confidence in the fact, between 0 and 1.
         source_memory_id: The episodic memory it came from, if any.
-        asserted_at: Assertion timestamp; SQLite's now when ``None``.
+        asserted_at: Assertion timestamp; now when ``None``.
         visibility: Overrides the registry's default visibility.
         sensitivity: Overrides the registry's default sensitivity.
         confirmed_by_entity_id: The entity that confirmed the fact, if any.
@@ -607,24 +630,24 @@ async def _insert_literal_fact(
     stamp: _LiteralStamp,
 ) -> int:
     """Issue the INSERT (and same-predicate supersede) on an active connection."""
+    now = utc_now()
+    opening_day = _opening_day(asserted_at, now)
     cursor = await conn.execute(
         "INSERT INTO literal_facts_v4 "
         "(subject_entity_id, predicate, value_text, confidence, source_memory_id, asserted_at, "
         "visibility, sensitivity, valid_from, confirmed_by_entity_id, confirmed_at, "
         "asserted_by_entity_id, channel) "
-        "VALUES (?, ?, ?, ?, ?, COALESCE(?, datetime('now')), ?, ?, "
-        "CASE WHEN ? THEN COALESCE(?, datetime('now')) ELSE NULL END, ?, ?, ?, ?)",
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             subject_entity_id,
             definition.canonical_id,
             normalized_value,
             confidence,
             source_memory_id,
-            asserted_at,
+            instant_text(now) if asserted_at is None else asserted_at,
             stamp.visibility,
             stamp.sensitivity,
-            definition.temporal,
-            asserted_at,
+            opening_day if definition.temporal else None,
             stamp.confirmed_by_entity_id,
             stamp.confirmed_at,
             stamp.asserted_by_entity_id,
@@ -641,12 +664,14 @@ async def _insert_literal_fact(
     }:
         await conn.execute(
             "UPDATE literal_facts_v4 "
-            "SET lifecycle = 'superseded', superseded_at = datetime('now'), "
-            "superseded_by = ?, valid_to = CASE WHEN ? THEN datetime('now') ELSE valid_to END "
+            "SET lifecycle = 'superseded', superseded_at = ?, "
+            "superseded_by = ?, valid_to = CASE WHEN ? THEN ? ELSE valid_to END "
             "WHERE subject_entity_id = ? AND predicate = ? AND lifecycle = 'active' AND id != ?",
             (
+                instant_text(now),
                 literal_fact_id,
                 definition.temporal,
+                opening_day,
                 subject_entity_id,
                 definition.canonical_id,
                 literal_fact_id,
@@ -701,7 +726,7 @@ async def assert_entity_relation(
         definition: The previously resolved closed-registry predicate definition.
         confidence: Confidence in the relation, between 0 and 1.
         source_memory_id: The episodic memory it came from, if any.
-        asserted_at: Assertion timestamp; SQLite's now when ``None``.
+        asserted_at: Assertion timestamp; now when ``None``.
         visibility: Overrides the registry's default visibility.
         sensitivity: Overrides the registry's default sensitivity.
         confirmed_by_entity_id: The entity that confirmed the relation, if any.
@@ -850,27 +875,26 @@ async def _upsert_entity_relation(
     if existing_row is not None:
         return _relation_from_row(tuple(existing_row))
 
+    now = utc_now()
+    valid_from = stamp.valid_from
+    if valid_from is None and definition.temporal and stamp.valid_to is None:
+        valid_from = _opening_day(asserted_at, now)
     cursor = await conn.execute(
         "INSERT INTO entity_relations_v4 "
         "(source_entity_id, predicate, target_entity_id, confidence, source_memory_id, "
         "asserted_at, visibility, sensitivity, valid_from, valid_to, lifecycle, "
         "confirmed_by_entity_id, confirmed_at, asserted_by_entity_id, channel) "
-        "VALUES (?, ?, ?, ?, ?, COALESCE(?, datetime('now')), ?, ?, "
-        "COALESCE(?, CASE WHEN ? AND ? IS NULL THEN COALESCE(?, datetime('now')) END), "
-        "?, ?, ?, ?, ?, ?)",
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             source_entity_id,
             definition.canonical_id,
             target_entity_id,
             confidence,
             source_memory_id,
-            asserted_at,
+            instant_text(now) if asserted_at is None else asserted_at,
             stamp.visibility,
             stamp.sensitivity,
-            stamp.valid_from,
-            definition.temporal,
-            stamp.valid_to,
-            asserted_at,
+            valid_from,
             stamp.valid_to,
             AssertionLifecycle.ACTIVE if stamp.valid_to is None else AssertionLifecycle.EXPIRED,
             stamp.confirmed_by_entity_id,
@@ -889,6 +913,7 @@ async def _upsert_entity_relation(
             new_id=relation_id,
             source_entity_id=source_entity_id,
             predicate=definition.canonical_id,
+            now=now,
         )
     return relation_id
 
@@ -923,7 +948,7 @@ def _closing_value(previous_from: str | None, new_from: str | None) -> str | Non
 
 
 async def _close_previous(
-    conn: aiosqlite.Connection, *, new_id: int, source_entity_id: int, predicate: str
+    conn: aiosqlite.Connection, *, new_id: int, source_entity_id: int, predicate: str, now: datetime
 ) -> None:
     """Supersede the active rows of one source and predicate, each at the new row's start."""
     cursor = await conn.execute(
@@ -942,9 +967,9 @@ async def _close_previous(
     for previous_id, previous_from in previous:
         await conn.execute(
             "UPDATE entity_relations_v4 "
-            "SET lifecycle = 'superseded', superseded_at = datetime('now'), "
+            "SET lifecycle = 'superseded', superseded_at = ?, "
             "superseded_by = ?, valid_to = ? WHERE id = ?",
-            (new_id, _closing_value(previous_from, new_from), previous_id),
+            (instant_text(now), new_id, _closing_value(previous_from, new_from), previous_id),
         )
 
 

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from enum import StrEnum
 import json
 import logging
@@ -25,6 +25,7 @@ from server import db
 from server.exceptions import BrainMemoryError
 from server.memory.conversation_types import RecordedTurn, TurnVerdict
 from server.settings import settings
+from server.timestamps import instant_text
 
 if TYPE_CHECKING:
     import aiosqlite
@@ -94,13 +95,6 @@ class RecordView:
     turns: tuple[RecordedTurn, ...] = field(repr=False)
 
 
-def _iso(moment: datetime) -> str:
-    """Return a fixed-width UTC ISO 8601 string, so strings sort like instants."""
-    if moment.tzinfo is None or moment.utcoffset() is None:
-        raise ValueError("conversation timestamps must be timezone-aware")
-    return moment.astimezone(UTC).isoformat(timespec="microseconds")
-
-
 def _summary(row: tuple[object, ...]) -> RecordSummary:
     """Build a summary from one ``_SUMMARY_COLUMNS`` row."""
     return RecordSummary(
@@ -134,7 +128,7 @@ def _expiry(closed_at: datetime, *, eligible: bool) -> str:
         if eligible
         else settings.conversation_record_ineligible_days
     )
-    return _iso(closed_at + timedelta(days=days))
+    return instant_text(closed_at + timedelta(days=days))
 
 
 async def _close(
@@ -142,7 +136,7 @@ async def _close(
 ) -> None:
     await conn.execute(
         "UPDATE conversation_records SET closed_at = ?, expires_at = ? WHERE id = ?",
-        (_iso(now), _expiry(now, eligible=eligible), record_id),
+        (instant_text(now), _expiry(now, eligible=eligible), record_id),
     )
 
 
@@ -185,7 +179,7 @@ async def append_turn(
     """
     entry = turn.to_json()
     size = len(entry.encode("utf-8"))
-    at = _iso(turn.at)
+    at = instant_text(turn.at)
     async with db.transaction() as conn:
         cursor = await conn.execute(
             "SELECT id, last_turn_at, turn_count, byte_count, eligible FROM conversation_records "
@@ -236,7 +230,7 @@ async def close_idle_records(now: datetime) -> int:
     Returns:
         How many segments were closed (0 or 1).
     """
-    threshold = _iso(now - timedelta(seconds=settings.working_memory_idle_seconds))
+    threshold = instant_text(now - timedelta(seconds=settings.working_memory_idle_seconds))
     async with db.transaction() as conn:
         cursor = await conn.execute(
             "SELECT id, eligible FROM conversation_records "
@@ -392,7 +386,7 @@ async def purge_records(now: datetime) -> int:
     async with db.transaction() as conn:
         cursor = await conn.execute(
             "DELETE FROM conversation_records WHERE closed_at IS NOT NULL AND expires_at < ?",
-            (_iso(now),),
+            (instant_text(now),),
         )
         deleted += max(cursor.rowcount, 0)
         await cursor.close()

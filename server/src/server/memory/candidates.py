@@ -11,7 +11,7 @@ guarantees, in code and in the schema:
 * **Transitions are compare-and-set** (``UPDATE ... WHERE status = ?`` and a row count) and
   always filtered by the subject, so another person can neither resolve nor lapse a candidate.
 * **One clock.** Every timestamp is supplied by the caller as an aware datetime and stored as
-  UTC ISO 8601; the store never uses SQLite's ``datetime('now')``.
+  UTC ISO 8601 through ``server.timestamps``; the store never asks SQLite for the time.
 * **Bounded and idempotent.** A repeated statement is a no-op insert; at the per-person cap a
   new candidate is refused and an old one is never evicted.
 * **Housekeeping on every write entry.** Lapsed candidates are expired and unanswered offers
@@ -29,7 +29,7 @@ Logs carry ids, the predicate, a status and a closed reason, never a value.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from enum import StrEnum
 import logging
 from typing import TYPE_CHECKING
@@ -37,6 +37,7 @@ from typing import TYPE_CHECKING
 from server import db
 from server.memory.candidate_types import CandidateChannel, CandidateStatus, ProposedCandidate
 from server.settings import settings
+from server.timestamps import instant_text
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -141,9 +142,7 @@ def iso_utc(moment: datetime) -> str:
     Raises:
         ValueError: If *moment* is naive.
     """
-    if moment.tzinfo is None or moment.utcoffset() is None:
-        raise ValueError("candidate timestamps must be timezone-aware")
-    return moment.astimezone(UTC).isoformat(timespec="microseconds")
+    return instant_text(moment)
 
 
 def _from_row(row: tuple[object, ...]) -> Candidate:

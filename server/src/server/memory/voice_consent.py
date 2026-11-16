@@ -11,7 +11,9 @@ from __future__ import annotations
 import logging
 
 from server import db
+from server.cognition.clock import utc_now
 from server.db import get_conn
+from server.timestamps import instant_text
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +53,9 @@ async def grant_voice_consent(person_entity_id: int) -> int:
         if existing is not None:
             return int(existing[0])
         cursor = await conn.execute(
-            "INSERT INTO voice_consent_grants (person_entity_id, purpose) VALUES (?, ?)",
-            (person_entity_id, _PURPOSE),
+            "INSERT INTO voice_consent_grants (person_entity_id, purpose, granted_at) "
+            "VALUES (?, ?, ?)",
+            (person_entity_id, _PURPOSE, instant_text(utc_now())),
         )
         grant_id = cursor.lastrowid
         await cursor.close()
@@ -76,9 +79,9 @@ async def revoke_voice_consent(person_entity_id: int) -> None:
     async with db.transaction() as conn:
         await conn.execute("DELETE FROM voice_profiles WHERE entity_id = ?", (person_entity_id,))
         await conn.execute(
-            "UPDATE voice_consent_grants SET revoked_at = datetime('now') "
+            "UPDATE voice_consent_grants SET revoked_at = ? "
             "WHERE person_entity_id = ? AND revoked_at IS NULL",
-            (person_entity_id,),
+            (instant_text(utc_now()), person_entity_id),
         )
     logger.info("Voice consent revoked and voiceprints purged: person=%s", person_entity_id)
 

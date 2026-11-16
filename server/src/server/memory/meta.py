@@ -9,7 +9,9 @@ from __future__ import annotations
 import logging
 
 from server import db
+from server.cognition.clock import utc_now
 from server.db import get_conn
+from server.timestamps import instant_text
 
 logger = logging.getLogger(__name__)
 
@@ -45,9 +47,9 @@ async def set_flag(key: str, value: str) -> None:
     """
     async with db.transaction() as conn:
         await conn.execute(
-            "INSERT INTO meta (key, value, updated_at) VALUES (?, ?, datetime('now')) "
+            "INSERT INTO meta (key, value, updated_at) VALUES (?, ?, ?) "
             "ON CONFLICT (key) DO UPDATE SET value = excluded.value, "
             "updated_at = excluded.updated_at",
-            (key, value),
+            (key, value, instant_text(utc_now())),
         )
     logger.debug("Meta flag set: %s=%s", key, value)

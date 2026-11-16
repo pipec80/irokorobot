@@ -9,7 +9,7 @@ with microseconds, comparable as text. Nothing here logs a text.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Final, Literal
 
 import sqlite_vec
@@ -26,6 +26,7 @@ from server.memory.recall_sensitivity import (
     most_protective,
 )
 from server.settings import settings
+from server.timestamps import instant_text
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -267,7 +268,7 @@ async def insert_turn_unit(
         episode_id=None,
         kind="turn",
         body=turn.heard,
-        said_at=_iso(turn.at),
+        said_at=instant_text(turn.at),
         sensitivity=classify_turn_text(turn.heard),
         correlation_id=str(turn.correlation_id),
         occurred=occurred,
@@ -556,8 +557,3 @@ async def recent_units(
         if units:
             return units[:limit]
     return []
-
-
-def _iso(moment: datetime) -> str:
-    """A fixed-width UTC ISO 8601 string, so strings sort like instants."""
-    return moment.astimezone(UTC).isoformat(timespec="microseconds")

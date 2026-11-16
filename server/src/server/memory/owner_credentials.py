@@ -3,10 +3,12 @@
 from dataclasses import dataclass
 
 from server import db
+from server.cognition.clock import utc_now
 from server.cognition.identity import HouseholdRole
 from server.cognition.pin_credentials import EncodedPinCredential
 from server.db import get_conn
 from server.memory.household_authorization import get_active_role
+from server.timestamps import instant_text
 
 __all__ = [
     "OwnerPinCredential",
@@ -98,22 +100,25 @@ async def save_owner_pin_credential(
     if await get_active_role(person_entity_id) is not HouseholdRole.OWNER:
         raise ValueError("owner PIN credential requires an active owner role")
 
+    stamp = instant_text(utc_now())
     async with db.transaction() as conn:
         await conn.execute(
-            "UPDATE owner_pin_credentials SET revoked_at = datetime('now') "
+            "UPDATE owner_pin_credentials SET revoked_at = ? "
             "WHERE person_entity_id = ? AND revoked_at IS NULL",
-            (person_entity_id,),
+            (stamp, person_entity_id),
         )
         cursor = await conn.execute(
             "INSERT INTO owner_pin_credentials "
-            "(person_entity_id, algorithm, parameters_json, salt, verifier) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "(person_entity_id, algorithm, parameters_json, salt, verifier, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 person_entity_id,
                 credential.algorithm,
                 credential.parameters_json,
                 credential.salt,
                 credential.verifier,
+                stamp,
+                stamp,
             ),
         )
         if cursor.lastrowid is None:
@@ -137,9 +142,9 @@ async def revoke_owner_pin_credential(*, person_entity_id: int) -> None:
     """
     async with db.transaction() as conn:
         cursor = await conn.execute(
-            "UPDATE owner_pin_credentials SET revoked_at = datetime('now') "
+            "UPDATE owner_pin_credentials SET revoked_at = ? "
             "WHERE person_entity_id = ? AND revoked_at IS NULL",
-            (person_entity_id,),
+            (instant_text(utc_now()), person_entity_id),
         )
         updated = cursor.rowcount
         await cursor.close()
