@@ -823,8 +823,9 @@ about the person it is talking to, in two ways, on the classic and the streaming
 - **The question.** «¿Qué sabes de mí?» (and «sabe», as the speech-to-text sometimes writes it),
   «¿qué te he contado?» and «dime qué recuerdas de mí» are
   answered by the controller, not by the model, with a fixed template that lists what the card
-  holds («Esto es lo que sé de ti. Te llamo …. Te trato de tú. Me has dicho que te gusta: …»), or
-  «Todavía no me has contado cosas que pueda recordar.» when it holds nothing. An unknown speaker
+  holds («Esto es lo que sé de ti. Te llamo …. Me has dicho que te gusta: …»; the form is said
+  only as «Te trato de usted.», since tuteo is the default), or
+  «Todavía no me has contado cosas que pueda recordar.» when it holds nothing to say. An unknown speaker
   and an identified person the policy refuses hear the same phrase («Todavía no puedo confirmar
   quién eres para contarte lo que sé de ti.»), so the answer is no oracle; a failing audit or
   database gets its own short phrase («Ahora no puedo revisar lo que sé de ti.»). The summary

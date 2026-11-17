@@ -66,6 +66,8 @@ _CARD_FOOTER: Final = (
 _EMPTY_SUMMARY: Final = "Todavía no me has contado cosas que pueda recordar."
 _SUMMARY_OPENING: Final = "Esto es lo que sé de ti."
 _ADDRESS_FORMS: Final = {"tu": "tú", "usted": "usted"}
+#: The only form the spoken summary names; tuteo is the default and goes unsaid.
+_SPOKEN_ADDRESS_FORM: Final = "usted"
 # Zero width joiner: kept so a joined emoji sequence survives; every other format character
 # (bidirectional overrides among them) is dropped with the control characters.
 _ZERO_WIDTH_JOINER: Final = "‍"
@@ -238,15 +240,14 @@ def render_summary(card: ProfileCard) -> str:
     Returns:
         The fixed-wording summary, or the fixed «nothing yet» phrase for an empty card.
     """
-    if card.is_empty:
-        return _EMPTY_SUMMARY
     sentences = [_SUMMARY_OPENING]
     if card.preferred_name is not None:
         sentences.append(f"Te llamo {card.preferred_name}.")
-    if card.address_form is not None:
-        sentences.append(f"Te trato de {_ADDRESS_FORMS[card.address_form]}.")
+    # Pipec, 2026-11-16: «Te trato de tú.» is not said; tuteo is the default, as in the prompt.
+    if card.address_form == _SPOKEN_ADDRESS_FORM:
+        sentences.append(f"Te trato de {_ADDRESS_FORMS[_SPOKEN_ADDRESS_FORM]}.")
     for predicate in _TASTE_PREDICATES:
         values = ", ".join(taste.value for taste in card.tastes if taste.predicate == predicate)
         if values:
             sentences.append(f"{_SPOKEN_PREFIXES[predicate]}: {values}.")
-    return " ".join(sentences)
+    return " ".join(sentences) if len(sentences) > 1 else _EMPTY_SUMMARY
