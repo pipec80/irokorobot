@@ -332,7 +332,9 @@ Closed items moved out of the cross-cutting table on 2026-11-10 (each keeps its 
   follow-ups moved to the voice-calibration row and the latency row.
 - **Memory engine contract:** [ADR 0031](../adr/0031-the-memory-engine-boundary.md) `Accepted` 2026-11-09: one
   core behind a policy port checked at every boundary; verified that 20 of the 77 modules of `memory/` import
-  `server.cognition`, which block C1's guard test and the extraction plan address.
+  `server.cognition`, which the extraction plan addresses (its one-owner-per-table guard was deferred
+  from block C1 by [ADR 0038](../adr/0038-the-memory-engines-storage-foundation.md)'s amendment of
+  2026-11-16).
 
 Real-hardware acceptances are historical: they cover only the recorded
 scenarios, devices and configuration and are not a new run on the current tree.
