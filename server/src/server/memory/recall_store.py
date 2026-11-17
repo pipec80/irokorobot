@@ -39,6 +39,7 @@ if TYPE_CHECKING:
 __all__ = [
     "RecallIndexHealth",
     "RecallUnit",
+    "count_rows",
     "count_units_of_another_model",
     "index_health",
     "insert_episode_unit",
@@ -61,6 +62,23 @@ _READABLE = (
     "u.owner_entity_id = :owner AND u.visibility = 'personal' AND u.sensitivity = 'normal' "
     "AND (r.expires_at IS NULL OR r.expires_at > :now) "
     "AND (:since IS NULL OR u.said_at >= :since) AND (:until IS NULL OR u.said_at < :until)"
+)
+# The model guard (ADR 0031 decision 8). The configured model is a parameter; each half of
+# "another model" is a range (`<` or `>`), which the index `recall_units_model_idx` serves where `<>`
+# would scan. A NULL model is neither: such a unit has no vector yet. The count names the index
+# because, left alone, the planner reads the owner's whole slice of `recall_units_owner_time_idx`.
+_OTHER_MODEL_COUNT_SQL = (
+    "SELECT COUNT(*) FROM recall_units INDEXED BY recall_units_model_idx "
+    "WHERE owner_entity_id = ?1 AND (embedding_model < ?2 OR embedding_model > ?2)"
+)
+# The units to (re-)embed, oldest first: no vector (the partial index
+# `recall_units_unembedded_idx`) or a vector of another model (`recall_units_model_idx`).
+_UNITS_TO_EMBED_SQL = (
+    "SELECT id, body FROM recall_units WHERE id IN ("
+    "SELECT id FROM recall_units WHERE embedding_model IS NULL "
+    "UNION ALL SELECT id FROM recall_units WHERE embedding_model < ?1 "
+    "UNION ALL SELECT id FROM recall_units WHERE embedding_model > ?1) "
+    "ORDER BY id LIMIT ?2"
 )
 _UNIT_COLUMNS = "u.id, u.source_record_id, u.kind, u.body, u.said_at"
 # With the occurred time on (Plan 0083 D-9): a unit with an occurred interval matches a window by
@@ -398,15 +416,11 @@ async def store_vector(unit_id: int, vector: list[float], *, model: str) -> bool
 async def units_without_vector(limit: int) -> list[tuple[int, str]]:
     """Return ``(id, body)`` of the oldest units to (re-)embed: no vector, or one of another model.
 
-    The model is the configured one (``settings.embedding_model``). The partial index
-    ``recall_units_unembedded_idx`` serves the first half; the second scans (see the data
-    dictionary, *Not tuned yet*).
+    The model is the configured one (``settings.embedding_model``). Both halves read an index
+    (``recall_units_unembedded_idx`` and ``recall_units_model_idx``), so a tick with nothing
+    to embed does not scan the units.
     """
-    cursor = await db.get_conn().execute(
-        "SELECT id, body FROM recall_units "
-        "WHERE embedding_model IS NULL OR embedding_model <> ? ORDER BY id LIMIT ?",
-        (settings.embedding_model, limit),
-    )
+    cursor = await db.get_conn().execute(_UNITS_TO_EMBED_SQL, (settings.embedding_model, limit))
     rows = await cursor.fetchall()
     await cursor.close()
     return [(int(row[0]), str(row[1])) for row in rows]
@@ -420,9 +434,7 @@ async def count_units_of_another_model(owner_entity_id: int) -> int:
     (ADR 0031 decision 8) until the re-index brings it to zero.
     """
     cursor = await db.get_conn().execute(
-        "SELECT COUNT(*) FROM recall_units "
-        "WHERE owner_entity_id = ? AND embedding_model IS NOT NULL AND embedding_model <> ?",
-        (owner_entity_id, settings.embedding_model),
+        _OTHER_MODEL_COUNT_SQL, (owner_entity_id, settings.embedding_model)
     )
     row = await cursor.fetchone()
     await cursor.close()
@@ -440,7 +452,7 @@ class RecallIndexHealth:
     units_of_another_model: int
 
 
-async def _count_rows(
+async def count_rows(
     conn: aiosqlite.Connection, sql: str, parameters: tuple[object, ...] = ()
 ) -> int:
     """Run a ``SELECT COUNT(*)`` and return the number."""
@@ -479,20 +491,20 @@ async def index_health(conn: aiosqlite.Connection) -> RecallIndexHealth:
     """
     return RecallIndexHealth(
         fts_errors=await _fts_errors(conn),
-        vectors_without_unit=await _count_rows(
+        vectors_without_unit=await count_rows(
             conn,
             "SELECT COUNT(*) FROM recall_units_vec WHERE rowid NOT IN (SELECT id FROM recall_units)",
         ),
-        units_without_fts_row=await _count_rows(
+        units_without_fts_row=await count_rows(
             conn,
             "SELECT COUNT(*) FROM recall_units "
             "WHERE id NOT IN (SELECT id FROM recall_units_fts_docsize)",
         ),
-        units_without_vector=await _count_rows(
+        units_without_vector=await count_rows(
             conn,
             "SELECT COUNT(*) FROM recall_units WHERE id NOT IN (SELECT rowid FROM recall_units_vec)",
         ),
-        units_of_another_model=await _count_rows(
+        units_of_another_model=await count_rows(
             conn,
             "SELECT COUNT(*) FROM recall_units "
             "WHERE embedding_model IS NOT NULL AND embedding_model <> ?",

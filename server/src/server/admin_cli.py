@@ -551,15 +551,15 @@ async def _read_command(request: AdminRequest, owner: int, write_text: WriteText
     return await _audit(request.limit, write_text)
 
 
-async def _dispatch(
+async def _owner_command(
     request: AdminRequest,
+    owner: int,
     read_text: ReadText,
     read_secret: ReadText,
     write_text: WriteText,
     now: str,
 ) -> int:
-    await check_db_available()
-    owner = await _owner()
+    """Run one of the sub-commands that act on the owner's data."""
     match request.command:
         case "list" | "status" | "audit":
             return await _read_command(request, owner, write_text)
@@ -576,26 +576,26 @@ async def _dispatch(
     raise _RefusedError(f"Subcomando desconocido: {request.command}.")
 
 
-async def _health(write_text: WriteText) -> int:
-    """Print the database health report (counts only); ``1`` when it counted a fault."""
-    report = await check_health(db.get_conn())
-    for line in render_health(report):
-        write_text(line)
-    return 1 if health_failed(report) else 0
-
-
-async def _run_opened(
+async def _dispatch(
     request: AdminRequest,
     read_text: ReadText,
     read_secret: ReadText,
     write_text: WriteText,
     now: str,
 ) -> int:
-    """Run the command on the open database; ``health`` needs no owner and no PIN."""
+    await check_db_available()
     if request.command == "health":
-        await check_db_available()
-        return await _health(write_text)
-    return await _dispatch(request, read_text, read_secret, write_text, now)
+        return await _health(write_text)  # counts only: no owner, no PIN
+    owner = await _owner()
+    return await _owner_command(request, owner, read_text, read_secret, write_text, now)
+
+
+async def _health(write_text: WriteText) -> int:
+    """Print the database health report (counts only); ``1`` when it counted a fault."""
+    report = await check_health(db.get_conn())
+    for line in render_health(report):
+        write_text(line)
+    return 1 if health_failed(report) else 0
 
 
 async def _check_schema(database: Path) -> None:
@@ -648,7 +648,7 @@ async def run_admin_command(
         await _check_schema(database)
         await db.open_db()
         try:
-            return await _run_opened(request, read_text, read_secret, write_text, now)
+            return await _dispatch(request, read_text, read_secret, write_text, now)
         finally:
             await db.close_db()
     except (_RefusedError, BrainMemoryError, ValueError) as exc:

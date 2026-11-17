@@ -354,3 +354,48 @@ async def test_units_of_another_model_counts_only_the_owners_units_of_another_mo
     assert await recall_store.count_units_of_another_model(other) == 1
     assert await recall_store.store_vector(mine_old, _axis(1), model="canary-model-b")
     assert await recall_store.count_units_of_another_model(owner) == 0
+
+
+async def test_units_to_embed_come_in_id_order_across_both_kinds_of_pending_work(
+    owners: tuple[int, int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owner, _ = owners
+    monkeypatch.setattr(settings, "embedding_model", "canary-model-b")
+    record_id = await _record(owner)
+    other_model = await _turn_unit(owner, record_id, "el cerro")
+    no_vector = await _turn_unit(owner, record_id, "la playa")
+    older_model = await _turn_unit(owner, record_id, "el río")
+    current = await _turn_unit(owner, record_id, "el valle")
+    assert await recall_store.store_vector(other_model, _axis(1), model="canary-model-a")
+    assert await recall_store.store_vector(older_model, _axis(2), model="canary-model-c")
+    assert await recall_store.store_vector(current, _axis(3), model="canary-model-b")
+
+    ids = [unit_id for unit_id, _ in await recall_store.units_without_vector(10)]
+
+    assert ids == [other_model, no_vector, older_model]
+    assert [unit_id for unit_id, _ in await recall_store.units_without_vector(2)] == ids[:2]
+
+
+async def _plan(sql: str, *params: object) -> list[str]:
+    """The ``EXPLAIN QUERY PLAN`` detail lines of a statement."""
+    cursor = await db.get_conn().execute("EXPLAIN QUERY PLAN " + sql, params)
+    details = [str(row[3]) for row in await cursor.fetchall()]
+    await cursor.close()
+    return details
+
+
+async def test_the_model_guard_reads_use_an_index_and_never_scan_the_units(
+    owners: tuple[int, int],
+) -> None:
+    """Both run on every recall question and every conversation-jobs tick (Plan 0085 B)."""
+    owner, _ = owners
+
+    count_plan = await _plan(recall_store._OTHER_MODEL_COUNT_SQL, owner, "canary-model")
+    embed_plan = await _plan(recall_store._UNITS_TO_EMBED_SQL, "canary-model", 10)
+
+    for plan in (count_plan, embed_plan):
+        assert "SCAN recall_units" not in plan
+        assert any("recall_units" in line and "USING" in line for line in plan)
+    assert any("recall_units_model_idx" in line for line in count_plan)
+    assert any("recall_units_unembedded_idx" in line for line in embed_plan)
+    assert any("recall_units_model_idx" in line for line in embed_plan)

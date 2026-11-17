@@ -17,15 +17,23 @@ import pytest
 from server.exceptions import BrainMemoryError
 from server.memory import conversation_record as record
 from server.memory.biometric_consent import grant_face_consent, revoke_face_consent
-from server.memory.conversation_types import RecordedTurn, TurnVerdict, make_turn
+from server.memory.conversation_types import (
+    HEARD_MAX_CHARS,
+    SAID_MAX_CHARS,
+    RecordedTurn,
+    TurnVerdict,
+    make_turn,
+)
+from server.memory.db_health import time_columns
 from server.memory.declarative import upsert_entity
 from server.memory.voice_consent import grant_voice_consent, revoke_voice_consent
 from server.settings import settings
-from server.timestamps import instant_text
+from server.timestamps import INSTANT_LENGTH, instant_text
 from server.vision.faces import enroll_face
 from server.voice.voiceprints import enroll_voiceprint
 
 from server import db
+from tests.unit.test_schema_guards import _DEAD_TABLES
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -33,18 +41,7 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.integration
 
-# --- 017: the dead tables out --------------------------------------------------------------------
-
-_DEAD_TABLES = (
-    "outbox",
-    "sensor_current",
-    "sensor_readings",
-    "sensor_aggregates_hourly",
-    "facts",
-    "legacy_fact_migration_v4",
-    "embeddings_cache",
-    "events",
-)
+# --- 017: the dead tables out (the list is in the schema guards) ---------------------------------
 
 # One valid canary row per dead table. Foreign keys are off while it is inserted, so each table
 # holds a row on its own (a `legacy_fact_migration_v4` row needs no `facts` row beside it).
@@ -381,7 +378,7 @@ async def _insert_turn(
 
 
 async def test_a_well_formed_turn_is_accepted_at_the_text_limits(a_record: int) -> None:
-    await _insert_turn(a_record, heard="x" * 2000, said="y" * 4000)
+    await _insert_turn(a_record, heard="x" * HEARD_MAX_CHARS, said="y" * SAID_MAX_CHARS)
 
     assert await _scalar("SELECT count(*) FROM conversation_turns") == 1
 
@@ -391,7 +388,7 @@ async def test_a_well_formed_turn_is_accepted_at_the_text_limits(a_record: int) 
     [
         "2026-11-16T10:00:00+00:00",  # no fraction
         "2026-11-16T10:00:00.000000Z",  # not the +00:00 suffix
-        "2026-11-16T10:00:00.000000+01:00",  # 32 characters, another offset
+        "2026-11-16T10:00:00.000000+01:00",  # the right length, another offset
         "2026-11-16 10:00:00.000000+00:00",  # a space for the T
         "2026-11-16T10:00:00.00000a+00:00",  # a letter for a digit
         "2026-02-30T10:00:00.000000+00:00",  # no such day
@@ -407,7 +404,11 @@ async def test_a_turn_must_carry_an_exact_instant(a_record: int, said_at: str) -
 
 @pytest.mark.parametrize(
     "overrides",
-    [{"verdict": "maybe"}, {"heard": "x" * 2001}, {"said": "y" * 4001}],
+    [
+        {"verdict": "maybe"},
+        {"heard": "x" * (HEARD_MAX_CHARS + 1)},
+        {"said": "y" * (SAID_MAX_CHARS + 1)},
+    ],
 )
 async def test_a_turn_with_a_bad_verdict_or_text_is_refused(
     a_record: int, overrides: dict[str, str]
@@ -639,21 +640,10 @@ async def _run_020(
     await db.run_migrations()
 
 
-async def _time_columns() -> list[tuple[str, str]]:
-    """Every TEXT column named ``*_at`` of a live ordinary table, derived from the schema."""
-    rows = await _rows(
-        "SELECT m.name, p.name FROM sqlite_master m JOIN pragma_table_info(m.name) p "
-        "WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%' "
-        "AND m.sql NOT LIKE 'CREATE VIRTUAL%' AND p.type = 'TEXT' "
-        "AND p.name LIKE '%!_at' ESCAPE '!' ORDER BY 1, p.cid"
-    )
-    return [(str(row[0]), str(row[1])) for row in rows]
-
-
 async def test_020_names_every_time_column_the_schema_has(
     v19_db: tuple[db.Migration, ...],
 ) -> None:
-    columns = await _time_columns()
+    columns = await time_columns(db.get_conn())
     sql = _MIGRATION_020.read_text(encoding="utf-8")
 
     assert len(columns) >= 40
@@ -984,7 +974,7 @@ async def test_revoking_the_consents_clears_the_profiles_and_then_the_person_can
     stamps = await _rows(
         "SELECT created_at FROM face_profiles UNION ALL SELECT created_at FROM voice_profiles"
     )
-    assert [len(str(row[0])) for row in stamps] == [32, 32]
+    assert [len(str(row[0])) for row in stamps] == [INSTANT_LENGTH, INSTANT_LENGTH]
 
     await revoke_face_consent(head_db)
     await revoke_voice_consent(head_db)

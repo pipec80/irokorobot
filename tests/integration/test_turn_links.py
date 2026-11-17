@@ -273,3 +273,15 @@ async def test_the_capture_links_a_candidate_proposed_before_it(owner: int) -> N
     turn_ids = await _rows("SELECT id FROM conversation_turns")
     assert len(turn_ids) == 1
     assert await _rows("SELECT source_turn_id FROM memory_candidates") == turn_ids
+
+
+async def test_linking_a_turns_candidates_finds_them_by_an_index(owner: int) -> None:
+    """The append runs this inside its write transaction on every voice turn: no table scan."""
+    cursor = await db.get_conn().execute(
+        "EXPLAIN QUERY PLAN " + candidates.LINK_SOURCE_TURN_SQL, (1, str(uuid4()))
+    )
+    details = [str(row[3]) for row in await cursor.fetchall()]
+    await cursor.close()
+
+    assert "SCAN memory_candidates" not in details
+    assert any("memory_candidates_unlinked_idx" in line for line in details)

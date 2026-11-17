@@ -15,12 +15,13 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
 from server import db
-from server.memory.recall_store import index_health
+from server.memory.recall_store import count_rows, index_health
+from server.timestamps import INSTANT_LENGTH
 
 if TYPE_CHECKING:
     import aiosqlite
 
-__all__ = ["HealthReport", "check_health", "health_failed", "render_health"]
+__all__ = ["HealthReport", "check_health", "health_failed", "render_health", "time_columns"]
 
 # The exact instant: 32 characters, every digit position explicit, the literal ``+00:00``, and a
 # real calendar moment (``strftime`` returns NULL for 02-31, so ``IS`` fails it).
@@ -29,7 +30,9 @@ _DIGITS_INSTANT: Final = (
     ".[0-9][0-9][0-9][0-9][0-9][0-9]+00:00"
 )
 _BAD_INSTANT: Final = (
-    "{col} IS NOT NULL AND NOT (length({col}) = 32 AND {col} GLOB '" + _DIGITS_INSTANT + "' "
+    f"{{col}} IS NOT NULL AND NOT (length({{col}}) = {INSTANT_LENGTH} AND {{col}} GLOB '"
+    + _DIGITS_INSTANT
+    + "' "
     "AND strftime('%Y-%m-%dT%H:%M:%S', substr({col}, 1, 19)) IS substr({col}, 1, 19))"
 )
 # A validity bound is a day (YYYY-MM-DD) or a month (YYYY-MM), both real.
@@ -71,12 +74,20 @@ class HealthReport:
     units_of_another_model: int
 
 
-async def _count(conn: aiosqlite.Connection, sql: str) -> int:
-    """Run a ``SELECT COUNT(*)`` and return the number."""
-    cursor = await conn.execute(sql)
-    row = await cursor.fetchone()
-    await cursor.close()
-    return 0 if row is None else int(row[0])
+# Every count of the report, in print order: (HealthReport field, label in Spanish, is a fault).
+# The faults decide the exit code; the others are pending work. A new count touches the dataclass
+# and this tuple only.
+_MEASURES: Final = (
+    ("integrity_errors", "errores de integridad", True),
+    ("foreign_key_violations", "violaciones de claves foráneas", True),
+    ("fts_errors", "errores del índice de texto", True),
+    ("vectors_without_unit", "vectores sin unidad", True),
+    ("units_without_fts_row", "unidades sin fila en el índice de texto", True),
+    ("face_vectors_without_profile", "vectores de caras sin perfil", True),
+    ("times_outside_format", "filas fuera del formato de hora", True),
+    ("units_without_vector", "unidades sin vector (pendientes)", False),
+    ("units_of_another_model", "unidades de otro modelo (pendientes)", False),
+)
 
 
 async def _rows(conn: aiosqlite.Connection, sql: str) -> list[tuple[str, ...]]:
@@ -93,13 +104,27 @@ async def _integrity_errors(conn: aiosqlite.Connection) -> int:
     return 0 if rows == [("ok",)] else len(rows)
 
 
+async def time_columns(
+    conn: aiosqlite.Connection, *, bounds: bool = False
+) -> list[tuple[str, str]]:
+    """Return ``(table, column)`` of every TEXT time column the schema has, derived from it.
+
+    Args:
+        conn: An open connection.
+        bounds: ``False`` for the instant columns (``*_at``), ``True`` for the validity bounds.
+    """
+    names = _BOUND_NAMES if bounds else _INSTANT_NAMES
+    rows = await _rows(conn, _TIME_COLUMNS.format(names=names) + " ORDER BY 1, p.cid")
+    return [(row[0], row[1]) for row in rows]
+
+
 async def _times_outside_format(conn: aiosqlite.Connection) -> int:
     """Count the non-NULL times that are not an exact instant (or a day or month, for a bound)."""
     total = 0
-    for names, bad in ((_INSTANT_NAMES, _BAD_INSTANT), (_BOUND_NAMES, _BAD_BOUND)):
-        for table, column in await _rows(conn, _TIME_COLUMNS.format(names=names)):
+    for bounds, bad in ((False, _BAD_INSTANT), (True, _BAD_BOUND)):
+        for table, column in await time_columns(conn, bounds=bounds):
             predicate = bad.format(col=f'"{column}"')
-            total += await _count(conn, f'SELECT COUNT(*) FROM "{table}" WHERE {predicate}')  # noqa: S608
+            total += await count_rows(conn, f'SELECT COUNT(*) FROM "{table}" WHERE {predicate}')  # noqa: S608
     return total
 
 
@@ -132,7 +157,7 @@ async def check_health(conn: aiosqlite.Connection) -> HealthReport:
         fts_errors=index.fts_errors,
         vectors_without_unit=index.vectors_without_unit,
         units_without_fts_row=index.units_without_fts_row,
-        face_vectors_without_profile=await _count(
+        face_vectors_without_profile=await count_rows(
             conn, "SELECT COUNT(*) FROM vec_faces WHERE rowid NOT IN (SELECT id FROM face_profiles)"
         ),
         times_outside_format=await _times_outside_format(conn),
@@ -143,17 +168,7 @@ async def check_health(conn: aiosqlite.Connection) -> HealthReport:
 
 def health_failed(report: HealthReport) -> bool:
     """Whether any fault was counted; pending embedding work is not a fault."""
-    return any(
-        (
-            report.integrity_errors,
-            report.foreign_key_violations,
-            report.fts_errors,
-            report.vectors_without_unit,
-            report.units_without_fts_row,
-            report.face_vectors_without_profile,
-            report.times_outside_format,
-        )
-    )
+    return any(getattr(report, name) for name, _label, is_fault in _MEASURES if is_fault)
 
 
 def render_health(report: HealthReport) -> list[str]:
@@ -162,14 +177,6 @@ def render_health(report: HealthReport) -> list[str]:
     vec = ".".join(str(part) for part in report.vec_version)
     return [
         f"SQLite {sqlite}, sqlite-vec v{vec}",
-        f"errores de integridad: {report.integrity_errors}",
-        f"violaciones de claves foráneas: {report.foreign_key_violations}",
-        f"errores del índice de texto: {report.fts_errors}",
-        f"vectores sin unidad: {report.vectors_without_unit}",
-        f"unidades sin fila en el índice de texto: {report.units_without_fts_row}",
-        f"vectores de caras sin perfil: {report.face_vectors_without_profile}",
-        f"filas fuera del formato de hora: {report.times_outside_format}",
-        f"unidades sin vector (pendientes): {report.units_without_vector}",
-        f"unidades de otro modelo (pendientes): {report.units_of_another_model}",
+        *(f"{label}: {getattr(report, name)}" for name, label, _is_fault in _MEASURES),
         "Resultado: con fallos." if health_failed(report) else "Resultado: sana.",
     ]

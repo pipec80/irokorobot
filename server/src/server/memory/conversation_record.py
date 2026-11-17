@@ -61,19 +61,18 @@ logger = logging.getLogger(__name__)
 type TurnIndexer = Callable[[aiosqlite.Connection, int, int, RecordedTurn], Awaitable[object]]
 
 _BYTES_PER_MB = 1_000_000
-# What an exchange weighs for the segment limit and the cap: the UTF-8 bytes of both texts.
-# `length` of a BLOB counts bytes on every supported SQLite (`octet_length` needs 3.43, above the
-# runtime floor).
-_TURN_BYTES = "length(CAST(heard AS BLOB)) + length(CAST(said AS BLOB))"
-# How many exchanges a record holds and how many bytes they weigh: counted from its rows, since the
-# record keeps neither (the fragment is constant, nothing a person says reaches it).
-_COUNT_AND_BYTES = (
-    "(SELECT COUNT(*) FROM conversation_turns WHERE record_id = r.id), "  # noqa: S608
-    f"(SELECT COALESCE(SUM({_TURN_BYTES}), 0) FROM conversation_turns WHERE record_id = r.id)"
-)
+# How many exchanges a record holds and how many bytes they weigh, counted from its rows (the
+# record keeps neither). A turn weighs its generated column `conversation_turns.bytes`, the one
+# definition; the record's rows are found by the index `conversation_turns_record_idx` (at most
+# a segment's turn limit of them). The fragments are constant: nothing a person says reaches them.
+_RECORD_TURNS = "FROM conversation_records r LEFT JOIN conversation_turns t ON t.record_id = r.id"
 _SUMMARY_COLUMNS = (
-    f"r.id, r.previous_id, r.started_at, r.closed_at, {_COUNT_AND_BYTES}, "
+    "r.id, r.previous_id, r.started_at, r.closed_at, COUNT(t.id), COALESCE(SUM(t.bytes), 0), "
     "r.eligible, r.expires_at, r.episode_status"
+)
+_OPEN_SEGMENT_SQL = (
+    "SELECT r.id, r.last_turn_at, r.eligible, COUNT(t.id), COALESCE(SUM(t.bytes), 0) "
+    f"{_RECORD_TURNS} WHERE r.closed_at IS NULL GROUP BY r.id"
 )
 _TURN_COLUMNS = "said_at, heard, said, verdict, correlation_id"
 
@@ -197,13 +196,11 @@ async def append_turn(
     Returns:
         The id of the segment that received the exchange.
     """
+    # Must equal the generated column `conversation_turns.bytes` (a test pins it).
     size = len(turn.heard.encode("utf-8")) + len(turn.said.encode("utf-8"))
     at = instant_text(turn.at)
     async with db.transaction() as conn:
-        cursor = await conn.execute(
-            f"SELECT r.id, r.last_turn_at, r.eligible, {_COUNT_AND_BYTES} "  # noqa: S608
-            "FROM conversation_records r WHERE r.closed_at IS NULL"
-        )
+        cursor = await conn.execute(_OPEN_SEGMENT_SQL)
         row = await cursor.fetchone()
         await cursor.close()
         record_id: int | None = None
@@ -309,8 +306,7 @@ async def list_records(limit: int = 50) -> tuple[RecordSummary, ...]:
         The summaries.
     """
     cursor = await db.get_conn().execute(
-        f"SELECT {_SUMMARY_COLUMNS} FROM conversation_records r "  # noqa: S608
-        "ORDER BY r.id DESC LIMIT ?",
+        f"SELECT {_SUMMARY_COLUMNS} {_RECORD_TURNS} GROUP BY r.id ORDER BY r.id DESC LIMIT ?",
         (limit,),
     )
     rows = await cursor.fetchall()
@@ -318,11 +314,11 @@ async def list_records(limit: int = 50) -> tuple[RecordSummary, ...]:
     return tuple(_summary(tuple(row)) for row in rows)
 
 
-async def _view(where: str, params: tuple[object, ...]) -> RecordView | None:
+async def _view(where: str, params: tuple[object, ...], order: str = "") -> RecordView | None:
     conn = db.get_conn()
     cursor = await conn.execute(
-        f"SELECT {_SUMMARY_COLUMNS}, r.owner_entity_id FROM conversation_records r "  # noqa: S608
-        f"WHERE {where}",
+        f"SELECT {_SUMMARY_COLUMNS}, r.owner_entity_id {_RECORD_TURNS} "
+        f"WHERE {where} GROUP BY r.id {order}",
         params,
     )
     row = await cursor.fetchone()
@@ -357,8 +353,9 @@ async def next_pending_record() -> RecordView | None:
         BrainMemoryError: If the record holds a malformed exchange.
     """
     return await _view(
-        "r.closed_at IS NOT NULL AND r.episode_status = 'pending' ORDER BY r.closed_at, r.id LIMIT 1",
+        "r.closed_at IS NOT NULL AND r.episode_status = 'pending'",
         (),
+        "ORDER BY r.closed_at, r.id LIMIT 1",
     )
 
 
@@ -419,6 +416,29 @@ async def delete_all_records(conn: aiosqlite.Connection) -> int:
     return max(deleted, 0)
 
 
+async def _delete_oldest_closed(conn: aiosqlite.Connection) -> int | None:
+    """Delete the next closed segment to go (not eligible first, then the oldest).
+
+    Returns:
+        The bytes its exchanges weighed, or ``None`` when no closed segment is left.
+    """
+    cursor = await conn.execute(
+        "SELECT id FROM conversation_records WHERE closed_at IS NOT NULL "
+        "ORDER BY eligible, closed_at, id LIMIT 1"
+    )
+    victim = await cursor.fetchone()
+    await cursor.close()
+    if victim is None:
+        return None
+    cursor = await conn.execute(
+        "SELECT COALESCE(SUM(bytes), 0) FROM conversation_turns WHERE record_id = ?", (victim[0],)
+    )
+    weighed = await cursor.fetchone()
+    await cursor.close()
+    await conn.execute("DELETE FROM conversation_records WHERE id = ?", (victim[0],))
+    return 0 if weighed is None else int(weighed[0])
+
+
 async def purge_records(now: datetime) -> int:
     """Delete expired segments, then the oldest closed ones while the record is over its cap.
 
@@ -432,31 +452,23 @@ async def purge_records(now: datetime) -> int:
         How many segments were deleted.
     """
     cap = settings.conversation_record_max_total_mb * _BYTES_PER_MB
-    deleted = 0
     async with db.transaction() as conn:
         cursor = await conn.execute(
             "DELETE FROM conversation_records WHERE closed_at IS NOT NULL AND expires_at < ?",
             (instant_text(now),),
         )
-        deleted += max(cursor.rowcount, 0)
+        deleted = max(cursor.rowcount, 0)
         await cursor.close()
-        while True:
-            cursor = await conn.execute(
-                f"SELECT COALESCE(SUM({_TURN_BYTES}), 0) FROM conversation_turns"  # noqa: S608
-            )
-            row = await cursor.fetchone()
-            await cursor.close()
-            if row is None or int(row[0]) <= cap:
+        cursor = await conn.execute("SELECT COALESCE(SUM(bytes), 0) FROM conversation_turns")
+        row = await cursor.fetchone()
+        await cursor.close()
+        total = 0 if row is None else int(row[0])
+        while total > cap:
+            freed = await _delete_oldest_closed(conn)
+            if freed is None:
                 break
-            cursor = await conn.execute(
-                "DELETE FROM conversation_records WHERE id = (SELECT id FROM conversation_records "
-                "WHERE closed_at IS NOT NULL ORDER BY eligible, closed_at, id LIMIT 1)"
-            )
-            removed = max(cursor.rowcount, 0)
-            await cursor.close()
-            if removed == 0:
-                break
-            deleted += removed
+            total -= freed
+            deleted += 1
     if deleted:
         logger.info("Conversation record: %d segment(s) purged", deleted)
         await db.checkpoint_wal()

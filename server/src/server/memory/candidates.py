@@ -48,6 +48,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "LINK_SOURCE_TURN_SQL",
     "VOID_LIVE_SQL",
     "Candidate",
     "InsertResult",
@@ -72,6 +73,13 @@ __all__ = [
 ]
 
 _LIVE = ("proposed", "offered")
+#: Links a turn's candidates to its row; the partial index ``memory_candidates_unlinked_idx``
+#: serves it (it runs inside every append's write transaction). Two parameters: the turn's
+#: row id and its correlation id.
+LINK_SOURCE_TURN_SQL = (
+    "UPDATE memory_candidates SET source_turn_id = ? "
+    "WHERE source_correlation_id = ? AND source_turn_id IS NULL"
+)
 _COLUMNS = (
     "id, subject_person_id, asserted_by_person_id, predicate, value_text, value_key, status, "
     "channel, source_correlation_id, offer_correlation_id, resolution_correlation_id, "
@@ -397,11 +405,7 @@ async def link_source_turn(
     Returns:
         How many candidates were linked; those already linked are left alone.
     """
-    cursor = await conn.execute(
-        "UPDATE memory_candidates SET source_turn_id = ? "
-        "WHERE source_correlation_id = ? AND source_turn_id IS NULL",
-        (turn_id, str(correlation_id)),
-    )
+    cursor = await conn.execute(LINK_SOURCE_TURN_SQL, (turn_id, str(correlation_id)))
     linked = cursor.rowcount
     await cursor.close()
     return linked

@@ -8,13 +8,14 @@ no value of the database (canaries only).
 
 from __future__ import annotations
 
+import dataclasses
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
 from server.admin_cli import AdminRequest, run_admin_command
-from server.memory import recall_store
+from server.memory import db_health, recall_store
 from server.memory.conversation_types import RecordedTurn, TurnVerdict
 from server.memory.db_health import HealthReport, check_health, health_failed, render_health
 from server.memory.declarative import upsert_entity
@@ -337,6 +338,14 @@ async def test_the_health_command_exits_one_on_a_fault_and_prints_no_value(
     assert _CANARY not in text
     assert "Canary" not in text
     assert "el cerro" not in text
+
+
+def test_every_count_of_the_report_is_listed_once_in_the_measures() -> None:
+    counted = [field.name for field in dataclasses.fields(HealthReport) if field.type == "int"]
+    listed = [name for name, _label, _is_fault in db_health._MEASURES]
+
+    assert counted
+    assert sorted(listed) == sorted(counted)
 
 
 def test_render_health_names_every_measure_in_spanish() -> None:

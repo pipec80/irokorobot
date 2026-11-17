@@ -31,11 +31,23 @@ UPDATE pending_topics SET source_turn_id = (
 
 -- Full indexes: the foreign-key lookup of a turn's deletion needs one on each column, and a partial
 -- index is not used for it. NULLs are distinct in a unique index, so units without a stored turn
--- may repeat; a stored turn has one unit. An episode has one unit (its full lookup index, for the
--- episode's deletion, is `recall_units_episode_idx` from migration 14).
+-- (or, for the episode, a turn unit) may repeat; a stored turn has one unit and an episode has one.
+-- The unique episode index also serves the episode's deletion, so it replaces the plain index of
+-- migration 14 (`recall_units_episode_idx`).
 CREATE UNIQUE INDEX recall_units_turn_idx ON recall_units (turn_id);
-CREATE UNIQUE INDEX recall_units_one_per_episode_idx ON recall_units (episode_id) WHERE kind = 'episode';
+DROP INDEX recall_units_episode_idx;
+CREATE UNIQUE INDEX recall_units_one_per_episode_idx ON recall_units (episode_id);
+-- The model guard (ADR 0031 decision 8) runs on every recall question (the owner's units of
+-- another model) and on every conversation-jobs tick (the units to embed): both read this index
+-- (a vector of another model sorts before or after the configured name). A unit without a vector
+-- is not in it; `recall_units_unembedded_idx` of migration 14 finds those.
+CREATE INDEX recall_units_model_idx ON recall_units (embedding_model, owner_entity_id)
+    WHERE embedding_model IS NOT NULL;
 CREATE INDEX memory_candidates_source_turn_idx ON memory_candidates (source_turn_id);
+-- The append links the candidates proposed before their turn existed, on every voice turn and
+-- inside the write transaction: it finds them here, and only those still waiting for a turn.
+CREATE INDEX memory_candidates_unlinked_idx ON memory_candidates (source_correlation_id)
+    WHERE source_turn_id IS NULL;
 CREATE INDEX pending_topics_source_turn_idx ON pending_topics (source_turn_id);
 
 CREATE TRIGGER recall_units_body_locked BEFORE UPDATE OF body ON recall_units BEGIN

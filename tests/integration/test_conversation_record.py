@@ -443,3 +443,33 @@ async def test_the_open_segment_is_never_purged(
 
     assert await record.purge_records(_T0 + timedelta(days=400)) == 0
     assert await _ids() == [open_id]
+
+
+async def test_the_schema_and_the_append_weigh_a_turn_the_same_in_bytes(store: int) -> None:
+    """The ``bytes`` column is the one definition; the append's Python size must equal it."""
+    turn = _turn(0, heard="¿qué canción, ñandú? 🙂", voice=TurnVerdict.VERIFIED)
+    segment = await _append(store, turn)
+
+    stored = await _count("SELECT bytes FROM conversation_turns WHERE record_id = ?", segment)
+
+    assert stored == _bytes(turn)
+    assert stored > len(turn.heard) + len(turn.said)  # accents and the emoji weigh more bytes
+    view = await record.read_record(segment)
+    assert view is not None
+    assert view.summary.byte_count == stored
+
+
+async def test_the_count_and_the_bytes_of_a_record_find_its_rows_by_the_record_index(
+    store: int,
+) -> None:
+    await _append(store, _turn(0))
+    cursor = await db.get_conn().execute("EXPLAIN QUERY PLAN " + record._OPEN_SEGMENT_SQL)
+    details = [str(row[3]) for row in await cursor.fetchall()]
+    await cursor.close()
+
+    turns_lookup = [line for line in details if "conversation_turns" in line]
+    assert turns_lookup
+    assert all(
+        "USING INDEX conversation_turns_record_idx (record_id=?)" in line for line in turns_lookup
+    )
+    assert not [line for line in details if line.startswith("SCAN conversation_turns")]

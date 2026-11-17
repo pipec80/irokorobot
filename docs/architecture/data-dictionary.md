@@ -264,8 +264,9 @@ The primary key `(commissioning_id, section)` is the index of the foreign key.
 | `verdict` | TEXT | NOT NULL, `verified`, `not_verified`, `not_owner` or `not_checked` |
 | `heard` | TEXT | NOT NULL, at most 2000 characters |
 | `said` | TEXT | NOT NULL, at most 4000 characters |
+| `bytes` | INTEGER | generated, STORED: `length(CAST(heard AS BLOB)) + length(CAST(said AS BLOB))`, what the turn weighs for the segment limit and the cap |
 
-The table is STRICT. Counted for the cap in bytes as `length(CAST(x AS BLOB))`.
+The table is STRICT. `length` of a BLOB counts bytes on every supported SQLite (`octet_length` needs 3.43).
 
 | Index | Columns | Query it serves |
 |---|---|---|
@@ -504,6 +505,7 @@ The table is STRICT.
 | `memory_candidates_subject_status_idx` | `subject_person_id, status` | the candidates of a person in a state; the CASCADE on the subject |
 | `memory_candidates_live_expiry_idx` | `expires_at` where live | the housekeeping that expires lapsed candidates |
 | `memory_candidates_source_turn_idx` | `source_turn_id` | the CASCADE from a deleted turn |
+| `memory_candidates_unlinked_idx` | `source_correlation_id` where `source_turn_id IS NULL` | linking the candidates proposed before their turn was appended |
 | `memory_candidates_asserted_by_person_id_idx` | `asserted_by_person_id` | the CASCADE on the asserter |
 | `memory_candidates_promoted_fact_id_idx` | `promoted_fact_id` | the SET NULL on a fact |
 
@@ -607,11 +609,11 @@ The table is STRICT.
 |---|---|---|
 | `recall_units_owner_time_idx` | `owner_entity_id, said_at` | the owner's units in a time window; the CASCADE on the owner |
 | `recall_units_record_idx` | `source_record_id` | the CASCADE from a deleted record |
-| `recall_units_episode_idx` | `episode_id` | the CASCADE from a deleted episode |
 | `recall_units_unembedded_idx` | `id` where `embedding_model IS NULL` | the next units to embed |
 | `recall_units_owner_occurred_idx` | `owner_entity_id, occurred_start` where set | units by when the event happened |
 | `recall_units_turn_idx` | unique `turn_id` | the unit of a turn; the CASCADE from a deleted turn |
-| `recall_units_one_per_episode_idx` | unique `episode_id` where episode | one unit per episode |
+| `recall_units_one_per_episode_idx` | unique `episode_id` | one unit per episode (turn units have a NULL, and NULLs are distinct); the CASCADE from a deleted episode |
+| `recall_units_model_idx` | `embedding_model, owner_entity_id` where `embedding_model IS NOT NULL` | the model guard: the owner's units of another model, and the units to re-embed |
 
 ### recall_units_fts
 
@@ -728,6 +730,8 @@ exact form and aborts on any value it cannot read as an instant.
   vector partition and metadata equal the row's; `store_vector` and a trigger keep them equal.
 - **`recall_units.body`.** The words of the turn are copied (a unit is also an episode summary) and
   made immutable by a trigger, so the word index never goes stale.
+- **`conversation_turns.bytes`.** The weight of a turn is stored, generated from its two texts, so
+  the segment limit, the cap and the record's byte count share one definition.
 - **`conversation_turns.heard` and `said`.** Turns are rows now; the former JSON array of turns on
   the record is gone (migration 18).
 - **`memory_candidates.source_correlation_id`** and the other correlation ids are request ids for
@@ -751,9 +755,10 @@ Nothing here is tuned for scale: the database holds a household's few thousand r
 query below is measured only by its plan, never by a benchmark. A measured change waits for its
 trigger (ADR 0031 decision 12):
 
-- `units_without_vector` selects `embedding_model IS NULL OR embedding_model <> ?`. The partial
-  index `recall_units_unembedded_idx` serves only the first half; the second half scans
-  `recall_units` (fine at a few hundred units; revisit when the re-index of a model change is slow).
+- The count and sum of a record's turns (`COUNT(*)`, `SUM(bytes)`) find the record's rows by
+  `conversation_turns_record_idx` and read `bytes` from the table, since SQLite never covers a
+  generated column with an index; a record holds at most `CONVERSATION_SEGMENT_MAX_TURNS` rows.
+  The space cap sums the whole table once per purge run.
 - The FTS5 tokenizer is `unicode61 remove_diacritics 2`. A `trigram` tokenizer comparison on a real
   Spanish corpus, `int8` vectors and durability pragmas wait for a scale test that asks for them.
 - Several older `*_at` columns (`entities`, `memories`, `care_contacts.created_at`,

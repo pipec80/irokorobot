@@ -5,11 +5,13 @@
 -- the verdict, and the two texts. The copy keeps the order (record, then position in the array);
 -- a read orders by instant, then id, so two equal instants keep their append order. The record's
 -- `turns`, `turn_count` and `byte_count` go: the count and the size are now computed from the
--- rows, in bytes, `length(CAST(heard AS BLOB)) + length(CAST(said AS BLOB))`. Nothing is dropped silently: a turn
--- that breaks a rule of the new table (an instant that is not the exact 32-character form, a
--- repeated correlation id) fails the copy, the runner rolls everything back and leaves version 17,
--- and the count guard below fails if any turn was left behind. The numbers 2000 and 4000 repeat
--- HEARD_MAX_CHARS and SAID_MAX_CHARS of conversation_types.py. No transaction statements: the
+-- rows, in bytes: a turn weighs its generated `bytes` column, the UTF-8 length of both texts
+-- (`length` of a BLOB counts bytes on every supported SQLite; `octet_length` needs 3.43).
+-- Nothing is dropped silently: a turn that breaks a rule of the new table (an instant that is not
+-- the exact 32-character form, a repeated correlation id) fails the copy, the runner rolls
+-- everything back and leaves version 17, and the count guard below fails if any turn was left
+-- behind. The numbers 2000 and 4000 repeat HEARD_MAX_CHARS and SAID_MAX_CHARS of
+-- conversation_types.py. No transaction statements: the
 -- runner wraps this file.
 
 CREATE TABLE conversation_turns (
@@ -26,10 +28,15 @@ CREATE TABLE conversation_turns (
     ),
     verdict           TEXT NOT NULL CHECK (verdict IN ('verified', 'not_verified', 'not_owner', 'not_checked')),
     heard             TEXT NOT NULL CHECK (length(heard) <= 2000),
-    said              TEXT NOT NULL CHECK (length(said) <= 4000)
+    said              TEXT NOT NULL CHECK (length(said) <= 4000),
+    -- What the turn weighs for the segment limit and the space cap. The one definition: the append
+    -- in conversation_record.py weighs the new turn in Python and a test pins both to be equal.
+    bytes             INTEGER GENERATED ALWAYS AS (length(CAST(heard AS BLOB)) + length(CAST(said AS BLOB))) STORED
 ) STRICT;
 
--- The read order and the cascade of a record's delete.
+-- The read order, the cascade of a record's delete, and the lookup of a record's rows for its
+-- count and byte sum (at most CONVERSATION_SEGMENT_MAX_TURNS rows). SQLite reads a stored
+-- generated column from the table, never from an index, so no index can cover that sum.
 CREATE INDEX conversation_turns_record_idx ON conversation_turns (record_id, said_at, id);
 
 INSERT INTO conversation_turns (record_id, correlation_id, said_at, verdict, heard, said)

@@ -94,9 +94,18 @@ def test_the_dead_table_guard_detects_a_violation() -> None:
 
 
 # SQL functions newer than the runtime floor `db.SQLITE_FLOOR` (3.42): a statement using one would
-# pass the start-up check and then fail on an older SQLite. `octet_length` arrived in 3.43; the
-# byte length is `length(CAST(x AS BLOB))`, which every supported version has.
-_ABOVE_THE_FLOOR = re.compile(r"\boctet_length\s*\(", re.IGNORECASE)
+# pass the start-up check and then fail on an older SQLite. `octet_length` and `timediff` arrived in
+# 3.43, `concat`, `concat_ws` and `string_agg` in 3.44, `unistr` in 3.50. The byte length is
+# `length(CAST(x AS BLOB))`, which every supported version has.
+_ABOVE_THE_FLOOR_FUNCTIONS = (
+    "octet_length",
+    "timediff",
+    "concat",
+    "concat_ws",
+    "string_agg",
+    "unistr",
+)
+_ABOVE_THE_FLOOR = re.compile(rf"\b(?:{'|'.join(_ABOVE_THE_FLOOR_FUNCTIONS)})\s*\(", re.IGNORECASE)
 
 
 def _above_the_floor_users(sources: Mapping[str, str]) -> list[str]:
@@ -128,10 +137,20 @@ def test_the_runtime_floor_guard_detects_a_violation() -> None:
     leak = {
         "server/memory/a.py": 'SQL = "SELECT SUM(octet_length(heard)) FROM t"\n',
         "server/memory/b.sql": "SELECT OCTET_LENGTH (said) FROM t;\n",
-        "server/memory/ok.py": 'SQL = "SELECT length(CAST(heard AS BLOB)) FROM t"\n',
+        "server/memory/c.py": 'SQL = "SELECT timediff(a, b), concat(a, b), concat_ws(x, a, b)"\n',
+        "server/memory/d.sql": "SELECT string_agg(name, x) FROM t; SELECT unistr(x) FROM t;\n",
+        "server/memory/ok.py": (
+            'SQL = "SELECT length(CAST(heard AS BLOB)) || a, group_concat(b) FROM t"\n'
+            'CALL = "np.concatenate(parts)"\n'
+        ),
     }
 
-    assert _above_the_floor_users(leak) == ["server/memory/a.py:1", "server/memory/b.sql:1"]
+    assert _above_the_floor_users(leak) == [
+        "server/memory/a.py:1",
+        "server/memory/b.sql:1",
+        "server/memory/c.py:1",
+        "server/memory/d.sql:1",
+    ]
 
 
 # --- the live schema: keys, indexes, rules and the data dictionary (Plan 0085 D-11) ---------------
@@ -409,7 +428,7 @@ async def _live_tables() -> list[_Table]:
         name = str(name_value)
         if not is_virtual and any(name.startswith(f"{v}_") for v in virtual):
             continue  # a shadow table of an FTS5 or vec0 table
-        info = await _rows(f'SELECT name, pk FROM pragma_table_info("{name}")')
+        info = await _rows(f'SELECT name, pk FROM pragma_table_xinfo("{name}") WHERE hidden <> 1')
         keys = sorted((int(str(pk)), str(column)) for column, pk in info if pk)
         tables.append(
             _Table(

@@ -154,7 +154,7 @@ async def capture_turn(
             owner_entity_id=owner_id,
             now=now,
             index=chain_indexers(
-                _candidate_linker(),
+                _link_candidates,
                 _recall_indexer(turn, owner_id, indexed),
                 pending_hook(
                     pending, owner_id=owner_id, correlation_id=event.correlation_id, now=now
@@ -204,19 +204,15 @@ def _occurred_days(turn: RecordedTurn) -> DayWindow | None:
         return None
 
 
-def _candidate_linker() -> TurnIndexer:
-    """Return the indexer that links the turn's memory candidates to its row (Plan 0085).
+async def _link_candidates(
+    conn: aiosqlite.Connection, _record_id: int, turn_id: int, recorded: RecordedTurn
+) -> None:
+    """Link the turn's memory candidates to its row, in the append's own transaction (Plan 0085).
 
-    A candidate is proposed in the background, so it may exist before its turn is appended; this
-    ties it to the turn in the append's own transaction. The candidate path links the other order.
+    A candidate is proposed in the background, so it may exist before its turn is appended; the
+    candidate path links the other order.
     """
-
-    async def link(
-        conn: aiosqlite.Connection, _record_id: int, turn_id: int, recorded: RecordedTurn
-    ) -> None:
-        await link_source_turn(conn, correlation_id=recorded.correlation_id, turn_id=turn_id)
-
-    return link
+    await link_source_turn(conn, correlation_id=recorded.correlation_id, turn_id=turn_id)
 
 
 def _recall_indexer(turn: RecordedTurn, owner_id: int, indexed: _Indexed) -> TurnIndexer | None:
