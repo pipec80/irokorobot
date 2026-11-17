@@ -12,10 +12,10 @@ from datetime import UTC, datetime
 from enum import StrEnum
 import json
 from typing import TYPE_CHECKING, Final
-from uuid import UUID
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Sequence
+    from uuid import UUID
 
 __all__ = [
     "HEARD_MAX_CHARS",
@@ -29,8 +29,6 @@ __all__ = [
 #: Caps of one exchange, so a single entry always fits in a segment (Plan 0076 D-6).
 HEARD_MAX_CHARS: Final = 2000
 SAID_MAX_CHARS: Final = 4000
-
-_KEYS: Final = frozenset({"at", "heard", "said", "voice", "cid"})
 
 
 class TurnVerdict(StrEnum):
@@ -74,35 +72,6 @@ class RecordedTurn:
                 "cid": str(self.correlation_id),
             },
             ensure_ascii=False,
-        )
-
-    @classmethod
-    def from_json_obj(cls, obj: Mapping[str, object]) -> RecordedTurn:
-        """Rebuild an exchange from its parsed JSON object.
-
-        Args:
-            obj: One element of a record's ``turns`` array.
-
-        Returns:
-            The exchange.
-
-        Raises:
-            ValueError: If a key is missing or extra, or a value has the wrong type or form.
-        """
-        if set(obj) != _KEYS:
-            raise ValueError("malformed recorded turn")
-        at, heard, said, voice, cid = (obj[key] for key in ("at", "heard", "said", "voice", "cid"))
-        if not all(isinstance(value, str) for value in (at, heard, said, voice, cid)):
-            raise ValueError("malformed recorded turn")
-        moment = datetime.fromisoformat(str(at))
-        if moment.tzinfo is None:
-            raise ValueError("malformed recorded turn")
-        return cls(
-            at=moment,
-            heard=str(heard),
-            said=str(said),
-            voice=TurnVerdict(str(voice)),
-            correlation_id=UUID(str(cid)),
         )
 
 
