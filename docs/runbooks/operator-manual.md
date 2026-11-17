@@ -116,7 +116,7 @@ only what `just test-pipeline` exercises as a smoke test of the three model seam
 | `faces_demo.py` | `just faces-demo --see` | Webcam/photo → `/vision/respond` scene dialogue (still no biometrics) | Yes | No |
 | `face_auth_demo.py` | `just face-auth-demo --enroll` / `--revoke` | The Plan 0029 admin endpoints — enroll/revoke the owner's face | Yes, owner+PIN configured | No |
 | `manage_household_roles.py` | `uv run python scripts/manage_household_roles.py bootstrap-owner` | Local role bootstrap, direct DB, no HTTP | No | No |
-| `migrate_memory_v4.py` | `uv run python scripts/migrate_memory_v4.py --apply` | Legacy-fact migration into v4, dry-run first | No | No |
+| `iroko-admin health` | `just db-health` | The database's health (Plan 0085): `integrity_check`, foreign keys, the FTS5 index, orphans, units without a vector or of another model, rows outside the time format, the SQLite and `sqlite-vec` versions. Counts only, never a value; changes no row; no PIN; exit `0` when every fault count is 0, `1` on a fault (the report names it) | No, and the server must be stopped | Yes |
 | `eval_chat.py` / `eval_consolidation.py` | `just eval-chat` / `just eval-memory` | Response/extraction quality against real Ollama — not `pytest`. `just eval-chat --mode stream` instead measures how often a streamed reply would drop to the fallback phrase (the plain-text contract, Plans 0056 and 0059) and how often a reply is not in Spanish (Plan 0064); it reports counts and rates, never model output | Needs `just services` | Yes |
 | `diagnose_stream_protocol.py` | `just diagnose-stream` | Why a streamed reply drops to the fallback phrase (Plan 0057): runs the golden and public turns under variants that each remove or move one factor, in a seeded shuffled order, and reports failure shapes, an ablation read against a noise control, timings and whether a schema-constrained reply arrives spread over time. Counts only, never model output; `--runs`, `--seed`, `--variants`, `--structured-runs`, `--output`. The default 500 streams take on the order of an hour on a non-dedicated laptop (an estimate; the duration of the recorded run was not noted); exit `0`, `1` (a provider error, the report is still written) or `2` (Ollama not answering, nothing written) | Run it with the server stopped | Yes |
 | `stt_probes.py` | `just probe-stt noise` / `just probe-stt first-turn` | Whisper on synthetic noise (empty, prompt echo or other text, read before the echo guard) and first-utterance accuracy over fresh processes (Plan 0056); loads the real models, so run it with the server stopped | No | Yes |
@@ -1449,5 +1449,24 @@ just admin audit                # every operation, with no value, name or phone
   closing has no path yet** (roadmap, cross-cutting table).
 - It refuses to run if the server answers `/health`, the database is missing or the schema is behind
   (`just setup-personal status` shows the version), and it never creates or migrates a database.
+
+**The database's health and the backup before an upgrade (Plan 0085).**
+
+- `just db-health` (the same as `just admin health`) checks the database with the server stopped,
+  asks for no PIN and prints counts only. It exits `0` when `integrity_check`, the foreign key check,
+  the FTS5 check, the orphans (vectors without a unit, units without an FTS row, face vectors
+  without a profile, derivatives whose turn exists but is not linked) and the rows outside the time
+  format are all `0`, and `1` on any fault. Units without a vector and units of another model are
+  printed, not faults: they are a backlog the next index pass clears. Run it after an upgrade and
+  whenever a start looks wrong. The meaning of every table is in the
+  [data dictionary](../architecture/data-dictionary.md).
+- **Before an upgrade that brings a migration**, with the server stopped, copy the database (the
+  file with its `-wal` and `-shm`) to `data/backups/pre-<plan>-<YYYYMMDD-HHMMSS>/` and prove it:
+  restore it into a scratch folder, open it and compare `integrity_check`, the schema version and
+  the table counts. Start the server (the migrations run on start), speak a short script, stop it,
+  run `just db-health`, then make the `post-<plan>-<stamp>` backup and prove it the same way.
+- **Delete the `pre-<plan>` backup only after** a `post-<plan>` backup has been restored and opened
+  with health exiting `0` **and** the owner accepts the result. Until then it is the rollback
+  (with the previous version of the code). Never keep a restored scratch copy: it holds real data.
 - `$env:BRAIN_DB_PATH` lives in one terminal. Read the first line of the output (`Base de datos: ...`)
   before you write: it names the database the command is about to use.

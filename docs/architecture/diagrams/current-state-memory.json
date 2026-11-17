@@ -90,7 +90,7 @@
       "id": "memory",
       "type": "database",
       "label": "SQLite",
-      "sublabel": "v4 · candidates · record",
+      "sublabel": "schema v20 · turn rows · v4",
       "pos": [
         670,
         270

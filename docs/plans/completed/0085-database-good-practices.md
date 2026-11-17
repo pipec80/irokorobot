@@ -1,6 +1,17 @@
 # 0085 — Block C1: the storage foundation, minimum version
 
-> **Status:** **Ready (promoted by Pipec on 2026-11-16)**; executed in two parts, Part A on
+> **Status:** **Closed (2026-11-17)**; accepted by Pipec on real hardware. Part A merged
+> 2026-11-16 (PR #279, `6660f85`; CI selection 8153 passed, baseline 8108) and Part B merged
+> 2026-11-17 (PR #282, `c21b2b9`; CI selection 8296 passed, baseline 8173). The real database was
+> upgraded to version 20 on 2026-11-17 at 18:22, `iroko-admin health` exits 0 on it, and a proven
+> `post-0085` backup exists. Pipec accepted on 2026-11-17 and the three `pre-0085` backups were
+> deleted that day, so every completion criterion is met
+> ([record](../../evals/0085-storage-foundation-acceptance.md)). Pipec's decisions during
+> execution are written into *Decisions* (D-3 and D-7) and *Permitted files*. ADR 0038 is
+> `Accepted` with it; the next steps are Plan 0086 (C2: correct, archive and delete) and Plan 0087
+> (the export).
+>
+> **Was:** **Ready (promoted by Pipec on 2026-11-16)**; executed in two parts, Part A on
 > `feat/0085a-storage-safety`, Part B on `feat/0085b-storage-schema`, both merged after Plan 0084's
 > acceptance closes. Trimmed 2026-11-16. Rewritten on Pipec's scope rule of 2026-11-16
 > («Yes, trim it»): **every piece must show which behaviour it enables, which defect it fixes or
@@ -260,11 +271,11 @@ changed). After Part B's real upgrade, the `pre-0085` backup with the previous `
 
 ### Task A0: Re-audit and baseline
 
-- [ ] **Step 1:** after Plan 0084 closes, `git checkout main && git pull`, create
+- [x] **Step 1:** after Plan 0084 closes, `git checkout main && git pull`, create
   `feat/0085a-storage-safety`.
-- [ ] **Step 2:** verify *The audit* items 2, 8 and 9, and every `datetime('now')` writer, and
+- [x] **Step 2:** verify *The audit* items 2, 8 and 9, and every `datetime('now')` writer, and
   **stop and report** if one is false.
-- [ ] **Step 3:** baseline: `MEMORY_ENABLED=false uv run pytest -m "not slow and not hardware and
+- [x] **Step 3:** baseline: `MEMORY_ENABLED=false uv run pytest -m "not slow and not hardware and
   not eval" -q -n auto` (not in the background while Pipec rehearses).
 
 ### Task A1: The runtime checked; the transaction and a clean start
@@ -277,13 +288,13 @@ changed). After Part B's real upgrade, the `pre-0085` backup with the previous `
 versions; raises `BrainMemoryError` with a closed message); `open_db` calls it, logs the report
 once, runs `PRAGMA optimize=0x10002`, and cleans up on any failure after `connect`.
 
-- [ ] **Step 1: Write the failing tests:** each runtime assertion refuses a patched report (3.41,
+- [x] **Step 1: Write the failing tests:** each runtime assertion refuses a patched report (3.41,
   no FTS5, `v0.1.10`) and passes on the real one; `test_a_failed_start_leaves_nothing_behind` (a
   pragma made to fail: the connection is closed, the state is `None`, a second `open_db` works and
   a `transaction()` commits); `test_a_cancelled_transaction_after_begin_rolls_back`.
-- [ ] **Step 2:** FAIL. **Step 3:** implement; pin `sqlite-vec==0.1.9` (`uv lock`, then
+- [x] **Step 2:** FAIL. **Step 3:** implement; pin `sqlite-vec==0.1.9` (`uv lock`, then
   `uv sync --all-packages --all-groups --extra cuda`). **Step 4:** PASS.
-- [ ] **Step 5:** commit `fix: check the SQLite runtime and close two start-up gaps (plan 0085)`.
+- [x] **Step 5:** commit `fix: check the SQLite runtime and close two start-up gaps (plan 0085)`.
 
 ### Task A2: One time format in the writers
 
@@ -295,34 +306,34 @@ once, runs `PRAGMA optimize=0x10002`, and cleans up on any failure after `connec
 `def validity_day(moment: datetime, zone: ZoneInfo) -> str`. `timestamps` imports no settings,
 database or FastAPI.
 
-- [ ] **Step 1: Write the failing tests:** a `+03:00` moment becomes its UTC instant in 32
+- [x] **Step 1: Write the failing tests:** a `+03:00` moment becomes its UTC instant in 32
   characters; a naive one raises; round trip; text order equals time order; `validity_day` at
   02:30 UTC is the previous day in `America/Santiago`; a temporal V4 fact and relation open and
   close on a household day; each store's insert writes the 32-character format;
   `test_no_server_module_writes_datetime_now` with a leak test.
-- [ ] **Step 2:** FAIL. **Step 3:** implement and move every writer. **Step 4:** PASS; the writers'
+- [x] **Step 2:** FAIL. **Step 3:** implement and move every writer. **Step 4:** PASS; the writers'
   tests unchanged in what they assert.
-- [ ] **Step 5:** commit `refactor: write every time in one format (plan 0085)`.
+- [x] **Step 5:** commit `refactor: write every time in one format (plan 0085)`.
 
 ### Task A3: The byte-level deletion test
 
 **Files:** `tests/integration/test_physical_deletion.py`.
 
-- [ ] **Step 1:** write D-4's test on a temporary database through `open_db` (a candidate's value
+- [x] **Step 1:** write D-4's test on a temporary database through `open_db` (a candidate's value
   scrub; a recall unit deleted with its record). If a canary survives, **stop and report**.
-- [ ] **Step 2:** PASS. **Step 3:** commit `test: prove physical deletion at the byte level
+- [x] **Step 2:** PASS. **Step 3:** commit `test: prove physical deletion at the byte level
   (plan 0085)`.
 
 ### Task A4: Verification, review and merge of Part A
 
-- [ ] **Step 1:** the CI selection, `uv run pyright`, `uv run mypy server/src robot/src`,
+- [x] **Step 1:** the CI selection, `uv run pyright`, `uv run mypy server/src robot/src`,
   `uv run ruff check .`, `uv run ruff format --check .`, `uv run ruff check scripts/*.py`,
   `uv run python scripts/check_reserved_terms.py`, `just gate`.
-- [ ] **Step 2:** the `simplify` skill, then `database-architect`,
+- [x] **Step 2:** the `simplify` skill, then `database-architect`,
   `pr-review-toolkit:code-reviewer` and `pr-review-toolkit:silent-failure-hunter` on
   `git diff main...HEAD` (`sonnet`, `.claude/` first, read-only); each finding verified and fixed
   with its RED test; Step 1 again.
-- [ ] **Step 3:** Pipec starts the server and the robot and speaks a short script (a greeting,
+- [x] **Step 3:** Pipec starts the server and the robot and speaks a short script (a greeting,
   «¿qué sabes de mí?», a recall question); the agent reads `logs/server.log` (versions logged).
   Push, PR, squash-merge with green CI, delete the branch.
 
@@ -332,11 +343,11 @@ database or FastAPI.
 
 ### Task B0: Re-audit and baseline
 
-- [ ] **Step 1:** `git checkout main && git pull` (Part A merged), create `feat/0085b-storage-schema`.
-- [ ] **Step 2:** verify *The audit* items 1 to 7, the readers of `RecordedTurn`, every query on
+- [x] **Step 1:** `git checkout main && git pull` (Part A merged), create `feat/0085b-storage-schema`.
+- [x] **Step 2:** verify *The audit* items 1 to 7, the readers of `RecordedTurn`, every query on
   the correlation ids and `embedding_model`, and that `ALTER TABLE ADD COLUMN … REFERENCES … ON
   DELETE CASCADE` works on the installed SQLite; **stop and report** if one is false.
-- [ ] **Step 3:** baseline, as Task A0.
+- [x] **Step 3:** baseline, as Task A0.
 
 ### Task B1: The atomic runner
 
@@ -346,12 +357,12 @@ database or FastAPI.
 bool = False; owns_transaction: bool = True` (`False` for 001 to 016, which carry their own);
 `run_migrations` per D-5.
 
-- [ ] **Step 1: Write the failing tests:** a new file holding `BEGIN`, `COMMIT` or `user_version`
+- [x] **Step 1: Write the failing tests:** a new file holding `BEGIN`, `COMMIT` or `user_version`
   is refused; `test_a_migration_failing_halfway_leaves_nothing` (a script that creates a table and
   an index, inserts rows, then fails: no table, index, row or version change survives, foreign keys
   on); a `rebuild=True` file runs with foreign keys off and a violation aborts it.
-- [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** PASS.
-- [ ] **Step 5:** commit `feat: an atomic migration runner (plan 0085)`.
+- [x] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** PASS.
+- [x] **Step 5:** commit `feat: an atomic migration runner (plan 0085)`.
 
 ### Task B2: Migration 017 — the dead tables out
 
@@ -362,48 +373,48 @@ scenario (`test_household_authorization_schema`, `test_memory_v4_schema`, `test_
 `test_owner_stranger_matrix`, `test_memory_integration`, `test_retention`); updated
 `test_architecture_guards`.
 
-- [ ] **Step 1:** failing tests (each dead table gone; a canary row in any aborts; no SQL names
+- [x] **Step 1:** failing tests (each dead table gone; a canary row in any aborts; no SQL names
   them). **Step 2:** FAIL. **Step 3:** implement. **Step 4:** PASS.
-- [ ] **Step 5:** commit `feat: retire the dead tables (plan 0085)`.
+- [x] **Step 5:** commit `feat: retire the dead tables (plan 0085)`.
 
 ### Task B3: Migration 018 — the turns as rows
 
 **Files:** the migration, `conversation_record.py`, `retention.py`,
 `tests/integration/test_migrations_017_020.py`, the record suites.
 
-- [ ] **Step 1: Write the failing tests:** a record's JSON turns become rows in order with the same
+- [x] **Step 1: Write the failing tests:** a record's JSON turns become rows in order with the same
   fields; reading a record returns the same `RecordedTurn` tuple (Review focus 2); the segment's
   limit counts rows; the 200 MB cap counts bytes (a canary with accents and an emoji counts more
   bytes than characters, and the cap trips at the byte total); appending is one `INSERT`.
-- [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** PASS; every record, capture, episode,
+- [x] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** PASS; every record, capture, episode,
   admin and recall suite unchanged.
-- [ ] **Step 5:** commit `feat: keep a conversation's turns as rows (plan 0085)`.
+- [x] **Step 5:** commit `feat: keep a conversation's turns as rows (plan 0085)`.
 
 ### Task B4: Migration 019 — the turn linked to what is derived from it
 
 **Files:** the migration, `recall_store.py`, `candidates.py`, `pending_store.py`,
 `pending_capture.py`, `conversation_capture.py`, their tests.
 
-- [ ] **Step 1: Write the failing tests:** deleting one turn removes its unit, its FTS row, its
+- [x] **Step 1: Write the failing tests:** deleting one turn removes its unit, its FTS row, its
   vector, its candidate and its pending topic, and nothing else (Review focus 4); a candidate with
   the record off keeps a `NULL` turn; every existing unit, candidate and topic is mapped to its turn
   (none left unmapped); indexing a turn twice leaves one unit; an `UPDATE` of a unit's body is
   refused; each child lookup of a `DELETE FROM entities` and of a turn deletion uses an index
   (`EXPLAIN QUERY PLAN`).
-- [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** PASS.
-- [ ] **Step 5:** commit `feat: link each turn to what is derived from it (plan 0085)`.
+- [x] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** PASS.
+- [x] **Step 5:** commit `feat: link each turn to what is derived from it (plan 0085)`.
 
 ### Task B5: Migration 020 — the old times and the biometric tables
 
 **Files:** the migration, `biometric_consent.py`, `voice_consent.py`, `vision/faces.py`,
 `voice/voiceprints.py`, their tests.
 
-- [ ] **Step 1: Write the failing tests:** each 19- and 25-character instant converted exactly; a
+- [x] **Step 1: Write the failing tests:** each 19- and 25-character instant converted exactly; a
   third format aborts and leaves 19 (Review focus 1); the two instant bounds become days; ordering
   across converted and new instants is right; the two profile tables refuse their person's deletion
   and never reuse a deleted top id; the face and voice suites pass unchanged.
-- [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** PASS.
-- [ ] **Step 5:** commit `feat: one time format in the data and fixed profile keys (plan 0085)`.
+- [x] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** PASS.
+- [x] **Step 5:** commit `feat: one time format in the data and fixed profile keys (plan 0085)`.
 
 ### Task B6: The embedding guard, the dictionary and the health check
 
@@ -416,14 +427,14 @@ scenario (`test_household_authorization_schema`, `test_memory_v4_schema`, `test_
 `async def check_health(conn: aiosqlite.Connection) -> HealthReport` (changes no row);
 `def health_failed(report: HealthReport) -> bool`.
 
-- [ ] **Step 1: Write the failing tests:** ADR 0031's C1 test (units of model A, configured model
+- [x] **Step 1: Write the failing tests:** ADR 0031's C1 test (units of model A, configured model
   B: no vector comparison, the lexical hit still comes, the re-index moves every unit to B, then
   vector search is back) (Review focus 5); each health measure sees its planted fault and a clean
   database passes; no canary reaches the printed report; the guards of D-11 with their leak tests;
   the dictionary covers every table and column both ways.
-- [ ] **Step 2:** FAIL. **Step 3:** implement and write the dictionary. **Step 4:** PASS; the
+- [x] **Step 2:** FAIL. **Step 3:** implement and write the dictionary. **Step 4:** PASS; the
   deletion test of Task A3 passes on the new schema.
-- [ ] **Step 5:** commit `feat: model guard, data dictionary and health check (plan 0085)`.
+- [x] **Step 5:** commit `feat: model guard, data dictionary and health check (plan 0085)`.
 
 ### Task B7: Verification and review of Part B
 
@@ -438,13 +449,13 @@ implemented; it becomes `Accepted` once its amended scope is built), ADR 0032 (*
 the ADR index, the plan board, `docs/plans/open/README.md`, `docs/plans/completed/README.md`, the
 roadmap (row 8, *Database hygiene*), both delivery maps, Pipec's local `docs/roadmap/tabla-tareas.md`.
 
-- [ ] **Step 1:** confirm on `main` that 017 to 020 are still the next numbers (else renumber and
+- [x] **Step 1:** confirm on `main` that 017 to 020 are still the next numbers (else renumber and
   re-run Task B7). With the server stopped, D-12's backup, rollback proof and rehearsal; the copy
   deleted. Any difference stops the plan.
-- [ ] **Step 2:** merge; Pipec starts the server (the migrations run) and the robot, and speaks the
+- [x] **Step 2:** merge; Pipec starts the server (the migrations run) and the robot, and speaks the
   script of Task A4 plus one sensitive read of the owner's own data; each answers as before; with
   the server stopped, `iroko-admin health` exits 0; the `post-0085` backup made and proven.
-- [ ] **Step 3:** when Pipec accepts, delete the `pre-0085` backup and record it; update the
+- [x] **Step 3:** when Pipec accepts, delete the `pre-0085` backup and record it; update the
   documents above; move the plan to `completed/`; commit `docs: close plan 0085, the storage
   foundation`, push, PR, squash-merge, delete the branch.
 
@@ -487,3 +498,18 @@ prompt, robot or dependency change beyond the `sqlite-vec` pin.
 - **Type consistency.** `instant_text`, `parse_instant`, `day_text`, `validity_day`,
   `check_runtime`, `Migration`, `HealthReport`, `check_health`, `health_failed` are each defined
   once and named the same in later tasks.
+
+## Execution record (2026-11-17)
+
+- **Order of Task B8.** The plan says to merge Part B and then start the server. The real upgrade
+  ran on the Part B branch once CI was green, and the merge followed: the code was the same, and a
+  defect found on hardware would have been fixed before `main` received it. The `pre-0085` backup
+  and the previous `main` were the rollback until the acceptance.
+- **Evidence.** [The acceptance record](../../evals/0085-storage-foundation-acceptance.md): the
+  rehearsal on a copy of the real database (202 turn rows equal the 202 JSON turns, the 8 dead
+  tables had 0 rows, every other table the same count, health 0), the real upgrade (version 20,
+  four spoken turns answered 200, `iroko-admin health` exit 0) and the proven `post-0085` backup.
+- **Closed.** Pipec accepted on 2026-11-17 and the three `pre-0085` backups were deleted after the
+  `post-0085` backup was proven. Completion criterion 5 is met.
+- **Left for later, by their triggers.** Everything in *Deferred, with their triggers* stays
+  deferred; correcting, archiving and deleting a memory is Plan 0086 and the export Plan 0087.

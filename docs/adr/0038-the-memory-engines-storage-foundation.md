@@ -1,14 +1,16 @@
 # 0038 — The memory engine's storage foundation: one SQLite file for every kind of memory, built to last years
 
-- **Status:** Proposed (2026-11-13), **amended by Pipec on 2026-11-16** (*Amendment of
+- **Status:** **Accepted (2026-11-17)**; *Implemented in Plan 0085*, which built the amended scope
+  and closed 2026-11-17 ([record](../evals/0085-storage-foundation-acceptance.md)); the deferred
+  pieces wait for their triggers (*Amendment of 2026-11-16*). Proposed (2026-11-13), **amended by Pipec on 2026-11-16** (*Amendment of
   2026-11-16* below governs: the scope of what is built now is trimmed by Pipec's rule; the
   decisions below stay as the target and each deferred piece has its trigger). Written at Pipec's
   request after he named the storage the core
   of the product («estamos montando un motor de memoria sobre SQLite»: relational, vector, full
   text, graph and document memory all on SQLite; starting the schema from zero is acceptable in
   the MVP). It rests on seven independent read-only reviews of 2026-11-13: two of Plan 0085's
-  first draft, then two research rounds (*Context*), and on the code of `main` at `8b37846`. It becomes `Accepted` when the plan that
-  implements it closes. **Pipec confirmed all nine recommendations of *Pipec's decisions* the same
+  first draft, then two research rounds (*Context*), and on the code of `main` at `8b37846`. It became `Accepted` when the plan that
+  implements it closed (2026-11-17). **Pipec confirmed all nine recommendations of *Pipec's decisions* the same
   day**; Plan 0085 is rewritten on them, in two parts. Completed the same day from Pipec's own
   studies of the memory engine (*Context* item 13): schema-level idempotency, the rollback proven
   before an upgrade, the storage fingerprint and the storage benchmark. Corrected the same day
@@ -28,7 +30,7 @@
 - **Amends:** [ADR 0031](0031-the-memory-engine-boundary.md) decision 8 («an index can be rebuilt
   from its source»: a recall unit's and an episode's sensitivity and an episode's summary are
   primary data, decision 7 here); [ADR 0027](0027-conversation-record-and-the-diary.md) (the turns
-  of a record become rows, decision 6, if Pipec accepts it).
+  of a record become rows, decision 6; built by Plan 0085, 2026-11-17).
 - **Delivers:** the foundation under row 8 of the
   [path to the finish line](../roadmap/cognitive-roadmap.md#closing-path-of-conversational-memory):
   Plan 0085 (C1) is rewritten on it, and Plans 0086 (C2) and 0087 (the export) build on the same
@@ -470,8 +472,20 @@ or version behind; a failed start leaves no connection set and the next start wo
 cap counts bytes; upgrading the same old backup twice gives every carried row the same `uid`;
 forgetting a story keeps a fact the owner confirmed from it, with its link set to `NULL`.
 
+## Implementation (2026-11-17)
+
+Plan 0085 built the amended scope and closed on 2026-11-17: the runtime check, the transaction and
+start-up fixes, one time format, the byte-level deletion test, the atomic runner, migrations 017
+to 020, the embedding-model guard, the data dictionary with its guards and `iroko-admin health`.
+The real database was upgraded to version 20 with every table count equal, 202 turn rows equal to
+the 202 JSON turns and health at 0 ([record](../evals/0085-storage-foundation-acceptance.md)).
+Decision 6 is built as far as the amendment says: the turns are rows of `conversation_turns`, and
+the recall unit, the candidate and the pending topic each name their turn, so ADR 0027's «one row
+per segment with its turns as JSON» no longer holds. The deferred table above is unchanged: each
+piece waits for its trigger.
+
 ## Docs to update
 
-The ADR index; ADR 0031 (a note on decision 8) and ADR 0027 (the turns, if decision 6 is
-accepted) when this is accepted; Plan 0085 (rewritten); the roadmap (row 8, *Database hygiene*);
-`current-state.md`, the data dictionary and the memory diagram when the plan closes.
+Done when Plan 0085 closed (2026-11-17): the ADR index; a note on ADR 0031 decision 8 and on
+ADR 0027's storage of the turns; ADR 0032 (*C1 implemented*); the roadmap (row 8, *Database
+hygiene*); `current-state.md`, the data dictionary, the operator manual and the memory diagram.
