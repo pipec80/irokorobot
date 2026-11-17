@@ -37,20 +37,6 @@ class ConversationTurn(BaseModel):
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
-class FactRecord(BaseModel):
-    """A single active fact about an entity.
-
-    Attributes:
-        predicate: Relation name in snake_case (e.g. ``"vive_en"``).
-        object_value: Value of the relation.
-        confidence: Confidence score in ``[0, 1]``.
-    """
-
-    predicate: str
-    object_value: str
-    confidence: float = Field(ge=0, le=1, default=1.0)
-
-
 class ExtractedEntity(BaseModel):
     """An entity extracted from a conversation turn by the consolidation LLM.
 

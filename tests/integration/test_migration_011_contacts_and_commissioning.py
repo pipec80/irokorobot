@@ -45,7 +45,7 @@ async def v11_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterat
 @pytest.fixture
 async def v10_db(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> AsyncIterator[tuple[tuple[int, str], ...]]:
+) -> AsyncIterator[tuple[db.Migration, ...]]:
     """A database migrated only to version 10; yields the full migration list for the upgrade."""
     monkeypatch.setattr(settings, "brain_db_path", tmp_path / "upgrade-v10.db")
     db._conn = None
@@ -128,7 +128,7 @@ async def test_a_fresh_database_is_at_version_eleven_with_the_three_tables(v11_d
 
 
 async def test_a_version_ten_database_upgrades_in_place_without_losing_a_row(
-    v10_db: tuple[tuple[int, str], ...], monkeypatch: pytest.MonkeyPatch
+    v10_db: tuple[db.Migration, ...], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     owner, child = await _people(2)
     conn = db.get_conn()

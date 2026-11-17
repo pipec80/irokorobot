@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 from server.cognition.clock import utc_now
 from server.cognition.occurred_time import occurred_window
 from server.cognition.strong_actor import VoiceVerifier, is_face_actor, verify_face_and_voice
+from server.memory.candidates import link_source_turn
 from server.memory.conversation_consent import has_active_conversation_consent
 from server.memory.conversation_record import append_turn, chain_indexers
 from server.memory.conversation_types import TurnVerdict, make_turn
@@ -153,6 +154,7 @@ async def capture_turn(
             owner_entity_id=owner_id,
             now=now,
             index=chain_indexers(
+                _link_candidates,
                 _recall_indexer(turn, owner_id, indexed),
                 pending_hook(
                     pending, owner_id=owner_id, correlation_id=event.correlation_id, now=now
@@ -202,6 +204,17 @@ def _occurred_days(turn: RecordedTurn) -> DayWindow | None:
         return None
 
 
+async def _link_candidates(
+    conn: aiosqlite.Connection, _record_id: int, turn_id: int, recorded: RecordedTurn
+) -> None:
+    """Link the turn's memory candidates to its row, in the append's own transaction (Plan 0085).
+
+    A candidate is proposed in the background, so it may exist before its turn is appended; the
+    candidate path links the other order.
+    """
+    await link_source_turn(conn, correlation_id=recorded.correlation_id, turn_id=turn_id)
+
+
 def _recall_indexer(turn: RecordedTurn, owner_id: int, indexed: _Indexed) -> TurnIndexer | None:
     """Return the indexer that writes the turn's recall unit, or ``None`` when it gets none.
 
@@ -215,9 +228,16 @@ def _recall_indexer(turn: RecordedTurn, owner_id: int, indexed: _Indexed) -> Tur
         return None
     occurred = _occurred_days(turn)
 
-    async def index(conn: aiosqlite.Connection, record_id: int, recorded: RecordedTurn) -> int:
+    async def index(
+        conn: aiosqlite.Connection, record_id: int, turn_id: int, recorded: RecordedTurn
+    ) -> int:
         unit_id = await insert_turn_unit(
-            conn, record_id=record_id, owner_entity_id=owner_id, turn=recorded, occurred=occurred
+            conn,
+            record_id=record_id,
+            turn_id=turn_id,
+            owner_entity_id=owner_id,
+            turn=recorded,
+            occurred=occurred,
         )
         indexed.units.append(unit_id)
         indexed.occurred = occurred is not None

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, datetime
+import sqlite3
 from typing import TYPE_CHECKING, Final, Literal
 
 import sqlite_vec
@@ -18,6 +19,7 @@ from server import db
 from server.cognition.intent_resolution import resolve_information_need
 from server.cognition.response_plan import InformationNeed
 from server.cognition.spoken_dates import DayWindow
+from server.exceptions import BrainMemoryError
 from server.memory.conversation_types import TurnVerdict
 from server.memory.embeddings import EMBEDDING_DIM
 from server.memory.recall_sensitivity import (
@@ -36,7 +38,12 @@ if TYPE_CHECKING:
     from server.memory.conversation_types import RecordedTurn
 
 __all__ = [
+    "RecallIndexHealth",
     "RecallUnit",
+    "count_rows",
+    "count_units_of_another_model",
+    "count_unlinked_units",
+    "index_health",
     "insert_episode_unit",
     "insert_turn_unit",
     "lexical_hits",
@@ -52,11 +59,31 @@ __all__ = [
 
 type UnitKind = Literal["turn", "episode"]
 
+# An extended SQLite result code keeps its primary code in the low byte (267 is 11 | 1 << 8).
+_PRIMARY_CODE_MASK: Final = 0xFF
+
 # The filters every read applies to a unit `u` joined to its record `r`.
 _READABLE = (
     "u.owner_entity_id = :owner AND u.visibility = 'personal' AND u.sensitivity = 'normal' "
     "AND (r.expires_at IS NULL OR r.expires_at > :now) "
     "AND (:since IS NULL OR u.said_at >= :since) AND (:until IS NULL OR u.said_at < :until)"
+)
+# The model guard (ADR 0031 decision 8). The configured model is a parameter; each half of
+# "another model" is a range (`<` or `>`), which the index `recall_units_model_idx` serves where `<>`
+# would scan. A NULL model is neither: such a unit has no vector yet. The count names the index
+# because, left alone, the planner reads the owner's whole slice of `recall_units_owner_time_idx`.
+_OTHER_MODEL_COUNT_SQL = (
+    "SELECT COUNT(*) FROM recall_units INDEXED BY recall_units_model_idx "
+    "WHERE owner_entity_id = ?1 AND (embedding_model < ?2 OR embedding_model > ?2)"
+)
+# The units to (re-)embed, oldest first: no vector (the partial index
+# `recall_units_unembedded_idx`) or a vector of another model (`recall_units_model_idx`).
+_UNITS_TO_EMBED_SQL = (
+    "SELECT id, body FROM recall_units WHERE id IN ("
+    "SELECT id FROM recall_units WHERE embedding_model IS NULL "
+    "UNION ALL SELECT id FROM recall_units WHERE embedding_model < ?1 "
+    "UNION ALL SELECT id FROM recall_units WHERE embedding_model > ?1) "
+    "ORDER BY id LIMIT ?2"
 )
 _UNIT_COLUMNS = "u.id, u.source_record_id, u.kind, u.body, u.said_at"
 # With the occurred time on (Plan 0083 D-9): a unit with an occurred interval matches a window by
@@ -209,17 +236,32 @@ async def _insert(
     said_at: str,
     sensitivity: RecallSensitivity,
     correlation_id: str | None,
+    turn_id: int | None = None,
     occurred: DayWindow | None = None,
 ) -> int:
+    """Insert one unit, or return the id of the unit its turn or episode already has.
+
+    A turn has one unit and an episode has one (unique indexes), so a retried job that indexes
+    the same turn or episode again changes nothing and does not fail the append. Only that
+    conflict is absorbed: it is named in the statement, so a unique index added later on another
+    column still fails the insert instead of being swallowed. The unit that stays is looked up by
+    the same key and owner.
+
+    Raises:
+        RuntimeError: If the conflict was absorbed but no unit of this owner holds the key.
+    """
+    key_column, key = ("turn_id", turn_id) if kind == "turn" else ("episode_id", episode_id)
     start, end = (None, None) if occurred is None else (occurred.start, occurred.end)
     cursor = await conn.execute(
-        "INSERT INTO recall_units (owner_entity_id, source_record_id, episode_id, kind, body, "
-        "said_at, visibility, sensitivity, correlation_id, occurred_start, occurred_end) "
-        "VALUES (?, ?, ?, ?, ?, ?, 'personal', ?, ?, ?, ?)",
+        "INSERT INTO recall_units (owner_entity_id, source_record_id, episode_id, turn_id, kind, "  # noqa: S608
+        "body, said_at, visibility, sensitivity, correlation_id, occurred_start, occurred_end) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, 'personal', ?, ?, ?, ?) "
+        f"ON CONFLICT ({key_column}) DO NOTHING RETURNING id",
         (
             owner_entity_id,
             record_id,
             episode_id,
+            turn_id,
             kind,
             body,
             said_at,
@@ -229,9 +271,19 @@ async def _insert(
             None if end is None else end.isoformat(),
         ),
     )
-    unit_id = int(cursor.lastrowid or 0)
+    row = await cursor.fetchone()
     await cursor.close()
-    return unit_id
+    if row is not None:
+        return int(row[0])
+    cursor = await conn.execute(
+        f"SELECT id FROM recall_units WHERE {key_column} = ? AND owner_entity_id = ?",  # noqa: S608
+        (key, owner_entity_id),
+    )
+    existing = await cursor.fetchone()
+    await cursor.close()
+    if existing is None:
+        raise RuntimeError("INSERT into recall_units was refused without a unit to return")
+    return int(existing[0])
 
 
 async def insert_turn_unit(
@@ -240,6 +292,7 @@ async def insert_turn_unit(
     record_id: int,
     owner_entity_id: int,
     turn: RecordedTurn,
+    turn_id: int | None = None,
     occurred: DayWindow | None = None,
 ) -> int:
     """Write the unit of one verified turn, inside the caller's open transaction.
@@ -249,10 +302,12 @@ async def insert_turn_unit(
         record_id: The record the turn was appended to.
         owner_entity_id: The owner of the record.
         turn: The exchange; only its ``heard`` text becomes the unit, never ``said``.
+        turn_id: The stored turn the unit comes from, so deleting the turn deletes the unit;
+            ``None`` only for a unit whose turn is not stored.
         occurred: When the told event happened, as local days (Plan 0083), or ``None``.
 
     Returns:
-        The new unit's id.
+        The new unit's id, or that of the unit the turn already has.
 
     Raises:
         ValueError: If the turn is not ``VERIFIED`` or its words are blank.
@@ -271,6 +326,7 @@ async def insert_turn_unit(
         said_at=instant_text(turn.at),
         sensitivity=classify_turn_text(turn.heard),
         correlation_id=str(turn.correlation_id),
+        turn_id=turn_id,
         occurred=occurred,
     )
 
@@ -288,7 +344,7 @@ async def insert_episode_unit(
     """Write the unit of one diary summary, inside the caller's open transaction.
 
     Returns:
-        The new unit's id.
+        The new unit's id, or that of the unit the episode already has.
     """
     return await _insert(
         conn,
@@ -372,14 +428,129 @@ async def store_vector(unit_id: int, vector: list[float], *, model: str) -> bool
 
 
 async def units_without_vector(limit: int) -> list[tuple[int, str]]:
-    """Return ``(id, body)`` of the oldest units that have no vector yet."""
-    cursor = await db.get_conn().execute(
-        "SELECT id, body FROM recall_units WHERE embedding_model IS NULL ORDER BY id LIMIT ?",
-        (limit,),
-    )
+    """Return ``(id, body)`` of the oldest units to (re-)embed: no vector, or one of another model.
+
+    The model is the configured one (``settings.embedding_model``). Both halves read an index
+    (``recall_units_unembedded_idx`` and ``recall_units_model_idx``), so a tick with nothing
+    to embed does not scan the units.
+    """
+    cursor = await db.get_conn().execute(_UNITS_TO_EMBED_SQL, (settings.embedding_model, limit))
     rows = await cursor.fetchall()
     await cursor.close()
     return [(int(row[0]), str(row[1])) for row in rows]
+
+
+async def count_units_of_another_model(owner_entity_id: int) -> int:
+    """Count the owner's units whose vector was computed by a model other than the configured one.
+
+    A unit without a vector does not count: it has nothing to compare. While the count is above
+    zero a vector search would compare two embedding spaces, so recall searches by words only
+    (ADR 0031 decision 8) until the re-index brings it to zero.
+    """
+    cursor = await db.get_conn().execute(
+        _OTHER_MODEL_COUNT_SQL, (owner_entity_id, settings.embedding_model)
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    return 0 if row is None else int(row[0])
+
+
+@dataclass(frozen=True)
+class RecallIndexHealth:
+    """Counts about the word index and the vectors of the recall units: ints only, no value."""
+
+    fts_errors: int
+    vectors_without_unit: int
+    units_without_fts_row: int
+    units_without_vector: int
+    units_of_another_model: int
+
+
+async def count_rows(
+    conn: aiosqlite.Connection, sql: str, parameters: tuple[object, ...] = ()
+) -> int:
+    """Run a ``SELECT COUNT(*)`` and return the number."""
+    cursor = await conn.execute(sql, parameters)
+    row = await cursor.fetchone()
+    await cursor.close()
+    return 0 if row is None else int(row[0])
+
+
+async def count_unlinked_units(conn: aiosqlite.Connection, stored_turn_ids_sql: str) -> int:
+    """Count the turn units with no link to a stored turn whose correlation id they carry.
+
+    Such a unit would survive the deletion of its turn (Plan 0085 D-8). A unit whose turn was
+    never stored (the record was off, or the turn purged) has nothing to link and is not counted.
+    The recall store never names the record's tables, so the caller passes the subquery.
+
+    Args:
+        conn: An open connection.
+        stored_turn_ids_sql: A ``SELECT`` of the correlation ids of the stored turn rows (the record
+            store's ``STORED_TURN_CORRELATION_IDS_SQL``).
+    """
+    return await count_rows(
+        conn,
+        "SELECT COUNT(*) FROM recall_units WHERE kind = 'turn' AND turn_id IS NULL "  # noqa: S608
+        f"AND correlation_id IN ({stored_turn_ids_sql})",
+    )
+
+
+async def _fts_errors(conn: aiosqlite.Connection) -> int:
+    """FTS5 ``integrity-check``: 0 or 1. The command raises on a damaged index and writes no row.
+
+    ``rank = 1`` also compares the index with the external content table (``recall_units``);
+    an SQLite that does not know the option checks the index alone. Only the corruption error
+    (``SQLITE_CORRUPT_VTAB``, a ``DatabaseError`` of the ``SQLITE_CORRUPT`` family) counts as a
+    damaged index: a lock held by another process stops the check, which proves nothing.
+
+    Raises:
+        BrainMemoryError: If the check could not run (the database is busy or locked).
+    """
+    try:
+        await conn.execute(
+            "INSERT INTO recall_units_fts (recall_units_fts, rank) VALUES ('integrity-check', 1)"
+        )
+    except sqlite3.DatabaseError as exc:
+        if exc.sqlite_errorcode & _PRIMARY_CODE_MASK != sqlite3.SQLITE_CORRUPT:
+            raise BrainMemoryError("The text index check could not run") from exc
+        return 1
+    finally:
+        await conn.rollback()
+    return 0
+
+
+async def index_health(conn: aiosqlite.Connection) -> RecallIndexHealth:
+    """Count what is wrong, or still pending, in the recall index (``iroko-admin health``).
+
+    Args:
+        conn: An open connection; nothing is written and no transaction is left open.
+
+    Returns:
+        The counts. "Another model" is the configured ``settings.embedding_model``. The word
+        index is read through its ``docsize`` shadow table, one row per indexed unit.
+    """
+    return RecallIndexHealth(
+        fts_errors=await _fts_errors(conn),
+        vectors_without_unit=await count_rows(
+            conn,
+            "SELECT COUNT(*) FROM recall_units_vec WHERE rowid NOT IN (SELECT id FROM recall_units)",
+        ),
+        units_without_fts_row=await count_rows(
+            conn,
+            "SELECT COUNT(*) FROM recall_units "
+            "WHERE id NOT IN (SELECT id FROM recall_units_fts_docsize)",
+        ),
+        units_without_vector=await count_rows(
+            conn,
+            "SELECT COUNT(*) FROM recall_units WHERE id NOT IN (SELECT rowid FROM recall_units_vec)",
+        ),
+        units_of_another_model=await count_rows(
+            conn,
+            "SELECT COUNT(*) FROM recall_units "
+            "WHERE embedding_model IS NOT NULL AND embedding_model <> ?",
+            (settings.embedding_model,),
+        ),
+    )
 
 
 def _match_expression(terms: Sequence[str]) -> str:

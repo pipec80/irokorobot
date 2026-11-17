@@ -62,6 +62,7 @@ from server.memory.conversation_consent import (
     revoke_conversation_consent,
 )
 from server.memory.conversation_record import delete_record, list_records
+from server.memory.db_health import check_health, health_failed, render_health
 from server.memory.entity_labels import get_person_label
 from server.memory.owner_credentials import get_ready_owner
 from server.memory.relational_v4 import (
@@ -550,15 +551,15 @@ async def _read_command(request: AdminRequest, owner: int, write_text: WriteText
     return await _audit(request.limit, write_text)
 
 
-async def _dispatch(
+async def _owner_command(
     request: AdminRequest,
+    owner: int,
     read_text: ReadText,
     read_secret: ReadText,
     write_text: WriteText,
     now: str,
 ) -> int:
-    await check_db_available()
-    owner = await _owner()
+    """Run one of the sub-commands that act on the owner's data."""
     match request.command:
         case "list" | "status" | "audit":
             return await _read_command(request, owner, write_text)
@@ -573,6 +574,28 @@ async def _dispatch(
         case "conversations":
             return await _conversations(request, owner, read_text, read_secret, write_text, now)
     raise _RefusedError(f"Subcomando desconocido: {request.command}.")
+
+
+async def _dispatch(
+    request: AdminRequest,
+    read_text: ReadText,
+    read_secret: ReadText,
+    write_text: WriteText,
+    now: str,
+) -> int:
+    await check_db_available()
+    if request.command == "health":
+        return await _health(write_text)  # counts only: no owner, no PIN
+    owner = await _owner()
+    return await _owner_command(request, owner, read_text, read_secret, write_text, now)
+
+
+async def _health(write_text: WriteText) -> int:
+    """Print the database health report (counts only); ``1`` when it counted a fault."""
+    report = await check_health(db.get_conn())
+    for line in render_health(report):
+        write_text(line)
+    return 1 if health_failed(report) else 0
 
 
 async def _check_schema(database: Path) -> None:
@@ -650,6 +673,7 @@ def _parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("list", help="muestra el pozo, las relaciones y los contactos")
     sub.add_parser("status", help="muestra el estado de las secciones del acta")
+    sub.add_parser("health", help="revisa la salud de la base de datos (solo conteos, sin PIN)")
     audit = sub.add_parser("audit", help="muestra la auditoría (sin valores)")
     audit.add_argument("--limit", type=int, default=50)
     for verb in ("add", "change"):

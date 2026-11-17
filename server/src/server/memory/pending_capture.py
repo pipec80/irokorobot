@@ -153,11 +153,14 @@ def pending_hook(
     if kept is None:
         return None
 
-    async def write(conn: aiosqlite.Connection, record_id: int, recorded: RecordedTurn) -> None:
+    async def write(
+        conn: aiosqlite.Connection, record_id: int, turn_id: int, recorded: RecordedTurn
+    ) -> None:
         await insert_unnamed(
             conn,
             owner_entity_id=owner_id,
             record_id=record_id,
+            turn_id=turn_id,
             correlation_id=correlation_id,
             said_day=kept.said_day,
             due_day=kept.due_day,

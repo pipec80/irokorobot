@@ -4,17 +4,13 @@ Runs once at startup, then every hour. All errors are logged and swallowed
 so a failing purge never crashes the server.
 
 Retention windows (all configurable via settings):
-  - ``sensor_readings``:        ``settings.sensor_retention_hours`` (default 72 h)
-  - ``sensor_aggregates_hourly``:  1 year (hardcoded — aggregates are small)
-  - ``embeddings_cache``:       30 days (hardcoded)
-  - ``outbox`` (synced only):   7 days (hardcoded)
   - ``memory_candidates``:      past ``expires_at`` or out of offers (ADR 0021),
     whatever the candidate kill-switch says; the value is scrubbed and the
     write-ahead log truncated
   - ``conversation_records``:   past ``expires_at`` (1 year with the owner's verified voice,
     30 days without, both settings), then the oldest while over
-    ``CONVERSATION_RECORD_MAX_TOTAL_MB``; episodes go with their records (Plan 0076),
-    whatever the record switch says
+    ``CONVERSATION_RECORD_MAX_TOTAL_MB`` counted in bytes of what was heard and said; episodes
+    and turns go with their records (Plan 0076), whatever the record switch says
 """
 
 from __future__ import annotations
@@ -26,44 +22,17 @@ from server import db
 from server.cognition.clock import utc_now
 from server.memory.candidates import checkpoint_after_scrub, run_housekeeping
 from server.memory.conversation_record import purge_records
-from server.settings import settings
 
 logger = logging.getLogger(__name__)
 
 _task: asyncio.Task[None] | None = None
 
-_SQL_SENSOR_READINGS = "DELETE FROM sensor_readings WHERE created_at < datetime('now', ?)"
-_SQL_SENSOR_AGGREGATES = (
-    "DELETE FROM sensor_aggregates_hourly WHERE hour_bucket < datetime('now', '-365 days')"
-)
-_SQL_EMBEDDINGS_CACHE = (
-    "DELETE FROM embeddings_cache WHERE created_at < datetime('now', '-30 days')"
-)
-_SQL_OUTBOX = (
-    "DELETE FROM outbox WHERE synced_at IS NOT NULL AND synced_at < datetime('now', '-7 days')"
-)
-
-
-async def _purge_time_bounded_rows() -> None:
-    """Delete the expired sensor, embedding-cache and outbox rows in one transaction.
-
-    Raises:
-        Exception: Whatever the database raised; ``_run_once`` reports it by class.
-    """
-    sensor_threshold = f"-{settings.sensor_retention_hours} hours"
-    async with db.transaction() as conn:
-        await conn.execute(_SQL_SENSOR_READINGS, (sensor_threshold,))
-        await conn.execute(_SQL_SENSOR_AGGREGATES)
-        await conn.execute(_SQL_EMBEDDINGS_CACHE)
-        await conn.execute(_SQL_OUTBOX)
-    logger.info("Retention purge complete (sensor_threshold=%s)", sensor_threshold)
-
 
 async def _reclaim_candidates() -> None:
     """Expire and scrub lapsed candidates, then truncate the log, apart from the other purges.
 
-    The housekeeping has its own transaction so a failure of the sensor purge cannot roll it
-    back (nor the reverse), and the checkpoint runs after the commit with its own error report:
+    The housekeeping has its own transaction so a failure of the conversation purge cannot roll
+    it back (nor the reverse), and the checkpoint runs after the commit with its own error report:
     the scrub has already happened by then and must not be reported as a failed purge.
     """
     try:
@@ -87,15 +56,11 @@ async def _purge_conversations() -> None:
 
 
 async def _run_once() -> None:
-    """Run the time-bounded purge and the candidate reclaim, each in its own transaction.
+    """Run the conversation purge and the candidate reclaim, each in its own transaction.
 
-    Errors are caught and logged by exception class (never the message) without re-raising so
-    the background loop continues running on the next tick.
+    Every part catches and logs its own error by exception class (never the message) without
+    re-raising, so the background loop continues running on the next tick.
     """
-    try:
-        await _purge_time_bounded_rows()
-    except Exception as exc:
-        logger.warning("Retention purge failed (%s)", type(exc).__name__)
     await _purge_conversations()
     await _reclaim_candidates()
 

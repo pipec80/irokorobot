@@ -317,9 +317,6 @@ class Settings(BaseSettings):
     # until it finishes. Added after Plan 0053's independent review (M-3).
     speaker_embed_timeout_s: float = Field(default=30.0, gt=0.0)
 
-    # ---------------- Sensors ----------------
-    sensor_retention_hours: int = 72
-
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
     _coerce_uvicorn_workers = field_validator("uvicorn_workers", mode="before")(_coerce_to_int)

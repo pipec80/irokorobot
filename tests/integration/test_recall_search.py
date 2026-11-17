@@ -6,6 +6,7 @@ Canary rows only; the embedding model is a double.
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+import logging
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -14,7 +15,7 @@ import httpx
 import pytest
 from server.cognition.recall_cues import CueStrength, RecallCue
 from server.cognition.spoken_dates import DayWindow
-from server.memory import recall_search, recall_store
+from server.memory import recall_index, recall_search, recall_store
 from server.memory.conversation_types import RecordedTurn, TurnVerdict
 from server.memory.declarative import upsert_entity
 from server.settings import settings
@@ -88,7 +89,7 @@ async def _unit(
             conn, record_id=record_id, owner_entity_id=owner, turn=turn
         )
     if axis is not None:
-        assert await recall_store.store_vector(unit_id, _axis(axis), model="canary")
+        assert await recall_store.store_vector(unit_id, _axis(axis), model=settings.embedding_model)
     return unit_id
 
 
@@ -327,3 +328,55 @@ async def test_the_query_terms_are_capped_and_quoted(
     await _search(owner, _cue('uno dos tres cuatro cinco seis siete ocho nueve "NEAR( *'))
 
     assert seen == [("uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho")]
+
+
+async def test_a_model_change_leaves_recall_lexical_until_the_re_index(
+    owners: tuple[int, int],
+    embed: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """ADR 0031 C1: two models never meet; words keep finding; the re-index brings vectors back."""
+    owner, _ = owners
+    monkeypatch.setattr(settings, "embedding_model", "canary-model-a")
+    record_id = await _record(owner)
+    by_words = await _unit(owner, record_id, "fuimos al cerro con Zeta", axis=5)
+    by_vector = await _unit(owner, record_id, "subimos la montaña", axis=0)
+    spy = AsyncMock(wraps=recall_search.vector_hits)
+    monkeypatch.setattr(recall_search, "vector_hits", spy)
+    monkeypatch.setattr(settings, "embedding_model", "canary-model-b")
+
+    with caplog.at_level(logging.WARNING):
+        found = await _search(owner, _cue("que del cerro"))
+
+    spy.assert_not_awaited()
+    assert _ids(found) == [by_words]
+    assert found.lexical_only
+    assert [r.getMessage() for r in caplog.records].count(
+        "recall.vector off reason=model_changed remaining=2"
+    ) == 1
+
+    monkeypatch.setattr(recall_index, "ollama_embed", AsyncMock(return_value=_axis(0)))
+    assert await recall_index.backfill_vectors(httpx.AsyncClient(), limit=5) == 2
+    assert await recall_store.units_without_vector(5) == []
+
+    found = await _search(owner, _cue("que del cerro"))
+
+    spy.assert_awaited_once()
+    assert not found.lexical_only
+    assert set(_ids(found)) == {by_words, by_vector}
+
+
+async def test_only_the_owners_units_of_another_model_turn_the_vector_off(
+    owners: tuple[int, int], embed: AsyncMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owner, other = owners
+    monkeypatch.setattr(settings, "embedding_model", "canary-model-a")
+    await _unit(other, await _record(other), "el cerro de otra persona", axis=5)
+    monkeypatch.setattr(settings, "embedding_model", "canary-model-b")
+    mine = await _unit(owner, await _record(owner), "subimos la montaña", axis=0)
+
+    found = await _search(owner, _cue("que del cerro"))
+
+    assert not found.lexical_only
+    assert _ids(found) == [mine]

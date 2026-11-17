@@ -127,7 +127,10 @@ deleted and no value was read.
   `ALTER TABLE DROP COLUMN` (if SQLite refuses one, the record table is rebuilt by its documented
   procedure). `conversation_record.py` keeps its public functions and returns the same
   `RecordedTurn` tuple, ordered by `said_at` then `id`; the segment rule counts rows and the 200 MB
-  cap counts **bytes** (`SUM(octet_length(heard) + octet_length(said))`).
+  cap counts **bytes** (`SUM(octet_length(heard) + octet_length(said))`). *Pipec, 2026-11-16, after
+  Task B0 found that a segment also closes at 64 KB today and that `byte_count` measured each whole
+  JSON entry:* both segment limits stay (60 rows **or** `CONVERSATION_SEGMENT_MAX_BYTES`), and both
+  byte limits are measured the same way, `octet_length(heard) + octet_length(said)`.
 - **D-8 Migration 019 — the turn linked to what is derived from it** (ADR 0038 decision 6;
   «everything derived from this turn» is one query). With `ALTER TABLE ADD COLUMN` (no rebuild):
   `recall_units.turn_id` (→ turns, `CASCADE`; set for turn units), `memory_candidates.source_turn_id`
@@ -136,7 +139,8 @@ deleted and no value was read.
   turn and one unit per episode (a retried job cannot duplicate them); a trigger refuses an
   `UPDATE` of `recall_units.body` (FTS5 would drift). The existing record keys stay, so today's
   cascades are unchanged. The same migration creates the full indexes on every foreign key a
-  cascade, a `SET NULL` or a `RESTRICT` check follows (21 on today's columns plus the new ones) and
+  cascade, a `SET NULL` or a `RESTRICT` check follows (26 on today's live tables, as Task B0
+  counted, plus the new ones) and
   drops `entities_name_idx` (redundant with the unique `(name, type)` index).
 - **D-9 Migration 020 — the old times and the two biometric tables.** One `UPDATE` per affected
   column converts a 19-character instant to `replace(x, ' ', 'T') || '.000000+00:00'` and a
@@ -245,7 +249,7 @@ a need outside the list stops the plan for Pipec.
 | Part | Files |
 |---|---|
 | A | `db.py`, `timestamps.py` (new), the writers of D-3 (`memory/candidates.py`, `conversation_consent.py`, `conversation_record.py`, `conversation_episodes.py`, `recall_store.py`, `household_authorization.py`, `biometric_consent.py`, `voice_consent.py`, `owner_credentials.py`, `declarative.py`, `meta.py`, `relational_v4.py`, `cognition/spoken_dates.py`, `admin_cli.py`; and `memory/care_contacts.py`, added by Pipec on 2026-11-16 after Task A0 found its `created_at` default still firing), `server/pyproject.toml`, `uv.lock`; their tests, `tests/unit/test_timestamps.py`, `tests/integration/test_db_runtime.py`, `tests/integration/test_physical_deletion.py`, `tests/unit/test_architecture_guards.py` |
-| B | `db.py`, `memory/migration_017_retire_dead_tables.sql` to `memory/migration_020_times_and_profiles.sql` (new), `conversation_record.py`, `recall_store.py`, `recall_search.py`, `recall_index.py`, `candidates.py`, `pending_store.py`, `pending_capture.py`, `conversation_capture.py`, `retention.py`, `embeddings.py`, `declarative.py`, `biometric_consent.py`, `voice_consent.py`, `vision/faces.py`, `voice/voiceprints.py`, `vision/perception.py`, `admin_cli.py`, `justfile`, `scripts/memory_test.py`, `memory/db_health.py` (new); deleted: `memory/legacy_v4_migration.py`, `scripts/migrate_memory_v4.py`; the schema and store tests they touch, `tests/integration/test_migrations_017_020.py`, `tests/integration/test_db_health.py`, `tests/unit/test_schema_guards.py`; `docs/architecture/data-dictionary.md` (new) and the documents of Task B8 |
+| B | `db.py`, `memory/migration_017_retire_dead_tables.sql` to `memory/migration_020_times_and_profiles.sql` (new), `conversation_record.py`, `recall_store.py`, `recall_search.py`, `recall_index.py`, `candidates.py`, `pending_store.py`, `pending_capture.py`, `conversation_capture.py`, `retention.py`, `embeddings.py`, `declarative.py`, `biometric_consent.py`, `voice_consent.py`, `vision/faces.py`, `voice/voiceprints.py`, `vision/perception.py`, `admin_cli.py`, `justfile`, `scripts/memory_test.py`, `memory/db_health.py` (new); `settings.py`, `.env.example` and `schemas.py` (added by Pipec on 2026-11-16 so Task B2 removes the orphaned `sensor_retention_hours` and `FactRecord`); `llm_transport.py` and `memory/conversation_types.py` with `tests/unit/test_conversation_types.py` (added by Pipec on 2026-11-17 so Task B7 removes a stale docstring line and the JSON turn reader nothing uses after Task B3); deleted: `memory/legacy_v4_migration.py`, `scripts/migrate_memory_v4.py`; the schema and store tests they touch, `tests/integration/test_migrations_017_020.py`, `tests/integration/test_db_health.py`, `tests/unit/test_schema_guards.py`; `docs/architecture/data-dictionary.md` (new) and the documents of Task B8 |
 
 **Rollback boundary.** Before a merge, the branch. After Part A's merge, a revert (no table
 changed). After Part B's real upgrade, the `pre-0085` backup with the previous `main`.

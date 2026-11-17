@@ -36,8 +36,12 @@ import wave
 import httpx
 import numpy as np
 from piper import PiperVoice, SynthesisConfig
+from server.exceptions import BrainMemoryError
+from server.memory.db_health import check_health, render_health
 from server.settings import settings
 import sounddevice as sd
+
+from server import db
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 logger = logging.getLogger(__name__)
@@ -247,7 +251,7 @@ def _show_db(db_path: Path) -> None:
     print(f"  DB: {db_path}")  # noqa: T201
     print(_SEP)  # noqa: T201
 
-    for table in ("entities", "facts", "embeddings_cache", "outbox"):
+    for table in ("entities", "literal_facts_v4", "entity_relations_v4"):
         try:
             (n,) = cur.execute(f"SELECT count(*) FROM {table}").fetchone()  # noqa: S608
             print(f"  {table:<22} {n:>4} rows")  # noqa: T201
@@ -259,27 +263,36 @@ def _show_db(db_path: Path) -> None:
     ).fetchall()
     if entities:
         print(f"\n{_SEP2}")  # noqa: T201
-        print("  ENTITIES & FACTS")  # noqa: T201
+        print("  ENTITIES")  # noqa: T201
         print(_SEP2)  # noqa: T201
         for ent in entities:
-            facts = cur.execute(
-                "SELECT predicate, object_value, confidence FROM facts "
-                "WHERE entity_id = ? AND superseded_at IS NULL "
-                "ORDER BY asserted_at DESC",
-                (ent["id"],),
-            ).fetchall()
-            fact_str = (
-                "  |  ".join(
-                    f"{f['predicate']}: {f['object_value']} ({f['confidence']:.2f})" for f in facts
-                )
-                if facts
-                else "(no facts)"
-            )
             print(f"  [{ent['type']}] {ent['name']}")  # noqa: T201
-            print(f"         {fact_str}")  # noqa: T201
 
     con.close()
     print(f"\n{_SEP}")  # noqa: T201
+
+
+async def _health_lines() -> list[str]:
+    """Count what is wrong in the DB with the same check as ``iroko-admin health`` (counts only)."""
+    await db.open_db()
+    try:
+        return render_health(await check_health(db.get_conn()))
+    finally:
+        await db.close_db()
+
+
+def _show_health(db_path: Path) -> None:
+    """Print the health counts of the DB; a DB behind the latest schema prints the reason."""
+    if not db_path.exists():
+        return
+    try:
+        lines = asyncio.run(_health_lines())
+    except (sqlite3.Error, BrainMemoryError) as exc:
+        print(f"\n  [health check not run: {type(exc).__name__}]")  # noqa: T201
+        return
+    print(f"\n{_SEP2}\n  HEALTH\n{_SEP2}")  # noqa: T201
+    for line in lines:
+        print(f"  {line}")  # noqa: T201
 
 
 # ---------------------------------------------------------------------------
@@ -436,6 +449,7 @@ def main() -> None:
 
     if args.show_db:
         _show_db(settings.brain_db_path)
+        _show_health(settings.brain_db_path)
         return
 
     play = not args.no_play

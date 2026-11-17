@@ -397,7 +397,7 @@ async def test_a_secret_turn_is_recorded_with_the_marker_and_no_unit(
         reply = await _post(client, route, message)
 
     assert reply.spoken == SECRET_REFUSAL
-    cursor = await db.get_conn().execute("SELECT turns FROM conversation_records")
+    cursor = await db.get_conn().execute("SELECT heard || ' ' || said FROM conversation_turns")
     rows = await cursor.fetchall()
     await cursor.close()
     stored = json.dumps([row[0] for row in rows], ensure_ascii=False)
@@ -406,7 +406,7 @@ async def test_a_secret_turn_is_recorded_with_the_marker_and_no_unit(
     assert await _count("SELECT COUNT(*) FROM recall_units") == 0
     assert await _count("SELECT COUNT(*) FROM memory_candidates") == 0
     cursor = await db.get_conn().execute(
-        "SELECT json_extract(turns, '$[0].voice') FROM conversation_records"
+        "SELECT verdict FROM conversation_turns ORDER BY said_at, id LIMIT 1"
     )
     row = await cursor.fetchone()
     await cursor.close()

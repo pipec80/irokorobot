@@ -105,10 +105,15 @@ async def test_a_segment_full_of_turns_continues_in_a_linked_one(
     assert linked.summary.previous_id == ids[0]
 
 
+def _bytes(turn: RecordedTurn) -> int:
+    """What a turn weighs for the segment limit and the cap: the UTF-8 bytes of both texts."""
+    return len(turn.heard.encode("utf-8")) + len(turn.said.encode("utf-8"))
+
+
 async def test_a_segment_full_of_bytes_continues_in_a_linked_one(
     store: int, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    size = len(_turn(0, heard="x" * 100).to_json().encode("utf-8"))
+    size = _bytes(_turn(0, heard="x" * 100))
     monkeypatch.setattr(settings, "conversation_segment_max_bytes", size * 2)
     ids = [await _append(store, _turn(second, heard="x" * 100)) for second in range(3)]
 
@@ -118,7 +123,35 @@ async def test_a_segment_full_of_bytes_continues_in_a_linked_one(
     assert linked.summary.previous_id == ids[0]
     first = await record.read_record(ids[0])
     assert first is not None
-    assert first.summary.byte_count <= size * 2
+    assert first.summary.byte_count == size * 2
+
+
+async def test_the_segment_limit_counts_bytes_not_characters(
+    store: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An accented canary weighs more bytes than characters, and the limit trips at the bytes."""
+    heard = "é" * 50 + "🙂"
+    size = _bytes(_turn(0, heard=heard))
+    characters = len(heard) + len(_turn(0).said)
+    assert size > characters * 1.3
+    monkeypatch.setattr(settings, "conversation_segment_max_bytes", size * 2 + 1)
+    ids = [await _append(store, _turn(second, heard=heard)) for second in range(3)]
+
+    # By characters three turns (3 * characters) fit under the limit; by bytes the third does not.
+    assert characters * 3 < settings.conversation_segment_max_bytes < size * 3
+    assert ids[0] == ids[1]
+    assert ids[2] != ids[0]
+
+
+async def test_a_segment_holding_the_turn_limit_in_rows_continues_in_a_linked_one(
+    store: int,
+) -> None:
+    ids = [await _append(store, _turn(second)) for second in range(61)]
+
+    assert set(ids[:60]) == {ids[0]}
+    assert ids[60] != ids[0]
+    assert await _count("SELECT COUNT(*) FROM conversation_turns WHERE record_id = ?", ids[0]) == 60
+    assert await _count("SELECT COUNT(*) FROM conversation_turns WHERE record_id = ?", ids[60]) == 1
 
 
 async def test_eligible_is_set_by_one_verified_turn_and_never_unset(store: int) -> None:
@@ -250,12 +283,66 @@ async def test_a_malformed_exchange_is_a_closed_error(store: int) -> None:
     record_id = await _append(store, _turn(0))
     async with db.transaction() as conn:
         await conn.execute(
-            "UPDATE conversation_records SET turns = json('[{\"at\": 1}]') WHERE id = ?",
+            "UPDATE conversation_turns SET correlation_id = 'not-a-uuid' WHERE record_id = ?",
             (record_id,),
         )
 
     with pytest.raises(BrainMemoryError, match="malformed exchange"):
         await record.read_record(record_id)
+
+
+async def test_turns_read_back_by_time_with_equal_instants_in_append_order(store: int) -> None:
+    late = _turn(30, heard="tarde")
+    equal_first = make_turn(
+        "uno", "a", voice=TurnVerdict.VERIFIED, correlation_id=UUID(int=7001), at=_T0
+    )
+    equal_second = make_turn(
+        "dos", "b", voice=TurnVerdict.NOT_VERIFIED, correlation_id=UUID(int=7002), at=_T0
+    )
+    record_id = await _append(store, late)
+    await _append(store, equal_first)
+    await _append(store, equal_second)
+
+    view = await record.read_record(record_id)
+
+    assert view is not None
+    assert view.turns == (equal_first, equal_second, late)
+
+
+async def test_a_record_with_no_turn_reads_back_empty(store: int) -> None:
+    owner_record = await _append(store, _turn(0))
+    async with db.transaction() as conn:
+        await conn.execute("DELETE FROM conversation_turns WHERE record_id = ?", (owner_record,))
+
+    view = await record.read_record(owner_record)
+
+    assert view is not None
+    assert view.turns == ()
+    assert view.summary.turn_count == 0
+    assert view.summary.byte_count == 0
+
+
+async def test_an_append_is_one_insert_of_the_turn_and_no_json_write(store: int) -> None:
+    statements: list[str] = []
+    await db.get_conn().set_trace_callback(statements.append)
+    try:
+        await _append(store, _turn(0))
+    finally:
+        await db.get_conn().set_trace_callback(lambda _sql: None)
+
+    inserts = [sql for sql in statements if sql.startswith("INSERT INTO conversation_turns")]
+    assert len(inserts) == 1
+    assert not [sql for sql in statements if "json" in sql.lower()]
+    assert await _count("SELECT COUNT(*) FROM conversation_turns") == 1
+
+
+async def test_deleting_a_record_deletes_its_turns(store: int) -> None:
+    first = await _append(store, _turn(0))
+    await _append(store, _turn(1))
+
+    assert await record.delete_record(first) is True
+
+    assert await _count("SELECT COUNT(*) FROM conversation_turns") == 0
 
 
 async def test_a_naive_time_is_refused(store: int) -> None:
@@ -278,6 +365,20 @@ async def _closed(owner: int, start: float, voice: TurnVerdict) -> int:
     record_id = await _append(owner, _turn(start, voice))
     await record.close_idle_records(_T0 + timedelta(seconds=start + 600))
     return record_id
+
+
+async def _closed_with(owner: int, start: float, heard: str) -> int:
+    record_id = await _append(owner, _turn(start, TurnVerdict.VERIFIED, heard))
+    await record.close_idle_records(_T0 + timedelta(seconds=start + 600))
+    return record_id
+
+
+async def _count(sql: str, *params: object) -> int:
+    cursor = await db.get_conn().execute(sql, params)
+    row = await cursor.fetchone()
+    await cursor.close()
+    assert row is not None
+    return int(row[0])
 
 
 async def _ids() -> list[int]:
@@ -314,6 +415,25 @@ async def test_the_space_cap_purges_not_eligible_first_then_the_oldest(
     assert await _ids() == [newest_eligible]
 
 
+async def test_the_space_cap_counts_bytes_not_characters(
+    store: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    heard = "é" * 50 + "🙂"
+    first = await _closed_with(store, 0, heard)
+    second = await _closed_with(store, 3600, heard)
+    third = await _closed_with(store, 7200, heard)
+    size = _bytes(_turn(0, heard=heard))
+    characters = len(heard) + len(_turn(0).said)
+    monkeypatch.setattr(record, "_BYTES_PER_MB", 1)
+    # By characters the three records (3 * characters) are under this cap; by bytes they are not.
+    monkeypatch.setattr(settings, "conversation_record_max_total_mb", size * 2)
+    assert characters * 3 < size * 2 < size * 3
+
+    assert await record.purge_records(_T0 + timedelta(days=1)) == 1
+    assert await _ids() == [second, third]
+    assert first not in await _ids()
+
+
 async def test_the_open_segment_is_never_purged(
     store: int, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -323,3 +443,33 @@ async def test_the_open_segment_is_never_purged(
 
     assert await record.purge_records(_T0 + timedelta(days=400)) == 0
     assert await _ids() == [open_id]
+
+
+async def test_the_schema_and_the_append_weigh_a_turn_the_same_in_bytes(store: int) -> None:
+    """The ``bytes`` column is the one definition; the append's Python size must equal it."""
+    turn = _turn(0, heard="¿qué canción, ñandú? 🙂", voice=TurnVerdict.VERIFIED)
+    segment = await _append(store, turn)
+
+    stored = await _count("SELECT bytes FROM conversation_turns WHERE record_id = ?", segment)
+
+    assert stored == _bytes(turn)
+    assert stored > len(turn.heard) + len(turn.said)  # accents and the emoji weigh more bytes
+    view = await record.read_record(segment)
+    assert view is not None
+    assert view.summary.byte_count == stored
+
+
+async def test_the_count_and_the_bytes_of_a_record_find_its_rows_by_the_record_index(
+    store: int,
+) -> None:
+    await _append(store, _turn(0))
+    cursor = await db.get_conn().execute("EXPLAIN QUERY PLAN " + record._OPEN_SEGMENT_SQL)
+    details = [str(row[3]) for row in await cursor.fetchall()]
+    await cursor.close()
+
+    turns_lookup = [line for line in details if "conversation_turns" in line]
+    assert turns_lookup
+    assert all(
+        "USING INDEX conversation_turns_record_idx (record_id=?)" in line for line in turns_lookup
+    )
+    assert not [line for line in details if line.startswith("SCAN conversation_turns")]

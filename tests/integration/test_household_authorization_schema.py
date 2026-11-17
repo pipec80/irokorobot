@@ -5,13 +5,15 @@ from pathlib import Path
 
 import pytest
 from server.cognition.identity import HouseholdRole
-from server.memory.declarative import assert_fact, upsert_entity
+from server.memory.declarative import upsert_entity
 from server.memory.household_authorization import (
     assign_household_role,
     bootstrap_initial_owner,
     get_active_role,
     revoke_active_role,
 )
+from server.memory.predicate_registry import resolve_predicate
+from server.memory.relational_v4 import assert_literal_fact
 from server.settings import settings
 
 from server import db
@@ -41,7 +43,7 @@ async def _audit_count() -> int:
 
 @pytest.mark.integration
 async def test_migration_five_adds_role_and_safe_audit_tables(authorization_db: None) -> None:
-    """Authorization storage must be additive and keep legacy/v4 data intact."""
+    """Authorization storage must be additive and keep the v4 data intact."""
     conn = db.get_conn()
     version_cursor = await conn.execute("PRAGMA user_version")
     assert await version_cursor.fetchone() == (db._MIGRATIONS[-1][0],)
@@ -60,10 +62,12 @@ async def test_migration_five_adds_role_and_safe_audit_tables(authorization_db: 
     )
 
     person_id = await upsert_entity(name="Ada", type="person")
-    await assert_fact(entity_id=person_id, predicate="alias", object_value="A")
-    legacy_cursor = await conn.execute("SELECT COUNT(*) FROM facts")
-    legacy_before = await legacy_cursor.fetchone()
-    await legacy_cursor.close()
+    likes = resolve_predicate("likes")
+    assert likes is not None
+    await assert_literal_fact(subject_entity_id=person_id, definition=likes, value="A")
+    facts_cursor = await conn.execute("SELECT COUNT(*) FROM literal_facts_v4")
+    facts_before = await facts_cursor.fetchone()
+    await facts_cursor.close()
 
     await bootstrap_initial_owner(person_entity_id=person_id, confirmed_person_entity_id=person_id)
 
@@ -73,9 +77,9 @@ async def test_migration_five_adds_role_and_safe_audit_tables(authorization_db: 
     assert audit_row is not None
     assert datetime.fromisoformat(str(audit_row[0])).tzinfo is not None
 
-    legacy_after_cursor = await conn.execute("SELECT COUNT(*) FROM facts")
-    assert await legacy_after_cursor.fetchone() == legacy_before
-    await legacy_after_cursor.close()
+    facts_after_cursor = await conn.execute("SELECT COUNT(*) FROM literal_facts_v4")
+    assert await facts_after_cursor.fetchone() == facts_before
+    await facts_after_cursor.close()
     foreign_key_cursor = await conn.execute("PRAGMA foreign_key_check")
     assert await foreign_key_cursor.fetchall() == []
     await foreign_key_cursor.close()

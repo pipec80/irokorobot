@@ -1,9 +1,11 @@
 """The conversation record: the only SQL on ``conversation_records`` (ADR 0027, Plan 0076).
 
-A conversation is one or more consecutive **segments**. Exchanges are appended to the single open
-segment; a silence of ``WORKING_MEMORY_IDLE_SECONDS`` ends the conversation, and a segment that
-holds ``CONVERSATION_SEGMENT_MAX_TURNS`` exchanges or would pass
-``CONVERSATION_SEGMENT_MAX_BYTES`` is closed and continued in a new segment linked to it. A closed
+A conversation is one or more consecutive **segments**. Exchanges are rows of ``conversation_turns``
+appended to the single open segment; a silence of ``WORKING_MEMORY_IDLE_SECONDS`` ends the
+conversation, and a segment that holds ``CONVERSATION_SEGMENT_MAX_TURNS`` exchanges or would pass
+``CONVERSATION_SEGMENT_MAX_BYTES`` is closed and continued in a new segment linked to it. Both
+byte limits (the segment's and the whole record's cap) weigh an exchange as the UTF-8 bytes of what
+was heard plus what was said. A closed
 segment expires after ``CONVERSATION_RECORD_ELIGIBLE_DAYS`` when at least one exchange was the
 owner's verified voice, after ``CONVERSATION_RECORD_INELIGIBLE_DAYS`` otherwise.
 
@@ -17,20 +19,21 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import StrEnum
-import json
 import logging
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 from server import db
 from server.exceptions import BrainMemoryError
 from server.memory.conversation_types import RecordedTurn, TurnVerdict
 from server.settings import settings
-from server.timestamps import instant_text
+from server.timestamps import instant_text, parse_instant
 
 if TYPE_CHECKING:
     import aiosqlite
 
 __all__ = [
+    "STORED_TURN_CORRELATION_IDS_SQL",
     "EpisodeStatus",
     "RecordSummary",
     "RecordView",
@@ -41,6 +44,7 @@ __all__ = [
     "count_failed_attempt",
     "delete_all_records",
     "delete_record",
+    "find_turn_id",
     "has_open_record",
     "list_records",
     "next_pending_record",
@@ -51,15 +55,32 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
+#: The correlation ids of the stored turns, as a subquery. A store that counts the rows derived
+#: from a turn (the health check, Plan 0085) puts it inside its own statement, so only this module
+#: names the table.
+STORED_TURN_CORRELATION_IDS_SQL = "SELECT correlation_id FROM conversation_turns"
+
 #: Writes what an appended exchange adds elsewhere, inside the append's transaction (the recall
-#: unit, Plan 0078; the pending topic, Plan 0084). Its result is not used.
-type TurnIndexer = Callable[[aiosqlite.Connection, int, RecordedTurn], Awaitable[object]]
+#: unit, Plan 0078; the pending topic, Plan 0084; the link of its candidates, Plan 0085). It
+#: receives the connection, the segment's id, the new turn's id and the exchange. Its result is
+#: not used.
+type TurnIndexer = Callable[[aiosqlite.Connection, int, int, RecordedTurn], Awaitable[object]]
 
 _BYTES_PER_MB = 1_000_000
+# How many exchanges a record holds and how many bytes they weigh, counted from its rows (the
+# record keeps neither). A turn weighs its generated column `conversation_turns.bytes`, the one
+# definition; the record's rows are found by the index `conversation_turns_record_idx` (at most
+# a segment's turn limit of them). The fragments are constant: nothing a person says reaches them.
+_RECORD_TURNS = "FROM conversation_records r LEFT JOIN conversation_turns t ON t.record_id = r.id"
 _SUMMARY_COLUMNS = (
-    "id, previous_id, started_at, closed_at, turn_count, byte_count, eligible, expires_at, "
-    "episode_status"
+    "r.id, r.previous_id, r.started_at, r.closed_at, COUNT(t.id), COALESCE(SUM(t.bytes), 0), "
+    "r.eligible, r.expires_at, r.episode_status"
 )
+_OPEN_SEGMENT_SQL = (
+    "SELECT r.id, r.last_turn_at, r.eligible, COUNT(t.id), COALESCE(SUM(t.bytes), 0) "
+    f"{_RECORD_TURNS} WHERE r.closed_at IS NULL GROUP BY r.id"
+)
+_TURN_COLUMNS = "said_at, heard, said, verdict, correlation_id"
 
 
 class EpisodeStatus(StrEnum):
@@ -110,16 +131,18 @@ def _summary(row: tuple[object, ...]) -> RecordSummary:
     )
 
 
-def _turns(raw: str) -> tuple[RecordedTurn, ...]:
-    """Parse a record's ``turns`` JSON; a malformed one raises a closed error (no text in it)."""
+def _turn(row: tuple[object, ...]) -> RecordedTurn:
+    """Build an exchange from one ``_TURN_COLUMNS`` row; a malformed one raises a closed error."""
     try:
-        items = json.loads(raw)
-        if not isinstance(items, list):
-            raise TypeError("turns is not a list")
-        turns = [RecordedTurn.from_json_obj(item) for item in items]
-    except (ValueError, TypeError, AttributeError):
+        return RecordedTurn(
+            at=parse_instant(str(row[0])),
+            heard=str(row[1]),
+            said=str(row[2]),
+            voice=TurnVerdict(str(row[3])),
+            correlation_id=UUID(str(row[4])),
+        )
+    except ValueError:
         raise BrainMemoryError("A conversation record holds a malformed exchange") from None
-    return tuple(sorted(turns, key=lambda turn: turn.at))
 
 
 def _expiry(closed_at: datetime, *, eligible: bool) -> str:
@@ -150,9 +173,11 @@ def chain_indexers(*hooks: TurnIndexer | None) -> TurnIndexer | None:
     if not present:
         return None
 
-    async def run(conn: aiosqlite.Connection, record_id: int, recorded: RecordedTurn) -> None:
+    async def run(
+        conn: aiosqlite.Connection, record_id: int, turn_id: int, recorded: RecordedTurn
+    ) -> None:
         for hook in present:
-            await hook(conn, record_id, recorded)
+            await hook(conn, record_id, turn_id, recorded)
 
     return run
 
@@ -170,28 +195,25 @@ async def append_turn(
         turn: The exchange.
         owner_entity_id: The owner the record belongs to.
         now: The time a segment closed here is stamped with.
-        index: Called inside the append's transaction with the segment id, after the append;
-            a failure rolls the append back with it (the recall unit, Plan 0078, and the
-            pending topic, Plan 0084).
+        index: Called inside the append's transaction with the segment id and the new turn's
+            id, after the append; a failure rolls the append back with it (the recall unit,
+            Plan 0078, the pending topic, Plan 0084, and the candidates' link, Plan 0085).
 
     Returns:
         The id of the segment that received the exchange.
     """
-    entry = turn.to_json()
-    size = len(entry.encode("utf-8"))
+    # Must equal the generated column `conversation_turns.bytes` (a test pins it).
+    size = len(turn.heard.encode("utf-8")) + len(turn.said.encode("utf-8"))
     at = instant_text(turn.at)
     async with db.transaction() as conn:
-        cursor = await conn.execute(
-            "SELECT id, last_turn_at, turn_count, byte_count, eligible FROM conversation_records "
-            "WHERE closed_at IS NULL"
-        )
+        cursor = await conn.execute(_OPEN_SEGMENT_SQL)
         row = await cursor.fetchone()
         await cursor.close()
         record_id: int | None = None
         previous_id: int | None = None
         if row is not None:
             open_id, last_turn_at = int(row[0]), datetime.fromisoformat(str(row[1]))
-            count, total, eligible = int(row[2]), int(row[3]), bool(row[4])
+            eligible, count, total = bool(row[2]), int(row[3]), int(row[4])
             idle = (turn.at - last_turn_at).total_seconds() >= settings.working_memory_idle_seconds
             full = (
                 count >= settings.conversation_segment_max_turns
@@ -210,15 +232,39 @@ async def append_turn(
             )
             record_id = int(cursor.lastrowid or 0)
             await cursor.close()
+        cursor = await conn.execute(
+            "INSERT INTO conversation_turns "
+            "(record_id, correlation_id, said_at, verdict, heard, said) VALUES (?, ?, ?, ?, ?, ?)",
+            (record_id, str(turn.correlation_id), at, turn.voice.value, turn.heard, turn.said),
+        )
+        turn_id = int(cursor.lastrowid or 0)
+        await cursor.close()
         await conn.execute(
-            "UPDATE conversation_records SET turns = json_insert(turns, '$[#]', json(?)), "
-            "turn_count = turn_count + 1, byte_count = byte_count + ?, "
-            "last_turn_at = max(last_turn_at, ?), eligible = max(eligible, ?) WHERE id = ?",
-            (entry, size, at, int(turn.voice is TurnVerdict.VERIFIED), record_id),
+            "UPDATE conversation_records SET last_turn_at = max(last_turn_at, ?), "
+            "eligible = max(eligible, ?) WHERE id = ?",
+            (at, int(turn.voice is TurnVerdict.VERIFIED), record_id),
         )
         if index is not None:
-            await index(conn, record_id, turn)
+            await index(conn, record_id, turn_id, turn)
     return record_id
+
+
+async def find_turn_id(conn: aiosqlite.Connection, correlation_id: UUID) -> int | None:
+    """Return the id of the stored turn with this correlation id, or ``None`` when none exists.
+
+    A turn is not stored when the record is off or after it was purged; what was derived from it
+    (a memory candidate) then keeps no turn link.
+
+    Args:
+        conn: The connection of an open ``db.transaction()``.
+        correlation_id: The turn's correlation id.
+    """
+    cursor = await conn.execute(
+        "SELECT id FROM conversation_turns WHERE correlation_id = ?", (str(correlation_id),)
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    return None if row is None else int(row[0])
 
 
 async def close_idle_records(now: datetime) -> int:
@@ -266,7 +312,7 @@ async def list_records(limit: int = 50) -> tuple[RecordSummary, ...]:
         The summaries.
     """
     cursor = await db.get_conn().execute(
-        f"SELECT {_SUMMARY_COLUMNS} FROM conversation_records ORDER BY id DESC LIMIT ?",  # noqa: S608
+        f"SELECT {_SUMMARY_COLUMNS} {_RECORD_TURNS} GROUP BY r.id ORDER BY r.id DESC LIMIT ?",
         (limit,),
     )
     rows = await cursor.fetchall()
@@ -274,10 +320,11 @@ async def list_records(limit: int = 50) -> tuple[RecordSummary, ...]:
     return tuple(_summary(tuple(row)) for row in rows)
 
 
-async def _view(where: str, params: tuple[object, ...]) -> RecordView | None:
-    cursor = await db.get_conn().execute(
-        f"SELECT {_SUMMARY_COLUMNS}, owner_entity_id, turns FROM conversation_records "  # noqa: S608
-        f"WHERE {where}",
+async def _view(where: str, params: tuple[object, ...], order: str = "") -> RecordView | None:
+    conn = db.get_conn()
+    cursor = await conn.execute(
+        f"SELECT {_SUMMARY_COLUMNS}, r.owner_entity_id {_RECORD_TURNS} "
+        f"WHERE {where} GROUP BY r.id {order}",
         params,
     )
     row = await cursor.fetchone()
@@ -285,11 +332,15 @@ async def _view(where: str, params: tuple[object, ...]) -> RecordView | None:
     if row is None:
         return None
     values = tuple(row)
-    return RecordView(
-        summary=_summary(values[:9]),
-        owner_entity_id=int(str(values[9])),
-        turns=_turns(str(values[10])),
+    summary = _summary(values[:9])
+    cursor = await conn.execute(
+        f"SELECT {_TURN_COLUMNS} FROM conversation_turns "  # noqa: S608
+        "WHERE record_id = ? ORDER BY said_at, id",
+        (summary.id,),
     )
+    turns = tuple(_turn(tuple(turn_row)) for turn_row in await cursor.fetchall())
+    await cursor.close()
+    return RecordView(summary=summary, owner_entity_id=int(str(values[9])), turns=turns)
 
 
 async def read_record(record_id: int) -> RecordView | None:
@@ -298,7 +349,7 @@ async def read_record(record_id: int) -> RecordView | None:
     Raises:
         BrainMemoryError: If the record holds a malformed exchange.
     """
-    return await _view("id = ?", (record_id,))
+    return await _view("r.id = ?", (record_id,))
 
 
 async def next_pending_record() -> RecordView | None:
@@ -308,7 +359,9 @@ async def next_pending_record() -> RecordView | None:
         BrainMemoryError: If the record holds a malformed exchange.
     """
     return await _view(
-        "closed_at IS NOT NULL AND episode_status = 'pending' ORDER BY closed_at, id LIMIT 1", ()
+        "r.closed_at IS NOT NULL AND r.episode_status = 'pending'",
+        (),
+        "ORDER BY r.closed_at, r.id LIMIT 1",
     )
 
 
@@ -369,6 +422,29 @@ async def delete_all_records(conn: aiosqlite.Connection) -> int:
     return max(deleted, 0)
 
 
+async def _delete_oldest_closed(conn: aiosqlite.Connection) -> int | None:
+    """Delete the next closed segment to go (not eligible first, then the oldest).
+
+    Returns:
+        The bytes its exchanges weighed, or ``None`` when no closed segment is left.
+    """
+    cursor = await conn.execute(
+        "SELECT id FROM conversation_records WHERE closed_at IS NOT NULL "
+        "ORDER BY eligible, closed_at, id LIMIT 1"
+    )
+    victim = await cursor.fetchone()
+    await cursor.close()
+    if victim is None:
+        return None
+    cursor = await conn.execute(
+        "SELECT COALESCE(SUM(bytes), 0) FROM conversation_turns WHERE record_id = ?", (victim[0],)
+    )
+    weighed = await cursor.fetchone()
+    await cursor.close()
+    await conn.execute("DELETE FROM conversation_records WHERE id = ?", (victim[0],))
+    return 0 if weighed is None else int(weighed[0])
+
+
 async def purge_records(now: datetime) -> int:
     """Delete expired segments, then the oldest closed ones while the record is over its cap.
 
@@ -382,31 +458,23 @@ async def purge_records(now: datetime) -> int:
         How many segments were deleted.
     """
     cap = settings.conversation_record_max_total_mb * _BYTES_PER_MB
-    deleted = 0
     async with db.transaction() as conn:
         cursor = await conn.execute(
             "DELETE FROM conversation_records WHERE closed_at IS NOT NULL AND expires_at < ?",
             (instant_text(now),),
         )
-        deleted += max(cursor.rowcount, 0)
+        deleted = max(cursor.rowcount, 0)
         await cursor.close()
-        while True:
-            cursor = await conn.execute(
-                "SELECT COALESCE(SUM(byte_count), 0) FROM conversation_records"
-            )
-            row = await cursor.fetchone()
-            await cursor.close()
-            if row is None or int(row[0]) <= cap:
+        cursor = await conn.execute("SELECT COALESCE(SUM(bytes), 0) FROM conversation_turns")
+        row = await cursor.fetchone()
+        await cursor.close()
+        total = 0 if row is None else int(row[0])
+        while total > cap:
+            freed = await _delete_oldest_closed(conn)
+            if freed is None:
                 break
-            cursor = await conn.execute(
-                "DELETE FROM conversation_records WHERE id = (SELECT id FROM conversation_records "
-                "WHERE closed_at IS NOT NULL ORDER BY eligible, closed_at, id LIMIT 1)"
-            )
-            removed = max(cursor.rowcount, 0)
-            await cursor.close()
-            if removed == 0:
-                break
-            deleted += removed
+            total -= freed
+            deleted += 1
     if deleted:
         logger.info("Conversation record: %d segment(s) purged", deleted)
         await db.checkpoint_wal()

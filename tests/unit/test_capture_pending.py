@@ -97,10 +97,11 @@ def inserted(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     """The topic writer, reached through a fake append that runs the record's hook."""
     insert = AsyncMock(return_value=11)
     monkeypatch.setattr(pending_capture, "insert_unnamed", insert)
+    monkeypatch.setattr(conversation_capture, "link_source_turn", AsyncMock(return_value=0))
 
     async def append(turn: RecordedTurn, *, index: object = None, **_: object) -> int:
         if index is not None:
-            await index(None, 1, turn)  # type: ignore[operator]  # the hook seam
+            await index(None, 1, 21, turn)  # type: ignore[operator]  # the hook seam
         return 1
 
     monkeypatch.setattr(conversation_capture, "append_turn", append)
@@ -153,6 +154,7 @@ async def test_a_verified_announcement_keeps_one_unnamed_topic(
     kwargs = inserted.await_args.kwargs
     assert kwargs["owner_entity_id"] == _OWNER
     assert kwargs["record_id"] == 1
+    assert kwargs["turn_id"] == 21
     assert kwargs["correlation_id"] == _CORRELATION
     assert kwargs["said_day"] == date(2026, 11, 12)
     assert kwargs["due_day"] == date(2026, 11, 13)

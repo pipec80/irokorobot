@@ -31,7 +31,6 @@ _CHECKED = {
 # (b) ON DELETE CASCADE, harmless because a replacement is refused once the robot learned by voice.
 _CASCADE_COVERED_BY_THE_VOICE_REFUSAL = {
     "memory_candidates": "a live candidate refuses the replacement; resolved ones hold no value",
-    "facts": "the legacy table: the importer never writes it and the voice path is retired",
     # Plan 0076: they point only at the owner, whom the cleanup never deletes.
     "conversation_records": "the owner of the record; the owner is never an orphan import entity",
     "conversation_episodes": "the owner of the episode; deleted with its record anyway",

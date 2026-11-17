@@ -30,6 +30,7 @@ __all__ = [
     "PendingTopic",
     "asked_today",
     "count_naming_failure",
+    "count_unlinked_topics",
     "delete_expired",
     "drop",
     "due_topic",
@@ -84,6 +85,7 @@ async def insert_unnamed(
     heard: str,
     sensitivity: PendingSensitivity,
     now: datetime,
+    turn_id: int | None = None,
 ) -> int:
     """Write one unnamed topic, inside the caller's open transaction (the capture's append).
 
@@ -97,17 +99,20 @@ async def insert_unnamed(
         heard: The owner's words, kept until the topic is named.
         sensitivity: ``normal`` or ``medical``.
         now: The creation instant.
+        turn_id: The stored turn the topic comes from, so deleting the turn deletes the topic;
+            ``None`` only for a topic whose turn is not stored.
 
     Returns:
         The new row's id.
     """
     cursor = await conn.execute(
-        "INSERT INTO pending_topics (owner_entity_id, source_record_id, correlation_id, said_day, "
-        "due_day, heard, state, sensitivity, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, 'unnamed', ?, ?)",
+        "INSERT INTO pending_topics (owner_entity_id, source_record_id, source_turn_id, "
+        "correlation_id, said_day, due_day, heard, state, sensitivity, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, 'unnamed', ?, ?)",
         (
             owner_entity_id,
             record_id,
+            turn_id,
             str(correlation_id),
             said_day.isoformat(),
             due_day.isoformat(),
@@ -135,6 +140,26 @@ async def _write(sql: str, params: tuple[object, ...]) -> int:
         changed = cursor.rowcount
         await cursor.close()
     return changed
+
+
+async def count_unlinked_topics(conn: aiosqlite.Connection, stored_turn_ids_sql: str) -> int:
+    """Count the topics with no link to a stored turn whose correlation id they carry.
+
+    Such a topic would survive the deletion of its turn (Plan 0085 D-8). One whose turn was never
+    stored has nothing to link and is not counted. Used by the health check.
+
+    Args:
+        conn: An open connection.
+        stored_turn_ids_sql: A ``SELECT`` of the correlation ids of the stored turns (the record
+            store's ``STORED_TURN_CORRELATION_IDS_SQL``).
+    """
+    cursor = await conn.execute(
+        "SELECT COUNT(*) FROM pending_topics WHERE source_turn_id IS NULL "  # noqa: S608
+        f"AND correlation_id IN ({stored_turn_ids_sql})"
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    return 0 if row is None else int(row[0])
 
 
 async def next_unnamed() -> tuple[int, str] | None:

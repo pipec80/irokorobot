@@ -539,7 +539,8 @@ def test_the_retired_consolidation_writer_has_no_reference_left() -> None:
 
 
 # The legacy memory path retired by Plan 0076 (ADR 0027 decision 9): the `MANUAL`-gated
-# `build_context`, the vector store over `memories` and everything only it fed.
+# `build_context`, the vector store over `memories` and everything only it fed; and the v3 fact
+# path and the legacy-fact migration that went with the `facts` table (Plan 0085, migration 017).
 _RETIRED_LEGACY_MEMORY_NAMES = frozenset(
     {
         "build_context",
@@ -560,6 +561,11 @@ _RETIRED_LEGACY_MEMORY_NAMES = frozenset(
         "onboarding_prompt",
         "next_missing_slot",
         "_format_memory_block",
+        # The v3 fact path and the legacy-fact migration (Plan 0085, D-6).
+        "assert_fact",
+        "get_active_facts",
+        "FactRecord",
+        "migrate_active_legacy_facts",
     }
 )
 
@@ -774,16 +780,15 @@ def test_the_candidate_caller_guards_detect_a_violation() -> None:
 
 
 # --- who may call the repository's writers (Plan 0065, ADR 0022 decision 2) ------------------
-# One canonical writer stores a household fact whatever the channel. The local setup and the
-# legacy migration are the two documented exceptions the Step 0 ADR decides; a third caller of
-# the repository's `assert_*` must be a decision, not an accident.
+# One canonical writer stores a household fact whatever the channel. The local setup is the one
+# documented exception the Step 0 ADR decides (the legacy migration went with migration 017);
+# a third caller of the repository's `assert_*` must be a decision, not an accident.
 _REPOSITORY_WRITERS = frozenset({"assert_literal_fact", "assert_entity_relation"})
 _REPOSITORY_WRITER_HOMES = frozenset(
     {
         "memory/relational_v4.py",
         "memory/canonical_writer.py",
         "personal_setup.py",
-        "memory/legacy_v4_migration.py",
     }
 )
 
@@ -984,11 +989,13 @@ def test_the_command_guard_detects_a_violation() -> None:
 # its text can never reach a reply; only the voice routes and the text service name the recorder.
 _CONVERSATION_TABLE_HOMES = {
     "conversation_records": "memory/conversation_record.py",
+    "conversation_turns": "memory/conversation_record.py",
     "conversation_episodes": "memory/conversation_episodes.py",
     "conversation_consent_grants": "memory/conversation_consent.py",
 }
 # The recall store may JOIN a unit to its record, only to skip an expired one (Plan 0078): no
-# other statement on the table, and never the record's turns.
+# other statement on the table, and never the record's turns (the rows of `conversation_turns`,
+# which only the record store queries).
 _CONVERSATION_TABLE_JOINERS = {"conversation_records": frozenset({"memory/recall_store.py"})}
 _RECORD_READER_MODULES = frozenset(
     {
@@ -1101,7 +1108,7 @@ def test_the_recall_store_may_only_join_the_record_for_its_expiry() -> None:
     assert _conversation_table_queriers(sources) == ["memory/other.py"]
 
     for leak in (
-        'SQL = "SELECT r.turns FROM recall_units u JOIN conversation_records r ON 1"\n',
+        'SQL = "SELECT t.heard FROM recall_units u JOIN conversation_turns t ON 1"\n',
         'SQL = "UPDATE conversation_records SET eligible = 0"\n',
     ):
         assert _conversation_table_queriers({"memory/recall_store.py": leak}) == [
@@ -1122,7 +1129,7 @@ def test_only_the_voice_routes_and_the_text_service_name_the_recorder() -> None:
 @pytest.mark.unit
 def test_the_conversation_guards_detect_a_violation() -> None:
     sources = {
-        "memory/leak.py": 'SQL = "SELECT turns FROM conversation_records"\n',
+        "memory/leak.py": 'SQL = "SELECT heard FROM conversation_turns"\n',
         "memory/conversation_record.py": 'SQL = "SELECT 1 FROM conversation_records"\n',
         "routers/chat.py": (
             "from server.memory.conversation_record import read_record\nrecord_turn = None\n"
@@ -2029,31 +2036,18 @@ def test_the_pending_topics_guards_detect_a_violation() -> None:
 
 
 # The writers state every time themselves through ``server.timestamps`` (Plan 0085, D-3); none
-# asks SQLite for its own clock. ``retention.py`` compares dead tables (sensor_readings,
-# sensor_aggregates_hourly, embeddings_cache, outbox) and goes with those tables in migration 017
-# (Task B2), which has to empty this list.
+# asks SQLite for its own clock, and no file is excused.
 _DATETIME_NOW = re.compile(r"""datetime\(\s*['"]now['"]""")
-_MAY_READ_THE_SQLITE_CLOCK = frozenset({"memory/retention.py"})
 
 
 def _sqlite_clock_users(sources: Mapping[str, str]) -> list[str]:
-    """``file:line`` of every use of SQLite's ``datetime('now')`` outside the allow-list."""
+    """``file:line`` of every use of SQLite's ``datetime('now')``."""
     return [
         f"{name}:{number}"
         for name, text in sorted(sources.items())
-        if name not in _MAY_READ_THE_SQLITE_CLOCK
         for number, line in enumerate(text.splitlines(), start=1)
         if _DATETIME_NOW.search(line)
     ]
-
-
-def _stale_sqlite_clock_allowances(sources: Mapping[str, str]) -> list[str]:
-    """Allow-listed files that no longer use the clock: the exception must then be removed."""
-    return sorted(
-        name
-        for name in _MAY_READ_THE_SQLITE_CLOCK
-        if _DATETIME_NOW.search(sources.get(name, "")) is None
-    )
 
 
 @pytest.mark.unit
@@ -2061,7 +2055,6 @@ def test_no_server_module_writes_datetime_now() -> None:
     sources = _sources()
 
     assert _sqlite_clock_users(sources) == []
-    assert _stale_sqlite_clock_allowances(sources) == []
 
 
 @pytest.mark.unit
@@ -2076,10 +2069,7 @@ def test_the_sqlite_clock_guard_detects_a_violation() -> None:
 
     assert _sqlite_clock_users(leak) == [
         "memory/double.py:2",
+        "memory/retention.py:1",
         "memory/spaced.py:1",
         "memory/writer.py:1",
-    ]
-    assert _stale_sqlite_clock_allowances(leak) == []
-    assert _stale_sqlite_clock_allowances({"memory/retention.py": "SQL = 1\n"}) == [
-        "memory/retention.py"
     ]

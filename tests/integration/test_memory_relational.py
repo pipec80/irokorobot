@@ -15,7 +15,9 @@ if TYPE_CHECKING:
 
 
 import pytest
-from server.memory.declarative import assert_fact, list_entity_names, upsert_entity
+from server.memory.declarative import list_entity_names, upsert_entity
+from server.memory.predicate_registry import resolve_predicate
+from server.memory.relational_v4 import assert_entity_relation, assert_literal_fact
 from server.settings import settings
 
 from server import db
@@ -30,14 +32,22 @@ async def family_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: i
     await db.open_db()
     await db.run_migrations()
 
-    await upsert_entity(name="Pipec", type="person")
+    owner = await upsert_entity(name="Pipec", type="person")
     vale = await upsert_entity(name="Valentina", type="person")
     maxi = await upsert_entity(name="Joaquín", type="person")
     luna = await upsert_entity(name="Luna", type="other")
-    await assert_fact(entity_id=vale, predicate="hijo_de", object_value="Pipec")
-    await assert_fact(entity_id=maxi, predicate="hijo_de", object_value="Pipec")
-    await assert_fact(entity_id=luna, predicate="mascota_de", object_value="Pipec")
-    await assert_fact(entity_id=luna, predicate="especie", object_value="perra")
+    child_of = resolve_predicate("child_of")
+    pet_of = resolve_predicate("pet_of")
+    species = resolve_predicate("species")
+    assert child_of is not None
+    assert pet_of is not None
+    assert species is not None
+    for child in (vale, maxi):
+        await assert_entity_relation(
+            source_entity_id=child, target_entity_id=owner, definition=child_of
+        )
+    await assert_entity_relation(source_entity_id=luna, target_entity_id=owner, definition=pet_of)
+    await assert_literal_fact(subject_entity_id=luna, definition=species, value="perra")
 
     yield db_path
     await db.close_db()

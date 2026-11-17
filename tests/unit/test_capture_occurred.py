@@ -94,10 +94,11 @@ def inserted(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     """The unit writer, reached through a fake append that runs the indexer."""
     insert = AsyncMock(return_value=5)
     monkeypatch.setattr(conversation_capture, "insert_turn_unit", insert)
+    monkeypatch.setattr(conversation_capture, "link_source_turn", AsyncMock(return_value=0))
 
     async def append(turn: RecordedTurn, *, index: object = None, **_: object) -> int:
         if index is not None:
-            await index(None, 1, turn)  # type: ignore[operator]  # the indexer seam
+            await index(None, 1, 21, turn)  # type: ignore[operator]  # the indexer seam
         return 1
 
     monkeypatch.setattr(conversation_capture, "append_turn", append)
@@ -122,6 +123,7 @@ async def _capture(heard: str, *, at: datetime = _NOW) -> CaptureOutcome:
 
 def _occurred(insert: AsyncMock) -> object:
     assert insert.await_args is not None
+    assert insert.await_args.kwargs["turn_id"] == 21  # the stored turn the unit comes from
     return insert.await_args.kwargs.get("occurred")
 
 

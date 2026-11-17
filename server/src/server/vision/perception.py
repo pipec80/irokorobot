@@ -12,7 +12,6 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from server import db
 from server.exceptions import BrainMemoryError, EnrollmentRejectedError, VisionError
 from server.vision.describe import PERCEPTION_FAILED, describe_image
 from server.vision.faces import enroll_person, recognize
@@ -69,20 +68,8 @@ async def _face_lines(image: bytes) -> list[str]:
         lines.append(_RECOGNIZED_TEMPLATE.format(names=names))
     if unknown:
         lines.append(_UNKNOWN_LINE)
-        await _record_unknown_face(unknown)
+        logger.info("Unknown face in view: unknown_person (count=%d)", unknown)
     return lines
-
-
-async def _record_unknown_face(count: int) -> None:
-    """Log an ``unknown_person`` event — informational, never an alarm."""
-    try:
-        async with db.transaction() as conn:
-            await conn.execute(
-                "INSERT INTO events (event_type, severity, payload) VALUES (?, ?, ?)",
-                ("unknown_person", "info", f'{{"count": {count}}}'),
-            )
-    except Exception as exc:
-        logger.warning("Could not record unknown_person event: %s", exc)
 
 
 async def perceive(client: httpx.AsyncClient, image: bytes) -> str:

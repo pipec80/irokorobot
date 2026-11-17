@@ -13,6 +13,7 @@ from server.memory.conversation_types import (
     make_turn,
     owner_part,
 )
+from server.timestamps import instant_text
 
 pytestmark = pytest.mark.unit
 
@@ -54,43 +55,19 @@ def test_make_turn_cuts_heard_and_said_at_their_caps() -> None:
 def test_a_turn_round_trips_through_json_as_data(heard: str) -> None:
     turn = _turn(heard)
 
-    back = RecordedTurn.from_json_obj(json.loads(turn.to_json()))
+    data = json.loads(turn.to_json())
 
-    assert back == turn
-    assert back.heard == heard
+    assert data == {
+        "at": instant_text(turn.at),
+        "heard": heard,
+        "said": turn.said,
+        "voice": turn.voice.value,
+        "cid": str(turn.correlation_id),
+    }
 
 
 def test_the_json_keeps_non_ascii_as_is() -> None:
     assert "ñandú" in _turn("ñandú").to_json()
-
-
-@pytest.mark.parametrize(
-    "obj",
-    [
-        {"at": _AT.isoformat(), "heard": "x", "said": "y", "voice": "verified"},
-        {"at": _AT.isoformat(), "heard": "x", "said": "y", "voice": "owner", "cid": str(_CID)},
-        {
-            "at": "2026-10-29T10:00:00",
-            "heard": "x",
-            "said": "y",
-            "voice": "verified",
-            "cid": str(_CID),
-        },
-        {"at": _AT.isoformat(), "heard": 3, "said": "y", "voice": "verified", "cid": str(_CID)},
-        {
-            "at": _AT.isoformat(),
-            "heard": "x",
-            "said": "y",
-            "voice": "verified",
-            "cid": "no",
-            "extra": "z",
-        },
-    ],
-    ids=["missing-key", "unknown-verdict", "naive-time", "not-a-string", "extra-key"],
-)
-def test_from_json_obj_rejects_a_malformed_entry(obj: dict[str, object]) -> None:
-    with pytest.raises(ValueError, match=r"malformed|is not a valid"):
-        RecordedTurn.from_json_obj(obj)
 
 
 def test_owner_part_keeps_only_verified_turns_in_time_order() -> None:

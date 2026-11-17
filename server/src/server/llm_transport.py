@@ -2,8 +2,8 @@
 
 Chat (``/api/chat``, plain and streaming), embeddings (``/api/embed``) and the
 start-up reachability check (``/api/tags``) live here; llm.py, llm_streaming.py, memory/consolidation.py,
-memory/candidate_extraction.py, memory/embeddings.py and vision/describe.py all
-reach Ollama through these helpers, and
+memory/candidate_extraction.py, the recall index and search (``memory/recall_index.py``,
+``memory/recall_search.py``) and vision/describe.py all reach Ollama through these helpers, and
 ``tests/unit/test_ollama_seam.py`` keeps it that way. Every caller
 passes the lifespan-owned ``httpx.AsyncClient`` (Plan 0039); nothing here
 constructs one. Building prompts and parsing the model's own output stay with

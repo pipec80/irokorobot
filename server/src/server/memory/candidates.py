@@ -36,6 +36,7 @@ from typing import TYPE_CHECKING
 
 from server import db
 from server.memory.candidate_types import CandidateChannel, CandidateStatus, ProposedCandidate
+from server.memory.conversation_record import find_turn_id
 from server.settings import settings
 from server.timestamps import instant_text
 
@@ -47,17 +48,20 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "LINK_SOURCE_TURN_SQL",
     "VOID_LIVE_SQL",
     "Candidate",
     "InsertResult",
     "InsertStatus",
     "checkpoint_after_scrub",
     "count_live_candidates",
+    "count_unlinked_candidates",
     "expire_lapsed_in_transaction",
     "find_offered",
     "get_candidate",
     "insert_candidate",
     "iso_utc",
+    "link_source_turn",
     "mark_offered",
     "next_offerable",
     "precheck_insert",
@@ -70,6 +74,13 @@ __all__ = [
 ]
 
 _LIVE = ("proposed", "offered")
+#: Links a turn's candidates to its row; the partial index ``memory_candidates_unlinked_idx``
+#: serves it (it runs inside every append's write transaction). Two parameters: the turn's
+#: row id and its correlation id.
+LINK_SOURCE_TURN_SQL = (
+    "UPDATE memory_candidates SET source_turn_id = ? "
+    "WHERE source_correlation_id = ? AND source_turn_id IS NULL"
+)
 _COLUMNS = (
     "id, subject_person_id, asserted_by_person_id, predicate, value_text, value_key, status, "
     "channel, source_correlation_id, offer_correlation_id, resolution_correlation_id, "
@@ -357,8 +368,8 @@ async def _insert_in_transaction(
         return InsertResult(blocked)
     cursor = await conn.execute(
         "INSERT INTO memory_candidates (subject_person_id, asserted_by_person_id, predicate, "
-        "value_text, value_key, status, channel, source_correlation_id, proposed_at, expires_at) "
-        "VALUES (?, ?, ?, ?, ?, 'proposed', ?, ?, ?, ?)",
+        "value_text, value_key, status, channel, source_correlation_id, source_turn_id, "
+        "proposed_at, expires_at) VALUES (?, ?, ?, ?, ?, 'proposed', ?, ?, ?, ?, ?)",
         (
             subject_person_id,
             asserted_by_person_id,
@@ -367,6 +378,7 @@ async def _insert_in_transaction(
             proposal.value_key,
             channel.value,
             str(correlation_id),
+            await find_turn_id(conn, correlation_id),
             iso_utc(now),
             iso_utc(now + timedelta(seconds=settings.memory_candidate_ttl_seconds)),
         ),
@@ -376,6 +388,28 @@ async def _insert_in_transaction(
     if candidate_id is None:
         raise RuntimeError("INSERT into memory_candidates returned no lastrowid")
     return InsertResult(InsertStatus.INSERTED, int(candidate_id))
+
+
+async def link_source_turn(
+    conn: aiosqlite.Connection, *, correlation_id: UUID, turn_id: int
+) -> int:
+    """Link the candidates proposed from a turn to that turn's row, once it exists.
+
+    A candidate is proposed in the background and may be inserted before its turn is appended;
+    the append calls this so both orders end linked (the insert links the other order itself).
+
+    Args:
+        conn: The connection of an open ``db.transaction()`` (the append's).
+        correlation_id: The turn's correlation id.
+        turn_id: The turn's row id.
+
+    Returns:
+        How many candidates were linked; those already linked are left alone.
+    """
+    cursor = await conn.execute(LINK_SOURCE_TURN_SQL, (turn_id, str(correlation_id)))
+    linked = cursor.rowcount
+    await cursor.close()
+    return linked
 
 
 async def get_candidate(candidate_id: int) -> Candidate | None:
@@ -718,6 +752,26 @@ async def reset_for_startup(now: datetime, *, enabled: bool) -> None:
         logger.info("Candidates reconciled at start-up: %d expired", scrubbed)
     # `max(..., 1)`: truncate even when this start-up erased nothing (see the docstring).
     await checkpoint_after_scrub(max(scrubbed, 1))
+
+
+async def count_unlinked_candidates(conn: aiosqlite.Connection, stored_turn_ids_sql: str) -> int:
+    """Count the candidates with no link to a stored turn whose correlation id they carry.
+
+    Such a candidate would survive the deletion of its turn (Plan 0085 D-8). One whose turn was
+    never stored has nothing to link and is not counted. Used by the health check.
+
+    Args:
+        conn: An open connection.
+        stored_turn_ids_sql: A ``SELECT`` of the correlation ids of the stored turns (the record
+            store's ``STORED_TURN_CORRELATION_IDS_SQL``).
+    """
+    cursor = await conn.execute(
+        "SELECT COUNT(*) FROM memory_candidates WHERE source_turn_id IS NULL "  # noqa: S608
+        f"AND source_correlation_id IN ({stored_turn_ids_sql})"
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    return 0 if row is None else int(row[0])
 
 
 async def count_live_candidates(now: str) -> int:

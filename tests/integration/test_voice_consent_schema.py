@@ -102,8 +102,9 @@ async def test_centroid_match_is_none_without_references(memory_db: None) -> Non
 
 async def _insert_raw_blob(entity_id: int, blob: bytes) -> None:
     await db.get_conn().execute(
-        "INSERT INTO voice_profiles (entity_id, label, embedding, model_id) VALUES (?, ?, ?, ?)",
-        (entity_id, "canary", blob, MODEL_ID),
+        "INSERT INTO voice_profiles (entity_id, label, embedding, model_id, created_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (entity_id, "canary", blob, MODEL_ID, "2026-11-16T10:00:00.000000+00:00"),
     )
     await db.get_conn().commit()
 

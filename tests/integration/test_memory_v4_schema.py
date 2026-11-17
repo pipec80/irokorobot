@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
-from server.memory.declarative import assert_fact, upsert_entity
+from server.memory.declarative import upsert_entity
 from server.memory.predicate_registry import resolve_predicate
 from server.memory.relational_v4 import assert_literal_fact, get_literal_fact
 from server.settings import settings
@@ -30,8 +30,8 @@ async def v4_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignor
 
 
 @pytest.mark.integration
-async def test_v4_schema_is_additive_and_preserves_legacy_facts(v4_db: None) -> None:
-    """The current schema retains v4 tables and legacy fact behavior."""
+async def test_v4_schema_is_present_and_takes_a_literal(v4_db: None) -> None:
+    """The current schema retains the v4 tables and stores a literal without a dangling row."""
     conn = db.get_conn()
     version_cursor = await conn.execute("PRAGMA user_version")
     version_row = await version_cursor.fetchone()
@@ -41,27 +41,16 @@ async def test_v4_schema_is_additive_and_preserves_legacy_facts(v4_db: None) -> 
     tables_cursor = await conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
     tables = {str(row[0]) for row in await tables_cursor.fetchall()}
     await tables_cursor.close()
-    assert {"literal_facts_v4", "entity_relations_v4", "legacy_fact_migration_v4"} <= tables
+    assert {"literal_facts_v4", "entity_relations_v4"} <= tables
 
     owner_id = await upsert_entity(name="Felipe", type="person")
-    await assert_fact(entity_id=owner_id, predicate="alias", object_value="Pipe")
-    before_cursor = await conn.execute("SELECT COUNT(*) FROM facts")
-    legacy_count_before_row = await before_cursor.fetchone()
-    await before_cursor.close()
-    assert legacy_count_before_row is not None
-    legacy_count_before = int(legacy_count_before_row[0])
-
     likes = resolve_predicate("likes")
     assert likes is not None
     await assert_literal_fact(subject_entity_id=owner_id, definition=likes, value="robotica")
 
-    after_cursor = await conn.execute("SELECT COUNT(*) FROM facts")
-    legacy_count_after_row = await after_cursor.fetchone()
-    await after_cursor.close()
-    assert legacy_count_after_row is not None
-    legacy_count_after = int(legacy_count_after_row[0])
-    assert legacy_count_after == legacy_count_before
-
+    count_cursor = await conn.execute("SELECT COUNT(*) FROM literal_facts_v4")
+    assert await count_cursor.fetchone() == (1,)
+    await count_cursor.close()
     foreign_key_cursor = await conn.execute("PRAGMA foreign_key_check")
     assert await foreign_key_cursor.fetchall() == []
     await foreign_key_cursor.close()

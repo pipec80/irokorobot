@@ -50,7 +50,6 @@ async def test_unknown_face_adds_gentle_line(http_client: httpx.AsyncClient) -> 
             "server.vision.perception.describe_image",
             AsyncMock(return_value=("Una sala.", 900)),
         ),
-        patch("server.vision.perception._record_unknown_face", AsyncMock()),
     ):
         perception = await perceive(http_client, _FRAME)
 

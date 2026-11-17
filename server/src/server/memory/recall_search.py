@@ -21,6 +21,7 @@ from server.llm_transport import ollama_embed
 from server.memory.household_time import household_day, household_zone
 from server.memory.recall_store import (
     RecallUnit,
+    count_units_of_another_model,
     lexical_hits,
     occurred_time_on,
     recent_units,
@@ -136,7 +137,20 @@ def _capped(units: Sequence[RecallUnit]) -> list[RecallUnit]:
 async def _vector_side(
     client: httpx.AsyncClient, query: str, window: _Window
 ) -> list[tuple[int, float]] | None:
-    """The vector ranking, or ``None`` when the embedding model failed."""
+    """The vector ranking, or ``None`` when only words search.
+
+    Words alone search when the embedding model failed or when a unit of the owner still holds a
+    vector of another model: a vector search would compare two embedding spaces, so it stays off
+    until the background re-index leaves none (ADR 0031 decision 8, Plan 0085 D-10).
+    """
+    remaining = await count_units_of_another_model(window.owner)
+    if remaining:
+        logger.warning(
+            "recall.vector off reason=model_changed remaining=%d",
+            remaining,
+            extra={"event": "recall.vector_off", "remaining": remaining},
+        )
+        return None
     try:
         vector = await ollama_embed(
             client, query, model=settings.embedding_model, timeout=settings.ollama_timeout_s
