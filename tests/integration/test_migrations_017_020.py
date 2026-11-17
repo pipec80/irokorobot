@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+import logging
+import re
 import sqlite3
 from typing import TYPE_CHECKING
 from uuid import UUID
@@ -988,3 +990,198 @@ async def test_revoking_the_consents_clears_the_profiles_and_then_the_person_can
     assert await _scalar("SELECT count(*) FROM voice_profiles") == 0
     assert await _scalar("SELECT count(*) FROM vec_faces") == 0
     assert await _scalar(f"SELECT count(*) FROM entities WHERE id = {head_db}") == 0  # noqa: S608
+
+
+# --- review gaps (Plan 0085, B7) ---------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("kind", ["turn", "episode"])
+async def test_019_refuses_two_units_for_one_turn_or_one_episode_and_leaves_version_18(
+    v18_db: tuple[db.Migration, ...], monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    owner = await upsert_entity(name="Canary Owner", type="person")
+    turn = _turn(1, 1, "palabra", TurnVerdict.VERIFIED)
+    await record.append_turn(turn, owner_entity_id=owner, now=_T0)
+    record_id = int(str(await _scalar("SELECT min(record_id) FROM conversation_turns")))
+    if kind == "turn":
+        for _ in range(2):
+            await _v18_unit(owner, record_id, str(turn.correlation_id))
+        constraint = "recall_units.turn_id"
+    else:
+        episode_id = await _exec(
+            "INSERT INTO conversation_episodes (source_record_id, owner_entity_id, visibility, "
+            "sensitivity, summary, model, created_at, expires_at) "
+            "VALUES (?, ?, 'personal', 'normal', 'resumen', 'canary', ?, ?)",
+            record_id,
+            owner,
+            instant_text(_T0),
+            instant_text(_T0 + timedelta(days=1)),
+        )
+        for _ in range(2):
+            await _exec(
+                "INSERT INTO recall_units (owner_entity_id, source_record_id, episode_id, kind, "
+                "body, said_at, visibility, sensitivity) "
+                "VALUES (?, ?, ?, 'episode', 'resumen', ?, 'personal', 'normal')",
+                owner,
+                record_id,
+                episode_id,
+                instant_text(_T0),
+            )
+        constraint = "recall_units.episode_id"
+    monkeypatch.setattr(db, "_MIGRATIONS", v18_db)
+
+    with pytest.raises(BrainMemoryError, match=f"UNIQUE constraint failed: {constraint}"):
+        await db.run_migrations()
+
+    assert await _scalar("PRAGMA user_version") == 18
+    assert await _scalar("SELECT count(*) FROM recall_units") == 2
+    assert (
+        await _scalar(
+            "SELECT count(*) FROM sqlite_master WHERE name IN ('recall_units_turn_idx', "
+            "'recall_units_one_per_episode_idx', 'recall_units_body_locked', "
+            "'memory_candidates_source_turn_idx', 'pending_topics_source_turn_idx')"
+        )
+        == 0
+    )
+    assert (
+        await _scalar(
+            "SELECT count(*) FROM pragma_table_info('recall_units') WHERE name = 'turn_id'"
+        )
+        == 0
+    )
+    assert await _scalar("PRAGMA foreign_keys") == 1
+
+
+async def test_a_failed_020_names_the_guard_that_fired_and_no_value(
+    v19_db: tuple[db.Migration, ...],
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    planted = "canary-third-format"
+    await _v19_entity("Canary A", planted, "2026-11-16 10:00:03")
+
+    with (
+        caplog.at_level(logging.ERROR, logger="server.db"),
+        pytest.raises(BrainMemoryError) as raised,
+    ):
+        await _run_020(v19_db, monkeypatch)
+
+    for text in (str(raised.value), caplog.text):
+        assert "a_time_column_holds_a_value_that_is_not_an_exact_instant" in text
+        assert planted not in text
+    assert await _scalar("PRAGMA user_version") == 19
+
+
+async def _unchanged_profile_state() -> dict[str, object]:
+    """Both profile tables (SQL and rows), their counters and the face vectors, as they are."""
+    return {
+        "sql": await _rows(
+            "SELECT name, sql FROM sqlite_master "
+            "WHERE name IN ('face_profiles', 'voice_profiles') ORDER BY name"
+        ),
+        "indexes": await _rows(
+            "SELECT name, tbl_name FROM sqlite_master WHERE type = 'index' "
+            "AND tbl_name IN ('face_profiles', 'voice_profiles') ORDER BY name"
+        ),
+        "face_rows": await _rows("SELECT * FROM face_profiles ORDER BY id"),
+        "voice_rows": await _rows("SELECT * FROM voice_profiles ORDER BY id"),
+        "counters": await _rows("SELECT name, seq FROM sqlite_sequence ORDER BY name"),
+        "vectors": await _rows("SELECT rowid FROM vec_faces ORDER BY rowid"),
+    }
+
+
+async def test_020_failing_after_the_rebuild_leaves_both_profile_tables_as_they_were(
+    v19_db: tuple[db.Migration, ...], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    person = await _v19_entity("Canary A", instant_text(_T0), instant_text(_T0))
+    await _v19_profiles(person)
+    conn = db.get_conn()
+    await conn.execute("PRAGMA foreign_keys = OFF")
+    await _exec(
+        "INSERT INTO face_profiles (id, entity_id, label, created_at) VALUES (9, 9999, 'sin dueño', ?)",
+        "2026-11-19 10:00:09",
+    )
+    await _exec("INSERT INTO vec_faces (rowid, embedding) VALUES (9, ?)", _FACE_BLOB)
+    await conn.execute("PRAGMA foreign_keys = ON")
+    before = await _unchanged_profile_state()
+
+    with pytest.raises(BrainMemoryError, match="CHECK constraint failed: violations = 0"):
+        await _run_020(v19_db, monkeypatch)
+
+    assert await _scalar("PRAGMA user_version") == 19
+    assert await _unchanged_profile_state() == before
+    assert await _scalar("PRAGMA foreign_keys") == 1
+    assert not conn.in_transaction
+
+
+_DUMMIES = {"INTEGER": "1", "TEXT": "'x'", "REAL": "0.5", "BLOB": "x'00'"}
+
+
+async def _plant_row_with_times(table: str, stamps: dict[str, str]) -> None:
+    """Insert one row into *table*: its time columns get *stamps*, any other required column a dummy.
+
+    The caller has foreign keys and check constraints off, so a dummy needs only its type.
+    """
+    info = await _rows(
+        'SELECT name, upper(type), "notnull", dflt_value, pk '  # noqa: S608
+        f"FROM pragma_table_info('{table}') ORDER BY cid"
+    )
+    values: dict[str, str] = {}
+    single_key = sum(1 for row in info if row[4]) == 1
+    for name, kind, notnull, default, pk in info:
+        if name in stamps:
+            values[str(name)] = "'" + stamps[str(name)] + "'"
+        elif pk and single_key and kind == "INTEGER":
+            continue  # a rowid alias fills itself
+        elif (notnull and default is None) or pk:
+            values[str(name)] = _DUMMIES.get(str(kind), "'x'")
+    columns = ", ".join(f'"{name}"' for name in values)
+    await _exec(f'INSERT INTO "{table}" ({columns}) VALUES ({", ".join(values.values())})')  # noqa: S608
+
+
+@pytest.mark.parametrize(
+    "old_format", ["2026-03-04 05:06:{s:02d}", "2026-03-04T05:06:{s:02d}+00:00"]
+)
+async def test_020_converts_every_time_column_of_the_schema_exactly(
+    v19_db: tuple[db.Migration, ...], monkeypatch: pytest.MonkeyPatch, old_format: str
+) -> None:
+    columns = await time_columns(db.get_conn())
+    by_table: dict[str, list[str]] = {}
+    for table, column in columns:
+        by_table.setdefault(table, []).append(column)
+    stamp_of = {pair: index % 60 for index, pair in enumerate(columns)}
+    conn = db.get_conn()
+    await conn.execute("PRAGMA foreign_keys = OFF")
+    await conn.execute("PRAGMA ignore_check_constraints = ON")
+    # The retired legacy table refuses new rows; a database that still holds old ones is the case.
+    await conn.execute("DROP TRIGGER memories_retired")
+    for table, names in by_table.items():
+        await _plant_row_with_times(
+            table, {name: old_format.format(s=stamp_of[(table, name)]) for name in names}
+        )
+
+    for table, name in columns:
+        planted = str(await _scalar(f'SELECT "{name}" FROM "{table}"'))  # noqa: S608
+        assert len(planted) == len(old_format.format(s=0)), f"{table}.{name} was not planted"
+
+    await _run_020(v19_db, monkeypatch)
+
+    wrong = []
+    for table, name in columns:
+        found = await _scalar(f'SELECT "{name}" FROM "{table}"')  # noqa: S608
+        expected = f"2026-03-04T05:06:{stamp_of[(table, name)]:02d}.000000+00:00"
+        if found != expected:
+            wrong.append(f"{table}.{name}: {found!r}")
+    assert wrong == []
+
+
+async def test_020_guard_view_lists_exactly_the_time_columns_of_the_schema(
+    v19_db: tuple[db.Migration, ...],
+) -> None:
+    """A new ``*_at`` column that the guard view forgets would escape the exact-instant check."""
+    sql = _MIGRATION_020.read_text(encoding="utf-8")
+    view = sql[sql.index("CREATE TEMP VIEW _all_times") :]
+    view = view[: view.index(";")]
+    in_guard = re.findall(r"SELECT '(\w+)', '(\w+)', \w+ FROM \w+", view)
+
+    assert sorted(in_guard) == sorted(await time_columns(db.get_conn()))

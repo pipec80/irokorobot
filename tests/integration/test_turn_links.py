@@ -7,12 +7,21 @@ and its pending topic, and nothing else. Canary rows only; the embedding model i
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, cast
 from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
 import pytest
-from server.cognition.models import CognitiveEvent
+from server.cognition.identity import (
+    ActivePersonContext,
+    HouseholdRole,
+    IdentityEvidence,
+    IdentityEvidenceSource,
+    PersonRecord,
+    resolve_active_person,
+)
+from server.cognition.models import CognitiveEvent, Confidence, ConfidenceBasis
 from server.cognition.response_plan import TextTurnPayload
 from server.memory import candidates, conversation_record as record, pending_store, recall_store
 from server.memory.candidate_types import CandidateChannel, ProposedCandidate
@@ -20,12 +29,12 @@ from server.memory.conversation_capture import capture_turn
 from server.memory.conversation_types import RecordedTurn, TurnVerdict, make_turn
 from server.memory.declarative import upsert_entity
 from server.settings import settings
+import yaml
 
 from server import db
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
-    from pathlib import Path
 
     import aiosqlite
 
@@ -285,3 +294,57 @@ async def test_linking_a_turns_candidates_finds_them_by_an_index(owner: int) -> 
 
     assert "SCAN memory_candidates" not in details
     assert any("memory_candidates_unlinked_idx" in line for line in details)
+
+
+_PENDING_CASES = Path(__file__).resolve().parents[1] / "fixtures" / "pending_capture_cases.yaml"
+# An announcement that is also ordinary conversation: it gets a unit and a pending topic.
+_ANNOUNCEMENT = str(
+    cast("list[dict[str, object]]", yaml.safe_load(_PENDING_CASES.read_text(encoding="utf-8")))[0][
+        "heard"
+    ]
+)
+
+
+def _owner_face(owner_id: int) -> ActivePersonContext:
+    person = PersonRecord(person_id=owner_id, display_name="Canary", entity_type="person")
+    evidence = IdentityEvidence(
+        evidence_id=uuid4(),
+        source=IdentityEvidenceSource.FACE,
+        candidate_person_id=owner_id,
+        confidence=Confidence(score=1.0, basis=ConfidenceBasis.MEASURED, calibrated=False),
+        observed_at=_T0 - timedelta(seconds=1),
+        reference="canary",
+    )
+    return resolve_active_person(
+        evidence=(evidence,),
+        lookup_person=lambda pid: person if pid == owner_id else None,
+        lookup_role=lambda _pid: HouseholdRole.OWNER,
+        clock=lambda: _T0,
+    )
+
+
+async def test_a_captured_verified_turn_links_its_unit_and_its_topic_to_its_row(
+    owner: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The whole capture on a real database: no store is replaced by a double."""
+    monkeypatch.setattr(settings, "household_timezone", "America/Santiago")
+    monkeypatch.setattr(settings, "pending_topics_enabled", True)
+    face = _owner_face(owner)
+
+    await capture_turn(
+        _ANNOUNCEMENT,
+        "respuesta canario",
+        face,
+        wav_bytes=b"RIFF-canary",
+        event=_event(uuid4()),
+        at=_T0,
+        verify=AsyncMock(return_value=face),
+        owner=AsyncMock(return_value=owner),
+        consented=AsyncMock(return_value=True),
+        clock=lambda: _T0,
+    )
+
+    turn_ids = await _rows("SELECT id FROM conversation_turns")
+    assert len(turn_ids) == 1
+    assert await _rows("SELECT turn_id FROM recall_units") == turn_ids
+    assert await _rows("SELECT source_turn_id FROM pending_topics") == turn_ids

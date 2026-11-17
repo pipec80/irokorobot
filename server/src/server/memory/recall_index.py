@@ -54,7 +54,10 @@ async def embed_unit(client: httpx.AsyncClient, unit_id: int, body: str) -> bool
 
 
 async def backfill_vectors(client: httpx.AsyncClient, *, limit: int = 5) -> int:
-    """Embed up to *limit* units that have no vector; stop at the first failure.
+    """Embed up to *limit* units that need a vector; stop at the first failure.
+
+    A unit needs one when it has none, or when its vector was computed by a model other than the
+    configured one (the unit is embedded again, ADR 0031 decision 8).
 
     Args:
         client: Shared, lifecycle-owned HTTP client (Plan 0039).

@@ -30,6 +30,7 @@ __all__ = [
     "PendingTopic",
     "asked_today",
     "count_naming_failure",
+    "count_unlinked_topics",
     "delete_expired",
     "drop",
     "due_topic",
@@ -139,6 +140,26 @@ async def _write(sql: str, params: tuple[object, ...]) -> int:
         changed = cursor.rowcount
         await cursor.close()
     return changed
+
+
+async def count_unlinked_topics(conn: aiosqlite.Connection, stored_turn_ids_sql: str) -> int:
+    """Count the topics with no link to a stored turn whose correlation id they carry.
+
+    Such a topic would survive the deletion of its turn (Plan 0085 D-8). One whose turn was never
+    stored has nothing to link and is not counted. Used by the health check.
+
+    Args:
+        conn: An open connection.
+        stored_turn_ids_sql: A ``SELECT`` of the correlation ids of the stored turns (the record
+            store's ``STORED_TURN_CORRELATION_IDS_SQL``).
+    """
+    cursor = await conn.execute(
+        "SELECT COUNT(*) FROM pending_topics WHERE source_turn_id IS NULL "  # noqa: S608
+        f"AND correlation_id IN ({stored_turn_ids_sql})"
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    return 0 if row is None else int(row[0])
 
 
 async def next_unnamed() -> tuple[int, str] | None:

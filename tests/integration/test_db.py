@@ -7,8 +7,11 @@ closes that gap for the one production file this plan is allowed to touch.
 """
 
 from collections.abc import AsyncIterator
+import logging
 from pathlib import Path
+import sqlite3
 
+import aiosqlite
 import pytest
 from server.exceptions import BrainMemoryError
 from server.settings import settings
@@ -156,6 +159,9 @@ _TRANSACTION_STATEMENTS = (
     "SAVEPOINT a;",
     "RELEASE a;",
     "PRAGMA user_version = 99;",
+    # Silent no-ops inside the runner's transaction: only a ``rebuild`` migration toggles them.
+    "PRAGMA foreign_keys = OFF;",
+    "pragma defer_foreign_keys = on;",
 )
 
 
@@ -285,3 +291,119 @@ async def test_a_rebuild_leaving_a_foreign_key_violation_is_aborted(
     assert await _scalar("PRAGMA user_version") == migrated_conn - 1
     assert await _scalar("PRAGMA foreign_keys") == 1
     assert not db.get_conn().in_transaction
+
+
+@pytest.mark.integration
+async def test_a_rebuild_whose_foreign_keys_stay_on_is_refused_before_it_runs(
+    migrated_conn: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``PRAGMA foreign_keys = OFF`` is ignored inside an open transaction: read it back."""
+    await _make_parent_child()
+    conn = db.get_conn()
+    await conn.execute("BEGIN IMMEDIATE")
+
+    with pytest.raises(BrainMemoryError, match="foreign keys"):
+        await _run_new_migration(
+            tmp_path, monkeypatch, migrated_conn, _REBUILD_PARENT, rebuild=True
+        )
+
+    assert await _scalar("SELECT count(*) FROM pragma_table_info('rb_parent')") == 1
+    assert await _scalar("PRAGMA user_version") == migrated_conn - 1
+    assert await _scalar("PRAGMA foreign_keys") == 1
+    await conn.rollback()
+
+
+_ORPHANING = "DELETE FROM rb_parent WHERE id = 1;"
+
+
+@pytest.mark.integration
+async def test_a_failure_to_turn_foreign_keys_back_on_does_not_hide_the_migrations_error(
+    migrated_conn: int,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    await _make_parent_child()
+    conn = db.get_conn()
+    real_execute = conn.execute
+
+    async def failing_execute(sql: str, *args: object) -> aiosqlite.Cursor:
+        if sql == "PRAGMA foreign_keys = ON":
+            raise sqlite3.OperationalError("canary: cannot set")
+        return await real_execute(sql, *args)
+
+    monkeypatch.setattr(conn, "execute", failing_execute)
+
+    with (
+        caplog.at_level(logging.WARNING, logger="server.db"),
+        pytest.raises(BrainMemoryError, match=r"Migration \d+ .* failed") as raised,
+    ):
+        await _run_new_migration(tmp_path, monkeypatch, migrated_conn, _ORPHANING, rebuild=True)
+
+    assert isinstance(raised.value.__cause__, sqlite3.IntegrityError)
+    assert "OperationalError" in caplog.text
+    assert "canary" not in caplog.text
+
+
+@pytest.mark.integration
+async def test_a_failing_rollback_does_not_hide_the_migrations_error(
+    migrated_conn: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    conn = db.get_conn()
+
+    async def failing_rollback() -> None:
+        raise sqlite3.OperationalError("canary: rollback refused")
+
+    monkeypatch.setattr(conn, "rollback", failing_rollback)
+
+    with pytest.raises(BrainMemoryError, match=r"Migration \d+ .* failed") as raised:
+        await _run_new_migration(
+            tmp_path, monkeypatch, migrated_conn, "INSERT INTO nowhere (id) VALUES (1);"
+        )
+
+    assert isinstance(raised.value.__cause__, sqlite3.OperationalError)
+    assert "canary" not in str(raised.value)
+
+
+@pytest.mark.integration
+async def test_a_failed_migration_names_the_constraint_that_fired_and_no_value(
+    migrated_conn: int,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """An integrity error names its constraint and columns, never a value: it goes in the log."""
+    sql = """
+CREATE TABLE guard_canary (id INTEGER PRIMARY KEY, code TEXT UNIQUE);
+INSERT INTO guard_canary (code) VALUES ('planted-value'), ('planted-value');
+"""
+
+    with (
+        caplog.at_level(logging.ERROR, logger="server.db"),
+        pytest.raises(BrainMemoryError) as raised,
+    ):
+        await _run_new_migration(tmp_path, monkeypatch, migrated_conn, sql)
+
+    for text in (str(raised.value), caplog.text):
+        assert "UNIQUE constraint failed: guard_canary.code" in text
+        assert "planted-value" not in text
+
+
+@pytest.mark.integration
+async def test_any_other_failure_class_stays_class_only(
+    migrated_conn: int,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with (
+        caplog.at_level(logging.ERROR, logger="server.db"),
+        pytest.raises(BrainMemoryError) as raised,
+    ):
+        await _run_new_migration(
+            tmp_path, monkeypatch, migrated_conn, "INSERT INTO nowhere_canary (id) VALUES (1);"
+        )
+
+    assert "nowhere_canary" not in str(raised.value)
+    assert "nowhere_canary" not in caplog.text
+    assert "OperationalError" in caplog.text

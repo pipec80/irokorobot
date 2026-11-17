@@ -9,13 +9,13 @@ Invented canaries only.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 import struct
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 import pytest
-from server.memory import candidates, conversation_record, recall_store
+from server.memory import candidates, conversation_record, pending_store, recall_store
 from server.memory.candidate_types import CandidateChannel, CandidateStatus, ProposedCandidate
 from server.memory.conversation_types import RecordedTurn, TurnVerdict
 from server.memory.declarative import upsert_entity
@@ -38,6 +38,10 @@ _TURN_CANARY = "canario-borrado-7Q2X"
 # FTS5 (unicode61) stores lowercased tokens, so the verbatim canary never appears in its shadow
 # tables: a leak there is only visible through the lowercased distinctive token.
 _TURN_TOKEN_LOWER = b"7q2x"
+# What hangs from the canary turn: a memory candidate's value and a pending topic's words. Deleting
+# the record deletes the turn and, through its link, both (Plan 0085 D-8).
+_LINKED_CANDIDATE_CANARY = "canario-ligado-candidato-7Q2X"
+_LINKED_TOPIC_CANARY = "canario-ligado-pendiente-7Q2X"
 _MODEL = "canary-model"
 _CID = UUID("00000000-0000-0000-0000-0000000000bb")
 _VECTOR = [0.123456789 + index / 10_000 for index in range(EMBEDDING_DIM)]
@@ -83,6 +87,47 @@ async def _index_turn(
     )
 
 
+async def _link_candidate_and_topic_to_the_turn(owner: int) -> None:
+    """Hang a memory candidate and a pending topic from the canary turn, as the capture does."""
+    stored = await candidates.insert_candidate(
+        ProposedCandidate(
+            predicate="likes", value_text=_LINKED_CANDIDATE_CANARY, value_key="canario-ligado"
+        ),
+        subject_person_id=owner,
+        asserted_by_person_id=owner,
+        channel=CandidateChannel.VOICE_CLASSIC,
+        correlation_id=_CID,
+        now=_NOW,
+    )
+    assert stored.candidate_id is not None
+    async with db.transaction() as conn:
+        cursor = await conn.execute(
+            "SELECT t.id, t.record_id FROM conversation_turns t WHERE t.correlation_id = ?",
+            (str(_CID),),
+        )
+        row = await cursor.fetchone()
+        await cursor.close()
+        assert row is not None
+        await pending_store.insert_unnamed(
+            conn,
+            owner_entity_id=owner,
+            record_id=int(row[1]),
+            correlation_id=_CID,
+            said_day=date(2026, 11, 16),
+            due_day=date(2026, 11, 17),
+            heard=_LINKED_TOPIC_CANARY,
+            sensitivity="normal",
+            now=_NOW,
+            turn_id=int(row[0]),
+        )
+    cursor = await db.get_conn().execute(
+        "SELECT (SELECT count(*) FROM memory_candidates WHERE source_turn_id IS NOT NULL), "
+        "(SELECT count(*) FROM pending_topics WHERE source_turn_id IS NOT NULL)"
+    )
+    assert tuple(await cursor.fetchone() or ()) == (1, 1)  # both hang from the turn
+    await cursor.close()
+
+
 async def test_a_rejected_candidate_value_leaves_no_byte_in_the_file_or_the_log(
     store: Path,
 ) -> None:
@@ -124,6 +169,7 @@ async def test_a_deleted_record_leaves_no_text_or_vector_byte_in_the_file_or_the
     record_id = await conversation_record.append_turn(
         turn, owner_entity_id=owner, now=_NOW, index=_index_turn
     )
+    await _link_candidate_and_topic_to_the_turn(owner)
     unit_ids = [unit_id for unit_id, _ in await recall_store.units_without_vector(10)]
     assert len(unit_ids) == 1
     assert await recall_store.store_vector(unit_ids[0], _VECTOR, model=_MODEL) is True
@@ -135,6 +181,8 @@ async def test_a_deleted_record_leaves_no_text_or_vector_byte_in_the_file_or_the
     assert _TURN_TOKEN_LOWER in live
     assert _VECTOR_BYTES in live
     assert _VECTOR_SLICE in live
+    assert _LINKED_CANDIDATE_CANARY.encode() in live
+    assert _LINKED_TOPIC_CANARY.encode() in live
 
     assert await conversation_record.delete_record(record_id) is True
 
@@ -144,3 +192,5 @@ async def test_a_deleted_record_leaves_no_text_or_vector_byte_in_the_file_or_the
     assert _TURN_TOKEN_LOWER not in after
     assert _VECTOR_BYTES not in after
     assert _VECTOR_SLICE not in after
+    assert _LINKED_CANDIDATE_CANARY.encode() not in after
+    assert _LINKED_TOPIC_CANARY.encode() not in after

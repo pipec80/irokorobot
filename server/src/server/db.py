@@ -351,8 +351,12 @@ def is_open() -> bool:
 
 # A migration file the runner wraps may not manage the transaction or the version itself.
 _SQL_TOKEN = re.compile(r"'(?:[^']|'')*'|--[^\n]*|/\*.*?\*/", re.DOTALL)
+# ``PRAGMA foreign_keys`` and ``defer_foreign_keys`` are silent no-ops inside the runner's
+# transaction: only a ``rebuild`` migration turns foreign keys off, and the runner does it.
 _TRANSACTION_STATEMENT = re.compile(
-    r"\s*(?:BEGIN|COMMIT|END|ROLLBACK|SAVEPOINT|RELEASE)\b|.*\buser_version\b",
+    r"\s*(?:BEGIN|COMMIT|END|ROLLBACK|SAVEPOINT|RELEASE)\b"
+    r"|\s*PRAGMA\s+(?:\w+\s*\.\s*)?(?:defer_)?foreign_keys\b"
+    r"|.*\buser_version\b",
     re.IGNORECASE | re.DOTALL,
 )
 
@@ -385,14 +389,15 @@ def _statements(sql: str) -> list[str]:
 
 
 def _refuse_transaction_statements(migration: Migration, sql: str) -> None:
-    """Refuse a wrapped file that holds a transaction statement or touches ``user_version``.
+    """Refuse a wrapped file that holds a transaction or foreign-key statement or sets the version.
 
     Raises:
         BrainMemoryError: Closed message naming the file; nothing has run yet.
     """
     if any(_TRANSACTION_STATEMENT.match(statement) for statement in _statements(sql)):
         raise BrainMemoryError(
-            f"Migration {migration.version} ({migration.filename}) holds transaction statements"
+            f"Migration {migration.version} ({migration.filename}) holds transaction or "
+            "foreign-key statements"
         )
 
 
@@ -407,41 +412,83 @@ def _wrapped_script(migration: Migration, sql: str) -> str:
     return f"BEGIN IMMEDIATE;\n{sql}\n;\n{version}\n{_FOREIGN_KEY_GUARD}COMMIT;"
 
 
+def _failure_detail(exc: Exception) -> str:
+    """Name a failed migration's cause: the class, plus SQLite's message for an integrity error.
+
+    An integrity error's message names the constraint and the columns (``UNIQUE constraint
+    failed: conversation_turns.correlation_id``, ``CHECK constraint failed: violations = 0``),
+    never a value, so it tells the operator which guard stopped the upgrade. Any other class is
+    named only, since its message may carry a statement.
+    """
+    if isinstance(exc, sqlite3.IntegrityError):
+        return f"{type(exc).__name__}: {exc}"
+    return type(exc).__name__
+
+
+async def _turn_foreign_keys_off(conn: aiosqlite.Connection, migration: Migration) -> None:
+    """Turn foreign keys off for a rebuild and read the setting back.
+
+    SQLite ignores the pragma inside an open transaction without an error, and a rebuild that
+    runs with foreign keys on would cascade away the rows it is rebuilding around.
+
+    Raises:
+        BrainMemoryError: If foreign keys are still on.
+    """
+    await conn.execute("PRAGMA foreign_keys = OFF")
+    cursor = await conn.execute("PRAGMA foreign_keys")
+    row = await cursor.fetchone()
+    await cursor.close()
+    if row is None or int(row[0]) != 0:
+        raise BrainMemoryError(
+            f"Migration {migration.version} ({migration.filename}) could not turn foreign keys off"
+        )
+
+
+async def _turn_foreign_keys_on(conn: aiosqlite.Connection) -> None:
+    """Turn foreign keys back on after a rebuild; never raises.
+
+    A failure here must not replace the migration's own outcome, so it is logged by class.
+    """
+    try:
+        await conn.execute("PRAGMA foreign_keys = ON")
+    except (aiosqlite.Error, ValueError) as exc:
+        logger.error("Foreign keys not turned back on after a rebuild (%s)", type(exc).__name__)
+
+
 async def _apply_migration(conn: aiosqlite.Connection, migration: Migration, sql: str) -> None:
     """Apply one migration; on any failure roll back and raise ``BrainMemoryError``.
 
     A script that owns its transaction (001 to 016) runs as it always did. Any other is wrapped
     by ``_wrapped_script``; a ``rebuild`` one runs with foreign keys off, which is a no-op inside
-    a transaction, so it is set before the script and put back whatever happens.
+    a transaction, so it is set before the script, proven, and put back whatever happens.
     """
     wrapped = migration.owns_transaction
     if wrapped:
         _refuse_transaction_statements(migration, sql)
-    if migration.rebuild:
-        await conn.execute("PRAGMA foreign_keys = OFF")
     try:
+        if migration.rebuild:
+            await _turn_foreign_keys_off(conn, migration)
         if wrapped:
             await conn.executescript(_wrapped_script(migration, sql))
         else:
             await conn.executescript(sql)
             await conn.execute(f"PRAGMA user_version = {migration.version}")
             await conn.commit()
+    except BrainMemoryError:
+        raise
     except Exception as exc:
         # A script that opened a transaction and failed leaves it open: close it, so nothing it
         # half-applied survives and the next start retries it from the same version.
-        await conn.rollback()
-        logger.error(
-            "Migration %d (%s) failed (%s)",
-            migration.version,
-            migration.filename,
-            type(exc).__name__,
-        )
-        raise BrainMemoryError(
-            f"Migration {migration.version} ({migration.filename}) failed"
-        ) from exc
+        await _rollback_quietly(conn)
+        detail = _failure_detail(exc)
+        logger.error("Migration %d (%s) failed (%s)", migration.version, migration.filename, detail)
+        failed = f"Migration {migration.version} ({migration.filename}) failed"
+        if isinstance(exc, sqlite3.IntegrityError):
+            failed = f"{failed}: {exc}"
+        raise BrainMemoryError(failed) from exc
     finally:
         if migration.rebuild:
-            await conn.execute("PRAGMA foreign_keys = ON")
+            await _turn_foreign_keys_on(conn)
 
 
 async def run_migrations() -> None:
@@ -473,17 +520,17 @@ async def run_migrations() -> None:
     logger.info("Schema up-to-date (version %d)", _MIGRATIONS[-1].version)
 
 
-async def _rollback_after_failed_commit(conn: aiosqlite.Connection) -> None:
-    """Roll back after a COMMIT that raised; never raises.
+async def _rollback_quietly(conn: aiosqlite.Connection) -> None:
+    """Roll back after a failure (a COMMIT that raised, a failed migration); never raises.
 
-    A rollback that itself fails must not hide the commit's error, so it is logged by class and
-    swallowed.
+    A rollback that itself fails must not hide the error that made it necessary, so it is logged
+    by class and swallowed.
     """
     try:
         await conn.rollback()
     except (aiosqlite.Error, ValueError) as exc:
         # ValueError: aiosqlite raises it for a connection that is no longer active.
-        logger.warning("Rollback after a failed COMMIT failed (%s)", type(exc).__name__)
+        logger.warning("Rollback failed (%s)", type(exc).__name__)
 
 
 @asynccontextmanager
@@ -532,5 +579,5 @@ async def transaction() -> AsyncGenerator[aiosqlite.Connection]:
                 # A COMMIT that raises (disk full, I/O error) leaves the shared connection inside
                 # the transaction: close it so the next BEGIN IMMEDIATE works. The commit's own
                 # error is the one that propagates, unchanged.
-                await _rollback_after_failed_commit(conn)
+                await _rollback_quietly(conn)
                 raise

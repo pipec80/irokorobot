@@ -55,6 +55,7 @@ __all__ = [
     "InsertStatus",
     "checkpoint_after_scrub",
     "count_live_candidates",
+    "count_unlinked_candidates",
     "expire_lapsed_in_transaction",
     "find_offered",
     "get_candidate",
@@ -751,6 +752,26 @@ async def reset_for_startup(now: datetime, *, enabled: bool) -> None:
         logger.info("Candidates reconciled at start-up: %d expired", scrubbed)
     # `max(..., 1)`: truncate even when this start-up erased nothing (see the docstring).
     await checkpoint_after_scrub(max(scrubbed, 1))
+
+
+async def count_unlinked_candidates(conn: aiosqlite.Connection, stored_turn_ids_sql: str) -> int:
+    """Count the candidates with no link to a stored turn whose correlation id they carry.
+
+    Such a candidate would survive the deletion of its turn (Plan 0085 D-8). One whose turn was
+    never stored has nothing to link and is not counted. Used by the health check.
+
+    Args:
+        conn: An open connection.
+        stored_turn_ids_sql: A ``SELECT`` of the correlation ids of the stored turns (the record
+            store's ``STORED_TURN_CORRELATION_IDS_SQL``).
+    """
+    cursor = await conn.execute(
+        "SELECT COUNT(*) FROM memory_candidates WHERE source_turn_id IS NULL "  # noqa: S608
+        f"AND source_correlation_id IN ({stored_turn_ids_sql})"
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    return 0 if row is None else int(row[0])
 
 
 async def count_live_candidates(now: str) -> int:

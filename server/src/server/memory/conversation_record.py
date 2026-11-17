@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     import aiosqlite
 
 __all__ = [
+    "STORED_TURN_CORRELATION_IDS_SQL",
     "EpisodeStatus",
     "RecordSummary",
     "RecordView",
@@ -53,6 +54,11 @@ __all__ = [
 ]
 
 logger = logging.getLogger(__name__)
+
+#: The correlation ids of the stored turns, as a subquery. A store that counts the rows derived
+#: from a turn (the health check, Plan 0085) puts it inside its own statement, so only this module
+#: names the table.
+STORED_TURN_CORRELATION_IDS_SQL = "SELECT correlation_id FROM conversation_turns"
 
 #: Writes what an appended exchange adds elsewhere, inside the append's transaction (the recall
 #: unit, Plan 0078; the pending topic, Plan 0084; the link of its candidates, Plan 0085). It

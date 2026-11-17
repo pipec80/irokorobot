@@ -19,6 +19,7 @@ from server import db
 from server.cognition.intent_resolution import resolve_information_need
 from server.cognition.response_plan import InformationNeed
 from server.cognition.spoken_dates import DayWindow
+from server.exceptions import BrainMemoryError
 from server.memory.conversation_types import TurnVerdict
 from server.memory.embeddings import EMBEDDING_DIM
 from server.memory.recall_sensitivity import (
@@ -41,6 +42,7 @@ __all__ = [
     "RecallUnit",
     "count_rows",
     "count_units_of_another_model",
+    "count_unlinked_units",
     "index_health",
     "insert_episode_unit",
     "insert_turn_unit",
@@ -56,6 +58,9 @@ __all__ = [
 ]
 
 type UnitKind = Literal["turn", "episode"]
+
+# An extended SQLite result code keeps its primary code in the low byte (267 is 11 | 1 << 8).
+_PRIMARY_CODE_MASK: Final = 0xFF
 
 # The filters every read applies to a unit `u` joined to its record `r`.
 _READABLE = (
@@ -237,13 +242,21 @@ async def _insert(
     """Insert one unit, or return the id of the unit its turn or episode already has.
 
     A turn has one unit and an episode has one (unique indexes), so a retried job that indexes
-    the same turn or episode again changes nothing and does not fail the append.
+    the same turn or episode again changes nothing and does not fail the append. Only that
+    conflict is absorbed: it is named in the statement, so a unique index added later on another
+    column still fails the insert instead of being swallowed. The unit that stays is looked up by
+    the same key and owner.
+
+    Raises:
+        RuntimeError: If the conflict was absorbed but no unit of this owner holds the key.
     """
+    key_column, key = ("turn_id", turn_id) if kind == "turn" else ("episode_id", episode_id)
     start, end = (None, None) if occurred is None else (occurred.start, occurred.end)
     cursor = await conn.execute(
-        "INSERT INTO recall_units (owner_entity_id, source_record_id, episode_id, turn_id, kind, "
+        "INSERT INTO recall_units (owner_entity_id, source_record_id, episode_id, turn_id, kind, "  # noqa: S608
         "body, said_at, visibility, sensitivity, correlation_id, occurred_start, occurred_end) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, 'personal', ?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING id",
+        "VALUES (?, ?, ?, ?, ?, ?, ?, 'personal', ?, ?, ?, ?) "
+        f"ON CONFLICT ({key_column}) DO NOTHING RETURNING id",
         (
             owner_entity_id,
             record_id,
@@ -263,7 +276,8 @@ async def _insert(
     if row is not None:
         return int(row[0])
     cursor = await conn.execute(
-        "SELECT id FROM recall_units WHERE turn_id IS ? AND episode_id IS ?", (turn_id, episode_id)
+        f"SELECT id FROM recall_units WHERE {key_column} = ? AND owner_entity_id = ?",  # noqa: S608
+        (key, owner_entity_id),
     )
     existing = await cursor.fetchone()
     await cursor.close()
@@ -462,17 +476,43 @@ async def count_rows(
     return 0 if row is None else int(row[0])
 
 
+async def count_unlinked_units(conn: aiosqlite.Connection, stored_turn_ids_sql: str) -> int:
+    """Count the turn units with no link to a stored turn whose correlation id they carry.
+
+    Such a unit would survive the deletion of its turn (Plan 0085 D-8). A unit whose turn was
+    never stored (the record was off, or the turn purged) has nothing to link and is not counted.
+    The recall store never names the record's tables, so the caller passes the subquery.
+
+    Args:
+        conn: An open connection.
+        stored_turn_ids_sql: A ``SELECT`` of the correlation ids of the stored turn rows (the record
+            store's ``STORED_TURN_CORRELATION_IDS_SQL``).
+    """
+    return await count_rows(
+        conn,
+        "SELECT COUNT(*) FROM recall_units WHERE kind = 'turn' AND turn_id IS NULL "  # noqa: S608
+        f"AND correlation_id IN ({stored_turn_ids_sql})",
+    )
+
+
 async def _fts_errors(conn: aiosqlite.Connection) -> int:
     """FTS5 ``integrity-check``: 0 or 1. The command raises on a damaged index and writes no row.
 
     ``rank = 1`` also compares the index with the external content table (``recall_units``);
-    an SQLite that does not know the option checks the index alone.
+    an SQLite that does not know the option checks the index alone. Only the corruption error
+    (``SQLITE_CORRUPT_VTAB``, a ``DatabaseError`` of the ``SQLITE_CORRUPT`` family) counts as a
+    damaged index: a lock held by another process stops the check, which proves nothing.
+
+    Raises:
+        BrainMemoryError: If the check could not run (the database is busy or locked).
     """
     try:
         await conn.execute(
             "INSERT INTO recall_units_fts (recall_units_fts, rank) VALUES ('integrity-check', 1)"
         )
-    except sqlite3.Error:
+    except sqlite3.DatabaseError as exc:
+        if exc.sqlite_errorcode & _PRIMARY_CODE_MASK != sqlite3.SQLITE_CORRUPT:
+            raise BrainMemoryError("The text index check could not run") from exc
         return 1
     finally:
         await conn.rollback()

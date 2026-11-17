@@ -15,7 +15,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
 from server import db
-from server.memory.recall_store import count_rows, index_health
+from server.memory.candidates import count_unlinked_candidates
+from server.memory.conversation_record import STORED_TURN_CORRELATION_IDS_SQL
+from server.memory.pending_store import count_unlinked_topics
+from server.memory.recall_store import count_rows, count_unlinked_units, index_health
 from server.timestamps import INSTANT_LENGTH
 
 if TYPE_CHECKING:
@@ -58,7 +61,7 @@ _BOUND_NAMES: Final = "p.name IN ('valid_from', 'valid_to')"
 class HealthReport:
     """What the health check counted: ints only, never a value read from the database.
 
-    The first seven counts are faults; the last two are pending work (not a fault).
+    The first eight counts are faults; the last two are pending work (not a fault).
     """
 
     sqlite_version: tuple[int, int, int]
@@ -70,6 +73,7 @@ class HealthReport:
     units_without_fts_row: int
     face_vectors_without_profile: int
     times_outside_format: int
+    rows_unlinked_from_their_turn: int
     units_without_vector: int
     units_of_another_model: int
 
@@ -85,6 +89,7 @@ _MEASURES: Final = (
     ("units_without_fts_row", "unidades sin fila en el índice de texto", True),
     ("face_vectors_without_profile", "vectores de caras sin perfil", True),
     ("times_outside_format", "filas fuera del formato de hora", True),
+    ("rows_unlinked_from_their_turn", "filas sin vínculo con su turno", True),
     ("units_without_vector", "unidades sin vector (pendientes)", False),
     ("units_of_another_model", "unidades de otro modelo (pendientes)", False),
 )
@@ -128,6 +133,20 @@ async def _times_outside_format(conn: aiosqlite.Connection) -> int:
     return total
 
 
+async def _rows_unlinked_from_their_turn(conn: aiosqlite.Connection) -> int:
+    """Count the units, candidates and topics that miss the link to a turn that exists.
+
+    Each store counts its own table; the record store names which turns are stored. A row like
+    that would survive the deletion of its turn.
+    """
+    stored = STORED_TURN_CORRELATION_IDS_SQL
+    return (
+        await count_unlinked_units(conn, stored)
+        + await count_unlinked_candidates(conn, stored)
+        + await count_unlinked_topics(conn, stored)
+    )
+
+
 def _version(text: str) -> tuple[int, int, int]:
     """Read ``v0.1.9`` or ``3.50.4`` as three ints."""
     major, minor, patch = (int(part) for part in text.lstrip("v").split(".")[:3])
@@ -161,6 +180,7 @@ async def check_health(conn: aiosqlite.Connection) -> HealthReport:
             conn, "SELECT COUNT(*) FROM vec_faces WHERE rowid NOT IN (SELECT id FROM face_profiles)"
         ),
         times_outside_format=await _times_outside_format(conn),
+        rows_unlinked_from_their_turn=await _rows_unlinked_from_their_turn(conn),
         units_without_vector=index.units_without_vector,
         units_of_another_model=index.units_of_another_model,
     )

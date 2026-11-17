@@ -5,16 +5,17 @@ no value of the database (canaries only).
 """
 
 # ruff: noqa: S608 - planted rows are built from fixture ints and fixed canaries; no input reaches the SQL.
-
 from __future__ import annotations
 
 import dataclasses
 from datetime import UTC, datetime
+import sqlite3
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
 from server.admin_cli import AdminRequest, run_admin_command
+from server.exceptions import BrainMemoryError
 from server.memory import db_health, recall_store
 from server.memory.conversation_types import RecordedTurn, TurnVerdict
 from server.memory.db_health import HealthReport, check_health, health_failed, render_health
@@ -104,6 +105,7 @@ def _faults(report: HealthReport) -> dict[str, int]:
         "units_without_fts_row": report.units_without_fts_row,
         "face_vectors_without_profile": report.face_vectors_without_profile,
         "times_outside_format": report.times_outside_format,
+        "rows_unlinked_from_their_turn": report.rows_unlinked_from_their_turn,
     }
 
 
@@ -140,6 +142,7 @@ async def test_integrity_check_sees_a_row_the_schema_refuses(health_db: int) -> 
             "units_without_fts_row",
             "face_vectors_without_profile",
             "times_outside_format",
+            "rows_unlinked_from_their_turn",
         ),
         0,
     )
@@ -170,6 +173,23 @@ async def test_fts_integrity_check_sees_a_missing_index_row(health_db: int) -> N
     assert report.fts_errors == 1
     assert report.units_without_fts_row == 1
     assert health_failed(report)
+
+
+async def test_a_locked_database_is_not_reported_as_a_damaged_index(
+    health_db: int,
+) -> None:
+    """The ``integrity-check`` command writes: a lock held by another process stops the check."""
+    conn = db.get_conn()
+    await conn.execute("PRAGMA busy_timeout = 0")
+    other = sqlite3.connect(settings.brain_db_path, isolation_level=None)
+    try:
+        other.execute("BEGIN IMMEDIATE")
+
+        with pytest.raises(BrainMemoryError, match="could not run"):
+            await check_health(conn)
+    finally:
+        other.close()
+        await conn.execute("PRAGMA busy_timeout = 5000")
 
 
 async def test_a_vector_without_its_unit_is_an_orphan(health_db: int) -> None:
@@ -235,6 +255,91 @@ async def test_a_day_and_a_month_are_valid_bounds(health_db: int) -> None:
     )
 
     assert (await check_health(db.get_conn())).times_outside_format == 0
+
+
+# A row derived from a turn, written with no link to the turn (what the C2 deletion would miss).
+_UNLINKED_ROWS = {
+    "recall_units": (
+        "INSERT INTO recall_units (owner_entity_id, source_record_id, kind, body, said_at, "
+        "visibility, sensitivity, correlation_id{link_column}) VALUES ({owner}, {record}, 'turn', "
+        "'palabra canario', '{at}', 'personal', 'normal', '{cid}'{link_value})"
+    ),
+    "memory_candidates": (
+        "INSERT INTO memory_candidates (subject_person_id, asserted_by_person_id, predicate, "
+        "value_text, value_key, status, channel, source_correlation_id, proposed_at, expires_at"
+        "{link_column}) VALUES ({owner}, {owner}, 'likes', 'canario', '{cid}', 'proposed', "
+        "'voice_classic', '{cid}', '{at}', '{at}'{link_value})"
+    ),
+    "pending_topics": (
+        "INSERT INTO pending_topics (owner_entity_id, source_record_id, correlation_id, said_day, "
+        "due_day, heard, state, sensitivity, created_at{link_column}) VALUES ({owner}, {record}, "
+        "'{cid}', '2026-11-16', '2026-11-17', 'voy al banco', 'unnamed', 'normal', '{at}'"
+        "{link_value})"
+    ),
+}
+_LINK_COLUMN = {
+    "recall_units": "turn_id",
+    "memory_candidates": "source_turn_id",
+    "pending_topics": "source_turn_id",
+}
+
+
+async def _stored_turn(record_id: int, cid: str) -> int:
+    """Store a turn row with *cid* and return its id."""
+    async with db.transaction() as conn:
+        cursor = await conn.execute(
+            "INSERT INTO conversation_turns (record_id, correlation_id, said_at, verdict, heard, "
+            "said) VALUES (?, ?, ?, 'verified', 'hola', 'ok')",
+            (record_id, cid, _FUTURE),
+        )
+        turn_id = int(cursor.lastrowid or 0)
+        await cursor.close()
+    return turn_id
+
+
+def _unlinked_row(table: str, *, owner: int, record: int, cid: str, turn_id: int | None) -> str:
+    return _UNLINKED_ROWS[table].format(
+        owner=owner,
+        record=record,
+        cid=cid,
+        at=_FUTURE,
+        link_column="" if turn_id is None else f", {_LINK_COLUMN[table]}",
+        link_value="" if turn_id is None else f", {turn_id}",
+    )
+
+
+@pytest.mark.parametrize("table", list(_UNLINKED_ROWS))
+async def test_a_derived_row_unlinked_from_a_stored_turn_is_a_fault(
+    health_db: int, table: str
+) -> None:
+    record_id = await _record(health_db)
+    cid = str(uuid4())
+    await _stored_turn(record_id, cid)
+    await _plant(_unlinked_row(table, owner=health_db, record=record_id, cid=cid, turn_id=None))
+
+    report = await check_health(db.get_conn())
+
+    assert report.rows_unlinked_from_their_turn == 1
+    assert health_failed(report)
+
+
+@pytest.mark.parametrize("table", list(_UNLINKED_ROWS))
+async def test_a_derived_row_with_no_stored_turn_or_with_its_link_is_not_a_fault(
+    health_db: int, table: str
+) -> None:
+    record_id = await _record(health_db)
+    linked_cid = str(uuid4())
+    turn_id = await _stored_turn(record_id, linked_cid)
+    await _plant(
+        # The turn was never stored (the record was off, or the turn purged): nothing to link.
+        _unlinked_row(table, owner=health_db, record=record_id, cid=str(uuid4()), turn_id=None),
+        _unlinked_row(table, owner=health_db, record=record_id, cid=linked_cid, turn_id=turn_id),
+    )
+
+    report = await check_health(db.get_conn())
+
+    assert report.rows_unlinked_from_their_turn == 0
+    assert not health_failed(report)
 
 
 async def test_pending_embedding_work_is_counted_and_is_not_a_fault(health_db: int) -> None:
@@ -359,6 +464,7 @@ def test_render_health_names_every_measure_in_spanish() -> None:
         units_without_fts_row=4,
         face_vectors_without_profile=5,
         times_outside_format=6,
+        rows_unlinked_from_their_turn=9,
         units_without_vector=7,
         units_of_another_model=8,
     )
@@ -373,6 +479,7 @@ def test_render_health_names_every_measure_in_spanish() -> None:
         "unidades sin fila en el índice de texto: 4",
         "vectores de caras sin perfil: 5",
         "filas fuera del formato de hora: 6",
+        "filas sin vínculo con su turno: 9",
         "unidades sin vector (pendientes): 7",
         "unidades de otro modelo (pendientes): 8",
         "SQLite 3.50.4",

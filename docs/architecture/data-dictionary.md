@@ -476,7 +476,7 @@ The table is STRICT.
 - **Owner module:** `memory/candidates.py`
 - **Domain:** memory
 - **Classification:** sensitive personal data
-- **Retention:** A live candidate expires after 24 hours (`memory_candidate_ttl_seconds`) or when it runs out of offers; on resolution the value is scrubbed (`value_text` and `value_key` become NULL, enforced by a CHECK) and the write-ahead log is truncated. Deleted with its source turn (CASCADE).
+- **Retention:** A live candidate expires after 24 hours (`memory_candidate_ttl_seconds`) or when it runs out of offers; on resolution the value is scrubbed (`value_text` and `value_key` become NULL, enforced by a CHECK) and the write-ahead log is truncated. A candidate linked to a turn (`source_turn_id`) is deleted with that turn, so with its record whether the record is purged or deleted (CASCADE, Plan 0085 D-8); one with no stored turn lives out its own expiry.
 
 | Column | Type | Rules |
 |---|---|---|
