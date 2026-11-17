@@ -13,7 +13,7 @@ import pytest
 from server.claim_guard import REPLACEMENT
 from server.cognition.recall_cues import WhenKind
 from server.exceptions import LLMError
-from server.memory import recall_answer
+from server.memory import conversation_summary, recall_answer
 from server.memory.recall_answer import (
     NO_MEMORY,
     build_recall_messages,
@@ -90,20 +90,26 @@ async def test_a_model_failure_uses_the_template(chat: AsyncMock, error: Excepti
 
 
 _DIARY = "La persona contó que fue a la playa con Zeta."
+_SPOKEN_DIARY = "Ayer me contaste que fue a la playa con Zeta."
 _EPISODE_HITS = (_hit(6, _DIARY, datetime(2026, 11, 3, 15, tzinfo=UTC), "episode"),)
+_OTHER_DIARY = "Conversaron sobre la playa y el mate."
 
 
 @pytest.mark.parametrize("error", [LLMError("x"), httpx.ConnectError("x"), TimeoutError()])
-async def test_a_diary_summary_is_never_quoted_as_what_the_owner_said(
+async def test_a_diary_summary_is_spoken_to_the_owner_not_read_aloud(
     chat: AsyncMock, error: Exception
 ) -> None:
-    """ADR 0031 decision 6: an episode is a summary, so the template says «hablamos de esto»."""
+    """Hardware, 2026-11-16: «Ayer hablamos de esto: La persona contó que…» (option A).
+
+    The diary's fixed opening becomes «me contaste que»; the rest is the summary as stored, so it
+    is still never presented as the owner's own words (ADR 0031 decision 6).
+    """
     chat.side_effect = error
 
     answer = await _word(chat, _EPISODE_HITS)
 
-    assert answer == f"Ayer hablamos de esto: {_DIARY}"
-    assert "me contaste" not in answer
+    assert answer == _SPOKEN_DIARY
+    assert "La persona" not in answer
 
 
 async def test_an_empty_answer_about_a_diary_summary_uses_the_episode_template(
@@ -111,7 +117,26 @@ async def test_an_empty_answer_about_a_diary_summary_uses_the_episode_template(
 ) -> None:
     chat.return_value = "   "
 
-    assert await _word(chat, _EPISODE_HITS) == f"Ayer hablamos de esto: {_DIARY}"
+    assert await _word(chat, _EPISODE_HITS) == _SPOKEN_DIARY
+
+
+def test_the_diary_prompt_asks_for_the_opening_the_template_speaks() -> None:
+    opening = recall_answer._DIARY_OPENING
+
+    assert f"«{opening}…»" in conversation_summary._SYSTEM
+    assert _DIARY.startswith(opening)
+
+
+async def test_a_diary_summary_with_another_opening_keeps_hablamos_de_esto(
+    chat: AsyncMock,
+) -> None:
+    chat.side_effect = LLMError("x")
+    hits = (_hit(6, _OTHER_DIARY, datetime(2026, 11, 3, 15, tzinfo=UTC), "episode"),)
+
+    answer = await _word(chat, hits)
+
+    assert answer == f"Ayer hablamos de esto: {_OTHER_DIARY}"
+    assert "me contaste" not in answer
 
 
 async def test_the_template_follows_only_the_first_hit_kind(chat: AsyncMock) -> None:

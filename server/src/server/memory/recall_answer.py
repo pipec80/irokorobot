@@ -66,6 +66,10 @@ _MAX_QUOTE_CHARS: Final = 200
 _ELLIPSIS: Final = "…"
 _TEMPERATURE: Final = 0.1
 _QUOTES: Final = "«»\"' "
+#: The third-person opening the diary prompt asks for (`memory/conversation_summary.py`), spoken
+#: as «me contaste que». Not imported: recall reads units, never the record's modules (the
+#: architecture guards); a unit test pins that the two texts agree.
+_DIARY_OPENING: Final = "La persona contó que"
 
 
 def _bodies(hits: Sequence[RecallHit], *, today: date, tz: ZoneInfo) -> list[str]:
@@ -110,11 +114,17 @@ def _template(hit: RecallHit, *, today: date, tz: ZoneInfo) -> str:
 
     A ``turn`` is the owner's own words: «Ayer me contaste esto: …». An ``episode`` is a diary
     summary, a transformation, which is never presented as the person's words (ADR 0031
-    decision 6): «Ayer hablamos de esto: …».
+    decision 6): its fixed opening «La persona contó que» is spoken to the owner as «Ayer me
+    contaste que …» (Pipec, 2026-11-16, option A), and any other summary as «Ayer hablamos de
+    esto: …».
     """
-    label = date_label(hit.unit.said_at, today=today, tz=tz)
-    verb = "hablamos de esto" if hit.unit.kind == "episode" else "me contaste esto"
-    return f"{_capitalised(label)} {verb}: {_quote(hit.unit.body)}"
+    said = _capitalised(date_label(hit.unit.said_at, today=today, tz=tz))
+    quote = _quote(hit.unit.body)
+    if hit.unit.kind != "episode":
+        return f"{said} me contaste esto: {quote}"
+    if quote.startswith(f"{_DIARY_OPENING} "):
+        return f"{said} me contaste que {quote.removeprefix(_DIARY_OPENING).lstrip()}"
+    return f"{said} hablamos de esto: {quote}"
 
 
 def word_when(hits: Sequence[RecallHit], kind: WhenKind, *, today: date, tz: ZoneInfo) -> str:

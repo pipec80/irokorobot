@@ -36,7 +36,7 @@ _EXPECTED_PROMPT = (
     '- La persona prefiere: "el cafe".\n' + _FOOTER
 )
 _EXPECTED_SUMMARY = (
-    "Esto es lo que sé de ti. Te llamo Canary. Te trato de tú. "
+    "Esto es lo que sé de ti. Te llamo Canary. "
     "Me has dicho que te gusta: el mate, la lluvia. "
     "Me has dicho que no te gusta: el ruido. Prefieres: el cafe."
 )
@@ -286,15 +286,16 @@ def test_render_prompt_card_is_none_for_an_empty_card() -> None:
     assert render_prompt_card(ProfileCard(None, None, ()), include_tastes=True) is None
 
 
-def test_the_tu_form_alone_gives_no_prompt_card_but_is_still_in_the_summary() -> None:
+def test_the_tu_form_alone_gives_no_prompt_card_and_no_summary_sentence() -> None:
     """Hardware run 2026-10-28: a «Trato: tú.» line made the 3B model answer «Tú, bien.».
 
-    The prompt already demands tuteo, so only `usted` is said; the spoken summary still tells it.
+    The prompt already demands tuteo, so only `usted` is said. Pipec, 2026-11-16: the spoken
+    summary does not say «Te trato de tú.» either, so a card with only that form is empty to hear.
     """
     card = ProfileCard(None, "tu", ())
 
     assert render_prompt_card(card, include_tastes=True) is None
-    assert render_summary(card) == "Esto es lo que sé de ti. Te trato de tú."
+    assert render_summary(card) == _EMPTY_SUMMARY
 
 
 def test_the_prompt_never_says_the_tu_form() -> None:
