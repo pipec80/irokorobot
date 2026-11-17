@@ -9,8 +9,8 @@ Retention windows (all configurable via settings):
     write-ahead log truncated
   - ``conversation_records``:   past ``expires_at`` (1 year with the owner's verified voice,
     30 days without, both settings), then the oldest while over
-    ``CONVERSATION_RECORD_MAX_TOTAL_MB``; episodes go with their records (Plan 0076),
-    whatever the record switch says
+    ``CONVERSATION_RECORD_MAX_TOTAL_MB`` counted in bytes of what was heard and said; episodes
+    and turns go with their records (Plan 0076), whatever the record switch says
 """
 
 from __future__ import annotations

@@ -989,11 +989,13 @@ def test_the_command_guard_detects_a_violation() -> None:
 # its text can never reach a reply; only the voice routes and the text service name the recorder.
 _CONVERSATION_TABLE_HOMES = {
     "conversation_records": "memory/conversation_record.py",
+    "conversation_turns": "memory/conversation_record.py",
     "conversation_episodes": "memory/conversation_episodes.py",
     "conversation_consent_grants": "memory/conversation_consent.py",
 }
 # The recall store may JOIN a unit to its record, only to skip an expired one (Plan 0078): no
-# other statement on the table, and never the record's turns.
+# other statement on the table, and never the record's turns (the rows of `conversation_turns`,
+# which only the record store queries).
 _CONVERSATION_TABLE_JOINERS = {"conversation_records": frozenset({"memory/recall_store.py"})}
 _RECORD_READER_MODULES = frozenset(
     {
@@ -1106,7 +1108,7 @@ def test_the_recall_store_may_only_join_the_record_for_its_expiry() -> None:
     assert _conversation_table_queriers(sources) == ["memory/other.py"]
 
     for leak in (
-        'SQL = "SELECT r.turns FROM recall_units u JOIN conversation_records r ON 1"\n',
+        'SQL = "SELECT t.heard FROM recall_units u JOIN conversation_turns t ON 1"\n',
         'SQL = "UPDATE conversation_records SET eligible = 0"\n',
     ):
         assert _conversation_table_queriers({"memory/recall_store.py": leak}) == [
@@ -1127,7 +1129,7 @@ def test_only_the_voice_routes_and_the_text_service_name_the_recorder() -> None:
 @pytest.mark.unit
 def test_the_conversation_guards_detect_a_violation() -> None:
     sources = {
-        "memory/leak.py": 'SQL = "SELECT turns FROM conversation_records"\n',
+        "memory/leak.py": 'SQL = "SELECT heard FROM conversation_turns"\n',
         "memory/conversation_record.py": 'SQL = "SELECT 1 FROM conversation_records"\n',
         "routers/chat.py": (
             "from server.memory.conversation_record import read_record\nrecord_turn = None\n"

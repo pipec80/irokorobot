@@ -109,15 +109,6 @@ async def test_a_second_open_segment_is_refused(v13_db: int) -> None:
         await _record(v13_db)
 
 
-async def test_turns_must_be_valid_json(v13_db: int) -> None:
-    record_id = await _record(v13_db)
-
-    with pytest.raises(sqlite3.IntegrityError):
-        await db.get_conn().execute(
-            "UPDATE conversation_records SET turns = 'not json' WHERE id = ?", (record_id,)
-        )
-
-
 async def test_closed_and_expiry_go_together(v13_db: int) -> None:
     record_id = await _record(v13_db)
 

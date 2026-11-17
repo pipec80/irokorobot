@@ -621,7 +621,13 @@ async def recording_owner(card_owner: int, monkeypatch: pytest.MonkeyPatch) -> A
 
 
 async def _records() -> list[tuple[int, str]]:
-    cursor = await db.get_conn().execute("SELECT eligible, turns FROM conversation_records")
+    """Each record's eligibility and its turns as one JSON array, in time order."""
+    cursor = await db.get_conn().execute(
+        "SELECT r.eligible, (SELECT json_group_array(json_object('at', said_at, 'heard', heard, "
+        "'said', said, 'voice', verdict, 'cid', correlation_id)) FROM (SELECT * FROM "
+        "conversation_turns WHERE record_id = r.id ORDER BY said_at, id)) "
+        "FROM conversation_records r ORDER BY r.id"
+    )
     rows = await cursor.fetchall()
     await cursor.close()
     return [(int(row[0]), str(row[1])) for row in rows]
