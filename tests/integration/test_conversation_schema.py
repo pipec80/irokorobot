@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 from server.memory.declarative import upsert_entity
+from server.memory.predicate_registry import resolve_predicate
+from server.memory.relational_v4 import assert_literal_fact
 from server.settings import settings
 
 from server import db
@@ -88,14 +90,16 @@ async def test_the_legacy_vector_index_is_gone_and_memories_takes_no_row(v13_db:
 async def test_deleting_an_entity_still_works_after_the_retirement(v13_db: int) -> None:
     """The child tables keep their foreign key to `memories`; a cascade must not break."""
     child = await upsert_entity(name="Canary Child", type="person")
-    await db.get_conn().execute(
-        "INSERT INTO facts (entity_id, predicate, object_value) VALUES (?, 'le_gusta', 'mate')",
-        (child,),
-    )
+    likes = resolve_predicate("likes")
+    assert likes is not None
+    await assert_literal_fact(subject_entity_id=child, definition=likes, value="mate")
 
     await db.get_conn().execute("DELETE FROM entities WHERE id = ?", (child,))
 
-    assert await _scalar("SELECT COUNT(*) FROM facts WHERE entity_id = ?", child) == 0
+    assert (
+        await _scalar("SELECT COUNT(*) FROM literal_facts_v4 WHERE subject_entity_id = ?", child)
+        == 0
+    )
 
 
 async def test_a_second_open_segment_is_refused(v13_db: int) -> None:

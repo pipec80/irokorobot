@@ -1,15 +1,16 @@
 """Integration tests for the retention purge job (Plan 0036, Group C).
 
-`_run_once` had no test of its own before this plan — its four DELETEs now
-share one `db.transaction()` instead of a bare commit, and it must still
-never raise: a failing purge is caught and logged so the background loop
-keeps running on the next tick.
+`_run_once` must never raise: a failing purge is caught and logged so the background loop
+keeps running on the next tick, and each part (conversations, candidates) has its own
+transaction so one failing cannot undo the other. The dead-table purge went with those tables
+(Plan 0085, migration 017).
 """
 
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 import logging
 from pathlib import Path
+import sqlite3
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -38,34 +39,12 @@ async def real_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncItera
 
 @pytest.mark.integration
 @pytest.mark.usefixtures("real_db")
-async def test_run_once_purges_only_expired_rows() -> None:
-    """A fresh and an expired row of the same kind must be told apart."""
-    conn = db.get_conn()
-    await conn.execute(
-        "INSERT INTO sensor_readings (sensor_id, sensor_type, value, unit, created_at) "
-        "VALUES ('s1', 'temp', 1.0, 'C', datetime('now', '-100 hours'))"
-    )
-    await conn.execute(
-        "INSERT INTO sensor_readings (sensor_id, sensor_type, value, unit, created_at) "
-        "VALUES ('s1', 'temp', 2.0, 'C', datetime('now'))"
-    )
-    await conn.commit()
-
-    await retention._run_once()
-
-    cursor = await conn.execute("SELECT value FROM sensor_readings")
-    rows = await cursor.fetchall()
-    await cursor.close()
-    assert [row[0] for row in rows] == [2.0], "only the expired row should have been purged"
-
-
-@pytest.mark.integration
-@pytest.mark.usefixtures("real_db")
 async def test_run_once_swallows_a_failure_without_raising(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A broken purge must log and return, never crash the background loop."""
-    monkeypatch.setattr(retention, "_SQL_SENSOR_READINGS", "NOT VALID SQL")
+    """Both parts failing must log and return, never crash the background loop."""
+    monkeypatch.setattr(retention, "purge_records", AsyncMock(side_effect=RuntimeError("db")))
+    monkeypatch.setattr(retention, "run_housekeeping", AsyncMock(side_effect=RuntimeError("db")))
 
     await retention._run_once()
 
@@ -159,12 +138,12 @@ async def test_run_once_physically_scrubs_a_lapsed_candidate_from_the_file_and_t
 
 
 @pytest.mark.integration
-async def test_a_failing_sensor_purge_does_not_stop_the_candidate_expiry(
+async def test_a_failing_conversation_purge_does_not_stop_the_candidate_expiry(
     real_db: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The candidate housekeeping has its own transaction: one failure cannot roll back the other."""
     stale_id = await _insert_a_stale_canary(monkeypatch)
-    monkeypatch.setattr(retention, "_SQL_SENSOR_READINGS", "NOT VALID SQL")
+    monkeypatch.setattr(retention, "purge_records", AsyncMock(side_effect=RuntimeError("db")))
 
     await retention._run_once()
 
@@ -176,15 +155,11 @@ async def test_a_failing_sensor_purge_does_not_stop_the_candidate_expiry(
 
 @pytest.mark.integration
 @pytest.mark.usefixtures("real_db")
-async def test_a_failing_candidate_housekeeping_does_not_undo_the_sensor_purge(
+async def test_a_failing_candidate_housekeeping_does_not_stop_the_conversation_purge(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    conn = db.get_conn()
-    await conn.execute(
-        "INSERT INTO sensor_readings (sensor_id, sensor_type, value, unit, created_at) "
-        "VALUES ('s1', 'temp', 1.0, 'C', datetime('now', '-100 hours'))"
-    )
-    await conn.commit()
+    purge = AsyncMock(return_value=0)
+    monkeypatch.setattr(retention, "purge_records", purge)
 
     async def _fails(_conn: object, _now: datetime) -> int:
         raise RuntimeError("housekeeping broke")
@@ -193,9 +168,7 @@ async def test_a_failing_candidate_housekeeping_does_not_undo_the_sensor_purge(
 
     await retention._run_once()
 
-    cursor = await conn.execute("SELECT COUNT(*) FROM sensor_readings")
-    assert await cursor.fetchone() == (0,)
-    await cursor.close()
+    purge.assert_awaited_once()
 
 
 @pytest.mark.integration
@@ -213,7 +186,7 @@ async def test_a_checkpoint_error_after_the_commit_is_not_reported_as_a_failed_p
     with caplog.at_level(logging.INFO, logger="server"):
         await retention._run_once()
 
-    assert "Retention purge failed" not in caplog.text
+    assert "purge failed" not in caplog.text
     assert "checkpoint" in caplog.text.lower()
     assert "ValueError" in caplog.text
     assert leaked_text not in caplog.text
@@ -224,12 +197,14 @@ async def test_a_checkpoint_error_after_the_commit_is_not_reported_as_a_failed_p
 async def test_a_failed_purge_logs_the_exception_class_never_its_message(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    monkeypatch.setattr(retention, "_SQL_SENSOR_READINGS", "NOT VALID SQL pomelo")
+    monkeypatch.setattr(
+        retention, "purge_records", AsyncMock(side_effect=sqlite3.OperationalError("pomelo"))
+    )
 
     with caplog.at_level(logging.INFO, logger="server"):
         await retention._run_once()
 
-    assert "Retention purge failed" in caplog.text
+    assert "Conversation purge failed" in caplog.text
     assert "OperationalError" in caplog.text
     assert "pomelo" not in caplog.text
 

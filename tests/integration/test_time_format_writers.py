@@ -29,7 +29,7 @@ from server.memory.conversation_consent import (
 from server.memory.conversation_episodes import EpisodeOutcome, write_episode
 from server.memory.conversation_summary import EpisodeDraft
 from server.memory.conversation_types import TurnVerdict, make_turn
-from server.memory.declarative import assert_fact, create_third_party, upsert_entity
+from server.memory.declarative import create_third_party, upsert_entity
 from server.memory.household_authorization import (
     assign_household_role,
     bootstrap_initial_owner,
@@ -115,15 +115,12 @@ async def test_meta_flag_writes_its_time() -> None:
 
 
 @pytest.mark.usefixtures("store")
-async def test_entities_and_legacy_facts_write_their_times() -> None:
-    owner = await _person("Canary Owner")
+async def test_entities_write_their_times() -> None:
+    await _person("Canary Owner")
     await upsert_entity(name="Canary Owner", type="person", attributes={"k": "v"})
     await create_third_party(name="Canary Third", type="person")
-    await assert_fact(entity_id=owner, predicate="likes", object_value="mate")
-    await assert_fact(entity_id=owner, predicate="likes", object_value="te")
 
     await _assert_instants("entities", "created_at", "updated_at")
-    await _assert_instants("facts", "asserted_at", "superseded_at")
 
 
 @pytest.mark.usefixtures("store")

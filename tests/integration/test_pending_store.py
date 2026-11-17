@@ -110,7 +110,9 @@ async def test_migration_016_adds_an_empty_table(
         assert await _scalar("PRAGMA user_version") == 15
         await db.close_db()
         monkeypatch.undo()
-        await _open(monkeypatch, path)
+        # Scoped to the migrations up to 16, so a later migration does not move the version this
+        # test pins (Plan 0085 added 017).
+        await _open(monkeypatch, path, up_to=16)
 
         assert await _scalar("PRAGMA user_version") == 16
         assert db.latest_schema_version() == 16

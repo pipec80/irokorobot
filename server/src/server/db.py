@@ -50,26 +50,29 @@ class Migration(NamedTuple):
 # Ordered migration scripts. run_migrations applies every script whose version exceeds
 # PRAGMA user_version. 001 to 016 predate the atomic runner and keep their own handling.
 _MIGRATIONS_DIR = Path(__file__).parent / "memory"
-_MIGRATIONS: tuple[Migration, ...] = tuple(
-    Migration(version, filename, owns_transaction=False)
-    for version, filename in (
-        (1, "schema.sql"),
-        (2, "migration_002_meta.sql"),
-        (3, "migration_003_faces.sql"),
-        (4, "migration_004_relational_v4.sql"),
-        (5, "migration_005_household_authorization.sql"),
-        (6, "migration_006_owner_credentials.sql"),
-        (7, "migration_007_biometric_consent.sql"),
-        (8, "migration_008_voice_consent.sql"),
-        (9, "migration_009_memory_candidates.sql"),
-        (10, "migration_010_asserter_and_channel.sql"),
-        (11, "migration_011_contacts_and_commissioning.sql"),
-        (12, "migration_012_admin_audit.sql"),
-        (13, "migration_013_conversation_record.sql"),
-        (14, "migration_014_recall_units.sql"),
-        (15, "migration_015_occurred_interval.sql"),
-        (16, "migration_016_pending_topics.sql"),
-    )
+_MIGRATIONS: tuple[Migration, ...] = (
+    *(
+        Migration(version, filename, owns_transaction=False)
+        for version, filename in (
+            (1, "schema.sql"),
+            (2, "migration_002_meta.sql"),
+            (3, "migration_003_faces.sql"),
+            (4, "migration_004_relational_v4.sql"),
+            (5, "migration_005_household_authorization.sql"),
+            (6, "migration_006_owner_credentials.sql"),
+            (7, "migration_007_biometric_consent.sql"),
+            (8, "migration_008_voice_consent.sql"),
+            (9, "migration_009_memory_candidates.sql"),
+            (10, "migration_010_asserter_and_channel.sql"),
+            (11, "migration_011_contacts_and_commissioning.sql"),
+            (12, "migration_012_admin_audit.sql"),
+            (13, "migration_013_conversation_record.sql"),
+            (14, "migration_014_recall_units.sql"),
+            (15, "migration_015_occurred_interval.sql"),
+            (16, "migration_016_pending_topics.sql"),
+        )
+    ),
+    Migration(17, "migration_017_retire_dead_tables.sql"),
 )
 _conn: aiosqlite.Connection | None = None
 

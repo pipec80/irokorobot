@@ -1,7 +1,7 @@
 """Persistent key/value flags — small operational state that survives restarts.
 
 Flags are local runtime state (e.g. ``onboarding_complete``), not domain
-data, so they are intentionally NOT written to the outbox.
+data.
 """
 
 from __future__ import annotations

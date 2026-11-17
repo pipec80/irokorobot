@@ -247,7 +247,7 @@ def _show_db(db_path: Path) -> None:
     print(f"  DB: {db_path}")  # noqa: T201
     print(_SEP)  # noqa: T201
 
-    for table in ("entities", "facts", "embeddings_cache", "outbox"):
+    for table in ("entities", "literal_facts_v4", "entity_relations_v4"):
         try:
             (n,) = cur.execute(f"SELECT count(*) FROM {table}").fetchone()  # noqa: S608
             print(f"  {table:<22} {n:>4} rows")  # noqa: T201
@@ -259,24 +259,10 @@ def _show_db(db_path: Path) -> None:
     ).fetchall()
     if entities:
         print(f"\n{_SEP2}")  # noqa: T201
-        print("  ENTITIES & FACTS")  # noqa: T201
+        print("  ENTITIES")  # noqa: T201
         print(_SEP2)  # noqa: T201
         for ent in entities:
-            facts = cur.execute(
-                "SELECT predicate, object_value, confidence FROM facts "
-                "WHERE entity_id = ? AND superseded_at IS NULL "
-                "ORDER BY asserted_at DESC",
-                (ent["id"],),
-            ).fetchall()
-            fact_str = (
-                "  |  ".join(
-                    f"{f['predicate']}: {f['object_value']} ({f['confidence']:.2f})" for f in facts
-                )
-                if facts
-                else "(no facts)"
-            )
             print(f"  [{ent['type']}] {ent['name']}")  # noqa: T201
-            print(f"         {fact_str}")  # noqa: T201
 
     con.close()
     print(f"\n{_SEP}")  # noqa: T201

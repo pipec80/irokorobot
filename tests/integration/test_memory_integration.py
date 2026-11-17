@@ -14,12 +14,7 @@ if TYPE_CHECKING:
 
 
 import pytest
-from server.memory.declarative import (
-    assert_fact,
-    find_entities_by_name,
-    get_active_facts,
-    upsert_entity,
-)
+from server.memory.declarative import find_entities_by_name, upsert_entity
 from server.memory.meta import get_flag, set_flag
 from server.settings import settings
 
@@ -47,34 +42,6 @@ async def test_upsert_entity_returns_positive_id(memory_db: Path) -> None:
     entity_id = await upsert_entity(name="María", type="person")
 
     assert entity_id > 0
-
-
-@pytest.mark.integration
-async def test_assert_fact_supersedes_old(memory_db: Path) -> None:
-    """A new fact with the same predicate supersedes the previous one."""
-    eid = await upsert_entity(name="Carlos", type="person")
-    await assert_fact(entity_id=eid, predicate="vive_en", object_value="CDMX")
-    await assert_fact(entity_id=eid, predicate="vive_en", object_value="Monterrey")
-
-    facts = await get_active_facts(eid)
-
-    assert len(facts) == 1
-    assert facts[0].object_value == "Monterrey"
-
-
-@pytest.mark.integration
-async def test_assert_fact_records_superseded_by(memory_db: Path) -> None:
-    """Superseded facts must record WHICH fact replaced them (full versioning)."""
-    eid = await upsert_entity(name="Luna", type="other")
-    old_id = await assert_fact(entity_id=eid, predicate="especie", object_value="perro")
-    new_id = await assert_fact(entity_id=eid, predicate="especie", object_value="gata")
-
-    cur = await db.get_conn().execute("SELECT superseded_by FROM facts WHERE id = ?", (old_id,))
-    row = await cur.fetchone()
-    await cur.close()
-
-    assert row is not None
-    assert row[0] == new_id
 
 
 @pytest.mark.integration

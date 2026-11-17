@@ -1,7 +1,7 @@
 """Typed repositories for additive relational-memory v4 storage.
 
 These repositories are intentionally isolated from legacy runtime retrieval,
-outbox publication, prompt assembly, and authorization. A later policy-gated
+prompt assembly, and authorization. A later policy-gated
 plan owns any production reader or writer cutover.
 """
 

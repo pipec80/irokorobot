@@ -1,9 +1,8 @@
-"""Entities and facts CRUD — the declarative (structured) memory layer.
+"""Entities CRUD — the declarative (structured) memory layer.
 
 Entities are identified by ``(name, type)`` and support alias union-merge
-and attribute shallow-merge on upsert. Facts are versioned: asserting a new
-fact supersedes (but does not delete) prior active facts for the same
-``(entity_id, predicate)``.
+and attribute shallow-merge on upsert. What is known about an entity lives in the v4
+repository (``relational_v4``), not here.
 """
 
 from __future__ import annotations
@@ -18,7 +17,6 @@ from server import db
 from server.cognition.clock import utc_now
 from server.db import get_conn
 from server.exceptions import AmbiguousEntityError
-from server.schemas import EntityType, FactRecord
 from server.text_keys import fold_name
 from server.timestamps import instant_text
 
@@ -26,6 +24,8 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
 
     import aiosqlite
+
+    from server.schemas import EntityType
 
 logger = logging.getLogger(__name__)
 
@@ -334,67 +334,6 @@ async def is_adult_dependent(entity_id: int) -> bool:
     )
 
 
-async def assert_fact(
-    *,
-    entity_id: int,
-    predicate: str,
-    object_value: str,
-    confidence: float = 0.9,
-    source_memory_id: int | None = None,
-    supersede_existing: bool = True,
-) -> int:
-    """Insert a fact, optionally superseding prior active facts.
-
-    Superseded facts are soft-deleted (``superseded_at`` is set) so history
-    is preserved.
-
-    Args:
-        entity_id: Row id of the entity this fact belongs to.
-        predicate: Relation name in snake_case (e.g. ``"vive_en"``).
-        object_value: Value of the relation.
-        confidence: Confidence score in ``[0, 1]``.
-        source_memory_id: Optional memory row id that sourced this fact.
-        supersede_existing: If ``True``, mark prior active facts for the
-            same ``(entity_id, predicate)`` as superseded.
-
-    Returns:
-        Row id of the newly inserted fact.
-    """
-    stamp = instant_text(utc_now())
-    async with db.transaction() as conn:
-        cur = await conn.execute(
-            "INSERT INTO facts "
-            "(entity_id, predicate, object_value, confidence, source_memory_id, asserted_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (entity_id, predicate, object_value, confidence, source_memory_id, stamp),
-        )
-        if cur.lastrowid is None:
-            raise RuntimeError("INSERT into facts returned no lastrowid")
-        fact_id: int = cur.lastrowid
-        await cur.close()
-        if supersede_existing:
-            # The new fact is inserted first so superseded rows can record WHO
-            # replaced them (superseded_by) — full versioning, not just a tombstone.
-            await conn.execute(
-                "UPDATE facts SET superseded_at = ?, superseded_by = ? "
-                "WHERE entity_id = ? AND predicate = ? AND superseded_at IS NULL AND id != ?",
-                (stamp, fact_id, entity_id, predicate, fact_id),
-            )
-    logger.info(
-        "Fact asserted: entity=%d predicate=%s (%d chars)",
-        entity_id,
-        predicate,
-        len(str(object_value)),
-        extra={
-            "event": "fact.asserted",
-            "entity_id": entity_id,
-            "predicate": predicate,
-            "chars": len(str(object_value)),
-        },
-    )
-    return fact_id
-
-
 async def find_entities_by_name(name: str, *, limit: int = 5) -> list[dict[str, Any]]:
     """Find entities by exact name or alias substring match.
 
@@ -451,27 +390,6 @@ async def list_entity_names(*, limit: int = 30) -> list[str]:
     rows = await cur.fetchall()
     await cur.close()
     return [str(r[0]) for r in rows]
-
-
-async def get_active_facts(entity_id: int) -> list[FactRecord]:
-    """Return all non-superseded facts for an entity.
-
-    Args:
-        entity_id: Row id of the entity.
-
-    Returns:
-        List of ``FactRecord`` ordered by assertion time descending.
-    """
-    conn = get_conn()
-    cur = await conn.execute(
-        "SELECT predicate, object_value, confidence FROM facts "
-        "WHERE entity_id = ? AND superseded_at IS NULL "
-        "ORDER BY asserted_at DESC",
-        (entity_id,),
-    )
-    rows = await cur.fetchall()
-    await cur.close()
-    return [FactRecord(predicate=r[0], object_value=r[1], confidence=r[2]) for r in rows]
 
 
 async def count_entities() -> int:
