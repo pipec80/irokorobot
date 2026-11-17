@@ -272,6 +272,13 @@ refuses the cross-model comparison (vector search off, lexical search on) and re
 in a verifiable re-index before it turns vector search back on. Today's code does not hold this
 (*Context* item 8); it is proposed for Block C's first plan (C1).
 
+*Note (2026-11-17, Plan 0085):* the compatibility guard now exists. `units_without_vector` selects
+the units with no vector or a vector of another model, `vector_hits` runs only when no unit of the
+owner holds another model (otherwise recall is lexical only and logs
+`recall.vector off reason=model_changed`), and the re-index moves every unit to the configured
+model before vector search comes back. The model digest and the embedding spaces wait for a second
+model to be trialled ([ADR 0038](0038-the-memory-engines-storage-foundation.md), amendment).
+
 ### 9. The engine measures its own health
 
 So that «it never stored it» can be told from «it stored it and cannot find it», the engine exposes

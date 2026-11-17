@@ -30,6 +30,9 @@
   kept as the marker «[dato sensible leído]» in place of the answer, so the record knows the owner
   asked and never holds the value. The secret rule runs whenever `MEMORY_ENABLED` is on, whatever
   the record switch says.
+- **Amended by:** [ADR 0038](0038-the-memory-engines-storage-foundation.md) (`Accepted` 2026-11-17,
+  Plan 0085), decision 5: the turns are rows of `conversation_turns`, not a JSON array (see the
+  note in *Format, size and how to read it*).
 
 ## Context
 
@@ -110,6 +113,12 @@ backup are the ones the database already has. A segment is capped (turns and byt
 file stays readable; a local space limit (a setting) purges the not-eligible records first and then the
 oldest. Reading is by an administration command that writes a readable file per conversation, under the
 owner's PIN; no voice path and no prompt ever reads a record.
+
+*Amended (2026-11-17, [ADR 0038](0038-the-memory-engines-storage-foundation.md), built by Plan 0085):*
+the turns are no longer a JSON array on the segment. Each turn is a row of `conversation_turns`
+(its record, correlation id, instant, verdict, heard and said text); the segment keeps its caps
+(60 rows or `CONVERSATION_SEGMENT_MAX_BYTES`) and the local space limit counts the bytes of the
+heard and said text. Reading a record returns the same turns in the same order.
 
 ### 6. Retention is configurable, with two clocks
 

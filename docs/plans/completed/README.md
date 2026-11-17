@@ -155,3 +155,11 @@ hardware; the [operational board](../README.md#operational-board) has the full c
   once by a later day's first greeting; migration 016, behind `PENDING_TOPICS_ENABLED`; ADR 0037
   decision 2, which is `Accepted` with it. Closed 2026-11-16 by Pipec's decision: the telling and
   the greeting with nothing due passed on hardware, the later greeting days are covered by tests.
+- [Plan 0085](0085-database-good-practices.md) (CI selection 8296): block C1, the storage foundation in
+  its minimum version. Part A (no table change): the SQLite runtime checked at start, the transaction
+  and start-up gaps closed, one time format in every writer, a byte-level deletion test. Part B: four
+  atomic migrations (017 to 020), the dead tables out, the turns as rows linked to what is derived
+  from them, the old times converted, an index on every foreign key, the embedding-model guard, the
+  data dictionary and `iroko-admin health`. Accepted on real hardware (schema version 20, health 0)
+  on 2026-11-17; ADR 0038 `Accepted`, ADR 0032 decision 1 implemented.
+  [Record](../../evals/0085-storage-foundation-acceptance.md).

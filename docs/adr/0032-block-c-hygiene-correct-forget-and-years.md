@@ -7,7 +7,10 @@
   memory is only corrected or archived, a deletion for good needs the PIN, the database follows
   standard formats and good practices, and the owner's data can be exported. Delivered by three
   plans, one at a time: 0085 (C1), 0086 (C2) and 0087 (the export). It becomes `Accepted` when the
-  last of them closes.
+  last of them closes. **C1 implemented** (decision 1) by
+  [Plan 0085](../plans/completed/0085-database-good-practices.md), closed 2026-11-17: the
+  database is at schema version 20 with the dictionary, the guards and `iroko-admin health`; the ADR
+  stays `Proposed` for C2 (Plan 0086) and the export (Plan 0087).
 - **Date:** 2026-11-11
 - **Builds on:** [ADR 0011](0011-sqlite-transaction-ownership.md),
   [ADR 0019](0019-personal-memory-capabilities.md) (the five capabilities),

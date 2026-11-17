@@ -13,7 +13,6 @@ code, tests, verified gaps and the delivery sequence.
 
 | Plan | Implementation reality | Reuse | Remaining closure |
 |---|---|---|---|
-| [0085](0085-database-good-practices.md) | **Ready** (promoted by Pipec on 2026-11-16; trimmed the same day on Pipec's scope rule; [ADR 0038](../../adr/0038-the-memory-engines-storage-foundation.md) as amended): block C1, the storage foundation in its minimum version (A safety with no table change, B four small migrations, the dictionary and a health check); in execution: Part A on PR #279, its hardware check passed 2026-11-16 | `db.run_migrations`, the store guards of `test_architecture_guards.py`, `conversation_record`'s public functions, `recall_store`/`recall_index`, `iroko-admin` | Part B on its branch; both parts may merge now that Plan 0084 is closed, and the real migration runs at the first start; next free plan number **0086** |
 | [0015](0015-personal-companion-design.md) | Approved product design; PC-1 to PC-4 are closed (PC-2 and PC-3A with provisional calibrations); reference only, never an executable batch | Controller, policy/audit, V4 household tools, identity/session seam, short-term continuity, the conversation record and recall index, STT/TTS, face engine | CM-6 and CM-7 (block C, then block D), PC-5 integrated personal acceptance and PC-6 family remain open |
 
 Existing components named under **Reuse** must not be rebuilt by a later plan.
