@@ -59,7 +59,9 @@ type TurnIndexer = Callable[[aiosqlite.Connection, int, RecordedTurn], Awaitable
 
 _BYTES_PER_MB = 1_000_000
 # What an exchange weighs for the segment limit and the cap: the UTF-8 bytes of both texts.
-_TURN_BYTES = "octet_length(heard) + octet_length(said)"
+# `length` of a BLOB counts bytes on every supported SQLite (`octet_length` needs 3.43, above the
+# runtime floor).
+_TURN_BYTES = "length(CAST(heard AS BLOB)) + length(CAST(said AS BLOB))"
 # How many exchanges a record holds and how many bytes they weigh: counted from its rows, since the
 # record keeps neither (the fragment is constant, nothing a person says reaches it).
 _COUNT_AND_BYTES = (

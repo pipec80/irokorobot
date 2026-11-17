@@ -85,3 +85,44 @@ def test_the_dead_table_guard_detects_a_violation() -> None:
         "server/memory/c.py:1",
         "server/memory/d.py:1",
     ]
+
+
+# SQL functions newer than the runtime floor `db.SQLITE_FLOOR` (3.42): a statement using one would
+# pass the start-up check and then fail on an older SQLite. `octet_length` arrived in 3.43; the
+# byte length is `length(CAST(x AS BLOB))`, which every supported version has.
+_ABOVE_THE_FLOOR = re.compile(r"\boctet_length\s*\(", re.IGNORECASE)
+
+
+def _above_the_floor_users(sources: Mapping[str, str]) -> list[str]:
+    """Return ``path:line`` for every line that calls an SQL function newer than the floor."""
+    return sorted(
+        f"{path}:{number}"
+        for path, text in sources.items()
+        for number, line in enumerate(text.splitlines(), start=1)
+        if _ABOVE_THE_FLOOR.search(line)
+    )
+
+
+def _server_sql_and_python() -> dict[str, str]:
+    """Return the text of every Python module and migration script of the server package."""
+    return {
+        path.relative_to(_REPOSITORY_ROOT).as_posix(): path.read_text(encoding="utf-8")
+        for pattern in ("*.py", "*.sql")
+        for path in sorted(_SERVER_ROOT.rglob(pattern))
+    }
+
+
+@pytest.mark.unit
+def test_no_sql_uses_a_function_newer_than_the_runtime_floor() -> None:
+    assert _above_the_floor_users(_server_sql_and_python()) == []
+
+
+@pytest.mark.unit
+def test_the_runtime_floor_guard_detects_a_violation() -> None:
+    leak = {
+        "server/memory/a.py": 'SQL = "SELECT SUM(octet_length(heard)) FROM t"\n',
+        "server/memory/b.sql": "SELECT OCTET_LENGTH (said) FROM t;\n",
+        "server/memory/ok.py": 'SQL = "SELECT length(CAST(heard AS BLOB)) FROM t"\n',
+    }
+
+    assert _above_the_floor_users(leak) == ["server/memory/a.py:1", "server/memory/b.sql:1"]

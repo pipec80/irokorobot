@@ -5,7 +5,7 @@
 -- the verdict, and the two texts. The copy keeps the order (record, then position in the array);
 -- a read orders by instant, then id, so two equal instants keep their append order. The record's
 -- `turns`, `turn_count` and `byte_count` go: the count and the size are now computed from the
--- rows, in bytes, `octet_length(heard) + octet_length(said)`. Nothing is dropped silently: a turn
+-- rows, in bytes, `length(CAST(heard AS BLOB)) + length(CAST(said AS BLOB))`. Nothing is dropped silently: a turn
 -- that breaks a rule of the new table (an instant that is not the exact 32-character form, a
 -- repeated correlation id) fails the copy, the runner rolls everything back and leaves version 17,
 -- and the count guard below fails if any turn was left behind. The numbers 2000 and 4000 repeat
