@@ -68,7 +68,9 @@ def _file_bytes(db_path: Path) -> bytes:
     return b"".join(pieces)
 
 
-async def _index_turn(conn: aiosqlite.Connection, record_id: int, turn: RecordedTurn) -> None:
+async def _index_turn(
+    conn: aiosqlite.Connection, record_id: int, turn_id: int, turn: RecordedTurn
+) -> None:
     """Index the appended turn as a recall unit, inside the append's transaction."""
     owner_cursor = await conn.execute(
         "SELECT owner_entity_id FROM conversation_records WHERE id = ?", (record_id,)
@@ -77,7 +79,7 @@ async def _index_turn(conn: aiosqlite.Connection, record_id: int, turn: Recorded
     await owner_cursor.close()
     assert row is not None
     await recall_store.insert_turn_unit(
-        conn, record_id=record_id, owner_entity_id=int(row[0]), turn=turn
+        conn, record_id=record_id, turn_id=turn_id, owner_entity_id=int(row[0]), turn=turn
     )
 
 

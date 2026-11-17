@@ -84,6 +84,7 @@ async def insert_unnamed(
     heard: str,
     sensitivity: PendingSensitivity,
     now: datetime,
+    turn_id: int | None = None,
 ) -> int:
     """Write one unnamed topic, inside the caller's open transaction (the capture's append).
 
@@ -97,17 +98,20 @@ async def insert_unnamed(
         heard: The owner's words, kept until the topic is named.
         sensitivity: ``normal`` or ``medical``.
         now: The creation instant.
+        turn_id: The stored turn the topic comes from, so deleting the turn deletes the topic;
+            ``None`` only for a topic whose turn is not stored.
 
     Returns:
         The new row's id.
     """
     cursor = await conn.execute(
-        "INSERT INTO pending_topics (owner_entity_id, source_record_id, correlation_id, said_day, "
-        "due_day, heard, state, sensitivity, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, 'unnamed', ?, ?)",
+        "INSERT INTO pending_topics (owner_entity_id, source_record_id, source_turn_id, "
+        "correlation_id, said_day, due_day, heard, state, sensitivity, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, 'unnamed', ?, ?)",
         (
             owner_entity_id,
             record_id,
+            turn_id,
             str(correlation_id),
             said_day.isoformat(),
             due_day.isoformat(),

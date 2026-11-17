@@ -80,6 +80,7 @@ async def test_the_schema_has_the_candidate_table_at_the_latest_version(candidat
         "expires_at",
         "offer_count",
         "promoted_fact_id",
+        "source_turn_id",
     ]
 
 

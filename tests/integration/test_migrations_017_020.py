@@ -427,3 +427,180 @@ async def test_a_turn_needs_its_record_and_goes_with_it(a_record: int) -> None:
     await db.get_conn().commit()
 
     assert await _scalar("SELECT count(*) FROM conversation_turns") == 0
+
+
+# --- 019: the turn linked to what is derived from it -----------------------------------------------
+
+
+@pytest.fixture
+async def v18_db(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> AsyncIterator[tuple[db.Migration, ...]]:
+    """A database at version 18; yields the full migration list."""
+    async with _built_at(18, tmp_path / "migrations-019.db", monkeypatch) as every_migration:
+        yield every_migration
+
+
+async def _exec(sql: str, *params: object) -> int:
+    """Run one write on the open connection and commit it; return the new row id."""
+    cursor = await db.get_conn().execute(sql, params)
+    row_id = int(cursor.lastrowid or 0)
+    await cursor.close()
+    await db.get_conn().commit()
+    return row_id
+
+
+async def _v18_unit(owner: int, record_id: int, cid: str) -> int:
+    return await _exec(
+        "INSERT INTO recall_units (owner_entity_id, source_record_id, kind, body, said_at, "
+        "visibility, sensitivity, correlation_id) VALUES (?, ?, 'turn', 'palabra canario', ?, "
+        "'personal', 'normal', ?)",
+        owner,
+        record_id,
+        instant_text(_T0),
+        cid,
+    )
+
+
+async def _v18_candidate(owner: int, cid: str, key: str) -> int:
+    return await _exec(
+        "INSERT INTO memory_candidates (subject_person_id, asserted_by_person_id, predicate, "
+        "value_text, value_key, status, channel, source_correlation_id, proposed_at, expires_at) "
+        "VALUES (?, ?, 'likes', ?, ?, 'proposed', 'voice_classic', ?, ?, ?)",
+        owner,
+        owner,
+        key,
+        key,
+        cid,
+        instant_text(_T0),
+        instant_text(_T0 + timedelta(days=1)),
+    )
+
+
+async def _v18_topic(owner: int, record_id: int, cid: str) -> int:
+    return await _exec(
+        "INSERT INTO pending_topics (owner_entity_id, source_record_id, correlation_id, said_day, "
+        "due_day, heard, state, sensitivity, created_at) "
+        "VALUES (?, ?, ?, '2026-11-16', '2026-11-17', 'voy al banco', 'unnamed', 'normal', ?)",
+        owner,
+        record_id,
+        cid,
+        instant_text(_T0),
+    )
+
+
+async def test_019_maps_every_existing_unit_candidate_and_topic_to_its_turn(
+    v18_db: tuple[db.Migration, ...], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owner = await upsert_entity(name="Canary Owner", type="person")
+    turns = [_turn(index, index, f"palabra {index}", TurnVerdict.VERIFIED) for index in (1, 2, 3)]
+    for turn in turns:
+        await record.append_turn(turn, owner_entity_id=owner, now=_T0)
+    record_id = int(str(await _scalar("SELECT min(record_id) FROM conversation_turns")))
+    for turn in turns:
+        cid = str(turn.correlation_id)
+        await _v18_unit(owner, record_id, cid)
+        await _v18_candidate(owner, cid, f"canario {cid[-1]}")
+        await _v18_topic(owner, record_id, cid)
+    # A turn that was never stored (the record was off, or the turn purged): its rows stay NULL.
+    gone = str(UUID(int=99))
+    await _v18_unit(owner, record_id, gone)
+    await _v18_candidate(owner, gone, "canario 99")
+    await _v18_topic(owner, record_id, gone)
+    monkeypatch.setattr(db, "_MIGRATIONS", v18_db)
+
+    await db.run_migrations()
+
+    turn_ids = [row[0] for row in await _rows("SELECT id FROM conversation_turns ORDER BY id")]
+    assert len(turn_ids) == 3
+    for table, column in (
+        ("recall_units", "turn_id"),
+        ("memory_candidates", "source_turn_id"),
+        ("pending_topics", "source_turn_id"),
+    ):
+        mapped = [row[0] for row in await _rows(f"SELECT {column} FROM {table} ORDER BY id")]  # noqa: S608
+        assert mapped == [*turn_ids, None]
+    # Every row whose turn exists points at the turn that carries its own correlation id.
+    for table, cid_column, turn_column in (
+        ("recall_units", "correlation_id", "turn_id"),
+        ("memory_candidates", "source_correlation_id", "source_turn_id"),
+        ("pending_topics", "correlation_id", "source_turn_id"),
+    ):
+        assert (
+            await _scalar(
+                f"SELECT count(*) FROM {table} x JOIN conversation_turns t ON t.id = x.{turn_column} "  # noqa: S608
+                f"WHERE t.correlation_id <> x.{cid_column}"
+            )
+            == 0
+        )
+    assert await _scalar("PRAGMA integrity_check") == "ok"
+    assert await _scalar("SELECT count(*) FROM pragma_foreign_key_check") == 0
+
+
+@pytest.fixture
+async def head_db(v18_db: tuple[db.Migration, ...], monkeypatch: pytest.MonkeyPatch) -> int:
+    """A database with every migration applied and one owner; yields the owner's id."""
+    monkeypatch.setattr(db, "_MIGRATIONS", v18_db)
+    await db.run_migrations()
+    return await upsert_entity(name="Canary Owner", type="person")
+
+
+async def test_019_drops_the_redundant_entity_name_index_and_keeps_the_unique_pair(
+    head_db: int,
+) -> None:
+    indexed = {
+        row[0]
+        for row in await _rows(
+            "SELECT group_concat(i.name, ',') FROM pragma_index_list('entities') l "
+            "JOIN pragma_index_info(l.name) i GROUP BY l.name"
+        )
+    }
+
+    assert await _scalar("SELECT count(*) FROM sqlite_master WHERE name = 'entities_name_idx'") == 0
+    assert "name,type" in indexed
+
+
+async def test_an_update_of_a_units_body_is_refused(head_db: int) -> None:
+    record_id = await _exec(
+        "INSERT INTO conversation_records (owner_entity_id, started_at, last_turn_at) "
+        "VALUES (?, ?, ?)",
+        head_db,
+        instant_text(_T0),
+        instant_text(_T0),
+    )
+    unit_id = await _v18_unit_at_head(head_db, record_id)
+
+    with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+        await _exec("UPDATE recall_units SET body = 'otra' WHERE id = ?", unit_id)
+
+    assert await _scalar("SELECT body FROM recall_units") == "palabra canario"
+    # Other columns of a unit still change (the sensitivity scrub, the embedding model).
+    await _exec("UPDATE recall_units SET sensitivity = 'private' WHERE id = ?", unit_id)
+    assert await _scalar("SELECT sensitivity FROM recall_units") == "private"
+
+
+async def _v18_unit_at_head(owner: int, record_id: int) -> int:
+    return await _v18_unit(owner, record_id, str(UUID(int=7)))
+
+
+async def test_every_foreign_key_a_delete_follows_is_found_by_an_index(head_db: int) -> None:
+    """A parent's DELETE checks each child by its foreign-key column: none may scan the table.
+
+    ``EXPLAIN QUERY PLAN`` of the DELETE itself does not list the child checks, so each foreign
+    key is probed with the lookup SQLite runs for it, ``SELECT 1 FROM child WHERE fk = ?``.
+    """
+    keys = await _rows(
+        'SELECT m.name, f."from", f."table", f.seq FROM sqlite_master m '
+        "JOIN pragma_foreign_key_list(m.name) f WHERE m.type = 'table' ORDER BY 1, 2"
+    )
+    assert keys
+    assert {row[3] for row in keys} == {0}  # no composite key: one column is probed per key
+    scans = []
+    for child, column, parent, _seq in keys:
+        plan = await _rows(f"EXPLAIN QUERY PLAN SELECT 1 FROM {child} WHERE {column} = 1")  # noqa: S608
+        details = " ".join(str(row[3]) for row in plan)
+        if "USING" not in details or "SCAN" in details:
+            scans.append(f"{child}.{column} -> {parent}: {details}")
+    assert scans == []
+    parents = {row[2] for row in keys}
+    assert {"entities", "conversation_turns"} <= parents

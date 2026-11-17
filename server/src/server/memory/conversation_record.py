@@ -43,6 +43,7 @@ __all__ = [
     "count_failed_attempt",
     "delete_all_records",
     "delete_record",
+    "find_turn_id",
     "has_open_record",
     "list_records",
     "next_pending_record",
@@ -54,8 +55,10 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 #: Writes what an appended exchange adds elsewhere, inside the append's transaction (the recall
-#: unit, Plan 0078; the pending topic, Plan 0084). Its result is not used.
-type TurnIndexer = Callable[[aiosqlite.Connection, int, RecordedTurn], Awaitable[object]]
+#: unit, Plan 0078; the pending topic, Plan 0084; the link of its candidates, Plan 0085). It
+#: receives the connection, the segment's id, the new turn's id and the exchange. Its result is
+#: not used.
+type TurnIndexer = Callable[[aiosqlite.Connection, int, int, RecordedTurn], Awaitable[object]]
 
 _BYTES_PER_MB = 1_000_000
 # What an exchange weighs for the segment limit and the cap: the UTF-8 bytes of both texts.
@@ -165,9 +168,11 @@ def chain_indexers(*hooks: TurnIndexer | None) -> TurnIndexer | None:
     if not present:
         return None
 
-    async def run(conn: aiosqlite.Connection, record_id: int, recorded: RecordedTurn) -> None:
+    async def run(
+        conn: aiosqlite.Connection, record_id: int, turn_id: int, recorded: RecordedTurn
+    ) -> None:
         for hook in present:
-            await hook(conn, record_id, recorded)
+            await hook(conn, record_id, turn_id, recorded)
 
     return run
 
@@ -185,9 +190,9 @@ async def append_turn(
         turn: The exchange.
         owner_entity_id: The owner the record belongs to.
         now: The time a segment closed here is stamped with.
-        index: Called inside the append's transaction with the segment id, after the append;
-            a failure rolls the append back with it (the recall unit, Plan 0078, and the
-            pending topic, Plan 0084).
+        index: Called inside the append's transaction with the segment id and the new turn's
+            id, after the append; a failure rolls the append back with it (the recall unit,
+            Plan 0078, the pending topic, Plan 0084, and the candidates' link, Plan 0085).
 
     Returns:
         The id of the segment that received the exchange.
@@ -224,19 +229,39 @@ async def append_turn(
             )
             record_id = int(cursor.lastrowid or 0)
             await cursor.close()
-        await conn.execute(
+        cursor = await conn.execute(
             "INSERT INTO conversation_turns "
             "(record_id, correlation_id, said_at, verdict, heard, said) VALUES (?, ?, ?, ?, ?, ?)",
             (record_id, str(turn.correlation_id), at, turn.voice.value, turn.heard, turn.said),
         )
+        turn_id = int(cursor.lastrowid or 0)
+        await cursor.close()
         await conn.execute(
             "UPDATE conversation_records SET last_turn_at = max(last_turn_at, ?), "
             "eligible = max(eligible, ?) WHERE id = ?",
             (at, int(turn.voice is TurnVerdict.VERIFIED), record_id),
         )
         if index is not None:
-            await index(conn, record_id, turn)
+            await index(conn, record_id, turn_id, turn)
     return record_id
+
+
+async def find_turn_id(conn: aiosqlite.Connection, correlation_id: UUID) -> int | None:
+    """Return the id of the stored turn with this correlation id, or ``None`` when none exists.
+
+    A turn is not stored when the record is off or after it was purged; what was derived from it
+    (a memory candidate) then keeps no turn link.
+
+    Args:
+        conn: The connection of an open ``db.transaction()``.
+        correlation_id: The turn's correlation id.
+    """
+    cursor = await conn.execute(
+        "SELECT id FROM conversation_turns WHERE correlation_id = ?", (str(correlation_id),)
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    return None if row is None else int(row[0])
 
 
 async def close_idle_records(now: datetime) -> int:

@@ -36,6 +36,7 @@ from typing import TYPE_CHECKING
 
 from server import db
 from server.memory.candidate_types import CandidateChannel, CandidateStatus, ProposedCandidate
+from server.memory.conversation_record import find_turn_id
 from server.settings import settings
 from server.timestamps import instant_text
 
@@ -58,6 +59,7 @@ __all__ = [
     "get_candidate",
     "insert_candidate",
     "iso_utc",
+    "link_source_turn",
     "mark_offered",
     "next_offerable",
     "precheck_insert",
@@ -357,8 +359,8 @@ async def _insert_in_transaction(
         return InsertResult(blocked)
     cursor = await conn.execute(
         "INSERT INTO memory_candidates (subject_person_id, asserted_by_person_id, predicate, "
-        "value_text, value_key, status, channel, source_correlation_id, proposed_at, expires_at) "
-        "VALUES (?, ?, ?, ?, ?, 'proposed', ?, ?, ?, ?)",
+        "value_text, value_key, status, channel, source_correlation_id, source_turn_id, "
+        "proposed_at, expires_at) VALUES (?, ?, ?, ?, ?, 'proposed', ?, ?, ?, ?, ?)",
         (
             subject_person_id,
             asserted_by_person_id,
@@ -367,6 +369,7 @@ async def _insert_in_transaction(
             proposal.value_key,
             channel.value,
             str(correlation_id),
+            await find_turn_id(conn, correlation_id),
             iso_utc(now),
             iso_utc(now + timedelta(seconds=settings.memory_candidate_ttl_seconds)),
         ),
@@ -376,6 +379,32 @@ async def _insert_in_transaction(
     if candidate_id is None:
         raise RuntimeError("INSERT into memory_candidates returned no lastrowid")
     return InsertResult(InsertStatus.INSERTED, int(candidate_id))
+
+
+async def link_source_turn(
+    conn: aiosqlite.Connection, *, correlation_id: UUID, turn_id: int
+) -> int:
+    """Link the candidates proposed from a turn to that turn's row, once it exists.
+
+    A candidate is proposed in the background and may be inserted before its turn is appended;
+    the append calls this so both orders end linked (the insert links the other order itself).
+
+    Args:
+        conn: The connection of an open ``db.transaction()`` (the append's).
+        correlation_id: The turn's correlation id.
+        turn_id: The turn's row id.
+
+    Returns:
+        How many candidates were linked; those already linked are left alone.
+    """
+    cursor = await conn.execute(
+        "UPDATE memory_candidates SET source_turn_id = ? "
+        "WHERE source_correlation_id = ? AND source_turn_id IS NULL",
+        (turn_id, str(correlation_id)),
+    )
+    linked = cursor.rowcount
+    await cursor.close()
+    return linked
 
 
 async def get_candidate(candidate_id: int) -> Candidate | None:

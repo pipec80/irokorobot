@@ -209,17 +209,24 @@ async def _insert(
     said_at: str,
     sensitivity: RecallSensitivity,
     correlation_id: str | None,
+    turn_id: int | None = None,
     occurred: DayWindow | None = None,
 ) -> int:
+    """Insert one unit, or return the id of the unit its turn or episode already has.
+
+    A turn has one unit and an episode has one (unique indexes), so a retried job that indexes
+    the same turn or episode again changes nothing and does not fail the append.
+    """
     start, end = (None, None) if occurred is None else (occurred.start, occurred.end)
     cursor = await conn.execute(
-        "INSERT INTO recall_units (owner_entity_id, source_record_id, episode_id, kind, body, "
-        "said_at, visibility, sensitivity, correlation_id, occurred_start, occurred_end) "
-        "VALUES (?, ?, ?, ?, ?, ?, 'personal', ?, ?, ?, ?)",
+        "INSERT INTO recall_units (owner_entity_id, source_record_id, episode_id, turn_id, kind, "
+        "body, said_at, visibility, sensitivity, correlation_id, occurred_start, occurred_end) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, 'personal', ?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING id",
         (
             owner_entity_id,
             record_id,
             episode_id,
+            turn_id,
             kind,
             body,
             said_at,
@@ -229,9 +236,18 @@ async def _insert(
             None if end is None else end.isoformat(),
         ),
     )
-    unit_id = int(cursor.lastrowid or 0)
+    row = await cursor.fetchone()
     await cursor.close()
-    return unit_id
+    if row is not None:
+        return int(row[0])
+    cursor = await conn.execute(
+        "SELECT id FROM recall_units WHERE turn_id IS ? AND episode_id IS ?", (turn_id, episode_id)
+    )
+    existing = await cursor.fetchone()
+    await cursor.close()
+    if existing is None:
+        raise RuntimeError("INSERT into recall_units was refused without a unit to return")
+    return int(existing[0])
 
 
 async def insert_turn_unit(
@@ -240,6 +256,7 @@ async def insert_turn_unit(
     record_id: int,
     owner_entity_id: int,
     turn: RecordedTurn,
+    turn_id: int | None = None,
     occurred: DayWindow | None = None,
 ) -> int:
     """Write the unit of one verified turn, inside the caller's open transaction.
@@ -249,10 +266,12 @@ async def insert_turn_unit(
         record_id: The record the turn was appended to.
         owner_entity_id: The owner of the record.
         turn: The exchange; only its ``heard`` text becomes the unit, never ``said``.
+        turn_id: The stored turn the unit comes from, so deleting the turn deletes the unit;
+            ``None`` only for a unit whose turn is not stored.
         occurred: When the told event happened, as local days (Plan 0083), or ``None``.
 
     Returns:
-        The new unit's id.
+        The new unit's id, or that of the unit the turn already has.
 
     Raises:
         ValueError: If the turn is not ``VERIFIED`` or its words are blank.
@@ -271,6 +290,7 @@ async def insert_turn_unit(
         said_at=instant_text(turn.at),
         sensitivity=classify_turn_text(turn.heard),
         correlation_id=str(turn.correlation_id),
+        turn_id=turn_id,
         occurred=occurred,
     )
 
@@ -288,7 +308,7 @@ async def insert_episode_unit(
     """Write the unit of one diary summary, inside the caller's open transaction.
 
     Returns:
-        The new unit's id.
+        The new unit's id, or that of the unit the episode already has.
     """
     return await _insert(
         conn,

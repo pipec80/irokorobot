@@ -168,9 +168,11 @@ async def _units() -> list[tuple[object, ...]]:
 async def test_a_verified_turn_gets_a_unit_in_the_same_transaction(owner: int) -> None:
     turn = make_turn(_HEARD, _SAID, voice=TurnVerdict.VERIFIED, correlation_id=uuid4(), at=_T0)
 
-    async def failing(conn: aiosqlite.Connection, record_id: int, recorded: RecordedTurn) -> int:
+    async def failing(
+        conn: aiosqlite.Connection, record_id: int, turn_id: int, recorded: RecordedTurn
+    ) -> int:
         await recall_store.insert_turn_unit(
-            conn, record_id=record_id, owner_entity_id=owner, turn=recorded
+            conn, record_id=record_id, turn_id=turn_id, owner_entity_id=owner, turn=recorded
         )
         raise RuntimeError("index failed")
 
@@ -180,9 +182,11 @@ async def test_a_verified_turn_gets_a_unit_in_the_same_transaction(owner: int) -
     assert await _rows("SELECT id FROM conversation_records") == []
     assert await _units() == []
 
-    async def indexer(conn: aiosqlite.Connection, record_id: int, recorded: RecordedTurn) -> int:
+    async def indexer(
+        conn: aiosqlite.Connection, record_id: int, turn_id: int, recorded: RecordedTurn
+    ) -> int:
         return await recall_store.insert_turn_unit(
-            conn, record_id=record_id, owner_entity_id=owner, turn=recorded
+            conn, record_id=record_id, turn_id=turn_id, owner_entity_id=owner, turn=recorded
         )
 
     record_id = await record.append_turn(turn, owner_entity_id=owner, now=_T0, index=indexer)
