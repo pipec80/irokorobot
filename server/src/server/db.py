@@ -10,7 +10,9 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+import re
+import sqlite3
+from typing import TYPE_CHECKING, Final, NamedTuple
 
 import aiosqlite
 import sqlite_vec
@@ -23,25 +25,51 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Ordered migration scripts: (target_version, filename under memory/).
-# run_migrations applies every script whose version exceeds PRAGMA user_version.
-_MIGRATIONS: tuple[tuple[int, str], ...] = (
-    (1, "schema.sql"),
-    (2, "migration_002_meta.sql"),
-    (3, "migration_003_faces.sql"),
-    (4, "migration_004_relational_v4.sql"),
-    (5, "migration_005_household_authorization.sql"),
-    (6, "migration_006_owner_credentials.sql"),
-    (7, "migration_007_biometric_consent.sql"),
-    (8, "migration_008_voice_consent.sql"),
-    (9, "migration_009_memory_candidates.sql"),
-    (10, "migration_010_asserter_and_channel.sql"),
-    (11, "migration_011_contacts_and_commissioning.sql"),
-    (12, "migration_012_admin_audit.sql"),
-    (13, "migration_013_conversation_record.sql"),
-    (14, "migration_014_recall_units.sql"),
-    (15, "migration_015_occurred_interval.sql"),
-    (16, "migration_016_pending_topics.sql"),
+
+class Migration(NamedTuple):
+    """One ordered schema migration script.
+
+    A ``NamedTuple`` (immutable, like a frozen dataclass) so code that indexes a migration as
+    ``(version, filename)`` keeps working.
+
+    Attributes:
+        version: The ``PRAGMA user_version`` the script brings the database to.
+        filename: The script under the migrations directory.
+        rebuild: The script rebuilds a table, so it runs with foreign keys off (Plan 0085, D-5).
+        owns_transaction: ``True`` when the runner owns the transaction and wraps the file in
+            one atomic script. ``False`` for 001 to 016, which carry their own transaction
+            handling (history is never edited): the runner does not wrap them.
+    """
+
+    version: int
+    filename: str
+    rebuild: bool = False
+    owns_transaction: bool = True
+
+
+# Ordered migration scripts. run_migrations applies every script whose version exceeds
+# PRAGMA user_version. 001 to 016 predate the atomic runner and keep their own handling.
+_MIGRATIONS_DIR = Path(__file__).parent / "memory"
+_MIGRATIONS: tuple[Migration, ...] = tuple(
+    Migration(version, filename, owns_transaction=False)
+    for version, filename in (
+        (1, "schema.sql"),
+        (2, "migration_002_meta.sql"),
+        (3, "migration_003_faces.sql"),
+        (4, "migration_004_relational_v4.sql"),
+        (5, "migration_005_household_authorization.sql"),
+        (6, "migration_006_owner_credentials.sql"),
+        (7, "migration_007_biometric_consent.sql"),
+        (8, "migration_008_voice_consent.sql"),
+        (9, "migration_009_memory_candidates.sql"),
+        (10, "migration_010_asserter_and_channel.sql"),
+        (11, "migration_011_contacts_and_commissioning.sql"),
+        (12, "migration_012_admin_audit.sql"),
+        (13, "migration_013_conversation_record.sql"),
+        (14, "migration_014_recall_units.sql"),
+        (15, "migration_015_occurred_interval.sql"),
+        (16, "migration_016_pending_topics.sql"),
+    )
 )
 _conn: aiosqlite.Connection | None = None
 
@@ -303,7 +331,7 @@ def latest_schema_version() -> int:
     A tool that must not migrate (the seed importer, Plan 0071) compares it with the database's
     ``PRAGMA user_version`` and refuses a database that is behind.
     """
-    return _MIGRATIONS[-1][0]
+    return _MIGRATIONS[-1].version
 
 
 def is_open() -> bool:
@@ -315,15 +343,111 @@ def is_open() -> bool:
     return _conn is not None
 
 
+# A migration file the runner wraps may not manage the transaction or the version itself.
+_SQL_TOKEN = re.compile(r"'(?:[^']|'')*'|--[^\n]*|/\*.*?\*/", re.DOTALL)
+_TRANSACTION_STATEMENT = re.compile(
+    r"\s*(?:BEGIN|COMMIT|END|ROLLBACK|SAVEPOINT|RELEASE)\b|.*\buser_version\b",
+    re.IGNORECASE | re.DOTALL,
+)
+
+# Aborts the script on any foreign-key violation: the CHECK fails, so the INSERT raises and the
+# runner rolls back. Plain SQL, since `raise()` exists only inside a trigger.
+_FOREIGN_KEY_GUARD = """
+CREATE TEMP TABLE _fk_guard (violations INTEGER CHECK (violations = 0));
+INSERT INTO _fk_guard SELECT count(*) FROM pragma_foreign_key_check;
+DROP TABLE _fk_guard;
+"""
+
+
+def _statements(sql: str) -> list[str]:
+    """Split a script into complete statements, keeping a trigger body in one piece.
+
+    Comments are dropped (string literals are kept as they are) and ``sqlite3.complete_statement``
+    decides where a statement ends, so the ``;`` inside a ``CREATE TRIGGER ... BEGIN ... END``
+    body does not split it.
+    """
+    text = _SQL_TOKEN.sub(lambda m: m.group() if m.group().startswith("'") else " ", sql)
+    statements: list[str] = []
+    start = 0
+    for end, char in enumerate(text):
+        if char == ";" and sqlite3.complete_statement(text[start : end + 1]):
+            statements.append(text[start : end + 1])
+            start = end + 1
+    if text[start:].strip():
+        statements.append(text[start:])
+    return statements
+
+
+def _refuse_transaction_statements(migration: Migration, sql: str) -> None:
+    """Refuse a wrapped file that holds a transaction statement or touches ``user_version``.
+
+    Raises:
+        BrainMemoryError: Closed message naming the file; nothing has run yet.
+    """
+    if any(_TRANSACTION_STATEMENT.match(statement) for statement in _statements(sql)):
+        raise BrainMemoryError(
+            f"Migration {migration.version} ({migration.filename}) holds transaction statements"
+        )
+
+
+def _wrapped_script(migration: Migration, sql: str) -> str:
+    """Return the one script that applies a migration atomically.
+
+    ``executescript()`` commits whatever is open before it runs, so the transaction has to be
+    inside the script itself (Plan 0085, D-5): begin, the file, the version, the foreign-key
+    guard, commit.
+    """
+    version = f"PRAGMA user_version = {migration.version};"
+    return f"BEGIN IMMEDIATE;\n{sql}\n;\n{version}\n{_FOREIGN_KEY_GUARD}COMMIT;"
+
+
+async def _apply_migration(conn: aiosqlite.Connection, migration: Migration, sql: str) -> None:
+    """Apply one migration; on any failure roll back and raise ``BrainMemoryError``.
+
+    A script that owns its transaction (001 to 016) runs as it always did. Any other is wrapped
+    by ``_wrapped_script``; a ``rebuild`` one runs with foreign keys off, which is a no-op inside
+    a transaction, so it is set before the script and put back whatever happens.
+    """
+    wrapped = migration.owns_transaction
+    if wrapped:
+        _refuse_transaction_statements(migration, sql)
+    if migration.rebuild:
+        await conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        if wrapped:
+            await conn.executescript(_wrapped_script(migration, sql))
+        else:
+            await conn.executescript(sql)
+            await conn.execute(f"PRAGMA user_version = {migration.version}")
+            await conn.commit()
+    except Exception as exc:
+        # A script that opened a transaction and failed leaves it open: close it, so nothing it
+        # half-applied survives and the next start retries it from the same version.
+        await conn.rollback()
+        logger.error(
+            "Migration %d (%s) failed (%s)",
+            migration.version,
+            migration.filename,
+            type(exc).__name__,
+        )
+        raise BrainMemoryError(
+            f"Migration {migration.version} ({migration.filename}) failed"
+        ) from exc
+    finally:
+        if migration.rebuild:
+            await conn.execute("PRAGMA foreign_keys = ON")
+
+
 async def run_migrations() -> None:
     """Apply every pending migration script, in version order.
 
-    Reads ``PRAGMA user_version`` and executes each ``_MIGRATIONS`` entry
-    above it, bumping the version after each script. Idempotent — running
-    on an up-to-date DB is a no-op.
+    Reads ``PRAGMA user_version`` and applies each ``_MIGRATIONS`` entry above it, bumping the
+    version after each script. A script the runner wraps is atomic: it either lands whole, with
+    its version and a clean foreign-key check, or leaves nothing. Idempotent: running on an
+    up-to-date DB is a no-op.
 
     Raises:
-        BrainMemoryError: If a migration file is missing or a script fails.
+        BrainMemoryError: If a migration file is missing or refused, or a script fails.
     """
     conn = get_conn()
     cur = await conn.execute("PRAGMA user_version")
@@ -331,25 +455,16 @@ async def run_migrations() -> None:
     current = int(row[0]) if row else 0
     await cur.close()
 
-    for version, filename in _MIGRATIONS:
-        if version <= current:
+    for migration in _MIGRATIONS:
+        if migration.version <= current:
             continue
-        script_path = Path(__file__).parent / "memory" / filename
+        script_path = _MIGRATIONS_DIR / migration.filename
         if not script_path.exists():
             raise BrainMemoryError(f"Migration file not found: {script_path}")
-        logger.info("Applying migration %d (%s)", version, filename)
-        sql = script_path.read_text(encoding="utf-8")
-        try:
-            await conn.executescript(sql)
-            await conn.execute(f"PRAGMA user_version = {version}")
-            await conn.commit()
-        except Exception as exc:
-            # A script that opened its own transaction and failed leaves it open: close it, so
-            # nothing it half-applied survives and the next start retries it from the same version.
-            await conn.rollback()
-            raise BrainMemoryError(f"Migration {version} ({filename}) failed") from exc
+        logger.info("Applying migration %d (%s)", migration.version, migration.filename)
+        await _apply_migration(conn, migration, script_path.read_text(encoding="utf-8"))
 
-    logger.info("Schema up-to-date (version %d)", _MIGRATIONS[-1][0])
+    logger.info("Schema up-to-date (version %d)", _MIGRATIONS[-1].version)
 
 
 async def _rollback_after_failed_commit(conn: aiosqlite.Connection) -> None:
