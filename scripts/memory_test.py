@@ -33,11 +33,15 @@ import sqlite3
 import time
 import wave
 
+import aiosqlite
 import httpx
 import numpy as np
 from piper import PiperVoice, SynthesisConfig
+from server.exceptions import BrainMemoryError
+from server.memory.db_health import check_health, render_health
 from server.settings import settings
 import sounddevice as sd
+import sqlite_vec
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 logger = logging.getLogger(__name__)
@@ -268,6 +272,29 @@ def _show_db(db_path: Path) -> None:
     print(f"\n{_SEP}")  # noqa: T201
 
 
+async def _health_lines(db_path: Path) -> list[str]:
+    """Count what is wrong in the DB with the same check as ``iroko-admin health`` (counts only)."""
+    async with aiosqlite.connect(db_path) as conn:
+        await conn.enable_load_extension(True)
+        await conn.load_extension(sqlite_vec.loadable_path())
+        await conn.enable_load_extension(False)
+        return render_health(await check_health(conn))
+
+
+def _show_health(db_path: Path) -> None:
+    """Print the health counts of the DB; a DB behind the latest schema prints the reason."""
+    if not db_path.exists():
+        return
+    try:
+        lines = asyncio.run(_health_lines(db_path))
+    except (sqlite3.Error, aiosqlite.Error, BrainMemoryError) as exc:
+        print(f"\n  [health check not run: {type(exc).__name__}]")  # noqa: T201
+        return
+    print(f"\n{_SEP2}\n  HEALTH\n{_SEP2}")  # noqa: T201
+    for line in lines:
+        print(f"  {line}")  # noqa: T201
+
+
 # ---------------------------------------------------------------------------
 # Modes
 # ---------------------------------------------------------------------------
@@ -422,6 +449,7 @@ def main() -> None:
 
     if args.show_db:
         _show_db(settings.brain_db_path)
+        _show_health(settings.brain_db_path)
         return
 
     play = not args.no_play

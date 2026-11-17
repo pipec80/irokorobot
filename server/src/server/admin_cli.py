@@ -62,6 +62,7 @@ from server.memory.conversation_consent import (
     revoke_conversation_consent,
 )
 from server.memory.conversation_record import delete_record, list_records
+from server.memory.db_health import check_health, health_failed, render_health
 from server.memory.entity_labels import get_person_label
 from server.memory.owner_credentials import get_ready_owner
 from server.memory.relational_v4 import (
@@ -575,6 +576,28 @@ async def _dispatch(
     raise _RefusedError(f"Subcomando desconocido: {request.command}.")
 
 
+async def _health(write_text: WriteText) -> int:
+    """Print the database health report (counts only); ``1`` when it counted a fault."""
+    report = await check_health(db.get_conn())
+    for line in render_health(report):
+        write_text(line)
+    return 1 if health_failed(report) else 0
+
+
+async def _run_opened(
+    request: AdminRequest,
+    read_text: ReadText,
+    read_secret: ReadText,
+    write_text: WriteText,
+    now: str,
+) -> int:
+    """Run the command on the open database; ``health`` needs no owner and no PIN."""
+    if request.command == "health":
+        await check_db_available()
+        return await _health(write_text)
+    return await _dispatch(request, read_text, read_secret, write_text, now)
+
+
 async def _check_schema(database: Path) -> None:
     """Refuse a database behind the latest schema before it is opened for writing."""
     try:
@@ -625,7 +648,7 @@ async def run_admin_command(
         await _check_schema(database)
         await db.open_db()
         try:
-            return await _dispatch(request, read_text, read_secret, write_text, now)
+            return await _run_opened(request, read_text, read_secret, write_text, now)
         finally:
             await db.close_db()
     except (_RefusedError, BrainMemoryError, ValueError) as exc:
@@ -650,6 +673,7 @@ def _parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("list", help="muestra el pozo, las relaciones y los contactos")
     sub.add_parser("status", help="muestra el estado de las secciones del acta")
+    sub.add_parser("health", help="revisa la salud de la base de datos (solo conteos, sin PIN)")
     audit = sub.add_parser("audit", help="muestra la auditoría (sin valores)")
     audit.add_argument("--limit", type=int, default=50)
     for verb in ("add", "change"):

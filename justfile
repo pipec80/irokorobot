@@ -145,6 +145,11 @@ admin *ARGS:
     @echo "iroko-admin: local amendment path; the server must be stopped"
     uv run --env-file .env --package server iroko-admin {{ARGS}}
 
+# Salud de la base de datos (Plan 0085): solo conteos, sin PIN. Servidor detenido.
+db-health:
+    @echo "iroko-admin health: counts only; the server must be stopped"
+    uv run --env-file .env --package server iroko-admin health
+
 # Onboarding unificado: identidad+hijos+PIN, despues la cara (Plan 0029). Re-ejecutable.
 onboard *ARGS:
     uv run --env-file .env python scripts/onboard.py {{ARGS}}

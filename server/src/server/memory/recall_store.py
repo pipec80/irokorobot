@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, datetime
+import sqlite3
 from typing import TYPE_CHECKING, Final, Literal
 
 import sqlite_vec
@@ -36,7 +37,10 @@ if TYPE_CHECKING:
     from server.memory.conversation_types import RecordedTurn
 
 __all__ = [
+    "RecallIndexHealth",
     "RecallUnit",
+    "count_units_of_another_model",
+    "index_health",
     "insert_episode_unit",
     "insert_turn_unit",
     "lexical_hits",
@@ -392,14 +396,109 @@ async def store_vector(unit_id: int, vector: list[float], *, model: str) -> bool
 
 
 async def units_without_vector(limit: int) -> list[tuple[int, str]]:
-    """Return ``(id, body)`` of the oldest units that have no vector yet."""
+    """Return ``(id, body)`` of the oldest units to (re-)embed: no vector, or one of another model.
+
+    The model is the configured one (``settings.embedding_model``). The partial index
+    ``recall_units_unembedded_idx`` serves the first half; the second scans (see the data
+    dictionary, *Not tuned yet*).
+    """
     cursor = await db.get_conn().execute(
-        "SELECT id, body FROM recall_units WHERE embedding_model IS NULL ORDER BY id LIMIT ?",
-        (limit,),
+        "SELECT id, body FROM recall_units "
+        "WHERE embedding_model IS NULL OR embedding_model <> ? ORDER BY id LIMIT ?",
+        (settings.embedding_model, limit),
     )
     rows = await cursor.fetchall()
     await cursor.close()
     return [(int(row[0]), str(row[1])) for row in rows]
+
+
+async def count_units_of_another_model(owner_entity_id: int) -> int:
+    """Count the owner's units whose vector was computed by a model other than the configured one.
+
+    A unit without a vector does not count: it has nothing to compare. While the count is above
+    zero a vector search would compare two embedding spaces, so recall searches by words only
+    (ADR 0031 decision 8) until the re-index brings it to zero.
+    """
+    cursor = await db.get_conn().execute(
+        "SELECT COUNT(*) FROM recall_units "
+        "WHERE owner_entity_id = ? AND embedding_model IS NOT NULL AND embedding_model <> ?",
+        (owner_entity_id, settings.embedding_model),
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    return 0 if row is None else int(row[0])
+
+
+@dataclass(frozen=True)
+class RecallIndexHealth:
+    """Counts about the word index and the vectors of the recall units: ints only, no value."""
+
+    fts_errors: int
+    vectors_without_unit: int
+    units_without_fts_row: int
+    units_without_vector: int
+    units_of_another_model: int
+
+
+async def _count_rows(
+    conn: aiosqlite.Connection, sql: str, parameters: tuple[object, ...] = ()
+) -> int:
+    """Run a ``SELECT COUNT(*)`` and return the number."""
+    cursor = await conn.execute(sql, parameters)
+    row = await cursor.fetchone()
+    await cursor.close()
+    return 0 if row is None else int(row[0])
+
+
+async def _fts_errors(conn: aiosqlite.Connection) -> int:
+    """FTS5 ``integrity-check``: 0 or 1. The command raises on a damaged index and writes no row.
+
+    ``rank = 1`` also compares the index with the external content table (``recall_units``);
+    an SQLite that does not know the option checks the index alone.
+    """
+    try:
+        await conn.execute(
+            "INSERT INTO recall_units_fts (recall_units_fts, rank) VALUES ('integrity-check', 1)"
+        )
+    except sqlite3.Error:
+        return 1
+    finally:
+        await conn.rollback()
+    return 0
+
+
+async def index_health(conn: aiosqlite.Connection) -> RecallIndexHealth:
+    """Count what is wrong, or still pending, in the recall index (``iroko-admin health``).
+
+    Args:
+        conn: An open connection; nothing is written and no transaction is left open.
+
+    Returns:
+        The counts. "Another model" is the configured ``settings.embedding_model``. The word
+        index is read through its ``docsize`` shadow table, one row per indexed unit.
+    """
+    return RecallIndexHealth(
+        fts_errors=await _fts_errors(conn),
+        vectors_without_unit=await _count_rows(
+            conn,
+            "SELECT COUNT(*) FROM recall_units_vec WHERE rowid NOT IN (SELECT id FROM recall_units)",
+        ),
+        units_without_fts_row=await _count_rows(
+            conn,
+            "SELECT COUNT(*) FROM recall_units "
+            "WHERE id NOT IN (SELECT id FROM recall_units_fts_docsize)",
+        ),
+        units_without_vector=await _count_rows(
+            conn,
+            "SELECT COUNT(*) FROM recall_units WHERE id NOT IN (SELECT rowid FROM recall_units_vec)",
+        ),
+        units_of_another_model=await _count_rows(
+            conn,
+            "SELECT COUNT(*) FROM recall_units "
+            "WHERE embedding_model IS NOT NULL AND embedding_model <> ?",
+            (settings.embedding_model,),
+        ),
+    )
 
 
 def _match_expression(terms: Sequence[str]) -> str:

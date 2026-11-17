@@ -241,7 +241,7 @@ async def test_vector_hits_filter_owner_and_sensitivity_inside_the_query(
     sensitive = await _turn_unit(owner, mine, "el doctor")
     foreign = await _turn_unit(other, await _record(other), "el cerro")
     for unit_id in (near, sensitive, foreign):
-        assert await recall_store.store_vector(unit_id, _axis(0), model="canary")
+        assert await recall_store.store_vector(unit_id, _axis(0), model=settings.embedding_model)
 
     hits = await recall_store.vector_hits(
         owner_entity_id=owner, vector=_axis(0), since=None, until=None, now=_NOW, k=10
@@ -260,7 +260,7 @@ async def test_store_vector_takes_the_current_sensitivity(owners: tuple[int, int
             conn, record_id=record_id, sensitivity="private"
         )
 
-    assert await recall_store.store_vector(unit_id, _axis(1), model="canary")
+    assert await recall_store.store_vector(unit_id, _axis(1), model=settings.embedding_model)
 
     cursor = await db.get_conn().execute(
         "SELECT sensitivity FROM recall_units_vec WHERE rowid = ?", (unit_id,)
@@ -280,15 +280,15 @@ async def test_store_vector_on_a_deleted_unit_is_false(owners: tuple[int, int]) 
     async with db.transaction() as conn:
         await conn.execute("DELETE FROM conversation_records WHERE id = ?", (record_id,))
 
-    assert not await recall_store.store_vector(unit_id, _axis(1), model="canary")
+    assert not await recall_store.store_vector(unit_id, _axis(1), model=settings.embedding_model)
 
 
 async def test_store_vector_twice_keeps_one_vector(owners: tuple[int, int]) -> None:
     owner, _ = owners
     unit_id = await _turn_unit(owner, await _record(owner), "el cerro")
 
-    assert await recall_store.store_vector(unit_id, _axis(1), model="canary")
-    assert await recall_store.store_vector(unit_id, _axis(2), model="canary")
+    assert await recall_store.store_vector(unit_id, _axis(1), model=settings.embedding_model)
+    assert await recall_store.store_vector(unit_id, _axis(2), model=settings.embedding_model)
 
     cursor = await db.get_conn().execute("SELECT COUNT(*) FROM recall_units_vec")
     row = await cursor.fetchone()
@@ -318,3 +318,39 @@ async def test_recent_units_prefer_episodes(owners: tuple[int, int]) -> None:
 
     assert [unit.id for unit in with_episodes] == [newer, older]
     assert all(unit.kind == "episode" for unit in with_episodes)
+
+
+async def test_units_without_vector_also_lists_a_vector_of_another_model(
+    owners: tuple[int, int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owner, _ = owners
+    record_id = await _record(owner)
+    old = await _turn_unit(owner, record_id, "el cerro")
+    assert await recall_store.store_vector(old, _axis(1), model="canary-model-a")
+    monkeypatch.setattr(settings, "embedding_model", "canary-model-a")
+    assert await recall_store.units_without_vector(10) == []
+
+    monkeypatch.setattr(settings, "embedding_model", "canary-model-b")
+
+    assert await recall_store.units_without_vector(10) == [(old, "el cerro")]
+    assert await recall_store.store_vector(old, _axis(2), model="canary-model-b")
+    assert await recall_store.units_without_vector(10) == []
+
+
+async def test_units_of_another_model_counts_only_the_owners_units_of_another_model(
+    owners: tuple[int, int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owner, other = owners
+    monkeypatch.setattr(settings, "embedding_model", "canary-model-b")
+    mine_old = await _turn_unit(owner, await _record(owner), "el cerro")
+    mine_new = await _turn_unit(owner, await _record(owner), "la playa")
+    await _turn_unit(owner, await _record(owner), "sin vector")
+    theirs = await _turn_unit(other, await _record(other), "el río")
+    assert await recall_store.store_vector(mine_old, _axis(1), model="canary-model-a")
+    assert await recall_store.store_vector(mine_new, _axis(2), model="canary-model-b")
+    assert await recall_store.store_vector(theirs, _axis(3), model="canary-model-a")
+
+    assert await recall_store.count_units_of_another_model(owner) == 1
+    assert await recall_store.count_units_of_another_model(other) == 1
+    assert await recall_store.store_vector(mine_old, _axis(1), model="canary-model-b")
+    assert await recall_store.count_units_of_another_model(owner) == 0
