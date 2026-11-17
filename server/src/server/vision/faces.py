@@ -23,10 +23,12 @@ import warnings
 import numpy as np
 
 from server import db
+from server.cognition.clock import utc_now
 from server.exceptions import EnrollmentRejectedError, VisionError
 from server.memory.declarative import upsert_entity
 from server.request_context import run_in_executor_with_context
 from server.settings import settings
+from server.timestamps import instant_text
 
 logger = logging.getLogger(__name__)
 
@@ -205,8 +207,8 @@ async def enroll_face(entity_id: int, embedding: np.ndarray, label: str) -> int:
         raise VisionError(f"Expected {_EMBEDDING_DIM}-d embedding, got {embedding.shape}")
     async with db.transaction() as conn:
         cur = await conn.execute(
-            "INSERT INTO face_profiles (entity_id, label) VALUES (?, ?)",
-            (entity_id, label),
+            "INSERT INTO face_profiles (entity_id, label, created_at) VALUES (?, ?, ?)",
+            (entity_id, label, instant_text(utc_now())),
         )
         profile_id = cur.lastrowid
         await cur.close()

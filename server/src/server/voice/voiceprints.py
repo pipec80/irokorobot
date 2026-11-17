@@ -12,8 +12,10 @@ from typing import Final, NamedTuple
 import numpy as np
 
 from server import db
+from server.cognition.clock import utc_now
 from server.db import get_conn
 from server.exceptions import BrainMemoryError
+from server.timestamps import instant_text
 
 VOICEPRINT_DIM: Final = 192
 
@@ -85,9 +87,9 @@ async def enroll_voiceprint(
     normalized = _l2_normalized(embedding)
     async with db.transaction() as conn:
         cursor = await conn.execute(
-            "INSERT INTO voice_profiles (entity_id, label, embedding, model_id) "
-            "VALUES (?, ?, ?, ?)",
-            (entity_id, label, _pack(normalized), model_id),
+            "INSERT INTO voice_profiles (entity_id, label, embedding, model_id, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (entity_id, label, _pack(normalized), model_id, instant_text(utc_now())),
         )
         profile_id = cursor.lastrowid
         await cursor.close()

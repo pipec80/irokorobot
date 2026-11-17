@@ -12,13 +12,18 @@ import sqlite3
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+import numpy as np
 import pytest
 from server.exceptions import BrainMemoryError
 from server.memory import conversation_record as record
+from server.memory.biometric_consent import grant_face_consent, revoke_face_consent
 from server.memory.conversation_types import RecordedTurn, TurnVerdict, make_turn
 from server.memory.declarative import upsert_entity
+from server.memory.voice_consent import grant_voice_consent, revoke_voice_consent
 from server.settings import settings
 from server.timestamps import instant_text
+from server.vision.faces import enroll_face
+from server.voice.voiceprints import enroll_voiceprint
 
 from server import db
 
@@ -604,3 +609,392 @@ async def test_every_foreign_key_a_delete_follows_is_found_by_an_index(head_db: 
     assert scans == []
     parents = {row[2] for row in keys}
     assert {"entities", "conversation_turns"} <= parents
+
+
+# --- 020: the old times and the two biometric tables ---------------------------------------------
+
+_MIGRATION_020 = db._MIGRATIONS_DIR / "migration_020_times_and_profiles.sql"
+_UNPARSED_FORMATS = [
+    "2026/11/16 10:00",  # a third format
+    "2026-11-16T10:00:00-03:00",  # 25 characters, another offset: not a UTC instant
+    "2026-11-16",  # a day in an instant column
+    "2026-11-16T10:00:00.123+00:00",  # three fraction digits
+    "2026-13-01 10:00:00",  # 19 characters, no such month
+]
+
+
+@pytest.fixture
+async def v19_db(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> AsyncIterator[tuple[db.Migration, ...]]:
+    """A database at version 19; yields the full migration list."""
+    async with _built_at(19, tmp_path / "migrations-020.db", monkeypatch) as every_migration:
+        yield every_migration
+
+
+async def _run_020(
+    every_migration: tuple[db.Migration, ...], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(db, "_MIGRATIONS", every_migration)
+    await db.run_migrations()
+
+
+async def _time_columns() -> list[tuple[str, str]]:
+    """Every TEXT column named ``*_at`` of a live ordinary table, derived from the schema."""
+    rows = await _rows(
+        "SELECT m.name, p.name FROM sqlite_master m JOIN pragma_table_info(m.name) p "
+        "WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%' "
+        "AND m.sql NOT LIKE 'CREATE VIRTUAL%' AND p.type = 'TEXT' "
+        "AND p.name LIKE '%!_at' ESCAPE '!' ORDER BY 1, p.cid"
+    )
+    return [(str(row[0]), str(row[1])) for row in rows]
+
+
+async def test_020_names_every_time_column_the_schema_has(
+    v19_db: tuple[db.Migration, ...],
+) -> None:
+    columns = await _time_columns()
+    sql = _MIGRATION_020.read_text(encoding="utf-8")
+
+    assert len(columns) >= 40
+    missing = [f"{t}.{c}" for t, c in columns if f"UPDATE {t} SET {c} =" not in sql]  # noqa: S608
+    assert missing == []
+
+
+async def _v19_entity(name: str, created: str, updated: str) -> int:
+    return await _exec(
+        "INSERT INTO entities (name, type, created_at, updated_at) VALUES (?, 'person', ?, ?)",
+        name,
+        created,
+        updated,
+    )
+
+
+async def test_020_converts_each_19_and_25_character_instant_exactly(
+    v19_db: tuple[db.Migration, ...], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await _v19_entity("Canary A", "2026-11-16 10:00:01", "2026-11-16T10:00:02+00:00")
+    await _v19_entity("Canary B", "2026-11-16T23:59:59.123456+00:00", "2026-01-02 03:04:05")
+    owner = await _v19_entity("Canary C", "2025-12-31 23:59:59", "2025-12-31T23:59:59+00:00")
+    await _exec(
+        "INSERT INTO literal_facts_v4 (subject_entity_id, predicate, value_text, asserted_at, "
+        "confirmed_at, superseded_at) VALUES (?, 'likes', 'te', '2026-03-04 05:06:07', NULL, "
+        "'2026-03-04T05:06:08+00:00')",
+        owner,
+    )
+    await _exec(
+        "INSERT INTO meta (key, value, updated_at) VALUES ('canary', 'x', '2026-05-06 07:08:09')"
+    )
+
+    await _run_020(v19_db, monkeypatch)
+
+    assert await _rows("SELECT name, created_at, updated_at FROM entities ORDER BY id") == [
+        ("Canary A", "2026-11-16T10:00:01.000000+00:00", "2026-11-16T10:00:02.000000+00:00"),
+        ("Canary B", "2026-11-16T23:59:59.123456+00:00", "2026-01-02T03:04:05.000000+00:00"),
+        ("Canary C", "2025-12-31T23:59:59.000000+00:00", "2025-12-31T23:59:59.000000+00:00"),
+    ]
+    assert await _rows("SELECT asserted_at, confirmed_at, superseded_at FROM literal_facts_v4") == [
+        ("2026-03-04T05:06:07.000000+00:00", None, "2026-03-04T05:06:08.000000+00:00")
+    ]
+    assert await _scalar("SELECT updated_at FROM meta WHERE key = 'canary'") == (
+        "2026-05-06T07:08:09.000000+00:00"
+    )
+    assert await _scalar("PRAGMA user_version") == 20
+
+
+@pytest.mark.parametrize("bad", _UNPARSED_FORMATS)
+async def test_a_value_in_a_third_time_format_aborts_020_and_leaves_version_19(
+    v19_db: tuple[db.Migration, ...], monkeypatch: pytest.MonkeyPatch, bad: str
+) -> None:
+    await _v19_entity("Canary A", "2026-11-16 10:00:01", "2026-11-16T10:00:02+00:00")
+    await _v19_entity("Canary B", bad, "2026-11-16 10:00:03")
+    before = await _rows("SELECT id, name, created_at, updated_at FROM entities ORDER BY id")
+    profile_sql = await _scalar("SELECT sql FROM sqlite_master WHERE name = 'face_profiles'")
+
+    with pytest.raises(BrainMemoryError, match="Migration 20"):
+        await _run_020(v19_db, monkeypatch)
+
+    assert await _scalar("PRAGMA user_version") == 19
+    assert (
+        await _rows("SELECT id, name, created_at, updated_at FROM entities ORDER BY id") == before
+    )
+    assert await _scalar("SELECT sql FROM sqlite_master WHERE name = 'face_profiles'") == (
+        profile_sql
+    )
+    assert await _scalar("PRAGMA foreign_keys") == 1
+
+
+async def _v19_fact(
+    subject: int, predicate: str, valid_from: str | None, valid_to: str | None
+) -> None:
+    await _exec(
+        "INSERT INTO literal_facts_v4 (subject_entity_id, predicate, value_text, asserted_at, "
+        "valid_from, valid_to) VALUES (?, ?, 'v', ?, ?, ?)",
+        subject,
+        predicate,
+        instant_text(_T0),
+        valid_from,
+        valid_to,
+    )
+
+
+async def test_020_turns_an_instant_validity_bound_into_its_day_and_keeps_days_and_months(
+    v19_db: tuple[db.Migration, ...], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    subject = await _v19_entity("Canary A", instant_text(_T0), instant_text(_T0))
+    other = await _v19_entity("Canary B", instant_text(_T0), instant_text(_T0))
+    await _v19_fact(subject, "p19", "2026-11-16 10:00:00", "2026-11-17T23:59:59+00:00")
+    await _v19_fact(subject, "p32", "2026-11-18T08:30:00.250000+00:00", None)
+    await _v19_fact(subject, "pday", "2026-11-19", "2026-11")
+    await _exec(
+        "INSERT INTO entity_relations_v4 (source_entity_id, predicate, target_entity_id, "
+        "asserted_at, valid_from, valid_to) VALUES (?, 'knows', ?, ?, '2026-02-03 04:05:06', "
+        "'2026-02-04')",
+        subject,
+        other,
+        instant_text(_T0),
+    )
+
+    await _run_020(v19_db, monkeypatch)
+
+    assert await _rows(
+        "SELECT predicate, valid_from, valid_to FROM literal_facts_v4 ORDER BY id"
+    ) == [
+        ("p19", "2026-11-16", "2026-11-17"),
+        ("p32", "2026-11-18", None),
+        ("pday", "2026-11-19", "2026-11"),
+    ]
+    assert await _rows("SELECT valid_from, valid_to FROM entity_relations_v4") == [
+        ("2026-02-03", "2026-02-04")
+    ]
+
+
+_FACT_WITH_BOUND = {
+    "valid_from": "INSERT INTO literal_facts_v4 (subject_entity_id, predicate, value_text, "
+    "asserted_at, valid_from) VALUES (?, 'p', 'v', ?, ?)",
+    "valid_to": "INSERT INTO literal_facts_v4 (subject_entity_id, predicate, value_text, "
+    "asserted_at, valid_to) VALUES (?, 'p', 'v', ?, ?)",
+}
+
+
+@pytest.mark.parametrize("bad", ["2026/11/16", "2026-11-16T10:00:00-03:00", "11-2026", "mañana"])
+@pytest.mark.parametrize("column", ["valid_from", "valid_to"])
+async def test_a_validity_bound_in_another_shape_aborts_020(
+    v19_db: tuple[db.Migration, ...], monkeypatch: pytest.MonkeyPatch, column: str, bad: str
+) -> None:
+    subject = await _v19_entity("Canary A", instant_text(_T0), instant_text(_T0))
+    await _exec(
+        _FACT_WITH_BOUND[column],
+        subject,
+        instant_text(_T0),
+        bad,
+    )
+
+    with pytest.raises(BrainMemoryError, match="Migration 20"):
+        await _run_020(v19_db, monkeypatch)
+
+    assert await _scalar("PRAGMA user_version") == 19
+    assert await _scalar(f"SELECT {column} FROM literal_facts_v4") == bad  # noqa: S608
+
+
+async def test_converted_and_new_instants_sort_in_time_order(
+    v19_db: tuple[db.Migration, ...], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await _v19_entity("old-1", "2026-11-16 09:59:59", "2026-11-16 09:59:59")
+    await _v19_entity("old-2", "2026-11-16T10:00:00+00:00", "2026-11-16T10:00:00+00:00")
+    await _run_020(v19_db, monkeypatch)
+    for name, moment in (
+        ("new-1", _T0 + timedelta(microseconds=1)),
+        ("new-2", _T0 + timedelta(seconds=1)),
+        ("new-0", _T0 - timedelta(seconds=2)),
+    ):
+        stamp = instant_text(moment)
+        await _exec(
+            "INSERT INTO entities (name, type, created_at, updated_at) VALUES (?, 'person', ?, ?)",
+            name,
+            stamp,
+            stamp,
+        )
+
+    names = [row[0] for row in await _rows("SELECT name FROM entities ORDER BY created_at, id")]
+
+    assert names == ["new-0", "old-1", "old-2", "new-1", "new-2"]
+
+
+_FACE_BLOB = np.full(512, 0.5, dtype=np.float32).tobytes()
+_VOICE_BLOB = np.full(192, 0.25, dtype=np.float32).tobytes()
+_VOICE_MODEL = "canary-model@rev"
+_PROFILE_INSERTS = {
+    "face_profiles": "INSERT INTO face_profiles (entity_id, label, created_at) VALUES (?, 'otra', ?)",
+    "voice_profiles": "INSERT INTO voice_profiles (entity_id, label, created_at, embedding, "
+    "model_id) VALUES (?, 'otra', ?, ?, ?)",
+}
+
+
+async def _v19_profiles(person: int) -> None:
+    """Three face and three voice profiles with ids 1..3, in version 19's old time formats."""
+    for index in (1, 2, 3):
+        await _exec(
+            "INSERT INTO face_profiles (id, entity_id, label, created_at) VALUES (?, ?, ?, ?)",
+            index,
+            person,
+            f"cara {index}",
+            f"2026-11-1{index} 10:00:0{index}",
+        )
+        await _exec("INSERT INTO vec_faces (rowid, embedding) VALUES (?, ?)", index, _FACE_BLOB)
+        await _exec(
+            "INSERT INTO voice_profiles (id, entity_id, label, embedding, model_id, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            index,
+            person,
+            f"voz {index}",
+            _VOICE_BLOB,
+            _VOICE_MODEL,
+            f"2026-11-1{index}T10:00:0{index}+00:00",
+        )
+
+
+async def test_020_rebuilds_both_profile_tables_keeping_every_row_and_vector(
+    v19_db: tuple[db.Migration, ...], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    person = await _v19_entity("Canary A", instant_text(_T0), instant_text(_T0))
+    await _v19_profiles(person)
+
+    await _run_020(v19_db, monkeypatch)
+
+    assert await _rows(
+        "SELECT id, entity_id, label, created_at FROM face_profiles ORDER BY id"
+    ) == [
+        (1, person, "cara 1", "2026-11-11T10:00:01.000000+00:00"),
+        (2, person, "cara 2", "2026-11-12T10:00:02.000000+00:00"),
+        (3, person, "cara 3", "2026-11-13T10:00:03.000000+00:00"),
+    ]
+    assert await _rows(
+        "SELECT id, entity_id, label, model_id, created_at, length(embedding) "
+        "FROM voice_profiles ORDER BY id"
+    ) == [
+        (
+            index,
+            person,
+            f"voz {index}",
+            _VOICE_MODEL,
+            f"2026-11-1{index}T10:00:0{index}.000000+00:00",
+            768,
+        )
+        for index in (1, 2, 3)
+    ]
+    assert await _scalar("SELECT embedding FROM voice_profiles WHERE id = 2") == _VOICE_BLOB
+    # vec_faces is keyed by rowid = face_profiles.id: every id kept, so it is untouched.
+    assert await _rows("SELECT rowid FROM vec_faces ORDER BY rowid") == [(1,), (2,), (3,)]
+    assert await _scalar("SELECT count(*) FROM pragma_foreign_key_check") == 0
+    for table in ("face_profiles", "voice_profiles"):
+        index = f"idx_{table}_entity"
+        assert await _scalar(f"SELECT tbl_name FROM sqlite_master WHERE name = '{index}'") == table  # noqa: S608
+
+
+@pytest.mark.parametrize("table", ["face_profiles", "voice_profiles"])
+async def test_020_makes_the_profile_tables_strict_autoincrement_and_restrictive(
+    v19_db: tuple[db.Migration, ...], monkeypatch: pytest.MonkeyPatch, table: str
+) -> None:
+    await _run_020(v19_db, monkeypatch)
+
+    assert await _scalar(f"SELECT strict FROM pragma_table_list('{table}')") == 1  # noqa: S608
+    sql = str(await _scalar(f"SELECT sql FROM sqlite_master WHERE name = '{table}'"))  # noqa: S608
+    assert "AUTOINCREMENT" in sql
+    assert "datetime(" not in sql
+    assert await _rows(
+        f'SELECT "table", "from", on_delete FROM pragma_foreign_key_list(\'{table}\')'  # noqa: S608
+    ) == [("entities", "entity_id", "RESTRICT")]
+
+
+async def test_020_sets_each_profile_counter_to_the_old_top_id(
+    v19_db: tuple[db.Migration, ...], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    person = await _v19_entity("Canary A", instant_text(_T0), instant_text(_T0))
+    await _v19_profiles(person)
+
+    await _run_020(v19_db, monkeypatch)
+
+    assert await _rows(
+        "SELECT name, seq FROM sqlite_sequence WHERE name IN ('face_profiles', 'voice_profiles') "
+        "ORDER BY name"
+    ) == [("face_profiles", 3), ("voice_profiles", 3)]
+
+
+@pytest.mark.parametrize("table", ["face_profiles", "voice_profiles"])
+async def test_a_deleted_top_profile_id_is_never_reused_after_020(
+    v19_db: tuple[db.Migration, ...], monkeypatch: pytest.MonkeyPatch, table: str
+) -> None:
+    person = await _v19_entity("Canary A", instant_text(_T0), instant_text(_T0))
+    await _v19_profiles(person)
+    await _run_020(v19_db, monkeypatch)
+    extra = _PROFILE_INSERTS[table]
+    tail: tuple[object, ...] = (_VOICE_BLOB, _VOICE_MODEL) if table == "voice_profiles" else ()
+
+    fourth = await _exec(extra, person, instant_text(_T0), *tail)
+    await _exec(f"DELETE FROM {table} WHERE id = ?", fourth)  # noqa: S608
+    fifth = await _exec(extra, person, instant_text(_T0), *tail)
+
+    assert (fourth, fifth) == (4, 5)
+
+
+@pytest.mark.parametrize("stamp", [None, "2026-11-16 10:00:00", "2026-11-16T10:00:00+00:00"])
+async def test_a_profile_needs_an_exact_instant_from_the_writer(
+    head_db: int, stamp: str | None
+) -> None:
+    with pytest.raises(sqlite3.IntegrityError):
+        await _exec(
+            "INSERT INTO face_profiles (entity_id, label, created_at) VALUES (?, 'cara', ?)",
+            head_db,
+            stamp,
+        )
+
+
+async def test_deleting_a_person_with_a_face_or_a_voiceprint_is_refused(head_db: int) -> None:
+    await _exec(
+        "INSERT INTO face_profiles (entity_id, label, created_at) VALUES (?, 'cara', ?)",
+        head_db,
+        instant_text(_T0),
+    )
+    with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):
+        await _exec("DELETE FROM entities WHERE id = ?", head_db)
+    await _exec("DELETE FROM face_profiles WHERE entity_id = ?", head_db)
+    await _exec(
+        "INSERT INTO voice_profiles (entity_id, label, embedding, model_id, created_at) "
+        "VALUES (?, 'voz', ?, ?, ?)",
+        head_db,
+        _VOICE_BLOB,
+        _VOICE_MODEL,
+        instant_text(_T0),
+    )
+
+    with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):
+        await _exec("DELETE FROM entities WHERE id = ?", head_db)
+
+    assert await _scalar(f"SELECT count(*) FROM entities WHERE id = {head_db}") == 1  # noqa: S608
+
+
+async def test_revoking_the_consents_clears_the_profiles_and_then_the_person_can_go(
+    head_db: int,
+) -> None:
+    await grant_face_consent(head_db)
+    await enroll_face(head_db, np.eye(512, dtype=np.float32)[0], "cara")
+    await grant_voice_consent(head_db)
+    await enroll_voiceprint(head_db, np.eye(192, dtype=np.float32)[0], "voz", _VOICE_MODEL)
+    stamps = await _rows(
+        "SELECT created_at FROM face_profiles UNION ALL SELECT created_at FROM voice_profiles"
+    )
+    assert [len(str(row[0])) for row in stamps] == [32, 32]
+
+    await revoke_face_consent(head_db)
+    await revoke_voice_consent(head_db)
+    # The revoked grants stay as the consent history and also refer to the person: only the
+    # profiles are under test here, so the history is cleared by hand.
+    await _exec("DELETE FROM face_consent_grants WHERE person_entity_id = ?", head_db)
+    await _exec("DELETE FROM voice_consent_grants WHERE person_entity_id = ?", head_db)
+    await _exec("DELETE FROM entities WHERE id = ?", head_db)
+
+    assert await _scalar("SELECT count(*) FROM face_profiles") == 0
+    assert await _scalar("SELECT count(*) FROM voice_profiles") == 0
+    assert await _scalar("SELECT count(*) FROM vec_faces") == 0
+    assert await _scalar(f"SELECT count(*) FROM entities WHERE id = {head_db}") == 0  # noqa: S608
