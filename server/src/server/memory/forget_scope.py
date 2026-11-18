@@ -95,7 +95,7 @@ _MIN_PLURAL_NAME = 4
 
 
 def _with_variants(names: Iterable[str]) -> tuple[str, ...]:
-    """The names, plus each without a final «s» (Whisper heard «Canarias» for «Canaria»).
+    """The names, plus each with its final «s» dropped or added (Whisper heard «Canarias»).
 
     Found on hardware (Plan 0086, 2026-11-18): a name is matched as whole words, so a speech
     to text that adds or drops one final «s» found nothing. The read-back count still shows
@@ -107,8 +107,11 @@ def _with_variants(names: Iterable[str]) -> tuple[str, ...]:
         if not stripped:
             continue
         found.append(stripped)
-        if len(stripped) >= _MIN_PLURAL_NAME and stripped.casefold().endswith("s"):
-            found.append(stripped[:-1])
+        if len(stripped) < _MIN_PLURAL_NAME:
+            continue
+        # Both ways: a question heard «Canarias» finds «Canaria», and a stored «Canarias»
+        # (a turn that Whisper wrote so) is found by «Canaria».
+        found.append(stripped[:-1] if stripped.casefold().endswith("s") else f"{stripped}s")
     return tuple(dict.fromkeys(found))
 
 
