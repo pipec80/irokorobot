@@ -282,8 +282,13 @@ async def propose_change(
         else:
             reply, pending = await _propose_archive(change, person_id, channel=channel, now=now)
     except Exception as exc:  # fail closed: the owner asked, so a fixed phrase, never the model
-        logger.warning("Memory change read-back failed (%s)", type(exc).__name__)
+        logger.warning("Memory change read-back failed (%s)", type(exc).__name__, exc_info=True)
+        _log("failed", correlation_id)
+        _PENDING.pop(person_id, None)
         return MemoryAnswerReply(CHANGE_FAILED)
+    # The latest request is the open question: an older read-back is dropped even when this one
+    # proposes nothing, so a verb never applies a change the owner moved on from.
+    _PENDING.pop(person_id, None)
     if pending is not None:
         _PENDING[person_id] = pending
     _log("proposed" if pending is not None else "not_proposed", correlation_id)
@@ -410,7 +415,8 @@ async def answer_change(
         else:
             await _apply_archive(pending, now)
     except Exception as exc:  # fail closed and tell the owner: the change was theirs
-        logger.warning("Memory change failed (%s)", type(exc).__name__)
+        logger.warning("Memory change failed (%s)", type(exc).__name__, exc_info=True)
+        _log("failed", correlation_id)
         return MemoryAnswerReply(CHANGE_FAILED)
     _log(pending.kind, correlation_id)
     return MemoryAnswerReply(CHANGE_CORRECTED if pending.kind == "correct" else CHANGE_ARCHIVED)

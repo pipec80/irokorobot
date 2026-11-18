@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
 import pytest
@@ -21,12 +22,18 @@ from server.cognition.identity import (
 )
 from server.cognition.intent_resolution import parse_memory_answer
 from server.cognition.memory_change import parse_memory_change
-from server.cognition.models import CognitiveEvent, Confidence, ConfidenceBasis
+from server.cognition.models import (
+    AuthorizationStatus,
+    CognitiveEvent,
+    Confidence,
+    ConfidenceBasis,
+)
 from server.memory import (
     candidate_dialogue,
     candidates,
     continuity,
     conversation_record,
+    memory_change_dialogue,
     pending_store,
     recall_store,
     relational_v4,
@@ -533,3 +540,88 @@ async def test_a_relation_that_is_not_personal_is_only_changed_in_iroko_admin(ow
 
     assert reply is not None
     assert reply.phrase == "Eso se cambia en iroko-admin, con tu PIN."
+
+
+# --- review findings of Task 8 --------------------------------------------------------------------
+
+
+def _denied(request: object) -> object:
+    from server.cognition.authorization import evaluate_authorization  # noqa: PLC0415
+
+    decision = evaluate_authorization(request)  # type: ignore[arg-type]  # the real request
+    return decision.model_copy(update={"decision": AuthorizationStatus.DENIED})
+
+
+async def _answer_with(actor: ActivePersonContext, **doubles: object) -> MemoryAnswerReply | None:
+    answer = parse_memory_answer("Sí, autorizo.")
+    assert answer is not None
+    return await answer_change(
+        answer,
+        actor=actor,
+        correlation_id=uuid4(),
+        now=_ANSWER,
+        **doubles,  # type: ignore[arg-type]  # policy and audit doubles
+    )
+
+
+@pytest.mark.parametrize("failure", ["denied", "audit", "apply"])
+async def test_a_refused_or_failed_change_changes_nothing_and_says_so(
+    owner: int, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    await _taste(owner, "el café")
+    actor = _actor(owner)
+    await _propose("Ya no me gusta el café, ahora prefiero el mate.", actor)
+    doubles: dict[str, object] = {}
+    if failure == "denied":
+        doubles["policy"] = _denied
+    elif failure == "audit":
+        doubles["audit"] = AsyncMock(side_effect=RuntimeError("canary"))
+    else:
+        monkeypatch.setattr(
+            memory_change_dialogue,
+            "supersede_literal_fact",
+            AsyncMock(side_effect=RuntimeError("canary")),
+        )
+
+    reply = await _answer_with(actor, **doubles)
+
+    assert reply is not None
+    assert reply.phrase == "No pude hacerlo ahora. Dímelo de nuevo en un rato."
+    assert await _tastes(owner) == ["el café"]
+    assert await _tastes(owner, "prefers") == []  # the new value rolled back with the rest
+    assert not has_pending_change(owner, _ANSWER)
+
+
+async def test_a_medical_topic_keeps_a_voice_archive_away(owner: int) -> None:
+    await _told(owner, "fui al cine con Canaria", 0)
+    record = await conversation_record.list_records()
+    async with db.transaction() as conn:
+        await pending_store.insert_unnamed(
+            conn,
+            owner_entity_id=owner,
+            record_id=record[0].id,
+            correlation_id=uuid4(),
+            said_day=date(2026, 11, 17),
+            due_day=date(2026, 11, 19),
+            heard="mañana acompaño a Canaria al médico",
+            sensitivity="medical",
+            now=_T0,
+        )
+
+    reply = await _propose("No quiero saber más de Canaria.", _actor(owner))
+
+    assert reply is not None
+    assert reply.phrase == "Eso se cambia en iroko-admin, con tu PIN."
+
+
+async def test_a_request_that_proposes_nothing_drops_the_older_read_back(owner: int) -> None:
+    await _taste(owner, "el té")
+    actor = _actor(owner)
+    await _propose("Ya no me gusta el té.", actor)
+
+    nothing = await _propose("No quiero saber más de Zorzal.", actor)
+
+    assert nothing is not None
+    assert nothing.phrase == "No tengo nada guardado de Zorzal."
+    assert await _answer("Sí, autorizo.", actor) is None
+    assert await _tastes(owner) == ["el té"]

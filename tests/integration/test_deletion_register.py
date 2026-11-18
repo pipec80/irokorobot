@@ -282,7 +282,7 @@ async def test_the_deletion_commits_under_full_and_puts_normal_back(
 
     await forget([Deletion(DeletionKind.LITERAL_FACT, fact)], now=_T0)
 
-    assert seen == [2]  # FULL
+    assert seen == [1, 2]  # the probe (rolled back) under NORMAL, then the deletion under FULL
     assert await _count("PRAGMA synchronous") == 1  # NORMAL
 
 
@@ -302,3 +302,109 @@ async def test_withdrawing_the_consent_and_deleting_a_record_write_their_lines(
         await _count("SELECT COUNT(*) FROM conversation_consent_grants WHERE revoked_at IS NULL")
         == 0
     )
+
+
+# --- review findings of Task 8 --------------------------------------------------------------------
+
+
+async def test_a_deletion_a_key_refuses_writes_no_line_and_leaves_the_start_working(
+    owner: int,
+) -> None:
+    """A person with a revoked role still holds the RESTRICT key: refused before the append."""
+    friend = await upsert_entity(name="Canaria", type="person")
+    async with db.transaction() as conn:
+        await conn.execute(
+            "INSERT INTO household_role_assignments (person_entity_id, role, reason, granted_at, "
+            "revoked_at) VALUES (?, 'guest', 'canary', ?, ?)",
+            (friend, instant_text(_T0), instant_text(_T0)),
+        )
+
+    with pytest.raises(BrainMemoryError, match="foreign key"):
+        await forget([Deletion(DeletionKind.ENTITY, friend)], now=_T0)
+
+    assert not deletion_register.register_path().exists()
+    assert await _count("SELECT COUNT(*) FROM entities WHERE id = ?", friend) == 1
+    await _restart()
+    assert await replay_register() == 0
+
+
+async def test_a_replayed_line_a_key_refuses_is_skipped_and_the_start_goes_on(owner: int) -> None:
+    friend = await upsert_entity(name="Canaria", type="person")
+    fact = await _taste(owner)
+    deletion_register._append(
+        [Deletion(DeletionKind.ENTITY, owner), Deletion(DeletionKind.LITERAL_FACT, fact)],
+        instant_text(_T0),
+    )
+    async with db.transaction() as conn:
+        await conn.execute(
+            "INSERT INTO household_role_assignments (person_entity_id, role, reason, granted_at) "
+            "VALUES (?, 'owner', 'canary', ?)",
+            (owner, instant_text(_T0)),
+        )
+
+    assert await replay_register() == 2
+
+    assert await _count("SELECT COUNT(*) FROM entities WHERE id = ?", owner) == 1
+    assert await _count("SELECT COUNT(*) FROM literal_facts_v4") == 0
+    assert await replay_register() == 0
+    del friend
+
+
+async def test_a_lost_register_never_reuses_a_number_the_marker_passed(owner: int) -> None:
+    first = await _taste(owner)
+    second = await _taste(owner, "el mate")
+    await forget([Deletion(DeletionKind.LITERAL_FACT, first)], now=_T0)
+    deletion_register.register_path().unlink()
+
+    lines = deletion_register._append(
+        [Deletion(DeletionKind.LITERAL_FACT, second)], instant_text(_T0), marker=1
+    )
+
+    assert lines[0].seq == 2
+    assert await replay_register() == 1
+    assert await _count("SELECT COUNT(*) FROM literal_facts_v4") == 0
+
+
+async def test_deleting_an_episode_lets_the_purge_take_its_record_later(owner: int) -> None:
+    record_id, _ = await _turn(owner)
+    await conversation_record.close_idle_records(_T0 + timedelta(hours=1))
+    await _episode(owner, record_id)
+    await conversation_record.set_episode_status(record_id, conversation_record.EpisodeStatus.DONE)
+
+    await forget([Deletion(DeletionKind.EPISODE, record_id)], now=_T0)
+    await conversation_record.purge_records(_T0 + timedelta(days=400))
+
+    assert await _count("SELECT COUNT(*) FROM conversation_records WHERE id = ?", record_id) == 0
+
+
+async def test_forget_record_of_an_unknown_number_writes_no_line(owner: int) -> None:
+    assert await deletion_register.forget_record(999, now=_T0) is False
+    assert not deletion_register.register_path().exists()
+
+
+async def test_the_checkpoint_is_retried_and_its_postponement_logged(
+    owner: int, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    calls: list[int] = []
+
+    async def busy() -> bool:
+        calls.append(1)
+        return False
+
+    monkeypatch.setattr(db, "checkpoint_wal", busy)
+
+    assert await db.checkpoint_wal_until_done(attempts=3, pause_s=0) is False
+    assert len(calls) == 3
+    assert "deletion.checkpoint postponed attempts=3" in caplog.text
+
+
+async def test_a_durable_transaction_that_fails_puts_normal_back(owner: int) -> None:
+    with pytest.raises(RuntimeError, match="canary"):
+        async with db.transaction(durable=True):
+            raise RuntimeError("canary")
+
+    assert await _count("PRAGMA synchronous") == 1
+
+
+async def test_a_bool_is_not_a_register_number() -> None:
+    assert deletion_register._parse('{"seq":true,"kind":"turn","id":1,"at":"x"}') is None

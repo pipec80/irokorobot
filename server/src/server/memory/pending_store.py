@@ -205,19 +205,19 @@ async def set_topic(topic_id: int, topic: str) -> bool:
 
 async def topic_texts(
     owner_entity_id: int, *, include_archived: bool = False
-) -> list[tuple[int, str]]:
-    """The owner's topics as ``(id, topic or words)``, for ``forget_scope``.
+) -> list[tuple[int, str, str]]:
+    """The owner's topics as ``(id, topic or words, sensitivity)``, for ``forget_scope``.
 
     Args:
         owner_entity_id: The owner.
         include_archived: Also the topics already set aside (a deletion reaches them too).
     """
     cursor = await db.get_conn().execute(
-        "SELECT id, COALESCE(topic, heard, '') FROM pending_topics "
+        "SELECT id, COALESCE(topic, heard, ''), sensitivity FROM pending_topics "
         "WHERE owner_entity_id = ? AND (? OR archived_at IS NULL)",
         (owner_entity_id, int(include_archived)),
     )
-    rows = [(int(row[0]), str(row[1])) for row in await cursor.fetchall()]
+    rows = [(int(row[0]), str(row[1]), str(row[2])) for row in await cursor.fetchall()]
     await cursor.close()
     return rows
 
@@ -266,7 +266,7 @@ async def archive_topics(conn: aiosqlite.Connection, topic_ids: Sequence[int], *
     marks = ", ".join("?" for _ in values)
     cursor = await conn.execute(
         f"UPDATE pending_topics SET archived_at = ? "  # noqa: S608 - placeholders only
-        f"WHERE id IN ({marks}) AND archived_at IS NULL",
+        f"WHERE id IN ({marks}) AND archived_at IS NULL AND sensitivity = 'normal'",
         (at, *values),
     )
     changed = max(cursor.rowcount, 0)
@@ -355,7 +355,7 @@ async def mark_asked(topic_id: int, *, now: datetime) -> bool:
     return (
         await _write(
             "UPDATE pending_topics SET state = 'asked', asked_at = ? "
-            "WHERE id = ? AND state = 'open' AND NOT EXISTS ("
+            "WHERE id = ? AND state = 'open' AND archived_at IS NULL AND NOT EXISTS ("
             "SELECT 1 FROM pending_topics AS other "
             "WHERE other.owner_entity_id = pending_topics.owner_entity_id "
             "AND other.state = 'asked' AND other.asked_at >= ? AND other.asked_at < ?)",

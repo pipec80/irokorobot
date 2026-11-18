@@ -403,12 +403,16 @@ async def count_failed_attempt(record_id: int) -> int:
     return 0 if row is None else int(row[0])
 
 
-async def turn_texts() -> list[tuple[int, str, str]]:
-    """Every stored turn as ``(id, heard, said)``, for ``forget_scope`` to find a name in.
+async def turn_texts(owner_entity_id: int) -> list[tuple[int, str, str]]:
+    """The owner's stored turns as ``(id, heard, said)``, for ``forget_scope`` to find a name in.
 
     Read by the administration and the voice archive only; never logged.
     """
-    cursor = await db.get_conn().execute("SELECT id, heard, said FROM conversation_turns")
+    cursor = await db.get_conn().execute(
+        "SELECT t.id, t.heard, t.said FROM conversation_turns t "
+        "JOIN conversation_records r ON r.id = t.record_id WHERE r.owner_entity_id = ?",
+        (owner_entity_id,),
+    )
     rows = [(int(row[0]), str(row[1]), str(row[2])) for row in await cursor.fetchall()]
     await cursor.close()
     return rows

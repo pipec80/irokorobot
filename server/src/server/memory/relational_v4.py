@@ -1136,7 +1136,8 @@ async def _set_archived(conn: aiosqlite.Connection, table: str, ids: Sequence[in
     marks, values = _id_list(ids)
     cursor = await conn.execute(
         f"UPDATE {table} SET archived_at = ? "  # noqa: S608 - a table of `_V4_TABLES`
-        f"WHERE id IN ({marks}) AND lifecycle = 'active' AND archived_at IS NULL",
+        f"WHERE id IN ({marks}) AND lifecycle = 'active' AND archived_at IS NULL "
+        "AND visibility = 'personal' AND sensitivity = 'normal'",
         (at, *values),
     )
     changed = max(cursor.rowcount, 0)

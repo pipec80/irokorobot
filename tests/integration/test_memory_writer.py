@@ -289,7 +289,16 @@ async def test_a_duplicate_is_the_result_not_an_error(owner: int) -> None:
 
 
 async def test_a_confirmed_restatement_unarchives_the_fact(owner: int) -> None:
-    existing = await _fact(owner, "likes", "el mate")
+    # The owner's own taste, as the canonical writer stores it: only such a row is archived.
+    existing = await _bounded(
+        assert_literal_fact(
+            subject_entity_id=owner,
+            definition=_definition("likes"),
+            value="el mate",
+            visibility="personal",
+            sensitivity="normal",
+        )
+    )
     async with db.transaction() as conn:
         await relational_v4.archive_v4_rows(
             conn, facts=(existing.id,), relations=(), at=iso_utc(_T0)

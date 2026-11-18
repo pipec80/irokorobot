@@ -38,6 +38,7 @@ from server.memory.admin_audit import (
 from server.memory.admin_forget import (
     ForgetKind,
     archive_groups,
+    audit_archive,
     audit_refused_forget,
     forget_for_good,
     plan_forget,
@@ -570,7 +571,10 @@ async def _forget(
     write_text: WriteText,
     now: str,
 ) -> int:
-    """Show what a deletion for good reaches, then delete it under the PIN and audit it."""
+    """Under the PIN, show what a deletion for good reaches, then delete it and audit it.
+
+    The PIN comes first, so nothing about what is stored is shown to someone without it.
+    """
     plan = await plan_forget(
         ForgetKind(request.kind or ""),
         owner_entity_id=owner,
@@ -578,7 +582,14 @@ async def _forget(
         words=request.name,
         now=now,
     )
+    if not await _grant_pin_if_needed(
+        required=True, read_secret=read_secret, write_text=write_text
+    ):
+        await audit_refused_forget(plan, actor=_actor(request), reason="pin", now=now)
+        write_text("Sin verificación de la persona titular: no se borró nada.")
+        return 1
     if plan.refusal is not None:
+        await audit_refused_forget(plan, actor=_actor(request), reason="refused", now=now)
         write_text(plan.refusal)
         return 1
     for line in plan.lines:
@@ -586,14 +597,21 @@ async def _forget(
     write_text("Esto no se puede deshacer.")
     if not _confirm(request, read_text, write_text):
         return 1
-    if not await _grant_pin_if_needed(
-        required=True, read_secret=read_secret, write_text=write_text
-    ):
-        await audit_refused_forget(plan, actor=_actor(request), reason="pin", now=now)
-        write_text("Sin verificación de la persona titular: no se borró nada.")
+    try:
+        result = await forget_for_good(plan, actor=_actor(request), now=now)
+    except BrainMemoryError:
+        await audit_refused_forget(plan, actor=_actor(request), reason="key", now=now)
+        write_text(
+            "No se borró nada: la persona todavía tiene datos de identidad (rol, credencial, "
+            "consentimiento o perfil, aunque estén revocados)."
+        )
         return 1
-    rows = await forget_for_good(plan, actor=_actor(request), now=now)
-    write_text(f"Borrado para siempre: {rows} filas.")
+    write_text(f"Borrado para siempre: {result.rows} filas.")
+    if not result.checkpointed:
+        write_text(
+            "Aviso: el registro de escritura no se pudo vaciar todavía; se vacía en la próxima "
+            "operación. Cierra otros programas que lean la base."
+        )
     return 0
 
 
@@ -608,9 +626,11 @@ async def _archive(
     if not await _grant_pin_if_needed(
         required=True, read_secret=read_secret, write_text=write_text
     ):
+        await audit_archive(_actor(request), refused="pin", now=now)
         write_text("Sin verificación de la persona titular: no se hizo nada.")
         return 1
     if request.action == "list":
+        await audit_archive(_actor(request), refused=None, now=now)
         groups = await archive_groups()
         for group in groups:
             write_text(
@@ -624,6 +644,8 @@ async def _archive(
         return 0
     if request.at is None:
         raise _RefusedError("restore necesita --at con el instante que muestra `archive list`.")
+    if request.at not in {group.at for group in await archive_groups()}:
+        raise _RefusedError("No hay nada archivado en ese instante: revisa `archive list`.")
     write_text(f"archive: recuperar lo archivado en {request.at}")
     if not _confirm(request, read_text, write_text):
         return 1

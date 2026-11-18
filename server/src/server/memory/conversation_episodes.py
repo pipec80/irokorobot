@@ -104,10 +104,11 @@ async def delete_episode_row(conn: aiosqlite.Connection, row_id: int) -> int:
     return deleted
 
 
-async def episode_summaries() -> list[tuple[int, str]]:
-    """Every written episode as ``(record id, summary)``, for ``forget_scope``; never logged."""
+async def episode_summaries(owner_entity_id: int) -> list[tuple[int, str]]:
+    """The owner's episodes as ``(record id, summary)``, for ``forget_scope``; never logged."""
     cursor = await db.get_conn().execute(
-        "SELECT source_record_id, summary FROM conversation_episodes"
+        "SELECT source_record_id, summary FROM conversation_episodes WHERE owner_entity_id = ?",
+        (owner_entity_id,),
     )
     rows = [(int(row[0]), str(row[1])) for row in await cursor.fetchall()]
     await cursor.close()

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, datetime
+import re
 import sqlite3
 from typing import TYPE_CHECKING, Final, Literal
 
@@ -64,6 +65,8 @@ __all__ = [
 ]
 
 type UnitKind = Literal["turn", "episode"]
+
+_HAS_WORD: Final = re.compile(r"\w")
 
 # An extended SQLite result code keeps its primary code in the low byte (267 is 11 | 1 << 8).
 _PRIMARY_CODE_MASK: Final = 0xFF
@@ -403,10 +406,12 @@ async def raise_record_sensitivity(
 async def unit_ids_naming(*, owner_entity_id: int, phrase: str, now: str) -> list[int]:
     """The owner's readable units whose body holds *phrase* as one FTS5 phrase (Plan 0086 D-7).
 
+    A phrase with no word character names nothing (FTS5 would refuse an empty phrase).
+
     The phrase is quoted, so no input is FTS syntax; accents and case are folded by the
     tokenizer. Only units every read may deliver are returned (``_READABLE``).
     """
-    if not phrase.strip():
+    if not _HAS_WORD.search(phrase):
         return []
     cursor = await db.get_conn().execute(
         "SELECT u.id FROM recall_units_fts f JOIN recall_units u ON u.id = f.rowid "  # noqa: S608
@@ -453,7 +458,7 @@ async def delete_unit_row(conn: aiosqlite.Connection, row_id: int) -> int:
 
 async def unit_ids_naming_stored(*, owner_entity_id: int, phrase: str) -> list[int]:
     """Every unit of the owner whose body holds *phrase*, archived or expired too (a deletion)."""
-    if not phrase.strip():
+    if not _HAS_WORD.search(phrase):
         return []
     cursor = await db.get_conn().execute(
         "SELECT u.id FROM recall_units_fts f JOIN recall_units u ON u.id = f.rowid "
@@ -485,7 +490,7 @@ async def archive_units(conn: aiosqlite.Connection, unit_ids: Sequence[int], *, 
     marks = ", ".join("?" for _ in values)
     cursor = await conn.execute(
         f"UPDATE recall_units SET archived_at = ? "  # noqa: S608 - placeholders only
-        f"WHERE id IN ({marks}) AND archived_at IS NULL",
+        f"WHERE id IN ({marks}) AND archived_at IS NULL AND sensitivity = 'normal'",
         (at, *values),
     )
     changed = max(cursor.rowcount, 0)

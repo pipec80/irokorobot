@@ -74,7 +74,11 @@ async def ids(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[
     likes = resolve_predicate("likes")
     assert likes is not None
     taste = await relational_v4.assert_literal_fact(
-        subject_entity_id=owner, definition=likes, value="el té"
+        subject_entity_id=owner,
+        definition=likes,
+        value="el té",
+        visibility="personal",
+        sensitivity="normal",
     )
     friend = await upsert_entity(name="Petirroja", type="person")
     contact = await write_contact(
@@ -176,7 +180,7 @@ def _forget(
 async def test_forget_fact_deletes_it_under_the_pin_and_audits_it(ids: dict[str, int]) -> None:
     lines, write = _sink()
 
-    code = await _run(_forget("fact", ids["taste"]), _Script("SI", _PIN), write)
+    code = await _run(_forget("fact", ids["taste"]), _Script(_PIN, "SI"), write)
 
     assert code == 0
     assert await _count("SELECT COUNT(*) FROM literal_facts_v4") == 0
@@ -194,7 +198,7 @@ async def test_forget_fact_deletes_it_under_the_pin_and_audits_it(ids: dict[str,
 
 async def test_a_wrong_pin_deletes_nothing_and_audits_the_refusal(ids: dict[str, int]) -> None:
     code = await _run(
-        _forget("fact", ids["taste"]), _Script("SI", "000000", "000000", "000000"), _sink()[1]
+        _forget("fact", ids["taste"]), _Script("000000", "000000", "000000"), _sink()[1]
     )
 
     assert code == 1
@@ -208,7 +212,7 @@ async def test_a_wrong_pin_deletes_nothing_and_audits_the_refusal(ids: dict[str,
 
 
 async def test_a_dry_run_deletes_nothing(ids: dict[str, int]) -> None:
-    code = await _run(_forget("fact", ids["taste"], dry_run=True), _Script(), _sink()[1])
+    code = await _run(_forget("fact", ids["taste"], dry_run=True), _Script(_PIN), _sink()[1])
 
     assert code == 1
     assert await _count("SELECT COUNT(*) FROM literal_facts_v4") == 1
@@ -219,7 +223,7 @@ async def test_forget_turn_takes_the_whole_episode_and_names_the_kept_fact(
 ) -> None:
     lines, write = _sink()
 
-    code = await _run(_forget("turn", ids["canary_turn"]), _Script("SI", _PIN), write)
+    code = await _run(_forget("turn", ids["canary_turn"]), _Script(_PIN, "SI"), write)
 
     assert code == 0
     assert (
@@ -239,7 +243,7 @@ async def test_forget_turn_takes_the_whole_episode_and_names_the_kept_fact(
 async def test_forget_person_by_name_deletes_only_what_names_the_canary(
     ids: dict[str, int],
 ) -> None:
-    code = await _run(_forget("person", name="Canaria"), _Script("SI", _PIN), _sink()[1])
+    code = await _run(_forget("person", name="Canaria"), _Script(_PIN, "SI"), _sink()[1])
 
     assert code == 0
     assert (
@@ -260,7 +264,7 @@ async def test_forget_person_by_name_deletes_only_what_names_the_canary(
 async def test_forget_person_by_id_deletes_the_contact_before_the_entity(
     ids: dict[str, int],
 ) -> None:
-    code = await _run(_forget("person", ids["friend"]), _Script("SI", _PIN), _sink()[1])
+    code = await _run(_forget("person", ids["friend"]), _Script(_PIN, "SI"), _sink()[1])
 
     assert code == 0
     assert await _count("SELECT COUNT(*) FROM care_contacts") == 0
@@ -277,7 +281,7 @@ async def test_forget_person_by_id_deletes_the_contact_before_the_entity(
 async def test_forget_person_refuses_the_owner(ids: dict[str, int]) -> None:
     lines, write = _sink()
 
-    code = await _run(_forget("person", ids["owner"]), _Script(), write)
+    code = await _run(_forget("person", ids["owner"]), _Script(_PIN), write)
 
     assert code == 1
     assert any("enrolada" in line for line in lines)
@@ -366,10 +370,109 @@ async def test_forget_person_reaches_rows_no_turn_carries(ids: dict[str, int]) -
     await db.close_db()
     db._conn = None
 
-    code = await _run(_forget("person", name="Canaria"), _Script("SI", _PIN), _sink()[1])
+    code = await _run(_forget("person", name="Canaria"), _Script(_PIN, "SI"), _sink()[1])
 
     assert code == 0
     assert await _count("SELECT COUNT(*) FROM recall_units WHERE body LIKE '%Canaria%'") == 0
     assert await _count("SELECT COUNT(*) FROM pending_topics WHERE topic = 'Canaria'") == 0
     assert await _count("SELECT COUNT(*) FROM literal_facts_v4 WHERE id = ?", own.id) == 0
     assert await _count("SELECT COUNT(*) FROM literal_facts_v4 WHERE id = ?", ids["taste"]) == 1
+
+
+# --- review findings of Task 8 --------------------------------------------------------------------
+
+
+async def test_nothing_is_shown_before_the_pin(ids: dict[str, int]) -> None:
+    lines, write = _sink()
+
+    code = await _run(_forget("person", name="Canaria"), _Script("0", "0", "0"), write)
+
+    assert code == 1
+    assert not any("turnos" in line or "contactos" in line for line in lines)
+    assert (
+        await _count(
+            "SELECT COUNT(*) FROM admin_audit WHERE outcome = 'refused' AND reason = 'pin'"
+        )
+        == 1
+    )
+
+
+async def test_a_person_with_a_revoked_role_is_refused_and_nothing_is_written(
+    ids: dict[str, int],
+) -> None:
+    await db.open_db()
+    async with db.transaction() as conn:
+        await conn.execute(
+            "INSERT INTO household_role_assignments (person_entity_id, role, reason, granted_at, "
+            "revoked_at) VALUES (?, 'guest', 'canary', ?, ?)",
+            (ids["friend"], instant_text(_T0), instant_text(_T0)),
+        )
+    await db.close_db()
+    db._conn = None
+    lines, write = _sink()
+
+    code = await _run(_forget("person", ids["friend"]), _Script(_PIN, "SI"), write)
+
+    assert code == 1
+    assert any("datos de identidad" in line for line in lines)
+    assert not register_path().exists()
+    assert await _count("SELECT COUNT(*) FROM entities WHERE id = ?", ids["friend"]) == 1
+    assert (
+        await _count(
+            "SELECT COUNT(*) FROM admin_audit WHERE outcome = 'refused' AND reason = 'key'"
+        )
+        == 1
+    )
+    # The next command starts: nothing poisoned the register.
+    assert await _run(_forget("fact", ids["taste"]), _Script(_PIN, "SI"), _sink()[1]) == 0
+
+
+async def test_forget_relation_and_episode(ids: dict[str, int]) -> None:
+    await db.open_db()
+    relations = await relational_v4.list_active_relations(ids["owner"], include_archived=True)
+    await db.close_db()
+    db._conn = None
+    assert relations == []  # the fixture's friend is a contact only; add a relation
+    await db.open_db()
+    has_sibling = resolve_predicate("has_sibling")
+    assert has_sibling is not None
+    relation = await relational_v4.assert_entity_relation(
+        source_entity_id=ids["owner"], definition=has_sibling, target_entity_id=ids["friend"]
+    )
+    await db.close_db()
+    db._conn = None
+
+    assert await _run(_forget("relation", relation.id), _Script(_PIN, "SI"), _sink()[1]) == 0
+    assert await _run(_forget("episode", ids["first_record"]), _Script(_PIN, "SI"), _sink()[1]) == 0
+
+    assert await _count("SELECT COUNT(*) FROM entity_relations_v4") == 0
+    assert await _count("SELECT COUNT(*) FROM conversation_episodes") == 0
+    assert (
+        await _count(
+            "SELECT COUNT(*) FROM conversation_records WHERE id = ? AND episode_status = 'skipped'",
+            ids["first_record"],
+        )
+        == 1
+    )
+
+
+async def test_archive_with_a_wrong_pin_is_audited_and_an_unknown_instant_refused(
+    ids: dict[str, int],
+) -> None:
+    code = await _run(
+        AdminRequest(command="archive", action="list"), _Script("0", "0", "0"), _sink()[1]
+    )
+    assert code == 1
+    assert (
+        await _count(
+            "SELECT COUNT(*) FROM admin_audit WHERE field_id = 'archive' AND outcome = 'refused'"
+        )
+        == 1
+    )
+
+    lines, write = _sink()
+    code = await _run(
+        AdminRequest(command="archive", action="restore", at=_ARCHIVED), _Script(_PIN), write
+    )
+    assert code == 1
+    assert any("No hay nada archivado" in line for line in lines)

@@ -32,7 +32,7 @@ from server.cognition.owner_authentication import OwnerUnlockService, owner_unlo
 from server.dependencies import get_owner_unlock_service
 from server.exceptions import TTSError
 from server.main import app
-from server.memory import candidates
+from server.memory import candidates, conversation_record, recall_store
 from server.memory.biometric_consent import grant_face_consent, revoke_face_consent
 from server.memory.candidate_dialogue import (
     ANSWER_REJECTED_PHRASE,
@@ -41,6 +41,7 @@ from server.memory.candidate_dialogue import (
     compose_offer,
 )
 from server.memory.candidate_types import CandidateChannel, CandidateStatus, ProposedCandidate
+from server.memory.conversation_types import TurnVerdict, make_turn
 from server.memory.declarative import upsert_entity
 from server.memory.entity_labels import get_person_label
 from server.memory.household_authorization import get_active_role
@@ -1129,3 +1130,39 @@ async def test_a_second_face_hears_no_read_back(
 
     assert response.json()["llm_response"] == _REPLY
     assert len(await _likes(owner)) == 1
+
+
+async def test_a_spoken_archive_is_read_back_and_confirmed_on_the_wire(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owner = household.owner_entity_id
+    turn = make_turn(
+        "el sábado fui al cine con mi amiga Canaria",
+        "qué bueno",
+        voice=TurnVerdict.VERIFIED,
+        correlation_id=uuid4(),
+        at=datetime.now(UTC) - timedelta(hours=2),
+    )
+    record_id = await conversation_record.append_turn(turn, owner_entity_id=owner, now=turn.at)
+    async with db.transaction() as conn:
+        await recall_store.insert_turn_unit(
+            conn, record_id=record_id, owner_entity_id=owner, turn=turn
+        )
+    reset_pending_changes()
+    _scene(monkeypatch, "No quiero saber nunca más de Canaria.", "Sí, autorizo.")
+
+    async with _client() as client:
+        asked = await client.post("/transcribe", files=_files())
+        answered = await client.post("/transcribe", files=_files())
+
+    reset_pending_changes()
+    assert asked.json()["llm_response"].startswith("Encontré un recuerdo de Canaria.")
+    assert answered.json()["llm_response"] == "Listo, lo dejé de lado."
+    assert ("archive_personal_memory", "allowed") in await _audit_rows()
+    cursor = await db.get_conn().execute(
+        "SELECT COUNT(*) FROM recall_units WHERE archived_at IS NOT NULL"
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    assert row is not None
+    assert int(row[0]) == 1

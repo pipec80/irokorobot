@@ -30,7 +30,7 @@ from server.memory.admin_audit import (
     record_admin_operation,
 )
 from server.memory.candidates import facts_confirmed_from_turn
-from server.memory.deletion_register import Deletion, DeletionKind, forget
+from server.memory.deletion_register import Deletion, DeletionKind, ForgetResult, forget
 from server.memory.forget_scope import person_deletions, person_scope, restore_archived
 
 if TYPE_CHECKING:
@@ -42,6 +42,7 @@ __all__ = [
     "ForgetKind",
     "ForgetPlan",
     "archive_groups",
+    "audit_archive",
     "audit_refused_forget",
     "forget_for_good",
     "plan_forget",
@@ -224,6 +225,7 @@ async def _audit(
     *,
     refused: str | None,
     now: str,
+    manage_transaction: bool = True,
 ) -> None:
     await record_admin_operation(
         actor_label=actor.label,
@@ -235,11 +237,12 @@ async def _audit(
         outcome=AdminOutcomeStatus.REFUSED if refused else AdminOutcomeStatus.APPLIED,
         reason=refused,
         recorded_at=now,
+        manage_transaction=manage_transaction,
     )
 
 
-async def forget_for_good(plan: ForgetPlan, *, actor: AdminActor, now: str) -> int:
-    """Delete what *plan* names through the deletion register, then audit it.
+async def forget_for_good(plan: ForgetPlan, *, actor: AdminActor, now: str) -> ForgetResult:
+    """Delete what *plan* names through the deletion register, audited in the same transaction.
 
     Args:
         plan: A plan without a refusal, from ``plan_forget``.
@@ -247,19 +250,30 @@ async def forget_for_good(plan: ForgetPlan, *, actor: AdminActor, now: str) -> i
         now: The deletion instant.
 
     Returns:
-        How many rows went.
+        How many rows went, and whether the write-ahead log was checkpointed.
+
+    Raises:
+        BrainMemoryError: If a foreign key refuses the deletion; nothing is deleted or written.
     """
-    result = await forget(plan.deletions, now=datetime.fromisoformat(now))
-    await _audit(
-        actor, AdminOperationKind.DELETE, plan.target, plan.field_id, refused=None, now=now
-    )
-    return result.rows
+
+    async def audit(_conn: object) -> None:
+        await _audit(
+            actor,
+            AdminOperationKind.DELETE,
+            plan.target,
+            plan.field_id,
+            refused=None,
+            now=now,
+            manage_transaction=False,
+        )
+
+    return await forget(plan.deletions, now=datetime.fromisoformat(now), audit=audit)
 
 
 async def audit_refused_forget(
     plan: ForgetPlan, *, actor: AdminActor, reason: str, now: str
 ) -> None:
-    """Audit a ``forget`` refused before anything was deleted (no PIN, nothing to delete)."""
+    """Audit a ``forget`` refused before anything was deleted (no PIN, nothing to delete, a key)."""
     await _audit(
         actor, AdminOperationKind.DELETE, plan.target, plan.field_id, refused=reason, now=now
     )
@@ -318,7 +332,25 @@ async def restore_archive_group(at: str, *, actor: AdminActor, now: str) -> Arch
     """
     async with db.transaction() as conn:
         counts = await restore_archived(conn, at=at)
-    await _audit(
-        actor, AdminOperationKind.CHANGE, TargetKind.POOL_LITERAL, "archive", refused=None, now=now
-    )
+        await _audit(
+            actor,
+            AdminOperationKind.CHANGE,
+            TargetKind.POOL_LITERAL,
+            "archive",
+            refused=None,
+            now=now,
+            manage_transaction=False,
+        )
     return counts
+
+
+async def audit_archive(actor: AdminActor, *, refused: str | None, now: str) -> None:
+    """Audit an ``archive list`` (its texts were shown) or an ``archive`` refused at the PIN."""
+    await _audit(
+        actor,
+        AdminOperationKind.EXPORT,
+        TargetKind.POOL_LITERAL,
+        "archive",
+        refused=refused,
+        now=now,
+    )

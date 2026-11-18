@@ -27,6 +27,7 @@ from enum import StrEnum
 import json
 import logging
 import os
+import sqlite3
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
@@ -130,7 +131,7 @@ def _parse(raw: str) -> _Line | None:
     if not isinstance(value, dict) or set(value) != _LINE_KEYS:
         return None
     seq, kind, row_id, at = value["seq"], value["kind"], value["id"], value["at"]
-    if not (isinstance(seq, int) and isinstance(row_id, int) and isinstance(at, str)):
+    if not (type(seq) is int and type(row_id) is int and isinstance(at, str)):  # no bool
         return None
     if kind not in DeletionKind.__members__.values() or len(at) != _INSTANT_LENGTH:
         return None
@@ -174,11 +175,15 @@ def _fsync_directory(directory: Path) -> None:
         os.close(descriptor)
 
 
-def _append(deletions: Sequence[Deletion], at: str) -> list[_Line]:
-    """Append one line per deletion and make it durable, before anything is deleted."""
+def _append(deletions: Sequence[Deletion], at: str, *, marker: int = 0) -> list[_Line]:
+    """Append one line per deletion and make it durable, before anything is deleted.
+
+    The first new ``seq`` follows both the file's last line and the database's marker, so a
+    register file that was lost or reset can never hand out a number a replay would skip.
+    """
     path = register_path()
     existing, complete = _read(path)
-    first = existing[-1].seq + 1 if existing else 1
+    first = max(existing[-1].seq if existing else 0, marker) + 1
     lines = [
         _Line(seq=first + offset, deletion=deletion, at=at)
         for offset, deletion in enumerate(deletions)
@@ -229,7 +234,37 @@ async def _apply(conn: aiosqlite.Connection, deletion: Deletion, at: str) -> int
     """Delete one row through its owner module, inside the caller's transaction."""
     if deletion.kind is DeletionKind.OWNER_RECORDS:
         return await conversation_consent.withdraw_in(conn, deletion.row_id, at=at)
-    return await _DELETERS[deletion.kind](conn, deletion.row_id)
+    rows = await _DELETERS[deletion.kind](conn, deletion.row_id)
+    if deletion.kind is DeletionKind.EPISODE:
+        # Without its episode the record is ordinary raw text again: the purge may take it whole
+        # (a record kept only for its episode would otherwise stay for ever, Plan 0086 D-11).
+        await conversation_record.set_episode_status(
+            deletion.row_id, conversation_record.EpisodeStatus.SKIPPED, conn=conn
+        )
+    return rows
+
+
+async def _probe(deletions: Sequence[Deletion], at: str) -> None:
+    """Try the deletions and roll them back, so a refused one never reaches the register.
+
+    A row a ``RESTRICT`` key still holds (a revoked role, a consent, a profile) would refuse the
+    deletion at every replay; it is refused here, before the append.
+
+    Raises:
+        BrainMemoryError: If a foreign key refuses one of them; nothing is written.
+    """
+    async with db.transaction() as conn:
+        await conn.execute("SAVEPOINT forget_probe")
+        try:
+            for deletion in deletions:
+                await _apply(conn, deletion, at)
+        except sqlite3.IntegrityError as exc:
+            raise BrainMemoryError(
+                "deletion refused by a foreign key: nothing was deleted"
+            ) from exc
+        finally:
+            await conn.execute("ROLLBACK TO forget_probe")
+            await conn.execute("RELEASE forget_probe")
 
 
 async def _marker() -> int:
@@ -237,40 +272,79 @@ async def _marker() -> int:
     return int(value) if value is not None else 0
 
 
-async def _apply_lines(lines: Sequence[_Line]) -> int:
-    """Apply *lines* in one durable transaction that also moves the marker; returns the rows."""
+type Audit = Callable[[aiosqlite.Connection], Awaitable[object]]
+
+
+async def _apply_line(conn: aiosqlite.Connection, line: _Line) -> tuple[int, bool]:
+    """Apply one replayed line in its own savepoint; a line a key refuses is skipped."""
+    await conn.execute("SAVEPOINT replay_line")
+    try:
+        rows = await _apply(conn, line.deletion, line.at)
+    except sqlite3.IntegrityError:
+        await conn.execute("ROLLBACK TO replay_line")
+        await conn.execute("RELEASE replay_line")
+        return 0, False
+    await conn.execute("RELEASE replay_line")
+    return rows, True
+
+
+async def _apply_lines(
+    lines: Sequence[_Line], *, replay: bool = False, audit: Audit | None = None
+) -> int:
+    """Apply *lines* in one durable transaction that also moves the marker; returns the rows.
+
+    On a replay each line has its own savepoint: a restored backup may hold a row that a later
+    revocation freed (a role, a consent), so a line its key refuses is logged by count and
+    skipped instead of stopping every start. A live deletion was probed before its append.
+    """
     if not lines:
         return 0
     rows = 0
+    refused = 0
     async with db.transaction(durable=True) as conn:
         for line in lines:
-            rows += await _apply(conn, line.deletion, line.at)
+            if replay:
+                done, applied = await _apply_line(conn, line)
+                rows += done
+                refused += 0 if applied else 1
+            else:
+                rows += await _apply(conn, line.deletion, line.at)
         await meta.set_flag_in(conn, MARKER_KEY, str(lines[-1].seq))
+        if audit is not None:
+            await audit(conn)
+    if refused:
+        logger.warning("deletion.replay refused lines=%d", refused)
     return rows
 
 
-async def forget(deletions: Sequence[Deletion], *, now: datetime) -> ForgetResult:
-    """Delete rows for good under the protocol (register, durable delete, checkpoint).
+async def forget(
+    deletions: Sequence[Deletion], *, now: datetime, audit: Audit | None = None
+) -> ForgetResult:
+    """Delete rows for good under the protocol (probe, register, durable delete, checkpoint).
 
     Args:
         deletions: The rows, in the order the foreign keys need (a care contact before its
             entity, a turn before its record).
         now: The deletion instant written on every line.
+        audit: Writes the operation's audit row inside the deletion's own transaction, so a
+            deletion is never left unaudited (``iroko-admin``).
 
     Returns:
         How many rows went, and whether the write-ahead log was checkpointed.
 
     Raises:
-        BrainMemoryError: If the register is unreadable or the database is not open; nothing is
-            deleted then.
+        BrainMemoryError: If a foreign key refuses a deletion, the register is unreadable or the
+            database is not open; nothing is deleted then.
     """
     if not deletions:
         return ForgetResult(rows=0, checkpointed=True)
+    at = instant_text(now)
+    await _probe(deletions, at)
     # Lines a cut left unapplied (appended, never deleted) go first, so the marker never skips one.
     marker = await _marker()
     pending = [line for line in _read(register_path())[0] if line.seq > marker]
-    lines = _append(deletions, instant_text(now))
-    rows = await _apply_lines([*pending, *lines])
+    lines = _append(deletions, at, marker=marker)
+    rows = await _apply_lines([*pending, *lines], audit=audit)
     checkpointed = await db.checkpoint_wal_until_done()
     logger.info(
         "Deleted for good: %d line(s), %d row(s)",
@@ -295,7 +369,7 @@ async def replay_register() -> int:
     pending = [line for line in lines if line.seq > marker]
     if not pending:
         return 0
-    rows = await _apply_lines(pending)
+    rows = await _apply_lines(pending, replay=True)
     await db.checkpoint_wal_until_done()
     logger.info("Deletion register replayed: %d line(s), %d row(s)", len(pending), rows)
     return len(pending)
@@ -308,8 +382,10 @@ async def forget_record(record_id: int, *, now: datetime) -> bool:
     is unlinked.
 
     Returns:
-        Whether a segment was deleted.
+        Whether a segment was deleted; a number that names no segment writes no register line.
     """
+    if await conversation_record.read_record(record_id) is None:
+        return False
     result = await forget([Deletion(DeletionKind.RECORD, record_id)], now=now)
     return result.rows > 0
 

@@ -168,7 +168,7 @@ async def person_scope(
     )
     turns = [
         turn_id
-        for turn_id, heard, said in await conversation_record.turn_texts()
+        for turn_id, heard, said in await conversation_record.turn_texts(owner_entity_id)
         if mentions(heard, names) or mentions(said, names)
     ]
     units = sorted(
@@ -195,31 +195,35 @@ async def person_scope(
         if for_deletion and names
         else ()
     )
+    topics = [
+        (topic_id, sensitivity)
+        for topic_id, text, sensitivity in await pending_store.topic_texts(
+            owner_entity_id, include_archived=for_deletion
+        )
+        if mentions(text, names)
+    ]
     return PersonScope(
         entity_id=entity_id,
         enrolled=entity_id is not None and await _enrolled(entity_id, owner_entity_id),
         above_normal=any(fact.sensitivity != _NORMAL for fact in facts)
-        or any(relation.sensitivity != _NORMAL for relation in relations),
+        or any(relation.sensitivity != _NORMAL for relation in relations)
+        or any(sensitivity != _NORMAL for _, sensitivity in topics),
         contacts=await care_contacts.contact_ids_of(entity_id) if entity_id is not None else (),
         facts=tuple(fact.id for fact in facts),
         relations=tuple(relation.id for relation in relations),
         turns=tuple(turns),
-        episodes=await _episodes(names, turns),
+        episodes=await _episodes(owner_entity_id, names, turns),
         units=tuple(units),
-        topics=tuple(
-            topic_id
-            for topic_id, text in await pending_store.topic_texts(
-                owner_entity_id, include_archived=for_deletion
-            )
-            if mentions(text, names)
-        ),
+        topics=tuple(topic_id for topic_id, _ in topics),
         owner_facts=owner_facts,
         all_personal=all(fact.visibility == _PERSONAL for fact in facts)
         and all(relation.visibility == _PERSONAL for relation in relations),
     )
 
 
-async def _episodes(names: Sequence[str], turns: Sequence[int]) -> tuple[int, ...]:
+async def _episodes(
+    owner_entity_id: int, names: Sequence[str], turns: Sequence[int]
+) -> tuple[int, ...]:
     """The records whose episode names the person or holds one of the named turns.
 
     A summary cannot be partly unsaid: deleting a story deletes its segment's whole episode
@@ -227,7 +231,7 @@ async def _episodes(names: Sequence[str], turns: Sequence[int]) -> tuple[int, ..
     """
     records = {
         record_id
-        for record_id, summary in await conversation_episodes.episode_summaries()
+        for record_id, summary in await conversation_episodes.episode_summaries(owner_entity_id)
         if mentions(summary, names)
     }
     for turn_id in turns:
