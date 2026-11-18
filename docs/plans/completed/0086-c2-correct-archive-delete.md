@@ -456,9 +456,9 @@ every `iroko-admin` step and reads `logs/server.log`; Pipec speaks and types the
 Cases 1 to 6 are case 2, 7 to 9 case 3, 10 to 12 case 1 (its greeting days are covered by Task 2's
 tests, as in Plan 0084), 13 to 21 case 4. A step that fails is fixed with its RED test and repeated.
 
-- [ ] **Step 1:** the script above; the record `docs/evals/0086-c2-acceptance.md` (outcomes and
+- [x] **Step 1:** the script above; the record `docs/evals/0086-c2-acceptance.md` (outcomes and
   counts only).
-- [ ] **Step 2:** when Pipec accepts, the `pre-0086` backup deleted and recorded; the documents of
+- [x] **Step 2:** when Pipec accepts, the `pre-0086` backup deleted and recorded; the documents of
   the permitted list updated (ADR 0032 and 0039 `Accepted`, the notes on ADR 0019, 0026, 0027 and
   0038); the plan moved to `completed/`; commit `docs: close plan 0086, correct archive and delete`,
   push, PR, squash-merge, delete the branch.

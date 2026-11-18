@@ -69,6 +69,13 @@ green on #285, #286, #287 and #288. Three read-only reviews (database, security,
 and the automated security review found one critical defect (a deletion a key refused poisoned the
 register and stopped every start) and the important ones; each was fixed with its test first.
 
+## Close
+
+- Accepted by Pipec on 2026-11-18. The `post-0086` backup (the database and its deletion
+  register) was opened, restored into a copy and checked: integrity ok, schema version 21; the
+  copy was deleted.
+- The `pre-0086` backup was deleted after the acceptance.
+
 ## Open points, kept for the review of all plans (Pipec, 2026-11-18)
 
 Pipec's rule for the MVP: a wide margin of error; these edges are not fixed now.
