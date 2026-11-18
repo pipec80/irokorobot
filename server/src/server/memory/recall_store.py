@@ -217,7 +217,9 @@ def tells_something(text: str) -> bool:
     request is answered by a closed rule and tells nothing; found on Pipec's hardware run
     (2026-11-03), such questions were later read back as «me contaste…». Only words that resolve
     to ordinary conversation become a unit. With the sensitive switch on, a sensitive question
-    tells nothing too; with memory on, a stated or asked secret value tells nothing (Plan 0079).
+    tells nothing too; with memory on, a stated or asked secret value tells nothing (Plan 0079),
+    and neither does a spoken change of a memory: «no quiero saber más de X» became a unit after
+    the archive it asked for, and recall read it back (Plan 0086, hardware 2026-11-18).
 
     Args:
         text: What the owner said.
@@ -234,6 +236,7 @@ def tells_something(text: str) -> bool:
         secrets=settings.memory_enabled,
         alta=settings.sensitive_read_enabled and settings.alta_read_enabled,
         occurred=occurred_time_on(),
+        changes=settings.memory_enabled,
     )
     return resolution.need is InformationNeed.GENERIC_CONVERSATION
 
