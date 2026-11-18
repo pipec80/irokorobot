@@ -11,7 +11,7 @@
 
 These contracts give Iroko one typed language for inputs, evidence, active
 context, confidence, authorization, and cognitive outcomes. Adapters translate
-audio, text, images, simulated sensors, and future hardware into these models.
+audio, text, images, sensor readings, and future hardware into these models.
 The cognitive core consumes the models without importing camera, microphone,
 database, HTTP, Ollama, or cloud-provider details.
 
@@ -127,7 +127,7 @@ objects or provider clients.
 
 Concrete payloads are introduced only when a feature needs them. For example,
 a future `VisualObservationPayload` may contain typed people and objects, while
-the shared envelope remains unchanged for webcam, simulator, or another camera.
+the shared envelope remains unchanged for the webcam, a recorded frame, or another camera.
 
 ### `CognitiveEvent[PayloadT]`
 
@@ -194,7 +194,7 @@ fusion.
 Microphone adapter ──> Observation[AudioPayload]
 Web adapter ─────────> Observation[TextPayload]
 Camera adapter ──────> Observation[VisualPayload]
-Sensor simulator ────> Observation[SensorPayload]
+Sensor adapter ──────> Observation[SensorPayload]   (tests: recordings of real readings)
                               │
                               v
                     small typed orchestrator
