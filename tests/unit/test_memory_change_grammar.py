@@ -91,3 +91,13 @@ def test_the_need_resolves_only_with_the_flag() -> None:
         resolve_information_need("¿Qué hora es?", changes=True).need
         is not InformationNeed.MEMORY_CHANGE
     )
+
+
+def test_a_secret_is_never_a_change() -> None:
+    """The secret guard wins (security review of 4cde5a2): a stated secret never reaches a change."""
+    message = "Ya no me gusta mi clave, ahora mi clave es 4821."
+
+    assert resolve_information_need(message, changes=True, secrets=True).need is (
+        InformationNeed.SECRET_VALUE
+    )
+    assert resolve_information_need(message, changes=True).need is not InformationNeed.MEMORY_CHANGE

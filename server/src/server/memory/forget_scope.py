@@ -50,6 +50,7 @@ __all__ = [
 ]
 
 _NORMAL = "normal"
+_PERSONAL = "personal"
 
 
 @dataclass(frozen=True)
@@ -69,6 +70,9 @@ class PersonScope:
     # Only for a deletion (``for_deletion=True``): the owner's own facts whose value names the
     # person, history included; ``units`` and ``topics`` then also hold archived and expired rows.
     owner_facts: tuple[int, ...] = ()
+    # Whether every fact and relation reached is ``personal`` (a voice archive refuses otherwise:
+    # the policy is asked for the owner's own personal data only).
+    all_personal: bool = True
 
     @property
     def archivable(self) -> int:
@@ -210,6 +214,8 @@ async def person_scope(
             if mentions(text, names)
         ),
         owner_facts=owner_facts,
+        all_personal=all(fact.visibility == _PERSONAL for fact in facts)
+        and all(relation.visibility == _PERSONAL for relation in relations),
     )
 
 

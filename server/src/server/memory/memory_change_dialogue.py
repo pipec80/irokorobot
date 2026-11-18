@@ -55,6 +55,7 @@ from server.memory.lexicon import (
     PLURAL_ARTICLES,
 )
 from server.memory.predicate_registry import resolve_predicate
+from server.memory.preference_gate import match_preference
 from server.memory.profile_card_access import may_read_own_memory
 from server.memory.relational_v4 import (
     get_active_literal_facts,
@@ -91,6 +92,8 @@ type AuditWriter = Callable[[AuthorizationRequest, AuthorizationDecision], Await
 
 _NORMAL = "normal"
 _PERSONAL = "personal"
+# The first-person trigger that declares each taste, to check a correction's new value.
+_GATE_TRIGGERS = {"likes": "me gusta", "dislikes": "no me gusta", "prefers": "prefiero"}
 _EVENT = "memory.change"
 
 
@@ -182,8 +185,24 @@ async def _propose_correction(
     )
     if change.replacement is None or change.replacement_predicate is None:
         return _ask(CHANGE_CORRECT_QUESTION.format(old=old)), pending
+    if not _passes_the_taste_gate(change.replacement_predicate, change.replacement):
+        return MemoryAnswerReply(CHANGE_ADMIN_ONLY), None
     new = compose_taste(change.replacement_predicate, change.replacement)
     return _ask(CHANGE_REPLACE_QUESTION.format(old=old, new=new)), pending
+
+
+def _passes_the_taste_gate(predicate: str, value: str) -> bool:
+    """Whether a new value is a taste the preference gate would accept as said.
+
+    A correction's new value enters the store without a candidate, so it meets the same filters
+    first (ADR 0021 decision 4): no person, place, health, money, credential or disclosure word,
+    no clause, one taste of that polarity.
+    """
+    trigger = _GATE_TRIGGERS.get(predicate)
+    if trigger is None:
+        return False
+    matches = match_preference(f"{trigger} {value}").matches
+    return len(matches) == 1 and matches[0].predicate == predicate
 
 
 async def _own_tastes_named(person_id: int, target: str) -> tuple[int, ...]:
@@ -208,7 +227,7 @@ async def _propose_archive(
     change: MemoryChange, person_id: int, *, channel: WriteChannel, now: datetime
 ) -> tuple[MemoryAnswerReply, _Pending | None]:
     scope = await person_scope(person_id, now=instant_text(now), words=change.target)
-    if scope.enrolled or scope.above_normal or scope.contacts:
+    if scope.enrolled or scope.above_normal or scope.contacts or not scope.all_personal:
         return MemoryAnswerReply(CHANGE_ADMIN_ONLY), None
     tastes = await _own_tastes_named(person_id, change.target)
     count = scope.archivable + len(tastes)

@@ -350,7 +350,8 @@ def resolve_information_need(
         privacy-safe rule identifier (``None`` only for generic conversation).
     """
     utterance = _Utterance(message=message, normalized=normalize_spanish(message))
-    if changes and parse_memory_change(message) is not None:
+    # A message that states, asks or offers a secret is never a change: the guard wins.
+    if changes and secret_kind(message) is None and parse_memory_change(message) is not None:
         return _resolution(InformationNeed.MEMORY_CHANGE, IntentMatch.EXACT, "memory.change.v1")
     for rule in _rules_for(recall, sensitive, secrets, alta, occurred):
         resolution = rule(utterance)

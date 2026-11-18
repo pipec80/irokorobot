@@ -501,3 +501,35 @@ async def test_archiving_clears_the_short_term_session(
     await _answer("Sí, autorizo.", actor)
 
     assert cleared == [True]
+
+
+# --- what a voice change may not do (security review of 4cde5a2) ---------------------------------
+
+
+async def test_a_new_value_the_taste_gate_refuses_is_only_changed_in_iroko_admin(
+    owner: int,
+) -> None:
+    await _taste(owner, "el café")
+
+    reply = await _propose(
+        "Ya no me gusta el café, ahora prefiero el banco de mi barrio.", _actor(owner)
+    )
+
+    assert reply is not None
+    assert reply.phrase == "Eso se cambia en iroko-admin, con tu PIN."
+    assert not has_pending_change(owner, _T0)
+
+
+async def test_a_relation_that_is_not_personal_is_only_changed_in_iroko_admin(owner: int) -> None:
+    friend = await upsert_entity(name="Zorzal", type="person")
+    await relational_v4.assert_entity_relation(
+        source_entity_id=owner,
+        definition=_definition("has_sibling"),
+        target_entity_id=friend,
+        visibility="household",
+    )
+
+    reply = await _propose("No quiero saber más de Zorzal.", _actor(owner))
+
+    assert reply is not None
+    assert reply.phrase == "Eso se cambia en iroko-admin, con tu PIN."
