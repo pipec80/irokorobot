@@ -462,6 +462,57 @@ async def list_active_relations(
     return [_relation_from_row(tuple(row)) for row in rows]
 
 
+async def rows_about_entity(
+    entity_id: int, *, include_archived: bool = False
+) -> tuple[list[LiteralFactV4], list[EntityRelationV4]]:
+    """The active facts about an entity and the active relations it is an endpoint of.
+
+    For ``forget_scope`` (Plan 0086 D-7, D-13): what setting a person aside or deleting them
+    reaches. It applies no runtime authorization.
+
+    Args:
+        entity_id: The person.
+        include_archived: Also the rows already set aside.
+
+    Returns:
+        The facts and the relations, each by id.
+    """
+    archived = _unarchived(include_archived)
+    cursor = await get_conn().execute(
+        f"SELECT {_LITERAL_COLUMNS} FROM literal_facts_v4 "  # noqa: S608
+        f"WHERE subject_entity_id = ? AND lifecycle = 'active' {archived}ORDER BY id",
+        (entity_id,),
+    )
+    facts = [_literal_from_row(tuple(row)) for row in await cursor.fetchall()]
+    await cursor.close()
+    cursor = await get_conn().execute(
+        f"SELECT {_RELATION_COLUMNS} FROM entity_relations_v4 "  # noqa: S608
+        "WHERE (source_entity_id = ? OR target_entity_id = ?) AND lifecycle = 'active' "
+        f"{archived}ORDER BY id",
+        (entity_id, entity_id),
+    )
+    relations = [_relation_from_row(tuple(row)) for row in await cursor.fetchall()]
+    await cursor.close()
+    return facts, relations
+
+
+async def archived_v4_rows() -> tuple[list[LiteralFactV4], list[EntityRelationV4]]:
+    """Every fact and relation set aside, for ``iroko-admin archive list`` (Plan 0086 D-13)."""
+    cursor = await get_conn().execute(
+        f"SELECT {_LITERAL_COLUMNS} FROM literal_facts_v4 "  # noqa: S608
+        "WHERE archived_at IS NOT NULL ORDER BY archived_at, id"
+    )
+    facts = [_literal_from_row(tuple(row)) for row in await cursor.fetchall()]
+    await cursor.close()
+    cursor = await get_conn().execute(
+        f"SELECT {_RELATION_COLUMNS} FROM entity_relations_v4 "  # noqa: S608
+        "WHERE archived_at IS NOT NULL ORDER BY archived_at, id"
+    )
+    relations = [_relation_from_row(tuple(row)) for row in await cursor.fetchall()]
+    await cursor.close()
+    return facts, relations
+
+
 _NOT_A_STORED_INSTANT = "not a stored instant"
 _LEGACY_INSTANT = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}")
 
@@ -1127,6 +1178,35 @@ async def restore_archived_v4(conn: aiosqlite.Connection, *, at: str) -> tuple[i
         counts.append(max(cursor.rowcount, 0))
         await cursor.close()
     return counts[0], counts[1]
+
+
+async def delete_literal_fact_row(conn: aiosqlite.Connection, row_id: int) -> int:
+    """Delete one literal fact for good, inside the caller's transaction (Plan 0086 D-12).
+
+    Only ``deletion_register`` calls it, under the deletion protocol. A fact that superseded or was superseded
+    by it keeps its row; the link becomes NULL.
+
+    Returns:
+        How many rows went (0 when it was already gone: a replay is idempotent).
+    """
+    cursor = await conn.execute("DELETE FROM literal_facts_v4 WHERE id = ?", (row_id,))
+    deleted = max(cursor.rowcount, 0)
+    await cursor.close()
+    return deleted
+
+
+async def delete_entity_relation_row(conn: aiosqlite.Connection, row_id: int) -> int:
+    """Delete one relation for good, inside the caller's transaction (Plan 0086 D-12).
+
+    Only ``deletion_register`` calls it, under the deletion protocol.
+
+    Returns:
+        How many rows went (0 when it was already gone: a replay is idempotent).
+    """
+    cursor = await conn.execute("DELETE FROM entity_relations_v4 WHERE id = ?", (row_id,))
+    deleted = max(cursor.rowcount, 0)
+    await cursor.close()
+    return deleted
 
 
 async def unarchive_literal_fact(conn: aiosqlite.Connection, fact_id: int) -> bool:

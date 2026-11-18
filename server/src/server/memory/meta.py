@@ -7,11 +7,15 @@ data.
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from server import db
 from server.cognition.clock import utc_now
 from server.db import get_conn
 from server.timestamps import instant_text
+
+if TYPE_CHECKING:
+    import aiosqlite
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +37,22 @@ async def get_flag(key: str) -> str | None:
     row = await cur.fetchone()
     await cur.close()
     return str(row[0]) if row else None
+
+
+async def set_flag_in(conn: aiosqlite.Connection, key: str, value: str) -> None:
+    """Insert or update a flag inside the caller's open transaction (the deletion register).
+
+    Args:
+        conn: The connection of an open ``db.transaction()``.
+        key: Flag name.
+        value: Value to store.
+    """
+    await conn.execute(
+        "INSERT INTO meta (key, value, updated_at) VALUES (?, ?, ?) "
+        "ON CONFLICT (key) DO UPDATE SET value = excluded.value, "
+        "updated_at = excluded.updated_at",
+        (key, value, instant_text(utc_now())),
+    )
 
 
 async def set_flag(key: str, value: str) -> None:

@@ -15,10 +15,10 @@ import pytest
 from server.cognition.occurred_time import occurred_window
 from server.cognition.recall_cues import WhenKind
 from server.memory import conversation_record as record, recall_store
-from server.memory.conversation_consent import revoke_conversation_consent
 from server.memory.conversation_record import EpisodeStatus
 from server.memory.conversation_types import RecordedTurn, TurnVerdict, make_turn
 from server.memory.declarative import upsert_entity
+from server.memory.deletion_register import withdraw_conversation_consent
 from server.memory.recall_answer import word_when
 from server.memory.recall_search import RecallHit
 from server.settings import settings
@@ -177,7 +177,7 @@ async def test_withdrawing_the_consent_deletes_the_kept_diary(owner: int) -> Non
     await _closed_record(owner, 0, episode=True)
     await record.purge_records(_T0 + timedelta(days=400))
 
-    await revoke_conversation_consent(owner, now=_T0 + timedelta(days=401))
+    await withdraw_conversation_consent(owner, now=_T0 + timedelta(days=401))
 
     assert await _count("SELECT COUNT(*) FROM conversation_episodes") == 0
     assert await _count("SELECT COUNT(*) FROM recall_units") == 0

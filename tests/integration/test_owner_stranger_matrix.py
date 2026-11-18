@@ -37,8 +37,8 @@ from server.memory.biometric_consent import grant_face_consent, revoke_face_cons
 from server.memory.conversation_capture import capture_turn
 from server.memory.conversation_consent import (
     grant_conversation_consent,
-    revoke_conversation_consent,
 )
+from server.memory.deletion_register import withdraw_conversation_consent
 from server.memory.entity_labels import get_person_label
 from server.memory.household_authorization import get_active_role
 from server.memory.owner_credentials import get_active_owner_pin_credential
@@ -716,7 +716,7 @@ async def test_no_record_without_the_consent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     del llm_calls, recording_owner
-    await revoke_conversation_consent(card_owner, now=datetime.now(UTC))
+    await withdraw_conversation_consent(card_owner, now=datetime.now(UTC))
     _see(monkeypatch, _OWNER_FACE)
 
     await voice.speak("Hola, ¿cómo estás?", frame=True)

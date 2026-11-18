@@ -29,10 +29,14 @@ from server.timestamps import instant_text
 if TYPE_CHECKING:
     from collections.abc import Collection
 
+    import aiosqlite
+
 __all__ = [
     "CareContact",
     "ContactRole",
+    "contact_ids_of",
     "count_active_contacts",
+    "delete_contact_row",
     "delete_contacts_by_channel",
     "entity_has_contact_rows",
     "has_active_contact",
@@ -486,6 +490,31 @@ async def revoke_contact(
         changed = cursor.rowcount
         await cursor.close()
     return changed > 0
+
+
+async def contact_ids_of(contact_entity_id: int) -> tuple[int, ...]:
+    """Every contact row naming a person, revoked ones too (each holds the ``RESTRICT`` key)."""
+    cursor = await get_conn().execute(
+        "SELECT id FROM care_contacts WHERE contact_entity_id = ? ORDER BY id",
+        (contact_entity_id,),
+    )
+    rows = tuple(int(row[0]) for row in await cursor.fetchall())
+    await cursor.close()
+    return rows
+
+
+async def delete_contact_row(conn: aiosqlite.Connection, row_id: int) -> int:
+    """Delete one care contact for good, inside the caller's transaction (Plan 0086 D-12).
+
+    Only ``deletion_register`` calls it, under the deletion protocol.
+
+    Returns:
+        How many rows went (0 when it was already gone: a replay is idempotent).
+    """
+    cursor = await conn.execute("DELETE FROM care_contacts WHERE id = ?", (row_id,))
+    deleted = max(cursor.rowcount, 0)
+    await cursor.close()
+    return deleted
 
 
 async def delete_contacts_by_channel(

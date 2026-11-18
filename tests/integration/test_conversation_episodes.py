@@ -17,6 +17,7 @@ from server.memory.conversation_record import EpisodeStatus
 from server.memory.conversation_summary import NOTHING_TO_REMEMBER, EpisodeDraft
 from server.memory.conversation_types import TurnVerdict, make_turn
 from server.memory.declarative import upsert_entity
+from server.memory.deletion_register import forget_record
 from server.settings import settings
 
 from server import db
@@ -141,7 +142,7 @@ async def test_a_record_deleted_meanwhile_is_gone_and_no_episode_exists(owner: i
     view = await _closed_record(owner, TurnVerdict.VERIFIED)
 
     async def summarize_then_delete(_client: httpx.AsyncClient, _turns: object) -> EpisodeDraft:
-        await record.delete_record(view.summary.id)
+        await forget_record(view.summary.id, now=_T0)
         return _DRAFT
 
     outcome = await write_episode(

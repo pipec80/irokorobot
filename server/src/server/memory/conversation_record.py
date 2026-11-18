@@ -43,14 +43,18 @@ __all__ = [
     "close_idle_records",
     "count_failed_attempt",
     "delete_all_records",
-    "delete_record",
+    "delete_record_row",
+    "delete_turn_row",
     "find_turn_id",
     "has_open_record",
     "list_records",
     "next_pending_record",
     "purge_records",
     "read_record",
+    "record_turn_count",
     "set_episode_status",
+    "turn_record_id",
+    "turn_texts",
 ]
 
 logger = logging.getLogger(__name__)
@@ -114,6 +118,8 @@ class RecordView:
     summary: RecordSummary
     owner_entity_id: int
     turns: tuple[RecordedTurn, ...] = field(repr=False)
+    # The stored id of each turn, in the same order (`iroko-admin forget turn`, Plan 0086).
+    turn_ids: tuple[int, ...] = field(default=(), repr=False)
 
 
 def _summary(row: tuple[object, ...]) -> RecordSummary:
@@ -334,13 +340,18 @@ async def _view(where: str, params: tuple[object, ...], order: str = "") -> Reco
     values = tuple(row)
     summary = _summary(values[:9])
     cursor = await conn.execute(
-        f"SELECT {_TURN_COLUMNS} FROM conversation_turns "  # noqa: S608
+        f"SELECT {_TURN_COLUMNS}, id FROM conversation_turns "  # noqa: S608
         "WHERE record_id = ? ORDER BY said_at, id",
         (summary.id,),
     )
-    turns = tuple(_turn(tuple(turn_row)) for turn_row in await cursor.fetchall())
+    rows = [tuple(turn_row) for turn_row in await cursor.fetchall()]
     await cursor.close()
-    return RecordView(summary=summary, owner_entity_id=int(str(values[9])), turns=turns)
+    return RecordView(
+        summary=summary,
+        owner_entity_id=int(str(values[9])),
+        turns=tuple(_turn(turn_row) for turn_row in rows),
+        turn_ids=tuple(int(str(turn_row[-1])) for turn_row in rows),
+    )
 
 
 async def read_record(record_id: int) -> RecordView | None:
@@ -392,19 +403,65 @@ async def count_failed_attempt(record_id: int) -> int:
     return 0 if row is None else int(row[0])
 
 
-async def delete_record(record_id: int) -> bool:
-    """Delete one segment and, by cascade, its episode; the next segment is unlinked.
+async def turn_texts() -> list[tuple[int, str, str]]:
+    """Every stored turn as ``(id, heard, said)``, for ``forget_scope`` to find a name in.
+
+    Read by the administration and the voice archive only; never logged.
+    """
+    cursor = await db.get_conn().execute("SELECT id, heard, said FROM conversation_turns")
+    rows = [(int(row[0]), str(row[1]), str(row[2])) for row in await cursor.fetchall()]
+    await cursor.close()
+    return rows
+
+
+async def record_turn_count(record_id: int) -> int:
+    """How many turns a record still holds (0 for a record kept only for its episode)."""
+    cursor = await db.get_conn().execute(
+        "SELECT COUNT(*) FROM conversation_turns WHERE record_id = ?", (record_id,)
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    return 0 if row is None else int(row[0])
+
+
+async def turn_record_id(turn_id: int) -> int | None:
+    """The record a stored turn belongs to, or ``None`` when there is no such turn."""
+    cursor = await db.get_conn().execute(
+        "SELECT record_id FROM conversation_turns WHERE id = ?", (turn_id,)
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    return None if row is None else int(row[0])
+
+
+async def delete_turn_row(conn: aiosqlite.Connection, row_id: int) -> int:
+    """Delete one turn for good, inside the caller's transaction (Plan 0086 D-12).
+
+    Only ``deletion_register`` calls it, under the deletion protocol. Its recall unit, candidate and pending topic
+    go with it (CASCADE).
 
     Returns:
-        Whether a segment was deleted.
+        How many rows went (0 when it was already gone: a replay is idempotent).
     """
-    async with db.transaction() as conn:
-        cursor = await conn.execute("DELETE FROM conversation_records WHERE id = ?", (record_id,))
-        deleted = cursor.rowcount
-        await cursor.close()
-    if deleted:
-        await db.checkpoint_wal()
-    return bool(deleted)
+    cursor = await conn.execute("DELETE FROM conversation_turns WHERE id = ?", (row_id,))
+    deleted = max(cursor.rowcount, 0)
+    await cursor.close()
+    return deleted
+
+
+async def delete_record_row(conn: aiosqlite.Connection, row_id: int) -> int:
+    """Delete one segment for good, inside the caller's transaction (Plan 0086 D-12).
+
+    Only ``deletion_register`` calls it, under the deletion protocol. Its turns, episode and what hangs from them go
+    with it (CASCADE).
+
+    Returns:
+        How many rows went (0 when it was already gone: a replay is idempotent).
+    """
+    cursor = await conn.execute("DELETE FROM conversation_records WHERE id = ?", (row_id,))
+    deleted = max(cursor.rowcount, 0)
+    await cursor.close()
+    return deleted
 
 
 async def delete_all_records(conn: aiosqlite.Connection) -> int:

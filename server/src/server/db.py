@@ -250,6 +250,31 @@ async def open_db() -> None:
     _write_lock = asyncio.Lock()
 
 
+async def checkpoint_wal_until_done(attempts: int = 5, pause_s: float = 0.2) -> bool:
+    """Retry the checkpoint until SQLite reports it done, for a deletion (ADR 0038 decision 4).
+
+    A reader holding the log postpones a checkpoint; a deletion must not leave its old pages in
+    the write-ahead log, so it tries again a few times and logs a count when it cannot.
+
+    Args:
+        attempts: How many checkpoints to try at most.
+        pause_s: The pause between two tries, in seconds.
+
+    Returns:
+        Whether a checkpoint completed.
+
+    Raises:
+        BrainMemoryError: If the database is not open.
+    """
+    for attempt in range(attempts):
+        if await checkpoint_wal():
+            return True
+        if attempt + 1 < attempts:
+            await asyncio.sleep(pause_s)
+    logger.warning("deletion.checkpoint postponed attempts=%d", attempts)
+    return False
+
+
 async def checkpoint_wal() -> bool:
     """Fold the write-ahead log into the database file and truncate it, if SQLite lets it.
 
@@ -521,6 +546,18 @@ async def run_migrations() -> None:
     logger.info("Schema up-to-date (version %d)", _MIGRATIONS[-1].version)
 
 
+async def _restore_synchronous(conn: aiosqlite.Connection) -> None:
+    """Put ``synchronous=NORMAL`` back after a durable transaction; never raises.
+
+    A restore that fails (the connection closed under us) must not replace the caller's own
+    outcome, so it is logged by class and swallowed; ``open_db`` sets the pragma again.
+    """
+    try:
+        await conn.execute("PRAGMA synchronous = NORMAL")
+    except (aiosqlite.Error, ValueError) as exc:
+        logger.warning("synchronous restore failed (%s)", type(exc).__name__)
+
+
 async def _rollback_quietly(conn: aiosqlite.Connection) -> None:
     """Roll back after a failure (a COMMIT that raised, a failed migration); never raises.
 
@@ -535,7 +572,7 @@ async def _rollback_quietly(conn: aiosqlite.Connection) -> None:
 
 
 @asynccontextmanager
-async def transaction() -> AsyncGenerator[aiosqlite.Connection]:
+async def transaction(*, durable: bool = False) -> AsyncGenerator[aiosqlite.Connection]:
     """Own one complete runtime write transaction under the module lock.
 
     Serializes writes at the coroutine level so a multi-`await` transaction
@@ -553,6 +590,13 @@ async def transaction() -> AsyncGenerator[aiosqlite.Connection]:
     ``relational_v4.py``'s ``manage_transaction`` flag already uses, one
     layer up.
 
+    ``durable=True`` commits under ``synchronous=FULL`` and puts ``NORMAL`` back afterwards,
+    whatever happens: a turn may be lost on a power cut, a deletion may not (ADR 0038 decision 4,
+    Plan 0086 D-12). Only the deletion protocol asks for it.
+
+    Args:
+        durable: Commit this transaction under ``synchronous=FULL``.
+
     Yields:
         The single open connection, mid-transaction. Callers issue further
         statements on it directly; no nested transaction is needed or safe.
@@ -565,20 +609,33 @@ async def transaction() -> AsyncGenerator[aiosqlite.Connection]:
     if _write_lock is None:
         raise BrainMemoryError("DB not open — call open_db() first")
     async with _write_lock:
+        if durable:
+            await conn.execute("PRAGMA synchronous = FULL")
         try:
-            # Inside the try: a cancellation that lands while BEGIN is pending still finds the
-            # statement queued on the connection thread, and the rollback below closes it.
-            await conn.execute("BEGIN IMMEDIATE")
-            yield conn
+            async with _owned_transaction(conn):
+                yield conn
+        finally:
+            if durable:
+                await _restore_synchronous(conn)
+
+
+@asynccontextmanager
+async def _owned_transaction(conn: aiosqlite.Connection) -> AsyncGenerator[None]:
+    """BEGIN, then COMMIT on a normal exit or ROLLBACK on any exception (``transaction``)."""
+    try:
+        # Inside the try: a cancellation that lands while BEGIN is pending still finds the
+        # statement queued on the connection thread, and the rollback below closes it.
+        await conn.execute("BEGIN IMMEDIATE")
+        yield
+    except BaseException:
+        await conn.rollback()
+        raise
+    else:
+        try:
+            await conn.commit()
         except BaseException:
-            await conn.rollback()
+            # A COMMIT that raises (disk full, I/O error) leaves the shared connection inside
+            # the transaction: close it so the next BEGIN IMMEDIATE works. The commit's own
+            # error is the one that propagates, unchanged.
+            await _rollback_quietly(conn)
             raise
-        else:
-            try:
-                await conn.commit()
-            except BaseException:
-                # A COMMIT that raises (disk full, I/O error) leaves the shared connection inside
-                # the transaction: close it so the next BEGIN IMMEDIATE works. The commit's own
-                # error is the one that propagates, unchanged.
-                await _rollback_quietly(conn)
-                raise

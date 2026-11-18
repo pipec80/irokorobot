@@ -30,6 +30,7 @@ __all__ = [
     "PendingSensitivity",
     "PendingTopic",
     "archive_topics",
+    "archived_topics",
     "asked_today",
     "count_naming_failure",
     "count_unlinked_topics",
@@ -42,6 +43,7 @@ __all__ = [
     "pending_topics_on",
     "restore_archived_topics",
     "set_topic",
+    "topic_texts",
 ]
 
 type PendingSensitivity = Literal["normal", "medical"]
@@ -198,6 +200,29 @@ async def set_topic(topic_id: int, topic: str) -> bool:
         )
         == 1
     )
+
+
+async def topic_texts(owner_entity_id: int) -> list[tuple[int, str]]:
+    """The owner's unarchived topics as ``(id, topic or words)``, for ``forget_scope``."""
+    cursor = await db.get_conn().execute(
+        "SELECT id, COALESCE(topic, heard, '') FROM pending_topics "
+        "WHERE owner_entity_id = ? AND archived_at IS NULL",
+        (owner_entity_id,),
+    )
+    rows = [(int(row[0]), str(row[1])) for row in await cursor.fetchall()]
+    await cursor.close()
+    return rows
+
+
+async def archived_topics() -> list[tuple[int, str, str]]:
+    """Every topic set aside as ``(id, archived_at, topic or words)``, for ``archive list``."""
+    cursor = await db.get_conn().execute(
+        "SELECT id, archived_at, COALESCE(topic, heard, '') FROM pending_topics "
+        "WHERE archived_at IS NOT NULL ORDER BY archived_at, id"
+    )
+    rows = [(int(row[0]), str(row[1]), str(row[2])) for row in await cursor.fetchall()]
+    await cursor.close()
+    return rows
 
 
 async def archive_topics(conn: aiosqlite.Connection, topic_ids: Sequence[int], *, at: str) -> int:

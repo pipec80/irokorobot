@@ -41,6 +41,7 @@ __all__ = [
     "RecallIndexHealth",
     "RecallUnit",
     "archive_units",
+    "archived_units",
     "count_rows",
     "count_units_of_another_model",
     "count_unlinked_units",
@@ -54,6 +55,7 @@ __all__ = [
     "restore_archived_units",
     "store_vector",
     "tells_something",
+    "unit_ids_naming",
     "units_by_id",
     "units_without_vector",
     "vector_hits",
@@ -394,6 +396,42 @@ async def raise_record_sensitivity(
             )
             changed += 1
     return changed
+
+
+async def unit_ids_naming(*, owner_entity_id: int, phrase: str, now: str) -> list[int]:
+    """The owner's readable units whose body holds *phrase* as one FTS5 phrase (Plan 0086 D-7).
+
+    The phrase is quoted, so no input is FTS syntax; accents and case are folded by the
+    tokenizer. Only units every read may deliver are returned (``_READABLE``).
+    """
+    if not phrase.strip():
+        return []
+    cursor = await db.get_conn().execute(
+        "SELECT u.id FROM recall_units_fts f JOIN recall_units u ON u.id = f.rowid "  # noqa: S608
+        "JOIN conversation_records r ON r.id = u.source_record_id "
+        f"WHERE recall_units_fts MATCH :match AND {_READABLE} ORDER BY u.id",
+        {
+            "match": '"' + phrase.replace('"', '""') + '"',
+            "owner": owner_entity_id,
+            "now": now,
+            "since": None,
+            "until": None,
+        },
+    )
+    rows = [int(row[0]) for row in await cursor.fetchall()]
+    await cursor.close()
+    return rows
+
+
+async def archived_units() -> list[tuple[int, str, str]]:
+    """Every unit set aside as ``(id, archived_at, body)``, for ``iroko-admin archive list``."""
+    cursor = await db.get_conn().execute(
+        "SELECT id, archived_at, body FROM recall_units WHERE archived_at IS NOT NULL "
+        "ORDER BY archived_at, id"
+    )
+    rows = [(int(row[0]), str(row[1]), str(row[2])) for row in await cursor.fetchall()]
+    await cursor.close()
+    return rows
 
 
 async def archive_units(conn: aiosqlite.Connection, unit_ids: Sequence[int], *, at: str) -> int:

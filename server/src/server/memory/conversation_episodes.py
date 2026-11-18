@@ -48,7 +48,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["Episode", "EpisodeOutcome", "get_episode", "write_episode"]
+__all__ = [
+    "Episode",
+    "EpisodeOutcome",
+    "delete_episode_row",
+    "episode_summaries",
+    "get_episode",
+    "write_episode",
+]
 
 type Summarizer = Callable[[httpx.AsyncClient, Sequence[RecordedTurn]], Awaitable[EpisodeDraft]]
 
@@ -78,6 +85,33 @@ class Episode:
     summary: str = field(repr=False)
     created_at: str
     expires_at: str
+
+
+async def delete_episode_row(conn: aiosqlite.Connection, row_id: int) -> int:
+    """Delete one episode, by its record for good, inside the caller's transaction (Plan 0086 D-12).
+
+    Only ``deletion_register`` calls it, under the deletion protocol. Its recall unit goes with it (CASCADE); the
+    record's turns stay.
+
+    Returns:
+        How many rows went (0 when it was already gone: a replay is idempotent).
+    """
+    cursor = await conn.execute(
+        "DELETE FROM conversation_episodes WHERE source_record_id = ?", (row_id,)
+    )
+    deleted = max(cursor.rowcount, 0)
+    await cursor.close()
+    return deleted
+
+
+async def episode_summaries() -> list[tuple[int, str]]:
+    """Every written episode as ``(record id, summary)``, for ``forget_scope``; never logged."""
+    cursor = await db.get_conn().execute(
+        "SELECT source_record_id, summary FROM conversation_episodes"
+    )
+    rows = [(int(row[0]), str(row[1])) for row in await cursor.fetchall()]
+    await cursor.close()
+    return rows
 
 
 async def get_episode(record_id: int) -> Episode | None:

@@ -21,7 +21,13 @@ from server.cognition.owner_authentication import owner_unlock_service
 from server.db import close_db, open_db, run_migrations
 from server.exceptions import VisionError
 from server.logging_setup import configure_logging
-from server.memory import candidates, conversation_jobs, recall_index, retention
+from server.memory import (
+    candidates,
+    conversation_jobs,
+    deletion_register,
+    recall_index,
+    retention,
+)
 from server.ollama_probe import probe_ollama
 from server.request_context import RequestContextMiddleware
 from server.resources import AppResources
@@ -126,6 +132,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             await open_db()
             stack.push_async_callback(close_db)
             await run_migrations()
+            # Before any request: every deletion for good a restored database still holds is
+            # applied again (Plan 0086 D-12); an unreadable register stops the start.
+            await deletion_register.replay_register()
             # Before any request: offers of the previous process return to `proposed`, with
             # the switch off every live candidate value is voided, and the write-ahead log is
             # truncated either way (a checkpoint the previous process owed is forgotten).

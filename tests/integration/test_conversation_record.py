@@ -13,6 +13,7 @@ from server.memory import conversation_record as record
 from server.memory.conversation_record import EpisodeStatus
 from server.memory.conversation_types import RecordedTurn, TurnVerdict, make_turn
 from server.memory.declarative import upsert_entity
+from server.memory.deletion_register import forget_record
 from server.settings import settings
 
 from server import db
@@ -256,7 +257,7 @@ async def test_delete_record_cascades_to_the_episode_and_unlinks_the_next(
             (first, store, _T0.isoformat(), _T0.isoformat()),
         )
 
-    assert await record.delete_record(first) is True
+    assert await forget_record(first, now=_T0) is True
 
     cursor = await db.get_conn().execute("SELECT COUNT(*) FROM conversation_episodes")
     row = await cursor.fetchone()
@@ -266,7 +267,7 @@ async def test_delete_record_cascades_to_the_episode_and_unlinks_the_next(
     linked = await record.read_record(second)
     assert linked is not None
     assert linked.summary.previous_id is None
-    assert await record.delete_record(first) is False
+    assert await forget_record(first, now=_T0) is False
 
 
 async def test_list_records_is_newest_first_and_carries_no_text(store: int) -> None:
@@ -340,7 +341,7 @@ async def test_deleting_a_record_deletes_its_turns(store: int) -> None:
     first = await _append(store, _turn(0))
     await _append(store, _turn(1))
 
-    assert await record.delete_record(first) is True
+    assert await forget_record(first, now=_T0) is True
 
     assert await _count("SELECT COUNT(*) FROM conversation_turns") == 0
 

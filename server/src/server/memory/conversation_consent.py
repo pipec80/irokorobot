@@ -19,6 +19,8 @@ from server.timestamps import instant_text
 if TYPE_CHECKING:
     from datetime import datetime
 
+    import aiosqlite
+
 logger = logging.getLogger(__name__)
 
 __all__ = [
@@ -27,7 +29,7 @@ __all__ = [
     "grant_conversation_consent",
     "has_active_conversation_consent",
     "load_conversation_notice",
-    "revoke_conversation_consent",
+    "withdraw_in",
 ]
 
 _PURPOSE: Final = "conversation_storage"
@@ -93,34 +95,26 @@ async def grant_conversation_consent(
     return int(grant_id) if grant_id is not None else 0
 
 
-async def revoke_conversation_consent(person_entity_id: int, *, now: datetime) -> int:
-    """Revoke the consent and delete every record and episode in one transaction.
+async def withdraw_in(conn: aiosqlite.Connection, person_entity_id: int, *, at: str) -> int:
+    """Revoke the consent and delete every record and episode, inside the caller's transaction.
 
-    Idempotent: with no active grant it still deletes whatever record exists and succeeds.
+    Only ``deletion_register`` calls it, under the deletion protocol (Plan 0086 D-12):
+    ``deletion_register.withdraw_conversation_consent`` is the public way to withdraw it.
 
     Args:
-        person_entity_id: The owner revoking the consent.
-        now: When the consent was revoked (timezone-aware).
+        conn: The connection of an open ``db.transaction()``.
+        person_entity_id: The owner withdrawing the consent.
+        at: When it was withdrawn (32-character UTC).
 
     Returns:
         How many record segments were deleted.
-
-    Raises:
-        BrainMemoryError: If the DB is unavailable.
     """
-    async with db.transaction() as conn:
-        await conn.execute(
-            "UPDATE conversation_consent_grants SET revoked_at = ? "
-            "WHERE person_entity_id = ? AND revoked_at IS NULL",
-            (instant_text(now), person_entity_id),
-        )
-        deleted = await delete_all_records(conn)
-    # secure_delete is on: the checkpoint folds the overwritten pages out of the write-ahead log.
-    await db.checkpoint_wal()
-    logger.info(
-        "Conversation consent revoked: person=%s, %d segment(s) deleted", person_entity_id, deleted
+    await conn.execute(
+        "UPDATE conversation_consent_grants SET revoked_at = ? "
+        "WHERE person_entity_id = ? AND revoked_at IS NULL",
+        (at, person_entity_id),
     )
-    return deleted
+    return await delete_all_records(conn)
 
 
 async def has_active_conversation_consent(person_entity_id: int) -> bool:

@@ -8,6 +8,7 @@ was about and the channel, and never a value.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import StrEnum
 import logging
 
@@ -16,6 +17,7 @@ from server.exceptions import WriteRefusedError
 __all__ = [
     "IMPORT_CHANNELS",
     "VOICE_CHANNELS",
+    "ArchiveCounts",
     "ConflictPolicy",
     "WriteChannel",
     "WriteRefusal",
@@ -23,6 +25,22 @@ __all__ = [
 ]
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ArchiveCounts:
+    """How many rows of each kind one archive or one restore touched (Plan 0086); counts only."""
+
+    facts: int = 0
+    relations: int = 0
+    units: int = 0
+    topics: int = 0
+
+    @property
+    def total(self) -> int:
+        """Every row touched."""
+        return self.facts + self.relations + self.units + self.topics
+
 
 _REFUSED_EVENT = "memory.canonical_write_refused"
 

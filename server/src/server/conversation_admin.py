@@ -78,9 +78,10 @@ def render_record(view: RecordView, episode: Episode | None) -> str:
         resumen,
         "",
     ]
-    for turn in view.turns:
+    for index, turn in enumerate(view.turns):
         clock = turn.at.astimezone(UTC).strftime("%H:%M:%S")
-        lines.append(f"[{clock}] Persona ({_SPEAKER[turn.voice]}): {turn.heard}")
+        number = f"turno {view.turn_ids[index]} · " if index < len(view.turn_ids) else ""
+        lines.append(f"[{clock}] {number}Persona ({_SPEAKER[turn.voice]}): {turn.heard}")
         lines.append(f"[{clock}] Iroko: {turn.said}")
     return "\n".join(lines) + "\n"
 
