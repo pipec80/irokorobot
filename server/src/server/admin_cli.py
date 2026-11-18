@@ -67,6 +67,7 @@ from server.memory.entity_labels import get_person_label
 from server.memory.owner_credentials import get_ready_owner
 from server.memory.relational_v4 import (
     EntityRelationV4,
+    LiteralFactV4,
     list_active_facts,
     list_active_relations,
 )
@@ -174,6 +175,11 @@ def _announce_outcome(outcome: AdminOutcome, write_text: WriteText) -> int:
 # --- the read sub-commands ------------------------------------------------------------------------
 
 
+def _archived_mark(row: LiteralFactV4 | EntityRelationV4) -> str:
+    """`` [archivado]`` for a row the owner set aside by voice (Plan 0086 D-8), else nothing."""
+    return " [archivado]" if row.archived_at is not None else ""
+
+
 async def _other_person(owner: int, relation: EntityRelationV4) -> str:
     """Return `` (name)`` of the person at the end of the relation that is not the owner."""
     other = (
@@ -192,13 +198,13 @@ async def _list(owner: int, write_text: WriteText) -> int:
     can be told apart before ``label-parent`` or ``label-child``.
     """
     write_text("Datos del pozo (hechos):")
-    for fact in await list_active_facts(owner):
-        write_text(f"  [{fact.id}] {fact.predicate}: {fact.value_text}")
+    for fact in await list_active_facts(owner, include_archived=True):
+        write_text(f"  [{fact.id}] {fact.predicate}: {fact.value_text}{_archived_mark(fact)}")
     write_text("Relaciones:")
-    for relation in await list_active_relations(owner):
+    for relation in await list_active_relations(owner, include_archived=True):
         write_text(
             f"  [{relation.id}] {relation.predicate} -> {relation.target_entity_id}"
-            f"{await _other_person(owner, relation)}"
+            f"{await _other_person(owner, relation)}{_archived_mark(relation)}"
         )
     write_text("Contactos:")
     for contact in await list_active_contacts(owner):

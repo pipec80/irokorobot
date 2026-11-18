@@ -5,8 +5,8 @@ it holds and how long it lives. It is checked by tests: `tests/unit/test_schema_
 when a table or a column of a clean, fully migrated database is missing here (or documented here
 and absent from the schema), when a table has no primary key, when a foreign key has no full index,
 when a table this plan touched leaves a foreign key on SQLite's default rule, or when a section
-lacks a field below. Schema version at the time of writing: **20** (Plan 0085, ADR 0038,
-ADR 0032 decision 1). Counts about the data itself come from `iroko-admin health`, never from here.
+lacks a field below. Schema version at the time of writing: **21** (Plan 0085, ADR 0038,
+ADR 0032 decision 1; Plan 0086 added `archived_at`). Counts about the data itself come from `iroko-admin health`, never from here.
 
 How to read a table section:
 
@@ -324,6 +324,7 @@ The table is STRICT. `length` of a BLOB counts bytes on every supported SQLite (
 | `superseded_by` | INTEGER | FK `entity_relations_v4`, SET NULL |
 | `asserted_by_entity_id` | INTEGER | FK `entities`, SET NULL |
 | `channel` | TEXT | the write channel, or NULL for rows older than the channel |
+| `archived_at` | TEXT | exact instant while the owner keeps it set aside (no reader says, offers or searches it), or NULL (Plan 0086, migration 21) |
 
 | Index | Columns | Query it serves |
 |---|---|---|
@@ -432,6 +433,7 @@ The table is STRICT.
 | `superseded_by` | INTEGER | FK `literal_facts_v4`, SET NULL |
 | `asserted_by_entity_id` | INTEGER | FK `entities`, SET NULL |
 | `channel` | TEXT | the write channel, or NULL for rows older than the channel |
+| `archived_at` | TEXT | exact instant while the owner keeps it set aside (no reader says, offers or searches it), or NULL (Plan 0086, migration 21) |
 
 | Index | Columns | Query it serves |
 |---|---|---|
@@ -572,6 +574,7 @@ The table is STRICT.
 | `asked_at` | TEXT | exact instant, NOT NULL exactly when asked |
 | `naming_attempts` | INTEGER | NOT NULL, 0 or more |
 | `source_turn_id` | INTEGER | FK `conversation_turns`, CASCADE; NULL for a topic older than the turn rows |
+| `archived_at` | TEXT | exact instant while the owner keeps it set aside (no reader says, offers or searches it), or NULL (Plan 0086, migration 21) |
 
 | Index | Columns | Query it serves |
 |---|---|---|
@@ -604,6 +607,7 @@ The table is STRICT.
 | `occurred_start` | TEXT | first day of what happened, or NULL (CHECK with `occurred_end`) |
 | `occurred_end` | TEXT | last day of what happened, or NULL |
 | `turn_id` | INTEGER | FK `conversation_turns`, CASCADE; NULL for a unit older than the turn rows; unique |
+| `archived_at` | TEXT | exact instant while the owner keeps it set aside (no reader says, offers or searches it), or NULL (Plan 0086, migration 21) |
 
 | Index | Columns | Query it serves |
 |---|---|---|

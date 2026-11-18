@@ -67,8 +67,13 @@ async def derive_section_presence(owner_entity_id: int) -> Mapping[Section, bool
     Returns:
         One boolean per section.
     """
-    literal_predicates = {fact.predicate for fact in await list_active_facts(owner_entity_id)}
-    relation_predicates = {rel.predicate for rel in await list_active_relations(owner_entity_id)}
+    # Readiness counts what is stored: a row the owner set aside is still there (Plan 0086 D-8).
+    literal_predicates = {
+        fact.predicate for fact in await list_active_facts(owner_entity_id, include_archived=True)
+    }
+    relation_predicates = {
+        rel.predicate for rel in await list_active_relations(owner_entity_id, include_archived=True)
+    }
     has_contacts = bool(await list_active_contacts(owner_entity_id))
     presence: dict[Section, bool] = {}
     for section in Section:

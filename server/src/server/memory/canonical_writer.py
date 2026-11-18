@@ -84,6 +84,34 @@ _OWNER_PRIVATE_LITERALS = frozenset({"birth_date"})
 _ADULT_ROLES = frozenset({HouseholdRole.OWNER, HouseholdRole.ADULT})
 
 
+async def _stored_relations(
+    *,
+    definition: PredicateDefinition,
+    source_entity_id: int | None = None,
+    target_entity_id: int | None = None,
+) -> list[EntityRelationV4]:
+    """The active relations a writer check must see, the archived ones too (Plan 0086 D-8).
+
+    An archived row is still stored: a fence, a duplicate or a conflict decided without it would
+    let a second active row in, which the unique indexes refuse.
+    """
+    return await get_active_entity_relations(
+        definition=definition,
+        source_entity_id=source_entity_id,
+        target_entity_id=target_entity_id,
+        include_archived=True,
+    )
+
+
+async def _stored_facts(
+    *, subject_entity_id: int, definition: PredicateDefinition
+) -> list[LiteralFactV4]:
+    """The active facts a writer check must see, the archived ones too (Plan 0086 D-8)."""
+    return await get_active_literal_facts(
+        subject_entity_id=subject_entity_id, definition=definition, include_archived=True
+    )
+
+
 def _required_predicate(alias: str) -> PredicateDefinition:
     """Resolve a registry predicate this closed module depends on."""
     definition = resolve_predicate(alias)
@@ -122,7 +150,7 @@ async def _has_membership_row(owner_entity_id: int, subject_entity_id: int) -> b
     deliberately not a member here: a fact about the partner is refused (decision 4).
     """
     for definition in (_CHILD_OF, _PET_OF):
-        relations = await get_active_entity_relations(
+        relations = await _stored_relations(
             definition=definition,
             source_entity_id=subject_entity_id,
             target_entity_id=owner_entity_id,
@@ -146,7 +174,7 @@ async def _is_member_of_owner(owner_entity_id: int, subject_entity_id: int) -> b
 async def _is_partner_of_owner(owner_entity_id: int, entity_id: int) -> bool:
     """Return whether the entity is the owner's active partner, on either end of the row."""
     for source, target in ((entity_id, owner_entity_id), (owner_entity_id, entity_id)):
-        relations = await get_active_entity_relations(
+        relations = await _stored_relations(
             definition=_PARTNER_OF, source_entity_id=source, target_entity_id=target
         )
         if relations:
@@ -191,7 +219,7 @@ async def _holds_relative_role(owner_entity_id: int, entity_id: int) -> bool:
         if definition.symmetric:
             ends.append((entity_id, owner_entity_id))
         for source, target in ends:
-            if await get_active_entity_relations(
+            if await _stored_relations(
                 definition=definition, source_entity_id=source, target_entity_id=target
             ):
                 return True
@@ -206,7 +234,7 @@ async def _is_active_repeat(
     if definition.symmetric:
         ends.append((target_entity_id, source_entity_id))
     for source, target in ends:
-        if await get_active_entity_relations(
+        if await _stored_relations(
             definition=definition, source_entity_id=source, target_entity_id=target
         ):
             return True
@@ -268,7 +296,7 @@ async def _side_marker_refusal(
         return WriteRefusal.NOT_HOUSEHOLD_MEMBER
     if await _is_active_repeat(definition, source_entity_id, target_entity_id):
         return None
-    child_rows = await get_active_entity_relations(
+    child_rows = await _stored_relations(
         definition=_CHILD_OF, source_entity_id=source_entity_id, target_entity_id=owner_entity_id
     )
     return None if child_rows else WriteRefusal.NOT_HOUSEHOLD_MEMBER
@@ -367,12 +395,8 @@ async def _refuse_a_conflicting_relation(
     if definition.canonical_id == "partner_of":
         other = target_entity_id if source_entity_id == owner_entity_id else source_entity_id
         rows = [
-            *await get_active_entity_relations(
-                definition=definition, source_entity_id=owner_entity_id
-            ),
-            *await get_active_entity_relations(
-                definition=definition, target_entity_id=owner_entity_id
-            ),
+            *await _stored_relations(definition=definition, source_entity_id=owner_entity_id),
+            *await _stored_relations(definition=definition, target_entity_id=owner_entity_id),
         ]
         known = {
             row.target_entity_id
@@ -381,9 +405,7 @@ async def _refuse_a_conflicting_relation(
             for row in rows
         }
     elif definition.cardinality is PredicateCardinality.TEMPORAL:
-        rows = await get_active_entity_relations(
-            definition=definition, source_entity_id=source_entity_id
-        )
+        rows = await _stored_relations(definition=definition, source_entity_id=source_entity_id)
         other = target_entity_id
         known = {row.target_entity_id for row in rows}
     else:
@@ -567,9 +589,7 @@ async def _write_literal(
     )
     normalized = normalize_literal(definition, value)
     if normalized is not None:
-        active = await get_active_literal_facts(
-            subject_entity_id=subject_entity_id, definition=definition
-        )
+        active = await _stored_facts(subject_entity_id=subject_entity_id, definition=definition)
         present = next(
             (fact for fact in active if _same_value(definition, fact.value_text, normalized)), None
         )

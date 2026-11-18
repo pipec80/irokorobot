@@ -638,7 +638,8 @@ async def v19_db(
 async def _run_020(
     every_migration: tuple[db.Migration, ...], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(db, "_MIGRATIONS", every_migration)
+    # Stop at 020: a later migration (021, Plan 0086) is not what these tests examine.
+    monkeypatch.setattr(db, "_MIGRATIONS", tuple(m for m in every_migration if m.version <= 20))
     await db.run_migrations()
 
 

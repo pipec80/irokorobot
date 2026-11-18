@@ -20,7 +20,7 @@ from server.cognition.identity import (
 )
 from server.cognition.models import Confidence, ConfidenceBasis
 from server.exceptions import BrainMemoryError
-from server.memory import candidates, canonical_writer, memory_writer
+from server.memory import candidates, canonical_writer, memory_writer, relational_v4
 from server.memory.biometric_consent import grant_face_consent
 from server.memory.candidate_policy import CandidateStep
 from server.memory.candidate_types import (
@@ -286,6 +286,24 @@ async def test_a_duplicate_is_the_result_not_an_error(owner: int) -> None:
     assert candidate is not None
     assert candidate.status is CandidateStatus.CONFIRMED
     assert candidate.promoted_fact_id == existing.id
+
+
+async def test_a_confirmed_restatement_unarchives_the_fact(owner: int) -> None:
+    existing = await _fact(owner, "likes", "el mate")
+    async with db.transaction() as conn:
+        await relational_v4.archive_v4_rows(
+            conn, facts=(existing.id,), relations=(), at=iso_utc(_T0)
+        )
+    assert await _facts(owner) == []
+
+    result = await _promote(await _offered(owner, "el mate", "mate"), _actor(owner))
+
+    assert result.outcome is PromotionOutcome.ALREADY_PRESENT
+    assert result.fact_id == existing.id
+    assert await _facts(owner) == ["el mate"]
+    restored = await get_literal_fact(existing.id)
+    assert restored is not None
+    assert restored.archived_at is None
 
 
 async def test_an_exact_duplicate_does_not_reach_the_unique_index(owner: int) -> None:

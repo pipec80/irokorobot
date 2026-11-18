@@ -40,6 +40,7 @@ if TYPE_CHECKING:
 __all__ = [
     "RecallIndexHealth",
     "RecallUnit",
+    "archive_units",
     "count_rows",
     "count_units_of_another_model",
     "count_unlinked_units",
@@ -50,6 +51,7 @@ __all__ = [
     "occurred_time_on",
     "raise_record_sensitivity",
     "recent_units",
+    "restore_archived_units",
     "store_vector",
     "tells_something",
     "units_by_id",
@@ -62,10 +64,11 @@ type UnitKind = Literal["turn", "episode"]
 # An extended SQLite result code keeps its primary code in the low byte (267 is 11 | 1 << 8).
 _PRIMARY_CODE_MASK: Final = 0xFF
 
-# The filters every read applies to a unit `u` joined to its record `r`.
+# The filters every read applies to a unit `u` joined to its record `r`; a unit the owner set
+# aside (`archived_at`, Plan 0086 D-8) is never read.
 _READABLE = (
     "u.owner_entity_id = :owner AND u.visibility = 'personal' AND u.sensitivity = 'normal' "
-    "AND (r.expires_at IS NULL OR r.expires_at > :now) "
+    "AND u.archived_at IS NULL AND (r.expires_at IS NULL OR r.expires_at > :now) "
     "AND (:since IS NULL OR u.said_at >= :since) AND (:until IS NULL OR u.said_at < :until)"
 )
 # The model guard (ADR 0031 decision 8). The configured model is a parameter; each half of
@@ -101,7 +104,7 @@ _RECORD_TURNS = (
 )
 _READABLE_OCCURRED = (
     "u.owner_entity_id = :owner AND u.visibility = 'personal' AND u.sensitivity = 'normal' "
-    "AND (r.expires_at IS NULL OR r.expires_at > :now) "
+    "AND u.archived_at IS NULL AND (r.expires_at IS NULL OR r.expires_at > :now) "
     f"AND (:since IS NULL OR ({_IN_WINDOW.format(t='u')} AND NOT (u.kind = 'episode' "
     f"AND EXISTS ({_RECORD_TURNS}t.occurred_start IS NOT NULL) "
     f"AND NOT EXISTS ({_RECORD_TURNS}{_IN_WINDOW.format(t='t')}))))"
@@ -387,6 +390,52 @@ async def raise_record_sensitivity(
                 "UPDATE recall_units SET sensitivity = ? WHERE id = ?", (raised, int(row[0]))
             )
             changed += 1
+    return changed
+
+
+async def archive_units(conn: aiosqlite.Connection, unit_ids: Sequence[int], *, at: str) -> int:
+    """Set recall units aside, inside the caller's transaction (Plan 0086 D-7).
+
+    The unit, its word-index row and its vector stay; every read leaves it out. A unit already
+    archived keeps its first instant.
+
+    Args:
+        conn: The connection of an open ``db.transaction()``.
+        unit_ids: The units to set aside.
+        at: The archive instant (32-character UTC).
+
+    Returns:
+        How many units were set aside.
+    """
+    values = tuple(sorted({int(unit_id) for unit_id in unit_ids}))
+    if not values:
+        return 0
+    marks = ", ".join("?" for _ in values)
+    cursor = await conn.execute(
+        f"UPDATE recall_units SET archived_at = ? "  # noqa: S608 - placeholders only
+        f"WHERE id IN ({marks}) AND archived_at IS NULL",
+        (at, *values),
+    )
+    changed = max(cursor.rowcount, 0)
+    await cursor.close()
+    return changed
+
+
+async def restore_archived_units(conn: aiosqlite.Connection, *, at: str) -> int:
+    """Bring back every unit set aside at *at*, inside the caller's transaction.
+
+    Args:
+        conn: The connection of an open ``db.transaction()``.
+        at: The archive instant of the group to restore.
+
+    Returns:
+        How many units came back.
+    """
+    cursor = await conn.execute(
+        "UPDATE recall_units SET archived_at = NULL WHERE archived_at = ?", (at,)
+    )
+    changed = max(cursor.rowcount, 0)
+    await cursor.close()
     return changed
 
 

@@ -44,7 +44,7 @@ from server.memory.candidates import (
 from server.memory.canonical_writer import WriteChannel, write_literal
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.predicate_registry import resolve_predicate
-from server.memory.relational_v4 import get_active_literal_facts
+from server.memory.relational_v4 import get_active_literal_facts, unarchive_literal_fact
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -204,7 +204,7 @@ async def _promote_in_transaction(
     opposite_definition = resolve_predicate(opposite) if opposite else None
     if opposite_definition is not None:
         clashing = await get_active_literal_facts(
-            subject_entity_id=person_id, definition=opposite_definition
+            subject_entity_id=person_id, definition=opposite_definition, include_archived=True
         )
         if any(comparison_key(fact.value_text) == candidate.value_key for fact in clashing):
             await _resolve(
@@ -212,11 +212,17 @@ async def _promote_in_transaction(
             )
             return PromotionResult(PromotionOutcome.CONTRADICTION)
 
-    active = await get_active_literal_facts(subject_entity_id=person_id, definition=definition)
+    # An archived fact is still stored (Plan 0086 D-9): the owner said it again and confirmed it,
+    # so it comes back instead of a second active row the unique index would refuse.
+    active = await get_active_literal_facts(
+        subject_entity_id=person_id, definition=definition, include_archived=True
+    )
     present = next(
         (fact for fact in active if comparison_key(fact.value_text) == candidate.value_key), None
     )
     if present is not None:
+        if present.archived_at is not None:
+            await unarchive_literal_fact(conn, present.id)
         await _resolve(
             conn,
             candidate_id,

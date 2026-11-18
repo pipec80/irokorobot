@@ -31,7 +31,7 @@ from server.memory.predicate_registry import (
 from server.timestamps import instant_text, validity_day
 
 if TYPE_CHECKING:
-    from collections.abc import Collection
+    from collections.abc import Collection, Sequence
 
     import aiosqlite
 
@@ -73,6 +73,9 @@ class LiteralFactV4(BaseModel):
     # NULL for every row written before it or by a writer that does not state them.
     asserted_by_entity_id: int | None = None
     channel: str | None = None
+    # Set aside by the owner (Plan 0086, migration 021): no reader may say, offer or search it,
+    # and clearing it brings the row back. The lifecycle stays ``active``.
+    archived_at: str | None = None
 
 
 class EntityRelationV4(BaseModel):
@@ -100,6 +103,8 @@ class EntityRelationV4(BaseModel):
     # migration 004 and a repeat of an active triple keeps whatever the first write stored.
     confirmed_by_entity_id: int | None = None
     confirmed_at: str | None = None
+    # Set aside by the owner (Plan 0086, migration 021), as on a literal fact.
+    archived_at: str | None = None
 
 
 type SqlValue = int | float | str | None
@@ -230,6 +235,7 @@ def _literal_from_row(row: SqlRow) -> LiteralFactV4:
         confirmed_at=_optional_text(row[15]),
         asserted_by_entity_id=_optional_int(row[16]),
         channel=_optional_text(row[17]),
+        archived_at=_optional_text(row[18]),
     )
 
 
@@ -254,18 +260,19 @@ def _relation_from_row(row: SqlRow) -> EntityRelationV4:
         channel=_optional_text(row[15]),
         confirmed_by_entity_id=_optional_int(row[16]),
         confirmed_at=_optional_text(row[17]),
+        archived_at=_optional_text(row[18]),
     )
 
 
 _LITERAL_COLUMNS = """
     id, subject_entity_id, predicate, value_text, confidence, source_memory_id, asserted_at,
     valid_from, valid_to, lifecycle, visibility, sensitivity, superseded_at, superseded_by,
-    confirmed_by_entity_id, confirmed_at, asserted_by_entity_id, channel
+    confirmed_by_entity_id, confirmed_at, asserted_by_entity_id, channel, archived_at
 """
 _RELATION_COLUMNS = """
     id, source_entity_id, predicate, target_entity_id, confidence, source_memory_id, asserted_at,
     valid_from, valid_to, lifecycle, visibility, sensitivity, superseded_at, superseded_by,
-    asserted_by_entity_id, channel, confirmed_by_entity_id, confirmed_at
+    asserted_by_entity_id, channel, confirmed_by_entity_id, confirmed_at, archived_at
 """
 
 
@@ -297,14 +304,27 @@ async def get_active_literal_facts(
     *,
     subject_entity_id: int,
     definition: PredicateDefinition,
+    include_archived: bool = False,
 ) -> list[LiteralFactV4]:
-    """Return active facts for repository tests and future policy-gated callers."""
+    """Return active facts for repository tests and future policy-gated callers.
+
+    Args:
+        subject_entity_id: The entity the facts describe.
+        definition: The closed literal predicate to retrieve.
+        include_archived: Also return the rows the owner set aside (Plan 0086 D-8): only the
+            writers' own checks and the administration ask for them; every reader that may say,
+            offer or search a fact leaves it ``False``.
+
+    Returns:
+        The active rows, by id.
+    """
     if definition.kind is not PredicateKind.LITERAL:
         raise ValueError(f"{definition.canonical_id} is not a literal predicate")
     conn = get_conn()
     cursor = await conn.execute(
         f"SELECT {_LITERAL_COLUMNS} FROM literal_facts_v4 "  # noqa: S608
-        "WHERE subject_entity_id = ? AND predicate = ? AND lifecycle = 'active' ORDER BY id",
+        "WHERE subject_entity_id = ? AND predicate = ? AND lifecycle = 'active' "
+        f"{_unarchived(include_archived)}ORDER BY id",
         (subject_entity_id, definition.canonical_id),
     )
     rows = await cursor.fetchall()
@@ -317,6 +337,7 @@ async def get_active_entity_relations(
     definition: PredicateDefinition,
     source_entity_id: int | None = None,
     target_entity_id: int | None = None,
+    include_archived: bool = False,
 ) -> list[EntityRelationV4]:
     """Return active relations for repository tests and future policy-gated callers.
 
@@ -327,6 +348,8 @@ async def get_active_entity_relations(
         definition: Closed relation predicate to retrieve.
         source_entity_id: Optional source entity filter.
         target_entity_id: Optional target entity filter.
+        include_archived: Also return the rows the owner set aside (Plan 0086 D-8); see
+            ``get_active_literal_facts``.
 
     Returns:
         Active relation rows matching the supplied predicate and filters.
@@ -336,7 +359,7 @@ async def get_active_entity_relations(
     conn = get_conn()
     sql = (
         f"SELECT {_RELATION_COLUMNS} FROM entity_relations_v4 "  # noqa: S608
-        "WHERE predicate = ? AND lifecycle = 'active'"
+        f"WHERE predicate = ? AND lifecycle = 'active' {_unarchived(include_archived)}"
     )
     params: tuple[object, ...] = (definition.canonical_id,)
     if source_entity_id is not None:
@@ -352,13 +375,16 @@ async def get_active_entity_relations(
     return [_relation_from_row(tuple(row)) for row in rows]
 
 
-async def list_active_facts(subject_entity_id: int) -> list[LiteralFactV4]:
+async def list_active_facts(
+    subject_entity_id: int, *, include_archived: bool = False
+) -> list[LiteralFactV4]:
     """Return every active literal fact of a subject, across predicates (Plan 0073, admin reads).
 
     For the local administration to show the pool; it applies no runtime authorization.
 
     Args:
         subject_entity_id: The entity whose active facts are listed.
+        include_archived: Also list the rows the owner set aside (Plan 0086 D-8).
 
     Returns:
         The active rows, by id.
@@ -366,7 +392,8 @@ async def list_active_facts(subject_entity_id: int) -> list[LiteralFactV4]:
     conn = get_conn()
     cursor = await conn.execute(
         f"SELECT {_LITERAL_COLUMNS} FROM literal_facts_v4 "  # noqa: S608
-        "WHERE subject_entity_id = ? AND lifecycle = 'active' ORDER BY id",
+        f"WHERE subject_entity_id = ? AND lifecycle = 'active' {_unarchived(include_archived)}"
+        "ORDER BY id",
         (subject_entity_id,),
     )
     rows = await cursor.fetchall()
@@ -399,7 +426,8 @@ async def list_card_literals(
     cursor = await conn.execute(
         f"SELECT {_LITERAL_COLUMNS} FROM literal_facts_v4 "  # noqa: S608
         "WHERE subject_entity_id = ? AND lifecycle = 'active' AND visibility = 'personal' "
-        f"AND sensitivity = 'normal' AND predicate IN ({marks}) ORDER BY id DESC",
+        f"AND sensitivity = 'normal' AND archived_at IS NULL AND predicate IN ({marks}) "
+        "ORDER BY id DESC",
         (subject_entity_id, *sorted(predicates)),
     )
     rows = await cursor.fetchall()
@@ -407,7 +435,9 @@ async def list_card_literals(
     return [_literal_from_row(tuple(row)) for row in rows]
 
 
-async def list_active_relations(owner_entity_id: int) -> list[EntityRelationV4]:
+async def list_active_relations(
+    owner_entity_id: int, *, include_archived: bool = False
+) -> list[EntityRelationV4]:
     """Return every active relation the owner is an endpoint of (Plan 0073, admin reads).
 
     Membership relations point to the owner; relative relations start from the owner. It applies
@@ -415,6 +445,7 @@ async def list_active_relations(owner_entity_id: int) -> list[EntityRelationV4]:
 
     Args:
         owner_entity_id: The owner whose relations are listed.
+        include_archived: Also list the rows the owner set aside (Plan 0086 D-8).
 
     Returns:
         The active rows, by id.
@@ -422,7 +453,8 @@ async def list_active_relations(owner_entity_id: int) -> list[EntityRelationV4]:
     conn = get_conn()
     cursor = await conn.execute(
         f"SELECT {_RELATION_COLUMNS} FROM entity_relations_v4 "  # noqa: S608
-        "WHERE (source_entity_id = ? OR target_entity_id = ?) AND lifecycle = 'active' ORDER BY id",
+        "WHERE (source_entity_id = ? OR target_entity_id = ?) AND lifecycle = 'active' "
+        f"{_unarchived(include_archived)}ORDER BY id",
         (owner_entity_id, owner_entity_id),
     )
     rows = await cursor.fetchall()
@@ -1025,6 +1057,95 @@ async def count_v4_rows() -> V4Counts:
 
 
 _V4_TABLES = ("literal_facts_v4", "entity_relations_v4")
+
+
+def _unarchived(include_archived: bool) -> str:
+    """The clause that leaves out the rows the owner set aside, unless they are asked for."""
+    return "" if include_archived else "AND archived_at IS NULL "
+
+
+def _id_list(ids: Sequence[int]) -> tuple[str, tuple[int, ...]]:
+    """The ``IN`` clause of a set of ids and its parameters (never an empty ``IN ()``)."""
+    values = tuple(sorted({int(value) for value in ids}))
+    return ", ".join("?" for _ in values) or "NULL", values
+
+
+async def _set_archived(conn: aiosqlite.Connection, table: str, ids: Sequence[int], at: str) -> int:
+    marks, values = _id_list(ids)
+    cursor = await conn.execute(
+        f"UPDATE {table} SET archived_at = ? "  # noqa: S608 - a table of `_V4_TABLES`
+        f"WHERE id IN ({marks}) AND lifecycle = 'active' AND archived_at IS NULL",
+        (at, *values),
+    )
+    changed = max(cursor.rowcount, 0)
+    await cursor.close()
+    return changed
+
+
+async def archive_v4_rows(
+    conn: aiosqlite.Connection,
+    *,
+    facts: Sequence[int],
+    relations: Sequence[int],
+    at: str,
+) -> tuple[int, int]:
+    """Set active facts and relations aside, inside the caller's transaction (Plan 0086 D-7).
+
+    A row already archived keeps its first instant; a row that is not active is left alone.
+
+    Args:
+        conn: The connection of an open ``db.transaction()``.
+        facts: The literal facts to set aside.
+        relations: The relations to set aside.
+        at: The archive instant (32-character UTC); one voice archive uses one instant.
+
+    Returns:
+        How many facts and how many relations were set aside.
+    """
+    return (
+        await _set_archived(conn, "literal_facts_v4", facts, at),
+        await _set_archived(conn, "entity_relations_v4", relations, at),
+    )
+
+
+async def restore_archived_v4(conn: aiosqlite.Connection, *, at: str) -> tuple[int, int]:
+    """Bring back every fact and relation set aside at *at* (``iroko-admin archive restore``).
+
+    Args:
+        conn: The connection of an open ``db.transaction()``.
+        at: The archive instant of the group to restore.
+
+    Returns:
+        How many facts and how many relations came back.
+    """
+    counts: list[int] = []
+    for table in _V4_TABLES:
+        cursor = await conn.execute(
+            f"UPDATE {table} SET archived_at = NULL WHERE archived_at = ?",  # noqa: S608
+            (at,),
+        )
+        counts.append(max(cursor.rowcount, 0))
+        await cursor.close()
+    return counts[0], counts[1]
+
+
+async def unarchive_literal_fact(conn: aiosqlite.Connection, fact_id: int) -> bool:
+    """Bring one fact back because the owner said it again and confirmed it (Plan 0086 D-9).
+
+    Args:
+        conn: The connection of an open ``db.transaction()``.
+        fact_id: The fact to bring back.
+
+    Returns:
+        Whether the fact was archived and is not any more.
+    """
+    cursor = await conn.execute(
+        "UPDATE literal_facts_v4 SET archived_at = NULL WHERE id = ? AND archived_at IS NOT NULL",
+        (fact_id,),
+    )
+    changed = cursor.rowcount
+    await cursor.close()
+    return changed > 0
 
 
 def _owned(manage_transaction: bool) -> AbstractAsyncContextManager[object]:

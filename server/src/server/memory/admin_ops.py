@@ -443,7 +443,7 @@ async def apply_side_label(
                 _OWNER_NOT_VERIFIED,
                 now,
             )
-        active = await list_active_relations(owner_entity_id)
+        active = await list_active_relations(owner_entity_id, include_archived=True)
         relation = next((row for row in active if row.id == relation_id), None)
         refusal = _side_refusal(
             relation, active, owner_entity_id, new_predicate, is_parent=is_parent
