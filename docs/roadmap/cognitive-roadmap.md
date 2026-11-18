@@ -182,7 +182,10 @@ P3 and P4.2.
   person's biometric data, and one frame recognizes worse than several), and decision 8 already
   names `iroko-admin` as the path after the closing; row 8c probably needs ADR 0040.
   Pipec's two open decisions before block D (the owner's day, and the recall precision for a named
-  person) are taken when block D's plan is written.
+  person) are taken when block D's plan is written, and so is the fate of the small rows outside
+  the path (recalling the health conversation units, the language of the reply and confabulation
+  on an empty session, the local suite downloading Whisper): each is folded into block D or
+  recorded as a known limit then (Pipec, 2026-11-18).
 - **CM-5b + R3.** Both search the same thing: without documents, R3's lexical and hybrid search is
   how the diary is searched, so it no longer waits for R2.
 - **CM-7 + PC-5.** One acceptance with two parts in a fixed order. PC-5 builds no memory: it proves
