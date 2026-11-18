@@ -35,6 +35,7 @@ __all__ = [
     "count_naming_failure",
     "count_unlinked_topics",
     "delete_expired",
+    "delete_topic_row",
     "drop",
     "due_topic",
     "insert_unnamed",
@@ -202,12 +203,19 @@ async def set_topic(topic_id: int, topic: str) -> bool:
     )
 
 
-async def topic_texts(owner_entity_id: int) -> list[tuple[int, str]]:
-    """The owner's unarchived topics as ``(id, topic or words)``, for ``forget_scope``."""
+async def topic_texts(
+    owner_entity_id: int, *, include_archived: bool = False
+) -> list[tuple[int, str]]:
+    """The owner's topics as ``(id, topic or words)``, for ``forget_scope``.
+
+    Args:
+        owner_entity_id: The owner.
+        include_archived: Also the topics already set aside (a deletion reaches them too).
+    """
     cursor = await db.get_conn().execute(
         "SELECT id, COALESCE(topic, heard, '') FROM pending_topics "
-        "WHERE owner_entity_id = ? AND archived_at IS NULL",
-        (owner_entity_id,),
+        "WHERE owner_entity_id = ? AND (? OR archived_at IS NULL)",
+        (owner_entity_id, int(include_archived)),
     )
     rows = [(int(row[0]), str(row[1])) for row in await cursor.fetchall()]
     await cursor.close()
@@ -223,6 +231,20 @@ async def archived_topics() -> list[tuple[int, str, str]]:
     rows = [(int(row[0]), str(row[1]), str(row[2])) for row in await cursor.fetchall()]
     await cursor.close()
     return rows
+
+
+async def delete_topic_row(conn: aiosqlite.Connection, row_id: int) -> int:
+    """Delete one pending topic for good, inside the caller's transaction (Plan 0086 D-12).
+
+    Only ``deletion_register`` calls it, under the deletion protocol.
+
+    Returns:
+        How many rows went (0 when it was already gone: a replay is idempotent).
+    """
+    cursor = await conn.execute("DELETE FROM pending_topics WHERE id = ?", (row_id,))
+    deleted = max(cursor.rowcount, 0)
+    await cursor.close()
+    return deleted
 
 
 async def archive_topics(conn: aiosqlite.Connection, topic_ids: Sequence[int], *, at: str) -> int:

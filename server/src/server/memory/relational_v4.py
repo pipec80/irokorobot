@@ -496,6 +496,17 @@ async def rows_about_entity(
     return facts, relations
 
 
+async def fact_texts(subject_entity_id: int) -> list[tuple[int, str]]:
+    """Every literal fact of a subject, history included, as ``(id, value)`` (a deletion)."""
+    cursor = await get_conn().execute(
+        "SELECT id, value_text FROM literal_facts_v4 WHERE subject_entity_id = ? ORDER BY id",
+        (subject_entity_id,),
+    )
+    rows = [(int(row[0]), str(row[1])) for row in await cursor.fetchall()]
+    await cursor.close()
+    return rows
+
+
 async def archived_v4_rows() -> tuple[list[LiteralFactV4], list[EntityRelationV4]]:
     """Every fact and relation set aside, for ``iroko-admin archive list`` (Plan 0086 D-13)."""
     cursor = await get_conn().execute(

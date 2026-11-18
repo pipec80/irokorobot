@@ -157,7 +157,9 @@ async def _plan_person(
     owner_entity_id: int, *, row_id: int | None, words: str | None, now: str
 ) -> ForgetPlan:
     field_id = "person" if row_id is None else f"person:{row_id}"
-    scope = await person_scope(owner_entity_id, now=now, entity_id=row_id, words=words)
+    scope = await person_scope(
+        owner_entity_id, now=now, entity_id=row_id, words=words, for_deletion=True
+    )
     if scope.enrolled:
         return _refused(
             TargetKind.POOL_RELATION,
@@ -172,6 +174,8 @@ async def _plan_person(
         f"  datos y relaciones: {len(scope.facts) + len(scope.relations)}",
         f"  turnos que la nombran: {len(scope.turns)}",
         f"  resúmenes de conversaciones: {len(scope.episodes)}",
+        f"  recuerdos y temas pendientes que la nombran: {len(scope.units) + len(scope.topics)}",
+        f"  datos tuyos que la nombran: {len(scope.owner_facts)}",
         f"  la persona misma: {'sí' if scope.entity_id is not None else 'no (solo se habló de ella)'}",
     )
     return ForgetPlan(tuple(person_deletions(scope)), TargetKind.POOL_RELATION, field_id, lines)

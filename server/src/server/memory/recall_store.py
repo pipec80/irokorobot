@@ -45,6 +45,7 @@ __all__ = [
     "count_rows",
     "count_units_of_another_model",
     "count_unlinked_units",
+    "delete_unit_row",
     "index_health",
     "insert_episode_unit",
     "insert_turn_unit",
@@ -56,6 +57,7 @@ __all__ = [
     "store_vector",
     "tells_something",
     "unit_ids_naming",
+    "unit_ids_naming_stored",
     "units_by_id",
     "units_without_vector",
     "vector_hits",
@@ -430,6 +432,35 @@ async def archived_units() -> list[tuple[int, str, str]]:
         "ORDER BY archived_at, id"
     )
     rows = [(int(row[0]), str(row[1]), str(row[2])) for row in await cursor.fetchall()]
+    await cursor.close()
+    return rows
+
+
+async def delete_unit_row(conn: aiosqlite.Connection, row_id: int) -> int:
+    """Delete one recall unit for good, inside the caller's transaction (Plan 0086 D-12).
+
+    Only ``deletion_register`` calls it, under the deletion protocol. Its word-index row and its vector go with
+    it (the unit's triggers).
+
+    Returns:
+        How many rows went (0 when it was already gone: a replay is idempotent).
+    """
+    cursor = await conn.execute("DELETE FROM recall_units WHERE id = ?", (row_id,))
+    deleted = max(cursor.rowcount, 0)
+    await cursor.close()
+    return deleted
+
+
+async def unit_ids_naming_stored(*, owner_entity_id: int, phrase: str) -> list[int]:
+    """Every unit of the owner whose body holds *phrase*, archived or expired too (a deletion)."""
+    if not phrase.strip():
+        return []
+    cursor = await db.get_conn().execute(
+        "SELECT u.id FROM recall_units_fts f JOIN recall_units u ON u.id = f.rowid "
+        "WHERE recall_units_fts MATCH ? AND u.owner_entity_id = ? ORDER BY u.id",
+        ('"' + phrase.replace('"', '""') + '"', owner_entity_id),
+    )
+    rows = [int(row[0]) for row in await cursor.fetchall()]
     await cursor.close()
     return rows
 

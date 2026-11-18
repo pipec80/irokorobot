@@ -66,6 +66,9 @@ class PersonScope:
     episodes: tuple[int, ...]  # the ids of the records whose episode goes
     units: tuple[int, ...]
     topics: tuple[int, ...]
+    # Only for a deletion (``for_deletion=True``): the owner's own facts whose value names the
+    # person, history included; ``units`` and ``topics`` then also hold archived and expired rows.
+    owner_facts: tuple[int, ...] = ()
 
     @property
     def archivable(self) -> int:
@@ -130,7 +133,12 @@ async def _enrolled(entity_id: int, owner_entity_id: int) -> bool:
 
 
 async def person_scope(
-    owner_entity_id: int, *, now: str, entity_id: int | None = None, words: str | None = None
+    owner_entity_id: int,
+    *,
+    now: str,
+    entity_id: int | None = None,
+    words: str | None = None,
+    for_deletion: bool = False,
 ) -> PersonScope:
     """Find what one person reaches, by entity id or by the words that name them.
 
@@ -140,6 +148,8 @@ async def person_scope(
         entity_id: The person's entity, when known (``iroko-admin forget person <id>``).
         words: The name as said; it resolves to a linked entity when one bears it, else it is
             a name only talked about.
+        for_deletion: Reach every stored row, not only what a reader would deliver: archived and
+            expired units and topics, and the owner's own facts whose value names the person.
 
     Returns:
         The scope; ``empty`` when nothing names the person.
@@ -161,10 +171,25 @@ async def person_scope(
         {
             unit_id
             for name in names
-            for unit_id in await recall_store.unit_ids_naming(
-                owner_entity_id=owner_entity_id, phrase=name, now=now
+            for unit_id in (
+                await recall_store.unit_ids_naming_stored(
+                    owner_entity_id=owner_entity_id, phrase=name
+                )
+                if for_deletion
+                else await recall_store.unit_ids_naming(
+                    owner_entity_id=owner_entity_id, phrase=name, now=now
+                )
             )
         }
+    )
+    owner_facts = (
+        tuple(
+            fact_id
+            for fact_id, value in await relational_v4.fact_texts(owner_entity_id)
+            if mentions(value, names)
+        )
+        if for_deletion and names
+        else ()
     )
     return PersonScope(
         entity_id=entity_id,
@@ -179,9 +204,12 @@ async def person_scope(
         units=tuple(units),
         topics=tuple(
             topic_id
-            for topic_id, text in await pending_store.topic_texts(owner_entity_id)
+            for topic_id, text in await pending_store.topic_texts(
+                owner_entity_id, include_archived=for_deletion
+            )
             if mentions(text, names)
         ),
+        owner_facts=owner_facts,
     )
 
 
@@ -206,13 +234,19 @@ async def _episodes(names: Sequence[str], turns: Sequence[int]) -> tuple[int, ..
 def person_deletions(scope: PersonScope) -> list[Deletion]:
     """The register lines that delete a person for good, in the order the keys need.
 
-    The care contacts first (they hold the entity's ``RESTRICT`` key), then the turns and the
-    episodes that name the person, then the entity (its relations, facts and candidates go with
+    Build *scope* with ``for_deletion=True``. The care contacts first (they hold the entity's
+    ``RESTRICT`` key), then the turns, episodes, units and topics that name the person and the
+    owner's facts whose value names them, then the entity (its relations, facts and candidates go with
     it by ``CASCADE``).
     """
     deletions = [Deletion(DeletionKind.CARE_CONTACT, contact) for contact in scope.contacts]
     deletions += [Deletion(DeletionKind.TURN, turn) for turn in scope.turns]
     deletions += [Deletion(DeletionKind.EPISODE, record) for record in scope.episodes]
+    # A unit or a topic usually goes with its turn or its episode; these lines also reach one
+    # older than the turn rows or already archived (a second delete of a row is a no-op).
+    deletions += [Deletion(DeletionKind.RECALL_UNIT, unit) for unit in scope.units]
+    deletions += [Deletion(DeletionKind.PENDING_TOPIC, topic) for topic in scope.topics]
+    deletions += [Deletion(DeletionKind.LITERAL_FACT, fact) for fact in scope.owner_facts]
     if scope.entity_id is not None:
         deletions.append(Deletion(DeletionKind.ENTITY, scope.entity_id))
     return deletions

@@ -332,3 +332,44 @@ async def test_the_export_names_each_turn_by_its_id(ids: dict[str, int]) -> None
     text = render_record(view, None)
 
     assert f"turno {ids['canary_turn']} · Persona" in text
+
+
+async def test_forget_person_reaches_rows_no_turn_carries(ids: dict[str, int]) -> None:
+    """A unit older than the turn rows, an archived topic and the owner's own fact that names
+    the person go too (the deletion scope is not the readers' scope)."""
+    await db.open_db()
+    likes = resolve_predicate("likes")
+    assert likes is not None
+    own = await relational_v4.assert_literal_fact(
+        subject_entity_id=ids["owner"], definition=likes, value="los queques de Canaria"
+    )
+    async with db.transaction() as conn:
+        await conn.execute(
+            "INSERT INTO recall_units (owner_entity_id, source_record_id, kind, body, said_at, "
+            "visibility, sensitivity, correlation_id) VALUES (?, ?, 'turn', ?, ?, 'personal', "
+            "'normal', ?)",
+            (
+                ids["owner"],
+                ids["first_record"],
+                "paseamos con Canaria",
+                instant_text(_T0),
+                str(UUID(int=99)),
+            ),
+        )
+        cursor = await conn.execute(
+            "INSERT INTO pending_topics (owner_entity_id, source_record_id, correlation_id, "
+            "said_day, due_day, topic, state, sensitivity, created_at, archived_at) "
+            "VALUES (?, ?, ?, '2026-11-17', '2026-11-18', 'Canaria', 'open', 'normal', ?, ?)",
+            (ids["owner"], ids["first_record"], str(UUID(int=98)), instant_text(_T0), _ARCHIVED),
+        )
+        await cursor.close()
+    await db.close_db()
+    db._conn = None
+
+    code = await _run(_forget("person", name="Canaria"), _Script("SI", _PIN), _sink()[1])
+
+    assert code == 0
+    assert await _count("SELECT COUNT(*) FROM recall_units WHERE body LIKE '%Canaria%'") == 0
+    assert await _count("SELECT COUNT(*) FROM pending_topics WHERE topic = 'Canaria'") == 0
+    assert await _count("SELECT COUNT(*) FROM literal_facts_v4 WHERE id = ?", own.id) == 0
+    assert await _count("SELECT COUNT(*) FROM literal_facts_v4 WHERE id = ?", ids["taste"]) == 1

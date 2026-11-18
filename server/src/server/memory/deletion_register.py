@@ -39,6 +39,8 @@ from server.memory import (
     conversation_record,
     declarative,
     meta,
+    pending_store,
+    recall_store,
     relational_v4,
 )
 from server.settings import settings
@@ -85,6 +87,10 @@ class DeletionKind(StrEnum):
     # The id is the person's: the conversation consent is withdrawn and every record deleted.
     OWNER_RECORDS = "owner_records"
     ENTITY = "entity"
+    # Rows a person's deletion reaches that no turn or episode carries with it (a unit or a topic
+    # older than the turn rows, or one already archived).
+    RECALL_UNIT = "recall_unit"
+    PENDING_TOPIC = "pending_topic"
 
 
 @dataclass(frozen=True)
@@ -213,6 +219,8 @@ _DELETERS: Final[Mapping[DeletionKind, _RowDeleter]] = MappingProxyType(
         DeletionKind.EPISODE: conversation_episodes.delete_episode_row,
         DeletionKind.RECORD: conversation_record.delete_record_row,
         DeletionKind.ENTITY: declarative.delete_entity_row,
+        DeletionKind.RECALL_UNIT: recall_store.delete_unit_row,
+        DeletionKind.PENDING_TOPIC: pending_store.delete_topic_row,
     }
 )
 
