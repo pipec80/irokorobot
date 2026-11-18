@@ -161,8 +161,9 @@ PC-2 accepted (provisional calibration)
   -> continue at portfolio row 13; the cross-track tail is not duplicated here
 ```
 
-Plan 0015 remains open as reference; PC-5, PC-6 and CM-1…CM-7 are still real
-work (PC-3 and PC-4 closed on 2026-09-29 and 2026-09-30).
+Plan 0015 remains open as reference; PC-5, PC-6 and CM-7 are still real work
+(PC-3 and PC-4 closed on 2026-09-29 and 2026-09-30; CM-1 to CM-6 closed by
+2026-11-18, the last with Plan 0086).
 CM-0 is closed (Plan 0046); PC-3A / Plan 0047 is closed (2026-09-25,
 provisional PASS), and PC-5 includes the longitudinal-memory gate defined in
 the [memory delivery map](conversational-memory-delivery-map.md). The complete
