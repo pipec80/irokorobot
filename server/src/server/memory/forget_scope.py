@@ -257,6 +257,10 @@ def person_deletions(scope: PersonScope) -> list[Deletion]:
     deletions += [Deletion(DeletionKind.RECALL_UNIT, unit) for unit in scope.units]
     deletions += [Deletion(DeletionKind.PENDING_TOPIC, topic) for topic in scope.topics]
     deletions += [Deletion(DeletionKind.LITERAL_FACT, fact) for fact in scope.owner_facts]
+    # Their own lines, not only the entity's cascade: on a replay into a restored backup the
+    # entity row may wait behind a key, and what it says about the person must go meanwhile.
+    deletions += [Deletion(DeletionKind.LITERAL_FACT, fact) for fact in scope.facts]
+    deletions += [Deletion(DeletionKind.ENTITY_RELATION, rel) for rel in scope.relations]
     if scope.entity_id is not None:
         deletions.append(Deletion(DeletionKind.ENTITY, scope.entity_id))
     return deletions

@@ -328,26 +328,41 @@ async def test_a_deletion_a_key_refuses_writes_no_line_and_leaves_the_start_work
     assert await replay_register() == 0
 
 
-async def test_a_replayed_line_a_key_refuses_is_skipped_and_the_start_goes_on(owner: int) -> None:
+async def test_a_replayed_line_a_key_refuses_waits_and_is_retried_at_every_start(
+    owner: int,
+) -> None:
+    """A restored backup may hold a role a later revocation freed: the start goes on, the
+    promised deletion is never dropped, and it applies by itself once the key is gone."""
     friend = await upsert_entity(name="Canaria", type="person")
     fact = await _taste(owner)
     deletion_register._append(
-        [Deletion(DeletionKind.ENTITY, owner), Deletion(DeletionKind.LITERAL_FACT, fact)],
+        [Deletion(DeletionKind.ENTITY, friend), Deletion(DeletionKind.LITERAL_FACT, fact)],
         instant_text(_T0),
     )
     async with db.transaction() as conn:
         await conn.execute(
             "INSERT INTO household_role_assignments (person_entity_id, role, reason, granted_at) "
-            "VALUES (?, 'owner', 'canary', ?)",
-            (owner, instant_text(_T0)),
+            "VALUES (?, 'guest', 'canary', ?)",
+            (friend, instant_text(_T0)),
         )
 
     assert await replay_register() == 2
-
-    assert await _count("SELECT COUNT(*) FROM entities WHERE id = ?", owner) == 1
     assert await _count("SELECT COUNT(*) FROM literal_facts_v4") == 0
+    assert await _count("SELECT COUNT(*) FROM entities WHERE id = ?", friend) == 1
+    assert await deletion_register.waiting_deletions() == 1
+
+    await _restart()
+    assert await replay_register() == 1  # tried again, still held back
+    assert await deletion_register.waiting_deletions() == 1
+
+    async with db.transaction() as conn:
+        await conn.execute(
+            "DELETE FROM household_role_assignments WHERE person_entity_id = ?", (friend,)
+        )
+    assert await replay_register() == 1
+    assert await _count("SELECT COUNT(*) FROM entities WHERE id = ?", friend) == 0
+    assert await deletion_register.waiting_deletions() == 0
     assert await replay_register() == 0
-    del friend
 
 
 async def test_a_lost_register_never_reuses_a_number_the_marker_passed(owner: int) -> None:

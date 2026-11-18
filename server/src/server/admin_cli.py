@@ -74,6 +74,7 @@ from server.memory.db_health import check_health, health_failed, render_health
 from server.memory.deletion_register import (
     forget_record,
     replay_register,
+    waiting_deletions,
     withdraw_conversation_consent,
 )
 from server.memory.entity_labels import get_person_label
@@ -769,6 +770,11 @@ async def run_admin_command(
         try:
             # Before anything is read: a deletion a restored backup still holds is applied again.
             await replay_register()
+            if waiting := await waiting_deletions():
+                write_text(
+                    f"Aviso: {waiting} borrados prometidos esperan: una clave de identidad "
+                    "(rol, consentimiento, perfil) los retiene. Revócala y se aplican solos."
+                )
             return await _dispatch(request, read_text, read_secret, write_text, now)
         finally:
             await db.close_db()

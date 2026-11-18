@@ -64,6 +64,7 @@ __all__ = [
     "forget_record",
     "register_path",
     "replay_register",
+    "waiting_deletions",
     "withdraw_conversation_consent",
 ]
 
@@ -71,6 +72,8 @@ logger = logging.getLogger(__name__)
 
 REGISTER_FILENAME: Final = "deletions.jsonl"
 MARKER_KEY: Final = "deletion_register_seq"
+#: The replayed lines a key refused: kept and tried again at every start, never dropped.
+WAITING_KEY: Final = "deletion_register_waiting"
 _INSTANT_LENGTH: Final = 32
 _LINE_KEYS: Final = frozenset({"seq", "kind", "id", "at"})
 
@@ -288,32 +291,53 @@ async def _apply_line(conn: aiosqlite.Connection, line: _Line) -> tuple[int, boo
     return rows, True
 
 
+async def _waiting() -> set[int]:
+    """The numbers of the replayed lines a key refused, still waiting to be applied."""
+    value = await meta.get_flag(WAITING_KEY)
+    return {int(seq) for seq in value.split(",") if seq} if value else set()
+
+
+async def waiting_deletions() -> int:
+    """How many promised deletions a key still holds back (``iroko-admin`` says so)."""
+    return len(await _waiting())
+
+
 async def _apply_lines(
-    lines: Sequence[_Line], *, replay: bool = False, audit: Audit | None = None
+    lines: Sequence[_Line],
+    *,
+    replay: bool = False,
+    audit: Audit | None = None,
+    marker: int | None = None,
 ) -> int:
     """Apply *lines* in one durable transaction that also moves the marker; returns the rows.
 
     On a replay each line has its own savepoint: a restored backup may hold a row that a later
-    revocation freed (a role, a consent), so a line its key refuses is logged by count and
-    skipped instead of stopping every start. A live deletion was probed before its append.
+    revocation freed (a role, a consent), so a line its key refuses does not stop the start. It
+    is not dropped either: its number is kept in ``WAITING_KEY``, tried again at every start and
+    reported (log and ``iroko-admin``) until it applies. A live deletion was probed before its
+    append, so it never waits.
     """
     if not lines:
         return 0
     rows = 0
-    refused = 0
+    refused: list[int] = []
     async with db.transaction(durable=True) as conn:
         for line in lines:
             if replay:
                 done, applied = await _apply_line(conn, line)
                 rows += done
-                refused += 0 if applied else 1
+                if not applied:
+                    refused.append(line.seq)
             else:
                 rows += await _apply(conn, line.deletion, line.at)
-        await meta.set_flag_in(conn, MARKER_KEY, str(lines[-1].seq))
+        last = max(line.seq for line in lines)
+        await meta.set_flag_in(conn, MARKER_KEY, str(max(last, marker or 0)))
+        if replay:
+            await meta.set_flag_in(conn, WAITING_KEY, ",".join(str(seq) for seq in refused))
         if audit is not None:
             await audit(conn)
     if refused:
-        logger.warning("deletion.replay refused lines=%d", refused)
+        logger.warning("deletion.replay waiting lines=%d", len(refused))
     return rows
 
 
@@ -366,10 +390,11 @@ async def replay_register() -> int:
     """
     lines, _ = _read(register_path())
     marker = await _marker()
-    pending = [line for line in lines if line.seq > marker]
+    waiting = await _waiting()
+    pending = [line for line in lines if line.seq > marker or line.seq in waiting]
     if not pending:
         return 0
-    rows = await _apply_lines(pending, replay=True)
+    rows = await _apply_lines(pending, replay=True, marker=marker)
     await db.checkpoint_wal_until_done()
     logger.info("Deletion register replayed: %d line(s), %d row(s)", len(pending), rows)
     return len(pending)
