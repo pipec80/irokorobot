@@ -131,7 +131,8 @@ on 2026-09-30, and its hardening follow-up, Plan 0055, merged on 2026-10-01
 The documentary-retrieval stages of
 [RAG §25](../architecture/rag-and-memory-retrieval.md#25-secuencia-de-evolución)
 overlap this map: R1 is CM-5, R3 (hybrid search) is delivered with CM-5b and R5 is
-CM-3, CM-4 and CM-6. R2 (documents) left the memory path and is conditional.
+CM-3, CM-4 and CM-6. R2 (documents and reading through the camera) is back on the path
+since 2026-11-11, as row 9 of the closing path; R4 stays conditional and R6 waits for P2.1.
 The CM-1…CM-7 plan numbers are not reserved (Plan 0051, the first plan of CM-1, is
 closed); each stage is written only after its predecessor closes and is
 re-audited.
