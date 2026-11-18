@@ -91,6 +91,27 @@ def _folded(text: str) -> str:
     return f" {normalize_spanish(text)} "
 
 
+_MIN_PLURAL_NAME = 4
+
+
+def _with_variants(names: Iterable[str]) -> tuple[str, ...]:
+    """The names, plus each without a final «s» (Whisper heard «Canarias» for «Canaria»).
+
+    Found on hardware (Plan 0086, 2026-11-18): a name is matched as whole words, so a speech
+    to text that adds or drops one final «s» found nothing. The read-back count still shows
+    what a variant reaches before the verb.
+    """
+    found: list[str] = []
+    for name in names:
+        stripped = name.strip()
+        if not stripped:
+            continue
+        found.append(stripped)
+        if len(stripped) >= _MIN_PLURAL_NAME and stripped.casefold().endswith("s"):
+            found.append(stripped[:-1])
+    return tuple(dict.fromkeys(found))
+
+
 def mentions(text: str, names: Iterable[str]) -> bool:
     """Whether *text* holds one of *names* as whole words, folded.
 
@@ -118,9 +139,9 @@ async def _linked_entity(owner_entity_id: int, words: str) -> int | None:
         contact.contact_entity_id
         for contact in await care_contacts.list_active_contacts(owner_entity_id)
     }
-    wanted = _folded(words)
+    wanted = {_folded(variant) for variant in _with_variants((words,))}
     for entity_id in sorted(linked):
-        if any(_folded(name) == wanted for name in await declarative.entity_names(entity_id)):
+        if any(_folded(name) in wanted for name in await declarative.entity_names(entity_id)):
             return entity_id
     return None
 
@@ -160,9 +181,10 @@ async def person_scope(
     """
     if entity_id is None and words:
         entity_id = await _linked_entity(owner_entity_id, words)
-    names: tuple[str, ...] = (
-        await declarative.entity_names(entity_id) if entity_id is not None else ()
-    ) or ((words,) if words else ())
+    names: tuple[str, ...] = _with_variants(
+        (await declarative.entity_names(entity_id) if entity_id is not None else ())
+        or ((words,) if words else ())
+    )
     facts, relations = (
         await relational_v4.rows_about_entity(entity_id) if entity_id is not None else ([], [])
     )
