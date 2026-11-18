@@ -422,49 +422,76 @@ async def delete_all_records(conn: aiosqlite.Connection) -> int:
     return max(deleted, 0)
 
 
-async def _delete_oldest_closed(conn: aiosqlite.Connection) -> int | None:
-    """Delete the next closed segment to go (not eligible first, then the oldest).
+# A record whose episode is written keeps its row when its turns go (Plan 0086 D-11, ADR 0032
+# decision 5): the diary outlives the raw text. It is purgeable only while it still holds a turn;
+# a record with no written episode is purgeable whole.
+_PURGEABLE = (
+    "closed_at IS NOT NULL AND (episode_status <> 'done' OR EXISTS "
+    "(SELECT 1 FROM conversation_turns t WHERE t.record_id = conversation_records.id))"
+)
+
+
+async def _purge_one(conn: aiosqlite.Connection, record_id: int, status: str) -> int:
+    """Purge one closed segment: its turns when its episode is written, else the whole row.
 
     Returns:
-        The bytes its exchanges weighed, or ``None`` when no closed segment is left.
+        The bytes its exchanges weighed.
     """
     cursor = await conn.execute(
-        "SELECT id FROM conversation_records WHERE closed_at IS NOT NULL "
+        "SELECT COALESCE(SUM(bytes), 0) FROM conversation_turns WHERE record_id = ?", (record_id,)
+    )
+    weighed = await cursor.fetchone()
+    await cursor.close()
+    if status == EpisodeStatus.DONE.value:
+        await conn.execute("DELETE FROM conversation_turns WHERE record_id = ?", (record_id,))
+    else:
+        await conn.execute("DELETE FROM conversation_records WHERE id = ?", (record_id,))
+    return 0 if weighed is None else int(weighed[0])
+
+
+async def _delete_oldest_closed(conn: aiosqlite.Connection) -> int | None:
+    """Purge the next closed segment to go (not eligible first, then the oldest).
+
+    Returns:
+        The bytes its exchanges weighed, or ``None`` when no purgeable segment is left.
+    """
+    cursor = await conn.execute(
+        f"SELECT id, episode_status FROM conversation_records WHERE {_PURGEABLE} "  # noqa: S608
         "ORDER BY eligible, closed_at, id LIMIT 1"
     )
     victim = await cursor.fetchone()
     await cursor.close()
     if victim is None:
         return None
-    cursor = await conn.execute(
-        "SELECT COALESCE(SUM(bytes), 0) FROM conversation_turns WHERE record_id = ?", (victim[0],)
-    )
-    weighed = await cursor.fetchone()
-    await cursor.close()
-    await conn.execute("DELETE FROM conversation_records WHERE id = ?", (victim[0],))
-    return 0 if weighed is None else int(weighed[0])
+    return await _purge_one(conn, int(victim[0]), str(victim[1]))
 
 
 async def purge_records(now: datetime) -> int:
-    """Delete expired segments, then the oldest closed ones while the record is over its cap.
+    """Purge expired segments, then the oldest closed ones while the record is over its cap.
 
-    Not-eligible segments go before eligible ones; the open segment is never deleted. Episodes
-    go with their records (cascade).
+    Not-eligible segments go before eligible ones; the open segment is never purged. A segment
+    whose episode is written loses its turns (and, by cascade, their recall units, candidates and
+    pending topics) and keeps its row, its episode and the episode's recall unit (Plan 0086 D-11);
+    any other segment goes whole, with whatever it holds.
 
     Args:
         now: The current time.
 
     Returns:
-        How many segments were deleted.
+        How many segments were purged.
     """
     cap = settings.conversation_record_max_total_mb * _BYTES_PER_MB
     async with db.transaction() as conn:
         cursor = await conn.execute(
-            "DELETE FROM conversation_records WHERE closed_at IS NOT NULL AND expires_at < ?",
+            f"SELECT id, episode_status FROM conversation_records WHERE {_PURGEABLE} "  # noqa: S608
+            "AND expires_at < ? ORDER BY id",
             (instant_text(now),),
         )
-        deleted = max(cursor.rowcount, 0)
+        expired = [(int(row[0]), str(row[1])) for row in await cursor.fetchall()]
         await cursor.close()
+        for record_id, status in expired:
+            await _purge_one(conn, record_id, status)
+        deleted = len(expired)
         cursor = await conn.execute("SELECT COALESCE(SUM(bytes), 0) FROM conversation_turns")
         row = await cursor.fetchone()
         await cursor.close()
