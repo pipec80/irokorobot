@@ -56,3 +56,20 @@ def test_tells_something_follows_the_alta_switch(monkeypatch: pytest.MonkeyPatch
     assert tells_something(contact) is False
     monkeypatch.setattr(settings, "sensitive_read_enabled", False)
     assert tells_something(contact) is True
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Mi mejor amiga Canaria me traicionó, no quiero saber nunca más de ella.",
+        "No quiero saber nunca más de Canaria.",
+        "Ya no me gusta el té.",
+        "Ya no me gusta el chocolate. Ahora prefiero el mate.",
+    ],
+)
+def test_a_spoken_change_is_never_a_memory(monkeypatch: pytest.MonkeyPatch, message: str) -> None:
+    """Plan 0086, hardware 2026-11-18: the archive request was indexed after the archive and
+    recall then read it back («Hoy me contaste esto: … no quiero saber nunca más de ella»)."""
+    monkeypatch.setattr(settings, "memory_enabled", True)
+
+    assert tells_something(message) is False
