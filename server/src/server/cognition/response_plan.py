@@ -49,6 +49,9 @@ class InformationNeed(StrEnum):
     BIOMETRIC_ENROLLMENT = "biometric_enrollment"
     # A spoken answer to a memory offer: a closed verb and the offered value (ADR 0021 decision 9).
     MEMORY_ANSWER = "memory_answer"
+    # «Ya no me gusta el té» / «no quiero saber más de X»: a taste corrected or a memory set aside
+    # by voice, read back and confirmed with the closed answer (Plan 0086, ADR 0032 decision 3).
+    MEMORY_CHANGE = "memory_change"
     # «¿Qué sabes de mí?»: the speaker's own profile card read back (Plan 0074, ADR 0026 decision 5).
     PROFILE_SUMMARY = "profile_summary"
     # Whisper doubted the transcript; the turn never reached the controller (Plan 0069 D-11).

@@ -343,6 +343,7 @@ class CognitiveController:
                 decision = SceneDescriptionRequest()
             case (
                 InformationNeed.MEMORY_ANSWER
+                | InformationNeed.MEMORY_CHANGE
                 | InformationNeed.PROFILE_SUMMARY
                 | InformationNeed.RECALL
                 | InformationNeed.RELATIVES_NAMES
@@ -536,6 +537,9 @@ class CognitiveController:
         """
         if need is InformationNeed.MEMORY_ANSWER:
             return await self._memory_answer_plan(event)
+        if need is InformationNeed.MEMORY_CHANGE:
+            return None  # no change dialogue is wired yet: ordinary conversation
+
         if need is InformationNeed.RECALL:
             return await self._recall_plan(event)
         if need is InformationNeed.RELATIVES_NAMES:

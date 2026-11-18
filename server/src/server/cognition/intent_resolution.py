@@ -23,6 +23,7 @@ from server.cognition.household_request import (
     requests_household_data,
     states_a_request,
 )
+from server.cognition.memory_change import parse_memory_change
 from server.cognition.recall_cues import (
     CHILD_SIDE_PREDICATES,
     CueStrength,
@@ -325,6 +326,7 @@ def resolve_information_need(
     secrets: bool = False,
     alta: bool = False,
     occurred: bool = False,
+    changes: bool = False,
 ) -> IntentResolution:
     """Resolve one bounded information need from reviewed Spanish rules.
 
@@ -340,12 +342,16 @@ def resolve_information_need(
             changes nothing without ``sensitive``.
         occurred: Whether the recall rule reads with the occurred time on (Plan 0083 D-13): the
             usted forms, years and seasons; it changes nothing without ``recall``.
+        changes: Whether a spoken correction or archive resolves to ``MEMORY_CHANGE``
+            (Plan 0086): the change dialogue is wired. It runs before every other rule.
 
     Returns:
         The closed, deterministic resolution — need, match kind, and a
         privacy-safe rule identifier (``None`` only for generic conversation).
     """
     utterance = _Utterance(message=message, normalized=normalize_spanish(message))
+    if changes and parse_memory_change(message) is not None:
+        return _resolution(InformationNeed.MEMORY_CHANGE, IntentMatch.EXACT, "memory.change.v1")
     for rule in _rules_for(recall, sensitive, secrets, alta, occurred):
         resolution = rule(utterance)
         if resolution is not None:
