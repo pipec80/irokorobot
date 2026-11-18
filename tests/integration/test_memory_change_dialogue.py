@@ -625,3 +625,13 @@ async def test_a_request_that_proposes_nothing_drops_the_older_read_back(owner: 
     assert nothing.phrase == "No tengo nada guardado de Zorzal."
     assert await _answer("Sí, autorizo.", actor) is None
     assert await _tastes(owner) == ["el té"]
+
+
+async def test_a_name_heard_with_a_final_s_still_finds_the_person(owner: int) -> None:
+    """Hardware 2026-11-18: Whisper heard «Canarias» for «Canaria» and nothing was found."""
+    await _told(owner, "el sábado fui al cine con mi amiga Canaria", 0)
+
+    asked = await _propose("No quiero saber nunca más de Canarias.", _actor(owner))
+
+    assert asked is not None
+    assert asked.phrase.startswith("Encontré un recuerdo de Canarias.")
