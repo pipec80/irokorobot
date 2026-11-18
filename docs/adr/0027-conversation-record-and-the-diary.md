@@ -282,3 +282,11 @@ speakers are in scope (P3), or when the backup plan decides what a backup carrie
   [Plan 0076](../plans/completed/0076-cm4-conversation-record-and-diary.md), closed on 2026-10-30
   ([acceptance](../evals/0076-conversation-record-acceptance.md)).
 - The next free ADR number is 0028.
+
+## Note added by Plan 0086 (2026-11-18)
+
+The diary outlives the raw record ([ADR 0032](0032-block-c-hygiene-correct-forget-and-years.md)
+decision 5, [ADR 0039](0039-c2-the-cheapest-forms-of-correct-archive-and-delete.md) decision 2):
+the purge deletes an expired or over-cap record's turns and keeps the record row while its episode
+is written; withdrawing the consent still deletes both. Deleting a record or withdrawing the
+consent goes through the deletion register, so a restore never brings them back.

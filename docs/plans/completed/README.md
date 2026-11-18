@@ -163,3 +163,11 @@ hardware; the [operational board](../README.md#operational-board) has the full c
   data dictionary and `iroko-admin health`. Accepted on real hardware (schema version 20, health 0)
   on 2026-11-17; ADR 0038 `Accepted`, ADR 0032 decision 1 implemented.
   [Record](../../evals/0085-storage-foundation-acceptance.md).
+- [Plan 0086](0086-c2-correct-archive-delete.md) (CI selection 8397): block C2. A taste corrected
+  and a person set aside by voice (the owner's face and «sí, autorizo»; an archived memory is never
+  said, offered or searched and comes back with `iroko-admin archive restore`); a deletion for good
+  only with the PIN in `iroko-admin forget`, through a deletion register (`deletions.jsonl`) that
+  every start replays, so a restore never resurrects; the diary outlives the raw record; migration
+  021 (`archived_at`). Accepted on real hardware on 2026-11-18, the four cases of Pipec's model of
+  forgetting; the sitting found three defects, fixed in PR #286 to #288. ADR 0039 `Accepted`,
+  ADR 0032 decisions 2 to 6 implemented. [Record](../../evals/0086-c2-acceptance.md).

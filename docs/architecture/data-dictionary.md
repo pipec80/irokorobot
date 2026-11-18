@@ -199,7 +199,7 @@ The primary key `(commissioning_id, section)` is the index of the foreign key.
 - **Owner module:** `memory/conversation_episodes.py`
 - **Domain:** memory
 - **Classification:** conversation content
-- **Retention:** Deleted with its record (CASCADE) and with its owner; `expires_at` repeats the record's expiry.
+- **Retention:** Kept while the owner's conversation consent stands, after its record's turns expire (Plan 0086); deleted with its record (consent withdrawn, a PIN deletion) or by `iroko-admin forget episode`, which sets the record's `episode_status` to `skipped`. `expires_at` repeats the raw record's expiry.
 
 | Column | Type | Rules |
 |---|---|---|
@@ -224,7 +224,7 @@ The primary key `(commissioning_id, section)` is the index of the foreign key.
 - **Owner module:** `memory/conversation_record.py`
 - **Domain:** memory
 - **Classification:** conversation content
-- **Retention:** Expires 365 days after closing with the owner's verified voice, 30 days without (settings); the oldest are removed while the turns exceed the byte cap (`memory/retention.py`). The owner can delete one or all with the PIN.
+- **Retention:** Expires 365 days after closing with the owner's verified voice, 30 days without (settings); the oldest are purged while the turns exceed the byte cap (`memory/retention.py`). A purged record whose episode is written loses its turns and keeps its row (the diary outlives the raw text, Plan 0086); any other goes whole. The owner can delete one or all with the PIN, through the deletion register (`deletions.jsonl` beside the database, replayed at every start).
 
 | Column | Type | Rules |
 |---|---|---|

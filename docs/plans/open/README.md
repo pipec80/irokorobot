@@ -13,7 +13,6 @@ code, tests, verified gaps and the delivery sequence.
 
 | Plan | Implementation reality | Reuse | Remaining closure |
 |---|---|---|---|
-| [0086](0086-c2-correct-archive-delete.md) | **Ready** and `NOW` (promoted by Pipec on 2026-11-17); nothing implemented yet | The closed answer dialogue (ADR 0021), the canonical writer, the turn links and `CASCADE`s of Plan 0085, `iroko-admin` and its PIN | Tasks 0 to 9, in a new session |
 | [0015](0015-personal-companion-design.md) | Approved product design; PC-1 to PC-4 are closed (PC-2 and PC-3A with provisional calibrations); reference only, never an executable batch | Controller, policy/audit, V4 household tools, identity/session seam, short-term continuity, the conversation record and recall index, STT/TTS, face engine | CM-6 and CM-7 (block C, then block D), PC-5 integrated personal acceptance and PC-6 family remain open |
 
 Existing components named under **Reuse** must not be rebuilt by a later plan.

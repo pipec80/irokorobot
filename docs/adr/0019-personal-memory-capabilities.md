@@ -323,3 +323,11 @@ caller needs a PIN for `propose`, `confirm` or `correct`.
 - *2026-11-10.* The levels of data (public, normal, private, sensitive, security) and who may hear
   each are tabulated once in
   [`identity-and-access.md`](../architecture/identity-and-access.md#levels-and-audiences).
+
+## Note added by Plan 0086 (2026-11-18)
+
+A sixth capability, `archive_personal_memory` (`basic`, consent applies, no unlock, `personal`
+only), sets a memory aside by voice; `correct_personal_memory` has its first caller (the change
+dialogue). Forgetting for good is `iroko-admin forget` with the owner's PIN
+([ADR 0032](0032-block-c-hygiene-correct-forget-and-years.md) decision 3,
+[ADR 0039](0039-c2-the-cheapest-forms-of-correct-archive-and-delete.md) decision 4).

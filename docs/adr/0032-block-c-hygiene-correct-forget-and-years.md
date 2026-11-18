@@ -9,8 +9,12 @@
   plans, one at a time: 0085 (C1), 0086 (C2) and 0087 (the export). It becomes `Accepted` when the
   last of them closes. **C1 implemented** (decision 1) by
   [Plan 0085](../plans/completed/0085-database-good-practices.md), closed 2026-11-17: the
-  database is at schema version 20 with the dictionary, the guards and `iroko-admin health`; the ADR
-  stays `Proposed` for C2 (Plan 0086) and the export (Plan 0087).
+  database is at schema version 20 with the dictionary, the guards and `iroko-admin health`. **C2
+  implemented** (decisions 2 to 6) by
+  [Plan 0086](../plans/completed/0086-c2-correct-archive-delete.md), closed 2026-11-18 under
+  [ADR 0039](0039-c2-the-cheapest-forms-of-correct-archive-and-delete.md) (the cheapest forms):
+  schema version 21; decision 7 is written in the operator manual and tested in block D. The ADR
+  stays `Proposed` for the export (Plan 0087).
 - **Date:** 2026-11-11
 - **Builds on:** [ADR 0011](0011-sqlite-transaction-ownership.md),
   [ADR 0019](0019-personal-memory-capabilities.md) (the five capabilities),
