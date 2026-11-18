@@ -476,3 +476,26 @@ async def test_archive_with_a_wrong_pin_is_audited_and_an_unknown_instant_refuse
     )
     assert code == 1
     assert any("No hay nada archivado" in line for line in lines)
+
+
+async def test_forget_person_reaches_the_name_heard_with_a_final_s(ids: dict[str, int]) -> None:
+    """Hardware 2026-11-18: three turns and a summary said «Canarias» and stayed."""
+    await db.open_db()
+    turn = make_turn(
+        "no quiero saber nunca más de Canarias",
+        "No tengo nada guardado de Canarias.",
+        voice=TurnVerdict.VERIFIED,
+        correlation_id=UUID(int=777),
+        at=_T0 + timedelta(hours=5),
+    )
+    await record.append_turn(turn, owner_entity_id=ids["owner"], now=turn.at)
+    await db.close_db()
+    db._conn = None
+
+    code = await _run(_forget("person", name="Canaria"), _Script(_PIN, "SI"), _sink()[1])
+
+    assert code == 0
+    assert (
+        await _count("SELECT COUNT(*) FROM conversation_turns WHERE lower(heard) LIKE '%canari%'")
+        == 0
+    )
