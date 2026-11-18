@@ -1,7 +1,8 @@
 # 0039 — C2: the cheapest forms of correcting, archiving and deleting a memory
 
 - **Status:** Proposed (2026-11-17), with [Plan 0086](../plans/open/0086-c2-correct-archive-delete.md)
-  (Draft). It becomes `Accepted` when Plan 0086 closes. Written from the code of `main` at
+  (`Ready` since 2026-11-17). **Pipec confirmed its six decisions on 2026-11-17** with the plan's
+  eleven («apruebo todo»); it becomes `Accepted` when Plan 0086 closes. Written from the code of `main` at
   `c4667fe` (schema version 20) under Pipec's scope rule of 2026-11-16 (*the cheapest form that
   holds the guarantee wins*) and Pipec's model of forgetting of 2026-11-17 (*a person replaces or
   sets aside a memory; the robot may also delete for good, rarely, on purpose*).

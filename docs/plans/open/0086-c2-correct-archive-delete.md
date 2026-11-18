@@ -1,7 +1,10 @@
 # 0086 — Block C2: correct and archive a memory by voice, delete it for good with the PIN
 
-> **Status:** **Draft (2026-11-17)**, for Pipec's review; not executable. It becomes `Ready` only
-> when Pipec confirms the decisions listed in *Decisions for Pipec* at the end. Source:
+> **Status:** **Ready (promoted by Pipec on 2026-11-17)**; `NOW` on the board. Pipec confirmed all
+> eleven decisions of *Pipec's decisions* at the end as written («apruebo todo, acepto todo»), and
+> asked that the owner's day with an always-on robot (how long an identification lasts, when the
+> robot asks for more) be reviewed after this plan closes; it is recorded in the roadmap and in
+> *Deferred, with their triggers*, and it changes nothing here. Was: Draft (2026-11-17). Source:
 > [ADR 0032](../../adr/0032-block-c-hygiene-correct-forget-and-years.md) decisions 2 to 7 (Pipec,
 > 2026-11-11 and 2026-11-13), [ADR 0038](../../adr/0038-the-memory-engines-storage-foundation.md)
 > decision 4 and its *Amendment of 2026-11-16* (the pieces deferred to this plan),
@@ -217,6 +220,7 @@ Every name and phrase here is an invented canary.
 | Archiving a person automatically in later stories | Third parties learned from conversation (after CM-7) | — |
 | The contradiction phrase pointing to the correction | An owner stuck at «ya tengo guardado algo distinto» on hardware | — |
 | The deletion register in the backups and the restore procedure | ADR 0033 (backups) | ADR 0033 |
+| How long the owner stays identified in a day, and when the robot asks for a fresh confirmation or more evidence (a second face, an unknown voice) | This plan closes (Pipec, 2026-11-17) | The roadmap's product gaps |
 
 **Goal.** The owner corrects a taste and sets aside a person by voice, with the face and a closed
 verb; nothing set aside is said, offered or searched, and `iroko-admin` brings it back or deletes it
@@ -482,7 +486,7 @@ conversation (after CM-7); any wire, robot, setting or dependency change.
   `restore_archived`, `DeletionKind`, `Deletion`, `delete_for_good`, `replay_register`,
   `checkpoint_wal_until_done` are each defined once and named the same in later tasks.
 
-## Decisions for Pipec
+## Pipec's decisions (confirmed 2026-11-17, all eleven as written)
 
 1. **ADR 0039 decision 1:** the register keyed on the integer id with a replay marker, instead of a
    `uid` on every row.
