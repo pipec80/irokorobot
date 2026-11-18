@@ -10,10 +10,37 @@ from __future__ import annotations
 import re
 import unicodedata
 
-__all__ = ["ARTICLES", "comparison_key", "fold_name", "normalize_spanish"]
+__all__ = [
+    "ARTICLES",
+    "GREETING_WORDS",
+    "PERSON_WORDS",
+    "comparison_key",
+    "fold_name",
+    "normalize_spanish",
+]
 
 #: Articles a spoken object may begin with; the comparison key drops them.
 ARTICLES = frozenset({"el", "la", "los", "las", "un", "una", "unos", "unas", "lo"})
+
+#: Words that may open a sentence without attributing it to somebody else («hola Iroko, …»).
+#: Shared by the memory grammars (``memory.lexicon``) and the change grammar of the cognitive core
+#: (``cognition.memory_change``); defined here so the core imports no memory module.
+GREETING_WORDS = frozenset(
+    {"hola", "iroko", "oye", "dime", "escucha", "sabes", "que", "mira", "vamos", "ver", "es"}
+)
+
+#: Kinship, role and person words (``memory.lexicon`` re-exports them; Plan 0086 moved them
+#: here so the cognitive core can name the person after one: «mi mejor amiga Canaria»).
+PERSON_WORDS = frozenset(
+    {
+        "mama", "papa", "madre", "padre", "hermano", "hermana", "abuelo", "abuela", "tio",
+        "tia", "primo", "prima", "suegro", "suegra", "cunado", "cunada", "nieto", "nieta",
+        "sobrino", "sobrina", "novio", "novia", "marido", "mujer", "bebe", "nino", "nina",
+        "familia", "jefe", "jefa", "amigo", "amiga", "vecino", "vecina", "companero",
+        "companera", "colega", "profesor", "profesora", "maestro", "maestra", "doctor",
+        "doctora", "medico", "medica", "persona", "gente",
+    }
+)  # fmt: skip
 
 _NON_WORD_RUN = re.compile(r"[^\w]+", re.UNICODE)
 

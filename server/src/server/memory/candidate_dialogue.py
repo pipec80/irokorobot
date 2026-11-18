@@ -61,6 +61,7 @@ from server.memory.lexicon import (
     OFFER_VERB_SINGULAR,
     PLURAL_ARTICLES,
 )
+from server.memory.memory_change_dialogue import has_pending_change
 from server.memory.memory_writer import PromotionOutcome, promote
 from server.memory.voice_consent import has_active_voice_consent
 from server.settings import settings
@@ -175,8 +176,8 @@ async def prepare_offer(
         if not settings.memory_candidates_enabled or not is_face_actor(actor):
             return None
         person_id = actor.person_id
-        if person_id is None:
-            return None
+        if person_id is None or has_pending_change(person_id, clock()):
+            return None  # a change read back waits for its verb: one open question at a time
         candidate = await next_offerable(person_id, now=clock())
         if candidate is None or candidate.value_text is None:
             return None

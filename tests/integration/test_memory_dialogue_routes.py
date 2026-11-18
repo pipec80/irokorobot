@@ -44,9 +44,10 @@ from server.memory.candidate_types import CandidateChannel, CandidateStatus, Pro
 from server.memory.declarative import upsert_entity
 from server.memory.entity_labels import get_person_label
 from server.memory.household_authorization import get_active_role
+from server.memory.memory_change_dialogue import reset_pending_changes
 from server.memory.owner_credentials import get_active_owner_pin_credential
 from server.memory.predicate_registry import resolve_predicate
-from server.memory.relational_v4 import get_active_literal_facts
+from server.memory.relational_v4 import assert_literal_fact, get_active_literal_facts
 from server.memory.voice_consent import grant_voice_consent, revoke_voice_consent
 from server.personal_setup import PersonalSetupInput, PersonalSetupResult, apply_personal_setup
 from server.resources import AppResources
@@ -1073,3 +1074,58 @@ def test_either_switch_off_binds_neither_the_preparation_nor_the_answerer(
 
     assert transcribe_router._memory_answerer() is None
     assert transcribe_router._offer_preparer(event=Mock(), wav_bytes=b"") is None
+
+
+# --- the change dialogue on the wire (Plan 0086 Tasks 6 and 7) ------------------------------------
+
+
+@pytest.mark.parametrize("route", ["/transcribe", "/transcribe/stream"])
+async def test_a_spoken_correction_is_read_back_and_confirmed_on_each_route(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch, route: str
+) -> None:
+    owner = household.owner_entity_id
+    definition = resolve_predicate("likes")
+    assert definition is not None
+    await assert_literal_fact(
+        subject_entity_id=owner,
+        definition=definition,
+        value="el mate",
+        visibility="personal",
+        sensitivity="normal",
+    )
+    reset_pending_changes()
+    _scene(monkeypatch, "Ya no me gusta el mate.", "Sí, autorizo.")
+
+    async with _client() as client:
+        asked = await client.post(route, files=_files())
+        answered = await client.post(route, files=_files())
+
+    reset_pending_changes()
+    assert asked.status_code == answered.status_code == 200
+    assert "Tenía guardado que te gusta el mate." in asked.text
+    assert "Listo, lo cambié." in answered.text
+    assert await _likes(owner) == []
+    assert ("correct_personal_memory", "allowed") in await _audit_rows()
+
+
+async def test_a_second_face_hears_no_read_back(
+    household: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owner = household.owner_entity_id
+    definition = resolve_predicate("likes")
+    assert definition is not None
+    await assert_literal_fact(
+        subject_entity_id=owner,
+        definition=definition,
+        value="el mate",
+        visibility="personal",
+        sensitivity="normal",
+    )
+    reset_pending_changes()
+    _scene(monkeypatch, "Ya no me gusta el mate.", faces=(_OWNER_FACE, _STRANGER_FACE))
+
+    async with _client() as client:
+        response = await client.post("/transcribe", files=_files())
+
+    assert response.json()["llm_response"] == _REPLY
+    assert len(await _likes(owner)) == 1

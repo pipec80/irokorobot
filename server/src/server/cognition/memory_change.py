@@ -24,8 +24,7 @@ from dataclasses import dataclass
 import re
 from typing import Final, Literal
 
-from server.memory.lexicon import ARTICLES, GREETING_WORDS, PERSON_WORDS
-from server.text_keys import normalize_spanish
+from server.text_keys import ARTICLES, GREETING_WORDS, PERSON_WORDS, normalize_spanish
 
 __all__ = ["MemoryChange", "parse_memory_change"]
 

@@ -64,6 +64,7 @@ _PROPOSE = AuthorizationAction.PROPOSE_PERSONAL_MEMORY
 _CONFIRM = AuthorizationAction.CONFIRM_PERSONAL_MEMORY
 _CORRECT = AuthorizationAction.CORRECT_PERSONAL_MEMORY
 _FORGET = AuthorizationAction.FORGET_PERSONAL_MEMORY
+_ARCHIVE = AuthorizationAction.ARCHIVE_PERSONAL_MEMORY
 _PERSONAL_ONLY = frozenset({DataVisibility.PERSONAL})
 _FORGET_VISIBILITIES = frozenset(
     {DataVisibility.PERSONAL, DataVisibility.PRIVATE, DataVisibility.TEMPORARY}
@@ -81,6 +82,14 @@ _ORDINARY_LITERAL = frozenset({DataSensitivity.NORMAL, DataSensitivity.PRIVATE})
 
 # ADR 0019 §3, restated as literals. Owner amendment 2026-10-08: confirm needs STRONG.
 _EXPECTED_TABLE = {
+    # Plan 0086, ADR 0039 decision 4: archiving by voice is its own action, at `basic`.
+    _ARCHIVE: PersonalMemoryCapability(
+        min_assurance=IdentityAssurance.BASIC,
+        consent_applies=True,
+        requires_unlock=False,
+        unlock_scope=None,
+        visibilities=_PERSONAL_ONLY,
+    ),
     _READ: PersonalMemoryCapability(
         min_assurance=IdentityAssurance.BASIC,
         consent_applies=True,
@@ -123,7 +132,7 @@ _EXPECTED_TABLE = {
 
 
 def test_the_capability_table_is_exactly_the_one_in_adr_0019() -> None:
-    """One literal table: five new actions, nothing else, no capability accepts no assurance."""
+    """One literal table: six actions (ADR 0019 and ADR 0039), no capability accepts none."""
     assert dict(PERSONAL_MEMORY_CAPABILITIES) == _EXPECTED_TABLE
     for capability in PERSONAL_MEMORY_CAPABILITIES.values():
         assert capability.min_assurance is not IdentityAssurance.NONE
@@ -919,6 +928,7 @@ _ACTION_VALUES = (
     "confirm_personal_memory",
     "correct_personal_memory",
     "forget_personal_memory",
+    "archive_personal_memory",
 )
 _FORGET_VALUE = "forget_personal_memory"
 _ORACLE_RANK = {"none": 0, "basic": 1, "strong": 2}
@@ -928,6 +938,7 @@ _ORACLE_MIN_RANK = {
     "confirm_personal_memory": 2,
     "correct_personal_memory": 1,
     "forget_personal_memory": 2,
+    "archive_personal_memory": 1,
 }
 _ORACLE_SENSITIVE = frozenset({"biometric", "medical", "location", "child_data", "security"})
 _ORACLE_STRONG_CATEGORIES = frozenset({"biometric", "medical", "location"})
@@ -940,6 +951,7 @@ _ORACLE_VISIBILITIES = {
     "confirm_personal_memory": _ORACLE_PERSONAL,
     "correct_personal_memory": _ORACLE_PERSONAL,
     "forget_personal_memory": frozenset({"personal", "private", "temporary"}),
+    "archive_personal_memory": _ORACLE_PERSONAL,
 }
 _ORACLE_UNLOCK_SCOPE = {
     "read_personal_conversation_memory": "personal_memory_read",

@@ -1220,6 +1220,34 @@ async def delete_entity_relation_row(conn: aiosqlite.Connection, row_id: int) ->
     return deleted
 
 
+async def supersede_literal_fact(
+    conn: aiosqlite.Connection, fact_id: int, *, by: int, at: str
+) -> bool:
+    """Close an active fact as history because the owner corrected it (ADR 0032 decision 4).
+
+    Inside the caller's transaction: the row becomes ``superseded`` by *by*, its validity closes
+    on the household day of *at*; it is never edited or deleted.
+
+    Args:
+        conn: The connection of an open ``db.transaction()``.
+        fact_id: The fact the owner corrected.
+        by: The fact that replaces it.
+        at: When it was corrected (32-character UTC).
+
+    Returns:
+        Whether an active row changed.
+    """
+    instant, day = _revocation(at)
+    cursor = await conn.execute(
+        "UPDATE literal_facts_v4 SET lifecycle = 'superseded', valid_to = ?, superseded_at = ?, "
+        "superseded_by = ? WHERE id = ? AND lifecycle = 'active'",
+        (day, instant, by, fact_id),
+    )
+    changed = cursor.rowcount
+    await cursor.close()
+    return changed > 0
+
+
 async def unarchive_literal_fact(conn: aiosqlite.Connection, fact_id: int) -> bool:
     """Bring one fact back because the owner said it again and confirmed it (Plan 0086 D-9).
 

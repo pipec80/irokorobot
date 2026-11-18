@@ -73,6 +73,8 @@ class AuthorizationAction(str, _Enum):  # noqa: UP042
     CONFIRM_PERSONAL_MEMORY = "confirm_personal_memory"
     CORRECT_PERSONAL_MEMORY = "correct_personal_memory"
     FORGET_PERSONAL_MEMORY = "forget_personal_memory"
+    # Set a memory aside by voice (Plan 0086, ADR 0039 decision 4): `basic`, like correcting.
+    ARCHIVE_PERSONAL_MEMORY = "archive_personal_memory"
     PROPOSE_HOUSEHOLD_MEMORY = "propose_household_memory"
     CONFIRM_HOUSEHOLD_MEMORY = "confirm_household_memory"
 
