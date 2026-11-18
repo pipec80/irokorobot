@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, datetime
+import re
 import sqlite3
 from typing import TYPE_CHECKING, Final, Literal
 
@@ -40,9 +41,12 @@ if TYPE_CHECKING:
 __all__ = [
     "RecallIndexHealth",
     "RecallUnit",
+    "archive_units",
+    "archived_units",
     "count_rows",
     "count_units_of_another_model",
     "count_unlinked_units",
+    "delete_unit_row",
     "index_health",
     "insert_episode_unit",
     "insert_turn_unit",
@@ -50,8 +54,11 @@ __all__ = [
     "occurred_time_on",
     "raise_record_sensitivity",
     "recent_units",
+    "restore_archived_units",
     "store_vector",
     "tells_something",
+    "unit_ids_naming",
+    "unit_ids_naming_stored",
     "units_by_id",
     "units_without_vector",
     "vector_hits",
@@ -59,13 +66,18 @@ __all__ = [
 
 type UnitKind = Literal["turn", "episode"]
 
+_HAS_WORD: Final = re.compile(r"\w")
+
 # An extended SQLite result code keeps its primary code in the low byte (267 is 11 | 1 << 8).
 _PRIMARY_CODE_MASK: Final = 0xFF
 
-# The filters every read applies to a unit `u` joined to its record `r`.
+# The filters every read applies to a unit `u` joined to its record `r`; a unit the owner set
+# aside (`archived_at`, Plan 0086 D-8) is never read. An episode unit is read whatever its record's
+# expiry: the diary outlives the raw text (Plan 0086 D-11, ADR 0032 decision 5).
 _READABLE = (
     "u.owner_entity_id = :owner AND u.visibility = 'personal' AND u.sensitivity = 'normal' "
-    "AND (r.expires_at IS NULL OR r.expires_at > :now) "
+    "AND u.archived_at IS NULL "
+    "AND (u.kind = 'episode' OR r.expires_at IS NULL OR r.expires_at > :now) "
     "AND (:since IS NULL OR u.said_at >= :since) AND (:until IS NULL OR u.said_at < :until)"
 )
 # The model guard (ADR 0031 decision 8). The configured model is a parameter; each half of
@@ -101,7 +113,8 @@ _RECORD_TURNS = (
 )
 _READABLE_OCCURRED = (
     "u.owner_entity_id = :owner AND u.visibility = 'personal' AND u.sensitivity = 'normal' "
-    "AND (r.expires_at IS NULL OR r.expires_at > :now) "
+    "AND u.archived_at IS NULL "
+    "AND (u.kind = 'episode' OR r.expires_at IS NULL OR r.expires_at > :now) "
     f"AND (:since IS NULL OR ({_IN_WINDOW.format(t='u')} AND NOT (u.kind = 'episode' "
     f"AND EXISTS ({_RECORD_TURNS}t.occurred_start IS NOT NULL) "
     f"AND NOT EXISTS ({_RECORD_TURNS}{_IN_WINDOW.format(t='t')}))))"
@@ -387,6 +400,119 @@ async def raise_record_sensitivity(
                 "UPDATE recall_units SET sensitivity = ? WHERE id = ?", (raised, int(row[0]))
             )
             changed += 1
+    return changed
+
+
+async def unit_ids_naming(*, owner_entity_id: int, phrase: str, now: str) -> list[int]:
+    """The owner's readable units whose body holds *phrase* as one FTS5 phrase (Plan 0086 D-7).
+
+    A phrase with no word character names nothing (FTS5 would refuse an empty phrase).
+
+    The phrase is quoted, so no input is FTS syntax; accents and case are folded by the
+    tokenizer. Only units every read may deliver are returned (``_READABLE``).
+    """
+    if not _HAS_WORD.search(phrase):
+        return []
+    cursor = await db.get_conn().execute(
+        "SELECT u.id FROM recall_units_fts f JOIN recall_units u ON u.id = f.rowid "  # noqa: S608
+        "JOIN conversation_records r ON r.id = u.source_record_id "
+        f"WHERE recall_units_fts MATCH :match AND {_READABLE} ORDER BY u.id",
+        {
+            "match": '"' + phrase.replace('"', '""') + '"',
+            "owner": owner_entity_id,
+            "now": now,
+            "since": None,
+            "until": None,
+        },
+    )
+    rows = [int(row[0]) for row in await cursor.fetchall()]
+    await cursor.close()
+    return rows
+
+
+async def archived_units() -> list[tuple[int, str, str]]:
+    """Every unit set aside as ``(id, archived_at, body)``, for ``iroko-admin archive list``."""
+    cursor = await db.get_conn().execute(
+        "SELECT id, archived_at, body FROM recall_units WHERE archived_at IS NOT NULL "
+        "ORDER BY archived_at, id"
+    )
+    rows = [(int(row[0]), str(row[1]), str(row[2])) for row in await cursor.fetchall()]
+    await cursor.close()
+    return rows
+
+
+async def delete_unit_row(conn: aiosqlite.Connection, row_id: int) -> int:
+    """Delete one recall unit for good, inside the caller's transaction (Plan 0086 D-12).
+
+    Only ``deletion_register`` calls it, under the deletion protocol. Its word-index row and its vector go with
+    it (the unit's triggers).
+
+    Returns:
+        How many rows went (0 when it was already gone: a replay is idempotent).
+    """
+    cursor = await conn.execute("DELETE FROM recall_units WHERE id = ?", (row_id,))
+    deleted = max(cursor.rowcount, 0)
+    await cursor.close()
+    return deleted
+
+
+async def unit_ids_naming_stored(*, owner_entity_id: int, phrase: str) -> list[int]:
+    """Every unit of the owner whose body holds *phrase*, archived or expired too (a deletion)."""
+    if not _HAS_WORD.search(phrase):
+        return []
+    cursor = await db.get_conn().execute(
+        "SELECT u.id FROM recall_units_fts f JOIN recall_units u ON u.id = f.rowid "
+        "WHERE recall_units_fts MATCH ? AND u.owner_entity_id = ? ORDER BY u.id",
+        ('"' + phrase.replace('"', '""') + '"', owner_entity_id),
+    )
+    rows = [int(row[0]) for row in await cursor.fetchall()]
+    await cursor.close()
+    return rows
+
+
+async def archive_units(conn: aiosqlite.Connection, unit_ids: Sequence[int], *, at: str) -> int:
+    """Set recall units aside, inside the caller's transaction (Plan 0086 D-7).
+
+    The unit, its word-index row and its vector stay; every read leaves it out. A unit already
+    archived keeps its first instant.
+
+    Args:
+        conn: The connection of an open ``db.transaction()``.
+        unit_ids: The units to set aside.
+        at: The archive instant (32-character UTC).
+
+    Returns:
+        How many units were set aside.
+    """
+    values = tuple(sorted({int(unit_id) for unit_id in unit_ids}))
+    if not values:
+        return 0
+    marks = ", ".join("?" for _ in values)
+    cursor = await conn.execute(
+        f"UPDATE recall_units SET archived_at = ? "  # noqa: S608 - placeholders only
+        f"WHERE id IN ({marks}) AND archived_at IS NULL AND sensitivity = 'normal'",
+        (at, *values),
+    )
+    changed = max(cursor.rowcount, 0)
+    await cursor.close()
+    return changed
+
+
+async def restore_archived_units(conn: aiosqlite.Connection, *, at: str) -> int:
+    """Bring back every unit set aside at *at*, inside the caller's transaction.
+
+    Args:
+        conn: The connection of an open ``db.transaction()``.
+        at: The archive instant of the group to restore.
+
+    Returns:
+        How many units came back.
+    """
+    cursor = await conn.execute(
+        "UPDATE recall_units SET archived_at = NULL WHERE archived_at = ?", (at,)
+    )
+    changed = max(cursor.rowcount, 0)
+    await cursor.close()
     return changed
 
 

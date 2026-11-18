@@ -24,6 +24,7 @@ from server.cognition.intent_resolution import (
     parse_memory_answer,
     resolve_information_need,
 )
+from server.cognition.memory_change import MemoryChange, parse_memory_change
 from server.cognition.models import (
     AuthorizationAction,
     AuthorizationDecision,
@@ -96,6 +97,13 @@ type IntentResolver = Callable[..., IntentResolution]
 #: generation, byte for byte.
 type MemoryAnswerer = Callable[
     [MemoryAnswer, ActivePersonContext, CognitiveEvent[TextTurnPayload]],
+    Awaitable[MemoryAnswerReply | None],
+]
+#: Reads a spoken change of a memory back (Plan 0086 D-5) for an actor already observed. Only the
+#: voice routes inject one; it returns the fixed read-back (or a fixed refusal), or ``None`` so the
+#: turn falls through to ordinary generation, byte for byte.
+type MemoryChanger = Callable[
+    [MemoryChange, ActivePersonContext, CognitiveEvent[TextTurnPayload]],
     Awaitable[MemoryAnswerReply | None],
 ]
 #: Reads the speaker's own profile card for «¿qué sabes de mí?» (Plan 0074, ADR 0026 decision 5).
@@ -184,6 +192,7 @@ class CognitiveController:
         consent_resolver: ConsentResolver = _not_required_consent,
         intent_resolver: IntentResolver = resolve_information_need,
         memory_answerer: MemoryAnswerer | None = None,
+        memory_changer: MemoryChanger | None = None,
         profile_summarizer: ProfileSummarizer | None = None,
         household_names: HouseholdNameReader | None = None,
         recall_answerer: RecallAnswerer | None = None,
@@ -210,6 +219,9 @@ class CognitiveController:
             memory_answerer: The answer to a memory offer (ADR 0021 decision 9); injected
                 only by the voice routes with the candidate kill-switch on. When absent an
                 answer-shaped message is ordinary conversation.
+            memory_changer: Reads back a spoken correction or archive of a memory (Plan 0086);
+                injected only by the voice routes with memory on. When absent the change grammar
+                never runs and such a message is ordinary conversation, byte for byte.
             profile_summarizer: Reads the speaker's profile card for «¿qué sabes de mí?»
                 (Plan 0074); injected only by the voice routes with the card switch on. When
                 absent the question is ordinary conversation, byte for byte.
@@ -241,6 +253,7 @@ class CognitiveController:
         self._consent_resolver = consent_resolver
         self._intent_resolver = intent_resolver
         self._memory_answerer = memory_answerer
+        self._memory_changer = memory_changer
         self._profile_summarizer = profile_summarizer
         self._household_names = household_names
         self._recall_answerer = recall_answerer
@@ -257,6 +270,7 @@ class CognitiveController:
         # event, so no audit row is written twice. The controller is built per request and
         # lives for one request, so the cache is never evicted.
         self._answers: dict[UUID, ResponsePlan | None] = {}
+        self._changes: dict[UUID, ResponsePlan | None] = {}
         # The same two calls, the same event: the store is read once per event.
         self._named_requests: dict[UUID, bool] = {}
 
@@ -343,6 +357,7 @@ class CognitiveController:
                 decision = SceneDescriptionRequest()
             case (
                 InformationNeed.MEMORY_ANSWER
+                | InformationNeed.MEMORY_CHANGE
                 | InformationNeed.PROFILE_SUMMARY
                 | InformationNeed.RECALL
                 | InformationNeed.RELATIVES_NAMES
@@ -382,6 +397,8 @@ class CognitiveController:
                 flags["alta"] = True
         if self._secret_guard:
             flags["secrets"] = True
+        if self._memory_changer is not None:
+            flags["changes"] = True
         need = self._intent_resolver(message, **flags).need
         if need is InformationNeed.GENERIC_CONVERSATION and await self._asks_about_known_name(
             event
@@ -525,6 +542,36 @@ class CognitiveController:
         self._answers[event.event_id] = plan
         return plan
 
+    async def _memory_change_plan(
+        self, event: CognitiveEvent[TextTurnPayload]
+    ) -> ResponsePlan | None:
+        """Read a spoken change of a memory back, or fall through (``None``, Plan 0086).
+
+        As for a memory answer, the actor is observed first for every message of this shape
+        (no oracle) and never spends a grant; the changer decides who may go on. A plan
+        returned here never enters continuity.
+        """
+        change = parse_memory_change(event.payload.message)
+        if self._memory_changer is None or change is None:
+            return None
+        if event.event_id in self._changes:
+            return self._changes[event.event_id]
+        actor = await self._observed_person_resolver(event)
+        reply = await self._memory_changer(change, actor, event)
+        plan = (
+            None
+            if reply is None
+            else ResponsePlan(
+                need=InformationNeed.MEMORY_CHANGE,
+                status=KnowledgeStatus.KNOWN,
+                source=ResponseSource.DETERMINISTIC,
+                response=reply.phrase,
+                expects_short_reply=reply.expects_short_reply,
+            )
+        )
+        self._changes[event.event_id] = plan
+        return plan
+
     async def _voice_dialogue_plan(
         self,
         event: CognitiveEvent[TextTurnPayload],
@@ -536,6 +583,9 @@ class CognitiveController:
         """
         if need is InformationNeed.MEMORY_ANSWER:
             return await self._memory_answer_plan(event)
+        if need is InformationNeed.MEMORY_CHANGE:
+            return await self._memory_change_plan(event)
+
         if need is InformationNeed.RECALL:
             return await self._recall_plan(event)
         if need is InformationNeed.RELATIVES_NAMES:

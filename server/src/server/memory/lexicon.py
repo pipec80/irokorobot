@@ -193,6 +193,33 @@ ANSWER_CONTRADICTION_PHRASE = "No lo guardé: ya tengo guardado algo distinto."
 #: Said only to the verified owner whose open offer was found and then could not be settled,
 #: so the model never improvises a "listo" for something that was not saved.
 ANSWER_FAILED_PHRASE = "No pude guardarlo ahora. Dímelo de nuevo en un rato."
+#: Changing a memory by voice (Plan 0086 D-5, ADR 0032 decisions 3 and 4): the robot reads the
+#: change back, then the owner's face and a closed verb confirm it. ``{taste}`` is one of
+#: ``CHANGE_TASTES`` (the verb agrees as in the offer); ``{target}`` is the name as said.
+CHANGE_TASTES: dict[str, str] = {
+    "likes": "te {verb} {value}",
+    "dislikes": "no te {verb} {value}",
+    "prefers": "prefieres {value}",
+}
+CHANGE_CORRECT_QUESTION = "Tenía guardado que {old}. ¿Lo cambio? Dime: sí, autorizo."
+CHANGE_REPLACE_QUESTION = (
+    "Tenía guardado que {old}. Ahora guardo que {new}. ¿Lo cambio? Dime: sí, autorizo."
+)
+CHANGE_ARCHIVE_ONE_QUESTION = (
+    "Encontré un recuerdo de {target}. Lo dejo de lado y no te lo menciono más. "
+    "¿Lo hago? Dime: sí, autorizo."
+)
+CHANGE_ARCHIVE_QUESTION = (
+    "Encontré {count} recuerdos de {target}. Los dejo de lado y no te los menciono más. "
+    "¿Lo hago? Dime: sí, autorizo."
+)
+CHANGE_NOTHING_TO_CORRECT = "No tenía guardado que {old}."
+CHANGE_NOTHING_TO_ARCHIVE = "No tengo nada guardado de {target}."
+CHANGE_ADMIN_ONLY = "Eso se cambia en iroko-admin, con tu PIN."
+CHANGE_CORRECTED = "Listo, lo cambié."
+CHANGE_ARCHIVED = "Listo, lo dejé de lado."
+CHANGE_DECLINED = "Está bien, no cambio nada."
+CHANGE_FAILED = "No pude hacerlo ahora. Dímelo de nuevo en un rato."
 #: Said to a face-identified person whose open offer an answer named while their voice was not
 #: verified (Plan 0068, D-1): it asks for a longer answer instead of letting the model guess. It
 #: dictates, after the last colon, words the answer grammar accepts («que lo guardes»); a unit
@@ -230,9 +257,7 @@ LEAD_IN_PHRASES = ("la verdad es que", "es que")
 #: ("hola Iroko, me gusta el mate"). A clause of other words before a soft break makes the next
 #: taste somebody else's ("mi hija dice: me gusta el helado"). «es» is here only so the filler
 #: «es que» / «la verdad es que» does not count as such a clause when it precedes a soft break.
-GREETING_WORDS = frozenset(
-    {"hola", "iroko", "oye", "dime", "escucha", "sabes", "que", "mira", "vamos", "ver", "es"}
-)
+GREETING_WORDS = text_keys.GREETING_WORDS
 
 #: A word that negates what follows or precedes: the only negated forms accepted are the
 #: triggers `no me gusta(n)` and `no soporto` themselves.
@@ -258,16 +283,7 @@ ALLOWED_INFINITIVES = frozenset(
 #: Kinship, role and person words: an object that names one is never a taste (CM-3b owns
 #: third parties). The keys of `RELATION_TRIGGERS` (hijo, mascota, perro, gato, esposa, ...)
 #: join this set by `candidate_denied_words`, so a pet is a third party here too.
-PERSON_WORDS = frozenset(
-    {
-        "mama", "papa", "madre", "padre", "hermano", "hermana", "abuelo", "abuela", "tio",
-        "tia", "primo", "prima", "suegro", "suegra", "cunado", "cunada", "nieto", "nieta",
-        "sobrino", "sobrina", "novio", "novia", "marido", "mujer", "bebe", "nino", "nina",
-        "familia", "jefe", "jefa", "amigo", "amiga", "vecino", "vecina", "companero",
-        "companera", "colega", "profesor", "profesora", "maestro", "maestra", "doctor",
-        "doctora", "medico", "medica", "persona", "gente",
-    }
-)  # fmt: skip
+PERSON_WORDS = text_keys.PERSON_WORDS
 
 #: Place, health, money, credential, life-event and disclosure vocabulary: a taste whose
 #: trigger-and-object words, or whose extracted object, contain one is refused. A second layer

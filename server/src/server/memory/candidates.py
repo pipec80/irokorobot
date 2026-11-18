@@ -57,6 +57,7 @@ __all__ = [
     "count_live_candidates",
     "count_unlinked_candidates",
     "expire_lapsed_in_transaction",
+    "facts_confirmed_from_turn",
     "find_offered",
     "get_candidate",
     "insert_candidate",
@@ -410,6 +411,21 @@ async def link_source_turn(
     linked = cursor.rowcount
     await cursor.close()
     return linked
+
+
+async def facts_confirmed_from_turn(turn_id: int) -> tuple[int, ...]:
+    """The facts promoted from the candidates of one turn (ADR 0038 row 10, Plan 0086 D-13).
+
+    Deleting the turn deletes its candidates and keeps these facts; ``iroko-admin`` names them.
+    """
+    cursor = await db.get_conn().execute(
+        "SELECT promoted_fact_id FROM memory_candidates "
+        "WHERE source_turn_id = ? AND promoted_fact_id IS NOT NULL ORDER BY promoted_fact_id",
+        (turn_id,),
+    )
+    rows = tuple(int(row[0]) for row in await cursor.fetchall())
+    await cursor.close()
+    return rows
 
 
 async def get_candidate(candidate_id: int) -> Candidate | None:

@@ -168,7 +168,7 @@ async def _derive_readiness(*, owner_entity_id: int, child_names: tuple[str, ...
         return False
 
     relations = await get_active_entity_relations(
-        definition=_CHILD_OF, target_entity_id=owner_entity_id
+        definition=_CHILD_OF, target_entity_id=owner_entity_id, include_archived=True
     )
     expected_names = {fold_name(name) for name in child_names}
     active_labels: set[str] = set()

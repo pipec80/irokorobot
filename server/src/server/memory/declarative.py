@@ -400,6 +400,35 @@ async def count_entities() -> int:
     return 0 if row is None else int(row[0])
 
 
+async def entity_names(entity_id: int) -> tuple[str, ...]:
+    """The name and the aliases of one entity (empty when there is none), for ``forget_scope``."""
+    cursor = await get_conn().execute(
+        "SELECT name, aliases FROM entities WHERE id = ?", (entity_id,)
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    if row is None:
+        return ()
+    aliases = json.loads(str(row[1]))
+    return (str(row[0]), *(str(alias) for alias in aliases if isinstance(alias, str)))
+
+
+async def delete_entity_row(conn: aiosqlite.Connection, row_id: int) -> int:
+    """Delete one entity for good, inside the caller's transaction (Plan 0086 D-12).
+
+    Only ``deletion_register`` calls it, under the deletion protocol, after the care contacts
+    that point at it: a role, a credential, a biometric profile or a consent still pointing at it
+    refuses the deletion (``RESTRICT``). Its relations, facts and candidates go with it (CASCADE).
+
+    Returns:
+        How many rows went (0 when it was already gone: a replay is idempotent).
+    """
+    cursor = await conn.execute("DELETE FROM entities WHERE id = ?", (row_id,))
+    deleted = max(cursor.rowcount, 0)
+    await cursor.close()
+    return deleted
+
+
 async def delete_orphan_import_entities(
     has_rows: Callable[[int], Awaitable[bool]],
     has_contacts: Callable[[int], Awaitable[bool]],

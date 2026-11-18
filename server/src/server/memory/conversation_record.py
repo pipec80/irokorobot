@@ -43,14 +43,18 @@ __all__ = [
     "close_idle_records",
     "count_failed_attempt",
     "delete_all_records",
-    "delete_record",
+    "delete_record_row",
+    "delete_turn_row",
     "find_turn_id",
     "has_open_record",
     "list_records",
     "next_pending_record",
     "purge_records",
     "read_record",
+    "record_turn_count",
     "set_episode_status",
+    "turn_record_id",
+    "turn_texts",
 ]
 
 logger = logging.getLogger(__name__)
@@ -114,6 +118,8 @@ class RecordView:
     summary: RecordSummary
     owner_entity_id: int
     turns: tuple[RecordedTurn, ...] = field(repr=False)
+    # The stored id of each turn, in the same order (`iroko-admin forget turn`, Plan 0086).
+    turn_ids: tuple[int, ...] = field(default=(), repr=False)
 
 
 def _summary(row: tuple[object, ...]) -> RecordSummary:
@@ -334,13 +340,18 @@ async def _view(where: str, params: tuple[object, ...], order: str = "") -> Reco
     values = tuple(row)
     summary = _summary(values[:9])
     cursor = await conn.execute(
-        f"SELECT {_TURN_COLUMNS} FROM conversation_turns "  # noqa: S608
+        f"SELECT {_TURN_COLUMNS}, id FROM conversation_turns "  # noqa: S608
         "WHERE record_id = ? ORDER BY said_at, id",
         (summary.id,),
     )
-    turns = tuple(_turn(tuple(turn_row)) for turn_row in await cursor.fetchall())
+    rows = [tuple(turn_row) for turn_row in await cursor.fetchall()]
     await cursor.close()
-    return RecordView(summary=summary, owner_entity_id=int(str(values[9])), turns=turns)
+    return RecordView(
+        summary=summary,
+        owner_entity_id=int(str(values[9])),
+        turns=tuple(_turn(turn_row) for turn_row in rows),
+        turn_ids=tuple(int(str(turn_row[-1])) for turn_row in rows),
+    )
 
 
 async def read_record(record_id: int) -> RecordView | None:
@@ -392,19 +403,69 @@ async def count_failed_attempt(record_id: int) -> int:
     return 0 if row is None else int(row[0])
 
 
-async def delete_record(record_id: int) -> bool:
-    """Delete one segment and, by cascade, its episode; the next segment is unlinked.
+async def turn_texts(owner_entity_id: int) -> list[tuple[int, str, str]]:
+    """The owner's stored turns as ``(id, heard, said)``, for ``forget_scope`` to find a name in.
+
+    Read by the administration and the voice archive only; never logged.
+    """
+    cursor = await db.get_conn().execute(
+        "SELECT t.id, t.heard, t.said FROM conversation_turns t "
+        "JOIN conversation_records r ON r.id = t.record_id WHERE r.owner_entity_id = ?",
+        (owner_entity_id,),
+    )
+    rows = [(int(row[0]), str(row[1]), str(row[2])) for row in await cursor.fetchall()]
+    await cursor.close()
+    return rows
+
+
+async def record_turn_count(record_id: int) -> int:
+    """How many turns a record still holds (0 for a record kept only for its episode)."""
+    cursor = await db.get_conn().execute(
+        "SELECT COUNT(*) FROM conversation_turns WHERE record_id = ?", (record_id,)
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    return 0 if row is None else int(row[0])
+
+
+async def turn_record_id(turn_id: int) -> int | None:
+    """The record a stored turn belongs to, or ``None`` when there is no such turn."""
+    cursor = await db.get_conn().execute(
+        "SELECT record_id FROM conversation_turns WHERE id = ?", (turn_id,)
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    return None if row is None else int(row[0])
+
+
+async def delete_turn_row(conn: aiosqlite.Connection, row_id: int) -> int:
+    """Delete one turn for good, inside the caller's transaction (Plan 0086 D-12).
+
+    Only ``deletion_register`` calls it, under the deletion protocol. Its recall unit, candidate and pending topic
+    go with it (CASCADE).
 
     Returns:
-        Whether a segment was deleted.
+        How many rows went (0 when it was already gone: a replay is idempotent).
     """
-    async with db.transaction() as conn:
-        cursor = await conn.execute("DELETE FROM conversation_records WHERE id = ?", (record_id,))
-        deleted = cursor.rowcount
-        await cursor.close()
-    if deleted:
-        await db.checkpoint_wal()
-    return bool(deleted)
+    cursor = await conn.execute("DELETE FROM conversation_turns WHERE id = ?", (row_id,))
+    deleted = max(cursor.rowcount, 0)
+    await cursor.close()
+    return deleted
+
+
+async def delete_record_row(conn: aiosqlite.Connection, row_id: int) -> int:
+    """Delete one segment for good, inside the caller's transaction (Plan 0086 D-12).
+
+    Only ``deletion_register`` calls it, under the deletion protocol. Its turns, episode and what hangs from them go
+    with it (CASCADE).
+
+    Returns:
+        How many rows went (0 when it was already gone: a replay is idempotent).
+    """
+    cursor = await conn.execute("DELETE FROM conversation_records WHERE id = ?", (row_id,))
+    deleted = max(cursor.rowcount, 0)
+    await cursor.close()
+    return deleted
 
 
 async def delete_all_records(conn: aiosqlite.Connection) -> int:
@@ -422,49 +483,76 @@ async def delete_all_records(conn: aiosqlite.Connection) -> int:
     return max(deleted, 0)
 
 
-async def _delete_oldest_closed(conn: aiosqlite.Connection) -> int | None:
-    """Delete the next closed segment to go (not eligible first, then the oldest).
+# A record whose episode is written keeps its row when its turns go (Plan 0086 D-11, ADR 0032
+# decision 5): the diary outlives the raw text. It is purgeable only while it still holds a turn;
+# a record with no written episode is purgeable whole.
+_PURGEABLE = (
+    "closed_at IS NOT NULL AND (episode_status <> 'done' OR EXISTS "
+    "(SELECT 1 FROM conversation_turns t WHERE t.record_id = conversation_records.id))"
+)
+
+
+async def _purge_one(conn: aiosqlite.Connection, record_id: int, status: str) -> int:
+    """Purge one closed segment: its turns when its episode is written, else the whole row.
 
     Returns:
-        The bytes its exchanges weighed, or ``None`` when no closed segment is left.
+        The bytes its exchanges weighed.
     """
     cursor = await conn.execute(
-        "SELECT id FROM conversation_records WHERE closed_at IS NOT NULL "
+        "SELECT COALESCE(SUM(bytes), 0) FROM conversation_turns WHERE record_id = ?", (record_id,)
+    )
+    weighed = await cursor.fetchone()
+    await cursor.close()
+    if status == EpisodeStatus.DONE.value:
+        await conn.execute("DELETE FROM conversation_turns WHERE record_id = ?", (record_id,))
+    else:
+        await conn.execute("DELETE FROM conversation_records WHERE id = ?", (record_id,))
+    return 0 if weighed is None else int(weighed[0])
+
+
+async def _delete_oldest_closed(conn: aiosqlite.Connection) -> int | None:
+    """Purge the next closed segment to go (not eligible first, then the oldest).
+
+    Returns:
+        The bytes its exchanges weighed, or ``None`` when no purgeable segment is left.
+    """
+    cursor = await conn.execute(
+        f"SELECT id, episode_status FROM conversation_records WHERE {_PURGEABLE} "  # noqa: S608
         "ORDER BY eligible, closed_at, id LIMIT 1"
     )
     victim = await cursor.fetchone()
     await cursor.close()
     if victim is None:
         return None
-    cursor = await conn.execute(
-        "SELECT COALESCE(SUM(bytes), 0) FROM conversation_turns WHERE record_id = ?", (victim[0],)
-    )
-    weighed = await cursor.fetchone()
-    await cursor.close()
-    await conn.execute("DELETE FROM conversation_records WHERE id = ?", (victim[0],))
-    return 0 if weighed is None else int(weighed[0])
+    return await _purge_one(conn, int(victim[0]), str(victim[1]))
 
 
 async def purge_records(now: datetime) -> int:
-    """Delete expired segments, then the oldest closed ones while the record is over its cap.
+    """Purge expired segments, then the oldest closed ones while the record is over its cap.
 
-    Not-eligible segments go before eligible ones; the open segment is never deleted. Episodes
-    go with their records (cascade).
+    Not-eligible segments go before eligible ones; the open segment is never purged. A segment
+    whose episode is written loses its turns (and, by cascade, their recall units, candidates and
+    pending topics) and keeps its row, its episode and the episode's recall unit (Plan 0086 D-11);
+    any other segment goes whole, with whatever it holds.
 
     Args:
         now: The current time.
 
     Returns:
-        How many segments were deleted.
+        How many segments were purged.
     """
     cap = settings.conversation_record_max_total_mb * _BYTES_PER_MB
     async with db.transaction() as conn:
         cursor = await conn.execute(
-            "DELETE FROM conversation_records WHERE closed_at IS NOT NULL AND expires_at < ?",
+            f"SELECT id, episode_status FROM conversation_records WHERE {_PURGEABLE} "  # noqa: S608
+            "AND expires_at < ? ORDER BY id",
             (instant_text(now),),
         )
-        deleted = max(cursor.rowcount, 0)
+        expired = [(int(row[0]), str(row[1])) for row in await cursor.fetchall()]
         await cursor.close()
+        for record_id, status in expired:
+            await _purge_one(conn, record_id, status)
+        deleted = len(expired)
         cursor = await conn.execute("SELECT COALESCE(SUM(bytes), 0) FROM conversation_turns")
         row = await cursor.fetchone()
         await cursor.close()

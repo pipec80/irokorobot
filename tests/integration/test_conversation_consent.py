@@ -13,10 +13,10 @@ from server.memory.conversation_consent import (
     grant_conversation_consent,
     has_active_conversation_consent,
     load_conversation_notice,
-    revoke_conversation_consent,
 )
 from server.memory.conversation_types import TurnVerdict, make_turn
 from server.memory.declarative import upsert_entity
+from server.memory.deletion_register import withdraw_conversation_consent
 from server.settings import settings
 
 from server import db
@@ -73,7 +73,7 @@ async def test_revoke_deletes_every_record_and_episode_and_reports_the_count(own
     await _store_conversation(owner, 600)
     await record.set_episode_status(first, record.EpisodeStatus.DONE)
 
-    deleted = await revoke_conversation_consent(owner, now=_T0 + timedelta(hours=1))
+    deleted = await withdraw_conversation_consent(owner, now=_T0 + timedelta(hours=1))
 
     assert deleted == 2
     assert not await has_active_conversation_consent(owner)
@@ -81,12 +81,12 @@ async def test_revoke_deletes_every_record_and_episode_and_reports_the_count(own
 
 
 async def test_revoke_without_a_grant_deletes_nothing_and_succeeds(owner: int) -> None:
-    assert await revoke_conversation_consent(owner, now=_T0) == 0
+    assert await withdraw_conversation_consent(owner, now=_T0) == 0
 
 
 async def test_a_new_grant_after_a_revoke_is_a_new_row(owner: int) -> None:
     first = await grant_conversation_consent(owner, notice_version="v1", now=_T0)
-    await revoke_conversation_consent(owner, now=_T0)
+    await withdraw_conversation_consent(owner, now=_T0)
 
     second = await grant_conversation_consent(owner, notice_version="v1", now=_T0)
 

@@ -37,6 +37,9 @@ _MAY_IMPORT_RAW_V4_READERS = frozenset(
         "memory/canonical_writer.py",
         "memory/profile_card_access.py",
         "memory/sensitive_store.py",
+        # Plan 0086: the change dialogue reads the owner's own taste to read it back and to
+        # correct it, after its own audited policy step (`correct_personal_memory`).
+        "memory/memory_change_dialogue.py",
     }
 )
 # The repository itself, and the setup status that counts child links.
@@ -155,6 +158,8 @@ _NEW_ACTION_NAMES = frozenset(
         "confirm_personal_memory",
         "correct_personal_memory",
         "forget_personal_memory",
+        "ARCHIVE_PERSONAL_MEMORY",
+        "archive_personal_memory",
     }
 )
 # `PROPOSE_MEMORY` and `COMMIT_MEMORY` left in Plan 0062 (nothing consumed them). Delete and
@@ -184,6 +189,8 @@ _ACTION_HOMES = frozenset(
         "memory/sensitive_access.py",
         # Plan 0084: the pending-topic follow-up asks the policy for the owner's own topic.
         "memory/pending_follow_up.py",
+        # Plan 0086: the change dialogue asks it before it corrects or archives (ADR 0039).
+        "memory/memory_change_dialogue.py",
     }
 )
 _MEMORY_SCOPE_MEMBER_NAMES = frozenset({"PERSONAL_MEMORY_READ", "PERSONAL_MEMORY_FORGET"})
@@ -1445,6 +1452,8 @@ _LITERAL_POOL_CALLERS = frozenset(
         "memory/memory_writer.py",
         "memory/policy_gated_v4_reader.py",
         "memory/sensitive_store.py",
+        # Plan 0086: the change dialogue, only the owner's own `normal` tastes, after the policy.
+        "memory/memory_change_dialogue.py",
     }
 )
 
@@ -1460,7 +1469,7 @@ def _literal_pool_users(sources: Mapping[str, str]) -> set[str]:
 
 @pytest.mark.unit
 def test_the_pool_literals_are_read_only_where_allowed() -> None:
-    """The pool of active literals is read by exactly the four allowed modules."""
+    """The pool of active literals is read by exactly the allowed modules."""
     assert _literal_pool_users(_sources()) == _LITERAL_POOL_CALLERS
 
 
@@ -1499,14 +1508,16 @@ _RELATIVE_WORDS_HOME = "cognition/recall_cues.py"
 _RELATIVE_SINGULAR_WORDS = frozenset({"mama", "papa", "madre", "padre", "hija", "hijo"})
 # A literal with at least this many of the six words outside the home is a copy of them.
 _RELATIVE_COPY_THRESHOLD = 2
-# Three existing lists of a different purpose that happen to hold several of the six words; they
+# Four existing lists of a different purpose that happen to hold several of the six words; they
 # are not a second spelling of the recall words and are allowed on purpose:
 # - `cognition/household_request.py`: `CHILD_WORDS` and the household vocabulary that decides
 #   whether a message is a household request at all (relatives, partners, pets, kin).
-# - `memory/lexicon.py`: `PERSON_WORDS` (a taste never names a person) and the predicate triggers.
+# - `memory/lexicon.py`: the predicate triggers (a taste never names a person).
+# - `text_keys.py`: `PERSON_WORDS`, moved there from `memory/lexicon.py` by Plan 0086 so the
+#   cognitive core's change grammar can name the person after one without importing memory.
 # - `memory/normalize.py`: the aliases of the legacy extractor's predicate drift ("hijo", "hija").
 _RELATIVE_WORDS_EXEMPT = frozenset(
-    {"cognition/household_request.py", "memory/lexicon.py", "memory/normalize.py"}
+    {"cognition/household_request.py", "memory/lexicon.py", "memory/normalize.py", "text_keys.py"}
 )
 
 

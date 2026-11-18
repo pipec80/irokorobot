@@ -19,8 +19,12 @@ from server.memory import candidates, conversation_record, pending_store, recall
 from server.memory.candidate_types import CandidateChannel, CandidateStatus, ProposedCandidate
 from server.memory.conversation_types import RecordedTurn, TurnVerdict
 from server.memory.declarative import upsert_entity
+from server.memory.deletion_register import Deletion, DeletionKind, forget, forget_record
 from server.memory.embeddings import EMBEDDING_DIM
+from server.memory.predicate_registry import resolve_predicate
+from server.memory.relational_v4 import assert_literal_fact
 from server.settings import settings
+from server.timestamps import instant_text
 
 from server import db
 
@@ -184,7 +188,7 @@ async def test_a_deleted_record_leaves_no_text_or_vector_byte_in_the_file_or_the
     assert _LINKED_CANDIDATE_CANARY.encode() in live
     assert _LINKED_TOPIC_CANARY.encode() in live
 
-    assert await conversation_record.delete_record(record_id) is True
+    assert await forget_record(record_id, now=_NOW) is True
 
     assert await db.checkpoint_wal() is True
     after = _file_bytes(store)
@@ -194,3 +198,57 @@ async def test_a_deleted_record_leaves_no_text_or_vector_byte_in_the_file_or_the
     assert _VECTOR_SLICE not in after
     assert _LINKED_CANDIDATE_CANARY.encode() not in after
     assert _LINKED_TOPIC_CANARY.encode() not in after
+
+
+_FACT_CANARY = "canario-hecho-7Q2X"
+_EPISODE_CANARY = "canario-episodio-7Q2X"
+
+
+async def test_a_fact_a_turn_and_an_episode_forgotten_leave_no_byte(store: Path) -> None:
+    """Plan 0086 D-12: the deletion protocol leaves nothing of the three in the file or the log."""
+    owner = await upsert_entity(name="Canary Owner", type="person")
+    likes = resolve_predicate("likes")
+    assert likes is not None
+    fact = await assert_literal_fact(subject_entity_id=owner, definition=likes, value=_FACT_CANARY)
+    turn = RecordedTurn(
+        at=_NOW,
+        heard=_TURN_CANARY,
+        said="respuesta",
+        voice=TurnVerdict.VERIFIED,
+        correlation_id=_CID,
+    )
+    record_id = await conversation_record.append_turn(
+        turn, owner_entity_id=owner, now=_NOW, index=_index_turn
+    )
+    unit_ids = [unit_id for unit_id, _ in await recall_store.units_without_vector(10)]
+    assert await recall_store.store_vector(unit_ids[0], _VECTOR, model=_MODEL) is True
+    async with db.transaction() as conn:
+        turn_id = await conversation_record.find_turn_id(conn, _CID)
+        await conn.execute(
+            "INSERT INTO conversation_episodes (source_record_id, owner_entity_id, visibility, "
+            "sensitivity, summary, model, created_at, expires_at) "
+            "VALUES (?, ?, 'personal', 'normal', ?, 'canary', ?, ?)",
+            (record_id, owner, _EPISODE_CANARY, instant_text(_NOW), instant_text(_NOW)),
+        )
+    assert turn_id is not None
+    live = _file_bytes(store)
+    for canary in (_FACT_CANARY, _TURN_CANARY, _EPISODE_CANARY):
+        assert canary.encode() in live
+    assert _VECTOR_BYTES in live
+
+    result = await forget(
+        [
+            Deletion(DeletionKind.LITERAL_FACT, fact.id),
+            Deletion(DeletionKind.TURN, turn_id),
+            Deletion(DeletionKind.EPISODE, record_id),
+        ],
+        now=_NOW,
+    )
+
+    assert result.checkpointed is True
+    after = _file_bytes(store)
+    for canary in (_FACT_CANARY, _TURN_CANARY, _EPISODE_CANARY):
+        assert canary.encode() not in after
+    assert _TURN_TOKEN_LOWER not in after
+    assert _VECTOR_BYTES not in after
+    assert _VECTOR_SLICE not in after

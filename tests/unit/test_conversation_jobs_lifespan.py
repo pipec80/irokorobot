@@ -20,6 +20,7 @@ def stubbed(monkeypatch: pytest.MonkeyPatch) -> Mock:
     monkeypatch.setattr(main, "open_db", AsyncMock())
     monkeypatch.setattr(main, "close_db", AsyncMock())
     monkeypatch.setattr(main, "run_migrations", AsyncMock())
+    monkeypatch.setattr(main.deletion_register, "replay_register", AsyncMock(return_value=0))
     monkeypatch.setattr(main.candidates, "reset_for_startup", AsyncMock())
     monkeypatch.setattr(main.retention, "start_background_job", Mock())
     monkeypatch.setattr(main.retention, "stop_background_job", AsyncMock())

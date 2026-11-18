@@ -215,6 +215,13 @@ PERSONAL_MEMORY_CAPABILITIES: Mapping[AuthorizationAction, PersonalMemoryCapabil
                 unlock_scope=None,
                 visibilities=_PERSONAL_ONLY,
             ),
+            AuthorizationAction.ARCHIVE_PERSONAL_MEMORY: PersonalMemoryCapability(
+                min_assurance=IdentityAssurance.BASIC,
+                consent_applies=True,
+                requires_unlock=False,
+                unlock_scope=None,
+                visibilities=_PERSONAL_ONLY,
+            ),
             AuthorizationAction.FORGET_PERSONAL_MEMORY: PersonalMemoryCapability(
                 min_assurance=IdentityAssurance.STRONG,
                 consent_applies=False,

@@ -20,6 +20,7 @@ from server.memory.household_time import household_day, household_zone
 from server.settings import settings
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from datetime import datetime
     from uuid import UUID
 
@@ -28,17 +29,22 @@ if TYPE_CHECKING:
 __all__ = [
     "PendingSensitivity",
     "PendingTopic",
+    "archive_topics",
+    "archived_topics",
     "asked_today",
     "count_naming_failure",
     "count_unlinked_topics",
     "delete_expired",
+    "delete_topic_row",
     "drop",
     "due_topic",
     "insert_unnamed",
     "mark_asked",
     "next_unnamed",
     "pending_topics_on",
+    "restore_archived_topics",
     "set_topic",
+    "topic_texts",
 ]
 
 type PendingSensitivity = Literal["normal", "medical"]
@@ -197,6 +203,95 @@ async def set_topic(topic_id: int, topic: str) -> bool:
     )
 
 
+async def topic_texts(
+    owner_entity_id: int, *, include_archived: bool = False
+) -> list[tuple[int, str, str]]:
+    """The owner's topics as ``(id, topic or words, sensitivity)``, for ``forget_scope``.
+
+    Args:
+        owner_entity_id: The owner.
+        include_archived: Also the topics already set aside (a deletion reaches them too).
+    """
+    cursor = await db.get_conn().execute(
+        "SELECT id, COALESCE(topic, heard, ''), sensitivity FROM pending_topics "
+        "WHERE owner_entity_id = ? AND (? OR archived_at IS NULL)",
+        (owner_entity_id, int(include_archived)),
+    )
+    rows = [(int(row[0]), str(row[1]), str(row[2])) for row in await cursor.fetchall()]
+    await cursor.close()
+    return rows
+
+
+async def archived_topics() -> list[tuple[int, str, str]]:
+    """Every topic set aside as ``(id, archived_at, topic or words)``, for ``archive list``."""
+    cursor = await db.get_conn().execute(
+        "SELECT id, archived_at, COALESCE(topic, heard, '') FROM pending_topics "
+        "WHERE archived_at IS NOT NULL ORDER BY archived_at, id"
+    )
+    rows = [(int(row[0]), str(row[1]), str(row[2])) for row in await cursor.fetchall()]
+    await cursor.close()
+    return rows
+
+
+async def delete_topic_row(conn: aiosqlite.Connection, row_id: int) -> int:
+    """Delete one pending topic for good, inside the caller's transaction (Plan 0086 D-12).
+
+    Only ``deletion_register`` calls it, under the deletion protocol.
+
+    Returns:
+        How many rows went (0 when it was already gone: a replay is idempotent).
+    """
+    cursor = await conn.execute("DELETE FROM pending_topics WHERE id = ?", (row_id,))
+    deleted = max(cursor.rowcount, 0)
+    await cursor.close()
+    return deleted
+
+
+async def archive_topics(conn: aiosqlite.Connection, topic_ids: Sequence[int], *, at: str) -> int:
+    """Set pending topics aside, inside the caller's transaction (Plan 0086 D-7).
+
+    An archived topic is never greeted; it still expires two days after its due day.
+
+    Args:
+        conn: The connection of an open ``db.transaction()``.
+        topic_ids: The topics to set aside.
+        at: The archive instant (32-character UTC).
+
+    Returns:
+        How many topics were set aside.
+    """
+    values = tuple(sorted({int(topic_id) for topic_id in topic_ids}))
+    if not values:
+        return 0
+    marks = ", ".join("?" for _ in values)
+    cursor = await conn.execute(
+        f"UPDATE pending_topics SET archived_at = ? "  # noqa: S608 - placeholders only
+        f"WHERE id IN ({marks}) AND archived_at IS NULL AND sensitivity = 'normal'",
+        (at, *values),
+    )
+    changed = max(cursor.rowcount, 0)
+    await cursor.close()
+    return changed
+
+
+async def restore_archived_topics(conn: aiosqlite.Connection, *, at: str) -> int:
+    """Bring back every topic set aside at *at*, inside the caller's transaction.
+
+    Args:
+        conn: The connection of an open ``db.transaction()``.
+        at: The archive instant of the group to restore.
+
+    Returns:
+        How many topics came back.
+    """
+    cursor = await conn.execute(
+        "UPDATE pending_topics SET archived_at = NULL WHERE archived_at = ?", (at,)
+    )
+    changed = max(cursor.rowcount, 0)
+    await cursor.close()
+    return changed
+
+
 async def drop(topic_id: int) -> None:
     """Delete one topic (one the model could not name)."""
     await _write("DELETE FROM pending_topics WHERE id = ?", (topic_id,))
@@ -218,7 +313,8 @@ async def due_topic(
     oldest, newest = follow_up_due_days(today)
     row = await _one(
         "SELECT id, topic, due_day, sensitivity FROM pending_topics "
-        "WHERE owner_entity_id = ? AND state = 'open' AND due_day BETWEEN ? AND ? "
+        "WHERE owner_entity_id = ? AND state = 'open' AND archived_at IS NULL "
+        "AND due_day BETWEEN ? AND ? "
         "AND (? = 0 OR sensitivity = 'normal') ORDER BY due_day, id LIMIT 1",
         (owner_entity_id, oldest.isoformat(), newest.isoformat(), int(normal_only)),
     )
@@ -259,7 +355,7 @@ async def mark_asked(topic_id: int, *, now: datetime) -> bool:
     return (
         await _write(
             "UPDATE pending_topics SET state = 'asked', asked_at = ? "
-            "WHERE id = ? AND state = 'open' AND NOT EXISTS ("
+            "WHERE id = ? AND state = 'open' AND archived_at IS NULL AND NOT EXISTS ("
             "SELECT 1 FROM pending_topics AS other "
             "WHERE other.owner_entity_id = pending_topics.owner_entity_id "
             "AND other.state = 'asked' AND other.asked_at >= ? AND other.asked_at < ?)",

@@ -24,12 +24,12 @@ from server.memory.candidate_types import CandidateChannel, ProposedCandidate
 from server.memory.care_contacts import ContactRole, revoke_contact, write_contact
 from server.memory.conversation_consent import (
     grant_conversation_consent,
-    revoke_conversation_consent,
 )
 from server.memory.conversation_episodes import EpisodeOutcome, write_episode
 from server.memory.conversation_summary import EpisodeDraft
 from server.memory.conversation_types import TurnVerdict, make_turn
 from server.memory.declarative import create_third_party, upsert_entity
+from server.memory.deletion_register import withdraw_conversation_consent
 from server.memory.household_authorization import (
     assign_household_role,
     bootstrap_initial_owner,
@@ -349,7 +349,7 @@ async def test_conversation_consent_record_and_episode_write_their_times() -> No
         "conversation_records", "started_at", "last_turn_at", "closed_at", "expires_at"
     )
     await _assert_instants("conversation_episodes", "created_at", "expires_at")
-    await revoke_conversation_consent(owner, now=_T0 + timedelta(hours=1))
+    await withdraw_conversation_consent(owner, now=_T0 + timedelta(hours=1))
     await _assert_instants("conversation_consent_grants", "granted_at", "revoked_at")
 
 

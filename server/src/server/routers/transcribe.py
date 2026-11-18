@@ -25,6 +25,7 @@ from server.cognition.controller import (
     CognitiveController,
     ConsentResolver,
     MemoryAnswerer,
+    MemoryChanger,
     ProfileSummarizer,
     RecallAnswerer,
 )
@@ -36,6 +37,7 @@ from server.cognition.household_tools import HouseholdKnowledgeTools
 from server.cognition.identity import ActivePersonContext
 from server.cognition.identity_fusion import FusedIdentityResolver, build_fused_identity_resolver
 from server.cognition.intent_resolution import MemoryAnswer
+from server.cognition.memory_change import MemoryChange
 from server.cognition.models import CognitiveEvent
 from server.cognition.owner_authentication import OwnerUnlockService
 from server.cognition.recall_cues import RecallCue
@@ -74,6 +76,11 @@ from server.memory.conversation_capture import capture_turn
 from server.memory.entity_labels import read_household_names
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.household_time import household_day, household_today
+from server.memory.memory_change_dialogue import (
+    answer_change,
+    has_any_pending_change,
+    propose_change,
+)
 from server.memory.pending_follow_up import (
     FollowUpPreparer,
     PendingFollowUp,
@@ -86,6 +93,7 @@ from server.memory.profile_card_access import profile_summary_text, prompt_card_
 from server.memory.recall_access import recall_reply
 from server.memory.recall_store import occurred_time_on
 from server.memory.sensitive_access import sensitive_reply
+from server.memory.write_types import WriteChannel
 from server.pipeline import (
     _elapsed_ms,
     _log_pipeline_timing,
@@ -275,6 +283,7 @@ def _voice_controller(
     schedule_proposal: ProposalScheduler | None = None,
     prepare_offer: OfferPreparer | None = None,
     memory_answerer: MemoryAnswerer | None = None,
+    memory_changer: MemoryChanger | None = None,
     profile_card_provider: ProfileCardProvider | None = None,
     profile_summarizer: ProfileSummarizer | None = None,
     record_turn: TurnRecorder | None = None,
@@ -298,6 +307,8 @@ def _voice_controller(
         memory_answerer: Answers a memory offer (ADR 0021 decision 9). Only used together
             with ``request_identity``, the resolver it needs; when omitted an answer-shaped
             message is ordinary conversation.
+        memory_changer: Reads back a spoken correction or archive (Plan 0086). Only used
+            together with ``request_identity``; when omitted the change grammar never runs.
         profile_card_provider: Renders the speaker's profile card for the prompt of a generic
             turn (Plan 0074); when omitted the turn reads no card.
         profile_summarizer: Answers «¿qué sabes de mí?» from the same card. Only used together
@@ -354,6 +365,7 @@ def _voice_controller(
         household_tools=household_tools,
         consent_resolver=request_identity.resolve_consent,
         memory_answerer=memory_answerer,
+        memory_changer=memory_changer,
         profile_summarizer=profile_summarizer,
         household_names=read_household_names if settings.memory_enabled else None,
         recall_answerer=recall_answerer,
@@ -503,12 +515,18 @@ def _follow_up_preparer(event: CognitiveEvent[TextTurnPayload]) -> FollowUpPrepa
 
 
 def _memory_answerer() -> MemoryAnswerer | None:
-    """Return the answer to a memory offer for a voice route, or ``None`` with a switch off.
+    """Return the answer to a memory offer or change for a voice route, or ``None`` with memory off.
 
-    With ``MEMORY_ENABLED`` or ``MEMORY_CANDIDATES_ENABLED`` off an answer-shaped message is
-    ordinary conversation, and the actor is not even resolved for it.
+    A closed verb first answers the speaker's pending change (Plan 0086), then, with
+    ``MEMORY_CANDIDATES_ENABLED`` on, their open offer. With ``MEMORY_ENABLED`` off, or with the
+    candidates off and no change read back in the last answer window, an answer-shaped message is
+    ordinary conversation and the actor is not even resolved for it (a change, like an offer, was
+    said aloud in the room, so binding the answer while one waits reveals nothing new).
     """
-    if not (settings.memory_enabled and settings.memory_candidates_enabled):
+    if not settings.memory_enabled:
+        return None
+    offers = settings.memory_candidates_enabled
+    if not offers and not has_any_pending_change(utc_now()):
         return None
 
     async def answer(
@@ -516,11 +534,36 @@ def _memory_answerer() -> MemoryAnswerer | None:
         actor: ActivePersonContext,
         event: CognitiveEvent[TextTurnPayload],
     ) -> MemoryAnswerReply | None:
-        return await answer_offer(
-            parsed, actor=actor, correlation_id=event.correlation_id, now=utc_now()
+        now = utc_now()
+        changed = await answer_change(
+            parsed, actor=actor, correlation_id=event.correlation_id, now=now
         )
+        if changed is not None or not offers:
+            return changed
+        return await answer_offer(parsed, actor=actor, correlation_id=event.correlation_id, now=now)
 
     return answer
+
+
+def _memory_changer(channel: WriteChannel) -> MemoryChanger | None:
+    """Return the change read-back for a voice route (Plan 0086), or ``None`` with memory off.
+
+    Args:
+        channel: The route's write channel, for a correction's new fact.
+    """
+    if not settings.memory_enabled:
+        return None
+
+    async def change(
+        parsed: MemoryChange,
+        actor: ActivePersonContext,
+        event: CognitiveEvent[TextTurnPayload],
+    ) -> MemoryAnswerReply | None:
+        return await propose_change(
+            parsed, actor=actor, channel=channel, correlation_id=event.correlation_id, now=utc_now()
+        )
+
+    return change
 
 
 def _profile_card_provider(correlation_id: UUID) -> ProfileCardProvider | None:
@@ -868,6 +911,7 @@ async def transcribe(
         ),
         prepare_offer=_offer_preparer(event=event, wav_bytes=audio_bytes),
         memory_answerer=_memory_answerer(),
+        memory_changer=_memory_changer(WriteChannel.VOICE_CLASSIC),
         profile_card_provider=_profile_card_provider(event.correlation_id),
         profile_summarizer=_profile_summarizer(),
         record_turn=record_turn,
@@ -1011,6 +1055,7 @@ async def transcribe_stream(
         resources.http_client,
         request_identity=request_identity,
         memory_answerer=_memory_answerer(),
+        memory_changer=_memory_changer(WriteChannel.VOICE_STREAM),
         profile_summarizer=_profile_summarizer(),
         recall_answerer=_recall_answerer(resources.http_client),
     ).decide(event)

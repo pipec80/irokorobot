@@ -35,6 +35,15 @@ from server.memory.admin_audit import (
     list_admin_operations,
     record_admin_operation,
 )
+from server.memory.admin_forget import (
+    ForgetKind,
+    archive_groups,
+    audit_archive,
+    audit_refused_forget,
+    forget_for_good,
+    plan_forget,
+    restore_archive_group,
+)
 from server.memory.admin_ops import (
     AdminActor,
     AdminOutcome,
@@ -59,14 +68,20 @@ from server.memory.conversation_consent import (
     CONVERSATION_NOTICE_VERSION,
     grant_conversation_consent,
     load_conversation_notice,
-    revoke_conversation_consent,
 )
-from server.memory.conversation_record import delete_record, list_records
+from server.memory.conversation_record import list_records
 from server.memory.db_health import check_health, health_failed, render_health
+from server.memory.deletion_register import (
+    forget_record,
+    replay_register,
+    waiting_deletions,
+    withdraw_conversation_consent,
+)
 from server.memory.entity_labels import get_person_label
 from server.memory.owner_credentials import get_ready_owner
 from server.memory.relational_v4 import (
     EntityRelationV4,
+    LiteralFactV4,
     list_active_facts,
     list_active_relations,
 )
@@ -123,6 +138,8 @@ class AdminRequest:
     action: str | None = None
     out: Path | None = None
     side: str | None = None
+    name: str | None = None
+    at: str | None = None
 
 
 def _actor(request: AdminRequest) -> AdminActor:
@@ -174,6 +191,11 @@ def _announce_outcome(outcome: AdminOutcome, write_text: WriteText) -> int:
 # --- the read sub-commands ------------------------------------------------------------------------
 
 
+def _archived_mark(row: LiteralFactV4 | EntityRelationV4) -> str:
+    """`` [archivado]`` for a row the owner set aside by voice (Plan 0086 D-8), else nothing."""
+    return " [archivado]" if row.archived_at is not None else ""
+
+
 async def _other_person(owner: int, relation: EntityRelationV4) -> str:
     """Return `` (name)`` of the person at the end of the relation that is not the owner."""
     other = (
@@ -192,13 +214,13 @@ async def _list(owner: int, write_text: WriteText) -> int:
     can be told apart before ``label-parent`` or ``label-child``.
     """
     write_text("Datos del pozo (hechos):")
-    for fact in await list_active_facts(owner):
-        write_text(f"  [{fact.id}] {fact.predicate}: {fact.value_text}")
+    for fact in await list_active_facts(owner, include_archived=True):
+        write_text(f"  [{fact.id}] {fact.predicate}: {fact.value_text}{_archived_mark(fact)}")
     write_text("Relaciones:")
-    for relation in await list_active_relations(owner):
+    for relation in await list_active_relations(owner, include_archived=True):
         write_text(
             f"  [{relation.id}] {relation.predicate} -> {relation.target_entity_id}"
-            f"{await _other_person(owner, relation)}"
+            f"{await _other_person(owner, relation)}{_archived_mark(relation)}"
         )
     write_text("Contactos:")
     for contact in await list_active_contacts(owner):
@@ -495,14 +517,14 @@ async def _apply_conversation(request: AdminRequest, owner: int, now: str) -> st
             written = await export_records(out, record_id=record_id)
             return f"Exportadas {written} conversaciones a {out}. {_EXPORT_REMINDER}"
         case "delete", _, int() as record_id:
-            deleted = await delete_record(record_id)
+            deleted = await forget_record(record_id, now=datetime.fromisoformat(now))
             return "Conversación borrada." if deleted else "No hay una conversación con ese número."
         case "consent-grant", _, _:
             await grant_conversation_consent(
                 owner, notice_version=CONVERSATION_NOTICE_VERSION, now=datetime.fromisoformat(now)
             )
             return "Registro de conversaciones autorizado."
-    count = await revoke_conversation_consent(owner, now=datetime.fromisoformat(now))
+    count = await withdraw_conversation_consent(owner, now=datetime.fromisoformat(now))
     return f"Consentimiento revocado: se borraron {count} conversaciones."
 
 
@@ -536,6 +558,100 @@ async def _conversations(
         return 1
     write_text(await _apply_conversation(request, owner, now))
     await _audit_conversation(request, operation, target, owner=owner, now=now)
+    return 0
+
+
+# --- forgetting for good and restoring an archive (Plan 0086 D-13) -------------------------------
+
+
+async def _forget(
+    request: AdminRequest,
+    owner: int,
+    read_text: ReadText,
+    read_secret: ReadText,
+    write_text: WriteText,
+    now: str,
+) -> int:
+    """Under the PIN, show what a deletion for good reaches, then delete it and audit it.
+
+    The PIN comes first, so nothing about what is stored is shown to someone without it.
+    """
+    plan = await plan_forget(
+        ForgetKind(request.kind or ""),
+        owner_entity_id=owner,
+        row_id=request.row_id,
+        words=request.name,
+        now=now,
+    )
+    if not await _grant_pin_if_needed(
+        required=True, read_secret=read_secret, write_text=write_text
+    ):
+        await audit_refused_forget(plan, actor=_actor(request), reason="pin", now=now)
+        write_text("Sin verificación de la persona titular: no se borró nada.")
+        return 1
+    if plan.refusal is not None:
+        await audit_refused_forget(plan, actor=_actor(request), reason="refused", now=now)
+        write_text(plan.refusal)
+        return 1
+    for line in plan.lines:
+        write_text(line)
+    write_text("Esto no se puede deshacer.")
+    if not _confirm(request, read_text, write_text):
+        return 1
+    try:
+        result = await forget_for_good(plan, actor=_actor(request), now=now)
+    except BrainMemoryError:
+        await audit_refused_forget(plan, actor=_actor(request), reason="key", now=now)
+        write_text(
+            "No se borró nada: la persona todavía tiene datos de identidad (rol, credencial, "
+            "consentimiento o perfil, aunque estén revocados)."
+        )
+        return 1
+    write_text(f"Borrado para siempre: {result.rows} filas.")
+    if not result.checkpointed:
+        write_text(
+            "Aviso: el registro de escritura no se pudo vaciar todavía; se vacía en la próxima "
+            "operación. Cierra otros programas que lean la base."
+        )
+    return 0
+
+
+async def _archive(
+    request: AdminRequest,
+    read_text: ReadText,
+    read_secret: ReadText,
+    write_text: WriteText,
+    now: str,
+) -> int:
+    """List what was set aside by voice, or bring one group back; both under the PIN."""
+    if not await _grant_pin_if_needed(
+        required=True, read_secret=read_secret, write_text=write_text
+    ):
+        await audit_archive(_actor(request), refused="pin", now=now)
+        write_text("Sin verificación de la persona titular: no se hizo nada.")
+        return 1
+    if request.action == "list":
+        await audit_archive(_actor(request), refused=None, now=now)
+        groups = await archive_groups()
+        for group in groups:
+            write_text(
+                f"{group.at}: {group.facts} datos, {group.relations} relaciones, "
+                f"{group.units} recuerdos, {group.topics} temas"
+            )
+            for text in group.texts:
+                write_text(f"  {text}")
+        if not groups:
+            write_text("No hay nada archivado.")
+        return 0
+    if request.at is None:
+        raise _RefusedError("restore necesita --at con el instante que muestra `archive list`.")
+    if request.at not in {group.at for group in await archive_groups()}:
+        raise _RefusedError("No hay nada archivado en ese instante: revisa `archive list`.")
+    write_text(f"archive: recuperar lo archivado en {request.at}")
+    if not _confirm(request, read_text, write_text):
+        return 1
+    counts = await restore_archive_group(request.at, actor=_actor(request), now=now)
+    write_text(f"Recuperado: {counts.total} filas.")
     return 0
 
 
@@ -587,6 +703,10 @@ async def _dispatch(
     if request.command == "health":
         return await _health(write_text)  # counts only: no owner, no PIN
     owner = await _owner()
+    if request.command == "forget":
+        return await _forget(request, owner, read_text, read_secret, write_text, now)
+    if request.command == "archive":
+        return await _archive(request, read_text, read_secret, write_text, now)
     return await _owner_command(request, owner, read_text, read_secret, write_text, now)
 
 
@@ -648,6 +768,13 @@ async def run_admin_command(
         await _check_schema(database)
         await db.open_db()
         try:
+            # Before anything is read: a deletion a restored backup still holds is applied again.
+            await replay_register()
+            if waiting := await waiting_deletions():
+                write_text(
+                    f"Aviso: {waiting} borrados prometidos esperan: una clave de identidad "
+                    "(rol, consentimiento, perfil) los retiene. Revócala y se aplican solos."
+                )
             return await _dispatch(request, read_text, read_secret, write_text, now)
         finally:
             await db.close_db()
@@ -712,6 +839,19 @@ def _parser() -> argparse.ArgumentParser:
     conv.add_argument("--limit", type=int, default=50)
     conv.add_argument("--dry-run", action="store_true")
     conv.add_argument("--actor", nargs="+")
+    forget = sub.add_parser(
+        "forget", help="borra para siempre un dato, un turno o una persona (PIN)"
+    )
+    forget.add_argument("kind", choices=[kind.value for kind in ForgetKind])
+    forget.add_argument("row_id", type=int, nargs="?")
+    forget.add_argument("--name", nargs="+", help="el nombre de alguien de quien solo se habló")
+    forget.add_argument("--dry-run", action="store_true")
+    forget.add_argument("--actor", nargs="+")
+    archive = sub.add_parser("archive", help="lista o recupera lo archivado por voz (PIN)")
+    archive.add_argument("action", choices=("list", "restore"))
+    archive.add_argument("--at", help="el instante del grupo, como lo muestra `archive list`")
+    archive.add_argument("--dry-run", action="store_true")
+    archive.add_argument("--actor", nargs="+")
     return parser
 
 
@@ -728,6 +868,8 @@ def _request(args: argparse.Namespace) -> AdminRequest:
         action=getattr(args, "action", None),
         out=getattr(args, "out", None),
         side=getattr(args, "side", None),
+        name=" ".join(args.name) if getattr(args, "name", None) else None,
+        at=getattr(args, "at", None),
     )
 
 
