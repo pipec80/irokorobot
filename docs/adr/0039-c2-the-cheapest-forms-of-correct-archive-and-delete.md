@@ -1,8 +1,9 @@
 # 0039 — C2: the cheapest forms of correcting, archiving and deleting a memory
 
-- **Status:** Proposed (2026-11-17), with [Plan 0086](../plans/open/0086-c2-correct-archive-delete.md)
-  (`Ready` since 2026-11-17). **Pipec confirmed its six decisions on 2026-11-17** with the plan's
-  eleven («apruebo todo»); it becomes `Accepted` when Plan 0086 closes. Written from the code of `main` at
+- **Status:** **Accepted (2026-11-18)**, when [Plan 0086](../plans/completed/0086-c2-correct-archive-delete.md)
+  closed, accepted on real hardware ([record](../evals/0086-c2-acceptance.md)). Proposed
+  2026-11-17; **Pipec confirmed its six decisions that day** with the plan's eleven («apruebo
+  todo»). See *Implementation* for what execution added. Written from the code of `main` at
   `c4667fe` (schema version 20) under Pipec's scope rule of 2026-11-16 (*the cheapest form that
   holds the guarantee wins*) and Pipec's model of forgetting of 2026-11-17 (*a person replaces or
   sets aside a memory; the robot may also delete for good, rarely, on purpose*).
@@ -73,9 +74,11 @@ guarantee:
    decision 2); the record's other turns stay. No `redacted_at` column.
 6. **«Everything about one person» today** is: the entity and what hangs from it (its relations,
    its facts, its care contacts), and the turns, episodes, recall units and pending topics whose
-   words name it. By voice it is **archived** (never said, offered or searched; recoverable); with
-   the PIN in `iroko-admin` it is **deleted** in the order the `RESTRICT` keys need (contacts first,
-   then the diary, then the entity). A person with a role, a credential, a biometric profile or a
+   words name it (folded, as whole words, with and without one final «s»), and, for a deletion,
+   the owner's own facts whose value names it. By voice it is **archived** (never said, offered or
+   searched; recoverable), only for `normal` and `personal` rows; with the PIN in `iroko-admin` it
+   is **deleted** in the order the `RESTRICT` keys need (contacts first, then the diary, then the
+   facts and relations, then the entity). A person with a role, a credential, a biometric profile or a
    consent is an enrolled member: neither path touches them until those are revoked by their own
    commands.
 
@@ -110,3 +113,22 @@ guarantee:
 Revisit decision 1 when two databases must be merged; decision 2 when an episode spans records;
 decision 3 when candidate rows are cleaned up before their turn; decision 6 when third parties are
 learned from conversation (after CM-7).
+
+## Implementation (2026-11-18)
+
+Built by Plan 0086 (PR #285, `fac1817`) with the fixes its review and its hardware sitting found
+(PR #286 to #288). What execution added to the decisions above:
+
+- **Decision 1.** A deletion is **probed** in a rolled-back savepoint before its line is appended,
+  so a deletion a `RESTRICT` key refuses (a revoked role, a consent, a profile) writes nothing and
+  never stops a start. On a replay into a restored backup a line a key refuses is kept in
+  `meta.deletion_register_waiting`, tried again at every start, logged
+  (`deletion.replay waiting lines=%d`) and announced by `iroko-admin` until it applies. The next
+  number follows both the file and the marker, so a lost register reuses no number. The deletion
+  and its audit row commit in one transaction under `synchronous=FULL`.
+- **Decision 2.** Deleting an episode sets its record's status to `skipped`, so the purge takes a
+  record kept only for its episode.
+- **Decision 6.** As written above: the name variants and the owner's own facts were found in the
+  review and on hardware. A voice change also refuses a `medical` pending topic and a fact or
+  relation that is not `personal`; a correction's new value must pass the preference gate; a
+  message with a secret is never a change; a spoken change is never itself a recall unit.

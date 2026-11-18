@@ -90,7 +90,7 @@
       "id": "memory",
       "type": "database",
       "label": "SQLite",
-      "sublabel": "schema v20 · turn rows · v4",
+      "sublabel": "schema v21 · archive · v4",
       "pos": [
         670,
         270
@@ -103,8 +103,8 @@
     {
       "id": "consolidation",
       "type": "backend",
-      "label": "Candidate dialogue",
-      "sublabel": "propose · offer · answer",
+      "label": "Memory dialogue",
+      "sublabel": "offer · correct · archive",
       "pos": [
         1010,
         270
@@ -134,7 +134,7 @@
       "id": "admin",
       "type": "backend",
       "label": "Local admin CRUD",
-      "sublabel": "iroko-admin · server stopped",
+      "sublabel": "iroko-admin · forget · archive",
       "pos": [
         330,
         450
@@ -143,7 +143,7 @@
         190,
         64
       ],
-      "tag": "amendment path, PIN + audit"
+      "tag": "PIN, audit, deletion register"
     },
     {
       "id": "seed",
@@ -250,14 +250,15 @@
       "items": [
         "One canonical writer for every channel; a secret is kept by reference, never its value; the alta loads it and iroko-admin amends it, audited",
         "Profile card: the name always, the tastes only on taste talk, the form through the language rule (Plans 0074, 0081)",
-        "Recall, relatives, sensitive reads and the alta's contacts answer by template or found text only; recall knows when a told event happened, and a greeting asks about a plan once (Plans 0077 to 0084)"
+        "Recall, relatives, sensitive reads and the alta's contacts answer by template or found text only; recall knows when a told event happened, and a greeting asks about a plan once (Plans 0077 to 0084)",
+        "Correct a taste or set a person aside by voice (the face and «sí, autorizo»); delete for good only with the PIN, through a deletion register a restore re-applies; the diary outlives the raw record (Plan 0086)"
       ]
     },
     {
       "dot": "rose",
       "title": "Known gaps",
       "items": [
-        "No correcting or forgetting by voice (CM-6), no spoken third-party capture, no answering in company"
+        "No spoken third-party capture, no answering in company; name variants of speech-to-text and recall precision for a named person are open (Plan 0086)"
       ]
     }
   ]

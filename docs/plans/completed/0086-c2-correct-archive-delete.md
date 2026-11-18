@@ -1,6 +1,14 @@
 # 0086 — Block C2: correct and archive a memory by voice, delete it for good with the PIN
 
-> **Status:** **Ready (promoted by Pipec on 2026-11-17)**; `NOW` on the board. Pipec confirmed all
+> **Status:** **Closed (2026-11-18)**; accepted by Pipec on real hardware, the four cases in one
+> sitting ([record](../../evals/0086-c2-acceptance.md)). Code merged as PR #285 (`fac1817`; CI
+> selection 8397 passed, baseline 8291) and three fixes the sitting found, each with its RED test:
+> PR #286 (a spoken change is never itself a memory), #287 and #288 (a name is tried with and
+> without one final «s»). The real database is at schema version 21, `iroko-admin health` exits 0
+> on it and a `post-0086` backup was proven. ADR 0039 and ADR 0032 decisions 2 to 6 are
+> implemented; the edges Pipec chose to leave open are in *Open points* at the end.
+>
+> **Was:** **Ready (promoted by Pipec on 2026-11-17)**; `NOW` on the board. Pipec confirmed all
 > eleven decisions of *Pipec's decisions* at the end as written («apruebo todo, acepto todo»), and
 > asked that the owner's day with an always-on robot (how long an identification lasts, when the
 > robot asks for more) be reviewed after this plan closes; it is recorded in the roadmap and in
@@ -448,9 +456,9 @@ every `iroko-admin` step and reads `logs/server.log`; Pipec speaks and types the
 Cases 1 to 6 are case 2, 7 to 9 case 3, 10 to 12 case 1 (its greeting days are covered by Task 2's
 tests, as in Plan 0084), 13 to 21 case 4. A step that fails is fixed with its RED test and repeated.
 
-- [ ] **Step 1:** the script above; the record `docs/evals/0086-c2-acceptance.md` (outcomes and
+- [x] **Step 1:** the script above; the record `docs/evals/0086-c2-acceptance.md` (outcomes and
   counts only).
-- [ ] **Step 2:** when Pipec accepts, the `pre-0086` backup deleted and recorded; the documents of
+- [x] **Step 2:** when Pipec accepts, the `pre-0086` backup deleted and recorded; the documents of
   the permitted list updated (ADR 0032 and 0039 `Accepted`, the notes on ADR 0019, 0026, 0027 and
   0038); the plan moved to `completed/`; commit `docs: close plan 0086, correct archive and delete`,
   push, PR, squash-merge, delete the branch.
@@ -505,3 +513,43 @@ conversation (after CM-7); any wire, robot, setting or dependency change.
     reused.
 11. **The hardware script** of Task 9 in one sitting, with the greeting days of case 1 covered by
     tests.
+
+## Execution record (2026-11-18)
+
+Executed in the session that wrote it, at Pipec's request («Haz esta tarea aquí»), on
+`feat/0086-c2-correct-archive-delete`; the ledger is
+`.superpowers/sdd/0086-c2-correct-archive-delete/progress.md`.
+
+- **Tasks 0 to 7** as planned, with these deviations, each recorded in the ledger: Tasks 3 and 4,
+  and 6 and 7, landed as one commit each (they share their modules); `memory/forget_scope.py`,
+  `memory/admin_forget.py` and `memory/candidates.facts_confirmed_from_turn` were added beside the
+  permitted list; `forget` dispatches each kind to its owner module instead of taking an `apply`
+  callback, and `conversation_record.delete_record` and the deleting part of
+  `revoke_conversation_consent` were retired so no unregistered deletion path remains;
+  `PERSON_WORDS` and `GREETING_WORDS` moved to `text_keys.py` (the cognitive core may import no
+  memory module); the data dictionary was updated in Task 1 (its guard requires it). In Tasks 3,
+  4, 6 and 7 the code came before its tests; RED was proven by mutation instead (each mutation
+  caught).
+- **Task 8:** three read-only reviews on `sonnet` (database, security, code and tests, instead of
+  five) plus the automated security review. One critical finding (a deletion a `RESTRICT` key
+  refused left its register line and stopped every start: now probed in a rolled-back savepoint
+  before the append; a replayed line a key refuses waits, is retried at every start and is
+  announced) and the important ones (a record whose episode was deleted stayed for ever; a
+  `medical` topic could be archived by voice; `iroko-admin` showed counts before the PIN and left
+  refusals unaudited; a voice change's new value skipped the preference gate; a secret could be
+  read as a change), each fixed with its test.
+- **Task 9:** the four cases pass ([record](../../evals/0086-c2-acceptance.md)); the sitting found
+  and fixed three defects (PR #286 to #288).
+
+## Open points (Pipec, 2026-11-18)
+
+Pipec's rule for the MVP: a wide margin of error; these are kept here for the review of all the
+plans' open points, not fixed now («hasta los mismos Siri o Alexa se equivocan»).
+
+| Open point | What it would take | Seen |
+|---|---|---|
+| Speech-to-text variants of a name beyond one final «s» («Canadia»), and other speakers | Real audio of several people, then a measured tolerance | Hardware 2026-11-18 |
+| Recall precision for a named person: with no unit holding the name, an unrelated story found by meaning alone | A rule such as «a question that names someone answers only from units that hold the name» (recall, ADR 0028) | Hardware 2026-11-18 (distance 0.368 and 0.372 under the 0.43 gate) |
+| A memory offer's short answer asks to repeat when the voice does not verify | Known since Plan 0068; a correction or an archive needs the face only | Hardware 2026-11-18 |
+| «No tengo nada guardado de …» when only `private` rows name the person | By design (no oracle at `basic`); `iroko-admin` reaches them | Hardware 2026-11-18 |
+| The owner's day with an always-on robot (how long an identification lasts) | Its own decision, roadmap | Pipec, 2026-11-17 |

@@ -484,6 +484,16 @@ the recall unit, the candidate and the pending topic each name their turn, so AD
 per segment with its turns as JSON» no longer holds. The deferred table above is unchanged: each
 piece waits for its trigger.
 
+## Note added by Plan 0086 (2026-11-18)
+
+The four pieces the amendment deferred to Plan 0086 were settled by
+[ADR 0039](0039-c2-the-cheapest-forms-of-correct-archive-and-delete.md): the deletion register keys
+on the table and the integer id with a replay marker (`uid` stays deferred, trigger: two databases
+merged); the diary outlives its record by keeping the record row (`episode_sources` deferred); a
+fact's link to its turn stays through its candidate; decision 4's protocol is built (probe,
+register, `synchronous=FULL`, checkpoint until done, replay at every start). `archived_at` exists
+since migration 021.
+
 ## Docs to update
 
 Done when Plan 0085 closed (2026-11-17): the ADR index; a note on ADR 0031 decision 8 and on

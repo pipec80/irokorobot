@@ -1183,6 +1183,39 @@ what the owner says they will do on one day is picked up by the first greeting o
 **Rolling back.** `PENDING_TOPICS_ENABLED=false` and a restart: every route is byte-identical to a
 build without Plan 0084; the stored topics still expire.
 
+### Correct, archive and delete a memory (Plan 0086, block C2, ADR 0039): with memory on
+
+No new switch: it follows `MEMORY_ENABLED`. **By voice a memory is only corrected or set aside;
+a deletion for good needs the PIN in `iroko-admin`** (ADR 0032 decision 3).
+
+- **Correct a taste:** «Ya no me gusta el té.» (or «…, ahora prefiero el mate.»). The robot reads
+  the change back («Tenía guardado que te gusta el té. ¿Lo cambio? Dime: sí, autorizo.») and waits
+  60 s; «Sí, autorizo.» with the owner's face applies it («Listo, lo cambié.»), «No autorizo.»
+  leaves it («Está bien, no cambio nada.»). The old taste stays as history.
+- **Set a person or a subject aside:** «No quiero saber nunca más de …», «No me hables más de …»,
+  «Olvídate de …». The robot counts what names it («Encontré 2 recuerdos de …») and the same verb
+  sets it aside («Listo, lo dejé de lado.»): never said, offered or searched again. Only `normal`
+  memories are reached by voice; a care contact, an enrolled person or anything sensitive answers
+  «Eso se cambia en iroko-admin, con tu PIN.», and a person named only in `private` memories answers
+  «No tengo nada guardado de …» (no oracle).
+- **See and undo an archive** (server stopped, PIN): `just admin archive list` shows each group by
+  its instant; `just admin archive restore --at <instante>` (type the instant itself, no `<>` in
+  PowerShell) brings that group back.
+- **Delete for good** (server stopped, PIN first, then `SI`):
+  `just admin forget fact <id>`, `forget relation <id>`, `forget turn <id>` (turn ids are in
+  `conversations export`; the whole summary of that conversation goes with it, facts confirmed from
+  it are named and kept), `forget episode <record id>`, `forget person <entity id>` or
+  `forget person --name <nombre>` (a person only talked about). A person with a role, a credential,
+  a consent or a profile, even revoked, is refused: revoke those first.
+- **The deletion register** `data/deletions.jsonl` lives beside the database and holds no value
+  (number, kind, id, instant). **Back it up with the database, and never edit it.** Every start of
+  the server and of `iroko-admin` replays it, so restoring an older database never brings a deleted
+  memory back. If a restored backup holds a key that blocks a line, `iroko-admin` prints «Aviso: N
+  borrados prometidos esperan…» and the log says `deletion.replay waiting lines=N`: revoke that
+  role or consent and the deletion applies by itself at the next start.
+- **Durability** (ADR 0032 decision 7): a power cut right after a reply may lose that last turn;
+  a deletion is committed under `synchronous=FULL` and replayed, so it is never lost.
+
 ## 4. Feature-flag reference
 
 | Variable | Default | Effect |
