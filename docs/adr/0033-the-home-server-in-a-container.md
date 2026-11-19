@@ -2,7 +2,9 @@
 
 - **Status:** Proposed (2026-11-11). Written from the roadmap row of 2026-11-06, ADRs 0013, 0025 and
   0035, the code read that day and Pipec's four decisions of 2026-11-11 (see *Pipec's decisions and
-  where they land*). It becomes `Accepted` when the plan that implements it closes.
+  where they land*). It becomes `Accepted` when the plan that implements it closes. **Amended by
+  Pipec on 2026-11-19** (see *Amendment of 2026-11-19*): the container waits for the move to the
+  server board; row 10 is the home server without a container.
 - **Date:** 2026-11-11
 - **Builds on:** [ADR 0002](0002-server-robot-separation.md) (server and robot share only the API),
   [ADR 0013](0013-local-http-network-posture.md) (local-first network posture),
@@ -11,10 +13,13 @@
   [ADR 0035](0035-deployment-worlds.md) (the body, the server, the dashboard).
 - **Amends:** [ADR 0013](0013-local-http-network-posture.md) (a named local peer and the LAN rules,
   decision 2); lifts **Docker** from the project's «Future — do not implement» list and the
-  container non-goal of `server-production-baseline.md`.
+  container non-goal of `server-production-baseline.md` when the container is built, with the
+  server board (amendment of 2026-11-19).
 - **Delivers:** row 10 of the
   [path to the finish line](../roadmap/cognitive-roadmap.md#closing-path-of-conversational-memory)
-  («the laptop is only the home server»). Reserved since 2026-11-06.
+  («the laptop is only the home server»), without a container since the amendment of 2026-11-19;
+  the container itself is delivered with the move to the server board (ADR 0035), after the line.
+  Reserved since 2026-11-06.
 
 ## Context
 
@@ -104,6 +109,31 @@ SQLite driver and the vector extension's loading for a protection the disk alrea
   its record write land, stops the background jobs, closes the database (`PRAGMA optimize`) and
   exits, within a grace period set in compose. A turn cut by a power loss is ADR 0032 decision 7.
 
+## Amendment of 2026-11-19: the container waits for the server board (*Pipec*)
+
+Pipec runs the server from PowerShell with `just run-server`, without VS Code or Claude Code, and the
+server stops when the laptop is off whether it runs in a container or not. On this laptop a container
+adds little and costs a share of the 15.7 GB of RAM (Docker Desktop's WSL2 machine) that Whisper,
+Ollama and the vision model of R2 already share, plus the NVIDIA support under WSL2 for Whisper; the
+microphone, the camera and Ollama stay on the host anyway. Its real value is a reproducible package
+for another machine, which comes with the move to the Raspberry Pi or Jetson class board.
+
+- **Row 10 is the home server without a container,** before block D: the offline run (a
+  cross-cutting row), `/health` reporting Ollama and an operator-visible start-up probe, the orderly
+  stop of decision 6 on the process's stop signal (Ctrl+C) instead of `docker compose stop`, and the
+  daily encrypted backup with its restore of decision 4. Decision 5 (BitLocker) is unchanged.
+- **Decisions 1 and 3 wait for the board:** the image, compose, the read-only model mounts and the
+  one-off administration containers are written with the move to the server board after the line
+  (ADR 0035). Docker stays on the project's «Future — do not implement» list until then, and
+  `server-production-baseline.md` keeps its container non-goal.
+- **Decision 2:** the named local peer exists only to make a container's gateway count as local, so
+  it waits with the container; the server keeps listening on `127.0.0.1` (`SERVER_HOST`). The LAN
+  rules (publication on the LAN interface, trusted hosts, the per-device key issued by `iroko-admin`)
+  are unchanged and are switched on when the body connects, as before.
+- **Block D** is measured on the server as Pipec runs it (`just run-server`), not in a container. Its
+  CPU, RAM and latency budget is then the one of the real runtime on this laptop, and it is measured
+  again on the board.
+
 ## Pipec's decisions and where they land
 
 | # | Decision | Date | Where |
@@ -113,6 +143,7 @@ SQLite driver and the vector extension's loading for a protection the disk alrea
 | 3 | Ollama native on Windows, reached from the container | 2026-11-11 | Decision 1 |
 | 4 | A daily backup, encrypted with restic, kept locally first | 2026-11-11 | Decision 4 |
 | 5 | Encryption at rest by BitLocker (LUKS on the board) | 2026-11-11 | Decision 5 |
+| 6 | The container waits for the server board; row 10 is the home server without it, and block D is measured on `just run-server` | 2026-11-19 | Amendment of 2026-11-19 (replaces the timing of decision 1) |
 
 The author's calls, for Pipec's review: the named local peer as the answer to the loopback check;
 the per-device key for the LAN; administration as one-off containers; the read-only model mounts;
