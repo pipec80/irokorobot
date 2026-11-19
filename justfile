@@ -141,9 +141,11 @@ seed-import *ARGS:
     uv run --env-file .env --package server seed-import {{ARGS}}
 
 # Administracion local tras el cierre del alta (Plan 0073): ver y enmendar el pozo. Servidor detenido.
+# El "-" evita que just anada "recipe failed" tras una prueba en seco o un rechazo: el comando ya
+# dice que paso. Su codigo de salida sigue intacto al correrlo directo (uv run iroko-admin).
 admin *ARGS:
     @echo "iroko-admin: local amendment path; the server must be stopped"
-    uv run --env-file .env --package server iroko-admin {{ARGS}}
+    -uv run --env-file .env --package server iroko-admin {{ARGS}}
 
 # Salud de la base de datos (Plan 0085): solo conteos, sin PIN. Servidor detenido.
 db-health:

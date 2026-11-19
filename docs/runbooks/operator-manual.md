@@ -1216,6 +1216,37 @@ a deletion for good needs the PIN in `iroko-admin`** (ADR 0032 decision 3).
 - **Durability** (ADR 0032 decision 7): a power cut right after a reply may lose that last turn;
   a deletion is committed under `synchronous=FULL` and replayed, so it is never lost.
 
+### Export everything, or everything about one person (Plan 0087, ADR 0032 decision 8)
+
+Server stopped, PIN first, then the counts, then `SI`. Nothing about what is stored is shown
+without the PIN; a dry run (`--dry-run`) stops after the counts and writes nothing.
+
+- `just admin export all` — everything the robot keeps, history and archive included
+  (`archived_at` is a column), and the deletion register's lines.
+- `just admin export person <id>` — one person by the id `just admin list` shows (your own id
+  exports you); `just admin export person --name <nombre>` — someone only talked about. It reaches
+  what `forget person` would delete plus the person's identity rows, and **never** a fact whose
+  subject is another person (your facts that name them stay out), a turn that may be another
+  voice (`not_owner`, `not_checked`) or the deletion register. Compare with
+  `just admin forget person … --dry-run`.
+- **Where:** by default a new folder `data/exports/<instante>-<alcance>/` (for example
+  `20261119T164818Z-todo`, `…-persona-1`, `…-persona`; never a name in the path), git-ignored,
+  readable by the server's user only, **kept until you delete it**. `--out <carpeta>` names
+  another new or empty folder inside `data/exports/` or outside the repository; the repository's
+  code, `data\` itself (the database, the register, the backups), a file and a folder that holds
+  something are refused («Esa carpeta …»). A failure while writing leaves nothing.
+- **What:** `exportacion.md` (Spanish, one table per section, «Qué significa cada valor» at the
+  end) and `exportacion.json` with exactly the same rows. A secret appears only as its reference
+  (the PIN's algorithm and dates, a profile's label); no salt, verifier, face vector or voice
+  embedding ever leaves. «Lo que no sale» counts what was left out and why.
+- **The files hold personal data:** keep them on an encrypted disk, never in a synced folder
+  (OneDrive, Dropbox, Google Drive), and delete them when you no longer need them. Encrypting
+  them is ADR 0033's.
+- **Audit:** one `export` / `household_data` row per attempt (`all`, `person:<id>`, `person`;
+  `refused` with `pin`, `place`, `empty` or `write`), never a name, a value or a path.
+- `just admin` no longer adds «recipe failed» after a dry run or an expected refusal; the
+  command's own line says what happened.
+
 ## 4. Feature-flag reference
 
 | Variable | Default | Effect |

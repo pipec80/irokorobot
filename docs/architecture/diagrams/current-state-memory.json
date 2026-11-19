@@ -134,7 +134,7 @@
       "id": "admin",
       "type": "backend",
       "label": "Local admin CRUD",
-      "sublabel": "iroko-admin · forget · archive",
+      "sublabel": "iroko-admin · forget · export",
       "pos": [
         330,
         450
