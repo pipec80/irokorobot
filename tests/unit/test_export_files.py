@@ -342,6 +342,18 @@ def test_a_failure_in_an_existing_empty_folder_keeps_the_folder(
     assert list(folder.iterdir()) == []
 
 
+@pytest.mark.integration
+def test_a_file_already_at_the_target_is_never_overwritten(tmp_path: Path) -> None:
+    folder = tmp_path / "carrera"
+    folder.mkdir()
+    planted = folder / "exportacion.json"
+    planted.write_text("plantado", encoding="utf-8")
+    with pytest.raises(FileExistsError):
+        write_export(_document(), folder)
+    assert planted.read_text(encoding="utf-8") == "plantado"
+    assert not (folder / "exportacion.md").exists()
+
+
 @pytest.mark.unit
 def test_no_file_holds_a_secret_reference_value() -> None:
     document = _document((1, "hola", "verified"))

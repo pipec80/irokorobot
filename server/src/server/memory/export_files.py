@@ -305,10 +305,29 @@ def render_markdown(document: ExportDocument) -> str:
     return "\n".join(lines) + "\n"
 
 
+_CREATE_FLAGS: Final = (
+    os.O_WRONLY
+    | os.O_CREAT
+    | os.O_EXCL  # never an existing file: one planted between the check and the write refuses
+    | getattr(os, "O_NOFOLLOW", 0)  # POSIX: never through a symbolic link
+    | getattr(os, "O_BINARY", 0)  # Windows: the bytes as written, ``\n`` stays ``\n``
+)
+
+
 def _write_file(path: Path, text: str) -> None:
-    """Write one export file, UTF-8 with ``\\n``, readable by the server's user only."""
-    path.write_text(text, encoding="utf-8", newline="\n")
-    path.chmod(_FILE_MODE)
+    """Create one export file, UTF-8 with ``\\n``, born readable by the server's user only.
+
+    Raises:
+        FileExistsError: If something is already at *path*; it is left untouched.
+        OSError: If the file cannot be written; what this call created is removed.
+    """
+    descriptor = os.open(path, _CREATE_FLAGS, _FILE_MODE)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(text.encode("utf-8"))
+    except OSError:
+        path.unlink(missing_ok=True)
+        raise
 
 
 def write_export(document: ExportDocument, folder: Path) -> tuple[Path, Path]:
@@ -333,14 +352,14 @@ def write_export(document: ExportDocument, folder: Path) -> tuple[Path, Path]:
     written: list[Path] = []
     try:
         folder.mkdir(mode=_FOLDER_MODE, parents=True, exist_ok=True)
-        if created and os.name != "nt":
-            folder.chmod(_FOLDER_MODE)
+        if os.name != "nt":
+            folder.chmod(_FOLDER_MODE)  # an existing empty --out folder is closed too
         for path, text in (
             (json_file, render_json(document)),
             (markdown, render_markdown(document)),
         ):
-            written.append(path)
             _write_file(path, text)
+            written.append(path)
     except OSError:
         for path in written:
             path.unlink(missing_ok=True)
