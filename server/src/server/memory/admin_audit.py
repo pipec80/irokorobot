@@ -67,6 +67,9 @@ class TargetKind(StrEnum):
     CARE_CONTACT = "care_contact"
     CONVERSATION_CONSENT = "conversation_consent"
     CONVERSATION_RECORD = "conversation_record"
+    # The export of everything, or of one person (Plan 0087 D-7): ``field_id`` is ``all``,
+    # ``person:<id>`` or ``person`` (a name only talked about), never the name or the path.
+    HOUSEHOLD_DATA = "household_data"
 
 
 class AdminOutcomeStatus(StrEnum):

@@ -145,7 +145,7 @@ async def test_migration_021_adds_archived_at_and_refuses_a_malformed_instant(ow
     version = await cursor.fetchone()
     await cursor.close()
     assert version is not None
-    assert int(version[0]) == db.latest_schema_version() == 21
+    assert int(version[0]) == db.latest_schema_version() >= 21
     fact_id = await _taste(owner)
     for table in ("literal_facts_v4", "entity_relations_v4", "recall_units", "pending_topics"):
         cursor = await db.get_conn().execute(f"PRAGMA table_info({table})")
