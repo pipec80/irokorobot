@@ -367,6 +367,18 @@ def latest_schema_version() -> int:
     return _MIGRATIONS[-1].version
 
 
+async def count_retired_memories() -> int:
+    """How many rows the retired ``memories`` table holds (Plan 0087 D-5, «no sale»).
+
+    The table has no owner module (ADR 0027 decision 9): it is locked by a trigger and read by
+    nothing else, so its one count lives beside the schema that created it.
+    """
+    cursor = await get_conn().execute("SELECT count(*) FROM memories")
+    row = await cursor.fetchone()
+    await cursor.close()
+    return 0 if row is None else int(row[0])
+
+
 def is_open() -> bool:
     """Return whether the database connection is currently open (Plan 0040).
 

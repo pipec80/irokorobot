@@ -26,6 +26,7 @@ from uuid import UUID
 from server import db
 from server.exceptions import BrainMemoryError
 from server.memory.conversation_types import RecordedTurn, TurnVerdict
+from server.memory.export_model import StoredRows, fetch_stored_rows
 from server.settings import settings
 from server.timestamps import instant_text, parse_instant
 
@@ -52,9 +53,11 @@ __all__ = [
     "purge_records",
     "read_record",
     "record_turn_count",
+    "records_for_export",
     "set_episode_status",
     "turn_record_id",
     "turn_texts",
+    "turns_for_export",
 ]
 
 logger = logging.getLogger(__name__)
@@ -567,3 +570,42 @@ async def purge_records(now: datetime) -> int:
         logger.info("Conversation record: %d segment(s) purged", deleted)
         await db.checkpoint_wal()
     return deleted
+
+
+_RECORD_EXPORT_COLUMNS = (
+    "id",
+    "previous_id",
+    "owner_entity_id",
+    "started_at",
+    "last_turn_at",
+    "closed_at",
+    "eligible",
+    "expires_at",
+    "episode_status",
+)
+
+
+async def records_for_export() -> StoredRows:
+    """Every conversation record's metadata, for an export (Plan 0087 D-5)."""
+    return await fetch_stored_rows(
+        _RECORD_EXPORT_COLUMNS,
+        f"SELECT {', '.join(_RECORD_EXPORT_COLUMNS)} FROM conversation_records ORDER BY id",  # noqa: S608
+    )
+
+
+_TURN_EXPORT_COLUMNS = (
+    "id",
+    "record_id",
+    "said_at",
+    "verdict",
+    "heard",
+    "said",
+)
+
+
+async def turns_for_export() -> StoredRows:
+    """Every stored turn with its verdict, for an export (Plan 0087 D-5)."""
+    return await fetch_stored_rows(
+        _TURN_EXPORT_COLUMNS,
+        f"SELECT {', '.join(_TURN_EXPORT_COLUMNS)} FROM conversation_turns ORDER BY id",  # noqa: S608
+    )

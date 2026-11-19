@@ -13,11 +13,13 @@ import logging
 from server import db
 from server.cognition.clock import utc_now
 from server.db import get_conn
+from server.memory.export_model import StoredRows, fetch_stored_rows
 from server.timestamps import instant_text
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "face_consents_for_export",
     "grant_face_consent",
     "has_active_face_consent",
     "revoke_face_consent",
@@ -113,3 +115,20 @@ async def has_active_face_consent(person_entity_id: int) -> bool:
     row = await cursor.fetchone()
     await cursor.close()
     return row is not None
+
+
+_CONSENT_EXPORT_COLUMNS = (
+    "id",
+    "person_entity_id",
+    "purpose",
+    "granted_at",
+    "revoked_at",
+)
+
+
+async def face_consents_for_export() -> StoredRows:
+    """Every face consent, revoked ones included, for an export (Plan 0087 D-5)."""
+    return await fetch_stored_rows(
+        _CONSENT_EXPORT_COLUMNS,
+        f"SELECT {', '.join(_CONSENT_EXPORT_COLUMNS)} FROM face_consent_grants ORDER BY id",  # noqa: S608
+    )

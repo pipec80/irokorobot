@@ -26,6 +26,7 @@ from server import db
 from server.cognition.clock import utc_now
 from server.exceptions import EnrollmentRejectedError, VisionError
 from server.memory.declarative import upsert_entity
+from server.memory.export_model import StoredRows, fetch_count, fetch_stored_rows
 from server.request_context import run_in_executor_with_context
 from server.settings import settings
 from server.timestamps import instant_text
@@ -357,3 +358,24 @@ async def recognize(image: bytes) -> tuple[list[FaceMatch], int]:
     # Counts only: a household member's name never goes to the log (Plan 0032).
     logger.info("Faces recognized: %d match(es), %d unknown", len(matches), unknown)
     return list(matches.values()), unknown
+
+
+_FACE_EXPORT_COLUMNS = (
+    "id",
+    "entity_id",
+    "label",
+    "created_at",
+)
+
+
+async def face_profiles_for_export() -> StoredRows:
+    """Every face profile as a reference only: never its vector, for an export (Plan 0087 D-5)."""
+    return await fetch_stored_rows(
+        _FACE_EXPORT_COLUMNS,
+        f"SELECT {', '.join(_FACE_EXPORT_COLUMNS)} FROM face_profiles ORDER BY id",  # noqa: S608
+    )
+
+
+async def count_face_vectors() -> int:
+    """How many face vectors, for the «no sale» section of an export (Plan 0087 D-5)."""
+    return await fetch_count("SELECT count(*) FROM vec_faces")

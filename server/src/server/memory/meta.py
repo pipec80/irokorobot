@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from server import db
 from server.cognition.clock import utc_now
 from server.db import get_conn
+from server.memory.export_model import fetch_count
 from server.timestamps import instant_text
 
 if TYPE_CHECKING:
@@ -73,3 +74,8 @@ async def set_flag(key: str, value: str) -> None:
             (key, value, instant_text(utc_now())),
         )
     logger.debug("Meta flag set: %s=%s", key, value)
+
+
+async def count_flags() -> int:
+    """How many system flags, for the «no sale» section of an export (Plan 0087 D-5)."""
+    return await fetch_count("SELECT count(*) FROM meta")

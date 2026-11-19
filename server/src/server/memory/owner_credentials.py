@@ -7,11 +7,13 @@ from server.cognition.clock import utc_now
 from server.cognition.identity import HouseholdRole
 from server.cognition.pin_credentials import EncodedPinCredential
 from server.db import get_conn
+from server.memory.export_model import StoredRows, fetch_stored_rows
 from server.memory.household_authorization import get_active_role
 from server.timestamps import instant_text
 
 __all__ = [
     "OwnerPinCredential",
+    "credentials_for_export",
     "get_active_owner_pin_credential",
     "get_ready_owner",
     "revoke_owner_pin_credential",
@@ -150,3 +152,21 @@ async def revoke_owner_pin_credential(*, person_entity_id: int) -> None:
         await cursor.close()
         if updated != 1:
             raise ValueError("no active owner PIN credential exists for this person")
+
+
+_CREDENTIAL_EXPORT_COLUMNS = (
+    "id",
+    "person_entity_id",
+    "algorithm",
+    "created_at",
+    "updated_at",
+    "revoked_at",
+)
+
+
+async def credentials_for_export() -> StoredRows:
+    """Every PIN credential as a reference only: never its salt, parameters or verifier, for an export (Plan 0087 D-5)."""
+    return await fetch_stored_rows(
+        _CREDENTIAL_EXPORT_COLUMNS,
+        f"SELECT {', '.join(_CREDENTIAL_EXPORT_COLUMNS)} FROM owner_pin_credentials ORDER BY id",  # noqa: S608
+    )

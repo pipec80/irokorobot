@@ -21,6 +21,7 @@ from server import db
 from server.cognition.clock import utc_now
 from server.db import get_conn
 from server.exceptions import UnstorableValueError
+from server.memory.export_model import StoredRows, fetch_stored_rows
 from server.memory.household_time import household_zone
 from server.memory.predicate_registry import (
     PredicateCardinality,
@@ -1348,3 +1349,57 @@ async def entity_has_rows(entity_id: int) -> bool:
     row = await cursor.fetchone()
     await cursor.close()
     return row is not None and bool(row[0])
+
+
+_FACT_EXPORT_COLUMNS = (
+    "id",
+    "subject_entity_id",
+    "predicate",
+    "value_text",
+    "lifecycle",
+    "sensitivity",
+    "visibility",
+    "valid_from",
+    "valid_to",
+    "asserted_at",
+    "confirmed_at",
+    "superseded_by",
+    "superseded_at",
+    "archived_at",
+    "channel",
+)
+
+
+async def facts_for_export() -> StoredRows:
+    """Every literal fact, every lifecycle and the archived ones, for an export (Plan 0087 D-5)."""
+    return await fetch_stored_rows(
+        _FACT_EXPORT_COLUMNS,
+        f"SELECT {', '.join(_FACT_EXPORT_COLUMNS)} FROM literal_facts_v4 ORDER BY id",  # noqa: S608
+    )
+
+
+_RELATION_EXPORT_COLUMNS = (
+    "id",
+    "source_entity_id",
+    "predicate",
+    "target_entity_id",
+    "lifecycle",
+    "sensitivity",
+    "visibility",
+    "valid_from",
+    "valid_to",
+    "asserted_at",
+    "confirmed_at",
+    "superseded_by",
+    "superseded_at",
+    "archived_at",
+    "channel",
+)
+
+
+async def relations_for_export() -> StoredRows:
+    """Every relation, every lifecycle and the archived ones, for an export (Plan 0087 D-5)."""
+    return await fetch_stored_rows(
+        _RELATION_EXPORT_COLUMNS,
+        f"SELECT {', '.join(_RELATION_EXPORT_COLUMNS)} FROM entity_relations_v4 ORDER BY id",  # noqa: S608
+    )

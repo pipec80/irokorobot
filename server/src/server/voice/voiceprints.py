@@ -15,6 +15,7 @@ from server import db
 from server.cognition.clock import utc_now
 from server.db import get_conn
 from server.exceptions import BrainMemoryError
+from server.memory.export_model import StoredRows, fetch_stored_rows
 from server.timestamps import instant_text
 
 VOICEPRINT_DIM: Final = 192
@@ -25,6 +26,7 @@ __all__ = [
     "centroid_match",
     "count_voiceprints",
     "enroll_voiceprint",
+    "voice_profiles_for_export",
 ]
 
 
@@ -149,4 +151,21 @@ async def centroid_match(
     return CentroidMatch(
         distance=float(1.0 - np.dot(centroid, _l2_normalized(embedding))),
         reference_count=len(references),
+    )
+
+
+_VOICE_EXPORT_COLUMNS = (
+    "id",
+    "entity_id",
+    "label",
+    "model_id",
+    "created_at",
+)
+
+
+async def voice_profiles_for_export() -> StoredRows:
+    """Every voice profile as a reference only: never its embedding, for an export (Plan 0087 D-5)."""
+    return await fetch_stored_rows(
+        _VOICE_EXPORT_COLUMNS,
+        f"SELECT {', '.join(_VOICE_EXPORT_COLUMNS)} FROM voice_profiles ORDER BY id",  # noqa: S608
     )
