@@ -44,6 +44,7 @@ from server.memory import (
     recall_store,
     relational_v4,
 )
+from server.memory.export_model import StoredRows, stored_rows
 from server.settings import settings
 from server.timestamps import instant_text
 
@@ -62,6 +63,7 @@ __all__ = [
     "ForgetResult",
     "forget",
     "forget_record",
+    "lines_for_export",
     "register_path",
     "replay_register",
     "waiting_deletions",
@@ -434,3 +436,22 @@ async def withdraw_conversation_consent(person_entity_id: int, *, now: datetime)
         result.rows,
     )
     return result.rows
+
+
+_LINE_EXPORT_COLUMNS = ("seq", "kind", "id", "at")
+
+
+def lines_for_export() -> StoredRows:
+    """The register's lines as stored, for an export of everything (Plan 0087 D-5).
+
+    Returns:
+        One row per line: its number, kind, row id and instant; never a value.
+
+    Raises:
+        BrainMemoryError: If a complete line is unreadable.
+    """
+    lines, _ = _read(register_path())
+    return stored_rows(
+        _LINE_EXPORT_COLUMNS,
+        ((line.seq, line.deletion.kind.value, line.deletion.row_id, line.at) for line in lines),
+    )

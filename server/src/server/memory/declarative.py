@@ -17,6 +17,7 @@ from server import db
 from server.cognition.clock import utc_now
 from server.db import get_conn
 from server.exceptions import AmbiguousEntityError
+from server.memory.export_model import StoredRows, fetch_stored_rows
 from server.text_keys import fold_name
 from server.timestamps import instant_text
 
@@ -468,3 +469,20 @@ async def delete_orphan_import_entities(
         extra={"event": "entity.import_orphans_deleted", "count": deleted},
     )
     return deleted
+
+
+_ENTITY_EXPORT_COLUMNS = (
+    "id",
+    "name",
+    "type",
+    "aliases",
+    "created_at",
+)
+
+
+async def entities_for_export() -> StoredRows:
+    """Every entity, for an export (Plan 0087 D-5)."""
+    return await fetch_stored_rows(
+        _ENTITY_EXPORT_COLUMNS,
+        f"SELECT {', '.join(_ENTITY_EXPORT_COLUMNS)} FROM entities ORDER BY id",  # noqa: S608
+    )

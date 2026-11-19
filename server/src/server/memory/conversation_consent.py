@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Final
 
 from server import db
 from server.memory.conversation_record import delete_all_records
+from server.memory.export_model import StoredRows, fetch_stored_rows
 from server.timestamps import instant_text
 
 if TYPE_CHECKING:
@@ -26,6 +27,7 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "CONVERSATION_NOTICE_PATH",
     "CONVERSATION_NOTICE_VERSION",
+    "conversation_consents_for_export",
     "grant_conversation_consent",
     "has_active_conversation_consent",
     "load_conversation_notice",
@@ -131,3 +133,20 @@ async def has_active_conversation_consent(person_entity_id: int) -> bool:
     row = await cursor.fetchone()
     await cursor.close()
     return row is not None
+
+
+_CONSENT_EXPORT_COLUMNS = (
+    "id",
+    "person_entity_id",
+    "purpose",
+    "granted_at",
+    "revoked_at",
+)
+
+
+async def conversation_consents_for_export() -> StoredRows:
+    """Every conversation consent, revoked ones included, for an export (Plan 0087 D-5)."""
+    return await fetch_stored_rows(
+        _CONSENT_EXPORT_COLUMNS,
+        f"SELECT {', '.join(_CONSENT_EXPORT_COLUMNS)} FROM conversation_consent_grants ORDER BY id",  # noqa: S608
+    )

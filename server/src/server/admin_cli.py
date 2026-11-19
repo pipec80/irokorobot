@@ -26,7 +26,7 @@ import httpx
 from server import db
 from server.cognition.clock import utc_now
 from server.conversation_admin import export_records, summary_line
-from server.exceptions import AdminPinError, BrainMemoryError
+from server.exceptions import AdminPinError, BrainMemoryError, ExportPlaceError
 from server.memory.admin_audit import (
     AdminActorRole,
     AdminOperationKind,
@@ -70,7 +70,9 @@ from server.memory.conversation_consent import (
     load_conversation_notice,
 )
 from server.memory.conversation_record import list_records
+from server.memory.data_export import export_counts, gather_export, holds_nothing
 from server.memory.db_health import check_health, health_failed, render_health
+from server.memory.declarative import entity_names
 from server.memory.deletion_register import (
     forget_record,
     replay_register,
@@ -78,6 +80,8 @@ from server.memory.deletion_register import (
     withdraw_conversation_consent,
 )
 from server.memory.entity_labels import get_person_label
+from server.memory.export_files import export_folder, folder_name, write_export
+from server.memory.export_model import ExportScope, ExportScopeKind
 from server.memory.owner_credentials import get_ready_owner
 from server.memory.relational_v4 import (
     EntityRelationV4,
@@ -655,6 +659,109 @@ async def _archive(
     return 0
 
 
+# --- the export of the household data (Plan 0087, ADR 0032 decision 8) ----------------------------
+
+_REPOSITORY = Path(__file__).resolve().parents[3]
+_EXPORT_FILES_REMINDER = (
+    "Tienen datos personales: guárdalos en un disco cifrado, nunca en una carpeta sincronizada, "
+    "y bórralos cuando ya no los necesites."
+)
+
+
+def _export_scope(request: AdminRequest) -> ExportScope:
+    """The scope the invocation names, or a refusal before anything is asked."""
+    if request.kind == ExportScopeKind.ALL.value:
+        return ExportScope(kind=ExportScopeKind.ALL)
+    if (request.row_id is None) == (request.name is None):
+        raise _RefusedError(
+            "export person necesita el id de la persona (de `list`) o --name, uno de los dos."
+        )
+    return ExportScope(kind=ExportScopeKind.PERSON, entity_id=request.row_id, words=request.name)
+
+
+async def _audit_export(
+    request: AdminRequest, scope: ExportScope, *, now: str, refused: str | None = None
+) -> None:
+    """Write the one audit row of an export attempt: the scope's kind and id, never a name.
+
+    The typed id stays in ``field_id``; ``target_entity_id`` is a key to ``entities``, so an id
+    that names no entity (a typo) is audited with ``NULL`` there instead of failing the row.
+    """
+    entity = scope.entity_id
+    if entity is not None and not await entity_names(entity):
+        entity = None
+    field_id = (
+        "all"
+        if scope.kind is ExportScopeKind.ALL
+        else "person"
+        if scope.entity_id is None
+        else f"person:{scope.entity_id}"
+    )
+    await record_admin_operation(
+        actor_label=request.actor_label,
+        actor_role=AdminActorRole.BUILDER,
+        operation=AdminOperationKind.EXPORT,
+        target_kind=TargetKind.HOUSEHOLD_DATA,
+        field_id=field_id,
+        target_entity_id=entity,
+        outcome=AdminOutcomeStatus.REFUSED if refused else AdminOutcomeStatus.APPLIED,
+        reason=refused,
+        recorded_at=now,
+    )
+
+
+async def _export(
+    request: AdminRequest,
+    owner: int,
+    read_text: ReadText,
+    read_secret: ReadText,
+    write_text: WriteText,
+    now: str,
+) -> int:
+    """Under the PIN, show the counts of everything or of one person, then write both files.
+
+    The order of ``forget``: the PIN first (nothing about what is stored is shown without it),
+    then the folder, the counts, ``SI``, the files and the audit row (D-2).
+    """
+    scope = _export_scope(request)
+    if not await _grant_pin_if_needed(
+        required=True, read_secret=read_secret, write_text=write_text
+    ):
+        await _audit_export(request, scope, now=now, refused="pin")
+        write_text("Sin verificación de la persona titular: no se exportó nada.")
+        return 1
+    try:
+        folder = export_folder(
+            request.out,
+            repository=_REPOSITORY,
+            data_dir=settings.brain_db_path.parent,
+            name=folder_name(scope, now),
+        )
+    except ExportPlaceError as exc:
+        await _audit_export(request, scope, now=now, refused="place")
+        write_text(str(exc))
+        return 1
+    document = await gather_export(scope, owner_entity_id=owner, now=now)
+    if scope.kind is ExportScopeKind.PERSON and holds_nothing(document):
+        await _audit_export(request, scope, now=now, refused="empty")
+        write_text("No hay nada guardado de esa persona.")
+        return 1
+    for line in export_counts(document):
+        write_text(line)
+    write_text(f"Carpeta: {folder}")
+    if not _confirm(request, read_text, write_text):
+        return 1
+    try:
+        write_export(document, folder)
+    except OSError:
+        await _audit_export(request, scope, now=now, refused="write")
+        write_text("No se pudo escribir la exportación: no quedó nada a medias.")
+        return 1
+    await _audit_export(request, scope, now=now)
+    write_text(f"Exportado a {folder}: exportacion.md y exportacion.json. {_EXPORT_FILES_REMINDER}")
+    return 0
+
+
 # --- the dispatcher and the entry point -----------------------------------------------------------
 
 
@@ -707,6 +814,8 @@ async def _dispatch(
         return await _forget(request, owner, read_text, read_secret, write_text, now)
     if request.command == "archive":
         return await _archive(request, read_text, read_secret, write_text, now)
+    if request.command == "export":
+        return await _export(request, owner, read_text, read_secret, write_text, now)
     return await _owner_command(request, owner, read_text, read_secret, write_text, now)
 
 
@@ -847,6 +956,17 @@ def _parser() -> argparse.ArgumentParser:
     forget.add_argument("--name", nargs="+", help="el nombre de alguien de quien solo se habló")
     forget.add_argument("--dry-run", action="store_true")
     forget.add_argument("--actor", nargs="+")
+    export = sub.add_parser(
+        "export", help="exporta todo, o todo de una persona, a Markdown y JSON (PIN)"
+    )
+    export.add_argument("kind", choices=[kind.value for kind in ExportScopeKind])
+    export.add_argument("row_id", type=int, nargs="?", help="el id de `list` de la persona")
+    export.add_argument("--name", nargs="+", help="el nombre de alguien de quien solo se habló")
+    export.add_argument(
+        "--out", type=Path, help="otra carpeta, nueva o vacía (por defecto data/exports/)"
+    )
+    export.add_argument("--dry-run", action="store_true")
+    export.add_argument("--actor", nargs="+")
     archive = sub.add_parser("archive", help="lista o recupera lo archivado por voz (PIN)")
     archive.add_argument("action", choices=("list", "restore"))
     archive.add_argument("--at", help="el instante del grupo, como lo muestra `archive list`")

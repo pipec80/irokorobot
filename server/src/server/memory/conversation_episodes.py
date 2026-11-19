@@ -33,6 +33,7 @@ from server.memory.conversation_summary import (
     summarize_owner_part,
 )
 from server.memory.conversation_types import owner_part
+from server.memory.export_model import StoredRows, fetch_stored_rows
 from server.memory.recall_store import (
     insert_episode_unit,
     raise_record_sensitivity,
@@ -53,6 +54,7 @@ __all__ = [
     "EpisodeOutcome",
     "delete_episode_row",
     "episode_summaries",
+    "episodes_for_export",
     "get_episode",
     "write_episode",
 ]
@@ -254,3 +256,22 @@ async def write_episode(
         # The record was deleted (purge, `delete`, a revoked consent) while it was summarized.
         return _logged(EpisodeOutcome.GONE, record_id)
     return _logged(EpisodeOutcome.WRITTEN, record_id)
+
+
+_EPISODE_EXPORT_COLUMNS = (
+    "id",
+    "source_record_id",
+    "owner_entity_id",
+    "sensitivity",
+    "summary",
+    "created_at",
+    "expires_at",
+)
+
+
+async def episodes_for_export() -> StoredRows:
+    """Every diary episode, for an export (Plan 0087 D-5)."""
+    return await fetch_stored_rows(
+        _EPISODE_EXPORT_COLUMNS,
+        f"SELECT {', '.join(_EPISODE_EXPORT_COLUMNS)} FROM conversation_episodes ORDER BY id",  # noqa: S608
+    )

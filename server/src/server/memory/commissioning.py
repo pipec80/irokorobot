@@ -26,6 +26,7 @@ from uuid import uuid4
 from server import db
 from server.db import get_conn
 from server.exceptions import CommissioningClosedError, CommissioningOpenError
+from server.memory.export_model import StoredRows, fetch_stored_rows
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -47,6 +48,8 @@ __all__ = [
     "SessionDetails",
     "clear_section_statuses",
     "close_commissioning",
+    "commissioning_records_for_export",
+    "commissioning_sections_for_export",
     "get_latest_commissioning",
     "get_open_commissioning",
     "has_closed_commissioning",
@@ -760,4 +763,42 @@ def _announce(what: str, record_id: int, *, committed: bool) -> None:
         "Commissioning %s",
         what if committed else f"{what} (staged)",
         extra={"event": _EVENT, "step": what, "record_id": record_id},
+    )
+
+
+_ACTA_EXPORT_COLUMNS = (
+    "id",
+    "installation_id",
+    "started_at",
+    "interviewer_label",
+    "interviewer_role",
+    "confirmation_mode",
+    "disk_encryption",
+    "pool_version",
+    "biometric_notice_version",
+    "closed_at",
+)
+
+
+async def commissioning_records_for_export() -> StoredRows:
+    """Every commissioning record, for an export (Plan 0087 D-5)."""
+    return await fetch_stored_rows(
+        _ACTA_EXPORT_COLUMNS,
+        f"SELECT {', '.join(_ACTA_EXPORT_COLUMNS)} FROM commissioning_records ORDER BY id",  # noqa: S608
+    )
+
+
+_SECTION_EXPORT_COLUMNS = (
+    "commissioning_id",
+    "section",
+    "status",
+    "recorded_at",
+)
+
+
+async def commissioning_sections_for_export() -> StoredRows:
+    """Every section status of every commissioning record, for an export (Plan 0087 D-5)."""
+    return await fetch_stored_rows(
+        _SECTION_EXPORT_COLUMNS,
+        f"SELECT {', '.join(_SECTION_EXPORT_COLUMNS)} FROM commissioning_sections ORDER BY commissioning_id, section",  # noqa: S608
     )

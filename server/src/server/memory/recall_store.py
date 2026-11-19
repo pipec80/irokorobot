@@ -23,6 +23,7 @@ from server.cognition.spoken_dates import DayWindow
 from server.exceptions import BrainMemoryError
 from server.memory.conversation_types import TurnVerdict
 from server.memory.embeddings import EMBEDDING_DIM
+from server.memory.export_model import StoredRows, fetch_count, fetch_stored_rows
 from server.memory.recall_sensitivity import (
     RecallSensitivity,
     classify_turn_text,
@@ -52,6 +53,7 @@ __all__ = [
     "insert_turn_unit",
     "lexical_hits",
     "occurred_time_on",
+    "projection_counts",
     "raise_record_sensitivity",
     "recent_units",
     "restore_archived_units",
@@ -60,6 +62,7 @@ __all__ = [
     "unit_ids_naming",
     "unit_ids_naming_stored",
     "units_by_id",
+    "units_for_export",
     "units_without_vector",
     "vector_hits",
 ]
@@ -857,3 +860,40 @@ async def recent_units(
         if units:
             return units[:limit]
     return []
+
+
+_UNIT_EXPORT_COLUMNS = (
+    "id",
+    "owner_entity_id",
+    "source_record_id",
+    "turn_id",
+    "kind",
+    "body",
+    "sensitivity",
+    "said_at",
+    # The occurred interval leaves under its own keys: only this module names its columns.
+    "occurred_from",
+    "occurred_to",
+    "archived_at",
+)
+
+
+async def units_for_export() -> StoredRows:
+    """Every recall unit, archived ones included; never a vector, for an export (Plan 0087 D-5)."""
+    return await fetch_stored_rows(
+        _UNIT_EXPORT_COLUMNS,
+        "SELECT id, owner_entity_id, source_record_id, turn_id, kind, body, sensitivity, said_at, "
+        "occurred_start, occurred_end, archived_at FROM recall_units ORDER BY id",
+    )
+
+
+async def projection_counts() -> tuple[int, int]:
+    """How many full-text rows and vectors the units project, for an export (Plan 0087 D-5).
+
+    Returns:
+        The rows of ``recall_units_fts`` and of ``recall_units_vec``.
+    """
+    return (
+        await fetch_count("SELECT count(*) FROM recall_units_fts"),
+        await fetch_count("SELECT count(*) FROM recall_units_vec"),
+    )

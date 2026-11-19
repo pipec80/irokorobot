@@ -5,8 +5,8 @@ it holds and how long it lives. It is checked by tests: `tests/unit/test_schema_
 when a table or a column of a clean, fully migrated database is missing here (or documented here
 and absent from the schema), when a table has no primary key, when a foreign key has no full index,
 when a table this plan touched leaves a foreign key on SQLite's default rule, or when a section
-lacks a field below. Schema version at the time of writing: **21** (Plan 0085, ADR 0038,
-ADR 0032 decision 1; Plan 0086 added `archived_at`). Counts about the data itself come from `iroko-admin health`, never from here.
+lacks a field below. Schema version at the time of writing: **22** (Plan 0085, ADR 0038,
+ADR 0032 decision 1; Plan 0086 added `archived_at`; Plan 0087 the audit kind of an export). Counts about the data itself come from `iroko-admin health`, never from here.
 
 How to read a table section:
 
@@ -42,8 +42,8 @@ How to read a table section:
 | `actor_role` | TEXT | NOT NULL, `owner` or `builder` |
 | `channel` | TEXT | NOT NULL, always `admin_local` |
 | `operation` | TEXT | NOT NULL, closed list (`add`, `change`, `revoke`, `grant`, `export`, `delete`) |
-| `target_kind` | TEXT | NOT NULL, closed list (pool literal, pool relation, care contact, conversation consent, conversation record) |
-| `field_id` | TEXT | catalogue id of the field, no value |
+| `target_kind` | TEXT | NOT NULL, closed list (pool literal, pool relation, care contact, conversation consent, conversation record, household data: an export, migration 022) |
+| `field_id` | TEXT | catalogue id of the field, no value; for an export `all`, `person:<id>` or `person` |
 | `target_entity_id` | INTEGER | FK `entities`, SET NULL |
 | `outcome` | TEXT | NOT NULL, `applied` or `refused` |
 | `reason` | TEXT | closed refusal reason, no value |

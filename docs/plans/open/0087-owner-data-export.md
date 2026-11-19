@@ -65,19 +65,26 @@ Task 0 re-verifies each item and **stops and reports** if one is false.
   everything or everything about one person, a readable document in Spanish and the same content as
   JSON, secrets by reference only, one audit row. No TOML (8b), no web administration (after the
   finish line), no wire, route, robot, setting or dependency change.
-- **D-2 The command.** `iroko-admin export all --out <carpeta>`, `iroko-admin export person <id>
-  --out <carpeta>` (an entity id of `list`; the owner's own id exports the owner) and
-  `iroko-admin export person --name <palabras> --out <carpeta>` (a person only talked about), each
-  with `--dry-run` and `--actor`. The order of `forget`: the PIN first (nothing about what is stored
+- **D-2 The command.** `iroko-admin export all [--out <carpeta>]`, `iroko-admin export person <id>
+  [--out <carpeta>]` (an entity id of `list`; the owner's own id exports the owner) and
+  `iroko-admin export person --name <palabras> [--out <carpeta>]` (a person only talked about), each
+  with `--dry-run` and `--actor` (`--out` optional since Pipec's amendment of D-3, 2026-11-19). The order of `forget`: the PIN first (nothing about what is stored
   is shown without it), then the folder check, then one count line per section, then `SI` typed,
   then the two files, then the audit row and «Exportado a {carpeta}: exportacion.md y
   exportacion.json. {reminder}». `--dry-run` stops after the counts. The existing refusal of a
   server that answers `/health` covers «server stopped».
-- **D-3 The folder** (Pipec, 2026-11-18). `--out` is required and resolved (`Path.resolve()`, so
-  `..`, a relative path and a junction are seen as what they are). Refused, with a closed phrase and
-  nothing written: a path inside the repository; a path inside the database's directory
-  (`settings.brain_db_path.parent`, where the register and the backups live); an existing file; an
-  existing folder that is not empty. A missing folder is created (parents too). Inside it exactly two
+- **D-3 The folder** (Pipec, 2026-11-18; **amended by Pipec on 2026-11-19**: a fixed, protected
+  folder that is kept). Without `--out` the export goes to its own new folder
+  `data/exports/<instante>-<alcance>/` beside the database (`settings.brain_db_path.parent`,
+  git-ignored, the future Docker volume): `20261119T120000Z-todo`, `…-persona-<id>` or `…-persona`
+  (never a name in a path). `--out` is optional and resolved (`Path.resolve()`, so `..`, a relative
+  path and a junction are seen as what they are). Refused, with a closed phrase and nothing
+  written: a path inside the repository or the database's directory that is not under
+  `data/exports/` (the code, the database, the register, the backups); an existing file; an
+  existing folder that is not empty. A missing folder is created (parents too), readable and
+  writable by the server's user only (`0700`, the files `0600`; on Windows it inherits the data
+  directory's permissions). The folders are kept until the operator deletes them; encrypting them
+  is ADR 0033's. Inside it exactly two
   files, UTF-8 with `\n`: `exportacion.md` and `exportacion.json`; the scope, the instant and the
   schema version go in the header of both. A failure while writing removes what this run wrote
   (both files, and the folder if this run created it), prints «No se pudo escribir la exportación:
@@ -134,8 +141,9 @@ Task 0 re-verifies each item and **stops and reports** if one is false.
   `empty` or `write`. No value, no name, no path. The data dictionary entry follows.
 - **D-8 The existing `conversations export` stays as it is.** Merging it into `export` is deferred
   (trigger: Pipec asks, or a second export path diverges).
-- **D-9 The operator manual** gets the command, the folder rules, what each section holds, what is
-  never exported, and that the files hold personal data: keep them on an encrypted disk, never in a
+- **D-9 The operator manual** gets the command, the folder rules (`data/exports/` by default and
+  kept there, `--out` for another new or empty folder), what each section holds, what is never
+  exported, and that the files hold personal data: keep them on an encrypted disk, never in a
   synced folder, delete them after use (ADR 0032 decision 8, last sentence).
 
 ## Deferred, with their triggers
@@ -296,6 +304,10 @@ repository: Path, data_dir: Path) -> Path` (the resolved folder; raises `ExportP
 `BrainMemoryError` subclass in `exceptions.py` whose message is D-3's closed phrase);
 `def write_export(document: ExportDocument, folder: Path) -> tuple[Path, Path]` (removes what it
 wrote and re-raises on `OSError`).
+
+> **Amended 2026-11-19 (Pipec's folder):** `check_export_folder(out, *, repository, data_dir)`
+> became `export_folder(out: Path | None, *, repository, data_dir, name) -> Path` plus
+> `folder_name(scope, now) -> str`; Task 7 step 7 refuses `data\` itself (not `data\exports\`).
 
 - [ ] **Step 1: Write the failing tests:**
   `test_the_markdown_tables_parse_back_to_the_json_rows` (the parity of D-4, over Task 3's

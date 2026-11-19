@@ -17,6 +17,7 @@ import re
 
 from server import db
 from server.db import get_conn
+from server.memory.export_model import StoredRows, fetch_stored_rows
 
 __all__ = [
     "AdminActorRole",
@@ -24,6 +25,7 @@ __all__ = [
     "AdminOperationKind",
     "AdminOutcomeStatus",
     "TargetKind",
+    "audit_for_export",
     "list_admin_operations",
     "record_admin_operation",
 ]
@@ -67,6 +69,9 @@ class TargetKind(StrEnum):
     CARE_CONTACT = "care_contact"
     CONVERSATION_CONSENT = "conversation_consent"
     CONVERSATION_RECORD = "conversation_record"
+    # The export of everything, or of one person (Plan 0087 D-7): ``field_id`` is ``all``,
+    # ``person:<id>`` or ``person`` (a name only talked about), never the name or the path.
+    HOUSEHOLD_DATA = "household_data"
 
 
 class AdminOutcomeStatus(StrEnum):
@@ -236,4 +241,26 @@ def _announce(entry: AdminAuditEntry, *, committed: bool) -> None:
             "target_kind": entry.target_kind.value,
             "outcome": entry.outcome.value,
         },
+    )
+
+
+_AUDIT_EXPORT_COLUMNS = (
+    "id",
+    "recorded_at",
+    "actor_label",
+    "actor_role",
+    "operation",
+    "target_kind",
+    "field_id",
+    "target_entity_id",
+    "outcome",
+    "reason",
+)
+
+
+async def audit_for_export() -> StoredRows:
+    """Every admin audit row (no value is ever in one), for an export (Plan 0087 D-5)."""
+    return await fetch_stored_rows(
+        _AUDIT_EXPORT_COLUMNS,
+        f"SELECT {', '.join(_AUDIT_EXPORT_COLUMNS)} FROM admin_audit ORDER BY id",  # noqa: S608
     )

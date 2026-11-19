@@ -9,15 +9,18 @@ from server.cognition.clock import utc_now
 from server.cognition.identity import HouseholdRole
 from server.cognition.models import AuthorizationAction, AuthorizationDecision, AuthorizationStatus
 from server.db import get_conn
+from server.memory.export_model import StoredRows, fetch_stored_rows
 from server.timestamps import instant_text
 
 __all__ = [
     "HouseholdRoleAssignment",
     "assign_household_role",
     "bootstrap_initial_owner",
+    "decisions_for_export",
     "get_active_role",
     "record_authorization_decision",
     "revoke_active_role",
+    "roles_for_export",
 ]
 
 
@@ -293,3 +296,43 @@ async def revoke_active_role(*, person_entity_id: int) -> None:
             evaluated_at=stamp,
             expires_at=None,
         )
+
+
+_ROLE_EXPORT_COLUMNS = (
+    "id",
+    "person_entity_id",
+    "role",
+    "grantor_entity_id",
+    "reason",
+    "granted_at",
+    "revoked_at",
+)
+
+
+async def roles_for_export() -> StoredRows:
+    """Every role assignment, revoked ones included, for an export (Plan 0087 D-5)."""
+    return await fetch_stored_rows(
+        _ROLE_EXPORT_COLUMNS,
+        f"SELECT {', '.join(_ROLE_EXPORT_COLUMNS)} FROM household_role_assignments ORDER BY id",  # noqa: S608
+    )
+
+
+_DECISION_EXPORT_COLUMNS = (
+    "id",
+    "evaluated_at",
+    "actor_entity_id",
+    "target_entity_id",
+    "action",
+    "data_categories",
+    "decision",
+    "policy_id",
+    "reason",
+)
+
+
+async def decisions_for_export() -> StoredRows:
+    """Every policy decision, for an export (Plan 0087 D-5)."""
+    return await fetch_stored_rows(
+        _DECISION_EXPORT_COLUMNS,
+        f"SELECT {', '.join(_DECISION_EXPORT_COLUMNS)} FROM authorization_audit_events ORDER BY id",  # noqa: S608
+    )

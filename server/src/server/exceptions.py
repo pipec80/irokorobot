@@ -38,6 +38,13 @@ class BrainMemoryError(Exception):
     """Raised when the brain memory layer fails (DB, embeddings, etc)."""
 
 
+class ExportPlaceError(BrainMemoryError):
+    """An export folder is refused (Plan 0087 D-3); the message is a closed Spanish phrase.
+
+    It never holds the path: the operator typed it and sees it on the screen already.
+    """
+
+
 class UnstorableValueError(Exception):
     """Raised when a value that must never be stored is offered to the repository.
 

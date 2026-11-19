@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 from server import db
 from server.cognition.clock import utc_now
 from server.db import get_conn
+from server.memory.export_model import StoredRows, fetch_stored_rows
 from server.memory.write_types import ConflictPolicy, WriteChannel, WriteRefusal, refusal_error
 from server.timestamps import instant_text
 
@@ -35,6 +36,7 @@ __all__ = [
     "CareContact",
     "ContactRole",
     "contact_ids_of",
+    "contacts_for_export",
     "count_active_contacts",
     "delete_contact_row",
     "delete_contacts_by_channel",
@@ -544,3 +546,29 @@ async def delete_contacts_by_channel(
         deleted = max(cursor.rowcount, 0)
         await cursor.close()
     return deleted
+
+
+_CONTACT_EXPORT_COLUMNS = (
+    "id",
+    "owner_entity_id",
+    "contact_entity_id",
+    "role",
+    "relationship",
+    "phone",
+    "phone_alt",
+    "call_order",
+    "has_key",
+    "may_receive_health_info",
+    "may_view_activity",
+    "sensitivity",
+    "created_at",
+    "revoked_at",
+)
+
+
+async def contacts_for_export() -> StoredRows:
+    """Every care contact, revoked ones and phones included, for an export (Plan 0087 D-5)."""
+    return await fetch_stored_rows(
+        _CONTACT_EXPORT_COLUMNS,
+        f"SELECT {', '.join(_CONTACT_EXPORT_COLUMNS)} FROM care_contacts ORDER BY id",  # noqa: S608
+    )

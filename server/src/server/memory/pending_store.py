@@ -16,6 +16,7 @@ from server import db
 from server.cognition.pending_topics import follow_up_due_days
 from server.cognition.spoken_dates import DayWindow, window_utc_bounds
 from server.memory.candidates import iso_utc
+from server.memory.export_model import StoredRows, fetch_stored_rows
 from server.memory.household_time import household_day, household_zone
 from server.settings import settings
 
@@ -45,6 +46,7 @@ __all__ = [
     "restore_archived_topics",
     "set_topic",
     "topic_texts",
+    "topics_for_export",
 ]
 
 type PendingSensitivity = Literal["normal", "medical"]
@@ -376,3 +378,28 @@ async def delete_expired(*, today: date) -> int:
     """
     oldest, _newest = follow_up_due_days(today)
     return await _write("DELETE FROM pending_topics WHERE due_day < ?", (oldest.isoformat(),))
+
+
+_TOPIC_EXPORT_COLUMNS = (
+    "id",
+    "owner_entity_id",
+    "source_record_id",
+    "source_turn_id",
+    "said_day",
+    "due_day",
+    "topic",
+    "heard",
+    "state",
+    "sensitivity",
+    "created_at",
+    "asked_at",
+    "archived_at",
+)
+
+
+async def topics_for_export() -> StoredRows:
+    """Every pending topic, archived ones included, for an export (Plan 0087 D-5)."""
+    return await fetch_stored_rows(
+        _TOPIC_EXPORT_COLUMNS,
+        f"SELECT {', '.join(_TOPIC_EXPORT_COLUMNS)} FROM pending_topics ORDER BY id",  # noqa: S608
+    )

@@ -37,6 +37,7 @@ from typing import TYPE_CHECKING
 from server import db
 from server.memory.candidate_types import CandidateChannel, CandidateStatus, ProposedCandidate
 from server.memory.conversation_record import find_turn_id
+from server.memory.export_model import StoredRows, fetch_stored_rows
 from server.settings import settings
 from server.timestamps import instant_text
 
@@ -63,6 +64,7 @@ __all__ = [
     "insert_candidate",
     "iso_utc",
     "link_source_turn",
+    "live_candidates_for_export",
     "mark_offered",
     "next_offerable",
     "precheck_insert",
@@ -808,3 +810,25 @@ async def count_live_candidates(now: str) -> int:
     row = await cursor.fetchone()
     await cursor.close()
     return 0 if row is None else int(row[0])
+
+
+_CANDIDATE_EXPORT_COLUMNS = (
+    "id",
+    "subject_person_id",
+    "asserted_by_person_id",
+    "predicate",
+    "value_text",
+    "status",
+    "channel",
+    "proposed_at",
+    "expires_at",
+    "source_turn_id",
+)
+
+
+async def live_candidates_for_export() -> StoredRows:
+    """Every live candidate (a resolved one holds no value any more), for an export (Plan 0087 D-5)."""
+    return await fetch_stored_rows(
+        _CANDIDATE_EXPORT_COLUMNS,
+        f"SELECT {', '.join(_CANDIDATE_EXPORT_COLUMNS)} FROM memory_candidates WHERE status IN ('proposed', 'offered') ORDER BY id",  # noqa: S608
+    )

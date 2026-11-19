@@ -77,6 +77,7 @@ _MIGRATIONS: tuple[Migration, ...] = (
     Migration(19, "migration_019_turn_links.sql"),
     Migration(20, "migration_020_times_and_profiles.sql", rebuild=True),
     Migration(21, "migration_021_archive.sql"),
+    Migration(22, "migration_022_export_audit.sql", rebuild=True),
 )
 _conn: aiosqlite.Connection | None = None
 
@@ -364,6 +365,18 @@ def latest_schema_version() -> int:
     ``PRAGMA user_version`` and refuses a database that is behind.
     """
     return _MIGRATIONS[-1].version
+
+
+async def count_retired_memories() -> int:
+    """How many rows the retired ``memories`` table holds (Plan 0087 D-5, «no sale»).
+
+    The table has no owner module (ADR 0027 decision 9): it is locked by a trigger and read by
+    nothing else, so its one count lives beside the schema that created it.
+    """
+    cursor = await get_conn().execute("SELECT count(*) FROM memories")
+    row = await cursor.fetchone()
+    await cursor.close()
+    return 0 if row is None else int(row[0])
 
 
 def is_open() -> bool:
