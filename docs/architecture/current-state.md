@@ -2,7 +2,10 @@
 
 > **Diagrams:** [the voice turn](diagrams/current-state-voice-turn.html) and [memory and administration](diagrams/current-state-memory.html) (Archify; split on 2026-11-11 so each fits one desktop screen). Regenerate them when this page changes.
 
-> **Observed:** the Plan 0086 row below added 2026-11-18 (block C2: correct and archive by voice, delete
+> **Observed:** the Plan 0087 row below added 2026-11-19 (the export of the owner's data, the last
+> piece of block C: `iroko-admin export`, all or one person, Markdown and JSON in `data/exports/`;
+> schema version 22; accepted by Pipec on real hardware, 10 of 10; CI selection 8468 passed); the
+> Plan 0086 row below added 2026-11-18 (block C2: correct and archive by voice, delete
 > with the PIN through a deletion register; schema version 21; accepted by Pipec on real hardware,
 > the four cases; CI selection 8397 passed, baseline 8291); the Plan 0085 row below added 2026-11-17 (the storage foundation: the real database at
 > schema version 20, turns as rows, one time format, the data dictionary and `iroko-admin health`;
