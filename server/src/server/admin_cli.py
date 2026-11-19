@@ -72,6 +72,7 @@ from server.memory.conversation_consent import (
 from server.memory.conversation_record import list_records
 from server.memory.data_export import export_counts, gather_export, holds_nothing
 from server.memory.db_health import check_health, health_failed, render_health
+from server.memory.declarative import entity_names
 from server.memory.deletion_register import (
     forget_record,
     replay_register,
@@ -681,7 +682,14 @@ def _export_scope(request: AdminRequest) -> ExportScope:
 async def _audit_export(
     request: AdminRequest, scope: ExportScope, *, now: str, refused: str | None = None
 ) -> None:
-    """Write the one audit row of an export attempt: the scope's kind and id, never a name."""
+    """Write the one audit row of an export attempt: the scope's kind and id, never a name.
+
+    The typed id stays in ``field_id``; ``target_entity_id`` is a key to ``entities``, so an id
+    that names no entity (a typo) is audited with ``NULL`` there instead of failing the row.
+    """
+    entity = scope.entity_id
+    if entity is not None and not await entity_names(entity):
+        entity = None
     field_id = (
         "all"
         if scope.kind is ExportScopeKind.ALL
@@ -695,7 +703,7 @@ async def _audit_export(
         operation=AdminOperationKind.EXPORT,
         target_kind=TargetKind.HOUSEHOLD_DATA,
         field_id=field_id,
-        target_entity_id=scope.entity_id,
+        target_entity_id=entity,
         outcome=AdminOutcomeStatus.REFUSED if refused else AdminOutcomeStatus.APPLIED,
         reason=refused,
         recorded_at=now,

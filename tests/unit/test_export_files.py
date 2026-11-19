@@ -12,7 +12,9 @@ import json
 from pathlib import Path
 
 import pytest
+from server.cognition.authorization import DataSensitivity, DataVisibility
 from server.cognition.identity import HouseholdRole
+from server.cognition.models import AuthorizationAction
 from server.exceptions import BrainMemoryError, ExportPlaceError
 from server.memory import export_files
 from server.memory.admin_audit import (
@@ -21,7 +23,7 @@ from server.memory.admin_audit import (
     AdminOutcomeStatus,
     TargetKind,
 )
-from server.memory.candidate_types import CandidateStatus
+from server.memory.candidate_types import CandidateChannel, CandidateStatus
 from server.memory.care_contacts import ContactRole
 from server.memory.commissioning import (
     ConfirmationMode,
@@ -49,6 +51,7 @@ from server.memory.export_model import (
     ExportSection,
 )
 from server.memory.relational_v4 import AssertionLifecycle
+from server.memory.write_types import WriteChannel
 
 _NOW = "2026-11-19T12:00:00.000000+00:00"
 _TRICKY = "una | barra\ndos líneas\r\ny una \\ invertida, **negrita** y <br> escrito"
@@ -65,7 +68,7 @@ def _document(*rows: tuple[str | int | None, ...]) -> ExportDocument:
             ExportColumn("verdict", "Quién habló"),
         ),
         rows=rows
-        or ((1, _TRICKY, "verified"), (2, None, "not_owner"), (3, "Ñandú cantó", "verified")),
+        or ((1, _TRICKY, "verified"), (2, None, "not_owner"), (3, "  Ñandú cantó ", "verified")),
     )
     empty = ExportSection(
         key="borrados",
@@ -91,12 +94,13 @@ def _cells(line: str) -> list[str]:
         elif char == "\\":
             escaped = True
         elif char == "|":
-            cells.append(current.strip())
+            cells.append(current)
             current = ""
         else:
             current += char
-    cells.append(current.strip())
-    return cells
+    cells.append(current)
+    # The renderer pads each cell with exactly one space a side; a value's own spaces stay.
+    return [cell[1:-1] for cell in cells]
 
 
 def _unescape(cell: str) -> str | None:
@@ -180,9 +184,14 @@ def test_every_code_is_in_the_glossary() -> None:
             ContactRole,
             HouseholdRole,
             EpisodeStatus,
+            WriteChannel,
+            CandidateChannel,
+            AuthorizationAction,
+            DataSensitivity,
+            DataVisibility,
         )
         for member in enum
-    }
+    } | {"scrypt"}
     assert codes - set(GLOSSARY) == set()
     assert "## Qué significa cada valor" in render_markdown(_document())
 

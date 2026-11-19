@@ -19,8 +19,10 @@ import os
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
+from server.cognition.models import AuthorizationAction
 from server.exceptions import ExportPlaceError
 from server.memory.export_model import ExportScopeKind
+from server.memory.write_types import IMPORT_CHANNELS
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -174,6 +176,18 @@ GLOSSARY: Final[Mapping[str, str]] = MappingProxyType(
         "allowed": "permitido",
         "denied": "negado",
         "requires_confirmation": "pide confirmar",
+        # how a datum arrived (the two import channels come from the vocabulary, below)
+        "voice_classic": "por voz",
+        "voice_stream": "por voz, en vivo",
+        "admin_local": "con iroko-admin",
+        **dict.fromkeys((channel.value for channel in IMPORT_CHANNELS), "cargado en el alta"),
+        "scrypt": "scrypt: el PIN guardado solo como verificador",
+        # what the policy was asked: the actions are named only by the model and the policy (an
+        # architecture guard), so each one is listed from the enum, its words as stored
+        **{
+            action.value: f"lo que se le pidió a la política ({action.value.replace('_', ' ')})"
+            for action in AuthorizationAction
+        },
     }
 )
 

@@ -26,6 +26,7 @@ from server.memory.predicate_registry import resolve_predicate
 from server.settings import settings
 
 from server import db
+from tests.unit.test_export_files import _as_text, _markdown_tables
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable
@@ -36,7 +37,7 @@ pytestmark = pytest.mark.integration
 _NOW = "2026-11-19T12:00:00.000000+00:00"
 _PIN = "482173"
 _T0 = datetime(2026, 11, 19, 10, 0, tzinfo=UTC)
-_TASTE = "el té con | barra"
+_TASTE = "  el té con | barra y un \\ "  # leading and trailing spaces must survive the parity
 _STORY = "fui al cine con Canaria\ny llovió"
 
 
@@ -142,12 +143,13 @@ async def test_the_markdown_and_the_json_of_a_real_export_hold_the_same_rows(
     folder = _exports(tmp_path) / "20261119T120000Z-todo"
     parsed = json.loads((folder / "exportacion.json").read_text(encoding="utf-8"))
     markdown = (folder / "exportacion.md").read_text(encoding="utf-8")
+    tables = _markdown_tables(markdown)
     for section in parsed["sections"]:
-        count = len(section["rows"])
-        expected = "Sin filas." if not count else f"{count} {'fila' if count == 1 else 'filas'}."
-        assert f"## {section['title']}\n\n{expected}" in markdown
+        keys = [column["key"] for column in section["columns"]]
+        expected = [[_as_text(row[key]) for key in keys] for row in section["rows"]]
+        assert tables[section["title"]] == expected, section["key"]
     datos = next(s for s in parsed["sections"] if s["key"] == "datos")
-    assert datos["rows"][0]["value_text"] == _TASTE
+    assert datos["rows"][0]["value_text"] == _TASTE.strip()  # the fact writer trims a value
     assert "el té con \\| barra" in markdown
     assert "fui al cine con Canaria<br>y llovió" in markdown
 
@@ -184,6 +186,15 @@ async def test_nothing_found_is_audited_empty(owner: int, tmp_path: Path) -> Non
     assert lines[-1] == "No hay nada guardado de esa persona."
     assert not _exports(tmp_path).exists()
     assert await _audit() == [("export", "household_data", "person", None, "refused", "empty")]
+
+
+@pytest.mark.parametrize("pin", [_PIN, "000000"])
+async def test_an_unknown_id_is_audited_without_a_dangling_key(owner: int, pin: str) -> None:
+    code, lines = await _run(AdminRequest(command="export", kind="person", row_id=9999), pin=pin)
+    assert code == 1
+    reason = "empty" if pin == _PIN else "pin"
+    assert await _audit() == [("export", "household_data", "person:9999", None, "refused", reason)]
+    assert "Traceback" not in "\n".join(lines)
 
 
 async def test_a_dry_run_prints_the_counts_and_writes_nothing(owner: int, tmp_path: Path) -> None:

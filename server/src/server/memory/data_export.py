@@ -214,8 +214,8 @@ def _everything(_: Row) -> bool:
     return True
 
 
-def _of(ids: Collection[Cell], column: str = "id") -> Keep:
-    return lambda row: row[column] in ids
+def _of(ids: Collection[Cell]) -> Keep:
+    return lambda row: row["id"] in ids
 
 
 class _Store:
