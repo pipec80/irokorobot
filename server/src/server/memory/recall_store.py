@@ -871,8 +871,9 @@ _UNIT_EXPORT_COLUMNS = (
     "body",
     "sensitivity",
     "said_at",
-    "occurred_start",
-    "occurred_end",
+    # The occurred interval leaves under its own keys: only this module names its columns.
+    "occurred_from",
+    "occurred_to",
     "archived_at",
 )
 
@@ -881,7 +882,8 @@ async def units_for_export() -> StoredRows:
     """Every recall unit, archived ones included; never a vector, for an export (Plan 0087 D-5)."""
     return await fetch_stored_rows(
         _UNIT_EXPORT_COLUMNS,
-        f"SELECT {', '.join(_UNIT_EXPORT_COLUMNS)} FROM recall_units ORDER BY id",  # noqa: S608
+        "SELECT id, owner_entity_id, source_record_id, turn_id, kind, body, sensitivity, said_at, "
+        "occurred_start, occurred_end, archived_at FROM recall_units ORDER BY id",
     )
 
 

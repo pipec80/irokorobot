@@ -8,7 +8,8 @@ integer or nothing; a vector, an embedding or a salt is bytes and can never beco
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from server.db import get_conn
@@ -16,9 +17,70 @@ from server.db import get_conn
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
-__all__ = ["Cell", "StoredRows", "fetch_count", "fetch_stored_rows", "stored_rows"]
+__all__ = [
+    "Cell",
+    "ExportColumn",
+    "ExportDocument",
+    "ExportScope",
+    "ExportScopeKind",
+    "ExportSection",
+    "StoredRows",
+    "fetch_count",
+    "fetch_stored_rows",
+    "stored_rows",
+]
 
 type Cell = str | int | None
+
+
+class ExportScopeKind(StrEnum):
+    """What one export holds: everything, or everything about one person (D-1)."""
+
+    ALL = "all"
+    PERSON = "person"
+
+
+@dataclass(frozen=True)
+class ExportScope:
+    """The scope of one export; its ``repr`` never shows the words that name a person.
+
+    Attributes:
+        kind: ``all`` or ``person``.
+        entity_id: The person's entity (an id of ``iroko-admin list``), or ``None``.
+        words: The name of a person only talked about, or ``None``.
+    """
+
+    kind: ExportScopeKind
+    entity_id: int | None = None
+    words: str | None = field(default=None, repr=False)
+
+
+@dataclass(frozen=True)
+class ExportColumn:
+    """One column of a section: its key (English, as stored) and its Spanish label."""
+
+    key: str
+    label: str
+
+
+@dataclass(frozen=True)
+class ExportSection:
+    """One section of an export: a key, a Spanish title, its columns and its rows."""
+
+    key: str
+    title: str
+    columns: tuple[ExportColumn, ...]
+    rows: tuple[tuple[Cell, ...], ...]
+
+
+@dataclass(frozen=True)
+class ExportDocument:
+    """One export, the one model both files are rendered from (D-4)."""
+
+    scope: ExportScope
+    generated_at: str
+    schema_version: int
+    sections: tuple[ExportSection, ...]
 
 
 @dataclass(frozen=True)
