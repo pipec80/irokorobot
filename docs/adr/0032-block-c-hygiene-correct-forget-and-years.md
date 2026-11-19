@@ -163,8 +163,12 @@ block D with an injected failure.
 ### 8. The owner's data can be exported (*Pipec, 2026-11-13*)
 
 `iroko-admin export`, with the PIN and the server stopped, writes everything the robot keeps, or
-everything about one person, to a folder the operator names (never inside the repository), in two
-forms: a **human-readable** document (sections and tables, in Spanish) and the same content as
+everything about one person, to its own new folder under `data/exports/` beside the database
+(git-ignored, the future Docker volume; readable by the server's user only; kept until the
+operator deletes it), or to another new or empty folder the operator names inside `data/exports/`
+or outside the repository (*amended by Pipec, 2026-11-19, Plan 0087*: a fixed, protected folder
+that is kept, instead of one named every time; never the repository's code nor the data directory
+itself, where the database, the register and the backups live), in two forms: a **human-readable** document (sections and tables, in Spanish) and the same content as
 **JSON**. It holds the person's entities and relations, facts with their history, the conversation
 record and the diary, recall units, pending topics, consents, contacts, the alta's acta and the
 audit rows about that data. A secret appears as its reference, never a value (the database holds no
