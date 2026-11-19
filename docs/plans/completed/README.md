@@ -163,6 +163,12 @@ hardware; the [operational board](../README.md#operational-board) has the full c
   data dictionary and `iroko-admin health`. Accepted on real hardware (schema version 20, health 0)
   on 2026-11-17; ADR 0038 `Accepted`, ADR 0032 decision 1 implemented.
   [Record](../../evals/0085-storage-foundation-acceptance.md).
+- [Plan 0087](0087-owner-data-export.md) (CI selection 8468): the export of the owner's data,
+  the last piece of block C. `iroko-admin export all | person <id> | person --name` with the PIN
+  writes `exportacion.md` and `exportacion.json` with the same rows into `data/exports/` (Pipec's
+  fixed folder, 2026-11-19); no secret or vector, no other person's fact or voice in a person's
+  export, one audit row per attempt (migration 022). Accepted on real hardware on 2026-11-19, 10 of
+  10 steps; ADR 0032 `Accepted`. [Record](../../evals/0087-export-acceptance.md).
 - [Plan 0086](0086-c2-correct-archive-delete.md) (CI selection 8397): block C2. A taste corrected
   and a person set aside by voice (the owner's face and «sí, autorizo»; an archived memory is never
   said, offered or searched and comes back with `iroko-admin archive restore`); a deletion for good

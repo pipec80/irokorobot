@@ -1,6 +1,8 @@
 # 0087 — The export of the owner's data: everything, or everything about one person
 
-> **Status:** **Ready (promoted by Pipec on 2026-11-18)**; `NOW` on the board. Pipec chose the three
+> **Status:** **Closed 2026-11-19**, accepted by Pipec on real hardware (10 of 10 steps,
+> [record](../../evals/0087-export-acceptance.md)); code merged as PR #294 (`7a2a44b`); ADR 0032
+> `Accepted`. Ready since 2026-11-18 (promoted by Pipec). Pipec chose the three
 > open choices of *Pipec's decisions* at the end, each as recommended. Source:
 > [ADR 0032](../../adr/0032-block-c-hygiene-correct-forget-and-years.md) decision 8 (Pipec,
 > 2026-11-13), the last piece of block C; when this plan closes, ADR 0032 becomes `Accepted`. Every

@@ -1,6 +1,7 @@
 # 0032 — Block C: a clean database, correcting and forgetting, and memories that last for years
 
-- **Status:** Proposed (2026-11-11). Written from the database review of 2026-11-03, the research of
+- **Status:** **Accepted (2026-11-19)**, when Plan 0087 closed: every decision implemented. Proposed
+  2026-11-11. Written from the database review of 2026-11-03, the research of
   the memory engine (kept in the ignored `project-history/`), the code read that day and Pipec's
   four decisions of 2026-11-11 (see *Pipec's decisions and where they land*). **Amended by Pipec on
   2026-11-13** (decisions 1, 3 and 8 and the author's calls, rows 5 to 9 of that table): by voice a
@@ -13,8 +14,10 @@
   implemented** (decisions 2 to 6) by
   [Plan 0086](../plans/completed/0086-c2-correct-archive-delete.md), closed 2026-11-18 under
   [ADR 0039](0039-c2-the-cheapest-forms-of-correct-archive-and-delete.md) (the cheapest forms):
-  schema version 21; decision 7 is written in the operator manual and tested in block D. The ADR
-  stays `Proposed` for the export (Plan 0087).
+  schema version 21; decision 7 is written in the operator manual and tested in block D. **The
+  export implemented** (decision 8, its folder amended by Pipec on 2026-11-19) by
+  [Plan 0087](../plans/completed/0087-owner-data-export.md), closed 2026-11-19 and accepted on
+  hardware ([record](../evals/0087-export-acceptance.md)): `iroko-admin export`, schema version 22.
 - **Date:** 2026-11-11
 - **Builds on:** [ADR 0011](0011-sqlite-transaction-ownership.md),
   [ADR 0019](0019-personal-memory-capabilities.md) (the five capabilities),
