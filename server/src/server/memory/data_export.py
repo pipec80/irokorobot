@@ -286,41 +286,73 @@ async def _person_selection(
     )
     other_voices = {row["id"] for row in turns if row["verdict"] in _OTHER_VOICES} & reached
     kept_turns = reached - other_voices
-    kept_records = (
-        owner_records
-        if is_owner
-        else {row["record_id"] for row in turns if row["id"] in kept_turns} | set(reach.episodes)
-    )
+    # An episode reached only through another voice's turn stays out (fails closed): its summary
+    # may retell those words, and a summary cannot be partly unsaid (ADR 0032 decision 2).
+    kept_turn_records = {row["record_id"] for row in turns if row["id"] in kept_turns}
+    other_records = {row["record_id"] for row in turns if row["id"] in other_voices}
+    dropped_records = set() if is_owner else other_records - kept_turn_records
+    episodes = set(reach.episodes) - dropped_records
+    kept_records = owner_records if is_owner else kept_turn_records | episodes
     mine: Keep = lambda row: is_owner and row["owner_entity_id"] == person  # noqa: E731
     reached_units = [row for row in _dicts(store.units) if mine(row) or row["id"] in reach.units]
     reached_topics = [row for row in _dicts(store.topics) if mine(row) or row["id"] in reach.topics]
-    units = [row for row in reached_units if row["turn_id"] not in other_voices]
+    units = [
+        row
+        for row in reached_units
+        if row["turn_id"] not in other_voices and row["source_record_id"] not in dropped_records
+    ]
     topics = [row for row in reached_topics if row["source_turn_id"] not in other_voices]
-    other_voice_rows = len(reached_units) - len(units) + len(reached_topics) - len(topics)
+    other_voice_rows = (len(reached_units) - len(units) + len(reached_topics) - len(topics)) + len(
+        set(reach.episodes) & dropped_records
+    )
     selection = _Selection()
     keep = selection.keep
-    keep["personas"] = _of({person} if person is not None else set())
-    keep["datos"] = lambda row: person is not None and row["subject_entity_id"] == person
-    keep["relaciones"] = lambda row: person in (row["source_entity_id"], row["target_entity_id"])
-    keep["contactos"] = lambda row: person in (row["contact_entity_id"], row["owner_entity_id"])
+    known = person is not None  # every identity filter fails closed for a name only talked about
+    keep["personas"] = _of({person} if known else set())
+    keep["datos"] = lambda row: known and row["subject_entity_id"] == person
+    keep["relaciones"] = lambda row: (
+        known
+        and person
+        in (
+            row["source_entity_id"],
+            row["target_entity_id"],
+        )
+    )
+    keep["contactos"] = lambda row: (
+        known
+        and person
+        in (
+            row["contact_entity_id"],
+            row["owner_entity_id"],
+        )
+    )
     for key in ("roles", "consentimientos", "credenciales"):
-        keep[key] = lambda row: person is not None and row["person_entity_id"] == person
-    keep["perfiles"] = lambda row: person is not None and row["entity_id"] == person
+        keep[key] = lambda row: known and row["person_entity_id"] == person
+    keep["perfiles"] = lambda row: known and row["entity_id"] == person
     keep["conversaciones"] = _of(kept_records)
     keep["turnos"] = _of(kept_turns)
-    keep["diario"] = lambda row: mine(row) or row["source_record_id"] in reach.episodes
+    keep["diario"] = lambda row: mine(row) or row["source_record_id"] in episodes
     keep["recuerdos"] = _of({row["id"] for row in units})
     keep["temas_pendientes"] = _of({row["id"] for row in topics})
-    keep["por_confirmar"] = lambda row: person is not None and row["subject_person_id"] == person
+    keep["por_confirmar"] = lambda row: known and row["subject_person_id"] == person
     keep["acta"] = keep["acta_secciones"] = lambda _row: is_owner
-    keep["auditoria_admin"] = lambda row: (
-        is_owner or (person is not None and row["target_entity_id"] == person)
+    keep["auditoria_admin"] = lambda row: is_owner or (known and row["target_entity_id"] == person)
+    keep["decisiones"] = lambda row: (
+        known
+        and person
+        in (
+            row["actor_entity_id"],
+            row["target_entity_id"],
+        )
     )
-    keep["decisiones"] = lambda row: person in (row["actor_entity_id"], row["target_entity_id"])
     keep["borrados"] = lambda _row: False
     selection.excluded = [
         ("turnos de otra voz", "pueden ser las palabras de otra persona", len(other_voices)),
-        ("recuerdos y temas de otra voz", "salieron de un turno de otra voz", other_voice_rows),
+        (
+            "diario, recuerdos y temas de otra voz",
+            "salieron de un turno de otra voz",
+            other_voice_rows,
+        ),
         ("registro de borrados", "un id borrado ya no se ata a nadie", len(store.register.rows)),
     ]
     if not is_owner:

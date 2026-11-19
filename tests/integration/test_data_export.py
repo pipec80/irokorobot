@@ -219,6 +219,41 @@ async def test_no_sale_counts_each_excluded_class(seeded: None) -> None:
     assert "turnos de otra voz" not in counts
 
 
+async def test_a_name_only_export_holds_no_decision_without_an_actor(seeded: None) -> None:
+    await db.get_conn().execute(
+        "INSERT INTO authorization_audit_events (id, actor_entity_id, target_entity_id, action, "
+        "data_categories, decision, policy_id, reason, correlation_id, evaluated_at) VALUES "
+        f"(3, NULL, NULL, 'read', '[]', 'denied', 'p', 'r', 'c-3', '{_T}')"
+    )
+    await db.get_conn().commit()
+    document = await _gather(ExportScopeKind.PERSON, words="Canaria")
+    assert _rows(document, "decisiones") == []
+    assert _rows(document, "auditoria_admin") == []
+
+
+async def test_an_episode_reached_only_by_another_voice_stays_out(seeded: None) -> None:
+    conn = db.get_conn()
+    await conn.execute(
+        "INSERT INTO conversation_records (id, owner_entity_id, started_at, last_turn_at, "
+        f"closed_at, eligible, expires_at, episode_status) VALUES (2, 1, '{_T}', '{_T}', "
+        f"'{_LATER}', 1, '2027-01-01T00:00:00.000000+00:00', 'done')"
+    )
+    await conn.execute(
+        "INSERT INTO conversation_turns (id, record_id, correlation_id, said_at, verdict, heard, "
+        f"said) VALUES (4, 2, 'c-4', '{_T}', 'not_owner', 'Gaviota se cayó', 'Uy')"
+    )
+    await conn.execute(
+        "INSERT INTO conversation_episodes (id, source_record_id, owner_entity_id, visibility, "
+        "sensitivity, summary, model, created_at, expires_at) VALUES (2, 2, 1, 'personal', "
+        f"'normal', 'Alguien contó una caída.', 'm', '{_T}', '2027-01-01T00:00:00.000000+00:00')"
+    )
+    await conn.commit()
+    document = await _gather(ExportScopeKind.PERSON, entity_id=_CHILD)
+    assert {row["source_record_id"] for row in _rows(document, "diario")} == {1}
+    assert _ids(document, "conversaciones") == [1]
+    assert "Alguien contó una caída." not in _text(document)
+
+
 async def test_nothing_found_is_empty(seeded: None) -> None:
     document = await _gather(ExportScopeKind.PERSON, words="Albatros")
     assert holds_nothing(document)
