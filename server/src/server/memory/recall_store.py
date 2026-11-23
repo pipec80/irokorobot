@@ -29,6 +29,7 @@ from server.memory.recall_sensitivity import (
     classify_turn_text,
     most_protective,
 )
+from server.memory.retrieval import match_expression
 from server.settings import settings
 from server.timestamps import instant_text
 
@@ -48,6 +49,7 @@ __all__ = [
     "count_units_of_another_model",
     "count_unlinked_units",
     "delete_unit_row",
+    "distances_of",
     "index_health",
     "insert_episode_unit",
     "insert_turn_unit",
@@ -685,10 +687,33 @@ async def index_health(conn: aiosqlite.Connection) -> RecallIndexHealth:
     )
 
 
-def _match_expression(terms: Sequence[str]) -> str:
-    """Quote each term as an FTS5 string, so no input is FTS syntax, and join with ``OR``."""
-    quoted = ['"' + term.replace('"', '""') + '"' for term in terms if term.strip()]
-    return " OR ".join(quoted)
+async def distances_of(
+    ids: Sequence[int], vector: list[float], *, owner_entity_id: int
+) -> dict[int, float]:
+    """Return the cosine distance of each named unit's vector to *vector* (Plan 0088 D-5).
+
+    For the candidates the KNN did not rank (a word hit outside its *k* neighbours): one query on
+    the named rows, inside the owner's partition. The caller passes only units it may read.
+
+    Args:
+        ids: The unit ids.
+        vector: The question's embedding.
+        owner_entity_id: The owner; another owner's row is never read.
+
+    Returns:
+        ``{unit id: distance}``; a unit without a vector is absent.
+    """
+    if not ids:
+        return {}
+    marks = ", ".join("?" for _ in ids)
+    cursor = await db.get_conn().execute(
+        "SELECT rowid, vec_distance_cosine(embedding, ?) FROM recall_units_vec "  # noqa: S608
+        f"WHERE owner_entity_id = ? AND rowid IN ({marks})",
+        (sqlite_vec.serialize_float32(vector), owner_entity_id, *ids),
+    )
+    rows = await cursor.fetchall()
+    await cursor.close()
+    return {int(row[0]): float(row[1]) for row in rows}
 
 
 async def lexical_hits(
@@ -719,7 +744,7 @@ async def lexical_hits(
     Returns:
         The unit ids.
     """
-    expression = _match_expression(terms)
+    expression = match_expression(terms)
     if not expression:
         return []
     cursor = await db.get_conn().execute(

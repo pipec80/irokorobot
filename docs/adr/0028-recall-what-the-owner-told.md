@@ -150,6 +150,8 @@ already carries; its defence is decided with the first sensitive read (*Not deci
    each token quoted so no input is FTS syntax) and `vec0` KNN on the question's embedding.
 3. **An absolute gate:** a unit qualifies only if its vector distance is under `RECALL_MAX_DISTANCE`
    **or** it shares a content word with the question. Zero qualifying units is a valid result.
+   *Superseded by [ADR 0040](0040-the-relevance-gate-of-retrieval.md) (2026-11-23): named things
+   must be in the unit, then a near meaning or a near word hit; decision 6.7 is narrowed with it.*
 4. **Reciprocal Rank Fusion** (`k = 60`) orders the qualifying units, without pretending the two
    scores share a scale.
 5. **At most three results, at most two from one conversation.**

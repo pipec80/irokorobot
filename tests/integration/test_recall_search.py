@@ -13,7 +13,7 @@ from uuid import uuid4
 
 import httpx
 import pytest
-from server.cognition.recall_cues import CueStrength, RecallCue
+from server.cognition.recall_cues import CueStrength, RecallCue, classify_recall_cue
 from server.cognition.spoken_dates import DayWindow
 from server.memory import recall_index, recall_search, recall_store
 from server.memory.conversation_types import RecordedTurn, TurnVerdict
@@ -25,6 +25,8 @@ from server import db
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Sequence
     from pathlib import Path
+
+    from server.memory.retrieval import GateSignals
 
 pytestmark = pytest.mark.integration
 
@@ -79,8 +81,9 @@ async def _record(owner: int) -> int:
 
 
 async def _unit(
-    owner: int, record_id: int, heard: str, *, at: datetime = _YESTERDAY, axis: int | None = None
+    owner: int, record_id: int, heard: str, *, at: datetime = _YESTERDAY, axis: int | None = 0
 ) -> int:
+    """A verified turn's unit; near the question's axis-0 embedding unless *axis* says else."""
     turn = RecordedTurn(
         at=at, heard=heard, said="ok", voice=TurnVerdict.VERIFIED, correlation_id=uuid4()
     )
@@ -108,7 +111,8 @@ def _ids(found: recall_search.RecallSearch) -> list[int]:
 async def test_words_and_a_near_vector_both_find(owners: tuple[int, int], embed: AsyncMock) -> None:
     owner, _ = owners
     record_id = await _record(owner)
-    by_words = await _unit(owner, record_id, "fuimos al cerro con Zeta", axis=5)
+    # Found by words, outside T_v (0.30 here) but under T_w (ADR 0040).
+    by_words = await _unit_at(owner, record_id, "fuimos al cerro con Zeta", 0.35)
     by_vector = await _unit(owner, record_id, "subimos la montaña", axis=0)
 
     found = await _search(owner, _cue("que del cerro"))
@@ -169,9 +173,9 @@ async def test_an_embedding_failure_searches_by_words(
         recall_search, "ollama_embed", AsyncMock(side_effect=httpx.ConnectError("offline"))
     )
     record_id = await _record(owner)
-    unit_id = await _unit(owner, record_id, "el cerro")
+    unit_id = await _unit(owner, record_id, "el cerro con Zeta")
 
-    found = await _search(owner, _cue("cerro"))
+    found = await _search(owner, _named_cue("cerro zeta", "zeta"))
 
     assert _ids(found) == [unit_id]
     assert found.lexical_only
@@ -273,8 +277,8 @@ async def test_the_same_holds_when_only_the_words_found_it(
         recall_search, "ollama_embed", AsyncMock(side_effect=httpx.ConnectError("offline"))
     )
     record_id = await _record(owner)
-    first = await _unit(owner, record_id, "el cerro")
-    second = await _unit(owner, record_id, "otra vez el cerro")
+    first = await _unit(owner, record_id, "el cerro con Zeta")
+    second = await _unit(owner, record_id, "otra vez el cerro con Zeta")
     original = recall_store.lexical_hits
 
     async def then_reclassify(**kwargs: object) -> Sequence[int]:
@@ -284,7 +288,7 @@ async def test_the_same_holds_when_only_the_words_found_it(
 
     monkeypatch.setattr(recall_search, "lexical_hits", then_reclassify)
 
-    found = await _search(owner, _cue("cerro"))
+    found = await _search(owner, _named_cue("cerro zeta", "zeta"))
 
     assert found.lexical_only
     assert _ids(found) == [second]
@@ -347,7 +351,7 @@ async def test_a_model_change_leaves_recall_lexical_until_the_re_index(
     monkeypatch.setattr(settings, "embedding_model", "canary-model-b")
 
     with caplog.at_level(logging.WARNING):
-        found = await _search(owner, _cue("que del cerro"))
+        found = await _search(owner, _named_cue("que del cerro con zeta", "zeta"))
 
     spy.assert_not_awaited()
     assert _ids(found) == [by_words]
@@ -380,3 +384,190 @@ async def test_only_the_owners_units_of_another_model_turn_the_vector_off(
 
     assert not found.lexical_only
     assert _ids(found) == [mine]
+
+
+# The gate as one step of the search (Plan 0088 Task A2, D-5).
+
+
+async def test_the_distance_of_a_word_hit_outside_the_knn_is_measured(
+    owners: tuple[int, int], embed: AsyncMock
+) -> None:
+    owner, _ = owners
+    record_id = await _record(owner)
+    for _ in range(recall_search.RECALL_VECTOR_K):
+        await _unit(owner, record_id, "subimos la montaña", axis=0)
+    far = await _unit(owner, record_id, "fuimos al cerro", axis=5)
+    seen: list[GateSignals] = []
+
+    def spy(signals: GateSignals) -> bool:
+        seen.append(signals)
+        return True
+
+    found = await recall_search.search_recall(
+        owner, _cue("cerro"), client=httpx.AsyncClient(), now=_NOW, gate=spy
+    )
+
+    by_words = [signals for signals in seen if signals.by_words]
+    assert len(by_words) == 1
+    assert by_words[0].distance == pytest.approx(1.0, abs=0.001)
+    assert far in _ids(found)
+
+
+async def test_distances_of_never_reads_another_owner(owners: tuple[int, int]) -> None:
+    owner, other = owners
+    mine = await _unit(owner, await _record(owner), "el cerro", axis=0)
+    theirs = await _unit(other, await _record(other), "el cerro", axis=0)
+    unembedded = await _unit(owner, await _record(owner), "el cerro otra vez", axis=None)
+
+    distances = await recall_store.distances_of(
+        [mine, theirs, unembedded], _axis(0), owner_entity_id=owner
+    )
+
+    assert distances == {mine: pytest.approx(0.0, abs=0.001)}
+
+
+async def test_a_gate_given_to_the_search_decides_alone(
+    owners: tuple[int, int], embed: AsyncMock
+) -> None:
+    owner, _ = owners
+    record_id = await _record(owner)
+    await _unit(owner, record_id, "fuimos al cerro con Zeta", axis=5)
+    await _unit(owner, record_id, "subimos la montaña", axis=0)
+
+    found = await recall_search.search_recall(
+        owner, _cue("que del cerro"), client=httpx.AsyncClient(), now=_NOW, gate=lambda _: False
+    )
+
+    assert found.hits == ()
+    assert found.rejected == 2
+
+
+# ADR 0040, the relevance gate in production (Plan 0088 Task A5). The fixture's T_v is 0.30; the
+# tests that need the production thresholds set them.
+
+
+def _at(distance: float) -> list[float]:
+    """A vector at *distance* (cosine) from the question's axis-0 embedding."""
+    similarity = 1.0 - distance
+    values = [0.0] * _DIMENSIONS
+    values[0], values[1] = similarity, (1.0 - similarity**2) ** 0.5
+    return values
+
+
+async def _unit_at(owner: int, record_id: int, heard: str, distance: float) -> int:
+    unit_id = await _unit(owner, record_id, heard)
+    assert await recall_store.store_vector(unit_id, _at(distance), model=settings.embedding_model)
+    return unit_id
+
+
+def _named_cue(query: str, *specific: str) -> RecallCue:
+    return RecallCue(
+        strength=CueStrength.STRONG, query=query, window=None, specific=frozenset(specific)
+    )
+
+
+@pytest.fixture
+def production_thresholds(owners: tuple[int, int], monkeypatch: pytest.MonkeyPatch) -> None:
+    """After ``owners``, which sets the fixture's own 0.30."""
+    monkeypatch.setattr(settings, "recall_max_distance", 0.43)
+    monkeypatch.setattr(settings, "recall_word_max_distance", 0.464)
+
+
+@pytest.mark.usefixtures("production_thresholds")
+async def test_a_named_person_never_told_finds_nothing_even_near(
+    owners: tuple[int, int], embed: AsyncMock
+) -> None:
+    """The hardware defect of 2026-11-18: an unrelated story at 0.37 for a person never told."""
+    owner, _ = owners
+    record_id = await _record(owner)
+    await _unit_at(owner, record_id, "vino una amiga a tomar once", 0.37)
+
+    found = await _search(owner, _named_cue("de florencia", "florencia"))
+
+    assert found.hits == ()
+    assert found.rejected == 1
+
+
+@pytest.mark.usefixtures("production_thresholds")
+async def test_a_story_asked_by_its_meaning_still_qualifies(
+    owners: tuple[int, int], embed: AsyncMock
+) -> None:
+    owner, _ = owners
+    meaning = await _unit_at(owner, await _record(owner), "fuimos a la playa", 0.40)
+
+    found = await _search(owner, _cue("del mar"))
+
+    assert _ids(found) == [meaning]
+
+
+async def test_an_exact_code_qualifies_with_the_vector_side_off(
+    owners: tuple[int, int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owner, _ = owners
+    monkeypatch.setattr(
+        recall_search, "ollama_embed", AsyncMock(side_effect=httpx.ConnectError("offline"))
+    )
+    code = await _unit(owner, await _record(owner), "pedí el repuesto ZX-41")
+
+    found = await _search(owner, _named_cue("del repuesto zx 41", "zx", "41"))
+
+    assert found.lexical_only
+    assert _ids(found) == [code]
+
+
+async def test_a_common_word_with_the_vector_side_off_does_not_qualify(
+    owners: tuple[int, int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review focus 2: with no distance, one common word is not enough."""
+    owner, _ = owners
+    monkeypatch.setattr(
+        recall_search, "ollama_embed", AsyncMock(side_effect=httpx.ConnectError("offline"))
+    )
+    await _unit(owner, await _record(owner), "subimos el cerro")
+
+    found = await _search(owner, _cue("del cerro"))
+
+    assert found.lexical_only
+    assert found.hits == ()
+    assert found.rejected == 1
+
+
+@pytest.mark.usefixtures("production_thresholds")
+async def test_a_lower_case_name_falls_back_to_the_rule_without_specific_words(
+    owners: tuple[int, int], embed: AsyncMock
+) -> None:
+    """Review focus 1: «zeta» in lower case is not specific; a near story still qualifies."""
+    owner, _ = owners
+    near = await _unit_at(owner, await _record(owner), "vino una amiga a tomar once", 0.20)
+    cue = classify_recall_cue("¿qué te conté de zeta?", today=date(2026, 11, 4))
+    assert cue is not None
+    assert cue.specific == frozenset()
+
+    found = await _search(owner, cue)
+
+    assert _ids(found) == [near]
+
+
+async def test_a_unit_without_a_vector_yet_follows_the_no_distance_rule(
+    owners: tuple[int, int], embed: AsyncMock
+) -> None:
+    owner, _ = owners
+    record_id = await _record(owner)
+    named = await _unit(owner, record_id, "fuimos al cerro con Zeta", axis=None)
+
+    assert (await _search(owner, _cue("del cerro"))).hits == ()
+    assert _ids(await _search(owner, _named_cue("del cerro con zeta", "zeta"))) == [named]
+
+
+async def test_a_question_with_a_spoken_date_in_digits_finds_its_story(
+    owners: tuple[int, int], embed: AsyncMock
+) -> None:
+    """Final review of Plan 0088: «el 3 de noviembre» is the window, not a word the story holds."""
+    owner, _ = owners
+    story = await _unit(owner, await _record(owner), "subimos el cerro")
+    cue = classify_recall_cue("¿Qué te conté del cerro el 3 de noviembre?", today=date(2026, 11, 4))
+    assert cue is not None
+
+    found = await _search(owner, cue)
+
+    assert _ids(found) == [story]

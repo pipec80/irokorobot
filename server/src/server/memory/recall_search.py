@@ -1,15 +1,19 @@
 """Search the recall units: filter first, two rankings, an absolute gate, at most three.
 
 ADR 0028 decision 6, Plan 0078 D-4. The store filters by owner, visibility, sensitivity
-``normal``, expiry and the date window inside each query. A unit qualifies only when its vector
-distance is under ``RECALL_MAX_DISTANCE`` or it shares a content word with the question; zero
-qualifying units is a valid result. Reciprocal Rank Fusion orders what qualifies. Without the
-embedding model the search is by words only. Nothing here logs a text.
+``normal``, expiry and the date window inside each query. Since Plan 0088 D-5 the relevance gate
+is one step of the search: every candidate of the two rankings is read (the delivery filter), the
+distance of a word hit the KNN did not rank is measured, the gate decides on each candidate, and
+Reciprocal Rank Fusion orders what qualified (``memory/retrieval.py``). The production rule is
+ADR 0040's: a question's named words must be in the unit, then a distance under
+``RECALL_MAX_DISTANCE``, or a word hit under ``RECALL_WORD_MAX_DISTANCE`` (with no distance, a
+word hit only when the question named something the unit holds). Zero qualifying units is a valid
+result. Without the embedding model the search is by words
+only. Nothing here logs a text.
 """
 
 from __future__ import annotations
 
-from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import logging
@@ -22,11 +26,20 @@ from server.memory.household_time import household_day, household_zone
 from server.memory.recall_store import (
     RecallUnit,
     count_units_of_another_model,
+    distances_of,
     lexical_hits,
     occurred_time_on,
     recent_units,
     units_by_id,
     vector_hits,
+)
+from server.memory.retrieval import (
+    Gate,
+    GateSignals,
+    capped,
+    covers,
+    gate_and_fuse,
+    gate_near_or_named,
 )
 from server.settings import settings
 
@@ -44,17 +57,14 @@ __all__ = [
     "RECALL_MAX_RESULTS",
     "RECALL_MAX_TERMS",
     "RECALL_VECTOR_K",
-    "RRF_K",
     "RecallHit",
     "RecallSearch",
-    "fuse",
     "household_day",
     "household_zone",
+    "production_gate",
     "search_recall",
 ]
 
-#: Reciprocal Rank Fusion constant.
-RRF_K: Final = 60
 #: Neighbours asked of the vector index before the window and expiry filters.
 RECALL_VECTOR_K: Final = 20
 #: Results at most, and at most this many from one conversation.
@@ -80,11 +90,13 @@ class RecallSearch:
         hits: At most three qualifying units, best first.
         best_distance: The nearest vector distance seen, qualifying or not (calibration).
         lexical_only: Whether the embedding model failed and only words were searched.
+        rejected: How many readable candidates the relevance gate refused (Plan 0088 D-6).
     """
 
     hits: tuple[RecallHit, ...]
     best_distance: float | None
     lexical_only: bool
+    rejected: int = 0
 
 
 @dataclass(frozen=True)
@@ -100,44 +112,31 @@ class _Window:
     occurred: bool = False
 
 
-def fuse(
-    lexical: Sequence[int], vector: Sequence[tuple[int, float]], *, max_distance: float
-) -> list[int]:
-    """Gate and fuse the two rankings with Reciprocal Rank Fusion.
+@dataclass(frozen=True)
+class _VectorSide:
+    """The question's embedding and the KNN ranking, nearest first."""
 
-    Args:
-        lexical: Unit ids found by words, best first; each qualifies.
-        vector: ``(unit id, distance)`` nearest first; one qualifies only under *max_distance*.
-        max_distance: The absolute cosine-distance gate.
+    embedding: list[float]
+    ranked: list[tuple[int, float]]
 
-    Returns:
-        The qualifying unit ids, best first; ties go to the newer (higher) id.
-    """
-    near = [unit_id for unit_id, distance in vector if distance < max_distance]
-    scores: dict[int, float] = {}
-    for ranking in (lexical, near):
-        for rank, unit_id in enumerate(ranking, start=1):
-            scores[unit_id] = scores.get(unit_id, 0.0) + 1.0 / (RRF_K + rank)
-    return sorted(scores, key=lambda unit_id: (-scores[unit_id], -unit_id))
+    @property
+    def distances(self) -> dict[int, float]:
+        """The KNN's distances by unit id."""
+        return dict(self.ranked)
 
 
-def _capped(units: Sequence[RecallUnit]) -> list[RecallUnit]:
-    """At most three units, at most two of one conversation, in the given order."""
-    kept: list[RecallUnit] = []
-    per_record: Counter[int] = Counter()
-    for unit in units:
-        if per_record[unit.record_id] < RECALL_MAX_PER_RECORD:
-            kept.append(unit)
-            per_record[unit.record_id] += 1
-        if len(kept) == RECALL_MAX_RESULTS:
-            break
-    return kept
+def production_gate() -> Gate:
+    """The rule of ADR 0040 (G3) with the configured ``RECALL_MAX_DISTANCE`` and
+    ``RECALL_WORD_MAX_DISTANCE``, read at call time."""
+    return gate_near_or_named(
+        vector=settings.recall_max_distance, words=settings.recall_word_max_distance
+    )
 
 
 async def _vector_side(
     client: httpx.AsyncClient, query: str, window: _Window
-) -> list[tuple[int, float]] | None:
-    """The vector ranking, or ``None`` when only words search.
+) -> _VectorSide | None:
+    """The question's embedding and the vector ranking, or ``None`` when only words search.
 
     Words alone search when the embedding model failed or when a unit of the owner still holds a
     vector of another model: a vector search would compare two embedding spaces, so it stays off
@@ -158,7 +157,7 @@ async def _vector_side(
     except Exception as exc:  # degradation boundary: the words still search (ADR 0028 d. 6.7)
         logger.warning("Recall search by words only (%s)", type(exc).__name__)
         return None
-    return await vector_hits(
+    ranked = await vector_hits(
         owner_entity_id=window.owner,
         vector=vector,
         since=window.since,
@@ -169,10 +168,52 @@ async def _vector_side(
         last_day=window.last_day,
         occurred=window.occurred,
     )
+    return _VectorSide(embedding=vector, ranked=ranked)
+
+
+async def _gated(
+    cue: RecallCue,
+    lexical: Sequence[int],
+    side: _VectorSide | None,
+    window: _Window,
+    gate: Gate,
+) -> tuple[list[RecallUnit], int]:
+    """Read every candidate, measure the missing distances, gate, fuse (Plan 0088 D-5).
+
+    Returns:
+        The qualifying readable units best first, and how many readable candidates were refused.
+    """
+    ranked = [] if side is None else side.ranked
+    distances = dict(ranked)
+    candidates = list(dict.fromkeys([*lexical, *distances]))
+    units = await units_by_id(
+        candidates, owner_entity_id=window.owner, now=window.now, occurred=window.occurred
+    )
+    unmeasured = [unit.id for unit in units if unit.id not in distances]
+    if side is not None and unmeasured:
+        distances |= await distances_of(unmeasured, side.embedding, owner_entity_id=window.owner)
+    words = set(lexical)
+    signals = {
+        unit.id: GateSignals(
+            distance=distances.get(unit.id),
+            by_words=unit.id in words,
+            covers_specific=covers(unit.body, cue.specific),
+            has_specific=bool(cue.specific),
+        )
+        for unit in units
+    }
+    order, rejected = gate_and_fuse(lexical, [unit_id for unit_id, _ in ranked], signals, gate)
+    by_id = {unit.id: unit for unit in units}
+    return [by_id[unit_id] for unit_id in order], rejected
 
 
 async def search_recall(
-    owner_entity_id: int, cue: RecallCue, *, client: httpx.AsyncClient, now: datetime
+    owner_entity_id: int,
+    cue: RecallCue,
+    *,
+    client: httpx.AsyncClient,
+    now: datetime,
+    gate: Gate | None = None,
 ) -> RecallSearch:
     """Search the owner's readable units for a recall question.
 
@@ -181,6 +222,8 @@ async def search_recall(
         cue: The recall question.
         client: Shared, lifecycle-owned HTTP client (Plan 0039), for the question's embedding.
         now: The current time (timezone-aware); expired records are skipped.
+        gate: The relevance gate; ``None`` is the production rule (``production_gate``). The
+            recall bench passes each candidate rule here, so it measures the real pipeline.
 
     Returns:
         The qualifying hits, the best vector distance and whether only words were searched.
@@ -234,14 +277,20 @@ async def search_recall(
         last_day=window.last_day,
         occurred=occurred,
     )
-    vector = await _vector_side(client, cue.query, window)
-    distances = dict(vector or [])
-    fused = fuse(lexical, vector or [], max_distance=settings.recall_max_distance)
-    units = _capped(
-        await units_by_id(fused, owner_entity_id=owner_entity_id, now=now_iso, occurred=occurred)
+    side = await _vector_side(client, cue.query, window)
+    qualified, rejected = await _gated(
+        cue, lexical, side, window, production_gate() if gate is None else gate
     )
+    units = capped(
+        qualified,
+        key=lambda unit: unit.record_id,
+        total=RECALL_MAX_RESULTS,
+        per_key=RECALL_MAX_PER_RECORD,
+    )
+    knn = {} if side is None else side.distances
     return RecallSearch(
-        hits=tuple(RecallHit(unit=unit, distance=distances.get(unit.id)) for unit in units),
-        best_distance=min(distances.values()) if distances else None,
-        lexical_only=vector is None,
+        hits=tuple(RecallHit(unit=unit, distance=knn.get(unit.id)) for unit in units),
+        best_distance=min(knn.values()) if knn else None,
+        lexical_only=side is None,
+        rejected=rejected,
     )

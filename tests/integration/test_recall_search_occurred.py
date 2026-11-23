@@ -73,9 +73,14 @@ async def _saturday_story(owner: int) -> int:
             at=_NOW, heard="el sabado fui a la playa", said="ok", voice=TurnVerdict.VERIFIED,
             correlation_id=uuid4(),
         )  # fmt: skip
-        return await recall_store.insert_turn_unit(
+        unit_id = await recall_store.insert_turn_unit(
             conn, record_id=record_id, owner_entity_id=owner, turn=turn, occurred=_SATURDAY
         )
+    # Near the question's embedding: these tests are about the days, not the gate (ADR 0040).
+    values = [0.0] * _DIMENSIONS
+    values[0] = 1.0
+    assert await recall_store.store_vector(unit_id, values, model=settings.embedding_model)
+    return unit_id
 
 
 async def _search(owner: int, query: str, window: DayWindow) -> list[int]:

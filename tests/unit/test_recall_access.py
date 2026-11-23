@@ -183,6 +183,25 @@ async def test_no_log_line_carries_a_body(caplog: pytest.LogCaptureFixture) -> N
     assert logged[0].route == "strong"  # type: ignore[attr-defined]  # a log extra
 
 
+async def test_the_log_counts_rejected_and_specific_words(caplog: pytest.LogCaptureFixture) -> None:
+    """Plan 0088 D-6: what the gate did, as counts and the rule's id; never a text."""
+    cue = RecallCue(
+        strength=CueStrength.STRONG, query="de zeta", window=None, specific=frozenset({"zeta"})
+    )
+    search = AsyncMock(
+        return_value=RecallSearch(hits=(), best_distance=0.37, lexical_only=False, rejected=4)
+    )
+
+    with caplog.at_level(logging.DEBUG):
+        await _reply(cue=cue, search=search)
+
+    [line] = [record for record in caplog.records if getattr(record, "event", "") == "recall.read"]
+    assert line.rejected == 4  # type: ignore[attr-defined]  # a log extra
+    assert line.specific == 1  # type: ignore[attr-defined]  # a log extra
+    assert line.gate == "G3"  # type: ignore[attr-defined]  # a log extra
+    assert all("zeta" not in record.getMessage().casefold() for record in caplog.records)
+
+
 def _when_cue(kind: WhenKind, strength: CueStrength = CueStrength.STRONG) -> RecallCue:
     return RecallCue(strength=strength, query="cuando fui a la playa", window=None, when=kind)
 
