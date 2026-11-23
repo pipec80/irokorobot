@@ -190,8 +190,8 @@ def _question(entry: dict[str, object]) -> BenchQuestion:
         raw=str(entry["raw"]),
         strength=CueStrength(str(entry["strength"])),
         expected=frozenset(str(unit_id) for unit_id in expected),
-        vector_off=bool(entry.get("vector_off", False)),
-        capitalized_common_noun=bool(entry.get("capitalized_common_noun", False)),
+        vector_off=_flag(entry, "vector_off"),
+        capitalized_common_noun=_flag(entry, "capitalized_common_noun"),
     )
 
 
@@ -199,7 +199,18 @@ def _entries(data: dict[str, object], key: str) -> list[dict[str, object]]:
     entries = data.get(key)
     if not isinstance(entries, list) or not entries:
         raise BenchError(f"the bench needs a non-empty {key!r} list")
+    malformed = [index for index, entry in enumerate(entries) if not isinstance(entry, dict)]
+    if malformed:
+        raise BenchError(f"{key!r} entry {malformed[0]} is not a mapping")
     return [entry for entry in entries if isinstance(entry, dict)]
+
+
+def _flag(entry: dict[str, object], name: str) -> bool:
+    """A YAML boolean; a string such as «false» is refused, not read as true."""
+    value = entry.get(name, False)
+    if not isinstance(value, bool):
+        raise BenchError(f"entry {entry.get('id')!r}: {name} must be true or false")
+    return value
 
 
 def _check_ids(units: tuple[BenchUnit, ...], questions: tuple[BenchQuestion, ...]) -> None:
@@ -358,9 +369,14 @@ def choose(candidates: Sequence[Candidate]) -> Candidate | None:
 
     Returns:
         The winner, or ``None``: no rule is adopted and Pipec decides.
+
+    Raises:
+        ValueError: If G0, the rule every candidate must improve on, is not among them.
     """
     baseline = next((c for c in candidates if c.rule == "G0"), None)
-    floor = -1.0 if baseline is None else baseline.tune.common_no_name
+    if baseline is None:
+        raise ValueError("D-3 compares every rule with G0: run the bench with G0")
+    floor = baseline.tune.common_no_name
     eligible = [c for c in candidates if _meets_hard(c) and c.tune.common_no_name > floor]
     if not eligible:
         return None
@@ -512,6 +528,12 @@ class _Runner:
             self.loaded.owner, cue, client=client, now=_noon(self.bench.today), gate=gate
         )
         elapsed_ms = (perf_counter() - started) * 1000
+        if found.lexical_only != question.vector_off:
+            # The search degrades to words alone on any embedding failure (ADR 0028 d. 6.7): a
+            # question meant to use the vector side would be scored as a different question.
+            raise BenchError(
+                f"question {question.id!r}: the vector side was not as the bench set it"
+            )
         return [self.loaded.bench_ids[hit.unit.id] for hit in found.hits], elapsed_ms
 
     async def run(
@@ -613,7 +635,8 @@ async def _bench(bench: Bench, rules: Sequence[str]) -> dict[str, object]:
             else:
                 gate = recall_bench_gates.build(rule, vector=settings.recall_max_distance)
                 results[rule] = await _measure(runner, rule, gate, None, None)
-    chosen = choose([r.candidate for k, r in results.items() if k != PRODUCTION])
+    candidates = [r.candidate for k, r in results.items() if k != PRODUCTION]
+    chosen = choose(candidates) if "G0" in results else None
     return {
         "embedding_model": settings.embedding_model,
         "t_v": settings.recall_max_distance,

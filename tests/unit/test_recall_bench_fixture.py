@@ -10,6 +10,7 @@ from datetime import date
 import json
 from pathlib import Path
 
+import httpx
 import pytest
 from server.cognition.recall_cues import CueStrength, classify_recall_cue
 from server.memory import recall_search
@@ -372,4 +373,53 @@ def test_the_runner_measures_every_rule_through_the_production_search(
     record = json.loads(out.read_text(encoding="utf-8"))
     assert set(record["rules"]) == {"G0", "G1", "G2", "G3", "production"}
     assert record["rules"]["G0"]["classes"]["window"]["tune"]["recall_at_3"] == 1.0
-    assert record["rules"]["production"]["tune"] == record["rules"]["G0"]["tune"]
+    # The production gate is G3 (ADR 0040): the same rule, the same numbers.
+    assert record["rules"]["production"]["classes"] == record["rules"]["G3"]["classes"]
+
+
+@pytest.mark.integration
+def test_a_search_degraded_mid_run_stops_the_bench(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Final review: a question meant to use the vector side must not be scored by words alone."""
+
+    async def loads(*_args: object, **_kwargs: object) -> list[float]:
+        return [1.0] + [0.0] * 767
+
+    async def fails(*_args: object, **_kwargs: object) -> list[float]:
+        raise httpx.ConnectError("down mid-run")
+
+    monkeypatch.setattr(recall_bench, "ollama_embed", loads)
+    monkeypatch.setattr(recall_search, "ollama_embed", fails)
+    monkeypatch.setattr(settings, "brain_db_path", settings.brain_db_path)
+    monkeypatch.setattr(settings, "occurred_time_enabled", settings.occurred_time_enabled)
+    monkeypatch.setattr(db, "_conn", None)
+    fixture = _write(tmp_path, _with_capitalized_nouns(_complete_questions()))
+
+    with pytest.raises(recall_bench.BenchError, match="vector side"):
+        recall_bench.main(
+            ["--gates", "G0", "--fixture", str(fixture), "--out", str(tmp_path / "r")]
+        )
+
+
+def test_the_selection_refuses_without_the_baseline() -> None:
+    """D-3 asks the winner to improve on G0: without G0 there is nothing to improve on."""
+    same = _summary(hard=1, zero=0.6, common=0.5)
+
+    with pytest.raises(ValueError, match="G0"):
+        recall_bench.choose([recall_bench.Candidate("G1", 0.5, 0.1, same, same)])
+
+
+def test_a_malformed_entry_is_refused(tmp_path: Path) -> None:
+    questions = [*_with_capitalized_nouns(_complete_questions()), "  - not a mapping\n"]
+
+    with pytest.raises(recall_bench.BenchError, match="mapping"):
+        recall_bench.load_bench(_write(tmp_path, questions))
+
+
+def test_a_flag_must_be_a_boolean(tmp_path: Path) -> None:
+    questions = _with_capitalized_nouns(_complete_questions())
+    questions[0] = questions[0].replace("strength: strong", 'strength: strong, vector_off: "false"')
+
+    with pytest.raises(recall_bench.BenchError, match="vector_off"):
+        recall_bench.load_bench(_write(tmp_path, questions))

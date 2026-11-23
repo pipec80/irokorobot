@@ -463,9 +463,10 @@ def classify_recall_cue(message: str, *, today: date, occurred: bool = False) ->
         if opening is not None and strength is CueStrength.STRONG
         else None
     )
-    return RecallCue(
-        strength=strength, query=query, window=window, when=when, specific=specific_words(message)
-    )
+    # A specific word must still be in the query: the digits of a spoken date or span («el 12 de
+    # octubre», «hace 2 semanas») are the window, not a word the story holds (Plan 0088 review).
+    specific = specific_words(message) & frozenset(content_words(query))
+    return RecallCue(strength=strength, query=query, window=window, when=when, specific=specific)
 
 
 def _names_both_parents(padded: str) -> bool:

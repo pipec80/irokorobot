@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from server.memory.recall_search import production_gate
-from server.memory.retrieval import GATE_ID, GateSignals, gate_and_fuse
+from server.memory.retrieval import GATE_ID, GateSignals, gate_and_fuse, gate_near_or_named
 from server.settings import Settings
 
 from scripts.recall_bench_gates import gate_or
@@ -116,3 +116,27 @@ def test_the_default_gate_is_the_calibrated_one() -> None:
 def test_the_word_gate_is_the_one_the_bench_chose() -> None:
     """Plan 0088's bench (2026-11-23): the midpoint of two word-hit distances, 0.456 and 0.472."""
     assert Settings.model_fields["recall_word_max_distance"].default == pytest.approx(0.464)
+
+
+def _signal(
+    distance: float | None, *, words: bool = False, has: bool = False, covers: bool = False
+) -> GateSignals:
+    return GateSignals(distance=distance, by_words=words, covers_specific=covers, has_specific=has)
+
+
+def test_the_production_gates_are_strict_at_their_thresholds() -> None:
+    gate = gate_near_or_named(vector=0.43, words=0.464)
+
+    assert not gate(_signal(0.43))
+    assert gate(_signal(0.4299))
+    assert not gate(_signal(0.464, words=True))
+    assert gate(_signal(0.4639, words=True))
+
+
+def test_a_unit_holding_the_named_words_still_needs_its_distance() -> None:
+    """Named things must be there, and then the distance still decides (ADR 0040 decision 3)."""
+    gate = gate_near_or_named(vector=0.43, words=0.464)
+
+    assert not gate(_signal(0.50, words=True, has=True, covers=True))
+    assert gate(_signal(0.45, words=True, has=True, covers=True))
+    assert not gate(_signal(0.45, has=True, covers=True))

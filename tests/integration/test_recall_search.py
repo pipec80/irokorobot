@@ -557,3 +557,17 @@ async def test_a_unit_without_a_vector_yet_follows_the_no_distance_rule(
 
     assert (await _search(owner, _cue("del cerro"))).hits == ()
     assert _ids(await _search(owner, _named_cue("del cerro con zeta", "zeta"))) == [named]
+
+
+async def test_a_question_with_a_spoken_date_in_digits_finds_its_story(
+    owners: tuple[int, int], embed: AsyncMock
+) -> None:
+    """Final review of Plan 0088: «el 3 de noviembre» is the window, not a word the story holds."""
+    owner, _ = owners
+    story = await _unit(owner, await _record(owner), "subimos el cerro")
+    cue = classify_recall_cue("¿Qué te conté del cerro el 3 de noviembre?", today=date(2026, 11, 4))
+    assert cue is not None
+
+    found = await _search(owner, cue)
+
+    assert _ids(found) == [story]
