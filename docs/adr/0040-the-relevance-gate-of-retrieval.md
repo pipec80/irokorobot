@@ -1,9 +1,11 @@
 # 0040 — The relevance gate of retrieval: a near meaning, or the question's named words
 
-- **Status:** **Proposed (2026-11-23)**, until Task A7 of
-  [Plan 0088](../plans/open/0088-close-the-rag-gate-and-documents.md) accepts it on real hardware.
-  The rule was chosen by the plan's bench ([record](../evals/0088-recall-bench.md)) under D-3 as
-  amended by Pipec on 2026-11-23, and **Pipec adopted it the same day** («Sí, adopta G3»).
+- **Status:** **Accepted (2026-11-23)**, when Pipec accepted Part A of
+  [Plan 0088](../plans/open/0088-close-the-rag-gate-and-documents.md) on real hardware («Sí,
+  acepto»; [record](../evals/0088a-recall-gate-acceptance.md): 6 of 7 cases, the seventh a case of
+  the meaning threshold this ADR leaves apart). Proposed the same day; the rule was chosen by the
+  plan's bench ([record](../evals/0088-recall-bench.md)) under D-3 as amended by Pipec, and **Pipec
+  adopted it** («Sí, adopta G3»).
 - **Date:** 2026-11-23
 - **Builds on:** [ADR 0028](0028-recall-what-the-owner-told.md) (decision 6 and amendments A4,
   A5), [ADR 0031](0031-the-memory-engine-boundary.md) (decision 1: reading a sentence is the
@@ -139,7 +141,10 @@ expected stories did (0.406 and 0.413; the others 0.442 to 0.532), and the neare
 the *named, never told* questions overlap them (0.407 to 0.507). No gate of this family can fix
 that; it is the threshold's calibration (two real hits, ADR 0028 A5), not the gate's. **Not decided
 here.** Trigger: the hardware acceptance or normal use shows a story asked by its meaning not
-found, or a real corpus of Pipec's recall questions exists to recalibrate `T_v`.
+found, or a real corpus of Pipec's recall questions exists to recalibrate `T_v`. **The hardware
+acceptance gave both** (2026-11-23): a story asked by its meaning found at 0.407, and an unrelated
+weak cue answered from memories at 0.426, under `T_v`; the same threshold is too tight for some
+meaning questions and too loose for unrelated ones.
 
 ## Test consequences
 

@@ -1,5 +1,9 @@
 # 0088 — Close the RAG: the relevance gate and its bench, then the documents
 
+> **Part A closed on 2026-11-23**: accepted by Pipec on real hardware
+> ([record](../../evals/0088a-recall-gate-acceptance.md)), [ADR 0040](../../adr/0040-the-relevance-gate-of-retrieval.md)
+> `Accepted`, PR #306. Part B (the documents) is next, in a new session.
+>
 > **Status:** **Ready (promoted by Pipec on 2026-11-23).** Written as a draft the same day for
 > Pipec's review and revised after one read-only architecture review (its findings are folded in;
 > see *Self-review*). **Pipec accepted every recommendation on 2026-11-23** («Acepto todas»): D-1
