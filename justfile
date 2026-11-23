@@ -118,6 +118,10 @@ cm4-voice-rate *ARGS:
 cm4-embed *ARGS:
     uv run --env-file .env python scripts/cm4_embed_separation.py {{ARGS}}
 
+# Banco de recuperacion del recall (Plan 0088): --gates G0,G1,G2,G3 o production --out FILE (con Ollama arriba; nunca mientras Pipec ensaya)
+recall-bench *ARGS:
+    uv run --env-file .env python scripts/recall_bench.py {{ARGS}}
+
 # Banco determinista del STT (Plan 0069): run | segment | report | calibrate | probe | external-template; con el servidor detenido
 stt-bench *ARGS:
     uv run --env-file .env python scripts/stt_bench.py {{ARGS}}

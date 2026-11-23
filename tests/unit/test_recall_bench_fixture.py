@@ -7,13 +7,18 @@ bench before a run can measure it.
 from __future__ import annotations
 
 from datetime import date
+import json
 from pathlib import Path
 
 import pytest
-from server.cognition.recall_cues import classify_recall_cue
+from server.cognition.recall_cues import CueStrength, classify_recall_cue
+from server.memory import recall_search
 from server.memory.recall_sensitivity import classify_turn_text
+from server.memory.retrieval import GateSignals
+from server.settings import settings
 
-from scripts import check_reserved_terms, recall_bench
+from scripts import check_reserved_terms, recall_bench, recall_bench_gates
+from server import db
 
 pytestmark = pytest.mark.unit
 
@@ -146,3 +151,208 @@ def test_the_bench_holds_no_reserved_term() -> None:
     if matcher is not None:
         text = _FIXTURE.read_text(encoding="utf-8")
         assert check_reserved_terms.offending_lines(text, matcher) == []
+
+
+# The candidate rules of D-2 (Plan 0088 Task A3 Step 1), on hand-made signals.
+
+
+def _s(
+    distance: float | None,
+    *,
+    words: bool = False,
+    has: bool = False,
+    covers: bool = False,
+) -> GateSignals:
+    return GateSignals(distance=distance, by_words=words, covers_specific=covers, has_specific=has)
+
+
+def test_g1_lets_a_word_hit_through_only_under_the_second_gate() -> None:
+    gate = recall_bench_gates.build("G1", vector=0.43, words=0.55)
+
+    assert gate(_s(0.40))
+    assert gate(_s(0.50, words=True))
+    assert not gate(_s(0.50))
+    assert not gate(_s(0.60, words=True))
+
+
+def test_g1_without_a_distance_needs_covered_specific_words() -> None:
+    gate = recall_bench_gates.build("G1", vector=0.43, words=0.55)
+
+    assert gate(_s(None, words=True, has=True, covers=True))
+    assert not gate(_s(None, words=True, has=True, covers=False))
+    assert not gate(_s(None, words=True))
+    assert not gate(_s(None))
+
+
+def test_g2_refuses_a_unit_that_does_not_hold_the_named_words() -> None:
+    gate = recall_bench_gates.build("G2", vector=0.43)
+
+    assert not gate(_s(0.10, words=True, has=True, covers=False))
+    assert gate(_s(0.90, words=True, has=True, covers=True))
+    assert gate(_s(0.90, words=True))
+    assert gate(_s(0.40))
+
+
+def test_g3_is_g1_and_g2_together() -> None:
+    gate = recall_bench_gates.build("G3", vector=0.43, words=0.55)
+
+    assert not gate(_s(0.10, has=True, covers=False))
+    assert gate(_s(0.10, has=True, covers=True))
+    assert not gate(_s(0.60, words=True, has=True, covers=True))
+    assert gate(_s(None, words=True, has=True, covers=True))
+    assert not gate(_s(None, words=True))
+
+
+def test_g0_is_the_production_rule() -> None:
+    gate = recall_bench_gates.build("G0", vector=0.43)
+
+    assert gate(_s(0.90, words=True))
+    assert gate(_s(0.42))
+    assert not gate(_s(0.43))
+
+
+def test_a_rule_with_a_second_gate_needs_its_threshold() -> None:
+    with pytest.raises(ValueError, match="G1"):
+        recall_bench_gates.build("G1", vector=0.43)
+    with pytest.raises(ValueError, match="G9"):
+        recall_bench_gates.build("G9", vector=0.43)
+
+
+# The metrics and the selection rule of D-3, fixed before the bench runs.
+
+
+def _q(klass: str, expected: frozenset[str], half: str = "tune") -> recall_bench.BenchQuestion:
+    return recall_bench.BenchQuestion(
+        id=f"{klass}-{sorted(expected)}",
+        klass=klass,
+        half="tune" if half == "tune" else "check",
+        raw="¿Qué te conté?",
+        strength=CueStrength.STRONG,
+        expected=expected,
+    )
+
+
+def test_the_metrics_of_one_question() -> None:
+    found = recall_bench.score(_q("direct_words", frozenset({"a"})), ("b", "a"))
+
+    assert found.recall == 1.0
+    assert found.precision == 0.5
+    assert found.reciprocal_rank == 0.5
+    assert found.correct_zero is None
+    none = recall_bench.score(_q("named_never_told", frozenset()), ())
+    assert (none.recall, none.precision, none.correct_zero) == (None, None, True)
+    wrong = recall_bench.score(_q("named_never_told", frozenset()), ("a",))
+    assert (wrong.precision, wrong.correct_zero) == (0.0, False)
+
+
+def test_the_midpoints_lie_between_consecutive_distances_in_the_range() -> None:
+    points = recall_bench.midpoints([0.40, 0.45, 0.45, 0.55, 0.80], low=0.43, high=0.70)
+
+    # The range's ends count as observed points: below the first distance and above the last.
+    assert [(point.value, point.margin) for point in points] == [
+        (pytest.approx(0.44), pytest.approx(0.02)),
+        (pytest.approx(0.50), pytest.approx(0.10)),
+        (pytest.approx(0.625), pytest.approx(0.15)),
+    ]
+
+
+def _summary(*, hard: float, zero: float, common: float) -> recall_bench.HalfSummary:
+    return recall_bench.HalfSummary(hard_recall_min=hard, correct_zero=zero, common_no_name=common)
+
+
+def test_the_selection_keeps_the_hard_constraints_on_both_halves() -> None:
+    g0 = recall_bench.Candidate(
+        "G0",
+        None,
+        None,
+        _summary(hard=1, zero=0.2, common=0.0),
+        _summary(hard=1, zero=0.2, common=0.0),
+    )
+    g2 = recall_bench.Candidate(
+        "G2",
+        None,
+        None,
+        _summary(hard=1, zero=0.9, common=0.0),
+        _summary(hard=0.9, zero=0.9, common=0.0),
+    )
+    g1 = recall_bench.Candidate(
+        "G1",
+        0.5,
+        0.1,
+        _summary(hard=1, zero=0.6, common=0.5),
+        _summary(hard=1, zero=0.6, common=0.5),
+    )
+
+    assert recall_bench.choose([g0, g2, g1]) is g1
+
+
+def test_the_winner_must_improve_on_g0_with_one_common_word() -> None:
+    g0 = recall_bench.Candidate(
+        "G0",
+        None,
+        None,
+        _summary(hard=1, zero=0.2, common=0.0),
+        _summary(hard=1, zero=0.2, common=0.0),
+    )
+    g2 = recall_bench.Candidate(
+        "G2",
+        None,
+        None,
+        _summary(hard=1, zero=0.7, common=0.0),
+        _summary(hard=1, zero=0.7, common=0.0),
+    )
+
+    assert recall_bench.choose([g0, g2]) is None
+
+
+def test_ties_go_to_fewer_parameters_then_the_wider_margin() -> None:
+    same = _summary(hard=1, zero=0.6, common=0.5)
+    g0 = recall_bench.Candidate(
+        "G0",
+        None,
+        None,
+        _summary(hard=1, zero=0.2, common=0.0),
+        _summary(hard=1, zero=0.2, common=0.0),
+    )
+    g1_narrow = recall_bench.Candidate("G1", 0.5, 0.01, same, same)
+    g1_wide = recall_bench.Candidate("G1", 0.6, 0.20, same, same)
+    g3 = recall_bench.Candidate("G3", 0.6, 0.10, same, same)
+
+    assert recall_bench.choose([g0, g3, g1_narrow, g1_wide]) is g1_wide
+    g2 = recall_bench.Candidate("G2", None, None, same, same)
+    assert recall_bench.choose([g0, g1_wide, g2]) is g2
+
+
+def test_no_candidate_meeting_the_hard_constraints_adopts_nothing() -> None:
+    weak = _summary(hard=0.5, zero=1, common=1)
+    assert recall_bench.choose([recall_bench.Candidate("G0", None, None, weak, weak)]) is None
+
+
+@pytest.mark.integration
+def test_the_runner_measures_every_rule_through_the_production_search(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """End to end on a temporary database with a fake embedder: no Ollama, no real data."""
+
+    async def fake_embed(*_args: object, **_kwargs: object) -> list[float]:
+        return [1.0] + [0.0] * 767
+
+    monkeypatch.setattr(recall_bench, "ollama_embed", fake_embed)
+    monkeypatch.setattr(recall_search, "ollama_embed", fake_embed)
+    monkeypatch.setattr(settings, "brain_db_path", settings.brain_db_path)
+    monkeypatch.setattr(settings, "occurred_time_enabled", settings.occurred_time_enabled)
+    monkeypatch.setattr(db, "_conn", None)
+    fixture = _write(tmp_path, _with_capitalized_nouns(_complete_questions()))
+    out = tmp_path / "record.json"
+
+    assert (
+        recall_bench.main(
+            ["--gates", "G0,G1,G2,G3,production", "--fixture", str(fixture), "--out", str(out)]
+        )
+        == 0
+    )
+
+    record = json.loads(out.read_text(encoding="utf-8"))
+    assert set(record["rules"]) == {"G0", "G1", "G2", "G3", "production"}
+    assert record["rules"]["G0"]["classes"]["window"]["tune"]["recall_at_3"] == 1.0
+    assert record["rules"]["production"]["tune"] == record["rules"]["G0"]["tune"]
