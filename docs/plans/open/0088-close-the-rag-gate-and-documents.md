@@ -1,13 +1,12 @@
 # 0088 — Close the RAG: the relevance gate and its bench, then the documents
 
-> **Status:** **Draft (2026-11-23), not `Ready`.** Written for Pipec's review and revised after one
-> read-only architecture review the same day (its findings are folded in; see *Self-review*).
-> **Pipec accepted every recommendation on 2026-11-23** («Acepto todas»): D-1 (ADR 0040), D-7,
-> D-9, D-15 (the uniform phrase), D-16 (the PIN on all three commands), D-17 (the turn's own
-> frame), D-21 and the count of Task A0 Step 4; D-13 and the rule of Task A3 are confirmed by
-> Pipec at their own stops, with the numbers. Promotion to `Ready` is Pipec's.
-> Nothing here may be executed until Pipec answers the decisions marked **Pipec** and promotes the
-> plan to `Ready`. Row 9 of the
+> **Status:** **Ready (promoted by Pipec on 2026-11-23).** Written as a draft the same day for
+> Pipec's review and revised after one read-only architecture review (its findings are folded in;
+> see *Self-review*). **Pipec accepted every recommendation on 2026-11-23** («Acepto todas»): D-1
+> (ADR 0040), D-7, D-9, D-15 (the uniform phrase), D-16 (the PIN on all three commands), D-17 (the
+> turn's own frame), D-21 and the count of Task A0 Step 4; D-13 and the rule of Task A3 are
+> confirmed by Pipec at their own stops, with the numbers. Part A executes first, in a new session
+> on `feat/0088a-recall-gate`; Part B starts only after Task A7's acceptance. Row 9 of the
 > [path to the finish line](../../roadmap/cognitive-roadmap.md#closing-path-of-conversational-memory)
 > (R2, documents and reading through the camera,
 > [ADR 0034](../../adr/0034-documents-and-reading-through-the-camera.md) `Proposed`). Pipec decided
