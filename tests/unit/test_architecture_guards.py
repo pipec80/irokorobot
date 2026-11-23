@@ -934,7 +934,10 @@ def test_the_admin_audit_guard_detects_a_violation() -> None:
 _IMPORT_CHANNEL_NAMES = frozenset(
     {"IMPORT_FILE", "IMPORT_ASSISTED", "import_file", "import_assisted"}
 )
-_IMPORT_CHANNEL_HOMES = frozenset({"memory/write_types.py", "memory/seed_import.py"})
+# `seed_run.py` stores the alta's documents on the import channel (Plan 0088 D-16).
+_IMPORT_CHANNEL_HOMES = frozenset(
+    {"memory/write_types.py", "memory/seed_import.py", "memory/seed_run.py"}
+)
 
 
 @pytest.mark.unit

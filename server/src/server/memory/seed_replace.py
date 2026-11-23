@@ -18,6 +18,7 @@ from server.memory.candidates import count_live_candidates
 from server.memory.care_contacts import delete_contacts_by_channel, entity_has_contact_rows
 from server.memory.commissioning import clear_section_statuses, get_open_commissioning
 from server.memory.declarative import delete_orphan_import_entities
+from server.memory.document_store import delete_sources_by_channel
 from server.memory.relational_v4 import (
     count_rows_by_channel,
     delete_rows_by_channel,
@@ -59,6 +60,8 @@ async def retract_earlier_import() -> int:
     """
     deleted = await delete_rows_by_channel(IMPORT_CHANNELS, manage_transaction=False)
     deleted += await delete_contacts_by_channel(IMPORT_CHANNELS, manage_transaction=False)
+    # The documents an earlier alta loaded (Plan 0088 D-16); `docs add` documents stay.
+    deleted += await delete_sources_by_channel(IMPORT_CHANNELS)
     record = await get_open_commissioning()
     if record is not None:
         await clear_section_statuses(record.id, manage_transaction=False)

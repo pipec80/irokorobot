@@ -18,6 +18,7 @@ import sqlite_vec
 from server import db
 from server.exceptions import BrainMemoryError
 from server.memory.embeddings import EMBEDDING_DIM
+from server.memory.export_model import StoredRows, fetch_count, fetch_stored_rows
 from server.memory.recall_store import count_rows
 from server.memory.retrieval import match_expression
 from server.settings import settings
@@ -38,15 +39,19 @@ __all__ = [
     "NewSource",
     "count_sections_of_another_model",
     "delete_source_row",
+    "delete_sources_by_channel",
     "document_index_health",
     "insert_source",
     "mark_section_refused",
+    "projection_counts",
     "readable_titles",
     "section_distances_of",
     "section_lexical_hits",
     "section_vector_hits",
     "sections_by_id",
+    "sections_for_export",
     "sections_without_vector",
+    "sources_for_export",
     "sources_of",
     "store_section_vector",
 ]
@@ -370,6 +375,22 @@ async def delete_source_row(conn: aiosqlite.Connection, source_id: int) -> int:
     return deleted
 
 
+async def delete_sources_by_channel(channels: frozenset[str]) -> int:
+    """Delete the sources of *channels* inside the caller's transaction (the alta's ``--replace``).
+
+    Returns:
+        How many sources were deleted; their sections, word rows and vectors go with them.
+    """
+    marks, params = _marks("channel", sorted(channels))
+    cursor = await db.get_conn().execute(
+        f"DELETE FROM document_sources WHERE channel IN ({marks})",  # noqa: S608
+        params,
+    )
+    deleted = max(cursor.rowcount, 0)
+    await cursor.close()
+    return deleted
+
+
 async def store_section_vector(section_id: int, vector: list[float], *, model: str) -> bool:
     """Index a section's vector with its owner, level and source, in one transaction.
 
@@ -446,6 +467,49 @@ async def count_sections_of_another_model(owner_entity_id: int) -> int:
         "WHERE s.owner_entity_id = ? AND c.embedding_model IS NOT NULL "
         "AND c.embedding_model <> ?",
         (owner_entity_id, settings.embedding_model),
+    )
+
+
+_SOURCE_EXPORT_COLUMNS: Final = (
+    "id",
+    "owner_entity_id",
+    "title",
+    "level",
+    "format",
+    "channel",
+    "loaded_at",
+    "sections",
+    "characters",
+)
+_SECTION_EXPORT_COLUMNS: Final = ("id", "source_id", "position", "heading", "body")
+
+
+async def sources_for_export() -> StoredRows:
+    """Every document source, for an export (Plan 0088 D-19)."""
+    return await fetch_stored_rows(
+        _SOURCE_EXPORT_COLUMNS,
+        f"SELECT {', '.join(_SOURCE_EXPORT_COLUMNS)} FROM document_sources ORDER BY id",  # noqa: S608
+    )
+
+
+async def sections_for_export() -> StoredRows:
+    """Every section's text, never a vector, for an export (Plan 0088 D-19)."""
+    return await fetch_stored_rows(
+        _SECTION_EXPORT_COLUMNS,
+        f"SELECT {', '.join(_SECTION_EXPORT_COLUMNS)} FROM document_sections "  # noqa: S608
+        "ORDER BY source_id, position",
+    )
+
+
+async def projection_counts() -> tuple[int, int]:
+    """How many word-index rows and vectors the sections project, for an export.
+
+    Returns:
+        The rows of ``document_sections_fts`` and of ``document_sections_vec``.
+    """
+    return (
+        await fetch_count("SELECT count(*) FROM document_sections_fts"),
+        await fetch_count("SELECT count(*) FROM document_sections_vec"),
     )
 
 
