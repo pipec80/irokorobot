@@ -1,0 +1,140 @@
+# Retrieval bench of the diary's recall (Plan 0088 Part A, D-4). Every value is an invented
+# canary of one invented owner: no household data. A regression bench, not a calibration of the
+# robot's real speech (D-3); the hardware acceptance of D-7 is the real check.
+#
+# today: the household day of the run. A unit's `day` is the household day it was told (said at
+# 12:00 local). A question's `raw` is written as the speech-to-text writes it (Task A0 Step 4):
+# the first word capitalized after «¿», a name capitalized mid-sentence. `strength` is the cue
+# strength `classify_recall_cue` must give; `half` is `tune` or `check` (D-3); `expected` lists the
+# unit ids it should find, empty when the right answer is none; `vector_off` runs the question with
+# the embedding model unreachable.
+version: 1
+today: "2026-11-20"
+owner: Canario Bench
+
+units:
+  # Direct by words.
+  - {id: sensor, kind: turn, day: "2026-11-02", body: "Instalé el sensor de temperatura en la bodega y marca diecinueve grados en la noche."}
+  - {id: bicicleta, kind: turn, day: "2026-10-14", body: "Le cambié la cadena a la bicicleta azul y ahora no suena al pedalear."}
+  - {id: ajedrez, kind: turn, day: "2026-10-21", body: "Gané dos partidas de ajedrez en el club del barrio con la apertura italiana."}
+  - {id: mermelada, kind: turn, day: "2026-11-05", body: "Hice mermelada de damasco con el azúcar rubia que compré en la feria."}
+  - {id: puzzle, kind: turn, day: "2026-10-09", body: "Terminé el puzzle de mil piezas del faro; me faltaba una pieza del cielo."}
+  - {id: guitarra, kind: turn, day: "2026-11-11", body: "Cambié las cuerdas de la guitarra y la afiné con la aplicación del teléfono."}
+  # Direct by meaning (no content word shared with its question).
+  - {id: playa, kind: turn, day: "2026-10-25", body: "Fuimos a la playa con mi hermana y nos metimos al agua aunque estaba helada."}
+  - {id: nochebuena, kind: episode, day: "2026-10-30", body: "El dueño contó la cena de la noche del 24 del año pasado: pavo con toda la familia y los regalos abiertos a las doce."}
+  - {id: perro, kind: turn, day: "2026-11-08", body: "Saqué a pasear al perro por el parque y se hizo amigo de un labrador."}
+  - {id: fuegos, kind: episode, day: "2026-10-16", body: "El dueño recordó el último día del año pasado: vieron los fuegos artificiales desde el cerro hasta la una."}
+  - {id: celebracion, kind: episode, day: "2026-11-01", body: "El dueño contó que celebraron los setenta de su tía con torta de hojarasca y cantaron hasta tarde."}
+  - {id: temporal, kind: turn, day: "2026-10-07", body: "Se inundó el patio con el temporal y tuvimos que sacar el agua con baldes."}
+  - {id: cueca, kind: turn, day: "2026-10-03", body: "Para las fiestas patrias bailamos cueca en la ramada del colegio."}
+  - {id: pan, kind: turn, day: "2026-11-13", body: "Aprendí a hacer pan amasado con la receta de mi abuela y me salió esponjoso."}
+  # Near stories for the people and places never told.
+  - {id: visita, kind: turn, day: "2026-11-06", body: "Vino a verme una amiga del trabajo y conversamos toda la tarde tomando once."}
+  - {id: primo, kind: turn, day: "2026-10-18", body: "Ayudé a mi primo a cambiarse de casa y cargamos el refrigerador entre cuatro."}
+  - {id: vecina, kind: turn, day: "2026-11-15", body: "La vecina del lado me trajo empanadas de pino para probar."}
+  - {id: sur, kind: episode, day: "2026-10-12", body: "El dueño contó que viajaron en bus al sur, llovió los tres días y comieron curanto."}
+  # One common word with the questions of the common-word classes.
+  - {id: cancion, kind: turn, day: "2026-10-28", body: "Mi sobrino cantó una canción en el acto del colegio y se olvidó la letra."}
+  - {id: pelicula, kind: turn, day: "2026-11-03", body: "Vimos una película de terror en la casa y apagamos todas las luces."}
+  - {id: partido, kind: turn, day: "2026-10-19", body: "Fuimos al estadio a ver el partido y perdimos tres a cero."}
+  - {id: libro, kind: turn, day: "2026-11-09", body: "Estoy leyendo un libro de cuentos de terror que me prestaron."}
+  - {id: auto, kind: turn, day: "2026-10-23", body: "Llevé el auto al taller porque sonaba raro el motor."}
+  # Exact names and codes (the lexical-only class).
+  - {id: repuesto, kind: turn, day: "2026-11-04", body: "Pedí el repuesto ZX-41 para la lavadora y llega el martes."}
+  - {id: vuelo, kind: turn, day: "2026-10-26", body: "Compré los boletos del vuelo LA 330 para el próximo mes."}
+  - {id: eusebio, kind: turn, day: "2026-11-10", body: "Mi vecino Eusebio me prestó la escalera para limpiar las canaletas."}
+  - {id: tren, kind: turn, day: "2026-10-05", body: "Tomamos el tren a Rancagua de las siete y llegamos a la hora."}
+  # A told name, asked misheard.
+  - {id: leocadia, kind: turn, day: "2026-10-29", body: "Mi amiga Leocadia me enseñó a tejer a crochet un gorro de lana gruesa."}
+  # Yesterday's garden (the window class).
+  - {id: ayer_tomates, kind: turn, day: "2026-11-19", body: "Planté seis tomates en el huerto y les puse tutores de caña."}
+  - {id: ayer_riego, kind: turn, day: "2026-11-19", body: "Arreglé la manguera del riego por goteo del huerto."}
+  - {id: ayer_lechugas, kind: turn, day: "2026-11-19", body: "Coseché las primeras lechugas del huerto y quedaron crujientes."}
+  - {id: ayer_compost, kind: turn, day: "2026-11-19", body: "Di vuelta el compost del huerto y ya no tiene mal olor."}
+  # Twenty-five older garden units that crowd the twenty nearest neighbours of a garden question.
+  - {id: huerto_01, kind: turn, day: "2026-10-01", body: "Compré semillas de tomate cherry para el huerto."}
+  - {id: huerto_02, kind: turn, day: "2026-10-02", body: "Regué el huerto temprano porque iba a hacer calor."}
+  - {id: huerto_03, kind: turn, day: "2026-10-04", body: "Las lechugas del huerto se las comieron los caracoles."}
+  - {id: huerto_04, kind: turn, day: "2026-10-06", body: "Armé una caja de compost al fondo del huerto."}
+  - {id: huerto_05, kind: turn, day: "2026-10-08", body: "Puse malla al huerto para que no entren los gorriones."}
+  - {id: huerto_06, kind: turn, day: "2026-10-10", body: "Los tomates del huerto todavía están verdes."}
+  - {id: huerto_07, kind: turn, day: "2026-10-11", body: "Cambié el programador del riego del huerto a la mañana."}
+  - {id: huerto_08, kind: turn, day: "2026-10-13", body: "Sembré cilantro y perejil en el huerto."}
+  - {id: huerto_09, kind: turn, day: "2026-10-15", body: "Abonamos el huerto con humus de lombriz."}
+  - {id: huerto_10, kind: turn, day: "2026-10-17", body: "Saqué la maleza del huerto toda la tarde."}
+  - {id: huerto_11, kind: turn, day: "2026-10-20", body: "El riego del huerto se tapó con tierra."}
+  - {id: huerto_12, kind: turn, day: "2026-10-22", body: "Trasplanté las lechugas del almácigo al huerto."}
+  - {id: huerto_13, kind: turn, day: "2026-10-24", body: "Le eché cáscaras de huevo al compost del huerto."}
+  - {id: huerto_14, kind: turn, day: "2026-10-27", body: "Amarré las matas de tomate del huerto con lana."}
+  - {id: huerto_15, kind: turn, day: "2026-10-31", body: "Coseché rabanitos del huerto para la ensalada."}
+  - {id: huerto_16, kind: turn, day: "2026-11-02", body: "El huerto amaneció con escarcha y se quemaron las albahacas."}
+  - {id: huerto_17, kind: turn, day: "2026-11-04", body: "Hice un camino de piedras en el huerto."}
+  - {id: huerto_18, kind: turn, day: "2026-11-06", body: "Planté zapallos italianos en el borde del huerto."}
+  - {id: huerto_19, kind: turn, day: "2026-11-07", body: "Las lechugas del huerto se espigaron con el calor."}
+  - {id: huerto_20, kind: turn, day: "2026-11-09", body: "Medí la acidez de la tierra del huerto con un kit."}
+  - {id: huerto_21, kind: turn, day: "2026-11-12", body: "Puse acolchado de paja en el huerto para guardar la humedad."}
+  - {id: huerto_22, kind: turn, day: "2026-11-14", body: "Los tomates del huerto tienen manchas en las hojas."}
+  - {id: huerto_23, kind: turn, day: "2026-11-16", body: "Instalé un filtro para el riego del huerto."}
+  - {id: huerto_24, kind: turn, day: "2026-11-17", body: "Repartí el compost del huerto en los maceteros."}
+  - {id: huerto_25, kind: turn, day: "2026-11-18", body: "Mi sobrina me ayudó a regar el huerto."}
+
+questions:
+  # Direct by words (hard constraint).
+  - {id: w1, class: direct_words, half: tune, strength: strong, raw: "¿Qué te conté del sensor de temperatura?", expected: [sensor]}
+  - {id: w2, class: direct_words, half: tune, strength: strong, raw: "¿Qué te conté de la cadena de la bicicleta?", expected: [bicicleta]}
+  - {id: w3, class: direct_words, half: tune, strength: weak, raw: "¿Te acuerdas de las partidas de ajedrez en el club?", expected: [ajedrez]}
+  - {id: w4, class: direct_words, half: check, strength: strong, raw: "¿Qué te dije de la mermelada de damasco?", expected: [mermelada]}
+  - {id: w5, class: direct_words, half: check, strength: strong, raw: "¿Qué te conté del puzzle del faro?", expected: [puzzle]}
+  - {id: w6, class: direct_words, half: check, strength: strong, raw: "¿Qué te conté de las cuerdas de la guitarra?", expected: [guitarra]}
+  # Direct by meaning (hard constraint); three ask with a capitalized common noun.
+  - {id: m1, class: direct_meaning, half: tune, strength: strong, raw: "¿Qué te conté del mar?", expected: [playa]}
+  - {id: m2, class: direct_meaning, half: tune, strength: strong, capitalized_common_noun: true, raw: "¿Qué hicimos en Navidad?", expected: [nochebuena]}
+  - {id: m3, class: direct_meaning, half: tune, strength: strong, raw: "¿Qué te conté de la mascota?", expected: [perro]}
+  - {id: m4, class: direct_meaning, half: tune, strength: strong, capitalized_common_noun: true, raw: "¿Qué hicimos en Año Nuevo?", expected: [fuegos]}
+  - {id: m5, class: direct_meaning, half: check, strength: strong, raw: "¿Qué te conté del cumpleaños familiar?", expected: [celebracion]}
+  - {id: m6, class: direct_meaning, half: check, strength: strong, raw: "¿Qué te dije de la tormenta?", expected: [temporal]}
+  - {id: m7, class: direct_meaning, half: check, strength: strong, capitalized_common_noun: true, raw: "¿Qué hicimos para el Dieciocho?", expected: [cueca]}
+  - {id: m8, class: direct_meaning, half: check, strength: strong, raw: "¿Qué te conté de la panadería casera?", expected: [pan]}
+  # Named, never told: a person or a place no unit names, a near story present.
+  - {id: n1, class: named_never_told, half: tune, strength: strong, raw: "¿Qué te conté de Florencia?", expected: []}
+  - {id: n2, class: named_never_told, half: tune, strength: strong, raw: "¿Qué te conté de Clodomiro?", expected: []}
+  - {id: n3, class: named_never_told, half: tune, strength: strong, raw: "¿Qué te conté del viaje a Valdivia?", expected: []}
+  - {id: n4, class: named_never_told, half: check, strength: strong, raw: "¿Qué te dije de Bernardita?", expected: []}
+  - {id: n5, class: named_never_told, half: check, strength: strong, raw: "¿Qué te conté de la visita de Eduviges?", expected: []}
+  - {id: n6, class: named_never_told, half: check, strength: strong, raw: "¿Qué te conté de don Anselmo?", expected: []}
+  # One common word, no name: a weak cue about general knowledge.
+  - {id: c1, class: common_no_name, half: tune, strength: weak, raw: "¿Te acuerdas de la canción del verano?", expected: []}
+  - {id: c2, class: common_no_name, half: tune, strength: weak, raw: "¿Te acuerdas de la película de los dinosaurios?", expected: []}
+  - {id: c3, class: common_no_name, half: tune, strength: weak, raw: "¿Te acuerdas de la receta del queque de zanahoria?", expected: []}
+  - {id: c4, class: common_no_name, half: check, strength: weak, raw: "¿Te acuerdas del partido de la final del mundial?", expected: []}
+  - {id: c5, class: common_no_name, half: check, strength: weak, raw: "¿Te acuerdas del libro de la selva?", expected: []}
+  - {id: c6, class: common_no_name, half: check, strength: weak, raw: "¿Te acuerdas del auto fantástico de la tele?", expected: []}
+  # One common word with a name.
+  - {id: cn1, class: common_with_name, half: tune, strength: weak, raw: "¿Te acuerdas de la canción de Brahms?", expected: []}
+  - {id: cn2, class: common_with_name, half: tune, strength: weak, raw: "¿Te acuerdas de la película de Chaplin?", expected: []}
+  - {id: cn3, class: common_with_name, half: check, strength: weak, raw: "¿Te acuerdas del libro de Neruda?", expected: []}
+  - {id: cn4, class: common_with_name, half: check, strength: weak, raw: "¿Te acuerdas del partido de Wimbledon?", expected: []}
+  # Lexical only (hard constraint): an exact name or code with the embedding model down.
+  - {id: l1, class: lexical_only, half: tune, strength: strong, vector_off: true, raw: "¿Qué te dije del repuesto ZX-41?", expected: [repuesto]}
+  - {id: l2, class: lexical_only, half: tune, strength: strong, vector_off: true, raw: "¿Qué te conté del vuelo LA 330?", expected: [vuelo]}
+  - {id: l3, class: lexical_only, half: check, strength: strong, vector_off: true, raw: "¿Qué te conté de Eusebio?", expected: [eusebio]}
+  - {id: l4, class: lexical_only, half: check, strength: strong, vector_off: true, raw: "¿Qué te conté del tren a Rancagua?", expected: [tren]}
+  # Lexical only, no name: measured (ADR 0040 states the result).
+  - {id: ln1, class: lexical_only_no_name, half: tune, strength: strong, vector_off: true, raw: "¿Qué te conté del sensor?", expected: [sensor]}
+  - {id: ln2, class: lexical_only_no_name, half: tune, strength: strong, vector_off: true, raw: "¿Qué te conté de la bicicleta?", expected: [bicicleta]}
+  - {id: ln3, class: lexical_only_no_name, half: check, strength: strong, vector_off: true, raw: "¿Qué te dije de la guitarra?", expected: [guitarra]}
+  # Window (hard constraint): yesterday's unit among twenty-five older ones of the same garden.
+  - {id: y1, class: window, half: tune, strength: strong, raw: "¿Qué te conté ayer de los tomates?", expected: [ayer_tomates]}
+  - {id: y2, class: window, half: tune, strength: strong, raw: "¿Qué te dije ayer del riego?", expected: [ayer_riego]}
+  - {id: y3, class: window, half: check, strength: strong, raw: "¿Qué te conté ayer de las lechugas?", expected: [ayer_lechugas]}
+  - {id: y4, class: window, half: check, strength: strong, raw: "¿Qué te conté ayer del compost?", expected: [ayer_compost]}
+  # Plural and variant: measured, never required.
+  - {id: p1, class: plural_variant, half: tune, strength: strong, raw: "¿Qué te conté de los sensores?", expected: [sensor]}
+  - {id: p2, class: plural_variant, half: tune, strength: strong, raw: "¿Qué te conté de las bicicletas?", expected: [bicicleta]}
+  - {id: p3, class: plural_variant, half: check, strength: strong, raw: "¿Qué te dije de las mermeladas?", expected: [mermelada]}
+  - {id: p4, class: plural_variant, half: check, strength: strong, raw: "¿Qué te conté de los puzzles?", expected: [puzzle]}
+  # Name misheard: measured, never required.
+  - {id: h1, class: name_misheard, half: tune, strength: strong, raw: "¿Qué te conté de Leokadia?", expected: [leocadia]}
+  - {id: h2, class: name_misheard, half: tune, strength: strong, raw: "¿qué te conté de leocadia?", expected: [leocadia]}
+  - {id: h3, class: name_misheard, half: check, strength: strong, raw: "¿Qué te conté de Leucadia?", expected: [leocadia]}
