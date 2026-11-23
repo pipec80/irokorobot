@@ -91,8 +91,10 @@ CLASS_MINIMUMS: Final[dict[str, int]] = {
 }
 #: Questions of *direct by meaning* that ask with a capitalized common noun (D-4).
 MIN_CAPITALIZED_COMMON_NOUNS: Final = 3
-#: D-3: Recall@3 = 100 % on these classes, on both halves.
-HARD_CLASSES: Final = ("direct_words", "direct_meaning", "lexical_only", "window")
+#: D-3: Recall@3 = 100 % on these classes, on both halves. *Direct by meaning* is measured and
+#: reported, not required (D-3 as amended by Pipec on 2026-11-23: the meaning threshold is a
+#: problem apart from the gate).
+HARD_CLASSES: Final = ("direct_words", "lexical_only", "window")
 #: D-3: the classes whose right answer is none.
 NEGATIVE_CLASSES: Final = ("named_never_told", "common_no_name", "common_with_name")
 #: The hits each question is scored on (the search returns at most three).

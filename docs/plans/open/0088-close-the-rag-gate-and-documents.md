@@ -159,6 +159,19 @@ make. A decision answered differently is rewritten here before promotion.
   report**: no rule is adopted and Pipec decides. The bench is a regression bench of about 50
   invented questions, not a calibration of the robot's real speech; the record says so, and the
   hardware acceptance (D-7) is the real check.
+
+  > **Amended by Pipec on 2026-11-23, after the first run (Task A3 Step 5), «separa los
+  > problemas».** The first run adopted no rule: G0 itself failed *direct by meaning* (Recall@3
+  > 0.25 on `tune`, 0.50 on `check`), because 6 of its 8 expected stories lie above `T_v` = 0.43,
+  > and every candidate qualifies a story found by its meaning alone only under that same `T_v`, so
+  > no rule of D-2 could meet the constraint ([record](../../evals/0088-recall-bench.md)). Two
+  > problems were bundled: the gate (names and single common words) and the meaning threshold.
+  > This plan keeps the gate. **The hard constraints are now Recall@3 = 100 % on *direct by
+  > words*, *lexical only* and *window*, on both halves; *direct by meaning* (its capitalized common
+  > nouns included) is measured and reported, never required**, like *plural and variant* and *name
+  > misheard*. The rest of D-3 is unchanged. The meaning threshold (`T_v` calibrated on two real
+  > hits, ADR 0028 A5) is a separate problem, recorded in ADR 0040 with its trigger, not solved
+  > here; D-7's hardware case «one asked by its meaning is found» stays as the real check.
 - **D-4 The bench is invented and tracked.** `tests/evals/recall_bench_v1.yaml`: about 30 diary
   units of one invented owner (turns and episodes, with `said_at` days) and about 50 questions,
   each with its raw transcript (capitalized as Task A0 Step 4 measures the speech-to-text writes

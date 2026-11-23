@@ -256,6 +256,23 @@ def test_the_midpoints_lie_between_consecutive_distances_in_the_range() -> None:
     ]
 
 
+def test_direct_by_meaning_is_measured_not_required() -> None:
+    """Pipec, 2026-11-23 (D-3 amended): the meaning threshold is a problem apart from the gate."""
+    assert recall_bench.HARD_CLASSES == ("direct_words", "lexical_only", "window")
+    meaning = _q("direct_meaning", frozenset({"a"}))
+    words = _q("direct_words", frozenset({"a"}))
+    lexical = _q("lexical_only", frozenset({"a"}))
+    window = _q("window", frozenset({"a"}))
+    scores = {
+        meaning: recall_bench.score(meaning, ()),
+        words: recall_bench.score(words, ("a",)),
+        lexical: recall_bench.score(lexical, ("a",)),
+        window: recall_bench.score(window, ("a",)),
+    }
+
+    assert recall_bench.summarize(scores, "tune").hard_recall_min == 1.0
+
+
 def _summary(*, hard: float, zero: float, common: float) -> recall_bench.HalfSummary:
     return recall_bench.HalfSummary(hard_recall_min=hard, correct_zero=zero, common_no_name=common)
 
