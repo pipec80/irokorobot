@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Final
 from server import db
 from server.memory.candidates import count_unlinked_candidates
 from server.memory.conversation_record import STORED_TURN_CORRELATION_IDS_SQL
+from server.memory.document_store import document_index_health
 from server.memory.pending_store import count_unlinked_topics
 from server.memory.recall_store import count_rows, count_unlinked_units, index_health
 from server.timestamps import INSTANT_LENGTH
@@ -61,7 +62,7 @@ _BOUND_NAMES: Final = "p.name IN ('valid_from', 'valid_to')"
 class HealthReport:
     """What the health check counted: ints only, never a value read from the database.
 
-    The first eight counts are faults; the last two are pending work (not a fault).
+    The first ten counts are faults; the last five are pending work (not a fault).
     """
 
     sqlite_version: tuple[int, int, int]
@@ -74,8 +75,13 @@ class HealthReport:
     face_vectors_without_profile: int
     times_outside_format: int
     rows_unlinked_from_their_turn: int
+    document_vectors_without_section: int
+    sections_without_fts_row: int
     units_without_vector: int
     units_of_another_model: int
+    sections_without_vector: int
+    sections_of_another_model: int
+    sections_refused: int
 
 
 # Every count of the report, in print order: (HealthReport field, label in Spanish, is a fault).
@@ -90,8 +96,13 @@ _MEASURES: Final = (
     ("face_vectors_without_profile", "vectores de caras sin perfil", True),
     ("times_outside_format", "filas fuera del formato de hora", True),
     ("rows_unlinked_from_their_turn", "filas sin vínculo con su turno", True),
+    ("document_vectors_without_section", "vectores de documentos sin sección", True),
+    ("sections_without_fts_row", "secciones sin fila en el índice de texto", True),
     ("units_without_vector", "unidades sin vector (pendientes)", False),
     ("units_of_another_model", "unidades de otro modelo (pendientes)", False),
+    ("sections_without_vector", "secciones sin vector (pendientes)", False),
+    ("sections_of_another_model", "secciones de otro modelo (pendientes)", False),
+    ("sections_refused", "secciones que el modelo no aceptó (solo por palabras)", False),
 )
 
 
@@ -168,12 +179,13 @@ async def check_health(conn: aiosqlite.Connection) -> HealthReport:
     """
     runtime = await db.check_runtime(conn)
     index = await index_health(conn)
+    documents = await document_index_health(conn)
     return HealthReport(
         sqlite_version=runtime.sqlite_version,
         vec_version=_version(runtime.vec_version),
         integrity_errors=await _integrity_errors(conn),
         foreign_key_violations=len(await _rows(conn, "PRAGMA foreign_key_check")),
-        fts_errors=index.fts_errors,
+        fts_errors=index.fts_errors + documents.fts_errors,
         vectors_without_unit=index.vectors_without_unit,
         units_without_fts_row=index.units_without_fts_row,
         face_vectors_without_profile=await count_rows(
@@ -181,8 +193,13 @@ async def check_health(conn: aiosqlite.Connection) -> HealthReport:
         ),
         times_outside_format=await _times_outside_format(conn),
         rows_unlinked_from_their_turn=await _rows_unlinked_from_their_turn(conn),
+        document_vectors_without_section=documents.vectors_without_section,
+        sections_without_fts_row=documents.sections_without_fts_row,
         units_without_vector=index.units_without_vector,
         units_of_another_model=index.units_of_another_model,
+        sections_without_vector=documents.sections_without_vector,
+        sections_of_another_model=documents.sections_of_another_model,
+        sections_refused=documents.sections_refused,
     )
 
 

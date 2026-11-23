@@ -165,6 +165,10 @@ _TOUCHED_TABLES = frozenset(
         "pending_topics",
         "face_profiles",
         "voice_profiles",
+        # Plan 0088 Part B, migration 023.
+        "admin_audit",
+        "document_sources",
+        "document_sections",
     }
 )
 _DOMAINS = frozenset({"memory", "identity", "administration"})
