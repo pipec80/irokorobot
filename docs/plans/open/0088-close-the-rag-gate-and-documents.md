@@ -2,6 +2,10 @@
 
 > **Status:** **Draft (2026-11-23), not `Ready`.** Written for Pipec's review and revised after one
 > read-only architecture review the same day (its findings are folded in; see *Self-review*).
+> **Pipec accepted every recommendation on 2026-11-23** («Acepto todas»): D-1 (ADR 0040), D-7,
+> D-9, D-15 (the uniform phrase), D-16 (the PIN on all three commands), D-17 (the turn's own
+> frame), D-21 and the count of Task A0 Step 4; D-13 and the rule of Task A3 are confirmed by
+> Pipec at their own stops, with the numbers. Promotion to `Ready` is Pipec's.
 > Nothing here may be executed until Pipec answers the decisions marked **Pipec** and promotes the
 > plan to `Ready`. Row 9 of the
 > [path to the finish line](../../roadmap/cognitive-roadmap.md#closing-path-of-conversational-memory)
@@ -119,13 +123,13 @@ make. A decision answered differently is rewritten here before promotion.
 
 ### Part A — the gate and the bench
 
-- **D-1 (Pipec) Where the new gate is decided.** Changing ADR 0028 decision 6 needs an ADR.
-  **Recommended: a new ADR 0040**, *The relevance gate of retrieval*, which supersedes decision 6.3
+- **D-1 (Pipec, confirmed 2026-11-23) Where the new gate is decided.** Changing ADR 0028
+  decision 6 needs an ADR. **Decided: a new ADR 0040**, *The relevance gate of retrieval*, which supersedes decision 6.3
   of ADR 0028, narrows decision 6.7 if the chosen rule changes what a search by words alone may
   return, and is the gate ADR 0034 decision 4 reuses for documents (one rule, two sources, so it
-  should not live inside the diary's ADR). The alternative is amendment A6 of ADR 0028, lighter but
-  leaving ADR 0034 to cite a rule inside another source's ADR. Either way it is written **after**
-  the bench (Task A4), with its numbers, `Proposed` until Task A7's hardware acceptance.
+  should not live inside the diary's ADR); ADR 0028 gets one line saying decision 6.3 is
+  superseded by it. Rejected: amendment A6 of ADR 0028, lighter but leaving ADR 0034 to cite a rule
+  inside another source's ADR. It is written **after** the bench (Task A4), with its numbers, `Proposed` until Task A7's hardware acceptance.
 - **D-2 The candidate rules are fixed before the bench runs**, so the numbers cannot shape them.
   The signals: `d`, the unit's cosine distance to the question (computed for every candidate, D-5;
   absent when the vector side is off or the unit has no vector yet); `W`, whether FTS5 found it;
@@ -194,7 +198,7 @@ make. A decision answered differently is rewritten here before promotion.
 - **D-6 The log says what the gate did.** `recall.read` gains `rejected` (how many candidates the
   gate refused), `specific` (how many specific words the question had) and `gate` (the rule id of
   ADR 0040); never a text.
-- **D-7 (Pipec) Hardware acceptance of Part A** on the streaming route with `RECALL_ENABLED=true`:
+- **D-7 (Pipec, confirmed 2026-11-23) Hardware acceptance of Part A** on the streaming route with `RECALL_ENABLED=true`:
   a person never told answers «No me acuerdo de eso.»; a story asked by its words and one asked by
   its meaning are found; a weak cue sharing one common word converses; «¿qué te conté ayer?» is
   unchanged; with the embedding model stopped, a story asked by an exact name or code is found.
@@ -219,7 +223,7 @@ make. A decision answered differently is rewritten here before promotion.
   and `camera`; the dictionary says so, no column holds it. No version column: a changed file is a
   new source, the old one removed by the owner (YAGNI until a re-load is asked for; written into
   ADR 0034 in Task B0).
-- **D-9 (Pipec) Formats, the PDF library and the caps** (ADR 0034 decision 1 leaves them to the
+- **D-9 (Pipec, confirmed 2026-11-23) Formats, the PDF library and the caps** (ADR 0034 decision 1 leaves them to the
   plan). **One adapter per format** (Pipec, 2026-11-23): `document_extract.py` keeps a closed,
   `Final` table from a file extension to its extractor, each a function from a path to
   `ExtractedText`; an extension outside the table is refused with «Ese formato todavía no lo leo.».
@@ -270,7 +274,7 @@ make. A decision answered differently is rewritten here before promotion.
   and the KNN (both filtered by owner, level and `source_id IN (…)` inside the query), D-5's
   pipeline with ADR 0040's rule and the document thresholds, RRF, at most three sections. The bench
   (D-13) measures Recall@3 on named-document questions with and without the title step.
-- **D-13 (Pipec) The document gate is calibrated on its own corpus**, never inherited from the
+- **D-13 (Pipec, at Task B7) The document gate is calibrated on its own corpus**, never inherited from the
   diary (the 0.43 was measured on short first-person turns). `tests/evals/document_bench_v1.yaml`:
   three invented Spanish documents (a washing-machine manual, a recipe, a care guide), one of each
   format, one of them `sensitive`, and about 35 questions in `tune` and `check` halves, in the
@@ -297,9 +301,9 @@ make. A decision answered differently is rewritten here before promotion.
   `strong` set) and only when no second face is in view (`FusionReason.VETO_MULTIPLE_FACES`
   absent). With a second face in view the `sensitive` sources are left out of the search, and if
   nothing else qualifies the reply is the same «No lo encuentro en tus documentos.»: the reply
-  never depends on whether a sensitive document exists, so it is no oracle (Pipec may prefer
-  block B's «Te lo digo cuando estemos solos.» said on **every** document cue with two faces,
-  whatever is stored; either is safe, the uneven version is not). A visitor, an unknown face or no
+  never depends on whether a sensitive document exists, so it is no oracle (Pipec, 2026-11-23;
+  block B's «Te lo digo cuando estemos solos.» on every document cue with two faces was the safe
+  alternative, not chosen). A visitor, an unknown face or no
   face hears the generic denial, whatever is stored. A **document secret detector**
   (`memory/document_secrets.py`, pure) flags a secret word followed by any short token, a run of
   four or more digits standing alone, and the shapes of a card number and an IBAN; at load a flagged
@@ -307,9 +311,9 @@ make. A decision answered differently is rewritten here before promotion.
   false-positive rate is measured on the document bench (a manual's «pin 3» or «error 5» must
   pass). It is a deterministic guard with known limits, recorded as such, not a promise that no
   code can ever be read.
-- **D-16 (Pipec) Loading** (ADR 0034 decision 1). `iroko-admin docs add <file> [--title T]
+- **D-16 (Pipec, confirmed 2026-11-23) Loading** (ADR 0034 decision 1). `iroko-admin docs add <file> [--title T]
   [--level normal|sensitive]`, `docs list` and `docs remove <id>`, server stopped, each with the
-  owner's PIN (recommended for `list` too: a title can be sensitive) and one `admin_audit` row that
+  owner's PIN (`list` too, confirmed by Pipec on 2026-11-23: a title can be sensitive) and one `admin_audit` row that
   holds no title and no text. `add` asks the level when `--level` is absent, shows the format, the
   sections, the characters and the first three lines, then asks `SI`; it stores the source and its
   sections in one transaction, embeds them if Ollama answers, and otherwise leaves them to the
@@ -319,7 +323,7 @@ make. A decision answered differently is rewritten here before promotion.
   applies it in the commissioning's one transaction; `--replace` replaces only the documents the
   alta loaded, and only while commissioning. Hidden text in a PDF (white or tiny) is not visible in
   the first lines: accepted, because D-14 never obeys a section.
-- **D-17 (Pipec) «Iroko, lee esto» reads the turn's own frame** (ADR 0034 decision 5, amended in
+- **D-17 (Pipec, confirmed 2026-11-23) «Iroko, lee esto» reads the turn's own frame** (ADR 0034 decision 5, amended in
   Task B0 from «the robot takes one frame»), so neither the robot nor the wire changes and both
   voice routes can answer. **It works only with `ROBOT_FACE_AUTH_ENABLED` on the robot and
   `FACE_AUTHENTICATION_ENABLED` on the server**, which already carry the frame, plus
@@ -360,7 +364,7 @@ make. A decision answered differently is rewritten here before promotion.
   0034 as the documents' share of the coupling the extraction plan removes after CM-7 + PC-5, and
   Task B5 writes the guard ADR 0031 asks for (the list of `memory/` modules that import
   `server.cognition`, which may shrink and never grow) with those three on it.
-- **D-21 (Pipec) Hardware acceptance of Part B**, streaming route, with the four switches of D-17
+- **D-21 (Pipec, confirmed 2026-11-23) Hardware acceptance of Part B**, streaming route, with the four switches of D-17
   on: a Markdown manual, a text recipe and a PDF loaded with `iroko-admin docs add`; «¿qué dice el
   manual de la lavadora sobre el filtro?» names the manual and answers from its filter section; a
   question about the recipe never quotes the manual; nothing in the documents says the fixed
@@ -477,7 +481,7 @@ after the real upgrade, the `pre-0088b` backup with the previous `main`.
   and report** if one is false.
 - [ ] **Step 3:** baseline: `MEMORY_ENABLED=false uv run pytest -m "not slow and not hardware and
   not eval" -q -n auto`; record the count.
-- [ ] **Step 4:** with Pipec's OK and the server stopped, on a copy of `data/omnibot.db` opened with
+- [ ] **Step 4:** (allowed by Pipec on 2026-11-23) with the server stopped, on a copy of `data/omnibot.db` opened with
   `immutable=1` under `data/rehearsal-0088a/`: count the owner's turns whose words hold a name of
   the alta's entities, and how many write it capitalized mid-sentence, lower case or another way.
   Counts only, into the bench record; the copy deleted the same day. If capitalization is rare,
@@ -550,7 +554,7 @@ missing from a class, or a duplicated id.
   every class × half × rule metric, the chosen rule and `T_w` (if any), latency p50 and p95, the
   embedding model's digest from `ollama show`, Task A0 Step 4's counts; counts and rates only.
 - [ ] **Step 4:** commit `docs: record the recall bench and the chosen gate (plan 0088)`.
-- [ ] **Step 5: Stop for Pipec:** D-1 and the chosen rule.
+- [ ] **Step 5: Stop for Pipec:** the chosen rule (D-1 is decided: ADR 0040).
 
 ### Task A4: The decision written
 
