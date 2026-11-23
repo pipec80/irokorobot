@@ -20,6 +20,14 @@
 >
 > Tasks A0 and B0 re-verify every claim of *The audit* against the merged code and the installed
 > packages and **stop and report** if one is false.
+>
+> **Pipec, 2026-11-23: more formats come right after this plan, not inside it.** Word, Excel and
+> CSV, images with text (screenshots, photos of papers) and audio or video (a recorded talk) are a
+> short plan of their own, **R2b**, right after this one and before the offline run (roadmap row
+> 9b). This plan only builds the extraction as **one adapter per format** (D-9), so R2b adds
+> adapters and changes no decision here. Scanned PDF, handwriting and an archive of the original
+> files wait after the line (R4, by measurement), and the robot **never interprets a medical
+> image** (D-9).
 
 > **For agentic workers:** if the status above does not say `Ready`, stop. Read `AGENTS.md`,
 > `CLAUDE.md` and every file of `.claude/rules/` in full first (`software-principles`,
@@ -212,12 +220,24 @@ make. A decision answered differently is rewritten here before promotion.
   new source, the old one removed by the owner (YAGNI until a re-load is asked for; written into
   ADR 0034 in Task B0).
 - **D-9 (Pipec) Formats, the PDF library and the caps** (ADR 0034 decision 1 leaves them to the
-  plan). `.md` and `.txt` in UTF-8 (a BOM is accepted; another encoding is refused with its
+  plan). **One adapter per format** (Pipec, 2026-11-23): `document_extract.py` keeps a closed,
+  `Final` table from a file extension to its extractor, each a function from a path to
+  `ExtractedText`; an extension outside the table is refused with «Ese formato todavía no lo leo.».
+  This plan fills it with `.md`, `.txt` and `.pdf`; R2b (roadmap row 9b) adds `.docx`, `.xlsx` and
+  `.csv` (a table cut row by row with its headers), `.jpg` and `.png` (read by the VLM, as the
+  camera) and audio or video (transcribed by the installed Whisper, with the server stopped), each
+  with its own bench and Pipec's decision. An image of a medical study (a scan, an X-ray) is never
+  a document of this kind: it holds no text, and the robot never describes or interprets it (a
+  small vision model would invent a finding); keeping such files with their title and date is an
+  archive of originals, after the line. `.md` and `.txt` in UTF-8 (a BOM is accepted; another encoding is refused with its
   reason). PDF with a text layer through **`pypdf`** (BSD-3-Clause, pure Python; its licence, its
   decompression limits and `pip-audit` are read on the installed package in Task B0, and a copyleft
   licence stops the plan). Proposed caps, constants of `memory/document_extract.py`: 10 MB per
   file, 200 pages, 30 s of extraction in a child process that is killed at the limit, pypdf's own
-  limit on a decompressed stream set explicitly, 2,000 sections per document. An encrypted PDF, or
+  limit on a decompressed stream set explicitly, 2,000 sections per document. The page, size and
+  time caps are confirmed in Task B0 against one long document of Pipec's own (a vademécum or a
+  medical history of hundreds of pages), measured locally with counts only, so a real long
+  document fits; the author's numbers are only the starting point. An encrypted PDF, or
   one whose pages give no text, is refused with «Este PDF no tiene texto que pueda leer.» (scanned
   PDF is R4). The memory a crafted PDF can take inside the child is bounded only by those limits:
   accepted, because `docs add` runs with the server stopped on a file the owner chose.
@@ -609,7 +629,9 @@ the production default of `search_recall`'s `gate`.
   D-20.
 - [ ] **Step 4:** write `tests/evals/document_bench_v1.yaml` and `tests/fixtures/documents/`
   (invented); measure characters per token on its sections with Ollama; write D-10's conservative
-  cap into this plan and into `docs/evals/0088-document-bench.md`.
+  cap into this plan and into `docs/evals/0088-document-bench.md`. With Pipec's OK, extract one
+  long document of his own locally (pages, characters, seconds and peak memory of the child; counts
+  only, the file never copied into the repository) and set D-9's caps so it fits.
 - [ ] **Step 5:** baseline, as Task A0 Step 3; commit `docs: record the document deviations of
   ADR 0034 (plan 0088)`.
 
@@ -644,8 +666,11 @@ delete_source_row(conn, source_id: int) -> int`; `sections_without_vector(limit:
 `memory/document_index.py`, `server/pyproject.toml`, `uv.lock` (`cd server && uv add pypdf`), their
 tests, `tests/fixtures/documents/`.
 
-**Interfaces:** `def extract_text(path: Path) -> ExtractedText` (raises `DocumentRefusedError`
-with a closed Spanish reason); `def cut_sections(text: ExtractedText, *, max_chars: int) ->
+**Interfaces:** `type Extractor = Callable[[Path], ExtractedText]`; `EXTRACTORS:
+Final[Mapping[str, Extractor]]` (`.md`, `.txt`, `.pdf`; R2b adds the others); `def
+extract_text(path: Path) -> ExtractedText` (dispatches by the lower-case extension; raises
+`DocumentRefusedError` with a closed Spanish reason, «Ese formato todavía no lo leo.» outside the
+table); `def cut_sections(text: ExtractedText, *, max_chars: int) ->
 list[NewSection]`; `async def fit_sections(client, sections) -> list[NewSection]` (cuts again a
 section the model counts over the window; with Ollama down returns them as given);
 `async def embed_section(client, section_id: int, body: str) -> bool` (`truncate=False`; a refusal
@@ -653,7 +678,8 @@ is logged and counted, never cut).
 
 - [ ] **Step 1: Write the failing tests:** a canary `.md` keeps its heading path; a `.txt` in
   Latin-1 is refused; a text-layer PDF gives its pages' text; a PDF without text, an encrypted PDF,
-  a file above 10 MB and one above 200 pages are refused with their reasons; a parser that hangs is
+  a file above 10 MB and one above 200 pages are refused with their reasons; a `.docx` (not in the
+  table yet) is refused with «Ese formato todavía no lo leo.»; a parser that hangs is
   killed at the limit and nothing is stored (Review focus 4, with a stub child); no section exceeds
   the cap; a section the model counts over the window is cut before insert; a refused embedding
   leaves the section lexical and counted.
@@ -840,7 +866,9 @@ their tests.
 
 The recall window inside the KNN (the scale test of block D; `sqlite-vec` 0.1.9 supports it),
 FTS5 prefixes or stemming (only measured, and only after the gate), a reranker, HyDE, GraphRAG,
-RAPTOR, web search, an LLM grader of relevance, scanned PDF and OCR, tables (R4), images or video
+RAPTOR, web search, an LLM grader of relevance, Word, Excel, CSV, images with text and audio or
+video files (R2b, the next plan, roadmap row 9b), scanned PDF, handwriting and OCR (R4), an
+archive of original files, describing a medical image (never), images or video
 as a source (R6), a `public` document level and other members' documents (P3), loading documents
 by voice or remotely, archiving a document by voice, document versions, the camera reading without
 face authentication, the extraction of the engine (ADR 0031 decision 11), any robot, wire or audio
