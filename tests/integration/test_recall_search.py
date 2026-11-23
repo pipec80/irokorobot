@@ -26,6 +26,8 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Sequence
     from pathlib import Path
 
+    from server.memory.retrieval import GateSignals
+
 pytestmark = pytest.mark.integration
 
 _DIMENSIONS = 768
@@ -380,3 +382,59 @@ async def test_only_the_owners_units_of_another_model_turn_the_vector_off(
 
     assert not found.lexical_only
     assert _ids(found) == [mine]
+
+
+# The gate as one step of the search (Plan 0088 Task A2, D-5).
+
+
+async def test_the_distance_of_a_word_hit_outside_the_knn_is_measured(
+    owners: tuple[int, int], embed: AsyncMock
+) -> None:
+    owner, _ = owners
+    record_id = await _record(owner)
+    for _ in range(recall_search.RECALL_VECTOR_K):
+        await _unit(owner, record_id, "subimos la montaña", axis=0)
+    far = await _unit(owner, record_id, "fuimos al cerro", axis=5)
+    seen: list[GateSignals] = []
+
+    def spy(signals: GateSignals) -> bool:
+        seen.append(signals)
+        return True
+
+    found = await recall_search.search_recall(
+        owner, _cue("cerro"), client=httpx.AsyncClient(), now=_NOW, gate=spy
+    )
+
+    by_words = [signals for signals in seen if signals.by_words]
+    assert len(by_words) == 1
+    assert by_words[0].distance == pytest.approx(1.0, abs=0.001)
+    assert far in _ids(found)
+
+
+async def test_distances_of_never_reads_another_owner(owners: tuple[int, int]) -> None:
+    owner, other = owners
+    mine = await _unit(owner, await _record(owner), "el cerro", axis=0)
+    theirs = await _unit(other, await _record(other), "el cerro", axis=0)
+    unembedded = await _unit(owner, await _record(owner), "el cerro otra vez")
+
+    distances = await recall_store.distances_of(
+        [mine, theirs, unembedded], _axis(0), owner_entity_id=owner
+    )
+
+    assert distances == {mine: pytest.approx(0.0, abs=0.001)}
+
+
+async def test_a_gate_given_to_the_search_decides_alone(
+    owners: tuple[int, int], embed: AsyncMock
+) -> None:
+    owner, _ = owners
+    record_id = await _record(owner)
+    await _unit(owner, record_id, "fuimos al cerro con Zeta", axis=5)
+    await _unit(owner, record_id, "subimos la montaña", axis=0)
+
+    found = await recall_search.search_recall(
+        owner, _cue("que del cerro"), client=httpx.AsyncClient(), now=_NOW, gate=lambda _: False
+    )
+
+    assert found.hits == ()
+    assert found.rejected == 2

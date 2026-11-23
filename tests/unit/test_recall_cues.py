@@ -10,10 +10,12 @@ from server.cognition.intent_resolution import resolve_information_need
 from server.cognition.recall_cues import (
     RELATIVE_WORDS,
     CueStrength,
+    RecallCue,
     WhenKind,
     classify_recall_cue,
     content_words,
     relation_of,
+    specific_words,
 )
 from server.cognition.response_plan import InformationNeed
 from server.cognition.spoken_dates import DayWindow
@@ -524,3 +526,31 @@ def test_a_request_opener_before_a_listed_verb_drops_out_of_the_query() -> None:
 )
 def test_a_request_opener_without_a_listed_past_verb_changes_nothing(message: str) -> None:
     assert classify_recall_cue(message, today=_WEDNESDAY) is None
+
+
+# The question's specific words (Plan 0088 D-2): capitalized not opening a sentence, or holding a
+# digit; folded, without stop words and «Iroko».
+
+
+def test_specific_words_skip_the_first_word_and_iroko() -> None:
+    assert specific_words("¿Qué te conté de Zeta?") == frozenset({"zeta"})
+    assert specific_words("Iroko, ¿qué te conté de Zeta? Ómega también.") == frozenset({"zeta"})
+    assert specific_words("Oye Iroko, ¿qué hicimos en Año Nuevo?") == frozenset({"ano", "nuevo"})
+
+
+def test_a_token_with_a_digit_is_specific() -> None:
+    assert specific_words("¿Qué te dije del repuesto ZX-41?") == frozenset({"zx", "41"})
+    assert specific_words("¿qué te conté del vuelo LA 330?") == frozenset({"330"})
+
+
+def test_a_lower_case_name_is_not_specific() -> None:
+    assert specific_words("¿qué te conté de zeta?") == frozenset()
+    assert specific_words("¿Qué te conté del sensor de temperatura?") == frozenset()
+
+
+def test_the_cue_carries_the_specific_words() -> None:
+    cue = classify_recall_cue("¿Qué te conté de Zeta?", today=_WEDNESDAY)
+
+    assert cue is not None
+    assert cue.specific == frozenset({"zeta"})
+    assert RecallCue(strength=CueStrength.STRONG, query="x", window=None).specific == frozenset()

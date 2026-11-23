@@ -45,6 +45,7 @@ __all__ = [
     "content_words",
     "names_both_children",
     "relation_of",
+    "specific_words",
 ]
 
 # Longest first, so «como te dije» is removed whole before «te dije».
@@ -105,6 +106,9 @@ _USTED_OPENERS: Final = (
     "digame",
     "sabe",
 )
+# A word of the raw transcript, and the marks after which a word opens a sentence (Plan 0088 D-2).
+_RAW_WORD: Final = re.compile(r"\w+")
+_SENTENCE_OPENERS: Final = "¿¡.?!"
 _ACCENTED_WHEN: Final = "cuándo"
 _WHEN_RAW: Final = re.compile(r"\bcu[aá]ndo\b")
 _INTERROGATIVES: Final = frozenset(
@@ -252,12 +256,14 @@ class RecallCue:
         window: The local days it names, or ``None``.
         when: Whether a question opening with «cuándo» asks when it was told or when it happened;
             ``None`` for every other question.
+        specific: The question's specific words (``specific_words``, Plan 0088 D-2).
     """
 
     strength: CueStrength
     query: str
     window: DayWindow | None
     when: WhenKind | None = None
+    specific: frozenset[str] = frozenset()
 
 
 def _has(padded: str, phrase: str) -> bool:
@@ -379,6 +385,31 @@ def content_words(query: str) -> tuple[str, ...]:
     return tuple(seen)
 
 
+def specific_words(raw: str) -> frozenset[str]:
+    """Return the words of *raw* that name something specific (Plan 0088 D-2).
+
+    A word the speech-to-text wrote with a capital letter that does not open a sentence (after
+    «¿», «¡», «.», «?», «!» or the start), and every token holding a digit; folded, without the
+    stop words and «Iroko». A name written in lower case is not specific: the signal is the
+    transcript's capitalization (measured in Task A0 Step 4).
+
+    Args:
+        raw: The raw transcript, before any folding.
+
+    Returns:
+        The folded specific words; empty when the question names nothing specific.
+    """
+    found: set[str] = set()
+    text = unicodedata.normalize("NFC", raw)
+    for match in _RAW_WORD.finditer(text):
+        word = match.group(0)
+        before = text[: match.start()].rstrip()
+        opens = not before or before[-1] in _SENTENCE_OPENERS
+        if any(character.isdigit() for character in word) or (word[0].isupper() and not opens):
+            found.update(normalize_spanish(word).split())
+    return frozenset(found - _STOP_WORDS)
+
+
 def _window_and_query(
     normalized: str, without_cues: str, today: date, *, occurred: bool
 ) -> tuple[DayWindow | None, str]:
@@ -432,7 +463,9 @@ def classify_recall_cue(message: str, *, today: date, occurred: bool = False) ->
         if opening is not None and strength is CueStrength.STRONG
         else None
     )
-    return RecallCue(strength=strength, query=query, window=window, when=when)
+    return RecallCue(
+        strength=strength, query=query, window=window, when=when, specific=specific_words(message)
+    )
 
 
 def _names_both_parents(padded: str) -> bool:
