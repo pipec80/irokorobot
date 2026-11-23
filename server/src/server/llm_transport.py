@@ -172,6 +172,7 @@ async def ollama_embed(
     *,
     model: str,
     timeout: float | None = None,
+    truncate: bool = True,
 ) -> list[float]:
     """Call Ollama's ``/api/embed`` for one text and return its embedding vector.
 
@@ -181,6 +182,9 @@ async def ollama_embed(
         text: Non-empty text to embed.
         model: Ollama embedding model name.
         timeout: Optional per-request timeout override, in seconds.
+        truncate: ``False`` asks Ollama to refuse a text longer than the model's window
+            (HTTP 400) instead of cutting it silently (Plan 0088 D-10); the default sends no
+            field, as before.
 
     Returns:
         The first embedding of the response, as floats. Its length is the
@@ -190,13 +194,10 @@ async def ollama_embed(
         httpx.HTTPError: If the Ollama server is unreachable or returns an error.
         LLMError: If the body is not JSON or carries no numeric vector.
     """
-    url = f"{settings.ollama_url}/api/embed"
-    resp = await client.post(url, json={"model": model, "input": text}, timeout=timeout)
-    resp.raise_for_status()
-    try:
-        body: object = resp.json()
-    except ValueError as exc:
-        raise LLMError("Ollama returned a non-JSON response") from exc
+    payload: dict[str, object] = {"model": model, "input": text}
+    if not truncate:
+        payload["truncate"] = False
+    body = await _embed_body(client, payload, timeout=timeout)
     embeddings = body.get("embeddings") if isinstance(body, dict) else None
     vector = embeddings[0] if isinstance(embeddings, list) and embeddings else None
     if not isinstance(vector, list) or not all(
@@ -204,6 +205,46 @@ async def ollama_embed(
     ):
         raise LLMError("Ollama embedding response carries no numeric vector")
     return [float(value) for value in vector]
+
+
+async def ollama_token_count(
+    client: httpx.AsyncClient, text: str, *, model: str, timeout: float | None = None
+) -> int:
+    """Count the tokens the embedding model reads of *text* (Plan 0088 D-10).
+
+    Ollama's ``/api/embed`` reports ``prompt_eval_count``, special tokens included, capped at the
+    model's window: a count at the window means the text reaches or passes it.
+
+    Args:
+        client: Shared, lifecycle-owned HTTP client (Plan 0039).
+        text: Non-empty text.
+        model: Ollama embedding model name.
+        timeout: Optional per-request timeout override, in seconds.
+
+    Returns:
+        The token count.
+
+    Raises:
+        httpx.HTTPError: If the Ollama server is unreachable or returns an error.
+        LLMError: If the body is not JSON or carries no integer count.
+    """
+    body = await _embed_body(client, {"model": model, "input": text}, timeout=timeout)
+    count = body.get("prompt_eval_count") if isinstance(body, dict) else None
+    if not isinstance(count, int) or isinstance(count, bool):
+        raise LLMError("Ollama embedding response carries no token count")
+    return count
+
+
+async def _embed_body(
+    client: httpx.AsyncClient, payload: dict[str, object], *, timeout: float | None
+) -> object:
+    """POST one ``/api/embed`` request and return its decoded JSON body."""
+    resp = await client.post(f"{settings.ollama_url}/api/embed", json=payload, timeout=timeout)
+    resp.raise_for_status()
+    try:
+        return resp.json()
+    except ValueError as exc:
+        raise LLMError("Ollama returned a non-JSON response") from exc
 
 
 async def check_reachable(client: httpx.AsyncClient) -> None:
