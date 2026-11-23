@@ -4,32 +4,9 @@ from __future__ import annotations
 
 import pytest
 from server.memory import retrieval
-from server.memory.retrieval import GateSignals, capped, covers, gate_or, match_expression, rrf
+from server.memory.retrieval import capped, covers, match_expression, rrf
 
 pytestmark = pytest.mark.unit
-
-
-def _signals(
-    distance: float | None, *, by_words: bool = False, covers_specific: bool = False
-) -> GateSignals:
-    return GateSignals(
-        distance=distance, by_words=by_words, covers_specific=covers_specific, has_specific=False
-    )
-
-
-def test_gate_or_lets_a_near_vector_through() -> None:
-    gate = gate_or(vector=0.30)
-
-    assert gate(_signals(0.29))
-    assert not gate(_signals(0.30))
-    assert not gate(_signals(None))
-
-
-def test_gate_or_lets_every_word_hit_through() -> None:
-    gate = gate_or(vector=0.30)
-
-    assert gate(_signals(None, by_words=True))
-    assert gate(_signals(0.90, by_words=True))
 
 
 def test_rrf_sums_the_ranks_and_ties_go_to_the_higher_id() -> None:

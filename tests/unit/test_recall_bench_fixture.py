@@ -203,7 +203,7 @@ def test_g3_is_g1_and_g2_together() -> None:
     assert not gate(_s(None, words=True))
 
 
-def test_g0_is_the_production_rule() -> None:
+def test_g0_is_the_rule_adr_0040_replaced() -> None:
     gate = recall_bench_gates.build("G0", vector=0.43)
 
     assert gate(_s(0.90, words=True))

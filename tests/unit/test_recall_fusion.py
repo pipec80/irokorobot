@@ -1,7 +1,8 @@
 """The gate and the fusion of the two recall rankings (Plan 0078 Task 7, ADR 0028 decision 6).
 
 Since Plan 0088 the gate is one step of the search (``retrieval.gate_and_fuse``). The fusion's
-mechanics are pinned here with ``gate_or`` (G0) as the gate given; the production rule is ADR
+mechanics are pinned here with the bench's ``gate_or`` (G0, the rule ADR 0040 replaced) as the
+gate given; the production rule is ADR
 0040's (``production_gate``).
 """
 
@@ -11,8 +12,10 @@ from typing import TYPE_CHECKING
 
 import pytest
 from server.memory.recall_search import production_gate
-from server.memory.retrieval import GATE_ID, GateSignals, gate_and_fuse, gate_or
+from server.memory.retrieval import GATE_ID, GateSignals, gate_and_fuse
 from server.settings import Settings
+
+from scripts.recall_bench_gates import gate_or
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

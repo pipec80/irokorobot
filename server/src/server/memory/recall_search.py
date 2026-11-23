@@ -112,6 +112,19 @@ class _Window:
     occurred: bool = False
 
 
+@dataclass(frozen=True)
+class _VectorSide:
+    """The question's embedding and the KNN ranking, nearest first."""
+
+    embedding: list[float]
+    ranked: list[tuple[int, float]]
+
+    @property
+    def distances(self) -> dict[int, float]:
+        """The KNN's distances by unit id."""
+        return dict(self.ranked)
+
+
 def production_gate() -> Gate:
     """The rule of ADR 0040 (G3) with the configured ``RECALL_MAX_DISTANCE`` and
     ``RECALL_WORD_MAX_DISTANCE``, read at call time."""
@@ -122,7 +135,7 @@ def production_gate() -> Gate:
 
 async def _vector_side(
     client: httpx.AsyncClient, query: str, window: _Window
-) -> tuple[list[float], list[tuple[int, float]]] | None:
+) -> _VectorSide | None:
     """The question's embedding and the vector ranking, or ``None`` when only words search.
 
     Words alone search when the embedding model failed or when a unit of the owner still holds a
@@ -155,13 +168,13 @@ async def _vector_side(
         last_day=window.last_day,
         occurred=window.occurred,
     )
-    return vector, ranked
+    return _VectorSide(embedding=vector, ranked=ranked)
 
 
 async def _gated(
     cue: RecallCue,
     lexical: Sequence[int],
-    side: tuple[list[float], list[tuple[int, float]]] | None,
+    side: _VectorSide | None,
     window: _Window,
     gate: Gate,
 ) -> tuple[list[RecallUnit], int]:
@@ -170,7 +183,7 @@ async def _gated(
     Returns:
         The qualifying readable units best first, and how many readable candidates were refused.
     """
-    ranked = [] if side is None else side[1]
+    ranked = [] if side is None else side.ranked
     distances = dict(ranked)
     candidates = list(dict.fromkeys([*lexical, *distances]))
     units = await units_by_id(
@@ -178,7 +191,7 @@ async def _gated(
     )
     unmeasured = [unit.id for unit in units if unit.id not in distances]
     if side is not None and unmeasured:
-        distances |= await distances_of(unmeasured, side[0], owner_entity_id=window.owner)
+        distances |= await distances_of(unmeasured, side.embedding, owner_entity_id=window.owner)
     words = set(lexical)
     signals = {
         unit.id: GateSignals(
@@ -274,7 +287,7 @@ async def search_recall(
         total=RECALL_MAX_RESULTS,
         per_key=RECALL_MAX_PER_RECORD,
     )
-    knn = {} if side is None else dict(side[1])
+    knn = {} if side is None else side.distances
     return RecallSearch(
         hits=tuple(RecallHit(unit=unit, distance=knn.get(unit.id)) for unit in units),
         best_distance=min(knn.values()) if knn else None,

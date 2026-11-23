@@ -24,7 +24,6 @@ __all__ = [
     "covers",
     "gate_and_fuse",
     "gate_near_or_named",
-    "gate_or",
     "match_expression",
     "rrf",
 ]
@@ -57,23 +56,6 @@ class GateSignals:
 
 
 type Gate = Callable[[GateSignals], bool]
-
-
-def gate_or(*, vector: float) -> Gate:
-    """G0, the rule of ADR 0028 decision 6.3: a near vector **or** any word hit.
-
-    Args:
-        vector: The absolute cosine-distance gate (``RECALL_MAX_DISTANCE``).
-
-    Returns:
-        The gate.
-    """
-
-    def gate(signals: GateSignals) -> bool:
-        near = signals.distance is not None and signals.distance < vector
-        return near or signals.by_words
-
-    return gate
 
 
 def gate_near_or_named(*, vector: float, words: float) -> Gate:
@@ -179,5 +161,7 @@ def covers(body: str, words: frozenset[str]) -> bool:
     Returns:
         ``True`` when each word, or its one-«s» variant, is a whole word of the folded body.
     """
+    if not words:
+        return True
     tokens = set(normalize_spanish(body).split())
     return all(_variants(word) & tokens for word in words)

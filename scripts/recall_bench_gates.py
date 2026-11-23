@@ -22,12 +22,12 @@ if __package__ in (None, ""):
 
 from typing import TYPE_CHECKING, Final  # after the sys.path bootstrap, by design
 
-from server.memory.retrieval import gate_near_or_named, gate_or
+from server.memory.retrieval import gate_near_or_named
 
 if TYPE_CHECKING:
     from server.memory.retrieval import Gate, GateSignals
 
-__all__ = ["PARAMETERS", "RULES", "SWEPT", "build"]
+__all__ = ["PARAMETERS", "RULES", "SWEPT", "build", "gate_or"]
 
 #: The rules, in D-2's order.
 RULES: Final = ("G0", "G1", "G2", "G3")
@@ -35,6 +35,23 @@ RULES: Final = ("G0", "G1", "G2", "G3")
 SWEPT: Final = frozenset({"G1", "G3"})
 #: How many thresholds each rule has (D-3's tie-break: the fewest parameters).
 PARAMETERS: Final[dict[str, int]] = {"G0": 1, "G1": 2, "G2": 1, "G3": 2}
+
+
+def gate_or(*, vector: float) -> Gate:
+    """G0, the rule of ADR 0028 decision 6.3 that ADR 0040 replaced: a near vector or any word hit.
+
+    Args:
+        vector: The absolute cosine-distance gate (``RECALL_MAX_DISTANCE``).
+
+    Returns:
+        The gate.
+    """
+
+    def gate(signals: GateSignals) -> bool:
+        near = signals.distance is not None and signals.distance < vector
+        return near or signals.by_words
+
+    return gate
 
 
 def _g1(*, vector: float, words: float) -> Gate:

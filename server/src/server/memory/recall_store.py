@@ -705,15 +705,11 @@ async def distances_of(
     """
     if not ids:
         return {}
-    marks = ", ".join(f":id{index}" for index in range(len(ids)))
+    marks = ", ".join("?" for _ in ids)
     cursor = await db.get_conn().execute(
-        "SELECT rowid, vec_distance_cosine(embedding, :vector) FROM recall_units_vec "  # noqa: S608
-        f"WHERE owner_entity_id = :owner AND rowid IN ({marks})",
-        {
-            **{f"id{index}": unit_id for index, unit_id in enumerate(ids)},
-            "vector": sqlite_vec.serialize_float32(vector),
-            "owner": owner_entity_id,
-        },
+        "SELECT rowid, vec_distance_cosine(embedding, ?) FROM recall_units_vec "  # noqa: S608
+        f"WHERE owner_entity_id = ? AND rowid IN ({marks})",
+        (sqlite_vec.serialize_float32(vector), owner_entity_id, *ids),
     )
     rows = await cursor.fetchall()
     await cursor.close()

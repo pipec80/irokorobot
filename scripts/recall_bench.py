@@ -25,6 +25,7 @@ from datetime import date, datetime, time
 import itertools
 import json
 import logging
+import math
 import tempfile
 from time import perf_counter
 from typing import TYPE_CHECKING, Final, Literal
@@ -38,7 +39,6 @@ from server.memory.conversation_types import RecordedTurn, TurnVerdict
 from server.memory.declarative import upsert_entity
 from server.memory.household_time import household_zone
 from server.memory.recall_search import search_recall
-from server.memory.retrieval import Gate, GateSignals, gate_or
 from server.settings import settings
 from server.timestamps import instant_text
 import yaml
@@ -49,6 +49,8 @@ from server import db
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
+
+    from server.memory.retrieval import Gate, GateSignals
 
 logger = logging.getLogger(__name__)
 
@@ -527,20 +529,21 @@ class _Runner:
     async def word_hit_distances(self) -> list[float]:
         """The distances of the word hits of the ``tune`` half: where a second gate can cut."""
         seen: list[float] = []
-        base = gate_or(vector=settings.recall_max_distance)
 
         def recording(signals: GateSignals) -> bool:
+            # The signals of every readable candidate are computed before any gate runs.
             if signals.by_words and signals.distance is not None:
                 seen.append(signals.distance)
-            return base(signals)
+            return False
 
         await self.run(recording, [q for q in self.bench.questions if q.half == "tune"])
         return seen
 
 
 def _percentile(values: Sequence[float], share: float) -> float:
+    """Nearest-rank: the value at 1-indexed rank ``ceil(share * n)`` (Plan 0047's protocol)."""
     ordered = sorted(values)
-    return round(ordered[min(len(ordered) - 1, int(share * len(ordered)))], 1)
+    return round(ordered[max(0, math.ceil(share * len(ordered)) - 1)], 1)
 
 
 @dataclass(frozen=True)
