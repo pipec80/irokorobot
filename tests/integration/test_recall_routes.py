@@ -46,7 +46,9 @@ pytestmark = pytest.mark.integration
 
 _FRAME = cv2.imencode(".jpg", np.zeros((10, 10, 3), dtype=np.uint8))[1].tobytes()
 _OWNER_FACE = np.eye(512, dtype=np.float32)[0]
-_STRONG = "¿Qué te conté del cerro?"
+# The embedder is offline here, so words alone search: since ADR 0040 a word hit with no
+# distance needs a name the question says and the story holds («Pochoco»).
+_STRONG = "¿Qué te conté del cerro Pochoco?"
 _WEAK = "¿Te acuerdas de Mozart?"
 _GENERIC = "Hola, ¿cómo estás?"
 _ANSWER = "Sí, me contaste que fuiste al cerro con Zeta."
@@ -80,7 +82,7 @@ def _files(*, with_frame: bool = True) -> dict[str, tuple[str, bytes, str]]:
 async def household(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> AsyncIterator[PersonalSetupResult]:
-    """A face-enrolled owner with one recalled sentence: «fuimos al cerro con Zeta»."""
+    """A face-enrolled owner with one recalled sentence: «fuimos al cerro Pochoco con Zeta»."""
     monkeypatch.setattr(settings, "brain_db_path", tmp_path / "recall-routes.db")
     monkeypatch.setattr(settings, "face_authentication_enabled", True)
     monkeypatch.setattr(settings, "memory_enabled", True)
@@ -94,7 +96,7 @@ async def household(
     )
     await grant_face_consent(result.owner_entity_id)
     await enroll_face(result.owner_entity_id, _OWNER_FACE, label="Canary")
-    await _remember(result.owner_entity_id, "fuimos al cerro con Zeta")
+    await _remember(result.owner_entity_id, "fuimos al cerro Pochoco con Zeta")
     yield result
     continuity.reset()
     await db.close_db()
@@ -353,7 +355,7 @@ async def test_a_when_question_answers_with_the_day_it_was_told_and_asks_no_mode
     """Plan 0080 D-8 and D-9: «¿cuándo fui…?» is not the told day, «¿cuándo te conté…?» is."""
     await _remember(household.owner_entity_id, _BEACH_STORY)
     _see_the_owner(monkeypatch)
-    _hear(monkeypatch, "¿Cuándo fui a la playa?", "¿Cuándo te conté de la playa?")
+    _hear(monkeypatch, "¿Cuándo fui a la playa con Zeta?", "¿Cuándo te conté de la playa con Zeta?")
     prompts, wording = _models(monkeypatch)
 
     async with _client() as client:

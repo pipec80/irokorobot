@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
 from pydantic import SecretStr
@@ -18,7 +18,7 @@ from server.cognition import controller as controller_module
 from server.cognition.occurred_time import occurred_window
 from server.cognition.response_plan import NO_MEMORY
 from server.cognition.spoken_dates import date_label, occurred_label
-from server.memory import continuity, recall_store
+from server.memory import continuity, recall_search, recall_store
 from server.memory.biometric_consent import grant_face_consent
 from server.memory.conversation_types import RecordedTurn, TurnVerdict
 from server.memory.recall_search import household_zone
@@ -55,6 +55,8 @@ _SATURDAY_STORY = str(_STORIES[0]["heard"])  # «El sábado fui a la playa con m
 _LAST_YEAR_STORY = str(_STORIES[5]["heard"])  # «El año pasado fui a la nieve.»
 _WHEN_BEACH = str(_QUESTIONS[4]["message"])  # «¿Se acuerda cuándo fui a la playa?»
 _WHAT_YESTERDAY = str(_QUESTIONS[3]["message"])  # «¿Qué hice ayer?»
+# One vector for every told story and question: a story found by its meaning (ADR 0040).
+_NEAR = [1.0] + [0.0] * 767
 
 
 @pytest.fixture
@@ -102,7 +104,7 @@ async def _told_yesterday(owner: int, heard: str, *, with_episode: bool = False)
         turn = RecordedTurn(
             at=said, heard=heard, said="ok", voice=TurnVerdict.VERIFIED, correlation_id=uuid4()
         )
-        await recall_store.insert_turn_unit(
+        unit_id = await recall_store.insert_turn_unit(
             conn, record_id=record_id, owner_entity_id=owner, turn=turn, occurred=occurred
         )
         if with_episode:
@@ -124,6 +126,7 @@ async def _told_yesterday(owner: int, heard: str, *, with_episode: bool = False)
                 sensitivity="normal",
                 said_at=iso,
             )
+    assert await recall_store.store_vector(unit_id, _NEAR, model=settings.embedding_model)
     return occurred
 
 
@@ -136,6 +139,9 @@ async def test_when_on_each_voice_route(
     _see_the_owner(monkeypatch)
     _hear(monkeypatch, _WHEN_BEACH)
     prompts, wording = _models(monkeypatch)
+    # The question names nothing, so it is found by its meaning (ADR 0040): the story's vector and
+    # the question's embedding are the same.
+    monkeypatch.setattr(recall_search, "ollama_embed", AsyncMock(return_value=_NEAR))
     zone = household_zone()
     today = datetime.now(UTC).astimezone(zone).date()
 

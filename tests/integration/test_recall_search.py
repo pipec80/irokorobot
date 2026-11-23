@@ -81,8 +81,9 @@ async def _record(owner: int) -> int:
 
 
 async def _unit(
-    owner: int, record_id: int, heard: str, *, at: datetime = _YESTERDAY, axis: int | None = None
+    owner: int, record_id: int, heard: str, *, at: datetime = _YESTERDAY, axis: int | None = 0
 ) -> int:
+    """A verified turn's unit; near the question's axis-0 embedding unless *axis* says else."""
     turn = RecordedTurn(
         at=at, heard=heard, said="ok", voice=TurnVerdict.VERIFIED, correlation_id=uuid4()
     )
@@ -110,7 +111,8 @@ def _ids(found: recall_search.RecallSearch) -> list[int]:
 async def test_words_and_a_near_vector_both_find(owners: tuple[int, int], embed: AsyncMock) -> None:
     owner, _ = owners
     record_id = await _record(owner)
-    by_words = await _unit(owner, record_id, "fuimos al cerro con Zeta", axis=5)
+    # Found by words, outside T_v (0.30 here) but under T_w (ADR 0040).
+    by_words = await _unit_at(owner, record_id, "fuimos al cerro con Zeta", 0.35)
     by_vector = await _unit(owner, record_id, "subimos la montaña", axis=0)
 
     found = await _search(owner, _cue("que del cerro"))
@@ -171,9 +173,9 @@ async def test_an_embedding_failure_searches_by_words(
         recall_search, "ollama_embed", AsyncMock(side_effect=httpx.ConnectError("offline"))
     )
     record_id = await _record(owner)
-    unit_id = await _unit(owner, record_id, "el cerro")
+    unit_id = await _unit(owner, record_id, "el cerro con Zeta")
 
-    found = await _search(owner, _cue("cerro"))
+    found = await _search(owner, _named_cue("cerro zeta", "zeta"))
 
     assert _ids(found) == [unit_id]
     assert found.lexical_only
@@ -275,8 +277,8 @@ async def test_the_same_holds_when_only_the_words_found_it(
         recall_search, "ollama_embed", AsyncMock(side_effect=httpx.ConnectError("offline"))
     )
     record_id = await _record(owner)
-    first = await _unit(owner, record_id, "el cerro")
-    second = await _unit(owner, record_id, "otra vez el cerro")
+    first = await _unit(owner, record_id, "el cerro con Zeta")
+    second = await _unit(owner, record_id, "otra vez el cerro con Zeta")
     original = recall_store.lexical_hits
 
     async def then_reclassify(**kwargs: object) -> Sequence[int]:
@@ -286,7 +288,7 @@ async def test_the_same_holds_when_only_the_words_found_it(
 
     monkeypatch.setattr(recall_search, "lexical_hits", then_reclassify)
 
-    found = await _search(owner, _cue("cerro"))
+    found = await _search(owner, _named_cue("cerro zeta", "zeta"))
 
     assert found.lexical_only
     assert _ids(found) == [second]
@@ -349,7 +351,7 @@ async def test_a_model_change_leaves_recall_lexical_until_the_re_index(
     monkeypatch.setattr(settings, "embedding_model", "canary-model-b")
 
     with caplog.at_level(logging.WARNING):
-        found = await _search(owner, _cue("que del cerro"))
+        found = await _search(owner, _named_cue("que del cerro con zeta", "zeta"))
 
     spy.assert_not_awaited()
     assert _ids(found) == [by_words]
@@ -415,7 +417,7 @@ async def test_distances_of_never_reads_another_owner(owners: tuple[int, int]) -
     owner, other = owners
     mine = await _unit(owner, await _record(owner), "el cerro", axis=0)
     theirs = await _unit(other, await _record(other), "el cerro", axis=0)
-    unembedded = await _unit(owner, await _record(owner), "el cerro otra vez")
+    unembedded = await _unit(owner, await _record(owner), "el cerro otra vez", axis=None)
 
     distances = await recall_store.distances_of(
         [mine, theirs, unembedded], _axis(0), owner_entity_id=owner
@@ -465,7 +467,8 @@ def _named_cue(query: str, *specific: str) -> RecallCue:
 
 
 @pytest.fixture
-def production_thresholds(monkeypatch: pytest.MonkeyPatch) -> None:
+def production_thresholds(owners: tuple[int, int], monkeypatch: pytest.MonkeyPatch) -> None:
+    """After ``owners``, which sets the fixture's own 0.30."""
     monkeypatch.setattr(settings, "recall_max_distance", 0.43)
     monkeypatch.setattr(settings, "recall_word_max_distance", 0.464)
 
@@ -550,7 +553,7 @@ async def test_a_unit_without_a_vector_yet_follows_the_no_distance_rule(
 ) -> None:
     owner, _ = owners
     record_id = await _record(owner)
-    named = await _unit(owner, record_id, "fuimos al cerro con Zeta")
+    named = await _unit(owner, record_id, "fuimos al cerro con Zeta", axis=None)
 
     assert (await _search(owner, _cue("del cerro"))).hits == ()
     assert _ids(await _search(owner, _named_cue("del cerro con zeta", "zeta"))) == [named]
