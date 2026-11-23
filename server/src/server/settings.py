@@ -183,6 +183,11 @@ class Settings(BaseSettings):
     # «¿cuándo fui…?» says them and a recall window matches by them. Kill-switch, off in the code;
     # it also needs MEMORY_ENABLED and RECALL_ENABLED. Off: every recall as before.
     occurred_time_enabled: bool = False
+    # The owner's documents (ADR 0034, Plan 0088): a document cue («¿qué dice el manual de la
+    # lavadora sobre el filtro?») is answered from the owner's loaded documents, naming them, and
+    # the conversation job embeds their sections. Kill-switch, off in the code; it also needs
+    # MEMORY_ENABLED. Off: every turn as before.
+    documents_enabled: bool = False
     # Pending topics (ADR 0037 decisions 2 and 6, Plan 0084): what the verified owner says they
     # will do on one day («mañana voy al banco») is kept, named by the local model, and the first
     # greeting of a later day asks about it once. Kill-switch, off in the code; it also needs

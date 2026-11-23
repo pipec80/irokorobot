@@ -57,12 +57,17 @@ def _sources() -> dict[str, str]:
     }
 
 
+# The lifespan owns the server's client; `iroko-admin` runs with the server stopped, so its `docs`
+# command builds one for its own process (Plan 0088 D-16).
+_MAY_BUILD_HTTP_CLIENT = frozenset({"main.py", "admin_cli.py"})
+
+
 def _http_client_builders(sources: Mapping[str, str]) -> list[str]:
-    """Modules, besides main.py, that construct an `httpx.AsyncClient`."""
+    """Modules, besides main.py and the admin command's own process, that build an `AsyncClient`."""
     return [
         name
         for name, text in sources.items()
-        if name != "main.py"
+        if name not in _MAY_BUILD_HTTP_CLIENT
         and any(
             isinstance(node, ast.Call)
             and (

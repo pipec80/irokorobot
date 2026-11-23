@@ -35,6 +35,7 @@ from server.memory.admin_audit import (
     list_admin_operations,
     record_admin_operation,
 )
+from server.memory.admin_docs import DocsRequest, run_docs
 from server.memory.admin_forget import (
     ForgetKind,
     archive_groups,
@@ -144,6 +145,9 @@ class AdminRequest:
     side: str | None = None
     name: str | None = None
     at: str | None = None
+    file: Path | None = None
+    title: str | None = None
+    level: str | None = None
 
 
 def _actor(request: AdminRequest) -> AdminActor:
@@ -816,7 +820,49 @@ async def _dispatch(
         return await _archive(request, read_text, read_secret, write_text, now)
     if request.command == "export":
         return await _export(request, owner, read_text, read_secret, write_text, now)
+    if request.command == "docs":
+        return await _docs(request, owner, read_text, read_secret, write_text, now)
     return await _owner_command(request, owner, read_text, read_secret, write_text, now)
+
+
+def ollama_client() -> httpx.AsyncClient:
+    """The HTTP client of one ``iroko-admin docs`` run, its own process (a test swaps it)."""
+    return httpx.AsyncClient(timeout=settings.ollama_timeout_s)
+
+
+async def _docs(
+    request: AdminRequest,
+    owner: int,
+    read_text: ReadText,
+    read_secret: ReadText,
+    write_text: WriteText,
+    now: str,
+) -> int:
+    """Add, list or remove the owner's documents under the PIN (Plan 0088 D-16)."""
+
+    async def verify_pin() -> bool:
+        return await _grant_pin_if_needed(
+            required=True, read_secret=read_secret, write_text=write_text
+        )
+
+    async with ollama_client() as client:
+        return await run_docs(
+            DocsRequest(
+                action=request.action or "list",
+                actor_label=request.actor_label,
+                file=request.file,
+                title=request.title,
+                level=request.level,
+                row_id=request.row_id,
+            ),
+            owner=owner,
+            read_text=read_text,
+            write_text=write_text,
+            now=now,
+            verify_pin=verify_pin,
+            confirm=lambda: _confirm(request, read_text, write_text),
+            client=client,
+        )
 
 
 async def _health(write_text: WriteText) -> int:
@@ -901,7 +947,25 @@ def _server_answers() -> bool:
     return True
 
 
-def _parser() -> argparse.ArgumentParser:
+def _add_docs_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """The `docs` sub-command and its three actions (Plan 0088 D-16)."""
+    docs = sub.add_parser("docs", help="agrega, lista o borra los documentos de la titular (PIN)")
+    docs_sub = docs.add_subparsers(dest="action", required=True)
+    docs_add = docs_sub.add_parser("add", help="agrega un .md, .txt o .pdf con texto")
+    docs_add.add_argument("file", type=Path)
+    docs_add.add_argument(
+        "--title", nargs="+", help="el título (por defecto, el nombre del archivo)"
+    )
+    docs_add.add_argument("--level", choices=("normal", "sensitive"))
+    docs_sub.add_parser("list", help="lista los documentos (PIN)")
+    docs_remove = docs_sub.add_parser("remove", help="borra para siempre un documento (PIN)")
+    docs_remove.add_argument("row_id", type=int)
+    for docs_action in (docs_add, docs_remove):
+        docs_action.add_argument("--dry-run", action="store_true")
+        docs_action.add_argument("--actor", nargs="+")
+
+
+def _parser() -> argparse.ArgumentParser:  # noqa: PLR0915 - one statement per option
     parser = argparse.ArgumentParser(
         prog="iroko-admin",
         description="Administración local del hogar tras el cierre del alta (servidor apagado).",
@@ -967,6 +1031,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     export.add_argument("--dry-run", action="store_true")
     export.add_argument("--actor", nargs="+")
+    _add_docs_parser(sub)
     archive = sub.add_parser("archive", help="lista o recupera lo archivado por voz (PIN)")
     archive.add_argument("action", choices=("list", "restore"))
     archive.add_argument("--at", help="el instante del grupo, como lo muestra `archive list`")
@@ -990,6 +1055,9 @@ def _request(args: argparse.Namespace) -> AdminRequest:
         side=getattr(args, "side", None),
         name=" ".join(args.name) if getattr(args, "name", None) else None,
         at=getattr(args, "at", None),
+        file=getattr(args, "file", None),
+        title=" ".join(args.title) if getattr(args, "title", None) else None,
+        level=getattr(args, "level", None),
     )
 
 

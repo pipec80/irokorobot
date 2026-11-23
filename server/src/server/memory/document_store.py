@@ -53,7 +53,9 @@ __all__ = [
 
 type DocumentLevel = Literal["normal", "sensitive"]
 type DocumentFormat = Literal["md", "txt", "pdf", "camera"]
-type DocumentChannel = Literal["admin_local", "import_file", "voice_camera"]
+# The write channel of a source: `admin_local`, `voice_camera`, or the alta's import channel, which
+# only the import vocabulary names (an architecture guard); migration 023 checks the closed set.
+type DocumentChannel = str
 
 _PRIMARY_CODE_MASK: Final = 0xFF
 _SOURCE_COLUMNS: Final = "id, title, format, level, loaded_at, sections, characters"

@@ -39,6 +39,7 @@ from server.memory import (
     conversation_episodes,
     conversation_record,
     declarative,
+    document_store,
     meta,
     pending_store,
     recall_store,
@@ -97,6 +98,8 @@ class DeletionKind(StrEnum):
     # older than the turn rows, or one already archived).
     RECALL_UNIT = "recall_unit"
     PENDING_TOPIC = "pending_topic"
+    # The id is the source's: its sections, their word rows and their vectors go with it.
+    DOCUMENT = "document"
 
 
 @dataclass(frozen=True)
@@ -231,6 +234,7 @@ _DELETERS: Final[Mapping[DeletionKind, _RowDeleter]] = MappingProxyType(
         DeletionKind.ENTITY: declarative.delete_entity_row,
         DeletionKind.RECALL_UNIT: recall_store.delete_unit_row,
         DeletionKind.PENDING_TOPIC: pending_store.delete_topic_row,
+        DeletionKind.DOCUMENT: document_store.delete_source_row,
     }
 )
 

@@ -28,6 +28,7 @@ from server.memory.conversation_record import (
     next_pending_record,
     set_episode_status,
 )
+from server.memory.document_index import backfill_sections
 from server.memory.household_time import household_day
 from server.memory.pending_naming import name_topic
 from server.memory.pending_store import (
@@ -87,6 +88,9 @@ async def run_once(client: httpx.AsyncClient, now: datetime) -> None:
         if settings.recall_enabled:
             # The recall vectors the live path could not compute (ADR 0028 decision 2).
             await backfill_vectors(client)
+        if settings.documents_enabled:
+            # The document sections `iroko-admin docs add` left without a vector (Plan 0088 D-16).
+            await backfill_sections(client)
         if settings.memory_enabled:
             # Rows kept while the switch was on expire even after it is turned off.
             await _expire_pending_topics(now)
