@@ -120,6 +120,45 @@ section and index row, physically, with a line in the deletion register).
 The author's calls, for Pipec's review: own tables with the shared search; no `security` level for
 documents; the permissive-licence rule for the PDF library; the threat table of decision 6.
 
+## Deviations made by Plan 0088 (2026-11-23, still `Proposed`)
+
+[Plan 0088](../plans/open/0088-close-the-rag-gate-and-documents.md) Part B implements this ADR
+with these changes, each with its reason; Pipec approved them on 2026-11-23.
+
+1. **No version column** (decision 4 lists «version»). A changed file is a new source and the
+   owner removes the old one; a version is built when a re-load is asked for (YAGNI, Plan 0088
+   D-8). The same file twice is refused by its hash.
+2. **The level is asked, or given by a flag** (decision 1): `docs add` asks it when `--level` is
+   absent; the alta's manifest gives it, `normal` when absent (D-16).
+3. **The reading uses the turn's own frame** (decision 5 said «the robot takes one frame»). The
+   frame the voice routes already carry for face authentication is handed to the controller
+   through a per-request seam, so neither the robot nor the wire changes and both voice routes
+   answer. It works only with `ROBOT_FACE_AUTH_ENABLED` on the robot and
+   `FACE_AUTHENTICATION_ENABLED` on the server, plus `VISION_ENABLED` and `DOCUMENTS_ENABLED`
+   (D-17). While a reading waits, «sí, guárdalo» belongs to it, not to a memory candidate offered
+   earlier (ADR 0021's verb keeps its meaning when no reading waits).
+4. **The transformation follows from the format** (ADR 0031 decision 6): `original` for `md` and
+   `txt`, `extracted` for `pdf` and `camera`; no column holds it (D-8).
+5. **What a document reply leaves behind:** a document answer and a camera reading are recorded
+   with the markers «[respuesta de un documento]» and «[texto leído por la cámara]», so no section
+   or read text enters the conversation record, the diary, a recall unit or an export by the voice
+   routes; a document cue, a reading and its «sí, guárdalo» tell nothing (D-18).
+6. **Three `memory/` modules import `server.cognition`**, exactly as their recall twins:
+   `document_access` (the policy), `document_search` (the cue) and `document_answer` (the reply
+   plan). They are the documents' share of the coupling ADR 0031 decision 11 removes after CM-7 +
+   PC-5; a guard lists every such module and the list may shrink, never grow (D-20).
+7. **The audit of `iroko-admin docs`:** `admin_audit` has closed checks, so migration 023 rebuilds
+   it as migration 022 did, adding the target kind `document` and the operation `list` (`docs
+   list` is audited too, since a title can be sensitive). The audit row holds no title and no
+   text.
+8. **The caps, measured** (decision 1 and 4 left them to the plan): 10 MB per file, 200 pages,
+   30 s of extraction in a child process killed at the limit, `pypdf` 7.1.1 (BSD-3-Clause, `pip-audit`
+   clean) with its decompression limit set explicitly, 2,000 sections per document, and a section
+   cap of 1,200 characters under the embedding model's 512-token window. Measured on one long
+   text-layer PDF of Pipec's own (99 pages, 93,504 characters, 10.1 s, 13.5 MB peak in the child)
+   and on the document bench; three scanned PDFs of Pipec's (4 to 750 pages) gave no text at all,
+   so they wait for R4. Counts only; no file entered the repository.
+
 ## Not decided here
 
 | Subject | Owner |
