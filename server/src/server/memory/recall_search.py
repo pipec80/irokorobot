@@ -5,8 +5,10 @@ ADR 0028 decision 6, Plan 0078 D-4. The store filters by owner, visibility, sens
 is one step of the search: every candidate of the two rankings is read (the delivery filter), the
 distance of a word hit the KNN did not rank is measured, the gate decides on each candidate, and
 Reciprocal Rank Fusion orders what qualified (``memory/retrieval.py``). The production rule is
-still ADR 0028 decision 6.3: a vector distance under ``RECALL_MAX_DISTANCE`` or a shared content
-word. Zero qualifying units is a valid result. Without the embedding model the search is by words
+ADR 0040's: a question's named words must be in the unit, then a distance under
+``RECALL_MAX_DISTANCE``, or a word hit under ``RECALL_WORD_MAX_DISTANCE`` (with no distance, a
+word hit only when the question named something the unit holds). Zero qualifying units is a valid
+result. Without the embedding model the search is by words
 only. Nothing here logs a text.
 """
 
@@ -31,7 +33,14 @@ from server.memory.recall_store import (
     units_by_id,
     vector_hits,
 )
-from server.memory.retrieval import Gate, GateSignals, capped, covers, gate_and_fuse, gate_or
+from server.memory.retrieval import (
+    Gate,
+    GateSignals,
+    capped,
+    covers,
+    gate_and_fuse,
+    gate_near_or_named,
+)
 from server.settings import settings
 
 if TYPE_CHECKING:
@@ -104,8 +113,11 @@ class _Window:
 
 
 def production_gate() -> Gate:
-    """The rule of ADR 0028 decision 6.3 with the configured ``RECALL_MAX_DISTANCE`` (G0)."""
-    return gate_or(vector=settings.recall_max_distance)
+    """The rule of ADR 0040 (G3) with the configured ``RECALL_MAX_DISTANCE`` and
+    ``RECALL_WORD_MAX_DISTANCE``, read at call time."""
+    return gate_near_or_named(
+        vector=settings.recall_max_distance, words=settings.recall_word_max_distance
+    )
 
 
 async def _vector_side(

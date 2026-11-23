@@ -1,7 +1,8 @@
 """The gate and the fusion of the two recall rankings (Plan 0078 Task 7, ADR 0028 decision 6).
 
-Since Plan 0088 Task A2 the gate is one step of the search (``retrieval.gate_and_fuse``) and
-today's rule is ``gate_or`` (G0); the expectations are those of Plan 0078.
+Since Plan 0088 the gate is one step of the search (``retrieval.gate_and_fuse``). The fusion's
+mechanics are pinned here with ``gate_or`` (G0) as the gate given; the production rule is ADR
+0040's (``production_gate``).
 """
 
 from __future__ import annotations
@@ -9,7 +10,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
-from server.memory.retrieval import GateSignals, gate_and_fuse, gate_or
+from server.memory.recall_search import production_gate
+from server.memory.retrieval import GATE_ID, GateSignals, gate_and_fuse, gate_or
 from server.settings import Settings
 
 if TYPE_CHECKING:
@@ -44,8 +46,27 @@ def test_a_far_vector_hit_does_not_qualify() -> None:
     assert _fuse([], [(7, 0.31), (8, 0.29)], max_distance=_GATE) == [8]
 
 
-def test_every_lexical_hit_qualifies() -> None:
+def test_word_hits_without_a_distance_keep_their_word_order_under_g0() -> None:
     assert _fuse([5, 6], [], max_distance=_GATE) == [5, 6]
+
+
+def test_one_common_word_far_away_does_not_qualify() -> None:
+    """ADR 0040 replaces ADR 0028 decision 6.3: one shared word no longer qualifies a far story.
+
+    Replaces ``test_every_lexical_hit_qualifies`` and
+    ``test_a_far_vector_hit_found_by_words_still_qualifies``, which pinned the old «or».
+    """
+    gate = production_gate()
+    far = GateSignals(distance=0.90, by_words=True, covers_specific=False, has_specific=False)
+    unmeasured = GateSignals(
+        distance=None, by_words=True, covers_specific=False, has_specific=False
+    )
+    named = GateSignals(distance=None, by_words=True, covers_specific=True, has_specific=True)
+
+    assert not gate(far)
+    assert not gate(unmeasured)
+    assert gate(named)
+    assert GATE_ID == "G3"
 
 
 def test_rrf_orders_a_unit_found_twice_first() -> None:
@@ -53,10 +74,6 @@ def test_rrf_orders_a_unit_found_twice_first() -> None:
 
     assert fused[0] == 2
     assert set(fused) == {1, 2, 3}
-
-
-def test_a_far_vector_hit_found_by_words_still_qualifies() -> None:
-    assert _fuse([4], [(4, 0.90)], max_distance=_GATE) == [4]
 
 
 def test_a_far_vector_rank_adds_nothing_to_a_word_hit() -> None:
@@ -91,3 +108,8 @@ def test_the_default_gate_is_the_calibrated_one() -> None:
     """Calibrated on Pipec's hardware run (2026-11-03): his memories at 0.395 and 0.414, the
     questions with no memory at 0.469 to 0.517 (Plan 0078 Task 12)."""
     assert Settings.model_fields["recall_max_distance"].default == pytest.approx(0.43)
+
+
+def test_the_word_gate_is_the_one_the_bench_chose() -> None:
+    """Plan 0088's bench (2026-11-23): the midpoint of two word-hit distances, 0.456 and 0.472."""
+    assert Settings.model_fields["recall_word_max_distance"].default == pytest.approx(0.464)

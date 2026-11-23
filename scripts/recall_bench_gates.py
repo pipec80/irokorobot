@@ -22,7 +22,7 @@ if __package__ in (None, ""):
 
 from typing import TYPE_CHECKING, Final  # after the sys.path bootstrap, by design
 
-from server.memory.retrieval import gate_or
+from server.memory.retrieval import gate_near_or_named, gate_or
 
 if TYPE_CHECKING:
     from server.memory.retrieval import Gate, GateSignals
@@ -81,6 +81,7 @@ def build(rule: str, *, vector: float, words: float | None = None) -> Gate:
         case "G2":
             return _named(gate_or(vector=vector))
         case "G3" if words is not None:
-            return _named(_g1(vector=vector, words=words))
+            # The production rule since ADR 0040: the bench measures the very same function.
+            return gate_near_or_named(vector=vector, words=words)
         case _:
             raise ValueError(f"unknown rule {rule}")

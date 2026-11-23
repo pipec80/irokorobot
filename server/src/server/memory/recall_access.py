@@ -30,6 +30,7 @@ from server.memory.profile_card_access import may_read_own_memory
 from server.memory.recall_answer import word_recall, word_when
 from server.memory.recall_search import RecallHit, RecallSearch, household_zone, search_recall
 from server.memory.recall_store import occurred_time_on
+from server.memory.retrieval import GATE_ID
 
 if TYPE_CHECKING:
     from datetime import date, datetime
@@ -72,6 +73,10 @@ def _logged(
             "hits": len(hits),
             "best_distance": None if best is None else round(best, _DISTANCE_DECIMALS),
             "lexical_only": bool(search and search.lexical_only),
+            # What the relevance gate did (Plan 0088 D-6, ADR 0040): counts and the rule's id.
+            "rejected": 0 if search is None else search.rejected,
+            "specific": len(cue.specific),
+            "gate": GATE_ID,
             "windowed": cue.window is not None,
             "when": None if cue.when is None else cue.when.value,
             **_occurred_field(hits),

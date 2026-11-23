@@ -202,6 +202,10 @@ class Settings(BaseSettings):
     # 2026-11-03 (Plan 0078): his memories at 0.395 and 0.414, questions with no memory at 0.469
     # to 0.517. A question is farther from a statement than a paraphrase, so it is above 0.30.
     recall_max_distance: float = Field(default=0.43, gt=0.0, lt=2.0)
+    # ADR 0040: a memory the word index found qualifies only under this distance (or, with no
+    # distance, when it holds the question's named words). Chosen by Plan 0088's bench
+    # (2026-11-23): the midpoint of two observed word-hit distances, 0.456 and 0.472.
+    recall_word_max_distance: float = Field(default=0.464, gt=0.0, lt=2.0)
     robot_character: str = "iroko"
     # Re-read character markdown profiles from disk on every request when
     # they change (prompt-engineering aid). OFF by default: production loads

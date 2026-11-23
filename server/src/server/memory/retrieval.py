@@ -16,12 +16,14 @@ from typing import Final
 from server.text_keys import normalize_spanish
 
 __all__ = [
+    "GATE_ID",
     "RRF_K",
     "Gate",
     "GateSignals",
     "capped",
     "covers",
     "gate_and_fuse",
+    "gate_near_or_named",
     "gate_or",
     "match_expression",
     "rrf",
@@ -29,6 +31,8 @@ __all__ = [
 
 #: Reciprocal Rank Fusion constant (ADR 0028 decision 6.4).
 RRF_K: Final = 60
+#: The production rule's id (ADR 0040), logged with every recall read.
+GATE_ID: Final = "G3"
 # A word shorter than this is matched exactly, never with one final «s» added or dropped
 # (Plan 0086's names, `forget_scope._with_variants`).
 _MIN_PLURAL_WORD: Final = 4
@@ -68,6 +72,31 @@ def gate_or(*, vector: float) -> Gate:
     def gate(signals: GateSignals) -> bool:
         near = signals.distance is not None and signals.distance < vector
         return near or signals.by_words
+
+    return gate
+
+
+def gate_near_or_named(*, vector: float, words: float) -> Gate:
+    """G3, the rule of ADR 0040: named things must be there, then a near meaning or a near word hit.
+
+    A question with specific words qualifies only a unit that holds them. Then, with a distance:
+    under *vector*, or a word hit under *words*; without one (the embedding model down, or no
+    vector yet): a word hit, and only when the question named something the unit holds.
+
+    Args:
+        vector: ``T_v``, the gate of a unit found by its meaning (``RECALL_MAX_DISTANCE``).
+        words: ``T_w``, the gate of a word hit (``RECALL_WORD_MAX_DISTANCE``).
+
+    Returns:
+        The gate.
+    """
+
+    def gate(signals: GateSignals) -> bool:
+        if signals.has_specific and not signals.covers_specific:
+            return False
+        if signals.distance is None:
+            return signals.by_words and signals.has_specific
+        return signals.distance < vector or (signals.by_words and signals.distance < words)
 
     return gate
 

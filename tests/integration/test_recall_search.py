@@ -13,7 +13,7 @@ from uuid import uuid4
 
 import httpx
 import pytest
-from server.cognition.recall_cues import CueStrength, RecallCue
+from server.cognition.recall_cues import CueStrength, RecallCue, classify_recall_cue
 from server.cognition.spoken_dates import DayWindow
 from server.memory import recall_index, recall_search, recall_store
 from server.memory.conversation_types import RecordedTurn, TurnVerdict
@@ -438,3 +438,119 @@ async def test_a_gate_given_to_the_search_decides_alone(
 
     assert found.hits == ()
     assert found.rejected == 2
+
+
+# ADR 0040, the relevance gate in production (Plan 0088 Task A5). The fixture's T_v is 0.30; the
+# tests that need the production thresholds set them.
+
+
+def _at(distance: float) -> list[float]:
+    """A vector at *distance* (cosine) from the question's axis-0 embedding."""
+    similarity = 1.0 - distance
+    values = [0.0] * _DIMENSIONS
+    values[0], values[1] = similarity, (1.0 - similarity**2) ** 0.5
+    return values
+
+
+async def _unit_at(owner: int, record_id: int, heard: str, distance: float) -> int:
+    unit_id = await _unit(owner, record_id, heard)
+    assert await recall_store.store_vector(unit_id, _at(distance), model=settings.embedding_model)
+    return unit_id
+
+
+def _named_cue(query: str, *specific: str) -> RecallCue:
+    return RecallCue(
+        strength=CueStrength.STRONG, query=query, window=None, specific=frozenset(specific)
+    )
+
+
+@pytest.fixture
+def production_thresholds(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "recall_max_distance", 0.43)
+    monkeypatch.setattr(settings, "recall_word_max_distance", 0.464)
+
+
+@pytest.mark.usefixtures("production_thresholds")
+async def test_a_named_person_never_told_finds_nothing_even_near(
+    owners: tuple[int, int], embed: AsyncMock
+) -> None:
+    """The hardware defect of 2026-11-18: an unrelated story at 0.37 for a person never told."""
+    owner, _ = owners
+    record_id = await _record(owner)
+    await _unit_at(owner, record_id, "vino una amiga a tomar once", 0.37)
+
+    found = await _search(owner, _named_cue("de florencia", "florencia"))
+
+    assert found.hits == ()
+    assert found.rejected == 1
+
+
+@pytest.mark.usefixtures("production_thresholds")
+async def test_a_story_asked_by_its_meaning_still_qualifies(
+    owners: tuple[int, int], embed: AsyncMock
+) -> None:
+    owner, _ = owners
+    meaning = await _unit_at(owner, await _record(owner), "fuimos a la playa", 0.40)
+
+    found = await _search(owner, _cue("del mar"))
+
+    assert _ids(found) == [meaning]
+
+
+async def test_an_exact_code_qualifies_with_the_vector_side_off(
+    owners: tuple[int, int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owner, _ = owners
+    monkeypatch.setattr(
+        recall_search, "ollama_embed", AsyncMock(side_effect=httpx.ConnectError("offline"))
+    )
+    code = await _unit(owner, await _record(owner), "pedí el repuesto ZX-41")
+
+    found = await _search(owner, _named_cue("del repuesto zx 41", "zx", "41"))
+
+    assert found.lexical_only
+    assert _ids(found) == [code]
+
+
+async def test_a_common_word_with_the_vector_side_off_does_not_qualify(
+    owners: tuple[int, int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review focus 2: with no distance, one common word is not enough."""
+    owner, _ = owners
+    monkeypatch.setattr(
+        recall_search, "ollama_embed", AsyncMock(side_effect=httpx.ConnectError("offline"))
+    )
+    await _unit(owner, await _record(owner), "subimos el cerro")
+
+    found = await _search(owner, _cue("del cerro"))
+
+    assert found.lexical_only
+    assert found.hits == ()
+    assert found.rejected == 1
+
+
+@pytest.mark.usefixtures("production_thresholds")
+async def test_a_lower_case_name_falls_back_to_the_rule_without_specific_words(
+    owners: tuple[int, int], embed: AsyncMock
+) -> None:
+    """Review focus 1: «zeta» in lower case is not specific; a near story still qualifies."""
+    owner, _ = owners
+    near = await _unit_at(owner, await _record(owner), "vino una amiga a tomar once", 0.20)
+    cue = classify_recall_cue("¿qué te conté de zeta?", today=date(2026, 11, 4))
+    assert cue is not None
+    assert cue.specific == frozenset()
+
+    found = await _search(owner, cue)
+
+    assert _ids(found) == [near]
+
+
+async def test_a_unit_without_a_vector_yet_follows_the_no_distance_rule(
+    owners: tuple[int, int], embed: AsyncMock
+) -> None:
+    owner, _ = owners
+    record_id = await _record(owner)
+    named = await _unit(owner, record_id, "fuimos al cerro con Zeta")
+
+    assert (await _search(owner, _cue("del cerro"))).hits == ()
+    assert _ids(await _search(owner, _named_cue("del cerro con zeta", "zeta"))) == [named]
