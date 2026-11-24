@@ -248,3 +248,12 @@ async def test_migration_023_keeps_the_audit_and_accepts_a_document_list(
         )
         assert entry.target_kind is TargetKind.DOCUMENT
         assert await _scalar("PRAGMA foreign_key_check") is None
+
+
+async def test_a_source_s_level_and_owner_never_change(owner: int) -> None:
+    """Review: the KNN's metadata would keep the old level; a new level is a new source."""
+    source = await _source(owner)
+    with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+        await db.get_conn().execute(
+            "UPDATE document_sources SET level = 'sensitive' WHERE id = ?", (source,)
+        )

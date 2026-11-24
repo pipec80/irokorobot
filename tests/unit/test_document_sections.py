@@ -5,6 +5,8 @@ Canary text only.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 from server.memory import document_sections
 from server.memory.document_extract import DocumentRefusedError, ExtractedText
@@ -76,3 +78,17 @@ def test_a_document_over_the_section_cap_is_refused(monkeypatch: pytest.MonkeyPa
 
     with pytest.raises(DocumentRefusedError):
         cut_sections(text, max_chars=SECTION_MAX_CHARS)
+
+
+def test_the_reading_cap_and_the_note_title() -> None:
+    from server.routers import transcribe  # noqa: PLC0415 - the route's helpers, tested alone
+
+    long_text = " ".join(["palabra"] * 120)
+    capped = transcribe._cap_reading(long_text)
+    assert len(capped) <= 400
+    assert capped.endswith("…")
+    now = datetime(2026, 11, 23, 15, tzinfo=UTC)
+    assert transcribe._note_title("Comprar pan y leche hoy mismo", now) == (
+        "Nota del 23 de noviembre: Comprar pan y leche hoy"
+    )
+    assert transcribe._note_title("Pagar 3 cuentas", now) == "Nota del 23 de noviembre"

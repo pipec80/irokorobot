@@ -105,15 +105,13 @@ def test_the_slot_gives_its_text_once_to_its_speaker_within_sixty_seconds() -> N
     assert slot.take(7, _NOW + timedelta(seconds=31)) is None
 
 
-def test_a_slot_bound_to_nobody_is_taken_by_the_next_speaker_and_a_new_reading_replaces_it() -> (
-    None
-):
+def test_a_slot_bound_to_nobody_is_never_taken_and_a_new_reading_replaces_it() -> None:
     slot = ReadingSlot()
-    slot.offer("zzuno", speaker=None, now=_NOW)
+    slot.offer("zzuno", speaker=7, now=_NOW)
     slot.offer("zzdos", speaker=None, now=_NOW)
 
     assert slot.is_open(_NOW)
-    assert slot.take(7, _NOW) == "zzdos"
+    assert slot.take(7, _NOW) is None
     assert not slot.is_open(_NOW)
 
 

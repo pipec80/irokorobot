@@ -43,6 +43,7 @@ from server.memory.commissioning import (
 from server.memory.document_extract import DocumentRefusedError, extract_text
 from server.memory.document_secrets import flags_secret
 from server.memory.document_sections import SECTION_MAX_CHARS, cut_sections
+from server.memory.document_store import source_id_of
 from server.memory.seed_file import (
     LoadedSeed,
     ManifestDocument,
@@ -220,14 +221,17 @@ def _alta_documents(seed_path: Path) -> tuple[AltaDocument, ...]:
     return documents
 
 
-def _print_documents(documents: tuple[AltaDocument, ...], write_text: WriteText) -> None:
+async def _print_documents(
+    documents: tuple[AltaDocument, ...], owner: int, write_text: WriteText
+) -> None:
     if not documents:
         return
     write_text("Documentos:")
     for document in documents:
+        stored = await source_id_of(owner_entity_id=owner, file_sha256=document.file_sha256)
         write_text(
             f"  {document.title}: {document.format}, {document.level}, "
-            f"{len(document.sections)} secciones"
+            f"{len(document.sections)} secciones{' (ya guardado)' if stored else ''}"
         )
 
 
@@ -270,7 +274,7 @@ async def _load_session(
         documents=documents,
     )
     _print_report(dry, names, write_text)
-    _print_documents(documents, write_text)
+    await _print_documents(documents, owner, write_text)
     if dry.problems:
         write_text("Hay problemas: no se escribió nada.")
         return 1

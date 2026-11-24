@@ -85,3 +85,13 @@ def test_a_document_cue_tells_nothing_with_documents_on(monkeypatch: pytest.Monk
     monkeypatch.setattr(settings, "documents_enabled", True)
     assert tells_something(question) is False
     assert tells_something("sí, guárdalo") is False
+
+
+def test_a_reading_request_tells_nothing_with_documents_and_vision_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review: «lee esto» is a request, never a story to remember (D-18)."""
+    monkeypatch.setattr(settings, "memory_enabled", True)
+    monkeypatch.setattr(settings, "documents_enabled", True)
+    monkeypatch.setattr(settings, "vision_enabled", True)
+    assert tells_something("Iroko, lee esto") is False

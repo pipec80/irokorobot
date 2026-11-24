@@ -115,7 +115,11 @@ async def _embed(
         if exc.response.status_code != _HTTP_BAD_REQUEST:
             _log_failure(exc, section_id)
             return "failed"
-        await mark_section_refused(section_id, model=model)
+        try:
+            await mark_section_refused(section_id, model=model)
+        except Exception as mark_exc:  # background boundary: it is tried again on the next tick
+            _log_failure(mark_exc, section_id)
+            return "failed"
         logger.warning(
             "Document section longer than the model's window: kept by its words only",
             extra={"event": "document.section_too_long", "section_id": section_id},

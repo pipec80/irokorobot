@@ -186,3 +186,25 @@ async def test_replace_is_refused_after_the_commissioning_closed(
 
     assert await _command(seed, _Terminal("SI"), apply=True, replace=True) == 1
     assert len(await _sources()) == 2
+
+
+async def test_a_second_load_keeps_the_stored_documents_as_unchanged(
+    prepared: Path, tmp_path: Path
+) -> None:
+    """Review: re-running the alta with the same manifest must not refuse the whole load."""
+    seed = _alta(tmp_path, _TWO, {"manual.md": _MANUAL, "receta.txt": _RECIPE})
+    assert await _command(seed, _Terminal("SI"), apply=True, commissioning=_details()) == 0
+    terminal = _Terminal("SI")
+
+    assert await _command(seed, terminal, apply=True) == 0
+
+    assert len(await _sources()) == 2
+    assert "ya guardado" in terminal.text
+
+
+async def test_a_file_name_with_a_null_byte_is_refused_as_not_found(
+    prepared: Path, tmp_path: Path
+) -> None:
+    seed = _alta(tmp_path, '[[document]]\nfile = "a\u0000b.md"\ntitle = "Nulo"\n', {})
+
+    assert await _command(seed, _Terminal("SI"), apply=True, commissioning=_details()) == 1

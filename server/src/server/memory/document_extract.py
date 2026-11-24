@@ -39,8 +39,9 @@ MAX_FILE_BYTES: Final = 10_000_000
 MAX_PAGES: Final = 200
 #: Seconds the PDF child may run before it is killed. Not ``Final``: a test shortens it.
 EXTRACT_TIMEOUT_S: float = 30.0
-# pypdf's own limit on one decompressed stream, set explicitly in the child (its default today).
-_MAX_DECOMPRESSED_BYTES: Final = 75_000_000
+# pypdf's limit on one decompressed stream, set in the child below its own default (75 MB). The
+# memory the child takes is bounded by this and the time limit only (Plan 0088 D-9, accepted).
+_MAX_DECOMPRESSED_BYTES: Final = 20_000_000
 
 _UNKNOWN_FORMAT: Final = "Ese formato todavía no lo leo."
 _NOT_UTF8: Final = "Ese archivo no está en UTF-8; guárdalo como UTF-8 y vuelve a intentarlo."
@@ -91,6 +92,8 @@ def _read_utf8(path: Path) -> str:
         text = path.read_bytes().decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise DocumentRefusedError(_NOT_UTF8) from exc
+    except OSError as exc:
+        raise DocumentRefusedError(_UNREADABLE) from exc
     if not text.strip():
         raise DocumentRefusedError(_EMPTY)
     return text.replace("\r\n", "\n").strip()
@@ -164,10 +167,12 @@ def extract_text(path: Path) -> ExtractedText:
 
 def _child(path: Path) -> int:
     """Read *path* as a PDF and write its pages' text as JSON; return the exit code."""
-    from pypdf import PdfReader, filters  # noqa: PLC0415 - only the child loads the parser
+    from pypdf import PdfReader, overwrite_configuration  # noqa: PLC0415 - only the child parses
 
-    filters.ZLIB_MAX_OUTPUT_LENGTH = _MAX_DECOMPRESSED_BYTES
-    filters.MAX_DECLARED_STREAM_LENGTH = _MAX_DECOMPRESSED_BYTES
+    overwrite_configuration(
+        zlib_maximum_output_length=_MAX_DECOMPRESSED_BYTES,
+        maximum_declared_stream_length=_MAX_DECOMPRESSED_BYTES,
+    )
     reader = PdfReader(path)
     if reader.is_encrypted:
         return _EXIT_NO_TEXT

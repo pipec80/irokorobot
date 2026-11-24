@@ -13,8 +13,10 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 
 import httpx
+import numpy as np
 from pydantic import SecretStr
 import pytest
+from server.cognition import face_authentication as face_auth
 from server.cognition.response_plan import DOCUMENT_RECORDED_TEXT, NO_MEMORY, NOT_IN_DOCUMENTS
 from server.memory import continuity, document_search, document_store
 from server.memory.biometric_consent import grant_face_consent
@@ -24,7 +26,7 @@ from server.memory.document_store import NewSection, NewSource
 from server.personal_setup import PersonalSetupInput, PersonalSetupResult, apply_personal_setup
 from server.routers import transcribe as transcribe_module
 from server.settings import settings
-from server.vision.faces import enroll_face
+from server.vision.faces import DetectedFace, enroll_face
 
 from server import db, llm, llm_streaming
 from tests.integration.test_recall_routes import (
@@ -235,3 +237,62 @@ async def test_the_record_keeps_the_marker_and_forgetting_leaves_no_byte(
         if path.exists():
             assert b"zzcanaryzz" not in path.read_bytes()
     await db.open_db()
+
+
+async def _sensitive_guide(owner: int) -> None:
+    source = NewSource(
+        owner_entity_id=owner,
+        title="Guía de cuidados",
+        file_sha256="c" * 64,
+        format="pdf",
+        level="sensitive",
+        channel="admin_local",
+        loaded_at="2026-11-23T12:00:00.000000+00:00",
+        loaded_by_entity_id=owner,
+    )
+    async with db.transaction() as conn:
+        await document_store.insert_source(
+            conn, source=source, sections=[NewSection(0, "", "qqsensibleqq el remedio QQR55")]
+        )
+
+
+@pytest.mark.parametrize("route", _ROUTES)
+async def test_a_second_face_hears_the_same_denial_with_or_without_a_sensitive_document(
+    household: tuple[PersonalSetupResult, int], monkeypatch: pytest.MonkeyPatch, route: str
+) -> None:
+    """D-15 as amended: a second face leaves no identified speaker, so every document cue hears
+    the generic denial, the same whether a sensitive document exists or not (no oracle)."""
+    result, _ = household
+    question = "¿Qué dice mi guía de cuidados sobre el remedio QQR55?"
+    _models(monkeypatch)
+    other = np.eye(512, dtype=np.float32)[1]
+    detected = [
+        DetectedFace(embedding=face, score=0.9, width=200.0) for face in (_OWNER_FACE, other)
+    ]
+    monkeypatch.setattr(face_auth, "_detect_faces_default", AsyncMock(return_value=detected))
+    _hear(monkeypatch, question, question)
+
+    async with _client() as client:
+        without = await client.post(route, files=_files())
+        await _sensitive_guide(result.owner_entity_id)
+        hidden = await client.post(route, files=_files())
+
+    assert _spoken(without, route) == _REFUSAL
+    assert _spoken(hidden, route) == _spoken(without, route)
+    assert "qqsensibleqq" not in hidden.text
+
+
+@pytest.mark.parametrize("route", _ROUTES)
+async def test_alone_the_owner_hears_the_sensitive_document(
+    household: tuple[PersonalSetupResult, int], monkeypatch: pytest.MonkeyPatch, route: str
+) -> None:
+    result, _ = household
+    await _sensitive_guide(result.owner_entity_id)
+    _see_the_owner(monkeypatch)
+    _hear(monkeypatch, "¿Qué dice mi guía de cuidados sobre el remedio QQR55?")
+    _models(monkeypatch)
+
+    async with _client() as client:
+        response = await client.post(route, files=_files())
+
+    assert "qqsensibleqq" in _spoken(response, route)

@@ -349,6 +349,14 @@ make. A decision answered differently is rewritten here before promotion.
   false-positive rate is measured on the document bench (a manual's «pin 3» or «error 5» must
   pass). It is a deterministic guard with known limits, recorded as such, not a promise that no
   code can ever be read.
+  > **Found in Task B10 (2026-11-24).** With a second face in view the face check identifies
+  > nobody (`VETO_MULTIPLE_FACES` leaves the actor ambiguous), so a document cue never reaches the
+  > level filter: every strong cue hears the generic denial, the same whether a `sensitive`
+  > document exists or not (still no oracle), and a weak one converses. The level filter stays as
+  > a second wall. The secret detector, measured on one real medical text of Pipec's (89 of 128
+  > sections refused by «a run of six or more digits»), no longer flags a lone number: a code
+  > needs its secret word (now also before it, «1234 es mi clave», and after «:»), a card its
+  > groups or a card word; a plain «código» needs four digits in a row.
 - **D-16 (Pipec, confirmed 2026-11-23) Loading** (ADR 0034 decision 1). `iroko-admin docs add <file> [--title T]
   [--level normal|sensitive]`, `docs list` and `docs remove <id>`, server stopped, each with the
   owner's PIN (`list` too, confirmed by Pipec on 2026-11-23: a title can be sensitive) and one `admin_audit` row that
@@ -383,6 +391,9 @@ make. A decision answered differently is rewritten here before promotion.
   document (`format` `camera`, title «Nota del {día}: {primeras palabras}», or «Nota del {día}»
   when the first words hold a digit); anything else empties the slot. Reading needs no identity;
   keeping does. The frame is never stored.
+  > **Found in Task B10 (2026-11-24).** A reading with no identified speaker on its turn is
+  > read aloud but can never be kept: anyone on the network could plant one for the owner's next
+  > «sí, guárdalo». A kept note is embedded at once.
 - **D-18 What a document reply leaves behind.** A document answer and a camera reading are
   recorded with markers, «[respuesta de un documento]» and «[texto leído por la cámara]»
   (`response_plan.recorded_exchange`, beside the sensitive-read marker), so no section or read text

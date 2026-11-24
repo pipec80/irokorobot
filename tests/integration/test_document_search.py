@@ -245,3 +245,24 @@ def test_the_cue_strength_is_carried() -> None:
     assert (
         _cue("¿Qué dice mi manual de la lavadora sobre el filtro?").strength is CueStrength.STRONG
     )
+
+
+def test_the_production_gate_reads_the_two_document_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from server.memory.document_search import production_document_gate  # noqa: PLC0415
+    from server.memory.retrieval import GateSignals  # noqa: PLC0415
+
+    monkeypatch.setattr(settings, "document_max_distance", 0.22)
+    monkeypatch.setattr(settings, "document_word_max_distance", 0.61)
+    gate = production_document_gate()
+
+    def signals(distance: float, *, words: bool) -> GateSignals:
+        return GateSignals(
+            distance=distance, by_words=words, covers_specific=True, has_specific=False
+        )
+
+    assert gate(signals(0.21, words=False))
+    assert not gate(signals(0.23, words=False))
+    assert gate(signals(0.60, words=True))
+    assert not gate(signals(0.62, words=True))

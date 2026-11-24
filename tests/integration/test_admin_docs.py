@@ -267,3 +267,14 @@ async def test_the_job_fills_the_sections_left_without_a_vector(
         assert await document_store.sections_without_vector(10) == []
     finally:
         await db.close_db()
+
+
+async def test_a_title_s_control_characters_are_not_stored(owner: int, manual: Path) -> None:
+    request = AdminRequest(
+        command="docs", action="add", file=manual, title="Manual\x1b[31m zz", level="normal"
+    )
+
+    assert (await _run(request, "SI"))[0] == 0
+
+    (source,) = await _sources(owner)
+    assert "\x1b" not in source.title

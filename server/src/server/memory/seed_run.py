@@ -24,7 +24,7 @@ from server.memory.commissioning import (
     record_import,
     set_section_status,
 )
-from server.memory.document_store import NewSource, insert_source
+from server.memory.document_store import NewSource, insert_source, source_id_of
 from server.memory.seed_import import (
     OperationOutcome,
     OperationStatus,
@@ -75,6 +75,8 @@ async def _insert_documents(documents: tuple[AltaDocument, ...], owner: int, now
     """Store the alta's documents in the run's transaction, on the alta's import channel."""
     conn = db.get_conn()
     for document in documents:
+        if await source_id_of(owner_entity_id=owner, file_sha256=document.file_sha256):
+            continue  # already stored (an earlier alta or `docs add`): unchanged, as a seed row
         source = NewSource(
             owner_entity_id=owner,
             title=document.title,

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import re
 from typing import TYPE_CHECKING, Final
+import unicodedata
 
 from server.cognition.recall_cues import content_words
 from server.cognition.response_plan import NOT_IN_DOCUMENTS
@@ -60,6 +61,14 @@ _ORDERS: Final = (
     "actua como",
     "finge que",
 )
+# Stems of the order verbs and «dile(s) … que» (folded), and «di:» / «responde:» (raw).
+_ORDER_STEMS: Final = re.compile(
+    r" ignor\w*| olvid\w* (?:de )?(?:lo anterior|todo|tus|las instrucciones|las reglas)"
+    r"| diles? (?:\w+ ){0,3}que | actu\w* como | fing\w* que "
+)
+_SPOKEN_ORDER: Final = re.compile(r"(?i)\b(?:di|responde|repite)\s*:")
+#: The document's name when its own title gives an order or holds a code.
+_UNNAMED: Final = "tu documento"
 # Words of a question that say nothing about what it asks.
 _FRAMING: Final = frozenset({"dice", "dicen", "segun", "documento", "documentos", "papeles"})
 _MIN_PLURAL: Final = 4
@@ -68,10 +77,24 @@ _STEM: Final = 5
 _MIN_STEMMED: Final = 6
 
 
+def _visible(text: str) -> str:
+    """*text* without invisible format characters (a zero-width space splits no word)."""
+    return "".join(character for character in text if unicodedata.category(character) != "Cf")
+
+
 def gives_an_order(sentence: str) -> bool:
-    """Whether *sentence* gives the robot an order in one of the closed shapes."""
-    padded = f" {normalize_spanish(sentence)} "
-    return any(f" {order} " in padded for order in _ORDERS)
+    """Whether *sentence* gives the robot an order in one of the closed shapes.
+
+    The closed phrases, their stems («ignórala», «ignorad», «olvídate de tus reglas»), «di:» and
+    «dile … que» with up to three words between, after invisible characters are removed.
+    """
+    visible = _visible(sentence)
+    padded = f" {normalize_spanish(visible)} "
+    return (
+        any(f" {order} " in padded for order in _ORDERS)
+        or bool(_ORDER_STEMS.search(padded))
+        or bool(_SPOKEN_ORDER.search(visible))
+    )
 
 
 def _clean(sentence: str) -> str:
@@ -144,10 +167,19 @@ async def word_document(client: httpx.AsyncClient, question: str, search: Docume
         ``NOT_IN_DOCUMENTS`` when every sentence gave an order or held a code.
     """
     del client  # the seam's signature; a later model may word the answer through it
-    title = search.hits[0].section.title
-    candidates = [s for hit in search.hits for s in _sentences(hit.section.body)]
+    first = search.hits[0].section
+    title = first.title
+    if gives_an_order(title) or flags_secret(title):
+        title = _UNNAMED
+    # The answer names one document and stays inside it: only that source's sections are quoted.
+    candidates = [
+        s
+        for hit in search.hits
+        if hit.section.source_id == first.source_id
+        for s in _sentences(hit.section.body)
+    ]
     if not candidates:
         return NOT_IN_DOCUMENTS
-    title_words = set(content_words(normalize_spanish(title)))
+    title_words = set(content_words(normalize_spanish(first.title)))
     words = frozenset(content_words(normalize_spanish(question))) - title_words - _FRAMING
     return f"Según {title}: {_capped(' '.join(_chosen(candidates, words)))}"

@@ -104,13 +104,13 @@ async def test_keep_with_an_open_slot_stores_the_reading_and_leaves_the_candidat
 
 async def test_keep_with_no_slot_keeps_adr_0021_s_meaning() -> None:
     keeper = _keeper(KeepOutcome.NO_SLOT)
-    legacy = _legacy()
-    controller = _controller(None, keeper)
-    controller._legacy_turn = legacy  # the same double, observed
+    answerer = AsyncMock(return_value=MemoryAnswerReply(phrase="Guardado."))
 
-    await controller.handle(_event("Sí, guárdalo"))
+    plan = await _controller(None, keeper, answerer=answerer).handle(_event("Sí, guárdalo"))
 
     assert keeper.await_count == 1
+    answerer.assert_awaited_once()
+    assert plan.response == "Guardado."
 
 
 async def test_any_other_turn_is_handed_to_the_keeper_as_no_keep() -> None:

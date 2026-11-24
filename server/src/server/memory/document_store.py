@@ -53,6 +53,7 @@ __all__ = [
     "sections_by_id",
     "sections_for_export",
     "sections_without_vector",
+    "source_id_of",
     "sources_for_export",
     "sources_of",
     "store_section_vector",
@@ -208,6 +209,17 @@ async def insert_source(
         [(source_id, s.position, s.heading, s.body, _sha256(s.body)) for s in sections],
     )
     return source_id
+
+
+async def source_id_of(*, owner_entity_id: int, file_sha256: str) -> int | None:
+    """The owner's source with this file hash, or ``None`` (the same file is never stored twice)."""
+    cursor = await db.get_conn().execute(
+        "SELECT id FROM document_sources WHERE owner_entity_id = ? AND file_sha256 = ?",
+        (owner_entity_id, file_sha256),
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    return None if row is None else int(row[0])
 
 
 async def sources_of(*, owner_entity_id: int) -> list[DocumentSource]:
@@ -465,10 +477,14 @@ async def mark_section_refused(section_id: int, *, model: str) -> bool:
     """
     async with db.transaction() as conn:
         cursor = await conn.execute(
-            "UPDATE document_sections SET vector_refused_by = ? WHERE id = ?", (model, section_id)
+            "UPDATE document_sections SET vector_refused_by = ?, embedding_model = NULL "
+            "WHERE id = ?",
+            (model, section_id),
         )
         changed = cursor.rowcount > 0
         await cursor.close()
+        # A vector of the model before would keep the model guard above zero for ever.
+        await conn.execute("DELETE FROM document_sections_vec WHERE rowid = ?", (section_id,))
     return changed
 
 

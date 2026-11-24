@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import hashlib
 from typing import TYPE_CHECKING, Final
+import unicodedata
 
 from server import db
 from server.memory.admin_audit import (
@@ -28,7 +29,7 @@ from server.memory.deletion_register import Deletion, DeletionKind, forget
 from server.memory.document_extract import DocumentRefusedError, ExtractedText, extract_text
 from server.memory.document_index import backfill_sections, fit_sections
 from server.memory.document_secrets import flags_secret
-from server.memory.document_sections import SECTION_MAX_CHARS, cut_sections
+from server.memory.document_sections import MAX_SECTIONS, SECTION_MAX_CHARS, cut_sections
 from server.memory.document_store import (
     DocumentExistsError,
     DocumentLevel,
@@ -61,6 +62,7 @@ _NO_PIN: Final = "Sin verificación de la persona titular: no se hizo nada."
 _UNKNOWN: Final = "No hay un documento con ese id."
 _BAD_LEVEL: Final = "El nivel es normal o sensitive."
 _EXISTS: Final = "Ese archivo ya está guardado como documento."
+_TOO_LONG: Final = "Ese documento es demasiado largo; no lo guardo."
 # The closed refusal reason of each extraction message, for the audit row (never the message).
 _REASONS: Final = {
     "Ese formato todavía no lo leo.": "format",
@@ -105,7 +107,8 @@ async def _audit(
 
 def _title(request: DocsRequest, path: Path) -> str:
     raw = request.title or path.stem.replace("_", " ").replace("-", " ")
-    return " ".join(raw.split())[:_MAX_TITLE] or "Documento"
+    printable = "".join(c for c in raw if not unicodedata.category(c).startswith("C"))
+    return " ".join(printable.split())[:_MAX_TITLE] or "Documento"
 
 
 def _level(request: DocsRequest, read_text: ReadText) -> DocumentLevel | None:
@@ -163,7 +166,7 @@ def _show(
         write_text(f"  {line}")
 
 
-async def _add(
+async def _add(  # noqa: PLR0911 - one audited refusal per closed reason
     request: DocsRequest,
     owner: int,
     read_text: ReadText,
@@ -186,6 +189,8 @@ async def _add(
         write_text(_BAD_LEVEL)
         return 1
     sections = await fit_sections(client, sections)
+    if len(sections) > MAX_SECTIONS:  # cutting again to fit the window can add sections
+        return await _refuse(request, now, write_text, "too_long", _TOO_LONG)
     _show(text, level, sections, write_text)
     if not confirm():
         return 1

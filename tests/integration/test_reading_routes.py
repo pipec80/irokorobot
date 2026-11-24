@@ -203,3 +203,36 @@ async def test_a_kept_note_is_embedded_at_once_so_its_words_find_it(
     assert await _camera_titles(result.owner_entity_id)
     assert await document_store.sections_without_vector(10) == []
     embed.assert_awaited()
+
+
+async def test_a_reading_with_no_identified_speaker_cannot_be_kept(
+    reading: tuple[PersonalSetupResult, AsyncMock], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review: anyone on the network could plant a reading the owner's next «sí» would keep."""
+    result, _ = reading
+    _hear(monkeypatch, "lee esto", "Sí, guárdalo")
+    _models(monkeypatch)
+
+    async with _client() as client:
+        await client.post("/transcribe", files=_files(with_frame=True))  # no face seen
+        _see_the_owner(monkeypatch)
+        await client.post("/transcribe", files=_files())
+
+    assert await _camera_titles(result.owner_entity_id) == []
+
+
+async def test_a_failing_keep_says_a_fixed_phrase_and_never_fails_the_turn(
+    reading: tuple[PersonalSetupResult, AsyncMock], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _see_the_owner(monkeypatch)
+    _hear(monkeypatch, "lee esto", "Sí, guárdalo")
+    _models(monkeypatch)
+    monkeypatch.setattr(
+        transcribe_module, "keep_reading", AsyncMock(side_effect=RuntimeError("locked"))
+    )
+
+    async with _client() as client:
+        await client.post("/transcribe", files=_files())
+        second = await client.post("/transcribe", files=_files())
+
+    assert second.status_code == 200

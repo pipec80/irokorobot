@@ -108,6 +108,13 @@ CREATE TRIGGER document_sections_ad AFTER DELETE ON document_sections BEGIN
     DELETE FROM document_sections_vec WHERE rowid = old.id;
 END;
 
+-- The KNN filters by the level and the owner the vectors carry: a source never changes either
+-- (a new level is a new source), so the metadata can never go stale.
+CREATE TRIGGER document_sources_scope_locked
+BEFORE UPDATE OF level, owner_entity_id ON document_sources BEGIN
+    SELECT RAISE(ABORT, 'document source level and owner are immutable');
+END;
+
 CREATE TRIGGER document_sections_text_locked
 BEFORE UPDATE OF body, heading ON document_sections BEGIN
     SELECT RAISE(ABORT, 'document section text is immutable');

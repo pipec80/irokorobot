@@ -170,6 +170,20 @@ with these changes, each with its reason; Pipec approved them on 2026-11-23.
    a deterministic guard. A better model may word the answer later through the answer seam, with
    the eval run again.
 
+10. **A second face denies the whole cue** (decision 2 said the `sensitive` level needs no
+    other face). With two faces in view the face check identifies nobody, so the owner is not
+    known: a document cue hears the generic denial, the same with or without a `sensitive`
+    document (no oracle). The level filter stays as a second wall for when the face check can
+    tell the owner among several faces.
+11. **A reading is kept only by the person seen on its turn** (decision 5 allowed the face on the
+    next turn only). A reading with nobody identified is read aloud and cannot be kept: anyone on
+    the network could plant one for the owner's next «sí, guárdalo».
+12. **The secret guard needs a secret word** (decision 2). Measured on one real medical text, a
+    rule on lone digit runs refused 89 of 128 sections (record and episode numbers), so it is
+    gone: a code is flagged with its secret word before or after it, a card number by its
+    groups or a card word, an IBAN by its shape. A code written with no word near it is read: a
+    known limit.
+
 ## Not decided here
 
 | Subject | Owner |

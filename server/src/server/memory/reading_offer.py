@@ -1,8 +1,8 @@
 """The read text waiting for «sí, guárdalo», and keeping it as a document (Plan 0088 D-17).
 
-One in-process slot: the last reading, bound to the speaker identified on the reading turn (or to
-nobody: holding a paper, the camera may not see the face), for 60 seconds, the offer window of ADR
-0021. A new reading replaces it, the next turn takes or empties it, a restart forgets it. Keeping
+One in-process slot: the last reading, bound to the speaker identified on the reading turn, for
+60 seconds, the offer window of ADR 0021. A reading with no identified speaker is read aloud but can
+never be kept (Plan 0088 B10: anyone on the network could plant one for the owner's next «sí»). A new reading replaces it, the next turn takes or empties it, a restart forgets it. Keeping
 it stores a ``normal`` document of format ``camera``; the frame was never kept. Nothing here logs
 a text, and the module does not import the cognitive core (ADR 0031 decision 11): the route
 checks who speaks and names the note.
@@ -64,13 +64,12 @@ class ReadingSlot:
             now: The current time.
 
         Returns:
-            The text, when it waits within its window and is bound to *speaker* or to nobody;
-            ``None`` otherwise. The slot is empty afterwards either way.
+            The text, when it waits within its window and is bound to *speaker*; ``None``
+            otherwise. A reading bound to nobody is never given: anyone on the network could
+            have planted it. The slot is empty afterwards either way.
         """
         reading, self._reading = self._reading, None
-        if reading is None or now - reading.at > OFFER_WINDOW:
-            return None
-        if reading.speaker is not None and reading.speaker != speaker:
+        if reading is None or now - reading.at > OFFER_WINDOW or reading.speaker != speaker:
             return None
         return reading.text
 

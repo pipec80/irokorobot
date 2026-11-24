@@ -115,3 +115,30 @@ def test_a_parser_that_hangs_is_killed_at_the_limit(
     with pytest.raises(DocumentRefusedError) as raised:
         extract_text(_FIXTURES / "guia-cuidados-rodilla.pdf")
     assert "tardó demasiado" in raised.value.reason
+
+
+def test_a_crashing_child_is_refused_with_its_reason(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def crashing(_path: Path) -> Sequence[str]:
+        return [sys.executable, "-c", "raise SystemExit(9)"]
+
+    monkeypatch.setattr(document_extract, "_pdf_child_command", crashing)
+
+    with pytest.raises(DocumentRefusedError) as raised:
+        extract_text(_FIXTURES / "guia-cuidados-rodilla.pdf")
+    assert raised.value.reason == "No pude leer ese archivo."
+
+
+def test_an_unreadable_file_is_refused_not_raised(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "bloqueado.md"
+    path.write_bytes(b"# zz")
+
+    def locked(_self: Path) -> bytes:
+        raise PermissionError("locked")
+
+    monkeypatch.setattr(Path, "read_bytes", locked)
+    with pytest.raises(DocumentRefusedError):
+        extract_text(path)

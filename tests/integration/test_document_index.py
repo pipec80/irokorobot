@@ -126,3 +126,19 @@ async def test_the_backfill_embeds_the_sections_without_a_vector(owner: int) -> 
     assert set(
         await document_store.section_distances_of([first, second], _VECTOR, owner_entity_id=owner)
     ) == {first, second}
+
+
+async def test_a_section_the_new_model_refuses_leaves_no_vector_of_the_old_one(
+    owner: int,
+) -> None:
+    """Review: an old vector left behind keeps the model guard above zero, words only for ever."""
+    (section,) = await _sections(owner, [" ".join(["z"] * 600)])
+    assert await document_store.store_section_vector(section, _VECTOR, model="canary-old")
+
+    async with _client(_words_as_tokens) as client:
+        assert not await embed_section(client, section, " ".join(["z"] * 600))
+
+    assert await document_store.count_sections_of_another_model(owner) == 0
+    assert (
+        await document_store.section_distances_of([section], _VECTOR, owner_entity_id=owner) == {}
+    )

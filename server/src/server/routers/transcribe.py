@@ -737,7 +737,12 @@ def _text_reader(
         if flags_secret(text):
             READING_SLOT.clear()
             return ReadingReply(outcome=ReadingOutcome.SECRET)
-        actor = await request_identity.peek_actor(event)
+        try:
+            actor = await request_identity.peek_actor(event)
+        except Exception as exc:  # seam boundary: the text is read aloud, it just cannot be kept
+            logger.warning("Reading speaker unknown (%s)", type(exc).__name__)
+            READING_SLOT.clear()
+            return ReadingReply(outcome=ReadingOutcome.READ, text=text)
         READING_SLOT.offer(text, speaker=actor.person_id, now=utc_now())
         return ReadingReply(outcome=ReadingOutcome.READ, text=text)
 
@@ -768,6 +773,14 @@ def _reading_keeper(
         return None
 
     async def keep(event: CognitiveEvent[TextTurnPayload], wants: bool) -> KeepOutcome:
+        try:
+            return await _keep(event, wants)
+        except Exception as exc:  # seam boundary: a failed keep is no keep, the turn goes on
+            logger.warning("Reading not kept (%s)", type(exc).__name__)
+            READING_SLOT.clear()
+            return KeepOutcome.NOT_KEPT
+
+    async def _keep(event: CognitiveEvent[TextTurnPayload], wants: bool) -> KeepOutcome:
         now = utc_now()
         if not READING_SLOT.is_open(now):
             READING_SLOT.clear()
