@@ -43,6 +43,69 @@ Four PDFs of Pipec's own, measured locally in a child process with `pypdf` 7.1.1
 Three are scanned (no text layer: R4). The long text-layer document fits the caps of D-9 as
 proposed, so they are kept: 10 MB, 200 pages, 30 s, 2,000 sections.
 
-## The document gate (Task B7)
+## The document gate (Task B7, 2026-11-23)
 
-Not run yet.
+`just document-bench`: the three documents loaded with the production extraction, cut, fit and
+`granite-embedding:278m` (digest `1a37926bf842`, Ollama 0.40.16) into a temporary database; 19
+sections. Each question runs once through the production `search_documents`, which records its
+rankings, candidate signals and sections; ADR 0040's rule (G3) is then replayed over a grid of
+`T_v` and `T_w` (0.20 to 0.70, step 0.01, `T_w ≥ T_v`: 1,326 pairs) with the same pure steps
+(`gate_and_fuse`, the cap), and the chosen pair is run again through the production search, which
+must return exactly the replayed hits (it does). D-3 as written for documents: hard constraints
+Recall@3 = 100 % on *named document* and *direct by meaning*, both halves.
+
+### The distances (cosine, question to section)
+
+| Class | Questions | Expected section | Nearest wrong section |
+|---|---|---|---|
+| Named document | 6 | 0.240 to 0.411 | — |
+| Direct by meaning | 6 | 0.319 to 0.437 | — |
+| Injected instruction | 8 | 0.202 to 0.356 | — |
+| Wrong document named | 4 | — | 0.412 to 0.458 |
+| Common word in every section | 4 | — | 0.280 to 0.384 |
+| Nothing in the documents | 4 | — | 0.337 to 0.420 |
+
+The two sides overlap: a manual's every section is near any question about the machine, and a
+question no document answers is still as near as the farthest true answer. As in recall (ADR 0040,
+*The meaning threshold*), no threshold of this family separates them.
+
+### Under D-3 as written
+
+378 pairs meet the hard constraints; D-3 chooses **`T_v` = `T_w` = 0.44** (one threshold; margin
+0.0005, a pair inside the observed distances, not a gap):
+
+| Class | `tune` | `check` |
+|---|---|---|
+| Named document, Recall@3 | 1.00 | 1.00 |
+| Direct by meaning, Recall@3 | 1.00 | 1.00 |
+| Injected instruction, Recall@3 | 1.00 | 1.00 |
+| Wrong document named, correct zero | 0.50 | 0.50 |
+| Common word in every section, correct zero | 0.00 | 0.00 |
+| Nothing in the documents, correct zero | 0.00 | 0.00 |
+| General knowledge falls through | 1.00 | 1.00 |
+
+Without the title step, at the same thresholds: *wrong document* 0.00 / 0.00 and *general
+knowledge* falls through 0.00 / 0.00 (it searches every document); *named document* unchanged.
+
+### If *direct by meaning* is measured, not required (as Part A's D-3 amendment)
+
+With the hard constraint on *named document* only, D-3 chooses **`T_v` = 0.22, `T_w` = 0.61**:
+the words decide and the meaning alone almost never qualifies.
+
+| Class | `tune` | `check` |
+|---|---|---|
+| Named document, Recall@3 | 1.00 | 1.00 |
+| Direct by meaning, Recall@3 (measured) | 0.00 | 0.67 |
+| Injected instruction, Recall@3 | 1.00 | 1.00 |
+| Wrong document named, correct zero | 1.00 | 1.00 |
+| Common word in every section, correct zero | 0.00 | 0.00 |
+| Nothing in the documents, correct zero | 1.00 | 1.00 |
+| General knowledge falls through | 1.00 | 1.00 |
+
+### The secret detector
+
+0 false positives on the 19 sections (the manual's «pin 3 del conector», «código de error 5» and
+«E21» pass).
+
+**Status: stopped for Pipec (Task B7 Step 3, D-13).** The thresholds are not written into the
+settings until Pipec confirms one of the two.
