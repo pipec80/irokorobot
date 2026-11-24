@@ -108,11 +108,12 @@ def holds_codes(
 ) -> bool:
     """Whether an image of the PDF holds a QR code or a barcode (OpenCV's detectors).
 
-    Fails closed. Before anything is decoded, every image is counted and sized from its
-    dictionary: more than *max_images* images, or one over *max_pixels* or with no usable size,
+    Fails closed. Before anything is decoded, every image XObject of a page is counted and sized
+    from its dictionary: more than *max_images* images, or one over *max_pixels* or with no usable size,
     counts as holding a code (a household document never needs them). Then each image is decoded
     with OpenCV's and PIL's own pixel limits set; one that does not decode counts as holding a
-    code too.
+    code too, and so does the image past *max_images* in that walk, which also finds the inline
+    images and the ones inside forms the first count does not see.
 
     Args:
         reader: The opened, not encrypted PDF.
@@ -126,8 +127,6 @@ def holds_codes(
     sizes = _declared_images(reader)
     if len(sizes) > max_images or any(size < 0 or size > max_pixels for size in sizes):
         return True
-    if not sizes:
-        return False
     os.environ["OPENCV_IO_MAX_IMAGE_PIXELS"] = str(max_pixels)
     import cv2  # noqa: PLC0415 - heavy, and needed only when a PDF has images
     import numpy as np  # noqa: PLC0415
@@ -137,9 +136,15 @@ def holds_codes(
     warnings.simplefilter("error", Image.DecompressionBombWarning)
     qr = cv2.QRCodeDetector()
     barcode = cv2.barcode.BarcodeDetector()
+    seen = 0
     try:
         for page in reader.pages:
+            # Inline images and images inside forms are not among the page's own XObjects: every
+            # image pypdf finds is counted again, before its data is touched.
             for image in page.images:
+                seen += 1
+                if seen > max_images:
+                    return True
                 data = np.frombuffer(image.data, dtype=np.uint8)
                 pixels = cv2.imdecode(data, cv2.IMREAD_GRAYSCALE)
                 if pixels is None or qr.detect(pixels)[0] or barcode.detect(pixels)[0]:

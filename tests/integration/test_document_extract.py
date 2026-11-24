@@ -289,3 +289,20 @@ def test_an_image_over_the_declared_pixel_budget_is_refused_before_any_decode(
 
     assert not pdf_inspect.holds_codes(PdfReader(path))
     assert pdf_inspect.holds_codes(PdfReader(path), max_pixels=60 * 60 - 1)
+
+
+def test_an_image_the_declared_count_misses_is_still_inspected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Security review: an image inside a form or inline is not in the page's own XObjects."""
+    from pypdf import PdfReader  # noqa: PLC0415
+    from server.memory import pdf_inspect  # noqa: PLC0415
+
+    qr = cv2.QRCodeEncoder.create().encode("http://zz.invalid/script")
+    big = cv2.resize(qr, (qr.shape[1] * 8, qr.shape[0] * 8), interpolation=cv2.INTER_NEAREST)
+    padded = cv2.copyMakeBorder(big, 40, 40, 40, 40, cv2.BORDER_CONSTANT, value=255)
+    path = _image_pdf(padded, tmp_path / "qr.pdf")
+    monkeypatch.setattr(pdf_inspect, "_declared_images", lambda _reader: [])
+
+    assert pdf_inspect.holds_codes(PdfReader(path))
+    assert pdf_inspect.holds_codes(PdfReader(path), max_images=0)
