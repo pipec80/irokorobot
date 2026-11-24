@@ -305,6 +305,13 @@ make. A decision answered differently is rewritten here before promotion.
   document). `DOCUMENT_MAX_DISTANCE` (and `DOCUMENT_WORD_MAX_DISTANCE` if ADR 0040's rule has a
   second gate) are chosen by D-3's procedure on this corpus and recorded in
   `docs/evals/0088-document-bench.md`; Pipec confirms them before Task B8 uses them.
+
+  > **Decided by Pipec on 2026-11-23, at Task B7 Step 3** («Opción B 0,22/0,61»). Under D-3 as
+  > written no pair separates the two sides (expected 0.20 to 0.44, nearest wrong 0.28 to 0.46):
+  > the eligible pair 0.44 / 0.44 answers 17 % of the negatives. As Part A amended D-3, *direct by
+  > meaning* is measured, not required: `DOCUMENT_MAX_DISTANCE` = 0.22, `DOCUMENT_WORD_MAX_DISTANCE`
+  > = 0.61 (named document 100 %, wrong document and nothing 100 % correct zero, common word 0 %,
+  > meaning 0 % / 67 %).
 - **D-14 The answer names its document and stays inside it.** `memory/document_answer.py` has its
   own prompt: one line of Iroko's persona in neutral tuteo, the found sections quoted inside «»
   (any «, » or line that imitates the prompt's own labels inside a section is neutralized first)

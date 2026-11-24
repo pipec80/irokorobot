@@ -24,7 +24,9 @@ from server.cognition.authorization import (
 )
 from server.cognition.identity_fusion import FusionReason
 from server.cognition.models import AuthorizationAction, AuthorizationStatus
-from server.cognition.response_plan import DocumentReply
+from server.cognition.response_plan import NOT_IN_DOCUMENTS, DocumentReply
+from server.memory.document_answer import word_document
+from server.memory.document_search import search_documents
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.profile_card_access import may_read_own_memory
 from server.memory.retrieval import GATE_ID
@@ -47,8 +49,6 @@ __all__ = ["NOT_IN_DOCUMENTS", "document_reply", "readable_levels"]
 type DocumentSearcher = Callable[..., Awaitable[DocumentSearch]]
 type DocumentAnswerer = Callable[..., Awaitable[str]]
 
-#: What a strong cue hears when nothing qualified, and what any failure answers (D-14).
-NOT_IN_DOCUMENTS: Final = "No lo encuentro en tus documentos."
 _NORMAL_ONLY: Final[frozenset[DocumentLevel]] = frozenset({"normal"})
 _BOTH: Final[frozenset[DocumentLevel]] = frozenset({"normal", "sensitive"})
 
@@ -108,8 +108,8 @@ async def document_reply(  # noqa: PLR0911 - one logged return per outcome, as r
     correlation_id: UUID,
     now: datetime,
     client: httpx.AsyncClient,
-    search: DocumentSearcher,
-    answer: DocumentAnswerer,
+    search: DocumentSearcher = search_documents,
+    answer: DocumentAnswerer = word_document,
     policy: PolicyEvaluator = evaluate_authorization,
     audit: AuditWriter = record_authorization_decision,
 ) -> DocumentReply:

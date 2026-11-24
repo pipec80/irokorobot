@@ -213,9 +213,10 @@ class Settings(BaseSettings):
     recall_word_max_distance: float = Field(default=0.464, gt=0.0, lt=2.0)
     # ADR 0040's rule for the owner's documents (Plan 0088 D-13), with its own thresholds: a
     # section found by its meaning qualifies under the first, one found by its words under the
-    # second. Calibrated on the document bench (docs/evals/0088-document-bench.md).
-    document_max_distance: float = Field(default=0.43, gt=0.0, lt=2.0)
-    document_word_max_distance: float = Field(default=0.464, gt=0.0, lt=2.0)
+    # second. Chosen on the document bench with "direct by meaning" measured, not required, and
+    # confirmed by Pipec on 2026-11-23 (docs/evals/0088-document-bench.md): the words decide.
+    document_max_distance: float = Field(default=0.22, gt=0.0, lt=2.0)
+    document_word_max_distance: float = Field(default=0.61, gt=0.0, lt=2.0)
     robot_character: str = "iroko"
     # Re-read character markdown profiles from disk on every request when
     # they change (prompt-engineering aid). OFF by default: production loads

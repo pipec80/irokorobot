@@ -15,6 +15,7 @@ from server.cognition.authorization import (
     evaluate_authorization,
 )
 from server.cognition.calendar_tools import calculate_age, get_current_date
+from server.cognition.document_cues import DocumentCue, classify_document_cue
 from server.cognition.family_sides import Side, SidedNames, SideGroup
 from server.cognition.household_request import names_someone_known, requests_data_of_a_name
 from server.cognition.identity import ActivePersonContext, ActivePersonStatus, HouseholdRole
@@ -48,9 +49,11 @@ from server.cognition.relatives_answers import (
 from server.cognition.response_plan import (
     NO_MEMORY,
     NOT_ALONE,
+    NOT_IN_DOCUMENTS,
     NOT_REGISTERED,
     SECRET_REFUSAL,
     SECURITY_VOICE_RETRY,
+    DocumentReply,
     InformationNeed,
     MemoryAnswerReply,
     ProfileSummaryReply,
@@ -115,6 +118,12 @@ type ProfileSummarizer = Callable[
 #: and the wording, and never raises. Only the voice routes inject one, with RECALL_ENABLED on.
 type RecallAnswerer = Callable[
     [ActivePersonContext, RecallCue, CognitiveEvent[TextTurnPayload]], Awaitable[RecallReply]
+]
+#: Answers a document question (Plan 0088, ADR 0034): it owns the policy, the audit row, the title
+#: step, the search and the wording, and never raises. Only the voice routes inject one, with
+#: DOCUMENTS_ENABLED on; they bind the turn's face reason.
+type DocumentAnswerer = Callable[
+    [ActivePersonContext, DocumentCue, CognitiveEvent[TextTurnPayload]], Awaitable[DocumentReply]
 ]
 #: The household's stored names and aliases (Plan 0077). It never raises: a store failure is an
 #: empty set, and the turn stays conversation, where the model holds no stored household value.
@@ -200,6 +209,7 @@ class CognitiveController:
         secret_guard: bool = False,
         alta_read: bool = False,
         occurred_time: bool = False,
+        document_answerer: DocumentAnswerer | None = None,
     ) -> None:
         """Create a controller with injected calendar and legacy-generation seams.
 
@@ -242,6 +252,9 @@ class CognitiveController:
             occurred_time: Whether a recall question reads with the occurred time on (Plan 0083):
                 years and seasons as windows, the usted forms as cues. It does nothing without
                 ``recall_answerer``.
+            document_answerer: Answers «¿qué dice el manual de la lavadora sobre el filtro?» from
+                the owner's documents (Plan 0088); injected only by the voice routes with the
+                documents switch on. When absent the document rule never runs, byte for byte.
         """
         self._today = today
         self._legacy_turn = legacy_turn
@@ -261,6 +274,9 @@ class CognitiveController:
         self._secret_guard = secret_guard
         self._alta_read = alta_read
         self._occurred_time = occurred_time
+        self._document_answerer = document_answerer
+        # One document search and one audit row per event (the classic route decides twice).
+        self._documents: dict[UUID, ResponsePlan | None] = {}
         # The same cache for a sensitive read: one read and one audit row per event.
         self._sensitive_reads: dict[UUID, ResponsePlan | None] = {}
         # The classic route's two calls again: one search and one audit row per event.
@@ -327,7 +343,49 @@ class CognitiveController:
             return _secret_plan(event.payload.message)
         if need is InformationNeed.SENSITIVE_READ:
             return await self._sensitive_plan(event)
+        if need is InformationNeed.DOCUMENT:
+            return await self._document_plan(event)
         return await self._closed_decision(event, need)
+
+    async def _document_plan(self, event: CognitiveEvent[TextTurnPayload]) -> ResponsePlan | None:
+        """Answer a document question from the owner's documents, or fall through (``None``).
+
+        ADR 0034 decision 3, Plan 0088 D-11 and D-15. The actor is only observed (never spends a
+        grant). A found answer, or the fixed phrase of a failure, is spoken. Otherwise a strong
+        cue answers «No lo encuentro en tus documentos.», or the generic denial to a stranger or
+        a refused speaker; a weak cue converses, so «¿qué dice la guía de Santiago sobre el
+        metro?» stays general knowledge. The answer never enters continuity.
+        """
+        if self._document_answerer is None:
+            return None
+        if event.event_id not in self._documents:
+            self._documents[event.event_id] = await self._document_decision(event)
+        return self._documents[event.event_id]
+
+    async def _document_decision(
+        self, event: CognitiveEvent[TextTurnPayload]
+    ) -> ResponsePlan | None:
+        cue = classify_document_cue(event.payload.message)
+        if cue is None or self._document_answerer is None:
+            return None
+        actor = await self._observed_person_resolver(event)
+        reply = (
+            DocumentReply(text=None, denied=True)
+            if actor.status is not ActivePersonStatus.IDENTIFIED
+            else await self._document_answerer(actor, cue, event)
+        )
+        if reply.text is not None:
+            return ResponsePlan(
+                need=InformationNeed.DOCUMENT,
+                status=KnowledgeStatus.KNOWN if reply.found else KnowledgeStatus.UNKNOWN,
+                source=ResponseSource.DETERMINISTIC,
+                response=reply.text,
+            )
+        if cue.strength is not CueStrength.STRONG:
+            return None
+        if reply.denied:
+            return _unknown_plan(InformationNeed.DOCUMENT, _PROFILE_SUMMARY_UNKNOWN_RESPONSE)
+        return _unknown_plan(InformationNeed.DOCUMENT, NOT_IN_DOCUMENTS)
 
     async def _closed_decision(
         self, event: CognitiveEvent[TextTurnPayload], need: InformationNeed
@@ -401,6 +459,8 @@ class CognitiveController:
             flags["secrets"] = True
         if self._memory_changer is not None:
             flags["changes"] = True
+        if self._document_answerer is not None:
+            flags["documents"] = True
         need = self._intent_resolver(message, **flags).need
         if need is InformationNeed.GENERIC_CONVERSATION and await self._asks_about_known_name(
             event

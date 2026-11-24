@@ -1,8 +1,9 @@
 """Immutable response-planning contracts for the P0.3 chat pilot."""
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -155,6 +156,8 @@ class MemoryAnswerReply:
 
 #: Spoken when a recall question finds nothing it may say (ADR 0028 decisions 4 and 8).
 NO_MEMORY: Final = "No me acuerdo de eso."
+#: What a strong document cue hears when nothing qualified, and what any failure answers (D-14).
+NOT_IN_DOCUMENTS: Final = "No lo encuentro en tus documentos."
 #: Spoken when the alta loaded no relative of the kind asked about (ADR 0028 decision 9).
 NOT_REGISTERED: Final = "No tengo registrado eso."
 
@@ -277,8 +280,24 @@ RELATIVES_LOGGED_TEXT = "[parientes leídos]"
 #: Replaces the robot's answer to a sensitive read in the conversation record and the opt-in spoken
 #: log (Plan 0079, D-8): the answer carries the owner's stored values.
 SENSITIVE_RECORDED_TEXT: Final = "[dato sensible leído]"
+#: Replace a document answer and a camera reading in the conversation record and the opt-in spoken
+#: log (Plan 0088 D-18): no section or read text enters the record, the diary or an export.
+DOCUMENT_RECORDED_TEXT: Final = "[respuesta de un documento]"
+READING_RECORDED_TEXT: Final = "[texto leído por la cámara]"
 #: Replaces the heard words of a secret turn in the conversation record (Plan 0079, D-8).
 SECRET_RECORDED_TEXT: Final = "[dato de seguridad omitido]"  # noqa: S105  # pragma: allowlist secret - a marker
+
+
+_LOGGED_MARKERS: Final[Mapping[InformationNeed, str]] = MappingProxyType(
+    {
+        InformationNeed.PROFILE_SUMMARY: PROFILE_SUMMARY_LOGGED_TEXT,
+        InformationNeed.RECALL: RECALL_LOGGED_TEXT,
+        InformationNeed.DOCUMENT: DOCUMENT_RECORDED_TEXT,
+        InformationNeed.READ_TEXT: READING_RECORDED_TEXT,
+        InformationNeed.RELATIVES_NAMES: RELATIVES_LOGGED_TEXT,
+        InformationNeed.SENSITIVE_READ: SENSITIVE_RECORDED_TEXT,
+    }
+)
 
 
 def spoken_log_text(plan: ResponsePlan) -> str | None:
@@ -294,17 +313,7 @@ def spoken_log_text(plan: ResponsePlan) -> str | None:
     """
     if plan.status is not KnowledgeStatus.KNOWN:
         return None
-    match plan.need:
-        case InformationNeed.PROFILE_SUMMARY:
-            return PROFILE_SUMMARY_LOGGED_TEXT
-        case InformationNeed.RECALL:
-            return RECALL_LOGGED_TEXT
-        case InformationNeed.RELATIVES_NAMES:
-            return RELATIVES_LOGGED_TEXT
-        case InformationNeed.SENSITIVE_READ:
-            return SENSITIVE_RECORDED_TEXT
-        case _:
-            return None
+    return _LOGGED_MARKERS.get(plan.need)
 
 
 def recorded_exchange(plan: ResponsePlan, heard: str) -> tuple[str, str]:
@@ -325,6 +334,10 @@ def recorded_exchange(plan: ResponsePlan, heard: str) -> tuple[str, str]:
         return SECRET_RECORDED_TEXT, plan.response
     if plan.need is InformationNeed.SENSITIVE_READ and plan.status is KnowledgeStatus.KNOWN:
         return heard, SENSITIVE_RECORDED_TEXT
+    if plan.need is InformationNeed.DOCUMENT:
+        return heard, DOCUMENT_RECORDED_TEXT
+    if plan.need is InformationNeed.READ_TEXT:
+        return heard, READING_RECORDED_TEXT
     return heard, plan.response
 
 

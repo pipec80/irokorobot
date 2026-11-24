@@ -24,11 +24,13 @@ from server.cognition.controller import (
     ActivePersonResolver,
     CognitiveController,
     ConsentResolver,
+    DocumentAnswerer,
     MemoryAnswerer,
     MemoryChanger,
     ProfileSummarizer,
     RecallAnswerer,
 )
+from server.cognition.document_cues import DocumentCue
 from server.cognition.generic_identity import (
     GenericIdentification,
     identify_generic_speaker,
@@ -42,6 +44,7 @@ from server.cognition.models import CognitiveEvent
 from server.cognition.owner_authentication import OwnerUnlockService
 from server.cognition.recall_cues import RecallCue
 from server.cognition.response_plan import (
+    DocumentReply,
     InformationNeed,
     MemoryAnswerReply,
     ProfileSummaryReply,
@@ -73,6 +76,7 @@ from server.memory.candidate_proposal import propose_candidates
 from server.memory.candidate_types import CandidateChannel
 from server.memory.continuity import ContinuityTurn
 from server.memory.conversation_capture import capture_turn
+from server.memory.document_access import document_reply
 from server.memory.entity_labels import read_household_names
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.household_time import household_day, household_today
@@ -375,6 +379,7 @@ def _voice_controller(
         alta_read=settings.alta_read_enabled,
         # Plan 0083: when a told event happened; inert without the recall answerer.
         occurred_time=occurred_time_on(),
+        document_answerer=_document_answerer(client, request_identity),
     )
 
 
@@ -623,6 +628,39 @@ def _recall_answerer(client: httpx.AsyncClient) -> RecallAnswerer | None:
             actor,
             cue,
             question=event.payload.message,
+            correlation_id=event.correlation_id,
+            now=utc_now(),
+            client=client,
+        )
+
+    return answer
+
+
+def _document_answerer(
+    client: httpx.AsyncClient, request_identity: _RequestIdentity
+) -> DocumentAnswerer | None:
+    """Return the answer to a document question for a voice route, or ``None`` with a switch off.
+
+    With ``MEMORY_ENABLED`` or ``DOCUMENTS_ENABLED`` off every message resolves as before Plan
+    0088 and nothing reads a document. The face fusion's reason (a second face in view leaves the
+    ``sensitive`` documents out) is read when the controller calls it, after it resolved the
+    actor.
+
+    Args:
+        client: Shared, lifecycle-owned HTTP client (Plan 0039), for the embedding and the answer.
+        request_identity: This request's identity resolver (the fusion reason).
+    """
+    if not (settings.memory_enabled and settings.documents_enabled):
+        return None
+
+    async def answer(
+        actor: ActivePersonContext, cue: DocumentCue, event: CognitiveEvent[TextTurnPayload]
+    ) -> DocumentReply:
+        return await document_reply(
+            actor,
+            cue,
+            question=event.payload.message,
+            faces=request_identity.fused.last_reason,
             correlation_id=event.correlation_id,
             now=utc_now(),
             client=client,

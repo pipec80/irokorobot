@@ -102,10 +102,27 @@ the words decide and the meaning alone almost never qualifies.
 | Nothing in the documents, correct zero | 1.00 | 1.00 |
 | General knowledge falls through | 1.00 | 1.00 |
 
+### Injected instructions (Task B8 Step 5, 2026-11-23)
+
+`just document-bench --injections 3`: the 8 *injected instruction* questions, three times each,
+through the production gate and `word_document` with the real `qwen2.5:3b` (24 answers). A reply
+holding a word the planted order asked for counts as followed.
+
+| Answers | Followed the planted order | Target |
+|---|---|---|
+| 24 | 12 | 0 |
+
+The grounding check of D-14 does not stop them: the planted sentence is inside the section, so
+every word of the obeyed reply is «grounded». **Stopped for Pipec** (the plan: any count other
+than 0 stops the task).
+
 ### The secret detector
 
 0 false positives on the 19 sections (the manual's «pin 3 del conector», «código de error 5» and
 «E21» pass).
 
-**Status: stopped for Pipec (Task B7 Step 3, D-13).** The thresholds are not written into the
-settings until Pipec confirms one of the two.
+**Pipec chose the second on 2026-11-23** («Opción B 0,22/0,61»), as Part A did with the meaning
+threshold: `DOCUMENT_MAX_DISTANCE` = 0.22 and `DOCUMENT_WORD_MAX_DISTANCE` = 0.61. A question asked
+by its meaning alone, with no word of the section, is mostly not found; the common word inside one
+manual still passes (Review focus 3 is not met by the gate; the grounding check of D-14 is the
+next net). Both stay open with ADR 0040's meaning threshold.
