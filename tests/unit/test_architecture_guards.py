@@ -2092,3 +2092,98 @@ def test_the_sqlite_clock_guard_detects_a_violation() -> None:
         "memory/spaced.py:1",
         "memory/writer.py:1",
     ]
+
+
+# --- the engine's coupling to the cognitive core (ADR 0031 decision 11, Plan 0088 D-20) ---------
+# The `memory/` modules that import `server.cognition` today. The list may shrink (the extraction
+# plan after CM-7 + PC-5 removes the coupling) and never grow; the documents add exactly their
+# three twins of recall: the policy, the cue's search and the reply plan.
+_MEMORY_MODULES_IMPORTING_COGNITION = frozenset(
+    {
+        "memory/admin_pin.py",
+        "memory/biometric_consent.py",
+        "memory/candidate_classifier.py",
+        "memory/candidate_dialogue.py",
+        "memory/candidate_policy.py",
+        "memory/candidate_proposal.py",
+        "memory/canonical_writer.py",
+        "memory/care_contacts.py",
+        "memory/contact_access.py",
+        "memory/conversation_capture.py",
+        "memory/conversation_jobs.py",
+        "memory/declarative.py",
+        "memory/export_files.py",
+        "memory/forget_scope.py",
+        "memory/household_authorization.py",
+        "memory/household_time.py",
+        "memory/memory_change_dialogue.py",
+        "memory/memory_writer.py",
+        "memory/meta.py",
+        "memory/own_read_consent.py",
+        "memory/owner_credentials.py",
+        "memory/pending_capture.py",
+        "memory/pending_follow_up.py",
+        "memory/pending_store.py",
+        "memory/policy_gated_v4_reader.py",
+        "memory/profile_card.py",
+        "memory/profile_card_access.py",
+        "memory/recall_access.py",
+        "memory/recall_answer.py",
+        "memory/recall_search.py",
+        "memory/recall_store.py",
+        "memory/relational_v4.py",
+        "memory/retention.py",
+        "memory/sensitive_access.py",
+        "memory/voice_consent.py",
+        # Plan 0088 D-20: the documents' share, recorded in ADR 0034.
+        "memory/document_access.py",
+        "memory/document_search.py",
+        "memory/document_answer.py",
+    }
+)
+
+
+def _imports_cognition(text: str) -> bool:
+    return any(
+        (
+            isinstance(node, ast.ImportFrom)
+            and node.module is not None
+            and (node.module == "server.cognition" or node.module.startswith("server.cognition."))
+        )
+        or (
+            isinstance(node, ast.Import)
+            and any(alias.name.startswith("server.cognition") for alias in node.names)
+        )
+        for node in ast.walk(ast.parse(text))
+    )
+
+
+def _new_cognition_importers(sources: Mapping[str, str]) -> list[str]:
+    """The `memory/` modules that import `server.cognition` and are not on the list."""
+    return sorted(
+        name
+        for name, text in sources.items()
+        if name.startswith("memory/")
+        and name not in _MEMORY_MODULES_IMPORTING_COGNITION
+        and _imports_cognition(text)
+    )
+
+
+@pytest.mark.unit
+def test_the_memory_modules_importing_cognition_never_grow() -> None:
+    assert _new_cognition_importers(_sources()) == []
+
+
+@pytest.mark.unit
+def test_the_cognition_import_guard_detects_a_fourth_document_module() -> None:
+    leak = {
+        "memory/document_access.py": "from server.cognition.models import AuthorizationAction\n",
+        "memory/document_extra.py": "from server.cognition import controller\n",
+        "memory/document_other.py": "import server.cognition.models\n",
+        "memory/document_clean.py": "from server.memory import document_store\n",
+    }
+
+    assert _new_cognition_importers(leak) == [
+        "memory/document_extra.py",
+        "memory/document_other.py",
+    ]

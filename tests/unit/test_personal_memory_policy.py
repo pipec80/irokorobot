@@ -65,6 +65,7 @@ _CONFIRM = AuthorizationAction.CONFIRM_PERSONAL_MEMORY
 _CORRECT = AuthorizationAction.CORRECT_PERSONAL_MEMORY
 _FORGET = AuthorizationAction.FORGET_PERSONAL_MEMORY
 _ARCHIVE = AuthorizationAction.ARCHIVE_PERSONAL_MEMORY
+_DOCUMENT = AuthorizationAction.READ_PERSONAL_DOCUMENT
 _PERSONAL_ONLY = frozenset({DataVisibility.PERSONAL})
 _FORGET_VISIBILITIES = frozenset(
     {DataVisibility.PERSONAL, DataVisibility.PRIVATE, DataVisibility.TEMPORARY}
@@ -82,6 +83,15 @@ _ORDINARY_LITERAL = frozenset({DataSensitivity.NORMAL, DataSensitivity.PRIVATE})
 
 # ADR 0019 §3, restated as literals. Owner amendment 2026-10-08: confirm needs STRONG.
 _EXPECTED_TABLE = {
+    # Plan 0088 D-15: reading the owner's own document, at `basic` (the face); a PIN grant never
+    # counts; a `sensitive` document is read as `private`, in no set that raises it to `strong`.
+    _DOCUMENT: PersonalMemoryCapability(
+        min_assurance=IdentityAssurance.BASIC,
+        consent_applies=True,
+        requires_unlock=False,
+        unlock_scope=None,
+        visibilities=_PERSONAL_ONLY,
+    ),
     # Plan 0086, ADR 0039 decision 4: archiving by voice is its own action, at `basic`.
     _ARCHIVE: PersonalMemoryCapability(
         min_assurance=IdentityAssurance.BASIC,
@@ -217,9 +227,9 @@ _OTHER_ID = 8
 _NORMAL = frozenset({DataSensitivity.NORMAL})
 _MEDICAL = frozenset({DataSensitivity.MEDICAL})
 _SECURITY = frozenset({DataSensitivity.SECURITY})
-_NEW_ACTIONS = (_READ, _PROPOSE, _CONFIRM, _CORRECT, _FORGET)
-_NON_FORGET = (_READ, _PROPOSE, _CONFIRM, _CORRECT)
-_BASIC_ACTIONS = (_READ, _PROPOSE, _CORRECT)
+_NEW_ACTIONS = (_READ, _PROPOSE, _CONFIRM, _CORRECT, _FORGET, _DOCUMENT)
+_NON_FORGET = (_READ, _PROPOSE, _CONFIRM, _CORRECT, _DOCUMENT)
+_BASIC_ACTIONS = (_READ, _PROPOSE, _CORRECT, _DOCUMENT)
 _STRONG_ACTIONS = (_CONFIRM, _FORGET)
 GRANTED = ConsentStatus.GRANTED
 _ALL_CONSENTS = (

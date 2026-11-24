@@ -31,8 +31,10 @@ if TYPE_CHECKING:
 __all__ = [
     "DocumentExistsError",
     "DocumentFormat",
+    "DocumentHit",
     "DocumentIndexHealth",
     "DocumentLevel",
+    "DocumentSearch",
     "DocumentSection",
     "DocumentSource",
     "NewSection",
@@ -125,6 +127,29 @@ class DocumentSection:
     title: str = field(repr=False)
     heading: str = field(repr=False)
     body: str = field(repr=False)
+
+
+@dataclass(frozen=True)
+class DocumentHit:
+    """One section a document search returns, with its distance when it has one."""
+
+    section: DocumentSection
+    distance: float | None
+
+
+@dataclass(frozen=True)
+class DocumentSearch:
+    """What one document search found (Plan 0088 D-12).
+
+    Attributes:
+        scope_found: ``False`` when the cue named a document none of the readable titles holds.
+        hits: At most three sections, best first.
+        rejected: How many candidates the relevance gate refused.
+    """
+
+    scope_found: bool
+    hits: tuple[DocumentHit, ...]
+    rejected: int = 0
 
 
 def _sha256(text: str) -> str:

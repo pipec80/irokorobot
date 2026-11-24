@@ -64,6 +64,10 @@ class InformationNeed(StrEnum):
     SENSITIVE_READ = "sensitive_read"
     # A secret value said or asked for («mi clave es 1234»): never kept, never answered (ADR 0029).
     SECRET_VALUE = "secret_value"  # noqa: S105  # pragma: allowlist secret - a need name
+    # «¿Qué dice el manual de la lavadora sobre el filtro?»: the owner's documents (Plan 0088).
+    DOCUMENT = "document"
+    # «Iroko, lee esto»: the text in front of the camera read aloud (Plan 0088 D-17).
+    READ_TEXT = "read_text"
 
 
 class ResponseSource(StrEnum):
@@ -153,6 +157,28 @@ class MemoryAnswerReply:
 NO_MEMORY: Final = "No me acuerdo de eso."
 #: Spoken when the alta loaded no relative of the kind asked about (ADR 0028 decision 9).
 NOT_REGISTERED: Final = "No tengo registrado eso."
+
+
+@dataclass(frozen=True)
+class DocumentReply:
+    """What the document answerer says back to the controller (Plan 0088 D-14, D-15).
+
+    Lives in the cognitive core so the controller maps it without importing ``server.memory``.
+    Hidden from ``repr``: ``text`` carries the owner's documents.
+
+    Attributes:
+        text: The spoken answer; ``None`` when nothing qualified (the controller decides by the
+            cue's strength), or the fixed phrase when the audit or the search failed.
+        denied: ``True`` when the pre-check or the policy refused; answered like a stranger.
+        found: ``True`` when *text* was worded from found sections.
+        scope_found: ``False`` when the cue named a document the owner has none of: a weak cue
+            then converses.
+    """
+
+    text: str | None = field(repr=False)
+    denied: bool = False
+    found: bool = False
+    scope_found: bool = True
 
 
 @dataclass(frozen=True)

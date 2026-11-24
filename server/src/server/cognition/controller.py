@@ -371,8 +371,10 @@ class CognitiveController:
                 InformationNeed.GENERIC_CONVERSATION
                 | InformationNeed.SENSITIVE_READ
                 | InformationNeed.SECRET_VALUE
+                | InformationNeed.DOCUMENT
+                | InformationNeed.READ_TEXT
             ):
-                # The last two never get here: ``_decision_for`` routes them first.
+                # The last four never get here: ``_decision_for`` routes them first.
                 decision = None
         return decision
 

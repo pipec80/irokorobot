@@ -15,6 +15,7 @@ import re
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from server.cognition.document_cues import classify_document_cue
 from server.cognition.household_request import (
     BIRTH_WORDS,
     has_question_mark,
@@ -327,6 +328,7 @@ def resolve_information_need(
     alta: bool = False,
     occurred: bool = False,
     changes: bool = False,
+    documents: bool = False,
 ) -> IntentResolution:
     """Resolve one bounded information need from reviewed Spanish rules.
 
@@ -344,6 +346,8 @@ def resolve_information_need(
             usted forms, years and seasons; it changes nothing without ``recall``.
         changes: Whether a spoken correction or archive resolves to ``MEMORY_CHANGE``
             (Plan 0086): the change dialogue is wired. It runs before every other rule.
+        documents: Whether a document question resolves to ``DOCUMENT`` (Plan 0088 D-11): it
+            runs after a stated secret and before every other rule, the recall rule included.
 
     Returns:
         The closed, deterministic resolution — need, match kind, and a
@@ -353,7 +357,7 @@ def resolve_information_need(
     # A message that states, asks or offers a secret is never a change: the guard wins.
     if changes and secret_kind(message) is None and parse_memory_change(message) is not None:
         return _resolution(InformationNeed.MEMORY_CHANGE, IntentMatch.EXACT, "memory.change.v1")
-    for rule in _rules_for(recall, sensitive, secrets, alta, occurred):
+    for rule in _rules_for(recall, sensitive, secrets, alta, occurred, documents):
         resolution = rule(utterance)
         if resolution is not None:
             return resolution
@@ -439,6 +443,14 @@ def _recall_resolution(utterance: _Utterance, *, occurred: bool) -> IntentResolu
     if cue.strength is CueStrength.WEAK and requests_household_data(utterance.message):
         return None
     return _resolution(InformationNeed.RECALL, IntentMatch.EXACT, f"recall.{cue.strength}.v1")
+
+
+def _document_rule(utterance: _Utterance) -> IntentResolution | None:
+    """Recognize a document question (Plan 0088 D-11, ADR 0034 decision 3)."""
+    cue = classify_document_cue(utterance.message)
+    if cue is None:
+        return None
+    return _resolution(InformationNeed.DOCUMENT, IntentMatch.EXACT, f"document.{cue.strength}.v1")
 
 
 def _protected_household_rule(utterance: _Utterance) -> IntentResolution | None:
@@ -778,7 +790,12 @@ def _alta_question_rule(utterance: _Utterance) -> IntentResolution | None:
 
 @cache
 def _rules_for(
-    recall: bool, sensitive: bool, secrets: bool, alta: bool = False, occurred: bool = False
+    recall: bool,
+    sensitive: bool,
+    secrets: bool,
+    alta: bool = False,
+    occurred: bool = False,
+    documents: bool = False,
 ) -> tuple[Callable[[_Utterance], IntentResolution | None], ...]:
     """Return the rule tuple of one flag set, built once (Plan 0079, D-1).
 
@@ -794,15 +811,17 @@ def _rules_for(
             ``sensitive``.
         occurred: Whether the recall rule reads with the occurred time on (Plan 0083); only with
             ``recall``.
+        documents: Whether the document rule runs (Plan 0088), right after a stated secret.
 
     Returns:
         The ordered rules, a stable object per flag set.
     """
     base = (_OCCURRED_RECALL_RULES if occurred else _RECALL_RULES) if recall else _RULES
-    if not (sensitive or secrets):
+    if not (sensitive or secrets or documents):
         return base
     stated = (_stated_secret_rule,) if secrets else ()
+    document = (_document_rule,) if documents else ()
     sensitive_rule = _alta_question_rule if alta else _sensitive_question_rule
     question = (sensitive_rule,) if sensitive else ()
     asked = (_asked_secret_rule,) if secrets else ()
-    return (*stated, *question, *asked, *base)
+    return (*stated, *document, *question, *asked, *base)

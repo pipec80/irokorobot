@@ -146,6 +146,7 @@ def _event_values() -> dict[str, object]:
                 "correct_personal_memory",
                 "forget_personal_memory",
                 "archive_personal_memory",
+                "read_personal_document",
                 "propose_household_memory",
                 "confirm_household_memory",
             ],

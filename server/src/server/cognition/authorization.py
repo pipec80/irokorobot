@@ -222,6 +222,15 @@ PERSONAL_MEMORY_CAPABILITIES: Mapping[AuthorizationAction, PersonalMemoryCapabil
                 unlock_scope=None,
                 visibilities=_PERSONAL_ONLY,
             ),
+            # Plan 0088 D-15: the owner's own documents, at `basic`; a `sensitive` one is read as
+            # `private` (in no set that raises it to `strong`); a PIN grant never counts.
+            AuthorizationAction.READ_PERSONAL_DOCUMENT: PersonalMemoryCapability(
+                min_assurance=IdentityAssurance.BASIC,
+                consent_applies=True,
+                requires_unlock=False,
+                unlock_scope=None,
+                visibilities=_PERSONAL_ONLY,
+            ),
             AuthorizationAction.FORGET_PERSONAL_MEMORY: PersonalMemoryCapability(
                 min_assurance=IdentityAssurance.STRONG,
                 consent_applies=False,
