@@ -183,3 +183,23 @@ async def test_the_reading_is_recorded_with_its_marker_and_no_frame_byte_is_kept
             data = path.read_bytes()
             assert _FRAME[4:] not in data
             assert b"qqcardqq" not in data
+
+
+async def test_a_kept_note_is_embedded_at_once_so_its_words_find_it(
+    reading: tuple[PersonalSetupResult, AsyncMock], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """«leche» names nothing specific: without a vector the gate would refuse the kept note."""
+    result, _ = reading
+    _see_the_owner(monkeypatch)
+    _hear(monkeypatch, "lee esto", "Sí, guárdalo")
+    _models(monkeypatch)
+    embed = AsyncMock(return_value=[1.0] + [0.0] * 767)
+    monkeypatch.setattr("server.memory.document_index.ollama_embed", embed)
+
+    async with _client() as client:
+        await client.post("/transcribe", files=_files())
+        await client.post("/transcribe", files=_files())
+
+    assert await _camera_titles(result.owner_entity_id)
+    assert await document_store.sections_without_vector(10) == []
+    embed.assert_awaited()

@@ -84,6 +84,7 @@ from server.memory.candidate_types import CandidateChannel
 from server.memory.continuity import ContinuityTurn
 from server.memory.conversation_capture import capture_turn
 from server.memory.document_access import document_reply
+from server.memory.document_index import backfill_sections
 from server.memory.document_secrets import flags_secret
 from server.memory.entity_labels import read_household_names
 from server.memory.household_authorization import record_authorization_decision
@@ -144,6 +145,8 @@ router = APIRouter(prefix="/transcribe", tags=["Audio"])
 _MAX_READING_CHARS = 400
 _TITLE_WORDS = 5
 _MAX_NOTE_TITLE = 120
+# Sections embedded right after a note is kept (a note is a few sections; older ones wait).
+_KEPT_NOTE_EMBEDS = 10
 
 type SpeakerIdentifier = Callable[[], Awaitable[GenericIdentification]]
 
@@ -402,7 +405,7 @@ def _voice_controller(
         occurred_time=occurred_time_on(),
         document_answerer=_document_answerer(client, request_identity),
         text_reader=_text_reader(client, request_identity, frame),
-        reading_keeper=_reading_keeper(request_identity),
+        reading_keeper=_reading_keeper(client, request_identity),
     )
 
 
@@ -750,11 +753,16 @@ def _note_title(text: str, now: datetime) -> str:
     return f"Nota {day}: {words}"[:_MAX_NOTE_TITLE]
 
 
-def _reading_keeper(request_identity: _RequestIdentity) -> ReadingKeeper | None:
+def _reading_keeper(
+    client: httpx.AsyncClient, request_identity: _RequestIdentity
+) -> ReadingKeeper | None:
     """Return the keeper of the waiting reading, or ``None`` with a switch off (D-17).
 
     Every turn empties the slot unless it is «sí, guárdalo» from the owner's face within 60
     seconds, from the speaker the reading was bound to (or anyone, when it was bound to nobody).
+    A kept note is embedded at once, as ``iroko-admin docs add`` does: a question that names
+    nothing specific finds a section only by its distance (ADR 0040), and the conversation job
+    does not run while the conversation is open.
     """
     if not _reading_on():
         return None
@@ -775,6 +783,7 @@ def _reading_keeper(request_identity: _RequestIdentity) -> ReadingKeeper | None:
         if text is None:
             return KeepOutcome.NOT_KEPT
         await keep_reading(actor.person_id, text, title=_note_title(text, now), now=now)
+        await backfill_sections(client, limit=_KEPT_NOTE_EMBEDS)
         return KeepOutcome.KEPT
 
     return keep
