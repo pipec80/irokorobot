@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 from typing import TYPE_CHECKING, Final, cast
+import warnings
 
 if TYPE_CHECKING:
     from pypdf import PageObject, PdfReader
@@ -76,43 +77,73 @@ def holds_active_content(reader: PdfReader) -> bool:
     return any(_active_page(page) for page in reader.pages)
 
 
-def holds_codes(reader: PdfReader, *, max_images: int = MAX_IMAGES) -> bool:
+def _declared_images(reader: PdfReader) -> list[int]:
+    """The declared pixel count (``/Width`` times ``/Height``) of every image XObject, page by page.
+
+    Read from the dictionaries only: no image is decoded. An image with no usable size counts as
+    over any budget.
+    """
+    sizes = []
+    for page in reader.pages:
+        resources = page.get("/Resources")
+        if resources is None:
+            continue
+        objects = cast("DictionaryObject", resources.get_object()).get("/XObject")
+        if objects is None:
+            continue
+        for reference in cast("DictionaryObject", objects.get_object()).values():
+            xobject = cast("DictionaryObject", reference.get_object())
+            if xobject.get("/Subtype") != "/Image":
+                continue
+            width, height = xobject.get("/Width"), xobject.get("/Height")
+            if isinstance(width, int) and isinstance(height, int) and width > 0 and height > 0:
+                sizes.append(width * height)
+            else:
+                sizes.append(-1)
+    return sizes
+
+
+def holds_codes(
+    reader: PdfReader, *, max_images: int = MAX_IMAGES, max_pixels: int = MAX_IMAGE_PIXELS
+) -> bool:
     """Whether an image of the PDF holds a QR code or a barcode (OpenCV's detectors).
 
-    Decoding an image takes memory by its declared size, so every image is bounded to
-    ``MAX_IMAGE_PIXELS`` (OpenCV and PIL refuse a larger one) and a PDF with more than
-    *max_images* images is not inspected at all: both count as holding a code, and the PDF is
-    refused (a household document never needs either).
+    Fails closed. Before anything is decoded, every image is counted and sized from its
+    dictionary: more than *max_images* images, or one over *max_pixels* or with no usable size,
+    counts as holding a code (a household document never needs them). Then each image is decoded
+    with OpenCV's and PIL's own pixel limits set; one that does not decode counts as holding a
+    code too.
 
     Args:
         reader: The opened, not encrypted PDF.
-        max_images: How many images are inspected at most.
+        max_images: How many images a PDF may hold.
+        max_pixels: The declared pixels one image may have.
 
     Returns:
-        ``True`` at the first image with a code, at an image over the pixel budget, or past
-        *max_images*; an image OpenCV cannot decode is skipped.
+        ``True`` when the PDF is refused: a code found, or an image too many, too large or
+        undecodable.
     """
-    os.environ["OPENCV_IO_MAX_IMAGE_PIXELS"] = str(MAX_IMAGE_PIXELS)
-    import cv2  # noqa: PLC0415 - heavy, and needed only when a PDF is loaded
+    sizes = _declared_images(reader)
+    if len(sizes) > max_images or any(size < 0 or size > max_pixels for size in sizes):
+        return True
+    if not sizes:
+        return False
+    os.environ["OPENCV_IO_MAX_IMAGE_PIXELS"] = str(max_pixels)
+    import cv2  # noqa: PLC0415 - heavy, and needed only when a PDF has images
     import numpy as np  # noqa: PLC0415
     from PIL import Image  # noqa: PLC0415
 
-    Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
+    Image.MAX_IMAGE_PIXELS = max_pixels
+    warnings.simplefilter("error", Image.DecompressionBombWarning)
     qr = cv2.QRCodeDetector()
     barcode = cv2.barcode.BarcodeDetector()
-    seen = 0
-    for page in reader.pages:
-        try:
-            images = list(page.images)
-        except (Image.DecompressionBombError, MemoryError):
-            return True
-        for image in images:
-            seen += 1
-            if seen > max_images:
-                return True
-            pixels = cv2.imdecode(np.frombuffer(image.data, dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
-            if pixels is None:
-                continue
-            if qr.detect(pixels)[0] or barcode.detect(pixels)[0]:
-                return True
+    try:
+        for page in reader.pages:
+            for image in page.images:
+                data = np.frombuffer(image.data, dtype=np.uint8)
+                pixels = cv2.imdecode(data, cv2.IMREAD_GRAYSCALE)
+                if pixels is None or qr.detect(pixels)[0] or barcode.detect(pixels)[0]:
+                    return True
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning, MemoryError, ValueError):
+        return True
     return False

@@ -275,3 +275,17 @@ def test_a_pdf_with_too_many_images_to_inspect_is_refused(tmp_path: Path) -> Non
 
     assert not pdf_inspect.holds_codes(PdfReader(path))
     assert pdf_inspect.holds_codes(PdfReader(path), max_images=2)
+
+
+def test_an_image_over_the_declared_pixel_budget_is_refused_before_any_decode(
+    tmp_path: Path,
+) -> None:
+    from pypdf import PdfReader  # noqa: PLC0415
+    from server.memory import pdf_inspect  # noqa: PLC0415
+
+    writer = _text_pdf()
+    writer.append(_image_pdf(np.full((60, 60), 255, dtype=np.uint8), tmp_path / "blank.pdf"))
+    path = _saved(writer, tmp_path / "grande.pdf")
+
+    assert not pdf_inspect.holds_codes(PdfReader(path))
+    assert pdf_inspect.holds_codes(PdfReader(path), max_pixels=60 * 60 - 1)
