@@ -263,6 +263,20 @@ make. A decision answered differently is rewritten here before promotion.
   one whose pages give no text, is refused with «Este PDF no tiene texto que pueda leer.» (scanned
   PDF is R4). The memory a crafted PDF can take inside the child is bounded only by those limits:
   accepted, because `docs add` runs with the server stopped on a file the owner chose.
+  > **Pipec, 2026-11-24 (Task B10), file safety.** What is read is never interpreted: no text of
+  > a document is executed, followed or opened, and SQL only takes it as a bound value. On top of
+  > that, three checks before any text is taken: a file must be what its extension says (a PDF
+  > starts with `%PDF-`; a text holds no NUL byte nor more than a few control characters); every
+  > control and invisible character but line breaks and tabs is removed from the text; and a PDF
+  > that carries active content is refused whole («Este PDF trae enlaces, firmas, códigos QR o de
+  > barras, adjuntos o acciones; no lo abro.»): JavaScript, an action on opening or on a page, an
+  > embedded or attached file, a link or another action annotation, a signature field, an XFA form,
+  > rich media, or an image with a QR code or a barcode (`memory/pdf_inspect.py`, in the child).
+  > Pipec's long text-layer PDF passes. The closed list of formats R2b may add is Pipec's: Office
+  > (Word, Excel, PowerPoint), JPG and PNG, and audio or video (MP3, MP4, MPG, MOV and the iPhone's
+  > HEIC and MOV), each with its own check of what the file really is before it is opened;
+  > everything else is refused. A threat model of file ingestion (archives, macros, images, audio,
+  > the body's storage, a remote upload) is its own ADR, before R2b or any remote load.
 - **D-10 Sections fit the model's window, cut before they are stored.** Markdown is cut at its
   headings (the heading path is kept with the section), then at blank lines; text at blank lines;
   PDF by page, then at blank lines; a paragraph above the cap is cut at sentence ends. Task B0

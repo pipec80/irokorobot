@@ -184,6 +184,16 @@ with these changes, each with its reason; Pipec approved them on 2026-11-23.
     groups or a card word, an IBAN by its shape. A code written with no word near it is read: a
     known limit.
 
+13. **A file is checked before its text is taken** (Pipec, 2026-11-24; decision 6 named only
+    caps and a timeout). It must be what its extension says (a PDF starts with `%PDF-`, a text
+    holds no binary); control and invisible characters are removed; and a PDF with active content
+    is refused whole: JavaScript, actions, embedded or attached files, links, signature fields,
+    XFA, rich media, or an image holding a QR code or a barcode. Nothing of a document is ever
+    executed or followed, so these checks only keep the parser from touching what a document of
+    the household never needs. The formats stay a closed list: Office, JPG and PNG, audio and
+    video (with the iPhone's HEIC and MOV) are the next ones (R2b), each with its own check; a
+    threat model of file ingestion is its own ADR before them.
+
 ## Not decided here
 
 | Subject | Owner |
