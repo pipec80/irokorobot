@@ -16,7 +16,13 @@ from typing import Final
 from server.cognition.recall_cues import CueStrength, content_words, specific_words
 from server.text_keys import normalize_spanish
 
-__all__ = ["DOCUMENT_TYPES", "DocumentCue", "classify_document_cue"]
+__all__ = [
+    "DOCUMENT_TYPES",
+    "DocumentCue",
+    "classify_document_cue",
+    "is_keep_phrase",
+    "is_reading_request",
+]
 
 #: The closed list of document types a cue may name (folded).
 DOCUMENT_TYPES: Final = (
@@ -126,3 +132,31 @@ def classify_document_cue(message: str) -> DocumentCue | None:
         return None
     strength = CueStrength.STRONG if match.group("det") == "mi" else CueStrength.WEAK
     return _cue(message, strength, f"{match.group('type')} {parts[0]}", parts[1])
+
+
+# «Iroko, lee esto» (Plan 0088 D-17): the closed shapes, folded, with the robot's name, a filler
+# or «por favor» around them; nothing else may be said in the same turn.
+_READING: Final = re.compile(
+    r"^(?:(?:iroko|oye|a ver|por favor) )*"
+    r"(?:lee esto|leeme esto|lee lo que dice|que dice aqui|que dice aca)"
+    r"(?: (?:iroko|por favor))*$"
+)
+# «sí, guárdalo»: the closed answer to the reading's offer (and ADR 0021's verb).
+_KEEP: Final = re.compile(r"^(?:si )?guardalo(?: por favor)?$")
+
+
+def is_reading_request(message: str) -> bool:
+    """Whether *message* asks the robot to read aloud what is in front of the camera.
+
+    Args:
+        message: Raw transcript or chat text in Spanish.
+
+    Returns:
+        ``True`` for «lee esto», «léeme esto», «lee lo que dice», «¿qué dice aquí / acá?».
+    """
+    return bool(_READING.match(normalize_spanish(message)))
+
+
+def is_keep_phrase(message: str) -> bool:
+    """Whether *message* is «sí, guárdalo» (or «guárdalo», with or without «por favor»)."""
+    return bool(_KEEP.match(normalize_spanish(message)))

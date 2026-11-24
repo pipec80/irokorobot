@@ -154,6 +154,37 @@ class MemoryAnswerReply:
     expects_short_reply: bool = False
 
 
+class ReadingOutcome(StrEnum):
+    """How one «lee esto» ended (Plan 0088 D-17)."""
+
+    NO_FRAME = "no_frame"
+    FAILED = "failed"
+    SECRET = "secret"  # noqa: S105  # pragma: allowlist secret - an outcome name
+    READ = "read"
+
+
+@dataclass(frozen=True)
+class ReadingReply:
+    """What the text reader says back; ``text`` (hidden from ``repr``) only when it read."""
+
+    outcome: ReadingOutcome
+    text: str | None = field(default=None, repr=False)
+
+
+class KeepOutcome(StrEnum):
+    """What the reading keeper did with a turn (Plan 0088 D-17)."""
+
+    NO_SLOT = "no_slot"
+    KEPT = "kept"
+    NOT_KEPT = "not_kept"
+
+
+#: The fixed phrases of «Iroko, lee esto» (Plan 0088 D-17), in neutral tuteo.
+NOTHING_TO_READ: Final = "No veo nada para leer. Acércalo a la cámara."
+COULD_NOT_READ: Final = "No pude leerlo. Acércalo un poco más a la cámara."
+READ_SECRET: Final = "Eso tiene una clave o un código; no lo leo en voz alta."  # noqa: S105  # pragma: allowlist secret - a fixed phrase
+READ_OFFER: Final = "¿Lo guardo? Dime: sí, guárdalo."
+READING_KEPT: Final = "Listo, lo guardé en tus documentos."
 #: Spoken when a recall question finds nothing it may say (ADR 0028 decisions 4 and 8).
 NO_MEMORY: Final = "No me acuerdo de eso."
 #: What a strong document cue hears when nothing qualified, and what any failure answers (D-14).
