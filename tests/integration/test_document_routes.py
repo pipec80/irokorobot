@@ -16,7 +16,7 @@ import httpx
 from pydantic import SecretStr
 import pytest
 from server.cognition.response_plan import DOCUMENT_RECORDED_TEXT, NO_MEMORY, NOT_IN_DOCUMENTS
-from server.memory import continuity, document_answer, document_search, document_store
+from server.memory import continuity, document_search, document_store
 from server.memory.biometric_consent import grant_face_consent
 from server.memory.conversation_consent import grant_conversation_consent
 from server.memory.deletion_register import Deletion, DeletionKind, forget
@@ -48,7 +48,6 @@ _ASK = "¿Qué dice el manual de la lavadora sobre el repuesto ZZK41?"
 _STRONG_NOTHING = "Según mis documentos, ¿qué dice del repuesto QQX77?"
 _GENERAL = "¿Qué dice la guía de Santiago sobre el metro?"
 _RECALL = "¿Qué te conté del repuesto ZZK41?"
-_WORDED = "El repuesto ZZK41 se gira hacia la izquierda."
 _ROUTES = ["/transcribe", "/transcribe/stream"]
 _DOCUMENT_AUDIT = (
     "SELECT COUNT(*) FROM authorization_audit_events WHERE action = 'read_personal_document'"
@@ -94,7 +93,7 @@ async def household(
     db._conn = None
 
 
-def _models(monkeypatch: pytest.MonkeyPatch) -> tuple[list[str], AsyncMock]:
+def _models(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     prompts: list[str] = []
 
     async def generate(_client: object, system_prompt: str, _messages: object) -> tuple[str, str]:
@@ -116,9 +115,7 @@ def _models(monkeypatch: pytest.MonkeyPatch) -> tuple[list[str], AsyncMock]:
         "server.memory.recall_search.ollama_embed",
         AsyncMock(side_effect=httpx.ConnectError("offline")),
     )
-    wording = AsyncMock(return_value=_WORDED)
-    monkeypatch.setattr(document_answer, "ollama_chat", wording)
-    return prompts, wording
+    return prompts
 
 
 async def _count(sql: str) -> int:
@@ -151,14 +148,13 @@ async def test_a_document_question_names_its_document_and_asks_no_generic_model(
 ) -> None:
     _see_the_owner(monkeypatch)
     _hear(monkeypatch, _ASK)
-    prompts, wording = _models(monkeypatch)
+    prompts = _models(monkeypatch)
 
     async with _client() as client:
         response = await client.post(route, files=_files())
 
-    assert _spoken(response, route) == f"Según Manual de la lavadora: {_WORDED}"
-    assert prompts == []
-    wording.assert_awaited_once()
+    assert _spoken(response, route) == f"Según Manual de la lavadora: {_CANARY}"
+    assert prompts == []  # no model at all: the answer quotes the section
     assert await _count(_DOCUMENT_AUDIT) == 1
 
 
@@ -168,7 +164,7 @@ async def test_nothing_found_a_general_question_and_a_stranger(
 ) -> None:
     _see_the_owner(monkeypatch)
     _hear(monkeypatch, _STRONG_NOTHING, _GENERAL)
-    prompts, wording = _models(monkeypatch)
+    prompts = _models(monkeypatch)
 
     async with _client() as client:
         nothing = await client.post(route, files=_files())
@@ -177,7 +173,6 @@ async def test_nothing_found_a_general_question_and_a_stranger(
     assert _spoken(nothing, route) == NOT_IN_DOCUMENTS
     assert _spoken(general, route) == "Hola."
     assert len(prompts) == 1
-    wording.assert_not_awaited()
 
 
 @pytest.mark.parametrize("route", _ROUTES)

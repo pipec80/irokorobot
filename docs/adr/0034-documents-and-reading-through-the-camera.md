@@ -159,6 +159,17 @@ with these changes, each with its reason; Pipec approved them on 2026-11-23.
    and on the document bench; three scanned PDFs of Pipec's (4 to 750 pages) gave no text at all,
    so they wait for R4. Counts only; no file entered the repository.
 
+9. **The answer quotes; no model words it** (decision 3 said «worded from the found sections
+   only»). On the plan's bench the local 3B model obeyed an order planted in a section in 12 of
+   24 answers, and no grounding check can see it, since the planted words are in the section.
+   Pipec delegated the call (2026-11-23: the laptop runs only the 3B model, its CPU and RAM shared
+   with Whisper, Piper and the vision model). The answer is «Según {título}:» and the found
+   sections' best-matching sentences, with every sentence in the closed shapes of an order and
+   every one the secret detector flags left out: 0 of 24 on the same eval, and no model call. A
+   planted order in other words is still read aloud as what the document says: a known limit of
+   a deterministic guard. A better model may word the answer later through the answer seam, with
+   the eval run again.
+
 ## Not decided here
 
 | Subject | Owner |

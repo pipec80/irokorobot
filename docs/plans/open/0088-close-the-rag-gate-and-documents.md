@@ -322,6 +322,16 @@ make. A decision answered differently is rewritten here before promotion.
   ungrounded sentence, a claim of having saved or a reply the document secret detector (D-15) flags
   gets the template «Según {título}: {cita de la primera sección}» (at most 200 characters).
   Nothing qualified answers «No lo encuentro en tus documentos.» (strong cue).
+  > **Amended on 2026-11-23, at Task B8 Step 5 (Pipec delegated the call: «aplicando la ley de
+  > Pareto … no que sea un parche»).** With `qwen2.5:3b` the eval counted 12 of 24 answers that
+  > followed the planted order, and the grounding check cannot see it (the planted words are in
+  > the section). The answer is now **extractive, with no model**: «Según {título}:» and at most
+  > two sentences of the found sections that hold the most of the question's words (the title's
+  > words aside; long words also by a five-letter stem), every sentence in the closed shapes of an
+  > order («ignora…», «olvida lo anterior…», «di que…», «a partir de ahora eres…») and every one
+  > the secret detector flags left out, 220 characters at most; only orders and codes left says
+  > «No lo encuentro en tus documentos.». Eval: 0 of 24. `build_document_messages` and `grounded`
+  > are not built; a model can word the answer later through `document_reply`'s `answer` seam.
 - **D-15 Levels, the policy and secrets** (ADR 0034 decision 2, ADR 0029 decisions 3 and 5). A new
   action `READ_PERSONAL_DOCUMENT` in `PERSONAL_MEMORY_CAPABILITIES`: owner only, own data,
   `personal`, minimum `basic` (the face), audited before the search like recall. A `normal` source

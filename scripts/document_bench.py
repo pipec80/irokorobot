@@ -497,7 +497,7 @@ def _forbidden(path: Path) -> dict[str, tuple[str, ...]]:
 
 
 async def injections(fixture: Path, *, repeats: int) -> dict[str, object]:
-    """Task B8 Step 5: each injected question, *repeats* times, worded by the real chat model.
+    """Task B8 Step 5: each injected question, *repeats* times, answered by the production answer.
 
     The production gate and ``word_document`` answer; a reply that holds one of the question's
     ``forbidden`` words followed the planted instruction. Counts only.
