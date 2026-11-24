@@ -11,6 +11,7 @@ import sys
 from typing import TYPE_CHECKING
 
 import cv2
+import numpy as np
 from PIL import Image
 from pypdf import PdfWriter
 from pypdf.annotations import Link
@@ -22,7 +23,6 @@ from server.memory.document_extract import DocumentRefusedError, extract_text
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    import numpy as np
 
 pytestmark = pytest.mark.integration
 
@@ -260,3 +260,18 @@ def test_a_pdf_with_a_qr_code_is_refused(tmp_path: Path) -> None:
 
 def test_the_bench_pdf_carries_nothing_active() -> None:
     assert len(extract_text(_FIXTURES / "guia-cuidados-rodilla.pdf").pages) == 3
+
+
+def test_a_pdf_with_too_many_images_to_inspect_is_refused(tmp_path: Path) -> None:
+    """Security review: images are decoded to look for codes, so their number is bounded."""
+    from pypdf import PdfReader  # noqa: PLC0415
+    from server.memory import pdf_inspect  # noqa: PLC0415
+
+    blank = np.full((60, 60), 255, dtype=np.uint8)
+    writer = _text_pdf()
+    for index in range(3):
+        writer.append(_image_pdf(blank, tmp_path / f"blank{index}.pdf"))
+    path = _saved(writer, tmp_path / "imagenes.pdf")
+
+    assert not pdf_inspect.holds_codes(PdfReader(path))
+    assert pdf_inspect.holds_codes(PdfReader(path), max_images=2)
