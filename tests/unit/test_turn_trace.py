@@ -5,9 +5,11 @@ The free memory is a double; the store and the models are doubles; canaries only
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 import logging
 import time
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 from uuid import UUID
@@ -20,6 +22,7 @@ from server.memory import conversation_capture, conversation_jobs
 from server.memory.candidate_proposal import propose_candidates
 from server.memory.candidate_types import CandidateChannel
 from server.memory.conversation_capture import CaptureOutcome, capture_turn
+from server.memory.conversation_episodes import EpisodeOutcome
 from server.settings import settings
 from server.streaming_render import StreamState, _log_stream_metrics
 
@@ -129,7 +132,7 @@ async def test_a_named_topic_logs_its_piece_row_model_and_time(
     assert record.piece == "pending_naming"  # type: ignore[attr-defined]
     assert record.row_id == 5  # type: ignore[attr-defined]
     assert record.model == "qqmodeloqq:4b"  # type: ignore[attr-defined]
-    assert record.outcome == "ok"  # type: ignore[attr-defined]
+    assert record.outcome == "named"  # type: ignore[attr-defined]
     assert isinstance(record.elapsed_ms, int)  # type: ignore[attr-defined]
     assert record.error_type is None  # type: ignore[attr-defined]
 
@@ -169,6 +172,7 @@ async def test_a_naming_model_failure_is_ok_for_the_piece_and_keeps_its_row(
 
     (job,) = _records(caplog, "conversation.job")
     assert job.row_id == 9  # type: ignore[attr-defined]
+    assert job.outcome == "model_failed"  # type: ignore[attr-defined]  # never «ok»
     (named,) = _records(caplog, "pending.named")
     assert named.error_type == "LLMError"  # type: ignore[attr-defined]
 
@@ -261,3 +265,59 @@ async def test_a_proposal_logs_its_model_and_time(
     assert record.stored == 0  # type: ignore[attr-defined]
     assert record.correlation_id == str(UUID(int=89))  # type: ignore[attr-defined]
     assert all(_CANARY not in str(r.__dict__) for r in caplog.records)
+
+
+async def test_a_tick_with_nothing_to_do_logs_no_job_line(
+    naming_job: None,
+    monkeypatch: pytest.MonkeyPatch,
+    http_client: httpx.AsyncClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(conversation_jobs, "next_unnamed", AsyncMock(return_value=None))
+
+    with caplog.at_level(logging.INFO):
+        await conversation_jobs.run_once(http_client, _NOW)
+
+    assert _records(caplog, "conversation.job") == []
+
+
+async def test_a_failed_diary_summary_is_logged_with_its_outcome_not_ok(
+    naming_job: None,
+    monkeypatch: pytest.MonkeyPatch,
+    http_client: httpx.AsyncClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(settings, "conversation_episodes_enabled", True)
+    monkeypatch.setattr(conversation_jobs, "next_unnamed", AsyncMock(return_value=None))
+    record = SimpleNamespace(summary=SimpleNamespace(id=31, eligible=True))
+    monkeypatch.setattr(
+        conversation_jobs, "next_pending_record", AsyncMock(side_effect=[record, None])
+    )
+    monkeypatch.setattr(
+        conversation_jobs, "write_episode", AsyncMock(return_value=EpisodeOutcome.RETRY)
+    )
+
+    with caplog.at_level(logging.INFO):
+        await conversation_jobs.run_once(http_client, _NOW)
+
+    (job,) = _records(caplog, "conversation.job")
+    assert job.piece == "episode"  # type: ignore[attr-defined]
+    assert job.row_id == 31  # type: ignore[attr-defined]
+    assert job.outcome == "retry"  # type: ignore[attr-defined]
+
+
+async def test_a_cancelled_piece_is_logged_as_cancelled(
+    naming_job: None,
+    monkeypatch: pytest.MonkeyPatch,
+    http_client: httpx.AsyncClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(
+        conversation_jobs, "next_unnamed", AsyncMock(side_effect=asyncio.CancelledError)
+    )
+
+    with caplog.at_level(logging.INFO), pytest.raises(asyncio.CancelledError):
+        await conversation_jobs.run_once(http_client, _NOW)
+
+    (job,) = _records(caplog, "conversation.job")
+    assert job.outcome == "cancelled"  # type: ignore[attr-defined]

@@ -12,6 +12,7 @@ swallowed.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from enum import StrEnum
 import logging
 import time
@@ -64,18 +65,26 @@ class NamingOutcome(StrEnum):
     MODEL_FAILED = "model_failed"
 
 
-async def _write_one_episode(client: httpx.AsyncClient, now: datetime) -> int | None:
+@dataclass(frozen=True)
+class _Done:
+    """What one piece of the tick did: the row it worked on and its closed outcome."""
+
+    row_id: int | None
+    outcome: str
+
+
+async def _write_one_episode(client: httpx.AsyncClient, now: datetime) -> _Done | None:
     """Skip pending records that are not eligible, then write at most one episode.
 
     Returns:
-        The id of the record the episode was attempted for, or ``None`` when there was none.
+        The record attempted and the diary's outcome, or ``None`` when no record was waiting.
     """
     while (record := await next_pending_record()) is not None:
         if not record.summary.eligible:
             await set_episode_status(record.summary.id, EpisodeStatus.SKIPPED)
             continue
-        await write_episode(record, client=client, now=now)
-        return record.summary.id
+        outcome = await write_episode(record, client=client, now=now)
+        return _Done(record.summary.id, outcome.value)
     return None
 
 
@@ -84,45 +93,46 @@ def _text_model() -> str:
     return settings.consolidation_model or settings.ollama_model
 
 
-async def _timed(piece: str, model: str, work: Callable[[], Awaitable[int | None]]) -> None:
-    """Run one piece of the tick and log what it cost; a raised error is logged, then re-raised.
+async def _timed(piece: str, model: str, work: Callable[[], Awaitable[_Done | None]]) -> None:
+    """Run one piece of the tick and log what it did and cost (Plan 0089 D-13).
+
+    A piece with nothing to do logs nothing. An error or a cancellation is logged, then
+    re-raised, so the tick behaves as before.
 
     Args:
         piece: The closed name of the work (``episode``, ``recall_vectors``, ...).
         model: The Ollama model the piece calls.
-        work: The piece; it returns the row it worked on, or ``None``.
+        work: The piece; it returns its row and closed outcome, or ``None`` when idle.
     """
     started = time.perf_counter()
-    row_id: int | None = None
-    error_type: str | None = None
     try:
-        row_id = await work()
-    except Exception as exc:
-        error_type = type(exc).__name__
+        done = await work()
+    except asyncio.CancelledError:
+        _log_job(piece, model, started, _Done(None, "cancelled"), "CancelledError")
         raise
-    finally:
-        _log_job(piece, model, started, row_id, error_type)
+    except Exception as exc:
+        _log_job(piece, model, started, _Done(None, "failed"), type(exc).__name__)
+        raise
+    if done is not None:
+        _log_job(piece, model, started, done, None)
 
 
-def _log_job(
-    piece: str, model: str, started: float, row_id: int | None, error_type: str | None
-) -> None:
-    """Log one piece of the tick: its row id, model and time, never a text (Plan 0089 D-13)."""
+def _log_job(piece: str, model: str, started: float, done: _Done, error_type: str | None) -> None:
+    """Log one piece of the tick: its row id, outcome, model and time, never a text."""
     elapsed_ms = int((time.perf_counter() - started) * 1000)
-    outcome = "ok" if error_type is None else "failed"
     logger.info(
         "Conversation job: piece=%s outcome=%s row_id=%s model=%s elapsed_ms=%d error=%s",
         piece,
-        outcome,
-        row_id,
+        done.outcome,
+        done.row_id,
         model,
         elapsed_ms,
         error_type,
         extra={
             "event": "conversation.job",
             "piece": piece,
-            "outcome": outcome,
-            "row_id": row_id,
+            "outcome": done.outcome,
+            "row_id": done.row_id,
             "model": model,
             "elapsed_ms": elapsed_ms,
             "error_type": error_type,
@@ -130,12 +140,14 @@ def _log_job(
     )
 
 
-async def _vectors(client: httpx.AsyncClient) -> None:
-    await backfill_vectors(client)
+async def _vectors(client: httpx.AsyncClient) -> _Done | None:
+    embedded = await backfill_vectors(client)
+    return _Done(None, "embedded") if embedded else None
 
 
-async def _sections(client: httpx.AsyncClient) -> None:
-    await backfill_sections(client)
+async def _sections(client: httpx.AsyncClient) -> _Done | None:
+    embedded = await backfill_sections(client)
+    return _Done(None, "embedded") if embedded else None
 
 
 async def run_once(client: httpx.AsyncClient, now: datetime) -> None:
@@ -177,7 +189,7 @@ async def _expire_pending_topics(now: datetime) -> None:
         )
 
 
-async def _name_one_pending_topic(client: httpx.AsyncClient) -> int | None:
+async def _name_one_pending_topic(client: httpx.AsyncClient) -> _Done | None:
     """Name at most one unnamed topic with the local model (Plan 0084 D-6).
 
     An answer that is not the owner's words deletes the topic. A model failure keeps it for a
@@ -185,7 +197,7 @@ async def _name_one_pending_topic(client: httpx.AsyncClient) -> int | None:
     closed outcome, the row id and an exception class, never a text.
 
     Returns:
-        The id of the topic tried, or ``None`` when none was waiting.
+        The topic tried and its naming outcome, or ``None`` when none was waiting.
     """
     unnamed = await next_unnamed()
     if unnamed is None:
@@ -196,16 +208,18 @@ async def _name_one_pending_topic(client: httpx.AsyncClient) -> int | None:
     except (httpx.HTTPError, TimeoutError, LLMError) as exc:
         if await count_naming_failure(topic_id) < _MAX_NAMING_ATTEMPTS:
             _log_named(NamingOutcome.MODEL_FAILED, topic_id, error_type=type(exc).__name__)
-            return topic_id
+            return _Done(topic_id, NamingOutcome.MODEL_FAILED.value)
         await drop(topic_id)
         _log_named(NamingOutcome.UNNAMED_DROPPED, topic_id, error_type=type(exc).__name__)
-        return topic_id
+        return _Done(topic_id, NamingOutcome.UNNAMED_DROPPED.value)
     if topic is None:
         await drop(topic_id)
         _log_named(NamingOutcome.UNNAMED_DROPPED, topic_id)
-    elif await set_topic(topic_id, topic):
+        return _Done(topic_id, NamingOutcome.UNNAMED_DROPPED.value)
+    if await set_topic(topic_id, topic):
         _log_named(NamingOutcome.NAMED, topic_id)
-    return topic_id
+        return _Done(topic_id, NamingOutcome.NAMED.value)
+    return _Done(topic_id, "unchanged")
 
 
 def _log_named(outcome: NamingOutcome, topic_id: int, *, error_type: str | None = None) -> None:
