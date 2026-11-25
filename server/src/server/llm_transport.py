@@ -232,12 +232,14 @@ async def ollama_chat_measured(
     format_schema: dict[str, Any] | None = None,  # Any: JSON-schema literal, heterogeneous
     options: dict[str, float] | None = None,
     timeout: float | None = None,
+    keep_alive: str | None = None,
 ) -> tuple[str, OllamaMetrics]:
     """Call ``/api/chat`` non-streaming; return the content and what the answer cost.
 
-    The same call as ``ollama_chat`` (whose arguments these are); a failed request is logged
-    once with its phase, status and Ollama's own error text, then re-raised unchanged
-    (Plan 0089 D-11).
+    The same call as ``ollama_chat`` (whose arguments these are, plus *keep_alive*: how long
+    Ollama keeps the model loaded, sent at the top of the payload only when given, Plan 0089
+    D-12); a failed request is logged once with its phase, status and Ollama's own error text,
+    then re-raised unchanged (Plan 0089 D-11).
 
     Returns:
         ``(content, metrics)``: the raw ``message.content`` and the answer's ``OllamaMetrics``.
@@ -256,6 +258,8 @@ async def ollama_chat_measured(
         payload["format"] = format_schema
     if options is not None:
         payload["options"] = options
+    if keep_alive is not None:
+        payload["keep_alive"] = keep_alive
     started = time.perf_counter()
     try:
         resp = await client.post(url, json=payload, timeout=timeout)

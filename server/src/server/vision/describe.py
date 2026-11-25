@@ -24,6 +24,7 @@ from PIL import Image, UnidentifiedImageError
 from server.exceptions import ImageContractError, LLMError, VisionError
 from server.llm_transport import ChatMessage, OllamaMetrics, ollama_chat_measured
 from server.settings import settings
+from server.vision.frame_resize import fit_long_side
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,7 @@ _RIFF_MAGIC = b"RIFF"  # WebP wraps a RIFF container...
 _WEBP_MAGIC = b"WEBP"  # ...tagged WEBP at byte offset 8.
 
 _DESCRIBE_FAILED = "vision.describe_failed"
+_SCENE_TEMPERATURE = 0.3
 
 #: Contract dimension limits — width/height in pixels.
 MAX_IMAGE_WIDTH = 1280
@@ -150,6 +152,34 @@ def image_size(image: bytes) -> tuple[int | None, int | None]:
     return width, height
 
 
+def vlm_options(temperature: float, num_predict: int | None) -> dict[str, float]:
+    """Build a vision call's Ollama options: a key only for each setting that is set (D-12).
+
+    Args:
+        temperature: The call's own temperature, always sent.
+        num_predict: The call's token cap, or ``None`` for Ollama's own.
+    """
+    options: dict[str, float] = {"temperature": temperature}
+    if settings.vlm_num_ctx is not None:
+        options["num_ctx"] = settings.vlm_num_ctx
+    if num_predict is not None:
+        options["num_predict"] = num_predict
+    return options
+
+
+def vlm_frame(image: bytes) -> bytes:
+    """Return the frame as the vision model gets it: shrunk only when ``VLM_IMAGE_MAX_SIDE`` is set.
+
+    Args:
+        image: The turn's frame — JPEG/PNG/WebP/GIF/BMP, max 1280x720, one frame.
+
+    Raises:
+        ImageContractError: If a resize is asked for and the bytes are not an image.
+    """
+    max_side = settings.vlm_image_max_side
+    return image if max_side is None else fit_long_side(image, max_side)
+
+
 def log_vision_metrics(capability: str, image: bytes, metrics: OllamaMetrics) -> None:
     """Log what one good vision answer cost: Ollama's numbers and the image's size (D-11).
 
@@ -223,6 +253,7 @@ async def describe_image(client: httpx.AsyncClient, image: bytes) -> tuple[str, 
         VisionError: If the VLM backend is unreachable, errors out, or
             returns an empty/unexpected response.
     """
+    image = vlm_frame(image)
     message: ChatMessage = {
         "role": "user",
         "content": _DESCRIBE_PROMPT,
@@ -234,8 +265,9 @@ async def describe_image(client: httpx.AsyncClient, image: bytes) -> tuple[str, 
             client,
             [message],
             model=settings.vlm_model,
-            options={"temperature": 0.3},
+            options=vlm_options(_SCENE_TEMPERATURE, settings.vlm_num_predict_scene),
             timeout=settings.ollama_timeout_s,
+            keep_alive=settings.vlm_keep_alive,
         )
     except httpx.HTTPError as exc:
         log_vision_failure(_DESCRIBE_FAILED, type(exc).__name__, image)

@@ -165,3 +165,35 @@ def test_speaker_model_cache_dir_explicit_override_wins(
     monkeypatch.setenv("SPEAKER_MODEL_CACHE_DIR", "custom/speaker-cache")
     settings = ServerSettings(_env_file=None)  # type: ignore[call-arg]
     assert settings.speaker_model_cache_dir == Path("custom/speaker-cache")
+
+
+@pytest.mark.unit
+def test_the_vision_model_settings_are_neutral_by_default() -> None:
+    """Plan 0089 D-12: unset, the vision calls send exactly what they sent before."""
+    settings = ServerSettings(_env_file=None)  # type: ignore[call-arg]
+    assert settings.vlm_image_max_side is None
+    assert settings.vlm_num_ctx is None
+    assert settings.vlm_num_predict_scene is None
+    assert settings.vlm_num_predict_reading is None
+    assert settings.vlm_keep_alive is None
+
+
+@pytest.mark.unit
+def test_the_vision_model_settings_read_the_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("VLM_IMAGE_MAX_SIDE", "768")
+    monkeypatch.setenv("VLM_NUM_CTX", "4096")
+    monkeypatch.setenv("VLM_NUM_PREDICT_SCENE", "120")
+    monkeypatch.setenv("VLM_NUM_PREDICT_READING", "400")
+    monkeypatch.setenv("VLM_KEEP_ALIVE", "30m")
+    settings = ServerSettings(_env_file=None)  # type: ignore[call-arg]
+    assert (settings.vlm_image_max_side, settings.vlm_num_ctx) == (768, 4096)
+    assert (settings.vlm_num_predict_scene, settings.vlm_num_predict_reading) == (120, 400)
+    assert settings.vlm_keep_alive == "30m"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("name", ["VLM_IMAGE_MAX_SIDE", "VLM_NUM_CTX", "VLM_NUM_PREDICT_SCENE"])
+def test_a_vision_model_size_must_be_positive(name: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(name, "0")
+    with pytest.raises(ValidationError):
+        ServerSettings(_env_file=None)  # type: ignore[call-arg]

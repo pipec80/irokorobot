@@ -9,6 +9,7 @@ non-streaming/temperature contract.
 import base64
 import inspect
 from io import BytesIO
+import json
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -223,3 +224,94 @@ async def test_a_failed_scene_logs_its_cause(
     (record,) = [r for r in caplog.records if getattr(r, "event", None) == "vision.describe_failed"]
     assert record.cause == cause  # type: ignore[attr-defined]
     assert (record.width, record.height) == (None, None)  # type: ignore[attr-defined]
+
+
+# --- Plan 0089 D-12: the vision model's settings, neutral until chosen ---
+
+
+def _capturing_client(sent: list[dict[str, Any]]) -> httpx.AsyncClient:
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(json.loads(request.content))
+        return httpx.Response(200, json={"message": {"content": "Una taza."}})
+
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+
+@pytest.fixture
+def neutral_vlm(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in (
+        "vlm_image_max_side",
+        "vlm_num_ctx",
+        "vlm_num_predict_scene",
+        "vlm_num_predict_reading",
+        "vlm_keep_alive",
+    ):
+        monkeypatch.setattr(settings, name, None)
+
+
+@pytest.mark.unit
+async def test_unset_settings_send_today_s_scene_payload(neutral_vlm: None) -> None:
+    sent: list[dict[str, Any]] = []
+    image = _jpeg(1280, 720)
+    async with _capturing_client(sent) as client:
+        await describe_image(client, image)
+
+    (payload,) = sent
+    assert set(payload) == {"model", "messages", "stream", "options"}
+    assert payload["options"] == {"temperature": 0.3}
+    assert payload["messages"][0]["images"] == [base64.b64encode(image).decode("ascii")]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "name, value, key",
+    [("vlm_num_ctx", 2048, "num_ctx"), ("vlm_num_predict_scene", 120, "num_predict")],
+)
+async def test_each_option_setting_adds_exactly_its_key(
+    neutral_vlm: None, monkeypatch: pytest.MonkeyPatch, name: str, value: int, key: str
+) -> None:
+    monkeypatch.setattr(settings, name, value)
+    sent: list[dict[str, Any]] = []
+    async with _capturing_client(sent) as client:
+        await describe_image(client, _jpeg(64, 64))
+
+    assert sent[0]["options"] == {"temperature": 0.3, key: value}
+
+
+@pytest.mark.unit
+async def test_the_reading_cap_does_not_reach_the_scene(
+    neutral_vlm: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "vlm_num_predict_reading", 400)
+    sent: list[dict[str, Any]] = []
+    async with _capturing_client(sent) as client:
+        await describe_image(client, _jpeg(64, 64))
+
+    assert sent[0]["options"] == {"temperature": 0.3}
+
+
+@pytest.mark.unit
+async def test_keep_alive_goes_at_the_top_of_the_payload(
+    neutral_vlm: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "vlm_keep_alive", "30m")
+    sent: list[dict[str, Any]] = []
+    async with _capturing_client(sent) as client:
+        await describe_image(client, _jpeg(64, 64))
+
+    assert sent[0]["keep_alive"] == "30m"
+    assert "keep_alive" not in sent[0]["options"]
+
+
+@pytest.mark.unit
+async def test_a_max_side_shrinks_the_frame_sent(
+    neutral_vlm: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "vlm_image_max_side", 512)
+    sent: list[dict[str, Any]] = []
+    async with _capturing_client(sent) as client:
+        await describe_image(client, _jpeg(1280, 720))
+
+    sent_image = base64.b64decode(sent[0]["messages"][0]["images"][0])
+    with Image.open(BytesIO(sent_image)) as opened:
+        assert opened.size == (512, 288)

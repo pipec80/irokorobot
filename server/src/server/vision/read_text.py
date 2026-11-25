@@ -15,7 +15,7 @@ import httpx
 from server.exceptions import LLMError, VisionError
 from server.llm_transport import ollama_chat_measured
 from server.settings import settings
-from server.vision.describe import log_vision_failure, log_vision_metrics
+from server.vision.describe import log_vision_failure, log_vision_metrics, vlm_frame, vlm_options
 
 if TYPE_CHECKING:
     from server.llm_transport import ChatMessage
@@ -48,6 +48,7 @@ async def read_text(client: httpx.AsyncClient, image: bytes) -> str:
     Raises:
         VisionError: If the VLM is unreachable, fails, times out or reads nothing.
     """
+    image = vlm_frame(image)
     message: ChatMessage = {
         "role": "user",
         "content": READ_PROMPT,
@@ -58,8 +59,9 @@ async def read_text(client: httpx.AsyncClient, image: bytes) -> str:
             client,
             [message],
             model=settings.vlm_model,
-            options={"temperature": _TEMPERATURE},
+            options=vlm_options(_TEMPERATURE, settings.vlm_num_predict_reading),
             timeout=settings.ollama_timeout_s,
+            keep_alive=settings.vlm_keep_alive,
         )
     except (httpx.HTTPError, LLMError) as exc:
         log_vision_failure(_READ_FAILED, type(exc).__name__, image)
