@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, Mock
 import cv2
 import numpy as np
 import pytest
-from server.cognition.response_plan import MAX_TURN_MESSAGE_CHARS
+from server.cognition.response_plan import MAX_TURN_MESSAGE_CHARS, SCENE_FAILED_PHRASE
 from server.exceptions import VisionError
 from server.routers import vision as vision_module
 from server.settings import settings
@@ -236,7 +236,7 @@ def test_vision_respond_vlm_down_still_speaks(
     resp = _post_respond(client, _FAKE_JPEG, "¿qué ves?")
 
     assert resp.status_code == 200
-    assert resp.json()["llm_response"] == "Perdón, ahora mismo no pude ver la escena."
+    assert resp.json()["llm_response"] == SCENE_FAILED_PHRASE
     llm.generate_response.assert_not_awaited()  # type: ignore[attr-defined]  # AsyncMock
 
 
