@@ -145,3 +145,28 @@ def test_clearing_empties_the_slot() -> None:
 
     assert slot.take(7, _NOW) is None
     assert "zzuno" not in repr(slot)
+
+
+async def test_a_good_reading_logs_vision_metrics(caplog: pytest.LogCaptureFixture) -> None:
+    """Plan 0089 D-11: the reading says what it cost, in milliseconds and counts."""
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        body = {
+            "message": {"role": "assistant", "content": "Leche 1 L"},
+            "load_duration": 3_000_000,
+            "eval_count": 5,
+            "eval_duration": 7_000_000,
+        }
+        return httpx.Response(200, json=body)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with caplog.at_level("INFO", logger="server.vision.read_text"):
+            await read_text(client, b"\xff\xd8canary")
+
+    (record,) = [r for r in caplog.records if getattr(r, "event", None) == "vision.metrics"]
+    assert record.capability == "reading"  # type: ignore[attr-defined]  # set through ``extra``
+    assert record.load_ms == 3  # type: ignore[attr-defined]
+    assert record.eval_count == 5  # type: ignore[attr-defined]
+    assert record.eval_ms == 7  # type: ignore[attr-defined]
+    assert record.total_ms is None  # type: ignore[attr-defined]
+    assert "canary" not in record.getMessage()

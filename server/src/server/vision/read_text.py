@@ -13,8 +13,9 @@ from typing import TYPE_CHECKING, Final
 import httpx
 
 from server.exceptions import LLMError, VisionError
-from server.llm_transport import ollama_chat
+from server.llm_transport import ollama_chat_measured
 from server.settings import settings
+from server.vision.describe import log_vision_failure, log_vision_metrics
 
 if TYPE_CHECKING:
     from server.llm_transport import ChatMessage
@@ -30,6 +31,7 @@ READ_PROMPT: Final = (
     "ningún texto, no escribas nada."
 )
 _TEMPERATURE: Final = 0.0
+_READ_FAILED: Final = "vision.read_failed"
 
 
 async def read_text(client: httpx.AsyncClient, image: bytes) -> str:
@@ -52,7 +54,7 @@ async def read_text(client: httpx.AsyncClient, image: bytes) -> str:
         "images": [base64.b64encode(image).decode("ascii")],
     }
     try:
-        text = await ollama_chat(
+        text, metrics = await ollama_chat_measured(
             client,
             [message],
             model=settings.vlm_model,
@@ -60,20 +62,12 @@ async def read_text(client: httpx.AsyncClient, image: bytes) -> str:
             timeout=settings.ollama_timeout_s,
         )
     except (httpx.HTTPError, LLMError) as exc:
-        _log_failure(type(exc).__name__)
+        log_vision_failure(_READ_FAILED, type(exc).__name__, image)
         raise VisionError(f"VLM reading failed ({type(exc).__name__})") from exc
     text = text.strip()
     if not text:
-        _log_failure("nothing_read")
+        log_vision_failure(_READ_FAILED, "nothing_read", image)
         raise VisionError("VLM read no text")
+    log_vision_metrics("reading", image, metrics)
     logger.info("Text read by the camera (%d chars)", len(text), extra={"event": "vision.read"})
     return text
-
-
-def _log_failure(cause: str) -> None:
-    """Log why a reading failed: the exception's type name or ``nothing_read``, never a text."""
-    logger.warning(
-        "Reading by the camera failed (%s)",
-        cause,
-        extra={"event": "vision.read_failed", "cause": cause},
-    )

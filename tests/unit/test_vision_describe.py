@@ -8,10 +8,12 @@ non-streaming/temperature contract.
 
 import base64
 import inspect
+from io import BytesIO
 from typing import Any
 from unittest.mock import AsyncMock
 
 import httpx
+from PIL import Image
 import pytest
 from server.exceptions import VisionError
 from server.settings import settings
@@ -151,3 +153,73 @@ async def test_describe_image_rejects_a_null_description(
 
     with pytest.raises(VisionError):
         await describe_image(http_client, b"fake-image-bytes")
+
+
+# --- Plan 0089 D-11: a good scene says what it cost, a failed one says why ---
+
+
+def _jpeg(width: int, height: int) -> bytes:
+    buffer = BytesIO()
+    Image.new("RGB", (width, height), "white").save(buffer, format="JPEG")
+    return buffer.getvalue()
+
+
+def _client(reply: Exception | dict[str, Any]) -> httpx.AsyncClient:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        if isinstance(reply, Exception):
+            raise reply
+        return httpx.Response(200, json=reply)
+
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+
+@pytest.mark.unit
+async def test_a_good_scene_logs_vision_metrics_in_milliseconds(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    body = {
+        "message": {"content": "Una taza amarilla qqtazaqq."},
+        "total_duration": 9_000_000_000,
+        "load_duration": 6_000_000_000,
+        "prompt_eval_count": 700,
+        "prompt_eval_duration": 2_000_000_000,
+        "eval_count": 30,
+        "eval_duration": 1_000_000_000,
+    }
+    async with _client(body) as client:
+        with caplog.at_level("INFO", logger="server.vision.describe"):
+            await describe_image(client, _jpeg(640, 360))
+
+    (record,) = [r for r in caplog.records if getattr(r, "event", None) == "vision.metrics"]
+    assert record.capability == "scene"  # type: ignore[attr-defined]  # set through ``extra``
+    assert (record.width, record.height) == (640, 360)  # type: ignore[attr-defined]
+    assert record.load_ms == 6000  # type: ignore[attr-defined]
+    assert record.prompt_eval_count == 700  # type: ignore[attr-defined]
+    assert record.prompt_eval_ms == 2000  # type: ignore[attr-defined]
+    assert record.eval_count == 30  # type: ignore[attr-defined]
+    assert record.eval_ms == 1000  # type: ignore[attr-defined]
+    assert record.total_ms == 9000  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "reply, cause",
+    [
+        (httpx.ReadTimeout("slow"), "ReadTimeout"),
+        ({"message": {"content": "  "}}, "nothing_described"),
+        ({"unexpected": "shape"}, "LLMError"),
+    ],
+)
+async def test_a_failed_scene_logs_its_cause(
+    reply: Exception | dict[str, Any], cause: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    async with _client(reply) as client:
+        with (
+            caplog.at_level("WARNING", logger="server.vision.describe"),
+            pytest.raises(VisionError),
+        ):
+            await describe_image(client, b"fake-image-bytes")
+
+    (record,) = [r for r in caplog.records if getattr(r, "event", None) == "vision.describe_failed"]
+    assert record.cause == cause  # type: ignore[attr-defined]
+    assert (record.width, record.height) == (None, None)  # type: ignore[attr-defined]

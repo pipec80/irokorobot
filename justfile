@@ -94,6 +94,10 @@ run-server:
 run-robot:
     uv run --env-file .env --package robot robot
 
+# Ultimas lineas del log propio de Ollama (por que no cargo o desalojo un modelo), Plan 0089
+ollama-log LINES="50":
+    uv run python scripts/ollama_log_tail.py --lines {{LINES}}
+
 # Humo STT → LLM → TTS (el micrófono es opcional con --text). No recorre el controlador, la identidad ni la API: para eso, chat-test o el robot
 test-pipeline *ARGS:
     uv run --env-file .env python scripts/pipeline_test.py {{ARGS}}
