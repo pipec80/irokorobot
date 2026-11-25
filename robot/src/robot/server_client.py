@@ -214,33 +214,6 @@ async def unlock_owner(pin: str) -> OwnerUnlockResult:
     )
 
 
-async def check_vision_enabled() -> bool:
-    """Ask GET /health whether the server has vision (VLM) enabled.
-
-    Used only at robot startup when ``settings.robot_streaming`` is True, to
-    guard against the unsupported streaming + vision combination (F-08 in
-    docs/c-audit/auditoria-forense-codigo-2026-07-21.md) — the robot asks the
-    API it already calls instead of reading the server's own settings, which
-    would cross the client/server boundary.
-
-    Returns:
-        True if the server reports ``vision_enabled``. Missing field (older
-        server) is treated as False.
-
-    Raises:
-        ServerError: If the server is unreachable or returns non-200.
-    """
-    client = _get_client()
-    try:
-        response = await client.get(f"{settings.server_url}/health")
-        response.raise_for_status()
-    except httpx.HTTPStatusError as exc:
-        raise ServerError(f"Server returned {exc.response.status_code}") from exc
-    except httpx.RequestError as exc:
-        raise ServerError("Could not reach server") from exc
-    return bool(response.json().get("vision_enabled", False))
-
-
 async def respond_vision(text: str, image: bytes) -> TranscribeResult:
     """Send a camera frame plus the visual question to /vision/respond.
 

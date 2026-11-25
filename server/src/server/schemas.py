@@ -89,10 +89,11 @@ class HealthResponse(BaseModel):
     """Response from GET /health."""
 
     status: str = Field(default="ok")
-    # Additive field: lets the robot ask "does this server have vision on?"
-    # via the API it already calls, instead of reading server config across
-    # the hard client/server boundary (F-08 streaming/vision incompatibility
-    # guard — see docs/c-audit/auditoria-forense-codigo-2026-07-21.md).
+    # Additive field: reports whether this server has vision on, through the API,
+    # instead of reading server config across the hard client/server boundary.
+    # The robot's start-time guard that read it is gone (Plan 0089: streaming
+    # describes the scene from the turn's frame); the field stays, since removing
+    # a field breaks the contract.
     vision_enabled: bool = Field(
         default=False, description="Whether the server has vision (VLM) enabled"
     )

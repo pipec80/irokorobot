@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 import logging
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
 from robot.app import LoopContext, RobotState
 from robot.exceptions import (
@@ -340,43 +341,6 @@ async def test_error_recovers_to_idle(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert await app.tick(RobotState.ERROR, LoopContext()) == RobotState.IDLE
     sleep_mock.assert_awaited_once()
-
-
-@pytest.mark.unit
-async def test_streaming_vision_guard_exits_when_both_enabled(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """ROBOT_STREAMING + server VISION_ENABLED must refuse to start (F-08)."""
-    monkeypatch.setattr(app.settings, "robot_streaming", True)
-    monkeypatch.setattr(app, "check_vision_enabled", AsyncMock(return_value=True))
-
-    with pytest.raises(SystemExit):
-        await app._guard_streaming_vision_compat()
-
-
-@pytest.mark.unit
-async def test_streaming_vision_guard_starts_when_vision_disabled(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Streaming alone (server vision off) must start normally."""
-    monkeypatch.setattr(app.settings, "robot_streaming", True)
-    monkeypatch.setattr(app, "check_vision_enabled", AsyncMock(return_value=False))
-
-    await app._guard_streaming_vision_compat()  # must not raise
-
-
-@pytest.mark.unit
-async def test_streaming_vision_guard_skips_health_call_when_streaming_disabled(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A non-streaming robot must not pay a network round trip at startup."""
-    monkeypatch.setattr(app.settings, "robot_streaming", False)
-    check_mock = AsyncMock(return_value=True)
-    monkeypatch.setattr(app, "check_vision_enabled", check_mock)
-
-    await app._guard_streaming_vision_compat()
-
-    check_mock.assert_not_awaited()
 
 
 @pytest.mark.unit
@@ -863,3 +827,39 @@ def test_main_returns_normally_and_logs_one_line_on_ctrl_c(
     ]
     assert len(stopped) == 1
     assert stopped[0].levelno == logging.INFO
+
+
+class _StopLoop(BaseException):
+    """Ends the FSM loop of one test; a BaseException so the loop's own recovery lets it pass."""
+
+
+@pytest.mark.unit
+async def test_streaming_robot_starts_with_server_vision_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Plan 0089 D-6: streaming with server vision is a valid mode; no /health call at start."""
+    paths: list[str] = []
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        return httpx.Response(200, json={"status": "ok", "vision_enabled": True})
+
+    transport = httpx.MockTransport(_handler)
+    original = httpx.AsyncClient
+
+    def _patched_client(*args: object, **kwargs: object) -> httpx.AsyncClient:
+        kwargs["transport"] = transport
+        return original(*args, **kwargs)  # type: ignore[arg-type]  # test double of the client
+
+    monkeypatch.setattr(server_client.httpx, "AsyncClient", _patched_client)
+    monkeypatch.setattr(server_client, "_client", None)
+    monkeypatch.setattr(app.settings, "robot_streaming", True)
+    monkeypatch.setattr(app, "_prompt_owner_unlock", AsyncMock(return_value=None))
+    tick = AsyncMock(side_effect=_StopLoop)
+    monkeypatch.setattr(app, "tick", tick)
+
+    with pytest.raises(_StopLoop):
+        await app._run()
+
+    tick.assert_awaited_once()
+    assert "/health" not in paths

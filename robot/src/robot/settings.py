@@ -50,8 +50,8 @@ class Settings(BaseSettings):
     # of the classic single-shot /transcribe. Default off — opt-in per robot
     # until validated on real hardware.
     robot_streaming: bool = False
-    # Plan 0026: prompt once at startup for the local owner PIN (classic mode
-    # only — not yet supported with robot_streaming). Default off.
+    # Plan 0026: prompt once at startup for the local owner PIN; both modes carry
+    # its token (Plan 0027). Default off.
     robot_owner_unlock_prompt: bool = False
     # Plan 0029: capture one webcam frame and attach it to every turn so the
     # server can attempt face authentication. Default off — the robot cannot
