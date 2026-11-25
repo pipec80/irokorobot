@@ -42,7 +42,7 @@ def _meters(ram: int = 6000) -> Meters:
 def _images() -> list[BenchImage]:
     return [
         BenchImage(name="card", data=b"\xff\xd8card"),
-        BenchImage(name="cup", data=b"\xff\xd8cup"),
+        BenchImage(name="ball", data=b"\xff\xd8ball"),
     ]
 
 
@@ -130,9 +130,15 @@ def test_the_bill_needs_its_total_and_due_date_exactly(text: str, expected: bool
 
 
 def test_an_object_is_named_only_by_its_closed_synonyms() -> None:
-    assert quality("key", "Hay una llave plateada sobre la mesa.")["object_named"] is True
-    assert quality("key", "Hay un objeto metálico sobre la mesa.")["object_named"] is False
+    assert quality("ball", "Una persona sostiene una pelota roja.")["object_named"] is True
+    assert quality("cube", "Sostiene un rompecabezas de colores.")["object_named"] is True
+    assert quality("band", "Lleva una pulsera negra en la muñeca.")["object_named"] is True
+    assert quality("band", "Hay un objeto negro en su brazo.")["object_named"] is False
     assert quality("codes", "Una hoja con un código QR.")["code_named"] is True
+
+
+def test_the_bic_handwriting_is_a_canary_reading() -> None:
+    assert quality("hand_bic", "LISTA QQCANARIOQQ: PAN, TÉ, FÓSFOROS")["canary_ok"] is True
 
 
 def test_the_summary_is_one_markdown_row_per_cell(tmp_path: Path) -> None:

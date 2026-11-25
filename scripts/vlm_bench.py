@@ -51,17 +51,16 @@ _BILL_DUE: Final = re.compile(r"(?<!\d)15\D{1,3}12\D{1,3}2026(?!\d)")
 _CODE_WORDS: Final = ("qr", "codigo de barras", "codigo de barra")
 #: The closed synonyms each object may be named by (accents folded, lowercase).
 _OBJECT_WORDS: Final = {
-    "cup": ("taza", "tazon", "jarro", "jarra", "mug"),
-    "key": ("llave", "llaves"),
-    "pen": ("lapiz", "lapicera", "lapicero", "boligrafo", "pluma"),
     "ball": ("pelota", "balon", "bola"),
+    "cube": ("cubo", "rubik", "megaminx", "rompecabezas", "dodecaedro", "puzzle"),
+    "band": ("pulsera", "smartband", "smartwatch", "reloj", "brazalete", "banda"),
 }
-_READING_IMAGES: Final = ("card", "screen", "bill", "hand_neat", "hand_hurried")
-_CANARY_IMAGES: Final = ("card", "screen", "hand_neat", "hand_hurried")
+_READING_IMAGES: Final = ("card", "screen", "bill", "hand_neat", "hand_hurried", "hand_bic")
+_CANARY_IMAGES: Final = ("card", "screen", "hand_neat", "hand_hurried", "hand_bic")
 #: Which photographs each ``--set`` runs.
 IMAGE_SETS: Final = {
-    "core": ("card", "screen", "cup"),
-    "reading": ("bill", "hand_neat", "hand_hurried", "codes", "key", "pen", "ball"),
+    "core": ("card", "screen", "ball"),
+    "reading": ("bill", "hand_neat", "hand_hurried", "hand_bic", "codes", "cube", "band"),
 }
 IMAGE_SETS_ALL: Final = (*IMAGE_SETS["core"], *IMAGE_SETS["reading"])
 
