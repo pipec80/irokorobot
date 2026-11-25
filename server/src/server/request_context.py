@@ -73,9 +73,11 @@ async def run_in_executor_with_context[T](executor: Executor | None, fn: Callabl
 def _inbound_request_id(scope: Scope) -> str | None:
     """Extract a trustworthy correlation id from the request headers.
 
-    The header is client-controlled, so only a syntactically valid UUID is
-    preserved — that keeps the field useless as an injection or
-    unbounded-length vector.
+    The header is client-controlled, so only a UUID in its canonical form
+    (36 lowercase characters, as ``str(uuid4())`` writes it) is preserved —
+    that keeps the field useless as an injection or unbounded-length vector
+    (``UUID()`` alone also takes ``urn:uuid:``, braces and any number of
+    hyphens; review of Plan 0089).
 
     Args:
         scope: ASGI connection scope for one HTTP request.
@@ -88,10 +90,10 @@ def _inbound_request_id(scope: Scope) -> str | None:
             continue
         candidate: str = raw_value.decode("latin-1", errors="replace")
         try:
-            UUID(candidate)
+            canonical = str(UUID(candidate))
         except ValueError:
             return None
-        return candidate
+        return candidate if candidate == canonical else None
     return None
 
 

@@ -60,8 +60,28 @@ def test_a_valid_inbound_uuid_is_preserved() -> None:
 @pytest.mark.unit
 @pytest.mark.parametrize(
     "supplied",
-    ["not-a-uuid", "", "../../etc/passwd", "a" * 4096, "<script>alert(1)</script>"],
-    ids=["malformed", "empty", "traversal", "oversized", "injection"],
+    [
+        "not-a-uuid",
+        "",
+        "../../etc/passwd",
+        "a" * 4096,
+        "<script>alert(1)</script>",
+        "urn:uuid:8f1f2c34-0089-4d13-9a00-0000000000aa",
+        "{8f1f2c3400894d139a000000000000aa}",
+        "-" * 5000 + "8f1f2c3400894d139a000000000000aa",
+        "8F1F2C34-0089-4D13-9A00-0000000000AA",
+    ],
+    ids=[
+        "malformed",
+        "empty",
+        "traversal",
+        "oversized",
+        "injection",
+        "urn-prefix",
+        "braces",
+        "hyphen-padded",
+        "uppercase",
+    ],
 )
 def test_an_untrusted_inbound_value_is_replaced_not_echoed(supplied: str) -> None:
     """The header is client-controlled, so a non-UUID is discarded entirely."""
