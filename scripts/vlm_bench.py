@@ -244,6 +244,9 @@ async def run_cell(  # one cell is named by all of these
         setattr(settings, key, value)
     catcher = _VisionLog()
     vision_logger = logging.getLogger("server.vision")
+    # A plain script logs at WARNING; vision.metrics is INFO, so open the level for the run.
+    previous_level = vision_logger.level
+    vision_logger.setLevel(logging.INFO)
     vision_logger.addHandler(catcher)
     calls = 0
     try:
@@ -287,6 +290,7 @@ async def run_cell(  # one cell is named by all of these
                 return calls
     finally:
         vision_logger.removeHandler(catcher)
+        vision_logger.setLevel(previous_level)
     return calls
 
 
