@@ -27,7 +27,7 @@ from server.memory.reading_offer import READING_SLOT
 from server.routers import transcribe as transcribe_module
 from server.settings import settings
 
-from server import db
+from server import db, tts
 from tests.integration.test_recall_routes import (
     _FRAME,
     _client,
@@ -90,11 +90,24 @@ async def test_a_scene_is_described_from_the_turn_s_frame_and_recorded_as_a_mark
     _hear(monkeypatch, "¿Qué ves?")
     prompts, _wording = _models(monkeypatch)
 
+    spoken_before_looking: list[int] = []
+
+    async def look(*_args: object) -> str:
+        spoken_before_looking.append(tts.synthesize.await_count)  # type: ignore[attr-defined]  # an AsyncMock
+        return _SCENE
+
+    scene.side_effect = look
+
     async with _client() as client:
         response = await client.post("/transcribe/stream", files=_files())
 
-    assert [e["type"] for e in _events(response)] == ["text_heard", "emotion", "audio", "done"]
-    assert _spoken(response) == _SCENE
+    events = _events(response)
+    assert [e["type"] for e in events] == ["text_heard", "emotion", "audio", "audio", "done"]
+    assert [e["text"] for e in events if e["type"] == "audio"] == [
+        settings.vision_look_phrase,
+        _SCENE,
+    ]
+    assert spoken_before_looking == [1]  # the cue was already spoken when the camera looked
     scene.assert_awaited_once()
     assert scene.await_args is not None
     assert scene.await_args.args[1] == _FRAME
@@ -114,7 +127,7 @@ async def test_a_failed_vision_call_says_so_and_is_recorded_verbatim(
     async with _client() as client:
         response = await client.post("/transcribe/stream", files=_files())
 
-    assert _spoken(response) == SCENE_FAILED_PHRASE
+    assert _spoken(response) == f"{settings.vision_look_phrase} {SCENE_FAILED_PHRASE}"
     assert await _recorded() == [("¿Qué ves?", SCENE_FAILED_PHRASE)]
 
 

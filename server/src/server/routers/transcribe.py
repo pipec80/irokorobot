@@ -124,7 +124,12 @@ from server.routers.image_upload import read_contract_image
 from server.schemas import IdentitySource, TranscribeResponse, error_responses
 from server.schemas_streaming import StreamEvent
 from server.settings import settings
-from server.streaming import guarantee_terminal_event, stream_pipeline, stream_response_plan
+from server.streaming import (
+    guarantee_terminal_event,
+    stream_looking_plan,
+    stream_pipeline,
+    stream_response_plan,
+)
 from server.stt import SHORT_REPLY_HOTWORDS
 from server.text_turn import (
     ProfileCardProvider,
@@ -952,20 +957,18 @@ def _scene_on() -> bool:
     return settings.vision_enabled and settings.face_authentication_enabled
 
 
-async def _stream_scene_plan(client: httpx.AsyncClient, frame: bytes | None) -> ResponsePlan:
-    """Describe the scene from the turn's own frame, or say why it cannot (Plan 0089 D-4).
+async def _look(client: httpx.AsyncClient, frame: bytes) -> ResponsePlan:
+    """Describe the scene from the turn's own frame (Plan 0089 D-4); never raises.
 
     Args:
         client: Shared, lifecycle-owned HTTP client (Plan 0039).
-        frame: The turn's validated frame (JPEG/PNG/WebP/GIF/BMP, max 1280x720), or ``None``.
-            Processed in memory and never stored or logged.
+        frame: The turn's validated frame (JPEG/PNG/WebP/GIF/BMP, max 1280x720). Processed in
+            memory and never stored or logged.
 
     Returns:
-        The description; the fixed unavailable phrase without the switches or a frame; the
-        fixed failure phrase when the vision model fails (its cause is already logged).
+        The description, or the fixed failure phrase when the vision model fails (its cause is
+        already logged).
     """
-    if not _scene_on() or frame is None:
-        return scene_unavailable_plan()
     try:
         return current_perception_plan(await perceive_scene(client, frame))
     except VisionError:
@@ -1267,16 +1270,35 @@ async def transcribe_stream(
         recall_answerer=_recall_answerer(resources.http_client),
         frame=frame_bytes,
     ).decide(event)
-    # A scene is described from the turn's own frame, in this one request (Plan 0089 D-2).
-    plan: ResponsePlan | None = (
-        await _stream_scene_plan(resources.http_client, frame_bytes)
-        if isinstance(decision, SceneDescriptionRequest)
-        else decision
-    )
-    turn_log.log_decision("stream", plan, decide_ms=_elapsed_ms(decide_started))
     record_turn = _turn_recorder(
         background_tasks, event=event, wav_bytes=audio_bytes, client=resources.http_client
     )
+    if isinstance(decision, SceneDescriptionRequest) and _scene_on() and frame_bytes is not None:
+        # The scene is described from the turn's own frame, after a spoken cue (Plan 0089 D-2).
+        turn_frame = frame_bytes
+
+        def decided(plan: ResponsePlan) -> None:
+            turn_log.log_decision("stream", plan, decide_ms=_elapsed_ms(decide_started))
+            _record_plan(record_turn, event.payload.message, plan, request_identity)
+
+        return NDJSONStreamingResponse(
+            guarantee_terminal_event(
+                stream_looking_plan(
+                    text_heard=event.payload.message,
+                    cue=settings.vision_look_phrase,
+                    look=lambda: _look(resources.http_client, turn_frame),
+                    on_plan=decided,
+                    stt_ms=stt_ms,
+                    request_start=request_start,
+                    authentication_consumed=request_identity.consumed,
+                    identity_source=request_identity.identity_source,
+                )
+            )
+        )
+    plan: ResponsePlan | None = (
+        scene_unavailable_plan() if isinstance(decision, SceneDescriptionRequest) else decision
+    )
+    turn_log.log_decision("stream", plan, decide_ms=_elapsed_ms(decide_started))
     if plan is not None:
         _record_plan(record_turn, event.payload.message, plan, request_identity)
         return _stream_plan(
