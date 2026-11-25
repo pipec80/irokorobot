@@ -47,6 +47,7 @@ from server.cognition.response_plan import (
     SCENE_RECORDED_TEXT,
     recorded_exchange,
     scene_failed_plan,
+    spoken_log_text,
 )
 
 from server import cognition
@@ -531,3 +532,13 @@ def test_a_described_scene_is_recorded_as_a_marker_not_as_the_description() -> N
 def test_the_two_fixed_scene_phrases_are_recorded_verbatim(plan: ResponsePlan) -> None:
     """A fixed phrase carries no perception, so the record keeps it as spoken."""
     assert recorded_exchange(plan, "¿Qué ves?") == ("¿Qué ves?", plan.response)
+
+
+@pytest.mark.unit
+def test_the_spoken_log_shows_a_described_scene_as_its_marker() -> None:
+    """Review of plan 0089: the opt-in spoken log never shows a scene description either."""
+    assert spoken_log_text(current_perception_plan("Una taza amarilla qqtazaqq.")) == (
+        SCENE_RECORDED_TEXT
+    )
+    assert spoken_log_text(scene_failed_plan()) is None
+    assert spoken_log_text(scene_unavailable_plan()) is None

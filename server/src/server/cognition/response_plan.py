@@ -342,9 +342,12 @@ def spoken_log_text(plan: ResponsePlan) -> str | None:
 
     Returns:
         A fixed marker for a known profile summary, recall answer, relatives answer or sensitive
-        read (their text carries stored values), or ``None`` when the response itself may be
-        logged: every fixed phrase, a refusal included.
+        read (their text carries stored values), or a described scene (what the camera saw,
+        Plan 0089 review); ``None`` when the response itself may be logged: every fixed phrase,
+        a refusal included.
     """
+    if _is_described_scene(plan):
+        return SCENE_RECORDED_TEXT
     if plan.status is not KnowledgeStatus.KNOWN:
         return None
     return _LOGGED_MARKERS.get(plan.need)
