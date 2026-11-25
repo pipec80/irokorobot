@@ -487,7 +487,12 @@ def test_stream_scene_request_always_gets_the_fixed_unavailable_plan(
     monkeypatch: pytest.MonkeyPatch,
     vision_enabled: bool,
 ) -> None:
-    """C7: streaming has no second-round frame upload — scene is always unavailable."""
+    """With no frame in the request, a scene is unavailable whatever VISION_ENABLED says.
+
+    Plan 0089 Task 8: since the scene is described from the turn's own frame, this request
+    carries none, so the fixed phrase is the honest answer (``test_stream_scene.py`` covers the
+    frame).
+    """
     prepare = AsyncMock()
     monkeypatch.setattr(stt, "transcribe", AsyncMock(return_value="¿Qué ves?"))
     monkeypatch.setattr(transcribe_module, "prepare_text_turn", prepare)

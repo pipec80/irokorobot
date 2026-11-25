@@ -59,7 +59,9 @@ from server.cognition.response_plan import (
     SensitiveReader,
     SensitiveReply,
     TextTurnPayload,
+    current_perception_plan,
     recorded_exchange,
+    scene_failed_plan,
     scene_unavailable_plan,
     spoken_log_text,
     unclear_speech_plan,
@@ -134,6 +136,7 @@ from server.text_turn import (
     process_text_turn,
 )
 from server.uploads import read_limited_upload
+from server.vision.perception import perceive_scene
 from server.vision.read_text import read_text
 
 logger = logging.getLogger(__name__)
@@ -940,6 +943,35 @@ async def _classic_reply(
     )
 
 
+def _scene_on() -> bool:
+    """Whether a streaming scene turn may read its frame (Plan 0089 D-3).
+
+    The frame travels only with face authentication on; no memory, document or identity is
+    needed, because a scene description reads no household store.
+    """
+    return settings.vision_enabled and settings.face_authentication_enabled
+
+
+async def _stream_scene_plan(client: httpx.AsyncClient, frame: bytes | None) -> ResponsePlan:
+    """Describe the scene from the turn's own frame, or say why it cannot (Plan 0089 D-4).
+
+    Args:
+        client: Shared, lifecycle-owned HTTP client (Plan 0039).
+        frame: The turn's validated frame (JPEG/PNG/WebP/GIF/BMP, max 1280x720), or ``None``.
+            Processed in memory and never stored or logged.
+
+    Returns:
+        The description; the fixed unavailable phrase without the switches or a frame; the
+        fixed failure phrase when the vision model fails (its cause is already logged).
+    """
+    if not _scene_on() or frame is None:
+        return scene_unavailable_plan()
+    try:
+        return current_perception_plan(await perceive_scene(client, frame))
+    except VisionError:
+        return scene_failed_plan()
+
+
 def _stream_plan(
     plan: ResponsePlan,
     *,
@@ -1235,10 +1267,11 @@ async def transcribe_stream(
         recall_answerer=_recall_answerer(resources.http_client),
         frame=frame_bytes,
     ).decide(event)
-    # Streaming has no second-round frame upload — a scene request always
-    # gets the fixed unavailable plan, regardless of VISION_ENABLED.
+    # A scene is described from the turn's own frame, in this one request (Plan 0089 D-2).
     plan: ResponsePlan | None = (
-        scene_unavailable_plan() if isinstance(decision, SceneDescriptionRequest) else decision
+        await _stream_scene_plan(resources.http_client, frame_bytes)
+        if isinstance(decision, SceneDescriptionRequest)
+        else decision
     )
     turn_log.log_decision("stream", plan, decide_ms=_elapsed_ms(decide_started))
     record_turn = _turn_recorder(
