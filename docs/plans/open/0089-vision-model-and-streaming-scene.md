@@ -331,10 +331,15 @@ Each is Claude's recommendation; Pipec confirms or changes it (*Pipec's decision
     `/transcribe`, `/transcribe/stream` and `/vision/respond`. It writes the same id in its own
     log line for the turn. The server already keeps a valid id. It is an optional header: no field
     of the contract changes, and the robot still knows nothing of what the server runs.
-  - **The streaming route closes with one timing line.** `Stream done` gains `stt_ms`,
-    `decide_ms` (identity and the controller), `model_ms` (the text or vision model, 0 when none
-    ran), `first_audio_ms`, `tts_ms`, `total_ms`, and the free memory at the start and at the end
-    of the turn (`ram_start_mb`, `ram_end_mb`). It gets the same fields as `extra`, with the event `stream.done`.
+  - **The turn's lines carry its numbers** (amended at execution, 2026-11-25: the cheapest form,
+    on the lines that already exist, joined by the request id):
+    - `turn.start` (new, every voice route): the free memory at the start (`ram_free_mb`);
+    - `turn.decision` (streaming route): `decide_ms`, from the end of the speech-to-text to the
+      decision (identity, the controller and, on a scene turn, the vision call);
+    - `pipeline.timing` (every route, already there with `stt_ms`, `llm_ms`, `tts_ms`,
+      `total_ms`): the free memory at the end (`ram_free_mb`);
+    - `stream.done` (model-streamed turns only; a plan turn has no such line): its numbers as
+      `extra` (`outcome`, `chunks`, `first_audio_ms`, `tts_ms`, `total_ms`).
   - **A background job says what it cost.** The candidate proposal already runs inside its
     request, so it carries the request id. It logs `memory.proposal` with its model, `elapsed_ms`
     and outcome. The conversation job logs `conversation.job` for each piece of work, with the
@@ -516,21 +521,21 @@ cause.
 - **Consumes:** `OllamaMetrics` and the Ollama-cause helper of Task 1.
 - **Produces:**
   - `server/system_memory.py`: `available_ram_mb() -> int | None`;
-  - `StreamState` gains `stt_ms: int`, `decide_ms: int`, `model_ms: int` and
-    `ram_start_mb: int | None`, all default 0 or `None`;
-  - `_log_stream_metrics` reads `ram_end_mb` itself and logs every field, with `extra` and the
-    event `stream.done`;
-  - the robot: `server_client.transcribe`, `transcribe_stream` and `respond_vision` take
-    `request_id: str` and send it as `X-Request-ID`. The robot makes one `uuid4()` per request and
-    logs `Turn sent: request_id=%s` (on the classic route, the second round has its own id).
+  - `turn_log.log_start(channel)` and `turn_log.log_decision(channel, plan, *, decide_ms=None)`;
+    `pipeline._log_pipeline_timing` adds `ram_free_mb`; `_log_stream_metrics` logs its numbers as
+    `extra` with the event `stream.done` (as amended in D-13);
+  - the robot: `server_client` makes one `uuid4()` per request inside `_turn_headers`, sends it as
+    `X-Request-ID` and logs `Turn sent: request_id=%s` (on the classic route, the second round has
+    its own id); the callers do not change.
 
 - [ ] **Step 1: Write the failing tests:**
   - `available_ram_mb()` returns a positive int on the CI's OS, and `None` when the OS call is
     patched to raise or the platform is unknown;
-  - a streaming turn's `Stream done` record has every field above as `extra`, with
-    `model_ms == 0` for a fixed reply;
-  - a request with `X-Request-ID` set to a valid UUID has that id on its `Stream done` record. A
-    request with `X-Request-ID: not-a-uuid` has a different, generated id;
+  - `turn.start` and `pipeline.timing` carry the free memory, `turn.decision` its `decide_ms`,
+    and `stream.done` its numbers as `extra`;
+  - a request with `X-Request-ID` set to a valid UUID has that id on its `turn.start`,
+    `turn.decision` and `pipeline.timing` records. A request with `X-Request-ID: not-a-uuid` (or
+    any non-canonical form) has a different, generated id;
   - the capture record has `record_id` when a row was written, and none when nothing was
     recorded;
   - a conversation-job failure logs `conversation.job` with the row id, the model, `elapsed_ms`
@@ -735,7 +740,7 @@ time.
 | A4 | Tú | «¿Qué ves?» (first of the day) | Two or three sentences in Spanish about what is in front, no identity, no voseo; latency and memory within the bench's numbers |
 | A5 | Tú | Hold the cup: «Iroko, saca una foto» | The cup is described |
 | A6 | Tú | «Cuéntame algo breve.» | An ordinary reply; latency against A3 |
-| A7 | Yo | Take A4's id from the robot's log and search `logs/server.log` for it | The same id on the server's lines of that turn, and `stream.done` with every D-13 field. The `conversation.job` line names the `record_id` of A6's `conversation.capture` line. No text in any of them |
+| A7 | Yo | Take A4's id from the robot's log and search `logs/server.log` for it | The same id on the server's lines of that turn: `turn.start` and `pipeline.timing` with `ram_free_mb`, `turn.decision` with `decide_ms`, and `vision.metrics`. After the conversation has closed (180 s of silence), a `conversation.job` line with piece `episode` names a `row_id` that one of the sitting's `conversation.capture` lines named, with a closed outcome (`written`, `retry`...). No text in any of them |
 
 **Part B — the phrases and the reading.**
 
