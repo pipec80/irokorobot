@@ -59,6 +59,8 @@ class AdminOperationKind(StrEnum):
     GRANT = "grant"
     EXPORT = "export"
     DELETE = "delete"
+    # `iroko-admin docs list` (Plan 0088 D-16): a title can be sensitive, so a listing is audited.
+    LIST = "list"
 
 
 class TargetKind(StrEnum):
@@ -72,6 +74,9 @@ class TargetKind(StrEnum):
     # The export of everything, or of one person (Plan 0087 D-7): ``field_id`` is ``all``,
     # ``person:<id>`` or ``person`` (a name only talked about), never the name or the path.
     HOUSEHOLD_DATA = "household_data"
+    # One of the owner's documents (Plan 0088 D-16): ``field_id`` is the source id or NULL, never
+    # its title or text.
+    DOCUMENT = "document"
 
 
 class AdminOutcomeStatus(StrEnum):

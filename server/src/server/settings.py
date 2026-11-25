@@ -183,6 +183,11 @@ class Settings(BaseSettings):
     # «¿cuándo fui…?» says them and a recall window matches by them. Kill-switch, off in the code;
     # it also needs MEMORY_ENABLED and RECALL_ENABLED. Off: every recall as before.
     occurred_time_enabled: bool = False
+    # The owner's documents (ADR 0034, Plan 0088): a document cue («¿qué dice el manual de la
+    # lavadora sobre el filtro?») is answered from the owner's loaded documents, naming them, and
+    # the conversation job embeds their sections. Kill-switch, off in the code; it also needs
+    # MEMORY_ENABLED. Off: every turn as before.
+    documents_enabled: bool = False
     # Pending topics (ADR 0037 decisions 2 and 6, Plan 0084): what the verified owner says they
     # will do on one day («mañana voy al banco») is kept, named by the local model, and the first
     # greeting of a later day asks about it once. Kill-switch, off in the code; it also needs
@@ -206,6 +211,12 @@ class Settings(BaseSettings):
     # distance, when it holds the question's named words). Chosen by Plan 0088's bench
     # (2026-11-23): the midpoint of two observed word-hit distances, 0.456 and 0.472.
     recall_word_max_distance: float = Field(default=0.464, gt=0.0, lt=2.0)
+    # ADR 0040's rule for the owner's documents (Plan 0088 D-13), with its own thresholds: a
+    # section found by its meaning qualifies under the first, one found by its words under the
+    # second. Chosen on the document bench with "direct by meaning" measured, not required, and
+    # confirmed by Pipec on 2026-11-23 (docs/evals/0088-document-bench.md): the words decide.
+    document_max_distance: float = Field(default=0.22, gt=0.0, lt=2.0)
+    document_word_max_distance: float = Field(default=0.61, gt=0.0, lt=2.0)
     robot_character: str = "iroko"
     # Re-read character markdown profiles from disk on every request when
     # they change (prompt-engineering aid). OFF by default: production loads

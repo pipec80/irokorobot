@@ -292,3 +292,43 @@ async def test_ollama_embed_wraps_a_non_json_body() -> None:
     async with _mock_client(handler) as client:
         with pytest.raises(LLMError):
             await llm_transport.ollama_embed(client, "hola", model="nomic")
+
+
+@pytest.mark.unit
+async def test_ollama_embed_can_refuse_to_truncate() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["payload"] = json.loads(request.content)
+        return httpx.Response(200, json={"embeddings": [[0.5]]})
+
+    async with _mock_client(handler) as client:
+        await llm_transport.ollama_embed(client, "hola", model="nomic", truncate=False)
+
+    assert captured["payload"] == {"model": "nomic", "input": "hola", "truncate": False}
+
+
+@pytest.mark.unit
+async def test_ollama_token_count_reads_the_prompt_eval_count() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["payload"] = json.loads(request.content)
+        return httpx.Response(200, json={"embeddings": [[0.5]], "prompt_eval_count": 7})
+
+    async with _mock_client(handler) as client:
+        count = await llm_transport.ollama_token_count(client, "hola", model="nomic")
+
+    assert count == 7
+    assert str(captured["payload"]).count("hola") == 1
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("body", [{"embeddings": [[0.5]]}, {"prompt_eval_count": "7"}, []])
+async def test_ollama_token_count_rejects_a_body_without_a_count(body: object) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=body)
+
+    async with _mock_client(handler) as client:
+        with pytest.raises(LLMError):
+            await llm_transport.ollama_token_count(client, "hola", model="nomic")

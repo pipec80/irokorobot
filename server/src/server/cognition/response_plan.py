@@ -1,8 +1,9 @@
 """Immutable response-planning contracts for the P0.3 chat pilot."""
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -64,6 +65,10 @@ class InformationNeed(StrEnum):
     SENSITIVE_READ = "sensitive_read"
     # A secret value said or asked for («mi clave es 1234»): never kept, never answered (ADR 0029).
     SECRET_VALUE = "secret_value"  # noqa: S105  # pragma: allowlist secret - a need name
+    # «¿Qué dice el manual de la lavadora sobre el filtro?»: the owner's documents (Plan 0088).
+    DOCUMENT = "document"
+    # «Iroko, lee esto»: the text in front of the camera read aloud (Plan 0088 D-17).
+    READ_TEXT = "read_text"
 
 
 class ResponseSource(StrEnum):
@@ -149,10 +154,65 @@ class MemoryAnswerReply:
     expects_short_reply: bool = False
 
 
+class ReadingOutcome(StrEnum):
+    """How one «lee esto» ended (Plan 0088 D-17)."""
+
+    NO_FRAME = "no_frame"
+    FAILED = "failed"
+    SECRET = "secret"  # noqa: S105  # pragma: allowlist secret - an outcome name
+    READ = "read"
+
+
+@dataclass(frozen=True)
+class ReadingReply:
+    """What the text reader says back; ``text`` (hidden from ``repr``) only when it read."""
+
+    outcome: ReadingOutcome
+    text: str | None = field(default=None, repr=False)
+
+
+class KeepOutcome(StrEnum):
+    """What the reading keeper did with a turn (Plan 0088 D-17)."""
+
+    NO_SLOT = "no_slot"
+    KEPT = "kept"
+    NOT_KEPT = "not_kept"
+
+
+#: The fixed phrases of «Iroko, lee esto» (Plan 0088 D-17), in neutral tuteo.
+NOTHING_TO_READ: Final = "No veo nada para leer. Acércalo a la cámara."
+COULD_NOT_READ: Final = "No pude leerlo. Acércalo un poco más a la cámara."
+READ_SECRET: Final = "Eso tiene una clave o un código; no lo leo en voz alta."  # noqa: S105  # pragma: allowlist secret - a fixed phrase
+READ_OFFER: Final = "¿Lo guardo? Dime: sí, guárdalo."
+READING_KEPT: Final = "Listo, lo guardé en tus documentos."
 #: Spoken when a recall question finds nothing it may say (ADR 0028 decisions 4 and 8).
 NO_MEMORY: Final = "No me acuerdo de eso."
+#: What a strong document cue hears when nothing qualified, and what any failure answers (D-14).
+NOT_IN_DOCUMENTS: Final = "No lo encuentro en tus documentos."
 #: Spoken when the alta loaded no relative of the kind asked about (ADR 0028 decision 9).
 NOT_REGISTERED: Final = "No tengo registrado eso."
+
+
+@dataclass(frozen=True)
+class DocumentReply:
+    """What the document answerer says back to the controller (Plan 0088 D-14, D-15).
+
+    Lives in the cognitive core so the controller maps it without importing ``server.memory``.
+    Hidden from ``repr``: ``text`` carries the owner's documents.
+
+    Attributes:
+        text: The spoken answer; ``None`` when nothing qualified (the controller decides by the
+            cue's strength), or the fixed phrase when the audit or the search failed.
+        denied: ``True`` when the pre-check or the policy refused; answered like a stranger.
+        found: ``True`` when *text* was worded from found sections.
+        scope_found: ``False`` when the cue named a document the owner has none of: a weak cue
+            then converses.
+    """
+
+    text: str | None = field(repr=False)
+    denied: bool = False
+    found: bool = False
+    scope_found: bool = True
 
 
 @dataclass(frozen=True)
@@ -251,8 +311,24 @@ RELATIVES_LOGGED_TEXT = "[parientes leídos]"
 #: Replaces the robot's answer to a sensitive read in the conversation record and the opt-in spoken
 #: log (Plan 0079, D-8): the answer carries the owner's stored values.
 SENSITIVE_RECORDED_TEXT: Final = "[dato sensible leído]"
+#: Replace a document answer and a camera reading in the conversation record and the opt-in spoken
+#: log (Plan 0088 D-18): no section or read text enters the record, the diary or an export.
+DOCUMENT_RECORDED_TEXT: Final = "[respuesta de un documento]"
+READING_RECORDED_TEXT: Final = "[texto leído por la cámara]"
 #: Replaces the heard words of a secret turn in the conversation record (Plan 0079, D-8).
 SECRET_RECORDED_TEXT: Final = "[dato de seguridad omitido]"  # noqa: S105  # pragma: allowlist secret - a marker
+
+
+_LOGGED_MARKERS: Final[Mapping[InformationNeed, str]] = MappingProxyType(
+    {
+        InformationNeed.PROFILE_SUMMARY: PROFILE_SUMMARY_LOGGED_TEXT,
+        InformationNeed.RECALL: RECALL_LOGGED_TEXT,
+        InformationNeed.DOCUMENT: DOCUMENT_RECORDED_TEXT,
+        InformationNeed.READ_TEXT: READING_RECORDED_TEXT,
+        InformationNeed.RELATIVES_NAMES: RELATIVES_LOGGED_TEXT,
+        InformationNeed.SENSITIVE_READ: SENSITIVE_RECORDED_TEXT,
+    }
+)
 
 
 def spoken_log_text(plan: ResponsePlan) -> str | None:
@@ -268,17 +344,7 @@ def spoken_log_text(plan: ResponsePlan) -> str | None:
     """
     if plan.status is not KnowledgeStatus.KNOWN:
         return None
-    match plan.need:
-        case InformationNeed.PROFILE_SUMMARY:
-            return PROFILE_SUMMARY_LOGGED_TEXT
-        case InformationNeed.RECALL:
-            return RECALL_LOGGED_TEXT
-        case InformationNeed.RELATIVES_NAMES:
-            return RELATIVES_LOGGED_TEXT
-        case InformationNeed.SENSITIVE_READ:
-            return SENSITIVE_RECORDED_TEXT
-        case _:
-            return None
+    return _LOGGED_MARKERS.get(plan.need)
 
 
 def recorded_exchange(plan: ResponsePlan, heard: str) -> tuple[str, str]:
@@ -299,6 +365,10 @@ def recorded_exchange(plan: ResponsePlan, heard: str) -> tuple[str, str]:
         return SECRET_RECORDED_TEXT, plan.response
     if plan.need is InformationNeed.SENSITIVE_READ and plan.status is KnowledgeStatus.KNOWN:
         return heard, SENSITIVE_RECORDED_TEXT
+    if plan.need is InformationNeed.DOCUMENT:
+        return heard, DOCUMENT_RECORDED_TEXT
+    if plan.need is InformationNeed.READ_TEXT:
+        return heard, READING_RECORDED_TEXT
     return heard, plan.response
 
 

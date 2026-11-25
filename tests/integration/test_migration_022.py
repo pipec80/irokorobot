@@ -95,7 +95,7 @@ async def test_migration_022_keeps_every_audit_row(
             await _export_row("household_data")
         await db.get_conn().rollback()
 
-        monkeypatch.setattr(db, "_MIGRATIONS", every_migration)
+        monkeypatch.setattr(db, "_MIGRATIONS", tuple(m for m in every_migration if m[0] <= 22))
         await db.run_migrations()
 
         assert await _rows("PRAGMA user_version") == [(22,)]

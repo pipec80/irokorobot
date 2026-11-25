@@ -1,10 +1,17 @@
 # 0088 — Close the RAG: the relevance gate and its bench, then the documents
 
-> **Part A closed on 2026-11-23**: accepted by Pipec on real hardware
-> ([record](../../evals/0088a-recall-gate-acceptance.md)), [ADR 0040](../../adr/0040-the-relevance-gate-of-retrieval.md)
-> `Accepted`, PR #306. Part B (the documents) is next, in a new session.
+> **Closed on 2026-11-24. The RAG is closed.**
 >
-> **Status:** **Ready (promoted by Pipec on 2026-11-23).** Written as a draft the same day for
+> - **Part A**, closed 2026-11-23: accepted by Pipec on real hardware
+>   ([record](../../evals/0088a-recall-gate-acceptance.md)),
+>   [ADR 0040](../../adr/0040-the-relevance-gate-of-retrieval.md) `Accepted`, PR #306.
+> - **Part B**, closed 2026-11-24: accepted by Pipec on real hardware
+>   ([record](../../evals/0088b-documents-acceptance.md)),
+>   [ADR 0034](../../adr/0034-documents-and-reading-through-the-camera.md) `Accepted`, PR #307.
+>   Blocks 1 and 2 of D-21 passed on streaming; block 3, the reading, was accepted as run on the
+>   classic route because of the robot's F-08 guard. Its findings went to Plan 0089 (drafted).
+>
+> **Status (historical):** **Ready (promoted by Pipec on 2026-11-23).** Written as a draft the same day for
 > Pipec's review and revised after one read-only architecture review (its findings are folded in;
 > see *Self-review*). **Pipec accepted every recommendation on 2026-11-23** («Acepto todas»): D-1
 > (ADR 0040), D-7, D-9, D-15 (the uniform phrase), D-16 (the PIN on all three commands), D-17 (the
@@ -238,7 +245,9 @@ make. A decision answered differently is rewritten here before promotion.
   follows from `format` (ADR 0031 decision 6): `original` for `md` and `txt`, `extracted` for `pdf`
   and `camera`; the dictionary says so, no column holds it. No version column: a changed file is a
   new source, the old one removed by the owner (YAGNI until a re-load is asked for; written into
-  ADR 0034 in Task B0).
+  ADR 0034 in Task B0). **Found in Task B0 (Pipec approved, 2026-11-23):** `admin_audit` has
+  closed checks, so migration 023 also rebuilds it as migration 022 did, adding the target kind
+  `document` and the operation `list`.
 - **D-9 (Pipec, confirmed 2026-11-23) Formats, the PDF library and the caps** (ADR 0034 decision 1 leaves them to the
   plan). **One adapter per format** (Pipec, 2026-11-23): `document_extract.py` keeps a closed,
   `Final` table from a file extension to its extractor, each a function from a path to
@@ -261,6 +270,20 @@ make. A decision answered differently is rewritten here before promotion.
   one whose pages give no text, is refused with «Este PDF no tiene texto que pueda leer.» (scanned
   PDF is R4). The memory a crafted PDF can take inside the child is bounded only by those limits:
   accepted, because `docs add` runs with the server stopped on a file the owner chose.
+  > **Pipec, 2026-11-24 (Task B10), file safety.** What is read is never interpreted: no text of
+  > a document is executed, followed or opened, and SQL only takes it as a bound value. On top of
+  > that, three checks before any text is taken: a file must be what its extension says (a PDF
+  > starts with `%PDF-`; a text holds no NUL byte nor more than a few control characters); every
+  > control and invisible character but line breaks and tabs is removed from the text; and a PDF
+  > that carries active content is refused whole («Este PDF trae enlaces, firmas, códigos QR o de
+  > barras, adjuntos o acciones; no lo abro.»): JavaScript, an action on opening or on a page, an
+  > embedded or attached file, a link or another action annotation, a signature field, an XFA form,
+  > rich media, or an image with a QR code or a barcode (`memory/pdf_inspect.py`, in the child).
+  > Pipec's long text-layer PDF passes. The closed list of formats R2b may add is Pipec's: Office
+  > (Word, Excel, PowerPoint), JPG and PNG, and audio or video (MP3, MP4, MPG, MOV and the iPhone's
+  > HEIC and MOV), each with its own check of what the file really is before it is opened;
+  > everything else is refused. A threat model of file ingestion (archives, macros, images, audio,
+  > the body's storage, a remote upload) is its own ADR, before R2b or any remote load.
 - **D-10 Sections fit the model's window, cut before they are stored.** Markdown is cut at its
   headings (the heading path is kept with the section), then at blank lines; text at blank lines;
   PDF by page, then at blank lines; a paragraph above the cap is cut at sentence ends. Task B0
@@ -271,7 +294,10 @@ make. A decision answered differently is rewritten here before promotion.
   is embedded with `truncate: false` (Task B0 verifies Ollama 0.40.16 refuses an over-long input
   with it), so a section is never silently cut: one the model still refuses is logged
   (`document.section_too_long`, its id only), stays searchable by its words and is counted by
-  `iroko-admin health`.
+  `iroko-admin health`. **Measured in Task B0 (2026-11-23):** at least 2.77 characters per token
+  (one long real document; the bench 3.26), so the conservative cap is **1,200 characters**
+  (`docs/evals/0088-document-bench.md`); D-9's caps are kept as proposed, since Pipec's long
+  text-layer PDF fits them.
 - **D-11 The document cue is a closed controller branch** (ADR 0034 decision 3), behind the new
   default-off `DOCUMENTS_ENABLED` (needs `MEMORY_ENABLED`), with a strong and a weak form like the
   recall cue. **Strong** (the owner's possession is said): «según mis documentos / papeles …»,
@@ -300,6 +326,13 @@ make. A decision answered differently is rewritten here before promotion.
   document). `DOCUMENT_MAX_DISTANCE` (and `DOCUMENT_WORD_MAX_DISTANCE` if ADR 0040's rule has a
   second gate) are chosen by D-3's procedure on this corpus and recorded in
   `docs/evals/0088-document-bench.md`; Pipec confirms them before Task B8 uses them.
+
+  > **Decided by Pipec on 2026-11-23, at Task B7 Step 3** («Opción B 0,22/0,61»). Under D-3 as
+  > written no pair separates the two sides (expected 0.20 to 0.44, nearest wrong 0.28 to 0.46):
+  > the eligible pair 0.44 / 0.44 answers 17 % of the negatives. As Part A amended D-3, *direct by
+  > meaning* is measured, not required: `DOCUMENT_MAX_DISTANCE` = 0.22, `DOCUMENT_WORD_MAX_DISTANCE`
+  > = 0.61 (named document 100 %, wrong document and nothing 100 % correct zero, common word 0 %,
+  > meaning 0 % / 67 %).
 - **D-14 The answer names its document and stays inside it.** `memory/document_answer.py` has its
   own prompt: one line of Iroko's persona in neutral tuteo, the found sections quoted inside «»
   (any «, » or line that imitates the prompt's own labels inside a section is neutralized first)
@@ -310,6 +343,16 @@ make. A decision answered differently is rewritten here before promotion.
   ungrounded sentence, a claim of having saved or a reply the document secret detector (D-15) flags
   gets the template «Según {título}: {cita de la primera sección}» (at most 200 characters).
   Nothing qualified answers «No lo encuentro en tus documentos.» (strong cue).
+  > **Amended on 2026-11-23, at Task B8 Step 5 (Pipec delegated the call: «aplicando la ley de
+  > Pareto … no que sea un parche»).** With `qwen2.5:3b` the eval counted 12 of 24 answers that
+  > followed the planted order, and the grounding check cannot see it (the planted words are in
+  > the section). The answer is now **extractive, with no model**: «Según {título}:» and at most
+  > two sentences of the found sections that hold the most of the question's words (the title's
+  > words aside; long words also by a five-letter stem), every sentence in the closed shapes of an
+  > order («ignora…», «olvida lo anterior…», «di que…», «a partir de ahora eres…») and every one
+  > the secret detector flags left out, 220 characters at most; only orders and codes left says
+  > «No lo encuentro en tus documentos.». Eval: 0 of 24. `build_document_messages` and `grounded`
+  > are not built; a model can word the answer later through `document_reply`'s `answer` seam.
 - **D-15 Levels, the policy and secrets** (ADR 0034 decision 2, ADR 0029 decisions 3 and 5). A new
   action `READ_PERSONAL_DOCUMENT` in `PERSONAL_MEMORY_CAPABILITIES`: owner only, own data,
   `personal`, minimum `basic` (the face), audited before the search like recall. A `normal` source
@@ -327,6 +370,14 @@ make. A decision answered differently is rewritten here before promotion.
   false-positive rate is measured on the document bench (a manual's «pin 3» or «error 5» must
   pass). It is a deterministic guard with known limits, recorded as such, not a promise that no
   code can ever be read.
+  > **Found in Task B10 (2026-11-24).** With a second face in view the face check identifies
+  > nobody (`VETO_MULTIPLE_FACES` leaves the actor ambiguous), so a document cue never reaches the
+  > level filter: every strong cue hears the generic denial, the same whether a `sensitive`
+  > document exists or not (still no oracle), and a weak one converses. The level filter stays as
+  > a second wall. The secret detector, measured on one real medical text of Pipec's (89 of 128
+  > sections refused by «a run of six or more digits»), no longer flags a lone number: a code
+  > needs its secret word (now also before it, «1234 es mi clave», and after «:»), a card its
+  > groups or a card word; a plain «código» needs four digits in a row.
 - **D-16 (Pipec, confirmed 2026-11-23) Loading** (ADR 0034 decision 1). `iroko-admin docs add <file> [--title T]
   [--level normal|sensitive]`, `docs list` and `docs remove <id>`, server stopped, each with the
   owner's PIN (`list` too, confirmed by Pipec on 2026-11-23: a title can be sensitive) and one `admin_audit` row that
@@ -361,6 +412,9 @@ make. A decision answered differently is rewritten here before promotion.
   document (`format` `camera`, title «Nota del {día}: {primeras palabras}», or «Nota del {día}»
   when the first words hold a digit); anything else empties the slot. Reading needs no identity;
   keeping does. The frame is never stored.
+  > **Found in Task B10 (2026-11-24).** A reading with no identified speaker on its turn is
+  > read aloud but can never be kept: anyone on the network could plant one for the owner's next
+  > «sí, guárdalo». A kept note is embedded at once.
 - **D-18 What a document reply leaves behind.** A document answer and a camera reading are
   recorded with markers, «[respuesta de un documento]» and «[texto leído por la cámara]»
   (`response_plan.recorded_exchange`, beside the sensitive-read marker), so no section or read text
@@ -481,7 +535,7 @@ A need outside the list stops the plan for Pipec.
 | Part | Files |
 |---|---|
 | A | `memory/retrieval.py` (new), `memory/recall_search.py`, `memory/recall_store.py` (`distances_of`, the match expression moved), `memory/recall_access.py` (the log fields), `cognition/recall_cues.py` (`specific_words`, `RecallCue.specific`), `settings.py` and `.env.example` (only if ADR 0040 keeps a second gate), `scripts/recall_bench.py`, `scripts/recall_bench_gates.py` (new), `justfile` (`recall-bench`), `tests/evals/recall_bench_v1.yaml` (new), `tests/unit/test_retrieval.py` (new), `tests/unit/test_recall_fusion.py`, `tests/unit/test_recall_cues.py`, `tests/integration/test_recall_search.py`, `tests/integration/test_recall_search_occurred.py`, `tests/integration/test_recall_store.py`, `tests/unit/test_recall_access.py`, `tests/unit/test_recall_bench_fixture.py` (new); docs: `docs/adr/0040-the-relevance-gate-of-retrieval.md` (new, or ADR 0028 per D-1), the ADR index, `docs/evals/0088-recall-bench.md` and `docs/evals/0088a-recall-gate-acceptance.md` (new), the roadmap row *Recall precision for a named person*, this plan |
-| B | `memory/migration_023_documents.sql` (new), `memory/document_store.py`, `document_extract.py`, `document_sections.py`, `document_index.py`, `document_secrets.py`, `document_search.py`, `document_access.py`, `document_answer.py`, `reading_offer.py` (new), `memory/recall_store.py` (`tells_something`), `cognition/document_cues.py` (new), `cognition/intent_resolution.py`, `cognition/response_plan.py`, `cognition/controller.py`, `cognition/models.py` and `cognition/authorization.py` (the action), `vision/read_text.py` (new), `routers/transcribe.py` (the two seams), `llm_transport.py` (`truncate`, `prompt_eval_count`), `memory/conversation_jobs.py` (the backfill), `memory/deletion_register.py`, `memory/data_export.py`, `memory/export_model.py`, `memory/export_files.py`, `memory/db_health.py`, `admin_cli.py`, `seed_cli.py`, `memory/seed_file.py`, `settings.py`, `.env.example`, `server/pyproject.toml`, `uv.lock`, `scripts/document_bench.py` (new), `justfile`, `tests/evals/document_bench_v1.yaml` and `tests/fixtures/documents/` (new, invented), their tests, `tests/unit/test_schema_guards.py`, `tests/unit/test_architecture_guards.py`, `tests/unit/test_personal_memory_policy.py`, `tests/integration/test_owner_stranger_matrix.py`; docs: ADR 0034 (the deviations of Task B0, then *Implemented*), ADR 0031 (a note), ADR 0040, the ADR index, `docs/architecture/data-dictionary.md`, `rag-and-memory-retrieval.md`, `current-state.md`, the two Archify diagrams, `docs/runbooks/operator-manual.md`, `docs/evals/0088-document-bench.md` and `docs/evals/0088b-documents-acceptance.md` (new), the roadmap (row 9), both delivery maps, `docs/plans/README.md`, `docs/plans/open/README.md`, `docs/plans/completed/README.md` |
+| B | `memory/migration_023_documents.sql` (new), `memory/document_store.py`, `document_extract.py`, `document_sections.py`, `document_index.py`, `document_secrets.py`, `document_search.py`, `document_access.py`, `document_answer.py`, `reading_offer.py` (new), `memory/recall_store.py` (`tells_something`), `cognition/document_cues.py` (new), `cognition/intent_resolution.py`, `cognition/response_plan.py`, `cognition/controller.py`, `cognition/models.py` and `cognition/authorization.py` (the action), `vision/read_text.py` (new), `routers/transcribe.py` (the two seams), `llm_transport.py` (`truncate`, `prompt_eval_count`), `memory/conversation_jobs.py` (the backfill), `memory/deletion_register.py`, `memory/data_export.py`, `memory/export_model.py`, `memory/export_files.py`, `memory/db_health.py`, `admin_cli.py`, `seed_cli.py`, `memory/seed_file.py`, and, added by Task B0 with Pipec's approval, `db.py` (the migration's line), `memory/admin_audit.py` (the audit kinds), `memory/seed_run.py` and `memory/seed_replace.py` (the alta's transaction), `memory/admin_docs.py` (new, the `docs` commands beside `admin_cli.py`), `settings.py`, `.env.example`, `server/pyproject.toml`, `uv.lock`, `scripts/document_bench.py` (new), `justfile`, `tests/evals/document_bench_v1.yaml` and `tests/fixtures/documents/` (new, invented), their tests, `tests/unit/test_schema_guards.py`, `tests/unit/test_architecture_guards.py`, `tests/unit/test_personal_memory_policy.py`, `tests/integration/test_owner_stranger_matrix.py`; docs: ADR 0034 (the deviations of Task B0, then *Implemented*), ADR 0031 (a note), ADR 0040, the ADR index, `docs/architecture/data-dictionary.md`, `rag-and-memory-retrieval.md`, `current-state.md`, the two Archify diagrams, `docs/runbooks/operator-manual.md`, `docs/evals/0088-document-bench.md` and `docs/evals/0088b-documents-acceptance.md` (new), the roadmap (row 9), both delivery maps, `docs/plans/README.md`, `docs/plans/open/README.md`, `docs/plans/completed/README.md` |
 
 **Rollback boundary.** Part A changes no table: a revert. Part B: before its merge, the branch;
 after the real upgrade, the `pre-0088b` backup with the previous `main`.
@@ -851,14 +905,14 @@ their tests.
 
 **Files:** the documents of *Permitted files*, Part B; Pipec's local `docs/roadmap/tabla-tareas.md`.
 
-- [ ] **Step 1:** with the server stopped, back up to `data/backups/pre-0088b-<YYYYMMDD-HHMMSS>/`,
+- [x] **Step 1:** with the server stopped, back up to `data/backups/pre-0088b-<YYYYMMDD-HHMMSS>/`,
   prove the restore on a copy under `data/rehearsal-0088/` (opens at version 22, health 0), rehearse
   migration 023 on another copy (every count equal, health 0); delete the copies.
-- [ ] **Step 2:** push, PR, green CI. Pipec starts the server (the switches of D-21, migration 023
+- [x] **Step 2:** push, PR, green CI. Pipec starts the server (the switches of D-21, migration 023
   runs) and the robot and runs D-21's cases; the agent runs `iroko-admin docs`, reads the logs and
   writes `docs/evals/0088b-documents-acceptance.md` (outcomes only); `iroko-admin health` exits 0; a
   `post-0088b` backup made and proven.
-- [ ] **Step 3:** when Pipec accepts, delete the `pre-0088b` backup and record it; update
+- [x] **Step 3:** when Pipec accepts, delete the `pre-0088b` backup and record it; update
   `rag-and-memory-retrieval.md` (§4 to today, §25 R2 delivered), `current-state.md`, the data
   dictionary, the operator manual (`iroko-admin docs`, the manifest, the switches and the two
   face-authentication preconditions of the reading), ADR 0034 `Accepted` with an *Implemented by

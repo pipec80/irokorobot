@@ -38,9 +38,11 @@ if TYPE_CHECKING:
 __all__ = [
     "MAX_SEED_BYTES",
     "LoadedSeed",
+    "ManifestDocument",
     "SeedFile",
     "SeedStatus",
     "json_schema_text",
+    "load_document_manifest",
     "load_seed_file",
     "parse_seed_text",
     "sections_with_items",
@@ -334,3 +336,76 @@ def load_seed_file(path: Path) -> LoadedSeed:
     if text is None:
         raise SeedFileError(("file: invalid_utf8",))
     return LoadedSeed(seed=parse_seed_text(text), sha256=hashlib.sha256(raw).hexdigest())
+
+
+#: The alta's documents folder beside the seed file, and its manifest (Plan 0088 D-16).
+DOCUMENTS_FOLDER = "documents"
+MANIFEST_NAME = "manifest.toml"
+_DOCUMENT_KEYS = frozenset({"file", "title", "level"})
+_DOCUMENT_LEVELS = frozenset({"normal", "sensitive"})
+_MAX_DOCUMENT_TITLE = 120
+
+
+@dataclass(frozen=True)
+class ManifestDocument:
+    """One document the alta loads: its file, title and level; the ``repr`` shows no title."""
+
+    path: Path
+    title: str = field(repr=False)
+    level: Literal["normal", "sensitive"]
+
+
+def _manifest_entry(
+    folder: Path, index: int, entry: object
+) -> tuple[ManifestDocument | None, list[str]]:
+    """One ``[[document]]`` table, or the closed problems it has."""
+    where = f"document[{index}]"
+    if not isinstance(entry, dict) or set(entry) - _DOCUMENT_KEYS:
+        return None, [f"{where}: unknown_key"]
+    file, title, level = entry.get("file"), entry.get("title"), entry.get("level", "normal")
+    problems = []
+    if not isinstance(title, str) or not 1 <= len(title.strip()) <= _MAX_DOCUMENT_TITLE:
+        problems.append(f"{where}.title: invalid")
+    if level not in _DOCUMENT_LEVELS:
+        problems.append(f"{where}.level: unknown")
+    path = (folder / file).resolve() if isinstance(file, str) else None
+    if path is None or not path.is_relative_to(folder.resolve()) or not path.is_file():
+        problems.append(f"{where}.file: not_found")
+    if problems or path is None or not isinstance(title, str):
+        return None, problems
+    return ManifestDocument(path=path, title=title.strip(), level=level), []
+
+
+def load_document_manifest(seed_path: Path) -> tuple[ManifestDocument, ...]:
+    """Read ``documents/manifest.toml`` beside the seed file; none there means no document.
+
+    Args:
+        seed_path: The seed file.
+
+    Returns:
+        The documents, in file order.
+
+    Raises:
+        SeedFileError: For invalid TOML, an unknown key or level, a title out of bounds, or a file
+            missing or outside the documents folder; the whole load is refused.
+    """
+    folder = seed_path.parent / DOCUMENTS_FOLDER
+    manifest = folder / MANIFEST_NAME
+    if not manifest.is_file():
+        return ()
+    text = _decoded(manifest.read_bytes())
+    parsed = _parsed(text) if text is not None else "documents: invalid_utf8"
+    if isinstance(parsed, str):
+        raise SeedFileError((f"documents: {parsed.removeprefix('file: ')}",))
+    entries = parsed.get("document", [])
+    if set(parsed) - {"document"} or not isinstance(entries, list):
+        raise SeedFileError(("documents: unknown_key",))
+    documents, problems = [], []
+    for index, entry in enumerate(entries):
+        document, found = _manifest_entry(folder, index, entry)
+        problems += found
+        if document is not None:
+            documents.append(document)
+    if problems:
+        raise SeedFileError(tuple(problems))
+    return tuple(documents)

@@ -15,6 +15,7 @@ from server.cognition.authorization import (
     evaluate_authorization,
 )
 from server.cognition.calendar_tools import calculate_age, get_current_date
+from server.cognition.document_cues import DocumentCue, classify_document_cue, is_keep_phrase
 from server.cognition.family_sides import Side, SidedNames, SideGroup
 from server.cognition.household_request import names_someone_known, requests_data_of_a_name
 from server.cognition.identity import ActivePersonContext, ActivePersonStatus, HouseholdRole
@@ -46,14 +47,24 @@ from server.cognition.relatives_answers import (
     sided_sentence,
 )
 from server.cognition.response_plan import (
+    COULD_NOT_READ,
     NO_MEMORY,
     NOT_ALONE,
+    NOT_IN_DOCUMENTS,
     NOT_REGISTERED,
+    NOTHING_TO_READ,
+    READ_OFFER,
+    READ_SECRET,
+    READING_KEPT,
     SECRET_REFUSAL,
     SECURITY_VOICE_RETRY,
+    DocumentReply,
     InformationNeed,
+    KeepOutcome,
     MemoryAnswerReply,
     ProfileSummaryReply,
+    ReadingOutcome,
+    ReadingReply,
     RecallReply,
     ResponseClaim,
     ResponsePlan,
@@ -116,6 +127,18 @@ type ProfileSummarizer = Callable[
 type RecallAnswerer = Callable[
     [ActivePersonContext, RecallCue, CognitiveEvent[TextTurnPayload]], Awaitable[RecallReply]
 ]
+#: Answers a document question (Plan 0088, ADR 0034): it owns the policy, the audit row, the title
+#: step, the search and the wording, and never raises. Only the voice routes inject one, with
+#: DOCUMENTS_ENABLED on; they bind the turn's face reason.
+type DocumentAnswerer = Callable[
+    [ActivePersonContext, DocumentCue, CognitiveEvent[TextTurnPayload]], Awaitable[DocumentReply]
+]
+#: Reads the text in the turn's camera frame (Plan 0088 D-17); the route binds the frame, the VLM
+#: and the slot, and it never raises.
+type TextReader = Callable[[CognitiveEvent[TextTurnPayload]], Awaitable[ReadingReply]]
+#: Takes or empties the waiting reading on every turn (``True`` when the turn is «sí, guárdalo»):
+#: kept for the owner's face, emptied otherwise (Plan 0088 D-17). It never raises.
+type ReadingKeeper = Callable[[CognitiveEvent[TextTurnPayload], bool], Awaitable[KeepOutcome]]
 #: The household's stored names and aliases (Plan 0077). It never raises: a store failure is an
 #: empty set, and the turn stays conversation, where the model holds no stored household value.
 type HouseholdNameReader = Callable[[], Awaitable[frozenset[str]]]
@@ -200,6 +223,9 @@ class CognitiveController:
         secret_guard: bool = False,
         alta_read: bool = False,
         occurred_time: bool = False,
+        document_answerer: DocumentAnswerer | None = None,
+        text_reader: TextReader | None = None,
+        reading_keeper: ReadingKeeper | None = None,
     ) -> None:
         """Create a controller with injected calendar and legacy-generation seams.
 
@@ -242,6 +268,14 @@ class CognitiveController:
             occurred_time: Whether a recall question reads with the occurred time on (Plan 0083):
                 years and seasons as windows, the usted forms as cues. It does nothing without
                 ``recall_answerer``.
+            document_answerer: Answers «¿qué dice el manual de la lavadora sobre el filtro?» from
+                the owner's documents (Plan 0088); injected only by the voice routes with the
+                documents switch on. When absent the document rule never runs, byte for byte.
+            text_reader: Reads aloud the text in the turn's frame for «lee esto» (Plan 0088
+                D-17); injected only with the documents, vision and face-authentication switches
+                on. When absent the reading phrases are ordinary conversation.
+            reading_keeper: Keeps the waiting reading on «sí, guárdalo», or empties it on any
+                other turn (Plan 0088 D-17); injected with ``text_reader``.
         """
         self._today = today
         self._legacy_turn = legacy_turn
@@ -261,6 +295,13 @@ class CognitiveController:
         self._secret_guard = secret_guard
         self._alta_read = alta_read
         self._occurred_time = occurred_time
+        self._document_answerer = document_answerer
+        self._text_reader = text_reader
+        self._reading_keeper = reading_keeper
+        self._readings: dict[UUID, ResponsePlan] = {}
+        self._keeps: dict[UUID, KeepOutcome] = {}
+        # One document search and one audit row per event (the classic route decides twice).
+        self._documents: dict[UUID, ResponsePlan | None] = {}
         # The same cache for a sensitive read: one read and one audit row per event.
         self._sensitive_reads: dict[UUID, ResponsePlan | None] = {}
         # The classic route's two calls again: one search and one audit row per event.
@@ -309,6 +350,8 @@ class CognitiveController:
             that only a camera-capable adapter may fulfill, or ``None`` when
             the adapter may safely use its generic generation path.
         """
+        if await self._kept_reading(event):
+            return _reading_plan(READING_KEPT)
         need = await self._resolved_need(event)
         decision = await self._decision_for(event, need)
         if decision is None and need is InformationNeed.SENSITIVE_READ:
@@ -327,7 +370,87 @@ class CognitiveController:
             return _secret_plan(event.payload.message)
         if need is InformationNeed.SENSITIVE_READ:
             return await self._sensitive_plan(event)
+        if need is InformationNeed.DOCUMENT:
+            return await self._document_plan(event)
+        if need is InformationNeed.READ_TEXT:
+            return await self._read_text_plan(event)
         return await self._closed_decision(event, need)
+
+    async def _kept_reading(self, event: CognitiveEvent[TextTurnPayload]) -> bool:
+        """Hand every turn to the reading keeper once; ``True`` when it kept the reading.
+
+        «Sí, guárdalo» while a reading waits belongs to the reading (the robot's last offer), so a
+        memory candidate offered earlier is left untouched; with no reading waiting the phrase
+        keeps ADR 0021's meaning. Any other turn empties the slot (Plan 0088 D-17).
+        """
+        if self._reading_keeper is None:
+            return False
+        if event.event_id not in self._keeps:
+            wants = is_keep_phrase(event.payload.message)
+            self._keeps[event.event_id] = await self._reading_keeper(event, wants)
+        return self._keeps[event.event_id] is KeepOutcome.KEPT
+
+    async def _read_text_plan(self, event: CognitiveEvent[TextTurnPayload]) -> ResponsePlan | None:
+        """Read aloud the text in front of the camera, then offer to keep it (Plan 0088 D-17).
+
+        Reading needs no identity. No frame and a VLM failure say their fixed phrases; a text the
+        document secret detector flags is not read and nothing is offered.
+        """
+        if self._text_reader is None:
+            return None
+        if event.event_id not in self._readings:
+            reply = await self._text_reader(event)
+            match reply.outcome:
+                case ReadingOutcome.READ if reply.text:
+                    spoken = f"{reply.text} {READ_OFFER}"
+                case ReadingOutcome.SECRET:
+                    spoken = READ_SECRET
+                case ReadingOutcome.NO_FRAME:
+                    spoken = NOTHING_TO_READ
+                case _:
+                    spoken = COULD_NOT_READ
+            self._readings[event.event_id] = _reading_plan(spoken)
+        return self._readings[event.event_id]
+
+    async def _document_plan(self, event: CognitiveEvent[TextTurnPayload]) -> ResponsePlan | None:
+        """Answer a document question from the owner's documents, or fall through (``None``).
+
+        ADR 0034 decision 3, Plan 0088 D-11 and D-15. The actor is only observed (never spends a
+        grant). A found answer, or the fixed phrase of a failure, is spoken. Otherwise a strong
+        cue answers «No lo encuentro en tus documentos.», or the generic denial to a stranger or
+        a refused speaker; a weak cue converses, so «¿qué dice la guía de Santiago sobre el
+        metro?» stays general knowledge. The answer never enters continuity.
+        """
+        if self._document_answerer is None:
+            return None
+        if event.event_id not in self._documents:
+            self._documents[event.event_id] = await self._document_decision(event)
+        return self._documents[event.event_id]
+
+    async def _document_decision(
+        self, event: CognitiveEvent[TextTurnPayload]
+    ) -> ResponsePlan | None:
+        cue = classify_document_cue(event.payload.message)
+        if cue is None or self._document_answerer is None:
+            return None
+        actor = await self._observed_person_resolver(event)
+        reply = (
+            DocumentReply(text=None, denied=True)
+            if actor.status is not ActivePersonStatus.IDENTIFIED
+            else await self._document_answerer(actor, cue, event)
+        )
+        if reply.text is not None:
+            return ResponsePlan(
+                need=InformationNeed.DOCUMENT,
+                status=KnowledgeStatus.KNOWN if reply.found else KnowledgeStatus.UNKNOWN,
+                source=ResponseSource.DETERMINISTIC,
+                response=reply.text,
+            )
+        if cue.strength is not CueStrength.STRONG:
+            return None
+        if reply.denied:
+            return _unknown_plan(InformationNeed.DOCUMENT, _PROFILE_SUMMARY_UNKNOWN_RESPONSE)
+        return _unknown_plan(InformationNeed.DOCUMENT, NOT_IN_DOCUMENTS)
 
     async def _closed_decision(
         self, event: CognitiveEvent[TextTurnPayload], need: InformationNeed
@@ -371,8 +494,10 @@ class CognitiveController:
                 InformationNeed.GENERIC_CONVERSATION
                 | InformationNeed.SENSITIVE_READ
                 | InformationNeed.SECRET_VALUE
+                | InformationNeed.DOCUMENT
+                | InformationNeed.READ_TEXT
             ):
-                # The last two never get here: ``_decision_for`` routes them first.
+                # The last four never get here: ``_decision_for`` routes them first.
                 decision = None
         return decision
 
@@ -399,6 +524,10 @@ class CognitiveController:
             flags["secrets"] = True
         if self._memory_changer is not None:
             flags["changes"] = True
+        if self._document_answerer is not None:
+            flags["documents"] = True
+        if self._text_reader is not None:
+            flags["reading"] = True
         need = self._intent_resolver(message, **flags).need
         if need is InformationNeed.GENERIC_CONVERSATION and await self._asks_about_known_name(
             event
@@ -820,6 +949,16 @@ def _age_plan(result: ToolResult) -> ResponsePlan:
                 tool_name=result.tool_name,
             ),
         ),
+    )
+
+
+def _reading_plan(spoken: str) -> ResponsePlan:
+    """A reading's plan: recorded with its marker, never the text read (Plan 0088 D-18)."""
+    return ResponsePlan(
+        need=InformationNeed.READ_TEXT,
+        status=KnowledgeStatus.KNOWN,
+        source=ResponseSource.DETERMINISTIC,
+        response=spoken,
     )
 
 

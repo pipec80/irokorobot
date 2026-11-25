@@ -24,11 +24,15 @@ from server.cognition.controller import (
     ActivePersonResolver,
     CognitiveController,
     ConsentResolver,
+    DocumentAnswerer,
     MemoryAnswerer,
     MemoryChanger,
     ProfileSummarizer,
+    ReadingKeeper,
     RecallAnswerer,
+    TextReader,
 )
+from server.cognition.document_cues import DocumentCue
 from server.cognition.generic_identity import (
     GenericIdentification,
     identify_generic_speaker,
@@ -42,9 +46,13 @@ from server.cognition.models import CognitiveEvent
 from server.cognition.owner_authentication import OwnerUnlockService
 from server.cognition.recall_cues import RecallCue
 from server.cognition.response_plan import (
+    DocumentReply,
     InformationNeed,
+    KeepOutcome,
     MemoryAnswerReply,
     ProfileSummaryReply,
+    ReadingOutcome,
+    ReadingReply,
     RecallReply,
     ResponsePlan,
     SceneDescriptionRequest,
@@ -57,11 +65,13 @@ from server.cognition.response_plan import (
     unclear_speech_plan,
 )
 from server.cognition.sensitive_questions import SensitiveQuery
+from server.cognition.spoken_dates import day_month_label
 from server.dependencies import IdentityTokenDep, OwnerUnlockServiceDep, ResourcesDep
 from server.exceptions import (
     AudioContractError,
     UnclearSpeechError,
     UploadTooLargeError,
+    VisionError,
 )
 from server.memory.candidate_dialogue import (
     OfferPreparer,
@@ -73,6 +83,9 @@ from server.memory.candidate_proposal import propose_candidates
 from server.memory.candidate_types import CandidateChannel
 from server.memory.continuity import ContinuityTurn
 from server.memory.conversation_capture import capture_turn
+from server.memory.document_access import document_reply
+from server.memory.document_index import backfill_sections
+from server.memory.document_secrets import flags_secret
 from server.memory.entity_labels import read_household_names
 from server.memory.household_authorization import record_authorization_decision
 from server.memory.household_time import household_day, household_today
@@ -89,7 +102,12 @@ from server.memory.pending_follow_up import (
 from server.memory.pending_store import pending_topics_on
 from server.memory.policy_gated_v4_reader import PolicyGatedV4Reader
 from server.memory.profile_card import PromptCard
-from server.memory.profile_card_access import profile_summary_text, prompt_card_for_turn
+from server.memory.profile_card_access import (
+    may_read_own_memory,
+    profile_summary_text,
+    prompt_card_for_turn,
+)
+from server.memory.reading_offer import READING_SLOT, keep_reading
 from server.memory.recall_access import recall_reply
 from server.memory.recall_store import occurred_time_on
 from server.memory.sensitive_access import sensitive_reply
@@ -116,10 +134,19 @@ from server.text_turn import (
     process_text_turn,
 )
 from server.uploads import read_limited_upload
+from server.vision.read_text import read_text
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/transcribe", tags=["Audio"])
+
+# «Iroko, lee esto» (Plan 0088 D-17): the read text spoken at most this long (about 25 s),
+# and the kept note titled by the day and its first words.
+_MAX_READING_CHARS = 400
+_TITLE_WORDS = 5
+_MAX_NOTE_TITLE = 120
+# Sections embedded right after a note is kept (a note is a few sections; older ones wait).
+_KEPT_NOTE_EMBEDS = 10
 
 type SpeakerIdentifier = Callable[[], Awaitable[GenericIdentification]]
 
@@ -289,6 +316,7 @@ def _voice_controller(
     record_turn: TurnRecorder | None = None,
     recall_answerer: RecallAnswerer | None = None,
     follow_up_preparer: FollowUpPreparer | None = None,
+    frame: bytes | None = None,
 ) -> CognitiveController:
     """Compose the bounded controller used by a public voice turn.
 
@@ -375,6 +403,9 @@ def _voice_controller(
         alta_read=settings.alta_read_enabled,
         # Plan 0083: when a told event happened; inert without the recall answerer.
         occurred_time=occurred_time_on(),
+        document_answerer=_document_answerer(client, request_identity),
+        text_reader=_text_reader(client, request_identity, frame),
+        reading_keeper=_reading_keeper(client, request_identity),
     )
 
 
@@ -629,6 +660,146 @@ def _recall_answerer(client: httpx.AsyncClient) -> RecallAnswerer | None:
         )
 
     return answer
+
+
+def _document_answerer(
+    client: httpx.AsyncClient, request_identity: _RequestIdentity
+) -> DocumentAnswerer | None:
+    """Return the answer to a document question for a voice route, or ``None`` with a switch off.
+
+    With ``MEMORY_ENABLED`` or ``DOCUMENTS_ENABLED`` off every message resolves as before Plan
+    0088 and nothing reads a document. The face fusion's reason (a second face in view leaves the
+    ``sensitive`` documents out) is read when the controller calls it, after it resolved the
+    actor.
+
+    Args:
+        client: Shared, lifecycle-owned HTTP client (Plan 0039), for the embedding and the answer.
+        request_identity: This request's identity resolver (the fusion reason).
+    """
+    if not (settings.memory_enabled and settings.documents_enabled):
+        return None
+
+    async def answer(
+        actor: ActivePersonContext, cue: DocumentCue, event: CognitiveEvent[TextTurnPayload]
+    ) -> DocumentReply:
+        return await document_reply(
+            actor,
+            cue,
+            question=event.payload.message,
+            faces=request_identity.fused.last_reason,
+            correlation_id=event.correlation_id,
+            now=utc_now(),
+            client=client,
+        )
+
+    return answer
+
+
+def _reading_on() -> bool:
+    """«Iroko, lee esto» needs memory, the documents, the vision model and the face check, which
+    is what carries the turn's frame (Plan 0088 D-17)."""
+    return (
+        settings.memory_enabled
+        and settings.documents_enabled
+        and settings.vision_enabled
+        and settings.face_authentication_enabled
+    )
+
+
+def _cap_reading(text: str) -> str:
+    """The read text as it is spoken: at most ``_MAX_READING_CHARS`` (about 25 s of speech)."""
+    flat = " ".join(text.split())
+    if len(flat) <= _MAX_READING_CHARS:
+        return flat
+    return flat[: _MAX_READING_CHARS - 1].rsplit(" ", 1)[0] + "…"
+
+
+def _text_reader(
+    client: httpx.AsyncClient, request_identity: _RequestIdentity, frame: bytes | None
+) -> TextReader | None:
+    """Return the reading of the turn's own frame, or ``None`` with a switch off (D-17).
+
+    The frame is the one the route already validated for face authentication; it is read in
+    memory by the VLM and never stored or logged. A text the document secret detector flags is not
+    read and nothing waits to be kept.
+    """
+    if not _reading_on():
+        return None
+
+    async def read(event: CognitiveEvent[TextTurnPayload]) -> ReadingReply:
+        if frame is None:
+            return ReadingReply(outcome=ReadingOutcome.NO_FRAME)
+        try:
+            text = _cap_reading(await read_text(client, frame))
+        except VisionError as exc:
+            logger.warning("Reading failed (%s)", type(exc).__name__)
+            return ReadingReply(outcome=ReadingOutcome.FAILED)
+        if flags_secret(text):
+            READING_SLOT.clear()
+            return ReadingReply(outcome=ReadingOutcome.SECRET)
+        try:
+            actor = await request_identity.peek_actor(event)
+        except Exception as exc:  # seam boundary: the text is read aloud, it just cannot be kept
+            logger.warning("Reading speaker unknown (%s)", type(exc).__name__)
+            READING_SLOT.clear()
+            return ReadingReply(outcome=ReadingOutcome.READ, text=text)
+        READING_SLOT.offer(text, speaker=actor.person_id, now=utc_now())
+        return ReadingReply(outcome=ReadingOutcome.READ, text=text)
+
+    return read
+
+
+def _note_title(text: str, now: datetime) -> str:
+    """«Nota del {día}: {primeras palabras}», or «Nota del {día}» when they hold a digit."""
+    day = day_month_label(household_day(now)).replace("el ", "del ", 1)
+    words = " ".join(text.split()[:_TITLE_WORDS])
+    if not words or any(character.isdigit() for character in words):
+        return f"Nota {day}"
+    return f"Nota {day}: {words}"[:_MAX_NOTE_TITLE]
+
+
+def _reading_keeper(
+    client: httpx.AsyncClient, request_identity: _RequestIdentity
+) -> ReadingKeeper | None:
+    """Return the keeper of the waiting reading, or ``None`` with a switch off (D-17).
+
+    Every turn empties the slot unless it is «sí, guárdalo» from the owner's face within 60
+    seconds, from the speaker the reading was bound to (or anyone, when it was bound to nobody).
+    A kept note is embedded at once, as ``iroko-admin docs add`` does: a question that names
+    nothing specific finds a section only by its distance (ADR 0040), and the conversation job
+    does not run while the conversation is open.
+    """
+    if not _reading_on():
+        return None
+
+    async def keep(event: CognitiveEvent[TextTurnPayload], wants: bool) -> KeepOutcome:
+        try:
+            return await _keep(event, wants)
+        except Exception as exc:  # seam boundary: a failed keep is no keep, the turn goes on
+            logger.warning("Reading not kept (%s)", type(exc).__name__)
+            READING_SLOT.clear()
+            return KeepOutcome.NOT_KEPT
+
+    async def _keep(event: CognitiveEvent[TextTurnPayload], wants: bool) -> KeepOutcome:
+        now = utc_now()
+        if not READING_SLOT.is_open(now):
+            READING_SLOT.clear()
+            return KeepOutcome.NO_SLOT
+        if not wants:
+            READING_SLOT.clear()
+            return KeepOutcome.NOT_KEPT
+        actor = await request_identity.peek_actor(event)
+        if actor.person_id is None or not may_read_own_memory(actor):
+            READING_SLOT.clear()
+            return KeepOutcome.NOT_KEPT
+        text = READING_SLOT.take(actor.person_id, now)
+        if text is None:
+            return KeepOutcome.NOT_KEPT
+        await keep_reading(actor.person_id, text, title=_note_title(text, now), now=now)
+        await backfill_sections(client, limit=_KEPT_NOTE_EMBEDS)
+        return KeepOutcome.KEPT
+
+    return keep
 
 
 def _sensitive_reader(
@@ -917,6 +1088,7 @@ async def transcribe(
         record_turn=record_turn,
         recall_answerer=_recall_answerer(resources.http_client),
         follow_up_preparer=_follow_up_preparer(event),
+        frame=frame_bytes,
     )
     decision = await controller.decide(event)
 
@@ -1058,6 +1230,7 @@ async def transcribe_stream(
         memory_changer=_memory_changer(WriteChannel.VOICE_STREAM),
         profile_summarizer=_profile_summarizer(),
         recall_answerer=_recall_answerer(resources.http_client),
+        frame=frame_bytes,
     ).decide(event)
     # Streaming has no second-round frame upload — a scene request always
     # gets the fixed unavailable plan, regardless of VISION_ENABLED.

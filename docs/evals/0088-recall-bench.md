@@ -1,6 +1,6 @@
 # Plan 0088 Part A — the recall bench and the gate it chose
 
-> **Status:** run on 2026-11-23, Task A3 of [Plan 0088](../plans/open/0088-close-the-rag-gate-and-documents.md),
+> **Status:** run on 2026-11-23, Task A3 of [Plan 0088](../plans/completed/0088-close-the-rag-gate-and-documents.md),
 > twice. **First run (D-3 as written): no rule met D-3, none adopted.** Pipec then amended D-3
 > («separa los problemas»): *direct by meaning* is measured and reported, no longer required,
 > because the meaning threshold is a problem apart from the gate. **Second run (D-3 as amended):

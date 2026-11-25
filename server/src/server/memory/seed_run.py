@@ -24,6 +24,7 @@ from server.memory.commissioning import (
     record_import,
     set_section_status,
 )
+from server.memory.document_store import NewSource, insert_source, source_id_of
 from server.memory.seed_import import (
     OperationOutcome,
     OperationStatus,
@@ -33,14 +34,17 @@ from server.memory.seed_import import (
 )
 from server.memory.seed_plan import OperationKind
 from server.memory.seed_replace import assert_no_voice_memory, retract_earlier_import
+from server.memory.write_types import WriteChannel
 from server.settings import settings
 
 if TYPE_CHECKING:
     from server.memory.commissioning import CommissioningInput, CommissioningRecord
+    from server.memory.document_extract import DocumentFileFormat
+    from server.memory.document_store import DocumentLevel, NewSection
     from server.memory.seed_file import LoadedSeed
     from server.memory.seed_plan import SeedPlan
 
-__all__ = ["run_seed"]
+__all__ = ["AltaDocument", "run_seed"]
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +58,36 @@ _COUNT_NAMES = {
     OperationKind.WRITE_CONTACT: "contacts",
 }
 _HELD = frozenset({OperationStatus.WRITTEN, OperationStatus.UNCHANGED})
+
+
+@dataclass(frozen=True)
+class AltaDocument:
+    """One document of the alta's manifest, already extracted and cut (Plan 0088 D-16)."""
+
+    title: str = field(repr=False)
+    level: DocumentLevel
+    format: DocumentFileFormat
+    file_sha256: str
+    sections: tuple[NewSection, ...] = field(repr=False)
+
+
+async def _insert_documents(documents: tuple[AltaDocument, ...], owner: int, now: str) -> None:
+    """Store the alta's documents in the run's transaction, on the alta's import channel."""
+    conn = db.get_conn()
+    for document in documents:
+        if await source_id_of(owner_entity_id=owner, file_sha256=document.file_sha256):
+            continue  # already stored (an earlier alta or `docs add`): unchanged, as a seed row
+        source = NewSource(
+            owner_entity_id=owner,
+            title=document.title,
+            file_sha256=document.file_sha256,
+            format=document.format,
+            level=document.level,
+            channel=WriteChannel.IMPORT_FILE.value,
+            loaded_at=now,
+            loaded_by_entity_id=None,
+        )
+        await insert_source(conn, source=source, sections=document.sections)
 
 
 class _RollbackError(Exception):
@@ -119,6 +153,7 @@ async def _transaction_body(
         now=request.now,
         confirmed_by_owner=request.confirmed,
     )
+    await _insert_documents(request.documents, request.owner, request.now)
     after = await count_rows()
     report = SeedReport(outcomes, plan.section_statuses, before, after, False, None)
     if report.problems or not request.commit:
@@ -135,6 +170,7 @@ class _Request:
     confirmed: bool
     replace: bool
     details: CommissioningInput | None = field(repr=False)
+    documents: tuple[AltaDocument, ...] = ()
 
 
 def _announce(report: SeedReport, loaded: LoadedSeed) -> None:
@@ -167,6 +203,7 @@ async def run_seed(
     commissioning: CommissioningInput | None,
     replace: bool,
     now: str,
+    documents: tuple[AltaDocument, ...] = (),
 ) -> SeedReport:
     """Run one load in one transaction: a dry run, or an approved apply with its record.
 
@@ -188,6 +225,8 @@ async def run_seed(
         replace: First retract what earlier imports wrote (``seed_replace``), inside the same
             transaction; refused once the robot learned anything by voice.
         now: UTC ISO 8601 with microseconds; every row and the record share it.
+        documents: The manifest's documents (Plan 0088 D-16), stored in the same transaction;
+            with ``replace`` they replace only the documents an earlier alta loaded.
 
     Returns:
         The report; ``applied`` is ``True`` only when everything was written.
@@ -214,6 +253,7 @@ async def run_seed(
         confirmed=mode is not ConfirmationMode.REPRESENTATIVE,
         replace=replace,
         details=commissioning,
+        documents=documents,
     )
     try:
         async with db.transaction():

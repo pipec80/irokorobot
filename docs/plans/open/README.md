@@ -14,7 +14,6 @@ code, tests, verified gaps and the delivery sequence.
 | Plan | Implementation reality | Reuse | Remaining closure |
 |---|---|---|---|
 | [0015](0015-personal-companion-design.md) | Approved product design; PC-1 to PC-4 are closed (PC-2 and PC-3A with provisional calibrations); reference only, never an executable batch | Controller, policy/audit, V4 household tools, identity/session seam, short-term continuity, the conversation record and recall index, STT/TTS, face engine | CM-6 and CM-7 (block C, then block D), PC-5 integrated personal acceptance and PC-6 family remain open |
-| [0088](0088-close-the-rag-gate-and-documents.md) | `Ready` (promoted by Pipec on 2026-11-23); not started | Recall search, fusion and its delivery filter (Plan 0078), the embedding-model guard (Plan 0085), the deletion register (Plan 0086), the export (Plan 0087), `iroko-admin`, the seed import, the VLM call of `vision/describe.py` | Decisions answered on 2026-11-23 (D-13 and the rule of Task A3 at their stops); Part A (the gate and its bench, accepted on hardware) before Part B (the documents, ADR 0034) |
 
 Existing components named under **Reuse** must not be rebuilt by a later plan.
 

@@ -73,3 +73,25 @@ def test_a_spoken_change_is_never_a_memory(monkeypatch: pytest.MonkeyPatch, mess
     monkeypatch.setattr(settings, "memory_enabled", True)
 
     assert tells_something(message) is False
+
+
+def test_a_document_cue_tells_nothing_with_documents_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Plan 0088 D-18: a document question never becomes a recall unit."""
+    question = "¿Qué dice el manual de la lavadora sobre el filtro?"
+    monkeypatch.setattr(settings, "memory_enabled", True)
+    monkeypatch.setattr(settings, "documents_enabled", False)
+    assert tells_something(question) is True
+
+    monkeypatch.setattr(settings, "documents_enabled", True)
+    assert tells_something(question) is False
+    assert tells_something("sí, guárdalo") is False
+
+
+def test_a_reading_request_tells_nothing_with_documents_and_vision_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review: «lee esto» is a request, never a story to remember (D-18)."""
+    monkeypatch.setattr(settings, "memory_enabled", True)
+    monkeypatch.setattr(settings, "documents_enabled", True)
+    monkeypatch.setattr(settings, "vision_enabled", True)
+    assert tells_something("Iroko, lee esto") is False

@@ -1,7 +1,7 @@
 # 0040 — The relevance gate of retrieval: a near meaning, or the question's named words
 
 - **Status:** **Accepted (2026-11-23)**, when Pipec accepted Part A of
-  [Plan 0088](../plans/open/0088-close-the-rag-gate-and-documents.md) on real hardware («Sí,
+  [Plan 0088](../plans/completed/0088-close-the-rag-gate-and-documents.md) on real hardware («Sí,
   acepto»; [record](../evals/0088a-recall-gate-acceptance.md): 6 of 7 cases, the seventh a case of
   the meaning threshold this ADR leaves apart). Proposed the same day; the rule was chosen by the
   plan's bench ([record](../evals/0088-recall-bench.md)) under D-3 as amended by Pipec, and **Pipec

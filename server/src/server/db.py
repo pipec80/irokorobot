@@ -78,6 +78,7 @@ _MIGRATIONS: tuple[Migration, ...] = (
     Migration(20, "migration_020_times_and_profiles.sql", rebuild=True),
     Migration(21, "migration_021_archive.sql"),
     Migration(22, "migration_022_export_audit.sql", rebuild=True),
+    Migration(23, "migration_023_documents.sql", rebuild=True),
 )
 _conn: aiosqlite.Connection | None = None
 

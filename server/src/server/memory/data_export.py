@@ -27,6 +27,7 @@ from server.memory import (
     conversation_record,
     declarative,
     deletion_register,
+    document_store,
     household_authorization,
     meta,
     owner_credentials,
@@ -72,6 +73,8 @@ _TITLES: dict[str, str] = {
     "recuerdos": "Recuerdos",
     "temas_pendientes": "Temas pendientes",
     "por_confirmar": "Por confirmar",
+    "documentos": "Documentos",
+    "secciones_documentos": "Secciones de los documentos",
     "acta": "Acta del alta",
     "acta_secciones": "Secciones del acta",
     "auditoria_admin": "Auditoría de la administración",
@@ -185,6 +188,15 @@ _LABELS: dict[str, str] = {
     "what": "Qué",
     "why": "Por qué no sale",
     "rows": "Filas",
+    "title": "Título",
+    "level": "Nivel",
+    "format": "Formato",
+    "loaded_at": "Cargado el",
+    "sections": "Secciones",
+    "characters": "Caracteres",
+    "source_id": "Documento",
+    "position": "Posición",
+    "heading": "Encabezado",
 }
 
 _OTHER_VOICES = frozenset({TurnVerdict.NOT_OWNER.value, TurnVerdict.NOT_CHECKED.value})
@@ -247,6 +259,8 @@ class _Store:
         self.units = await recall_store.units_for_export()
         self.topics = await pending_store.topics_for_export()
         self.candidates = await candidates.live_candidates_for_export()
+        self.documents = await document_store.sources_for_export()
+        self.sections = await document_store.sections_for_export()
         self.acta = await commissioning.commissioning_records_for_export()
         self.acta_sections = await commissioning.commissioning_sections_for_export()
         self.audit = await admin_audit.audit_for_export()
@@ -335,6 +349,8 @@ async def _person_selection(
     keep["recuerdos"] = _of({row["id"] for row in units})
     keep["temas_pendientes"] = _of({row["id"] for row in topics})
     keep["por_confirmar"] = lambda row: known and row["subject_person_id"] == person
+    # The owner's documents are the owner's own (ADR 0034 decision 2): only their export holds them.
+    keep["documentos"] = keep["secciones_documentos"] = lambda _row: is_owner
     keep["acta"] = keep["acta_secciones"] = lambda _row: is_owner
     keep["auditoria_admin"] = lambda row: is_owner or (known and row["target_entity_id"] == person)
     keep["decisiones"] = lambda row: (
@@ -365,6 +381,7 @@ async def _person_selection(
 async def _no_sale(store: _Store, excluded: Sequence[tuple[str, str, int]]) -> list[Row]:
     """What is never exported, and why, with its row count (D-5)."""
     fts, vectors = await recall_store.projection_counts()
+    document_fts, document_vectors = await document_store.projection_counts()
     always = [
         (
             "índice de texto de los recuerdos",
@@ -372,6 +389,12 @@ async def _no_sale(store: _Store, excluded: Sequence[tuple[str, str, int]]) -> l
             fts,
         ),
         ("vectores de los recuerdos", "números para buscar, no se leen", vectors),
+        (
+            "índice de texto de los documentos",
+            "una copia para buscar: el texto está en «Secciones de los documentos»",
+            document_fts,
+        ),
+        ("vectores de los documentos", "números para buscar, no se leen", document_vectors),
         (
             "vectores de las caras",
             "dato biométrico: sale solo la referencia",
@@ -429,6 +452,8 @@ def _sections(
         "recuerdos": store.units,
         "temas_pendientes": store.topics,
         "por_confirmar": store.candidates,
+        "documentos": store.documents,
+        "secciones_documentos": store.sections,
         "acta": store.acta,
         "acta_secciones": store.acta_sections,
         "auditoria_admin": store.audit,

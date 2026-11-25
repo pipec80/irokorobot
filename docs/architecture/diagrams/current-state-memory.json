@@ -38,6 +38,17 @@
           "controller"
         ],
         "note": "Off by default: a verified plan for one day is named by the local model and asked once by a later day's first greeting."
+      },
+      {
+        "id": "documents",
+        "label": "Your documents",
+        "focus": [
+          "controller",
+          "memory",
+          "admin",
+          "ollama"
+        ],
+        "note": "Off by default: iroko-admin docs or the alta loads them; a document cue is answered by quoting the document, with no model."
       }
     ]
   },
@@ -90,7 +101,7 @@
       "id": "memory",
       "type": "database",
       "label": "SQLite",
-      "sublabel": "schema v21 · archive · v4",
+      "sublabel": "schema v23 · documents",
       "pos": [
         670,
         270
@@ -134,7 +145,7 @@
       "id": "admin",
       "type": "backend",
       "label": "Local admin CRUD",
-      "sublabel": "iroko-admin · forget · export",
+      "sublabel": "iroko-admin · forget · export · docs",
       "pos": [
         330,
         450

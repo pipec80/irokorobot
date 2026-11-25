@@ -41,9 +41,9 @@ How to read a table section:
 | `actor_label` | TEXT | NOT NULL, 1 to 80 characters |
 | `actor_role` | TEXT | NOT NULL, `owner` or `builder` |
 | `channel` | TEXT | NOT NULL, always `admin_local` |
-| `operation` | TEXT | NOT NULL, closed list (`add`, `change`, `revoke`, `grant`, `export`, `delete`) |
-| `target_kind` | TEXT | NOT NULL, closed list (pool literal, pool relation, care contact, conversation consent, conversation record, household data: an export, migration 022) |
-| `field_id` | TEXT | catalogue id of the field, no value; for an export `all`, `person:<id>` or `person` |
+| `operation` | TEXT | NOT NULL, closed list (`add`, `change`, `revoke`, `grant`, `export`, `delete`, `list`: a listing of the documents, migration 023) |
+| `target_kind` | TEXT | NOT NULL, closed list (pool literal, pool relation, care contact, conversation consent, conversation record, household data: an export, migration 022; document, migration 023) |
+| `field_id` | TEXT | catalogue id of the field, no value; for an export `all`, `person:<id>` or `person`; for a document its source id, or none |
 | `target_entity_id` | INTEGER | FK `entities`, SET NULL |
 | `outcome` | TEXT | NOT NULL, `applied` or `refused` |
 | `reason` | TEXT | closed refusal reason, no value |
@@ -272,6 +272,87 @@ The table is STRICT. `length` of a BLOB counts bytes on every supported SQLite (
 |---|---|---|
 | `conversation_turns_record_idx` | `record_id, said_at, id` | the turns of a record in order; the CASCADE |
 | (automatic, from UNIQUE) | `correlation_id` | the turn of a request |
+
+### document_sections
+
+- **Purpose:** One section of an owner's document: its text cut under the embedding model's window, with its heading path (Plan 0088, ADR 0034). Searched by words and by vector.
+- **Owner module:** `memory/document_store.py`
+- **Domain:** memory
+- **Classification:** document content (origin `document`; transformation `original` for `md` and `txt`, `extracted` for `pdf` and `camera`, read from the source's format)
+- **Retention:** Deleted with its source (CASCADE); the triggers remove its word-index row and its vector in the same statement. Its `heading` and `body` never change (a trigger refuses it).
+
+| Column | Type | Rules |
+|---|---|---|
+| `id` | INTEGER | primary key, AUTOINCREMENT |
+| `source_id` | INTEGER | NOT NULL, FK `document_sources`, CASCADE |
+| `position` | INTEGER | NOT NULL, from 0; `(source_id, position)` is unique |
+| `heading` | TEXT | NOT NULL, the heading path (may be empty), at most 400 characters, immutable |
+| `body` | TEXT | NOT NULL, 1 to 1200 characters (the section cap), immutable |
+| `body_sha256` | TEXT | NOT NULL, the body's SHA-256 (64 hex characters) |
+| `embedding_model` | TEXT | the model that computed its vector, or NULL while it has none |
+| `vector_refused_by` | TEXT | the model that refused it as longer than its window, or NULL; such a section stays searchable by its words |
+
+| Index | Columns | Query it serves |
+|---|---|---|
+| (automatic, from UNIQUE) | `source_id, position` | the sections of a source in order; the CASCADE from a deleted source |
+| `document_sections_unembedded_idx` | `id` where `embedding_model IS NULL` | the next sections to embed |
+| `document_sections_model_idx` | `embedding_model` where `embedding_model IS NOT NULL` | the model guard: sections of another model, and the sections to re-embed |
+
+### document_sections_fts
+
+- **Purpose:** The word index over `document_sections.heading` and `body` (FTS5, external content, no accents, `secure-delete` on). A virtual table: its shadow tables are not described.
+- **Owner module:** `memory/document_store.py`
+- **Domain:** memory
+- **Classification:** document content
+- **Retention:** Follows `document_sections` through its triggers (`document_sections_ai`, `document_sections_ad`).
+
+| Column | Type | Rules |
+|---|---|---|
+| `heading` | FTS5 | the indexed heading path |
+| `body` | FTS5 | the indexed text, the same as `document_sections.body` |
+
+### document_sections_vec
+
+- **Purpose:** The 768-dimension cosine vector of each section (sqlite-vec `vec0`), partitioned by owner and filtered by level and source inside the KNN. A virtual table: its shadow tables are not described.
+- **Owner module:** `memory/document_store.py`
+- **Domain:** memory
+- **Classification:** document content
+- **Retention:** Follows `document_sections`: deleted by `document_sections_ad`; replaced with its model in one transaction by `store_section_vector`.
+
+| Column | Type | Rules |
+|---|---|---|
+| `rowid` | INTEGER | the section's id |
+| `owner_entity_id` | INTEGER | partition key, the source's owner |
+| `level` | TEXT | metadata, the source's level |
+| `source_id` | INTEGER | metadata, the section's source |
+| `embedding` | FLOAT[768] | the vector |
+
+### document_sources
+
+- **Purpose:** One document of the owner: a file loaded with `iroko-admin docs add` or at the alta, or a camera reading the owner chose to keep (Plan 0088, ADR 0034). The same file twice is refused by its hash.
+- **Owner module:** `memory/document_store.py`
+- **Domain:** memory
+- **Classification:** document content (the title may be sensitive)
+- **Retention:** Kept until the owner removes it (`iroko-admin docs remove`: a `document` line in the deletion register, then a physical delete of the source, its sections, word rows and vectors); deleted with its owner (CASCADE).
+
+| Column | Type | Rules |
+|---|---|---|
+| `id` | INTEGER | primary key, AUTOINCREMENT |
+| `owner_entity_id` | INTEGER | NOT NULL, FK `entities`, CASCADE |
+| `title` | TEXT | NOT NULL, 1 to 120 characters |
+| `file_sha256` | TEXT | NOT NULL, the file's SHA-256 (64 hex characters); `(owner_entity_id, file_sha256)` is unique |
+| `format` | TEXT | NOT NULL, `md`, `txt`, `pdf` or `camera` |
+| `level` | TEXT | NOT NULL, `normal` or `sensitive` |
+| `channel` | TEXT | NOT NULL, `admin_local`, `import_file` (the alta) or `voice_camera` |
+| `loaded_at` | TEXT | exact instant, NOT NULL |
+| `loaded_by_entity_id` | INTEGER | FK `entities`, SET NULL: who loaded it |
+| `sections` | INTEGER | NOT NULL, how many sections it has |
+| `characters` | INTEGER | NOT NULL, how many characters its sections hold |
+
+| Index | Columns | Query it serves |
+|---|---|---|
+| (automatic, from UNIQUE) | `owner_entity_id, file_sha256` | the same file refused; the owner's documents; the CASCADE on the owner |
+| `document_sources_loaded_by_idx` | `loaded_by_entity_id` | the SET NULL when the loader is deleted |
 
 ### entities
 

@@ -241,6 +241,8 @@ def tells_something(text: str) -> bool:
         secrets=settings.memory_enabled,
         alta=settings.sensitive_read_enabled and settings.alta_read_enabled,
         occurred=occurred_time_on(),
+        documents=settings.documents_enabled,
+        reading=settings.documents_enabled and settings.vision_enabled,
         changes=settings.memory_enabled,
     )
     return resolution.need is InformationNeed.GENERIC_CONVERSATION

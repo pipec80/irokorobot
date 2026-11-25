@@ -1247,6 +1247,52 @@ without the PIN; a dry run (`--dry-run`) stops after the counts and writes nothi
 - `just admin` no longer adds «recipe failed» after a dry run or an expected refusal; the
   command's own line says what happened.
 
+### Your documents, and «Iroko, lee esto» (Plan 0088, ADR 0034): off by default
+
+**Switches.** Turn the features on in the server's `.env`:
+
+- `DOCUMENTS_ENABLED=true`, which needs `MEMORY_ENABLED=true`. With it the robot answers from
+  your documents.
+- The reading also needs `VISION_ENABLED=true` and `FACE_AUTHENTICATION_ENABLED=true` on the
+  server, and `ROBOT_FACE_AUTH_ENABLED=true` on the robot, which sends the turn's frame. Without
+  both face switches no frame arrives, and the robot says it has nothing to read.
+
+`DOCUMENT_MAX_DISTANCE` (0.22) and `DOCUMENT_WORD_MAX_DISTANCE` (0.61) are the thresholds Pipec
+chose on the bench; leave them.
+
+**Load, list and remove.** Run these with the server stopped. Each asks for the PIN first and
+writes one audit row, with no title or text:
+
+- `just admin docs add <file> --title <título> --level normal|sensitive [--dry-run]` loads a
+  `.md`, `.txt` or PDF with a text layer, at most 10 MB and 200 pages. The title defaults to the
+  file name. It shows what will be loaded and asks for `SI`. The file is refused when:
+  - it is not what its extension says;
+  - it is a scanned PDF;
+  - it is a PDF with links, signatures, a QR code or barcode, attachments or actions.
+  - **Copy the reason.** Each refusal says its reason in Spanish; copy it into a report.
+- `just admin docs list` shows the id, title, level, format and sections of each document.
+- `just admin docs remove <id>` deletes a document for good, through the deletion register, after
+  `SI`.
+- **In the alta:** a `documents/manifest.toml` beside the seed file loads its documents in the
+  same transaction. A re-run keeps the ones already stored.
+
+**Ask.** Use a document cue:
+
+- «¿qué dice el manual de la lavadora sobre el filtro?»
+- «según mis documentos, ¿…?»
+
+The robot answers «Según {título}: …» by quoting the document. No model writes the answer, so an
+order planted in a document is never obeyed, and a code is never read aloud. «No lo encuentro en
+tus documentos.» means nothing matched. A `sensitive` document is answered only to you alone in
+front of the camera; with another face in view the robot gives the generic denial.
+
+**Read.** «Iroko, lee esto» with the paper or screen beside your face reads it and offers «¿Lo
+guardo? Dime: sí, guárdalo.»; say it within 60 s to keep it as a note. Printed text reads better
+than handwriting. The first reading loads the vision model, which takes 30 to 90 s; on a busy
+laptop a reading can fail after two minutes (`vision.read_failed` in `logs/server.log` says why).
+**Today this works on the classic route only** (`ROBOT_STREAMING=false`); see the startup guard
+below.
+
 ## 4. Feature-flag reference
 
 | Variable | Default | Effect |
@@ -1294,8 +1340,10 @@ without the PIN; a dry run (`--dry-run`) stops after the counts and writes nothi
 
 **The one real startup guard:** `ROBOT_STREAMING=true` on the robot plus
 `VISION_ENABLED=true` on the server makes the robot refuse to start
-(`SystemExit`, checked once at boot via `check_vision_enabled()`) — streaming
-has no code path for visual questions yet (F-08). Every other flag
+(`SystemExit`, checked once at boot via `check_vision_enabled()`). The guard comes from the July
+2026 audit (F-08), when streaming dropped a visual question. Today streaming answers it with a
+fixed phrase, so the guard only blocks valid uses such as «Iroko, lee esto»; Plan 0089 (drafted)
+lifts it. Until then, run the reading and «¿qué ves?» on the classic route. Every other flag
 combination above is safe to mix.
 
 ## 5. Where the evidence lives

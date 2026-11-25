@@ -13,6 +13,7 @@ import argparse
 import asyncio
 from collections.abc import Callable
 from datetime import UTC, datetime
+import hashlib
 from pathlib import Path
 import sqlite3
 import sys
@@ -39,7 +40,17 @@ from server.memory.commissioning import (
     SectionStatus,
     get_open_commissioning,
 )
-from server.memory.seed_file import LoadedSeed, json_schema_text, load_seed_file
+from server.memory.document_extract import DocumentRefusedError, extract_text
+from server.memory.document_secrets import flags_secret
+from server.memory.document_sections import SECTION_MAX_CHARS, cut_sections
+from server.memory.document_store import source_id_of
+from server.memory.seed_file import (
+    LoadedSeed,
+    ManifestDocument,
+    json_schema_text,
+    load_document_manifest,
+    load_seed_file,
+)
 from server.memory.seed_import import (
     OperationOutcome,
     OperationStatus,
@@ -47,7 +58,7 @@ from server.memory.seed_import import (
     resolve_ready_owner,
 )
 from server.memory.seed_plan import OWNER_REF, OperationKind, SeedPlan, SeedRef, build_plan
-from server.memory.seed_run import run_seed
+from server.memory.seed_run import AltaDocument, run_seed
 from server.personal_setup import check_db_available
 from server.settings import settings
 
@@ -183,6 +194,47 @@ def _warn_about_the_place(path: Path, write_text: WriteText) -> None:
         )
 
 
+def _alta_document(index: int, entry: ManifestDocument) -> AltaDocument:
+    """Extract, guard and cut one manifest document; a problem refuses the whole load."""
+    try:
+        text = extract_text(entry.path)
+        sections = cut_sections(text, max_chars=SECTION_MAX_CHARS)
+    except DocumentRefusedError as exc:
+        raise SeedFileError((f"document[{index}]: refused ({exc.reason})",)) from exc
+    if flags_secret("\n".join(text.pages)):
+        raise SeedFileError((f"document[{index}]: holds_a_code",))
+    return AltaDocument(
+        title=entry.title,
+        level=entry.level,
+        format=text.format,
+        file_sha256=hashlib.sha256(entry.path.read_bytes()).hexdigest(),
+        sections=tuple(sections),
+    )
+
+
+def _alta_documents(seed_path: Path) -> tuple[AltaDocument, ...]:
+    """The documents of ``documents/manifest.toml`` beside the seed file (Plan 0088 D-16)."""
+    entries = load_document_manifest(seed_path)
+    documents = tuple(_alta_document(i, entry) for i, entry in enumerate(entries))
+    if len({d.file_sha256 for d in documents}) < len(documents):
+        raise SeedFileError(("documents: same_file_twice",))
+    return documents
+
+
+async def _print_documents(
+    documents: tuple[AltaDocument, ...], owner: int, write_text: WriteText
+) -> None:
+    if not documents:
+        return
+    write_text("Documentos:")
+    for document in documents:
+        stored = await source_id_of(owner_entity_id=owner, file_sha256=document.file_sha256)
+        write_text(
+            f"  {document.title}: {document.format}, {document.level}, "
+            f"{len(document.sections)} secciones{' (ya guardado)' if stored else ''}"
+        )
+
+
 async def _review_mode(commissioning: CommissioningInput | None) -> ConfirmationMode:
     """The confirmation mode of the open record, or the one declared for the first apply."""
     record = await get_open_commissioning()
@@ -202,6 +254,7 @@ async def _load_session(
     read_text: ReadText,
     write_text: WriteText,
     now: str,
+    documents: tuple[AltaDocument, ...] = (),
 ) -> int:
     """Everything the command does once the database is open."""
     await check_db_available()
@@ -218,8 +271,10 @@ async def _load_session(
         commissioning=commissioning,
         replace=replace,
         now=now,
+        documents=documents,
     )
     _print_report(dry, names, write_text)
+    await _print_documents(documents, owner, write_text)
     if dry.problems:
         write_text("Hay problemas: no se escribió nada.")
         return 1
@@ -239,6 +294,7 @@ async def _load_session(
         commissioning=commissioning,
         replace=replace,
         now=now,
+        documents=documents,
     )
     if not applied.applied:
         write_text("La carga cambió entre la prueba y la aplicación: no se escribió nada.")
@@ -307,6 +363,7 @@ async def run_seed_command(
             raise _RefusedError("No existe la base de datos: créala con `just setup-personal`.")
         _warn_about_the_place(path, write_text)
         loaded = load_seed_file(path)
+        documents = _alta_documents(path)
         await _check_schema(database)
         await db.open_db()
         try:
@@ -318,6 +375,7 @@ async def run_seed_command(
                 read_text=read_text,
                 write_text=write_text,
                 now=now,
+                documents=documents,
             )
         finally:
             await db.close_db()

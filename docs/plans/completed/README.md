@@ -163,6 +163,19 @@ hardware; the [operational board](../README.md#operational-board) has the full c
   data dictionary and `iroko-admin health`. Accepted on real hardware (schema version 20, health 0)
   on 2026-11-17; ADR 0038 `Accepted`, ADR 0032 decision 1 implemented.
   [Record](../../evals/0085-storage-foundation-acceptance.md).
+- [Plan 0088](0088-close-the-rag-gate-and-documents.md) (CI selection 8796 before the close):
+  R2, the RAG closed, in two parts.
+  - **Part A** (PR #306): recall's relevance gate G3, a near meaning or the question's named
+    words, chosen on a bench of real traces. ADR 0040 `Accepted`.
+  - **Part B** (PR #307): the owner's documents (`.md`, `.txt` and PDF with a text layer).
+    - Stored by migration 023 and searched behind G3 with their own thresholds.
+    - Loaded with `iroko-admin docs`, the alta's manifest and the export.
+    - Answered extractively, with no model, so a planted order is never read.
+    - A file that is not what its extension says, or a PDF with active content, is refused.
+    - «Iroko, lee esto» reads the turn's frame and offers to keep it.
+  - Accepted on real hardware on 2026-11-23 and 2026-11-24. ADR 0034 `Accepted`.
+  - [Record A](../../evals/0088a-recall-gate-acceptance.md),
+    [record B](../../evals/0088b-documents-acceptance.md).
 - [Plan 0087](0087-owner-data-export.md) (CI selection 8468): the export of the owner's data,
   the last piece of block C. `iroko-admin export all | person <id> | person --name` with the PIN
   writes `exportacion.md` and `exportacion.json` with the same rows into `data/exports/` (Pipec's

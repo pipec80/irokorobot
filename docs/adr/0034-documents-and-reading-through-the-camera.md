@@ -1,9 +1,11 @@
 # 0034 — Documents in the memory engine, and reading through the camera
 
-- **Status:** Proposed (2026-11-11). Written from ADR 0031 decision 13, the RAG architecture
-  document, the research of the memory engine (kept in the ignored `project-history/`) and Pipec's
-  four decisions of 2026-11-11 (see *Pipec's decisions and where they land*). It becomes `Accepted`
-  when the plan that implements it closes.
+- **Status:** **Accepted** (2026-11-24, Pipec's hardware acceptance of Plan 0088 Part B,
+  [record](../evals/0088b-documents-acceptance.md)); Proposed 2026-11-11. *Implemented by
+  [Plan 0088](../plans/completed/0088-close-the-rag-gate-and-documents.md) Part B*, with the
+  deviations listed in *Deviations made by Plan 0088*. Written from ADR 0031 decision 13, the RAG
+  architecture document, the research of the memory engine (kept in the ignored `project-history/`)
+  and Pipec's four decisions of 2026-11-11 (see *Pipec's decisions and where they land*).
 - **Date:** 2026-11-11
 - **Builds on:** [ADR 0025](0025-remote-administration-backup-updates-and-telemetry.md) (`iroko-admin`),
   [ADR 0028](0028-recall-what-the-owner-told.md) (the search),
@@ -119,6 +121,80 @@ section and index row, physically, with a line in the deletion register).
 
 The author's calls, for Pipec's review: own tables with the shared search; no `security` level for
 documents; the permissive-licence rule for the PDF library; the threat table of decision 6.
+
+## Deviations made by Plan 0088 (2026-11-23, still `Proposed`)
+
+[Plan 0088](../plans/completed/0088-close-the-rag-gate-and-documents.md) Part B implements this ADR
+with these changes, each with its reason; Pipec approved them on 2026-11-23.
+
+1. **No version column** (decision 4 lists «version»). A changed file is a new source and the
+   owner removes the old one; a version is built when a re-load is asked for (YAGNI, Plan 0088
+   D-8). The same file twice is refused by its hash.
+2. **The level is asked, or given by a flag** (decision 1): `docs add` asks it when `--level` is
+   absent; the alta's manifest gives it, `normal` when absent (D-16).
+3. **The reading uses the turn's own frame** (decision 5 said «the robot takes one frame»). The
+   frame the voice routes already carry for face authentication is handed to the controller
+   through a per-request seam, so neither the robot nor the wire changes and both voice routes
+   answer. It works only with `ROBOT_FACE_AUTH_ENABLED` on the robot and
+   `FACE_AUTHENTICATION_ENABLED` on the server, plus `VISION_ENABLED` and `DOCUMENTS_ENABLED`
+   (D-17). While a reading waits, «sí, guárdalo» belongs to it, not to a memory candidate offered
+   earlier (ADR 0021's verb keeps its meaning when no reading waits).
+4. **The transformation follows from the format** (ADR 0031 decision 6): `original` for `md` and
+   `txt`, `extracted` for `pdf` and `camera`; no column holds it (D-8).
+5. **What a document reply leaves behind:** a document answer and a camera reading are recorded
+   with the markers «[respuesta de un documento]» and «[texto leído por la cámara]», so no section
+   or read text enters the conversation record, the diary, a recall unit or an export by the voice
+   routes; a document cue, a reading and its «sí, guárdalo» tell nothing (D-18).
+6. **Three `memory/` modules import `server.cognition`**, exactly as their recall twins:
+   `document_access` (the policy), `document_search` (the cue) and `document_answer` (the reply
+   plan). They are the documents' share of the coupling ADR 0031 decision 11 removes after CM-7 +
+   PC-5; a guard lists every such module and the list may shrink, never grow (D-20).
+7. **The audit of `iroko-admin docs`:** `admin_audit` has closed checks, so migration 023 rebuilds
+   it as migration 022 did, adding the target kind `document` and the operation `list` (`docs
+   list` is audited too, since a title can be sensitive). The audit row holds no title and no
+   text.
+8. **The caps, measured** (decision 1 and 4 left them to the plan): 10 MB per file, 200 pages,
+   30 s of extraction in a child process killed at the limit, `pypdf` 7.1.1 (BSD-3-Clause, `pip-audit`
+   clean) with its decompression limit set explicitly, 2,000 sections per document, and a section
+   cap of 1,200 characters under the embedding model's 512-token window. Measured on one long
+   text-layer PDF of Pipec's own (99 pages, 93,504 characters, 10.1 s, 13.5 MB peak in the child)
+   and on the document bench; three scanned PDFs of Pipec's (4 to 750 pages) gave no text at all,
+   so they wait for R4. Counts only; no file entered the repository.
+
+9. **The answer quotes; no model words it** (decision 3 said «worded from the found sections
+   only»). On the plan's bench the local 3B model obeyed an order planted in a section in 12 of
+   24 answers, and no grounding check can see it, since the planted words are in the section.
+   Pipec delegated the call (2026-11-23: the laptop runs only the 3B model, its CPU and RAM shared
+   with Whisper, Piper and the vision model). The answer is «Según {título}:» and the found
+   sections' best-matching sentences, with every sentence in the closed shapes of an order and
+   every one the secret detector flags left out: 0 of 24 on the same eval, and no model call. A
+   planted order in other words is still read aloud as what the document says: a known limit of
+   a deterministic guard. A better model may word the answer later through the answer seam, with
+   the eval run again.
+
+10. **A second face denies the whole cue** (decision 2 said the `sensitive` level needs no
+    other face). With two faces in view the face check identifies nobody, so the owner is not
+    known: a document cue hears the generic denial, the same with or without a `sensitive`
+    document (no oracle). The level filter stays as a second wall for when the face check can
+    tell the owner among several faces.
+11. **A reading is kept only by the person seen on its turn** (decision 5 allowed the face on the
+    next turn only). A reading with nobody identified is read aloud and cannot be kept: anyone on
+    the network could plant one for the owner's next «sí, guárdalo».
+12. **The secret guard needs a secret word** (decision 2). Measured on one real medical text, a
+    rule on lone digit runs refused 89 of 128 sections (record and episode numbers), so it is
+    gone: a code is flagged with its secret word before or after it, a card number by its
+    groups or a card word, an IBAN by its shape. A code written with no word near it is read: a
+    known limit.
+
+13. **A file is checked before its text is taken** (Pipec, 2026-11-24; decision 6 named only
+    caps and a timeout). It must be what its extension says (a PDF starts with `%PDF-`, a text
+    holds no binary); control and invisible characters are removed; and a PDF with active content
+    is refused whole: JavaScript, actions, embedded or attached files, links, signature fields,
+    XFA, rich media, or an image holding a QR code or a barcode. Nothing of a document is ever
+    executed or followed, so these checks only keep the parser from touching what a document of
+    the household never needs. The formats stay a closed list: Office, JPG and PNG, audio and
+    video (with the iPhone's HEIC and MOV) are the next ones (R2b), each with its own check; a
+    threat model of file ingestion is its own ADR before them.
 
 ## Not decided here
 

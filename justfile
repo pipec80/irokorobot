@@ -122,6 +122,10 @@ cm4-embed *ARGS:
 recall-bench *ARGS:
     uv run --env-file .env python scripts/recall_bench.py {{ARGS}}
 
+# Banco de documentos (Plan 0088 D-13): elige los umbrales de la puerta de documentos --out FILE (con Ollama arriba; nunca mientras Pipec ensaya)
+document-bench *ARGS:
+    uv run --env-file .env python scripts/document_bench.py {{ARGS}}
+
 # Banco determinista del STT (Plan 0069): run | segment | report | calibrate | probe | external-template; con el servidor detenido
 stt-bench *ARGS:
     uv run --env-file .env python scripts/stt_bench.py {{ARGS}}

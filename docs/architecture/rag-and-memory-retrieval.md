@@ -96,7 +96,10 @@ verdad almacenada.
 
 La implementación actual tiene una base semántica y, desde el Plan 0078 (CM-5b + R3, cerrado
 2026-11-04), una búsqueda híbrida sobre el diario de la conversación, decidida en el
-[ADR 0028](../adr/0028-recall-what-the-owner-told.md). Estado a 2026-11-10:
+[ADR 0028](../adr/0028-recall-what-the-owner-told.md). Desde el Plan 0088 (cerrado
+2026-11-24) tiene además una puerta de relevancia ([ADR 0040](../adr/0040-the-relevance-gate-of-retrieval.md))
+y los documentos del dueño ([ADR 0034](../adr/0034-documents-and-reading-through-the-camera.md)).
+Estado a 2026-11-24:
 
 | Capacidad | Estado observado | Evidencia de código |
 |---|---|---|
@@ -109,19 +112,20 @@ La implementación actual tiene una base semántica y, desde el Plan 0078 (CM-5b
 | Contexto mixto legacy | Retirado (Plan 0076) | El bloque de memoria del prompt y la recuperación `MANUAL` ya no existen; el prompt genérico lee solo la ficha del perfil y la continuidad de la sesión. |
 | Memoria relacional v4 | Implementado | Entidades, relaciones tipadas y herramientas protegidas; los parientes del alta se leen por voz desde el Plan 0078 (lados desde el Plan 0080). |
 | Autorización previa | Implementada | Filtra por dueño, clasificación y vigencia antes de ordenar y otra vez al entregar el texto (`recall_store.units_by_id`, Plan 0080). |
-| Umbral mínimo semántico | Implementado (Plan 0078) | Umbral absoluto de distancia coseno; sin resultados responde «No me acuerdo de eso.». |
-| Ingestión PDF/MD/TXT | Ausente | No existe pipeline documental de producción (R2, ADR 0034 reservado). |
-| Búsqueda lexical/FTS | Implementado (Plan 0078) | FTS5 sobre las unidades del diario; no hay índice lexical documental. |
+| Umbral mínimo semántico | Implementado (Plan 0078; puerta G3 desde el Plan 0088) | `retrieval.gate_near_or_named`: un resultado pasa si su significado está cerca o si contiene las palabras nombradas de la pregunta. El diario usa 0,43 y 0,464, los documentos 0,22 y 0,61. Sin resultados responde «No me acuerdo de eso.» o «No lo encuentro en tus documentos.». |
+| Ingestión PDF/MD/TXT | Implementado (Plan 0088, migración 023) | `iroko-admin docs add`, el manifiesto del alta y «Iroko, lee esto». La extracción corre en un proceso hijo: un adaptador por formato, límites de tamaño, páginas y tiempo, se rechaza el archivo que no es lo que dice su extensión, y también el PDF con contenido activo, un código QR o un código de barras. Detrás de `DOCUMENTS_ENABLED`, apagado por defecto. |
+| Búsqueda lexical/FTS | Implementado (Plan 0078; documentos en el Plan 0088) | FTS5 sobre las unidades del diario y sobre las secciones de los documentos (`document_sections_fts`, con borrado seguro). |
 | Fusión híbrida | Implementado (Plan 0078) | RRF con `RRF_K = 60` sobre los dos rankings, máximo 3 resultados y 2 por conversación (`recall_search.py`). |
 | Reranking | Ausente | No existe reranker de producción. |
-| Citación documental | Ausente | No existe contrato de evidencia documental. |
+| Citación documental | Implementado (Plan 0088) | La respuesta nombra el documento («Según {título}: …») y cita sus frases sin pasar por un modelo. Omite las frases con forma de orden y las que contienen un código. |
 | Recuperación multimodal | Ausente | Cara usa vectores biométricos separados; no es memoria/RAG. |
 
 El KNN de `sqlite-vec` es un escaneo de fuerza bruta adecuado para el volumen esperado menor
 a 100.000 recuerdos. Por tanto, no se justifica migrar ahora a PostgreSQL, Qdrant, Milvus o
 Weaviate. Primero deben existir un problema medido, un conjunto de evaluación y un ADR.
-Queda abierto el bloque C (C1): un vector nombra su modelo, y al cambiar `EMBEDDING_MODEL` hay
-que rechazar la comparación entre modelos y reindexar de forma verificable (ADR 0031).
+El bloque C (C1, Plan 0085) cerró la guarda del modelo de embeddings: un vector nombra su
+modelo, no se comparan vectores de modelos distintos y las secciones se reindexan con
+`backfill_sections`.
 
 ## 5. Lugar de RAG dentro del cerebro
 
@@ -832,6 +836,13 @@ Markdown, texto plano y **PDF con capa de texto** (con un banco de extracción e
 español y la licencia de la biblioteca leída antes de usarla). Versionar
 fuente/chunks, recuperar evidencia y mostrar procedencia; una instrucción dentro de
 un documento es dato, nunca orden.
+
+**Entregado el 2026-11-24** por el [Plan 0088](../plans/completed/0088-close-the-rag-gate-and-documents.md),
+aceptado en hardware ([registro](../evals/0088b-documents-acceptance.md)). Con R2, el RAG queda
+cerrado. Lo que el plan cambió respecto del ADR 0034 está en su sección *Deviations made by Plan
+0088*: la respuesta es extractiva, sin modelo, y un archivo con contenido activo se rechaza entero.
+La lectura por la cámara funciona hoy solo por la ruta clásica, por la guarda F-08 del robot; el
+Plan 0089 (borrador) la lleva al streaming.
 
 ### R3 — Búsqueda lexical e híbrida
 

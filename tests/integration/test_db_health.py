@@ -16,10 +16,11 @@ from uuid import uuid4
 import pytest
 from server.admin_cli import AdminRequest, run_admin_command
 from server.exceptions import BrainMemoryError
-from server.memory import db_health, recall_store
+from server.memory import db_health, document_store, recall_store
 from server.memory.conversation_types import RecordedTurn, TurnVerdict
 from server.memory.db_health import HealthReport, check_health, health_failed, render_health
 from server.memory.declarative import upsert_entity
+from server.memory.document_store import NewSection, NewSource
 from server.settings import settings
 
 from server import db
@@ -106,6 +107,8 @@ def _faults(report: HealthReport) -> dict[str, int]:
         "face_vectors_without_profile": report.face_vectors_without_profile,
         "times_outside_format": report.times_outside_format,
         "rows_unlinked_from_their_turn": report.rows_unlinked_from_their_turn,
+        "document_vectors_without_section": report.document_vectors_without_section,
+        "sections_without_fts_row": report.sections_without_fts_row,
     }
 
 
@@ -143,6 +146,8 @@ async def test_integrity_check_sees_a_row_the_schema_refuses(health_db: int) -> 
             "face_vectors_without_profile",
             "times_outside_format",
             "rows_unlinked_from_their_turn",
+            "document_vectors_without_section",
+            "sections_without_fts_row",
         ),
         0,
     )
@@ -354,6 +359,66 @@ async def test_pending_embedding_work_is_counted_and_is_not_a_fault(health_db: i
     assert not health_failed(report)
 
 
+async def _document(owner: int, bodies: list[str]) -> list[int]:
+    """One canary document of *owner*; returns its section ids in order."""
+    sections = [NewSection(position=i, heading="", body=body) for i, body in enumerate(bodies)]
+    source = NewSource(
+        owner_entity_id=owner,
+        title="Manual canario",
+        file_sha256="d" * 64,
+        format="md",
+        level="normal",
+        channel="admin_local",
+        loaded_at=_FUTURE.replace("2027", "2026"),
+        loaded_by_entity_id=owner,
+    )
+    async with db.transaction() as conn:
+        source_id = await document_store.insert_source(conn, source=source, sections=sections)
+    cursor = await db.get_conn().execute(
+        "SELECT id FROM document_sections WHERE source_id = ? ORDER BY position", (source_id,)
+    )
+    ids = [int(row[0]) for row in await cursor.fetchall()]
+    await cursor.close()
+    return ids
+
+
+async def test_a_document_vector_without_its_section_is_an_orphan(health_db: int) -> None:
+    await _plant(
+        "INSERT INTO document_sections_vec (rowid, owner_entity_id, level, source_id, embedding) "
+        f"VALUES (9999, {health_db}, 'normal', 1, vec_f32('[{', '.join(['0.5'] * 768)}]'))"
+    )
+
+    report = await check_health(db.get_conn())
+
+    assert report.document_vectors_without_section == 1
+    assert health_failed(report)
+
+
+async def test_a_section_missing_from_its_word_index_is_a_fault(health_db: int) -> None:
+    (section,) = await _document(health_db, ["zzfiltro canario"])
+    await _plant(
+        "INSERT INTO document_sections_fts (document_sections_fts, rowid, heading, body) "
+        f"VALUES ('delete', {section}, '', 'zzfiltro canario')"
+    )
+
+    report = await check_health(db.get_conn())
+
+    assert report.sections_without_fts_row == 1
+    assert health_failed(report)
+
+
+async def test_pending_document_work_is_counted_and_is_not_a_fault(health_db: int) -> None:
+    old, refused, _pending = await _document(health_db, ["zzuno", "zzdos", "zztres"])
+    assert await document_store.store_section_vector(old, _VECTOR, model="canary-model-old")
+    assert await document_store.mark_section_refused(refused, model="canary-model-a")
+
+    report = await check_health(db.get_conn())
+
+    assert (report.sections_without_vector, report.sections_of_another_model) == (1, 1)
+    assert report.sections_refused == 1
+    assert not health_failed(report)
+
+
 async def _digest(conn: aiosqlite.Connection) -> list[tuple[str, list[tuple[object, ...]]]]:
     """Every row of every ordinary table, in a fixed order: a change to any row changes it."""
     cursor = await conn.execute(
@@ -465,8 +530,13 @@ def test_render_health_names_every_measure_in_spanish() -> None:
         face_vectors_without_profile=5,
         times_outside_format=6,
         rows_unlinked_from_their_turn=9,
+        document_vectors_without_section=10,
+        sections_without_fts_row=11,
         units_without_vector=7,
         units_of_another_model=8,
+        sections_without_vector=12,
+        sections_of_another_model=13,
+        sections_refused=14,
     )
 
     text = "\n".join(render_health(report))

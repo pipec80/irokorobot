@@ -171,6 +171,8 @@ GLOSSARY: Final[Mapping[str, str]] = MappingProxyType(
         "conversation_consent": "el consentimiento de las conversaciones",
         "conversation_record": "una conversación",
         "household_data": "los datos del hogar",
+        "list": "listar",
+        "document": "un documento",
         "applied": "hecho",
         "refused": "rechazado",
         "allowed": "permitido",
