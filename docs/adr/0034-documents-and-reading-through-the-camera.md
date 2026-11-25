@@ -1,9 +1,11 @@
 # 0034 — Documents in the memory engine, and reading through the camera
 
-- **Status:** Proposed (2026-11-11). Written from ADR 0031 decision 13, the RAG architecture
-  document, the research of the memory engine (kept in the ignored `project-history/`) and Pipec's
-  four decisions of 2026-11-11 (see *Pipec's decisions and where they land*). It becomes `Accepted`
-  when the plan that implements it closes.
+- **Status:** **Accepted** (2026-11-24, Pipec's hardware acceptance of Plan 0088 Part B,
+  [record](../evals/0088b-documents-acceptance.md)); Proposed 2026-11-11. *Implemented by
+  [Plan 0088](../plans/completed/0088-close-the-rag-gate-and-documents.md) Part B*, with the
+  deviations listed in *Deviations made by Plan 0088*. Written from ADR 0031 decision 13, the RAG
+  architecture document, the research of the memory engine (kept in the ignored `project-history/`)
+  and Pipec's four decisions of 2026-11-11 (see *Pipec's decisions and where they land*).
 - **Date:** 2026-11-11
 - **Builds on:** [ADR 0025](0025-remote-administration-backup-updates-and-telemetry.md) (`iroko-admin`),
   [ADR 0028](0028-recall-what-the-owner-told.md) (the search),
@@ -122,7 +124,7 @@ documents; the permissive-licence rule for the PDF library; the threat table of 
 
 ## Deviations made by Plan 0088 (2026-11-23, still `Proposed`)
 
-[Plan 0088](../plans/open/0088-close-the-rag-gate-and-documents.md) Part B implements this ADR
+[Plan 0088](../plans/completed/0088-close-the-rag-gate-and-documents.md) Part B implements this ADR
 with these changes, each with its reason; Pipec approved them on 2026-11-23.
 
 1. **No version column** (decision 4 lists «version»). A changed file is a new source and the

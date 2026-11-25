@@ -346,6 +346,9 @@ cosine distance, so `int8` means a migration, a re-index and a new calibration o
 
 ### 13. Documents are one more source of the engine
 
+> **Amended by [ADR 0034](0034-documents-and-reading-through-the-camera.md)** (Accepted 2026-11-24, implemented by Plan 0088 Part B): the documents and the reading through the camera
+> are built as that ADR decides, inside today's `server/memory/`, before the engine is extracted.
+
 The documentary RAG (R2) is a source type inside the engine, under the same policy port, with its
 own provenance (file, hash, version, position) and kept apart from what a person told: a manual
 is not the owner's experience, and an instruction inside a document is data, never a command.

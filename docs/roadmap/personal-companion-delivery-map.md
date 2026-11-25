@@ -164,7 +164,10 @@ PC-2 accepted (provisional calibration)
 Plan 0015 remains open as reference; PC-5, PC-6 and CM-7 are still real work
 (PC-3 and PC-4 closed on 2026-09-29 and 2026-09-30; CM-1 to CM-6 closed by
 2026-11-18, the last with Plan 0086). Block C closed on 2026-11-19 with the export of the
-owner's data (Plan 0087, ADR 0032 `Accepted`).
+owner's data (Plan 0087, ADR 0032 `Accepted`). Row 9, R2, closed on 2026-11-24 (Plan 0088:
+the relevance gate of recall and the owner's documents, ADRs 0040 and 0034 `Accepted`). PC-5's
+question of scene description in streaming mode is drafted as Plan 0089, after the robot's F-08
+guard kept Plan 0088's reading on the classic route.
 CM-0 is closed (Plan 0046); PC-3A / Plan 0047 is closed (2026-09-25,
 provisional PASS), and PC-5 includes the longitudinal-memory gate defined in
 the [memory delivery map](conversational-memory-delivery-map.md). The complete

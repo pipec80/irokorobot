@@ -1,6 +1,6 @@
 # 0088 — The document bench
 
-> Plan [0088](../plans/open/0088-close-the-rag-gate-and-documents.md) Part B, D-10, D-9 and D-13.
+> Plan [0088](../plans/completed/0088-close-the-rag-gate-and-documents.md) Part B, D-10, D-9 and D-13.
 > Counts and rates only: no section, title or question of a real document appears here.
 
 ## The corpus

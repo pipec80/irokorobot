@@ -1,10 +1,17 @@
 # 0088 — Close the RAG: the relevance gate and its bench, then the documents
 
-> **Part A closed on 2026-11-23**: accepted by Pipec on real hardware
-> ([record](../../evals/0088a-recall-gate-acceptance.md)), [ADR 0040](../../adr/0040-the-relevance-gate-of-retrieval.md)
-> `Accepted`, PR #306. Part B (the documents) is next, in a new session.
+> **Closed on 2026-11-24. The RAG is closed.**
 >
-> **Status:** **Ready (promoted by Pipec on 2026-11-23).** Written as a draft the same day for
+> - **Part A**, closed 2026-11-23: accepted by Pipec on real hardware
+>   ([record](../../evals/0088a-recall-gate-acceptance.md)),
+>   [ADR 0040](../../adr/0040-the-relevance-gate-of-retrieval.md) `Accepted`, PR #306.
+> - **Part B**, closed 2026-11-24: accepted by Pipec on real hardware
+>   ([record](../../evals/0088b-documents-acceptance.md)),
+>   [ADR 0034](../../adr/0034-documents-and-reading-through-the-camera.md) `Accepted`, PR #307.
+>   Blocks 1 and 2 of D-21 passed on streaming; block 3, the reading, was accepted as run on the
+>   classic route because of the robot's F-08 guard. Its findings went to Plan 0089 (drafted).
+>
+> **Status (historical):** **Ready (promoted by Pipec on 2026-11-23).** Written as a draft the same day for
 > Pipec's review and revised after one read-only architecture review (its findings are folded in;
 > see *Self-review*). **Pipec accepted every recommendation on 2026-11-23** («Acepto todas»): D-1
 > (ADR 0040), D-7, D-9, D-15 (the uniform phrase), D-16 (the PIN on all three commands), D-17 (the
@@ -898,14 +905,14 @@ their tests.
 
 **Files:** the documents of *Permitted files*, Part B; Pipec's local `docs/roadmap/tabla-tareas.md`.
 
-- [ ] **Step 1:** with the server stopped, back up to `data/backups/pre-0088b-<YYYYMMDD-HHMMSS>/`,
+- [x] **Step 1:** with the server stopped, back up to `data/backups/pre-0088b-<YYYYMMDD-HHMMSS>/`,
   prove the restore on a copy under `data/rehearsal-0088/` (opens at version 22, health 0), rehearse
   migration 023 on another copy (every count equal, health 0); delete the copies.
-- [ ] **Step 2:** push, PR, green CI. Pipec starts the server (the switches of D-21, migration 023
+- [x] **Step 2:** push, PR, green CI. Pipec starts the server (the switches of D-21, migration 023
   runs) and the robot and runs D-21's cases; the agent runs `iroko-admin docs`, reads the logs and
   writes `docs/evals/0088b-documents-acceptance.md` (outcomes only); `iroko-admin health` exits 0; a
   `post-0088b` backup made and proven.
-- [ ] **Step 3:** when Pipec accepts, delete the `pre-0088b` backup and record it; update
+- [x] **Step 3:** when Pipec accepts, delete the `pre-0088b` backup and record it; update
   `rag-and-memory-retrieval.md` (§4 to today, §25 R2 delivered), `current-state.md`, the data
   dictionary, the operator manual (`iroko-admin docs`, the manifest, the switches and the two
   face-authentication preconditions of the reading), ADR 0034 `Accepted` with an *Implemented by

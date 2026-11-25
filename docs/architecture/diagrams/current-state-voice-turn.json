@@ -40,6 +40,18 @@
           "ollama"
         ],
         "note": "A generic turn names its speaker by face or a token, never voice; their last turns and a small profile card (off by default) reach the next."
+      },
+      {
+        "id": "reading",
+        "label": "Reading by the camera",
+        "focus": [
+          "robot",
+          "api",
+          "face",
+          "controller",
+          "ollama"
+        ],
+        "note": "«Iroko, lee esto»: the turn's own frame, read by the VLM and offered to keep; classic route only while the robot's F-08 guard stands."
       }
     ]
   },
@@ -193,7 +205,7 @@
       "id": "memory",
       "type": "database",
       "label": "SQLite",
-      "sublabel": "v4 · candidates · record",
+      "sublabel": "v4 · record · documents",
       "pos": [
         670,
         400
