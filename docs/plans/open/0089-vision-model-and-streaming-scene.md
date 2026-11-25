@@ -1,7 +1,8 @@
 # 0089 — The vision model diagnosed, measured and tuned, then «¿qué ves?» over streaming
 
-> **Status:** **Draft, for Pipec's review** (written 2026-11-24). Not `Ready`: it becomes executable
-> only when Pipec answers *Pipec's decisions* at the end and promotes it. Source: the PC-5 row of the
+> **Status:** **`Ready`** (written 2026-11-24). Pipec accepted all eight recommendations the same
+> day; see *Pipec's decisions* at the end. Execution runs in a new session, on its own branch.
+> Source: the PC-5 row of the
 > [roadmap](../../roadmap/cognitive-roadmap.md) («it decides whether scene description must work in
 > streaming mode») and its row *Vision on the streaming route*, which names this plan. Plan 0088's
 > reading had to run on the slow classic route, because the robot's startup guard refuses streaming
@@ -20,7 +21,8 @@
 
 > **For agentic workers:** if the status above does not say `Ready`, stop. Read `CLAUDE.md`,
 > `AGENTS.md` and every file of `.claude/rules/` in full first. REQUIRED SUB-SKILLS:
-> `superpowers:executing-plans` (inline), `superpowers:test-driven-development` for every task,
+> `superpowers:executing-plans` (inline) or `superpowers:subagent-driven-development` for the
+parallel tasks below, `superpowers:test-driven-development` for every task,
 > `superpowers:verification-before-completion` before any claim of done,
 > `superpowers:requesting-code-review` and `superpowers:receiving-code-review` for Task 10, and
 > `superpowers:finishing-a-development-branch` at the end. Review agents run on `sonnet` and read
@@ -35,6 +37,22 @@
 > Pipec rehearses (15.7 GB of RAM). Pipec starts the server and the robot. Before pushing:
 > `pyright`, `ruff` and `mypy` over the whole project, `uv run ruff format --check .`, and `ruff`
 > with explicit paths over any file under `scripts/` (the hook lints them, `ruff check .` does not).
+
+> **Parallel work (Pipec, 2026-11-24).** Pipec asked for parallel agents where they help. They
+> run on `sonnet`, read `.claude/` in full first, use the Windows CLI, and each writes only its
+> task's permitted files. The main session supervises them and makes every commit, one per task, in
+> the task order.
+>
+> | Can run at the same time | Why it is safe | Must wait for |
+> |---|---|---|
+> | Task 1 (logs) | no other task touches `llm_transport.py` | — |
+> | Task 5 (failure plan) | only `response_plan.py` and `routers/vision.py` | — |
+> | Task 7 (camera phrases) | only the two cue files | — |
+> | Task 9 (robot guard) | only the robot, `system.py` and comments | — |
+>
+> Tasks 2, 3 and 6 follow Task 1 in that order, because they edit the same two vision files.
+> Task 8 waits for Tasks 1 and 5. Task 4 needs Pipec at the laptop and waits for Tasks 2 and 3.
+> Task 11 waits for everything. Review agents (Task 10) stay read-only.
 
 ## What the code does today (verified 2026-11-24 on `main` at `515595f`, Plan 0088 merged)
 
@@ -651,7 +669,19 @@ route; face recognition in a scene answer; the robot's `LOOKING` state; the home
 - **No placeholder:** every phrase, marker, switch, setting and test name is written out; exact
   test file names are confirmed in Task 0.
 
-## Pipec's decisions (to answer before `Ready`)
+## Pipec's decisions (answered 2026-11-24: every recommendation accepted)
+
+Pipec accepted all eight recommendations on 2026-11-24:
+1. a standalone plan now, before block D (row 11 of the path);
+2. no cue phrase on streaming;
+3. the existing phrase when there is no frame;
+4. the marker in the record;
+5. the guard removed;
+6. D-8's matrix with the consolidation model's two cells, measured only;
+7. «lee» reads and «mira», «saca una foto» and «toma una foto» describe;
+8. Ollama's own switches recorded in the operator manual.
+
+The questions are kept below as they were asked.
 
 1. **D-1:** a standalone plan now, before block D (recommended), or folded into block D's plan?
 2. **D-2:** no cue phrase on streaming (recommended), or «A ver, déjame mirar...» streamed first?
