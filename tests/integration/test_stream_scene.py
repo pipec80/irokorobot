@@ -13,6 +13,8 @@ import logging
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 
+import cv2
+import numpy as np
 import pytest
 from server.cognition.response_plan import (
     READING_RECORDED_TEXT,
@@ -172,6 +174,8 @@ async def test_the_frame_and_the_description_reach_no_file_and_no_log(
             await client.post("/transcribe/stream", files=_files())
 
     assert "qqtazaqq" not in caplog.text
+    for record in caplog.records:  # the message and every ``extra`` field
+        assert "qqtazaqq" not in record.getMessage() + repr(vars(record))
     await db.get_conn().commit()
     database: Path = settings.brain_db_path
     for path in (database, database.with_name(f"{database.name}-wal")):
@@ -179,3 +183,20 @@ async def test_the_frame_and_the_description_reach_no_file_and_no_log(
             data = path.read_bytes()
             assert _FRAME[4:] not in data
             assert b"qqtazaqq" not in data
+
+
+async def test_a_frame_the_route_rejects_never_reaches_the_vision_model(
+    household: PersonalSetupResult, scene: AsyncMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review of plan 0089: an oversize frame is dropped by the route, so the scene is unavailable."""
+    _see_the_owner(monkeypatch)
+    _hear(monkeypatch, "¿Qué ves?")
+    _models(monkeypatch)
+    oversize = cv2.imencode(".jpg", np.zeros((1080, 1920, 3), dtype=np.uint8))[1].tobytes()
+    files = {**_files(with_frame=False), "frame": ("frame.jpg", oversize, "image/jpeg")}
+
+    async with _client() as client:
+        response = await client.post("/transcribe/stream", files=files)
+
+    assert _spoken(response) == _UNAVAILABLE
+    scene.assert_not_awaited()

@@ -50,7 +50,7 @@ def _classic_mode_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     developer machine with ``ROBOT_STREAMING=true`` would otherwise leak
     into every test here and silently route THINKING through the streaming
     module instead of the classic path under test. Tests that specifically
-    exercise streaming (e.g. the F-08 guard) override this via their own
+    exercise streaming (e.g. starting with server vision on) override this via their own
     ``monkeypatch.setattr`` call.
     """
     monkeypatch.setattr(app.settings, "robot_streaming", False)
