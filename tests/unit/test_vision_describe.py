@@ -10,6 +10,7 @@ import base64
 import inspect
 from io import BytesIO
 import json
+import threading
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -18,7 +19,9 @@ from PIL import Image
 import pytest
 from server.exceptions import VisionError
 from server.settings import settings
+from server.vision import describe as describe_module
 from server.vision.describe import _DESCRIBE_PROMPT, describe_image
+from server.vision.read_text import read_text
 
 
 class _FakeResponse:
@@ -315,3 +318,40 @@ async def test_a_max_side_shrinks_the_frame_sent(
     sent_image = base64.b64decode(sent[0]["messages"][0]["images"][0])
     with Image.open(BytesIO(sent_image)) as opened:
         assert opened.size == (512, 288)
+
+
+# --- review of plan 0089: a frame that cannot be resized is a VisionError, off the event loop ---
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("call", ["scene", "reading"])
+async def test_a_frame_that_cannot_be_resized_is_a_vision_error(
+    neutral_vlm: None, monkeypatch: pytest.MonkeyPatch, call: str
+) -> None:
+    monkeypatch.setattr(settings, "vlm_image_max_side", 512)
+    sent: list[dict[str, Any]] = []
+    vision_call = describe_image if call == "scene" else read_text
+    async with _capturing_client(sent) as client:
+        with pytest.raises(VisionError):
+            await vision_call(client, b"\xff\xd8not-an-image")
+    assert sent == []  # the vision model is never called
+
+
+@pytest.mark.unit
+async def test_the_resize_runs_off_the_event_loop(
+    neutral_vlm: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "vlm_image_max_side", 512)
+    threads: list[int] = []
+
+    def recording_fit(image: bytes, _max_side: int) -> bytes:
+        threads.append(threading.get_ident())
+        return image
+
+    monkeypatch.setattr(describe_module, "fit_long_side", recording_fit)
+    sent: list[dict[str, Any]] = []
+    async with _capturing_client(sent) as client:
+        await describe_image(client, _jpeg(64, 64))
+
+    assert threads
+    assert threads[0] != threading.get_ident()

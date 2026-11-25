@@ -48,7 +48,7 @@ async def read_text(client: httpx.AsyncClient, image: bytes) -> str:
     Raises:
         VisionError: If the VLM is unreachable, fails, times out or reads nothing.
     """
-    image = vlm_frame(image)
+    image = await vlm_frame(image, _READ_FAILED)
     message: ChatMessage = {
         "role": "user",
         "content": READ_PROMPT,

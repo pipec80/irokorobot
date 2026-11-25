@@ -13,6 +13,7 @@ be, a property the server verifies from the bytes it receives.
 from __future__ import annotations
 
 import base64
+from functools import partial
 from io import BytesIO
 import logging
 import time
@@ -23,6 +24,7 @@ from PIL import Image, UnidentifiedImageError
 
 from server.exceptions import ImageContractError, LLMError, VisionError
 from server.llm_transport import ChatMessage, OllamaMetrics, ollama_chat_measured
+from server.request_context import run_in_executor_with_context
 from server.settings import settings
 from server.vision.frame_resize import fit_long_side
 
@@ -167,17 +169,26 @@ def vlm_options(temperature: float, num_predict: int | None) -> dict[str, float]
     return options
 
 
-def vlm_frame(image: bytes) -> bytes:
+async def vlm_frame(image: bytes, failed_event: str) -> bytes:
     """Return the frame as the vision model gets it: shrunk only when ``VLM_IMAGE_MAX_SIDE`` is set.
+
+    The resize is PIL work, so it runs in the default executor, off the event loop.
 
     Args:
         image: The turn's frame — JPEG/PNG/WebP/GIF/BMP, max 1280x720, one frame.
+        failed_event: The vision call's failure event, logged when the frame cannot be resized.
 
     Raises:
-        ImageContractError: If a resize is asked for and the bytes are not an image.
+        VisionError: If a resize is asked for and the bytes cannot be decoded as an image.
     """
     max_side = settings.vlm_image_max_side
-    return image if max_side is None else fit_long_side(image, max_side)
+    if max_side is None:
+        return image
+    try:
+        return await run_in_executor_with_context(None, partial(fit_long_side, image, max_side))
+    except ImageContractError as exc:
+        log_vision_failure(failed_event, type(exc).__name__, image)
+        raise VisionError("The frame could not be prepared for the vision model") from exc
 
 
 def log_vision_metrics(capability: str, image: bytes, metrics: OllamaMetrics) -> None:
@@ -253,7 +264,7 @@ async def describe_image(client: httpx.AsyncClient, image: bytes) -> tuple[str, 
         VisionError: If the VLM backend is unreachable, errors out, or
             returns an empty/unexpected response.
     """
-    image = vlm_frame(image)
+    image = await vlm_frame(image, _DESCRIBE_FAILED)
     message: ChatMessage = {
         "role": "user",
         "content": _DESCRIBE_PROMPT,

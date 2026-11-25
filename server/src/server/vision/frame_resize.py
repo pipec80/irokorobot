@@ -41,7 +41,14 @@ def fit_long_side(image: bytes, max_side: int) -> bytes:
             scale = max_side / max(width, height)
             size = (max(1, round(width * scale)), max(1, round(height * scale)))
             resized = opened.convert("RGB").resize(size, Image.Resampling.LANCZOS)
-    except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:
+    # PIL raises ValueError or SyntaxError on some malformed images, beside the usual ones.
+    except (
+        UnidentifiedImageError,
+        OSError,
+        ValueError,
+        SyntaxError,
+        Image.DecompressionBombError,
+    ) as exc:
         raise ImageContractError(
             "Image could not be decoded — unsupported or corrupt file"
         ) from exc

@@ -38,3 +38,14 @@ def test_a_frame_already_small_enough_is_returned_untouched() -> None:
 def test_an_invalid_image_raises_the_contract_error() -> None:
     with pytest.raises(ImageContractError):
         fit_long_side(b"\xff\xd8not-an-image", 512)
+
+
+def test_a_decoder_value_error_is_the_contract_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Review of plan 0089: PIL may raise ValueError or SyntaxError on a malformed image."""
+
+    def broken_resize(*_args: object, **_kwargs: object) -> None:
+        raise ValueError("bad tile")
+
+    monkeypatch.setattr(Image.Image, "resize", broken_resize)
+    with pytest.raises(ImageContractError):
+        fit_long_side(_jpeg(1280, 720), 512)
