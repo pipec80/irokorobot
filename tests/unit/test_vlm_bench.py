@@ -183,19 +183,24 @@ async def test_metrics_are_kept_even_when_the_loggers_are_at_warning(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A plain script logs at WARNING: the bench must still see vision.metrics (INFO)."""
-    for name in ("", "server", "server.vision", "server.vision.describe"):
-        monkeypatch.setattr(logging.getLogger(name), "level", logging.WARNING)
+    root = logging.getLogger()
+    monkeypatch.setattr(root, "handlers", [])
+    previous = root.level
+    root.setLevel(logging.WARNING)  # what a script without logging config has
     out = tmp_path / "bench.jsonl"
-    async with _ollama("Una pelota roja.") as client:
-        await run_cell(
-            client,
-            [BenchImage(name="ball", data=b"\xff\xd8ball")],
-            CELLS["today"],
-            mode="warm",
-            consolidation="unloaded",
-            meters=_meters(),
-            out=out,
-        )
+    try:
+        async with _ollama("Una pelota roja.") as client:
+            await run_cell(
+                client,
+                [BenchImage(name="ball", data=b"\xff\xd8ball")],
+                CELLS["today"],
+                mode="warm",
+                consolidation="unloaded",
+                meters=_meters(),
+                out=out,
+            )
+    finally:
+        root.setLevel(previous)
 
     (row,) = _lines(out)
     assert row["load_ms"] == 5
