@@ -388,8 +388,8 @@ Prompts once at startup, via `getpass` — never echoed. Works with both
 classic and streaming mode (Plan 0027 added streaming parity for the PIN
 token; there is no start-time guard between `ROBOT_OWNER_UNLOCK_PROMPT` and
 `ROBOT_STREAMING` — an older comment in `.env.example` claimed one existed,
-corrected 2026-08-26; the only real robot startup guard is
-`ROBOT_STREAMING` vs. the server's `VISION_ENABLED`, see §4).
+corrected 2026-08-26; the robot has no start-time guard at all since Plan 0089
+lifted the one between `ROBOT_STREAMING` and the server's `VISION_ENABLED`, see §4).
 **Limitation, by design:** this proves possession of the local secret, not
 the physical identity of the speaker. One-use scope and the short TTL are
 the accepted mitigation. Under ADR 0016 the PIN is not the daily path: it stays
@@ -1288,10 +1288,34 @@ front of the camera; with another face in view the robot gives the generic denia
 
 **Read.** «Iroko, lee esto» with the paper or screen beside your face reads it and offers «¿Lo
 guardo? Dime: sí, guárdalo.»; say it within 60 s to keep it as a note. Printed text reads better
-than handwriting. The first reading loads the vision model, which takes 30 to 90 s; on a busy
-laptop a reading can fail after two minutes (`vision.read_failed` in `logs/server.log` says why).
-**Today this works on the classic route only** (`ROBOT_STREAMING=false`); see the startup guard
-below.
+than handwriting. It works on both routes (Plan 0089).
+
+**What the camera sees.** «¿Qué ves?», «mira lo que tengo», «saca una foto» or «toma una foto»
+describes what is in front, never who. On streaming the robot first says «A ver, déjame mirar...»
+(`VISION_LOOK_PHRASE`) and then the description, from the turn's own frame; it needs
+`VISION_ENABLED` and `FACE_AUTHENTICATION_ENABLED` on the server and `ROBOT_FACE_AUTH_ENABLED` on
+the robot (which carry the frame). Without them it says «Ahora mismo no puedo mirar desde este
+canal.». The record keeps «[escena descrita por la cámara]», never the description. «lee» always
+reads and the other phrases always describe; «le esto» (how the speech-to-text often writes it)
+reads too.
+
+**How slow, on this laptop** (Plan 0089 bench, [record](../evals/0089-vlm-bench.md)): one
+reading or scene takes **70 to 120 s**, and a call past 120 s ends in «Perdón, ahora mismo no
+pude ver la escena.» (or the reading's failure phrase). The 2 GB GPU cannot hold the 2B vision
+model, so Ollama runs its image encoder on the processor (~1100 image tokens per frame, whatever
+the frame's size) and keeps one model loaded at a time: after a vision turn, the next
+conversation turn reloads the 3B model. Quality is right when it answers. It needs a GPU with
+more memory, a lighter vision model or a dedicated OCR (Plan 0090); `VISION_ENABLED` stays a
+choice.
+
+**Why a vision call failed.** `logs/server.log` has `vision.describe_failed` or
+`vision.read_failed` with the cause, `ollama.failed` with the phase, the status and Ollama's own
+error text (replaced by «[redacted: it repeats the request]» if it ever quotes what was sent), and
+`vision.metrics` for a good answer (load, prompt and answer time and tokens). `just ollama-log 50`
+prints the tail of Ollama's own log (an out-of-memory, an eviction), with its DEBUG lines hidden.
+One turn shares one request id from the robot's `Turn sent` line to every server line
+(`turn.start` and `pipeline.timing` with the free memory, `turn.decision` with `decide_ms`); a
+background job logs `conversation.job` with its row, model, time and outcome.
 
 ## 4. Feature-flag reference
 
@@ -1303,6 +1327,7 @@ below.
 | `FACE_AUTHENTICATION_ENABLED` | `false` | Server: attempt face resolution when a frame is attached to a protected turn |
 | `FACE_AUTHENTICATION_MATCH_THRESHOLD` | `0.5815` | Stricter, separate match bound for authentication (layered on top of `FACE_MATCH_THRESHOLD`); measured by Plan 0030, provisional |
 | `ROBOT_FACE_AUTH_ENABLED` | `false` | Robot: capture and attach one webcam frame per turn |
+| `VLM_IMAGE_MAX_SIDE`, `VLM_NUM_CTX`, `VLM_NUM_PREDICT_SCENE`, `VLM_NUM_PREDICT_READING`, `VLM_KEEP_ALIVE` | unset | Server: the vision model's allowed settings (Plan 0089). Unset, every vision call is as before; the bench found none that helps on a 2 GB GPU (the frame's size does not change the tokens), so they stay unset. A value Ollama would refuse stops the start. Ollama's own switches (flash attention, KV cache type, loaded-model limit) were not measured and are not recommended |
 | `MAX_UTTERANCE_S` | `28` | Robot (its `.env`): the longest clip one turn sends, in seconds (Plan 0080). Keep it below the server's `MAX_AUDIO_DURATION_S` (30), which refuses a longer clip whole before Whisper. At the cap the robot closes the utterance and sends it as it is, so **a story longer than 28 s is cut into turns**. A non-«no speech» 422 from the server is logged apart on the robot as a closed warning |
 | `FACE_MATCH_THRESHOLD` | `0.4` | Generic conversational face-recognition threshold (unrelated to authentication) |
 | `SPEAKER_AUTHENTICATION_ENABLED` | `false` | Server: after the owner's face matched, consult the speaker resolver once per protected turn and raise the assurance to `strong` on a verified voice; enrolment returns 503 while off, revocation always works |
@@ -1338,13 +1363,10 @@ below.
 | `VAD_REPLY_SILENCE_MS` / `REPLY_WAIT_S` | `1600` / `15` | Robot, streaming mode: end-of-speech silence and wait for speech when the robot listens once to the reply to a spoken memory offer (Plan 0067); first values to tune, see the memory dialogue above |
 | `UVICORN_WORKERS` | `1` | Must stay `1` — owner/face grants are process-local; the server refuses to start otherwise |
 
-**The one real startup guard:** `ROBOT_STREAMING=true` on the robot plus
-`VISION_ENABLED=true` on the server makes the robot refuse to start
-(`SystemExit`, checked once at boot via `check_vision_enabled()`). The guard comes from the July
-2026 audit (F-08), when streaming dropped a visual question. Today streaming answers it with a
-fixed phrase, so the guard only blocks valid uses such as «Iroko, lee esto»; Plan 0089 (drafted)
-lifts it. Until then, run the reading and «¿qué ves?» on the classic route. Every other flag
-combination above is safe to mix.
+**No startup guard between streaming and vision** (Plan 0089): the robot starts in streaming
+with server vision on and makes no `/health` call at start. Every flag combination above is safe
+to mix; a scene on streaming without the frame's switches speaks the fixed «no puedo mirar»
+phrase.
 
 ## 5. Where the evidence lives
 

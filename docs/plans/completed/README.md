@@ -163,6 +163,12 @@ hardware; the [operational board](../README.md#operational-board) has the full c
   data dictionary and `iroko-admin health`. Accepted on real hardware (schema version 20, health 0)
   on 2026-11-17; ADR 0038 `Accepted`, ADR 0032 decision 1 implemented.
   [Record](../../evals/0085-storage-foundation-acceptance.md).
+- [Plan 0089](0089-vision-model-and-streaming-scene.md) (CI selection 8936): the vision model diagnosed and measured, then «¿qué ves?» over streaming.
+  - Why an Ollama call fails and what it cost, and the trace of one turn from the robot to its background jobs.
+  - The scene from the turn's own frame after «A ver, déjame mirar...»; the robot starts in streaming with server vision on; clearer camera phrases.
+  - The bench: 70 to 120 s per frame on the laptop (the 2 GiB GPU cannot hold the vision model); the `VLM_*` settings stay unset.
+  - Closed by Pipec's decision on 2026-11-25, without a hardware sitting.
+  - [Bench](../../evals/0089-vlm-bench.md), [record](../../evals/0089-streaming-scene-acceptance.md).
 - [Plan 0088](0088-close-the-rag-gate-and-documents.md) (CI selection 8796 before the close):
   R2, the RAG closed, in two parts.
   - **Part A** (PR #306): recall's relevance gate G3, a near meaning or the question's named

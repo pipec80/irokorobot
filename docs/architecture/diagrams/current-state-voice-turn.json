@@ -43,7 +43,7 @@
       },
       {
         "id": "reading",
-        "label": "Reading by the camera",
+        "label": "Reading and the scene",
         "focus": [
           "robot",
           "api",
@@ -51,7 +51,7 @@
           "controller",
           "ollama"
         ],
-        "note": "«Iroko, lee esto»: the turn's own frame, read by the VLM and offered to keep; classic route only while the robot's F-08 guard stands."
+        "note": "The turn's frame, both routes: «lee esto» reads it; «¿qué ves?» says «A ver, déjame mirar...» and the VLM describes it (70-120 s here)."
       }
     ]
   },
@@ -350,7 +350,8 @@
       "title": "Known gaps",
       "items": [
         "No liveness or replay defense, accepted for the home (ADR 0029)",
-        "A PIN grant proves the PIN, not the speaker (ADR-0015); the 3B model's own answers are a limit (P4.1)"
+        "A PIN grant proves the PIN, not the speaker (ADR-0015); the 3B model's own answers are a limit (P4.1)",
+        "The 2 GB GPU cannot hold the VLM: 70-120 s per frame, one Ollama model at a time (Plan 0089)"
       ]
     }
   ]

@@ -841,8 +841,9 @@ un documento es dato, nunca orden.
 aceptado en hardware ([registro](../evals/0088b-documents-acceptance.md)). Con R2, el RAG queda
 cerrado. Lo que el plan cambió respecto del ADR 0034 está en su sección *Deviations made by Plan
 0088*: la respuesta es extractiva, sin modelo, y un archivo con contenido activo se rechaza entero.
-La lectura por la cámara funciona hoy solo por la ruta clásica, por la guarda F-08 del robot; el
-Plan 0089 (borrador) la lleva al streaming.
+La lectura por la cámara funciona por las dos rutas desde el Plan 0089, que quitó la guarda F-08
+del robot. En el laptop de desarrollo cada lectura tarda de 70 a 120 s (el modelo de visión no cabe
+en la GPU de 2 GB; [registro](../evals/0089-vlm-bench.md)); un OCR dedicado se pesa en el Plan 0090.
 
 ### R3 — Búsqueda lexical e híbrida
 

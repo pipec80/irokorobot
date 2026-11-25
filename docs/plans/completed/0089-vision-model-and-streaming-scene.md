@@ -1,6 +1,6 @@
 # 0089 — The vision model diagnosed, measured and tuned, then «¿qué ves?» over streaming
 
-> **Status:** **`Ready`** (written 2026-11-24). Pipec accepted all eight recommendations the same
+> **Status:** **Closed 2026-11-25 by Pipec's decision, without a hardware sitting** ([bench](../../evals/0089-vlm-bench.md), [record](../../evals/0089-streaming-scene-acceptance.md)); merged as PR #310. Written and `Ready` 2026-11-24. Pipec accepted all eight recommendations the same
 > day; see *Pipec's decisions* at the end. Execution runs in a new session, on its own branch.
 > Source: the PC-5 row of the
 > [roadmap](../../roadmap/cognitive-roadmap.md) («it decides whether scene description must work in
