@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
 _DEFAULT_LINES = 50
+_DEBUG_MARK = "level=DEBUG"
 
 
 def default_log_path(environ: Mapping[str, str]) -> Path | None:
@@ -59,8 +60,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     if path is None or not path.is_file():
         sys.stderr.write(f"Ollama log not found: {path}\n")
         return 1
+    hidden = 0
     for line in tail_lines(path, max(args.lines, 1)):
+        # With OLLAMA_DEBUG on, Ollama logs whole prompts at DEBUG: never print them.
+        if _DEBUG_MARK in line:
+            hidden += 1
+            continue
         sys.stdout.write(f"{line}\n")
+    if hidden:
+        sys.stdout.write(f"({hidden} debug line(s) hidden: they may hold prompts)\n")
     return 0
 
 

@@ -37,3 +37,23 @@ def test_a_missing_log_says_so_and_fails(
 ) -> None:
     assert main(["--path", str(tmp_path / "missing.log")]) == 1
     assert "not found" in capsys.readouterr().err
+
+
+def test_debug_lines_are_hidden_and_counted(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Review of plan 0089: with OLLAMA_DEBUG on, Ollama logs prompts; they are never shown."""
+    log = tmp_path / "server.log"
+    log.write_text(
+        'time=1 level=INFO msg="loaded runners"\n'
+        'time=2 level=DEBUG msg="chat request" prompt="qqprivadoqq"\n'
+        'time=3 level=WARN msg="evicting"\n',
+        encoding="utf-8",
+    )
+
+    assert main(["--path", str(log)]) == 0
+    out = capsys.readouterr().out
+    assert "qqprivadoqq" not in out
+    assert "loaded runners" in out
+    assert "evicting" in out
+    assert "1 debug line(s) hidden" in out
