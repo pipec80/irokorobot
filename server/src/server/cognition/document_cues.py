@@ -138,7 +138,8 @@ def classify_document_cue(message: str) -> DocumentCue | None:
 # or «por favor» around them; nothing else may be said in the same turn.
 _READING: Final = re.compile(
     r"^(?:(?:iroko|oye|a ver|por favor) )*"
-    r"(?:lee esto|leeme esto|lee lo que dice|que dice aqui|que dice aca)"
+    r"(?:lee esto|le esto|leeme esto|lee lo que dice|lee lo que tengo|lee este papel"
+    r"|lee esta pantalla|que dice aqui|que dice aca)"
     r"(?: (?:iroko|por favor))*$"
 )
 # «sí, guárdalo»: the closed answer to the reading's offer (and ADR 0021's verb).
@@ -152,7 +153,9 @@ def is_reading_request(message: str) -> bool:
         message: Raw transcript or chat text in Spanish.
 
     Returns:
-        ``True`` for «lee esto», «léeme esto», «lee lo que dice», «¿qué dice aquí / acá?».
+        ``True`` for «lee esto» (and the STT's «le esto»), «léeme esto», «lee lo que dice»,
+        «lee lo que tengo», «lee este papel», «lee esta pantalla», «¿qué dice aquí / acá?»,
+        each alone or with «Iroko», «oye», «a ver» or «por favor» around it (Plan 0089 D-10).
     """
     return bool(_READING.match(normalize_spanish(message)))
 
