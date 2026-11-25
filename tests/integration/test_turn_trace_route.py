@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 import pytest
 from server.request_context import RequestIdFilter
 
-from server import stt, system_memory
+from server import stt, system_memory, tts
 
 pytestmark = pytest.mark.integration
 
@@ -51,6 +51,8 @@ def test_a_stream_turn_carries_the_robot_s_id_free_memory_and_decision_time(
     traced: pytest.LogCaptureFixture,
 ) -> None:
     monkeypatch.setattr(stt, "transcribe", AsyncMock(return_value="¿Qué ves?"))
+    # A double: CI has no Piper model, and a failed synthesis never logs `pipeline.timing`.
+    monkeypatch.setattr(tts, "synthesize", AsyncMock(return_value=("AAAA", 42)))
     monkeypatch.setattr(system_memory, "available_ram_mb", lambda: 4321)
 
     _post(client, silence_wav_bytes, _TURN_ID)
