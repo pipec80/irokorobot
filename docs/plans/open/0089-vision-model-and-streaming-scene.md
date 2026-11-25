@@ -196,6 +196,11 @@ Each is Claude's recommendation; Pipec confirms or changes it (*Pipec's decision
   «A ver, déjame mirar...» first: it would need a second shape of `_stream_plan` (cue audio, then
   the description) for a latency not yet measured with the tuned settings. *Trigger to add it:* the
   warm scene turns of Task 11 take more than 10 s from end of speech to first audio.
+  **Amended 2026-11-25 (Pipec):** the bench met the trigger (70 to 120 s per call on the laptop),
+  so a streaming scene turn that will look speaks `VISION_LOOK_PHRASE` («A ver, déjame mirar...»)
+  at once, then calls the VLM and speaks the description in the same stream
+  (`streaming.stream_looking_plan`). The record keeps only the description's marker. A scene with
+  no frame or a switch off speaks only the fixed unavailable phrase, as before.
 - **D-3 The same switches, no new switch.** A streaming scene turn reads the frame only with
   `VISION_ENABLED` and `FACE_AUTHENTICATION_ENABLED` on the server (the second is what carries the
   frame) and `ROBOT_FACE_AUTH_ENABLED` on the robot. No memory, documents or identity are needed:
@@ -383,7 +388,8 @@ Each is Claude's recommendation; Pipec confirms or changes it (*Pipec's decision
 - A larger vision model or a handwriting OCR: the bench's handwriting `canary_ok` fails with the
   best settings (D-8).
 
-- The cue phrase on streaming (D-2): warm scene turns over 10 s to first audio.
+- ~~The cue phrase on streaming (D-2): warm scene turns over 10 s to first audio.~~ Trigger met
+  on the bench; built on 2026-11-25 (D-2 amended).
 - One-round classic scene from the turn's frame (D-9): Pipec asks, or classic becomes daily.
 - Tolerant spoken commands (D-10): a camera phrase the STT bends in more than one way in real use.
 - Another vision model or a quantization of it: the tuned `qwen3-vl:2b-instruct` still fails the
@@ -737,7 +743,7 @@ time.
 | A1 | Tú | Start the robot | It starts in streaming; no `/health` refusal in its log |
 | A2 | Yo | `ollama ps`, available memory | Baseline recorded |
 | A3 | Tú | «Hola Iroko, ¿cómo estás?» | An ordinary reply; its latency is the generic baseline |
-| A4 | Tú | «¿Qué ves?» (first of the day) | Two or three sentences in Spanish about what is in front, no identity, no voseo; latency and memory within the bench's numbers |
+| A4 | Tú | «¿Qué ves?» (first of the day) | «A ver, déjame mirar...» at once, then two or three sentences in Spanish about what is in front, no identity, no voseo; latency and memory within the bench's numbers (70 to 120 s on this laptop; a call past 120 s ends in «Perdón, ahora mismo no pude ver la escena.») |
 | A5 | Tú | Hold the cup: «Iroko, saca una foto» | The cup is described |
 | A6 | Tú | «Cuéntame algo breve.» | An ordinary reply; latency against A3 |
 | A7 | Yo | Take A4's id from the robot's log and search `logs/server.log` for it | The same id on the server's lines of that turn: `turn.start` and `pipeline.timing` with `ram_free_mb`, `turn.decision` with `decide_ms`, and `vision.metrics`. After the conversation has closed (180 s of silence), a `conversation.job` line with piece `episode` names a `row_id` that one of the sitting's `conversation.capture` lines named, with a closed outcome (`written`, `retry`...). No text in any of them |
