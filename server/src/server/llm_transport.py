@@ -15,6 +15,7 @@ from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass
 import json
 import logging
+import re
 import time
 from typing import Any, Final
 
@@ -32,6 +33,11 @@ type ChatMessage = Mapping[str, str | list[str]]
 #: The longest piece of Ollama's own ``error`` text a log line keeps (Plan 0089 D-11).
 _ERROR_TEXT_MAX: Final = 300
 _NS_PER_MS: Final = 1_000_000
+#: A logged Ollama error that repeats this many characters of the request is replaced whole.
+_ECHO_WINDOW: Final = 12
+_ECHO_MARKER: Final = "[redacted: it repeats the request]"
+#: Control characters and whitespace runs, collapsed to one space before an error is logged.
+_CONTROL_RUN: Final = re.compile(r"[\s\x00-\x1f\x7f]+")
 
 
 @dataclass(frozen=True)
@@ -79,18 +85,50 @@ def ollama_metrics(body: object) -> OllamaMetrics:
     )
 
 
-def _error_text(body: object) -> str | None:
-    """Ollama's own ``error`` field, cut to its log length; ``None`` when there is none."""
+def _echoes(error: str, sent: Sequence[str]) -> bool:
+    """Whether *error* repeats any run of ``_ECHO_WINDOW`` characters of a sent text."""
+    windows = {error[i : i + _ECHO_WINDOW] for i in range(len(error) - _ECHO_WINDOW + 1)}
+    return any(window in text for text in sent for window in windows)
+
+
+def _error_text(body: object, sent: Sequence[str] = ()) -> str | None:
+    """Ollama's own ``error`` field, safe to log; ``None`` when there is none.
+
+    Control characters and runs of whitespace become one space, so the text cannot forge a log
+    line; it is cut to ``_ERROR_TEXT_MAX``. A text that repeats any part of what was sent (a
+    proxy or a template error quoting the request) is replaced whole by a fixed marker: the
+    request's words never reach a log line (review of Plan 0089).
+
+    Args:
+        body: One decoded Ollama body or stream line.
+        sent: The texts the failed request carried (message contents, the embedded input).
+    """
     error = body.get("error") if isinstance(body, dict) else None
-    return error[:_ERROR_TEXT_MAX] if isinstance(error, str) else None
-
-
-def _response_error_text(response: httpx.Response) -> str | None:
-    """The ``error`` field of a read error response; ``None`` for a body that is not JSON."""
-    try:
-        return _error_text(response.json())
-    except ValueError:
+    if not isinstance(error, str):
         return None
+    clean = _CONTROL_RUN.sub(" ", error).strip()[:_ERROR_TEXT_MAX]
+    return _ECHO_MARKER if _echoes(clean, sent) else clean
+
+
+def _response_error_text(response: httpx.Response, sent: Sequence[str]) -> str | None:
+    """The ``error`` field of an error response; ``None`` for a body not JSON or not read."""
+    try:
+        return _error_text(response.json(), sent)
+    except (ValueError, httpx.ResponseNotRead):
+        return None
+
+
+def _sent_texts(messages: Sequence[ChatMessage]) -> list[str]:
+    """The texts a chat request carried, its images' base64 included, for the echo check."""
+    texts: list[str] = []
+    for message in messages:
+        content = message.get("content")
+        if isinstance(content, str):
+            texts.append(content)
+        images = message.get("images")
+        if isinstance(images, list):
+            texts.extend(image for image in images if isinstance(image, str))
+    return texts
 
 
 def _phase(exc: httpx.HTTPError) -> str:
@@ -139,8 +177,23 @@ def _log_failure(
     )
 
 
-def _log_http_error(exc: httpx.HTTPError, *, model: str, started: float) -> None:
-    """Log one failed request with its phase, and the status and Ollama's text when it answered."""
+def _log_http_error(
+    exc: httpx.HTTPError,
+    *,
+    model: str,
+    started: float,
+    sent: Sequence[str],
+    answered: bool = False,
+) -> None:
+    """Log one failed request with its phase, and the status and Ollama's text when it answered.
+
+    Args:
+        exc: The transport or status error.
+        model: The model called.
+        started: ``time.perf_counter()`` at the request's start.
+        sent: The texts the request carried, for the echo check of Ollama's error text.
+        answered: Whether the response had already started (a stream), so a timeout is ``read``.
+    """
     if isinstance(exc, httpx.HTTPStatusError):
         _log_failure(
             model=model,
@@ -148,10 +201,11 @@ def _log_http_error(exc: httpx.HTTPError, *, model: str, started: float) -> None
             phase="read",
             error_type=type(exc).__name__,
             status=exc.response.status_code,
-            ollama_error=_response_error_text(exc.response),
+            ollama_error=_response_error_text(exc.response, sent),
         )
         return
-    _log_failure(model=model, started=started, phase=_phase(exc), error_type=type(exc).__name__)
+    phase = "read" if answered else _phase(exc)
+    _log_failure(model=model, started=started, phase=phase, error_type=type(exc).__name__)
 
 
 def strip_json_fences(raw: str) -> str:
@@ -265,7 +319,7 @@ async def ollama_chat_measured(
         resp = await client.post(url, json=payload, timeout=timeout)
         resp.raise_for_status()
     except httpx.HTTPError as exc:
-        _log_http_error(exc, model=model, started=started)
+        _log_http_error(exc, model=model, started=started, sent=_sent_texts(messages))
         raise
     try:
         body: object = resp.json()
@@ -315,11 +369,13 @@ async def ollama_chat_stream(
     if options is not None:
         payload["options"] = options
     started = time.perf_counter()
+    answered = False
     try:
         async with client.stream("POST", url, json=payload, timeout=timeout) as resp:
             if resp.is_error:
                 await resp.aread()  # the error body holds Ollama's own cause
             resp.raise_for_status()
+            answered = True
             async for line in resp.aiter_lines():
                 if not line.strip():
                     continue
@@ -330,7 +386,7 @@ async def ollama_chat_stream(
                         started=started,
                         phase="read",
                         error_type="LLMError",
-                        ollama_error=_error_text(event),
+                        ollama_error=_error_text(event, _sent_texts(messages)),
                     )
                     raise LLMError("Ollama reported an error mid-stream")
                 if isinstance(event, dict) and "message" not in event:
@@ -339,7 +395,9 @@ async def ollama_chat_stream(
                 if delta:
                     yield delta
     except httpx.HTTPError as exc:
-        _log_http_error(exc, model=model, started=started)
+        _log_http_error(
+            exc, model=model, started=started, sent=_sent_texts(messages), answered=answered
+        )
         raise
 
 
@@ -421,7 +479,13 @@ async def _embed_body(
         resp = await client.post(f"{settings.ollama_url}/api/embed", json=payload, timeout=timeout)
         resp.raise_for_status()
     except httpx.HTTPError as exc:
-        _log_http_error(exc, model=str(payload.get("model")), started=started)
+        text = payload.get("input")
+        _log_http_error(
+            exc,
+            model=str(payload.get("model")),
+            started=started,
+            sent=[text] if isinstance(text, str) else [],
+        )
         raise
     try:
         return resp.json()

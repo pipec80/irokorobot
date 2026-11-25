@@ -64,3 +64,15 @@ async def test_a_failed_vision_call_logs_no_text(
         with caplog.at_level("DEBUG"), pytest.raises(VisionError):
             await call(client, _IMAGE)  # type: ignore[operator]  # one of the two vision calls
     _assert_no_canary(caplog)
+
+
+@pytest.mark.parametrize("call", [describe_image, read_text])
+async def test_an_error_that_echoes_the_image_logs_none_of_it(
+    call: object, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Review of plan 0089: an error body that repeats the frame's base64 is redacted whole."""
+    encoded = base64.b64encode(_IMAGE).decode("ascii")
+    async with _client(500, {"error": f"cannot decode image {encoded}"}) as client:
+        with caplog.at_level("DEBUG"), pytest.raises(VisionError):
+            await call(client, _IMAGE)  # type: ignore[operator]  # one of the two vision calls
+    _assert_no_canary(caplog)
