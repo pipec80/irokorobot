@@ -32,7 +32,7 @@ _DESCRIBE_PROMPT = (
     "Describe en español lo que ves en la imagen, en dos o tres frases "
     "cortas y naturales. Sin listas, sin encabezados, sin inglés. "
     "Describe solo evidencia visible: objetos, colores, formas, posiciones "
-    "y acciones observables. Si algo no se distingue con claridad, decilo "
+    "y acciones observables. Si algo no se distingue con claridad, dilo "
     "explícitamente en vez de adivinar. No afirmes la identidad de ninguna "
     "persona, ni su género, relación con otras personas, intención, "
     "emoción o estado mental — nada de eso se puede ver. No afirmes qué "

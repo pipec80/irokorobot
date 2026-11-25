@@ -29,6 +29,7 @@ _VOSEO_WORDS = (
     "volvé",
     "dejame",
     "decime",
+    "decilo",
     "mirá",
     "vení",
     "hablás",
