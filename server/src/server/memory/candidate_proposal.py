@@ -30,6 +30,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 import logging
 from pathlib import Path
+import time
 from typing import TYPE_CHECKING
 
 import aiosqlite
@@ -171,8 +172,9 @@ async def propose_candidates(
         dropped step, because this runs after the user already got their reply.
     """
     tally = _Tally()
+    started = time.perf_counter()
     try:
-        return await _propose(
+        outcome = await _propose(
             client,
             message,
             actor,
@@ -208,9 +210,36 @@ async def propose_candidates(
                 "correlation_id": str(event.correlation_id),
             },
         )
-        return ProposalOutcome(
+        outcome = ProposalOutcome(
             stored=tally.stored, reasons=(*tally.reasons, CandidateReason.DENIED)
         )
+    _log_proposal(outcome, event, started)
+    return outcome
+
+
+def _log_proposal(
+    outcome: ProposalOutcome, event: CognitiveEvent[TextTurnPayload], started: float
+) -> None:
+    """Log what one proposal cost: its model, time and count, never a text (Plan 0089 D-13).
+
+    It runs as a background task of its request, so the line also carries that request's id.
+    """
+    elapsed_ms = int((time.perf_counter() - started) * 1000)
+    model = settings.consolidation_model or settings.ollama_model
+    logger.info(
+        "Memory proposal: stored=%d model=%s elapsed_ms=%d",
+        outcome.stored,
+        model,
+        elapsed_ms,
+        extra={
+            "event": "memory.proposal",
+            "stored": outcome.stored,
+            "reasons": [reason.value for reason in outcome.reasons],
+            "model": model,
+            "elapsed_ms": elapsed_ms,
+            "correlation_id": str(event.correlation_id),
+        },
+    )
 
 
 def _refusal_before_voice(

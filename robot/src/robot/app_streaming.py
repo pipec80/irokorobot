@@ -187,9 +187,9 @@ async def _audio_chunks(
 async def on_speaking_stream(ctx: LoopContext) -> RobotState:
     """Streaming variant of SPEAKING: validate and drain the queued audio.
 
-    No LOOKING transition here — vision-intent turns are not part of the
-    streaming protocol (see server/streaming.py), so a streaming turn always
-    returns to IDLE once every sentence has played and the stream validated.
+    No LOOKING transition here: on streaming the server answers a visual question from the
+    turn's own frame in the same request (Plan 0089), so a streaming turn always returns to IDLE
+    once every sentence has played and the stream validated.
     """
     if ctx.stream_events is None:
         return RobotState.IDLE

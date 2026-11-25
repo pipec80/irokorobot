@@ -11,6 +11,7 @@ never written to a trace line.
 
 import logging
 
+from server import system_memory
 from server.cognition.identity import ActivePersonContext
 from server.cognition.response_plan import ResponsePlan
 
@@ -44,34 +45,54 @@ def log_actor(channel: str, actor: ActivePersonContext) -> None:
     )
 
 
-def log_decision(channel: str, plan: ResponsePlan | None) -> None:
+def log_start(channel: str) -> None:
+    """Log that one turn started, with the machine's free memory (Plan 0089 D-13).
+
+    Args:
+        channel: Adapter that owns the turn, e.g. ``"voice"`` or ``"stream"``.
+    """
+    ram_free_mb = system_memory.available_ram_mb()
+    logger.info(
+        "Turn start: channel=%s ram_free_mb=%s",
+        channel,
+        ram_free_mb,
+        extra={"event": "turn.start", "channel": channel, "ram_free_mb": ram_free_mb},
+    )
+
+
+def log_decision(channel: str, plan: ResponsePlan | None, *, decide_ms: int | None = None) -> None:
     """Log the controller outcome without exposing any protected value.
 
     Args:
         channel: Adapter that owns the turn.
         plan: Immutable response plan, or ``None`` when the controller returned
             no plan and the channel must run its own generation.
+        decide_ms: How long the identity check and the controller took, from the end of the
+            speech-to-text to the decision (Plan 0089 D-13), when the adapter measured it.
     """
     if plan is None:
         logger.info(
-            "Turn decision: channel=%s outcome=no-plan-channel-generates",
+            "Turn decision: channel=%s outcome=no-plan-channel-generates decide_ms=%s",
             channel,
+            decide_ms,
             extra={
                 "event": "turn.decision",
                 "channel": channel,
                 "outcome": "no-plan-channel-generates",
+                "decide_ms": decide_ms,
             },
         )
         return
     tools = ",".join(result.tool_name for result in plan.tool_results) or _ABSENT
     logger.info(
-        "Turn decision: channel=%s need=%s status=%s source=%s tools=%s llm_ms=%d",
+        "Turn decision: channel=%s need=%s status=%s source=%s tools=%s llm_ms=%d decide_ms=%s",
         channel,
         plan.need.value,
         plan.status.value,
         plan.source.value,
         tools,
         plan.duration_ms,
+        decide_ms,
         extra={
             "event": "turn.decision",
             "channel": channel,
@@ -80,6 +101,7 @@ def log_decision(channel: str, plan: ResponsePlan | None) -> None:
             "source": plan.source.value,
             "tools": tools,
             "llm_ms": plan.duration_ms,
+            "decide_ms": decide_ms,
         },
     )
 

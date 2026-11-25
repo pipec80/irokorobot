@@ -15,8 +15,8 @@ async def health() -> HealthResponse:
 
     It checks nothing else: not the STT/TTS models, not the database, not
     the lifespan. Use `GET /ready` for that. The `vision_enabled` flag is
-    static config the robot reads across the client/server boundary, not a
-    health signal.
+    static config reported for operators, not a health signal; the robot no
+    longer reads it at start (Plan 0089).
     """
     return HealthResponse(vision_enabled=settings.vision_enabled)
 

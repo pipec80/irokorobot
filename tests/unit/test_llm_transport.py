@@ -8,6 +8,7 @@ client over ``httpx.MockTransport`` rather than monkeypatching the
 
 from collections.abc import AsyncIterator, Callable
 import json
+import logging
 
 import httpx
 import pytest
@@ -332,3 +333,319 @@ async def test_ollama_token_count_rejects_a_body_without_a_count(body: object) -
     async with _mock_client(handler) as client:
         with pytest.raises(LLMError):
             await llm_transport.ollama_token_count(client, "hola", model="nomic")
+
+
+# --- Plan 0089 D-11: an Ollama failure says why, and a good answer says what it cost ---
+
+_OOM = "model requires more system memory (5.1 GiB) than is available (3.2 GiB)"
+
+
+def _failures(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    return [r for r in caplog.records if getattr(r, "event", None) == "ollama.failed"]
+
+
+@pytest.mark.unit
+async def test_an_ollama_error_status_logs_its_cause_and_still_raises(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, json={"error": _OOM})
+
+    async with _mock_client(handler) as client:
+        with (
+            caplog.at_level("WARNING", logger="server.llm_transport"),
+            pytest.raises(httpx.HTTPStatusError),
+        ):
+            await llm_transport.ollama_chat(client, [], model="qwen3-vl:2b-instruct")
+
+    (record,) = _failures(caplog)
+    assert record.status == 500  # type: ignore[attr-defined]  # set through ``extra``
+    assert record.ollama_error == _OOM  # type: ignore[attr-defined]
+    assert record.phase == "read"  # type: ignore[attr-defined]
+    assert record.model == "qwen3-vl:2b-instruct"  # type: ignore[attr-defined]
+    assert isinstance(record.elapsed_ms, int)  # type: ignore[attr-defined]
+    assert _OOM in record.getMessage()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "error, phase",
+    [
+        (httpx.ConnectError("refused"), "connect"),
+        (httpx.ConnectTimeout("no route"), "connect"),
+        (httpx.ReadTimeout("slow"), "first_byte"),
+    ],
+)
+async def test_a_transport_failure_logs_its_phase(
+    error: httpx.HTTPError, phase: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        raise error
+
+    async with _mock_client(handler) as client:
+        with (
+            caplog.at_level("WARNING", logger="server.llm_transport"),
+            pytest.raises(type(error)),
+        ):
+            await llm_transport.ollama_chat(client, [], model="qwen2.5:3b")
+
+    (record,) = _failures(caplog)
+    assert record.phase == phase  # type: ignore[attr-defined]
+    assert record.status is None  # type: ignore[attr-defined]
+    assert record.error_type == type(error).__name__  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+async def test_a_midstream_error_line_logs_ollama_s_text(caplog: pytest.LogCaptureFixture) -> None:
+    handler = _stream_handler(
+        ['{"message": {"content": "Hola"}}', '{"error": "model runner has unexpectedly stopped"}']
+    )
+    async with _mock_client(handler) as client:
+        with (
+            caplog.at_level("WARNING", logger="server.llm_transport"),
+            pytest.raises(LLMError, match="mid-stream"),
+        ):
+            await _drain([], llm_transport.ollama_chat_stream(client, [], model="qwen2.5:3b"))
+
+    (record,) = _failures(caplog)
+    assert record.ollama_error == "model runner has unexpectedly stopped"  # type: ignore[attr-defined]
+    assert record.phase == "read"  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+async def test_an_error_status_on_a_stream_logs_its_cause(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"error": 'model "nope" not found, try pulling it first'})
+
+    async with _mock_client(handler) as client:
+        with (
+            caplog.at_level("WARNING", logger="server.llm_transport"),
+            pytest.raises(httpx.HTTPStatusError),
+        ):
+            await _drain([], llm_transport.ollama_chat_stream(client, [], model="nope"))
+
+    (record,) = _failures(caplog)
+    assert record.status == 404  # type: ignore[attr-defined]
+    assert "not found" in record.ollama_error  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+async def test_ollama_s_error_text_is_cut_to_300_characters(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, json={"error": "x" * 900})
+
+    async with _mock_client(handler) as client:
+        with (
+            caplog.at_level("WARNING", logger="server.llm_transport"),
+            pytest.raises(httpx.HTTPStatusError),
+        ):
+            await llm_transport.ollama_chat(client, [], model="qwen2.5:3b")
+
+    (record,) = _failures(caplog)
+    assert len(record.ollama_error) == 300  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+async def test_a_non_json_error_body_logs_no_ollama_text(caplog: pytest.LogCaptureFixture) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(502, text="<html>bad gateway</html>")
+
+    async with _mock_client(handler) as client:
+        with (
+            caplog.at_level("WARNING", logger="server.llm_transport"),
+            pytest.raises(httpx.HTTPStatusError),
+        ):
+            await llm_transport.ollama_chat(client, [], model="qwen2.5:3b")
+
+    (record,) = _failures(caplog)
+    assert record.ollama_error is None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_ollama_metrics_reads_durations_in_milliseconds() -> None:
+    body = {
+        "message": {"content": "x"},
+        "total_duration": 2_500_000_000,
+        "load_duration": 1_200_000_000,
+        "prompt_eval_count": 812,
+        "prompt_eval_duration": 900_000_000,
+        "eval_count": 41,
+        "eval_duration": 350_000_000,
+    }
+    assert llm_transport.ollama_metrics(body) == llm_transport.OllamaMetrics(
+        load_ms=1200,
+        prompt_eval_count=812,
+        prompt_eval_ms=900,
+        eval_count=41,
+        eval_ms=350,
+        total_ms=2500,
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("body", [{"message": {"content": "x"}}, [], {"eval_count": "41"}])
+def test_missing_or_bad_metrics_are_none(body: object) -> None:
+    metrics = llm_transport.ollama_metrics(body)
+    assert metrics == llm_transport.OllamaMetrics(None, None, None, None, None, None)
+
+
+@pytest.mark.unit
+async def test_ollama_chat_measured_returns_the_text_and_its_metrics() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json={"message": {"content": "hola"}, "eval_count": 3, "eval_duration": 4_000_000}
+        )
+
+    async with _mock_client(handler) as client:
+        text, metrics = await llm_transport.ollama_chat_measured(client, [], model="qwen2.5:3b")
+
+    assert text == "hola"
+    assert metrics.eval_count == 3
+    assert metrics.eval_ms == 4
+
+
+# --- review of plan 0089: Ollama's error text never echoes the request, and never forges a line ---
+
+_ECHOED = "mi hija qqprivadoqq va al dentista el jueves"
+
+
+@pytest.mark.unit
+async def test_an_error_that_echoes_the_chat_request_is_redacted(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, json={"error": f'bad input in messages[0]: "{_ECHOED}"'})
+
+    async with _mock_client(handler) as client:
+        with (
+            caplog.at_level("WARNING", logger="server.llm_transport"),
+            pytest.raises(httpx.HTTPStatusError),
+        ):
+            await llm_transport.ollama_chat(
+                client, [{"role": "user", "content": _ECHOED}], model="qwen2.5:3b"
+            )
+
+    (record,) = _failures(caplog)
+    assert "qqprivadoqq" not in record.getMessage() + repr(vars(record))
+    assert record.ollama_error == "[redacted: it repeats the request]"  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+async def test_an_error_that_echoes_the_embedded_text_is_redacted(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, json={"error": f"input too long: {_ECHOED[5:40]}"})
+
+    async with _mock_client(handler) as client:
+        with (
+            caplog.at_level("WARNING", logger="server.llm_transport"),
+            pytest.raises(httpx.HTTPStatusError),
+        ):
+            await llm_transport.ollama_embed(client, _ECHOED, model="granite")
+
+    (record,) = _failures(caplog)
+    assert "qqprivadoqq" not in record.getMessage() + repr(vars(record))
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("where", ["status", "mid_stream"])
+async def test_a_stream_error_that_echoes_the_request_is_redacted(
+    where: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    echo = f"template failed near {_ECHOED}"
+
+    def status_error(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, json={"error": echo})
+
+    handler: Callable[[httpx.Request], httpx.Response] = status_error
+    if where == "mid_stream":
+        handler = _stream_handler(['{"message": {"content": "Hola"}}', json.dumps({"error": echo})])
+
+    async with _mock_client(handler) as client:
+        with (
+            caplog.at_level("WARNING", logger="server.llm_transport"),
+            pytest.raises((httpx.HTTPStatusError, LLMError)),
+        ):
+            await _drain(
+                [],
+                llm_transport.ollama_chat_stream(
+                    client, [{"role": "user", "content": _ECHOED}], model="qwen2.5:3b"
+                ),
+            )
+
+    (record,) = _failures(caplog)
+    assert "qqprivadoqq" not in record.getMessage() + repr(vars(record))
+
+
+@pytest.mark.unit
+async def test_control_characters_in_the_error_cannot_forge_a_line(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, json={"error": "boom\n2026 INFO fake line\r\x1b[31mred"})
+
+    async with _mock_client(handler) as client:
+        with (
+            caplog.at_level("WARNING", logger="server.llm_transport"),
+            pytest.raises(httpx.HTTPStatusError),
+        ):
+            await llm_transport.ollama_chat(client, [], model="qwen2.5:3b")
+
+    (record,) = _failures(caplog)
+    assert record.ollama_error == "boom 2026 INFO fake line [31mred"  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+async def test_a_redirect_on_the_stream_keeps_the_status_error_type(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            308, headers={"location": "https://elsewhere/api/chat"}, stream=_UnreadBody()
+        )
+
+    async with _mock_client(handler) as client:
+        with (
+            caplog.at_level("WARNING", logger="server.llm_transport"),
+            pytest.raises(httpx.HTTPStatusError),
+        ):
+            await _drain([], llm_transport.ollama_chat_stream(client, [], model="qwen2.5:3b"))
+
+    (record,) = _failures(caplog)
+    assert record.status == 308  # type: ignore[attr-defined]
+
+
+class _UnreadBody(httpx.AsyncByteStream):
+    """A streamed body nobody has read yet, as a real server's redirect arrives."""
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        yield b"moved"
+
+
+class _StallsAfterOneLine(httpx.AsyncByteStream):
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        yield b'{"message": {"content": "Hola"}}\n'
+        raise httpx.ReadTimeout("stalled")
+
+
+@pytest.mark.unit
+async def test_a_timeout_in_the_middle_of_a_stream_is_phase_read(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, stream=_StallsAfterOneLine())
+
+    async with _mock_client(handler) as client:
+        with (
+            caplog.at_level("WARNING", logger="server.llm_transport"),
+            pytest.raises(httpx.ReadTimeout),
+        ):
+            await _drain([], llm_transport.ollama_chat_stream(client, [], model="qwen2.5:3b"))
+
+    (record,) = _failures(caplog)
+    assert record.phase == "read"  # type: ignore[attr-defined]

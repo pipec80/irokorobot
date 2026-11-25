@@ -59,7 +59,9 @@ from server.cognition.response_plan import (
     SensitiveReader,
     SensitiveReply,
     TextTurnPayload,
+    current_perception_plan,
     recorded_exchange,
+    scene_failed_plan,
     scene_unavailable_plan,
     spoken_log_text,
     unclear_speech_plan,
@@ -122,7 +124,12 @@ from server.routers.image_upload import read_contract_image
 from server.schemas import IdentitySource, TranscribeResponse, error_responses
 from server.schemas_streaming import StreamEvent
 from server.settings import settings
-from server.streaming import guarantee_terminal_event, stream_pipeline, stream_response_plan
+from server.streaming import (
+    guarantee_terminal_event,
+    stream_looking_plan,
+    stream_pipeline,
+    stream_response_plan,
+)
 from server.stt import SHORT_REPLY_HOTWORDS
 from server.text_turn import (
     ProfileCardProvider,
@@ -134,6 +141,7 @@ from server.text_turn import (
     process_text_turn,
 )
 from server.uploads import read_limited_upload
+from server.vision.perception import perceive_scene
 from server.vision.read_text import read_text
 
 logger = logging.getLogger(__name__)
@@ -940,6 +948,33 @@ async def _classic_reply(
     )
 
 
+def _scene_on() -> bool:
+    """Whether a streaming scene turn may read its frame (Plan 0089 D-3).
+
+    The frame travels only with face authentication on; no memory, document or identity is
+    needed, because a scene description reads no household store.
+    """
+    return settings.vision_enabled and settings.face_authentication_enabled
+
+
+async def _look(client: httpx.AsyncClient, frame: bytes) -> ResponsePlan:
+    """Describe the scene from the turn's own frame (Plan 0089 D-4); never raises.
+
+    Args:
+        client: Shared, lifecycle-owned HTTP client (Plan 0039).
+        frame: The turn's validated frame (JPEG/PNG/WebP/GIF/BMP, max 1280x720). Processed in
+            memory and never stored or logged.
+
+    Returns:
+        The description, or the fixed failure phrase when the vision model fails (its cause is
+        already logged).
+    """
+    try:
+        return current_perception_plan(await perceive_scene(client, frame))
+    except VisionError:
+        return scene_failed_plan()
+
+
 def _stream_plan(
     plan: ResponsePlan,
     *,
@@ -1032,6 +1067,7 @@ async def transcribe(
         HTTPException: 413 for size, 422 for WAV/speech, or 500 for STT/TTS.
     """
     request_start = time.perf_counter()
+    turn_log.log_start("voice")
     frame_bytes: bytes | None = None
     if settings.face_authentication_enabled and frame is not None:
         try:
@@ -1191,6 +1227,7 @@ async def transcribe_stream(
         HTTPException: 413 for size, 422 for WAV/speech, or 500 for STT.
     """
     request_start = time.perf_counter()
+    turn_log.log_start("stream")
     frame_bytes: bytes | None = None
     if settings.face_authentication_enabled and frame is not None:
         try:
@@ -1207,13 +1244,14 @@ async def transcribe_stream(
     text_heard, stt_ms, unclear = await _transcribe_turn(
         audio_bytes, list(SHORT_REPLY_HOTWORDS) if short_reply else []
     )
+    decide_started = time.perf_counter()
 
     if not text_heard.strip():
         logger.warning("STT returned empty transcript — audio was silence or too short")
         raise HTTPException(status_code=422, detail="No speech detected in audio")
     if unclear:
         unclear_plan = unclear_speech_plan(expects_short_reply=short_reply)
-        turn_log.log_decision("stream", unclear_plan)
+        turn_log.log_decision("stream", unclear_plan, decide_ms=_elapsed_ms(decide_started))
         return _stream_plan(
             unclear_plan,
             text_heard=text_heard,
@@ -1232,15 +1270,35 @@ async def transcribe_stream(
         recall_answerer=_recall_answerer(resources.http_client),
         frame=frame_bytes,
     ).decide(event)
-    # Streaming has no second-round frame upload — a scene request always
-    # gets the fixed unavailable plan, regardless of VISION_ENABLED.
-    plan: ResponsePlan | None = (
-        scene_unavailable_plan() if isinstance(decision, SceneDescriptionRequest) else decision
-    )
-    turn_log.log_decision("stream", plan)
     record_turn = _turn_recorder(
         background_tasks, event=event, wav_bytes=audio_bytes, client=resources.http_client
     )
+    if isinstance(decision, SceneDescriptionRequest) and _scene_on() and frame_bytes is not None:
+        # The scene is described from the turn's own frame, after a spoken cue (Plan 0089 D-2).
+        turn_frame = frame_bytes
+
+        def decided(plan: ResponsePlan) -> None:
+            turn_log.log_decision("stream", plan, decide_ms=_elapsed_ms(decide_started))
+            _record_plan(record_turn, event.payload.message, plan, request_identity)
+
+        return NDJSONStreamingResponse(
+            guarantee_terminal_event(
+                stream_looking_plan(
+                    text_heard=event.payload.message,
+                    cue=settings.vision_look_phrase,
+                    look=lambda: _look(resources.http_client, turn_frame),
+                    on_plan=decided,
+                    stt_ms=stt_ms,
+                    request_start=request_start,
+                    authentication_consumed=request_identity.consumed,
+                    identity_source=request_identity.identity_source,
+                )
+            )
+        )
+    plan: ResponsePlan | None = (
+        scene_unavailable_plan() if isinstance(decision, SceneDescriptionRequest) else decision
+    )
+    turn_log.log_decision("stream", plan, decide_ms=_elapsed_ms(decide_started))
     if plan is not None:
         _record_plan(record_turn, event.payload.message, plan, request_identity)
         return _stream_plan(

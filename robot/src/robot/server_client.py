@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import json
 import logging
+from uuid import uuid4
 
 import httpx
 
@@ -45,6 +46,30 @@ def _no_speech_error(response: httpx.Response) -> NoSpeechError:
             "Server refused the audio (%d): not a speech-detection result", response.status_code
         )
     return NoSpeechError("Server heard no speech in the audio")
+
+
+def _turn_headers(identity_token: str | None = None) -> dict[str, str]:
+    """Name one request with a new id, log it, and build its headers (Plan 0089 D-13).
+
+    The server keeps a valid ``X-Request-ID`` on every line of that request, so the robot's log
+    and the server's join on it. The id names the request only; it carries nothing of the turn.
+
+    Args:
+        identity_token: Optional one-use owner unlock token. Never inspected or logged here.
+
+    Returns:
+        ``X-Request-ID`` and, when a token is given, ``X-Iroko-Identity-Token``.
+    """
+    request_id = str(uuid4())
+    logger.info(
+        "Turn sent: request_id=%s",
+        request_id,
+        extra={"event": "robot.turn_sent", "turn_request_id": request_id},
+    )
+    headers = {"X-Request-ID": request_id}
+    if identity_token:
+        headers["X-Iroko-Identity-Token"] = identity_token
+    return headers
 
 
 def _get_client() -> httpx.AsyncClient:
@@ -135,7 +160,7 @@ async def transcribe(
     if not audio:
         raise ValueError("Audio bytes are empty")
     client = _get_client()
-    headers = {"X-Iroko-Identity-Token": identity_token} if identity_token else None
+    headers = _turn_headers(identity_token)
     files: dict[str, tuple[str, bytes, str]] = {"audio": ("audio.wav", audio, "audio/wav")}
     if frame is not None:
         files["frame"] = ("frame.jpg", frame, "image/jpeg")
@@ -189,33 +214,6 @@ async def unlock_owner(pin: str) -> OwnerUnlockResult:
     )
 
 
-async def check_vision_enabled() -> bool:
-    """Ask GET /health whether the server has vision (VLM) enabled.
-
-    Used only at robot startup when ``settings.robot_streaming`` is True, to
-    guard against the unsupported streaming + vision combination (F-08 in
-    docs/c-audit/auditoria-forense-codigo-2026-07-21.md) — the robot asks the
-    API it already calls instead of reading the server's own settings, which
-    would cross the client/server boundary.
-
-    Returns:
-        True if the server reports ``vision_enabled``. Missing field (older
-        server) is treated as False.
-
-    Raises:
-        ServerError: If the server is unreachable or returns non-200.
-    """
-    client = _get_client()
-    try:
-        response = await client.get(f"{settings.server_url}/health")
-        response.raise_for_status()
-    except httpx.HTTPStatusError as exc:
-        raise ServerError(f"Server returned {exc.response.status_code}") from exc
-    except httpx.RequestError as exc:
-        raise ServerError("Could not reach server") from exc
-    return bool(response.json().get("vision_enabled", False))
-
-
 async def respond_vision(text: str, image: bytes) -> TranscribeResult:
     """Send a camera frame plus the visual question to /vision/respond.
 
@@ -244,6 +242,7 @@ async def respond_vision(text: str, image: bytes) -> TranscribeResult:
             f"{settings.server_url}/vision/respond",
             files={"image": ("frame.jpg", image, "image/jpeg")},
             data={"text": text},
+            headers=_turn_headers(),
         )
         response.raise_for_status()
     except httpx.HTTPStatusError as exc:
@@ -295,7 +294,7 @@ async def transcribe_stream(
     if not audio:
         raise ValueError("Audio bytes are empty")
     client = _get_client()
-    headers = {"X-Iroko-Identity-Token": identity_token} if identity_token else None
+    headers = _turn_headers(identity_token)
     files: dict[str, tuple[str, bytes, str]] = {"audio": ("audio.wav", audio, "audio/wav")}
     if frame is not None:
         files["frame"] = ("frame.jpg", frame, "image/jpeg")

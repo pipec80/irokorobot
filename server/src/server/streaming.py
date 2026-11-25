@@ -14,10 +14,11 @@ Vision-intent turns (V0.5) are not handled here — that stub-turn branch
 stays exclusive to classic /transcribe (see app.py's robot_streaming flag).
 """
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 import json
 import logging
 import time
+from typing import Final
 
 import httpx
 
@@ -64,6 +65,10 @@ from server.text_turn import (
 from server.user_emotion import classify_user_emotion
 
 logger = logging.getLogger(__name__)
+
+#: The emotion event of a turn that looks before it answers: a scene plan's own (the
+#: ``ResponsePlan`` default), sent before the plan exists.
+_LOOKING_EMOTION: Final = "neutral"
 
 
 async def _text_deltas(client: httpx.AsyncClient, inputs: PreparedTextTurn) -> AsyncIterator[str]:
@@ -206,20 +211,97 @@ async def stream_response_plan(
     """
     yield StreamTextHeardEvent(value=text_heard).model_dump_json() + "\n"
     yield StreamEmotionEvent(value=plan.emotion).model_dump_json() + "\n"
+    async for line in _speak_plan_and_close(
+        plan,
+        stt_ms=stt_ms,
+        request_start=request_start,
+        authentication_consumed=authentication_consumed,
+        identity_source=identity_source,
+    ):
+        yield line
+
+
+async def stream_looking_plan(  # the plan stream's arguments, the cue and the look
+    *,
+    text_heard: str,
+    cue: str,
+    look: Callable[[], Awaitable[ResponsePlan]],
+    on_plan: Callable[[ResponsePlan], None],
+    stt_ms: int,
+    request_start: float,
+    authentication_consumed: bool = False,
+    identity_source: IdentitySource | None = None,
+) -> AsyncIterator[str]:
+    """Speak a fixed cue at once, then the plan *look* decides (Plan 0089, D-2 amended).
+
+    A scene turn calls the vision model, which takes far longer than a turn may stay silent, so
+    the cue («A ver, déjame mirar...») is spoken before the camera looks.
+
+    Args:
+        text_heard: What the speech-to-text heard.
+        cue: The fixed phrase spoken first.
+        look: Decides the turn's plan (the vision call); it never raises.
+        on_plan: Called once with the decided plan, before it is spoken (its log and record).
+        stt_ms: Speech-to-text milliseconds.
+        request_start: ``time.perf_counter()`` at the start of the request.
+        authentication_consumed: See ``stream_response_plan``.
+        identity_source: See ``stream_response_plan``.
+
+    Yields:
+        NDJSON text, a neutral emotion, the cue's 16kHz mono int16 WAV audio, the plan's audio,
+        and the final timing event.
+    """
+    yield StreamTextHeardEvent(value=text_heard).model_dump_json() + "\n"
+    yield StreamEmotionEvent(value=_LOOKING_EMOTION).model_dump_json() + "\n"
+    cue_audio, cue_ms = await tts.synthesize(cue)
+    log_spoken(cue)
+    cue_event = StreamAudioEvent(text=cue, audio_base64=cue_audio, duration_ms=cue_ms)
+    yield cue_event.model_dump_json() + "\n"
+    plan = await look()
+    on_plan(plan)
+    async for line in _speak_plan_and_close(
+        plan,
+        stt_ms=stt_ms,
+        request_start=request_start,
+        authentication_consumed=authentication_consumed,
+        identity_source=identity_source,
+        spoken_before_ms=cue_ms,
+    ):
+        yield line
+
+
+async def _speak_plan_and_close(  # the done event's fields
+    plan: ResponsePlan,
+    *,
+    stt_ms: int,
+    request_start: float,
+    authentication_consumed: bool,
+    identity_source: IdentitySource | None,
+    spoken_before_ms: int = 0,
+) -> AsyncIterator[str]:
+    """Speak *plan* as one 16kHz mono int16 WAV audio event, then log its timing and close.
+
+    Args:
+        plan: The plan to speak.
+        stt_ms: Speech-to-text milliseconds.
+        request_start: ``time.perf_counter()`` at the start of the request.
+        authentication_consumed: Carried on the terminal ``done`` event.
+        identity_source: Carried on the terminal ``done`` event.
+        spoken_before_ms: Synthesis already spent on this turn (a cue), added to ``tts_ms``.
+    """
     audio_base64, duration_ms = await tts.synthesize(plan.response)
     log_spoken(plan.response if (marker := spoken_log_text(plan)) is None else marker)
     audio_event = StreamAudioEvent(
         text=plan.response, audio_base64=audio_base64, duration_ms=duration_ms
     )
     yield audio_event.model_dump_json() + "\n"
+    tts_ms = spoken_before_ms + duration_ms
     total_ms = _elapsed_ms(request_start)
-    _log_pipeline_timing(
-        f"stream.{plan.source.value}", stt_ms, plan.duration_ms, duration_ms, total_ms
-    )
+    _log_pipeline_timing(f"stream.{plan.source.value}", stt_ms, plan.duration_ms, tts_ms, total_ms)
     done_event = StreamDoneEvent(
         stt_ms=stt_ms,
         llm_ms=plan.duration_ms,
-        tts_ms=duration_ms,
+        tts_ms=tts_ms,
         total_ms=total_ms,
         authentication_consumed=authentication_consumed,
         identity_source=identity_source,

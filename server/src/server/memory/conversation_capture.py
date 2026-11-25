@@ -149,7 +149,7 @@ async def capture_turn(
         pending = decide_pending(turn)
         indexed = _Indexed()
         now = clock()
-        await append_turn(
+        record_id = await append_turn(
             turn,
             owner_entity_id=owner_id,
             now=now,
@@ -173,7 +173,9 @@ async def capture_turn(
         )
         return _logged(CaptureOutcome.FAILED, verdict, event)
     logged_occurred = indexed.occurred if occurred_time_on() else None
-    return _logged(CaptureOutcome.RECORDED, verdict, event, occurred=logged_occurred)
+    return _logged(
+        CaptureOutcome.RECORDED, verdict, event, occurred=logged_occurred, record_id=record_id
+    )
 
 
 @dataclass
@@ -252,11 +254,14 @@ def _logged(
     event: CognitiveEvent[TextTurnPayload],
     *,
     occurred: bool | None = None,
+    record_id: int | None = None,
 ) -> CaptureOutcome:
     """Log one capture with its closed outcome and verdict; never a text nor a date.
 
     With the occurred time on, the caller passes whether a recorded capture's unit got an
-    interval (Plan 0083 D-14); off, it passes ``None`` and the line is today's.
+    interval (Plan 0083 D-14); off, it passes ``None`` and the line is today's. A recorded
+    capture names the conversation record it wrote, so a background job's line joins the turn
+    (Plan 0089 D-13).
     """
     logger.info(
         "Conversation capture: %s",
@@ -266,6 +271,7 @@ def _logged(
             "outcome": outcome,
             "verdict": verdict,
             "correlation_id": str(event.correlation_id),
+            "record_id": record_id,
             **({} if occurred is None else {"occurred": occurred}),
         },
     )

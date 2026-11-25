@@ -16,6 +16,7 @@ from server.cognition.intent_resolution import resolve_information_need
 from server.cognition.response_plan import InformationNeed
 from server.exceptions import VisionError
 from server.memory.reading_offer import ReadingSlot
+from server.settings import settings
 from server.vision.read_text import READ_PROMPT, read_text
 
 pytestmark = pytest.mark.unit
@@ -145,3 +146,74 @@ def test_clearing_empties_the_slot() -> None:
 
     assert slot.take(7, _NOW) is None
     assert "zzuno" not in repr(slot)
+
+
+async def test_a_good_reading_logs_vision_metrics(caplog: pytest.LogCaptureFixture) -> None:
+    """Plan 0089 D-11: the reading says what it cost, in milliseconds and counts."""
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        body = {
+            "message": {"role": "assistant", "content": "Leche 1 L"},
+            "load_duration": 3_000_000,
+            "eval_count": 5,
+            "eval_duration": 7_000_000,
+        }
+        return httpx.Response(200, json=body)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with caplog.at_level("INFO", logger="server.vision.read_text"):
+            await read_text(client, b"\xff\xd8canary")
+
+    (record,) = [r for r in caplog.records if getattr(r, "event", None) == "vision.metrics"]
+    assert record.capability == "reading"  # type: ignore[attr-defined]  # set through ``extra``
+    assert record.load_ms == 3  # type: ignore[attr-defined]
+    assert record.eval_count == 5  # type: ignore[attr-defined]
+    assert record.eval_ms == 7  # type: ignore[attr-defined]
+    assert record.total_ms is None  # type: ignore[attr-defined]
+    assert "canary" not in record.getMessage()
+
+
+@pytest.fixture
+def neutral_vlm(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in (
+        "vlm_image_max_side",
+        "vlm_num_ctx",
+        "vlm_num_predict_scene",
+        "vlm_num_predict_reading",
+        "vlm_keep_alive",
+    ):
+        monkeypatch.setattr(settings, name, None)
+
+
+def _capturing(sent: list[dict[str, object]]) -> httpx.AsyncClient:
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(json.loads(request.content))
+        return httpx.Response(200, json={"message": {"role": "assistant", "content": "Leche"}})
+
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+
+async def test_unset_settings_send_today_s_reading_payload(neutral_vlm: None) -> None:
+    """Plan 0089 D-12: unset, the reading payload is byte-identical to before."""
+    sent: list[dict[str, object]] = []
+    async with _capturing(sent) as client:
+        await read_text(client, b"\xff\xd8canary")
+
+    (payload,) = sent
+    assert set(payload) == {"model", "messages", "stream", "options"}
+    assert payload["options"] == {"temperature": 0.0}
+
+
+async def test_the_reading_cap_and_context_reach_the_reading(
+    neutral_vlm: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "vlm_num_predict_reading", 400)
+    monkeypatch.setattr(settings, "vlm_num_predict_scene", 120)
+    monkeypatch.setattr(settings, "vlm_num_ctx", 4096)
+    monkeypatch.setattr(settings, "vlm_keep_alive", "10m")
+    sent: list[dict[str, object]] = []
+    async with _capturing(sent) as client:
+        await read_text(client, b"\xff\xd8canary")
+
+    assert sent[0]["options"] == {"temperature": 0.0, "num_ctx": 4096, "num_predict": 400}
+    assert sent[0]["keep_alive"] == "10m"

@@ -14,6 +14,14 @@
 > - a stress test of the vision model, which has never been measured;
 > - a tuning of the model's allowed settings (no fine-tuning, no other model).
 >
+> **Amended 2026-11-24 (Pipec's second round, same day).** Pipec's first need is that the robot
+> reads papers (a letter, a notice, an electricity bill) without a scanner and explains them. That
+> behaviour is the next plan, **0090** (*Deferred*). This plan grows only in what measures and sees:
+> - **D-13**, an end-to-end trace of one turn, from the robot to the background jobs (Task 1b);
+> - **D-8 widened**: the bench also measures what the current vision model can read (a bill,
+>   handwriting, a QR code or a barcode on paper, common objects). Handwriting is measured, not
+>   built.
+>
 > **One plan, in this order (Pipec's decision):** diagnose, measure, tune, then streaming. Only the
 > vision model is tuned, but its coexistence with Whisper, the 3B text model and Piper (the same RAM
 > and the same 2 GB GPU) is measured. No new ADR (ADR **0041** stays free). One plain branch from
@@ -48,11 +56,12 @@ parallel tasks below, `superpowers:test-driven-development` for every task,
 > | Task 1 (logs) | no other task touches `llm_transport.py` | — |
 > | Task 5 (failure plan) | only `response_plan.py` and `routers/vision.py` | — |
 > | Task 7 (camera phrases) | only the two cue files | — |
-> | Task 9 (robot guard) | only the robot, `system.py` and comments | — |
 >
 > Tasks 2, 3 and 6 follow Task 1 in that order, because they edit the same two vision files.
-> Task 8 waits for Tasks 1 and 5. Task 4 needs Pipec at the laptop and waits for Tasks 2 and 3.
-> Task 11 waits for everything. Review agents (Task 10) stay read-only.
+> Task 1b (the trace) follows Task 1, which made `OllamaMetrics`. Task 1b also edits
+> `routers/transcribe.py` and `robot/server_client.py`, so Tasks 8 and 9 wait for it. Task 8 also
+> waits for Task 5. Task 4 needs Pipec at the laptop and waits for Tasks 1b, 2 and 3. Task 11 waits
+> for everything. Review agents (Task 10) stay read-only.
 
 ## What the code does today (verified 2026-11-24 on `main` at `515595f`, Plan 0088 merged)
 
@@ -156,6 +165,22 @@ Re-verify each item on `main` in Task 0; **stop and report** if one is false.
       (`memory/candidate_extraction.py`, `conversation_episodes.py`, `conversation_summary.py`,
       `pending_naming.py`). So a vision call can meet a 4B model that loaded seconds before. The
       bench of Plan 0088 never accounted for it.
+14. **The trace of one turn is half there** (verified 2026-11-24 on `main` at `5465ad8`):
+    - **What exists:** `request_context.py` gives every HTTP request an id. It keeps the
+      client's `X-Request-ID` when that is a valid UUID, and otherwise makes a new one.
+      `logging_setup.py` prints the id on every server line, and `run_in_executor_with_context`
+      carries it into worker threads. `turn_log.py` logs the actor and the decision. The classic
+      route logs `stt_ms`, `llm_ms`, `tts_ms` and `total_ms` (`pipeline._log_pipeline_timing`).
+    - **What is missing:**
+      - The robot sends no `X-Request-ID` (`robot/server_client.py` sends only
+        `X-Iroko-Identity-Token`), so its log and the server's cannot be joined.
+      - The streaming route's closing line (`streaming_render._log_stream_metrics`, «Stream
+        done») has `first_audio_ms`, `tts_ms` and `total_ms`, but no STT, no decision and no
+        model time, and no available memory. It also carries no `extra` fields.
+      - The candidate proposal runs as a FastAPI background task of the request, and the
+        conversation job (`memory/conversation_jobs.py`) is a startup loop with no request at
+        all. On failure the job logs only the exception's class: no model, no duration, no row.
+      - Nothing on the server reads available memory. `psutil` is not a dependency.
 
 ## Decisions
 
@@ -171,6 +196,11 @@ Each is Claude's recommendation; Pipec confirms or changes it (*Pipec's decision
   «A ver, déjame mirar...» first: it would need a second shape of `_stream_plan` (cue audio, then
   the description) for a latency not yet measured with the tuned settings. *Trigger to add it:* the
   warm scene turns of Task 11 take more than 10 s from end of speech to first audio.
+  **Amended 2026-11-25 (Pipec):** the bench met the trigger (70 to 120 s per call on the laptop),
+  so a streaming scene turn that will look speaks `VISION_LOOK_PHRASE` («A ver, déjame mirar...»)
+  at once, then calls the VLM and speaks the description in the same stream
+  (`streaming.stream_looking_plan`). The record keeps only the description's marker. A scene with
+  no frame or a switch off speaks only the fixed unavailable phrase, as before.
 - **D-3 The same switches, no new switch.** A streaming scene turn reads the frame only with
   `VISION_ENABLED` and `FACE_AUTHENTICATION_ENABLED` on the server (the second is what carries the
   frame) and `ROBOT_FACE_AUTH_ENABLED` on the robot. No memory, documents or identity are needed:
@@ -197,8 +227,16 @@ Each is Claude's recommendation; Pipec confirms or changes it (*Pipec's decision
   of the prompt changes; the prompt's own tests pin the rest.
 - **D-8 The vision model measured, with numbers, under load.** A bench, `scripts/vlm_bench.py`,
   calls `describe_image` and `read_text` directly (no route, no robot) over a small local set of
-  canary images: a printed card and a phone screen showing «Lista qqcanarioqq: pan, té, fósforos»,
-  and a cup on the desk.
+  canary images.
+  - **The core set**, used in every cell: a printed card and a phone screen showing «Lista
+    qqcanarioqq: pan, té, fósforos», and a cup on the desk.
+  - **The reading set** (widened 2026-11-24): it tells what the current model can already read,
+    which Plan 0090 needs.
+    - An invented printed bill: «Boleta qqluzqq», the total «$12.345», due «15-12-2026».
+    - The canary list handwritten by Pipec twice, once neat and once hurried.
+    - A printed sheet with a QR code and a barcode of an invented text. Only the scene's words
+      are checked, never the code's content.
+    - Three common objects: a key, a pen and a ball.
   - **Where things live:** the images stay outside the repository, in `.superpowers/sdd/0089/`; the
     tracked record holds numbers only.
   - **Load:** it runs as on a normal day: the server up (Whisper `medium` on the GPU, Piper, the
@@ -224,8 +262,18 @@ Each is Claude's recommendation; Pipec confirms or changes it (*Pipec's decision
     - available RAM (`Get-Counter '\Memory\Available MBytes'`), VRAM (`nvidia-smi`) and `ollama ps`;
     - failures, with D-11's cause;
     - the 3B model's next latency;
-    - quality: whether the reading returns the canary list character by character (a closed
-      comparison, no judge model), and whether the scene names the cup.
+    - quality, always a closed comparison with no judge model and accents folded:
+      - `canary_ok`: the reading returns the canary list exactly (card, screen, both handwritings);
+      - `bill_ok`: the reading holds the bill's total and due date exactly;
+      - `code_named`: the scene names «QR» or «código de barras»;
+      - `object_named`: the scene names the shown object (cup, key, pen, ball) or one word of a
+        closed synonym list written in the bench.
+  - **Which images run where:** the core set runs in every cell. The reading set runs in the
+    first cell (today's settings) and in the last one (the best combination), so the matrix stays
+    small.
+  - **Handwriting is measured, not built** (Pipec, 2026-11-24). If its `canary_ok` fails with the
+    best settings, the record says so. A later plan then compares a larger vision model with an OCR
+    for handwriting, each with its RAM cost and its licence (never AGPL, as in ADR 0034).
   - **Safety stop:** available RAM under 1 GB, or one call over 120 s, ends the cell at once; no
     third attempt, so the PC is not restarted again. What was measured is recorded.
 - **D-9 The classic route does not change** beyond what D-11 and D-12 change inside the vision
@@ -282,10 +330,66 @@ Each is Claude's recommendation; Pipec confirms or changes it (*Pipec's decision
     mechanism.
   - **Ollama's own switches** (flash attention, KV cache type, loaded-model limit) are recorded in
     the operator manual as a measured recommendation; the code never sets them.
+- **D-13 The trace of one turn, end to end** (Pipec, 2026-11-24: a failure left no trail). It
+  builds on item 14 and adds no mechanism.
+  - **The robot names its turn.** It makes one UUID per turn and sends it as `X-Request-ID` on
+    `/transcribe`, `/transcribe/stream` and `/vision/respond`. It writes the same id in its own
+    log line for the turn. The server already keeps a valid id. It is an optional header: no field
+    of the contract changes, and the robot still knows nothing of what the server runs.
+  - **The turn's lines carry its numbers** (amended at execution, 2026-11-25: the cheapest form,
+    on the lines that already exist, joined by the request id):
+    - `turn.start` (new, every voice route): the free memory at the start (`ram_free_mb`);
+    - `turn.decision` (streaming route): `decide_ms`, from the end of the speech-to-text to the
+      decision (identity, the controller and, on a scene turn, the vision call);
+    - `pipeline.timing` (every route, already there with `stt_ms`, `llm_ms`, `tts_ms`,
+      `total_ms`): the free memory at the end (`ram_free_mb`);
+    - `stream.done` (model-streamed turns only; a plan turn has no such line): its numbers as
+      `extra` (`outcome`, `chunks`, `first_audio_ms`, `tts_ms`, `total_ms`).
+  - **A background job says what it cost.** The candidate proposal already runs inside its
+    request, so it carries the request id. It logs `memory.proposal` with its model, `elapsed_ms`
+    and outcome. The conversation job logs `conversation.job` for each piece of work, with the
+    record or topic id, the model, `elapsed_ms`, the outcome and, on failure, the exception's
+    class and D-11's Ollama cause. The turn's id cannot reach a loop that started at boot, so
+    the row id joins them. The turn's capture line (`conversation_capture`, event
+    `conversation.capture`, which today has the outcome, the verdict and the `correlation_id`)
+    gains the `record_id` it wrote, when it wrote one. Task 0 confirms that the id is in hand
+    there. If it is not, stop and report.
+  - **Free memory without a new dependency.** A small `server/system_memory.py`,
+    `available_ram_mb() -> int | None`, reads it from the operating system: on Windows through
+    `ctypes` (`GlobalMemoryStatusEx`), on Linux from `/proc/meminfo` (`MemAvailable`). It returns
+    `None` anywhere else or on any error, and never raises. The bench reuses it in place of
+    `Get-Counter`.
+  - **Privacy lock:** every new line holds numbers, ids, model names, closed outcomes and causes;
+    D-11's canary test covers them too. The separate conversation logger (`conversation_log.py`,
+    «Heard» and «Spoken») is not touched by this plan.
 
 ## Deferred, with their triggers
 
-- The cue phrase on streaming (D-2): warm scene turns over 10 s to first audio.
+- **Plan 0090, reading and explaining a paper** (Pipec, 2026-11-24, his first need; option B).
+  The robot reads the paper as today. Then, to a question («¿cuánto tengo que pagar?», «¿para
+  cuándo es?»), it answers only from what it read and says it comes from the paper.
+  - The read text stays only in that conversation's short-term memory (CM-2's, deleted by another
+    person or 180 s of silence). It is kept as a document only after «sí, guárdalo», as today.
+  - An answer that is not in the paper is said to be missing from what was read, never completed
+    from the model's own knowledge.
+  - With nobody identified, it reads aloud but answers no question about the paper.
+  - The paper's text is data, never an order. A medical letter is read, never interpreted.
+  - It amends ADR 0034 or takes ADR 0041, decided when it is written with this plan's bench
+    numbers. It goes right after this plan and before R2b, which reuses the same reading.
+- Talking about what the owner shows («me gané una medalla» → «¿de qué fue?»): after Plan 0090,
+  on the same short-term memory.
+- Recognizing a person in a photograph the owner holds up: its own ADR first (that person's
+  biometric data, and the replay risk). Until then, a scene never names a person.
+- Reading the content of a QR code or a barcode: after the file-ingestion threat model (the
+  roadmap row that precedes R2b).
+- An object detector (YOLO class): only if this plan's bench shows the vision model falls short
+  on objects and the RAM allows it, with a permissive licence (Ultralytics is AGPL-3.0, refused as
+  in ADR 0034).
+- A larger vision model or a handwriting OCR: the bench's handwriting `canary_ok` fails with the
+  best settings (D-8).
+
+- ~~The cue phrase on streaming (D-2): warm scene turns over 10 s to first audio.~~ Trigger met
+  on the bench; built on 2026-11-25 (D-2 amended).
 - One-round classic scene from the turn's frame (D-9): Pipec asks, or classic becomes daily.
 - Tolerant spoken commands (D-10): a camera phrase the STT bends in more than one way in real use.
 - Another vision model or a quantization of it: the tuned `qwen3-vl:2b-instruct` still fails the
@@ -309,7 +413,9 @@ Each is Claude's recommendation; Pipec confirms or changes it (*Pipec's decision
 - The API contract is unchanged: no field added, removed or renamed on `/transcribe`,
   `/transcribe/stream`, `/vision/respond` or `/health`; the stream keeps `text_heard`, `emotion`,
   `audio`, `done`. The OpenAPI document is byte-identical (the existing contract test).
-- The robot learns nothing about STT, LLM, TTS or the VLM; it only stops asking `/health` at start.
+- The robot learns nothing about STT, LLM, TTS or the VLM; it only stops asking `/health` at start
+  and sends an optional `X-Request-ID` per turn (D-13). No new dependency: free memory is read
+  from the operating system with the standard library.
 - Every non-scene turn and the reading's own flow are byte-identical to `main`, except that the
   reading hears D-10's new shapes and the vision calls carry D-12's chosen settings.
 - Ollama stays the only runtime (ADR 0004); no cloud provider, no new model pulled in the runtime
@@ -333,6 +439,12 @@ Each is Claude's recommendation; Pipec confirms or changes it (*Pipec's decision
    document or a secret turn (Task 7, Task 8, Task 11).
 6. **The robot starts** in streaming with server vision on, and makes no `/health` call at start
    (Task 9).
+7. **The trace stays private and harmless** (Task 1b):
+   - a turn's id is the same in the robot's line and in every server line of that turn;
+   - a client id that is not a UUID is still replaced by the server's own (existing behaviour,
+     pinned again);
+   - no new line holds a text;
+   - a memory reading that fails gives `None`, never an exception in a turn.
 
 ---
 
@@ -344,6 +456,7 @@ the root; a need outside the list stops the plan for Pipec.
 | Task | Files |
 |---|---|
 | 1 | `llm_transport.py`, `vision/describe.py`, `vision/read_text.py`, `scripts/ollama_log_tail.py` (new), `justfile` (the `ollama-log` task); `tests/unit/test_llm_transport.py`, `tests/unit/test_vision_describe.py`, `tests/unit/test_read_text.py` (or the existing reading test file), `tests/unit/test_vision_log_privacy.py` (new) |
+| 1b | `system_memory.py` (new), `streaming_render.py`, `routers/transcribe.py` (the timing fields only), `memory/conversation_capture.py` (`record_id` on its line), `memory/conversation_jobs.py`, the proposal's background function (the file Task 0 names), `robot/src/robot/server_client.py` (the header), `robot/src/robot/app_streaming.py` and `robot/src/robot/app.py` (one id per turn and its log line); `tests/unit/test_system_memory.py` (new), `tests/unit/test_trace_privacy.py` (new), the existing stream, capture, job and server-client test files |
 | 2 | `settings.py`, `vision/frame_resize.py` (new), `vision/describe.py`, `vision/read_text.py`, `.env.example`; `tests/unit/test_frame_resize.py` (new), `tests/unit/test_settings.py`, the two vision test files of Task 1 |
 | 3 | `scripts/vlm_bench.py` (new); `tests/unit/test_vlm_bench.py` (new) |
 | 4 | `settings.py` and `.env.example` (the chosen values), `docs/evals/0089-vlm-bench.md` (new) |
@@ -365,9 +478,17 @@ defaults for the vision model.
 ## Task 0: Re-audit and baseline
 
 - [ ] **Step 1:** `git switch main && git pull`, create `feat/0089-vision-and-streaming`.
-- [ ] **Step 2:** verify items 1 to 12 of *What the code does today* on `main`, and ask Pipec
-  whether item 13 still matches the production `.env` (the agent cannot read it); confirm the test
-  file names of the permitted list. **Stop and report** if an item is false.
+- [ ] **Step 2:** verify items 1 to 12 and 14 of *What the code does today* on `main`. Ask Pipec
+  whether item 13 still matches the production `.env` (the agent cannot read it). Confirm the test
+  file names of the permitted list, the file of the proposal's background function, and that
+  `conversation_capture` has the written row's id in hand (D-13). **Stop and report** if an item
+  is false.
+- [ ] **Step 2b:** `main` took Dependabot PR #309 after this plan was verified. It moved
+  `onnxruntime` from 1.31.1 to 1.32.0 (the face model) and `opencv-python` from 5.0 to 5.1.
+  Following Pipec's rule for model runtimes, check in a separate environment built from the lock
+  that one enrolled face and one voice clip give the same result as before. Then run
+  `uv sync --all-packages --all-groups --extra cuda` in the real `.venv`. Record the outcome in the
+  close.
 - [ ] **Step 3:** baseline: `MEMORY_ENABLED=false uv run pytest -m "not slow and not hardware and
   not eval" -q -n auto`; note the count.
 
@@ -400,6 +521,42 @@ cause.
   temporary file. Lint it with explicit paths.
 - [ ] **Step 6:** commit `feat: log why an Ollama call failed and what it cost (plan 0089)`.
 
+## Task 1b: The trace of one turn, end to end (D-13)
+
+**Interfaces:**
+- **Consumes:** `OllamaMetrics` and the Ollama-cause helper of Task 1.
+- **Produces:**
+  - `server/system_memory.py`: `available_ram_mb() -> int | None`;
+  - `turn_log.log_start(channel)` and `turn_log.log_decision(channel, plan, *, decide_ms=None)`;
+    `pipeline._log_pipeline_timing` adds `ram_free_mb`; `_log_stream_metrics` logs its numbers as
+    `extra` with the event `stream.done` (as amended in D-13);
+  - the robot: `server_client` makes one `uuid4()` per request inside `_turn_headers`, sends it as
+    `X-Request-ID` and logs `Turn sent: request_id=%s` (on the classic route, the second round has
+    its own id); the callers do not change.
+
+- [ ] **Step 1: Write the failing tests:**
+  - `available_ram_mb()` returns a positive int on the CI's OS, and `None` when the OS call is
+    patched to raise or the platform is unknown;
+  - `turn.start` and `pipeline.timing` carry the free memory, `turn.decision` its `decide_ms`,
+    and `stream.done` its numbers as `extra`;
+  - a request with `X-Request-ID` set to a valid UUID has that id on its `turn.start`,
+    `turn.decision` and `pipeline.timing` records. A request with `X-Request-ID: not-a-uuid` (or
+    any non-canonical form) has a different, generated id;
+  - the capture record has `record_id` when a row was written, and none when nothing was
+    recorded;
+  - a conversation-job failure logs `conversation.job` with the row id, the model, `elapsed_ms`
+    and the exception's class;
+  - a candidate proposal logs `memory.proposal` with the model, `elapsed_ms`, the outcome and the
+    request id of the turn that scheduled it;
+  - the robot's `transcribe_stream` sends the exact `X-Request-ID` it was given (an `httpx` mock
+    transport);
+  - **privacy:** the canary «qqprivadoqq», as the heard text and as the reply, reaches no new
+    record.
+- [ ] **Step 2:** FAIL (no fields, no header). **Step 3:** implement; keep the
+  `extra` field names exactly as listed. **Step 4:** PASS; every existing stream, capture, job and
+  robot test unchanged; the OpenAPI document byte-identical.
+- [ ] **Step 5:** commit `feat: trace one turn from the robot to the background jobs (plan 0089)`.
+
 ## Task 2: The vision model's settings, neutral by default (D-12)
 
 **Interfaces:** `settings.vlm_image_max_side: PositiveInt | None = None`, `vlm_num_ctx`,
@@ -424,15 +581,19 @@ of the payload only when set (the transport gains an optional `keep_alive` argum
 **Interfaces:** `uv run python scripts/vlm_bench.py --images .superpowers/sdd/0089/images
 --cell <name> --out .superpowers/sdd/0089/bench.jsonl`. A cell is one combination of D-8's matrix,
 named in a small table inside the script; each run appends one JSON line per call: the cell, the
-capability (`scene` or `reading`), cold or warm, latency, the `OllamaMetrics`, available RAM before
-and after, the VRAM used (`nvidia-smi --query-gpu=memory.used`, `None` when absent), the 3B model's
-probe latency, the failure cause, and the quality result (`canary_ok` for a reading, `cup_named` for
-a scene). Never the text itself. `--summary` prints a Markdown table of the file, one row per cell.
+capability (`scene` or `reading`), the image's set and name, cold or warm, latency, the
+`OllamaMetrics`, available RAM before and after (`available_ram_mb()` of Task 1b), the VRAM used
+(`nvidia-smi --query-gpu=memory.used`, `None` when absent), the 3B model's probe latency, the
+failure cause, and D-8's quality fields (`canary_ok`, `bill_ok`, `code_named`, `object_named`,
+`None` where one does not apply). Never the text itself. `--set core|reading|all` picks the
+images. `--summary` prints a Markdown table of the file, one row per cell.
 The safety stop of D-8 is in the script: it checks the RAM before each call and stops.
 
 - [ ] **Step 1: Write the failing tests** with a fake Ollama and fake meters: one cell writes the
   expected fields and no text; the RAM stop ends the run before the next call; `--summary` renders
-  the table; the canary comparison is closed (exact list, folded accents).
+  the table; the canary comparison is closed (exact list, folded accents); `bill_ok` is false
+  when one digit of the total or the date differs; `object_named` is true for a word of the
+  object's closed synonym list and false for any word outside it.
 - [ ] **Step 2:** FAIL. **Step 3:** implement, reusing `describe_image`, `read_text`,
   `fit_long_side` and `OllamaMetrics`, never a second Ollama client. **Step 4:** PASS; lint the
   script with explicit paths.
@@ -440,8 +601,10 @@ The safety stop of D-8 is in the script: it checks the RAM before each call and 
 
 ## Task 4: The bench on hardware, and Pipec's choice
 
-**Setup.** Good light on the desk. The agent prepares the canary card (printed), the phone screen
-and the cup; Pipec photographs them once with the robot's camera (the capture path Task 0 names,
+**Setup.** Good light on the desk. The agent prepares the canary card and the invented bill as
+printable pages, the phone screen, and the sheet with a QR code and a barcode of an invented text.
+Pipec writes the canary list by hand twice (neat, then hurried) and brings the cup, a key, a pen
+and a ball. Pipec photographs each one once with the robot's camera (the capture path Task 0 names,
 `robot/src/robot/camera_capture.py`, so the bench sees the frames the robot sends) into
 `.superpowers/sdd/0089/images/`. Pipec starts the server with every model of a normal day; the
 agent loads `qwen2.5:3b` and `granite-embedding:278m` with one call each, and records Ollama's
@@ -449,18 +612,22 @@ version and its `OLLAMA_*` variables.
 
 - [ ] **Step 1:** run the cells in this order, each cold then warm, stopping at the safety stop:
   1. today (every setting unset), once with the consolidation model loaded just before and once
-     with it unloaded (D-8);
+     with it unloaded (D-8), each with `--set all`;
   2. image side 768, then 512;
   3. `num_ctx` 4096, then 2048, on the best side;
   4. the two `num_predict` caps;
   5. `keep_alive` explicit;
   6. Ollama's switches, one at a time, each undone;
-  7. the best combination, three times.
+  7. the best combination, three times, the first one with `--set all`.
+
+  Cells 2 to 6 use `--set core`.
 
   After each cell, `just ollama-log 50` is read for an out-of-memory or an eviction line.
 - [ ] **Step 2:** the record `docs/evals/0089-vlm-bench.md`: the `--summary` table, Ollama's
-  version and variables, every failure with its cause, and what each lever bought. Numbers and
-  outcomes only.
+  version and variables, every failure with its cause, and what each lever bought. A second table,
+  **what the current model reads**, has one row per image of the reading set, with today's
+  settings and the best ones: the quality field, the latency and the free memory. It is the input
+  of Plan 0090 and of the handwriting decision. Numbers and outcomes only.
 - [ ] **Step 3:** Pipec chooses the values (and whether the warm-up at start enters, D-12). They
   become the defaults and `.env.example`'s example values, with a test that pins them; Ollama's
   recommended switches go to the operator manual in Task 11.
@@ -576,9 +743,10 @@ time.
 | A1 | Tú | Start the robot | It starts in streaming; no `/health` refusal in its log |
 | A2 | Yo | `ollama ps`, available memory | Baseline recorded |
 | A3 | Tú | «Hola Iroko, ¿cómo estás?» | An ordinary reply; its latency is the generic baseline |
-| A4 | Tú | «¿Qué ves?» (first of the day) | Two or three sentences in Spanish about what is in front, no identity, no voseo; latency and memory within the bench's numbers |
+| A4 | Tú | «¿Qué ves?» (first of the day) | «A ver, déjame mirar...» at once, then two or three sentences in Spanish about what is in front, no identity, no voseo; latency and memory within the bench's numbers (70 to 120 s on this laptop; a call past 120 s ends in «Perdón, ahora mismo no pude ver la escena.») |
 | A5 | Tú | Hold the cup: «Iroko, saca una foto» | The cup is described |
 | A6 | Tú | «Cuéntame algo breve.» | An ordinary reply; latency against A3 |
+| A7 | Yo | Take A4's id from the robot's log and search `logs/server.log` for it | The same id on the server's lines of that turn: `turn.start` and `pipeline.timing` with `ram_free_mb`, `turn.decision` with `decide_ms`, and `vision.metrics`. After the conversation has closed (180 s of silence), a `conversation.job` line with piece `episode` names a `row_id` that one of the sitting's `conversation.capture` lines named, with a closed outcome (`written`, `retry`...). No text in any of them |
 
 **Part B — the phrases and the reading.**
 
@@ -633,6 +801,11 @@ its heard text.
 6. The robot starts in streaming with server vision on; no `check_vision_enabled` is left.
 7. The CI selection, `just gate`, the type checkers, `ruff` and the reserved-terms guard pass.
 8. The documents of Task 11 updated; the plan in `completed/`.
+9. One turn can be followed by its id from the robot's log through the server to its
+   background job, with the time of each stage and the free memory; no text in any of it (D-13).
+10. The bench record has the table **what the current model reads**: the bill, both
+    handwritings, the QR and barcode sheet and the objects. Plan 0090's row in the roadmap cites
+    it.
 
 ## Non-goals
 
@@ -695,3 +868,21 @@ The questions are kept below as they were asked.
    should «saca una foto» read the text instead? Any other phrase you want by name?
 8. **D-12:** Ollama's own switches (flash attention, KV cache in `q8_0`) recorded in the operator
    manual as a measured recommendation (recommended), or set by a start script?
+
+## Pipec's second round (answered 2026-11-24, the amendment)
+
+Pipec asked for more vision: objects, a conversation about what he shows, reading papers without a
+scanner, a full trace and the best use of the RAM, all local. Asked one at a time, he chose:
+
+1. **What first:** reading papers (a letter, a notice, a bill).
+2. **How:** option B, read and then explain from what was read, against A (read only, as today)
+   and C (summarize at once, where a wrong number goes unnoticed). Built in Plan 0090.
+3. **Handwriting:** measured first in this plan's bench, against making it enter now with a
+   larger model chosen without numbers.
+4. **The approach:** this plan grows only in measuring and seeing (D-13 and the widened D-8),
+   and reading-and-explaining is Plan 0090 right after it. Rejected: one large plan with everything
+   (it builds before the RAM is known), and explaining first (it builds on a model that runs the
+   laptop out of memory).
+
+The objects, the photograph of a person, the content of a QR code and an object detector stay in
+*Deferred*, each with its trigger.

@@ -285,6 +285,14 @@ def _log_stream_metrics(state: StreamState, total_ms: int) -> None:
         state.first_audio_ms,
         state.tts_ms_total,
         total_ms,
+        extra={
+            "event": "stream.done",
+            "outcome": state.outcome.value,
+            "chunks": state.audio_chunks,
+            "first_audio_ms": state.first_audio_ms,
+            "tts_ms": state.tts_ms_total,
+            "total_ms": total_ms,
+        },
     )
 
 

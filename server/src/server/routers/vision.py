@@ -16,15 +16,14 @@ from server.cognition.authorization import evaluate_authorization
 from server.cognition.controller import CognitiveController
 from server.cognition.household_tools import HouseholdKnowledgeTools
 from server.cognition.identity import ActivePersonContext, ActivePersonStatus, HouseholdRole
-from server.cognition.models import CognitiveEvent, Confidence, ConfidenceBasis, KnowledgeStatus
+from server.cognition.models import CognitiveEvent, Confidence, ConfidenceBasis
 from server.cognition.response_plan import (
     MAX_TURN_MESSAGE_CHARS,
-    InformationNeed,
     ResponsePlan,
-    ResponseSource,
     SceneDescriptionRequest,
     TextTurnPayload,
     current_perception_plan,
+    scene_failed_plan,
 )
 from server.exceptions import VisionError
 from server.memory.household_authorization import record_authorization_decision
@@ -102,16 +101,6 @@ async def _public_unknown_vision_actor(
     )
     turn_log.log_actor("vision", actor)
     return actor
-
-
-def _vlm_failure_plan() -> ResponsePlan:
-    """Build the fixed spoken excuse for a failed VLM call — no second LLM."""
-    return ResponsePlan(
-        need=InformationNeed.SCENE_DESCRIPTION,
-        status=KnowledgeStatus.UNKNOWN,
-        source=ResponseSource.CURRENT_PERCEPTION,
-        response="Perdón, ahora mismo no pude ver la escena.",
-    )
 
 
 def _vision_controller(client: httpx.AsyncClient) -> CognitiveController:
@@ -268,7 +257,7 @@ async def vision_respond(
         except VisionError as exc:
             # A blind turn still speaks: the character excuses itself (R13 spirit).
             logger.error("Vision perception failed — responding blind: %s", exc)
-            plan = _vlm_failure_plan()
+            plan = scene_failed_plan()
     elif decision is None:
         plan = await controller.handle(event)
     else:

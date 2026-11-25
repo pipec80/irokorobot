@@ -230,6 +230,19 @@ class Settings(BaseSettings):
     # Instruct variant on purpose: thinking tags exceed every CPU timeout
     # (lesson from R8). Homelab production can raise to qwen3-vl:8b.
     vlm_model: str = "qwen3-vl:2b-instruct"
+    # The vision model's allowed settings (Plan 0089 D-12). Unset, each one sends exactly what
+    # was sent before (no resize, Ollama's own values); the bench of Plan 0089 chooses them.
+    # Longest side, in pixels, of the frame given to the vision model (never upscaled; the face
+    # and voice models still see the full frame).
+    vlm_image_max_side: Annotated[int, Field(gt=0, le=1280)] | None = None
+    # Ollama's context window for a vision call (`num_ctx`).
+    vlm_num_ctx: Annotated[int, Field(gt=0, le=65536)] | None = None
+    # Most tokens a scene description and a reading may write (`num_predict`).
+    vlm_num_predict_scene: Annotated[int, Field(gt=0, le=8192)] | None = None
+    vlm_num_predict_reading: Annotated[int, Field(gt=0, le=8192)] | None = None
+    # How long Ollama keeps the vision model loaded after a call (`keep_alive`, e.g. "10m").
+    # A duration Ollama accepts: seconds, or a number with ms, s, m or h (never negative).
+    vlm_keep_alive: Annotated[str, Field(pattern=r"^[0-9]+(ms|s|m|h)?$")] | None = None
     # Spoken immediately when a visual question is detected — buys the VLM
     # its inference time without a silent robot (V0.5).
     vision_look_phrase: str = "A ver, déjame mirar..."

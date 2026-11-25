@@ -13,6 +13,7 @@ be, a property the server verifies from the bytes it receives.
 from __future__ import annotations
 
 import base64
+from functools import partial
 from io import BytesIO
 import logging
 import time
@@ -22,8 +23,10 @@ import numpy as np
 from PIL import Image, UnidentifiedImageError
 
 from server.exceptions import ImageContractError, LLMError, VisionError
-from server.llm_transport import ChatMessage, ollama_chat
+from server.llm_transport import ChatMessage, OllamaMetrics, ollama_chat_measured
+from server.request_context import run_in_executor_with_context
 from server.settings import settings
+from server.vision.frame_resize import fit_long_side
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +34,7 @@ _DESCRIBE_PROMPT = (
     "Describe en español lo que ves en la imagen, en dos o tres frases "
     "cortas y naturales. Sin listas, sin encabezados, sin inglés. "
     "Describe solo evidencia visible: objetos, colores, formas, posiciones "
-    "y acciones observables. Si algo no se distingue con claridad, decilo "
+    "y acciones observables. Si algo no se distingue con claridad, dilo "
     "explícitamente en vez de adivinar. No afirmes la identidad de ninguna "
     "persona, ni su género, relación con otras personas, intención, "
     "emoción o estado mental — nada de eso se puede ver. No afirmes qué "
@@ -48,6 +51,9 @@ _GIF_MAGICS = (b"GIF87a", b"GIF89a")
 _BMP_MAGIC = b"BM"
 _RIFF_MAGIC = b"RIFF"  # WebP wraps a RIFF container...
 _WEBP_MAGIC = b"WEBP"  # ...tagged WEBP at byte offset 8.
+
+_DESCRIBE_FAILED = "vision.describe_failed"
+_SCENE_TEMPERATURE = 0.3
 
 #: Contract dimension limits — width/height in pixels.
 MAX_IMAGE_WIDTH = 1280
@@ -135,6 +141,111 @@ def decode_and_validate_image(image: bytes) -> None:
     _check_dimensions(width, height)
 
 
+def image_size(image: bytes) -> tuple[int | None, int | None]:
+    """Return ``(width, height)`` from the image header, or ``(None, None)`` when unreadable.
+
+    Args:
+        image: Image bytes — JPEG/PNG/WebP/GIF/BMP, max 1280x720; never decoded past the header.
+    """
+    try:
+        width, height = _header_dimensions(image)
+    except ImageContractError:
+        return None, None
+    return width, height
+
+
+def vlm_options(temperature: float, num_predict: int | None) -> dict[str, float]:
+    """Build a vision call's Ollama options: a key only for each setting that is set (D-12).
+
+    Args:
+        temperature: The call's own temperature, always sent.
+        num_predict: The call's token cap, or ``None`` for Ollama's own.
+    """
+    options: dict[str, float] = {"temperature": temperature}
+    if settings.vlm_num_ctx is not None:
+        options["num_ctx"] = settings.vlm_num_ctx
+    if num_predict is not None:
+        options["num_predict"] = num_predict
+    return options
+
+
+async def vlm_frame(image: bytes, failed_event: str) -> bytes:
+    """Return the frame as the vision model gets it: shrunk only when ``VLM_IMAGE_MAX_SIDE`` is set.
+
+    The resize is PIL work, so it runs in the default executor, off the event loop.
+
+    Args:
+        image: The turn's frame — JPEG/PNG/WebP/GIF/BMP, max 1280x720, one frame.
+        failed_event: The vision call's failure event, logged when the frame cannot be resized.
+
+    Raises:
+        VisionError: If a resize is asked for and the bytes cannot be decoded as an image.
+    """
+    max_side = settings.vlm_image_max_side
+    if max_side is None:
+        return image
+    try:
+        return await run_in_executor_with_context(None, partial(fit_long_side, image, max_side))
+    except ImageContractError as exc:
+        log_vision_failure(failed_event, type(exc).__name__, image)
+        raise VisionError("The frame could not be prepared for the vision model") from exc
+
+
+def log_vision_metrics(capability: str, image: bytes, metrics: OllamaMetrics) -> None:
+    """Log what one good vision answer cost: Ollama's numbers and the image's size (D-11).
+
+    Args:
+        capability: ``"scene"`` or ``"reading"``.
+        image: The frame sent (only its header is read, for its pixel size).
+        metrics: The answer's ``OllamaMetrics``.
+    """
+    width, height = image_size(image)
+    logger.info(
+        "Vision metrics: capability=%s size=%sx%s load_ms=%s prompt_eval=%s/%sms eval=%s/%sms "
+        "total_ms=%s",
+        capability,
+        width,
+        height,
+        metrics.load_ms,
+        metrics.prompt_eval_count,
+        metrics.prompt_eval_ms,
+        metrics.eval_count,
+        metrics.eval_ms,
+        metrics.total_ms,
+        extra={
+            "event": "vision.metrics",
+            "capability": capability,
+            "width": width,
+            "height": height,
+            "load_ms": metrics.load_ms,
+            "prompt_eval_count": metrics.prompt_eval_count,
+            "prompt_eval_ms": metrics.prompt_eval_ms,
+            "eval_count": metrics.eval_count,
+            "eval_ms": metrics.eval_ms,
+            "total_ms": metrics.total_ms,
+        },
+    )
+
+
+def log_vision_failure(event: str, cause: str, image: bytes) -> None:
+    """Log why one vision call failed: an exception's class or a closed cause, never a text.
+
+    Args:
+        event: ``"vision.describe_failed"`` or ``"vision.read_failed"``.
+        cause: The exception's class name, ``"nothing_described"`` or ``"nothing_read"``.
+        image: The frame sent (only its header is read, for its pixel size).
+    """
+    width, height = image_size(image)
+    logger.warning(
+        "Vision call failed: %s cause=%s size=%sx%s",
+        event,
+        cause,
+        width,
+        height,
+        extra={"event": event, "cause": cause, "width": width, "height": height},
+    )
+
+
 async def describe_image(client: httpx.AsyncClient, image: bytes) -> tuple[str, int]:
     """Describe ONE camera frame using the VLM served by Ollama.
 
@@ -153,6 +264,7 @@ async def describe_image(client: httpx.AsyncClient, image: bytes) -> tuple[str, 
         VisionError: If the VLM backend is unreachable, errors out, or
             returns an empty/unexpected response.
     """
+    image = await vlm_frame(image, _DESCRIBE_FAILED)
     message: ChatMessage = {
         "role": "user",
         "content": _DESCRIBE_PROMPT,
@@ -160,21 +272,25 @@ async def describe_image(client: httpx.AsyncClient, image: bytes) -> tuple[str, 
     }
     t0 = time.perf_counter()
     try:
-        description = (
-            await ollama_chat(
-                client,
-                [message],
-                model=settings.vlm_model,
-                options={"temperature": 0.3},
-                timeout=settings.ollama_timeout_s,
-            )
-        ).strip()
+        description, metrics = await ollama_chat_measured(
+            client,
+            [message],
+            model=settings.vlm_model,
+            options=vlm_options(_SCENE_TEMPERATURE, settings.vlm_num_predict_scene),
+            timeout=settings.ollama_timeout_s,
+            keep_alive=settings.vlm_keep_alive,
+        )
     except httpx.HTTPError as exc:
+        log_vision_failure(_DESCRIBE_FAILED, type(exc).__name__, image)
         raise VisionError(f"VLM backend unavailable ({settings.vlm_model}): {exc}") from exc
     except LLMError as exc:
+        log_vision_failure(_DESCRIBE_FAILED, type(exc).__name__, image)
         raise VisionError(f"VLM returned an unexpected response: {exc}") from exc
+    description = description.strip()
     if not description:
+        log_vision_failure(_DESCRIBE_FAILED, "nothing_described", image)
         raise VisionError("VLM returned an empty description")
+    log_vision_metrics("scene", image, metrics)
     duration_ms = int((time.perf_counter() - t0) * 1000)
     logger.info(
         "Scene described in %d ms (%d chars)",

@@ -33,7 +33,7 @@ def test_health_content_type_is_json(client: TestClient) -> None:
 
 @pytest.mark.integration
 def test_health_reports_vision_enabled_from_settings(client: TestClient) -> None:
-    """The robot's F-08 startup guard reads this field — it must reflect settings live."""
+    """Operators read this field (the robot no longer does, Plan 0089): it reflects settings live."""
     original = settings.vision_enabled
     settings.vision_enabled = True  # type: ignore[misc]  # runtime override
     try:

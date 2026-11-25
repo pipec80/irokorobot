@@ -315,6 +315,9 @@ SENSITIVE_RECORDED_TEXT: Final = "[dato sensible leído]"
 #: log (Plan 0088 D-18): no section or read text enters the record, the diary or an export.
 DOCUMENT_RECORDED_TEXT: Final = "[respuesta de un documento]"
 READING_RECORDED_TEXT: Final = "[texto leído por la cámara]"
+#: Replaces a described scene in the conversation record (Plan 0089 D-5): the description is
+#: current perception, not something the owner told, so it enters no record, diary or export.
+SCENE_RECORDED_TEXT: Final = "[escena descrita por la cámara]"
 #: Replaces the heard words of a secret turn in the conversation record (Plan 0079, D-8).
 SECRET_RECORDED_TEXT: Final = "[dato de seguridad omitido]"  # noqa: S105  # pragma: allowlist secret - a marker
 
@@ -339,9 +342,12 @@ def spoken_log_text(plan: ResponsePlan) -> str | None:
 
     Returns:
         A fixed marker for a known profile summary, recall answer, relatives answer or sensitive
-        read (their text carries stored values), or ``None`` when the response itself may be
-        logged: every fixed phrase, a refusal included.
+        read (their text carries stored values), or a described scene (what the camera saw,
+        Plan 0089 review); ``None`` when the response itself may be logged: every fixed phrase,
+        a refusal included.
     """
+    if _is_described_scene(plan):
+        return SCENE_RECORDED_TEXT
     if plan.status is not KnowledgeStatus.KNOWN:
         return None
     return _LOGGED_MARKERS.get(plan.need)
@@ -352,7 +358,8 @@ def recorded_exchange(plan: ResponsePlan, heard: str) -> tuple[str, str]:
 
     A secret turn keeps a marker instead of the heard words, since the speaker may have said the
     value; a known sensitive read keeps a marker instead of the answer, which carries stored
-    values. Every other turn is recorded as it happened.
+    values; a described scene keeps a marker instead of the description (Plan 0089, D-5). Every
+    other turn, the fixed scene phrases included, is recorded as it happened.
 
     Args:
         plan: The plan the turn was answered with.
@@ -369,7 +376,18 @@ def recorded_exchange(plan: ResponsePlan, heard: str) -> tuple[str, str]:
         return heard, DOCUMENT_RECORDED_TEXT
     if plan.need is InformationNeed.READ_TEXT:
         return heard, READING_RECORDED_TEXT
+    if _is_described_scene(plan):
+        return heard, SCENE_RECORDED_TEXT
     return heard, plan.response
+
+
+def _is_described_scene(plan: ResponsePlan) -> bool:
+    """Tell a scene the camera described from the fixed excuse of a scene that failed."""
+    return (
+        plan.need is InformationNeed.SCENE_DESCRIPTION
+        and plan.source is ResponseSource.CURRENT_PERCEPTION
+        and plan.response != SCENE_FAILED_PHRASE
+    )
 
 
 class SceneDescriptionRequest(BaseModel):
@@ -424,6 +442,25 @@ def unclear_speech_plan(*, expects_short_reply: bool) -> ResponsePlan:
         source=ResponseSource.DETERMINISTIC,
         response=UNCLEAR_SPEECH_PHRASE,
         expects_short_reply=expects_short_reply,
+    )
+
+
+#: Spoken when the VLM failed or timed out on a scene turn, by the classic and the streaming route
+#: alike (Plan 0089 D-4).
+SCENE_FAILED_PHRASE: Final = "Perdón, ahora mismo no pude ver la escena."
+
+
+def scene_failed_plan() -> ResponsePlan:
+    """Build the fixed spoken excuse for a scene turn whose VLM call failed (no second LLM).
+
+    Shared by the classic ``/vision/respond`` route and the streaming scene turn, so a blind turn
+    speaks one text on both. It carries no perception, so the record keeps it verbatim.
+    """
+    return ResponsePlan(
+        need=InformationNeed.SCENE_DESCRIPTION,
+        status=KnowledgeStatus.UNKNOWN,
+        source=ResponseSource.CURRENT_PERCEPTION,
+        response=SCENE_FAILED_PHRASE,
     )
 
 

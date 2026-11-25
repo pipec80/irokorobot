@@ -42,6 +42,13 @@ from server.cognition import (
     resolve_information_need,
     scene_unavailable_plan,
 )
+from server.cognition.response_plan import (
+    SCENE_FAILED_PHRASE,
+    SCENE_RECORDED_TEXT,
+    recorded_exchange,
+    scene_failed_plan,
+    spoken_log_text,
+)
 
 from server import cognition
 
@@ -497,3 +504,41 @@ def test_cognition_package_reexports_every_public_domain_type() -> None:
     assert set(cognition.__all__) == set(expected_exports)
     assert all(getattr(cognition, name) is value for name, value in expected_exports.items())
     assert not hasattr(cognition, "_require_aware_utc")
+
+
+def test_scene_failed_plan_is_the_fixed_excuse_of_a_blind_turn() -> None:
+    """Both routes share one failed-scene plan: current perception, unknown, fixed text."""
+    plan = scene_failed_plan()
+
+    assert plan.need is InformationNeed.SCENE_DESCRIPTION
+    assert plan.status is KnowledgeStatus.UNKNOWN
+    assert plan.source is ResponseSource.CURRENT_PERCEPTION
+    assert plan.response == SCENE_FAILED_PHRASE
+    assert SCENE_FAILED_PHRASE == "Perdón, ahora mismo no pude ver la escena."
+
+
+def test_a_described_scene_is_recorded_as_a_marker_not_as_the_description() -> None:
+    """The description is current perception: it never enters the conversation record."""
+    heard, spoken = recorded_exchange(
+        current_perception_plan("Una taza amarilla qqtazaqq."), "¿Qué ves?"
+    )
+
+    assert (heard, spoken) == ("¿Qué ves?", SCENE_RECORDED_TEXT)
+    assert SCENE_RECORDED_TEXT == "[escena descrita por la cámara]"
+    assert "qqtazaqq" not in spoken
+
+
+@pytest.mark.parametrize("plan", [scene_failed_plan(), scene_unavailable_plan()])
+def test_the_two_fixed_scene_phrases_are_recorded_verbatim(plan: ResponsePlan) -> None:
+    """A fixed phrase carries no perception, so the record keeps it as spoken."""
+    assert recorded_exchange(plan, "¿Qué ves?") == ("¿Qué ves?", plan.response)
+
+
+@pytest.mark.unit
+def test_the_spoken_log_shows_a_described_scene_as_its_marker() -> None:
+    """Review of plan 0089: the opt-in spoken log never shows a scene description either."""
+    assert spoken_log_text(current_perception_plan("Una taza amarilla qqtazaqq.")) == (
+        SCENE_RECORDED_TEXT
+    )
+    assert spoken_log_text(scene_failed_plan()) is None
+    assert spoken_log_text(scene_unavailable_plan()) is None

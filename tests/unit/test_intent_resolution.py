@@ -319,3 +319,38 @@ def test_a_call_request_is_a_sensitive_read() -> None:
     )
     assert result.need is InformationNeed.SENSITIVE_READ
     assert result.rule_id == "sensitive.contact_call.v1"
+
+
+@pytest.mark.parametrize("message", ["saca una foto", "Iroko, toma una foto"])
+def test_a_photo_request_describes_the_scene(message: str) -> None:
+    """Plan 0089 D-10: «saca una foto» and «toma una foto» are scene shapes."""
+    assert resolve_information_need(message).need is InformationNeed.SCENE_DESCRIPTION
+
+
+@pytest.mark.parametrize("message", ["saca una fotocopia", "no le saques una foto al perro"])
+def test_the_photo_traps_describe_no_scene(message: str) -> None:
+    """A photocopy and a negated photo of something else are not a scene request."""
+    assert resolve_information_need(message).need is not InformationNeed.SCENE_DESCRIPTION
+
+
+def test_the_reading_phrase_reads_with_the_reading_on_and_describes_no_scene_off() -> None:
+    """«lee lo que tengo» is a reading; with the reading off it is not a scene either."""
+    assert (
+        resolve_information_need("lee lo que tengo", reading=True).need is InformationNeed.READ_TEXT
+    )
+    assert (
+        resolve_information_need("lee lo que tengo").need is not InformationNeed.SCENE_DESCRIPTION
+    )
+
+
+def test_a_photo_to_keep_as_a_document_is_a_scene_not_a_document() -> None:
+    """Plan 0089 D-10, the accepted reading: «toma una foto» wins, so this describes the scene.
+
+    The photo is not stored as a document by this phrase; the keep offer is the reading's own.
+    """
+    message = "toma una foto de la boleta y guárdala como documento"
+
+    assert (
+        resolve_information_need(message, documents=True, reading=True).need
+        is InformationNeed.SCENE_DESCRIPTION
+    )

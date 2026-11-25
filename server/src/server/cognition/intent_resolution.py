@@ -303,6 +303,8 @@ _SCENE_DESCRIPTION_PATTERNS = (
     "describe lo que ves",
     "dime que ves",
     "decime que ves",
+    "saca una foto",
+    "toma una foto",
 )
 
 

@@ -7,7 +7,7 @@ cue whose title step finds no document falls through to conversation (decided by
 from __future__ import annotations
 
 import pytest
-from server.cognition.document_cues import DocumentCue, classify_document_cue
+from server.cognition.document_cues import DocumentCue, classify_document_cue, is_reading_request
 from server.cognition.intent_resolution import resolve_information_need
 from server.cognition.recall_cues import CueStrength
 from server.cognition.response_plan import InformationNeed
@@ -120,3 +120,30 @@ def test_a_document_cue_comes_before_a_recall_cue_and_after_a_stated_secret() ->
         ).need
         is InformationNeed.SECRET_VALUE
     )
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Iroko, le esto",
+        "lee lo que tengo",
+        "oye, lee este papel",
+        "lee esta pantalla por favor",
+    ],
+)
+def test_the_clearer_camera_reading_phrases_are_reading_requests(message: str) -> None:
+    """Plan 0089 D-10: the observed STT variant «le esto» and three «lee» shapes."""
+    assert is_reading_request(message)
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "dile esto a mi hermano",
+        "le esto lo otro mañana",
+        "lee este papel mañana en la oficina",
+    ],
+)
+def test_the_clearer_camera_reading_traps_are_no_reading_request(message: str) -> None:
+    """The reading stays anchored on the whole utterance: a longer sentence is no reading."""
+    assert not is_reading_request(message)

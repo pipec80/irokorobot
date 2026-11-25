@@ -13,8 +13,9 @@ The mic stays closed the whole time — half-duplex is preserved.
 R3 (settings.robot_streaming): THINKING/SPEAKING delegate to
 app_streaming.py instead, which consumes POST /transcribe/stream and plays
 audio sentence-by-sentence. See app_streaming.py's module docstring.
-Streaming does not support visual questions — at startup, `_run()` refuses
-to start if streaming is on and the server reports vision enabled (F-08).
+A streaming turn that asks what the robot sees is answered by the server from
+the turn's own frame, in the same request (Plan 0089), so streaming starts with
+server vision on like any other configuration.
 """
 
 import asyncio
@@ -39,7 +40,6 @@ from robot.fsm_types import LoopContext, RobotState
 from robot.logging_setup import build_file_handler
 from robot.server_client import (
     OwnerUnlockResult,
-    check_vision_enabled,
     close_client,
     respond_vision,
     transcribe,
@@ -200,34 +200,6 @@ async def tick(state: RobotState, ctx: LoopContext) -> RobotState:
             return await _on_error(ctx)
 
 
-async def _guard_streaming_vision_compat() -> None:
-    """Refuse to start with ROBOT_STREAMING and server vision both enabled.
-
-    /transcribe/stream never detects visual questions (see
-    transcribe_stream's docstring in server_client.py) and app_streaming.py
-    has no LOOKING transition, so this combination would silently drop
-    "what do you see?" turns instead of failing loudly — F-08 in
-    docs/c-audit/auditoria-forense-codigo-2026-07-21.md. Only checked when
-    streaming is on: a non-streaming robot has no reason to pay this extra
-    network round trip at startup.
-
-    Raises:
-        SystemExit: If ROBOT_STREAMING is True and the server reports
-            vision_enabled True.
-    """
-    if not settings.robot_streaming:
-        return
-    if await check_vision_enabled():
-        logger.error(
-            "ROBOT_STREAMING=true is incompatible with the server's "
-            "VISION_ENABLED=true — streaming does not support visual "
-            "questions yet (F-08, docs/c-audit/"
-            "auditoria-forense-codigo-2026-07-21.md). Disable one of the "
-            "two before starting the robot."
-        )
-        raise SystemExit(1)
-
-
 async def _default_read_secret(prompt: str) -> str:
     """Read one secret line via getpass, off the event loop."""
     return await asyncio.to_thread(getpass.getpass, prompt)
@@ -240,8 +212,8 @@ async def _prompt_owner_unlock(
 ) -> str | None:
     """Optionally prompt once for the local owner PIN before the FSM starts.
 
-    Classic mode only. An empty answer or a rejected PIN degrades safely to
-    public conversation — this is never fatal to startup.
+    Both modes carry the token (Plan 0027). An empty answer or a rejected PIN degrades
+    safely to public conversation — this is never fatal to startup.
 
     Args:
         read_secret: Boundary that prompts for and returns one secret line.
@@ -271,7 +243,6 @@ async def _run() -> None:
     state = RobotState.IDLE
     ctx = LoopContext()
     try:
-        await _guard_streaming_vision_compat()
         ctx.identity_token = await _prompt_owner_unlock()
         while True:
             try:
