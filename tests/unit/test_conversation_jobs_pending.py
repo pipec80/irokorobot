@@ -43,6 +43,7 @@ def _quiet_job(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "pending_topics_enabled", True)
     monkeypatch.setattr(settings, "conversation_episodes_enabled", False)
     monkeypatch.setattr(settings, "recall_enabled", False)
+    monkeypatch.setattr(settings, "documents_enabled", False)
     monkeypatch.setattr(settings, "household_timezone", "America/Santiago")
     monkeypatch.setattr(conversation_jobs, "close_idle_records", AsyncMock(return_value=0))
     monkeypatch.setattr(conversation_jobs, "has_open_record", AsyncMock(return_value=False))
