@@ -14,7 +14,7 @@ code, tests, verified gaps and the delivery sequence.
 | Plan | Implementation reality | Reuse | Remaining closure |
 |---|---|---|---|
 | [0015](0015-personal-companion-design.md) | Approved product design; PC-1 to PC-4 are closed (PC-2 and PC-3A with provisional calibrations); reference only, never an executable batch | Controller, policy/audit, V4 household tools, identity/session seam, short-term continuity, the conversation record and recall index, STT/TTS, face engine | CM-6 and CM-7 (block C, then block D), PC-5 integrated personal acceptance and PC-6 family remain open |
-| [0089](0089-vision-model-and-streaming-scene.md) | `Ready` (2026-11-24, Pipec's eight decisions recorded); no code yet | The vision calls (`vision/describe.py`, `vision/read_text.py`), the turn's frame on both voice routes, Plan 0088's reading and record markers | Its execution, in a new session |
+| [0089](0089-vision-model-and-streaming-scene.md) | `Ready` (2026-11-24, Pipec's eight decisions recorded; amended the same day with the end-to-end trace and a wider bench); no code yet | The vision calls (`vision/describe.py`, `vision/read_text.py`), the turn's frame on both voice routes, Plan 0088's reading and record markers | Its execution, in a new session |
 
 Existing components named under **Reuse** must not be rebuilt by a later plan.
 
