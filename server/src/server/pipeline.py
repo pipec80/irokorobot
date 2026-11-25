@@ -8,7 +8,7 @@ import time
 
 from fastapi import HTTPException
 
-from server import stt, tts
+from server import stt, system_memory, tts
 from server.conversation_log import log_heard, log_spoken
 from server.exceptions import BrainMemoryError, TranscriptionError, TTSError
 from server.memory.declarative import list_entity_names
@@ -50,14 +50,18 @@ def _log_pipeline_timing(route: str, stt_ms: int, llm_ms: int, tts_ms: int, tota
         llm_ms: Generation elapsed milliseconds, or 0 when no model ran.
         tts_ms: Synthesis elapsed milliseconds, or 0 when nothing was spoken.
         total_ms: Whole-request elapsed milliseconds.
+
+    The line also carries the machine's free memory at the end of the turn (Plan 0089 D-13).
     """
+    ram_free_mb = system_memory.available_ram_mb()
     logger.info(
-        "Pipeline: route=%s stt=%dms llm=%dms tts=%dms total=%dms",
+        "Pipeline: route=%s stt=%dms llm=%dms tts=%dms total=%dms ram_free_mb=%s",
         route,
         stt_ms,
         llm_ms,
         tts_ms,
         total_ms,
+        ram_free_mb,
         extra={
             "event": "pipeline.timing",
             "route": route,
@@ -65,6 +69,7 @@ def _log_pipeline_timing(route: str, stt_ms: int, llm_ms: int, tts_ms: int, tota
             "llm_ms": llm_ms,
             "tts_ms": tts_ms,
             "total_ms": total_ms,
+            "ram_free_mb": ram_free_mb,
         },
     )
 

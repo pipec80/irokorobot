@@ -4,6 +4,7 @@ from collections.abc import Generator
 from datetime import UTC, datetime
 import json
 import logging
+from uuid import UUID
 
 import httpx
 import pytest
@@ -727,3 +728,56 @@ async def test_transcribe_stream_never_logs_frame_bytes(
 
     joined = "\n".join(record.getMessage() for record in caplog.records)
     assert "fake-jpeg-marker" not in joined
+
+
+# --- Plan 0089 D-13: every request names its turn, and the robot logs the same id ---
+
+
+def _turn_ids(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [
+        str(r.__dict__["turn_request_id"])
+        for r in caplog.records
+        if r.__dict__.get("event") == "robot.turn_sent"
+    ]
+
+
+@pytest.mark.unit
+async def test_transcribe_stream_sends_the_turn_id_it_logs(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    seen_headers: list[httpx.Headers] = []
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        seen_headers.append(request.headers)
+        return httpx.Response(200, text=_done_line() + "\n")
+
+    _patch_transport(monkeypatch, _handler)
+
+    with caplog.at_level(logging.INFO, logger="robot.server_client"):
+        async for _event in server_client.transcribe_stream(b"wav"):
+            pass
+
+    (logged,) = _turn_ids(caplog)
+    assert seen_headers[0]["X-Request-ID"] == logged
+    UUID(logged)  # raises if it is not a UUID
+
+
+@pytest.mark.unit
+async def test_each_classic_request_names_a_new_turn(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    seen_ids: list[str] = []
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        seen_ids.append(request.headers["X-Request-ID"])
+        body = {"text_heard": "hola", "llm_response": "hola", "audio_base64": "AAAA"}
+        return httpx.Response(200, json={**body, "duration_ms": 1, "emotion": "neutral"})
+
+    _patch_transport(monkeypatch, _handler)
+
+    with caplog.at_level(logging.INFO, logger="robot.server_client"):
+        await server_client.transcribe(b"wav")
+        await server_client.respond_vision("¿Qué ves?", b"\xff\xd8frame")
+
+    assert seen_ids == _turn_ids(caplog)
+    assert len(set(seen_ids)) == 2

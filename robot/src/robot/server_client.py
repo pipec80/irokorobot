@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import json
 import logging
+from uuid import uuid4
 
 import httpx
 
@@ -45,6 +46,30 @@ def _no_speech_error(response: httpx.Response) -> NoSpeechError:
             "Server refused the audio (%d): not a speech-detection result", response.status_code
         )
     return NoSpeechError("Server heard no speech in the audio")
+
+
+def _turn_headers(identity_token: str | None = None) -> dict[str, str]:
+    """Name one request with a new id, log it, and build its headers (Plan 0089 D-13).
+
+    The server keeps a valid ``X-Request-ID`` on every line of that request, so the robot's log
+    and the server's join on it. The id names the request only; it carries nothing of the turn.
+
+    Args:
+        identity_token: Optional one-use owner unlock token. Never inspected or logged here.
+
+    Returns:
+        ``X-Request-ID`` and, when a token is given, ``X-Iroko-Identity-Token``.
+    """
+    request_id = str(uuid4())
+    logger.info(
+        "Turn sent: request_id=%s",
+        request_id,
+        extra={"event": "robot.turn_sent", "turn_request_id": request_id},
+    )
+    headers = {"X-Request-ID": request_id}
+    if identity_token:
+        headers["X-Iroko-Identity-Token"] = identity_token
+    return headers
 
 
 def _get_client() -> httpx.AsyncClient:
@@ -135,7 +160,7 @@ async def transcribe(
     if not audio:
         raise ValueError("Audio bytes are empty")
     client = _get_client()
-    headers = {"X-Iroko-Identity-Token": identity_token} if identity_token else None
+    headers = _turn_headers(identity_token)
     files: dict[str, tuple[str, bytes, str]] = {"audio": ("audio.wav", audio, "audio/wav")}
     if frame is not None:
         files["frame"] = ("frame.jpg", frame, "image/jpeg")
@@ -244,6 +269,7 @@ async def respond_vision(text: str, image: bytes) -> TranscribeResult:
             f"{settings.server_url}/vision/respond",
             files={"image": ("frame.jpg", image, "image/jpeg")},
             data={"text": text},
+            headers=_turn_headers(),
         )
         response.raise_for_status()
     except httpx.HTTPStatusError as exc:
@@ -295,7 +321,7 @@ async def transcribe_stream(
     if not audio:
         raise ValueError("Audio bytes are empty")
     client = _get_client()
-    headers = {"X-Iroko-Identity-Token": identity_token} if identity_token else None
+    headers = _turn_headers(identity_token)
     files: dict[str, tuple[str, bytes, str]] = {"audio": ("audio.wav", audio, "audio/wav")}
     if frame is not None:
         files["frame"] = ("frame.jpg", frame, "image/jpeg")

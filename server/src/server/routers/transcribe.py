@@ -1032,6 +1032,7 @@ async def transcribe(
         HTTPException: 413 for size, 422 for WAV/speech, or 500 for STT/TTS.
     """
     request_start = time.perf_counter()
+    turn_log.log_start("voice")
     frame_bytes: bytes | None = None
     if settings.face_authentication_enabled and frame is not None:
         try:
@@ -1191,6 +1192,7 @@ async def transcribe_stream(
         HTTPException: 413 for size, 422 for WAV/speech, or 500 for STT.
     """
     request_start = time.perf_counter()
+    turn_log.log_start("stream")
     frame_bytes: bytes | None = None
     if settings.face_authentication_enabled and frame is not None:
         try:
@@ -1207,13 +1209,14 @@ async def transcribe_stream(
     text_heard, stt_ms, unclear = await _transcribe_turn(
         audio_bytes, list(SHORT_REPLY_HOTWORDS) if short_reply else []
     )
+    decide_started = time.perf_counter()
 
     if not text_heard.strip():
         logger.warning("STT returned empty transcript — audio was silence or too short")
         raise HTTPException(status_code=422, detail="No speech detected in audio")
     if unclear:
         unclear_plan = unclear_speech_plan(expects_short_reply=short_reply)
-        turn_log.log_decision("stream", unclear_plan)
+        turn_log.log_decision("stream", unclear_plan, decide_ms=_elapsed_ms(decide_started))
         return _stream_plan(
             unclear_plan,
             text_heard=text_heard,
@@ -1237,7 +1240,7 @@ async def transcribe_stream(
     plan: ResponsePlan | None = (
         scene_unavailable_plan() if isinstance(decision, SceneDescriptionRequest) else decision
     )
-    turn_log.log_decision("stream", plan)
+    turn_log.log_decision("stream", plan, decide_ms=_elapsed_ms(decide_started))
     record_turn = _turn_recorder(
         background_tasks, event=event, wav_bytes=audio_bytes, client=resources.http_client
     )
