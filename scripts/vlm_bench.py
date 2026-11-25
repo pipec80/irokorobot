@@ -80,6 +80,7 @@ CELLS: Final = {
         Cell("today"),
         Cell("side768", {"vlm_image_max_side": 768}),
         Cell("side512", {"vlm_image_max_side": 512}),
+        Cell("side384", {"vlm_image_max_side": 384}),
         Cell("ctx4096", {"vlm_num_ctx": 4096}),
         Cell("ctx2048", {"vlm_num_ctx": 2048}),
         Cell("caps", {"vlm_num_predict_scene": 120, "vlm_num_predict_reading": 400}),
@@ -228,6 +229,7 @@ async def run_cell(  # one cell is named by all of these
     consolidation: Consolidation,
     meters: Meters,
     out: Path,
+    probe: bool = True,
 ) -> int:
     """Run one cell over *images* and append one line per call; return how many calls ran.
 
@@ -239,6 +241,8 @@ async def run_cell(  # one cell is named by all of these
         consolidation: Whether the 4B consolidation model is loaded just before each call.
         meters: The free-memory and VRAM readers.
         out: The JSON-lines file appended to.
+        probe: Time the 3B model after each call; ``False`` keeps the vision model truly warm
+            (nothing else is loaded between its calls).
     """
     for key, value in cell.overrides.items():
         setattr(settings, key, value)
@@ -280,7 +284,7 @@ async def run_cell(  # one cell is named by all of these
                     "ram_before_mb": ram_before,
                     "ram_after_mb": meters.ram(),
                     "vram_mb": meters.vram(),
-                    "probe_ms": await _probe_ms(client),
+                    "probe_ms": await _probe_ms(client) if probe else None,
                     "cause": cause,
                     **scores,
                 },
@@ -365,6 +369,7 @@ async def _main(args: argparse.Namespace) -> int:
             consolidation=args.consolidation,
             meters=meters,
             out=args.out,
+            probe=args.probe,
         )
     sys.stdout.write(f"{cell.name}: {calls} call(s) appended to {args.out}\n")
     return 0
@@ -380,6 +385,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--mode", choices=("cold", "warm"), default="cold")
     parser.add_argument("--consolidation", choices=("loaded", "unloaded"), default="unloaded")
     parser.add_argument("--set", choices=("core", "reading", "all"), default="core")
+    parser.add_argument("--no-probe", dest="probe", action="store_false")
     parser.add_argument("--out", type=Path, default=Path(".superpowers/sdd/0089/bench.jsonl"))
     args = parser.parse_args(argv)
     if args.summary is not None:

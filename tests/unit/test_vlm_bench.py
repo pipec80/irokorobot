@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 import pytest
+from server.settings import settings
 
 from scripts.vlm_bench import (
     CELLS,
@@ -205,3 +206,33 @@ async def test_metrics_are_kept_even_when_the_loggers_are_at_warning(
     (row,) = _lines(out)
     assert row["load_ms"] == 5
     assert row["eval_count"] == 9
+
+
+async def test_without_the_probe_the_text_model_is_never_called(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """--no-probe measures a truly warm vision model: nothing else is loaded between calls."""
+    monkeypatch.setattr(settings, "ollama_model", "qqtextoqq:3b")
+    models: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        models.append(str(json.loads(request.content).get("model")))
+        body = {"message": {"content": "Una pelota."}, "eval_count": 1}
+        return httpx.Response(200, json=body)
+
+    out = tmp_path / "bench.jsonl"
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        await run_cell(
+            client,
+            [BenchImage(name="ball", data=b"\xff\xd8ball")],
+            CELLS["today"],
+            mode="warm",
+            consolidation="unloaded",
+            meters=_meters(),
+            out=out,
+            probe=False,
+        )
+
+    (row,) = _lines(out)
+    assert row["probe_ms"] is None
+    assert models.count("qqtextoqq:3b") == 0
