@@ -82,10 +82,13 @@ Re-verify each item on `main` in Task 0; **stop and report** if one is false.
    the way: `robot/settings.py`'s comment and `_prompt_owner_unlock`'s docstring say the PIN prompt
    is «classic mode only», but `_run()` prompts in both modes and `app_streaming` sends the token
    (Plan 0027; the operator manual already says so).
-7. **Timeouts.** The server's VLM call waits `settings.ollama_timeout_s` (120 s). The robot's HTTP
-   client waits `settings.server_timeout_s` for each read, the first one included: **120 s by
-   default** in `robot/settings.py`, but **300** in `.env.example`; the real value is read in
-   Task 0. The streaming route sends no byte before its plan is decided.
+7. **Timeouts: the server's is the one that binds.** The server's VLM call waits
+   `settings.ollama_timeout_s`, **120 s** in production. The robot's HTTP client waits
+   `settings.server_timeout_s` for each read, the first one included: **300 s** in production
+   (the code's default is 120). So a slow vision call fails on the server at 120 s, and the robot
+   keeps waiting. Plan 0088's failures after 137 to 152 s fit a VLM call cut at 120 s plus the
+   speech-to-text and face check before it; D-11's logs confirm or refute that. The streaming
+   route sends no byte before its plan is decided.
 8. **Why a failure leaves us blind** (`server/src/server/llm_transport.py`):
    - `ollama_chat` calls `resp.raise_for_status()`. The `HTTPStatusError` carries the status code
      but not Ollama's body, which is where Ollama says the cause (for example, that the model needs
@@ -120,6 +123,21 @@ Re-verify each item on `main` in Task 0; **stop and report** if one is false.
     `cognition/intent_resolution.py`, word-padded substrings («qué ves», «mira esto», «mira lo
     que», «qué tengo en la mano», …), so «mira lo que tengo» is already a scene. The reading rule
     runs before the scene rule (`_rules_for`), so a reading shape wins.
+13. **Production's configuration** (Pipec's `.env`, read on 2026-11-24; switches and model names
+    only):
+    - **Already on:** `ROBOT_STREAMING`, `ROBOT_FACE_AUTH_ENABLED` and
+      `FACE_AUTHENTICATION_ENABLED`, so the turn's frame already travels on every streaming turn.
+      Only `VISION_ENABLED` is off. Turning the scene on over streaming is that one switch (D-3).
+    - **The GPU:** Whisper `medium` runs on it (`WHISPER_DEVICE=cuda`,
+      `WHISPER_COMPUTE_TYPE=int8_float16`) and Piper does not (`PIPER_USE_CUDA=false`). Voice
+      checking (`SPEAKER_AUTHENTICATION_ENABLED`) and the face model `buffalo_l` are loaded too.
+    - **A fifth model in Ollama:** `CONSOLIDATION_MODEL=qwen3:4b-instruct-2507-q4_K_M`, beside
+      `qwen2.5:3b`, `qwen3-vl:2b-instruct` and `granite-embedding:278m`. It runs in background
+      tasks after a turn has been answered: candidate extraction (`MEMORY_CANDIDATES_ENABLED`),
+      the conversation's episodes and summary, and the naming of a pending topic
+      (`memory/candidate_extraction.py`, `conversation_episodes.py`, `conversation_summary.py`,
+      `pending_naming.py`). So a vision call can meet a 4B model that loaded seconds before. The
+      bench of Plan 0088 never accounted for it.
 
 ## Decisions
 
@@ -165,10 +183,14 @@ Each is Claude's recommendation; Pipec confirms or changes it (*Pipec's decision
   and a cup on the desk.
   - **Where things live:** the images stay outside the repository, in `.superpowers/sdd/0089/`; the
     tracked record holds numbers only.
-  - **Load:** it runs with the four models resident, as on a normal day: the server up (Whisper
-    `medium` on the GPU, Piper, the face and speaker models) and `qwen2.5:3b` and
-    `granite-embedding:278m` loaded in Ollama. Between cells it calls the 3B model once with a fixed
-    canary question and times it, to see whether the VLM evicted it.
+  - **Load:** it runs as on a normal day: the server up (Whisper `medium` on the GPU, Piper, the
+    face and speaker models) and, in Ollama, `qwen2.5:3b`, `granite-embedding:278m` and the
+    consolidation model `qwen3:4b-instruct-2507-q4_K_M` (item 13). Between cells it calls the 3B
+    model once with a fixed canary question and times it, to see whether the VLM evicted it.
+  - **The consolidation model gets two cells of its own:** the VLM with the 4B model loaded just
+    before (as after a real turn), and the VLM with it unloaded. The difference says how much of
+    the budget the background jobs take. Changing `CONSOLIDATION_MODEL` is not done here: eval R8
+    chose the 4B model for memory quality (recall 0.95 against 0.65 for the 3B).
   - **A small matrix**, one variable at a time from today's settings, never the full product:
     - image long side: 1280 (today), 768, 512;
     - `num_ctx`: Ollama's own, 4096, 2048;
@@ -252,6 +274,11 @@ Each is Claude's recommendation; Pipec confirms or changes it (*Pipec's decision
   safety stop of D-8 with every setting of the matrix.
 - Tuning Whisper, Piper or the 3B text model: the bench shows one of them, not the VLM, is what
   breaks the budget.
+- The consolidation model's place in the budget (item 13): its two cells show that the 4B model,
+  not the VLM, is what runs the laptop out of memory. Then a plan of its own weighs the options:
+  - running the background jobs later, outside the conversation;
+  - Ollama's loaded-model limit;
+  - a smaller consolidation model, against eval R8's memory quality.
 - Handwriting (R4, by measurement, after the line): Plan 0088's card was misread («COMPARAR LECHRE
   TRAN»); printed text and screens are this plan's reading test.
 - A scene that names who is in view (the face recognition of `perception.perceive`): never by this
@@ -320,9 +347,9 @@ defaults for the vision model.
 ## Task 0: Re-audit and baseline
 
 - [ ] **Step 1:** `git switch main && git pull`, create `feat/0089-vision-and-streaming`.
-- [ ] **Step 2:** verify items 1 to 12 of *What the code does today* on `main`; read the real
-  `SERVER_TIMEOUT_S` of Pipec's `.env` (its value only); confirm the test file names of the
-  permitted list. **Stop and report** if an item is false.
+- [ ] **Step 2:** verify items 1 to 12 of *What the code does today* on `main`, and ask Pipec
+  whether item 13 still matches the production `.env` (the agent cannot read it); confirm the test
+  file names of the permitted list. **Stop and report** if an item is false.
 - [ ] **Step 3:** baseline: `MEMORY_ENABLED=false uv run pytest -m "not slow and not hardware and
   not eval" -q -n auto`; note the count.
 
@@ -403,7 +430,8 @@ agent loads `qwen2.5:3b` and `granite-embedding:278m` with one call each, and re
 version and its `OLLAMA_*` variables.
 
 - [ ] **Step 1:** run the cells in this order, each cold then warm, stopping at the safety stop:
-  1. today (every setting unset);
+  1. today (every setting unset), once with the consolidation model loaded just before and once
+     with it unloaded (D-8);
   2. image side 768, then 512;
   3. `num_ctx` 4096, then 2048, on the best side;
   4. the two `num_predict` caps;
@@ -514,9 +542,9 @@ classic `transcribe` is not touched.
 
 ## Task 11: Hardware acceptance, and close
 
-**Setup.** Merge. The settings Pipec chose in Task 4. Server: `VISION_ENABLED`,
-`FACE_AUTHENTICATION_ENABLED` and Plan 0088's switches (memory, documents) on; robot:
-`ROBOT_STREAMING` and `ROBOT_FACE_AUTH_ENABLED` on. Good light, the canaries of Task 4. Pipec
+**Setup.** Merge. The settings Pipec chose in Task 4. Production's `.env` as item 13 reads it,
+with one change: `VISION_ENABLED=true`. Everything else that is needed is already on: streaming,
+the frame, face authentication, memory and the documents. Good light, the canaries of Task 4. Pipec
 starts the server and the robot; the agent reads `logs/server.log` (`vision.described`,
 `vision.read`, `vision.metrics`, `vision.*_failed` with their cause) and `just ollama-log`, runs
 `ollama ps` and reads available memory at each «Yo» step. **Safety stop:** available memory under
@@ -617,7 +645,9 @@ route; face recognition in a scene answer; the robot's `LOOKING` state; the home
   - the duplicated failure phrase (D-4): DRY once two routes speak it;
   - the description entering the record (D-5): a defect the change would create;
   - the stale «classic mode only» PIN comments (item 6): wrong documentation;
-  - the robot timeout's two values (item 7): a measurement that depends on it.
+  - the robot timeout's two values (item 7): the server's 120 s binds, not the robot's 300 s;
+  - the consolidation model in the budget (item 13): a fifth Ollama model that the earlier sittings
+    never counted.
 - **No placeholder:** every phrase, marker, switch, setting and test name is written out; exact
   test file names are confirmed in Task 0.
 
@@ -629,8 +659,8 @@ route; face recognition in a scene answer; the robot's `LOOKING` state; the home
    (recommended), or a new phrase that says the camera sent nothing?
 4. **D-5:** the record keeps «[escena descrita por la cámara]» (recommended), or the description?
 5. **D-6:** remove the guard and `check_vision_enabled` (recommended), or keep a startup warning?
-6. **D-8 / D-12:** the matrix of D-8 (recommended), or a lever to add or drop (for example, try a
-   second quantization of the same model)?
+6. **D-8 / D-12:** the matrix of D-8, with the consolidation model's two cells, only measured
+   (recommended)? Or a lever to add or drop, for example a second quantization of the same model?
 7. **D-10:** «lee» reads and «mira» / «saca una foto» / «toma una foto» describe (recommended), or
    should «saca una foto» read the text instead? Any other phrase you want by name?
 8. **D-12:** Ollama's own switches (flash attention, KV cache in `q8_0`) recorded in the operator
