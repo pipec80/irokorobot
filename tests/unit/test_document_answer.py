@@ -116,6 +116,26 @@ async def test_the_answer_is_capped() -> None:
     assert len(text.removeprefix(f"Según {_TITLE}: ")) <= MAX_ANSWER_CHARS
 
 
+async def test_a_heading_line_of_a_page_is_not_glued_to_the_next_sentence() -> None:
+    # A PDF page keeps its headings as lines of their own, with no full stop (B11, 2026-11-24).
+    text = await _answer(
+        "¿Qué dice sobre el paracetamol?",
+        "Remedios para el dolor\nTome el paracetamol cada ocho horas.",
+    )
+
+    assert "dolor Tome" not in text
+    assert "Tome el paracetamol cada ocho horas." in text
+
+
+async def test_a_line_wrapped_inside_a_sentence_stays_one_sentence() -> None:
+    text = await _answer(
+        "¿Qué dice sobre el paracetamol?",
+        "Tome el paracetamol cada\nocho horas durante la semana.",
+    )
+
+    assert text == f"Según {_TITLE}: Tome el paracetamol cada ocho horas durante la semana."
+
+
 async def test_markdown_marks_are_not_read() -> None:
     text = await _answer("¿Qué dice del tambor?", "- **El tambor** se limpia con *vinagre*.")
 

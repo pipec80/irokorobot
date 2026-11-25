@@ -60,9 +60,20 @@ async def read_text(client: httpx.AsyncClient, image: bytes) -> str:
             timeout=settings.ollama_timeout_s,
         )
     except (httpx.HTTPError, LLMError) as exc:
+        _log_failure(type(exc).__name__)
         raise VisionError(f"VLM reading failed ({type(exc).__name__})") from exc
     text = text.strip()
     if not text:
+        _log_failure("nothing_read")
         raise VisionError("VLM read no text")
     logger.info("Text read by the camera (%d chars)", len(text), extra={"event": "vision.read"})
     return text
+
+
+def _log_failure(cause: str) -> None:
+    """Log why a reading failed: the exception's type name or ``nothing_read``, never a text."""
+    logger.warning(
+        "Reading by the camera failed (%s)",
+        cause,
+        extra={"event": "vision.read_failed", "cause": cause},
+    )

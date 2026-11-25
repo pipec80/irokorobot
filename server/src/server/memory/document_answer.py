@@ -37,6 +37,9 @@ MAX_ANSWER_CHARS: Final = 220
 _MAX_SENTENCES: Final = 2
 _ELLIPSIS: Final = "…"
 _SENTENCE_END: Final = re.compile(r"(?<=[.!?…])\s+")
+# A line with no closing mark followed by a line that opens a sentence: a PDF page's heading.
+# A line wrapped inside a sentence goes on in lowercase and stays one sentence.
+_HEADING_LINE_END: Final = re.compile(r"(?<![.!?…:;,])[ \t]*\n(?=[ \t]*[A-ZÁÉÍÓÚÑ¿¡])")
 _MARKDOWN: Final = re.compile(r"[*_`#>|]+")
 _BULLET: Final = re.compile(r"^\s*(?:[-+]|\d+[.)])\s+")
 # The closed shapes of an order to the robot inside a document (folded, whole words).
@@ -105,7 +108,7 @@ def _clean(sentence: str) -> str:
 def _sentences(body: str) -> list[str]:
     """The body's sentences that may be read aloud: no order, no code, not empty."""
     kept = []
-    for raw in _SENTENCE_END.split(" ".join(body.split())):
+    for raw in _SENTENCE_END.split(" ".join(_HEADING_LINE_END.sub(".\n", body).split())):
         sentence = _clean(raw)
         if sentence and not gives_an_order(sentence) and not flags_secret(sentence):
             kept.append(sentence)

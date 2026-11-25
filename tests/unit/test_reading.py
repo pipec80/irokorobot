@@ -93,6 +93,29 @@ async def test_a_vlm_failure_or_nothing_read_raises(reply: Exception | str) -> N
             await read_text(client, b"\xff\xd8canary")
 
 
+@pytest.mark.parametrize(
+    "reply, cause", [(httpx.ReadTimeout("slow"), "ReadTimeout"), ("", "nothing_read")]
+)
+async def test_a_failed_reading_logs_its_cause_and_no_text(
+    reply: Exception | str, cause: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        if isinstance(reply, Exception):
+            raise reply
+        return httpx.Response(200, json={"message": {"role": "assistant", "content": reply}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with (
+            caplog.at_level("WARNING", logger="server.vision.read_text"),
+            pytest.raises(VisionError),
+        ):
+            await read_text(client, b"\xff\xd8canary")
+
+    (record,) = [r for r in caplog.records if getattr(r, "event", None) == "vision.read_failed"]
+    assert record.cause == cause  # type: ignore[attr-defined]  # set through ``extra``
+    assert "canary" not in record.getMessage()
+
+
 def test_the_slot_gives_its_text_once_to_its_speaker_within_sixty_seconds() -> None:
     slot = ReadingSlot()
     slot.offer("zzcanaryzz", speaker=7, now=_NOW)
