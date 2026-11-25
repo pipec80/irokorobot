@@ -197,3 +197,34 @@ def test_a_vision_model_size_must_be_positive(name: str, monkeypatch: pytest.Mon
     monkeypatch.setenv(name, "0")
     with pytest.raises(ValidationError):
         ServerSettings(_env_file=None)  # type: ignore[call-arg]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("value", ["10 min", "-1", "forever", "10x"])
+def test_a_keep_alive_ollama_would_refuse_is_rejected_at_start(
+    value: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review of plan 0089: a typo would otherwise fail every vision call, quietly."""
+    monkeypatch.setenv("VLM_KEEP_ALIVE", value)
+    with pytest.raises(ValidationError):
+        ServerSettings(_env_file=None)  # type: ignore[call-arg]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("value", ["0", "300", "500ms", "30s", "10m", "1h"])
+def test_a_keep_alive_ollama_accepts_is_kept(value: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("VLM_KEEP_ALIVE", value)
+    assert ServerSettings(_env_file=None).vlm_keep_alive == value  # type: ignore[call-arg]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "name, value",
+    [("VLM_IMAGE_MAX_SIDE", "1281"), ("VLM_NUM_CTX", "65537"), ("VLM_NUM_PREDICT_READING", "8193")],
+)
+def test_a_vision_size_beyond_its_bound_is_rejected(
+    name: str, value: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(name, value)
+    with pytest.raises(ValidationError):
+        ServerSettings(_env_file=None)  # type: ignore[call-arg]
