@@ -1,9 +1,10 @@
 # 0041 — Reading and explaining a paper: a dedicated OCR, the paper's own slot, quoted answers
 
-- **Status:** **Proposed** (2026-11-26). Accepted when
-  [Plan 0090](../plans/open/0090-reading-and-explaining-a-paper.md) closes on real hardware.
-  Pipec's decisions of 2026-11-25 and 2026-11-26 (the plan's *Pipec's decisions*) and the OCR
-  probe ([record](../evals/0090-ocr-probe.md)) are its source.
+- **Status:** **Accepted** (2026-11-26). [Plan 0090](../plans/completed/0090-reading-and-explaining-a-paper.md)
+  closed on real hardware the same day, 8 of 8 steps passed
+  ([record](../evals/0090-paper-acceptance.md)). Pipec's decisions of 2026-11-25 and 2026-11-26
+  (the plan's *Pipec's decisions*) and the OCR probe ([record](../evals/0090-ocr-probe.md)) are its
+  source.
 - **Date:** 2026-11-26
 - **Builds on:** [ADR 0034](0034-documents-and-reading-through-the-camera.md) (decision 5, «Iroko,
   lee esto», and its deviations 3, 5, 9 and 11), [ADR 0020](0020-authorized-actor-in-the-conversation.md)

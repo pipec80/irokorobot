@@ -843,7 +843,9 @@ cerrado. Lo que el plan cambió respecto del ADR 0034 está en su sección *Devi
 0088*: la respuesta es extractiva, sin modelo, y un archivo con contenido activo se rechaza entero.
 La lectura por la cámara funciona por las dos rutas desde el Plan 0089, que quitó la guarda F-08
 del robot. En el laptop de desarrollo cada lectura tarda de 70 a 120 s (el modelo de visión no cabe
-en la GPU de 2 GB; [registro](../evals/0089-vlm-bench.md)); un OCR dedicado se pesa en el Plan 0090.
+en la GPU de 2 GB; [registro](../evals/0089-vlm-bench.md)). Desde el Plan 0090 lee un OCR dedicado
+(RapidOCR, en la CPU, ~1 s por foto; [ADR 0041](../adr/0041-reading-and-explaining-a-paper.md)), y
+el papel leído responde preguntas cerradas citándolo, sin modelo.
 
 ### R3 — Búsqueda lexical e híbrida
 

@@ -43,15 +43,16 @@
       },
       {
         "id": "reading",
-        "label": "Reading and the scene",
+        "label": "Reading, the paper and the scene",
         "focus": [
           "robot",
           "api",
-          "face",
           "controller",
+          "ocr",
+          "paper",
           "ollama"
         ],
-        "note": "The turn's frame, both routes: «lee esto» reads it; «¿qué ves?» says «A ver, déjame mirar...» and the VLM describes it (70-120 s here)."
+        "note": "The turn's frame: «lee esto» goes to the OCR and the paper waits for its reader's questions; «¿qué ves?» goes to the VLM (70-120 s)."
       }
     ]
   },
@@ -202,6 +203,35 @@
       "tag": "identified person only"
     },
     {
+      "id": "paper",
+      "type": "backend",
+      "label": "Paper slot",
+      "sublabel": "4000 chars · 180 s · quoted",
+      "pos": [
+        880,
+        400
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "tag": "no model words it"
+    },
+    {
+      "id": "ocr",
+      "type": "backend",
+      "label": "RapidOCR",
+      "sublabel": "READING_ENGINE · CPU · ~1 s",
+      "pos": [
+        1060,
+        400
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
       "id": "memory",
       "type": "database",
       "label": "SQLite",
@@ -288,7 +318,8 @@
       "to": "memory",
       "label": "v4 authorized read",
       "fromSide": "bottom",
-      "toSide": "top"
+      "toSide": "top",
+      "labelDx": -90
     },
     {
       "id": "api-to-tts",
@@ -315,6 +346,22 @@
       "variant": "emphasis",
       "fromSide": "left",
       "toSide": "bottom"
+    },
+    {
+      "id": "controller-to-ocr",
+      "from": "controller",
+      "to": "ocr",
+      "label": "«lee esto»: frame → text",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "controller-to-paper",
+      "from": "controller",
+      "to": "paper",
+      "label": "paper question → quote",
+      "fromSide": "bottom",
+      "toSide": "top"
     },
     {
       "id": "sensitive-to-policy",
@@ -351,7 +398,7 @@
       "items": [
         "No liveness or replay defense, accepted for the home (ADR 0029)",
         "A PIN grant proves the PIN, not the speaker (ADR-0015); the 3B model's own answers are a limit (P4.1)",
-        "The 2 GB GPU cannot hold the VLM: 70-120 s per frame, one Ollama model at a time (Plan 0089)"
+        "The 2 GB GPU cannot hold the VLM: a scene takes 70-120 s per frame, one Ollama model at a time; the OCR reads a paper in about 1 s (Plans 0089, 0090)"
       ]
     }
   ]

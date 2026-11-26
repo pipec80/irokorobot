@@ -1286,9 +1286,58 @@ order planted in a document is never obeyed, and a code is never read aloud. «N
 tus documentos.» means nothing matched. A `sensitive` document is answered only to you alone in
 front of the camera; with another face in view the robot gives the generic denial.
 
-**Read.** «Iroko, lee esto» with the paper or screen beside your face reads it and offers «¿Lo
-guardo? Dime: sí, guárdalo.»; say it within 60 s to keep it as a note. Printed text reads better
-than handwriting. It works on both routes (Plan 0089).
+**Read** (Plans 0089 and 0090, [ADR 0041](../adr/0041-reading-and-explaining-a-paper.md)).
+«Iroko, lee esto» (also «lee lo que dice», «lee este papel», «¿qué dice aquí?») with the paper or
+screen beside your face reads it aloud, at most about 25 s of speech, and offers «¿Lo guardo? Dime:
+sí, guárdalo.». It works on both routes.
+
+- **Who reads.** `READING_ENGINE` in the server's `.env`: `rapidocr` (the default) reads the frame
+  with a small OCR on the processor in about 1 s; `vlm` uses the vision model (70 to 120 s on this
+  laptop). One reader, never a fallback from one to the other: if it fails, the robot says «No pude
+  leerlo. Acércalo un poco más a la cámara.». The first reading after a start takes about **10 s
+  more** (the OCR's models load once).
+- **Printed text reads well; handwriting only partly.** Hold the paper close and flat, in good
+  light. The robot's camera asks for 1280x720; a bill's small figures are only read at that size.
+  To frame a paper first, run `uv run python scripts/camera_preview.py <name> [--hd]` (a live
+  window; SPACE saves a frame in the contract's format, Q or ESC leaves; `--hd` asks the webcam for
+  1280x720; the default folder is the ignored `.superpowers/camera`).
+
+**Ask about the paper.** While the paper waits, you can ask, by voice:
+
+| Ask | Examples |
+|---|---|
+| the amount | «¿cuánto tengo que pagar?», «¿cuánto es?», «¿cuál es el total?» |
+| the due date | «¿para cuándo es?», «¿cuándo vence?», «¿hasta cuándo tengo que pagar?» |
+| the sender | «¿quién me lo manda?», «¿de quién es?» |
+| the topic | «¿de qué se trata?» |
+| the content | «¿qué dice la carta?» (also «el papel», «la cuenta», «la boleta», «la receta»…), «¿qué más dice?», «¿ahí dice algo?» |
+
+The robot answers by quoting the paper, with no model: «Según el papel: …». If the paper holds no
+amount or date it can recognise, it says «Eso no aparece en lo que leí.»; it never guesses a figure,
+and an order written in the paper or a code is never read back. Two fixed phrases:
+
+- **A question that asks to interpret** («¿es grave?», «¿qué significa?», «¿qué tengo que tomar?»,
+  «¿es normal?», «¿qué me recomiendas?»): «Eso no lo puedo interpretar. Te puedo leer lo que dice;
+  para entenderlo, pregúntale a tu médico.». It never interprets, whatever the paper.
+- **Nobody identified** on the reading turn (the face out of view or not recognised): the paper is
+  read aloud and nothing of it is kept; a question then hears «Solo puedo leértelo; para responder
+  sobre el papel necesito reconocerte.».
+
+**How long the paper waits.** It belongs to the person identified on the reading turn. It ends
+after **180 s without a paper turn**, when **another identified person** speaks, when you read
+another paper (even if that reading fails) or when the server restarts; an unknown or ambiguous turn
+neither reads nor extends it. Ask after it ended and the question is an ordinary turn (the generic
+model answers; it does not know the paper). It is never written to the logs, the record or the
+diary.
+
+**Keep it.** «Sí, guárdalo» **right after** the reading, or right after any question about the
+paper, keeps the whole text as a note in your documents (`normal` level) and the paper stays for
+more questions. If you talked about something else in between, the same words may answer a memory
+offer instead, so they no longer keep the paper; read it again. The first keep after a start also
+loads the embedding model, so that turn is slower.
+
+**Known limit.** Piper reads the «$» of an amount as «dólar» («Total a pagar: $12.345» is spoken
+«dólar doce mil…»); a normaliser of figures for the voice is a later plan.
 
 **What the camera sees.** «¿Qué ves?», «mira lo que tengo», «saca una foto» or «toma una foto»
 describes what is in front, never who. On streaming the robot first says «A ver, déjame mirar...»
@@ -1299,14 +1348,15 @@ canal.». The record keeps «[escena descrita por la cámara]», never the descr
 reads and the other phrases always describe; «le esto» (how the speech-to-text often writes it)
 reads too.
 
-**How slow, on this laptop** (Plan 0089 bench, [record](../evals/0089-vlm-bench.md)): one
-reading or scene takes **70 to 120 s**, and a call past 120 s ends in «Perdón, ahora mismo no
-pude ver la escena.» (or the reading's failure phrase). The 2 GB GPU cannot hold the 2B vision
-model, so Ollama runs its image encoder on the processor (~1100 image tokens per frame, whatever
-the frame's size) and keeps one model loaded at a time: after a vision turn, the next
-conversation turn reloads the 3B model. Quality is right when it answers. It needs a GPU with
-more memory, a lighter vision model or a dedicated OCR (Plan 0090); `VISION_ENABLED` stays a
-choice.
+**How slow, on this laptop** (Plan 0089 bench, [record](../evals/0089-vlm-bench.md)): one scene
+(and a reading with `READING_ENGINE=vlm`) takes **70 to 120 s**, and a call past 120 s ends in
+«Perdón, ahora mismo no pude ver la escena.» (or the reading's failure phrase). The 2 GB GPU cannot
+hold the 2B vision model, so Ollama runs its image encoder on the processor (~1100 image tokens per
+frame, whatever the frame's size) and keeps one model loaded at a time: after a vision turn, the
+next conversation turn reloads the 3B model. Quality is right when it answers. It needs a GPU with
+more memory or a lighter vision model; `VISION_ENABLED` stays a choice. The reading no longer pays
+this with the default `READING_ENGINE=rapidocr`, which measured 1.1 to 1.3 s per frame on hardware
+([record](../evals/0090-paper-acceptance.md)).
 
 **Why a vision call failed.** `logs/server.log` has `vision.describe_failed` or
 `vision.read_failed` with the cause, `ollama.failed` with the phase, the status and Ollama's own
@@ -1327,6 +1377,7 @@ background job logs `conversation.job` with its row, model, time and outcome.
 | `FACE_AUTHENTICATION_ENABLED` | `false` | Server: attempt face resolution when a frame is attached to a protected turn |
 | `FACE_AUTHENTICATION_MATCH_THRESHOLD` | `0.5815` | Stricter, separate match bound for authentication (layered on top of `FACE_MATCH_THRESHOLD`); measured by Plan 0030, provisional |
 | `ROBOT_FACE_AUTH_ENABLED` | `false` | Robot: capture and attach one webcam frame per turn |
+| `READING_ENGINE` | `rapidocr` | Server: who reads the text for «Iroko, lee esto» (Plan 0090, ADR 0041): `rapidocr` (a small OCR on the processor, about 1 s) or `vlm` (the vision model, 70 to 120 s on the laptop). Any other value fails at startup; there is no fallback from one to the other |
 | `VLM_IMAGE_MAX_SIDE`, `VLM_NUM_CTX`, `VLM_NUM_PREDICT_SCENE`, `VLM_NUM_PREDICT_READING`, `VLM_KEEP_ALIVE` | unset | Server: the vision model's allowed settings (Plan 0089). Unset, every vision call is as before; the bench found none that helps on a 2 GB GPU (the frame's size does not change the tokens), so they stay unset. A value Ollama would refuse stops the start. Ollama's own switches (flash attention, KV cache type, loaded-model limit) were not measured and are not recommended |
 | `MAX_UTTERANCE_S` | `28` | Robot (its `.env`): the longest clip one turn sends, in seconds (Plan 0080). Keep it below the server's `MAX_AUDIO_DURATION_S` (30), which refuses a longer clip whole before Whisper. At the cap the robot closes the utterance and sends it as it is, so **a story longer than 28 s is cut into turns**. A non-«no speech» 422 from the server is logged apart on the robot as a closed warning |
 | `FACE_MATCH_THRESHOLD` | `0.4` | Generic conversational face-recognition threshold (unrelated to authentication) |

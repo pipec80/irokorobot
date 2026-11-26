@@ -1,10 +1,14 @@
 # 0090 — Reading and explaining a paper
 
-> **Status:** **`Ready`** (2026-11-25, approved by Pipec). Pipec answered D-1 to D-7 the same day,
-> every recommendation accepted (see *Pipec's decisions* at the end). **Scope amended 2026-11-26**
-> by Pipec for the laptop's limits (see *Scope amendment of 2026-11-26*): Task 1 becomes an
-> isolated OCR probe with three photographs and Task 9 four steps on the streaming route; what is
-> left out is listed with its trigger. Execution runs in a new session, on its own branch.
+> **Status:** **Closed 2026-11-26.** Hardware acceptance 8 of 8 on the streaming route
+> ([record](../../evals/0090-paper-acceptance.md)); ADR 0041 `Accepted`; the OCR probe's
+> [record](../../evals/0090-ocr-probe.md). It was `Ready` on 2026-11-25 (approved by Pipec, who
+> answered D-1 to D-7 the same day, every recommendation accepted; see *Pipec's decisions* at the
+> end) and **its scope was amended 2026-11-26** by Pipec for the laptop's limits (see *Scope
+> amendment of 2026-11-26*): Task 1 became an isolated OCR probe with three photographs and Task 9
+> four steps on the streaming route; what was left out is listed with its trigger in *Deferred*.
+> The text below is the plan as it was executed; *Pipec's decisions* 9 to 12 record what the probe
+> and the branch's review changed.
 >
 > **Source:** row **9a** of the
 > [path to the finish line](../../roadmap/cognitive-roadmap.md#closing-path-of-conversational-memory),
