@@ -14,6 +14,7 @@ code, tests, verified gaps and the delivery sequence.
 | Plan | Implementation reality | Reuse | Remaining closure |
 |---|---|---|---|
 | [0015](0015-personal-companion-design.md) | Approved product design; PC-1 to PC-4 are closed (PC-2 and PC-3A with provisional calibrations); reference only, never an executable batch | Controller, policy/audit, V4 household tools, identity/session seam, short-term continuity, the conversation record and recall index, STT/TTS, face engine | CM-6 and CM-7 (block C, then block D), PC-5 integrated personal acceptance and PC-6 family remain open |
+| [0090](0090-reading-and-explaining-a-paper.md) | `ready` (2026-11-25); nothing built | The reading branch and `_text_reader` seam (Plan 0088), `document_answer`'s quoting and filters, the 0089 bench | All of it: the OCR bench, ADR 0041, the paper slot, the closed questions, the hardware acceptance |
 
 Existing components named under **Reuse** must not be rebuilt by a later plan.
 
