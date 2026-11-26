@@ -1,8 +1,10 @@
 # 0090 — Reading and explaining a paper
 
 > **Status:** **`Ready`** (2026-11-25, approved by Pipec). Pipec answered D-1 to D-7 the same day,
-> every recommendation accepted (see *Pipec's decisions* at the end). Execution runs in a new
-> session, on its own branch.
+> every recommendation accepted (see *Pipec's decisions* at the end). **Scope amended 2026-11-26**
+> by Pipec for the laptop's limits (see *Scope amendment of 2026-11-26*): Task 1 becomes an
+> isolated OCR probe with three photographs and Task 9 four steps on the streaming route; what is
+> left out is listed with its trigger. Execution runs in a new session, on its own branch.
 >
 > **Source:** row **9a** of the
 > [path to the finish line](../../roadmap/cognitive-roadmap.md#closing-path-of-conversational-memory),
@@ -91,34 +93,74 @@ Re-verify each item on `main` in Task 0; **stop and report** if one is false.
 9. **Runtimes already installed** (`uv.lock`): `onnxruntime` 1.32.0 (the face model), `torch`
    2.15.0 (the speaker model), `opencv-python` 5.1, `pillow` 13.0. No OCR package.
 
-## Decisions (answered by Pipec on 2026-11-25)
+## Scope amendment of 2026-11-26 (Pipec)
 
-### D-1. Who reads the paper: measured first, then one reader
+**Why.** The laptop cannot run every model at once (Whisper, the 3B, the 4B, the VLM and the
+embeddings share 15.7 GB and a 2 GiB GPU), and a parallel audit
+(`docs/architecture/model-candidates.md`) is weighing fewer models. Measuring vision again and
+again on a machine known to be short would never end. Pipec's goal for this plan: the robot reads
+a printed paper, tries a handwritten one, and *understands something* (answers from it). The
+approach is the one Pipec used when building the pipeline: prove each piece alone, in its own
+script, then wire it. A dedicated OCR is not an Ollama model (a few MB on the installed ONNX
+Runtime, about 1 s per image in third-party benchmarks), so a result measured alone holds when
+everything is on; its contention with the other models is measured on the home server (PC-5).
 
-Task 1 benches two or three OCR engines on the CPU against today's VLM, on the same photographs,
-with the server loaded as on a normal day. Pipec picks the reader with the numbers. One reader
-behind the existing `_text_reader` seam, named by a setting (`READING_ENGINE`, default `vlm`, so
+**The plan's points, and what this amendment does with each** (✅ done as written · ✂️ reduced ·
+❌ left out, with its trigger in *Deferred*):
+
+| # | Point of the plan as written on 2026-11-25 | Why it was there | Now | What changes, and why |
+|---|---|---|---|---|
+| T0 | Re-audit `main` and take a baseline | Never build on code that changed | ✅ | — |
+| D-1 / T1 | **Reader bench:** 2 or 3 OCR engines (RapidOCR, Tesseract, EasyOCR or docTR) against the VLM, about 8 photographs (card, screen, bill, marker, ballpoint, blue ink, graphite, handwritten prescription), the server loaded (latency, RSS, free RAM) | Choose the reader with numbers: the VLM takes 70 to 120 s | ✂️ | **One OCR (RapidOCR), an isolated script, the server off, 3 photographs:** a printed invented bill, a note in blue ballpoint, a note in graphite, each as taken and with its contrast raised. Tesseract only as the reserve if RapidOCR fails on print |
+| T1 | The VLM on every photograph | Know whether the OCR beats it | ❌ | Plan 0089 measured it: right on print, 70 to 120 s per frame. Repeating it costs two minutes a photograph and teaches nothing new |
+| T1 | The measurement with Whisper, the LLM and the rest loaded | Their fight for RAM | ❌ | The OCR is small and outside Ollama, so it evicts no model; the contention belongs to the home server (PC-5) |
+| T1 | A handwritten prescription | The hardest real case | ❌ | No OCR reads a doctor's hand today; it goes to Pipec's real-world reading round |
+| T1 | Read the licences before anything is used | Never AGPL or GPL | ✅ | RapidOCR's and its models' only (and Tesseract's if the reserve is used) |
+| D-7 / T2 | ADR 0041 | The decision written down | ✅ | Shorter: one reader to record |
+| T3 | The chosen reader behind the seam, and `READING_ENGINE` | Change the reader without touching the rest | ✅ | If RapidOCR passes, it is wired. If it does not, the VLM stays and no setting is built (nothing built that is not used) |
+| — | Raising the contrast before reading (new, not in the plan) | Graphite and dim light | ✂️ | Enters only if the probe shows it helps |
+| D-2 / T4 | **The paper's own slot:** the whole text, bound to who showed it, ended by another person or 180 s of silence | The heart of option B | ✅ | Needs no camera: tested on invented text |
+| D-6 / T4 | «Sí, guárdalo» after several questions | The paper is not lost | ✅ | — |
+| D-3 / D-4 / T5 | The closed questions, the quoted answer «Según el papel: …», the planted-order eval | The *understands something* | ✅ | All in tests over fixed text, no camera, in seconds |
+| D-5 / T6 | The fixed phrase with nobody identified, and the one that declines to interpret | Privacy, no medical advice | ✅ | — |
+| T7 | No paper text in a log, the record, the diary or an export | Privacy | ✅ | — |
+| T8 | Verification and review | Definition of done | ✅ | `just gate` never while Pipec rehearses |
+| T9 | **Hardware acceptance:** 6 steps on both routes | The real microphone and camera | ✂️ | **4 steps, the streaming route only** (production's): the bill read and two questions; «¿es grave?»; «sí, guárdalo»; the face out of view. The 180 s silence and the unrelated question are covered by tests with an injected clock |
+
+**The ledger.** Of the 15 points the plan had, **11 stay whole, 2 are reduced (T1, T9) and 3 are
+left out** (the VLM on every photograph, the loaded measurement, the prescription); one
+conditional point is new (the contrast). This plan closes at 100 % of its amended scope; the three
+left out, and the engines not tried, are the part of the original goal not done for the laptop's
+limits, each with its trigger in *Deferred*, to be taken up when the server moves to its board or
+a better OCR is weighed.
+
+## Decisions (answered by Pipec on 2026-11-25; D-1 amended 2026-11-26)
+
+### D-1. Who reads the paper: one OCR proved alone, then wired
+
+Task 1 runs **RapidOCR** (PP-OCR models on the installed `onnxruntime`) in an isolated script on
+the CPU, with the server off. If it reads the printed paper right, it becomes the reader behind
+the existing `_text_reader` seam, named by a setting (`READING_ENGINE`, default `vlm`, so
 `main`'s behaviour is unchanged until Pipec chooses); never a hidden fallback from one to the
 other.
 
-- **Candidates** (licence read in Task 1 before any of them is used; never AGPL or GPL, as ADR 0034
-  decision 1):
-  - RapidOCR (PP-OCR models on ONNX Runtime), on the installed `onnxruntime`;
-  - Tesseract with its Spanish model, a native binary outside `uv`;
-  - EasyOCR or docTR, on the installed `torch`.
-- **What is measured per photograph:** latency (median and max), peak RSS of the reader, free RAM,
-  and closed quality checks with no judge model: `canary_ok` (the canary words in order), `bill_ok`
-  (the invented bill's amount and due date read exactly).
+- **Licence** read in Task 1 before it is used (code and model weights); never AGPL or GPL, as ADR
+  0034 decision 1. **Tesseract** with its Spanish model is the only reserve, tried only if
+  RapidOCR fails on print.
 - **Photographs** (invented canaries only, taken with the robot's capture path, 640x480, the
-  room's ordinary light): Plan 0089's printed card and phone screen, an invented bill, the canary
-  list handwritten with a marker, a ballpoint, blue ink and graphite, and an invented handwritten
-  prescription. The photographs stay in the ignored `.superpowers/sdd/0090/` and are deleted at
-  the close.
-- **Handwriting is measured, not promised.** If no engine reads it, it stays in R4 with the bench
-  as its evidence.
-- **Pipec's choice** is recorded in the bench record and ADR 0041. If an OCR is chosen, it enters
-  with `uv add` in Task 3, its licence named in ADR 0041; if none beats the VLM, `READING_ENGINE`
-  stays `vlm` and Task 3 builds only the setting.
+  room's ordinary light), three: a printed invented bill, an invented note in blue ballpoint, the
+  same note in graphite. Each is read as taken and with its contrast raised (grayscale and a local
+  contrast step with the installed OpenCV). They stay in the ignored `.superpowers/sdd/0090/` and
+  are deleted at the close.
+- **What is recorded per photograph:** latency, peak RSS, and closed checks with no judge model:
+  `bill_ok` (the amount and due date read exactly) and, for the notes, how many canary words were
+  read.
+- **The pass:** `bill_ok` on the printed bill. **Handwriting is recorded, not promised**: it never
+  blocks the plan; what it misses stays in R4 with the probe as its evidence.
+- **Pipec's choice** is recorded in the probe's record and ADR 0041. If RapidOCR (or the reserve)
+  passes, it enters with `uv add` in Task 3, its licence named in ADR 0041; if neither passes, the
+  VLM stays the reader and Task 3 builds nothing.
+- **The contrast step** enters the reader only if the probe shows it raises a check.
 
 ### D-2. The paper slot: where the paper waits
 
@@ -175,9 +217,9 @@ format `camera`.
 
 ### D-7. ADR 0041, «Reading and explaining a paper»
 
-Written `Proposed` in Task 2, before the bench, with the reader left to the measurement. It amends
+Written `Proposed` in Task 2, before the probe, with the reader left to the measurement. It amends
 ADR 0034 decision 5 (the paper waits and answers), the alternative ADR 0034 rejected («a dedicated
-OCR engine now») once the bench decides, and ADR 0021's window for a reading. Accepted when the
+OCR engine now») once the probe decides, and ADR 0021's window for a reading. Accepted when the
 plan closes on hardware.
 
 ## Deferred, with their triggers
@@ -186,7 +228,14 @@ plan closes on hardware.
 - A person recognized in a photograph: its own ADR first.
 - The content of a QR code or a barcode: after the file-ingestion threat model.
 - An object detector: only by measurement, never AGPL (Ultralytics is refused).
-- Handwriting beyond what this plan's bench shows: R4, with the bench as its evidence.
+- Handwriting beyond what this plan's probe shows: R4, with the probe as its evidence.
+- **Left out by the amendment of 2026-11-26:**
+  - other OCR engines (EasyOCR, docTR, GLM-OCR and others in `model-candidates.md`): when
+    RapidOCR misses a household paper in real use, or the server moves to its board;
+  - the VLM against the OCR on every photograph: when a lighter vision model is measured
+    (`model-candidates.md`, section 4);
+  - the reader's contention with Whisper and the other models: the home-server budget (PC-5);
+  - a doctor's handwritten prescription: Pipec's real-world reading round, below.
 - Pipec's real-world reading round (the home's dim light, blue ink, graphite, a doctor's
   handwriting, notebooks, the robot's own light): after this plan, as a bench of its own.
 - A model that words or explains the answer: a larger local model (P4.1), with ADR 0034's
@@ -204,7 +253,7 @@ plan closes on hardware.
   the server's process or a child, on the CPU, never a cloud call.
 - Spoken strings in neutral tuteo (Santiago de Chile, no voseo). No real household data: invented
   canaries only (the «qqcanarioqq» card, an invented bill «qqluzqq» with an invented amount and
-  date, an invented prescription); `scripts/check_reserved_terms.py` passes.
+  date, an invented note); `scripts/check_reserved_terms.py` passes.
 
 ## Review focus
 
@@ -229,7 +278,7 @@ a need outside the list stops the plan for Pipec.
 
 | Task | Files |
 |---|---|
-| 1 | `scripts/ocr_bench.py` (new), `tests/unit/test_ocr_bench.py` (new), `docs/evals/0090-ocr-bench.md` (new); the bench's own environment outside the repo's `.venv` |
+| 1 | `scripts/ocr_probe.py` (new), `tests/unit/test_ocr_probe.py` (new), `docs/evals/0090-ocr-probe.md` (new); the probe's own environment outside the repo's `.venv` |
 | 2 | `docs/adr/0041-reading-and-explaining-a-paper.md` (new), `docs/adr/README.md` (the index) |
 | 3 | `settings.py`, `.env.example`, `vision/read_text.py`, `vision/ocr_reader.py` (new, only if an OCR is chosen), root `pyproject.toml` and `uv.lock` (only the chosen engine); `tests/unit/test_read_text.py` (or the existing reading test file), `tests/unit/test_ocr_reader.py` (new, same condition), `tests/unit/test_settings.py` |
 | 4 | `memory/reading_offer.py`, `routers/transcribe.py` (`_text_reader`, `_reading_keeper`, `_cap_reading`); `tests/unit/test_reading_offer.py` (or the existing slot test file), the existing reading integration tests |
@@ -255,33 +304,35 @@ the VLM reader.
 - [ ] **Step 3:** baseline: the CI selection with `MEMORY_ENABLED=false`, `pyright`, `mypy`,
   `ruff`; record the counts in the commit message of Task 1.
 
-## Task 1: The OCR bench (D-1), with Pipec at the laptop
+## Task 1: The isolated OCR probe (D-1, amended 2026-11-26), with Pipec at the laptop
 
-- [ ] **Step 1:** read each candidate's licence (code and model weights) and its last release;
-  drop any that is AGPL, GPL or has a non-commercial model licence. Record name, version and
-  licence in `docs/evals/0090-ocr-bench.md`.
-- [ ] **Step 2 (TDD):** `scripts/ocr_bench.py` with the closed checks `canary_ok` and `bill_ok`
-  and one JSON line per call (engine, photograph label, latency, peak RSS, free RAM before and
-  after, check outcome, failure cause); `tests/unit/test_ocr_bench.py` proves the checks and that
-  no line holds read text. RED first.
-- [ ] **Step 3:** build a separate environment from the lock plus the candidates (never the real
-  `.venv`); Pipec takes the photographs (one step per message, his «listo» each time).
-- [ ] **Step 4:** run every engine and the VLM on every photograph with the server up as on a
-  normal day; one call per cell, no retry; safety stop under 1 GB free or a call over 120 s.
+- [ ] **Step 1:** read RapidOCR's licence (code and model weights) and its last release, and
+  Tesseract's only if the reserve is used; refuse AGPL, GPL or a non-commercial model licence.
+  Record name, version and licence in `docs/evals/0090-ocr-probe.md`.
+- [ ] **Step 2 (TDD):** `scripts/ocr_probe.py` reads one photograph with one engine, as taken and
+  with the contrast step, and writes one JSON line per read (engine, photograph label, variant,
+  latency, peak RSS, `bill_ok` or the count of canary words read, failure cause);
+  `tests/unit/test_ocr_probe.py` proves the checks and that no line holds read text. RED first.
+- [ ] **Step 3:** build a separate environment from the lock plus RapidOCR (never the real
+  `.venv`); Pipec takes the three photographs, one step per message, his «listo» each time.
+- [ ] **Step 4:** run the probe with the server **off**; one read per cell, no retry.
 - [ ] **Step 5:** write the record (numbers and outcomes only) and put the choice to Pipec, with a
   recommendation. Record his answer in the record and below.
 
 ## Task 2: ADR 0041, `Proposed`
 
-- [ ] Write ADR 0041 from D-1 to D-7, the bench's numbers and Pipec's choice; add it to the index.
+- [ ] Write ADR 0041 from D-1 to D-7, the probe's numbers and Pipec's choice; add it to the index.
 
 ## Task 3: The reader behind the seam (D-1)
 
+Built only if the probe passed; otherwise the VLM stays the reader and this task records that.
+
 - [ ] **RED:** `READING_ENGINE=vlm` sends `main`'s payload byte for byte; an unknown value fails
   at startup; with the chosen OCR, a canary frame gives the canary text, a failure raises
-  `VisionError` (so the route says `COULD_NOT_READ`) and the VLM is never called.
-- [ ] **GREEN:** the setting, `.env.example`, and, if chosen, `vision/ocr_reader.py` (CPU-bound,
-  through `run_in_executor_with_context`, the frame in memory only) with `uv add` of the engine.
+  `VisionError` (so the route says `COULD_NOT_READ`) and the VLM is never called; the contrast
+  step runs only if the probe kept it.
+- [ ] **GREEN:** the setting, `.env.example`, `vision/ocr_reader.py` (CPU-bound, through
+  `run_in_executor_with_context`, the frame in memory only) with `uv add` of the engine.
 
 ## Task 4: The paper slot (D-2) and «sí, guárdalo» over it (D-6)
 
@@ -323,25 +374,28 @@ the VLM reader.
 
 ## Task 9: Hardware acceptance, and close
 
-Pipec at the laptop, one step per message. With the chosen reader, on both routes:
+Pipec at the laptop, one step per message. With the chosen reader, on the streaming route
+(production's; the classic route shares the same seam and is covered by the tests):
 
 1. An invented bill: «Iroko, lee esto», then «¿cuánto tengo que pagar?» and «¿para cuándo es?»:
    both quoted «Según el papel: …», right.
-2. «¿Quién es el presidente de Chile?» with the bill open: today's answer, not the paper.
-3. «¿Es grave?» with the invented prescription: `PAPER_NOT_INTERPRETED`.
-4. «Sí, guárdalo» after the questions: kept; «¿qué dice mi nota del …?» finds it.
-5. 180 s of silence, then «¿cuánto es?»: today's turn (no paper).
-6. The face out of view on the reading, then «¿cuánto tengo que pagar?»: `PAPER_NEEDS_IDENTITY`.
+2. «¿Es grave?» with the bill still open: `PAPER_NOT_INTERPRETED`.
+3. «Sí, guárdalo» after the questions: kept; «¿qué dice mi nota del …?» finds it.
+4. The face out of view on the reading, then «¿cuánto tengo que pagar?»: `PAPER_NEEDS_IDENTITY`.
+
+The 180 s of silence and an unrelated question with a paper open are proved by Task 4 and Task 5's
+tests with an injected clock, not on hardware.
 
 Record outcomes only in `docs/evals/0090-paper-acceptance.md`; update the documents of Task 9's
 row; ADR 0041 `Accepted`; the plan to `completed/`.
 
 ## Completion criteria
 
-1. The bench record holds every engine's numbers on every photograph, handwriting included, and
-   Pipec's choice; the chosen reader is the default.
+1. The probe's record holds RapidOCR's numbers on the three photographs, as taken and with the
+   contrast step (and the reserve's, if used), and Pipec's choice; the chosen reader is the
+   default.
 2. A paper is read, answered by its amount and its due date with «Según el papel: …», and kept on
-   «sí, guárdalo» after the questions, on both voice routes.
+   «sí, guárdalo» after the questions: on hardware on the streaming route, in tests on both.
 3. Nobody identified hears `PAPER_NEEDS_IDENTITY`; an interpreting question hears
    `PAPER_NOT_INTERPRETED`; no planted order or code is ever answered.
 4. Another person, an unknown turn and 180 s of silence end the paper as D-2 says.
@@ -376,3 +430,9 @@ Asked one at a time.
    the nearest sentence (out of context it can sound like medical advice).
 7. **D-6, keeping after questions: while the paper slot lives.** Rejected: the next turn only.
 8. **D-7, the ADR: a new ADR 0041.** Rejected: one more amendment inside ADR 0034.
+
+**Amendment of 2026-11-26 (Pipec).** After the plan was `Ready`, Pipec asked to stop measuring
+vision on a laptop known to be short and to prove the reader alone first. He approved the table of
+*Scope amendment of 2026-11-26*: D-1 becomes one OCR (RapidOCR) proved in an isolated script with
+three photographs; Task 9 becomes four steps on the streaming route; the VLM comparison, the loaded
+measurement and the prescription are left out with their triggers. Every other decision stands.
