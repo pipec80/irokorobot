@@ -1,11 +1,15 @@
-"""The read text waiting for «sí, guárdalo», and keeping it as a document (Plan 0088 D-17).
+"""The paper read by the camera, waiting while its reader asks about it (ADR 0041, Plan 0090).
 
-One in-process slot: the last reading, bound to the speaker identified on the reading turn, for
-60 seconds, the offer window of ADR 0021. A reading with no identified speaker is read aloud but can
-never be kept (Plan 0088 B10: anyone on the network could plant one for the owner's next «sí»). A new reading replaces it, the next turn takes or empties it, a restart forgets it. Keeping
-it stores a ``normal`` document of format ``camera``; the frame was never kept. Nothing here logs
-a text, and the module does not import the cognitive core (ADR 0031 decision 11): the route
-checks who speaks and names the note.
+One in-process slot holds the last reading: the **whole** text (at most ``PAPER_MAX_CHARS``),
+bound to the person identified on the reading turn. It follows the short-term session's rules
+(ADR 0020): another identified person, ``WORKING_MEMORY_IDLE_SECONDS`` of silence since the last
+paper turn, a new reading or a restart ends it; an unknown or ambiguous turn neither reads nor
+extends it. Questions about the paper read it (``paper_for``), and «sí, guárdalo» keeps it
+(``take``) while it lives, even after questions (ADR 0041 decision 6). A reading with no
+identified speaker keeps **no text**, only that it happened (Plan 0088 B10: anyone on the network
+could plant one for the owner's next «sí»). Keeping stores a ``normal`` document of format
+``camera``; the frame was never kept. Nothing here logs a text, and the module does not import the
+cognitive core (ADR 0031 decision 11): the route checks who speaks and names the note.
 """
 
 from __future__ import annotations
@@ -19,62 +23,107 @@ from server import db
 from server.memory.document_extract import ExtractedText
 from server.memory.document_sections import SECTION_MAX_CHARS, cut_sections
 from server.memory.document_store import DocumentExistsError, NewSource, insert_source
+from server.settings import settings
 from server.timestamps import instant_text
 
 if TYPE_CHECKING:
     from datetime import datetime
 
-__all__ = ["READING_SLOT", "ReadingSlot", "keep_reading"]
+__all__ = ["PAPER_MAX_CHARS", "READING_SLOT", "ReadingSlot", "keep_reading"]
 
-#: How long a reading waits for «sí, guárdalo» (ADR 0021's offer window).
-OFFER_WINDOW: Final = timedelta(seconds=60)
+#: The most characters of a paper held for questions (ADR 0041 decision 3).
+PAPER_MAX_CHARS: Final = 4000
 
 
 @dataclass
 class _Reading:
-    text: str = field(repr=False)
+    text: str | None = field(repr=False)
     speaker: int | None
     at: datetime
+    # The turn number of the last paper turn (the reading, a paper question or a keep).
+    paper_turn: int
 
 
 class ReadingSlot:
-    """One reading waiting to be kept; its ``repr`` never shows the text."""
+    """The one paper waiting for questions and «sí, guárdalo»; its ``repr`` never shows the text."""
 
     def __init__(self) -> None:
         """Start empty."""
         self._reading: _Reading | None = None
+        self._turns = 0
 
     def __repr__(self) -> str:
-        """Say whether a reading waits, never what it says."""
+        """Say whether a paper waits, never what it says."""
         return f"ReadingSlot(open={self._reading is not None})"
 
+    def begin_turn(self) -> None:
+        """Count one voice turn; the keeper calls it once at the start of every turn."""
+        self._turns += 1
+
     def offer(self, text: str, *, speaker: int | None, now: datetime) -> None:
-        """Hold *text* for *speaker* (or for nobody), replacing any earlier reading."""
-        self._reading = _Reading(text=text, speaker=speaker, at=now)
+        """Hold *text* for *speaker*, replacing any earlier paper; bound to nobody, keep no text."""
+        kept = text[:PAPER_MAX_CHARS] if speaker is not None else None
+        self._reading = _Reading(text=kept, speaker=speaker, at=now, paper_turn=self._turns)
 
     def is_open(self, now: datetime) -> bool:
-        """Whether a reading waits and its window has not passed."""
-        return self._reading is not None and now - self._reading.at <= OFFER_WINDOW
+        """Whether a reading waits and its silence has not run out (dropping it when it has)."""
+        reading = self._reading
+        if reading is None:
+            return False
+        if now - reading.at >= timedelta(seconds=settings.working_memory_idle_seconds):
+            self._reading = None
+            return False
+        return True
+
+    def observe(self, person_id: int | None, now: datetime) -> None:
+        """Apply one turn's speaker: another identified person ends the paper; unknown leaves it.
+
+        Args:
+            person_id: The person identified on the turn, or ``None`` (unknown or ambiguous).
+            now: The current time.
+        """
+        reading = self._reading
+        if not self.is_open(now) or reading is None or person_id is None:
+            return
+        if reading.speaker != person_id:
+            self._reading = None
+
+    def paper_for(self, speaker: int, now: datetime) -> str | None:
+        """Return the paper's text to its own speaker, marking a paper turn; else ``None``.
+
+        A paper turn restarts the paper's silence and lets «sí, guárdalo» keep it on the next turn.
+        """
+        reading = self._reading
+        if not self.is_open(now) or reading is None or reading.speaker != speaker:
+            return None
+        if reading.text is None:
+            return None
+        reading.at = now
+        reading.paper_turn = self._turns
+        return reading.text
 
     def take(self, speaker: int, now: datetime) -> str | None:
-        """Give the reading to *speaker* and empty the slot.
+        """Give the paper to *speaker* to keep, when the talk is still about it.
+
+        «Sí, guárdalo» keeps the paper only right after a paper turn (the reading or a question
+        about it): once the talk moved on, the same words may answer a memory offer (Plan 0090
+        review, Pipec 2026-11-26). The paper stays for more questions.
 
         Args:
             speaker: The person who said «sí, guárdalo».
             now: The current time.
 
         Returns:
-            The text, when it waits within its window and is bound to *speaker*; ``None``
-            otherwise. A reading bound to nobody is never given: anyone on the network could
-            have planted it. The slot is empty afterwards either way.
+            The whole text, when a paper bound to *speaker* waits and the turn before was about
+            it; ``None`` otherwise (a reading bound to nobody is never given).
         """
-        reading, self._reading = self._reading, None
-        if reading is None or now - reading.at > OFFER_WINDOW or reading.speaker != speaker:
+        reading = self._reading
+        if reading is None or reading.paper_turn < self._turns - 1:
             return None
-        return reading.text
+        return self.paper_for(speaker, now)
 
     def clear(self) -> None:
-        """Forget the reading."""
+        """Forget the paper."""
         self._reading = None
 
 

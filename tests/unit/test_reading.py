@@ -15,7 +15,7 @@ from server.cognition.document_cues import is_keep_phrase, is_reading_request
 from server.cognition.intent_resolution import resolve_information_need
 from server.cognition.response_plan import InformationNeed
 from server.exceptions import VisionError
-from server.memory.reading_offer import ReadingSlot
+from server.memory.reading_offer import PAPER_MAX_CHARS, ReadingSlot
 from server.settings import settings
 from server.vision.read_text import READ_PROMPT, read_text
 
@@ -117,26 +117,76 @@ async def test_a_failed_reading_logs_its_cause_and_no_text(
     assert "canary" not in record.getMessage()
 
 
-def test_the_slot_gives_its_text_once_to_its_speaker_within_sixty_seconds() -> None:
+def test_the_paper_is_held_whole_for_its_speaker_until_silence() -> None:
+    """ADR 0041 decision 3: the whole text waits for its speaker; silence ends it."""
     slot = ReadingSlot()
-    slot.offer("zzcanaryzz", speaker=7, now=_NOW)
+    slot.offer("zzpapel " * 600, speaker=7, now=_NOW)  # 4,800 characters
 
-    assert slot.take(8, _NOW + timedelta(seconds=5)) is None
-    slot.offer("zzcanaryzz", speaker=7, now=_NOW)
-    assert slot.take(7, _NOW + timedelta(seconds=61)) is None
-    slot.offer("zzcanaryzz", speaker=7, now=_NOW)
-    assert slot.take(7, _NOW + timedelta(seconds=30)) == "zzcanaryzz"
-    assert slot.take(7, _NOW + timedelta(seconds=31)) is None
+    held = slot.paper_for(7, _NOW + timedelta(seconds=100))
+    assert held is not None
+    assert len(held) == PAPER_MAX_CHARS
+    assert slot.paper_for(8, _NOW + timedelta(seconds=100)) is None
+    # A paper turn at 100 s restarts the silence: at 279 s it still waits, at 281 s it is gone.
+    assert slot.paper_for(7, _NOW + timedelta(seconds=279)) is not None
+    assert slot.paper_for(7, _NOW + timedelta(seconds=279 + 181)) is None
+    assert not slot.is_open(_NOW + timedelta(seconds=279 + 181))
 
 
-def test_a_slot_bound_to_nobody_is_never_taken_and_a_new_reading_replaces_it() -> None:
+def test_another_identified_person_ends_the_paper_and_an_unknown_turn_does_not() -> None:
+    slot = ReadingSlot()
+    slot.offer("zzuno", speaker=7, now=_NOW)
+
+    slot.observe(None, _NOW + timedelta(seconds=10))
+    assert slot.paper_for(7, _NOW + timedelta(seconds=20)) == "zzuno"
+    slot.observe(7, _NOW + timedelta(seconds=30))
+    assert slot.paper_for(7, _NOW + timedelta(seconds=40)) == "zzuno"
+    slot.observe(8, _NOW + timedelta(seconds=50))
+    assert not slot.is_open(_NOW + timedelta(seconds=50))
+
+
+def test_an_unknown_turn_does_not_extend_the_silence() -> None:
+    slot = ReadingSlot()
+    slot.offer("zzuno", speaker=7, now=_NOW)
+    slot.observe(None, _NOW + timedelta(seconds=170))
+
+    assert slot.paper_for(7, _NOW + timedelta(seconds=181)) is None
+
+
+def test_keeping_gives_the_whole_text_to_its_speaker_and_the_paper_stays() -> None:
+    """ADR 0041 decision 6: the keep verb works while the paper lives, even after questions."""
+    slot = ReadingSlot()
+    slot.offer("zzuno", speaker=7, now=_NOW)
+    slot.paper_for(7, _NOW + timedelta(seconds=90))
+
+    assert slot.take(8, _NOW + timedelta(seconds=120)) is None
+    assert slot.take(7, _NOW + timedelta(seconds=120)) == "zzuno"
+    assert slot.paper_for(7, _NOW + timedelta(seconds=130)) == "zzuno"
+
+
+def test_a_reading_bound_to_nobody_keeps_no_text_and_a_new_reading_replaces_it() -> None:
     slot = ReadingSlot()
     slot.offer("zzuno", speaker=7, now=_NOW)
     slot.offer("zzdos", speaker=None, now=_NOW)
 
     assert slot.is_open(_NOW)
     assert slot.take(7, _NOW) is None
-    assert not slot.is_open(_NOW)
+    assert slot.paper_for(7, _NOW) is None
+    assert "zzdos" not in repr(slot)
+
+
+def test_a_keep_needs_the_turn_before_to_be_about_the_paper() -> None:
+    """Review finding 3 (Pipec, 2026-11-26): after other talk «sí, guárdalo» is not the paper's."""
+    slot = ReadingSlot()
+    slot.begin_turn()
+    slot.offer("zzuno", speaker=7, now=_NOW)  # turn 1, the reading
+    slot.begin_turn()
+    assert slot.paper_for(7, _NOW) == "zzuno"  # turn 2, a question about it
+    slot.begin_turn()
+    assert slot.take(7, _NOW) == "zzuno"  # turn 3, right after: kept
+    slot.begin_turn()  # turn 4, talk of something else
+    slot.begin_turn()
+    assert slot.take(7, _NOW) is None  # turn 5: not the paper's any more
+    assert slot.paper_for(7, _NOW) == "zzuno"  # but it can still be asked about
 
 
 def test_clearing_empties_the_slot() -> None:
@@ -145,6 +195,7 @@ def test_clearing_empties_the_slot() -> None:
     slot.clear()
 
     assert slot.take(7, _NOW) is None
+    assert not slot.is_open(_NOW)
     assert "zzuno" not in repr(slot)
 
 

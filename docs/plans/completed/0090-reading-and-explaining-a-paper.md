@@ -1,10 +1,14 @@
 # 0090 — Reading and explaining a paper
 
-> **Status:** **`Ready`** (2026-11-25, approved by Pipec). Pipec answered D-1 to D-7 the same day,
-> every recommendation accepted (see *Pipec's decisions* at the end). **Scope amended 2026-11-26**
-> by Pipec for the laptop's limits (see *Scope amendment of 2026-11-26*): Task 1 becomes an
-> isolated OCR probe with three photographs and Task 9 four steps on the streaming route; what is
-> left out is listed with its trigger. Execution runs in a new session, on its own branch.
+> **Status:** **Closed 2026-11-26.** Hardware acceptance 8 of 8 on the streaming route
+> ([record](../../evals/0090-paper-acceptance.md)); ADR 0041 `Accepted`; the OCR probe's
+> [record](../../evals/0090-ocr-probe.md). It was `Ready` on 2026-11-25 (approved by Pipec, who
+> answered D-1 to D-7 the same day, every recommendation accepted; see *Pipec's decisions* at the
+> end) and **its scope was amended 2026-11-26** by Pipec for the laptop's limits (see *Scope
+> amendment of 2026-11-26*): Task 1 became an isolated OCR probe with three photographs and Task 9
+> four steps on the streaming route; what was left out is listed with its trigger in *Deferred*.
+> The text below is the plan as it was executed; *Pipec's decisions* 9 to 12 record what the probe
+> and the branch's review changed.
 >
 > **Source:** row **9a** of the
 > [path to the finish line](../../roadmap/cognitive-roadmap.md#closing-path-of-conversational-memory),
@@ -278,9 +282,9 @@ a need outside the list stops the plan for Pipec.
 
 | Task | Files |
 |---|---|
-| 1 | `scripts/ocr_probe.py` (new), `tests/unit/test_ocr_probe.py` (new), `docs/evals/0090-ocr-probe.md` (new); the probe's own environment outside the repo's `.venv` |
+| 1 | `scripts/ocr_probe.py` (new), `tests/unit/test_ocr_probe.py` (new), `docs/evals/0090-ocr-probe.md` (new), `scripts/camera_preview.py` (new, decision 11), `tests/unit/test_camera_preview.py` (new); the probe's own environment outside the repo's `.venv` |
 | 2 | `docs/adr/0041-reading-and-explaining-a-paper.md` (new), `docs/adr/README.md` (the index) |
-| 3 | `settings.py`, `.env.example`, `vision/read_text.py`, `vision/ocr_reader.py` (new, only if an OCR is chosen), root `pyproject.toml` and `uv.lock` (only the chosen engine); `tests/unit/test_read_text.py` (or the existing reading test file), `tests/unit/test_ocr_reader.py` (new, same condition), `tests/unit/test_settings.py` |
+| 3 | `settings.py`, `.env.example`, `vision/read_text.py`, `vision/ocr_reader.py` (new, only if an OCR is chosen), root `pyproject.toml`, `server/pyproject.toml` and `uv.lock` (only the chosen engine); `robot/src/robot/camera_capture.py` (the 1280x720 request, decision 10); `tests/unit/test_read_text.py` (or the existing reading test file), `tests/unit/test_ocr_reader.py` (new, same condition), `tests/unit/test_settings.py`, `tests/unit/test_camera_capture.py` |
 | 4 | `memory/reading_offer.py`, `routers/transcribe.py` (`_text_reader`, `_reading_keeper`, `_cap_reading`); `tests/unit/test_reading_offer.py` (or the existing slot test file), the existing reading integration tests |
 | 5 | `cognition/document_cues.py`, `cognition/intent_resolution.py`, `cognition/models.py` (one new need), `cognition/controller.py`, `cognition/response_plan.py` (the phrases and the marker), `memory/paper_answer.py` (new), `routers/transcribe.py` (the paper seam); `tests/unit/test_document_cues.py`, `tests/unit/test_intent_resolution.py`, `tests/unit/test_paper_answer.py` (new), `tests/integration/test_paper_questions.py` (new), `tests/unit/test_no_voseo_in_spoken_strings.py` |
 | 6 | the same files as Task 5 (D-5's two phrases and their cues) |
@@ -383,6 +387,9 @@ Pipec at the laptop, one step per message. With the chosen reader, on the stream
 3. «Sí, guárdalo» after the questions: kept; «¿qué dice mi nota del …?» finds it.
 4. The face out of view on the reading, then «¿cuánto tengo que pagar?»: `PAPER_NEEDS_IDENTITY`.
 
+With the camera at 1280x720 (decision 10), the face check still identifies Pipec on step 1, and
+the turn's trace records the frame's size and the turn's time.
+
 The 180 s of silence and an unrelated question with a paper open are proved by Task 4 and Task 5's
 tests with an injected clock, not on hardware.
 
@@ -436,3 +443,26 @@ vision on a laptop known to be short and to prove the reader alone first. He app
 *Scope amendment of 2026-11-26*: D-1 becomes one OCR (RapidOCR) proved in an isolated script with
 three photographs; Task 9 becomes four steps on the streaming route; the VLM comparison, the loaded
 measurement and the prescription are left out with their triggers. Every other decision stands.
+
+**After the probe (2026-11-26, Pipec; [record](../../evals/0090-ocr-probe.md)).**
+
+9. **The reader: RapidOCR with the contrast step.** It read the invented bill exactly in about
+   1 s, and the handwritten notes partly (3 and 2 of 5 canary words with the contrast step).
+   Rejected: RapidOCR without the contrast step, and keeping the vision model.
+   **Amended the same day (Task 3):** read apart, the contrast step misread one digit of the real
+   bill's total, which was exact as taken. Pipec dropped the contrast step: **the reader reads the
+   frame as taken.**
+10. **The camera requests 1280x720** (added to this plan, Task 3). Pipec's own bill was read
+    exactly only at 1280x720: at the robot's 640x480 its figures are a few pixels high. It stays
+    within the image contract (max 1280x720). Rejected: a later plan.
+11. **The live camera preview** used to frame the papers becomes `scripts/camera_preview.py`
+    (Task 1), a tool for every later camera test (Pipec asked).
+
+**After the branch's review (2026-11-26, Task 8).**
+
+12. **«Sí, guárdalo» keeps the paper only right after a paper turn** (the reading or any question
+    about it), amending D-6: once the talk turned to something else, the same words may answer a
+    memory offer, and the paper must not steal it. Rejected: keeping while the paper lives.
+    The review's other fixes need no decision: the due date and the amount are raised by their
+    strongest words and never guessed; a failed new reading clears the old paper; a planted order
+    wrapped over lines is filtered whole.

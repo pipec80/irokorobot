@@ -15,7 +15,13 @@ from server.cognition.authorization import (
     evaluate_authorization,
 )
 from server.cognition.calendar_tools import calculate_age, get_current_date
-from server.cognition.document_cues import DocumentCue, classify_document_cue, is_keep_phrase
+from server.cognition.document_cues import (
+    DocumentCue,
+    PaperAsk,
+    classify_document_cue,
+    classify_paper_question,
+    is_keep_phrase,
+)
 from server.cognition.family_sides import Side, SidedNames, SideGroup
 from server.cognition.household_request import names_someone_known, requests_data_of_a_name
 from server.cognition.identity import ActivePersonContext, ActivePersonStatus, HouseholdRole
@@ -139,6 +145,9 @@ type TextReader = Callable[[CognitiveEvent[TextTurnPayload]], Awaitable[ReadingR
 #: Takes or empties the waiting reading on every turn (``True`` when the turn is «sí, guárdalo»):
 #: kept for the owner's face, emptied otherwise (Plan 0088 D-17). It never raises.
 type ReadingKeeper = Callable[[CognitiveEvent[TextTurnPayload], bool], Awaitable[KeepOutcome]]
+#: Answers a closed question about the paper just read (Plan 0090, ADR 0041): the route binds the
+#: slot and the speaker; ``None`` when no paper waits, so the turn is today's. It never raises.
+type PaperAnswerer = Callable[[CognitiveEvent[TextTurnPayload], PaperAsk], Awaitable[str | None]]
 #: The household's stored names and aliases (Plan 0077). It never raises: a store failure is an
 #: empty set, and the turn stays conversation, where the model holds no stored household value.
 type HouseholdNameReader = Callable[[], Awaitable[frozenset[str]]]
@@ -226,6 +235,7 @@ class CognitiveController:
         document_answerer: DocumentAnswerer | None = None,
         text_reader: TextReader | None = None,
         reading_keeper: ReadingKeeper | None = None,
+        paper_answerer: PaperAnswerer | None = None,
     ) -> None:
         """Create a controller with injected calendar and legacy-generation seams.
 
@@ -276,6 +286,9 @@ class CognitiveController:
                 on. When absent the reading phrases are ordinary conversation.
             reading_keeper: Keeps the waiting reading on «sí, guárdalo», or empties it on any
                 other turn (Plan 0088 D-17); injected with ``text_reader``.
+            paper_answerer: Answers a closed question about the paper just read (Plan 0090);
+                injected with ``text_reader``. When absent those questions are ordinary
+                conversation, byte for byte.
         """
         self._today = today
         self._legacy_turn = legacy_turn
@@ -298,6 +311,9 @@ class CognitiveController:
         self._document_answerer = document_answerer
         self._text_reader = text_reader
         self._reading_keeper = reading_keeper
+        self._paper_answerer = paper_answerer
+        # One paper answer per event (the classic route decides twice).
+        self._papers: dict[UUID, ResponsePlan | None] = {}
         self._readings: dict[UUID, ResponsePlan] = {}
         self._keeps: dict[UUID, KeepOutcome] = {}
         # One document search and one audit row per event (the classic route decides twice).
@@ -352,6 +368,8 @@ class CognitiveController:
         """
         if await self._kept_reading(event):
             return _reading_plan(READING_KEPT)
+        if (paper := await self._paper_plan(event)) is not None:
+            return paper
         need = await self._resolved_need(event)
         decision = await self._decision_for(event, need)
         if decision is None and need is InformationNeed.SENSITIVE_READ:
@@ -389,6 +407,29 @@ class CognitiveController:
             wants = is_keep_phrase(event.payload.message)
             self._keeps[event.event_id] = await self._reading_keeper(event, wants)
         return self._keeps[event.event_id] is KeepOutcome.KEPT
+
+    async def _paper_plan(self, event: CognitiveEvent[TextTurnPayload]) -> ResponsePlan | None:
+        """Answer a closed question about the paper just read, or ``None`` (Plan 0090).
+
+        Only while a paper waits (the answerer says ``None`` otherwise): the answer quotes the
+        paper or says a fixed phrase, never through a model, and is recorded as a marker.
+        """
+        if self._paper_answerer is None:
+            return None
+        if event.event_id not in self._papers:
+            ask = classify_paper_question(event.payload.message)
+            spoken = None if ask is None else await self._paper_answerer(event, ask)
+            self._papers[event.event_id] = (
+                None
+                if spoken is None
+                else ResponsePlan(
+                    need=InformationNeed.PAPER_QUESTION,
+                    status=KnowledgeStatus.KNOWN,
+                    source=ResponseSource.DETERMINISTIC,
+                    response=spoken,
+                )
+            )
+        return self._papers[event.event_id]
 
     async def _read_text_plan(self, event: CognitiveEvent[TextTurnPayload]) -> ResponsePlan | None:
         """Read aloud the text in front of the camera, then offer to keep it (Plan 0088 D-17).
@@ -496,8 +537,10 @@ class CognitiveController:
                 | InformationNeed.SECRET_VALUE
                 | InformationNeed.DOCUMENT
                 | InformationNeed.READ_TEXT
+                | InformationNeed.PAPER_QUESTION
             ):
-                # The last four never get here: ``_decision_for`` routes them first.
+                # The last five never get here: ``_decision_for`` routes four of them first, and
+                # no rule resolves to a paper question (``decide`` asks the paper answerer first).
                 decision = None
         return decision
 

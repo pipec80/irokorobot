@@ -109,6 +109,16 @@ def _conversation_record_off(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _reading_engine_vlm(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Start every test with the vision model as the reader (ADR 0041 decision 1).
+
+    The default reader is the OCR, which loads real models; the reading tests double the vision
+    model's HTTP call instead. A test of the OCR sets ``rapidocr`` itself, with a fake engine.
+    """
+    monkeypatch.setattr(settings, "reading_engine", "vlm")
+
+
+@pytest.fixture(autouse=True)
 def _ollama_probe_offline(monkeypatch: pytest.MonkeyPatch) -> None:
     """Start every test with the start-up Ollama probe stubbed out (Plan 0064).
 

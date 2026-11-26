@@ -99,6 +99,13 @@ section and index row, physically, with a line in the deletion register).
 - Good for short, large text (a note, a label, a recipe card, a medicine box); a full page of small
   print is the PDF's job. The body's camera reads worse than the laptop's: the reading is measured
   again on the body after the line.
+- **Amended by [ADR 0041](0041-reading-and-explaining-a-paper.md) (Plan 0090, 2026-11-26): the
+  paper waits and answers, and a dedicated OCR reads.** The reader is RapidOCR
+  (`READING_ENGINE=rapidocr`) on the frame as taken, no longer the vision model by default, with no
+  fallback between them; this settles the alternative «a dedicated OCR engine now» rejected below.
+  The read text, whole, waits in its own slot bound to the person identified on the reading turn
+  and is answered by quotation («Según el papel: …») to a closed list of questions; it is still
+  kept only after «sí, guárdalo».
 
 ### 6. What is trusted, and where the guards stand
 

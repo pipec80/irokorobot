@@ -76,6 +76,11 @@ def capture_frame(device_index: int = 0) -> bytes:
     try:
         if not cap.isOpened():
             raise CameraError(f"Cannot open camera device {device_index}")
+        # Ask for the contract's largest frame (Plan 0090, ADR 0041 decision 2): a webcam left to
+        # its default gives 640x480, where a paper's small print is a few pixels high. A camera
+        # that cannot do 1280x720 gives what it can; fit_to_contract still bounds the result.
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, _MAX_WIDTH)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, _MAX_HEIGHT)
         ok, frame = cap.read()
         if not ok or frame is None:
             raise CameraError(f"Camera device {device_index} returned no frame")

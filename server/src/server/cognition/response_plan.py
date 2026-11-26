@@ -69,6 +69,8 @@ class InformationNeed(StrEnum):
     DOCUMENT = "document"
     # «Iroko, lee esto»: the text in front of the camera read aloud (Plan 0088 D-17).
     READ_TEXT = "read_text"
+    # «¿Cuánto tengo que pagar?» about the paper just read: quoted from it (Plan 0090, ADR 0041).
+    PAPER_QUESTION = "paper_question"
 
 
 class ResponseSource(StrEnum):
@@ -185,6 +187,16 @@ COULD_NOT_READ: Final = "No pude leerlo. Acércalo un poco más a la cámara."
 READ_SECRET: Final = "Eso tiene una clave o un código; no lo leo en voz alta."  # noqa: S105  # pragma: allowlist secret - a fixed phrase
 READ_OFFER: Final = "¿Lo guardo? Dime: sí, guárdalo."
 READING_KEPT: Final = "Listo, lo guardé en tus documentos."
+#: The fixed phrases of a question about the paper just read (Plan 0090, ADR 0041 decisions 4-5).
+PAPER_ANSWER_OPENING: Final = "Según el papel:"
+NOT_IN_PAPER: Final = "Eso no aparece en lo que leí."
+PAPER_NEEDS_IDENTITY: Final = (
+    "Solo puedo leértelo; para responder sobre el papel necesito reconocerte."
+)
+PAPER_NOT_INTERPRETED: Final = (
+    "Eso no lo puedo interpretar. Te puedo leer lo que dice; para entenderlo, pregúntale a tu "
+    "médico."
+)
 #: Spoken when a recall question finds nothing it may say (ADR 0028 decisions 4 and 8).
 NO_MEMORY: Final = "No me acuerdo de eso."
 #: What a strong document cue hears when nothing qualified, and what any failure answers (D-14).
@@ -315,6 +327,9 @@ SENSITIVE_RECORDED_TEXT: Final = "[dato sensible leído]"
 #: log (Plan 0088 D-18): no section or read text enters the record, the diary or an export.
 DOCUMENT_RECORDED_TEXT: Final = "[respuesta de un documento]"
 READING_RECORDED_TEXT: Final = "[texto leído por la cámara]"
+#: Replaces an answer about the paper just read (Plan 0090, ADR 0041 decision 3): it quotes the
+#: paper, which enters no record, diary or export.
+PAPER_RECORDED_TEXT: Final = "[respuesta del papel leído]"
 #: Replaces a described scene in the conversation record (Plan 0089 D-5): the description is
 #: current perception, not something the owner told, so it enters no record, diary or export.
 SCENE_RECORDED_TEXT: Final = "[escena descrita por la cámara]"
@@ -328,6 +343,7 @@ _LOGGED_MARKERS: Final[Mapping[InformationNeed, str]] = MappingProxyType(
         InformationNeed.RECALL: RECALL_LOGGED_TEXT,
         InformationNeed.DOCUMENT: DOCUMENT_RECORDED_TEXT,
         InformationNeed.READ_TEXT: READING_RECORDED_TEXT,
+        InformationNeed.PAPER_QUESTION: PAPER_RECORDED_TEXT,
         InformationNeed.RELATIVES_NAMES: RELATIVES_LOGGED_TEXT,
         InformationNeed.SENSITIVE_READ: SENSITIVE_RECORDED_TEXT,
     }
@@ -353,6 +369,16 @@ def spoken_log_text(plan: ResponsePlan) -> str | None:
     return _LOGGED_MARKERS.get(plan.need)
 
 
+#: The needs whose answer carries a document's or a paper's text: always recorded as a marker.
+_TEXT_REPLACING_MARKERS: Final[Mapping[InformationNeed, str]] = MappingProxyType(
+    {
+        InformationNeed.DOCUMENT: DOCUMENT_RECORDED_TEXT,
+        InformationNeed.READ_TEXT: READING_RECORDED_TEXT,
+        InformationNeed.PAPER_QUESTION: PAPER_RECORDED_TEXT,
+    }
+)
+
+
 def recorded_exchange(plan: ResponsePlan, heard: str) -> tuple[str, str]:
     """Return the pair the conversation record keeps for one turn (Plan 0079, D-8).
 
@@ -372,10 +398,8 @@ def recorded_exchange(plan: ResponsePlan, heard: str) -> tuple[str, str]:
         return SECRET_RECORDED_TEXT, plan.response
     if plan.need is InformationNeed.SENSITIVE_READ and plan.status is KnowledgeStatus.KNOWN:
         return heard, SENSITIVE_RECORDED_TEXT
-    if plan.need is InformationNeed.DOCUMENT:
-        return heard, DOCUMENT_RECORDED_TEXT
-    if plan.need is InformationNeed.READ_TEXT:
-        return heard, READING_RECORDED_TEXT
+    if (marker := _TEXT_REPLACING_MARKERS.get(plan.need)) is not None:
+        return heard, marker
     if _is_described_scene(plan):
         return heard, SCENE_RECORDED_TEXT
     return heard, plan.response

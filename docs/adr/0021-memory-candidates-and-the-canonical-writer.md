@@ -501,6 +501,13 @@ One function, **one `db.transaction()`**, never relying on an `IntegrityError`:
     short clip, or short confirmations among the references, would lift the owner's pass rate
     without accepting an impostor is Plan 0068's measurement (Part B); no threshold, enrollment or
     embedding changes here.
+- **Amended by [ADR 0041](0041-reading-and-explaining-a-paper.md) (Plan 0090, 2026-11-26): the
+  60 s window for a reading.** The offer after «Iroko, lee esto» is not bound to 60 s any more: the
+  read paper waits in its own slot under ADR 0020's rules (180 s of silence, another identified
+  person, a new reading), and «sí, guárdalo» keeps the whole paper from the same person **right
+  after a paper turn** (the reading or any question about it). Once the talk turned to something
+  else the same words may answer a memory offer, so they no longer keep the paper. Elsewhere the
+  60 s window of an open offer stands.
 
 ### 10. Where it runs
 

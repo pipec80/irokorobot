@@ -163,6 +163,16 @@ hardware; the [operational board](../README.md#operational-board) has the full c
   data dictionary and `iroko-admin health`. Accepted on real hardware (schema version 20, health 0)
   on 2026-11-17; ADR 0038 `Accepted`, ADR 0032 decision 1 implemented.
   [Record](../../evals/0085-storage-foundation-acceptance.md).
+- [Plan 0090](0090-reading-and-explaining-a-paper.md): reading and explaining a paper (row 9a), scope
+  amended 2026-11-26 for the laptop's limits.
+  - RapidOCR reads the frame as taken in about 1 s (`READING_ENGINE`, default `rapidocr`; the vision
+    model stays selectable); the robot's camera asks for 1280x720.
+  - The whole paper waits in its own slot, bound to the person who showed it, under the short-term
+    session's rules; «sí, guárdalo» keeps it right after a paper turn.
+  - A closed list of questions is answered by quotation, no model: «Según el papel: …», or «Eso no
+    aparece en lo que leí.»; two fixed phrases for nobody identified and for interpreting.
+  - Accepted on real hardware on 2026-11-26, 8 of 8, streaming route. ADR 0041 `Accepted`.
+  - [Probe](../../evals/0090-ocr-probe.md), [record](../../evals/0090-paper-acceptance.md).
 - [Plan 0089](0089-vision-model-and-streaming-scene.md) (CI selection 8936): the vision model diagnosed and measured, then «¿qué ves?» over streaming.
   - Why an Ollama call fails and what it cost, and the trace of one turn from the robot to its background jobs.
   - The scene from the turn's own frame after «A ver, déjame mirar...»; the robot starts in streaming with server vision on; clearer camera phrases.

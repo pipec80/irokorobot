@@ -91,18 +91,82 @@ async def test_the_card_is_read_then_kept_on_the_next_turn(
     assert titles[0].startswith("Nota del ")
 
 
-async def test_anything_else_empties_the_slot_and_nothing_is_kept(
+async def test_a_keep_after_questions_about_the_paper_keeps_it(
     reading: tuple[PersonalSetupResult, AsyncMock], monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """ADR 0041 decision 6: «sí, guárdalo» keeps the paper right after questions about it."""
+    result, _ = reading
+    _see_the_owner(monkeypatch)
+    _hear(monkeypatch, "lee esto", "¿De qué se trata?", "¿Qué dice el papel?", "Sí, guárdalo")
+    _models(monkeypatch)
+
+    async with _client() as client:
+        responses = [await client.post("/transcribe", files=_files()) for _ in range(4)]
+
+    assert _spoken(responses[3], "/transcribe") == READING_KEPT
+    assert len(await _camera_titles(result.owner_entity_id)) == 1
+
+
+async def test_a_keep_after_talking_of_something_else_keeps_no_paper(
+    reading: tuple[PersonalSetupResult, AsyncMock], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review finding 3 (Pipec, 2026-11-26): once the talk left the paper, «sí, guárdalo» may
+    answer a memory offer, so it no longer keeps the paper."""
     result, _ = reading
     _see_the_owner(monkeypatch)
     _hear(monkeypatch, "lee esto", "Hola, ¿cómo estás?", "Sí, guárdalo")
     _models(monkeypatch)
 
     async with _client() as client:
-        for _ in range(3):
-            await client.post("/transcribe", files=_files())
+        responses = [await client.post("/transcribe", files=_files()) for _ in range(3)]
 
+    assert _spoken(responses[2], "/transcribe") != READING_KEPT
+    assert await _camera_titles(result.owner_entity_id) == []
+
+
+async def test_the_whole_paper_is_kept_though_only_the_start_is_spoken(
+    reading: tuple[PersonalSetupResult, AsyncMock], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ADR 0041 decision 3: 400 characters are spoken, the whole paper is held and kept."""
+    result, read = reading
+    read.return_value = "Linea de relleno del papel. " * 30 + "Cierre qqfinalqq."
+    _see_the_owner(monkeypatch)
+    _hear(monkeypatch, "lee esto", "Sí, guárdalo")
+    _models(monkeypatch)
+
+    async with _client() as client:
+        first = await client.post("/transcribe", files=_files())
+        await client.post("/transcribe", files=_files())
+
+    assert "qqfinalqq" not in _spoken(first, "/transcribe")
+    (source,) = [
+        s
+        for s in await document_store.sources_of(owner_entity_id=result.owner_entity_id)
+        if s.format == "camera"
+    ]
+    cursor = await db.get_conn().execute(
+        "SELECT group_concat(body, ' ') FROM document_sections WHERE source_id = ?", (source.id,)
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    assert row is not None
+    assert "qqfinalqq" in str(row[0])
+
+
+async def test_a_code_beyond_the_spoken_start_still_refuses_the_paper(
+    reading: tuple[PersonalSetupResult, AsyncMock], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    result, read = reading
+    read.return_value = "Linea de relleno del papel. " * 30 + "Clave del wifi: zorro4821"
+    _see_the_owner(monkeypatch)
+    _hear(monkeypatch, "lee esto", "Sí, guárdalo")
+    _models(monkeypatch)
+
+    async with _client() as client:
+        first = await client.post("/transcribe", files=_files())
+        await client.post("/transcribe", files=_files())
+
+    assert _spoken(first, "/transcribe") == READ_SECRET
     assert await _camera_titles(result.owner_entity_id) == []
 
 

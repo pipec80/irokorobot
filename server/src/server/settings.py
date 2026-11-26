@@ -243,6 +243,10 @@ class Settings(BaseSettings):
     # How long Ollama keeps the vision model loaded after a call (`keep_alive`, e.g. "10m").
     # A duration Ollama accepts: seconds, or a number with ms, s, m or h (never negative).
     vlm_keep_alive: Annotated[str, Field(pattern=r"^[0-9]+(ms|s|m|h)?$")] | None = None
+    # Who reads the text in front of the camera («lee esto», ADR 0041): the dedicated OCR
+    # (RapidOCR on the CPU, about 1 s) or the vision model (70 to 120 s on the laptop). One reader,
+    # never a fallback from one to the other.
+    reading_engine: Literal["rapidocr", "vlm"] = "rapidocr"
     # Spoken immediately when a visual question is detected — buys the VLM
     # its inference time without a silent robot (V0.5).
     vision_look_phrase: str = "A ver, déjame mirar..."
