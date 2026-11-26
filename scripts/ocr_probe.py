@@ -18,12 +18,18 @@ Usage:
 
 from __future__ import annotations
 
-import argparse
+from pathlib import Path
+import sys
+
+# Direct execution puts ``scripts/`` on ``sys.path[0]``; the ``from scripts.…`` import below needs
+# the repo root (pytest already has it through pyproject ``pythonpath``), as in ``cm4_corpus.py``.
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import argparse  # after the sys.path bootstrap, by design
 from dataclasses import asdict, dataclass
 import json
 import logging
-from pathlib import Path
-import sys
 import time
 from typing import TYPE_CHECKING, Final, Literal
 
