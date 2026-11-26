@@ -728,8 +728,10 @@ def _text_reader(
     """Return the reading of the turn's own frame, or ``None`` with a switch off (D-17).
 
     The frame is the one the route already validated for face authentication; it is read in
-    memory by the VLM and never stored or logged. A text the document secret detector flags is not
-    read and nothing waits to be kept.
+    memory by the configured reader and never stored or logged. A paper the document secret
+    detector flags anywhere is not read and nothing waits. Otherwise its start is spoken (at most
+    ``_MAX_READING_CHARS``) and the **whole** paper waits in the slot for questions and «sí,
+    guárdalo», bound to the person seen on this turn (ADR 0041 decision 3).
     """
     if not _reading_on():
         return None
@@ -738,21 +740,22 @@ def _text_reader(
         if frame is None:
             return ReadingReply(outcome=ReadingOutcome.NO_FRAME)
         try:
-            text = _cap_reading(await read_text(client, frame))
+            paper = (await read_text(client, frame)).strip()
         except VisionError as exc:
             logger.warning("Reading failed (%s)", type(exc).__name__)
             return ReadingReply(outcome=ReadingOutcome.FAILED)
-        if flags_secret(text):
+        if flags_secret(paper):
             READING_SLOT.clear()
             return ReadingReply(outcome=ReadingOutcome.SECRET)
+        spoken = _cap_reading(paper)
         try:
             actor = await request_identity.peek_actor(event)
         except Exception as exc:  # seam boundary: the text is read aloud, it just cannot be kept
             logger.warning("Reading speaker unknown (%s)", type(exc).__name__)
             READING_SLOT.clear()
-            return ReadingReply(outcome=ReadingOutcome.READ, text=text)
-        READING_SLOT.offer(text, speaker=actor.person_id, now=utc_now())
-        return ReadingReply(outcome=ReadingOutcome.READ, text=text)
+            return ReadingReply(outcome=ReadingOutcome.READ, text=spoken)
+        READING_SLOT.offer(paper, speaker=actor.person_id, now=utc_now())
+        return ReadingReply(outcome=ReadingOutcome.READ, text=spoken)
 
     return read
 
@@ -771,11 +774,13 @@ def _reading_keeper(
 ) -> ReadingKeeper | None:
     """Return the keeper of the waiting reading, or ``None`` with a switch off (D-17).
 
-    Every turn empties the slot unless it is «sí, guárdalo» from the owner's face within 60
-    seconds, from the speaker the reading was bound to (or anyone, when it was bound to nobody).
-    A kept note is embedded at once, as ``iroko-admin docs add`` does: a question that names
-    nothing specific finds a section only by its distance (ADR 0040), and the conversation job
-    does not run while the conversation is open.
+    Every turn shows the slot who speaks: another identified person ends the paper, an unknown
+    or ambiguous turn leaves it untouched (ADR 0041 decision 3). «Sí, guárdalo» from the person the
+    paper is bound to keeps its whole text while it lives, even after questions (decision 6); the
+    paper stays for more questions. A reading bound to nobody is never kept. A kept note is
+    embedded at once, as ``iroko-admin docs add`` does: a question that names nothing specific
+    finds a section only by its distance (ADR 0040), and the conversation job does not run while
+    the conversation is open.
     """
     if not _reading_on():
         return None
@@ -785,20 +790,15 @@ def _reading_keeper(
             return await _keep(event, wants)
         except Exception as exc:  # seam boundary: a failed keep is no keep, the turn goes on
             logger.warning("Reading not kept (%s)", type(exc).__name__)
-            READING_SLOT.clear()
             return KeepOutcome.NOT_KEPT
 
     async def _keep(event: CognitiveEvent[TextTurnPayload], wants: bool) -> KeepOutcome:
         now = utc_now()
         if not READING_SLOT.is_open(now):
-            READING_SLOT.clear()
             return KeepOutcome.NO_SLOT
-        if not wants:
-            READING_SLOT.clear()
-            return KeepOutcome.NOT_KEPT
         actor = await request_identity.peek_actor(event)
-        if actor.person_id is None or not may_read_own_memory(actor):
-            READING_SLOT.clear()
+        READING_SLOT.observe(actor.person_id, now)
+        if not wants or actor.person_id is None or not may_read_own_memory(actor):
             return KeepOutcome.NOT_KEPT
         text = READING_SLOT.take(actor.person_id, now)
         if text is None:
