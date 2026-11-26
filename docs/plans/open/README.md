@@ -14,6 +14,7 @@ code, tests, verified gaps and the delivery sequence.
 | Plan | Implementation reality | Reuse | Remaining closure |
 |---|---|---|---|
 | [0015](0015-personal-companion-design.md) | Approved product design; PC-1 to PC-4 are closed (PC-2 and PC-3A with provisional calibrations); reference only, never an executable batch | Controller, policy/audit, V4 household tools, identity/session seam, short-term continuity, the conversation record and recall index, STT/TTS, face engine | CM-6 and CM-7 (block C, then block D), PC-5 integrated personal acceptance and PC-6 family remain open |
+| [0091](0091-more-document-formats.md) | `ready` (2026-11-26); nothing built | Plan 0088's extraction table, child process and file checks; the OCR of Plan 0090; Whisper | All of it: the gate, the readers, migration 024, the hardware acceptance |
 
 Existing components named under **Reuse** must not be rebuilt by a later plan.
 
