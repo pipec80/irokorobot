@@ -45,7 +45,8 @@
 |---|---|---|---|---|
 | Whole bill | 640x480 | partly | not read | not read |
 | Closer, framed with a live preview | 640x480 | read | not read | not read |
-| Same framing | **1280x720** | read | **exact** | **exact** |
+| Same framing, as taken | **1280x720** | read | **exact** | **exact** |
+| Same framing, contrast step | 1280x720 | read | **one digit wrong** | exact |
 
 The webcam supports 1280x720, the image contract's maximum; `robot.camera_capture` requests no
 size, so it gets 640x480. At that size a utility bill's figures are a few pixels high. The limit
@@ -55,6 +56,10 @@ for a real paper was the frame, not the reader.
 
 1. **The reader:** RapidOCR with the contrast step (against RapidOCR alone, and against keeping
    the vision model). It enters with `uv add` in Task 3.
+   **Amended the same day:** the first check of the real bill searched the as-taken and the
+   contrast outputs together. Read apart (Task 3), the contrast step misread one digit of the
+   total; as taken, both figures are exact. Pipec dropped the contrast step: a wrong figure read
+   aloud is worse than one handwritten word fewer. **The reader reads the frame as taken.**
 2. **The camera:** the robot requests 1280x720 in this plan (Task 3), within the image contract,
    with the face check and the frame's size checked on hardware (Task 9).
 

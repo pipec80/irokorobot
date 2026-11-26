@@ -41,6 +41,10 @@ default-groups = ["dev"]
 # faster-whisper 1.2.1 calls av.open(..., metadata_errors=...), which av 19 removed: STT fails
 # with a TypeError on every clip. Lift this once faster-whisper supports av 19.
 constraint-dependencies = ["av<19"]
+# rapidocr (Plan 0090) asks for opencv-python-headless; server and robot already ship
+# opencv-python, and both wheels write the same cv2 package. A marker that never holds drops the
+# headless one, so rapidocr uses the one cv2 already installed (the same OpenCV major).
+override-dependencies = ["opencv-python-headless; sys_platform == 'never'"]
 
 [tool.uv.sources]
 # pytorch-cpu index avoids shm.dll issues on Windows and keeps the wheel CPU-only

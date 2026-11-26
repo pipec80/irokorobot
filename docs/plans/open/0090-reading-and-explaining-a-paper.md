@@ -445,6 +445,9 @@ measurement and the prescription are left out with their triggers. Every other d
 9. **The reader: RapidOCR with the contrast step.** It read the invented bill exactly in about
    1 s, and the handwritten notes partly (3 and 2 of 5 canary words with the contrast step).
    Rejected: RapidOCR without the contrast step, and keeping the vision model.
+   **Amended the same day (Task 3):** read apart, the contrast step misread one digit of the real
+   bill's total, which was exact as taken. Pipec dropped the contrast step: **the reader reads the
+   frame as taken.**
 10. **The camera requests 1280x720** (added to this plan, Task 3). Pipec's own bill was read
     exactly only at 1280x720: at the robot's 640x480 its figures are a few pixels high. It stays
     within the image contract (max 1280x720). Rejected: a later plan.

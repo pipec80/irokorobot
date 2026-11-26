@@ -1,6 +1,7 @@
-"""Read the text in front of the camera with the local VLM (Plan 0088 D-17, ADR 0034 decision 5).
+"""Read the text in front of the camera (Plan 0088 D-17, ADR 0034 decision 5, ADR 0041).
 
-One fixed prompt asks for the visible text only. The frame is the turn's own (the one the voice
+The reader is ``READING_ENGINE``: the dedicated OCR (``vision.ocr_reader``, the default) or the
+local VLM, where one fixed prompt asks for the visible text only. The frame is the turn's own (the one the voice
 routes carry for face authentication), processed in memory and never stored or logged.
 """
 
@@ -16,6 +17,7 @@ from server.exceptions import LLMError, VisionError
 from server.llm_transport import ollama_chat_measured
 from server.settings import settings
 from server.vision.describe import log_vision_failure, log_vision_metrics, vlm_frame, vlm_options
+from server.vision.ocr_reader import ocr_read_text
 
 if TYPE_CHECKING:
     from server.llm_transport import ChatMessage
@@ -35,7 +37,7 @@ _READ_FAILED: Final = "vision.read_failed"
 
 
 async def read_text(client: httpx.AsyncClient, image: bytes) -> str:
-    """Return the text the VLM reads in one camera frame.
+    """Return the text the configured reader reads in one camera frame.
 
     Args:
         client: Shared, lifecycle-owned HTTP client (Plan 0039).
@@ -46,8 +48,11 @@ async def read_text(client: httpx.AsyncClient, image: bytes) -> str:
         The text read, stripped.
 
     Raises:
-        VisionError: If the VLM is unreachable, fails, times out or reads nothing.
+        VisionError: If the reader fails, times out or reads nothing.
     """
+    if settings.reading_engine == "rapidocr":
+        # ADR 0041 decision 1: the OCR reads in about a second; it never falls back to the VLM.
+        return await ocr_read_text(image)
     image = await vlm_frame(image, _READ_FAILED)
     message: ChatMessage = {
         "role": "user",

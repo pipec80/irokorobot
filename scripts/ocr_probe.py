@@ -4,15 +4,15 @@ The server stays off and no model of Ollama is loaded: the reader is proved by i
 piece of the pipeline was. Every photograph is read as taken and with its contrast raised
 (grayscale and a local contrast step with OpenCV), and one JSON line per read is appended:
 latency, the free memory before and after, closed checks with no judge model, and the failure
-cause. No line holds the read text. The engine runs from an ephemeral layer
-(``uv run --with``), so neither the real ``.venv`` nor the lock changes.
+cause. No line holds the read text. RapidOCR is a server dependency since Plan 0090 Task 3; the
+reserve, Tesseract, runs from an ephemeral layer (``uv run --with pytesseract``).
 
 The photographs are invented canaries (Plan 0089's printable sheet): ``bill`` is the invented
 bill (total $12.345, due 15-12-2026); ``hand_bic`` and ``hand_graphite`` are the canary list
 written by hand in blue ballpoint and in graphite.
 
 Usage:
-    uv run --with rapidocr python scripts/ocr_probe.py --images .superpowers/sdd/0090/images --engine rapidocr --out .superpowers/sdd/0090/probe.jsonl
+    uv run python scripts/ocr_probe.py --images .superpowers/sdd/0090/images --engine rapidocr --out .superpowers/sdd/0090/probe.jsonl
     uv run python scripts/ocr_probe.py --summary .superpowers/sdd/0090/probe.jsonl
 """
 
@@ -122,13 +122,15 @@ def checks(photograph: str, text: str) -> tuple[bool | None, int | None]:
 def raise_contrast(image: bytes) -> bytes:
     """Return *image* in grayscale with its local contrast raised (CLAHE), as a PNG.
 
+    A probe variant only: the server reads the frame as taken (Plan 0090 decision 9 as amended).
+
     Args:
         image: A JPEG or PNG photograph.
 
     Raises:
         ValueError: If OpenCV cannot decode or encode the image.
     """
-    import cv2  # noqa: PLC0415 - the probe's own step; the server never imports it here
+    import cv2  # noqa: PLC0415
     import numpy as np  # noqa: PLC0415
 
     decoded = cv2.imdecode(np.frombuffer(image, dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
@@ -188,8 +190,7 @@ def read_one(
 
 def rapidocr_reader() -> Reader:
     """Build RapidOCR's reader with its default models (PP-OCRv6 small, which covers Spanish)."""
-    # Present only in the probe's ephemeral layer (`uv run --with rapidocr`), never in the lock.
-    from rapidocr import RapidOCR  # noqa: PLC0415  # pyright: ignore[reportMissingImports]
+    from rapidocr import RapidOCR  # noqa: PLC0415 - heavy import, only when probing
 
     engine = RapidOCR()
 

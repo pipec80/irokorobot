@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
+import cv2
 import numpy as np
 import pytest
 from robot.camera_capture import capture_frame, encode_jpeg, fit_to_contract
@@ -69,6 +70,23 @@ def test_capture_frame_returns_contract_jpeg() -> None:
 
     assert jpeg.startswith(_JPEG_MAGIC)
     cap.release.assert_called_once()
+
+
+@pytest.mark.unit
+def test_capture_frame_asks_for_the_contract_s_largest_size() -> None:
+    """Plan 0090 decision 10: the camera is asked for 1280x720 before the frame is read."""
+    cap = MagicMock()
+    cap.isOpened.return_value = True
+    cap.read.return_value = (True, _frame(640, 480))
+
+    with patch("robot.camera_capture.cv2.VideoCapture", return_value=cap):
+        capture_frame()
+
+    cap.set.assert_any_call(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    cap.set.assert_any_call(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+    assert cap.method_calls.index(call.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)) < (
+        cap.method_calls.index(call.read())
+    )
 
 
 @pytest.mark.unit

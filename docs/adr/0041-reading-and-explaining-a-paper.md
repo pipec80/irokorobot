@@ -25,8 +25,9 @@
 2. **A dedicated OCR reads print in about a second.** The isolated probe (Plan 0090 Task 1, server
    and Ollama off) read the invented bill exactly in 0.8 to 1.1 s with RapidOCR 3.10.0 and its
    default PP-OCRv6 small models, on the installed ONNX Runtime; the models load once in about 8 s
-   with no measurable drop of free RAM. Handwriting in block capitals is read partly (3 of 5 canary
-   words in blue ballpoint, 2 of 5 in graphite, with a contrast step).
+   with no measurable drop of free RAM. Handwriting in block capitals is read partly (2 of 5 canary
+   words in blue ballpoint, 1 of 5 in graphite; a contrast step added one word each but misread a
+   digit of a real bill's total, so it was dropped).
 3. **The frame was the limit for a real paper.** The robot asks the webcam for no size and gets
    640x480; a utility bill's figures are then a few pixels high. At 1280x720, the image contract's
    maximum, the probe read a real bill's due date and total exactly (outcomes only).
@@ -39,11 +40,11 @@
 
 ## Decision
 
-### 1. The reader is RapidOCR, with a contrast step, behind the reading seam
+### 1. The reader is RapidOCR, reading the frame as taken, behind the reading seam
 
 `READING_ENGINE` names the one reader: `vlm` (today's) or `rapidocr`. RapidOCR runs in the
 server's process on the CPU, through the bounded executor, with its default models (PP-OCRv6
-small, which covers Spanish), after a grayscale and local-contrast (CLAHE) step. A failure says
+small, which covers Spanish), on the frame as taken: no contrast step. A failure says
 the existing «No pude leerlo…»; it never falls back to the vision model. The vision model stays
 for «¿qué ves?». Licences: RapidOCR's code is Apache-2.0 and its models derive from PaddleOCR's
 (Apache-2.0); no AGPL, GPL or non-commercial term. Ollama stays the only runtime of language and
@@ -95,7 +96,8 @@ slot lives, from the same person, even after questions. Elsewhere ADR 0021's 60 
 ## Alternatives considered
 
 - **Keep the vision model:** right on print, 70 to 120 s per frame here. Rejected by Pipec.
-- **RapidOCR without the contrast step:** one handwritten word fewer per note. Rejected by Pipec.
+- **RapidOCR with a contrast step:** one handwritten word more per note, but one digit of a real
+  bill's total misread. Rejected by Pipec.
 - **The paper in the continuity slot:** the generic prompt would read it. Rejected.
 - **The 3B words the answer:** it obeys planted orders. Rejected.
 - **Every turn of the window goes to the paper:** it steals the conversation. Rejected.

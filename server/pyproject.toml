@@ -29,6 +29,7 @@ dependencies = [
     "torchaudio>=2.11.0,<3.0.0",
     "pillow>=13.0.0,<14.0.0",
     "pypdf>=7.1.1,<8.0.0",
+    "rapidocr>=3.10.0,<4.0.0",
 ]
 
 [project.scripts]
