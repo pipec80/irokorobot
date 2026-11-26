@@ -46,7 +46,9 @@
 ## Findings
 
 - **Piper reads «$» as «dólar».** «Total a pagar: $12.345» is spoken «dólar doce mil trescientos…»;
-  in Chile the sign is pesos. Pipec's decision (2026-11-26): not in this plan; a later plan
-  normalises figures for the voice (amounts, dates, times).
+  in Chile the sign is pesos. Pipec's decision (2026-11-26): not in this plan. He widened it the
+  same day to one rule per household locale (the currency's name by country, the separators,
+  dates, times and units), its own ADR and plan: the roadmap's cross-cutting row *Figures spoken
+  by Piper, by the household's country*.
 - The first reading after a start pays the OCR's model load (about 10 s more), and the first keep
   pays the embedding model's load.

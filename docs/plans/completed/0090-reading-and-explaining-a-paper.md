@@ -1,6 +1,6 @@
 # 0090 — Reading and explaining a paper
 
-> **Status:** **Closed 2026-11-26.** Hardware acceptance 8 of 8 on the streaming route
+> **Status:** **Closed 2026-11-26**, merged as PR #314. Hardware acceptance 8 of 8 on the streaming route
 > ([record](../../evals/0090-paper-acceptance.md)); ADR 0041 `Accepted`; the OCR probe's
 > [record](../../evals/0090-ocr-probe.md). It was `Ready` on 2026-11-25 (approved by Pipec, who
 > answered D-1 to D-7 the same day, every recommendation accepted; see *Pipec's decisions* at the

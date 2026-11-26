@@ -488,7 +488,7 @@ additive. Task 8 is documentation and an acceptance run.
 
 ## Not here, and why
 
-- **The amendment path for contacts and medications after the closing:** [Plan 0073](../open/0073-local-admin-crud.md)
+- **The amendment path for contacts and medications after the closing:** [Plan 0073](0073-local-admin-crud.md)
   (ADR 0024 decision 8); this plan enables no alert or reminder.
 - **Per-person voice settings and a pronunciation field:** out of scope (D-2); added when a measurement
   asks for it.
