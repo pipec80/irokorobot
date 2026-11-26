@@ -30,7 +30,13 @@ if TYPE_CHECKING:
 
     from server.memory.document_store import DocumentSearch
 
-__all__ = ["MAX_ANSWER_CHARS", "gives_an_order", "word_document"]
+__all__ = [
+    "MAX_ANSWER_CHARS",
+    "cap_answer",
+    "gives_an_order",
+    "readable_sentences",
+    "word_document",
+]
 
 #: Characters of quoted text at most (about fifteen seconds of speech).
 MAX_ANSWER_CHARS: Final = 220
@@ -105,14 +111,22 @@ def _clean(sentence: str) -> str:
     return " ".join(_MARKDOWN.sub("", _BULLET.sub("", sentence)).split())
 
 
-def _sentences(body: str) -> list[str]:
-    """The body's sentences that may be read aloud: no order, no code, not empty."""
+def readable_sentences(text: str) -> list[str]:
+    """The sentences of one line or paragraph that may be read aloud: no order, no code, not empty.
+
+    Also used by the paper's answer (Plan 0090), which cuts a paper line by line first.
+    """
     kept = []
-    for raw in _SENTENCE_END.split(" ".join(_HEADING_LINE_END.sub(".\n", body).split())):
+    for raw in _SENTENCE_END.split(" ".join(text.split())):
         sentence = _clean(raw)
         if sentence and not gives_an_order(sentence) and not flags_secret(sentence):
             kept.append(sentence)
     return kept
+
+
+def _sentences(body: str) -> list[str]:
+    """A section body's readable sentences, a heading line closed as its own sentence."""
+    return readable_sentences(_HEADING_LINE_END.sub(".\n", body))
 
 
 def _variants(word: str) -> set[str]:
@@ -132,7 +146,8 @@ def _score(sentence: str, words: frozenset[str]) -> int:
     return sum(_matches(word, tokens, stems) for word in words)
 
 
-def _capped(text: str) -> str:
+def cap_answer(text: str) -> str:
+    """*text* cut at ``MAX_ANSWER_CHARS`` on a word, with an ellipsis when cut."""
     if len(text) <= MAX_ANSWER_CHARS:
         return text
     room = text[: MAX_ANSWER_CHARS - len(_ELLIPSIS) + 1]
@@ -185,4 +200,4 @@ async def word_document(client: httpx.AsyncClient, question: str, search: Docume
         return NOT_IN_DOCUMENTS
     title_words = set(content_words(normalize_spanish(first.title)))
     words = frozenset(content_words(normalize_spanish(question))) - title_words - _FRAMING
-    return f"Según {title}: {_capped(' '.join(_chosen(candidates, words)))}"
+    return f"Según {title}: {cap_answer(' '.join(_chosen(candidates, words)))}"

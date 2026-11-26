@@ -10,6 +10,7 @@ title; ``query`` is what to look for inside it. Pure: no I/O.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 import re
 from typing import Final
 
@@ -19,7 +20,9 @@ from server.text_keys import normalize_spanish
 __all__ = [
     "DOCUMENT_TYPES",
     "DocumentCue",
+    "PaperAsk",
     "classify_document_cue",
+    "classify_paper_question",
     "is_keep_phrase",
     "is_reading_request",
 ]
@@ -163,3 +166,61 @@ def is_reading_request(message: str) -> bool:
 def is_keep_phrase(message: str) -> bool:
     """Whether *message* is «sí, guárdalo» (or «guárdalo», with or without «por favor»)."""
     return bool(_KEEP.match(normalize_spanish(message)))
+
+
+class PaperAsk(StrEnum):
+    """What a closed question about the paper just read asks (Plan 0090, ADR 0041 decision 4)."""
+
+    AMOUNT = "amount"
+    DUE_DATE = "due_date"
+    SENDER = "sender"
+    TOPIC = "topic"
+    CONTENT = "content"
+    # «¿Es grave?»: a question that asks to interpret, answered by a fixed phrase (decision 5).
+    INTERPRET = "interpret"
+
+
+_PAPERS: Final = "papel|carta|cuenta|boleta|receta|nota|hoja|aviso|factura|documento"
+# Each closed question, folded and whole; «Iroko», «oye», «a ver» or «y» may open it and «Iroko»
+# or «por favor» close it. Only asked while a paper waits (the route answers ``None`` otherwise).
+_PAPER_QUESTIONS: Final = (
+    (
+        PaperAsk.AMOUNT,
+        r"cuanto (?:tengo|hay) que pagar|cuanto (?:es|debo|sale|cobran)"
+        r"|cual es el (?:total|monto)|cuanto es el (?:total|monto)",
+    ),
+    (
+        PaperAsk.DUE_DATE,
+        r"para cuando es|cuando vence|hasta cuando (?:tengo|hay) que pagar"
+        r"|cuando (?:tengo|hay) que pagar(?:lo|la)?|cual es la fecha de vencimiento",
+    ),
+    (PaperAsk.SENDER, r"quien (?:me )?(?:lo|la) (?:manda|envia)|de quien es"),
+    (PaperAsk.TOPIC, r"de que se trata|de que trata"),
+    (PaperAsk.CONTENT, rf"que dice (?:el|la|esta|este) (?:{_PAPERS})|que mas dice|ahi dice algo"),
+    (
+        PaperAsk.INTERPRET,
+        r"es grave|es normal|que significa|que quiere decir|que (?:tengo|debo) que tomar"
+        r"|que me recomiendas",
+    ),
+)
+_PAPER_PATTERNS: Final = tuple(
+    (ask, re.compile(rf"^(?:(?:iroko|oye|a ver|y) )*(?:{shapes})(?: (?:iroko|por favor))*$"))
+    for ask, shapes in _PAPER_QUESTIONS
+)
+
+
+def classify_paper_question(message: str) -> PaperAsk | None:
+    """Return what a closed question about the paper asks, or ``None`` for any other message.
+
+    Args:
+        message: Raw transcript or chat text in Spanish.
+
+    Returns:
+        The closed question (``¿cuánto tengo que pagar?``, ``¿para cuándo es?``, ``¿quién lo
+        manda?``, ``¿de qué se trata?``, ``¿qué dice la carta?``, ``¿es grave?`` …), or ``None``.
+    """
+    normalized = normalize_spanish(message)
+    for ask, pattern in _PAPER_PATTERNS:
+        if pattern.match(normalized):
+            return ask
+    return None

@@ -27,12 +27,13 @@ from server.cognition.controller import (
     DocumentAnswerer,
     MemoryAnswerer,
     MemoryChanger,
+    PaperAnswerer,
     ProfileSummarizer,
     ReadingKeeper,
     RecallAnswerer,
     TextReader,
 )
-from server.cognition.document_cues import DocumentCue
+from server.cognition.document_cues import DocumentCue, PaperAsk
 from server.cognition.generic_identity import (
     GenericIdentification,
     identify_generic_speaker,
@@ -44,8 +45,11 @@ from server.cognition.intent_resolution import MemoryAnswer
 from server.cognition.memory_change import MemoryChange
 from server.cognition.models import CognitiveEvent
 from server.cognition.owner_authentication import OwnerUnlockService
+from server.cognition.paper_answer import word_paper
 from server.cognition.recall_cues import RecallCue
 from server.cognition.response_plan import (
+    PAPER_NEEDS_IDENTITY,
+    PAPER_NOT_INTERPRETED,
     DocumentReply,
     InformationNeed,
     KeepOutcome,
@@ -414,6 +418,7 @@ def _voice_controller(
         document_answerer=_document_answerer(client, request_identity),
         text_reader=_text_reader(client, request_identity, frame),
         reading_keeper=_reading_keeper(client, request_identity),
+        paper_answerer=_paper_answerer(request_identity),
     )
 
 
@@ -808,6 +813,34 @@ def _reading_keeper(
         return KeepOutcome.KEPT
 
     return keep
+
+
+def _paper_answerer(request_identity: _RequestIdentity) -> PaperAnswerer | None:
+    """Return the answerer of questions about the paper just read, or ``None`` (Plan 0090).
+
+    With no paper waiting it says ``None`` and the turn is today's. A question that asks to
+    interpret hears the fixed refusal. Otherwise only the person the paper is bound to hears an
+    answer, quoted from the paper; a reading bound to nobody, an unknown speaker or a failed
+    identification hears that the robot must recognise them first (ADR 0041 decision 5).
+    """
+    if not _reading_on():
+        return None
+
+    async def answer(event: CognitiveEvent[TextTurnPayload], ask: PaperAsk) -> str | None:
+        now = utc_now()
+        if not READING_SLOT.is_open(now):
+            return None
+        if ask is PaperAsk.INTERPRET:
+            return PAPER_NOT_INTERPRETED
+        try:
+            actor = await request_identity.peek_actor(event)
+        except Exception as exc:  # seam boundary: an unknown speaker hears no paper
+            logger.warning("Paper speaker unknown (%s)", type(exc).__name__)
+            return PAPER_NEEDS_IDENTITY
+        paper = None if actor.person_id is None else READING_SLOT.paper_for(actor.person_id, now)
+        return PAPER_NEEDS_IDENTITY if paper is None else word_paper(paper, ask)
+
+    return answer
 
 
 def _sensitive_reader(
