@@ -32,9 +32,9 @@ if TYPE_CHECKING:
 
 __all__ = [
     "MAX_ANSWER_CHARS",
+    "body_sentences",
     "cap_answer",
     "gives_an_order",
-    "readable_sentences",
     "word_document",
 ]
 
@@ -111,22 +111,21 @@ def _clean(sentence: str) -> str:
     return " ".join(_MARKDOWN.sub("", _BULLET.sub("", sentence)).split())
 
 
-def readable_sentences(text: str) -> list[str]:
-    """The sentences of one line or paragraph that may be read aloud: no order, no code, not empty.
+def body_sentences(body: str) -> list[str]:
+    """The body's sentences that may be read aloud: no order, no code, not empty.
 
-    Also used by the paper's answer (Plan 0090), which cuts a paper line by line first.
+    A line with no closing mark followed by one that opens a sentence is its own sentence (a
+    heading, or a bill's label line); a line wrapped inside a sentence goes on in lowercase and
+    stays one sentence, so an order wrapped over lines is filtered whole. Also used by the
+    paper's answer (Plan 0090).
     """
     kept = []
-    for raw in _SENTENCE_END.split(" ".join(text.split())):
+    flat = " ".join(_HEADING_LINE_END.sub(".\n", body).split())
+    for raw in _SENTENCE_END.split(flat):
         sentence = _clean(raw)
         if sentence and not gives_an_order(sentence) and not flags_secret(sentence):
             kept.append(sentence)
     return kept
-
-
-def _sentences(body: str) -> list[str]:
-    """A section body's readable sentences, a heading line closed as its own sentence."""
-    return readable_sentences(_HEADING_LINE_END.sub(".\n", body))
 
 
 def _variants(word: str) -> set[str]:
@@ -194,7 +193,7 @@ async def word_document(client: httpx.AsyncClient, question: str, search: Docume
         s
         for hit in search.hits
         if hit.section.source_id == first.source_id
-        for s in _sentences(hit.section.body)
+        for s in body_sentences(hit.section.body)
     ]
     if not candidates:
         return NOT_IN_DOCUMENTS

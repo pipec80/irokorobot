@@ -12,11 +12,14 @@ from unittest.mock import AsyncMock
 
 import pytest
 from server.cognition.response_plan import (
+    COULD_NOT_READ,
     NOT_IN_PAPER,
     PAPER_NEEDS_IDENTITY,
     PAPER_NOT_INTERPRETED,
     PAPER_RECORDED_TEXT,
+    READING_KEPT,
 )
+from server.exceptions import VisionError
 from server.memory.conversation_consent import grant_conversation_consent
 from server.memory.reading_offer import READING_SLOT
 from server.routers import transcribe as transcribe_module
@@ -129,6 +132,37 @@ async def test_the_answer_is_recorded_as_a_marker_never_the_paper(
     await cursor.close()
     assert said[-1] == PAPER_RECORDED_TEXT
     assert not any("12.345" in text for text in said)
+
+
+async def test_a_keep_right_after_an_interpreting_question_keeps_the_paper(
+    paper: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """«¿Es grave?» is a turn about the paper, so «sí, guárdalo» right after still keeps it."""
+    _see_the_owner(monkeypatch)
+    _hear(monkeypatch, "lee esto", "¿Es grave?", "Sí, guárdalo")
+    _models(monkeypatch)
+
+    spoken = await _turns("/transcribe", True, True, True)
+
+    assert spoken[1] == PAPER_NOT_INTERPRETED
+    assert spoken[2] == READING_KEPT
+
+
+async def test_a_failed_new_reading_leaves_no_old_paper_answering(
+    paper: PersonalSetupResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review finding 2: bill A read, bill B fails; «¿cuánto…?» must not quote bill A."""
+    monkeypatch.setattr(
+        transcribe_module, "read_text", AsyncMock(side_effect=[_BILL, VisionError("blurred")])
+    )
+    _see_the_owner(monkeypatch)
+    _hear(monkeypatch, "lee esto", "lee esto", "¿Cuánto tengo que pagar?")
+    _models(monkeypatch)
+
+    spoken = await _turns("/transcribe", True, True, True)
+
+    assert spoken[1] == COULD_NOT_READ
+    assert "12.345" not in spoken[2]
 
 
 @pytest.mark.parametrize("route", _ROUTES)

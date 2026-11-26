@@ -40,6 +40,8 @@ class _Reading:
     text: str | None = field(repr=False)
     speaker: int | None
     at: datetime
+    # The turn number of the last paper turn (the reading, a paper question or a keep).
+    paper_turn: int
 
 
 class ReadingSlot:
@@ -48,15 +50,20 @@ class ReadingSlot:
     def __init__(self) -> None:
         """Start empty."""
         self._reading: _Reading | None = None
+        self._turns = 0
 
     def __repr__(self) -> str:
         """Say whether a paper waits, never what it says."""
         return f"ReadingSlot(open={self._reading is not None})"
 
+    def begin_turn(self) -> None:
+        """Count one voice turn; the keeper calls it once at the start of every turn."""
+        self._turns += 1
+
     def offer(self, text: str, *, speaker: int | None, now: datetime) -> None:
         """Hold *text* for *speaker*, replacing any earlier paper; bound to nobody, keep no text."""
         kept = text[:PAPER_MAX_CHARS] if speaker is not None else None
-        self._reading = _Reading(text=kept, speaker=speaker, at=now)
+        self._reading = _Reading(text=kept, speaker=speaker, at=now, paper_turn=self._turns)
 
     def is_open(self, now: datetime) -> bool:
         """Whether a reading waits and its silence has not run out (dropping it when it has)."""
@@ -67,10 +74,6 @@ class ReadingSlot:
             self._reading = None
             return False
         return True
-
-    def bound_to_nobody(self, now: datetime) -> bool:
-        """Whether the waiting reading had no identified speaker (so it holds no text)."""
-        return self.is_open(now) and self._reading is not None and self._reading.speaker is None
 
     def observe(self, person_id: int | None, now: datetime) -> None:
         """Apply one turn's speaker: another identified person ends the paper; unknown leaves it.
@@ -86,26 +89,37 @@ class ReadingSlot:
             self._reading = None
 
     def paper_for(self, speaker: int, now: datetime) -> str | None:
-        """Return the paper's text to its own speaker, restarting its silence; else ``None``."""
+        """Return the paper's text to its own speaker, marking a paper turn; else ``None``.
+
+        A paper turn restarts the paper's silence and lets «sí, guárdalo» keep it on the next turn.
+        """
         reading = self._reading
         if not self.is_open(now) or reading is None or reading.speaker != speaker:
             return None
         if reading.text is None:
             return None
         reading.at = now
+        reading.paper_turn = self._turns
         return reading.text
 
     def take(self, speaker: int, now: datetime) -> str | None:
-        """Give the paper to *speaker* to keep; the paper stays for more questions.
+        """Give the paper to *speaker* to keep, when the talk is still about it.
+
+        «Sí, guárdalo» keeps the paper only right after a paper turn (the reading or a question
+        about it): once the talk moved on, the same words may answer a memory offer (Plan 0090
+        review, Pipec 2026-11-26). The paper stays for more questions.
 
         Args:
             speaker: The person who said «sí, guárdalo».
             now: The current time.
 
         Returns:
-            The whole text, when a paper bound to *speaker* waits; ``None`` otherwise (a reading
-            bound to nobody is never given).
+            The whole text, when a paper bound to *speaker* waits and the turn before was about
+            it; ``None`` otherwise (a reading bound to nobody is never given).
         """
+        reading = self._reading
+        if reading is None or reading.paper_turn < self._turns - 1:
+            return None
         return self.paper_for(speaker, now)
 
     def clear(self) -> None:

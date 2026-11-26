@@ -169,10 +169,24 @@ def test_a_reading_bound_to_nobody_keeps_no_text_and_a_new_reading_replaces_it()
     slot.offer("zzdos", speaker=None, now=_NOW)
 
     assert slot.is_open(_NOW)
-    assert slot.bound_to_nobody(_NOW)
     assert slot.take(7, _NOW) is None
     assert slot.paper_for(7, _NOW) is None
     assert "zzdos" not in repr(slot)
+
+
+def test_a_keep_needs_the_turn_before_to_be_about_the_paper() -> None:
+    """Review finding 3 (Pipec, 2026-11-26): after other talk «sí, guárdalo» is not the paper's."""
+    slot = ReadingSlot()
+    slot.begin_turn()
+    slot.offer("zzuno", speaker=7, now=_NOW)  # turn 1, the reading
+    slot.begin_turn()
+    assert slot.paper_for(7, _NOW) == "zzuno"  # turn 2, a question about it
+    slot.begin_turn()
+    assert slot.take(7, _NOW) == "zzuno"  # turn 3, right after: kept
+    slot.begin_turn()  # turn 4, talk of something else
+    slot.begin_turn()
+    assert slot.take(7, _NOW) is None  # turn 5: not the paper's any more
+    assert slot.paper_for(7, _NOW) == "zzuno"  # but it can still be asked about
 
 
 def test_clearing_empties_the_slot() -> None:

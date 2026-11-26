@@ -453,3 +453,12 @@ measurement and the prescription are left out with their triggers. Every other d
     within the image contract (max 1280x720). Rejected: a later plan.
 11. **The live camera preview** used to frame the papers becomes `scripts/camera_preview.py`
     (Task 1), a tool for every later camera test (Pipec asked).
+
+**After the branch's review (2026-11-26, Task 8).**
+
+12. **«Sí, guárdalo» keeps the paper only right after a paper turn** (the reading or any question
+    about it), amending D-6: once the talk turned to something else, the same words may answer a
+    memory offer, and the paper must not steal it. Rejected: keeping while the paper lives.
+    The review's other fixes need no decision: the due date and the amount are raised by their
+    strongest words and never guessed; a failed new reading clears the old paper; a planted order
+    wrapped over lines is filtered whole.

@@ -742,6 +742,9 @@ def _text_reader(
         return None
 
     async def read(event: CognitiveEvent[TextTurnPayload]) -> ReadingReply:
+        # A new reading always replaces the old paper, even when it fails: a question after a
+        # failed reading must never be answered from the paper read before (review finding 2).
+        READING_SLOT.clear()
         if frame is None:
             return ReadingReply(outcome=ReadingOutcome.NO_FRAME)
         try:
@@ -750,14 +753,12 @@ def _text_reader(
             logger.warning("Reading failed (%s)", type(exc).__name__)
             return ReadingReply(outcome=ReadingOutcome.FAILED)
         if flags_secret(paper):
-            READING_SLOT.clear()
             return ReadingReply(outcome=ReadingOutcome.SECRET)
         spoken = _cap_reading(paper)
         try:
             actor = await request_identity.peek_actor(event)
         except Exception as exc:  # seam boundary: the text is read aloud, it just cannot be kept
             logger.warning("Reading speaker unknown (%s)", type(exc).__name__)
-            READING_SLOT.clear()
             return ReadingReply(outcome=ReadingOutcome.READ, text=spoken)
         READING_SLOT.offer(paper, speaker=actor.person_id, now=utc_now())
         return ReadingReply(outcome=ReadingOutcome.READ, text=spoken)
@@ -799,6 +800,7 @@ def _reading_keeper(
 
     async def _keep(event: CognitiveEvent[TextTurnPayload], wants: bool) -> KeepOutcome:
         now = utc_now()
+        READING_SLOT.begin_turn()
         if not READING_SLOT.is_open(now):
             return KeepOutcome.NO_SLOT
         actor = await request_identity.peek_actor(event)
@@ -830,15 +832,18 @@ def _paper_answerer(request_identity: _RequestIdentity) -> PaperAnswerer | None:
         now = utc_now()
         if not READING_SLOT.is_open(now):
             return None
-        if ask is PaperAsk.INTERPRET:
-            return PAPER_NOT_INTERPRETED
+        refusal = PAPER_NOT_INTERPRETED if ask is PaperAsk.INTERPRET else PAPER_NEEDS_IDENTITY
         try:
             actor = await request_identity.peek_actor(event)
         except Exception as exc:  # seam boundary: an unknown speaker hears no paper
             logger.warning("Paper speaker unknown (%s)", type(exc).__name__)
-            return PAPER_NEEDS_IDENTITY
+            return refusal
+        # Reading the paper for its own speaker marks a paper turn, even for the refusal to
+        # interpret: «sí, guárdalo» right after still keeps the paper.
         paper = None if actor.person_id is None else READING_SLOT.paper_for(actor.person_id, now)
-        return PAPER_NEEDS_IDENTITY if paper is None else word_paper(paper, ask)
+        if paper is None or ask is PaperAsk.INTERPRET:
+            return refusal
+        return word_paper(paper, ask)
 
     return answer
 

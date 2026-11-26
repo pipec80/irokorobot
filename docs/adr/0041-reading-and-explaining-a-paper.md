@@ -78,10 +78,14 @@ or «Eso no aparece en lo que leí.». Every other turn is unchanged.
   interpretar. Te puedo leer lo que dice; para entenderlo, pregúntale a tu médico.», for every
   paper.
 
-### 6. «Sí, guárdalo» while the paper lives
+### 6. «Sí, guárdalo» while the talk is about the paper
 
-The offer is spoken after the reading only; the closed verb keeps the paper's whole text while its
-slot lives, from the same person, even after questions. Elsewhere ADR 0021's 60 s window stands.
+The offer is spoken after the reading only; the closed verb keeps the paper's whole text from the
+same person right after a paper turn (the reading, or any question about the paper, however many),
+and the paper stays for more questions. Once the talk turned to something else, the same words
+may answer a memory offer (ADR 0021), so they no longer keep the paper, though it can still be
+asked about while it lives (Pipec, 2026-11-26, after the plan's review). A new reading, even one
+that fails, replaces the old paper. Elsewhere ADR 0021's 60 s window stands.
 
 ## Consequences
 

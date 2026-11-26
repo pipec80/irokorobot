@@ -1,8 +1,9 @@
 """Read the text in front of the camera (Plan 0088 D-17, ADR 0034 decision 5, ADR 0041).
 
 The reader is ``READING_ENGINE``: the dedicated OCR (``vision.ocr_reader``, the default) or the
-local VLM, where one fixed prompt asks for the visible text only. The frame is the turn's own (the one the voice
-routes carry for face authentication), processed in memory and never stored or logged.
+local VLM, where one fixed prompt asks for the visible text only. The frame is the turn's own (the
+one the voice routes carry for face authentication), processed in memory and never stored or
+logged.
 """
 
 from __future__ import annotations

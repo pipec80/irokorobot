@@ -1,13 +1,15 @@
 """Answer a closed question about the paper just read, by quoting it (Plan 0090, ADR 0041).
 
 **No model is called**, for the reason of ADR 0034 deviation 9: the local 3B obeyed an order
-planted in a document in 12 of 24 answers. The paper is cut line by line (the OCR returns its
-lines), each line into its sentences, and every sentence in the closed shapes of an order or that
-the document secret detector flags is left out (``document_answer``'s own filters). A closed
-extractor raises the sentence that answers: an amount for «¿cuánto…?», a date for «¿para
-cuándo…?», the paper's first lines for «¿quién lo manda?» and «¿de qué se trata?». The answer is
-«Según el papel: …» (capped like a document answer) or «Eso no aparece en lo que leí.». Pure: no
-I/O, nothing logged.
+planted in a document in 12 of 24 answers. The paper is cut into sentences as a document section
+is (``document_answer.body_sentences``): a line wrapped inside a sentence stays one sentence, so an
+order wrapped over lines is filtered whole, and a bill's label line («Total a pagar») joins the
+figure printed under it. Every sentence in the closed shapes of an order, or that the document
+secret detector flags, is left out. A closed extractor raises the answering sentence by the
+strongest words it holds («vencimiento» before «hasta» before «fecha»; «total» or «pagar» before
+«importe»), never a sentence with no such word: a guessed figure is worse than «Eso no aparece en
+lo que leí.». The answer is «Según el papel: …», capped like a document answer. Pure: no I/O,
+nothing logged.
 """
 
 from __future__ import annotations
@@ -21,38 +23,47 @@ from server.cognition.response_plan import (
     PAPER_ANSWER_OPENING,
     PAPER_NOT_INTERPRETED,
 )
-from server.memory.document_answer import cap_answer, readable_sentences
+from server.memory.document_answer import body_sentences, cap_answer
 from server.text_keys import normalize_spanish
 
 __all__ = ["word_paper"]
 
 _AMOUNT: Final = re.compile(r"\$\s?\d|\d[\d.,]*\s*(?:pesos|clp)\b", re.IGNORECASE)
-_AMOUNT_WORDS: Final = ("total", "pagar", "monto", "deuda", "importe", "saldo")
+#: The words that name the amount to pay, strongest first; «saldo anterior» names none.
+_AMOUNT_WORDS: Final = (("total", "a pagar"), ("importe", "deuda", "monto"))
 _MONTHS: Final = "ene|feb|mar|abr|may|jun|jul|ago|sep|set|oct|nov|dic"
 _DATE: Final = re.compile(
     rf"\b\d{{1,2}}\s?[-/.]\s?(?:\d{{1,2}}|(?:{_MONTHS})[a-z]*)\s?[-/.]\s?\d{{2,4}}\b"
     rf"|\b\d{{1,2}} de (?:{_MONTHS})[a-z]*(?: de \d{{4}})?\b",
     re.IGNORECASE,
 )
-_DATE_WORDS: Final = ("venc", "fecha", "hasta", "plazo", "pagar antes", "pague antes")
+#: The words that name the due date, strongest first; an emission date names none.
+_DATE_WORDS: Final = (
+    ("venc", "pagar antes", "pague antes", "pagar hasta", "plazo"),
+    ("hasta",),
+    ("fecha",),
+)
+_NOT_DUE: Final = ("emision", "emitid")
 _START_SENTENCES: Final = 2
 
 
-def _candidates(paper: str) -> list[str]:
-    """The paper's readable sentences in reading order, line by line."""
-    return [sentence for line in paper.splitlines() for sentence in readable_sentences(line)]
-
-
-def _first_with(
-    candidates: list[str], pattern: re.Pattern[str], words: tuple[str, ...]
+def _best(
+    candidates: list[str],
+    pattern: re.Pattern[str],
+    ranks: tuple[tuple[str, ...], ...],
+    excluded: tuple[str, ...] = (),
 ) -> str | None:
-    """The first sentence holding *pattern* and one of *words*; else the first holding *pattern*."""
-    holding = [sentence for sentence in candidates if pattern.search(sentence)]
-    for sentence in holding:
-        folded = normalize_spanish(sentence)
-        if any(word in folded for word in words):
-            return sentence
-    return holding[0] if holding else None
+    """The first sentence holding *pattern* and a word of the strongest rank found; else None."""
+    holding = [
+        (sentence, normalize_spanish(sentence))
+        for sentence in candidates
+        if pattern.search(sentence)
+    ]
+    for words in ranks:
+        for sentence, folded in holding:
+            if any(word in folded for word in words) and not any(w in folded for w in excluded):
+                return sentence
+    return None
 
 
 def _quoted(sentences: list[str]) -> str:
@@ -71,15 +82,15 @@ def word_paper(paper: str, ask: PaperAsk) -> str:
         «Según el papel: …» with the answering sentence(s), the fixed phrase of a question that
         asks to interpret, or «Eso no aparece en lo que leí.».
     """
-    candidates = _candidates(paper)
+    candidates = body_sentences(paper)
     found: list[str]
     match ask:
         case PaperAsk.INTERPRET:
             return PAPER_NOT_INTERPRETED
         case PaperAsk.AMOUNT:
-            found = [s] if (s := _first_with(candidates, _AMOUNT, _AMOUNT_WORDS)) else []
+            found = [s] if (s := _best(candidates, _AMOUNT, _AMOUNT_WORDS)) else []
         case PaperAsk.DUE_DATE:
-            found = [s] if (s := _first_with(candidates, _DATE, _DATE_WORDS)) else []
+            found = [s] if (s := _best(candidates, _DATE, _DATE_WORDS, _NOT_DUE)) else []
         case PaperAsk.SENDER:
             found = candidates[:1]
         case PaperAsk.TOPIC:
